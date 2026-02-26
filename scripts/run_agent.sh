@@ -9,6 +9,61 @@ echo "[harness] Starting agent loop. Stop with Ctrl+C."
 echo "[harness] Logs → build/agent_state/agent_logs/"
 mkdir -p build/agent_state/agent_logs
 
+# Extra buffer after reported reset time (default: 10 minutes).
+LIMIT_RESUME_BUFFER_SECONDS="${LIMIT_RESUME_BUFFER_SECONDS:-600}"
+
+compute_wait_seconds_from_limit_line() {
+    local limit_line="$1"
+    local wait_seconds
+
+    wait_seconds=$(python3 - "$limit_line" <<'PY'
+import datetime as dt
+import re
+import sys
+
+line = sys.argv[1] if len(sys.argv) > 1 else ""
+
+time_match = re.search(r"resets?\s+(\d{1,2})(?::(\d{2}))?\s*([ap]m)?", line, re.IGNORECASE)
+tz_match = re.search(r"\(([^)]+)\)", line)
+
+if not time_match:
+    print(-1)
+    raise SystemExit
+
+hour = int(time_match.group(1))
+minute = int(time_match.group(2) or "0")
+ampm = (time_match.group(3) or "").lower()
+
+if ampm:
+    if hour == 12:
+        hour = 0
+    if ampm == "pm":
+        hour += 12
+
+tz = None
+if tz_match:
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo(tz_match.group(1).strip())
+    except Exception:
+        tz = None
+
+now = dt.datetime.now(tz=tz)
+target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+if target <= now:
+    target += dt.timedelta(days=1)
+
+print(int((target - now).total_seconds()))
+PY
+)
+
+    if [ -z "$wait_seconds" ] || [ "$wait_seconds" -lt 0 ] 2>/dev/null; then
+        echo 900
+    else
+        echo "$wait_seconds"
+    fi
+}
+
 ITER=0
 while true; do
     ITER=$((ITER + 1))
@@ -24,11 +79,32 @@ while true; do
            -p "$(cat AGENT_PROMPT.md)" \
            --model claude-sonnet-4-6 \
            2>&1 | tee "$LOGFILE"
+    CLAUDE_EXIT=${PIPESTATUS[0]}
 
     # Show current score after each iteration
     echo "[harness] === Iteration $ITER done. Current score: ==="
     cat build/agent_state/last_result.txt 2>/dev/null || echo "(no result yet)"
     echo ""
+
+    # If quota is exhausted, sleep until reset time and continue automatically.
+    if grep -Eqi "hit your limit|rate limit|usage limit|quota" "$LOGFILE"; then
+        LIMIT_LINE=$(grep -Ei "hit your limit|rate limit|usage limit|quota|resets?" "$LOGFILE" | tail -n 1)
+        BASE_WAIT_SECONDS=$(compute_wait_seconds_from_limit_line "$LIMIT_LINE")
+        WAIT_SECONDS=$((BASE_WAIT_SECONDS + LIMIT_RESUME_BUFFER_SECONDS))
+        RESUME_AT=$(date -v+"${WAIT_SECONDS}"S '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -d "+${WAIT_SECONDS} seconds" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "unknown")
+
+        echo "[harness] Detected token/rate limit in $LOGFILE."
+        if [ -n "$LIMIT_LINE" ]; then
+            echo "[harness] Limit hint: $LIMIT_LINE"
+        fi
+        echo "[harness] Sleeping ${WAIT_SECONDS}s (base=${BASE_WAIT_SECONDS}s + buffer=${LIMIT_RESUME_BUFFER_SECONDS}s), resume at ${RESUME_AT}."
+        sleep "$WAIT_SECONDS"
+        continue
+    fi
+
+    if [ "$CLAUDE_EXIT" -ne 0 ]; then
+        echo "[harness] Claude exited with code $CLAUDE_EXIT. Continuing loop."
+    fi
 
     # Brief pause between iterations
     sleep 5

@@ -3,26 +3,6 @@
 Super tiny C-subset compiler that outputs LLVM IR text without linking LLVM libraries.
 Uses Python `match/case`, so run with Python 3.10+ (tested with 3.14).
 
-## Project Layout
-
-- `src/c2ll.py`: compiler entry point and implementation
-- `tests/`: test inputs and test runner
-- `docs/SPEC.md`: language and roadmap spec
-- `CMakeLists.txt`: build/test orchestration
-
-## Supported Syntax
-
-- One function: `int <name>() { ... }`
-- Statements:
-  - `int x;`
-  - `int x = expr;`
-  - `x = expr;`
-  - `return expr;`
-- Expressions:
-  - integer literal, variable
-  - `+ - * /`
-  - parentheses
-
 ## Build With CMake
 
 ```bash
@@ -85,3 +65,9 @@ echo $?
 ## Next
 
 - Language roadmap and pattern-matching design: `docs/SPEC.md`
+
+
+## Run agent
+```bash
+caffeinate -dimsu ./scripts/run_agent.sh
+```
