@@ -21,6 +21,12 @@
     - array/pointer indexing (`a[i]`, `p[i]`)
     - multi-level pointers (`int **pp`, `**pp`)
     - pointer arithmetic (`p +/- n`, `p++/--`, `p += n`, pointer difference)
+  - basic struct support:
+    - `struct` type declarations (named + anonymous)
+    - member access via `.` and `->`
+  - basic typedef + cast support:
+    - type aliases (`typedef ...`)
+    - simple C-style casts `(T)expr`
   - arithmetic/logic expressions:
     - arithmetic: `+ - * / %`
     - comparison: `< > <= >= == !=`
@@ -44,15 +50,15 @@
   - `c2ll.py -> .ll -> clang -> executable`
   - failure logs split into frontend/backend/runtime
 - c-testsuite status:
-  - Full run: `63 / 220` pass
-  - Allowlist is updated to these 63 passing cases
+  - Full run: `71 / 220` pass
+  - Allowlist is updated to these 71 passing cases
 
 ## Next Steps (Priority Order)
 
 1. Extend parser/lexer/sema for common C constructs causing the next largest failures:
-   - struct member access `.`
-   - pointer/address ops `& *` for nested pointer chains
    - array declarator variants (e.g. `[]` forms used by testsuite)
+   - more struct coverage (nested/anonymous union patterns)
+   - array initializers and aggregate initializers
 2. Expand expression grammar:
    - ternary `?:`
    - `sizeof`

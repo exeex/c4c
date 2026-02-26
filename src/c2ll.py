@@ -24,6 +24,9 @@ class TokenType(Enum):
     KW_DO = auto()
     KW_BREAK = auto()
     KW_CONTINUE = auto()
+    KW_STRUCT = auto()
+    KW_TYPEDEF = auto()
+    KW_STATIC = auto()
     ID = auto()
     NUM = auto()
     LBRACE = auto()
@@ -172,6 +175,9 @@ class Lexer:
             "do": TokenType.KW_DO,
             "break": TokenType.KW_BREAK,
             "continue": TokenType.KW_CONTINUE,
+            "struct": TokenType.KW_STRUCT,
+            "typedef": TokenType.KW_TYPEDEF,
+            "static": TokenType.KW_STATIC,
         }
         return Token(kw_map.get(text, TokenType.ID), text, start_line, start_col)
 
@@ -270,6 +276,7 @@ class Function(Node):
 
 @dataclass
 class Program(Node):
+    struct_defs: List["StructDef"]
     decls: List[FunctionDecl]
     globals: List["GlobalVar"]
     funcs: List[Function]
@@ -278,6 +285,7 @@ class Program(Node):
 @dataclass
 class Decl(Node):
     name: str
+    base_type: str
     ptr_level: int
     size: Optional[int]
     init: Optional[Node]
@@ -292,6 +300,7 @@ class Assign(Node):
 @dataclass
 class GlobalVar(Node):
     name: str
+    base_type: str
     ptr_level: int
     size: Optional[int]
     init: Optional[Node]
@@ -337,6 +346,25 @@ class Index(Node):
 
 
 @dataclass
+class Member(Node):
+    base: Node
+    field: str
+    through_ptr: bool
+
+
+@dataclass
+class StructField(Node):
+    typ: str
+    name: str
+
+
+@dataclass
+class StructDef(Node):
+    name: str
+    fields: List[StructField]
+
+
+@dataclass
 class BinOp(Node):
     op: str
     lhs: Node
@@ -346,6 +374,12 @@ class BinOp(Node):
 @dataclass
 class UnaryOp(Node):
     op: str
+    expr: Node
+
+
+@dataclass
+class Cast(Node):
+    typ: str
     expr: Node
 
 
@@ -407,6 +441,9 @@ class Parser:
     def __init__(self, tokens: List[Token]):
         self.tokens = tokens
         self.i = 0
+        self.struct_defs: Dict[str, StructDef] = {}
+        self.anon_struct_idx = 0
+        self.typedef_names: Dict[str, str] = {}
 
     def cur(self) -> Token:
         return self.tokens[self.i]
@@ -439,8 +476,48 @@ class Parser:
             case TokenType.KW_VOID:
                 self.advance()
                 return "void"
+            case TokenType.KW_STRUCT:
+                self.advance()
+                tag: Optional[str] = None
+                if self.cur().typ == TokenType.ID:
+                    tag = self.eat(TokenType.ID).text
+                if self.cur().typ == TokenType.LBRACE:
+                    self.advance()
+                    fields: List[StructField] = []
+                    while self.cur().typ != TokenType.RBRACE:
+                        field_base = self.parse_type()
+                        field_ptr = 0
+                        while self.cur().typ == TokenType.STAR:
+                            self.advance()
+                            field_ptr += 1
+                        field_name = self.eat(TokenType.ID).text
+                        self.eat(TokenType.SEMI)
+                        fields.append(
+                            StructField(field_base + ("*" * field_ptr), field_name)
+                        )
+                    self.eat(TokenType.RBRACE)
+                    if tag is None:
+                        tag = f"__anon{self.anon_struct_idx}"
+                        self.anon_struct_idx += 1
+                    self.struct_defs[tag] = StructDef(tag, fields)
+                    return f"struct:{tag}"
+                if tag is None:
+                    raise self.error("expected struct tag or definition")
+                return f"struct:{tag}"
+            case TokenType.ID:
+                t = self.cur()
+                ty = self.typedef_names.get(t.text)
+                if ty is None:
+                    raise self.error("expected type")
+                self.advance()
+                return ty
             case _:
                 raise self.error("expected type")
+
+    def is_type_start(self) -> bool:
+        if self.cur().typ in (TokenType.KW_INT, TokenType.KW_VOID, TokenType.KW_STRUCT):
+            return True
+        return self.cur().typ == TokenType.ID and self.cur().text in self.typedef_names
 
     def parse_params(self) -> List[Param]:
         if self.cur().typ == TokenType.RPAREN:
@@ -473,6 +550,8 @@ class Parser:
         funcs: List[Function] = []
         while self.cur().typ != TokenType.EOF:
             ext = self.parse_external()
+            if ext is None:
+                continue
             if isinstance(ext, FunctionDecl):
                 decls.append(ext)
             elif isinstance(ext, list):
@@ -480,21 +559,38 @@ class Parser:
             else:
                 funcs.append(ext)
         self.eat(TokenType.EOF)
-        return Program(decls, globals_, funcs)
+        return Program(list(self.struct_defs.values()), decls, globals_, funcs)
 
-    def parse_external(self) -> FunctionDecl | list[GlobalVar] | Function:
-        if self.cur().typ == TokenType.KW_EXTERN:
+    def parse_external(self) -> FunctionDecl | list[GlobalVar] | Function | None:
+        is_typedef = False
+        if self.cur().typ == TokenType.KW_TYPEDEF:
+            is_typedef = True
             self.advance()
-        ret_type = self.parse_type()
+        if self.cur().typ in (TokenType.KW_EXTERN, TokenType.KW_STATIC):
+            self.advance()
+        base_type = self.parse_type()
         ret_ptr_level = 0
         while self.cur().typ == TokenType.STAR:
             self.advance()
             ret_ptr_level += 1
-        ret_type = ret_type + ("*" * ret_ptr_level)
+        ret_type = base_type + ("*" * ret_ptr_level)
         name = self.eat(TokenType.ID).text
 
+        if is_typedef:
+            self.typedef_names[name] = ret_type
+            while self.cur().typ == TokenType.COMMA:
+                self.advance()
+                ptr = 0
+                while self.cur().typ == TokenType.STAR:
+                    self.advance()
+                    ptr += 1
+                alias = self.eat(TokenType.ID).text
+                self.typedef_names[alias] = base_type + ("*" * ptr)
+            self.eat(TokenType.SEMI)
+            return None
+
         if self.cur().typ != TokenType.LPAREN:
-            if ret_type == "void":
+            if base_type == "void":
                 raise self.error("void object type is not supported")
             decls: List[GlobalVar] = []
             size: Optional[int] = None
@@ -509,7 +605,7 @@ class Parser:
                     raise self.error("array initializer is not supported yet")
                 self.advance()
                 init = self.parse_expr()
-            decls.append(GlobalVar(name, ret_ptr_level, size, init))
+            decls.append(GlobalVar(name, base_type, ret_ptr_level, size, init))
             while self.cur().typ == TokenType.COMMA:
                 self.advance()
                 g_ptr_level = 0
@@ -529,7 +625,7 @@ class Parser:
                         raise self.error("array initializer is not supported yet")
                     self.advance()
                     ginit = self.parse_expr()
-                decls.append(GlobalVar(gname, g_ptr_level, gsize, ginit))
+                decls.append(GlobalVar(gname, base_type, g_ptr_level, gsize, ginit))
             self.eat(TokenType.SEMI)
             return decls
 
@@ -550,8 +646,10 @@ class Parser:
 
     def parse_stmt(self) -> Node:
         match self.cur().typ:
-            case TokenType.KW_INT:
-                self.advance()
+            case _ if self.is_type_start():
+                base_type = self.parse_type()
+                if base_type == "void":
+                    raise self.error("void object type is not supported")
                 decls: List[Node] = []
                 while True:
                     ptr_level = 0
@@ -571,7 +669,7 @@ class Parser:
                             raise self.error("array initializer is not supported yet")
                         self.advance()
                         init = self.parse_expr()
-                    decls.append(Decl(name, ptr_level, size, init))
+                    decls.append(Decl(name, base_type, ptr_level, size, init))
                     if self.cur().typ != TokenType.COMMA:
                         break
                     self.advance()
@@ -678,7 +776,7 @@ class Parser:
         self.advance()
         rhs = self.parse_assignment()
         if not (
-            isinstance(lhs, (Var, Index))
+            isinstance(lhs, (Var, Index, Member))
             or (isinstance(lhs, UnaryOp) and lhs.op == "*")
         ):
             raise self.error("left-hand side of assignment must be a variable")
@@ -752,6 +850,29 @@ class Parser:
         return node
 
     def parse_unary(self) -> Node:
+        if self.cur().typ == TokenType.LPAREN and self.peek().typ in (
+            TokenType.KW_INT,
+            TokenType.KW_VOID,
+            TokenType.KW_STRUCT,
+            TokenType.ID,
+        ):
+            save = self.i
+            self.advance()
+            if self.is_type_start():
+                try:
+                    cast_ty = self.parse_type()
+                    ptr_level = 0
+                    while self.cur().typ == TokenType.STAR:
+                        self.advance()
+                        ptr_level += 1
+                    cast_ty = cast_ty + ("*" * ptr_level)
+                    if self.cur().typ == TokenType.RPAREN:
+                        self.advance()
+                        return Cast(cast_ty, self.parse_unary())
+                except CompileError:
+                    pass
+            self.i = save
+
         if self.cur().typ in (TokenType.PLUS, TokenType.MINUS, TokenType.BANG, TokenType.STAR):
             op = self.cur().text
             self.advance()
@@ -776,6 +897,16 @@ class Parser:
                 idx = self.parse_expr()
                 self.eat(TokenType.RBRACKET)
                 node = Index(node, idx)
+                continue
+            if self.cur().typ == TokenType.DOT:
+                self.advance()
+                field = self.eat(TokenType.ID).text
+                node = Member(node, field, False)
+                continue
+            if self.cur().typ == TokenType.ARROW:
+                self.advance()
+                field = self.eat(TokenType.ID).text
+                node = Member(node, field, True)
                 continue
             if self.cur().typ in (TokenType.PLUSPLUS, TokenType.MINUSMINUS):
                 if not isinstance(node, Var):
@@ -828,6 +959,7 @@ class FunctionSig:
 class SemanticAnalyzer:
     def __init__(self):
         self.func_sigs: Dict[str, FunctionSig] = {}
+        self.struct_defs: Dict[str, StructDef] = {}
         self.global_vars: Dict[str, bool] = {}
         self.global_arrays: Dict[str, int] = {}
         self.local_arrays: Dict[str, int] = {}
@@ -843,6 +975,7 @@ class SemanticAnalyzer:
             raise CompileError(f"semantic error: conflicting declaration for function {name!r}")
 
     def analyze_program(self, p: Program) -> None:
+        self.struct_defs = {s.name: s for s in p.struct_defs}
         for g in p.globals:
             if g.name in self.global_vars:
                 raise CompileError(f"semantic error: duplicate global variable {g.name!r}")
@@ -852,9 +985,9 @@ class SemanticAnalyzer:
                 self.global_arrays[g.name] = g.size
                 self.global_types[g.name] = "array"
             elif g.ptr_level > 0:
-                self.global_types[g.name] = "int" + ("*" * g.ptr_level)
+                self.global_types[g.name] = g.base_type + ("*" * g.ptr_level)
             else:
-                self.global_types[g.name] = "int"
+                self.global_types[g.name] = g.base_type
             self.global_vars[g.name] = True
         for d in p.decls:
             self.ensure_sig(d.name, FunctionSig(d.ret_type, [x.typ for x in d.params]))
@@ -904,7 +1037,7 @@ class SemanticAnalyzer:
         loop_depth: int,
     ) -> bool:
         match n:
-            case Decl(name=name, ptr_level=ptr_level, size=size, init=init):
+            case Decl(name=name, base_type=base_type, ptr_level=ptr_level, size=size, init=init):
                 if name in vars_init:
                     raise CompileError(f"semantic error: variable redeclared: {name!r}")
                 if size is not None:
@@ -920,7 +1053,7 @@ class SemanticAnalyzer:
                             "semantic error: array initializer is not supported yet"
                         )
                     return False
-                self.local_types[name] = "int" + ("*" * ptr_level)
+                self.local_types[name] = base_type + ("*" * ptr_level)
                 vars_init[name] = False
                 if init is not None:
                     init_ty = self.analyze_expr(init, vars_init)
@@ -1026,6 +1159,8 @@ class SemanticAnalyzer:
                 vt = self.var_type(name)
                 if vt == "array":
                     return "array"
+                if self.is_struct_type(vt):
+                    return vt
                 if not vars_init[name]:
                     raise CompileError(
                         f"semantic error: use of uninitialized variable {name!r}"
@@ -1044,6 +1179,15 @@ class SemanticAnalyzer:
                 if self.is_ptr_type(bt):
                     return bt[:-1]
                 return "int"
+            case Member(base=base, field=field, through_ptr=through_ptr):
+                bt = self.analyze_expr(base, vars_init)
+                if through_ptr:
+                    if not self.is_ptr_type(bt):
+                        raise CompileError("semantic error: '->' requires pointer base")
+                    bt = bt[:-1]
+                if not self.is_struct_type(bt):
+                    raise CompileError("semantic error: member access requires struct type")
+                return self.lookup_struct_field_type(bt, field)
             case BinOp(lhs=lhs, rhs=rhs):
                 lt = self.analyze_expr(lhs, vars_init)
                 rt = self.analyze_expr(rhs, vars_init)
@@ -1102,6 +1246,9 @@ class SemanticAnalyzer:
                         f"semantic error: unary op {op!r} currently supports int only"
                     )
                 return "int"
+            case Cast(typ=typ, expr=expr):
+                self.analyze_expr(expr, vars_init)
+                return typ
             case IncDec(name=name):
                 if name not in vars_init and name not in self.global_vars:
                     raise CompileError(
@@ -1149,6 +1296,14 @@ class SemanticAnalyzer:
                                 "semantic error: compound assignment supports scalar variable only"
                             )
                         self.analyze_expr(target, vars_init)
+                    case Member():
+                        tt = self.analyze_expr(target, vars_init)
+                        if et != tt:
+                            raise CompileError("semantic error: assignment type mismatch")
+                        if op != "=" and tt != "int":
+                            raise CompileError(
+                                "semantic error: compound assignment supports int only"
+                            )
                     case UnaryOp(op="*", expr=ptr_expr):
                         pt = self.analyze_expr(ptr_expr, vars_init)
                         if not self.is_ptr_type(pt):
@@ -1195,6 +1350,8 @@ class SemanticAnalyzer:
                 if op == "!":
                     return 0 if v else 1
                 raise CompileError(f"semantic error: unsupported global initializer op {op!r}")
+            case Cast(expr=expr):
+                return self.analyze_const_expr(expr)
             case BinOp(op=op, lhs=lhs, rhs=rhs):
                 l = self.analyze_const_expr(lhs)
                 r = self.analyze_const_expr(rhs)
@@ -1246,11 +1403,24 @@ class SemanticAnalyzer:
     def is_ptr_type(self, ty: str) -> bool:
         return ty.endswith("*")
 
+    def is_struct_type(self, ty: str) -> bool:
+        return ty.startswith("struct:")
+
     def is_scalar_type(self, ty: str) -> bool:
         return ty == "int" or self.is_ptr_type(ty)
 
     def is_nullptr_constant(self, n: Node) -> bool:
         return isinstance(n, IntLit) and n.value == 0
+
+    def lookup_struct_field_type(self, struct_ty: str, field: str) -> str:
+        tag = struct_ty.split(":", 1)[1]
+        s = self.struct_defs.get(tag)
+        if s is None:
+            raise CompileError(f"semantic error: unknown struct type {struct_ty!r}")
+        for f in s.fields:
+            if f.name == field:
+                return f.typ
+        raise CompileError(f"semantic error: unknown field {field!r} in {struct_ty!r}")
 
 
 class IRBuilder:
@@ -1264,6 +1434,7 @@ class IRBuilder:
         self.local_types: Dict[str, str] = {}
         self.loop_stack: List[tuple[str, str]] = []
         self.func_sigs: Dict[str, FunctionSig] = {}
+        self.struct_defs: Dict[str, StructDef] = {s.name: s for s in prog.struct_defs}
         self.global_vars: Dict[str, Optional[Node]] = {}
         self.global_arrays: Dict[str, int] = {}
         self.global_types: Dict[str, str] = {}
@@ -1275,18 +1446,34 @@ class IRBuilder:
                 self.global_arrays[g.name] = g.size
                 self.global_types[g.name] = "array"
             elif g.ptr_level > 0:
-                self.global_types[g.name] = "int" + ("*" * g.ptr_level)
+                self.global_types[g.name] = g.base_type + ("*" * g.ptr_level)
             else:
-                self.global_types[g.name] = "int"
+                self.global_types[g.name] = g.base_type
         for fn in prog.funcs:
             self.func_sigs[fn.name] = FunctionSig(fn.ret_type, [p.typ for p in fn.params])
 
     def llvm_ty(self, ty: str) -> str:
         if ty == "void":
             return "void"
+        if ty.startswith("struct:"):
+            tag = ty.split(":", 1)[1]
+            return f"%struct.{tag}"
         if ty.endswith("*") or ty == "ptr":
             return "ptr"
         return "i32"
+
+    def struct_field(self, struct_ty: str, field: str) -> tuple[int, str]:
+        tag = struct_ty.split(":", 1)[1]
+        s = self.struct_defs.get(tag)
+        if s is None:
+            raise CompileError(f"codegen error: unknown struct type {struct_ty!r}")
+        for i, f in enumerate(s.fields):
+            if f.name == field:
+                return i, f.typ
+        raise CompileError(f"codegen error: unknown field {field!r} in {struct_ty!r}")
+
+    def is_struct_type(self, ty: str) -> bool:
+        return ty.startswith("struct:")
 
     def tmp(self) -> str:
         t = f"%t{self.tmp_idx}"
@@ -1326,6 +1513,12 @@ class IRBuilder:
                 return self.resolve_var_type(name)
             case Index():
                 return "int"
+            case Member(base=base, field=field, through_ptr=through_ptr):
+                bt = self.expr_type(base)
+                if through_ptr and bt.endswith("*"):
+                    bt = bt[:-1]
+                _, fty = self.struct_field(bt, field)
+                return fty
             case UnaryOp(op="&"):
                 et = self.expr_type(n.expr)
                 if et == "array":
@@ -1338,11 +1531,18 @@ class IRBuilder:
                 return "int"
             case UnaryOp():
                 return "int"
+            case Cast(typ=typ):
+                return typ
             case BinOp():
                 return "int"
             case AssignExpr(target=target, op=op):
-                if op == "=" and isinstance(target, Var):
-                    return self.resolve_var_type(target.name)
+                if op == "=":
+                    if isinstance(target, Var):
+                        return self.resolve_var_type(target.name)
+                    if isinstance(target, (Index, Member)) or (
+                        isinstance(target, UnaryOp) and target.op == "*"
+                    ):
+                        return self.expr_type(target)
                 return "int"
             case IncDec():
                 return "int"
@@ -1350,9 +1550,7 @@ class IRBuilder:
                 ret = self.func_sigs[name].ret_type
                 if ret == "void":
                     return "void"
-                if ret.endswith("*"):
-                    return "ptr"
-                return "int"
+                return ret
             case _:
                 return "int"
 
@@ -1395,6 +1593,24 @@ class IRBuilder:
                         raise CompileError("codegen error: index base must be array variable")
                     case _:
                         raise CompileError("codegen error: index base must be a variable")
+            case Member(base=base, field=field, through_ptr=through_ptr):
+                bt = self.expr_type(base)
+                if through_ptr:
+                    if not bt.endswith("*"):
+                        raise CompileError("codegen error: '->' requires pointer base")
+                    struct_ty = bt[:-1]
+                    struct_ptr = self.codegen_expr(base)
+                else:
+                    struct_ty = bt
+                    struct_ptr = self.codegen_lvalue_ptr(base)
+                if struct_ptr is None:
+                    raise CompileError("codegen error: invalid struct base")
+                field_idx, _ = self.struct_field(struct_ty, field)
+                t = self.tmp()
+                self.emit(
+                    f"  {t} = getelementptr inbounds {self.llvm_ty(struct_ty)}, ptr {struct_ptr}, i32 0, i32 {field_idx}"
+                )
+                return t
             case _:
                 raise CompileError("codegen error: invalid assignment target")
 
@@ -1411,6 +1627,8 @@ class IRBuilder:
                 if op == "!":
                     return 0 if v else 1
                 raise CompileError(f"codegen error: unsupported global initializer op {op!r}")
+            case Cast(expr=expr):
+                return self.eval_global_const(expr)
             case BinOp(op=op, lhs=lhs, rhs=rhs):
                 l = self.eval_global_const(lhs)
                 r = self.eval_global_const(rhs)
@@ -1468,6 +1686,12 @@ class IRBuilder:
                 ptr = self.codegen_lvalue_ptr(n)
                 t = self.tmp()
                 self.emit(f"  {t} = load i32, ptr {ptr}")
+                return t
+            case Member():
+                ptr = self.codegen_lvalue_ptr(n)
+                t = self.tmp()
+                mty = self.expr_type(n)
+                self.emit(f"  {t} = load {self.llvm_ty(mty)}, ptr {ptr}")
                 return t
             case BinOp(op=op, lhs=lhs, rhs=rhs):
                 l = self.codegen_expr(lhs)
@@ -1605,6 +1829,31 @@ class IRBuilder:
                     self.emit(f"  {t} = zext i1 {b} to i32")
                     return t
                 raise CompileError(f"codegen error: unsupported unary operator {op!r}")
+            case Cast(typ=typ, expr=expr):
+                v = self.codegen_expr(expr)
+                if v is None:
+                    raise CompileError("codegen error: cast from void is not allowed")
+                src = self.expr_type(expr)
+                dst = typ
+                if src == dst:
+                    return v
+                if src.endswith("*") and dst.endswith("*"):
+                    return v
+                if src.endswith("*") and dst == "int":
+                    p = self.tmp()
+                    q = self.tmp()
+                    self.emit(f"  {p} = ptrtoint ptr {v} to i64")
+                    self.emit(f"  {q} = trunc i64 {p} to i32")
+                    return q
+                if src == "int" and dst.endswith("*"):
+                    p = self.tmp()
+                    q = self.tmp()
+                    self.emit(f"  {p} = sext i32 {v} to i64")
+                    self.emit(f"  {q} = inttoptr i64 {p} to ptr")
+                    return q
+                if src == "int" and dst == "int":
+                    return v
+                raise CompileError(f"codegen error: unsupported cast from {src!r} to {dst!r}")
             case AssignExpr(target=target, op=op, expr=expr):
                 rv = self.codegen_expr(expr)
                 if rv is None:
@@ -1671,7 +1920,7 @@ class IRBuilder:
 
     def codegen_stmt(self, n: Node, fn_ret_type: str) -> bool:
         match n:
-            case Decl(name=name, ptr_level=ptr_level, size=size, init=init):
+            case Decl(name=name, base_type=base_type, ptr_level=ptr_level, size=size, init=init):
                 slot = f"%{name}"
                 self.slots[name] = slot
                 if size is not None:
@@ -1679,7 +1928,7 @@ class IRBuilder:
                     self.local_types[name] = "array"
                     self.emit(f"  {slot} = alloca [{size} x i32]")
                     return False
-                self.local_types[name] = "int" + ("*" * ptr_level)
+                self.local_types[name] = base_type + ("*" * ptr_level)
                 self.emit(f"  {slot} = alloca {self.llvm_ty(self.local_types[name])}")
                 if init is not None:
                     v = self.codegen_expr(init)
@@ -1848,6 +2097,12 @@ class IRBuilder:
                 raise CompileError(f"codegen error: unsupported stmt {type(n).__name__}")
 
     def emit_declarations(self) -> None:
+        for tag, s in self.struct_defs.items():
+            field_tys = ", ".join(self.llvm_ty(f.typ) for f in s.fields)
+            self.emit(f"%struct.{tag} = type {{{field_tys}}}")
+        if self.struct_defs:
+            self.emit("")
+
         for name, init in self.global_vars.items():
             if name in self.global_arrays:
                 n_elem = self.global_arrays[name]
@@ -1856,6 +2111,9 @@ class IRBuilder:
             gty = self.resolve_var_type(name)
             if gty.endswith("*"):
                 self.emit(f"@{name} = global ptr null")
+                continue
+            if self.is_struct_type(gty):
+                self.emit(f"@{name} = global {self.llvm_ty(gty)} zeroinitializer")
                 continue
             init_val = 0 if init is None else self.eval_global_const(init)
             self.emit(f"@{name} = global i32 {init_val}")

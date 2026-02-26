@@ -16,9 +16,14 @@ tests/single-exec/00013.c
 tests/single-exec/00014.c
 tests/single-exec/00015.c
 tests/single-exec/00016.c
+tests/single-exec/00017.c
+tests/single-exec/00018.c
+tests/single-exec/00019.c
 tests/single-exec/00020.c
 tests/single-exec/00021.c
+tests/single-exec/00022.c
 tests/single-exec/00023.c
+tests/single-exec/00024.c
 tests/single-exec/00027.c
 tests/single-exec/00028.c
 tests/single-exec/00029.c
@@ -52,9 +57,11 @@ tests/single-exec/00084.c
 tests/single-exec/00085.c
 tests/single-exec/00094.c
 tests/single-exec/00097.c
+tests/single-exec/00099.c
 tests/single-exec/00100.c
 tests/single-exec/00101.c
 tests/single-exec/00105.c
+tests/single-exec/00107.c
 tests/single-exec/00108.c
 tests/single-exec/00114.c
 tests/single-exec/00116.c
@@ -64,3 +71,4 @@ tests/single-exec/00139.c
 tests/single-exec/00142.c
 tests/single-exec/00145.c
 tests/single-exec/00152.c
+tests/single-exec/00153.c
