@@ -376,10 +376,19 @@ class Lexer:
             if ch == '"':
                 # Scan string literal; allow adjacent string concatenation
                 tok = self.scan_string()
-                # Concatenate adjacent string literals
-                while self.cur() == '"':
-                    next_tok = self.scan_string()
-                    tok = Token(TokenType.STRING, tok.text + next_tok.text, tok.line, tok.col)
+                # Concatenate adjacent string literals (with optional whitespace between)
+                while True:
+                    j = self.i
+                    while j < len(self.src) and self.src[j] in ' \t\n\r':
+                        j += 1
+                    if j < len(self.src) and self.src[j] == '"':
+                        # skip whitespace
+                        while self.cur() and self.cur() in ' \t\n\r':
+                            self.advance()
+                        next_tok = self.scan_string()
+                        tok = Token(TokenType.STRING, tok.text + next_tok.text, tok.line, tok.col)
+                    else:
+                        break
                 tokens.append(tok)
                 continue
 
@@ -423,6 +432,62 @@ class Lexer:
 
             if ch.isalpha() or ch == "_":
                 tok = self.scan_identifier()
+                # Handle wide/unicode string/char prefixes: L"...", u"...", U"...", u8"...", L'...', etc.
+                if tok.text in ("L", "u", "U", "u8") and self.cur() in ('"', "'"):
+                    if self.cur() == '"':
+                        str_tok = self.scan_string()
+                        # Concatenate adjacent string literals (with optional whitespace)
+                        while True:
+                            j = self.i
+                            while j < len(self.src) and self.src[j] in ' \t\n\r':
+                                j += 1
+                            if j < len(self.src) and self.src[j] in ('"', "'") and self.src[j] == '"':
+                                while self.cur() and self.cur() in ' \t\n\r':
+                                    self.advance()
+                                next_tok = self.scan_string()
+                                str_tok = Token(TokenType.STRING, str_tok.text + next_tok.text, str_tok.line, str_tok.col)
+                            else:
+                                break
+                        tokens.append(str_tok)
+                    else:
+                        # Wide char literal - treat same as regular char
+                        char_tok = Token(TokenType.NUM, "0", tok.line, tok.col)
+                        start_line, start_col = self.line, self.col
+                        self.advance()  # eat '
+                        char_val = 0
+                        if self.cur() == "\\":
+                            self.advance()
+                            esc = self.cur()
+                            if esc:
+                                self.advance()
+                            escape_map = {
+                                "n": "\n", "t": "\t", "r": "\r",
+                                "\\": "\\", "'": "'", '"': '"',
+                                "0": "\0", "a": "\a", "b": "\b", "f": "\f", "v": "\v",
+                            }
+                            if esc in escape_map:
+                                char_val = ord(escape_map[esc])
+                            elif esc and esc.isdigit():
+                                oct_buf = [esc]
+                                for _ in range(2):
+                                    if self.cur() and self.cur() in "01234567":
+                                        oct_buf.append(self.advance())
+                                char_val = int("".join(oct_buf), 8)
+                            elif esc == "x":
+                                hex_buf = []
+                                while self.cur() and self.cur() in "0123456789abcdefABCDEF":
+                                    hex_buf.append(self.advance())
+                                char_val = int("".join(hex_buf), 16) if hex_buf else 0
+                            else:
+                                char_val = ord(esc) if esc else 0
+                        elif self.cur() and self.cur() != "'":
+                            c = self.cur()
+                            self.advance()
+                            char_val = ord(c) if c else 0
+                        if self.cur() == "'":
+                            self.advance()
+                        tokens.append(Token(TokenType.NUM, str(char_val), tok.line, tok.col))
+                    continue
                 # Skip GCC extensions: __attribute__, __asm__, __asm, __declspec, etc.
                 skip_names = {
                     "__attribute__", "__asm__", "__asm", "__declspec",
@@ -554,6 +619,7 @@ class Program(Node):
     decls: List[FunctionDecl]
     globals: List["GlobalVar"]
     funcs: List[Function]
+    enum_consts: Dict[str, int] = None  # type: ignore
 
 
 @dataclass
@@ -823,6 +889,11 @@ class Parser:
                 return "void"
             case TokenType.KW_LONG:
                 self.advance()
+                # long double
+                if self.cur().typ == TokenType.KW_DOUBLE:
+                    self.advance()
+                    self.skip_type_qualifiers()
+                    return "double"
                 # long long, long int, etc.
                 if self.cur().typ == TokenType.KW_LONG:
                     self.advance()
@@ -922,29 +993,102 @@ class Parser:
                             self.advance()
                             continue
                         field_name = self.eat(TokenType.ID).text
-                        # Handle array field: int arr[N]
+                        # Handle array field: int arr[N] or arr[N][M] (multi-dim)
                         if self.cur().typ == TokenType.LBRACKET:
-                            self.advance()
-                            if self.cur().typ == TokenType.NUM:
-                                arr_size = int(self.eat(TokenType.NUM).text)
-                            else:
-                                arr_size = 1
-                            self.eat(TokenType.RBRACKET)
+                            # Skip all array dimensions
+                            while self.cur().typ == TokenType.LBRACKET:
+                                self.advance()
+                                # Skip expression inside brackets (may be complex like 256/8)
+                                depth = 1
+                                while self.cur().typ != TokenType.EOF and depth > 0:
+                                    if self.cur().typ == TokenType.LBRACKET:
+                                        depth += 1
+                                    elif self.cur().typ == TokenType.RBRACKET:
+                                        depth -= 1
+                                    if depth > 0:
+                                        self.advance()
+                                if self.cur().typ == TokenType.RBRACKET:
+                                    self.advance()
                             # Store as array field - just use base type for simplicity
                             fields.append(StructField(field_base + ("*" * field_ptr), field_name))
+                            # Handle multiple names: int a[4], b[4];
+                            while self.cur().typ == TokenType.COMMA:
+                                self.advance()
+                                fptr2 = 0
+                                while self.cur().typ == TokenType.STAR:
+                                    self.advance()
+                                    fptr2 += 1
+                                if self.cur().typ == TokenType.ID:
+                                    fname2 = self.eat(TokenType.ID).text
+                                    while self.cur().typ == TokenType.LBRACKET:
+                                        self.advance()
+                                        while self.cur().typ not in (TokenType.RBRACKET, TokenType.EOF):
+                                            self.advance()
+                                        if self.cur().typ == TokenType.RBRACKET:
+                                            self.advance()
+                                    fields.append(StructField(field_base + ("*" * fptr2), fname2))
                             self.eat(TokenType.SEMI)
                             continue
                         # Handle bit fields: int x : N
                         if self.cur().typ == TokenType.COLON:
                             self.advance()
-                            if self.cur().typ == TokenType.NUM:
+                            # Skip bit field width (could be complex expression)
+                            while self.cur().typ not in (TokenType.SEMI, TokenType.COMMA, TokenType.EOF):
                                 self.advance()
                             fields.append(StructField(field_base + ("*" * field_ptr), field_name))
+                            # Handle multiple bit fields: int a:1, b:2;
+                            while self.cur().typ == TokenType.COMMA:
+                                self.advance()
+                                fptr2 = 0
+                                while self.cur().typ == TokenType.STAR:
+                                    self.advance()
+                                    fptr2 += 1
+                                if self.cur().typ == TokenType.ID:
+                                    fname2 = self.eat(TokenType.ID).text
+                                    if self.cur().typ == TokenType.COLON:
+                                        self.advance()
+                                        while self.cur().typ not in (TokenType.SEMI, TokenType.COMMA, TokenType.EOF):
+                                            self.advance()
+                                    fields.append(StructField(field_base + ("*" * fptr2), fname2))
                             self.eat(TokenType.SEMI)
                             continue
                         fields.append(
                             StructField(field_base + ("*" * field_ptr), field_name)
                         )
+                        # Handle multiple field names: int a, b, c;
+                        while self.cur().typ == TokenType.COMMA:
+                            self.advance()
+                            fptr2 = 0
+                            while self.cur().typ == TokenType.STAR:
+                                self.advance()
+                                fptr2 += 1
+                            if self.cur().typ == TokenType.LPAREN:
+                                # function pointer field - skip
+                                depth = 0
+                                while self.cur().typ != TokenType.SEMI or depth > 0:
+                                    if self.cur().typ == TokenType.LPAREN:
+                                        depth += 1
+                                    elif self.cur().typ == TokenType.RPAREN:
+                                        depth -= 1
+                                    elif self.cur().typ == TokenType.EOF:
+                                        break
+                                    self.advance()
+                                break
+                            if self.cur().typ == TokenType.ID:
+                                fname2 = self.eat(TokenType.ID).text
+                                # Handle array suffix
+                                while self.cur().typ == TokenType.LBRACKET:
+                                    self.advance()
+                                    while self.cur().typ not in (TokenType.RBRACKET, TokenType.EOF):
+                                        self.advance()
+                                    if self.cur().typ == TokenType.RBRACKET:
+                                        self.advance()
+                                # Handle bit field
+                                if self.cur().typ == TokenType.COLON:
+                                    self.advance()
+                                    while self.cur().typ not in (TokenType.SEMI, TokenType.COMMA, TokenType.EOF):
+                                        self.advance()
+                                fields.append(StructField(field_base + ("*" * fptr2), fname2))
                         self.eat(TokenType.SEMI)
                     self.eat(TokenType.RBRACE)
                     if tag is None:
@@ -1082,11 +1226,15 @@ class Parser:
                 break
             typ = self.parse_type()
             ptr_level = 0
-            while self.cur().typ == TokenType.STAR:
+            # Consume stars and qualifiers interleaved: char * const * restrict
+            _star_quals = {
+                TokenType.STAR, TokenType.KW_CONST, TokenType.KW_VOLATILE,
+                TokenType.KW_RESTRICT, TokenType.KW_INLINE, TokenType.KW_REGISTER,
+            }
+            while self.cur().typ in _star_quals:
+                if self.cur().typ == TokenType.STAR:
+                    ptr_level += 1
                 self.advance()
-                ptr_level += 1
-            # Handle qualifiers after pointer declarators, e.g. char *restrict
-            self.skip_type_qualifiers()
             typ = typ + ("*" * ptr_level)
             # Skip function pointer params like int (*)(...)
             if self.cur().typ == TokenType.LPAREN:
@@ -1153,7 +1301,7 @@ class Parser:
             else:
                 funcs.append(ext)
         self.eat(TokenType.EOF)
-        return Program(list(self.struct_defs.values()), decls, globals_, funcs)
+        return Program(list(self.struct_defs.values()), decls, globals_, funcs, dict(self.enum_consts))
 
     def skip_init_braces(self) -> None:
         """Skip a brace-enclosed initializer like {1, 2, {3, 4}}."""
@@ -1402,6 +1550,51 @@ class Parser:
         return Function(ret_type, name, params, body)
 
     def parse_stmt(self) -> Node:
+        # Handle typedef inside function body - register the alias and skip
+        if self.cur().typ == TokenType.KW_TYPEDEF:
+            self.advance()
+            # Skip storage class specifiers
+            while self.cur().typ in (TokenType.KW_EXTERN, TokenType.KW_STATIC, TokenType.KW_INLINE, TokenType.KW_REGISTER):
+                self.advance()
+            if self.is_type_start():
+                base_type = self.parse_type()
+                # Handle function pointer typedef: typedef int (*fn)(int);
+                if self.cur().typ == TokenType.LPAREN:
+                    while self.cur().typ not in (TokenType.SEMI, TokenType.EOF):
+                        self.advance()
+                    if self.cur().typ == TokenType.SEMI:
+                        self.advance()
+                    return EmptyStmt()
+                ptr = 0
+                while self.cur().typ == TokenType.STAR:
+                    self.advance()
+                    ptr += 1
+                if self.cur().typ == TokenType.ID:
+                    alias = self.eat(TokenType.ID).text
+                    self.typedef_names[alias] = base_type + ("*" * ptr)
+                    if self.cur().typ == TokenType.LBRACKET:
+                        while self.cur().typ not in (TokenType.SEMI, TokenType.EOF):
+                            self.advance()
+                    while self.cur().typ == TokenType.COMMA:
+                        self.advance()
+                        ptr2 = 0
+                        while self.cur().typ == TokenType.STAR:
+                            self.advance()
+                            ptr2 += 1
+                        if self.cur().typ == TokenType.ID:
+                            alias2 = self.eat(TokenType.ID).text
+                            self.typedef_names[alias2] = base_type + ("*" * ptr2)
+                if self.cur().typ == TokenType.SEMI:
+                    self.advance()
+            else:
+                while self.cur().typ not in (TokenType.SEMI, TokenType.EOF):
+                    self.advance()
+                if self.cur().typ == TokenType.SEMI:
+                    self.advance()
+            return EmptyStmt()
+        # Skip storage class specifiers at statement level (static, extern, register)
+        if self.cur().typ in (TokenType.KW_STATIC, TokenType.KW_EXTERN, TokenType.KW_REGISTER):
+            self.advance()
         match self.cur().typ:
             case _ if self.is_type_start():
                 base_type = self.parse_type()
@@ -1524,8 +1717,41 @@ class Parser:
                 self.advance()
                 self.eat(TokenType.LPAREN)
                 init: Optional[Node] = None
+                # Handle storage class specifiers in for-init
+                while self.cur().typ in (TokenType.KW_STATIC, TokenType.KW_EXTERN, TokenType.KW_REGISTER):
+                    self.advance()
                 if self.cur().typ != TokenType.SEMI:
-                    init = self.parse_expr()
+                    if self.is_type_start():
+                        # for (int i = 0; ...) style init-declaration
+                        init = self.parse_stmt()
+                        # parse_stmt already consumed the SEMI, so skip the extra eat below
+                        # But we need to re-check: parse_stmt returns a Decl and eats SEMI
+                        # We already consumed the first SEMI as part of the decl
+                        cond_: Optional[Node] = None
+                        if self.cur().typ != TokenType.SEMI:
+                            cond_ = self.parse_expr()
+                        self.eat(TokenType.SEMI)
+                        post_: Optional[Node] = None
+                        if self.cur().typ != TokenType.RPAREN:
+                            post_ = self.parse_expr()
+                            if self.cur().typ == TokenType.COMMA:
+                                post_stmts_ = [ExprStmt(post_)]
+                                while self.cur().typ == TokenType.COMMA:
+                                    self.advance()
+                                    post_stmts_.append(ExprStmt(self.parse_expr()))
+                                post_ = Block(post_stmts_)
+                        self.eat(TokenType.RPAREN)
+                        body = self.parse_stmt()
+                        return For(init, cond_, post_, body)
+                    else:
+                        init = self.parse_expr()
+                        # Handle comma expressions in for-init: for(a=0,b=0; ...)
+                        if self.cur().typ == TokenType.COMMA:
+                            init_stmts = [ExprStmt(init)]
+                            while self.cur().typ == TokenType.COMMA:
+                                self.advance()
+                                init_stmts.append(ExprStmt(self.parse_expr()))
+                            init = Block(init_stmts)
                 self.eat(TokenType.SEMI)
                 cond: Optional[Node] = None
                 if self.cur().typ != TokenType.SEMI:
@@ -1534,6 +1760,13 @@ class Parser:
                 post: Optional[Node] = None
                 if self.cur().typ != TokenType.RPAREN:
                     post = self.parse_expr()
+                    # Handle comma expressions in for-post: for(;;f++,g++)
+                    if self.cur().typ == TokenType.COMMA:
+                        post_stmts = [ExprStmt(post)]
+                        while self.cur().typ == TokenType.COMMA:
+                            self.advance()
+                            post_stmts.append(ExprStmt(self.parse_expr()))
+                        post = Block(post_stmts)
                 self.eat(TokenType.RPAREN)
                 body = self.parse_stmt()
                 return For(init, cond, post, body)
@@ -1744,6 +1977,15 @@ class Parser:
             TokenType.KW_CHAR,
             TokenType.KW_VOID,
             TokenType.KW_STRUCT,
+            TokenType.KW_UNSIGNED,
+            TokenType.KW_SIGNED,
+            TokenType.KW_LONG,
+            TokenType.KW_SHORT,
+            TokenType.KW_DOUBLE,
+            TokenType.KW_FLOAT,
+            TokenType.KW_UNION,
+            TokenType.KW_ENUM,
+            TokenType.KW_CONST,
             TokenType.ID,
         ):
             save = self.i
@@ -1818,7 +2060,18 @@ class Parser:
             return []
         args: List[Node] = []
         while True:
-            args.append(self.parse_expr())
+            # If argument looks like a type (e.g. __builtin_va_arg(ap, T)), parse as type cast
+            if self.is_type_start():
+                save = self.i
+                try:
+                    ty = self.parse_sizeof_type()
+                    # Accept it as a type arg - represent as SizeofExpr with just type
+                    args.append(SizeofExpr(ty, None))
+                except CompileError:
+                    self.i = save
+                    args.append(self.parse_expr())
+            else:
+                args.append(self.parse_expr())
             if self.cur().typ != TokenType.COMMA:
                 break
             self.advance()
@@ -1914,6 +2167,8 @@ class SemanticAnalyzer:
 
     def analyze_program(self, p: Program) -> None:
         self.struct_defs = {s.name: s for s in p.struct_defs}
+        if p.enum_consts:
+            self.enum_consts.update(p.enum_consts)
         for g in p.globals:
             if g.name in self.global_vars:
                 # Allow redeclaration (C tentative definitions)
@@ -2047,15 +2302,34 @@ class SemanticAnalyzer:
                 return False
             case For(init=init, cond=cond, post=post, body=body):
                 if init is not None:
-                    self.analyze_expr(init, vars_init)
+                    if isinstance(init, Block):
+                        for st in init.body:
+                            self.analyze_stmt(st, vars_init, fn_ret_type, loop_depth, switch_depth)
+                    elif isinstance(init, Decl):
+                        self.analyze_stmt(init, vars_init, fn_ret_type, loop_depth, switch_depth)
+                    else:
+                        try:
+                            self.analyze_expr(init, vars_init)
+                        except CompileError:
+                            pass
                 if cond is not None:
-                    self.analyze_expr(cond, vars_init)
+                    try:
+                        self.analyze_expr(cond, vars_init)
+                    except CompileError:
+                        pass
                 body_state = dict(vars_init)
                 self.analyze_stmt(
                     body, body_state, fn_ret_type, loop_depth + 1, switch_depth
                 )
                 if post is not None:
-                    self.analyze_expr(post, body_state)
+                    if isinstance(post, Block):
+                        for st in post.body:
+                            self.analyze_stmt(st, body_state, fn_ret_type, loop_depth, switch_depth)
+                    else:
+                        try:
+                            self.analyze_expr(post, body_state)
+                        except CompileError:
+                            pass
                 return False
             case DoWhile(body=body, cond=cond):
                 body_state = dict(vars_init)
@@ -2354,10 +2628,7 @@ class SemanticAnalyzer:
                             self.analyze_expr(ptr_expr, vars_init)
                         except CompileError:
                             pass
-                        if op != "=":
-                            raise CompileError(
-                                "semantic error: compound assignment supports scalar variable only"
-                            )
+                        # Allow compound assignment through pointer dereference
                     case _:
                         raise CompileError("semantic error: invalid assignment target")
                 return "int"
@@ -2594,7 +2865,8 @@ class IRBuilder:
         self.switch_default_stack: List[Optional[str]] = []
         self.string_consts: Dict[str, str] = {}  # value -> global name
         self.string_idx = 0
-        self.enum_consts: Dict[str, int] = {}
+        self.used_intrinsics: set = set()  # track LLVM intrinsics used
+        self.enum_consts: Dict[str, int] = dict(prog.enum_consts) if prog.enum_consts else {}
         for d in prog.decls:
             params = [p.typ for p in d.params if p.typ != "..."]
             is_var = any(p.typ == "..." for p in d.params)
@@ -2604,7 +2876,15 @@ class IRBuilder:
             self.global_vars[g.name] = g.init
             if g.size is not None:
                 self.global_arrays[g.name] = g.size
-                self.global_types[g.name] = "array"
+                if g.base_type == "char" and g.ptr_level == 0:
+                    self.global_types[g.name] = "char_array"
+                else:
+                    self.global_types[g.name] = "array"
+            elif g.ptr_level == 0 and g.base_type == "char" and isinstance(g.init, StringLit):
+                # char name[] = "..." - infer array size from string
+                str_len = len(g.init.value) + 1  # +1 for null terminator
+                self.global_arrays[g.name] = str_len
+                self.global_types[g.name] = "char_array"
             elif g.ptr_level > 0:
                 self.global_types[g.name] = g.base_type + ("*" * g.ptr_level)
             else:
@@ -2661,6 +2941,48 @@ class IRBuilder:
         if ty == "char":
             t = self.tmp()
             self.emit(f"  {t} = sext i8 {v} to i32")
+            return t
+        if ty == "double":
+            t = self.tmp()
+            self.emit(f"  {t} = fptosi double {v} to i32")
+            return t
+        return v
+
+    def emit_convert(self, v: str, src_ty: str, dst_ty: str) -> str:
+        """Emit type conversion from src_ty to dst_ty. Returns the new value."""
+        if src_ty == dst_ty:
+            return v
+        src_ll = self.llvm_ty(src_ty)
+        dst_ll = self.llvm_ty(dst_ty)
+        if src_ll == dst_ll:
+            return v
+        if dst_ll == "void":
+            return v
+        # don't convert ptr <-> non-ptr (would need inttoptr/ptrtoint - skip)
+        if src_ll == "ptr" or dst_ll == "ptr":
+            return v
+        t = self.tmp()
+        if src_ll == "i8" and dst_ll == "i32":
+            self.emit(f"  {t} = sext i8 {v} to i32")
+            return t
+        if src_ll == "i32" and dst_ll == "i8":
+            self.emit(f"  {t} = trunc i32 {v} to i8")
+            return t
+        if dst_ll == "double" and src_ll == "i32":
+            self.emit(f"  {t} = sitofp i32 {v} to double")
+            return t
+        if dst_ll == "double" and src_ll == "i8":
+            t2 = self.tmp()
+            self.emit(f"  {t2} = sext i8 {v} to i32")
+            self.emit(f"  {t} = sitofp i32 {t2} to double")
+            return t
+        if src_ll == "double" and dst_ll == "i32":
+            self.emit(f"  {t} = fptosi double {v} to i32")
+            return t
+        if src_ll == "double" and dst_ll == "i8":
+            t2 = self.tmp()
+            self.emit(f"  {t2} = fptosi double {v} to i32")
+            self.emit(f"  {t} = trunc i32 {t2} to i8")
             return t
         return v
 
@@ -3007,6 +3329,20 @@ class IRBuilder:
                     raise CompileError("codegen error: void value used in binary operation")
                 lty = self.expr_type(lhs)
                 rty = self.expr_type(rhs)
+                # Check if double arithmetic is needed
+                is_double = lty == "double" or rty == "double"
+                if is_double and op in {"+", "-", "*", "/", "==", "!=", "<", "<=", ">", ">="}:
+                    ld = self.emit_convert(l, lty, "double")
+                    rd = self.emit_convert(r, rty, "double")
+                    if op in {"+", "-", "*", "/"}:
+                        dop = {"+": "fadd", "-": "fsub", "*": "fmul", "/": "fdiv"}[op]
+                        self.emit(f"  {t} = {dop} double {ld}, {rd}")
+                        return t
+                    fcmp_map = {"==": "oeq", "!=": "one", "<": "olt", "<=": "ole", ">": "ogt", ">=": "oge"}
+                    b = self.tmp()
+                    self.emit(f"  {b} = fcmp {fcmp_map[op]} double {ld}, {rd}")
+                    self.emit(f"  {t} = zext i1 {b} to i32")
+                    return t
                 l = self.promote_to_i32(l, lty)
                 r = self.promote_to_i32(r, rty)
                 if op in {"+", "-", "*", "/", "%", "&", "|", "^", "<<", ">>"}:
@@ -3172,8 +3508,13 @@ class IRBuilder:
                 self.emit_label(end_lbl)
                 rty = self.expr_type(n)
                 t = self.tmp()
+                ll_rty = self.llvm_ty(rty)
+                # For pointer phi, replace 0 with null
+                if ll_rty == "ptr":
+                    tv = "null" if tv == "0" else tv
+                    ev = "null" if ev == "0" else ev
                 self.emit(
-                    f"  {t} = phi {self.llvm_ty(rty)} [{tv}, %{then_lbl}], [{ev}, %{else_lbl}]"
+                    f"  {t} = phi {ll_rty} [{tv}, %{then_lbl}], [{ev}, %{else_lbl}]"
                 )
                 return t
             case AssignExpr(target=target, op=op, expr=expr):
@@ -3183,6 +3524,8 @@ class IRBuilder:
                 slot = self.codegen_lvalue_ptr(target)
                 target_ty = self.expr_type(target)
                 if op == "=":
+                    src_ty = self.expr_type(expr)
+                    rv = self.emit_convert(rv, src_ty, target_ty)
                     self.emit(f"  store {self.llvm_ty(target_ty)} {rv}, ptr {slot}")
                     return rv
                 if target_ty.endswith("*") and op in {"+=", "-="}:
@@ -3226,17 +3569,86 @@ class IRBuilder:
                 self.emit(f"  store {self.llvm_ty(vty)} {nxt}, ptr {slot}")
                 return nxt if prefix else cur
             case Call(name=name, args=args):
+                # Map __builtin_chk functions to safe alternatives
+                builtin_chk_map = {
+                    "__builtin___memcpy_chk": ("memcpy", [0, 1, 2]),
+                    "__builtin___memset_chk": ("memset", [0, 1, 2]),
+                    "__builtin___memmove_chk": ("memmove", [0, 1, 2]),
+                    "__builtin___strcpy_chk": ("strcpy", [0, 1]),
+                    "__builtin___strncpy_chk": ("strncpy", [0, 1, 2]),
+                    "__builtin___strcat_chk": ("strcat", [0, 1]),
+                    "__builtin___strncat_chk": ("strncat", [0, 1, 2]),
+                    "__builtin___sprintf_chk": ("sprintf", [0, 3]),
+                    "__builtin___snprintf_chk": ("snprintf", [0, 1, 4]),
+                    "__builtin___vsprintf_chk": ("vsprintf", [0, 3]),
+                    "__builtin___vsnprintf_chk": ("vsnprintf", [0, 1, 4]),
+                    "__builtin___fprintf_chk": ("fprintf", [0, 2]),
+                    "__builtin___vfprintf_chk": ("vfprintf", [0, 2]),
+                    "__builtin___vprintf_chk": ("printf", [1]),
+                    "__builtin___printf_chk": ("printf", [1]),
+                }
+                # Handle __builtin_object_size - return -1 (unknown size)
+                if name in ("__builtin_object_size", "__builtin_dynamic_object_size"):
+                    # Evaluate args (they may have side effects) but return -1
+                    for a in args:
+                        try:
+                            self.codegen_expr(a)
+                        except Exception:
+                            pass
+                    return "-1"
+                if name in builtin_chk_map:
+                    real_name, arg_indices = builtin_chk_map[name]
+                    # Remap: extract only the needed args by index, rest as variadic
+                    new_args = [args[i] for i in arg_indices if i < len(args)]
+                    # For sprintf/fprintf etc with variadic, include remaining args after last index
+                    last_idx = max(arg_indices) if arg_indices else -1
+                    if last_idx + 1 < len(args):
+                        new_args.extend(args[last_idx + 1:])
+                    name = real_name
+                    args = new_args
+                # Map __builtin_bswap32/16/64 to LLVM intrinsics
+                bswap_map = {
+                    "__builtin_bswap16": "llvm.bswap.i16",
+                    "__builtin_bswap32": "llvm.bswap.i32",
+                    "__builtin_bswap64": "llvm.bswap.i64",
+                }
+                if name in bswap_map:
+                    intrinsic = bswap_map[name]
+                    self.used_intrinsics.add(intrinsic)
+                    v = self.codegen_expr(args[0]) if args else "0"
+                    bw = intrinsic.split(".")[-1]  # i16, i32, i64
+                    t = self.tmp()
+                    if bw == "i32":
+                        self.emit(f"  {t} = call i32 @{intrinsic}(i32 {v})")
+                    elif bw == "i64":
+                        # extend i32 to i64, bswap, truncate back
+                        ext = self.tmp()
+                        res64 = self.tmp()
+                        self.emit(f"  {ext} = zext i32 {v} to i64")
+                        self.emit(f"  {res64} = call i64 @{intrinsic}(i64 {ext})")
+                        self.emit(f"  {t} = trunc i64 {res64} to i32")
+                    elif bw == "i16":
+                        trunc = self.tmp()
+                        res16 = self.tmp()
+                        self.emit(f"  {trunc} = trunc i32 {v} to i16")
+                        self.emit(f"  {res16} = call i16 @{intrinsic}(i16 {trunc})")
+                        self.emit(f"  {t} = zext i16 {res16} to i32")
+                    else:
+                        self.emit(f"  {t} = call {bw} @{intrinsic}({bw} {v})")
+                    return t
                 sig = self.func_sigs.get(name)
                 args_text: List[str] = []
                 for i, arg in enumerate(args):
                     v = self.codegen_expr(arg)
                     if v is None:
                         raise CompileError("codegen error: void argument is not allowed")
+                    aty = self.expr_type(arg)
                     if sig is not None and i < len(sig.param_types):
-                        arg_ty = self.llvm_ty(sig.param_types[i])
+                        param_ty = sig.param_types[i]
+                        arg_ty = self.llvm_ty(param_ty)
+                        v = self.emit_convert(v, aty, param_ty)
                     else:
                         # variadic extra arg or undeclared func - infer type
-                        aty = self.expr_type(arg)
                         arg_ty = self.llvm_ty(aty)
                     args_text.append(f"{arg_ty} {v}")
                 if sig is None:
@@ -3264,18 +3676,23 @@ class IRBuilder:
         match n:
             case Decl(name=name, base_type=base_type, ptr_level=ptr_level, size=size, init=init):
                 slot = f"%{name}"
-                self.slots[name] = slot
+                already_hoisted = name in self.slots
+                if not already_hoisted:
+                    self.slots[name] = slot
                 if size is not None:
-                    self.local_arrays[name] = size
-                    self.local_types[name] = "array"
-                    self.emit(f"  {slot} = alloca [{size} x i32]")
+                    if not already_hoisted:
+                        self.local_arrays[name] = size
+                        self.local_types[name] = "array"
+                        self.emit(f"  {slot} = alloca [{size} x i32]")
                     return False
-                self.local_types[name] = base_type + ("*" * ptr_level)
-                self.emit(f"  {slot} = alloca {self.llvm_ty(self.local_types[name])}")
+                if not already_hoisted:
+                    self.local_types[name] = base_type + ("*" * ptr_level)
+                    self.emit(f"  {slot} = alloca {self.llvm_ty(self.local_types[name])}")
                 if init is not None:
                     v = self.codegen_expr(init)
                     if v is None:
                         raise CompileError("codegen error: cannot initialize variable with void")
+                    v = self.emit_convert(v, self.expr_type(init), self.local_types[name])
                     self.emit(f"  store {self.llvm_ty(self.local_types[name])} {v}, ptr {slot}")
                 return False
             case Block(body=body):
@@ -3284,6 +3701,12 @@ class IRBuilder:
                     if terminated:
                         if isinstance(st, (LabelStmt, Case, Default)):
                             terminated = self.codegen_stmt(st, fn_ret_type)
+                        elif isinstance(st, Block):
+                            # Recurse into blocks even when terminated - they may contain labels
+                            terminated = self.codegen_stmt(st, fn_ret_type)
+                        elif isinstance(st, Decl):
+                            # Always emit alloca even in dead code
+                            self.codegen_stmt(st, fn_ret_type)
                         continue
                     terminated = self.codegen_stmt(st, fn_ret_type)
                 if terminated:
@@ -3449,6 +3872,7 @@ class IRBuilder:
                 if lbl is None:
                     raise CompileError(f"codegen error: goto to unknown label {name!r}")
                 self.emit(f"  br label %{lbl}")
+                self.flow_terminated = True
                 return True
             case EmptyStmt():
                 return False
@@ -3458,8 +3882,11 @@ class IRBuilder:
                 v = self.codegen_expr(expr)
                 if v is None:
                     raise CompileError("codegen error: cannot assign void to int")
+                target_ty = self.resolve_var_type(name)
+                src_ty = self.expr_type(expr)
+                v = self.emit_convert(v, src_ty, target_ty)
                 self.emit(
-                    f"  store {self.llvm_ty(self.resolve_var_type(name))} {v}, ptr {self.resolve_var_ptr(name)}"
+                    f"  store {self.llvm_ty(target_ty)} {v}, ptr {self.resolve_var_ptr(name)}"
                 )
                 return False
             case ExprStmt(expr=expr):
@@ -3474,6 +3901,7 @@ class IRBuilder:
                     v = self.codegen_expr(expr)
                     if v is None:
                         raise CompileError("codegen error: non-void function cannot return void")
+                    v = self.emit_convert(v, self.expr_type(expr), fn_ret_type)
                     self.emit(f"  ret {self.llvm_ty(fn_ret_type)} {v}")
                 return True
             case _:
@@ -3489,8 +3917,10 @@ class IRBuilder:
         lbl = self.user_labels.get(name)
         if lbl is None:
             raise CompileError(f"codegen error: unknown label {name!r}")
-        if not from_terminated:
+        # Emit fall-through branch only if current flow is not already terminated
+        if not from_terminated and not self.flow_terminated:
             self.emit(f"  br label %{lbl}")
+        self.flow_terminated = False
         self.emit_label(lbl)
         return self.codegen_stmt(stmt, fn_ret_type)
 
@@ -3604,7 +4034,27 @@ class IRBuilder:
         for name, init in self.global_vars.items():
             if name in self.global_arrays:
                 n_elem = self.global_arrays[name]
-                self.emit(f"@{name} = global [{n_elem} x i32] zeroinitializer")
+                elem_ty = self.global_types.get(name, "int")
+                if elem_ty == "char_array":
+                    # char array initialized from string literal
+                    str_node = init
+                    if str_node is not None and isinstance(str_node, StringLit):
+                        raw = str_node.value  # already unescaped bytes
+                        # Encode as LLVM c"..." literal
+                        encoded = ""
+                        for ch in raw:
+                            c = ord(ch) if isinstance(ch, str) else ch
+                            if 32 <= c < 127 and c not in (ord('"'), ord('\\'), ord('\n'), ord('\r'), ord('\t')):
+                                encoded += chr(c)
+                            else:
+                                encoded += f"\\{c:02X}"
+                        encoded += "\\00"
+                        n_bytes = len(raw) + 1
+                        self.emit(f"@{name} = global [{n_bytes} x i8] c\"{encoded}\"")
+                    else:
+                        self.emit(f"@{name} = global [{n_elem} x i8] zeroinitializer")
+                else:
+                    self.emit(f"@{name} = global [{n_elem} x i32] zeroinitializer")
                 continue
             gty = self.resolve_var_type(name)
             if gty.endswith("*"):
@@ -3612,6 +4062,11 @@ class IRBuilder:
                 continue
             if self.is_struct_type(gty):
                 self.emit(f"@{name} = global {self.llvm_ty(gty)} zeroinitializer")
+                continue
+            if gty == "double":
+                init_val = 0 if init is None else self.eval_global_const(init)
+                # LLVM requires double constants in float notation
+                self.emit(f"@{name} = global double {float(init_val)}")
                 continue
             init_val = 0 if init is None else self.eval_global_const(init)
             self.emit(f"@{name} = global i32 {init_val}")
@@ -3638,6 +4093,7 @@ class IRBuilder:
         self.slots = {}
         self.local_arrays = {}
         self.local_types = {}
+        self.flow_terminated = False  # track if current flow is terminated (dead code)
         self.loop_stack = []
         self.break_stack = []
         self.switch_case_stack = []
@@ -3670,6 +4126,9 @@ class IRBuilder:
                 f"  store {self.llvm_ty(self.local_types[pname])} %{pname}.arg, ptr {slot}"
             )
 
+        # Hoist all allocas to entry block (required for correct goto semantics)
+        self.hoist_allocas(fn.body)
+
         terminated = False
         for st in fn.body:
             if terminated:
@@ -3677,6 +4136,8 @@ class IRBuilder:
                     terminated = self.codegen_label_stmt(
                         st.name, st.stmt, fn.ret_type, True
                     )
+                elif isinstance(st, Block):
+                    terminated = self.codegen_stmt(st, fn.ret_type)
                 continue
             terminated = self.codegen_stmt(st, fn.ret_type)
 
@@ -3688,6 +4149,41 @@ class IRBuilder:
                 self.emit(f"  ret {self.llvm_ty(fn.ret_type)} {default_ret}")
 
         self.emit("}")
+
+    def hoist_allocas(self, body: List[Node]) -> None:
+        """Pre-scan function body and emit all alloca instructions up front."""
+        for st in body:
+            match st:
+                case Decl(name=name, base_type=base_type, ptr_level=ptr_level, size=size):
+                    if name in self.slots:
+                        continue  # already hoisted
+                    slot = f"%{name}"
+                    self.slots[name] = slot
+                    if size is not None:
+                        self.local_arrays[name] = size
+                        self.local_types[name] = "array"
+                        self.emit(f"  {slot} = alloca [{size} x i32]")
+                    else:
+                        self.local_types[name] = base_type + ("*" * ptr_level)
+                        self.emit(f"  {slot} = alloca {self.llvm_ty(self.local_types[name])}")
+                case Block(body=inner_body):
+                    self.hoist_allocas(inner_body)
+                case If(then_stmt=then_stmt, else_stmt=else_stmt):
+                    self.hoist_allocas([then_stmt])
+                    if else_stmt:
+                        self.hoist_allocas([else_stmt])
+                case For(init=init, body=for_body):
+                    if init:
+                        self.hoist_allocas([init])
+                    self.hoist_allocas([for_body])
+                case While(body=while_body):
+                    self.hoist_allocas([while_body])
+                case DoWhile(body=do_body):
+                    self.hoist_allocas([do_body])
+                case Switch(body=sw_body):
+                    self.hoist_allocas([sw_body])
+                case LabelStmt(stmt=lbl_stmt):
+                    self.hoist_allocas([lbl_stmt])
 
     def collect_codegen_labels(self, body: List[Node]) -> None:
         for st in body:
@@ -3728,11 +4224,20 @@ class IRBuilder:
             self.codegen_function(fn)
             if idx != len(self.prog.funcs) - 1:
                 self.emit("")
+        # Emit intrinsic declarations after functions (so we know which were used)
+        intrinsic_decls = []
+        bw_map = {"llvm.bswap.i16": "i16", "llvm.bswap.i32": "i32", "llvm.bswap.i64": "i64"}
+        for intr in sorted(self.used_intrinsics):
+            if intr in bw_map:
+                bw = bw_map[intr]
+                intrinsic_decls.append(f"declare {bw} @{intr}({bw})")
         # Prepend global string constants (preamble) before everything else
         if self.preamble_lines:
             all_lines = self.preamble_lines + [""] + self.lines
         else:
             all_lines = self.lines
+        if intrinsic_decls:
+            all_lines = intrinsic_decls + [""] + all_lines
         return "\n".join(all_lines) + "\n"
 
 

@@ -6,7 +6,7 @@ import sys
 
 
 def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, text=True, capture_output=True)
+    return subprocess.run(cmd, text=True, capture_output=True, encoding="utf-8", errors="replace")
 
 
 def load_allowlist(path: pathlib.Path) -> list[str]:
