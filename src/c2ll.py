@@ -2657,6 +2657,13 @@ class IRBuilder:
     def emit_label(self, label: str) -> None:
         self.emit(f"{label}:")
 
+    def promote_to_i32(self, v: str, ty: str) -> str:
+        if ty == "char":
+            t = self.tmp()
+            self.emit(f"  {t} = sext i8 {v} to i32")
+            return t
+        return v
+
     def resolve_var_ptr(self, name: str) -> str:
         if name in self.slots:
             return self.slots[name]
@@ -2965,6 +2972,7 @@ class IRBuilder:
                     if lty.endswith("*"):
                         self.emit(f"  {lb} = icmp ne ptr {l}, null")
                     else:
+                        l = self.promote_to_i32(l, lty)
                         self.emit(f"  {lb} = icmp ne i32 {l}, 0")
                     rhs_lbl = self.new_label("logic_rhs")
                     short_lbl = self.new_label("logic_short")
@@ -2982,6 +2990,7 @@ class IRBuilder:
                     if rty.endswith("*"):
                         self.emit(f"  {rb} = icmp ne ptr {rbv}, null")
                     else:
+                        rbv = self.promote_to_i32(rbv, rty)
                         self.emit(f"  {rb} = icmp ne i32 {rbv}, 0")
                     self.emit(f"  br label %{end_lbl}")
                     self.emit_label(short_lbl)
@@ -2998,6 +3007,8 @@ class IRBuilder:
                     raise CompileError("codegen error: void value used in binary operation")
                 lty = self.expr_type(lhs)
                 rty = self.expr_type(rhs)
+                l = self.promote_to_i32(l, lty)
+                r = self.promote_to_i32(r, rty)
                 if op in {"+", "-", "*", "/", "%", "&", "|", "^", "<<", ">>"}:
                     if op in {"+", "-"} and (lty.endswith("*") or rty.endswith("*")):
                         if op == "+" and lty.endswith("*") and rty == "int":
@@ -3103,6 +3114,14 @@ class IRBuilder:
                 dst = typ
                 if src == dst:
                     return v
+                if src == "int" and dst == "char":
+                    t = self.tmp()
+                    self.emit(f"  {t} = trunc i32 {v} to i8")
+                    return t
+                if src == "char" and dst == "int":
+                    t = self.tmp()
+                    self.emit(f"  {t} = sext i8 {v} to i32")
+                    return t
                 if src.endswith("*") and dst.endswith("*"):
                     return v
                 if src.endswith("*") and dst == "int":
@@ -3546,9 +3565,39 @@ class IRBuilder:
         return False
 
     def emit_declarations(self) -> None:
+        def collect_struct_tag(ty: str) -> Optional[str]:
+            base = ty
+            while base.endswith("*"):
+                base = base[:-1]
+            if base.startswith("struct:"):
+                return base.split(":", 1)[1]
+            return None
+
+        referenced_tags = set()
+        for gty in self.global_types.values():
+            tag = collect_struct_tag(gty)
+            if tag is not None:
+                referenced_tags.add(tag)
+        for sig in self.func_sigs.values():
+            tag = collect_struct_tag(sig.ret_type)
+            if tag is not None:
+                referenced_tags.add(tag)
+            for pty in sig.param_types:
+                tag = collect_struct_tag(pty)
+                if tag is not None:
+                    referenced_tags.add(tag)
+        for s in self.struct_defs.values():
+            for f in s.fields:
+                tag = collect_struct_tag(f.typ)
+                if tag is not None:
+                    referenced_tags.add(tag)
+
+        defined_tags = set(self.struct_defs.keys())
         for tag, s in self.struct_defs.items():
             field_tys = ", ".join(self.llvm_ty(f.typ) for f in s.fields)
             self.emit(f"%struct.{tag} = type {{{field_tys}}}")
+        for tag in sorted(referenced_tags - defined_tags):
+            self.emit(f"%struct.{tag} = type opaque")
         if self.struct_defs:
             self.emit("")
 
