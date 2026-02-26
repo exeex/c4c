@@ -23,6 +23,9 @@ class TokenType(Enum):
     KW_WHILE = auto()
     KW_FOR = auto()
     KW_DO = auto()
+    KW_SWITCH = auto()
+    KW_CASE = auto()
+    KW_DEFAULT = auto()
     KW_BREAK = auto()
     KW_CONTINUE = auto()
     KW_GOTO = auto()
@@ -177,6 +180,9 @@ class Lexer:
             "while": TokenType.KW_WHILE,
             "for": TokenType.KW_FOR,
             "do": TokenType.KW_DO,
+            "switch": TokenType.KW_SWITCH,
+            "case": TokenType.KW_CASE,
+            "default": TokenType.KW_DEFAULT,
             "break": TokenType.KW_BREAK,
             "continue": TokenType.KW_CONTINUE,
             "goto": TokenType.KW_GOTO,
@@ -442,6 +448,12 @@ class DoWhile(Node):
 
 
 @dataclass
+class Switch(Node):
+    expr: Node
+    body: Node
+
+
+@dataclass
 class Break(Node):
     pass
 
@@ -465,6 +477,17 @@ class LabelStmt(Node):
 @dataclass
 class Goto(Node):
     name: str
+
+
+@dataclass
+class Case(Node):
+    value: Node
+    stmt: Node
+
+
+@dataclass
+class Default(Node):
+    stmt: Node
 
 
 class Parser:
@@ -770,6 +793,24 @@ class Parser:
                 self.eat(TokenType.RPAREN)
                 self.eat(TokenType.SEMI)
                 return DoWhile(body, cond)
+            case TokenType.KW_SWITCH:
+                self.advance()
+                self.eat(TokenType.LPAREN)
+                expr = self.parse_expr()
+                self.eat(TokenType.RPAREN)
+                body = self.parse_stmt()
+                return Switch(expr, body)
+            case TokenType.KW_CASE:
+                self.advance()
+                value = self.parse_expr()
+                self.eat(TokenType.COLON)
+                stmt = self.parse_stmt()
+                return Case(value, stmt)
+            case TokenType.KW_DEFAULT:
+                self.advance()
+                self.eat(TokenType.COLON)
+                stmt = self.parse_stmt()
+                return Default(stmt)
             case TokenType.KW_BREAK:
                 self.advance()
                 self.eat(TokenType.SEMI)
@@ -1120,6 +1161,7 @@ class SemanticAnalyzer:
         vars_init: Dict[str, bool],
         fn_ret_type: str,
         loop_depth: int,
+        switch_depth: int = 0,
     ) -> bool:
         match n:
             case Decl(name=name, base_type=base_type, ptr_level=ptr_level, size=size, init=init):
@@ -1150,26 +1192,34 @@ class SemanticAnalyzer:
                 return False
             case Block(body=body):
                 for st in body:
-                    if self.analyze_stmt(st, vars_init, fn_ret_type, loop_depth):
+                    if self.analyze_stmt(
+                        st, vars_init, fn_ret_type, loop_depth, switch_depth
+                    ):
                         return True
                 return False
             case If(cond=cond, then_stmt=then_stmt, else_stmt=else_stmt):
                 self.analyze_expr(cond, vars_init)
                 then_state = dict(vars_init)
-                then_ret = self.analyze_stmt(then_stmt, then_state, fn_ret_type, loop_depth)
+                then_ret = self.analyze_stmt(
+                    then_stmt, then_state, fn_ret_type, loop_depth, switch_depth
+                )
                 if else_stmt is None:
                     for k in vars_init:
                         vars_init[k] = vars_init[k] and then_state.get(k, False)
                     return False
                 else_state = dict(vars_init)
-                else_ret = self.analyze_stmt(else_stmt, else_state, fn_ret_type, loop_depth)
+                else_ret = self.analyze_stmt(
+                    else_stmt, else_state, fn_ret_type, loop_depth, switch_depth
+                )
                 for k in vars_init:
                     vars_init[k] = then_state.get(k, False) and else_state.get(k, False)
                 return then_ret and else_ret
             case While(cond=cond, body=body):
                 self.analyze_expr(cond, vars_init)
                 body_state = dict(vars_init)
-                self.analyze_stmt(body, body_state, fn_ret_type, loop_depth + 1)
+                self.analyze_stmt(
+                    body, body_state, fn_ret_type, loop_depth + 1, switch_depth
+                )
                 return False
             case For(init=init, cond=cond, post=post, body=body):
                 if init is not None:
@@ -1177,17 +1227,44 @@ class SemanticAnalyzer:
                 if cond is not None:
                     self.analyze_expr(cond, vars_init)
                 body_state = dict(vars_init)
-                self.analyze_stmt(body, body_state, fn_ret_type, loop_depth + 1)
+                self.analyze_stmt(
+                    body, body_state, fn_ret_type, loop_depth + 1, switch_depth
+                )
                 if post is not None:
                     self.analyze_expr(post, body_state)
                 return False
             case DoWhile(body=body, cond=cond):
                 body_state = dict(vars_init)
-                self.analyze_stmt(body, body_state, fn_ret_type, loop_depth + 1)
+                self.analyze_stmt(
+                    body, body_state, fn_ret_type, loop_depth + 1, switch_depth
+                )
                 self.analyze_expr(cond, body_state)
                 return False
+            case Switch(expr=expr, body=body):
+                et = self.analyze_expr(expr, vars_init)
+                if et != "int":
+                    raise CompileError("semantic error: switch expression must be int")
+                self.check_switch_labels(body)
+                body_state = dict(vars_init)
+                self.analyze_stmt(
+                    body, body_state, fn_ret_type, loop_depth, switch_depth + 1
+                )
+                return False
+            case Case(value=value, stmt=stmt):
+                if switch_depth <= 0:
+                    raise CompileError("semantic error: case used outside switch")
+                self.analyze_const_expr(value)
+                return self.analyze_stmt(
+                    stmt, vars_init, fn_ret_type, loop_depth, switch_depth
+                )
+            case Default(stmt=stmt):
+                if switch_depth <= 0:
+                    raise CompileError("semantic error: default used outside switch")
+                return self.analyze_stmt(
+                    stmt, vars_init, fn_ret_type, loop_depth, switch_depth
+                )
             case Break():
-                if loop_depth <= 0:
+                if loop_depth <= 0 and switch_depth <= 0:
                     raise CompileError("semantic error: break used outside loop")
                 return False
             case Continue():
@@ -1201,7 +1278,9 @@ class SemanticAnalyzer:
             case EmptyStmt():
                 return False
             case LabelStmt(stmt=stmt):
-                return self.analyze_stmt(stmt, vars_init, fn_ret_type, loop_depth)
+                return self.analyze_stmt(
+                    stmt, vars_init, fn_ret_type, loop_depth, switch_depth
+                )
             case Assign(name=name, expr=expr):
                 if name not in vars_init and name not in self.global_vars:
                     raise CompileError(
@@ -1592,6 +1671,48 @@ class SemanticAnalyzer:
                 self.collect_labels(body)
             case DoWhile(body=body):
                 self.collect_labels(body)
+            case Switch(body=body):
+                self.collect_labels(body)
+            case Case(stmt=stmt):
+                self.collect_labels(stmt)
+            case Default(stmt=stmt):
+                self.collect_labels(stmt)
+
+    def check_switch_labels(self, n: Node) -> None:
+        case_values: set[int] = set()
+        default_seen = False
+
+        def walk(node: Node) -> None:
+            nonlocal default_seen
+            match node:
+                case Case(value=value, stmt=stmt):
+                    cv = self.analyze_const_expr(value)
+                    if cv in case_values:
+                        raise CompileError(f"semantic error: duplicate case label {cv}")
+                    case_values.add(cv)
+                    walk(stmt)
+                case Default(stmt=stmt):
+                    if default_seen:
+                        raise CompileError("semantic error: duplicate default label")
+                    default_seen = True
+                    walk(stmt)
+                case Block(body=body):
+                    for st in body:
+                        walk(st)
+                case If(then_stmt=then_stmt, else_stmt=else_stmt):
+                    walk(then_stmt)
+                    if else_stmt is not None:
+                        walk(else_stmt)
+                case While(body=body):
+                    walk(body)
+                case For(body=body):
+                    walk(body)
+                case DoWhile(body=body):
+                    walk(body)
+                case LabelStmt(stmt=stmt):
+                    walk(stmt)
+
+        walk(n)
 
 
 class IRBuilder:
@@ -1604,12 +1725,15 @@ class IRBuilder:
         self.local_arrays: Dict[str, int] = {}
         self.local_types: Dict[str, str] = {}
         self.loop_stack: List[tuple[str, str]] = []
+        self.break_stack: List[str] = []
         self.func_sigs: Dict[str, FunctionSig] = {}
         self.struct_defs: Dict[str, StructDef] = {s.name: s for s in prog.struct_defs}
         self.global_vars: Dict[str, Optional[Node]] = {}
         self.global_arrays: Dict[str, int] = {}
         self.global_types: Dict[str, str] = {}
         self.user_labels: Dict[str, str] = {}
+        self.switch_case_stack: List[Dict[int, str]] = []
+        self.switch_default_stack: List[Optional[str]] = []
         for d in prog.decls:
             self.func_sigs[d.name] = FunctionSig(d.ret_type, [p.typ for p in d.params])
         for g in prog.globals:
@@ -2193,9 +2317,15 @@ class IRBuilder:
                     self.emit(f"  store {self.llvm_ty(self.local_types[name])} {v}, ptr {slot}")
                 return False
             case Block(body=body):
+                terminated = False
                 for st in body:
-                    if self.codegen_stmt(st, fn_ret_type):
-                        return True
+                    if terminated:
+                        if isinstance(st, (LabelStmt, Case, Default)):
+                            terminated = self.codegen_stmt(st, fn_ret_type)
+                        continue
+                    terminated = self.codegen_stmt(st, fn_ret_type)
+                if terminated:
+                    return True
                 return False
             case If(cond=cond, then_stmt=then_stmt, else_stmt=else_stmt):
                 cond_v = self.codegen_expr(cond)
@@ -2249,7 +2379,9 @@ class IRBuilder:
                 self.emit(f"  br i1 {cond_b}, label %{body_lbl}, label %{end_lbl}")
                 self.emit_label(body_lbl)
                 self.loop_stack.append((end_lbl, cond_lbl))
+                self.break_stack.append(end_lbl)
                 body_ret = self.codegen_stmt(body, fn_ret_type)
+                self.break_stack.pop()
                 self.loop_stack.pop()
                 if not body_ret:
                     self.emit(f"  br label %{cond_lbl}")
@@ -2279,7 +2411,9 @@ class IRBuilder:
                     self.emit(f"  br i1 {cond_b}, label %{body_lbl}, label %{end_lbl}")
                 self.emit_label(body_lbl)
                 self.loop_stack.append((end_lbl, post_lbl))
+                self.break_stack.append(end_lbl)
                 body_ret = self.codegen_stmt(body, fn_ret_type)
+                self.break_stack.pop()
                 self.loop_stack.pop()
                 if not body_ret:
                     self.emit(f"  br label %{post_lbl}")
@@ -2296,7 +2430,9 @@ class IRBuilder:
                 self.emit(f"  br label %{body_lbl}")
                 self.emit_label(body_lbl)
                 self.loop_stack.append((end_lbl, cond_lbl))
+                self.break_stack.append(end_lbl)
                 body_ret = self.codegen_stmt(body, fn_ret_type)
+                self.break_stack.pop()
                 self.loop_stack.pop()
                 if not body_ret:
                     self.emit(f"  br label %{cond_lbl}")
@@ -2313,10 +2449,31 @@ class IRBuilder:
                 self.emit(f"  br i1 {cond_b}, label %{body_lbl}, label %{end_lbl}")
                 self.emit_label(end_lbl)
                 return False
+            case Switch(expr=expr, body=body):
+                return self.codegen_switch_stmt(expr, body, fn_ret_type)
+            case Case(value=value, stmt=stmt):
+                if not self.switch_case_stack:
+                    raise CompileError("codegen error: case used outside switch")
+                cv = self.eval_global_const(value)
+                lbl = self.switch_case_stack[-1].get(cv)
+                if lbl is None:
+                    raise CompileError("codegen error: unknown case label")
+                self.emit(f"  br label %{lbl}")
+                self.emit_label(lbl)
+                return self.codegen_stmt(stmt, fn_ret_type)
+            case Default(stmt=stmt):
+                if not self.switch_default_stack:
+                    raise CompileError("codegen error: default used outside switch")
+                lbl = self.switch_default_stack[-1]
+                if lbl is None:
+                    raise CompileError("codegen error: unknown default label")
+                self.emit(f"  br label %{lbl}")
+                self.emit_label(lbl)
+                return self.codegen_stmt(stmt, fn_ret_type)
             case Break():
-                if not self.loop_stack:
+                if not self.break_stack:
                     raise CompileError("codegen error: break used outside loop")
-                break_lbl, _ = self.loop_stack[-1]
+                break_lbl = self.break_stack[-1]
                 self.emit(f"  br label %{break_lbl}")
                 return True
             case Continue():
@@ -2375,6 +2532,76 @@ class IRBuilder:
         self.emit_label(lbl)
         return self.codegen_stmt(stmt, fn_ret_type)
 
+    def collect_switch_labels(
+        self, n: Node, case_map: Dict[int, str], default_ref: List[Optional[str]]
+    ) -> None:
+        match n:
+            case Case(value=value, stmt=stmt):
+                cv = self.eval_global_const(value)
+                if cv in case_map:
+                    raise CompileError(f"codegen error: duplicate case label {cv}")
+                case_map[cv] = self.new_label(f"switch_case_{cv}_")
+                self.collect_switch_labels(stmt, case_map, default_ref)
+            case Default(stmt=stmt):
+                if default_ref[0] is not None:
+                    raise CompileError("codegen error: duplicate default label")
+                default_ref[0] = self.new_label("switch_default_")
+                self.collect_switch_labels(stmt, case_map, default_ref)
+            case LabelStmt(stmt=stmt):
+                self.collect_switch_labels(stmt, case_map, default_ref)
+            case Block(body=body):
+                for st in body:
+                    self.collect_switch_labels(st, case_map, default_ref)
+            case If(then_stmt=then_stmt, else_stmt=else_stmt):
+                self.collect_switch_labels(then_stmt, case_map, default_ref)
+                if else_stmt is not None:
+                    self.collect_switch_labels(else_stmt, case_map, default_ref)
+            case While(body=body):
+                self.collect_switch_labels(body, case_map, default_ref)
+            case For(body=body):
+                self.collect_switch_labels(body, case_map, default_ref)
+            case DoWhile(body=body):
+                self.collect_switch_labels(body, case_map, default_ref)
+
+    def codegen_switch_stmt(self, expr: Node, body: Node, fn_ret_type: str) -> bool:
+        sv = self.codegen_expr(expr)
+        if sv is None:
+            raise CompileError("codegen error: void switch expression")
+        end_lbl = self.new_label("switch_end")
+        dispatch_lbl = self.new_label("switch_dispatch")
+        self.emit(f"  br label %{dispatch_lbl}")
+
+        case_map: Dict[int, str] = {}
+        default_ref: List[Optional[str]] = [None]
+        self.collect_switch_labels(body, case_map, default_ref)
+
+        self.emit_label(dispatch_lbl)
+        cur_lbl = dispatch_lbl
+        for cv, target in case_map.items():
+            cmp = self.tmp()
+            self.emit(f"  {cmp} = icmp eq i32 {sv}, {cv}")
+            next_lbl = self.new_label("switch_next")
+            self.emit(f"  br i1 {cmp}, label %{target}, label %{next_lbl}")
+            self.emit_label(next_lbl)
+            cur_lbl = next_lbl
+        fall_lbl = default_ref[0] if default_ref[0] is not None else end_lbl
+        if cur_lbl != dispatch_lbl:
+            self.emit(f"  br label %{fall_lbl}")
+        else:
+            self.emit(f"  br label %{fall_lbl}")
+
+        self.break_stack.append(end_lbl)
+        self.switch_case_stack.append(case_map)
+        self.switch_default_stack.append(default_ref[0])
+        body_ret = self.codegen_stmt(body, fn_ret_type)
+        self.switch_default_stack.pop()
+        self.switch_case_stack.pop()
+        self.break_stack.pop()
+        if not body_ret:
+            self.emit(f"  br label %{end_lbl}")
+        self.emit_label(end_lbl)
+        return False
+
     def emit_declarations(self) -> None:
         for tag, s in self.struct_defs.items():
             field_tys = ", ".join(self.llvm_ty(f.typ) for f in s.fields)
@@ -2416,6 +2643,9 @@ class IRBuilder:
         self.local_arrays = {}
         self.local_types = {}
         self.loop_stack = []
+        self.break_stack = []
+        self.switch_case_stack = []
+        self.switch_default_stack = []
         self.user_labels = {}
         self.collect_codegen_labels(fn.body)
 
@@ -2480,6 +2710,12 @@ class IRBuilder:
                 self.collect_codegen_label_stmt(body)
             case DoWhile(body=body):
                 self.collect_codegen_label_stmt(body)
+            case Switch(body=body):
+                self.collect_codegen_label_stmt(body)
+            case Case(stmt=stmt):
+                self.collect_codegen_label_stmt(stmt)
+            case Default(stmt=stmt):
+                self.collect_codegen_label_stmt(stmt)
 
     def codegen_program(self) -> str:
         self.emit_declarations()

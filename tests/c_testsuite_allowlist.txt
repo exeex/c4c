@@ -38,6 +38,7 @@ tests/single-exec/00036.c
 tests/single-exec/00037.c
 tests/single-exec/00038.c
 tests/single-exec/00041.c
+tests/single-exec/00051.c
 tests/single-exec/00060.c
 tests/single-exec/00061.c
 tests/single-exec/00062.c

@@ -43,6 +43,7 @@
     - `do/while`
     - `break` / `continue`
     - labels / `goto` (minimal)
+    - `switch/case/default` (minimal)
   - semantic checks:
     - redeclaration / undeclared use
     - uninitialized variable use
@@ -53,8 +54,8 @@
   - `c2ll.py -> .ll -> clang -> executable`
   - failure logs split into frontend/backend/runtime
 - c-testsuite status:
-  - Full run: `76 / 220` pass
-  - Allowlist is updated to these 76 passing cases
+  - Full run: `77 / 220` pass
+  - Allowlist is updated to these 77 passing cases
 
 ## Next Steps (Priority Order)
 
@@ -64,9 +65,7 @@
    - array initializers and aggregate initializers
 2. Expand expression grammar:
    - remaining assignment/bitwise variants as needed
-3. Add minimal control flow:
-   - `switch/case/default`
-4. Keep growing `tests/c_testsuite_allowlist.txt` incrementally after each feature.
+3. Keep growing `tests/c_testsuite_allowlist.txt` incrementally after each feature.
 
 ## How To Run Tests
 
