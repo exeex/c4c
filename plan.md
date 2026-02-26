@@ -32,6 +32,8 @@
     - comparison: `< > <= >= == !=`
     - bitwise/logical: `& | ^ && ||`
     - unary: `+ - !`
+    - `sizeof` (expression + type form)
+    - ternary `?:`
     - inc/dec: `++ --` (prefix/postfix)
     - compound assignment: `+= -= *= /= %=`
   - control flow:
@@ -40,6 +42,7 @@
     - `for`
     - `do/while`
     - `break` / `continue`
+    - labels / `goto` (minimal)
   - semantic checks:
     - redeclaration / undeclared use
     - uninitialized variable use
@@ -50,8 +53,8 @@
   - `c2ll.py -> .ll -> clang -> executable`
   - failure logs split into frontend/backend/runtime
 - c-testsuite status:
-  - Full run: `71 / 220` pass
-  - Allowlist is updated to these 71 passing cases
+  - Full run: `76 / 220` pass
+  - Allowlist is updated to these 76 passing cases
 
 ## Next Steps (Priority Order)
 
@@ -60,12 +63,9 @@
    - more struct coverage (nested/anonymous union patterns)
    - array initializers and aggregate initializers
 2. Expand expression grammar:
-   - ternary `?:`
-   - `sizeof`
    - remaining assignment/bitwise variants as needed
 3. Add minimal control flow:
    - `switch/case/default`
-   - `goto` / labels
 4. Keep growing `tests/c_testsuite_allowlist.txt` incrementally after each feature.
 
 ## How To Run Tests
