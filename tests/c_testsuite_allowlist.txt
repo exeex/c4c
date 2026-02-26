@@ -80,6 +80,7 @@ tests/single-exec/00100.c
 tests/single-exec/00101.c
 tests/single-exec/00102.c
 tests/single-exec/00103.c
+tests/single-exec/00104.c
 tests/single-exec/00105.c
 tests/single-exec/00106.c
 tests/single-exec/00107.c

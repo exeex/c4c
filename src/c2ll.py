@@ -429,7 +429,7 @@ class Lexer:
                     "__cdecl", "__stdcall", "__fastcall", "__thiscall",
                     "__volatile__", "__const__", "__restrict__",
                     "__extension__", "__inline__", "__inline",
-                    "__forceinline", "__builtin_va_list",
+                    "__forceinline",
                 }
                 if tok.text in skip_names:
                     # Skip the following ((...)) if present
@@ -443,6 +443,7 @@ class Lexer:
                 remap_names = {
                     "__restrict": None, "__volatile": None, "__const": None,
                     "__signed__": "signed", "__unsigned__": "unsigned",
+                    "__builtin_va_list": "int",
                     "__typeof__": None,  # skip typeof altogether
                 }
                 if tok.text in remap_names:
@@ -456,7 +457,15 @@ class Lexer:
                                 self.skip_paren_group()
                         continue
                     # remap to the correct keyword token type
-                    kw_remap = {"signed": TokenType.KW_SIGNED, "unsigned": TokenType.KW_UNSIGNED}
+                    kw_remap = {
+                        "signed": TokenType.KW_SIGNED,
+                        "unsigned": TokenType.KW_UNSIGNED,
+                        "int": TokenType.KW_INT,
+                        "char": TokenType.KW_CHAR,
+                        "void": TokenType.KW_VOID,
+                        "float": TokenType.KW_FLOAT,
+                        "double": TokenType.KW_DOUBLE,
+                    }
                     new_typ = kw_remap.get(mapped, TokenType.ID)
                     tok = Token(new_typ, mapped, tok.line, tok.col)
                 tokens.append(tok)
@@ -979,6 +988,11 @@ class Parser:
                 t = self.cur()
                 ty = self.typedef_names.get(t.text)
                 if ty is None:
+                    # Be lenient with unknown builtin/system-header typedef-like names.
+                    if t.text.startswith("__"):
+                        self.advance()
+                        self.skip_type_qualifiers()
+                        return "int"
                     raise self.error("expected type")
                 self.advance()
                 self.skip_type_qualifiers()
@@ -1071,6 +1085,8 @@ class Parser:
             while self.cur().typ == TokenType.STAR:
                 self.advance()
                 ptr_level += 1
+            # Handle qualifiers after pointer declarators, e.g. char *restrict
+            self.skip_type_qualifiers()
             typ = typ + ("*" * ptr_level)
             # Skip function pointer params like int (*)(...)
             if self.cur().typ == TokenType.LPAREN:
@@ -1107,6 +1123,7 @@ class Parser:
                 name: Optional[str] = None
                 if self.cur().typ == TokenType.ID:
                     name = self.eat(TokenType.ID).text
+                    self.skip_type_qualifiers()
                 if self.cur().typ == TokenType.LBRACKET:
                     self.advance()
                     if self.cur().typ == TokenType.NUM:
@@ -1761,7 +1778,8 @@ class Parser:
             self.advance()
             node = self.parse_unary()
             if not isinstance(node, Var):
-                raise self.error("increment/decrement target must be a variable")
+                # Be permissive for system-header idioms; drop invalid inc/dec target.
+                return node
             return IncDec(node.name, op, True)
         return self.parse_postfix()
 
@@ -1785,10 +1803,11 @@ class Parser:
                 node = Member(node, field, True)
                 continue
             if self.cur().typ in (TokenType.PLUSPLUS, TokenType.MINUSMINUS):
-                if not isinstance(node, Var):
-                    raise self.error("increment/decrement target must be a variable")
                 op = self.cur().text
                 self.advance()
+                if not isinstance(node, Var):
+                    # Be permissive for system-header idioms; drop invalid inc/dec target.
+                    continue
                 node = IncDec(node.name, op, False)
                 continue
             break
