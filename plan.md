@@ -15,6 +15,12 @@
   - function calls in expressions/statements
   - variable declaration/assignment/return
   - global `int` variables with constant initializers
+  - basic pointer/addressing:
+    - pointer declarations (`int *p`)
+    - address-of/dereference (`&` / `*`) for scalar variables
+    - array/pointer indexing (`a[i]`, `p[i]`)
+    - multi-level pointers (`int **pp`, `**pp`)
+    - pointer arithmetic (`p +/- n`, `p++/--`, `p += n`, pointer difference)
   - arithmetic/logic expressions:
     - arithmetic: `+ - * / %`
     - comparison: `< > <= >= == !=`
@@ -38,15 +44,15 @@
   - `c2ll.py -> .ll -> clang -> executable`
   - failure logs split into frontend/backend/runtime
 - c-testsuite status:
-  - Full run: `54 / 220` pass
-  - Allowlist is updated to these 54 passing cases
+  - Full run: `63 / 220` pass
+  - Allowlist is updated to these 63 passing cases
 
 ## Next Steps (Priority Order)
 
 1. Extend parser/lexer/sema for common C constructs causing the next largest failures:
-   - array/index `[]`
    - struct member access `.`
-   - pointer/address ops `& *` + pointer declarations
+   - pointer/address ops `& *` for nested pointer chains
+   - array declarator variants (e.g. `[]` forms used by testsuite)
 2. Expand expression grammar:
    - ternary `?:`
    - `sizeof`

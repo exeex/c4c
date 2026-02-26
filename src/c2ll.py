@@ -278,6 +278,8 @@ class Program(Node):
 @dataclass
 class Decl(Node):
     name: str
+    ptr_level: int
+    size: Optional[int]
     init: Optional[Node]
 
 
@@ -290,12 +292,14 @@ class Assign(Node):
 @dataclass
 class GlobalVar(Node):
     name: str
+    ptr_level: int
+    size: Optional[int]
     init: Optional[Node]
 
 
 @dataclass
 class AssignExpr(Node):
-    name: str
+    target: Node
     op: str
     expr: Node
 
@@ -324,6 +328,12 @@ class Var(Node):
 class Call(Node):
     name: str
     args: List[Node]
+
+
+@dataclass
+class Index(Node):
+    base: Node
+    index: Node
 
 
 @dataclass
@@ -443,6 +453,11 @@ class Parser:
         params: List[Param] = []
         while True:
             typ = self.parse_type()
+            ptr_level = 0
+            while self.cur().typ == TokenType.STAR:
+                self.advance()
+                ptr_level += 1
+            typ = typ + ("*" * ptr_level)
             name: Optional[str] = None
             if self.cur().typ == TokenType.ID:
                 name = self.eat(TokenType.ID).text
@@ -471,29 +486,50 @@ class Parser:
         if self.cur().typ == TokenType.KW_EXTERN:
             self.advance()
         ret_type = self.parse_type()
+        ret_ptr_level = 0
         while self.cur().typ == TokenType.STAR:
             self.advance()
+            ret_ptr_level += 1
+        ret_type = ret_type + ("*" * ret_ptr_level)
         name = self.eat(TokenType.ID).text
 
         if self.cur().typ != TokenType.LPAREN:
             if ret_type == "void":
                 raise self.error("void object type is not supported")
             decls: List[GlobalVar] = []
+            size: Optional[int] = None
+            if self.cur().typ == TokenType.LBRACKET:
+                self.advance()
+                size_tok = self.eat(TokenType.NUM)
+                size = int(size_tok.text)
+                self.eat(TokenType.RBRACKET)
             init: Optional[Node] = None
             if self.cur().typ == TokenType.ASSIGN:
+                if size is not None:
+                    raise self.error("array initializer is not supported yet")
                 self.advance()
                 init = self.parse_expr()
-            decls.append(GlobalVar(name, init))
+            decls.append(GlobalVar(name, ret_ptr_level, size, init))
             while self.cur().typ == TokenType.COMMA:
                 self.advance()
+                g_ptr_level = 0
                 while self.cur().typ == TokenType.STAR:
                     self.advance()
+                    g_ptr_level += 1
                 gname = self.eat(TokenType.ID).text
+                gsize: Optional[int] = None
+                if self.cur().typ == TokenType.LBRACKET:
+                    self.advance()
+                    size_tok = self.eat(TokenType.NUM)
+                    gsize = int(size_tok.text)
+                    self.eat(TokenType.RBRACKET)
                 ginit: Optional[Node] = None
                 if self.cur().typ == TokenType.ASSIGN:
+                    if gsize is not None:
+                        raise self.error("array initializer is not supported yet")
                     self.advance()
                     ginit = self.parse_expr()
-                decls.append(GlobalVar(gname, ginit))
+                decls.append(GlobalVar(gname, g_ptr_level, gsize, ginit))
             self.eat(TokenType.SEMI)
             return decls
 
@@ -518,14 +554,24 @@ class Parser:
                 self.advance()
                 decls: List[Node] = []
                 while True:
+                    ptr_level = 0
                     while self.cur().typ == TokenType.STAR:
                         self.advance()
+                        ptr_level += 1
                     name = self.eat(TokenType.ID).text
+                    size: Optional[int] = None
+                    if self.cur().typ == TokenType.LBRACKET:
+                        self.advance()
+                        size_tok = self.eat(TokenType.NUM)
+                        size = int(size_tok.text)
+                        self.eat(TokenType.RBRACKET)
                     init: Optional[Node] = None
                     if self.cur().typ == TokenType.ASSIGN:
+                        if size is not None:
+                            raise self.error("array initializer is not supported yet")
                         self.advance()
                         init = self.parse_expr()
-                    decls.append(Decl(name, init))
+                    decls.append(Decl(name, ptr_level, size, init))
                     if self.cur().typ != TokenType.COMMA:
                         break
                     self.advance()
@@ -631,9 +677,12 @@ class Parser:
             return lhs
         self.advance()
         rhs = self.parse_assignment()
-        if not isinstance(lhs, Var):
+        if not (
+            isinstance(lhs, (Var, Index))
+            or (isinstance(lhs, UnaryOp) and lhs.op == "*")
+        ):
             raise self.error("left-hand side of assignment must be a variable")
-        return AssignExpr(lhs.name, op, rhs)
+        return AssignExpr(lhs, op, rhs)
 
     def parse_logical_or(self) -> Node:
         node = self.parse_logical_and()
@@ -721,12 +770,21 @@ class Parser:
 
     def parse_postfix(self) -> Node:
         node = self.parse_primary()
-        while self.cur().typ in (TokenType.PLUSPLUS, TokenType.MINUSMINUS):
-            if not isinstance(node, Var):
-                raise self.error("increment/decrement target must be a variable")
-            op = self.cur().text
-            self.advance()
-            node = IncDec(node.name, op, False)
+        while True:
+            if self.cur().typ == TokenType.LBRACKET:
+                self.advance()
+                idx = self.parse_expr()
+                self.eat(TokenType.RBRACKET)
+                node = Index(node, idx)
+                continue
+            if self.cur().typ in (TokenType.PLUSPLUS, TokenType.MINUSMINUS):
+                if not isinstance(node, Var):
+                    raise self.error("increment/decrement target must be a variable")
+                op = self.cur().text
+                self.advance()
+                node = IncDec(node.name, op, False)
+                continue
+            break
         return node
 
     def parse_args(self) -> List[Node]:
@@ -771,6 +829,10 @@ class SemanticAnalyzer:
     def __init__(self):
         self.func_sigs: Dict[str, FunctionSig] = {}
         self.global_vars: Dict[str, bool] = {}
+        self.global_arrays: Dict[str, int] = {}
+        self.local_arrays: Dict[str, int] = {}
+        self.global_types: Dict[str, str] = {}
+        self.local_types: Dict[str, str] = {}
 
     def ensure_sig(self, name: str, sig: FunctionSig) -> None:
         prev = self.func_sigs.get(name)
@@ -784,6 +846,15 @@ class SemanticAnalyzer:
         for g in p.globals:
             if g.name in self.global_vars:
                 raise CompileError(f"semantic error: duplicate global variable {g.name!r}")
+            if g.size is not None:
+                if g.size <= 0:
+                    raise CompileError(f"semantic error: array size must be positive for {g.name!r}")
+                self.global_arrays[g.name] = g.size
+                self.global_types[g.name] = "array"
+            elif g.ptr_level > 0:
+                self.global_types[g.name] = "int" + ("*" * g.ptr_level)
+            else:
+                self.global_types[g.name] = "int"
             self.global_vars[g.name] = True
         for d in p.decls:
             self.ensure_sig(d.name, FunctionSig(d.ret_type, [x.typ for x in d.params]))
@@ -805,6 +876,8 @@ class SemanticAnalyzer:
 
     def analyze_function(self, fn: Function) -> None:
         vars_init: Dict[str, bool] = {}
+        self.local_arrays = {}
+        self.local_types = {}
         for param in fn.params:
             if param.name is None:
                 raise CompileError(
@@ -815,6 +888,7 @@ class SemanticAnalyzer:
                     f"semantic error: duplicate parameter name {param.name!r} in {fn.name!r}"
                 )
             vars_init[param.name] = True
+            self.local_types[param.name] = param.typ
 
         saw_return = False
         for st in fn.body:
@@ -830,12 +904,30 @@ class SemanticAnalyzer:
         loop_depth: int,
     ) -> bool:
         match n:
-            case Decl(name=name, init=init):
+            case Decl(name=name, ptr_level=ptr_level, size=size, init=init):
                 if name in vars_init:
                     raise CompileError(f"semantic error: variable redeclared: {name!r}")
+                if size is not None:
+                    if size <= 0:
+                        raise CompileError(
+                            f"semantic error: array size must be positive for {name!r}"
+                        )
+                    self.local_arrays[name] = size
+                    self.local_types[name] = "array"
+                    vars_init[name] = True
+                    if init is not None:
+                        raise CompileError(
+                            "semantic error: array initializer is not supported yet"
+                        )
+                    return False
+                self.local_types[name] = "int" + ("*" * ptr_level)
                 vars_init[name] = False
                 if init is not None:
-                    self.analyze_expr(init, vars_init)
+                    init_ty = self.analyze_expr(init, vars_init)
+                    if init_ty != self.local_types[name]:
+                        raise CompileError(
+                            f"semantic error: initializer type mismatch for {name!r}"
+                        )
                     vars_init[name] = True
                 return False
             case Block(body=body):
@@ -891,7 +983,12 @@ class SemanticAnalyzer:
                     raise CompileError(
                         f"semantic error: assignment to undeclared variable {name!r}"
                     )
-                self.analyze_expr(expr, vars_init)
+                if name in self.local_arrays or name in self.global_arrays:
+                    raise CompileError("semantic error: cannot assign to array object")
+                et = self.analyze_expr(expr, vars_init)
+                vt = self.var_type(name)
+                if et != vt:
+                    raise CompileError("semantic error: assignment type mismatch")
                 if name in vars_init:
                     vars_init[name] = True
                 return False
@@ -905,7 +1002,10 @@ class SemanticAnalyzer:
                 else:
                     if expr is None:
                         raise CompileError("semantic error: int function must return a value")
-                    self.analyze_expr(expr, vars_init)
+                    rt = self.analyze_expr(expr, vars_init)
+                    expected = "ptr" if fn_ret_type.endswith("*") else "int"
+                    if rt != expected:
+                        raise CompileError("semantic error: return type mismatch")
                 return True
             case _:
                 raise CompileError(
@@ -919,30 +1019,87 @@ class SemanticAnalyzer:
             case Var(name=name):
                 if name not in vars_init:
                     if name in self.global_vars:
-                        return "int"
+                        return self.var_type(name)
                     raise CompileError(
                         f"semantic error: use of undeclared variable {name!r}"
                     )
+                vt = self.var_type(name)
+                if vt == "array":
+                    return "array"
                 if not vars_init[name]:
                     raise CompileError(
                         f"semantic error: use of uninitialized variable {name!r}"
                     )
+                return vt
+            case Index(base=base, index=index):
+                bt = self.analyze_expr(base, vars_init)
+                it = self.analyze_expr(index, vars_init)
+                if bt not in ("array", "ptr"):
+                    if not self.is_ptr_type(bt):
+                        raise CompileError("semantic error: index base must be an array or pointer")
+                if it != "int":
+                    raise CompileError("semantic error: index must be int")
+                if bt == "array":
+                    return "int"
+                if self.is_ptr_type(bt):
+                    return bt[:-1]
                 return "int"
             case BinOp(lhs=lhs, rhs=rhs):
                 lt = self.analyze_expr(lhs, vars_init)
                 rt = self.analyze_expr(rhs, vars_init)
-                if lt != "int" or rt != "int":
-                    raise CompileError("semantic error: binary op currently supports int only")
-                return "int"
+                if n.op in ("+", "-"):
+                    if lt == "int" and rt == "int":
+                        return "int"
+                    if self.is_ptr_type(lt) and rt == "int":
+                        return lt
+                    if n.op == "+" and lt == "int" and self.is_ptr_type(rt):
+                        return rt
+                    if n.op == "-" and self.is_ptr_type(lt) and lt == rt:
+                        return "int"
+                    raise CompileError("semantic error: invalid pointer arithmetic")
+                if n.op in ("*", "/", "%", "&", "|", "^"):
+                    if lt != "int" or rt != "int":
+                        raise CompileError("semantic error: binary op currently supports int only")
+                    return "int"
+                if n.op in ("==", "!="):
+                    if lt == rt:
+                        return "int"
+                    if (self.is_ptr_type(lt) and self.is_nullptr_constant(rhs)) or (
+                        self.is_ptr_type(rt) and self.is_nullptr_constant(lhs)
+                    ):
+                        return "int"
+                    raise CompileError("semantic error: incompatible types in equality comparison")
+                if n.op in ("<", "<=", ">", ">="):
+                    if lt == "int" and rt == "int":
+                        return "int"
+                    raise CompileError("semantic error: relational ops currently support int only")
+                if n.op in ("&&", "||"):
+                    if not self.is_scalar_type(lt) or not self.is_scalar_type(rt):
+                        raise CompileError("semantic error: logical ops require scalar operands")
+                    return "int"
+                raise CompileError(f"semantic error: unsupported binary op {n.op!r}")
+            case UnaryOp(op="&", expr=expr):
+                match expr:
+                    case Var(name=name):
+                        vt = self.var_type(name)
+                        if vt == "array":
+                            return "ptr"
+                        return vt + "*"
+                    case Index():
+                        et = self.analyze_expr(expr, vars_init)
+                        return et + "*"
+                    case _:
+                        raise CompileError("semantic error: unary '&' requires lvalue")
+            case UnaryOp(op="*", expr=expr):
+                et = self.analyze_expr(expr, vars_init)
+                if not self.is_ptr_type(et):
+                    raise CompileError("semantic error: unary '*' requires pointer operand")
+                return et[:-1]
             case UnaryOp(op=op, expr=expr):
                 et = self.analyze_expr(expr, vars_init)
                 if et != "int":
                     raise CompileError(
                         f"semantic error: unary op {op!r} currently supports int only"
-                    )
-                if op in ("&", "*"):
-                    raise CompileError(
-                        f"semantic error: unary op {op!r} is not supported yet"
                     )
                 return "int"
             case IncDec(name=name):
@@ -956,21 +1113,54 @@ class SemanticAnalyzer:
                     )
                 if name in vars_init:
                     vars_init[name] = True
-                return "int"
-            case AssignExpr(name=name, op=op, expr=expr):
-                if name not in vars_init and name not in self.global_vars:
-                    raise CompileError(
-                        f"semantic error: assignment to undeclared variable {name!r}"
-                    )
+                vt = self.var_type(name)
+                if vt != "int" and not self.is_ptr_type(vt):
+                    raise CompileError("semantic error: increment/decrement supports int/pointer only")
+                return vt
+            case AssignExpr(target=target, op=op, expr=expr):
                 et = self.analyze_expr(expr, vars_init)
-                if et != "int":
-                    raise CompileError("semantic error: assignment supports int only")
-                if op != "=" and name in vars_init and not vars_init[name]:
-                    raise CompileError(
-                        f"semantic error: use of uninitialized variable {name!r}"
-                    )
-                if name in vars_init:
-                    vars_init[name] = True
+                match target:
+                    case Var(name=name):
+                        if name not in vars_init and name not in self.global_vars:
+                            raise CompileError(
+                                f"semantic error: assignment to undeclared variable {name!r}"
+                            )
+                        if name in self.local_arrays or name in self.global_arrays:
+                            raise CompileError("semantic error: cannot assign to array object")
+                        vt = self.var_type(name)
+                        if et != vt:
+                            raise CompileError("semantic error: assignment type mismatch")
+                        if op != "=" and name in vars_init and not vars_init[name]:
+                            raise CompileError(
+                                f"semantic error: use of uninitialized variable {name!r}"
+                            )
+                        if op != "=" and vt != "int":
+                            if not (vt.endswith("*") and op in ("+=", "-=")):
+                                raise CompileError(
+                                    "semantic error: compound assignment supports int and pointer +/- only"
+                                )
+                        if name in vars_init:
+                            vars_init[name] = True
+                    case Index():
+                        if et != "int":
+                            raise CompileError("semantic error: assignment type mismatch")
+                        if op != "=":
+                            raise CompileError(
+                                "semantic error: compound assignment supports scalar variable only"
+                            )
+                        self.analyze_expr(target, vars_init)
+                    case UnaryOp(op="*", expr=ptr_expr):
+                        pt = self.analyze_expr(ptr_expr, vars_init)
+                        if not self.is_ptr_type(pt):
+                            raise CompileError("semantic error: unary '*' requires pointer operand")
+                        if et != pt[:-1]:
+                            raise CompileError("semantic error: assignment type mismatch")
+                        if op != "=":
+                            raise CompileError(
+                                "semantic error: compound assignment supports scalar variable only"
+                            )
+                    case _:
+                        raise CompileError("semantic error: invalid assignment target")
                 return "int"
             case Call(name=name, args=args):
                 sig = self.func_sigs.get(name)
@@ -1046,6 +1236,22 @@ class SemanticAnalyzer:
                     "semantic error: global initializer must be an integer constant expression"
                 )
 
+    def var_type(self, name: str) -> str:
+        if name in self.local_types:
+            return self.local_types[name]
+        if name in self.global_types:
+            return self.global_types[name]
+        raise CompileError(f"semantic error: unknown variable {name!r}")
+
+    def is_ptr_type(self, ty: str) -> bool:
+        return ty.endswith("*")
+
+    def is_scalar_type(self, ty: str) -> bool:
+        return ty == "int" or self.is_ptr_type(ty)
+
+    def is_nullptr_constant(self, n: Node) -> bool:
+        return isinstance(n, IntLit) and n.value == 0
+
 
 class IRBuilder:
     def __init__(self, prog: Program):
@@ -1054,18 +1260,33 @@ class IRBuilder:
         self.label_idx = 0
         self.lines: List[str] = []
         self.slots: Dict[str, str] = {}
+        self.local_arrays: Dict[str, int] = {}
+        self.local_types: Dict[str, str] = {}
         self.loop_stack: List[tuple[str, str]] = []
         self.func_sigs: Dict[str, FunctionSig] = {}
         self.global_vars: Dict[str, Optional[Node]] = {}
+        self.global_arrays: Dict[str, int] = {}
+        self.global_types: Dict[str, str] = {}
         for d in prog.decls:
             self.func_sigs[d.name] = FunctionSig(d.ret_type, [p.typ for p in d.params])
         for g in prog.globals:
             self.global_vars[g.name] = g.init
+            if g.size is not None:
+                self.global_arrays[g.name] = g.size
+                self.global_types[g.name] = "array"
+            elif g.ptr_level > 0:
+                self.global_types[g.name] = "int" + ("*" * g.ptr_level)
+            else:
+                self.global_types[g.name] = "int"
         for fn in prog.funcs:
             self.func_sigs[fn.name] = FunctionSig(fn.ret_type, [p.typ for p in fn.params])
 
     def llvm_ty(self, ty: str) -> str:
-        return "void" if ty == "void" else "i32"
+        if ty == "void":
+            return "void"
+        if ty.endswith("*") or ty == "ptr":
+            return "ptr"
+        return "i32"
 
     def tmp(self) -> str:
         t = f"%t{self.tmp_idx}"
@@ -1089,6 +1310,93 @@ class IRBuilder:
         if name in self.global_vars:
             return f"@{name}"
         raise CompileError(f"codegen error: unknown variable {name!r}")
+
+    def resolve_var_type(self, name: str) -> str:
+        if name in self.local_types:
+            return self.local_types[name]
+        if name in self.global_types:
+            return self.global_types[name]
+        raise CompileError(f"codegen error: unknown variable {name!r}")
+
+    def expr_type(self, n: Node) -> str:
+        match n:
+            case IntLit():
+                return "int"
+            case Var(name=name):
+                return self.resolve_var_type(name)
+            case Index():
+                return "int"
+            case UnaryOp(op="&"):
+                et = self.expr_type(n.expr)
+                if et == "array":
+                    return "int*"
+                return et + "*"
+            case UnaryOp(op="*"):
+                et = self.expr_type(n.expr)
+                if et.endswith("*"):
+                    return et[:-1]
+                return "int"
+            case UnaryOp():
+                return "int"
+            case BinOp():
+                return "int"
+            case AssignExpr(target=target, op=op):
+                if op == "=" and isinstance(target, Var):
+                    return self.resolve_var_type(target.name)
+                return "int"
+            case IncDec():
+                return "int"
+            case Call(name=name):
+                ret = self.func_sigs[name].ret_type
+                if ret == "void":
+                    return "void"
+                if ret.endswith("*"):
+                    return "ptr"
+                return "int"
+            case _:
+                return "int"
+
+    def codegen_lvalue_ptr(self, n: Node) -> str:
+        match n:
+            case Var(name=name):
+                if self.resolve_var_type(name) == "array":
+                    raise CompileError("codegen error: cannot assign to array object")
+                return self.resolve_var_ptr(name)
+            case UnaryOp(op="*", expr=expr):
+                pv = self.codegen_expr(expr)
+                if pv is None:
+                    raise CompileError("codegen error: invalid pointer dereference")
+                return pv
+            case Index(base=base, index=index):
+                idx = self.codegen_expr(index)
+                if idx is None:
+                    raise CompileError("codegen error: invalid array index")
+                match base:
+                    case Var(name=name):
+                        t = self.tmp()
+                        if name in self.local_arrays:
+                            n_elem = self.local_arrays[name]
+                            self.emit(
+                                f"  {t} = getelementptr inbounds [{n_elem} x i32], ptr %{name}, i32 0, i32 {idx}"
+                            )
+                            return t
+                        if name in self.global_arrays:
+                            n_elem = self.global_arrays[name]
+                            self.emit(
+                                f"  {t} = getelementptr inbounds [{n_elem} x i32], ptr @{name}, i32 0, i32 {idx}"
+                            )
+                            return t
+                        if self.resolve_var_type(name).endswith("*"):
+                            base_ptr = self.codegen_expr(base)
+                            if base_ptr is None:
+                                raise CompileError("codegen error: invalid pointer base")
+                            self.emit(f"  {t} = getelementptr inbounds i32, ptr {base_ptr}, i32 {idx}")
+                            return t
+                        raise CompileError("codegen error: index base must be array variable")
+                    case _:
+                        raise CompileError("codegen error: index base must be a variable")
+            case _:
+                raise CompileError("codegen error: invalid assignment target")
 
     def eval_global_const(self, n: Node) -> int:
         match n:
@@ -1149,9 +1457,17 @@ class IRBuilder:
             case IntLit(value=value):
                 return str(value)
             case Var(name=name):
+                vty = self.resolve_var_type(name)
+                if vty == "array":
+                    raise CompileError("codegen error: array object cannot be used as scalar value")
                 slot = self.resolve_var_ptr(name)
                 t = self.tmp()
-                self.emit(f"  {t} = load i32, ptr {slot}")
+                self.emit(f"  {t} = load {self.llvm_ty(vty)}, ptr {slot}")
+                return t
+            case Index():
+                ptr = self.codegen_lvalue_ptr(n)
+                t = self.tmp()
+                self.emit(f"  {t} = load i32, ptr {ptr}")
                 return t
             case BinOp(op=op, lhs=lhs, rhs=rhs):
                 l = self.codegen_expr(lhs)
@@ -1159,8 +1475,12 @@ class IRBuilder:
                     raise CompileError("codegen error: void value used in binary operation")
                 t = self.tmp()
                 if op in {"&&", "||"}:
+                    lty = self.expr_type(lhs)
                     lb = self.tmp()
-                    self.emit(f"  {lb} = icmp ne i32 {l}, 0")
+                    if lty.endswith("*"):
+                        self.emit(f"  {lb} = icmp ne ptr {l}, null")
+                    else:
+                        self.emit(f"  {lb} = icmp ne i32 {l}, 0")
                     rhs_lbl = self.new_label("logic_rhs")
                     short_lbl = self.new_label("logic_short")
                     end_lbl = self.new_label("logic_end")
@@ -1172,8 +1492,12 @@ class IRBuilder:
                     rbv = self.codegen_expr(rhs)
                     if rbv is None:
                         raise CompileError("codegen error: void value used in logical operation")
+                    rty = self.expr_type(rhs)
                     rb = self.tmp()
-                    self.emit(f"  {rb} = icmp ne i32 {rbv}, 0")
+                    if rty.endswith("*"):
+                        self.emit(f"  {rb} = icmp ne ptr {rbv}, null")
+                    else:
+                        self.emit(f"  {rb} = icmp ne i32 {rbv}, 0")
                     self.emit(f"  br label %{end_lbl}")
                     self.emit_label(short_lbl)
                     short_v = "0" if op == "&&" else "1"
@@ -1187,7 +1511,32 @@ class IRBuilder:
                 r = self.codegen_expr(rhs)
                 if r is None:
                     raise CompileError("codegen error: void value used in binary operation")
+                lty = self.expr_type(lhs)
+                rty = self.expr_type(rhs)
                 if op in {"+", "-", "*", "/", "%", "&", "|", "^"}:
+                    if op in {"+", "-"} and (lty.endswith("*") or rty.endswith("*")):
+                        if op == "+" and lty.endswith("*") and rty == "int":
+                            self.emit(f"  {t} = getelementptr inbounds i32, ptr {l}, i32 {r}")
+                            return t
+                        if op == "+" and lty == "int" and rty.endswith("*"):
+                            self.emit(f"  {t} = getelementptr inbounds i32, ptr {r}, i32 {l}")
+                            return t
+                        if op == "-" and lty.endswith("*") and rty == "int":
+                            neg = self.tmp()
+                            self.emit(f"  {neg} = sub i32 0, {r}")
+                            self.emit(f"  {t} = getelementptr inbounds i32, ptr {l}, i32 {neg}")
+                            return t
+                        if op == "-" and lty.endswith("*") and rty.endswith("*"):
+                            li = self.tmp()
+                            ri = self.tmp()
+                            delta = self.tmp()
+                            self.emit(f"  {li} = ptrtoint ptr {l} to i64")
+                            self.emit(f"  {ri} = ptrtoint ptr {r} to i64")
+                            self.emit(f"  {delta} = sub i64 {li}, {ri}")
+                            self.emit(f"  {t} = trunc i64 {delta} to i32")
+                            s = self.tmp()
+                            self.emit(f"  {s} = sdiv i32 {t}, 4")
+                            return s
                     op_map = {
                         "+": "add",
                         "-": "sub",
@@ -1201,6 +1550,19 @@ class IRBuilder:
                     self.emit(f"  {t} = {op_map[op]} i32 {l}, {r}")
                     return t
                 if op in {"==", "!=", "<", "<=", ">", ">="}:
+                    if lty.endswith("*") or rty.endswith("*"):
+                        if op not in {"==", "!="}:
+                            raise CompileError("codegen error: pointer relational op is not supported")
+                        b = self.tmp()
+                        pred = "eq" if op == "==" else "ne"
+                        if rty == "int":
+                            self.emit(f"  {b} = icmp {pred} ptr {l}, null")
+                        elif lty == "int":
+                            self.emit(f"  {b} = icmp {pred} ptr {r}, null")
+                        else:
+                            self.emit(f"  {b} = icmp {pred} ptr {l}, {r}")
+                        self.emit(f"  {t} = zext i1 {b} to i32")
+                        return t
                     icmp_map = {
                         "==": "eq",
                         "!=": "ne",
@@ -1215,6 +1577,19 @@ class IRBuilder:
                     return t
                 raise CompileError(f"codegen error: unsupported binary operator {op!r}")
             case UnaryOp(op=op, expr=expr):
+                if op == "&":
+                    return self.codegen_lvalue_ptr(expr)
+                if op == "*":
+                    pv = self.codegen_expr(expr)
+                    if pv is None:
+                        raise CompileError("codegen error: invalid pointer dereference")
+                    et = self.expr_type(expr)
+                    load_ty = "i32"
+                    if et.endswith("*"):
+                        load_ty = self.llvm_ty(et[:-1])
+                    t = self.tmp()
+                    self.emit(f"  {t} = load {load_ty}, ptr {pv}")
+                    return t
                 v = self.codegen_expr(expr)
                 if v is None:
                     raise CompileError("codegen error: void value used in unary operation")
@@ -1230,14 +1605,27 @@ class IRBuilder:
                     self.emit(f"  {t} = zext i1 {b} to i32")
                     return t
                 raise CompileError(f"codegen error: unsupported unary operator {op!r}")
-            case AssignExpr(name=name, op=op, expr=expr):
+            case AssignExpr(target=target, op=op, expr=expr):
                 rv = self.codegen_expr(expr)
                 if rv is None:
                     raise CompileError("codegen error: cannot assign void to int")
-                slot = self.resolve_var_ptr(name)
+                slot = self.codegen_lvalue_ptr(target)
+                target_ty = self.expr_type(target)
                 if op == "=":
-                    self.emit(f"  store i32 {rv}, ptr {slot}")
+                    self.emit(f"  store {self.llvm_ty(target_ty)} {rv}, ptr {slot}")
                     return rv
+                if target_ty.endswith("*") and op in {"+=", "-="}:
+                    step = rv
+                    if op == "-=":
+                        neg = self.tmp()
+                        self.emit(f"  {neg} = sub i32 0, {rv}")
+                        step = neg
+                    t = self.tmp()
+                    curp = self.tmp()
+                    self.emit(f"  {curp} = load ptr, ptr {slot}")
+                    self.emit(f"  {t} = getelementptr inbounds i32, ptr {curp}, i32 {step}")
+                    self.emit(f"  store ptr {t}, ptr {slot}")
+                    return t
                 cur = self.tmp()
                 self.emit(f"  {cur} = load i32, ptr {slot}")
                 t = self.tmp()
@@ -1249,22 +1637,27 @@ class IRBuilder:
                 self.emit(f"  store i32 {t}, ptr {slot}")
                 return t
             case IncDec(name=name, op=op, prefix=prefix):
+                vty = self.resolve_var_type(name)
                 slot = self.resolve_var_ptr(name)
                 cur = self.tmp()
-                self.emit(f"  {cur} = load i32, ptr {slot}")
+                self.emit(f"  {cur} = load {self.llvm_ty(vty)}, ptr {slot}")
                 nxt = self.tmp()
-                llvm_op = "add" if op == "++" else "sub"
-                self.emit(f"  {nxt} = {llvm_op} i32 {cur}, 1")
-                self.emit(f"  store i32 {nxt}, ptr {slot}")
+                if vty.endswith("*"):
+                    step = "1" if op == "++" else "-1"
+                    self.emit(f"  {nxt} = getelementptr inbounds i32, ptr {cur}, i32 {step}")
+                else:
+                    llvm_op = "add" if op == "++" else "sub"
+                    self.emit(f"  {nxt} = {llvm_op} i32 {cur}, 1")
+                self.emit(f"  store {self.llvm_ty(vty)} {nxt}, ptr {slot}")
                 return nxt if prefix else cur
             case Call(name=name, args=args):
                 sig = self.func_sigs[name]
                 args_text: List[str] = []
-                for arg in args:
+                for i, arg in enumerate(args):
                     v = self.codegen_expr(arg)
                     if v is None:
                         raise CompileError("codegen error: void argument is not allowed")
-                    args_text.append(f"i32 {v}")
+                    args_text.append(f"{self.llvm_ty(sig.param_types[i])} {v}")
                 llvm_ret_ty = self.llvm_ty(sig.ret_type)
                 call_text = f"call {llvm_ret_ty} @{name}({', '.join(args_text)})"
                 if sig.ret_type == "void":
@@ -1278,15 +1671,21 @@ class IRBuilder:
 
     def codegen_stmt(self, n: Node, fn_ret_type: str) -> bool:
         match n:
-            case Decl(name=name, init=init):
+            case Decl(name=name, ptr_level=ptr_level, size=size, init=init):
                 slot = f"%{name}"
                 self.slots[name] = slot
-                self.emit(f"  {slot} = alloca i32")
+                if size is not None:
+                    self.local_arrays[name] = size
+                    self.local_types[name] = "array"
+                    self.emit(f"  {slot} = alloca [{size} x i32]")
+                    return False
+                self.local_types[name] = "int" + ("*" * ptr_level)
+                self.emit(f"  {slot} = alloca {self.llvm_ty(self.local_types[name])}")
                 if init is not None:
                     v = self.codegen_expr(init)
                     if v is None:
-                        raise CompileError("codegen error: cannot initialize int with void")
-                    self.emit(f"  store i32 {v}, ptr {slot}")
+                        raise CompileError("codegen error: cannot initialize variable with void")
+                    self.emit(f"  store {self.llvm_ty(self.local_types[name])} {v}, ptr {slot}")
                 return False
             case Block(body=body):
                 for st in body:
@@ -1298,7 +1697,11 @@ class IRBuilder:
                 if cond_v is None:
                     raise CompileError("codegen error: void condition in if")
                 cond_b = self.tmp()
-                self.emit(f"  {cond_b} = icmp ne i32 {cond_v}, 0")
+                cty = self.expr_type(cond)
+                if cty.endswith("*"):
+                    self.emit(f"  {cond_b} = icmp ne ptr {cond_v}, null")
+                else:
+                    self.emit(f"  {cond_b} = icmp ne i32 {cond_v}, 0")
                 then_lbl = self.new_label("if_then")
                 end_lbl = self.new_label("if_end")
                 if else_stmt is None:
@@ -1333,7 +1736,11 @@ class IRBuilder:
                 if cond_v is None:
                     raise CompileError("codegen error: void condition in while")
                 cond_b = self.tmp()
-                self.emit(f"  {cond_b} = icmp ne i32 {cond_v}, 0")
+                cty = self.expr_type(cond)
+                if cty.endswith("*"):
+                    self.emit(f"  {cond_b} = icmp ne ptr {cond_v}, null")
+                else:
+                    self.emit(f"  {cond_b} = icmp ne i32 {cond_v}, 0")
                 self.emit(f"  br i1 {cond_b}, label %{body_lbl}, label %{end_lbl}")
                 self.emit_label(body_lbl)
                 self.loop_stack.append((end_lbl, cond_lbl))
@@ -1359,7 +1766,11 @@ class IRBuilder:
                     if cond_v is None:
                         raise CompileError("codegen error: void condition in for")
                     cond_b = self.tmp()
-                    self.emit(f"  {cond_b} = icmp ne i32 {cond_v}, 0")
+                    cty = self.expr_type(cond)
+                    if cty.endswith("*"):
+                        self.emit(f"  {cond_b} = icmp ne ptr {cond_v}, null")
+                    else:
+                        self.emit(f"  {cond_b} = icmp ne i32 {cond_v}, 0")
                     self.emit(f"  br i1 {cond_b}, label %{body_lbl}, label %{end_lbl}")
                 self.emit_label(body_lbl)
                 self.loop_stack.append((end_lbl, post_lbl))
@@ -1389,7 +1800,11 @@ class IRBuilder:
                 if cond_v is None:
                     raise CompileError("codegen error: void condition in do-while")
                 cond_b = self.tmp()
-                self.emit(f"  {cond_b} = icmp ne i32 {cond_v}, 0")
+                cty = self.expr_type(cond)
+                if cty.endswith("*"):
+                    self.emit(f"  {cond_b} = icmp ne ptr {cond_v}, null")
+                else:
+                    self.emit(f"  {cond_b} = icmp ne i32 {cond_v}, 0")
                 self.emit(f"  br i1 {cond_b}, label %{body_lbl}, label %{end_lbl}")
                 self.emit_label(end_lbl)
                 return False
@@ -1411,7 +1826,9 @@ class IRBuilder:
                 v = self.codegen_expr(expr)
                 if v is None:
                     raise CompileError("codegen error: cannot assign void to int")
-                self.emit(f"  store i32 {v}, ptr {self.resolve_var_ptr(name)}")
+                self.emit(
+                    f"  store {self.llvm_ty(self.resolve_var_type(name))} {v}, ptr {self.resolve_var_ptr(name)}"
+                )
                 return False
             case ExprStmt(expr=expr):
                 self.codegen_expr(expr)
@@ -1421,17 +1838,25 @@ class IRBuilder:
                     self.emit("  ret void")
                 else:
                     if expr is None:
-                        raise CompileError("codegen error: int function must return value")
+                        raise CompileError("codegen error: non-void function must return value")
                     v = self.codegen_expr(expr)
                     if v is None:
-                        raise CompileError("codegen error: int function cannot return void")
-                    self.emit(f"  ret i32 {v}")
+                        raise CompileError("codegen error: non-void function cannot return void")
+                    self.emit(f"  ret {self.llvm_ty(fn_ret_type)} {v}")
                 return True
             case _:
                 raise CompileError(f"codegen error: unsupported stmt {type(n).__name__}")
 
     def emit_declarations(self) -> None:
         for name, init in self.global_vars.items():
+            if name in self.global_arrays:
+                n_elem = self.global_arrays[name]
+                self.emit(f"@{name} = global [{n_elem} x i32] zeroinitializer")
+                continue
+            gty = self.resolve_var_type(name)
+            if gty.endswith("*"):
+                self.emit(f"@{name} = global ptr null")
+                continue
             init_val = 0 if init is None else self.eval_global_const(init)
             self.emit(f"@{name} = global i32 {init_val}")
         if self.global_vars:
@@ -1451,13 +1876,15 @@ class IRBuilder:
         self.tmp_idx = 0
         self.label_idx = 0
         self.slots = {}
+        self.local_arrays = {}
+        self.local_types = {}
         self.loop_stack = []
 
         ret_ty = self.llvm_ty(fn.ret_type)
         params_sig: List[str] = []
         for i, p in enumerate(fn.params):
             pname = p.name if p.name is not None else f"arg{i}"
-            params_sig.append(f"i32 %{pname}.arg")
+            params_sig.append(f"{self.llvm_ty(p.typ)} %{pname}.arg")
         self.emit(f"define {ret_ty} @{fn.name}({', '.join(params_sig)}) {{")
         self.emit("entry:")
 
@@ -1465,8 +1892,11 @@ class IRBuilder:
             pname = p.name if p.name is not None else f"arg{i}"
             slot = f"%{pname}"
             self.slots[pname] = slot
-            self.emit(f"  {slot} = alloca i32")
-            self.emit(f"  store i32 %{pname}.arg, ptr {slot}")
+            self.local_types[pname] = p.typ
+            self.emit(f"  {slot} = alloca {self.llvm_ty(self.local_types[pname])}")
+            self.emit(
+                f"  store {self.llvm_ty(self.local_types[pname])} %{pname}.arg, ptr {slot}"
+            )
 
         saw_return = False
         for st in fn.body:
@@ -1478,7 +1908,8 @@ class IRBuilder:
             if fn.ret_type == "void":
                 self.emit("  ret void")
             else:
-                self.emit("  ret i32 0")
+                default_ret = "null" if fn.ret_type.endswith("*") else "0"
+                self.emit(f"  ret {self.llvm_ty(fn.ret_type)} {default_ret}")
 
         self.emit("}")
 
