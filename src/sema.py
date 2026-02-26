@@ -306,14 +306,18 @@ class SemanticAnalyzer:
                         # Some functions return value even if void - be lenient
                         try:
                             self.analyze_expr(expr, vars_init)
-                        except CompileError:
-                            pass
+                        except CompileError as e:
+                            # Keep strict uninitialized-read diagnostics.
+                            if "uninitialized variable" in str(e):
+                                raise
                 else:
                     if expr is not None:
                         try:
                             self.analyze_expr(expr, vars_init)
-                        except CompileError:
-                            pass
+                        except CompileError as e:
+                            # Keep strict uninitialized-read diagnostics.
+                            if "uninitialized variable" in str(e):
+                                raise
                 return True
             case _:
                 raise CompileError(
@@ -742,4 +746,3 @@ class SemanticAnalyzer:
                     walk(stmt)
 
         walk(n)
-

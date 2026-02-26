@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import argparse
+import os
 import pathlib
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
@@ -52,6 +54,65 @@ def append_log(path: pathlib.Path, rel: pathlib.Path, details: str) -> None:
             f.write(details.rstrip() + "\n")
         f.write("\n")
 
+def run_one_case(
+    compiler: str,
+    clang: str,
+    root: pathlib.Path,
+    out_root: pathlib.Path,
+    src: pathlib.Path,
+) -> dict:
+    rel = src.relative_to(root)
+    out_ll = out_root / rel.with_suffix(".ll")
+    out_bin = out_root / rel.with_suffix(".bin")
+    out_ll.parent.mkdir(parents=True, exist_ok=True)
+    out_bin.parent.mkdir(parents=True, exist_ok=True)
+
+    res = compile_one(compiler, src, out_ll)
+    if res.returncode != 0:
+        return {
+            "rel": rel,
+            "status": "frontend_fail",
+            "details": res.stderr,
+        }
+
+    backend = run([clang, str(out_ll), "-o", str(out_bin)])
+    if backend.returncode != 0:
+        return {
+            "rel": rel,
+            "status": "backend_fail",
+            "details": backend.stderr,
+        }
+
+    exe = run([str(out_bin)])
+    expected_output = load_expected_output(src)
+    actual_output = exe.stdout + exe.stderr
+
+    if exe.returncode != 0:
+        return {
+            "rel": rel,
+            "status": "runtime_nonzero",
+            "details": f"exit={exe.returncode}\nstdout+stderr:\n{actual_output}",
+        }
+
+    if actual_output != expected_output:
+        return {
+            "rel": rel,
+            "status": "runtime_mismatch",
+            "details": (
+                "expected:\n"
+                + expected_output
+                + "\nactual:\n"
+                + actual_output
+                + f"\nexit={exe.returncode}"
+            ),
+        }
+
+    return {
+        "rel": rel,
+        "status": "pass",
+        "details": "",
+    }
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -61,6 +122,7 @@ def main() -> int:
     ap.add_argument("--workdir", required=True)
     ap.add_argument("--allowlist", default="")
     ap.add_argument("--max-tests", type=int, default=0)
+    ap.add_argument("--jobs", type=int, default=0, help="Parallel jobs (0 = auto)")
     args = ap.parse_args()
 
     root = pathlib.Path(args.testsuite_root).resolve()
@@ -101,57 +163,47 @@ def main() -> int:
     compile_backend_failed = 0
     runtime_failed = 0
 
-    for src in tests:
-        rel = src.relative_to(root)
-        out_ll = out_root / rel.with_suffix(".ll")
-        out_bin = out_root / rel.with_suffix(".bin")
-        out_ll.parent.mkdir(parents=True, exist_ok=True)
-        out_bin.parent.mkdir(parents=True, exist_ok=True)
+    jobs = args.jobs if args.jobs > 0 else (os.cpu_count() or 1)
+    jobs = max(1, jobs)
 
-        res = compile_one(args.compiler, src, out_ll)
-        if res.returncode != 0:
+    indexed_results: list[tuple[int, dict]] = []
+    with ThreadPoolExecutor(max_workers=jobs) as ex:
+        fut_to_idx = {
+            ex.submit(run_one_case, args.compiler, args.clang, root, out_root, src): idx
+            for idx, src in enumerate(tests)
+        }
+        for fut in as_completed(fut_to_idx):
+            idx = fut_to_idx[fut]
+            indexed_results.append((idx, fut.result()))
+
+    indexed_results.sort(key=lambda x: x[0])
+    for _, result in indexed_results:
+        rel = result["rel"]
+        status = result["status"]
+        details = result["details"]
+        if status == "pass":
+            passed += 1
+            print(f"[PASS] {rel}")
+        elif status == "frontend_fail":
             compile_frontend_failed += 1
             print(f"[FAIL][COMPILE][FRONTEND] {rel}")
-            append_log(frontend_log, rel, res.stderr)
-            continue
-
-        backend = run([args.clang, str(out_ll), "-o", str(out_bin)])
-        if backend.returncode != 0:
+            append_log(frontend_log, rel, details)
+        elif status == "backend_fail":
             compile_backend_failed += 1
             print(f"[FAIL][COMPILE][BACKEND] {rel}")
-            append_log(backend_log, rel, backend.stderr)
-            continue
-
-        exe = run([str(out_bin)])
-        expected_output = load_expected_output(src)
-        actual_output = exe.stdout + exe.stderr
-
-        if exe.returncode != 0:
+            append_log(backend_log, rel, details)
+        elif status == "runtime_nonzero":
             runtime_failed += 1
             print(f"[FAIL][RUNTIME][NONZERO_EXIT] {rel}")
-            append_log(
-                runtime_log,
-                rel,
-                f"exit={exe.returncode}\nstdout+stderr:\n{actual_output}",
-            )
-            continue
-
-        if actual_output != expected_output:
+            append_log(runtime_log, rel, details)
+        elif status == "runtime_mismatch":
             runtime_failed += 1
             print(f"[FAIL][RUNTIME][OUTPUT_MISMATCH] {rel}")
-            append_log(
-                runtime_log,
-                rel,
-                "expected:\n"
-                + expected_output
-                + "\nactual:\n"
-                + actual_output
-                + f"\nexit={exe.returncode}",
-            )
-            continue
-
-        passed += 1
-        print(f"[PASS] {rel}")
+            append_log(runtime_log, rel, details)
+        else:
+            compile_frontend_failed += 1
+            print(f"[FAIL][COMPILE][FRONTEND] {rel}")
+            append_log(frontend_log, rel, f"unexpected status: {status}")
 
     total = len(tests)
     total_failed = compile_frontend_failed + compile_backend_failed + runtime_failed
