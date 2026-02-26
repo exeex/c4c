@@ -58,6 +58,11 @@ ctest --test-dir build --output-on-failure -R c_testsuite_allowlist
 
 `run_c_testsuite.py` enforces all selected allowlist cases must pass.
 If `tests/c-testsuite` exists in this repo, CMake auto-enables it without `-DC_TESTSUITE_ROOT`.
+The runner validates end-to-end behavior: `c2ll -> .ll -> clang -> executable`.
+Failure logs are split by phase under `build/c_testsuite/logs/`:
+- `frontend_fail.log` (`c2ll.py` compile-time failures)
+- `backend_fail.log` (`clang` compile-time failures)
+- `runtime_fail.log` (non-zero exit or output mismatch)
 
 ## Manual Usage
 

@@ -61,6 +61,7 @@ if(C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
     NAME c_testsuite_allowlist
     COMMAND "${PYTHON_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/run_c_testsuite.py"
             --compiler "${C2LL_SCRIPT}"
+            --clang "${CLANG_EXECUTABLE}"
             --testsuite-root "${C_TESTSUITE_ROOT}"
             --workdir "${CMAKE_BINARY_DIR}"
             --allowlist "${PROJECT_SOURCE_DIR}/tests/c_testsuite_allowlist.txt"
