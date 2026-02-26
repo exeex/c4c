@@ -44,6 +44,21 @@ cmake --build build --target build_example_bin
 ctest --test-dir build --output-on-failure
 ```
 
+### Optional: Run `c-testsuite` Allowlist
+
+1. Clone `c-testsuite` locally (any path you choose).
+2. Add supported test files into `tests/c_testsuite_allowlist.txt`.
+3. Configure with testsuite root:
+
+```bash
+cmake -S . -B build -DC_TESTSUITE_ROOT=/path/to/c-testsuite
+cmake --build build
+ctest --test-dir build --output-on-failure -R c_testsuite_allowlist
+```
+
+`run_c_testsuite.py` enforces all selected allowlist cases must pass.
+If `tests/c-testsuite` exists in this repo, CMake auto-enables it without `-DC_TESTSUITE_ROOT`.
+
 ## Manual Usage
 
 ```bash

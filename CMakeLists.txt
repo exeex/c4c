@@ -20,6 +20,10 @@ endif()
 set(C2LL_SCRIPT "${PROJECT_SOURCE_DIR}/src/c2ll.py")
 set(EXAMPLE_C "${PROJECT_SOURCE_DIR}/tests/example.c")
 set(EXAMPLE_LL "${CMAKE_BINARY_DIR}/example.ll")
+set(C_TESTSUITE_ROOT "" CACHE PATH "Path to external c-testsuite root")
+if(NOT C_TESTSUITE_ROOT AND EXISTS "${PROJECT_SOURCE_DIR}/tests/c-testsuite")
+  set(C_TESTSUITE_ROOT "${PROJECT_SOURCE_DIR}/tests/c-testsuite")
+endif()
 
 add_custom_command(
   OUTPUT "${EXAMPLE_LL}"
@@ -51,3 +55,14 @@ add_test(
           --workdir "${CMAKE_BINARY_DIR}"
           --clang "${CLANG_EXECUTABLE}"
 )
+
+if(C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
+  add_test(
+    NAME c_testsuite_allowlist
+    COMMAND "${PYTHON_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/run_c_testsuite.py"
+            --compiler "${C2LL_SCRIPT}"
+            --testsuite-root "${C_TESTSUITE_ROOT}"
+            --workdir "${CMAKE_BINARY_DIR}"
+            --allowlist "${PROJECT_SOURCE_DIR}/tests/c_testsuite_allowlist.txt"
+  )
+endif()

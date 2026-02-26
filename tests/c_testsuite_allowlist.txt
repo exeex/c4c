@@ -1,0 +1,8 @@
+# Relative paths inside c-testsuite root.
+# Start small; add files as tiny-c2ll gains feature support.
+
+tests/single-exec/00001.c
+tests/single-exec/00002.c
+tests/single-exec/00003.c
+tests/single-exec/00012.c
+tests/single-exec/00060.c
