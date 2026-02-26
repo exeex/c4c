@@ -14,33 +14,47 @@
   - function parameters (`int`, `void` in parameter list)
   - function calls in expressions/statements
   - variable declaration/assignment/return
-  - arithmetic expressions: `+ - * /`
+  - global `int` variables with constant initializers
+  - arithmetic/logic expressions:
+    - arithmetic: `+ - * / %`
+    - comparison: `< > <= >= == !=`
+    - bitwise/logical: `& | ^ && ||`
+    - unary: `+ - !`
+    - inc/dec: `++ --` (prefix/postfix)
+    - compound assignment: `+= -= *= /= %=`
+  - control flow:
+    - `if/else`
+    - `while`
+    - `for`
+    - `do/while`
+    - `break` / `continue`
   - semantic checks:
     - redeclaration / undeclared use
     - uninitialized variable use
     - function signature conflicts
     - function call arity/type checks
+  - temporary external preprocessing via `clang -E -P`
 - End-to-end test pipeline is in place:
   - `c2ll.py -> .ll -> clang -> executable`
   - failure logs split into frontend/backend/runtime
 - c-testsuite status:
-  - Full run: `10 / 220` pass
-  - Allowlist is updated to these 10 passing cases
+  - Full run: `54 / 220` pass
+  - Allowlist is updated to these 54 passing cases
 
 ## Next Steps (Priority Order)
 
-1. Add temporary external preprocessor integration (clang `-E`) to unblock `#...` cases quickly.
-2. Extend parser/lexer/sema for common C constructs causing the next largest failures:
+1. Extend parser/lexer/sema for common C constructs causing the next largest failures:
    - array/index `[]`
    - struct member access `.`
-   - unary ops `! & * -`
-3. Expand expression grammar:
-   - comparison/relational (`< > <= >= == !=`)
-   - bitwise/logical ops as needed by c-testsuite
-4. Add minimal control flow:
-   - `if/else`
-   - `while`
-5. Keep growing `tests/c_testsuite_allowlist.txt` incrementally after each feature.
+   - pointer/address ops `& *` + pointer declarations
+2. Expand expression grammar:
+   - ternary `?:`
+   - `sizeof`
+   - remaining assignment/bitwise variants as needed
+3. Add minimal control flow:
+   - `switch/case/default`
+   - `goto` / labels
+4. Keep growing `tests/c_testsuite_allowlist.txt` incrementally after each feature.
 
 ## How To Run Tests
 

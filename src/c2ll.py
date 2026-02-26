@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import argparse
+import shutil
+import subprocess
 import sys
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -15,19 +17,52 @@ class TokenType(Enum):
     KW_VOID = auto()
     KW_EXTERN = auto()
     KW_RETURN = auto()
+    KW_IF = auto()
+    KW_ELSE = auto()
+    KW_WHILE = auto()
+    KW_FOR = auto()
+    KW_DO = auto()
+    KW_BREAK = auto()
+    KW_CONTINUE = auto()
     ID = auto()
     NUM = auto()
     LBRACE = auto()
     RBRACE = auto()
     LPAREN = auto()
     RPAREN = auto()
+    LBRACKET = auto()
+    RBRACKET = auto()
     SEMI = auto()
     COMMA = auto()
+    DOT = auto()
+    COLON = auto()
+    QUESTION = auto()
     ASSIGN = auto()
+    EQ = auto()
+    NE = auto()
+    LT = auto()
+    LE = auto()
+    GT = auto()
+    GE = auto()
     PLUS = auto()
+    PLUSEQ = auto()
+    PLUSPLUS = auto()
     MINUS = auto()
+    MINUSEQ = auto()
+    MINUSMINUS = auto()
+    ARROW = auto()
     STAR = auto()
+    STAREQ = auto()
     SLASH = auto()
+    SLASHEQ = auto()
+    PERCENT = auto()
+    PERCENTEQ = auto()
+    AMP = auto()
+    AMPAMP = auto()
+    PIPE = auto()
+    PIPEPIPE = auto()
+    CARET = auto()
+    BANG = auto()
     EOF = auto()
 
 
@@ -44,13 +79,43 @@ SINGLE_CHAR_TOKENS = {
     "}": TokenType.RBRACE,
     "(": TokenType.LPAREN,
     ")": TokenType.RPAREN,
+    "[": TokenType.LBRACKET,
+    "]": TokenType.RBRACKET,
     ";": TokenType.SEMI,
     ",": TokenType.COMMA,
+    ".": TokenType.DOT,
+    ":": TokenType.COLON,
+    "?": TokenType.QUESTION,
     "=": TokenType.ASSIGN,
     "+": TokenType.PLUS,
     "-": TokenType.MINUS,
     "*": TokenType.STAR,
     "/": TokenType.SLASH,
+    "%": TokenType.PERCENT,
+    "&": TokenType.AMP,
+    "|": TokenType.PIPE,
+    "^": TokenType.CARET,
+    "!": TokenType.BANG,
+    "<": TokenType.LT,
+    ">": TokenType.GT,
+}
+
+
+MULTI_CHAR_TOKENS = {
+    "==": TokenType.EQ,
+    "!=": TokenType.NE,
+    "<=": TokenType.LE,
+    ">=": TokenType.GE,
+    "+=": TokenType.PLUSEQ,
+    "-=": TokenType.MINUSEQ,
+    "*=": TokenType.STAREQ,
+    "/=": TokenType.SLASHEQ,
+    "%=": TokenType.PERCENTEQ,
+    "++": TokenType.PLUSPLUS,
+    "--": TokenType.MINUSMINUS,
+    "&&": TokenType.AMPAMP,
+    "||": TokenType.PIPEPIPE,
+    "->": TokenType.ARROW,
 }
 
 
@@ -100,6 +165,13 @@ class Lexer:
             "void": TokenType.KW_VOID,
             "extern": TokenType.KW_EXTERN,
             "return": TokenType.KW_RETURN,
+            "if": TokenType.KW_IF,
+            "else": TokenType.KW_ELSE,
+            "while": TokenType.KW_WHILE,
+            "for": TokenType.KW_FOR,
+            "do": TokenType.KW_DO,
+            "break": TokenType.KW_BREAK,
+            "continue": TokenType.KW_CONTINUE,
         }
         return Token(kw_map.get(text, TokenType.ID), text, start_line, start_col)
 
@@ -151,6 +223,14 @@ class Lexer:
                 tokens.append(self.scan_number())
                 continue
 
+            two = ch + self.peek()
+            tok_type = MULTI_CHAR_TOKENS.get(two)
+            if tok_type is not None:
+                tokens.append(Token(tok_type, two, self.line, self.col))
+                self.advance()
+                self.advance()
+                continue
+
             tok_type = SINGLE_CHAR_TOKENS.get(ch)
             if tok_type is not None:
                 tokens.append(Token(tok_type, ch, self.line, self.col))
@@ -191,6 +271,7 @@ class Function(Node):
 @dataclass
 class Program(Node):
     decls: List[FunctionDecl]
+    globals: List["GlobalVar"]
     funcs: List[Function]
 
 
@@ -203,6 +284,19 @@ class Decl(Node):
 @dataclass
 class Assign(Node):
     name: str
+    expr: Node
+
+
+@dataclass
+class GlobalVar(Node):
+    name: str
+    init: Optional[Node]
+
+
+@dataclass
+class AssignExpr(Node):
+    name: str
+    op: str
     expr: Node
 
 
@@ -237,6 +331,66 @@ class BinOp(Node):
     op: str
     lhs: Node
     rhs: Node
+
+
+@dataclass
+class UnaryOp(Node):
+    op: str
+    expr: Node
+
+
+@dataclass
+class IncDec(Node):
+    name: str
+    op: str
+    prefix: bool
+
+
+@dataclass
+class Block(Node):
+    body: List[Node]
+
+
+@dataclass
+class If(Node):
+    cond: Node
+    then_stmt: Node
+    else_stmt: Optional[Node]
+
+
+@dataclass
+class While(Node):
+    cond: Node
+    body: Node
+
+
+@dataclass
+class For(Node):
+    init: Optional[Node]
+    cond: Optional[Node]
+    post: Optional[Node]
+    body: Node
+
+
+@dataclass
+class DoWhile(Node):
+    body: Node
+    cond: Node
+
+
+@dataclass
+class Break(Node):
+    pass
+
+
+@dataclass
+class Continue(Node):
+    pass
+
+
+@dataclass
+class EmptyStmt(Node):
+    pass
 
 
 class Parser:
@@ -300,21 +454,49 @@ class Parser:
 
     def parse_program(self) -> Program:
         decls: List[FunctionDecl] = []
+        globals_: List[GlobalVar] = []
         funcs: List[Function] = []
         while self.cur().typ != TokenType.EOF:
             ext = self.parse_external()
             if isinstance(ext, FunctionDecl):
                 decls.append(ext)
+            elif isinstance(ext, list):
+                globals_.extend(ext)
             else:
                 funcs.append(ext)
         self.eat(TokenType.EOF)
-        return Program(decls, funcs)
+        return Program(decls, globals_, funcs)
 
-    def parse_external(self) -> FunctionDecl | Function:
+    def parse_external(self) -> FunctionDecl | list[GlobalVar] | Function:
         if self.cur().typ == TokenType.KW_EXTERN:
             self.advance()
         ret_type = self.parse_type()
+        while self.cur().typ == TokenType.STAR:
+            self.advance()
         name = self.eat(TokenType.ID).text
+
+        if self.cur().typ != TokenType.LPAREN:
+            if ret_type == "void":
+                raise self.error("void object type is not supported")
+            decls: List[GlobalVar] = []
+            init: Optional[Node] = None
+            if self.cur().typ == TokenType.ASSIGN:
+                self.advance()
+                init = self.parse_expr()
+            decls.append(GlobalVar(name, init))
+            while self.cur().typ == TokenType.COMMA:
+                self.advance()
+                while self.cur().typ == TokenType.STAR:
+                    self.advance()
+                gname = self.eat(TokenType.ID).text
+                ginit: Optional[Node] = None
+                if self.cur().typ == TokenType.ASSIGN:
+                    self.advance()
+                    ginit = self.parse_expr()
+                decls.append(GlobalVar(gname, ginit))
+            self.eat(TokenType.SEMI)
+            return decls
+
         self.eat(TokenType.LPAREN)
         params = self.parse_params()
         self.eat(TokenType.RPAREN)
@@ -334,13 +516,85 @@ class Parser:
         match self.cur().typ:
             case TokenType.KW_INT:
                 self.advance()
-                name = self.eat(TokenType.ID).text
-                init: Optional[Node] = None
-                if self.cur().typ == TokenType.ASSIGN:
+                decls: List[Node] = []
+                while True:
+                    while self.cur().typ == TokenType.STAR:
+                        self.advance()
+                    name = self.eat(TokenType.ID).text
+                    init: Optional[Node] = None
+                    if self.cur().typ == TokenType.ASSIGN:
+                        self.advance()
+                        init = self.parse_expr()
+                    decls.append(Decl(name, init))
+                    if self.cur().typ != TokenType.COMMA:
+                        break
                     self.advance()
+                self.eat(TokenType.SEMI)
+                if len(decls) == 1:
+                    return decls[0]
+                return Block(decls)
+            case TokenType.LBRACE:
+                self.advance()
+                body: List[Node] = []
+                while self.cur().typ != TokenType.RBRACE:
+                    body.append(self.parse_stmt())
+                self.eat(TokenType.RBRACE)
+                return Block(body)
+            case TokenType.KW_IF:
+                self.advance()
+                self.eat(TokenType.LPAREN)
+                cond = self.parse_expr()
+                self.eat(TokenType.RPAREN)
+                then_stmt = self.parse_stmt()
+                else_stmt: Optional[Node] = None
+                if self.cur().typ == TokenType.KW_ELSE:
+                    self.advance()
+                    else_stmt = self.parse_stmt()
+                return If(cond, then_stmt, else_stmt)
+            case TokenType.KW_WHILE:
+                self.advance()
+                self.eat(TokenType.LPAREN)
+                cond = self.parse_expr()
+                self.eat(TokenType.RPAREN)
+                body = self.parse_stmt()
+                return While(cond, body)
+            case TokenType.KW_FOR:
+                self.advance()
+                self.eat(TokenType.LPAREN)
+                init: Optional[Node] = None
+                if self.cur().typ != TokenType.SEMI:
                     init = self.parse_expr()
                 self.eat(TokenType.SEMI)
-                return Decl(name, init)
+                cond: Optional[Node] = None
+                if self.cur().typ != TokenType.SEMI:
+                    cond = self.parse_expr()
+                self.eat(TokenType.SEMI)
+                post: Optional[Node] = None
+                if self.cur().typ != TokenType.RPAREN:
+                    post = self.parse_expr()
+                self.eat(TokenType.RPAREN)
+                body = self.parse_stmt()
+                return For(init, cond, post, body)
+            case TokenType.KW_DO:
+                self.advance()
+                body = self.parse_stmt()
+                self.eat(TokenType.KW_WHILE)
+                self.eat(TokenType.LPAREN)
+                cond = self.parse_expr()
+                self.eat(TokenType.RPAREN)
+                self.eat(TokenType.SEMI)
+                return DoWhile(body, cond)
+            case TokenType.KW_BREAK:
+                self.advance()
+                self.eat(TokenType.SEMI)
+                return Break()
+            case TokenType.KW_CONTINUE:
+                self.advance()
+                self.eat(TokenType.SEMI)
+                return Continue()
+            case TokenType.SEMI:
+                self.advance()
+                return EmptyStmt()
             case TokenType.KW_RETURN:
                 self.advance()
                 expr: Optional[Node] = None
@@ -360,6 +614,79 @@ class Parser:
                 return ExprStmt(expr)
 
     def parse_expr(self) -> Node:
+        return self.parse_assignment()
+
+    def parse_assignment(self) -> Node:
+        lhs = self.parse_logical_or()
+        assign_ops = {
+            TokenType.ASSIGN: "=",
+            TokenType.PLUSEQ: "+=",
+            TokenType.MINUSEQ: "-=",
+            TokenType.STAREQ: "*=",
+            TokenType.SLASHEQ: "/=",
+            TokenType.PERCENTEQ: "%=",
+        }
+        op = assign_ops.get(self.cur().typ)
+        if op is None:
+            return lhs
+        self.advance()
+        rhs = self.parse_assignment()
+        if not isinstance(lhs, Var):
+            raise self.error("left-hand side of assignment must be a variable")
+        return AssignExpr(lhs.name, op, rhs)
+
+    def parse_logical_or(self) -> Node:
+        node = self.parse_logical_and()
+        while self.cur().typ == TokenType.PIPEPIPE:
+            self.advance()
+            node = BinOp("||", node, self.parse_logical_and())
+        return node
+
+    def parse_logical_and(self) -> Node:
+        node = self.parse_bit_or()
+        while self.cur().typ == TokenType.AMPAMP:
+            self.advance()
+            node = BinOp("&&", node, self.parse_bit_or())
+        return node
+
+    def parse_bit_or(self) -> Node:
+        node = self.parse_bit_xor()
+        while self.cur().typ == TokenType.PIPE:
+            self.advance()
+            node = BinOp("|", node, self.parse_bit_xor())
+        return node
+
+    def parse_bit_xor(self) -> Node:
+        node = self.parse_bit_and()
+        while self.cur().typ == TokenType.CARET:
+            self.advance()
+            node = BinOp("^", node, self.parse_bit_and())
+        return node
+
+    def parse_bit_and(self) -> Node:
+        node = self.parse_equality()
+        while self.cur().typ == TokenType.AMP:
+            self.advance()
+            node = BinOp("&", node, self.parse_equality())
+        return node
+
+    def parse_equality(self) -> Node:
+        node = self.parse_relational()
+        while self.cur().typ in (TokenType.EQ, TokenType.NE):
+            op = self.cur().text
+            self.advance()
+            node = BinOp(op, node, self.parse_relational())
+        return node
+
+    def parse_relational(self) -> Node:
+        node = self.parse_add()
+        while self.cur().typ in (TokenType.LT, TokenType.LE, TokenType.GT, TokenType.GE):
+            op = self.cur().text
+            self.advance()
+            node = BinOp(op, node, self.parse_add())
+        return node
+
+    def parse_add(self) -> Node:
         node = self.parse_term()
         while self.cur().typ in (TokenType.PLUS, TokenType.MINUS):
             op = self.cur().text
@@ -368,11 +695,38 @@ class Parser:
         return node
 
     def parse_term(self) -> Node:
-        node = self.parse_factor()
-        while self.cur().typ in (TokenType.STAR, TokenType.SLASH):
+        node = self.parse_unary()
+        while self.cur().typ in (TokenType.STAR, TokenType.SLASH, TokenType.PERCENT):
             op = self.cur().text
             self.advance()
-            node = BinOp(op, node, self.parse_factor())
+            node = BinOp(op, node, self.parse_unary())
+        return node
+
+    def parse_unary(self) -> Node:
+        if self.cur().typ in (TokenType.PLUS, TokenType.MINUS, TokenType.BANG, TokenType.STAR):
+            op = self.cur().text
+            self.advance()
+            return UnaryOp(op, self.parse_unary())
+        if self.cur().typ == TokenType.AMP:
+            self.advance()
+            return UnaryOp("&", self.parse_unary())
+        if self.cur().typ in (TokenType.PLUSPLUS, TokenType.MINUSMINUS):
+            op = self.cur().text
+            self.advance()
+            node = self.parse_unary()
+            if not isinstance(node, Var):
+                raise self.error("increment/decrement target must be a variable")
+            return IncDec(node.name, op, True)
+        return self.parse_postfix()
+
+    def parse_postfix(self) -> Node:
+        node = self.parse_primary()
+        while self.cur().typ in (TokenType.PLUSPLUS, TokenType.MINUSMINUS):
+            if not isinstance(node, Var):
+                raise self.error("increment/decrement target must be a variable")
+            op = self.cur().text
+            self.advance()
+            node = IncDec(node.name, op, False)
         return node
 
     def parse_args(self) -> List[Node]:
@@ -386,7 +740,7 @@ class Parser:
             self.advance()
         return args
 
-    def parse_factor(self) -> Node:
+    def parse_primary(self) -> Node:
         match self.cur().typ:
             case TokenType.NUM:
                 return IntLit(int(self.eat(TokenType.NUM).text))
@@ -416,6 +770,7 @@ class FunctionSig:
 class SemanticAnalyzer:
     def __init__(self):
         self.func_sigs: Dict[str, FunctionSig] = {}
+        self.global_vars: Dict[str, bool] = {}
 
     def ensure_sig(self, name: str, sig: FunctionSig) -> None:
         prev = self.func_sigs.get(name)
@@ -426,10 +781,20 @@ class SemanticAnalyzer:
             raise CompileError(f"semantic error: conflicting declaration for function {name!r}")
 
     def analyze_program(self, p: Program) -> None:
+        for g in p.globals:
+            if g.name in self.global_vars:
+                raise CompileError(f"semantic error: duplicate global variable {g.name!r}")
+            self.global_vars[g.name] = True
         for d in p.decls:
             self.ensure_sig(d.name, FunctionSig(d.ret_type, [x.typ for x in d.params]))
         for fn in p.funcs:
             self.ensure_sig(fn.name, FunctionSig(fn.ret_type, [x.typ for x in fn.params]))
+
+        for g in p.globals:
+            if g.name in self.func_sigs:
+                raise CompileError(f"semantic error: name conflict between global and function {g.name!r}")
+            if g.init is not None:
+                self.analyze_const_expr(g.init)
 
         seen_defs: Dict[str, bool] = {}
         for fn in p.funcs:
@@ -453,11 +818,17 @@ class SemanticAnalyzer:
 
         saw_return = False
         for st in fn.body:
-            saw_return = self.analyze_stmt(st, vars_init, fn.ret_type) or saw_return
+            saw_return = self.analyze_stmt(st, vars_init, fn.ret_type, 0) or saw_return
             if saw_return:
                 break
 
-    def analyze_stmt(self, n: Node, vars_init: Dict[str, bool], fn_ret_type: str) -> bool:
+    def analyze_stmt(
+        self,
+        n: Node,
+        vars_init: Dict[str, bool],
+        fn_ret_type: str,
+        loop_depth: int,
+    ) -> bool:
         match n:
             case Decl(name=name, init=init):
                 if name in vars_init:
@@ -467,13 +838,62 @@ class SemanticAnalyzer:
                     self.analyze_expr(init, vars_init)
                     vars_init[name] = True
                 return False
+            case Block(body=body):
+                for st in body:
+                    if self.analyze_stmt(st, vars_init, fn_ret_type, loop_depth):
+                        return True
+                return False
+            case If(cond=cond, then_stmt=then_stmt, else_stmt=else_stmt):
+                self.analyze_expr(cond, vars_init)
+                then_state = dict(vars_init)
+                then_ret = self.analyze_stmt(then_stmt, then_state, fn_ret_type, loop_depth)
+                if else_stmt is None:
+                    for k in vars_init:
+                        vars_init[k] = vars_init[k] and then_state.get(k, False)
+                    return False
+                else_state = dict(vars_init)
+                else_ret = self.analyze_stmt(else_stmt, else_state, fn_ret_type, loop_depth)
+                for k in vars_init:
+                    vars_init[k] = then_state.get(k, False) and else_state.get(k, False)
+                return then_ret and else_ret
+            case While(cond=cond, body=body):
+                self.analyze_expr(cond, vars_init)
+                body_state = dict(vars_init)
+                self.analyze_stmt(body, body_state, fn_ret_type, loop_depth + 1)
+                return False
+            case For(init=init, cond=cond, post=post, body=body):
+                if init is not None:
+                    self.analyze_expr(init, vars_init)
+                if cond is not None:
+                    self.analyze_expr(cond, vars_init)
+                body_state = dict(vars_init)
+                self.analyze_stmt(body, body_state, fn_ret_type, loop_depth + 1)
+                if post is not None:
+                    self.analyze_expr(post, body_state)
+                return False
+            case DoWhile(body=body, cond=cond):
+                body_state = dict(vars_init)
+                self.analyze_stmt(body, body_state, fn_ret_type, loop_depth + 1)
+                self.analyze_expr(cond, body_state)
+                return False
+            case Break():
+                if loop_depth <= 0:
+                    raise CompileError("semantic error: break used outside loop")
+                return False
+            case Continue():
+                if loop_depth <= 0:
+                    raise CompileError("semantic error: continue used outside loop")
+                return False
+            case EmptyStmt():
+                return False
             case Assign(name=name, expr=expr):
-                if name not in vars_init:
+                if name not in vars_init and name not in self.global_vars:
                     raise CompileError(
                         f"semantic error: assignment to undeclared variable {name!r}"
                     )
                 self.analyze_expr(expr, vars_init)
-                vars_init[name] = True
+                if name in vars_init:
+                    vars_init[name] = True
                 return False
             case ExprStmt(expr=expr):
                 self.analyze_expr(expr, vars_init)
@@ -498,6 +918,8 @@ class SemanticAnalyzer:
                 return "int"
             case Var(name=name):
                 if name not in vars_init:
+                    if name in self.global_vars:
+                        return "int"
                     raise CompileError(
                         f"semantic error: use of undeclared variable {name!r}"
                     )
@@ -511,6 +933,44 @@ class SemanticAnalyzer:
                 rt = self.analyze_expr(rhs, vars_init)
                 if lt != "int" or rt != "int":
                     raise CompileError("semantic error: binary op currently supports int only")
+                return "int"
+            case UnaryOp(op=op, expr=expr):
+                et = self.analyze_expr(expr, vars_init)
+                if et != "int":
+                    raise CompileError(
+                        f"semantic error: unary op {op!r} currently supports int only"
+                    )
+                if op in ("&", "*"):
+                    raise CompileError(
+                        f"semantic error: unary op {op!r} is not supported yet"
+                    )
+                return "int"
+            case IncDec(name=name):
+                if name not in vars_init and name not in self.global_vars:
+                    raise CompileError(
+                        f"semantic error: use of undeclared variable {name!r}"
+                    )
+                if name in vars_init and not vars_init[name]:
+                    raise CompileError(
+                        f"semantic error: use of uninitialized variable {name!r}"
+                    )
+                if name in vars_init:
+                    vars_init[name] = True
+                return "int"
+            case AssignExpr(name=name, op=op, expr=expr):
+                if name not in vars_init and name not in self.global_vars:
+                    raise CompileError(
+                        f"semantic error: assignment to undeclared variable {name!r}"
+                    )
+                et = self.analyze_expr(expr, vars_init)
+                if et != "int":
+                    raise CompileError("semantic error: assignment supports int only")
+                if op != "=" and name in vars_init and not vars_init[name]:
+                    raise CompileError(
+                        f"semantic error: use of uninitialized variable {name!r}"
+                    )
+                if name in vars_init:
+                    vars_init[name] = True
                 return "int"
             case Call(name=name, args=args):
                 sig = self.func_sigs.get(name)
@@ -532,16 +992,75 @@ class SemanticAnalyzer:
                     f"semantic error: unsupported expr node {type(n).__name__}"
                 )
 
+    def analyze_const_expr(self, n: Node) -> int:
+        match n:
+            case IntLit(value=value):
+                return value
+            case UnaryOp(op=op, expr=expr):
+                v = self.analyze_const_expr(expr)
+                if op == "+":
+                    return v
+                if op == "-":
+                    return -v
+                if op == "!":
+                    return 0 if v else 1
+                raise CompileError(f"semantic error: unsupported global initializer op {op!r}")
+            case BinOp(op=op, lhs=lhs, rhs=rhs):
+                l = self.analyze_const_expr(lhs)
+                r = self.analyze_const_expr(rhs)
+                if op == "+":
+                    return l + r
+                if op == "-":
+                    return l - r
+                if op == "*":
+                    return l * r
+                if op == "/":
+                    return int(l / r)
+                if op == "%":
+                    return l % r
+                if op == "&":
+                    return l & r
+                if op == "|":
+                    return l | r
+                if op == "^":
+                    return l ^ r
+                if op == "&&":
+                    return 1 if (l != 0 and r != 0) else 0
+                if op == "||":
+                    return 1 if (l != 0 or r != 0) else 0
+                if op == "==":
+                    return 1 if l == r else 0
+                if op == "!=":
+                    return 1 if l != r else 0
+                if op == "<":
+                    return 1 if l < r else 0
+                if op == "<=":
+                    return 1 if l <= r else 0
+                if op == ">":
+                    return 1 if l > r else 0
+                if op == ">=":
+                    return 1 if l >= r else 0
+                raise CompileError(f"semantic error: unsupported global initializer op {op!r}")
+            case _:
+                raise CompileError(
+                    "semantic error: global initializer must be an integer constant expression"
+                )
+
 
 class IRBuilder:
     def __init__(self, prog: Program):
         self.prog = prog
         self.tmp_idx = 0
+        self.label_idx = 0
         self.lines: List[str] = []
         self.slots: Dict[str, str] = {}
+        self.loop_stack: List[tuple[str, str]] = []
         self.func_sigs: Dict[str, FunctionSig] = {}
+        self.global_vars: Dict[str, Optional[Node]] = {}
         for d in prog.decls:
             self.func_sigs[d.name] = FunctionSig(d.ret_type, [p.typ for p in d.params])
+        for g in prog.globals:
+            self.global_vars[g.name] = g.init
         for fn in prog.funcs:
             self.func_sigs[fn.name] = FunctionSig(fn.ret_type, [p.typ for p in fn.params])
 
@@ -556,24 +1075,188 @@ class IRBuilder:
     def emit(self, s: str) -> None:
         self.lines.append(s)
 
+    def new_label(self, prefix: str) -> str:
+        lbl = f"{prefix}{self.label_idx}"
+        self.label_idx += 1
+        return lbl
+
+    def emit_label(self, label: str) -> None:
+        self.emit(f"{label}:")
+
+    def resolve_var_ptr(self, name: str) -> str:
+        if name in self.slots:
+            return self.slots[name]
+        if name in self.global_vars:
+            return f"@{name}"
+        raise CompileError(f"codegen error: unknown variable {name!r}")
+
+    def eval_global_const(self, n: Node) -> int:
+        match n:
+            case IntLit(value=value):
+                return value
+            case UnaryOp(op=op, expr=expr):
+                v = self.eval_global_const(expr)
+                if op == "+":
+                    return v
+                if op == "-":
+                    return -v
+                if op == "!":
+                    return 0 if v else 1
+                raise CompileError(f"codegen error: unsupported global initializer op {op!r}")
+            case BinOp(op=op, lhs=lhs, rhs=rhs):
+                l = self.eval_global_const(lhs)
+                r = self.eval_global_const(rhs)
+                if op == "+":
+                    return l + r
+                if op == "-":
+                    return l - r
+                if op == "*":
+                    return l * r
+                if op == "/":
+                    return int(l / r)
+                if op == "%":
+                    return l % r
+                if op == "&":
+                    return l & r
+                if op == "|":
+                    return l | r
+                if op == "^":
+                    return l ^ r
+                if op == "&&":
+                    return 1 if (l != 0 and r != 0) else 0
+                if op == "||":
+                    return 1 if (l != 0 or r != 0) else 0
+                if op == "==":
+                    return 1 if l == r else 0
+                if op == "!=":
+                    return 1 if l != r else 0
+                if op == "<":
+                    return 1 if l < r else 0
+                if op == "<=":
+                    return 1 if l <= r else 0
+                if op == ">":
+                    return 1 if l > r else 0
+                if op == ">=":
+                    return 1 if l >= r else 0
+                raise CompileError(f"codegen error: unsupported global initializer op {op!r}")
+            case _:
+                raise CompileError(
+                    "codegen error: global initializer must be an integer constant expression"
+                )
+
     def codegen_expr(self, n: Node) -> Optional[str]:
         match n:
             case IntLit(value=value):
                 return str(value)
             case Var(name=name):
-                slot = self.slots[name]
+                slot = self.resolve_var_ptr(name)
                 t = self.tmp()
                 self.emit(f"  {t} = load i32, ptr {slot}")
                 return t
             case BinOp(op=op, lhs=lhs, rhs=rhs):
                 l = self.codegen_expr(lhs)
-                r = self.codegen_expr(rhs)
-                if l is None or r is None:
+                if l is None:
                     raise CompileError("codegen error: void value used in binary operation")
                 t = self.tmp()
-                op_map = {"+": "add", "-": "sub", "*": "mul", "/": "sdiv"}
-                self.emit(f"  {t} = {op_map[op]} i32 {l}, {r}")
+                if op in {"&&", "||"}:
+                    lb = self.tmp()
+                    self.emit(f"  {lb} = icmp ne i32 {l}, 0")
+                    rhs_lbl = self.new_label("logic_rhs")
+                    short_lbl = self.new_label("logic_short")
+                    end_lbl = self.new_label("logic_end")
+                    if op == "&&":
+                        self.emit(f"  br i1 {lb}, label %{rhs_lbl}, label %{short_lbl}")
+                    else:
+                        self.emit(f"  br i1 {lb}, label %{short_lbl}, label %{rhs_lbl}")
+                    self.emit_label(rhs_lbl)
+                    rbv = self.codegen_expr(rhs)
+                    if rbv is None:
+                        raise CompileError("codegen error: void value used in logical operation")
+                    rb = self.tmp()
+                    self.emit(f"  {rb} = icmp ne i32 {rbv}, 0")
+                    self.emit(f"  br label %{end_lbl}")
+                    self.emit_label(short_lbl)
+                    short_v = "0" if op == "&&" else "1"
+                    self.emit(f"  br label %{end_lbl}")
+                    self.emit_label(end_lbl)
+                    b = self.tmp()
+                    self.emit(f"  {b} = phi i1 [{short_v}, %{short_lbl}], [{rb}, %{rhs_lbl}]")
+                    self.emit(f"  {t} = zext i1 {b} to i32")
+                    return t
+
+                r = self.codegen_expr(rhs)
+                if r is None:
+                    raise CompileError("codegen error: void value used in binary operation")
+                if op in {"+", "-", "*", "/", "%", "&", "|", "^"}:
+                    op_map = {
+                        "+": "add",
+                        "-": "sub",
+                        "*": "mul",
+                        "/": "sdiv",
+                        "%": "srem",
+                        "&": "and",
+                        "|": "or",
+                        "^": "xor",
+                    }
+                    self.emit(f"  {t} = {op_map[op]} i32 {l}, {r}")
+                    return t
+                if op in {"==", "!=", "<", "<=", ">", ">="}:
+                    icmp_map = {
+                        "==": "eq",
+                        "!=": "ne",
+                        "<": "slt",
+                        "<=": "sle",
+                        ">": "sgt",
+                        ">=": "sge",
+                    }
+                    b = self.tmp()
+                    self.emit(f"  {b} = icmp {icmp_map[op]} i32 {l}, {r}")
+                    self.emit(f"  {t} = zext i1 {b} to i32")
+                    return t
+                raise CompileError(f"codegen error: unsupported binary operator {op!r}")
+            case UnaryOp(op=op, expr=expr):
+                v = self.codegen_expr(expr)
+                if v is None:
+                    raise CompileError("codegen error: void value used in unary operation")
+                if op == "+":
+                    return v
+                t = self.tmp()
+                if op == "-":
+                    self.emit(f"  {t} = sub i32 0, {v}")
+                    return t
+                if op == "!":
+                    b = self.tmp()
+                    self.emit(f"  {b} = icmp eq i32 {v}, 0")
+                    self.emit(f"  {t} = zext i1 {b} to i32")
+                    return t
+                raise CompileError(f"codegen error: unsupported unary operator {op!r}")
+            case AssignExpr(name=name, op=op, expr=expr):
+                rv = self.codegen_expr(expr)
+                if rv is None:
+                    raise CompileError("codegen error: cannot assign void to int")
+                slot = self.resolve_var_ptr(name)
+                if op == "=":
+                    self.emit(f"  store i32 {rv}, ptr {slot}")
+                    return rv
+                cur = self.tmp()
+                self.emit(f"  {cur} = load i32, ptr {slot}")
+                t = self.tmp()
+                op_map = {"+=": "add", "-=": "sub", "*=": "mul", "/=": "sdiv", "%=": "srem"}
+                llvm_op = op_map.get(op)
+                if llvm_op is None:
+                    raise CompileError(f"codegen error: unsupported assignment operator {op!r}")
+                self.emit(f"  {t} = {llvm_op} i32 {cur}, {rv}")
+                self.emit(f"  store i32 {t}, ptr {slot}")
                 return t
+            case IncDec(name=name, op=op, prefix=prefix):
+                slot = self.resolve_var_ptr(name)
+                cur = self.tmp()
+                self.emit(f"  {cur} = load i32, ptr {slot}")
+                nxt = self.tmp()
+                llvm_op = "add" if op == "++" else "sub"
+                self.emit(f"  {nxt} = {llvm_op} i32 {cur}, 1")
+                self.emit(f"  store i32 {nxt}, ptr {slot}")
+                return nxt if prefix else cur
             case Call(name=name, args=args):
                 sig = self.func_sigs[name]
                 args_text: List[str] = []
@@ -605,11 +1288,130 @@ class IRBuilder:
                         raise CompileError("codegen error: cannot initialize int with void")
                     self.emit(f"  store i32 {v}, ptr {slot}")
                 return False
+            case Block(body=body):
+                for st in body:
+                    if self.codegen_stmt(st, fn_ret_type):
+                        return True
+                return False
+            case If(cond=cond, then_stmt=then_stmt, else_stmt=else_stmt):
+                cond_v = self.codegen_expr(cond)
+                if cond_v is None:
+                    raise CompileError("codegen error: void condition in if")
+                cond_b = self.tmp()
+                self.emit(f"  {cond_b} = icmp ne i32 {cond_v}, 0")
+                then_lbl = self.new_label("if_then")
+                end_lbl = self.new_label("if_end")
+                if else_stmt is None:
+                    self.emit(f"  br i1 {cond_b}, label %{then_lbl}, label %{end_lbl}")
+                    self.emit_label(then_lbl)
+                    then_ret = self.codegen_stmt(then_stmt, fn_ret_type)
+                    if not then_ret:
+                        self.emit(f"  br label %{end_lbl}")
+                    self.emit_label(end_lbl)
+                    return False
+                else_lbl = self.new_label("if_else")
+                self.emit(f"  br i1 {cond_b}, label %{then_lbl}, label %{else_lbl}")
+                self.emit_label(then_lbl)
+                then_ret = self.codegen_stmt(then_stmt, fn_ret_type)
+                if not then_ret:
+                    self.emit(f"  br label %{end_lbl}")
+                self.emit_label(else_lbl)
+                else_ret = self.codegen_stmt(else_stmt, fn_ret_type)
+                if not else_ret:
+                    self.emit(f"  br label %{end_lbl}")
+                if then_ret and else_ret:
+                    return True
+                self.emit_label(end_lbl)
+                return False
+            case While(cond=cond, body=body):
+                cond_lbl = self.new_label("while_cond")
+                body_lbl = self.new_label("while_body")
+                end_lbl = self.new_label("while_end")
+                self.emit(f"  br label %{cond_lbl}")
+                self.emit_label(cond_lbl)
+                cond_v = self.codegen_expr(cond)
+                if cond_v is None:
+                    raise CompileError("codegen error: void condition in while")
+                cond_b = self.tmp()
+                self.emit(f"  {cond_b} = icmp ne i32 {cond_v}, 0")
+                self.emit(f"  br i1 {cond_b}, label %{body_lbl}, label %{end_lbl}")
+                self.emit_label(body_lbl)
+                self.loop_stack.append((end_lbl, cond_lbl))
+                body_ret = self.codegen_stmt(body, fn_ret_type)
+                self.loop_stack.pop()
+                if not body_ret:
+                    self.emit(f"  br label %{cond_lbl}")
+                self.emit_label(end_lbl)
+                return False
+            case For(init=init, cond=cond, post=post, body=body):
+                if init is not None:
+                    self.codegen_expr(init)
+                cond_lbl = self.new_label("for_cond")
+                body_lbl = self.new_label("for_body")
+                post_lbl = self.new_label("for_post")
+                end_lbl = self.new_label("for_end")
+                self.emit(f"  br label %{cond_lbl}")
+                self.emit_label(cond_lbl)
+                if cond is None:
+                    self.emit(f"  br label %{body_lbl}")
+                else:
+                    cond_v = self.codegen_expr(cond)
+                    if cond_v is None:
+                        raise CompileError("codegen error: void condition in for")
+                    cond_b = self.tmp()
+                    self.emit(f"  {cond_b} = icmp ne i32 {cond_v}, 0")
+                    self.emit(f"  br i1 {cond_b}, label %{body_lbl}, label %{end_lbl}")
+                self.emit_label(body_lbl)
+                self.loop_stack.append((end_lbl, post_lbl))
+                body_ret = self.codegen_stmt(body, fn_ret_type)
+                self.loop_stack.pop()
+                if not body_ret:
+                    self.emit(f"  br label %{post_lbl}")
+                self.emit_label(post_lbl)
+                if post is not None:
+                    self.codegen_expr(post)
+                self.emit(f"  br label %{cond_lbl}")
+                self.emit_label(end_lbl)
+                return False
+            case DoWhile(body=body, cond=cond):
+                body_lbl = self.new_label("do_body")
+                cond_lbl = self.new_label("do_cond")
+                end_lbl = self.new_label("do_end")
+                self.emit(f"  br label %{body_lbl}")
+                self.emit_label(body_lbl)
+                self.loop_stack.append((end_lbl, cond_lbl))
+                body_ret = self.codegen_stmt(body, fn_ret_type)
+                self.loop_stack.pop()
+                if not body_ret:
+                    self.emit(f"  br label %{cond_lbl}")
+                self.emit_label(cond_lbl)
+                cond_v = self.codegen_expr(cond)
+                if cond_v is None:
+                    raise CompileError("codegen error: void condition in do-while")
+                cond_b = self.tmp()
+                self.emit(f"  {cond_b} = icmp ne i32 {cond_v}, 0")
+                self.emit(f"  br i1 {cond_b}, label %{body_lbl}, label %{end_lbl}")
+                self.emit_label(end_lbl)
+                return False
+            case Break():
+                if not self.loop_stack:
+                    raise CompileError("codegen error: break used outside loop")
+                break_lbl, _ = self.loop_stack[-1]
+                self.emit(f"  br label %{break_lbl}")
+                return True
+            case Continue():
+                if not self.loop_stack:
+                    raise CompileError("codegen error: continue used outside loop")
+                _, cont_lbl = self.loop_stack[-1]
+                self.emit(f"  br label %{cont_lbl}")
+                return True
+            case EmptyStmt():
+                return False
             case Assign(name=name, expr=expr):
                 v = self.codegen_expr(expr)
                 if v is None:
                     raise CompileError("codegen error: cannot assign void to int")
-                self.emit(f"  store i32 {v}, ptr {self.slots[name]}")
+                self.emit(f"  store i32 {v}, ptr {self.resolve_var_ptr(name)}")
                 return False
             case ExprStmt(expr=expr):
                 self.codegen_expr(expr)
@@ -629,6 +1431,12 @@ class IRBuilder:
                 raise CompileError(f"codegen error: unsupported stmt {type(n).__name__}")
 
     def emit_declarations(self) -> None:
+        for name, init in self.global_vars.items():
+            init_val = 0 if init is None else self.eval_global_const(init)
+            self.emit(f"@{name} = global i32 {init_val}")
+        if self.global_vars:
+            self.emit("")
+
         defined = {fn.name for fn in self.prog.funcs}
         seen: Dict[str, bool] = {}
         for d in self.prog.decls:
@@ -641,7 +1449,9 @@ class IRBuilder:
 
     def codegen_function(self, fn: Function) -> None:
         self.tmp_idx = 0
+        self.label_idx = 0
         self.slots = {}
+        self.loop_stack = []
 
         ret_ty = self.llvm_ty(fn.ret_type)
         params_sig: List[str] = []
@@ -690,14 +1500,51 @@ def compile_source(src: str) -> str:
     return IRBuilder(ast).codegen_program()
 
 
+def preprocess_source(src_path: str, clang_path: str) -> str:
+    cmd = [clang_path, "-E", "-P", src_path]
+    try:
+        res = subprocess.run(cmd, text=True, capture_output=True)
+    except OSError as e:
+        raise CompileError(
+            f"preprocess failed: cannot execute {clang_path!r}: {e}"
+        ) from e
+    if res.returncode != 0:
+        detail = res.stderr.strip() or res.stdout.strip() or "(no diagnostic output)"
+        raise CompileError(f"preprocess failed with {clang_path!r}:\n{detail}")
+    return res.stdout
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Tiny C-subset to LLVM IR compiler")
     ap.add_argument("input", help="Path to input .c file")
     ap.add_argument("-o", "--output", help="Path to output .ll file")
+    ap.add_argument(
+        "--no-preprocess",
+        action="store_true",
+        help="Disable external preprocessing and parse input source directly",
+    )
+    ap.add_argument(
+        "--clang",
+        default="",
+        help="Path to clang used for preprocessing (default: auto-detect clang)",
+    )
     args = ap.parse_args()
 
-    with open(args.input, "r", encoding="utf-8") as f:
-        src = f.read()
+    try:
+        if args.no_preprocess:
+            with open(args.input, "r", encoding="utf-8") as f:
+                src = f.read()
+        else:
+            clang_path = args.clang or shutil.which("clang")
+            if clang_path is None:
+                raise CompileError(
+                    "preprocess requested but clang was not found; "
+                    "pass --no-preprocess to disable it"
+                )
+            src = preprocess_source(args.input, clang_path)
+    except OSError as e:
+        print(f"compile error: failed to read input: {e}", file=sys.stderr)
+        return 1
 
     try:
         ir = compile_source(src)
