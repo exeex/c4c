@@ -5,4 +5,9 @@ tests/single-exec/00001.c
 tests/single-exec/00002.c
 tests/single-exec/00003.c
 tests/single-exec/00012.c
+tests/single-exec/00021.c
 tests/single-exec/00060.c
+tests/single-exec/00080.c
+tests/single-exec/00100.c
+tests/single-exec/00114.c
+tests/single-exec/00116.c
