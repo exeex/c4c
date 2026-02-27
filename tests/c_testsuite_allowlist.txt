@@ -154,6 +154,7 @@ tests/single-exec/00155.c
 tests/single-exec/00156.c
 tests/single-exec/00157.c
 tests/single-exec/00158.c
+tests/single-exec/00159.c
 tests/single-exec/00160.c
 tests/single-exec/00161.c
 tests/single-exec/00162.c

@@ -575,7 +575,11 @@ class Parser:
                 cur_idx += 1
             else:
                 try:
+                    save_pos = self.i
                     val = self._parse_const_int()
+                    if self.i == save_pos:
+                        # No progress — treat as non-constant expression
+                        raise CompileError("no progress in _parse_const_int")
                     entries.append((cur_idx, val))
                 except Exception:
                     # Skip non-constant expressions
