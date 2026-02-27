@@ -242,10 +242,11 @@ class Lexer:
             buf.append(self.advance())  # x
             while self.cur() and self.cur() in "0123456789abcdefABCDEF":
                 buf.append(self.advance())
-            # skip suffixes like L, U, LL, UL etc.
+            # Include suffixes (L, U, LL, UL etc.) so parser can determine type
+            suffix_buf = []
             while self.cur() and self.cur() in "uUlL":
-                self.advance()
-            return Token(TokenType.NUM, str(int("".join(buf), 16)), start_line, start_col)
+                suffix_buf.append(self.advance())
+            return Token(TokenType.NUM, str(int("".join(buf), 16)) + "".join(suffix_buf), start_line, start_col)
         # Decimal
         buf.append(self.advance())
         while self.cur() and self.cur().isdigit():
@@ -265,12 +266,16 @@ class Lexer:
                 buf.append(self.advance())
             while self.cur() and self.cur().isdigit():
                 buf.append(self.advance())
-        # skip suffixes like L, U, LL, UL, f, F
-        while self.cur() and self.cur() in "uUlLfF":
-            self.advance()
         if is_float:
+            # skip float suffixes (f, F, l, L) without recording them
+            while self.cur() and self.cur() in "fFlL":
+                self.advance()
             return Token(TokenType.NUM, "".join(buf), start_line, start_col)
-        return Token(TokenType.NUM, "".join(buf), start_line, start_col)
+        # For integer literals, include the suffix so the parser can determine type
+        suffix_buf = []
+        while self.cur() and self.cur() in "uUlL":
+            suffix_buf.append(self.advance())
+        return Token(TokenType.NUM, "".join(buf) + "".join(suffix_buf), start_line, start_col)
 
     def scan_string(self) -> Token:
         start_line = self.line

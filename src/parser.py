@@ -9,7 +9,11 @@ class Parser:
         self.i = 0
         self.struct_defs: Dict[str, StructDef] = {}
         self.anon_struct_idx = 0
-        self.typedef_names: Dict[str, str] = {}
+        self.typedef_names: Dict[str, str] = {
+            # GCC/Clang extension float types
+            "_Float16": "float", "_Float32": "float", "_Float64": "double",
+            "_Float128": "double", "_Float32x": "double", "_Float64x": "double",
+        }
         self.enum_consts: Dict[str, int] = {}
 
     def cur(self) -> Token:
@@ -104,20 +108,27 @@ class Parser:
                 return "int"
             case TokenType.KW_SIGNED:
                 self.advance()
+                is_long = False
                 if self.cur().typ in (
                     TokenType.KW_INT, TokenType.KW_LONG, TokenType.KW_SHORT, TokenType.KW_CHAR
                 ):
+                    if self.cur().typ == TokenType.KW_LONG:
+                        is_long = True
                     self.advance()
                     if self.cur().typ == TokenType.KW_LONG:
                         self.advance()
                     if self.cur().typ == TokenType.KW_INT:
                         self.advance()
                 self.skip_type_qualifiers()
-                return "int"
-            case TokenType.KW_DOUBLE | TokenType.KW_FLOAT:
+                return "long" if is_long else "int"
+            case TokenType.KW_DOUBLE:
                 self.advance()
                 self.skip_type_qualifiers()
                 return "double"
+            case TokenType.KW_FLOAT:
+                self.advance()
+                self.skip_type_qualifiers()
+                return "float"
             case TokenType.KW_STRUCT | TokenType.KW_UNION:
                 is_union = self.cur().typ == TokenType.KW_UNION
                 self.advance()
@@ -644,12 +655,29 @@ class Parser:
             self.advance()
         return StructInit(entries)
 
+    def _struct_flat_field_count(self, struct_type: str) -> int:
+        """Return the number of flat scalar values needed to initialize a struct."""
+        if not struct_type.startswith("struct:"):
+            return 1
+        tag = struct_type.split(":", 1)[1]
+        s = self.struct_defs.get(tag)
+        if s is None:
+            return 1
+        count = 0
+        for field in s.fields:
+            if field.array_size is not None:
+                count += field.array_size
+            else:
+                count += 1
+        return count if count > 0 else 1
+
     def _parse_struct_array_init(self, elem_type: str, explicit_size: Optional[int]) -> "StructArrayInit":
         """Parse a brace-enclosed array-of-structs initializer like {[1]={...}, [0]={...}}."""
-        from ast_nodes import StructArrayInit
+        from ast_nodes import StructArrayInit, StructInit
         self.eat(TokenType.LBRACE)
         entries: List[tuple[int, Optional[object]]] = []
         cur_idx = 0
+        flat_count = self._struct_flat_field_count(elem_type)
         while self.cur().typ != TokenType.RBRACE and self.cur().typ != TokenType.EOF:
             # Check for designated initializer: [N] = {val}
             if self.cur().typ == TokenType.LBRACKET:
@@ -662,10 +690,27 @@ class Parser:
             if self.cur().typ == TokenType.LBRACE:
                 entries.append((cur_idx, self.parse_struct_init(elem_type)))
             else:
-                # scalar value where struct expected - skip
-                while self.cur().typ not in (TokenType.COMMA, TokenType.RBRACE, TokenType.EOF):
-                    self.advance()
-                entries.append((cur_idx, None))
+                # Flat values for one struct element - collect flat_count values
+                flat_fields = []
+                for fi in range(flat_count):
+                    if self.cur().typ in (TokenType.RBRACE, TokenType.EOF):
+                        break
+                    try:
+                        val = self.parse_expr()
+                        flat_fields.append((None, val))
+                    except CompileError:
+                        # Skip unparseable value
+                        while self.cur().typ not in (TokenType.COMMA, TokenType.RBRACE, TokenType.EOF):
+                            self.advance()
+                    if fi < flat_count - 1:
+                        if self.cur().typ == TokenType.COMMA:
+                            self.advance()
+                        else:
+                            break
+                if flat_fields:
+                    entries.append((cur_idx, StructInit(flat_fields)))
+                else:
+                    entries.append((cur_idx, None))
             cur_idx += 1
             if self.cur().typ == TokenType.COMMA:
                 self.advance()
@@ -896,7 +941,9 @@ class Parser:
 
             ptr_here = ret_ptr_level
             size: Optional[int] = None
+            is_array = False
             if self.cur().typ == TokenType.LBRACKET:
+                is_array = True
                 self.advance()
                 if self.cur().typ != TokenType.RBRACKET:
                     try:
@@ -920,10 +967,10 @@ class Parser:
                 self.advance()
                 if self.cur().typ == TokenType.LBRACE:
                     # Array or struct initializer
-                    if base_type.startswith("struct:") and size is not None:
-                        # Array of structs
+                    if base_type.startswith("struct:") and (size is not None or is_array):
+                        # Array of structs (either sized or [] flexible)
                         init = self._parse_struct_array_init(base_type, size)
-                    elif base_type.startswith("struct:") and size is None:
+                    elif base_type.startswith("struct:") and not is_array:
                         init = self.parse_struct_init(base_type)
                     elif size is not None or base_type in ("int", "char", "double"):
                         arr_init = self.parse_int_init_list(size)
@@ -1076,6 +1123,7 @@ class Parser:
             self.advance()
         match self.cur().typ:
             case _ if self.is_type_start() and self.peek().typ != TokenType.COLON:
+                leading_const = self.cur().typ == TokenType.KW_CONST
                 base_type = self.parse_type()
                 decls: List[Node] = []
                 while True:
@@ -1083,6 +1131,9 @@ class Parser:
                     while self.cur().typ == TokenType.STAR:
                         self.advance()
                         ptr_level += 1
+                    # Skip const/volatile qualifiers after stars (e.g., "int * const ptr")
+                    while self.cur().typ in (TokenType.KW_CONST, TokenType.KW_VOLATILE, TokenType.KW_RESTRICT):
+                        self.advance()
 
                     # Handle pointer-to-array or function pointer: int (*p)[4] or int (*fn)(int)
                     if self.cur().typ == TokenType.LPAREN:
@@ -1245,7 +1296,9 @@ class Parser:
                                 self.skip_init_braces()
                         else:
                             init = self.parse_expr()
-                    decls.append(Decl(name, base_type, ptr_level, size, init, is_static=is_static_local, extra_dims=extra_dims))
+                    # Track full const-qualified type for _Generic matching (e.g., "const int*")
+                    full_ty = ("const " + base_type + "*" * ptr_level) if (leading_const and ptr_level > 0) else ""
+                    decls.append(Decl(name, base_type, ptr_level, size, init, is_static=is_static_local, extra_dims=extra_dims, full_type=full_ty))
                     if self.cur().typ != TokenType.COMMA:
                         break
                     self.advance()
@@ -1621,10 +1674,12 @@ class Parser:
             op = self.cur().text
             self.advance()
             node = self.parse_unary()
-            if not isinstance(node, Var):
-                # Be permissive for system-header idioms; drop invalid inc/dec target.
-                return node
-            return IncDec(node.name, op, True)
+            if isinstance(node, Var):
+                return IncDec(node.name, op, True)
+            if isinstance(node, (Index, Member)) or (isinstance(node, UnaryOp) and node.op == "*"):
+                assign_op = "+=" if op == "++" else "-="
+                return AssignExpr(target=node, op=assign_op, expr=IntLit(1, ""))
+            return node
         return self.parse_postfix()
 
     def parse_postfix(self) -> Node:
@@ -1656,10 +1711,12 @@ class Parser:
             if self.cur().typ in (TokenType.PLUSPLUS, TokenType.MINUSMINUS):
                 op = self.cur().text
                 self.advance()
-                if not isinstance(node, Var):
-                    # Be permissive for system-header idioms; drop invalid inc/dec target.
-                    continue
-                node = IncDec(node.name, op, False)
+                if isinstance(node, Var):
+                    node = IncDec(node.name, op, False)
+                elif isinstance(node, (Index, Member)) or (isinstance(node, UnaryOp) and node.op == "*"):
+                    assign_op = "+=" if op == "++" else "-="
+                    node = AssignExpr(target=node, op=assign_op, expr=IntLit(1, ""))
+                # else: drop for other (invalid) targets
                 continue
             break
         return node
@@ -1686,27 +1743,95 @@ class Parser:
             self.advance()
         return args
 
+    def parse_generic(self) -> Node:
+        """Parse _Generic(controlling_expr, type: expr, ..., default: expr)."""
+        self.eat(TokenType.LPAREN)
+        ctrl = self.parse_expr()
+        self.eat(TokenType.COMMA)
+        assocs = []  # list of (type_str_or_None, Node)
+        while self.cur().typ != TokenType.RPAREN:
+            if self.cur().typ == TokenType.KW_DEFAULT:
+                self.advance()  # eat 'default'
+                self.eat(TokenType.COLON)
+                expr = self.parse_expr()
+                assocs.append((None, expr))
+            else:
+                # Parse type name (may include qualifiers, pointers, struct tags, etc.)
+                try:
+                    type_str = self.parse_type()
+                    # Parse pointer levels
+                    while self.cur().typ == TokenType.STAR:
+                        self.advance()
+                        type_str += "*"
+                    # Skip const/volatile after star
+                    while self.cur().typ in (TokenType.KW_CONST, TokenType.KW_VOLATILE, TokenType.KW_RESTRICT):
+                        self.advance()
+                    # Check for array suffix: int[4]
+                    if self.cur().typ == TokenType.LBRACKET:
+                        self.advance()
+                        if self.cur().typ == TokenType.NUM:
+                            self.advance()
+                        self.eat(TokenType.RBRACKET)
+                        type_str = type_str + "[]"
+                except Exception:
+                    # Skip until colon
+                    while self.cur().typ not in (TokenType.COLON, TokenType.RPAREN, TokenType.EOF):
+                        self.advance()
+                    type_str = "__unknown__"
+                self.eat(TokenType.COLON)
+                expr = self.parse_expr()
+                assocs.append((type_str, expr))
+            if self.cur().typ == TokenType.COMMA:
+                self.advance()
+            else:
+                break
+        self.eat(TokenType.RPAREN)
+        from ast_nodes import Generic
+        return Generic(ctrl, assocs)
+
     def parse_primary(self) -> Node:
         match self.cur().typ:
             case TokenType.NUM:
                 tok = self.eat(TokenType.NUM)
                 text = tok.text
-                if "." in text or "e" in text or "E" in text:
-                    return FloatLit(float(text))
+                if "." in text or (("e" in text or "E" in text) and not text.startswith(("0x", "0X"))):
+                    # Strip float suffixes (f, F, l, L)
+                    clean = text.rstrip("fFlL")
+                    return FloatLit(float(clean))
+                # Strip integer suffixes (u, U, l, L, ll, LL, ul, UL, etc.)
+                upper = text.upper()
+                suffix = ""
+                if upper.endswith("ULL") or upper.endswith("LLU"):
+                    suffix = "ULL"
+                    text = text[:-3]
+                elif upper.endswith("LL"):
+                    suffix = "LL"
+                    text = text[:-2]
+                elif upper.endswith("UL") or upper.endswith("LU"):
+                    suffix = "UL"
+                    text = text[:-2]
+                elif upper.endswith("U"):
+                    suffix = "U"
+                    text = text[:-1]
+                elif upper.endswith("L"):
+                    suffix = "L"
+                    text = text[:-1]
                 if text.startswith(("0x", "0X")):
-                    return IntLit(int(text, 16))
+                    return IntLit(int(text, 16), suffix)
                 if text.startswith(("0b", "0B")):
-                    return IntLit(int(text, 2))
+                    return IntLit(int(text, 2), suffix)
                 if len(text) > 1 and text[0] == "0" and text[1:].isdigit():
                     # Octal literal
-                    return IntLit(int(text, 8))
-                return IntLit(int(text))
+                    return IntLit(int(text, 8), suffix)
+                return IntLit(int(text), suffix)
             case TokenType.STRING:
                 tok = self.eat(TokenType.STRING)
                 # Handle adjacent string concatenation already done in lexer
                 return StringLit(tok.text)
             case TokenType.ID:
                 name = self.eat(TokenType.ID).text
+                if name == "_Generic" and self.cur().typ == TokenType.LPAREN:
+                    return self.parse_generic()
                 if self.cur().typ == TokenType.LPAREN:
                     self.advance()
                     args = self.parse_args()

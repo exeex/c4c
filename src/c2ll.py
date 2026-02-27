@@ -11,6 +11,20 @@ from lexer import Lexer
 from parser import Parser
 from sema import FunctionSig, SemanticAnalyzer
 
+# Map GCC/Clang math builtins to their standard library equivalents
+_MATH_BUILTIN_MAP: Dict[str, str] = {
+    "__builtin_fabs": "fabs", "__builtin_fabsf": "fabsf", "__builtin_fabsl": "fabsl",
+    "__builtin_sqrt": "sqrt", "__builtin_sqrtf": "sqrtf",
+    "__builtin_sin": "sin", "__builtin_cos": "cos",
+    "__builtin_floor": "floor", "__builtin_ceil": "ceil",
+    "__builtin_abs": "abs",
+    "__builtin_inf": "isinf", "__builtin_inff": "isinff",  # __builtin_inf returns infinity constant
+    "__builtin_isnan": "__isnan", "__builtin_isinf": "__isinf",
+    "__builtin_isfinite": "__isfinite", "__builtin_isnormal": "__isnormal",
+    "__builtin_signbit": "__signbit",
+}
+
+
 class IRBuilder:
     def __init__(self, prog: Program):
         self.prog = prog
@@ -109,6 +123,8 @@ class IRBuilder:
             return "i32"  # promote short to i32 for simplicity
         if ty in ("long", "unsigned long"):
             return "i32"  # use i32 for simplicity (matches most operations)
+        if ty == "float":
+            return "float"
         if ty == "double":
             return "double"
         return "i32"
@@ -186,6 +202,10 @@ class IRBuilder:
             t = self.tmp()
             self.emit(f"  {t} = fptosi double {v} to i32")
             return t
+        if ty == "float":
+            t = self.tmp()
+            self.emit(f"  {t} = fptosi float {v} to i32")
+            return t
         return v
 
     def emit_convert(self, v: str, src_ty: str, dst_ty: str) -> str:
@@ -229,6 +249,29 @@ class IRBuilder:
             self.emit(f"  {t2} = fptosi double {v} to i32")
             self.emit(f"  {t} = trunc i32 {t2} to i8")
             return t
+        # float (f32) conversions
+        if dst_ll == "float" and src_ll == "i32":
+            self.emit(f"  {t} = sitofp i32 {v} to float")
+            return t
+        if dst_ll == "float" and src_ll == "i8":
+            t2 = self.tmp()
+            self.emit(f"  {t2} = sext i8 {v} to i32")
+            self.emit(f"  {t} = sitofp i32 {t2} to float")
+            return t
+        if dst_ll == "float" and src_ll == "double":
+            self.emit(f"  {t} = fptrunc double {v} to float")
+            return t
+        if dst_ll == "double" and src_ll == "float":
+            self.emit(f"  {t} = fpext float {v} to double")
+            return t
+        if src_ll == "float" and dst_ll == "i32":
+            self.emit(f"  {t} = fptosi float {v} to i32")
+            return t
+        if src_ll == "float" and dst_ll == "i8":
+            t2 = self.tmp()
+            self.emit(f"  {t2} = fptosi float {v} to i32")
+            self.emit(f"  {t} = trunc i32 {t2} to i8")
+            return t
         return v
 
     def resolve_var_ptr(self, name: str) -> str:
@@ -247,7 +290,11 @@ class IRBuilder:
 
     def expr_type(self, n: Node) -> str:
         match n:
-            case IntLit():
+            case IntLit(suffix=suffix):
+                if suffix in ("LL", "ULL"):
+                    return "long long"
+                if suffix in ("L", "UL"):
+                    return "long"
                 return "int"
             case FloatLit():
                 return "double"
@@ -303,7 +350,11 @@ class IRBuilder:
                 if et.endswith("*"):
                     return et[:-1]
                 return "int"
-            case UnaryOp():
+            case UnaryOp(op=op):
+                if op in ("+", "-"):
+                    inner_ty = self.expr_type(n.expr)
+                    if inner_ty in ("double", "float"):
+                        return inner_ty
                 return "int"
             case Cast(typ=typ):
                 return typ
@@ -327,6 +378,16 @@ class IRBuilder:
                     return lt  # ptr + int or ptr - int → ptr
                 if rt.endswith("*") and not lt.endswith("*") and op == "+":
                     return rt  # int + ptr → ptr
+                # Float/double arithmetic: double wins over float
+                if (lt == "double" or rt == "double") and op in {"+", "-", "*", "/"}:
+                    return "double"
+                if (lt == "float" or rt == "float") and op in {"+", "-", "*", "/"}:
+                    return "float"
+                # Integer arithmetic: long long > long > int (usual arithmetic conversions)
+                if lt == "long long" or rt == "long long":
+                    return "long long"
+                if lt == "long" or rt == "long":
+                    return "long"
                 return "int"
             case AssignExpr(target=target, op=op):
                 if op == "=":
@@ -340,7 +401,9 @@ class IRBuilder:
             case IncDec():
                 return "int"
             case Call(name=name):
-                sig = self.func_sigs.get(name)
+                # Apply math builtin remapping to find the right signature
+                actual_name = _MATH_BUILTIN_MAP.get(name, name)
+                sig = self.func_sigs.get(actual_name) or self.func_sigs.get(name)
                 if sig is None:
                     return "int"
                 ret = sig.ret_type
@@ -349,6 +412,11 @@ class IRBuilder:
                 return ret
             case IndirectCall():
                 return "int"  # assume int return for indirect calls
+            case Generic(ctrl=ctrl, assocs=assocs):
+                selected = self._generic_select(ctrl, assocs)
+                if selected is not None:
+                    return self.expr_type(selected)
+                return "int"
             case _:
                 return "int"
 
@@ -365,22 +433,92 @@ class IRBuilder:
             return 8
         if ty.endswith("*") or ty in ("ptr", "char*"):
             return 8
+        if ty.startswith("arr_field:"):
+            parts = ty.split(":", 2)
+            return int(parts[1]) * self.sizeof_type(parts[2])
         if self.is_struct_type(ty):
             tag = ty.split(":", 1)[1]
             s = self.struct_defs.get(tag)
             if s is None:
                 return 8  # unknown struct default
-            return sum(self.sizeof_type(f.typ) for f in s.fields)
+            total = 0
+            for f in s.fields:
+                if f.array_size is not None:
+                    total += f.array_size * self.sizeof_type(f.typ)
+                else:
+                    total += self.sizeof_type(f.typ)
+            return total
         return 4  # default
 
     def sizeof_expr(self, n: Node) -> int:
         if isinstance(n, Var):
             name = n.name
             if name in self.local_arrays:
-                return self.local_arrays[name] * 4
+                elem = self.local_array_elem_types.get(name, "int")
+                return self.local_arrays[name] * self.sizeof_type(elem)
             if name in self.global_arrays:
-                return self.global_arrays[name] * 4
+                elem = self.global_array_elem_types.get(name, "int")
+                return self.global_arrays[name] * self.sizeof_type(elem)
+        # For member access on array fields, sizeof returns the full array size (no decay)
+        if isinstance(n, Member):
+            try:
+                mb_ty = self.expr_type(n.base)
+                if n.through_ptr and mb_ty.endswith("*"):
+                    mb_ty = mb_ty[:-1]
+                _, fty = self.struct_field(mb_ty, n.field)
+                if fty.startswith("arr_field:"):
+                    return self.sizeof_type(fty)
+            except Exception:
+                pass
         return self.sizeof_type(self.expr_type(n))
+
+    def _generic_normalize_type(self, ty: str) -> str:
+        """Normalize type for _Generic matching: strip top-level const/volatile, normalize names."""
+        # Remove trailing spaces, normalize
+        ty = ty.strip()
+        # Map unsigned → unsigned int, signed → int
+        if ty == "unsigned":
+            ty = "unsigned int"
+        # Strip const/volatile from non-pointer types (const int → int)
+        # For pointer types, strip TRAILING const (int * const → int *)
+        # This matches C11 semantics where controlling expression type is unqualified
+        return ty
+
+    def _generic_types_match(self, ctrl_ty: str, assoc_ty: str) -> bool:
+        """Check if _Generic association type matches the controlling expression type."""
+        ctrl = self._generic_normalize_type(ctrl_ty)
+        assoc = self._generic_normalize_type(assoc_ty)
+        if ctrl == assoc:
+            return True
+        # "int" matches "int", "const int", "signed int"
+        int_types = {"int", "signed int", "signed"}
+        if ctrl in int_types and assoc in int_types:
+            return True
+        # Pointer type matching: ptr* and its const variants
+        if ctrl.endswith("*") and assoc.endswith("*"):
+            # Strip trailing " const" from both for comparison
+            c = ctrl.rstrip().rstrip("const").rstrip().rstrip("volatile").rstrip()
+            a = assoc.rstrip().rstrip("const").rstrip().rstrip("volatile").rstrip()
+            return c == a
+        return False
+
+    def _generic_select(self, ctrl: Node, assocs) -> Optional["Node"]:
+        """Select the matching arm from _Generic associations."""
+        try:
+            # Use full const-qualified type for Var if available (for _Generic matching)
+            if isinstance(ctrl, Var) and ctrl.name in self.local_full_types:
+                ctrl_ty = self.local_full_types[ctrl.name]
+            else:
+                ctrl_ty = self.expr_type(ctrl)
+        except Exception:
+            ctrl_ty = "int"
+        default_expr = None
+        for assoc_ty, expr in assocs:
+            if assoc_ty is None:
+                default_expr = expr
+            elif self._generic_types_match(ctrl_ty, assoc_ty):
+                return expr
+        return default_expr
 
     def codegen_lvalue_ptr(self, n: Node) -> str:
         match n:
@@ -696,18 +834,20 @@ class IRBuilder:
                     raise CompileError("codegen error: void value used in binary operation")
                 lty = self.expr_type(lhs)
                 rty = self.expr_type(rhs)
-                # Check if double arithmetic is needed
+                # Check if float/double arithmetic is needed
                 is_double = lty == "double" or rty == "double"
-                if is_double and op in {"+", "-", "*", "/", "==", "!=", "<", "<=", ">", ">="}:
-                    ld = self.emit_convert(l, lty, "double")
-                    rd = self.emit_convert(r, rty, "double")
+                is_float = not is_double and (lty == "float" or rty == "float")
+                if (is_double or is_float) and op in {"+", "-", "*", "/", "==", "!=", "<", "<=", ">", ">="}:
+                    fp_ty = "double" if is_double else "float"
+                    ld = self.emit_convert(l, lty, fp_ty)
+                    rd = self.emit_convert(r, rty, fp_ty)
                     if op in {"+", "-", "*", "/"}:
                         dop = {"+": "fadd", "-": "fsub", "*": "fmul", "/": "fdiv"}[op]
-                        self.emit(f"  {t} = {dop} double {ld}, {rd}")
+                        self.emit(f"  {t} = {dop} {fp_ty} {ld}, {rd}")
                         return t
                     fcmp_map = {"==": "oeq", "!=": "one", "<": "olt", "<=": "ole", ">": "ogt", ">=": "oge"}
                     b = self.tmp()
-                    self.emit(f"  {b} = fcmp {fcmp_map[op]} double {ld}, {rd}")
+                    self.emit(f"  {b} = fcmp {fcmp_map[op]} {fp_ty} {ld}, {rd}")
                     self.emit(f"  {t} = zext i1 {b} to i32")
                     return t
                 l = self.promote_to_i32(l, lty)
@@ -805,10 +945,14 @@ class IRBuilder:
                     raise CompileError("codegen error: void value used in unary operation")
                 if op == "+":
                     return v
-                # Promote char/i8 values to i32 before arithmetic
                 vty = self.expr_type(expr)
-                v = self.promote_to_i32(v, vty)
                 t = self.tmp()
+                if op == "-" and vty in ("double", "float"):
+                    fp_ty = self.llvm_ty(vty)
+                    self.emit(f"  {t} = fneg {fp_ty} {v}")
+                    return t
+                # Promote char/i8 values to i32 before arithmetic
+                v = self.promote_to_i32(v, vty)
                 if op == "-":
                     self.emit(f"  {t} = sub i32 0, {v}")
                     return t
@@ -857,7 +1001,7 @@ class IRBuilder:
                 if src == "int" and dst == "int":
                     return v
                 # Integer type casts (short, unsigned, etc.) - promote/demote via i32
-                int_types = {"int", "short", "unsigned", "unsigned int", "unsigned short", "long", "unsigned long"}
+                int_types = {"int", "short", "unsigned", "unsigned int", "unsigned short", "long", "unsigned long", "long long", "unsigned long long"}
                 if src in int_types and dst in int_types:
                     return v  # both are i32 in our IR
                 if src in int_types and dst == "char":
@@ -886,7 +1030,7 @@ class IRBuilder:
                     return v  # (void)expr - just evaluate and discard
                 if dst == "ptr":
                     # Cast to function pointer type — treated as opaque ptr (inttoptr or bitcast)
-                    if src in ("int", "long", "unsigned", "unsigned long", "short"):
+                    if src in ("int", "long", "unsigned", "unsigned long", "short", "long long", "unsigned long long"):
                         p = self.tmp()
                         q = self.tmp()
                         self.emit(f"  {p} = sext i32 {v} to i64")
@@ -973,18 +1117,38 @@ class IRBuilder:
                     self.emit(f"  store ptr {t}, ptr {slot}")
                     return t
                 cur = self.tmp()
-                self.emit(f"  {cur} = load i32, ptr {slot}")
                 t = self.tmp()
-                op_map = {
-                    "+=": "add", "-=": "sub", "*=": "mul", "/=": "sdiv", "%=": "srem",
-                    "&=": "and", "|=": "or", "^=": "xor",
-                    "<<=": "shl", ">>=": "ashr",
-                }
-                llvm_op = op_map.get(op)
-                if llvm_op is None:
-                    raise CompileError(f"codegen error: unsupported assignment operator {op!r}")
-                self.emit(f"  {t} = {llvm_op} i32 {cur}, {rv}")
-                self.emit(f"  store i32 {t}, ptr {slot}")
+                if target_ty in ("double", "float"):
+                    # Float/double compound assignment
+                    dop_map = {"+=": "fadd", "-=": "fsub", "*=": "fmul", "/=": "fdiv"}
+                    dop = dop_map.get(op)
+                    if dop is None:
+                        raise CompileError(f"codegen error: unsupported assignment operator {op!r}")
+                    fp_ty = self.llvm_ty(target_ty)
+                    src_ty = self.expr_type(expr)
+                    self.emit(f"  {cur} = load {fp_ty}, ptr {slot}")
+                    # For float op= double: promote float to double, compute, store as float
+                    arith_ty = "double" if (target_ty == "float" and src_ty == "double") else target_ty
+                    arith_ll = self.llvm_ty(arith_ty)
+                    lhs_v = self.emit_convert(cur, target_ty, arith_ty)
+                    rhs_v = self.emit_convert(rv, src_ty, arith_ty)
+                    res = self.tmp()
+                    self.emit(f"  {res} = {dop} {arith_ll} {lhs_v}, {rhs_v}")
+                    result_v = self.emit_convert(res, arith_ty, target_ty)
+                    self.emit(f"  store {fp_ty} {result_v}, ptr {slot}")
+                    t = result_v
+                else:
+                    self.emit(f"  {cur} = load i32, ptr {slot}")
+                    op_map = {
+                        "+=": "add", "-=": "sub", "*=": "mul", "/=": "sdiv", "%=": "srem",
+                        "&=": "and", "|=": "or", "^=": "xor",
+                        "<<=": "shl", ">>=": "ashr",
+                    }
+                    llvm_op = op_map.get(op)
+                    if llvm_op is None:
+                        raise CompileError(f"codegen error: unsupported assignment operator {op!r}")
+                    self.emit(f"  {t} = {llvm_op} i32 {cur}, {rv}")
+                    self.emit(f"  store i32 {t}, ptr {slot}")
                 return t
             case IncDec(name=name, op=op, prefix=prefix):
                 vty = self.resolve_var_type(name)
@@ -1020,6 +1184,9 @@ class IRBuilder:
                     "__builtin___vprintf_chk": ("printf", [1]),
                     "__builtin___printf_chk": ("printf", [1]),
                 }
+                # Map math builtins to standard library equivalents
+                if name in _MATH_BUILTIN_MAP:
+                    name = _MATH_BUILTIN_MAP[name]
                 # Handle __builtin_expect(expr, expected) — just return expr
                 if name == "__builtin_expect":
                     if args:
@@ -1092,6 +1259,19 @@ class IRBuilder:
                         if aty == "char":
                             v = self.promote_to_i32(v, aty)
                             arg_ty = "i32"
+                        elif aty in ("long", "unsigned long"):
+                            # LP64: long is 64-bit; sign/zero-extend i32 → i64 for variadic
+                            t = self.tmp()
+                            ext_op = "zext" if aty == "unsigned long" else "sext"
+                            self.emit(f"  {t} = {ext_op} i32 {v} to i64")
+                            v = t
+                            arg_ty = "i64"
+                        elif aty == "float":
+                            # C default promotion: float → double in variadic calls
+                            t = self.tmp()
+                            self.emit(f"  {t} = fpext float {v} to double")
+                            v = t
+                            arg_ty = "double"
                         else:
                             arg_ty = self.llvm_ty(aty)
                     args_text.append(f"{arg_ty} {v}")
@@ -1201,6 +1381,11 @@ class IRBuilder:
                         except Exception:
                             pass
                 return result
+            case Generic(ctrl=ctrl, assocs=assocs):
+                selected = self._generic_select(ctrl, assocs)
+                if selected is not None:
+                    return self.codegen_expr(selected)
+                return "0"
             case _:
                 raise CompileError(f"codegen error: unsupported expr {type(n).__name__}")
 
@@ -1216,7 +1401,7 @@ class IRBuilder:
 
     def codegen_stmt(self, n: Node, fn_ret_type: str) -> bool:
         match n:
-            case Decl(name=name, base_type=base_type, ptr_level=ptr_level, size=size, init=init, is_static=is_static):
+            case Decl(name=name, base_type=base_type, ptr_level=ptr_level, size=size, init=init, is_static=is_static) as decl:
                 # Static local variables: use a global with a mangled name
                 if is_static:
                     gname = f"__static_{self._current_fn}_{name}"
@@ -1279,6 +1464,8 @@ class IRBuilder:
                     return False
                 if not already_hoisted:
                     self.local_types[name] = base_type + ("*" * ptr_level)
+                    if decl.full_type:
+                        self.local_full_types[name] = decl.full_type
                     self.emit(f"  {slot} = alloca {self.llvm_ty(self.local_types[name])}")
                 if init is not None:
                     if isinstance(init, StructInit):
@@ -1718,10 +1905,10 @@ class IRBuilder:
                 else:
                     self.emit(f"@{name} = global {self.llvm_ty(gty)} zeroinitializer")
                 continue
-            if gty == "double":
+            if gty in ("double", "float"):
                 init_val = 0 if init is None else self.eval_global_const(init)
-                # LLVM requires double constants in float notation
-                self.emit(f"@{name} = global double {float(init_val)}")
+                fp_ty = self.llvm_ty(gty)
+                self.emit(f"@{name} = global {fp_ty} {float(init_val)}")
                 continue
             init_val = 0 if init is None else self.eval_global_const(init)
             self.emit(f"@{name} = global i32 {init_val}")
@@ -1748,6 +1935,7 @@ class IRBuilder:
         self.slots = {}
         self.local_arrays = {}
         self.local_types = {}
+        self.local_full_types: Dict[str, str] = {}  # const-qualified types for _Generic matching
         self.local_array_elem_types = {}
         self._current_fn = fn.name
         self._current_fn_ret_type = fn.ret_type
@@ -2099,15 +2287,46 @@ class IRBuilder:
                 else:
                     vals.append(self._const_node_to_llvm(v_node, fty))
         else:
-            # Positional
+            # Positional - entries may be flat (one per scalar) or one per field
             vals = []
-            for i, f in enumerate(fields):
+            flat_idx = 0  # index into init.entries for flat initialization
+            for f in fields:
                 fty = field_ty(f)
-                if i < len(init.entries):
-                    _, v_node = init.entries[i]
-                    vals.append(self._const_node_to_llvm(v_node, fty))
-                else:
+                if flat_idx >= len(init.entries):
                     vals.append(self._zero_const(fty))
+                elif fty.startswith("arr_field:"):
+                    # Array field: check if the next entry is a StructInit/ArrayInit (nested)
+                    # or if we have flat scalars to collect
+                    parts = fty.split(":", 2)
+                    arr_n = int(parts[1])
+                    elem_ty = parts[2]
+                    elem_ll = self.llvm_ty(elem_ty)
+                    _, v_node = init.entries[flat_idx]
+                    if isinstance(v_node, (StructInit, ArrayInit)):
+                        # Nested brace initializer for the array
+                        vals.append(self._const_node_to_llvm(v_node, fty))
+                        flat_idx += 1
+                    else:
+                        # Flat scalars: consume arr_n entries for this array field
+                        arr_vals = []
+                        for _ in range(arr_n):
+                            if flat_idx < len(init.entries):
+                                _, sv = init.entries[flat_idx]
+                                flat_idx += 1
+                                try:
+                                    arr_vals.append(self.eval_global_const(sv))
+                                except Exception:
+                                    arr_vals.append(0)
+                            else:
+                                arr_vals.append(0)
+                        while len(arr_vals) < arr_n:
+                            arr_vals.append(0)
+                        vals_str = ", ".join(f"{elem_ll} {v}" for v in arr_vals[:arr_n])
+                        vals.append(f"[{arr_n} x {elem_ll}] [{vals_str}]")
+                else:
+                    _, v_node = init.entries[flat_idx]
+                    flat_idx += 1
+                    vals.append(self._const_node_to_llvm(v_node, fty))
         return "{" + ", ".join(vals) + "}"
 
     def _const_node_to_llvm(self, node: Node, typ: str) -> str:
@@ -2167,6 +2386,10 @@ class IRBuilder:
         if self.lines:
             self.emit("")
         for idx, fn in enumerate(self.prog.funcs):
+            # Skip stdlib-internal functions (names starting with __) defined in
+            # system headers; they use unsupported patterns and are never called directly.
+            if fn.name.startswith("__"):
+                continue
             self.codegen_function(fn)
             if idx != len(self.prog.funcs) - 1:
                 self.emit("")

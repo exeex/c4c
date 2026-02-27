@@ -43,6 +43,7 @@ class Decl(Node):
     init: Optional[Node]
     is_static: bool = False
     extra_dims: Optional[List[int]] = None  # for arr[M][N]: size=M, extra_dims=[N]
+    full_type: str = ""  # full const-qualified type for _Generic matching (e.g., "const int*")
 
 
 @dataclass
@@ -81,6 +82,7 @@ class Return(Node):
 @dataclass
 class IntLit(Node):
     value: int
+    suffix: str = ""  # "", "L", "LL", "U", "UL", "ULL"
 
 
 @dataclass
@@ -289,4 +291,11 @@ class CompoundLit(Node):
     """C99 compound literal: (type){ initializer } — anonymous object of given type."""
     typ: str
     init: Node
+
+
+@dataclass
+class Generic(Node):
+    """C11 _Generic(expr, type1: expr1, ..., default: exprD) selection expression."""
+    ctrl: Node  # controlling expression
+    assocs: List  # list of (type_str_or_None, Node) — None means 'default'
 

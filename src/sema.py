@@ -58,7 +58,7 @@ class SemanticAnalyzer:
         if t1 == t2:
             return True
         # char, short, and int are compatible (integer types)
-        if {t1, t2} <= {"int", "char", "double", "short", "unsigned", "unsigned int", "unsigned short", "long", "unsigned long"}:
+        if {t1, t2} <= {"int", "char", "float", "double", "short", "unsigned", "unsigned int", "unsigned short", "long", "unsigned long"}:
             return True
         # Array-to-pointer decay: array is compatible with any pointer type
         if t1 == "array" or t2 == "array":
@@ -518,7 +518,7 @@ class SemanticAnalyzer:
                 if name in vars_init:
                     vars_init[name] = True
                 vt = self.var_type(name)
-                if vt not in ("int", "char", "double") and not self.is_ptr_type(vt) and vt != "array":
+                if vt not in ("int", "char", "float", "double") and not self.is_ptr_type(vt) and vt != "array":
                     raise CompileError("semantic error: increment/decrement supports int/pointer only")
                 return vt
             case AssignExpr(target=target, op=op, expr=expr):
@@ -534,7 +534,7 @@ class SemanticAnalyzer:
                         vt = self.var_type(name)
                         if not self.types_compatible(et, vt):
                             raise CompileError("semantic error: assignment type mismatch")
-                        if op != "=" and vt not in ("int", "char", "short", "double", "long", "unsigned", "unsigned int", "unsigned long"):
+                        if op != "=" and vt not in ("int", "char", "short", "float", "double", "long", "unsigned", "unsigned int", "unsigned long"):
                             if not (vt.endswith("*") and op in ("+=", "-=")):
                                 raise CompileError(
                                     "semantic error: compound assignment supports int and pointer +/- only"
@@ -543,15 +543,11 @@ class SemanticAnalyzer:
                             vars_init[name] = True
                     case Index():
                         self.analyze_expr(target, vars_init)
-                        if op != "=":
-                            raise CompileError(
-                                "semantic error: compound assignment supports scalar variable only"
-                            )
                     case Member():
                         tt = self.analyze_expr(target, vars_init)
                         if not self.types_compatible(et, tt):
                             raise CompileError("semantic error: assignment type mismatch")
-                        if op != "=" and tt not in ("int", "char", "short", "double", "long", "unsigned", "unsigned int"):
+                        if op != "=" and tt not in ("int", "char", "short", "float", "double", "long", "unsigned", "unsigned int"):
                             raise CompileError(
                                 "semantic error: compound assignment supports int only"
                             )
@@ -694,7 +690,7 @@ class SemanticAnalyzer:
         return ty.startswith("struct:")
 
     def is_scalar_type(self, ty: str) -> bool:
-        return ty in ("int", "char", "double") or self.is_ptr_type(ty)
+        return ty in ("int", "char", "float", "double") or self.is_ptr_type(ty)
 
     def is_nullptr_constant(self, n: Node) -> bool:
         return isinstance(n, IntLit) and n.value == 0
