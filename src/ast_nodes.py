@@ -57,6 +57,7 @@ class GlobalVar(Node):
     ptr_level: int
     size: Optional[int]
     init: Optional[Node]
+    is_extern: bool = False
 
 
 @dataclass

@@ -28,6 +28,8 @@ class IRBuilder:
         self.global_vars: Dict[str, Optional[Node]] = {}
         self.global_arrays: Dict[str, int] = {}
         self.global_types: Dict[str, str] = {}
+        self.global_is_extern: Dict[str, bool] = {}
+        self.global_fp_target: Dict[str, str] = {}  # fptr var → target function name
         self.user_labels: Dict[str, str] = {}
         self.switch_case_stack: List[Dict[int, str]] = []
         self.switch_default_stack: List[Optional[str]] = []
@@ -47,6 +49,7 @@ class IRBuilder:
             self.func_sigs[d.name] = sig
         for g in prog.globals:
             self.global_vars[g.name] = g.init
+            self.global_is_extern[g.name] = g.is_extern
             # Compute effective size (may come from ArrayInit or StructArrayInit)
             eff_size = g.size
             if eff_size is None and isinstance(g.init, ArrayInit):
@@ -69,6 +72,11 @@ class IRBuilder:
                 self.global_array_elem_types[g.name] = "char"
             elif g.ptr_level > 0:
                 self.global_types[g.name] = g.base_type + ("*" * g.ptr_level)
+                # Track function pointer initializer target
+                if isinstance(g.init, UnaryOp) and g.init.op == "&" and isinstance(g.init.expr, Var):
+                    self.global_fp_target[g.name] = g.init.expr.name
+                elif isinstance(g.init, Var):
+                    self.global_fp_target[g.name] = g.init.name
             elif isinstance(g.init, StructInit):
                 # struct with brace initializer but no size
                 self.global_types[g.name] = g.base_type
@@ -250,7 +258,7 @@ class IRBuilder:
                 if name in self.func_sigs and name not in self.local_types and name not in self.global_types:
                     return "ptr"
                 vty = self.resolve_var_type(name)
-                if vty == "array":
+                if vty in ("array", "char_array"):
                     # Return pointer to element type for array-to-pointer decay
                     elem = self.local_array_elem_types.get(name) or self.global_array_elem_types.get(name, "int")
                     return elem + "*"
@@ -305,7 +313,14 @@ class IRBuilder:
                 return "int"
             case SizeofExpr():
                 return "int"
-            case BinOp():
+            case BinOp(op=op, lhs=lhs, rhs=rhs):
+                lt = self.expr_type(lhs)
+                rt = self.expr_type(rhs)
+                # Pointer arithmetic: ptr+int or int+ptr yields ptr; ptr-ptr yields int
+                if lt.endswith("*") and not rt.endswith("*"):
+                    return lt  # ptr + int or ptr - int → ptr
+                if rt.endswith("*") and not lt.endswith("*") and op == "+":
+                    return rt  # int + ptr → ptr
                 return "int"
             case AssignExpr(target=target, op=op):
                 if op == "=":
@@ -388,8 +403,9 @@ class IRBuilder:
                         if name in self.local_arrays:
                             n_elem = self.local_arrays[name]
                             arr_elem_ll = self.array_elem_llvm_ty(name)
+                            arr_ptr = self.slots.get(name, f"%{name}")
                             self.emit(
-                                f"  {t} = getelementptr inbounds [{n_elem} x {arr_elem_ll}], ptr %{name}, i32 0, i32 {idx}"
+                                f"  {t} = getelementptr inbounds [{n_elem} x {arr_elem_ll}], ptr {arr_ptr}, i32 0, i32 {idx}"
                             )
                             return t
                         if name in self.global_arrays:
@@ -550,7 +566,7 @@ class IRBuilder:
                 if name in self.func_sigs and name not in self.local_types and name not in self.global_types:
                     return f"@{name}"
                 vty = self.resolve_var_type(name)
-                if vty == "array":
+                if vty in ("array", "char_array"):
                     # Return pointer to first element (array-to-pointer decay)
                     slot = self.resolve_var_ptr(name)
                     sz = self.local_arrays.get(name) or self.global_arrays.get(name, 1)
@@ -1027,6 +1043,39 @@ class IRBuilder:
                             arg_ty = self.llvm_ty(aty)
                     args_text.append(f"{arg_ty} {v}")
                 if sig is None:
+                    # Check if name is a function pointer variable rather than a function
+                    is_fptr_var = (name in self.global_types or name in self.local_types) and name not in self.func_sigs
+                    if is_fptr_var:
+                        slot = self.slots.get(name) or (f"@{name}" if name in self.global_types else f"%{name}")
+                        fptr = self.tmp()
+                        self.emit(f"  {fptr} = load ptr, ptr {slot}")
+                        t = self.tmp()
+                        # Normalize arg types: struct pointers → ptr for indirect calls
+                        norm_args = []
+                        for at in args_text:
+                            parts = at.split(" ", 1)
+                            ty, val = (parts[0], parts[1]) if len(parts) == 2 else (at, "")
+                            if ty.endswith("*") and ty != "ptr":
+                                at = f"ptr {val}"
+                            norm_args.append(at)
+                        # Try to use the target function's signature for type annotation
+                        target_name = self.global_fp_target.get(name)
+                        target_sig = self.func_sigs.get(target_name) if target_name else None
+                        if target_sig is not None:
+                            llvm_ret_ty = self.llvm_ty(target_sig.ret_type)
+                            known_tys = ", ".join(self.llvm_ty(pt) for pt in target_sig.param_types)
+                            if target_sig.is_variadic:
+                                fn_ty = f"{llvm_ret_ty} ({known_tys}, ...)"
+                            else:
+                                fn_ty = f"{llvm_ret_ty} ({known_tys})"
+                            call_instr = f"call {fn_ty} {fptr}({', '.join(norm_args)})"
+                        else:
+                            call_instr = f"call i32 (...) {fptr}({', '.join(norm_args)})"
+                        if target_sig is not None and target_sig.ret_type == "void":
+                            self.emit(f"  {call_instr}")
+                            return None
+                        self.emit(f"  {t} = {call_instr}")
+                        return t
                     # undeclared function - assume returns int
                     t = self.tmp()
                     self.emit(f"  {t} = call i32 @{name}({', '.join(args_text)})")
@@ -1046,6 +1095,9 @@ class IRBuilder:
                 return t
             case IndirectCall(func=func, args=args):
                 # Call through function pointer: fp(args)
+                # Strip (*fp) — dereferencing a function pointer is a no-op in C
+                if isinstance(func, UnaryOp) and func.op == "*":
+                    func = func.expr
                 fptr = self.codegen_expr(func)
                 if fptr is None:
                     raise CompileError("codegen error: void function pointer")
@@ -1063,7 +1115,9 @@ class IRBuilder:
                     args_text.append(f"{arg_ty} {v}")
                 t = self.tmp()
                 args_str = ", ".join(args_text)
-                self.emit(f"  {t} = call i32 {fptr}({args_str})")
+                # Add function type annotation for correct ARM64 ABI
+                param_tys = ", ".join(a.rsplit(" ", 1)[0] for a in args_text)
+                self.emit(f"  {t} = call i32 ({param_tys}) {fptr}({args_str})")
                 return t
             case CompoundLit(typ=cl_typ, init=cl_init):
                 # Compound literal: create an anonymous alloca, init it, return pointer
@@ -1097,6 +1151,16 @@ class IRBuilder:
             case _:
                 raise CompileError(f"codegen error: unsupported expr {type(n).__name__}")
 
+    def has_label(self, n: Node) -> bool:
+        """Recursively check if a node tree contains any LabelStmt."""
+        match n:
+            case LabelStmt():
+                return True
+            case Block(body=body):
+                return any(self.has_label(st) for st in body)
+            case _:
+                return False
+
     def codegen_stmt(self, n: Node, fn_ret_type: str) -> bool:
         match n:
             case Decl(name=name, base_type=base_type, ptr_level=ptr_level, size=size, init=init, is_static=is_static):
@@ -1106,20 +1170,29 @@ class IRBuilder:
                     slot = f"@{gname}"
                     if name not in self.slots:
                         self.slots[name] = slot
-                        vty = base_type + ("*" * ptr_level)
-                        self.local_types[name] = vty
-                        # Emit as preamble global
-                        ll_ty = self.llvm_ty(vty)
-                        # Choose a safe zero-value: structs/arrays need zeroinitializer
-                        is_aggregate = ll_ty.startswith("%struct.") or ll_ty.startswith("[")
-                        zero_val = "zeroinitializer" if is_aggregate else "0"
-                        if init is not None:
-                            try:
-                                iv = self.eval_global_const(init)
-                                zero_val = str(iv)
-                            except Exception:
-                                pass  # keep zeroinitializer/0 as default
-                        self.preamble_lines.append(f"@{gname} = internal global {ll_ty} {zero_val}")
+                        if size is not None:
+                            # Static local array
+                            self.local_arrays[name] = size
+                            self.local_types[name] = "array"
+                            self.local_array_elem_types[name] = base_type
+                            elem_ll = self.llvm_ty(base_type)
+                            ll_ty = f"[{size} x {elem_ll}]"
+                            self.preamble_lines.append(f"@{gname} = internal global {ll_ty} zeroinitializer")
+                        else:
+                            vty = base_type + ("*" * ptr_level)
+                            self.local_types[name] = vty
+                            # Emit as preamble global
+                            ll_ty = self.llvm_ty(vty)
+                            # Choose a safe zero-value: structs/arrays need zeroinitializer
+                            is_aggregate = ll_ty.startswith("%struct.") or ll_ty.startswith("[")
+                            zero_val = "zeroinitializer" if is_aggregate else "0"
+                            if init is not None:
+                                try:
+                                    iv = self.eval_global_const(init)
+                                    zero_val = str(iv)
+                                except Exception:
+                                    pass  # keep zeroinitializer/0 as default
+                            self.preamble_lines.append(f"@{gname} = internal global {ll_ty} {zero_val}")
                     return False
                 slot = f"%{name}"
                 already_hoisted = name in self.slots
@@ -1172,8 +1245,9 @@ class IRBuilder:
                         if isinstance(st, (LabelStmt, Case, Default)):
                             terminated = self.codegen_stmt(st, fn_ret_type)
                         elif isinstance(st, Block):
-                            # Recurse into blocks even when terminated - they may contain labels
-                            terminated = self.codegen_stmt(st, fn_ret_type)
+                            # Recurse into blocks containing labels; skip label-free blocks
+                            if self.has_label(st):
+                                terminated = self.codegen_stmt(st, fn_ret_type)
                         elif isinstance(st, Decl):
                             # Always emit alloca even in dead code
                             self.codegen_stmt(st, fn_ret_type)
@@ -1513,6 +1587,18 @@ class IRBuilder:
             self.emit("")
 
         for name, init in self.global_vars.items():
+            # extern-declared globals with no explicit init → emit as external reference
+            if self.global_is_extern.get(name) and init is None:
+                gty = self.resolve_var_type(name)
+                if name in self.global_arrays:
+                    pass  # extern arrays: skip (let linker resolve)
+                elif gty.endswith("*"):
+                    self.emit(f"@{name} = external global ptr")
+                elif self.is_struct_type(gty):
+                    self.emit(f"@{name} = external global {self.llvm_ty(gty)}")
+                else:
+                    self.emit(f"@{name} = external global {self.llvm_ty(gty)}")
+                continue
             if name in self.global_arrays:
                 n_elem = self.global_arrays[name]
                 elem_ty = self.global_types.get(name, "int")
@@ -1655,8 +1741,10 @@ class IRBuilder:
                     terminated = self.codegen_label_stmt(
                         st.name, st.stmt, fn.ret_type, True
                     )
-                elif isinstance(st, Block):
+                elif isinstance(st, Block) and self.has_label(st):
+                    # Recurse into blocks that contain labels
                     terminated = self.codegen_stmt(st, fn.ret_type)
+                # skip all other dead code
                 continue
             terminated = self.codegen_stmt(st, fn.ret_type)
 

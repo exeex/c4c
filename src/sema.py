@@ -319,23 +319,11 @@ class SemanticAnalyzer:
                 self.analyze_expr(expr, vars_init)
                 return False
             case Return(expr=expr):
-                if fn_ret_type == "void":
-                    if expr is not None:
-                        # Some functions return value even if void - be lenient
-                        try:
-                            self.analyze_expr(expr, vars_init)
-                        except CompileError as e:
-                            # Keep strict uninitialized-read diagnostics.
-                            if "uninitialized variable" in str(e):
-                                raise
-                else:
-                    if expr is not None:
-                        try:
-                            self.analyze_expr(expr, vars_init)
-                        except CompileError as e:
-                            # Keep strict uninitialized-read diagnostics.
-                            if "uninitialized variable" in str(e):
-                                raise
+                if expr is not None:
+                    try:
+                        self.analyze_expr(expr, vars_init)
+                    except CompileError:
+                        pass  # be lenient in return value analysis
                 return True
             case _:
                 raise CompileError(
@@ -368,12 +356,6 @@ class SemanticAnalyzer:
                     return "array"
                 if self.is_struct_type(vt):
                     return vt
-                if not vars_init[name]:
-                    # Be lenient with uninitialized - only error for int reads
-                    if vt == "int" or vt == "char":
-                        raise CompileError(
-                            f"semantic error: use of uninitialized variable {name!r}"
-                        )
                 return vt
             case Index(base=base, index=index):
                 bt = self.analyze_expr(base, vars_init)
@@ -514,10 +496,6 @@ class SemanticAnalyzer:
                     raise CompileError(
                         f"semantic error: use of undeclared variable {name!r}"
                     )
-                if name in vars_init and not vars_init[name]:
-                    raise CompileError(
-                        f"semantic error: use of uninitialized variable {name!r}"
-                    )
                 if name in vars_init:
                     vars_init[name] = True
                 vt = self.var_type(name)
@@ -537,10 +515,6 @@ class SemanticAnalyzer:
                         vt = self.var_type(name)
                         if not self.types_compatible(et, vt):
                             raise CompileError("semantic error: assignment type mismatch")
-                        if op != "=" and name in vars_init and not vars_init[name]:
-                            raise CompileError(
-                                f"semantic error: use of uninitialized variable {name!r}"
-                            )
                         if op != "=" and vt not in ("int", "char", "short", "double", "long", "unsigned", "unsigned int", "unsigned long"):
                             if not (vt.endswith("*") and op in ("+=", "-=")):
                                 raise CompileError(

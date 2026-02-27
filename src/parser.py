@@ -724,6 +724,7 @@ class Parser:
 
     def parse_external(self) -> FunctionDecl | list[GlobalVar] | Function | None:
         is_typedef = False
+        is_extern = False
         if self.cur().typ == TokenType.KW_TYPEDEF:
             is_typedef = True
             self.advance()
@@ -732,6 +733,8 @@ class Parser:
             TokenType.KW_EXTERN, TokenType.KW_STATIC, TokenType.KW_INLINE,
             TokenType.KW_REGISTER,
         ):
+            if self.cur().typ == TokenType.KW_EXTERN:
+                is_extern = True
             self.advance()
 
         # Handle lone semicolons (e.g., after struct/enum definitions)
@@ -833,7 +836,7 @@ class Parser:
             if self.cur().typ == TokenType.SEMI:
                 self.advance()
             if fptr_var_name:
-                return [GlobalVar(fptr_var_name, "void", 1, None, fp_init)]
+                return [GlobalVar(fptr_var_name, "void", 1, None, fp_init, is_extern)]
             return None
 
         if self.cur().typ != TokenType.ID:
@@ -896,7 +899,7 @@ class Parser:
                     except CompileError:
                         init = None
             if ret_type != "void":
-                decls.append(GlobalVar(name, base_type, ptr_here, size, init))
+                decls.append(GlobalVar(name, base_type, ptr_here, size, init, is_extern))
             while self.cur().typ == TokenType.COMMA:
                 self.advance()
                 g_ptr_level = 0
@@ -928,7 +931,7 @@ class Parser:
                                 ginit = self.parse_expr()
                             except CompileError:
                                 ginit = None
-                    decls.append(GlobalVar(gname, base_type, g_ptr_level, gsize, ginit))
+                    decls.append(GlobalVar(gname, base_type, g_ptr_level, gsize, ginit, is_extern))
             self.eat(TokenType.SEMI)
             return decls if decls else None
 
@@ -969,7 +972,7 @@ class Parser:
                         if self.cur().typ == TokenType.ASSIGN:
                             self.advance()
                             init2 = self.parse_expr()
-                        result.append(GlobalVar(n2, ret_type, ptr2, sz2, init2))
+                        result.append(GlobalVar(n2, ret_type, ptr2, sz2, init2, is_extern))
             self.eat(TokenType.SEMI)
             return result
 
@@ -1031,7 +1034,7 @@ class Parser:
         elif self.cur().typ in (TokenType.KW_EXTERN, TokenType.KW_REGISTER):
             self.advance()
         match self.cur().typ:
-            case _ if self.is_type_start():
+            case _ if self.is_type_start() and self.peek().typ != TokenType.COLON:
                 base_type = self.parse_type()
                 decls: List[Node] = []
                 while True:

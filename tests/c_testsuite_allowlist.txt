@@ -41,6 +41,7 @@ tests/single-exec/00037.c
 tests/single-exec/00038.c
 tests/single-exec/00039.c
 tests/single-exec/00041.c
+tests/single-exec/00042.c
 tests/single-exec/00043.c
 tests/single-exec/00044.c
 tests/single-exec/00045.c
@@ -48,6 +49,7 @@ tests/single-exec/00046.c
 tests/single-exec/00047.c
 tests/single-exec/00048.c
 tests/single-exec/00049.c
+tests/single-exec/00050.c
 tests/single-exec/00051.c
 tests/single-exec/00052.c
 tests/single-exec/00053.c
@@ -113,6 +115,7 @@ tests/single-exec/00114.c
 tests/single-exec/00115.c
 tests/single-exec/00116.c
 tests/single-exec/00117.c
+tests/single-exec/00118.c
 tests/single-exec/00119.c
 tests/single-exec/00120.c
 tests/single-exec/00121.c
@@ -122,6 +125,7 @@ tests/single-exec/00125.c
 tests/single-exec/00126.c
 tests/single-exec/00127.c
 tests/single-exec/00128.c
+tests/single-exec/00129.c
 tests/single-exec/00131.c
 tests/single-exec/00132.c
 tests/single-exec/00133.c
@@ -139,6 +143,8 @@ tests/single-exec/00144.c
 tests/single-exec/00145.c
 tests/single-exec/00146.c
 tests/single-exec/00147.c
+tests/single-exec/00148.c
+tests/single-exec/00149.c
 tests/single-exec/00152.c
 tests/single-exec/00153.c
 tests/single-exec/00154.c
@@ -148,6 +154,7 @@ tests/single-exec/00157.c
 tests/single-exec/00158.c
 tests/single-exec/00160.c
 tests/single-exec/00161.c
+tests/single-exec/00162.c
 tests/single-exec/00163.c
 tests/single-exec/00164.c
 tests/single-exec/00165.c
@@ -166,12 +173,14 @@ tests/single-exec/00178.c
 tests/single-exec/00179.c
 tests/single-exec/00180.c
 tests/single-exec/00181.c
+tests/single-exec/00182.c
 tests/single-exec/00183.c
 tests/single-exec/00184.c
 tests/single-exec/00185.c
 tests/single-exec/00186.c
 tests/single-exec/00187.c
 tests/single-exec/00188.c
+tests/single-exec/00189.c
 tests/single-exec/00190.c
 tests/single-exec/00191.c
 tests/single-exec/00192.c
@@ -179,6 +188,7 @@ tests/single-exec/00193.c
 tests/single-exec/00194.c
 tests/single-exec/00195.c
 tests/single-exec/00196.c
+tests/single-exec/00197.c
 tests/single-exec/00198.c
 tests/single-exec/00199.c
 tests/single-exec/00200.c
@@ -186,6 +196,11 @@ tests/single-exec/00201.c
 tests/single-exec/00202.c
 tests/single-exec/00203.c
 tests/single-exec/00206.c
+tests/single-exec/00207.c
 tests/single-exec/00208.c
+tests/single-exec/00211.c
 tests/single-exec/00212.c
+tests/single-exec/00213.c
+tests/single-exec/00214.c
 tests/single-exec/00215.c
+tests/single-exec/00217.c
