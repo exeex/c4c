@@ -68,21 +68,23 @@ class Parser:
                     self.advance()
                     self.skip_type_qualifiers()
                     return "double"
-                # long long, long int, etc.
+                # long long int, long long, etc.
+                is_long_long = False
                 if self.cur().typ == TokenType.KW_LONG:
                     self.advance()
+                    is_long_long = True
                 if self.cur().typ == TokenType.KW_INT:
                     self.advance()
                 if self.cur().typ == TokenType.KW_UNSIGNED:
                     self.advance()
                 self.skip_type_qualifiers()
-                return "int"
+                return "long"
             case TokenType.KW_SHORT:
                 self.advance()
                 if self.cur().typ == TokenType.KW_INT:
                     self.advance()
                 self.skip_type_qualifiers()
-                return "int"
+                return "short"
             case TokenType.KW_UNSIGNED:
                 self.advance()
                 # unsigned int, unsigned long, unsigned char, etc.
@@ -126,6 +128,7 @@ class Parser:
                 if self.cur().typ == TokenType.LBRACE:
                     self.advance()
                     fields: List[StructField] = []
+                    union_aliases_pending: Dict[str, int] = {}
                     while self.cur().typ != TokenType.RBRACE:
                         # Allow empty declarations like just a semicolon
                         if self.cur().typ == TokenType.SEMI:
@@ -136,18 +139,42 @@ class Parser:
                         while self.cur().typ == TokenType.STAR:
                             self.advance()
                             field_ptr += 1
-                        # Function pointer field: skip it entirely
+                        # Function pointer field: int (*fptr)(int) - add as ptr field
                         if self.cur().typ == TokenType.LPAREN:
-                            # e.g. int (*fptr)(int) - skip entire declarator
-                            depth = 0
-                            while self.cur().typ != TokenType.SEMI or depth > 0:
+                            # e.g. int (*fptr)(int) - parse name and add as ptr
+                            self.advance()  # eat (
+                            while self.cur().typ == TokenType.STAR:
+                                self.advance()
+                            fptr_name = None
+                            if self.cur().typ == TokenType.ID:
+                                fptr_name = self.eat(TokenType.ID).text
+                            # Skip rest of declarator and params
+                            depth = 1
+                            while depth > 0 and self.cur().typ != TokenType.EOF:
                                 if self.cur().typ == TokenType.LPAREN:
                                     depth += 1
                                 elif self.cur().typ == TokenType.RPAREN:
                                     depth -= 1
-                                elif self.cur().typ == TokenType.EOF:
-                                    break
+                                if depth > 0:
+                                    self.advance()
+                            if self.cur().typ == TokenType.RPAREN:
                                 self.advance()
+                            # Skip optional parameter list
+                            if self.cur().typ == TokenType.LPAREN:
+                                depth = 0
+                                while True:
+                                    if self.cur().typ == TokenType.LPAREN:
+                                        depth += 1
+                                    elif self.cur().typ == TokenType.RPAREN:
+                                        depth -= 1
+                                        if depth == 0:
+                                            self.advance()
+                                            break
+                                    elif self.cur().typ == TokenType.EOF:
+                                        break
+                                    self.advance()
+                            if fptr_name:
+                                fields.append(StructField("ptr", fptr_name))
                             if self.cur().typ == TokenType.SEMI:
                                 self.advance()
                             continue
@@ -159,7 +186,15 @@ class Parser:
                             anon_tag = field_base.split(":", 1)[1]
                             anon_def = self.struct_defs.get(anon_tag)
                             if anon_def is not None:
-                                fields.extend(anon_def.fields)
+                                if anon_def.is_union and anon_def.fields:
+                                    # For anonymous unions, add only representative (first) field
+                                    rep_idx = len(fields)
+                                    fields.append(anon_def.fields[0])
+                                    # All union fields alias the same slot
+                                    for uf in anon_def.fields:
+                                        union_aliases_pending[uf.name] = rep_idx
+                                else:
+                                    fields.extend(anon_def.fields)
                             self.advance()  # eat SEMI
                             continue
                         if self.cur().typ == TokenType.SEMI:
@@ -169,10 +204,20 @@ class Parser:
                         field_name = self.eat(TokenType.ID).text
                         # Handle array field: int arr[N] or arr[N][M] (multi-dim)
                         if self.cur().typ == TokenType.LBRACKET:
-                            # Skip all array dimensions
+                            # Parse first dimension size
+                            arr_size = None
+                            self.advance()  # eat [
+                            try:
+                                arr_size = self._parse_const_int()
+                            except Exception:
+                                pass
+                            while self.cur().typ not in (TokenType.RBRACKET, TokenType.EOF):
+                                self.advance()
+                            if self.cur().typ == TokenType.RBRACKET:
+                                self.advance()
+                            # Skip remaining dimensions
                             while self.cur().typ == TokenType.LBRACKET:
                                 self.advance()
-                                # Skip expression inside brackets (may be complex like 256/8)
                                 depth = 1
                                 while self.cur().typ != TokenType.EOF and depth > 0:
                                     if self.cur().typ == TokenType.LBRACKET:
@@ -183,8 +228,7 @@ class Parser:
                                         self.advance()
                                 if self.cur().typ == TokenType.RBRACKET:
                                     self.advance()
-                            # Store as array field - just use base type for simplicity
-                            fields.append(StructField(field_base + ("*" * field_ptr), field_name))
+                            fields.append(StructField(field_base + ("*" * field_ptr), field_name, array_size=arr_size))
                             # Handle multiple names: int a[4], b[4];
                             while self.cur().typ == TokenType.COMMA:
                                 self.advance()
@@ -269,8 +313,14 @@ class Parser:
                         tag = f"__anon{self.anon_struct_idx}"
                         self.anon_struct_idx += 1
                     prefix = "union" if is_union else "struct"
-                    self.struct_defs[tag] = StructDef(tag, fields)
-                    return f"struct:{tag}"
+                    # If tag already defined, use unique name to avoid overriding outer scope
+                    actual_tag = tag
+                    if tag in self.struct_defs:
+                        actual_tag = f"{tag}__inner{self.anon_struct_idx}"
+                        self.anon_struct_idx += 1
+                    ua = union_aliases_pending if union_aliases_pending else None
+                    self.struct_defs[actual_tag] = StructDef(actual_tag, fields, is_union=is_union, union_aliases=ua)
+                    return f"struct:{actual_tag}"
                 if tag is None:
                     # Forward reference without body - can't do much, return placeholder
                     tag = f"__anon{self.anon_struct_idx}"
@@ -448,9 +498,11 @@ class Parser:
                     self.skip_type_qualifiers()
                 if self.cur().typ == TokenType.LBRACKET:
                     self.advance()
-                    if self.cur().typ == TokenType.NUM:
+                    # Skip everything between [ and ] (qualifiers, size, etc.)
+                    while self.cur().typ not in (TokenType.RBRACKET, TokenType.EOF):
                         self.advance()
-                    self.eat(TokenType.RBRACKET)
+                    if self.cur().typ == TokenType.RBRACKET:
+                        self.advance()
                     # array param becomes pointer
                     if not typ.endswith("*"):
                         typ = typ + "*"
@@ -471,7 +523,13 @@ class Parser:
             if isinstance(ext, FunctionDecl):
                 decls.append(ext)
             elif isinstance(ext, list):
-                globals_.extend(ext)
+                for item in ext:
+                    if isinstance(item, FunctionDecl):
+                        decls.append(item)
+                    elif isinstance(item, GlobalVar):
+                        globals_.append(item)
+                    elif isinstance(item, Function):
+                        funcs.append(item)
             else:
                 funcs.append(ext)
         self.eat(TokenType.EOF)
@@ -492,6 +550,121 @@ class Parser:
                     self.advance()
                     return
             self.advance()
+
+    def parse_int_init_list(self, explicit_size: Optional[int]) -> "ArrayInit":
+        """Parse a brace-enclosed integer array initializer like {1, 2, [3]=4, 5}.
+        Returns an ArrayInit node with the full expanded value list."""
+        from ast_nodes import ArrayInit
+        self.eat(TokenType.LBRACE)
+        # Collect (index, value) pairs
+        entries: List[tuple[Optional[int], int]] = []
+        cur_idx = 0
+        while self.cur().typ != TokenType.RBRACE and self.cur().typ != TokenType.EOF:
+            # Check for designated initializer: [N] = val
+            if self.cur().typ == TokenType.LBRACKET:
+                self.advance()
+                idx_val = self._parse_const_int()
+                self.eat(TokenType.RBRACKET)
+                self.eat(TokenType.ASSIGN)
+                cur_idx = idx_val
+            # Skip nested braces (for struct sub-initializers) - just try to get an int
+            if self.cur().typ == TokenType.LBRACE:
+                # Nested initializer for struct element - skip for now, store 0
+                self.skip_init_braces()
+                entries.append((cur_idx, 0))
+                cur_idx += 1
+            else:
+                try:
+                    val = self._parse_const_int()
+                    entries.append((cur_idx, val))
+                except Exception:
+                    # Skip non-constant expressions
+                    while self.cur().typ not in (TokenType.COMMA, TokenType.RBRACE, TokenType.EOF):
+                        self.advance()
+                    entries.append((cur_idx, 0))
+                cur_idx += 1
+            if self.cur().typ == TokenType.COMMA:
+                self.advance()
+        if self.cur().typ == TokenType.RBRACE:
+            self.advance()
+        # Compute size
+        if entries:
+            max_idx = max(idx for idx, _ in entries)
+            arr_size = max(explicit_size or 0, max_idx + 1)
+        else:
+            arr_size = explicit_size or 0
+        # Expand to full array
+        vals = [0] * max(arr_size, 1)
+        for idx, val in entries:
+            if 0 <= idx < len(vals):
+                vals[idx] = val
+        return ArrayInit(vals)
+
+    def parse_struct_init(self, struct_type: str) -> "StructInit":
+        """Parse a brace-enclosed struct initializer {.a=1, .b=2} or {1, 2}."""
+        self.eat(TokenType.LBRACE)
+        entries = []
+        while self.cur().typ != TokenType.RBRACE and self.cur().typ != TokenType.EOF:
+            field_name = None
+            if self.cur().typ == TokenType.DOT:
+                self.advance()
+                if self.cur().typ == TokenType.ID:
+                    field_name = self.eat(TokenType.ID).text
+                if self.cur().typ == TokenType.ASSIGN:
+                    self.advance()
+            # Parse the value expression
+            if self.cur().typ == TokenType.LBRACE:
+                # Nested struct/array initializer - parse recursively
+                sub = self.parse_struct_init("")
+                entries.append((field_name, sub))
+            else:
+                try:
+                    val = self.parse_assignment()
+                    entries.append((field_name, val))
+                except Exception:
+                    while self.cur().typ not in (TokenType.COMMA, TokenType.RBRACE, TokenType.EOF):
+                        self.advance()
+                    entries.append((field_name, IntLit(0)))
+            if self.cur().typ == TokenType.COMMA:
+                self.advance()
+        if self.cur().typ == TokenType.RBRACE:
+            self.advance()
+        return StructInit(entries)
+
+    def _parse_struct_array_init(self, elem_type: str, explicit_size: Optional[int]) -> "StructArrayInit":
+        """Parse a brace-enclosed array-of-structs initializer like {[1]={...}, [0]={...}}."""
+        from ast_nodes import StructArrayInit
+        self.eat(TokenType.LBRACE)
+        entries: List[tuple[int, Optional[object]]] = []
+        cur_idx = 0
+        while self.cur().typ != TokenType.RBRACE and self.cur().typ != TokenType.EOF:
+            # Check for designated initializer: [N] = {val}
+            if self.cur().typ == TokenType.LBRACKET:
+                self.advance()
+                idx_val = self._parse_const_int()
+                self.eat(TokenType.RBRACKET)
+                if self.cur().typ == TokenType.ASSIGN:
+                    self.advance()
+                cur_idx = idx_val
+            if self.cur().typ == TokenType.LBRACE:
+                entries.append((cur_idx, self.parse_struct_init(elem_type)))
+            else:
+                # scalar value where struct expected - skip
+                while self.cur().typ not in (TokenType.COMMA, TokenType.RBRACE, TokenType.EOF):
+                    self.advance()
+                entries.append((cur_idx, None))
+            cur_idx += 1
+            if self.cur().typ == TokenType.COMMA:
+                self.advance()
+        if self.cur().typ == TokenType.RBRACE:
+            self.advance()
+        # Compute size
+        if entries:
+            max_idx = max(idx for idx, _ in entries)
+            arr_size = max(explicit_size or 0, max_idx + 1)
+        else:
+            arr_size = explicit_size or 0
+        return StructArrayInit(entries, arr_size)
 
     def parse_global_declarator(
         self, base_type: str
@@ -620,22 +793,47 @@ class Parser:
 
         # Handle function pointer global variable: int (*name)(...) [= val];
         if self.cur().typ == TokenType.LPAREN and self.peek().typ == TokenType.STAR:
-            # Skip function pointer variable declaration
-            while self.cur().typ not in (TokenType.SEMI, TokenType.EOF):
-                t = self.cur()
+            self.advance()  # eat (
+            while self.cur().typ == TokenType.STAR:
                 self.advance()
-                if t.typ == TokenType.LBRACE:
-                    # This is actually a function definition masquerading - skip
-                    depth = 1
-                    while self.cur().typ != TokenType.EOF and depth > 0:
-                        if self.cur().typ == TokenType.LBRACE:
-                            depth += 1
-                        elif self.cur().typ == TokenType.RBRACE:
-                            depth -= 1
+            # Get the name of the function pointer variable
+            fptr_var_name = None
+            if self.cur().typ == TokenType.ID:
+                fptr_var_name = self.eat(TokenType.ID).text
+            # Skip rest of declarator up to closing ) of (*name)
+            depth = 1
+            while self.cur().typ != TokenType.EOF:
+                if self.cur().typ == TokenType.LPAREN:
+                    depth += 1
+                elif self.cur().typ == TokenType.RPAREN:
+                    depth -= 1
+                    if depth == 0:
                         self.advance()
-                    return None
+                        break
+                self.advance()
+            # Skip parameter list: (...)
+            if self.cur().typ == TokenType.LPAREN:
+                depth = 0
+                while True:
+                    if self.cur().typ == TokenType.LPAREN:
+                        depth += 1
+                    elif self.cur().typ == TokenType.RPAREN:
+                        depth -= 1
+                        if depth == 0:
+                            self.advance()
+                            break
+                    elif self.cur().typ == TokenType.EOF:
+                        break
+                    self.advance()
+            # Parse optional initializer
+            fp_init = None
+            if self.cur().typ == TokenType.ASSIGN:
+                self.advance()
+                fp_init = self.parse_expr()
             if self.cur().typ == TokenType.SEMI:
                 self.advance()
+            if fptr_var_name:
+                return [GlobalVar(fptr_var_name, "void", 1, None, fp_init)]
             return None
 
         if self.cur().typ != TokenType.ID:
@@ -656,8 +854,14 @@ class Parser:
             size: Optional[int] = None
             if self.cur().typ == TokenType.LBRACKET:
                 self.advance()
-                if self.cur().typ == TokenType.NUM:
-                    size = int(self.eat(TokenType.NUM).text)
+                if self.cur().typ != TokenType.RBRACKET:
+                    try:
+                        size = self._parse_const_int()
+                    except Exception:
+                        size = None
+                    # Skip any remaining tokens before ]
+                    while self.cur().typ not in (TokenType.RBRACKET, TokenType.EOF):
+                        self.advance()
                 if self.cur().typ == TokenType.RBRACKET:
                     self.eat(TokenType.RBRACKET)
                 # Multi-dimensional: skip
@@ -671,7 +875,21 @@ class Parser:
             if self.cur().typ == TokenType.ASSIGN:
                 self.advance()
                 if self.cur().typ == TokenType.LBRACE:
-                    self.skip_init_braces()
+                    # Array or struct initializer
+                    if base_type.startswith("struct:") and size is not None:
+                        # Array of structs
+                        init = self._parse_struct_array_init(base_type, size)
+                    elif base_type.startswith("struct:") and size is None:
+                        init = self.parse_struct_init(base_type)
+                    elif size is not None or base_type in ("int", "char", "double"):
+                        arr_init = self.parse_int_init_list(size)
+                        # Update size from initializer if not specified
+                        if size is None:
+                            size = len(arr_init.values)
+                        init = arr_init
+                    else:
+                        # Could be struct init
+                        init = self.parse_struct_init(base_type)
                 else:
                     try:
                         init = self.parse_expr()
@@ -698,7 +916,13 @@ class Parser:
                     if self.cur().typ == TokenType.ASSIGN:
                         self.advance()
                         if self.cur().typ == TokenType.LBRACE:
-                            self.skip_init_braces()
+                            if base_type.startswith("struct:") and gsize is None:
+                                ginit = self.parse_struct_init(base_type)
+                            else:
+                                arr_init2 = self.parse_int_init_list(gsize)
+                                if gsize is None:
+                                    gsize = len(arr_init2.values)
+                                ginit = arr_init2
                         else:
                             try:
                                 ginit = self.parse_expr()
@@ -715,6 +939,39 @@ class Parser:
         if self.cur().typ == TokenType.SEMI:
             self.advance()
             return FunctionDecl(ret_type, name, params)
+
+        # Multiple declarators on one line: int f(int a), g(int a), x;
+        if self.cur().typ == TokenType.COMMA:
+            result = [FunctionDecl(ret_type, name, params)]
+            while self.cur().typ == TokenType.COMMA:
+                self.advance()
+                ptr2 = 0
+                while self.cur().typ == TokenType.STAR:
+                    self.advance()
+                    ptr2 += 1
+                if self.cur().typ == TokenType.ID:
+                    n2 = self.eat(TokenType.ID).text
+                    if self.cur().typ == TokenType.LPAREN:
+                        self.advance()
+                        p2 = self.parse_params()
+                        self.eat(TokenType.RPAREN)
+                        result.append(FunctionDecl(ret_type + ("*" * ptr2), n2, p2))
+                    else:
+                        # Variable declaration
+                        sz2 = None
+                        if self.cur().typ == TokenType.LBRACKET:
+                            self.advance()
+                            if self.cur().typ == TokenType.NUM:
+                                sz2 = int(self.eat(TokenType.NUM).text)
+                            if self.cur().typ == TokenType.RBRACKET:
+                                self.advance()
+                        init2 = None
+                        if self.cur().typ == TokenType.ASSIGN:
+                            self.advance()
+                            init2 = self.parse_expr()
+                        result.append(GlobalVar(n2, ret_type, ptr2, sz2, init2))
+            self.eat(TokenType.SEMI)
+            return result
 
         self.eat(TokenType.LBRACE)
         body: List[Node] = []
@@ -767,7 +1024,11 @@ class Parser:
                     self.advance()
             return EmptyStmt()
         # Skip storage class specifiers at statement level (static, extern, register)
-        if self.cur().typ in (TokenType.KW_STATIC, TokenType.KW_EXTERN, TokenType.KW_REGISTER):
+        is_static_local = False
+        if self.cur().typ == TokenType.KW_STATIC:
+            is_static_local = True
+            self.advance()
+        elif self.cur().typ in (TokenType.KW_EXTERN, TokenType.KW_REGISTER):
             self.advance()
         match self.cur().typ:
             case _ if self.is_type_start():
@@ -829,14 +1090,39 @@ class Parser:
                         continue
 
                     name = self.eat(TokenType.ID).text
+                    # Local function prototype: int f1(char *);
+                    if self.cur().typ == TokenType.LPAREN:
+                        # Skip the parameter list and treat as empty decl
+                        depth = 0
+                        while True:
+                            if self.cur().typ == TokenType.LPAREN:
+                                depth += 1
+                            elif self.cur().typ == TokenType.RPAREN:
+                                depth -= 1
+                                if depth == 0:
+                                    self.advance()
+                                    break
+                            elif self.cur().typ == TokenType.EOF:
+                                break
+                            self.advance()
+                        if self.cur().typ != TokenType.COMMA:
+                            break
+                        self.advance()
+                        continue
                     size: Optional[int] = None
                     if self.cur().typ == TokenType.LBRACKET:
                         self.advance()
-                        if self.cur().typ == TokenType.NUM:
-                            size = int(self.eat(TokenType.NUM).text)
-                        else:
+                        if self.cur().typ == TokenType.RBRACKET:
                             size = 1  # int a[] - default to 1
-                        self.eat(TokenType.RBRACKET)
+                        else:
+                            try:
+                                size = self._parse_const_int()
+                            except Exception:
+                                size = 1
+                            while self.cur().typ not in (TokenType.RBRACKET, TokenType.EOF):
+                                self.advance()
+                        if self.cur().typ == TokenType.RBRACKET:
+                            self.advance()
                         # Skip extra dimensions [M] - just ignore
                         while self.cur().typ == TokenType.LBRACKET:
                             self.advance()
@@ -848,11 +1134,20 @@ class Parser:
                     if self.cur().typ == TokenType.ASSIGN:
                         self.advance()
                         if self.cur().typ == TokenType.LBRACE:
-                            # Skip array/struct initializer
-                            self.skip_init_braces()
+                            # Parse array/struct initializer
+                            if size is not None:
+                                # Array init
+                                init = self.parse_int_init_list(size)
+                            elif (base_type.startswith("struct:") and
+                                  base_type.split(":", 1)[1] in self.struct_defs) or \
+                                 base_type in self.typedef_names:
+                                # Struct init
+                                init = self.parse_struct_init(base_type)
+                            else:
+                                self.skip_init_braces()
                         else:
                             init = self.parse_expr()
-                    decls.append(Decl(name, base_type, ptr_level, size, init))
+                    decls.append(Decl(name, base_type, ptr_level, size, init, is_static=is_static_local))
                     if self.cur().typ != TokenType.COMMA:
                         break
                     self.advance()
@@ -1174,6 +1469,26 @@ class Parser:
                     cast_ty = cast_ty + ("*" * ptr_level)
                     if self.cur().typ == TokenType.RPAREN:
                         self.advance()
+                        # Compound literal: (type) { ... }
+                        if self.cur().typ == TokenType.LBRACE:
+                            from ast_nodes import CompoundLit
+                            base = cast_ty.rstrip("*")
+                            if base.startswith("struct:") and base.split(":", 1)[1] in self.struct_defs:
+                                init = self.parse_struct_init(base)
+                            else:
+                                # Generic: skip the brace block and return a zero lit
+                                depth = 0
+                                while self.cur().typ != TokenType.EOF:
+                                    if self.cur().typ == TokenType.LBRACE:
+                                        depth += 1
+                                    elif self.cur().typ == TokenType.RBRACE:
+                                        depth -= 1
+                                        if depth == 0:
+                                            self.advance()
+                                            break
+                                    self.advance()
+                                return IntLit(0)
+                            return CompoundLit(cast_ty, init)
                         return Cast(cast_ty, self.parse_unary())
                 except CompileError:
                     pass
@@ -1218,6 +1533,13 @@ class Parser:
                 field = self.eat(TokenType.ID).text
                 node = Member(node, field, True)
                 continue
+            if self.cur().typ == TokenType.LPAREN and not isinstance(node, Var):
+                # Indirect function call through expression: expr(args)
+                self.advance()
+                args = self.parse_args()
+                self.eat(TokenType.RPAREN)
+                node = IndirectCall(node, args)
+                continue
             if self.cur().typ in (TokenType.PLUSPLUS, TokenType.MINUSMINUS):
                 op = self.cur().text
                 self.advance()
@@ -1254,7 +1576,18 @@ class Parser:
     def parse_primary(self) -> Node:
         match self.cur().typ:
             case TokenType.NUM:
-                return IntLit(int(self.eat(TokenType.NUM).text))
+                tok = self.eat(TokenType.NUM)
+                text = tok.text
+                if "." in text or "e" in text or "E" in text:
+                    return FloatLit(float(text))
+                if text.startswith(("0x", "0X")):
+                    return IntLit(int(text, 16))
+                if text.startswith(("0b", "0B")):
+                    return IntLit(int(text, 2))
+                if len(text) > 1 and text[0] == "0" and text[1:].isdigit():
+                    # Octal literal
+                    return IntLit(int(text, 8))
+                return IntLit(int(text))
             case TokenType.STRING:
                 tok = self.eat(TokenType.STRING)
                 # Handle adjacent string concatenation already done in lexer
@@ -1269,6 +1602,17 @@ class Parser:
                 return Var(name)
             case TokenType.LPAREN:
                 self.advance()
+                # GCC statement expression: ({ stmts... })
+                if self.cur().typ == TokenType.LBRACE:
+                    self.advance()  # eat {
+                    stmts = []
+                    while self.cur().typ not in (TokenType.RBRACE, TokenType.EOF):
+                        stmt = self.parse_stmt()
+                        stmts.append(stmt)
+                    self.eat(TokenType.RBRACE)
+                    self.eat(TokenType.RPAREN)
+                    from ast_nodes import StmtExpr
+                    return StmtExpr(stmts)
                 n = self.parse_expr()
                 self.eat(TokenType.RPAREN)
                 return n

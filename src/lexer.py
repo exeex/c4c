@@ -269,7 +269,7 @@ class Lexer:
         while self.cur() and self.cur() in "uUlLfF":
             self.advance()
         if is_float:
-            return Token(TokenType.NUM, str(int(float("".join(buf)))), start_line, start_col)
+            return Token(TokenType.NUM, "".join(buf), start_line, start_col)
         return Token(TokenType.NUM, "".join(buf), start_line, start_col)
 
     def scan_string(self) -> Token:

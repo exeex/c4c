@@ -21,6 +21,9 @@ class SemanticAnalyzer:
         self.local_types: Dict[str, str] = {}
         self.labels: set[str] = set()
         self.enum_consts: Dict[str, int] = {}
+        # Track element types for arrays (needed for struct array member access)
+        self.local_array_elem_types: Dict[str, str] = {}
+        self.global_array_elem_types: Dict[str, str] = {}
 
     def ensure_sig(self, name: str, sig: FunctionSig) -> None:
         prev = self.func_sigs.get(name)
@@ -50,8 +53,11 @@ class SemanticAnalyzer:
         """Check if two types are compatible for assignment."""
         if t1 == t2:
             return True
-        # char and int are compatible
-        if {t1, t2} <= {"int", "char", "double"}:
+        # char, short, and int are compatible (integer types)
+        if {t1, t2} <= {"int", "char", "double", "short", "unsigned", "unsigned int", "unsigned short", "long", "unsigned long"}:
+            return True
+        # Array-to-pointer decay: array is compatible with any pointer type
+        if t1 == "array" or t2 == "array":
             return True
         # Any pointer to void* and back
         if t1 == "void*" or t2 == "void*":
@@ -83,6 +89,16 @@ class SemanticAnalyzer:
                 sz = max(g.size, 1)
                 self.global_arrays[g.name] = sz
                 self.global_types[g.name] = "array"
+                self.global_array_elem_types[g.name] = g.base_type
+            elif g.ptr_level == 0 and g.base_type == "char" and isinstance(g.init, StringLit):
+                # char s[] = "..." - treat as array for indexing purposes
+                str_len = len(g.init.value) + 1
+                self.global_arrays[g.name] = str_len
+                self.global_types[g.name] = "array"
+                self.global_array_elem_types[g.name] = "char"
+            elif g.ptr_level == 0 and g.base_type == "char" and hasattr(g.init, '__class__') and g.init is None:
+                # char s[] with no explicit size and no init - just a char global
+                self.global_types[g.name] = g.base_type
             elif g.ptr_level > 0:
                 self.global_types[g.name] = g.base_type + ("*" * g.ptr_level)
             else:
@@ -119,6 +135,7 @@ class SemanticAnalyzer:
         vars_init: Dict[str, bool] = {}
         self.local_arrays = {}
         self.local_types = {}
+        self.local_array_elem_types = {}
         self.labels = set()
         for st in fn.body:
             self.collect_labels(st)
@@ -153,6 +170,7 @@ class SemanticAnalyzer:
                     sz = max(size, 1)
                     self.local_arrays[name] = sz
                     self.local_types[name] = "array"
+                    self.local_array_elem_types[name] = base_type
                     vars_init[name] = True
                     # init is None (we skip array initializers during parsing)
                     return False
@@ -328,6 +346,8 @@ class SemanticAnalyzer:
         match n:
             case IntLit():
                 return "int"
+            case FloatLit():
+                return "double"
             case StringLit():
                 return "char*"
             case Var(name=name):
@@ -337,6 +357,9 @@ class SemanticAnalyzer:
                     # Check enum constants
                     if name in self.enum_consts:
                         return "int"
+                    # Allow function names as function pointer values
+                    if name in self.func_sigs:
+                        return "ptr"
                     raise CompileError(
                         f"semantic error: use of undeclared variable {name!r}"
                     )
@@ -361,6 +384,11 @@ class SemanticAnalyzer:
                 if it not in ("int", "char"):
                     raise CompileError("semantic error: index must be int")
                 if bt == "array":
+                    # Return element type for struct arrays (enables member access on array elements)
+                    if isinstance(base, Var):
+                        elem_ty = self.local_array_elem_types.get(base.name) or self.global_array_elem_types.get(base.name)
+                        if elem_ty and elem_ty != "int":
+                            return elem_ty
                     return "int"
                 if self.is_ptr_type(bt):
                     return bt[:-1]
@@ -466,7 +494,13 @@ class SemanticAnalyzer:
                     return tyt
                 if self.is_ptr_type(tye) and self.is_nullptr_constant(then_expr):
                     return tye
-                raise CompileError("semantic error: ternary branch type mismatch")
+                # Allow void in one branch (e.g. statement expression with no trailing value)
+                if tyt == "void":
+                    return tye
+                if tye == "void":
+                    return tyt
+                # Numeric type mismatch — coerce to wider type
+                return tyt
             case SizeofExpr(typ=typ, expr=expr):
                 if typ is not None:
                     self.sizeof_type(typ)
@@ -507,7 +541,7 @@ class SemanticAnalyzer:
                             raise CompileError(
                                 f"semantic error: use of uninitialized variable {name!r}"
                             )
-                        if op != "=" and vt != "int":
+                        if op != "=" and vt not in ("int", "char", "short", "double", "long", "unsigned", "unsigned int", "unsigned long"):
                             if not (vt.endswith("*") and op in ("+=", "-=")):
                                 raise CompileError(
                                     "semantic error: compound assignment supports int and pointer +/- only"
@@ -524,7 +558,7 @@ class SemanticAnalyzer:
                         tt = self.analyze_expr(target, vars_init)
                         if not self.types_compatible(et, tt):
                             raise CompileError("semantic error: assignment type mismatch")
-                        if op != "=" and tt != "int":
+                        if op != "=" and tt not in ("int", "char", "short", "double", "long", "unsigned", "unsigned int"):
                             raise CompileError(
                                 "semantic error: compound assignment supports int only"
                             )
@@ -559,6 +593,31 @@ class SemanticAnalyzer:
                     except CompileError:
                         pass
                 return sig.ret_type
+            case IndirectCall(func=func, args=args):
+                try:
+                    self.analyze_expr(func, vars_init)
+                except CompileError:
+                    pass
+                for arg in args:
+                    try:
+                        self.analyze_expr(arg, vars_init)
+                    except CompileError:
+                        pass
+                return "int"
+            case FloatLit():
+                return "double"
+            case StmtExpr(stmts=stmts):
+                last_ty = "void"
+                for i, st in enumerate(stmts):
+                    is_last = (i == len(stmts) - 1)
+                    if is_last and isinstance(st, ExprStmt):
+                        last_ty = self.analyze_expr(st.expr, vars_init)
+                    else:
+                        try:
+                            self.analyze_stmt(st, vars_init, "int", 0)
+                        except CompileError:
+                            pass
+                return last_ty
             case _:
                 raise CompileError(
                     f"semantic error: unsupported expr node {type(n).__name__}"
@@ -568,6 +627,8 @@ class SemanticAnalyzer:
         match n:
             case IntLit(value=value):
                 return value
+            case FloatLit(value=value):
+                return int(value)
             case StringLit():
                 return 0  # treat as non-null pointer constant
             case Var(name=name):
@@ -675,12 +736,26 @@ class SemanticAnalyzer:
         return self.sizeof_type(ty)
 
     def lookup_struct_field_type(self, struct_ty: str, field: str) -> str:
+        if ":" not in struct_ty:
+            raise CompileError(f"semantic error: {struct_ty!r} is not a struct type")
         tag = struct_ty.split(":", 1)[1]
         s = self.struct_defs.get(tag)
         if s is None:
             raise CompileError(f"semantic error: unknown struct type {struct_ty!r}")
+        # Check union aliases first (for anonymous unions inlined into parent)
+        if s.union_aliases and field in s.union_aliases:
+            idx = s.union_aliases[field]
+            for uf in s.fields:
+                if uf.name == field:
+                    return uf.typ
+            if idx < len(s.fields):
+                return s.fields[idx].typ
+            return "int"
         for f in s.fields:
             if f.name == field:
+                # Array fields: return "array" so indexing is allowed
+                if f.array_size is not None:
+                    return "array"
                 return f.typ
         raise CompileError(f"semantic error: unknown field {field!r} in {struct_ty!r}")
 

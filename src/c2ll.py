@@ -35,6 +35,11 @@ class IRBuilder:
         self.string_idx = 0
         self.used_intrinsics: set = set()  # track LLVM intrinsics used
         self.enum_consts: Dict[str, int] = dict(prog.enum_consts) if prog.enum_consts else {}
+        self._current_fn: str = ""
+        self._current_fn_ret_type: str = "void"
+        # Track element types for arrays
+        self.local_array_elem_types: Dict[str, str] = {}
+        self.global_array_elem_types: Dict[str, str] = {}
         for d in prog.decls:
             params = [p.typ for p in d.params if p.typ != "..."]
             is_var = any(p.typ == "..." for p in d.params)
@@ -42,19 +47,31 @@ class IRBuilder:
             self.func_sigs[d.name] = sig
         for g in prog.globals:
             self.global_vars[g.name] = g.init
-            if g.size is not None:
-                self.global_arrays[g.name] = g.size
+            # Compute effective size (may come from ArrayInit or StructArrayInit)
+            eff_size = g.size
+            if eff_size is None and isinstance(g.init, ArrayInit):
+                eff_size = len(g.init.values)
+            if eff_size is None and isinstance(g.init, StructArrayInit):
+                eff_size = g.init.size
+            if eff_size is not None:
+                self.global_arrays[g.name] = eff_size
                 if g.base_type == "char" and g.ptr_level == 0:
                     self.global_types[g.name] = "char_array"
+                    self.global_array_elem_types[g.name] = "char"
                 else:
                     self.global_types[g.name] = "array"
+                    self.global_array_elem_types[g.name] = g.base_type
             elif g.ptr_level == 0 and g.base_type == "char" and isinstance(g.init, StringLit):
                 # char name[] = "..." - infer array size from string
                 str_len = len(g.init.value) + 1  # +1 for null terminator
                 self.global_arrays[g.name] = str_len
                 self.global_types[g.name] = "char_array"
+                self.global_array_elem_types[g.name] = "char"
             elif g.ptr_level > 0:
                 self.global_types[g.name] = g.base_type + ("*" * g.ptr_level)
+            elif isinstance(g.init, StructInit):
+                # struct with brace initializer but no size
+                self.global_types[g.name] = g.base_type
             else:
                 self.global_types[g.name] = g.base_type
         for fn in prog.funcs:
@@ -65,6 +82,12 @@ class IRBuilder:
     def llvm_ty(self, ty: str) -> str:
         if ty == "void":
             return "void"
+        # Array field type: arr_field:N:elemtype
+        if ty.startswith("arr_field:"):
+            parts = ty.split(":", 2)
+            n = int(parts[1])
+            elem = self.llvm_ty(parts[2])
+            return f"[{n} x {elem}]"
         if ty.startswith("struct:"):
             tag = ty.split(":", 1)[1]
             return f"%struct.{tag}"
@@ -72,22 +95,60 @@ class IRBuilder:
             return "ptr"
         if ty == "char":
             return "i8"
+        if ty in ("short", "unsigned short"):
+            return "i32"  # promote short to i32 for simplicity
+        if ty in ("long", "unsigned long"):
+            return "i32"  # use i32 for simplicity (matches most operations)
         if ty == "double":
             return "double"
         return "i32"
 
     def struct_field(self, struct_ty: str, field: str) -> tuple[int, str]:
+        if ":" not in struct_ty:
+            raise CompileError(f"codegen error: {struct_ty!r} is not a struct type")
         tag = struct_ty.split(":", 1)[1]
         s = self.struct_defs.get(tag)
         if s is None:
             raise CompileError(f"codegen error: unknown struct type {struct_ty!r}")
+        # Check union aliases first (for anonymous unions inlined into parent)
+        if s.union_aliases and field in s.union_aliases:
+            idx = s.union_aliases[field]
+            # Find the field type - search all original fields by name
+            for uf in s.fields:
+                if uf.name == field:
+                    return idx, uf.typ
+            # Fallback: return the representative field's type
+            if idx < len(s.fields):
+                return idx, s.fields[idx].typ
+            return idx, "int"
         for i, f in enumerate(s.fields):
             if f.name == field:
-                return i, f.typ
+                # For unions, all fields are at index 0
+                # For array fields, encode array size in type string
+                if f.array_size is not None:
+                    arr_ty = f"arr_field:{f.array_size}:{f.typ}"
+                    return 0 if s.is_union else i, arr_ty
+                return 0 if s.is_union else i, f.typ
         raise CompileError(f"codegen error: unknown field {field!r} in {struct_ty!r}")
 
     def is_struct_type(self, ty: str) -> bool:
         return ty.startswith("struct:")
+
+    def ptr_elem_llvm_ty(self, ptr_ty: str) -> str:
+        """Return LLVM element type for pointer arithmetic GEP stride."""
+        if ptr_ty == "char*":
+            return "i8"
+        if ptr_ty == "double*":
+            return "double"
+        if ptr_ty.endswith("*"):
+            elem = ptr_ty[:-1]
+            return self.llvm_ty(elem)
+        return "i32"  # default
+
+    def array_elem_llvm_ty(self, name: str) -> str:
+        """Return LLVM element type for array GEP stride."""
+        elem_ty = self.local_array_elem_types.get(name) or self.global_array_elem_types.get(name, "int")
+        return self.llvm_ty(elem_ty)
 
     def tmp(self) -> str:
         t = f"%t{self.tmp_idx}"
@@ -104,6 +165,7 @@ class IRBuilder:
 
     def emit_label(self, label: str) -> None:
         self.emit(f"{label}:")
+        self.flow_terminated = False  # a new basic block is reachable (via label)
 
     def promote_to_i32(self, v: str, ty: str) -> str:
         if ty == "char":
@@ -126,8 +188,13 @@ class IRBuilder:
             return v
         if dst_ll == "void":
             return v
-        # don't convert ptr <-> non-ptr (would need inttoptr/ptrtoint - skip)
-        if src_ll == "ptr" or dst_ll == "ptr":
+        # pointer conversions
+        if dst_ll == "ptr":
+            # integer 0 → null pointer
+            if v in ("0", "null"):
+                return "null"
+            return v
+        if src_ll == "ptr":
             return v
         t = self.tmp()
         if src_ll == "i8" and dst_ll == "i32":
@@ -172,22 +239,45 @@ class IRBuilder:
         match n:
             case IntLit():
                 return "int"
+            case FloatLit():
+                return "double"
             case StringLit():
                 return "char*"
             case Var(name=name):
                 if name in self.enum_consts:
                     return "int"
+                # Function name used as function pointer value (not shadowed by local/global var)
+                if name in self.func_sigs and name not in self.local_types and name not in self.global_types:
+                    return "ptr"
                 vty = self.resolve_var_type(name)
                 if vty == "array":
-                    return "int*"
+                    # Return pointer to element type for array-to-pointer decay
+                    elem = self.local_array_elem_types.get(name) or self.global_array_elem_types.get(name, "int")
+                    return elem + "*"
                 return vty
-            case Index():
+            case Index(base=base, index=index):
+                # Determine element type from base
+                bt = self.expr_type(base)
+                if bt == "array":
+                    # Should not happen since Var now returns elem*
+                    return "int"
+                if bt.endswith("*"):
+                    return bt[:-1]
+                # Fallback: check if base is Var with known elem type
+                if isinstance(base, Var):
+                    elem = self.local_array_elem_types.get(base.name) or self.global_array_elem_types.get(base.name)
+                    if elem:
+                        return elem
                 return "int"
             case Member(base=base, field=field, through_ptr=through_ptr):
                 bt = self.expr_type(base)
                 if through_ptr and bt.endswith("*"):
                     bt = bt[:-1]
                 _, fty = self.struct_field(bt, field)
+                # Array fields: return element pointer type (array-to-pointer decay)
+                if fty.startswith("arr_field:"):
+                    parts = fty.split(":", 2)
+                    return parts[2] + "*"
                 return fty
             case UnaryOp(op="&"):
                 et = self.expr_type(n.expr)
@@ -236,14 +326,20 @@ class IRBuilder:
                 if ret == "void":
                     return "void"
                 return ret
+            case IndirectCall():
+                return "int"  # assume int return for indirect calls
             case _:
                 return "int"
 
     def sizeof_type(self, ty: str) -> int:
         if ty == "char":
             return 1
-        if ty in ("int", "float"):
+        if ty in ("short", "unsigned short"):
+            return 2
+        if ty in ("int", "float", "unsigned", "unsigned int"):
             return 4
+        if ty in ("long", "unsigned long"):
+            return 8  # LP64: long is 8 bytes on 64-bit platforms
         if ty == "double":
             return 8
         if ty.endswith("*") or ty in ("ptr", "char*"):
@@ -280,30 +376,46 @@ class IRBuilder:
                 idx = self.codegen_expr(index)
                 if idx is None:
                     raise CompileError("codegen error: invalid array index")
+                # Determine element LLVM type for GEP stride
+                base_type_str = self.expr_type(base)
+                if base_type_str.endswith("*"):
+                    elem_ll = self.ptr_elem_llvm_ty(base_type_str)
+                else:
+                    elem_ll = "i32"  # fallback
                 match base:
                     case Var(name=name):
                         t = self.tmp()
                         if name in self.local_arrays:
                             n_elem = self.local_arrays[name]
+                            arr_elem_ll = self.array_elem_llvm_ty(name)
                             self.emit(
-                                f"  {t} = getelementptr inbounds [{n_elem} x i32], ptr %{name}, i32 0, i32 {idx}"
+                                f"  {t} = getelementptr inbounds [{n_elem} x {arr_elem_ll}], ptr %{name}, i32 0, i32 {idx}"
                             )
                             return t
                         if name in self.global_arrays:
                             n_elem = self.global_arrays[name]
+                            arr_elem_ll = self.array_elem_llvm_ty(name)
                             self.emit(
-                                f"  {t} = getelementptr inbounds [{n_elem} x i32], ptr @{name}, i32 0, i32 {idx}"
+                                f"  {t} = getelementptr inbounds [{n_elem} x {arr_elem_ll}], ptr @{name}, i32 0, i32 {idx}"
                             )
                             return t
-                        if self.resolve_var_type(name).endswith("*"):
+                        vty = self.resolve_var_type(name)
+                        if vty.endswith("*"):
                             base_ptr = self.codegen_expr(base)
                             if base_ptr is None:
                                 raise CompileError("codegen error: invalid pointer base")
-                            self.emit(f"  {t} = getelementptr inbounds i32, ptr {base_ptr}, i32 {idx}")
+                            stride_ty = self.ptr_elem_llvm_ty(vty)
+                            self.emit(f"  {t} = getelementptr inbounds {stride_ty}, ptr {base_ptr}, i32 {idx}")
                             return t
                         raise CompileError("codegen error: index base must be array variable")
                     case _:
-                        raise CompileError("codegen error: index base must be a variable")
+                        # Non-variable base (e.g., member access result, function call result)
+                        t = self.tmp()
+                        base_ptr = self.codegen_expr(base)
+                        if base_ptr is None:
+                            raise CompileError("codegen error: invalid array base expression")
+                        self.emit(f"  {t} = getelementptr inbounds {elem_ll}, ptr {base_ptr}, i32 {idx}")
+                        return t
             case Member(base=base, field=field, through_ptr=through_ptr):
                 bt = self.expr_type(base)
                 if through_ptr:
@@ -328,6 +440,8 @@ class IRBuilder:
     def eval_global_const(self, n: Node) -> int:
         match n:
             case IntLit(value=value):
+                return value
+            case FloatLit(value=value):
                 return value
             case UnaryOp(op=op, expr=expr):
                 v = self.eval_global_const(expr)
@@ -418,6 +532,9 @@ class IRBuilder:
         match n:
             case IntLit(value=value):
                 return str(value)
+            case FloatLit(value=value):
+                # LLVM requires IEEE 754 hex for exact double constants, but decimal works too
+                return repr(value)
             case StringLit(value=value):
                 gname = self.get_string_global(value)
                 length = len(value) + 1
@@ -428,13 +545,18 @@ class IRBuilder:
                 # Check enum constants
                 if name in self.enum_consts:
                     return str(self.enum_consts[name])
+                # Check if it's a function name used as function pointer
+                # (only if not shadowed by a local or global variable)
+                if name in self.func_sigs and name not in self.local_types and name not in self.global_types:
+                    return f"@{name}"
                 vty = self.resolve_var_type(name)
                 if vty == "array":
-                    # Return pointer to first element
+                    # Return pointer to first element (array-to-pointer decay)
                     slot = self.resolve_var_ptr(name)
                     sz = self.local_arrays.get(name) or self.global_arrays.get(name, 1)
+                    elem_ll = self.array_elem_llvm_ty(name)
                     t = self.tmp()
-                    self.emit(f"  {t} = getelementptr inbounds [{sz} x i32], ptr {slot}, i32 0, i32 0")
+                    self.emit(f"  {t} = getelementptr inbounds [{sz} x {elem_ll}], ptr {slot}, i32 0, i32 0")
                     return t
                 slot = self.resolve_var_ptr(name)
                 t = self.tmp()
@@ -443,9 +565,28 @@ class IRBuilder:
             case Index():
                 ptr = self.codegen_lvalue_ptr(n)
                 t = self.tmp()
-                self.emit(f"  {t} = load i32, ptr {ptr}")
+                elem_ty = self.expr_type(n)
+                elem_ll = self.llvm_ty(elem_ty)
+                self.emit(f"  {t} = load {elem_ll}, ptr {ptr}")
                 return t
-            case Member():
+            case Member(base=mb, field=mf, through_ptr=mtp):
+                # Get struct type to check if field is an array field
+                mb_ty = self.expr_type(mb)
+                if mtp and mb_ty.endswith("*"):
+                    mb_ty = mb_ty[:-1]
+                try:
+                    _, raw_fty = self.struct_field(mb_ty, mf)
+                except Exception:
+                    raw_fty = "int"
+                if raw_fty.startswith("arr_field:"):
+                    # Array field: return pointer to first element (array-to-pointer decay)
+                    ptr = self.codegen_lvalue_ptr(n)
+                    parts = raw_fty.split(":", 2)
+                    n_elem = int(parts[1])
+                    elem_ll = self.llvm_ty(parts[2])
+                    t = self.tmp()
+                    self.emit(f"  {t} = getelementptr inbounds [{n_elem} x {elem_ll}], ptr {ptr}, i32 0, i32 0")
+                    return t
                 ptr = self.codegen_lvalue_ptr(n)
                 t = self.tmp()
                 mty = self.expr_type(n)
@@ -515,16 +656,19 @@ class IRBuilder:
                 r = self.promote_to_i32(r, rty)
                 if op in {"+", "-", "*", "/", "%", "&", "|", "^", "<<", ">>"}:
                     if op in {"+", "-"} and (lty.endswith("*") or rty.endswith("*")):
-                        if op == "+" and lty.endswith("*") and rty == "int":
-                            self.emit(f"  {t} = getelementptr inbounds i32, ptr {l}, i32 {r}")
+                        if op == "+" and lty.endswith("*") and rty in ("int", "char"):
+                            stride = self.ptr_elem_llvm_ty(lty)
+                            self.emit(f"  {t} = getelementptr inbounds {stride}, ptr {l}, i32 {r}")
                             return t
-                        if op == "+" and lty == "int" and rty.endswith("*"):
-                            self.emit(f"  {t} = getelementptr inbounds i32, ptr {r}, i32 {l}")
+                        if op == "+" and lty in ("int", "char") and rty.endswith("*"):
+                            stride = self.ptr_elem_llvm_ty(rty)
+                            self.emit(f"  {t} = getelementptr inbounds {stride}, ptr {r}, i32 {l}")
                             return t
-                        if op == "-" and lty.endswith("*") and rty == "int":
+                        if op == "-" and lty.endswith("*") and rty in ("int", "char"):
                             neg = self.tmp()
                             self.emit(f"  {neg} = sub i32 0, {r}")
-                            self.emit(f"  {t} = getelementptr inbounds i32, ptr {l}, i32 {neg}")
+                            stride = self.ptr_elem_llvm_ty(lty)
+                            self.emit(f"  {t} = getelementptr inbounds {stride}, ptr {l}, i32 {neg}")
                             return t
                         if op == "-" and lty.endswith("*") and rty.endswith("*"):
                             li = self.tmp()
@@ -535,7 +679,8 @@ class IRBuilder:
                             self.emit(f"  {delta} = sub i64 {li}, {ri}")
                             self.emit(f"  {t} = trunc i64 {delta} to i32")
                             s = self.tmp()
-                            self.emit(f"  {s} = sdiv i32 {t}, 4")
+                            elem_size = 1 if lty == "char*" else 4
+                            self.emit(f"  {s} = sdiv i32 {t}, {elem_size}")
                             return s
                     op_map = {
                         "+": "add",
@@ -580,6 +725,9 @@ class IRBuilder:
                 raise CompileError(f"codegen error: unsupported binary operator {op!r}")
             case UnaryOp(op=op, expr=expr):
                 if op == "&":
+                    # &func_name == pointer to function
+                    if isinstance(expr, Var) and expr.name in self.func_sigs and expr.name not in self.local_types and expr.name not in self.global_types:
+                        return f"@{expr.name}"
                     return self.codegen_lvalue_ptr(expr)
                 if op == "*":
                     pv = self.codegen_expr(expr)
@@ -597,13 +745,19 @@ class IRBuilder:
                     raise CompileError("codegen error: void value used in unary operation")
                 if op == "+":
                     return v
+                # Promote char/i8 values to i32 before arithmetic
+                vty = self.expr_type(expr)
+                v = self.promote_to_i32(v, vty)
                 t = self.tmp()
                 if op == "-":
                     self.emit(f"  {t} = sub i32 0, {v}")
                     return t
                 if op == "!":
                     b = self.tmp()
-                    self.emit(f"  {b} = icmp eq i32 {v}, 0")
+                    if vty.endswith("*"):
+                        self.emit(f"  {b} = icmp eq ptr {v}, null")
+                    else:
+                        self.emit(f"  {b} = icmp eq i32 {v}, 0")
                     self.emit(f"  {t} = zext i1 {b} to i32")
                     return t
                 if op == "~":
@@ -642,6 +796,34 @@ class IRBuilder:
                     return q
                 if src == "int" and dst == "int":
                     return v
+                # Integer type casts (short, unsigned, etc.) - promote/demote via i32
+                int_types = {"int", "short", "unsigned", "unsigned int", "unsigned short", "long", "unsigned long"}
+                if src in int_types and dst in int_types:
+                    return v  # both are i32 in our IR
+                if src in int_types and dst == "char":
+                    t = self.tmp()
+                    self.emit(f"  {t} = trunc i32 {v} to i8")
+                    return t
+                if src == "char" and dst in int_types:
+                    t = self.tmp()
+                    self.emit(f"  {t} = sext i8 {v} to i32")
+                    return t
+                if src in int_types and dst == "double":
+                    t = self.tmp()
+                    self.emit(f"  {t} = sitofp i32 {v} to double")
+                    return t
+                if src == "double" and dst in int_types:
+                    t = self.tmp()
+                    self.emit(f"  {t} = fptosi double {v} to i32")
+                    return t
+                if src in int_types and dst.endswith("*"):
+                    p = self.tmp()
+                    q = self.tmp()
+                    self.emit(f"  {p} = sext i32 {v} to i64")
+                    self.emit(f"  {q} = inttoptr i64 {p} to ptr")
+                    return q
+                if dst == "void":
+                    return v  # (void)expr - just evaluate and discard
                 raise CompileError(f"codegen error: unsupported cast from {src!r} to {dst!r}")
             case SizeofExpr(typ=typ, expr=expr):
                 if typ is not None:
@@ -663,27 +845,39 @@ class IRBuilder:
                 else_lbl = self.new_label("ternary_else")
                 end_lbl = self.new_label("ternary_end")
                 self.emit(f"  br i1 {cb}, label %{then_lbl}, label %{else_lbl}")
+                # --- then branch ---
                 self.emit_label(then_lbl)
-                tv = self.codegen_expr(then_expr)
-                if tv is None:
-                    raise CompileError("codegen error: void value in ternary")
-                self.emit(f"  br label %{end_lbl}")
+                tv = self.codegen_expr(then_expr) or "0"
+                then_pred = then_lbl  # block that will branch to end_lbl
+                then_alive = not self.flow_terminated
+                if then_alive:
+                    self.emit(f"  br label %{end_lbl}")
+                # --- else branch ---
                 self.emit_label(else_lbl)
-                ev = self.codegen_expr(else_expr)
-                if ev is None:
-                    raise CompileError("codegen error: void value in ternary")
-                self.emit(f"  br label %{end_lbl}")
+                ev = self.codegen_expr(else_expr) or "0"
+                else_pred = else_lbl
+                else_alive = not self.flow_terminated
+                if else_alive:
+                    self.emit(f"  br label %{end_lbl}")
+                # --- merge ---
                 self.emit_label(end_lbl)
                 rty = self.expr_type(n)
                 t = self.tmp()
                 ll_rty = self.llvm_ty(rty)
-                # For pointer phi, replace 0 with null
                 if ll_rty == "ptr":
-                    tv = "null" if tv == "0" else tv
-                    ev = "null" if ev == "0" else ev
-                self.emit(
-                    f"  {t} = phi {ll_rty} [{tv}, %{then_lbl}], [{ev}, %{else_lbl}]"
-                )
+                    tv = "null" if tv in ("0", "null") else tv
+                    ev = "null" if ev in ("0", "null") else ev
+                if then_alive and else_alive:
+                    self.emit(f"  {t} = phi {ll_rty} [{tv}, %{then_pred}], [{ev}, %{else_pred}]")
+                elif then_alive:
+                    # only then branch reaches end
+                    self.emit(f"  {t} = phi {ll_rty} [{tv}, %{then_pred}]")
+                elif else_alive:
+                    # only else branch reaches end
+                    self.emit(f"  {t} = phi {ll_rty} [{ev}, %{else_pred}]")
+                else:
+                    # neither branch reaches end (both terminate) — emit undef
+                    self.emit(f"  {t} = add {ll_rty} 0, 0")
                 return t
             case AssignExpr(target=target, op=op, expr=expr):
                 rv = self.codegen_expr(expr)
@@ -705,7 +899,8 @@ class IRBuilder:
                     t = self.tmp()
                     curp = self.tmp()
                     self.emit(f"  {curp} = load ptr, ptr {slot}")
-                    self.emit(f"  {t} = getelementptr inbounds i32, ptr {curp}, i32 {step}")
+                    stride = self.ptr_elem_llvm_ty(target_ty)
+                    self.emit(f"  {t} = getelementptr inbounds {stride}, ptr {curp}, i32 {step}")
                     self.emit(f"  store ptr {t}, ptr {slot}")
                     return t
                 cur = self.tmp()
@@ -730,7 +925,8 @@ class IRBuilder:
                 nxt = self.tmp()
                 if vty.endswith("*"):
                     step = "1" if op == "++" else "-1"
-                    self.emit(f"  {nxt} = getelementptr inbounds i32, ptr {cur}, i32 {step}")
+                    stride = self.ptr_elem_llvm_ty(vty)
+                    self.emit(f"  {nxt} = getelementptr inbounds {stride}, ptr {cur}, i32 {step}")
                 else:
                     llvm_op = "add" if op == "++" else "sub"
                     self.emit(f"  {nxt} = {llvm_op} i32 {cur}, 1")
@@ -755,6 +951,12 @@ class IRBuilder:
                     "__builtin___vprintf_chk": ("printf", [1]),
                     "__builtin___printf_chk": ("printf", [1]),
                 }
+                # Handle __builtin_expect(expr, expected) — just return expr
+                if name == "__builtin_expect":
+                    if args:
+                        v = self.codegen_expr(args[0])
+                        return v if v is not None else "0"
+                    return "0"
                 # Handle __builtin_object_size - return -1 (unknown size)
                 if name in ("__builtin_object_size", "__builtin_dynamic_object_size"):
                     # Evaluate args (they may have side effects) but return -1
@@ -816,8 +1018,13 @@ class IRBuilder:
                         arg_ty = self.llvm_ty(param_ty)
                         v = self.emit_convert(v, aty, param_ty)
                     else:
-                        # variadic extra arg or undeclared func - infer type
-                        arg_ty = self.llvm_ty(aty)
+                        # variadic extra arg or undeclared func - apply C default promotions
+                        # char is promoted to int in variadic/unprototyped calls
+                        if aty == "char":
+                            v = self.promote_to_i32(v, aty)
+                            arg_ty = "i32"
+                        else:
+                            arg_ty = self.llvm_ty(aty)
                     args_text.append(f"{arg_ty} {v}")
                 if sig is None:
                     # undeclared function - assume returns int
@@ -837,12 +1044,83 @@ class IRBuilder:
                 t = self.tmp()
                 self.emit(f"  {t} = {call_text}")
                 return t
+            case IndirectCall(func=func, args=args):
+                # Call through function pointer: fp(args)
+                fptr = self.codegen_expr(func)
+                if fptr is None:
+                    raise CompileError("codegen error: void function pointer")
+                args_text = []
+                for arg in args:
+                    v = self.codegen_expr(arg)
+                    if v is None:
+                        raise CompileError("codegen error: void argument in indirect call")
+                    aty = self.expr_type(arg)
+                    if aty == "char":
+                        v = self.promote_to_i32(v, aty)
+                        arg_ty = "i32"
+                    else:
+                        arg_ty = self.llvm_ty(aty)
+                    args_text.append(f"{arg_ty} {v}")
+                t = self.tmp()
+                args_str = ", ".join(args_text)
+                self.emit(f"  {t} = call i32 {fptr}({args_str})")
+                return t
+            case CompoundLit(typ=cl_typ, init=cl_init):
+                # Compound literal: create an anonymous alloca, init it, return pointer
+                gname = f"__cl_{self._current_fn}_{self.tmp_idx}"
+                self.tmp_idx += 1
+                if cl_typ.startswith("struct:"):
+                    ll_ty = self.llvm_ty(cl_typ)
+                    slot = f"%{gname}"
+                    if gname not in self.slots:
+                        self.slots[gname] = slot
+                        self.local_types[gname] = cl_typ
+                        # alloca was not hoisted, emit it now
+                        self.emit(f"  {slot} = alloca {ll_ty}")
+                    if isinstance(cl_init, StructInit):
+                        self._codegen_local_struct_init(slot, cl_typ, cl_init)
+                    return slot
+                return "0"
+            case StmtExpr(stmts=stmts):
+                result: Optional[str] = "0"
+                fn_ret = self._current_fn_ret_type
+                for idx, stmt in enumerate(stmts):
+                    is_last = (idx == len(stmts) - 1)
+                    if is_last and isinstance(stmt, ExprStmt):
+                        result = self.codegen_expr(stmt.expr) or "0"
+                    else:
+                        try:
+                            self.codegen_stmt(stmt, fn_ret)
+                        except Exception:
+                            pass
+                return result
             case _:
                 raise CompileError(f"codegen error: unsupported expr {type(n).__name__}")
 
     def codegen_stmt(self, n: Node, fn_ret_type: str) -> bool:
         match n:
-            case Decl(name=name, base_type=base_type, ptr_level=ptr_level, size=size, init=init):
+            case Decl(name=name, base_type=base_type, ptr_level=ptr_level, size=size, init=init, is_static=is_static):
+                # Static local variables: use a global with a mangled name
+                if is_static:
+                    gname = f"__static_{self._current_fn}_{name}"
+                    slot = f"@{gname}"
+                    if name not in self.slots:
+                        self.slots[name] = slot
+                        vty = base_type + ("*" * ptr_level)
+                        self.local_types[name] = vty
+                        # Emit as preamble global
+                        ll_ty = self.llvm_ty(vty)
+                        # Choose a safe zero-value: structs/arrays need zeroinitializer
+                        is_aggregate = ll_ty.startswith("%struct.") or ll_ty.startswith("[")
+                        zero_val = "zeroinitializer" if is_aggregate else "0"
+                        if init is not None:
+                            try:
+                                iv = self.eval_global_const(init)
+                                zero_val = str(iv)
+                            except Exception:
+                                pass  # keep zeroinitializer/0 as default
+                        self.preamble_lines.append(f"@{gname} = internal global {ll_ty} {zero_val}")
+                    return False
                 slot = f"%{name}"
                 already_hoisted = name in self.slots
                 if not already_hoisted:
@@ -852,16 +1130,40 @@ class IRBuilder:
                         self.local_arrays[name] = size
                         self.local_types[name] = "array"
                         self.emit(f"  {slot} = alloca [{size} x i32]")
+                    # Initialize array if an initializer is present
+                    if init is not None:
+                        elem_ty = self.local_array_elem_types.get(name, base_type)
+                        elem_ll = self.llvm_ty(elem_ty)
+                        if isinstance(init, StringLit) and elem_ty == "char":
+                            raw = init.value
+                            for idx, ch in enumerate(raw):
+                                c = ord(ch) if isinstance(ch, str) else ch
+                                ep = self.tmp()
+                                self.emit(f"  {ep} = getelementptr inbounds [{size} x i8], ptr {slot}, i32 0, i32 {idx}")
+                                self.emit(f"  store i8 {c}, ptr {ep}")
+                            # null terminator
+                            ep = self.tmp()
+                            self.emit(f"  {ep} = getelementptr inbounds [{size} x i8], ptr {slot}, i32 0, i32 {len(raw)}")
+                            self.emit(f"  store i8 0, ptr {ep}")
+                        elif isinstance(init, ArrayInit):
+                            for idx, val in enumerate(init.values):
+                                ep = self.tmp()
+                                self.emit(f"  {ep} = getelementptr inbounds [{size} x {elem_ll}], ptr {slot}, i32 0, i32 {idx}")
+                                self.emit(f"  store {elem_ll} {val}, ptr {ep}")
                     return False
                 if not already_hoisted:
                     self.local_types[name] = base_type + ("*" * ptr_level)
                     self.emit(f"  {slot} = alloca {self.llvm_ty(self.local_types[name])}")
                 if init is not None:
-                    v = self.codegen_expr(init)
-                    if v is None:
-                        raise CompileError("codegen error: cannot initialize variable with void")
-                    v = self.emit_convert(v, self.expr_type(init), self.local_types[name])
-                    self.emit(f"  store {self.llvm_ty(self.local_types[name])} {v}, ptr {slot}")
+                    if isinstance(init, StructInit):
+                        # Initialize struct fields one by one
+                        self._codegen_local_struct_init(slot, self.local_types[name], init)
+                    else:
+                        v = self.codegen_expr(init)
+                        if v is None:
+                            raise CompileError("codegen error: cannot initialize variable with void")
+                        v = self.emit_convert(v, self.expr_type(init), self.local_types[name])
+                        self.emit(f"  store {self.llvm_ty(self.local_types[name])} {v}, ptr {slot}")
                 return False
             case Block(body=body):
                 terminated = False
@@ -1192,8 +1494,19 @@ class IRBuilder:
 
         defined_tags = set(self.struct_defs.keys())
         for tag, s in self.struct_defs.items():
-            field_tys = ", ".join(self.llvm_ty(f.typ) for f in s.fields)
-            self.emit(f"%struct.{tag} = type {{{field_tys}}}")
+            if s.is_union:
+                # For unions, emit only the first (largest) field to overlay all members
+                if s.fields:
+                    field_tys = self.llvm_ty(s.fields[0].typ)
+                else:
+                    field_tys = "i32"
+                self.emit(f"%struct.{tag} = type {{{field_tys}}}")
+            else:
+                field_tys = ", ".join(
+                    f"[{f.array_size} x {self.llvm_ty(f.typ)}]" if f.array_size is not None else self.llvm_ty(f.typ)
+                    for f in s.fields
+                )
+                self.emit(f"%struct.{tag} = type {{{field_tys}}}")
         for tag in sorted(referenced_tags - defined_tags):
             self.emit(f"%struct.{tag} = type opaque")
         if self.struct_defs:
@@ -1219,17 +1532,52 @@ class IRBuilder:
                         encoded += "\\00"
                         n_bytes = len(raw) + 1
                         self.emit(f"@{name} = global [{n_bytes} x i8] c\"{encoded}\"")
+                    elif str_node is not None and isinstance(str_node, ArrayInit):
+                        # char array with integer initializer list
+                        vals_str = ", ".join(f"i8 {v}" for v in str_node.values)
+                        self.emit(f"@{name} = global [{n_elem} x i8] [{vals_str}]")
                     else:
                         self.emit(f"@{name} = global [{n_elem} x i8] zeroinitializer")
                 else:
-                    self.emit(f"@{name} = global [{n_elem} x i32] zeroinitializer")
+                    # int/struct array
+                    arr_elem = self.global_array_elem_types.get(name, "int")
+                    arr_elem_ll = self.llvm_ty(arr_elem)
+                    is_struct_elem = self.is_struct_type(arr_elem)
+                    if init is not None and isinstance(init, StructArrayInit) and is_struct_elem:
+                        # Array of structs with struct initializers
+                        entry_map = {idx: node for idx, node in init.entries if node is not None}
+                        elems = []
+                        for i in range(n_elem):
+                            node = entry_map.get(i)
+                            if node is not None and isinstance(node, StructInit):
+                                elems.append(f"{arr_elem_ll} {self._emit_struct_init_const(arr_elem, node)}")
+                            else:
+                                elems.append(f"{arr_elem_ll} zeroinitializer")
+                        self.emit(f"@{name} = global [{n_elem} x {arr_elem_ll}] [{', '.join(elems)}]")
+                    elif init is not None and isinstance(init, ArrayInit) and not is_struct_elem:
+                        vals_str = ", ".join(f"{arr_elem_ll} {v}" for v in init.values)
+                        self.emit(f"@{name} = global [{n_elem} x {arr_elem_ll}] [{vals_str}]")
+                    else:
+                        self.emit(f"@{name} = global [{n_elem} x {arr_elem_ll}] zeroinitializer")
                 continue
             gty = self.resolve_var_type(name)
             if gty.endswith("*"):
-                self.emit(f"@{name} = global ptr null")
+                # Check for address-of initializer (pointer init)
+                if init is not None and not isinstance(init, IntLit):
+                    try:
+                        init_val_str = self._global_ptr_init(init)
+                        self.emit(f"@{name} = global ptr {init_val_str}")
+                    except Exception:
+                        self.emit(f"@{name} = global ptr null")
+                else:
+                    self.emit(f"@{name} = global ptr null")
                 continue
             if self.is_struct_type(gty):
-                self.emit(f"@{name} = global {self.llvm_ty(gty)} zeroinitializer")
+                if init is not None and isinstance(init, StructInit):
+                    init_str = self._emit_struct_init_const(gty, init)
+                    self.emit(f"@{name} = global {self.llvm_ty(gty)} {init_str}")
+                else:
+                    self.emit(f"@{name} = global {self.llvm_ty(gty)} zeroinitializer")
                 continue
             if gty == "double":
                 init_val = 0 if init is None else self.eval_global_const(init)
@@ -1261,6 +1609,9 @@ class IRBuilder:
         self.slots = {}
         self.local_arrays = {}
         self.local_types = {}
+        self.local_array_elem_types = {}
+        self._current_fn = fn.name
+        self._current_fn_ret_type = fn.ret_type
         self.flow_terminated = False  # track if current flow is terminated (dead code)
         self.loop_stack = []
         self.break_stack = []
@@ -1322,7 +1673,9 @@ class IRBuilder:
         """Pre-scan function body and emit all alloca instructions up front."""
         for st in body:
             match st:
-                case Decl(name=name, base_type=base_type, ptr_level=ptr_level, size=size):
+                case Decl(name=name, base_type=base_type, ptr_level=ptr_level, size=size, is_static=is_static_d):
+                    if is_static_d:
+                        continue  # static locals are handled as globals, not alloca
                     if name in self.slots:
                         continue  # already hoisted
                     slot = f"%{name}"
@@ -1330,7 +1683,9 @@ class IRBuilder:
                     if size is not None:
                         self.local_arrays[name] = size
                         self.local_types[name] = "array"
-                        self.emit(f"  {slot} = alloca [{size} x i32]")
+                        self.local_array_elem_types[name] = base_type
+                        elem_ll = self.llvm_ty(base_type)
+                        self.emit(f"  {slot} = alloca [{size} x {elem_ll}]")
                     else:
                         self.local_types[name] = base_type + ("*" * ptr_level)
                         self.emit(f"  {slot} = alloca {self.llvm_ty(self.local_types[name])}")
@@ -1352,6 +1707,35 @@ class IRBuilder:
                     self.hoist_allocas([sw_body])
                 case LabelStmt(stmt=lbl_stmt):
                     self.hoist_allocas([lbl_stmt])
+                case ExprStmt(expr=expr_inner):
+                    self._hoist_allocas_from_expr(expr_inner)
+                case Assign(expr=assign_expr):
+                    self._hoist_allocas_from_expr(assign_expr)
+                case StmtExpr(stmts=se_stmts):
+                    self.hoist_allocas(se_stmts)
+
+    def _hoist_allocas_from_expr(self, n: Node) -> None:
+        """Hoist allocas from expressions (e.g. statement expressions inside ternary)."""
+        match n:
+            case StmtExpr(stmts=stmts):
+                self.hoist_allocas(stmts)
+            case TernaryOp(cond=cond, then_expr=then_expr, else_expr=else_expr):
+                self._hoist_allocas_from_expr(cond)
+                self._hoist_allocas_from_expr(then_expr)
+                self._hoist_allocas_from_expr(else_expr)
+            case BinOp(lhs=lhs, rhs=rhs):
+                self._hoist_allocas_from_expr(lhs)
+                self._hoist_allocas_from_expr(rhs)
+            case UnaryOp(expr=expr):
+                self._hoist_allocas_from_expr(expr)
+            case Call(args=args):
+                for a in args:
+                    self._hoist_allocas_from_expr(a)
+            case AssignExpr(target=target, expr=expr):
+                self._hoist_allocas_from_expr(target)
+                self._hoist_allocas_from_expr(expr)
+            case Assign(expr=expr):
+                self._hoist_allocas_from_expr(expr)
 
     def collect_codegen_labels(self, body: List[Node]) -> None:
         for st in body:
@@ -1383,6 +1767,203 @@ class IRBuilder:
                 self.collect_codegen_label_stmt(stmt)
             case Default(stmt=stmt):
                 self.collect_codegen_label_stmt(stmt)
+            case ExprStmt(expr=expr_inner):
+                self._collect_labels_from_expr(expr_inner)
+            case Assign(expr=assign_expr):
+                self._collect_labels_from_expr(assign_expr)
+            case StmtExpr(stmts=se_stmts):
+                for se_st in se_stmts:
+                    self.collect_codegen_label_stmt(se_st)
+
+    def _collect_labels_from_expr(self, n: Node) -> None:
+        """Recursively collect user labels from within expressions (e.g. statement expressions)."""
+        match n:
+            case StmtExpr(stmts=stmts):
+                for st in stmts:
+                    self.collect_codegen_label_stmt(st)
+            case TernaryOp(cond=cond, then_expr=then_expr, else_expr=else_expr):
+                self._collect_labels_from_expr(cond)
+                self._collect_labels_from_expr(then_expr)
+                self._collect_labels_from_expr(else_expr)
+            case BinOp(lhs=lhs, rhs=rhs):
+                self._collect_labels_from_expr(lhs)
+                self._collect_labels_from_expr(rhs)
+            case UnaryOp(expr=expr):
+                self._collect_labels_from_expr(expr)
+            case Call(args=args):
+                for a in args:
+                    self._collect_labels_from_expr(a)
+            case AssignExpr(target=target, expr=expr):
+                self._collect_labels_from_expr(target)
+                self._collect_labels_from_expr(expr)
+            case Cast(expr=expr):
+                self._collect_labels_from_expr(expr)
+
+    def _global_ptr_init(self, init: Node) -> str:
+        """Return LLVM constant expression string for a global pointer initializer."""
+        match init:
+            case IntLit(value=0):
+                return "null"
+            case UnaryOp(op="&", expr=Var(name=vname)):
+                return f"@{vname}"
+            case UnaryOp(op="&", expr=CompoundLit(typ=cl_typ, init=cl_init)):
+                # Compound literal in global context: emit anonymous global inline
+                gname = f"__cl_{self.string_idx}"
+                self.string_idx += 1
+                ll_ty = self.llvm_ty(cl_typ)
+                if cl_typ.startswith("struct:") and isinstance(cl_init, StructInit):
+                    const_val = self._emit_struct_init_const(cl_typ, cl_init)
+                else:
+                    const_val = "zeroinitializer" if ll_ty.startswith("%struct.") else "0"
+                self.emit(f"@{gname} = internal global {ll_ty} {const_val}")
+                return f"@{gname}"
+            case CompoundLit(typ=cl_typ, init=cl_init):
+                # Compound literal value (not &) used as global init — emit anonymous global
+                gname = f"__cl_{self.string_idx}"
+                self.string_idx += 1
+                ll_ty = self.llvm_ty(cl_typ)
+                if cl_typ.startswith("struct:") and isinstance(cl_init, StructInit):
+                    const_val = self._emit_struct_init_const(cl_typ, cl_init)
+                    self.emit(f"@{gname} = internal global {ll_ty} {const_val}")
+                    return f"@{gname}"
+                return "null"
+            case _:
+                try:
+                    v = self.eval_global_const(init)
+                    if v == 0:
+                        return "null"
+                    return "null"  # can't represent non-null non-address constant
+                except Exception:
+                    return "null"
+
+    def _codegen_local_struct_init(self, slot: str, struct_ty: str, init: "StructInit") -> None:
+        """Generate stores to initialize a local struct variable from a StructInit node."""
+        if ":" not in struct_ty:
+            return
+        tag = struct_ty.split(":", 1)[1]
+        s = self.struct_defs.get(tag)
+        if s is None:
+            return
+        ll_ty = self.llvm_ty(struct_ty)
+        named = any(fname is not None for fname, _ in init.entries)
+        if named:
+            field_map: dict = {}
+            cur_pos = 0
+            for fname, val_node in init.entries:
+                if fname is not None:
+                    field_map[fname] = val_node
+                else:
+                    if cur_pos < len(s.fields):
+                        field_map[s.fields[cur_pos].name] = val_node
+                    cur_pos += 1
+            for i, f in enumerate(s.fields):
+                v_node = field_map.get(f.name)
+                if v_node is None:
+                    continue
+                t = self.tmp()
+                self.emit(f"  {t} = getelementptr inbounds {ll_ty}, ptr {slot}, i32 0, i32 {i}")
+                if isinstance(v_node, StructInit):
+                    self._codegen_local_struct_init(t, f.typ, v_node)
+                else:
+                    v = self.codegen_expr(v_node)
+                    if v is not None:
+                        fll = self.llvm_ty(f.typ)
+                        self.emit(f"  store {fll} {v}, ptr {t}")
+        else:
+            for i, f in enumerate(s.fields):
+                if i >= len(init.entries):
+                    break
+                _, v_node = init.entries[i]
+                t = self.tmp()
+                self.emit(f"  {t} = getelementptr inbounds {ll_ty}, ptr {slot}, i32 0, i32 {i}")
+                if isinstance(v_node, StructInit):
+                    self._codegen_local_struct_init(t, f.typ, v_node)
+                else:
+                    v = self.codegen_expr(v_node)
+                    if v is not None:
+                        fll = self.llvm_ty(f.typ)
+                        self.emit(f"  store {fll} {v}, ptr {t}")
+
+    def _zero_const(self, typ: str) -> str:
+        """Return LLVM zero constant string (with type prefix) for a given C type."""
+        ll_ty = self.llvm_ty(typ)
+        if ll_ty == "ptr":
+            return "ptr null"
+        if ll_ty == "i8":
+            return "i8 0"
+        if ll_ty == "double":
+            return "double 0.0"
+        if self.is_struct_type(typ):
+            return f"{ll_ty} zeroinitializer"
+        # array types, etc.
+        if ll_ty.startswith("["):
+            return f"{ll_ty} zeroinitializer"
+        return f"{ll_ty} 0"
+
+    def _emit_struct_init_const(self, struct_ty: str, init: "StructInit") -> str:
+        """Emit LLVM struct constant initializer string."""
+        tag = struct_ty.split(":", 1)[1]
+        s = self.struct_defs.get(tag)
+        if s is None:
+            return "zeroinitializer"
+        fields = s.fields
+        # Build field_name -> value mapping
+        # StructInit entries: (Optional[str], Node) pairs
+        # Positional if no field names
+        named = any(fname is not None for fname, _ in init.entries)
+        if named:
+            # Map field name -> node
+            field_map: dict = {}
+            cur_pos = 0
+            for fname, val_node in init.entries:
+                if fname is not None:
+                    field_map[fname] = val_node
+                else:
+                    # Positional after named - use current position
+                    if cur_pos < len(fields):
+                        field_map[fields[cur_pos].name] = val_node
+                    cur_pos += 1
+            vals = []
+            for f in fields:
+                v_node = field_map.get(f.name)
+                if v_node is None:
+                    vals.append(self._zero_const(f.typ))
+                else:
+                    vals.append(self._const_node_to_llvm(v_node, f.typ))
+        else:
+            # Positional
+            vals = []
+            for i, f in enumerate(fields):
+                if i < len(init.entries):
+                    _, v_node = init.entries[i]
+                    vals.append(self._const_node_to_llvm(v_node, f.typ))
+                else:
+                    vals.append(self._zero_const(f.typ))
+        return "{" + ", ".join(vals) + "}"
+
+    def _const_node_to_llvm(self, node: Node, typ: str) -> str:
+        """Convert a constant node to LLVM constant string for global initializers."""
+        ll_ty = self.llvm_ty(typ)
+        try:
+            if isinstance(node, StructInit):
+                return f"{ll_ty} {self._emit_struct_init_const(typ, node)}"
+            if isinstance(node, ArrayInit):
+                elem_ll = "i32"  # default
+                vals_str = ", ".join(f"{elem_ll} {v}" for v in node.values)
+                return f"[{len(node.values)} x {elem_ll}] [{vals_str}]"
+            # Handle address-of for pointer fields
+            if isinstance(node, UnaryOp) and node.op == "&" and isinstance(node.expr, Var):
+                return f"ptr @{node.expr.name}"
+            v = self.eval_global_const(node)
+            if ll_ty == "ptr":
+                return "ptr null"
+            return f"{ll_ty} {v}"
+        except Exception:
+            if ll_ty == "ptr":
+                return "ptr null"
+            if self.is_struct_type(typ):
+                return f"{ll_ty} zeroinitializer"
+            return f"{ll_ty} 0"
 
     def codegen_program(self) -> str:
         self.emit_declarations()

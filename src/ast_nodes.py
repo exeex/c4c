@@ -41,6 +41,7 @@ class Decl(Node):
     ptr_level: int
     size: Optional[int]
     init: Optional[Node]
+    is_static: bool = False
 
 
 @dataclass
@@ -81,6 +82,11 @@ class IntLit(Node):
 
 
 @dataclass
+class FloatLit(Node):
+    value: float
+
+
+@dataclass
 class Var(Node):
     name: str
 
@@ -89,6 +95,13 @@ class Var(Node):
 class Call(Node):
     name: str
     args: List[Node]
+
+
+@dataclass
+class IndirectCall(Node):
+    """Call through a function pointer expression: expr(args)"""
+    func: "Node"
+    args: List["Node"]
 
 
 @dataclass
@@ -108,12 +121,15 @@ class Member(Node):
 class StructField(Node):
     typ: str
     name: str
+    array_size: Optional[int] = None  # non-None if this field is an array (e.g. int arr[4])
 
 
 @dataclass
 class StructDef(Node):
     name: str
     fields: List[StructField]
+    is_union: bool = False
+    union_aliases: Optional[Dict[str, int]] = None  # anon union field name -> representative index
 
 
 @dataclass
@@ -239,4 +255,36 @@ class Case(Node):
 @dataclass
 class Default(Node):
     stmt: Node
+
+
+@dataclass
+class ArrayInit(Node):
+    """Array initializer with evaluated integer values (full-size list)."""
+    values: List[int]  # full-size list; zeros for unspecified elements
+
+
+@dataclass
+class StructInit(Node):
+    """Struct initializer: list of (optional_field_name, Node) pairs."""
+    entries: List  # list of (Optional[str], Node)
+
+
+@dataclass
+class StructArrayInit(Node):
+    """Array of struct initializers: [(index, StructInit), ...]"""
+    entries: List  # list of (int, Optional[Node]) - index and initializer
+    size: int
+
+
+@dataclass
+class StmtExpr(Node):
+    """GCC statement expression: ({ stmts... }) — value is last expr stmt."""
+    stmts: List[Node]
+
+
+@dataclass
+class CompoundLit(Node):
+    """C99 compound literal: (type){ initializer } — anonymous object of given type."""
+    typ: str
+    init: Node
 
