@@ -1132,20 +1132,35 @@ class Parser:
                                     break
                                 self.advance()
                         elif self.cur().typ == TokenType.LBRACKET:
-                            # Pointer-to-array: (*p)[N] — skip the bracket dimensions
+                            # Pointer-to-array: (*p)[N] — capture dimensions for stride
+                            fp_ptr_arr_dims: Optional[List[int]] = None
                             while self.cur().typ == TokenType.LBRACKET:
                                 self.advance()
-                                while self.cur().typ not in (TokenType.RBRACKET, TokenType.EOF):
-                                    self.advance()
+                                dim_v = 1
+                                if self.cur().typ not in (TokenType.RBRACKET, TokenType.EOF):
+                                    try:
+                                        dim_v = self._parse_const_int()
+                                    except Exception:
+                                        dim_v = 1
+                                    while self.cur().typ not in (TokenType.RBRACKET, TokenType.EOF):
+                                        self.advance()
                                 if self.cur().typ == TokenType.RBRACKET:
                                     self.advance()
+                                if fp_ptr_arr_dims is None:
+                                    fp_ptr_arr_dims = []
+                                fp_ptr_arr_dims.append(dim_v)
+                        else:
+                            fp_ptr_arr_dims = None
                         # Skip initializer if any
                         if self.cur().typ == TokenType.ASSIGN:
                             self.advance()
                             self.parse_expr()
                         if fp_name is not None:
-                            # Declare as pointer variable
-                            decls.append(Decl(fp_name, base_type, fp_extra_ptrs + 1, None, None, is_static=is_static_local))
+                            # Declare as pointer variable; use ptr_level=1 with extra_dims for stride
+                            if fp_ptr_arr_dims is not None:
+                                decls.append(Decl(fp_name, base_type, 1, None, None, is_static=is_static_local, extra_dims=fp_ptr_arr_dims))
+                            else:
+                                decls.append(Decl(fp_name, base_type, fp_extra_ptrs + 1, None, None, is_static=is_static_local))
                         if self.cur().typ != TokenType.COMMA:
                             break
                         self.advance()
@@ -1183,6 +1198,7 @@ class Parser:
                         self.advance()
                         continue
                     size: Optional[int] = None
+                    extra_dims: Optional[List[int]] = None
                     if self.cur().typ == TokenType.LBRACKET:
                         self.advance()
                         if self.cur().typ == TokenType.RBRACKET:
@@ -1196,13 +1212,22 @@ class Parser:
                                 self.advance()
                         if self.cur().typ == TokenType.RBRACKET:
                             self.advance()
-                        # Skip extra dimensions [M] - just ignore
+                        # Capture extra dimensions [M][N]...
                         while self.cur().typ == TokenType.LBRACKET:
                             self.advance()
-                            while self.cur().typ not in (TokenType.RBRACKET, TokenType.EOF):
-                                self.advance()
+                            dim_val = 1
+                            if self.cur().typ not in (TokenType.RBRACKET, TokenType.EOF):
+                                try:
+                                    dim_val = self._parse_const_int()
+                                except Exception:
+                                    dim_val = 1
+                                while self.cur().typ not in (TokenType.RBRACKET, TokenType.EOF):
+                                    self.advance()
                             if self.cur().typ == TokenType.RBRACKET:
                                 self.advance()
+                            if extra_dims is None:
+                                extra_dims = []
+                            extra_dims.append(dim_val)
                     init: Optional[Node] = None
                     if self.cur().typ == TokenType.ASSIGN:
                         self.advance()
@@ -1220,7 +1245,7 @@ class Parser:
                                 self.skip_init_braces()
                         else:
                             init = self.parse_expr()
-                    decls.append(Decl(name, base_type, ptr_level, size, init, is_static=is_static_local))
+                    decls.append(Decl(name, base_type, ptr_level, size, init, is_static=is_static_local, extra_dims=extra_dims))
                     if self.cur().typ != TokenType.COMMA:
                         break
                     self.advance()

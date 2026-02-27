@@ -65,15 +65,19 @@
   - `c2ll.py -> .ll -> clang -> executable`
   - failure logs split into frontend/backend/runtime
 - c-testsuite status:
-  - Allowlist run (`2026-02-27`): `206 / 206` pass, `0` fail
-  - Overall milestone: `206 / 220` passing coverage represented in allowlist
-  - `tests/c_testsuite_allowlist.txt` has been updated to these 206 passing cases
+  - Allowlist run (`2026-02-27`): `207 / 207` pass, `0` fail
+  - Overall milestone: `207 / 220` passing coverage represented in allowlist
+  - `tests/c_testsuite_allowlist.txt` has been updated to these 207 passing cases
+- Local regression status (`ctest --test-dir build --output-on-failure`, `2026-02-27`):
+  - `c_testsuite_allowlist`: pass
+  - `tiny_c2ll_tests`: fail at `bad_uninitialized.c should fail semantic analysis`
 
 ## Next Steps (Priority Order)
 
-1. Close the remaining `14` c-testsuite cases (focus on the top repeated failure signatures in frontend/backend/runtime logs).
-2. Improve aggregate initializer completeness for deeper nested combinations and edge cases.
-3. Continue growing `tests/c_testsuite_allowlist.txt` and keep `plan.md` in sync per milestone.
+1. Fix the `tiny_c2ll_tests` regression for `bad_uninitialized.c` semantic failure expectation.
+2. Close the remaining `13` c-testsuite cases (focus on the top repeated failure signatures in frontend/backend/runtime logs).
+3. Improve aggregate initializer completeness for deeper nested combinations and edge cases.
+4. Continue growing `tests/c_testsuite_allowlist.txt` and keep `plan.md` in sync per milestone.
 
 ## How To Run Tests
 

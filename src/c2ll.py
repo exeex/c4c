@@ -42,6 +42,8 @@ class IRBuilder:
         # Track element types for arrays
         self.local_array_elem_types: Dict[str, str] = {}
         self.global_array_elem_types: Dict[str, str] = {}
+        # Track stride for multi-dimensional arrays (e.g. arr[2][4]: stride=4)
+        self.local_array_strides: Dict[str, int] = {}  # name -> stride (# elements per row)
         for d in prog.decls:
             params = [p.typ for p in d.params if p.typ != "..."]
             is_var = any(p.typ == "..." for p in d.params)
@@ -273,6 +275,8 @@ class IRBuilder:
                     return bt[:-1]
                 if bt == "ptr":
                     return "ptr"  # indexing into a generic/function-pointer array
+                if bt == "char":
+                    return "char"  # indexing into a char row (e.g. arr[i][j] for char arr[][])
                 # Fallback: check if base is Var with known elem type
                 if isinstance(base, Var):
                     elem = self.local_array_elem_types.get(base.name) or self.global_array_elem_types.get(base.name)
@@ -406,9 +410,18 @@ class IRBuilder:
                             n_elem = self.local_arrays[name]
                             arr_elem_ll = self.array_elem_llvm_ty(name)
                             arr_ptr = self.slots.get(name, f"%{name}")
-                            self.emit(
-                                f"  {t} = getelementptr inbounds [{n_elem} x {arr_elem_ll}], ptr {arr_ptr}, i32 0, i32 {idx}"
-                            )
+                            stride = self.local_array_strides.get(name)
+                            if stride is not None and stride > 1:
+                                # Multi-dim array: multiply index by stride
+                                scaled_idx = self.tmp()
+                                self.emit(f"  {scaled_idx} = mul i32 {idx}, {stride}")
+                                self.emit(
+                                    f"  {t} = getelementptr inbounds [{n_elem} x {arr_elem_ll}], ptr {arr_ptr}, i32 0, i32 {scaled_idx}"
+                                )
+                            else:
+                                self.emit(
+                                    f"  {t} = getelementptr inbounds [{n_elem} x {arr_elem_ll}], ptr {arr_ptr}, i32 0, i32 {idx}"
+                                )
                             return t
                         if name in self.global_arrays:
                             n_elem = self.global_arrays[name]
@@ -423,16 +436,36 @@ class IRBuilder:
                             if base_ptr is None:
                                 raise CompileError("codegen error: invalid pointer base")
                             stride_ty = self.ptr_elem_llvm_ty(vty) if vty.endswith("*") else "i8"
-                            self.emit(f"  {t} = getelementptr inbounds {stride_ty}, ptr {base_ptr}, i32 {idx}")
+                            ptr_stride = self.local_array_strides.get(name)
+                            if ptr_stride is not None and ptr_stride > 1:
+                                scaled_idx = self.tmp()
+                                self.emit(f"  {scaled_idx} = mul i32 {idx}, {ptr_stride}")
+                                self.emit(f"  {t} = getelementptr inbounds {stride_ty}, ptr {base_ptr}, i32 {scaled_idx}")
+                            else:
+                                self.emit(f"  {t} = getelementptr inbounds {stride_ty}, ptr {base_ptr}, i32 {idx}")
                             return t
                         raise CompileError("codegen error: index base must be array variable")
                     case _:
-                        # Non-variable base (e.g., member access result, function call result)
+                        # Non-variable base (e.g., member access result, array[i][j])
                         t = self.tmp()
-                        base_ptr = self.codegen_expr(base)
-                        if base_ptr is None:
-                            raise CompileError("codegen error: invalid array base expression")
-                        self.emit(f"  {t} = getelementptr inbounds {elem_ll}, ptr {base_ptr}, i32 {idx}")
+                        # If base is an Index itself, use its lvalue pointer to avoid
+                        # loading intermediate elements (handles arr[i][j] correctly)
+                        if isinstance(base, Index):
+                            base_ptr = self.codegen_lvalue_ptr(base)
+                            # Use element type of the innermost array if available
+                            inner = base
+                            while isinstance(inner, Index):
+                                inner = inner.base
+                            if isinstance(inner, Var):
+                                inner_elem_ll = self.array_elem_llvm_ty(inner.name)
+                            else:
+                                inner_elem_ll = elem_ll
+                            self.emit(f"  {t} = getelementptr inbounds {inner_elem_ll}, ptr {base_ptr}, i32 {idx}")
+                        else:
+                            base_ptr = self.codegen_expr(base)
+                            if base_ptr is None:
+                                raise CompileError("codegen error: invalid array base expression")
+                            self.emit(f"  {t} = getelementptr inbounds {elem_ll}, ptr {base_ptr}, i32 {idx}")
                         return t
             case Member(base=base, field=field, through_ptr=through_ptr):
                 bt = self.expr_type(base)
@@ -1781,7 +1814,7 @@ class IRBuilder:
         """Pre-scan function body and emit all alloca instructions up front."""
         for st in body:
             match st:
-                case Decl(name=name, base_type=base_type, ptr_level=ptr_level, size=size, is_static=is_static_d):
+                case Decl(name=name, base_type=base_type, ptr_level=ptr_level, size=size, is_static=is_static_d, extra_dims=extra_dims):
                     if is_static_d:
                         continue  # static locals are handled as globals, not alloca
                     if name in self.slots:
@@ -1789,13 +1822,28 @@ class IRBuilder:
                     slot = f"%{name}"
                     self.slots[name] = slot
                     if size is not None:
-                        self.local_arrays[name] = size
+                        # Multi-dimensional: flatten total size and track stride
+                        total_size = size
+                        stride = 1
+                        if extra_dims:
+                            for d in extra_dims:
+                                stride *= d
+                            total_size = size * stride
+                            self.local_array_strides[name] = stride
+                        self.local_arrays[name] = total_size
                         self.local_types[name] = "array"
                         self.local_array_elem_types[name] = base_type
                         elem_ll = self.llvm_ty(base_type)
-                        self.emit(f"  {slot} = alloca [{size} x {elem_ll}]")
+                        self.emit(f"  {slot} = alloca [{total_size} x {elem_ll}]")
                     else:
                         self.local_types[name] = base_type + ("*" * ptr_level)
+                        # pointer-to-array: record stride from extra_dims (e.g. (*p)[4] → stride=4)
+                        if extra_dims and ptr_level > 0:
+                            stride = 1
+                            for d in extra_dims:
+                                stride *= d
+                            self.local_array_strides[name] = stride
+                            self.local_array_elem_types[name] = base_type
                         self.emit(f"  {slot} = alloca {self.llvm_ty(self.local_types[name])}")
                 case Block(body=inner_body):
                     self.hoist_allocas(inner_body)

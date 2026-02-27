@@ -24,6 +24,10 @@ class SemanticAnalyzer:
         # Track element types for arrays (needed for struct array member access)
         self.local_array_elem_types: Dict[str, str] = {}
         self.global_array_elem_types: Dict[str, str] = {}
+        # Track multi-dimensional arrays (name -> True if 2D+)
+        self.local_multidim_arrays: set = set()
+        # Track pointer-to-array variables like (*p)[4]: p[i] yields a row ptr, not element
+        self.local_ptr_to_array: set = set()
 
     def ensure_sig(self, name: str, sig: FunctionSig) -> None:
         prev = self.func_sigs.get(name)
@@ -136,6 +140,8 @@ class SemanticAnalyzer:
         self.local_arrays = {}
         self.local_types = {}
         self.local_array_elem_types = {}
+        self.local_multidim_arrays = set()
+        self.local_ptr_to_array = set()
         self.labels = set()
         for st in fn.body:
             self.collect_labels(st)
@@ -162,7 +168,7 @@ class SemanticAnalyzer:
         switch_depth: int = 0,
     ) -> bool:
         match n:
-            case Decl(name=name, base_type=base_type, ptr_level=ptr_level, size=size, init=init):
+            case Decl(name=name, base_type=base_type, ptr_level=ptr_level, size=size, init=init, extra_dims=extra_dims):
                 if name in vars_init:
                     # Allow redeclaration in nested scopes (be lenient)
                     pass
@@ -172,10 +178,14 @@ class SemanticAnalyzer:
                     self.local_types[name] = "array"
                     self.local_array_elem_types[name] = base_type
                     vars_init[name] = True
+                    if extra_dims:
+                        self.local_multidim_arrays.add(name)
                     # init is None (we skip array initializers during parsing)
                     return False
                 var_ty = base_type + ("*" * ptr_level)
                 self.local_types[name] = var_ty
+                if extra_dims and ptr_level > 0:
+                    self.local_ptr_to_array.add(name)
                 vars_init[name] = False
                 if init is not None:
                     try:
@@ -360,19 +370,28 @@ class SemanticAnalyzer:
             case Index(base=base, index=index):
                 bt = self.analyze_expr(base, vars_init)
                 it = self.analyze_expr(index, vars_init)
-                if bt not in ("array", "ptr"):
+                if bt not in ("array", "ptr", "int"):
                     if not self.is_ptr_type(bt):
                         raise CompileError("semantic error: index base must be an array or pointer")
-                if it not in ("int", "char"):
+                if it not in ("int", "char", "long", "unsigned", "unsigned long", "unsigned int", "ptr"):
                     raise CompileError("semantic error: index must be int")
                 if bt == "array":
                     # Return element type for struct arrays (enables member access on array elements)
                     if isinstance(base, Var):
-                        elem_ty = self.local_array_elem_types.get(base.name) or self.global_array_elem_types.get(base.name)
+                        name = base.name
+                        # Multi-dim array: arr[i] gives a row pointer
+                        if name in self.local_multidim_arrays:
+                            return "ptr"
+                        elem_ty = self.local_array_elem_types.get(name) or self.global_array_elem_types.get(name)
                         if elem_ty and elem_ty != "int":
                             return elem_ty
                     return "int"
+                if bt == "ptr":
+                    return "ptr"
                 if self.is_ptr_type(bt):
+                    # pointer-to-array: p[i] yields a row ptr, not element type
+                    if isinstance(base, Var) and base.name in self.local_ptr_to_array:
+                        return "ptr"
                     return bt[:-1]
                 return "int"
             case Member(base=base, field=field, through_ptr=through_ptr):

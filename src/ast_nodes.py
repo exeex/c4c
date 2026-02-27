@@ -42,6 +42,7 @@ class Decl(Node):
     size: Optional[int]
     init: Optional[Node]
     is_static: bool = False
+    extra_dims: Optional[List[int]] = None  # for arr[M][N]: size=M, extra_dims=[N]
 
 
 @dataclass

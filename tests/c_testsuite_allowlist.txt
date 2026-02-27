@@ -127,6 +127,7 @@ tests/single-exec/00126.c
 tests/single-exec/00127.c
 tests/single-exec/00128.c
 tests/single-exec/00129.c
+tests/single-exec/00130.c
 tests/single-exec/00131.c
 tests/single-exec/00132.c
 tests/single-exec/00133.c
