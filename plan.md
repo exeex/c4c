@@ -65,13 +65,13 @@
   - `c2ll.py -> .ll -> clang -> executable`
   - failure logs split into frontend/backend/runtime
 - c-testsuite status:
-  - Allowlist run (`2026-02-27`): `188 / 188` pass, `0` fail
-  - Overall milestone: `188 / 220` passing coverage represented in allowlist
-  - `tests/c_testsuite_allowlist.txt` has been updated to these 188 passing cases
+  - Allowlist run (`2026-02-27`): `205 / 205` pass, `0` fail
+  - Overall milestone: `205 / 220` passing coverage represented in allowlist
+  - `tests/c_testsuite_allowlist.txt` has been updated to these 205 passing cases
 
 ## Next Steps (Priority Order)
 
-1. Close the remaining `32` c-testsuite cases (focus on the top repeated failure signatures in frontend/backend/runtime logs).
+1. Close the remaining `15` c-testsuite cases (focus on the top repeated failure signatures in frontend/backend/runtime logs).
 2. Improve aggregate initializer completeness for deeper nested combinations and edge cases.
 3. Continue growing `tests/c_testsuite_allowlist.txt` and keep `plan.md` in sync per milestone.
 

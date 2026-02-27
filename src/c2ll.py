@@ -840,6 +840,15 @@ class IRBuilder:
                     return q
                 if dst == "void":
                     return v  # (void)expr - just evaluate and discard
+                if dst == "ptr":
+                    # Cast to function pointer type — treated as opaque ptr (inttoptr or bitcast)
+                    if src in ("int", "long", "unsigned", "unsigned long", "short"):
+                        p = self.tmp()
+                        q = self.tmp()
+                        self.emit(f"  {p} = sext i32 {v} to i64")
+                        self.emit(f"  {q} = inttoptr i64 {p} to ptr")
+                        return q
+                    return v  # already a pointer
                 raise CompileError(f"codegen error: unsupported cast from {src!r} to {dst!r}")
             case SizeofExpr(typ=typ, expr=expr):
                 if typ is not None:
@@ -1999,43 +2008,84 @@ class IRBuilder:
         # StructInit entries: (Optional[str], Node) pairs
         # Positional if no field names
         named = any(fname is not None for fname, _ in init.entries)
+        def field_ty(f: "StructField") -> str:
+            """Return effective C type for struct field (handles array fields)."""
+            if f.array_size is not None:
+                return f"arr_field:{f.array_size}:{f.typ}"
+            return f.typ
+
         if named:
-            # Map field name -> node
+            # Map field name -> node (designated initializers)
+            # Positional entries continue from after the last designated field
             field_map: dict = {}
+            field_names = [f.name for f in fields]
             cur_pos = 0
             for fname, val_node in init.entries:
                 if fname is not None:
                     field_map[fname] = val_node
+                    # Advance cur_pos to field after fname
+                    if fname in field_names:
+                        cur_pos = field_names.index(fname) + 1
                 else:
-                    # Positional after named - use current position
+                    # Positional: continue from cur_pos
                     if cur_pos < len(fields):
                         field_map[fields[cur_pos].name] = val_node
-                    cur_pos += 1
+                        cur_pos += 1
             vals = []
             for f in fields:
+                fty = field_ty(f)
                 v_node = field_map.get(f.name)
                 if v_node is None:
-                    vals.append(self._zero_const(f.typ))
+                    vals.append(self._zero_const(fty))
                 else:
-                    vals.append(self._const_node_to_llvm(v_node, f.typ))
+                    vals.append(self._const_node_to_llvm(v_node, fty))
         else:
             # Positional
             vals = []
             for i, f in enumerate(fields):
+                fty = field_ty(f)
                 if i < len(init.entries):
                     _, v_node = init.entries[i]
-                    vals.append(self._const_node_to_llvm(v_node, f.typ))
+                    vals.append(self._const_node_to_llvm(v_node, fty))
                 else:
-                    vals.append(self._zero_const(f.typ))
+                    vals.append(self._zero_const(fty))
         return "{" + ", ".join(vals) + "}"
 
     def _const_node_to_llvm(self, node: Node, typ: str) -> str:
         """Convert a constant node to LLVM constant string for global initializers."""
         ll_ty = self.llvm_ty(typ)
         try:
+            # For array field types, brace initializers (StructInit) are treated as array inits
+            if typ.startswith("arr_field:") and isinstance(node, StructInit):
+                parts = typ.split(":", 2)
+                total_n = int(parts[1])
+                elem_ty = parts[2]
+                elem_ll = self.llvm_ty(elem_ty)
+                vals = []
+                for _, v_node in node.entries:
+                    try:
+                        vals.append(self.eval_global_const(v_node))
+                    except Exception:
+                        vals.append(0)
+                while len(vals) < total_n:
+                    vals.append(0)
+                vals_str = ", ".join(f"{elem_ll} {v}" for v in vals[:total_n])
+                return f"[{total_n} x {elem_ll}] [{vals_str}]"
             if isinstance(node, StructInit):
                 return f"{ll_ty} {self._emit_struct_init_const(typ, node)}"
             if isinstance(node, ArrayInit):
+                # Handle arr_field:N:elem or plain array types
+                if typ.startswith("arr_field:"):
+                    parts = typ.split(":", 2)
+                    total_n = int(parts[1])
+                    elem_ty = parts[2]
+                    elem_ll = self.llvm_ty(elem_ty)
+                    # Pad or truncate to total_n elements
+                    vals = [self.eval_global_const(v) for v in node.values]
+                    while len(vals) < total_n:
+                        vals.append(0)
+                    vals_str = ", ".join(f"{elem_ll} {v}" for v in vals[:total_n])
+                    return f"[{total_n} x {elem_ll}] [{vals_str}]"
                 elem_ll = "i32"  # default
                 vals_str = ", ".join(f"{elem_ll} {v}" for v in node.values)
                 return f"[{len(node.values)} x {elem_ll}] [{vals_str}]"
