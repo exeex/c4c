@@ -762,11 +762,22 @@ class Parser:
             # After parse_type, we may have:
             # - a name directly: typedef int myint;
             # - a function pointer: typedef int (*fn)(int);
+            # - a pointer-to-function: typedef int * (*fn)(int);
             if self.cur().typ == TokenType.LPAREN:
                 # typedef with function pointer: typedef int (*fn)(int);
-                # Skip until SEMI
+                # Try to extract name: ( * name ) ( params )
+                save = self.i
+                self.advance()  # skip (
+                while self.cur().typ == TokenType.STAR:
+                    self.advance()
+                alias_name: Optional[str] = None
+                if self.cur().typ == TokenType.ID:
+                    alias_name = self.eat(TokenType.ID).text
+                # Skip to SEMI
                 while self.cur().typ not in (TokenType.SEMI, TokenType.EOF):
                     self.advance()
+                if alias_name is not None:
+                    self.typedef_names[alias_name] = "ptr"
                 if self.cur().typ == TokenType.SEMI:
                     self.advance()
                 return None
@@ -774,6 +785,23 @@ class Parser:
             while self.cur().typ == TokenType.STAR:
                 self.advance()
                 ptr += 1
+            # After stars, might be a function pointer typedef: typedef T * (*name)(...);
+            if self.cur().typ == TokenType.LPAREN:
+                save = self.i
+                self.advance()  # skip (
+                while self.cur().typ == TokenType.STAR:
+                    self.advance()
+                alias_name = None
+                if self.cur().typ == TokenType.ID:
+                    alias_name = self.eat(TokenType.ID).text
+                # Skip to SEMI
+                while self.cur().typ not in (TokenType.SEMI, TokenType.EOF):
+                    self.advance()
+                if alias_name is not None:
+                    self.typedef_names[alias_name] = "ptr"
+                if self.cur().typ == TokenType.SEMI:
+                    self.advance()
+                return None
             if self.cur().typ == TokenType.ID:
                 alias = self.eat(TokenType.ID).text
                 self.typedef_names[alias] = base_type + ("*" * ptr)

@@ -271,6 +271,8 @@ class IRBuilder:
                     return "int"
                 if bt.endswith("*"):
                     return bt[:-1]
+                if bt == "ptr":
+                    return "ptr"  # indexing into a generic/function-pointer array
                 # Fallback: check if base is Var with known elem type
                 if isinstance(base, Var):
                     elem = self.local_array_elem_types.get(base.name) or self.global_array_elem_types.get(base.name)
@@ -416,11 +418,11 @@ class IRBuilder:
                             )
                             return t
                         vty = self.resolve_var_type(name)
-                        if vty.endswith("*"):
+                        if vty.endswith("*") or vty == "ptr":
                             base_ptr = self.codegen_expr(base)
                             if base_ptr is None:
                                 raise CompileError("codegen error: invalid pointer base")
-                            stride_ty = self.ptr_elem_llvm_ty(vty)
+                            stride_ty = self.ptr_elem_llvm_ty(vty) if vty.endswith("*") else "i8"
                             self.emit(f"  {t} = getelementptr inbounds {stride_ty}, ptr {base_ptr}, i32 {idx}")
                             return t
                         raise CompileError("codegen error: index base must be array variable")
@@ -517,6 +519,13 @@ class IRBuilder:
                 if op == ">=":
                     return 1 if l >= r else 0
                 raise CompileError(f"codegen error: unsupported global initializer op {op!r}")
+            case Var(name=name):
+                # Enum constant reference
+                if name in self.enum_consts:
+                    return self.enum_consts[name]
+                raise CompileError(
+                    f"codegen error: '{name}' is not a constant expression"
+                )
             case _:
                 raise CompileError(
                     "codegen error: global initializer must be an integer constant expression"
@@ -753,6 +762,8 @@ class IRBuilder:
                     load_ty = "i32"
                     if et.endswith("*"):
                         load_ty = self.llvm_ty(et[:-1])
+                    elif et == "ptr":
+                        load_ty = "ptr"
                     t = self.tmp()
                     self.emit(f"  {t} = load {load_ty}, ptr {pv}")
                     return t
