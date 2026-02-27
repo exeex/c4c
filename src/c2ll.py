@@ -50,6 +50,7 @@ class IRBuilder:
         self.string_consts: Dict[str, str] = {}  # value -> global name
         self.string_idx = 0
         self.used_intrinsics: set = set()  # track LLVM intrinsics used
+        self.auto_declared_fns: Dict[str, str] = {}  # undeclared called fns: name -> "declare ..." line
         self.enum_consts: Dict[str, int] = dict(prog.enum_consts) if prog.enum_consts else {}
         self._current_fn: str = ""
         self._current_fn_ret_type: str = "void"
@@ -1309,9 +1310,11 @@ class IRBuilder:
                             return None
                         self.emit(f"  {t} = {call_instr}")
                         return t
-                    # undeclared function - assume returns int
+                    # undeclared function - assume returns int, auto-declare it
+                    if name not in self.auto_declared_fns:
+                        self.auto_declared_fns[name] = f"declare i32 @{name}(...)"
                     t = self.tmp()
-                    self.emit(f"  {t} = call i32 @{name}({', '.join(args_text)})")
+                    self.emit(f"  {t} = call i32 (...) @{name}({', '.join(args_text)})")
                     return t
                 llvm_ret_ty = self.llvm_ty(sig.ret_type)
                 if sig.is_variadic:
@@ -2002,7 +2005,7 @@ class IRBuilder:
         """Pre-scan function body and emit all alloca instructions up front."""
         for st in body:
             match st:
-                case Decl(name=name, base_type=base_type, ptr_level=ptr_level, size=size, is_static=is_static_d, extra_dims=extra_dims):
+                case Decl(name=name, base_type=base_type, ptr_level=ptr_level, size=size, is_static=is_static_d, extra_dims=extra_dims, full_type=full_type):
                     if is_static_d:
                         continue  # static locals are handled as globals, not alloca
                     if name in self.slots:
@@ -2025,6 +2028,8 @@ class IRBuilder:
                         self.emit(f"  {slot} = alloca [{total_size} x {elem_ll}]")
                     else:
                         self.local_types[name] = base_type + ("*" * ptr_level)
+                        if full_type:
+                            self.local_full_types[name] = full_type
                         # pointer-to-array: record stride from extra_dims (e.g. (*p)[4] → stride=4)
                         if extra_dims and ptr_level > 0:
                             stride = 1
@@ -2389,6 +2394,14 @@ class IRBuilder:
             # Skip stdlib-internal functions (names starting with __) defined in
             # system headers; they use unsupported patterns and are never called directly.
             if fn.name.startswith("__"):
+                # Emit a declare so calls to these functions are valid LLVM IR
+                params = [p.typ for p in fn.params if p.typ != "..."]
+                is_var = any(p.typ == "..." for p in fn.params)
+                ret_ty = self.llvm_ty(fn.ret_type)
+                parts = [self.llvm_ty(pt) for pt in params]
+                if is_var:
+                    parts.append("...")
+                self.emit(f"declare {ret_ty} @{fn.name}({', '.join(parts)})")
                 continue
             self.codegen_function(fn)
             if idx != len(self.prog.funcs) - 1:
@@ -2407,6 +2420,10 @@ class IRBuilder:
             all_lines = self.lines
         if intrinsic_decls:
             all_lines = intrinsic_decls + [""] + all_lines
+        # Emit auto-declarations for called-but-undeclared functions
+        if self.auto_declared_fns:
+            auto_decl_lines = sorted(self.auto_declared_fns.values())
+            all_lines = auto_decl_lines + [""] + all_lines
         return "\n".join(all_lines) + "\n"
 
 

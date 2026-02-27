@@ -1758,11 +1758,18 @@ class Parser:
             else:
                 # Parse type name (may include qualifiers, pointers, struct tags, etc.)
                 try:
+                    # Track leading const to preserve it for pointer types (e.g. "const char *")
+                    leading_const_generic = self.cur().typ == TokenType.KW_CONST
                     type_str = self.parse_type()
                     # Parse pointer levels
+                    ptr_level_generic = 0
                     while self.cur().typ == TokenType.STAR:
                         self.advance()
                         type_str += "*"
+                        ptr_level_generic += 1
+                    # Preserve leading const for pointer types (const char * → "const char*")
+                    if leading_const_generic and ptr_level_generic > 0:
+                        type_str = "const " + type_str
                     # Skip const/volatile after star
                     while self.cur().typ in (TokenType.KW_CONST, TokenType.KW_VOLATILE, TokenType.KW_RESTRICT):
                         self.advance()
