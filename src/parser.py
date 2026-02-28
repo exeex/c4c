@@ -92,12 +92,14 @@ class Parser:
             case TokenType.KW_UNSIGNED:
                 self.advance()
                 # unsigned int, unsigned long, unsigned char, etc.
+                is_uchar = False
                 if self.cur().typ in (
                     TokenType.KW_INT, TokenType.KW_LONG, TokenType.KW_SHORT, TokenType.KW_CHAR
                 ):
                     inner = self.cur().text
                     self.advance()
                     if inner == "char":
+                        is_uchar = True
                         if self.cur().typ == TokenType.KW_LONG:
                             self.advance()
                     if self.cur().typ == TokenType.KW_LONG:
@@ -105,7 +107,7 @@ class Parser:
                     if self.cur().typ == TokenType.KW_INT:
                         self.advance()
                 self.skip_type_qualifiers()
-                return "int"
+                return "unsigned char" if is_uchar else "int"
             case TokenType.KW_SIGNED:
                 self.advance()
                 is_long = False
@@ -563,33 +565,78 @@ class Parser:
             self.advance()
 
     def parse_int_init_list(self, explicit_size: Optional[int]) -> "ArrayInit":
-        """Parse a brace-enclosed integer array initializer like {1, 2, [3]=4, 5}.
-        Returns an ArrayInit node with the full expanded value list."""
+        """Parse a brace-enclosed array initializer like {1, 2, [3]=4, [0...2]=f, 5}.
+        Returns an ArrayInit node with the full expanded value list.
+        Values can be int or str (function/variable name for pointer arrays)."""
         from ast_nodes import ArrayInit
         self.eat(TokenType.LBRACE)
-        # Collect (index, value) pairs
-        entries: List[tuple[Optional[int], int]] = []
+        # Collect (index, value) pairs; value is int or str (symbol name for ptr arrays)
+        entries: List[tuple[int, object]] = []
         cur_idx = 0
         while self.cur().typ != TokenType.RBRACE and self.cur().typ != TokenType.EOF:
+            range_start = cur_idx
+            range_end = cur_idx
             # Check for designated initializer: [N] = val or range [A ... B] = val
             if self.cur().typ == TokenType.LBRACKET:
                 self.advance()
                 idx_val = self._parse_const_int()
+                range_start = idx_val
+                range_end = idx_val
                 # Handle range: [A ... B]
                 if self.cur().typ == TokenType.ELLIPSIS:
                     self.advance()
-                    self._parse_const_int()  # skip end of range
+                    range_end = self._parse_const_int()  # save end of range
                 if self.cur().typ == TokenType.RBRACKET:
                     self.advance()
                 if self.cur().typ == TokenType.ASSIGN:
                     self.advance()
-                cur_idx = idx_val
-            # Skip nested braces (for struct sub-initializers) - just try to get an int
+                cur_idx = range_start
+            # Parse the value
+            val: object = 0
             if self.cur().typ == TokenType.LBRACE:
                 # Nested initializer for struct element - skip for now, store 0
                 self.skip_init_braces()
-                entries.append((cur_idx, 0))
-                cur_idx += 1
+                val = 0
+            elif self.cur().typ == TokenType.AMP:
+                # &funcname — function pointer address-of
+                self.advance()  # skip &
+                if self.cur().typ == TokenType.ID:
+                    val = self.cur().text
+                    self.advance()
+                # Skip any trailing tokens before the next comma/close brace
+                while self.cur().typ not in (TokenType.COMMA, TokenType.RBRACE, TokenType.EOF):
+                    tok = self.cur().typ
+                    if tok in (TokenType.LPAREN, TokenType.LBRACKET, TokenType.LBRACE):
+                        depth = 1
+                        self.advance()
+                        while depth > 0 and self.cur().typ != TokenType.EOF:
+                            if self.cur().typ in (TokenType.LPAREN, TokenType.LBRACKET, TokenType.LBRACE):
+                                depth += 1
+                            elif self.cur().typ in (TokenType.RPAREN, TokenType.RBRACKET, TokenType.RBRACE):
+                                depth -= 1
+                            self.advance()
+                    else:
+                        self.advance()
+            elif (self.cur().typ == TokenType.ID
+                  and self.cur().text not in self.enum_consts
+                  and self.cur().text not in self.typedef_names):
+                # Bare function/variable name used as pointer value (function decay)
+                val = self.cur().text
+                self.advance()
+                # Skip any trailing tokens before the next comma/close brace
+                while self.cur().typ not in (TokenType.COMMA, TokenType.RBRACE, TokenType.EOF):
+                    tok = self.cur().typ
+                    if tok in (TokenType.LPAREN, TokenType.LBRACKET, TokenType.LBRACE):
+                        depth = 1
+                        self.advance()
+                        while depth > 0 and self.cur().typ != TokenType.EOF:
+                            if self.cur().typ in (TokenType.LPAREN, TokenType.LBRACKET, TokenType.LBRACE):
+                                depth += 1
+                            elif self.cur().typ in (TokenType.RPAREN, TokenType.RBRACKET, TokenType.RBRACE):
+                                depth -= 1
+                            self.advance()
+                    else:
+                        self.advance()
             else:
                 try:
                     save_pos = self.i
@@ -597,7 +644,6 @@ class Parser:
                     if self.i == save_pos:
                         # No progress — treat as non-constant expression
                         raise CompileError("no progress in _parse_const_int")
-                    entries.append((cur_idx, val))
                 except Exception:
                     # Skip non-constant expressions, tracking brace/paren depth
                     skip_depth = 0
@@ -621,8 +667,10 @@ class Parser:
                             break
                         else:
                             self.advance()
-                    entries.append((cur_idx, 0))
-                cur_idx += 1
+            # Append entries for all indices in range [range_start, range_end]
+            for ri in range(range_start, range_end + 1):
+                entries.append((ri, val))
+            cur_idx = range_end + 1
             if self.cur().typ == TokenType.COMMA:
                 self.advance()
         if self.cur().typ == TokenType.RBRACE:
@@ -633,8 +681,8 @@ class Parser:
             arr_size = max(explicit_size or 0, max_idx + 1)
         else:
             arr_size = explicit_size or 0
-        # Expand to full array
-        vals = [0] * max(arr_size, 1)
+        # Expand to full array (last written value wins for each index)
+        vals: list = [0] * max(arr_size, 1)
         for idx, val in entries:
             if 0 <= idx < len(vals):
                 vals[idx] = val
@@ -1382,8 +1430,14 @@ class Parser:
                         self.advance()
                         if self.cur().typ == TokenType.LBRACE:
                             # Parse array/struct initializer
-                            if size is not None:
-                                # Array init
+                            if size is not None and base_type.startswith("struct:"):
+                                # Array of structs: use struct array parser to get correct size
+                                from ast_nodes import StructArrayInit
+                                arr_init = self._parse_struct_array_init(base_type, size if size > 1 else None)
+                                init = arr_init
+                                size = arr_init.size if arr_init.size > 0 else size
+                            elif size is not None:
+                                # Integer/char array init
                                 init = self.parse_int_init_list(size)
                             elif (base_type.startswith("struct:") and
                                   base_type.split(":", 1)[1] in self.struct_defs) or \

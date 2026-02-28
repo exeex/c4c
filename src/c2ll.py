@@ -115,10 +115,12 @@ class IRBuilder:
             return f"[{n} x {elem}]"
         if ty.startswith("struct:"):
             tag = ty.split(":", 1)[1]
+            if "*" in tag:  # pointer-to-struct: treat as opaque pointer
+                return "ptr"
             return f"%struct.{tag}"
         if ty.endswith("*") or ty in ("ptr", "char*"):
             return "ptr"
-        if ty == "char":
+        if ty in ("char", "unsigned char"):
             return "i8"
         if ty in ("short", "unsigned short"):
             return "i32"  # promote short to i32 for simplicity
@@ -198,6 +200,10 @@ class IRBuilder:
         if ty == "char":
             t = self.tmp()
             self.emit(f"  {t} = sext i8 {v} to i32")
+            return t
+        if ty == "unsigned char":
+            t = self.tmp()
+            self.emit(f"  {t} = zext i8 {v} to i32")
             return t
         if ty == "double":
             t = self.tmp()
@@ -414,8 +420,8 @@ class IRBuilder:
                     ):
                         return self.expr_type(target)
                 return "int"
-            case IncDec():
-                return "int"
+            case IncDec(name=incdec_name):
+                return self.resolve_var_type(incdec_name)
             case Call(name=name):
                 # Apply math builtin remapping to find the right signature
                 actual_name = _MATH_BUILTIN_MAP.get(name, name)
@@ -452,7 +458,7 @@ class IRBuilder:
                 return "int"
 
     def sizeof_type(self, ty: str) -> int:
-        if ty == "char":
+        if ty in ("char", "unsigned char"):
             return 1
         if ty in ("short", "unsigned short"):
             return 2
@@ -845,6 +851,20 @@ class IRBuilder:
                     t = self.tmp()
                     self.emit(f"  {t} = getelementptr inbounds [{n_elem} x {elem_ll}], ptr {ptr}, i32 0, i32 0")
                     return t
+                # Handle rvalue struct member access: func().field or (compound_lit).field
+                # When base is a Call/IndirectCall returning a struct, use extractvalue
+                if not mtp and isinstance(mb, (Call, IndirectCall)):
+                    try:
+                        field_idx, fty = self.struct_field(mb_ty, mf)
+                        struct_val = self.codegen_expr(mb)
+                        if struct_val is not None:
+                            ll_struct_ty = self.llvm_ty(mb_ty)
+                            ll_fty = self.llvm_ty(fty)
+                            t = self.tmp()
+                            self.emit(f"  {t} = extractvalue {ll_struct_ty} {struct_val}, {field_idx}")
+                            return t
+                    except Exception:
+                        pass
                 ptr = self.codegen_lvalue_ptr(n)
                 t = self.tmp()
                 mty = self.expr_type(n)
@@ -1038,13 +1058,17 @@ class IRBuilder:
                 dst = typ
                 if src == dst:
                     return v
-                if src == "int" and dst == "char":
+                if src == "int" and dst in ("char", "unsigned char"):
                     t = self.tmp()
                     self.emit(f"  {t} = trunc i32 {v} to i8")
                     return t
                 if src == "char" and dst == "int":
                     t = self.tmp()
                     self.emit(f"  {t} = sext i8 {v} to i32")
+                    return t
+                if src == "unsigned char" and dst == "int":
+                    t = self.tmp()
+                    self.emit(f"  {t} = zext i8 {v} to i32")
                     return t
                 if src.endswith("*") and dst.endswith("*"):
                     return v
@@ -1066,13 +1090,17 @@ class IRBuilder:
                 int_types = {"int", "short", "unsigned", "unsigned int", "unsigned short", "long", "unsigned long", "long long", "unsigned long long"}
                 if src in int_types and dst in int_types:
                     return v  # both are i32 in our IR
-                if src in int_types and dst == "char":
+                if src in int_types and dst in ("char", "unsigned char"):
                     t = self.tmp()
                     self.emit(f"  {t} = trunc i32 {v} to i8")
                     return t
                 if src == "char" and dst in int_types:
                     t = self.tmp()
                     self.emit(f"  {t} = sext i8 {v} to i32")
+                    return t
+                if src == "unsigned char" and dst in int_types:
+                    t = self.tmp()
+                    self.emit(f"  {t} = zext i8 {v} to i32")
                     return t
                 if src in int_types and dst == "double":
                     t = self.tmp()
@@ -1318,7 +1346,7 @@ class IRBuilder:
                     else:
                         # variadic extra arg or undeclared func - apply C default promotions
                         # char is promoted to int in variadic/unprototyped calls
-                        if aty == "char":
+                        if aty in ("char", "unsigned char"):
                             v = self.promote_to_i32(v, aty)
                             arg_ty = "i32"
                         elif aty in ("long", "unsigned long"):
@@ -1404,7 +1432,7 @@ class IRBuilder:
                     if v is None:
                         raise CompileError("codegen error: void argument in indirect call")
                     aty = self.expr_type(arg)
-                    if aty == "char":
+                    if aty in ("char", "unsigned char"):
                         v = self.promote_to_i32(v, aty)
                         arg_ty = "i32"
                     else:
@@ -1453,6 +1481,16 @@ class IRBuilder:
                 if selected is not None:
                     return self.codegen_expr(selected)
                 return "0"
+            case Block(body=stmts):
+                # Comma expression list (e.g., for-loop post: i++, j++)
+                result = None
+                for st in stmts:
+                    match st:
+                        case ExprStmt(expr=e):
+                            result = self.codegen_expr(e)
+                        case _:
+                            self.codegen_stmt(st, "void")
+                return result
             case _:
                 raise CompileError(f"codegen error: unsupported expr {type(n).__name__}")
 
@@ -1540,7 +1578,24 @@ class IRBuilder:
                             for idx, val in enumerate(init.values):
                                 ep = self.tmp()
                                 self.emit(f"  {ep} = getelementptr inbounds [{size} x {elem_ll}], ptr {slot}, i32 0, i32 {idx}")
-                                self.emit(f"  store {elem_ll} {val}, ptr {ep}")
+                                # Use zeroinitializer for struct/array types; integer 0 for scalars
+                                is_agg = elem_ll.startswith("%struct.") or elem_ll.startswith("[")
+                                store_val = "zeroinitializer" if (is_agg and val == 0) else str(val)
+                                self.emit(f"  store {elem_ll} {store_val}, ptr {ep}")
+                        elif isinstance(init, StructArrayInit) and self.is_struct_type(base_type):
+                            # Array of structs: initialize each element
+                            for idx, struct_node in init.entries:
+                                if struct_node is None:
+                                    continue
+                                ep = self.tmp()
+                                self.emit(f"  {ep} = getelementptr inbounds [{size} x {elem_ll}], ptr {slot}, i32 0, i32 {idx}")
+                                if isinstance(struct_node, StructInit):
+                                    self._codegen_local_struct_init(ep, base_type, struct_node)
+                                else:
+                                    # Non-StructInit (e.g., scalar expression for flat init)
+                                    v = self.codegen_expr(struct_node)
+                                    if v is not None:
+                                        self.emit(f"  store {elem_ll} {v}, ptr {ep}")
                     return False
                 if not already_hoisted:
                     self.local_types[name] = base_type + ("*" * ptr_level)
@@ -2280,10 +2335,24 @@ class IRBuilder:
                 except Exception:
                     return "null"
 
+    def _coerce_val_for_store(self, v: str, src_node, target_ty: str) -> str:
+        """Coerce v (result of codegen_expr(src_node)) to target_ty for a store."""
+        try:
+            src_ty = self.expr_type(src_node)
+        except Exception:
+            src_ty = "int"
+        return self.emit_convert(v, src_ty, target_ty)
+
     def _codegen_local_struct_init(self, slot: str, struct_ty: str, init: "StructInit") -> None:
         """Generate stores to initialize a local struct variable from a StructInit node."""
         if ":" not in struct_ty:
             return
+        # Unwrap: if init is {CompoundLit(same type)}, use the CompoundLit's inner init directly
+        if (len(init.entries) == 1 and init.entries[0][0] is None and
+                isinstance(init.entries[0][1], CompoundLit) and
+                init.entries[0][1].typ == struct_ty and
+                isinstance(init.entries[0][1].init, StructInit)):
+            return self._codegen_local_struct_init(slot, struct_ty, init.entries[0][1].init)
         tag = struct_ty.split(":", 1)[1]
         s = self.struct_defs.get(tag)
         if s is None:
@@ -2311,9 +2380,10 @@ class IRBuilder:
                         self.emit(f"  {ep} = getelementptr inbounds [{arr_size} x {elem_ll}], ptr {t}, i32 0, i32 {ai}")
                         av_v = self.codegen_expr(av)
                         if av_v is not None:
+                            av_v = self._coerce_val_for_store(av_v, av, f.typ)
                             self.emit(f"  store {elem_ll} {av_v}, ptr {ep}")
                 # else: scalar for array field – skip
-            elif f.typ.startswith("struct:"):
+            elif f.typ.startswith("struct:") and "*" not in f.typ:
                 if isinstance(v_node, StructInit):
                     self._codegen_local_struct_init(t, f.typ, v_node)
                 elif isinstance(v_node, CompoundLit) and isinstance(v_node.init, StructInit):
@@ -2325,11 +2395,20 @@ class IRBuilder:
                     fll = self.llvm_ty(f.typ)
                     v = self.codegen_expr(v_node)
                     if v is not None:
+                        # Use zeroinitializer when storing integer 0 to a struct slot
+                        if fll.startswith("%struct.") and v == "0":
+                            v = "zeroinitializer"
                         self.emit(f"  store {fll} {v}, ptr {t}")
             else:
-                v = self.codegen_expr(v_node)
+                # Unwrap braced scalar initializer: {val} for a scalar field
+                actual_vnode = v_node
+                if (isinstance(v_node, StructInit) and v_node.entries and
+                        f.array_size is None and not f.typ.startswith("struct:")):
+                    actual_vnode = v_node.entries[0][1]
+                v = self.codegen_expr(actual_vnode)
                 if v is not None:
                     fll = self.llvm_ty(f.typ)
+                    v = self._coerce_val_for_store(v, actual_vnode, f.typ)
                     self.emit(f"  store {fll} {v}, ptr {t}")
 
         if named:
@@ -2381,8 +2460,9 @@ class IRBuilder:
                             if sv_v is not None:
                                 ep = self.tmp()
                                 self.emit(f"  {ep} = getelementptr inbounds [{f.array_size} x {elem_ll}], ptr {t}, i32 0, i32 {ai}")
+                                sv_v = self._coerce_val_for_store(sv_v, sv, f.typ)
                                 self.emit(f"  store {elem_ll} {sv_v}, ptr {ep}")
-                elif f.typ.startswith("struct:"):
+                elif f.typ.startswith("struct:") and "*" not in f.typ:
                     if isinstance(v_node, StructInit):
                         self._codegen_local_struct_init(t, f.typ, v_node)
                         flat_idx += 1
@@ -2401,6 +2481,8 @@ class IRBuilder:
                                 fll = self.llvm_ty(f.typ)
                                 v = self.codegen_expr(v_node)
                                 if v is not None:
+                                    if fll.startswith("%struct.") and v == "0":
+                                        v = "zeroinitializer"
                                     self.emit(f"  store {fll} {v}, ptr {t}")
                             flat_idx += 1
                         else:
@@ -2411,6 +2493,7 @@ class IRBuilder:
                     v = self.codegen_expr(v_node)
                     if v is not None:
                         fll = self.llvm_ty(f.typ)
+                        v = self._coerce_val_for_store(v, v_node, f.typ)
                         self.emit(f"  store {fll} {v}, ptr {t}")
                     flat_idx += 1
 
@@ -2480,6 +2563,9 @@ class IRBuilder:
             else:
                 sub_entries.append((None, v_node))
                 flat_idx += 1
+        # Empty struct (no fields processed): consume one entry from flat init if present
+        if not fields_to_process and flat_idx < len(entries):
+            flat_idx += 1
         return StructInit(sub_entries), flat_idx
 
     def _emit_struct_init_const(self, struct_ty: str, init: "StructInit") -> str:
@@ -2489,6 +2575,13 @@ class IRBuilder:
         if s is None:
             return "zeroinitializer"
         fields = s.fields
+        # If init has exactly one entry that is a CompoundLit of the same struct type, unwrap it
+        # (parser sometimes wraps compound literals in an extra StructInit layer)
+        if (len(init.entries) == 1 and init.entries[0][0] is None and
+                isinstance(init.entries[0][1], CompoundLit) and
+                init.entries[0][1].typ == struct_ty and
+                isinstance(init.entries[0][1].init, StructInit)):
+            return self._emit_struct_init_const(struct_ty, init.entries[0][1].init)
         # Build field_name -> value mapping
         # StructInit entries: (Optional[str], Node) pairs
         # Positional if no field names
@@ -2565,11 +2658,18 @@ class IRBuilder:
                             arr_vals.append(0)
                         vals_str = ", ".join(f"{elem_ll} {v}" for v in arr_vals[:arr_n])
                         vals.append(f"[{arr_n} x {elem_ll}] [{vals_str}]")
-                elif fty.startswith("struct:"):
+                elif fty.startswith("struct:") and "*" not in fty:
                     _, v_node = init.entries[flat_idx]
                     if isinstance(v_node, StructInit):
                         # Already a nested StructInit (explicit braces)
                         vals.append(self._const_node_to_llvm(v_node, fty))
+                        flat_idx += 1
+                    elif isinstance(v_node, CompoundLit) and v_node.typ == fty:
+                        # Compound literal of exactly the same struct type: use its inner init
+                        if isinstance(v_node.init, StructInit):
+                            vals.append(self._const_node_to_llvm(v_node.init, fty))
+                        else:
+                            vals.append(self._zero_const(fty))
                         flat_idx += 1
                     else:
                         # Flat values: collect and build sub-StructInit
@@ -2584,6 +2684,10 @@ class IRBuilder:
     def _const_node_to_llvm(self, node: Node, typ: str) -> str:
         """Convert a constant node to LLVM constant string for global initializers."""
         ll_ty = self.llvm_ty(typ)
+        # Unwrap braced scalar initializer: {val} used for a non-struct, non-array scalar field
+        if (isinstance(node, StructInit) and node.entries and
+                not typ.startswith("struct:") and not typ.startswith("arr_field:")):
+            return self._const_node_to_llvm(node.entries[0][1], typ)
         try:
             # For array field types, brace initializers (StructInit) are treated as array inits
             if typ.startswith("arr_field:") and isinstance(node, StructInit):
@@ -2622,6 +2726,9 @@ class IRBuilder:
             # Handle address-of for pointer fields
             if isinstance(node, UnaryOp) and node.op == "&" and isinstance(node.expr, Var):
                 return f"ptr @{node.expr.name}"
+            # Handle function name used as pointer initializer (e.g., struct Wrap x = {myfunc})
+            if isinstance(node, Var) and node.name in self.func_sigs and ll_ty == "ptr":
+                return f"ptr @{node.name}"
             v = self.eval_global_const(node)
             if ll_ty == "ptr":
                 return "ptr null"

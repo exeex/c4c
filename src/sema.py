@@ -58,7 +58,7 @@ class SemanticAnalyzer:
         if t1 == t2:
             return True
         # char, short, and int are compatible (integer types)
-        if {t1, t2} <= {"int", "char", "float", "double", "short", "unsigned", "unsigned int", "unsigned short", "long", "unsigned long"}:
+        if {t1, t2} <= {"int", "char", "float", "double", "short", "unsigned", "unsigned int", "unsigned short", "long", "unsigned long", "unsigned char", "long long", "unsigned long long", "signed char"}:
             return True
         # Array-to-pointer decay: array is compatible with any pointer type
         if t1 == "array" or t2 == "array":
