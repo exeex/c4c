@@ -446,6 +446,8 @@ class IRBuilder:
                 if selected is not None:
                     return self.expr_type(selected)
                 return "int"
+            case CompoundLit(typ=cl_typ):
+                return cl_typ
             case _:
                 return "int"
 
@@ -1521,6 +1523,19 @@ class IRBuilder:
                             ep = self.tmp()
                             self.emit(f"  {ep} = getelementptr inbounds [{size} x i8], ptr {slot}, i32 0, i32 {len(raw)}")
                             self.emit(f"  store i8 0, ptr {ep}")
+                        elif isinstance(init, StringLit) and elem_ty in ("int", "unsigned", "unsigned int"):
+                            # Wide string (wchar_t) array initialization: store Unicode code points
+                            actual_size = self.local_arrays.get(name, size)
+                            raw = init.value
+                            for idx, ch in enumerate(raw):
+                                c = ord(ch) if isinstance(ch, str) else ch
+                                ep = self.tmp()
+                                self.emit(f"  {ep} = getelementptr inbounds [{actual_size} x i32], ptr {slot}, i32 0, i32 {idx}")
+                                self.emit(f"  store i32 {c}, ptr {ep}")
+                            # null terminator
+                            ep = self.tmp()
+                            self.emit(f"  {ep} = getelementptr inbounds [{actual_size} x i32], ptr {slot}, i32 0, i32 {len(raw)}")
+                            self.emit(f"  store i32 0, ptr {ep}")
                         elif isinstance(init, ArrayInit):
                             for idx, val in enumerate(init.values):
                                 ep = self.tmp()
@@ -1879,7 +1894,11 @@ class IRBuilder:
             if s.is_union:
                 # For unions, emit only the first (largest) field to overlay all members
                 if s.fields:
-                    field_tys = self.llvm_ty(s.fields[0].typ)
+                    f0 = s.fields[0]
+                    if f0.array_size is not None:
+                        field_tys = f"[{f0.array_size} x {self.llvm_ty(f0.typ)}]"
+                    else:
+                        field_tys = self.llvm_ty(f0.typ)
                 else:
                     field_tys = "i32"
                 self.emit(f"%struct.{tag} = type {{{field_tys}}}")
@@ -1949,7 +1968,13 @@ class IRBuilder:
                                 elems.append(f"{arr_elem_ll} zeroinitializer")
                         self.emit(f"@{name} = global [{n_elem} x {arr_elem_ll}] [{', '.join(elems)}]")
                     elif init is not None and isinstance(init, ArrayInit) and not is_struct_elem:
-                        vals_str = ", ".join(f"{arr_elem_ll} {v}" for v in init.values)
+                        def _fmt_arr_elem(ell: str, v) -> str:
+                            if ell == "ptr":
+                                if v == 0:
+                                    return "ptr null"
+                                return f"ptr @{v}" if isinstance(v, str) else f"ptr {v}"
+                            return f"{ell} {v}"
+                        vals_str = ", ".join(_fmt_arr_elem(arr_elem_ll, v) for v in init.values)
                         self.emit(f"@{name} = global [{n_elem} x {arr_elem_ll}] [{vals_str}]")
                     else:
                         self.emit(f"@{name} = global [{n_elem} x {arr_elem_ll}] zeroinitializer")
@@ -2071,7 +2096,7 @@ class IRBuilder:
         """Pre-scan function body and emit all alloca instructions up front."""
         for st in body:
             match st:
-                case Decl(name=name, base_type=base_type, ptr_level=ptr_level, size=size, is_static=is_static_d, extra_dims=extra_dims, full_type=full_type):
+                case Decl(name=name, base_type=base_type, ptr_level=ptr_level, size=size, init=hoist_init, is_static=is_static_d, extra_dims=extra_dims, full_type=full_type):
                     if is_static_d:
                         continue  # static locals are handled as globals, not alloca
                     if name in self.slots:
@@ -2079,6 +2104,10 @@ class IRBuilder:
                     slot = f"%{name}"
                     self.slots[name] = slot
                     if size is not None:
+                        # Wide string (wchar_t) array: fix size from string initializer
+                        if (size == 1 and isinstance(hoist_init, StringLit) and
+                                base_type in ("int", "unsigned", "unsigned int")):
+                            size = len(hoist_init.value) + 1
                         # Multi-dimensional: flatten total size and track stride
                         total_size = size
                         stride = 1
@@ -2261,43 +2290,129 @@ class IRBuilder:
             return
         ll_ty = self.llvm_ty(struct_ty)
         named = any(fname is not None for fname, _ in init.entries)
+
+        def _store_field(t: str, f, v_node) -> None:
+            """Store v_node into field f at address t."""
+            if f.array_size is not None:
+                elem_ll = self.llvm_ty(f.typ)
+                arr_size = f.array_size
+                if isinstance(v_node, StringLit):
+                    # char/int array field with string literal → memcpy
+                    src_ptr = self.codegen_expr(v_node)
+                    # bytes to copy = min(len+1, arr_size) elements * elem_size
+                    # For simplicity, copy arr_size elements
+                    elem_sz = 1 if elem_ll in ("i8", "i1") else 4
+                    copy_bytes = arr_size * elem_sz
+                    self.emit(f"  call void @llvm.memcpy.p0.p0.i64(ptr {t}, ptr {src_ptr}, i64 {copy_bytes}, i1 false)")
+                elif isinstance(v_node, (StructInit, ArrayInit)):
+                    entries = v_node.entries if isinstance(v_node, StructInit) else [(None, IntLit(v)) for v in v_node.values]
+                    for ai, (_, av) in enumerate(entries[:arr_size]):
+                        ep = self.tmp()
+                        self.emit(f"  {ep} = getelementptr inbounds [{arr_size} x {elem_ll}], ptr {t}, i32 0, i32 {ai}")
+                        av_v = self.codegen_expr(av)
+                        if av_v is not None:
+                            self.emit(f"  store {elem_ll} {av_v}, ptr {ep}")
+                # else: scalar for array field – skip
+            elif f.typ.startswith("struct:"):
+                if isinstance(v_node, StructInit):
+                    self._codegen_local_struct_init(t, f.typ, v_node)
+                elif isinstance(v_node, CompoundLit) and isinstance(v_node.init, StructInit):
+                    # Compound literal: directly initialize the target slot
+                    self._codegen_local_struct_init(t, f.typ, v_node.init)
+                else:
+                    # v_node is a struct expression (Var, Member, Cast, *ptr) –
+                    # codegen_expr loads and returns the struct value
+                    fll = self.llvm_ty(f.typ)
+                    v = self.codegen_expr(v_node)
+                    if v is not None:
+                        self.emit(f"  store {fll} {v}, ptr {t}")
+            else:
+                v = self.codegen_expr(v_node)
+                if v is not None:
+                    fll = self.llvm_ty(f.typ)
+                    self.emit(f"  store {fll} {v}, ptr {t}")
+
         if named:
             field_map: dict = {}
             cur_pos = 0
+            field_names = [f.name for f in s.fields]
             for fname, val_node in init.entries:
                 if fname is not None:
                     field_map[fname] = val_node
+                    if fname in field_names:
+                        cur_pos = field_names.index(fname) + 1
                 else:
                     if cur_pos < len(s.fields):
                         field_map[s.fields[cur_pos].name] = val_node
                     cur_pos += 1
-            for i, f in enumerate(s.fields):
+            # For unions, only emit the first field (LLVM type has only 1 member)
+            fields_to_init = s.fields[:1] if s.is_union else s.fields
+            for i, f in enumerate(fields_to_init):
                 v_node = field_map.get(f.name)
                 if v_node is None:
                     continue
                 t = self.tmp()
                 self.emit(f"  {t} = getelementptr inbounds {ll_ty}, ptr {slot}, i32 0, i32 {i}")
-                if isinstance(v_node, StructInit):
-                    self._codegen_local_struct_init(t, f.typ, v_node)
-                else:
-                    v = self.codegen_expr(v_node)
-                    if v is not None:
-                        fll = self.llvm_ty(f.typ)
-                        self.emit(f"  store {fll} {v}, ptr {t}")
+                _store_field(t, f, v_node)
         else:
-            for i, f in enumerate(s.fields):
-                if i >= len(init.entries):
+            # Positional – use flat_idx to handle flat vs nested init
+            flat_idx = 0
+            # For unions, LLVM type has only 1 field
+            fields_to_init = s.fields[:1] if s.is_union else s.fields
+            for i, f in enumerate(fields_to_init):
+                if flat_idx >= len(init.entries):
                     break
-                _, v_node = init.entries[i]
+                _, v_node = init.entries[flat_idx]
                 t = self.tmp()
                 self.emit(f"  {t} = getelementptr inbounds {ll_ty}, ptr {slot}, i32 0, i32 {i}")
-                if isinstance(v_node, StructInit):
-                    self._codegen_local_struct_init(t, f.typ, v_node)
+                if f.array_size is not None:
+                    if isinstance(v_node, (StringLit, StructInit, ArrayInit)):
+                        _store_field(t, f, v_node)
+                        flat_idx += 1
+                    else:
+                        # Flat scalars for array field: consume up to array_size entries
+                        elem_ll = self.llvm_ty(f.typ)
+                        for ai in range(f.array_size):
+                            if flat_idx >= len(init.entries):
+                                break
+                            _, sv = init.entries[flat_idx]
+                            flat_idx += 1
+                            sv_v = self.codegen_expr(sv)
+                            if sv_v is not None:
+                                ep = self.tmp()
+                                self.emit(f"  {ep} = getelementptr inbounds [{f.array_size} x {elem_ll}], ptr {t}, i32 0, i32 {ai}")
+                                self.emit(f"  store {elem_ll} {sv_v}, ptr {ep}")
+                elif f.typ.startswith("struct:"):
+                    if isinstance(v_node, StructInit):
+                        self._codegen_local_struct_init(t, f.typ, v_node)
+                        flat_idx += 1
+                    else:
+                        # Check if v_node is a struct-typed expression (Var, Cast, Member, etc.)
+                        try:
+                            vnode_ty = self.expr_type(v_node)
+                        except Exception:
+                            vnode_ty = ""
+                        if vnode_ty.startswith("struct:"):
+                            if isinstance(v_node, CompoundLit) and isinstance(v_node.init, StructInit):
+                                # Compound literal: directly initialize the target slot
+                                self._codegen_local_struct_init(t, f.typ, v_node.init)
+                            else:
+                                # Struct expression: codegen_expr loads and returns struct value
+                                fll = self.llvm_ty(f.typ)
+                                v = self.codegen_expr(v_node)
+                                if v is not None:
+                                    self.emit(f"  store {fll} {v}, ptr {t}")
+                            flat_idx += 1
+                        else:
+                            # Flat values for nested struct: collect using _flat_collect_for_struct
+                            sub_init, flat_idx = self._flat_collect_for_struct(f.typ, init.entries, flat_idx)
+                            self._codegen_local_struct_init(t, f.typ, sub_init)
                 else:
                     v = self.codegen_expr(v_node)
                     if v is not None:
                         fll = self.llvm_ty(f.typ)
                         self.emit(f"  store {fll} {v}, ptr {t}")
+                    flat_idx += 1
 
     def _zero_const(self, typ: str) -> str:
         """Return LLVM zero constant string (with type prefix) for a given C type."""
@@ -2314,6 +2429,58 @@ class IRBuilder:
         if ll_ty.startswith("["):
             return f"{ll_ty} zeroinitializer"
         return f"{ll_ty} 0"
+
+    def _flat_collect_for_struct(self, fty: str, entries: list, flat_idx: int) -> tuple:
+        """Collect flat initializer values for a struct type.
+        Returns (StructInit(sub_entries), new_flat_idx).
+        Used when a struct field is initialized with flat values instead of nested braces.
+        """
+        tag = fty.split(":", 1)[1]
+        s = self.struct_defs.get(tag)
+        if s is None:
+            if flat_idx < len(entries):
+                return StructInit([(None, entries[flat_idx][1])]), flat_idx + 1
+            return StructInit([]), flat_idx
+        sub_entries = []
+        # For unions, only the first field is initialized (one value consumed)
+        fields_to_process = s.fields[:1] if s.is_union else s.fields
+        for f in fields_to_process:
+            if flat_idx >= len(entries):
+                sub_entries.append((None, IntLit(0)))
+                continue
+            _, v_node = entries[flat_idx]
+            if f.array_size is not None:
+                # Array field: string literal or StructInit takes 1 value; otherwise consume array_size
+                if isinstance(v_node, (StringLit, StructInit, ArrayInit)):
+                    sub_entries.append((None, v_node))
+                    flat_idx += 1
+                else:
+                    for _ in range(f.array_size):
+                        if flat_idx < len(entries):
+                            sub_entries.append((None, entries[flat_idx][1]))
+                            flat_idx += 1
+                        else:
+                            sub_entries.append((None, IntLit(0)))
+            elif f.typ.startswith("struct:"):
+                if isinstance(v_node, StructInit):
+                    sub_entries.append((None, v_node))
+                    flat_idx += 1
+                else:
+                    # Check if v_node is a struct-typed expression (Var, Cast, etc.)
+                    try:
+                        vty = self.expr_type(v_node)
+                    except Exception:
+                        vty = ""
+                    if vty.startswith("struct:"):
+                        sub_entries.append((None, v_node))
+                        flat_idx += 1
+                    else:
+                        nested_init, flat_idx = self._flat_collect_for_struct(f.typ, entries, flat_idx)
+                        sub_entries.append((None, nested_init))
+            else:
+                sub_entries.append((None, v_node))
+                flat_idx += 1
+        return StructInit(sub_entries), flat_idx
 
     def _emit_struct_init_const(self, struct_ty: str, init: "StructInit") -> str:
         """Emit LLVM struct constant initializer string."""
@@ -2350,7 +2517,9 @@ class IRBuilder:
                         field_map[fields[cur_pos].name] = val_node
                         cur_pos += 1
             vals = []
-            for f in fields:
+            # For unions, LLVM type only has 1 field
+            fields_named = fields[:1] if s.is_union else fields
+            for f in fields_named:
                 fty = field_ty(f)
                 v_node = field_map.get(f.name)
                 if v_node is None:
@@ -2361,7 +2530,9 @@ class IRBuilder:
             # Positional - entries may be flat (one per scalar) or one per field
             vals = []
             flat_idx = 0  # index into init.entries for flat initialization
-            for f in fields:
+            # For unions, LLVM type only has 1 field; only emit 1 value
+            fields_to_emit = fields[:1] if s.is_union else fields
+            for f in fields_to_emit:
                 fty = field_ty(f)
                 if flat_idx >= len(init.entries):
                     vals.append(self._zero_const(fty))
@@ -2394,6 +2565,16 @@ class IRBuilder:
                             arr_vals.append(0)
                         vals_str = ", ".join(f"{elem_ll} {v}" for v in arr_vals[:arr_n])
                         vals.append(f"[{arr_n} x {elem_ll}] [{vals_str}]")
+                elif fty.startswith("struct:"):
+                    _, v_node = init.entries[flat_idx]
+                    if isinstance(v_node, StructInit):
+                        # Already a nested StructInit (explicit braces)
+                        vals.append(self._const_node_to_llvm(v_node, fty))
+                        flat_idx += 1
+                    else:
+                        # Flat values: collect and build sub-StructInit
+                        sub_init, flat_idx = self._flat_collect_for_struct(fty, init.entries, flat_idx)
+                        vals.append(self._const_node_to_llvm(sub_init, fty))
                 else:
                     _, v_node = init.entries[flat_idx]
                     flat_idx += 1
