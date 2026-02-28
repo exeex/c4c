@@ -56,6 +56,17 @@ add_test(
           --clang "${CLANG_EXECUTABLE}"
 )
 
+if(CLANG_EXECUTABLE)
+  add_test(
+    NAME ccc_review_tests
+    COMMAND "${PYTHON_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/run_ccc_review_tests.py"
+            --compiler "${C2LL_SCRIPT}"
+            --clang "${CLANG_EXECUTABLE}"
+            --tests-root "${PROJECT_SOURCE_DIR}/tests/ccc-review-tests"
+            --workdir "${CMAKE_BINARY_DIR}"
+  )
+endif()
+
 if(C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
   add_test(
     NAME c_testsuite_allowlist

@@ -65,19 +65,60 @@
   - `c2ll.py -> .ll -> clang -> executable`
   - failure logs split into frontend/backend/runtime
 - c-testsuite status:
-  - Allowlist run (`2026-02-28`): `217 / 218` pass, `1` fail
-  - Runtime regression case: `tests/single-exec/00150.c`
+  - Allowlist run (`2026-02-28`): `209 / 218` pass, `9` fail
+  - Regression cases:
+    - Frontend: `tests/single-exec/00215.c`
+    - Backend: `tests/single-exec/00040.c`, `00134.c`, `00181.c`, `00182.c`, `00189.c`, `00200.c`, `00217.c`
+    - Runtime: `tests/single-exec/00104.c`
   - `tests/c_testsuite_allowlist.txt` currently tracks 218 selected cases
 - Local regression status (`ctest --test-dir build --output-on-failure`, `2026-02-28`):
-  - `c_testsuite_allowlist`: fail at `tests/single-exec/00150.c` (runtime non-zero exit)
-  - `tiny_c2ll_tests`: fail at `bad_uninitialized.c should fail semantic analysis`
+  - `c_testsuite_allowlist`: fail (`209 / 218` pass)
+  - `tiny_c2ll_tests`: pass
 
 ## Next Steps (Priority Order)
 
-1. Fix the `tiny_c2ll_tests` regression for `bad_uninitialized.c` semantic failure expectation.
-2. Fix allowlist runtime regression `tests/single-exec/00150.c`.
-3. Close the remaining c-testsuite cases and keep allowlist additions gated by green runs.
-4. Improve aggregate initializer completeness for deeper nested combinations and edge cases.
+1. Fix backend regressions introduced by the latest ABI/initializer/type changes (`00040`, `00134`, `00181`, `00182`, `00189`, `00200`, `00217`).
+2. Fix the runtime regression in `tests/single-exec/00104.c`.
+3. Fix the frontend regression in `tests/single-exec/00215.c`.
+4. Re-run allowlist and only expand/commit milestones when the full allowlist is green.
+
+## Lexer Parity Follow-ups (`scan.rs` vs `src/lexer.py`)
+
+- Add GCC line-marker skipping (`# <num> "file"`) at start-of-line in lexer (currently not handled in `src/lexer.py`).
+- Improve numeric literal coverage:
+  - binary literals `0b...`
+  - octal semantics for leading-`0` integers
+  - hex-float literals (`0x1.fp+2`)
+  - imaginary suffixes (`i/j`) if we want GNU parity.
+- Fix `.NN` float path in `src/lexer.py` (currently tokenizes as `NUM("0")`).
+- Add escape coverage parity for `\uNNNN`, `\UNNNNNNNN`, and GNU `\e`.
+- Evaluate multi-char character constants (`'ab'`) behavior; `scan.rs` folds bytes into an int, Python lexer currently treats char literals as single-char style.
+- Evaluate whether to support `$` in identifiers (GNU mode behavior in `scan.rs`).
+- Evaluate preprocessor synthetic tokens support (`#`, `##`, pragma-pack/visibility markers) if we expand beyond current preprocessed input assumptions.
+
+## `ccc-review-tests` Handoff Notes
+
+- New test suite location: `tests/ccc-review-tests/`
+- CTest entry: `ccc_review_tests`
+- Runner: `tests/run_ccc_review_tests.py`
+- Important: this suite must run with our Python C compiler via:
+  - `--compiler src/c2ll.py`
+  - (runner flow is: Clang compile/run baseline first, then `python src/c2ll.py` -> `.ll` -> Clang -> run)
+
+Current test inventory (2026-02-28):
+- Expected-fail gap trackers (`// CCC_EXPECT: fail`):
+  - `0001_binary_literal.c`
+  - `0002_hex_float_literal.c`
+  - `0003_dot_float_literal.c`
+  - `0004_unicode_escape_string.c`
+  - `0005_unicode_escape_char.c`
+  - `0006_dollar_identifier.c`
+- Expected-pass sanity checks (`// CCC_EXPECT: pass`):
+  - `0007_line_marker.c`
+  - `0008_octal_literal.c`
+
+Follow-up rule for next agent:
+- When a lexer gap is fixed, flip corresponding case from `CCC_EXPECT: fail` to `CCC_EXPECT: pass` and keep `ccc_review_tests` green in CTest.
 
 ## How To Run Tests
 
@@ -92,6 +133,12 @@ cmake --build build
 
 ```bash
 ctest --test-dir build --output-on-failure
+```
+
+### Run only ccc review tests
+
+```bash
+ctest --test-dir build -R ccc_review_tests --output-on-failure
 ```
 
 ### Run only local regression tests
