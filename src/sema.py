@@ -155,9 +155,16 @@ class SemanticAnalyzer:
             vars_init[param.name] = True
             self.local_types[param.name] = param.typ
 
-        saw_return = False
+        reachable = True
         for st in fn.body:
-            saw_return = self.analyze_stmt(st, vars_init, fn.ret_type, 0) or saw_return
+            if not reachable:
+                if isinstance(st, LabelStmt):
+                    reachable = True
+                else:
+                    continue
+            terminated = self.analyze_stmt(st, vars_init, fn.ret_type, 0)
+            if terminated:
+                reachable = False
 
     def analyze_stmt(
         self,
@@ -330,10 +337,13 @@ class SemanticAnalyzer:
                 return False
             case Return(expr=expr):
                 if expr is not None:
-                    try:
-                        self.analyze_expr(expr, vars_init)
-                    except CompileError:
-                        pass  # be lenient in return value analysis
+                    if isinstance(expr, Var):
+                        name = expr.name
+                        if name in vars_init and not vars_init.get(name, False):
+                            raise CompileError(
+                                f"semantic error: uninitialized variable {name!r}"
+                            )
+                    self.analyze_expr(expr, vars_init)
                 return True
             case _:
                 raise CompileError(
