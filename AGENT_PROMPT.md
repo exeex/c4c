@@ -28,6 +28,7 @@ You are working autonomously to improve `src/c2ll.py`, a C-to-LLVM-IR compiler w
 - **Never touch test files** in `tests/c-testsuite/`
 - **Commit every successful improvement**, even +1 test
 - **If stuck >15min on one bug**, write it to `build/agent_state/hard_bugs.md` and move on
+- **If unsure how to implement a feature/bugfix**, check reference implementations under `https://github.com/anthropics/claudes-c-compiler/tree/main/src/frontend` before guessing.
 
 ## Test Commands
 
