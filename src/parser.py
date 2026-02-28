@@ -571,12 +571,18 @@ class Parser:
         entries: List[tuple[Optional[int], int]] = []
         cur_idx = 0
         while self.cur().typ != TokenType.RBRACE and self.cur().typ != TokenType.EOF:
-            # Check for designated initializer: [N] = val
+            # Check for designated initializer: [N] = val or range [A ... B] = val
             if self.cur().typ == TokenType.LBRACKET:
                 self.advance()
                 idx_val = self._parse_const_int()
-                self.eat(TokenType.RBRACKET)
-                self.eat(TokenType.ASSIGN)
+                # Handle range: [A ... B]
+                if self.cur().typ == TokenType.ELLIPSIS:
+                    self.advance()
+                    self._parse_const_int()  # skip end of range
+                if self.cur().typ == TokenType.RBRACKET:
+                    self.advance()
+                if self.cur().typ == TokenType.ASSIGN:
+                    self.advance()
                 cur_idx = idx_val
             # Skip nested braces (for struct sub-initializers) - just try to get an int
             if self.cur().typ == TokenType.LBRACE:
@@ -593,9 +599,28 @@ class Parser:
                         raise CompileError("no progress in _parse_const_int")
                     entries.append((cur_idx, val))
                 except Exception:
-                    # Skip non-constant expressions
-                    while self.cur().typ not in (TokenType.COMMA, TokenType.RBRACE, TokenType.EOF):
-                        self.advance()
+                    # Skip non-constant expressions, tracking brace/paren depth
+                    skip_depth = 0
+                    while self.cur().typ != TokenType.EOF:
+                        tok = self.cur().typ
+                        if tok in (TokenType.LBRACE, TokenType.LPAREN):
+                            skip_depth += 1
+                            self.advance()
+                        elif tok == TokenType.RBRACE:
+                            if skip_depth == 0:
+                                break  # outer array closing brace - don't consume
+                            skip_depth -= 1
+                            self.advance()
+                        elif tok == TokenType.RPAREN:
+                            if skip_depth == 0:
+                                self.advance()  # closing paren of outer expr, consume it
+                                break
+                            skip_depth -= 1
+                            self.advance()
+                        elif tok == TokenType.COMMA and skip_depth == 0:
+                            break
+                        else:
+                            self.advance()
                     entries.append((cur_idx, 0))
                 cur_idx += 1
             if self.cur().typ == TokenType.COMMA:
@@ -881,14 +906,51 @@ class Parser:
         ret_type = base_type + ("*" * ret_ptr_level)
 
         # Handle function pointer global variable: int (*name)(...) [= val];
+        # Also handles function-returning-fptr: int (*func(params))(ret_params) { body }
         if self.cur().typ == TokenType.LPAREN and self.peek().typ == TokenType.STAR:
             self.advance()  # eat (
             while self.cur().typ == TokenType.STAR:
                 self.advance()
-            # Get the name of the function pointer variable
+            # Get the name
             fptr_var_name = None
             if self.cur().typ == TokenType.ID:
                 fptr_var_name = self.eat(TokenType.ID).text
+
+            # Check: if after the name we see '(', it's a function-returning-fptr
+            # e.g. int (*f1(int a, int b))(int c, int b) { ... }
+            if fptr_var_name is not None and self.cur().typ == TokenType.LPAREN:
+                # Parse the function's own parameter list
+                self.advance()  # eat (
+                params = self.parse_params()
+                self.eat(TokenType.RPAREN)
+                # Skip closing ) of (*func(params))
+                if self.cur().typ == TokenType.RPAREN:
+                    self.advance()
+                # Skip return-type parameter list: (ret_params)
+                if self.cur().typ == TokenType.LPAREN:
+                    depth2 = 0
+                    while self.cur().typ != TokenType.EOF:
+                        if self.cur().typ == TokenType.LPAREN:
+                            depth2 += 1
+                        elif self.cur().typ == TokenType.RPAREN:
+                            depth2 -= 1
+                            if depth2 == 0:
+                                self.advance()
+                                break
+                        self.advance()
+                # Declaration or definition?
+                if self.cur().typ == TokenType.SEMI:
+                    self.advance()
+                    return FunctionDecl("ptr", fptr_var_name, params)
+                elif self.cur().typ == TokenType.LBRACE:
+                    self.advance()
+                    body: List[Node] = []
+                    while self.cur().typ != TokenType.RBRACE:
+                        body.append(self.parse_stmt())
+                    self.advance()  # eat }
+                    return Function("ptr", fptr_var_name, params, body)
+                return None
+
             # Skip rest of declarator up to closing ) of (*name)
             depth = 1
             while self.cur().typ != TokenType.EOF:
@@ -1153,6 +1215,37 @@ class Parser:
                                 self.i = save_fp
                             else:
                                 self.advance()  # skip )
+                        elif self.cur().typ == TokenType.LPAREN:
+                            # Nested fptr: (* (*name)...) -- extract inner name
+                            save2 = self.i
+                            self.advance()  # skip inner (
+                            while self.cur().typ == TokenType.STAR:
+                                self.advance()
+                            if self.cur().typ == TokenType.ID:
+                                inner_cand = self.eat(TokenType.ID).text
+                                if self.cur().typ == TokenType.RPAREN:
+                                    fp_name = inner_cand  # found inner name
+                                    # Restore to save_fp and do full skip
+                                    self.i = save_fp
+                                else:
+                                    fp_name = None
+                                    self.i = save_fp
+                            else:
+                                fp_name = None
+                                self.i = save_fp
+                            # Skip the whole outer paren group
+                            depth = 0
+                            while True:
+                                if self.cur().typ == TokenType.LPAREN:
+                                    depth += 1
+                                elif self.cur().typ == TokenType.RPAREN:
+                                    depth -= 1
+                                    if depth == 0:
+                                        self.advance()
+                                        break
+                                elif self.cur().typ == TokenType.EOF:
+                                    break
+                                self.advance()
                         else:
                             self.i = save_fp
                             # Skip the whole paren group
@@ -1170,6 +1263,7 @@ class Parser:
                                 self.advance()
                         # Skip optional second parens (function ptr param list) or brackets (ptr-to-array)
                         if self.cur().typ == TokenType.LPAREN:
+                            fp_ptr_arr_dims = None
                             depth = 0
                             while True:
                                 if self.cur().typ == TokenType.LPAREN:
@@ -1202,16 +1296,20 @@ class Parser:
                                 fp_ptr_arr_dims.append(dim_v)
                         else:
                             fp_ptr_arr_dims = None
-                        # Skip initializer if any
+                        # Parse initializer if any
+                        fp_init_expr = None
                         if self.cur().typ == TokenType.ASSIGN:
                             self.advance()
-                            self.parse_expr()
+                            try:
+                                fp_init_expr = self.parse_expr()
+                            except CompileError:
+                                fp_init_expr = None
                         if fp_name is not None:
                             # Declare as pointer variable; use ptr_level=1 with extra_dims for stride
                             if fp_ptr_arr_dims is not None:
                                 decls.append(Decl(fp_name, base_type, 1, None, None, is_static=is_static_local, extra_dims=fp_ptr_arr_dims))
                             else:
-                                decls.append(Decl(fp_name, base_type, fp_extra_ptrs + 1, None, None, is_static=is_static_local))
+                                decls.append(Decl(fp_name, base_type, fp_extra_ptrs + 1, None, fp_init_expr, is_static=is_static_local))
                         if self.cur().typ != TokenType.COMMA:
                             break
                         self.advance()

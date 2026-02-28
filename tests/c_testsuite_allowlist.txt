@@ -89,6 +89,7 @@ tests/single-exec/00085.c
 tests/single-exec/00086.c
 tests/single-exec/00087.c
 tests/single-exec/00088.c
+tests/single-exec/00089.c
 tests/single-exec/00090.c
 tests/single-exec/00091.c
 tests/single-exec/00092.c
@@ -123,6 +124,7 @@ tests/single-exec/00120.c
 tests/single-exec/00121.c
 tests/single-exec/00122.c
 tests/single-exec/00123.c
+tests/single-exec/00124.c
 tests/single-exec/00125.c
 tests/single-exec/00126.c
 tests/single-exec/00127.c

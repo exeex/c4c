@@ -335,7 +335,17 @@ class IRBuilder:
                 bt = self.expr_type(base)
                 if through_ptr and bt.endswith("*"):
                     bt = bt[:-1]
-                _, fty = self.struct_field(bt, field)
+                elif through_ptr and bt in ("ptr", "int"):
+                    # Unknown pointer type (e.g. from IndirectCall) - scan structs for field
+                    for sname, sdef in self.struct_defs.items():
+                        for f in sdef.fields:
+                            if f.name == field:
+                                return f.typ
+                    return "int"
+                try:
+                    _, fty = self.struct_field(bt, field)
+                except CompileError:
+                    return "int"
                 # Array fields: return element pointer type (array-to-pointer decay)
                 if fty.startswith("arr_field:"):
                     parts = fty.split(":", 2)
@@ -384,6 +394,11 @@ class IRBuilder:
                     return "double"
                 if (lt == "float" or rt == "float") and op in {"+", "-", "*", "/"}:
                     return "float"
+                # Shift operators: result type = promoted left operand only (C99 §6.5.7)
+                if op in {"<<", ">>"}:
+                    if lt in ("char", "short", "unsigned short"):
+                        return "int"
+                    return lt
                 # Integer arithmetic: long long > long > int (usual arithmetic conversions)
                 if lt == "long long" or rt == "long long":
                     return "long long"
@@ -411,7 +426,20 @@ class IRBuilder:
                 if ret == "void":
                     return "void"
                 return ret
-            case IndirectCall():
+            case IndirectCall(func=func):
+                # Try to determine the return type from the function pointer
+                f = func
+                if isinstance(f, UnaryOp) and f.op == "*":
+                    f = f.expr
+                if isinstance(f, Var):
+                    # Direct call to a known function (e.g. via function pointer that is itself a func)
+                    sig = self.func_sigs.get(f.name)
+                    if sig is not None:
+                        return sig.ret_type if sig.ret_type != "void" else "void"
+                    # Variable initialized from a known function
+                    ret = self.local_fptr_rets.get(f.name)
+                    if ret is not None:
+                        return ret
                 return "int"  # assume int return for indirect calls
             case Generic(ctrl=ctrl, assocs=assocs):
                 selected = self._generic_select(ctrl, assocs)
@@ -524,8 +552,7 @@ class IRBuilder:
     def codegen_lvalue_ptr(self, n: Node) -> str:
         match n:
             case Var(name=name):
-                if self.resolve_var_type(name) == "array":
-                    raise CompileError("codegen error: cannot assign to array object")
+                # For arrays, &arr is the same as arr (pointer to first element)
                 return self.resolve_var_ptr(name)
             case UnaryOp(op="*", expr=expr):
                 pv = self.codegen_expr(expr)
@@ -609,10 +636,42 @@ class IRBuilder:
             case Member(base=base, field=field, through_ptr=through_ptr):
                 bt = self.expr_type(base)
                 if through_ptr:
-                    if not bt.endswith("*"):
+                    if bt.endswith("*"):
+                        struct_ty = bt[:-1]
+                        struct_ptr = self.codegen_expr(base)
+                    elif bt in ("ptr", "int"):
+                        # Unknown pointer type (e.g. from IndirectCall returning ptr) -
+                        # emit call with ptr return if base is IndirectCall, then scan for struct
+                        if isinstance(base, IndirectCall):
+                            inner_func = base.func
+                            if isinstance(inner_func, UnaryOp) and inner_func.op == "*":
+                                inner_func = inner_func.expr
+                            inner_fptr = self.codegen_expr(inner_func)
+                            inner_args_text = []
+                            for iarg in base.args:
+                                iv = self.codegen_expr(iarg)
+                                iat = self.expr_type(iarg)
+                                inner_args_text.append(f"{self.llvm_ty(iat)} {iv}")
+                            param_tys_inner = ", ".join(a.rsplit(" ", 1)[0] for a in inner_args_text)
+                            inner_args_str = ", ".join(inner_args_text)
+                            sp_t = self.tmp()
+                            self.emit(f"  {sp_t} = call ptr ({param_tys_inner}) {inner_fptr}({inner_args_str})")
+                            struct_ptr = sp_t
+                        else:
+                            struct_ptr = self.codegen_expr(base)
+                        # Find struct type by scanning for field name
+                        struct_ty = None
+                        for sname_scan, sdef_scan in self.struct_defs.items():
+                            for sf in sdef_scan.fields:
+                                if sf.name == field:
+                                    struct_ty = f"struct:{sname_scan}"
+                                    break
+                            if struct_ty:
+                                break
+                        if struct_ty is None:
+                            raise CompileError("codegen error: '->' requires pointer base")
+                    else:
                         raise CompileError("codegen error: '->' requires pointer base")
-                    struct_ty = bt[:-1]
-                    struct_ptr = self.codegen_expr(base)
                 else:
                     struct_ty = bt
                     struct_ptr = self.codegen_lvalue_ptr(base)
@@ -1353,7 +1412,10 @@ class IRBuilder:
                 args_str = ", ".join(args_text)
                 # Add function type annotation for correct ARM64 ABI
                 param_tys = ", ".join(a.rsplit(" ", 1)[0] for a in args_text)
-                self.emit(f"  {t} = call i32 ({param_tys}) {fptr}({args_str})")
+                # Determine return type (may be ptr for functions returning function pointers)
+                ret_ty_str = self.expr_type(n)
+                ll_ret_ty = self.llvm_ty(ret_ty_str) if ret_ty_str != "void" else "void"
+                self.emit(f"  {t} = call {ll_ret_ty} ({param_tys}) {fptr}({args_str})")
                 return t
             case CompoundLit(typ=cl_typ, init=cl_init):
                 # Compound literal: create an anonymous alloca, init it, return pointer
@@ -1480,6 +1542,9 @@ class IRBuilder:
                             raise CompileError("codegen error: cannot initialize variable with void")
                         v = self.emit_convert(v, self.expr_type(init), self.local_types[name])
                         self.emit(f"  store {self.llvm_ty(self.local_types[name])} {v}, ptr {slot}")
+                        # Track return type if this fptr is initialized from a known function
+                        if isinstance(init, Var) and init.name in self.func_sigs:
+                            self.local_fptr_rets[name] = self.func_sigs[init.name].ret_type
                 return False
             case Block(body=body):
                 terminated = False
@@ -1940,6 +2005,7 @@ class IRBuilder:
         self.local_types = {}
         self.local_full_types: Dict[str, str] = {}  # const-qualified types for _Generic matching
         self.local_array_elem_types = {}
+        self.local_fptr_rets: Dict[str, str] = {}  # fptr var → return type of the pointed-to function
         self._current_fn = fn.name
         self._current_fn_ret_type = fn.ret_type
         self.flow_terminated = False  # track if current flow is terminated (dead code)

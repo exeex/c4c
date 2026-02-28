@@ -518,7 +518,10 @@ class SemanticAnalyzer:
                 if name in vars_init:
                     vars_init[name] = True
                 vt = self.var_type(name)
-                if vt not in ("int", "char", "float", "double") and not self.is_ptr_type(vt) and vt != "array":
+                _numeric_types = {"int", "char", "short", "long", "float", "double",
+                                  "unsigned", "unsigned int", "unsigned long", "unsigned char",
+                                  "unsigned short", "long long", "unsigned long long", "size_t"}
+                if vt not in _numeric_types and not self.is_ptr_type(vt) and vt != "array":
                     raise CompileError("semantic error: increment/decrement supports int/pointer only")
                 return vt
             case AssignExpr(target=target, op=op, expr=expr):
