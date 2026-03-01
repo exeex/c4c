@@ -530,16 +530,30 @@ class IRBuilder:
                 return "int"
             case IncDec(name=incdec_name):
                 return self.resolve_var_type(incdec_name)
-            case Call(name=name):
+            case Call(name=name, args=call_args):
                 # bswap builtins: codegen emits i64/i32 regardless of func_sigs
                 if name == "__builtin_bswap64":
                     return "unsigned long long"
                 if name in ("__builtin_bswap16", "__builtin_bswap32"):
                     return "unsigned int"
+                # va_arg: return type of the requested argument type
+                if name == "__builtin_va_arg" and len(call_args) >= 2:
+                    ty_arg = call_args[1]
+                    if isinstance(ty_arg, SizeofExpr) and ty_arg.typ is not None:
+                        return ty_arg.typ
+                    return "int"
                 # Apply math builtin remapping to find the right signature
                 actual_name = _MATH_BUILTIN_MAP.get(name, name)
                 sig = self.func_sigs.get(actual_name) or self.func_sigs.get(name)
                 if sig is None:
+                    # Well-known ptr-returning functions (when not included via headers)
+                    _well_known_ptr_ret = {
+                        "malloc", "calloc", "realloc", "valloc", "aligned_alloc",
+                        "strdup", "strndup", "fopen", "freopen", "popen", "fdopen",
+                        "getenv", "tmpnam",
+                    }
+                    if name in _well_known_ptr_ret:
+                        return "void*"
                     return "int"
                 ret = sig.ret_type
                 if ret == "void":
@@ -1804,11 +1818,40 @@ class IRBuilder:
                             return None
                         self.emit(f"  {t} = {call_instr}")
                         return t
-                    # undeclared function - assume returns int, auto-declare it
+                    # undeclared function - check for well-known pointer-returning functions
+                    _ptr_returning_fns = {
+                        "malloc", "calloc", "realloc", "valloc", "aligned_alloc",
+                        "strdup", "strndup", "strcat", "strcpy", "strncpy", "strncat",
+                        "strchr", "strrchr", "strstr", "strtok",
+                        "memcpy", "memmove", "memset", "memchr",
+                        "fgets", "gets", "tmpnam", "tempnam",
+                        "fopen", "freopen", "popen", "fdopen",
+                        "getenv", "setenv",
+                    }
+                    _void_returning_fns = {"free", "qsort", "exit", "abort"}
+                    # Build typed (non-variadic) arg type list for auto-declared functions.
+                    # Using variadic (...) ABI on ARM64 causes integer args to be passed on
+                    # the stack instead of in registers, which breaks calls like malloc(24).
+                    def _arg_types_str(atexts: list[str]) -> str:
+                        return ", ".join(a.split(" ")[0] for a in atexts)
+                    if name in _ptr_returning_fns:
+                        arg_ty_str = _arg_types_str(args_text)
+                        if name not in self.auto_declared_fns:
+                            self.auto_declared_fns[name] = f"declare ptr @{name}({arg_ty_str})"
+                        t = self.tmp()
+                        self.emit(f"  {t} = call ptr @{name}({', '.join(args_text)})")
+                        return t
+                    if name in _void_returning_fns:
+                        arg_ty_str = _arg_types_str(args_text)
+                        if name not in self.auto_declared_fns:
+                            self.auto_declared_fns[name] = f"declare void @{name}({arg_ty_str})"
+                        self.emit(f"  call void @{name}({', '.join(args_text)})")
+                        return None
+                    arg_ty_str = _arg_types_str(args_text)
                     if name not in self.auto_declared_fns:
-                        self.auto_declared_fns[name] = f"declare i32 @{name}(...)"
+                        self.auto_declared_fns[name] = f"declare i32 @{name}({arg_ty_str})"
                     t = self.tmp()
-                    self.emit(f"  {t} = call i32 (...) @{name}({', '.join(args_text)})")
+                    self.emit(f"  {t} = call i32 @{name}({', '.join(args_text)})")
                     return t
                 llvm_ret_ty = self.llvm_ty(sig.ret_type)
                 if sig.is_variadic:

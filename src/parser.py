@@ -459,12 +459,21 @@ class Parser:
         if self.cur().typ == TokenType.ID:
             name = self.eat(TokenType.ID).text
             v = self.enum_consts.get(name, 0)
-            while self.cur().typ in (TokenType.PLUS, TokenType.MINUS):
+            while self.cur().typ in (TokenType.PLUS, TokenType.MINUS, TokenType.STAR,
+                                     TokenType.SLASH, TokenType.LSHIFT, TokenType.RSHIFT,
+                                     TokenType.AMP, TokenType.PIPE, TokenType.CARET):
                 op = self.cur().text
                 self.advance()
                 rhs = self._parse_const_int()
                 if op == "+": v += rhs
-                else: v -= rhs
+                elif op == "-": v -= rhs
+                elif op == "*": v *= rhs
+                elif op == "/": v = int(v / rhs) if rhs else 0
+                elif op == "<<": v <<= rhs
+                elif op == ">>": v >>= rhs
+                elif op == "&": v &= rhs
+                elif op == "|": v |= rhs
+                elif op == "^": v ^= rhs
             return -v if negative else v
         return 0
 
