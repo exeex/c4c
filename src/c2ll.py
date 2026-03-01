@@ -262,6 +262,7 @@ class IRBuilder:
 
     def emit_label(self, label: str) -> None:
         self.emit(f"{label}:")
+        self.current_block = label
         self.flow_terminated = False  # a new basic block is reachable (via label)
 
     def promote_to_i32(self, v: str, ty: str) -> str:
@@ -1372,14 +1373,14 @@ class IRBuilder:
                 # --- then branch ---
                 self.emit_label(then_lbl)
                 tv = self.codegen_expr(then_expr) or "0"
-                then_pred = then_lbl  # block that will branch to end_lbl
+                then_pred = self.current_block  # actual block branching to end_lbl (may differ from then_lbl if nested ternary)
                 then_alive = not self.flow_terminated
                 if then_alive:
                     self.emit(f"  br label %{end_lbl}")
                 # --- else branch ---
                 self.emit_label(else_lbl)
                 ev = self.codegen_expr(else_expr) or "0"
-                else_pred = else_lbl
+                else_pred = self.current_block  # actual block branching to end_lbl (may differ from else_lbl if nested ternary)
                 else_alive = not self.flow_terminated
                 if else_alive:
                     self.emit(f"  br label %{end_lbl}")
@@ -2427,6 +2428,7 @@ class IRBuilder:
         self._current_fn = fn.name
         self._current_fn_ret_type = fn.ret_type
         self.flow_terminated = False  # track if current flow is terminated (dead code)
+        self.current_block = "entry"
         self.loop_stack = []
         self.break_stack = []
         self.switch_case_stack = []
