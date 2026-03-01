@@ -568,8 +568,38 @@ class IRBuilder:
             case _:
                 return "int"
 
+    def align_of_type(self, ty: str) -> int:
+        """Return alignment requirement of type (in bytes) per C standard (LP64)."""
+        if ty in ("char", "unsigned char", "signed char"):
+            return 1
+        if ty in ("short", "unsigned short"):
+            return 2
+        if ty in ("int", "float", "unsigned", "unsigned int"):
+            return 4
+        if ty in ("long", "unsigned long", "long long", "unsigned long long"):
+            return 8  # LP64
+        if ty == "double":
+            return 8
+        if ty.endswith("*") or ty in ("ptr", "char*"):
+            return 8
+        if ty.startswith("arr_field:"):
+            parts = ty.split(":", 2)
+            return self.align_of_type(parts[2])
+        if self.is_struct_type(ty):
+            tag = ty.split(":", 1)[1]
+            s = self.struct_defs.get(tag)
+            if s is None:
+                return 8
+            max_align = 1
+            for f in s.fields:
+                fa = self.align_of_type(f.typ)
+                if fa > max_align:
+                    max_align = fa
+            return max_align
+        return 4  # default
+
     def sizeof_type(self, ty: str) -> int:
-        if ty in ("char", "unsigned char"):
+        if ty in ("char", "unsigned char", "signed char"):
             return 1
         if ty in ("short", "unsigned short"):
             return 2
@@ -590,7 +620,7 @@ class IRBuilder:
             if s is None:
                 return 8  # unknown struct default
             if s.is_union:
-                # Union: sizeof = max field size (not sum)
+                # Union: sizeof = max field size rounded up to struct alignment
                 max_sz = 0
                 for f in s.fields:
                     if f.array_size is not None:
@@ -599,14 +629,27 @@ class IRBuilder:
                         fsz = self.sizeof_type(f.typ)
                     if fsz > max_sz:
                         max_sz = fsz
-                return max_sz if max_sz > 0 else 1
-            total = 0
+                if max_sz == 0:
+                    return 1
+                # Round up to union alignment
+                align = self.align_of_type(ty)
+                return ((max_sz + align - 1) // align) * align
+            # Struct: compute with C-standard alignment padding
+            offset = 0
+            max_align = 1
             for f in s.fields:
+                fa = self.align_of_type(f.typ)
+                if fa > max_align:
+                    max_align = fa
+                # Align current offset to field alignment
+                offset = ((offset + fa - 1) // fa) * fa
                 if f.array_size is not None:
-                    total += f.array_size * self.sizeof_type(f.typ)
+                    offset += f.array_size * self.sizeof_type(f.typ)
                 else:
-                    total += self.sizeof_type(f.typ)
-            return total
+                    offset += self.sizeof_type(f.typ)
+            # Add trailing padding to align struct size to max field alignment
+            offset = ((offset + max_align - 1) // max_align) * max_align
+            return offset
         return 4  # default
 
     def sizeof_expr(self, n: Node) -> int:
@@ -1453,7 +1496,8 @@ class IRBuilder:
                     t = result_v
                 else:
                     src_ty = self.expr_type(expr)
-                    self.emit(f"  {cur} = load i32, ptr {slot}")
+                    ll_target = self.llvm_ty(target_ty)
+                    self.emit(f"  {cur} = load {ll_target}, ptr {slot}")
                     op_map = {
                         "+=": "add", "-=": "sub", "*=": "mul", "/=": "sdiv", "%=": "srem",
                         "&=": "and", "|=": "or", "^=": "xor",
@@ -1462,10 +1506,28 @@ class IRBuilder:
                     llvm_op = op_map.get(op)
                     if llvm_op is None:
                         raise CompileError(f"codegen error: unsupported assignment operator {op!r}")
-                    # Convert RHS to i32 if needed (e.g. when RHS is long long)
-                    rv_i32 = self.promote_to_i32(rv, src_ty)
-                    self.emit(f"  {t} = {llvm_op} i32 {cur}, {rv_i32}")
-                    self.emit(f"  store i32 {t}, ptr {slot}")
+                    if ll_target == "i64":
+                        # For i64 targets (long long, unsigned long long), convert RHS to i64
+                        rv_ll = self.llvm_ty(src_ty)
+                        if rv_ll == "i64":
+                            rv_64 = rv
+                        elif rv_ll == "i8":
+                            t2 = self.tmp()
+                            ext_op = "zext" if src_ty == "unsigned char" else "sext"
+                            self.emit(f"  {t2} = {ext_op} i8 {rv} to i64")
+                            rv_64 = t2
+                        else:
+                            t2 = self.tmp()
+                            ext_op = "zext" if src_ty in ("unsigned int", "unsigned", "unsigned short") else "sext"
+                            self.emit(f"  {t2} = {ext_op} i32 {rv} to i64")
+                            rv_64 = t2
+                        self.emit(f"  {t} = {llvm_op} i64 {cur}, {rv_64}")
+                        self.emit(f"  store i64 {t}, ptr {slot}")
+                    else:
+                        # Convert RHS to i32 if needed (e.g. when RHS is long long)
+                        rv_i32 = self.promote_to_i32(rv, src_ty)
+                        self.emit(f"  {t} = {llvm_op} i32 {cur}, {rv_i32}")
+                        self.emit(f"  store i32 {t}, ptr {slot}")
                 return t
             case IncDec(name=name, op=op, prefix=prefix):
                 vty = self.resolve_var_type(name)

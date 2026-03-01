@@ -73,17 +73,24 @@ class Parser:
                     self.advance()
                     self.skip_type_qualifiers()
                     return "double"
-                # long long int, long long, etc.
+                # long long int, long long, unsigned long, etc.
                 is_long_long = False
+                is_unsigned = False
                 if self.cur().typ == TokenType.KW_LONG:
                     self.advance()
                     is_long_long = True
-                if self.cur().typ == TokenType.KW_INT:
-                    self.advance()
                 if self.cur().typ == TokenType.KW_UNSIGNED:
                     self.advance()
+                    is_unsigned = True
+                if self.cur().typ == TokenType.KW_LONG and not is_long_long:
+                    self.advance()  # handle 'long unsigned long'
+                    is_long_long = True
+                if self.cur().typ == TokenType.KW_INT:
+                    self.advance()
                 self.skip_type_qualifiers()
-                return "long long" if is_long_long else "long"
+                if is_long_long:
+                    return "unsigned long long" if is_unsigned else "long long"
+                return "unsigned long" if is_unsigned else "long"
             case TokenType.KW_SHORT:
                 self.advance()
                 if self.cur().typ == TokenType.KW_INT:
