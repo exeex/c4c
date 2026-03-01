@@ -1325,11 +1325,14 @@ class IRBuilder:
                     return v  # both are i8; reinterpret only
                 if src.endswith("*") and dst.endswith("*"):
                     return v
-                if src.endswith("*") and dst == "int":
+                if src.endswith("*") and dst in ("int", "long", "unsigned long", "long long", "unsigned long long", "unsigned int", "unsigned", "short", "unsigned short"):
                     p = self.tmp()
-                    q = self.tmp()
                     self.emit(f"  {p} = ptrtoint ptr {v} to i64")
-                    self.emit(f"  {q} = trunc i64 {p} to i32")
+                    dst_ll = self.llvm_ty(dst)
+                    if dst_ll == "i64":
+                        return p
+                    q = self.tmp()
+                    self.emit(f"  {q} = trunc i64 {p} to {dst_ll}")
                     return q
                 if src == "int" and dst.endswith("*"):
                     p = self.tmp()
