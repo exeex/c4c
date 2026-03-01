@@ -1278,6 +1278,8 @@ class IRBuilder:
                     t = self.tmp()
                     self.emit(f"  {t} = zext i8 {v} to i32")
                     return t
+                if src in ("char", "unsigned char") and dst in ("char", "unsigned char"):
+                    return v  # both are i8; reinterpret only
                 if src.endswith("*") and dst.endswith("*"):
                     return v
                 if src.endswith("*") and dst == "int":

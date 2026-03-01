@@ -189,7 +189,7 @@ class Lexer:
         buf = [self.advance()]
         while True:
             ch = self.cur()
-            if ch.isalnum() or ch == "_":
+            if ch.isalnum() or ch == "_" or ch == "$":
                 buf.append(self.advance())
             else:
                 break
@@ -236,12 +236,42 @@ class Lexer:
         start_line = self.line
         start_col = self.col
         buf = []
+        # Handle binary: 0b...
+        if self.cur() == "0" and self.peek() in ("b", "B"):
+            buf.append(self.advance())  # 0
+            buf.append(self.advance())  # b
+            while self.cur() and self.cur() in "01":
+                buf.append(self.advance())
+            suffix_buf = []
+            while self.cur() and self.cur() in "uUlL":
+                suffix_buf.append(self.advance())
+            return Token(TokenType.NUM, str(int("".join(buf), 2)) + "".join(suffix_buf), start_line, start_col)
         # Handle hex: 0x...
         if self.cur() == "0" and self.peek() in ("x", "X"):
             buf.append(self.advance())  # 0
             buf.append(self.advance())  # x
+            # Hex float: 0x1.8p+1
+            hex_digits = []
             while self.cur() and self.cur() in "0123456789abcdefABCDEF":
-                buf.append(self.advance())
+                hex_digits.append(self.advance())
+            if self.cur() == "." and self.peek() and self.peek() in "0123456789abcdefABCDEF":
+                # hex float literal: 0xHH.HHp±EE
+                hex_digits.append(self.advance())  # .
+                while self.cur() and self.cur() in "0123456789abcdefABCDEF":
+                    hex_digits.append(self.advance())
+                # mandatory exponent p/P
+                exp_buf = []
+                if self.cur() and self.cur() in "pP":
+                    hex_digits.append(self.advance())
+                    if self.cur() and self.cur() in "+-":
+                        hex_digits.append(self.advance())
+                    while self.cur() and self.cur().isdigit():
+                        hex_digits.append(self.advance())
+                while self.cur() and self.cur() in "fFlL":
+                    self.advance()
+                val = float.fromhex("0x" + "".join(hex_digits))
+                return Token(TokenType.NUM, repr(val), start_line, start_col)
+            buf.extend(hex_digits)
             # Include suffixes (L, U, LL, UL etc.) so parser can determine type
             suffix_buf = []
             while self.cur() and self.cur() in "uUlL":
@@ -316,6 +346,17 @@ class Lexer:
                         hex_buf.append(self.advance())
                     if hex_buf:
                         buf.append(chr(int("".join(hex_buf), 16) & 0xFF))
+                elif esc in ("u", "U"):
+                    # Unicode escape: \uXXXX or \UXXXXXXXX — encode as UTF-8 bytes
+                    n_digits = 4 if esc == "u" else 8
+                    hex_buf = []
+                    for _ in range(n_digits):
+                        if self.cur() and self.cur() in "0123456789abcdefABCDEF":
+                            hex_buf.append(self.advance())
+                    if hex_buf:
+                        codepoint = int("".join(hex_buf), 16)
+                        for byte in chr(codepoint).encode("utf-8"):
+                            buf.append(chr(byte))
                 else:
                     buf.append(esc)
             else:
@@ -426,7 +467,7 @@ class Lexer:
                 tokens.append(Token(TokenType.NUM, str(char_val), start_line, start_col))
                 continue
 
-            if ch.isalpha() or ch == "_":
+            if ch.isalpha() or ch == "_" or ch == "$":
                 tok = self.scan_identifier()
                 # Handle wide/unicode string/char prefixes: L"...", u"...", U"...", u8"...", L'...', etc.
                 if tok.text in ("L", "u", "U", "u8") and self.cur() in ('"', "'"):
@@ -473,6 +514,14 @@ class Lexer:
                                 hex_buf = []
                                 while self.cur() and self.cur() in "0123456789abcdefABCDEF":
                                     hex_buf.append(self.advance())
+                                char_val = int("".join(hex_buf), 16) if hex_buf else 0
+                            elif esc in ("u", "U"):
+                                # Unicode escape in wide char literal: value is the code point
+                                n_digits = 4 if esc == "u" else 8
+                                hex_buf = []
+                                for _ in range(n_digits):
+                                    if self.cur() and self.cur() in "0123456789abcdefABCDEF":
+                                        hex_buf.append(self.advance())
                                 char_val = int("".join(hex_buf), 16) if hex_buf else 0
                             else:
                                 char_val = ord(esc) if esc else 0
@@ -536,15 +585,22 @@ class Lexer:
                 tokens.append(self.scan_number())
                 continue
 
-            # Handle .NN float literals
+            # Handle .NN float literals (.5, .25, etc.)
             if ch == "." and self.peek().isdigit():
                 start_line, start_col = self.line, self.col
-                buf = ["0", self.advance()]  # .
+                buf = ["0", self.advance()]  # prepend 0, consume dot
                 while self.cur() and self.cur().isdigit():
                     buf.append(self.advance())
+                # Exponent
+                if self.cur() and self.cur() in "eE":
+                    buf.append(self.advance())
+                    if self.cur() and self.cur() in "+-":
+                        buf.append(self.advance())
+                    while self.cur() and self.cur().isdigit():
+                        buf.append(self.advance())
                 while self.cur() and self.cur() in "uUlLfF":
                     self.advance()
-                tokens.append(Token(TokenType.NUM, "0", start_line, start_col))
+                tokens.append(Token(TokenType.NUM, "".join(buf), start_line, start_col))
                 continue
 
             # Check 3-char tokens first
