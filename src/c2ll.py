@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import shutil
+import struct as _struct
 import subprocess
 import sys
 from typing import Dict, List, Optional
@@ -10,6 +11,19 @@ from errors import CompileError
 from lexer import Lexer
 from parser import Parser
 from sema import FunctionSig, SemanticAnalyzer
+
+def _fp_to_llvm_hex(value: float, c_ty: str) -> str:
+    """Convert a floating-point value to LLVM IR hex constant format.
+    LLVM uses 64-bit IEEE 754 double hex even for float32 constants.
+    For float: round to float32 precision first, then express as double hex."""
+    if c_ty == "float":
+        # Round to float32 precision
+        f32_val = _struct.unpack('f', _struct.pack('f', float(value)))[0]
+        bits = _struct.unpack('Q', _struct.pack('d', f32_val))[0]
+    else:
+        bits = _struct.unpack('Q', _struct.pack('d', float(value)))[0]
+    return f"0x{bits:016X}"
+
 
 # Map GCC/Clang math builtins to their standard library equivalents
 _MATH_BUILTIN_MAP: Dict[str, str] = {
@@ -124,6 +138,8 @@ class IRBuilder:
             return "i8"
         if ty in ("short", "unsigned short"):
             return "i32"  # promote short to i32 for simplicity
+        if ty in ("long long", "unsigned long long"):
+            return "i64"
         if ty in ("long", "unsigned long"):
             return "i32"  # use i32 for simplicity (matches most operations)
         if ty == "float":
@@ -161,7 +177,35 @@ class IRBuilder:
         raise CompileError(f"codegen error: unknown field {field!r} in {struct_ty!r}")
 
     def is_struct_type(self, ty: str) -> bool:
-        return ty.startswith("struct:")
+        return ty.startswith("struct:") and "*" not in ty
+
+    def float_hfa_count(self, struct_ty: str) -> Optional[int]:
+        """Return float member count if struct is a Homogeneous Float Aggregate, else None."""
+        if not self.is_struct_type(struct_ty):
+            return None
+        tag = struct_ty.split(":", 1)[1]
+        s = self.struct_defs.get(tag)
+        if s is None or s.is_union:
+            return None
+        if len(s.fields) == 0 or len(s.fields) > 4:
+            return None
+        if all(f.typ == "float" and f.array_size is None for f in s.fields):
+            return len(s.fields)
+        return None
+
+    def double_hfa_count(self, struct_ty: str) -> Optional[int]:
+        """Return double member count if struct is a Homogeneous Double Aggregate, else None."""
+        if not self.is_struct_type(struct_ty):
+            return None
+        tag = struct_ty.split(":", 1)[1]
+        s = self.struct_defs.get(tag)
+        if s is None or s.is_union:
+            return None
+        if len(s.fields) == 0 or len(s.fields) > 4:
+            return None
+        if all(f.typ in ("double", "long double") and f.array_size is None for f in s.fields):
+            return len(s.fields)
+        return None
 
     def ptr_elem_llvm_ty(self, ptr_ty: str) -> str:
         """Return LLVM element type for pointer arithmetic GEP stride."""
@@ -197,6 +241,10 @@ class IRBuilder:
         self.flow_terminated = False  # a new basic block is reachable (via label)
 
     def promote_to_i32(self, v: str, ty: str) -> str:
+        if ty in ("long long", "unsigned long long"):
+            t = self.tmp()
+            self.emit(f"  {t} = trunc i64 {v} to i32")
+            return t
         if ty == "char":
             t = self.tmp()
             self.emit(f"  {t} = sext i8 {v} to i32")
@@ -235,7 +283,8 @@ class IRBuilder:
             return v
         t = self.tmp()
         if src_ll == "i8" and dst_ll == "i32":
-            self.emit(f"  {t} = sext i8 {v} to i32")
+            ext_op = "zext" if src_ty in ("unsigned char",) else "sext"
+            self.emit(f"  {t} = {ext_op} i8 {v} to i32")
             return t
         if src_ll == "i32" and dst_ll == "i8":
             self.emit(f"  {t} = trunc i32 {v} to i8")
@@ -279,6 +328,23 @@ class IRBuilder:
             self.emit(f"  {t2} = fptosi float {v} to i32")
             self.emit(f"  {t} = trunc i32 {t2} to i8")
             return t
+        if src_ll == "i32" and dst_ll == "i64":
+            ext_op = "zext" if src_ty in ("unsigned int", "unsigned", "unsigned short", "unsigned long") else "sext"
+            self.emit(f"  {t} = {ext_op} i32 {v} to i64")
+            return t
+        if src_ll == "i64" and dst_ll == "i32":
+            self.emit(f"  {t} = trunc i64 {v} to i32")
+            return t
+        if src_ll == "i8" and dst_ll == "i64":
+            ext_op = "zext" if src_ty in ("unsigned char",) else "sext"
+            self.emit(f"  {t} = {ext_op} i8 {v} to i64")
+            return t
+        if dst_ll == "double" and src_ll == "i64":
+            self.emit(f"  {t} = sitofp i64 {v} to double")
+            return t
+        if src_ll == "i64" and dst_ll == "i8":
+            self.emit(f"  {t} = trunc i64 {v} to i8")
+            return t
         return v
 
     def resolve_var_ptr(self, name: str) -> str:
@@ -297,11 +363,17 @@ class IRBuilder:
 
     def expr_type(self, n: Node) -> str:
         match n:
-            case IntLit(suffix=suffix):
+            case IntLit(value=value, suffix=suffix):
                 if suffix in ("LL", "ULL"):
                     return "long long"
                 if suffix in ("L", "UL"):
                     return "long"
+                # Unsuffixed: pick smallest type per C99 §6.4.4.1
+                if value > 0x7FFFFFFF or value < -0x80000000:
+                    # Fits in unsigned int (32 bits)?
+                    if 0 <= value <= 0xFFFFFFFF:
+                        return "unsigned int"
+                    return "long long"
                 return "int"
             case FloatLit():
                 return "double"
@@ -390,6 +462,9 @@ class IRBuilder:
             case BinOp(op=op, lhs=lhs, rhs=rhs):
                 lt = self.expr_type(lhs)
                 rt = self.expr_type(rhs)
+                # Comparison operators always return int in C (C99 §6.5.8, §6.5.9)
+                if op in {"==", "!=", "<", "<=", ">", ">="}:
+                    return "int"
                 # Pointer arithmetic: ptr+int or int+ptr yields ptr; ptr-ptr yields int
                 if lt.endswith("*") and not rt.endswith("*"):
                     return lt  # ptr + int or ptr - int → ptr
@@ -406,10 +481,16 @@ class IRBuilder:
                         return "int"
                     return lt
                 # Integer arithmetic: long long > long > int (usual arithmetic conversions)
+                if lt in ("unsigned long long",) or rt in ("unsigned long long",):
+                    return "unsigned long long"
                 if lt == "long long" or rt == "long long":
                     return "long long"
+                if lt in ("unsigned long",) or rt in ("unsigned long",):
+                    return "unsigned long"
                 if lt == "long" or rt == "long":
                     return "long"
+                if lt in ("unsigned int", "unsigned") or rt in ("unsigned int", "unsigned"):
+                    return "unsigned int"
                 return "int"
             case AssignExpr(target=target, op=op):
                 if op == "=":
@@ -423,6 +504,11 @@ class IRBuilder:
             case IncDec(name=incdec_name):
                 return self.resolve_var_type(incdec_name)
             case Call(name=name):
+                # bswap builtins: codegen emits i64/i32 regardless of func_sigs
+                if name == "__builtin_bswap64":
+                    return "unsigned long long"
+                if name in ("__builtin_bswap16", "__builtin_bswap32"):
+                    return "unsigned int"
                 # Apply math builtin remapping to find the right signature
                 actual_name = _MATH_BUILTIN_MAP.get(name, name)
                 sig = self.func_sigs.get(actual_name) or self.func_sigs.get(name)
@@ -464,8 +550,8 @@ class IRBuilder:
             return 2
         if ty in ("int", "float", "unsigned", "unsigned int"):
             return 4
-        if ty in ("long", "unsigned long"):
-            return 8  # LP64: long is 8 bytes on 64-bit platforms
+        if ty in ("long", "unsigned long", "long long", "unsigned long long"):
+            return 8  # LP64: long/long long is 8 bytes on 64-bit platforms
         if ty == "double":
             return 8
         if ty.endswith("*") or ty in ("ptr", "char*"):
@@ -478,6 +564,17 @@ class IRBuilder:
             s = self.struct_defs.get(tag)
             if s is None:
                 return 8  # unknown struct default
+            if s.is_union:
+                # Union: sizeof = max field size (not sum)
+                max_sz = 0
+                for f in s.fields:
+                    if f.array_size is not None:
+                        fsz = f.array_size * self.sizeof_type(f.typ)
+                    else:
+                        fsz = self.sizeof_type(f.typ)
+                    if fsz > max_sz:
+                        max_sz = fsz
+                return max_sz if max_sz > 0 else 1
             total = 0
             for f in s.fields:
                 if f.array_size is not None:
@@ -765,6 +862,9 @@ class IRBuilder:
                 raise CompileError(
                     f"codegen error: '{name}' is not a constant expression"
                 )
+            case StructInit(entries=entries) if entries:
+                # Braced scalar initializer: {val} → unwrap first entry as scalar
+                return self.eval_global_const(entries[0][1])
             case _:
                 raise CompileError(
                     "codegen error: global initializer must be an integer constant expression"
@@ -932,6 +1032,82 @@ class IRBuilder:
                     self.emit(f"  {b} = fcmp {fcmp_map[op]} {fp_ty} {ld}, {rd}")
                     self.emit(f"  {t} = zext i1 {b} to i32")
                     return t
+                # Determine if we need i64 arithmetic (long long operands)
+                use_i64 = lty in ("long long", "unsigned long long") or rty in ("long long", "unsigned long long")
+                if use_i64:
+                    # Promote both operands to i64
+                    def _to_i64(v: str, ty: str) -> str:
+                        if ty in ("long long", "unsigned long long"):
+                            return v  # already i64
+                        if ty.endswith("*"):
+                            ext = self.tmp()
+                            self.emit(f"  {ext} = ptrtoint ptr {v} to i64")
+                            return ext
+                        if ty in ("char", "unsigned char"):
+                            ext = self.tmp()
+                            self.emit(f"  {ext} = {'zext' if ty == 'unsigned char' else 'sext'} i8 {v} to i64")
+                            return ext
+                        # int/short/etc → sext to i64 (zext for unsigned)
+                        ext = self.tmp()
+                        _unsigned_i32 = ty in ("unsigned int", "unsigned", "unsigned short", "unsigned long")
+                        ext_op = "zext" if _unsigned_i32 else "sext"
+                        self.emit(f"  {ext} = {ext_op} i32 {v} to i64")
+                        return ext
+                    # Handle pointer arithmetic with long long offset via GEP
+                    if op in {"+", "-"} and (lty.endswith("*") or rty.endswith("*")):
+                        if op == "+" and lty.endswith("*") and not rty.endswith("*"):
+                            r64 = _to_i64(r, rty)
+                            stride = self.ptr_elem_llvm_ty(lty)
+                            self.emit(f"  {t} = getelementptr inbounds {stride}, ptr {l}, i64 {r64}")
+                            return t
+                        if op == "+" and rty.endswith("*") and not lty.endswith("*"):
+                            l64 = _to_i64(l, lty)
+                            stride = self.ptr_elem_llvm_ty(rty)
+                            self.emit(f"  {t} = getelementptr inbounds {stride}, ptr {r}, i64 {l64}")
+                            return t
+                        if op == "-" and lty.endswith("*") and not rty.endswith("*"):
+                            r64 = _to_i64(r, rty)
+                            neg = self.tmp()
+                            self.emit(f"  {neg} = sub i64 0, {r64}")
+                            stride = self.ptr_elem_llvm_ty(lty)
+                            self.emit(f"  {t} = getelementptr inbounds {stride}, ptr {l}, i64 {neg}")
+                            return t
+                        # ptr - ptr
+                        l64 = _to_i64(l, lty)
+                        r64 = _to_i64(r, rty)
+                        self.emit(f"  {t} = sub i64 {l64}, {r64}")
+                        return t
+                    l = _to_i64(l, lty)
+                    r = _to_i64(r, rty)
+                    if op in {"+", "-", "*", "/", "%", "&", "|", "^"}:
+                        op_map64 = {"+": "add", "-": "sub", "*": "mul", "/": "sdiv", "%": "srem",
+                                    "&": "and", "|": "or", "^": "xor"}
+                        self.emit(f"  {t} = {op_map64[op]} i64 {l}, {r}")
+                        return t
+                    if op in {"<<", ">>"}:
+                        # Per C99 §6.5.7: result type = promoted left operand only
+                        r32 = self.tmp()
+                        self.emit(f"  {r32} = trunc i64 {r} to i32")
+                        shift_op = "shl" if op == "<<" else "ashr"
+                        promoted_lty = "int" if lty in ("char", "short", "unsigned short") else lty
+                        if promoted_lty in ("long long", "unsigned long long"):
+                            # Result is i64
+                            r_ext = self.tmp()
+                            self.emit(f"  {r_ext} = zext i32 {r32} to i64")
+                            self.emit(f"  {t} = {shift_op} i64 {l}, {r_ext}")
+                        else:
+                            # Result should be i32 (promoted left type is int/long/etc.)
+                            l32 = self.tmp()
+                            self.emit(f"  {l32} = trunc i64 {l} to i32")
+                            self.emit(f"  {t} = {shift_op} i32 {l32}, {r32}")
+                        return t
+                    if op in {"==", "!=", "<", "<=", ">", ">="}:
+                        icmp_map64 = {"==": "eq", "!=": "ne", "<": "slt", "<=": "sle", ">": "sgt", ">=": "sge"}
+                        b = self.tmp()
+                        self.emit(f"  {b} = icmp {icmp_map64[op]} i64 {l}, {r}")
+                        self.emit(f"  {t} = zext i1 {b} to i32")
+                        return t
+                    raise CompileError(f"codegen error: unsupported i64 binary operator {op!r}")
                 l = self.promote_to_i32(l, lty)
                 r = self.promote_to_i32(r, rty)
                 if op in {"+", "-", "*", "/", "%", "&", "|", "^", "<<", ">>"}:
@@ -1086,10 +1262,23 @@ class IRBuilder:
                     return q
                 if src == "int" and dst == "int":
                     return v
-                # Integer type casts (short, unsigned, etc.) - promote/demote via i32
+                # Integer type casts (short, unsigned, etc.) - promote/demote as needed
                 int_types = {"int", "short", "unsigned", "unsigned int", "unsigned short", "long", "unsigned long", "long long", "unsigned long long"}
                 if src in int_types and dst in int_types:
-                    return v  # both are i32 in our IR
+                    src_ll = self.llvm_ty(src)
+                    dst_ll = self.llvm_ty(dst)
+                    if src_ll == dst_ll:
+                        return v
+                    if src_ll == "i64" and dst_ll == "i32":
+                        t = self.tmp()
+                        self.emit(f"  {t} = trunc i64 {v} to i32")
+                        return t
+                    if src_ll == "i32" and dst_ll == "i64":
+                        t = self.tmp()
+                        ext_op = "zext" if src in ("unsigned int", "unsigned", "unsigned short", "unsigned long") else "sext"
+                        self.emit(f"  {t} = {ext_op} i32 {v} to i64")
+                        return t
+                    return v
                 if src in int_types and dst in ("char", "unsigned char"):
                     t = self.tmp()
                     self.emit(f"  {t} = trunc i32 {v} to i8")
@@ -1143,6 +1332,7 @@ class IRBuilder:
                 if cty.endswith("*"):
                     self.emit(f"  {cb} = icmp ne ptr {cv}, null")
                 else:
+                    cv = self.promote_to_i32(cv, cty)
                     self.emit(f"  {cb} = icmp ne i32 {cv}, 0")
                 then_lbl = self.new_label("ternary_then")
                 else_lbl = self.new_label("ternary_else")
@@ -1228,6 +1418,7 @@ class IRBuilder:
                     self.emit(f"  store {fp_ty} {result_v}, ptr {slot}")
                     t = result_v
                 else:
+                    src_ty = self.expr_type(expr)
                     self.emit(f"  {cur} = load i32, ptr {slot}")
                     op_map = {
                         "+=": "add", "-=": "sub", "*=": "mul", "/=": "sdiv", "%=": "srem",
@@ -1237,7 +1428,9 @@ class IRBuilder:
                     llvm_op = op_map.get(op)
                     if llvm_op is None:
                         raise CompileError(f"codegen error: unsupported assignment operator {op!r}")
-                    self.emit(f"  {t} = {llvm_op} i32 {cur}, {rv}")
+                    # Convert RHS to i32 if needed (e.g. when RHS is long long)
+                    rv_i32 = self.promote_to_i32(rv, src_ty)
+                    self.emit(f"  {t} = {llvm_op} i32 {cur}, {rv_i32}")
                     self.emit(f"  store i32 {t}, ptr {slot}")
                 return t
             case IncDec(name=name, op=op, prefix=prefix):
@@ -1311,18 +1504,23 @@ class IRBuilder:
                 if name in bswap_map:
                     intrinsic = bswap_map[name]
                     self.used_intrinsics.add(intrinsic)
+                    arg_ty = self.expr_type(args[0]) if args else "int"
                     v = self.codegen_expr(args[0]) if args else "0"
                     bw = intrinsic.split(".")[-1]  # i16, i32, i64
                     t = self.tmp()
                     if bw == "i32":
                         self.emit(f"  {t} = call i32 @{intrinsic}(i32 {v})")
                     elif bw == "i64":
-                        # extend i32 to i64, bswap, truncate back
-                        ext = self.tmp()
-                        res64 = self.tmp()
-                        self.emit(f"  {ext} = zext i32 {v} to i64")
-                        self.emit(f"  {res64} = call i64 @{intrinsic}(i64 {ext})")
-                        self.emit(f"  {t} = trunc i64 {res64} to i32")
+                        if arg_ty in ("long long", "unsigned long long"):
+                            # argument is already i64; return i64 result
+                            self.emit(f"  {t} = call i64 @{intrinsic}(i64 {v})")
+                        else:
+                            # extend i32 to i64, bswap, truncate back
+                            ext = self.tmp()
+                            res64 = self.tmp()
+                            self.emit(f"  {ext} = zext i32 {v} to i64")
+                            self.emit(f"  {res64} = call i64 @{intrinsic}(i64 {ext})")
+                            self.emit(f"  {t} = trunc i64 {res64} to i32")
                     elif bw == "i16":
                         trunc = self.tmp()
                         res16 = self.tmp()
@@ -1332,6 +1530,44 @@ class IRBuilder:
                     else:
                         self.emit(f"  {t} = call {bw} @{intrinsic}({bw} {v})")
                     return t
+                # Handle variadic argument macros (expanded from va_start/va_arg/va_end)
+                if name == "__builtin_va_start" and args:
+                    ap_slot = self.codegen_lvalue_ptr(args[0])
+                    self.emit(f"  call void @llvm.va_start.p0(ptr {ap_slot})")
+                    if "llvm.va_start.p0" not in self.auto_declared_fns:
+                        self.auto_declared_fns["llvm.va_start.p0"] = "declare void @llvm.va_start.p0(ptr)"
+                    return None
+                if name == "__builtin_va_end" and args:
+                    ap_slot = self.codegen_lvalue_ptr(args[0])
+                    self.emit(f"  call void @llvm.va_end.p0(ptr {ap_slot})")
+                    if "llvm.va_end.p0" not in self.auto_declared_fns:
+                        self.auto_declared_fns["llvm.va_end.p0"] = "declare void @llvm.va_end.p0(ptr)"
+                    return None
+                if name == "__builtin_va_arg" and len(args) >= 2:
+                    ap_slot = self.codegen_lvalue_ptr(args[0])
+                    ty_arg = args[1]
+                    if isinstance(ty_arg, SizeofExpr) and ty_arg.typ is not None:
+                        arg_ty = ty_arg.typ
+                    else:
+                        arg_ty = "int"
+                    actual_size = self.sizeof_type(arg_ty)
+                    stride = ((actual_size + 7) // 8) * 8
+                    ll_ty = self.llvm_ty(arg_ty)
+                    cur = self.tmp()
+                    nxt = self.tmp()
+                    self.emit(f"  {cur} = load ptr, ptr {ap_slot}")
+                    self.emit(f"  {nxt} = getelementptr inbounds i8, ptr {cur}, i64 {stride}")
+                    self.emit(f"  store ptr {nxt}, ptr {ap_slot}")
+                    if self.is_struct_type(arg_ty):
+                        tmp_struct = self.tmp()
+                        self.emit(f"  {tmp_struct} = alloca {ll_ty}")
+                        self.emit(f"  call void @llvm.memcpy.p0.p0.i64(ptr {tmp_struct}, ptr {cur}, i64 {actual_size}, i1 false)")
+                        result = self.tmp()
+                        self.emit(f"  {result} = load {ll_ty}, ptr {tmp_struct}")
+                    else:
+                        result = self.tmp()
+                        self.emit(f"  {result} = load {ll_ty}, ptr {cur}")
+                    return result
                 sig = self.func_sigs.get(name)
                 args_text: List[str] = []
                 for i, arg in enumerate(args):
@@ -1356,12 +1592,59 @@ class IRBuilder:
                             self.emit(f"  {t} = {ext_op} i32 {v} to i64")
                             v = t
                             arg_ty = "i64"
+                        elif aty in ("long long", "unsigned long long"):
+                            # long long is already i64
+                            arg_ty = "i64"
                         elif aty == "float":
                             # C default promotion: float → double in variadic calls
                             t = self.tmp()
                             self.emit(f"  {t} = fpext float {v} to double")
                             v = t
                             arg_ty = "double"
+                        elif self.is_struct_type(aty):
+                            # ARM64 ABI: convert struct to appropriate register-sized type
+                            actual_size = self.sizeof_type(aty)
+                            ll_ty = self.llvm_ty(aty)
+                            # Store struct to temp alloca
+                            tmp_struct = self.tmp()
+                            self.emit(f"  {tmp_struct} = alloca {ll_ty}")
+                            self.emit(f"  store {ll_ty} {v}, ptr {tmp_struct}")
+                            n_floats = self.float_hfa_count(aty)
+                            n_doubles = self.double_hfa_count(aty)
+                            if n_floats is not None:
+                                # HFA float: pass as [N x float]
+                                tmp_v = self.tmp()
+                                self.emit(f"  {tmp_v} = load [{n_floats} x float], ptr {tmp_struct}")
+                                arg_ty = f"[{n_floats} x float]"
+                                v = tmp_v
+                            elif n_doubles is not None:
+                                # HFA double: pass as [N x double]
+                                tmp_v = self.tmp()
+                                self.emit(f"  {tmp_v} = load [{n_doubles} x double], ptr {tmp_struct}")
+                                arg_ty = f"[{n_doubles} x double]"
+                                v = tmp_v
+                            elif actual_size > 16:
+                                # Large struct: pass by reference (pointer to copy)
+                                arg_ty = "ptr"
+                                v = tmp_struct
+                            elif actual_size > 8:
+                                # 9-16 bytes: pass as [2 x i64]
+                                tmp_buf = self.tmp()
+                                self.emit(f"  {tmp_buf} = alloca [2 x i64]")
+                                self.emit(f"  call void @llvm.memcpy.p0.p0.i64(ptr {tmp_buf}, ptr {tmp_struct}, i64 {actual_size}, i1 false)")
+                                tmp_v = self.tmp()
+                                self.emit(f"  {tmp_v} = load [2 x i64], ptr {tmp_buf}")
+                                arg_ty = "[2 x i64]"
+                                v = tmp_v
+                            else:
+                                # 1-8 bytes: pass as i64
+                                tmp_buf = self.tmp()
+                                self.emit(f"  {tmp_buf} = alloca i64")
+                                self.emit(f"  call void @llvm.memcpy.p0.p0.i64(ptr {tmp_buf}, ptr {tmp_struct}, i64 {actual_size}, i1 false)")
+                                tmp_v = self.tmp()
+                                self.emit(f"  {tmp_v} = load i64, ptr {tmp_buf}")
+                                arg_ty = "i64"
+                                v = tmp_v
                         else:
                             arg_ty = self.llvm_ty(aty)
                     args_text.append(f"{arg_ty} {v}")
@@ -1602,6 +1885,10 @@ class IRBuilder:
                     if decl.full_type:
                         self.local_full_types[name] = decl.full_type
                     self.emit(f"  {slot} = alloca {self.llvm_ty(self.local_types[name])}")
+                else:
+                    # Variable was pre-hoisted. Update local_types to the current scope's
+                    # declared type so field accesses work correctly within this branch.
+                    self.local_types[name] = base_type + ("*" * ptr_level)
                 if init is not None:
                     if isinstance(init, StructInit):
                         # Initialize struct fields one by one
@@ -1643,6 +1930,7 @@ class IRBuilder:
                 if cty.endswith("*"):
                     self.emit(f"  {cond_b} = icmp ne ptr {cond_v}, null")
                 else:
+                    cond_v = self.promote_to_i32(cond_v, cty)
                     self.emit(f"  {cond_b} = icmp ne i32 {cond_v}, 0")
                 then_lbl = self.new_label("if_then")
                 end_lbl = self.new_label("if_end")
@@ -1682,6 +1970,7 @@ class IRBuilder:
                 if cty.endswith("*"):
                     self.emit(f"  {cond_b} = icmp ne ptr {cond_v}, null")
                 else:
+                    cond_v = self.promote_to_i32(cond_v, cty)
                     self.emit(f"  {cond_b} = icmp ne i32 {cond_v}, 0")
                 self.emit(f"  br i1 {cond_b}, label %{body_lbl}, label %{end_lbl}")
                 self.emit_label(body_lbl)
@@ -1714,6 +2003,7 @@ class IRBuilder:
                     if cty.endswith("*"):
                         self.emit(f"  {cond_b} = icmp ne ptr {cond_v}, null")
                     else:
+                        cond_v = self.promote_to_i32(cond_v, cty)
                         self.emit(f"  {cond_b} = icmp ne i32 {cond_v}, 0")
                     self.emit(f"  br i1 {cond_b}, label %{body_lbl}, label %{end_lbl}")
                 self.emit_label(body_lbl)
@@ -1752,6 +2042,7 @@ class IRBuilder:
                 if cty.endswith("*"):
                     self.emit(f"  {cond_b} = icmp ne ptr {cond_v}, null")
                 else:
+                    cond_v = self.promote_to_i32(cond_v, cty)
                     self.emit(f"  {cond_b} = icmp ne i32 {cond_v}, 0")
                 self.emit(f"  br i1 {cond_b}, label %{body_lbl}, label %{end_lbl}")
                 self.emit_label(end_lbl)
@@ -2050,13 +2341,17 @@ class IRBuilder:
                 if init is not None and isinstance(init, StructInit):
                     init_str = self._emit_struct_init_const(gty, init)
                     self.emit(f"@{name} = global {self.llvm_ty(gty)} {init_str}")
+                elif (init is not None and isinstance(init, CompoundLit)
+                      and init.typ == gty and isinstance(init.init, StructInit)):
+                    init_str = self._emit_struct_init_const(gty, init.init)
+                    self.emit(f"@{name} = global {self.llvm_ty(gty)} {init_str}")
                 else:
                     self.emit(f"@{name} = global {self.llvm_ty(gty)} zeroinitializer")
                 continue
             if gty in ("double", "float"):
                 init_val = 0 if init is None else self.eval_global_const(init)
                 fp_ty = self.llvm_ty(gty)
-                self.emit(f"@{name} = global {fp_ty} {float(init_val)}")
+                self.emit(f"@{name} = global {fp_ty} {_fp_to_llvm_hex(init_val, gty)}")
                 continue
             init_val = 0 if init is None else self.eval_global_const(init)
             self.emit(f"@{name} = global i32 {init_val}")
@@ -2096,6 +2391,11 @@ class IRBuilder:
         self.user_labels = {}
         self.collect_codegen_labels(fn.body)
 
+        # Pre-scan function body to find the widest type for each variable
+        # (handles variables declared with different types in if/else branches)
+        self._widest_local_types: Dict[str, str] = {}
+        self._pre_scan_decls(fn.body, self._widest_local_types)
+
         ret_ty = self.llvm_ty(fn.ret_type)
         params_sig: List[str] = []
         is_variadic_fn = any(p.typ == "..." for p in fn.params)
@@ -2124,6 +2424,17 @@ class IRBuilder:
         # Hoist all allocas to entry block (required for correct goto semantics)
         self.hoist_allocas(fn.body)
 
+        # Advance tmp_idx past any slot names of the form %tN to avoid SSA name collisions
+        # (e.g. if a user declares variables named t1, t2, ... they get slots %t1, %t2, ...
+        # which would collide with temporaries generated by tmp())
+        for _slot_val in self.slots.values():
+            if _slot_val.startswith('%t'):
+                _suffix = _slot_val[2:]
+                if _suffix.isdigit():
+                    _n = int(_suffix) + 1
+                    if _n > self.tmp_idx:
+                        self.tmp_idx = _n
+
         terminated = False
         for st in fn.body:
             if terminated:
@@ -2146,6 +2457,37 @@ class IRBuilder:
                 self.emit(f"  ret {self.llvm_ty(fn.ret_type)} {default_ret}")
 
         self.emit("}")
+
+    def _pre_scan_decls(self, body: List[Node], widest: Dict[str, str]) -> None:
+        """Scan body recursively to find the widest type for each declared variable."""
+        for st in body:
+            match st:
+                case Decl(name=name, base_type=base_type, ptr_level=ptr_level, size=size, is_static=is_static_d):
+                    if is_static_d or size is not None:
+                        continue
+                    new_ty = base_type + ("*" * ptr_level)
+                    if name not in widest or self.sizeof_type(new_ty) > self.sizeof_type(widest[name]):
+                        widest[name] = new_ty
+                case Block(body=inner_body):
+                    self._pre_scan_decls(inner_body, widest)
+                case If(then_stmt=then_stmt, else_stmt=else_stmt):
+                    self._pre_scan_decls([then_stmt], widest)
+                    if else_stmt:
+                        self._pre_scan_decls([else_stmt], widest)
+                case For(init=init, body=for_body):
+                    if init:
+                        self._pre_scan_decls([init], widest)
+                    self._pre_scan_decls([for_body], widest)
+                case While(body=wb):
+                    self._pre_scan_decls([wb], widest)
+                case DoWhile(body=db):
+                    self._pre_scan_decls([db], widest)
+                case Switch(body=sb):
+                    self._pre_scan_decls([sb], widest)
+                case LabelStmt(stmt=ls):
+                    self._pre_scan_decls([ls], widest)
+                case StmtExpr(stmts=stmts):
+                    self._pre_scan_decls(stmts, widest)
 
     def hoist_allocas(self, body: List[Node]) -> None:
         """Pre-scan function body and emit all alloca instructions up front."""
@@ -2177,7 +2519,13 @@ class IRBuilder:
                         elem_ll = self.llvm_ty(base_type)
                         self.emit(f"  {slot} = alloca [{total_size} x {elem_ll}]")
                     else:
-                        self.local_types[name] = base_type + ("*" * ptr_level)
+                        declared_ty = base_type + ("*" * ptr_level)
+                        # Use the widest type pre-scanned across all branches
+                        widest = getattr(self, '_widest_local_types', {})
+                        effective_ty = widest.get(name, declared_ty)
+                        if self.sizeof_type(effective_ty) < self.sizeof_type(declared_ty):
+                            effective_ty = declared_ty
+                        self.local_types[name] = effective_ty
                         if full_type:
                             self.local_full_types[name] = full_type
                         # pointer-to-array: record stride from extra_dims (e.g. (*p)[4] → stride=4)
@@ -2187,7 +2535,7 @@ class IRBuilder:
                                 stride *= d
                             self.local_array_strides[name] = stride
                             self.local_array_elem_types[name] = base_type
-                        self.emit(f"  {slot} = alloca {self.llvm_ty(self.local_types[name])}")
+                        self.emit(f"  {slot} = alloca {self.llvm_ty(effective_ty)}")
                 case Block(body=inner_body):
                     self.hoist_allocas(inner_body)
                 case If(then_stmt=then_stmt, else_stmt=else_stmt):
@@ -2366,13 +2714,15 @@ class IRBuilder:
                 elem_ll = self.llvm_ty(f.typ)
                 arr_size = f.array_size
                 if isinstance(v_node, StringLit):
-                    # char/int array field with string literal → memcpy
+                    # char/int array field with string literal → zero field, then memcpy string
                     src_ptr = self.codegen_expr(v_node)
-                    # bytes to copy = min(len+1, arr_size) elements * elem_size
-                    # For simplicity, copy arr_size elements
                     elem_sz = 1 if elem_ll in ("i8", "i1") else 4
-                    copy_bytes = arr_size * elem_sz
-                    self.emit(f"  call void @llvm.memcpy.p0.p0.i64(ptr {t}, ptr {src_ptr}, i64 {copy_bytes}, i1 false)")
+                    total_bytes = arr_size * elem_sz
+                    # Zero the entire field first (C standard: unspecified elements → 0)
+                    self.emit(f"  call void @llvm.memset.p0.i64(ptr {t}, i8 0, i64 {total_bytes}, i1 false)")
+                    # Then copy only strlen+1 bytes of the string
+                    str_bytes = min(len(v_node.value) + 1, arr_size) * elem_sz
+                    self.emit(f"  call void @llvm.memcpy.p0.p0.i64(ptr {t}, ptr {src_ptr}, i64 {str_bytes}, i1 false)")
                 elif isinstance(v_node, (StructInit, ArrayInit)):
                     entries = v_node.entries if isinstance(v_node, StructInit) else [(None, IntLit(v)) for v in v_node.values]
                     for ai, (_, av) in enumerate(entries[:arr_size]):
@@ -2504,6 +2854,8 @@ class IRBuilder:
             return "ptr null"
         if ll_ty == "i8":
             return "i8 0"
+        if ll_ty == "float":
+            return "float 0.0"
         if ll_ty == "double":
             return "double 0.0"
         if self.is_struct_type(typ):
@@ -2641,6 +2993,16 @@ class IRBuilder:
                         # Nested brace initializer for the array
                         vals.append(self._const_node_to_llvm(v_node, fty))
                         flat_idx += 1
+                    elif isinstance(v_node, StringLit) and elem_ty in ("char", "unsigned char"):
+                        # String literal initializer for char array field
+                        raw = v_node.value
+                        arr_vals = [ord(ch) if isinstance(ch, str) else ch for ch in raw]
+                        arr_vals.append(0)  # null terminator
+                        while len(arr_vals) < arr_n:
+                            arr_vals.append(0)
+                        vals_str = ", ".join(f"{elem_ll} {v}" for v in arr_vals[:arr_n])
+                        vals.append(f"[{arr_n} x {elem_ll}] [{vals_str}]")
+                        flat_idx += 1
                     else:
                         # Flat scalars: consume arr_n entries for this array field
                         arr_vals = []
@@ -2732,6 +3094,8 @@ class IRBuilder:
             v = self.eval_global_const(node)
             if ll_ty == "ptr":
                 return "ptr null"
+            if ll_ty in ("float", "double"):
+                return f"{ll_ty} {_fp_to_llvm_hex(v, typ)}"
             return f"{ll_ty} {v}"
         except Exception:
             if ll_ty == "ptr":
