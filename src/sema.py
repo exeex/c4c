@@ -399,6 +399,21 @@ class SemanticAnalyzer:
                         elem_ty = self.local_array_elem_types.get(name) or self.global_array_elem_types.get(name)
                         if elem_ty and elem_ty != "int":
                             return elem_ty
+                    elif isinstance(base, Member):
+                        # Array field of a struct (e.g. db->people[i] where people is Person[5])
+                        # Re-analyze the base struct to find the field's element type
+                        member_bt = self.analyze_expr(base.base, vars_init)
+                        if base.through_ptr and self.is_ptr_type(member_bt):
+                            member_bt = member_bt[:-1]
+                        if self.is_struct_type(member_bt):
+                            tag = member_bt.split(":", 1)[1]
+                            s = self.struct_defs.get(tag)
+                            if s is not None:
+                                for f in s.fields:
+                                    if f.name == base.field and f.array_size is not None:
+                                        # f.typ is the element type (e.g. "Person")
+                                        if self.is_struct_type(f.typ):
+                                            return f.typ
                     return "int"
                 if bt == "ptr":
                     return "ptr"
