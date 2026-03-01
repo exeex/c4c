@@ -2086,6 +2086,14 @@ class Parser:
                     from ast_nodes import StmtExpr
                     return StmtExpr(stmts)
                 n = self.parse_expr()
+                # Support comma operator: (expr1, expr2, expr3) → returns last
+                if self.cur().typ == TokenType.COMMA:
+                    from ast_nodes import StmtExpr, ExprStmt
+                    stmts = [ExprStmt(n)]
+                    while self.cur().typ == TokenType.COMMA:
+                        self.advance()
+                        stmts.append(ExprStmt(self.parse_expr()))
+                    n = StmtExpr(stmts)
                 self.eat(TokenType.RPAREN)
                 return n
             case _:
