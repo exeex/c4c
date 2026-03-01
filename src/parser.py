@@ -1467,10 +1467,12 @@ class Parser:
                         continue
                     size: Optional[int] = None
                     extra_dims: Optional[List[int]] = None
+                    is_array_decl = False
                     if self.cur().typ == TokenType.LBRACKET:
+                        is_array_decl = True
                         self.advance()
                         if self.cur().typ == TokenType.RBRACKET:
-                            size = 1  # int a[] - default to 1
+                            size = None  # int a[] - size inferred from initializer
                         else:
                             try:
                                 size = self._parse_const_int()
@@ -1501,15 +1503,17 @@ class Parser:
                         self.advance()
                         if self.cur().typ == TokenType.LBRACE:
                             # Parse array/struct initializer
-                            if size is not None and base_type.startswith("struct:"):
+                            if (size is not None or is_array_decl) and base_type.startswith("struct:"):
                                 # Array of structs: use struct array parser to get correct size
                                 from ast_nodes import StructArrayInit
-                                arr_init = self._parse_struct_array_init(base_type, size if size > 1 else None)
+                                arr_init = self._parse_struct_array_init(base_type, size if size is not None and size > 1 else None)
                                 init = arr_init
                                 size = arr_init.size if arr_init.size > 0 else size
-                            elif size is not None:
-                                # Integer/char array init
+                            elif size is not None or is_array_decl:
+                                # Integer/char array init; size=None means infer from initializer
                                 init = self.parse_int_init_list(size)
+                                if size is None:
+                                    size = len(init.values)
                             elif (base_type.startswith("struct:") and
                                   base_type.split(":", 1)[1] in self.struct_defs) or \
                                  base_type in self.typedef_names:

@@ -1182,10 +1182,13 @@ class IRBuilder:
                     return t
                 if op in {"==", "!=", "<", "<=", ">", ">="}:
                     if lty.endswith("*") or rty.endswith("*"):
-                        if op not in {"==", "!="}:
-                            raise CompileError("codegen error: pointer relational op is not supported")
                         b = self.tmp()
-                        pred = "eq" if op == "==" else "ne"
+                        ptr_icmp_map = {
+                            "==": "eq", "!=": "ne",
+                            "<": "ult", "<=": "ule",
+                            ">": "ugt", ">=": "uge",
+                        }
+                        pred = ptr_icmp_map[op]
                         if rty == "int":
                             self.emit(f"  {b} = icmp {pred} ptr {l}, null")
                         elif lty == "int":
@@ -1852,6 +1855,9 @@ class IRBuilder:
                 already_hoisted = name in self.slots
                 if not already_hoisted:
                     self.slots[name] = slot
+                # If size was None (int arr[] = ...), use the size hoist_allocas computed
+                if size is None and name in self.local_arrays:
+                    size = self.local_arrays[name]
                 if size is not None:
                     if not already_hoisted:
                         self.local_arrays[name] = size
@@ -2536,6 +2542,11 @@ class IRBuilder:
                         continue  # already hoisted
                     slot = f"%{name}"
                     self.slots[name] = slot
+                    # Infer size from initializer when not explicitly given (int arr[] = {...})
+                    if size is None and isinstance(hoist_init, ArrayInit):
+                        size = len(hoist_init.values)
+                    elif size is None and isinstance(hoist_init, StringLit) and base_type in ("int", "unsigned", "unsigned int"):
+                        size = len(hoist_init.value) + 1  # wchar_t arr[] = L"..."
                     if size is not None:
                         # Wide string (wchar_t) array: fix size from string initializer
                         if (size == 1 and isinstance(hoist_init, StringLit) and
