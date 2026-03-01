@@ -73,6 +73,8 @@ class IRBuilder:
         self.global_array_elem_types: Dict[str, str] = {}
         # Track stride for multi-dimensional arrays (e.g. arr[2][4]: stride=4)
         self.local_array_strides: Dict[str, int] = {}  # name -> stride (# elements per row)
+        # Track full extra_dims list for multi-dimensional arrays (enables 3D+ access)
+        self.local_array_extra_dims: Dict[str, List[int]] = {}
         for d in prog.decls:
             params = [p.typ for p in d.params if p.typ != "..."]
             is_var = any(p.typ == "..." for p in d.params)
@@ -134,7 +136,7 @@ class IRBuilder:
             return f"%struct.{tag}"
         if ty.endswith("*") or ty in ("ptr", "char*"):
             return "ptr"
-        if ty in ("char", "unsigned char"):
+        if ty in ("char", "unsigned char", "signed char"):
             return "i8"
         if ty in ("short", "unsigned short"):
             return "i32"  # promote short to i32 for simplicity
@@ -270,7 +272,7 @@ class IRBuilder:
             t = self.tmp()
             self.emit(f"  {t} = trunc i64 {v} to i32")
             return t
-        if ty == "char":
+        if ty in ("char", "signed char"):
             t = self.tmp()
             self.emit(f"  {t} = sext i8 {v} to i32")
             return t
@@ -791,15 +793,31 @@ class IRBuilder:
                         # loading intermediate elements (handles arr[i][j] correctly)
                         if isinstance(base, Index):
                             base_ptr = self.codegen_lvalue_ptr(base)
-                            # Use element type of the innermost array if available
+                            # Walk the chain to find the innermost array variable and depth
                             inner = base
+                            depth = 1  # depth from innermost Var
                             while isinstance(inner, Index):
+                                depth += 1
                                 inner = inner.base
                             if isinstance(inner, Var):
                                 inner_elem_ll = self.array_elem_llvm_ty(inner.name)
+                                # Compute stride for this nesting level using extra_dims
+                                # For a[N][D1][D2][D3], depth=1 -> stride=D2*D3, depth=2 -> D3
+                                edims = self.local_array_extra_dims.get(inner.name, [])
+                                # depth-1 because first level stride is already in local_array_strides
+                                sub_stride = 1
+                                if depth - 1 < len(edims):
+                                    for d in edims[depth - 1:]:
+                                        sub_stride *= d
                             else:
                                 inner_elem_ll = elem_ll
-                            self.emit(f"  {t} = getelementptr inbounds {inner_elem_ll}, ptr {base_ptr}, i32 {idx}")
+                                sub_stride = 1
+                            if sub_stride > 1:
+                                scaled = self.tmp()
+                                self.emit(f"  {scaled} = mul i32 {idx}, {sub_stride}")
+                                self.emit(f"  {t} = getelementptr inbounds {inner_elem_ll}, ptr {base_ptr}, i32 {scaled}")
+                            else:
+                                self.emit(f"  {t} = getelementptr inbounds {inner_elem_ll}, ptr {base_ptr}, i32 {idx}")
                         else:
                             base_ptr = self.codegen_expr(base)
                             if base_ptr is None:
@@ -1115,7 +1133,7 @@ class IRBuilder:
                             ext = self.tmp()
                             self.emit(f"  {ext} = ptrtoint ptr {v} to i64")
                             return ext
-                        if ty in ("char", "unsigned char"):
+                        if ty in ("char", "unsigned char", "signed char"):
                             ext = self.tmp()
                             self.emit(f"  {ext} = {'zext' if ty == 'unsigned char' else 'sext'} i8 {v} to i64")
                             return ext
@@ -1309,11 +1327,11 @@ class IRBuilder:
                 dst = typ
                 if src == dst:
                     return v
-                if src == "int" and dst in ("char", "unsigned char"):
+                if src in ("int", "unsigned int", "unsigned") and dst in ("char", "unsigned char", "signed char"):
                     t = self.tmp()
                     self.emit(f"  {t} = trunc i32 {v} to i8")
                     return t
-                if src == "char" and dst == "int":
+                if src in ("char", "signed char") and dst == "int":
                     t = self.tmp()
                     self.emit(f"  {t} = sext i8 {v} to i32")
                     return t
@@ -1321,8 +1339,8 @@ class IRBuilder:
                     t = self.tmp()
                     self.emit(f"  {t} = zext i8 {v} to i32")
                     return t
-                if src in ("char", "unsigned char") and dst in ("char", "unsigned char"):
-                    return v  # both are i8; reinterpret only
+                if src in ("char", "unsigned char", "signed char") and dst in ("char", "unsigned char", "signed char"):
+                    return v  # all are i8; just reinterpret
                 if src.endswith("*") and dst.endswith("*"):
                     return v
                 if src.endswith("*") and dst in ("int", "long", "unsigned long", "long long", "unsigned long long", "unsigned int", "unsigned", "short", "unsigned short"):
@@ -1359,11 +1377,11 @@ class IRBuilder:
                         self.emit(f"  {t} = {ext_op} i32 {v} to i64")
                         return t
                     return v
-                if src in int_types and dst in ("char", "unsigned char"):
+                if src in int_types and dst in ("char", "unsigned char", "signed char"):
                     t = self.tmp()
                     self.emit(f"  {t} = trunc i32 {v} to i8")
                     return t
-                if src == "char" and dst in int_types:
+                if src in ("char", "signed char") and dst in int_types:
                     t = self.tmp()
                     self.emit(f"  {t} = sext i8 {v} to i32")
                     return t
@@ -1682,7 +1700,7 @@ class IRBuilder:
                     else:
                         # variadic extra arg or undeclared func - apply C default promotions
                         # char is promoted to int in variadic/unprototyped calls
-                        if aty in ("char", "unsigned char"):
+                        if aty in ("char", "unsigned char", "signed char"):
                             v = self.promote_to_i32(v, aty)
                             arg_ty = "i32"
                         elif aty in ("long", "unsigned long"):
@@ -1776,7 +1794,11 @@ class IRBuilder:
                                 fn_ty = f"{llvm_ret_ty} ({known_tys})"
                             call_instr = f"call {fn_ty} {fptr}({', '.join(norm_args)})"
                         else:
-                            call_instr = f"call i32 (...) {fptr}({', '.join(norm_args)})"
+                            # Build a typed non-variadic call from the actual arg types
+                            # Using (...) would trigger the variadic ABI on ARM64, giving wrong results
+                            arg_tys = [at.split(" ", 1)[0] for at in norm_args]
+                            fn_ty = f"i32 ({', '.join(arg_tys)})" if arg_tys else "i32 ()"
+                            call_instr = f"call {fn_ty} {fptr}({', '.join(norm_args)})"
                         if target_sig is not None and target_sig.ret_type == "void":
                             self.emit(f"  {call_instr}")
                             return None
@@ -1815,7 +1837,7 @@ class IRBuilder:
                     if v is None:
                         raise CompileError("codegen error: void argument in indirect call")
                     aty = self.expr_type(arg)
-                    if aty in ("char", "unsigned char"):
+                    if aty in ("char", "unsigned char", "signed char"):
                         v = self.promote_to_i32(v, aty)
                         arg_ty = "i32"
                     else:
@@ -1961,9 +1983,11 @@ class IRBuilder:
                             self.emit(f"  {ep} = getelementptr inbounds [{actual_size} x i32], ptr {slot}, i32 0, i32 {len(raw)}")
                             self.emit(f"  store i32 0, ptr {ep}")
                         elif isinstance(init, ArrayInit):
+                            # Use total (flattened) size for multi-dim arrays
+                            total_size = self.local_arrays.get(name, size)
                             for idx, val in enumerate(init.values):
                                 ep = self.tmp()
-                                self.emit(f"  {ep} = getelementptr inbounds [{size} x {elem_ll}], ptr {slot}, i32 0, i32 {idx}")
+                                self.emit(f"  {ep} = getelementptr inbounds [{total_size} x {elem_ll}], ptr {slot}, i32 0, i32 {idx}")
                                 # Use zeroinitializer for struct/array types; integer 0 for scalars
                                 is_agg = elem_ll.startswith("%struct.") or elem_ll.startswith("[")
                                 store_val = "zeroinitializer" if (is_agg and val == 0) else str(val)
@@ -2491,6 +2515,7 @@ class IRBuilder:
         self.local_types = {}
         self.local_full_types: Dict[str, str] = {}  # const-qualified types for _Generic matching
         self.local_array_elem_types = {}
+        self.local_array_extra_dims = {}
         self.local_fptr_rets: Dict[str, str] = {}  # fptr var → return type of the pointed-to function
         self._current_fn = fn.name
         self._current_fn_ret_type = fn.ret_type
@@ -2630,6 +2655,7 @@ class IRBuilder:
                                 stride *= d
                             total_size = size * stride
                             self.local_array_strides[name] = stride
+                            self.local_array_extra_dims[name] = list(extra_dims)
                         self.local_arrays[name] = total_size
                         self.local_types[name] = "array"
                         self.local_array_elem_types[name] = base_type

@@ -141,10 +141,13 @@ class Parser:
                 self.advance()
                 is_long = False
                 is_long_long = False
+                is_char = False
                 if self.cur().typ in (
                     TokenType.KW_INT, TokenType.KW_LONG, TokenType.KW_SHORT, TokenType.KW_CHAR
                 ):
-                    if self.cur().typ == TokenType.KW_LONG:
+                    if self.cur().typ == TokenType.KW_CHAR:
+                        is_char = True
+                    elif self.cur().typ == TokenType.KW_LONG:
                         is_long = True
                     self.advance()
                     if self.cur().typ == TokenType.KW_LONG:
@@ -153,6 +156,8 @@ class Parser:
                     if self.cur().typ == TokenType.KW_INT:
                         self.advance()
                 self.skip_type_qualifiers()
+                if is_char:
+                    return "signed char"
                 if is_long_long:
                     return "long long"
                 return "long" if is_long else "int"
@@ -512,10 +517,19 @@ class Parser:
                     ptr_level += 1
                 self.advance()
             typ = typ + ("*" * ptr_level)
-            # Skip function pointer params like int (*)(...)
+            # Skip function pointer params like int (*f)(...) or int (*)(...)
             if self.cur().typ == TokenType.LPAREN:
-                # skip the parenthesized declarator
-                depth = 0
+                # Parse the parenthesized declarator (*name) and extract optional name
+                fptr_param_name: Optional[str] = None
+                self.advance()  # eat (
+                # skip leading stars
+                while self.cur().typ == TokenType.STAR:
+                    self.advance()
+                # extract optional identifier (the parameter name)
+                if self.cur().typ == TokenType.ID:
+                    fptr_param_name = self.eat(TokenType.ID).text
+                # skip until closing ) of the declarator
+                depth = 1
                 while True:
                     if self.cur().typ == TokenType.LPAREN:
                         depth += 1
@@ -527,7 +541,7 @@ class Parser:
                     elif self.cur().typ == TokenType.EOF:
                         break
                     self.advance()
-                # Skip return type params if present: (*)(int, int)
+                # Skip return type params if present: (*f)(int, int)
                 if self.cur().typ == TokenType.LPAREN:
                     depth = 0
                     while True:
@@ -541,7 +555,7 @@ class Parser:
                         elif self.cur().typ == TokenType.EOF:
                             break
                         self.advance()
-                params.append(Param("ptr", None))
+                params.append(Param("ptr", fptr_param_name))
             else:
                 # Handle array param: int x[] or int x[100]
                 name: Optional[str] = None
@@ -633,9 +647,15 @@ class Parser:
             # Parse the value
             val: object = 0
             if self.cur().typ == TokenType.LBRACE:
-                # Nested initializer for struct element - skip for now, store 0
-                self.skip_init_braces()
-                val = 0
+                # Nested brace initializer (e.g. sub-array in a 2D array).
+                # Recursively parse and flatten values into the current list.
+                sub_init = self.parse_int_init_list(None)
+                for sub_val in sub_init.values:
+                    entries.append((cur_idx, sub_val))
+                    cur_idx += 1
+                if self.cur().typ == TokenType.COMMA:
+                    self.advance()
+                continue
             elif self.cur().typ == TokenType.AMP:
                 # &funcname — function pointer address-of
                 self.advance()  # skip &

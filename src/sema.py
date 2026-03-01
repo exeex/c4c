@@ -566,7 +566,7 @@ class SemanticAnalyzer:
                             vars_init[name] = True
                     case Index():
                         self.analyze_expr(target, vars_init)
-                    case Member():
+                    case Member(base=member_base):
                         tt = self.analyze_expr(target, vars_init)
                         if not self.types_compatible(et, tt):
                             raise CompileError("semantic error: assignment type mismatch")
@@ -579,6 +579,9 @@ class SemanticAnalyzer:
                             raise CompileError(
                                 "semantic error: compound assignment supports int only"
                             )
+                        # Mark base struct variable as initialized when a field is assigned
+                        if isinstance(member_base, Var) and member_base.name in vars_init:
+                            vars_init[member_base.name] = True
                     case UnaryOp(op="*", expr=ptr_expr):
                         try:
                             self.analyze_expr(ptr_expr, vars_init)
