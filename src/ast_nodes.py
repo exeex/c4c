@@ -67,6 +67,7 @@ class AssignExpr(Node):
     target: Node
     op: str
     expr: Node
+    postfix: bool = False  # True for x++ / x-- on member/index (return old value)
 
 
 @dataclass

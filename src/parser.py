@@ -1978,7 +1978,7 @@ class Parser:
                     node = IncDec(node.name, op, False)
                 elif isinstance(node, (Index, Member)) or (isinstance(node, UnaryOp) and node.op == "*"):
                     assign_op = "+=" if op == "++" else "-="
-                    node = AssignExpr(target=node, op=assign_op, expr=IntLit(1, ""))
+                    node = AssignExpr(target=node, op=assign_op, expr=IntLit(1, ""), postfix=True)
                 # else: drop for other (invalid) targets
                 continue
             break

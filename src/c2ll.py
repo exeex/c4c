@@ -1542,7 +1542,7 @@ class IRBuilder:
                     # neither branch reaches end (both terminate) — emit undef
                     self.emit(f"  {t} = add {ll_rty} 0, 0")
                 return t
-            case AssignExpr(target=target, op=op, expr=expr):
+            case AssignExpr(target=target, op=op, expr=expr, postfix=postfix):
                 rv = self.codegen_expr(expr)
                 if rv is None:
                     raise CompileError("codegen error: cannot assign void to int")
@@ -1565,7 +1565,7 @@ class IRBuilder:
                     stride = self.ptr_elem_llvm_ty(target_ty)
                     self.emit(f"  {t} = getelementptr inbounds {stride}, ptr {curp}, i32 {step}")
                     self.emit(f"  store ptr {t}, ptr {slot}")
-                    return t
+                    return curp if postfix else t
                 cur = self.tmp()
                 t = self.tmp()
                 if target_ty in ("double", "float"):
@@ -1621,7 +1621,8 @@ class IRBuilder:
                         rv_i32 = self.promote_to_i32(rv, src_ty)
                         self.emit(f"  {t} = {llvm_op} i32 {cur}, {rv_i32}")
                         self.emit(f"  store i32 {t}, ptr {slot}")
-                return t
+                # For postfix x++/x-- on members/index: return OLD value (pre-increment)
+                return cur if postfix else t
             case IncDec(name=name, op=op, prefix=prefix):
                 vty = self.resolve_var_type(name)
                 slot = self.resolve_var_ptr(name)
