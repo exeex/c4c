@@ -134,6 +134,7 @@ class StructDef(Node):
     fields: List[StructField]
     is_union: bool = False
     union_aliases: Optional[Dict[str, int]] = None  # anon union field name -> representative index
+    anon_struct_fields: Optional[Dict[str, str]] = None  # field_name -> anon_struct_tag (union with inlined anon struct)
 
 
 @dataclass

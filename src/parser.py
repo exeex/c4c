@@ -10,6 +10,7 @@ class Parser:
         self.struct_defs: Dict[str, StructDef] = {}
         self.anon_struct_idx = 0
         self.typedef_names: Dict[str, str] = {
+            "__va_list": "char*",  # ARM64: va_list is a single pointer
             # GCC/Clang extension float types
             "_Float16": "float", "_Float32": "float", "_Float64": "double",
             "_Float128": "double", "_Float32x": "double", "_Float64x": "double",
@@ -82,7 +83,7 @@ class Parser:
                 if self.cur().typ == TokenType.KW_UNSIGNED:
                     self.advance()
                 self.skip_type_qualifiers()
-                return "long"
+                return "long long" if is_long_long else "long"
             case TokenType.KW_SHORT:
                 self.advance()
                 if self.cur().typ == TokenType.KW_INT:
@@ -91,8 +92,11 @@ class Parser:
                 return "short"
             case TokenType.KW_UNSIGNED:
                 self.advance()
-                # unsigned int, unsigned long, unsigned char, etc.
+                # unsigned int, unsigned long, unsigned char, unsigned short, etc.
                 is_uchar = False
+                is_short = False
+                is_long = False
+                is_longlong = False
                 if self.cur().typ in (
                     TokenType.KW_INT, TokenType.KW_LONG, TokenType.KW_SHORT, TokenType.KW_CHAR
                 ):
@@ -102,15 +106,34 @@ class Parser:
                         is_uchar = True
                         if self.cur().typ == TokenType.KW_LONG:
                             self.advance()
-                    if self.cur().typ == TokenType.KW_LONG:
-                        self.advance()  # unsigned long long
-                    if self.cur().typ == TokenType.KW_INT:
-                        self.advance()
+                    elif inner == "short":
+                        is_short = True
+                        if self.cur().typ == TokenType.KW_INT:
+                            self.advance()
+                    elif inner == "long":
+                        is_long = True
+                        if self.cur().typ == TokenType.KW_LONG:
+                            self.advance()  # unsigned long long
+                            is_longlong = True
+                        if self.cur().typ == TokenType.KW_INT:
+                            self.advance()
+                    else:  # int
+                        if self.cur().typ == TokenType.KW_INT:
+                            self.advance()
                 self.skip_type_qualifiers()
-                return "unsigned char" if is_uchar else "int"
+                if is_uchar:
+                    return "unsigned char"
+                if is_short:
+                    return "unsigned short"
+                if is_longlong:
+                    return "unsigned long long"
+                if is_long:
+                    return "unsigned long"
+                return "unsigned int"
             case TokenType.KW_SIGNED:
                 self.advance()
                 is_long = False
+                is_long_long = False
                 if self.cur().typ in (
                     TokenType.KW_INT, TokenType.KW_LONG, TokenType.KW_SHORT, TokenType.KW_CHAR
                 ):
@@ -119,9 +142,12 @@ class Parser:
                     self.advance()
                     if self.cur().typ == TokenType.KW_LONG:
                         self.advance()
+                        is_long_long = True
                     if self.cur().typ == TokenType.KW_INT:
                         self.advance()
                 self.skip_type_qualifiers()
+                if is_long_long:
+                    return "long long"
                 return "long" if is_long else "int"
             case TokenType.KW_DOUBLE:
                 self.advance()
@@ -142,6 +168,7 @@ class Parser:
                     self.advance()
                     fields: List[StructField] = []
                     union_aliases_pending: Dict[str, int] = {}
+                    anon_struct_fields_pending: Dict[str, str] = {}
                     while self.cur().typ != TokenType.RBRACE:
                         # Allow empty declarations like just a semicolon
                         if self.cur().typ == TokenType.SEMI:
@@ -207,7 +234,11 @@ class Parser:
                                     for uf in anon_def.fields:
                                         union_aliases_pending[uf.name] = rep_idx
                                 else:
-                                    fields.extend(anon_def.fields)
+                                    # Inline anonymous struct fields, tracking source tag for union parents
+                                    for af in anon_def.fields:
+                                        fields.append(af)
+                                        if is_union:
+                                            anon_struct_fields_pending[af.name] = anon_tag
                             self.advance()  # eat SEMI
                             continue
                         if self.cur().typ == TokenType.SEMI:
@@ -332,7 +363,8 @@ class Parser:
                         actual_tag = f"{tag}__inner{self.anon_struct_idx}"
                         self.anon_struct_idx += 1
                     ua = union_aliases_pending if union_aliases_pending else None
-                    self.struct_defs[actual_tag] = StructDef(actual_tag, fields, is_union=is_union, union_aliases=ua)
+                    asf = anon_struct_fields_pending if anon_struct_fields_pending else None
+                    self.struct_defs[actual_tag] = StructDef(actual_tag, fields, is_union=is_union, union_aliases=ua, anon_struct_fields=asf)
                     return f"struct:{actual_tag}"
                 if tag is None:
                     # Forward reference without body - can't do much, return placeholder
@@ -698,17 +730,56 @@ class Parser:
                 self.advance()
                 if self.cur().typ == TokenType.ID:
                     field_name = self.eat(TokenType.ID).text
+                # Handle multi-level designators: .field1.field2 = val
+                if self.cur().typ == TokenType.DOT:
+                    sub_parts = []
+                    while self.cur().typ == TokenType.DOT:
+                        self.advance()
+                        if self.cur().typ == TokenType.ID:
+                            sub_parts.append(self.eat(TokenType.ID).text)
+                    if self.cur().typ == TokenType.ASSIGN:
+                        self.advance()
+                    try:
+                        val = self.parse_assignment()
+                    except Exception:
+                        while self.cur().typ not in (TokenType.COMMA, TokenType.RBRACE, TokenType.EOF):
+                            self.advance()
+                        val = IntLit(0)
+                    # Build nested StructInit from innermost out: .a.b.c=v → a:{.b:{.c:v}}
+                    nested = val
+                    for sub_field in reversed(sub_parts):
+                        nested = StructInit([(sub_field, nested)])
+                    entries.append((field_name, nested))
+                    if self.cur().typ == TokenType.COMMA:
+                        self.advance()
+                    continue
                 if self.cur().typ == TokenType.ASSIGN:
                     self.advance()
             elif self.cur().typ == TokenType.LBRACKET:
-                # Designated array initializer: [N] = val — skip designation
+                # Designated array initializer: [N] = val or [A ... B] = val
                 self.advance()  # skip [
-                while self.cur().typ not in (TokenType.RBRACKET, TokenType.EOF):
-                    self.advance()
-                if self.cur().typ == TokenType.RBRACKET:
-                    self.advance()
-                if self.cur().typ == TokenType.ASSIGN:
-                    self.advance()
+                try:
+                    idx_start = self._parse_const_int()
+                    idx_end = idx_start
+                    if self.cur().typ == TokenType.ELLIPSIS:
+                        self.advance()
+                        idx_end = self._parse_const_int()
+                    if self.cur().typ == TokenType.RBRACKET:
+                        self.advance()
+                    if self.cur().typ == TokenType.ASSIGN:
+                        self.advance()
+                    # Encode range as field_name so codegen can generate proper stores
+                    if idx_start == idx_end:
+                        field_name = f"[{idx_start}]"
+                    else:
+                        field_name = f"[{idx_start}...{idx_end}]"
+                except Exception:
+                    while self.cur().typ not in (TokenType.RBRACKET, TokenType.EOF):
+                        self.advance()
+                    if self.cur().typ == TokenType.RBRACKET:
+                        self.advance()
+                    if self.cur().typ == TokenType.ASSIGN:
+                        self.advance()
             # Parse the value expression
             if self.cur().typ == TokenType.LBRACE:
                 # Nested struct/array initializer - parse recursively

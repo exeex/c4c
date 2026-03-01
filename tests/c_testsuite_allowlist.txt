@@ -220,3 +220,4 @@ tests/single-exec/00218.c
 tests/single-exec/00219.c
 tests/single-exec/00220.c
 tests/single-exec/00204.c
+tests/single-exec/00216.c

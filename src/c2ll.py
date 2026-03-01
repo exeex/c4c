@@ -176,6 +176,30 @@ class IRBuilder:
                 return 0 if s.is_union else i, f.typ
         raise CompileError(f"codegen error: unknown field {field!r} in {struct_ty!r}")
 
+    def _union_field_byte_offset(self, struct_ty: str, field: str) -> int:
+        """Return byte offset within union for a field from an inlined anonymous struct."""
+        if ":" not in struct_ty:
+            return 0
+        tag = struct_ty.split(":", 1)[1]
+        s = self.struct_defs.get(tag)
+        if s is None or not s.is_union or not s.anon_struct_fields:
+            return 0
+        anon_tag = s.anon_struct_fields.get(field)
+        if anon_tag is None:
+            return 0
+        anon_s = self.struct_defs.get(anon_tag)
+        if anon_s is None:
+            return 0
+        offset = 0
+        for f in anon_s.fields:
+            if f.name == field:
+                return offset
+            if f.array_size is not None:
+                offset += f.array_size * self.sizeof_type(f.typ)
+            else:
+                offset += self.sizeof_type(f.typ)
+        return 0
+
     def is_struct_type(self, ty: str) -> bool:
         return ty.startswith("struct:") and "*" not in ty
 
@@ -783,10 +807,14 @@ class IRBuilder:
                 if struct_ptr is None:
                     raise CompileError("codegen error: invalid struct base")
                 field_idx, _ = self.struct_field(struct_ty, field)
+                byte_offset = self._union_field_byte_offset(struct_ty, field)
                 t = self.tmp()
-                self.emit(
-                    f"  {t} = getelementptr inbounds {self.llvm_ty(struct_ty)}, ptr {struct_ptr}, i32 0, i32 {field_idx}"
-                )
+                if byte_offset > 0:
+                    self.emit(f"  {t} = getelementptr i8, ptr {struct_ptr}, i64 {byte_offset}")
+                else:
+                    self.emit(
+                        f"  {t} = getelementptr inbounds {self.llvm_ty(struct_ty)}, ptr {struct_ptr}, i32 0, i32 {field_idx}"
+                    )
                 return t
             case _:
                 raise CompileError("codegen error: invalid assignment target")
@@ -2238,16 +2266,21 @@ class IRBuilder:
         defined_tags = set(self.struct_defs.keys())
         for tag, s in self.struct_defs.items():
             if s.is_union:
-                # For unions, emit only the first (largest) field to overlay all members
+                # Represent union as [N x i8] where N = max field size in bytes
                 if s.fields:
-                    f0 = s.fields[0]
-                    if f0.array_size is not None:
-                        field_tys = f"[{f0.array_size} x {self.llvm_ty(f0.typ)}]"
-                    else:
-                        field_tys = self.llvm_ty(f0.typ)
+                    max_sz = 0
+                    for f in s.fields:
+                        if f.array_size is not None:
+                            fsz = f.array_size * self.sizeof_type(f.typ)
+                        else:
+                            fsz = self.sizeof_type(f.typ)
+                        if fsz > max_sz:
+                            max_sz = fsz
                 else:
-                    field_tys = "i32"
-                self.emit(f"%struct.{tag} = type {{{field_tys}}}")
+                    max_sz = 4
+                if max_sz < 1:
+                    max_sz = 1
+                self.emit(f"%struct.{tag} = type {{[{max_sz} x i8]}}")
             else:
                 field_tys = ", ".join(
                     f"[{f.array_size} x {self.llvm_ty(f.typ)}]" if f.array_size is not None else self.llvm_ty(f.typ)
@@ -2707,6 +2740,13 @@ class IRBuilder:
             return
         ll_ty = self.llvm_ty(struct_ty)
         named = any(fname is not None for fname, _ in init.entries)
+        # Zero-initialize struct if partial init (designated or fewer entries than fields)
+        # Per C99: unspecified members shall be initialized to zero
+        total_fields = sum(f.array_size if f.array_size is not None else 1 for f in s.fields)
+        if named or len(init.entries) < total_fields:
+            sz = self.sizeof_type(struct_ty)
+            if sz > 0:
+                self.emit(f"  call void @llvm.memset.p0.i64(ptr {slot}, i8 0, i64 {sz}, i1 false)")
 
         def _store_field(t: str, f, v_node) -> None:
             """Store v_node into field f at address t."""
@@ -2725,13 +2765,36 @@ class IRBuilder:
                     self.emit(f"  call void @llvm.memcpy.p0.p0.i64(ptr {t}, ptr {src_ptr}, i64 {str_bytes}, i1 false)")
                 elif isinstance(v_node, (StructInit, ArrayInit)):
                     entries = v_node.entries if isinstance(v_node, StructInit) else [(None, IntLit(v)) for v in v_node.values]
-                    for ai, (_, av) in enumerate(entries[:arr_size]):
-                        ep = self.tmp()
-                        self.emit(f"  {ep} = getelementptr inbounds [{arr_size} x {elem_ll}], ptr {t}, i32 0, i32 {ai}")
-                        av_v = self.codegen_expr(av)
-                        if av_v is not None:
-                            av_v = self._coerce_val_for_store(av_v, av, f.typ)
-                            self.emit(f"  store {elem_ll} {av_v}, ptr {ep}")
+                    # Check for range-designated entries: "[A...B]" or "[N]" as field name
+                    has_range = any(fn is not None and fn.startswith('[') for fn, _ in entries)
+                    if has_range:
+                        # Range-designated array init: generate explicit stores per range
+                        for fname_r, av in entries:
+                            if fname_r is None:
+                                continue
+                            # Parse range from "[A...B]" or "[N]"
+                            inner = fname_r[1:-1]  # strip [ ]
+                            if '...' in inner:
+                                parts = inner.split('...')
+                                idx_s = int(parts[0].strip())
+                                idx_e = int(parts[1].strip())
+                            else:
+                                idx_s = idx_e = int(inner.strip())
+                            av_v = self.codegen_expr(av)
+                            if av_v is not None:
+                                coerced = self._coerce_val_for_store(av_v, av, f.typ)
+                                for ri in range(idx_s, min(idx_e + 1, arr_size)):
+                                    ep = self.tmp()
+                                    self.emit(f"  {ep} = getelementptr inbounds [{arr_size} x {elem_ll}], ptr {t}, i32 0, i32 {ri}")
+                                    self.emit(f"  store {elem_ll} {coerced}, ptr {ep}")
+                    else:
+                        for ai, (_, av) in enumerate(entries[:arr_size]):
+                            ep = self.tmp()
+                            self.emit(f"  {ep} = getelementptr inbounds [{arr_size} x {elem_ll}], ptr {t}, i32 0, i32 {ai}")
+                            av_v = self.codegen_expr(av)
+                            if av_v is not None:
+                                av_v = self._coerce_val_for_store(av_v, av, f.typ)
+                                self.emit(f"  store {elem_ll} {av_v}, ptr {ep}")
                 # else: scalar for array field – skip
             elif f.typ.startswith("struct:") and "*" not in f.typ:
                 if isinstance(v_node, StructInit):
@@ -2920,6 +2983,104 @@ class IRBuilder:
             flat_idx += 1
         return StructInit(sub_entries), flat_idx
 
+    def _union_init_to_bytes(self, struct_ty: str, init: "StructInit") -> list:
+        """Serialize a union initializer to a byte array (for unions with anon struct fields)."""
+        tag = struct_ty.split(":", 1)[1]
+        s = self.struct_defs.get(tag)
+        if s is None:
+            return [0] * 4
+        max_sz = max(
+            (f.array_size * self.sizeof_type(f.typ)) if f.array_size is not None else self.sizeof_type(f.typ)
+            for f in s.fields
+        ) if s.fields else 4
+        if max_sz < 1:
+            max_sz = 1
+        bytes_out = [0] * max_sz
+
+        named = any(fname is not None for fname, _ in init.entries)
+        if named:
+            # Named init: .field = val at union level (fields may come from inlined anon struct)
+            for fname, val_node in init.entries:
+                if fname is None:
+                    continue
+                byte_off = self._union_field_byte_offset(struct_ty, fname)
+                try:
+                    v = self.eval_global_const(val_node) & 0xFF
+                except Exception:
+                    v = 0
+                if byte_off < len(bytes_out):
+                    bytes_out[byte_off] = v
+        else:
+            if not init.entries:
+                return bytes_out
+            _, v_node = init.entries[0]
+            # Check if first field(s) came from an anonymous struct
+            if (s.anon_struct_fields and s.fields and
+                    s.anon_struct_fields.get(s.fields[0].name)):
+                anon_tag = s.anon_struct_fields[s.fields[0].name]
+                anon_s = self.struct_defs.get(anon_tag)
+                if isinstance(v_node, StructInit) and anon_s is not None:
+                    anon_named = any(fn is not None for fn, _ in v_node.entries)
+                    byte_off = 0
+                    if anon_named:
+                        anon_field_map = {fn: fv for fn, fv in v_node.entries if fn is not None}
+                        for af in anon_s.fields:
+                            fv_node = anon_field_map.get(af.name)
+                            if fv_node is not None:
+                                try:
+                                    v = self.eval_global_const(fv_node) & 0xFF
+                                except Exception:
+                                    v = 0
+                                if byte_off < len(bytes_out):
+                                    bytes_out[byte_off] = v
+                            fsz = af.array_size * self.sizeof_type(af.typ) if af.array_size else self.sizeof_type(af.typ)
+                            byte_off += fsz
+                    else:
+                        for ai, af in enumerate(anon_s.fields):
+                            if ai >= len(v_node.entries):
+                                break
+                            _, fv = v_node.entries[ai]
+                            try:
+                                v = self.eval_global_const(fv) & 0xFF
+                            except Exception:
+                                v = 0
+                            if byte_off < len(bytes_out):
+                                bytes_out[byte_off] = v
+                            fsz = af.array_size * self.sizeof_type(af.typ) if af.array_size else self.sizeof_type(af.typ)
+                            byte_off += fsz
+                    return bytes_out
+            # Default: serialize first field based on its type
+            if s.fields:
+                f = s.fields[0]
+                if f.array_size is not None:
+                    # Array-typed first field: collect element values as bytes
+                    elem_sz = self.sizeof_type(f.typ)
+                    # Check if it's a nested StructInit for the array or flat scalars
+                    if (len(init.entries) == 1 and
+                            isinstance(init.entries[0][1], (StructInit, ArrayInit))):
+                        nested = init.entries[0][1]
+                        sub_entries = (nested.entries if isinstance(nested, StructInit)
+                                       else [(None, IntLit(v)) for v in nested.values])
+                    else:
+                        sub_entries = init.entries
+                    for ai in range(min(f.array_size, len(sub_entries))):
+                        _, av = sub_entries[ai]
+                        try:
+                            ev = self.eval_global_const(av)
+                        except Exception:
+                            ev = 0
+                        for bi in range(elem_sz):
+                            byte_off = ai * elem_sz + bi
+                            if byte_off < len(bytes_out):
+                                bytes_out[byte_off] = (ev >> (bi * 8)) & 0xFF
+                else:
+                    try:
+                        v = self.eval_global_const(v_node) & 0xFF
+                    except Exception:
+                        v = 0
+                    bytes_out[0] = v
+        return bytes_out
+
     def _emit_struct_init_const(self, struct_ty: str, init: "StructInit") -> str:
         """Emit LLVM struct constant initializer string."""
         tag = struct_ty.split(":", 1)[1]
@@ -2927,6 +3088,12 @@ class IRBuilder:
         if s is None:
             return "zeroinitializer"
         fields = s.fields
+        # For unions: serialize to [N x i8] byte array
+        if s.is_union:
+            union_bytes = self._union_init_to_bytes(struct_ty, init)
+            n = len(union_bytes)
+            vals_str = ", ".join(f"i8 {b}" for b in union_bytes)
+            return f"{{[{n} x i8] [{vals_str}]}}"
         # If init has exactly one entry that is a CompoundLit of the same struct type, unwrap it
         # (parser sometimes wraps compound literals in an extra StructInit layer)
         if (len(init.entries) == 1 and init.entries[0][0] is None and
