@@ -1405,12 +1405,65 @@ class IRBuilder:
                     return t
                 if src in int_types and dst == "double":
                     t = self.tmp()
-                    self.emit(f"  {t} = sitofp i32 {v} to double")
+                    src_ll = self.llvm_ty(src)
+                    if src_ll == "i64":
+                        conv = "uitofp" if src in ("unsigned long long", "unsigned long") else "sitofp"
+                        self.emit(f"  {t} = {conv} i64 {v} to double")
+                    else:
+                        conv = "uitofp" if src in ("unsigned int", "unsigned", "unsigned short") else "sitofp"
+                        self.emit(f"  {t} = {conv} i32 {v} to double")
                     return t
                 if src == "double" and dst in int_types:
                     t = self.tmp()
-                    self.emit(f"  {t} = fptosi double {v} to i32")
+                    dst_ll = self.llvm_ty(dst)
+                    if dst_ll == "i64":
+                        op = "fptoui" if dst in ("unsigned long long", "unsigned long") else "fptosi"
+                        self.emit(f"  {t} = {op} double {v} to i64")
+                    else:
+                        self.emit(f"  {t} = fptosi double {v} to i32")
                     return t
+                if src in int_types and dst == "float":
+                    t = self.tmp()
+                    src_ll = self.llvm_ty(src)
+                    if src_ll == "i64":
+                        conv = "uitofp" if src in ("unsigned long long", "unsigned long") else "sitofp"
+                        self.emit(f"  {t} = {conv} i64 {v} to float")
+                    else:
+                        conv = "uitofp" if src in ("unsigned int", "unsigned", "unsigned short") else "sitofp"
+                        self.emit(f"  {t} = {conv} i32 {v} to float")
+                    return t
+                if src == "float" and dst in int_types:
+                    t = self.tmp()
+                    dst_ll = self.llvm_ty(dst)
+                    if dst_ll == "i64":
+                        op = "fptoui" if dst in ("unsigned long long", "unsigned long") else "fptosi"
+                        self.emit(f"  {t} = {op} float {v} to i64")
+                    else:
+                        self.emit(f"  {t} = fptosi float {v} to i32")
+                    return t
+                if src == "float" and dst == "double":
+                    t = self.tmp()
+                    self.emit(f"  {t} = fpext float {v} to double")
+                    return t
+                if src == "double" and dst == "float":
+                    t = self.tmp()
+                    self.emit(f"  {t} = fptrunc double {v} to float")
+                    return t
+                if src in ("float", "double") and dst in ("char", "unsigned char", "signed char"):
+                    t = self.tmp()
+                    t2 = self.tmp()
+                    fp_ll = self.llvm_ty(src)
+                    self.emit(f"  {t} = fptosi {fp_ll} {v} to i32")
+                    self.emit(f"  {t2} = trunc i32 {t} to i8")
+                    return t2
+                if src in ("char", "signed char", "unsigned char") and dst in ("float", "double"):
+                    t = self.tmp()
+                    t2 = self.tmp()
+                    dst_ll = self.llvm_ty(dst)
+                    ext_op = "zext" if src == "unsigned char" else "sext"
+                    self.emit(f"  {t} = {ext_op} i8 {v} to i32")
+                    self.emit(f"  {t2} = sitofp i32 {t} to {dst_ll}")
+                    return t2
                 if src in int_types and dst.endswith("*"):
                     p = self.tmp()
                     q = self.tmp()
@@ -1428,6 +1481,11 @@ class IRBuilder:
                         self.emit(f"  {q} = inttoptr i64 {p} to ptr")
                         return q
                     return v  # already a pointer
+                # fallback: try emit_convert for any remaining type pair
+                try:
+                    return self.emit_convert(v, src, dst)
+                except Exception:
+                    pass
                 raise CompileError(f"codegen error: unsupported cast from {src!r} to {dst!r}")
             case SizeofExpr(typ=typ, expr=expr):
                 if typ is not None:
@@ -1965,8 +2023,9 @@ class IRBuilder:
                             # Static local array
                             self.local_arrays[name] = size
                             self.local_types[name] = "array"
-                            self.local_array_elem_types[name] = base_type
-                            elem_ll = self.llvm_ty(base_type)
+                            eff_elem_type = base_type + ("*" * ptr_level)
+                            self.local_array_elem_types[name] = eff_elem_type
+                            elem_ll = self.llvm_ty(eff_elem_type)
                             ll_ty = f"[{size} x {elem_ll}]"
                             self.preamble_lines.append(f"@{gname} = internal global {ll_ty} zeroinitializer")
                         else:
@@ -2031,10 +2090,20 @@ class IRBuilder:
                             for idx, val in enumerate(init.values):
                                 ep = self.tmp()
                                 self.emit(f"  {ep} = getelementptr inbounds [{total_size} x {elem_ll}], ptr {slot}, i32 0, i32 {idx}")
-                                # Use zeroinitializer for struct/array types; integer 0 for scalars
-                                is_agg = elem_ll.startswith("%struct.") or elem_ll.startswith("[")
-                                store_val = "zeroinitializer" if (is_agg and val == 0) else str(val)
-                                self.emit(f"  store {elem_ll} {store_val}, ptr {ep}")
+                                if isinstance(val, str):
+                                    # Function/variable name: use as pointer value
+                                    local_slot = self.slots.get(val)
+                                    if local_slot is not None:
+                                        # Local variable — use its alloca slot as address
+                                        self.emit(f"  store ptr {local_slot}, ptr {ep}")
+                                    else:
+                                        # Global variable or function name
+                                        self.emit(f"  store ptr @{val}, ptr {ep}")
+                                else:
+                                    # Use zeroinitializer for struct/array types; integer 0 for scalars
+                                    is_agg = elem_ll.startswith("%struct.") or elem_ll.startswith("[")
+                                    store_val = "zeroinitializer" if (is_agg and val == 0) else str(val)
+                                    self.emit(f"  store {elem_ll} {store_val}, ptr {ep}")
                         elif isinstance(init, StructArrayInit) and self.is_struct_type(base_type):
                             # Array of structs: initialize each element
                             for idx, struct_node in init.entries:
@@ -2683,7 +2752,7 @@ class IRBuilder:
                     # Infer size from initializer when not explicitly given (int arr[] = {...})
                     if size is None and isinstance(hoist_init, ArrayInit):
                         size = len(hoist_init.values)
-                    elif size is None and isinstance(hoist_init, StringLit):
+                    elif size is None and isinstance(hoist_init, StringLit) and ptr_level == 0:
                         size = len(hoist_init.value) + 1  # char arr[] = "..." or wchar_t arr[] = L"..."
                     if size is not None:
                         # Wide string (wchar_t) array: fix size from string initializer
@@ -2701,8 +2770,10 @@ class IRBuilder:
                             self.local_array_extra_dims[name] = list(extra_dims)
                         self.local_arrays[name] = total_size
                         self.local_types[name] = "array"
-                        self.local_array_elem_types[name] = base_type
-                        elem_ll = self.llvm_ty(base_type)
+                        # For pointer arrays (int *arr[]), elem type includes ptr_level
+                        eff_elem_type = base_type + ("*" * ptr_level)
+                        self.local_array_elem_types[name] = eff_elem_type
+                        elem_ll = self.llvm_ty(eff_elem_type)
                         self.emit(f"  {slot} = alloca [{total_size} x {elem_ll}]")
                     else:
                         declared_ty = base_type + ("*" * ptr_level)
