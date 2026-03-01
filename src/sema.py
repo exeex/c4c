@@ -551,7 +551,13 @@ class SemanticAnalyzer:
                         vt = self.var_type(name)
                         if not self.types_compatible(et, vt):
                             raise CompileError("semantic error: assignment type mismatch")
-                        if op != "=" and vt not in ("int", "char", "short", "float", "double", "long", "unsigned", "unsigned int", "unsigned long"):
+                        _compound_scalar_types = {
+                            "int", "char", "short", "float", "double",
+                            "long", "unsigned", "unsigned int", "unsigned long",
+                            "long long", "unsigned long long",
+                            "signed char", "unsigned char", "unsigned short",
+                        }
+                        if op != "=" and vt not in _compound_scalar_types:
                             if not (vt.endswith("*") and op in ("+=", "-=")):
                                 raise CompileError(
                                     "semantic error: compound assignment supports int and pointer +/- only"
@@ -564,7 +570,12 @@ class SemanticAnalyzer:
                         tt = self.analyze_expr(target, vars_init)
                         if not self.types_compatible(et, tt):
                             raise CompileError("semantic error: assignment type mismatch")
-                        if op != "=" and tt not in ("int", "char", "short", "float", "double", "long", "unsigned", "unsigned int"):
+                        if op != "=" and tt not in {
+                            "int", "char", "short", "float", "double",
+                            "long", "unsigned", "unsigned int", "unsigned long",
+                            "long long", "unsigned long long",
+                            "signed char", "unsigned char", "unsigned short",
+                        }:
                             raise CompileError(
                                 "semantic error: compound assignment supports int only"
                             )
