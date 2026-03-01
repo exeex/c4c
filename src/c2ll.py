@@ -2013,7 +2013,10 @@ class IRBuilder:
                 return False
             case For(init=init, cond=cond, post=post, body=body):
                 if init is not None:
-                    self.codegen_expr(init)
+                    if isinstance(init, Decl):
+                        self.codegen_stmt(init, fn_ret_type)
+                    else:
+                        self.codegen_expr(init)
                 cond_lbl = self.new_label("for_cond")
                 body_lbl = self.new_label("for_body")
                 post_lbl = self.new_label("for_post")
