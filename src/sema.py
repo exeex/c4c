@@ -276,7 +276,11 @@ class SemanticAnalyzer:
                 return False
             case Switch(expr=expr, body=body):
                 et = self.analyze_expr(expr, vars_init)
-                if et not in ("int", "char") and not et.endswith("*"):
+                _switch_int_types = {
+                    "int", "char", "unsigned int", "unsigned", "short", "unsigned short",
+                    "long", "unsigned long", "long long", "unsigned long long", "unsigned char",
+                }
+                if et not in _switch_int_types and not et.endswith("*"):
                     raise CompileError("semantic error: switch expression must be int")
                 self.check_switch_labels(body)
                 body_state = dict(vars_init)

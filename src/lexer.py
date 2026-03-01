@@ -504,7 +504,7 @@ class Lexer:
                 remap_names = {
                     "__restrict": None, "__volatile": None, "__const": None,
                     "__signed__": "signed", "__unsigned__": "unsigned",
-                    "__builtin_va_list": "int",
+                    "__builtin_va_list": "__va_list",
                     "__typeof__": None,  # skip typeof altogether
                 }
                 if tok.text in remap_names:
