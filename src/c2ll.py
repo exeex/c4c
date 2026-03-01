@@ -2545,8 +2545,8 @@ class IRBuilder:
                     # Infer size from initializer when not explicitly given (int arr[] = {...})
                     if size is None and isinstance(hoist_init, ArrayInit):
                         size = len(hoist_init.values)
-                    elif size is None and isinstance(hoist_init, StringLit) and base_type in ("int", "unsigned", "unsigned int"):
-                        size = len(hoist_init.value) + 1  # wchar_t arr[] = L"..."
+                    elif size is None and isinstance(hoist_init, StringLit):
+                        size = len(hoist_init.value) + 1  # char arr[] = "..." or wchar_t arr[] = L"..."
                     if size is not None:
                         # Wide string (wchar_t) array: fix size from string initializer
                         if (size == 1 and isinstance(hoist_init, StringLit) and
