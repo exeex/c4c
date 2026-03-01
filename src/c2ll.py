@@ -1476,7 +1476,8 @@ class IRBuilder:
                     self.emit(f"  {nxt} = getelementptr inbounds {stride}, ptr {cur}, i32 {step}")
                 else:
                     llvm_op = "add" if op == "++" else "sub"
-                    self.emit(f"  {nxt} = {llvm_op} i32 {cur}, 1")
+                    ll_vty = self.llvm_ty(vty)
+                    self.emit(f"  {nxt} = {llvm_op} {ll_vty} {cur}, 1")
                 self.emit(f"  store {self.llvm_ty(vty)} {nxt}, ptr {slot}")
                 return nxt if prefix else cur
             case Call(name=name, args=args):
