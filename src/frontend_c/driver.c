@@ -5,15 +5,16 @@
  *
  * M0/M1: preprocess + lex.
  * M2:    preprocess + lex + parse (AST dump via --parse-only).
- * M3+:   full IR emission (TODO).
+ * M3:    full IR emission (default mode).
  */
 
 #include "common.h"
 #include "lexer.h"
 #include "parser.h"
 #include "ast.h"
+#include "ir_builder.h"
 
-#define VERSION "0.1.0-M2-parse"
+#define VERSION "0.1.0-M3-ir"
 
 /* ================================================================
  * Preprocess: run 'clang -E -P -x c <input>' and capture output.
@@ -68,7 +69,7 @@ int main(int argc, char **argv) {
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--version") == 0) {
-            printf("tiny-c2ll %s (C frontend, M2 parser)\n", VERSION);
+            printf("tiny-c2ll %s (C frontend, M3 IR emission)\n", VERSION);
             return 0;
         } else if (strcmp(argv[i], "--lex-only") == 0) {
             lex_only = true;
@@ -93,8 +94,6 @@ int main(int argc, char **argv) {
                 "[-o out.ll] input.c\n");
         return 1;
     }
-
-    (void)output_file;   /* used in M3+ */
 
     /* ---- Preprocess ---- */
     const char *clang_exec = find_clang();
@@ -140,10 +139,20 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    /* ---- Future: sema → IR emit ---- */
-    (void)prog;
-    fprintf(stderr, "TODO: full compilation not yet implemented "
-                    "(use --lex-only or --parse-only)\n");
+    /* ---- IR emission (M3) ---- */
+    FILE *out = stdout;
+    if (output_file) {
+        out = fopen(output_file, "w");
+        if (!out) {
+            fprintf(stderr, "error: cannot open output file '%s'\n", output_file);
+            arena_free_all(&arena);
+            return 1;
+        }
+    }
+
+    ir_emit_program(prog, input_file, out);
+
+    if (output_file) fclose(out);
     arena_free_all(&arena);
-    return 1;
+    return 0;
 }

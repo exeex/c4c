@@ -59,6 +59,12 @@ typedef struct {
     char    **typedefs;
     int       ntypedefs, typedef_cap;
 
+    /* Collect struct/union defs encountered anywhere (incl. inside functions).
+     * These are prepended to the program items list so the IR builder can
+     * emit type definitions before they are used. */
+    PtrVec   struct_defs;
+    int      anon_counter;  /* generates _anon_0, _anon_1, ... tags */
+
     bool had_error;
 } Parser;
 
@@ -328,12 +334,24 @@ static char *parse_type_spec(Parser *p,
             char tag[128] = "";
             if (at(p, TK_ID)) { strncpy(tag, cur_tok(p)->text, sizeof(tag)-1); advance(p); }
             if (at(p, TK_LBRACE)) {
-                /* Inline struct/union definition */
+                /* Inline struct/union definition: generate synthetic tag if anonymous */
+                if (!tag[0]) {
+                    snprintf(tag, sizeof(tag), "_anon_%d", p->anon_counter++);
+                }
                 Node *sd = node_new(p->arena, NK_STRUCT_DEF,
                                     cur_tok(p)->line, cur_tok(p)->col);
                 sd->u.sdef.is_union = is_union;
-                sd->u.sdef.tag = tag[0] ? arena_strdup(p->arena, tag) : NULL;
+                sd->u.sdef.tag = arena_strdup(p->arena, tag);
                 parse_struct_body(p, sd);
+                /* Collect for top-level emission (deduplication via tag) */
+                bool already = false;
+                for (int i = 0; i < p->struct_defs.n; i++) {
+                    Node *prev = (Node *)p->struct_defs.data[i];
+                    if (prev->u.sdef.tag && strcmp(prev->u.sdef.tag, tag) == 0) {
+                        already = true; break;
+                    }
+                }
+                if (!already) pv_push(&p->struct_defs, sd);
             }
             if (tag[0])
                 snprintf(base, sizeof(base), "%s %s",
@@ -905,37 +923,72 @@ static Node *parse_local_decl(Parser *p) {
         else init_node = parse_assign_expr(p);
     }
 
-    /* Additional declarators: int a = 0, b, c[3]; */
+    /* Collect first declarator */
+    PtrVec decls; pv_init(&decls);
+    {
+        Node *n = node_new(p->arena, NK_DECL, line, col);
+        n->u.decl.name      = name;
+        n->u.decl.base_type = btype;
+        n->u.decl.ptr_lvl   = ptr_lvl;
+        n->u.decl.arr_sz    = arr_sz;
+        n->u.decl.is_static = is_st;
+        n->u.decl.is_const  = is_con;
+        n->u.decl.init      = init_node;
+        if (n_ed > 0) {
+            n->u.decl.extra_dims = (int *)arena_alloc(p->arena,
+                                        (size_t)n_ed * sizeof(int));
+            memcpy(n->u.decl.extra_dims, edims, (size_t)n_ed * sizeof(int));
+            n->u.decl.n_edims = n_ed;
+        }
+        pv_push(&decls, n);
+    }
+
+    /* Additional declarators: int a = 0, *b, c[3]; — emit one NK_DECL per name */
     while (try_eat(p, TK_COMMA)) {
-        consume_stars(p);
-        if (at(p, TK_ID)) advance(p);
+        int dline = cur_tok(p)->line, dcol = cur_tok(p)->col;
+        int dptr = consume_stars(p);
+        char *dname = NULL;
+        if (at(p, TK_ID)) { dname = arena_strdup(p->arena, cur_tok(p)->text); advance(p); }
+        int darr = 0;
         while (at(p, TK_LBRACK)) {
             advance(p);
-            if (!at(p, TK_RBRACK)) parse_assign_expr(p);
+            int sz = 0;
+            if (!at(p, TK_RBRACK)) {
+                Node *se = parse_assign_expr(p);
+                if (se && se->kind == NK_INT_LIT) sz = (int)se->u.ival.val;
+                else sz = 1;
+            }
             try_eat(p, TK_RBRACK);
+            if (darr == 0) darr = (sz > 0) ? sz : -1;
         }
+        Node *dinit = NULL;
         if (try_eat(p, TK_ASSIGN)) {
             if (at(p, TK_LBRACE)) skip_brace_group(p);
-            else parse_assign_expr(p);
+            else dinit = parse_assign_expr(p);
         }
+        Node *dn = node_new(p->arena, NK_DECL, dline, dcol);
+        dn->u.decl.name      = dname;
+        dn->u.decl.base_type = btype;
+        dn->u.decl.ptr_lvl   = dptr;
+        dn->u.decl.arr_sz    = darr;
+        dn->u.decl.is_static = is_st;
+        dn->u.decl.is_const  = is_con;
+        dn->u.decl.init      = dinit;
+        pv_push(&decls, dn);
     }
 
     expect(p, TK_SEMI);
 
-    Node *n = node_new(p->arena, NK_DECL, line, col);
-    n->u.decl.name      = name;
-    n->u.decl.base_type = btype;
-    n->u.decl.ptr_lvl   = ptr_lvl;
-    n->u.decl.arr_sz    = arr_sz;
-    n->u.decl.is_static = is_st;
-    n->u.decl.is_const  = is_con;
-    n->u.decl.init      = init_node;
-    if (n_ed > 0) {
-        n->u.decl.extra_dims = (int *)arena_alloc(p->arena, (size_t)n_ed * sizeof(int));
-        memcpy(n->u.decl.extra_dims, edims, (size_t)n_ed * sizeof(int));
-        n->u.decl.n_edims = n_ed;
+    /* Return single decl or a block of decls */
+    if (decls.n == 1) {
+        Node *result = (Node *)decls.data[0];
+        pv_free(&decls);
+        return result;
     }
-    return n;
+    Node *blk = node_new(p->arena, NK_BLOCK, line, col);
+    blk->u.block.stmts = (Node **)pv_to_arena(p->arena, &decls, &blk->u.block.n);
+    pv_free(&decls);
+    return blk;
 }
 
 static Node *parse_stmt(Parser *p) {
@@ -1307,13 +1360,25 @@ Node *parse(TokenVec *tv, Arena *arena) {
 
     Node *prog = node_new(arena, NK_PROGRAM, 1, 1);
     PtrVec iv; pv_init(&iv);
+    pv_init(&p.struct_defs);
 
     while (!at(&p, TK_EOF)) {
         Node *item = parse_top_level(&p);
         if (item) pv_push(&iv, item);
     }
 
-    prog->u.prog.items  = (Node **)pv_to_arena(arena, &iv, &prog->u.prog.nitems);
+    /* Build final items list: struct defs first (so IR builder sees types before use),
+     * then everything else.  Struct defs that also appear in 'iv' are deduplicated
+     * by the IR builder's lookup_struct (it skips already-registered tags). */
+    PtrVec final; pv_init(&final);
+    for (int i = 0; i < p.struct_defs.n; i++)
+        pv_push(&final, p.struct_defs.data[i]);
+    for (int i = 0; i < iv.n; i++)
+        pv_push(&final, iv.data[i]);
+    pv_free(&p.struct_defs);
+
+    prog->u.prog.items  = (Node **)pv_to_arena(arena, &final, &prog->u.prog.nitems);
+    pv_free(&final);
     pv_free(&iv);
 
     for (int i = 0; i < p.ntypedefs; i++) free(p.typedefs[i]);

@@ -91,6 +91,7 @@ set(FRONTEND_C_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend_c/lexer.c"
     "${PROJECT_SOURCE_DIR}/src/frontend_c/arena.c"
     "${PROJECT_SOURCE_DIR}/src/frontend_c/parser.c"
+    "${PROJECT_SOURCE_DIR}/src/frontend_c/ir_builder.c"
 )
 
 add_executable(frontend_c_stage1 ${FRONTEND_C_SRCS})
@@ -132,5 +133,16 @@ if(EXISTS "${EXAMPLE_C}")
   )
   set_tests_properties(frontend_c_stage1_parse PROPERTIES
       PASS_REGULAR_EXPRESSION "Program"
+  )
+endif()
+
+# Smoke test: full IR emission on the example file produces valid LLVM IR (stdout)
+if(EXISTS "${EXAMPLE_C}")
+  add_test(
+      NAME frontend_c_stage1_emit_ir
+      COMMAND frontend_c_stage1 "${EXAMPLE_C}"
+  )
+  set_tests_properties(frontend_c_stage1_emit_ir PROPERTIES
+      PASS_REGULAR_EXPRESSION "define"
   )
 endif()
