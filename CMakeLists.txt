@@ -78,3 +78,43 @@ if(C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
             --allowlist "${PROJECT_SOURCE_DIR}/tests/c_testsuite_allowlist.txt"
   )
 endif()
+
+# ============================================================
+# C Frontend (stage1) – compiled with system clang/cc
+# M0: skeleton + CMake target
+# M1: lexer token stream
+# ============================================================
+enable_language(C)
+
+set(FRONTEND_C_SRCS
+    "${PROJECT_SOURCE_DIR}/src/frontend_c/driver.c"
+    "${PROJECT_SOURCE_DIR}/src/frontend_c/lexer.c"
+)
+
+add_executable(frontend_c_stage1 ${FRONTEND_C_SRCS})
+target_include_directories(frontend_c_stage1 PRIVATE
+    "${PROJECT_SOURCE_DIR}/src/frontend_c"
+)
+set_target_properties(frontend_c_stage1 PROPERTIES
+    C_STANDARD 11
+    C_STANDARD_REQUIRED ON
+    OUTPUT_NAME "tiny-c2ll-stage1"
+)
+target_compile_options(frontend_c_stage1 PRIVATE -Wall -Wextra -Wpedantic)
+
+# Smoke test: --version exits 0
+add_test(
+    NAME frontend_c_stage1_version
+    COMMAND frontend_c_stage1 --version
+)
+
+# Smoke test: --lex-only on the example file produces token output
+if(EXISTS "${EXAMPLE_C}")
+  add_test(
+      NAME frontend_c_stage1_lex
+      COMMAND frontend_c_stage1 --lex-only "${EXAMPLE_C}"
+  )
+  set_tests_properties(frontend_c_stage1_lex PROPERTIES
+      PASS_REGULAR_EXPRESSION "EOF"
+  )
+endif()
