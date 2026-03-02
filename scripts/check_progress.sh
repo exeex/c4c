@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 WORKDIR=/tmp/c4agent_check
 
 python3.14 tests/run_c_testsuite.py \
-    --compiler src/c2ll.py \
+    --compiler src/frontend/c2ll.py \
     --clang /usr/bin/clang \
     --testsuite-root tests/c-testsuite \
     --workdir "$WORKDIR" \
@@ -12,7 +12,7 @@ python3.14 tests/run_c_testsuite.py \
 
 # Save last result
 python3.14 tests/run_c_testsuite.py \
-    --compiler src/c2ll.py \
+    --compiler src/frontend/c2ll.py \
     --clang /usr/bin/clang \
     --testsuite-root tests/c-testsuite \
     --workdir "$WORKDIR" \

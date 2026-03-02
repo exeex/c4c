@@ -17,7 +17,7 @@ if(NOT CLANG_EXECUTABLE)
   message(WARNING "clang not found: clang execution tests will be skipped")
 endif()
 
-set(C2LL_SCRIPT "${PROJECT_SOURCE_DIR}/src/c2ll.py")
+set(C2LL_SCRIPT "${PROJECT_SOURCE_DIR}/src/frontend/c2ll.py")
 set(EXAMPLE_C "${PROJECT_SOURCE_DIR}/tests/example.c")
 set(EXAMPLE_LL "${CMAKE_BINARY_DIR}/example.ll")
 set(C_TESTSUITE_ROOT "" CACHE PATH "Path to external c-testsuite root")

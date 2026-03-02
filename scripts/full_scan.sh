@@ -6,7 +6,7 @@ WORKDIR=/tmp/c4agent_fullscan
 echo "[full_scan] Running all 220 tests... (takes ~60s)"
 
 python3.14 tests/run_c_testsuite.py \
-    --compiler src/c2ll.py \
+    --compiler src/frontend/c2ll.py \
     --clang /usr/bin/clang \
     --testsuite-root tests/c-testsuite \
     --workdir "$WORKDIR" 2>&1 | tee /tmp/full_scan_raw.txt | grep SUMMARY

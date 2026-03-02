@@ -21,7 +21,7 @@
     - pointer declarations (`int *p`)
     - address-of/dereference (`&` / `*`) for scalar variables
     - array/pointer indexing (`a[i]`, `p[i]`)
-    - multi-level pointers (`int **pp`, `**pp`)
+    - multi-level pointers (`int **p｀p`, `**pp`)
     - pointer arithmetic (`p +/- n`, `p++/--`, `p += n`, pointer difference)
   - basic struct support:
     - `struct` type declarations (named + anonymous)
@@ -176,3 +176,87 @@ python3.14 tests/run_c_testsuite.py \
 - `build/c_testsuite/logs/frontend_fail.log`
 - `build/c_testsuite/logs/backend_fail.log`
 - `build/c_testsuite/logs/runtime_fail.log`
+
+## C Rewrite Frontend Plan (Self-Hosting, LLVM IR Text Output First)
+
+### Target
+
+- Rewrite `src/frontend/*.py` in C (allow limited C++ helpers in `utils.cpp`).
+- Keep output as LLVM IR text (debug-friendly).
+- Reach self-compilation (bootstrap) with stable test pipeline.
+
+### Reference Mapping
+
+- `/tmp/ref/amacc`: take minimalist single-pass style, explicit symbol tables, precedence parsing mindset.
+- `/tmp/ref/claudes-c-compiler`: take strict phase boundaries and module contracts (`frontend -> sema -> IR`), plus differential testing discipline.
+- Current Python frontend remains stage0 oracle for behavior parity while migrating.
+
+### Proposed Source Layout
+
+- `src/frontend_c/`
+  - `common.h` `diag.c` (errors, span)
+  - `token.h` `lexer.c`
+  - `ast.h` `arena.c`
+  - `parser.c`
+  - `sema.c`
+  - `ir_builder.c` (string emitter)
+  - `driver.c` (`main`, `-o`, preprocess call)
+  - `utils.h` `utils.cpp` (complex string/path utilities only, C ABI)
+
+### Bootstrap Strategy
+
+1. Stage0
+   - Existing Python compiler compiles C frontend sources to `.ll`.
+2. Stage1
+   - `clang` links generated `.ll` into native compiler binary.
+3. Stage2
+   - New C compiler compiles its own sources again.
+   - Compare stage1/stage2 behavior on smoke + allowlist tests.
+
+### Milestones
+
+1. M0: Build skeleton + CMake targets
+   - Add `frontend_c_stage1` executable target.
+   - Keep Python path untouched.
+2. M1: Lexer + parser bootstrap subset
+   - Cover syntax actually used by `frontend_c` source first.
+3. M2: Semantic analyzer core
+   - Symbol tables, type checks, init/use checks, function signature checks.
+4. M3: IR builder (text output)
+   - Temp/label allocator, LLVM type mapping, control-flow emission.
+5. M4: Driver + preprocess
+   - Keep `clang -E -P` preprocess model initially (same as Python).
+6. M5: Self-host smoke
+   - Compile frontend C source with frontend C compiler itself.
+7. M6: c-testsuite allowlist parity
+   - Catch up to Python baseline, then flip default compiler path.
+
+### Test/Script Changes Required Early
+
+- Existing test runners call compiler as Python script.
+- Make runners dual-mode:
+  - `.py` path => `python <compiler> ...`
+  - binary path => `<compiler> ...`
+- This is required for `scripts/full_scan.sh` to run C frontend binary directly.
+
+### `utils.cpp` Rule
+
+- Allowed only for complex helpers (string formatting, path normalization, reusable buffer ops).
+- Export only C ABI entry points (`extern "C"`), keep parser/sema/IR core in C for self-host transparency.
+
+### IR Builder Roadmap
+
+- Phase-1 (now): string-based LLVM IR emission.
+- Phase-2 (optional): separate `ir_builder_llvm.cpp` with LLVM API backend behind a compile-time switch.
+
+### Main Risks
+
+- Feature gap between Python frontend and bootstrap C subset.
+- Harness assumes Python invocation.
+- Semantic drift during migration.
+
+Mitigation:
+
+- Freeze coding profile for `src/frontend_c` until stage2 passes.
+- Keep Python as oracle and run differential checks on token/AST/IR snippets.
+- Add binary-mode test support before deep migration.

@@ -143,7 +143,7 @@ class IRBuilder:
         if ty in ("long long", "unsigned long long"):
             return "i64"
         if ty in ("long", "unsigned long"):
-            return "i32"  # use i32 for simplicity (matches most operations)
+            return "i64"  # LP64: long is 64-bit on macOS/Linux
         if ty == "float":
             return "float"
         if ty == "double":
@@ -1906,6 +1906,28 @@ class IRBuilder:
                             self.auto_declared_fns[name] = f"declare void @{name}({arg_ty_str})"
                         self.emit(f"  call void @{name}({', '.join(args_text)})")
                         return None
+                    _double_returning_fns = {
+                        "strtod", "strtof", "strtold",
+                        "atof", "difftime",
+                    }
+                    _long_returning_fns = {
+                        "strtol", "strtoul", "strtoll", "strtoull",
+                        "atol", "atoll", "ftell", "lseek", "fseeko", "ftello",
+                    }
+                    if name in _double_returning_fns:
+                        arg_ty_str = _arg_types_str(args_text)
+                        if name not in self.auto_declared_fns:
+                            self.auto_declared_fns[name] = f"declare double @{name}({arg_ty_str})"
+                        t = self.tmp()
+                        self.emit(f"  {t} = call double @{name}({', '.join(args_text)})")
+                        return t
+                    if name in _long_returning_fns:
+                        arg_ty_str = _arg_types_str(args_text)
+                        if name not in self.auto_declared_fns:
+                            self.auto_declared_fns[name] = f"declare i64 @{name}({arg_ty_str})"
+                        t = self.tmp()
+                        self.emit(f"  {t} = call i64 @{name}({', '.join(args_text)})")
+                        return t
                     arg_ty_str = _arg_types_str(args_text)
                     if name not in self.auto_declared_fns:
                         self.auto_declared_fns[name] = f"declare i32 @{name}({arg_ty_str})"

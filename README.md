@@ -47,7 +47,7 @@ Failure logs are split by phase under `build/c_testsuite/logs/`:
 ## Manual Usage
 
 ```bash
-python3.14 src/c2ll.py tests/example.c -o /tmp/out.ll
+python3.14 src/frontend/c2ll.py tests/example.c -o /tmp/out.ll
 clang /tmp/out.ll -o /tmp/out
 /tmp/out
 echo $?
