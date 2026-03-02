@@ -82,13 +82,15 @@ endif()
 # ============================================================
 # C Frontend (stage1) – compiled with system clang/cc
 # M0: skeleton + CMake target
-# M1: lexer token stream
+# M1/M2: lexer + parser
 # ============================================================
 enable_language(C)
 
 set(FRONTEND_C_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend_c/driver.c"
     "${PROJECT_SOURCE_DIR}/src/frontend_c/lexer.c"
+    "${PROJECT_SOURCE_DIR}/src/frontend_c/arena.c"
+    "${PROJECT_SOURCE_DIR}/src/frontend_c/parser.c"
 )
 
 add_executable(frontend_c_stage1 ${FRONTEND_C_SRCS})
@@ -107,6 +109,9 @@ add_test(
     NAME frontend_c_stage1_version
     COMMAND frontend_c_stage1 --version
 )
+set_tests_properties(frontend_c_stage1_version PROPERTIES
+    PASS_REGULAR_EXPRESSION "tiny-c2ll"
+)
 
 # Smoke test: --lex-only on the example file produces token output
 if(EXISTS "${EXAMPLE_C}")
@@ -116,5 +121,16 @@ if(EXISTS "${EXAMPLE_C}")
   )
   set_tests_properties(frontend_c_stage1_lex PROPERTIES
       PASS_REGULAR_EXPRESSION "EOF"
+  )
+endif()
+
+# Smoke test: --parse-only on the example file produces AST output
+if(EXISTS "${EXAMPLE_C}")
+  add_test(
+      NAME frontend_c_stage1_parse
+      COMMAND frontend_c_stage1 --parse-only "${EXAMPLE_C}"
+  )
+  set_tests_properties(frontend_c_stage1_parse PROPERTIES
+      PASS_REGULAR_EXPRESSION "Program"
   )
 endif()

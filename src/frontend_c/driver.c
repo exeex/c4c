@@ -1,48 +1,41 @@
 /* driver.c – entry point for the C frontend (tiny-c2ll)
  *
  * Usage:
- *   tiny-c2ll [--version] [--lex-only] [-o output.ll] input.c
+ *   tiny-c2ll [--version] [--lex-only] [--parse-only] [-o output.ll] input.c
  *
- * M0/M1: preprocess + lex only; IR emission stubbed as TODO.
+ * M0/M1: preprocess + lex.
+ * M2:    preprocess + lex + parse (AST dump via --parse-only).
+ * M3+:   full IR emission (TODO).
  */
 
 #include "common.h"
 #include "lexer.h"
+#include "parser.h"
+#include "ast.h"
 
-#define VERSION "0.1.0-M1-lex"
+#define VERSION "0.1.0-M2-parse"
 
 /* ================================================================
- * Preprocess: run 'clang -E -P -x c <input>' and return the result
- * as a heap-allocated NUL-terminated string.  The caller frees it.
+ * Preprocess: run 'clang -E -P -x c <input>' and capture output.
+ * Returns a heap-allocated NUL-terminated string; caller frees it.
  * ================================================================ */
 static char *preprocess(const char *clang_exec, const char *input_file,
                          size_t *out_len) {
-    /* Build shell command.  We quote the file path with single quotes and
-     * escape any embedded single quotes (unlikely in practice). */
     size_t cmd_cap = 256 + strlen(clang_exec) + strlen(input_file) * 4;
     char *cmd = (char *)xmalloc(cmd_cap);
 
-    /* Escape single quotes in input_file: replace ' with '\'' */
     StrBuf escaped; sb_init(&escaped);
-    for (const char *p = input_file; *p; p++) {
-        if (*p == '\'') {
-            sb_puts(&escaped, "'\\''");
-        } else {
-            sb_push(&escaped, (unsigned char)*p);
-        }
+    for (const char *q = input_file; *q; q++) {
+        if (*q == '\'') sb_puts(&escaped, "'\\''");
+        else            sb_push(&escaped, (unsigned char)*q);
     }
     char *esc_file = sb_str(&escaped);
-    snprintf(cmd, cmd_cap,
-             "%s -E -P -x c '%s' 2>/dev/null",
-             clang_exec, esc_file);
+    snprintf(cmd, cmd_cap, "%s -E -P -x c '%s' 2>/dev/null", clang_exec, esc_file);
     free(esc_file);
 
     FILE *fp = popen(cmd, "r");
     free(cmd);
-    if (!fp) {
-        fprintf(stderr, "error: failed to run preprocessor\n");
-        exit(1);
-    }
+    if (!fp) { fprintf(stderr, "error: failed to run preprocessor\n"); exit(1); }
 
     StrBuf buf; sb_init(&buf);
     int ch;
@@ -52,7 +45,6 @@ static char *preprocess(const char *clang_exec, const char *input_file,
         fprintf(stderr, "error: preprocessor exited with non-zero status\n");
         exit(1);
     }
-
     return sb_finish(&buf, out_len);
 }
 
@@ -69,16 +61,19 @@ static const char *find_clang(void) {
  * main
  * ================================================================ */
 int main(int argc, char **argv) {
-    const char *input_file = NULL;
+    const char *input_file  = NULL;
     const char *output_file = NULL;
-    bool lex_only = false;
+    bool lex_only   = false;
+    bool parse_only = false;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--version") == 0) {
-            printf("tiny-c2ll %s (C frontend, M1 lexer)\n", VERSION);
+            printf("tiny-c2ll %s (C frontend, M2 parser)\n", VERSION);
             return 0;
         } else if (strcmp(argv[i], "--lex-only") == 0) {
             lex_only = true;
+        } else if (strcmp(argv[i], "--parse-only") == 0) {
+            parse_only = true;
         } else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
             output_file = argv[++i];
         } else if (argv[i][0] != '-') {
@@ -93,12 +88,13 @@ int main(int argc, char **argv) {
     }
 
     if (!input_file) {
-        fprintf(stderr, "usage: tiny-c2ll [--version] [--lex-only] [-o out.ll] input.c\n");
+        fprintf(stderr,
+                "usage: tiny-c2ll [--version] [--lex-only] [--parse-only] "
+                "[-o out.ll] input.c\n");
         return 1;
     }
 
-    /* Suppress unused-variable warning when output_file not yet used */
-    (void)output_file;
+    (void)output_file;   /* used in M3+ */
 
     /* ---- Preprocess ---- */
     const char *clang_exec = find_clang();
@@ -110,11 +106,9 @@ int main(int argc, char **argv) {
     free(src);
 
     if (lex_only) {
-        /* Print token stream for debugging/smoke-testing */
         for (size_t i = 0; i < tv.count; i++) {
             Token *t = &tv.tokens[i];
             if (t->kind == TK_STR) {
-                /* Print string text safely: escape non-printable */
                 printf("%d:%d %-12s \"", t->line, t->col, tok_kind_str(t->kind));
                 for (size_t j = 0; j < t->text_len; j++) {
                     unsigned char b = (unsigned char)t->text[j];
@@ -133,8 +127,23 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    /* ---- Future: parse → sema → IR emit ---- */
-    fprintf(stderr, "TODO: full compilation not yet implemented (use --lex-only)\n");
+    /* ---- Parse ---- */
+    Arena arena;
+    arena_init(&arena, 256 * 1024);   /* 256 KB initial block */
+
+    Node *prog = parse(&tv, &arena);
     tokenvec_free(&tv);
+
+    if (parse_only) {
+        ast_dump(prog, 0);
+        arena_free_all(&arena);
+        return 0;
+    }
+
+    /* ---- Future: sema → IR emit ---- */
+    (void)prog;
+    fprintf(stderr, "TODO: full compilation not yet implemented "
+                    "(use --lex-only or --parse-only)\n");
+    arena_free_all(&arena);
     return 1;
 }

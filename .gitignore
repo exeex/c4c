@@ -1,6 +1,6 @@
 # Build outputs
 /build/
-
+/build*
 # Generated artifacts
 *.ll
 *.o
