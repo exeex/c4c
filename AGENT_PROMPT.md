@@ -50,7 +50,7 @@ Primary goal:
 ## References
 
 - `/tmp/ref/amacc` (minimalist compiler structure and self-hosting mindset)
-- `/tmp/ref/claudes-c-compiler` (phase boundaries and pipeline contracts)
+- `｀` (phase boundaries and pipeline contracts)
 - Existing oracle implementation:
   - `src/frontend/lexer.py`
   - `src/frontend/parser.py`

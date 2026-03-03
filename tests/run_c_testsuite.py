@@ -7,8 +7,13 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
-def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, text=True, capture_output=True, encoding="utf-8", errors="replace")
+def run(cmd: list[str], timeout: int = 30) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(cmd, text=True, capture_output=True,
+                              encoding="utf-8", errors="replace", timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(cmd, returncode=1,
+                                           stdout="", stderr="[TIMEOUT]")
 
 
 def load_allowlist(path: pathlib.Path) -> list[str]:
@@ -37,7 +42,11 @@ def discover_tests(root: pathlib.Path, allowlist: list[str]) -> list[pathlib.Pat
 
 
 def compile_one(compiler: str, src: pathlib.Path, out_ll: pathlib.Path) -> subprocess.CompletedProcess[str]:
-    return run([sys.executable, compiler, str(src), "-o", str(out_ll)])
+    if compiler.endswith(".py"):
+        cmd = [sys.executable, compiler, str(src), "-o", str(out_ll)]
+    else:
+        cmd = [compiler, str(src), "-o", str(out_ll)]
+    return run(cmd)
 
 
 def load_expected_output(src: pathlib.Path) -> str:
