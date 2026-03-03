@@ -7,7 +7,7 @@
   - `tests/` local tests + c-testsuite integration
   - `docs/` spec documents
   - `CMakeLists.txt` for build/test orchestration
-- Core compiler (`src/c2ll.py`) currently supports:
+- Core Python compiler (`src/frontend/c2ll.py`) currently supports:
   - `int` / `void` / `char` / `short` / `long` / `unsigned` / `double` function and variable types
   - function declarations and definitions
   - `extern` function declarations
@@ -65,22 +65,34 @@
   - `c2ll.py -> .ll -> clang -> executable`
   - failure logs split into frontend/backend/runtime
 - c-testsuite status:
-  - Allowlist run (`2026-02-28`): `209 / 218` pass, `9` fail
-  - Regression cases:
-    - Frontend: `tests/single-exec/00215.c`
-    - Backend: `tests/single-exec/00040.c`, `00134.c`, `00181.c`, `00182.c`, `00189.c`, `00200.c`, `00217.c`
-    - Runtime: `tests/single-exec/00104.c`
-  - `tests/c_testsuite_allowlist.txt` currently tracks 218 selected cases
-- Local regression status (`ctest --test-dir build --output-on-failure`, `2026-02-28`):
-  - `c_testsuite_allowlist`: fail (`209 / 218` pass)
+  - Allowlist run (`2026-03-04`): `220 / 220` pass, `0` fail
+  - `tests/c_testsuite_allowlist.txt` currently tracks 220 selected cases
+- Local regression status (`2026-03-04`):
   - `tiny_c2ll_tests`: pass
+  - `c_testsuite_allowlist`: pass (`220 / 220`)
+- C++ frontend stage1 (M0) is now in place under `src/frontend_c/`:
+  - `frontend_cxx_stage1` target builds successfully.
+  - CLI skeleton is wired:
+    - `--version`
+    - `--lex-only <file>`
+    - `--parse-only <file>`
+    - default mode emits LLVM IR stub
+  - CTest smoke suite for C++ stage1 passes:
+    - `frontend_cxx_stage1_version`
+    - `frontend_cxx_stage1_lex`
+    - `frontend_cxx_stage1_parse`
+    - `frontend_cxx_stage1_emit_ir`
 
 ## Next Steps (Priority Order)
 
-1. Fix backend regressions introduced by the latest ABI/initializer/type changes (`00040`, `00134`, `00181`, `00182`, `00189`, `00200`, `00217`).
-2. Fix the runtime regression in `tests/single-exec/00104.c`.
-3. Fix the frontend regression in `tests/single-exec/00215.c`.
-4. Re-run allowlist and only expand/commit milestones when the full allowlist is green.
+1. M1 lexer parity (Rust-mirrored) for `src/frontend_c/lexer.*`:
+   - align token kinds and punctuation scanning with `ref/claudes-c-compiler/src/frontend/lexer/token.rs` and `scan.rs`.
+   - add baseline handling for multi-char operators and keyword classification.
+2. Add Python-vs-C++ lexer differential checks on focused fixtures:
+   - same preprocessed input, compare token stream shape and key lexemes.
+3. Extend C++ parser from summary stub to minimal AST slice used by bootstrap path.
+4. Keep Python oracle green while advancing C++:
+   - run `tiny_c2ll_tests` + c-testsuite allowlist before/after each milestone slice.
 
 ## Lexer Parity Follow-ups (`scan.rs` vs `src/lexer.py`)
 
@@ -102,8 +114,8 @@
 - CTest entry: `ccc_review_tests`
 - Runner: `tests/run_ccc_review_tests.py`
 - Important: this suite must run with our Python C compiler via:
-  - `--compiler src/c2ll.py`
-  - (runner flow is: Clang compile/run baseline first, then `python src/c2ll.py` -> `.ll` -> Clang -> run)
+  - `--compiler src/frontend/c2ll.py`
+  - (runner flow is: Clang compile/run baseline first, then `python src/frontend/c2ll.py` -> `.ll` -> Clang -> run)
 
 Current test inventory (2026-02-28):
 - Expected-fail gap trackers (`// CCC_EXPECT: fail`):
@@ -125,27 +137,41 @@ Follow-up rule for next agent:
 ### Configure + build
 
 ```bash
-cmake -S . -B build
-cmake --build build
+cmake -S . -B build_debug
+cmake --build build_debug
 ```
 
 ### Run all configured tests
 
 ```bash
-ctest --test-dir build --output-on-failure
+ctest --test-dir build_debug --output-on-failure
 ```
 
 ### Run only ccc review tests
 
 ```bash
-ctest --test-dir build -R ccc_review_tests --output-on-failure
+ctest --test-dir build_debug -R ccc_review_tests --output-on-failure
+```
+
+### Run only C++ stage1 smoke tests
+
+```bash
+ctest --test-dir build_debug -R frontend_cxx_stage1 --output-on-failure
+```
+
+### Run C++ stage1 directly
+
+```bash
+./build_debug/tiny-c2ll-stage1 --version
+./build_debug/tiny-c2ll-stage1 --lex-only tests/example.c
+./build_debug/tiny-c2ll-stage1 --parse-only tests/example.c
 ```
 
 ### Run only local regression tests
 
 ```bash
 python3.14 tests/run_tests.py \
-  --compiler src/c2ll.py \
+  --compiler src/frontend/c2ll.py \
   --workdir /tmp/tiny-c2ll-test \
   --clang /usr/bin/clang
 ```
@@ -154,10 +180,10 @@ python3.14 tests/run_tests.py \
 
 ```bash
 python3.14 tests/run_c_testsuite.py \
-  --compiler src/c2ll.py \
+  --compiler src/frontend/c2ll.py \
   --clang /usr/bin/clang \
   --testsuite-root tests/c-testsuite \
-  --workdir build \
+  --workdir build_debug \
   --allowlist tests/c_testsuite_allowlist.txt
 ```
 
@@ -165,17 +191,27 @@ python3.14 tests/run_c_testsuite.py \
 
 ```bash
 python3.14 tests/run_c_testsuite.py \
-  --compiler src/c2ll.py \
+  --compiler src/frontend/c2ll.py \
   --clang /usr/bin/clang \
   --testsuite-root tests/c-testsuite \
-  --workdir build
+  --workdir build_debug
+```
+
+### Run c-testsuite with C++ frontend binary (when milestone supports full compile)
+
+```bash
+python3.14 tests/run_c_testsuite.py \
+  --compiler ./build_debug/tiny-c2ll-stage1 \
+  --clang /usr/bin/clang \
+  --testsuite-root tests/c-testsuite \
+  --workdir build_debug
 ```
 
 ### Failure logs location
 
-- `build/c_testsuite/logs/frontend_fail.log`
-- `build/c_testsuite/logs/backend_fail.log`
-- `build/c_testsuite/logs/runtime_fail.log`
+- `build_debug/c_testsuite/logs/frontend_fail.log`
+- `build_debug/c_testsuite/logs/backend_fail.log`
+- `build_debug/c_testsuite/logs/runtime_fail.log`
 
 ## C++ Frontend First Plan (Rust Parity, Then Pure-C Backport)
 
