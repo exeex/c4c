@@ -20,6 +20,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <inttypes.h>
 
 /* ================================================================
  * Dynamic pointer array helpers
@@ -57,6 +58,7 @@ typedef struct {
 
     /* typedef name set – for cast disambiguation */
     char    **typedefs;
+    char    **typedef_bases; /* parallel: underlying base type string, or NULL */
     int       ntypedefs, typedef_cap;
 
     /* Collect struct/union defs encountered anywhere (incl. inside functions).
@@ -65,6 +67,7 @@ typedef struct {
     PtrVec   struct_defs;
     int      anon_counter;  /* generates _anon_0, _anon_1, ... tags */
 
+    int      braced_switch_depth; /* >0 when inside a braced switch body */
     bool had_error;
 } Parser;
 
@@ -111,15 +114,31 @@ static void skip_to_semi(Parser *p) {
 /* ================================================================
  * Typedef tracking
  * ================================================================ */
-static void register_typedef(Parser *p, const char *name) {
-    for (int i = 0; i < p->ntypedefs; i++)
-        if (strcmp(p->typedefs[i], name) == 0) return;
+static void register_typedef(Parser *p, const char *name, const char *base_type) {
+    for (int i = 0; i < p->ntypedefs; i++) {
+        if (strcmp(p->typedefs[i], name) == 0) {
+            if (base_type && !p->typedef_bases[i])
+                p->typedef_bases[i] = xstrdup(base_type);
+            return;
+        }
+    }
     if (p->ntypedefs >= p->typedef_cap) {
         p->typedef_cap = p->typedef_cap ? p->typedef_cap * 2 : 32;
         p->typedefs = (char **)xrealloc(p->typedefs,
                                         (size_t)p->typedef_cap * sizeof(char *));
+        p->typedef_bases = (char **)xrealloc(p->typedef_bases,
+                                              (size_t)p->typedef_cap * sizeof(char *));
     }
-    p->typedefs[p->ntypedefs++] = xstrdup(name);
+    p->typedefs[p->ntypedefs] = xstrdup(name);
+    p->typedef_bases[p->ntypedefs] = base_type ? xstrdup(base_type) : NULL;
+    p->ntypedefs++;
+}
+
+static const char *lookup_typedef_base(Parser *p, const char *name) {
+    for (int i = 0; i < p->ntypedefs; i++)
+        if (strcmp(p->typedefs[i], name) == 0)
+            return p->typedef_bases[i];
+    return NULL;
 }
 
 static bool is_typedef_name(Parser *p, const char *name) {
@@ -215,7 +234,19 @@ static void parse_struct_body(Parser *p, Node *sd) {
         int   fptr  = consume_stars(p);
 
         /* Anonymous inner struct/union that was fully parsed by parse_type_spec */
-        if (at(p, TK_SEMI)) { advance(p); continue; }
+        if (at(p, TK_SEMI)) {
+            advance(p);
+            /* Add as unnamed field so it appears in the LLVM struct type and
+             * its sub-fields can be inlined for member-name lookup. */
+            if (ftype && (strncmp(ftype,"struct ",7)==0 || strncmp(ftype,"union ",6)==0)) {
+                StructField *sf = (StructField *)arena_alloc(p->arena, sizeof(StructField));
+                memset(sf, 0, sizeof(*sf));
+                sf->base_type = ftype;
+                sf->name      = arena_strdup(p->arena, ""); /* empty = anonymous */
+                pv_push(&fv, sf);
+            }
+            continue;
+        }
 
         do {
             /* Function pointer field: (* [qualifiers] name)(...) */
@@ -288,6 +319,44 @@ static void parse_struct_body(Parser *p, Node *sd) {
             sd->u.sdef.fields[i] = *(StructField *)fv.data[i];
     }
     pv_free(&fv);
+}
+
+/* ================================================================
+ * Constant expression evaluator for enum values
+ * ================================================================ */
+static int64_t eval_enum_const(Node *n, char **pnames, int64_t *pvals, int np) {
+    if (!n) return 0;
+    switch (n->kind) {
+    case NK_INT_LIT: return n->u.ival.val;
+    case NK_VAR:
+        for (int i = 0; i < np; i++)
+            if (strcmp(pnames[i], n->u.var.name) == 0)
+                return pvals[i];
+        return 0;
+    case NK_UNARY:
+        if (strcmp(n->u.unary.op,"-")==0)
+            return -eval_enum_const(n->u.unary.expr, pnames, pvals, np);
+        if (strcmp(n->u.unary.op,"~")==0)
+            return ~eval_enum_const(n->u.unary.expr, pnames, pvals, np);
+        return eval_enum_const(n->u.unary.expr, pnames, pvals, np);
+    case NK_BINOP: {
+        int64_t l = eval_enum_const(n->u.binop.lhs, pnames, pvals, np);
+        int64_t r = eval_enum_const(n->u.binop.rhs, pnames, pvals, np);
+        if (strcmp(n->u.binop.op,"+")==0)  return l + r;
+        if (strcmp(n->u.binop.op,"-")==0)  return l - r;
+        if (strcmp(n->u.binop.op,"*")==0)  return l * r;
+        if (strcmp(n->u.binop.op,"/")==0)  return r ? l / r : 0;
+        if (strcmp(n->u.binop.op,"<<")==0) return l << r;
+        if (strcmp(n->u.binop.op,">>")==0) return l >> r;
+        if (strcmp(n->u.binop.op,"|")==0)  return l | r;
+        if (strcmp(n->u.binop.op,"&")==0)  return l & r;
+        if (strcmp(n->u.binop.op,"^")==0)  return l ^ r;
+        return l;
+    }
+    case NK_CAST:
+        return eval_enum_const(n->u.cast.expr, pnames, pvals, np);
+    default: return 0;
+    }
 }
 
 /* ================================================================
@@ -364,15 +433,73 @@ static char *parse_type_spec(Parser *p,
         /* enum */
         if (at(p, TK_ENUM)) {
             advance(p);
-            if (at(p, TK_ID)) advance(p);
-            if (at(p, TK_LBRACE)) skip_brace_group(p);
+            char enum_tag[128] = "";
+            if (at(p, TK_ID)) {
+                strncpy(enum_tag, cur_tok(p)->text, sizeof(enum_tag)-1);
+                advance(p);
+                /* Register enum tag as typedef so enum E variables are recognised */
+                register_typedef(p, enum_tag, NULL);
+            }
+            if (at(p, TK_LBRACE)) {
+                /* Parse enum body and create NK_ENUM_DEF */
+                Node *ed = node_new(p->arena, NK_ENUM_DEF,
+                                    cur_tok(p)->line, cur_tok(p)->col);
+                ed->u.edef.name = enum_tag[0] ? arena_strdup(p->arena, enum_tag) : NULL;
+                advance(p); /* eat { */
+                /* Use small stack for intra-enum constant references */
+                char  *pnames[256]; int64_t pvals[256]; int np = 0;
+                PtrVec cnames; pv_init(&cnames);
+                int64_t *cvals_arr =
+                    (int64_t *)xmalloc(256 * sizeof(int64_t));
+                int nc = 0;
+                int64_t next_val = 0;
+                while (!at(p, TK_RBRACE) && !at(p, TK_EOF)) {
+                    if (!at(p, TK_ID)) { advance(p); continue; }
+                    char *cname = arena_strdup(p->arena, cur_tok(p)->text);
+                    advance(p);
+                    int64_t val = next_val;
+                    if (try_eat(p, TK_ASSIGN)) {
+                        /* Simple constant-expr evaluation */
+                        Node *vn = parse_assign_expr(p);
+                        /* Recursive helper: evaluate constant node */
+                        #define EVAL_CONST(nn) eval_enum_const(nn, pnames, pvals, np)
+                        val = eval_enum_const(vn, pnames, pvals, np);
+                        #undef EVAL_CONST
+                    }
+                    next_val = val + 1;
+                    if (np < 256) { pnames[np] = cname; pvals[np] = val; np++; }
+                    if (nc < 256) { pv_push(&cnames, cname); cvals_arr[nc++] = val; }
+                    try_eat(p, TK_COMMA);
+                }
+                expect(p, TK_RBRACE);
+                ed->u.edef.nconsts = nc;
+                if (nc > 0) {
+                    ed->u.edef.cst_names = (char **)arena_alloc(p->arena,
+                                           (size_t)nc * sizeof(char *));
+                    ed->u.edef.cst_vals  = (int64_t *)arena_alloc(p->arena,
+                                           (size_t)nc * sizeof(int64_t));
+                    for (int i = 0; i < nc; i++) {
+                        ed->u.edef.cst_names[i] = (char *)cnames.data[i];
+                        ed->u.edef.cst_vals[i]  = cvals_arr[i];
+                    }
+                }
+                free(cvals_arr);
+                pv_free(&cnames);
+                pv_push(&p->struct_defs, ed);
+            }
             strncpy(base, "int", sizeof(base)-1);
             break;
         }
 
         /* typedef name */
         if (at(p, TK_ID) && is_typedef_name(p, cur_tok(p)->text)) {
-            strncpy(base, cur_tok(p)->text, sizeof(base)-1);
+            const char *tname = cur_tok(p)->text;
+            /* Expand struct/union typedefs so the IR builder can resolve them */
+            const char *expanded = lookup_typedef_base(p, tname);
+            if (expanded)
+                strncpy(base, expanded, sizeof(base)-1);
+            else
+                strncpy(base, tname, sizeof(base)-1);
             advance(p);
             break;
         }
@@ -918,22 +1045,70 @@ static Node *parse_local_decl(Parser *p) {
     }
 
     Node *init_node = NULL;
+    Node **init_list = NULL;
+    char **init_fields = NULL;
+    int    nInits = 0;
     if (try_eat(p, TK_ASSIGN)) {
-        if (at(p, TK_LBRACE)) skip_brace_group(p);
-        else init_node = parse_assign_expr(p);
+        if (at(p, TK_LBRACE)) {
+            /* Parse brace initializer list and store for codegen */
+            advance(p); /* eat { */
+            PtrVec vals; pv_init(&vals);
+            PtrVec flds; pv_init(&flds);
+            while (!at(p, TK_RBRACE) && !at(p, TK_EOF)) {
+                char *field_name = NULL;
+                /* Designated field: .field = expr */
+                if (at(p, TK_DOT)) {
+                    advance(p);
+                    if (at(p, TK_ID)) {
+                        field_name = arena_strdup(p->arena, cur_tok(p)->text);
+                        advance(p);
+                    }
+                    expect(p, TK_ASSIGN);
+                }
+                /* Designated index: [N] = expr */
+                else if (at(p, TK_LBRACK)) {
+                    advance(p);
+                    Node *idx = parse_assign_expr(p);
+                    expect(p, TK_RBRACK);
+                    char fbuf[32] = "[?]";
+                    if (idx && idx->kind == NK_INT_LIT)
+                        snprintf(fbuf, sizeof(fbuf), "[%" PRId64 "]", idx->u.ival.val);
+                    field_name = arena_strdup(p->arena, fbuf);
+                    expect(p, TK_ASSIGN);
+                }
+                Node *val;
+                if (at(p, TK_LBRACE)) { skip_brace_group(p); val = NULL; }
+                else val = parse_assign_expr(p);
+                pv_push(&vals, val);
+                pv_push(&flds, (void *)field_name);
+                if (!try_eat(p, TK_COMMA)) break;
+                if (at(p, TK_RBRACE)) break; /* trailing comma */
+            }
+            expect(p, TK_RBRACE);
+            int nn = 0, nf = 0;
+            init_list   = (Node **)pv_to_arena(p->arena, &vals, &nn);
+            nInits = nn;
+            init_fields = (char **)pv_to_arena(p->arena, &flds, &nf);
+            pv_free(&vals); pv_free(&flds);
+        } else {
+            init_node = parse_assign_expr(p);
+        }
     }
 
     /* Collect first declarator */
     PtrVec decls; pv_init(&decls);
     {
         Node *n = node_new(p->arena, NK_DECL, line, col);
-        n->u.decl.name      = name;
-        n->u.decl.base_type = btype;
-        n->u.decl.ptr_lvl   = ptr_lvl;
-        n->u.decl.arr_sz    = arr_sz;
-        n->u.decl.is_static = is_st;
-        n->u.decl.is_const  = is_con;
-        n->u.decl.init      = init_node;
+        n->u.decl.name        = name;
+        n->u.decl.base_type   = btype;
+        n->u.decl.ptr_lvl     = ptr_lvl;
+        n->u.decl.arr_sz      = arr_sz;
+        n->u.decl.is_static   = is_st;
+        n->u.decl.is_const    = is_con;
+        n->u.decl.init        = init_node;
+        n->u.decl.init_list   = init_list;
+        n->u.decl.init_fields = init_fields;
+        n->u.decl.nInits      = nInits;
         if (n_ed > 0) {
             n->u.decl.extra_dims = (int *)arena_alloc(p->arena,
                                         (size_t)n_ed * sizeof(int));
@@ -948,18 +1123,38 @@ static Node *parse_local_decl(Parser *p) {
         int dline = cur_tok(p)->line, dcol = cur_tok(p)->col;
         int dptr = consume_stars(p);
         char *dname = NULL;
-        if (at(p, TK_ID)) { dname = arena_strdup(p->arena, cur_tok(p)->text); advance(p); }
         int darr = 0;
-        while (at(p, TK_LBRACK)) {
-            advance(p);
-            int sz = 0;
-            if (!at(p, TK_RBRACK)) {
-                Node *se = parse_assign_expr(p);
-                if (se && se->kind == NK_INT_LIT) sz = (int)se->u.ival.val;
-                else sz = 1;
+        /* Pointer-to-array: (*name)[size] — e.g. char arr[2][4], (*p)[4] */
+        if (dptr == 0 && at(p, TK_LPAREN) && at2(p, TK_STAR, 1)) {
+            advance(p); /* eat ( */
+            advance(p); /* eat * */
+            dptr = 1;
+            if (at(p, TK_ID)) { dname = arena_strdup(p->arena, cur_tok(p)->text); advance(p); }
+            expect(p, TK_RPAREN);
+            while (at(p, TK_LBRACK)) {
+                advance(p);
+                int sz = 0;
+                if (!at(p, TK_RBRACK)) {
+                    Node *se = parse_assign_expr(p);
+                    if (se && se->kind == NK_INT_LIT) sz = (int)se->u.ival.val;
+                    else sz = 1;
+                }
+                expect(p, TK_RBRACK);
+                if (darr == 0) darr = (sz > 0) ? sz : -1;
             }
-            try_eat(p, TK_RBRACK);
-            if (darr == 0) darr = (sz > 0) ? sz : -1;
+        } else {
+            if (at(p, TK_ID)) { dname = arena_strdup(p->arena, cur_tok(p)->text); advance(p); }
+            while (at(p, TK_LBRACK)) {
+                advance(p);
+                int sz = 0;
+                if (!at(p, TK_RBRACK)) {
+                    Node *se = parse_assign_expr(p);
+                    if (se && se->kind == NK_INT_LIT) sz = (int)se->u.ival.val;
+                    else sz = 1;
+                }
+                try_eat(p, TK_RBRACK);
+                if (darr == 0) darr = (sz > 0) ? sz : -1;
+            }
         }
         Node *dinit = NULL;
         if (try_eat(p, TK_ASSIGN)) {
@@ -1052,7 +1247,25 @@ static Node *parse_stmt(Parser *p) {
     if (at(p, TK_SWITCH)) {
         advance(p);
         expect(p, TK_LPAREN); Node *expr = parse_expr(p); expect(p, TK_RPAREN);
-        Node *body = parse_block_body(p);
+        Node *body;
+        if (at(p, TK_LBRACE)) {
+            p->braced_switch_depth++;
+            body = parse_block_body(p);
+            p->braced_switch_depth--;
+        } else {
+            /* C allows braceless switch body: parse a single statement */
+            body = parse_stmt(p);
+            if (!body) {
+                body = node_new(p->arena, NK_BLOCK, line, col);
+                body->u.block.n = 0;
+            } else if (body->kind != NK_BLOCK) {
+                Node *blk = node_new(p->arena, NK_BLOCK, line, col);
+                PtrVec sv2; pv_init(&sv2); pv_push(&sv2, body);
+                blk->u.block.stmts = (Node **)pv_to_arena(p->arena, &sv2, &blk->u.block.n);
+                pv_free(&sv2);
+                body = blk;
+            }
+        }
         Node *n = node_new(p->arena, NK_SWITCH, line, col);
         n->u.sw.expr = expr; n->u.sw.body = body;
         return n;
@@ -1063,10 +1276,16 @@ static Node *parse_stmt(Parser *p) {
         Node *val = parse_expr(p);
         if (at(p, TK_ELLIPSIS)) { advance(p); parse_expr(p); } /* range */
         expect(p, TK_COLON);
-        /* Collect consecutive case bodies as a block */
         PtrVec sv; pv_init(&sv);
-        while (!at(p, TK_CASE) && !at(p, TK_DEFAULT) &&
-               !at(p, TK_RBRACE) && !at(p, TK_EOF)) {
+        if (p->braced_switch_depth > 0) {
+            /* Inside braced switch: collect until next case/default/rbrace */
+            while (!at(p, TK_CASE) && !at(p, TK_DEFAULT) &&
+                   !at(p, TK_RBRACE) && !at(p, TK_EOF)) {
+                Node *s = parse_stmt(p);
+                if (s) pv_push(&sv, s);
+            }
+        } else {
+            /* Braceless switch body: exactly one sub-statement */
             Node *s = parse_stmt(p);
             if (s) pv_push(&sv, s);
         }
@@ -1085,8 +1304,13 @@ static Node *parse_stmt(Parser *p) {
     if (at(p, TK_DEFAULT)) {
         advance(p); expect(p, TK_COLON);
         PtrVec sv; pv_init(&sv);
-        while (!at(p, TK_CASE) && !at(p, TK_DEFAULT) &&
-               !at(p, TK_RBRACE) && !at(p, TK_EOF)) {
+        if (p->braced_switch_depth > 0) {
+            while (!at(p, TK_CASE) && !at(p, TK_DEFAULT) &&
+                   !at(p, TK_RBRACE) && !at(p, TK_EOF)) {
+                Node *s = parse_stmt(p);
+                if (s) pv_push(&sv, s);
+            }
+        } else {
             Node *s = parse_stmt(p);
             if (s) pv_push(&sv, s);
         }
@@ -1163,21 +1387,31 @@ static void parse_param_list(Parser *p, Node *fn_node) {
         pm->base_type = parse_type_spec(p, NULL, NULL, NULL, NULL);
         pm->ptr_lvl   = consume_stars(p);
 
-        /* Function pointer param: type (* [qualifiers] name)(params) */
+        /* Function pointer or const-pointer param: type (* [qualifiers] name)(params)
+         * Also handles int (* const x) — const/volatile pointer declarations */
         if (at(p, TK_LPAREN) && at2(p, TK_STAR, 1)) {
             advance(p); advance(p);
-            while (at(p, TK_ID) && !at2(p, TK_RPAREN, 1)) advance(p);
+            /* Skip any qualifiers (const, volatile, restrict, or identifier qualifiers) */
+            while ((at(p, TK_ID) || at(p, TK_CONST) || at(p, TK_VOLATILE) || at(p, TK_RESTRICT))
+                   && !at2(p, TK_RPAREN, 1)) advance(p);
             if (at(p, TK_ID)) { pm->name = arena_strdup(p->arena, cur_tok(p)->text); advance(p); }
             expect(p, TK_RPAREN);
-            skip_paren_group(p);
+            /* If followed by (, this is truly a function pointer; otherwise const pointer */
+            if (at(p, TK_LPAREN)) skip_paren_group(p);
             pm->base_type = arena_strdup(p->arena, "ptr");
             pm->ptr_lvl   = 0;
         } else {
             if (at(p, TK_ID)) { pm->name = arena_strdup(p->arena, cur_tok(p)->text); advance(p); }
-            /* Array decay: name[] → pointer */
+            /* Array decay: name[] → pointer.
+             * Skip optional qualifiers like 'static', 'const', 'volatile',
+             * 'restrict' that may appear inside brackets per C99 §6.7.5.3. */
             if (at(p, TK_LBRACK)) {
                 advance(p);
-                if (!at(p, TK_RBRACK)) parse_expr(p);
+                /* Skip any qualifier keywords: static, const, volatile, restrict */
+                while (at(p, TK_STATIC) || at(p, TK_CONST) || at(p, TK_VOLATILE) ||
+                       at(p, TK_RESTRICT))
+                    advance(p);
+                if (!at(p, TK_RBRACK)) parse_assign_expr(p);
                 expect(p, TK_RBRACK);
                 pm->ptr_lvl++;
             }
@@ -1207,14 +1441,17 @@ static void parse_param_list(Parser *p, Node *fn_node) {
 static void parse_typedef(Parser *p) {
     advance(p);   /* eat 'typedef' */
     char *btype = parse_type_spec(p, NULL, NULL, NULL, NULL);
-    (void)btype;
     int ptr_lvl = consume_stars(p);
     (void)ptr_lvl;
 
     /* Function pointer typedef: typedef ret (*Name)(params); */
     if (at(p, TK_LPAREN) && at2(p, TK_STAR, 1)) {
         advance(p); advance(p);
-        if (at(p, TK_ID)) { register_typedef(p, cur_tok(p)->text); advance(p); }
+        if (at(p, TK_ID)) {
+            /* Register with "ptr" base so lltype_of resolves it to ptr */
+            register_typedef(p, cur_tok(p)->text, "ptr");
+            advance(p);
+        }
         expect(p, TK_RPAREN);
         skip_paren_group(p);
         expect(p, TK_SEMI);
@@ -1222,7 +1459,10 @@ static void parse_typedef(Parser *p) {
     }
     /* Simple typedef: typedef type [*] Name; */
     if (at(p, TK_ID)) {
-        register_typedef(p, cur_tok(p)->text);
+        /* Store base type only for struct/union typedefs (to allow expansion later) */
+        const char *base = (btype && (strncmp(btype,"struct ",7)==0 ||
+                                      strncmp(btype,"union ",6)==0)) ? btype : NULL;
+        register_typedef(p, cur_tok(p)->text, base);
         advance(p);
         while (at(p, TK_LBRACK)) {
             advance(p);
@@ -1248,28 +1488,186 @@ static Node *finish_global_var(Parser *p, char *btype, int ptr_lvl, char *name,
         if (arr_sz == 0) arr_sz = (sz > 0) ? sz : -1;
     }
     Node *init_node = NULL;
+    Node **init_list = NULL;
+    char **init_fields = NULL;
+    int    nInits = 0;
     if (try_eat(p, TK_ASSIGN)) {
-        if (at(p, TK_LBRACE)) skip_brace_group(p);
-        else init_node = parse_assign_expr(p);
+        if (at(p, TK_LBRACE)) {
+            /* Parse struct/array brace initializer */
+            advance(p); /* eat { */
+            PtrVec vals; pv_init(&vals);
+            PtrVec flds; pv_init(&flds);
+            while (!at(p, TK_RBRACE) && !at(p, TK_EOF)) {
+                char *field_name = NULL;
+                /* Designated initializer: .field = expr */
+                if (at(p, TK_DOT)) {
+                    advance(p);
+                    if (at(p, TK_ID)) {
+                        field_name = arena_strdup(p->arena, cur_tok(p)->text);
+                        advance(p);
+                    }
+                    expect(p, TK_ASSIGN);
+                }
+                /* Designated index initializer: [N] = expr  (C99 §6.7.9) */
+                else if (at(p, TK_LBRACK)) {
+                    advance(p);
+                    Node *idx = parse_assign_expr(p);
+                    expect(p, TK_RBRACK);
+                    /* Build a field name like "[N]" for tracking */
+                    char fbuf[32] = "[?]";
+                    if (idx && idx->kind == NK_INT_LIT)
+                        snprintf(fbuf, sizeof(fbuf), "[%" PRId64 "]", idx->u.ival.val);
+                    field_name = arena_strdup(p->arena, fbuf);
+                    expect(p, TK_ASSIGN);
+                }
+                Node *val;
+                if (at(p, TK_LBRACE)) {
+                    /* Nested brace initializer: record it recursively */
+                    advance(p);
+                    PtrVec nvals; pv_init(&nvals);
+                    PtrVec nflds; pv_init(&nflds);
+                    while (!at(p, TK_RBRACE) && !at(p, TK_EOF)) {
+                        char *nf = NULL;
+                        if (at(p, TK_DOT)) {
+                            advance(p);
+                            if (at(p, TK_ID)) { nf = arena_strdup(p->arena, cur_tok(p)->text); advance(p); }
+                            expect(p, TK_ASSIGN);
+                        }
+                        Node *nv;
+                        if (at(p, TK_LBRACE)) {
+                            /* Deeper nesting (e.g., sub-array initializer): recurse */
+                            advance(p);
+                            PtrVec n2vals; pv_init(&n2vals);
+                            PtrVec n2flds; pv_init(&n2flds);
+                            while (!at(p, TK_RBRACE) && !at(p, TK_EOF)) {
+                                char *n2f = NULL;
+                                if (at(p, TK_DOT)) {
+                                    advance(p);
+                                    if (at(p, TK_ID)) { n2f = arena_strdup(p->arena, cur_tok(p)->text); advance(p); }
+                                    expect(p, TK_ASSIGN);
+                                }
+                                Node *n2v;
+                                if (at(p, TK_LBRACE)) {
+                                    /* 4th+ level: skip for now */
+                                    skip_brace_group(p);
+                                    n2v = node_new(p->arena, NK_INT_LIT, 0, 0);
+                                } else {
+                                    n2v = parse_assign_expr(p);
+                                }
+                                pv_push(&n2vals, n2v);
+                                pv_push(&n2flds, (void *)n2f);
+                                if (!try_eat(p, TK_COMMA)) break;
+                                if (at(p, TK_RBRACE)) break;
+                            }
+                            expect(p, TK_RBRACE);
+                            nv = node_new(p->arena, NK_GLOBAL_VAR, 0, 0);
+                            nv->u.gvar.name = NULL;
+                            nv->u.gvar.base_type = NULL;
+                            int nn3 = 0;
+                            nv->u.gvar.init_list   = (Node **)pv_to_arena(p->arena, &n2vals, &nn3);
+                            nv->u.gvar.init_fields = (char **)pv_to_arena(p->arena, &n2flds, &nn3);
+                            nv->u.gvar.nInits      = n2vals.n;
+                            pv_free(&n2vals); pv_free(&n2flds);
+                        } else {
+                            nv = parse_assign_expr(p);
+                        }
+                        pv_push(&nvals, nv);
+                        pv_push(&nflds, (void *)nf);
+                        if (!try_eat(p, TK_COMMA)) break;
+                        if (at(p, TK_RBRACE)) break; /* trailing comma */
+                    }
+                    expect(p, TK_RBRACE);
+                    /* Build a compound-lit-like placeholder node storing the nested list */
+                    val = node_new(p->arena, NK_GLOBAL_VAR, 0, 0);
+                    val->u.gvar.name = NULL;
+                    val->u.gvar.base_type = NULL;
+                    int nn2 = 0;
+                    val->u.gvar.init_list   = (Node **)pv_to_arena(p->arena, &nvals, &nn2);
+                    val->u.gvar.init_fields = (char **)pv_to_arena(p->arena, &nflds, &nn2);
+                    val->u.gvar.nInits      = nvals.n;
+                    pv_free(&nvals); pv_free(&nflds);
+                } else {
+                    val = parse_assign_expr(p);
+                }
+                pv_push(&vals, val);
+                pv_push(&flds, (void *)field_name);
+                if (!try_eat(p, TK_COMMA)) break;
+                /* Allow trailing comma */
+                if (at(p, TK_RBRACE)) break;
+            }
+            expect(p, TK_RBRACE);
+            int n2 = 0, n3 = 0;
+            init_list   = (Node **)pv_to_arena(p->arena, &vals, &n2);
+            nInits = n2;
+            init_fields = (char **)pv_to_arena(p->arena, &flds, &n3);
+            pv_free(&vals); pv_free(&flds);
+        } else {
+            init_node = parse_assign_expr(p);
+        }
+    }
+    /* Collect first + extra declarators: int x, *y, z[3]; — one NK_GLOBAL_VAR per name */
+    PtrVec gvars; pv_init(&gvars);
+    {
+        Node *n = node_new(p->arena, NK_GLOBAL_VAR, line, col);
+        n->u.gvar.name        = name;
+        n->u.gvar.base_type   = btype;
+        n->u.gvar.ptr_lvl     = ptr_lvl;
+        n->u.gvar.arr_sz      = arr_sz;
+        n->u.gvar.init        = init_node;
+        n->u.gvar.is_extern   = is_ext;
+        n->u.gvar.is_static   = is_st;
+        n->u.gvar.init_list   = init_list;
+        n->u.gvar.init_fields = init_fields;
+        n->u.gvar.nInits      = nInits;
+        pv_push(&gvars, n);
     }
     /* extra declarators */
     while (try_eat(p, TK_COMMA)) {
-        consume_stars(p);
-        if (at(p, TK_ID)) advance(p);
-        while (at(p, TK_LBRACK)) { advance(p); if (!at(p, TK_RBRACK)) parse_expr(p); try_eat(p, TK_RBRACK); }
-        if (try_eat(p, TK_ASSIGN)) { if (at(p, TK_LBRACE)) skip_brace_group(p); else parse_assign_expr(p); }
+        int dline = cur_tok(p)->line, dcol = cur_tok(p)->col;
+        int dptr = consume_stars(p);
+        char *dname = NULL;
+        if (at(p, TK_ID)) { dname = arena_strdup(p->arena, cur_tok(p)->text); advance(p); }
+        int darr = 0;
+        while (at(p, TK_LBRACK)) {
+            advance(p);
+            int sz = 0;
+            if (!at(p, TK_RBRACK)) {
+                Node *se = parse_assign_expr(p);
+                if (se && se->kind == NK_INT_LIT) sz = (int)se->u.ival.val;
+                else sz = 1;
+            }
+            try_eat(p, TK_RBRACK);
+            if (darr == 0) darr = (sz > 0) ? sz : -1;
+        }
+        Node *dinit = NULL;
+        if (try_eat(p, TK_ASSIGN)) {
+            if (at(p, TK_LBRACE)) skip_brace_group(p);
+            else dinit = parse_assign_expr(p);
+        }
+        Node *dn = node_new(p->arena, NK_GLOBAL_VAR, dline, dcol);
+        dn->u.gvar.name      = dname;
+        dn->u.gvar.base_type = btype;
+        dn->u.gvar.ptr_lvl   = dptr;
+        dn->u.gvar.arr_sz    = darr;
+        dn->u.gvar.init      = dinit;
+        dn->u.gvar.is_extern = is_ext;
+        dn->u.gvar.is_static = is_st;
+        pv_push(&gvars, dn);
     }
     expect(p, TK_SEMI);
 
-    Node *n = node_new(p->arena, NK_GLOBAL_VAR, line, col);
-    n->u.gvar.name      = name;
-    n->u.gvar.base_type = btype;
-    n->u.gvar.ptr_lvl   = ptr_lvl;
-    n->u.gvar.arr_sz    = arr_sz;
-    n->u.gvar.init      = init_node;
-    n->u.gvar.is_extern = is_ext;
-    n->u.gvar.is_static = is_st;
-    return n;
+    /* Return single node or NK_BLOCK wrapping multiple global var nodes */
+    if (gvars.n == 1) {
+        Node *single = (Node *)gvars.data[0];
+        pv_free(&gvars);
+        return single;
+    }
+    Node *blk = node_new(p->arena, NK_BLOCK, line, col);
+    int nn = 0;
+    blk->u.block.stmts = (Node **)pv_to_arena(p->arena, &gvars, &nn);
+    blk->u.block.n     = nn;
+    pv_free(&gvars);
+    return blk;
 }
 
 static Node *parse_top_level(Parser *p) {
@@ -1346,9 +1744,19 @@ Node *parse(TokenVec *tv, Arena *arena) {
         "int_fast8_t","int_fast16_t","int_fast32_t","int_fast64_t",
         "uint_fast8_t","uint_fast16_t","uint_fast32_t","uint_fast64_t",
         "intmax_t","uintmax_t",
+        /* Darwin/BSD private typedefs (double-underscore prefix) */
+        "__int8_t","__uint8_t","__int16_t","__uint16_t",
+        "__int32_t","__uint32_t","__int64_t","__uint64_t",
+        "__darwin_blkcnt_t","__darwin_blksize_t","__darwin_dev_t",
+        "__darwin_gid_t","__darwin_id_t","__darwin_ino64_t","__darwin_ino_t",
+        "__darwin_mode_t","__darwin_off_t","__darwin_pid_t","__darwin_uid_t",
+        "__darwin_sigset_t","__darwin_socklen_t","__darwin_suseconds_t",
+        "__darwin_time_t","__darwin_clock_t","__darwin_ptrdiff_t",
+        "__darwin_size_t","__darwin_ssize_t","__darwin_wchar_t","__darwin_wint_t",
+        "__darwin_intptr_t","__darwin_natural_t","__darwin_ct_rune_t",
         "off_t","pid_t","uid_t","gid_t","mode_t","nlink_t","ino_t","dev_t",
         "FILE","DIR","time_t","clock_t","wchar_t","wint_t",
-        "va_list","__va_list",
+        "va_list","__va_list","socklen_t","sigset_t",
         "bool","_Bool",
         "TokenKind","Token","TokenVec","Arena","ArenaBlock",
         "Node","NodeKind","Param","StructField",
@@ -1356,7 +1764,7 @@ Node *parse(TokenVec *tv, Arena *arena) {
         NULL
     };
     for (int i = 0; builtin_typedefs[i]; i++)
-        register_typedef(&p, builtin_typedefs[i]);
+        register_typedef(&p, builtin_typedefs[i], NULL);
 
     Node *prog = node_new(arena, NK_PROGRAM, 1, 1);
     PtrVec iv; pv_init(&iv);
@@ -1364,7 +1772,14 @@ Node *parse(TokenVec *tv, Arena *arena) {
 
     while (!at(&p, TK_EOF)) {
         Node *item = parse_top_level(&p);
-        if (item) pv_push(&iv, item);
+        if (!item) continue;
+        /* NK_BLOCK at top-level means a multi-declarator global: unpack children */
+        if (item->kind == NK_BLOCK) {
+            for (int ci = 0; ci < item->u.block.n; ci++)
+                pv_push(&iv, item->u.block.stmts[ci]);
+        } else {
+            pv_push(&iv, item);
+        }
     }
 
     /* Build final items list: struct defs first (so IR builder sees types before use),
@@ -1381,8 +1796,12 @@ Node *parse(TokenVec *tv, Arena *arena) {
     pv_free(&final);
     pv_free(&iv);
 
-    for (int i = 0; i < p.ntypedefs; i++) free(p.typedefs[i]);
+    for (int i = 0; i < p.ntypedefs; i++) {
+        free(p.typedefs[i]);
+        if (p.typedef_bases[i]) free(p.typedef_bases[i]);
+    }
     free(p.typedefs);
+    free(p.typedef_bases);
 
     if (p.had_error)
         fprintf(stderr, "parse: errors occurred\n");
