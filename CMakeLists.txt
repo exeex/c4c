@@ -89,6 +89,7 @@ set(FRONTEND_CXX_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend_c/driver.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend_c/token.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend_c/lexer.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend_c/arena.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend_c/parser.cpp"
 )
 

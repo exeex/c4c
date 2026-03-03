@@ -1,0 +1,215 @@
+#pragma once
+
+// AST node definitions for the tiny-c2ll C++ frontend.
+//
+// Design:
+//  - Tagged-union style: NodeKind enum + flat Node struct.
+//  - All string data stored as const char* into an Arena (no heap allocation
+//    per node).  Directly backportable to C.
+//  - Child pointers are raw Node* or Node** (arena-allocated arrays).
+//  - TypeSpec is a flat struct covering all C type specifier combinations.
+//
+// Pure-C backport note: this header can be #included from C after removing
+// the namespace wrapper, the class keyword, and default member initializers.
+
+#include <cstddef>
+
+namespace tinyc2ll::frontend_cxx {
+
+// Forward declaration
+struct Node;
+
+// ── TypeSpec ──────────────────────────────────────────────────────────────────
+// Represents a C type, including qualifiers, pointer levels, array bounds,
+// and struct/union/enum tags.
+//
+// Pure-C backport note: plain struct, no changes needed.
+
+enum TypeBase {
+    TB_VOID,
+    TB_CHAR,        // char (signed)
+    TB_UCHAR,       // unsigned char
+    TB_SCHAR,       // signed char
+    TB_SHORT,       // short (signed)
+    TB_USHORT,      // unsigned short
+    TB_INT,         // int (signed)
+    TB_UINT,        // unsigned int
+    TB_LONG,        // long (signed)
+    TB_ULONG,       // unsigned long
+    TB_LONGLONG,    // long long (signed)
+    TB_ULONGLONG,   // unsigned long long
+    TB_FLOAT,       // float
+    TB_DOUBLE,      // double
+    TB_LONGDOUBLE,  // long double
+    TB_BOOL,        // _Bool
+    TB_STRUCT,      // struct
+    TB_UNION,       // union
+    TB_ENUM,        // enum
+    TB_TYPEDEF,     // typedef name
+    TB_INT128,      // __int128
+    TB_UINT128,     // __uint128_t
+    TB_VA_LIST,     // __builtin_va_list / __va_list
+    TB_FUNC_PTR,    // function pointer type (from cast/sizeof)
+};
+
+struct TypeSpec {
+    TypeBase base;
+    const char* tag;         // struct/union/enum tag or typedef name (may be null)
+    int ptr_level;           // 0 = not a pointer; 1 = *; 2 = **; ...
+    long long array_size;    // -1 = not array; -2 = [] (unsized); >= 0 = size
+    Node* array_size_expr;   // non-null when array size is a computed expression
+    bool is_const;
+    bool is_volatile;
+};
+
+// ── NodeKind ──────────────────────────────────────────────────────────────────
+
+enum NodeKind {
+    // Literals
+    NK_INT_LIT,         // integer literal
+    NK_FLOAT_LIT,       // floating-point literal
+    NK_STR_LIT,         // string literal
+    NK_CHAR_LIT,        // character literal
+
+    // Primary expressions
+    NK_VAR,             // identifier (variable / enum constant reference)
+
+    // Binary / unary expressions
+    NK_BINOP,           // binary operation: left op right
+    NK_UNARY,           // prefix unary: op operand  (left = operand)
+    NK_POSTFIX,         // postfix op: operand (left), op = "++" or "--"
+    NK_ADDR,            // &expr  (left = operand)
+    NK_DEREF,           // *expr  (left = operand)
+
+    // Assignment
+    NK_ASSIGN,          // left = right
+    NK_COMPOUND_ASSIGN, // left op= right
+
+    // Complex expressions
+    NK_CALL,            // func(...) : func=left, args=children[0..n_children-1]
+    NK_INDEX,           // array[index] : left=array, right=index
+    NK_MEMBER,          // expr.field or expr->field
+    NK_CAST,            // (type)expr : left=expr
+    NK_TERNARY,         // cond ? then_ : else_
+    NK_SIZEOF_EXPR,     // sizeof(expr) : left=expr
+    NK_SIZEOF_TYPE,     // sizeof(type)
+    NK_ALIGNOF_TYPE,    // _Alignof(type) / __alignof__(type)
+    NK_COMMA_EXPR,      // left, right
+    NK_STMT_EXPR,       // ({ ... }) : body=block node
+    NK_COMPOUND_LIT,    // (type){...} : type + children=init items
+    NK_VA_ARG,          // __builtin_va_arg(ap, type) : left=ap
+
+    // Initializer
+    NK_INIT_LIST,       // { ... } initializer list: children=items
+    NK_INIT_ITEM,       // [desig] = value or .field = value
+
+    // Statements
+    NK_BLOCK,           // { stmts... } : children=stmts
+    NK_EXPR_STMT,       // expr; : left=expr (may be null for empty stmt)
+    NK_RETURN,          // return [expr]; : left=expr (nullable)
+    NK_IF,              // if(cond) then [else else_]
+    NK_WHILE,           // while(cond) body
+    NK_FOR,             // for(init;cond;update) body
+    NK_DO_WHILE,        // do body while(cond);
+    NK_SWITCH,          // switch(cond) body
+    NK_CASE,            // case val: body (next stmt)
+    NK_CASE_RANGE,      // case lo ... hi: body (GCC extension)
+    NK_DEFAULT,         // default: body
+    NK_BREAK,           // break;
+    NK_CONTINUE,        // continue;
+    NK_GOTO,            // goto label;
+    NK_LABEL,           // name: body
+    NK_EMPTY,           // ; (empty statement)
+
+    // Declarations
+    NK_DECL,            // local variable / parameter declaration
+    NK_FUNCTION,        // function definition
+    NK_GLOBAL_VAR,      // global variable declaration/definition
+    NK_STRUCT_DEF,      // struct/union type definition
+    NK_ENUM_DEF,        // enum type definition
+
+    // Top-level
+    NK_PROGRAM,         // root node: children = top-level items
+};
+
+// ── Node ──────────────────────────────────────────────────────────────────────
+// Flat struct covering all node kinds.  Fields not used by a given kind are
+// zero-initialized by the arena allocator.
+//
+// Pure-C backport note: this is a plain C struct with no methods.
+// The dump() free function provides debug printing.
+
+struct Node {
+    NodeKind kind;
+    int line;
+
+    // --- type (for NK_DECL, NK_GLOBAL_VAR, NK_FUNCTION ret, NK_CAST,
+    //           NK_SIZEOF_TYPE, NK_ALIGNOF_TYPE, NK_COMPOUND_LIT, NK_PARAM) ---
+    TypeSpec type;
+
+    // --- name (for NK_VAR, NK_FUNCTION, NK_DECL, NK_GLOBAL_VAR,
+    //           NK_GOTO, NK_LABEL, NK_MEMBER, NK_STRUCT_DEF, NK_ENUM_DEF) ---
+    const char* name;
+
+    // --- operator string (for NK_BINOP, NK_UNARY, NK_POSTFIX,
+    //                      NK_ASSIGN, NK_COMPOUND_ASSIGN) ---
+    const char* op;
+
+    // --- scalar payload ---
+    long long ival;     // NK_INT_LIT, NK_CHAR_LIT
+    double    fval;     // NK_FLOAT_LIT (parsed value; raw text in sval)
+    const char* sval;   // NK_STR_LIT (raw lexeme), NK_FLOAT_LIT (raw lexeme)
+
+    // --- primary children ---
+    Node* left;         // primary child / operand / condition / func / lo
+    Node* right;        // secondary child / index / hi
+    Node* cond;         // NK_IF, NK_WHILE, NK_FOR, NK_DO_WHILE, NK_SWITCH, NK_TERNARY
+    Node* then_;        // NK_IF, NK_TERNARY
+    Node* else_;        // NK_IF (nullable), NK_TERNARY
+    Node* body;         // NK_WHILE, NK_FOR, NK_DO_WHILE, NK_SWITCH, NK_FUNCTION,
+                        // NK_LABEL, NK_CASE, NK_DEFAULT, NK_STMT_EXPR
+    Node* init;         // NK_FOR init clause; NK_DECL / NK_GLOBAL_VAR initializer
+    Node* update;       // NK_FOR update expression
+
+    // --- child arrays (arena-allocated) ---
+    // NK_BLOCK stmts / NK_CALL args / NK_PROGRAM items / NK_INIT_LIST items /
+    // NK_COMPOUND_LIT items
+    Node** children;
+    int    n_children;
+
+    // NK_FUNCTION params
+    Node** params;
+    int    n_params;
+
+    // NK_STRUCT_DEF fields  (each child is NK_DECL with type + name)
+    Node** fields;
+    int    n_fields;
+
+    // NK_ENUM_DEF variants
+    const char** enum_names;  // arena-allocated array of variant names
+    long long*   enum_vals;   // arena-allocated array of variant values
+    int          n_enum_variants;
+    int          enum_has_explicit;   // bitmask: bit i = variant i has explicit value
+
+    // --- flags ---
+    bool variadic;      // NK_FUNCTION
+    bool is_static;     // NK_FUNCTION, NK_DECL, NK_GLOBAL_VAR
+    bool is_extern;     // NK_FUNCTION, NK_GLOBAL_VAR
+    bool is_inline;     // NK_FUNCTION
+    bool is_arrow;      // NK_MEMBER (-> = true, . = false)
+    bool is_union;      // NK_STRUCT_DEF
+    bool is_designated; // NK_INIT_ITEM (has a designator)
+    bool is_index_desig;// NK_INIT_ITEM (designator is index [N])
+    long long desig_val;// NK_INIT_ITEM index designator value
+    const char* desig_field; // NK_INIT_ITEM field designator name
+};
+
+// ── Free functions ────────────────────────────────────────────────────────────
+
+// Print a debug dump of the AST rooted at n (indent 0 = top-level).
+void ast_dump(const Node* n, int indent);
+
+// Return a short debug name for a NodeKind.
+const char* node_kind_name(NodeKind k);
+
+}  // namespace tinyc2ll::frontend_cxx

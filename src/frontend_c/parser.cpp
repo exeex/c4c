@@ -1,16 +1,2092 @@
 #include "parser.hpp"
 
+#include <cassert>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <sstream>
+#include <stdexcept>
 
 namespace tinyc2ll::frontend_cxx {
 
-Parser::Parser(std::vector<Token> tokens) : tokens_(std::move(tokens)) {}
+// ── helpers ───────────────────────────────────────────────────────────────────
 
-std::string Parser::parse_program_summary() const {
-  std::ostringstream out;
-  out << "Program(tokens=" << tokens_.size() << ")";
-  return out.str();
+static bool is_qualifier(TokenKind k) {
+    return k == TokenKind::KwConst    || k == TokenKind::KwVolatile ||
+           k == TokenKind::KwRestrict || k == TokenKind::KwAtomic   ||
+           k == TokenKind::KwInline;
+}
+
+static bool is_storage_class(TokenKind k) {
+    return k == TokenKind::KwStatic   || k == TokenKind::KwExtern ||
+           k == TokenKind::KwRegister || k == TokenKind::KwAuto   ||
+           k == TokenKind::KwTypedef  || k == TokenKind::KwInline ||
+           k == TokenKind::KwExtension || k == TokenKind::KwNoreturn ||
+           k == TokenKind::KwThreadLocal;
+}
+
+static bool is_type_kw(TokenKind k) {
+    switch (k) {
+        case TokenKind::KwVoid:
+        case TokenKind::KwChar:
+        case TokenKind::KwShort:
+        case TokenKind::KwInt:
+        case TokenKind::KwLong:
+        case TokenKind::KwFloat:
+        case TokenKind::KwDouble:
+        case TokenKind::KwSigned:
+        case TokenKind::KwUnsigned:
+        case TokenKind::KwBool:
+        case TokenKind::KwStruct:
+        case TokenKind::KwUnion:
+        case TokenKind::KwEnum:
+        case TokenKind::KwInt128:
+        case TokenKind::KwUInt128:
+        case TokenKind::KwBuiltin:   // __builtin_va_list
+        case TokenKind::KwAutoType:  // __auto_type
+        case TokenKind::KwTypeof:
+        case TokenKind::KwComplex:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// parse an integer literal from a lexeme string
+static long long parse_int_lexeme(const char* s) {
+    // strip suffixes
+    char buf[64];
+    int  len = (int)strlen(s);
+    int  end = len;
+    // strip u/U and l/L suffixes from the end
+    while (end > 0) {
+        char c = buf[end - 1];
+        (void)c; // just for clarity below
+        char cc = s[end - 1];
+        if (cc == 'u' || cc == 'U' || cc == 'l' || cc == 'L') {
+            --end;
+        } else {
+            break;
+        }
+    }
+    if (end >= (int)sizeof(buf)) end = (int)sizeof(buf) - 1;
+    strncpy(buf, s, (size_t)end);
+    buf[end] = '\0';
+
+    if (buf[0] == '0' && (buf[1] == 'x' || buf[1] == 'X')) {
+        return (long long)strtoull(buf, nullptr, 16);
+    } else if (buf[0] == '0' && (buf[1] == 'b' || buf[1] == 'B')) {
+        return (long long)strtoull(buf + 2, nullptr, 2);
+    } else if (buf[0] == '0' && buf[1] != '\0') {
+        return (long long)strtoull(buf, nullptr, 8);
+    } else {
+        return (long long)strtoull(buf, nullptr, 10);
+    }
+}
+
+static double parse_float_lexeme(const char* s) {
+    // strip f/F/l/L suffix
+    char buf[64];
+    size_t len = strlen(s);
+    if (len >= sizeof(buf)) len = sizeof(buf) - 1;
+    strncpy(buf, s, len);
+    buf[len] = '\0';
+    size_t end = len;
+    while (end > 0) {
+        char c = buf[end - 1];
+        if (c == 'f' || c == 'F' || c == 'l' || c == 'L') { --end; }
+        else { break; }
+    }
+    buf[end] = '\0';
+    return strtod(buf, nullptr);
+}
+
+// ── Parser constructor ────────────────────────────────────────────────────────
+
+Parser::Parser(std::vector<Token> tokens, Arena& arena)
+    : tokens_(std::move(tokens)), pos_(0), arena_(arena), anon_counter_(0) {
+    // Pre-seed well-known typedef names from standard / system headers
+    // so the parser can disambiguate type-name vs identifier.
+    static const char* seed[] = {
+        "size_t", "ssize_t", "ptrdiff_t", "intptr_t", "uintptr_t",
+        "int8_t", "int16_t", "int32_t", "int64_t",
+        "uint8_t", "uint16_t", "uint32_t", "uint64_t",
+        "int_least8_t", "int_least16_t", "int_least32_t", "int_least64_t",
+        "uint_least8_t","uint_least16_t","uint_least32_t","uint_least64_t",
+        "int_fast8_t", "int_fast16_t", "int_fast32_t", "int_fast64_t",
+        "uint_fast8_t", "uint_fast16_t", "uint_fast32_t", "uint_fast64_t",
+        "intmax_t", "uintmax_t",
+        "off_t", "pid_t", "uid_t", "gid_t",
+        "time_t", "clock_t", "suseconds_t",
+        "FILE", "DIR", "fpos_t",
+        "va_list", "__va_list", "__va_list_tag",
+        "wchar_t", "wint_t", "wctype_t",
+        "bool", "true", "false",
+        "NULL",
+        "__builtin_va_list", "__gnuc_va_list",
+        "jmp_buf", "sigjmp_buf",
+        "pthread_t", "pthread_mutex_t", "pthread_cond_t",
+        "socklen_t", "in_addr_t", "in_port_t",
+        "mode_t", "ino_t", "dev_t", "nlink_t", "blksize_t", "blkcnt_t",
+        "div_t", "ldiv_t", "lldiv_t",
+        "__int128_t", "__uint128_t",
+        "OSStatus", "OSErr",
+        nullptr
+    };
+    for (int i = 0; seed[i]; ++i) typedefs_.insert(seed[i]);
+}
+
+// ── token cursor helpers ──────────────────────────────────────────────────────
+
+const Token& Parser::cur() const {
+    return tokens_[pos_];
+}
+
+const Token& Parser::peek(int offset) const {
+    int idx = pos_ + offset;
+    if (idx < 0 || idx >= (int)tokens_.size()) {
+        static Token eof{TokenKind::EndOfFile, "", 0, 0};
+        return eof;
+    }
+    return tokens_[idx];
+}
+
+const Token& Parser::consume() {
+    const Token& t = tokens_[pos_];
+    if (pos_ + 1 < (int)tokens_.size()) ++pos_;
+    return t;
+}
+
+bool Parser::at_end() const {
+    return tokens_[pos_].kind == TokenKind::EndOfFile;
+}
+
+bool Parser::check(TokenKind k) const {
+    return tokens_[pos_].kind == k;
+}
+
+bool Parser::check2(TokenKind k) const {
+    int idx = pos_ + 1;
+    if (idx >= (int)tokens_.size()) return false;
+    return tokens_[idx].kind == k;
+}
+
+bool Parser::match(TokenKind k) {
+    if (check(k)) { consume(); return true; }
+    return false;
+}
+
+void Parser::expect(TokenKind k) {
+    if (!check(k)) {
+        std::ostringstream msg;
+        msg << "expected " << token_kind_name(k) << " but got '"
+            << cur().lexeme << "' at line " << cur().line;
+        throw std::runtime_error(msg.str());
+    }
+    consume();
+}
+
+void Parser::skip_until(TokenKind k) {
+    while (!at_end() && !check(k)) consume();
+    if (!at_end()) consume();  // consume the terminator
+}
+
+// ── typedef / type-start helpers ─────────────────────────────────────────────
+
+bool Parser::is_typedef_name(const std::string& s) const {
+    return typedefs_.count(s) > 0;
+}
+
+bool Parser::is_type_start() const {
+    TokenKind k = cur().kind;
+    if (is_type_kw(k)) return true;
+    if (is_qualifier(k)) return true;
+    if (is_storage_class(k)) return true;
+    if (k == TokenKind::KwAlignas || k == TokenKind::KwStaticAssert) return false;
+    if (k == TokenKind::Identifier && is_typedef_name(cur().lexeme)) return true;
+    return false;
+}
+
+// ── skip helpers ─────────────────────────────────────────────────────────────
+
+void Parser::skip_paren_group() {
+    expect(TokenKind::LParen);
+    int depth = 1;
+    while (!at_end() && depth > 0) {
+        if (check(TokenKind::LParen)) ++depth;
+        else if (check(TokenKind::RParen)) { if (--depth == 0) { consume(); return; } }
+        consume();
+    }
+}
+
+void Parser::skip_brace_group() {
+    expect(TokenKind::LBrace);
+    int depth = 1;
+    while (!at_end() && depth > 0) {
+        if (check(TokenKind::LBrace)) ++depth;
+        else if (check(TokenKind::RBrace)) { if (--depth == 0) { consume(); return; } }
+        consume();
+    }
+}
+
+void Parser::skip_attributes() {
+    while (check(TokenKind::KwAttribute)) {
+        consume();  // __attribute__
+        if (check(TokenKind::LParen)) skip_paren_group();
+        if (check(TokenKind::LParen)) skip_paren_group();  // double-paren
+    }
+    while (check(TokenKind::KwExtension)) {
+        consume();
+    }
+    while (check(TokenKind::KwNoreturn)) {
+        consume();
+    }
+}
+
+void Parser::skip_asm() {
+    if (check(TokenKind::KwAsm)) {
+        consume();
+        if (check(TokenKind::LParen)) skip_paren_group();
+    }
+}
+
+// ── type parsing ──────────────────────────────────────────────────────────────
+
+TypeSpec Parser::parse_base_type() {
+    TypeSpec ts{};
+    ts.array_size = -1;
+    ts.base = TB_INT;  // default
+
+    bool has_signed   = false;
+    bool has_unsigned = false;
+    bool has_short    = false;
+    int  long_count   = 0;
+    bool has_int      = false;
+    bool has_char     = false;
+    bool has_void     = false;
+    bool has_float    = false;
+    bool has_double   = false;
+    bool has_bool     = false;
+    bool has_struct   = false;
+    bool has_union    = false;
+    bool has_enum     = false;
+    bool has_typedef  = false;
+    bool done         = false;
+
+    while (!done && !at_end()) {
+        TokenKind k = cur().kind;
+        switch (k) {
+            // Qualifiers / storage class — skip but record const
+            case TokenKind::KwConst:    ts.is_const    = true; consume(); break;
+            case TokenKind::KwVolatile: ts.is_volatile = true; consume(); break;
+            case TokenKind::KwRestrict:
+            case TokenKind::KwAtomic:
+            case TokenKind::KwRegister:
+            case TokenKind::KwInline:
+            case TokenKind::KwExtension:
+            case TokenKind::KwNoreturn:
+            case TokenKind::KwThreadLocal:
+                consume(); break;
+            case TokenKind::KwAuto:   consume(); break;  // ignore auto storage
+
+            // Signed / unsigned modifiers
+            case TokenKind::KwSigned:   has_signed   = true; consume(); break;
+            case TokenKind::KwUnsigned: has_unsigned = true; consume(); break;
+
+            // Base type keywords
+            case TokenKind::KwVoid:   has_void   = true; consume(); break;
+            case TokenKind::KwChar:   has_char   = true; consume(); break;
+            case TokenKind::KwShort:  has_short  = true; consume(); break;
+            case TokenKind::KwInt:    has_int    = true; consume(); break;
+            case TokenKind::KwLong:   long_count++;      consume(); break;
+            case TokenKind::KwFloat:  has_float  = true; consume(); break;
+            case TokenKind::KwDouble: has_double = true; consume(); break;
+            case TokenKind::KwBool:   has_bool   = true; consume(); break;
+            case TokenKind::KwComplex: consume(); break; // treat _Complex as plain double
+
+            case TokenKind::KwInt128:  ts.base = has_unsigned ? TB_UINT128 : TB_INT128;
+                                       consume(); done = true; break;
+            case TokenKind::KwUInt128: ts.base = TB_UINT128; consume(); done = true; break;
+
+            case TokenKind::KwBuiltin:
+                ts.base = TB_VA_LIST;
+                ts.tag  = arena_.strdup("__va_list");
+                consume(); done = true; break;
+
+            case TokenKind::KwAutoType:
+                // __auto_type: treat as int for now
+                ts.base = TB_INT;
+                consume(); done = true; break;
+
+            case TokenKind::KwStruct:
+                has_struct = true;
+                consume();
+                done = true;
+                break;
+
+            case TokenKind::KwUnion: has_union = true; consume(); done = true; break;
+            case TokenKind::KwEnum:  has_enum  = true; consume(); done = true; break;
+
+            case TokenKind::KwTypeof: {
+                // typeof(expr) or typeof(type): skip to get contained type
+                consume();
+                expect(TokenKind::LParen);
+                // skip contents - we'll just treat as int for now
+                skip_until(TokenKind::RParen);
+                ts.base = TB_INT;
+                done = true; break;
+            }
+
+            case TokenKind::KwStaticAssert: {
+                // _Static_assert(expr, msg); - skip
+                consume();
+                skip_paren_group();
+                match(TokenKind::Semi);
+                done = true; break;
+            }
+
+            case TokenKind::Identifier:
+                if (is_typedef_name(cur().lexeme)) {
+                    has_typedef = true;
+                    ts.tag      = arena_.strdup(cur().lexeme);
+                    consume();
+                    done = true;
+                } else {
+                    done = true;  // end of type; identifier is the declarator name
+                }
+                break;
+
+            // __attribute__ may appear within type specs (e.g., packed struct)
+            case TokenKind::KwAttribute:
+                skip_attributes();
+                break;
+
+            case TokenKind::KwAlignas: {
+                consume();
+                skip_paren_group();
+                break;
+            }
+
+            default:
+                done = true; break;
+        }
+    }
+
+    // Handle struct/union/enum after switch (needs extra parsing)
+    if (has_struct) {
+        Node* sd = parse_struct_or_union(false);
+        ts.base = TB_STRUCT;
+        ts.tag  = sd ? sd->name : nullptr;
+        return ts;
+    }
+    if (has_union) {
+        Node* sd = parse_struct_or_union(true);
+        ts.base = TB_UNION;
+        ts.tag  = sd ? sd->name : nullptr;
+        return ts;
+    }
+    if (has_enum) {
+        Node* ed = parse_enum();
+        ts.base = TB_ENUM;
+        ts.tag  = ed ? ed->name : nullptr;
+        return ts;
+    }
+
+    // Resolve combined specifiers
+    if (has_typedef) {
+        ts.base = TB_TYPEDEF;
+        // tag already set above
+    } else if (has_void) {
+        ts.base = TB_VOID;
+    } else if (has_bool) {
+        ts.base = TB_BOOL;
+    } else if (has_float) {
+        ts.base = TB_FLOAT;
+    } else if (has_double) {
+        ts.base = long_count > 0 ? TB_LONGDOUBLE : TB_DOUBLE;
+    } else if (has_char) {
+        ts.base = has_unsigned ? TB_UCHAR : (has_signed ? TB_SCHAR : TB_CHAR);
+    } else if (has_short) {
+        ts.base = has_unsigned ? TB_USHORT : TB_SHORT;
+    } else if (long_count >= 2) {
+        ts.base = has_unsigned ? TB_ULONGLONG : TB_LONGLONG;
+    } else if (long_count == 1) {
+        ts.base = has_unsigned ? TB_ULONG : TB_LONG;
+    } else {
+        // plain int (possibly unsigned)
+        ts.base = has_unsigned ? TB_UINT : TB_INT;
+    }
+
+    return ts;
+}
+
+// Parse declarator: pointer stars, name, array/function suffixes.
+// Modifies ts in place.  Sets *out_name to the declared name (or nullptr).
+// Handles abstract declarators (no name) when out_name is allowed to be null.
+void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
+    if (out_name) *out_name = nullptr;
+
+    // Skip qualifiers/attributes that can appear before pointer stars
+    skip_attributes();
+
+    // Count pointer stars (and qualifiers between them)
+    while (check(TokenKind::Star)) {
+        consume();
+        ts.ptr_level++;
+        // Skip qualifiers that follow *
+        while (is_qualifier(cur().kind)) consume();
+        skip_attributes();
+    }
+
+    // Skip any extra qualifiers / nullability (macOS: _Nullable, _Nonnull, etc.)
+    while (is_qualifier(cur().kind)) consume();
+    if (check(TokenKind::Identifier)) {
+        const std::string& lex = cur().lexeme;
+        if (lex == "_Nullable" || lex == "_Nonnull" || lex == "_Null_unspecified" ||
+            lex == "__nullable" || lex == "__nonnull") {
+            consume();
+        }
+    }
+    skip_attributes();
+
+    // Check for parenthesised declarator: (*name) — function pointer form
+    if (check(TokenKind::LParen) && check2(TokenKind::Star)) {
+        // function pointer: (*name)(...) — record name, skip fn-ptr params
+        consume();  // consume (
+        consume();  // consume *
+        ts.ptr_level++;
+        // Skip extra stars for **fpp
+        while (check(TokenKind::Star)) { consume(); ts.ptr_level++; }
+        if (out_name && check(TokenKind::Identifier)) {
+            *out_name = arena_.strdup(cur().lexeme);
+            consume();
+        }
+        expect(TokenKind::RParen);
+        // Parse (and discard) the function's param list
+        if (check(TokenKind::LParen)) {
+            skip_paren_group();
+        }
+        // Array suffix after function pointer: rare, skip
+        while (check(TokenKind::LBracket)) {
+            skip_paren_group();
+        }
+        return;
+    }
+
+    // Normal declarator: optional identifier name
+    if (out_name && check(TokenKind::Identifier)) {
+        *out_name = arena_.strdup(cur().lexeme);
+        consume();
+    }
+
+    // Array suffix: [size] or []
+    while (check(TokenKind::LBracket)) {
+        consume();  // consume [
+        ts.base = ts.base;  // unchanged
+        if (check(TokenKind::RBracket)) {
+            ts.array_size = -2;  // unsized
+            consume();
+        } else {
+            // Parse size expression (just eval constant for now)
+            Node* sz = parse_assign_expr();
+            ts.array_size_expr = sz;
+            // Try to evaluate constant
+            if (sz && sz->kind == NK_INT_LIT) {
+                ts.array_size = sz->ival;
+            } else {
+                ts.array_size = 0;  // dynamic / unknown at parse time
+            }
+            expect(TokenKind::RBracket);
+        }
+        break;  // only one array dimension here (multi-dim handled in IR)
+    }
+
+    // Function suffix: (params) — turns the declarator into a function
+    // We only record variadic here; full param parsing is done by caller.
+    // (The function definition parser calls parse_params separately.)
+}
+
+TypeSpec Parser::parse_type_name() {
+    TypeSpec ts = parse_base_type();
+    const char* ignored = nullptr;
+    parse_declarator(ts, &ignored);
+    return ts;
+}
+
+// ── struct / union parsing ───────────────────────────────────────────────────
+
+Node* Parser::parse_struct_or_union(bool is_union) {
+    int ln = cur().line;
+    skip_attributes();
+
+    const char* tag = nullptr;
+    if (check(TokenKind::Identifier)) {
+        tag = arena_.strdup(cur().lexeme);
+        consume();
+    }
+    skip_attributes();
+
+    if (!check(TokenKind::LBrace)) {
+        // Forward reference only; create a reference node
+        if (!tag) {
+            // anonymous without body — make synthetic tag
+            char buf[32];
+            snprintf(buf, sizeof(buf), "_anon_%d", anon_counter_++);
+            tag = arena_.strdup(buf);
+        }
+        Node* ref = make_node(NK_STRUCT_DEF, ln);
+        ref->name     = tag;
+        ref->is_union = is_union;
+        ref->n_fields = -1;  // -1 = forward reference (no body)
+        return ref;
+    }
+
+    // Has body: { field; ... }
+    if (!tag) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "_anon_%d", anon_counter_++);
+        tag = arena_.strdup(buf);
+    }
+
+    Node* sd = make_node(NK_STRUCT_DEF, ln);
+    sd->name     = tag;
+    sd->is_union = is_union;
+
+    consume();  // consume {
+
+    std::vector<Node*> fields;
+    while (!at_end() && !check(TokenKind::RBrace)) {
+        skip_attributes();
+        if (check(TokenKind::RBrace)) break;
+
+        // Handle nested anonymous struct/union
+        if (check(TokenKind::KwStruct) || check(TokenKind::KwUnion)) {
+            bool inner_union = (cur().kind == TokenKind::KwUnion);
+            consume();
+            Node* inner = parse_struct_or_union(inner_union);
+            if (inner) struct_defs_.push_back(inner);
+            // If the next token is not ';', there might be a member name
+            if (check(TokenKind::Identifier) || check(TokenKind::Semi)) {
+                if (!check(TokenKind::Semi)) {
+                    // Named member of inner struct type
+                    TypeSpec fts{};
+                    fts.array_size = -1;
+                    fts.base = inner_union ? TB_UNION : TB_STRUCT;
+                    fts.tag  = inner ? inner->name : nullptr;
+                    const char* fname = nullptr;
+                    parse_declarator(fts, &fname);
+                    if (fname) {
+                        Node* f = make_node(NK_DECL, cur().line);
+                        f->type = fts;
+                        f->name = fname;
+                        fields.push_back(f);
+                    }
+                    while (match(TokenKind::Comma)) {
+                        TypeSpec fts2 = fts;
+                        fts2.ptr_level = 0;
+                        fts2.array_size = -1;
+                        const char* fname2 = nullptr;
+                        parse_declarator(fts2, &fname2);
+                        if (fname2) {
+                            Node* f2 = make_node(NK_DECL, cur().line);
+                            f2->type = fts2;
+                            f2->name = fname2;
+                            fields.push_back(f2);
+                        }
+                    }
+                }
+                match(TokenKind::Semi);
+            }
+            continue;
+        }
+
+        if (check(TokenKind::KwEnum)) {
+            consume();
+            Node* ed = parse_enum();
+            if (ed) struct_defs_.push_back(ed);
+            match(TokenKind::Semi);
+            continue;
+        }
+
+        // Regular field declaration
+        if (!is_type_start()) {
+            // unknown token in struct body — skip
+            consume();
+            continue;
+        }
+
+        TypeSpec fts = parse_base_type();
+        skip_attributes();
+
+        // Handle anonymous bitfield: just ': expr;'
+        if (check(TokenKind::Colon)) {
+            consume();
+            parse_assign_expr();  // skip bitfield width
+            match(TokenKind::Semi);
+            continue;
+        }
+
+        // If semicolon follows immediately: anonymous struct field (no name)
+        if (check(TokenKind::Semi)) {
+            match(TokenKind::Semi);
+            continue;
+        }
+
+        bool first = true;
+        while (true) {
+            TypeSpec cur_fts = fts;
+            cur_fts.ptr_level = 0;
+            cur_fts.array_size = -1;
+            if (!first) {
+                // For multi-declarator fields, re-use base type
+            }
+            first = false;
+            const char* fname = nullptr;
+            parse_declarator(cur_fts, &fname);
+            skip_attributes();
+
+            // Bitfield: : expr  (skip)
+            if (check(TokenKind::Colon)) {
+                consume();
+                parse_assign_expr();  // skip width
+            }
+
+            if (fname) {
+                Node* f = make_node(NK_DECL, cur().line);
+                f->type = cur_fts;
+                f->name = fname;
+                fields.push_back(f);
+            }
+
+            if (!match(TokenKind::Comma)) break;
+        }
+        match(TokenKind::Semi);
+    }
+    expect(TokenKind::RBrace);
+    skip_attributes();
+
+    // Store fields in arena
+    sd->n_fields = (int)fields.size();
+    if (sd->n_fields > 0) {
+        sd->fields = arena_.alloc_array<Node*>(sd->n_fields);
+        for (int i = 0; i < sd->n_fields; ++i) sd->fields[i] = fields[i];
+    }
+
+    struct_defs_.push_back(sd);
+    return sd;
+}
+
+// ── enum parsing ─────────────────────────────────────────────────────────────
+
+Node* Parser::parse_enum() {
+    int ln = cur().line;
+    skip_attributes();
+
+    const char* tag = nullptr;
+    if (check(TokenKind::Identifier)) {
+        tag = arena_.strdup(cur().lexeme);
+        consume();
+    }
+    skip_attributes();
+
+    if (!check(TokenKind::LBrace)) {
+        if (!tag) {
+            char buf[32];
+            snprintf(buf, sizeof(buf), "_anon_enum_%d", anon_counter_++);
+            tag = arena_.strdup(buf);
+        }
+        Node* ref = make_node(NK_ENUM_DEF, ln);
+        ref->name = tag;
+        ref->n_enum_variants = -1;
+        return ref;
+    }
+
+    if (!tag) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "_anon_enum_%d", anon_counter_++);
+        tag = arena_.strdup(buf);
+    }
+
+    Node* ed = make_node(NK_ENUM_DEF, ln);
+    ed->name = tag;
+
+    consume();  // consume {
+
+    std::vector<const char*> names;
+    std::vector<long long>   vals;
+    long long cur_val = 0;
+
+    while (!at_end() && !check(TokenKind::RBrace)) {
+        skip_attributes();
+        if (!check(TokenKind::Identifier)) { consume(); continue; }
+        const char* vname = arena_.strdup(cur().lexeme);
+        consume();
+        long long vval = cur_val;
+        if (match(TokenKind::Assign)) {
+            Node* ve = parse_assign_expr();
+            if (ve && ve->kind == NK_INT_LIT) vval = ve->ival;
+            else if (ve && ve->kind == NK_UNARY &&
+                     strcmp(ve->op, "-") == 0 &&
+                     ve->left && ve->left->kind == NK_INT_LIT) {
+                vval = -ve->left->ival;
+            }
+        }
+        cur_val = vval + 1;
+        names.push_back(vname);
+        vals.push_back(vval);
+        if (!match(TokenKind::Comma)) break;
+        // Trailing comma before } is allowed
+        if (check(TokenKind::RBrace)) break;
+    }
+    expect(TokenKind::RBrace);
+
+    ed->n_enum_variants = (int)names.size();
+    if (ed->n_enum_variants > 0) {
+        ed->enum_names = arena_.alloc_array<const char*>(ed->n_enum_variants);
+        ed->enum_vals  = arena_.alloc_array<long long>(ed->n_enum_variants);
+        for (int i = 0; i < ed->n_enum_variants; ++i) {
+            ed->enum_names[i] = names[i];
+            ed->enum_vals[i]  = vals[i];
+        }
+    }
+    struct_defs_.push_back(ed);
+    return ed;
+}
+
+// ── parameter parsing ─────────────────────────────────────────────────────────
+
+Node* Parser::parse_param() {
+    int ln = cur().line;
+    if (check(TokenKind::Ellipsis)) {
+        // variadic marker — handled by caller
+        consume();
+        return nullptr;
+    }
+    TypeSpec pts = parse_base_type();
+    const char* pname = nullptr;
+    parse_declarator(pts, &pname);
+    skip_attributes();
+
+    Node* p = make_node(NK_DECL, ln);
+    p->type = pts;
+    p->name = pname ? pname : nullptr;
+    return p;
+}
+
+// ── expression parsing ────────────────────────────────────────────────────────
+
+// Operator precedence table (higher = tighter binding).
+int Parser::bin_prec(TokenKind k) {
+    switch (k) {
+        case TokenKind::PipePipe:       return 4;
+        case TokenKind::AmpAmp:         return 5;
+        case TokenKind::Pipe:           return 6;
+        case TokenKind::Caret:          return 7;
+        case TokenKind::Amp:            return 8;
+        case TokenKind::EqualEqual:
+        case TokenKind::BangEqual:      return 9;
+        case TokenKind::Less:
+        case TokenKind::LessEqual:
+        case TokenKind::Greater:
+        case TokenKind::GreaterEqual:   return 10;
+        case TokenKind::LessLess:
+        case TokenKind::GreaterGreater: return 11;
+        case TokenKind::Plus:
+        case TokenKind::Minus:          return 12;
+        case TokenKind::Star:
+        case TokenKind::Slash:
+        case TokenKind::Percent:        return 13;
+        default:                        return -1;
+    }
+}
+
+Node* Parser::parse_expr() {
+    Node* lhs = parse_assign_expr();
+    while (check(TokenKind::Comma)) {
+        int ln = cur().line;
+        consume();
+        Node* rhs = parse_assign_expr();
+        Node* n = make_node(NK_COMMA_EXPR, ln);
+        n->left  = lhs;
+        n->right = rhs;
+        lhs = n;
+    }
+    return lhs;
+}
+
+Node* Parser::parse_assign_expr() {
+    Node* lhs = parse_ternary();
+    int ln = cur().line;
+    TokenKind k = cur().kind;
+    const char* op = nullptr;
+    switch (k) {
+        case TokenKind::Assign:               op = "=";   break;
+        case TokenKind::PlusAssign:           op = "+=";  break;
+        case TokenKind::MinusAssign:          op = "-=";  break;
+        case TokenKind::StarAssign:           op = "*=";  break;
+        case TokenKind::SlashAssign:          op = "/=";  break;
+        case TokenKind::PercentAssign:        op = "%=";  break;
+        case TokenKind::AmpAssign:            op = "&=";  break;
+        case TokenKind::PipeAssign:           op = "|=";  break;
+        case TokenKind::CaretAssign:          op = "^=";  break;
+        case TokenKind::LessLessAssign:       op = "<<="; break;
+        case TokenKind::GreaterGreaterAssign: op = ">>="; break;
+        default: break;
+    }
+    if (op) {
+        consume();
+        Node* rhs = parse_assign_expr();  // right-associative
+        if (op[0] == '=' && op[1] == '\0') {
+            return make_assign("=", lhs, rhs, ln);
+        } else {
+            return make_assign(op, lhs, rhs, ln);
+        }
+    }
+    return lhs;
+}
+
+Node* Parser::parse_ternary() {
+    Node* cond = parse_binary(4);
+    if (!check(TokenKind::Question)) return cond;
+    int ln = cur().line;
+    consume();  // ?
+
+    Node* then_node;
+    if (check(TokenKind::Colon)) {
+        // GNU extension: cond ?: else  (omitted-middle)
+        then_node = cond;
+    } else {
+        then_node = parse_expr();
+    }
+    expect(TokenKind::Colon);
+    Node* else_node = parse_assign_expr();
+
+    Node* n = make_node(NK_TERNARY, ln);
+    n->cond  = cond;
+    n->then_ = then_node;
+    n->else_ = else_node;
+    return n;
+}
+
+Node* Parser::parse_binary(int min_prec) {
+    Node* lhs = parse_unary();
+    while (true) {
+        int prec = bin_prec(cur().kind);
+        if (prec < min_prec) break;
+        TokenKind k = cur().kind;
+        int ln = cur().line;
+        const char* op;
+        switch (k) {
+            case TokenKind::Plus:             op = "+";  break;
+            case TokenKind::Minus:            op = "-";  break;
+            case TokenKind::Star:             op = "*";  break;
+            case TokenKind::Slash:            op = "/";  break;
+            case TokenKind::Percent:          op = "%";  break;
+            case TokenKind::Amp:              op = "&";  break;
+            case TokenKind::Pipe:             op = "|";  break;
+            case TokenKind::Caret:            op = "^";  break;
+            case TokenKind::LessLess:         op = "<<"; break;
+            case TokenKind::GreaterGreater:   op = ">>"; break;
+            case TokenKind::EqualEqual:       op = "=="; break;
+            case TokenKind::BangEqual:        op = "!="; break;
+            case TokenKind::Less:             op = "<";  break;
+            case TokenKind::LessEqual:        op = "<="; break;
+            case TokenKind::Greater:          op = ">";  break;
+            case TokenKind::GreaterEqual:     op = ">="; break;
+            case TokenKind::AmpAmp:           op = "&&"; break;
+            case TokenKind::PipePipe:         op = "||"; break;
+            default:                          op = "?";  break;
+        }
+        consume();
+        Node* rhs = parse_binary(prec + 1);  // left-associative
+        lhs = make_binop(op, lhs, rhs, ln);
+    }
+    return lhs;
+}
+
+Node* Parser::parse_unary() {
+    int ln = cur().line;
+    switch (cur().kind) {
+        case TokenKind::Bang: {
+            consume();
+            Node* operand = parse_unary();
+            return make_unary("!", operand, ln);
+        }
+        case TokenKind::Tilde: {
+            consume();
+            Node* operand = parse_unary();
+            return make_unary("~", operand, ln);
+        }
+        case TokenKind::Minus: {
+            consume();
+            Node* operand = parse_unary();
+            return make_unary("-", operand, ln);
+        }
+        case TokenKind::Plus: {
+            consume();
+            Node* operand = parse_unary();
+            return make_unary("+", operand, ln);
+        }
+        case TokenKind::PlusPlus: {
+            consume();
+            Node* operand = parse_unary();
+            return make_unary("++pre", operand, ln);
+        }
+        case TokenKind::MinusMinus: {
+            consume();
+            Node* operand = parse_unary();
+            return make_unary("--pre", operand, ln);
+        }
+        case TokenKind::Amp: {
+            consume();
+            Node* operand = parse_unary();
+            Node* n = make_node(NK_ADDR, ln);
+            n->left = operand;
+            return n;
+        }
+        case TokenKind::Star: {
+            consume();
+            Node* operand = parse_unary();
+            Node* n = make_node(NK_DEREF, ln);
+            n->left = operand;
+            return n;
+        }
+        case TokenKind::KwSizeof: {
+            consume();
+            if (check(TokenKind::LParen)) {
+                // Could be sizeof(type) or sizeof(expr)
+                // Disambiguate: if first token inside is a type keyword, it's a type
+                int save_pos = pos_;
+                consume();  // consume (
+                if (is_type_start()) {
+                    TypeSpec ts = parse_type_name();
+                    expect(TokenKind::RParen);
+                    Node* n = make_node(NK_SIZEOF_TYPE, ln);
+                    n->type = ts;
+                    return n;
+                } else {
+                    // Restore and parse as sizeof(expr)
+                    pos_ = save_pos;
+                    consume();  // consume (
+                    Node* inner = parse_assign_expr();
+                    expect(TokenKind::RParen);
+                    Node* n = make_node(NK_SIZEOF_EXPR, ln);
+                    n->left = inner;
+                    return n;
+                }
+            } else {
+                Node* inner = parse_unary();
+                Node* n = make_node(NK_SIZEOF_EXPR, ln);
+                n->left = inner;
+                return n;
+            }
+        }
+        case TokenKind::KwAlignof:
+        case TokenKind::KwGnuAlignof: {
+            consume();
+            expect(TokenKind::LParen);
+            if (is_type_start()) {
+                TypeSpec ts = parse_type_name();
+                expect(TokenKind::RParen);
+                Node* n = make_node(NK_ALIGNOF_TYPE, ln);
+                n->type = ts;
+                return n;
+            } else {
+                Node* inner = parse_assign_expr();
+                expect(TokenKind::RParen);
+                Node* n = make_node(NK_SIZEOF_EXPR, ln);
+                n->left = inner;
+                return n;
+            }
+        }
+        case TokenKind::KwBuiltinVaArg: {
+            // __builtin_va_arg(ap, type)
+            consume();
+            expect(TokenKind::LParen);
+            Node* ap = parse_assign_expr();
+            expect(TokenKind::Comma);
+            TypeSpec ts = parse_type_name();
+            expect(TokenKind::RParen);
+            Node* n = make_node(NK_VA_ARG, ln);
+            n->left = ap;
+            n->type = ts;
+            return n;
+        }
+        default:
+            return parse_postfix(parse_primary());
+    }
+}
+
+Node* Parser::parse_postfix(Node* base) {
+    while (true) {
+        int ln = cur().line;
+        switch (cur().kind) {
+            case TokenKind::PlusPlus: {
+                consume();
+                Node* n = make_node(NK_POSTFIX, ln);
+                n->op   = "++";
+                n->left = base;
+                base = n;
+                break;
+            }
+            case TokenKind::MinusMinus: {
+                consume();
+                Node* n = make_node(NK_POSTFIX, ln);
+                n->op   = "--";
+                n->left = base;
+                base = n;
+                break;
+            }
+            case TokenKind::Dot: {
+                consume();
+                if (!check(TokenKind::Identifier)) break;
+                const char* fname = arena_.strdup(cur().lexeme);
+                consume();
+                Node* n = make_node(NK_MEMBER, ln);
+                n->left     = base;
+                n->name     = fname;
+                n->is_arrow = false;
+                base = n;
+                break;
+            }
+            case TokenKind::Arrow: {
+                consume();
+                if (!check(TokenKind::Identifier)) break;
+                const char* fname = arena_.strdup(cur().lexeme);
+                consume();
+                Node* n = make_node(NK_MEMBER, ln);
+                n->left     = base;
+                n->name     = fname;
+                n->is_arrow = true;
+                base = n;
+                break;
+            }
+            case TokenKind::LBracket: {
+                consume();
+                Node* idx = parse_expr();
+                expect(TokenKind::RBracket);
+                Node* n = make_node(NK_INDEX, ln);
+                n->left  = base;
+                n->right = idx;
+                base = n;
+                break;
+            }
+            case TokenKind::LParen: {
+                // Function call
+                consume();
+                std::vector<Node*> args;
+                while (!at_end() && !check(TokenKind::RParen)) {
+                    args.push_back(parse_assign_expr());
+                    if (!match(TokenKind::Comma)) break;
+                }
+                expect(TokenKind::RParen);
+                Node* n = make_node(NK_CALL, ln);
+                n->left       = base;
+                n->n_children = (int)args.size();
+                if (n->n_children > 0) {
+                    n->children = arena_.alloc_array<Node*>(n->n_children);
+                    for (int i = 0; i < n->n_children; ++i) n->children[i] = args[i];
+                }
+                base = n;
+                break;
+            }
+            default:
+                return base;
+        }
+    }
+}
+
+Node* Parser::parse_primary() {
+    int ln = cur().line;
+
+    // Integer literal
+    if (check(TokenKind::IntLit)) {
+        long long v = parse_int_lexeme(cur().lexeme.c_str());
+        const char* lex = arena_.strdup(cur().lexeme);
+        consume();
+        Node* n = make_int_lit(v, ln);
+        n->sval = lex;  // store raw lexeme too
+        return n;
+    }
+
+    // Float literal
+    if (check(TokenKind::FloatLit)) {
+        double v   = parse_float_lexeme(cur().lexeme.c_str());
+        const char* raw = arena_.strdup(cur().lexeme);
+        consume();
+        return make_float_lit(v, raw, ln);
+    }
+
+    // String literal (possibly multiple adjacent)
+    if (check(TokenKind::StrLit)) {
+        std::string combined = cur().lexeme;
+        consume();
+        while (check(TokenKind::StrLit)) {
+            // Adjacent string concatenation: trim closing quote of first,
+            // trim opening quote of second, join
+            if (!combined.empty() && combined.back() == '"') combined.pop_back();
+            const std::string& next = cur().lexeme;
+            if (!next.empty() && next.front() == '"') {
+                combined += next.substr(1);
+            } else {
+                combined += next;
+            }
+            consume();
+        }
+        return make_str_lit(arena_.strdup(combined), ln);
+    }
+
+    // Char literal
+    if (check(TokenKind::CharLit)) {
+        const std::string& lex = cur().lexeme;
+        long long cv = 0;
+        // lex is like 'a' or '\n' etc.
+        if (lex.size() >= 3) {
+            if (lex[1] == '\\') {
+                switch (lex[2]) {
+                    case 'n':  cv = '\n'; break;
+                    case 't':  cv = '\t'; break;
+                    case 'r':  cv = '\r'; break;
+                    case '0':  cv = 0;   break;
+                    case '\\': cv = '\\'; break;
+                    case '\'': cv = '\''; break;
+                    case '"':  cv = '"';  break;
+                    case 'a':  cv = '\a'; break;
+                    case 'b':  cv = '\b'; break;
+                    case 'f':  cv = '\f'; break;
+                    case 'v':  cv = '\v'; break;
+                    case 'x': {
+                        // \xNN
+                        cv = strtol(lex.c_str() + 3, nullptr, 16);
+                        break;
+                    }
+                    default:
+                        if (lex[2] >= '0' && lex[2] <= '7') {
+                            cv = strtol(lex.c_str() + 2, nullptr, 8);
+                        } else {
+                            cv = (unsigned char)lex[2];
+                        }
+                        break;
+                }
+            } else {
+                cv = (unsigned char)lex[1];
+            }
+        }
+        consume();
+        Node* n = make_node(NK_CHAR_LIT, ln);
+        n->ival = cv;
+        return n;
+    }
+
+    // Parenthesised expression or cast or compound literal
+    if (check(TokenKind::LParen)) {
+        consume();  // consume (
+
+        // Check for cast: (type-name)expr
+        if (is_type_start()) {
+            int save_pos = pos_;
+            TypeSpec cast_ts = parse_type_name();
+            if (check(TokenKind::RParen)) {
+                consume();  // consume )
+                // Check for compound literal: (type){ ... }
+                if (check(TokenKind::LBrace)) {
+                    Node* init_list = parse_init_list();
+                    Node* n = make_node(NK_COMPOUND_LIT, ln);
+                    n->type     = cast_ts;
+                    n->left     = init_list;
+                    return n;
+                }
+                // Regular cast
+                Node* operand = parse_unary();
+                Node* n = make_node(NK_CAST, ln);
+                n->type = cast_ts;
+                n->left = operand;
+                return n;
+            } else {
+                // Not a type name after all — restore and parse as expression
+                pos_ = save_pos;
+            }
+        }
+
+        // GCC statement expression: ({ ... })
+        if (check(TokenKind::LBrace)) {
+            Node* block = parse_block();
+            expect(TokenKind::RParen);
+            Node* n = make_node(NK_STMT_EXPR, ln);
+            n->body = block;
+            return n;
+        }
+
+        Node* inner = parse_expr();
+        expect(TokenKind::RParen);
+        return parse_postfix(inner);
+    }
+
+    // Identifier / label address
+    if (check(TokenKind::Identifier)) {
+        const char* nm = arena_.strdup(cur().lexeme);
+        consume();
+        return parse_postfix(make_var(nm, ln));
+    }
+
+    // _Generic selection
+    if (check(TokenKind::KwGeneric)) {
+        consume();
+        // skip entire _Generic(...) — treat as 0 for now
+        skip_paren_group();
+        return make_int_lit(0, ln);
+    }
+
+    // Initializer list in some contexts — just parse it
+    if (check(TokenKind::LBrace)) {
+        return parse_init_list();
+    }
+
+    // Fallback: return a zero literal for unrecognized primaries
+    if (!at_end()) {
+        // skip the token to avoid infinite loop
+        consume();
+    }
+    return make_int_lit(0, ln);
+}
+
+// ── initializer parsing ───────────────────────────────────────────────────────
+
+Node* Parser::parse_initializer() {
+    if (check(TokenKind::LBrace)) {
+        return parse_init_list();
+    }
+    return parse_assign_expr();
+}
+
+Node* Parser::parse_init_list() {
+    int ln = cur().line;
+    expect(TokenKind::LBrace);
+    std::vector<Node*> items;
+    while (!at_end() && !check(TokenKind::RBrace)) {
+        Node* item = make_node(NK_INIT_ITEM, cur().line);
+
+        // Designator?
+        if (check(TokenKind::Dot)) {
+            consume();
+            if (check(TokenKind::Identifier)) {
+                item->desig_field    = arena_.strdup(cur().lexeme);
+                item->is_designated  = true;
+                item->is_index_desig = false;
+                consume();
+            }
+            match(TokenKind::Assign);
+        } else if (check(TokenKind::LBracket)) {
+            consume();
+            Node* idx_expr = parse_assign_expr();
+            long long idx_lo = 0;
+            if (idx_expr && idx_expr->kind == NK_INT_LIT) idx_lo = idx_expr->ival;
+            // GCC range: [lo ... hi]
+            long long idx_hi = idx_lo;
+            if (check(TokenKind::Ellipsis)) {
+                consume();
+                Node* hi_expr = parse_assign_expr();
+                if (hi_expr && hi_expr->kind == NK_INT_LIT) idx_hi = hi_expr->ival;
+            }
+            expect(TokenKind::RBracket);
+            match(TokenKind::Assign);
+            item->is_designated  = true;
+            item->is_index_desig = true;
+            item->desig_val      = idx_lo;
+            // For ranges, store hi in right->ival
+            if (idx_hi != idx_lo) {
+                Node* hi_node = make_int_lit(idx_hi, cur().line);
+                item->right = hi_node;
+            }
+        }
+
+        item->left = parse_initializer();
+        items.push_back(item);
+
+        if (!match(TokenKind::Comma)) break;
+        if (check(TokenKind::RBrace)) break;
+    }
+    expect(TokenKind::RBrace);
+
+    Node* list = make_node(NK_INIT_LIST, ln);
+    list->n_children = (int)items.size();
+    if (list->n_children > 0) {
+        list->children = arena_.alloc_array<Node*>(list->n_children);
+        for (int i = 0; i < list->n_children; ++i) list->children[i] = items[i];
+    }
+    return list;
+}
+
+// ── statement parsing ─────────────────────────────────────────────────────────
+
+Node* Parser::parse_block() {
+    int ln = cur().line;
+    expect(TokenKind::LBrace);
+    std::vector<Node*> stmts;
+    while (!at_end() && !check(TokenKind::RBrace)) {
+        Node* s = parse_stmt();
+        if (s) stmts.push_back(s);
+    }
+    expect(TokenKind::RBrace);
+    return make_block(stmts.empty() ? nullptr : stmts.data(), (int)stmts.size(), ln);
+}
+
+Node* Parser::parse_stmt() {
+    int ln = cur().line;
+    skip_attributes();
+
+    switch (cur().kind) {
+        case TokenKind::LBrace:
+            return parse_block();
+
+        case TokenKind::KwReturn: {
+            consume();
+            Node* val = nullptr;
+            if (!check(TokenKind::Semi)) {
+                val = parse_expr();
+            }
+            match(TokenKind::Semi);
+            Node* n = make_node(NK_RETURN, ln);
+            n->left = val;
+            return n;
+        }
+
+        case TokenKind::KwIf: {
+            consume();
+            expect(TokenKind::LParen);
+            Node* cnd = parse_expr();
+            expect(TokenKind::RParen);
+            Node* then_stmt = parse_stmt();
+            Node* else_stmt = nullptr;
+            if (match(TokenKind::KwElse)) {
+                else_stmt = parse_stmt();
+            }
+            Node* n = make_node(NK_IF, ln);
+            n->cond  = cnd;
+            n->then_ = then_stmt;
+            n->else_ = else_stmt;
+            return n;
+        }
+
+        case TokenKind::KwWhile: {
+            consume();
+            expect(TokenKind::LParen);
+            Node* cnd = parse_expr();
+            expect(TokenKind::RParen);
+            Node* bd = parse_stmt();
+            Node* n = make_node(NK_WHILE, ln);
+            n->cond = cnd;
+            n->body = bd;
+            return n;
+        }
+
+        case TokenKind::KwDo: {
+            consume();
+            Node* bd = parse_stmt();
+            expect(TokenKind::KwWhile);
+            expect(TokenKind::LParen);
+            Node* cnd = parse_expr();
+            expect(TokenKind::RParen);
+            match(TokenKind::Semi);
+            Node* n = make_node(NK_DO_WHILE, ln);
+            n->body = bd;
+            n->cond = cnd;
+            return n;
+        }
+
+        case TokenKind::KwFor: {
+            consume();
+            expect(TokenKind::LParen);
+            Node* for_init = nullptr;
+            if (!check(TokenKind::Semi)) {
+                if (is_type_start()) {
+                    for_init = parse_local_decl();
+                    // for-decl init already consumed the semicolon via parse_local_decl
+                    // Actually parse_local_decl doesn't consume ';' for for-init context
+                    // We'll handle with a flag — just consume ; here
+                    match(TokenKind::Semi);
+                } else {
+                    for_init = parse_expr();
+                    match(TokenKind::Semi);
+                }
+            } else {
+                consume();  // consume ;
+            }
+            Node* for_cond = nullptr;
+            if (!check(TokenKind::Semi)) {
+                for_cond = parse_expr();
+            }
+            match(TokenKind::Semi);
+            Node* for_update = nullptr;
+            if (!check(TokenKind::RParen)) {
+                for_update = parse_expr();
+            }
+            expect(TokenKind::RParen);
+            Node* bd = parse_stmt();
+            Node* n = make_node(NK_FOR, ln);
+            n->init   = for_init;
+            n->cond   = for_cond;
+            n->update = for_update;
+            n->body   = bd;
+            return n;
+        }
+
+        case TokenKind::KwSwitch: {
+            consume();
+            expect(TokenKind::LParen);
+            Node* cnd = parse_expr();
+            expect(TokenKind::RParen);
+            Node* bd = parse_stmt();
+            Node* n = make_node(NK_SWITCH, ln);
+            n->cond = cnd;
+            n->body = bd;
+            return n;
+        }
+
+        case TokenKind::KwCase: {
+            consume();
+            Node* val_lo = parse_assign_expr();
+            Node* val_hi = nullptr;
+            if (check(TokenKind::Ellipsis)) {
+                consume();
+                val_hi = parse_assign_expr();
+            }
+            expect(TokenKind::Colon);
+            // Accumulate case body as the next statement
+            Node* body_stmt = nullptr;
+            if (!check(TokenKind::RBrace) && !check(TokenKind::KwCase) &&
+                !check(TokenKind::KwDefault)) {
+                body_stmt = parse_stmt();
+            }
+            if (val_hi) {
+                Node* n = make_node(NK_CASE_RANGE, ln);
+                n->left  = val_lo;
+                n->right = val_hi;
+                n->body  = body_stmt;
+                return n;
+            }
+            Node* n = make_node(NK_CASE, ln);
+            n->left = val_lo;
+            n->body = body_stmt;
+            return n;
+        }
+
+        case TokenKind::KwDefault: {
+            consume();
+            expect(TokenKind::Colon);
+            Node* body_stmt = nullptr;
+            if (!check(TokenKind::RBrace) && !check(TokenKind::KwCase) &&
+                !check(TokenKind::KwDefault)) {
+                body_stmt = parse_stmt();
+            }
+            Node* n = make_node(NK_DEFAULT, ln);
+            n->body = body_stmt;
+            return n;
+        }
+
+        case TokenKind::KwBreak:
+            consume(); match(TokenKind::Semi);
+            return make_node(NK_BREAK, ln);
+
+        case TokenKind::KwContinue:
+            consume(); match(TokenKind::Semi);
+            return make_node(NK_CONTINUE, ln);
+
+        case TokenKind::KwGoto: {
+            consume();
+            const char* lbl = nullptr;
+            if (check(TokenKind::Identifier)) {
+                lbl = arena_.strdup(cur().lexeme);
+                consume();
+            } else if (check(TokenKind::Star)) {
+                // computed goto: goto *expr;
+                consume();
+                Node* target = parse_unary();
+                match(TokenKind::Semi);
+                Node* n = make_node(NK_GOTO, ln);
+                n->name = "__computed__";
+                n->left = target;
+                return n;
+            }
+            match(TokenKind::Semi);
+            Node* n = make_node(NK_GOTO, ln);
+            n->name = lbl;
+            return n;
+        }
+
+        case TokenKind::KwAsm: {
+            // asm("...") — skip entirely
+            consume();
+            if (check(TokenKind::LParen)) skip_paren_group();
+            match(TokenKind::Semi);
+            return make_node(NK_EMPTY, ln);
+        }
+
+        case TokenKind::Semi:
+            consume();
+            return make_node(NK_EMPTY, ln);
+
+        default:
+            break;
+    }
+
+    // Identifier followed by colon → label
+    if (check(TokenKind::Identifier) && check2(TokenKind::Colon)) {
+        const char* lbl = arena_.strdup(cur().lexeme);
+        consume(); consume();  // consume name and :
+        Node* body_stmt = nullptr;
+        if (!check(TokenKind::RBrace)) {
+            body_stmt = parse_stmt();
+        }
+        Node* n = make_node(NK_LABEL, ln);
+        n->name = lbl;
+        n->body = body_stmt;
+        return n;
+    }
+
+    // Local declaration?
+    if (is_type_start()) {
+        return parse_local_decl();
+    }
+
+    // Expression statement
+    Node* expr = parse_expr();
+    match(TokenKind::Semi);
+    Node* n = make_node(NK_EXPR_STMT, ln);
+    n->left = expr;
+    return n;
+}
+
+// ── local declaration parsing ─────────────────────────────────────────────────
+
+Node* Parser::parse_local_decl() {
+    int ln = cur().line;
+
+    bool is_static  = false;
+    bool is_extern  = false;
+    bool is_typedef = false;
+
+    // Consume storage class specifiers before the type
+    while (true) {
+        if (match(TokenKind::KwStatic))  { is_static = true; }
+        else if (match(TokenKind::KwExtern))  { is_extern = true; }
+        else if (match(TokenKind::KwTypedef)) { is_typedef = true; }
+        else if (match(TokenKind::KwRegister)) {}
+        else if (match(TokenKind::KwInline))   {}
+        else if (match(TokenKind::KwExtension)) {}
+        else break;
+    }
+
+    TypeSpec base_ts = parse_base_type();
+    skip_attributes();
+
+    if (is_typedef) {
+        // Simple typedef: typedef base_type name[...];
+        // Also handles typedef base_type (*fn_name)(...);
+        const char* tdname = nullptr;
+        TypeSpec ts_copy = base_ts;
+        parse_declarator(ts_copy, &tdname);
+        if (tdname) typedefs_.insert(tdname);
+        // multiple declarators in typedef
+        while (match(TokenKind::Comma)) {
+            TypeSpec ts2 = base_ts;
+            const char* tdn2 = nullptr;
+            parse_declarator(ts2, &tdn2);
+            if (tdn2) typedefs_.insert(tdn2);
+        }
+        match(TokenKind::Semi);
+        return make_node(NK_EMPTY, ln);
+    }
+
+    // Collect all declarators for this declaration
+    std::vector<Node*> decls;
+    do {
+        TypeSpec ts = base_ts;
+        ts.ptr_level = 0;
+        ts.array_size = -1;
+        ts.array_size_expr = nullptr;
+        const char* vname = nullptr;
+        parse_declarator(ts, &vname);
+        skip_attributes();
+        skip_asm();
+        skip_attributes();
+
+        if (!vname) {
+            // Abstract declarator in statement position — skip
+            match(TokenKind::Semi);
+            return make_node(NK_EMPTY, ln);
+        }
+
+        Node* init_node = nullptr;
+        if (match(TokenKind::Assign)) {
+            init_node = parse_initializer();
+        }
+
+        Node* d = make_node(NK_DECL, ln);
+        d->type      = ts;
+        d->name      = vname;
+        d->init      = init_node;
+        d->is_static = is_static;
+        d->is_extern = is_extern;
+        decls.push_back(d);
+    } while (match(TokenKind::Comma));
+
+    match(TokenKind::Semi);
+
+    if (decls.size() == 1) return decls[0];
+
+    // Multiple declarators: wrap in a block
+    Node* blk = make_node(NK_BLOCK, ln);
+    blk->n_children = (int)decls.size();
+    blk->children   = arena_.alloc_array<Node*>(blk->n_children);
+    for (int i = 0; i < blk->n_children; ++i) blk->children[i] = decls[i];
+    return blk;
+}
+
+// ── top-level parsing ─────────────────────────────────────────────────────────
+
+Node* Parser::parse_top_level() {
+    int ln = cur().line;
+    if (at_end()) return nullptr;
+
+    skip_attributes();
+    if (at_end()) return nullptr;
+
+    // Handle top-level asm
+    if (check(TokenKind::KwAsm)) {
+        consume();
+        if (check(TokenKind::LParen)) skip_paren_group();
+        match(TokenKind::Semi);
+        return make_node(NK_EMPTY, ln);
+    }
+
+    // _Static_assert
+    if (check(TokenKind::KwStaticAssert)) {
+        consume();
+        skip_paren_group();
+        match(TokenKind::Semi);
+        return make_node(NK_EMPTY, ln);
+    }
+
+    bool is_static   = false;
+    bool is_extern   = false;
+    bool is_typedef  = false;
+    bool is_inline   = false;
+
+    // Consume storage class specifiers
+    while (true) {
+        if (match(TokenKind::KwStatic))    { is_static  = true; }
+        else if (match(TokenKind::KwExtern))   { is_extern  = true; }
+        else if (match(TokenKind::KwTypedef))  { is_typedef = true; }
+        else if (match(TokenKind::KwInline))   { is_inline  = true; }
+        else if (match(TokenKind::KwExtension)) {}
+        else if (match(TokenKind::KwNoreturn))  {}
+        else break;
+    }
+    skip_attributes();
+
+    if (!is_type_start()) {
+        // Skip to semicolon
+        skip_until(TokenKind::Semi);
+        return make_node(NK_EMPTY, ln);
+    }
+
+    TypeSpec base_ts = parse_base_type();
+    skip_attributes();
+
+    if (is_typedef) {
+        // Top-level typedef
+        const char* tdname = nullptr;
+        TypeSpec ts_copy = base_ts;
+        parse_declarator(ts_copy, &tdname);
+        if (tdname) typedefs_.insert(tdname);
+        while (match(TokenKind::Comma)) {
+            TypeSpec ts2 = base_ts;
+            const char* tdn2 = nullptr;
+            parse_declarator(ts2, &tdn2);
+            if (tdn2) typedefs_.insert(tdn2);
+        }
+        match(TokenKind::Semi);
+        return make_node(NK_EMPTY, ln);
+    }
+
+    // Peek to disambiguate: struct/union/enum declaration only (no declarator)
+    if (check(TokenKind::Semi) &&
+        (base_ts.base == TB_STRUCT || base_ts.base == TB_UNION ||
+         base_ts.base == TB_ENUM)) {
+        consume();  // consume ;
+        return make_node(NK_EMPTY, ln);
+    }
+
+    // Parse declarator (name + pointer stars + maybe function params)
+    TypeSpec ts = base_ts;
+    ts.ptr_level = 0;
+    ts.array_size = -1;
+    ts.array_size_expr = nullptr;
+    const char* decl_name = nullptr;
+    bool is_fptr_global = false;
+
+    // Check for function-pointer global: type (*name)(...);
+    if (check(TokenKind::LParen) && check2(TokenKind::Star)) {
+        consume();  // (
+        consume();  // *
+        ts.ptr_level++;
+        while (check(TokenKind::Star)) { consume(); ts.ptr_level++; }
+        if (check(TokenKind::Identifier)) {
+            decl_name = arena_.strdup(cur().lexeme);
+            consume();
+        }
+        expect(TokenKind::RParen);
+        if (check(TokenKind::LParen)) skip_paren_group();
+        is_fptr_global = true;
+    } else {
+        parse_declarator(ts, &decl_name);
+    }
+
+    skip_attributes();
+    skip_asm();
+    skip_attributes();
+
+    if (!decl_name) {
+        // No name: just a type declaration; skip to ;
+        match(TokenKind::Semi);
+        return make_node(NK_EMPTY, ln);
+    }
+
+    // Check for function definition: name followed by ( params ) {
+    // We need to figure out if we're looking at a function or a variable.
+    // The key distinction: if we have ( params ) { body }, it's a function.
+    // We might have already consumed the function params in parse_declarator.
+    // Re-check: if the next token is { or if the type's base indicates function.
+
+    // Actually, after parse_declarator, if we encounter '(' next, it means
+    // the declarator name was just the name and the function params are next.
+    // OR: the declarator already handled the suffix.
+    // Let's handle it here.
+
+    if (!is_fptr_global && check(TokenKind::LParen)) {
+        // Function declaration or definition
+        consume();  // consume (
+        std::vector<Node*> params;
+        bool variadic = false;
+        if (!check(TokenKind::RParen)) {
+            while (!at_end()) {
+                if (check(TokenKind::Ellipsis)) {
+                    variadic = true;
+                    consume();
+                    break;
+                }
+                if (check(TokenKind::RParen)) break;
+                // K&R-style: just identifiers
+                if (!is_type_start() && check(TokenKind::Identifier)) {
+                    consume();
+                    if (match(TokenKind::Comma)) continue;
+                    break;
+                }
+                if (!is_type_start()) break;
+                Node* p = parse_param();
+                if (p) params.push_back(p);
+                if (check(TokenKind::Ellipsis)) {
+                    variadic = true;
+                    consume();
+                    break;
+                }
+                if (!match(TokenKind::Comma)) break;
+            }
+        }
+        expect(TokenKind::RParen);
+        skip_attributes();
+        skip_asm();
+        skip_attributes();
+
+        // Check for K&R param type declarations before body
+        while (is_type_start() && !check(TokenKind::LBrace)) {
+            skip_until(TokenKind::Semi);
+        }
+
+        if (check(TokenKind::LBrace)) {
+            // Function definition
+            Node* body = parse_block();
+            Node* fn = make_node(NK_FUNCTION, ln);
+            fn->type      = ts;
+            fn->name      = decl_name;
+            fn->variadic  = variadic;
+            fn->is_static = is_static;
+            fn->is_extern = is_extern;
+            fn->is_inline = is_inline;
+            fn->body      = body;
+            fn->n_params  = (int)params.size();
+            if (fn->n_params > 0) {
+                fn->params = arena_.alloc_array<Node*>(fn->n_params);
+                for (int i = 0; i < fn->n_params; ++i) fn->params[i] = params[i];
+            }
+            return fn;
+        }
+
+        // Function declaration only
+        match(TokenKind::Semi);
+        Node* fn = make_node(NK_FUNCTION, ln);
+        fn->type      = ts;
+        fn->name      = decl_name;
+        fn->variadic  = variadic;
+        fn->is_static = is_static;
+        fn->is_extern = is_extern;
+        fn->is_inline = is_inline;
+        fn->body      = nullptr;  // declaration only
+        fn->n_params  = (int)params.size();
+        if (fn->n_params > 0) {
+            fn->params = arena_.alloc_array<Node*>(fn->n_params);
+            for (int i = 0; i < fn->n_params; ++i) fn->params[i] = params[i];
+        }
+        return fn;
+    }
+
+    // Global variable (possibly with initializer and multiple declarators)
+    std::vector<Node*> gvars;
+
+    auto make_gvar = [&](TypeSpec gts, const char* gname, Node* ginit) {
+        Node* gv = make_node(NK_GLOBAL_VAR, ln);
+        gv->type      = gts;
+        gv->name      = gname;
+        gv->init      = ginit;
+        gv->is_static = is_static;
+        gv->is_extern = is_extern;
+        return gv;
+    };
+
+    Node* first_init = nullptr;
+    if (match(TokenKind::Assign)) {
+        first_init = parse_initializer();
+    }
+    gvars.push_back(make_gvar(ts, decl_name, first_init));
+
+    while (match(TokenKind::Comma)) {
+        TypeSpec ts2 = base_ts;
+        ts2.ptr_level = 0;
+        ts2.array_size = -1;
+        ts2.array_size_expr = nullptr;
+        const char* n2 = nullptr;
+        parse_declarator(ts2, &n2);
+        skip_attributes();
+        skip_asm();
+        Node* init2 = nullptr;
+        if (match(TokenKind::Assign)) init2 = parse_initializer();
+        if (n2) gvars.push_back(make_gvar(ts2, n2, init2));
+    }
+    match(TokenKind::Semi);
+
+    if (gvars.size() == 1) return gvars[0];
+
+    // Multiple global vars — wrap in a block
+    Node* blk = make_node(NK_BLOCK, ln);
+    blk->n_children = (int)gvars.size();
+    blk->children   = arena_.alloc_array<Node*>(blk->n_children);
+    for (int i = 0; i < blk->n_children; ++i) blk->children[i] = gvars[i];
+    return blk;
+}
+
+// ── parse() entry point ───────────────────────────────────────────────────────
+
+Node* Parser::parse() {
+    std::vector<Node*> items;
+
+    while (!at_end()) {
+        Node* item = nullptr;
+        try {
+            item = parse_top_level();
+        } catch (const std::exception& e) {
+            // Parse error: print warning and try to recover to next semicolon / }
+            fprintf(stderr, "parse error: %s (skipping to next ';' or '}')\n", e.what());
+            while (!at_end() && !check(TokenKind::Semi) && !check(TokenKind::RBrace)) {
+                consume();
+            }
+            if (!at_end()) consume();
+            continue;
+        }
+        if (item) items.push_back(item);
+    }
+
+    // Prepend collected struct/enum definitions (so IR builder sees them first)
+    std::vector<Node*> all;
+    for (Node* sd : struct_defs_) all.push_back(sd);
+    for (Node* it : items)        all.push_back(it);
+
+    Node* prog = make_node(NK_PROGRAM, 0);
+    prog->n_children = (int)all.size();
+    if (prog->n_children > 0) {
+        prog->children = arena_.alloc_array<Node*>(prog->n_children);
+        for (int i = 0; i < prog->n_children; ++i) prog->children[i] = all[i];
+    }
+    return prog;
+}
+
+// ── node constructors ─────────────────────────────────────────────────────────
+
+Node* Parser::make_node(NodeKind k, int line) {
+    Node* n = arena_.alloc_array<Node>(1);
+    n->kind = k;
+    n->line = line;
+    n->type.array_size = -1;
+    return n;
+}
+
+Node* Parser::make_int_lit(long long v, int line) {
+    Node* n = make_node(NK_INT_LIT, line);
+    n->ival = v;
+    return n;
+}
+
+Node* Parser::make_float_lit(double v, const char* raw, int line) {
+    Node* n = make_node(NK_FLOAT_LIT, line);
+    n->fval = v;
+    n->sval = raw;
+    return n;
+}
+
+Node* Parser::make_str_lit(const char* raw, int line) {
+    Node* n = make_node(NK_STR_LIT, line);
+    n->sval = raw;
+    return n;
+}
+
+Node* Parser::make_var(const char* name, int line) {
+    Node* n = make_node(NK_VAR, line);
+    n->name = name;
+    return n;
+}
+
+Node* Parser::make_binop(const char* op, Node* l, Node* r, int line) {
+    Node* n = make_node(NK_BINOP, line);
+    n->op    = arena_.strdup(op);
+    n->left  = l;
+    n->right = r;
+    return n;
+}
+
+Node* Parser::make_unary(const char* op, Node* operand, int line) {
+    Node* n = make_node(NK_UNARY, line);
+    n->op   = arena_.strdup(op);
+    n->left = operand;
+    return n;
+}
+
+Node* Parser::make_assign(const char* op, Node* lhs, Node* rhs, int line) {
+    Node* n = make_node(NK_ASSIGN, line);
+    n->op    = arena_.strdup(op);
+    n->left  = lhs;
+    n->right = rhs;
+    return n;
+}
+
+Node* Parser::make_block(Node** stmts, int n_stmts, int line) {
+    Node* n = make_node(NK_BLOCK, line);
+    n->n_children = n_stmts;
+    if (n_stmts > 0 && stmts) {
+        n->children = arena_.alloc_array<Node*>(n_stmts);
+        for (int i = 0; i < n_stmts; ++i) n->children[i] = stmts[i];
+    }
+    return n;
+}
+
+// ── AST dump ─────────────────────────────────────────────────────────────────
+
+const char* node_kind_name(NodeKind k) {
+    switch (k) {
+        case NK_INT_LIT:      return "IntLit";
+        case NK_FLOAT_LIT:    return "FloatLit";
+        case NK_STR_LIT:      return "StrLit";
+        case NK_CHAR_LIT:     return "CharLit";
+        case NK_VAR:          return "Var";
+        case NK_BINOP:        return "BinOp";
+        case NK_UNARY:        return "Unary";
+        case NK_POSTFIX:      return "Postfix";
+        case NK_ADDR:         return "Addr";
+        case NK_DEREF:        return "Deref";
+        case NK_ASSIGN:       return "Assign";
+        case NK_COMPOUND_ASSIGN: return "CompoundAssign";
+        case NK_CALL:         return "Call";
+        case NK_INDEX:        return "Index";
+        case NK_MEMBER:       return "Member";
+        case NK_CAST:         return "Cast";
+        case NK_TERNARY:      return "Ternary";
+        case NK_SIZEOF_EXPR:  return "SizeofExpr";
+        case NK_SIZEOF_TYPE:  return "SizeofType";
+        case NK_ALIGNOF_TYPE: return "AlignofType";
+        case NK_COMMA_EXPR:   return "CommaExpr";
+        case NK_STMT_EXPR:    return "StmtExpr";
+        case NK_COMPOUND_LIT: return "CompoundLit";
+        case NK_VA_ARG:       return "VaArg";
+        case NK_INIT_LIST:    return "InitList";
+        case NK_INIT_ITEM:    return "InitItem";
+        case NK_BLOCK:        return "Block";
+        case NK_EXPR_STMT:    return "ExprStmt";
+        case NK_RETURN:       return "Return";
+        case NK_IF:           return "If";
+        case NK_WHILE:        return "While";
+        case NK_FOR:          return "For";
+        case NK_DO_WHILE:     return "DoWhile";
+        case NK_SWITCH:       return "Switch";
+        case NK_CASE:         return "Case";
+        case NK_CASE_RANGE:   return "CaseRange";
+        case NK_DEFAULT:      return "Default";
+        case NK_BREAK:        return "Break";
+        case NK_CONTINUE:     return "Continue";
+        case NK_GOTO:         return "Goto";
+        case NK_LABEL:        return "Label";
+        case NK_EMPTY:        return "Empty";
+        case NK_DECL:         return "Decl";
+        case NK_FUNCTION:     return "Function";
+        case NK_GLOBAL_VAR:   return "GlobalVar";
+        case NK_STRUCT_DEF:   return "StructDef";
+        case NK_ENUM_DEF:     return "EnumDef";
+        case NK_PROGRAM:      return "Program";
+        default:              return "Unknown";
+    }
+}
+
+static void indent_print(int depth) {
+    for (int i = 0; i < depth * 2; ++i) putchar(' ');
+}
+
+void ast_dump(const Node* n, int indent) {
+    if (!n) { indent_print(indent); printf("<null>\n"); return; }
+    indent_print(indent);
+    printf("%s", node_kind_name(n->kind));
+    switch (n->kind) {
+        case NK_INT_LIT:   printf("(%lld)", n->ival); break;
+        case NK_FLOAT_LIT: printf("(%g)", n->fval); break;
+        case NK_CHAR_LIT:  printf("(%lld)", n->ival); break;
+        case NK_STR_LIT:   printf("(...)"); break;
+        case NK_VAR:       printf("(%s)", n->name ? n->name : "?"); break;
+        case NK_BINOP:     printf("(%s)", n->op ? n->op : "?"); break;
+        case NK_UNARY:     printf("(%s)", n->op ? n->op : "?"); break;
+        case NK_POSTFIX:   printf("(%s)", n->op ? n->op : "?"); break;
+        case NK_ASSIGN:    printf("(%s)", n->op ? n->op : "?"); break;
+        case NK_MEMBER:    printf("(%s%s)", n->is_arrow ? "->" : ".", n->name ? n->name : "?"); break;
+        case NK_FUNCTION:  printf("(%s)", n->name ? n->name : "?"); break;
+        case NK_DECL:      printf("(%s)", n->name ? n->name : "?"); break;
+        case NK_GLOBAL_VAR: printf("(%s)", n->name ? n->name : "?"); break;
+        case NK_STRUCT_DEF: printf("(%s%s)", n->is_union ? "union " : "struct ", n->name ? n->name : "?"); break;
+        case NK_ENUM_DEF:  printf("(enum %s)", n->name ? n->name : "?"); break;
+        case NK_GOTO:      printf("(%s)", n->name ? n->name : "?"); break;
+        case NK_LABEL:     printf("(%s)", n->name ? n->name : "?"); break;
+        default: break;
+    }
+    printf("\n");
+
+    // Recurse into children
+    if (n->left)   ast_dump(n->left,   indent + 1);
+    if (n->right)  ast_dump(n->right,  indent + 1);
+    if (n->cond)   ast_dump(n->cond,   indent + 1);
+    if (n->then_)  ast_dump(n->then_,  indent + 1);
+    if (n->else_)  ast_dump(n->else_,  indent + 1);
+    if (n->init)   ast_dump(n->init,   indent + 1);
+    if (n->update) ast_dump(n->update, indent + 1);
+    if (n->body)   ast_dump(n->body,   indent + 1);
+
+    for (int i = 0; i < n->n_params; ++i) ast_dump(n->params[i], indent + 1);
+    for (int i = 0; i < n->n_children; ++i) ast_dump(n->children[i], indent + 1);
+    for (int i = 0; i < n->n_fields; ++i) ast_dump(n->fields[i], indent + 1);
 }
 
 }  // namespace tinyc2ll::frontend_cxx
-

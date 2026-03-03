@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -5,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "arena.hpp"
+#include "ast.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "token.hpp"
@@ -24,10 +27,13 @@ std::string read_file(const std::string &path) {
 }
 
 void print_usage(const char *argv0) {
-  std::cerr << "usage: " << argv0 << " [--version] [--lex-only|--parse-only] <input.c>\n";
+  std::cerr << "usage: " << argv0
+            << " [--version] [--lex-only|--parse-only] <input.c>\n";
 }
 
+// Emit a minimal LLVM IR stub (used until M3 IR builder is wired in).
 void print_ir_stub() {
+  std::cout << "; tiny-c2ll-stage1 M2-parse (IR stub)\n";
   std::cout << "define i32 @main() {\n";
   std::cout << "entry:\n";
   std::cout << "  ret i32 0\n";
@@ -48,11 +54,11 @@ int main(int argc, char **argv) {
       return 1;
     }
     if (args.size() == 1 && args[0] == "--version") {
-      std::cout << "tiny-c2ll frontend_cxx stage1\n";
+      std::cout << "tiny-c2ll frontend_cxx stage1 (M2-parse)\n";
       return 0;
     }
 
-    bool lex_only = false;
+    bool lex_only   = false;
     bool parse_only = false;
     std::string input;
     for (const auto &arg : args) {
@@ -89,14 +95,25 @@ int main(int argc, char **argv) {
       return 0;
     }
 
-    tc::Parser parser(tokens);
+    // Parse phase
+    tc::Arena arena;
+    tc::Parser parser(std::move(tokens), arena);
+    tc::Node* prog = parser.parse();
+
     if (parse_only) {
-      std::cout << parser.parse_program_summary() << "\n";
+      // Print a summary line followed by the full AST dump
+      printf("Program(%d items)\n", prog ? prog->n_children : 0);
+      if (prog) {
+        tc::ast_dump(prog, 0);
+      }
       return 0;
     }
 
+    // IR emission phase (stub until M3 wired in)
+    (void)prog;  // suppress unused warning
     print_ir_stub();
     return 0;
+
   } catch (const std::exception &ex) {
     std::cerr << "error: " << ex.what() << "\n";
     return 1;
