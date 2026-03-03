@@ -268,6 +268,10 @@ class IRBuilder:
         self.flow_terminated = False  # a new basic block is reachable (via label)
 
     def promote_to_i32(self, v: str, ty: str) -> str:
+        if ty in ("long", "unsigned long"):
+            t = self.tmp()
+            self.emit(f"  {t} = trunc i64 {v} to i32")
+            return t
         if ty in ("long long", "unsigned long long"):
             t = self.tmp()
             self.emit(f"  {t} = trunc i64 {v} to i32")
@@ -289,6 +293,29 @@ class IRBuilder:
             self.emit(f"  {t} = fptosi float {v} to i32")
             return t
         return v
+
+    def truthy_i1(self, v: str, ty: str) -> str:
+        """Convert a scalar/pointer value to i1 for condition checks."""
+        b = self.tmp()
+        ll_ty = self.llvm_ty(ty)
+        if ll_ty == "ptr":
+            self.emit(f"  {b} = icmp ne ptr {v}, null")
+            return b
+        if ll_ty == "i64":
+            self.emit(f"  {b} = icmp ne i64 {v}, 0")
+            return b
+        if ll_ty == "i8":
+            self.emit(f"  {b} = icmp ne i8 {v}, 0")
+            return b
+        if ll_ty == "double":
+            self.emit(f"  {b} = fcmp one double {v}, 0.0")
+            return b
+        if ll_ty == "float":
+            self.emit(f"  {b} = fcmp one float {v}, 0.0")
+            return b
+        v = self.promote_to_i32(v, ty)
+        self.emit(f"  {b} = icmp ne i32 {v}, 0")
+        return b
 
     def emit_convert(self, v: str, src_ty: str, dst_ty: str) -> str:
         """Emit type conversion from src_ty to dst_ty. Returns the new value."""
@@ -467,9 +494,11 @@ class IRBuilder:
                     return et[:-1]
                 return "int"
             case UnaryOp(op=op):
-                if op in ("+", "-"):
+                if op in ("+", "-", "~"):
                     inner_ty = self.expr_type(n.expr)
-                    if inner_ty in ("double", "float"):
+                    if op in ("+", "-") and inner_ty in ("double", "float"):
+                        return inner_ty
+                    if inner_ty in ("long", "unsigned long", "long long", "unsigned long long"):
                         return inner_ty
                 return "int"
             case Cast(typ=typ):
@@ -1081,12 +1110,7 @@ class IRBuilder:
                 t = self.tmp()
                 if op in {"&&", "||"}:
                     lty = self.expr_type(lhs)
-                    lb = self.tmp()
-                    if lty.endswith("*"):
-                        self.emit(f"  {lb} = icmp ne ptr {l}, null")
-                    else:
-                        l = self.promote_to_i32(l, lty)
-                        self.emit(f"  {lb} = icmp ne i32 {l}, 0")
+                    lb = self.truthy_i1(l, lty)
                     rhs_lbl = self.new_label("logic_rhs")
                     short_lbl = self.new_label("logic_short")
                     end_lbl = self.new_label("logic_end")
@@ -1099,12 +1123,7 @@ class IRBuilder:
                     if rbv is None:
                         raise CompileError("codegen error: void value used in logical operation")
                     rty = self.expr_type(rhs)
-                    rb = self.tmp()
-                    if rty.endswith("*"):
-                        self.emit(f"  {rb} = icmp ne ptr {rbv}, null")
-                    else:
-                        rbv = self.promote_to_i32(rbv, rty)
-                        self.emit(f"  {rb} = icmp ne i32 {rbv}, 0")
+                    rb = self.truthy_i1(rbv, rty)
                     self.emit(f"  br label %{end_lbl}")
                     self.emit_label(short_lbl)
                     short_v = "0" if op == "&&" else "1"
@@ -1136,12 +1155,15 @@ class IRBuilder:
                     self.emit(f"  {b} = fcmp {fcmp_map[op]} {fp_ty} {ld}, {rd}")
                     self.emit(f"  {t} = zext i1 {b} to i32")
                     return t
-                # Determine if we need i64 arithmetic (long long operands)
-                use_i64 = lty in ("long long", "unsigned long long") or rty in ("long long", "unsigned long long")
+                # Determine if we need i64 arithmetic (LP64 long/long long families)
+                use_i64 = (
+                    lty in ("long", "unsigned long", "long long", "unsigned long long")
+                    or rty in ("long", "unsigned long", "long long", "unsigned long long")
+                )
                 if use_i64:
                     # Promote both operands to i64
                     def _to_i64(v: str, ty: str) -> str:
-                        if ty in ("long long", "unsigned long long"):
+                        if ty in ("long", "unsigned long", "long long", "unsigned long long"):
                             return v  # already i64
                         if ty.endswith("*"):
                             ext = self.tmp()
@@ -1194,7 +1216,7 @@ class IRBuilder:
                         self.emit(f"  {r32} = trunc i64 {r} to i32")
                         shift_op = "shl" if op == "<<" else "ashr"
                         promoted_lty = "int" if lty in ("char", "short", "unsigned short") else lty
-                        if promoted_lty in ("long long", "unsigned long long"):
+                        if promoted_lty in ("long", "unsigned long", "long long", "unsigned long long"):
                             # Result is i64
                             r_ext = self.tmp()
                             self.emit(f"  {r_ext} = zext i32 {r32} to i64")
@@ -1316,21 +1338,41 @@ class IRBuilder:
                     fp_ty = self.llvm_ty(vty)
                     self.emit(f"  {t} = fneg {fp_ty} {v}")
                     return t
-                # Promote char/i8 values to i32 before arithmetic
-                v = self.promote_to_i32(v, vty)
+                ll_vty = self.llvm_ty(vty)
+                arith_ty = ll_vty
+                arith_v = v
+                if ll_vty == "i8":
+                    # Integer promotions apply to char types before unary arithmetic.
+                    arith_v = self.promote_to_i32(v, vty)
+                    arith_ty = "i32"
                 if op == "-":
-                    self.emit(f"  {t} = sub i32 0, {v}")
+                    if arith_ty in ("i32", "i64"):
+                        self.emit(f"  {t} = sub {arith_ty} 0, {arith_v}")
+                    else:
+                        self.emit(f"  {t} = sub i32 0, {self.promote_to_i32(v, vty)}")
                     return t
                 if op == "!":
                     b = self.tmp()
-                    if vty.endswith("*"):
+                    if ll_vty == "ptr":
                         self.emit(f"  {b} = icmp eq ptr {v}, null")
+                    elif ll_vty == "i64":
+                        self.emit(f"  {b} = icmp eq i64 {v}, 0")
+                    elif ll_vty == "i8":
+                        self.emit(f"  {b} = icmp eq i8 {v}, 0")
+                    elif ll_vty == "double":
+                        self.emit(f"  {b} = fcmp oeq double {v}, 0.0")
+                    elif ll_vty == "float":
+                        self.emit(f"  {b} = fcmp oeq float {v}, 0.0")
                     else:
                         self.emit(f"  {b} = icmp eq i32 {v}, 0")
                     self.emit(f"  {t} = zext i1 {b} to i32")
                     return t
                 if op == "~":
-                    self.emit(f"  {t} = xor i32 {v}, -1")
+                    if arith_ty in ("i32", "i64"):
+                        self.emit(f"  {t} = xor {arith_ty} {arith_v}, -1")
+                    else:
+                        v32 = self.promote_to_i32(v, vty)
+                        self.emit(f"  {t} = xor i32 {v32}, -1")
                     return t
                 raise CompileError(f"codegen error: unsupported unary operator {op!r}")
             case Cast(typ=typ, expr=expr):
@@ -1467,7 +1509,8 @@ class IRBuilder:
                 if src in int_types and dst.endswith("*"):
                     p = self.tmp()
                     q = self.tmp()
-                    self.emit(f"  {p} = sext i32 {v} to i64")
+                    pv = self.emit_convert(v, src, "long")
+                    self.emit(f"  {p} = add i64 {pv}, 0")
                     self.emit(f"  {q} = inttoptr i64 {p} to ptr")
                     return q
                 if dst == "void":
@@ -1477,7 +1520,8 @@ class IRBuilder:
                     if src in ("int", "long", "unsigned", "unsigned long", "short", "long long", "unsigned long long"):
                         p = self.tmp()
                         q = self.tmp()
-                        self.emit(f"  {p} = sext i32 {v} to i64")
+                        pv = self.emit_convert(v, src, "long")
+                        self.emit(f"  {p} = add i64 {pv}, 0")
                         self.emit(f"  {q} = inttoptr i64 {p} to ptr")
                         return q
                     return v  # already a pointer
@@ -1497,13 +1541,8 @@ class IRBuilder:
                 cv = self.codegen_expr(cond)
                 if cv is None:
                     raise CompileError("codegen error: void condition in ternary")
-                cb = self.tmp()
                 cty = self.expr_type(cond)
-                if cty.endswith("*"):
-                    self.emit(f"  {cb} = icmp ne ptr {cv}, null")
-                else:
-                    cv = self.promote_to_i32(cv, cty)
-                    self.emit(f"  {cb} = icmp ne i32 {cv}, 0")
+                cb = self.truthy_i1(cv, cty)
                 then_lbl = self.new_label("ternary_then")
                 else_lbl = self.new_label("ternary_else")
                 end_lbl = self.new_label("ternary_end")
@@ -1777,11 +1816,7 @@ class IRBuilder:
                             v = self.promote_to_i32(v, aty)
                             arg_ty = "i32"
                         elif aty in ("long", "unsigned long"):
-                            # LP64: long is 64-bit; sign/zero-extend i32 → i64 for variadic
-                            t = self.tmp()
-                            ext_op = "zext" if aty == "unsigned long" else "sext"
-                            self.emit(f"  {t} = {ext_op} i32 {v} to i64")
-                            v = t
+                            # LP64: long is 64-bit; pass as i64.
                             arg_ty = "i64"
                         elif aty in ("long long", "unsigned long long"):
                             # long long is already i64
@@ -2187,13 +2222,8 @@ class IRBuilder:
                 cond_v = self.codegen_expr(cond)
                 if cond_v is None:
                     raise CompileError("codegen error: void condition in if")
-                cond_b = self.tmp()
                 cty = self.expr_type(cond)
-                if cty.endswith("*"):
-                    self.emit(f"  {cond_b} = icmp ne ptr {cond_v}, null")
-                else:
-                    cond_v = self.promote_to_i32(cond_v, cty)
-                    self.emit(f"  {cond_b} = icmp ne i32 {cond_v}, 0")
+                cond_b = self.truthy_i1(cond_v, cty)
                 then_lbl = self.new_label("if_then")
                 end_lbl = self.new_label("if_end")
                 if else_stmt is None:
@@ -2227,13 +2257,8 @@ class IRBuilder:
                 cond_v = self.codegen_expr(cond)
                 if cond_v is None:
                     raise CompileError("codegen error: void condition in while")
-                cond_b = self.tmp()
                 cty = self.expr_type(cond)
-                if cty.endswith("*"):
-                    self.emit(f"  {cond_b} = icmp ne ptr {cond_v}, null")
-                else:
-                    cond_v = self.promote_to_i32(cond_v, cty)
-                    self.emit(f"  {cond_b} = icmp ne i32 {cond_v}, 0")
+                cond_b = self.truthy_i1(cond_v, cty)
                 self.emit(f"  br i1 {cond_b}, label %{body_lbl}, label %{end_lbl}")
                 self.emit_label(body_lbl)
                 self.loop_stack.append((end_lbl, cond_lbl))
@@ -2263,13 +2288,8 @@ class IRBuilder:
                     cond_v = self.codegen_expr(cond)
                     if cond_v is None:
                         raise CompileError("codegen error: void condition in for")
-                    cond_b = self.tmp()
                     cty = self.expr_type(cond)
-                    if cty.endswith("*"):
-                        self.emit(f"  {cond_b} = icmp ne ptr {cond_v}, null")
-                    else:
-                        cond_v = self.promote_to_i32(cond_v, cty)
-                        self.emit(f"  {cond_b} = icmp ne i32 {cond_v}, 0")
+                    cond_b = self.truthy_i1(cond_v, cty)
                     self.emit(f"  br i1 {cond_b}, label %{body_lbl}, label %{end_lbl}")
                 self.emit_label(body_lbl)
                 self.loop_stack.append((end_lbl, post_lbl))
@@ -2302,13 +2322,8 @@ class IRBuilder:
                 cond_v = self.codegen_expr(cond)
                 if cond_v is None:
                     raise CompileError("codegen error: void condition in do-while")
-                cond_b = self.tmp()
                 cty = self.expr_type(cond)
-                if cty.endswith("*"):
-                    self.emit(f"  {cond_b} = icmp ne ptr {cond_v}, null")
-                else:
-                    cond_v = self.promote_to_i32(cond_v, cty)
-                    self.emit(f"  {cond_b} = icmp ne i32 {cond_v}, 0")
+                cond_b = self.truthy_i1(cond_v, cty)
                 self.emit(f"  br i1 {cond_b}, label %{body_lbl}, label %{end_lbl}")
                 self.emit_label(end_lbl)
                 return False
@@ -2437,6 +2452,14 @@ class IRBuilder:
         sv = self.codegen_expr(expr)
         if sv is None:
             raise CompileError("codegen error: void switch expression")
+        sty = self.expr_type(expr)
+        sll = self.llvm_ty(sty)
+        if sll == "i8":
+            sv = self.promote_to_i32(sv, sty)
+            sll = "i32"
+        if sll not in ("i32", "i64"):
+            sv = self.promote_to_i32(sv, sty)
+            sll = "i32"
         end_lbl = self.new_label("switch_end")
         dispatch_lbl = self.new_label("switch_dispatch")
         self.emit(f"  br label %{dispatch_lbl}")
@@ -2449,7 +2472,7 @@ class IRBuilder:
         cur_lbl = dispatch_lbl
         for cv, target in case_map.items():
             cmp = self.tmp()
-            self.emit(f"  {cmp} = icmp eq i32 {sv}, {cv}")
+            self.emit(f"  {cmp} = icmp eq {sll} {sv}, {cv}")
             next_lbl = self.new_label("switch_next")
             self.emit(f"  br i1 {cmp}, label %{target}, label %{next_lbl}")
             self.emit_label(next_lbl)
@@ -2624,7 +2647,7 @@ class IRBuilder:
                 self.emit(f"@{name} = global {fp_ty} {_fp_to_llvm_hex(init_val, gty)}")
                 continue
             init_val = 0 if init is None else self.eval_global_const(init)
-            self.emit(f"@{name} = global i32 {init_val}")
+            self.emit(f"@{name} = global {self.llvm_ty(gty)} {init_val}")
         if self.global_vars:
             self.emit("")
 
