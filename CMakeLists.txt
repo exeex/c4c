@@ -80,47 +80,45 @@ if(C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
 endif()
 
 # ============================================================
-# C Frontend (stage1) – compiled with system clang/cc
-# M0: skeleton + CMake target
-# M1/M2: lexer + parser
+# C++ Frontend (stage1) – Rust-parity-first skeleton
+# M0: build skeleton + lexer/parser stubs
 # ============================================================
-enable_language(C)
+enable_language(CXX)
 
-set(FRONTEND_C_SRCS
-    "${PROJECT_SOURCE_DIR}/src/frontend_c/driver.c"
-    "${PROJECT_SOURCE_DIR}/src/frontend_c/lexer.c"
-    "${PROJECT_SOURCE_DIR}/src/frontend_c/arena.c"
-    "${PROJECT_SOURCE_DIR}/src/frontend_c/parser.c"
-    "${PROJECT_SOURCE_DIR}/src/frontend_c/ir_builder.c"
+set(FRONTEND_CXX_SRCS
+    "${PROJECT_SOURCE_DIR}/src/frontend_c/driver.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend_c/token.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend_c/lexer.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend_c/parser.cpp"
 )
 
-add_executable(frontend_c_stage1 ${FRONTEND_C_SRCS})
-target_include_directories(frontend_c_stage1 PRIVATE
+add_executable(frontend_cxx_stage1 ${FRONTEND_CXX_SRCS})
+target_include_directories(frontend_cxx_stage1 PRIVATE
     "${PROJECT_SOURCE_DIR}/src/frontend_c"
 )
-set_target_properties(frontend_c_stage1 PROPERTIES
-    C_STANDARD 11
-    C_STANDARD_REQUIRED ON
+set_target_properties(frontend_cxx_stage1 PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
     OUTPUT_NAME "tiny-c2ll-stage1"
 )
-target_compile_options(frontend_c_stage1 PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_options(frontend_cxx_stage1 PRIVATE -Wall -Wextra -Wpedantic)
 
 # Smoke test: --version exits 0
 add_test(
-    NAME frontend_c_stage1_version
-    COMMAND frontend_c_stage1 --version
+    NAME frontend_cxx_stage1_version
+    COMMAND frontend_cxx_stage1 --version
 )
-set_tests_properties(frontend_c_stage1_version PROPERTIES
+set_tests_properties(frontend_cxx_stage1_version PROPERTIES
     PASS_REGULAR_EXPRESSION "tiny-c2ll"
 )
 
 # Smoke test: --lex-only on the example file produces token output
 if(EXISTS "${EXAMPLE_C}")
   add_test(
-      NAME frontend_c_stage1_lex
-      COMMAND frontend_c_stage1 --lex-only "${EXAMPLE_C}"
+      NAME frontend_cxx_stage1_lex
+      COMMAND frontend_cxx_stage1 --lex-only "${EXAMPLE_C}"
   )
-  set_tests_properties(frontend_c_stage1_lex PROPERTIES
+  set_tests_properties(frontend_cxx_stage1_lex PROPERTIES
       PASS_REGULAR_EXPRESSION "EOF"
   )
 endif()
@@ -128,10 +126,10 @@ endif()
 # Smoke test: --parse-only on the example file produces AST output
 if(EXISTS "${EXAMPLE_C}")
   add_test(
-      NAME frontend_c_stage1_parse
-      COMMAND frontend_c_stage1 --parse-only "${EXAMPLE_C}"
+      NAME frontend_cxx_stage1_parse
+      COMMAND frontend_cxx_stage1 --parse-only "${EXAMPLE_C}"
   )
-  set_tests_properties(frontend_c_stage1_parse PROPERTIES
+  set_tests_properties(frontend_cxx_stage1_parse PROPERTIES
       PASS_REGULAR_EXPRESSION "Program"
   )
 endif()
@@ -139,10 +137,10 @@ endif()
 # Smoke test: full IR emission on the example file produces valid LLVM IR (stdout)
 if(EXISTS "${EXAMPLE_C}")
   add_test(
-      NAME frontend_c_stage1_emit_ir
-      COMMAND frontend_c_stage1 "${EXAMPLE_C}"
+      NAME frontend_cxx_stage1_emit_ir
+      COMMAND frontend_cxx_stage1 "${EXAMPLE_C}"
   )
-  set_tests_properties(frontend_c_stage1_emit_ir PROPERTIES
+  set_tests_properties(frontend_cxx_stage1_emit_ir PROPERTIES
       PASS_REGULAR_EXPRESSION "define"
   )
 endif()
