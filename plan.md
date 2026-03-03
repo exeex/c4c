@@ -177,86 +177,101 @@ python3.14 tests/run_c_testsuite.py \
 - `build/c_testsuite/logs/backend_fail.log`
 - `build/c_testsuite/logs/runtime_fail.log`
 
-## C Rewrite Frontend Plan (Self-Hosting, LLVM IR Text Output First)
+## C++ Frontend First Plan (Rust Parity, Then Pure-C Backport)
 
 ### Target
 
-- Rewrite `src/frontend/*.py` in C (allow limited C++ helpers in `utils.cpp`).
+- Implement `src/frontend_c/` in C++ first to accelerate delivery and reduce friction.
+- Mirror `ref/claudes-c-compiler/src/frontend` Rust architecture (`lexer -> parser -> sema -> IR`) as the primary reference.
 - Keep output as LLVM IR text (debug-friendly).
-- Reach self-compilation (bootstrap) with stable test pipeline.
+- Preserve a clear backport path to pure C after behavior parity is reached.
 
 ### Reference Mapping
 
-- `/tmp/ref/amacc`: take minimalist single-pass style, explicit symbol tables, precedence parsing mindset.
-- `/tmp/ref/claudes-c-compiler`: take strict phase boundaries and module contracts (`frontend -> sema -> IR`), plus differential testing discipline.
-- Current Python frontend remains stage0 oracle for behavior parity while migrating.
+- `ref/claudes-c-compiler/src/frontend`: primary structure and phase-contract reference.
+- `/tmp/ref/amacc`: minimal compiler tactics, symbol-table style, pragmatic parsing ideas.
+- `src/frontend/*.py`: stage0 oracle for behavior parity and regression checking.
 
 ### Proposed Source Layout
 
 - `src/frontend_c/`
-  - `common.h` `diag.c` (errors, span)
-  - `token.h` `lexer.c`
-  - `ast.h` `arena.c`
-  - `parser.c`
-  - `sema.c`
-  - `ir_builder.c` (string emitter)
-  - `driver.c` (`main`, `-o`, preprocess call)
-  - `utils.h` `utils.cpp` (complex string/path utilities only, C ABI)
+  - `common.hpp` `diag.cpp`
+  - `token.hpp` `lexer.cpp`
+  - `ast.hpp` `arena.cpp`
+  - `parser.cpp`
+  - `sema.cpp`
+  - `ir_builder.cpp` (LLVM IR text emitter)
+  - `driver.cpp` (`main`, `-o`, preprocess call)
+  - optional C-compat shim headers for future pure-C backport checkpoints
 
-### Bootstrap Strategy
+### Bootstrap Strategy (C++ First)
 
 1. Stage0
-   - Existing Python compiler compiles C frontend sources to `.ll`.
+   - Python frontend remains correctness oracle.
 2. Stage1
-   - `clang` links generated `.ll` into native compiler binary.
+   - Build C++ frontend binary with `clang++`.
 3. Stage2
-   - New C compiler compiles its own sources again.
-   - Compare stage1/stage2 behavior on smoke + allowlist tests.
+   - C++ frontend passes smoke tests and allowlist parity targets.
+4. Stage3 (planned)
+   - Backport C++ modules to pure C incrementally with parity locks.
 
 ### Milestones
 
 1. M0: Build skeleton + CMake targets
-   - Add `frontend_c_stage1` executable target.
-   - Keep Python path untouched.
-2. M1: Lexer + parser bootstrap subset
-   - Cover syntax actually used by `frontend_c` source first.
-3. M2: Semantic analyzer core
-   - Symbol tables, type checks, init/use checks, function signature checks.
-4. M3: IR builder (text output)
-   - Temp/label allocator, LLVM type mapping, control-flow emission.
-5. M4: Driver + preprocess
-   - Keep `clang -E -P` preprocess model initially (same as Python).
-6. M5: Self-host smoke
-   - Compile frontend C source with frontend C compiler itself.
-7. M6: c-testsuite allowlist parity
-   - Catch up to Python baseline, then flip default compiler path.
+   - Add `frontend_cxx_stage1` executable target.
+   - Keep existing Python compiler/test path untouched.
+2. M1: Lexer parity slice (Rust-mirrored)
+   - Reproduce token model and key lexer behavior from Rust reference.
+3. M2: Parser parity slice
+   - Match Rust frontend AST boundaries and precedence behavior.
+4. M3: Sema core parity
+   - Symbol tables, type checks, declaration/usage validation.
+5. M4: IR builder (text output)
+   - Temp/label allocation and control-flow emission parity with current expectations.
+6. M5: Driver + preprocess wiring
+   - Keep `clang -E -P` preprocessing model initially.
+7. M6: Allowlist parity gate
+   - Reach agreed pass threshold against Python baseline.
+8. M7: Pure-C backport planning + first converted module
+   - Start from lowest-risk module (usually lexer or utility layer).
 
 ### Test/Script Changes Required Early
 
-- Existing test runners call compiler as Python script.
-- Make runners dual-mode:
-  - `.py` path => `python <compiler> ...`
-  - binary path => `<compiler> ...`
-- This is required for `scripts/full_scan.sh` to run C frontend binary directly.
+- Keep runners dual-mode:
+  - `.py` compiler path => `python <compiler> ...`
+  - binary compiler path => `<compiler> ...`
+- Ensure `scripts/full_scan.sh` and c-testsuite runner can exercise both Python and C++ frontend binaries.
+- Add parity checks comparing Python vs C++ frontend behavior on focused fixtures.
 
-### `utils.cpp` Rule
+### C++ Coding Constraints (for future C backport)
 
-- Allowed only for complex helpers (string formatting, path normalization, reusable buffer ops).
-- Export only C ABI entry points (`extern "C"`), keep parser/sema/IR core in C for self-host transparency.
+- `class` is allowed, but only `public` members (no `private`/`protected` sections).
+- Class inheritance is forbidden.
+- `virtual` is forbidden.
+- Operator overloading is allowed.
+- `std::vector` is allowed.
+- `std::string` is allowed.
+- Prefer smart pointers to mimic Rust ownership style:
+  - Default to `std::unique_ptr` for single ownership.
+  - Use `std::shared_ptr` only for real shared ownership needs.
+  - Avoid raw `new`/`delete` in compiler core paths.
+- Avoid heavy template/meta-programming in compiler core.
+- Prefer explicit data structures that can be translated to C with bounded effort.
+- Keep ownership/lifetime simple and documented at module boundaries.
 
 ### IR Builder Roadmap
 
 - Phase-1 (now): string-based LLVM IR emission.
-- Phase-2 (optional): separate `ir_builder_llvm.cpp` with LLVM API backend behind a compile-time switch.
+- Phase-2 (optional): LLVM API backend (`ir_builder_llvm.cpp`) behind compile-time switch.
 
 ### Main Risks
 
-- Feature gap between Python frontend and bootstrap C subset.
-- Harness assumes Python invocation.
-- Semantic drift during migration.
+- Semantic drift from Python oracle while mirroring Rust design.
+- Test harness mismatch between script-mode and binary-mode compiler.
+- C++ conveniences creating backport friction.
 
 Mitigation:
 
-- Freeze coding profile for `src/frontend_c` until stage2 passes.
-- Keep Python as oracle and run differential checks on token/AST/IR snippets.
-- Add binary-mode test support before deep migration.
+- Keep Python oracle differential tests active during each milestone.
+- Lock module contracts early (token stream, AST forms, sema interfaces).
+- Enforce backportable coding profile in reviews and milestone checklists.
