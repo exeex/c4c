@@ -91,6 +91,7 @@ set(FRONTEND_CXX_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend_c/lexer.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend_c/arena.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend_c/parser.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend_c/ir_builder.cpp"
 )
 
 add_executable(frontend_cxx_stage1 ${FRONTEND_CXX_SRCS})

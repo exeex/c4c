@@ -261,7 +261,6 @@ TypeSpec Parser::parse_base_type() {
     bool has_unsigned = false;
     bool has_short    = false;
     int  long_count   = 0;
-    bool has_int      = false;
     bool has_char     = false;
     bool has_void     = false;
     bool has_float    = false;
@@ -297,7 +296,7 @@ TypeSpec Parser::parse_base_type() {
             case TokenKind::KwVoid:   has_void   = true; consume(); break;
             case TokenKind::KwChar:   has_char   = true; consume(); break;
             case TokenKind::KwShort:  has_short  = true; consume(); break;
-            case TokenKind::KwInt:    has_int    = true; consume(); break;
+            case TokenKind::KwInt:    consume(); break;
             case TokenKind::KwLong:   long_count++;      consume(); break;
             case TokenKind::KwFloat:  has_float  = true; consume(); break;
             case TokenKind::KwDouble: has_double = true; consume(); break;
@@ -394,6 +393,19 @@ TypeSpec Parser::parse_base_type() {
 
     // Resolve combined specifiers
     if (has_typedef) {
+        // Try to resolve the typedef to its underlying TypeSpec
+        const char* tname = ts.tag;
+        if (tname) {
+            auto it = typedef_types_.find(tname);
+            if (it != typedef_types_.end()) {
+                // Resolve: use the stored TypeSpec, preserving qualifiers from this context
+                bool save_const = ts.is_const, save_vol = ts.is_volatile;
+                ts = it->second;
+                ts.is_const   |= save_const;
+                ts.is_volatile |= save_vol;
+                return ts;
+            }
+        }
         ts.base = TB_TYPEDEF;
         // tag already set above
     } else if (has_void) {
@@ -457,6 +469,19 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
         ts.ptr_level++;
         // Skip extra stars for **fpp
         while (check(TokenKind::Star)) { consume(); ts.ptr_level++; }
+        // Skip nullability / qualifier annotations inside the parens: (* _Nullable name)
+        while (check(TokenKind::Identifier)) {
+            const std::string& lex = cur().lexeme;
+            if (lex == "_Nullable" || lex == "_Nonnull" || lex == "_Null_unspecified" ||
+                lex == "__nullable" || lex == "__nonnull" || lex == "__restrict" ||
+                lex == "restrict" || lex == "const" || lex == "volatile") {
+                consume();
+            } else {
+                break;
+            }
+        }
+        // Also skip keyword qualifiers (const, volatile, restrict)
+        while (is_qualifier(cur().kind)) consume();
         if (out_name && check(TokenKind::Identifier)) {
             *out_name = arena_.strdup(cur().lexeme);
             consume();
@@ -565,38 +590,53 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             consume();
             Node* inner = parse_struct_or_union(inner_union);
             if (inner) struct_defs_.push_back(inner);
-            // If the next token is not ';', there might be a member name
-            if (check(TokenKind::Identifier) || check(TokenKind::Semi)) {
-                if (!check(TokenKind::Semi)) {
-                    // Named member of inner struct type
-                    TypeSpec fts{};
-                    fts.array_size = -1;
-                    fts.base = inner_union ? TB_UNION : TB_STRUCT;
-                    fts.tag  = inner ? inner->name : nullptr;
-                    const char* fname = nullptr;
-                    parse_declarator(fts, &fname);
-                    if (fname) {
-                        Node* f = make_node(NK_DECL, cur().line);
-                        f->type = fts;
-                        f->name = fname;
-                        fields.push_back(f);
-                    }
-                    while (match(TokenKind::Comma)) {
-                        TypeSpec fts2 = fts;
-                        fts2.ptr_level = 0;
-                        fts2.array_size = -1;
-                        const char* fname2 = nullptr;
-                        parse_declarator(fts2, &fname2);
-                        if (fname2) {
-                            Node* f2 = make_node(NK_DECL, cur().line);
-                            f2->type = fts2;
-                            f2->name = fname2;
-                            fields.push_back(f2);
-                        }
+            // Parse optional declarator (name, *name, name[], etc.)
+            // This handles: struct S s; struct S *p; struct S arr[N]; (anonymous: struct S;)
+            TypeSpec anon_fts{};
+            anon_fts.array_size = -1;
+            anon_fts.base = inner_union ? TB_UNION : TB_STRUCT;
+            anon_fts.tag  = inner ? inner->name : nullptr;
+            bool has_declarator = !check(TokenKind::Semi) && !check(TokenKind::RBrace);
+            if (has_declarator) {
+                const char* fname = nullptr;
+                parse_declarator(anon_fts, &fname);
+                if (fname) {
+                    Node* f = make_node(NK_DECL, cur().line);
+                    f->type = anon_fts;
+                    f->name = fname;
+                    fields.push_back(f);
+                } else if (inner && inner->name) {
+                    // Declarator consumed pointer stars but no name — treat as anonymous
+                    Node* f = make_node(NK_DECL, cur().line);
+                    f->type = anon_fts;
+                    f->name = inner->name;  // use struct tag as synthetic field name
+                    f->is_anon_field = true;
+                    fields.push_back(f);
+                }
+                while (match(TokenKind::Comma)) {
+                    TypeSpec fts2{};
+                    fts2.array_size = -1;
+                    fts2.base = inner_union ? TB_UNION : TB_STRUCT;
+                    fts2.tag  = inner ? inner->name : nullptr;
+                    const char* fname2 = nullptr;
+                    parse_declarator(fts2, &fname2);
+                    if (fname2) {
+                        Node* f2 = make_node(NK_DECL, cur().line);
+                        f2->type = fts2;
+                        f2->name = fname2;
+                        fields.push_back(f2);
                     }
                 }
-                match(TokenKind::Semi);
+            } else if (inner && inner->name) {
+                // Truly anonymous: no declarator at all, just struct/union { ... };
+                // Add synthetic field using the tag as name for recursive lookup.
+                Node* f = make_node(NK_DECL, cur().line);
+                f->type = anon_fts;
+                f->name = inner->name;
+                f->is_anon_field = true;
+                fields.push_back(f);
             }
+            match(TokenKind::Semi);
             continue;
         }
 
@@ -1586,13 +1626,19 @@ Node* Parser::parse_local_decl() {
         const char* tdname = nullptr;
         TypeSpec ts_copy = base_ts;
         parse_declarator(ts_copy, &tdname);
-        if (tdname) typedefs_.insert(tdname);
+        if (tdname) {
+            typedefs_.insert(tdname);
+            typedef_types_[tdname] = ts_copy;
+        }
         // multiple declarators in typedef
         while (match(TokenKind::Comma)) {
             TypeSpec ts2 = base_ts;
             const char* tdn2 = nullptr;
             parse_declarator(ts2, &tdn2);
-            if (tdn2) typedefs_.insert(tdn2);
+            if (tdn2) {
+                typedefs_.insert(tdn2);
+                typedef_types_[tdn2] = ts2;
+            }
         }
         match(TokenKind::Semi);
         return make_node(NK_EMPTY, ln);
@@ -1695,16 +1741,22 @@ Node* Parser::parse_top_level() {
     skip_attributes();
 
     if (is_typedef) {
-        // Top-level typedef
+        // Local typedef
         const char* tdname = nullptr;
         TypeSpec ts_copy = base_ts;
         parse_declarator(ts_copy, &tdname);
-        if (tdname) typedefs_.insert(tdname);
+        if (tdname) {
+            typedefs_.insert(tdname);
+            typedef_types_[tdname] = ts_copy;
+        }
         while (match(TokenKind::Comma)) {
             TypeSpec ts2 = base_ts;
             const char* tdn2 = nullptr;
             parse_declarator(ts2, &tdn2);
-            if (tdn2) typedefs_.insert(tdn2);
+            if (tdn2) {
+                typedefs_.insert(tdn2);
+                typedef_types_[tdn2] = ts2;
+            }
         }
         match(TokenKind::Semi);
         return make_node(NK_EMPTY, ln);

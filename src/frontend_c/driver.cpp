@@ -8,6 +8,7 @@
 
 #include "arena.hpp"
 #include "ast.hpp"
+#include "ir_builder.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "token.hpp"
@@ -26,18 +27,24 @@ std::string read_file(const std::string &path) {
   return buf.str();
 }
 
-void print_usage(const char *argv0) {
-  std::cerr << "usage: " << argv0
-            << " [--version] [--lex-only|--parse-only] <input.c>\n";
+// Run clang -E -P on the input file and return the preprocessed source.
+// Falls back to reading the file directly if clang is not found.
+std::string preprocess(const std::string& path) {
+  std::string cmd = "clang -E -P -x c " + path + " 2>/dev/null";
+  FILE* fp = popen(cmd.c_str(), "r");
+  if (!fp) return read_file(path);
+  std::string result;
+  char buf[4096];
+  while (fgets(buf, sizeof(buf), fp))
+    result += buf;
+  int rc = pclose(fp);
+  if (rc != 0 || result.empty()) return read_file(path);
+  return result;
 }
 
-// Emit a minimal LLVM IR stub (used until M3 IR builder is wired in).
-void print_ir_stub() {
-  std::cout << "; tiny-c2ll-stage1 M2-parse (IR stub)\n";
-  std::cout << "define i32 @main() {\n";
-  std::cout << "entry:\n";
-  std::cout << "  ret i32 0\n";
-  std::cout << "}\n";
+void print_usage(const char *argv0) {
+  std::cerr << "usage: " << argv0
+            << " [--version] [--lex-only|--parse-only] [-o output.ll] <input.c>\n";
 }
 
 }  // namespace
@@ -54,18 +61,23 @@ int main(int argc, char **argv) {
       return 1;
     }
     if (args.size() == 1 && args[0] == "--version") {
-      std::cout << "tiny-c2ll frontend_cxx stage1 (M2-parse)\n";
+      std::cout << "tiny-c2ll frontend_cxx stage1 (M3-ir)\n";
       return 0;
     }
 
-    bool lex_only   = false;
-    bool parse_only = false;
+    bool        lex_only   = false;
+    bool        parse_only = false;
     std::string input;
-    for (const auto &arg : args) {
+    std::string output;
+
+    for (size_t i = 0; i < args.size(); i++) {
+      const std::string& arg = args[i];
       if (arg == "--lex-only") {
         lex_only = true;
       } else if (arg == "--parse-only") {
         parse_only = true;
+      } else if (arg == "-o") {
+        if (i + 1 < args.size()) output = args[++i];
       } else if (!arg.empty() && arg[0] == '-') {
         std::cerr << "unknown option: " << arg << "\n";
         return 2;
@@ -83,7 +95,7 @@ int main(int argc, char **argv) {
       return 2;
     }
 
-    std::string source = read_file(input);
+    std::string source = preprocess(input);
     tc::Lexer lexer(source);
     std::vector<tc::Token> tokens = lexer.scan_all();
 
@@ -109,9 +121,21 @@ int main(int argc, char **argv) {
       return 0;
     }
 
-    // IR emission phase (stub until M3 wired in)
-    (void)prog;  // suppress unused warning
-    print_ir_stub();
+    // IR emission phase (M3)
+    tc::IRBuilder builder;
+    std::string ir = builder.emit_program(prog);
+
+    // Write to output file or stdout
+    if (!output.empty()) {
+      std::ofstream out(output, std::ios::binary);
+      if (!out) {
+        std::cerr << "error: cannot open output file: " << output << "\n";
+        return 1;
+      }
+      out << ir;
+    } else {
+      std::cout << ir;
+    }
     return 0;
 
   } catch (const std::exception &ex) {

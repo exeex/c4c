@@ -16,6 +16,7 @@
 
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "arena.hpp"
@@ -37,6 +38,9 @@ class Parser {
   int                pos_;
   Arena&             arena_;
   std::set<std::string> typedefs_;  // known typedef names
+  // Maps typedef name → resolved TypeSpec (populated when registering typedefs)
+  // so subsequent uses of the typedef name resolve to the actual struct/base type.
+  std::unordered_map<std::string, TypeSpec> typedef_types_;
   std::vector<Node*>    struct_defs_;  // collected struct/enum defs (prepended)
   int                anon_counter_;  // counter for anonymous tag names
 

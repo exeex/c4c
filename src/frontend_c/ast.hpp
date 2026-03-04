@@ -198,6 +198,7 @@ struct Node {
     bool is_inline;     // NK_FUNCTION
     bool is_arrow;      // NK_MEMBER (-> = true, . = false)
     bool is_union;      // NK_STRUCT_DEF
+    bool is_anon_field; // NK_DECL: synthetic field for anonymous sub-struct/union
     bool is_designated; // NK_INIT_ITEM (has a designator)
     bool is_index_desig;// NK_INIT_ITEM (designator is index [N])
     long long desig_val;// NK_INIT_ITEM index designator value
