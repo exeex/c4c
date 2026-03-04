@@ -101,6 +101,8 @@ enum NodeKind {
     NK_STMT_EXPR,       // ({ ... }) : body=block node
     NK_COMPOUND_LIT,    // (type){...} : type + children=init items
     NK_VA_ARG,          // __builtin_va_arg(ap, type) : left=ap
+    NK_GENERIC,         // _Generic(expr, type1: val1, ...) : left=ctrl_expr,
+                        // children[i]=NK_CAST{type=assoc_type,left=val,ival=1 if default}
 
     // Initializer
     NK_INIT_LIST,       // { ... } initializer list: children=items

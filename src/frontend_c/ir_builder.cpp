@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstring>
+#include <unordered_set>
 #include <cstdint>
 #include <cmath>
 #include <sstream>
@@ -224,7 +225,25 @@ int IRBuilder::sizeof_ty(const TypeSpec& ts) {
 TypeSpec IRBuilder::expr_type(Node* n) {
   if (!n) return void_ts();
   switch (n->kind) {
-  case NK_INT_LIT:    return int_ts();
+  case NK_INT_LIT: {
+    // Check suffix for type: LL/ULL → long long, L/UL → long, U → unsigned int
+    const char* sv = n->sval;
+    if (sv) {
+      size_t len = strlen(sv);
+      // Scan suffix (case-insensitive): strip trailing 'l', 'll', 'u'
+      int lcount = 0; bool has_u = false;
+      for (int i = (int)len - 1; i >= 0; i--) {
+        char c = sv[i];
+        if (c == 'l' || c == 'L') { lcount++; }
+        else if (c == 'u' || c == 'U') { has_u = true; }
+        else break;
+      }
+      if (lcount >= 2) return has_u ? make_ts(TB_ULONGLONG) : make_ts(TB_LONGLONG);
+      if (lcount == 1) return has_u ? make_ts(TB_ULONG) : make_ts(TB_LONG);
+      if (has_u) return make_ts(TB_UINT);
+    }
+    return int_ts();
+  }
   case NK_CHAR_LIT:   return char_ts();
   case NK_FLOAT_LIT: {
     const char* sv = n->sval;
@@ -358,6 +377,14 @@ TypeSpec IRBuilder::expr_type(Node* n) {
   }
   case NK_CAST:
   case NK_COMPOUND_LIT:     return n->type;
+  case NK_GENERIC:
+    // Return type of first non-default association (they should all match anyway)
+    for (int i = 0; i < n->n_children; i++)
+      if (n->children[i] && n->children[i]->ival != 1)
+        return expr_type(n->children[i]->left);
+    if (n->n_children > 0 && n->children[0])
+      return expr_type(n->children[0]->left);
+    return int_ts();
   case NK_TERNARY:          return expr_type(n->then_);
   case NK_SIZEOF_EXPR:
   case NK_SIZEOF_TYPE:
@@ -2120,8 +2147,38 @@ std::string IRBuilder::codegen_expr(Node* n) {
     std::string llty = llvm_ty(ts);
     std::string slot = "%clit_" + std::to_string(tmp_idx_++);
     alloca_lines_.push_back("  " + slot + " = alloca " + llty);
-    // Initialize from init list if present
-    // For now, zero-initialize and return the ptr
+    // Initializer is in ->left (set by parser). Initialize field by field.
+    Node* cl_init = n->left ? n->left : n->init;
+    if (cl_init && cl_init->kind == NK_INIT_LIST && ts.base == TB_STRUCT && ts.tag &&
+        struct_defs_.count(ts.tag)) {
+      const StructInfo& si = struct_defs_[ts.tag];
+      std::string struct_llty = std::string("%struct.") + ts.tag;
+      int cur_fi = 0;
+      for (int i = 0; i < cl_init->n_children && cur_fi < (int)si.field_names.size(); i++) {
+        Node* item = cl_init->children[i];
+        Node* val_node = item;
+        int fi = cur_fi;
+        if (item && item->kind == NK_INIT_ITEM) {
+          if (item->desig_field) {
+            for (int j = 0; j < (int)si.field_names.size(); j++) {
+              if (si.field_names[j] == item->desig_field) { fi = j; break; }
+            }
+          }
+          val_node = item->left;
+        }
+        TypeSpec ft = si.field_types[fi];
+        if (si.field_array_sizes[fi] >= 0) ft.array_size = si.field_array_sizes[fi];
+        std::string field_llty = llvm_ty(ft);
+        std::string val = codegen_expr(val_node);
+        TypeSpec vts = expr_type(val_node);
+        val = coerce(val, vts, field_llty);
+        std::string gep = fresh_tmp();
+        emit(gep + " = getelementptr " + struct_llty + ", ptr " + slot +
+             ", i32 0, i32 " + std::to_string(fi));
+        emit("store " + field_llty + " " + val + ", ptr " + gep);
+        cur_fi = fi + 1;
+      }
+    }
     return slot;
   }
 
@@ -2172,6 +2229,55 @@ std::string IRBuilder::codegen_expr(Node* n) {
     std::string t = fresh_tmp();
     emit(t + " = va_arg ptr " + ap_ptr + ", " + llty);
     return t;
+  }
+
+  case NK_GENERIC: {
+    // _Generic(ctrl, type1: val1, ..., default: vN)
+    // children[i] = NK_CAST{type=assoc_type, left=val, ival=1 if default}
+    TypeSpec ctrl_ts = expr_type(n->left);
+    // Apply C11 lvalue conversion: remove top-level qualifiers for non-pointer types
+    // (const int → int, but const int * stays const int *)
+    if (ctrl_ts.ptr_level == 0 && !is_array_ty(ctrl_ts)) {
+      ctrl_ts.is_const = false;
+      ctrl_ts.is_volatile = false;
+    }
+    // String literals have type char[] → decayed to char* (NOT const char*)
+    if (n->left && n->left->kind == NK_STR_LIT) {
+      ctrl_ts = ptr_to(TB_CHAR);
+      ctrl_ts.is_const = false;
+    }
+    // Functions used as values: use return type + ptr_level=1 for matching
+    if (n->left && n->left->kind == NK_VAR && n->left->name &&
+        func_sigs_.count(n->left->name)) {
+      ctrl_ts = func_sigs_[n->left->name].ret_type;
+      ctrl_ts.ptr_level = 1;
+    }
+    // Type equality for _Generic matching (array rank matters too)
+    auto ts_match = [&](TypeSpec a, TypeSpec b) -> bool {
+      if (a.base != b.base) return false;
+      if (a.ptr_level != b.ptr_level) return false;
+      // Only check is_const for pointer types (pointed-to type qualifier)
+      if (a.ptr_level > 0 && a.is_const != b.is_const) return false;
+      // Array types must match rank and dimensions
+      if (array_rank_of(a) != array_rank_of(b)) return false;
+      // For struct/union/enum: compare tags
+      if ((a.base == TB_STRUCT || a.base == TB_UNION || a.base == TB_ENUM)) {
+        if (a.tag && b.tag) return strcmp(a.tag, b.tag) == 0;
+        return a.tag == b.tag;
+      }
+      return true;
+    };
+
+    // Find matching association
+    Node* default_val = nullptr;
+    for (int i = 0; i < n->n_children; i++) {
+      Node* assoc = n->children[i];
+      if (!assoc) continue;
+      if (assoc->ival == 1) { default_val = assoc->left; continue; }
+      if (ts_match(ctrl_ts, assoc->type)) return codegen_expr(assoc->left);
+    }
+    if (default_val) return codegen_expr(default_val);
+    return "0";
   }
 
   default:
@@ -2244,10 +2350,19 @@ void IRBuilder::emit_stmt(Node* n) {
     TypeSpec lts = local_types_[n->name];
     std::string llty = llvm_ty(lts);
 
+    // Compound literal initializer: unwrap to its init list (stored in ->left)
+    // e.g. struct S v = (struct S){1,2}; → treat same as struct S v = {1,2};
+    Node* effective_init = n->init;
+    if (n->init->kind == NK_COMPOUND_LIT &&
+        (is_array_ty(lts) || lts.base == TB_STRUCT || lts.base == TB_UNION)) {
+      Node* cl_body = n->init->left ? n->init->left : n->init->init;
+      if (cl_body) effective_init = cl_body;
+    }
+
     // Handle init list for arrays/structs specially
-    if (n->init->kind == NK_INIT_LIST) {
+    if (effective_init->kind == NK_INIT_LIST) {
       // Emit element-by-element stores
-      Node* lst = n->init;
+      Node* lst = effective_init;
       if (is_array_ty(lts)) {
         // Array initialization
         TypeSpec elem_ts = drop_array_dim(lts);
@@ -2264,7 +2379,44 @@ void IRBuilder::emit_stmt(Node* n) {
           }
           std::string val = codegen_expr(val_node);
           TypeSpec val_ts = expr_type(val_node);
-          val = coerce(val, val_ts, elem_llty);
+          // Use zeroinitializer for aggregate elements with zero value (fixes invalid IR)
+          if ((elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION || is_array_ty(elem_ts)) &&
+              val == "0") {
+            val = "zeroinitializer";
+          } else if ((elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION) &&
+                     elem_ts.ptr_level == 0 &&
+                     val_node->kind != NK_INIT_LIST &&
+                     val_node->kind != NK_COMPOUND_LIT) {
+            // Brace elision: scalar/pointer being stored into struct element
+            // Compound literal returns a ptr; load the struct value from it
+            const char* stag = elem_ts.tag;
+            if (stag && struct_defs_.count(stag)) {
+              const StructInfo& bsi = struct_defs_[stag];
+              if (!bsi.field_names.empty()) {
+                std::string tmp_s = "%clit_" + std::to_string(tmp_idx_++);
+                alloca_lines_.push_back("  " + tmp_s + " = alloca " + elem_llty);
+                TypeSpec ft0 = bsi.field_types[0];
+                std::string fllty0 = llvm_ty(ft0);
+                std::string fval = coerce(val, val_ts, fllty0);
+                std::string fgep = fresh_tmp();
+                emit(fgep + " = getelementptr " + elem_llty + ", ptr " + tmp_s + ", i32 0, i32 0");
+                emit("store " + fllty0 + " " + fval + ", ptr " + fgep);
+                std::string ld = fresh_tmp();
+                emit(ld + " = load " + elem_llty + ", ptr " + tmp_s);
+                val = ld;
+              }
+            }
+          } else if (val_node->kind == NK_COMPOUND_LIT &&
+                     (elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION) &&
+                     elem_ts.ptr_level == 0) {
+            // Compound literal returns ptr; load the struct value
+            val = coerce(val, val_ts, elem_llty);
+            std::string loaded = fresh_tmp();
+            emit(loaded + " = load " + elem_llty + ", ptr " + val);
+            val = loaded;
+          } else {
+            val = coerce(val, val_ts, elem_llty);
+          }
           std::string gep = fresh_tmp();
           emit(gep + " = getelementptr " + arr_llty + ", ptr " + it->second +
                ", i64 0, i64 " + std::to_string(idx));
@@ -2290,10 +2442,14 @@ void IRBuilder::emit_stmt(Node* n) {
               val_node = item->left;
             }
             TypeSpec ft = si.field_types[fi];
+            if (si.field_array_sizes[fi] >= 0) ft.array_size = si.field_array_sizes[fi];
             std::string field_llty = llvm_ty(ft);
             std::string val = codegen_expr(val_node);
             TypeSpec val_ts = expr_type(val_node);
             val = coerce(val, val_ts, field_llty);
+            // Use zeroinitializer for aggregate fields with zero value (fixes invalid IR)
+            if ((ft.base == TB_STRUCT || ft.base == TB_UNION || is_array_ty(ft)) && val == "0")
+              val = "zeroinitializer";
             std::string gep = fresh_tmp();
             emit(gep + " = getelementptr " + struct_llty + ", ptr " + it->second +
                  ", i32 0, i32 " + std::to_string(fi));
@@ -2350,7 +2506,14 @@ void IRBuilder::emit_stmt(Node* n) {
       break;
     }
 
-    // Simple scalar/pointer initialization
+    // Simple scalar/pointer initialization.
+    // For aggregate types (arrays, structs) with a zero-value init expression,
+    // use zeroinitializer to avoid `store [N x T] 0` which is invalid LLVM IR.
+    if ((is_array_ty(lts) || lts.base == TB_STRUCT || lts.base == TB_UNION) &&
+        n->init->kind == NK_INT_LIT && n->init->ival == 0) {
+      emit("store " + llty + " zeroinitializer, ptr " + it->second);
+      break;
+    }
     TypeSpec rts = expr_type(n->init);
     std::string rv = codegen_expr(n->init);
     rv = coerce(rv, rts, llty);
@@ -2539,7 +2702,9 @@ void IRBuilder::emit_stmt(Node* n) {
     SwitchInfo sw_info;
     sw_info.end_label = end_lbl;
 
-    // Find all case/default labels in the switch body
+    // Find all case/default labels in the switch body.
+    // Must recurse into any compound statement — Duff's Device places cases
+    // inside a do-while body; 00213 places cases inside an if(0) block.
     std::function<void(Node*)> scan_cases = [&](Node* node) {
       if (!node) return;
       if (node->kind == NK_CASE) {
@@ -2555,6 +2720,12 @@ void IRBuilder::emit_stmt(Node* n) {
       } else if (node->kind == NK_BLOCK) {
         for (int i = 0; i < node->n_children; i++)
           scan_cases(node->children[i]);
+      } else if (node->kind == NK_IF) {
+        scan_cases(node->then_);
+        scan_cases(node->else_);
+      } else if (node->kind == NK_WHILE || node->kind == NK_DO_WHILE ||
+                 node->kind == NK_FOR || node->kind == NK_LABEL) {
+        scan_cases(node->body);
       }
     };
     scan_cases(n->body);
@@ -2655,7 +2826,7 @@ void IRBuilder::emit_struct_def(Node* sd) {
   }
   struct_defs_[tag] = si;
 
-  if (sd->n_fields <= 0) return;
+  if (sd->n_fields <= 0) return;  // Skip empty/forward-decl structs for now
 
   // Emit LLVM struct type to preamble
   // For unions, we use a byte array: [max_sz x i8]
@@ -2723,6 +2894,43 @@ static int infer_array_size_from_init(Node* init) {
 std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
   if (!init) return "zeroinitializer";
 
+  // Array types MUST be checked before ptr_level: typedef-derived arrays like
+  // `typedef void (*fptr)(); fptr table[3]` have ptr_level>0 but are arrays.
+  // Exception: char arrays with string literal init are handled by the special
+  // block below (which produces LLVM c"..." syntax), so skip them here.
+  if (is_array_ty(ts) && array_dim_at(ts, 0) >= 0 &&
+      !(array_rank_of(ts) == 1 &&
+        (ts.base == TB_CHAR || ts.base == TB_SCHAR || ts.base == TB_UCHAR) &&
+        init->kind == NK_STR_LIT)) {
+    TypeSpec elem_ts = drop_array_dim(ts);
+    std::string elem_llty = llvm_ty(elem_ts);
+    int sz = (int)array_dim_at(ts, 0);
+    // Build per-element constants
+    std::vector<std::string> vals(sz, "zeroinitializer");
+    if (init->kind == NK_INIT_LIST) {
+      long long cur_idx = 0;
+      for (int i = 0; i < init->n_children; i++) {
+        Node* item = init->children[i];
+        long long idx = cur_idx;
+        Node* val_node = item;
+        if (item && item->kind == NK_INIT_ITEM) {
+          if (item->is_index_desig) idx = item->desig_val;
+          val_node = item->left;
+        }
+        if (idx >= 0 && idx < sz)
+          vals[(int)idx] = global_const(elem_ts, val_node);
+        cur_idx = idx + 1;
+      }
+    }
+    std::string result = "[";
+    for (int i = 0; i < sz; i++) {
+      if (i > 0) result += ", ";
+      result += elem_llty + " " + vals[i];
+    }
+    result += "]";
+    return result;
+  }
+
   // Pointer types
   if (ts.ptr_level > 0) {
     if (init->kind == NK_INT_LIT && init->ival == 0) return "null";
@@ -2746,31 +2954,35 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
       }
       // &(struct T){...} — compound literal at global scope:
       // create an internal global and return its address.
+      // Note: compound literal stores its initializer in ->left (not ->init).
       if (operand->kind == NK_COMPOUND_LIT) {
         TypeSpec clt = operand->type;
+        Node* cl_init = operand->left ? operand->left : operand->init;
         // Infer array size from init if needed
-        if (is_array_ty(clt) && array_dim_at(clt, 0) == -2 && operand->init) {
-          int inf = infer_array_size_from_init(operand->init);
+        if (is_array_ty(clt) && array_dim_at(clt, 0) == -2 && cl_init) {
+          int inf = infer_array_size_from_init(cl_init);
           if (inf > 0) set_first_array_dim(clt, inf);
         }
         std::string cname = "@.cl" + std::to_string(string_idx_++);
         std::string cllty = llvm_ty(clt);
-        std::string cval = operand->init ? global_const(clt, operand->init) : "zeroinitializer";
+        std::string cval = cl_init ? global_const(clt, cl_init) : "zeroinitializer";
         preamble_.push_back(cname + " = internal global " + cllty + " " + cval);
         return cname;
       }
     }
     // Bare compound literal used as pointer initializer (no &):
     // struct S *p = (struct S){...}; — treat as &(compound literal)
+    // Note: compound literal stores its initializer in ->left (not ->init).
     if (init->kind == NK_COMPOUND_LIT) {
       TypeSpec clt = init->type;
-      if (is_array_ty(clt) && array_dim_at(clt, 0) == -2 && init->init) {
-        int inf = infer_array_size_from_init(init->init);
+      Node* cl_init = init->left ? init->left : init->init;
+      if (is_array_ty(clt) && array_dim_at(clt, 0) == -2 && cl_init) {
+        int inf = infer_array_size_from_init(cl_init);
         if (inf > 0) set_first_array_dim(clt, inf);
       }
       std::string cname = "@.cl" + std::to_string(string_idx_++);
       std::string cllty = llvm_ty(clt);
-      std::string cval = init->init ? global_const(clt, init->init) : "zeroinitializer";
+      std::string cval = cl_init ? global_const(clt, cl_init) : "zeroinitializer";
       preamble_.push_back(cname + " = internal global " + cllty + " " + cval);
       return cname;
     }
@@ -2831,39 +3043,6 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
       }
       return std::string("c\"") + content + "\"";
     }
-  }
-
-  // Array types
-  if (is_array_ty(ts) && array_dim_at(ts, 0) >= 0) {
-    TypeSpec elem_ts = drop_array_dim(ts);
-    std::string elem_llty = llvm_ty(elem_ts);
-    int sz = (int)array_dim_at(ts, 0);
-    // Build per-element constants
-    std::vector<std::string> vals(sz, "zeroinitializer");
-    if (init->kind == NK_INIT_LIST) {
-      long long cur_idx = 0;
-      for (int i = 0; i < init->n_children; i++) {
-        Node* item = init->children[i];
-        long long idx = cur_idx;
-        Node* val_node = item;
-        if (item && item->kind == NK_INIT_ITEM) {
-          if (item->is_index_desig) idx = item->desig_val;
-          val_node = item->left;
-        }
-        if (idx >= 0 && idx < sz)
-          vals[(int)idx] = global_const(elem_ts, val_node);
-        cur_idx = idx + 1;
-      }
-    }
-    // Return just the bracket list (no outer [N x T] prefix — that is
-    // provided by the caller when embedding in a global or struct field).
-    std::string result = "[";
-    for (int i = 0; i < sz; i++) {
-      if (i > 0) result += ", ";
-      result += elem_llty + " " + vals[i];
-    }
-    result += "]";
-    return result;
   }
 
   // Struct types
@@ -3304,6 +3483,31 @@ std::string IRBuilder::emit_program(Node* prog) {
   // Prepend the va_list struct type definition before all other preamble lines.
   // AArch64 (macOS ARM64): va_list is a struct { ptr, ptr, ptr, i32, i32 } (40 bytes).
   out += "%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }\n";
+
+  // Find struct tags that are referenced in preamble lines but not defined there.
+  // Emit "type {}" for genuinely empty structs (known to struct_defs_ with 0 fields)
+  // so that forward references in containing struct definitions are resolved.
+  {
+    std::unordered_set<std::string> defined_tags;
+    defined_tags.insert("__va_list_tag_");
+    for (const auto& l : preamble_) {
+      // Lines like: %struct.TAG = type { ... }
+      if (l.substr(0, 8) == "%struct." && l.find(" = type") != std::string::npos) {
+        size_t eq = l.find(" = type");
+        std::string tag = l.substr(8, eq - 8);
+        defined_tags.insert(tag);
+      }
+    }
+    for (const auto& kv : struct_defs_) {
+      const std::string& tag = kv.first;
+      if (defined_tags.count(tag)) continue;
+      if (kv.second.field_names.empty()) {
+        // Genuinely empty struct - emit forward type {}
+        out += "%struct." + tag + " = type {}\n";
+      }
+    }
+  }
+
   for (const auto& l : preamble_) out += l + "\n";
 
   // Emit auto-declare lines for called-but-undeclared functions

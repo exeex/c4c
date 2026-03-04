@@ -339,6 +339,7 @@ bool Parser::is_type_start() const {
     if (is_type_kw(k)) return true;
     if (is_qualifier(k)) return true;
     if (is_storage_class(k)) return true;
+    if (k == TokenKind::KwAttribute) return true;  // __attribute__((x)) type cast
     if (k == TokenKind::KwAlignas || k == TokenKind::KwStaticAssert) return false;
     if (k == TokenKind::Identifier && is_typedef_name(cur().lexeme)) return true;
     return false;
@@ -675,11 +676,29 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
 
     bool used_paren_ptr_declarator = false;
 
-    // Check for parenthesised declarator: (*name) — function pointer / ptr-to-array form
-    if (check(TokenKind::LParen) && check2(TokenKind::Star)) {
+    // Check for parenthesised declarator: (*name) or (ATTR *name) — function pointer
+    // Peek past optional __attribute__((...)) to find * after (
+    auto paren_star_peek = [&]() -> bool {
+        if (!check(TokenKind::LParen)) return false;
+        int pk = pos_ + 1;
+        while (pk < (int)tokens_.size() && tokens_[pk].kind == TokenKind::KwAttribute) {
+            pk++;  // skip __attribute__
+            if (pk < (int)tokens_.size() && tokens_[pk].kind == TokenKind::LParen) {
+                int d = 1; pk++;
+                while (pk < (int)tokens_.size() && d > 0) {
+                    if (tokens_[pk].kind == TokenKind::LParen) d++;
+                    else if (tokens_[pk].kind == TokenKind::RParen) d--;
+                    pk++;
+                }
+            }
+        }
+        return pk < (int)tokens_.size() && tokens_[pk].kind == TokenKind::Star;
+    };
+    if (paren_star_peek()) {
         used_paren_ptr_declarator = true;
         // function pointer: (*name)(...) — record name, skip fn-ptr params
         consume();  // consume (
+        skip_attributes();  // skip any __attribute__((...)) before *
         consume();  // consume *
         ts.ptr_level++;
         // Skip extra stars for **fpp
@@ -1521,9 +1540,30 @@ Node* Parser::parse_primary() {
     // _Generic selection
     if (check(TokenKind::KwGeneric)) {
         consume();
-        // skip entire _Generic(...) — treat as 0 for now
-        skip_paren_group();
-        return make_int_lit(0, ln);
+        expect(TokenKind::LParen);
+        Node* ctrl = parse_assign_expr();
+        std::vector<Node*> assocs;
+        while (!check(TokenKind::RParen) && !at_end()) {
+            if (!match(TokenKind::Comma)) break;
+            if (check(TokenKind::RParen)) break;
+            Node* assoc = make_node(NK_CAST, cur().line);
+            if (check(TokenKind::KwDefault)) {
+                consume();
+                assoc->ival = 1;  // marks as default association
+            } else {
+                assoc->type = parse_type_name();
+            }
+            expect(TokenKind::Colon);
+            assoc->left = parse_assign_expr();
+            assocs.push_back(assoc);
+        }
+        expect(TokenKind::RParen);
+        Node* n = make_node(NK_GENERIC, ln);
+        n->left = ctrl;
+        n->children = (Node**)arena_.alloc(assocs.size() * sizeof(Node*));
+        n->n_children = (int)assocs.size();
+        for (int i = 0; i < (int)assocs.size(); i++) n->children[i] = assocs[i];
+        return n;
     }
 
     // Initializer list in some contexts — just parse it
@@ -1563,6 +1603,48 @@ Node* Parser::parse_init_list() {
                 item->is_designated  = true;
                 item->is_index_desig = false;
                 consume();
+            }
+            // Multi-level designator: .a.b = val → synthesize nested { .b = val }
+            if (check(TokenKind::Dot) || check(TokenKind::LBracket)) {
+                // Recursively build nested init list for the remaining chain
+                std::function<Node*()> build_nested = [&]() -> Node* {
+                    int ln2 = cur().line;
+                    Node* inner = make_node(NK_INIT_ITEM, ln2);
+                    if (check(TokenKind::Dot)) {
+                        consume();
+                        if (check(TokenKind::Identifier)) {
+                            inner->desig_field    = arena_.strdup(cur().lexeme);
+                            inner->is_designated  = true;
+                            inner->is_index_desig = false;
+                            consume();
+                        }
+                    } else if (check(TokenKind::LBracket)) {
+                        consume();
+                        Node* ie = parse_assign_expr();
+                        long long iv = (ie && ie->kind == NK_INT_LIT) ? ie->ival : 0;
+                        expect(TokenKind::RBracket);
+                        inner->is_designated  = true;
+                        inner->is_index_desig = true;
+                        inner->desig_val      = iv;
+                    }
+                    if (check(TokenKind::Dot) || check(TokenKind::LBracket)) {
+                        inner->left = build_nested();
+                    } else {
+                        match(TokenKind::Assign);
+                        inner->left = parse_initializer();
+                    }
+                    Node* lst2 = make_node(NK_INIT_LIST, ln2);
+                    Node** ch = (Node**)arena_.alloc(sizeof(Node*));
+                    ch[0] = inner;
+                    lst2->children = ch;
+                    lst2->n_children = 1;
+                    return lst2;
+                };
+                item->left = build_nested();
+                items.push_back(item);
+                if (!match(TokenKind::Comma)) break;
+                if (check(TokenKind::RBrace)) break;
+                continue;
             }
             match(TokenKind::Assign);
         } else if (check(TokenKind::LBracket)) {
@@ -2330,6 +2412,7 @@ const char* node_kind_name(NodeKind k) {
         case NK_STMT_EXPR:    return "StmtExpr";
         case NK_COMPOUND_LIT: return "CompoundLit";
         case NK_VA_ARG:       return "VaArg";
+        case NK_GENERIC:      return "Generic";
         case NK_INIT_LIST:    return "InitList";
         case NK_INIT_ITEM:    return "InitItem";
         case NK_BLOCK:        return "Block";
