@@ -120,6 +120,115 @@ static int llty_bits(const std::string& llty) {
 
 // Forward declaration (defined later near global_const)
 static int infer_array_size_from_init(Node* init);
+// Forward declaration of static integer constant evaluator (defined near global_const)
+static long long static_eval_int(Node* n, const std::unordered_map<std::string, long long>& enum_consts);
+
+// Check if a string literal is a wide string (starts with L, u, U, or u8 prefix).
+static bool is_wide_str_lit(Node* n) {
+  if (!n || n->kind != NK_STR_LIT || !n->sval) return false;
+  const char* s = n->sval;
+  return (s[0] == 'L' || s[0] == 'u' || s[0] == 'U') && s[1] == '"';
+}
+
+// Decode a wide string literal into a vector of Unicode codepoints.
+// sval is like L"hello\u4F60..." — returns codepoints including null terminator.
+static std::vector<uint32_t> decode_wide_string(const char* sval) {
+  std::vector<uint32_t> codepoints;
+  if (!sval) { codepoints.push_back(0); return codepoints; }
+  // Skip prefix (L, u, U) and opening quote
+  const char* p = sval;
+  while (*p && *p != '"') p++;
+  if (*p == '"') p++;  // skip opening quote
+  while (*p && *p != '"') {
+    if (*p == '\\') {
+      p++;
+      switch (*p) {
+        case 'n':  codepoints.push_back('\n'); p++; break;
+        case 't':  codepoints.push_back('\t'); p++; break;
+        case 'r':  codepoints.push_back('\r'); p++; break;
+        case '0':  codepoints.push_back(0); p++; break;
+        case 'a':  codepoints.push_back('\a'); p++; break;
+        case 'b':  codepoints.push_back('\b'); p++; break;
+        case 'f':  codepoints.push_back('\f'); p++; break;
+        case 'v':  codepoints.push_back('\v'); p++; break;
+        case '\\': codepoints.push_back('\\'); p++; break;
+        case '"':  codepoints.push_back('"'); p++; break;
+        case '\'': codepoints.push_back('\''); p++; break;
+        case 'x': case 'X': {
+          p++;
+          uint32_t v = 0;
+          while (*p && isxdigit((unsigned char)*p)) {
+            v = v * 16 + (isdigit((unsigned char)*p) ? *p - '0' :
+                          tolower((unsigned char)*p) - 'a' + 10);
+            p++;
+          }
+          codepoints.push_back(v);
+          break;
+        }
+        case 'u': {
+          // \uXXXX
+          p++;
+          uint32_t v = 0;
+          for (int k = 0; k < 4 && *p && isxdigit((unsigned char)*p); k++, p++) {
+            v = v * 16 + (isdigit((unsigned char)*p) ? *p - '0' :
+                          tolower((unsigned char)*p) - 'a' + 10);
+          }
+          codepoints.push_back(v);
+          break;
+        }
+        case 'U': {
+          // \UXXXXXXXX
+          p++;
+          uint32_t v = 0;
+          for (int k = 0; k < 8 && *p && isxdigit((unsigned char)*p); k++, p++) {
+            v = v * 16 + (isdigit((unsigned char)*p) ? *p - '0' :
+                          tolower((unsigned char)*p) - 'a' + 10);
+          }
+          codepoints.push_back(v);
+          break;
+        }
+        default:
+          if (*p >= '0' && *p <= '7') {
+            uint32_t v = 0;
+            for (int k = 0; k < 3 && *p >= '0' && *p <= '7'; k++, p++)
+              v = v * 8 + (*p - '0');
+            codepoints.push_back(v);
+          } else {
+            codepoints.push_back((unsigned char)*p); p++;
+          }
+          break;
+      }
+    } else {
+      // Decode UTF-8 multi-byte sequence
+      unsigned char c0 = (unsigned char)*p;
+      if (c0 < 0x80) {
+        codepoints.push_back(c0); p++;
+      } else if ((c0 & 0xE0) == 0xC0) {
+        uint32_t v = c0 & 0x1F;
+        if (p[1] && (unsigned char)p[1] >= 0x80) { v = (v << 6) | ((unsigned char)p[1] & 0x3F); p += 2; }
+        else p++;
+        codepoints.push_back(v);
+      } else if ((c0 & 0xF0) == 0xE0) {
+        uint32_t v = c0 & 0x0F;
+        if (p[1] && (unsigned char)p[1] >= 0x80) { v = (v << 6) | ((unsigned char)p[1] & 0x3F); p += 2; }
+        else { p++; codepoints.push_back(v); continue; }
+        if (*p && (unsigned char)*p >= 0x80) { v = (v << 6) | ((unsigned char)*p & 0x3F); p++; }
+        codepoints.push_back(v);
+      } else if ((c0 & 0xF8) == 0xF0) {
+        uint32_t v = c0 & 0x07;
+        for (int k = 0; k < 3 && p[1] && (unsigned char)p[1] >= 0x80; k++, p++) {
+          v = (v << 6) | ((unsigned char)p[1] & 0x3F);
+        }
+        p++;
+        codepoints.push_back(v);
+      } else {
+        codepoints.push_back(c0); p++;
+      }
+    }
+  }
+  codepoints.push_back(0);  // null terminator
+  return codepoints;
+}
 
 // ─────────────────────────── constructor ───────────────────────────────────
 
@@ -228,6 +337,8 @@ TypeSpec IRBuilder::expr_type(Node* n) {
   case NK_INT_LIT: {
     // Check suffix for type: LL/ULL → long long, L/UL → long, U → unsigned int
     const char* sv = n->sval;
+    bool is_hex_or_oct = sv && sv[0] == '0' && (sv[1] == 'x' || sv[1] == 'X' ||
+                                                 (sv[1] >= '0' && sv[1] <= '7'));
     if (sv) {
       size_t len = strlen(sv);
       // Scan suffix (case-insensitive): strip trailing 'l', 'll', 'u'
@@ -242,6 +353,16 @@ TypeSpec IRBuilder::expr_type(Node* n) {
       if (lcount == 1) return has_u ? make_ts(TB_ULONG) : make_ts(TB_LONG);
       if (has_u) return make_ts(TB_UINT);
     }
+    // No suffix: for hex/octal literals, C standard says try each type in order:
+    // int, uint, long, ulong, llong, ullong. For decimal, only signed types.
+    // This matters for 0xabcd0000 (doesn't fit int → uint).
+    long long v = n->ival;
+    if (is_hex_or_oct) {
+      if (v >= 0 && v <= 0x7fffffff) return int_ts();             // fits int
+      if ((unsigned long long)v <= 0xffffffff) return make_ts(TB_UINT);  // fits uint
+      if (v >= 0 && v <= (long long)0x7fffffffffffffff) return make_ts(TB_LONGLONG);  // fits llong
+      return make_ts(TB_ULONGLONG);  // fits ullong
+    }
     return int_ts();
   }
   case NK_CHAR_LIT:   return char_ts();
@@ -251,7 +372,10 @@ TypeSpec IRBuilder::expr_type(Node* n) {
       return float_ts();
     return double_ts();
   }
-  case NK_STR_LIT:    return ptr_to(TB_CHAR);
+  case NK_STR_LIT:
+    // Wide string literals (L"...") have type wchar_t* = int* on LP64 platforms
+    if (is_wide_str_lit(n)) return ptr_to(TB_INT);
+    return ptr_to(TB_CHAR);
 
   case NK_VAR: {
     if (n->name) {
@@ -988,6 +1112,24 @@ std::string IRBuilder::codegen_expr(Node* n) {
   }
 
   case NK_STR_LIT: {
+    // Wide string literal L"..." → emit as [N x i32] global, return ptr
+    if (is_wide_str_lit(n)) {
+      auto codepoints = decode_wide_string(n->sval);
+      int len = (int)codepoints.size();  // includes null terminator
+      std::string gname = "@.wstr" + std::to_string(string_idx_++);
+      std::string wstr_type = "[" + std::to_string(len) + " x i32]";
+      // Build global initializer
+      std::string ginit = "[";
+      for (int wi = 0; wi < len; wi++) {
+        if (wi > 0) ginit += ", ";
+        ginit += "i32 " + std::to_string((int)codepoints[wi]);
+      }
+      ginit += "]";
+      preamble_.push_back(gname + " = internal constant " + wstr_type + " " + ginit);
+      std::string t = fresh_tmp();
+      emit(t + " = getelementptr " + wstr_type + ", ptr " + gname + ", i64 0, i64 0");
+      return t;
+    }
     // n->sval is the raw lexeme (may include quotes); extract content
     std::string raw = n->sval ? n->sval : "";
     // Strip outer quotes if present
@@ -1479,13 +1621,37 @@ std::string IRBuilder::codegen_expr(Node* n) {
 
     TypeSpec rts = expr_type(n->right);
     std::string rv = codegen_expr(n->right);
+    bool is_float = is_float_base(lts.base);
+
+    // C99: float op= expr does arithmetic in double precision, then truncates to float
+    bool needs_fp_upcast = (lts.base == TB_FLOAT && lts.ptr_level == 0);
+    if (needs_fp_upcast) {
+      std::string cur_d = fresh_tmp();
+      emit(cur_d + " = fpext float " + cur + " to double");
+      rv = coerce(rv, rts, "double");
+      std::string result_d = fresh_tmp();
+      std::string op_str;
+      if      (strcmp(aop, "+=") == 0) op_str = "fadd";
+      else if (strcmp(aop, "-=") == 0) op_str = "fsub";
+      else if (strcmp(aop, "*=") == 0) op_str = "fmul";
+      else if (strcmp(aop, "/=") == 0) op_str = "fdiv";
+      if (!op_str.empty()) {
+        emit(result_d + " = " + op_str + " double " + cur_d + ", " + rv);
+        std::string result_f = fresh_tmp();
+        emit(result_f + " = fptrunc double " + result_d + " to float");
+        emit("store float " + result_f + ", ptr " + ptr);
+        return result_f;
+      }
+      // Fallback for unexpected ops: skip upcasting
+      rv = coerce(rv, rts, llty);
+    }
+
     // For pointer arithmetic, keep rv as integer (coerce to i64 for GEP index)
     // For non-pointer ops, coerce to lhs type
-    if (lts.ptr_level == 0)
+    if (!needs_fp_upcast && lts.ptr_level == 0)
       rv = coerce(rv, rts, llty);
 
     std::string result = fresh_tmp();
-    bool is_float = is_float_base(lts.base);
 
     if (strcmp(aop, "+=") == 0) {
       // Handle pointer arithmetic for +=
@@ -1546,13 +1712,37 @@ std::string IRBuilder::codegen_expr(Node* n) {
 
     TypeSpec rts = expr_type(n->right);
     std::string rv = codegen_expr(n->right);
+    bool is_float = is_float_base(lts.base);
+
+    // C99: float op= expr does arithmetic in double precision, then truncates to float
+    bool needs_fp_upcast = (lts.base == TB_FLOAT && lts.ptr_level == 0);
+    if (needs_fp_upcast) {
+      std::string cur_d = fresh_tmp();
+      emit(cur_d + " = fpext float " + cur + " to double");
+      rv = coerce(rv, rts, "double");
+      std::string result_d = fresh_tmp();
+      const char* op = n->op;
+      std::string op_str;
+      if      (op && strcmp(op, "+=") == 0) op_str = "fadd";
+      else if (op && strcmp(op, "-=") == 0) op_str = "fsub";
+      else if (op && strcmp(op, "*=") == 0) op_str = "fmul";
+      else if (op && strcmp(op, "/=") == 0) op_str = "fdiv";
+      if (!op_str.empty()) {
+        emit(result_d + " = " + op_str + " double " + cur_d + ", " + rv);
+        std::string result_f = fresh_tmp();
+        emit(result_f + " = fptrunc double " + result_d + " to float");
+        emit("store float " + result_f + ", ptr " + ptr);
+        return result_f;
+      }
+      rv = coerce(rv, rts, llty);
+    }
+
     // For pointer arithmetic, keep rv as integer; coerce to lhs type for scalar ops
-    if (lts.ptr_level == 0)
+    if (!needs_fp_upcast && lts.ptr_level == 0)
       rv = coerce(rv, rts, llty);
 
     std::string result = fresh_tmp();
     const char* op = n->op;
-    bool is_float = is_float_base(lts.base);
 
     if (strcmp(op, "+=") == 0) {
       if (lts.ptr_level > 0) {
@@ -1622,7 +1812,15 @@ std::string IRBuilder::codegen_expr(Node* n) {
         // It's a variable (e.g. function pointer) — use indirect call
         is_indirect = true;
         fn_ptr = codegen_expr(n->left);
-        ret_ts = expr_type(n);
+        // Check if we know the signature of this function pointer variable
+        auto fsit = fptr_sigs_.find(fn_name);
+        if (fsit != fptr_sigs_.end()) {
+          ret_ts = fsit->second.ret_type;
+          variadic = fsit->second.variadic;
+          param_types = fsit->second.param_types;
+        } else {
+          ret_ts = expr_type(n);
+        }
         fn_name.clear();
       } else {
         // Unknown function — will need auto-declare; mark as variadic for safety
@@ -1671,6 +1869,18 @@ std::string IRBuilder::codegen_expr(Node* n) {
       is_indirect = true;
       fn_ptr = codegen_expr(callee);
       ret_ts = expr_type(n);
+      // If callee is a named variable and we know its function-pointer signature,
+      // use that signature's return type (expr_type can't infer fptr return types).
+      if (callee->kind == NK_VAR && callee->name) {
+        auto fsit = fptr_sigs_.find(callee->name);
+        if (fsit != fptr_sigs_.end()) {
+          ret_ts = fsit->second.ret_type;
+          if (param_types.empty()) {
+            variadic = fsit->second.variadic;
+            param_types = fsit->second.param_types;
+          }
+        }
+      }
     }
 
     // ── Builtin function special handling ────────────────────────────────────
@@ -1973,12 +2183,14 @@ std::string IRBuilder::codegen_expr(Node* n) {
     // On ARM64 (Apple Silicon), LLVM requires the function type in indirect
     // calls so it knows the ABI (variadic vs non-variadic).
     auto build_indirect_fn_type = [&](const std::string& ret) -> std::string {
-      // Build the param type list from actually-passed args
+      // For variadic calls where we know the fixed param count,
+      // only include the fixed params in the type, then add "...".
+      // This ensures the ABI matches the actual function signature.
       std::string pts;
-      for (size_t ai = 0; ai < arg_types.size(); ai++) {
+      size_t n_fixed = variadic ? param_types.size() : arg_types.size();
+      for (size_t ai = 0; ai < n_fixed && ai < arg_types.size(); ai++) {
         if (ai > 0) pts += ", ";
         TypeSpec ats = arg_types[ai];
-        // promoted types in args_str may differ; reconstruct
         if (is_array_ty(ats)) pts += "ptr";
         else pts += llvm_ty(ats);
       }
@@ -2285,6 +2497,297 @@ std::string IRBuilder::codegen_expr(Node* n) {
   }
 }
 
+// ─────────────────────── aggregate local initializer ───────────────────────
+// Emit stores to fill the memory at `ptr` with the given C type `ts`,
+// consuming items from flat_list starting at flat_idx.
+// Handles brace elision: scalars are distributed into nested aggregates.
+// When sub_init != null, it is used as a braced sub-init list instead of flat_list.
+static void emit_agg_init_impl(IRBuilder* irb, TypeSpec ts, const std::string& ptr,
+                                Node* flat_list, int& flat_idx) {
+  std::string llty = irb->llvm_ty(ts);
+  // ── Struct type ────────────────────────────────────────────────────────────
+  if ((ts.base == TB_STRUCT) && ts.tag && ts.ptr_level == 0) {
+    auto sit = irb->struct_defs_.find(ts.tag);
+    if (sit == irb->struct_defs_.end()) return;
+    const IRBuilder::StructInfo& si = sit->second;
+    int n_fields = (int)si.field_names.size();
+    std::string struct_llty = std::string("%struct.") + ts.tag;
+    int fi = 0;
+    // Process items: may be a mix of designated/non-designated/sub-lists
+    // We drive by field index, consuming from flat_list as needed.
+    while (fi < n_fields && flat_idx < flat_list->n_children) {
+      Node* item = flat_list->children[flat_idx];
+      Node* val_node = item;
+      bool is_desig = false;
+      int target_fi = fi;
+      // Unwrap NK_INIT_ITEM
+      if (item && item->kind == NK_INIT_ITEM) {
+        if (item->desig_field) {
+          is_desig = true;
+          // Find the designated field
+          for (int j = 0; j < n_fields; j++) {
+            if (si.field_names[j] == item->desig_field) { target_fi = j; break; }
+          }
+          fi = target_fi;
+        }
+        val_node = item->left;
+        flat_idx++;  // consume this item
+      } else {
+        flat_idx++;
+      }
+      TypeSpec ft = si.field_types[fi];
+      if (si.field_array_sizes[fi] >= 0) ft.array_size = si.field_array_sizes[fi];
+      std::string field_llty = irb->llvm_ty(ft);
+      // Get a GEP for this field
+      std::string fgep = irb->fresh_tmp();
+      irb->emit(fgep + " = getelementptr " + struct_llty + ", ptr " + ptr +
+                ", i32 0, i32 " + std::to_string(fi));
+      // Determine how to initialize this field
+      if (val_node && val_node->kind == NK_INIT_LIST) {
+        // Braced sub-init: use a fresh flat_idx for this sub-list
+        int sub_fi = 0;
+        emit_agg_init_impl(irb, ft, fgep, val_node, sub_fi);
+      } else if (ft.ptr_level == 0 && !is_array_ty(ft) &&
+                 (ft.base == TB_STRUCT || ft.base == TB_UNION) &&
+                 val_node && val_node->kind != NK_COMPOUND_LIT) {
+        // Aggregate field with scalar item: brace elision — recurse into field
+        // using the current item (and possibly more) from flat_list
+        // BUT we already consumed this item above; we need to push it back.
+        // Solution: create a 1-item or more sub-list approach.
+        // Actually, for brace elision into a struct field from scalars,
+        // we need to un-consume the item and let the recursive call handle it.
+        // Rewind by one:
+        flat_idx--;
+        emit_agg_init_impl(irb, ft, fgep, flat_list, flat_idx);
+      } else {
+        // Scalar field or array field with single item, compound literal, etc.
+        if (val_node) {
+          std::string val = irb->codegen_expr(val_node);
+          TypeSpec val_ts = irb->expr_type(val_node);
+          // Handle string literal for array field
+          if (is_array_ty(ft) && array_rank_of(ft) == 1 &&
+              (ft.base == TB_CHAR || ft.base == TB_SCHAR || ft.base == TB_UCHAR) &&
+              val_node->kind == NK_STR_LIT) {
+            // String literal to char array: do byte-by-byte stores
+            const char* raw = val_node->sval ? val_node->sval : "\"\"";
+            if (raw[0] == '"') raw++;
+            std::string bytes;
+            while (*raw && *raw != '"') {
+              if (*raw == '\\') {
+                raw++;
+                if (*raw == 'n') { bytes += '\n'; raw++; }
+                else if (*raw == 't') { bytes += '\t'; raw++; }
+                else if (*raw == 'r') { bytes += '\r'; raw++; }
+                else if (*raw == '0') { bytes += '\0'; raw++; }
+                else if (*raw == 'a') { bytes += '\a'; raw++; }
+                else if (*raw == 'b') { bytes += '\b'; raw++; }
+                else if (*raw == 'f') { bytes += '\f'; raw++; }
+                else if (*raw == 'v') { bytes += '\v'; raw++; }
+                else if (*raw == '\\') { bytes += '\\'; raw++; }
+                else if (*raw == '"') { bytes += '"'; raw++; }
+                else if (*raw == 'x' || *raw == 'X') {
+                  raw++;
+                  unsigned int v = 0;
+                  for (int k = 0; k < 2 && *raw && isxdigit((unsigned char)*raw); k++, raw++)
+                    v = v*16 + (isdigit((unsigned char)*raw) ? *raw - '0' :
+                                tolower((unsigned char)*raw) - 'a' + 10);
+                  bytes += (char)(unsigned char)v;
+                } else if (*raw >= '0' && *raw <= '7') {
+                  unsigned int v = 0;
+                  for (int k = 0; k < 3 && *raw >= '0' && *raw <= '7'; k++, raw++)
+                    v = v*8 + (*raw - '0');
+                  bytes += (char)(unsigned char)v;
+                } else { bytes += *raw++; }
+              } else { bytes += *raw++; }
+            }
+            int dim0 = (int)array_dim_at(ft, 0);
+            for (int bi = 0; bi < dim0; bi++) {
+              char bval = (bi < (int)bytes.size()) ? bytes[bi] : '\0';
+              std::string egep = irb->fresh_tmp();
+              irb->emit(egep + " = getelementptr " + field_llty + ", ptr " + fgep +
+                        ", i64 0, i64 " + std::to_string(bi));
+              irb->emit("store i8 " + std::to_string((int)(unsigned char)bval) + ", ptr " + egep);
+            }
+          } else if (is_array_ty(ft) && val == "0") {
+            irb->emit("store " + field_llty + " zeroinitializer, ptr " + fgep);
+          } else if ((ft.base == TB_STRUCT || ft.base == TB_UNION) &&
+                     ft.ptr_level == 0 && val == "0") {
+            irb->emit("store " + field_llty + " zeroinitializer, ptr " + fgep);
+          } else if ((ft.base == TB_STRUCT || ft.base == TB_UNION) &&
+                     ft.ptr_level == 0 && val_node->kind == NK_COMPOUND_LIT) {
+            // Compound literal: val is a ptr to the struct; load it
+            std::string ld = irb->fresh_tmp();
+            irb->emit(ld + " = load " + field_llty + ", ptr " + val);
+            irb->emit("store " + field_llty + " " + ld + ", ptr " + fgep);
+          } else if ((ft.base == TB_STRUCT || ft.base == TB_UNION) &&
+                     ft.ptr_level == 0) {
+            // Struct/union value: may be a ptr from compound lit or a loaded value
+            TypeSpec vts = irb->expr_type(val_node);
+            if (vts.ptr_level == 0 && (vts.base == TB_STRUCT || vts.base == TB_UNION)) {
+              // It's a struct value directly
+              irb->emit("store " + field_llty + " " + val + ", ptr " + fgep);
+            } else {
+              val = irb->coerce(val, val_ts, field_llty);
+              irb->emit("store " + field_llty + " " + val + ", ptr " + fgep);
+            }
+          } else {
+            val = irb->coerce(val, val_ts, field_llty);
+            irb->emit("store " + field_llty + " " + val + ", ptr " + fgep);
+          }
+        } else {
+          // null val_node: zero init
+          irb->emit("store " + field_llty + " " + (is_array_ty(ft) || ft.base == TB_STRUCT || ft.base == TB_UNION ? "zeroinitializer" : "0") + ", ptr " + fgep);
+        }
+      }
+      fi++;
+    }
+    return;
+  }
+
+  // ── Array type ────────────────────────────────────────────────────────────
+  if (is_array_ty(ts) && ts.ptr_level == 0) {
+    long long dim0 = array_dim_at(ts, 0);
+    if (dim0 <= 0) return;
+    TypeSpec elem_ts = drop_array_dim(ts);
+    std::string arr_llty = llty;
+    std::string elem_llty = irb->llvm_ty(elem_ts);
+
+    // Check if first item is a string literal for char array
+    if ((elem_ts.base == TB_CHAR || elem_ts.base == TB_SCHAR || elem_ts.base == TB_UCHAR) &&
+        elem_ts.ptr_level == 0 && flat_idx < flat_list->n_children) {
+      Node* item = flat_list->children[flat_idx];
+      Node* val_node = (item && item->kind == NK_INIT_ITEM) ? item->left : item;
+      if (val_node && val_node->kind == NK_STR_LIT && !is_wide_str_lit(val_node)) {
+        // String literal for char array
+        flat_idx++;
+        const char* raw = val_node->sval ? val_node->sval : "\"\"";
+        if (raw[0] == '"') raw++;
+        std::string bytes;
+        while (*raw && *raw != '"') {
+          if (*raw == '\\') {
+            raw++;
+            if (*raw == 'n') { bytes += '\n'; raw++; }
+            else if (*raw == 't') { bytes += '\t'; raw++; }
+            else if (*raw == 'r') { bytes += '\r'; raw++; }
+            else if (*raw == '0') { bytes += '\0'; raw++; }
+            else if (*raw == 'a') { bytes += '\a'; raw++; }
+            else if (*raw == 'b') { bytes += '\b'; raw++; }
+            else if (*raw == 'f') { bytes += '\f'; raw++; }
+            else if (*raw == 'v') { bytes += '\v'; raw++; }
+            else if (*raw == '\\') { bytes += '\\'; raw++; }
+            else if (*raw == '"') { bytes += '"'; raw++; }
+            else if (*raw == 'x' || *raw == 'X') {
+              raw++;
+              unsigned int v = 0;
+              for (int k = 0; k < 2 && *raw && isxdigit((unsigned char)*raw); k++, raw++)
+                v = v*16 + (isdigit((unsigned char)*raw) ? *raw - '0' :
+                            tolower((unsigned char)*raw) - 'a' + 10);
+              bytes += (char)(unsigned char)v;
+            } else if (*raw >= '0' && *raw <= '7') {
+              unsigned int v = 0;
+              for (int k = 0; k < 3 && *raw >= '0' && *raw <= '7'; k++, raw++)
+                v = v*8 + (*raw - '0');
+              bytes += (char)(unsigned char)v;
+            } else { bytes += *raw++; }
+          } else { bytes += *raw++; }
+        }
+        for (long long bi = 0; bi < dim0; bi++) {
+          char bval = (bi < (long long)bytes.size()) ? bytes[(int)bi] : '\0';
+          std::string egep = irb->fresh_tmp();
+          irb->emit(egep + " = getelementptr " + arr_llty + ", ptr " + ptr +
+                    ", i64 0, i64 " + std::to_string(bi));
+          irb->emit("store i8 " + std::to_string((int)(unsigned char)bval) + ", ptr " + egep);
+        }
+        return;
+      }
+    }
+
+    // General array init: element by element with flat continuation
+    for (long long ei = 0; ei < dim0 && flat_idx < flat_list->n_children; ei++) {
+      Node* item = flat_list->children[flat_idx];
+      Node* val_node = item;
+      long long idx = ei;
+      bool is_range = false;
+      long long range_end = ei;
+      if (item && item->kind == NK_INIT_ITEM) {
+        if (item->is_index_desig) { idx = item->desig_val; ei = idx; }
+        // Check range designator (stored as field name "[A...B]")
+        if (item->desig_field) {
+          // Try to parse as range [A...B]
+          const char* df = item->desig_field;
+          if (df[0] == '[') {
+            long long lo = strtoll(df+1, nullptr, 10);
+            const char* dots = strstr(df, "...");
+            if (dots) {
+              long long hi = strtoll(dots+3, nullptr, 10);
+              idx = lo; range_end = hi; is_range = true;
+              ei = lo;
+            } else {
+              idx = lo; ei = lo;
+            }
+          }
+        }
+        val_node = item->left;
+        flat_idx++;
+      } else {
+        flat_idx++;
+      }
+
+      std::string egep = irb->fresh_tmp();
+      irb->emit(egep + " = getelementptr " + arr_llty + ", ptr " + ptr +
+                ", i64 0, i64 " + std::to_string(ei));
+
+      if (val_node && val_node->kind == NK_INIT_LIST) {
+        int sub_fi = 0;
+        emit_agg_init_impl(irb, elem_ts, egep, val_node, sub_fi);
+      } else if (elem_ts.ptr_level == 0 && !is_array_ty(elem_ts) &&
+                 (elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION) &&
+                 val_node && val_node->kind != NK_COMPOUND_LIT) {
+        // Brace elision into struct element — need to un-consume
+        flat_idx--;
+        emit_agg_init_impl(irb, elem_ts, egep, flat_list, flat_idx);
+      } else {
+        std::string val = val_node ? irb->codegen_expr(val_node) : "0";
+        TypeSpec val_ts = val_node ? irb->expr_type(val_node) : int_ts();
+        if ((elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION || is_array_ty(elem_ts)) && val == "0")
+          val = "zeroinitializer";
+        else if (elem_ts.ptr_level == 0 && (elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION) &&
+                 val_node && val_node->kind == NK_COMPOUND_LIT) {
+          std::string ld = irb->fresh_tmp();
+          irb->emit(ld + " = load " + elem_llty + ", ptr " + val);
+          val = ld;
+        } else {
+          val = irb->coerce(val, val_ts, elem_llty);
+        }
+        irb->emit("store " + elem_llty + " " + val + ", ptr " + egep);
+
+        // Handle range designator: repeat the same value for [idx+1 ... range_end]
+        if (is_range) {
+          for (long long ri = idx+1; ri <= range_end && ri < dim0; ri++) {
+            std::string rgep = irb->fresh_tmp();
+            irb->emit(rgep + " = getelementptr " + arr_llty + ", ptr " + ptr +
+                      ", i64 0, i64 " + std::to_string(ri));
+            irb->emit("store " + elem_llty + " " + val + ", ptr " + rgep);
+          }
+          ei = range_end;
+        }
+      }
+    }
+    return;
+  }
+  // ── Scalar type ────────────────────────────────────────────────────────────
+  if (flat_idx < flat_list->n_children) {
+    Node* item = flat_list->children[flat_idx++];
+    Node* val_node = (item && item->kind == NK_INIT_ITEM) ? item->left : item;
+    if (val_node) {
+      std::string val = irb->codegen_expr(val_node);
+      TypeSpec val_ts = irb->expr_type(val_node);
+      val = irb->coerce(val, val_ts, llty);
+      irb->emit("store " + llty + " " + val + ", ptr " + ptr);
+    }
+  }
+}
+
 // ─────────────────────────── statement codegen ─────────────────────────────
 
 void IRBuilder::emit_stmt(Node* n) {
@@ -2359,108 +2862,31 @@ void IRBuilder::emit_stmt(Node* n) {
       if (cl_body) effective_init = cl_body;
     }
 
-    // Handle init list for arrays/structs specially
-    if (effective_init->kind == NK_INIT_LIST) {
-      // Emit element-by-element stores
-      Node* lst = effective_init;
-      if (is_array_ty(lts)) {
-        // Array initialization
-        TypeSpec elem_ts = drop_array_dim(lts);
-        std::string elem_llty = llvm_ty(elem_ts);
-        std::string arr_llty = llvm_ty(lts);
-        long long next_idx = 0;
-        for (int i = 0; i < lst->n_children; i++) {
-          Node* item = lst->children[i];
-          long long idx = next_idx;
-          Node* val_node = item;
-          if (item->kind == NK_INIT_ITEM) {
-            if (item->is_index_desig) idx = item->desig_val;
-            val_node = item->left;
-          }
-          std::string val = codegen_expr(val_node);
-          TypeSpec val_ts = expr_type(val_node);
-          // Use zeroinitializer for aggregate elements with zero value (fixes invalid IR)
-          if ((elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION || is_array_ty(elem_ts)) &&
-              val == "0") {
-            val = "zeroinitializer";
-          } else if ((elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION) &&
-                     elem_ts.ptr_level == 0 &&
-                     val_node->kind != NK_INIT_LIST &&
-                     val_node->kind != NK_COMPOUND_LIT) {
-            // Brace elision: scalar/pointer being stored into struct element
-            // Compound literal returns a ptr; load the struct value from it
-            const char* stag = elem_ts.tag;
-            if (stag && struct_defs_.count(stag)) {
-              const StructInfo& bsi = struct_defs_[stag];
-              if (!bsi.field_names.empty()) {
-                std::string tmp_s = "%clit_" + std::to_string(tmp_idx_++);
-                alloca_lines_.push_back("  " + tmp_s + " = alloca " + elem_llty);
-                TypeSpec ft0 = bsi.field_types[0];
-                std::string fllty0 = llvm_ty(ft0);
-                std::string fval = coerce(val, val_ts, fllty0);
-                std::string fgep = fresh_tmp();
-                emit(fgep + " = getelementptr " + elem_llty + ", ptr " + tmp_s + ", i32 0, i32 0");
-                emit("store " + fllty0 + " " + fval + ", ptr " + fgep);
-                std::string ld = fresh_tmp();
-                emit(ld + " = load " + elem_llty + ", ptr " + tmp_s);
-                val = ld;
-              }
-            }
-          } else if (val_node->kind == NK_COMPOUND_LIT &&
-                     (elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION) &&
-                     elem_ts.ptr_level == 0) {
-            // Compound literal returns ptr; load the struct value
-            val = coerce(val, val_ts, elem_llty);
-            std::string loaded = fresh_tmp();
-            emit(loaded + " = load " + elem_llty + ", ptr " + val);
-            val = loaded;
-          } else {
-            val = coerce(val, val_ts, elem_llty);
-          }
-          std::string gep = fresh_tmp();
-          emit(gep + " = getelementptr " + arr_llty + ", ptr " + it->second +
-               ", i64 0, i64 " + std::to_string(idx));
-          emit("store " + elem_llty + " " + val + ", ptr " + gep);
-          next_idx = idx + 1;
-        }
-      } else if (lts.base == TB_STRUCT || lts.base == TB_UNION) {
-        // Struct initialization
-        const char* tag = lts.tag;
-        if (tag && struct_defs_.count(tag)) {
-          const StructInfo& si = struct_defs_[tag];
-          std::string struct_llty = std::string("%struct.") + tag;
-          int field_idx = 0;
-          for (int i = 0; i < lst->n_children && field_idx < (int)si.field_names.size(); i++) {
-            Node* item = lst->children[i];
-            Node* val_node = item;
-            int fi = field_idx;
-            if (item->kind == NK_INIT_ITEM && item->desig_field) {
-              // Find field by name
-              for (int j = 0; j < (int)si.field_names.size(); j++) {
-                if (si.field_names[j] == item->desig_field) { fi = j; break; }
-              }
-              val_node = item->left;
-            }
-            TypeSpec ft = si.field_types[fi];
-            if (si.field_array_sizes[fi] >= 0) ft.array_size = si.field_array_sizes[fi];
-            std::string field_llty = llvm_ty(ft);
-            std::string val = codegen_expr(val_node);
-            TypeSpec val_ts = expr_type(val_node);
-            val = coerce(val, val_ts, field_llty);
-            // Use zeroinitializer for aggregate fields with zero value (fixes invalid IR)
-            if ((ft.base == TB_STRUCT || ft.base == TB_UNION || is_array_ty(ft)) && val == "0")
-              val = "zeroinitializer";
-            std::string gep = fresh_tmp();
-            emit(gep + " = getelementptr " + struct_llty + ", ptr " + it->second +
-                 ", i32 0, i32 " + std::to_string(fi));
-            emit("store " + field_llty + " " + val + ", ptr " + gep);
-            field_idx++;
-          }
-        }
-      }
+    // Handle init list for arrays/structs using the recursive flat-iterator emitter.
+    if (effective_init->kind == NK_INIT_LIST &&
+        (is_array_ty(lts) || lts.base == TB_STRUCT || lts.base == TB_UNION)) {
+      int flat_idx = 0;
+      emit_agg_init_impl(this, lts, it->second, effective_init, flat_idx);
       break;
     }
 
+    // Local wide char array (wchar_t[]) initialized with a wide string literal L"..."
+    if (array_rank_of(lts) == 1 && array_dim_at(lts, 0) >= 0 &&
+        (lts.base == TB_INT || lts.base == TB_UINT || lts.base == TB_LONG || lts.base == TB_ULONG) &&
+        lts.ptr_level == 0 &&
+        n->init->kind == NK_STR_LIT && is_wide_str_lit(n->init)) {
+      auto codepoints = decode_wide_string(n->init->sval);
+      int dim0 = (int)array_dim_at(lts, 0);
+      std::string elem_llty = llvm_ty(drop_array_dim(lts));
+      for (int i = 0; i < dim0; i++) {
+        uint32_t cp = (i < (int)codepoints.size()) ? codepoints[i] : 0;
+        std::string gep = fresh_tmp();
+        emit(gep + " = getelementptr " + llty + ", ptr " + it->second +
+             ", i64 0, i64 " + std::to_string(i));
+        emit("store " + elem_llty + " " + std::to_string((int)cp) + ", ptr " + gep);
+      }
+      break;
+    }
     // Local char array initialized with a string literal: copy bytes
     if (array_rank_of(lts) == 1 && array_dim_at(lts, 0) >= 0 &&
         (lts.base == TB_CHAR || lts.base == TB_SCHAR || lts.base == TB_UCHAR) &&
@@ -2518,6 +2944,19 @@ void IRBuilder::emit_stmt(Node* n) {
     std::string rv = codegen_expr(n->init);
     rv = coerce(rv, rts, llty);
     emit("store " + llty + " " + rv + ", ptr " + it->second);
+    // Track function pointer variable signatures for local vars:
+    // If init is a direct function reference (or &func), record the signature
+    // so indirect calls through this variable use the correct return type.
+    {
+      Node* init_node = n->init;
+      if (init_node->kind == NK_ADDR && init_node->left) init_node = init_node->left;
+      if (init_node->kind == NK_VAR && init_node->name) {
+        auto fsit = func_sigs_.find(init_node->name);
+        if (fsit != func_sigs_.end()) {
+          fptr_sigs_[n->name] = fsit->second;
+        }
+      }
+    }
     break;
   }
 
@@ -2708,7 +3147,7 @@ void IRBuilder::emit_stmt(Node* n) {
     std::function<void(Node*)> scan_cases = [&](Node* node) {
       if (!node) return;
       if (node->kind == NK_CASE) {
-        long long cv = node->left ? node->left->ival : 0;
+        long long cv = node->left ? static_eval_int(node->left, enum_consts_) : 0;
         if (!sw_info.case_labels.count(cv)) {
           sw_info.case_labels[cv] = fresh_label("switch_case");
         }
@@ -2757,7 +3196,7 @@ void IRBuilder::emit_stmt(Node* n) {
   case NK_CASE: {
     if (switch_stack_.empty()) break;
     SwitchInfo& sw = switch_stack_.back();
-    long long cv = n->left ? n->left->ival : 0;
+    long long cv = n->left ? static_eval_int(n->left, enum_consts_) : 0;
     auto it = sw.case_labels.find(cv);
     if (it != sw.case_labels.end()) {
       emit_terminator("br label %" + it->second);
@@ -2782,7 +3221,7 @@ void IRBuilder::emit_stmt(Node* n) {
     // GCC extension: case lo ... hi: - treat as single case for lo
     if (switch_stack_.empty()) break;
     SwitchInfo& sw = switch_stack_.back();
-    long long cv = n->left ? n->left->ival : 0;
+    long long cv = n->left ? static_eval_int(n->left, enum_consts_) : 0;
     auto it = sw.case_labels.find(cv);
     if (it != sw.case_labels.end()) {
       emit_terminator("br label %" + it->second);
@@ -2862,16 +3301,29 @@ void IRBuilder::emit_struct_def(Node* sd) {
 static int infer_array_size_from_init(Node* init) {
   if (!init) return 0;
   if (init->kind == NK_STR_LIT) {
-    // String literal: size = length of content + 1 for null
+    // Wide string literal: use decoded codepoints count
+    if (is_wide_str_lit(init)) {
+      auto codepoints = decode_wide_string(init->sval);
+      return (int)codepoints.size();  // includes null terminator
+    }
+    // Narrow string literal: size = length of content + 1 for null
     const char* raw = init->sval ? init->sval : "\"\"";
-    int n = (int)strlen(raw);
-    if (n >= 2 && raw[0] == '"' && raw[n-1] == '"') n -= 2;  // strip quotes
-    else if (n >= 2 && raw[0] == '"') n -= 1;
     // Quick count of actual chars (handle escape sequences minimally)
     int count = 0;
     for (int i = (init->sval && init->sval[0] == '"' ? 1 : 0);
          init->sval && init->sval[i] && init->sval[i] != '"'; i++) {
-      if (init->sval[i] == '\\') i++;  // skip escaped char
+      if (init->sval[i] == '\\') {
+        // Handle multi-byte UTF-8 sequences in narrow strings too
+        i++;
+        // For octal and hex sequences, skip the sequence
+        if (init->sval[i] >= '0' && init->sval[i] <= '7') {
+          for (int k = 0; k < 2 && init->sval[i+1] >= '0' && init->sval[i+1] <= '7'; k++) i++;
+        } else if (init->sval[i] == 'x' || init->sval[i] == 'X') {
+          i++;
+          while (init->sval[i] && isxdigit((unsigned char)init->sval[i])) i++;
+          i--;
+        }
+      }
       count++;
     }
     return count + 1;  // +1 for null terminator
@@ -2889,10 +3341,145 @@ static int infer_array_size_from_init(Node* init) {
   return (int)(max_idx + 1);
 }
 
+// Forward declaration for global_const_flat
+std::string global_const_flat_impl(IRBuilder* irb, TypeSpec ts, Node* init_list, int& flat_idx);
+
+// Evaluate an integer constant expression at compile time (for global initializers).
+// Returns the evaluated value; returns 0 for unknown expressions.
+static long long static_eval_int(Node* n, const std::unordered_map<std::string, long long>& enum_consts) {
+  if (!n) return 0;
+  if (n->kind == NK_INT_LIT) return n->ival;
+  if (n->kind == NK_CHAR_LIT) return n->ival;
+  if (n->kind == NK_VAR && n->name) {
+    auto it = enum_consts.find(n->name);
+    if (it != enum_consts.end()) return it->second;
+  }
+  if (n->kind == NK_CAST && n->left)
+    return static_eval_int(n->left, enum_consts);
+  if (n->kind == NK_UNARY && n->op) {
+    if (strcmp(n->op, "-") == 0 && n->left) return -static_eval_int(n->left, enum_consts);
+    if (strcmp(n->op, "+") == 0 && n->left) return static_eval_int(n->left, enum_consts);
+    if (strcmp(n->op, "~") == 0 && n->left) return ~static_eval_int(n->left, enum_consts);
+  }
+  if (n->kind == NK_BINOP && n->op && n->left && n->right) {
+    long long l = static_eval_int(n->left, enum_consts);
+    long long r = static_eval_int(n->right, enum_consts);
+    if (strcmp(n->op, "+") == 0) return l + r;
+    if (strcmp(n->op, "-") == 0) return l - r;
+    if (strcmp(n->op, "*") == 0) return l * r;
+    if (strcmp(n->op, "/") == 0 && r != 0) return l / r;
+    if (strcmp(n->op, "%") == 0 && r != 0) return l % r;
+    if (strcmp(n->op, "&") == 0) return l & r;
+    if (strcmp(n->op, "|") == 0) return l | r;
+    if (strcmp(n->op, "^") == 0) return l ^ r;
+    if (strcmp(n->op, "<<") == 0) return l << (r & 63);
+    if (strcmp(n->op, ">>") == 0) return (long long)((unsigned long long)l >> (r & 63));
+  }
+  return 0;  // unknown expression
+}
+
+// Count the number of scalar leaf fields when a struct/array type is fully flattened.
+// Used to detect brace-elision in array-of-struct global initializers.
+static int count_flat_fields_impl(const TypeSpec& ts,
+                                  const std::unordered_map<std::string, IRBuilder::StructInfo>& struct_defs) {
+  if (is_array_ty(ts) && array_dim_at(ts, 0) > 0) {
+    TypeSpec elem = drop_array_dim(ts);
+    return (int)array_dim_at(ts, 0) * count_flat_fields_impl(elem, struct_defs);
+  }
+  if ((ts.base == TB_STRUCT) && ts.tag && ts.ptr_level == 0) {
+    auto it = struct_defs.find(ts.tag);
+    if (it != struct_defs.end()) {
+      const IRBuilder::StructInfo& si = it->second;
+      int total = 0;
+      for (size_t i = 0; i < si.field_types.size(); i++) {
+        TypeSpec ft = si.field_types[i];
+        if (si.field_array_sizes[i] >= 0) {
+          long long dims[1] = {si.field_array_sizes[i]};
+          set_array_dims(ft, dims, 1);
+        }
+        total += count_flat_fields_impl(ft, struct_defs);
+      }
+      return total > 0 ? total : 1;
+    }
+  }
+  return 1;  // scalar or unknown
+}
+
+// Consume items from init_list starting at flat_idx to fill one `ts` value.
+std::string global_const_flat_impl(IRBuilder* irb, TypeSpec ts, Node* init_list, int& flat_idx) {
+  if ((ts.base == TB_STRUCT) && ts.tag && ts.ptr_level == 0) {
+    auto sit = irb->struct_defs_.find(ts.tag);
+    if (sit == irb->struct_defs_.end()) return "zeroinitializer";
+    const IRBuilder::StructInfo& si = sit->second;
+    int n_fields = (int)si.field_names.size();
+    if (n_fields == 0) return "zeroinitializer";
+    std::vector<std::string> fvals(n_fields, "zeroinitializer");
+    for (int fi = 0; fi < n_fields; fi++) {
+      TypeSpec ft = si.field_types[fi];
+      if (si.field_array_sizes[fi] >= 0) {
+        long long dims[1] = {si.field_array_sizes[fi]};
+        set_array_dims(ft, dims, 1);
+      }
+      fvals[fi] = global_const_flat_impl(irb, ft, init_list, flat_idx);
+    }
+    std::string result = "{ ";
+    for (int fi = 0; fi < n_fields; fi++) {
+      if (fi > 0) result += ", ";
+      TypeSpec ft = si.field_types[fi];
+      if (si.field_array_sizes[fi] >= 0) {
+        long long dims[1] = {si.field_array_sizes[fi]};
+        set_array_dims(ft, dims, 1);
+      }
+      result += irb->llvm_ty(ft) + " " + fvals[fi];
+    }
+    result += " }";
+    return result;
+  }
+  if (is_array_ty(ts) && array_dim_at(ts, 0) > 0) {
+    int dim = (int)array_dim_at(ts, 0);
+    TypeSpec elem = drop_array_dim(ts);
+    std::string elem_llty = irb->llvm_ty(elem);
+    std::string result = "[";
+    for (int i = 0; i < dim; i++) {
+      if (i > 0) result += ", ";
+      result += elem_llty + " " + global_const_flat_impl(irb, elem, init_list, flat_idx);
+    }
+    result += "]";
+    return result;
+  }
+  // Scalar: consume next item from flat list
+  if (flat_idx < init_list->n_children) {
+    Node* item = init_list->children[flat_idx++];
+    Node* val_node = item;
+    if (item && item->kind == NK_INIT_ITEM) val_node = item->left;
+    return irb->global_const(ts, val_node);
+  }
+  return "zeroinitializer";
+}
+
 // Recursive global constant emitter.
 // Returns the LLVM IR constant syntax (without the type prefix).
 std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
   if (!init) return "zeroinitializer";
+
+  // Wide string initializer for wchar_t[] (int array) from L"..."
+  if (is_array_ty(ts) && array_dim_at(ts, 0) >= 0 &&
+      array_rank_of(ts) == 1 &&
+      (ts.base == TB_INT || ts.base == TB_UINT || ts.base == TB_LONG || ts.base == TB_ULONG) &&
+      ts.ptr_level == 0 &&
+      init->kind == NK_STR_LIT && is_wide_str_lit(init)) {
+    auto codepoints = decode_wide_string(init->sval);
+    int sz = (int)array_dim_at(ts, 0);
+    std::string elem_llty = llvm_ty(drop_array_dim(ts));
+    std::string result = "[";
+    for (int i = 0; i < sz; i++) {
+      if (i > 0) result += ", ";
+      uint32_t cp = (i < (int)codepoints.size()) ? codepoints[i] : 0;
+      result += elem_llty + " " + std::to_string((int)cp);
+    }
+    result += "]";
+    return result;
+  }
 
   // Array types MUST be checked before ptr_level: typedef-derived arrays like
   // `typedef void (*fptr)(); fptr table[3]` have ptr_level>0 but are arrays.
@@ -2908,18 +3495,35 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
     // Build per-element constants
     std::vector<std::string> vals(sz, "zeroinitializer");
     if (init->kind == NK_INIT_LIST) {
-      long long cur_idx = 0;
-      for (int i = 0; i < init->n_children; i++) {
-        Node* item = init->children[i];
-        long long idx = cur_idx;
-        Node* val_node = item;
-        if (item && item->kind == NK_INIT_ITEM) {
-          if (item->is_index_desig) idx = item->desig_val;
-          val_node = item->left;
+      // Detect brace elision: when init list has more items than array elements
+      // and element type is a struct — items are flat scalars to be consumed per element.
+      bool use_flat = false;
+      if ((elem_ts.base == TB_STRUCT) && elem_ts.ptr_level == 0 &&
+          !is_array_ty(elem_ts) && init->n_children > sz) {
+        int elem_flat = count_flat_fields_impl(elem_ts, struct_defs_);
+        if (elem_flat > 1 && init->n_children <= sz * elem_flat) {
+          use_flat = true;
         }
-        if (idx >= 0 && idx < sz)
-          vals[(int)idx] = global_const(elem_ts, val_node);
-        cur_idx = idx + 1;
+      }
+      if (use_flat) {
+        int flat_idx = 0;
+        for (int ai = 0; ai < sz; ai++) {
+          vals[ai] = global_const_flat_impl(this, elem_ts, init, flat_idx);
+        }
+      } else {
+        long long cur_idx = 0;
+        for (int i = 0; i < init->n_children; i++) {
+          Node* item = init->children[i];
+          long long idx = cur_idx;
+          Node* val_node = item;
+          if (item && item->kind == NK_INIT_ITEM) {
+            if (item->is_index_desig) idx = item->desig_val;
+            val_node = item->left;
+          }
+          if (idx >= 0 && idx < sz)
+            vals[(int)idx] = global_const(elem_ts, val_node);
+          cur_idx = idx + 1;
+        }
       }
     }
     std::string result = "[";
@@ -3054,6 +3658,14 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
     if (n_fields == 0) return "zeroinitializer";
 
     std::vector<std::string> vals(n_fields, "zeroinitializer");
+    // Unwrap compound literal: (struct Foo){...} used as struct initializer
+    if (init->kind == NK_COMPOUND_LIT) {
+      Node* cl_init = init->left ? init->left : init->init;
+      if (cl_init) init = cl_init;
+    }
+    // Unwrap cast: (struct Foo)(expr)
+    if (init->kind == NK_CAST && init->left)
+      init = init->left;
     if (init->kind == NK_INIT_LIST) {
       int cur_field = 0;
       for (int i = 0; i < init->n_children; i++) {
@@ -3077,6 +3689,13 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
         } else {
           cur_field++;
         }
+      }
+    } else if (init->kind != NK_INT_LIT || init->ival != 0) {
+      // Non-list, non-null initializer: treat as first-field value (e.g. function pointer)
+      if (n_fields >= 1) {
+        TypeSpec ft = si.field_types[0];
+        if (si.field_array_sizes[0] >= 0) ft.array_size = si.field_array_sizes[0];
+        vals[0] = global_const(ft, init);
       }
     }
 
@@ -3151,20 +3770,28 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
     if (init->kind == NK_CHAR_LIT)  return fhex((double)init->ival);
     if (init->kind == NK_FLOAT_LIT) return fhex(init->fval);
     if (init->kind == NK_UNARY && init->op && strcmp(init->op, "-") == 0 &&
-        init->left && init->left->kind == NK_INT_LIT)
-      return fhex(-(double)init->left->ival);
+        init->left && init->left->kind == NK_FLOAT_LIT)
+      return fhex(-init->left->fval);
     if (init->kind == NK_CAST && init->left)
       return global_const(ts, init->left);
+    // Try static evaluation for constant expressions (BinOp, Unary, etc.)
+    if (init->kind == NK_BINOP || init->kind == NK_UNARY) {
+      long long ival = static_eval_int(init, enum_consts_);
+      return fhex((double)ival);
+    }
     return fhex(0.0);
   }
   if (init->kind == NK_INT_LIT) return std::to_string(init->ival);
   if (init->kind == NK_CHAR_LIT) return std::to_string(init->ival);
   if (init->kind == NK_FLOAT_LIT) return fp_to_hex(init->fval);
-  if (init->kind == NK_UNARY && init->op && strcmp(init->op, "-") == 0 &&
-      init->left && init->left->kind == NK_INT_LIT)
-    return std::to_string(-init->left->ival);
   if (init->kind == NK_CAST && init->left)
     return global_const(ts, init->left);
+  // Try static evaluation for constant expressions (BinOp, Unary, Var for enum)
+  if (init->kind == NK_BINOP || init->kind == NK_UNARY ||
+      (init->kind == NK_VAR && init->name)) {
+    long long ival = static_eval_int(init, enum_consts_);
+    return std::to_string(ival);
+  }
 
   return "zeroinitializer";
 }
@@ -3180,8 +3807,33 @@ void IRBuilder::emit_global(Node* gv) {
   // Infer array size from initializer for int a[] / char s[] style globals
   // Only for unsized arrays (array_size == -2), not scalars (-1)
   if (is_array_ty(ts) && array_dim_at(ts, 0) == -2 && gv->init) {
-    int inferred = infer_array_size_from_init(gv->init);
-    if (inferred > 0) set_first_array_dim(ts, inferred);
+    int raw_count = infer_array_size_from_init(gv->init);
+    if (raw_count > 0) {
+      // Check for flat brace elision: array-of-struct where init list is flat scalars
+      TypeSpec elem_ts = drop_array_dim(ts);
+      if (gv->init->kind == NK_INIT_LIST &&
+          (elem_ts.base == TB_STRUCT) && elem_ts.ptr_level == 0 && !is_array_ty(elem_ts)) {
+        int elem_flat = count_flat_fields_impl(elem_ts, struct_defs_);
+        if (elem_flat > 1 && raw_count % elem_flat == 0) {
+          // All init items are scalars (not init lists) — check first item
+          bool all_scalar = true;
+          for (int ii = 0; ii < gv->init->n_children && ii < 4; ii++) {
+            Node* item = gv->init->children[ii];
+            if (item && item->kind == NK_INIT_ITEM) item = item->left;
+            if (item && item->kind == NK_INIT_LIST) { all_scalar = false; break; }
+          }
+          if (all_scalar) {
+            set_first_array_dim(ts, raw_count / elem_flat);
+          } else {
+            set_first_array_dim(ts, raw_count);
+          }
+        } else {
+          set_first_array_dim(ts, raw_count);
+        }
+      } else {
+        set_first_array_dim(ts, raw_count);
+      }
+    }
   }
 
   std::string llty = llvm_ty(ts);
@@ -3421,10 +4073,48 @@ std::string IRBuilder::emit_program(Node* prog) {
         TypeSpec gts = item->type;
         // Infer array size from initializer in pre-pass too (unsized only)
         if (is_array_ty(gts) && array_dim_at(gts, 0) == -2 && item->init) {
-          int inferred = infer_array_size_from_init(item->init);
-          if (inferred > 0) set_first_array_dim(gts, inferred);
+          int raw_count = infer_array_size_from_init(item->init);
+          if (raw_count > 0) {
+            TypeSpec elem_ts = drop_array_dim(gts);
+            if (item->init->kind == NK_INIT_LIST &&
+                (elem_ts.base == TB_STRUCT) && elem_ts.ptr_level == 0 && !is_array_ty(elem_ts)) {
+              int elem_flat = count_flat_fields_impl(elem_ts, struct_defs_);
+              if (elem_flat > 1 && raw_count % elem_flat == 0) {
+                bool all_scalar = true;
+                for (int ii = 0; ii < item->init->n_children && ii < 4; ii++) {
+                  Node* it2 = item->init->children[ii];
+                  if (it2 && it2->kind == NK_INIT_ITEM) it2 = it2->left;
+                  if (it2 && it2->kind == NK_INIT_LIST) { all_scalar = false; break; }
+                }
+                if (all_scalar) {
+                  set_first_array_dim(gts, raw_count / elem_flat);
+                } else {
+                  set_first_array_dim(gts, raw_count);
+                }
+              } else {
+                set_first_array_dim(gts, raw_count);
+              }
+            } else {
+              set_first_array_dim(gts, raw_count);
+            }
+          }
         }
         global_types_[item->name] = gts;
+        // Track function pointer variable signatures from &funcname initializers.
+        // A global is a function pointer if it's a pointer (ptr_level>0) or TB_FUNC_PTR
+        // and its initializer is &funcname or just funcname (direct function reference).
+        if (item->init && !is_array_ty(gts)) {
+          Node* init_node = item->init;
+          // Unwrap optional & operator
+          if (init_node->kind == NK_ADDR && init_node->left)
+            init_node = init_node->left;
+          if (init_node->kind == NK_VAR && init_node->name) {
+            auto fsit = func_sigs_.find(init_node->name);
+            if (fsit != func_sigs_.end()) {
+              fptr_sigs_[item->name] = fsit->second;
+            }
+          }
+        }
       }
       break;
     default:

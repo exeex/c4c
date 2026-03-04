@@ -69,6 +69,10 @@ class IRBuilder {
   // Emitted before function bodies in the final output.
   std::unordered_map<std::string, std::string> auto_declared_fns_;
 
+  // Function pointer variable signatures: varname → FuncSig
+  // Populated from globals initialized with &funcname.
+  std::unordered_map<std::string, FuncSig> fptr_sigs_;
+
   // Functions explicitly declared (no body) — used to prevent duplicate declares.
   std::unordered_set<std::string> declared_fns_;
   // Functions that have a body (definition) in this module — declarations for

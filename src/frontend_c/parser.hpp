@@ -46,6 +46,9 @@ class Parser {
   // Struct/union tags that already have a full definition (with body).
   // Used to detect block-scoped redefinitions and generate unique tags.
   std::set<std::string> defined_struct_tags_;
+  // Enum constants: name → value (populated as enums are parsed).
+  // Used to evaluate enum initializers that reference previously-defined constants.
+  std::unordered_map<std::string, long long> enum_consts_;
 
   // ── token cursor helpers ──────────────────────────────────────────────────
   const Token& cur() const;              // current token

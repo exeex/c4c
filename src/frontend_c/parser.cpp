@@ -9,6 +9,40 @@
 
 namespace tinyc2ll::frontend_cxx {
 
+// ── enum constant expression evaluator ────────────────────────────────────────
+// Evaluate an enum initializer expression, including references to previously
+// defined enum constants (across multiple enum declarations).
+static long long eval_enum_expr(Node* n, const std::unordered_map<std::string, long long>& consts) {
+    if (!n) return 0;
+    if (n->kind == NK_INT_LIT) return n->ival;
+    if (n->kind == NK_CHAR_LIT) return n->ival;
+    if (n->kind == NK_VAR && n->name) {
+        auto it = consts.find(n->name);
+        if (it != consts.end()) return it->second;
+    }
+    if (n->kind == NK_UNARY && n->op && strcmp(n->op, "-") == 0 && n->left)
+        return -eval_enum_expr(n->left, consts);
+    if (n->kind == NK_UNARY && n->op && strcmp(n->op, "+") == 0 && n->left)
+        return eval_enum_expr(n->left, consts);
+    if (n->kind == NK_CAST && n->left)
+        return eval_enum_expr(n->left, consts);
+    if (n->kind == NK_BINOP && n->op && n->left && n->right) {
+        long long l = eval_enum_expr(n->left, consts);
+        long long r = eval_enum_expr(n->right, consts);
+        if (strcmp(n->op, "+") == 0) return l + r;
+        if (strcmp(n->op, "-") == 0) return l - r;
+        if (strcmp(n->op, "*") == 0) return l * r;
+        if (strcmp(n->op, "&") == 0) return l & r;
+        if (strcmp(n->op, "|") == 0) return l | r;
+        if (strcmp(n->op, "^") == 0) return l ^ r;
+        if (strcmp(n->op, "<<") == 0) return l << r;
+        if (strcmp(n->op, ">>") == 0) return l >> r;
+        if (strcmp(n->op, "/") == 0 && r != 0) return l / r;
+        if (strcmp(n->op, "%") == 0 && r != 0) return l % r;
+    }
+    return 0;
+}
+
 // ── constant expression evaluator ─────────────────────────────────────────────
 // Evaluate a simple AST subtree as an integer constant (for array sizes).
 // Returns true and sets *out on success; false if the expression is dynamic.
@@ -716,12 +750,27 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
         }
         // Also skip keyword qualifiers (const, volatile, restrict)
         while (is_qualifier(cur().kind)) consume();
+        bool got_name = false;
         if (out_name && check(TokenKind::Identifier)) {
             *out_name = arena_.strdup(cur().lexeme);
             consume();
+            got_name = true;
+        }
+        // Handle: int (* f1(int a, int b))(int c, int b) — function-returning-fptr
+        // Only applies when we read a name AND the next token is '(' (function params).
+        if (got_name && check(TokenKind::LParen)) {
+            skip_paren_group();  // skip own params: (int a, int b)
+        } else if (!got_name && check(TokenKind::LParen)) {
+            // Nested declarator: (* (*p)(...)) — parse the inner declarator
+            // to extract the name, then skip any trailing param lists
+            TypeSpec inner_ts = ts;
+            inner_ts.ptr_level = 0;
+            parse_declarator(inner_ts, out_name);
+            // skip_paren_group was handled inside inner parse_declarator
+            // Merge: the inner name is what we want
         }
         expect(TokenKind::RParen);
-        // Parse (and discard) the function's param list
+        // Parse (and discard) the return-fptr's param list
         if (check(TokenKind::LParen)) {
             skip_paren_group();
         }
@@ -1032,16 +1081,13 @@ Node* Parser::parse_enum() {
         long long vval = cur_val;
         if (match(TokenKind::Assign)) {
             Node* ve = parse_assign_expr();
-            if (ve && ve->kind == NK_INT_LIT) vval = ve->ival;
-            else if (ve && ve->kind == NK_UNARY &&
-                     strcmp(ve->op, "-") == 0 &&
-                     ve->left && ve->left->kind == NK_INT_LIT) {
-                vval = -ve->left->ival;
-            }
+            vval = eval_enum_expr(ve, enum_consts_);
         }
         cur_val = vval + 1;
         names.push_back(vname);
         vals.push_back(vval);
+        // Track enum constant for use in subsequent enum initializers
+        enum_consts_[std::string(vname)] = vval;
         if (!match(TokenKind::Comma)) break;
         // Trailing comma before } is allowed
         if (check(TokenKind::RBrace)) break;
@@ -1448,10 +1494,15 @@ Node* Parser::parse_primary() {
     if (check(TokenKind::CharLit)) {
         const std::string& lex = cur().lexeme;
         long long cv = 0;
-        // lex is like 'a' or '\n' etc.
-        if (lex.size() >= 3) {
-            if (lex[1] == '\\') {
-                switch (lex[2]) {
+        // lex is like 'a' or '\n' or L'\0' etc.
+        // Skip wide/unicode prefix if present (L, u, U)
+        int char_start = 0;
+        if (!lex.empty() && (lex[0] == 'L' || lex[0] == 'u' || lex[0] == 'U'))
+            char_start = 1;
+        // Now lex[char_start] should be the opening quote '
+        if ((int)lex.size() >= char_start + 3) {
+            if (lex[char_start + 1] == '\\') {
+                switch (lex[char_start + 2]) {
                     case 'n':  cv = '\n'; break;
                     case 't':  cv = '\t'; break;
                     case 'r':  cv = '\r'; break;
@@ -1465,19 +1516,19 @@ Node* Parser::parse_primary() {
                     case 'v':  cv = '\v'; break;
                     case 'x': {
                         // \xNN
-                        cv = strtol(lex.c_str() + 3, nullptr, 16);
+                        cv = strtol(lex.c_str() + char_start + 3, nullptr, 16);
                         break;
                     }
                     default:
-                        if (lex[2] >= '0' && lex[2] <= '7') {
-                            cv = strtol(lex.c_str() + 2, nullptr, 8);
+                        if (lex[char_start + 2] >= '0' && lex[char_start + 2] <= '7') {
+                            cv = strtol(lex.c_str() + char_start + 2, nullptr, 8);
                         } else {
-                            cv = (unsigned char)lex[2];
+                            cv = (unsigned char)lex[char_start + 2];
                         }
                         break;
                 }
             } else {
-                cv = (unsigned char)lex[1];
+                cv = (unsigned char)lex[char_start + 1];
             }
         }
         consume();
@@ -2117,6 +2168,10 @@ Node* Parser::parse_top_level() {
     bool is_fptr_global = false;
 
     // Check for function-pointer global: type (*name)(...);
+    // Also handles function-returning-fptr: int (* f1(params))(ret_params);
+    bool fn_returning_fptr = false;
+    std::vector<Node*> fptr_fn_params;
+    bool fptr_fn_variadic = false;
     if (check(TokenKind::LParen) && check2(TokenKind::Star)) {
         consume();  // (
         consume();  // *
@@ -2126,9 +2181,28 @@ Node* Parser::parse_top_level() {
             decl_name = arena_.strdup(cur().lexeme);
             consume();
         }
-        expect(TokenKind::RParen);
-        if (check(TokenKind::LParen)) skip_paren_group();
-        is_fptr_global = true;
+        // Detect function-returning-fptr: (* f1(params)) — has inner params before ')'
+        if (check(TokenKind::LParen)) {
+            fn_returning_fptr = true;
+            // Parse the function's own parameter list properly
+            consume();  // consume '('
+            if (!check(TokenKind::RParen)) {
+                while (!at_end()) {
+                    if (check(TokenKind::Ellipsis)) {
+                        fptr_fn_variadic = true; consume(); break;
+                    }
+                    if (check(TokenKind::RParen)) break;
+                    if (!is_type_start()) { consume(); if (match(TokenKind::Comma)) continue; break; }
+                    Node* p = parse_param();
+                    if (p) fptr_fn_params.push_back(p);
+                    if (!match(TokenKind::Comma)) break;
+                }
+            }
+            expect(TokenKind::RParen);  // close function's own params
+        }
+        expect(TokenKind::RParen);  // close (*name...)
+        if (check(TokenKind::LParen)) skip_paren_group();  // skip return-fptr params
+        if (!fn_returning_fptr) is_fptr_global = true;
     } else {
         parse_declarator(ts, &decl_name);
     }
@@ -2141,6 +2215,45 @@ Node* Parser::parse_top_level() {
         // No name: just a type declaration; skip to ;
         match(TokenKind::Semi);
         return make_node(NK_EMPTY, ln);
+    }
+
+    // Handle function-returning-fptr: int (* f1(a, b))(c, d) { body }
+    // Params were already parsed into fptr_fn_params; now look for { body }.
+    if (fn_returning_fptr && decl_name) {
+        skip_attributes(); skip_asm(); skip_attributes();
+        if (check(TokenKind::LBrace)) {
+            Node* body = parse_block();
+            Node* fn = make_node(NK_FUNCTION, ln);
+            fn->type      = ts;
+            fn->name      = decl_name;
+            fn->variadic  = fptr_fn_variadic;
+            fn->is_static = is_static;
+            fn->is_extern = is_extern;
+            fn->is_inline = is_inline;
+            fn->body      = body;
+            fn->n_params  = (int)fptr_fn_params.size();
+            if (fn->n_params > 0) {
+                fn->params = arena_.alloc_array<Node*>(fn->n_params);
+                for (int i = 0; i < fn->n_params; ++i) fn->params[i] = fptr_fn_params[i];
+            }
+            return fn;
+        }
+        // Function declaration (no body): consume semicolon and return
+        match(TokenKind::Semi);
+        Node* fn = make_node(NK_FUNCTION, ln);
+        fn->type      = ts;
+        fn->name      = decl_name;
+        fn->variadic  = fptr_fn_variadic;
+        fn->is_static = is_static;
+        fn->is_extern = is_extern;
+        fn->is_inline = is_inline;
+        fn->body      = nullptr;
+        fn->n_params  = (int)fptr_fn_params.size();
+        if (fn->n_params > 0) {
+            fn->params = arena_.alloc_array<Node*>(fn->n_params);
+            for (int i = 0; i < fn->n_params; ++i) fn->params[i] = fptr_fn_params[i];
+        }
+        return fn;
     }
 
     // Check for function definition: name followed by ( params ) {

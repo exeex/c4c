@@ -152,6 +152,20 @@ Token Lexer::scan_identifier_or_keyword() {
   }
   // Classify keyword vs identifier
   TokenKind kind = keyword_from_string(text, /*gnu_extensions=*/true);
+
+  // Handle wide/unicode string and char literal prefixes: L"..." u"..." U"..." u8"..."
+  if (kind == TokenKind::Identifier &&
+      (text == "L" || text == "u" || text == "U" || text == "u8") &&
+      !at_end() && (peek() == '"' || peek() == '\'')) {
+    std::string prefix = text;
+    Token inner = (peek() == '"') ? scan_string() : scan_char();
+    // Prepend prefix to the inner token's lexeme
+    inner.lexeme = prefix + inner.lexeme;
+    inner.line = tok_line;
+    inner.column = tok_col;
+    return inner;
+  }
+
   return make_token(kind, std::move(text), tok_line, tok_col);
 }
 
