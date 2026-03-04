@@ -106,6 +106,24 @@ set_target_properties(frontend_cxx_stage1 PROPERTIES
 )
 target_compile_options(frontend_cxx_stage1 PRIVATE -Wall -Wextra -Wpedantic)
 
+add_executable(frontend_cxx_preprocessor_tests
+    "${PROJECT_SOURCE_DIR}/tests/frontend_cxx_preprocessor_tests.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend_c/preprocessor.cpp"
+)
+target_include_directories(frontend_cxx_preprocessor_tests PRIVATE
+    "${PROJECT_SOURCE_DIR}/src/frontend_c"
+)
+set_target_properties(frontend_cxx_preprocessor_tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+target_compile_options(frontend_cxx_preprocessor_tests PRIVATE -Wall -Wextra -Wpedantic)
+
+add_test(
+    NAME frontend_cxx_preprocessor_tests
+    COMMAND frontend_cxx_preprocessor_tests
+)
+
 # Smoke test: --version exits 0
 add_test(
     NAME frontend_cxx_stage1_version
