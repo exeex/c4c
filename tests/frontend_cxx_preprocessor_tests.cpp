@@ -4,6 +4,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "preprocessor.hpp"
 
@@ -11,6 +12,22 @@ namespace fs = std::filesystem;
 using tinyc2ll::frontend_cxx::Preprocessor;
 
 namespace {
+
+struct PendingTracker {
+  std::vector<std::string> items;
+
+  void add(const std::string& feature, const std::string& detail) {
+    items.push_back(feature + ": " + detail);
+  }
+
+  void print_summary() const {
+    if (items.empty()) return;
+    std::cout << "PENDING preprocessor features (" << items.size() << ")\n";
+    for (const auto& s : items) {
+      std::cout << "  - " << s << "\n";
+    }
+  }
+};
 
 [[noreturn]] void fail(const std::string& msg) {
   std::cerr << "FAIL: " << msg << "\n";
@@ -50,6 +67,11 @@ fs::path make_test_dir(const char* name) {
   fs::remove_all(dir);
   fs::create_directories(dir);
   return dir;
+}
+
+// Returns true when output already matches expected behavior.
+bool probe_feature_contains(const std::string& out, const std::string& needle) {
+  return out.find(needle) != std::string::npos;
 }
 
 void test_phase2_line_splice() {
@@ -174,10 +196,131 @@ void test_error_warning_diagnostics() {
   expect_contains(pp.errors()[0].message, "hard fail", "error message should be captured");
 }
 
+// ---- README-aligned pending skeletons ----
+// These tests document target behavior from
+// ref/claudes-c-compiler/src/frontend/preprocessor/README.md.
+// If current implementation does not satisfy the feature, we record PENDING.
+
+void test_pending_function_like_macro(PendingTracker& pending) {
+  fs::path dir = make_test_dir("pending_function_like_macro");
+  fs::path file = dir / "main.c";
+  write_text(file,
+             "#define ADD(a,b) ((a)+(b))\n"
+             "int x = ADD(2, 3);\n");
+  Preprocessor pp;
+  std::string out = pp.preprocess_file(file.string());
+  if (!probe_feature_contains(out, "int x = ((2)+(3));")) {
+    pending.add("function-like macro", "#define F(x) invocation expansion");
+  }
+}
+
+void test_pending_stringify(PendingTracker& pending) {
+  fs::path dir = make_test_dir("pending_stringify");
+  fs::path file = dir / "main.c";
+  write_text(file,
+             "#define S(x) #x\n"
+             "const char* s = S(abc);\n");
+  Preprocessor pp;
+  std::string out = pp.preprocess_file(file.string());
+  if (!probe_feature_contains(out, "const char* s = \"abc\";")) {
+    pending.add("stringification", "# operator in macro body");
+  }
+}
+
+void test_pending_token_paste(PendingTracker& pending) {
+  fs::path dir = make_test_dir("pending_token_paste");
+  fs::path file = dir / "main.c";
+  write_text(file,
+             "#define CAT(a,b) a##b\n"
+             "int xy = 7;\n"
+             "int z = CAT(x, y);\n");
+  Preprocessor pp;
+  std::string out = pp.preprocess_file(file.string());
+  if (!probe_feature_contains(out, "int z = xy;")) {
+    pending.add("token pasting", "## operator support");
+  }
+}
+
+void test_pending_variadic(PendingTracker& pending) {
+  fs::path dir = make_test_dir("pending_variadic");
+  fs::path file = dir / "main.c";
+  write_text(file,
+             "#define CALL(f, ...) f(__VA_ARGS__)\n"
+             "int r = CALL(sum, 1, 2);\n");
+  Preprocessor pp;
+  std::string out = pp.preprocess_file(file.string());
+  if (!probe_feature_contains(out, "int r = sum(1, 2);")) {
+    pending.add("variadic macros", "__VA_ARGS__ substitution");
+  }
+}
+
+void test_pending_if_expr_eval(PendingTracker& pending) {
+  fs::path dir = make_test_dir("pending_if_expr_eval");
+  fs::path file = dir / "main.c";
+  write_text(file,
+             "#define A 3\n"
+             "#if (A * 2) == 6 && defined(A)\n"
+             "int ok = 1;\n"
+             "#else\n"
+             "int ok = 0;\n"
+             "#endif\n");
+  Preprocessor pp;
+  std::string out = pp.preprocess_file(file.string());
+  if (!probe_feature_contains(out, "int ok = 1;")) {
+    pending.add("if-expression evaluator", "operators/defined() in #if");
+  }
+}
+
+void test_pending_include_angle(PendingTracker& pending) {
+  fs::path dir = make_test_dir("pending_include_angle");
+  fs::path file = dir / "main.c";
+  write_text(file, "#include <stdint.h>\nint x = 1;\n");
+  Preprocessor pp;
+  std::string out = pp.preprocess_file(file.string());
+  // We only check that this path is intentionally tracked. Output content is environment-dependent.
+  if (probe_feature_contains(out, "#include <stdint.h>") || out.empty()) {
+    pending.add("system include search", "#include <...> path resolution");
+  }
+}
+
+void test_pending_pragma_once(PendingTracker& pending) {
+  fs::path dir = make_test_dir("pending_pragma_once");
+  fs::path header = dir / "once.h";
+  fs::path file = dir / "main.c";
+  write_text(header,
+             "#pragma once\n"
+             "int v;\n");
+  write_text(file,
+             "#include \"once.h\"\n"
+             "#include \"once.h\"\n");
+  Preprocessor pp;
+  std::string out = pp.preprocess_file(file.string());
+  size_t first = out.find("int v;");
+  size_t second = (first == std::string::npos) ? std::string::npos : out.find("int v;", first + 1);
+  if (first == std::string::npos || second != std::string::npos) {
+    pending.add("pragma once", "deduplicate repeated include");
+  }
+}
+
+void test_pending_line_directive(PendingTracker& pending) {
+  fs::path dir = make_test_dir("pending_line_directive");
+  fs::path file = dir / "main.c";
+  write_text(file,
+             "#line 200 \"virt.c\"\n"
+             "int x;\n");
+  Preprocessor pp;
+  (void)pp.preprocess_file(file.string());
+  // Current C++ frontend lexer drops '#' lines anyway; we track this as pending
+  // until preprocessor exposes stable line-marker output contract.
+  pending.add("line markers", "#line mapping and output contract");
+}
+
 }  // namespace
 
 int main() {
   try {
+    PendingTracker pending;
+
     test_phase2_line_splice();
     test_phase3_comment_strip();
     test_define_undef_object_macro();
@@ -185,6 +328,15 @@ int main() {
     test_conditional_if_elif_else();
     test_include_quoted();
     test_error_warning_diagnostics();
+    test_pending_function_like_macro(pending);
+    test_pending_stringify(pending);
+    test_pending_token_paste(pending);
+    test_pending_variadic(pending);
+    test_pending_if_expr_eval(pending);
+    test_pending_include_angle(pending);
+    test_pending_pragma_once(pending);
+    test_pending_line_directive(pending);
+    pending.print_summary();
   } catch (const std::exception& ex) {
     std::cerr << "FAIL: exception: " << ex.what() << "\n";
     return 1;
