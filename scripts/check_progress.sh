@@ -1,43 +1,34 @@
 #!/bin/bash
-# Quick progress check: run allowlist only, print summary.
-# Compiler selection:
-#   COMPILER_MODE=python (default) -> src/frontend/c2ll.py
-#   COMPILER_MODE=cxx              -> ./build_debug/tiny-c2ll-stage1
-# You can override directly with COMPILER=/path/to/compiler.
+# Quick progress check: run c-testsuite allowlist tests via CTest.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-WORKDIR="${WORKDIR:-/tmp/c4agent_check}"
 BUILD_DIR="${BUILD_DIR:-build_debug}"
-CLANG_BIN="${CLANG_BIN:-/usr/bin/clang}"
-COMPILER_MODE="${COMPILER_MODE:-python}"
-COMPILER="${COMPILER:-}"
+JOBS="${JOBS:-0}"
+C_TESTSUITE_ROOT="${C_TESTSUITE_ROOT:-tests/c-testsuite}"
 
-if [[ -z "$COMPILER" ]]; then
-  if [[ "$COMPILER_MODE" == "cxx" ]]; then
-    COMPILER="./${BUILD_DIR}/tiny-c2ll-stage1"
+if [[ "$JOBS" -le 0 ]]; then
+  if command -v sysctl >/dev/null 2>&1; then
+    JOBS="$(sysctl -n hw.ncpu)"
   else
-    COMPILER="src/frontend/c2ll.py"
+    JOBS=4
   fi
-fi
-
-if [[ "$COMPILER_MODE" == "cxx" && ! -x "$COMPILER" ]]; then
-  echo "[check_progress] Missing C++ compiler binary: $COMPILER"
-  echo "[check_progress] Build it first: cmake -S . -B ${BUILD_DIR} && cmake --build ${BUILD_DIR}"
-  exit 1
 fi
 
 mkdir -p build/agent_state
 RAW_LOG=/tmp/check_progress_raw.txt
 
-echo "[check_progress] mode=${COMPILER_MODE} compiler=${COMPILER} workdir=${WORKDIR}"
-python3.14 tests/run_c_testsuite.py \
-  --compiler "$COMPILER" \
-  --clang "$CLANG_BIN" \
-  --testsuite-root tests/c-testsuite \
-  --workdir "$WORKDIR" \
-  --allowlist tests/c_testsuite_allowlist.txt 2>&1 | tee "$RAW_LOG" | grep -E "SUMMARY|FAIL|PASS" || true
+if [[ -d "$C_TESTSUITE_ROOT" ]]; then
+  cmake -S . -B "$BUILD_DIR" -DC_TESTSUITE_ROOT="$C_TESTSUITE_ROOT" >/dev/null
+else
+  cmake -S . -B "$BUILD_DIR" >/dev/null
+fi
+cmake --build "$BUILD_DIR" >/dev/null
 
-grep SUMMARY "$RAW_LOG" > build/agent_state/last_result.txt || true
+echo "[check_progress] build_dir=${BUILD_DIR} jobs=${JOBS}"
+ctest --test-dir "$BUILD_DIR" -L c_testsuite -j "$JOBS" --output-on-failure \
+  2>&1 | tee "$RAW_LOG" | grep -E "Start|Passed|Failed|100%|Total Test time" || true
+
+grep -E "Total Test time|tests passed|tests failed" "$RAW_LOG" > build/agent_state/last_result.txt || true
 echo "[check_progress] Done. See build/agent_state/last_result.txt"

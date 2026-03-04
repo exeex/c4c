@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(tiny_c2ll LANGUAGES NONE)
+project(tiny_c2ll LANGUAGES CXX)
 
 find_program(PYTHON314_EXECUTABLE NAMES python3.14)
 find_program(PYTHON3_EXECUTABLE NAMES python3)
@@ -8,8 +8,6 @@ if(PYTHON314_EXECUTABLE)
   set(PYTHON_EXECUTABLE "${PYTHON314_EXECUTABLE}")
 elseif(PYTHON3_EXECUTABLE)
   set(PYTHON_EXECUTABLE "${PYTHON3_EXECUTABLE}")
-else()
-  message(FATAL_ERROR "Python 3 is required")
 endif()
 
 find_program(CLANG_EXECUTABLE NAMES clang)
@@ -17,73 +15,13 @@ if(NOT CLANG_EXECUTABLE)
   message(WARNING "clang not found: clang execution tests will be skipped")
 endif()
 
-set(C2LL_SCRIPT "${PROJECT_SOURCE_DIR}/src/frontend/c2ll.py")
-set(EXAMPLE_C "${PROJECT_SOURCE_DIR}/tests/example.c")
-set(EXAMPLE_LL "${CMAKE_BINARY_DIR}/example.ll")
 set(C_TESTSUITE_ROOT "" CACHE PATH "Path to external c-testsuite root")
 if(NOT C_TESTSUITE_ROOT AND EXISTS "${PROJECT_SOURCE_DIR}/tests/c-testsuite")
   set(C_TESTSUITE_ROOT "${PROJECT_SOURCE_DIR}/tests/c-testsuite")
 endif()
 
-add_custom_command(
-  OUTPUT "${EXAMPLE_LL}"
-  COMMAND "${PYTHON_EXECUTABLE}" "${C2LL_SCRIPT}" "${EXAMPLE_C}" -o "${EXAMPLE_LL}"
-  DEPENDS "${C2LL_SCRIPT}" "${EXAMPLE_C}"
-  COMMENT "Generating example LLVM IR"
-  VERBATIM
-)
-
-add_custom_target(build_example_ir ALL DEPENDS "${EXAMPLE_LL}")
-
-if(CLANG_EXECUTABLE)
-  set(EXAMPLE_BIN "${CMAKE_BINARY_DIR}/example_bin")
-  add_custom_command(
-    OUTPUT "${EXAMPLE_BIN}"
-    COMMAND "${CLANG_EXECUTABLE}" "${EXAMPLE_LL}" -o "${EXAMPLE_BIN}"
-    DEPENDS "${EXAMPLE_LL}"
-    COMMENT "Building example executable from LLVM IR"
-    VERBATIM
-  )
-  add_custom_target(build_example_bin DEPENDS "${EXAMPLE_BIN}")
-endif()
-
-enable_testing()
-add_test(
-  NAME tiny_c2ll_tests
-  COMMAND "${PYTHON_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/run_tests.py"
-          --compiler "${C2LL_SCRIPT}"
-          --workdir "${CMAKE_BINARY_DIR}"
-          --clang "${CLANG_EXECUTABLE}"
-)
-
-if(CLANG_EXECUTABLE)
-  add_test(
-    NAME ccc_review_tests
-    COMMAND "${PYTHON_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/run_ccc_review_tests.py"
-            --compiler "${C2LL_SCRIPT}"
-            --clang "${CLANG_EXECUTABLE}"
-            --tests-root "${PROJECT_SOURCE_DIR}/tests/ccc-review-tests"
-            --workdir "${CMAKE_BINARY_DIR}"
-  )
-endif()
-
-if(C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
-  add_test(
-    NAME c_testsuite_allowlist
-    COMMAND "${PYTHON_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/run_c_testsuite.py"
-            --compiler "${C2LL_SCRIPT}"
-            --clang "${CLANG_EXECUTABLE}"
-            --testsuite-root "${C_TESTSUITE_ROOT}"
-            --workdir "${CMAKE_BINARY_DIR}"
-            --allowlist "${PROJECT_SOURCE_DIR}/tests/c_testsuite_allowlist.txt"
-  )
-endif()
-
-# ============================================================
-# C++ Frontend (stage1) – Rust-parity-first skeleton
-# M0: build skeleton + lexer/parser stubs
-# ============================================================
-enable_language(CXX)
+set(EXAMPLE_C "${PROJECT_SOURCE_DIR}/tests/example.c")
+set(EXAMPLE_LL "${CMAKE_BINARY_DIR}/example.ll")
 
 set(FRONTEND_CXX_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend_c/driver.cpp"
@@ -119,12 +57,56 @@ set_target_properties(frontend_cxx_preprocessor_tests PROPERTIES
 )
 target_compile_options(frontend_cxx_preprocessor_tests PRIVATE -Wall -Wextra -Wpedantic)
 
+add_custom_command(
+  OUTPUT "${EXAMPLE_LL}"
+  COMMAND $<TARGET_FILE:frontend_cxx_stage1> "${EXAMPLE_C}" -o "${EXAMPLE_LL}"
+  DEPENDS frontend_cxx_stage1 "${EXAMPLE_C}"
+  COMMENT "Generating example LLVM IR"
+  VERBATIM
+)
+
+add_custom_target(build_example_ir ALL DEPENDS "${EXAMPLE_LL}")
+
+if(CLANG_EXECUTABLE)
+  set(EXAMPLE_BIN "${CMAKE_BINARY_DIR}/example_bin")
+  add_custom_command(
+    OUTPUT "${EXAMPLE_BIN}"
+    COMMAND "${CLANG_EXECUTABLE}" "${EXAMPLE_LL}" -o "${EXAMPLE_BIN}"
+    DEPENDS "${EXAMPLE_LL}"
+    COMMENT "Building example executable from LLVM IR"
+    VERBATIM
+  )
+  add_custom_target(build_example_bin DEPENDS "${EXAMPLE_BIN}")
+endif()
+
+enable_testing()
+
+if(PYTHON_EXECUTABLE)
+  if(CLANG_EXECUTABLE)
+    add_test(
+      NAME tiny_c2ll_tests
+      COMMAND "${PYTHON_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/run_tests.py"
+              --compiler $<TARGET_FILE:frontend_cxx_stage1>
+              --workdir "${CMAKE_BINARY_DIR}"
+              --clang "${CLANG_EXECUTABLE}"
+    )
+  else()
+    add_test(
+      NAME tiny_c2ll_tests
+      COMMAND "${PYTHON_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/run_tests.py"
+              --compiler $<TARGET_FILE:frontend_cxx_stage1>
+              --workdir "${CMAKE_BINARY_DIR}"
+    )
+  endif()
+else()
+  message(WARNING "Python 3 not found: tiny_c2ll_tests will be skipped")
+endif()
+
 add_test(
     NAME frontend_cxx_preprocessor_tests
     COMMAND frontend_cxx_preprocessor_tests
 )
 
-# Smoke test: --version exits 0
 add_test(
     NAME frontend_cxx_stage1_version
     COMMAND frontend_cxx_stage1 --version
@@ -133,7 +115,6 @@ set_tests_properties(frontend_cxx_stage1_version PROPERTIES
     PASS_REGULAR_EXPRESSION "tiny-c2ll"
 )
 
-# Smoke test: --lex-only on the example file produces token output
 if(EXISTS "${EXAMPLE_C}")
   add_test(
       NAME frontend_cxx_stage1_lex
@@ -144,7 +125,6 @@ if(EXISTS "${EXAMPLE_C}")
   )
 endif()
 
-# Smoke test: --parse-only on the example file produces AST output
 if(EXISTS "${EXAMPLE_C}")
   add_test(
       NAME frontend_cxx_stage1_parse
@@ -155,7 +135,6 @@ if(EXISTS "${EXAMPLE_C}")
   )
 endif()
 
-# Smoke test: full IR emission on the example file produces valid LLVM IR (stdout)
 if(EXISTS "${EXAMPLE_C}")
   add_test(
       NAME frontend_cxx_stage1_emit_ir
@@ -166,13 +145,55 @@ if(EXISTS "${EXAMPLE_C}")
   )
 endif()
 
-# End-to-end local regression tests through C++ frontend binary.
 if(CLANG_EXECUTABLE)
-  add_test(
-      NAME tiny_c2ll_tests_cxx
-      COMMAND "${PYTHON_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/run_tests.py"
-              --compiler $<TARGET_FILE:frontend_cxx_stage1>
-              --workdir "${CMAKE_BINARY_DIR}"
-              --clang "${CLANG_EXECUTABLE}"
-  )
+  file(GLOB CCC_REVIEW_SRCS CONFIGURE_DEPENDS
+       "${PROJECT_SOURCE_DIR}/tests/ccc-review-tests/*.c")
+  foreach(src IN LISTS CCC_REVIEW_SRCS)
+    get_filename_component(stem "${src}" NAME_WE)
+    set(test_name "ccc_review_${stem}")
+    add_test(
+      NAME "${test_name}"
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:frontend_cxx_stage1>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DSRC=${src}
+              -DOUT_LL=${CMAKE_BINARY_DIR}/ccc_review_tests/${stem}.ll
+              -DOUT_CLANG_BIN=${CMAKE_BINARY_DIR}/ccc_review_tests/${stem}.clang.bin
+              -DOUT_C2LL_BIN=${CMAKE_BINARY_DIR}/ccc_review_tests/${stem}.c2ll.bin
+              -P "${PROJECT_SOURCE_DIR}/tests/cmake/run_ccc_review_case.cmake"
+    )
+    set_tests_properties("${test_name}" PROPERTIES LABELS "ccc_review")
+  endforeach()
+endif()
+
+if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
+  file(STRINGS "${PROJECT_SOURCE_DIR}/tests/c_testsuite_allowlist.txt" C_TESTSUITE_ALLOWLIST_RAW)
+  foreach(entry IN LISTS C_TESTSUITE_ALLOWLIST_RAW)
+    string(STRIP "${entry}" entry)
+    if(entry STREQUAL "" OR entry MATCHES "^#")
+      continue()
+    endif()
+
+    set(src "${C_TESTSUITE_ROOT}/${entry}")
+    if(NOT EXISTS "${src}")
+      message(WARNING "c-testsuite allowlist entry not found: ${entry}")
+      continue()
+    endif()
+
+    string(REGEX REPLACE "[^A-Za-z0-9_]" "_" test_id "${entry}")
+    set(test_name "c_testsuite_${test_id}")
+
+    add_test(
+      NAME "${test_name}"
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:frontend_cxx_stage1>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DSRC=${src}
+              -DROOT=${C_TESTSUITE_ROOT}
+              -DOUT_LL=${CMAKE_BINARY_DIR}/c_testsuite/${entry}.ll
+              -DOUT_BIN=${CMAKE_BINARY_DIR}/c_testsuite/${entry}.bin
+              -P "${PROJECT_SOURCE_DIR}/tests/cmake/run_c_testsuite_case.cmake"
+    )
+    set_tests_properties("${test_name}" PROPERTIES LABELS "c_testsuite")
+  endforeach()
 endif()
