@@ -11,36 +11,12 @@
 #include "ir_builder.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
+#include "preprocessor.hpp"
 #include "token.hpp"
 
 namespace tc = tinyc2ll::frontend_cxx;
 
 namespace {
-
-std::string read_file(const std::string &path) {
-  std::ifstream in(path, std::ios::binary);
-  if (!in) {
-    throw std::runtime_error("failed to open file: " + path);
-  }
-  std::ostringstream buf;
-  buf << in.rdbuf();
-  return buf.str();
-}
-
-// Run clang -E -P on the input file and return the preprocessed source.
-// Falls back to reading the file directly if clang is not found.
-std::string preprocess(const std::string& path) {
-  std::string cmd = "clang -E -P -x c " + path + " 2>/dev/null";
-  FILE* fp = popen(cmd.c_str(), "r");
-  if (!fp) return read_file(path);
-  std::string result;
-  char buf[4096];
-  while (fgets(buf, sizeof(buf), fp))
-    result += buf;
-  int rc = pclose(fp);
-  if (rc != 0 || result.empty()) return read_file(path);
-  return result;
-}
 
 void print_usage(const char *argv0) {
   std::cerr << "usage: " << argv0
@@ -95,7 +71,8 @@ int main(int argc, char **argv) {
       return 2;
     }
 
-    std::string source = preprocess(input);
+    tc::Preprocessor preprocessor;
+    std::string source = preprocessor.preprocess_file(input);
     tc::Lexer lexer(source);
     std::vector<tc::Token> tokens = lexer.scan_all();
 

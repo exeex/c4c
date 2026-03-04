@@ -60,7 +60,9 @@
     - uninitialized variable use
     - function signature conflicts
     - function call arity/type checks
-  - temporary external preprocessing via `clang -E -P`
+  - `src/frontend_c/preprocessor.*` module is now wired in C++ stage1 driver.
+    - backend priority: `ccc -E -P` -> `cc -E -P` -> `cpp -E -P` -> raw file fallback.
+    - this removes hardcoded dependency on `clang -E` in `driver.cpp`.
 - End-to-end test pipeline is in place:
   - `c2ll.py -> .ll -> clang -> executable`
   - failure logs split into frontend/backend/runtime
@@ -277,7 +279,7 @@ COMPILER_MODE=cxx bash scripts/full_scan.sh
 5. M4: IR builder (text output)
    - Temp/label allocation and control-flow emission parity with current expectations.
 6. M5: Driver + preprocess wiring
-   - Keep `clang -E -P` preprocessing model initially.
+   - Keep external preprocessor backend model initially (now through `Preprocessor` wrapper).
 7. M6: Allowlist parity gate
    - Reach agreed pass threshold against Python baseline.
 8. M7: Pure-C backport planning + first converted module
