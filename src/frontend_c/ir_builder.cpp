@@ -85,7 +85,7 @@ std::string IRBuilder::llvm_ty_base(TypeBase base) {
   case TB_INT128:
   case TB_UINT128:    return "i128";
   case TB_ENUM:       return "i32";
-  case TB_VA_LIST:
+  case TB_VA_LIST:    // va_list — as a ptr in declarations/params; alloca uses special struct
   case TB_FUNC_PTR:   return "ptr";
   case TB_TYPEDEF:    return "i32";
   default:            return "i32";
@@ -93,12 +93,17 @@ std::string IRBuilder::llvm_ty_base(TypeBase base) {
 }
 
 std::string IRBuilder::llvm_ty(const TypeSpec& ts) {
-  if (ts.ptr_level > 0) return "ptr";
+  // Check array BEFORE ptr_level: for typedef-derived pointer types used as array elements
+  // (e.g. typedef void (*fptr)(void); fptr table[3] → [3 x ptr], not ptr)
   if (ts.array_size >= 0) {
     TypeSpec elem = ts;
     elem.array_size = -1;
-    return "[" + std::to_string(ts.array_size) + " x " + llvm_ty(elem) + "]";
+    std::string elem_llty = llvm_ty(elem);
+    // void is not a valid array element type; use ptr instead (e.g. function pointer arrays)
+    if (elem_llty == "void") elem_llty = "ptr";
+    return "[" + std::to_string(ts.array_size) + " x " + elem_llty + "]";
   }
+  if (ts.ptr_level > 0) return "ptr";
   if (ts.base == TB_STRUCT || ts.base == TB_UNION) {
     if (ts.tag && ts.tag[0]) {
       return std::string("%struct.") + ts.tag;
@@ -489,7 +494,21 @@ void IRBuilder::hoist_allocas(Node* node) {
       preamble_.push_back(gname + " = internal global " + llty + " " + init_val);
       break;
     }
-    std::string slot = std::string("%lv.") + node->name;
+    // Generate unique slot name to avoid LLVM alloca name collision when the same
+    // variable name appears in multiple scopes (e.g. separate if/else branches).
+    std::string slot;
+    {
+      auto dup_it = local_slot_dedup_.find(node->name);
+      if (dup_it == local_slot_dedup_.end()) {
+        slot = std::string("%lv.") + node->name;
+        local_slot_dedup_[node->name] = 0;
+      } else {
+        dup_it->second++;
+        slot = std::string("%lv.") + node->name + "." + std::to_string(dup_it->second);
+      }
+    }
+    node_slots_[node] = slot;
+    node_types_[node] = ts;       // per-node type (survives overwrite by later same-named vars)
     local_slots_[node->name] = slot;
     local_types_[node->name] = ts;
     std::string llty = llvm_ty(ts);
@@ -1525,6 +1544,31 @@ std::string IRBuilder::codegen_expr(Node* n) {
 
     // ── Builtin function special handling ────────────────────────────────────
     if (!is_indirect && !fn_name.empty()) {
+      // va_start(ap, last_named) / __builtin_va_start: emit @llvm.va_start(ptr)
+      if ((fn_name == "va_start" || fn_name == "__builtin_va_start") && n->n_children >= 1) {
+        std::string ap_ptr = codegen_lval(n->children[0]);
+        if (!auto_declared_fns_.count("llvm.va_start"))
+          auto_declared_fns_["llvm.va_start"] = "declare void @llvm.va_start(ptr)";
+        emit("call void @llvm.va_start(ptr " + ap_ptr + ")");
+        return "0";
+      }
+      // va_end(ap) / __builtin_va_end: emit @llvm.va_end(ptr)
+      if ((fn_name == "va_end" || fn_name == "__builtin_va_end") && n->n_children >= 1) {
+        std::string ap_ptr = codegen_lval(n->children[0]);
+        if (!auto_declared_fns_.count("llvm.va_end"))
+          auto_declared_fns_["llvm.va_end"] = "declare void @llvm.va_end(ptr)";
+        emit("call void @llvm.va_end(ptr " + ap_ptr + ")");
+        return "0";
+      }
+      // va_copy(dest, src) / __builtin_va_copy: emit @llvm.va_copy(ptr, ptr)
+      if ((fn_name == "va_copy" || fn_name == "__builtin_va_copy") && n->n_children >= 2) {
+        std::string dst_ptr = codegen_lval(n->children[0]);
+        std::string src_ptr = codegen_lval(n->children[1]);
+        if (!auto_declared_fns_.count("llvm.va_copy"))
+          auto_declared_fns_["llvm.va_copy"] = "declare void @llvm.va_copy(ptr, ptr)";
+        emit("call void @llvm.va_copy(ptr " + dst_ptr + ", ptr " + src_ptr + ")");
+        return "0";
+      }
       // __builtin_expect(expr, expected) → just return expr
       if (fn_name == "__builtin_expect" && n->n_children >= 1) {
         return codegen_expr(n->children[0]);
@@ -1765,6 +1809,30 @@ std::string IRBuilder::codegen_expr(Node* n) {
         std::string ext_op = is_unsigned ? "zext" : "sext";
         emit(ext + " = " + ext_op + " " + from_llty + " " + arg_vals[i] + " to i32");
         args_str += "i32 " + ext;
+      } else if (is_variadic_slot && arg_types[i].ptr_level == 0 &&
+                 arg_types[i].array_size < 0 &&
+                 (arg_types[i].base == TB_STRUCT || arg_types[i].base == TB_UNION)) {
+        // ARM64 ABI: struct/union varargs must be coerced to [N x i64] so the
+        // LLVM backend places them in the correct integer register/stack slots.
+        // (Without coercion, the backend may pass the struct in FP/SIMD slots
+        //  or use an incompatible layout, breaking va_arg on the callee side.)
+        int sz = sizeof_ty(arg_types[i]);
+        int n_slots = (sz + 7) / 8;
+        if (n_slots < 1) n_slots = 1;
+        std::string slot_ty = "[" + std::to_string(n_slots) + " x i64]";
+        std::string struct_llty = llvm_ty(arg_types[i]);
+
+        // Alloca [N x i64] aligned 8 in entry block
+        std::string coerce_buf = "%va_coerce_" + std::to_string(tmp_idx_++);
+        alloca_lines_.push_back("  " + coerce_buf + " = alloca " + slot_ty + ", align 8");
+
+        // Store struct value to the coerce buffer (opaque ptr: no bitcast needed)
+        emit("store " + struct_llty + " " + arg_vals[i] + ", ptr " + coerce_buf);
+
+        // Reload as [N x i64]
+        std::string coerced = fresh_tmp();
+        emit(coerced + " = load " + slot_ty + ", ptr " + coerce_buf + ", align 8");
+        args_str += slot_ty + " " + coerced;
       } else {
         args_str += llvm_ty(arg_types[i]) + " " + arg_vals[i];
       }
@@ -1954,11 +2022,51 @@ std::string IRBuilder::codegen_expr(Node* n) {
   }
 
   case NK_VA_ARG: {
-    // __builtin_va_arg: return 0 placeholder
+    // va_arg(ap, T): ARM64 ABI.
+    // va_list is alloca ptr (a pointer to the next vararg slot on the stack).
+    // For struct/union aggregates, clang crashes on `va_arg ptr %ap, %struct.T`;
+    // use the manual load/advance/memcpy pattern instead.
     TypeSpec ts = n->type;
     std::string llty = llvm_ty(ts);
+    std::string ap_ptr = codegen_lval(n->left);
+
+    bool is_aggregate = (ts.ptr_level == 0 && ts.array_size < 0 &&
+                         (ts.base == TB_STRUCT || ts.base == TB_UNION));
+    if (is_aggregate) {
+      int sz = sizeof_ty(ts);
+      // ARM64: each vararg slot occupies a multiple-of-8 bytes
+      int advance = (sz + 7) & ~7;
+
+      // Ensure @llvm.memcpy intrinsic is declared
+      if (!auto_declared_fns_.count("llvm.memcpy.p0.p0.i64"))
+        auto_declared_fns_["llvm.memcpy.p0.p0.i64"] =
+          "declare void @llvm.memcpy.p0.p0.i64(ptr noalias nocapture writeonly, "
+          "ptr noalias nocapture readonly, i64, i1 immarg)";
+
+      // Load current slot pointer from va_list
+      std::string cur = fresh_tmp();
+      emit(cur + " = load ptr, ptr " + ap_ptr + ", align 8");
+
+      // Advance va_list pointer
+      std::string nxt = fresh_tmp();
+      emit(nxt + " = getelementptr i8, ptr " + cur + ", i64 " + std::to_string(advance));
+      emit("store ptr " + nxt + ", ptr " + ap_ptr + ", align 8");
+
+      // Alloca temp for the struct value and memcpy
+      std::string tmp = "%va_tmp_" + std::to_string(tmp_idx_++);
+      alloca_lines_.push_back("  " + tmp + " = alloca " + llty);
+      emit("call void @llvm.memcpy.p0.p0.i64(ptr align 1 " + tmp +
+           ", ptr align 8 " + cur + ", i64 " + std::to_string(sz) + ", i1 false)");
+
+      // Load the struct value from the temp
+      std::string t = fresh_tmp();
+      emit(t + " = load " + llty + ", ptr " + tmp);
+      return t;
+    }
+
+    // Scalar / pointer: use LLVM's va_arg instruction directly
     std::string t = fresh_tmp();
-    emit(t + " = load " + llty + ", ptr " + codegen_expr(n->left));
+    emit(t + " = va_arg ptr " + ap_ptr + ", " + llty);
     return t;
   }
 
@@ -1999,12 +2107,26 @@ void IRBuilder::emit_stmt(Node* n) {
   case NK_DECL: {
     // Alloca was already hoisted; just emit the initialization store if present
     if (!n->name || !n->init) break;
-    auto it = local_slots_.find(n->name);
-    if (it == local_slots_.end()) break;
     // Static locals: initialized at program start (global), skip runtime store
     if (n->is_static) break;
 
-    // Use the inferred type (may have updated array_size) from local_types_
+    // Restore the specific slot and type for this node (needed when multiple vars share
+    // the same name in different scopes — hoist_allocas gave each a unique slot/type)
+    {
+      auto ns_it = node_slots_.find(n);
+      if (ns_it != node_slots_.end()) {
+        local_slots_[n->name] = ns_it->second;
+      }
+      auto nt_it = node_types_.find(n);
+      if (nt_it != node_types_.end()) {
+        local_types_[n->name] = nt_it->second;
+      }
+    }
+
+    auto it = local_slots_.find(n->name);
+    if (it == local_slots_.end()) break;
+
+    // Use the per-node type (restored above) to ensure correct llvm type for this decl
     TypeSpec lts = local_types_[n->name];
     std::string llty = llvm_ty(lts);
 
@@ -2853,6 +2975,9 @@ void IRBuilder::emit_function(Node* fn) {
   body_lines_.clear();
   local_types_.clear();
   local_slots_.clear();
+  node_slots_.clear();
+  node_types_.clear();
+  local_slot_dedup_.clear();
   tmp_idx_ = 0;
   label_idx_ = 0;
   last_was_terminator_ = false;
@@ -3062,6 +3187,9 @@ std::string IRBuilder::emit_program(Node* prog) {
 
   // Assemble final IR
   std::string out;
+  // Prepend the va_list struct type definition before all other preamble lines.
+  // AArch64 (macOS ARM64): va_list is a struct { ptr, ptr, ptr, i32, i32 } (40 bytes).
+  out += "%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }\n";
   for (const auto& l : preamble_) out += l + "\n";
 
   // Emit auto-declare lines for called-but-undeclared functions

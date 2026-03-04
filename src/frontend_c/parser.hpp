@@ -43,6 +43,9 @@ class Parser {
   std::unordered_map<std::string, TypeSpec> typedef_types_;
   std::vector<Node*>    struct_defs_;  // collected struct/enum defs (prepended)
   int                anon_counter_;  // counter for anonymous tag names
+  // Struct/union tags that already have a full definition (with body).
+  // Used to detect block-scoped redefinitions and generate unique tags.
+  std::set<std::string> defined_struct_tags_;
 
   // ── token cursor helpers ──────────────────────────────────────────────────
   const Token& cur() const;              // current token

@@ -167,6 +167,90 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena)
         nullptr
     };
     for (int i = 0; seed[i]; ++i) typedefs_.insert(seed[i]);
+
+    // Seed typedef_types_ for well-known types so they resolve to correct LLVM types
+    // instead of the TB_TYPEDEF fallback (which emits i32).
+    {
+        TypeSpec va_ts{};
+        va_ts.array_size = -1;
+        va_ts.base = TB_VA_LIST;
+        typedef_types_["va_list"]          = va_ts;
+        typedef_types_["__va_list"]        = va_ts;
+        typedef_types_["__builtin_va_list"]= va_ts;
+        typedef_types_["__gnuc_va_list"]   = va_ts;
+
+        // size_t / uintptr_t etc. → u64 on 64-bit platforms
+        TypeSpec u64_ts{};
+        u64_ts.array_size = -1;
+        u64_ts.base = TB_ULONGLONG;  // 64-bit unsigned
+        typedef_types_["size_t"]    = u64_ts;
+        typedef_types_["uintptr_t"] = u64_ts;
+        typedef_types_["uintmax_t"] = u64_ts;
+        typedef_types_["uint64_t"]  = u64_ts;
+        typedef_types_["uint_least64_t"] = u64_ts;
+        typedef_types_["uint_fast64_t"]  = u64_ts;
+
+        TypeSpec i64_ts{};
+        i64_ts.array_size = -1;
+        i64_ts.base = TB_LONGLONG;
+        typedef_types_["ssize_t"]   = i64_ts;
+        typedef_types_["ptrdiff_t"] = i64_ts;
+        typedef_types_["intptr_t"]  = i64_ts;
+        typedef_types_["intmax_t"]  = i64_ts;
+        typedef_types_["int64_t"]   = i64_ts;
+        typedef_types_["int_least64_t"] = i64_ts;
+        typedef_types_["int_fast64_t"]  = i64_ts;
+        typedef_types_["off_t"]     = i64_ts;
+
+        TypeSpec u32_ts{};
+        u32_ts.array_size = -1;
+        u32_ts.base = TB_UINT;
+        typedef_types_["uint32_t"]  = u32_ts;
+        typedef_types_["uint_least32_t"] = u32_ts;
+        typedef_types_["uint_fast32_t"]  = u32_ts;
+
+        TypeSpec i32_ts{};
+        i32_ts.array_size = -1;
+        i32_ts.base = TB_INT;
+        typedef_types_["int32_t"]   = i32_ts;
+        typedef_types_["int_least32_t"] = i32_ts;
+        typedef_types_["int_fast32_t"]  = i32_ts;
+
+        TypeSpec u16_ts{};
+        u16_ts.array_size = -1;
+        u16_ts.base = TB_USHORT;
+        typedef_types_["uint16_t"]  = u16_ts;
+        typedef_types_["uint_least16_t"] = u16_ts;
+        typedef_types_["uint_fast16_t"]  = u16_ts;
+
+        TypeSpec i16_ts{};
+        i16_ts.array_size = -1;
+        i16_ts.base = TB_SHORT;
+        typedef_types_["int16_t"]   = i16_ts;
+        typedef_types_["int_least16_t"] = i16_ts;
+        typedef_types_["int_fast16_t"]  = i16_ts;
+
+        TypeSpec u8_ts{};
+        u8_ts.array_size = -1;
+        u8_ts.base = TB_UCHAR;
+        typedef_types_["uint8_t"]   = u8_ts;
+        typedef_types_["uint_least8_t"] = u8_ts;
+        typedef_types_["uint_fast8_t"]  = u8_ts;
+
+        TypeSpec i8_ts{};
+        i8_ts.array_size = -1;
+        i8_ts.base = TB_SCHAR;
+        typedef_types_["int8_t"]    = i8_ts;
+        typedef_types_["int_least8_t"] = i8_ts;
+        typedef_types_["int_fast8_t"]  = i8_ts;
+
+        // wchar_t on macOS/ARM64 is i32
+        TypeSpec wchar_ts{};
+        wchar_ts.array_size = -1;
+        wchar_ts.base = TB_INT;
+        typedef_types_["wchar_t"]  = wchar_ts;
+        typedef_types_["wint_t"]   = wchar_ts;
+    }
 }
 
 // ── token cursor helpers ──────────────────────────────────────────────────────
@@ -304,6 +388,7 @@ TypeSpec Parser::parse_base_type() {
     bool has_enum     = false;
     bool has_typedef  = false;
     bool done         = false;
+    bool base_set     = false;  // true when ts.base was set directly (KwBuiltin, KwInt128, etc.)
 
     while (!done && !at_end()) {
         TokenKind k = cur().kind;
@@ -337,17 +422,19 @@ TypeSpec Parser::parse_base_type() {
             case TokenKind::KwComplex: consume(); break; // treat _Complex as plain double
 
             case TokenKind::KwInt128:  ts.base = has_unsigned ? TB_UINT128 : TB_INT128;
-                                       consume(); done = true; break;
-            case TokenKind::KwUInt128: ts.base = TB_UINT128; consume(); done = true; break;
+                                       base_set = true; consume(); done = true; break;
+            case TokenKind::KwUInt128: ts.base = TB_UINT128; base_set = true; consume(); done = true; break;
 
             case TokenKind::KwBuiltin:
                 ts.base = TB_VA_LIST;
                 ts.tag  = arena_.strdup("__va_list");
+                base_set = true;
                 consume(); done = true; break;
 
             case TokenKind::KwAutoType:
                 // __auto_type: treat as int for now
                 ts.base = TB_INT;
+                base_set = true;
                 consume(); done = true; break;
 
             case TokenKind::KwStruct:
@@ -423,6 +510,9 @@ TypeSpec Parser::parse_base_type() {
         ts.tag  = ed ? ed->name : nullptr;
         return ts;
     }
+
+    // If base was set directly (KwBuiltin, KwInt128, etc.), skip combined-specifier resolution.
+    if (base_set) return ts;
 
     // Resolve combined specifiers
     if (has_typedef) {
@@ -606,7 +696,15 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         char buf[32];
         snprintf(buf, sizeof(buf), "_anon_%d", anon_counter_++);
         tag = arena_.strdup(buf);
+    } else if (defined_struct_tags_.count(tag)) {
+        // Block-scoped redefinition of an already-defined tag (C tag shadowing).
+        // Generate a unique shadow tag so both definitions coexist in struct_defs_.
+        // Variables declared inline with this definition will get the shadow tag.
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%s.__shadow_%d", tag, anon_counter_++);
+        tag = arena_.strdup(buf);
     }
+    defined_struct_tags_.insert(tag);
 
     Node* sd = make_node(NK_STRUCT_DEF, ln);
     sd->name     = tag;
@@ -1716,7 +1814,8 @@ Node* Parser::parse_local_decl() {
     std::vector<Node*> decls;
     do {
         TypeSpec ts = base_ts;
-        ts.ptr_level = 0;
+        // Preserve ptr_level from typedef resolution (e.g. typedef void (*fptr)(); fptr arr[3])
+        // only reset the array_size since declarators add their own
         ts.array_size = -1;
         ts.array_size_expr = nullptr;
         const char* vname = nullptr;
@@ -1840,7 +1939,7 @@ Node* Parser::parse_top_level() {
 
     // Parse declarator (name + pointer stars + maybe function params)
     TypeSpec ts = base_ts;
-    ts.ptr_level = 0;
+    // Preserve ptr_level from typedef resolution (e.g. typedef void (*fptr)(); fptr arr[3])
     ts.array_size = -1;
     ts.array_size_expr = nullptr;
     const char* decl_name = nullptr;

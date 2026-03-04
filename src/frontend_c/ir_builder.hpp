@@ -94,6 +94,13 @@ class IRBuilder {
   // varname → LLVM slot name (e.g. "%x")
   std::unordered_map<std::string, std::string> local_slots_;
 
+  // node* → unique alloca slot name (to disambiguate same-named vars in different scopes)
+  std::unordered_map<Node*, std::string> node_slots_;
+  // node* → TypeSpec for this specific declaration (mirrors local_types_ but per-node)
+  std::unordered_map<Node*, TypeSpec> node_types_;
+  // varname → dedup counter (incremented when the same name is hoisted again)
+  std::unordered_map<std::string, int> local_slot_dedup_;
+
   int  tmp_idx_;          // counter for %tN temporaries
   int  label_idx_;        // counter for labeled basic blocks
   bool last_was_terminator_;  // suppress dead-code after ret/br
