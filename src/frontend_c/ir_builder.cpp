@@ -16,6 +16,9 @@ static TypeSpec make_ts(TypeBase base) {
   TypeSpec ts{};
   ts.base = base;
   ts.array_size = -1;
+  ts.array_rank = 0;
+  for (int i = 0; i < 8; ++i) ts.array_dims[i] = -1;
+  ts.is_ptr_to_array = false;
   return ts;
 }
 static TypeSpec int_ts()    { return make_ts(TB_INT); }
@@ -28,6 +31,67 @@ static TypeSpec ll_ts()     { return make_ts(TB_LONGLONG); }
 static TypeSpec ptr_to(TypeBase base) {
   TypeSpec ts = make_ts(base);
   ts.ptr_level = 1;
+  return ts;
+}
+
+static int array_rank_of(const TypeSpec& ts) {
+  if (ts.array_rank > 0) return ts.array_rank;
+  if (ts.array_size != -1) return 1;
+  return 0;
+}
+
+static long long array_dim_at(const TypeSpec& ts, int idx) {
+  if (ts.array_rank > 0) {
+    if (idx >= 0 && idx < ts.array_rank) return ts.array_dims[idx];
+    return -1;
+  }
+  if (idx == 0 && ts.array_size != -1) return ts.array_size;
+  return -1;
+}
+
+static bool is_array_ty(const TypeSpec& ts) {
+  return array_rank_of(ts) > 0;
+}
+
+static void clear_array(TypeSpec& ts) {
+  ts.array_size = -1;
+  ts.array_rank = 0;
+  for (int i = 0; i < 8; ++i) ts.array_dims[i] = -1;
+  ts.is_ptr_to_array = false;
+}
+
+static void set_array_dims(TypeSpec& ts, const long long* dims, int rank) {
+  clear_array(ts);
+  if (rank <= 0) return;
+  if (rank > 8) rank = 8;
+  ts.array_rank = rank;
+  for (int i = 0; i < rank; ++i) ts.array_dims[i] = dims[i];
+  ts.array_size = ts.array_dims[0];
+}
+
+static void set_first_array_dim(TypeSpec& ts, long long dim0) {
+  int rank = array_rank_of(ts);
+  if (rank <= 0) {
+    long long dims[1] = {dim0};
+    set_array_dims(ts, dims, 1);
+    return;
+  }
+  long long dims[8];
+  for (int i = 0; i < rank && i < 8; ++i) dims[i] = array_dim_at(ts, i);
+  dims[0] = dim0;
+  set_array_dims(ts, dims, rank);
+}
+
+static TypeSpec drop_array_dim(TypeSpec ts) {
+  int rank = array_rank_of(ts);
+  if (rank <= 0) {
+    clear_array(ts);
+    return ts;
+  }
+  long long dims[8];
+  int out = 0;
+  for (int i = 1; i < rank && out < 8; ++i) dims[out++] = array_dim_at(ts, i);
+  set_array_dims(ts, dims, out);
   return ts;
 }
 
@@ -93,15 +157,17 @@ std::string IRBuilder::llvm_ty_base(TypeBase base) {
 }
 
 std::string IRBuilder::llvm_ty(const TypeSpec& ts) {
+  if (ts.ptr_level > 0 && ts.is_ptr_to_array) return "ptr";
   // Check array BEFORE ptr_level: for typedef-derived pointer types used as array elements
   // (e.g. typedef void (*fptr)(void); fptr table[3] → [3 x ptr], not ptr)
-  if (ts.array_size >= 0) {
-    TypeSpec elem = ts;
-    elem.array_size = -1;
+  if (is_array_ty(ts)) {
+    long long dim = array_dim_at(ts, 0);
+    if (dim < 0) dim = 0;
+    TypeSpec elem = drop_array_dim(ts);
     std::string elem_llty = llvm_ty(elem);
     // void is not a valid array element type; use ptr instead (e.g. function pointer arrays)
     if (elem_llty == "void") elem_llty = "ptr";
-    return "[" + std::to_string(ts.array_size) + " x " + elem_llty + "]";
+    return "[" + std::to_string(dim) + " x " + elem_llty + "]";
   }
   if (ts.ptr_level > 0) return "ptr";
   if (ts.base == TB_STRUCT || ts.base == TB_UNION) {
@@ -115,10 +181,11 @@ std::string IRBuilder::llvm_ty(const TypeSpec& ts) {
 
 int IRBuilder::sizeof_ty(const TypeSpec& ts) {
   if (ts.ptr_level > 0) return 8;
-  if (ts.array_size >= 0) {
-    TypeSpec elem = ts;
-    elem.array_size = -1;
-    return (int)ts.array_size * sizeof_ty(elem);
+  if (is_array_ty(ts)) {
+    long long dim = array_dim_at(ts, 0);
+    if (dim < 0) dim = 0;
+    TypeSpec elem = drop_array_dim(ts);
+    return (int)dim * sizeof_ty(elem);
   }
   switch (ts.base) {
   case TB_BOOL:
@@ -223,8 +290,8 @@ TypeSpec IRBuilder::expr_type(Node* n) {
   case NK_ADDR: {
     TypeSpec inner = expr_type(n->left);
     // Array decays to pointer (same base, just 1 more ptr level)
-    if (inner.array_size >= 0) {
-      inner.array_size = -1;
+    if (is_array_ty(inner)) {
+      inner = drop_array_dim(inner);
       inner.ptr_level += 1;
     } else {
       inner.ptr_level += 1;
@@ -234,6 +301,7 @@ TypeSpec IRBuilder::expr_type(Node* n) {
   case NK_DEREF: {
     TypeSpec inner = expr_type(n->left);
     if (inner.ptr_level > 0) inner.ptr_level -= 1;
+    else if (is_array_ty(inner)) inner = drop_array_dim(inner);
     return inner;
   }
   case NK_ASSIGN:
@@ -255,12 +323,25 @@ TypeSpec IRBuilder::expr_type(Node* n) {
       if (strcmp(cn, "__builtin_fabsf") == 0 || strcmp(cn, "__builtin_inff") == 0)
         return float_ts();
     }
+    // Indirect call through function pointer expression.
+    // We don't model full function signatures in TypeSpec yet, so preserve
+    // pointer/aggregate shape for downstream member/index typing.
+    if (n->left) {
+      TypeSpec callee_ts = expr_type(n->left);
+      if (callee_ts.ptr_level > 0 || is_array_ty(callee_ts))
+        return callee_ts;
+    }
     return int_ts();
   }
   case NK_INDEX: {
     TypeSpec bt = expr_type(n->left);
-    if (bt.array_size >= 0) { bt.array_size = -1; return bt; }
-    if (bt.ptr_level > 0)   { bt.ptr_level -= 1;  return bt; }
+    if (is_array_ty(bt) && !(bt.ptr_level > 0 && bt.is_ptr_to_array))
+      return drop_array_dim(bt);
+    if (bt.ptr_level > 0) {
+      bt.ptr_level -= 1;
+      if (bt.ptr_level == 0 && bt.is_ptr_to_array) bt.is_ptr_to_array = false;
+      return bt;
+    }
     return int_ts();
   }
   case NK_MEMBER: {
@@ -270,6 +351,8 @@ TypeSpec IRBuilder::expr_type(Node* n) {
       FieldPath path;
       if (find_field(bts.tag, n->name, path))
         return field_type_from_path(bts.tag, path);
+      throw std::runtime_error(std::string("unknown field ") +
+                               (n->name ? n->name : "?") + " in " + bts.tag);
     }
     return int_ts();
   }
@@ -379,8 +462,8 @@ std::string IRBuilder::coerce(const std::string& val, const TypeSpec& from_ts,
   std::string t = fresh_tmp();
 
   // Array type: val is already a ptr (array decays to pointer)
-  if (from_ts.array_size >= 0 && to_llty == "ptr") return val;
-  if (from_ts.array_size >= 0) {
+  if (is_array_ty(from_ts) && to_llty == "ptr") return val;
+  if (is_array_ty(from_ts)) {
     // array → integer (e.g. for printf %p): ptrtoint
     emit(t + " = ptrtoint ptr " + val + " to " + to_llty);
     return t;
@@ -468,9 +551,9 @@ void IRBuilder::hoist_allocas(Node* node) {
     if (!node->name) break;
     TypeSpec ts = node->type;
     // Infer array size from initializer for int x[] / char s[] local arrays
-    if (ts.array_size == -2 && node->init) {
+    if (is_array_ty(ts) && array_dim_at(ts, 0) == -2 && node->init) {
       int inferred = infer_array_size_from_init(node->init);
-      if (inferred > 0) ts.array_size = inferred;
+      if (inferred > 0) set_first_array_dim(ts, inferred);
     }
     if (node->is_static) {
       // Static local: emit as a global with internal linkage.
@@ -773,10 +856,9 @@ std::string IRBuilder::codegen_lval(Node* n) {
     }
 
     std::string t = fresh_tmp();
-    if (base_ts.array_size >= 0) {
+    if (is_array_ty(base_ts) && !(base_ts.ptr_level > 0 && base_ts.is_ptr_to_array)) {
       // Array variable: GEP [N x elem], ptr, 0, idx
-      TypeSpec elem_ts = base_ts;
-      elem_ts.array_size = -1;
+      TypeSpec elem_ts = drop_array_dim(base_ts);
       std::string arr_llty = llvm_ty(base_ts);
       std::string elem_llty = llvm_ty(elem_ts);
       std::string ptr = codegen_lval(n->left);
@@ -787,6 +869,8 @@ std::string IRBuilder::codegen_lval(Node* n) {
       // Pointer arithmetic: GEP elem, ptr_val, idx
       TypeSpec elem_ts = base_ts;
       elem_ts.ptr_level -= 1;
+      if (elem_ts.ptr_level == 0 && elem_ts.is_ptr_to_array)
+        elem_ts.is_ptr_to_array = false;
       std::string elem_llty = llvm_ty(elem_ts);
       std::string ptr_val = codegen_expr(n->left);
       emit(t + " = getelementptr " + elem_llty + ", ptr " + ptr_val +
@@ -807,7 +891,17 @@ std::string IRBuilder::codegen_lval(Node* n) {
     if (is_arrow && obj_ts.ptr_level > 0) obj_ts.ptr_level -= 1;
 
     const char* tag = obj_ts.tag;
-    if (!tag || !tag[0]) throw std::runtime_error("member access on non-struct");
+    if (!tag || !tag[0]) {
+      std::string left_info = std::to_string((int)(obj ? obj->kind : -1));
+      if (obj && obj->kind == NK_MEMBER && obj->name)
+        left_info += std::string(":") + obj->name;
+      throw std::runtime_error(
+          "member access on non-struct ." + std::string(n->name ? n->name : "?") +
+          " (base=" + std::to_string((int)obj_ts.base) +
+          ", ptr=" + std::to_string(obj_ts.ptr_level) +
+          ", arr_rank=" + std::to_string(array_rank_of(obj_ts)) +
+          ", left=" + left_info + ")");
+    }
 
     if (!struct_defs_.count(tag))
       throw std::runtime_error(std::string("unknown struct ") + tag);
@@ -815,7 +909,8 @@ std::string IRBuilder::codegen_lval(Node* n) {
     // Use recursive field lookup (handles anonymous sub-struct promotion)
     FieldPath path;
     if (!find_field(tag, n->name, path))
-      throw std::runtime_error(std::string("unknown field ") + (n->name ? n->name : "?"));
+      throw std::runtime_error(std::string("unknown field ") + (n->name ? n->name : "?") +
+                               " in " + tag);
 
     // Get the struct pointer
     std::string struct_ptr;
@@ -942,7 +1037,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
       TypeSpec ts = local_types_[n->name];
       std::string llty = llvm_ty(ts);
       // If this is an array type, just return the pointer (array decays)
-      if (ts.array_size >= 0) {
+      if (is_array_ty(ts) && !ts.is_ptr_to_array) {
         return it->second;
       }
       std::string t = fresh_tmp();
@@ -954,7 +1049,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
     if (it2 != global_types_.end()) {
       TypeSpec ts = it2->second;
       std::string llty = llvm_ty(ts);
-      if (ts.array_size >= 0) {
+      if (is_array_ty(ts) && !ts.is_ptr_to_array) {
         // Array global: return ptr to it
         return std::string("@") + n->name;
       }
@@ -982,7 +1077,16 @@ std::string IRBuilder::codegen_expr(Node* n) {
     std::string ptr_val = codegen_expr(n->left);
     // Dereference: elem type = ptr_ts with one less ptr level
     TypeSpec elem_ts = ptr_ts;
-    if (elem_ts.ptr_level > 0) elem_ts.ptr_level -= 1;
+    if (elem_ts.ptr_level > 0) {
+      elem_ts.ptr_level -= 1;
+    } else if (is_array_ty(elem_ts)) {
+      std::string arr_ptr = ptr_val;
+      std::string t_gep = fresh_tmp();
+      std::string arr_llty = llvm_ty(elem_ts);
+      elem_ts = drop_array_dim(elem_ts);
+      ptr_val = t_gep;
+      emit(t_gep + " = getelementptr " + arr_llty + ", ptr " + arr_ptr + ", i64 0, i64 0");
+    }
     std::string elem_llty = llvm_ty(elem_ts);
     // If the elem type is still a pointer or scalar, load it
     std::string t = fresh_tmp();
@@ -1168,8 +1272,8 @@ std::string IRBuilder::codegen_expr(Node* n) {
     std::string res_llty = llvm_ty(res_ts);
 
     // Pointer arithmetic / comparison
-    bool lptr = lt.ptr_level > 0 || lt.array_size >= 0;
-    bool rptr = rt.ptr_level > 0 || rt.array_size >= 0;
+    bool lptr = lt.ptr_level > 0 || is_array_ty(lt);
+    bool rptr = rt.ptr_level > 0 || is_array_ty(rt);
     if (lptr || rptr) {
       // Comparison operators on pointers (==, !=, <, <=, >, >=):
       // use icmp with ptr operands rather than converting to integers.
@@ -1697,7 +1801,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
               av = coerce(av, ats, llvm_ty(real_params[i]));
               ats = real_params[i];
             }
-            if (ats.array_size >= 0) {
+            if (is_array_ty(ats)) {
               args_s += "ptr " + av;
             } else if (ats.base == TB_FLOAT && ats.ptr_level == 0) {
               std::string ext = fresh_tmp();
@@ -1790,7 +1894,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
     for (size_t i = 0; i < arg_vals.size(); i++) {
       if (i > 0) args_str += ", ";
       bool is_variadic_slot = variadic && (i >= param_types.size());
-      if (arg_types[i].array_size >= 0) {
+      if (is_array_ty(arg_types[i])) {
         args_str += "ptr " + arg_vals[i];
       } else if (is_variadic_slot && arg_types[i].ptr_level == 0 &&
                  arg_types[i].base == TB_FLOAT) {
@@ -1810,7 +1914,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
         emit(ext + " = " + ext_op + " " + from_llty + " " + arg_vals[i] + " to i32");
         args_str += "i32 " + ext;
       } else if (is_variadic_slot && arg_types[i].ptr_level == 0 &&
-                 arg_types[i].array_size < 0 &&
+                 !is_array_ty(arg_types[i]) &&
                  (arg_types[i].base == TB_STRUCT || arg_types[i].base == TB_UNION)) {
         // ARM64 ABI: struct/union varargs must be coerced to [N x i64] so the
         // LLVM backend places them in the correct integer register/stack slots.
@@ -1848,7 +1952,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
         if (ai > 0) pts += ", ";
         TypeSpec ats = arg_types[ai];
         // promoted types in args_str may differ; reconstruct
-        if (ats.array_size >= 0) pts += "ptr";
+        if (is_array_ty(ats)) pts += "ptr";
         else pts += llvm_ty(ats);
       }
       // If variadic, add "..."
@@ -1916,7 +2020,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
     TypeSpec res_ts = expr_type(n);
     std::string llty = llvm_ty(res_ts);
     // If it's an array field, return the pointer (decay)
-    if (res_ts.array_size >= 0) {
+    if (is_array_ty(res_ts)) {
       return codegen_lval(n);
     }
     std::string ptr = codegen_lval(n);
@@ -2030,7 +2134,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
     std::string llty = llvm_ty(ts);
     std::string ap_ptr = codegen_lval(n->left);
 
-    bool is_aggregate = (ts.ptr_level == 0 && ts.array_size < 0 &&
+    bool is_aggregate = (ts.ptr_level == 0 && !is_array_ty(ts) &&
                          (ts.base == TB_STRUCT || ts.base == TB_UNION));
     if (is_aggregate) {
       int sz = sizeof_ty(ts);
@@ -2081,10 +2185,16 @@ void IRBuilder::emit_stmt(Node* n) {
   if (!n) return;
 
   switch (n->kind) {
-  case NK_BLOCK:
+  case NK_BLOCK: {
+    // Preserve lexical scope for same-named locals in nested blocks.
+    auto saved_slots = local_slots_;
+    auto saved_types = local_types_;
     for (int i = 0; i < n->n_children; i++)
       emit_stmt(n->children[i]);
+    local_slots_ = std::move(saved_slots);
+    local_types_ = std::move(saved_types);
     break;
+  }
 
   case NK_EMPTY:
     break;
@@ -2105,10 +2215,9 @@ void IRBuilder::emit_stmt(Node* n) {
     break;
 
   case NK_DECL: {
-    // Alloca was already hoisted; just emit the initialization store if present
-    if (!n->name || !n->init) break;
-    // Static locals: initialized at program start (global), skip runtime store
-    if (n->is_static) break;
+    // Alloca was already hoisted. First restore this declaration's specific
+    // slot/type binding so shadowed names resolve correctly in following code.
+    if (!n->name) break;
 
     // Restore the specific slot and type for this node (needed when multiple vars share
     // the same name in different scopes — hoist_allocas gave each a unique slot/type)
@@ -2123,6 +2232,11 @@ void IRBuilder::emit_stmt(Node* n) {
       }
     }
 
+    // No initializer -> declaration only; binding restoration above is enough.
+    if (!n->init) break;
+    // Static locals: initialized at program start (global), skip runtime store.
+    if (n->is_static) break;
+
     auto it = local_slots_.find(n->name);
     if (it == local_slots_.end()) break;
 
@@ -2134,10 +2248,9 @@ void IRBuilder::emit_stmt(Node* n) {
     if (n->init->kind == NK_INIT_LIST) {
       // Emit element-by-element stores
       Node* lst = n->init;
-      if (lts.array_size >= 0) {
+      if (is_array_ty(lts)) {
         // Array initialization
-        TypeSpec elem_ts = lts;
-        elem_ts.array_size = -1;
+        TypeSpec elem_ts = drop_array_dim(lts);
         std::string elem_llty = llvm_ty(elem_ts);
         std::string arr_llty = llvm_ty(lts);
         long long next_idx = 0;
@@ -2193,7 +2306,7 @@ void IRBuilder::emit_stmt(Node* n) {
     }
 
     // Local char array initialized with a string literal: copy bytes
-    if (lts.array_size >= 0 &&
+    if (array_rank_of(lts) == 1 && array_dim_at(lts, 0) >= 0 &&
         (lts.base == TB_CHAR || lts.base == TB_SCHAR || lts.base == TB_UCHAR) &&
         n->init->kind == NK_STR_LIT) {
       // Decode the string and emit byte-by-byte stores up to array size
@@ -2225,8 +2338,9 @@ void IRBuilder::emit_stmt(Node* n) {
           } else { bytes += *raw++; }
         } else { bytes += *raw++; }
       }
-      // Store bytes up to lts.array_size
-      for (int i = 0; i < lts.array_size; i++) {
+      int dim0 = (int)array_dim_at(lts, 0);
+      // Store bytes up to array size
+      for (int i = 0; i < dim0; i++) {
         char bval = (i < (int)bytes.size()) ? bytes[i] : '\0';
         std::string gep = fresh_tmp();
         emit(gep + " = getelementptr " + llty + ", ptr " + it->second +
@@ -2534,7 +2648,7 @@ void IRBuilder::emit_struct_def(Node* sd) {
     si.field_names.push_back(f->name);
     TypeSpec ft = f->type;
     long long arr_size = ft.array_size;
-    ft.array_size = -1;  // store base type; array_size tracked separately
+    clear_array(ft);  // store base type; first array dim tracked separately
     si.field_types.push_back(ft);
     si.field_array_sizes.push_back(arr_size);
     si.field_is_anon.push_back(f->is_anon_field);
@@ -2623,7 +2737,7 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
           operand->right && operand->right->kind == NK_INT_LIT) {
         TypeSpec arr_ts = global_types_.count(operand->left->name)
                           ? global_types_[operand->left->name] : ts;
-        TypeSpec elem_ts = arr_ts; elem_ts.array_size = -1;
+        TypeSpec elem_ts = drop_array_dim(arr_ts);
         std::string arr_llty = llvm_ty(arr_ts);
         std::string elem_llty = llvm_ty(elem_ts);
         return std::string("getelementptr (") + arr_llty + ", ptr @" +
@@ -2635,9 +2749,9 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
       if (operand->kind == NK_COMPOUND_LIT) {
         TypeSpec clt = operand->type;
         // Infer array size from init if needed
-        if (clt.array_size == -2 && operand->init) {
+        if (is_array_ty(clt) && array_dim_at(clt, 0) == -2 && operand->init) {
           int inf = infer_array_size_from_init(operand->init);
-          if (inf > 0) clt.array_size = inf;
+          if (inf > 0) set_first_array_dim(clt, inf);
         }
         std::string cname = "@.cl" + std::to_string(string_idx_++);
         std::string cllty = llvm_ty(clt);
@@ -2650,9 +2764,9 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
     // struct S *p = (struct S){...}; — treat as &(compound literal)
     if (init->kind == NK_COMPOUND_LIT) {
       TypeSpec clt = init->type;
-      if (clt.array_size == -2 && init->init) {
+      if (is_array_ty(clt) && array_dim_at(clt, 0) == -2 && init->init) {
         int inf = infer_array_size_from_init(init->init);
-        if (inf > 0) clt.array_size = inf;
+        if (inf > 0) set_first_array_dim(clt, inf);
       }
       std::string cname = "@.cl" + std::to_string(string_idx_++);
       std::string cllty = llvm_ty(clt);
@@ -2666,7 +2780,7 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
   }
 
   // Char array from string literal
-  if (ts.array_size >= 0 &&
+  if (array_rank_of(ts) == 1 && array_dim_at(ts, 0) >= 0 &&
       (ts.base == TB_CHAR || ts.base == TB_SCHAR || ts.base == TB_UCHAR)) {
     if (init->kind == NK_STR_LIT && init->sval) {
       // Decode the C string to raw bytes first, then emit LLVM c"..." syntax
@@ -2704,7 +2818,8 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
       }
       // Build LLVM c"..." repr padded to ts.array_size
       std::string content;
-      for (int i = 0; i < ts.array_size; i++) {
+      int dim0 = (int)array_dim_at(ts, 0);
+      for (int i = 0; i < dim0; i++) {
         unsigned char c = (i < (int)bytes.size()) ? (unsigned char)bytes[i] : 0;
         if (c == '"' || c == '\\' || c < 0x20 || c >= 0x7F) {
           char esc[8];
@@ -2719,11 +2834,10 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
   }
 
   // Array types
-  if (ts.array_size >= 0) {
-    TypeSpec elem_ts = ts;
-    elem_ts.array_size = -1;
+  if (is_array_ty(ts) && array_dim_at(ts, 0) >= 0) {
+    TypeSpec elem_ts = drop_array_dim(ts);
     std::string elem_llty = llvm_ty(elem_ts);
-    int sz = ts.array_size;
+    int sz = (int)array_dim_at(ts, 0);
     // Build per-element constants
     std::vector<std::string> vals(sz, "zeroinitializer");
     if (init->kind == NK_INIT_LIST) {
@@ -2851,7 +2965,7 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
 
   // Scalar types
   // Float/double: always use hex fp representation
-  if (ts.ptr_level == 0 && ts.array_size < 0 && is_float_base(ts.base)) {
+  if (ts.ptr_level == 0 && !is_array_ty(ts) && is_float_base(ts.base)) {
     bool is_f32 = (ts.base == TB_FLOAT);
     auto fhex = [&](double v) { return is_f32 ? fp_to_hex_float(v) : fp_to_hex(v); };
     if (init->kind == NK_INT_LIT)   return fhex((double)init->ival);
@@ -2886,9 +3000,9 @@ void IRBuilder::emit_global(Node* gv) {
 
   // Infer array size from initializer for int a[] / char s[] style globals
   // Only for unsized arrays (array_size == -2), not scalars (-1)
-  if (ts.array_size == -2 && gv->init) {
+  if (is_array_ty(ts) && array_dim_at(ts, 0) == -2 && gv->init) {
     int inferred = infer_array_size_from_init(gv->init);
-    if (inferred > 0) ts.array_size = inferred;
+    if (inferred > 0) set_first_array_dim(ts, inferred);
   }
 
   std::string llty = llvm_ty(ts);
@@ -2901,7 +3015,7 @@ void IRBuilder::emit_global(Node* gv) {
   }
 
   // Special case: char* initialized with a string literal (pointer, not array)
-  if (ts.ptr_level > 0 && ts.array_size < 0 && gv->init &&
+  if (ts.ptr_level > 0 && !is_array_ty(ts) && gv->init &&
       gv->init->kind == NK_STR_LIT && gv->init->sval) {
     std::string raw = gv->init->sval;
     std::string content;
@@ -2938,7 +3052,7 @@ void IRBuilder::emit_function(Node* fn) {
     if (p->type.base == TB_VOID && p->type.ptr_level == 0) continue;
     // Array params decay to ptr
     TypeSpec pts = p->type;
-    if (pts.array_size >= 0) { pts.array_size = -1; pts.ptr_level = 1; }
+    if (is_array_ty(pts)) { pts = drop_array_dim(pts); pts.ptr_level += 1; }
     sig.param_types.push_back(pts);
   }
   func_sigs_[fn->name] = sig;
@@ -3000,7 +3114,7 @@ void IRBuilder::emit_function(Node* fn) {
     if (p->type.base == TB_VOID && p->type.ptr_level == 0) continue;  // skip void
 
     // Array params decay to ptr in the function signature
-    bool is_array = (p->type.array_size >= 0);
+    bool is_array = is_array_ty(p->type);
     std::string pllty = is_array ? "ptr" : llvm_ty(p->type);
 
     if (!first_param) params_str += ", ";
@@ -3014,7 +3128,7 @@ void IRBuilder::emit_function(Node* fn) {
       std::string slot = std::string("%lv.") + p->name;
       local_slots_[p->name] = slot;
       TypeSpec stored_type = p->type;
-      if (is_array) { stored_type.array_size = -1; stored_type.ptr_level = 1; }
+      if (is_array) { stored_type = drop_array_dim(stored_type); stored_type.ptr_level += 1; }
       local_types_[p->name] = stored_type;
       alloca_lines_.push_back("  " + slot + " = alloca " + pllty);
       alloca_lines_.push_back("  store " + pllty + " " + pname + ", ptr " + slot);
@@ -3115,7 +3229,7 @@ std::string IRBuilder::emit_program(Node* prog) {
           if (p->type.base == TB_VOID && p->type.ptr_level == 0) continue;
           // Array params decay to ptr
           TypeSpec pts = p->type;
-          if (pts.array_size >= 0) { pts.array_size = -1; pts.ptr_level = 1; }
+          if (is_array_ty(pts)) { pts = drop_array_dim(pts); pts.ptr_level += 1; }
           sig.param_types.push_back(pts);
         }
         func_sigs_[item->name] = sig;
@@ -3127,9 +3241,9 @@ std::string IRBuilder::emit_program(Node* prog) {
       if (item->name) {
         TypeSpec gts = item->type;
         // Infer array size from initializer in pre-pass too (unsized only)
-        if (gts.array_size == -2 && item->init) {
+        if (is_array_ty(gts) && array_dim_at(gts, 0) == -2 && item->init) {
           int inferred = infer_array_size_from_init(item->init);
-          if (inferred > 0) gts.array_size = inferred;
+          if (inferred > 0) set_first_array_dim(gts, inferred);
         }
         global_types_[item->name] = gts;
       }

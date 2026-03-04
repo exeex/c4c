@@ -88,30 +88,27 @@
 ## Outstanding Issues (C++ stage1)
 
 - Latest `COMPILER_MODE=cxx bash scripts/check_progress.sh` status (`2026-03-04`):
-  - `202 / 220` pass, `18` fail
-  - breakdown: `compile_frontend=4`, `compile_backend=4`, `runtime=10`
+  - `206 / 220` pass, `14` fail
+  - breakdown: `compile_frontend=0`, `compile_backend=5`, `runtime=9`
 
-### Frontend compile fails (4)
+### Frontend compile fails (0)
 
-- `tests/single-exec/00089.c` -> `error: member access on non-struct`
-- `tests/single-exec/00129.c` -> `error: unknown field s`
-- `tests/single-exec/00130.c` -> `error: index of non-pointer non-array`
-- `tests/single-exec/00151.c` -> `error: index of non-pointer non-array`
+- none
 
-### Backend (LLVM/clang) compile or link fails (4)
+### Backend (LLVM/clang) compile or link fails (5)
 
 - `tests/single-exec/00124.c` -> IR links without `@main` (undefined `_main`)
 - `tests/single-exec/00210.c` -> IR links without `@main` (undefined `_main`)
 - `tests/single-exec/00219.c` -> invalid call target in IR (`call i32 () 0()`)
+- `tests/single-exec/00220.c` -> backend compile failure
 - `tests/single-exec/00216.c` -> invalid type in global table (`[3 x void]`)
 
-### Runtime mismatches / nonzero exits (10)
+### Runtime mismatches / nonzero exits (9)
 
 - Nonzero exit:
   - `tests/single-exec/00143.c`
   - `tests/single-exec/00149.c`
   - `tests/single-exec/00150.c`
-  - `tests/single-exec/00220.c`
 - Output mismatch:
   - `tests/single-exec/00204.c`
   - `tests/single-exec/00174.c` (float precision/compare behavior)
@@ -125,13 +122,12 @@
 - P0 IR validity:
   - ensure one valid `@main` is emitted for `00124/00210`
   - fix invalid indirect call emission (`00219`)
+  - fix backend compile failure in `00220`
   - prevent `void` element types in aggregates (`00216`)
-- P1 type/lvalue correctness in parser + IR builder:
-  - member/index expression typing for `00089/00129/00130/00151`
 - P2 runtime correctness:
   - float coercion + comparison precision path (`00174`)
   - union/global init lowering correctness (`00205`)
-  - remaining behavioral regressions (`00143/00149/00150/00189/00204/00213/00218/00220`)
+  - remaining behavioral regressions (`00143/00149/00150/00189/00204/00213/00218`)
 
 ## Next Steps (Priority Order)
 

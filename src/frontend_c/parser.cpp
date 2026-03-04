@@ -173,6 +173,8 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena)
     {
         TypeSpec va_ts{};
         va_ts.array_size = -1;
+        va_ts.array_rank = 0;
+        va_ts.is_ptr_to_array = false;
         va_ts.base = TB_VA_LIST;
         typedef_types_["va_list"]          = va_ts;
         typedef_types_["__va_list"]        = va_ts;
@@ -182,6 +184,8 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena)
         // size_t / uintptr_t etc. → u64 on 64-bit platforms
         TypeSpec u64_ts{};
         u64_ts.array_size = -1;
+        u64_ts.array_rank = 0;
+        u64_ts.is_ptr_to_array = false;
         u64_ts.base = TB_ULONGLONG;  // 64-bit unsigned
         typedef_types_["size_t"]    = u64_ts;
         typedef_types_["uintptr_t"] = u64_ts;
@@ -192,6 +196,8 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena)
 
         TypeSpec i64_ts{};
         i64_ts.array_size = -1;
+        i64_ts.array_rank = 0;
+        i64_ts.is_ptr_to_array = false;
         i64_ts.base = TB_LONGLONG;
         typedef_types_["ssize_t"]   = i64_ts;
         typedef_types_["ptrdiff_t"] = i64_ts;
@@ -204,6 +210,8 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena)
 
         TypeSpec u32_ts{};
         u32_ts.array_size = -1;
+        u32_ts.array_rank = 0;
+        u32_ts.is_ptr_to_array = false;
         u32_ts.base = TB_UINT;
         typedef_types_["uint32_t"]  = u32_ts;
         typedef_types_["uint_least32_t"] = u32_ts;
@@ -211,6 +219,8 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena)
 
         TypeSpec i32_ts{};
         i32_ts.array_size = -1;
+        i32_ts.array_rank = 0;
+        i32_ts.is_ptr_to_array = false;
         i32_ts.base = TB_INT;
         typedef_types_["int32_t"]   = i32_ts;
         typedef_types_["int_least32_t"] = i32_ts;
@@ -218,6 +228,8 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena)
 
         TypeSpec u16_ts{};
         u16_ts.array_size = -1;
+        u16_ts.array_rank = 0;
+        u16_ts.is_ptr_to_array = false;
         u16_ts.base = TB_USHORT;
         typedef_types_["uint16_t"]  = u16_ts;
         typedef_types_["uint_least16_t"] = u16_ts;
@@ -225,6 +237,8 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena)
 
         TypeSpec i16_ts{};
         i16_ts.array_size = -1;
+        i16_ts.array_rank = 0;
+        i16_ts.is_ptr_to_array = false;
         i16_ts.base = TB_SHORT;
         typedef_types_["int16_t"]   = i16_ts;
         typedef_types_["int_least16_t"] = i16_ts;
@@ -232,6 +246,8 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena)
 
         TypeSpec u8_ts{};
         u8_ts.array_size = -1;
+        u8_ts.array_rank = 0;
+        u8_ts.is_ptr_to_array = false;
         u8_ts.base = TB_UCHAR;
         typedef_types_["uint8_t"]   = u8_ts;
         typedef_types_["uint_least8_t"] = u8_ts;
@@ -239,6 +255,8 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena)
 
         TypeSpec i8_ts{};
         i8_ts.array_size = -1;
+        i8_ts.array_rank = 0;
+        i8_ts.is_ptr_to_array = false;
         i8_ts.base = TB_SCHAR;
         typedef_types_["int8_t"]    = i8_ts;
         typedef_types_["int_least8_t"] = i8_ts;
@@ -247,6 +265,8 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena)
         // wchar_t on macOS/ARM64 is i32
         TypeSpec wchar_ts{};
         wchar_ts.array_size = -1;
+        wchar_ts.array_rank = 0;
+        wchar_ts.is_ptr_to_array = false;
         wchar_ts.base = TB_INT;
         typedef_types_["wchar_t"]  = wchar_ts;
         typedef_types_["wint_t"]   = wchar_ts;
@@ -372,12 +392,15 @@ void Parser::skip_asm() {
 TypeSpec Parser::parse_base_type() {
     TypeSpec ts{};
     ts.array_size = -1;
+    ts.array_rank = 0;
+    for (int i = 0; i < 8; ++i) ts.array_dims[i] = -1;
     ts.base = TB_INT;  // default
 
     bool has_signed   = false;
     bool has_unsigned = false;
     bool has_short    = false;
     int  long_count   = 0;
+    bool has_int_kw   = false;
     bool has_char     = false;
     bool has_void     = false;
     bool has_float    = false;
@@ -414,7 +437,7 @@ TypeSpec Parser::parse_base_type() {
             case TokenKind::KwVoid:   has_void   = true; consume(); break;
             case TokenKind::KwChar:   has_char   = true; consume(); break;
             case TokenKind::KwShort:  has_short  = true; consume(); break;
-            case TokenKind::KwInt:    consume(); break;
+            case TokenKind::KwInt:    has_int_kw = true; consume(); break;
             case TokenKind::KwLong:   long_count++;      consume(); break;
             case TokenKind::KwFloat:  has_float  = true; consume(); break;
             case TokenKind::KwDouble: has_double = true; consume(); break;
@@ -466,9 +489,18 @@ TypeSpec Parser::parse_base_type() {
 
             case TokenKind::Identifier:
                 if (is_typedef_name(cur().lexeme)) {
-                    has_typedef = true;
-                    ts.tag      = arena_.strdup(cur().lexeme);
-                    consume();
+                    // If we've already seen concrete type specifiers/modifiers,
+                    // this identifier is the declarator name (e.g. `int s;` even
+                    // when `s` is also a typedef name in outer scope).
+                    bool already_have_base =
+                        has_signed || has_unsigned || has_short || long_count > 0 ||
+                        has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
+                        has_struct || has_union || has_enum || base_set;
+                    if (!already_have_base) {
+                        has_typedef = true;
+                        ts.tag      = arena_.strdup(cur().lexeme);
+                        consume();
+                    }
                     done = true;
                 } else {
                     done = true;  // end of type; identifier is the declarator name
@@ -561,6 +593,63 @@ TypeSpec Parser::parse_base_type() {
 void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
     if (out_name) *out_name = nullptr;
 
+    auto clear_array = [&](TypeSpec& t) {
+        t.array_size = -1;
+        t.array_rank = 0;
+        for (int i = 0; i < 8; ++i) t.array_dims[i] = -1;
+        t.is_ptr_to_array = false;
+        t.array_size_expr = nullptr;
+    };
+    auto base_array_rank = [&]() -> int {
+        if (ts.array_rank > 0) return ts.array_rank;
+        if (ts.array_size != -1) return 1;
+        return 0;
+    };
+    auto base_array_dim = [&](int i) -> long long {
+        if (ts.array_rank > 0) {
+            if (i >= 0 && i < ts.array_rank) return ts.array_dims[i];
+            return -1;
+        }
+        if (i == 0 && ts.array_size != -1) return ts.array_size;
+        return -1;
+    };
+    auto apply_decl_dims = [&](const std::vector<long long>& decl_dims) {
+        if (decl_dims.empty()) return;
+        long long merged[8];
+        for (int i = 0; i < 8; ++i) merged[i] = -1;
+        int out = 0;
+        for (size_t i = 0; i < decl_dims.size() && out < 8; ++i) {
+            merged[out++] = decl_dims[i];
+        }
+        int old_rank = base_array_rank();
+        for (int i = 0; i < old_rank && out < 8; ++i) {
+            merged[out++] = base_array_dim(i);
+        }
+        clear_array(ts);
+        ts.array_rank = out;
+        for (int i = 0; i < out; ++i) ts.array_dims[i] = merged[i];
+        ts.array_size = out > 0 ? ts.array_dims[0] : -1;
+    };
+    auto parse_one_array_dim = [&]() -> long long {
+        expect(TokenKind::LBracket);
+        long long dim = -2;  // unsized []
+        if (!check(TokenKind::RBracket)) {
+            Node* sz = parse_assign_expr();
+            ts.array_size_expr = sz;
+            long long cv = 0;
+            if (sz && eval_const_int(sz, &cv) && cv > 0) {
+                dim = cv;
+            } else if (sz && sz->kind == NK_INT_LIT) {
+                dim = sz->ival;
+            } else {
+                dim = 0;  // dynamic / unknown at parse time
+            }
+        }
+        expect(TokenKind::RBracket);
+        return dim;
+    };
+    std::vector<long long> decl_dims;
+
     // Skip qualifiers/attributes that can appear before pointer stars
     skip_attributes();
 
@@ -584,8 +673,11 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
     }
     skip_attributes();
 
-    // Check for parenthesised declarator: (*name) — function pointer form
+    bool used_paren_ptr_declarator = false;
+
+    // Check for parenthesised declarator: (*name) — function pointer / ptr-to-array form
     if (check(TokenKind::LParen) && check2(TokenKind::Star)) {
+        used_paren_ptr_declarator = true;
         // function pointer: (*name)(...) — record name, skip fn-ptr params
         consume();  // consume (
         consume();  // consume *
@@ -614,10 +706,12 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
         if (check(TokenKind::LParen)) {
             skip_paren_group();
         }
-        // Array suffix after function pointer: rare, skip
+        // Array suffix after function pointer: (*p)[N] / (*p)[N][M]
         while (check(TokenKind::LBracket)) {
-            skip_paren_group();
+            decl_dims.push_back(parse_one_array_dim());
         }
+        apply_decl_dims(decl_dims);
+        if (!decl_dims.empty()) ts.is_ptr_to_array = used_paren_ptr_declarator;
         return;
     }
 
@@ -627,29 +721,12 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
         consume();
     }
 
-    // Array suffix: [size] or []
+    // Array suffix: [size] or [] (possibly multi-dimensional)
     while (check(TokenKind::LBracket)) {
-        consume();  // consume [
-        ts.base = ts.base;  // unchanged
-        if (check(TokenKind::RBracket)) {
-            ts.array_size = -2;  // unsized
-            consume();
-        } else {
-            // Parse size expression and try to evaluate as compile-time constant
-            Node* sz = parse_assign_expr();
-            ts.array_size_expr = sz;
-            long long cv = 0;
-            if (sz && eval_const_int(sz, &cv) && cv > 0) {
-                ts.array_size = (int)cv;
-            } else if (sz && sz->kind == NK_INT_LIT) {
-                ts.array_size = (int)sz->ival;
-            } else {
-                ts.array_size = 0;  // dynamic / unknown at parse time
-            }
-            expect(TokenKind::RBracket);
-        }
-        break;  // only one array dimension here (multi-dim handled in IR)
+        decl_dims.push_back(parse_one_array_dim());
     }
+    apply_decl_dims(decl_dims);
+    if (!decl_dims.empty()) ts.is_ptr_to_array = used_paren_ptr_declarator;
 
     // Function suffix: (params) — turns the declarator into a function
     // We only record variadic here; full param parsing is done by caller.
@@ -727,6 +804,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             // This handles: struct S s; struct S *p; struct S arr[N]; (anonymous: struct S;)
             TypeSpec anon_fts{};
             anon_fts.array_size = -1;
+            anon_fts.array_rank = 0;
             anon_fts.base = inner_union ? TB_UNION : TB_STRUCT;
             anon_fts.tag  = inner ? inner->name : nullptr;
             bool has_declarator = !check(TokenKind::Semi) && !check(TokenKind::RBrace);
@@ -749,6 +827,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 while (match(TokenKind::Comma)) {
                     TypeSpec fts2{};
                     fts2.array_size = -1;
+                    fts2.array_rank = 0;
                     fts2.base = inner_union ? TB_UNION : TB_STRUCT;
                     fts2.tag  = inner ? inner->name : nullptr;
                     const char* fname2 = nullptr;
@@ -783,6 +862,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             if (!check(TokenKind::Semi) && !check(TokenKind::RBrace)) {
                 TypeSpec fts{};
                 fts.array_size = -1;
+                fts.array_rank = 0;
                 // Base type is the enum (use int as fallback since enums are ints)
                 fts.base = TB_INT;
                 if (ed && ed->name) {
@@ -843,6 +923,9 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             TypeSpec cur_fts = fts;
             cur_fts.ptr_level = 0;
             cur_fts.array_size = -1;
+            cur_fts.array_rank = 0;
+            for (int i = 0; i < 8; ++i) cur_fts.array_dims[i] = -1;
+            cur_fts.is_ptr_to_array = false;
             if (!first) {
                 // For multi-declarator fields, re-use base type
             }
@@ -1815,8 +1898,11 @@ Node* Parser::parse_local_decl() {
     do {
         TypeSpec ts = base_ts;
         // Preserve ptr_level from typedef resolution (e.g. typedef void (*fptr)(); fptr arr[3])
-        // only reset the array_size since declarators add their own
+        // only reset array suffix info since declarators add their own
         ts.array_size = -1;
+        ts.array_rank = 0;
+        for (int i = 0; i < 8; ++i) ts.array_dims[i] = -1;
+        ts.is_ptr_to_array = false;
         ts.array_size_expr = nullptr;
         const char* vname = nullptr;
         parse_declarator(ts, &vname);
@@ -1941,6 +2027,9 @@ Node* Parser::parse_top_level() {
     TypeSpec ts = base_ts;
     // Preserve ptr_level from typedef resolution (e.g. typedef void (*fptr)(); fptr arr[3])
     ts.array_size = -1;
+    ts.array_rank = 0;
+    for (int i = 0; i < 8; ++i) ts.array_dims[i] = -1;
+    ts.is_ptr_to_array = false;
     ts.array_size_expr = nullptr;
     const char* decl_name = nullptr;
     bool is_fptr_global = false;
@@ -2083,6 +2172,9 @@ Node* Parser::parse_top_level() {
         TypeSpec ts2 = base_ts;
         ts2.ptr_level = 0;
         ts2.array_size = -1;
+        ts2.array_rank = 0;
+        for (int i = 0; i < 8; ++i) ts2.array_dims[i] = -1;
+        ts2.is_ptr_to_array = false;
         ts2.array_size_expr = nullptr;
         const char* n2 = nullptr;
         parse_declarator(ts2, &n2);
@@ -2146,6 +2238,9 @@ Node* Parser::make_node(NodeKind k, int line) {
     n->kind = k;
     n->line = line;
     n->type.array_size = -1;
+    n->type.array_rank = 0;
+    for (int i = 0; i < 8; ++i) n->type.array_dims[i] = -1;
+    n->type.is_ptr_to_array = false;
     return n;
 }
 

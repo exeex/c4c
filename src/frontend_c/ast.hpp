@@ -57,6 +57,9 @@ struct TypeSpec {
     const char* tag;         // struct/union/enum tag or typedef name (may be null)
     int ptr_level;           // 0 = not a pointer; 1 = *; 2 = **; ...
     long long array_size;    // -1 = not array; -2 = [] (unsized); >= 0 = size
+    int array_rank;          // number of array dimensions (0 = not array)
+    long long array_dims[8]; // outer-to-inner dimensions; each is -2 (unsized) or >= 0
+    bool is_ptr_to_array;    // true for declarators like (*p)[N] (pointer outside array)
     Node* array_size_expr;   // non-null when array size is a computed expression
     bool is_const;
     bool is_volatile;
