@@ -1,15 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(tiny_c2ll LANGUAGES CXX)
 
-find_program(PYTHON314_EXECUTABLE NAMES python3.14)
-find_program(PYTHON3_EXECUTABLE NAMES python3)
-
-if(PYTHON314_EXECUTABLE)
-  set(PYTHON_EXECUTABLE "${PYTHON314_EXECUTABLE}")
-elseif(PYTHON3_EXECUTABLE)
-  set(PYTHON_EXECUTABLE "${PYTHON3_EXECUTABLE}")
-endif()
-
 find_program(CLANG_EXECUTABLE NAMES clang)
 if(NOT CLANG_EXECUTABLE)
   message(WARNING "clang not found: clang execution tests will be skipped")
@@ -81,25 +72,26 @@ endif()
 
 enable_testing()
 
-if(PYTHON_EXECUTABLE)
-  if(CLANG_EXECUTABLE)
-    add_test(
-      NAME tiny_c2ll_tests
-      COMMAND "${PYTHON_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/run_tests.py"
-              --compiler $<TARGET_FILE:frontend_cxx_stage1>
-              --workdir "${CMAKE_BINARY_DIR}"
-              --clang "${CLANG_EXECUTABLE}"
-    )
-  else()
-    add_test(
-      NAME tiny_c2ll_tests
-      COMMAND "${PYTHON_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/run_tests.py"
-              --compiler $<TARGET_FILE:frontend_cxx_stage1>
-              --workdir "${CMAKE_BINARY_DIR}"
-    )
-  endif()
+if(CLANG_EXECUTABLE)
+  add_test(
+    NAME tiny_c2ll_tests
+    COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:frontend_cxx_stage1>
+            -DEXAMPLE_C=${PROJECT_SOURCE_DIR}/tests/example.c
+            -DOUT_LL=${CMAKE_BINARY_DIR}/tiny_c2ll_tests/test_example.ll
+            -DCLANG=${CLANG_EXECUTABLE}
+            -DOUT_BIN=${CMAKE_BINARY_DIR}/tiny_c2ll_tests/test_example_bin
+            -P "${PROJECT_SOURCE_DIR}/tests/cmake/run_tiny_c2ll_tests.cmake"
+  )
 else()
-  message(WARNING "Python 3 not found: tiny_c2ll_tests will be skipped")
+  add_test(
+    NAME tiny_c2ll_tests
+    COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:frontend_cxx_stage1>
+            -DEXAMPLE_C=${PROJECT_SOURCE_DIR}/tests/example.c
+            -DOUT_LL=${CMAKE_BINARY_DIR}/tiny_c2ll_tests/test_example.ll
+            -P "${PROJECT_SOURCE_DIR}/tests/cmake/run_tiny_c2ll_tests.cmake"
+  )
 endif()
 
 add_test(
