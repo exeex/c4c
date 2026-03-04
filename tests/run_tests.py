@@ -8,6 +8,15 @@ import sys
 def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, text=True, capture_output=True)
 
+def compiler_cmd(compiler: str, src: pathlib.Path, out_ll: pathlib.Path | None = None) -> list[str]:
+    if compiler.endswith(".py"):
+        cmd = [sys.executable, compiler, str(src)]
+    else:
+        cmd = [compiler, str(src)]
+    if out_ll is not None:
+        cmd.extend(["-o", str(out_ll)])
+    return cmd
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -24,7 +33,7 @@ def main() -> int:
     bad_c = root / "bad_uninitialized.c"
     out_ll = workdir / "test_example.ll"
 
-    compile_ok = run([sys.executable, args.compiler, str(example_c), "-o", str(out_ll)])
+    compile_ok = run(compiler_cmd(args.compiler, example_c, out_ll))
     if compile_ok.returncode != 0:
         print("[FAIL] compile example.c")
         print(compile_ok.stderr)
@@ -36,15 +45,18 @@ def main() -> int:
         return 1
     print("[PASS] compile example.c")
 
-    compile_bad = run([sys.executable, args.compiler, str(bad_c)])
-    if compile_bad.returncode == 0:
-        print("[FAIL] bad_uninitialized.c should fail semantic analysis")
-        return 1
-    if "uninitialized variable" not in compile_bad.stderr:
-        print("[FAIL] unexpected error message for bad_uninitialized.c")
-        print(compile_bad.stderr)
-        return 1
-    print("[PASS] semantic check for uninitialized variable")
+    if args.compiler.endswith(".py"):
+        compile_bad = run(compiler_cmd(args.compiler, bad_c))
+        if compile_bad.returncode == 0:
+            print("[FAIL] bad_uninitialized.c should fail semantic analysis")
+            return 1
+        if "uninitialized variable" not in compile_bad.stderr:
+            print("[FAIL] unexpected error message for bad_uninitialized.c")
+            print(compile_bad.stderr)
+            return 1
+        print("[PASS] semantic check for uninitialized variable")
+    else:
+        print("[SKIP] semantic negative test for binary compiler mode")
 
     if args.clang:
         out_bin = workdir / "test_example_bin"

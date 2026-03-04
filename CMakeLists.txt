@@ -146,3 +146,14 @@ if(EXISTS "${EXAMPLE_C}")
       PASS_REGULAR_EXPRESSION "define"
   )
 endif()
+
+# End-to-end local regression tests through C++ frontend binary.
+if(CLANG_EXECUTABLE)
+  add_test(
+      NAME tiny_c2ll_tests_cxx
+      COMMAND "${PYTHON_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/run_tests.py"
+              --compiler $<TARGET_FILE:frontend_cxx_stage1>
+              --workdir "${CMAKE_BINARY_DIR}"
+              --clang "${CLANG_EXECUTABLE}"
+  )
+endif()

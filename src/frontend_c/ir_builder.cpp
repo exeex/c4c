@@ -169,6 +169,8 @@ TypeSpec IRBuilder::expr_type(Node* n) {
       auto it2 = global_types_.find(n->name);
       if (it2 != global_types_.end()) return it2->second;
       if (enum_consts_.count(n->name)) return int_ts();
+      // Function used as value (function pointer): return ptr
+      if (func_sigs_.count(n->name)) return ptr_to(TB_VOID);
     }
     return int_ts();
   }
@@ -233,8 +235,15 @@ TypeSpec IRBuilder::expr_type(Node* n) {
   case NK_COMPOUND_ASSIGN:  return expr_type(n->left);
   case NK_CALL: {
     if (n->left && n->left->name) {
-      auto it = func_sigs_.find(n->left->name);
+      const char* cn = n->left->name;
+      auto it = func_sigs_.find(cn);
       if (it != func_sigs_.end()) return it->second.ret_type;
+      // Builtin return types
+      if (strcmp(cn, "__builtin_bswap64") == 0) return make_ts(TB_ULONGLONG);
+      if (strcmp(cn, "__builtin_bswap32") == 0) return make_ts(TB_UINT);
+      if (strcmp(cn, "__builtin_bswap16") == 0) return make_ts(TB_USHORT);
+      if (strcmp(cn, "__builtin_expect") == 0 && n->n_children > 0)
+        return expr_type(n->children[0]);
     }
     return int_ts();
   }
@@ -413,18 +422,58 @@ std::string IRBuilder::coerce(const std::string& val, const TypeSpec& from_ts,
 
 // ─────────────────────────── hoisting ──────────────────────────────────────
 
+// Helper: recursively scan an expression for NK_STMT_EXPR / NK_TERNARY nodes
+// that contain local variable declarations, and hoist allocas for them.
+static void hoist_allocas_in_expr(IRBuilder* irb, Node* n) {
+  if (!n) return;
+  if (n->kind == NK_STMT_EXPR) {
+    irb->hoist_allocas(n->body);
+    return;
+  }
+  if (n->kind == NK_TERNARY) {
+    hoist_allocas_in_expr(irb, n->then_);
+    hoist_allocas_in_expr(irb, n->else_);
+    return;
+  }
+  // Recurse into all child pointers that might contain statement expressions
+  hoist_allocas_in_expr(irb, n->left);
+  hoist_allocas_in_expr(irb, n->right);
+  hoist_allocas_in_expr(irb, n->cond);
+  for (int i = 0; i < n->n_children; i++)
+    hoist_allocas_in_expr(irb, n->children[i]);
+}
+
 void IRBuilder::hoist_allocas(Node* node) {
   if (!node) return;
   switch (node->kind) {
   case NK_DECL: {
     if (!node->name) break;
-    // Skip if this is a parameter (already handled in emit_function)
     TypeSpec ts = node->type;
     // Infer array size from initializer for int x[] / char s[] local arrays
-    // Only infer when array_size == -2 (unsized array), not for scalars (-1)
     if (ts.array_size == -2 && node->init) {
       int inferred = infer_array_size_from_init(node->init);
       if (inferred > 0) ts.array_size = inferred;
+    }
+    if (node->is_static) {
+      // Static local: emit as a global with internal linkage.
+      // Use mangled name @__static_FUNCNAME_VARNAME to avoid collisions.
+      std::string gname = "@__static_" + current_fn_name_ + "_" + node->name;
+      local_slots_[node->name] = gname;
+      local_types_[node->name] = ts;
+      std::string llty = llvm_ty(ts);
+      std::string init_val = "zeroinitializer";
+      if (node->init) {
+        if (node->init->kind == NK_INT_LIT)
+          init_val = std::to_string(node->init->ival);
+        else if (node->init->kind == NK_FLOAT_LIT)
+          init_val = fp_to_hex(node->init->fval);
+        else if (node->init->kind == NK_UNARY && node->init->op &&
+                 strcmp(node->init->op, "-") == 0 && node->init->left &&
+                 node->init->left->kind == NK_INT_LIT)
+          init_val = std::to_string(-node->init->left->ival);
+      }
+      preamble_.push_back(gname + " = internal global " + llty + " " + init_val);
+      break;
     }
     std::string slot = std::string("%") + node->name;
     local_slots_[node->name] = slot;
@@ -459,6 +508,14 @@ void IRBuilder::hoist_allocas(Node* node) {
     break;
   case NK_STMT_EXPR:
     hoist_allocas(node->body);
+    break;
+  case NK_EXPR_STMT:
+    // Recurse into expression to find nested statement expressions
+    hoist_allocas_in_expr(this, node->left);
+    break;
+  case NK_TERNARY:
+    hoist_allocas_in_expr(this, node->then_);
+    hoist_allocas_in_expr(this, node->else_);
     break;
   default:
     break;
@@ -771,10 +828,38 @@ std::string IRBuilder::codegen_expr(Node* n) {
           case 't': content += '\t'; i++; break;
           case 'r': content += '\r'; i++; break;
           case '0': content += '\0'; i++; break;
+          case 'a': content += '\a'; i++; break;
+          case 'b': content += '\b'; i++; break;
+          case 'f': content += '\f'; i++; break;
+          case 'v': content += '\v'; i++; break;
           case '\\': content += '\\'; i++; break;
           case '"': content += '"'; i++; break;
           case '\'': content += '\''; i++; break;
-          default: content += '\\'; content += esc; i++; break;
+          case 'x': case 'X': {
+            // Hex escape \xNN
+            i += 2;  // skip \ and x
+            unsigned int v = 0;
+            for (int k = 0; k < 2 && i < raw.size()-1 && isxdigit((unsigned char)raw[i]); k++, i++) {
+              v = v * 16 + (isdigit((unsigned char)raw[i]) ? raw[i] - '0' :
+                            tolower((unsigned char)raw[i]) - 'a' + 10);
+            }
+            content += (char)(unsigned char)v;
+            i--;  // compensate for outer i++
+            break;
+          }
+          default:
+            if (esc >= '1' && esc <= '7') {
+              // Octal escape \ooo
+              i++;
+              unsigned int v = 0;
+              for (int k = 0; k < 3 && i < raw.size()-1 && raw[i] >= '0' && raw[i] <= '7'; k++, i++)
+                v = v * 8 + (raw[i] - '0');
+              content += (char)(unsigned char)v;
+              i--;  // compensate for outer i++
+            } else {
+              content += '\\'; content += esc; i++;
+            }
+            break;
           }
         } else {
           content += raw[i];
@@ -1379,11 +1464,143 @@ std::string IRBuilder::codegen_expr(Node* n) {
         }
       }
     } else {
-      // Indirect call through function pointer
+      // Indirect call through function pointer.
+      // (*fptr)(args) in C == fptr(args) — peel dereference from callee.
+      Node* callee = n->left;
+      if (callee->kind == NK_DEREF ||
+          (callee->kind == NK_UNARY && callee->op && callee->op[0] == '*' &&
+           (callee->op[1] == '\0'))) {
+        callee = callee->left;
+      }
       is_indirect = true;
-      fn_ptr = codegen_expr(n->left);
+      fn_ptr = codegen_expr(callee);
       ret_ts = expr_type(n);
     }
+
+    // ── Builtin function special handling ────────────────────────────────────
+    if (!is_indirect && !fn_name.empty()) {
+      // __builtin_expect(expr, expected) → just return expr
+      if (fn_name == "__builtin_expect" && n->n_children >= 1) {
+        return codegen_expr(n->children[0]);
+      }
+      // __builtin_object_size / __builtin_dynamic_object_size → -1 (unknown)
+      if (fn_name == "__builtin_object_size" ||
+          fn_name == "__builtin_dynamic_object_size") {
+        return "-1";
+      }
+      // __builtin_bswap16/32/64 → llvm.bswap intrinsic
+      if (fn_name == "__builtin_bswap16" || fn_name == "__builtin_bswap32" ||
+          fn_name == "__builtin_bswap64") {
+        std::string itype = (fn_name == "__builtin_bswap64") ? "i64" :
+                            (fn_name == "__builtin_bswap32") ? "i32" : "i16";
+        std::string intrinsic = (fn_name == "__builtin_bswap64") ? "llvm.bswap.i64" :
+                                (fn_name == "__builtin_bswap32") ? "llvm.bswap.i32" : "llvm.bswap.i16";
+        // Ensure intrinsic is declared
+        if (!auto_declared_fns_.count(intrinsic))
+          auto_declared_fns_[intrinsic] = "declare " + itype + " @" + intrinsic + "(" + itype + ")";
+        if (n->n_children >= 1) {
+          TypeSpec ats = expr_type(n->children[0]);
+          std::string av = codegen_expr(n->children[0]);
+          av = coerce(av, ats, itype);
+          std::string t = fresh_tmp();
+          emit(t + " = call " + itype + " @" + intrinsic + "(" + itype + " " + av + ")");
+          if ((fn_name == "__builtin_bswap32") && ret_ts.base != TB_ULONGLONG)
+            ret_ts = make_ts(TB_UINT);
+          if (fn_name == "__builtin_bswap64") ret_ts = make_ts(TB_ULONGLONG);
+          if (fn_name == "__builtin_bswap16") ret_ts = make_ts(TB_USHORT);
+          return t;
+        }
+        return "0";
+      }
+      // __builtin___*_chk → map to safe stdlib equivalents
+      struct { const char* from; const char* to; int keep_args; } chk_map[] = {
+        {"__builtin___memcpy_chk",   "memcpy",   3},
+        {"__builtin___memset_chk",   "memset",   3},
+        {"__builtin___memmove_chk",  "memmove",  3},
+        {"__builtin___strcpy_chk",   "strcpy",   2},
+        {"__builtin___strncpy_chk",  "strncpy",  3},
+        {"__builtin___strcat_chk",   "strcat",   2},
+        {"__builtin___strncat_chk",  "strncat",  3},
+        {"__builtin___sprintf_chk",  "sprintf",  -1},  // drop args 1,2 (flag, size)
+        {"__builtin___snprintf_chk", "snprintf", -2},  // drop args 2,3 (flag, size)
+        {"__builtin___vsprintf_chk", "vsprintf", -1},
+        {"__builtin___vsnprintf_chk","vsnprintf",-2},
+        {"__builtin___fprintf_chk",  "fprintf",  -3},
+        {"__builtin___printf_chk",   "printf",   -4},
+        {nullptr, nullptr, 0}
+      };
+      for (int ci = 0; chk_map[ci].from; ci++) {
+        if (fn_name == chk_map[ci].from) {
+          // Remap call: evaluate args, drop the __chk-specific ones
+          std::vector<std::string> avals;
+          std::vector<TypeSpec> atypes;
+          for (int i = 0; i < n->n_children; i++) {
+            TypeSpec ats = expr_type(n->children[i]);
+            std::string av = codegen_expr(n->children[i]);
+            avals.push_back(av);
+            atypes.push_back(ats);
+          }
+          // Build actual arg list for remapped function
+          std::vector<int> keep_indices;
+          int ka = chk_map[ci].keep_args;
+          if (ka >= 0) {
+            // keep first ka args
+            for (int i = 0; i < ka && i < (int)avals.size(); i++) keep_indices.push_back(i);
+          } else if (ka == -1) {
+            // sprintf: keep args 0, then 3..
+            if ((int)avals.size() > 0) keep_indices.push_back(0);
+            for (int i = 3; i < (int)avals.size(); i++) keep_indices.push_back(i);
+          } else if (ka == -2) {
+            // snprintf: keep args 0,1, then 4..
+            if ((int)avals.size() > 0) keep_indices.push_back(0);
+            if ((int)avals.size() > 1) keep_indices.push_back(1);
+            for (int i = 4; i < (int)avals.size(); i++) keep_indices.push_back(i);
+          } else if (ka == -3) {
+            // fprintf: keep args 0, then 2..
+            if ((int)avals.size() > 0) keep_indices.push_back(0);
+            for (int i = 2; i < (int)avals.size(); i++) keep_indices.push_back(i);
+          } else if (ka == -4) {
+            // printf: keep args 1..
+            for (int i = 1; i < (int)avals.size(); i++) keep_indices.push_back(i);
+          }
+          std::string args_s;
+          for (int i = 0; i < (int)keep_indices.size(); i++) {
+            if (i > 0) args_s += ", ";
+            int idx = keep_indices[i];
+            TypeSpec ats = atypes[idx];
+            std::string av = avals[idx];
+            if (ats.array_size >= 0) {
+              // Array arg decays to ptr
+              args_s += "ptr " + av;
+            } else if (ats.base == TB_FLOAT && ats.ptr_level == 0) {
+              std::string ext = fresh_tmp();
+              emit(ext + " = fpext float " + av + " to double");
+              args_s += "double " + ext;
+            } else {
+              args_s += llvm_ty(ats) + " " + av;
+            }
+          }
+          // The real function is variadic — ensure proper call format
+          std::string real = chk_map[ci].to;
+          ret_ts = ptr_to(TB_VOID);  // most return ptr; sprintf returns int
+          if (real == "sprintf" || real == "snprintf" || real == "vsprintf" ||
+              real == "vsnprintf" || real == "fprintf" || real == "vfprintf" ||
+              real == "printf" || real == "vprintf") ret_ts = int_ts();
+          std::string ret_ll = llvm_ty(ret_ts);
+          if (!auto_declared_fns_.count(real) && !func_sigs_.count(real))
+            auto_declared_fns_[real] = "declare " + ret_ll + " @" + real + "(...)";
+          if (ret_ll == "void") {
+            emit("call void (...) @" + real + "(" + args_s + ")");
+            return "";
+          } else {
+            std::string t = fresh_tmp();
+            emit(t + " = call " + ret_ll + " (...) @" + real + "(" + args_s + ")");
+            return t;
+          }
+        }
+      }
+    }
+    // ── End builtin handling ──────────────────────────────────────────────────
 
     // Emit argument evaluations
     std::vector<std::string> arg_vals;
@@ -1662,6 +1879,8 @@ void IRBuilder::emit_stmt(Node* n) {
     if (!n->name || !n->init) break;
     auto it = local_slots_.find(n->name);
     if (it == local_slots_.end()) break;
+    // Static locals: initialized at program start (global), skip runtime store
+    if (n->is_static) break;
 
     // Use the inferred type (may have updated array_size) from local_types_
     TypeSpec lts = local_types_[n->name];
@@ -1725,6 +1944,50 @@ void IRBuilder::emit_stmt(Node* n) {
             field_idx++;
           }
         }
+      }
+      break;
+    }
+
+    // Local char array initialized with a string literal: copy bytes
+    if (lts.array_size >= 0 &&
+        (lts.base == TB_CHAR || lts.base == TB_SCHAR || lts.base == TB_UCHAR) &&
+        n->init->kind == NK_STR_LIT) {
+      // Decode the string and emit byte-by-byte stores up to array size
+      const char* raw = n->init->sval ? n->init->sval : "\"\"";
+      if (raw[0] == '"') raw++;
+      std::string bytes;
+      while (*raw && *raw != '"') {
+        if (*raw == '\\') {
+          raw++;
+          if (*raw == 'n') { bytes += '\n'; raw++; }
+          else if (*raw == 't') { bytes += '\t'; raw++; }
+          else if (*raw == 'r') { bytes += '\r'; raw++; }
+          else if (*raw == '0') { bytes += '\0'; raw++; }
+          else if (*raw == '\\') { bytes += '\\'; raw++; }
+          else if (*raw == '"') { bytes += '"'; raw++; }
+          else if (*raw == 'x' || *raw == 'X') {
+            raw++;
+            unsigned int v = 0;
+            for (int k = 0; k < 2 && *raw && isxdigit((unsigned char)*raw); k++, raw++) {
+              v = v * 16 + (isdigit((unsigned char)*raw) ? *raw - '0' :
+                            tolower((unsigned char)*raw) - 'a' + 10);
+            }
+            bytes += (char)(unsigned char)v;
+          } else if (*raw >= '0' && *raw <= '7') {
+            unsigned int v = 0;
+            for (int k = 0; k < 3 && *raw >= '0' && *raw <= '7'; k++, raw++)
+              v = v * 8 + (*raw - '0');
+            bytes += (char)(unsigned char)v;
+          } else { bytes += *raw++; }
+        } else { bytes += *raw++; }
+      }
+      // Store bytes up to lts.array_size
+      for (int i = 0; i < lts.array_size; i++) {
+        char bval = (i < (int)bytes.size()) ? bytes[i] : '\0';
+        std::string gep = fresh_tmp();
+        emit(gep + " = getelementptr " + llty + ", ptr " + it->second +
+             ", i64 0, i64 " + std::to_string(i));
+        emit("store i8 " + std::to_string((int)(unsigned char)bval) + ", ptr " + gep);
       }
       break;
     }
@@ -2135,26 +2398,51 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
   if (ts.array_size >= 0 &&
       (ts.base == TB_CHAR || ts.base == TB_SCHAR || ts.base == TB_UCHAR)) {
     if (init->kind == NK_STR_LIT && init->sval) {
-      // Emit c"...\00" syntax
+      // Decode the C string to raw bytes first, then emit LLVM c"..." syntax
+      // padded to ts.array_size bytes (null-padded at the end).
       const char* raw = init->sval;
-      std::string content;
       if (raw[0] == '"') raw++;
+      std::string bytes;
       while (*raw && *raw != '"') {
         if (*raw == '\\') {
           raw++;
-          if (*raw == 'n') content += "\\0A";
-          else if (*raw == 't') content += "\\09";
-          else if (*raw == 'r') content += "\\0D";
-          else if (*raw == '0') content += "\\00";
-          else if (*raw == '\\') content += "\\5C";
-          else if (*raw == '"') content += "\\22";
-          else { content += '\\'; content += *raw; }
-        } else {
-          content += *raw;
-        }
-        raw++;
+          if (*raw == 'n') { bytes += '\n'; raw++; }
+          else if (*raw == 't') { bytes += '\t'; raw++; }
+          else if (*raw == 'r') { bytes += '\r'; raw++; }
+          else if (*raw == '0') { bytes += '\0'; raw++; }
+          else if (*raw == 'a') { bytes += '\a'; raw++; }
+          else if (*raw == 'b') { bytes += '\b'; raw++; }
+          else if (*raw == 'f') { bytes += '\f'; raw++; }
+          else if (*raw == 'v') { bytes += '\v'; raw++; }
+          else if (*raw == '\\') { bytes += '\\'; raw++; }
+          else if (*raw == '"') { bytes += '"'; raw++; }
+          else if (*raw == 'x' || *raw == 'X') {
+            raw++;
+            unsigned int v = 0;
+            for (int k = 0; k < 2 && *raw && isxdigit((unsigned char)*raw); k++, raw++)
+              v = v * 16 + (isdigit((unsigned char)*raw) ? *raw - '0' :
+                            tolower((unsigned char)*raw) - 'a' + 10);
+            bytes += (char)(unsigned char)v;
+          } else if (*raw >= '0' && *raw <= '7') {
+            unsigned int v = 0;
+            for (int k = 0; k < 3 && *raw >= '0' && *raw <= '7'; k++, raw++)
+              v = v * 8 + (*raw - '0');
+            bytes += (char)(unsigned char)v;
+          } else { bytes += *raw++; }
+        } else { bytes += *raw++; }
       }
-      content += "\\00";  // null terminator
+      // Build LLVM c"..." repr padded to ts.array_size
+      std::string content;
+      for (int i = 0; i < ts.array_size; i++) {
+        unsigned char c = (i < (int)bytes.size()) ? (unsigned char)bytes[i] : 0;
+        if (c == '"' || c == '\\' || c < 0x20 || c >= 0x7F) {
+          char esc[8];
+          snprintf(esc, sizeof(esc), "\\%02X", (unsigned)c);
+          content += esc;
+        } else {
+          content += (char)c;
+        }
+      }
       return std::string("c\"") + content + "\"";
     }
   }
@@ -2382,6 +2670,7 @@ void IRBuilder::emit_function(Node* fn) {
 
   current_fn_ret_ = fn->type;
   current_fn_ret_llty_ = ret_llty;
+  current_fn_name_ = fn->name ? fn->name : "";
 
   // Build parameter string and register parameters in local_slots_
   // Track how many non-void params we've added (for comma insertion)

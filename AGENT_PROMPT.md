@@ -83,6 +83,10 @@ bash scripts/check_progress.sh
 
 # Full scan (when needed)
 bash scripts/full_scan.sh
+
+# Run scripts with C++ frontend binary
+COMPILER_MODE=cxx bash scripts/check_progress.sh
+COMPILER_MODE=cxx bash scripts/full_scan.sh
 ```
 
 ## Exit Criteria for This Prompt

@@ -24,6 +24,18 @@ cmake --build build --target build_example_bin
 ctest --test-dir build --output-on-failure
 ```
 
+## Progress Scripts
+
+```bash
+# Default mode: python frontend (src/frontend/c2ll.py)
+bash scripts/check_progress.sh
+bash scripts/full_scan.sh
+
+# C++ frontend mode: uses ./build_debug/tiny-c2ll-stage1
+COMPILER_MODE=cxx bash scripts/check_progress.sh
+COMPILER_MODE=cxx bash scripts/full_scan.sh
+```
+
 ### Optional: Run `c-testsuite` Allowlist
 
 1. Clone `c-testsuite` locally (any path you choose).

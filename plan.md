@@ -207,6 +207,18 @@ python3.14 tests/run_c_testsuite.py \
   --workdir build_debug
 ```
 
+### Run progress scripts (python / cxx mode)
+
+```bash
+# Default: python compiler
+bash scripts/check_progress.sh
+bash scripts/full_scan.sh
+
+# C++ frontend binary mode
+COMPILER_MODE=cxx bash scripts/check_progress.sh
+COMPILER_MODE=cxx bash scripts/full_scan.sh
+```
+
 ### Failure logs location
 
 - `build_debug/c_testsuite/logs/frontend_fail.log`
