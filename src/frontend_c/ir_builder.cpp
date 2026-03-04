@@ -244,6 +244,11 @@ TypeSpec IRBuilder::expr_type(Node* n) {
       if (strcmp(cn, "__builtin_bswap16") == 0) return make_ts(TB_USHORT);
       if (strcmp(cn, "__builtin_expect") == 0 && n->n_children > 0)
         return expr_type(n->children[0]);
+      if (strcmp(cn, "__builtin_fabs") == 0 || strcmp(cn, "__builtin_fabsl") == 0 ||
+          strcmp(cn, "__builtin_inf") == 0 || strcmp(cn, "__builtin_infl") == 0)
+        return double_ts();
+      if (strcmp(cn, "__builtin_fabsf") == 0 || strcmp(cn, "__builtin_inff") == 0)
+        return float_ts();
     }
     return int_ts();
   }
@@ -334,6 +339,14 @@ std::string IRBuilder::get_string_global(const std::string& content) {
   char buf[32];
   snprintf(buf, sizeof(buf), "0x%016llX", (unsigned long long)bits);
   return std::string(buf);
+}
+
+// For float (single-precision) constants: round to float first, then back to
+// double so LLVM gets a hex value that is exactly representable as float.
+static std::string fp_to_hex_float(double v) {
+  float fv = (float)v;
+  double dv = (double)fv;
+  return IRBuilder::fp_to_hex(dv);
 }
 
 // ─────────────────────────── coerce / to_bool ──────────────────────────────
@@ -466,7 +479,8 @@ void IRBuilder::hoist_allocas(Node* node) {
         if (node->init->kind == NK_INT_LIT)
           init_val = std::to_string(node->init->ival);
         else if (node->init->kind == NK_FLOAT_LIT)
-          init_val = fp_to_hex(node->init->fval);
+          init_val = (ts.base == TB_FLOAT) ? fp_to_hex_float(node->init->fval)
+                                           : fp_to_hex(node->init->fval);
         else if (node->init->kind == NK_UNARY && node->init->op &&
                  strcmp(node->init->op, "-") == 0 && node->init->left &&
                  node->init->left->kind == NK_INT_LIT)
@@ -475,7 +489,7 @@ void IRBuilder::hoist_allocas(Node* node) {
       preamble_.push_back(gname + " = internal global " + llty + " " + init_val);
       break;
     }
-    std::string slot = std::string("%") + node->name;
+    std::string slot = std::string("%lv.") + node->name;
     local_slots_[node->name] = slot;
     local_types_[node->name] = ts;
     std::string llty = llvm_ty(ts);
@@ -680,7 +694,14 @@ TypeSpec IRBuilder::field_type_from_path(const std::string& outer_tag,
   const StructInfo& si = it->second;
 
   if (si.is_union) {
-    // Return the first non-anon field's type (representative)
+    // For unions, use the specific requested field's type (path.final_idx).
+    // Falling back to the first non-anon field only when no specific index.
+    if (path.final_idx >= 0 && path.final_idx < (int)si.field_names.size()) {
+      TypeSpec ft = si.field_types[path.final_idx];
+      if (si.field_array_sizes[path.final_idx] >= 0)
+        ft.array_size = si.field_array_sizes[path.final_idx];
+      return ft;
+    }
     for (size_t i = 0; i < si.field_names.size(); i++) {
       if (!si.field_is_anon[i]) {
         TypeSpec ft = si.field_types[i];
@@ -788,6 +809,17 @@ std::string IRBuilder::codegen_lval(Node* n) {
     return emit_field_gep(struct_ptr, tag, path);
   }
 
+  case NK_CALL: {
+    // Function call result used as lvalue (e.g. fr_s1().x) — spill to temp.
+    TypeSpec ret_ts = expr_type(n);
+    std::string ret_llty = llvm_ty(ret_ts);
+    std::string slot = "%cret_" + std::to_string(tmp_idx_++);
+    alloca_lines_.push_back("  " + slot + " = alloca " + ret_llty);
+    std::string val = codegen_expr(n);
+    emit("store " + ret_llty + " " + val + ", ptr " + slot);
+    return slot;
+  }
+
   default:
     throw std::runtime_error(std::string("codegen_lval: unhandled kind ") +
                              std::to_string(n->kind));
@@ -809,6 +841,8 @@ std::string IRBuilder::codegen_expr(Node* n) {
   case NK_FLOAT_LIT: {
     // Use the hex representation to preserve precision
     double v = n->fval;
+    TypeSpec flit_ts = expr_type(n);
+    if (flit_ts.base == TB_FLOAT) return fp_to_hex_float(v);
     return fp_to_hex(v);
   }
 
@@ -1185,14 +1219,26 @@ std::string IRBuilder::codegen_expr(Node* n) {
 
     bool is_float = is_float_base(res_ts.base);
 
-    // Coerce operands to result type
-    if (!is_float) {
-      lv = coerce(lv, lt, res_llty);
-      rv = coerce(rv, rt, res_llty);
-    } else {
-      lv = coerce(lv, lt, res_llty);
-      rv = coerce(rv, rt, res_llty);
+    // For comparison operators, operand types determine float vs integer instruction.
+    // expr_type(comparison) always returns int, so check operand types separately.
+    {
+      const char* opc = n->op ? n->op : "";
+      bool is_cmp = (strcmp(opc,"==")==0 || strcmp(opc,"!=")==0 ||
+                     strcmp(opc,"<")==0  || strcmp(opc,"<=")==0 ||
+                     strcmp(opc,">")==0  || strcmp(opc,">=")==0);
+      if (is_cmp && (is_float_base(lt.base) || is_float_base(rt.base))) {
+        // Determine common float type for both operands
+        bool use_double = (lt.base == TB_DOUBLE || rt.base == TB_DOUBLE ||
+                           lt.base == TB_LONGDOUBLE || rt.base == TB_LONGDOUBLE);
+        TypeSpec cmp_ts = use_double ? double_ts() : float_ts();
+        res_llty = llvm_ty(cmp_ts);
+        is_float = true;
+      }
     }
+
+    // Coerce operands to result type
+    lv = coerce(lv, lt, res_llty);
+    rv = coerce(rv, rt, res_llty);
 
     std::string t = fresh_tmp();
     const char* op = n->op;
@@ -1512,6 +1558,33 @@ std::string IRBuilder::codegen_expr(Node* n) {
         }
         return "0";
       }
+      // __builtin_fabs / __builtin_inf → LLVM intrinsics / constants
+      if (fn_name == "__builtin_fabs" || fn_name == "__builtin_fabsl") {
+        std::string a = n->n_children > 0 ? codegen_expr(n->children[0]) : "0.0";
+        TypeSpec ats = n->n_children > 0 ? expr_type(n->children[0]) : double_ts();
+        std::string av = coerce(a, ats, "double");
+        std::string t = fresh_tmp();
+        emit(t + " = call double @llvm.fabs.f64(double " + av + ")");
+        ret_ts = double_ts();
+        return t;
+      }
+      if (fn_name == "__builtin_fabsf") {
+        std::string a = n->n_children > 0 ? codegen_expr(n->children[0]) : "0.0";
+        TypeSpec ats = n->n_children > 0 ? expr_type(n->children[0]) : float_ts();
+        std::string av = coerce(a, ats, "float");
+        std::string t = fresh_tmp();
+        emit(t + " = call float @llvm.fabs.f32(float " + av + ")");
+        ret_ts = float_ts();
+        return t;
+      }
+      if (fn_name == "__builtin_inf" || fn_name == "__builtin_infl") {
+        ret_ts = double_ts();
+        return "0x7FF0000000000000";  // +Inf as double hex
+      }
+      if (fn_name == "__builtin_inff") {
+        ret_ts = float_ts();
+        return "0x7FF0000000000000";  // LLVM accepts double-form hex for float +Inf
+      }
       // __builtin___*_chk → map to safe stdlib equivalents
       struct { const char* from; const char* to; int keep_args; } chk_map[] = {
         {"__builtin___memcpy_chk",   "memcpy",   3},
@@ -1563,14 +1636,24 @@ std::string IRBuilder::codegen_expr(Node* n) {
             // printf: keep args 1..
             for (int i = 1; i < (int)avals.size(); i++) keep_indices.push_back(i);
           }
+          // Get real function's param types for coercion
+          std::vector<TypeSpec> real_params;
+          {
+            auto sit2 = func_sigs_.find(chk_map[ci].to);
+            if (sit2 != func_sigs_.end()) real_params = sit2->second.param_types;
+          }
           std::string args_s;
           for (int i = 0; i < (int)keep_indices.size(); i++) {
             if (i > 0) args_s += ", ";
             int idx = keep_indices[i];
             TypeSpec ats = atypes[idx];
             std::string av = avals[idx];
+            // Coerce to real param type if known
+            if (i < (int)real_params.size()) {
+              av = coerce(av, ats, llvm_ty(real_params[i]));
+              ats = real_params[i];
+            }
             if (ats.array_size >= 0) {
-              // Array arg decays to ptr
               args_s += "ptr " + av;
             } else if (ats.base == TB_FLOAT && ats.ptr_level == 0) {
               std::string ext = fresh_tmp();
@@ -1589,12 +1672,30 @@ std::string IRBuilder::codegen_expr(Node* n) {
           std::string ret_ll = llvm_ty(ret_ts);
           if (!auto_declared_fns_.count(real) && !func_sigs_.count(real))
             auto_declared_fns_[real] = "declare " + ret_ll + " @" + real + "(...)";
+          // Build proper function type: use known signature if available,
+          // otherwise fall back to (...).  On ARM64, variadic ABI requires
+          // knowing which params are fixed vs variadic.
+          auto build_fn_type = [&](const std::string& ret) -> std::string {
+            auto sit = func_sigs_.find(real);
+            if (sit != func_sigs_.end()) {
+              std::string pts;
+              for (size_t pi = 0; pi < sit->second.param_types.size(); pi++) {
+                if (pi > 0) pts += ", ";
+                pts += llvm_ty(sit->second.param_types[pi]);
+              }
+              if (sit->second.variadic)
+                pts += (pts.empty() ? "..." : ", ...");
+              return ret + " (" + pts + ")";
+            }
+            return ret + " (...)";
+          };
+          std::string fn_type = build_fn_type(ret_ll);
           if (ret_ll == "void") {
-            emit("call void (...) @" + real + "(" + args_s + ")");
+            emit("call " + fn_type + " @" + real + "(" + args_s + ")");
             return "";
           } else {
             std::string t = fresh_tmp();
-            emit(t + " = call " + ret_ll + " (...) @" + real + "(" + args_s + ")");
+            emit(t + " = call " + fn_type + " @" + real + "(" + args_s + ")");
             return t;
           }
         }
@@ -1669,10 +1770,30 @@ std::string IRBuilder::codegen_expr(Node* n) {
       }
     }
 
+    // Build indirect call function type string from arg types (best-effort).
+    // On ARM64 (Apple Silicon), LLVM requires the function type in indirect
+    // calls so it knows the ABI (variadic vs non-variadic).
+    auto build_indirect_fn_type = [&](const std::string& ret) -> std::string {
+      // Build the param type list from actually-passed args
+      std::string pts;
+      for (size_t ai = 0; ai < arg_types.size(); ai++) {
+        if (ai > 0) pts += ", ";
+        TypeSpec ats = arg_types[ai];
+        // promoted types in args_str may differ; reconstruct
+        if (ats.array_size >= 0) pts += "ptr";
+        else pts += llvm_ty(ats);
+      }
+      // If variadic, add "..."
+      if (variadic)
+        pts += (pts.empty() ? "..." : ", ...");
+      return ret + " (" + pts + ")";
+    };
+
     // Emit the call
     if (ret_llty == "void") {
       if (is_indirect) {
-        emit("call void " + fn_ptr + "(" + args_str + ")");
+        std::string fn_type = build_indirect_fn_type("void");
+        emit("call " + fn_type + " " + fn_ptr + "(" + args_str + ")");
       } else {
         if (variadic) {
           // Variadic void: emit fixed param types in the type part, then "..."
@@ -1692,7 +1813,8 @@ std::string IRBuilder::codegen_expr(Node* n) {
     } else {
       std::string t = fresh_tmp();
       if (is_indirect) {
-        emit(t + " = call " + ret_llty + " " + fn_ptr + "(" + args_str + ")");
+        std::string fn_type = build_indirect_fn_type(ret_llty);
+        emit(t + " = call " + fn_type + " " + fn_ptr + "(" + args_str + ")");
       } else {
         if (variadic) {
           // Variadic: use explicit function type
@@ -2297,8 +2419,6 @@ void IRBuilder::emit_struct_def(Node* sd) {
   }
   struct_defs_[tag] = si;
 
-  // Skip preamble emission for forward references (n_fields <= 0)
-  // so we don't emit an empty type that conflicts with the full definition.
   if (sd->n_fields <= 0) return;
 
   // Emit LLVM struct type to preamble
@@ -2388,6 +2508,35 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
                operand->left->name + ", i64 0, i64 " +
                std::to_string(operand->right->ival) + ")";
       }
+      // &(struct T){...} — compound literal at global scope:
+      // create an internal global and return its address.
+      if (operand->kind == NK_COMPOUND_LIT) {
+        TypeSpec clt = operand->type;
+        // Infer array size from init if needed
+        if (clt.array_size == -2 && operand->init) {
+          int inf = infer_array_size_from_init(operand->init);
+          if (inf > 0) clt.array_size = inf;
+        }
+        std::string cname = "@.cl" + std::to_string(string_idx_++);
+        std::string cllty = llvm_ty(clt);
+        std::string cval = operand->init ? global_const(clt, operand->init) : "zeroinitializer";
+        preamble_.push_back(cname + " = internal global " + cllty + " " + cval);
+        return cname;
+      }
+    }
+    // Bare compound literal used as pointer initializer (no &):
+    // struct S *p = (struct S){...}; — treat as &(compound literal)
+    if (init->kind == NK_COMPOUND_LIT) {
+      TypeSpec clt = init->type;
+      if (clt.array_size == -2 && init->init) {
+        int inf = infer_array_size_from_init(init->init);
+        if (inf > 0) clt.array_size = inf;
+      }
+      std::string cname = "@.cl" + std::to_string(string_idx_++);
+      std::string cllty = llvm_ty(clt);
+      std::string cval = init->init ? global_const(clt, init->init) : "zeroinitializer";
+      preamble_.push_back(cname + " = internal global " + cllty + " " + cval);
+      return cname;
     }
     if (init->kind == NK_VAR && init->name)  // bare name (e.g. function ptr)
       return std::string("@") + init->name;
@@ -2517,11 +2666,53 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
     }
 
     if (ts.base == TB_UNION) {
-      // For unions, use only the first (largest) field, others are zeroed
-      TypeSpec ft = si.field_types[0];
-      if (si.field_array_sizes[0] >= 0) ft.array_size = si.field_array_sizes[0];
-      // Return just the brace initializer (no "%struct.X " prefix — caller adds type)
-      return "{ " + llvm_ty(ft) + " " + vals[0] + " }";
+      // LLVM union type is { [max_sz x i8] } — we must emit a byte array.
+      // Compute max byte size (mirrors emit_struct_def logic).
+      int max_sz = 0;
+      for (size_t i = 0; i < si.field_types.size(); i++) {
+        TypeSpec ft2 = si.field_types[i];
+        int sz = sizeof_ty(ft2);
+        if (si.field_array_sizes[i] >= 0) sz *= (int)si.field_array_sizes[i];
+        if (sz > max_sz) max_sz = sz;
+      }
+      if (max_sz <= 0) return "zeroinitializer";
+
+      // If init was a scalar (not a list), treat it as the value for the first field.
+      // Extract integer value from the active init node.
+      Node* val_init = nullptr;
+      if (init->kind == NK_INIT_LIST && init->n_children > 0) {
+        Node* item = init->children[0];
+        val_init = (item && item->kind == NK_INIT_ITEM) ? item->left : item;
+      } else {
+        val_init = init;  // scalar init → first field
+      }
+
+      long long ival = 0;
+      bool nonzero = false;
+      if (val_init) {
+        if (val_init->kind == NK_INT_LIT && val_init->ival != 0) {
+          ival = val_init->ival; nonzero = true;
+        } else if (val_init->kind == NK_CHAR_LIT && val_init->ival != 0) {
+          ival = val_init->ival; nonzero = true;
+        }
+      }
+
+      std::string ba_type = "[" + std::to_string(max_sz) + " x i8]";
+      std::string content;
+      if (!nonzero) {
+        content = ba_type + " zeroinitializer";
+      } else {
+        content = ba_type + " c\"";
+        unsigned long long uval = (unsigned long long)ival;
+        for (int i = 0; i < max_sz; i++) {
+          unsigned char b = (unsigned char)((uval >> (8 * i)) & 0xFF);
+          char esc[5];
+          snprintf(esc, sizeof(esc), "\\%02X", (unsigned)b);
+          content += esc;
+        }
+        content += "\"";
+      }
+      return "{ " + content + " }";
     }
 
     // Return just the brace initializer (no "%struct.X " prefix — caller adds type)
@@ -2539,15 +2730,17 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
   // Scalar types
   // Float/double: always use hex fp representation
   if (ts.ptr_level == 0 && ts.array_size < 0 && is_float_base(ts.base)) {
-    if (init->kind == NK_INT_LIT)   return fp_to_hex((double)init->ival);
-    if (init->kind == NK_CHAR_LIT)  return fp_to_hex((double)init->ival);
-    if (init->kind == NK_FLOAT_LIT) return fp_to_hex(init->fval);
+    bool is_f32 = (ts.base == TB_FLOAT);
+    auto fhex = [&](double v) { return is_f32 ? fp_to_hex_float(v) : fp_to_hex(v); };
+    if (init->kind == NK_INT_LIT)   return fhex((double)init->ival);
+    if (init->kind == NK_CHAR_LIT)  return fhex((double)init->ival);
+    if (init->kind == NK_FLOAT_LIT) return fhex(init->fval);
     if (init->kind == NK_UNARY && init->op && strcmp(init->op, "-") == 0 &&
         init->left && init->left->kind == NK_INT_LIT)
-      return fp_to_hex(-(double)init->left->ival);
+      return fhex(-(double)init->left->ival);
     if (init->kind == NK_CAST && init->left)
       return global_const(ts, init->left);
-    return fp_to_hex(0.0);
+    return fhex(0.0);
   }
   if (init->kind == NK_INT_LIT) return std::to_string(init->ival);
   if (init->kind == NK_CHAR_LIT) return std::to_string(init->ival);
@@ -2693,7 +2886,7 @@ void IRBuilder::emit_function(Node* fn) {
       params_str += pllty + " " + pname;
       // Create alloca + store for parameter
       // For array params, alloca as ptr (pointer to the decayed array)
-      std::string slot = std::string("%") + p->name;
+      std::string slot = std::string("%lv.") + p->name;
       local_slots_[p->name] = slot;
       TypeSpec stored_type = p->type;
       if (is_array) { stored_type.array_size = -1; stored_type.ptr_level = 1; }

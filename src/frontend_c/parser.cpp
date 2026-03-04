@@ -9,6 +9,39 @@
 
 namespace tinyc2ll::frontend_cxx {
 
+// ── constant expression evaluator ─────────────────────────────────────────────
+// Evaluate a simple AST subtree as an integer constant (for array sizes).
+// Returns true and sets *out on success; false if the expression is dynamic.
+static bool eval_const_int(Node* n, long long* out) {
+    if (!n) return false;
+    if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) {
+        *out = n->ival;
+        return true;
+    }
+    if (n->kind == NK_UNARY && n->op && strcmp(n->op, "-") == 0 && n->left) {
+        long long v;
+        if (!eval_const_int(n->left, &v)) return false;
+        *out = -v;
+        return true;
+    }
+    if (n->kind == NK_BINOP && n->op) {
+        long long l, r;
+        if (!eval_const_int(n->left, &l)) return false;
+        if (!eval_const_int(n->right, &r)) return false;
+        if (strcmp(n->op, "+")  == 0) { *out = l + r; return true; }
+        if (strcmp(n->op, "-")  == 0) { *out = l - r; return true; }
+        if (strcmp(n->op, "*")  == 0) { *out = l * r; return true; }
+        if (strcmp(n->op, "/")  == 0 && r != 0) { *out = l / r; return true; }
+        if (strcmp(n->op, "%")  == 0 && r != 0) { *out = l % r; return true; }
+        if (strcmp(n->op, "<<") == 0) { *out = l << r; return true; }
+        if (strcmp(n->op, ">>") == 0) { *out = l >> r; return true; }
+        if (strcmp(n->op, "&")  == 0) { *out = l & r;  return true; }
+        if (strcmp(n->op, "|")  == 0) { *out = l | r;  return true; }
+        if (strcmp(n->op, "^")  == 0) { *out = l ^ r;  return true; }
+    }
+    return false;
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 static bool is_qualifier(TokenKind k) {
@@ -512,12 +545,14 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
             ts.array_size = -2;  // unsized
             consume();
         } else {
-            // Parse size expression (just eval constant for now)
+            // Parse size expression and try to evaluate as compile-time constant
             Node* sz = parse_assign_expr();
             ts.array_size_expr = sz;
-            // Try to evaluate constant
-            if (sz && sz->kind == NK_INT_LIT) {
-                ts.array_size = sz->ival;
+            long long cv = 0;
+            if (sz && eval_const_int(sz, &cv) && cv > 0) {
+                ts.array_size = (int)cv;
+            } else if (sz && sz->kind == NK_INT_LIT) {
+                ts.array_size = (int)sz->ival;
             } else {
                 ts.array_size = 0;  // dynamic / unknown at parse time
             }
@@ -644,6 +679,39 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             consume();
             Node* ed = parse_enum();
             if (ed) struct_defs_.push_back(ed);
+            // After the enum body, there may be one or more field declarators:
+            // e.g.  enum { X } x;   or   enum E { A, B } kind;
+            // If the next token starts a declarator (not ; or }), parse it.
+            if (!check(TokenKind::Semi) && !check(TokenKind::RBrace)) {
+                TypeSpec fts{};
+                fts.array_size = -1;
+                // Base type is the enum (use int as fallback since enums are ints)
+                fts.base = TB_INT;
+                if (ed && ed->name) {
+                    // Prefer enum type tag if available
+                    fts.base = TB_ENUM;
+                    fts.tag  = ed->name;
+                }
+                bool first_f = true;
+                while (true) {
+                    TypeSpec cur_fts = fts;
+                    const char* fname = nullptr;
+                    parse_declarator(cur_fts, &fname);
+                    skip_attributes();
+                    if (check(TokenKind::Colon)) {
+                        consume();
+                        parse_assign_expr();  // skip bitfield width
+                    }
+                    if (fname) {
+                        Node* f = make_node(NK_DECL, cur().line);
+                        f->type = cur_fts;
+                        f->name = fname;
+                        fields.push_back(f);
+                    }
+                    (void)first_f; first_f = false;
+                    if (!match(TokenKind::Comma)) break;
+                }
+            }
             match(TokenKind::Semi);
             continue;
         }
