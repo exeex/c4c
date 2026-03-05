@@ -1058,13 +1058,14 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         bool first = true;
         while (true) {
             TypeSpec cur_fts = fts;
-            cur_fts.ptr_level = 0;
+            // Preserve ptr_level from typedef resolution (e.g. typedef void *tree; tree field;)
+            // parse_declarator will add any additional pointer levels from the declarator syntax.
             cur_fts.array_size = -1;
             cur_fts.array_rank = 0;
             for (int i = 0; i < 8; ++i) cur_fts.array_dims[i] = -1;
             cur_fts.is_ptr_to_array = false;
             if (!first) {
-                // For multi-declarator fields, re-use base type
+                // For multi-declarator fields, re-use base type (ptr_level from typedef preserved)
             }
             first = false;
             const char* fname = nullptr;
