@@ -290,13 +290,15 @@ std::string IRBuilder::llvm_ty(const TypeSpec& ts) {
 }
 
 int IRBuilder::sizeof_ty(const TypeSpec& ts) {
-  if (ts.ptr_level > 0) return 8;
+  if (ts.ptr_level > 0 && ts.is_ptr_to_array) return 8;
+  // Check array before ptr_level: e.g. fptr[3] has ptr_level=1 but is an array
   if (is_array_ty(ts)) {
     long long dim = array_dim_at(ts, 0);
     if (dim < 0) dim = 0;
     TypeSpec elem = drop_array_dim(ts);
     return (int)dim * sizeof_ty(elem);
   }
+  if (ts.ptr_level > 0) return 8;
   switch (ts.base) {
   case TB_BOOL:
   case TB_CHAR: case TB_UCHAR: case TB_SCHAR: return 1;
@@ -316,6 +318,7 @@ int IRBuilder::sizeof_ty(const TypeSpec& ts) {
     const StructInfo& si = it->second;
     int total = 0, max_sz = 0;
     for (size_t i = 0; i < si.field_types.size(); i++) {
+      if (si.field_array_sizes[i] == -2) continue;  // flex array: zero size
       TypeSpec ft = si.field_types[i];
       int sz = sizeof_ty(ft);
       if (si.field_array_sizes[i] >= 0)
@@ -1095,6 +1098,10 @@ std::string IRBuilder::codegen_lval(Node* n) {
 }
 
 // ─────────────────────────── expression codegen ────────────────────────────
+
+// Forward declaration (defined after codegen_expr)
+static void emit_agg_init_impl(IRBuilder* irb, TypeSpec ts, const std::string& ptr,
+                                Node* flat_list, int& flat_idx);
 
 std::string IRBuilder::codegen_expr(Node* n) {
   if (!n) return "0";
@@ -2388,37 +2395,13 @@ std::string IRBuilder::codegen_expr(Node* n) {
     std::string llty = llvm_ty(ts);
     std::string slot = "%clit_" + std::to_string(tmp_idx_++);
     alloca_lines_.push_back("  " + slot + " = alloca " + llty);
-    // Initializer is in ->left (set by parser). Initialize field by field.
+    // Initializer is in ->left (set by parser). Use emit_agg_init_impl for
+    // full brace-elision, sub-list, and designator support.
     Node* cl_init = n->left ? n->left : n->init;
-    if (cl_init && cl_init->kind == NK_INIT_LIST && ts.base == TB_STRUCT && ts.tag &&
-        struct_defs_.count(ts.tag)) {
-      const StructInfo& si = struct_defs_[ts.tag];
-      std::string struct_llty = std::string("%struct.") + ts.tag;
-      int cur_fi = 0;
-      for (int i = 0; i < cl_init->n_children && cur_fi < (int)si.field_names.size(); i++) {
-        Node* item = cl_init->children[i];
-        Node* val_node = item;
-        int fi = cur_fi;
-        if (item && item->kind == NK_INIT_ITEM) {
-          if (item->desig_field) {
-            for (int j = 0; j < (int)si.field_names.size(); j++) {
-              if (si.field_names[j] == item->desig_field) { fi = j; break; }
-            }
-          }
-          val_node = item->left;
-        }
-        TypeSpec ft = si.field_types[fi];
-        if (si.field_array_sizes[fi] >= 0) ft.array_size = si.field_array_sizes[fi];
-        std::string field_llty = llvm_ty(ft);
-        std::string val = codegen_expr(val_node);
-        TypeSpec vts = expr_type(val_node);
-        val = coerce(val, vts, field_llty);
-        std::string gep = fresh_tmp();
-        emit(gep + " = getelementptr " + struct_llty + ", ptr " + slot +
-             ", i32 0, i32 " + std::to_string(fi));
-        emit("store " + field_llty + " " + val + ", ptr " + gep);
-        cur_fi = fi + 1;
-      }
+    if (cl_init && cl_init->kind == NK_INIT_LIST &&
+        (is_array_ty(ts) || ts.base == TB_STRUCT || ts.base == TB_UNION)) {
+      int flat_idx = 0;
+      emit_agg_init_impl(this, ts, slot, cl_init, flat_idx);
     }
     return slot;
   }
@@ -2534,8 +2517,11 @@ std::string IRBuilder::codegen_expr(Node* n) {
 static void emit_agg_init_impl(IRBuilder* irb, TypeSpec ts, const std::string& ptr,
                                 Node* flat_list, int& flat_idx) {
   std::string llty = irb->llvm_ty(ts);
+  // Zero-initialize first so that uninitialized fields/elements are zero.
+  // (C99 §6.7.9p21: omitted members implicitly zero-initialized.)
+  irb->emit("  store " + llty + " zeroinitializer, ptr " + ptr);
   // ── Struct type ────────────────────────────────────────────────────────────
-  if ((ts.base == TB_STRUCT) && ts.tag && ts.ptr_level == 0) {
+  if ((ts.base == TB_STRUCT) && !is_array_ty(ts) && ts.tag && ts.ptr_level == 0) {
     auto sit = irb->struct_defs_.find(ts.tag);
     if (sit == irb->struct_defs_.end()) return;
     const IRBuilder::StructInfo& si = sit->second;
@@ -2544,11 +2530,14 @@ static void emit_agg_init_impl(IRBuilder* irb, TypeSpec ts, const std::string& p
     int fi = 0;
     // Process items: may be a mix of designated/non-designated/sub-lists
     // We drive by field index, consuming from flat_list as needed.
-    while (fi < n_fields && flat_idx < flat_list->n_children) {
+    while (flat_idx < flat_list->n_children) {
       Node* item = flat_list->children[flat_idx];
       Node* val_node = item;
       bool is_desig = false;
       int target_fi = fi;
+      bool item_is_desig = (item && item->kind == NK_INIT_ITEM && item->desig_field);
+      // For non-designated items: stop BEFORE consuming if all fields are done.
+      if (!item_is_desig && fi >= n_fields) break;
       // Unwrap NK_INIT_ITEM
       if (item && item->kind == NK_INIT_ITEM) {
         if (item->desig_field) {
@@ -2564,6 +2553,7 @@ static void emit_agg_init_impl(IRBuilder* irb, TypeSpec ts, const std::string& p
       } else {
         flat_idx++;
       }
+      if (fi >= n_fields) break;  // designated item out of range; stop
       TypeSpec ft = si.field_types[fi];
       if (si.field_array_sizes[fi] >= 0) ft.array_size = si.field_array_sizes[fi];
       std::string field_llty = irb->llvm_ty(ft);
@@ -2571,21 +2561,31 @@ static void emit_agg_init_impl(IRBuilder* irb, TypeSpec ts, const std::string& p
       std::string fgep = irb->fresh_tmp();
       irb->emit(fgep + " = getelementptr " + struct_llty + ", ptr " + ptr +
                 ", i32 0, i32 " + std::to_string(fi));
-      // Determine how to initialize this field
+      // Determine how to initialize this field.
+      // Pre-compute whether val_node itself has aggregate type (struct/union).
+      // If so, it is a direct assignment — brace-elision must NOT fire.
+      TypeSpec val_vts;
+      bool val_is_agg = false;
+      if (val_node) {
+        val_vts = irb->expr_type(val_node);
+        val_is_agg = val_vts.ptr_level == 0 &&
+                     (val_vts.base == TB_STRUCT || val_vts.base == TB_UNION);
+      }
       if (val_node && val_node->kind == NK_INIT_LIST) {
         // Braced sub-init: use a fresh flat_idx for this sub-list
         int sub_fi = 0;
         emit_agg_init_impl(irb, ft, fgep, val_node, sub_fi);
-      } else if (ft.ptr_level == 0 && !is_array_ty(ft) &&
+      } else if (!val_is_agg && ft.ptr_level == 0 && !is_array_ty(ft) &&
                  (ft.base == TB_STRUCT || ft.base == TB_UNION) &&
                  val_node && val_node->kind != NK_COMPOUND_LIT) {
-        // Aggregate field with scalar item: brace elision — recurse into field
-        // using the current item (and possibly more) from flat_list
-        // BUT we already consumed this item above; we need to push it back.
-        // Solution: create a 1-item or more sub-list approach.
-        // Actually, for brace elision into a struct field from scalars,
-        // we need to un-consume the item and let the recursive call handle it.
-        // Rewind by one:
+        // Scalar item for a struct/union field: brace-elision — rewind and recurse
+        flat_idx--;
+        emit_agg_init_impl(irb, ft, fgep, flat_list, flat_idx);
+      } else if (!val_is_agg && ft.ptr_level == 0 && is_array_ty(ft) &&
+                 val_node && val_node->kind != NK_INIT_LIST) {
+        // Array field with scalar initializer: brace-elision.
+        // C99 6.7.9: scalars from the flat list fill array elements in order.
+        // Rewind so the recursive array-branch consumes elements from flat_list.
         flat_idx--;
         emit_agg_init_impl(irb, ft, fgep, flat_list, flat_idx);
       } else {
@@ -3310,8 +3310,12 @@ void IRBuilder::emit_struct_def(Node* sd) {
                         std::to_string(max_sz) + " x i8] }");
   } else {
     std::string fields_str;
+    bool first = true;
     for (size_t i = 0; i < si.field_types.size(); i++) {
-      if (i > 0) fields_str += ", ";
+      // Skip flex array members (array_size == -2): zero-size trailing arrays
+      if (si.field_array_sizes[i] == -2) continue;
+      if (!first) fields_str += ", ";
+      first = false;
       TypeSpec ft = si.field_types[i];
       if (si.field_array_sizes[i] >= 0) {
         ft.array_size = si.field_array_sizes[i];
@@ -3436,7 +3440,7 @@ static int count_flat_fields_impl(const TypeSpec& ts,
 
 // Consume items from init_list starting at flat_idx to fill one `ts` value.
 std::string global_const_flat_impl(IRBuilder* irb, TypeSpec ts, Node* init_list, int& flat_idx) {
-  if ((ts.base == TB_STRUCT) && ts.tag && ts.ptr_level == 0) {
+  if ((ts.base == TB_STRUCT) && !is_array_ty(ts) && ts.tag && ts.ptr_level == 0) {
     auto sit = irb->struct_defs_.find(ts.tag);
     if (sit == irb->struct_defs_.end()) return "zeroinitializer";
     const IRBuilder::StructInfo& si = sit->second;
@@ -3468,6 +3472,18 @@ std::string global_const_flat_impl(IRBuilder* irb, TypeSpec ts, Node* init_list,
     int dim = (int)array_dim_at(ts, 0);
     TypeSpec elem = drop_array_dim(ts);
     std::string elem_llty = irb->llvm_ty(elem);
+    // For char/u8 arrays: if next item is a string literal, use global_const directly.
+    bool is_char_elem = (elem.ptr_level == 0 &&
+                         (elem.base == TB_CHAR || elem.base == TB_SCHAR ||
+                          elem.base == TB_UCHAR));
+    if (is_char_elem && flat_idx < init_list->n_children) {
+      Node* item = init_list->children[flat_idx];
+      Node* val_node = (item && item->kind == NK_INIT_ITEM) ? item->left : item;
+      if (val_node && val_node->kind == NK_STR_LIT) {
+        flat_idx++;
+        return irb->global_const(ts, val_node);  // handles c"..." encoding
+      }
+    }
     std::string result = "[";
     for (int i = 0; i < dim; i++) {
       if (i > 0) result += ", ";
@@ -3481,9 +3497,151 @@ std::string global_const_flat_impl(IRBuilder* irb, TypeSpec ts, Node* init_list,
     Node* item = init_list->children[flat_idx++];
     Node* val_node = item;
     if (item && item->kind == NK_INIT_ITEM) val_node = item->left;
+    // Unwrap optional braces around scalar: {4} → 4
+    if (val_node && val_node->kind == NK_INIT_LIST && val_node->n_children > 0) {
+      Node* inner = val_node->children[0];
+      if (inner && inner->kind == NK_INIT_ITEM) inner = inner->left;
+      val_node = inner;
+    }
     return irb->global_const(ts, val_node);
   }
   return "zeroinitializer";
+}
+
+// Collect bytes for a constant of type ts initialized from init.
+// Appends exactly sizeof_ty(ts) bytes to `out`.
+static void collect_bytes(IRBuilder* irb, TypeSpec ts, Node* init, std::vector<uint8_t>& out) {
+  int sz = irb->sizeof_ty(ts);
+  int start = (int)out.size();
+  out.resize(start + sz, 0);
+  if (!init || sz == 0) return;
+
+  // Unwrap cast / compound literal
+  if (init->kind == NK_CAST && init->left) init = init->left;
+  if (init->kind == NK_COMPOUND_LIT) {
+    Node* cl = init->left ? init->left : init->init;
+    if (cl) init = cl;
+  }
+  // Unwrap optional braces around scalar: {val} → val
+  if (init->kind == NK_INIT_LIST && init->n_children == 1 && ts.ptr_level == 0 &&
+      !is_array_ty(ts) && ts.base != TB_STRUCT && ts.base != TB_UNION) {
+    Node* inner = init->children[0];
+    if (inner && inner->kind == NK_INIT_ITEM) inner = inner->left;
+    if (inner) init = inner;
+  }
+
+  // Array type
+  if (is_array_ty(ts) && ts.ptr_level == 0) {
+    long long dim = array_dim_at(ts, 0);
+    TypeSpec elem = drop_array_dim(ts);
+    int esz = irb->sizeof_ty(elem);
+    bool is_char_elem = (elem.ptr_level == 0 &&
+                         (elem.base == TB_CHAR || elem.base == TB_SCHAR || elem.base == TB_UCHAR));
+    if (is_char_elem && init->kind == NK_STR_LIT) {
+      // Decode string literal bytes
+      const char* raw = init->sval ? init->sval : "\"\"";
+      if (raw[0] == '"') raw++;
+      int bi = 0;
+      while (*raw && *raw != '"' && bi < dim) {
+        if (*raw == '\\') {
+          raw++;
+          char c = 0;
+          if (*raw == 'n') { c='\n'; raw++; } else if (*raw == 't') { c='\t'; raw++; }
+          else if (*raw == 'r') { c='\r'; raw++; } else if (*raw == '0') { c=0; raw++; }
+          else if (*raw >= '0' && *raw <= '7') {
+            unsigned v = 0;
+            for (int k=0;k<3&&*raw>='0'&&*raw<='7';k++,raw++) v=v*8+(*raw-'0');
+            c=(char)(unsigned char)v;
+          } else { c=*raw++; }
+          out[start + bi++] = (uint8_t)c;
+        } else { out[start + bi++] = (uint8_t)*raw++; }
+      }
+    } else if (init->kind == NK_INIT_LIST) {
+      long long cur = 0;
+      for (int i = 0; i < init->n_children; i++) {
+        Node* item = init->children[i];
+        long long idx = cur;
+        Node* val = item;
+        if (item && item->kind == NK_INIT_ITEM) {
+          if (item->is_index_desig) idx = item->desig_val;
+          val = item->left;
+        }
+        if (idx >= 0 && idx < dim) {
+          std::vector<uint8_t> eb;
+          collect_bytes(irb, elem, val, eb);
+          for (int b = 0; b < esz && b < (int)eb.size(); b++)
+            out[start + (int)idx * esz + b] = eb[b];
+        }
+        cur = idx + 1;
+      }
+    } else {
+      // Scalar into first element
+      std::vector<uint8_t> eb;
+      collect_bytes(irb, elem, init, eb);
+      for (int b = 0; b < esz && b < (int)eb.size(); b++)
+        out[start + b] = eb[b];
+    }
+    return;
+  }
+
+  // Struct type
+  if (ts.base == TB_STRUCT && ts.ptr_level == 0 && !is_array_ty(ts) && ts.tag) {
+    auto sit = irb->struct_defs_.find(ts.tag);
+    if (sit == irb->struct_defs_.end()) return;
+    const IRBuilder::StructInfo& si = sit->second;
+    int n = (int)si.field_names.size();
+    // Compute field offsets (simple sequential layout, no padding for u8 fields)
+    std::vector<int> offsets(n, 0);
+    int off = 0;
+    for (int i = 0; i < n; i++) {
+      if (si.field_array_sizes[i] == -2) continue;
+      offsets[i] = off;
+      TypeSpec ft = si.field_types[i];
+      int fsz = irb->sizeof_ty(ft);
+      if (si.field_array_sizes[i] >= 0) fsz *= (int)si.field_array_sizes[i];
+      off += fsz;
+    }
+    if (init->kind == NK_INIT_LIST) {
+      int fi = 0;  // next sequential field index
+      for (int i = 0; i < init->n_children; i++) {
+        Node* item = init->children[i];
+        Node* val = item;
+        int target_fi = fi;
+        bool is_desig = false;
+        bool item_is_desig = (item && item->kind == NK_INIT_ITEM && item->desig_field);
+        // Stop for non-designated items when fields exhausted
+        if (!item_is_desig && fi >= n) break;
+        if (item && item->kind == NK_INIT_ITEM) {
+          if (item->desig_field) {
+            is_desig = true;
+            for (int j = 0; j < n; j++)
+              if (si.field_names[j] == item->desig_field) { target_fi = j; break; }
+          }
+          val = item->left;
+        }
+        if (target_fi < n && si.field_array_sizes[target_fi] != -2) {
+          TypeSpec ft = si.field_types[target_fi];
+          if (si.field_array_sizes[target_fi] >= 0) ft.array_size = si.field_array_sizes[target_fi];
+          std::vector<uint8_t> fb;
+          collect_bytes(irb, ft, val, fb);
+          int fsz = irb->sizeof_ty(ft);
+          for (int b = 0; b < fsz && b < (int)fb.size() && offsets[target_fi]+b < sz; b++)
+            out[start + offsets[target_fi] + b] = fb[b];
+        }
+        fi = target_fi + 1;
+      }
+    }
+    return;
+  }
+
+  // Scalar / pointer
+  long long ival = 0;
+  if (init->kind == NK_INT_LIT) ival = init->ival;
+  else if (init->kind == NK_CHAR_LIT) ival = init->ival;
+  else if (init->kind == NK_BINOP || init->kind == NK_UNARY)
+    ival = static_eval_int(init, irb->enum_consts_);
+  for (int i = 0; i < sz && i < 8; i++)
+    out[start + i] = (uint8_t)((ival >> (8*i)) & 0xFF);
 }
 
 // Recursive global constant emitter.
@@ -3696,41 +3854,72 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
     if (init->kind == NK_CAST && init->left)
       init = init->left;
     if (init->kind == NK_INIT_LIST) {
+      int flat_i = 0;  // position in init->children (consumed across field boundaries)
       int cur_field = 0;
-      for (int i = 0; i < init->n_children; i++) {
-        Node* item = init->children[i];
+      while (flat_i < init->n_children) {
+        Node* item = init->children[flat_i];
         int fi = cur_field;
         Node* val_node = item;
+        bool is_desig = false;
         if (item && item->kind == NK_INIT_ITEM) {
           if (item->desig_field) {
-            fi = cur_field;  // default
+            is_desig = true;
             for (int j = 0; j < n_fields; j++) {
               if (si.field_names[j] == item->desig_field) { fi = j; break; }
             }
           }
           val_node = item->left;
         }
+        flat_i++;
         if (fi < n_fields) {
           TypeSpec ft = si.field_types[fi];
           if (si.field_array_sizes[fi] >= 0) ft.array_size = si.field_array_sizes[fi];
-          vals[fi] = global_const(ft, val_node);
+          bool ft_is_arr = is_array_ty(ft);
+          bool ft_is_agg = (ft.ptr_level == 0 &&
+                            (ft.base == TB_STRUCT || ft.base == TB_UNION));
+          bool val_is_list = val_node &&
+                             (val_node->kind == NK_INIT_LIST ||
+                              val_node->kind == NK_COMPOUND_LIT);
+          bool val_is_str = val_node && val_node->kind == NK_STR_LIT;
+          // Brace-elide when: aggregate field + non-list value.
+          // EXCEPT: array field + string literal → direct string-to-array (no elide).
+          // Struct field + string literal → DO elide (string fills first sub-array).
+          if (!is_desig && (ft_is_arr || ft_is_agg) && !val_is_list &&
+              !(ft_is_arr && val_is_str)) {
+            // Brace-elision: scalar(s) from flat list fill this aggregate field.
+            flat_i--;
+            vals[fi] = global_const_flat_impl(this, ft, init, flat_i);
+          } else if (!ft_is_arr && !ft_is_agg &&
+                     val_node && val_node->kind == NK_INIT_LIST) {
+            // Optional braces around scalar initializer: {(1)} for u8 field.
+            Node* inner = (val_node->n_children > 0) ? val_node->children[0] : nullptr;
+            if (inner && inner->kind == NK_INIT_ITEM) inner = inner->left;
+            vals[fi] = global_const(ft, inner);
+          } else {
+            vals[fi] = global_const(ft, val_node);
+          }
           cur_field = fi + 1;
-        } else {
-          cur_field++;
         }
       }
     } else if (init->kind != NK_INT_LIT || init->ival != 0) {
-      // Non-list, non-null initializer: treat as first-field value (e.g. function pointer)
-      if (n_fields >= 1) {
-        TypeSpec ft = si.field_types[0];
-        if (si.field_array_sizes[0] >= 0) ft.array_size = si.field_array_sizes[0];
-        vals[0] = global_const(ft, init);
+      // Non-list, non-null initializer (e.g. scalar or string for first field).
+      // Use flat approach so that brace-elision works correctly for array first-fields
+      // (e.g. struct SS s = 2 where first field is u8 a[3] → a[0]=2, rest zero).
+      Node* children[1] = { init };
+      Node synthetic; memset(&synthetic, 0, sizeof(synthetic));
+      synthetic.kind = NK_INIT_LIST;
+      synthetic.n_children = 1;
+      synthetic.children = children;
+      int flat_idx = 0;
+      for (int fi2 = 0; fi2 < n_fields; fi2++) {
+        TypeSpec ft = si.field_types[fi2];
+        if (si.field_array_sizes[fi2] >= 0) ft.array_size = si.field_array_sizes[fi2];
+        vals[fi2] = global_const_flat_impl(this, ft, &synthetic, flat_idx);
       }
     }
 
     if (ts.base == TB_UNION) {
-      // LLVM union type is { [max_sz x i8] } — we must emit a byte array.
-      // Compute max byte size (mirrors emit_struct_def logic).
+      // LLVM union type is { [max_sz x i8] } — emit a byte array.
       int max_sz = 0;
       for (size_t i = 0; i < si.field_types.size(); i++) {
         TypeSpec ft2 = si.field_types[i];
@@ -3740,48 +3929,100 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
       }
       if (max_sz <= 0) return "zeroinitializer";
 
-      // If init was a scalar (not a list), treat it as the value for the first field.
-      // Extract integer value from the active init node.
-      Node* val_init = nullptr;
+      // Determine which member is being initialized and collect its bytes.
+      // collect_bytes() APPENDS to the output vector, so start with empty vector.
+      std::vector<uint8_t> bytes;  // will be padded to max_sz after collection
+      bool any_set = false;
       if (init->kind == NK_INIT_LIST && init->n_children > 0) {
-        Node* item = init->children[0];
-        val_init = (item && item->kind == NK_INIT_ITEM) ? item->left : item;
-      } else {
-        val_init = init;  // scalar init → first field
+        // Check if the init contains designated initializers for anonymous struct fields
+        // (e.g. {.a = 7, .b = 8} where a,b are anon-struct members hoisted into union)
+        bool has_anon_desig = false;
+        for (int i = 0; i < init->n_children; i++) {
+          Node* item = init->children[i];
+          if (item && item->kind == NK_INIT_ITEM && item->desig_field) {
+            // Check if this field belongs to an anonymous struct member
+            for (size_t j = 0; j < si.field_names.size(); j++) {
+              if (si.field_is_anon[j]) {
+                // Look up the anon struct's fields
+                const char* anon_tag = si.field_types[j].tag;
+                if (anon_tag) {
+                  auto ait = struct_defs_.find(anon_tag);
+                  if (ait != struct_defs_.end()) {
+                    for (auto& fn : ait->second.field_names) {
+                      if (fn == item->desig_field) { has_anon_desig = true; break; }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          if (has_anon_desig) break;
+        }
+        if (has_anon_desig) {
+          // Delegate to the anonymous struct member's type
+          for (size_t j = 0; j < si.field_names.size(); j++) {
+            if (si.field_is_anon[j]) {
+              TypeSpec anon_ts = si.field_types[j];
+              collect_bytes(this, anon_ts, init, bytes);
+              any_set = true;
+              break;
+            }
+          }
+        } else {
+          // First member init (possibly flat init for array/struct first member)
+          Node* item0 = init->children[0];
+          Node* val_init = (item0 && item0->kind == NK_INIT_ITEM) ? item0->left : item0;
+          if (n_fields > 0) {
+            TypeSpec ft0 = si.field_types[0];
+            if (si.field_array_sizes[0] >= 0) ft0.array_size = si.field_array_sizes[0];
+            bool val_is_list = (val_init && val_init->kind == NK_INIT_LIST);
+            bool ft0_is_agg = (ft0.ptr_level == 0 &&
+                               (is_array_ty(ft0) || ft0.base == TB_STRUCT || ft0.base == TB_UNION));
+            // If first item is a braced list or first member is scalar: use val_init.
+            // If first member is aggregate and val_init is scalar: brace-elide — pass whole init.
+            Node* member_init = (val_is_list || !ft0_is_agg) ? val_init : init;
+            collect_bytes(this, ft0, member_init, bytes);
+          }
+          any_set = true;
+        }
+      } else if (init->kind != NK_INT_LIT || init->ival != 0) {
+        // Scalar or non-zero scalar
+        if (n_fields > 0) {
+          TypeSpec ft0 = si.field_types[0];
+          if (si.field_array_sizes[0] >= 0) ft0.array_size = si.field_array_sizes[0];
+          collect_bytes(this, ft0, init, bytes);
+        }
+        any_set = true;
       }
 
-      long long ival = 0;
-      bool nonzero = false;
-      if (val_init) {
-        if (val_init->kind == NK_INT_LIT && val_init->ival != 0) {
-          ival = val_init->ival; nonzero = true;
-        } else if (val_init->kind == NK_CHAR_LIT && val_init->ival != 0) {
-          ival = val_init->ival; nonzero = true;
-        }
-      }
+      // Pad collected bytes to max_sz
+      bytes.resize(max_sz, 0);
+
+      // Check if all bytes are zero
+      bool all_zero = true;
+      for (auto b : bytes) if (b) { all_zero = false; break; }
 
       std::string ba_type = "[" + std::to_string(max_sz) + " x i8]";
-      std::string content;
-      if (!nonzero) {
-        content = ba_type + " zeroinitializer";
-      } else {
-        content = ba_type + " c\"";
-        unsigned long long uval = (unsigned long long)ival;
-        for (int i = 0; i < max_sz; i++) {
-          unsigned char b = (unsigned char)((uval >> (8 * i)) & 0xFF);
-          char esc[5];
-          snprintf(esc, sizeof(esc), "\\%02X", (unsigned)b);
-          content += esc;
-        }
-        content += "\"";
+      if (all_zero) return "{ " + ba_type + " zeroinitializer }";
+
+      std::string content = ba_type + " c\"";
+      for (int i = 0; i < max_sz; i++) {
+        char esc[5];
+        snprintf(esc, sizeof(esc), "\\%02X", (unsigned)bytes[i]);
+        content += esc;
       }
+      content += "\"";
       return "{ " + content + " }";
     }
 
     // Return just the brace initializer (no "%struct.X " prefix — caller adds type)
+    // Skip flex array members (field_array_sizes == -2): zero-size trailing arrays
     std::string result = "{ ";
+    bool first_field = true;
     for (int i = 0; i < n_fields; i++) {
-      if (i > 0) result += ", ";
+      if (si.field_array_sizes[i] == -2) continue;  // flex array: skip
+      if (!first_field) result += ", ";
+      first_field = false;
       TypeSpec ft = si.field_types[i];
       if (si.field_array_sizes[i] >= 0) ft.array_size = si.field_array_sizes[i];
       result += llvm_ty(ft) + " " + vals[i];
@@ -3809,6 +4050,12 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
       return fhex((double)ival);
     }
     return fhex(0.0);
+  }
+  // Unwrap optional braces around scalar: {4} or {(1)} for scalar field.
+  if (init->kind == NK_INIT_LIST && init->n_children > 0) {
+    Node* inner = init->children[0];
+    if (inner && inner->kind == NK_INIT_ITEM) inner = inner->left;
+    return global_const(ts, inner);
   }
   if (init->kind == NK_INT_LIT) return std::to_string(init->ival);
   if (init->kind == NK_CHAR_LIT) return std::to_string(init->ival);
