@@ -2332,6 +2332,18 @@ Node* Parser::parse_top_level() {
             decl_name = arena_.strdup(cur().lexeme);
             consume();
         }
+        // Handle array-of-function-pointer: void (*func2[6])(void)
+        while (check(TokenKind::LBracket)) {
+            consume();  // [
+            long long dim = -2;
+            if (!check(TokenKind::RBracket)) {
+                Node* sz = parse_expr();
+                if (sz) { long long v; if (eval_const_int(sz, &v)) dim = v; }
+            }
+            expect(TokenKind::RBracket);
+            if (ts.array_rank < 8) ts.array_dims[ts.array_rank++] = dim;
+            if (ts.array_rank == 1) ts.array_size = ts.array_dims[0];
+        }
         // Detect function-returning-fptr: (* f1(params)) — has inner params before ')'
         if (check(TokenKind::LParen)) {
             fn_returning_fptr = true;

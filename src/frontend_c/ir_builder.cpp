@@ -4385,6 +4385,8 @@ void IRBuilder::emit_function(Node* fn) {
   if (!last_was_terminator_) {
     if (ret_llty == "void")
       emit_terminator("ret void");
+    else if (ret_llty == "ptr")
+      emit_terminator("ret ptr null");
     else
       emit_terminator("ret " + ret_llty + " 0");
   }
