@@ -2739,8 +2739,15 @@ static void emit_agg_init_impl(IRBuilder* irb, TypeSpec ts, const std::string& p
       bool is_range = false;
       long long range_end = ei;
       if (item && item->kind == NK_INIT_ITEM) {
-        if (item->is_index_desig) { idx = item->desig_val; ei = idx; }
-        // Check range designator (stored as field name "[A...B]")
+        if (item->is_index_desig) {
+          idx = item->desig_val; ei = idx;
+          // Range designator [lo ... hi] — parser stores hi in item->right
+          if (item->right) {
+            range_end = item->right->ival;
+            is_range = true;
+          }
+        }
+        // Check range designator (stored as field name "[A...B]") — legacy format
         if (item->desig_field) {
           // Try to parse as range [A...B]
           const char* df = item->desig_field;
@@ -3562,17 +3569,21 @@ static void collect_bytes(IRBuilder* irb, TypeSpec ts, Node* init, std::vector<u
         Node* item = init->children[i];
         long long idx = cur;
         Node* val = item;
+        long long idx_hi = idx;
         if (item && item->kind == NK_INIT_ITEM) {
-          if (item->is_index_desig) idx = item->desig_val;
+          if (item->is_index_desig) {
+            idx = item->desig_val;
+            idx_hi = item->right ? item->right->ival : idx;
+          }
           val = item->left;
         }
-        if (idx >= 0 && idx < dim) {
-          std::vector<uint8_t> eb;
-          collect_bytes(irb, elem, val, eb);
+        std::vector<uint8_t> eb;
+        if (val) collect_bytes(irb, elem, val, eb);
+        for (long long ri = idx; ri <= idx_hi && ri < dim; ri++) {
           for (int b = 0; b < esz && b < (int)eb.size(); b++)
-            out[start + (int)idx * esz + b] = eb[b];
+            out[start + (int)ri * esz + b] = eb[b];
         }
-        cur = idx + 1;
+        cur = idx_hi + 1;
       }
     } else {
       // Scalar into first element
@@ -3702,14 +3713,19 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
         for (int i = 0; i < init->n_children; i++) {
           Node* item = init->children[i];
           long long idx = cur_idx;
+          long long idx_hi = idx;
           Node* val_node = item;
           if (item && item->kind == NK_INIT_ITEM) {
-            if (item->is_index_desig) idx = item->desig_val;
+            if (item->is_index_desig) {
+              idx = item->desig_val;
+              idx_hi = item->right ? item->right->ival : idx;
+            }
             val_node = item->left;
           }
-          if (idx >= 0 && idx < sz)
-            vals[(int)idx] = global_const(elem_ts, val_node);
-          cur_idx = idx + 1;
+          std::string cv = global_const(elem_ts, val_node);
+          for (long long ri = idx; ri <= idx_hi && ri < sz; ri++)
+            vals[(int)ri] = cv;
+          cur_idx = idx_hi + 1;
         }
       }
     }

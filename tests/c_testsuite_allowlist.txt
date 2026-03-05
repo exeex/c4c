@@ -215,6 +215,7 @@ tests/single-exec/00212.c
 tests/single-exec/00213.c
 tests/single-exec/00214.c
 tests/single-exec/00215.c
+tests/single-exec/00216.c
 tests/single-exec/00217.c
 tests/single-exec/00218.c
 tests/single-exec/00219.c

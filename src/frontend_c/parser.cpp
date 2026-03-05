@@ -669,6 +669,17 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
         expect(TokenKind::LBracket);
         long long dim = -2;  // unsized []
         if (!check(TokenKind::RBracket)) {
+            // C99 array parameter qualifiers: [static N], [const N], [volatile N],
+            // [restrict N], [const *] (VLA pointer). Skip qualifier keywords.
+            while (is_qualifier(cur().kind) || cur().kind == TokenKind::KwStatic)
+                consume();
+            // [const *] or [static *]: unsized VLA pointer
+            if (check(TokenKind::Star)) {
+                consume();
+                expect(TokenKind::RBracket);
+                return -2;
+            }
+            if (check(TokenKind::RBracket)) { expect(TokenKind::RBracket); return dim; }
             Node* sz = parse_assign_expr();
             ts.array_size_expr = sz;
             long long cv = 0;
@@ -1083,6 +1094,8 @@ Node* Parser::parse_enum() {
             Node* ve = parse_assign_expr();
             vval = eval_enum_expr(ve, enum_consts_);
         }
+        // Skip __attribute__((...)) annotations after enum value (e.g. availability macros)
+        skip_attributes();
         cur_val = vval + 1;
         names.push_back(vname);
         vals.push_back(vval);
