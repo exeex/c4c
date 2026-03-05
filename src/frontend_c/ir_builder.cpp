@@ -365,7 +365,10 @@ TypeSpec IRBuilder::expr_type(Node* n) {
     }
     return int_ts();
   }
-  case NK_CHAR_LIT:   return char_ts();
+  case NK_CHAR_LIT:
+    // Wide char literal L'...' has type int (wchar_t); narrow has type char
+    if (n->sval && n->sval[0] == 'L') return int_ts();
+    return char_ts();
   case NK_FLOAT_LIT: {
     const char* sv = n->sval;
     if (sv && (sv[strlen(sv)-1] == 'f' || sv[strlen(sv)-1] == 'F'))
@@ -1162,6 +1165,32 @@ std::string IRBuilder::codegen_expr(Node* n) {
             }
             content += (char)(unsigned char)v;
             i--;  // compensate for outer i++
+            break;
+          }
+          case 'u': case 'U': {
+            // \uXXXX or \UXXXXXXXX — encode codepoint as UTF-8
+            int ndigits = (esc == 'u') ? 4 : 8;
+            i += 2;  // skip \ and u/U
+            uint32_t cp = 0;
+            for (int k = 0; k < ndigits && i < (int)raw.size()-1 && isxdigit((unsigned char)raw[i]); k++, i++)
+              cp = cp * 16 + (isdigit((unsigned char)raw[i]) ? raw[i] - '0' :
+                              tolower((unsigned char)raw[i]) - 'a' + 10);
+            i--;  // compensate for outer i++
+            if (cp < 0x80) {
+              content += (char)cp;
+            } else if (cp < 0x800) {
+              content += (char)(0xC0 | (cp >> 6));
+              content += (char)(0x80 | (cp & 0x3F));
+            } else if (cp < 0x10000) {
+              content += (char)(0xE0 | (cp >> 12));
+              content += (char)(0x80 | ((cp >> 6) & 0x3F));
+              content += (char)(0x80 | (cp & 0x3F));
+            } else {
+              content += (char)(0xF0 | (cp >> 18));
+              content += (char)(0x80 | ((cp >> 12) & 0x3F));
+              content += (char)(0x80 | ((cp >> 6) & 0x3F));
+              content += (char)(0x80 | (cp & 0x3F));
+            }
             break;
           }
           default:

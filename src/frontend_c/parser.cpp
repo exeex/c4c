@@ -1519,6 +1519,24 @@ Node* Parser::parse_primary() {
                         cv = strtol(lex.c_str() + char_start + 3, nullptr, 16);
                         break;
                     }
+                    case 'u': {
+                        // \uXXXX — 4 hex digits
+                        const char* p = lex.c_str() + char_start + 3;
+                        cv = 0;
+                        for (int k = 0; k < 4 && *p && isxdigit((unsigned char)*p); k++, p++)
+                            cv = cv * 16 + (isdigit((unsigned char)*p) ? *p - '0' :
+                                            tolower((unsigned char)*p) - 'a' + 10);
+                        break;
+                    }
+                    case 'U': {
+                        // \UXXXXXXXX — 8 hex digits
+                        const char* p = lex.c_str() + char_start + 3;
+                        cv = 0;
+                        for (int k = 0; k < 8 && *p && isxdigit((unsigned char)*p); k++, p++)
+                            cv = cv * 16 + (isdigit((unsigned char)*p) ? *p - '0' :
+                                            tolower((unsigned char)*p) - 'a' + 10);
+                        break;
+                    }
                     default:
                         if (lex[char_start + 2] >= '0' && lex[char_start + 2] <= '7') {
                             cv = strtol(lex.c_str() + char_start + 2, nullptr, 8);
@@ -1531,9 +1549,11 @@ Node* Parser::parse_primary() {
                 cv = (unsigned char)lex[char_start + 1];
             }
         }
+        const char* raw_lex = arena_.strdup(lex);
         consume();
         Node* n = make_node(NK_CHAR_LIT, ln);
         n->ival = cv;
+        n->sval = raw_lex;  // store raw lexeme to detect L prefix for wide char
         return n;
     }
 

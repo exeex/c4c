@@ -25,8 +25,8 @@ std::vector<Token> Lexer::scan_all() {
       continue;
     }
 
-    // Identifiers and keywords (including __xxx GCC forms)
-    if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') {
+    // Identifiers and keywords (including __xxx GCC forms and $-identifier extension)
+    if (std::isalpha(static_cast<unsigned char>(c)) || c == '_' || c == '$') {
       out.push_back(scan_identifier_or_keyword());
       continue;
     }
@@ -144,7 +144,7 @@ Token Lexer::scan_identifier_or_keyword() {
   std::string text;
   while (!at_end()) {
     char c = peek();
-    if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') {
+    if (std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '$') {
       text.push_back(advance());
     } else {
       break;
