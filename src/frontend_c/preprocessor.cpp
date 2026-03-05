@@ -8,6 +8,7 @@
 #include <limits>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -123,7 +124,6 @@ int find_param_idx(const std::vector<std::string>& params, const std::string& na
 //   a##b    → token paste (using raw args for ## operands)
 //   param   → prescan-expanded arg
 //   __VA_ARGS__ → variadic args (expanded)
-// forward-declare so expand_funclike_call can call it
 std::string substitute_funclike_body(const std::string& body,
                                      const std::vector<std::string>& params,
                                      const std::vector<std::string>& raw_args,
@@ -1231,96 +1231,53 @@ bool Preprocessor::is_active() const {
   return cond_stack_.back().this_active;
 }
 
-std::string Preprocessor::expand_funclike_call(const MacroDef& def,
-                                               const std::vector<std::string>& raw_args) {
-  // Prescan-expand each argument (C11 6.10.3.1 step 2).
-  std::vector<std::string> exp_args;
-  exp_args.reserve(raw_args.size());
-  for (const auto& a : raw_args) {
-    exp_args.push_back(expand_line(trim_copy(a)));
-  }
-
-  // Build variadic join (everything beyond named params).
-  // Use the raw (untrimmed) args to preserve original whitespace (e.g. ", 2").
-  std::string va_raw, va_exp;
-  if (def.variadic) {
-    for (size_t k = def.params.size(); k < raw_args.size(); ++k) {
-      if (k > def.params.size()) { va_raw += ","; va_exp += ","; }
-      va_raw += raw_args[k];
-      // For va_exp: expand the trimmed raw arg (trim whitespace, then expand).
-      if (k < raw_args.size()) va_exp += expand_line(trim_copy(raw_args[k]));
-    }
-    // GNU extension: if __VA_ARGS__ is empty and the body uses ", ## __VA_ARGS__"
-    // that removal is handled inside substitute_funclike_body (## with empty arg).
-  }
-
-  // Handle named variadic (e.g. args...) — treat the named param as __VA_ARGS__
-  // For simplicity, re-map via the body substitution step.
-
-  // Substitute body: handles #, ## and parameter replacement.
-  std::string substituted = substitute_funclike_body(def.body, def.params,
-                                                     raw_args, exp_args,
-                                                     def.variadic, va_raw, va_exp);
-
-  // Rescan result for further macro expansion (C11 6.10.3.4).
-  return expand_line(substituted);
-}
-
-std::string Preprocessor::expand_line(const std::string& line) {
-  std::string cur = line;
-  for (int iter = 0; iter < 64; ++iter) {
-    bool changed = false;
-    std::string next = expand_object_like_once(cur, &changed);
-    cur.swap(next);
-    if (!changed) break;
-  }
-  return cur;
-}
-
-std::string Preprocessor::expand_object_like_once(const std::string& line,
-                                                  bool* changed) {
+// Single-pass recursive expansion with hideset support (C11 6.10.3.4 "blue paint").
+// 'disabled' is the set of macro names that must NOT be expanded in this context.
+// Each call handles one left-to-right pass; recursive calls handle nested expansions
+// and rescan with the macro's own name added to the disabled set.
+std::string Preprocessor::expand_text(const std::string& text,
+                                      std::unordered_set<std::string> disabled) {
   std::string out;
-  out.reserve(line.size() + 16);
+  out.reserve(text.size() + 16);
 
   bool in_str = false;
   bool in_chr = false;
 
-  for (size_t i = 0; i < line.size();) {
-    char c = line[i];
+  for (size_t i = 0; i < text.size();) {
+    char c = text[i];
 
     if (!in_str && !in_chr && is_ident_start(c)) {
       size_t j = i + 1;
-      while (j < line.size() && is_ident_continue(line[j])) ++j;
-      std::string ident = line.substr(i, j - i);
+      while (j < text.size() && is_ident_continue(text[j])) ++j;
+      std::string ident = text.substr(i, j - i);
 
       auto it = macros_.find(ident);
-      if (it != macros_.end()) {
+      if (it != macros_.end() && disabled.find(ident) == disabled.end()) {
         const MacroDef& def = it->second;
         if (def.function_like) {
-          // Check whether this identifier is followed by '(' — C standard: a
-          // function-like macro name without '(' is not expanded.
+          // Function-like: only expand if immediately followed by '('.
           size_t k = j;
-          while (k < line.size() && (line[k] == ' ' || line[k] == '\t')) ++k;
-          if (k < line.size() && line[k] == '(') {
+          while (k < text.size() && (text[k] == ' ' || text[k] == '\t')) ++k;
+          if (k < text.size() && text[k] == '(') {
             ++k;  // skip '('
-            std::vector<std::string> raw_args = collect_funclike_args(line, &k);
-            // For zero-param macros invoked as F(), raw_args = {""} — normalise.
+            std::vector<std::string> raw_args = collect_funclike_args(text, &k);
+            // Normalise: F() with no params → empty args list.
             if (def.params.empty() && !def.variadic &&
                 raw_args.size() == 1 && trim_copy(raw_args[0]).empty()) {
               raw_args.clear();
             }
-            std::string expanded = expand_funclike_call(def, raw_args);
-            out += expanded;
-            if (changed) *changed = true;
+            out += expand_funclike_call(def, raw_args, disabled);
             i = k;
           } else {
-            // No '(' — leave identifier as-is (not a macro invocation).
+            // No '(' — not a macro invocation; leave as-is.
             out += ident;
             i = j;
           }
         } else {
-          out += def.body;
-          if (changed) *changed = true;
+          // Object-like: expand body with disabled ∪ {ident}.
+          std::unordered_set<std::string> new_disabled = disabled;
+          new_disabled.insert(ident);
+          out += expand_text(def.body, std::move(new_disabled));
           i = j;
         }
       } else {
@@ -1332,9 +1289,9 @@ std::string Preprocessor::expand_object_like_once(const std::string& line,
 
     out.push_back(c);
 
-    if (!in_chr && c == '"' && (i == 0 || line[i - 1] != '\\')) {
+    if (!in_chr && c == '"' && (i == 0 || text[i - 1] != '\\')) {
       in_str = !in_str;
-    } else if (!in_str && c == '\'' && (i == 0 || line[i - 1] != '\\')) {
+    } else if (!in_str && c == '\'' && (i == 0 || text[i - 1] != '\\')) {
       in_chr = !in_chr;
     }
 
@@ -1342,6 +1299,43 @@ std::string Preprocessor::expand_object_like_once(const std::string& line,
   }
 
   return out;
+}
+
+std::string Preprocessor::expand_funclike_call(const MacroDef& def,
+                                               const std::vector<std::string>& raw_args,
+                                               std::unordered_set<std::string> disabled) {
+  // Prescan-expand each argument (C11 6.10.3.1 step 2).
+  // Arguments use the caller's disabled set (not yet inside the macro body).
+  std::vector<std::string> exp_args;
+  exp_args.reserve(raw_args.size());
+  for (const auto& a : raw_args) {
+    exp_args.push_back(expand_text(trim_copy(a), disabled));
+  }
+
+  // Build variadic join (everything beyond named params).
+  std::string va_raw, va_exp;
+  if (def.variadic) {
+    for (size_t k = def.params.size(); k < raw_args.size(); ++k) {
+      if (k > def.params.size()) { va_raw += ","; va_exp += ","; }
+      va_raw += raw_args[k];
+      if (k < raw_args.size()) va_exp += expand_text(trim_copy(raw_args[k]), disabled);
+    }
+    // GNU extension: ", ## __VA_ARGS__" removal handled in substitute_funclike_body.
+  }
+
+  // Substitute body: handles #, ## and parameter replacement.
+  std::string substituted = substitute_funclike_body(def.body, def.params,
+                                                     raw_args, exp_args,
+                                                     def.variadic, va_raw, va_exp);
+
+  // Rescan result for further macro expansion (C11 6.10.3.4).
+  // Add the macro's own name to the disabled set to prevent self-re-expansion.
+  disabled.insert(def.name);
+  return expand_text(substituted, std::move(disabled));
+}
+
+std::string Preprocessor::expand_line(const std::string& line) {
+  return expand_text(line, {});
 }
 
 std::string Preprocessor::handle_include(const std::string& args,

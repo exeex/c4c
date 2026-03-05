@@ -415,11 +415,23 @@ TypeSpec IRBuilder::expr_type(Node* n) {
     TypeSpec lt = expr_type(n->left);
     TypeSpec rt = expr_type(n->right);
     // Pointer subtraction: ptr - ptr → ptrdiff_t (i64)
-    if (lt.ptr_level > 0 && rt.ptr_level > 0 && op && strcmp(op, "-") == 0)
+    if ((lt.ptr_level > 0 || is_array_ty(lt)) &&
+        (rt.ptr_level > 0 || is_array_ty(rt)) &&
+        op && strcmp(op, "-") == 0)
       return ll_ts();
-    // Pointer arithmetic: ptr +/- int → ptr
+    // Pointer arithmetic: ptr/array +/- int → ptr (array decays to pointer)
     if (lt.ptr_level > 0) return lt;
+    if (is_array_ty(lt)) {
+      TypeSpec decay = drop_array_dim(lt);
+      decay.ptr_level += 1;
+      return decay;
+    }
     if (rt.ptr_level > 0) return rt;
+    if (is_array_ty(rt)) {
+      TypeSpec decay = drop_array_dim(rt);
+      decay.ptr_level += 1;
+      return decay;
+    }
     // Usual arithmetic conversions
     if (lt.base == TB_DOUBLE || rt.base == TB_DOUBLE) return double_ts();
     if (lt.base == TB_FLOAT  || rt.base == TB_FLOAT)  return float_ts();
@@ -981,6 +993,10 @@ TypeSpec IRBuilder::field_type_from_path(const std::string& outer_tag,
   return int_ts();
 }
 
+// Forward declaration (defined after codegen_expr)
+static void emit_agg_init_impl(IRBuilder* irb, TypeSpec ts, const std::string& ptr,
+                                Node* flat_list, int& flat_idx);
+
 // ─────────────────────────── lvalue codegen ────────────────────────────────
 
 std::string IRBuilder::codegen_lval(Node* n) {
@@ -1092,9 +1108,22 @@ std::string IRBuilder::codegen_lval(Node* n) {
     return slot;
   }
 
-  case NK_COMPOUND_LIT:
-    // (type){...} — codegen_expr already allocates a slot and returns its address.
-    return codegen_expr(n);
+  case NK_COMPOUND_LIT: {
+    // (type){...} used as lvalue — need the alloca address.
+    // Duplicate the alloca+init logic here so we get the raw slot ptr
+    // even after codegen_expr was updated to return loaded values for struct/union.
+    TypeSpec clit_ts = n->type;
+    std::string clit_llty = llvm_ty(clit_ts);
+    std::string clit_slot = "%clit_" + std::to_string(tmp_idx_++);
+    alloca_lines_.push_back("  " + clit_slot + " = alloca " + clit_llty);
+    Node* clit_init = n->left ? n->left : n->init;
+    if (clit_init && clit_init->kind == NK_INIT_LIST &&
+        (is_array_ty(clit_ts) || clit_ts.base == TB_STRUCT || clit_ts.base == TB_UNION)) {
+      int flat_idx = 0;
+      emit_agg_init_impl(this, clit_ts, clit_slot, clit_init, flat_idx);
+    }
+    return clit_slot;
+  }
 
   case NK_STMT_EXPR: {
     // ({ stmts... last_expr; }) used as lvalue — execute all but last, then
@@ -1549,11 +1578,16 @@ std::string IRBuilder::codegen_expr(Node* n) {
         emit(zt + " = zext i1 " + ct + " to i32");
         return zt;
       }
-      bool lptr_only = lt.ptr_level > 0;
-      bool rptr_only = rt.ptr_level > 0;
+      // Include array types: arrays decay to pointers in arithmetic expressions.
+      bool lptr_only = lt.ptr_level > 0 || is_array_ty(lt);
+      bool rptr_only = rt.ptr_level > 0 || is_array_ty(rt);
+      auto elem_of = [](const TypeSpec& ts) -> TypeSpec {
+        if (ts.ptr_level > 0) { TypeSpec e = ts; e.ptr_level -= 1; return e; }
+        return drop_array_dim(ts);
+      };
       if (lptr_only && !rptr_only) {
-        // ptr +/- int
-        TypeSpec elem_ts = lt; elem_ts.ptr_level -= 1;
+        // ptr/array +/- int
+        TypeSpec elem_ts = elem_of(lt);
         std::string elem_llty = llvm_ty(elem_ts);
         std::string idx = coerce(rv, rt, "i64");
         if (n->op && strcmp(n->op, "-") == 0) {
@@ -1566,7 +1600,8 @@ std::string IRBuilder::codegen_expr(Node* n) {
         return t;
       }
       if (rptr_only && !lptr_only) {
-        TypeSpec elem_ts = rt; elem_ts.ptr_level -= 1;
+        // int + ptr/array
+        TypeSpec elem_ts = elem_of(rt);
         std::string elem_llty = llvm_ty(elem_ts);
         std::string idx = coerce(lv, lt, "i64");
         std::string t = fresh_tmp();
@@ -1581,7 +1616,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
       std::string t3 = fresh_tmp();
       emit(t3 + " = sub i64 " + t + ", " + t2);
       // divide by element size
-      TypeSpec elem_ts2 = lt; elem_ts2.ptr_level -= 1;
+      TypeSpec elem_ts2 = elem_of(lt);
       int esz = sizeof_ty(elem_ts2);
       if (esz > 1) {
         std::string t4 = fresh_tmp();
@@ -2052,6 +2087,40 @@ std::string IRBuilder::codegen_expr(Node* n) {
         ret_ts = float_ts();
         return "0x7FF0000000000000";  // LLVM accepts double-form hex for float +Inf
       }
+      // __builtin_memcpy / __builtin_memset / __builtin_memmove / __builtin_memcmp
+      // and other common memory/string builtins → lower to C library names.
+      {
+        static const struct { const char* from; const char* to; } mem_builtins[] = {
+          {"__builtin_memcpy",   "memcpy"},
+          {"__builtin_memset",   "memset"},
+          {"__builtin_memmove",  "memmove"},
+          {"__builtin_memcmp",   "memcmp"},
+          {"__builtin_strcpy",   "strcpy"},
+          {"__builtin_strncpy",  "strncpy"},
+          {"__builtin_strcmp",   "strcmp"},
+          {"__builtin_strncmp",  "strncmp"},
+          {"__builtin_strlen",   "strlen"},
+          {"__builtin_strcat",   "strcat"},
+          {"__builtin_strncat",  "strncat"},
+          {"__builtin_strchr",   "strchr"},
+          {"__builtin_strrchr",  "strrchr"},
+          {"__builtin_strstr",   "strstr"},
+          {"__builtin_sprintf",  "sprintf"},
+          {"__builtin_printf",   "printf"},
+          {"__builtin_puts",     "puts"},
+          {"__builtin_abort",    "abort"},
+          {"__builtin_exit",     "exit"},
+          {nullptr, nullptr}
+        };
+        for (int mi = 0; mem_builtins[mi].from; mi++) {
+          if (fn_name == mem_builtins[mi].from) {
+            fn_name = mem_builtins[mi].to;
+            // Also update the callee node name so later code uses the new name.
+            break;
+          }
+        }
+      }
+
       // __builtin___*_chk → map to safe stdlib equivalents
       struct { const char* from; const char* to; int keep_args; } chk_map[] = {
         {"__builtin___memcpy_chk",   "memcpy",   3},
@@ -2449,6 +2518,14 @@ std::string IRBuilder::codegen_expr(Node* n) {
       int flat_idx = 0;
       emit_agg_init_impl(this, ts, slot, cl_init, flat_idx);
     }
+    // For struct/union rvalue context: load and return the value so that
+    // callers (e.g. return stmt, assignment) get a proper value not a ptr.
+    // Arrays decay to pointer, so keep returning the slot for array types.
+    if (ts.ptr_level == 0 && (ts.base == TB_STRUCT || ts.base == TB_UNION)) {
+      std::string t = fresh_tmp();
+      emit(t + " = load " + llty + ", ptr " + slot);
+      return t;
+    }
     return slot;
   }
 
@@ -2687,12 +2764,6 @@ static void emit_agg_init_impl(IRBuilder* irb, TypeSpec ts, const std::string& p
                      ft.ptr_level == 0 && val == "0") {
             irb->emit("store " + field_llty + " zeroinitializer, ptr " + fgep);
           } else if ((ft.base == TB_STRUCT || ft.base == TB_UNION) &&
-                     ft.ptr_level == 0 && val_node->kind == NK_COMPOUND_LIT) {
-            // Compound literal: val is a ptr to the struct; load it
-            std::string ld = irb->fresh_tmp();
-            irb->emit(ld + " = load " + field_llty + ", ptr " + val);
-            irb->emit("store " + field_llty + " " + ld + ", ptr " + fgep);
-          } else if ((ft.base == TB_STRUCT || ft.base == TB_UNION) &&
                      ft.ptr_level == 0) {
             // Struct/union value: may be a ptr from compound lit or a loaded value
             TypeSpec vts = irb->expr_type(val_node);
@@ -2831,12 +2902,7 @@ static void emit_agg_init_impl(IRBuilder* irb, TypeSpec ts, const std::string& p
         TypeSpec val_ts = val_node ? irb->expr_type(val_node) : int_ts();
         if ((elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION || is_array_ty(elem_ts)) && val == "0")
           val = "zeroinitializer";
-        else if (elem_ts.ptr_level == 0 && (elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION) &&
-                 val_node && val_node->kind == NK_COMPOUND_LIT) {
-          std::string ld = irb->fresh_tmp();
-          irb->emit(ld + " = load " + elem_llty + ", ptr " + val);
-          val = ld;
-        } else {
+        else {
           val = irb->coerce(val, val_ts, elem_llty);
         }
         irb->emit("store " + elem_llty + " " + val + ", ptr " + egep);
