@@ -55,6 +55,8 @@ private:
                          int include_depth);
   std::string expand_line(const std::string& line);
   std::string expand_object_like_once(const std::string& line, bool* changed);
+  std::string expand_funclike_call(const MacroDef& def,
+                                   const std::vector<std::string>& raw_args);
 
   void handle_define(const std::string& args, const std::string& file, int line_no);
   void handle_undef(const std::string& args);

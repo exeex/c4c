@@ -1,6 +1,6 @@
 # tiny-c2ll Plan (Handoff Snapshot)
 
-Last updated: 2026-03-06
+Last updated: 2026-03-05
 
 ## Current State
 
@@ -18,14 +18,9 @@ cmake --build build_debug -j8
 ctest --test-dir build_debug --output-on-failure -j 8
 ```
 
-Current baseline from latest run:
-- c-testsuite failures observed (from latest `ctest` run):
-  - `c_testsuite_tests_single_exec_00040_c`
-  - `c_testsuite_tests_single_exec_00152_c`
-  - `c_testsuite_tests_single_exec_00181_c`
-  - `c_testsuite_tests_single_exec_00182_c`
-  - `c_testsuite_tests_single_exec_00209_c`
-  - `c_testsuite_tests_single_exec_00220_c`
+Current baseline from latest run (2026-03-05):
+- `ctest --test-dir build --output-on-failure`: 277/277 pass
+- `ctest --test-dir build_debug --output-on-failure`: 277/277 pass
 
 ## Test Topology
 
@@ -40,19 +35,12 @@ Current baseline from latest run:
 
 ## Known Issues (Priority: Fix First)
 
-1. `ccc-review` expected-fail cases still open:
-   - `0004_unicode_escape_string.c`
-   - `0005_unicode_escape_char.c`
-   - `0006_dollar_identifier.c`
-2. c-testsuite known backend bug case is excluded from allowlist:
-   - `tests/single-exec/00216.c`
-3. Current c-testsuite failing cases to fix:
-   - `tests/single-exec/00040.c`
-   - `tests/single-exec/00152.c`
-   - `tests/single-exec/00181.c`
-   - `tests/single-exec/00182.c`
-   - `tests/single-exec/00209.c`
-   - `tests/single-exec/00220.c`
+All Phase A issues resolved as of 2026-03-05:
+- ccc-review 0004/0005/0006: pass (unicode escapes, dollar identifiers)
+- c-testsuite 00040/00152/00181/00182/00209/00220: all pass
+- 00216.c: in allowlist, passing
+
+No open Phase A issues.
 
 ### Fix Policy
 

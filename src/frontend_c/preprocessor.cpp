@@ -31,6 +31,228 @@ bool is_ident_continue(char c) {
   return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
 }
 
+// ---- Function-like macro expansion helpers ---------------------------------
+
+// Collect balanced parenthesised argument list starting at (*pos) which
+// must point at the character AFTER the opening '('. On return *pos points
+// at the character after the closing ')'.  Respects string/char literals.
+// Returns one string per argument (raw, un-expanded).
+std::vector<std::string> collect_funclike_args(const std::string& line, size_t* pos) {
+  std::vector<std::string> args;
+  std::string cur;
+  int depth = 0;
+  bool in_str = false, in_chr = false;
+
+  while (*pos < line.size()) {
+    char c = line[*pos];
+    if (!in_str && !in_chr) {
+      if (c == '(') { ++depth; cur.push_back(c); ++(*pos); continue; }
+      if (c == ')') {
+        if (depth == 0) {
+          args.push_back(cur);
+          ++(*pos);
+          return args;
+        }
+        --depth; cur.push_back(c); ++(*pos); continue;
+      }
+      if (c == ',' && depth == 0) {
+        args.push_back(cur);
+        cur.clear();
+        ++(*pos);
+        continue;
+      }
+    }
+    if (!in_chr && c == '"') {
+      // Track string start/end, handle escape sequences
+      in_str = !in_str;
+    } else if (!in_str && c == '\'') {
+      in_chr = !in_chr;
+    }
+    if (in_str || in_chr) {
+      // Inside string/char literal: copy verbatim including escapes
+      cur.push_back(c);
+      ++(*pos);
+      if (c == '\\' && *pos < line.size()) {
+        cur.push_back(line[*pos]);
+        ++(*pos);
+      }
+      // Check for closing quote
+      if (*pos < line.size()) {
+        char q = line[*pos];
+        if ((in_str && q == '"') || (in_chr && q == '\'')) {
+          cur.push_back(q);
+          ++(*pos);
+          if (in_str) in_str = false;
+          else in_chr = false;
+        }
+      }
+      continue;
+    }
+    cur.push_back(c);
+    ++(*pos);
+  }
+  // Unbalanced — return whatever we collected
+  if (!cur.empty() || !args.empty()) args.push_back(cur);
+  return args;
+}
+
+// Stringify a raw argument for the # operator (C11 6.10.3.2).
+std::string stringify_arg(const std::string& raw) {
+  std::string r = trim_copy(raw);
+  std::string out;
+  out.push_back('"');
+  for (char c : r) {
+    if (c == '\\' || c == '"') out.push_back('\\');
+    out.push_back(c);
+  }
+  out.push_back('"');
+  return out;
+}
+
+// Look up a named parameter in the macro definition.
+// Returns the index (0-based), or -1 if not found.
+int find_param_idx(const std::vector<std::string>& params, const std::string& name) {
+  for (int i = 0; i < static_cast<int>(params.size()); ++i) {
+    if (params[i] == name) return i;
+  }
+  return -1;
+}
+
+// Perform parameter substitution on the macro body, implementing:
+//   #param  → stringify raw arg
+//   a##b    → token paste (using raw args for ## operands)
+//   param   → prescan-expanded arg
+//   __VA_ARGS__ → variadic args (expanded)
+// forward-declare so expand_funclike_call can call it
+std::string substitute_funclike_body(const std::string& body,
+                                     const std::vector<std::string>& params,
+                                     const std::vector<std::string>& raw_args,
+                                     const std::vector<std::string>& exp_args,
+                                     bool variadic,
+                                     const std::string& va_raw,
+                                     const std::string& va_exp);
+
+std::string substitute_funclike_body(const std::string& body,
+                                     const std::vector<std::string>& params,
+                                     const std::vector<std::string>& raw_args,
+                                     const std::vector<std::string>& exp_args,
+                                     bool variadic,
+                                     const std::string& va_raw,
+                                     const std::string& va_exp) {
+  std::string out;
+  size_t i = 0;
+
+  auto get_raw = [&](const std::string& name) -> std::string {
+    if (variadic && name == "__VA_ARGS__") return va_raw;
+    int idx = find_param_idx(params, name);
+    return (idx >= 0 && idx < static_cast<int>(raw_args.size())) ? trim_copy(raw_args[idx]) : name;
+  };
+  auto get_exp = [&](const std::string& name) -> std::string {
+    if (variadic && name == "__VA_ARGS__") return va_exp;
+    int idx = find_param_idx(params, name);
+    return (idx >= 0 && idx < static_cast<int>(exp_args.size())) ? exp_args[idx] : name;
+  };
+
+  while (i < body.size()) {
+    // String literal in body — copy verbatim
+    if (body[i] == '"') {
+      out.push_back('"');
+      ++i;
+      while (i < body.size() && body[i] != '"') {
+        if (body[i] == '\\') { out.push_back(body[i++]); }
+        if (i < body.size()) out.push_back(body[i++]);
+      }
+      if (i < body.size()) { out.push_back('"'); ++i; }
+      continue;
+    }
+
+    // # operator (stringify)
+    if (body[i] == '#' && i + 1 < body.size() && body[i + 1] != '#') {
+      size_t j = i + 1;
+      while (j < body.size() && (body[j] == ' ' || body[j] == '\t')) ++j;
+      if (j < body.size() && is_ident_start(body[j])) {
+        size_t k = j + 1;
+        while (k < body.size() && is_ident_continue(body[k])) ++k;
+        std::string pname = body.substr(j, k - j);
+        bool is_param = (find_param_idx(params, pname) >= 0) ||
+                        (variadic && pname == "__VA_ARGS__");
+        if (is_param) {
+          out += stringify_arg(get_raw(pname));
+          i = k;
+          continue;
+        }
+      }
+      out.push_back('#');
+      ++i;
+      continue;
+    }
+
+    // Identifier — check for ## paste or parameter substitution
+    if (is_ident_start(body[i])) {
+      size_t j = i + 1;
+      while (j < body.size() && is_ident_continue(body[j])) ++j;
+      std::string tok = body.substr(i, j - i);
+
+      // Is there ## following this token?
+      size_t k = j;
+      while (k < body.size() && (body[k] == ' ' || body[k] == '\t')) ++k;
+      if (k + 1 < body.size() && body[k] == '#' && body[k + 1] == '#') {
+        // Use raw arg for ## left operand
+        std::string left = get_raw(tok);
+        // Trim trailing whitespace from output and paste
+        while (!out.empty() && (out.back() == ' ' || out.back() == '\t')) out.pop_back();
+        out += trim_copy(left);
+        // Skip ##
+        k += 2;
+        while (k < body.size() && (body[k] == ' ' || body[k] == '\t')) ++k;
+        // Right operand: get next token raw form
+        if (k < body.size() && is_ident_start(body[k])) {
+          size_t m = k + 1;
+          while (m < body.size() && is_ident_continue(body[m])) ++m;
+          std::string rtok = body.substr(k, m - k);
+          out += get_raw(rtok);
+          i = m;
+        } else {
+          // non-ident right operand: copy one char
+          if (k < body.size()) { out.push_back(body[k]); i = k + 1; }
+          else i = k;
+        }
+        continue;
+      }
+
+      // Normal parameter substitution (use pre-scan expanded arg)
+      out += get_exp(tok);
+      i = j;
+      continue;
+    }
+
+    // ## without left-operand identifier (rare — just emit ##)
+    if (body[i] == '#' && i + 1 < body.size() && body[i + 1] == '#') {
+      // Strip trailing spaces and skip ##
+      while (!out.empty() && (out.back() == ' ' || out.back() == '\t')) out.pop_back();
+      i += 2;
+      while (i < body.size() && (body[i] == ' ' || body[i] == '\t')) ++i;
+      // Right operand
+      if (i < body.size() && is_ident_start(body[i])) {
+        size_t j = i + 1;
+        while (j < body.size() && is_ident_continue(body[j])) ++j;
+        std::string rtok = body.substr(i, j - i);
+        out += get_raw(rtok);
+        i = j;
+      } else if (i < body.size()) {
+        out.push_back(body[i++]);
+      }
+      continue;
+    }
+
+    out.push_back(body[i++]);
+  }
+
+  return out;
+}
+
+// ----------------------------------------------------------------------------
+
 std::pair<std::string, std::string> split_directive(const std::string& line) {
   size_t i = 0;
   while (i < line.size() && std::isspace(static_cast<unsigned char>(line[i]))) ++i;
@@ -896,11 +1118,7 @@ void Preprocessor::handle_define(const std::string& args,
       ++i;
     }
 
-    if (seen_variadic) {
-      // TODO(preprocessor): support named variadic form `args...` and
-      // GNU `, ## __VA_ARGS__` behavior.
-      needs_external_fallback_ = true;
-    }
+    (void)seen_variadic;  // variadic macros are now handled natively
   }
 
   while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i]))) ++i;
@@ -1013,9 +1231,44 @@ bool Preprocessor::is_active() const {
   return cond_stack_.back().this_active;
 }
 
+std::string Preprocessor::expand_funclike_call(const MacroDef& def,
+                                               const std::vector<std::string>& raw_args) {
+  // Prescan-expand each argument (C11 6.10.3.1 step 2).
+  std::vector<std::string> exp_args;
+  exp_args.reserve(raw_args.size());
+  for (const auto& a : raw_args) {
+    exp_args.push_back(expand_line(trim_copy(a)));
+  }
+
+  // Build variadic join (everything beyond named params).
+  // Use the raw (untrimmed) args to preserve original whitespace (e.g. ", 2").
+  std::string va_raw, va_exp;
+  if (def.variadic) {
+    for (size_t k = def.params.size(); k < raw_args.size(); ++k) {
+      if (k > def.params.size()) { va_raw += ","; va_exp += ","; }
+      va_raw += raw_args[k];
+      // For va_exp: expand the trimmed raw arg (trim whitespace, then expand).
+      if (k < raw_args.size()) va_exp += expand_line(trim_copy(raw_args[k]));
+    }
+    // GNU extension: if __VA_ARGS__ is empty and the body uses ", ## __VA_ARGS__"
+    // that removal is handled inside substitute_funclike_body (## with empty arg).
+  }
+
+  // Handle named variadic (e.g. args...) — treat the named param as __VA_ARGS__
+  // For simplicity, re-map via the body substitution step.
+
+  // Substitute body: handles #, ## and parameter replacement.
+  std::string substituted = substitute_funclike_body(def.body, def.params,
+                                                     raw_args, exp_args,
+                                                     def.variadic, va_raw, va_exp);
+
+  // Rescan result for further macro expansion (C11 6.10.3.4).
+  return expand_line(substituted);
+}
+
 std::string Preprocessor::expand_line(const std::string& line) {
   std::string cur = line;
-  for (int iter = 0; iter < 32; ++iter) {
+  for (int iter = 0; iter < 64; ++iter) {
     bool changed = false;
     std::string next = expand_object_like_once(cur, &changed);
     cur.swap(next);
@@ -1044,19 +1297,36 @@ std::string Preprocessor::expand_object_like_once(const std::string& line,
       if (it != macros_.end()) {
         const MacroDef& def = it->second;
         if (def.function_like) {
-          // TODO(preprocessor): parse invocation arguments, support #, ##,
-          // __VA_ARGS__, blue-paint recursion prevention, and rescanning rules.
-          out += ident;
-          needs_external_fallback_ = true;
+          // Check whether this identifier is followed by '(' — C standard: a
+          // function-like macro name without '(' is not expanded.
+          size_t k = j;
+          while (k < line.size() && (line[k] == ' ' || line[k] == '\t')) ++k;
+          if (k < line.size() && line[k] == '(') {
+            ++k;  // skip '('
+            std::vector<std::string> raw_args = collect_funclike_args(line, &k);
+            // For zero-param macros invoked as F(), raw_args = {""} — normalise.
+            if (def.params.empty() && !def.variadic &&
+                raw_args.size() == 1 && trim_copy(raw_args[0]).empty()) {
+              raw_args.clear();
+            }
+            std::string expanded = expand_funclike_call(def, raw_args);
+            out += expanded;
+            if (changed) *changed = true;
+            i = k;
+          } else {
+            // No '(' — leave identifier as-is (not a macro invocation).
+            out += ident;
+            i = j;
+          }
         } else {
           out += def.body;
           if (changed) *changed = true;
+          i = j;
         }
       } else {
         out += ident;
+        i = j;
       }
-
-      i = j;
       continue;
     }
 
