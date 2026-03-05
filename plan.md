@@ -1,57 +1,50 @@
-# tiny-c2ll Plan (First-Fail Workflow Snapshot)
+# tiny-c2ll Plan (Frontend-Failure Focus)
 
 Last updated: 2026-03-06
 
 ## Current State
 
 - Active frontend is C++ in `src/frontend_c/`.
-- Python frontend has been removed.
-- Core CTest suites are green in local baseline (`277/277`).
-- `llvm_gcc_c_torture` is now run with guardrails:
-  - per-step timeout
-  - per-test timeout
-  - optional runtime mem/cpu cap (`ulimit`, best effort)
-
-## Latest Validation Snapshot (2026-03-06)
-
-Checked incoming Claude changes in:
-- `src/frontend_c/ast.hpp`
-- `src/frontend_c/token.hpp`
-- `src/frontend_c/token.cpp`
-- `src/frontend_c/parser.cpp`
-- `tests/llvm_gcc_c_torture_allowlist.txt`
-
-Observed status:
-- Build: pass (`cmake --build build_debug -j8`)
-- Core smoke tests: pass
+- Python frontend is removed.
+- Core smoke suites pass:
   - `tiny_c2ll_tests`
   - `frontend_cxx_preprocessor_tests`
-- Current torture allowlist has been pruned to one case:
-  - `20010605-2.c`
-- Current first fail:
-  - `[FRONTEND_FAIL] parse error: expected RPAREN but got 'x' at line 21`
-  - case: `llvm_gcc_c_torture_20010605_2_c`
+- `20010605-2.c` frontend fix is completed (`__real__/__imag__` support).
 
-## Active Repair Strategy
+## Allowlist Strategy
 
-Use **first-fail iterative repair** for `llvm_gcc_c_torture`:
+- `tests/llvm_gcc_c_torture_allowlist.txt` is generated from:
+  - `tests/llvm_gcc_c_torture_frontend_failures.tsv`
+- Purpose: focus Claude/Codex loop on known frontend failure set instead of full ~1.7k cases.
+
+## Current First Failure (Focused Run)
+
+Command used:
 
 ```bash
-./scripts/check_progress_llvm_gcc_c_torture.sh
+PRUNE_FAILED_ALLOWLIST=0 ./scripts/check_progress_llvm_gcc_c_torture.sh
 ```
 
-Default behavior:
-- `STOP_ON_FAILURE=1`: stop at first failed case.
-- `PRUNE_FAILED_ALLOWLIST=1`: rewrite allowlist to keep failed cases only.
-- `FRONTEND_TIMEOUT` is treated as a real test failure.
+Result:
+- First fail: `llvm_gcc_c_torture_20010122_1_c`
+- Failure kind: `[BACKEND_FAIL]`
+- Error: arm64 link undefined symbols (`___builtin_return_address`, `_alloca`)
+- Classification: non-frontend / platform runtime mismatch
 
-This is the intended workflow for continuous agent-driven fixing.
+Action policy:
+1. Skip/comment non-frontend blocker cases in allowlist.
+2. Continue first-fail loop until next actionable frontend failure.
 
-## Current First Failure (as of 2026-03-06)
+## Active Repair Workflow
 
-- Test: `llvm_gcc_c_torture_20010605_2_c`
-- Failure: `[FRONTEND_FAIL] parse error (expected RPAREN but got 'x')`.
-- Priority: parser robustness fix for this case first.
+1. Run first-fail loop:
+   - `PRUNE_FAILED_ALLOWLIST=0 ./scripts/check_progress_llvm_gcc_c_torture.sh`
+2. If fail is non-frontend (`CLANG_COMPILE_FAIL`, platform-link `BACKEND_FAIL`):
+   - comment out case in `tests/llvm_gcc_c_torture_allowlist.txt`
+   - rerun.
+3. If fail is frontend (`FRONTEND_FAIL`, `FRONTEND_TIMEOUT`):
+   - fix smallest root cause in parser/typing/IR.
+4. Commit one small slice each iteration.
 
 ## Execution Rules
 
@@ -60,26 +53,15 @@ This is the intended workflow for continuous agent-driven fixing.
 3. Do not edit vendored test-suite sources:
    - `tests/c-testsuite/`
    - `tests/llvm-test-suite/`
-4. If blocked >15 min, log blocker in `build/agent_state/hard_bugs.md` and move to next hypothesis.
+4. If blocked >15 min, log blocker in `build/agent_state/hard_bugs.md` and switch hypothesis.
 
 ## Useful Commands
 
 ```bash
-# Build
 cmake -S . -B build_debug
 cmake --build build_debug -j8
 
-# First-fail loop (recommended)
-./scripts/check_progress_llvm_gcc_c_torture.sh
-
-# Inspect without rewriting allowlist
 PRUNE_FAILED_ALLOWLIST=0 ./scripts/check_progress_llvm_gcc_c_torture.sh
 
-# Single case repro (example)
-ctest --test-dir build_debug --output-on-failure -R '^llvm_gcc_c_torture_20010605_2_c$' -j 1
+ctest --test-dir build_debug --output-on-failure -R '^llvm_gcc_c_torture_20010122_1_c$' -j 1
 ```
-
-## Notes for Handoff
-
-- Timeout-related failures are not “soft” signals in this workflow; they are treated as blocking failures.
-- Keep timeout/resource guards enabled while fixing, so regressions are caught early.

@@ -1,75 +1,70 @@
-# Agent Task: tiny-c2ll First-Fail Repair Loop (2026-03-05)
+# Agent Task: tiny-c2ll Frontend-Failure Loop (2026-03-06)
 
 ## Mission
 
 You are taking over the C++ frontend in `src/frontend_c/` and should improve correctness with small, verifiable fixes.
 
 Primary goal now:
-- Drive `llvm_gcc_c_torture` by **first failure only** and fix iteratively.
+- Solve actionable frontend/compiler issues from `llvm_gcc_c_torture`.
 
 ## Current Baseline
 
-- Active compiler frontend is C++ only: `src/frontend_c/`.
+- Active compiler frontend: `src/frontend_c/`.
 - Stage1 binary: `build_debug/tiny-c2ll-stage1`.
-- Core suites are green in latest local baseline (`277/277`).
-- New torture workflow is enabled:
-  - `scripts/check_progress_llvm_gcc_c_torture.sh`
-  - `STOP_ON_FAILURE=1` (default)
-  - `FRONTEND_TIMEOUT` is treated as a test failure by CTest.
+- Core smoke tests are green.
+- `20010605-2.c` is fixed (GNU `__real__/__imag__` support).
+- `tests/llvm_gcc_c_torture_allowlist.txt` now targets entries from:
+  - `tests/llvm_gcc_c_torture_frontend_failures.tsv`
 
-## First Failing Torture Case Snapshot
+## Current First Failure (Focused Allowlist)
 
-Current first failing case in iterative run:
-- `llvm_gcc_c_torture_20000223_1_c`
-- Failure kind: `[FRONTEND_TIMEOUT]` at 20s in `run_llvm_gcc_c_torture_case.cmake`
-
-Interpretation rule:
-- Timeout is a real fail for this workflow (likely pathological compile behavior / excessive work).
+- Test: `llvm_gcc_c_torture_20010122_1_c`
+- Failure kind: `[BACKEND_FAIL]`
+- Symptom: linker undefined symbols on arm64 (`___builtin_return_address`, `_alloca`)
+- Interpretation: non-frontend/platform-runtime issue; skip/xfail for frontend-fix loop.
 
 ## First Steps (every iteration)
 
 1. Read `plan.md`.
 2. Run `git status --short`.
-3. Run first-fail loop:
-   - `./scripts/check_progress_llvm_gcc_c_torture.sh`
-4. Fix exactly one smallest root cause slice in frontend/parsing/IR path.
+3. Run first-fail loop without auto-pruning:
+   - `PRUNE_FAILED_ALLOWLIST=0 ./scripts/check_progress_llvm_gcc_c_torture.sh`
+4. If fail is non-frontend (`CLANG_COMPILE_FAIL` / platform `BACKEND_FAIL`), comment it out in allowlist and rerun.
+5. Fix one smallest actionable frontend slice.
 
 ## Work Loop
 
-1. Reproduce first failing case (from script output/log).
-2. Implement one focused change.
-3. Re-run:
-   - `./scripts/check_progress_llvm_gcc_c_torture.sh`
-4. If the old first-fail passes, continue to the new first-fail.
+1. Reproduce first fail from script output.
+2. Classify fail:
+   - `FRONTEND_FAIL` / `FRONTEND_TIMEOUT`: actionable frontend.
+   - `CLANG_COMPILE_FAIL` / platform-link `BACKEND_FAIL`: non-frontend, skip in allowlist.
+3. Implement one focused fix (or one skip-entry update).
+4. Rerun first-fail loop.
 5. Record notes in `build/agent_state/progress_log.md`.
 6. Commit with precise scope.
 
 ## Hard Rules
 
-- Do not edit vendored `tests/c-testsuite/` or vendored `tests/llvm-test-suite/`.
+- Do not edit vendored `tests/c-testsuite/` or `tests/llvm-test-suite/`.
 - Keep changes minimal and test-backed.
 - If blocked >15 minutes, write blocker + hypothesis in `build/agent_state/hard_bugs.md` and switch slice.
-- Do not disable timeout guards to “pass” tests.
+- Do not disable timeout/resource guards to force pass.
 
 ## Suggested Commands
 
 ```bash
-# Configure/build
 cmake -S . -B build_debug
 cmake --build build_debug -j8
 
-# First-fail torture loop (default: stop on first fail, prune allowlist to failed)
-./scripts/check_progress_llvm_gcc_c_torture.sh
-
-# If you want to inspect without modifying allowlist:
+# First-fail loop for focused allowlist
 PRUNE_FAILED_ALLOWLIST=0 ./scripts/check_progress_llvm_gcc_c_torture.sh
 
-# Focused single-case run (example)
-ctest --test-dir build_debug --output-on-failure -R '^llvm_gcc_c_torture_20000223_1_c$' -j 1
+# Single-case repro
+ctest --test-dir build_debug --output-on-failure -R '^llvm_gcc_c_torture_20010122_1_c$' -j 1
 ```
 
 ## Exit Criteria Per Change
 
-- First failing case is fixed or failure mode is narrowed with concrete evidence.
+- First failing actionable frontend case is fixed, or
+- One non-frontend blocker case is cleanly classified/skipped in allowlist.
 - No unrelated regressions introduced in touched slice.
-- Clear focused commit message and short note in progress log.
