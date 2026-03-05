@@ -23,6 +23,14 @@ void print_usage(const char *argv0) {
             << " [--version] [--lex-only|--parse-only] [-o output.ll] <input.c>\n";
 }
 
+void print_pp_diags(const std::vector<tc::PreprocessorDiagnostic>& diags,
+                    const char* level) {
+  for (const auto& d : diags) {
+    std::cerr << d.file << ":" << d.line << ":" << d.column << ": "
+              << level << ": " << d.message << "\n";
+  }
+}
+
 }  // namespace
 
 int main(int argc, char **argv) {
@@ -73,6 +81,13 @@ int main(int argc, char **argv) {
 
     tc::Preprocessor preprocessor;
     std::string source = preprocessor.preprocess_file(input);
+    if (!preprocessor.warnings().empty()) {
+      print_pp_diags(preprocessor.warnings(), "warning");
+    }
+    if (!preprocessor.errors().empty()) {
+      print_pp_diags(preprocessor.errors(), "error");
+      return 1;
+    }
     tc::Lexer lexer(source);
     std::vector<tc::Token> tokens = lexer.scan_all();
 
@@ -88,6 +103,9 @@ int main(int argc, char **argv) {
     tc::Arena arena;
     tc::Parser parser(std::move(tokens), arena);
     tc::Node* prog = parser.parse();
+    if (parser.had_error_) {
+      return 1;
+    }
 
     if (parse_only) {
       // Print a summary line followed by the full AST dump

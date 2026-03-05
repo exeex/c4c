@@ -49,6 +49,8 @@ class Parser {
   // Enum constants: name → value (populated as enums are parsed).
   // Used to evaluate enum initializers that reference previously-defined constants.
   std::unordered_map<std::string, long long> enum_consts_;
+  // True if parse() encountered any recoverable parse error.
+  bool had_error_;
 
   // ── token cursor helpers ──────────────────────────────────────────────────
   const Token& cur() const;              // current token

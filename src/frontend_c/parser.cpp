@@ -171,7 +171,7 @@ static double parse_float_lexeme(const char* s) {
 // ── Parser constructor ────────────────────────────────────────────────────────
 
 Parser::Parser(std::vector<Token> tokens, Arena& arena)
-    : tokens_(std::move(tokens)), pos_(0), arena_(arena), anon_counter_(0) {
+    : tokens_(std::move(tokens)), pos_(0), arena_(arena), anon_counter_(0), had_error_(false) {
     // Pre-seed well-known typedef names from standard / system headers
     // so the parser can disambiguate type-name vs identifier.
     static const char* seed[] = {
@@ -2415,6 +2415,7 @@ Node* Parser::parse_top_level() {
 
 Node* Parser::parse() {
     std::vector<Node*> items;
+    had_error_ = false;
 
     while (!at_end()) {
         Node* item = nullptr;
@@ -2423,6 +2424,7 @@ Node* Parser::parse() {
         } catch (const std::exception& e) {
             // Parse error: print warning and try to recover to next semicolon / }
             fprintf(stderr, "parse error: %s (skipping to next ';' or '}')\n", e.what());
+            had_error_ = true;
             while (!at_end() && !check(TokenKind::Semi) && !check(TokenKind::RBrace)) {
                 consume();
             }
