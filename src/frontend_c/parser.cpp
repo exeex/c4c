@@ -2175,14 +2175,26 @@ Node* Parser::parse_top_level() {
     }
     skip_attributes();
 
+    TypeSpec base_ts{};
     if (!is_type_start()) {
-        // Skip to semicolon
-        skip_until(TokenKind::Semi);
-        return make_node(NK_EMPTY, ln);
+        // K&R/old-style implicit-int function at file scope:
+        // e.g. `main() { ... }` or `static foo() { ... }`.
+        // Treat as `int name(...)` instead of discarding the whole definition.
+        bool maybe_implicit_int_fn =
+            check(TokenKind::Identifier) && check2(TokenKind::LParen);
+        if (!maybe_implicit_int_fn) {
+            // Skip to semicolon
+            skip_until(TokenKind::Semi);
+            return make_node(NK_EMPTY, ln);
+        }
+        base_ts.array_size = -1;
+        base_ts.array_rank = 0;
+        for (int i = 0; i < 8; ++i) base_ts.array_dims[i] = -1;
+        base_ts.base = TB_INT;
+    } else {
+        base_ts = parse_base_type();
+        skip_attributes();
     }
-
-    TypeSpec base_ts = parse_base_type();
-    skip_attributes();
 
     if (is_typedef) {
         // Local typedef
@@ -2329,6 +2341,7 @@ Node* Parser::parse_top_level() {
         // Function declaration or definition
         consume();  // consume (
         std::vector<Node*> params;
+        std::vector<const char*> knr_param_names;
         bool variadic = false;
         if (!check(TokenKind::RParen)) {
             while (!at_end()) {
@@ -2340,6 +2353,7 @@ Node* Parser::parse_top_level() {
                 if (check(TokenKind::RParen)) break;
                 // K&R-style: just identifiers
                 if (!is_type_start() && check(TokenKind::Identifier)) {
+                    knr_param_names.push_back(arena_.strdup(cur().lexeme));
                     consume();
                     if (match(TokenKind::Comma)) continue;
                     break;
@@ -2360,9 +2374,58 @@ Node* Parser::parse_top_level() {
         skip_asm();
         skip_attributes();
 
-        // Check for K&R param type declarations before body
-        while (is_type_start() && !check(TokenKind::LBrace)) {
-            skip_until(TokenKind::Semi);
+        // K&R style parameter declarations before body:
+        //   f(a, b) int a; short *b; { ... }
+        // Bind declared types back to identifier list order.
+        if (!knr_param_names.empty()) {
+            std::unordered_map<std::string, Node*> knr_param_decl_map;
+            while (is_type_start() && !check(TokenKind::LBrace)) {
+                TypeSpec knr_base = parse_base_type();
+                do {
+                    TypeSpec knr_ts = knr_base;
+                    knr_ts.array_size = -1;
+                    knr_ts.array_rank = 0;
+                    for (int i = 0; i < 8; ++i) knr_ts.array_dims[i] = -1;
+                    knr_ts.is_ptr_to_array = false;
+                    knr_ts.array_size_expr = nullptr;
+                    const char* knr_name = nullptr;
+                    parse_declarator(knr_ts, &knr_name);
+                    if (!knr_name) continue;
+                    bool listed = false;
+                    for (const char* pnm : knr_param_names) {
+                        if (pnm && strcmp(pnm, knr_name) == 0) { listed = true; break; }
+                    }
+                    if (!listed) continue;
+                    Node* p = make_node(NK_DECL, ln);
+                    p->name = knr_name;
+                    p->type = knr_ts;
+                    knr_param_decl_map[knr_name] = p;
+                } while (match(TokenKind::Comma));
+                match(TokenKind::Semi);
+            }
+            params.clear();
+            for (const char* pnm : knr_param_names) {
+                auto it = knr_param_decl_map.find(pnm ? pnm : "");
+                if (it != knr_param_decl_map.end()) {
+                    params.push_back(it->second);
+                    continue;
+                }
+                // Old-style fallback: undeclared parameter defaults to int.
+                Node* p = make_node(NK_DECL, ln);
+                p->name = pnm;
+                TypeSpec pts{};
+                pts.array_size = -1;
+                pts.array_rank = 0;
+                for (int i = 0; i < 8; ++i) pts.array_dims[i] = -1;
+                pts.base = TB_INT;
+                p->type = pts;
+                params.push_back(p);
+            }
+        } else {
+            // Non-K&R: ignore declaration-only lines before body.
+            while (is_type_start() && !check(TokenKind::LBrace)) {
+                skip_until(TokenKind::Semi);
+            }
         }
 
         if (check(TokenKind::LBrace)) {

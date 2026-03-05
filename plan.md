@@ -42,6 +42,39 @@ All Phase A issues resolved as of 2026-03-05:
 
 No open Phase A issues.
 
+### LLVM `gcc-c-torture` Frontend Failure Snapshot (2026-03-05)
+
+Scan command used:
+
+```bash
+ctest --test-dir build --output-on-failure --label-regex llvm_gcc_c_torture -j 8 | tee /tmp/llvm_gcc_c_torture_full.log
+```
+
+Notes:
+- Run progressed to `1706/1708` before manual interrupt during tail phase.
+- Frontend failures were extracted from `[FRONTEND_FAIL]` blocks in the log.
+
+Artifacts:
+- Full extracted list (104 cases): `tests/llvm_gcc_c_torture_frontend_failures.tsv`
+
+Frontend failure breakdown (`[FRONTEND_FAIL]`, 104 total):
+- `parse error`: 82
+- `index of non-pointer non-array`: 10
+- `codegen_lval: unhandled kind 22`: 7
+- `codegen_lval: unhandled kind 21`: 1
+- `member access on non-struct`: 1
+- `Add target support for int32`: 1
+- other: 2 (`error: integers are too small`, one case without parsed diagnostic line)
+
+Priority clusters to fix next:
+- Parser robustness around complex declarators / labels / statement-expr style constructs:
+  - multiple `expected RPAREN` / `expected RBRACE` failures across the 82 parse-error cases.
+- LValue codegen gaps:
+  - `codegen_lval: unhandled kind 22` and `kind 21`.
+- Type/lvalue validation issues:
+  - `index of non-pointer non-array`
+  - `member access on non-struct`
+
 ### Fix Policy
 
 - For each fixed issue, update tests in same change:

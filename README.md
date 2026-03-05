@@ -52,6 +52,20 @@ ctest --test-dir build --output-on-failure -L c_testsuite -j 8
 
 If `tests/c-testsuite` exists in this repo, CMake auto-enables it without `-DC_TESTSUITE_ROOT`.
 
+### Optional: Run `llvm-test-suite` `gcc-c-torture` Allowlist
+
+1. Clone `llvm-test-suite` locally (any path you choose), or initialize this repo submodule.
+2. Add supported test files into `tests/llvm_gcc_c_torture_allowlist.txt`.
+3. Configure with testsuite root:
+
+```bash
+cmake -S . -B build -DLLVM_TEST_SUITE_ROOT=/path/to/llvm-test-suite
+cmake --build build
+ctest --test-dir build --output-on-failure -L llvm_gcc_c_torture -j 8
+```
+
+If `tests/llvm-test-suite` exists in this repo, CMake auto-enables it without `-DLLVM_TEST_SUITE_ROOT`.
+
 ## Manual Usage
 
 ```bash

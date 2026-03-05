@@ -11,6 +11,11 @@ if(NOT C_TESTSUITE_ROOT AND EXISTS "${PROJECT_SOURCE_DIR}/tests/c-testsuite")
   set(C_TESTSUITE_ROOT "${PROJECT_SOURCE_DIR}/tests/c-testsuite")
 endif()
 
+set(LLVM_TEST_SUITE_ROOT "" CACHE PATH "Path to external llvm-test-suite root")
+if(NOT LLVM_TEST_SUITE_ROOT AND EXISTS "${PROJECT_SOURCE_DIR}/tests/llvm-test-suite")
+  set(LLVM_TEST_SUITE_ROOT "${PROJECT_SOURCE_DIR}/tests/llvm-test-suite")
+endif()
+
 set(EXAMPLE_C "${PROJECT_SOURCE_DIR}/tests/tiny_c2ll/example.c")
 set(EXAMPLE_LL "${CMAKE_BINARY_DIR}/example.ll")
 file(GLOB NEGATIVE_TEST_SRCS CONFIGURE_DEPENDS
@@ -205,4 +210,43 @@ if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
     )
     set_tests_properties("${test_name}" PROPERTIES LABELS "c_testsuite")
   endforeach()
+endif()
+
+if(CLANG_EXECUTABLE AND LLVM_TEST_SUITE_ROOT AND EXISTS "${LLVM_TEST_SUITE_ROOT}")
+  set(LLVM_GCC_C_TORTURE_ROOT
+      "${LLVM_TEST_SUITE_ROOT}/SingleSource/Regression/C/gcc-c-torture/execute")
+  if(EXISTS "${LLVM_GCC_C_TORTURE_ROOT}" AND
+     EXISTS "${PROJECT_SOURCE_DIR}/tests/llvm_gcc_c_torture_allowlist.txt")
+    file(STRINGS "${PROJECT_SOURCE_DIR}/tests/llvm_gcc_c_torture_allowlist.txt"
+         LLVM_GCC_C_TORTURE_ALLOWLIST_RAW)
+    foreach(entry IN LISTS LLVM_GCC_C_TORTURE_ALLOWLIST_RAW)
+      string(STRIP "${entry}" entry)
+      if(entry STREQUAL "" OR entry MATCHES "^#")
+        continue()
+      endif()
+
+      set(src "${LLVM_GCC_C_TORTURE_ROOT}/${entry}")
+      if(NOT EXISTS "${src}")
+        message(WARNING "llvm gcc-c-torture allowlist entry not found: ${entry}")
+        continue()
+      endif()
+
+      string(REGEX REPLACE "[^A-Za-z0-9_]" "_" test_id "${entry}")
+      set(test_name "llvm_gcc_c_torture_${test_id}")
+
+      add_test(
+        NAME "${test_name}"
+        COMMAND "${CMAKE_COMMAND}"
+                -DCOMPILER=$<TARGET_FILE:frontend_cxx_stage1>
+                -DCLANG=${CLANG_EXECUTABLE}
+                -DSRC=${src}
+                -DROOT=${LLVM_GCC_C_TORTURE_ROOT}
+                -DOUT_LL=${CMAKE_BINARY_DIR}/llvm_gcc_c_torture/${entry}.ll
+                -DOUT_CLANG_BIN=${CMAKE_BINARY_DIR}/llvm_gcc_c_torture/${entry}.clang.bin
+                -DOUT_C2LL_BIN=${CMAKE_BINARY_DIR}/llvm_gcc_c_torture/${entry}.c2ll.bin
+                -P "${PROJECT_SOURCE_DIR}/tests/cmake/run_llvm_gcc_c_torture_case.cmake"
+      )
+      set_tests_properties("${test_name}" PROPERTIES LABELS "llvm_gcc_c_torture")
+    endforeach()
+  endif()
 endif()
