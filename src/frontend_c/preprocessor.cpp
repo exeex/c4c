@@ -609,7 +609,13 @@ std::string Preprocessor::preprocess_file(const std::string& path) {
   // Keep existing project behavior stable while TODO sections are unfinished.
   if (needs_external_fallback_) {
     std::string external = preprocess_external(path);
-    if (!external.empty()) return external;
+    if (!external.empty()) {
+      // External preprocessor is authoritative; discard any errors/warnings
+      // that the partial internal pass may have produced incorrectly.
+      errors_.clear();
+      warnings_.clear();
+      return external;
+    }
   }
   return internal;
 }

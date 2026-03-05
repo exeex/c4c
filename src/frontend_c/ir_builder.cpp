@@ -267,6 +267,7 @@ std::string IRBuilder::llvm_ty_base(TypeBase base) {
 }
 
 std::string IRBuilder::llvm_ty(const TypeSpec& ts) {
+  if (ts.is_fn_ptr && ts.ptr_level == 0) return "ptr";  // function pointer value
   if (ts.ptr_level > 0 && ts.is_ptr_to_array) return "ptr";
   // Check array BEFORE ptr_level: for typedef-derived pointer types used as array elements
   // (e.g. typedef void (*fptr)(void); fptr table[3] → [3 x ptr], not ptr)

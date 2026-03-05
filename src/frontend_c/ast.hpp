@@ -63,6 +63,7 @@ struct TypeSpec {
     Node* array_size_expr;   // non-null when array size is a computed expression
     bool is_const;
     bool is_volatile;
+    bool is_fn_ptr;      // true when this TypeSpec was derived from a (*)(params) declarator
 };
 
 // ── NodeKind ──────────────────────────────────────────────────────────────────

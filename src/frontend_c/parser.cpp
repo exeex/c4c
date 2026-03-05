@@ -737,14 +737,15 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
                 }
             }
         }
-        return pk < (int)tokens_.size() && tokens_[pk].kind == TokenKind::Star;
+        return pk < (int)tokens_.size() &&
+               (tokens_[pk].kind == TokenKind::Star || tokens_[pk].kind == TokenKind::Caret);
     };
     if (paren_star_peek()) {
         used_paren_ptr_declarator = true;
-        // function pointer: (*name)(...) — record name, skip fn-ptr params
+        // function pointer: (*name)(...) or block pointer: (^name)(...) — record name, skip params
         consume();  // consume (
-        skip_attributes();  // skip any __attribute__((...)) before *
-        consume();  // consume *
+        skip_attributes();  // skip any __attribute__((...)) before * or ^
+        consume();  // consume * or ^
         ts.ptr_level++;
         // Skip extra stars for **fpp
         while (check(TokenKind::Star)) { consume(); ts.ptr_level++; }
@@ -761,11 +762,25 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
         }
         // Also skip keyword qualifiers (const, volatile, restrict)
         while (is_qualifier(cur().kind)) consume();
+        // Skip array dimensions inside parens: (*[4])(int) — array of function pointers
+        // e.g. typedef int (*fptr4[4])(int);  or  int f(int (*[4])(int), ...)
+        while (check(TokenKind::LBracket)) {
+            consume();  // [
+            while (!at_end() && !check(TokenKind::RBracket)) consume();
+            if (check(TokenKind::RBracket)) consume();  // ]
+        }
         bool got_name = false;
         if (out_name && check(TokenKind::Identifier)) {
             *out_name = arena_.strdup(cur().lexeme);
             consume();
             got_name = true;
+        }
+        // Skip array dimensions after optional name: (*fptr4[4])(int) or (*[4])(int)
+        // e.g. typedef int (*fptr4[4])(int);  or  int f(int (*[4])(int), ...)
+        while (check(TokenKind::LBracket)) {
+            consume();  // [
+            while (!at_end() && !check(TokenKind::RBracket)) consume();
+            if (check(TokenKind::RBracket)) consume();  // ]
         }
         // Handle: int (* f1(int a, int b))(int c, int b) — function-returning-fptr
         // Only applies when we read a name AND the next token is '(' (function params).
@@ -784,6 +799,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
         // Parse (and discard) the return-fptr's param list
         if (check(TokenKind::LParen)) {
             skip_paren_group();
+            ts.is_fn_ptr = true;  // confirmed function pointer: (*name)(params)
         }
         // Array suffix after function pointer: (*p)[N] / (*p)[N][M]
         while (check(TokenKind::LBracket)) {
@@ -1089,6 +1105,9 @@ Node* Parser::parse_enum() {
         if (!check(TokenKind::Identifier)) { consume(); continue; }
         const char* vname = arena_.strdup(cur().lexeme);
         consume();
+        // Skip __attribute__((...)) between enum constant name and '='
+        // e.g. _CLOCK_REALTIME __attribute__((availability(...))) = 0,
+        skip_attributes();
         long long vval = cur_val;
         if (match(TokenKind::Assign)) {
             Node* ve = parse_assign_expr();
@@ -1132,6 +1151,12 @@ Node* Parser::parse_param() {
     TypeSpec pts = parse_base_type();
     const char* pname = nullptr;
     parse_declarator(pts, &pname);
+    // C rule: a parameter of function type decays to a pointer to that function.
+    // Abstract function-type params look like: int(int x) or int()
+    // Consume the function-type suffix so the caller's param list stays in sync.
+    if (check(TokenKind::LParen)) {
+        skip_paren_group();
+    }
     skip_attributes();
 
     Node* p = make_node(NK_DECL, ln);
