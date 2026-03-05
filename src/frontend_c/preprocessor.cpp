@@ -823,6 +823,15 @@ Preprocessor::Preprocessor() {
   macros_["__SIZEOF_FLOAT__"]     = MacroDef{"__SIZEOF_FLOAT__",     false, false, {}, "4"};
   macros_["__SIZEOF_DOUBLE__"]    = MacroDef{"__SIZEOF_DOUBLE__",    false, false, {}, "8"};
   macros_["__SIZEOF_SIZE_T__"]    = MacroDef{"__SIZEOF_SIZE_T__",    false, false, {}, "8"};
+  // GCC built-in type macros (LP64 / arm64)
+  macros_["__SIZE_TYPE__"]       = MacroDef{"__SIZE_TYPE__",       false, false, {}, "long unsigned int"};
+  macros_["__PTRDIFF_TYPE__"]    = MacroDef{"__PTRDIFF_TYPE__",    false, false, {}, "long int"};
+  macros_["__WCHAR_TYPE__"]      = MacroDef{"__WCHAR_TYPE__",      false, false, {}, "int"};
+  macros_["__WINT_TYPE__"]       = MacroDef{"__WINT_TYPE__",       false, false, {}, "int"};
+  macros_["__INTMAX_TYPE__"]     = MacroDef{"__INTMAX_TYPE__",     false, false, {}, "long int"};
+  macros_["__UINTMAX_TYPE__"]    = MacroDef{"__UINTMAX_TYPE__",    false, false, {}, "long unsigned int"};
+  macros_["__INTPTR_TYPE__"]     = MacroDef{"__INTPTR_TYPE__",     false, false, {}, "long int"};
+  macros_["__UINTPTR_TYPE__"]    = MacroDef{"__UINTPTR_TYPE__",    false, false, {}, "long unsigned int"};
 }
 
 std::string Preprocessor::preprocess_file(const std::string& path) {

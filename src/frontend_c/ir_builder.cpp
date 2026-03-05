@@ -496,6 +496,12 @@ TypeSpec IRBuilder::expr_type(Node* n) {
       decay.ptr_level += 1;
       return decay;
     }
+    // Complex arithmetic: if either operand is complex, return the wider complex type
+    if (is_complex_base(lt.base) || is_complex_base(rt.base)) {
+      if (is_complex_base(lt.base) && is_complex_base(rt.base))
+        return (sizeof_ty(lt) >= sizeof_ty(rt)) ? lt : rt;
+      return is_complex_base(lt.base) ? lt : rt;
+    }
     // Usual arithmetic conversions
     if (lt.base == TB_DOUBLE || rt.base == TB_DOUBLE) return double_ts();
     if (lt.base == TB_FLOAT  || rt.base == TB_FLOAT)  return float_ts();
@@ -601,7 +607,8 @@ TypeSpec IRBuilder::expr_type(Node* n) {
     return int_ts();
   }
   case NK_CAST:
-  case NK_COMPOUND_LIT:     return n->type;
+  case NK_COMPOUND_LIT:
+  case NK_VA_ARG:           return n->type;
   case NK_GENERIC:
     // Return type of first non-default association (they should all match anyway)
     for (int i = 0; i < n->n_children; i++)
@@ -1177,7 +1184,10 @@ std::string IRBuilder::codegen_lval(Node* n) {
       emit(t + " = getelementptr " + elem_llty + ", ptr " + ptr_val +
            ", i64 " + idx_i64);
     } else {
-      throw std::runtime_error("index of non-pointer non-array");
+      throw std::runtime_error("index of non-pointer non-array: base_ts base=" +
+        std::to_string((int)base_ts.base) + " ptr_level=" + std::to_string(base_ts.ptr_level) +
+        " array_size=" + std::to_string(base_ts.array_size) + " array_rank=" + std::to_string(base_ts.array_rank) +
+        " is_ptr_to_array=" + std::to_string(base_ts.is_ptr_to_array));
     }
     return t;
   }
@@ -1761,16 +1771,34 @@ std::string IRBuilder::codegen_expr(Node* n) {
       bool is_add = (strcmp(cop, "+") == 0);
       bool is_sub = (strcmp(cop, "-") == 0);
 
-      // Determine the complex type for the operation.
-      TypeSpec cts = is_complex_base(lt.base) ? lt : rt;
+      // Determine the complex type for the operation (pick the wider type).
+      TypeSpec cts;
+      if (is_complex_base(lt.base) && is_complex_base(rt.base))
+        cts = (sizeof_ty(lt) >= sizeof_ty(rt)) ? lt : rt;
+      else
+        cts = is_complex_base(lt.base) ? lt : rt;
       std::string cllty = llvm_ty(cts);
       TypeSpec ets = complex_component_ts(cts.base);
       std::string ellty = llvm_ty(ets);
       bool is_fp_elem = is_float_base(ets.base);
 
-      // Helper: coerce a value to complex (scalar real → { v, 0 }).
+      // Helper: coerce a value to the operation's complex type.
       auto to_complex = [&](const std::string& val, TypeSpec vts) -> std::string {
-        if (is_complex_base(vts.base) && vts.ptr_level == 0) return val;
+        if (is_complex_base(vts.base) && vts.ptr_level == 0) {
+          if (llvm_ty(vts) == cllty) return val;  // Same complex type, no conversion needed
+          // Different complex width: coerce element-by-element
+          TypeSpec src_ets = complex_component_ts(vts.base);
+          std::string src_cllty = llvm_ty(vts);
+          std::string re0 = fresh_tmp(), im0 = fresh_tmp();
+          emit(re0 + " = extractvalue " + src_cllty + " " + val + ", 0");
+          emit(im0 + " = extractvalue " + src_cllty + " " + val + ", 1");
+          std::string re1 = coerce(re0, src_ets, ellty);
+          std::string im1 = coerce(im0, src_ets, ellty);
+          std::string t0 = fresh_tmp(), t1 = fresh_tmp();
+          emit(t0 + " = insertvalue " + cllty + " zeroinitializer, " + ellty + " " + re1 + ", 0");
+          emit(t1 + " = insertvalue " + cllty + " " + t0 + ", " + ellty + " " + im1 + ", 1");
+          return t1;
+        }
         // Scalar → real part; imaginary part = 0
         std::string cv = coerce(val, vts, ellty);
         std::string t0 = fresh_tmp(), t1 = fresh_tmp();
@@ -1820,6 +1848,84 @@ std::string IRBuilder::codegen_expr(Node* n) {
         std::string re_r = fresh_tmp(), im_r = fresh_tmp();
         emit(re_r + " = " + inst + " " + ellty + " " + lre + ", " + rre);
         emit(im_r + " = " + inst + " " + ellty + " " + lim + ", " + rim);
+        std::string t0 = fresh_tmp(), t1 = fresh_tmp();
+        emit(t0 + " = insertvalue " + cllty + " zeroinitializer, " + ellty + " " + re_r + ", 0");
+        emit(t1 + " = insertvalue " + cllty + " " + t0 + ", " + ellty + " " + im_r + ", 1");
+        return t1;
+      }
+      bool is_mul = (strcmp(cop, "*") == 0);
+      bool is_div = (strcmp(cop, "/") == 0);
+
+      if (is_mul || is_div) {
+        // (a+bi)*(c+di) = (ac-bd) + (ad+bc)i
+        // (a+bi)/(c+di) = ((ac+bd)/(c²+d²)) + ((bc-ad)/(c²+d²))i
+        std::string lre = fresh_tmp(), lim = fresh_tmp();
+        std::string rre = fresh_tmp(), rim = fresh_tmp();
+        emit(lre + " = extractvalue " + cllty + " " + lvc + ", 0");
+        emit(lim + " = extractvalue " + cllty + " " + lvc + ", 1");
+        emit(rre + " = extractvalue " + cllty + " " + rvc + ", 0");
+        emit(rim + " = extractvalue " + cllty + " " + rvc + ", 1");
+        std::string re_r = fresh_tmp(), im_r = fresh_tmp();
+        if (is_fp_elem) {
+          if (is_mul) {
+            // re = lre*rre - lim*rim
+            // im = lre*rim + lim*rre
+            std::string ac = fresh_tmp(), bd = fresh_tmp();
+            std::string ad = fresh_tmp(), bc = fresh_tmp();
+            emit(ac + " = fmul " + ellty + " " + lre + ", " + rre);
+            emit(bd + " = fmul " + ellty + " " + lim + ", " + rim);
+            emit(ad + " = fmul " + ellty + " " + lre + ", " + rim);
+            emit(bc + " = fmul " + ellty + " " + lim + ", " + rre);
+            emit(re_r + " = fsub " + ellty + " " + ac + ", " + bd);
+            emit(im_r + " = fadd " + ellty + " " + ad + ", " + bc);
+          } else {
+            // re = (lre*rre + lim*rim) / (rre*rre + rim*rim)
+            // im = (lim*rre - lre*rim) / (rre*rre + rim*rim)
+            std::string ac = fresh_tmp(), bd = fresh_tmp();
+            std::string bc = fresh_tmp(), ad = fresh_tmp();
+            std::string cc = fresh_tmp(), dd = fresh_tmp();
+            std::string num_re = fresh_tmp(), num_im = fresh_tmp(), denom = fresh_tmp();
+            emit(ac + " = fmul " + ellty + " " + lre + ", " + rre);
+            emit(bd + " = fmul " + ellty + " " + lim + ", " + rim);
+            emit(bc + " = fmul " + ellty + " " + lim + ", " + rre);
+            emit(ad + " = fmul " + ellty + " " + lre + ", " + rim);
+            emit(cc + " = fmul " + ellty + " " + rre + ", " + rre);
+            emit(dd + " = fmul " + ellty + " " + rim + ", " + rim);
+            emit(num_re + " = fadd " + ellty + " " + ac + ", " + bd);
+            emit(num_im + " = fsub " + ellty + " " + bc + ", " + ad);
+            emit(denom  + " = fadd " + ellty + " " + cc + ", " + dd);
+            emit(re_r + " = fdiv " + ellty + " " + num_re + ", " + denom);
+            emit(im_r + " = fdiv " + ellty + " " + num_im + ", " + denom);
+          }
+        } else {
+          if (is_mul) {
+            std::string ac = fresh_tmp(), bd = fresh_tmp();
+            std::string ad = fresh_tmp(), bc = fresh_tmp();
+            emit(ac + " = mul " + ellty + " " + lre + ", " + rre);
+            emit(bd + " = mul " + ellty + " " + lim + ", " + rim);
+            emit(ad + " = mul " + ellty + " " + lre + ", " + rim);
+            emit(bc + " = mul " + ellty + " " + lim + ", " + rre);
+            emit(re_r + " = sub " + ellty + " " + ac + ", " + bd);
+            emit(im_r + " = add " + ellty + " " + ad + ", " + bc);
+          } else {
+            // Integer complex division — compute via signed div
+            std::string ac = fresh_tmp(), bd = fresh_tmp();
+            std::string bc = fresh_tmp(), ad = fresh_tmp();
+            std::string cc = fresh_tmp(), dd = fresh_tmp();
+            std::string num_re = fresh_tmp(), num_im = fresh_tmp(), denom = fresh_tmp();
+            emit(ac + " = mul " + ellty + " " + lre + ", " + rre);
+            emit(bd + " = mul " + ellty + " " + lim + ", " + rim);
+            emit(bc + " = mul " + ellty + " " + lim + ", " + rre);
+            emit(ad + " = mul " + ellty + " " + lre + ", " + rim);
+            emit(cc + " = mul " + ellty + " " + rre + ", " + rre);
+            emit(dd + " = mul " + ellty + " " + rim + ", " + rim);
+            emit(num_re + " = add " + ellty + " " + ac + ", " + bd);
+            emit(num_im + " = sub " + ellty + " " + bc + ", " + ad);
+            emit(denom  + " = add " + ellty + " " + cc + ", " + dd);
+            emit(re_r + " = sdiv " + ellty + " " + num_re + ", " + denom);
+            emit(im_r + " = sdiv " + ellty + " " + num_im + ", " + denom);
+          }
+        }
         std::string t0 = fresh_tmp(), t1 = fresh_tmp();
         emit(t0 + " = insertvalue " + cllty + " zeroinitializer, " + ellty + " " + re_r + ", 0");
         emit(t1 + " = insertvalue " + cllty + " " + t0 + ", " + ellty + " " + im_r + ", 1");
@@ -2739,6 +2845,10 @@ std::string IRBuilder::codegen_expr(Node* n) {
   case NK_INDEX: {
     // array[index] as rvalue: GEP + load
     TypeSpec res_ts = expr_type(n);
+    // If the result is an array type, return the pointer (array-to-pointer decay).
+    if (is_array_ty(res_ts) && !res_ts.is_ptr_to_array) {
+      return codegen_lval(n);
+    }
     std::string llty = llvm_ty(res_ts);
     std::string ptr = codegen_lval(n);
     std::string t = fresh_tmp();
@@ -3128,8 +3238,60 @@ static void emit_agg_init_impl(IRBuilder* irb, TypeSpec ts, const std::string& p
     return;
   }
 
+  // ── Union type ────────────────────────────────────────────────────────────
+  if (ts.base == TB_UNION && ts.ptr_level == 0 && ts.tag) {
+    auto sit = irb->struct_defs_.find(ts.tag);
+    if (sit == irb->struct_defs_.end()) return;
+    const IRBuilder::StructInfo& si = sit->second;
+    if (si.field_names.empty() || flat_idx >= flat_list->n_children) return;
+
+    Node* item = flat_list->children[flat_idx];
+    Node* val_node = item;
+    int field_idx = 0;  // default: first field
+
+    if (item && item->kind == NK_INIT_ITEM) {
+      if (item->desig_field) {
+        for (int j = 0; j < (int)si.field_names.size(); j++) {
+          if (si.field_names[j] == item->desig_field) { field_idx = j; break; }
+        }
+      }
+      val_node = item->left;
+      flat_idx++;
+    } else {
+      flat_idx++;
+    }
+
+    TypeSpec ft = si.field_types[field_idx];
+    if (si.field_array_sizes[field_idx] >= 0) ft.array_size = si.field_array_sizes[field_idx];
+    std::string field_llty = irb->llvm_ty(ft);
+
+    if (val_node && val_node->kind == NK_INIT_LIST) {
+      // Braced sub-init for a union field: union fields always at offset 0
+      int sub_fi = 0;
+      emit_agg_init_impl(irb, ft, ptr, val_node, sub_fi);
+    } else if (val_node) {
+      std::string val = irb->codegen_expr(val_node);
+      TypeSpec val_ts = irb->expr_type(val_node);
+      if (ft.ptr_level == 0 && (ft.base == TB_STRUCT || ft.base == TB_UNION)) {
+        if (val_ts.ptr_level == 0 && (val_ts.base == TB_STRUCT || val_ts.base == TB_UNION)) {
+          irb->emit("store " + field_llty + " " + val + ", ptr " + ptr);
+        } else {
+          val = irb->coerce(val, val_ts, field_llty);
+          irb->emit("store " + field_llty + " " + val + ", ptr " + ptr);
+        }
+      } else {
+        if (val == "0" && (is_array_ty(ft) || ft.base == TB_STRUCT || ft.base == TB_UNION))
+          val = "zeroinitializer";
+        else
+          val = irb->coerce(val, val_ts, field_llty);
+        irb->emit("store " + field_llty + " " + val + ", ptr " + ptr);
+      }
+    }
+    return;
+  }
+
   // ── Array type ────────────────────────────────────────────────────────────
-  if (is_array_ty(ts) && ts.ptr_level == 0) {
+  if (is_array_ty(ts)) {
     long long dim0 = array_dim_at(ts, 0);
     if (dim0 <= 0) return;
     TypeSpec elem_ts = drop_array_dim(ts);
@@ -3991,7 +4153,7 @@ static void collect_bytes(IRBuilder* irb, TypeSpec ts, Node* init, std::vector<u
   }
 
   // Array type
-  if (is_array_ty(ts) && ts.ptr_level == 0) {
+  if (is_array_ty(ts)) {
     long long dim = array_dim_at(ts, 0);
     TypeSpec elem = drop_array_dim(ts);
     int esz = irb->sizeof_ty(elem);
@@ -4822,8 +4984,9 @@ void IRBuilder::emit_function(Node* fn) {
     if (!p) continue;
     if (p->type.base == TB_VOID && p->type.ptr_level == 0) continue;  // skip void
 
-    // Array params decay to ptr in the function signature
-    bool is_array = is_array_ty(p->type);
+    // Array params decay to ptr in the function signature.
+    // Pointer-to-array types (is_ptr_to_array) are already pointers — don't decay again.
+    bool is_array = is_array_ty(p->type) && !p->type.is_ptr_to_array;
     std::string pllty = is_array ? "ptr" : llvm_ty(p->type);
 
     if (!first_param) params_str += ", ";
@@ -4940,7 +5103,7 @@ std::string IRBuilder::emit_program(Node* prog) {
           if (p->type.base == TB_VOID && p->type.ptr_level == 0) continue;
           // Array params decay to ptr
           TypeSpec pts = p->type;
-          if (is_array_ty(pts)) { pts = drop_array_dim(pts); pts.ptr_level += 1; }
+          if (is_array_ty(pts) && !pts.is_ptr_to_array) { pts = drop_array_dim(pts); pts.ptr_level += 1; }
           sig.param_types.push_back(pts);
         }
         func_sigs_[item->name] = sig;

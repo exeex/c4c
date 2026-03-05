@@ -726,6 +726,10 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
     // Count pointer stars (and qualifiers between them)
     while (check(TokenKind::Star)) {
         consume();
+        // If the base type already has array dimensions, this star creates a
+        // pointer-to-array (e.g. HARD_REG_SET *p where HARD_REG_SET = ulong[2]).
+        if (ts.array_rank > 0 || ts.array_size != -1)
+            ts.is_ptr_to_array = true;
         ts.ptr_level++;
         // Skip qualifiers that follow *
         while (is_qualifier(cur().kind)) consume();
@@ -1078,12 +1082,8 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         bool first = true;
         while (true) {
             TypeSpec cur_fts = fts;
-            // Preserve ptr_level from typedef resolution (e.g. typedef void *tree; tree field;)
-            // parse_declarator will add any additional pointer levels from the declarator syntax.
-            cur_fts.array_size = -1;
-            cur_fts.array_rank = 0;
-            for (int i = 0; i < 8; ++i) cur_fts.array_dims[i] = -1;
-            cur_fts.is_ptr_to_array = false;
+            // Preserve typedef ptr_level and array dims.
+            // apply_decl_dims prepends declarator dims to base typedef dims correctly.
             if (!first) {
                 // For multi-declarator fields, re-use base type (ptr_level from typedef preserved)
             }
@@ -2210,12 +2210,8 @@ Node* Parser::parse_local_decl() {
     std::vector<Node*> decls;
     do {
         TypeSpec ts = base_ts;
-        // Preserve ptr_level from typedef resolution (e.g. typedef void (*fptr)(); fptr arr[3])
-        // only reset array suffix info since declarators add their own
-        ts.array_size = -1;
-        ts.array_rank = 0;
-        for (int i = 0; i < 8; ++i) ts.array_dims[i] = -1;
-        ts.is_ptr_to_array = false;
+        // Preserve typedef array dims so that e.g. HARD_REG_SET x[2] (where HARD_REG_SET=ulong[2])
+        // produces ulong[2][2]. apply_decl_dims prepends declarator dims to base typedef dims.
         ts.array_size_expr = nullptr;
         const char* vname = nullptr;
         parse_declarator(ts, &vname);
@@ -2350,11 +2346,7 @@ Node* Parser::parse_top_level() {
 
     // Parse declarator (name + pointer stars + maybe function params)
     TypeSpec ts = base_ts;
-    // Preserve ptr_level from typedef resolution (e.g. typedef void (*fptr)(); fptr arr[3])
-    ts.array_size = -1;
-    ts.array_rank = 0;
-    for (int i = 0; i < 8; ++i) ts.array_dims[i] = -1;
-    ts.is_ptr_to_array = false;
+    // Preserve typedef array dims: apply_decl_dims prepends declarator dims to base typedef dims.
     ts.array_size_expr = nullptr;
     const char* decl_name = nullptr;
     bool is_fptr_global = false;
@@ -2620,11 +2612,7 @@ Node* Parser::parse_top_level() {
 
     while (match(TokenKind::Comma)) {
         TypeSpec ts2 = base_ts;
-        ts2.ptr_level = 0;
-        ts2.array_size = -1;
-        ts2.array_rank = 0;
-        for (int i = 0; i < 8; ++i) ts2.array_dims[i] = -1;
-        ts2.is_ptr_to_array = false;
+        // Preserve typedef ptr_level and array dims for each additional declarator.
         ts2.array_size_expr = nullptr;
         const char* n2 = nullptr;
         parse_declarator(ts2, &n2);
