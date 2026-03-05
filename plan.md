@@ -1,119 +1,46 @@
-# tiny-c2ll Plan (Handoff Snapshot)
+# tiny-c2ll Plan (First-Fail Workflow Snapshot)
 
 Last updated: 2026-03-05
 
 ## Current State
 
-- Active compiler frontend is C++ in `src/frontend_c/`.
-- Python frontend (`src/frontend/`) has been removed.
-- CMake/CTest now drives all test suites.
-- Tests are organized by set under `tests/<test_set>/...`.
-- CMake helper scripts are centralized in `tests/cmake/...`.
+- Active frontend is C++ in `src/frontend_c/`.
+- Python frontend has been removed.
+- Core CTest suites are green in local baseline (`277/277`).
+- `llvm_gcc_c_torture` is now run with guardrails:
+  - per-step timeout
+  - per-test timeout
+  - optional runtime mem/cpu cap (`ulimit`, best effort)
 
-## Build and Test Baseline
+## Active Repair Strategy
 
-```bash
-cmake -S . -B build_debug
-cmake --build build_debug -j8
-ctest --test-dir build_debug --output-on-failure -j 8
-```
-
-Current baseline from latest run (2026-03-05):
-- `ctest --test-dir build --output-on-failure`: 277/277 pass
-- `ctest --test-dir build_debug --output-on-failure`: 277/277 pass
-
-## Test Topology
-
-- tiny regression:
-  - `tiny_c2ll_tests` (CMake script: `tests/cmake/run_tiny_c2ll_tests.cmake`)
-- preprocessor unit tests:
-  - `frontend_cxx_preprocessor_tests`
-- ccc review (per-case CTest, label `ccc_review`):
-  - `tests/ccc-review-tests/*.c`
-- c-testsuite allowlist (per-case CTest, label `c_testsuite`):
-  - entries from `tests/c_testsuite_allowlist.txt`
-
-## Known Issues (Priority: Fix First)
-
-All Phase A issues resolved as of 2026-03-05:
-- ccc-review 0004/0005/0006: pass (unicode escapes, dollar identifiers)
-- c-testsuite 00040/00152/00181/00182/00209/00220: all pass
-- 00216.c: in allowlist, passing
-
-No open Phase A issues.
-
-### LLVM `gcc-c-torture` Frontend Failure Snapshot (2026-03-05)
-
-Scan command used:
+Use **first-fail iterative repair** for `llvm_gcc_c_torture`:
 
 ```bash
-ctest --test-dir build --output-on-failure --label-regex llvm_gcc_c_torture -j 8 | tee /tmp/llvm_gcc_c_torture_full.log
+./scripts/check_progress_llvm_gcc_c_torture.sh
 ```
 
-Notes:
-- Run progressed to `1706/1708` before manual interrupt during tail phase.
-- Frontend failures were extracted from `[FRONTEND_FAIL]` blocks in the log.
+Default behavior:
+- `STOP_ON_FAILURE=1`: stop at first failed case.
+- `PRUNE_FAILED_ALLOWLIST=1`: rewrite allowlist to keep failed cases only.
+- `FRONTEND_TIMEOUT` is treated as a real test failure.
 
-Artifacts:
-- Full extracted list (104 cases): `tests/llvm_gcc_c_torture_frontend_failures.tsv`
+This is the intended workflow for continuous agent-driven fixing.
 
-Frontend failure breakdown (`[FRONTEND_FAIL]`, 104 total):
-- `parse error`: 82
-- `index of non-pointer non-array`: 10
-- `codegen_lval: unhandled kind 22`: 7
-- `codegen_lval: unhandled kind 21`: 1
-- `member access on non-struct`: 1
-- `Add target support for int32`: 1
-- other: 2 (`error: integers are too small`, one case without parsed diagnostic line)
+## Current First Failure (as of 2026-03-05)
 
-Priority clusters to fix next:
-- Parser robustness around complex declarators / labels / statement-expr style constructs:
-  - multiple `expected RPAREN` / `expected RBRACE` failures across the 82 parse-error cases.
-- LValue codegen gaps:
-  - `codegen_lval: unhandled kind 22` and `kind 21`.
-- Type/lvalue validation issues:
-  - `index of non-pointer non-array`
-  - `member access on non-struct`
+- Test: `llvm_gcc_c_torture_20000223_1_c`
+- Failure: `[FRONTEND_TIMEOUT]` (20s) during frontend compile step.
+- Priority: investigate and reduce pathological compile behavior for this case first.
 
-### Fix Policy
+## Execution Rules
 
-- For each fixed issue, update tests in same change:
-  - Flip `CCC_EXPECT` fail -> pass when appropriate.
-  - Re-add `00216.c` to allowlist once backend IR is corrected.
-- Keep full CTest green after each change.
-
-## Main Roadmap (Near Term)
-
-### Phase A: Close Known Gaps
-
-1. Fix Unicode string/char literal semantics end-to-end.
-2. Fix `$` identifier behavior compatibility (or produce explicit, tested policy).
-3. Fix backend IR correctness for `00216.c` aggregate/global lowering.
-4. Fix c-testsuite regressions:
-   - `00040.c`, `00152.c`, `00181.c`, `00182.c`, `00209.c`, `00220.c`
-
-### Phase B: Preprocessor Completion
-
-Reference:
-- `ref/claudes-c-compiler/src/frontend/preprocessor/README.md`
-
-Target areas (ordered):
-
-1. `#if/#elif` expression parity and correctness.
-2. Macro expansion edge cases:
-   - stringify `#`
-   - paste `##`
-   - variadic + empty `__VA_ARGS__` handling
-3. Include search path behavior and diagnostics.
-4. Pragmas used by frontend/parser integration.
-5. Stable line-marker/source-location fidelity.
-
-## Execution Rules For Next Agent
-
-1. One smallest slice per commit.
-2. Always run smallest relevant tests first, then broaden.
-3. No edits inside vendored `tests/c-testsuite/`.
-4. If blocked >15 min, log blocker in `build/agent_state/hard_bugs.md` and switch slice.
+1. One smallest fix slice per commit.
+2. Re-run first-fail loop after each slice.
+3. Do not edit vendored test-suite sources:
+   - `tests/c-testsuite/`
+   - `tests/llvm-test-suite/`
+4. If blocked >15 min, log blocker in `build/agent_state/hard_bugs.md` and move to next hypothesis.
 
 ## Useful Commands
 
@@ -122,26 +49,17 @@ Target areas (ordered):
 cmake -S . -B build_debug
 cmake --build build_debug -j8
 
-# Full suite
-ctest --test-dir build_debug --output-on-failure -j 8
+# First-fail loop (recommended)
+./scripts/check_progress_llvm_gcc_c_torture.sh
 
-# Focused suites
-ctest --test-dir build_debug -L ccc_review --output-on-failure -j 8
-ctest --test-dir build_debug -L c_testsuite --output-on-failure -j 8
-ctest --test-dir build_debug -R tiny_c2ll_tests --output-on-failure
-ctest --test-dir build_debug -R frontend_cxx_preprocessor_tests --output-on-failure
+# Inspect without rewriting allowlist
+PRUNE_FAILED_ALLOWLIST=0 ./scripts/check_progress_llvm_gcc_c_torture.sh
 
-# Convenience wrappers
-bash scripts/check_progress.sh
-bash scripts/full_scan.sh
+# Single case repro (example)
+ctest --test-dir build_debug --output-on-failure -R '^llvm_gcc_c_torture_20000223_1_c$' -j 1
 ```
 
-## Recent Migration Notes (Already Done)
+## Notes for Handoff
 
-- Moved from Python runners to CMake script runners.
-- Reorganized tests into:
-  - `tests/tiny_c2ll/`
-  - `tests/preprocessor/`
-  - `tests/ccc-review-tests/`
-  - `tests/c-testsuite/`
-  - `tests/cmake/`
+- Timeout-related failures are not “soft” signals in this workflow; they are treated as blocking failures.
+- Keep timeout/resource guards enabled while fixing, so regressions are caught early.

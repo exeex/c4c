@@ -59,12 +59,47 @@ If `tests/c-testsuite` exists in this repo, CMake auto-enables it without `-DC_T
 3. Configure with testsuite root:
 
 ```bash
-cmake -S . -B build -DLLVM_TEST_SUITE_ROOT=/path/to/llvm-test-suite
+cmake -S . -B build \
+  -DLLVM_TEST_SUITE_ROOT=/path/to/llvm-test-suite \
+  -DLLVM_GCC_C_TORTURE_STEP_TIMEOUT_SEC=20 \
+  -DLLVM_GCC_C_TORTURE_TEST_TIMEOUT_SEC=90 \
+  -DLLVM_GCC_C_TORTURE_RUN_MEM_MB=1024 \
+  -DLLVM_GCC_C_TORTURE_RUN_CPU_SEC=20
 cmake --build build
 ctest --test-dir build --output-on-failure -L llvm_gcc_c_torture -j 8
 ```
 
 If `tests/llvm-test-suite` exists in this repo, CMake auto-enables it without `-DLLVM_TEST_SUITE_ROOT`.
+
+`llvm_gcc_c_torture` knobs:
+
+- `LLVM_GCC_C_TORTURE_STEP_TIMEOUT_SEC`: timeout per compile/run step inside each case script.
+- `LLVM_GCC_C_TORTURE_TEST_TIMEOUT_SEC`: ctest timeout for a whole case.
+- `LLVM_GCC_C_TORTURE_RUN_MEM_MB`: runtime memory cap for test binaries (0 = disabled, best-effort via `ulimit`).
+- `LLVM_GCC_C_TORTURE_RUN_CPU_SEC`: runtime CPU seconds cap for test binaries (0 = disabled, best-effort via `ulimit`).
+
+After a full run, keep only failed cases in allowlist (remove passes) for faster iterations:
+
+```bash
+cmake --build build --target prune_llvm_gcc_c_torture_allowlist_to_failed
+```
+
+This rewrites `tests/llvm_gcc_c_torture_allowlist.txt` and saves a backup at
+`tests/llvm_gcc_c_torture_allowlist.txt.bak`.
+
+Fast fix loop for agent (stop at first failure, then shrink allowlist to failed):
+
+```bash
+./scripts/check_progress_llvm_gcc_c_torture.sh
+```
+
+Useful env vars:
+
+- `BUILD_DIR` (default `build_debug`)
+- `LLVM_TEST_SUITE_ROOT` (default `tests/llvm-test-suite`)
+- `STOP_ON_FAILURE` (default `1`)
+- `PRUNE_FAILED_ALLOWLIST` (default `1`)
+- `STEP_TIMEOUT_SEC`, `TEST_TIMEOUT_SEC`, `RUN_MEM_MB`, `RUN_CPU_SEC`
 
 ## Manual Usage
 

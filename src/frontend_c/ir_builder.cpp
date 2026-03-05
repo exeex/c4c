@@ -1092,6 +1092,51 @@ std::string IRBuilder::codegen_lval(Node* n) {
     return slot;
   }
 
+  case NK_COMPOUND_LIT:
+    // (type){...} — codegen_expr already allocates a slot and returns its address.
+    return codegen_expr(n);
+
+  case NK_STMT_EXPR: {
+    // ({ stmts... last_expr; }) used as lvalue — execute all but last, then
+    // return lvalue of last expression (or spill scalar result to a temp slot).
+    if (!n->body) {
+      // Empty stmt_expr: allocate a dummy slot.
+      TypeSpec ts = expr_type(n);
+      std::string slot = "%se_" + std::to_string(tmp_idx_++);
+      alloca_lines_.push_back("  " + slot + " = alloca " + llvm_ty(ts));
+      return slot;
+    }
+    Node* blk = n->body;
+    // Execute all but the last statement.
+    for (int i = 0; i < blk->n_children - 1; i++)
+      emit_stmt(blk->children[i]);
+    // Last child must be an expression statement.
+    Node* last = blk->n_children > 0 ? blk->children[blk->n_children - 1] : nullptr;
+    if (last && last->kind == NK_EXPR_STMT && last->left) {
+      Node* last_expr = last->left;
+      // If the last expression is directly addressable, use its lvalue.
+      if (last_expr->kind == NK_VAR || last_expr->kind == NK_DEREF ||
+          last_expr->kind == NK_INDEX || last_expr->kind == NK_MEMBER ||
+          last_expr->kind == NK_COMPOUND_LIT) {
+        return codegen_lval(last_expr);
+      }
+      // Otherwise spill.
+      TypeSpec ts = expr_type(last_expr);
+      std::string llty = llvm_ty(ts);
+      std::string slot = "%se_" + std::to_string(tmp_idx_++);
+      alloca_lines_.push_back("  " + slot + " = alloca " + llty);
+      std::string val = codegen_expr(last_expr);
+      emit("store " + llty + " " + val + ", ptr " + slot);
+      return slot;
+    }
+    // Fallback: no last expr, return a dummy slot.
+    if (last) emit_stmt(last);
+    TypeSpec ts2 = expr_type(n);
+    std::string slot2 = "%se_" + std::to_string(tmp_idx_++);
+    alloca_lines_.push_back("  " + slot2 + " = alloca " + llvm_ty(ts2));
+    return slot2;
+  }
+
   default:
     throw std::runtime_error(std::string("codegen_lval: unhandled kind ") +
                              std::to_string(n->kind));
@@ -1180,7 +1225,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
             int ndigits = (esc == 'u') ? 4 : 8;
             i += 2;  // skip \ and u/U
             uint32_t cp = 0;
-            for (int k = 0; k < ndigits && i < (int)raw.size()-1 && isxdigit((unsigned char)raw[i]); k++, i++)
+            for (int k = 0; k < ndigits && i + 1 < raw.size() && isxdigit((unsigned char)raw[i]); k++, i++)
               cp = cp * 16 + (isdigit((unsigned char)raw[i]) ? raw[i] - '0' :
                               tolower((unsigned char)raw[i]) - 'a' + 10);
             i--;  // compensate for outer i++
@@ -2534,15 +2579,13 @@ static void emit_agg_init_impl(IRBuilder* irb, TypeSpec ts, const std::string& p
     while (flat_idx < flat_list->n_children) {
       Node* item = flat_list->children[flat_idx];
       Node* val_node = item;
-      bool is_desig = false;
       int target_fi = fi;
       bool item_is_desig = (item && item->kind == NK_INIT_ITEM && item->desig_field);
       // For non-designated items: stop BEFORE consuming if all fields are done.
       if (!item_is_desig && fi >= n_fields) break;
       // Unwrap NK_INIT_ITEM
-      if (item && item->kind == NK_INIT_ITEM) {
-        if (item->desig_field) {
-          is_desig = true;
+        if (item && item->kind == NK_INIT_ITEM) {
+          if (item->desig_field) {
           // Find the designated field
           for (int j = 0; j < n_fields; j++) {
             if (si.field_names[j] == item->desig_field) { target_fi = j; break; }
@@ -3143,12 +3186,16 @@ void IRBuilder::emit_stmt(Node* n) {
   }
 
   case NK_GOTO: {
-    if (n->name) {
+    if (n->name && strcmp(n->name, "__computed__") != 0) {
       auto it = user_labels_.find(n->name);
       if (it != user_labels_.end())
         emit_terminator("br label %" + it->second);
       else
         emit_terminator("br label %user_" + std::string(n->name) + "_0");
+    } else {
+      // Computed goto (goto *expr): evaluate for side effects, emit unreachable.
+      if (n->left) codegen_expr(n->left);
+      emit_terminator("unreachable");
     }
     break;
   }
@@ -3348,7 +3395,6 @@ static int infer_array_size_from_init(Node* init) {
       return (int)codepoints.size();  // includes null terminator
     }
     // Narrow string literal: size = length of content + 1 for null
-    const char* raw = init->sval ? init->sval : "\"\"";
     // Quick count of actual chars (handle escape sequences minimally)
     int count = 0;
     for (int i = (init->sval && init->sval[0] == '"' ? 1 : 0);
@@ -3619,13 +3665,11 @@ static void collect_bytes(IRBuilder* irb, TypeSpec ts, Node* init, std::vector<u
         Node* item = init->children[i];
         Node* val = item;
         int target_fi = fi;
-        bool is_desig = false;
         bool item_is_desig = (item && item->kind == NK_INIT_ITEM && item->desig_field);
         // Stop for non-designated items when fields exhausted
         if (!item_is_desig && fi >= n) break;
         if (item && item->kind == NK_INIT_ITEM) {
           if (item->desig_field) {
-            is_desig = true;
             for (int j = 0; j < n; j++)
               if (si.field_names[j] == item->desig_field) { target_fi = j; break; }
           }
@@ -3949,7 +3993,6 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
       // Determine which member is being initialized and collect its bytes.
       // collect_bytes() APPENDS to the output vector, so start with empty vector.
       std::vector<uint8_t> bytes;  // will be padded to max_sz after collection
-      bool any_set = false;
       if (init->kind == NK_INIT_LIST && init->n_children > 0) {
         // Check if the init contains designated initializers for anonymous struct fields
         // (e.g. {.a = 7, .b = 8} where a,b are anon-struct members hoisted into union)
@@ -3981,7 +4024,6 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
             if (si.field_is_anon[j]) {
               TypeSpec anon_ts = si.field_types[j];
               collect_bytes(this, anon_ts, init, bytes);
-              any_set = true;
               break;
             }
           }
@@ -4000,7 +4042,6 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
             Node* member_init = (val_is_list || !ft0_is_agg) ? val_init : init;
             collect_bytes(this, ft0, member_init, bytes);
           }
-          any_set = true;
         }
       } else if (init->kind != NK_INT_LIT || init->ival != 0) {
         // Scalar or non-zero scalar
@@ -4009,7 +4050,6 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
           if (si.field_array_sizes[0] >= 0) ft0.array_size = si.field_array_sizes[0];
           collect_bytes(this, ft0, init, bytes);
         }
-        any_set = true;
       }
 
       // Pad collected bytes to max_sz

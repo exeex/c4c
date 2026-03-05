@@ -418,6 +418,10 @@ void Parser::skip_attributes() {
 void Parser::skip_asm() {
     if (check(TokenKind::KwAsm)) {
         consume();
+        // Skip optional qualifiers: volatile, __volatile__, goto, inline
+        while (check(TokenKind::KwVolatile) || check(TokenKind::KwInline) ||
+               check(TokenKind::KwGoto))
+            consume();
         if (check(TokenKind::LParen)) skip_paren_group();
     }
 }
@@ -808,6 +812,44 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
         apply_decl_dims(decl_dims);
         if (!decl_dims.empty()) ts.is_ptr_to_array = used_paren_ptr_declarator;
         return;
+    }
+
+    // Grouped declarator: (name) or (name[N]) or (name[N][M]) — e.g. int *(p[25])
+    // Covers the case where paren_star_peek was false because the paren contains
+    // an identifier (not a pointer star), but the declarator is still grouped.
+    if (check(TokenKind::LParen)) {
+        int pk = pos_ + 1;
+        // Skip attributes inside paren if any
+        while (pk < (int)tokens_.size() && tokens_[pk].kind == TokenKind::KwAttribute) {
+            pk++;
+            if (pk < (int)tokens_.size() && tokens_[pk].kind == TokenKind::LParen) {
+                int d = 1; pk++;
+                while (pk < (int)tokens_.size() && d > 0) {
+                    if (tokens_[pk].kind == TokenKind::LParen) d++;
+                    else if (tokens_[pk].kind == TokenKind::RParen) d--;
+                    pk++;
+                }
+            }
+        }
+        bool is_grouped = pk < (int)tokens_.size() &&
+                          tokens_[pk].kind == TokenKind::Identifier;
+        if (is_grouped) {
+            consume();  // consume '('
+            // Parse the inner declarator (name + optional array dims)
+            if (out_name && check(TokenKind::Identifier)) {
+                *out_name = arena_.strdup(cur().lexeme);
+                consume();
+            }
+            while (check(TokenKind::LBracket))
+                decl_dims.push_back(parse_one_array_dim());
+            expect(TokenKind::RParen);
+            // Any trailing array dims outside the paren (e.g. int (a[2])[3])
+            while (check(TokenKind::LBracket))
+                decl_dims.push_back(parse_one_array_dim());
+            apply_decl_dims(decl_dims);
+            if (!decl_dims.empty()) ts.is_ptr_to_array = used_paren_ptr_declarator;
+            return;
+        }
     }
 
     // Normal declarator: optional identifier name
@@ -1329,6 +1371,26 @@ Node* Parser::parse_unary() {
             Node* operand = parse_unary();
             return make_unary("--pre", operand, ln);
         }
+        case TokenKind::AmpAmp: {
+            // GCC label-address: &&label_name  (computed goto extension)
+            consume();
+            if (check(TokenKind::Identifier)) {
+                // Emit as a null void* placeholder; computed goto not fully supported
+                const char* lbl_name = arena_.strdup(cur().lexeme);
+                consume();
+                Node* n = make_node(NK_INT_LIT, ln);
+                n->ival = 0;
+                n->name = lbl_name;  // store label name for future use
+                return n;
+            }
+            // Fall back: treat as bitwise AND of two address-of
+            Node* operand = parse_unary();
+            Node* addr = make_node(NK_ADDR, ln);
+            addr->left = operand;
+            Node* addr2 = make_node(NK_ADDR, ln);
+            addr2->left = addr;
+            return addr2;
+        }
         case TokenKind::Amp: {
             consume();
             Node* operand = parse_unary();
@@ -1705,6 +1767,20 @@ Node* Parser::parse_init_list() {
         Node* item = make_node(NK_INIT_ITEM, cur().line);
 
         // Designator?
+        // Old GCC-style: `fieldname: value` (same as `.fieldname = value`)
+        if (check(TokenKind::Identifier) &&
+            peek(1).kind == TokenKind::Colon) {
+            item->desig_field    = arena_.strdup(cur().lexeme);
+            item->is_designated  = true;
+            item->is_index_desig = false;
+            consume();  // identifier
+            consume();  // ':'
+            item->left = parse_initializer();
+            items.push_back(item);
+            if (!match(TokenKind::Comma)) break;
+            if (check(TokenKind::RBrace)) break;
+            continue;
+        }
         if (check(TokenKind::Dot)) {
             consume();
             if (check(TokenKind::Identifier)) {
@@ -1995,8 +2071,12 @@ Node* Parser::parse_stmt() {
         }
 
         case TokenKind::KwAsm: {
-            // asm("...") — skip entirely
+            // asm volatile ("..." : outputs : inputs : clobbers) — skip entirely
             consume();
+            // Skip optional qualifiers: volatile, goto, inline
+            while (check(TokenKind::KwVolatile) || check(TokenKind::KwInline) ||
+                   check(TokenKind::KwGoto))
+                consume();
             if (check(TokenKind::LParen)) skip_paren_group();
             match(TokenKind::Semi);
             return make_node(NK_EMPTY, ln);
