@@ -13,6 +13,9 @@ endif()
 
 set(EXAMPLE_C "${PROJECT_SOURCE_DIR}/tests/tiny_c2ll/example.c")
 set(EXAMPLE_LL "${CMAKE_BINARY_DIR}/example.ll")
+file(GLOB TINY_C2LL_BAD_SRCS CONFIGURE_DEPENDS
+     "${PROJECT_SOURCE_DIR}/tests/tiny_c2ll/bad_*.c")
+option(TINY_C2LL_ENFORCE_NEGATIVE "Require bad_*.c cases to fail compilation (non-zero exit)" OFF)
 
 set(FRONTEND_CXX_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend_c/driver.cpp"
@@ -79,6 +82,8 @@ if(CLANG_EXECUTABLE)
             -DCOMPILER=$<TARGET_FILE:frontend_cxx_stage1>
             -DEXAMPLE_C=${EXAMPLE_C}
             -DOUT_LL=${CMAKE_BINARY_DIR}/tiny_c2ll_tests/test_example.ll
+            -DBAD_SRCS=${TINY_C2LL_BAD_SRCS}
+            -DENFORCE_NEGATIVE=${TINY_C2LL_ENFORCE_NEGATIVE}
             -DCLANG=${CLANG_EXECUTABLE}
             -DOUT_BIN=${CMAKE_BINARY_DIR}/tiny_c2ll_tests/test_example_bin
             -P "${PROJECT_SOURCE_DIR}/tests/cmake/run_tiny_c2ll_tests.cmake"
@@ -90,6 +95,8 @@ else()
             -DCOMPILER=$<TARGET_FILE:frontend_cxx_stage1>
             -DEXAMPLE_C=${EXAMPLE_C}
             -DOUT_LL=${CMAKE_BINARY_DIR}/tiny_c2ll_tests/test_example.ll
+            -DBAD_SRCS=${TINY_C2LL_BAD_SRCS}
+            -DENFORCE_NEGATIVE=${TINY_C2LL_ENFORCE_NEGATIVE}
             -P "${PROJECT_SOURCE_DIR}/tests/cmake/run_tiny_c2ll_tests.cmake"
   )
 endif()

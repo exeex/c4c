@@ -53,4 +53,23 @@ if(DEFINED CLANG AND NOT "${CLANG}" STREQUAL "")
   endif()
 endif()
 
+if(DEFINED ENFORCE_NEGATIVE AND ENFORCE_NEGATIVE AND
+   DEFINED BAD_SRCS AND NOT "${BAD_SRCS}" STREQUAL "")
+  foreach(bad_src IN LISTS BAD_SRCS)
+    if(NOT EXISTS "${bad_src}")
+      message(FATAL_ERROR "[FAIL] bad case not found: ${bad_src}")
+    endif()
+
+    execute_process(
+      COMMAND "${COMPILER}" "${bad_src}"
+      RESULT_VARIABLE bad_rc
+      OUTPUT_VARIABLE bad_out
+      ERROR_VARIABLE bad_err
+    )
+    if(bad_rc EQUAL 0)
+      message(FATAL_ERROR "[FAIL] expected compile failure but succeeded: ${bad_src}")
+    endif()
+  endforeach()
+endif()
+
 message(STATUS "[PASS] tiny_c2ll_tests")
