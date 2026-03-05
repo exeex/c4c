@@ -629,6 +629,12 @@ std::string Preprocessor::preprocess_text(const std::string& source,
     return "\n";
   }
 
+  // Save and reset virtual source location for this translation unit / included file.
+  int saved_voffset = virtual_line_offset_;
+  std::string saved_vfile = virtual_file_;
+  virtual_line_offset_ = 0;
+  virtual_file_ = file;
+
   std::string p2 = join_continued_lines(source);
   std::string p3 = strip_comments(p2);
 
@@ -639,6 +645,14 @@ std::string Preprocessor::preprocess_text(const std::string& source,
 
   while (std::getline(in, line)) {
     ++line_no;
+
+    // Keep __LINE__ and __FILE__ macros in sync with current virtual source position.
+    // These are updated before processing the line so that both directive expressions
+    // (e.g. #if __LINE__ == 1000) and non-directive text see the correct value.
+    int vline = line_no + virtual_line_offset_;
+    macros_["__LINE__"] = MacroDef{"__LINE__", false, false, {}, std::to_string(vline)};
+    macros_["__FILE__"] = MacroDef{"__FILE__", false, false, {},
+                                   "\"" + virtual_file_ + "\""};
 
     size_t i = 0;
     while (i < line.size() && (line[i] == ' ' || line[i] == '\t')) ++i;
@@ -657,6 +671,10 @@ std::string Preprocessor::preprocess_text(const std::string& source,
       out.push_back('\n');
     }
   }
+
+  // Restore caller's virtual source location (important for include return).
+  virtual_line_offset_ = saved_voffset;
+  virtual_file_ = saved_vfile;
 
   return out;
 }
@@ -783,8 +801,32 @@ void Preprocessor::process_directive(const std::string& raw_line, std::string& o
     // TODO(preprocessor): implement pragma handlers (once/pack/push_macro/pop_macro/...)
     needs_external_fallback_ = true;
   } else if (key == "line") {
-    // TODO(preprocessor): implement #line mapping and line marker output.
-    needs_external_fallback_ = true;
+    // C11 6.10.4: #line <digit-sequence> ["filename"]
+    // Macro-expand the argument first (e.g. #line LINE where LINE=1000).
+    std::string expanded = expand_line(trim_copy(rest));
+    size_t i = 0;
+    while (i < expanded.size() && std::isspace(static_cast<unsigned char>(expanded[i]))) ++i;
+    size_t num_start = i;
+    while (i < expanded.size() && std::isdigit(static_cast<unsigned char>(expanded[i]))) ++i;
+    if (i == num_start) {
+      errors_.push_back(PreprocessorDiagnostic{current_file, line_no, 1,
+                                               "#line directive: missing line number"});
+    } else {
+      int new_lineno = std::stoi(expanded.substr(num_start, i - num_start));
+      while (i < expanded.size() && std::isspace(static_cast<unsigned char>(expanded[i]))) ++i;
+      std::string new_file = virtual_file_;
+      if (i < expanded.size() && expanded[i] == '"') {
+        size_t j = i + 1;
+        while (j < expanded.size() && expanded[j] != '"') ++j;
+        new_file = expanded.substr(i + 1, j - i - 1);
+      }
+      // Update virtual location: next physical line (line_no+1) maps to new_lineno.
+      virtual_line_offset_ = new_lineno - (line_no + 1);
+      virtual_file_ = new_file;
+      // Emit a GCC-compatible line marker so downstream lexer can track source positions.
+      out += "# " + std::to_string(new_lineno) + " \"" + new_file + "\"\n";
+      return;  // line marker already has the newline
+    }
   } else {
     // TODO(preprocessor): unknown directives should be handled more carefully
     // (diagnostic policy, extension points).

@@ -302,17 +302,17 @@ void test_pending_pragma_once(PendingTracker& pending) {
   }
 }
 
-void test_pending_line_directive(PendingTracker& pending) {
-  fs::path dir = make_test_dir("pending_line_directive");
+void test_line_directive() {
+  fs::path dir = make_test_dir("line_directive");
   fs::path file = dir / "main.c";
   write_text(file,
              "#line 200 \"virt.c\"\n"
              "int x;\n");
   Preprocessor pp;
-  (void)pp.preprocess_file(file.string());
-  // Current C++ frontend lexer drops '#' lines anyway; we track this as pending
-  // until preprocessor exposes stable line-marker output contract.
-  pending.add("line markers", "#line mapping and output contract");
+  std::string out = pp.preprocess_file(file.string());
+  expect_contains(out, "# 200 \"virt.c\"",
+                  "#line directive should emit GCC line marker");
+  expect_contains(out, "int x;", "#line directive should preserve following code");
 }
 
 }  // namespace
@@ -328,6 +328,7 @@ int main() {
     test_conditional_if_elif_else();
     test_include_quoted();
     test_error_warning_diagnostics();
+    test_line_directive();
     test_pending_function_like_macro(pending);
     test_pending_stringify(pending);
     test_pending_token_paste(pending);
@@ -335,7 +336,6 @@ int main() {
     test_pending_if_expr_eval(pending);
     test_pending_include_angle(pending);
     test_pending_pragma_once(pending);
-    test_pending_line_directive(pending);
     pending.print_summary();
   } catch (const std::exception& ex) {
     std::cerr << "FAIL: exception: " << ex.what() << "\n";

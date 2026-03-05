@@ -87,6 +87,11 @@ private:
 
   bool needs_external_fallback_ = false;
   std::string base_file_;
+
+  // Virtual source location (updated by #line directives).
+  // virtual_line at physical line L = L + virtual_line_offset_.
+  int virtual_line_offset_ = 0;
+  std::string virtual_file_;
 };
 
 }  // namespace tinyc2ll::frontend_cxx
