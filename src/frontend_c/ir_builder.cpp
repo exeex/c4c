@@ -105,6 +105,17 @@ static bool is_float_base(TypeBase b) {
   return b == TB_FLOAT || b == TB_DOUBLE || b == TB_LONGDOUBLE;
 }
 
+static bool is_complex_base(TypeBase b) {
+  return b == TB_COMPLEX_FLOAT || b == TB_COMPLEX_DOUBLE ||
+         b == TB_COMPLEX_LONGDOUBLE;
+}
+
+static TypeSpec complex_component_ts(TypeBase b) {
+  if (b == TB_COMPLEX_FLOAT) return make_ts(TB_FLOAT);
+  if (b == TB_COMPLEX_LONGDOUBLE) return make_ts(TB_LONGDOUBLE);
+  return make_ts(TB_DOUBLE);
+}
+
 // Return bit-width from an LLVM integer type string ("i8"→8, "i32"→32, …)
 static int llty_bits(const std::string& llty) {
   if (llty == "i1")   return 1;
@@ -256,6 +267,9 @@ std::string IRBuilder::llvm_ty_base(TypeBase base) {
   case TB_FLOAT:      return "float";
   case TB_DOUBLE:
   case TB_LONGDOUBLE: return "double";
+  case TB_COMPLEX_FLOAT:      return "{ float, float }";
+  case TB_COMPLEX_DOUBLE:     return "{ double, double }";
+  case TB_COMPLEX_LONGDOUBLE: return "{ double, double }";
   case TB_INT128:
   case TB_UINT128:    return "i128";
   case TB_ENUM:       return "i32";
@@ -310,6 +324,9 @@ int IRBuilder::sizeof_ty(const TypeSpec& ts) {
   case TB_FLOAT:    return 4;
   case TB_DOUBLE:   return 8;
   case TB_LONGDOUBLE: return 16;
+  case TB_COMPLEX_FLOAT: return 8;
+  case TB_COMPLEX_DOUBLE: return 16;
+  case TB_COMPLEX_LONGDOUBLE: return 32;
   case TB_INT128: case TB_UINT128: return 16;
   case TB_ENUM:   return 4;
   case TB_STRUCT: case TB_UNION: {
@@ -464,6 +481,20 @@ TypeSpec IRBuilder::expr_type(Node* n) {
     TypeSpec inner = expr_type(n->left);
     if (inner.ptr_level > 0) inner.ptr_level -= 1;
     else if (is_array_ty(inner)) inner = drop_array_dim(inner);
+    return inner;
+  }
+  case NK_REAL_PART: {
+    TypeSpec inner = expr_type(n->left);
+    if (inner.ptr_level == 0 && is_complex_base(inner.base))
+      return complex_component_ts(inner.base);
+    // GCC: __real__ scalar_expr yields the scalar type itself.
+    return inner;
+  }
+  case NK_IMAG_PART: {
+    TypeSpec inner = expr_type(n->left);
+    if (inner.ptr_level == 0 && is_complex_base(inner.base))
+      return complex_component_ts(inner.base);
+    // GCC: __imag__ scalar_expr yields 0 of scalar type.
     return inner;
   }
   case NK_ASSIGN:
@@ -1097,6 +1128,20 @@ std::string IRBuilder::codegen_lval(Node* n) {
     return emit_field_gep(struct_ptr, tag, path);
   }
 
+  case NK_REAL_PART:
+  case NK_IMAG_PART: {
+    TypeSpec cts = expr_type(n->left);
+    if (cts.ptr_level != 0 || !is_complex_base(cts.base))
+      throw std::runtime_error("__real__/__imag__ lvalue requires complex operand");
+    std::string cptr = codegen_lval(n->left);
+    std::string t = fresh_tmp();
+    std::string cllty = llvm_ty(cts);
+    int field_idx = (n->kind == NK_IMAG_PART) ? 1 : 0;
+    emit(t + " = getelementptr " + cllty + ", ptr " + cptr +
+         ", i32 0, i32 " + std::to_string(field_idx));
+    return t;
+  }
+
   case NK_CALL: {
     // Function call result used as lvalue (e.g. fr_s1().x) — spill to temp.
     TypeSpec ret_ts = expr_type(n);
@@ -1371,6 +1416,42 @@ std::string IRBuilder::codegen_expr(Node* n) {
     // If the elem type is still a pointer or scalar, load it
     std::string t = fresh_tmp();
     emit(t + " = load " + elem_llty + ", ptr " + ptr_val);
+    return t;
+  }
+
+  case NK_REAL_PART:
+  case NK_IMAG_PART: {
+    TypeSpec inner_ts = expr_type(n->left);
+    TypeSpec part_ts = expr_type(n);
+    std::string part_llty = llvm_ty(part_ts);
+    bool want_imag = (n->kind == NK_IMAG_PART);
+    bool inner_is_complex = (inner_ts.ptr_level == 0 && is_complex_base(inner_ts.base));
+
+    if (!inner_is_complex) {
+      // GNU behavior on non-complex operands: __real__ x => x, __imag__ x => 0.
+      if (!want_imag) return codegen_expr(n->left);
+      if (part_llty == "float" || part_llty == "double") return "0.0";
+      return "0";
+    }
+
+    // If operand is addressable, load the selected component from its storage.
+    if (n->left &&
+        (n->left->kind == NK_VAR || n->left->kind == NK_DEREF ||
+         n->left->kind == NK_INDEX || n->left->kind == NK_MEMBER ||
+         n->left->kind == NK_COMPOUND_LIT || n->left->kind == NK_REAL_PART ||
+         n->left->kind == NK_IMAG_PART || n->left->kind == NK_STMT_EXPR)) {
+      std::string part_ptr = codegen_lval(n);
+      std::string t = fresh_tmp();
+      emit(t + " = load " + part_llty + ", ptr " + part_ptr);
+      return t;
+    }
+
+    // Non-lvalue complex expression (e.g. call returning complex): extractvalue.
+    std::string cval = codegen_expr(n->left);
+    std::string cllty = llvm_ty(inner_ts);
+    std::string t = fresh_tmp();
+    emit(t + " = extractvalue " + cllty + " " + cval + ", " +
+         std::to_string(want_imag ? 1 : 0));
     return t;
   }
 

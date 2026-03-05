@@ -1471,6 +1471,22 @@ Node* Parser::parse_unary() {
             n->type = ts;
             return n;
         }
+        case TokenKind::KwGccReal: {
+            // GNU extension: __real__ expr
+            consume();
+            Node* operand = parse_unary();
+            Node* n = make_node(NK_REAL_PART, ln);
+            n->left = operand;
+            return n;
+        }
+        case TokenKind::KwGccImag: {
+            // GNU extension: __imag__ expr
+            consume();
+            Node* operand = parse_unary();
+            Node* n = make_node(NK_IMAG_PART, ln);
+            n->left = operand;
+            return n;
+        }
         default:
             return parse_postfix(parse_primary());
     }
