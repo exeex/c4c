@@ -515,6 +515,10 @@ TypeSpec IRBuilder::expr_type(Node* n) {
         return double_ts();
       if (strcmp(cn, "__builtin_fabsf") == 0 || strcmp(cn, "__builtin_inff") == 0)
         return float_ts();
+      if (strcmp(cn, "__builtin_conjf") == 0) return make_ts(TB_COMPLEX_FLOAT);
+      if (strcmp(cn, "__builtin_conj")  == 0) return make_ts(TB_COMPLEX_DOUBLE);
+      if (strcmp(cn, "__builtin_conjl") == 0) return make_ts(TB_COMPLEX_LONGDOUBLE);
+      if (strcmp(cn, "__builtin_classify_type") == 0) return make_ts(TB_INT);
     }
     // Indirect call through function pointer expression.
     // We don't model full function signatures in TypeSpec yet, so preserve
@@ -661,6 +665,35 @@ std::string IRBuilder::coerce(const std::string& val, const TypeSpec& from_ts,
   if (to_llty == "void") return val;
 
   std::string t = fresh_tmp();
+
+  // Complex type → complex type (e.g. _Complex float → _Complex double)
+  if (is_complex_base(from_ts.base) && from_ts.ptr_level == 0) {
+    TypeBase from_elem = (from_ts.base == TB_COMPLEX_FLOAT) ? TB_FLOAT :
+                         (from_ts.base == TB_COMPLEX_LONGDOUBLE) ? TB_LONGDOUBLE : TB_DOUBLE;
+    std::string from_elem_llty = llvm_ty(make_ts(from_elem));
+    bool is_to_cf  = (to_llty == "{ float, float }");
+    bool is_to_cd  = (to_llty == "{ double, double }");
+    if ((is_to_cf || is_to_cd) && from_llty != to_llty) {
+      std::string to_elem_llty = is_to_cf ? "float" : "double";
+      std::string re = fresh_tmp(), im = fresh_tmp();
+      std::string re2 = fresh_tmp(), im2 = fresh_tmp();
+      std::string r0 = fresh_tmp(), r1 = fresh_tmp();
+      emit(re + " = extractvalue " + from_llty + " " + val + ", 0");
+      emit(im + " = extractvalue " + from_llty + " " + val + ", 1");
+      bool upcast = (from_elem_llty == "float" && to_elem_llty == "double");
+      if (upcast) {
+        emit(re2 + " = fpext float " + re + " to double");
+        emit(im2 + " = fpext float " + im + " to double");
+      } else {
+        emit(re2 + " = fptrunc double " + re + " to float");
+        emit(im2 + " = fptrunc double " + im + " to float");
+      }
+      emit(r0 + " = insertvalue " + to_llty + " undef, " + to_elem_llty + " " + re2 + ", 0");
+      emit(r1 + " = insertvalue " + to_llty + " " + r0 + ", " + to_elem_llty + " " + im2 + ", 1");
+      return r1;
+    }
+    return val;  // same complex type
+  }
 
   // Array type: val is already a ptr (array decays to pointer)
   if (is_array_ty(from_ts) && to_llty == "ptr") return val;
@@ -969,6 +1002,22 @@ std::string IRBuilder::emit_field_gep(const std::string& struct_ptr,
          ", i32 0, i32 0");
     return t;
   } else {
+    // Flexible array member: use byte-level GEP (FAM is excluded from LLVM struct type)
+    if (path.final_idx < (int)si.field_array_sizes.size() &&
+        si.field_array_sizes[path.final_idx] == -2) {
+      int byte_offset = 0;
+      for (int i = 0; i < path.final_idx; i++) {
+        if (si.field_array_sizes[i] == -2) continue;
+        TypeSpec ft = si.field_types[i];
+        int sz = sizeof_ty(ft);
+        if (si.field_array_sizes[i] >= 0) sz *= (int)si.field_array_sizes[i];
+        byte_offset += sz;
+      }
+      std::string t = fresh_tmp();
+      emit(t + " = getelementptr i8, ptr " + cur_ptr + ", i64 " +
+           std::to_string(byte_offset));
+      return t;
+    }
     std::string t = fresh_tmp();
     emit(t + " = getelementptr %struct." + cur_tag + ", ptr " + cur_ptr +
          ", i32 0, i32 " + std::to_string(path.final_idx));
@@ -1001,14 +1050,14 @@ TypeSpec IRBuilder::field_type_from_path(const std::string& outer_tag,
     // Falling back to the first non-anon field only when no specific index.
     if (path.final_idx >= 0 && path.final_idx < (int)si.field_names.size()) {
       TypeSpec ft = si.field_types[path.final_idx];
-      if (si.field_array_sizes[path.final_idx] >= 0)
+      if (si.field_array_sizes[path.final_idx] != -1)
         ft.array_size = si.field_array_sizes[path.final_idx];
       return ft;
     }
     for (size_t i = 0; i < si.field_names.size(); i++) {
       if (!si.field_is_anon[i]) {
         TypeSpec ft = si.field_types[i];
-        if (si.field_array_sizes[i] >= 0) ft.array_size = si.field_array_sizes[i];
+        if (si.field_array_sizes[i] != -1) ft.array_size = si.field_array_sizes[i];
         return ft;
       }
     }
@@ -1017,7 +1066,7 @@ TypeSpec IRBuilder::field_type_from_path(const std::string& outer_tag,
 
   if (path.final_idx >= 0 && path.final_idx < (int)si.field_names.size()) {
     TypeSpec ft = si.field_types[path.final_idx];
-    if (si.field_array_sizes[path.final_idx] >= 0)
+    if (si.field_array_sizes[path.final_idx] != -1)
       ft.array_size = si.field_array_sizes[path.final_idx];
     return ft;
   }
@@ -2167,6 +2216,61 @@ std::string IRBuilder::codegen_expr(Node* n) {
       if (fn_name == "__builtin_inff") {
         ret_ts = float_ts();
         return "0x7FF0000000000000";  // LLVM accepts double-form hex for float +Inf
+      }
+      // __builtin_conjf / __builtin_conj / __builtin_conjl — complex conjugate
+      if (fn_name == "__builtin_conjf" || fn_name == "__builtin_conj" ||
+          fn_name == "__builtin_conjl") {
+        bool is_f  = (fn_name == "__builtin_conjf");
+        bool is_ld = (fn_name == "__builtin_conjl");
+        TypeBase comp_base = is_f ? TB_COMPLEX_FLOAT :
+                             is_ld ? TB_COMPLEX_LONGDOUBLE : TB_COMPLEX_DOUBLE;
+        TypeBase elem_base = is_f ? TB_FLOAT :
+                             is_ld ? TB_LONGDOUBLE : TB_DOUBLE;
+        std::string elem_llty = llvm_ty(make_ts(elem_base));
+        std::string comp_llty = llvm_ty(make_ts(comp_base));
+        std::string arg_val = n->n_children > 0 ? codegen_expr(n->children[0]) : "zeroinitializer";
+        TypeSpec arg_ts = n->n_children > 0 ? expr_type(n->children[0]) : make_ts(comp_base);
+        // Extract real and imag from argument
+        std::string re = fresh_tmp(), im = fresh_tmp(), nim = fresh_tmp();
+        std::string r0 = fresh_tmp(), r1 = fresh_tmp();
+        if (is_complex_base(arg_ts.base) && arg_ts.ptr_level == 0) {
+          // Already a struct value
+          emit(re + " = extractvalue " + comp_llty + " " + arg_val + ", 0");
+          emit(im + " = extractvalue " + comp_llty + " " + arg_val + ", 1");
+        } else {
+          // Scalar arg (not complex): treat as pure real, imag=0
+          emit(re + " = " + elem_llty + " " + arg_val);
+          emit(im + " = " + elem_llty + " 0.0");
+        }
+        emit(nim + " = fneg " + elem_llty + " " + im);
+        emit(r0 + " = insertvalue " + comp_llty + " undef, " + elem_llty + " " + re + ", 0");
+        emit(r1 + " = insertvalue " + comp_llty + " " + r0 + ", " + elem_llty + " " + nim + ", 1");
+        ret_ts = make_ts(comp_base);
+        return r1;
+      }
+      // __builtin_classify_type → compile-time integer constant based on argument type
+      // GCC enum: void=0, integer=1, char=2, enumeral=3, boolean=4, pointer=5,
+      //           real(float/double)=8, complex=9, record=12, union=13, array=14
+      if (fn_name == "__builtin_classify_type" && n->n_children >= 1) {
+        TypeSpec arg_ts = expr_type(n->children[0]);
+        int cls = 1; // integer_type_class by default
+        if (arg_ts.ptr_level > 0 || arg_ts.array_rank > 0)
+          cls = 5; // pointer_type_class
+        else if (arg_ts.base == TB_VOID)
+          cls = 0; // void_type_class
+        else if (arg_ts.base == TB_CHAR || arg_ts.base == TB_UCHAR)
+          cls = 2; // char_type_class
+        else if (arg_ts.base == TB_FLOAT || arg_ts.base == TB_DOUBLE ||
+                 arg_ts.base == TB_LONGDOUBLE)
+          cls = 8; // real_type_class
+        else if (is_complex_base(arg_ts.base))
+          cls = 9; // complex_type_class
+        else if (arg_ts.base == TB_STRUCT)
+          cls = 12; // record_type_class
+        else if (arg_ts.base == TB_UNION)
+          cls = 13; // union_type_class
+        ret_ts = make_ts(TB_INT);
+        return std::to_string(cls);
       }
       // __builtin_memcpy / __builtin_memset / __builtin_memmove / __builtin_memcmp
       // and other common memory/string builtins → lower to C library names.
@@ -3852,6 +3956,17 @@ static void collect_bytes(IRBuilder* irb, TypeSpec ts, Node* init, std::vector<u
 std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
   if (!init) return "zeroinitializer";
 
+  // Unsized / flexible array: infer concrete size from initializer and recurse.
+  if (is_array_ty(ts) && array_dim_at(ts, 0) == -2) {
+    int inferred = infer_array_size_from_init(init);
+    if (inferred > 0) {
+      TypeSpec concrete_ts = ts;
+      set_first_array_dim(concrete_ts, inferred);
+      return global_const(concrete_ts, init);
+    }
+    return "zeroinitializer";
+  }
+
   // Wide string initializer for wchar_t[] (int array) from L"..."
   if (is_array_ty(ts) && array_dim_at(ts, 0) >= 0 &&
       array_rank_of(ts) == 1 &&
@@ -4053,6 +4168,7 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
     if (n_fields == 0) return "zeroinitializer";
 
     std::vector<std::string> vals(n_fields, "zeroinitializer");
+    std::vector<int> fam_concrete_sizes(n_fields, 0);  // concrete FAM sizes (0 = not FAM or no data)
     // Unwrap compound literal: (struct Foo){...} used as struct initializer
     if (init->kind == NK_COMPOUND_LIT) {
       Node* cl_init = init->left ? init->left : init->init;
@@ -4081,7 +4197,7 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
         flat_i++;
         if (fi < n_fields) {
           TypeSpec ft = si.field_types[fi];
-          if (si.field_array_sizes[fi] >= 0) ft.array_size = si.field_array_sizes[fi];
+          if (si.field_array_sizes[fi] != -1) ft.array_size = si.field_array_sizes[fi];
           bool ft_is_arr = is_array_ty(ft);
           bool ft_is_agg = (ft.ptr_level == 0 &&
                             (ft.base == TB_STRUCT || ft.base == TB_UNION));
@@ -4106,6 +4222,9 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
           } else {
             vals[fi] = global_const(ft, val_node);
           }
+          // Track concrete FAM size for output type
+          if (si.field_array_sizes[fi] == -2 && val_node)
+            fam_concrete_sizes[fi] = infer_array_size_from_init(val_node);
           cur_field = fi + 1;
         }
       }
@@ -4220,11 +4339,21 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
     }
 
     // Return just the brace initializer (no "%struct.X " prefix — caller adds type)
-    // Skip flex array members (field_array_sizes == -2): zero-size trailing arrays
+    // FAM fields (field_array_sizes == -2) are included with concrete sizes when initialized.
     std::string result = "{ ";
     bool first_field = true;
     for (int i = 0; i < n_fields; i++) {
-      if (si.field_array_sizes[i] == -2) continue;  // flex array: skip
+      if (si.field_array_sizes[i] == -2) {
+        // Flexible array member: include only if concrete init data was found
+        if (fam_concrete_sizes[i] <= 0) continue;
+        if (!first_field) result += ", ";
+        first_field = false;
+        TypeSpec ft = si.field_types[i];
+        long long fdims[1] = {fam_concrete_sizes[i]};
+        set_array_dims(ft, fdims, 1);
+        result += llvm_ty(ft) + " " + vals[i];
+        continue;
+      }
       if (!first_field) result += ", ";
       first_field = false;
       TypeSpec ft = si.field_types[i];
@@ -4343,8 +4472,48 @@ void IRBuilder::emit_global(Node* gv) {
   // Use the recursive constant emitter for all other initializers
   std::string init_val = gv->init ? global_const(ts, gv->init) : "zeroinitializer";
 
+  // For global structs with flexible array members that have concrete init data,
+  // use an inline concrete type (not %struct.X) so the FAM data is included.
+  std::string use_llty = llty;
+  if (ts.base == TB_STRUCT && ts.ptr_level == 0 && ts.tag && gv->init &&
+      gv->init->kind == NK_INIT_LIST) {
+    auto sit2 = struct_defs_.find(ts.tag);
+    if (sit2 != struct_defs_.end()) {
+      const StructInfo& si2 = sit2->second;
+      int nf = (int)si2.field_names.size();
+      int fam_idx = -1;
+      for (int i = 0; i < nf; i++) {
+        if (si2.field_array_sizes[i] == -2) { fam_idx = i; break; }
+      }
+      if (fam_idx >= 0 && fam_idx < gv->init->n_children) {
+        Node* fam_item = gv->init->children[fam_idx];
+        Node* fam_val = (fam_item && fam_item->kind == NK_INIT_ITEM) ? fam_item->left : fam_item;
+        int fam_sz = fam_val ? infer_array_size_from_init(fam_val) : 0;
+        if (fam_sz > 0) {
+          // Build concrete struct type with FAM
+          std::string ct = "{ ";
+          bool cfirst = true;
+          for (int i = 0; i < nf; i++) {
+            if (!cfirst) ct += ", ";
+            cfirst = false;
+            TypeSpec ft2 = si2.field_types[i];
+            if (si2.field_array_sizes[i] == -2) {
+              long long fdims[1] = {fam_sz};
+              set_array_dims(ft2, fdims, 1);
+            } else if (si2.field_array_sizes[i] >= 0) {
+              ft2.array_size = si2.field_array_sizes[i];
+            }
+            ct += llvm_ty(ft2);
+          }
+          ct += " }";
+          use_llty = ct;
+        }
+      }
+    }
+  }
+
   std::string linkage = gv->is_static ? "internal " : "";
-  preamble_.push_back("@" + name + " = " + linkage + "global " + llty + " " + init_val);
+  preamble_.push_back("@" + name + " = " + linkage + "global " + use_llty + " " + init_val);
 }
 
 // ─────────────────────────── function emission ─────────────────────────────

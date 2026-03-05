@@ -199,8 +199,10 @@ std::string substitute_funclike_body(const std::string& body,
       if (k + 1 < body.size() && body[k] == '#' && body[k + 1] == '#') {
         // Use raw arg for ## left operand
         std::string left = get_raw(tok);
-        // Trim trailing whitespace from output and paste
-        while (!out.empty() && (out.back() == ' ' || out.back() == '\t')) out.pop_back();
+        // Do NOT trim trailing whitespace from out: whitespace before the ## expression
+        // in the body (e.g. the space between 'A' and 's' in "struct S s##S") must be
+        // preserved.  The look-ahead above already skipped whitespace between the
+        // identifier and ##, so nothing extra needs removing here.
         out += trim_copy(left);
         // Skip ##
         k += 2;
@@ -812,6 +814,15 @@ Preprocessor::Preprocessor() {
   macros_["__STDC__"] = MacroDef{"__STDC__", false, false, {}, "1"};
   macros_["__STDC_VERSION__"] =
       MacroDef{"__STDC_VERSION__", false, false, {}, "201710L"};
+  // Type size macros (LP64 / ILP32 targets: int=4, long=8, pointer=8)
+  macros_["__SIZEOF_INT__"]       = MacroDef{"__SIZEOF_INT__",       false, false, {}, "4"};
+  macros_["__SIZEOF_SHORT__"]     = MacroDef{"__SIZEOF_SHORT__",     false, false, {}, "2"};
+  macros_["__SIZEOF_LONG__"]      = MacroDef{"__SIZEOF_LONG__",      false, false, {}, "8"};
+  macros_["__SIZEOF_LONG_LONG__"] = MacroDef{"__SIZEOF_LONG_LONG__", false, false, {}, "8"};
+  macros_["__SIZEOF_POINTER__"]   = MacroDef{"__SIZEOF_POINTER__",   false, false, {}, "8"};
+  macros_["__SIZEOF_FLOAT__"]     = MacroDef{"__SIZEOF_FLOAT__",     false, false, {}, "4"};
+  macros_["__SIZEOF_DOUBLE__"]    = MacroDef{"__SIZEOF_DOUBLE__",    false, false, {}, "8"};
+  macros_["__SIZEOF_SIZE_T__"]    = MacroDef{"__SIZEOF_SIZE_T__",    false, false, {}, "8"};
 }
 
 std::string Preprocessor::preprocess_file(const std::string& path) {
