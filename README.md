@@ -55,7 +55,7 @@ If `tests/c-testsuite` exists in this repo, CMake auto-enables it without `-DC_T
 ## Manual Usage
 
 ```bash
-./build/tiny-c2ll-stage1 tests/example.c -o /tmp/out.ll
+./build/tiny-c2ll-stage1 tests/tiny_c2ll/example.c -o /tmp/out.ll
 clang /tmp/out.ll -o /tmp/out
 /tmp/out
 echo $?

@@ -11,7 +11,7 @@ if(NOT C_TESTSUITE_ROOT AND EXISTS "${PROJECT_SOURCE_DIR}/tests/c-testsuite")
   set(C_TESTSUITE_ROOT "${PROJECT_SOURCE_DIR}/tests/c-testsuite")
 endif()
 
-set(EXAMPLE_C "${PROJECT_SOURCE_DIR}/tests/example.c")
+set(EXAMPLE_C "${PROJECT_SOURCE_DIR}/tests/tiny_c2ll/example.c")
 set(EXAMPLE_LL "${CMAKE_BINARY_DIR}/example.ll")
 
 set(FRONTEND_CXX_SRCS
@@ -36,7 +36,7 @@ set_target_properties(frontend_cxx_stage1 PROPERTIES
 target_compile_options(frontend_cxx_stage1 PRIVATE -Wall -Wextra -Wpedantic)
 
 add_executable(frontend_cxx_preprocessor_tests
-    "${PROJECT_SOURCE_DIR}/tests/frontend_cxx_preprocessor_tests.cpp"
+    "${PROJECT_SOURCE_DIR}/tests/preprocessor/frontend_cxx_preprocessor_tests.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend_c/preprocessor.cpp"
 )
 target_include_directories(frontend_cxx_preprocessor_tests PRIVATE
@@ -77,7 +77,7 @@ if(CLANG_EXECUTABLE)
     NAME tiny_c2ll_tests
     COMMAND "${CMAKE_COMMAND}"
             -DCOMPILER=$<TARGET_FILE:frontend_cxx_stage1>
-            -DEXAMPLE_C=${PROJECT_SOURCE_DIR}/tests/example.c
+            -DEXAMPLE_C=${EXAMPLE_C}
             -DOUT_LL=${CMAKE_BINARY_DIR}/tiny_c2ll_tests/test_example.ll
             -DCLANG=${CLANG_EXECUTABLE}
             -DOUT_BIN=${CMAKE_BINARY_DIR}/tiny_c2ll_tests/test_example_bin
@@ -88,7 +88,7 @@ else()
     NAME tiny_c2ll_tests
     COMMAND "${CMAKE_COMMAND}"
             -DCOMPILER=$<TARGET_FILE:frontend_cxx_stage1>
-            -DEXAMPLE_C=${PROJECT_SOURCE_DIR}/tests/example.c
+            -DEXAMPLE_C=${EXAMPLE_C}
             -DOUT_LL=${CMAKE_BINARY_DIR}/tiny_c2ll_tests/test_example.ll
             -P "${PROJECT_SOURCE_DIR}/tests/cmake/run_tiny_c2ll_tests.cmake"
   )
