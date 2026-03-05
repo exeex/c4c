@@ -120,17 +120,25 @@ static bool is_type_kw(TokenKind k) {
 }
 
 // parse an integer literal from a lexeme string
+// Returns true if a numeric literal lexeme has an imaginary suffix (i/j/I/J).
+static bool lexeme_is_imaginary(const char* s) {
+    size_t len = strlen(s);
+    for (size_t k = 0; k < len; k++) {
+        char c = s[k];
+        if (c == 'i' || c == 'I' || c == 'j' || c == 'J') return true;
+    }
+    return false;
+}
+
 static long long parse_int_lexeme(const char* s) {
-    // strip suffixes
+    // strip u/U, l/L and imaginary i/j/I/J suffixes (any order)
     char buf[64];
     int  len = (int)strlen(s);
     int  end = len;
-    // strip u/U and l/L suffixes from the end
     while (end > 0) {
-        char c = buf[end - 1];
-        (void)c; // just for clarity below
         char cc = s[end - 1];
-        if (cc == 'u' || cc == 'U' || cc == 'l' || cc == 'L') {
+        if (cc == 'u' || cc == 'U' || cc == 'l' || cc == 'L' ||
+            cc == 'i' || cc == 'I' || cc == 'j' || cc == 'J') {
             --end;
         } else {
             break;
@@ -152,7 +160,7 @@ static long long parse_int_lexeme(const char* s) {
 }
 
 static double parse_float_lexeme(const char* s) {
-    // strip f/F/l/L suffix
+    // strip f/F/l/L and imaginary i/j/I/J suffixes (any order)
     char buf[64];
     size_t len = strlen(s);
     if (len >= sizeof(buf)) len = sizeof(buf) - 1;
@@ -161,7 +169,8 @@ static double parse_float_lexeme(const char* s) {
     size_t end = len;
     while (end > 0) {
         char c = buf[end - 1];
-        if (c == 'f' || c == 'F' || c == 'l' || c == 'L') { --end; }
+        if (c == 'f' || c == 'F' || c == 'l' || c == 'L' ||
+            c == 'i' || c == 'I' || c == 'j' || c == 'J') { --end; }
         else { break; }
     }
     buf[end] = '\0';
@@ -613,18 +622,25 @@ TypeSpec Parser::parse_base_type() {
         if (has_complex) ts.base = long_count > 0 ? TB_COMPLEX_LONGDOUBLE : TB_COMPLEX_DOUBLE;
         else ts.base = long_count > 0 ? TB_LONGDOUBLE : TB_DOUBLE;
     } else if (has_char) {
-        ts.base = has_unsigned ? TB_UCHAR : (has_signed ? TB_SCHAR : TB_CHAR);
+        if (has_complex)
+            ts.base = has_unsigned ? TB_COMPLEX_UCHAR : TB_COMPLEX_SCHAR;
+        else
+            ts.base = has_unsigned ? TB_UCHAR : (has_signed ? TB_SCHAR : TB_CHAR);
     } else if (has_short) {
-        ts.base = has_unsigned ? TB_USHORT : TB_SHORT;
+        ts.base = has_complex ? (has_unsigned ? TB_COMPLEX_USHORT : TB_COMPLEX_SHORT)
+                              : (has_unsigned ? TB_USHORT : TB_SHORT);
     } else if (long_count >= 2) {
-        ts.base = has_unsigned ? TB_ULONGLONG : TB_LONGLONG;
+        ts.base = has_complex ? (has_unsigned ? TB_COMPLEX_ULONGLONG : TB_COMPLEX_LONGLONG)
+                              : (has_unsigned ? TB_ULONGLONG : TB_LONGLONG);
     } else if (long_count == 1) {
-        ts.base = has_unsigned ? TB_ULONG : TB_LONG;
+        ts.base = has_complex ? (has_unsigned ? TB_COMPLEX_ULONG : TB_COMPLEX_LONG)
+                              : (has_unsigned ? TB_ULONG : TB_LONG);
     } else if (has_complex) {
         ts.base = TB_COMPLEX_DOUBLE;  // __complex__ with no type = double _Complex
     } else {
         // plain int (possibly unsigned)
-        ts.base = has_unsigned ? TB_UINT : TB_INT;
+        ts.base = has_complex ? (has_unsigned ? TB_COMPLEX_UINT : TB_COMPLEX_INT)
+                              : (has_unsigned ? TB_UINT : TB_INT);
     }
 
     return ts;
@@ -1577,19 +1593,24 @@ Node* Parser::parse_primary() {
     // Integer literal
     if (check(TokenKind::IntLit)) {
         long long v = parse_int_lexeme(cur().lexeme.c_str());
+        bool imag   = lexeme_is_imaginary(cur().lexeme.c_str());
         const char* lex = arena_.strdup(cur().lexeme);
         consume();
         Node* n = make_int_lit(v, ln);
-        n->sval = lex;  // store raw lexeme too
+        n->sval = lex;
+        n->is_imaginary = imag;
         return n;
     }
 
     // Float literal
     if (check(TokenKind::FloatLit)) {
-        double v   = parse_float_lexeme(cur().lexeme.c_str());
+        bool imag   = lexeme_is_imaginary(cur().lexeme.c_str());
+        double v    = parse_float_lexeme(cur().lexeme.c_str());
         const char* raw = arena_.strdup(cur().lexeme);
         consume();
-        return make_float_lit(v, raw, ln);
+        Node* n = make_float_lit(v, raw, ln);
+        n->is_imaginary = imag;
+        return n;
     }
 
     // String literal (possibly multiple adjacent)

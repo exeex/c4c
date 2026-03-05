@@ -309,23 +309,32 @@ Token Lexer::scan_number() {
   return make_token(TokenKind::IntLit, std::move(text), tok_line, tok_col);
 }
 
-// Consume float suffix (f/F or l/L) and mark is_float.
+// Consume float suffix (f/F or l/L) and optional imaginary suffix (i/j/I/J)
+// in any order.  GCC allows e.g. "1.0fi", "1.0iF", "1.0if", etc.
 void Lexer::scan_float_suffix(std::string &text, bool &is_float) {
-  if (!at_end()) {
+  bool seen_sz  = false;  // f/F or l/L
+  bool seen_imag = false; // i/j/I/J
+  for (int pass = 0; pass < 3 && !at_end(); ++pass) {
     char s = peek();
-    if (s == 'f' || s == 'F' || s == 'l' || s == 'L') {
+    if ((s == 'f' || s == 'F' || s == 'l' || s == 'L') && !seen_sz) {
+      seen_sz = true;
       is_float = true;
       text.push_back(advance());
+    } else if ((s == 'i' || s == 'I' || s == 'j' || s == 'J') && !seen_imag) {
+      seen_imag = true;
+      text.push_back(advance());
+    } else {
+      break;
     }
   }
 }
 
-// Consume integer suffix: u/U, l/L, ll/LL and combinations.
+// Consume integer suffix: u/U, l/L, ll/LL and optional imaginary (i/j/I/J).
 void Lexer::scan_int_suffix(std::string &text) {
-  // Consume up to one u/U and up to one l/L or ll/LL in any order.
-  bool seen_u = false;
-  bool seen_l = false;
-  for (int pass = 0; pass < 3 && !at_end(); ++pass) {
+  bool seen_u    = false;
+  bool seen_l    = false;
+  bool seen_imag = false;
+  for (int pass = 0; pass < 4 && !at_end(); ++pass) {
     char s = peek();
     if ((s == 'u' || s == 'U') && !seen_u) {
       seen_u = true;
@@ -333,10 +342,11 @@ void Lexer::scan_int_suffix(std::string &text) {
     } else if ((s == 'l' || s == 'L') && !seen_l) {
       seen_l = true;
       text.push_back(advance());
-      // Peek for second l/L (ll / LL)
-      if (!at_end() && (peek() == 'l' || peek() == 'L')) {
+      if (!at_end() && (peek() == 'l' || peek() == 'L'))
         text.push_back(advance());
-      }
+    } else if ((s == 'i' || s == 'I' || s == 'j' || s == 'J') && !seen_imag) {
+      seen_imag = true;
+      text.push_back(advance());
     } else {
       break;
     }

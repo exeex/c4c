@@ -53,6 +53,18 @@ enum TypeBase {
     TB_COMPLEX_FLOAT,      // __complex__ float / float _Complex
     TB_COMPLEX_DOUBLE,     // __complex__ double / double _Complex
     TB_COMPLEX_LONGDOUBLE, // __complex__ long double
+    // GCC extension: _Complex applied to integer types
+    TB_COMPLEX_CHAR,       // _Complex char (signed)
+    TB_COMPLEX_SCHAR,      // _Complex signed char
+    TB_COMPLEX_UCHAR,      // _Complex unsigned char
+    TB_COMPLEX_SHORT,      // _Complex short
+    TB_COMPLEX_USHORT,     // _Complex unsigned short
+    TB_COMPLEX_INT,        // _Complex int
+    TB_COMPLEX_UINT,       // _Complex unsigned int
+    TB_COMPLEX_LONG,       // _Complex long
+    TB_COMPLEX_ULONG,      // _Complex unsigned long
+    TB_COMPLEX_LONGLONG,   // _Complex long long
+    TB_COMPLEX_ULONGLONG,  // _Complex unsigned long long
 };
 
 struct TypeSpec {
@@ -170,6 +182,7 @@ struct Node {
     long long ival;     // NK_INT_LIT, NK_CHAR_LIT
     double    fval;     // NK_FLOAT_LIT (parsed value; raw text in sval)
     const char* sval;   // NK_STR_LIT (raw lexeme), NK_FLOAT_LIT (raw lexeme)
+    bool is_imaginary;  // NK_INT_LIT, NK_FLOAT_LIT: GCC imaginary literal (200i, 1.0fi)
 
     // --- primary children ---
     Node* left;         // primary child / operand / condition / func / lo
