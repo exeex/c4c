@@ -1,6 +1,6 @@
 # tiny-c2ll Plan (First-Fail Workflow Snapshot)
 
-Last updated: 2026-03-05
+Last updated: 2026-03-06
 
 ## Current State
 
@@ -11,6 +11,26 @@ Last updated: 2026-03-05
   - per-step timeout
   - per-test timeout
   - optional runtime mem/cpu cap (`ulimit`, best effort)
+
+## Latest Validation Snapshot (2026-03-06)
+
+Checked incoming Claude changes in:
+- `src/frontend_c/ast.hpp`
+- `src/frontend_c/token.hpp`
+- `src/frontend_c/token.cpp`
+- `src/frontend_c/parser.cpp`
+- `tests/llvm_gcc_c_torture_allowlist.txt`
+
+Observed status:
+- Build: pass (`cmake --build build_debug -j8`)
+- Core smoke tests: pass
+  - `tiny_c2ll_tests`
+  - `frontend_cxx_preprocessor_tests`
+- Current torture allowlist has been pruned to one case:
+  - `20010605-2.c`
+- Current first fail:
+  - `[FRONTEND_FAIL] parse error: expected RPAREN but got 'x' at line 21`
+  - case: `llvm_gcc_c_torture_20010605_2_c`
 
 ## Active Repair Strategy
 
@@ -27,11 +47,11 @@ Default behavior:
 
 This is the intended workflow for continuous agent-driven fixing.
 
-## Current First Failure (as of 2026-03-05)
+## Current First Failure (as of 2026-03-06)
 
-- Test: `llvm_gcc_c_torture_20000223_1_c`
-- Failure: `[FRONTEND_TIMEOUT]` (20s) during frontend compile step.
-- Priority: investigate and reduce pathological compile behavior for this case first.
+- Test: `llvm_gcc_c_torture_20010605_2_c`
+- Failure: `[FRONTEND_FAIL] parse error (expected RPAREN but got 'x')`.
+- Priority: parser robustness fix for this case first.
 
 ## Execution Rules
 
@@ -56,7 +76,7 @@ cmake --build build_debug -j8
 PRUNE_FAILED_ALLOWLIST=0 ./scripts/check_progress_llvm_gcc_c_torture.sh
 
 # Single case repro (example)
-ctest --test-dir build_debug --output-on-failure -R '^llvm_gcc_c_torture_20000223_1_c$' -j 1
+ctest --test-dir build_debug --output-on-failure -R '^llvm_gcc_c_torture_20010605_2_c$' -j 1
 ```
 
 ## Notes for Handoff

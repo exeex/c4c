@@ -75,6 +75,8 @@ enum class TokenKind {
   KwUInt128,     // __uint128_t
   KwAutoType,    // __auto_type
   KwGnuAlignof,  // __alignof__
+  KwGccReal,     // __real__ / __real
+  KwGccImag,     // __imag__ / __imag
 
   // ---- Punctuation ----
   LParen,    // (

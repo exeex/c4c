@@ -445,6 +445,7 @@ TypeSpec Parser::parse_base_type() {
     bool has_float    = false;
     bool has_double   = false;
     bool has_bool     = false;
+    bool has_complex  = false;
     bool has_struct   = false;
     bool has_union    = false;
     bool has_enum     = false;
@@ -481,7 +482,7 @@ TypeSpec Parser::parse_base_type() {
             case TokenKind::KwFloat:  has_float  = true; consume(); break;
             case TokenKind::KwDouble: has_double = true; consume(); break;
             case TokenKind::KwBool:   has_bool   = true; consume(); break;
-            case TokenKind::KwComplex: consume(); break; // treat _Complex as plain double
+            case TokenKind::KwComplex: has_complex = true; consume(); break;
 
             case TokenKind::KwInt128:  ts.base = has_unsigned ? TB_UINT128 : TB_INT128;
                                        base_set = true; consume(); done = true; break;
@@ -607,9 +608,10 @@ TypeSpec Parser::parse_base_type() {
     } else if (has_bool) {
         ts.base = TB_BOOL;
     } else if (has_float) {
-        ts.base = TB_FLOAT;
+        ts.base = has_complex ? TB_COMPLEX_FLOAT : TB_FLOAT;
     } else if (has_double) {
-        ts.base = long_count > 0 ? TB_LONGDOUBLE : TB_DOUBLE;
+        if (has_complex) ts.base = long_count > 0 ? TB_COMPLEX_LONGDOUBLE : TB_COMPLEX_DOUBLE;
+        else ts.base = long_count > 0 ? TB_LONGDOUBLE : TB_DOUBLE;
     } else if (has_char) {
         ts.base = has_unsigned ? TB_UCHAR : (has_signed ? TB_SCHAR : TB_CHAR);
     } else if (has_short) {
@@ -618,6 +620,8 @@ TypeSpec Parser::parse_base_type() {
         ts.base = has_unsigned ? TB_ULONGLONG : TB_LONGLONG;
     } else if (long_count == 1) {
         ts.base = has_unsigned ? TB_ULONG : TB_LONG;
+    } else if (has_complex) {
+        ts.base = TB_COMPLEX_DOUBLE;  // __complex__ with no type = double _Complex
     } else {
         // plain int (possibly unsigned)
         ts.base = has_unsigned ? TB_UINT : TB_INT;

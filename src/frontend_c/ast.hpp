@@ -50,6 +50,9 @@ enum TypeBase {
     TB_UINT128,     // __uint128_t
     TB_VA_LIST,     // __builtin_va_list / __va_list
     TB_FUNC_PTR,    // function pointer type (from cast/sizeof)
+    TB_COMPLEX_FLOAT,      // __complex__ float / float _Complex
+    TB_COMPLEX_DOUBLE,     // __complex__ double / double _Complex
+    TB_COMPLEX_LONGDOUBLE, // __complex__ long double
 };
 
 struct TypeSpec {
@@ -103,6 +106,8 @@ enum NodeKind {
     NK_COMPOUND_LIT,    // (type){...} : type + children=init items
     NK_VA_ARG,          // __builtin_va_arg(ap, type) : left=ap
     NK_GENERIC,         // _Generic(expr, type1: val1, ...) : left=ctrl_expr,
+    NK_REAL_PART,       // __real__ expr : left=expr
+    NK_IMAG_PART,       // __imag__ expr : left=expr
                         // children[i]=NK_CAST{type=assoc_type,left=val,ival=1 if default}
 
     // Initializer

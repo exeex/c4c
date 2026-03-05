@@ -69,6 +69,8 @@ const char *token_kind_name(TokenKind kind) {
     case TokenKind::KwUInt128:      return "KW___uint128_t";
     case TokenKind::KwAutoType:     return "KW___auto_type";
     case TokenKind::KwGnuAlignof:   return "KW___alignof__";
+    case TokenKind::KwGccReal:      return "KW___real__";
+    case TokenKind::KwGccImag:      return "KW___imag__";
 
     // Punctuation
     case TokenKind::LParen:    return "LPAREN";
@@ -223,6 +225,8 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions) {
   if (s == "__uint128_t")                       return TokenKind::KwUInt128;
   if (s == "__auto_type")                       return TokenKind::KwAutoType;
   if (s == "__alignof__" || s == "__alignof")   return TokenKind::KwGnuAlignof;
+  if (s == "__real__" || s == "__real")         return TokenKind::KwGccReal;
+  if (s == "__imag__" || s == "__imag")         return TokenKind::KwGccImag;
 
   return TokenKind::Identifier;
 }
