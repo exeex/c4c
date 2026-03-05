@@ -15,7 +15,7 @@ set(EXAMPLE_C "${PROJECT_SOURCE_DIR}/tests/tiny_c2ll/example.c")
 set(EXAMPLE_LL "${CMAKE_BINARY_DIR}/example.ll")
 file(GLOB NEGATIVE_TEST_SRCS CONFIGURE_DEPENDS
      "${PROJECT_SOURCE_DIR}/tests/tiny_c2ll/bad_*.c")
-option(NEGATIVE_TESTS_ENFORCE "Require negative_tests bad_*.c cases to fail compilation (non-zero exit)" OFF)
+option(NEGATIVE_TESTS_ENFORCE "Require negative_tests bad_*.c cases to fail compilation (non-zero exit)" ON)
 
 set(FRONTEND_CXX_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend_c/driver.cpp"

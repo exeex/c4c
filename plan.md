@@ -1,6 +1,6 @@
 # tiny-c2ll Plan (Handoff Snapshot)
 
-Last updated: 2026-03-05
+Last updated: 2026-03-06
 
 ## Current State
 
@@ -19,7 +19,13 @@ ctest --test-dir build_debug --output-on-failure -j 8
 ```
 
 Current baseline from latest run:
-- `233/233` tests passed.
+- c-testsuite failures observed (from latest `ctest` run):
+  - `c_testsuite_tests_single_exec_00040_c`
+  - `c_testsuite_tests_single_exec_00152_c`
+  - `c_testsuite_tests_single_exec_00181_c`
+  - `c_testsuite_tests_single_exec_00182_c`
+  - `c_testsuite_tests_single_exec_00209_c`
+  - `c_testsuite_tests_single_exec_00220_c`
 
 ## Test Topology
 
@@ -40,6 +46,13 @@ Current baseline from latest run:
    - `0006_dollar_identifier.c`
 2. c-testsuite known backend bug case is excluded from allowlist:
    - `tests/single-exec/00216.c`
+3. Current c-testsuite failing cases to fix:
+   - `tests/single-exec/00040.c`
+   - `tests/single-exec/00152.c`
+   - `tests/single-exec/00181.c`
+   - `tests/single-exec/00182.c`
+   - `tests/single-exec/00209.c`
+   - `tests/single-exec/00220.c`
 
 ### Fix Policy
 
@@ -55,6 +68,8 @@ Current baseline from latest run:
 1. Fix Unicode string/char literal semantics end-to-end.
 2. Fix `$` identifier behavior compatibility (or produce explicit, tested policy).
 3. Fix backend IR correctness for `00216.c` aggregate/global lowering.
+4. Fix c-testsuite regressions:
+   - `00040.c`, `00152.c`, `00181.c`, `00182.c`, `00209.c`, `00220.c`
 
 ### Phase B: Preprocessor Completion
 
@@ -109,4 +124,3 @@ bash scripts/full_scan.sh
   - `tests/ccc-review-tests/`
   - `tests/c-testsuite/`
   - `tests/cmake/`
-
