@@ -4384,7 +4384,13 @@ void IRBuilder::emit_stmt(Node* n) {
       rv = coerce(rv, ret_ts, current_fn_ret_llty_);
       // If returning an array/vector type and the value is an address (from
       // compound literal or array var), load the actual value before returning.
-      if (!current_fn_ret_llty_.empty() && current_fn_ret_llty_[0] == '[' &&
+      // Exception: NK_VAR and NK_DEREF of pure vector (is_vector, rank==1) already
+      // return a loaded value from codegen_expr — don't reload in those cases.
+      bool already_loaded = (ret_ts.is_vector && ret_ts.array_rank == 1 &&
+                             n->left &&
+                             (n->left->kind == NK_VAR || n->left->kind == NK_DEREF));
+      if (!already_loaded &&
+          !current_fn_ret_llty_.empty() && current_fn_ret_llty_[0] == '[' &&
           is_array_ty(ret_ts) && ret_ts.ptr_level == 0 && !ret_ts.is_ptr_to_array &&
           n->left && (n->left->kind == NK_COMPOUND_LIT || n->left->kind == NK_VAR ||
                       n->left->kind == NK_CAST || n->left->kind == NK_INDEX)) {

@@ -3,6 +3,7 @@
 20000223-1.c
 20000722-1.c
 # 20010122-1.c  # non-frontend blocker on arm64: undefined ___builtin_return_address/_alloca
+# 20010209-1.c  # FRONTEND_FAIL: GCC nested functions extension not supported
 20010123-1.c
 20010605-2.c
 20010924-1.c
@@ -63,6 +64,7 @@ pr38533.c
 pr40022.c
 pr40657.c
 pr41239.c
+# pr41935.c  # FRONTEND_FAIL: VLA struct member + __builtin_offsetof with subscript not supported
 pr43236.c
 pr44468.c
 pr45695.c
@@ -93,6 +95,7 @@ pr78726.c
 pr79354.c
 pr79737-2.c
 pr80421.c
+# pr80692.c  # FRONTEND_FAIL: DFP (_Decimal64) extension not supported
 pr81588.c
 pr82954.c
 pr84478.c
@@ -941,6 +944,7 @@ builtin-constant.c
 # builtins/stpncpy-chk.c  # CLANG_COMPILE_FAIL: GCC extension not supported by clang
 # builtins/stpncpy-chk-lib.c  # CLANG_COMPILE_FAIL: GCC extension not supported by clang
 # builtins/strcat.c  # CLANG_COMPILE_FAIL: GCC extension not supported by clang
+# builtins/strcat-chk.c  # FRONTEND_FAIL: complex __builtin_strcat_chk macros, multiple parse errors
 # builtins/strcat-chk-lib.c  # CLANG_COMPILE_FAIL: GCC extension not supported by clang
 # builtins/strcat-lib.c  # CLANG_COMPILE_FAIL or BACKEND_FAIL
 # builtins/strchr.c  # CLANG_COMPILE_FAIL: GCC extension not supported by clang
@@ -1529,6 +1533,8 @@ pr71335.c
 # pr71494.c  # CLANG_COMPILE_FAIL: GCC extension not supported by clang
 pr71550.c
 pr71554.c
+pr71626-1.c
+pr71626-2.c
 pr71631.c
 pr71700.c
 pr7284-1.c

@@ -1036,8 +1036,8 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
             consume();  // (
             if (check(TokenKind::LParen)) {
                 consume();  // (
-                if (check(TokenKind::Identifier) && cur().lexeme == "vector_size") {
-                    consume();  // vector_size
+                if (check(TokenKind::Identifier) && (cur().lexeme == "vector_size" || cur().lexeme == "__vector_size__")) {
+                    consume();  // vector_size / __vector_size__
                     if (check(TokenKind::LParen)) {
                         consume();  // (
                         Node* sz_expr = parse_assign_expr();
