@@ -43,6 +43,16 @@ set_target_properties(frontend_cxx_stage1 PROPERTIES
 )
 target_compile_options(frontend_cxx_stage1 PRIVATE -Wall -Wextra -Wpedantic)
 
+add_executable(frontend_cxx_stage2
+    "${PROJECT_SOURCE_DIR}/src/frontend_c/driver_stage2.cpp"
+)
+set_target_properties(frontend_cxx_stage2 PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    OUTPUT_NAME "tiny-c2ll-stage2"
+)
+target_compile_options(frontend_cxx_stage2 PRIVATE -Wall -Wextra -Wpedantic)
+
 add_executable(frontend_cxx_preprocessor_tests
     "${PROJECT_SOURCE_DIR}/tests/preprocessor/frontend_cxx_preprocessor_tests.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend_c/preprocessor.cpp"

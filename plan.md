@@ -83,3 +83,80 @@ PRUNE_FAILED_ALLOWLIST=0 ./scripts/check_progress_llvm_gcc_c_torture.sh
 
 ctest --test-dir build_debug --output-on-failure -R '^llvm_gcc_c_torture_20010122_1_c$' -j 1
 ```
+
+## Linux Stage2 Blockers (Ubuntu, 2026-03-06)
+
+Context:
+- `CC=/workspaces/compiler/build_linux/tiny-c2ll-stage2`
+- Kbuild/assembler probe is now OK.
+- Current stop is frontend parse failures on preprocessed Linux sources.
+
+### Repro Setup (shared)
+
+Source file:
+- `tests/linux/arch/arm64/kernel/vdso/vgettimeofday.c`
+
+Shared preprocess command:
+
+```bash
+clang -E -P -x c \
+  -nostdinc \
+  -Itests/linux/arch/arm64/include \
+  -Itests/linux-build/arch/arm64/include/generated \
+  -Itests/linux/include \
+  -Itests/linux-build/include \
+  -Itests/linux/arch/arm64/include/uapi \
+  -Itests/linux-build/arch/arm64/include/generated/uapi \
+  -Itests/linux/include/uapi \
+  -Itests/linux-build/include/generated/uapi \
+  -include tests/linux/include/linux/compiler-version.h \
+  -include tests/linux/include/linux/kconfig.h \
+  -include tests/linux/include/linux/compiler_types.h \
+  -D__KERNEL__ --target=aarch64-linux-gnu -fintegrated-as -mlittle-endian \
+  -std=gnu11 -fshort-wchar -funsigned-char -fno-common -fno-PIE -fno-strict-aliasing \
+  -ffixed-x18 -DBUILD_VDSO -O2 -mcmodel=tiny \
+  -include tests/linux/lib/vdso/gettimeofday.c \
+  -Itests/linux/arch/arm64/kernel/vdso -Itests/linux-build/arch/arm64/kernel/vdso \
+  tests/linux/arch/arm64/kernel/vdso/vgettimeofday.c \
+  -o /tmp/vgettimeofday.i
+```
+
+Shared frontend compile command:
+
+```bash
+./build_linux/tiny-c2ll-stage1 /tmp/vgettimeofday.i -o /tmp/vgettimeofday.ll 2>/tmp/vgettimeofday.err || true
+```
+
+### 4 Concrete Failing Cases
+
+1. `__typeof_unqual__` cast expression fails.
+   - File: `tests/linux/arch/arm64/kernel/vdso/vgettimeofday.c` (preprocessed `/tmp/vgettimeofday.i`)
+   - Check:
+   ```bash
+   grep -n "expected RPAREN but got 'volatile' at line 275" /tmp/vgettimeofday.err
+   ```
+
+2. GNU statement-expression + inline asm expansion region fails.
+   - File: `tests/linux/arch/arm64/kernel/vdso/vgettimeofday.c` (preprocessed `/tmp/vgettimeofday.i`)
+   - Check:
+   ```bash
+   grep -n "expected RPAREN but got '\\*' at line 812" /tmp/vgettimeofday.err
+   ```
+
+3. `typeof(...)` + `sizeof(...)` heavy macro expansion fails.
+   - File: `tests/linux/arch/arm64/kernel/vdso/vgettimeofday.c` (preprocessed `/tmp/vgettimeofday.i`)
+   - Check:
+   ```bash
+   grep -n "expected RPAREN but got 'sizeof' at line 2252" /tmp/vgettimeofday.err
+   ```
+
+4. Instrumentation macro expression path fails (constant/paren-rich call site).
+   - File: `tests/linux/arch/arm64/kernel/vdso/vgettimeofday.c` (preprocessed `/tmp/vgettimeofday.i`)
+   - Check:
+   ```bash
+   grep -n "expected RPAREN but got '0' at line 3630" /tmp/vgettimeofday.err
+   ```
+
+Action next:
+1. Add parser coverage for `__typeof_unqual__(expr)` and qualifier-bearing GNU `typeof` forms.
+2. Re-test same file and confirm line-275 family disappears before tackling downstream cascades.

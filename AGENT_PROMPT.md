@@ -53,14 +53,17 @@ Primary goal now:
 ## Suggested Commands
 
 ```bash
-cmake -S . -B build_debug
-cmake --build build_debug -j8
+# sandbox build path for agent:
+export AGENT_NAME=claude
+
+cmake -S . -B build_${AGENT_NAME}
+cmake --build build_${AGENT_NAME} -j8
 
 # First-fail loop for focused allowlist
 PRUNE_FAILED_ALLOWLIST=0 ./scripts/check_progress_llvm_gcc_c_torture.sh
 
 # Single-case repro
-ctest --test-dir build_debug --output-on-failure -R '^llvm_gcc_c_torture_20010122_1_c$' -j 1
+ctest --test-dir build_${AGENT_NAME} --output-on-failure -R '^llvm_gcc_c_torture_20010122_1_c$' -j 1
 ```
 
 ## Exit Criteria Per Change

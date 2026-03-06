@@ -4,3 +4,6 @@
 [submodule "tests/llvm-test-suite"]
 	path = tests/llvm-test-suite
 	url = https://github.com/llvm/llvm-test-suite.git
+[submodule "tests/linux"]
+	path = tests/linux
+	url = https://github.com/torvalds/linux.git
