@@ -151,6 +151,8 @@ enum NodeKind {
     NK_STRUCT_DEF,      // struct/union type definition
     NK_ENUM_DEF,        // enum type definition
 
+    NK_OFFSETOF,        // __builtin_offsetof(type, member): type=base_type, name=field_path
+
     // Top-level
     NK_PROGRAM,         // root node: children = top-level items
 };

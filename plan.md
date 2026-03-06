@@ -41,6 +41,11 @@ Recent completed slices now reflected in working tree:
 - IR builder: more builtins (`ffs/clz/ctz/popcount/parity`, `copysign`, `nan`, `is*`), complex compound assignment/conjugate, safer `void*` GEP element typing
 - allowlist: commented known non-frontend blockers (`bcp-1.c`, `comp-goto-1.c`)
 
+Latest slice (2026-03-06, follow-up handoff):
+- parser: added `NK_OFFSETOF` support path in `parse_primary()` for `__builtin_offsetof(type, member[.submember])`
+- parser: wired struct definition map updates so parse-time constant evaluation can resolve struct field offsets
+- note: focused allowlist is kept in the frontend-failure list form (not pruned-to-only-last-fail form)
+
 Action policy:
 1. Skip/comment non-frontend blocker cases in allowlist.
 2. Continue first-fail loop until next actionable frontend failure.

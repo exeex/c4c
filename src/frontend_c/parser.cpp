@@ -60,11 +60,80 @@ static long long sizeof_base(TypeBase b) {
     }
 }
 
-static bool eval_const_int(Node* n, long long* out) {
+static long long align_base(TypeBase b, int ptr_level) {
+    if (ptr_level > 0) return 8;
+    switch (b) {
+        case TB_BOOL: case TB_CHAR: case TB_SCHAR: case TB_UCHAR: return 1;
+        case TB_SHORT: case TB_USHORT: return 2;
+        case TB_INT: case TB_UINT: case TB_FLOAT: case TB_ENUM: return 4;
+        default: return 8;
+    }
+}
+
+static bool eval_const_int(Node* n, long long* out,
+    const std::unordered_map<std::string, Node*>* struct_map = nullptr);
+
+// Helper: compute offsetof(tag, field_name) using struct_tag_def_map
+static bool compute_offsetof(const char* tag, const char* field_name,
+    const std::unordered_map<std::string, Node*>* struct_map, long long* out) {
+    if (!struct_map || !tag || !field_name) return false;
+    auto it = struct_map->find(tag);
+    if (it == struct_map->end()) return false;
+    Node* sd = it->second;
+    if (!sd || sd->kind != NK_STRUCT_DEF) return false;
+    std::string path(field_name);
+    std::string head = path;
+    std::string tail;
+    size_t dot = path.find('.');
+    if (dot != std::string::npos) {
+        head = path.substr(0, dot);
+        tail = path.substr(dot + 1);
+    }
+
+    long long offset = 0;
+    for (int i = 0; i < sd->n_fields; i++) {
+        Node* f = sd->fields[i];
+        if (!f) continue;
+        long long align = align_base(f->type.base, f->type.ptr_level);
+        // Align offset
+        offset = (offset + align - 1) / align * align;
+        if (f->name && head == f->name) {
+            if (tail.empty()) {
+                *out = offset;
+                return true;
+            }
+            if ((f->type.base == TB_STRUCT || f->type.base == TB_UNION) && f->type.tag) {
+                long long inner = 0;
+                if (!compute_offsetof(f->type.tag, tail.c_str(), struct_map, &inner)) return false;
+                *out = offset + inner;
+                return true;
+            }
+            return false;
+        }
+        // Advance by field size
+        long long sz = sizeof_base(f->type.base);
+        if (f->type.ptr_level > 0) sz = 8;
+        if (f->type.array_rank > 0) {
+            for (int d = 0; d < f->type.array_rank; d++)
+                if (f->type.array_dims[d] > 0) sz *= f->type.array_dims[d];
+        }
+        offset += sz;
+    }
+    return false;
+}
+
+static bool eval_const_int(Node* n, long long* out,
+    const std::unordered_map<std::string, Node*>* struct_map) {
     if (!n) return false;
     if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) {
         *out = n->ival;
         return true;
+    }
+    if (n->kind == NK_OFFSETOF) {
+        if (n->type.base == TB_STRUCT || n->type.base == TB_UNION) {
+            return compute_offsetof(n->type.tag, n->name, struct_map, out);
+        }
+        return false;
     }
     if (n->kind == NK_SIZEOF_TYPE) {
         // sizeof(type): use LP64 sizes
@@ -84,14 +153,14 @@ static bool eval_const_int(Node* n, long long* out) {
     }
     if (n->kind == NK_UNARY && n->op && strcmp(n->op, "-") == 0 && n->left) {
         long long v;
-        if (!eval_const_int(n->left, &v)) return false;
+        if (!eval_const_int(n->left, &v, struct_map)) return false;
         *out = -v;
         return true;
     }
     if (n->kind == NK_BINOP && n->op) {
         long long l, r;
-        if (!eval_const_int(n->left, &l)) return false;
-        if (!eval_const_int(n->right, &r)) return false;
+        if (!eval_const_int(n->left, &l, struct_map)) return false;
+        if (!eval_const_int(n->right, &r, struct_map)) return false;
         if (strcmp(n->op, "+")  == 0) { *out = l + r; return true; }
         if (strcmp(n->op, "-")  == 0) { *out = l - r; return true; }
         if (strcmp(n->op, "*")  == 0) { *out = l * r; return true; }
@@ -770,7 +839,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
             Node* sz = parse_assign_expr();
             ts.array_size_expr = sz;
             long long cv = 0;
-            if (sz && eval_const_int(sz, &cv) && cv > 0) {
+            if (sz && eval_const_int(sz, &cv, &struct_tag_def_map_) && cv > 0) {
                 dim = cv;
             } else if (sz && sz->kind == NK_INT_LIT) {
                 dim = sz->ival;
@@ -960,7 +1029,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
                         consume();  // (
                         Node* sz_expr = parse_assign_expr();
                         long long sz_val = 0;
-                        eval_const_int(sz_expr, &sz_val);
+                        eval_const_int(sz_expr, &sz_val, &struct_tag_def_map_);
                         expect(TokenKind::RParen);  // )
                         expect(TokenKind::RParen);  // ))
                         expect(TokenKind::RParen);  // )))
@@ -1231,6 +1300,8 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         for (int i = 0; i < sd->n_fields; ++i) sd->fields[i] = fields[i];
     }
 
+    // Record concrete struct/union definition for parse-time offsetof evaluation.
+    if (sd->name) struct_tag_def_map_[sd->name] = sd;
     struct_defs_.push_back(sd);
     return sd;
 }
@@ -1900,6 +1971,33 @@ Node* Parser::parse_primary() {
     // Identifier / label address
     if (check(TokenKind::Identifier)) {
         const char* nm = arena_.strdup(cur().lexeme);
+        // __builtin_offsetof(type, member) — parse as constant expression when possible
+        if (strcmp(nm, "__builtin_offsetof") == 0) {
+            consume();
+            expect(TokenKind::LParen);
+            TypeSpec base_ts = parse_type_name();
+            expect(TokenKind::Comma);
+            if (!check(TokenKind::Identifier)) {
+                throw std::runtime_error("expected member name in __builtin_offsetof");
+            }
+            std::string field_path = cur().lexeme;
+            consume();
+            while (match(TokenKind::Dot)) {
+                if (!check(TokenKind::Identifier)) {
+                    throw std::runtime_error("expected member name after '.' in __builtin_offsetof");
+                }
+                field_path += ".";
+                field_path += cur().lexeme;
+                consume();
+            }
+            expect(TokenKind::RParen);
+            Node* off = make_node(NK_OFFSETOF, ln);
+            off->type = base_ts;
+            off->name = arena_.strdup(field_path);
+            long long cv = 0;
+            if (eval_const_int(off, &cv, &struct_tag_def_map_)) return make_int_lit(cv, ln);
+            return off;
+        }
         // __builtin_types_compatible_p(type1, type2) — evaluate at parse time
         if (strcmp(nm, "__builtin_types_compatible_p") == 0) {
             consume();
