@@ -2066,12 +2066,9 @@ Node* Parser::parse_primary() {
         return parse_init_list();
     }
 
-    // Fallback: return a zero literal for unrecognized primaries
-    if (!at_end()) {
-        // skip the token to avoid infinite loop
-        consume();
-    }
-    return make_int_lit(0, ln);
+    // Hard error for unrecognized primaries (was permissive fallback to 0).
+    std::string tok = at_end() ? "<eof>" : cur().lexeme;
+    throw std::runtime_error("unexpected token in expression: " + tok);
 }
 
 // ── initializer parsing ───────────────────────────────────────────────────────

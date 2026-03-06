@@ -11,6 +11,21 @@ Last updated: 2026-03-06
   - `frontend_cxx_preprocessor_tests`
 - `20010605-2.c` frontend fix is completed (`__real__/__imag__` support).
 
+## Agent Delivery Rules (Added 2026-03-06)
+
+These rules are mandatory for future Claude/Codex repair loops:
+
+1. Before starting implementation, create `todo_lists.md` in repo root.
+2. During work, keep `todo_lists.md` updated as the single acceptance checklist.
+3. Before final close-out, run full test suite:
+   - `ctest --test-dir build_debug --output-on-failure -j 8`
+4. If full-suite run regresses previously passing cases, task is **not done**.
+   - Fix regressions first; partial progress only counts as interim.
+5. At handoff/close-out:
+   - If fully done: delete `todo_lists.md` before final commit.
+   - If not fully done (token/time limit): keep `todo_lists.md` for acceptance.
+6. Acceptance owners are user + GPT Codex; unfinished work is validated against `todo_lists.md`.
+
 ## Latest Validation (2026-03-06, Claude handoff close-out)
 
 - `git stash list`: empty (no pending stash to apply).

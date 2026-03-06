@@ -164,6 +164,10 @@ static int llty_bits(const std::string& llty) {
   return 32;
 }
 
+static bool discards_pointee_const(const TypeSpec& from, const TypeSpec& to) {
+  return from.ptr_level > 0 && to.ptr_level > 0 && from.is_const && !to.is_const;
+}
+
 // Forward declaration (defined later near global_const)
 static int infer_array_size_from_init(Node* init);
 // Forward declaration of static integer constant evaluator (defined near global_const)
@@ -1294,6 +1298,8 @@ std::string IRBuilder::codegen_lval(Node* n) {
     auto it = local_slots_.find(n->name);
     if (it != local_slots_.end()) return it->second;
     // Global variable
+    if (!global_types_.count(n->name))
+      throw std::runtime_error(std::string("assignment to undeclared identifier: ") + n->name);
     return std::string("@") + n->name;
   }
 
@@ -1699,7 +1705,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
     if (func_sigs_.count(n->name)) {
       return std::string("@") + n->name;
     }
-    return "0";
+    throw std::runtime_error(std::string("use of undeclared identifier: ") + n->name);
   }
 
   case NK_ADDR: {
@@ -1831,6 +1837,8 @@ std::string IRBuilder::codegen_expr(Node* n) {
     if (strcmp(n->op, "++") == 0 || strcmp(n->op, "++pre") == 0) {
       // Prefix ++: load, add 1, store, return new value
       TypeSpec ts = expr_type(n->left);
+      if (ts.is_const)
+        throw std::runtime_error("increment of const-qualified lvalue");
       std::string llty = llvm_ty(ts);
       std::string ptr = codegen_lval(n->left);
       std::string old_val = fresh_tmp();
@@ -1850,6 +1858,8 @@ std::string IRBuilder::codegen_expr(Node* n) {
     if (strcmp(n->op, "--") == 0 || strcmp(n->op, "--pre") == 0) {
       // Prefix --: load, sub 1, store, return new value
       TypeSpec ts = expr_type(n->left);
+      if (ts.is_const)
+        throw std::runtime_error("decrement of const-qualified lvalue");
       std::string llty = llvm_ty(ts);
       std::string ptr = codegen_lval(n->left);
       std::string old_val = fresh_tmp();
@@ -1872,6 +1882,8 @@ std::string IRBuilder::codegen_expr(Node* n) {
   case NK_POSTFIX: {
     // postfix ++ or --
     TypeSpec ts = expr_type(n->left);
+    if (ts.is_const)
+      throw std::runtime_error("increment/decrement of const-qualified lvalue");
     std::string llty = llvm_ty(ts);
     std::string ptr = codegen_lval(n->left);
     std::string old_val = fresh_tmp();
@@ -2373,6 +2385,8 @@ std::string IRBuilder::codegen_expr(Node* n) {
   case NK_ASSIGN: {
     const char* aop = n->op ? n->op : "=";
     TypeSpec lts = expr_type(n->left);
+    if (lts.is_const)
+      throw std::runtime_error("assignment to const-qualified lvalue");
     std::string llty = llvm_ty(lts);
 
     if (strcmp(aop, "=") == 0) {
@@ -2555,6 +2569,8 @@ std::string IRBuilder::codegen_expr(Node* n) {
   case NK_COMPOUND_ASSIGN: {
     // lhs op= rhs
     TypeSpec lts = expr_type(n->left);
+    if (lts.is_const)
+      throw std::runtime_error("compound assignment to const-qualified lvalue");
     std::string llty = llvm_ty(lts);
     std::string ptr = codegen_lval(n->left);
     std::string cur = fresh_tmp();
@@ -2712,6 +2728,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
     TypeSpec ret_ts = int_ts();
     bool variadic = false;
     std::vector<TypeSpec> param_types;
+    bool has_known_signature = false;
     bool is_indirect = false;
     std::string fn_ptr;
 
@@ -2760,6 +2777,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
         ret_ts = sig_it->second.ret_type;
         variadic = sig_it->second.variadic;
         param_types = sig_it->second.param_types;
+        has_known_signature = true;
       } else if (global_types_.count(fn_name) || local_slots_.count(fn_name)) {
         // It's a variable (e.g. function pointer) — use indirect call
         is_indirect = true;
@@ -2770,6 +2788,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
           ret_ts = fsit->second.ret_type;
           variadic = fsit->second.variadic;
           param_types = fsit->second.param_types;
+          has_known_signature = true;
         } else {
           ret_ts = expr_type(n);
         }
@@ -2830,6 +2849,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
           if (param_types.empty()) {
             variadic = fsit->second.variadic;
             param_types = fsit->second.param_types;
+            has_known_signature = true;
           }
         }
       }
@@ -3396,6 +3416,20 @@ std::string IRBuilder::codegen_expr(Node* n) {
     }
     // ── End builtin handling ──────────────────────────────────────────────────
 
+    if (has_known_signature && !(param_types.empty() && !variadic)) {
+      size_t argc = static_cast<size_t>(n->n_children);
+      size_t fixed = param_types.size();
+      bool bad_arity = variadic ? (argc < fixed) : (argc != fixed);
+      if (bad_arity) {
+        std::string name = !fn_name.empty() ? fn_name : "<function pointer>";
+        throw std::runtime_error(
+            "wrong number of arguments in call to " + name +
+            ": expected " + (variadic ? ("at least " + std::to_string(fixed))
+                                      : std::to_string(fixed)) +
+            ", got " + std::to_string(argc));
+      }
+    }
+
     // Emit argument evaluations
     std::vector<std::string> arg_vals;
     std::vector<TypeSpec> arg_types;
@@ -3582,6 +3616,14 @@ std::string IRBuilder::codegen_expr(Node* n) {
 
   case NK_CAST: {
     TypeSpec from_ts = expr_type(n->left);
+    if (discards_pointee_const(from_ts, n->type))
+      throw std::runtime_error("cast discards const qualifier");
+    if ((n->type.base == TB_STRUCT || n->type.base == TB_UNION) &&
+        n->type.ptr_level == 0 && n->type.tag) {
+      bool missing = (struct_defs_.find(n->type.tag) == struct_defs_.end());
+      if (missing)
+        throw std::runtime_error(std::string("cast to incomplete type: ") + n->type.tag);
+    }
     std::string v = codegen_expr(n->left);
     return coerce(v, from_ts, llvm_ty(n->type));
   }
@@ -4499,14 +4541,16 @@ void IRBuilder::emit_stmt(Node* n) {
   }
 
   case NK_BREAK: {
-    if (!break_stack_.empty())
-      emit_terminator("br label %" + break_stack_.back());
+    if (break_stack_.empty())
+      throw std::runtime_error("break statement not within loop or switch");
+    emit_terminator("br label %" + break_stack_.back());
     break;
   }
 
   case NK_CONTINUE: {
-    if (!loop_stack_.empty())
-      emit_terminator("br label %" + loop_stack_.back().first);
+    if (loop_stack_.empty())
+      throw std::runtime_error("continue statement not within loop");
+    emit_terminator("br label %" + loop_stack_.back().first);
     break;
   }
 
@@ -4557,13 +4601,14 @@ void IRBuilder::emit_stmt(Node* n) {
       if (!node) return;
       if (node->kind == NK_CASE) {
         long long cv = node->left ? static_eval_int(node->left, enum_consts_) : 0;
-        if (!sw_info.case_labels.count(cv)) {
-          sw_info.case_labels[cv] = fresh_label("switch_case");
-        }
+        if (sw_info.case_labels.count(cv))
+          throw std::runtime_error("duplicate case label in switch");
+        sw_info.case_labels[cv] = fresh_label("switch_case");
         scan_cases(node->body);
       } else if (node->kind == NK_DEFAULT) {
-        if (sw_info.default_label.empty())
-          sw_info.default_label = fresh_label("switch_def");
+        if (!sw_info.default_label.empty())
+          throw std::runtime_error("multiple default labels in switch");
+        sw_info.default_label = fresh_label("switch_def");
         scan_cases(node->body);
       } else if (node->kind == NK_BLOCK) {
         for (int i = 0; i < node->n_children; i++)
@@ -4603,7 +4648,8 @@ void IRBuilder::emit_stmt(Node* n) {
   }
 
   case NK_CASE: {
-    if (switch_stack_.empty()) break;
+    if (switch_stack_.empty())
+      throw std::runtime_error("case label not within a switch statement");
     SwitchInfo& sw = switch_stack_.back();
     long long cv = n->left ? static_eval_int(n->left, enum_consts_) : 0;
     auto it = sw.case_labels.find(cv);
@@ -4616,7 +4662,8 @@ void IRBuilder::emit_stmt(Node* n) {
   }
 
   case NK_DEFAULT: {
-    if (switch_stack_.empty()) break;
+    if (switch_stack_.empty())
+      throw std::runtime_error("default label not within a switch statement");
     SwitchInfo& sw = switch_stack_.back();
     if (!sw.default_label.empty()) {
       emit_terminator("br label %" + sw.default_label);
