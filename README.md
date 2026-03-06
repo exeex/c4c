@@ -45,7 +45,10 @@ Both scripts use CMake + CTest and run `c_testsuite` tests in parallel.
 3. Configure with testsuite root:
 
 ```bash
-cmake -S . -B build -DC_TESTSUITE_ROOT=/path/to/c-testsuite
+# first time to init
+git submodule update --init tests/c-testsuite
+# in project root
+cmake -S . -B build -DC_TESTSUITE_ROOT=$PWD/tests/c-testsuite
 cmake --build build
 ctest --test-dir build --output-on-failure -L c_testsuite -j 8
 ```
@@ -59,8 +62,11 @@ If `tests/c-testsuite` exists in this repo, CMake auto-enables it without `-DC_T
 3. Configure with testsuite root:
 
 ```bash
+# first time to init
+git submodule update --init tests/llvm-test-suite
+# in project root
 cmake -S . -B build \
-  -DLLVM_TEST_SUITE_ROOT=/path/to/llvm-test-suite \
+  -DLLVM_TEST_SUITE_ROOT=$PWD/tests/llvm-test-suite \
   -DLLVM_GCC_C_TORTURE_STEP_TIMEOUT_SEC=20 \
   -DLLVM_GCC_C_TORTURE_TEST_TIMEOUT_SEC=90 \
   -DLLVM_GCC_C_TORTURE_RUN_MEM_MB=1024 \
