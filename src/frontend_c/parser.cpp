@@ -2215,6 +2215,8 @@ Node* Parser::parse_local_decl() {
         ts.array_size_expr = nullptr;
         const char* vname = nullptr;
         parse_declarator(ts, &vname);
+        // Skip K&R-style function-type suffix: `float fx ()` in local decls
+        if (check(TokenKind::LParen)) skip_paren_group();
         skip_attributes();
         skip_asm();
         skip_attributes();
@@ -2373,6 +2375,8 @@ Node* Parser::parse_top_level() {
         consume();  // *
         ts.ptr_level++;
         while (check(TokenKind::Star)) { consume(); ts.ptr_level++; }
+        // Skip qualifiers after * (e.g. `double (* const a[])`)
+        while (is_qualifier(cur().kind)) consume();
         if (check(TokenKind::Identifier)) {
             decl_name = arena_.strdup(cur().lexeme);
             consume();

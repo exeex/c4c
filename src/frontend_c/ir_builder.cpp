@@ -5038,6 +5038,10 @@ void IRBuilder::emit_function(Node* fn) {
       emit_terminator("ret void");
     else if (ret_llty == "ptr")
       emit_terminator("ret ptr null");
+    else if (ret_llty == "double")
+      emit_terminator("ret double " + fp_to_hex(0.0));
+    else if (ret_llty == "float")
+      emit_terminator("ret float " + fp_to_hex_float(0.0));
     else
       emit_terminator("ret " + ret_llty + " 0");
   }
