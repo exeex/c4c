@@ -3049,8 +3049,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
       // __builtin_constant_p(x) — return 0 (conservative: x is not a compile-time constant)
       if (fn_name == "__builtin_constant_p") {
         ret_ts = int_ts();
-        // Evaluate the argument for side effects but return 0
-        if (n->n_children >= 1) codegen_expr(n->children[0]);
+        // GCC's builtin does not evaluate its operand.
         return "0";
       }
       // __builtin_unreachable() — emit LLVM unreachable terminator
@@ -4352,27 +4351,31 @@ void IRBuilder::emit_stmt(Node* n) {
 
   case NK_IF: {
     TypeSpec cond_ts = expr_type(n->cond);
+
+    bool cond_is_builtin_constant_p = false;
+    if (n->cond && n->cond->kind == NK_CALL && n->cond->left &&
+        n->cond->left->kind == NK_VAR && n->cond->left->name &&
+        std::strcmp(n->cond->left->name, "__builtin_constant_p") == 0) {
+      cond_is_builtin_constant_p = true;
+    }
+
     std::string cond_val = codegen_expr(n->cond);
 
-    // Constant-fold: if cond_val is a known integer literal, skip dead branches
-    // This is critical for patterns like `if (__builtin_constant_p(x)) link_error();`
-    // where we return 0 for __builtin_constant_p and the branch must be eliminated.
-    {
+    // Fold only __builtin_constant_p(...) conditions. This avoids emitting dead
+    // fallback paths that intentionally reference undefined symbols.
+    if (cond_is_builtin_constant_p) {
       bool is_const_false = (cond_val == "0");
       bool is_const_true  = false;
       if (!is_const_false && !cond_val.empty()) {
-        // Check if it's a non-zero integer literal
         char* end = nullptr;
         long long iv = std::strtoll(cond_val.c_str(), &end, 10);
         if (end && *end == '\0' && iv != 0) is_const_true = true;
       }
       if (is_const_false) {
-        // Condition is always false: only emit else branch (if any)
         if (n->else_) emit_stmt(n->else_);
         break;
       }
       if (is_const_true) {
-        // Condition is always true: only emit then branch
         emit_stmt(n->then_);
         break;
       }
