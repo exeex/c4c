@@ -2411,6 +2411,18 @@ Node* Parser::parse_stmt() {
             break;
     }
 
+    // GCC __label__ local label declaration — treat as no-op
+    // e.g. __label__ foo, bar;
+    if (check(TokenKind::Identifier) && cur().lexeme == std::string_view("__label__")) {
+        consume();  // consume __label__
+        while (check(TokenKind::Identifier)) {
+            consume();  // consume label name
+            if (!match(TokenKind::Comma)) break;
+        }
+        match(TokenKind::Semi);
+        return make_node(NK_EMPTY, ln);
+    }
+
     // Identifier followed by colon → label
     if (check(TokenKind::Identifier) && check2(TokenKind::Colon)) {
         const char* lbl = arena_.strdup(cur().lexeme);

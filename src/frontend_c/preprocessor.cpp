@@ -870,6 +870,28 @@ Preprocessor::Preprocessor() {
   macros_["__UINTPTR_MAX__"]     = MacroDef{"__UINTPTR_MAX__",     false, false, {}, "18446744073709551615ULL"};
   macros_["__PTRDIFF_MAX__"]     = MacroDef{"__PTRDIFF_MAX__",     false, false, {}, "9223372036854775807LL"};
   macros_["__WCHAR_MAX__"]       = MacroDef{"__WCHAR_MAX__",       false, false, {}, "2147483647"};
+  // Floating-point limit macros (IEEE 754: float=32-bit, double=64-bit, long double=64-bit on arm64)
+  macros_["__FLT_MAX__"]         = MacroDef{"__FLT_MAX__",         false, false, {}, "3.40282347e+38F"};
+  macros_["__FLT_MIN__"]         = MacroDef{"__FLT_MIN__",         false, false, {}, "1.17549435e-38F"};
+  macros_["__FLT_EPSILON__"]     = MacroDef{"__FLT_EPSILON__",     false, false, {}, "1.19209290e-07F"};
+  macros_["__FLT_DIG__"]         = MacroDef{"__FLT_DIG__",         false, false, {}, "6"};
+  macros_["__FLT_MANT_DIG__"]    = MacroDef{"__FLT_MANT_DIG__",    false, false, {}, "24"};
+  macros_["__FLT_MAX_EXP__"]     = MacroDef{"__FLT_MAX_EXP__",     false, false, {}, "128"};
+  macros_["__FLT_MIN_EXP__"]     = MacroDef{"__FLT_MIN_EXP__",     false, false, {}, "(-125)"};
+  macros_["__DBL_MAX__"]         = MacroDef{"__DBL_MAX__",         false, false, {}, "1.7976931348623157e+308"};
+  macros_["__DBL_MIN__"]         = MacroDef{"__DBL_MIN__",         false, false, {}, "2.2250738585072014e-308"};
+  macros_["__DBL_EPSILON__"]     = MacroDef{"__DBL_EPSILON__",     false, false, {}, "2.2204460492503131e-16"};
+  macros_["__DBL_DIG__"]         = MacroDef{"__DBL_DIG__",         false, false, {}, "15"};
+  macros_["__DBL_MANT_DIG__"]    = MacroDef{"__DBL_MANT_DIG__",    false, false, {}, "53"};
+  macros_["__DBL_MAX_EXP__"]     = MacroDef{"__DBL_MAX_EXP__",     false, false, {}, "1024"};
+  macros_["__DBL_MIN_EXP__"]     = MacroDef{"__DBL_MIN_EXP__",     false, false, {}, "(-1021)"};
+  macros_["__LDBL_MAX__"]        = MacroDef{"__LDBL_MAX__",        false, false, {}, "1.7976931348623157e+308L"};
+  macros_["__LDBL_MIN__"]        = MacroDef{"__LDBL_MIN__",        false, false, {}, "2.2250738585072014e-308L"};
+  macros_["__LDBL_EPSILON__"]    = MacroDef{"__LDBL_EPSILON__",    false, false, {}, "2.2204460492503131e-16L"};
+  macros_["__LDBL_DIG__"]        = MacroDef{"__LDBL_DIG__",        false, false, {}, "15"};
+  macros_["__LDBL_MANT_DIG__"]   = MacroDef{"__LDBL_MANT_DIG__",   false, false, {}, "53"};
+  macros_["__LDBL_MAX_EXP__"]    = MacroDef{"__LDBL_MAX_EXP__",    false, false, {}, "1024"};
+  macros_["__LDBL_MIN_EXP__"]    = MacroDef{"__LDBL_MIN_EXP__",    false, false, {}, "(-1021)"};
 }
 
 std::string Preprocessor::preprocess_file(const std::string& path) {

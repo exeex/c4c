@@ -164,9 +164,6 @@ static int llty_bits(const std::string& llty) {
   return 32;
 }
 
-static bool discards_pointee_const(const TypeSpec& from, const TypeSpec& to) {
-  return from.ptr_level > 0 && to.ptr_level > 0 && from.is_const && !to.is_const;
-}
 
 // Forward declaration (defined later near global_const)
 static int infer_array_size_from_init(Node* init);
@@ -1260,14 +1257,19 @@ TypeSpec IRBuilder::field_type_from_path(const std::string& outer_tag,
     // Falling back to the first non-anon field only when no specific index.
     if (path.final_idx >= 0 && path.final_idx < (int)si.field_names.size()) {
       TypeSpec ft = si.field_types[path.final_idx];
-      if (si.field_array_sizes[path.final_idx] != -1)
+      if (si.field_array_sizes[path.final_idx] != -1) {
         ft.array_size = si.field_array_sizes[path.final_idx];
+        ft.inner_rank = -1;
+      }
       return ft;
     }
     for (size_t i = 0; i < si.field_names.size(); i++) {
       if (!si.field_is_anon[i]) {
         TypeSpec ft = si.field_types[i];
-        if (si.field_array_sizes[i] != -1) ft.array_size = si.field_array_sizes[i];
+        if (si.field_array_sizes[i] != -1) {
+          ft.array_size = si.field_array_sizes[i];
+          ft.inner_rank = -1;
+        }
         return ft;
       }
     }
@@ -1276,8 +1278,10 @@ TypeSpec IRBuilder::field_type_from_path(const std::string& outer_tag,
 
   if (path.final_idx >= 0 && path.final_idx < (int)si.field_names.size()) {
     TypeSpec ft = si.field_types[path.final_idx];
-    if (si.field_array_sizes[path.final_idx] != -1)
+    if (si.field_array_sizes[path.final_idx] != -1) {
       ft.array_size = si.field_array_sizes[path.final_idx];
+      ft.inner_rank = -1;
+    }
     return ft;
   }
   return int_ts();
@@ -1297,10 +1301,10 @@ std::string IRBuilder::codegen_lval(Node* n) {
     if (!n->name) throw std::runtime_error("var has no name");
     auto it = local_slots_.find(n->name);
     if (it != local_slots_.end()) return it->second;
-    // Global variable
-    if (!global_types_.count(n->name))
-      throw std::runtime_error(std::string("assignment to undeclared identifier: ") + n->name);
-    return std::string("@") + n->name;
+    // Global variable or function (functions are lvalue-addressable via &f)
+    if (global_types_.count(n->name) || func_sigs_.count(n->name))
+      return std::string("@") + n->name;
+    throw std::runtime_error(std::string("assignment to undeclared identifier: ") + n->name);
   }
 
   case NK_DEREF:
@@ -1837,7 +1841,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
     if (strcmp(n->op, "++") == 0 || strcmp(n->op, "++pre") == 0) {
       // Prefix ++: load, add 1, store, return new value
       TypeSpec ts = expr_type(n->left);
-      if (ts.is_const)
+      if (ts.is_const && ts.ptr_level == 0 && !is_array_ty(ts))
         throw std::runtime_error("increment of const-qualified lvalue");
       std::string llty = llvm_ty(ts);
       std::string ptr = codegen_lval(n->left);
@@ -1858,7 +1862,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
     if (strcmp(n->op, "--") == 0 || strcmp(n->op, "--pre") == 0) {
       // Prefix --: load, sub 1, store, return new value
       TypeSpec ts = expr_type(n->left);
-      if (ts.is_const)
+      if (ts.is_const && ts.ptr_level == 0 && !is_array_ty(ts))
         throw std::runtime_error("decrement of const-qualified lvalue");
       std::string llty = llvm_ty(ts);
       std::string ptr = codegen_lval(n->left);
@@ -1882,7 +1886,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
   case NK_POSTFIX: {
     // postfix ++ or --
     TypeSpec ts = expr_type(n->left);
-    if (ts.is_const)
+    if (ts.is_const && ts.ptr_level == 0 && !is_array_ty(ts))
       throw std::runtime_error("increment/decrement of const-qualified lvalue");
     std::string llty = llvm_ty(ts);
     std::string ptr = codegen_lval(n->left);
@@ -2385,7 +2389,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
   case NK_ASSIGN: {
     const char* aop = n->op ? n->op : "=";
     TypeSpec lts = expr_type(n->left);
-    if (lts.is_const)
+    if (lts.is_const && lts.ptr_level == 0 && !is_array_ty(lts))
       throw std::runtime_error("assignment to const-qualified lvalue");
     std::string llty = llvm_ty(lts);
 
@@ -2569,7 +2573,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
   case NK_COMPOUND_ASSIGN: {
     // lhs op= rhs
     TypeSpec lts = expr_type(n->left);
-    if (lts.is_const)
+    if (lts.is_const && lts.ptr_level == 0 && !is_array_ty(lts))
       throw std::runtime_error("compound assignment to const-qualified lvalue");
     std::string llty = llvm_ty(lts);
     std::string ptr = codegen_lval(n->left);
@@ -3616,8 +3620,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
 
   case NK_CAST: {
     TypeSpec from_ts = expr_type(n->left);
-    if (discards_pointee_const(from_ts, n->type))
-      throw std::runtime_error("cast discards const qualifier");
+    // Explicit casts are allowed to discard const in C (only a warning, not an error)
     if ((n->type.base == TB_STRUCT || n->type.base == TB_UNION) &&
         n->type.ptr_level == 0 && n->type.tag) {
       bool missing = (struct_defs_.find(n->type.tag) == struct_defs_.end());
@@ -3887,7 +3890,10 @@ static void emit_agg_init_impl(IRBuilder* irb, TypeSpec ts, const std::string& p
       }
       if (fi >= n_fields) break;  // designated item out of range; stop
       TypeSpec ft = si.field_types[fi];
-      if (si.field_array_sizes[fi] >= 0) ft.array_size = si.field_array_sizes[fi];
+      if (si.field_array_sizes[fi] >= 0) {
+        ft.array_size = si.field_array_sizes[fi];
+        ft.inner_rank = -1;
+      }
       std::string field_llty = irb->llvm_ty(ft);
       // Get a GEP for this field
       std::string fgep = irb->fresh_tmp();
@@ -4746,6 +4752,9 @@ void IRBuilder::emit_struct_def(Node* sd) {
       TypeSpec ft = si.field_types[i];
       if (si.field_array_sizes[i] >= 0) {
         ft.array_size = si.field_array_sizes[i];
+        // inner_rank is meaningless for struct fields stored via field_array_sizes;
+        // reset it so llvm_ty produces [N x elem] correctly.
+        ft.inner_rank = -1;
       }
       fields_str += llvm_ty(ft);
     }
@@ -5825,6 +5834,24 @@ void IRBuilder::emit_function(Node* fn) {
   if (sig.variadic) {
     if (!params_str.empty()) params_str += ", ";
     params_str += "...";
+  }
+
+  // Register C99 __func__ (and GCC __FUNCTION__/__PRETTY_FUNCTION__) as a
+  // local char[] constant holding the current function name.
+  {
+    std::string fname = current_fn_name_;
+    std::string str_global = get_string_global(fname);
+    int fname_len = (int)fname.size() + 1;  // include null terminator
+    TypeSpec func_ts;
+    func_ts.base       = TB_CHAR;
+    func_ts.is_const   = true;
+    func_ts.array_rank = 1;
+    func_ts.array_size = fname_len;
+    func_ts.array_dims[0] = fname_len;
+    for (const char* predef : {"__func__", "__FUNCTION__", "__PRETTY_FUNCTION__"}) {
+      local_types_[predef] = func_ts;
+      local_slots_[predef] = str_global;
+    }
   }
 
   // Pre-scan for user goto labels

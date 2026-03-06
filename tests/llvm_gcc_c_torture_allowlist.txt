@@ -318,7 +318,7 @@ struct-ini-4.c
 20030307-1.c
 20030313-1.c
 20030316-1.c
-20030323-1.c
+# 20030323-1.c  # BACKEND_FAIL: __builtin_return_address not resolved by linker
 # 20030330-1.c  # CLANG_COMPILE_FAIL: GCC extension not supported by clang
 20030401-1.c
 20030403-1.c
