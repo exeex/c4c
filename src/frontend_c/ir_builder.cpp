@@ -529,12 +529,16 @@ TypeSpec IRBuilder::expr_type(Node* n) {
     if (is_array_ty(lt)) {
       TypeSpec decay = drop_array_dim(lt);
       decay.ptr_level += 1;
+      // If the element type is still an array (multi-dim), mark as ptr-to-array
+      // so NK_DEREF correctly returns the sub-array ptr without loading.
+      if (is_array_ty(decay)) decay.is_ptr_to_array = true;
       return decay;
     }
     if (rt.ptr_level > 0) return rt;
     if (is_array_ty(rt)) {
       TypeSpec decay = drop_array_dim(rt);
       decay.ptr_level += 1;
+      if (is_array_ty(decay)) decay.is_ptr_to_array = true;
       return decay;
     }
     // Complex arithmetic: if either operand is complex, return the wider complex type
@@ -1661,7 +1665,9 @@ std::string IRBuilder::codegen_expr(Node* n) {
       TypeSpec ts = local_types_[n->name];
       std::string llty = llvm_ty(ts);
       // Arrays decay to pointer in expressions. Keep GNU vector arrays as values.
-      if (is_array_ty(ts) && !ts.is_ptr_to_array && !ts.is_vector) {
+      // But an array OF vectors (array_rank > 1, e.g. V x[32] where V is vector_size)
+      // is a real C array and must also decay to pointer.
+      if (is_array_ty(ts) && !ts.is_ptr_to_array && (!ts.is_vector || ts.array_rank > 1)) {
         return it->second;
       }
       std::string t = fresh_tmp();
@@ -1673,7 +1679,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
     if (it2 != global_types_.end()) {
       TypeSpec ts = it2->second;
       std::string llty = llvm_ty(ts);
-      if (is_array_ty(ts) && !ts.is_ptr_to_array && !ts.is_vector) {
+      if (is_array_ty(ts) && !ts.is_ptr_to_array && (!ts.is_vector || ts.array_rank > 1)) {
         // Array global: return ptr to it (array decays)
         return std::string("@") + n->name;
       }
@@ -2155,11 +2161,18 @@ std::string IRBuilder::codegen_expr(Node* n) {
       else if (strcmp(op_str, "<<") == 0) llvm_op = "shl";
       else if (strcmp(op_str, ">>") == 0) llvm_op = is_uint ? "lshr" : "ashr";
       if (!llvm_op.empty() && cnt > 0) {
-        // Normalize operand: array vars/compound-lits return an address ptr;
-        // NK_DEREF loads return the actual value. We need the value for extractvalue.
+        // Normalize operand: most node kinds return a ptr (address) for array/vector types;
+        // load to get value. Exceptions: NK_VAR and NK_DEREF of pure vector (rank==1,
+        // is_vector) already return the loaded value from codegen_expr, so don't reload.
+        // NK_COMPOUND_LIT always returns the alloca ptr even for vectors.
         auto vec_val = [&](const std::string& v, Node* nd) -> std::string {
           if (!nd) return v;
-          // These node kinds return a ptr (address) for array types; load to get value
+          TypeSpec nd_ts = expr_type(nd);
+          bool pure_vec = (nd_ts.ptr_level == 0 && nd_ts.is_vector && nd_ts.array_rank == 1);
+          // NK_VAR and NK_DEREF of pure vector already loaded the value in codegen_expr.
+          if (pure_vec && (nd->kind == NK_VAR || nd->kind == NK_DEREF))
+            return v;
+          // These node kinds return a ptr (address) for array types; load to get value.
           if (nd->kind == NK_VAR || nd->kind == NK_COMPOUND_LIT ||
               nd->kind == NK_INDEX || nd->kind == NK_MEMBER || nd->kind == NK_DEREF) {
             std::string loaded = fresh_tmp();
@@ -2361,13 +2374,21 @@ std::string IRBuilder::codegen_expr(Node* n) {
       rval = coerce(rval, rts, llty);
       // Array assignment: rhs from local array var/compound-lit/cast is an alloca ptr;
       // load the array value before storing (same pattern as NK_RETURN).
-      if (!llty.empty() && llty[0] == '[' &&
-          is_array_ty(rts) && rts.ptr_level == 0 && !rts.is_ptr_to_array &&
-          n->right && (n->right->kind == NK_VAR || n->right->kind == NK_COMPOUND_LIT ||
-                       n->right->kind == NK_CAST || n->right->kind == NK_INDEX)) {
-        std::string loaded = fresh_tmp();
-        emit(loaded + " = load " + llty + ", ptr " + rval);
-        rval = loaded;
+      // Exception: NK_VAR and NK_DEREF of pure vector (is_vector, rank==1) already
+      // return a loaded value from codegen_expr — don't reload in those cases.
+      {
+        bool rhs_already_loaded = (rts.is_vector && rts.array_rank == 1 &&
+                                   n->right &&
+                                   (n->right->kind == NK_VAR || n->right->kind == NK_DEREF));
+        if (!rhs_already_loaded &&
+            !llty.empty() && llty[0] == '[' &&
+            is_array_ty(rts) && rts.ptr_level == 0 && !rts.is_ptr_to_array &&
+            n->right && (n->right->kind == NK_VAR || n->right->kind == NK_COMPOUND_LIT ||
+                         n->right->kind == NK_CAST || n->right->kind == NK_INDEX)) {
+          std::string loaded = fresh_tmp();
+          emit(loaded + " = load " + llty + ", ptr " + rval);
+          rval = loaded;
+        }
       }
       std::string ptr = codegen_lval(n->left);
       emit("store " + llty + " " + rval + ", ptr " + ptr);

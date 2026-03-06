@@ -46,19 +46,20 @@ Latest slice (2026-03-06, follow-up handoff):
 - parser: wired struct definition map updates so parse-time constant evaluation can resolve struct field offsets
 - note: focused allowlist is kept in the frontend-failure list form (not pruned-to-only-last-fail form)
 
-Latest slice (2026-03-06, vector/gnu follow-up):
+Latest slice (2026-03-06, vector array/decay follow-up — 100/100 allowlist pass):
 - parser/ast: track typedef-inner array rank (`inner_rank`) and vector-origin arrays (`is_vector`) to distinguish true arrays vs GNU vector-like aggregates
 - parser: accept GNU `__extension__` unary form
 - IR builder: improve array-of-pointer/typedef-array lowering, builtin remapping (`__builtin_*` ↔ libc), vector/array assignment+return materialization, and commutative indexing (`n[p]`)
 - allowlist: commented `pr22061-1.c` as current non-frontend blocker on macOS runtime (`_alloca`) plus missing VLA stride support
-- focused run status after fixes: first fail remains `ieee/pr72824-2.c` (~47th), now due to vector aggregate/pointer calling-convention mismatch
+- focused run status after fixes: **100/100 allowlist tests pass**
+  - ieee/pr72824-2.c: fixed (array-of-vectors NK_VAR decay)
+  - pr53645-2.c: fixed (vec_val double-load for NK_DEREF/NK_VAR of pure vector)
+  - pr85169.c: fixed (array assignment double-load for pure vector RHS)
+  - strlen-4.c: fixed (multi-dim array decay missing is_ptr_to_array in expr_type)
 
 Action policy:
-1. Skip/comment non-frontend blocker cases in allowlist.
-2. Continue first-fail loop until next actionable frontend failure.
-3. For `ieee/pr72824-2.c`, either:
-   - implement real vector type lowering (preferred), or
-   - temporarily move case out of allowlist if treating vector extension as out-of-scope.
+1. All 100 focused allowlist cases now pass.
+2. Next step: expand allowlist or run full llvm_gcc_c_torture suite to find next failures.
 
 ## Active Repair Workflow
 
