@@ -2312,6 +2312,18 @@ Node* Parser::parse_top_level() {
     } else {
         base_ts = parse_base_type();
         skip_attributes();
+        // Re-scan for storage class specifiers that appear after the base type
+        // (e.g. `struct a {...} static g = ...` — GCC allows storage class mid-decl).
+        while (true) {
+            if (match(TokenKind::KwStatic))    { is_static  = true; }
+            else if (match(TokenKind::KwExtern))   { is_extern  = true; }
+            else if (match(TokenKind::KwTypedef))  { is_typedef = true; }
+            else if (match(TokenKind::KwInline))   { is_inline  = true; }
+            else if (match(TokenKind::KwExtension)) {}
+            else if (match(TokenKind::KwNoreturn))  {}
+            else break;
+        }
+        skip_attributes();
     }
 
     if (is_typedef) {

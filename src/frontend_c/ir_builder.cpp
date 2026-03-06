@@ -702,7 +702,8 @@ std::string IRBuilder::to_bool(const std::string& val, const TypeSpec& ts) {
   std::string llty = llvm_ty(ts);
   if (llty == "i1") return val;
   std::string t = fresh_tmp();
-  if (ts.ptr_level > 0) {
+  if (ts.ptr_level > 0 || (is_array_ty(ts) && !ts.is_ptr_to_array)) {
+    // Pointer or decayed array: compare against null
     emit(t + " = icmp ne ptr " + val + ", null");
   } else if (llty == "double" || llty == "float") {
     emit(t + " = fcmp one " + llty + " " + val + ", 0.0");
@@ -1206,12 +1207,14 @@ std::string IRBuilder::codegen_lval(Node* n) {
       std::string left_info = std::to_string((int)(obj ? obj->kind : -1));
       if (obj && obj->kind == NK_MEMBER && obj->name)
         left_info += std::string(":") + obj->name;
+      if (obj && obj->kind == NK_VAR && obj->name)
+        left_info += std::string(":var=") + obj->name;
       throw std::runtime_error(
           "member access on non-struct ." + std::string(n->name ? n->name : "?") +
           " (base=" + std::to_string((int)obj_ts.base) +
           ", ptr=" + std::to_string(obj_ts.ptr_level) +
           ", arr_rank=" + std::to_string(array_rank_of(obj_ts)) +
-          ", left=" + left_info + ")");
+          ", left=" + left_info + ", line=" + std::to_string(n->line) + ")");
     }
 
     if (!struct_defs_.count(tag))
@@ -1315,6 +1318,12 @@ std::string IRBuilder::codegen_lval(Node* n) {
     std::string slot2 = "%se_" + std::to_string(tmp_idx_++);
     alloca_lines_.push_back("  " + slot2 + " = alloca " + llvm_ty(ts2));
     return slot2;
+  }
+
+  case NK_COMMA_EXPR: {
+    // Evaluate left for side effects, then lvalue of right.
+    codegen_expr(n->left);
+    return codegen_lval(n->right);
   }
 
   default:
