@@ -647,10 +647,18 @@ TypeSpec IRBuilder::expr_type(Node* n) {
       if (strcmp(cn, "__builtin_expect") == 0 && n->n_children > 0)
         return expr_type(n->children[0]);
       if (strcmp(cn, "__builtin_fabs") == 0 || strcmp(cn, "__builtin_fabsl") == 0 ||
-          strcmp(cn, "__builtin_inf") == 0 || strcmp(cn, "__builtin_infl") == 0)
+          strcmp(cn, "__builtin_inf") == 0 || strcmp(cn, "__builtin_infl") == 0 ||
+          strcmp(cn, "__builtin_huge_val") == 0 || strcmp(cn, "__builtin_huge_vall") == 0)
         return double_ts();
-      if (strcmp(cn, "__builtin_fabsf") == 0 || strcmp(cn, "__builtin_inff") == 0)
+      if (strcmp(cn, "__builtin_fabsf") == 0 || strcmp(cn, "__builtin_inff") == 0 ||
+          strcmp(cn, "__builtin_huge_valf") == 0)
         return float_ts();
+      if (strcmp(cn, "__builtin_constant_p") == 0) return make_ts(TB_INT);
+      if (strcmp(cn, "__builtin_unreachable") == 0) return void_ts();
+      if (strcmp(cn, "__builtin_signbit") == 0 || strcmp(cn, "__builtin_signbitf") == 0 ||
+          strcmp(cn, "__builtin_signbitl") == 0) return make_ts(TB_INT);
+      if (strcmp(cn, "__builtin_add_overflow") == 0 || strcmp(cn, "__builtin_sub_overflow") == 0 ||
+          strcmp(cn, "__builtin_mul_overflow") == 0) return make_ts(TB_INT);
       if (strcmp(cn, "__builtin_conjf") == 0) return make_ts(TB_COMPLEX_FLOAT);
       if (strcmp(cn, "__builtin_conj")  == 0) return make_ts(TB_COMPLEX_DOUBLE);
       if (strcmp(cn, "__builtin_conjl") == 0) return make_ts(TB_COMPLEX_LONGDOUBLE);
@@ -3029,13 +3037,82 @@ std::string IRBuilder::codegen_expr(Node* n) {
         emit(t + " = call float @llvm.copysign.f32(float " + a + ", float " + b + ")");
         ret_ts = float_ts(); return t;
       }
-      if (fn_name == "__builtin_inf" || fn_name == "__builtin_infl") {
+      if (fn_name == "__builtin_inf" || fn_name == "__builtin_infl" ||
+          fn_name == "__builtin_huge_val" || fn_name == "__builtin_huge_vall") {
         ret_ts = double_ts();
         return "0x7FF0000000000000";  // +Inf as double hex
       }
-      if (fn_name == "__builtin_inff") {
+      if (fn_name == "__builtin_inff" || fn_name == "__builtin_huge_valf") {
         ret_ts = float_ts();
         return "0x7FF0000000000000";  // LLVM accepts double-form hex for float +Inf
+      }
+      // __builtin_constant_p(x) — return 0 (conservative: x is not a compile-time constant)
+      if (fn_name == "__builtin_constant_p") {
+        ret_ts = int_ts();
+        // Evaluate the argument for side effects but return 0
+        if (n->n_children >= 1) codegen_expr(n->children[0]);
+        return "0";
+      }
+      // __builtin_unreachable() — emit LLVM unreachable terminator
+      if (fn_name == "__builtin_unreachable") {
+        emit_terminator("unreachable");
+        ret_ts = void_ts();
+        return "";
+      }
+      // __builtin_signbit / __builtin_signbitf / __builtin_signbitl
+      if (fn_name == "__builtin_signbit" || fn_name == "__builtin_signbitf" ||
+          fn_name == "__builtin_signbitl") {
+        bool is_float = (fn_name == "__builtin_signbitf");
+        std::string fty = is_float ? "float" : "double";
+        std::string ity = is_float ? "i32" : "i64";
+        std::string a = n->n_children > 0 ? codegen_expr(n->children[0]) : "0.0";
+        TypeSpec ats = n->n_children > 0 ? expr_type(n->children[0]) : double_ts();
+        a = coerce(a, ats, fty);
+        std::string bits = fresh_tmp(), shifted = fresh_tmp(), t = fresh_tmp();
+        emit(bits + " = bitcast " + fty + " " + a + " to " + ity);
+        if (is_float)
+          emit(shifted + " = lshr i32 " + bits + ", 31");
+        else
+          emit(shifted + " = lshr i64 " + bits + ", 63");
+        if (!is_float)
+          emit(t + " = trunc i64 " + shifted + " to i32");
+        else
+          t = shifted;
+        ret_ts = int_ts();
+        return t;
+      }
+      // __builtin_{add,sub,mul}_overflow(a, b, *result) → LLVM overflow intrinsics
+      if (fn_name == "__builtin_add_overflow" || fn_name == "__builtin_sub_overflow" ||
+          fn_name == "__builtin_mul_overflow") {
+        if (n->n_children < 3) { ret_ts = int_ts(); return "0"; }
+        TypeSpec ats = expr_type(n->children[0]);
+        std::string itype = "i32";
+        if (ats.base == TB_LONGLONG || ats.base == TB_ULONGLONG) itype = "i64";
+        else if (ats.base == TB_LONG || ats.base == TB_ULONG) itype = "i64";
+        std::string op = (fn_name == "__builtin_add_overflow") ? "add" :
+                         (fn_name == "__builtin_sub_overflow") ? "sub" : "mul";
+        bool is_signed = !(ats.base == TB_UINT || ats.base == TB_ULONG ||
+                           ats.base == TB_ULONGLONG || ats.base == TB_USHORT ||
+                           ats.base == TB_UCHAR);
+        std::string intr = std::string("llvm.") + (is_signed ? "s" : "u") + op + ".with.overflow." + itype;
+        if (!auto_declared_fns_.count(intr))
+          auto_declared_fns_[intr] = "declare { " + itype + ", i1 } @" + intr +
+                                     "(" + itype + ", " + itype + ")";
+        std::string a = codegen_expr(n->children[0]);
+        std::string b = codegen_expr(n->children[1]);
+        a = coerce(a, ats, itype);
+        b = coerce(b, expr_type(n->children[1]), itype);
+        std::string res_struct = fresh_tmp(), ov_bit = fresh_tmp(), res_val = fresh_tmp();
+        std::string ov_int = fresh_tmp();
+        emit(res_struct + " = call { " + itype + ", i1 } @" + intr + "(" + itype + " " + a + ", " + itype + " " + b + ")");
+        emit(res_val + " = extractvalue { " + itype + ", i1 } " + res_struct + ", 0");
+        emit(ov_bit + " = extractvalue { " + itype + ", i1 } " + res_struct + ", 1");
+        emit(ov_int + " = zext i1 " + ov_bit + " to i32");
+        // Store result to the pointer arg
+        std::string ptr = codegen_expr(n->children[2]);
+        emit("store " + itype + " " + res_val + ", ptr " + ptr);
+        ret_ts = int_ts();
+        return ov_int;
       }
       // __builtin_nan / __builtin_nanf / __builtin_nanl — quiet NaN constant
       if (fn_name == "__builtin_nan" || fn_name == "__builtin_nanl") {
@@ -4276,8 +4353,32 @@ void IRBuilder::emit_stmt(Node* n) {
   case NK_IF: {
     TypeSpec cond_ts = expr_type(n->cond);
     std::string cond_val = codegen_expr(n->cond);
-    std::string cond_b   = to_bool(cond_val, cond_ts);
 
+    // Constant-fold: if cond_val is a known integer literal, skip dead branches
+    // This is critical for patterns like `if (__builtin_constant_p(x)) link_error();`
+    // where we return 0 for __builtin_constant_p and the branch must be eliminated.
+    {
+      bool is_const_false = (cond_val == "0");
+      bool is_const_true  = false;
+      if (!is_const_false && !cond_val.empty()) {
+        // Check if it's a non-zero integer literal
+        char* end = nullptr;
+        long long iv = std::strtoll(cond_val.c_str(), &end, 10);
+        if (end && *end == '\0' && iv != 0) is_const_true = true;
+      }
+      if (is_const_false) {
+        // Condition is always false: only emit else branch (if any)
+        if (n->else_) emit_stmt(n->else_);
+        break;
+      }
+      if (is_const_true) {
+        // Condition is always true: only emit then branch
+        emit_stmt(n->then_);
+        break;
+      }
+    }
+
+    std::string cond_b   = to_bool(cond_val, cond_ts);
     std::string then_lbl = fresh_label("if_then");
     std::string end_lbl  = fresh_label("if_end");
     std::string else_lbl = n->else_ ? fresh_label("if_else") : end_lbl;
