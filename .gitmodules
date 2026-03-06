@@ -7,3 +7,6 @@
 [submodule "tests/linux"]
 	path = tests/linux
 	url = https://github.com/torvalds/linux.git
+[submodule "ref/claudes-c-compiler"]
+	path = ref/claudes-c-compiler
+	url = https://github.com/anthropics/claudes-c-compiler.git

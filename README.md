@@ -107,6 +107,42 @@ Useful env vars:
 - `PRUNE_FAILED_ALLOWLIST` (default `1`)
 - `STEP_TIMEOUT_SEC`, `TEST_TIMEOUT_SEC`, `RUN_MEM_MB`, `RUN_CPU_SEC`
 
+
+### Optional: Build Linux Kernel (tinyconfig)
+
+Install required packages first:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y flex bison bc libssl-dev
+```
+
+Use the helper script:
+
+```bash
+bash scripts/linux_init.sh
+```
+
+What it does:
+
+1. If `tests/linux` is a git-tracked submodule, initialize it recursively.
+2. Build `frontend_cxx_stage1` and `frontend_cxx_stage2` into `build_linux` by default.
+3. Generate kernel `tinyconfig` under `tests/linux-build` with `CC=clang`.
+
+After init completes, run the final kernel build command printed by the script, for example:
+
+```bash
+make -C tests/linux O=tests/linux-build CC=build_linux/tiny-c2ll-stage2 -j"$(nproc)"
+```
+
+Useful environment variables:
+
+- `BUILD_DIR` (default: `build_linux`)
+- `KERNEL_SRC` (default: `tests/linux`)
+- `KERNEL_OUT` (default: `tests/linux-build`)
+- `JOBS` (default: detected CPU count)
+
+
 ## Manual Usage
 
 ```bash

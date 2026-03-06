@@ -1,12 +1,19 @@
 {
   "name": "compiler-devcontainer",
   "image": "vsc-cpp-86dfc8f9cd52afcceb77325136f9dbfe3c3953a8a726ed464c355bb97dcecbd6:latest",
-  "customizations": {
+  "mounts": [
+    "source=${localEnv:HOME}/.codex,target=/home/vscode/.codex,type=bind,consistency=cached,readonly",
+    "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached,readonly"
+
+  ],
+"customizations": {
     "vscode": {
       "settings": {
         "terminal.integrated.defaultProfile.linux": "bash"
       },
       "extensions": [
+        "openai.chatgpt",
+        "openai.codex",
         "ms-vscode.cpptools",
         "ms-vscode.cmake-tools"
       ]

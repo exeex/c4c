@@ -22,6 +22,8 @@ need_cmd git
 need_cmd cmake
 need_cmd make
 need_cmd clang
+need_cmd flex
+need_cmd bison
 
 cd "$ROOT_DIR"
 
@@ -41,7 +43,17 @@ mkdir -p "$KERNEL_OUT"
 make -C "$KERNEL_SRC" O="$KERNEL_OUT" CC=clang tinyconfig
 
 # Some Linux versions do not expose CONFIG_EMBEDDED anymore.
-if rg -n "^config EMBEDDED$" "$KERNEL_SRC" -g 'Kconfig*' >/dev/null 2>&1; then
+if command -v rg >/dev/null 2>&1; then
+  has_embedded_config() {
+    rg -n "^config EMBEDDED$" "$KERNEL_SRC" -g 'Kconfig*' >/dev/null 2>&1
+  }
+else
+  has_embedded_config() {
+    find "$KERNEL_SRC" -type f -name 'Kconfig*' -exec grep -qE "^config EMBEDDED$" {} + >/dev/null 2>&1
+  }
+fi
+
+if has_embedded_config; then
   if [[ -x "$KERNEL_SRC/scripts/config" ]]; then
     "$KERNEL_SRC/scripts/config" --file "$KERNEL_OUT/.config" -e EMBEDDED || true
     make -C "$KERNEL_SRC" O="$KERNEL_OUT" CC=clang olddefconfig
