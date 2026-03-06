@@ -271,6 +271,11 @@ IRBuilder::IRBuilder()
 
 // ─────────────────────────── type helpers ──────────────────────────────────
 
+// Return LLVM element type for GEP: void → i8 (void has no size; GEP of void* uses i8).
+static std::string gep_elem_ty(const std::string& llty) {
+    return (llty == "void") ? "i8" : llty;
+}
+
 std::string IRBuilder::llvm_ty_base(TypeBase base) {
   switch (base) {
   case TB_VOID:       return "void";
@@ -572,6 +577,25 @@ TypeSpec IRBuilder::expr_type(Node* n) {
       if (strcmp(cn, "__builtin_conj")  == 0) return make_ts(TB_COMPLEX_DOUBLE);
       if (strcmp(cn, "__builtin_conjl") == 0) return make_ts(TB_COMPLEX_LONGDOUBLE);
       if (strcmp(cn, "__builtin_classify_type") == 0) return make_ts(TB_INT);
+      if (strcmp(cn, "__builtin_copysign")  == 0 || strcmp(cn, "__builtin_copysignl") == 0) return double_ts();
+      if (strcmp(cn, "__builtin_copysignf") == 0) return float_ts();
+      if (strcmp(cn, "__builtin_nan")  == 0 || strcmp(cn, "__builtin_nanl")  == 0) return double_ts();
+      if (strcmp(cn, "__builtin_nanf") == 0) return float_ts();
+      if (strcmp(cn, "__builtin_isgreater") == 0 || strcmp(cn, "__builtin_isgreaterequal") == 0 ||
+          strcmp(cn, "__builtin_isless")    == 0 || strcmp(cn, "__builtin_islessequal")    == 0 ||
+          strcmp(cn, "__builtin_islessgreater") == 0 || strcmp(cn, "__builtin_isunordered") == 0 ||
+          strcmp(cn, "__builtin_isnan") == 0 || strcmp(cn, "__builtin_isinf") == 0 ||
+          strcmp(cn, "__builtin_isinf_sign") == 0) return make_ts(TB_INT);
+      if (strcmp(cn, "__builtin_ffs")  == 0 || strcmp(cn, "__builtin_ffsl")  == 0 ||
+          strcmp(cn, "__builtin_ffsll") == 0) return make_ts(TB_INT);
+      if (strcmp(cn, "__builtin_clz")  == 0 || strcmp(cn, "__builtin_clzl")  == 0 ||
+          strcmp(cn, "__builtin_clzll") == 0) return make_ts(TB_INT);
+      if (strcmp(cn, "__builtin_ctz")  == 0 || strcmp(cn, "__builtin_ctzl")  == 0 ||
+          strcmp(cn, "__builtin_ctzll") == 0) return make_ts(TB_INT);
+      if (strcmp(cn, "__builtin_popcount")  == 0 || strcmp(cn, "__builtin_popcountl")  == 0 ||
+          strcmp(cn, "__builtin_popcountll") == 0) return make_ts(TB_INT);
+      if (strcmp(cn, "__builtin_parity")  == 0 || strcmp(cn, "__builtin_parityl")  == 0 ||
+          strcmp(cn, "__builtin_parityll") == 0) return make_ts(TB_INT);
     }
     // Indirect call through function pointer expression.
     // We don't model full function signatures in TypeSpec yet, so preserve
@@ -721,33 +745,57 @@ std::string IRBuilder::coerce(const std::string& val, const TypeSpec& from_ts,
 
   std::string t = fresh_tmp();
 
-  // Complex type → complex type (e.g. _Complex float → _Complex double)
+  // Complex type → complex type (e.g. _Complex float → _Complex double, or _Complex double → _Complex int)
   if (is_complex_base(from_ts.base) && from_ts.ptr_level == 0) {
-    TypeBase from_elem = (from_ts.base == TB_COMPLEX_FLOAT) ? TB_FLOAT :
-                         (from_ts.base == TB_COMPLEX_LONGDOUBLE) ? TB_LONGDOUBLE : TB_DOUBLE;
-    std::string from_elem_llty = llvm_ty(make_ts(from_elem));
-    bool is_to_cf  = (to_llty == "{ float, float }");
-    bool is_to_cd  = (to_llty == "{ double, double }");
-    if ((is_to_cf || is_to_cd) && from_llty != to_llty) {
-      std::string to_elem_llty = is_to_cf ? "float" : "double";
+    if (from_llty == to_llty) return val;
+    // Determine from-element type
+    bool from_is_fp = is_float_base(complex_component_ts(from_ts.base).base);
+    std::string from_elem_llty = llvm_ty(complex_component_ts(from_ts.base));
+    // Parse to-element type from the struct string "{ TYPE, TYPE }"
+    std::string to_elem_llty;
+    if (to_llty.size() > 2 && to_llty.front() == '{') {
+      size_t s = to_llty.find_first_not_of(" \t{");
+      size_t e = to_llty.find(',', s);
+      if (s != std::string::npos && e != std::string::npos) {
+        to_elem_llty = to_llty.substr(s, e - s);
+        while (!to_elem_llty.empty() && to_elem_llty.back() == ' ') to_elem_llty.pop_back();
+      }
+    }
+    if (!to_elem_llty.empty()) {
+      bool to_is_fp = (to_elem_llty == "float" || to_elem_llty == "double");
       std::string re = fresh_tmp(), im = fresh_tmp();
       std::string re2 = fresh_tmp(), im2 = fresh_tmp();
       std::string r0 = fresh_tmp(), r1 = fresh_tmp();
       emit(re + " = extractvalue " + from_llty + " " + val + ", 0");
       emit(im + " = extractvalue " + from_llty + " " + val + ", 1");
-      bool upcast = (from_elem_llty == "float" && to_elem_llty == "double");
-      if (upcast) {
-        emit(re2 + " = fpext float " + re + " to double");
-        emit(im2 + " = fpext float " + im + " to double");
+      if (from_is_fp && to_is_fp) {
+        // float ↔ double complex
+        bool upcast = (from_elem_llty == "float" && to_elem_llty == "double");
+        if (upcast) {
+          emit(re2 + " = fpext float " + re + " to double");
+          emit(im2 + " = fpext float " + im + " to double");
+        } else {
+          emit(re2 + " = fptrunc double " + re + " to " + to_elem_llty);
+          emit(im2 + " = fptrunc double " + im + " to " + to_elem_llty);
+        }
+      } else if (from_is_fp && !to_is_fp) {
+        // float complex → integer complex: fptosi
+        emit(re2 + " = fptosi " + from_elem_llty + " " + re + " to " + to_elem_llty);
+        emit(im2 + " = fptosi " + from_elem_llty + " " + im + " to " + to_elem_llty);
+      } else if (!from_is_fp && to_is_fp) {
+        // integer complex → float complex: sitofp
+        emit(re2 + " = sitofp " + from_elem_llty + " " + re + " to " + to_elem_llty);
+        emit(im2 + " = sitofp " + from_elem_llty + " " + im + " to " + to_elem_llty);
       } else {
-        emit(re2 + " = fptrunc double " + re + " to float");
-        emit(im2 + " = fptrunc double " + im + " to float");
+        // integer complex → integer complex: sext/trunc/zext
+        emit(re2 + " = sext " + from_elem_llty + " " + re + " to " + to_elem_llty);
+        emit(im2 + " = sext " + from_elem_llty + " " + im + " to " + to_elem_llty);
       }
-      emit(r0 + " = insertvalue " + to_llty + " undef, " + to_elem_llty + " " + re2 + ", 0");
+      emit(r0 + " = insertvalue " + to_llty + " zeroinitializer, " + to_elem_llty + " " + re2 + ", 0");
       emit(r1 + " = insertvalue " + to_llty + " " + r0 + ", " + to_elem_llty + " " + im2 + ", 1");
       return r1;
     }
-    return val;  // same complex type
+    return val;  // unrecognized target, best effort
   }
 
   // Array type: val is already a ptr (array decays to pointer)
@@ -1180,7 +1228,7 @@ std::string IRBuilder::codegen_lval(Node* n) {
       elem_ts.ptr_level -= 1;
       if (elem_ts.ptr_level == 0 && elem_ts.is_ptr_to_array)
         elem_ts.is_ptr_to_array = false;
-      std::string elem_llty = llvm_ty(elem_ts);
+      std::string elem_llty = gep_elem_ty(llvm_ty(elem_ts));
       std::string ptr_val = codegen_expr(n->left);
       emit(t + " = getelementptr " + elem_llty + ", ptr " + ptr_val +
            ", i64 " + idx_i64);
@@ -1627,6 +1675,23 @@ std::string IRBuilder::codegen_expr(Node* n) {
       TypeSpec ts = expr_type(n->left);
       std::string v = codegen_expr(n->left);
       std::string llty = llvm_ty(ts);
+      // Complex conjugate: ~(a+bi) = a-bi
+      if (ts.ptr_level == 0 && is_complex_base(ts.base)) {
+        TypeSpec ets = complex_component_ts(ts.base);
+        std::string ellty = llvm_ty(ets);
+        bool is_fp = is_float_base(ets.base);
+        std::string re = fresh_tmp(), im = fresh_tmp(), neg_im = fresh_tmp();
+        std::string t0 = fresh_tmp(), t1 = fresh_tmp();
+        emit(re + " = extractvalue " + llty + " " + v + ", 0");
+        emit(im + " = extractvalue " + llty + " " + v + ", 1");
+        if (is_fp)
+          emit(neg_im + " = fneg " + ellty + " " + im);
+        else
+          emit(neg_im + " = sub " + ellty + " 0, " + im);
+        emit(t0 + " = insertvalue " + llty + " zeroinitializer, " + ellty + " " + re + ", 0");
+        emit(t1 + " = insertvalue " + llty + " " + t0 + ", " + ellty + " " + neg_im + ", 1");
+        return t1;
+      }
       std::string t = fresh_tmp();
       emit(t + " = xor " + llty + " " + v + ", -1");
       return t;
@@ -1644,7 +1709,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
       std::string new_val = fresh_tmp();
       if (ts.ptr_level > 0) {
         TypeSpec elem_ts = ts; elem_ts.ptr_level -= 1;
-        emit(new_val + " = getelementptr " + llvm_ty(elem_ts) + ", ptr " + old_val + ", i64 1");
+        emit(new_val + " = getelementptr " + gep_elem_ty(llvm_ty(elem_ts)) + ", ptr " + old_val + ", i64 1");
       } else if (llty == "float" || llty == "double") {
         emit(new_val + " = fadd " + llty + " " + old_val + ", 1.0");
       } else {
@@ -1663,7 +1728,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
       std::string new_val = fresh_tmp();
       if (ts.ptr_level > 0) {
         TypeSpec elem_ts = ts; elem_ts.ptr_level -= 1;
-        emit(new_val + " = getelementptr " + llvm_ty(elem_ts) + ", ptr " + old_val + ", i64 -1");
+        emit(new_val + " = getelementptr " + gep_elem_ty(llvm_ty(elem_ts)) + ", ptr " + old_val + ", i64 -1");
       } else if (llty == "float" || llty == "double") {
         emit(new_val + " = fsub " + llty + " " + old_val + ", 1.0");
       } else {
@@ -1687,7 +1752,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
     if (n->op && strcmp(n->op, "++") == 0) {
       if (is_ptr) {
         TypeSpec elem_ts = ts; elem_ts.ptr_level -= 1;
-        emit(new_val + " = getelementptr " + llvm_ty(elem_ts) + ", ptr " +
+        emit(new_val + " = getelementptr " + gep_elem_ty(llvm_ty(elem_ts)) + ", ptr " +
              old_val + ", i64 1");
       } else if (llty == "float" || llty == "double") {
         emit(new_val + " = fadd " + llty + " " + old_val + ", 1.0");
@@ -1697,7 +1762,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
     } else {
       if (is_ptr) {
         TypeSpec elem_ts = ts; elem_ts.ptr_level -= 1;
-        emit(new_val + " = getelementptr " + llvm_ty(elem_ts) + ", ptr " +
+        emit(new_val + " = getelementptr " + gep_elem_ty(llvm_ty(elem_ts)) + ", ptr " +
              old_val + ", i64 -1");
       } else if (llty == "float" || llty == "double") {
         emit(new_val + " = fsub " + llty + " " + old_val + ", 1.0");
@@ -1988,7 +2053,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
       if (lptr_only && !rptr_only) {
         // ptr/array +/- int
         TypeSpec elem_ts = elem_of(lt);
-        std::string elem_llty = llvm_ty(elem_ts);
+        std::string elem_llty = gep_elem_ty(llvm_ty(elem_ts));
         std::string idx = coerce(rv, rt, "i64");
         if (n->op && strcmp(n->op, "-") == 0) {
           std::string neg_idx = fresh_tmp();
@@ -2002,7 +2067,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
       if (rptr_only && !lptr_only) {
         // int + ptr/array
         TypeSpec elem_ts = elem_of(rt);
-        std::string elem_llty = llvm_ty(elem_ts);
+        std::string elem_llty = gep_elem_ty(llvm_ty(elem_ts));
         std::string idx = coerce(lv, lt, "i64");
         std::string t = fresh_tmp();
         emit(t + " = getelementptr " + elem_llty + ", ptr " + rv + ", i64 " + idx);
@@ -2138,6 +2203,67 @@ std::string IRBuilder::codegen_expr(Node* n) {
 
     TypeSpec rts = expr_type(n->right);
     std::string rv = codegen_expr(n->right);
+
+    // Complex compound assignment: lhs is a complex type
+    if (lts.ptr_level == 0 && is_complex_base(lts.base)) {
+      TypeSpec ets = complex_component_ts(lts.base);
+      std::string ellty = llvm_ty(ets);
+      bool is_fp = is_float_base(ets.base);
+      // Coerce rhs to same complex type
+      auto to_complex = [&](const std::string& val, TypeSpec vts) -> std::string {
+        if (is_complex_base(vts.base) && vts.ptr_level == 0) {
+          if (llvm_ty(vts) == llty) return val;
+          TypeSpec src_ets = complex_component_ts(vts.base);
+          std::string src_llty = llvm_ty(vts);
+          std::string re0 = fresh_tmp(), im0 = fresh_tmp();
+          emit(re0 + " = extractvalue " + src_llty + " " + val + ", 0");
+          emit(im0 + " = extractvalue " + src_llty + " " + val + ", 1");
+          std::string re1 = coerce(re0, src_ets, ellty);
+          std::string im1 = coerce(im0, src_ets, ellty);
+          std::string t0 = fresh_tmp(), t1 = fresh_tmp();
+          emit(t0 + " = insertvalue " + llty + " zeroinitializer, " + ellty + " " + re1 + ", 0");
+          emit(t1 + " = insertvalue " + llty + " " + t0 + ", " + ellty + " " + im1 + ", 1");
+          return t1;
+        }
+        std::string cv = coerce(val, vts, ellty);
+        std::string t0 = fresh_tmp(), t1 = fresh_tmp();
+        std::string zero = is_fp ? "0.0" : "0";
+        emit(t0 + " = insertvalue " + llty + " zeroinitializer, " + ellty + " " + cv + ", 0");
+        emit(t1 + " = insertvalue " + llty + " " + t0 + ", " + ellty + " " + zero + ", 1");
+        return t1;
+      };
+      std::string rvc = to_complex(rv, rts);
+      std::string lre = fresh_tmp(), lim = fresh_tmp();
+      std::string rre = fresh_tmp(), rim = fresh_tmp();
+      emit(lre + " = extractvalue " + llty + " " + cur + ", 0");
+      emit(lim + " = extractvalue " + llty + " " + cur + ", 1");
+      emit(rre + " = extractvalue " + llty + " " + rvc + ", 0");
+      emit(rim + " = extractvalue " + llty + " " + rvc + ", 1");
+      std::string result_re = fresh_tmp(), result_im = fresh_tmp();
+      std::string t0 = fresh_tmp(), t1 = fresh_tmp();
+      if (strcmp(aop, "+=") == 0 || strcmp(aop, "-=") == 0) {
+        std::string arith = (strcmp(aop, "+=") == 0) ? (is_fp ? "fadd" : "add")
+                                                      : (is_fp ? "fsub" : "sub");
+        emit(result_re + " = " + arith + " " + ellty + " " + lre + ", " + rre);
+        emit(result_im + " = " + arith + " " + ellty + " " + lim + ", " + rim);
+      } else if (strcmp(aop, "*=") == 0) {
+        std::string ac=fresh_tmp(),bd=fresh_tmp(),ad=fresh_tmp(),bc=fresh_tmp();
+        std::string mul=is_fp?"fmul":"mul", sub=is_fp?"fsub":"sub", add2=is_fp?"fadd":"add";
+        emit(ac + " = " + mul + " " + ellty + " " + lre + ", " + rre);
+        emit(bd + " = " + mul + " " + ellty + " " + lim + ", " + rim);
+        emit(ad + " = " + mul + " " + ellty + " " + lre + ", " + rim);
+        emit(bc + " = " + mul + " " + ellty + " " + lim + ", " + rre);
+        emit(result_re + " = " + sub + " " + ellty + " " + ac + ", " + bd);
+        emit(result_im + " = " + add2 + " " + ellty + " " + ad + ", " + bc);
+      } else {
+        result_re = lre; result_im = lim;  // unhandled op: identity
+      }
+      emit(t0 + " = insertvalue " + llty + " zeroinitializer, " + ellty + " " + result_re + ", 0");
+      emit(t1 + " = insertvalue " + llty + " " + t0 + ", " + ellty + " " + result_im + ", 1");
+      emit("store " + llty + " " + t1 + ", ptr " + ptr);
+      return t1;
+    }
+
     bool is_float = is_float_base(lts.base);
 
     // C99: float op= expr does arithmetic in double precision, then truncates to float
@@ -2175,7 +2301,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
       if (lts.ptr_level > 0) {
         TypeSpec elem_ts = lts; elem_ts.ptr_level -= 1;
         std::string idx = coerce(rv, rts, "i64");
-        emit(result + " = getelementptr " + llvm_ty(elem_ts) + ", ptr " + cur + ", i64 " + idx);
+        emit(result + " = getelementptr " + gep_elem_ty(llvm_ty(elem_ts)) + ", ptr " + cur + ", i64 " + idx);
       } else {
         emit(result + " = " + (is_float ? "fadd" : "add") + " " + llty + " " + cur + ", " + rv);
       }
@@ -2185,7 +2311,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
         std::string idx = coerce(rv, rts, "i64");
         std::string neg = fresh_tmp();
         emit(neg + " = sub i64 0, " + idx);
-        emit(result + " = getelementptr " + llvm_ty(elem_ts) + ", ptr " + cur + ", i64 " + neg);
+        emit(result + " = getelementptr " + gep_elem_ty(llvm_ty(elem_ts)) + ", ptr " + cur + ", i64 " + neg);
       } else {
         emit(result + " = " + (is_float ? "fsub" : "sub") + " " + llty + " " + cur + ", " + rv);
       }
@@ -2229,6 +2355,70 @@ std::string IRBuilder::codegen_expr(Node* n) {
 
     TypeSpec rts = expr_type(n->right);
     std::string rv = codegen_expr(n->right);
+
+    // Complex compound assignment: lhs is a complex type
+    if (lts.ptr_level == 0 && is_complex_base(lts.base)) {
+      TypeSpec ets = complex_component_ts(lts.base);
+      std::string ellty = llvm_ty(ets);
+      bool is_fp = is_float_base(ets.base);
+      const char* op = n->op;
+      // Coerce rhs to same complex type
+      auto to_complex = [&](const std::string& val, TypeSpec vts) -> std::string {
+        if (is_complex_base(vts.base) && vts.ptr_level == 0) {
+          if (llvm_ty(vts) == llty) return val;
+          TypeSpec src_ets = complex_component_ts(vts.base);
+          std::string src_llty = llvm_ty(vts);
+          std::string re0 = fresh_tmp(), im0 = fresh_tmp();
+          emit(re0 + " = extractvalue " + src_llty + " " + val + ", 0");
+          emit(im0 + " = extractvalue " + src_llty + " " + val + ", 1");
+          std::string re1 = coerce(re0, src_ets, ellty);
+          std::string im1 = coerce(im0, src_ets, ellty);
+          std::string t0 = fresh_tmp(), t1 = fresh_tmp();
+          emit(t0 + " = insertvalue " + llty + " zeroinitializer, " + ellty + " " + re1 + ", 0");
+          emit(t1 + " = insertvalue " + llty + " " + t0 + ", " + ellty + " " + im1 + ", 1");
+          return t1;
+        }
+        std::string cv = coerce(val, vts, ellty);
+        std::string t0 = fresh_tmp(), t1 = fresh_tmp();
+        std::string zero = is_fp ? "0.0" : "0";
+        emit(t0 + " = insertvalue " + llty + " zeroinitializer, " + ellty + " " + cv + ", 0");
+        emit(t1 + " = insertvalue " + llty + " " + t0 + ", " + ellty + " " + zero + ", 1");
+        return t1;
+      };
+      std::string rvc = to_complex(rv, rts);
+      std::string lre = fresh_tmp(), lim = fresh_tmp();
+      std::string rre = fresh_tmp(), rim = fresh_tmp();
+      emit(lre + " = extractvalue " + llty + " " + cur + ", 0");
+      emit(lim + " = extractvalue " + llty + " " + cur + ", 1");
+      emit(rre + " = extractvalue " + llty + " " + rvc + ", 0");
+      emit(rim + " = extractvalue " + llty + " " + rvc + ", 1");
+      std::string result_re = fresh_tmp(), result_im = fresh_tmp();
+      std::string t0 = fresh_tmp(), t1 = fresh_tmp();
+      if (strcmp(op, "+=") == 0 || strcmp(op, "-=") == 0) {
+        std::string arith = (strcmp(op, "+=") == 0) ? (is_fp ? "fadd" : "add")
+                                                    : (is_fp ? "fsub" : "sub");
+        emit(result_re + " = " + arith + " " + ellty + " " + lre + ", " + rre);
+        emit(result_im + " = " + arith + " " + ellty + " " + lim + ", " + rim);
+      } else if (strcmp(op, "*=") == 0) {
+        // (a+bi)(c+di) = (ac-bd) + (ad+bc)i
+        std::string ac=fresh_tmp(),bd=fresh_tmp(),ad=fresh_tmp(),bc=fresh_tmp();
+        std::string mul=is_fp?"fmul":"mul", sub=is_fp?"fsub":"sub", add2=is_fp?"fadd":"add";
+        emit(ac + " = " + mul + " " + ellty + " " + lre + ", " + rre);
+        emit(bd + " = " + mul + " " + ellty + " " + lim + ", " + rim);
+        emit(ad + " = " + mul + " " + ellty + " " + lre + ", " + rim);
+        emit(bc + " = " + mul + " " + ellty + " " + lim + ", " + rre);
+        emit(result_re + " = " + sub + " " + ellty + " " + ac + ", " + bd);
+        emit(result_im + " = " + add2 + " " + ellty + " " + ad + ", " + bc);
+      } else {
+        // Unhandled complex compound op: emit identity
+        result_re = lre; result_im = lim;
+      }
+      emit(t0 + " = insertvalue " + llty + " zeroinitializer, " + ellty + " " + result_re + ", 0");
+      emit(t1 + " = insertvalue " + llty + " " + t0 + ", " + ellty + " " + result_im + ", 1");
+      emit("store " + llty + " " + t1 + ", ptr " + ptr);
+      return t1;
+    }
+
     bool is_float = is_float_base(lts.base);
 
     // C99: float op= expr does arithmetic in double precision, then truncates to float
@@ -2265,7 +2455,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
       if (lts.ptr_level > 0) {
         TypeSpec elem_ts = lts; elem_ts.ptr_level -= 1;
         std::string idx = coerce(rv, rts, "i64");
-        emit(result + " = getelementptr " + llvm_ty(elem_ts) + ", ptr " + cur + ", i64 " + idx);
+        emit(result + " = getelementptr " + gep_elem_ty(llvm_ty(elem_ts)) + ", ptr " + cur + ", i64 " + idx);
       } else {
         emit(result + " = " + (is_float ? "fadd" : "add") + " " + llty + " " + cur + ", " + rv);
       }
@@ -2275,7 +2465,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
         std::string idx = coerce(rv, rts, "i64");
         std::string neg = fresh_tmp();
         emit(neg + " = sub i64 0, " + idx);
-        emit(result + " = getelementptr " + llvm_ty(elem_ts) + ", ptr " + cur + ", i64 " + neg);
+        emit(result + " = getelementptr " + gep_elem_ty(llvm_ty(elem_ts)) + ", ptr " + cur + ", i64 " + neg);
       } else {
         emit(result + " = " + (is_float ? "fsub" : "sub") + " " + llty + " " + cur + ", " + rv);
       }
@@ -2460,6 +2650,108 @@ std::string IRBuilder::codegen_expr(Node* n) {
         }
         return "0";
       }
+      // __builtin_ffs / __builtin_ffsl / __builtin_ffsll → cttz + 1, with zero check
+      if (fn_name == "__builtin_ffs" || fn_name == "__builtin_ffsl" ||
+          fn_name == "__builtin_ffsll") {
+        bool is_ll = (fn_name == "__builtin_ffsll");
+        bool is_l  = (fn_name == "__builtin_ffsl");
+        std::string itype = is_ll ? "i64" : (is_l ? "i64" : "i32");
+        std::string intrinsic = is_ll ? "llvm.cttz.i64" : (is_l ? "llvm.cttz.i64" : "llvm.cttz.i32");
+        std::string arg = n->n_children > 0 ? codegen_expr(n->children[0]) : "0";
+        TypeSpec ats = n->n_children > 0 ? expr_type(n->children[0]) : int_ts();
+        arg = coerce(arg, ats, itype);
+        std::string tz = fresh_tmp(), tz1_wide = fresh_tmp(), tz1 = fresh_tmp();
+        std::string iz = fresh_tmp(), res = fresh_tmp();
+        emit(tz + " = call " + itype + " @" + intrinsic + "(" + itype + " " + arg + ", i1 false)");
+        emit(tz1_wide + " = add " + itype + " " + tz + ", 1");
+        // ffs returns int, so truncate if needed
+        if (itype == "i64")
+          emit(tz1 + " = trunc i64 " + tz1_wide + " to i32");
+        else
+          tz1 = tz1_wide;
+        std::string zero_arg = (itype == "i64") ? "i64 0" : "i32 0";
+        emit(iz + " = icmp eq " + itype + " " + arg + ", " + zero_arg.substr(itype.size()+1));
+        emit(res + " = select i1 " + iz + ", i32 0, i32 " + tz1);
+        ret_ts = int_ts();
+        return res;
+      }
+      // __builtin_clz / __builtin_clzl / __builtin_clzll → llvm.ctlz
+      if (fn_name == "__builtin_clz" || fn_name == "__builtin_clzl" ||
+          fn_name == "__builtin_clzll") {
+        bool is_ll = (fn_name == "__builtin_clzll");
+        bool is_l  = (fn_name == "__builtin_clzl");
+        std::string itype = is_ll ? "i64" : (is_l ? "i64" : "i32");
+        std::string intrinsic = is_ll ? "llvm.ctlz.i64" : (is_l ? "llvm.ctlz.i64" : "llvm.ctlz.i32");
+        std::string arg = n->n_children > 0 ? codegen_expr(n->children[0]) : "0";
+        TypeSpec ats = n->n_children > 0 ? expr_type(n->children[0]) : int_ts();
+        arg = coerce(arg, ats, itype);
+        std::string r = fresh_tmp(), res = fresh_tmp();
+        emit(r + " = call " + itype + " @" + intrinsic + "(" + itype + " " + arg + ", i1 true)");
+        if (itype == "i64")
+          emit(res + " = trunc i64 " + r + " to i32");
+        else
+          res = r;
+        ret_ts = int_ts();
+        return res;
+      }
+      // __builtin_ctz / __builtin_ctzl / __builtin_ctzll → llvm.cttz
+      if (fn_name == "__builtin_ctz" || fn_name == "__builtin_ctzl" ||
+          fn_name == "__builtin_ctzll") {
+        bool is_ll = (fn_name == "__builtin_ctzll");
+        bool is_l  = (fn_name == "__builtin_ctzl");
+        std::string itype = is_ll ? "i64" : (is_l ? "i64" : "i32");
+        std::string intrinsic = is_ll ? "llvm.cttz.i64" : (is_l ? "llvm.cttz.i64" : "llvm.cttz.i32");
+        std::string arg = n->n_children > 0 ? codegen_expr(n->children[0]) : "0";
+        TypeSpec ats = n->n_children > 0 ? expr_type(n->children[0]) : int_ts();
+        arg = coerce(arg, ats, itype);
+        std::string r = fresh_tmp(), res = fresh_tmp();
+        emit(r + " = call " + itype + " @" + intrinsic + "(" + itype + " " + arg + ", i1 true)");
+        if (itype == "i64")
+          emit(res + " = trunc i64 " + r + " to i32");
+        else
+          res = r;
+        ret_ts = int_ts();
+        return res;
+      }
+      // __builtin_popcount / __builtin_popcountl / __builtin_popcountll → llvm.ctpop
+      if (fn_name == "__builtin_popcount" || fn_name == "__builtin_popcountl" ||
+          fn_name == "__builtin_popcountll") {
+        bool is_ll = (fn_name == "__builtin_popcountll");
+        bool is_l  = (fn_name == "__builtin_popcountl");
+        std::string itype = is_ll ? "i64" : (is_l ? "i64" : "i32");
+        std::string intrinsic = is_ll ? "llvm.ctpop.i64" : (is_l ? "llvm.ctpop.i64" : "llvm.ctpop.i32");
+        std::string arg = n->n_children > 0 ? codegen_expr(n->children[0]) : "0";
+        TypeSpec ats = n->n_children > 0 ? expr_type(n->children[0]) : int_ts();
+        arg = coerce(arg, ats, itype);
+        std::string r = fresh_tmp(), res = fresh_tmp();
+        emit(r + " = call " + itype + " @" + intrinsic + "(" + itype + " " + arg + ")");
+        if (itype == "i64")
+          emit(res + " = trunc i64 " + r + " to i32");
+        else
+          res = r;
+        ret_ts = int_ts();
+        return res;
+      }
+      // __builtin_parity / __builtin_parityl / __builtin_parityll → popcount & 1
+      if (fn_name == "__builtin_parity" || fn_name == "__builtin_parityl" ||
+          fn_name == "__builtin_parityll") {
+        bool is_ll = (fn_name == "__builtin_parityll");
+        bool is_l  = (fn_name == "__builtin_parityl");
+        std::string itype = is_ll ? "i64" : (is_l ? "i64" : "i32");
+        std::string intrinsic = is_ll ? "llvm.ctpop.i64" : (is_l ? "llvm.ctpop.i64" : "llvm.ctpop.i32");
+        std::string arg = n->n_children > 0 ? codegen_expr(n->children[0]) : "0";
+        TypeSpec ats = n->n_children > 0 ? expr_type(n->children[0]) : int_ts();
+        arg = coerce(arg, ats, itype);
+        std::string r = fresh_tmp(), r32 = fresh_tmp(), res = fresh_tmp();
+        emit(r + " = call " + itype + " @" + intrinsic + "(" + itype + " " + arg + ")");
+        if (itype == "i64")
+          emit(r32 + " = trunc i64 " + r + " to i32");
+        else
+          r32 = r;
+        emit(res + " = and i32 " + r32 + ", 1");
+        ret_ts = int_ts();
+        return res;
+      }
       // __builtin_fabs / __builtin_inf → LLVM intrinsics / constants
       if (fn_name == "__builtin_fabs" || fn_name == "__builtin_fabsl") {
         std::string a = n->n_children > 0 ? codegen_expr(n->children[0]) : "0.0";
@@ -2479,6 +2771,27 @@ std::string IRBuilder::codegen_expr(Node* n) {
         ret_ts = float_ts();
         return t;
       }
+      // __builtin_copysign / __builtin_copysignf / __builtin_copysignl → llvm.copysign
+      if (fn_name == "__builtin_copysign" || fn_name == "__builtin_copysignl") {
+        std::string a = n->n_children > 0 ? codegen_expr(n->children[0]) : "0.0";
+        std::string b = n->n_children > 1 ? codegen_expr(n->children[1]) : "0.0";
+        TypeSpec ats = n->n_children > 0 ? expr_type(n->children[0]) : double_ts();
+        TypeSpec bts = n->n_children > 1 ? expr_type(n->children[1]) : double_ts();
+        a = coerce(a, ats, "double"); b = coerce(b, bts, "double");
+        std::string t = fresh_tmp();
+        emit(t + " = call double @llvm.copysign.f64(double " + a + ", double " + b + ")");
+        ret_ts = double_ts(); return t;
+      }
+      if (fn_name == "__builtin_copysignf") {
+        std::string a = n->n_children > 0 ? codegen_expr(n->children[0]) : "0.0";
+        std::string b = n->n_children > 1 ? codegen_expr(n->children[1]) : "0.0";
+        TypeSpec ats = n->n_children > 0 ? expr_type(n->children[0]) : float_ts();
+        TypeSpec bts = n->n_children > 1 ? expr_type(n->children[1]) : float_ts();
+        a = coerce(a, ats, "float"); b = coerce(b, bts, "float");
+        std::string t = fresh_tmp();
+        emit(t + " = call float @llvm.copysign.f32(float " + a + ", float " + b + ")");
+        ret_ts = float_ts(); return t;
+      }
       if (fn_name == "__builtin_inf" || fn_name == "__builtin_infl") {
         ret_ts = double_ts();
         return "0x7FF0000000000000";  // +Inf as double hex
@@ -2486,6 +2799,82 @@ std::string IRBuilder::codegen_expr(Node* n) {
       if (fn_name == "__builtin_inff") {
         ret_ts = float_ts();
         return "0x7FF0000000000000";  // LLVM accepts double-form hex for float +Inf
+      }
+      // __builtin_nan / __builtin_nanf / __builtin_nanl — quiet NaN constant
+      if (fn_name == "__builtin_nan" || fn_name == "__builtin_nanl") {
+        ret_ts = double_ts();
+        // Ignore string argument; return canonical quiet NaN for double
+        std::string t = fresh_tmp();
+        emit(t + " = select i1 false, double 0.0, double 0x7FF8000000000000");
+        return t;
+      }
+      if (fn_name == "__builtin_nanf") {
+        ret_ts = float_ts();
+        std::string t = fresh_tmp();
+        emit(t + " = select i1 false, float 0.0, float 0x7FF8000000000000");
+        return t;
+      }
+      // __builtin_isgreater / isless / isunordered / etc. — unmasked ordered FP comparisons
+      // These return int (1 = true, 0 = false) and do not raise exceptions for NaN.
+      {
+        const char* fcmp_pred = nullptr;
+        if (fn_name == "__builtin_isgreater")     fcmp_pred = "ogt";
+        else if (fn_name == "__builtin_isgreaterequal") fcmp_pred = "oge";
+        else if (fn_name == "__builtin_isless")        fcmp_pred = "olt";
+        else if (fn_name == "__builtin_islessequal")   fcmp_pred = "ole";
+        else if (fn_name == "__builtin_islessgreater") fcmp_pred = "one";
+        else if (fn_name == "__builtin_isunordered")   fcmp_pred = "uno";
+        if (fcmp_pred) {
+          std::string a = n->n_children > 0 ? codegen_expr(n->children[0]) : "0.0";
+          std::string b = n->n_children > 1 ? codegen_expr(n->children[1]) : "0.0";
+          TypeSpec ats = n->n_children > 0 ? expr_type(n->children[0]) : double_ts();
+          TypeSpec bts = n->n_children > 1 ? expr_type(n->children[1]) : double_ts();
+          // Determine common FP type
+          std::string fty = "double";
+          if (llvm_ty(ats) == "float" && llvm_ty(bts) == "float") fty = "float";
+          a = coerce(a, ats, fty);
+          b = coerce(b, bts, fty);
+          std::string cmp = fresh_tmp(), ext = fresh_tmp();
+          emit(cmp + " = fcmp " + fcmp_pred + " " + fty + " " + a + ", " + b);
+          emit(ext + " = zext i1 " + cmp + " to i32");
+          ret_ts = int_ts();
+          return ext;
+        }
+      }
+      // __builtin_isnan / __builtin_isinf / __builtin_isfinite / __builtin_isnormal
+      if (fn_name == "__builtin_isnan") {
+        std::string a = n->n_children > 0 ? codegen_expr(n->children[0]) : "0.0";
+        TypeSpec ats = n->n_children > 0 ? expr_type(n->children[0]) : double_ts();
+        std::string fty = (llvm_ty(ats) == "float") ? "float" : "double";
+        a = coerce(a, ats, fty);
+        std::string cmp = fresh_tmp(), ext = fresh_tmp();
+        emit(cmp + " = fcmp uno " + fty + " " + a + ", " + a);
+        emit(ext + " = zext i1 " + cmp + " to i32");
+        ret_ts = int_ts();
+        return ext;
+      }
+      if (fn_name == "__builtin_isinf" || fn_name == "__builtin_isinf_sign") {
+        std::string a = n->n_children > 0 ? codegen_expr(n->children[0]) : "0.0";
+        TypeSpec ats = n->n_children > 0 ? expr_type(n->children[0]) : double_ts();
+        std::string fty = (llvm_ty(ats) == "float") ? "float" : "double";
+        a = coerce(a, ats, fty);
+        std::string abs_intr = (fty == "float") ? "llvm.fabs.f32" : "llvm.fabs.f64";
+        std::string inf = (fty == "float") ? "0x7FF0000000000000" : "0x7FF0000000000000";
+        std::string absa = fresh_tmp(), cmp = fresh_tmp(), ext = fresh_tmp();
+        emit(absa + " = call " + fty + " @" + abs_intr + "(" + fty + " " + a + ")");
+        emit(cmp + " = fcmp oeq " + fty + " " + absa + ", " + inf);
+        if (fn_name == "__builtin_isinf_sign") {
+          // Returns -1 for -inf, +1 for +inf, 0 for not inf
+          std::string sign_cmp = fresh_tmp(), neg_cmp = fresh_tmp();
+          std::string r1 = fresh_tmp(), r2 = fresh_tmp(), r3 = fresh_tmp();
+          emit(neg_cmp + " = fcmp olt " + fty + " " + a + ", " + fty + " 0.0");
+          emit(r1 + " = select i1 " + neg_cmp + ", i32 -1, i32 1");
+          emit(ext + " = select i1 " + cmp + ", i32 " + r1 + ", i32 0");
+        } else {
+          emit(ext + " = zext i1 " + cmp + " to i32");
+        }
+        ret_ts = int_ts();
+        return ext;
       }
       // __builtin_conjf / __builtin_conj / __builtin_conjl — complex conjugate
       if (fn_name == "__builtin_conjf" || fn_name == "__builtin_conj" ||

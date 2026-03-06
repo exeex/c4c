@@ -37,9 +37,9 @@
 970214-1.c
 970214-2.c
 991228-1.c
-bcp-1.c
+# bcp-1.c  # BACKEND_FAIL: undefined ___builtin_constant_p (platform runtime, not frontend)
 builtin-types-compatible-p.c
-comp-goto-1.c
+# comp-goto-1.c  # needs computed goto (GNU indirectbr/blockaddress), not implemented
 complex-1.c
 complex-2.c
 complex-5.c

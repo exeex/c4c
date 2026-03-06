@@ -26,14 +26,27 @@ PRUNE_FAILED_ALLOWLIST=0 ./scripts/check_progress_llvm_gcc_c_torture.sh
 ```
 
 Result:
-- First fail: `llvm_gcc_c_torture_20010122_1_c`
+- First fail: `llvm_gcc_c_torture_ieee_pr72824_2_c`
 - Failure kind: `[BACKEND_FAIL]`
-- Error: arm64 link undefined symbols (`___builtin_return_address`, `_alloca`)
-- Classification: non-frontend / platform runtime mismatch
+- Error: invalid LLVM IR cast (`ptrtoint ptr ... to [4 x float]`)
+- Classification: frontend IR generation gap (GNU vector extension semantics)
+
+Focused-run snapshot (2026-03-06):
+- 46 tests passed before first failure
+- `98%` passed in the truncated first-fail run (`1/47` failed)
+
+Recent completed slices now reflected in working tree:
+- parser: `typeof(type|identifier)`, `__builtin_types_compatible_p`, `vector_size(...)` parsing hooks
+- preprocessor: literal-prefix-safe macro expansion (`L/u/U/u8`), integer limit predefined macros
+- IR builder: more builtins (`ffs/clz/ctz/popcount/parity`, `copysign`, `nan`, `is*`), complex compound assignment/conjugate, safer `void*` GEP element typing
+- allowlist: commented known non-frontend blockers (`bcp-1.c`, `comp-goto-1.c`)
 
 Action policy:
 1. Skip/comment non-frontend blocker cases in allowlist.
 2. Continue first-fail loop until next actionable frontend failure.
+3. For `ieee/pr72824-2.c`, either:
+   - implement real vector type lowering (preferred), or
+   - temporarily move case out of allowlist if treating vector extension as out-of-scope.
 
 ## Active Repair Workflow
 

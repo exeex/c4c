@@ -46,11 +46,41 @@ static long long eval_enum_expr(Node* n, const std::unordered_map<std::string, l
 // ── constant expression evaluator ─────────────────────────────────────────────
 // Evaluate a simple AST subtree as an integer constant (for array sizes).
 // Returns true and sets *out on success; false if the expression is dynamic.
+static long long sizeof_base(TypeBase b) {
+    switch (b) {
+        case TB_VOID: return 1;
+        case TB_BOOL: case TB_CHAR: case TB_SCHAR: case TB_UCHAR: return 1;
+        case TB_SHORT: case TB_USHORT: return 2;
+        case TB_INT: case TB_UINT: case TB_FLOAT: return 4;
+        case TB_LONG: case TB_ULONG: case TB_LONGLONG: case TB_ULONGLONG:
+        case TB_DOUBLE: return 8;
+        case TB_LONGDOUBLE: return 16;
+        case TB_INT128: case TB_UINT128: return 16;
+        default: return 4;
+    }
+}
+
 static bool eval_const_int(Node* n, long long* out) {
     if (!n) return false;
     if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) {
         *out = n->ival;
         return true;
+    }
+    if (n->kind == NK_SIZEOF_TYPE) {
+        // sizeof(type): use LP64 sizes
+        long long sz = sizeof_base(n->type.base);
+        if (n->type.ptr_level > 0) sz = 8;
+        if (n->type.array_rank > 0) {
+            for (int i = 0; i < n->type.array_rank; ++i)
+                if (n->type.array_dims[i] > 0) sz *= n->type.array_dims[i];
+        }
+        *out = sz;
+        return true;
+    }
+    if (n->kind == NK_SIZEOF_EXPR) {
+        // sizeof(expr): approximate from the expression type if it's a literal
+        // For non-literals, return a conservative estimate
+        return false;  // complex: skip for now
     }
     if (n->kind == NK_UNARY && n->op && strcmp(n->op, "-") == 0 && n->left) {
         long long v;
@@ -519,12 +549,45 @@ TypeSpec Parser::parse_base_type() {
             case TokenKind::KwEnum:  has_enum  = true; consume(); done = true; break;
 
             case TokenKind::KwTypeof: {
-                // typeof(expr) or typeof(type): skip to get contained type
-                consume();
-                expect(TokenKind::LParen);
-                // skip contents - we'll just treat as int for now
-                skip_until(TokenKind::RParen);
-                ts.base = TB_INT;
+                // typeof(type) or typeof(expr)
+                consume();  // consume typeof
+                expect(TokenKind::LParen);  // consume (
+                if (is_type_start()) {
+                    // typeof(type): parse type directly, merging outer qualifiers
+                    bool save_c = ts.is_const, save_v = ts.is_volatile;
+                    ts = parse_type_name();
+                    ts.is_const   |= save_c;
+                    ts.is_volatile |= save_v;
+                    expect(TokenKind::RParen);
+                } else if (check(TokenKind::Identifier)) {
+                    // typeof(identifier): look up variable or enum constant type
+                    std::string id = cur().lexeme;
+                    consume();
+                    auto vit = var_types_.find(id);
+                    if (vit != var_types_.end()) {
+                        ts = vit->second;
+                    } else {
+                        ts.base = TB_INT;  // enum constants and unknowns → int
+                    }
+                    // Skip remaining tokens (handles expressions like `i + 1`) to closing )
+                    int depth = 0;
+                    while (!at_end() && !(check(TokenKind::RParen) && depth == 0)) {
+                        if (check(TokenKind::LParen)) ++depth;
+                        else if (check(TokenKind::RParen)) --depth;
+                        consume();
+                    }
+                    expect(TokenKind::RParen);
+                } else {
+                    // Complex expression: skip to balanced ) returning int
+                    int depth = 1;
+                    while (!at_end() && depth > 0) {
+                        if (check(TokenKind::LParen)) ++depth;
+                        else if (check(TokenKind::RParen)) { if (--depth == 0) { consume(); break; } }
+                        consume();
+                    }
+                    ts.base = TB_INT;
+                }
+                base_set = true;
                 done = true; break;
             }
 
@@ -881,6 +944,55 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
         *out_name = arena_.strdup(cur().lexeme);
         consume();
     }
+
+    // Check for __attribute__((vector_size(N))) — treat as array of N/elem_bytes elements.
+    // This is a GCC extension for SIMD vector types. We model them as 1D arrays.
+    if (check(TokenKind::KwAttribute)) {
+        int saved = pos_;
+        consume();  // __attribute__
+        if (check(TokenKind::LParen)) {
+            consume();  // (
+            if (check(TokenKind::LParen)) {
+                consume();  // (
+                if (check(TokenKind::Identifier) && cur().lexeme == "vector_size") {
+                    consume();  // vector_size
+                    if (check(TokenKind::LParen)) {
+                        consume();  // (
+                        Node* sz_expr = parse_assign_expr();
+                        long long sz_val = 0;
+                        eval_const_int(sz_expr, &sz_val);
+                        expect(TokenKind::RParen);  // )
+                        expect(TokenKind::RParen);  // ))
+                        expect(TokenKind::RParen);  // )))
+                        // Compute element count: vector_size bytes / element size bytes
+                        long long elem_sz = 4;  // default to 4 (float/int)
+                        switch (ts.base) {
+                            case TB_CHAR: case TB_SCHAR: case TB_UCHAR: elem_sz = 1; break;
+                            case TB_SHORT: case TB_USHORT: elem_sz = 2; break;
+                            case TB_FLOAT: case TB_INT: case TB_UINT: elem_sz = 4; break;
+                            case TB_DOUBLE: case TB_LONG: case TB_ULONG:
+                            case TB_LONGLONG: case TB_ULONGLONG: elem_sz = 8; break;
+                            default: elem_sz = 4; break;
+                        }
+                        long long count = (sz_val > 0 && elem_sz > 0) ? sz_val / elem_sz : 1;
+                        if (count > 0) {
+                            decl_dims.push_back(count);
+                        }
+                    } else {
+                        pos_ = saved;  // restore on parse failure
+                    }
+                } else {
+                    pos_ = saved;  // not vector_size, restore and let skip_attributes handle it
+                }
+            } else {
+                pos_ = saved;
+            }
+        } else {
+            pos_ = saved;
+        }
+    }
+    // Also handle vector_size inside __attribute__ in the base type position
+    skip_attributes();
 
     // Array suffix: [size] or [] (possibly multi-dimensional)
     while (check(TokenKind::LBracket)) {
@@ -1587,6 +1699,48 @@ Node* Parser::parse_postfix(Node* base) {
     }
 }
 
+// ── __builtin_types_compatible_p helpers ─────────────────────────────────────
+
+static TypeSpec resolve_typedef_chain(TypeSpec ts,
+                                      const std::unordered_map<std::string, TypeSpec>& tmap) {
+    for (int depth = 0; depth < 16; ++depth) {
+        if (ts.base != TB_TYPEDEF || ts.ptr_level > 0 || ts.array_rank > 0) break;
+        if (!ts.tag) break;
+        auto it = tmap.find(ts.tag);
+        if (it == tmap.end()) break;
+        bool c = ts.is_const, v = ts.is_volatile;
+        ts = it->second;
+        ts.is_const   |= c;
+        ts.is_volatile |= v;
+    }
+    return ts;
+}
+
+// Returns true if type a and type b are compatible per GCC __builtin_types_compatible_p rules.
+static bool types_compatible_p(TypeSpec a, TypeSpec b,
+                                const std::unordered_map<std::string, TypeSpec>& tmap) {
+    a = resolve_typedef_chain(a, tmap);
+    b = resolve_typedef_chain(b, tmap);
+    // Strip top-level cv-qualifiers (they don't affect compatibility at the value level).
+    // But for pointer types, qualifiers on the pointed-to type DO matter (char* vs const char*).
+    if (a.ptr_level == 0 && a.array_rank == 0) { a.is_const = false; a.is_volatile = false; }
+    if (b.ptr_level == 0 && b.array_rank == 0) { b.is_const = false; b.is_volatile = false; }
+    if (a.base != b.base) return false;
+    if (a.ptr_level != b.ptr_level) return false;
+    if (a.is_const != b.is_const || a.is_volatile != b.is_volatile) return false;
+    if (a.array_rank != b.array_rank) return false;
+    for (int i = 0; i < a.array_rank; ++i) {
+        long long da = a.array_dims[i], db = b.array_dims[i];
+        // -2 means unsized ([]) — compatible with any same-rank dimension
+        if (da != db && da != -2 && db != -2) return false;
+    }
+    // Struct/union/enum: same tag required
+    if (a.base == TB_STRUCT || a.base == TB_UNION || a.base == TB_ENUM) {
+        if (!a.tag || !b.tag || strcmp(a.tag, b.tag) != 0) return false;
+    }
+    return true;
+}
+
 Node* Parser::parse_primary() {
     int ln = cur().line;
 
@@ -1746,6 +1900,17 @@ Node* Parser::parse_primary() {
     // Identifier / label address
     if (check(TokenKind::Identifier)) {
         const char* nm = arena_.strdup(cur().lexeme);
+        // __builtin_types_compatible_p(type1, type2) — evaluate at parse time
+        if (strcmp(nm, "__builtin_types_compatible_p") == 0) {
+            consume();
+            expect(TokenKind::LParen);
+            TypeSpec ts1 = parse_type_name();
+            expect(TokenKind::Comma);
+            TypeSpec ts2 = parse_type_name();
+            expect(TokenKind::RParen);
+            int result = types_compatible_p(ts1, ts2, typedef_types_) ? 1 : 0;
+            return make_int_lit(result, ln);
+        }
         consume();
         return parse_postfix(make_var(nm, ln));
     }
@@ -2238,6 +2403,7 @@ Node* Parser::parse_local_decl() {
         d->init      = init_node;
         d->is_static = is_static;
         d->is_extern = is_extern;
+        if (vname) var_types_[vname] = ts;  // for typeof(var) resolution
         decls.push_back(d);
     } while (match(TokenKind::Comma));
 
@@ -2377,6 +2543,15 @@ Node* Parser::parse_top_level() {
         while (check(TokenKind::Star)) { consume(); ts.ptr_level++; }
         // Skip qualifiers after * (e.g. `double (* const a[])`)
         while (is_qualifier(cur().kind)) consume();
+        // Skip nullability annotations: (* _Nullable name) or (* _Nonnull name)
+        while (check(TokenKind::Identifier)) {
+            const std::string& ql = cur().lexeme;
+            if (ql == "_Nullable" || ql == "_Nonnull" || ql == "_Null_unspecified" ||
+                ql == "__nullable" || ql == "__nonnull")
+                consume();
+            else break;
+        }
+        skip_attributes();
         if (check(TokenKind::Identifier)) {
             decl_name = arena_.strdup(cur().lexeme);
             consume();
@@ -2617,6 +2792,7 @@ Node* Parser::parse_top_level() {
         gv->init      = ginit;
         gv->is_static = is_static;
         gv->is_extern = is_extern;
+        if (gname) var_types_[gname] = gts;  // for typeof(var) resolution
         return gv;
     };
 

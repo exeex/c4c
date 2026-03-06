@@ -193,6 +193,22 @@ std::string substitute_funclike_body(const std::string& body,
       while (j < body.size() && is_ident_continue(body[j])) ++j;
       std::string tok = body.substr(i, j - i);
 
+      // Check: is this identifier a character/string literal prefix?
+      // Tokens like L'x', u"s", U'x', u8"s" are single pp-tokens; the
+      // prefix (L/u/U/u8) is NOT a macro-parameter reference.
+      if (j < body.size() && (body[j] == '\'' || body[j] == '"')) {
+        out += tok;  // emit prefix verbatim (not substituted)
+        char delim = body[j];
+        out.push_back(body[j++]);  // opening quote
+        while (j < body.size() && body[j] != delim) {
+          if (body[j] == '\\') { out.push_back(body[j++]); }
+          if (j < body.size()) out.push_back(body[j++]);
+        }
+        if (j < body.size()) { out.push_back(body[j++]); }  // closing quote
+        i = j;
+        continue;
+      }
+
       // Is there ## following this token?
       size_t k = j;
       while (k < body.size() && (body[k] == ' ' || body[k] == '\t')) ++k;
@@ -832,6 +848,28 @@ Preprocessor::Preprocessor() {
   macros_["__UINTMAX_TYPE__"]    = MacroDef{"__UINTMAX_TYPE__",    false, false, {}, "long unsigned int"};
   macros_["__INTPTR_TYPE__"]     = MacroDef{"__INTPTR_TYPE__",     false, false, {}, "long int"};
   macros_["__UINTPTR_TYPE__"]    = MacroDef{"__UINTPTR_TYPE__",    false, false, {}, "long unsigned int"};
+  // Integer limit macros (LP64: int=32-bit, long/long long=64-bit)
+  macros_["__CHAR_BIT__"]        = MacroDef{"__CHAR_BIT__",        false, false, {}, "8"};
+  macros_["__SCHAR_MAX__"]       = MacroDef{"__SCHAR_MAX__",       false, false, {}, "127"};
+  macros_["__SHRT_MAX__"]        = MacroDef{"__SHRT_MAX__",        false, false, {}, "32767"};
+  macros_["__INT_MAX__"]         = MacroDef{"__INT_MAX__",         false, false, {}, "2147483647"};
+  macros_["__LONG_MAX__"]        = MacroDef{"__LONG_MAX__",        false, false, {}, "9223372036854775807L"};
+  macros_["__LONG_LONG_MAX__"]   = MacroDef{"__LONG_LONG_MAX__",   false, false, {}, "9223372036854775807LL"};
+  macros_["__INT8_MAX__"]        = MacroDef{"__INT8_MAX__",        false, false, {}, "127"};
+  macros_["__INT16_MAX__"]       = MacroDef{"__INT16_MAX__",       false, false, {}, "32767"};
+  macros_["__INT32_MAX__"]       = MacroDef{"__INT32_MAX__",       false, false, {}, "2147483647"};
+  macros_["__INT64_MAX__"]       = MacroDef{"__INT64_MAX__",       false, false, {}, "9223372036854775807LL"};
+  macros_["__UINT8_MAX__"]       = MacroDef{"__UINT8_MAX__",       false, false, {}, "255"};
+  macros_["__UINT16_MAX__"]      = MacroDef{"__UINT16_MAX__",      false, false, {}, "65535"};
+  macros_["__UINT32_MAX__"]      = MacroDef{"__UINT32_MAX__",      false, false, {}, "4294967295U"};
+  macros_["__UINT64_MAX__"]      = MacroDef{"__UINT64_MAX__",      false, false, {}, "18446744073709551615ULL"};
+  macros_["__INTMAX_MAX__"]      = MacroDef{"__INTMAX_MAX__",      false, false, {}, "9223372036854775807LL"};
+  macros_["__UINTMAX_MAX__"]     = MacroDef{"__UINTMAX_MAX__",     false, false, {}, "18446744073709551615ULL"};
+  macros_["__SIZE_MAX__"]        = MacroDef{"__SIZE_MAX__",        false, false, {}, "18446744073709551615ULL"};
+  macros_["__INTPTR_MAX__"]      = MacroDef{"__INTPTR_MAX__",      false, false, {}, "9223372036854775807LL"};
+  macros_["__UINTPTR_MAX__"]     = MacroDef{"__UINTPTR_MAX__",     false, false, {}, "18446744073709551615ULL"};
+  macros_["__PTRDIFF_MAX__"]     = MacroDef{"__PTRDIFF_MAX__",     false, false, {}, "9223372036854775807LL"};
+  macros_["__WCHAR_MAX__"]       = MacroDef{"__WCHAR_MAX__",       false, false, {}, "2147483647"};
 }
 
 std::string Preprocessor::preprocess_file(const std::string& path) {
@@ -1295,10 +1333,18 @@ std::string Preprocessor::expand_text(const std::string& text,
           }
         } else {
           // Object-like: expand body with disabled ∪ {ident}.
-          std::unordered_set<std::string> new_disabled = disabled;
-          new_disabled.insert(ident);
-          out += expand_text(def.body, std::move(new_disabled));
-          i = j;
+          // Exception: L/u/U/u8 immediately followed by ' or " form a wide/unicode
+          // character/string literal prefix — do NOT expand them as macros.
+          if ((ident == "L" || ident == "u" || ident == "U" || ident == "u8") &&
+              j < text.size() && (text[j] == '\'' || text[j] == '"')) {
+            out += ident;
+            i = j;
+          } else {
+            std::unordered_set<std::string> new_disabled = disabled;
+            new_disabled.insert(ident);
+            out += expand_text(def.body, std::move(new_disabled));
+            i = j;
+          }
         }
       } else {
         out += ident;
