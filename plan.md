@@ -11,6 +11,35 @@ Last updated: 2026-03-06
   - `frontend_cxx_preprocessor_tests`
 - `20010605-2.c` frontend fix is completed (`__real__/__imag__` support).
 
+## Latest Validation (2026-03-06, Claude handoff close-out)
+
+- `git stash list`: empty (no pending stash to apply).
+- Working tree contains active edits in:
+  - `src/frontend_c/parser.cpp`
+  - `src/frontend_c/ir_builder.cpp`
+  - `tests/llvm_gcc_c_torture_allowlist.txt`
+
+Validation commands and outcomes:
+
+```bash
+ctest --test-dir build_debug --output-on-failure -j 8
+```
+
+- Result: `333/377` passed, `44/377` failed.
+- Failures are dominated by `negative_tests` (expected-compile-failure cases currently compiling successfully) plus:
+  - `c_testsuite_tests_single_exec_00174_c` (`undefined reference to sin`)
+  - `c_testsuite_tests_single_exec_00204_c` (`Segmentation fault`)
+
+```bash
+PRUNE_FAILED_ALLOWLIST=0 ./scripts/check_progress_llvm_gcc_c_torture.sh
+```
+
+- Result: first fail now at `llvm_gcc_c_torture_20020402_3_c`.
+- CMake warning observed: allowlist entry parse warning around comment line
+  (`frontend-passing batch added 2026-03-06`).
+- Prior focused `100/100` status no longer applies after current allowlist expansion;
+  next loop should continue from `20020402-3.c`.
+
 ## Allowlist Strategy
 
 - `tests/llvm_gcc_c_torture_allowlist.txt` is generated from:

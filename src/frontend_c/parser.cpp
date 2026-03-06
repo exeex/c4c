@@ -297,7 +297,7 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena)
         "FILE", "DIR", "fpos_t",
         "va_list", "__va_list", "__va_list_tag",
         "wchar_t", "wint_t", "wctype_t",
-        "bool", "true", "false",
+        "bool",
         "NULL",
         "__builtin_va_list", "__gnuc_va_list",
         "jmp_buf", "sigjmp_buf",
@@ -862,6 +862,10 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
     std::vector<long long> decl_dims;
 
     // Skip qualifiers/attributes that can appear before pointer stars
+    // This handles trailing qualifiers on the base type: e.g. `struct S const *p`
+    // where `const` appears after the struct tag but before `*`.
+    skip_attributes();
+    while (is_qualifier(cur().kind)) consume();
     skip_attributes();
 
     // Count pointer stars (and qualifiers between them)
