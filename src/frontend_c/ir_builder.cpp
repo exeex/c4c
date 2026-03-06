@@ -6,6 +6,7 @@
 #include <unordered_set>
 #include <cstdint>
 #include <cmath>
+#include <functional>
 #include <sstream>
 #include <stdexcept>
 
