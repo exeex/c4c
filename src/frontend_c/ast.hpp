@@ -75,6 +75,10 @@ struct TypeSpec {
     int array_rank;          // number of array dimensions (0 = not array)
     long long array_dims[8]; // outer-to-inner dimensions; each is -2 (unsized) or >= 0
     bool is_ptr_to_array;    // true for declarators like (*p)[N] (pointer outside array)
+    int  inner_rank;         // >= 0: array_dims split: inner_rank trailing dims belong to
+                             // pointed-to typedef array; outer (array_rank-inner_rank) are
+                             // declarator dims → llvm_ty generates [outer x ptr]
+    bool is_vector;          // true when array dims come from __attribute__((vector_size(N)))
     Node* array_size_expr;   // non-null when array size is a computed expression
     bool is_const;
     bool is_volatile;

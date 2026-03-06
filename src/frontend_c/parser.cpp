@@ -541,6 +541,7 @@ TypeSpec Parser::parse_base_type() {
     TypeSpec ts{};
     ts.array_size = -1;
     ts.array_rank = 0;
+    ts.inner_rank = -1;
     for (int i = 0; i < 8; ++i) ts.array_dims[i] = -1;
     ts.base = TB_INT;  // default
 
@@ -807,6 +808,13 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
     };
     auto apply_decl_dims = [&](const std::vector<long long>& decl_dims) {
         if (decl_dims.empty()) return;
+        // If the base TypeSpec is already a pointer-to-array (e.g. A3_28* paa[2]),
+        // record the old (typedef's) array rank as inner_rank so that llvm_ty
+        // can produce [N x ptr] rather than [N x [inner x ...]].
+        if (ts.ptr_level > 0 && ts.is_ptr_to_array) {
+            ts.inner_rank = base_array_rank();
+            ts.is_ptr_to_array = false;
+        }
         long long merged[8];
         for (int i = 0; i < 8; ++i) merged[i] = -1;
         int out = 0;
@@ -1047,6 +1055,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
                         long long count = (sz_val > 0 && elem_sz > 0) ? sz_val / elem_sz : 1;
                         if (count > 0) {
                             decl_dims.push_back(count);
+                            ts.is_vector = true;
                         }
                     } else {
                         pos_ = saved;  // restore on parse failure
@@ -1670,6 +1679,11 @@ Node* Parser::parse_unary() {
             n->left = ap;
             n->type = ts;
             return n;
+        }
+        case TokenKind::KwExtension: {
+            // GNU __extension__: suppress extension warnings, semantically transparent.
+            consume();
+            return parse_unary();
         }
         case TokenKind::KwGccReal: {
             // GNU extension: __real__ expr

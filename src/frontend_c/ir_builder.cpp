@@ -21,6 +21,7 @@ static TypeSpec make_ts(TypeBase base) {
   ts.array_rank = 0;
   for (int i = 0; i < 8; ++i) ts.array_dims[i] = -1;
   ts.is_ptr_to_array = false;
+  ts.inner_rank = -1;
   return ts;
 }
 static TypeSpec int_ts()    { return make_ts(TB_INT); }
@@ -94,6 +95,17 @@ static TypeSpec drop_array_dim(TypeSpec ts) {
   int out = 0;
   for (int i = 1; i < rank && out < 8; ++i) dims[out++] = array_dim_at(ts, i);
   set_array_dims(ts, dims, out);
+  // Update inner_rank: we consumed one outer dim.
+  // If inner_rank >= 0, the outer dims count = (old_rank - inner_rank).
+  // After drop, outer_count -= 1. If outer_count becomes 0, restore is_ptr_to_array.
+  if (ts.inner_rank >= 0) {
+    int new_rank = out;
+    if (new_rank == ts.inner_rank) {
+      // All outer (declarator) dims consumed; remaining are typedef inner dims.
+      ts.is_ptr_to_array = true;
+      ts.inner_rank = -1;
+    }
+  }
   return ts;
 }
 
@@ -322,6 +334,20 @@ std::string IRBuilder::llvm_ty_base(TypeBase base) {
 std::string IRBuilder::llvm_ty(const TypeSpec& ts) {
   if (ts.is_fn_ptr && ts.ptr_level == 0) return "ptr";  // function pointer value
   if (ts.ptr_level > 0 && ts.is_ptr_to_array) return "ptr";
+  // Array-of-pointers-to-typedef-array: inner_rank splits the dims.
+  // The outer (array_rank - inner_rank) dims form [N x ptr].
+  if (ts.ptr_level > 0 && ts.inner_rank >= 0 && is_array_ty(ts)) {
+    int outer_rank = ts.array_rank - ts.inner_rank;
+    if (outer_rank <= 0) return "ptr";  // no outer dims, just ptr
+    // Build [dim0 x [dim1 x ... x ptr]] for outer_rank dims
+    std::string result = "ptr";
+    for (int i = outer_rank - 1; i >= 0; i--) {
+      long long dim = array_dim_at(ts, i);
+      if (dim < 0) dim = 0;
+      result = "[" + std::to_string(dim) + " x " + result + "]";
+    }
+    return result;
+  }
   // Check array BEFORE ptr_level: for typedef-derived pointer types used as array elements
   // (e.g. typedef void (*fptr)(void); fptr table[3] → [3 x ptr], not ptr)
   if (is_array_ty(ts)) {
@@ -484,6 +510,15 @@ TypeSpec IRBuilder::expr_type(Node* n) {
     }
     TypeSpec lt = expr_type(n->left);
     TypeSpec rt = expr_type(n->right);
+    // Vector element-wise arithmetic: both operands are the same 1D array type (vector_size).
+    // Return the vector type instead of decaying to pointer.
+    if (is_array_ty(lt) && lt.ptr_level == 0 && !lt.is_ptr_to_array &&
+        is_array_ty(rt) && rt.ptr_level == 0 && !rt.is_ptr_to_array &&
+        array_rank_of(lt) == 1 && array_rank_of(rt) == 1 &&
+        op && strcmp(op,"==") != 0 && strcmp(op,"!=") != 0 &&
+        strcmp(op,"<") != 0 && strcmp(op,"<=") != 0 &&
+        strcmp(op,">") != 0 && strcmp(op,">=") != 0)
+      return lt;
     // Pointer subtraction: ptr - ptr → ptrdiff_t (i64)
     if ((lt.ptr_level > 0 || is_array_ty(lt)) &&
         (rt.ptr_level > 0 || is_array_ty(rt)) &&
@@ -538,7 +573,10 @@ TypeSpec IRBuilder::expr_type(Node* n) {
   }
   case NK_DEREF: {
     TypeSpec inner = expr_type(n->left);
-    if (inner.ptr_level > 0) inner.ptr_level -= 1;
+    if (inner.ptr_level > 0) {
+      inner.ptr_level -= 1;
+      if (inner.ptr_level == 0) inner.is_ptr_to_array = false;  // deref gives the value, not ptr-to-array
+    }
     else if (is_array_ty(inner)) inner = drop_array_dim(inner);
     return inner;
   }
@@ -561,8 +599,43 @@ TypeSpec IRBuilder::expr_type(Node* n) {
   case NK_CALL: {
     if (n->left && n->left->name) {
       const char* cn = n->left->name;
+      // Remap common __builtin_* before signature lookup.
+      std::string cn_str = cn;
+      static const struct { const char* from; const char* to; } et_remap[] = {
+        {"__builtin_malloc",  "malloc"},  {"__builtin_free",    "free"},
+        {"__builtin_calloc",  "calloc"},  {"__builtin_realloc", "realloc"},
+        {"__builtin_alloca",  "alloca"},
+        {"__builtin_memcpy",  "memcpy"},  {"__builtin_memmove", "memmove"},
+        {"__builtin_memset",  "memset"},  {"__builtin_memcmp",  "memcmp"},
+        {"__builtin_memchr",  "memchr"},  {"__builtin_strcpy",  "strcpy"},
+        {"__builtin_strncpy", "strncpy"}, {"__builtin_strcat",  "strcat"},
+        {"__builtin_strncat", "strncat"}, {"__builtin_strcmp",  "strcmp"},
+        {"__builtin_strncmp", "strncmp"}, {"__builtin_strlen",  "strlen"},
+        {"__builtin_strchr",  "strchr"},  {"__builtin_strstr",  "strstr"},
+        {"__builtin_printf",  "printf"},  {"__builtin_puts",    "puts"},
+        {"__builtin_abort",   "abort"},   {"__builtin_exit",    "exit"},
+        {nullptr, nullptr}
+      };
+      for (int ri = 0; et_remap[ri].from; ri++) {
+        if (cn_str == et_remap[ri].from) { cn_str = et_remap[ri].to; break; }
+      }
+      cn = cn_str.c_str();
       auto it = func_sigs_.find(cn);
       if (it != func_sigs_.end()) return it->second.ret_type;
+      // Known pointer-returning standard library functions.
+      if (strcmp(cn, "malloc") == 0 || strcmp(cn, "calloc") == 0 ||
+          strcmp(cn, "realloc") == 0 || strcmp(cn, "strdup") == 0 ||
+          strcmp(cn, "strndup") == 0 || strcmp(cn, "memcpy") == 0 ||
+          strcmp(cn, "memmove") == 0 || strcmp(cn, "memset") == 0 ||
+          strcmp(cn, "alloca") == 0 || strcmp(cn, "memchr") == 0 ||
+          strcmp(cn, "strcpy") == 0 || strcmp(cn, "strncpy") == 0 ||
+          strcmp(cn, "strcat") == 0 || strcmp(cn, "strncat") == 0 ||
+          strcmp(cn, "strchr") == 0 || strcmp(cn, "strstr") == 0)
+        return ptr_to(TB_VOID);
+      // Known void-returning standard library functions.
+      if (strcmp(cn, "free") == 0 || strcmp(cn, "abort") == 0 ||
+          strcmp(cn, "exit") == 0 || strcmp(cn, "puts") == 0)
+        return void_ts();
       // Builtin return types
       if (strcmp(cn, "__builtin_bswap64") == 0) return make_ts(TB_ULONGLONG);
       if (strcmp(cn, "__builtin_bswap32") == 0) return make_ts(TB_UINT);
@@ -610,6 +683,11 @@ TypeSpec IRBuilder::expr_type(Node* n) {
   }
   case NK_INDEX: {
     TypeSpec bt = expr_type(n->left);
+    // Handle commutative form integer[pointer]: use the pointer/array side
+    if (bt.ptr_level == 0 && !is_array_ty(bt)) {
+      TypeSpec rt = expr_type(n->right);
+      if (rt.ptr_level > 0 || is_array_ty(rt)) bt = rt;
+    }
     if (is_array_ty(bt) && !(bt.ptr_level > 0 && bt.is_ptr_to_array))
       return drop_array_dim(bt);
     if (bt.ptr_level > 0) {
@@ -802,6 +880,11 @@ std::string IRBuilder::coerce(const std::string& val, const TypeSpec& from_ts,
   // Array type: val is already a ptr (array decays to pointer)
   if (is_array_ty(from_ts) && to_llty == "ptr") return val;
   if (is_array_ty(from_ts)) {
+    // array → aggregate (another array/struct): reinterpret cast — load from same address
+    if (!to_llty.empty() && (to_llty[0] == '[' || to_llty[0] == '{')) {
+      emit(t + " = load " + to_llty + ", ptr " + val);
+      return t;
+    }
     // array → integer (e.g. for printf %p): ptrtoint
     emit(t + " = ptrtoint ptr " + val + " to " + to_llty);
     return t;
@@ -810,6 +893,13 @@ std::string IRBuilder::coerce(const std::string& val, const TypeSpec& from_ts,
   // Pointer conversions
   if (from_ts.ptr_level > 0 && to_llty == "ptr") return val;
   if (from_ts.ptr_level > 0) {
+    // ptr → aggregate (array/struct): load the value from the pointer.
+    // This handles vector-type params (e.g. V value passed as ptr) where we
+    // need to materialise the [N x T] value. ptrtoint is only valid for integers.
+    if (!to_llty.empty() && (to_llty[0] == '[' || to_llty[0] == '{')) {
+      emit(t + " = load " + to_llty + ", ptr " + val);
+      return t;
+    }
     // ptr → integer
     emit(t + " = ptrtoint ptr " + val + " to " + to_llty);
     return t;
@@ -1204,13 +1294,21 @@ std::string IRBuilder::codegen_lval(Node* n) {
   }
 
   case NK_INDEX: {
-    // base[index]
+    // base[index]  — C allows the commutative form: integer[pointer]
     TypeSpec base_ts = expr_type(n->left);
-    std::string idx_val = codegen_expr(n->right);
+    TypeSpec right_ts = expr_type(n->right);
+    // Swap if left is non-pointer/non-array and right is pointer/array (e.g. N[(char*)x])
+    bool swapped = false;
+    if (base_ts.ptr_level == 0 && !is_array_ty(base_ts) &&
+        (right_ts.ptr_level > 0 || is_array_ty(right_ts))) {
+      std::swap(base_ts, right_ts);
+      swapped = true;
+    }
+    // Evaluate index (the non-pointer operand) and base (the pointer/array operand)
+    std::string idx_val = swapped ? codegen_expr(n->left) : codegen_expr(n->right);
     std::string idx_i64;
     {
-      TypeSpec idx_ts = expr_type(n->right);
-      idx_i64 = coerce(idx_val, idx_ts, "i64");
+      idx_i64 = coerce(idx_val, swapped ? right_ts : expr_type(n->right), "i64");
     }
 
     std::string t = fresh_tmp();
@@ -1219,7 +1317,8 @@ std::string IRBuilder::codegen_lval(Node* n) {
       TypeSpec elem_ts = drop_array_dim(base_ts);
       std::string arr_llty = llvm_ty(base_ts);
       std::string elem_llty = llvm_ty(elem_ts);
-      std::string ptr = codegen_lval(n->left);
+      Node* base_node = swapped ? n->right : n->left;
+      std::string ptr = codegen_lval(base_node);
       (void)elem_llty;
       emit(t + " = getelementptr " + arr_llty + ", ptr " + ptr +
            ", i64 0, i64 " + idx_i64);
@@ -1230,7 +1329,7 @@ std::string IRBuilder::codegen_lval(Node* n) {
       if (elem_ts.ptr_level == 0 && elem_ts.is_ptr_to_array)
         elem_ts.is_ptr_to_array = false;
       std::string elem_llty = gep_elem_ty(llvm_ty(elem_ts));
-      std::string ptr_val = codegen_expr(n->left);
+      std::string ptr_val = swapped ? codegen_expr(n->right) : codegen_expr(n->left);
       emit(t + " = getelementptr " + elem_llty + ", ptr " + ptr_val +
            ", i64 " + idx_i64);
     } else {
@@ -1373,6 +1472,13 @@ std::string IRBuilder::codegen_lval(Node* n) {
     // Evaluate left for side effects, then lvalue of right.
     codegen_expr(n->left);
     return codegen_lval(n->right);
+  }
+
+  case NK_CAST: {
+    // Vector reinterpret cast used as lvalue: (V8)(V64){...}[1].
+    // The cast doesn't change the address — return the inner lval.
+    // This handles (VecType)expr[i] where expr is a compound literal or array var.
+    return codegen_lval(n->left);
   }
 
   default:
@@ -1554,8 +1660,8 @@ std::string IRBuilder::codegen_expr(Node* n) {
     if (it != local_slots_.end()) {
       TypeSpec ts = local_types_[n->name];
       std::string llty = llvm_ty(ts);
-      // If this is an array type, just return the pointer (array decays)
-      if (is_array_ty(ts) && !ts.is_ptr_to_array) {
+      // Arrays decay to pointer in expressions. Keep GNU vector arrays as values.
+      if (is_array_ty(ts) && !ts.is_ptr_to_array && !ts.is_vector) {
         return it->second;
       }
       std::string t = fresh_tmp();
@@ -1567,8 +1673,8 @@ std::string IRBuilder::codegen_expr(Node* n) {
     if (it2 != global_types_.end()) {
       TypeSpec ts = it2->second;
       std::string llty = llvm_ty(ts);
-      if (is_array_ty(ts) && !ts.is_ptr_to_array) {
-        // Array global: return ptr to it
+      if (is_array_ty(ts) && !ts.is_ptr_to_array && !ts.is_vector) {
+        // Array global: return ptr to it (array decays)
         return std::string("@") + n->name;
       }
       std::string t = fresh_tmp();
@@ -1597,6 +1703,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
     TypeSpec elem_ts = ptr_ts;
     if (elem_ts.ptr_level > 0) {
       elem_ts.ptr_level -= 1;
+      if (elem_ts.ptr_level == 0) elem_ts.is_ptr_to_array = false;
     } else if (is_array_ty(elem_ts)) {
       std::string arr_ptr = ptr_val;
       std::string t_gep = fresh_tmp();
@@ -1605,8 +1712,15 @@ std::string IRBuilder::codegen_expr(Node* n) {
       ptr_val = t_gep;
       emit(t_gep + " = getelementptr " + arr_llty + ", ptr " + arr_ptr + ", i64 0, i64 0");
     }
+    // When dereferencing a true C pointer-to-array (is_ptr_to_array was set on ptr_ts,
+    // and element is NOT a vector), the result is an array lvalue.
+    // Return the address without loading — arrays decay to pointers in arithmetic.
+    // GNU vector types (is_vector) must be loaded as values.
+    if (ptr_ts.is_ptr_to_array && is_array_ty(elem_ts) && elem_ts.ptr_level == 0 &&
+        !elem_ts.is_vector) {
+      return ptr_val;
+    }
     std::string elem_llty = llvm_ty(elem_ts);
-    // If the elem type is still a pointer or scalar, load it
     std::string t = fresh_tmp();
     emit(t + " = load " + elem_llty + ", ptr " + ptr_val);
     return t;
@@ -2017,6 +2131,59 @@ std::string IRBuilder::codegen_expr(Node* n) {
     TypeSpec res_ts = expr_type(n);
     std::string res_llty = llvm_ty(res_ts);
 
+    // Vector/array element-wise arithmetic: both operands are the same array type
+    // (GNU vector_size types stored as [N x T]).  Handles +, -, *, /, %, &, |, ^, <<, >>.
+    if (is_array_ty(lt) && lt.ptr_level == 0 && !lt.is_ptr_to_array &&
+        is_array_ty(rt) && rt.ptr_level == 0 && !rt.is_ptr_to_array &&
+        array_rank_of(lt) == 1 && array_rank_of(rt) == 1) {
+      long long cnt = array_dim_at(lt, 0);
+      TypeSpec elem_ts = drop_array_dim(lt);
+      std::string elem_llty = llvm_ty(elem_ts);
+      std::string vec_llty  = llvm_ty(lt);
+      bool is_fp   = (elem_llty == "float" || elem_llty == "double");
+      bool is_uint = is_unsigned_base(elem_ts.base);
+      const char* op_str = n->op ? n->op : "+";
+      std::string llvm_op;
+      if      (strcmp(op_str, "+")  == 0) llvm_op = is_fp ? "fadd" : "add";
+      else if (strcmp(op_str, "-")  == 0) llvm_op = is_fp ? "fsub" : "sub";
+      else if (strcmp(op_str, "*")  == 0) llvm_op = is_fp ? "fmul" : "mul";
+      else if (strcmp(op_str, "/")  == 0) llvm_op = is_fp ? "fdiv" : (is_uint ? "udiv" : "sdiv");
+      else if (strcmp(op_str, "%")  == 0) llvm_op = is_uint ? "urem" : "srem";
+      else if (strcmp(op_str, "&")  == 0) llvm_op = "and";
+      else if (strcmp(op_str, "|")  == 0) llvm_op = "or";
+      else if (strcmp(op_str, "^")  == 0) llvm_op = "xor";
+      else if (strcmp(op_str, "<<") == 0) llvm_op = "shl";
+      else if (strcmp(op_str, ">>") == 0) llvm_op = is_uint ? "lshr" : "ashr";
+      if (!llvm_op.empty() && cnt > 0) {
+        // Normalize operand: array vars/compound-lits return an address ptr;
+        // NK_DEREF loads return the actual value. We need the value for extractvalue.
+        auto vec_val = [&](const std::string& v, Node* nd) -> std::string {
+          if (!nd) return v;
+          // These node kinds return a ptr (address) for array types; load to get value
+          if (nd->kind == NK_VAR || nd->kind == NK_COMPOUND_LIT ||
+              nd->kind == NK_INDEX || nd->kind == NK_MEMBER || nd->kind == NK_DEREF) {
+            std::string loaded = fresh_tmp();
+            emit(loaded + " = load " + vec_llty + ", ptr " + v);
+            return loaded;
+          }
+          return v;
+        };
+        std::string lv_val = vec_val(lv, n->left);
+        std::string rv_val = vec_val(rv, n->right);
+        std::string acc = "zeroinitializer";
+        for (long long idx = 0; idx < cnt; idx++) {
+          std::string a_elem = fresh_tmp(), b_elem = fresh_tmp(), r_elem = fresh_tmp();
+          emit(a_elem + " = extractvalue " + vec_llty + " " + lv_val + ", " + std::to_string(idx));
+          emit(b_elem + " = extractvalue " + vec_llty + " " + rv_val + ", " + std::to_string(idx));
+          emit(r_elem + " = " + llvm_op + " " + elem_llty + " " + a_elem + ", " + b_elem);
+          std::string new_acc = fresh_tmp();
+          emit(new_acc + " = insertvalue " + vec_llty + " " + acc + ", " + elem_llty + " " + r_elem + ", " + std::to_string(idx));
+          acc = new_acc;
+        }
+        return acc;
+      }
+    }
+
     // Pointer arithmetic / comparison
     bool lptr = lt.ptr_level > 0 || is_array_ty(lt);
     bool rptr = rt.ptr_level > 0 || is_array_ty(rt);
@@ -2192,6 +2359,16 @@ std::string IRBuilder::codegen_expr(Node* n) {
       TypeSpec rts = expr_type(n->right);
       std::string rval = codegen_expr(n->right);
       rval = coerce(rval, rts, llty);
+      // Array assignment: rhs from local array var/compound-lit/cast is an alloca ptr;
+      // load the array value before storing (same pattern as NK_RETURN).
+      if (!llty.empty() && llty[0] == '[' &&
+          is_array_ty(rts) && rts.ptr_level == 0 && !rts.is_ptr_to_array &&
+          n->right && (n->right->kind == NK_VAR || n->right->kind == NK_COMPOUND_LIT ||
+                       n->right->kind == NK_CAST || n->right->kind == NK_INDEX)) {
+        std::string loaded = fresh_tmp();
+        emit(loaded + " = load " + llty + ", ptr " + rval);
+        rval = loaded;
+      }
       std::string ptr = codegen_lval(n->left);
       emit("store " + llty + " " + rval + ", ptr " + ptr);
       return rval;
@@ -2511,6 +2688,44 @@ std::string IRBuilder::codegen_expr(Node* n) {
 
     if (n->left->kind == NK_VAR && n->left->name) {
       fn_name = n->left->name;
+      // __builtin_alloca(size): emit LLVM variable-size alloca, not a function call.
+      if (fn_name == "__builtin_alloca" && n->n_children >= 1) {
+        std::string sz = codegen_expr(n->children[0]);
+        sz = coerce(sz, expr_type(n->children[0]), "i64");
+        std::string t = fresh_tmp();
+        // Dynamic alloca must go in the entry block. Emit into alloca_lines_.
+        alloca_lines_.push_back("  " + t + " = alloca i8, i64 " + sz);
+        return t;
+      }
+      // Remap common __builtin_* → standard library names.
+      static const struct { const char* from; const char* to; } builtin_remap[] = {
+        {"__builtin_malloc",  "malloc"},
+        {"__builtin_free",    "free"},
+        {"__builtin_calloc",  "calloc"},
+        {"__builtin_realloc", "realloc"},
+        {"__builtin_memcpy",  "memcpy"},
+        {"__builtin_memmove", "memmove"},
+        {"__builtin_memset",  "memset"},
+        {"__builtin_memcmp",  "memcmp"},
+        {"__builtin_memchr",  "memchr"},
+        {"__builtin_strcpy",  "strcpy"},
+        {"__builtin_strncpy", "strncpy"},
+        {"__builtin_strcat",  "strcat"},
+        {"__builtin_strncat", "strncat"},
+        {"__builtin_strcmp",  "strcmp"},
+        {"__builtin_strncmp", "strncmp"},
+        {"__builtin_strlen",  "strlen"},
+        {"__builtin_strchr",  "strchr"},
+        {"__builtin_strstr",  "strstr"},
+        {"__builtin_printf",  "printf"},
+        {"__builtin_puts",    "puts"},
+        {"__builtin_abort",   "abort"},
+        {"__builtin_exit",    "exit"},
+        {nullptr, nullptr}
+      };
+      for (int ri = 0; builtin_remap[ri].from; ri++) {
+        if (fn_name == builtin_remap[ri].from) { fn_name = builtin_remap[ri].to; break; }
+      }
       auto sig_it = func_sigs_.find(fn_name);
       if (sig_it != func_sigs_.end()) {
         ret_ts = sig_it->second.ret_type;
@@ -2536,9 +2751,9 @@ std::string IRBuilder::codegen_expr(Node* n) {
         // Check known pointer-returning functions
         static const char* ptr_fns[] = {
           "malloc","calloc","realloc","strdup","strndup","memcpy","memmove","memset",
-          "strcpy","strncpy","strcat","strncat","strchr","strrchr","strstr",
-          "fopen","fdopen","freopen","popen","tmpfile","gets","fgets",
-          "getenv","getenv","realpath","getcwd","dirname","basename",
+          "memchr","strcpy","strncpy","strcat","strncat","strchr","strrchr","strstr",
+          "alloca","fopen","fdopen","freopen","popen","tmpfile","gets","fgets",
+          "getenv","realpath","getcwd","dirname","basename",
           "inet_ntoa","inet_ntop","strtok","strtok_r","index","rindex",
           "dlopen","dlsym",nullptr
         };
@@ -3276,13 +3491,9 @@ std::string IRBuilder::codegen_expr(Node* n) {
 
   case NK_TERNARY: {
     // cond ? then_ : else_
-    // Use alloca-based approach: result alloca, store in each branch, load at end
     TypeSpec res_ts = expr_type(n);
     std::string res_llty = llvm_ty(res_ts);
-
-    // Allocate result slot (in alloca area)
-    std::string res_slot = "%ternary_" + std::to_string(tmp_idx_++);
-    alloca_lines_.push_back("  " + res_slot + " = alloca " + res_llty);
+    bool is_void_result = (res_llty == "void");
 
     TypeSpec cond_ts = expr_type(n->cond);
     std::string cond_val = codegen_expr(n->cond);
@@ -3292,26 +3503,38 @@ std::string IRBuilder::codegen_expr(Node* n) {
     std::string else_lbl = fresh_label("tern_else");
     std::string end_lbl  = fresh_label("tern_end");
 
+    // Allocate result slot only for non-void result types
+    std::string res_slot;
+    if (!is_void_result) {
+      res_slot = "%ternary_" + std::to_string(tmp_idx_++);
+      alloca_lines_.push_back("  " + res_slot + " = alloca " + res_llty);
+    }
+
     emit_terminator("br i1 " + cond_b + ", label %" + then_lbl +
                     ", label %" + (n->else_ ? else_lbl : end_lbl));
 
     emit_label(then_lbl);
     std::string then_val = codegen_expr(n->then_);
-    TypeSpec then_ts = expr_type(n->then_);
-    then_val = coerce(then_val, then_ts, res_llty);
-    emit("store " + res_llty + " " + then_val + ", ptr " + res_slot);
+    if (!is_void_result) {
+      TypeSpec then_ts = expr_type(n->then_);
+      then_val = coerce(then_val, then_ts, res_llty);
+      emit("store " + res_llty + " " + then_val + ", ptr " + res_slot);
+    }
     emit_terminator("br label %" + end_lbl);
 
     if (n->else_) {
       emit_label(else_lbl);
       std::string else_val = codegen_expr(n->else_);
-      TypeSpec else_ts = expr_type(n->else_);
-      else_val = coerce(else_val, else_ts, res_llty);
-      emit("store " + res_llty + " " + else_val + ", ptr " + res_slot);
+      if (!is_void_result) {
+        TypeSpec else_ts = expr_type(n->else_);
+        else_val = coerce(else_val, else_ts, res_llty);
+        emit("store " + res_llty + " " + else_val + ", ptr " + res_slot);
+      }
       emit_terminator("br label %" + end_lbl);
     }
 
     emit_label(end_lbl);
+    if (is_void_result) return "0";
     std::string t = fresh_tmp();
     emit(t + " = load " + res_llty + ", ptr " + res_slot);
     return t;
@@ -4014,6 +4237,16 @@ void IRBuilder::emit_stmt(Node* n) {
       TypeSpec ret_ts = expr_type(n->left);
       std::string rv = codegen_expr(n->left);
       rv = coerce(rv, ret_ts, current_fn_ret_llty_);
+      // If returning an array/vector type and the value is an address (from
+      // compound literal or array var), load the actual value before returning.
+      if (!current_fn_ret_llty_.empty() && current_fn_ret_llty_[0] == '[' &&
+          is_array_ty(ret_ts) && ret_ts.ptr_level == 0 && !ret_ts.is_ptr_to_array &&
+          n->left && (n->left->kind == NK_COMPOUND_LIT || n->left->kind == NK_VAR ||
+                      n->left->kind == NK_CAST || n->left->kind == NK_INDEX)) {
+        std::string loaded = fresh_tmp();
+        emit(loaded + " = load " + current_fn_ret_llty_ + ", ptr " + rv);
+        rv = loaded;
+      }
       emit_terminator("ret " + current_fn_ret_llty_ + " " + rv);
     }
     break;
@@ -4672,6 +4905,15 @@ static void collect_bytes(IRBuilder* irb, TypeSpec ts, Node* init, std::vector<u
 std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
   if (!init) return "zeroinitializer";
 
+  // Pointer-to-typedef-array (e.g. A3_28* pa0): llvm_ty returns "ptr" for this,
+  // so treat it as a plain pointer constant (clear the typedef array dims and recurse).
+  if (ts.ptr_level > 0 && ts.is_ptr_to_array) {
+    TypeSpec ptr_ts = ts;
+    clear_array(ptr_ts);
+    ptr_ts.is_ptr_to_array = false;
+    return global_const(ptr_ts, init);
+  }
+
   // Unsized / flexible array: infer concrete size from initializer and recurse.
   if (is_array_ty(ts) && array_dim_at(ts, 0) == -2) {
     int inferred = infer_array_size_from_init(init);
@@ -5322,7 +5564,7 @@ void IRBuilder::emit_function(Node* fn) {
     if (p->type.base == TB_VOID && p->type.ptr_level == 0) continue;
     // Array params decay to ptr
     TypeSpec pts = p->type;
-    if (is_array_ty(pts)) { pts = drop_array_dim(pts); pts.ptr_level += 1; }
+    if (is_array_ty(pts)) { pts = drop_array_dim(pts); pts.ptr_level += 1; pts.is_ptr_to_array = true; }
     sig.param_types.push_back(pts);
   }
   func_sigs_[fn->name] = sig;
@@ -5506,7 +5748,7 @@ std::string IRBuilder::emit_program(Node* prog) {
           if (p->type.base == TB_VOID && p->type.ptr_level == 0) continue;
           // Array params decay to ptr
           TypeSpec pts = p->type;
-          if (is_array_ty(pts) && !pts.is_ptr_to_array) { pts = drop_array_dim(pts); pts.ptr_level += 1; }
+          if (is_array_ty(pts) && !pts.is_ptr_to_array) { pts = drop_array_dim(pts); pts.ptr_level += 1; pts.is_ptr_to_array = true; }
           sig.param_types.push_back(pts);
         }
         func_sigs_[item->name] = sig;

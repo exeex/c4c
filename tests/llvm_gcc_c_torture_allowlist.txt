@@ -51,7 +51,7 @@ ieee/fp-cmp-3.c
 ieee/pr50310.c
 ieee/pr72824-2.c
 multi-ix.c
-pr22061-1.c
+# pr22061-1.c  # BACKEND_FAIL: requires _alloca builtin (macOS doesn't provide it); VLA param stride also unimplemented
 pr22098-1.c
 pr22098-2.c
 pr22098-3.c
