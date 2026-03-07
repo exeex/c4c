@@ -1,73 +1,78 @@
-# Agent Task: tiny-c2ll Frontend-Failure Loop (2026-03-06)
+# Agent Prompt: tiny-c2ll Stabilization Playbook
+
+Last updated: 2026-03-07
 
 ## Mission
 
-You are taking over the C++ frontend in `src/frontend_c/` and should improve correctness with small, verifiable fixes.
+Improve correctness of `src/frontend_c/` with **small, verified, reversible** fixes.
+Primary acceptance metric is full-suite pass rate from `ctest -j`.
 
-Primary goal now:
-- Solve actionable frontend/compiler issues from `llvm_gcc_c_torture`.
+## Non-Negotiable Working Style
 
-## Current Baseline
+1. Never guess ABI behavior when a failing case can be compared against clang IR.
+2. For codegen/runtime mismatch, always produce a clang `.ll` baseline first.
+3. Fix one root cause at a time; prove with targeted test, then broader regression check.
+4. Do not hide failures by editing vendored tests under `tests/c-testsuite/` or `tests/llvm-test-suite/`.
+5. If a test is temporarily allowlisted/disabled, record exact reason + unblock plan in `plan.md`.
 
-- Active compiler frontend: `src/frontend_c/`.
-- Stage1 binary: `build_debug/tiny-c2ll-stage1`.
-- Core smoke tests are green.
-- `20010605-2.c` is fixed (GNU `__real__/__imag__` support).
-- `tests/llvm_gcc_c_torture_allowlist.txt` now targets entries from:
-  - `tests/llvm_gcc_c_torture_frontend_failures.tsv`
+## Required Debug Flow (for frontend/backend failures)
 
-## Current First Failure (Focused Allowlist)
+Given a failing case `<case>.c`:
 
-- Test: `llvm_gcc_c_torture_20010122_1_c`
-- Failure kind: `[BACKEND_FAIL]`
-- Symptom: linker undefined symbols on arm64 (`___builtin_return_address`, `_alloca`)
-- Interpretation: non-frontend/platform-runtime issue; skip/xfail for frontend-fix loop.
+1. Reproduce with ctest:
+   - `ctest --output-on-failure -R <test_name>`
+2. Capture our IR:
+   - `build/tiny-c2ll-stage1 <case>.c -o /tmp/ours.ll`
+3. Capture clang IR on same target triple:
+   - `clang -target aarch64-unknown-linux-gnu -S -emit-llvm -O0 <case>.c -o /tmp/clang.ll`
+4. Diff only the failing function/path:
+   - call signature (especially variadic)
+   - aggregate coercion
+   - va_list layout/offset math
+   - load/store alignment and memcpy size
+5. Patch smallest mismatch.
+6. Re-run:
+   - failing test
+   - nearby bucket tests (same subsystem)
+   - `ctest -j` before handoff
 
-## First Steps (every iteration)
+## Rule: Variadic / ABI Cases
 
-1. Read `plan.md`.
-2. Run `git status --short`.
-3. Run first-fail loop without auto-pruning:
-   - `PRUNE_FAILED_ALLOWLIST=0 ./scripts/check_progress_llvm_gcc_c_torture.sh`
-4. If fail is non-frontend (`CLANG_COMPILE_FAIL` / platform `BACKEND_FAIL`), comment it out in allowlist and rerun.
-5. Fix one smallest actionable frontend slice.
+When touching `va_arg`, variadic calls, struct passing, or HFA/HVA:
 
-## Work Loop
+1. Must compare against clang-emitted IR for the same input.
+2. Must verify both call-site coercion and callee va_arg extraction.
+3. Must verify at least one complex ABI regression case (`00204.c` class).
+4. Must not merge if it fixes one ABI case by breaking `negative_tests` contract checks.
 
-1. Reproduce first fail from script output.
-2. Classify fail:
-   - `FRONTEND_FAIL` / `FRONTEND_TIMEOUT`: actionable frontend.
-   - `CLANG_COMPILE_FAIL` / platform-link `BACKEND_FAIL`: non-frontend, skip in allowlist.
-3. Implement one focused fix (or one skip-entry update).
-4. Rerun first-fail loop.
-5. Record notes in `build/agent_state/progress_log.md`.
-6. Commit with precise scope.
+## Acceptance Gates Per Patch
 
-## Hard Rules
+A patch is acceptable only if all pass:
 
-- Do not edit vendored `tests/c-testsuite/` or `tests/llvm-test-suite/`.
-- Keep changes minimal and test-backed.
-- If blocked >15 minutes, write blocker + hypothesis in `build/agent_state/hard_bugs.md` and switch slice.
-- Do not disable timeout/resource guards to force pass.
+1. Target failing test passes.
+2. Related bucket stays green (or improves).
+3. `ctest -j` does not introduce new regressions in previously passing tests.
+4. Any temporary skip/allowlist change is documented with owner and exit criteria.
 
-## Suggested Commands
+## Suggested Command Set
 
 ```bash
-# sandbox build path for agent:
-export AGENT_NAME=claude
+# configure/build
+cmake -S . -B build
+cmake --build build -j8
 
-cmake -S . -B build_${AGENT_NAME}
-cmake --build build_${AGENT_NAME} -j8
+# targeted repro
+ctest --test-dir build --output-on-failure -R <test_name>
 
-# First-fail loop for focused allowlist
-PRUNE_FAILED_ALLOWLIST=0 ./scripts/check_progress_llvm_gcc_c_torture.sh
+# full regression gate
+ctest --test-dir build -j
 
-# Single-case repro
-ctest --test-dir build_${AGENT_NAME} --output-on-failure -R '^llvm_gcc_c_torture_20010122_1_c$' -j 1
+# clang IR baseline for ABI issues
+clang -target aarch64-unknown-linux-gnu -S -emit-llvm -O0 <case>.c -o /tmp/clang.ll
 ```
 
-## Exit Criteria Per Change
+## Collaboration Notes
 
-- First failing actionable frontend case is fixed, or
-- One non-frontend blocker case is cleanly classified/skipped in allowlist.
-- No unrelated regressions introduced in touched slice.
+- Prefer explicit hypotheses: "I think mismatch is in call-site coercion".
+- Show evidence (line snippets / function-level diffs), then patch.
+- Avoid broad refactors during active failure loops.

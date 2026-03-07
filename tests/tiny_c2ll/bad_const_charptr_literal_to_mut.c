@@ -1,5 +1,6 @@
-// Expected: compile fail (string literal assigned to mutable char*)
+// Expected: compile fail (discard const qualifier via intermediate pointer)
 int main() {
-  char *p = "hello";
+  const char *s = "hello";
+  char *p = s;
   return p[0];
 }

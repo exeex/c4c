@@ -2589,8 +2589,11 @@ Node* Parser::parse_local_decl() {
 
     if (decls.size() == 1) return decls[0];
 
-    // Multiple declarators: wrap in a block
+    // Multiple declarators in one declaration statement (e.g. `int a, b;`):
+    // wrap as a synthetic block so statement shape stays single-node.
+    // Mark it via ival=1 so IR emission can keep the surrounding scope.
     Node* blk = make_node(NK_BLOCK, ln);
+    blk->ival = 1;
     blk->n_children = (int)decls.size();
     blk->children   = arena_.alloc_array<Node*>(blk->n_children);
     for (int i = 0; i < blk->n_children; ++i) blk->children[i] = decls[i];
@@ -2830,7 +2833,10 @@ Node* Parser::parse_top_level() {
     if (fn_returning_fptr && decl_name) {
         skip_attributes(); skip_asm(); skip_attributes();
         if (check(TokenKind::LBrace)) {
+            bool saved_top = parsing_top_level_context_;
+            parsing_top_level_context_ = false;
             Node* body = parse_block();
+            parsing_top_level_context_ = saved_top;
             Node* fn = make_node(NK_FUNCTION, ln);
             fn->type      = ts;
             fn->name      = decl_name;
@@ -2968,7 +2974,10 @@ Node* Parser::parse_top_level() {
 
         if (check(TokenKind::LBrace)) {
             // Function definition
+            bool saved_top = parsing_top_level_context_;
+            parsing_top_level_context_ = false;
             Node* body = parse_block();
+            parsing_top_level_context_ = saved_top;
             Node* fn = make_node(NK_FUNCTION, ln);
             fn->type      = ts;
             fn->name      = decl_name;

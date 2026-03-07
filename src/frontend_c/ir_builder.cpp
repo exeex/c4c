@@ -177,6 +177,107 @@ static bool is_wide_str_lit(Node* n) {
   return (s[0] == 'L' || s[0] == 'u' || s[0] == 'U') && s[1] == '"';
 }
 
+// In C, assigning a string literal to char*/unsigned char*/signed char*/void*
+// is accepted (although writing through it is undefined behavior).
+static bool allows_string_literal_ptr_target(const TypeSpec& ts) {
+  if (ts.ptr_level <= 0) return false;
+  switch (ts.base) {
+    case TB_CHAR:
+    case TB_SCHAR:
+    case TB_UCHAR:
+    case TB_VOID:
+      return true;
+    default:
+      return false;
+  }
+}
+
+static std::string decode_narrow_string_lit(const char* sval) {
+  if (!sval) return "";
+  std::string raw = sval;
+  std::string content;
+  if (raw.size() >= 2 && raw.front() == '"' && raw.back() == '"') {
+    for (size_t i = 1; i + 1 < raw.size(); i++) {
+      if (raw[i] == '\\' && i + 1 < raw.size() - 1) {
+        char esc = raw[++i];
+        switch (esc) {
+          case 'n': content += '\n'; break;
+          case 't': content += '\t'; break;
+          case 'r': content += '\r'; break;
+          case '0': content += '\0'; break;
+          case '\\': content += '\\'; break;
+          case '"': content += '"'; break;
+          case 'x': case 'X': {
+            unsigned int v = 0; int nhex = 0;
+            while (i + 1 < raw.size() - 1 && isxdigit((unsigned char)raw[i + 1])) {
+              char h = raw[++i];
+              v = v * 16 + (isdigit((unsigned char)h) ? h - '0'
+                           : (tolower((unsigned char)h) - 'a' + 10));
+              nhex++;
+            }
+            if (nhex == 0) content += 'x';
+            else content += (char)(unsigned char)v;
+            break;
+          }
+          default:
+            if (esc >= '0' && esc <= '7') {
+              unsigned int v = (unsigned int)(esc - '0');
+              int cnt = 1;
+              while (cnt < 3 && i + 1 < raw.size() - 1 &&
+                     raw[i + 1] >= '0' && raw[i + 1] <= '7') {
+                v = v * 8 + (unsigned int)(raw[++i] - '0');
+                cnt++;
+              }
+              content += (char)(unsigned char)v;
+            } else {
+              content += esc;
+            }
+            break;
+        }
+      } else {
+        content += raw[i];
+      }
+    }
+  } else {
+    content = raw;
+  }
+  return content;
+}
+
+static std::string normalize_printf_longdouble_format(std::string s) {
+  std::string out;
+  out.reserve(s.size());
+  for (size_t i = 0; i < s.size(); i++) {
+    if (s[i] != '%') { out.push_back(s[i]); continue; }
+    if (i + 1 < s.size() && s[i + 1] == '%') { out += "%%"; i++; continue; }
+    size_t j = i + 1;
+    bool saw_L = false;
+    std::string spec = "%";
+    while (j < s.size()) {
+      char c = s[j];
+      if (c == 'L') { saw_L = true; j++; continue; }
+      spec.push_back(c);
+      if (isalpha((unsigned char)c) || c == '%') {
+        if (saw_L && (c == 'f' || c == 'F' || c == 'e' || c == 'E' ||
+                      c == 'g' || c == 'G' || c == 'a' || c == 'A')) {
+          out += spec;
+        } else {
+          if (saw_L) out.push_back('%');
+          if (saw_L) {
+            for (size_t k = i + 1; k <= j; k++) if (s[k] != 'L') out.push_back(s[k]);
+          } else {
+            out += spec;
+          }
+        }
+        break;
+      }
+      j++;
+    }
+    i = j;
+  }
+  return out;
+}
+
 // Decode a wide string literal into a vector of Unicode codepoints.
 // sval is like L"hello\u4F60..." — returns codepoints including null terminator.
 static std::vector<uint32_t> decode_wide_string(const char* sval) {
@@ -325,7 +426,8 @@ std::string IRBuilder::llvm_ty_base(TypeBase base) {
   case TB_INT128:
   case TB_UINT128:    return "i128";
   case TB_ENUM:       return "i32";
-  case TB_VA_LIST:    // va_list — as a ptr in declarations/params; alloca uses special struct
+  case TB_VA_LIST:    // AArch64 glibc va_list: struct __va_list_tag
+    return "%struct.__va_list_tag_";
   case TB_FUNC_PTR:   return "ptr";
   case TB_TYPEDEF:    return "i32";
   default:            return "i32";
@@ -389,7 +491,7 @@ int IRBuilder::sizeof_ty(const TypeSpec& ts) {
   case TB_LONGLONG: case TB_ULONGLONG: return 8;
   case TB_FLOAT:    return 4;
   case TB_DOUBLE:   return 8;
-  case TB_LONGDOUBLE: return 16;
+  case TB_LONGDOUBLE: return 8; // current IR model maps long double to double
   case TB_COMPLEX_FLOAT: return 8;
   case TB_COMPLEX_DOUBLE: return 16;
   case TB_COMPLEX_LONGDOUBLE: return 32;
@@ -400,6 +502,7 @@ int IRBuilder::sizeof_ty(const TypeSpec& ts) {
   case TB_COMPLEX_LONGLONG: case TB_COMPLEX_ULONGLONG: return 16;
   case TB_INT128: case TB_UINT128: return 16;
   case TB_ENUM:   return 4;
+  case TB_VA_LIST: return 40; // {ptr,ptr,ptr,i32,i32}
   case TB_STRUCT: case TB_UNION: {
     if (!ts.tag || !ts.tag[0]) return 8;
     auto it = struct_defs_.find(ts.tag);
@@ -2396,7 +2499,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
       auto discards_const_from_rhs = [&](Node* rhs, const TypeSpec& rhs_ts, const TypeSpec& lhs_ts) -> bool {
         if (lhs_ts.ptr_level <= 0 || lhs_ts.is_const) return false;
         if (!rhs) return false;
-        if (rhs->kind == NK_STR_LIT) return true;
+        if (rhs->kind == NK_STR_LIT) return !allows_string_literal_ptr_target(lhs_ts);
         if (rhs->kind == NK_ADDR && rhs->left) {
           TypeSpec inner = expr_type(rhs->left);
           if (inner.ptr_level == 0 && inner.is_const) return true;
@@ -3544,7 +3647,8 @@ std::string IRBuilder::codegen_expr(Node* n) {
         if (pts.ptr_level > 0 && !pts.is_const) {
           Node* arg = n->children[i];
           if (arg) {
-            if (arg->kind == NK_STR_LIT) discards_const = true;
+            if (arg->kind == NK_STR_LIT)
+              discards_const = !allows_string_literal_ptr_target(pts);
             else if (arg->kind == NK_ADDR && arg->left) {
               TypeSpec inner = expr_type(arg->left);
               if (inner.ptr_level == 0 && inner.is_const) discards_const = true;
@@ -3556,7 +3660,25 @@ std::string IRBuilder::codegen_expr(Node* n) {
         if (discards_const)
           throw std::runtime_error("passing argument discards const qualifier");
       }
-      std::string av = codegen_expr(n->children[i]);
+      std::string av;
+      bool rewrote_printf_fmt = false;
+      if (!is_indirect && i == 0 && n->children[i] &&
+          n->children[i]->kind == NK_STR_LIT &&
+          (fn_name == "printf" || fn_name == "fprintf" || fn_name == "sprintf" ||
+           fn_name == "snprintf" || fn_name == "asprintf" || fn_name == "dprintf")) {
+        std::string content = decode_narrow_string_lit(n->children[i]->sval);
+        std::string normalized = normalize_printf_longdouble_format(content);
+        if (normalized != content) {
+          std::string gname = get_string_global(normalized);
+          std::string tgep = fresh_tmp();
+          int len = (int)normalized.size() + 1;
+          emit(tgep + " = getelementptr [" + std::to_string(len) + " x i8], ptr " +
+               gname + ", i64 0, i64 0");
+          av = tgep;
+          rewrote_printf_fmt = true;
+        }
+      }
+      if (!rewrote_printf_fmt) av = codegen_expr(n->children[i]);
       // Coerce to parameter type if known
       if (i < (int)param_types.size()) {
         av = coerce(av, ats, llvm_ty(param_types[i]));
@@ -3590,6 +3712,34 @@ std::string IRBuilder::codegen_expr(Node* n) {
     // Build argument list string.
     // Arrays decay to ptr; variadic args get default-argument-promotions:
     //   float → double, char/short (i8/i16) → i32
+    auto hfa_info_ty = [&](const TypeSpec& ats, TypeSpec& out_elem, int& out_n) -> bool {
+      if (ats.ptr_level != 0 || is_array_ty(ats) ||
+          (ats.base != TB_STRUCT && ats.base != TB_UNION) || !ats.tag)
+        return false;
+      auto it = struct_defs_.find(ats.tag);
+      if (it == struct_defs_.end()) return false;
+      const StructInfo& si = it->second;
+      if (si.is_union) return false;
+      int n = 0;
+      TypeBase elem = TB_VOID;
+      for (size_t fi = 0; fi < si.field_types.size(); fi++) {
+        if (si.field_array_sizes[fi] == -2) continue;
+        TypeSpec ft = si.field_types[fi];
+        if (ft.ptr_level != 0 || is_array_ty(ft)) return false;
+        bool is_fp = (ft.base == TB_FLOAT || ft.base == TB_DOUBLE || ft.base == TB_LONGDOUBLE);
+        if (!is_fp) return false;
+        if (n == 0) elem = ft.base;
+        else if (elem != ft.base) return false;
+        n++;
+      }
+      if (n >= 1 && n <= 4) {
+        out_n = n;
+        out_elem = make_ts(elem);
+        return true;
+      }
+      return false;
+    };
+
     std::string args_str;
     for (size_t i = 0; i < arg_vals.size(); i++) {
       if (i > 0) args_str += ", ";
@@ -3615,28 +3765,37 @@ std::string IRBuilder::codegen_expr(Node* n) {
         args_str += "i32 " + ext;
       } else if (is_variadic_slot && arg_types[i].ptr_level == 0 &&
                  !is_array_ty(arg_types[i]) &&
-                 (arg_types[i].base == TB_STRUCT || arg_types[i].base == TB_UNION)) {
-        // ARM64 ABI: struct/union varargs must be coerced to [N x i64] so the
-        // LLVM backend places them in the correct integer register/stack slots.
-        // (Without coercion, the backend may pass the struct in FP/SIMD slots
-        //  or use an incompatible layout, breaking va_arg on the callee side.)
+                 (arg_types[i].base == TB_STRUCT || arg_types[i].base == TB_UNION) &&
+                 [&](){ TypeSpec e{}; int n=0; return !hfa_info_ty(arg_types[i], e, n); }()) {
+        // Match clang ABI behavior for non-HFA aggregate variadic arguments.
         int sz = sizeof_ty(arg_types[i]);
         int n_slots = (sz + 7) / 8;
         if (n_slots < 1) n_slots = 1;
         std::string slot_ty = "[" + std::to_string(n_slots) + " x i64]";
         std::string struct_llty = llvm_ty(arg_types[i]);
-
-        // Alloca [N x i64] aligned 8 in entry block
         std::string coerce_buf = "%va_coerce_" + std::to_string(tmp_idx_++);
         alloca_lines_.push_back("  " + coerce_buf + " = alloca " + slot_ty + ", align 8");
-
-        // Store struct value to the coerce buffer (opaque ptr: no bitcast needed)
         emit("store " + struct_llty + " " + arg_vals[i] + ", ptr " + coerce_buf);
-
-        // Reload as [N x i64]
         std::string coerced = fresh_tmp();
         emit(coerced + " = load " + slot_ty + ", ptr " + coerce_buf + ", align 8");
         args_str += slot_ty + " " + coerced;
+      } else if (is_variadic_slot && arg_types[i].ptr_level == 0 &&
+                 !is_array_ty(arg_types[i]) &&
+                 (arg_types[i].base == TB_STRUCT || arg_types[i].base == TB_UNION)) {
+        TypeSpec hfa_elem{};
+        int hfa_n = 0;
+        if (hfa_info_ty(arg_types[i], hfa_elem, hfa_n)) {
+          std::string elem_llty = llvm_ty(hfa_elem);
+          std::string hfa_arr_ty = "[" + std::to_string(hfa_n) + " x " + elem_llty + "]";
+          std::string hfa_buf = "%va_hfa_coerce_" + std::to_string(tmp_idx_++);
+          alloca_lines_.push_back("  " + hfa_buf + " = alloca " + hfa_arr_ty + ", align 8");
+          emit("store " + llvm_ty(arg_types[i]) + " " + arg_vals[i] + ", ptr " + hfa_buf);
+          std::string hfa_val = fresh_tmp();
+          emit(hfa_val + " = load " + hfa_arr_ty + ", ptr " + hfa_buf + ", align 8");
+          args_str += hfa_arr_ty + " " + hfa_val;
+        } else {
+          args_str += llvm_ty(arg_types[i]) + " " + arg_vals[i];
+        }
       } else {
         args_str += llvm_ty(arg_types[i]) + " " + arg_vals[i];
       }
@@ -3865,52 +4024,236 @@ std::string IRBuilder::codegen_expr(Node* n) {
   }
 
   case NK_VA_ARG: {
-    // va_arg(ap, T): ARM64 ABI.
-    // va_list is alloca ptr (a pointer to the next vararg slot on the stack).
-    // For struct/union aggregates, clang crashes on `va_arg ptr %ap, %struct.T`;
-    // use the manual load/advance/memcpy pattern instead.
+    // AArch64 SysV va_arg lowering over __va_list_tag:
+    //   struct { void* stack, *gr_top, *vr_top; int gr_offs, vr_offs; }
+    // Aggregate va_arg is lowered manually to avoid backend crashes.
     TypeSpec ts = n->type;
     std::string llty = llvm_ty(ts);
     std::string ap_ptr = codegen_lval(n->left);
 
-    bool is_aggregate = (ts.ptr_level == 0 && !is_array_ty(ts) &&
-                         (ts.base == TB_STRUCT || ts.base == TB_UNION));
-    if (is_aggregate) {
-      int sz = sizeof_ty(ts);
-      // ARM64: each vararg slot occupies a multiple-of-8 bytes
-      int advance = (sz + 7) & ~7;
-
-      // Ensure @llvm.memcpy intrinsic is declared
+    auto ensure_memcpy_decl = [&]() {
       if (!auto_declared_fns_.count("llvm.memcpy.p0.p0.i64"))
         auto_declared_fns_["llvm.memcpy.p0.p0.i64"] =
           "declare void @llvm.memcpy.p0.p0.i64(ptr noalias nocapture writeonly, "
           "ptr noalias nocapture readonly, i64, i1 immarg)";
+    };
 
-      // Load current slot pointer from va_list
-      std::string cur = fresh_tmp();
-      emit(cur + " = load ptr, ptr " + ap_ptr + ", align 8");
+    auto alignof_ts = [&](const TypeSpec& t, const auto& self) -> int {
+      if (is_array_ty(t)) {
+        TypeSpec elem = drop_array_dim(t);
+        return self(elem, self);
+      }
+      if (t.ptr_level > 0) return 8;
+      switch (t.base) {
+        case TB_BOOL:
+        case TB_CHAR:
+        case TB_UCHAR:
+        case TB_SCHAR: return 1;
+        case TB_SHORT:
+        case TB_USHORT: return 2;
+        case TB_INT:
+        case TB_UINT:
+        case TB_FLOAT:
+        case TB_ENUM: return 4;
+        case TB_INT128:
+        case TB_UINT128: return 16;
+        case TB_LONGDOUBLE: return 8; // keep ABI math consistent with llvm_ty_base
+        case TB_LONG:
+        case TB_ULONG:
+        case TB_LONGLONG:
+        case TB_ULONGLONG:
+        case TB_DOUBLE:
+        case TB_VA_LIST:
+        case TB_FUNC_PTR: return 8;
+        case TB_STRUCT:
+        case TB_UNION: {
+          if (!t.tag) return 8;
+          auto it = struct_defs_.find(t.tag);
+          if (it == struct_defs_.end()) return 8;
+          const StructInfo& si = it->second;
+          int maxa = 1;
+          for (size_t i = 0; i < si.field_types.size(); i++) {
+            if (si.field_array_sizes[i] == -2) continue;
+            TypeSpec ft = si.field_types[i];
+            int fa = self(ft, self);
+            if (fa > maxa) maxa = fa;
+          }
+          return maxa;
+        }
+        default: return 8;
+      }
+    };
 
-      // Advance va_list pointer
-      std::string nxt = fresh_tmp();
-      emit(nxt + " = getelementptr i8, ptr " + cur + ", i64 " + std::to_string(advance));
-      emit("store ptr " + nxt + ", ptr " + ap_ptr + ", align 8");
+    auto hfa_info = [&]() -> std::pair<bool, std::pair<TypeSpec, int>> {
+      if (ts.ptr_level != 0 || is_array_ty(ts) ||
+          (ts.base != TB_STRUCT && ts.base != TB_UNION) || !ts.tag)
+        return {false, {TypeSpec{}, 0}};
+      auto it = struct_defs_.find(ts.tag);
+      if (it == struct_defs_.end()) return {false, {TypeSpec{}, 0}};
+      const StructInfo& si = it->second;
+      if (si.is_union) return {false, {TypeSpec{}, 0}};
+      int count = 0;
+      TypeSpec elem{};
+      bool has_elem = false;
+      for (size_t i = 0; i < si.field_types.size(); i++) {
+        if (si.field_array_sizes[i] == -2) continue;
+        TypeSpec ft = si.field_types[i];
+        if (is_array_ty(ft) || ft.ptr_level != 0) return {false, {TypeSpec{}, 0}};
+        bool is_fp = (ft.base == TB_FLOAT || ft.base == TB_DOUBLE || ft.base == TB_LONGDOUBLE);
+        if (!is_fp) return {false, {TypeSpec{}, 0}};
+        if (!has_elem) { elem = ft; has_elem = true; }
+        else if (elem.base != ft.base) return {false, {TypeSpec{}, 0}};
+        count++;
+      }
+      if (count >= 1 && count <= 4) return {true, {elem, count}};
+      return {false, {TypeSpec{}, 0}};
+    };
 
-      // Alloca temp for the struct value and memcpy
-      std::string tmp = "%va_tmp_" + std::to_string(tmp_idx_++);
-      alloca_lines_.push_back("  " + tmp + " = alloca " + llty);
-      emit("call void @llvm.memcpy.p0.p0.i64(ptr align 1 " + tmp +
-           ", ptr align 8 " + cur + ", i64 " + std::to_string(sz) + ", i1 false)");
+    bool is_agg = (ts.ptr_level == 0 && !is_array_ty(ts) &&
+                   (ts.base == TB_STRUCT || ts.base == TB_UNION));
+    auto hfa = hfa_info();
+    bool is_hfa = hfa.first;
+    TypeSpec hfa_elem = hfa.second.first;
+    int hfa_count = hfa.second.second;
+    bool is_fp_scalar = (ts.ptr_level == 0 && !is_array_ty(ts) &&
+                         (ts.base == TB_FLOAT || ts.base == TB_DOUBLE || ts.base == TB_LONGDOUBLE));
+    bool use_vr = is_fp_scalar || is_hfa;
 
-      // Load the struct value from the temp
+    int sz = sizeof_ty(ts);
+    if (sz <= 0) sz = 8;
+    int need = use_vr ? (is_hfa ? hfa_count : 1) : ((sz + 7) / 8);
+    if (need < 1) need = 1;
+    int step = use_vr ? (need * 16) : (need * 8);
+
+    auto get_field_ptr = [&](int idx, bool is_i32) -> std::string {
+      std::string p = fresh_tmp();
+      emit(p + " = getelementptr inbounds %struct.__va_list_tag_, ptr " + ap_ptr +
+           ", i32 0, i32 " + std::to_string(idx));
+      return p;
+    };
+
+    std::string offs_ptr = get_field_ptr(use_vr ? 4 : 3, true);
+    std::string offs = fresh_tmp();
+    emit(offs + " = load i32, ptr " + offs_ptr + ", align 4");
+    std::string cmp_ge0 = fresh_tmp();
+    emit(cmp_ge0 + " = icmp sge i32 " + offs + ", 0");
+    std::string on_stack = fresh_label("va_stack");
+    std::string try_reg = fresh_label("va_tryreg");
+    std::string done = fresh_label("va_done");
+    std::string in_reg = fresh_label("va_inreg");
+    emit_terminator("br i1 " + cmp_ge0 + ", label %" + on_stack + ", label %" + try_reg);
+
+    std::string reg_ptr;
+    std::string stk_ptr;
+
+    emit_label(try_reg);
+    std::string next_offs = fresh_tmp();
+    emit(next_offs + " = add i32 " + offs + ", " + std::to_string(step));
+    emit("store i32 " + next_offs + ", ptr " + offs_ptr + ", align 4");
+    std::string cmp_le0 = fresh_tmp();
+    emit(cmp_le0 + " = icmp sle i32 " + next_offs + ", 0");
+    emit_terminator("br i1 " + cmp_le0 + ", label %" + in_reg + ", label %" + on_stack);
+
+    emit_label(in_reg);
+    std::string top_ptr = get_field_ptr(use_vr ? 2 : 1, false);
+    std::string top = fresh_tmp();
+    emit(top + " = load ptr, ptr " + top_ptr + ", align 8");
+    reg_ptr = fresh_tmp();
+    emit(reg_ptr + " = getelementptr inbounds i8, ptr " + top + ", i32 " + offs);
+    emit_terminator("br label %" + done);
+
+    emit_label(on_stack);
+    std::string stack_field = get_field_ptr(0, false);
+    std::string stack_cur = fresh_tmp();
+    emit(stack_cur + " = load ptr, ptr " + stack_field + ", align 8");
+    int align = alignof_ts(ts, alignof_ts);
+    if (align < 1) align = 1;
+    if (align > 8) {
+      std::string pi = fresh_tmp();
+      std::string pa = fresh_tmp();
+      std::string pm = fresh_tmp();
+      emit(pi + " = ptrtoint ptr " + stack_cur + " to i64");
+      emit(pa + " = add i64 " + pi + ", " + std::to_string(align - 1));
+      emit(pm + " = and i64 " + pa + ", " + std::to_string(-(long long)align));
+      stk_ptr = fresh_tmp();
+      emit(stk_ptr + " = inttoptr i64 " + pm + " to ptr");
+    } else {
+      stk_ptr = stack_cur;
+    }
+    int stack_step = (sz + 7) & ~7;
+    std::string stack_next = fresh_tmp();
+    emit(stack_next + " = getelementptr inbounds i8, ptr " + stk_ptr +
+         ", i64 " + std::to_string(stack_step));
+    emit("store ptr " + stack_next + ", ptr " + stack_field + ", align 8");
+    emit_terminator("br label %" + done);
+
+    emit_label(done);
+    std::string src_ptr = fresh_tmp();
+    emit(src_ptr + " = phi ptr [ " + reg_ptr + ", %" + in_reg + " ], [ " +
+         stk_ptr + ", %" + on_stack + " ]");
+
+    // Non-aggregate scalar
+    if (!is_agg) {
       std::string t = fresh_tmp();
-      emit(t + " = load " + llty + ", ptr " + tmp);
+      int ldalign = alignof_ts(ts, alignof_ts);
+      if (ldalign < 1) ldalign = 1;
+      emit(t + " = load " + llty + ", ptr " + src_ptr + ", align " + std::to_string(ldalign));
       return t;
     }
 
-    // Scalar / pointer: use LLVM's va_arg instruction directly
-    std::string t = fresh_tmp();
-    emit(t + " = va_arg ptr " + ap_ptr + ", " + llty);
-    return t;
+    // Aggregate: copy into a local temp, then load the value.
+    std::string tmp = "%va_tmp_" + std::to_string(tmp_idx_++);
+    alloca_lines_.push_back("  " + tmp + " = alloca " + llty + ", align " +
+                            std::to_string(std::max(8, alignof_ts(ts, alignof_ts))));
+    if (use_vr && is_hfa && hfa_count > 1) {
+      std::string pre = fresh_tmp();
+      emit(pre + " = phi i1 [ true, %" + in_reg + " ], [ false, %" + on_stack + " ]");
+      std::string hfa_reg = fresh_label("va_hfa_reg");
+      std::string hfa_stk = fresh_label("va_hfa_stk");
+      std::string hfa_end = fresh_label("va_hfa_end");
+      emit_terminator("br i1 " + pre + ", label %" + hfa_reg + ", label %" + hfa_stk);
+
+      emit_label(hfa_reg);
+      std::string elem_llty = llvm_ty(hfa_elem);
+      int elem_store_align = std::max(1, alignof_ts(hfa_elem, alignof_ts));
+      std::string lane_tmp = "%va_hfa_lane_" + std::to_string(tmp_idx_++);
+      std::string lane_arr_ty = "[" + std::to_string(hfa_count) + " x " + elem_llty + "]";
+      alloca_lines_.push_back("  " + lane_tmp + " = alloca " + lane_arr_ty + ", align 16");
+      for (int i = 0; i < hfa_count; i++) {
+        std::string s = fresh_tmp();
+        emit(s + " = getelementptr inbounds i8, ptr " + src_ptr + ", i64 " + std::to_string(i * 16));
+        std::string v = fresh_tmp();
+        emit(v + " = load " + elem_llty + ", ptr " + s + ", align 16");
+        std::string d = fresh_tmp();
+        emit(d + " = getelementptr inbounds " + lane_arr_ty + ", ptr " + lane_tmp +
+             ", i64 0, i64 " + std::to_string(i));
+        emit("store " + elem_llty + " " + v + ", ptr " + d + ", align " +
+             std::to_string(elem_store_align));
+      }
+      ensure_memcpy_decl();
+      emit("call void @llvm.memcpy.p0.p0.i64(ptr align " +
+           std::to_string(std::max(1, alignof_ts(ts, alignof_ts))) + " " + tmp +
+           ", ptr align " + std::to_string(elem_store_align) + " " + lane_tmp +
+           ", i64 " + std::to_string(sz) + ", i1 false)");
+      emit_terminator("br label %" + hfa_end);
+
+      emit_label(hfa_stk);
+      ensure_memcpy_decl();
+      emit("call void @llvm.memcpy.p0.p0.i64(ptr align " +
+           std::to_string(std::max(1, alignof_ts(ts, alignof_ts))) + " " + tmp +
+           ", ptr align 8 " + src_ptr + ", i64 " + std::to_string(sz) + ", i1 false)");
+      emit_terminator("br label %" + hfa_end);
+      emit_label(hfa_end);
+    } else {
+      ensure_memcpy_decl();
+      emit("call void @llvm.memcpy.p0.p0.i64(ptr align " +
+           std::to_string(std::max(1, alignof_ts(ts, alignof_ts))) + " " + tmp +
+           ", ptr align 8 " + src_ptr + ", i64 " + std::to_string(sz) + ", i1 false)");
+    }
+
+    std::string outv = fresh_tmp();
+    emit(outv + " = load " + llty + ", ptr " + tmp);
+    return outv;
   }
 
   case NK_GENERIC: {
@@ -4331,6 +4674,11 @@ void IRBuilder::emit_stmt(Node* n) {
 
   switch (n->kind) {
   case NK_BLOCK: {
+    // Synthetic declaration group from parser (`int a, b;`), not a lexical scope.
+    if (n->ival == 1) {
+      for (int i = 0; i < n->n_children; i++) emit_stmt(n->children[i]);
+      break;
+    }
     // Preserve lexical scope for same-named locals in nested blocks.
     auto saved_slots = local_slots_;
     auto saved_types = local_types_;
@@ -4494,7 +4842,8 @@ void IRBuilder::emit_stmt(Node* n) {
     TypeSpec rts = expr_type(n->init);
     if (lts.ptr_level > 0 && !lts.is_const) {
       bool discards_const = false;
-      if (n->init->kind == NK_STR_LIT) discards_const = true;
+      if (n->init->kind == NK_STR_LIT)
+        discards_const = !allows_string_literal_ptr_target(lts);
       else if (n->init->kind == NK_ADDR && n->init->left) {
         TypeSpec inner = expr_type(n->init->left);
         if (inner.ptr_level == 0 && inner.is_const) discards_const = true;

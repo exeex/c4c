@@ -29,7 +29,7 @@ if(NOT front_rc EQUAL 0)
 endif()
 
 execute_process(
-  COMMAND "${CLANG}" "${OUT_LL}" -o "${OUT_BIN}"
+  COMMAND "${CLANG}" "${OUT_LL}" -o "${OUT_BIN}" -lm
   RESULT_VARIABLE back_rc
   OUTPUT_VARIABLE back_out
   ERROR_VARIABLE back_err
