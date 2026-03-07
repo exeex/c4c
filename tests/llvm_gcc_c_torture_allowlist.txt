@@ -322,7 +322,7 @@ struct-ini-4.c
 20030313-1.c
 20030316-1.c
 # 20030323-1.c  # BACKEND_FAIL: __builtin_return_address not resolved by linker
-# 20030330-1.c  # CLANG_COMPILE_FAIL: GCC extension not supported by clang
+20030330-1.c
 20030401-1.c
 20030403-1.c
 20030404-1.c
@@ -423,7 +423,7 @@ struct-ini-4.c
 20050410-1.c
 20050502-1.c
 20050502-2.c
-# 20050604-1.c  # CLANG_COMPILE_FAIL or BACKEND_FAIL
+20050604-1.c
 20050607-1.c
 20050613-1.c
 20050713-1.c
@@ -463,7 +463,7 @@ struct-ini-4.c
 20070824-1.c
 # 20070919-1.c  # CLANG_COMPILE_FAIL: GCC extension not supported by clang
 20071011-1.c
-# 20071018-1.c  # CLANG_COMPILE_FAIL: GCC extension not supported by clang
+20071018-1.c
 20071030-1.c
 20071108-1.c
 20071120-1.c
@@ -538,7 +538,7 @@ struct-ini-4.c
 20170401-2.c
 20170419-1.c
 20171008-1.c
-# 20180112-1.c  # CLANG_COMPILE_FAIL or BACKEND_FAIL
+20180112-1.c
 20180131-1.c
 20180226-1.c
 20181120-1.c
@@ -1148,7 +1148,7 @@ multdi-1.c
 # nestfunc-1.c  # CLANG_COMPILE_FAIL or BACKEND_FAIL
 # nestfunc-2.c  # CLANG_COMPILE_FAIL or BACKEND_FAIL
 # nestfunc-3.c  # CLANG_COMPILE_FAIL: GCC extension not supported by clang
-# nestfunc-4.c  # CLANG_COMPILE_FAIL or BACKEND_FAIL
+nestfunc-4.c
 # nestfunc-5.c  # CLANG_COMPILE_FAIL or BACKEND_FAIL
 # nestfunc-6.c  # CLANG_COMPILE_FAIL: GCC extension not supported by clang
 # nestfunc-7.c  # CLANG_COMPILE_FAIL: GCC extension not supported by clang
@@ -1164,7 +1164,7 @@ pr15262-2.c
 pr15262.c
 pr15296.c
 pr16790-1.c
-# pr17078-1.c  # CLANG_COMPILE_FAIL or BACKEND_FAIL
+pr17078-1.c
 pr17133.c
 pr17252.c
 # pr17377.c  # CLANG_COMPILE_FAIL: GCC extension not supported by clang
@@ -1302,7 +1302,7 @@ pr40747.c
 pr41317.c
 pr41395-1.c
 pr41395-2.c
-# pr41463.c  # CLANG_COMPILE_FAIL: GCC extension not supported by clang
+pr41463.c
 pr41750.c
 pr41917.c
 pr41919.c
@@ -1519,7 +1519,7 @@ pr69320-3.c
 pr69320-4.c
 pr69403.c
 pr69447.c
-# pr69691.c  # CLANG_COMPILE_FAIL: GCC extension not supported by clang
+pr69691.c
 pr70005.c
 pr70127.c
 pr70222-1.c
@@ -1567,7 +1567,7 @@ pr81423.c
 pr81503.c
 pr81555.c
 pr81556.c
-# pr81913.c  # CLANG_COMPILE_FAIL or BACKEND_FAIL
+pr81913.c
 pr82192.c
 # pr82210.c  # CLANG_COMPILE_FAIL or BACKEND_FAIL
 pr82387.c
@@ -1575,7 +1575,7 @@ pr82388.c
 pr82524.c
 pr83269.c
 pr83298.c
-# pr83362.c  # CLANG_COMPILE_FAIL or BACKEND_FAIL
+pr83362.c
 pr83383.c
 pr83477.c
 pr84169.c

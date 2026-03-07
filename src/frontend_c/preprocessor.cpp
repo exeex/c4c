@@ -848,6 +848,33 @@ Preprocessor::Preprocessor() {
   macros_["__UINTMAX_TYPE__"]    = MacroDef{"__UINTMAX_TYPE__",    false, false, {}, "long unsigned int"};
   macros_["__INTPTR_TYPE__"]     = MacroDef{"__INTPTR_TYPE__",     false, false, {}, "long int"};
   macros_["__UINTPTR_TYPE__"]    = MacroDef{"__UINTPTR_TYPE__",    false, false, {}, "long unsigned int"};
+  // Fixed-width integer type macros (LP64 / aarch64)
+  macros_["__INT8_TYPE__"]       = MacroDef{"__INT8_TYPE__",       false, false, {}, "signed char"};
+  macros_["__INT16_TYPE__"]      = MacroDef{"__INT16_TYPE__",      false, false, {}, "short"};
+  macros_["__INT32_TYPE__"]      = MacroDef{"__INT32_TYPE__",      false, false, {}, "int"};
+  macros_["__INT64_TYPE__"]      = MacroDef{"__INT64_TYPE__",      false, false, {}, "long int"};
+  macros_["__UINT8_TYPE__"]      = MacroDef{"__UINT8_TYPE__",      false, false, {}, "unsigned char"};
+  macros_["__UINT16_TYPE__"]     = MacroDef{"__UINT16_TYPE__",     false, false, {}, "unsigned short"};
+  macros_["__UINT32_TYPE__"]     = MacroDef{"__UINT32_TYPE__",     false, false, {}, "unsigned int"};
+  macros_["__UINT64_TYPE__"]     = MacroDef{"__UINT64_TYPE__",     false, false, {}, "long unsigned int"};
+  macros_["__INT_LEAST8_TYPE__"] = MacroDef{"__INT_LEAST8_TYPE__", false, false, {}, "signed char"};
+  macros_["__INT_LEAST16_TYPE__"]= MacroDef{"__INT_LEAST16_TYPE__",false, false, {}, "short"};
+  macros_["__INT_LEAST32_TYPE__"]= MacroDef{"__INT_LEAST32_TYPE__",false, false, {}, "int"};
+  macros_["__INT_LEAST64_TYPE__"]= MacroDef{"__INT_LEAST64_TYPE__",false, false, {}, "long int"};
+  macros_["__UINT_LEAST8_TYPE__"]= MacroDef{"__UINT_LEAST8_TYPE__",false, false, {}, "unsigned char"};
+  macros_["__UINT_LEAST16_TYPE__"]=MacroDef{"__UINT_LEAST16_TYPE__",false,false, {}, "unsigned short"};
+  macros_["__UINT_LEAST32_TYPE__"]=MacroDef{"__UINT_LEAST32_TYPE__",false,false, {}, "unsigned int"};
+  macros_["__UINT_LEAST64_TYPE__"]=MacroDef{"__UINT_LEAST64_TYPE__",false,false, {}, "long unsigned int"};
+  macros_["__INT_FAST8_TYPE__"]  = MacroDef{"__INT_FAST8_TYPE__",  false, false, {}, "signed char"};
+  macros_["__INT_FAST16_TYPE__"] = MacroDef{"__INT_FAST16_TYPE__", false, false, {}, "short"};
+  macros_["__INT_FAST32_TYPE__"] = MacroDef{"__INT_FAST32_TYPE__", false, false, {}, "int"};
+  macros_["__INT_FAST64_TYPE__"] = MacroDef{"__INT_FAST64_TYPE__", false, false, {}, "long int"};
+  macros_["__UINT_FAST8_TYPE__"] = MacroDef{"__UINT_FAST8_TYPE__", false, false, {}, "unsigned char"};
+  macros_["__UINT_FAST16_TYPE__"]= MacroDef{"__UINT_FAST16_TYPE__",false, false, {}, "unsigned short"};
+  macros_["__UINT_FAST32_TYPE__"]= MacroDef{"__UINT_FAST32_TYPE__",false, false, {}, "unsigned int"};
+  macros_["__UINT_FAST64_TYPE__"]= MacroDef{"__UINT_FAST64_TYPE__",false, false, {}, "long unsigned int"};
+  macros_["__CHAR16_TYPE__"]     = MacroDef{"__CHAR16_TYPE__",     false, false, {}, "unsigned short"};
+  macros_["__CHAR32_TYPE__"]     = MacroDef{"__CHAR32_TYPE__",     false, false, {}, "unsigned int"};
   // Integer limit macros (LP64: int=32-bit, long/long long=64-bit)
   macros_["__CHAR_BIT__"]        = MacroDef{"__CHAR_BIT__",        false, false, {}, "8"};
   macros_["__SCHAR_MAX__"]       = MacroDef{"__SCHAR_MAX__",       false, false, {}, "127"};

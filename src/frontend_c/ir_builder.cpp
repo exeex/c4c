@@ -2186,13 +2186,12 @@ std::string IRBuilder::codegen_expr(Node* n) {
       else if (strcmp(op_str, ">>") == 0) llvm_op = is_uint ? "lshr" : "ashr";
       if (!llvm_op.empty() && cnt > 0) {
         // Normalize operand: most node kinds return a ptr (address) for array/vector types;
-        // load to get value. Exceptions: NK_VAR and NK_DEREF of pure vector (rank==1,
-        // is_vector) already return the loaded value from codegen_expr, so don't reload.
-        // NK_COMPOUND_LIT always returns the alloca ptr even for vectors.
+        // load to get value. Exceptions: NK_VAR, NK_DEREF, NK_COMPOUND_LIT of pure vector
+        // (rank==1, is_vector) already return the loaded value from codegen_expr.
         auto vec_val = [&](const std::string& v, Node* nd) -> std::string {
           if (!nd) return v;
           TypeSpec nd_ts = expr_type(nd);
-          bool pure_vec = (nd_ts.ptr_level == 0 && nd_ts.is_vector && nd_ts.array_rank == 1);
+          bool pure_vec = (nd_ts.ptr_level == 0 && nd_ts.is_vector && array_rank_of(nd_ts) == 1);
           // NK_VAR and NK_DEREF of pure vector already loaded the value in codegen_expr.
           if (pure_vec && (nd->kind == NK_VAR || nd->kind == NK_DEREF))
             return v;
@@ -2403,7 +2402,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
       // Exception: NK_VAR and NK_DEREF of pure vector (is_vector, rank==1) already
       // return a loaded value from codegen_expr — don't reload in those cases.
       {
-        bool rhs_already_loaded = (rts.is_vector && rts.array_rank == 1 &&
+        bool rhs_already_loaded = (rts.is_vector && array_rank_of(rts) == 1 &&
                                    n->right &&
                                    (n->right->kind == NK_VAR || n->right->kind == NK_DEREF));
         if (!rhs_already_loaded &&
@@ -2492,7 +2491,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
     bool is_float = is_float_base(lts.base);
 
     // C99: float op= expr does arithmetic in double precision, then truncates to float
-    bool needs_fp_upcast = (lts.base == TB_FLOAT && lts.ptr_level == 0);
+    bool needs_fp_upcast = (lts.base == TB_FLOAT && lts.ptr_level == 0 && !lts.is_vector);
     if (needs_fp_upcast) {
       std::string cur_d = fresh_tmp();
       emit(cur_d + " = fpext float " + cur + " to double");
@@ -2518,6 +2517,51 @@ std::string IRBuilder::codegen_expr(Node* n) {
     // For non-pointer ops, coerce to lhs type
     if (!needs_fp_upcast && lts.ptr_level == 0)
       rv = coerce(rv, rts, llty);
+
+    // Vector compound assignment: lhs is a GNU vector (is_vector, array_rank==1).
+    // LLVM doesn't support arithmetic on [N x T] arrays directly; use element-wise
+    // extractvalue/insertvalue (same approach as NK_BINOP vector arithmetic).
+    if (lts.ptr_level == 0 && lts.is_vector && array_rank_of(lts) == 1) {
+      // Normalize rv: NK_VAR and NK_DEREF of pure vector already return a loaded value;
+      // NK_COMPOUND_LIT, NK_INDEX, NK_MEMBER return the alloca ptr — load it.
+      bool rv_already_loaded = (rts.is_vector && array_rank_of(rts) == 1 && n->right &&
+                                (n->right->kind == NK_VAR || n->right->kind == NK_DEREF));
+      if (!rv_already_loaded) {
+        std::string rv_loaded = fresh_tmp();
+        emit(rv_loaded + " = load " + llty + ", ptr " + rv);
+        rv = rv_loaded;
+      }
+      long long cnt = array_dim_at(lts, 0);
+      TypeSpec elem_ts = drop_array_dim(lts);
+      std::string elem_llty = llvm_ty(elem_ts);
+      bool vec_fp   = (elem_llty == "float" || elem_llty == "double");
+      bool vec_uint = is_unsigned_base(elem_ts.base);
+      std::string llvm_op;
+      if      (strcmp(aop, "+=") == 0)  llvm_op = vec_fp ? "fadd" : "add";
+      else if (strcmp(aop, "-=") == 0)  llvm_op = vec_fp ? "fsub" : "sub";
+      else if (strcmp(aop, "*=") == 0)  llvm_op = vec_fp ? "fmul" : "mul";
+      else if (strcmp(aop, "/=") == 0)  llvm_op = vec_fp ? "fdiv" : (vec_uint ? "udiv" : "sdiv");
+      else if (strcmp(aop, "%=") == 0)  llvm_op = vec_uint ? "urem" : "srem";
+      else if (strcmp(aop, "&=") == 0)  llvm_op = "and";
+      else if (strcmp(aop, "|=") == 0)  llvm_op = "or";
+      else if (strcmp(aop, "^=") == 0)  llvm_op = "xor";
+      else if (strcmp(aop, "<<=") == 0) llvm_op = "shl";
+      else if (strcmp(aop, ">>=") == 0) llvm_op = vec_uint ? "lshr" : "ashr";
+      if (!llvm_op.empty() && cnt > 0) {
+        std::string acc = "zeroinitializer";
+        for (long long idx = 0; idx < cnt; idx++) {
+          std::string a_elem = fresh_tmp(), b_elem = fresh_tmp(), r_elem = fresh_tmp();
+          emit(a_elem + " = extractvalue " + llty + " " + cur + ", " + std::to_string(idx));
+          emit(b_elem + " = extractvalue " + llty + " " + rv  + ", " + std::to_string(idx));
+          emit(r_elem + " = " + llvm_op + " " + elem_llty + " " + a_elem + ", " + b_elem);
+          std::string new_acc = fresh_tmp();
+          emit(new_acc + " = insertvalue " + llty + " " + acc + ", " + elem_llty + " " + r_elem + ", " + std::to_string(idx));
+          acc = new_acc;
+        }
+        emit("store " + llty + " " + acc + ", ptr " + ptr);
+        return acc;
+      }
+    }
 
     std::string result = fresh_tmp();
 
@@ -2649,7 +2693,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
     bool is_float = is_float_base(lts.base);
 
     // C99: float op= expr does arithmetic in double precision, then truncates to float
-    bool needs_fp_upcast = (lts.base == TB_FLOAT && lts.ptr_level == 0);
+    bool needs_fp_upcast = (lts.base == TB_FLOAT && lts.ptr_level == 0 && !lts.is_vector);
     if (needs_fp_upcast) {
       std::string cur_d = fresh_tmp();
       emit(cur_d + " = fpext float " + cur + " to double");
@@ -2674,6 +2718,50 @@ std::string IRBuilder::codegen_expr(Node* n) {
     // For pointer arithmetic, keep rv as integer; coerce to lhs type for scalar ops
     if (!needs_fp_upcast && lts.ptr_level == 0)
       rv = coerce(rv, rts, llty);
+
+    // Vector compound assignment: element-wise extractvalue/insertvalue
+    if (lts.ptr_level == 0 && lts.is_vector && array_rank_of(lts) == 1) {
+      // Normalize rv: NK_VAR/NK_DEREF of pure vector return loaded value;
+      // NK_COMPOUND_LIT/NK_MEMBER/NK_INDEX return alloca ptr — load it.
+      bool rv_already_loaded2 = (rts.is_vector && array_rank_of(rts) == 1 && n->right &&
+                                  (n->right->kind == NK_VAR || n->right->kind == NK_DEREF));
+      if (!rv_already_loaded2) {
+        std::string rv_loaded = fresh_tmp();
+        emit(rv_loaded + " = load " + llty + ", ptr " + rv);
+        rv = rv_loaded;
+      }
+      const char* op2 = n->op;
+      long long cnt = array_dim_at(lts, 0);
+      TypeSpec elem_ts = drop_array_dim(lts);
+      std::string elem_llty = llvm_ty(elem_ts);
+      bool vec_fp   = (elem_llty == "float" || elem_llty == "double");
+      bool vec_uint = is_unsigned_base(elem_ts.base);
+      std::string llvm_op;
+      if      (op2 && strcmp(op2, "+=") == 0)  llvm_op = vec_fp ? "fadd" : "add";
+      else if (op2 && strcmp(op2, "-=") == 0)  llvm_op = vec_fp ? "fsub" : "sub";
+      else if (op2 && strcmp(op2, "*=") == 0)  llvm_op = vec_fp ? "fmul" : "mul";
+      else if (op2 && strcmp(op2, "/=") == 0)  llvm_op = vec_fp ? "fdiv" : (vec_uint ? "udiv" : "sdiv");
+      else if (op2 && strcmp(op2, "%=") == 0)  llvm_op = vec_uint ? "urem" : "srem";
+      else if (op2 && strcmp(op2, "&=") == 0)  llvm_op = "and";
+      else if (op2 && strcmp(op2, "|=") == 0)  llvm_op = "or";
+      else if (op2 && strcmp(op2, "^=") == 0)  llvm_op = "xor";
+      else if (op2 && strcmp(op2, "<<=") == 0) llvm_op = "shl";
+      else if (op2 && strcmp(op2, ">>=") == 0) llvm_op = vec_uint ? "lshr" : "ashr";
+      if (!llvm_op.empty() && cnt > 0) {
+        std::string acc = "zeroinitializer";
+        for (long long idx = 0; idx < cnt; idx++) {
+          std::string a_elem = fresh_tmp(), b_elem = fresh_tmp(), r_elem = fresh_tmp();
+          emit(a_elem + " = extractvalue " + llty + " " + cur + ", " + std::to_string(idx));
+          emit(b_elem + " = extractvalue " + llty + " " + rv  + ", " + std::to_string(idx));
+          emit(r_elem + " = " + llvm_op + " " + elem_llty + " " + a_elem + ", " + b_elem);
+          std::string new_acc = fresh_tmp();
+          emit(new_acc + " = insertvalue " + llty + " " + acc + ", " + elem_llty + " " + r_elem + ", " + std::to_string(idx));
+          acc = new_acc;
+        }
+        emit("store " + llty + " " + acc + ", ptr " + ptr);
+        return acc;
+      }
+    }
 
     std::string result = fresh_tmp();
     const char* op = n->op;
@@ -3735,6 +3823,8 @@ std::string IRBuilder::codegen_expr(Node* n) {
     // For struct/union rvalue context: load and return the value so that
     // callers (e.g. return stmt, assignment) get a proper value not a ptr.
     // Arrays decay to pointer, so keep returning the slot for array types.
+    // Vectors: keep returning the alloca ptr — callers that need the value
+    // (compound assignment, arithmetic) must load it explicitly.
     if (ts.ptr_level == 0 && (ts.base == TB_STRUCT || ts.base == TB_UNION)) {
       std::string t = fresh_tmp();
       emit(t + " = load " + llty + ", ptr " + slot);
@@ -4386,7 +4476,7 @@ void IRBuilder::emit_stmt(Node* n) {
       // compound literal or array var), load the actual value before returning.
       // Exception: NK_VAR and NK_DEREF of pure vector (is_vector, rank==1) already
       // return a loaded value from codegen_expr — don't reload in those cases.
-      bool already_loaded = (ret_ts.is_vector && ret_ts.array_rank == 1 &&
+      bool already_loaded = (ret_ts.is_vector && array_rank_of(ret_ts) == 1 &&
                              n->left &&
                              (n->left->kind == NK_VAR || n->left->kind == NK_DEREF));
       if (!already_loaded &&
