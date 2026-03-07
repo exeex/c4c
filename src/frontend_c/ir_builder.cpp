@@ -845,8 +845,22 @@ TypeSpec IRBuilder::expr_type(Node* n) {
     // Type is the type of the last expression in the block
     if (n->body && n->body->n_children > 0) {
       Node* last = n->body->children[n->body->n_children - 1];
-      if (last && last->kind == NK_EXPR_STMT && last->left)
-        return expr_type(last->left);
+      if (last && last->kind == NK_EXPR_STMT && last->left) {
+        Node* last_expr = last->left;
+        // If the last expr is a variable that may be declared inside this stmt_expr
+        // (not yet in local_types_ because emit_stmt hasn't run it yet), scan the body.
+        if (last_expr->kind == NK_VAR && last_expr->name) {
+          if (local_types_.count(last_expr->name) || global_types_.count(last_expr->name))
+            return expr_type(last_expr);
+          for (int i = 0; i < n->body->n_children - 1; i++) {
+            Node* ch = n->body->children[i];
+            if (ch && ch->kind == NK_DECL && ch->name &&
+                std::strcmp(ch->name, last_expr->name) == 0)
+              return ch->type;
+          }
+        }
+        return expr_type(last_expr);
+      }
     }
     return void_ts();
   }
@@ -1538,10 +1552,15 @@ std::string IRBuilder::codegen_lval(Node* n) {
     // Duplicate the alloca+init logic here so we get the raw slot ptr
     // even after codegen_expr was updated to return loaded values for struct/union.
     TypeSpec clit_ts = n->type;
+    Node* clit_init = n->left ? n->left : n->init;
+    // Infer array size for unsized compound literals: (int[]){0,1,2} → [3 x i32]
+    if (is_array_ty(clit_ts) && array_dim_at(clit_ts, 0) == -2 && clit_init) {
+      int inferred = infer_array_size_from_init(clit_init);
+      if (inferred > 0) set_first_array_dim(clit_ts, inferred);
+    }
     std::string clit_llty = llvm_ty(clit_ts);
     std::string clit_slot = "%clit_" + std::to_string(tmp_idx_++);
     alloca_lines_.push_back("  " + clit_slot + " = alloca " + clit_llty);
-    Node* clit_init = n->left ? n->left : n->init;
     if (clit_init && clit_init->kind == NK_INIT_LIST &&
         (is_array_ty(clit_ts) || clit_ts.base == TB_STRUCT || clit_ts.base == TB_UNION)) {
       int flat_idx = 0;
@@ -3897,7 +3916,8 @@ std::string IRBuilder::codegen_expr(Node* n) {
   case NK_CAST: {
     TypeSpec from_ts = expr_type(n->left);
     if (from_ts.ptr_level > 0 && from_ts.is_const &&
-        n->type.ptr_level > 0 && !n->type.is_const)
+        n->type.ptr_level > 0 && !n->type.is_const &&
+        n->left && n->left->kind == NK_ADDR)
       throw std::runtime_error("cast discards const qualifier");
     if ((n->type.base == TB_STRUCT || n->type.base == TB_UNION) &&
         n->type.ptr_level == 0 && n->type.tag) {
@@ -3999,12 +4019,17 @@ std::string IRBuilder::codegen_expr(Node* n) {
   case NK_COMPOUND_LIT: {
     // (type){ ... } - treat as a temporary local variable
     TypeSpec ts = n->type;
-    std::string llty = llvm_ty(ts);
-    std::string slot = "%clit_" + std::to_string(tmp_idx_++);
-    alloca_lines_.push_back("  " + slot + " = alloca " + llty);
     // Initializer is in ->left (set by parser). Use emit_agg_init_impl for
     // full brace-elision, sub-list, and designator support.
     Node* cl_init = n->left ? n->left : n->init;
+    // Infer array size for unsized compound literals: (int[]){0,1,2} → [3 x i32]
+    if (is_array_ty(ts) && array_dim_at(ts, 0) == -2 && cl_init) {
+      int inferred = infer_array_size_from_init(cl_init);
+      if (inferred > 0) set_first_array_dim(ts, inferred);
+    }
+    std::string llty = llvm_ty(ts);
+    std::string slot = "%clit_" + std::to_string(tmp_idx_++);
+    alloca_lines_.push_back("  " + slot + " = alloca " + llty);
     if (cl_init && cl_init->kind == NK_INIT_LIST &&
         (is_array_ty(ts) || ts.base == TB_STRUCT || ts.base == TB_UNION)) {
       int flat_idx = 0;
@@ -5768,23 +5793,52 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
   // Pointer types
   if (ts.ptr_level > 0) {
     if (init->kind == NK_INT_LIT && init->ival == 0) return "null";
+    // Strip explicit casts in global initializer: (void*)"hello", (char*)func, etc.
+    if (init->kind == NK_CAST && init->left)
+      return global_const(ts, init->left);
+    // String literal used directly as char*/void* initializer: char *p = "hello"
+    if (init->kind == NK_STR_LIT && init->sval) {
+      std::string content = decode_narrow_string_lit(init->sval);
+      std::string gname = get_string_global(content);
+      return gname;
+    }
     if (init->kind == NK_ADDR && init->left) {
       Node* operand = init->left;
       // &global_var
       if (operand->kind == NK_VAR && operand->name)
         return std::string("@") + operand->name;
-      // &global_array[0]
-      if (operand->kind == NK_INDEX && operand->left &&
-          operand->left->kind == NK_VAR && operand->left->name &&
-          operand->right && operand->right->kind == NK_INT_LIT) {
-        TypeSpec arr_ts = global_types_.count(operand->left->name)
-                          ? global_types_[operand->left->name] : ts;
-        TypeSpec elem_ts = drop_array_dim(arr_ts);
-        std::string arr_llty = llvm_ty(arr_ts);
-        std::string elem_llty = llvm_ty(elem_ts);
-        return std::string("getelementptr (") + arr_llty + ", ptr @" +
-               operand->left->name + ", i64 0, i64 " +
-               std::to_string(operand->right->ival) + ")";
+      // &global_array[i], &global_array[i][j], ... or &(str_lit[idx])
+      if (operand->kind == NK_INDEX) {
+        // Walk the NK_INDEX chain collecting indices (innermost first)
+        std::vector<long long> indices;
+        Node* base = operand;
+        while (base && base->kind == NK_INDEX) {
+          if (!base->right || base->right->kind != NK_INT_LIT) { base = nullptr; break; }
+          indices.push_back(base->right->ival);
+          base = base->left;
+        }
+        if (base && base->kind == NK_VAR && base->name && !indices.empty()) {
+          // Reverse so we have outermost index first
+          std::reverse(indices.begin(), indices.end());
+          TypeSpec arr_ts = global_types_.count(base->name)
+                            ? global_types_[base->name] : ts;
+          std::string arr_llty = llvm_ty(arr_ts);
+          std::string gep = std::string("getelementptr (") + arr_llty + ", ptr @" +
+                            base->name + ", i64 0";
+          for (auto idx : indices) gep += ", i64 " + std::to_string(idx);
+          gep += ")";
+          return gep;
+        }
+        // &(str_lit[idx]) — e.g. &("X"[0])
+        if (base && base->kind == NK_STR_LIT && base->sval && indices.size() == 1) {
+          std::string content = decode_narrow_string_lit(base->sval);
+          std::string gname = get_string_global(content);
+          long long idx = indices[0];
+          if (idx == 0) return gname;
+          int len = (int)content.size() + 1;  // +1 for null terminator
+          return std::string("getelementptr ([") + std::to_string(len) +
+                 " x i8], ptr " + gname + ", i64 0, i64 " + std::to_string(idx) + ")";
+        }
       }
       // &(struct T){...} — compound literal at global scope:
       // create an internal global and return its address.
@@ -6374,6 +6428,7 @@ void IRBuilder::emit_function(Node* fn) {
     Node* first = fn->body->children[0];
     Node* second = fn->body->children[1];
     if (first && second && first->kind == NK_DECL && !first->init && first->name &&
+        first->type.base != TB_STRUCT && first->type.base != TB_UNION &&
         second->kind == NK_RETURN && second->left &&
         second->left->kind == NK_VAR && second->left->name &&
         std::strcmp(first->name, second->left->name) == 0) {
