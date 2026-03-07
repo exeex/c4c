@@ -1,6 +1,6 @@
 # tiny-c2ll Plan (Frontend-Failure Focus)
 
-Last updated: 2026-03-06 (second session)
+Last updated: 2026-03-07 (closeout validation)
 
 ## Current State
 
@@ -25,6 +25,27 @@ These rules are mandatory for future Claude/Codex repair loops:
    - If fully done: delete `todo_lists.md` before final commit.
    - If not fully done (token/time limit): keep `todo_lists.md` for acceptance.
 6. Acceptance owners are user + GPT Codex; unfinished work is validated against `todo_lists.md`.
+
+## Latest Validation (2026-03-07, closeout re-check)
+
+Validation command:
+
+```bash
+ctest --test-dir build_debug --output-on-failure -j 8
+```
+
+Result:
+- **98% pass (1707/1735)**, **28 fail**
+- Fail breakdown:
+  - `negative_tests`: 26 fail (expected compile-fail cases still compiling; pre-existing semantic gaps)
+  - `c_testsuite`: 2 fail
+    - `single-exec/00174.c` (linker fail: missing `sin`)
+    - `single-exec/00204.c` (runtime segfault)
+  - `llvm_gcc_c_torture`: **0 fail**
+
+Closeout note:
+- Full-suite gate is now explicitly enforced by process.
+- Any future slice that increases non-negative regressions is not accepted as done.
 
 ## Latest Validation (2026-03-06, second session close-out)
 
