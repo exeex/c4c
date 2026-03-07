@@ -7,41 +7,46 @@
 #include <functional>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_set>
 
 namespace tinyc2ll::frontend_cxx {
 
 // ── enum constant expression evaluator ────────────────────────────────────────
-// Evaluate an enum initializer expression, including references to previously
-// defined enum constants (across multiple enum declarations).
-static long long eval_enum_expr(Node* n, const std::unordered_map<std::string, long long>& consts) {
-    if (!n) return 0;
-    if (n->kind == NK_INT_LIT) return n->ival;
-    if (n->kind == NK_CHAR_LIT) return n->ival;
+// Evaluate an enum initializer expression. Returns false if the expression is
+// not an integer constant expression.
+static bool eval_enum_expr(Node* n, const std::unordered_map<std::string, long long>& consts,
+                           long long* out) {
+    if (!n || !out) return false;
+    if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) { *out = n->ival; return true; }
     if (n->kind == NK_VAR && n->name) {
         auto it = consts.find(n->name);
-        if (it != consts.end()) return it->second;
+        if (it != consts.end()) { *out = it->second; return true; }
+        return false;
     }
-    if (n->kind == NK_UNARY && n->op && strcmp(n->op, "-") == 0 && n->left)
-        return -eval_enum_expr(n->left, consts);
-    if (n->kind == NK_UNARY && n->op && strcmp(n->op, "+") == 0 && n->left)
-        return eval_enum_expr(n->left, consts);
-    if (n->kind == NK_CAST && n->left)
-        return eval_enum_expr(n->left, consts);
+    if (n->kind == NK_CAST && n->left) return eval_enum_expr(n->left, consts, out);
+    if (n->kind == NK_UNARY && n->op && n->left) {
+        long long v = 0;
+        if (!eval_enum_expr(n->left, consts, &v)) return false;
+        if (strcmp(n->op, "-") == 0) { *out = -v; return true; }
+        if (strcmp(n->op, "+") == 0) { *out = v;  return true; }
+        return false;
+    }
     if (n->kind == NK_BINOP && n->op && n->left && n->right) {
-        long long l = eval_enum_expr(n->left, consts);
-        long long r = eval_enum_expr(n->right, consts);
-        if (strcmp(n->op, "+") == 0) return l + r;
-        if (strcmp(n->op, "-") == 0) return l - r;
-        if (strcmp(n->op, "*") == 0) return l * r;
-        if (strcmp(n->op, "&") == 0) return l & r;
-        if (strcmp(n->op, "|") == 0) return l | r;
-        if (strcmp(n->op, "^") == 0) return l ^ r;
-        if (strcmp(n->op, "<<") == 0) return l << r;
-        if (strcmp(n->op, ">>") == 0) return l >> r;
-        if (strcmp(n->op, "/") == 0 && r != 0) return l / r;
-        if (strcmp(n->op, "%") == 0 && r != 0) return l % r;
+        long long l = 0, r = 0;
+        if (!eval_enum_expr(n->left, consts, &l)) return false;
+        if (!eval_enum_expr(n->right, consts, &r)) return false;
+        if (strcmp(n->op, "+") == 0) { *out = l + r; return true; }
+        if (strcmp(n->op, "-") == 0) { *out = l - r; return true; }
+        if (strcmp(n->op, "*") == 0) { *out = l * r; return true; }
+        if (strcmp(n->op, "&") == 0) { *out = l & r; return true; }
+        if (strcmp(n->op, "|") == 0) { *out = l | r; return true; }
+        if (strcmp(n->op, "^") == 0) { *out = l ^ r; return true; }
+        if (strcmp(n->op, "<<") == 0) { *out = l << r; return true; }
+        if (strcmp(n->op, ">>") == 0) { *out = l >> r; return true; }
+        if (strcmp(n->op, "/") == 0 && r != 0) { *out = l / r; return true; }
+        if (strcmp(n->op, "%") == 0 && r != 0) { *out = l % r; return true; }
     }
-    return 0;
+    return false;
 }
 
 // ── constant expression evaluator ─────────────────────────────────────────────
@@ -1358,12 +1363,17 @@ Node* Parser::parse_enum() {
 
     std::vector<const char*> names;
     std::vector<long long>   vals;
+    std::unordered_set<std::string> seen_names;
     long long cur_val = 0;
 
     while (!at_end() && !check(TokenKind::RBrace)) {
         skip_attributes();
         if (!check(TokenKind::Identifier)) { consume(); continue; }
         const char* vname = arena_.strdup(cur().lexeme);
+        std::string vname_s(vname ? vname : "");
+        if (seen_names.count(vname_s))
+            throw std::runtime_error("duplicate enumerator: " + vname_s);
+        seen_names.insert(vname_s);
         consume();
         // Skip __attribute__((...)) between enum constant name and '='
         // e.g. _CLOCK_REALTIME __attribute__((availability(...))) = 0,
@@ -1371,7 +1381,8 @@ Node* Parser::parse_enum() {
         long long vval = cur_val;
         if (match(TokenKind::Assign)) {
             Node* ve = parse_assign_expr();
-            vval = eval_enum_expr(ve, enum_consts_);
+            if (!eval_enum_expr(ve, enum_consts_, &vval))
+                throw std::runtime_error("enum initializer is not an integer constant expression");
         }
         // Skip __attribute__((...)) annotations after enum value (e.g. availability macros)
         skip_attributes();
@@ -2565,7 +2576,18 @@ Node* Parser::parse_top_level() {
     // _Static_assert
     if (check(TokenKind::KwStaticAssert)) {
         consume();
-        skip_paren_group();
+        expect(TokenKind::LParen);
+        Node* cond = parse_assign_expr();
+        long long cv = 0;
+        if (!eval_const_int(cond, &cv, &struct_tag_def_map_))
+            throw std::runtime_error("_Static_assert requires an integer constant expression");
+        if (cv == 0)
+            throw std::runtime_error("_Static_assert condition is false");
+        if (match(TokenKind::Comma)) {
+            // message argument (typically string literal)
+            parse_assign_expr();
+        }
+        expect(TokenKind::RParen);
         match(TokenKind::Semi);
         return make_node(NK_EMPTY, ln);
     }

@@ -2395,6 +2395,19 @@ std::string IRBuilder::codegen_expr(Node* n) {
     if (strcmp(aop, "=") == 0) {
       // Plain assignment
       TypeSpec rts = expr_type(n->right);
+      auto discards_const_from_rhs = [&](Node* rhs, const TypeSpec& rhs_ts, const TypeSpec& lhs_ts) -> bool {
+        if (lhs_ts.ptr_level <= 0 || lhs_ts.is_const) return false;
+        if (!rhs) return false;
+        if (rhs->kind == NK_STR_LIT) return true;
+        if (rhs->kind == NK_ADDR && rhs->left) {
+          TypeSpec inner = expr_type(rhs->left);
+          if (inner.ptr_level == 0 && inner.is_const) return true;
+        }
+        if (rhs->kind == NK_VAR && rhs_ts.ptr_level > 0 && rhs_ts.is_const) return true;
+        return false;
+      };
+      if (discards_const_from_rhs(n->right, rts, lts))
+        throw std::runtime_error("assignment discards const qualifier");
       std::string rval = codegen_expr(n->right);
       rval = coerce(rval, rts, llty);
       // Array assignment: rhs from local array var/compound-lit/cast is an alloca ptr;
@@ -3527,6 +3540,24 @@ std::string IRBuilder::codegen_expr(Node* n) {
     std::vector<TypeSpec> arg_types;
     for (int i = 0; i < n->n_children; i++) {
       TypeSpec ats = expr_type(n->children[i]);
+      if (i < (int)param_types.size()) {
+        const TypeSpec& pts = param_types[i];
+        bool discards_const = false;
+        if (pts.ptr_level > 0 && !pts.is_const) {
+          Node* arg = n->children[i];
+          if (arg) {
+            if (arg->kind == NK_STR_LIT) discards_const = true;
+            else if (arg->kind == NK_ADDR && arg->left) {
+              TypeSpec inner = expr_type(arg->left);
+              if (inner.ptr_level == 0 && inner.is_const) discards_const = true;
+            } else if (arg->kind == NK_VAR && ats.ptr_level > 0 && ats.is_const) {
+              discards_const = true;
+            }
+          }
+        }
+        if (discards_const)
+          throw std::runtime_error("passing argument discards const qualifier");
+      }
       std::string av = codegen_expr(n->children[i]);
       // Coerce to parameter type if known
       if (i < (int)param_types.size()) {
@@ -3708,7 +3739,9 @@ std::string IRBuilder::codegen_expr(Node* n) {
 
   case NK_CAST: {
     TypeSpec from_ts = expr_type(n->left);
-    // Explicit casts are allowed to discard const in C (only a warning, not an error)
+    if (from_ts.ptr_level > 0 && from_ts.is_const &&
+        n->type.ptr_level > 0 && !n->type.is_const)
+      throw std::runtime_error("cast discards const qualifier");
     if ((n->type.base == TB_STRUCT || n->type.base == TB_UNION) &&
         n->type.ptr_level == 0 && n->type.tag) {
       bool missing = (struct_defs_.find(n->type.tag) == struct_defs_.end());
@@ -4446,6 +4479,18 @@ void IRBuilder::emit_stmt(Node* n) {
       break;
     }
     TypeSpec rts = expr_type(n->init);
+    if (lts.ptr_level > 0 && !lts.is_const) {
+      bool discards_const = false;
+      if (n->init->kind == NK_STR_LIT) discards_const = true;
+      else if (n->init->kind == NK_ADDR && n->init->left) {
+        TypeSpec inner = expr_type(n->init->left);
+        if (inner.ptr_level == 0 && inner.is_const) discards_const = true;
+      } else if (n->init->kind == NK_VAR && rts.ptr_level > 0 && rts.is_const) {
+        discards_const = true;
+      }
+      if (discards_const)
+        throw std::runtime_error("initialization discards const qualifier");
+    }
     std::string rv = codegen_expr(n->init);
     rv = coerce(rv, rts, llty);
     emit("store " + llty + " " + rv + ", ptr " + it->second);

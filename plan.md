@@ -18,7 +18,7 @@ These rules are mandatory for future Claude/Codex repair loops:
 1. Before starting implementation, create `todo_lists.md` in repo root.
 2. During work, keep `todo_lists.md` updated as the single acceptance checklist.
 3. Before final close-out, run full test suite using the canonical command:
-   - `ctest -j8`
+   - `ctest -j`
 4. If full-suite run regresses previously passing cases, task is **not done**.
    - Fix regressions first; partial progress only counts as interim.
 5. At handoff/close-out:
@@ -29,10 +29,15 @@ These rules are mandatory for future Claude/Codex repair loops:
 ## Canonical Full Test Command
 
 - Single source of truth for completion/acceptance:
-  - `ctest`
-- Do not use alternative ctest invocations (filters, `--test-dir`, custom `-j`, etc.)
+  - `ctest -j`
+- Do not use alternative ctest invocations (filters, `--test-dir`, custom fixed `-jN`, etc.)
   as acceptance evidence.
 - All pass/fail counts in plan updates must come from this exact command.
+- Before every compile+test cycle, rebuild from a clean build dir:
+  - `rm -rf build_xxx`
+  - `cmake -S . -B build_xxx`
+  - `cmake --build build_xxx -j8`
+  - `cd build_xxx && ctest -j`
 
 ## Known Failure Classification And Priority
 
