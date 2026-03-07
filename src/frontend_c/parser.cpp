@@ -1254,14 +1254,17 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                     const char* fname = nullptr;
                     parse_declarator(cur_fts, &fname);
                     skip_attributes();
+                    long long bf_width = -1;
                     if (check(TokenKind::Colon)) {
                         consume();
-                        parse_assign_expr();  // skip bitfield width
+                        Node* bfw = parse_assign_expr();
+                        if (bfw) eval_const_int(bfw, &bf_width, &struct_tag_def_map_);
                     }
                     if (fname) {
                         Node* f = make_node(NK_DECL, cur().line);
                         f->type = cur_fts;
                         f->name = fname;
+                        f->ival = bf_width;  // -1 = not a bitfield; N = N-bit bitfield
                         check_dup_field(fname);
                         fields.push_back(f);
                     }
@@ -1310,16 +1313,19 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             parse_declarator(cur_fts, &fname);
             skip_attributes();
 
-            // Bitfield: : expr  (skip)
+            // Bitfield: : expr
+            long long bf_width = -1;
             if (check(TokenKind::Colon)) {
                 consume();
-                parse_assign_expr();  // skip width
+                Node* bfw = parse_assign_expr();
+                if (bfw) eval_const_int(bfw, &bf_width, &struct_tag_def_map_);
             }
 
             if (fname) {
                 Node* f = make_node(NK_DECL, cur().line);
                 f->type = cur_fts;
                 f->name = fname;
+                f->ival = bf_width;  // -1 = not a bitfield; N = N-bit bitfield
                 check_dup_field(fname);
                 fields.push_back(f);
             }

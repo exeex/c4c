@@ -39,6 +39,8 @@ class IRBuilder {
     std::vector<long long>   field_array_sizes;
     // true = synthetic anonymous sub-struct/union field (for field promotion)
     std::vector<bool>        field_is_anon;
+    // -1 = not a bitfield; N > 0 = N-bit bitfield
+    std::vector<int>         field_bit_widths;
     bool                     is_union;
   };
 
@@ -197,6 +199,10 @@ class IRBuilder {
                               const std::string& tag, const FieldPath& path);
   // Get the TypeSpec of a field found via find_field.
   TypeSpec field_type_from_path(const std::string& tag, const FieldPath& path);
+  // Get the bitfield width for the final field in path (-1 if not a bitfield).
+  int bitfield_width_from_path(const std::string& outer_tag, const FieldPath& path) const;
+  // Get the bitfield width for an NK_MEMBER node (-1 if not a bitfield).
+  int member_bitfield_width(Node* n) const;
 
   // ── Codegen ─────────────────────────────────────────────────────────────────
 

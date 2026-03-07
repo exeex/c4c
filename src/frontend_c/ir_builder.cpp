@@ -1400,6 +1400,33 @@ TypeSpec IRBuilder::field_type_from_path(const std::string& outer_tag,
   return int_ts();
 }
 
+// Returns the bitfield width for the final field in path, or -1 if not a bitfield.
+int IRBuilder::bitfield_width_from_path(const std::string& /*outer_tag*/,
+                                        const FieldPath& path) const {
+  // The final struct is identified by path.final_tag.
+  const std::string& cur_tag = path.final_tag;
+  auto it = struct_defs_.find(cur_tag);
+  if (it == struct_defs_.end()) return -1;
+  const StructInfo& si = it->second;
+  int idx = path.final_idx;
+  if (idx < 0 || idx >= (int)si.field_bit_widths.size()) return -1;
+  return si.field_bit_widths[idx];
+}
+
+// Helper: given an NK_MEMBER node, return bitfield width (-1 if not a bitfield).
+int IRBuilder::member_bitfield_width(Node* n) const {
+  if (!n || n->kind != NK_MEMBER || !n->name) return -1;
+  TypeSpec obj_ts = const_cast<IRBuilder*>(this)->expr_type(n->left);
+  if (n->is_arrow && obj_ts.ptr_level > 0) obj_ts.ptr_level -= 1;
+  const char* tag = obj_ts.tag;
+  if (!tag || !tag[0]) return -1;
+  auto it = struct_defs_.find(tag);
+  if (it == struct_defs_.end()) return -1;
+  FieldPath path;
+  if (!const_cast<IRBuilder*>(this)->find_field(tag, n->name, path)) return -1;
+  return bitfield_width_from_path(tag, path);
+}
+
 // Forward declaration (defined after codegen_expr)
 static void emit_agg_init_impl(IRBuilder* irb, TypeSpec ts, const std::string& ptr,
                                 Node* flat_list, int& flat_idx);
@@ -2547,6 +2574,17 @@ std::string IRBuilder::codegen_expr(Node* n) {
         }
       }
       std::string ptr = codegen_lval(n->left);
+      // Bitfield write: mask value to bitfield width before storing.
+      {
+        int bfw = member_bitfield_width(n->left);
+        if (bfw > 0 && lts.ptr_level == 0 && !is_array_ty(lts) &&
+            (llty == "i8" || llty == "i16" || llty == "i32" || llty == "i64")) {
+          long long mask = (bfw >= 64) ? (long long)-1 : ((1LL << bfw) - 1);
+          std::string masked = fresh_tmp();
+          emit(masked + " = and " + llty + " " + rval + ", " + std::to_string(mask));
+          rval = masked;
+        }
+      }
       emit("store " + llty + " " + rval + ", ptr " + ptr);
       return rval;
     }
@@ -2940,6 +2978,17 @@ std::string IRBuilder::codegen_expr(Node* n) {
       emit(result + " = " + shr_op + " " + llty + " " + cur + ", " + rv);
     } else {
       result = rv;
+    }
+    // Bitfield write: mask compound-assign result to bitfield width before storing.
+    {
+      int bfw = member_bitfield_width(n->left);
+      if (bfw > 0 && lts.ptr_level == 0 && !is_array_ty(lts) &&
+          (llty == "i8" || llty == "i16" || llty == "i32" || llty == "i64")) {
+        long long mask = (bfw >= 64) ? (long long)-1 : ((1LL << bfw) - 1);
+        std::string masked = fresh_tmp();
+        emit(masked + " = and " + llty + " " + result + ", " + std::to_string(mask));
+        result = masked;
+      }
     }
     emit("store " + llty + " " + result + ", ptr " + ptr);
     return result;
@@ -3944,6 +3993,30 @@ std::string IRBuilder::codegen_expr(Node* n) {
     std::string ptr = codegen_lval(n);
     std::string t = fresh_tmp();
     emit(t + " = load " + llty + ", ptr " + ptr);
+    // Bitfield read: apply mask and sign extension.
+    int bfw = member_bitfield_width(n);
+    if (bfw > 0 && res_ts.ptr_level == 0 && !is_array_ty(res_ts) &&
+        (llty == "i8" || llty == "i16" || llty == "i32" || llty == "i64")) {
+      long long mask = (bfw >= 64) ? (long long)-1 : ((1LL << bfw) - 1);
+      std::string masked = fresh_tmp();
+      emit(masked + " = and " + llty + " " + t + ", " + std::to_string(mask));
+      // Sign-extend for signed bitfields.
+      bool is_signed = !is_unsigned_base(res_ts.base) && res_ts.base != TB_BOOL;
+      if (is_signed) {
+        // Sign bit: if bit (bfw-1) is set, extend to negative.
+        long long sign_bit = 1LL << (bfw - 1);
+        std::string sign_t = fresh_tmp(), sext_t = fresh_tmp(), se_t = fresh_tmp();
+        emit(sign_t + " = and " + llty + " " + masked + ", " + std::to_string(sign_bit));
+        emit(sext_t + " = icmp ne " + llty + " " + sign_t + ", 0");
+        // If sign bit set, extend: value | ~mask = value - (1 << bfw)
+        long long sign_ext = ~mask;
+        std::string ext_val = fresh_tmp(), phi_t = fresh_tmp();
+        emit(ext_val + " = or " + llty + " " + masked + ", " + std::to_string(sign_ext));
+        emit(phi_t + " = select i1 " + sext_t + ", " + llty + " " + ext_val + ", " + llty + " " + masked);
+        return phi_t;
+      }
+      return masked;
+    }
     return t;
   }
 
@@ -5290,6 +5363,7 @@ void IRBuilder::emit_struct_def(Node* sd) {
     si.field_types.push_back(ft);
     si.field_array_sizes.push_back(arr_size);
     si.field_is_anon.push_back(f->is_anon_field);
+    si.field_bit_widths.push_back((int)f->ival);  // -1 if not a bitfield
   }
   struct_defs_[tag] = si;
 
