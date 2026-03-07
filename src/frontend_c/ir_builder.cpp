@@ -651,14 +651,19 @@ TypeSpec IRBuilder::expr_type(Node* n) {
         return (sizeof_ty(lt) >= sizeof_ty(rt)) ? lt : rt;
       return is_complex_base(lt.base) ? lt : rt;
     }
-    // Usual arithmetic conversions
+    // Usual arithmetic conversions (C11 §6.3.1.8): unsigned types win at same rank
     if (lt.base == TB_DOUBLE || rt.base == TB_DOUBLE) return double_ts();
     if (lt.base == TB_FLOAT  || rt.base == TB_FLOAT)  return float_ts();
     if (lt.base == TB_LONGDOUBLE || rt.base == TB_LONGDOUBLE) return double_ts();
-    if (lt.base == TB_LONGLONG || lt.base == TB_ULONGLONG ||
-        rt.base == TB_LONGLONG || rt.base == TB_ULONGLONG)  return ll_ts();
-    if (lt.base == TB_LONG || lt.base == TB_ULONG ||
-        rt.base == TB_LONG || rt.base == TB_ULONG)          return make_ts(TB_LONG);
+    if (lt.base == TB_ULONGLONG || rt.base == TB_ULONGLONG) return make_ts(TB_ULONGLONG);
+    if (lt.base == TB_LONGLONG  || rt.base == TB_LONGLONG) {
+      // longlong + ulong: same size on 64-bit, unsigned wins → ulonglong
+      if (lt.base == TB_ULONG || rt.base == TB_ULONG) return make_ts(TB_ULONGLONG);
+      return ll_ts();
+    }
+    if (lt.base == TB_ULONG || rt.base == TB_ULONG) return make_ts(TB_ULONG);
+    if (lt.base == TB_LONG  || rt.base == TB_LONG)  return make_ts(TB_LONG);
+    if (lt.base == TB_UINT  || rt.base == TB_UINT)  return make_ts(TB_UINT);
     return int_ts();
   }
 
@@ -2442,6 +2447,9 @@ std::string IRBuilder::codegen_expr(Node* n) {
     }
 
     bool is_float = is_float_base(res_ts.base);
+    // For ordered comparisons (<, <=, >, >=), track whether to use unsigned icmp.
+    // Default: left operand signedness (overridden by the block below for mixed types).
+    bool cmp_unsigned = is_unsigned_base(lt.base);
 
     // For comparison operators, operand types determine float vs integer instruction.
     // expr_type(comparison) always returns int, so check operand types separately.
@@ -2457,6 +2465,23 @@ std::string IRBuilder::codegen_expr(Node* n) {
         TypeSpec cmp_ts = use_double ? double_ts() : float_ts();
         res_llty = llvm_ty(cmp_ts);
         is_float = true;
+      } else if (is_cmp && lt.ptr_level == 0 && rt.ptr_level == 0 &&
+                 !is_array_ty(lt) && !is_array_ty(rt)) {
+        // Integer comparison: coerce operands to the wider of the two types, not the
+        // comparison result type (always int/i32). Prevents truncation of e.g. long long
+        // or unsigned long before comparison.
+        int lt_sz = sizeof_ty(lt);
+        int rt_sz = sizeof_ty(rt);
+        if (lt_sz >= rt_sz && lt_sz > 4) res_llty = llvm_ty(lt);
+        else if (rt_sz > lt_sz && rt_sz > 4) res_llty = llvm_ty(rt);
+        // Determine comparison sign using C usual arithmetic conversions:
+        // unsigned type wins at same rank (same size on our target).
+        if (lt.base == TB_ULONGLONG || rt.base == TB_ULONGLONG)      cmp_unsigned = true;
+        else if (lt.base == TB_LONGLONG || rt.base == TB_LONGLONG)    cmp_unsigned = (lt.base == TB_ULONG || rt.base == TB_ULONG);
+        else if (lt.base == TB_ULONG    || rt.base == TB_ULONG)       cmp_unsigned = true;
+        else if (lt.base == TB_LONG     || rt.base == TB_LONG)        cmp_unsigned = false;
+        else if (lt.base == TB_UINT     || rt.base == TB_UINT)        cmp_unsigned = true;
+        else                                                           cmp_unsigned = false;
       }
     }
 
@@ -2517,13 +2542,13 @@ std::string IRBuilder::codegen_expr(Node* n) {
     } else if (strcmp(op, "!=") == 0) {
       return emit_cmp("ne", "une");
     } else if (strcmp(op, "<") == 0) {
-      return emit_cmp(is_unsigned_base(lt.base) ? "ult" : "slt", "olt");
+      return emit_cmp(cmp_unsigned ? "ult" : "slt", "olt");
     } else if (strcmp(op, "<=") == 0) {
-      return emit_cmp(is_unsigned_base(lt.base) ? "ule" : "sle", "ole");
+      return emit_cmp(cmp_unsigned ? "ule" : "sle", "ole");
     } else if (strcmp(op, ">") == 0) {
-      return emit_cmp(is_unsigned_base(lt.base) ? "ugt" : "sgt", "ogt");
+      return emit_cmp(cmp_unsigned ? "ugt" : "sgt", "ogt");
     } else if (strcmp(op, ">=") == 0) {
-      return emit_cmp(is_unsigned_base(lt.base) ? "uge" : "sge", "oge");
+      return emit_cmp(cmp_unsigned ? "uge" : "sge", "oge");
     } else {
       // Unknown operator: return 0
       return "0";

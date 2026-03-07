@@ -271,14 +271,19 @@ static double parse_float_lexeme(const char* s) {
     if (len >= sizeof(buf)) len = sizeof(buf) - 1;
     strncpy(buf, s, len);
     buf[len] = '\0';
+    bool is_float_suffix = false;  // 'f'/'F' suffix → single-precision
     size_t end = len;
     while (end > 0) {
         char c = buf[end - 1];
-        if (c == 'f' || c == 'F' || c == 'l' || c == 'L' ||
-            c == 'i' || c == 'I' || c == 'j' || c == 'J') { --end; }
+        if (c == 'f' || c == 'F') { is_float_suffix = true; --end; }
+        else if (c == 'l' || c == 'L' ||
+                 c == 'i' || c == 'I' || c == 'j' || c == 'J') { --end; }
         else { break; }
     }
     buf[end] = '\0';
+    // For float (F suffix) literals, round to single-precision first so that fval
+    // stores the exact float-rounded value when promoted to double.
+    if (is_float_suffix) return (double)(float)strtod(buf, nullptr);
     return strtod(buf, nullptr);
 }
 
