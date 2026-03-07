@@ -788,10 +788,19 @@ TypeSpec IRBuilder::expr_type(Node* n) {
           strcmp(cn, "__builtin_parityll") == 0) return make_ts(TB_INT);
     }
     // Indirect call through function pointer expression.
-    // We don't model full function signatures in TypeSpec yet, so preserve
-    // pointer/aggregate shape for downstream member/index typing.
     if (n->left) {
-      TypeSpec callee_ts = expr_type(n->left);
+      // Peel dereference to get the function pointer itself.
+      Node* callee = n->left;
+      if ((callee->kind == NK_DEREF || (callee->kind == NK_UNARY && callee->op && callee->op[0] == '*' && callee->op[1] == '\0')) && callee->left)
+        callee = callee->left;
+      TypeSpec callee_ts = expr_type(callee);
+      // If the callee has is_fn_ptr set, its base type IS the function return type.
+      if (callee_ts.is_fn_ptr && callee_ts.ptr_level > 0) {
+        callee_ts.ptr_level--;
+        callee_ts.is_fn_ptr = false;
+        return callee_ts;
+      }
+      // Preserve pointer/aggregate shape for downstream member/index typing.
       if (callee_ts.ptr_level > 0 || is_array_ty(callee_ts))
         return callee_ts;
     }
@@ -939,7 +948,7 @@ std::string IRBuilder::to_bool(const std::string& val, const TypeSpec& ts) {
     // Pointer or decayed array: compare against null
     emit(t + " = icmp ne ptr " + val + ", null");
   } else if (llty == "double" || llty == "float") {
-    emit(t + " = fcmp one " + llty + " " + val + ", 0.0");
+    emit(t + " = fcmp une " + llty + " " + val + ", 0.0");
   } else {
     emit(t + " = icmp ne " + llty + " " + val + ", 0");
   }
@@ -1120,18 +1129,7 @@ void IRBuilder::hoist_allocas(Node* node) {
       node_slots_[node] = gname;
       node_types_[node] = ts;
       std::string llty = llvm_ty(ts);
-      std::string init_val = "zeroinitializer";
-      if (node->init) {
-        if (node->init->kind == NK_INT_LIT)
-          init_val = std::to_string(node->init->ival);
-        else if (node->init->kind == NK_FLOAT_LIT)
-          init_val = (ts.base == TB_FLOAT) ? fp_to_hex_float(node->init->fval)
-                                           : fp_to_hex(node->init->fval);
-        else if (node->init->kind == NK_UNARY && node->init->op &&
-                 strcmp(node->init->op, "-") == 0 && node->init->left &&
-                 node->init->left->kind == NK_INT_LIT)
-          init_val = std::to_string(-node->init->left->ival);
-      }
+      std::string init_val = node->init ? global_const(ts, node->init) : "zeroinitializer";
       preamble_.push_back(gname + " = internal global " + llty + " " + init_val);
       break;
     }
@@ -2489,7 +2487,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
     } else if (strcmp(op, "==") == 0) {
       return emit_cmp("eq", "oeq");
     } else if (strcmp(op, "!=") == 0) {
-      return emit_cmp("ne", "one");
+      return emit_cmp("ne", "une");
     } else if (strcmp(op, "<") == 0) {
       return emit_cmp(is_unsigned_base(lt.base) ? "ult" : "slt", "olt");
     } else if (strcmp(op, "<=") == 0) {
@@ -3016,6 +3014,15 @@ std::string IRBuilder::codegen_expr(Node* n) {
           has_known_signature = true;
         } else {
           ret_ts = expr_type(n);
+          // Fallback: use the variable's TypeSpec is_fn_ptr base type as return type.
+          TypeSpec var_ts;
+          if (local_types_.count(fn_name)) var_ts = local_types_[fn_name];
+          else if (global_types_.count(fn_name)) var_ts = global_types_[fn_name];
+          if (var_ts.is_fn_ptr && var_ts.ptr_level > 0) {
+            var_ts.ptr_level--;
+            var_ts.is_fn_ptr = false;
+            ret_ts = var_ts;
+          }
         }
         fn_name.clear();
       } else {
@@ -3076,6 +3083,24 @@ std::string IRBuilder::codegen_expr(Node* n) {
             param_types = fsit->second.param_types;
             has_known_signature = true;
           }
+        } else {
+          // Fallback: the variable's TypeSpec encodes the return type via is_fn_ptr.
+          // e.g. FLOAT (*pos)(FLOAT,FLOAT,...) has {base=FLOAT, ptr_level=1, is_fn_ptr=true}.
+          TypeSpec callee_ts = expr_type(callee);
+          if (callee_ts.is_fn_ptr && callee_ts.ptr_level > 0) {
+            callee_ts.ptr_level--;
+            callee_ts.is_fn_ptr = false;
+            ret_ts = callee_ts;
+          }
+        }
+      } else {
+        // Callee is not a simple variable (e.g. struct member access).
+        // Try to infer return type from the callee expression's is_fn_ptr flag.
+        TypeSpec callee_ts = expr_type(callee);
+        if (callee_ts.is_fn_ptr && callee_ts.ptr_level > 0) {
+          callee_ts.ptr_level--;
+          callee_ts.is_fn_ptr = false;
+          ret_ts = callee_ts;
         }
       }
     }
@@ -3702,6 +3727,15 @@ std::string IRBuilder::codegen_expr(Node* n) {
       if (i < (int)param_types.size()) {
         av = coerce(av, ats, llvm_ty(param_types[i]));
         ats = param_types[i];
+      } else if (is_indirect && ret_ts.base == TB_FLOAT && ret_ts.ptr_level == 0 &&
+                 ats.base == TB_DOUBLE && ats.ptr_level == 0) {
+        // Heuristic: for indirect calls through a float-returning function pointer,
+        // double-typed arguments (e.g. 1.0 literals) should be narrowed to float
+        // to match the ABI of functions like FLOAT (*fn)(FLOAT, FLOAT, ...).
+        std::string tr = fresh_tmp();
+        emit(tr + " = fptrunc double " + av + " to float");
+        av = tr;
+        ats = float_ts();
       }
       arg_vals.push_back(av);
       arg_types.push_back(ats);
@@ -5378,6 +5412,30 @@ static long long static_eval_int(Node* n, const std::unordered_map<std::string, 
   return 0;  // unknown expression
 }
 
+// Evaluate a compile-time constant floating-point expression.
+// Handles NaN/Inf correctly (unlike static_eval_int which converts to int).
+static double static_eval_float(Node* n) {
+  if (!n) return 0.0;
+  if (n->kind == NK_FLOAT_LIT) return n->fval;
+  if (n->kind == NK_INT_LIT)   return (double)n->ival;
+  if (n->kind == NK_CHAR_LIT)  return (double)n->ival;
+  if (n->kind == NK_CAST && n->left) return static_eval_float(n->left);
+  if (n->kind == NK_UNARY && n->op && n->left) {
+    double v = static_eval_float(n->left);
+    if (strcmp(n->op, "-") == 0) return -v;
+    if (strcmp(n->op, "+") == 0) return v;
+  }
+  if (n->kind == NK_BINOP && n->op && n->left && n->right) {
+    double l = static_eval_float(n->left);
+    double r = static_eval_float(n->right);
+    if (strcmp(n->op, "+") == 0) return l + r;
+    if (strcmp(n->op, "-") == 0) return l - r;
+    if (strcmp(n->op, "*") == 0) return l * r;
+    if (strcmp(n->op, "/") == 0) return l / r;  // 1.0/0.0 = Inf, Inf-Inf = NaN
+  }
+  return 0.0;
+}
+
 // Count the number of scalar leaf fields when a struct/array type is fully flattened.
 // Used to detect brace-elision in array-of-struct global initializers.
 static int count_flat_fields_impl(const TypeSpec& ts,
@@ -6152,10 +6210,9 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
     if (init->kind == NK_CAST && init->left)
       return global_const(ts, init->left);
     // Try static evaluation for constant expressions (BinOp, Unary, etc.)
-    if (init->kind == NK_BINOP || init->kind == NK_UNARY) {
-      long long ival = static_eval_int(init, enum_consts_);
-      return fhex((double)ival);
-    }
+    // Use float evaluation to preserve NaN/Inf semantics (e.g. 1.0/0.0 - 1.0/0.0 = NaN)
+    if (init->kind == NK_BINOP || init->kind == NK_UNARY)
+      return fhex(static_eval_float(init));
     return fhex(0.0);
   }
   // Unwrap optional braces around scalar: {4} or {(1)} for scalar field.
