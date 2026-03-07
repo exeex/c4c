@@ -833,8 +833,14 @@ TypeSpec IRBuilder::expr_type(Node* n) {
     if (n->is_arrow && bts.ptr_level > 0) bts.ptr_level -= 1;
     if ((bts.base == TB_STRUCT || bts.base == TB_UNION) && bts.tag) {
       FieldPath path;
-      if (find_field(bts.tag, n->name, path))
-        return field_type_from_path(bts.tag, path);
+      if (find_field(bts.tag, n->name, path)) {
+        TypeSpec ft = field_type_from_path(bts.tag, path);
+        // C11 §6.3.1.1: narrow bitfields promote to int (or uint if width==32 and unsigned)
+        int bfw = bitfield_width_from_path(bts.tag, path);
+        if (bfw > 0 && bfw < 32 && ft.ptr_level == 0 && !is_array_ty(ft))
+          return int_ts();
+        return ft;
+      }
       throw std::runtime_error(std::string("unknown field ") +
                                (n->name ? n->name : "?") + " in " + bts.tag);
     }
@@ -2708,6 +2714,37 @@ std::string IRBuilder::codegen_expr(Node* n) {
       rv = coerce(rv, rts, llty);
     }
 
+    // C11 §6.3.1.1: narrow integer lhs (< int width) promotes to int before arithmetic.
+    bool needs_int_promote = (!needs_fp_upcast && lts.ptr_level == 0 && !is_float &&
+                              !lts.is_vector && !is_complex_base(lts.base) &&
+                              sizeof_ty(lts) < 4);
+    if (needs_int_promote) {
+      std::string cur_ext = fresh_tmp();
+      emit(cur_ext + " = " + (is_unsigned_base(lts.base) ? "zext" : "sext") +
+           " " + llty + " " + cur + " to i32");
+      std::string rv32 = coerce(rv, rts, "i32");
+      std::string res32 = fresh_tmp();
+      std::string op32_str;
+      if      (strcmp(aop, "+=")  == 0) op32_str = "add";
+      else if (strcmp(aop, "-=")  == 0) op32_str = "sub";
+      else if (strcmp(aop, "*=")  == 0) op32_str = "mul";
+      else if (strcmp(aop, "/=")  == 0) op32_str = "sdiv";
+      else if (strcmp(aop, "%=")  == 0) op32_str = "srem";
+      else if (strcmp(aop, "&=")  == 0) op32_str = "and";
+      else if (strcmp(aop, "|=")  == 0) op32_str = "or";
+      else if (strcmp(aop, "^=")  == 0) op32_str = "xor";
+      else if (strcmp(aop, "<<=") == 0) op32_str = "shl";
+      else if (strcmp(aop, ">>=") == 0)
+        op32_str = is_unsigned_base(lts.base) ? "lshr" : "ashr";
+      if (!op32_str.empty()) {
+        emit(res32 + " = " + op32_str + " i32 " + cur_ext + ", " + rv32);
+        std::string res_narrow = fresh_tmp();
+        emit(res_narrow + " = trunc i32 " + res32 + " to " + llty);
+        emit("store " + llty + " " + res_narrow + ", ptr " + ptr);
+        return res_narrow;
+      }
+    }
+
     // For pointer arithmetic, keep rv as integer (coerce to i64 for GEP index)
     // For non-pointer ops, coerce to lhs type
     if (!needs_fp_upcast && lts.ptr_level == 0)
@@ -2908,6 +2945,50 @@ std::string IRBuilder::codegen_expr(Node* n) {
         return result_f;
       }
       rv = coerce(rv, rts, llty);
+    }
+
+    // C11 §6.3.1.1: narrow integer lhs (< int width) promotes to int before arithmetic.
+    // unsigned/signed char, short → all values fit in int → promote to signed int.
+    bool needs_int_promote = (!needs_fp_upcast && lts.ptr_level == 0 && !is_float &&
+                              !lts.is_vector && !is_complex_base(lts.base) &&
+                              sizeof_ty(lts) < 4);
+    if (needs_int_promote) {
+      // Extend lhs and coerce rhs to i32, perform op as signed int, truncate back.
+      std::string cur_ext = fresh_tmp();
+      emit(cur_ext + " = " + (is_unsigned_base(lts.base) ? "zext" : "sext") +
+           " " + llty + " " + cur + " to i32");
+      std::string rv32 = coerce(rv, rts, "i32");
+      std::string res32 = fresh_tmp();
+      const char* op32 = n->op;
+      std::string op32_str;
+      if      (op32 && strcmp(op32, "+=")  == 0) op32_str = "add";
+      else if (op32 && strcmp(op32, "-=")  == 0) op32_str = "sub";
+      else if (op32 && strcmp(op32, "*=")  == 0) op32_str = "mul";
+      else if (op32 && strcmp(op32, "/=")  == 0) op32_str = "sdiv";
+      else if (op32 && strcmp(op32, "%=")  == 0) op32_str = "srem";
+      else if (op32 && strcmp(op32, "&=")  == 0) op32_str = "and";
+      else if (op32 && strcmp(op32, "|=")  == 0) op32_str = "or";
+      else if (op32 && strcmp(op32, "^=")  == 0) op32_str = "xor";
+      else if (op32 && strcmp(op32, "<<=") == 0) op32_str = "shl";
+      else if (op32 && strcmp(op32, ">>=") == 0)
+        op32_str = is_unsigned_base(lts.base) ? "lshr" : "ashr";
+      if (!op32_str.empty()) {
+        emit(res32 + " = " + op32_str + " i32 " + cur_ext + ", " + rv32);
+        std::string res_narrow = fresh_tmp();
+        emit(res_narrow + " = trunc i32 " + res32 + " to " + llty);
+        // Bitfield masking (if lhs is a bitfield member)
+        {
+          int bfw = member_bitfield_width(n->left);
+          if (bfw > 0 && (llty == "i8" || llty == "i16")) {
+            long long mask = (1LL << bfw) - 1;
+            std::string masked = fresh_tmp();
+            emit(masked + " = and " + llty + " " + res_narrow + ", " + std::to_string(mask));
+            res_narrow = masked;
+          }
+        }
+        emit("store " + llty + " " + res_narrow + ", ptr " + ptr);
+        return res_narrow;
+      }
     }
 
     // For pointer arithmetic, keep rv as integer; coerce to lhs type for scalar ops
@@ -5512,7 +5593,7 @@ static long long static_eval_int(Node* n, const std::unordered_map<std::string, 
     if (strcmp(n->op, "|") == 0) return l | r;
     if (strcmp(n->op, "^") == 0) return l ^ r;
     if (strcmp(n->op, "<<") == 0) return l << (r & 63);
-    if (strcmp(n->op, ">>") == 0) return (long long)((unsigned long long)l >> (r & 63));
+    if (strcmp(n->op, ">>") == 0) return l >> (r & 63);
   }
   return 0;  // unknown expression
 }
