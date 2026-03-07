@@ -17,8 +17,8 @@ These rules are mandatory for future Claude/Codex repair loops:
 
 1. Before starting implementation, create `todo_lists.md` in repo root.
 2. During work, keep `todo_lists.md` updated as the single acceptance checklist.
-3. Before final close-out, run full test suite:
-   - `ctest --test-dir build_debug --output-on-failure -j 8`
+3. Before final close-out, run full test suite using the canonical command:
+   - `ctest -j8`
 4. If full-suite run regresses previously passing cases, task is **not done**.
    - Fix regressions first; partial progress only counts as interim.
 5. At handoff/close-out:
@@ -26,12 +26,41 @@ These rules are mandatory for future Claude/Codex repair loops:
    - If not fully done (token/time limit): keep `todo_lists.md` for acceptance.
 6. Acceptance owners are user + GPT Codex; unfinished work is validated against `todo_lists.md`.
 
+## Canonical Full Test Command
+
+- Single source of truth for completion/acceptance:
+  - `ctest`
+- Do not use alternative ctest invocations (filters, `--test-dir`, custom `-j`, etc.)
+  as acceptance evidence.
+- All pass/fail counts in plan updates must come from this exact command.
+
+## Known Failure Classification And Priority
+
+Priority order is strict:
+
+1. **P0: `negative_tests` semantic hard-error correctness**
+   - These are compile-fail contract tests and must not regress.
+   - It is **not allowed** to fix `llvm_gcc_c_torture` by weakening or breaking
+     `negative_tests` behavior.
+   - Merge gate: if `negative_tests` fail count increases, the patch is
+     automatically rejected and must not be merged.
+2. **P1: `c_testsuite` runtime/link correctness**
+   - Current known recurring items include math linkage/runtime ABI issues.
+3. **P2: `llvm_gcc_c_torture` conformance/coverage**
+   - Improve after P0/P1 are stable.
+
+Current known buckets (from latest full run) are tracked as:
+- `negative_tests`: const-qualifier checks, enum semantics, scope rules,
+  static_assert semantics, struct/union/typedef semantic checks, uninitialized-read diagnostics.
+- `c_testsuite`: linker/runtime issues (`00174`, `00204` class).
+- `llvm_gcc_c_torture`: currently expected to be zero in the latest allowlist-complete state.
+
 ## Latest Validation (2026-03-07, closeout re-check)
 
 Validation command:
 
 ```bash
-ctest --test-dir build_debug --output-on-failure -j 8
+ctest
 ```
 
 Result:
