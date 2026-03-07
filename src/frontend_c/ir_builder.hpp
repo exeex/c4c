@@ -63,6 +63,8 @@ class IRBuilder {
   std::unordered_map<std::string, TypeSpec>   global_types_;
   std::unordered_map<std::string, bool>       global_is_extern_;
   std::unordered_map<std::string, long long>  enum_consts_;
+  // enum tag -> true when all enumerator values are non-negative
+  std::unordered_map<std::string, bool>       enum_all_nonnegative_;
   // Raw string content → "@.strN" global name
   std::unordered_map<std::string, std::string> string_consts_;
   int string_idx_;

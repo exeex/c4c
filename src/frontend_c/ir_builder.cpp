@@ -793,6 +793,10 @@ TypeSpec IRBuilder::expr_type(Node* n) {
       Node* callee = n->left;
       if ((callee->kind == NK_DEREF || (callee->kind == NK_UNARY && callee->op && callee->op[0] == '*' && callee->op[1] == '\0')) && callee->left)
         callee = callee->left;
+      if (callee->kind == NK_VAR && callee->name) {
+        auto fsit = fptr_sigs_.find(callee->name);
+        if (fsit != fptr_sigs_.end()) return fsit->second.ret_type;
+      }
       TypeSpec callee_ts = expr_type(callee);
       // If the callee has is_fn_ptr set, its base type IS the function return type.
       if (callee_ts.is_fn_ptr && callee_ts.ptr_level > 0) {
@@ -800,9 +804,6 @@ TypeSpec IRBuilder::expr_type(Node* n) {
         callee_ts.is_fn_ptr = false;
         return callee_ts;
       }
-      // Preserve pointer/aggregate shape for downstream member/index typing.
-      if (callee_ts.ptr_level > 0 || is_array_ty(callee_ts))
-        return callee_ts;
     }
     return int_ts();
   }
@@ -4002,6 +4003,11 @@ std::string IRBuilder::codegen_expr(Node* n) {
       emit(masked + " = and " + llty + " " + t + ", " + std::to_string(mask));
       // Sign-extend for signed bitfields.
       bool is_signed = !is_unsigned_base(res_ts.base) && res_ts.base != TB_BOOL;
+      if (res_ts.base == TB_ENUM && res_ts.tag) {
+        auto eit = enum_all_nonnegative_.find(res_ts.tag);
+        if (eit != enum_all_nonnegative_.end() && eit->second)
+          is_signed = false;
+      }
       if (is_signed) {
         // Sign bit: if bit (bfw-1) is set, extend to negative.
         long long sign_bit = 1LL << (bfw - 1);
@@ -6639,6 +6645,16 @@ std::string IRBuilder::emit_program(Node* prog) {
       for (int j = 0; j < item->n_enum_variants; j++) {
         if (item->enum_names && item->enum_names[j])
           enum_consts_[item->enum_names[j]] = item->enum_vals[j];
+      }
+      if (item->name && item->name[0]) {
+        bool all_nonnegative = true;
+        for (int j = 0; j < item->n_enum_variants; j++) {
+          if (item->enum_vals[j] < 0) {
+            all_nonnegative = false;
+            break;
+          }
+        }
+        enum_all_nonnegative_[item->name] = all_nonnegative;
       }
       break;
     case NK_FUNCTION:
