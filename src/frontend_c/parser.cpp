@@ -285,7 +285,8 @@ static double parse_float_lexeme(const char* s) {
 // ── Parser constructor ────────────────────────────────────────────────────────
 
 Parser::Parser(std::vector<Token> tokens, Arena& arena)
-    : tokens_(std::move(tokens)), pos_(0), arena_(arena), anon_counter_(0), had_error_(false) {
+    : tokens_(std::move(tokens)), pos_(0), arena_(arena), anon_counter_(0),
+      had_error_(false), parsing_top_level_context_(false) {
     // Pre-seed well-known typedef names from standard / system headers
     // so the parser can disambiguate type-name vs identifier.
     static const char* seed[] = {
@@ -311,6 +312,8 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena)
         "mode_t", "ino_t", "dev_t", "nlink_t", "blksize_t", "blkcnt_t",
         "div_t", "ldiv_t", "lldiv_t",
         "__int128_t", "__uint128_t",
+        "__Float32x4_t", "__Float64x2_t",
+        "__SVFloat32_t", "__SVFloat64_t", "__SVBool_t",
         "OSStatus", "OSErr",
         nullptr
     };
@@ -1135,6 +1138,10 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         snprintf(buf, sizeof(buf), "_anon_%d", anon_counter_++);
         tag = arena_.strdup(buf);
     } else if (defined_struct_tags_.count(tag)) {
+        if (parsing_top_level_context_) {
+            throw std::runtime_error(std::string("redefinition of ") +
+                                     (is_union ? "union " : "struct ") + tag);
+        }
         // Block-scoped redefinition of an already-defined tag (C tag shadowing).
         // Generate a unique shadow tag so both definitions coexist in struct_defs_.
         // Variables declared inline with this definition will get the shadow tag.
@@ -1151,6 +1158,14 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     consume();  // consume {
 
     std::vector<Node*> fields;
+    std::unordered_set<std::string> field_names_seen;
+    auto check_dup_field = [&](const char* fname) {
+        if (!fname) return;
+        std::string n(fname);
+        if (field_names_seen.count(n))
+            throw std::runtime_error(std::string("duplicate field name: ") + n);
+        field_names_seen.insert(n);
+    };
     while (!at_end() && !check(TokenKind::RBrace)) {
         skip_attributes();
         if (check(TokenKind::RBrace)) break;
@@ -1172,11 +1187,12 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             if (has_declarator) {
                 const char* fname = nullptr;
                 parse_declarator(anon_fts, &fname);
-                if (fname) {
-                    Node* f = make_node(NK_DECL, cur().line);
-                    f->type = anon_fts;
-                    f->name = fname;
-                    fields.push_back(f);
+                    if (fname) {
+                        Node* f = make_node(NK_DECL, cur().line);
+                        f->type = anon_fts;
+                        f->name = fname;
+                        check_dup_field(fname);
+                        fields.push_back(f);
                 } else if (inner && inner->name) {
                     // Declarator consumed pointer stars but no name — treat as anonymous
                     Node* f = make_node(NK_DECL, cur().line);
@@ -1197,6 +1213,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                         Node* f2 = make_node(NK_DECL, cur().line);
                         f2->type = fts2;
                         f2->name = fname2;
+                        check_dup_field(fname2);
                         fields.push_back(f2);
                     }
                 }
@@ -1245,6 +1262,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                         Node* f = make_node(NK_DECL, cur().line);
                         f->type = cur_fts;
                         f->name = fname;
+                        check_dup_field(fname);
                         fields.push_back(f);
                     }
                     (void)first_f; first_f = false;
@@ -1302,6 +1320,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 Node* f = make_node(NK_DECL, cur().line);
                 f->type = cur_fts;
                 f->name = fname;
+                check_dup_field(fname);
                 fields.push_back(f);
             }
 
@@ -2484,6 +2503,16 @@ Node* Parser::parse_local_decl() {
     TypeSpec base_ts = parse_base_type();
     skip_attributes();
 
+    auto is_incomplete_object_type = [&](const TypeSpec& ts) -> bool {
+        if (ts.ptr_level > 0) return false;
+        if (ts.base != TB_STRUCT && ts.base != TB_UNION) return false;
+        if (!ts.tag) return true;
+        auto it = struct_tag_def_map_.find(ts.tag);
+        if (it == struct_tag_def_map_.end()) return true;
+        Node* def = it->second;
+        return !def || def->n_fields < 0;
+    };
+
     if (is_typedef) {
         // Simple typedef: typedef base_type name[...];
         // Also handles typedef base_type (*fn_name)(...);
@@ -2491,7 +2520,12 @@ Node* Parser::parse_local_decl() {
         TypeSpec ts_copy = base_ts;
         parse_declarator(ts_copy, &tdname);
         if (tdname) {
+            auto it = typedef_types_.find(tdname);
+            if (user_typedefs_.count(tdname) && it != typedef_types_.end() &&
+                !types_compatible_p(it->second, ts_copy, typedef_types_))
+                throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdname);
             typedefs_.insert(tdname);
+            user_typedefs_.insert(tdname);
             typedef_types_[tdname] = ts_copy;
         }
         // multiple declarators in typedef
@@ -2500,7 +2534,12 @@ Node* Parser::parse_local_decl() {
             const char* tdn2 = nullptr;
             parse_declarator(ts2, &tdn2);
             if (tdn2) {
+                auto it = typedef_types_.find(tdn2);
+                if (user_typedefs_.count(tdn2) && it != typedef_types_.end() &&
+                    !types_compatible_p(it->second, ts2, typedef_types_))
+                    throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdn2);
                 typedefs_.insert(tdn2);
+                user_typedefs_.insert(tdn2);
                 typedef_types_[tdn2] = ts2;
             }
         }
@@ -2528,6 +2567,8 @@ Node* Parser::parse_local_decl() {
             match(TokenKind::Semi);
             return make_node(NK_EMPTY, ln);
         }
+        if (is_incomplete_object_type(ts))
+            throw std::runtime_error(std::string("object has incomplete type: ") + (ts.tag ? ts.tag : "<anonymous>"));
 
         Node* init_node = nullptr;
         if (match(TokenKind::Assign)) {
@@ -2559,6 +2600,13 @@ Node* Parser::parse_local_decl() {
 // ── top-level parsing ─────────────────────────────────────────────────────────
 
 Node* Parser::parse_top_level() {
+    struct TopLevelFlagGuard {
+        bool& ref;
+        bool old;
+        explicit TopLevelFlagGuard(bool& r) : ref(r), old(r) { ref = true; }
+        ~TopLevelFlagGuard() { ref = old; }
+    } top_level_guard(parsing_top_level_context_);
+
     int ln = cur().line;
     if (at_end()) return nullptr;
 
@@ -2611,13 +2659,16 @@ Node* Parser::parse_top_level() {
 
     TypeSpec base_ts{};
     if (!is_type_start()) {
+        if (is_typedef) {
+            std::string nm = check(TokenKind::Identifier) ? cur().lexeme : "<non-identifier>";
+            throw std::runtime_error(std::string("typedef uses unknown base type: ") + nm);
+        }
         // K&R/old-style implicit-int function at file scope:
         // e.g. `main() { ... }` or `static foo() { ... }`.
         // Treat as `int name(...)` instead of discarding the whole definition.
         bool maybe_implicit_int_fn =
             check(TokenKind::Identifier) && check2(TokenKind::LParen);
         if (!maybe_implicit_int_fn) {
-            // Skip to semicolon
             skip_until(TokenKind::Semi);
             return make_node(NK_EMPTY, ln);
         }
@@ -2642,13 +2693,28 @@ Node* Parser::parse_top_level() {
         skip_attributes();
     }
 
+    auto is_incomplete_object_type = [&](const TypeSpec& ts) -> bool {
+        if (ts.ptr_level > 0) return false;
+        if (ts.base != TB_STRUCT && ts.base != TB_UNION) return false;
+        if (!ts.tag) return true;
+        auto it = struct_tag_def_map_.find(ts.tag);
+        if (it == struct_tag_def_map_.end()) return true;
+        Node* def = it->second;
+        return !def || def->n_fields < 0;
+    };
+
     if (is_typedef) {
         // Local typedef
         const char* tdname = nullptr;
         TypeSpec ts_copy = base_ts;
         parse_declarator(ts_copy, &tdname);
         if (tdname) {
+            auto it = typedef_types_.find(tdname);
+            if (user_typedefs_.count(tdname) && it != typedef_types_.end() &&
+                !types_compatible_p(it->second, ts_copy, typedef_types_))
+                throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdname);
             typedefs_.insert(tdname);
+            user_typedefs_.insert(tdname);
             typedef_types_[tdname] = ts_copy;
         }
         while (match(TokenKind::Comma)) {
@@ -2656,7 +2722,12 @@ Node* Parser::parse_top_level() {
             const char* tdn2 = nullptr;
             parse_declarator(ts2, &tdn2);
             if (tdn2) {
+                auto it = typedef_types_.find(tdn2);
+                if (user_typedefs_.count(tdn2) && it != typedef_types_.end() &&
+                    !types_compatible_p(it->second, ts2, typedef_types_))
+                    throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdn2);
                 typedefs_.insert(tdn2);
+                user_typedefs_.insert(tdn2);
                 typedef_types_[tdn2] = ts2;
             }
         }
@@ -2739,7 +2810,9 @@ Node* Parser::parse_top_level() {
         if (check(TokenKind::LParen)) skip_paren_group();  // skip return-fptr params
         if (!fn_returning_fptr) is_fptr_global = true;
     } else {
-        parse_declarator(ts, &decl_name);
+    parse_declarator(ts, &decl_name);
+    if (is_incomplete_object_type(ts) && !check(TokenKind::LParen))
+        throw std::runtime_error(std::string("object has incomplete type: ") + (ts.tag ? ts.tag : "<anonymous>"));
     }
 
     skip_attributes();

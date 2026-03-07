@@ -38,6 +38,8 @@ class Parser {
   int                pos_;
   Arena&             arena_;
   std::set<std::string> typedefs_;  // known typedef names
+  // Typedef names declared in the current translation unit (not pre-seeded).
+  std::set<std::string> user_typedefs_;
   // Maps typedef name → resolved TypeSpec (populated when registering typedefs)
   // so subsequent uses of the typedef name resolve to the actual struct/base type.
   std::unordered_map<std::string, TypeSpec> typedef_types_;
@@ -57,6 +59,8 @@ class Parser {
   std::unordered_map<std::string, Node*> struct_tag_def_map_;
   // True if parse() encountered any recoverable parse error.
   bool had_error_;
+  // True while parsing a file-scope declaration in parse_top_level().
+  bool parsing_top_level_context_;
 
   // ── token cursor helpers ──────────────────────────────────────────────────
   const Token& cur() const;              // current token

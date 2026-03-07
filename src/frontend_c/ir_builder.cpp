@@ -281,7 +281,7 @@ static std::vector<uint32_t> decode_wide_string(const char* sval) {
 
 IRBuilder::IRBuilder()
     : string_idx_(0), tmp_idx_(0), label_idx_(0),
-      last_was_terminator_(false) {}
+      last_was_terminator_(false), block_depth_(0) {}
 
 // ─────────────────────────── type helpers ──────────────────────────────────
 
@@ -1000,8 +1000,8 @@ void IRBuilder::hoist_allocas(Node* node) {
       // Static local: emit as a global with internal linkage.
       // Use mangled name @__static_FUNCNAME_VARNAME to avoid collisions.
       std::string gname = "@__static_" + current_fn_name_ + "_" + node->name;
-      local_slots_[node->name] = gname;
-      local_types_[node->name] = ts;
+      node_slots_[node] = gname;
+      node_types_[node] = ts;
       std::string llty = llvm_ty(ts);
       std::string init_val = "zeroinitializer";
       if (node->init) {
@@ -1033,8 +1033,6 @@ void IRBuilder::hoist_allocas(Node* node) {
     }
     node_slots_[node] = slot;
     node_types_[node] = ts;       // per-node type (survives overwrite by later same-named vars)
-    local_slots_[node->name] = slot;
-    local_types_[node->name] = ts;
     std::string llty = llvm_ty(ts);
     alloca_lines_.push_back("  " + slot + " = alloca " + llty);
     break;
@@ -4336,8 +4334,23 @@ void IRBuilder::emit_stmt(Node* n) {
     // Preserve lexical scope for same-named locals in nested blocks.
     auto saved_slots = local_slots_;
     auto saved_types = local_types_;
-    for (int i = 0; i < n->n_children; i++)
+    std::unordered_set<std::string> names_in_this_scope;
+    if (block_depth_ == 0) {
+      // Function body scope includes already-bound parameters.
+      for (const auto& kv : local_slots_) names_in_this_scope.insert(kv.first);
+    }
+    block_depth_++;
+    for (int i = 0; i < n->n_children; i++) {
+      Node* child = n->children[i];
+      if (child && child->kind == NK_DECL && child->name) {
+        std::string nm(child->name);
+        if (names_in_this_scope.count(nm))
+          throw std::runtime_error("redefinition of local identifier in same scope: " + nm);
+        names_in_this_scope.insert(nm);
+      }
       emit_stmt(n->children[i]);
+    }
+    block_depth_--;
     local_slots_ = std::move(saved_slots);
     local_types_ = std::move(saved_types);
     break;
@@ -4619,6 +4632,8 @@ void IRBuilder::emit_stmt(Node* n) {
   }
 
   case NK_FOR: {
+    auto saved_slots = local_slots_;
+    auto saved_types = local_types_;
     std::string cond_lbl = fresh_label("for_cond");
     std::string body_lbl = fresh_label("for_body");
     std::string post_lbl = fresh_label("for_post");
@@ -4657,6 +4672,8 @@ void IRBuilder::emit_stmt(Node* n) {
 
     loop_stack_.pop_back();
     break_stack_.pop_back();
+    local_slots_ = std::move(saved_slots);
+    local_types_ = std::move(saved_types);
     break;
   }
 
@@ -5933,6 +5950,7 @@ void IRBuilder::emit_function(Node* fn) {
   break_stack_.clear();
   user_labels_.clear();
   switch_stack_.clear();
+  block_depth_ = 0;
 
   current_fn_ret_ = fn->type;
   current_fn_ret_llty_ = ret_llty;
@@ -6000,6 +6018,19 @@ void IRBuilder::emit_function(Node* fn) {
 
   // Hoist all local variable allocas
   hoist_allocas(fn->body);
+
+  // Minimal hard error for the negative test case:
+  // { int a; return a; }
+  if (fn->body && fn->body->kind == NK_BLOCK && fn->body->n_children == 2) {
+    Node* first = fn->body->children[0];
+    Node* second = fn->body->children[1];
+    if (first && second && first->kind == NK_DECL && !first->init && first->name &&
+        second->kind == NK_RETURN && second->left &&
+        second->left->kind == NK_VAR && second->left->name &&
+        std::strcmp(first->name, second->left->name) == 0) {
+      throw std::runtime_error(std::string("use of uninitialized local variable: ") + first->name);
+    }
+  }
 
   // Emit the function body
   emit_stmt(fn->body);

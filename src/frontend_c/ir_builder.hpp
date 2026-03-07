@@ -112,6 +112,7 @@ class IRBuilder {
   TypeSpec    current_fn_ret_;      // return type of the current function
   std::string current_fn_ret_llty_; // LLVM type string for the return
   std::string current_fn_name_;     // name of the function being emitted (for static local mangling)
+  int         block_depth_;         // lexical block depth during emit_stmt
 
   // (cond_label, end_label) for innermost loop (break/continue targets)
   std::vector<std::pair<std::string, std::string>> loop_stack_;
