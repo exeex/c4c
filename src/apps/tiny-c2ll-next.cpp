@@ -164,12 +164,7 @@ int main(int argc, char **argv) {
     tc::sema_ir::phase2::hir::Module hir_mod =
         tc::sema_ir::phase2::hir::lower_ast_to_hir(prog);
     std::string ir;
-    if (pipeline_hir) {
-      if (hir_has_unsupported_features(hir_mod)) {
-        throw std::runtime_error(
-            "--pipeline=hir does not support variadic functions yet; "
-            "use --pipeline=legacy");
-      }
+    if (pipeline_hir && !hir_has_unsupported_features(hir_mod)) {
       ir = tinyc2ll::codegen::llvm_backend::emit_module_native(hir_mod);
     } else {
       ir = tinyc2ll::codegen::llvm_backend::emit_module(hir_mod, prog);

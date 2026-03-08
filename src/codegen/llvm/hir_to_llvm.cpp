@@ -4,10 +4,12 @@
 #include <cassert>
 #include <cctype>
 #include <cstring>
+#include <functional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "ir_builder.hpp"
@@ -116,13 +118,20 @@ static std::string sanitize_llvm_ident(const std::string& raw) {
   return out;
 }
 
-// Non-decayed LLVM type for alloca/struct field (struct/union → %struct.TAG)
+// Non-decayed LLVM type for alloca/struct field (struct/union → %struct.TAG).
+// Handles multi-dimensional arrays recursively.
 static std::string llvm_alloca_ty(const TypeSpec& ts) {
   if (ts.ptr_level > 0 || ts.is_fn_ptr) return "ptr";
   if (ts.array_rank > 0) {
-    // Array: [N x elem]
     if (ts.array_size >= 0) {
-      return "[" + std::to_string(ts.array_size) + " x " + llvm_base(ts.base) + "]";
+      // Build element type: drop one dimension and recurse.
+      TypeSpec elem = ts;
+      elem.array_rank--;
+      // Shift remaining dims left
+      for (int i = 0; i < elem.array_rank; ++i) elem.array_dims[i] = elem.array_dims[i + 1];
+      if (elem.array_rank > 0) elem.array_dims[elem.array_rank] = -1;
+      elem.array_size = (elem.array_rank > 0) ? elem.array_dims[0] : -1;
+      return "[" + std::to_string(ts.array_size) + " x " + llvm_alloca_ty(elem) + "]";
     }
     return "ptr";  // unknown size
   }
@@ -146,7 +155,20 @@ static int sizeof_base(TypeBase b) {
 }
 
 static int sizeof_ts(const TypeSpec& ts) {
-  if (ts.ptr_level > 0 || ts.array_rank > 0 || ts.is_fn_ptr) return 8;
+  if (ts.ptr_level > 0 || ts.is_fn_ptr) return 8;
+  if (ts.array_rank > 0) {
+    if (ts.array_size > 0) {
+      // Recursively compute element size
+      TypeSpec elem = ts;
+      elem.array_rank--;
+      if (elem.array_rank > 0) {
+        for (int i = 0; i < elem.array_rank; ++i) elem.array_dims[i] = elem.array_dims[i + 1];
+      }
+      elem.array_size = (elem.array_rank > 0) ? elem.array_dims[0] : -1;
+      return (int)(ts.array_size * sizeof_ts(elem));
+    }
+    return 8;  // unknown size — treat as pointer
+  }
   return sizeof_base(ts.base);
 }
 
@@ -333,8 +355,45 @@ class HirEmitter {
 
   std::string emit() {
     emit_preamble();
-    for (const auto& gv : mod_.globals) emit_global(gv);
-    for (const auto& fn : mod_.functions) emit_function(fn);
+    // Deduplicate globals: C tentative definitions can produce multiple entries
+    // for the same name. Prefer the entry with an explicit initializer; among
+    // equals, prefer later entries (last wins for extern semantics).
+    std::unordered_map<std::string, size_t> best_gv; // name -> index in mod_.globals
+    for (size_t i = 0; i < mod_.globals.size(); ++i) {
+      const GlobalVar& gv = mod_.globals[i];
+      auto it = best_gv.find(gv.name);
+      if (it == best_gv.end()) {
+        best_gv[gv.name] = i;
+      } else {
+        // Prefer explicitly initialized over tentative (monostate)
+        const bool cur_has_init = !std::holds_alternative<std::monostate>(mod_.globals[it->second].init);
+        const bool new_has_init = !std::holds_alternative<std::monostate>(gv.init);
+        if (new_has_init || !cur_has_init) it->second = i;
+      }
+    }
+    // Emit in original order, skipping non-best duplicates
+    for (size_t i = 0; i < mod_.globals.size(); ++i) {
+      const GlobalVar& gv = mod_.globals[i];
+      if (best_gv.count(gv.name) && best_gv[gv.name] == i) emit_global(gv);
+    }
+    // Deduplicate functions: prefer definitions (non-empty blocks) over declarations.
+    std::unordered_map<std::string, size_t> best_fn; // name -> index
+    for (size_t i = 0; i < mod_.functions.size(); ++i) {
+      const Function& fn = mod_.functions[i];
+      auto it = best_fn.find(fn.name);
+      if (it == best_fn.end()) {
+        best_fn[fn.name] = i;
+      } else {
+        const bool cur_is_def = !mod_.functions[it->second].blocks.empty();
+        const bool new_is_def = !fn.blocks.empty();
+        if (new_is_def && !cur_is_def) it->second = i;
+      }
+    }
+    // Emit in original order, skipping non-best duplicates
+    for (size_t i = 0; i < mod_.functions.size(); ++i) {
+      const Function& fn = mod_.functions[i];
+      if (best_fn.count(fn.name) && best_fn[fn.name] == i) emit_function(fn);
+    }
 
     std::ostringstream out;
     out << preamble_.str();
@@ -512,6 +571,58 @@ class HirEmitter {
     return ts;
   }
 
+  // Recursively constant-evaluate an expression to an integer (returns nullopt if not possible).
+  std::optional<long long> try_const_eval_int(ExprId id) {
+    const Expr& e = get_expr(id);
+    return std::visit([&](const auto& p) -> std::optional<long long> {
+      using T = std::decay_t<decltype(p)>;
+      if constexpr (std::is_same_v<T, IntLiteral>) {
+        return p.value;
+      } else if constexpr (std::is_same_v<T, CharLiteral>) {
+        return static_cast<long long>(p.value);
+      } else if constexpr (std::is_same_v<T, CastExpr>) {
+        return try_const_eval_int(p.expr);
+      } else if constexpr (std::is_same_v<T, UnaryExpr>) {
+        auto v = try_const_eval_int(p.operand);
+        if (!v) return std::nullopt;
+        switch (p.op) {
+          case UnaryOp::Plus:   return *v;
+          case UnaryOp::Minus:  return -*v;
+          case UnaryOp::BitNot: return ~*v;
+          case UnaryOp::Not:    return static_cast<long long>(!*v);
+          default: return std::nullopt;
+        }
+      } else if constexpr (std::is_same_v<T, BinaryExpr>) {
+        auto lv = try_const_eval_int(p.lhs);
+        auto rv = try_const_eval_int(p.rhs);
+        if (!lv || !rv) return std::nullopt;
+        switch (p.op) {
+          case BinaryOp::Add:    return *lv + *rv;
+          case BinaryOp::Sub:    return *lv - *rv;
+          case BinaryOp::Mul:    return *lv * *rv;
+          case BinaryOp::Div:    return (*rv != 0) ? *lv / *rv : 0LL;
+          case BinaryOp::Mod:    return (*rv != 0) ? *lv % *rv : 0LL;
+          case BinaryOp::Shl:    return *lv << *rv;
+          case BinaryOp::Shr:    return *lv >> *rv;
+          case BinaryOp::BitAnd: return *lv & *rv;
+          case BinaryOp::BitOr:  return *lv | *rv;
+          case BinaryOp::BitXor: return *lv ^ *rv;
+          case BinaryOp::Lt:     return static_cast<long long>(*lv < *rv);
+          case BinaryOp::Le:     return static_cast<long long>(*lv <= *rv);
+          case BinaryOp::Gt:     return static_cast<long long>(*lv > *rv);
+          case BinaryOp::Ge:     return static_cast<long long>(*lv >= *rv);
+          case BinaryOp::Eq:     return static_cast<long long>(*lv == *rv);
+          case BinaryOp::Ne:     return static_cast<long long>(*lv != *rv);
+          case BinaryOp::LAnd:   return static_cast<long long>(*lv && *rv);
+          case BinaryOp::LOr:    return static_cast<long long>(*lv || *rv);
+          default: return std::nullopt;
+        }
+      } else {
+        return std::nullopt;
+      }
+    }, e.payload);
+  }
+
   std::string emit_const_scalar_expr(ExprId id, const TypeSpec& expected_ts) {
     const Expr& e = get_expr(id);
     return std::visit([&](const auto& p) -> std::string {
@@ -521,6 +632,8 @@ class HirEmitter {
           if (p.value == 0) return "null";
           return "inttoptr (i64 " + std::to_string(p.value) + " to ptr)";
         }
+        if (is_float_base(expected_ts.base) && expected_ts.ptr_level == 0)
+          return fp_to_hex(static_cast<double>(p.value));
         return std::to_string(p.value);
       } else if constexpr (std::is_same_v<T, FloatLiteral>) {
         return fp_to_hex(p.value);
@@ -561,6 +674,13 @@ class HirEmitter {
         return (llvm_ty(expected_ts) == "ptr") ? "null" : "0";
       } else if constexpr (std::is_same_v<T, CastExpr>) {
         return emit_const_scalar_expr(p.expr, expected_ts);
+      } else if constexpr (std::is_same_v<T, BinaryExpr>) {
+        auto val = try_const_eval_int(id);
+        if (val) {
+          if (llvm_ty(expected_ts) == "ptr") return "null";
+          return std::to_string(*val);
+        }
+        return (llvm_ty(expected_ts) == "ptr") ? "null" : "0";
       } else {
         return (llvm_ty(expected_ts) == "ptr") ? "null" : "0";
       }
@@ -598,12 +718,12 @@ class HirEmitter {
           else return GlobalInit(*v);
         }, item.value);
         elems[idx] = emit_const_init(elem_ts, child_init);
-        if (!item.index_designator) next_idx = idx + 1;
+        next_idx = idx + 1;  // always advance; designators set the base, next follows
       }
     }
 
     std::string out = "[";
-    const std::string ety = llvm_ty(elem_ts);
+    const std::string ety = llvm_alloca_ty(elem_ts);  // non-decayed for nested arrays
     for (size_t i = 0; i < elems.size(); ++i) {
       if (i) out += ", ";
       out += ety + " " + elems[i];
@@ -683,15 +803,53 @@ class HirEmitter {
     return (llvm_ty(ts) == "ptr") ? "null" : "zeroinitializer";
   }
 
+  // Deduce the first dimension of an unsized array from its initializer.
+  // Returns -1 if it cannot be deduced.
+  long long deduce_array_size_from_init(const GlobalInit& init) {
+    if (const auto* list = std::get_if<InitList>(&init)) {
+      long long max_idx = -1;
+      long long next = 0;
+      for (const auto& item : list->items) {
+        long long idx = next;
+        if (item.index_designator && *item.index_designator >= 0)
+          idx = *item.index_designator;
+        if (idx > max_idx) max_idx = idx;
+        next = idx + 1;
+      }
+      return max_idx + 1;  // 0 items → -1+1=0, handled as <=0 (zeroinitializer)
+    }
+    if (const auto* scalar = std::get_if<InitScalar>(&init)) {
+      const Expr& e = get_expr(scalar->expr);
+      if (const auto* sl = std::get_if<StringLiteral>(&e.payload)) {
+        const std::string bytes = bytes_from_string_literal(*sl);
+        return (long long)bytes.size() + 1;  // include NUL
+      }
+    }
+    return -1;
+  }
+
+  // Return a TypeSpec with the first array dimension filled in (if unsized).
+  TypeSpec resolve_array_ts(const TypeSpec& ts, const GlobalInit& init) {
+    if (ts.array_rank <= 0 || ts.array_size >= 0) return ts;
+    const long long deduced = deduce_array_size_from_init(init);
+    if (deduced <= 0) return ts;
+    TypeSpec out = ts;
+    out.array_size = deduced;
+    out.array_dims[0] = deduced;
+    return out;
+  }
+
   void emit_global(const GlobalVar& gv) {
-    const std::string ty = llvm_alloca_ty(gv.type.spec);
+    // Resolve unsized array dimensions from the initializer (e.g. int a[] = {1,2,3}).
+    const TypeSpec ts = resolve_array_ts(gv.type.spec, gv.init);
+    const std::string ty = llvm_alloca_ty(ts);
     if (gv.linkage.is_extern) {
       preamble_ << "@" << gv.name << " = external global " << ty << "\n";
       return;
     }
     const std::string lk = gv.linkage.is_static ? "internal " : "";
     const std::string qual = gv.is_const ? "constant " : "global ";
-    const std::string init = emit_const_init(gv.type.spec, gv.init);
+    const std::string init = emit_const_init(ts, gv.init);
     preamble_ << "@" << gv.name << " = " << lk << qual << ty << " " << init << "\n";
   }
 
@@ -815,7 +973,7 @@ class HirEmitter {
     for (const auto& f : sd.fields) {
       if (!f.is_anon_member && f.name == field_name) {
         chain.push_back({tag, f.llvm_idx, sd.is_union});
-        out_field_ts = f.elem_type;
+        out_field_ts = field_decl_type(f);  // includes array dims if array field
         return true;
       }
     }
@@ -878,6 +1036,23 @@ class HirEmitter {
       if (r->local) {
         pts = ctx.local_types.at(r->local->value);
         return ctx.local_slots.at(r->local->value);
+      }
+      // Parameter used as lvalue (e.g. p++): spill to a stack slot on first use
+      if (r->param_index && ctx.fn && *r->param_index < ctx.fn->params.size()) {
+        const auto& param = ctx.fn->params[*r->param_index];
+        pts = param.type.spec;
+        const std::string pname = "%p." + sanitize_llvm_ident(param.name);
+        // Check if we already have a spill slot
+        auto it = ctx.param_slots.find(*r->param_index + 0x80000000u);
+        if (it != ctx.param_slots.end()) {
+          return it->second;
+        }
+        // Create a new alloca for this parameter
+        const std::string slot = "%lv.param." + sanitize_llvm_ident(param.name);
+        ctx.alloca_lines.push_back("  " + slot + " = alloca " + llvm_alloca_ty(pts));
+        ctx.alloca_lines.push_back("  store " + llvm_ty(pts) + " " + pname + ", ptr " + slot);
+        ctx.param_slots[*r->param_index + 0x80000000u] = slot;
+        return slot;
       }
       if (r->global) {
         pts = mod_.globals[r->global->value].type.spec;
@@ -1117,6 +1292,10 @@ class HirEmitter {
     TypeSpec ts{}; ts.base = TB_CHAR; return ts;
   }
 
+  TypeSpec resolve_payload_type(FnCtx&, const StringLiteral&) {
+    TypeSpec ts{}; ts.base = TB_CHAR; ts.ptr_level = 1; return ts;
+  }
+
   TypeSpec resolve_payload_type(FnCtx& ctx, const MemberExpr& m) {
     // Look up the field type in struct_defs
     const Expr& base_e = get_expr(m.base);
@@ -1136,6 +1315,12 @@ class HirEmitter {
     if (base_ts.ptr_level > 0) { base_ts.ptr_level--; return base_ts; }
     if (base_ts.array_rank > 0) { base_ts.array_rank--; return base_ts; }
     return base_ts;
+  }
+
+  TypeSpec resolve_payload_type(FnCtx& ctx, const TernaryExpr& t) {
+    TypeSpec ts = resolve_expr_type(ctx, t.then_expr);
+    if (ts.base != TB_VOID || ts.ptr_level > 0 || ts.array_rank > 0) return ts;
+    return resolve_expr_type(ctx, t.else_expr);
   }
 
   template <typename T>
@@ -1205,11 +1390,19 @@ class HirEmitter {
   // ── DeclRef ───────────────────────────────────────────────────────────────
 
   std::string emit_rval_payload(FnCtx& ctx, const DeclRef& r, const Expr& e) {
-    // Function reference: return as ptr value
-    if (mod_.fn_index.count(r.name)) return "@" + r.name;
-
-    // Param: SSA value
-    if (r.param_index) {
+    // Param: SSA value (check before function refs — params shadow function names)
+    if (r.param_index && ctx.fn && *r.param_index < ctx.fn->params.size()) {
+      // If we already have a spill slot for this param (due to lval use like p++),
+      // load from it to get the current (possibly modified) value.
+      const auto spill_it = ctx.param_slots.find(*r.param_index + 0x80000000u);
+      if (spill_it != ctx.param_slots.end()) {
+        const TypeSpec& pts = ctx.fn->params[*r.param_index].type.spec;
+        const std::string ty = llvm_ty(pts);
+        const std::string tmp = fresh_tmp(ctx);
+        emit_instr(ctx, tmp + " = load " + ty + ", ptr " + spill_it->second);
+        return tmp;
+      }
+      // Otherwise use the SSA param value directly.
       const auto it = ctx.param_slots.find(*r.param_index);
       if (it != ctx.param_slots.end()) return it->second;
     }
@@ -1236,8 +1429,10 @@ class HirEmitter {
     if (r.global) {
       const auto& gv = mod_.globals[r.global->value];
       if (gv.type.spec.array_rank > 0) {
+        // Use resolved type (deduced from initializer) for GEP — avoids "ptr" fallback.
+        const TypeSpec resolved_ts = resolve_array_ts(gv.type.spec, gv.init);
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = getelementptr " + llvm_alloca_ty(gv.type.spec) +
+        emit_instr(ctx, tmp + " = getelementptr " + llvm_alloca_ty(resolved_ts) +
                             ", ptr @" + r.name + ", i64 0, i64 0");
         return tmp;
       }
@@ -1246,6 +1441,9 @@ class HirEmitter {
       emit_instr(ctx, tmp + " = load " + ty + ", ptr @" + r.name);
       return tmp;
     }
+
+    // Function reference: return as ptr value (after checking locals/params)
+    if (mod_.fn_index.count(r.name)) return "@" + r.name;
 
     // Unresolved: load from external global
     const TypeSpec ets = resolve_expr_type(ctx, e);
@@ -1670,6 +1868,36 @@ class HirEmitter {
       fn_name = r->name;
     }
 
+    // Handle GCC/Clang builtins
+    if (!fn_name.empty() && fn_name.substr(0, 10) == "__builtin_") {
+      // bswap builtins → llvm.bswap intrinsic
+      if (fn_name == "__builtin_bswap16" || fn_name == "__builtin_bswap32" ||
+          fn_name == "__builtin_bswap64") {
+        if (call.args.size() == 1) {
+          TypeSpec arg_ts{};
+          const std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
+          const std::string aty = llvm_ty(arg_ts);
+          const std::string intrinsic = "@llvm.bswap." + aty;
+          const std::string tmp = fresh_tmp(ctx);
+          emit_instr(ctx, tmp + " = call " + aty + " " + intrinsic + "(" + aty + " " + arg + ")");
+          return tmp;
+        }
+      }
+      // __builtin_expect(x, y) → just return x
+      if (fn_name == "__builtin_expect" && call.args.size() >= 1) {
+        TypeSpec arg_ts{};
+        return emit_rval_id(ctx, call.args[0], arg_ts);
+      }
+      // __builtin_unreachable() → emit unreachable
+      if (fn_name == "__builtin_unreachable" && call.args.empty()) {
+        emit_term(ctx, "unreachable");
+        return "";
+      }
+      // Unknown builtin: emit as 0/null
+      if (ret_ty == "void") return "";
+      return (ret_ty == "ptr") ? "null" : "0";
+    }
+
     std::string args_str;
     for (size_t i = 0; i < call.args.size(); ++i) {
       TypeSpec arg_ts{};
@@ -1726,8 +1954,29 @@ class HirEmitter {
 
   // ── Sizeof ────────────────────────────────────────────────────────────────
 
-  std::string emit_rval_payload(FnCtx&, const SizeofExpr& /*s*/, const Expr& e) {
-    return std::to_string(sizeof_ts(e.type.spec));
+  std::string emit_rval_payload(FnCtx& ctx, const SizeofExpr& s, const Expr&) {
+    const Expr& op = get_expr(s.expr);
+    TypeSpec op_ts = op.type.spec;
+    // DeclRef: get type from global/local declaration (NK_VAR nodes have no type set).
+    if (const auto* r = std::get_if<DeclRef>(&op.payload)) {
+      if (r->global) {
+        if (const GlobalVar* gv = mod_.find_global(*r->global)) {
+          op_ts = resolve_array_ts(gv->type.spec, gv->init);
+        }
+      } else if (r->local) {
+        const auto it = ctx.local_types.find(r->local->value);
+        if (it != ctx.local_types.end()) op_ts = it->second;
+      } else if (r->param_index && ctx.fn &&
+                 *r->param_index < ctx.fn->params.size()) {
+        op_ts = ctx.fn->params[*r->param_index].type.spec;
+        // Array params decay to pointer in C — sizeof(param) = sizeof(void*)
+        if (op_ts.array_rank > 0) {
+          op_ts.array_rank = 0; op_ts.array_size = -1; op_ts.ptr_level = 1;
+        }
+      }
+    }
+    if (!has_concrete_type(op_ts)) return "8";
+    return std::to_string(sizeof_ts(op_ts));
   }
 
   std::string emit_rval_payload(FnCtx&, const SizeofTypeExpr& s, const Expr&) {
@@ -1756,6 +2005,14 @@ class HirEmitter {
     const TypeSpec& load_ts = (e.type.spec.base != TB_VOID || e.type.spec.ptr_level > 0)
                                   ? e.type.spec
                                   : field_ts;
+    // Array fields: decay to pointer-to-first-element (no load needed)
+    if (load_ts.array_rank > 0 || field_ts.array_rank > 0) {
+      const TypeSpec& arr_ts = (field_ts.array_rank > 0) ? field_ts : load_ts;
+      const std::string tmp = fresh_tmp(ctx);
+      emit_instr(ctx, tmp + " = getelementptr " + llvm_alloca_ty(arr_ts) +
+                          ", ptr " + gep + ", i64 0, i64 0");
+      return tmp;
+    }
     const std::string ty = llvm_ty(load_ts);
     if (ty == "void") return "";
     const std::string tmp = fresh_tmp(ctx);
@@ -1776,6 +2033,10 @@ class HirEmitter {
     const std::string ty   = llvm_ty(d.type.spec);
     const std::string slot = ctx.local_slots.at(d.id.value);
     rhs = coerce(ctx, rhs, rhs_ts, d.type.spec);
+    // Aggregate types can't use integer "0" — use zeroinitializer instead.
+    const bool is_agg = (d.type.spec.base == TB_STRUCT || d.type.spec.base == TB_UNION) &&
+                        d.type.spec.ptr_level == 0 && d.type.spec.array_rank == 0;
+    if (is_agg && (rhs == "0" || rhs.empty())) rhs = "zeroinitializer";
     emit_instr(ctx, "store " + ty + " " + rhs + ", ptr " + slot);
   }
 
@@ -1882,24 +2143,33 @@ class HirEmitter {
     TypeSpec ts{};
     const std::string val = emit_rval_id(ctx, s.cond, ts);
     const std::string ty  = llvm_ty(ts);
-    const std::string end_lbl = s.default_block
-        ? block_lbl(*s.default_block)
-        : fresh_lbl(ctx, "sw.end.");
 
-    ctx.block_meta[s.body_block.value].break_label = end_lbl;
+    // Default label: use explicit default block if present, else the break (after-switch) block
+    const std::string default_lbl = s.default_block
+        ? block_lbl(*s.default_block)
+        : (s.break_block ? block_lbl(*s.break_block) : fresh_lbl(ctx, "sw.end."));
+    const std::string break_lbl = s.break_block
+        ? block_lbl(*s.break_block)
+        : default_lbl;
+
+    ctx.block_meta[s.body_block.value].break_label = break_lbl;
 
     // Collect case values by scanning body block statements
+    // All cases jump to body_block (they share the body, case markers are sequential)
     const Block* body_blk = nullptr;
     for (const auto& blk : ctx.fn->blocks) {
       if (blk.id.value == s.body_block.value) { body_blk = &blk; break; }
     }
 
-    std::string sw = "switch " + ty + " " + val + ", label %" + end_lbl + " [\n";
+    const std::string body_lbl = block_lbl(s.body_block);
+    std::string sw = "switch " + ty + " " + val + ", label %" + default_lbl + " [\n";
     if (body_blk) {
       for (const auto& stmt : body_blk->stmts) {
         if (const auto* cs = std::get_if<CaseStmt>(&stmt.payload)) {
           sw += "    " + ty + " " + std::to_string(cs->value) +
-                ", label %" + end_lbl + "\n";
+                ", label %" + body_lbl + "\n";
+        } else if (std::get_if<CaseRangeStmt>(&stmt.payload)) {
+          // GCC range extension: skip for now
         }
       }
     }
@@ -1945,7 +2215,91 @@ class HirEmitter {
 
   // ── Function emission ─────────────────────────────────────────────────────
 
+  // Returns set of param indices that are used as lvalues (modified or address-taken).
+  std::unordered_set<uint32_t> find_modified_params(const Function& fn) {
+    std::unordered_set<uint32_t> result;
+    // Recursively check all expressions in the function body.
+    std::function<void(ExprId)> scan = [&](ExprId id) {
+      const Expr& e = get_expr(id);
+      std::visit([&](const auto& p) {
+        using T = std::decay_t<decltype(p)>;
+        if constexpr (std::is_same_v<T, UnaryExpr>) {
+          if (p.op == UnaryOp::PreInc || p.op == UnaryOp::PostInc ||
+              p.op == UnaryOp::PreDec || p.op == UnaryOp::PostDec ||
+              p.op == UnaryOp::AddrOf) {
+            // If operand is a param, mark it
+            const Expr& op_e = get_expr(p.operand);
+            if (const auto* r = std::get_if<DeclRef>(&op_e.payload)) {
+              if (r->param_index) result.insert(*r->param_index);
+            }
+          }
+          scan(p.operand);
+        } else if constexpr (std::is_same_v<T, AssignExpr>) {
+          // lhs assignment
+          const Expr& lhs_e = get_expr(p.lhs);
+          if (const auto* r = std::get_if<DeclRef>(&lhs_e.payload)) {
+            if (r->param_index) result.insert(*r->param_index);
+          }
+          scan(p.lhs); scan(p.rhs);
+        } else if constexpr (std::is_same_v<T, BinaryExpr>) {
+          scan(p.lhs); scan(p.rhs);
+        } else if constexpr (std::is_same_v<T, CallExpr>) {
+          scan(p.callee);
+          for (const auto& a : p.args) scan(a);
+        } else if constexpr (std::is_same_v<T, TernaryExpr>) {
+          scan(p.cond); scan(p.then_expr); scan(p.else_expr);
+        } else if constexpr (std::is_same_v<T, IndexExpr>) {
+          scan(p.base); scan(p.index);
+        } else if constexpr (std::is_same_v<T, MemberExpr>) {
+          scan(p.base);
+        } else if constexpr (std::is_same_v<T, CastExpr>) {
+          scan(p.expr);
+        } else if constexpr (std::is_same_v<T, SizeofExpr>) {
+          scan(p.expr);
+        }
+      }, e.payload);
+    };
+    for (const auto& blk : fn.blocks) {
+      for (const auto& stmt : blk.stmts) {
+        std::visit([&](const auto& s) {
+          using S = std::decay_t<decltype(s)>;
+          if constexpr (std::is_same_v<S, LocalDecl>) {
+            if (s.init) scan(*s.init);
+          } else if constexpr (std::is_same_v<S, ExprStmt>) {
+            if (s.expr) scan(*s.expr);
+          } else if constexpr (std::is_same_v<S, ReturnStmt>) {
+            if (s.expr) scan(*s.expr);
+          } else if constexpr (std::is_same_v<S, IfStmt>) {
+            scan(s.cond);
+          } else if constexpr (std::is_same_v<S, WhileStmt>) {
+            scan(s.cond);
+          } else if constexpr (std::is_same_v<S, ForStmt>) {
+            if (s.init) scan(*s.init);
+            if (s.cond) scan(*s.cond);
+            if (s.update) scan(*s.update);
+          } else if constexpr (std::is_same_v<S, SwitchStmt>) {
+            scan(s.cond);
+          }
+        }, stmt.payload);
+      }
+    }
+    return result;
+  }
+
   void hoist_allocas(FnCtx& ctx, const Function& fn) {
+    // Identify parameters that are modified (need spill slots)
+    const std::unordered_set<uint32_t> modified_params = find_modified_params(fn);
+    for (size_t i = 0; i < fn.params.size(); ++i) {
+      if (!modified_params.count(static_cast<uint32_t>(i))) continue;
+      const auto& param = fn.params[i];
+      const std::string slot = "%lv.param." + sanitize_llvm_ident(param.name);
+      const std::string pname = "%p." + sanitize_llvm_ident(param.name);
+      // Store the spill slot under key (param_index + sentinel)
+      ctx.param_slots[static_cast<uint32_t>(i) + 0x80000000u] = slot;
+      ctx.alloca_lines.push_back("  " + slot + " = alloca " + llvm_alloca_ty(param.type.spec));
+      ctx.alloca_lines.push_back("  store " + llvm_ty(param.type.spec) + " " + pname + ", ptr " + slot);
+    }
+
     std::unordered_map<std::string, int> name_count;
     for (const auto& blk : fn.blocks) {
       for (const auto& stmt : blk.stmts) {

@@ -347,11 +347,66 @@ class Lowerer {
         d.id = next_local_id();
         d.name = n->name ? n->name : "<anon_local>";
         d.type = qtype_from(n->type, ValueCategory::LValue);
+        // Deduce unsized array dimension from initializer list
+        if (n->init && d.type.spec.array_rank > 0 && d.type.spec.array_size < 0) {
+          if (n->init->kind == NK_INIT_LIST) {
+            long long count = n->init->n_children;
+            for (int ci = 0; ci < n->init->n_children; ++ci) {
+              const Node* item = n->init->children[ci];
+              if (item && item->kind == NK_INIT_ITEM && item->is_designated &&
+                  item->is_index_desig && item->desig_val + 1 > count)
+                count = item->desig_val + 1;
+            }
+            d.type.spec.array_size = count;
+            d.type.spec.array_dims[0] = count;
+          }
+        }
         d.storage = n->is_static ? StorageClass::Static : StorageClass::Auto;
         d.span = make_span(n);
-        if (n->init) d.init = lower_expr(&ctx, n->init);
+        const bool is_array_with_init_list =
+            n->init && n->init->kind == NK_INIT_LIST && d.type.spec.array_rank == 1;
+        if (!is_array_with_init_list && n->init) d.init = lower_expr(&ctx, n->init);
+        const LocalId lid = d.id;
+        const TypeSpec decl_ts = d.type.spec;
         ctx.locals[d.name] = d.id;
         append_stmt(ctx, Stmt{StmtPayload{std::move(d)}, make_span(n)});
+        // For array init lists, emit element-by-element assignments.
+        if (is_array_with_init_list) {
+          long long next_idx = 0;
+          for (int ci = 0; ci < n->init->n_children; ++ci) {
+            const Node* item = n->init->children[ci];
+            if (!item) { ++next_idx; continue; }
+            long long idx = next_idx;
+            const Node* val_node = item;
+            if (item->kind == NK_INIT_ITEM) {
+              if (item->is_designated && item->is_index_desig) idx = item->desig_val;
+              val_node = item->left ? item->left : item->right;
+              if (!val_node) val_node = item->init;
+            }
+            next_idx = idx + 1;
+            if (!val_node) continue;
+            // Build: x[idx] = val
+            TypeSpec elem_ts = decl_ts;
+            elem_ts.array_rank--;
+            elem_ts.array_size = -1;
+            // DeclRef to the local
+            DeclRef dr{}; dr.name = n->name ? n->name : "<anon_local>"; dr.local = lid;
+            ExprId dr_id = append_expr(n, dr, decl_ts, ValueCategory::LValue);
+            // IntLiteral for index
+            TypeSpec idx_ts{}; idx_ts.base = TB_INT;
+            ExprId idx_id = append_expr(n, IntLiteral{idx, false}, idx_ts);
+            // IndexExpr
+            IndexExpr ie{}; ie.base = dr_id; ie.index = idx_id;
+            ExprId ie_id = append_expr(n, ie, elem_ts, ValueCategory::LValue);
+            // Value expr
+            ExprId val_id = lower_expr(&ctx, val_node);
+            // AssignExpr
+            AssignExpr ae{}; ae.lhs = ie_id; ae.rhs = val_id;
+            ExprId ae_id = append_expr(n, ae, elem_ts);
+            ExprStmt es{}; es.expr = ae_id;
+            append_stmt(ctx, Stmt{StmtPayload{es}, make_span(n)});
+          }
+        }
         return;
       }
       case NK_EXPR_STMT: {
@@ -503,10 +558,11 @@ class Lowerer {
         s.cond = lower_expr(&ctx, n->cond ? n->cond : n->left);
         const BlockId body_b = create_block(ctx);
         s.body_block = body_b;
+        const BlockId after_b = create_block(ctx);
+        s.break_block = after_b;
         append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
         ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
 
-        const BlockId after_b = create_block(ctx);
         ctx.break_stack.push_back(after_b);
         ctx.current_block = body_b;
         lower_stmt_node(ctx, n->body);
@@ -718,15 +774,15 @@ class Lowerer {
       case NK_SIZEOF_EXPR: {
         SizeofExpr s{};
         s.expr = lower_expr(ctx, n->left);
-        TypeSpec ts = n->type;
-        if (ts.base == TB_VOID && ts.ptr_level == 0 && ts.array_rank == 0) ts.base = TB_INT;
+        // sizeof always returns an integer (size_t ~ unsigned long)
+        TypeSpec ts{}; ts.base = TB_ULONG;
         return append_expr(n, s, ts);
       }
       case NK_SIZEOF_TYPE: {
         SizeofTypeExpr s{};
         s.type = qtype_from(n->type);
-        TypeSpec ts = n->type;
-        if (ts.base == TB_VOID && ts.ptr_level == 0 && ts.array_rank == 0) ts.base = TB_INT;
+        // sizeof always returns an integer (size_t ~ unsigned long)
+        TypeSpec ts{}; ts.base = TB_ULONG;
         return append_expr(n, s, ts);
       }
       default: {

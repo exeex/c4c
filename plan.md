@@ -1,6 +1,6 @@
 # Sema / IR Split Migration Plan (Rebased)
 
-Last updated: 2026-03-08
+Last updated: 2026-03-09
 
 ## Agent Handoff (Claude 接手用)
 
@@ -69,6 +69,64 @@ kill -9 <pid...>
    ```bash
    cmake --build build --target ctest_core -j4
    ```
+
+### 3) 目前核心失敗（2026-03-09）與簡短分析
+
+`ctest_core` 目前 11 個失敗，分類如下：
+
+1. `negative_tests_bad_flow_uninitialized_read`
+   - 現象：negative test 預期編譯失敗，但目前編譯成功。
+   - 分析：`sema_validate.cpp` 已移除「uninitialized local read」報錯，這和該 negative case 預期衝突。
+   - 建議：二選一（需團隊決策）：
+     - 回復此檢查並維持為 hard error（維持現有測試語意）
+     - 或將該測試從 negative 移到 warning/positive 組
+
+2. `c_testsuite_tests_single_exec_00050_c`
+   - 現象：runtime exit=3。
+   - 分析：switch/short-circuit/CFG 仍有語意差異；雖已修 label 未定義問題，但執行語意尚未對齊。
+   - 位置：`ast_to_hir.cpp`（switch block/break target）、`hir_to_llvm.cpp`（switch dispatch）。
+
+3. `c_testsuite_tests_single_exec_00078_c`
+   - 現象：`call i32 %t1(...)`，callee 型別被當成 `i32` 非 `ptr`。
+   - 分析：函式指標 call lowering 仍有 type resolve 漏洞（與 `00040` 類似但覆蓋不足）。
+
+4. `c_testsuite_tests_single_exec_00124_c`
+   - 現象：`load void, ptr`（非法 LLVM IR）。
+   - 分析：rvalue/type 推導 fallback 到 `void` 時，load path 未阻擋。
+
+5. `c_testsuite_tests_single_exec_00130_c`
+   - 現象：`getelementptr ptr, ptr %lv.p, i64 0, i64 0`（indices 非法）。
+   - 分析：陣列/指標 decay 與 GEP element type 不一致（目前有多處用 `ptr` 當 element type）。
+
+6. `c_testsuite_tests_single_exec_00149_c`, `00150_c`
+   - 現象：global constant initializer type mismatch。
+   - 分析：aggregate/global initializer 組裝出現型別不一致（struct/ptr/array 混用）。
+
+7. `c_testsuite_tests_single_exec_00151_c`
+   - 現象：runtime segfault。
+   - 分析：高機率是記憶體位址計算或 aggregate 初始化錯誤導致（與 00130/00149/00150 可能同根）。
+
+8. `c_testsuite_tests_single_exec_00143_c`, `00209_c`
+   - 現象：runtime wrong result / IR parse 失敗（`expected value token`）。
+   - 分析：屬於 expression emission 或 terminator/空值發射的健壯性缺口。
+
+9. `c_testsuite_tests_single_exec_00204_c`
+   - 現象：frontend 報 `assignment to const-qualified lvalue`。
+   - 分析：sema const 規則比 c-testsuite 預期更嚴；可能是 false positive 或規則過度擴張。
+
+### 4) 修復優先序（更新）
+
+在原本 `00051 -> 00040 -> 00050` 順序後，追加以下序列：
+
+1. `00050`（先收斂控制流語意，避免後續 debug 噪音）
+2. `00078`（函式指標 call type）
+3. `00124`（禁止 `load void`）
+4. `00130`（GEP element type 一致性）
+5. `00149`, `00150`（global aggregate init typing）
+6. `00151`（runtime crash，通常隨上面幾項一併收斂）
+7. `00143`, `00209`（expression/IR emission 健壯性）
+8. `00204`（const 規則與測試契約對齊）
+9. `negative_tests_bad_flow_uninitialized_read`（需先決策語意，再落地）
 
 ## Goal
 

@@ -347,6 +347,7 @@ struct SwitchStmt {
   ExprId cond{};
   BlockId body_block{};
   std::optional<BlockId> default_block;
+  std::optional<BlockId> break_block;  // after-switch block (break target)
 };
 
 struct GotoStmt {

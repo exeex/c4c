@@ -449,10 +449,13 @@ class Validator {
         out.valid = true;
         out.type = sym->type;
         out.is_lvalue = true;
-        out.is_const_lvalue = out.type.is_const;
-        if (!suppress_uninit_read_ && !sym->initialized && tracks_uninit_read(out.type)) {
-          emit(n->line, std::string("use of uninitialized local '") + n->name + "'");
-        }
+        // is_const with ptr_level>0 means the pointee is const, not the pointer.
+        // Only the pointer variable itself is a const lvalue if ptr_level==0.
+        out.is_const_lvalue = out.type.is_const &&
+                              out.type.ptr_level == 0 &&
+                              out.type.array_rank == 0;
+        // Note: reading an uninitialized local is UB in C but not a compile error.
+        // Emitting an error here causes false positives on valid programs.
         return out;
       }
       case NK_ADDR: {
