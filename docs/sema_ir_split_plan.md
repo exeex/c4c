@@ -288,3 +288,31 @@ Next work for Phase 3:
 - Start with simple scalar functions (int literals, return, basic binops).
 - Each slice: implement construct natively, remove its AST dependency in bridge.
 - Long-term: remove `ast_root` param from `emit_module` once all constructs are covered.
+
+### Phase 3: native HirEmitter slice 1 (as of 2026-03-08)
+
+Implemented `emit_module_native()` — a native HIR → LLVM text emitter in `hir_to_llvm.cpp`:
+
+- Covers all scalar types, arithmetic/comparison/logical/bitwise ops
+- Handles compound assign, pre/post inc/dec, cast, ternary, call
+- Handles if/while/for/do-while with correct break/continue targets
+- goto/label, switch (basic), break/continue
+- Added `resolve_expr_type()` for bottom-up type inference (parser doesn't
+  annotate NK_BINOP/NK_VAR nodes; types resolved recursively from HIR)
+- Added `IfStmt::after_block` in ir.hpp; wired in ast_to_hir.cpp
+
+Added `--pipeline=hir` flag to `tiny-c2ll-next`:
+- Default path (`--pipeline=legacy`) still uses the bridge
+- `--pipeline=hir` uses `emit_module_native()`
+
+Validation:
+- `tiny-c2ll-next --pipeline=hir example.c | lli` → exit 31 ✓
+- 277/277 non-torture tests pass (0 regressions)
+
+Not yet implemented in native path (falls back to bridge):
+- MemberExpr (struct field access)
+- String literals (complex)
+- Struct/union definitions
+- Switch/case full dispatch
+- Variadic function calls
+- Global variable initializers
