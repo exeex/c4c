@@ -2622,12 +2622,15 @@ std::string IRBuilder::codegen_expr(Node* n) {
     }
 
     // Compound assignment: lhs op= rhs
+    // Evaluate RHS before loading LHS so that rhs side-effects are visible
+    // when we read the lhs (matches clang/gcc evaluation order).
     std::string ptr = codegen_lval(n->left);
-    std::string cur = fresh_tmp();
-    emit(cur + " = load " + llty + ", ptr " + ptr);
 
     TypeSpec rts = expr_type(n->right);
     std::string rv = codegen_expr(n->right);
+
+    std::string cur = fresh_tmp();
+    emit(cur + " = load " + llty + ", ptr " + ptr);
 
     // Complex compound assignment: lhs is a complex type
     if (lts.ptr_level == 0 && is_complex_base(lts.base)) {
@@ -2848,16 +2851,18 @@ std::string IRBuilder::codegen_expr(Node* n) {
 
   case NK_COMPOUND_ASSIGN: {
     // lhs op= rhs
+    // Evaluate RHS before loading LHS (matches clang/gcc evaluation order).
     TypeSpec lts = expr_type(n->left);
     if (lts.is_const && lts.ptr_level == 0 && !is_array_ty(lts))
       throw std::runtime_error("compound assignment to const-qualified lvalue");
     std::string llty = llvm_ty(lts);
     std::string ptr = codegen_lval(n->left);
-    std::string cur = fresh_tmp();
-    emit(cur + " = load " + llty + ", ptr " + ptr);
 
     TypeSpec rts = expr_type(n->right);
     std::string rv = codegen_expr(n->right);
+
+    std::string cur = fresh_tmp();
+    emit(cur + " = load " + llty + ", ptr " + ptr);
 
     // Complex compound assignment: lhs is a complex type
     if (lts.ptr_level == 0 && is_complex_base(lts.base)) {
@@ -4107,8 +4112,19 @@ std::string IRBuilder::codegen_expr(Node* n) {
       long long mask = (bfw >= 64) ? (long long)-1 : ((1LL << bfw) - 1);
       std::string masked = fresh_tmp();
       emit(masked + " = and " + llty + " " + t + ", " + std::to_string(mask));
-      // Sign-extend for signed bitfields.
-      bool is_signed = !is_unsigned_base(res_ts.base) && res_ts.base != TB_BOOL;
+      // Sign-extend for signed bitfields. Use declared (non-promoted) field type
+      // since narrow unsigned bitfields promote to int but are unsigned by declaration.
+      TypeSpec decl_ts = res_ts;
+      {
+        TypeSpec obj_ts = expr_type(n->left);
+        if (n->is_arrow && obj_ts.ptr_level > 0) obj_ts.ptr_level -= 1;
+        if ((obj_ts.base == TB_STRUCT || obj_ts.base == TB_UNION) && obj_ts.tag) {
+          FieldPath path;
+          if (find_field(obj_ts.tag, n->name, path))
+            decl_ts = field_type_from_path(obj_ts.tag, path);
+        }
+      }
+      bool is_signed = !is_unsigned_base(decl_ts.base) && decl_ts.base != TB_BOOL;
       if (res_ts.base == TB_ENUM && res_ts.tag) {
         auto eit = enum_all_nonnegative_.find(res_ts.tag);
         if (eit != enum_all_nonnegative_.end() && eit->second)
@@ -5342,7 +5358,10 @@ void IRBuilder::emit_stmt(Node* n) {
   case NK_SWITCH: {
     TypeSpec cond_ts = expr_type(n->cond);
     std::string cond_val = codegen_expr(n->cond);
-    cond_val = coerce(cond_val, cond_ts, "i32");
+    // C integer promotions for switch: narrow types → int; long long → i64
+    std::string sw_ty = "i32";
+    if (sizeof_ty(cond_ts) > 4) sw_ty = "i64";
+    cond_val = coerce(cond_val, cond_ts, sw_ty);
 
     std::string end_lbl = fresh_label("switch_end");
     std::string def_lbl = end_lbl;  // default falls through to end if not set
@@ -5361,6 +5380,12 @@ void IRBuilder::emit_stmt(Node* n) {
         if (sw_info.case_labels.count(cv))
           throw std::runtime_error("duplicate case label in switch");
         sw_info.case_labels[cv] = fresh_label("switch_case");
+        scan_cases(node->body);
+      } else if (node->kind == NK_CASE_RANGE) {
+        long long lo = node->left  ? static_eval_int(node->left,  enum_consts_) : 0;
+        long long hi = node->right ? static_eval_int(node->right, enum_consts_) : lo;
+        std::string lbl = fresh_label("switch_range");
+        sw_info.case_ranges.push_back({lo, hi, lbl});
         scan_cases(node->body);
       } else if (node->kind == NK_DEFAULT) {
         if (!sw_info.default_label.empty())
@@ -5383,10 +5408,27 @@ void IRBuilder::emit_stmt(Node* n) {
     if (!sw_info.default_label.empty())
       def_lbl = sw_info.default_label;
 
+    // Emit range checks (GCC extension: case lo ... hi) before the switch.
+    // For each range, emit an icmp chain and branch to the range label if matched.
+    bool sw_unsigned = is_unsigned_base(cond_ts.base);
+    const char* cmp_ge = sw_unsigned ? "uge" : "sge";
+    const char* cmp_le = sw_unsigned ? "ule" : "sle";
+    for (auto& rng : sw_info.case_ranges) {
+      std::string after_range = fresh_label("switch_range_next");
+      std::string lo_str = std::to_string(rng.lo);
+      std::string hi_str = std::to_string(rng.hi);
+      std::string c_lo = fresh_tmp(), c_hi = fresh_tmp(), c_both = fresh_tmp();
+      emit(c_lo + " = icmp " + cmp_ge + " " + sw_ty + " " + cond_val + ", " + lo_str);
+      emit(c_hi + " = icmp " + cmp_le + " " + sw_ty + " " + cond_val + ", " + hi_str);
+      emit(c_both + " = and i1 " + c_lo + ", " + c_hi);
+      emit_terminator("br i1 " + c_both + ", label %" + rng.label + ", label %" + after_range);
+      emit_label(after_range);
+    }
+
     // Emit the switch instruction
-    std::string sw_instr = "switch i32 " + cond_val + ", label %" + def_lbl + " [";
+    std::string sw_instr = "switch " + sw_ty + " " + cond_val + ", label %" + def_lbl + " [";
     for (auto& kv : sw_info.case_labels) {
-      sw_instr += " i32 " + std::to_string(kv.first) + ", label %" + kv.second;
+      sw_instr += " " + sw_ty + " " + std::to_string(kv.first) + ", label %" + kv.second;
     }
     sw_instr += " ]";
     emit_terminator(sw_instr);
@@ -5431,14 +5473,19 @@ void IRBuilder::emit_stmt(Node* n) {
   }
 
   case NK_CASE_RANGE: {
-    // GCC extension: case lo ... hi: - treat as single case for lo
+    // GCC extension: case lo ... hi: - emit the pre-allocated range label
     if (switch_stack_.empty()) break;
     SwitchInfo& sw = switch_stack_.back();
-    long long cv = n->left ? static_eval_int(n->left, enum_consts_) : 0;
-    auto it = sw.case_labels.find(cv);
-    if (it != sw.case_labels.end()) {
-      emit_terminator("br label %" + it->second);
-      emit_label(it->second);
+    long long lo = n->left  ? static_eval_int(n->left,  enum_consts_) : 0;
+    long long hi = n->right ? static_eval_int(n->right, enum_consts_) : lo;
+    // Find the matching range entry in sw.case_ranges
+    std::string rng_lbl;
+    for (auto& rng : sw.case_ranges) {
+      if (rng.lo == lo && rng.hi == hi) { rng_lbl = rng.label; break; }
+    }
+    if (!rng_lbl.empty()) {
+      emit_terminator("br label %" + rng_lbl);
+      emit_label(rng_lbl);
     }
     if (n->body) emit_stmt(n->body);
     break;

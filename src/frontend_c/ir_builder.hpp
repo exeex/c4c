@@ -50,8 +50,10 @@ class IRBuilder {
     bool                  variadic;
   };
 
+  struct SwitchRange { long long lo, hi; std::string label; };
   struct SwitchInfo {
     std::unordered_map<long long, std::string> case_labels;
+    std::vector<SwitchRange>                   case_ranges;
     std::string default_label;
     std::string end_label;
   };
