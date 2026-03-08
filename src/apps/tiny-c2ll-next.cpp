@@ -22,7 +22,7 @@ namespace {
 void print_usage(const char *argv0) {
   std::cerr << "usage: " << argv0
             << " [--version] [--lex-only|--parse-only|--dump-hir|--dump-hir-summary]"
-            << " [-o output.ll] <input.c>\n";
+            << " [--pipeline=legacy|hir] [-o output.ll] <input.c>\n";
 }
 
 void print_pp_diags(const std::vector<tc::PreprocessorDiagnostic>& diags,
@@ -55,6 +55,7 @@ int main(int argc, char **argv) {
     bool        parse_only = false;
     bool        dump_hir_summary = false;
     bool        dump_hir = false;
+    bool        pipeline_hir = false;
     std::string input;
     std::string output;
 
@@ -64,6 +65,10 @@ int main(int argc, char **argv) {
         lex_only = true;
       } else if (arg == "--parse-only") {
         parse_only = true;
+      } else if (arg == "--pipeline=hir") {
+        pipeline_hir = true;
+      } else if (arg == "--pipeline=legacy") {
+        pipeline_hir = false;
       } else if (arg == "--dump-hir") {
         dump_hir = true;
       } else if (arg == "--dump-hir-summary") {
@@ -139,10 +144,15 @@ int main(int argc, char **argv) {
       return 0;
     }
 
-    // Phase 3: lower AST -> HIR, then HIR -> LLVM via hir_to_llvm bridge.
+    // Phase 3: lower AST -> HIR, then emit LLVM IR.
     tc::sema_ir::phase2::hir::Module hir_mod =
         tc::sema_ir::phase2::hir::lower_ast_to_hir(prog);
-    std::string ir = tinyc2ll::codegen::llvm_backend::emit_module(hir_mod, prog);
+    std::string ir;
+    if (pipeline_hir) {
+      ir = tinyc2ll::codegen::llvm_backend::emit_module_native(hir_mod);
+    } else {
+      ir = tinyc2ll::codegen::llvm_backend::emit_module(hir_mod, prog);
+    }
 
     // Write to output file or stdout
     if (!output.empty()) {

@@ -19,6 +19,12 @@ namespace tinyc2ll::codegen::llvm_backend {
 using tinyc2ll::frontend_cxx::Node;
 using Module = tinyc2ll::frontend_cxx::sema_ir::phase2::hir::Module;
 
+// Bridge path: delegates to legacy IRBuilder (used by default).
 std::string emit_module(const Module& mod, const Node* ast_root);
+
+// Native path: emits LLVM IR directly from HIR.
+// Used when --pipeline=hir is specified.
+// Throws std::runtime_error for unimplemented constructs.
+std::string emit_module_native(const Module& mod);
 
 }  // namespace tinyc2ll::codegen::llvm_backend

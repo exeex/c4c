@@ -278,6 +278,7 @@ struct IfStmt {
   ExprId cond{};
   BlockId then_block{};
   std::optional<BlockId> else_block;
+  BlockId after_block{};  // block that follows both branches (join point)
 };
 
 struct WhileStmt {

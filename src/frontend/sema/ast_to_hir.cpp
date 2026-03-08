@@ -286,9 +286,9 @@ class Lowerer {
         const BlockId then_b = create_block(ctx);
         s.then_block = then_b;
         if (n->else_) s.else_block = create_block(ctx);
-        append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
-
         const BlockId after_b = create_block(ctx);
+        s.after_block = after_b;
+        append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
 
         ctx.current_block = then_b;
         lower_stmt_node(ctx, n->then_);
