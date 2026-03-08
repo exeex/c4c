@@ -83,9 +83,26 @@ class Lowerer {
     Module m{};
     module_ = &m;
 
+    // Flatten top-level items (may be wrapped in NK_BLOCK)
+    std::vector<const Node*> items;
     for (int i = 0; i < root->n_children; ++i) {
       const Node* item = root->children[i];
       if (!item) continue;
+      if (item->kind == NK_BLOCK) {
+        for (int j = 0; j < item->n_children; ++j)
+          if (item->children[j]) items.push_back(item->children[j]);
+      } else {
+        items.push_back(item);
+      }
+    }
+
+    // Phase 1: collect struct/union definitions
+    for (const Node* item : items) {
+      if (item->kind == NK_STRUCT_DEF) lower_struct_def(item);
+    }
+
+    // Phase 2: lower functions and globals
+    for (const Node* item : items) {
       if (item->kind == NK_FUNCTION) {
         lower_function(item);
       } else if (item->kind == NK_GLOBAL_VAR) {
@@ -148,6 +165,53 @@ class Lowerer {
     e.payload = std::move(payload);
     module_->expr_pool.push_back(std::move(e));
     return module_->expr_pool.back().id;
+  }
+
+  void lower_struct_def(const Node* sd) {
+    if (!sd || sd->kind != NK_STRUCT_DEF) return;
+    const char* tag = sd->name;
+    if (!tag || !tag[0]) return;
+
+    // Gather fields: they may be in sd->fields[] (n_fields) OR sd->children[] (n_children)
+    // The IR builder uses sd->fields; but some parsers store struct fields in children.
+    int num_fields = sd->n_fields > 0 ? sd->n_fields : sd->n_children;
+    auto get_field = [&](int i) -> const Node* {
+      return sd->n_fields > 0 ? sd->fields[i] : sd->children[i];
+    };
+
+    // If already fully populated, skip (forward decl followed by full def is OK)
+    if (module_->struct_defs.count(tag) &&
+        !module_->struct_defs.at(tag).fields.empty() &&
+        num_fields == 0) return;
+
+    HirStructDef def;
+    def.tag = tag;
+    def.is_union = sd->is_union;
+
+    int llvm_idx = 0;
+    for (int i = 0; i < num_fields; ++i) {
+      const Node* f = get_field(i);
+      if (!f || !f->name) continue;
+
+      HirStructField hf;
+      hf.name = f->name;
+      TypeSpec ft = f->type;
+      // Extract first array dimension (keep base element type for LLVM)
+      if (ft.array_rank > 0 && ft.array_size >= 0) {
+        hf.array_first_dim = ft.array_size;
+        ft.array_rank = 0;
+        ft.array_size = -1;
+      }
+      hf.elem_type = ft;
+      hf.is_anon_member = f->is_anon_field;
+      hf.llvm_idx = sd->is_union ? 0 : llvm_idx;
+      def.fields.push_back(std::move(hf));
+      if (!sd->is_union) ++llvm_idx;
+    }
+
+    if (!module_->struct_defs.count(tag))
+      module_->struct_def_order.push_back(tag);
+    module_->struct_defs[tag] = std::move(def);
   }
 
   void lower_function(const Node* fn_node) {
@@ -250,9 +314,12 @@ class Lowerer {
 
     switch (n->kind) {
       case NK_BLOCK: {
+        // Block scope: keep shadowing local bindings local to this block.
+        const auto saved_locals = ctx.locals;
         for (int i = 0; i < n->n_children; ++i) {
           lower_stmt_node(ctx, n->children[i]);
         }
+        ctx.locals = saved_locals;
         return;
       }
       case NK_DECL: {
@@ -544,6 +611,11 @@ class Lowerer {
         c.callee = lower_expr(ctx, n->left);
         for (int i = 0; i < n->n_children; ++i) c.args.push_back(lower_expr(ctx, n->children[i]));
         return append_expr(n, c, n->type);
+      }
+      case NK_VA_ARG: {
+        VaArgExpr v{};
+        v.ap = lower_expr(ctx, n->left);
+        return append_expr(n, v, n->type);
       }
       case NK_INDEX: {
         IndexExpr idx{};

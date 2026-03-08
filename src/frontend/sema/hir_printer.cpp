@@ -372,6 +372,12 @@ class Printer {
     out << ")";
   }
 
+  void print_expr_payload(std::ostringstream& out, const VaArgExpr& x) {
+    out << "va_arg(";
+    print_expr_inline(out, x.ap);
+    out << ")";
+  }
+
   void print_expr_payload(std::ostringstream& out, const IndexExpr& x) {
     print_expr_inline(out, x.base);
     out << "[";

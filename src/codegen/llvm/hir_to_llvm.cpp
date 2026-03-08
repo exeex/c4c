@@ -1,5 +1,6 @@
 #include "hir_to_llvm.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <cstring>
 #include <sstream>
@@ -93,6 +94,25 @@ static std::string llvm_base(TypeBase b) {
 static std::string llvm_ty(const TypeSpec& ts) {
   if (ts.ptr_level > 0 || ts.is_fn_ptr) return "ptr";
   if (ts.array_rank > 0) return "ptr";  // decayed
+  if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag && ts.tag[0]) {
+    return "%struct." + std::string(ts.tag);
+  }
+  return llvm_base(ts.base);
+}
+
+// Non-decayed LLVM type for alloca/struct field (struct/union → %struct.TAG)
+static std::string llvm_alloca_ty(const TypeSpec& ts) {
+  if (ts.ptr_level > 0 || ts.is_fn_ptr) return "ptr";
+  if (ts.array_rank > 0) {
+    // Array: [N x elem]
+    if (ts.array_size >= 0) {
+      return "[" + std::to_string(ts.array_size) + " x " + llvm_base(ts.base) + "]";
+    }
+    return "ptr";  // unknown size
+  }
+  if (ts.base == TB_STRUCT || ts.base == TB_UNION) {
+    if (ts.tag && ts.tag[0]) return "%struct." + std::string(ts.tag);
+  }
   return llvm_base(ts.base);
 }
 
@@ -112,6 +132,64 @@ static int sizeof_base(TypeBase b) {
 static int sizeof_ts(const TypeSpec& ts) {
   if (ts.ptr_level > 0 || ts.array_rank > 0 || ts.is_fn_ptr) return 8;
   return sizeof_base(ts.base);
+}
+
+// ── Struct/union type helpers ──────────────────────────────────────────────────
+
+// LLVM type string for a struct field (non-decayed: may be array or nested struct)
+static std::string llvm_field_ty(const HirStructField& f) {
+  if (f.array_first_dim >= 0) {
+    // Array field: [N x elem]
+    if (f.elem_type.base == TB_STRUCT || f.elem_type.base == TB_UNION) {
+      if (f.elem_type.tag && f.elem_type.tag[0])
+        return "[" + std::to_string(f.array_first_dim) + " x %struct." +
+               std::string(f.elem_type.tag) + "]";
+    }
+    return "[" + std::to_string(f.array_first_dim) + " x " +
+           llvm_base(f.elem_type.base) + "]";
+  }
+  if (f.elem_type.ptr_level > 0 || f.elem_type.is_fn_ptr) return "ptr";
+  if (f.elem_type.base == TB_STRUCT || f.elem_type.base == TB_UNION) {
+    if (f.elem_type.tag && f.elem_type.tag[0])
+      return "%struct." + std::string(f.elem_type.tag);
+  }
+  return llvm_ty(f.elem_type);
+}
+
+// Forward declaration for recursive size computation
+static int compute_struct_size(const Module& mod, const std::string& tag);
+
+static int compute_field_size(const Module& mod, const HirStructField& f) {
+  int sz = 0;
+  if (f.elem_type.ptr_level > 0 || f.elem_type.is_fn_ptr) {
+    sz = 8;
+  } else if (f.elem_type.base == TB_STRUCT || f.elem_type.base == TB_UNION) {
+    if (f.elem_type.tag && f.elem_type.tag[0])
+      sz = compute_struct_size(mod, f.elem_type.tag);
+    else
+      sz = 4;
+  } else {
+    sz = sizeof_base(f.elem_type.base);
+  }
+  if (f.array_first_dim > 0) sz *= (int)f.array_first_dim;
+  return sz;
+}
+
+static int compute_struct_size(const Module& mod, const std::string& tag) {
+  const auto it = mod.struct_defs.find(tag);
+  if (it == mod.struct_defs.end()) return 4;
+  const HirStructDef& sd = it->second;
+  if (sd.is_union) {
+    int max_sz = 0;
+    for (const auto& f : sd.fields) {
+      const int sz = compute_field_size(mod, f);
+      if (sz > max_sz) max_sz = sz;
+    }
+    return max_sz > 0 ? max_sz : 1;
+  }
+  int total = 0;
+  for (const auto& f : sd.fields) total += compute_field_size(mod, f);
+  return total > 0 ? total : 1;
 }
 
 static std::string fp_to_hex(double v) {
@@ -239,19 +317,266 @@ class HirEmitter {
 
   void emit_preamble() {
     preamble_ << "%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }\n";
+    // Emit struct/union type definitions in declaration order
+    for (const auto& tag : mod_.struct_def_order) {
+      const auto it = mod_.struct_defs.find(tag);
+      if (it == mod_.struct_defs.end()) continue;
+      const HirStructDef& sd = it->second;
+      if (sd.fields.empty()) continue;
+      if (sd.is_union) {
+        const int sz = compute_struct_size(mod_, tag);
+        preamble_ << "%struct." << tag << " = type { ["
+                  << sz << " x i8] }\n";
+      } else {
+        preamble_ << "%struct." << tag << " = type { ";
+        bool first = true;
+        for (const auto& f : sd.fields) {
+          if (!first) preamble_ << ", ";
+          first = false;
+          preamble_ << llvm_field_ty(f);
+        }
+        preamble_ << " }\n";
+      }
+    }
   }
 
   // ── Globals ───────────────────────────────────────────────────────────────
 
+  static bool is_char_like(TypeBase b) {
+    return b == TB_CHAR || b == TB_SCHAR || b == TB_UCHAR;
+  }
+
+  static TypeSpec drop_one_array_dim(TypeSpec ts) {
+    if (ts.array_rank <= 0) return ts;
+    for (int i = 0; i < ts.array_rank - 1; ++i) ts.array_dims[i] = ts.array_dims[i + 1];
+    ts.array_dims[ts.array_rank - 1] = -1;
+    ts.array_rank--;
+    ts.array_size = (ts.array_rank > 0) ? ts.array_dims[0] : -1;
+    return ts;
+  }
+
+  static std::string bytes_from_string_literal(const StringLiteral& sl) {
+    std::string bytes = sl.raw;
+    if (bytes.size() >= 2 && bytes.front() == '"' && bytes.back() == '"') {
+      bytes = bytes.substr(1, bytes.size() - 2);
+    } else if (bytes.size() >= 3 && bytes[0] == 'L' && bytes[1] == '"' &&
+               bytes.back() == '"') {
+      bytes = bytes.substr(2, bytes.size() - 3);
+    }
+    return bytes;
+  }
+
+  static std::string escape_llvm_c_bytes(const std::string& raw_bytes) {
+    std::string esc;
+    for (unsigned char c : raw_bytes) {
+      if (c == '"')      { esc += "\\22"; }
+      else if (c == '\\') { esc += "\\5C"; }
+      else if (c == '\n') { esc += "\\0A"; }
+      else if (c == '\r') { esc += "\\0D"; }
+      else if (c == '\t') { esc += "\\09"; }
+      else if (c < 32 || c >= 127) {
+        char buf[8];
+        std::snprintf(buf, sizeof(buf), "\\%02X", c);
+        esc += buf;
+      } else {
+        esc += static_cast<char>(c);
+      }
+    }
+    return esc;
+  }
+
+  TypeSpec field_decl_type(const HirStructField& f) const {
+    TypeSpec ts = f.elem_type;
+    if (f.array_first_dim >= 0) {
+      for (int i = 0; i < 8; ++i) ts.array_dims[i] = -1;
+      ts.array_rank = 1;
+      ts.array_size = f.array_first_dim;
+      ts.array_dims[0] = f.array_first_dim;
+    }
+    return ts;
+  }
+
+  std::string emit_const_scalar_expr(ExprId id, const TypeSpec& expected_ts) {
+    const Expr& e = get_expr(id);
+    return std::visit([&](const auto& p) -> std::string {
+      using T = std::decay_t<decltype(p)>;
+      if constexpr (std::is_same_v<T, IntLiteral>) {
+        if (llvm_ty(expected_ts) == "ptr") {
+          if (p.value == 0) return "null";
+          return "inttoptr (i64 " + std::to_string(p.value) + " to ptr)";
+        }
+        return std::to_string(p.value);
+      } else if constexpr (std::is_same_v<T, FloatLiteral>) {
+        return fp_to_hex(p.value);
+      } else if constexpr (std::is_same_v<T, CharLiteral>) {
+        return std::to_string(p.value);
+      } else if constexpr (std::is_same_v<T, StringLiteral>) {
+        const std::string bytes = bytes_from_string_literal(p);
+        const std::string gname = intern_str(bytes);
+        const size_t len = bytes.size() + 1;
+        return "getelementptr inbounds ([" + std::to_string(len) + " x i8], ptr " +
+               gname + ", i64 0, i64 0)";
+      } else if constexpr (std::is_same_v<T, DeclRef>) {
+        if (mod_.fn_index.count(p.name) || llvm_ty(expected_ts) == "ptr" ||
+            expected_ts.ptr_level > 0 || expected_ts.is_fn_ptr) {
+          return "@" + p.name;
+        }
+        return "0";
+      } else if constexpr (std::is_same_v<T, UnaryExpr>) {
+        if (p.op == UnaryOp::AddrOf) {
+          const Expr& op_e = get_expr(p.operand);
+          if (const auto* r = std::get_if<DeclRef>(&op_e.payload))
+            return "@" + r->name;
+          if (const auto* s = std::get_if<StringLiteral>(&op_e.payload)) {
+            const std::string bytes = bytes_from_string_literal(*s);
+            const std::string gname = intern_str(bytes);
+            const size_t len = bytes.size() + 1;
+            return "getelementptr inbounds ([" + std::to_string(len) + " x i8], ptr " +
+                   gname + ", i64 0, i64 0)";
+          }
+        }
+        if (p.op == UnaryOp::Minus) {
+          const Expr& op_e = get_expr(p.operand);
+          if (const auto* i = std::get_if<IntLiteral>(&op_e.payload))
+            return std::to_string(-i->value);
+          if (const auto* f = std::get_if<FloatLiteral>(&op_e.payload))
+            return fp_to_hex(-f->value);
+        }
+        return (llvm_ty(expected_ts) == "ptr") ? "null" : "0";
+      } else if constexpr (std::is_same_v<T, CastExpr>) {
+        return emit_const_scalar_expr(p.expr, expected_ts);
+      } else {
+        return (llvm_ty(expected_ts) == "ptr") ? "null" : "0";
+      }
+    }, e.payload);
+  }
+
+  std::string emit_const_array(const TypeSpec& ts, const GlobalInit& init) {
+    const long long n = ts.array_size;
+    if (n <= 0) return "zeroinitializer";
+    TypeSpec elem_ts = drop_one_array_dim(ts);
+
+    if (const auto* s = std::get_if<InitScalar>(&init)) {
+      const Expr& e = get_expr(s->expr);
+      if (const auto* sl = std::get_if<StringLiteral>(&e.payload);
+          sl && ts.array_rank == 1 && is_char_like(elem_ts.base) && elem_ts.ptr_level == 0) {
+        std::string bytes = bytes_from_string_literal(*sl);
+        if ((long long)bytes.size() > n) bytes.resize(static_cast<size_t>(n));
+        if ((long long)bytes.size() < n) bytes.resize(static_cast<size_t>(n), '\0');
+        return "c\"" + escape_llvm_c_bytes(bytes) + "\"";
+      }
+      return "zeroinitializer";
+    }
+
+    std::vector<std::string> elems(static_cast<size_t>(n), "zeroinitializer");
+    if (const auto* list = std::get_if<InitList>(&init)) {
+      size_t next_idx = 0;
+      for (const auto& item : list->items) {
+        size_t idx = next_idx;
+        if (item.index_designator && *item.index_designator >= 0)
+          idx = static_cast<size_t>(*item.index_designator);
+        if (idx >= static_cast<size_t>(n)) continue;
+        GlobalInit child_init = std::visit([&](const auto& v) -> GlobalInit {
+          using V = std::decay_t<decltype(v)>;
+          if constexpr (std::is_same_v<V, InitScalar>) return GlobalInit(v);
+          else return GlobalInit(*v);
+        }, item.value);
+        elems[idx] = emit_const_init(elem_ts, child_init);
+        if (!item.index_designator) next_idx = idx + 1;
+      }
+    }
+
+    std::string out = "[";
+    const std::string ety = llvm_ty(elem_ts);
+    for (size_t i = 0; i < elems.size(); ++i) {
+      if (i) out += ", ";
+      out += ety + " " + elems[i];
+    }
+    out += "]";
+    return out;
+  }
+
+  std::string emit_const_struct(const TypeSpec& ts, const GlobalInit& init) {
+    if (!ts.tag || !ts.tag[0]) return "zeroinitializer";
+    const auto it = mod_.struct_defs.find(ts.tag);
+    if (it == mod_.struct_defs.end()) return "zeroinitializer";
+    const HirStructDef& sd = it->second;
+    if (sd.is_union) return "zeroinitializer";
+
+    std::vector<std::string> field_vals;
+    field_vals.reserve(sd.fields.size());
+    for (const auto& f : sd.fields) {
+      field_vals.push_back(emit_const_init(field_decl_type(f), GlobalInit(std::monostate{})));
+    }
+
+    if (const auto* list = std::get_if<InitList>(&init)) {
+      size_t next_idx = 0;
+      for (const auto& item : list->items) {
+        size_t idx = next_idx;
+        if (item.field_designator) {
+          const auto fit = std::find_if(
+              sd.fields.begin(), sd.fields.end(),
+              [&](const HirStructField& f) { return f.name == *item.field_designator; });
+          if (fit == sd.fields.end()) continue;
+          idx = static_cast<size_t>(std::distance(sd.fields.begin(), fit));
+        } else if (item.index_designator && *item.index_designator >= 0) {
+          idx = static_cast<size_t>(*item.index_designator);
+        }
+        if (idx >= sd.fields.size()) continue;
+
+        GlobalInit child_init = std::visit([&](const auto& v) -> GlobalInit {
+          using V = std::decay_t<decltype(v)>;
+          if constexpr (std::is_same_v<V, InitScalar>) return GlobalInit(v);
+          else return GlobalInit(*v);
+        }, item.value);
+        field_vals[idx] = emit_const_init(field_decl_type(sd.fields[idx]), child_init);
+        if (!item.field_designator && !item.index_designator) next_idx = idx + 1;
+      }
+    } else if (const auto* scalar = std::get_if<InitScalar>(&init)) {
+      // Scalar fallback for aggregates: treat as first field init.
+      if (!sd.fields.empty()) {
+        field_vals[0] = emit_const_scalar_expr(scalar->expr, field_decl_type(sd.fields[0]));
+      }
+    }
+
+    std::string out = "{ ";
+    for (size_t i = 0; i < sd.fields.size(); ++i) {
+      if (i) out += ", ";
+      out += llvm_field_ty(sd.fields[i]) + " " + field_vals[i];
+    }
+    out += " }";
+    return out;
+  }
+
+  std::string emit_const_init(const TypeSpec& ts, const GlobalInit& init) {
+    if (ts.array_rank > 0) return emit_const_array(ts, init);
+    if (ts.base == TB_STRUCT || ts.base == TB_UNION) return emit_const_struct(ts, init);
+    if (const auto* s = std::get_if<InitScalar>(&init))
+      return emit_const_scalar_expr(s->expr, ts);
+    if (const auto* list = std::get_if<InitList>(&init)) {
+      if (!list->items.empty()) {
+        const auto& first = list->items.front();
+        GlobalInit child_init = std::visit([&](const auto& v) -> GlobalInit {
+          using V = std::decay_t<decltype(v)>;
+          if constexpr (std::is_same_v<V, InitScalar>) return GlobalInit(v);
+          else return GlobalInit(*v);
+        }, first.value);
+        return emit_const_init(ts, child_init);
+      }
+    }
+    return (llvm_ty(ts) == "ptr") ? "null" : "zeroinitializer";
+  }
+
   void emit_global(const GlobalVar& gv) {
-    const std::string ty = llvm_ty(gv.type.spec);
+    const std::string ty = llvm_alloca_ty(gv.type.spec);
     if (gv.linkage.is_extern) {
       preamble_ << "@" << gv.name << " = external global " << ty << "\n";
       return;
     }
     const std::string lk = gv.linkage.is_static ? "internal " : "";
     const std::string qual = gv.is_const ? "constant " : "global ";
-    preamble_ << "@" << gv.name << " = " << lk << qual << ty << " zeroinitializer\n";
+    const std::string init = emit_const_init(gv.type.spec, gv.init);
+    preamble_ << "@" << gv.name << " = " << lk << qual << ty << " " << init << "\n";
   }
 
   // ── Expr lookup ───────────────────────────────────────────────────────────
@@ -351,6 +676,78 @@ class HirEmitter {
     return tmp;
   }
 
+  // ── Struct field lookup ───────────────────────────────────────────────────
+
+  struct FieldStep {
+    std::string tag;
+    int llvm_idx = 0;
+    bool is_union = false;
+  };
+
+  // Recursively find field_name in struct/union identified by tag.
+  // On success, appends steps to chain (outermost first).
+  // Returns true and sets out_field_ts.
+  bool find_field_chain(const std::string& tag, const std::string& field_name,
+                        std::vector<FieldStep>& chain, TypeSpec& out_field_ts) {
+    const auto it = mod_.struct_defs.find(tag);
+    if (it == mod_.struct_defs.end()) return false;
+    const HirStructDef& sd = it->second;
+
+    // Direct lookup
+    for (const auto& f : sd.fields) {
+      if (!f.is_anon_member && f.name == field_name) {
+        chain.push_back({tag, f.llvm_idx, sd.is_union});
+        out_field_ts = f.elem_type;
+        return true;
+      }
+    }
+    // Recursive: search anonymous embedded members
+    for (const auto& f : sd.fields) {
+      if (!f.is_anon_member) continue;
+      if (!f.elem_type.tag || !f.elem_type.tag[0]) continue;
+      std::vector<FieldStep> sub_chain;
+      TypeSpec sub_ts{};
+      if (find_field_chain(f.elem_type.tag, field_name, sub_chain, sub_ts)) {
+        // prepend: current struct's step to reach the anon member
+        chain.push_back({tag, f.llvm_idx, sd.is_union});
+        for (const auto& s : sub_chain) chain.push_back(s);
+        out_field_ts = sub_ts;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Emit GEP chain for struct member access.
+  // base_ptr: LLVM value (ptr to struct), tag: struct type tag, field_name: C field name.
+  // Returns LLVM value (ptr to field), sets out_field_ts.
+  std::string emit_member_gep(FnCtx& ctx, const std::string& base_ptr,
+                               const std::string& tag, const std::string& field_name,
+                               TypeSpec& out_field_ts) {
+    std::vector<FieldStep> chain;
+    if (!find_field_chain(tag, field_name, chain, out_field_ts)) {
+      throw std::runtime_error(
+          "HirEmitter: field '" + field_name + "' not found in struct/union '" + tag + "'");
+    }
+    std::string cur_ptr = base_ptr;
+    for (const auto& step : chain) {
+      if (step.is_union) {
+        // Union: GEP to field 0 (byte array); with opaque ptrs same addr
+        const std::string tmp = fresh_tmp(ctx);
+        emit_instr(ctx, tmp + " = getelementptr %struct." + step.tag +
+                           ", ptr " + cur_ptr + ", i32 0, i32 0");
+        cur_ptr = tmp;
+      } else {
+        const std::string tmp = fresh_tmp(ctx);
+        emit_instr(ctx, tmp + " = getelementptr %struct." + step.tag +
+                           ", ptr " + cur_ptr + ", i32 0, i32 " +
+                           std::to_string(step.llvm_idx));
+        cur_ptr = tmp;
+      }
+    }
+    return cur_ptr;
+  }
+
   // ── Lvalue emission ───────────────────────────────────────────────────────
 
   std::string emit_lval(FnCtx& ctx, ExprId id, TypeSpec& pointee_ts) {
@@ -402,10 +799,54 @@ class HirEmitter {
                           ", ptr " + base + ", i64 " + ix64);
       return tmp;
     }
-    if (std::get_if<MemberExpr>(&e.payload)) {
-      throw std::runtime_error("HirEmitter: MemberExpr lval not yet implemented");
+    if (const auto* m = std::get_if<MemberExpr>(&e.payload)) {
+      return emit_member_lval(ctx, *m, pts);
     }
     throw std::runtime_error("HirEmitter: cannot take lval of expr");
+  }
+
+  std::string emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeSpec& out_pts) {
+    // Get base pointer
+    const Expr& base_e = get_expr(m.base);
+    TypeSpec base_ts = base_e.type.spec;
+    if (base_ts.base == TB_VOID && base_ts.ptr_level == 0)
+      base_ts = resolve_expr_type(ctx, m.base);
+
+    std::string base_ptr;
+    if (m.is_arrow) {
+      // expr->field: load the pointer from the base expression
+      TypeSpec ptr_ts{};
+      base_ptr = emit_rval_id(ctx, m.base, ptr_ts);
+      base_ts = ptr_ts;
+      // Strip one pointer level for the struct type
+      if (base_ts.ptr_level > 0) base_ts.ptr_level--;
+    } else {
+      // expr.field: prefer direct lvalue; for struct rvalues materialize a temp.
+      TypeSpec dummy{};
+      try {
+        base_ptr = emit_lval_dispatch(ctx, base_e, dummy);
+      } catch (const std::runtime_error&) {
+        if (base_ts.base != TB_STRUCT && base_ts.base != TB_UNION) {
+          throw;
+        }
+        TypeSpec rval_ts{};
+        const std::string rval = emit_rval_id(ctx, m.base, rval_ts);
+        if (rval_ts.base != TB_VOID || rval_ts.ptr_level > 0 || rval_ts.array_rank > 0) {
+          base_ts = rval_ts;
+        }
+        const std::string slot = fresh_tmp(ctx) + ".agg";
+        ctx.alloca_lines.push_back("  " + slot + " = alloca " + llvm_alloca_ty(base_ts));
+        emit_instr(ctx, "store " + llvm_ty(base_ts) + " " + rval + ", ptr " + slot);
+        base_ptr = slot;
+      }
+    }
+
+    const char* tag = base_ts.tag;
+    if (!tag || !tag[0]) {
+      throw std::runtime_error(
+          "HirEmitter: MemberExpr base has no struct tag (field='" + m.field + "')");
+    }
+    return emit_member_gep(ctx, base_ptr, tag, m.field, out_pts);
   }
 
   // ── Rvalue emission ───────────────────────────────────────────────────────
@@ -455,8 +896,33 @@ class HirEmitter {
   }
 
   TypeSpec resolve_payload_type(FnCtx& ctx, const CallExpr& c) {
-    // Return type is stored on the Expr itself; if void try fn return type
-    (void)c;
+    const Expr& callee_e = get_expr(c.callee);
+    if (const auto* r = std::get_if<DeclRef>(&callee_e.payload)) {
+      const auto fit = mod_.fn_index.find(r->name);
+      if (fit != mod_.fn_index.end() && fit->second.value < mod_.functions.size()) {
+        return mod_.functions[fit->second.value].return_type.spec;
+      }
+      TypeSpec ref_ts = resolve_payload_type(ctx, *r);
+      if (ref_ts.is_fn_ptr && ref_ts.ptr_level > 0) {
+        ref_ts.ptr_level--;
+        ref_ts.is_fn_ptr = false;
+        return ref_ts;
+      }
+      if (ref_ts.base == TB_FUNC_PTR && ref_ts.ptr_level > 0) {
+        ref_ts.ptr_level--;
+        return ref_ts;
+      }
+    }
+    TypeSpec callee_ts = resolve_expr_type(ctx, c.callee);
+    if (callee_ts.is_fn_ptr && callee_ts.ptr_level > 0) {
+      callee_ts.ptr_level--;
+      callee_ts.is_fn_ptr = false;
+      return callee_ts;
+    }
+    if (callee_ts.base == TB_FUNC_PTR && callee_ts.ptr_level > 0) {
+      callee_ts.ptr_level--;
+      return callee_ts;
+    }
     return {};
   }
 
@@ -470,6 +936,27 @@ class HirEmitter {
 
   TypeSpec resolve_payload_type(FnCtx&, const CharLiteral&) {
     TypeSpec ts{}; ts.base = TB_CHAR; return ts;
+  }
+
+  TypeSpec resolve_payload_type(FnCtx& ctx, const MemberExpr& m) {
+    // Look up the field type in struct_defs
+    const Expr& base_e = get_expr(m.base);
+    TypeSpec base_ts = base_e.type.spec;
+    if (base_ts.base == TB_VOID && base_ts.ptr_level == 0)
+      base_ts = resolve_expr_type(ctx, m.base);
+    if (m.is_arrow && base_ts.ptr_level > 0) base_ts.ptr_level--;
+    if (!base_ts.tag || !base_ts.tag[0]) return {};
+    std::vector<FieldStep> chain;
+    TypeSpec field_ts{};
+    find_field_chain(std::string(base_ts.tag), m.field, chain, field_ts);
+    return field_ts;
+  }
+
+  TypeSpec resolve_payload_type(FnCtx& ctx, const IndexExpr& idx) {
+    TypeSpec base_ts = resolve_expr_type(ctx, idx.base);
+    if (base_ts.ptr_level > 0) { base_ts.ptr_level--; return base_ts; }
+    if (base_ts.array_rank > 0) { base_ts.array_rank--; return base_ts; }
+    return base_ts;
   }
 
   template <typename T>
@@ -684,7 +1171,10 @@ class HirEmitter {
     TypeSpec rts{};
     std::string rv = emit_rval_id(ctx, b.rhs, rts);
 
-    const std::string res_ty = llvm_ty(e.type.spec);
+    // If result type is unannotated (void), use the operand type
+    const TypeSpec& res_spec = (e.type.spec.base != TB_VOID || e.type.spec.ptr_level > 0)
+                                   ? e.type.spec : lts;
+    const std::string res_ty = llvm_ty(res_spec);
     const std::string op_ty  = llvm_ty(lts);
     const bool lf  = is_float_base(lts.base);
     const bool ls  = is_signed_int(lts.base);
@@ -710,7 +1200,7 @@ class HirEmitter {
         if (!instr) break;
         const std::string tmp = fresh_tmp(ctx);
         emit_instr(ctx, tmp + " = " + instr + " " + op_ty + " " + lv + ", " + rv);
-        return coerce(ctx, tmp, lts, e.type.spec);
+        return coerce(ctx, tmp, lts, res_spec);
       }
     }
 
@@ -847,7 +1337,11 @@ class HirEmitter {
   std::string emit_rval_payload(FnCtx& ctx, const CallExpr& call, const Expr& e) {
     TypeSpec callee_ts{};
     const std::string callee_val = emit_rval_id(ctx, call.callee, callee_ts);
-    const std::string ret_ty = llvm_ty(e.type.spec);
+    TypeSpec ret_spec = e.type.spec;
+    if (ret_spec.base == TB_VOID && ret_spec.ptr_level == 0 && ret_spec.array_rank == 0) {
+      ret_spec = resolve_payload_type(ctx, call);
+    }
+    const std::string ret_ty = llvm_ty(ret_spec);
 
     // Look up function signature for argument type coercion
     const Expr& callee_e = get_expr(call.callee);
@@ -931,8 +1425,18 @@ class HirEmitter {
 
   // ── MemberExpr ────────────────────────────────────────────────────────────
 
-  std::string emit_rval_payload(FnCtx&, const MemberExpr&, const Expr&) {
-    throw std::runtime_error("HirEmitter: MemberExpr not yet implemented");
+  std::string emit_rval_payload(FnCtx& ctx, const MemberExpr& m, const Expr& e) {
+    TypeSpec field_ts{};
+    const std::string gep = emit_member_lval(ctx, m, field_ts);
+    // Use stored type if available, else use resolved field type
+    const TypeSpec& load_ts = (e.type.spec.base != TB_VOID || e.type.spec.ptr_level > 0)
+                                  ? e.type.spec
+                                  : field_ts;
+    const std::string ty = llvm_ty(load_ts);
+    if (ty == "void") return "";
+    const std::string tmp = fresh_tmp(ctx);
+    emit_instr(ctx, tmp + " = load " + ty + ", ptr " + gep);
+    return tmp;
   }
 
   // ── Statement emission ────────────────────────────────────────────────────
@@ -1123,7 +1627,7 @@ class HirEmitter {
             : "%lv." + d->name + "." + std::to_string(cnt);
         ctx.local_slots[d->id.value] = slot;
         ctx.local_types[d->id.value] = d->type.spec;
-        ctx.alloca_lines.push_back("  " + slot + " = alloca " + llvm_ty(d->type.spec));
+        ctx.alloca_lines.push_back("  " + slot + " = alloca " + llvm_alloca_ty(d->type.spec));
       }
     }
   }
@@ -1135,9 +1639,16 @@ class HirEmitter {
     std::ostringstream out;
     const std::string ret_ty = llvm_ty(fn.return_type.spec);
 
+    const bool void_param_list =
+        fn.params.size() == 1 &&
+        fn.params[0].type.spec.base == TB_VOID &&
+        fn.params[0].type.spec.ptr_level == 0 &&
+        fn.params[0].type.spec.array_rank == 0;
+
     // Signature
     out << "define " << ret_ty << " @" << fn.name << "(";
     for (size_t i = 0; i < fn.params.size(); ++i) {
+      if (void_param_list) break;
       if (i) out << ", ";
       const std::string pty = llvm_ty(fn.params[i].type.spec);
       const std::string pname = "%p." + fn.params[i].name;

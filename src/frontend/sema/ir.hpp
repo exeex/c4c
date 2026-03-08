@@ -196,6 +196,10 @@ struct CallExpr {
   std::vector<ExprId> args;
 };
 
+struct VaArgExpr {
+  ExprId ap{};
+};
+
 struct IndexExpr {
   ExprId base{};
   ExprId index{};
@@ -232,6 +236,7 @@ using ExprPayload = std::variant<
     AssignExpr,
     CastExpr,
     CallExpr,
+    VaArgExpr,
     IndexExpr,
     MemberExpr,
     TernaryExpr,
@@ -406,6 +411,22 @@ struct ProgramSummary {
   size_t expressions = 0;
 };
 
+// ── Struct/union layout metadata (populated by ast_to_hir) ───────────────────
+
+struct HirStructField {
+  SymbolName name;
+  TypeSpec elem_type;           // element type (first array dim cleared into array_first_dim)
+  long long array_first_dim = -1;  // >=0 if field is an array type
+  int llvm_idx = 0;             // LLVM struct field index
+  bool is_anon_member = false;  // anonymous struct/union embedded member
+};
+
+struct HirStructDef {
+  SymbolName tag;
+  bool is_union = false;
+  std::vector<HirStructField> fields;
+};
+
 namespace phase2::hir {
 
 struct Module {
@@ -415,6 +436,10 @@ struct Module {
 
   std::unordered_map<SymbolName, FunctionId> fn_index;
   std::unordered_map<SymbolName, GlobalId> global_index;
+
+  // Struct/union definitions (populated by lower_ast_to_hir)
+  std::unordered_map<SymbolName, HirStructDef> struct_defs;
+  std::vector<SymbolName> struct_def_order;  // insertion order for deterministic emission
 
   ProgramSummary summary() const {
     ProgramSummary out{};
