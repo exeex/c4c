@@ -22,8 +22,7 @@ file(GLOB NEGATIVE_TEST_SRCS CONFIGURE_DEPENDS
      "${PROJECT_SOURCE_DIR}/tests/tiny_c2ll/bad_*.c")
 option(NEGATIVE_TESTS_ENFORCE "Require negative_tests bad_*.c cases to fail compilation (non-zero exit)" ON)
 
-set(FRONTEND_CXX_SRCS
-    "${PROJECT_SOURCE_DIR}/src/frontend/driver.cpp"
+set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend/lexer/token.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/lexer/lexer.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/sema/arena.cpp"
@@ -37,13 +36,20 @@ set(FRONTEND_CXX_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend/sema/ir_builder.cpp"
 )
 
-add_executable(frontend_cxx_stage1 ${FRONTEND_CXX_SRCS})
-target_include_directories(frontend_cxx_stage1 PRIVATE
+set(FRONTEND_CXX_INCLUDE_DIRS
     "${PROJECT_SOURCE_DIR}/src/frontend"
     "${PROJECT_SOURCE_DIR}/src/frontend/lexer"
     "${PROJECT_SOURCE_DIR}/src/frontend/parser"
     "${PROJECT_SOURCE_DIR}/src/frontend/sema"
     "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor"
+)
+
+add_executable(frontend_cxx_stage1
+    "${PROJECT_SOURCE_DIR}/src/frontend/driver.cpp"
+    ${FRONTEND_CXX_COMMON_SRCS}
+)
+target_include_directories(frontend_cxx_stage1 PRIVATE
+    ${FRONTEND_CXX_INCLUDE_DIRS}
 )
 set_target_properties(frontend_cxx_stage1 PROPERTIES
     CXX_STANDARD 17
@@ -51,6 +57,20 @@ set_target_properties(frontend_cxx_stage1 PROPERTIES
     OUTPUT_NAME "tiny-c2ll-stage1"
 )
 target_compile_options(frontend_cxx_stage1 PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(frontend_cxx_next
+    "${PROJECT_SOURCE_DIR}/src/apps/tiny-c2ll-next.cpp"
+    ${FRONTEND_CXX_COMMON_SRCS}
+)
+target_include_directories(frontend_cxx_next PRIVATE
+    ${FRONTEND_CXX_INCLUDE_DIRS}
+)
+set_target_properties(frontend_cxx_next PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    OUTPUT_NAME "tiny-c2ll-next"
+)
+target_compile_options(frontend_cxx_next PRIVATE -Wall -Wextra -Wpedantic)
 
 add_executable(frontend_cxx_stage2
     "${PROJECT_SOURCE_DIR}/src/frontend/driver_stage2.cpp"
