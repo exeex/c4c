@@ -66,19 +66,20 @@ set(FRONTEND_CXX_INCLUDE_DIRS
     "${PROJECT_SOURCE_DIR}/src/codegen/llvm"
 )
 
-add_executable(frontend_cxx_stage1
-    "${PROJECT_SOURCE_DIR}/src/frontend/driver.cpp"
-    ${FRONTEND_CXX_COMMON_SRCS}
-)
-target_include_directories(frontend_cxx_stage1 PRIVATE
-    ${FRONTEND_CXX_INCLUDE_DIRS}
-)
-set_target_properties(frontend_cxx_stage1 PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-    OUTPUT_NAME "tiny-c2ll-stage1"
-)
-target_compile_options(frontend_cxx_stage1 PRIVATE -Wall -Wextra -Wpedantic)
+# Temporarily disabled: keep a single compiler executable target during migration.
+# add_executable(frontend_cxx_stage1
+#     "${PROJECT_SOURCE_DIR}/src/frontend/driver.cpp"
+#     ${FRONTEND_CXX_COMMON_SRCS}
+# )
+# target_include_directories(frontend_cxx_stage1 PRIVATE
+#     ${FRONTEND_CXX_INCLUDE_DIRS}
+# )
+# set_target_properties(frontend_cxx_stage1 PROPERTIES
+#     CXX_STANDARD 17
+#     CXX_STANDARD_REQUIRED ON
+#     OUTPUT_NAME "tiny-c2ll-stage1"
+# )
+# target_compile_options(frontend_cxx_stage1 PRIVATE -Wall -Wextra -Wpedantic)
 
 add_executable(frontend_cxx_next
     "${PROJECT_SOURCE_DIR}/src/apps/tiny-c2ll-next.cpp"
@@ -94,37 +95,39 @@ set_target_properties(frontend_cxx_next PROPERTIES
 )
 target_compile_options(frontend_cxx_next PRIVATE -Wall -Wextra -Wpedantic)
 
-add_executable(frontend_cxx_stage2
-    "${PROJECT_SOURCE_DIR}/src/frontend/driver_stage2.cpp"
-)
-set_target_properties(frontend_cxx_stage2 PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-    OUTPUT_NAME "tiny-c2ll-stage2"
-)
-target_compile_options(frontend_cxx_stage2 PRIVATE -Wall -Wextra -Wpedantic)
+# Temporarily disabled: keep a single compiler executable target during migration.
+# add_executable(frontend_cxx_stage2
+#     "${PROJECT_SOURCE_DIR}/src/frontend/driver_stage2.cpp"
+# )
+# set_target_properties(frontend_cxx_stage2 PROPERTIES
+#     CXX_STANDARD 17
+#     CXX_STANDARD_REQUIRED ON
+#     OUTPUT_NAME "tiny-c2ll-stage2"
+# )
+# target_compile_options(frontend_cxx_stage2 PRIVATE -Wall -Wextra -Wpedantic)
 
-add_executable(frontend_cxx_preprocessor_tests
-    "${PROJECT_SOURCE_DIR}/tests/preprocessor/frontend_cxx_preprocessor_tests.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/preprocessor.cpp"
-)
-target_include_directories(frontend_cxx_preprocessor_tests PRIVATE
-    "${PROJECT_SOURCE_DIR}/src/frontend"
-    "${PROJECT_SOURCE_DIR}/src/frontend/lexer"
-    "${PROJECT_SOURCE_DIR}/src/frontend/parser"
-    "${PROJECT_SOURCE_DIR}/src/frontend/sema"
-    "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor"
-)
-set_target_properties(frontend_cxx_preprocessor_tests PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-)
-target_compile_options(frontend_cxx_preprocessor_tests PRIVATE -Wall -Wextra -Wpedantic)
+# Temporarily disabled: keep a single compiler executable target during migration.
+# add_executable(frontend_cxx_preprocessor_tests
+#     "${PROJECT_SOURCE_DIR}/tests/preprocessor/frontend_cxx_preprocessor_tests.cpp"
+#     "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/preprocessor.cpp"
+# )
+# target_include_directories(frontend_cxx_preprocessor_tests PRIVATE
+#     "${PROJECT_SOURCE_DIR}/src/frontend"
+#     "${PROJECT_SOURCE_DIR}/src/frontend/lexer"
+#     "${PROJECT_SOURCE_DIR}/src/frontend/parser"
+#     "${PROJECT_SOURCE_DIR}/src/frontend/sema"
+#     "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor"
+# )
+# set_target_properties(frontend_cxx_preprocessor_tests PROPERTIES
+#     CXX_STANDARD 17
+#     CXX_STANDARD_REQUIRED ON
+# )
+# target_compile_options(frontend_cxx_preprocessor_tests PRIVATE -Wall -Wextra -Wpedantic)
 
 add_custom_command(
   OUTPUT "${EXAMPLE_LL}"
-  COMMAND $<TARGET_FILE:frontend_cxx_stage1> "${EXAMPLE_C}" -o "${EXAMPLE_LL}"
-  DEPENDS frontend_cxx_stage1 "${EXAMPLE_C}"
+  COMMAND $<TARGET_FILE:frontend_cxx_next> "${EXAMPLE_C}" -o "${EXAMPLE_LL}"
+  DEPENDS frontend_cxx_next "${EXAMPLE_C}"
   COMMENT "Generating example LLVM IR"
   VERBATIM
 )
@@ -181,10 +184,11 @@ foreach(src IN LISTS NEGATIVE_TEST_SRCS)
   set_tests_properties("${test_name}" PROPERTIES LABELS "negative_tests")
 endforeach()
 
-add_test(
-    NAME frontend_cxx_preprocessor_tests
-    COMMAND frontend_cxx_preprocessor_tests
-)
+# Temporarily disabled with frontend_cxx_preprocessor_tests target.
+# add_test(
+#     NAME frontend_cxx_preprocessor_tests
+#     COMMAND frontend_cxx_preprocessor_tests
+# )
 
 add_test(
     NAME frontend_cxx_stage1_version
