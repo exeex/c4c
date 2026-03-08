@@ -164,6 +164,233 @@ TypeSpec complex_component_ts(TypeBase b) {
   }
 }
 
+TypeSpec decay_array_to_ptr(TypeSpec ts) {
+  if (!is_array_ty(ts)) return ts;
+  ts = drop_array_dim(ts);
+  ts.ptr_level += 1;
+  if (is_array_ty(ts)) ts.is_ptr_to_array = true;
+  return ts;
+}
+
+TypeSpec classify_int_literal_type(Node* n) {
+  if (!n) return int_ts();
+  if (n->is_imaginary) return make_ts(TB_COMPLEX_LONGLONG);
+  const char* sv = n->sval;
+  bool is_hex_or_oct = sv && sv[0] == '0' && (sv[1] == 'x' || sv[1] == 'X' ||
+                                               (sv[1] >= '0' && sv[1] <= '7'));
+  if (sv) {
+    size_t len = strlen(sv);
+    int lcount = 0;
+    bool has_u = false;
+    for (int i = (int)len - 1; i >= 0; i--) {
+      char c = sv[i];
+      if (c == 'l' || c == 'L') {
+        lcount++;
+      } else if (c == 'u' || c == 'U') {
+        has_u = true;
+      } else if (c == 'i' || c == 'I' || c == 'j' || c == 'J') {
+      } else {
+        break;
+      }
+    }
+    if (lcount >= 2) return has_u ? make_ts(TB_ULONGLONG) : make_ts(TB_LONGLONG);
+    if (lcount == 1) return has_u ? make_ts(TB_ULONG) : make_ts(TB_LONG);
+    if (has_u) return make_ts(TB_UINT);
+  }
+  long long v = n->ival;
+  if (is_hex_or_oct) {
+    if (v >= 0 && v <= 0x7fffffff) return int_ts();
+    if ((unsigned long long)v <= 0xffffffff) return make_ts(TB_UINT);
+    if (v >= 0 && v <= (long long)0x7fffffffffffffff) return make_ts(TB_LONGLONG);
+    return make_ts(TB_ULONGLONG);
+  }
+  return int_ts();
+}
+
+TypeSpec classify_float_literal_type(Node* n) {
+  if (!n) return double_ts();
+  if (n->is_imaginary) {
+    const char* sv = n->sval;
+    bool is_f32 = sv && (strchr(sv, 'f') || strchr(sv, 'F'));
+    return is_f32 ? make_ts(TB_COMPLEX_FLOAT) : make_ts(TB_COMPLEX_DOUBLE);
+  }
+  const char* sv = n->sval;
+  if (sv && sv[strlen(sv) - 1] == 'f') return float_ts();
+  if (sv && sv[strlen(sv) - 1] == 'F') return float_ts();
+  return double_ts();
+}
+
+TypeSpec classify_unary_result_type(const char* op, const TypeSpec& operand, int operand_size) {
+  if (!op) return int_ts();
+  if (strcmp(op, "!") == 0) return int_ts();
+  if ((strcmp(op, "~") == 0 || strcmp(op, "-") == 0 || strcmp(op, "+") == 0) &&
+      operand.ptr_level == 0 && !is_array_ty(operand) && !is_float_base(operand.base) &&
+      !is_complex_base(operand.base) && operand_size < 4)
+    return int_ts();
+  return operand;
+}
+
+static bool is_compare_or_logical_op(const char* op) {
+  if (!op) return false;
+  return strcmp(op, "==") == 0 || strcmp(op, "!=") == 0 || strcmp(op, "<") == 0 ||
+         strcmp(op, "<=") == 0 || strcmp(op, ">") == 0 || strcmp(op, ">=") == 0 ||
+         strcmp(op, "&&") == 0 || strcmp(op, "||") == 0;
+}
+
+static TypeSpec usual_arithmetic_result_type(const TypeSpec& lhs, const TypeSpec& rhs) {
+  if (lhs.base == TB_DOUBLE || rhs.base == TB_DOUBLE) return double_ts();
+  if (lhs.base == TB_FLOAT || rhs.base == TB_FLOAT) return float_ts();
+  if (lhs.base == TB_LONGDOUBLE || rhs.base == TB_LONGDOUBLE) return double_ts();
+  if (lhs.base == TB_ULONGLONG || rhs.base == TB_ULONGLONG) return make_ts(TB_ULONGLONG);
+  if (lhs.base == TB_LONGLONG || rhs.base == TB_LONGLONG) {
+    if (lhs.base == TB_ULONG || rhs.base == TB_ULONG) return make_ts(TB_ULONGLONG);
+    return ll_ts();
+  }
+  if (lhs.base == TB_ULONG || rhs.base == TB_ULONG) return make_ts(TB_ULONG);
+  if (lhs.base == TB_LONG || rhs.base == TB_LONG) return make_ts(TB_LONG);
+  if (lhs.base == TB_UINT || rhs.base == TB_UINT) return make_ts(TB_UINT);
+  return int_ts();
+}
+
+TypeSpec classify_binop_result_type(
+    const char* op,
+    const TypeSpec& lhs,
+    const TypeSpec& rhs,
+    int lhs_size,
+    int rhs_size) {
+  if (!op) return int_ts();
+  if (is_compare_or_logical_op(op)) return int_ts();
+  if (strcmp(op, "<<") == 0 || strcmp(op, ">>") == 0) {
+    if (lhs.ptr_level > 0) return int_ts();
+    if (lhs.ptr_level == 0 && !is_array_ty(lhs) && !is_float_base(lhs.base) &&
+        !is_complex_base(lhs.base) && lhs_size < 4)
+      return int_ts();
+    return lhs;
+  }
+  if (is_array_ty(lhs) && lhs.ptr_level == 0 && !lhs.is_ptr_to_array &&
+      is_array_ty(rhs) && rhs.ptr_level == 0 && !rhs.is_ptr_to_array &&
+      array_rank_of(lhs) == 1 && array_rank_of(rhs) == 1 &&
+      !is_compare_or_logical_op(op))
+    return lhs;
+  if ((lhs.ptr_level > 0 || is_array_ty(lhs)) &&
+      (rhs.ptr_level > 0 || is_array_ty(rhs)) &&
+      strcmp(op, "-") == 0)
+    return ll_ts();
+  if (lhs.ptr_level > 0) return lhs;
+  if (is_array_ty(lhs)) return decay_array_to_ptr(lhs);
+  if (rhs.ptr_level > 0) return rhs;
+  if (is_array_ty(rhs)) return decay_array_to_ptr(rhs);
+  if (is_complex_base(lhs.base) || is_complex_base(rhs.base)) {
+    if (is_complex_base(lhs.base) && is_complex_base(rhs.base))
+      return (lhs_size >= rhs_size) ? lhs : rhs;
+    return is_complex_base(lhs.base) ? lhs : rhs;
+  }
+  return usual_arithmetic_result_type(lhs, rhs);
+}
+
+std::string remap_builtin_et_name(std::string callee_name) {
+  static const struct {
+    const char* from;
+    const char* to;
+  } remap[] = {
+      {"__builtin_malloc", "malloc"},   {"__builtin_free", "free"},
+      {"__builtin_calloc", "calloc"},   {"__builtin_realloc", "realloc"},
+      {"__builtin_alloca", "alloca"},   {"__builtin_memcpy", "memcpy"},
+      {"__builtin_memmove", "memmove"}, {"__builtin_memset", "memset"},
+      {"__builtin_memcmp", "memcmp"},   {"__builtin_memchr", "memchr"},
+      {"__builtin_strcpy", "strcpy"},   {"__builtin_strncpy", "strncpy"},
+      {"__builtin_strcat", "strcat"},   {"__builtin_strncat", "strncat"},
+      {"__builtin_strcmp", "strcmp"},   {"__builtin_strncmp", "strncmp"},
+      {"__builtin_strlen", "strlen"},   {"__builtin_strchr", "strchr"},
+      {"__builtin_strstr", "strstr"},   {"__builtin_printf", "printf"},
+      {"__builtin_puts", "puts"},       {"__builtin_abort", "abort"},
+      {"__builtin_exit", "exit"},       {nullptr, nullptr}};
+  for (int i = 0; remap[i].from; i++) {
+    if (callee_name == remap[i].from) {
+      callee_name = remap[i].to;
+      break;
+    }
+  }
+  return callee_name;
+}
+
+TypeSpec classify_known_call_return_type(const char* callee_name, bool* known) {
+  if (known) *known = true;
+  if (!callee_name) return int_ts();
+  if (strcmp(callee_name, "malloc") == 0 || strcmp(callee_name, "calloc") == 0 ||
+      strcmp(callee_name, "realloc") == 0 || strcmp(callee_name, "strdup") == 0 ||
+      strcmp(callee_name, "strndup") == 0 || strcmp(callee_name, "memcpy") == 0 ||
+      strcmp(callee_name, "memmove") == 0 || strcmp(callee_name, "memset") == 0 ||
+      strcmp(callee_name, "alloca") == 0 || strcmp(callee_name, "memchr") == 0 ||
+      strcmp(callee_name, "strcpy") == 0 || strcmp(callee_name, "strncpy") == 0 ||
+      strcmp(callee_name, "strcat") == 0 || strcmp(callee_name, "strncat") == 0 ||
+      strcmp(callee_name, "strchr") == 0 || strcmp(callee_name, "strstr") == 0)
+    return ptr_to(TB_VOID);
+  if (strcmp(callee_name, "free") == 0 || strcmp(callee_name, "abort") == 0 ||
+      strcmp(callee_name, "exit") == 0 || strcmp(callee_name, "puts") == 0)
+    return void_ts();
+  if (strcmp(callee_name, "__builtin_bswap64") == 0) return make_ts(TB_ULONGLONG);
+  if (strcmp(callee_name, "__builtin_bswap32") == 0) return make_ts(TB_UINT);
+  if (strcmp(callee_name, "__builtin_bswap16") == 0) return make_ts(TB_USHORT);
+  if (strcmp(callee_name, "__builtin_fabs") == 0 || strcmp(callee_name, "__builtin_fabsl") == 0 ||
+      strcmp(callee_name, "__builtin_inf") == 0 || strcmp(callee_name, "__builtin_infl") == 0 ||
+      strcmp(callee_name, "__builtin_huge_val") == 0 ||
+      strcmp(callee_name, "__builtin_huge_vall") == 0)
+    return double_ts();
+  if (strcmp(callee_name, "__builtin_fabsf") == 0 || strcmp(callee_name, "__builtin_inff") == 0 ||
+      strcmp(callee_name, "__builtin_huge_valf") == 0)
+    return float_ts();
+  if (strcmp(callee_name, "__builtin_constant_p") == 0) return make_ts(TB_INT);
+  if (strcmp(callee_name, "__builtin_unreachable") == 0) return void_ts();
+  if (strcmp(callee_name, "__builtin_signbit") == 0 || strcmp(callee_name, "__builtin_signbitf") == 0 ||
+      strcmp(callee_name, "__builtin_signbitl") == 0)
+    return make_ts(TB_INT);
+  if (strcmp(callee_name, "__builtin_add_overflow") == 0 ||
+      strcmp(callee_name, "__builtin_sub_overflow") == 0 ||
+      strcmp(callee_name, "__builtin_mul_overflow") == 0)
+    return make_ts(TB_INT);
+  if (strcmp(callee_name, "__builtin_conjf") == 0) return make_ts(TB_COMPLEX_FLOAT);
+  if (strcmp(callee_name, "__builtin_conj") == 0) return make_ts(TB_COMPLEX_DOUBLE);
+  if (strcmp(callee_name, "__builtin_conjl") == 0) return make_ts(TB_COMPLEX_LONGDOUBLE);
+  if (strcmp(callee_name, "__builtin_classify_type") == 0) return make_ts(TB_INT);
+  if (strcmp(callee_name, "__builtin_copysign") == 0 ||
+      strcmp(callee_name, "__builtin_copysignl") == 0)
+    return double_ts();
+  if (strcmp(callee_name, "__builtin_copysignf") == 0) return float_ts();
+  if (strcmp(callee_name, "__builtin_nan") == 0 || strcmp(callee_name, "__builtin_nanl") == 0)
+    return double_ts();
+  if (strcmp(callee_name, "__builtin_nanf") == 0) return float_ts();
+  if (strcmp(callee_name, "__builtin_isgreater") == 0 ||
+      strcmp(callee_name, "__builtin_isgreaterequal") == 0 ||
+      strcmp(callee_name, "__builtin_isless") == 0 ||
+      strcmp(callee_name, "__builtin_islessequal") == 0 ||
+      strcmp(callee_name, "__builtin_islessgreater") == 0 ||
+      strcmp(callee_name, "__builtin_isunordered") == 0 ||
+      strcmp(callee_name, "__builtin_isnan") == 0 ||
+      strcmp(callee_name, "__builtin_isinf") == 0 ||
+      strcmp(callee_name, "__builtin_isinf_sign") == 0)
+    return make_ts(TB_INT);
+  if (strcmp(callee_name, "__builtin_ffs") == 0 || strcmp(callee_name, "__builtin_ffsl") == 0 ||
+      strcmp(callee_name, "__builtin_ffsll") == 0)
+    return make_ts(TB_INT);
+  if (strcmp(callee_name, "__builtin_clz") == 0 || strcmp(callee_name, "__builtin_clzl") == 0 ||
+      strcmp(callee_name, "__builtin_clzll") == 0)
+    return make_ts(TB_INT);
+  if (strcmp(callee_name, "__builtin_ctz") == 0 || strcmp(callee_name, "__builtin_ctzl") == 0 ||
+      strcmp(callee_name, "__builtin_ctzll") == 0)
+    return make_ts(TB_INT);
+  if (strcmp(callee_name, "__builtin_popcount") == 0 ||
+      strcmp(callee_name, "__builtin_popcountl") == 0 ||
+      strcmp(callee_name, "__builtin_popcountll") == 0)
+    return make_ts(TB_INT);
+  if (strcmp(callee_name, "__builtin_parity") == 0 ||
+      strcmp(callee_name, "__builtin_parityl") == 0 ||
+      strcmp(callee_name, "__builtin_parityll") == 0)
+    return make_ts(TB_INT);
+  if (known) *known = false;
+  return int_ts();
+}
+
 bool is_wide_str_lit(Node* n) {
   if (!n || n->kind != NK_STR_LIT || !n->sval) return false;
   const char* s = n->sval;

@@ -203,7 +203,7 @@ Do not gate early migration on:
 - Matched shared CLI behavior for `--lex-only`, `--parse-only`, and `-o` on `next`.
 - Verified both binaries build and legacy CTest flow still runs via stage1.
 
-### Phase 1 status: in progress (substantial extraction done)
+### Phase 1 status: completed
 
 Completed in `src/frontend/sema/sema_driver.{hpp,cpp}`:
 
@@ -217,6 +217,11 @@ Completed in `src/frontend/sema/sema_driver.{hpp,cpp}`:
   - `is_wide_str_lit`, `str_lit_byte_len`, `allows_string_literal_ptr_target`
   - `decode_narrow_string_lit`, `normalize_printf_longdouble_format`, `decode_wide_string`
   - `infer_array_size_from_init`, `static_eval_int`, `static_eval_float`
+- Expression type and promotion helpers:
+  - `classify_int_literal_type`, `classify_float_literal_type`
+  - `classify_unary_result_type`, `classify_binop_result_type`
+  - `decay_array_to_ptr`
+  - `remap_builtin_et_name`, `classify_known_call_return_type`
 
 `ir_builder.cpp` now depends on `sema_driver.hpp` for the helpers above instead of owning local static copies.
 
@@ -228,7 +233,3 @@ Validation completed after extraction:
   - `negative_tests`
   - `ccc_review_*`
   - `c_testsuite_*`
-
-Remaining Phase 1 work:
-
-- Continue moving deeper semantic decisions (especially within `expr_type` and related type-promotion logic) behind `sema_driver` facade while preserving current `IRBuilder` API and behavior.

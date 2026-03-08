@@ -261,54 +261,14 @@ TypeSpec IRBuilder::expr_type(Node* n) {
       TypeSpec vp{}; vp.base = TB_VOID; vp.ptr_level = 1;
       return vp;
     }
-    // Imaginary integer literal (e.g. 200i) → _Complex long long
-    if (n->is_imaginary) return make_ts(TB_COMPLEX_LONGLONG);
-    // Check suffix for type: LL/ULL → long long, L/UL → long, U → unsigned int
-    const char* sv = n->sval;
-    bool is_hex_or_oct = sv && sv[0] == '0' && (sv[1] == 'x' || sv[1] == 'X' ||
-                                                 (sv[1] >= '0' && sv[1] <= '7'));
-    if (sv) {
-      size_t len = strlen(sv);
-      // Scan suffix (case-insensitive): strip trailing 'l', 'll', 'u', 'i', 'j'
-      int lcount = 0; bool has_u = false;
-      for (int i = (int)len - 1; i >= 0; i--) {
-        char c = sv[i];
-        if (c == 'l' || c == 'L') { lcount++; }
-        else if (c == 'u' || c == 'U') { has_u = true; }
-        else if (c == 'i' || c == 'I' || c == 'j' || c == 'J') { /* skip */ }
-        else break;
-      }
-      if (lcount >= 2) return has_u ? make_ts(TB_ULONGLONG) : make_ts(TB_LONGLONG);
-      if (lcount == 1) return has_u ? make_ts(TB_ULONG) : make_ts(TB_LONG);
-      if (has_u) return make_ts(TB_UINT);
-    }
-    // No suffix: for hex/octal literals, C standard says try each type in order:
-    // int, uint, long, ulong, llong, ullong. For decimal, only signed types.
-    // This matters for 0xabcd0000 (doesn't fit int → uint).
-    long long v = n->ival;
-    if (is_hex_or_oct) {
-      if (v >= 0 && v <= 0x7fffffff) return int_ts();             // fits int
-      if ((unsigned long long)v <= 0xffffffff) return make_ts(TB_UINT);  // fits uint
-      if (v >= 0 && v <= (long long)0x7fffffffffffffff) return make_ts(TB_LONGLONG);  // fits llong
-      return make_ts(TB_ULONGLONG);  // fits ullong
-    }
-    return int_ts();
+    return classify_int_literal_type(n);
   }
   case NK_CHAR_LIT:
     // Wide char literal L'...' has type int (wchar_t); narrow has type char
     if (n->sval && n->sval[0] == 'L') return int_ts();
     return char_ts();
   case NK_FLOAT_LIT: {
-    // Imaginary float literal (e.g. 1.0fi) → _Complex float or _Complex double
-    if (n->is_imaginary) {
-      const char* sv = n->sval;
-      bool is_f32 = sv && (strchr(sv, 'f') || strchr(sv, 'F'));
-      return is_f32 ? make_ts(TB_COMPLEX_FLOAT) : make_ts(TB_COMPLEX_DOUBLE);
-    }
-    const char* sv = n->sval;
-    if (sv && (sv[strlen(sv)-1] == 'f' || sv[strlen(sv)-1] == 'F'))
-      return float_ts();
-    return double_ts();
+    return classify_float_literal_type(n);
   }
   case NK_STR_LIT:
     // Wide string literals (L"...") have type wchar_t* = int* on LP64 platforms
@@ -329,89 +289,14 @@ TypeSpec IRBuilder::expr_type(Node* n) {
   }
 
   case NK_BINOP: {
-    const char* op = n->op;
-    // Logical / comparison → int
-    if (!op) return int_ts();
-    if (strcmp(op,"==")==0 || strcmp(op,"!=")==0 ||
-        strcmp(op,"<")==0  || strcmp(op,"<=")==0 ||
-        strcmp(op,">")==0  || strcmp(op,">=")==0 ||
-        strcmp(op,"&&")==0 || strcmp(op,"||")==0)
-      return int_ts();
-    // Shifts: result type = promoted left operand (C11 §6.3.1.1)
-    if (strcmp(op,"<<")==0 || strcmp(op,">>")==0) {
-      TypeSpec lt = expr_type(n->left);
-      if (lt.ptr_level > 0) lt = int_ts();
-      // Narrow integer types promote to int before shifting
-      if (lt.ptr_level == 0 && !is_array_ty(lt) && !is_float_base(lt.base) &&
-          !is_complex_base(lt.base) && sizeof_ty(lt) < 4)
-        return int_ts();
-      return lt;
-    }
     TypeSpec lt = expr_type(n->left);
     TypeSpec rt = expr_type(n->right);
-    // Vector element-wise arithmetic: both operands are the same 1D array type (vector_size).
-    // Return the vector type instead of decaying to pointer.
-    if (is_array_ty(lt) && lt.ptr_level == 0 && !lt.is_ptr_to_array &&
-        is_array_ty(rt) && rt.ptr_level == 0 && !rt.is_ptr_to_array &&
-        array_rank_of(lt) == 1 && array_rank_of(rt) == 1 &&
-        op && strcmp(op,"==") != 0 && strcmp(op,"!=") != 0 &&
-        strcmp(op,"<") != 0 && strcmp(op,"<=") != 0 &&
-        strcmp(op,">") != 0 && strcmp(op,">=") != 0)
-      return lt;
-    // Pointer subtraction: ptr - ptr → ptrdiff_t (i64)
-    if ((lt.ptr_level > 0 || is_array_ty(lt)) &&
-        (rt.ptr_level > 0 || is_array_ty(rt)) &&
-        op && strcmp(op, "-") == 0)
-      return ll_ts();
-    // Pointer arithmetic: ptr/array +/- int → ptr (array decays to pointer)
-    if (lt.ptr_level > 0) return lt;
-    if (is_array_ty(lt)) {
-      TypeSpec decay = drop_array_dim(lt);
-      decay.ptr_level += 1;
-      // If the element type is still an array (multi-dim), mark as ptr-to-array
-      // so NK_DEREF correctly returns the sub-array ptr without loading.
-      if (is_array_ty(decay)) decay.is_ptr_to_array = true;
-      return decay;
-    }
-    if (rt.ptr_level > 0) return rt;
-    if (is_array_ty(rt)) {
-      TypeSpec decay = drop_array_dim(rt);
-      decay.ptr_level += 1;
-      if (is_array_ty(decay)) decay.is_ptr_to_array = true;
-      return decay;
-    }
-    // Complex arithmetic: if either operand is complex, return the wider complex type
-    if (is_complex_base(lt.base) || is_complex_base(rt.base)) {
-      if (is_complex_base(lt.base) && is_complex_base(rt.base))
-        return (sizeof_ty(lt) >= sizeof_ty(rt)) ? lt : rt;
-      return is_complex_base(lt.base) ? lt : rt;
-    }
-    // Usual arithmetic conversions (C11 §6.3.1.8): unsigned types win at same rank
-    if (lt.base == TB_DOUBLE || rt.base == TB_DOUBLE) return double_ts();
-    if (lt.base == TB_FLOAT  || rt.base == TB_FLOAT)  return float_ts();
-    if (lt.base == TB_LONGDOUBLE || rt.base == TB_LONGDOUBLE) return double_ts();
-    if (lt.base == TB_ULONGLONG || rt.base == TB_ULONGLONG) return make_ts(TB_ULONGLONG);
-    if (lt.base == TB_LONGLONG  || rt.base == TB_LONGLONG) {
-      // longlong + ulong: same size on 64-bit, unsigned wins → ulonglong
-      if (lt.base == TB_ULONG || rt.base == TB_ULONG) return make_ts(TB_ULONGLONG);
-      return ll_ts();
-    }
-    if (lt.base == TB_ULONG || rt.base == TB_ULONG) return make_ts(TB_ULONG);
-    if (lt.base == TB_LONG  || rt.base == TB_LONG)  return make_ts(TB_LONG);
-    if (lt.base == TB_UINT  || rt.base == TB_UINT)  return make_ts(TB_UINT);
-    return int_ts();
+    return classify_binop_result_type(n->op, lt, rt, sizeof_ty(lt), sizeof_ty(rt));
   }
 
   case NK_UNARY: {
-    if (!n->op) return int_ts();
-    if (strcmp(n->op,"!")==0) return int_ts();
     TypeSpec ts = expr_type(n->left);
-    // C11 §6.3.1.1: integer promotions apply to arithmetic unary operators
-    if ((strcmp(n->op,"~")==0 || strcmp(n->op,"-")==0 || strcmp(n->op,"+")==0) &&
-        ts.ptr_level == 0 && !is_array_ty(ts) && !is_float_base(ts.base) &&
-        !is_complex_base(ts.base) && sizeof_ty(ts) < 4)
-      return int_ts();
-    return ts;
+    return classify_unary_result_type(n->op, ts, sizeof_ty(ts));
   }
   case NK_POSTFIX:          return expr_type(n->left);
   case NK_ADDR: {
@@ -452,86 +337,15 @@ TypeSpec IRBuilder::expr_type(Node* n) {
   case NK_COMPOUND_ASSIGN:  return expr_type(n->left);
   case NK_CALL: {
     if (n->left && n->left->name) {
-      const char* cn = n->left->name;
-      // Remap common __builtin_* before signature lookup.
-      std::string cn_str = cn;
-      static const struct { const char* from; const char* to; } et_remap[] = {
-        {"__builtin_malloc",  "malloc"},  {"__builtin_free",    "free"},
-        {"__builtin_calloc",  "calloc"},  {"__builtin_realloc", "realloc"},
-        {"__builtin_alloca",  "alloca"},
-        {"__builtin_memcpy",  "memcpy"},  {"__builtin_memmove", "memmove"},
-        {"__builtin_memset",  "memset"},  {"__builtin_memcmp",  "memcmp"},
-        {"__builtin_memchr",  "memchr"},  {"__builtin_strcpy",  "strcpy"},
-        {"__builtin_strncpy", "strncpy"}, {"__builtin_strcat",  "strcat"},
-        {"__builtin_strncat", "strncat"}, {"__builtin_strcmp",  "strcmp"},
-        {"__builtin_strncmp", "strncmp"}, {"__builtin_strlen",  "strlen"},
-        {"__builtin_strchr",  "strchr"},  {"__builtin_strstr",  "strstr"},
-        {"__builtin_printf",  "printf"},  {"__builtin_puts",    "puts"},
-        {"__builtin_abort",   "abort"},   {"__builtin_exit",    "exit"},
-        {nullptr, nullptr}
-      };
-      for (int ri = 0; et_remap[ri].from; ri++) {
-        if (cn_str == et_remap[ri].from) { cn_str = et_remap[ri].to; break; }
-      }
-      cn = cn_str.c_str();
+      std::string cn_str = remap_builtin_et_name(n->left->name);
+      const char* cn = cn_str.c_str();
       auto it = func_sigs_.find(cn);
       if (it != func_sigs_.end()) return it->second.ret_type;
-      // Known pointer-returning standard library functions.
-      if (strcmp(cn, "malloc") == 0 || strcmp(cn, "calloc") == 0 ||
-          strcmp(cn, "realloc") == 0 || strcmp(cn, "strdup") == 0 ||
-          strcmp(cn, "strndup") == 0 || strcmp(cn, "memcpy") == 0 ||
-          strcmp(cn, "memmove") == 0 || strcmp(cn, "memset") == 0 ||
-          strcmp(cn, "alloca") == 0 || strcmp(cn, "memchr") == 0 ||
-          strcmp(cn, "strcpy") == 0 || strcmp(cn, "strncpy") == 0 ||
-          strcmp(cn, "strcat") == 0 || strcmp(cn, "strncat") == 0 ||
-          strcmp(cn, "strchr") == 0 || strcmp(cn, "strstr") == 0)
-        return ptr_to(TB_VOID);
-      // Known void-returning standard library functions.
-      if (strcmp(cn, "free") == 0 || strcmp(cn, "abort") == 0 ||
-          strcmp(cn, "exit") == 0 || strcmp(cn, "puts") == 0)
-        return void_ts();
-      // Builtin return types
-      if (strcmp(cn, "__builtin_bswap64") == 0) return make_ts(TB_ULONGLONG);
-      if (strcmp(cn, "__builtin_bswap32") == 0) return make_ts(TB_UINT);
-      if (strcmp(cn, "__builtin_bswap16") == 0) return make_ts(TB_USHORT);
       if (strcmp(cn, "__builtin_expect") == 0 && n->n_children > 0)
         return expr_type(n->children[0]);
-      if (strcmp(cn, "__builtin_fabs") == 0 || strcmp(cn, "__builtin_fabsl") == 0 ||
-          strcmp(cn, "__builtin_inf") == 0 || strcmp(cn, "__builtin_infl") == 0 ||
-          strcmp(cn, "__builtin_huge_val") == 0 || strcmp(cn, "__builtin_huge_vall") == 0)
-        return double_ts();
-      if (strcmp(cn, "__builtin_fabsf") == 0 || strcmp(cn, "__builtin_inff") == 0 ||
-          strcmp(cn, "__builtin_huge_valf") == 0)
-        return float_ts();
-      if (strcmp(cn, "__builtin_constant_p") == 0) return make_ts(TB_INT);
-      if (strcmp(cn, "__builtin_unreachable") == 0) return void_ts();
-      if (strcmp(cn, "__builtin_signbit") == 0 || strcmp(cn, "__builtin_signbitf") == 0 ||
-          strcmp(cn, "__builtin_signbitl") == 0) return make_ts(TB_INT);
-      if (strcmp(cn, "__builtin_add_overflow") == 0 || strcmp(cn, "__builtin_sub_overflow") == 0 ||
-          strcmp(cn, "__builtin_mul_overflow") == 0) return make_ts(TB_INT);
-      if (strcmp(cn, "__builtin_conjf") == 0) return make_ts(TB_COMPLEX_FLOAT);
-      if (strcmp(cn, "__builtin_conj")  == 0) return make_ts(TB_COMPLEX_DOUBLE);
-      if (strcmp(cn, "__builtin_conjl") == 0) return make_ts(TB_COMPLEX_LONGDOUBLE);
-      if (strcmp(cn, "__builtin_classify_type") == 0) return make_ts(TB_INT);
-      if (strcmp(cn, "__builtin_copysign")  == 0 || strcmp(cn, "__builtin_copysignl") == 0) return double_ts();
-      if (strcmp(cn, "__builtin_copysignf") == 0) return float_ts();
-      if (strcmp(cn, "__builtin_nan")  == 0 || strcmp(cn, "__builtin_nanl")  == 0) return double_ts();
-      if (strcmp(cn, "__builtin_nanf") == 0) return float_ts();
-      if (strcmp(cn, "__builtin_isgreater") == 0 || strcmp(cn, "__builtin_isgreaterequal") == 0 ||
-          strcmp(cn, "__builtin_isless")    == 0 || strcmp(cn, "__builtin_islessequal")    == 0 ||
-          strcmp(cn, "__builtin_islessgreater") == 0 || strcmp(cn, "__builtin_isunordered") == 0 ||
-          strcmp(cn, "__builtin_isnan") == 0 || strcmp(cn, "__builtin_isinf") == 0 ||
-          strcmp(cn, "__builtin_isinf_sign") == 0) return make_ts(TB_INT);
-      if (strcmp(cn, "__builtin_ffs")  == 0 || strcmp(cn, "__builtin_ffsl")  == 0 ||
-          strcmp(cn, "__builtin_ffsll") == 0) return make_ts(TB_INT);
-      if (strcmp(cn, "__builtin_clz")  == 0 || strcmp(cn, "__builtin_clzl")  == 0 ||
-          strcmp(cn, "__builtin_clzll") == 0) return make_ts(TB_INT);
-      if (strcmp(cn, "__builtin_ctz")  == 0 || strcmp(cn, "__builtin_ctzl")  == 0 ||
-          strcmp(cn, "__builtin_ctzll") == 0) return make_ts(TB_INT);
-      if (strcmp(cn, "__builtin_popcount")  == 0 || strcmp(cn, "__builtin_popcountl")  == 0 ||
-          strcmp(cn, "__builtin_popcountll") == 0) return make_ts(TB_INT);
-      if (strcmp(cn, "__builtin_parity")  == 0 || strcmp(cn, "__builtin_parityl")  == 0 ||
-          strcmp(cn, "__builtin_parityll") == 0) return make_ts(TB_INT);
+      bool known = false;
+      TypeSpec known_ret = classify_known_call_return_type(cn, &known);
+      if (known) return known_ret;
     }
     // Indirect call through function pointer expression.
     if (n->left) {

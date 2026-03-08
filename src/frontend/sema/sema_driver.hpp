@@ -32,6 +32,18 @@ bool is_unsigned_base(TypeBase b);
 bool is_float_base(TypeBase b);
 bool is_complex_base(TypeBase b);
 TypeSpec complex_component_ts(TypeBase b);
+TypeSpec decay_array_to_ptr(TypeSpec ts);
+TypeSpec classify_int_literal_type(Node* n);
+TypeSpec classify_float_literal_type(Node* n);
+TypeSpec classify_unary_result_type(const char* op, const TypeSpec& operand, int operand_size);
+TypeSpec classify_binop_result_type(
+    const char* op,
+    const TypeSpec& lhs,
+    const TypeSpec& rhs,
+    int lhs_size,
+    int rhs_size);
+std::string remap_builtin_et_name(std::string callee_name);
+TypeSpec classify_known_call_return_type(const char* callee_name, bool* known);
 
 bool is_wide_str_lit(Node* n);
 int str_lit_byte_len(Node* n);
