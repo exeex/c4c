@@ -5,6 +5,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <variant>
 
 #include "arena.hpp"
 #include "ast_to_hir.hpp"
@@ -33,6 +34,14 @@ void print_pp_diags(const std::vector<tc::PreprocessorDiagnostic>& diags,
   }
 }
 
+bool hir_requires_legacy_bridge(const tc::sema_ir::phase2::hir::Module& mod) {
+  // Native HIR backend is still incomplete for these features.
+  for (const auto& fn : mod.functions) {
+    if (fn.attrs.variadic) return true;
+  }
+  return false;
+}
+
 }  // namespace
 
 int main(int argc, char **argv) {
@@ -55,7 +64,7 @@ int main(int argc, char **argv) {
     bool        parse_only = false;
     bool        dump_hir_summary = false;
     bool        dump_hir = false;
-    bool        pipeline_hir = false;
+    bool        pipeline_hir = true;
     std::string input;
     std::string output;
 
@@ -149,7 +158,11 @@ int main(int argc, char **argv) {
         tc::sema_ir::phase2::hir::lower_ast_to_hir(prog);
     std::string ir;
     if (pipeline_hir) {
-      ir = tinyc2ll::codegen::llvm_backend::emit_module_native(hir_mod);
+      if (hir_requires_legacy_bridge(hir_mod)) {
+        ir = tinyc2ll::codegen::llvm_backend::emit_module(hir_mod, prog);
+      } else {
+        ir = tinyc2ll::codegen::llvm_backend::emit_module_native(hir_mod);
+      }
     } else {
       ir = tinyc2ll::codegen::llvm_backend::emit_module(hir_mod, prog);
     }
