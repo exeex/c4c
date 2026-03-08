@@ -79,6 +79,67 @@ static long long align_base(TypeBase b, int ptr_level) {
 static bool eval_const_int(Node* n, long long* out,
     const std::unordered_map<std::string, Node*>* struct_map = nullptr);
 
+// Forward declaration
+static long long struct_align(const char* tag,
+    const std::unordered_map<std::string, Node*>* struct_map);
+static long long struct_sizeof(const char* tag,
+    const std::unordered_map<std::string, Node*>* struct_map);
+
+// Compute the ABI alignment of a field type.
+static long long field_align(const TypeSpec& ts,
+    const std::unordered_map<std::string, Node*>* struct_map) {
+    if (ts.ptr_level > 0) return 8;
+    if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag)
+        return struct_align(ts.tag, struct_map);
+    return align_base(ts.base, ts.ptr_level);
+}
+
+// Compute the alignment of a struct/union (max alignment of its fields).
+static long long struct_align(const char* tag,
+    const std::unordered_map<std::string, Node*>* struct_map) {
+    if (!struct_map || !tag) return 8;
+    auto it = struct_map->find(tag);
+    if (it == struct_map->end()) return 8;
+    Node* sd = it->second;
+    if (!sd || sd->kind != NK_STRUCT_DEF) return 8;
+    long long max_align = 1;
+    for (int i = 0; i < sd->n_fields; i++) {
+        Node* f = sd->fields[i];
+        if (!f) continue;
+        long long a = field_align(f->type, struct_map);
+        if (a > max_align) max_align = a;
+    }
+    return max_align;
+}
+
+// Compute sizeof a struct (with alignment padding).
+static long long struct_sizeof(const char* tag,
+    const std::unordered_map<std::string, Node*>* struct_map) {
+    if (!struct_map || !tag) return 8;
+    auto it = struct_map->find(tag);
+    if (it == struct_map->end()) return 8;
+    Node* sd = it->second;
+    if (!sd || sd->kind != NK_STRUCT_DEF) return 8;
+    long long offset = 0, max_align = 1;
+    for (int i = 0; i < sd->n_fields; i++) {
+        Node* f = sd->fields[i];
+        if (!f) continue;
+        long long a = field_align(f->type, struct_map);
+        if (a > max_align) max_align = a;
+        offset = (offset + a - 1) / a * a;
+        long long sz;
+        if (f->type.ptr_level > 0) sz = 8;
+        else if (f->type.base == TB_STRUCT || f->type.base == TB_UNION)
+            sz = struct_sizeof(f->type.tag, struct_map);
+        else sz = sizeof_base(f->type.base);
+        if (f->type.array_rank > 0)
+            for (int d = 0; d < f->type.array_rank; d++)
+                if (f->type.array_dims[d] > 0) sz *= f->type.array_dims[d];
+        offset += sz;
+    }
+    return (offset + max_align - 1) / max_align * max_align;
+}
+
 // Helper: compute offsetof(tag, field_name) using struct_tag_def_map
 static bool compute_offsetof(const char* tag, const char* field_name,
     const std::unordered_map<std::string, Node*>* struct_map, long long* out) {
@@ -100,7 +161,7 @@ static bool compute_offsetof(const char* tag, const char* field_name,
     for (int i = 0; i < sd->n_fields; i++) {
         Node* f = sd->fields[i];
         if (!f) continue;
-        long long align = align_base(f->type.base, f->type.ptr_level);
+        long long align = field_align(f->type, struct_map);
         // Align offset
         offset = (offset + align - 1) / align * align;
         if (f->name && head == f->name) {
@@ -117,8 +178,11 @@ static bool compute_offsetof(const char* tag, const char* field_name,
             return false;
         }
         // Advance by field size
-        long long sz = sizeof_base(f->type.base);
+        long long sz;
         if (f->type.ptr_level > 0) sz = 8;
+        else if (f->type.base == TB_STRUCT || f->type.base == TB_UNION)
+            sz = struct_sizeof(f->type.tag, struct_map);
+        else sz = sizeof_base(f->type.base);
         if (f->type.array_rank > 0) {
             for (int d = 0; d < f->type.array_rank; d++)
                 if (f->type.array_dims[d] > 0) sz *= f->type.array_dims[d];
@@ -821,6 +885,8 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
     };
     auto apply_decl_dims = [&](const std::vector<long long>& decl_dims) {
         if (decl_dims.empty()) return;
+        // Preserve array_size_expr set by parse_one_array_dim (for first dim).
+        Node* saved_size_expr = ts.array_size_expr;
         // If the base TypeSpec is already a pointer-to-array (e.g. A3_28* paa[2]),
         // record the old (typedef's) array rank as inner_rank so that llvm_ty
         // can produce [N x ptr] rather than [N x [inner x ...]].
@@ -842,6 +908,9 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
         ts.array_rank = out;
         for (int i = 0; i < out; ++i) ts.array_dims[i] = merged[i];
         ts.array_size = out > 0 ? ts.array_dims[0] : -1;
+        // Restore array_size_expr for first dim when it couldn't be evaluated at parse time
+        if (saved_size_expr && !decl_dims.empty() && decl_dims[0] <= 0)
+            ts.array_size_expr = saved_size_expr;
     };
     auto parse_one_array_dim = [&]() -> long long {
         expect(TokenKind::LBracket);
@@ -1933,7 +2002,6 @@ Node* Parser::parse_primary() {
                     case 'n':  cv = '\n'; break;
                     case 't':  cv = '\t'; break;
                     case 'r':  cv = '\r'; break;
-                    case '0':  cv = 0;   break;
                     case '\\': cv = '\\'; break;
                     case '\'': cv = '\''; break;
                     case '"':  cv = '"';  break;

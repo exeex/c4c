@@ -41,6 +41,14 @@ class IRBuilder {
     std::vector<bool>        field_is_anon;
     // -1 = not a bitfield; N > 0 = N-bit bitfield
     std::vector<int>         field_bit_widths;
+    // LLVM struct field index for each C field (after bitfield packing)
+    std::vector<int>         field_llvm_idx;
+    // Bit offset within LLVM storage unit (0 for non-bitfields)
+    std::vector<int>         field_bit_offsets;
+    // Total number of LLVM fields (may be fewer than C fields due to bitfield packing)
+    int                      n_llvm_fields;
+    // LLVM type string for each LLVM field (indexed by LLVM field index)
+    std::vector<std::string> llvm_field_types;
     bool                     is_union;
   };
 
@@ -171,6 +179,8 @@ class IRBuilder {
   // Walk a subtree, find all NK_DECL local variable nodes, and emit their
   // alloca instructions into alloca_lines_.
   void hoist_allocas(Node* node);
+  // Evaluate a constant dimension expression (handles sizeof, arithmetic).
+  int eval_array_dim_expr(Node* n);
 
   // Pre-scan a function body for all NK_LABEL nodes and populate user_labels_.
   void prescan_labels(Node* node);

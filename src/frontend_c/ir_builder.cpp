@@ -177,6 +177,35 @@ static bool is_wide_str_lit(Node* n) {
   return (s[0] == 'L' || s[0] == 'u' || s[0] == 'U') && s[1] == '"';
 }
 
+// Compute the byte length of a narrow string literal (including null terminator).
+// Returns -1 if unknown.
+static int str_lit_byte_len(Node* n) {
+  if (!n || n->kind != NK_STR_LIT || !n->sval || is_wide_str_lit(n)) return -1;
+  const char* raw = n->sval;
+  // Find opening quote
+  int start = 0;
+  if (raw[start] == '"') start++;
+  else return -1;
+  int len = 0;
+  for (const char* p = raw + start; *p && *p != '"'; p++) {
+    if (*p == '\\' && *(p+1)) {
+      char esc = *(p+1);
+      if ((esc >= '0' && esc <= '7')) {
+        // Octal: up to 3 digits
+        p++;
+        while (*(p+1) >= '0' && *(p+1) <= '7') p++;
+      } else if (esc == 'x' || esc == 'X') {
+        p++;
+        while (isxdigit((unsigned char)*(p+1))) p++;
+      } else {
+        p++;  // single char escape
+      }
+    }
+    len++;
+  }
+  return len + 1;  // +1 for null terminator
+}
+
 // In C, assigning a string literal to char*/unsigned char*/signed char*/void*
 // is accepted (although writing through it is undefined behavior).
 static bool allows_string_literal_ptr_target(const TypeSpec& ts) {
@@ -472,6 +501,58 @@ std::string IRBuilder::llvm_ty(const TypeSpec& ts) {
   return llvm_ty_base(ts.base);
 }
 
+// Return the ABI alignment of a type (in bytes) for AArch64.
+static int alignof_ty_impl(const TypeSpec& ts,
+                            const std::unordered_map<std::string, IRBuilder::StructInfo>& struct_defs);
+
+static int alignof_ty_impl(const TypeSpec& ts,
+                            const std::unordered_map<std::string, IRBuilder::StructInfo>& struct_defs) {
+  if (ts.ptr_level > 0) return 8;
+  if (is_array_ty(ts)) {
+    TypeSpec elem = drop_array_dim(ts);
+    return alignof_ty_impl(elem, struct_defs);
+  }
+  switch (ts.base) {
+  case TB_BOOL:
+  case TB_CHAR: case TB_UCHAR: case TB_SCHAR: return 1;
+  case TB_SHORT: case TB_USHORT: return 2;
+  case TB_INT:  case TB_UINT:   return 4;
+  case TB_LONG: case TB_ULONG:  return 8;
+  case TB_LONGLONG: case TB_ULONGLONG: return 8;
+  case TB_FLOAT:    return 4;
+  case TB_DOUBLE:   return 8;
+  case TB_LONGDOUBLE: return 8;
+  case TB_COMPLEX_FLOAT: return 4;
+  case TB_COMPLEX_DOUBLE: return 8;
+  case TB_COMPLEX_LONGDOUBLE: return 8;
+  case TB_COMPLEX_CHAR: case TB_COMPLEX_SCHAR: case TB_COMPLEX_UCHAR: return 1;
+  case TB_COMPLEX_SHORT: case TB_COMPLEX_USHORT: return 2;
+  case TB_COMPLEX_INT: case TB_COMPLEX_UINT: return 4;
+  case TB_COMPLEX_LONG: case TB_COMPLEX_ULONG:
+  case TB_COMPLEX_LONGLONG: case TB_COMPLEX_ULONGLONG: return 8;
+  case TB_INT128: case TB_UINT128: return 16;
+  case TB_ENUM:   return 4;
+  case TB_VA_LIST: return 8;
+  case TB_STRUCT: case TB_UNION: {
+    if (!ts.tag || !ts.tag[0]) return 8;
+    auto it = struct_defs.find(ts.tag);
+    if (it == struct_defs.end()) return 8;
+    const IRBuilder::StructInfo& si = it->second;
+    int max_align = 1;
+    for (size_t i = 0; i < si.field_types.size(); i++) {
+      TypeSpec ft = si.field_types[i];
+      if (si.field_array_sizes[i] >= 0) {
+        // field element type; align is same as element
+      }
+      int a = alignof_ty_impl(ft, struct_defs);
+      if (a > max_align) max_align = a;
+    }
+    return max_align;
+  }
+  default: return 4;
+  }
+}
+
 int IRBuilder::sizeof_ty(const TypeSpec& ts) {
   if (ts.ptr_level > 0 && ts.is_ptr_to_array) return 8;
   // Check array before ptr_level: e.g. fptr[3] has ptr_level=1 but is an array
@@ -508,17 +589,39 @@ int IRBuilder::sizeof_ty(const TypeSpec& ts) {
     auto it = struct_defs_.find(ts.tag);
     if (it == struct_defs_.end()) return 8;
     const StructInfo& si = it->second;
-    int total = 0, max_sz = 0;
-    for (size_t i = 0; i < si.field_types.size(); i++) {
-      if (si.field_array_sizes[i] == -2) continue;  // flex array: zero size
-      TypeSpec ft = si.field_types[i];
-      int sz = sizeof_ty(ft);
-      if (si.field_array_sizes[i] >= 0)
-        sz = (int)si.field_array_sizes[i] * sz;
-      if (si.is_union) { if (sz > max_sz) max_sz = sz; }
-      else             { total += sz; }
+    if (si.is_union) {
+      // union: size = max field size rounded up to max alignment
+      int max_sz = 0, max_align = 1;
+      for (size_t i = 0; i < si.field_types.size(); i++) {
+        if (si.field_array_sizes[i] == -2) continue;
+        TypeSpec ft = si.field_types[i];
+        int sz = sizeof_ty(ft);
+        if (si.field_array_sizes[i] >= 0)
+          sz = (int)si.field_array_sizes[i] * sz;
+        if (sz > max_sz) max_sz = sz;
+        int a = alignof_ty_impl(ft, struct_defs_);
+        if (a > max_align) max_align = a;
+      }
+      // pad up to alignment
+      return (max_sz + max_align - 1) & ~(max_align - 1);
+    } else {
+      // struct: sum fields with alignment padding, then pad end to struct alignment
+      int offset = 0, max_align = 1;
+      for (size_t i = 0; i < si.field_types.size(); i++) {
+        if (si.field_array_sizes[i] == -2) continue;  // flex array: zero size
+        TypeSpec ft = si.field_types[i];
+        int sz = sizeof_ty(ft);
+        if (si.field_array_sizes[i] >= 0)
+          sz = (int)si.field_array_sizes[i] * sz;
+        int a = alignof_ty_impl(ft, struct_defs_);
+        if (a > max_align) max_align = a;
+        // pad current offset to field alignment
+        offset = (offset + a - 1) & ~(a - 1);
+        offset += sz;
+      }
+      // pad end to struct alignment
+      return (offset + max_align - 1) & ~(max_align - 1);
     }
-    return si.is_union ? max_sz : total;
   }
   default: return 4;
   }
@@ -530,6 +633,11 @@ TypeSpec IRBuilder::expr_type(Node* n) {
   if (!n) return void_ts();
   switch (n->kind) {
   case NK_INT_LIT: {
+    // &&label (GCC label address): type is void*
+    if (n->name && !n->is_imaginary) {
+      TypeSpec vp{}; vp.base = TB_VOID; vp.ptr_level = 1;
+      return vp;
+    }
     // Imaginary integer literal (e.g. 200i) → _Complex long long
     if (n->is_imaginary) return make_ts(TB_COMPLEX_LONGLONG);
     // Check suffix for type: LL/ULL → long long, L/UL → long, U → unsigned int
@@ -606,10 +714,14 @@ TypeSpec IRBuilder::expr_type(Node* n) {
         strcmp(op,">")==0  || strcmp(op,">=")==0 ||
         strcmp(op,"&&")==0 || strcmp(op,"||")==0)
       return int_ts();
-    // Shifts: result type = promoted left operand
+    // Shifts: result type = promoted left operand (C11 §6.3.1.1)
     if (strcmp(op,"<<")==0 || strcmp(op,">>")==0) {
       TypeSpec lt = expr_type(n->left);
       if (lt.ptr_level > 0) lt = int_ts();
+      // Narrow integer types promote to int before shifting
+      if (lt.ptr_level == 0 && !is_array_ty(lt) && !is_float_base(lt.base) &&
+          !is_complex_base(lt.base) && sizeof_ty(lt) < 4)
+        return int_ts();
       return lt;
     }
     TypeSpec lt = expr_type(n->left);
@@ -670,7 +782,13 @@ TypeSpec IRBuilder::expr_type(Node* n) {
   case NK_UNARY: {
     if (!n->op) return int_ts();
     if (strcmp(n->op,"!")==0) return int_ts();
-    return expr_type(n->left);
+    TypeSpec ts = expr_type(n->left);
+    // C11 §6.3.1.1: integer promotions apply to arithmetic unary operators
+    if ((strcmp(n->op,"~")==0 || strcmp(n->op,"-")==0 || strcmp(n->op,"+")==0) &&
+        ts.ptr_level == 0 && !is_array_ty(ts) && !is_float_base(ts.base) &&
+        !is_complex_base(ts.base) && sizeof_ty(ts) < 4)
+      return int_ts();
+    return ts;
   }
   case NK_POSTFIX:          return expr_type(n->left);
   case NK_ADDR: {
@@ -1123,12 +1241,51 @@ static void hoist_allocas_in_expr(IRBuilder* irb, Node* n) {
     hoist_allocas_in_expr(irb, n->children[i]);
 }
 
+int IRBuilder::eval_array_dim_expr(Node* n) {
+  if (!n) return 0;
+  if (n->kind == NK_INT_LIT) return (int)n->ival;
+  if (n->kind == NK_CHAR_LIT) return (int)n->ival;
+  if (n->kind == NK_SIZEOF_TYPE) return sizeof_ty(n->type);
+  if (n->kind == NK_SIZEOF_EXPR) {
+    if (n->left && n->left->kind == NK_STR_LIT && !is_wide_str_lit(n->left)) {
+      int slen = str_lit_byte_len(n->left);
+      if (slen >= 0) return slen;
+    }
+    return sizeof_ty(expr_type(n->left));
+  }
+  if (n->kind == NK_ALIGNOF_TYPE) return alignof_ty_impl(n->type, struct_defs_);
+  if (n->kind == NK_CAST && n->left) return eval_array_dim_expr(n->left);
+  if (n->kind == NK_UNARY && n->op && n->left) {
+    int v = eval_array_dim_expr(n->left);
+    if (strcmp(n->op, "-") == 0) return -v;
+    if (strcmp(n->op, "+") == 0) return v;
+  }
+  if (n->kind == NK_BINOP && n->op && n->left && n->right) {
+    int l = eval_array_dim_expr(n->left), r = eval_array_dim_expr(n->right);
+    if (strcmp(n->op, "+") == 0) return l + r;
+    if (strcmp(n->op, "-") == 0) return l - r;
+    if (strcmp(n->op, "*") == 0) return l * r;
+    if (strcmp(n->op, "/") == 0 && r) return l / r;
+    if (strcmp(n->op, "%") == 0 && r) return l % r;
+  }
+  if (n->kind == NK_VAR && n->name) {
+    auto it = enum_consts_.find(n->name);
+    if (it != enum_consts_.end()) return (int)it->second;
+  }
+  return 0;
+}
+
 void IRBuilder::hoist_allocas(Node* node) {
   if (!node) return;
   switch (node->kind) {
   case NK_DECL: {
     if (!node->name) break;
     TypeSpec ts = node->type;
+    // Infer array size from size expression (e.g. `char buf[sizeof(x)+1]`)
+    if (is_array_ty(ts) && ts.array_size_expr && array_dim_at(ts, 0) <= 0) {
+      int dim = eval_array_dim_expr(ts.array_size_expr);
+      if (dim > 0) set_first_array_dim(ts, dim);
+    }
     // Infer array size from initializer for int x[] / char s[] local arrays
     if (is_array_ty(ts) && array_dim_at(ts, 0) == -2 && node->init) {
       int inferred = infer_array_size_from_init(node->init);
@@ -1143,6 +1300,12 @@ void IRBuilder::hoist_allocas(Node* node) {
       std::string llty = llvm_ty(ts);
       std::string init_val = node->init ? global_const(ts, node->init) : "zeroinitializer";
       preamble_.push_back(gname + " = internal global " + llty + " " + init_val);
+      break;
+    }
+    if (node->is_extern) {
+      // Block-scoped extern declaration: resolve to global symbol, no alloca.
+      node_slots_[node] = std::string("@") + node->name;
+      node_types_[node] = ts;
       break;
     }
     // Generate unique slot name to avoid LLVM alloca name collision when the same
@@ -1309,9 +1472,12 @@ std::string IRBuilder::emit_field_gep(const std::string& struct_ptr,
            ", i32 0, i32 0");
       cur_ptr = t;
     } else {
+      int llvm_ai = ai;
+      if (ai >= 0 && ai < (int)si.field_llvm_idx.size())
+        llvm_ai = si.field_llvm_idx[ai];
       std::string t = fresh_tmp();
       emit(t + " = getelementptr %struct." + cur_tag + ", ptr " + cur_ptr +
-           ", i32 0, i32 " + std::to_string(ai));
+           ", i32 0, i32 " + std::to_string(llvm_ai));
       cur_ptr = t;
     }
 
@@ -1350,9 +1516,13 @@ std::string IRBuilder::emit_field_gep(const std::string& struct_ptr,
            std::to_string(byte_offset));
       return t;
     }
+    // Use LLVM field index (may differ from C field index due to bitfield packing)
+    int llvm_idx = path.final_idx;
+    if (path.final_idx >= 0 && path.final_idx < (int)si.field_llvm_idx.size())
+      llvm_idx = si.field_llvm_idx[path.final_idx];
     std::string t = fresh_tmp();
     emit(t + " = getelementptr %struct." + cur_tag + ", ptr " + cur_ptr +
-         ", i32 0, i32 " + std::to_string(path.final_idx));
+         ", i32 0, i32 " + std::to_string(llvm_idx));
     return t;
   }
 }
@@ -1423,6 +1593,45 @@ int IRBuilder::bitfield_width_from_path(const std::string& /*outer_tag*/,
   int idx = path.final_idx;
   if (idx < 0 || idx >= (int)si.field_bit_widths.size()) return -1;
   return si.field_bit_widths[idx];
+}
+
+// Returns the bit offset within the storage unit for a bitfield member node.
+// Returns 0 if not a bitfield or not found.
+static int member_bit_offset(const std::unordered_map<std::string, IRBuilder::StructInfo>& struct_defs,
+                              Node* n) {
+  if (!n || n->kind != NK_MEMBER || !n->name) return 0;
+  // Need to get the struct type — but we don't want to call expr_type here (const issue).
+  // Instead, walk to find the tag.
+  // This is called from expr_type context, so just return 0 if we can't find it.
+  return 0;
+}
+
+// Get bit offset for a field given its tag and C field index.
+static int field_bit_offset(const std::unordered_map<std::string, IRBuilder::StructInfo>& struct_defs,
+                             const std::string& tag, int c_field_idx) {
+  auto it = struct_defs.find(tag);
+  if (it == struct_defs.end()) return 0;
+  const IRBuilder::StructInfo& si = it->second;
+  if (c_field_idx < 0 || c_field_idx >= (int)si.field_bit_offsets.size()) return 0;
+  return si.field_bit_offsets[c_field_idx];
+}
+
+// Get LLVM storage type string for a bitfield given its tag and C field index.
+static std::string field_storage_llty(const std::unordered_map<std::string, IRBuilder::StructInfo>& struct_defs,
+                                       const std::string& tag, int c_field_idx) {
+  auto it = struct_defs.find(tag);
+  if (it == struct_defs.end()) return "i32";
+  const IRBuilder::StructInfo& si = it->second;
+  if (c_field_idx < 0 || c_field_idx >= (int)si.field_types.size()) return "i32";
+  const TypeSpec& ft = si.field_types[c_field_idx];
+  if (ft.ptr_level > 0) return "i64";
+  switch (ft.base) {
+    case TB_BOOL: case TB_CHAR: case TB_SCHAR: case TB_UCHAR: return "i8";
+    case TB_SHORT: case TB_USHORT: return "i16";
+    case TB_INT: case TB_UINT: case TB_ENUM: return "i32";
+    case TB_LONG: case TB_ULONG: case TB_LONGLONG: case TB_ULONGLONG: return "i64";
+    default: return "i32";
+  }
 }
 
 // Helper: given an NK_MEMBER node, return bitfield width (-1 if not a bitfield).
@@ -1677,6 +1886,14 @@ std::string IRBuilder::codegen_expr(Node* n) {
 
   switch (n->kind) {
   case NK_INT_LIT: {
+    // &&label (GCC computed goto label address): return blockaddress constant
+    if (n->name && !n->is_imaginary) {
+      auto it = user_labels_.find(n->name);
+      std::string lbl_bb = (it != user_labels_.end())
+                           ? it->second
+                           : (std::string("user_") + n->name + "_0");
+      return "blockaddress(@" + current_fn_name_ + ", %" + lbl_bb + ")";
+    }
     if (n->is_imaginary) {
       // Imaginary integer literal Ni: produce { 0, N } for the appropriate complex type.
       // We emit a { T, T } aggregate with real=0, imag=ival.
@@ -1952,7 +2169,14 @@ std::string IRBuilder::codegen_expr(Node* n) {
       std::string t = fresh_tmp();
       if (llty == "float" || llty == "double")
         emit(t + " = fneg " + llty + " " + v);
-      else
+      else if (ts.ptr_level == 0 && !is_array_ty(ts) && !is_float_base(ts.base) &&
+               !is_complex_base(ts.base) && sizeof_ty(ts) < 4) {
+        // Integer promotion: promote narrow type to i32 before negation
+        bool is_unsigned = is_unsigned_base(ts.base);
+        std::string v32 = fresh_tmp();
+        emit(v32 + " = " + (is_unsigned ? "zext" : "sext") + " " + llty + " " + v + " to i32");
+        emit(t + " = sub i32 0, " + v32);
+      } else
         emit(t + " = sub " + llty + " 0, " + v);
       return t;
     }
@@ -1989,7 +2213,15 @@ std::string IRBuilder::codegen_expr(Node* n) {
         return t1;
       }
       std::string t = fresh_tmp();
-      emit(t + " = xor " + llty + " " + v + ", -1");
+      if (ts.ptr_level == 0 && !is_array_ty(ts) && !is_float_base(ts.base) &&
+          !is_complex_base(ts.base) && sizeof_ty(ts) < 4) {
+        // Integer promotion: promote narrow type to i32 before bitwise NOT
+        bool is_unsigned = is_unsigned_base(ts.base);
+        std::string v32 = fresh_tmp();
+        emit(v32 + " = " + (is_unsigned ? "zext" : "sext") + " " + llty + " " + v + " to i32");
+        emit(t + " = xor i32 " + v32 + ", -1");
+      } else
+        emit(t + " = xor " + llty + " " + v + ", -1");
       return t;
     }
     if (strcmp(n->op, "+") == 0) {
@@ -2528,15 +2760,11 @@ std::string IRBuilder::codegen_expr(Node* n) {
       std::string rem_op = is_unsigned_base(res_ts.base) ? "urem" : "srem";
       emit(t + " = " + rem_op + " " + res_llty + " " + lv + ", " + rv);
     } else if (strcmp(op, "<<") == 0) {
-      // Shift: result type = promoted left type.
-      // rv was already coerced to res_llty (= shift_llty) by the generic block
-      // above — do NOT coerce again or we'll emit "trunc i32 i16_val to i16".
-      std::string shift_llty = llvm_ty(lt);
-      emit(t + " = shl " + shift_llty + " " + lv + ", " + rv);
+      // lv/rv are already coerced to res_llty (promoted type) by the block above.
+      emit(t + " = shl " + res_llty + " " + lv + ", " + rv);
     } else if (strcmp(op, ">>") == 0) {
-      std::string shift_llty = llvm_ty(lt);
-      std::string shr_op = is_unsigned_base(lt.base) ? "lshr" : "ashr";
-      emit(t + " = " + shr_op + " " + shift_llty + " " + lv + ", " + rv);
+      std::string shr_op = is_unsigned_base(res_ts.base) ? "lshr" : "ashr";
+      emit(t + " = " + shr_op + " " + res_llty + " " + lv + ", " + rv);
     } else if (strcmp(op, "&") == 0) {
       emit(t + " = and " + res_llty + " " + lv + ", " + rv);
     } else if (strcmp(op, "|") == 0) {
@@ -2606,15 +2834,62 @@ std::string IRBuilder::codegen_expr(Node* n) {
         }
       }
       std::string ptr = codegen_lval(n->left);
-      // Bitfield write: mask value to bitfield width before storing.
+      // Bitfield write: read-modify-write with storage unit type.
       {
         int bfw = member_bitfield_width(n->left);
-        if (bfw > 0 && lts.ptr_level == 0 && !is_array_ty(lts) &&
-            (llty == "i8" || llty == "i16" || llty == "i32" || llty == "i64")) {
+        if (bfw > 0 && lts.ptr_level == 0 && !is_array_ty(lts)) {
+          // Determine storage type and bit offset
+          TypeSpec obj_ts = expr_type(n->left->left ? n->left->left : n->left);
+          if (n->left->is_arrow && obj_ts.ptr_level > 0) obj_ts.ptr_level--;
+          std::string stor_llty = "i32";
+          int bit_off = 0;
+          if ((obj_ts.base == TB_STRUCT || obj_ts.base == TB_UNION) && obj_ts.tag) {
+            FieldPath path;
+            if (find_field(obj_ts.tag, n->left->name, path)) {
+              bit_off = field_bit_offset(struct_defs_, path.final_tag, path.final_idx);
+              stor_llty = field_storage_llty(struct_defs_, path.final_tag, path.final_idx);
+            }
+          }
           long long mask = (bfw >= 64) ? (long long)-1 : ((1LL << bfw) - 1);
-          std::string masked = fresh_tmp();
-          emit(masked + " = and " + llty + " " + rval + ", " + std::to_string(mask));
-          rval = masked;
+          // Coerce rval to storage type
+          std::string rval_s = rval;
+          if (stor_llty != llty) {
+            auto llty_bits2 = [](const std::string& t) {
+              if (t == "i1") return 1; if (t == "i8") return 8;
+              if (t == "i16") return 16; if (t == "i32") return 32; return 64;
+            };
+            int sb2 = llty_bits2(stor_llty), lb2 = llty_bits2(llty);
+            rval_s = fresh_tmp();
+            if (sb2 > lb2)
+              emit(rval_s + " = sext " + llty + " " + rval + " to " + stor_llty);
+            else if (sb2 < lb2)
+              emit(rval_s + " = trunc " + llty + " " + rval + " to " + stor_llty);
+            else
+              emit(rval_s + " = bitcast " + llty + " " + rval + " to " + stor_llty);
+          }
+          // Mask to bitfield width
+          std::string new_bits = fresh_tmp();
+          emit(new_bits + " = and " + stor_llty + " " + rval_s + ", " + std::to_string(mask));
+          if (bit_off == 0 && bfw >= 8 * sizeof_ty(lts)) {
+            // Entire storage unit is this bitfield — just store directly
+            emit("store " + stor_llty + " " + new_bits + ", ptr " + ptr);
+          } else {
+            // Read-modify-write
+            std::string old_val = fresh_tmp();
+            emit(old_val + " = load " + stor_llty + ", ptr " + ptr);
+            long long clear_mask = ~(mask << bit_off);
+            std::string cleared = fresh_tmp();
+            emit(cleared + " = and " + stor_llty + " " + old_val + ", " + std::to_string(clear_mask));
+            std::string shifted = new_bits;
+            if (bit_off > 0) {
+              shifted = fresh_tmp();
+              emit(shifted + " = shl " + stor_llty + " " + new_bits + ", " + std::to_string(bit_off));
+            }
+            std::string merged = fresh_tmp();
+            emit(merged + " = or " + stor_llty + " " + cleared + ", " + shifted);
+            emit("store " + stor_llty + " " + merged + ", ptr " + ptr);
+          }
+          return rval;  // assignment expression value is the RHS (not masked)
         }
       }
       emit("store " + llty + " " + rval + ", ptr " + ptr);
@@ -3118,13 +3393,13 @@ std::string IRBuilder::codegen_expr(Node* n) {
 
     if (n->left->kind == NK_VAR && n->left->name) {
       fn_name = n->left->name;
-      // __builtin_alloca(size): emit LLVM variable-size alloca, not a function call.
+      // __builtin_alloca(size): emit LLVM variable-size alloca inline (size may be runtime).
       if (fn_name == "__builtin_alloca" && n->n_children >= 1) {
         std::string sz = codegen_expr(n->children[0]);
         sz = coerce(sz, expr_type(n->children[0]), "i64");
         std::string t = fresh_tmp();
-        // Dynamic alloca must go in the entry block. Emit into alloca_lines_.
-        alloca_lines_.push_back("  " + t + " = alloca i8, i64 " + sz);
+        // Dynamic alloca stays in-place (size computed at runtime, cannot be hoisted).
+        emit(t + " = alloca i8, i64 " + sz);
         return t;
       }
       // Remap common __builtin_* → standard library names.
@@ -3515,22 +3790,27 @@ std::string IRBuilder::codegen_expr(Node* n) {
       if (fn_name == "__builtin_add_overflow" || fn_name == "__builtin_sub_overflow" ||
           fn_name == "__builtin_mul_overflow") {
         if (n->n_children < 3) { ret_ts = int_ts(); return "0"; }
-        TypeSpec ats = expr_type(n->children[0]);
+        // Overflow is determined by the output type (*res), not the input types.
+        TypeSpec res_ptr_ts = expr_type(n->children[2]);
+        TypeSpec res_ts = res_ptr_ts;
+        if (res_ts.ptr_level > 0) res_ts.ptr_level--;  // pointee type
         std::string itype = "i32";
-        if (ats.base == TB_LONGLONG || ats.base == TB_ULONGLONG) itype = "i64";
-        else if (ats.base == TB_LONG || ats.base == TB_ULONG) itype = "i64";
+        if (res_ts.base == TB_LONGLONG || res_ts.base == TB_ULONGLONG) itype = "i64";
+        else if (res_ts.base == TB_LONG || res_ts.base == TB_ULONG) itype = "i64";
+        else if (res_ts.base == TB_SHORT || res_ts.base == TB_USHORT) itype = "i16";
+        else if (res_ts.base == TB_CHAR || res_ts.base == TB_SCHAR || res_ts.base == TB_UCHAR) itype = "i8";
         std::string op = (fn_name == "__builtin_add_overflow") ? "add" :
                          (fn_name == "__builtin_sub_overflow") ? "sub" : "mul";
-        bool is_signed = !(ats.base == TB_UINT || ats.base == TB_ULONG ||
-                           ats.base == TB_ULONGLONG || ats.base == TB_USHORT ||
-                           ats.base == TB_UCHAR);
+        bool is_signed = !(res_ts.base == TB_UINT || res_ts.base == TB_ULONG ||
+                           res_ts.base == TB_ULONGLONG || res_ts.base == TB_USHORT ||
+                           res_ts.base == TB_UCHAR);
         std::string intr = std::string("llvm.") + (is_signed ? "s" : "u") + op + ".with.overflow." + itype;
         if (!auto_declared_fns_.count(intr))
           auto_declared_fns_[intr] = "declare { " + itype + ", i1 } @" + intr +
                                      "(" + itype + ", " + itype + ")";
         std::string a = codegen_expr(n->children[0]);
         std::string b = codegen_expr(n->children[1]);
-        a = coerce(a, ats, itype);
+        a = coerce(a, expr_type(n->children[0]), itype);
         b = coerce(b, expr_type(n->children[1]), itype);
         std::string res_struct = fresh_tmp(), ov_bit = fresh_tmp(), res_val = fresh_tmp();
         std::string ov_int = fresh_tmp();
@@ -4103,48 +4383,77 @@ std::string IRBuilder::codegen_expr(Node* n) {
       return codegen_lval(n);
     }
     std::string ptr = codegen_lval(n);
-    std::string t = fresh_tmp();
-    emit(t + " = load " + llty + ", ptr " + ptr);
-    // Bitfield read: apply mask and sign extension.
+    // Bitfield read: determine storage type, bit offset, then mask/shift.
     int bfw = member_bitfield_width(n);
-    if (bfw > 0 && res_ts.ptr_level == 0 && !is_array_ty(res_ts) &&
-        (llty == "i8" || llty == "i16" || llty == "i32" || llty == "i64")) {
-      long long mask = (bfw >= 64) ? (long long)-1 : ((1LL << bfw) - 1);
-      std::string masked = fresh_tmp();
-      emit(masked + " = and " + llty + " " + t + ", " + std::to_string(mask));
-      // Sign-extend for signed bitfields. Use declared (non-promoted) field type
-      // since narrow unsigned bitfields promote to int but are unsigned by declaration.
+    if (bfw > 0 && res_ts.ptr_level == 0 && !is_array_ty(res_ts)) {
+      // Get storage type and bit offset for this bitfield.
+      TypeSpec obj_ts = expr_type(n->left);
+      if (n->is_arrow && obj_ts.ptr_level > 0) obj_ts.ptr_level -= 1;
+      std::string stor_llty = "i32";
+      int bit_off = 0;
       TypeSpec decl_ts = res_ts;
-      {
-        TypeSpec obj_ts = expr_type(n->left);
-        if (n->is_arrow && obj_ts.ptr_level > 0) obj_ts.ptr_level -= 1;
-        if ((obj_ts.base == TB_STRUCT || obj_ts.base == TB_UNION) && obj_ts.tag) {
-          FieldPath path;
-          if (find_field(obj_ts.tag, n->name, path))
-            decl_ts = field_type_from_path(obj_ts.tag, path);
+      if ((obj_ts.base == TB_STRUCT || obj_ts.base == TB_UNION) && obj_ts.tag) {
+        FieldPath path;
+        if (find_field(obj_ts.tag, n->name, path)) {
+          bit_off = field_bit_offset(struct_defs_, path.final_tag, path.final_idx);
+          stor_llty = field_storage_llty(struct_defs_, path.final_tag, path.final_idx);
+          decl_ts = field_type_from_path(obj_ts.tag, path);
         }
       }
+      // Load using storage type
+      std::string t = fresh_tmp();
+      emit(t + " = load " + stor_llty + ", ptr " + ptr);
+      // Shift right by bit_off to move bitfield to position 0
+      std::string shifted = t;
+      if (bit_off > 0) {
+        shifted = fresh_tmp();
+        emit(shifted + " = lshr " + stor_llty + " " + t + ", " + std::to_string(bit_off));
+      }
+      // Mask to bitfield width
+      long long mask = (bfw >= 64) ? (long long)-1 : ((1LL << bfw) - 1);
+      std::string masked = fresh_tmp();
+      emit(masked + " = and " + stor_llty + " " + shifted + ", " + std::to_string(mask));
+      // Sign-extend for signed bitfields
       bool is_signed = !is_unsigned_base(decl_ts.base) && decl_ts.base != TB_BOOL;
-      if (res_ts.base == TB_ENUM && res_ts.tag) {
-        auto eit = enum_all_nonnegative_.find(res_ts.tag);
+      if (decl_ts.base == TB_ENUM && decl_ts.tag) {
+        auto eit = enum_all_nonnegative_.find(decl_ts.tag);
         if (eit != enum_all_nonnegative_.end() && eit->second)
           is_signed = false;
       }
-      if (is_signed) {
-        // Sign bit: if bit (bfw-1) is set, extend to negative.
+      std::string result = masked;
+      if (is_signed && bfw < (int)(stor_llty == "i8" ? 8 : stor_llty == "i16" ? 16 :
+                                    stor_llty == "i32" ? 32 : 64)) {
         long long sign_bit = 1LL << (bfw - 1);
-        std::string sign_t = fresh_tmp(), sext_t = fresh_tmp(), se_t = fresh_tmp();
-        emit(sign_t + " = and " + llty + " " + masked + ", " + std::to_string(sign_bit));
-        emit(sext_t + " = icmp ne " + llty + " " + sign_t + ", 0");
-        // If sign bit set, extend: value | ~mask = value - (1 << bfw)
+        std::string sign_t = fresh_tmp(), sext_t = fresh_tmp();
+        emit(sign_t + " = and " + stor_llty + " " + masked + ", " + std::to_string(sign_bit));
+        emit(sext_t + " = icmp ne " + stor_llty + " " + sign_t + ", 0");
         long long sign_ext = ~mask;
         std::string ext_val = fresh_tmp(), phi_t = fresh_tmp();
-        emit(ext_val + " = or " + llty + " " + masked + ", " + std::to_string(sign_ext));
-        emit(phi_t + " = select i1 " + sext_t + ", " + llty + " " + ext_val + ", " + llty + " " + masked);
-        return phi_t;
+        emit(ext_val + " = or " + stor_llty + " " + masked + ", " + std::to_string(sign_ext));
+        emit(phi_t + " = select i1 " + sext_t + ", " + stor_llty + " " + ext_val + ", " + stor_llty + " " + masked);
+        result = phi_t;
       }
-      return masked;
+      // Extend or truncate to result type if needed
+      if (stor_llty != llty) {
+        auto llty_bits = [](const std::string& t) {
+          if (t == "i1") return 1; if (t == "i8") return 8;
+          if (t == "i16") return 16; if (t == "i32") return 32; return 64;
+        };
+        int sb = llty_bits(stor_llty), db = llty_bits(llty);
+        std::string ext_t = fresh_tmp();
+        if (db > sb)
+          emit(ext_t + " = " + (is_signed ? "sext" : "zext") + " " + stor_llty + " " + result + " to " + llty);
+        else if (db < sb)
+          emit(ext_t + " = trunc " + stor_llty + " " + result + " to " + llty);
+        else
+          emit(ext_t + " = bitcast " + stor_llty + " " + result + " to " + llty);
+        return ext_t;
+      }
+      return result;
     }
+    // Non-bitfield read
+    std::string t = fresh_tmp();
+    emit(t + " = load " + llty + ", ptr " + ptr);
     return t;
   }
 
@@ -4216,6 +4525,11 @@ std::string IRBuilder::codegen_expr(Node* n) {
   }
 
   case NK_SIZEOF_EXPR: {
+    // Special-case: sizeof(string_literal) = byte length including null terminator
+    if (n->left && n->left->kind == NK_STR_LIT && !is_wide_str_lit(n->left)) {
+      int slen = str_lit_byte_len(n->left);
+      if (slen >= 0) return std::to_string(slen);
+    }
     int sz = sizeof_ty(expr_type(n->left));
     return std::to_string(sz);
   }
@@ -4224,8 +4538,7 @@ std::string IRBuilder::codegen_expr(Node* n) {
     return std::to_string(sz);
   }
   case NK_ALIGNOF_TYPE: {
-    // Simplified: return sizeof
-    int sz = sizeof_ty(n->type);
+    int sz = alignof_ty_impl(n->type, struct_defs_);
     return std::to_string(sz);
   }
 
@@ -4619,10 +4932,13 @@ static void emit_agg_init_impl(IRBuilder* irb, TypeSpec ts, const std::string& p
         ft.inner_rank = -1;
       }
       std::string field_llty = irb->llvm_ty(ft);
-      // Get a GEP for this field
+      // Get a GEP for this field (use LLVM field index, not C field index)
+      int fi_llvm = fi;
+      if (fi >= 0 && fi < (int)si.field_llvm_idx.size())
+        fi_llvm = si.field_llvm_idx[fi];
       std::string fgep = irb->fresh_tmp();
       irb->emit(fgep + " = getelementptr " + struct_llty + ", ptr " + ptr +
-                ", i32 0, i32 " + std::to_string(fi));
+                ", i32 0, i32 " + std::to_string(fi_llvm));
       // Determine how to initialize this field.
       // Pre-compute whether val_node itself has aggregate type (struct/union).
       // If so, it is a direct assignment — brace-elision must NOT fire.
@@ -4950,7 +5266,7 @@ void IRBuilder::emit_stmt(Node* n) {
     block_depth_++;
     for (int i = 0; i < n->n_children; i++) {
       Node* child = n->children[i];
-      if (child && child->kind == NK_DECL && child->name) {
+      if (child && child->kind == NK_DECL && child->name && !child->is_extern) {
         std::string nm(child->name);
         if (names_in_this_scope.count(nm))
           throw std::runtime_error("redefinition of local identifier in same scope: " + nm);
@@ -5335,9 +5651,17 @@ void IRBuilder::emit_stmt(Node* n) {
       else
         emit_terminator("br label %user_" + std::string(n->name) + "_0");
     } else {
-      // Computed goto (goto *expr): evaluate for side effects, emit unreachable.
-      if (n->left) codegen_expr(n->left);
-      emit_terminator("unreachable");
+      // Computed goto (goto *expr): emit indirectbr with all pre-scanned labels as targets.
+      std::string val = n->left ? codegen_expr(n->left) : "null";
+      std::string targets;
+      for (auto& kv : user_labels_) {
+        if (!targets.empty()) targets += ", ";
+        targets += "label %" + kv.second;
+      }
+      if (targets.empty())
+        emit_terminator("unreachable");
+      else
+        emit_terminator("indirectbr ptr " + val + ", [" + targets + "]");
     }
     break;
   }
@@ -5509,8 +5833,31 @@ void IRBuilder::emit_struct_def(Node* sd) {
   if (struct_defs_.count(tag) &&
       sd->n_fields <= (int)struct_defs_[tag].field_names.size()) return;
 
+  // Helper: return storage-unit size in bits for a bitfield base type.
+  auto bf_storage_bits = [](TypeBase base, int ptr_level) -> int {
+    if (ptr_level > 0) return 64;
+    switch (base) {
+      case TB_BOOL: case TB_CHAR: case TB_SCHAR: case TB_UCHAR: return 8;
+      case TB_SHORT: case TB_USHORT: return 16;
+      case TB_INT: case TB_UINT: case TB_ENUM: return 32;
+      case TB_LONG: case TB_ULONG: case TB_LONGLONG: case TB_ULONGLONG: return 64;
+      default: return 32;
+    }
+  };
+  // Helper: return LLVM type for a bitfield storage unit of given size in bits.
+  auto bf_storage_llty = [](int bits) -> std::string {
+    switch (bits) {
+      case 8:  return "i8";
+      case 16: return "i16";
+      case 32: return "i32";
+      case 64: return "i64";
+      default: return "i64";
+    }
+  };
+
   StructInfo si;
   si.is_union = sd->is_union;
+  si.n_llvm_fields = 0;
 
   for (int i = 0; i < sd->n_fields; i++) {
     Node* f = sd->fields[i];
@@ -5523,6 +5870,8 @@ void IRBuilder::emit_struct_def(Node* sd) {
     si.field_array_sizes.push_back(arr_size);
     si.field_is_anon.push_back(f->is_anon_field);
     si.field_bit_widths.push_back((int)f->ival);  // -1 if not a bitfield
+    si.field_llvm_idx.push_back(0);   // filled in below
+    si.field_bit_offsets.push_back(0); // filled in below
   }
   struct_defs_[tag] = si;
 
@@ -5538,25 +5887,82 @@ void IRBuilder::emit_struct_def(Node* sd) {
       if (si.field_array_sizes[i] >= 0) sz *= (int)si.field_array_sizes[i];
       if (sz > max_sz) max_sz = sz;
     }
-    preamble_.push_back(std::string("%struct.") + tag + " = type { [" +
-                        std::to_string(max_sz) + " x i8] }");
+    // Also fill in llvm_idx/bit_offsets for union fields (all at idx 0)
+    for (size_t i = 0; i < si.field_types.size(); i++) {
+      struct_defs_[tag].field_llvm_idx[i] = 0;
+      struct_defs_[tag].field_bit_offsets[i] = 0;
+    }
+    struct_defs_[tag].n_llvm_fields = 1;
+    std::string ba_ty = "[" + std::to_string(max_sz) + " x i8]";
+    struct_defs_[tag].llvm_field_types.push_back(ba_ty);
+    preamble_.push_back(std::string("%struct.") + tag + " = type { " + ba_ty + " }");
   } else {
+    // Compute bitfield packing: consecutive bitfields with the same base type
+    // are packed into a single storage unit (e.g. all i8 bitfields → one i8).
     std::string fields_str;
     bool first = true;
+    int llvm_idx = 0;
+    int cur_bf_base_bits = 0;   // storage-unit size in bits (0 = no active slot)
+    int cur_bf_fill_bits = 0;   // bits used so far in current storage slot
+    TypeBase cur_bf_base = TB_VOID;
+
     for (size_t i = 0; i < si.field_types.size(); i++) {
-      // Skip flex array members (array_size == -2): zero-size trailing arrays
-      if (si.field_array_sizes[i] == -2) continue;
-      if (!first) fields_str += ", ";
-      first = false;
-      TypeSpec ft = si.field_types[i];
-      if (si.field_array_sizes[i] >= 0) {
-        ft.array_size = si.field_array_sizes[i];
-        // inner_rank is meaningless for struct fields stored via field_array_sizes;
-        // reset it so llvm_ty produces [N x elem] correctly.
-        ft.inner_rank = -1;
+      if (si.field_array_sizes[i] == -2) {
+        // Flex array: zero-size, no LLVM field needed
+        struct_defs_[tag].field_llvm_idx[i] = llvm_idx;
+        struct_defs_[tag].field_bit_offsets[i] = 0;
+        continue;
       }
-      fields_str += llvm_ty(ft);
+      int bfw = si.field_bit_widths[i];
+      if (bfw > 0) {
+        // Bitfield
+        TypeSpec ft = si.field_types[i];
+        int slot_bits = bf_storage_bits(ft.base, ft.ptr_level);
+        bool same_base = (ft.base == cur_bf_base || slot_bits == cur_bf_base_bits);
+        bool fits = (cur_bf_fill_bits + bfw <= cur_bf_base_bits);
+        if (cur_bf_base_bits > 0 && same_base && fits) {
+          // Fits in current slot
+          struct_defs_[tag].field_llvm_idx[i] = llvm_idx - 1;
+          struct_defs_[tag].field_bit_offsets[i] = cur_bf_fill_bits;
+          cur_bf_fill_bits += bfw;
+        } else {
+          // Emit new slot field
+          if (!first) fields_str += ", ";
+          first = false;
+          std::string slot_lty = bf_storage_llty(slot_bits);
+          fields_str += slot_lty;
+          struct_defs_[tag].field_llvm_idx[i] = llvm_idx;
+          struct_defs_[tag].field_bit_offsets[i] = 0;
+          cur_bf_base_bits = slot_bits;
+          cur_bf_fill_bits = bfw;
+          cur_bf_base = ft.base;
+          struct_defs_[tag].llvm_field_types.push_back(slot_lty);
+          llvm_idx++;
+        }
+      } else {
+        // Non-bitfield: close any active bitfield slot
+        cur_bf_base_bits = 0;
+        cur_bf_fill_bits = 0;
+        cur_bf_base = TB_VOID;
+
+        struct_defs_[tag].field_llvm_idx[i] = llvm_idx;
+        struct_defs_[tag].field_bit_offsets[i] = 0;
+
+        if (!first) fields_str += ", ";
+        first = false;
+        TypeSpec ft = si.field_types[i];
+        if (si.field_array_sizes[i] >= 0) {
+          ft.array_size = si.field_array_sizes[i];
+          ft.inner_rank = -1;
+        }
+        std::string ft_lty = llvm_ty(ft);
+        fields_str += ft_lty;
+        struct_defs_[tag].llvm_field_types.push_back(ft_lty);
+        llvm_idx++;
+      }
     }
+    struct_defs_[tag].n_llvm_fields = llvm_idx;
+    if (first) fields_str = "i8";  // empty struct: add padding
     preamble_.push_back(std::string("%struct.") + tag + " = type { " +
                         fields_str + " }");
   }
@@ -5724,24 +6130,52 @@ std::string global_const_flat_impl(IRBuilder* irb, TypeSpec ts, Node* init_list,
     const IRBuilder::StructInfo& si = sit->second;
     int n_fields = (int)si.field_names.size();
     if (n_fields == 0) return "zeroinitializer";
-    std::vector<std::string> fvals(n_fields, "zeroinitializer");
+    // Collect per-C-field values from flat list
+    std::vector<std::string> fvals(n_fields, "0");
     for (int fi = 0; fi < n_fields; fi++) {
       TypeSpec ft = si.field_types[fi];
       if (si.field_array_sizes[fi] >= 0) {
         long long dims[1] = {si.field_array_sizes[fi]};
         set_array_dims(ft, dims, 1);
       }
-      fvals[fi] = global_const_flat_impl(irb, ft, init_list, flat_idx);
+      int bfw = (fi < (int)si.field_bit_widths.size()) ? si.field_bit_widths[fi] : -1;
+      // For bitfields, consume a scalar from the flat list
+      fvals[fi] = global_const_flat_impl(irb, bfw > 0 ? ft : ft, init_list, flat_idx);
+    }
+    // Pack bitfields into LLVM storage units
+    int n_llvm = si.n_llvm_fields;
+    std::vector<long long> llvm_packed(n_llvm, 0LL);
+    std::vector<std::string> llvm_val_str(n_llvm);
+    std::vector<bool> llvm_is_bf(n_llvm, false);
+    for (int fi = 0; fi < n_fields; fi++) {
+      int li = (fi < (int)si.field_llvm_idx.size()) ? si.field_llvm_idx[fi] : fi;
+      if (li < 0 || li >= n_llvm) continue;
+      int bfw = (fi < (int)si.field_bit_widths.size()) ? si.field_bit_widths[fi] : -1;
+      if (bfw > 0) {
+        llvm_is_bf[li] = true;
+        long long raw = 0;
+        if (!fvals[fi].empty() && fvals[fi] != "zeroinitializer")
+          raw = std::stoll(fvals[fi]);
+        int bit_off = (fi < (int)si.field_bit_offsets.size()) ? si.field_bit_offsets[fi] : 0;
+        long long mask = (bfw >= 64) ? ~0LL : ((1LL << bfw) - 1);
+        llvm_packed[li] |= (raw & mask) << bit_off;
+      } else {
+        llvm_val_str[li] = fvals[fi];
+      }
+    }
+    for (int li = 0; li < n_llvm; li++) {
+      if (llvm_is_bf[li])
+        llvm_val_str[li] = std::to_string(llvm_packed[li]);
     }
     std::string result = "{ ";
-    for (int fi = 0; fi < n_fields; fi++) {
-      if (fi > 0) result += ", ";
-      TypeSpec ft = si.field_types[fi];
-      if (si.field_array_sizes[fi] >= 0) {
-        long long dims[1] = {si.field_array_sizes[fi]};
-        set_array_dims(ft, dims, 1);
+    for (int li = 0; li < n_llvm; li++) {
+      if (li > 0) result += ", ";
+      std::string lty = (li < (int)si.llvm_field_types.size()) ? si.llvm_field_types[li] : "";
+      if (llvm_val_str[li].empty()) {
+        result += lty + " " + (lty.empty() || lty[0] == '[' || lty[0] == '%' ? "zeroinitializer" : "0");
+      } else {
+        result += lty + " " + llvm_val_str[li];
       }
-      result += irb->llvm_ty(ft) + " " + fvals[fi];
     }
     result += " }";
     return result;
@@ -6103,6 +6537,14 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
 
   // Pointer types
   if (ts.ptr_level > 0) {
+    // &&label (GCC label address extension): blockaddress constant
+    if (init->kind == NK_INT_LIT && init->name && !init->is_imaginary) {
+      auto it = user_labels_.find(init->name);
+      std::string lbl_bb = (it != user_labels_.end())
+                           ? it->second
+                           : (std::string("user_") + init->name + "_0");
+      return "blockaddress(@" + current_fn_name_ + ", %" + lbl_bb + ")";
+    }
     if (init->kind == NK_INT_LIT && init->ival == 0) return "null";
     // Strip explicit casts in global initializer: (void*)"hello", (char*)func, etc.
     if (init->kind == NK_CAST && init->left)
@@ -6112,6 +6554,21 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
       std::string content = decode_narrow_string_lit(init->sval);
       std::string gname = get_string_global(content);
       return gname;
+    }
+    // String literal + integer offset: "foo" + 1 → GEP constant expression
+    if (init->kind == NK_BINOP && init->op && strcmp(init->op, "+") == 0 &&
+        init->left && init->right) {
+      Node* slnode = nullptr; Node* inode = nullptr;
+      if (init->left->kind == NK_STR_LIT)  { slnode = init->left;  inode = init->right; }
+      if (init->right->kind == NK_STR_LIT) { slnode = init->right; inode = init->left; }
+      if (slnode && inode && slnode->sval) {
+        long long off = static_eval_int(inode, enum_consts_);
+        std::string content = decode_narrow_string_lit(slnode->sval);
+        std::string gname = get_string_global(content);
+        int len = (int)content.size() + 1;
+        return "getelementptr inbounds ([" + std::to_string(len) + " x i8], ptr " +
+               gname + ", i32 0, i32 " + std::to_string(off) + ")";
+      }
     }
     if (init->kind == NK_ADDR && init->left) {
       Node* operand = init->left;
@@ -6425,24 +6882,61 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
 
     // Return just the brace initializer (no "%struct.X " prefix — caller adds type)
     // FAM fields (field_array_sizes == -2) are included with concrete sizes when initialized.
+    // Bitfield packing: collect per-LLVM-field values, packing bitfields into storage units.
+    int n_llvm = si.n_llvm_fields;
+    std::vector<long long> llvm_packed(n_llvm, 0LL);  // accumulated integer for bitfield slots
+    std::vector<std::string> llvm_val_str(n_llvm);    // final string per LLVM field
+    std::vector<bool> llvm_is_bf(n_llvm, false);      // true = bitfield storage slot
+
+    for (int i = 0; i < n_fields; i++) {
+      if (si.field_array_sizes[i] == -2) continue;  // FAM: handled separately
+      int li = (i < (int)si.field_llvm_idx.size()) ? si.field_llvm_idx[i] : i;
+      if (li < 0 || li >= n_llvm) continue;
+      int bfw = (i < (int)si.field_bit_widths.size()) ? si.field_bit_widths[i] : -1;
+      if (bfw > 0) {
+        // Bitfield: accumulate into packed storage
+        llvm_is_bf[li] = true;
+        long long raw = 0;
+        if (!vals[i].empty() && vals[i] != "zeroinitializer")
+          raw = std::stoll(vals[i]);
+        int bit_off = (i < (int)si.field_bit_offsets.size()) ? si.field_bit_offsets[i] : 0;
+        // Mask to bitfield width and shift into position
+        long long mask = (bfw >= 64) ? ~0LL : ((1LL << bfw) - 1);
+        raw = (raw & mask) << bit_off;
+        llvm_packed[li] |= raw;
+      } else {
+        // Non-bitfield: use value directly
+        llvm_val_str[li] = vals[i];
+      }
+    }
+    // Convert packed integers to strings
+    for (int li = 0; li < n_llvm; li++) {
+      if (llvm_is_bf[li])
+        llvm_val_str[li] = std::to_string(llvm_packed[li]);
+    }
+
     std::string result = "{ ";
     bool first_field = true;
-    for (int i = 0; i < n_fields; i++) {
-      if (si.field_array_sizes[i] == -2) {
-        // Flexible array member: include only if concrete init data was found
-        if (fam_concrete_sizes[i] <= 0) continue;
-        if (!first_field) result += ", ";
-        first_field = false;
-        TypeSpec ft = si.field_types[i];
-        long long fdims[1] = {fam_concrete_sizes[i]};
-        set_array_dims(ft, fdims, 1);
-        result += llvm_ty(ft) + " " + vals[i];
-        continue;
+    // Emit LLVM fields
+    for (int li = 0; li < n_llvm; li++) {
+      std::string lty = (li < (int)si.llvm_field_types.size()) ? si.llvm_field_types[li] : "";
+      if (!first_field) result += ", ";
+      first_field = false;
+      if (llvm_val_str[li].empty()) {
+        result += lty + " " + (lty.empty() || lty[0] == '[' || lty[0] == '%' ? "zeroinitializer" : "0");
+      } else {
+        result += lty + " " + llvm_val_str[li];
       }
+    }
+    // Append FAM fields (not part of n_llvm_fields)
+    for (int i = 0; i < n_fields; i++) {
+      if (si.field_array_sizes[i] != -2) continue;
+      if (fam_concrete_sizes[i] <= 0) continue;
       if (!first_field) result += ", ";
       first_field = false;
       TypeSpec ft = si.field_types[i];
-      if (si.field_array_sizes[i] >= 0) ft.array_size = si.field_array_sizes[i];
+      long long fdims[1] = {fam_concrete_sizes[i]};
+      set_array_dims(ft, fdims, 1);
       result += llvm_ty(ft) + " " + vals[i];
     }
     result += " }";
