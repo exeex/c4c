@@ -737,7 +737,22 @@ class HirEmitter {
     const auto it = mod_.struct_defs.find(ts.tag);
     if (it == mod_.struct_defs.end()) return "zeroinitializer";
     const HirStructDef& sd = it->second;
-    if (sd.is_union) return "zeroinitializer";
+    if (sd.is_union) {
+      const int sz = compute_struct_size(mod_, std::string(ts.tag));
+      if (const auto* scalar = std::get_if<InitScalar>(&init)) {
+        const Expr& se = get_expr(scalar->expr);
+        long long val = 0;
+        if (const auto* il = std::get_if<IntLiteral>(&se.payload)) val = il->value;
+        else if (const auto* cl = std::get_if<CharLiteral>(&se.payload)) val = cl->value;
+        if (val != 0) {
+          std::string bytes(static_cast<size_t>(sz), '\0');
+          for (int i = 0; i < sz; ++i)
+            bytes[static_cast<size_t>(i)] = static_cast<char>((val >> (8 * i)) & 0xFF);
+          return "{ [" + std::to_string(sz) + " x i8] c\"" + escape_llvm_c_bytes(bytes) + "\" }";
+        }
+      }
+      return "{ [" + std::to_string(sz) + " x i8] zeroinitializer }";
+    }
 
     std::vector<std::string> field_vals;
     field_vals.reserve(sd.fields.size());
@@ -766,7 +781,7 @@ class HirEmitter {
           else return GlobalInit(*v);
         }, item.value);
         field_vals[idx] = emit_const_init(field_decl_type(sd.fields[idx]), child_init);
-        if (!item.field_designator && !item.index_designator) next_idx = idx + 1;
+        next_idx = idx + 1;  // always advance; designators set the base, next follows
       }
     } else if (const auto* scalar = std::get_if<InitScalar>(&init)) {
       // Scalar fallback for aggregates: treat as first field init.
@@ -786,7 +801,8 @@ class HirEmitter {
 
   std::string emit_const_init(const TypeSpec& ts, const GlobalInit& init) {
     if (ts.array_rank > 0) return emit_const_array(ts, init);
-    if (ts.base == TB_STRUCT || ts.base == TB_UNION) return emit_const_struct(ts, init);
+    if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0)
+      return emit_const_struct(ts, init);
     if (const auto* s = std::get_if<InitScalar>(&init))
       return emit_const_scalar_expr(s->expr, ts);
     if (const auto* list = std::get_if<InitList>(&init)) {
@@ -1079,16 +1095,20 @@ class HirEmitter {
       // Widen index to i64
       TypeSpec i64_ts{}; i64_ts.base = TB_LONGLONG;
       const std::string ix64 = coerce(ctx, ix, ix_ts, i64_ts);
-      // Element type
+      // Element type: strip one pointer or array level with proper dim shifting.
       pts = base_ts;
       if (pts.ptr_level > 0) {
         pts.ptr_level--;
       } else if (pts.array_rank > 0) {
-        pts.array_rank--;
-        pts.array_size = (pts.array_rank > 0) ? pts.array_dims[1] : -1;
+        pts = drop_one_array_dim(pts);
       }
       const std::string tmp = fresh_tmp(ctx);
-      emit_instr(ctx, tmp + " = getelementptr " + llvm_ty(pts) +
+      // Use alloca type (non-decayed) for array elements so GEP advances by the
+      // correct stride ([N x T] instead of ptr).
+      const std::string elem_ty = (pts.array_rank > 0 && pts.ptr_level == 0)
+                                      ? llvm_alloca_ty(pts)
+                                      : llvm_ty(pts);
+      emit_instr(ctx, tmp + " = getelementptr " + elem_ty +
                           ", ptr " + base + ", i64 " + ix64);
       return tmp;
     }
@@ -1413,7 +1433,7 @@ class HirEmitter {
       if (it == ctx.local_slots.end())
         throw std::runtime_error("HirEmitter: local slot not found: " + r.name);
       const TypeSpec ts = ctx.local_types.at(r.local->value);
-      if (ts.array_rank > 0) {
+      if (ts.array_rank > 0 && ts.ptr_level == 0) {
         const std::string tmp = fresh_tmp(ctx);
         emit_instr(ctx, tmp + " = getelementptr " + llvm_alloca_ty(ts) +
                             ", ptr " + it->second + ", i64 0, i64 0");
@@ -1428,7 +1448,7 @@ class HirEmitter {
     // Global: load
     if (r.global) {
       const auto& gv = mod_.globals[r.global->value];
-      if (gv.type.spec.array_rank > 0) {
+      if (gv.type.spec.array_rank > 0 && gv.type.spec.ptr_level == 0) {
         // Use resolved type (deduced from initializer) for GEP — avoids "ptr" fallback.
         const TypeSpec resolved_ts = resolve_array_ts(gv.type.spec, gv.init);
         const std::string tmp = fresh_tmp(ctx);
@@ -1501,7 +1521,14 @@ class HirEmitter {
 
       case UnaryOp::Deref: {
         TypeSpec load_ts = op_ts;
-        if (load_ts.ptr_level > 0) load_ts.ptr_level -= 1;
+        if (load_ts.ptr_level > 0) {
+          load_ts.ptr_level -= 1;
+        } else if (load_ts.array_rank > 0) {
+          // Decayed array: the value is already a pointer to the first element.
+          // Dereference it by loading the element type.
+          load_ts.array_rank--;
+          load_ts.array_size = -1;
+        }
         const std::string load_ty = llvm_ty(load_ts);
         const std::string tmp = fresh_tmp(ctx);
         emit_instr(ctx, tmp + " = load " + load_ty + ", ptr " + val);
@@ -1988,6 +2015,9 @@ class HirEmitter {
   std::string emit_rval_payload(FnCtx& ctx, const IndexExpr&, const Expr& e) {
     TypeSpec pts{};
     const std::string ptr = emit_lval_dispatch(ctx, e, pts);
+    // Array element decay: if the element type is itself an array, return its
+    // address directly (C array-to-pointer decay) rather than loading it.
+    if (pts.array_rank > 0 && pts.ptr_level == 0) return ptr;
     TypeSpec load_ts = resolve_expr_type(ctx, e);
     if (!has_concrete_type(load_ts)) load_ts = pts;
     const std::string ty = llvm_ty(load_ts);

@@ -270,14 +270,60 @@ class Lowerer {
   }
 
   void lower_global(const Node* gv) {
+    GlobalInit computed_init{};
+    bool has_init = false;
+
+    // Handle compound literal at global scope: `T *p = &(T){...};`
+    // The compound literal must be lowered to a separate static global, and
+    // the parent global initialized to point at it.
+    // IMPORTANT: the synthetic global must be pushed BEFORE allocating g.id,
+    // since hir_to_llvm.cpp uses GlobalId.value as a direct vector index.
+    if (gv->init && gv->init->kind == NK_ADDR &&
+        gv->init->left && gv->init->left->kind == NK_COMPOUND_LIT) {
+      const Node* clit = gv->init->left;
+      GlobalVar cg{};
+      cg.id = next_global_id();
+      const std::string clit_name = "__clit_" + std::to_string(cg.id.value);
+      cg.name = clit_name;
+      cg.type = qtype_from(clit->type, ValueCategory::LValue);
+      cg.linkage = {true, false, false};  // internal linkage
+      cg.is_const = false;
+      cg.span = make_span(clit);
+      // Lower the compound literal's init list (stored in clit->left).
+      if (clit->left && clit->left->kind == NK_INIT_LIST) {
+        cg.init = lower_init_list(clit->left);
+      }
+      module_->global_index[clit_name] = cg.id;
+      module_->globals.push_back(std::move(cg));
+
+      // Build a scalar init: AddrOf(DeclRef{clit_name})
+      TypeSpec ptr_ts = clit->type;
+      ptr_ts.ptr_level++;
+      DeclRef dr{};
+      dr.name = clit_name;
+      dr.global = module_->global_index[clit_name];
+      ExprId dr_id = append_expr(clit, dr, clit->type, ValueCategory::LValue);
+      UnaryExpr addr{};
+      addr.op = UnaryOp::AddrOf;
+      addr.operand = dr_id;
+      ExprId addr_id = append_expr(gv->init, addr, ptr_ts);
+      InitScalar sc{};
+      sc.expr = addr_id;
+      computed_init = sc;
+      has_init = true;
+    }
+
     GlobalVar g{};
-    g.id = next_global_id();
+    g.id = next_global_id();  // allocated AFTER any synthetic globals
     g.name = gv->name ? gv->name : "<anon_global>";
     g.type = qtype_from(gv->type, ValueCategory::LValue);
     g.linkage = {gv->is_static, gv->is_extern, false};
     g.is_const = gv->type.is_const;
     g.span = make_span(gv);
-    if (gv->init) {
+
+    if (has_init) {
+      g.init = computed_init;
+    } else if (gv->init) {
       g.init = lower_global_init(gv->init);
     }
 
@@ -343,6 +389,11 @@ class Lowerer {
         return;
       }
       case NK_DECL: {
+        // Local function prototype (e.g. `int f1(char *);` inside a function body):
+        // if the name is already registered as a known function, skip creating a
+        // local alloca — later references will resolve directly to the global function.
+        if (n->name && !n->init && module_->fn_index.count(n->name)) return;
+
         LocalDecl d{};
         d.id = next_local_id();
         d.name = n->name ? n->name : "<anon_local>";
