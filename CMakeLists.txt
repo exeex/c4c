@@ -132,7 +132,7 @@ if(CLANG_EXECUTABLE)
   add_test(
     NAME tiny_c2ll_tests
     COMMAND "${CMAKE_COMMAND}"
-            -DCOMPILER=$<TARGET_FILE:frontend_cxx_stage1>
+            -DCOMPILER=$<TARGET_FILE:frontend_cxx_next>
             -DEXAMPLE_C=${EXAMPLE_C}
             -DOUT_LL=${CMAKE_BINARY_DIR}/tiny_c2ll_tests/test_example.ll
             -DCLANG=${CLANG_EXECUTABLE}
@@ -143,7 +143,7 @@ else()
   add_test(
     NAME tiny_c2ll_tests
     COMMAND "${CMAKE_COMMAND}"
-            -DCOMPILER=$<TARGET_FILE:frontend_cxx_stage1>
+            -DCOMPILER=$<TARGET_FILE:frontend_cxx_next>
             -DEXAMPLE_C=${EXAMPLE_C}
             -DOUT_LL=${CMAKE_BINARY_DIR}/tiny_c2ll_tests/test_example.ll
             -P "${PROJECT_SOURCE_DIR}/tests/cmake/run_tiny_c2ll_tests.cmake"
@@ -156,7 +156,7 @@ foreach(src IN LISTS NEGATIVE_TEST_SRCS)
   add_test(
     NAME "${test_name}"
     COMMAND "${CMAKE_COMMAND}"
-            -DCOMPILER=$<TARGET_FILE:frontend_cxx_stage1>
+            -DCOMPILER=$<TARGET_FILE:frontend_cxx_next>
             -DSRC=${src}
             -DENFORCE_NEGATIVE=${NEGATIVE_TESTS_ENFORCE}
             -P "${PROJECT_SOURCE_DIR}/tests/cmake/run_tiny_c2ll_negative_case.cmake"
@@ -171,7 +171,7 @@ add_test(
 
 add_test(
     NAME frontend_cxx_stage1_version
-    COMMAND frontend_cxx_stage1 --version
+    COMMAND frontend_cxx_next --version
 )
 set_tests_properties(frontend_cxx_stage1_version PROPERTIES
     PASS_REGULAR_EXPRESSION "tiny-c2ll"
@@ -180,7 +180,7 @@ set_tests_properties(frontend_cxx_stage1_version PROPERTIES
 if(EXISTS "${EXAMPLE_C}")
   add_test(
       NAME frontend_cxx_stage1_lex
-      COMMAND frontend_cxx_stage1 --lex-only "${EXAMPLE_C}"
+      COMMAND frontend_cxx_next --lex-only "${EXAMPLE_C}"
   )
   set_tests_properties(frontend_cxx_stage1_lex PROPERTIES
       PASS_REGULAR_EXPRESSION "EOF"
@@ -190,7 +190,7 @@ endif()
 if(EXISTS "${EXAMPLE_C}")
   add_test(
       NAME frontend_cxx_stage1_parse
-      COMMAND frontend_cxx_stage1 --parse-only "${EXAMPLE_C}"
+      COMMAND frontend_cxx_next --parse-only "${EXAMPLE_C}"
   )
   set_tests_properties(frontend_cxx_stage1_parse PROPERTIES
       PASS_REGULAR_EXPRESSION "Program"
@@ -200,7 +200,7 @@ endif()
 if(EXISTS "${EXAMPLE_C}")
   add_test(
       NAME frontend_cxx_stage1_emit_ir
-      COMMAND frontend_cxx_stage1 "${EXAMPLE_C}"
+      COMMAND frontend_cxx_next "${EXAMPLE_C}"
   )
   set_tests_properties(frontend_cxx_stage1_emit_ir PROPERTIES
       PASS_REGULAR_EXPRESSION "define"
@@ -216,7 +216,7 @@ if(CLANG_EXECUTABLE)
     add_test(
       NAME "${test_name}"
       COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:frontend_cxx_stage1>
+              -DCOMPILER=$<TARGET_FILE:frontend_cxx_next>
               -DCLANG=${CLANG_EXECUTABLE}
               -DSRC=${src}
               -DOUT_LL=${CMAKE_BINARY_DIR}/ccc_review_tests/${stem}.ll
@@ -248,7 +248,7 @@ if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
     add_test(
       NAME "${test_name}"
       COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:frontend_cxx_stage1>
+              -DCOMPILER=$<TARGET_FILE:frontend_cxx_next>
               -DCLANG=${CLANG_EXECUTABLE}
               -DSRC=${src}
               -DROOT=${C_TESTSUITE_ROOT}
@@ -298,7 +298,7 @@ if(CLANG_EXECUTABLE AND LLVM_TEST_SUITE_ROOT AND EXISTS "${LLVM_TEST_SUITE_ROOT}
       add_test(
         NAME "${test_name}"
         COMMAND "${CMAKE_COMMAND}"
-                -DCOMPILER=$<TARGET_FILE:frontend_cxx_stage1>
+                -DCOMPILER=$<TARGET_FILE:frontend_cxx_next>
                 -DCLANG=${CLANG_EXECUTABLE}
                 -DSRC=${src}
                 -DROOT=${LLVM_GCC_C_TORTURE_ROOT}
