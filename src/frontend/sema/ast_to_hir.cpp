@@ -1,0 +1,621 @@
+#include "ast_to_hir.hpp"
+
+#include <cstdio>
+#include <stdexcept>
+#include <unordered_map>
+
+namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir {
+namespace {
+
+using namespace tinyc2ll::frontend_cxx::sema_ir;
+
+SourceSpan make_span(const Node* n) {
+  if (!n) {
+    return {};
+  }
+  SourceSpan s{};
+  s.begin.line = n->line;
+  s.end.line = n->line;
+  return s;
+}
+
+UnaryOp map_unary_op(const char* op) {
+  if (!op) return UnaryOp::Plus;
+  const std::string s(op);
+  if (s == "+") return UnaryOp::Plus;
+  if (s == "-") return UnaryOp::Minus;
+  if (s == "!") return UnaryOp::Not;
+  if (s == "~") return UnaryOp::BitNot;
+  if (s == "++") return UnaryOp::PreInc;
+  if (s == "--") return UnaryOp::PreDec;
+  return UnaryOp::Plus;
+}
+
+BinaryOp map_binary_op(const char* op) {
+  if (!op) return BinaryOp::Add;
+  const std::string s(op);
+  if (s == "+") return BinaryOp::Add;
+  if (s == "-") return BinaryOp::Sub;
+  if (s == "*") return BinaryOp::Mul;
+  if (s == "/") return BinaryOp::Div;
+  if (s == "%") return BinaryOp::Mod;
+  if (s == "<<") return BinaryOp::Shl;
+  if (s == ">>") return BinaryOp::Shr;
+  if (s == "&") return BinaryOp::BitAnd;
+  if (s == "|") return BinaryOp::BitOr;
+  if (s == "^") return BinaryOp::BitXor;
+  if (s == "<") return BinaryOp::Lt;
+  if (s == "<=") return BinaryOp::Le;
+  if (s == ">") return BinaryOp::Gt;
+  if (s == ">=") return BinaryOp::Ge;
+  if (s == "==") return BinaryOp::Eq;
+  if (s == "!=") return BinaryOp::Ne;
+  if (s == "&&") return BinaryOp::LAnd;
+  if (s == "||") return BinaryOp::LOr;
+  if (s == ",") return BinaryOp::Comma;
+  return BinaryOp::Add;
+}
+
+AssignOp map_assign_op(const char* op, NodeKind kind) {
+  if (kind == NK_ASSIGN) return AssignOp::Set;
+  if (!op) return AssignOp::Set;
+  const std::string s(op);
+  if (s == "+=") return AssignOp::Add;
+  if (s == "-=") return AssignOp::Sub;
+  if (s == "*=") return AssignOp::Mul;
+  if (s == "/=") return AssignOp::Div;
+  if (s == "%=") return AssignOp::Mod;
+  if (s == "<<=") return AssignOp::Shl;
+  if (s == ">>=") return AssignOp::Shr;
+  if (s == "&=") return AssignOp::BitAnd;
+  if (s == "|=") return AssignOp::BitOr;
+  if (s == "^=") return AssignOp::BitXor;
+  return AssignOp::Set;
+}
+
+class Lowerer {
+ public:
+  Module lower_program(const Node* root) {
+    if (!root || root->kind != NK_PROGRAM) {
+      throw std::runtime_error("ast_to_hir: root is not NK_PROGRAM");
+    }
+
+    Module m{};
+    module_ = &m;
+
+    for (int i = 0; i < root->n_children; ++i) {
+      const Node* item = root->children[i];
+      if (!item) continue;
+      if (item->kind == NK_FUNCTION) {
+        lower_function(item);
+      } else if (item->kind == NK_GLOBAL_VAR) {
+        lower_global(item);
+      }
+    }
+
+    return m;
+  }
+
+ private:
+  struct FunctionCtx {
+    Function* fn = nullptr;
+    std::unordered_map<std::string, LocalId> locals;
+    std::unordered_map<std::string, uint32_t> params;
+    BlockId current_block{};
+    std::vector<BlockId> break_stack;
+    std::vector<BlockId> continue_stack;
+    std::unordered_map<std::string, BlockId> label_blocks;
+  };
+
+  FunctionId next_fn_id() { return FunctionId{next_fn_id_++}; }
+  GlobalId next_global_id() { return GlobalId{next_global_id_++}; }
+  LocalId next_local_id() { return LocalId{next_local_id_++}; }
+  BlockId next_block_id() { return BlockId{next_block_id_++}; }
+  ExprId next_expr_id() { return ExprId{next_expr_id_++}; }
+
+  QualType qtype_from(const TypeSpec& t, ValueCategory c = ValueCategory::RValue) {
+    QualType qt{};
+    qt.spec = t;
+    qt.category = c;
+    return qt;
+  }
+
+  Block& ensure_block(FunctionCtx& ctx, BlockId id) {
+    for (auto& b : ctx.fn->blocks) {
+      if (b.id.value == id.value) return b;
+    }
+    ctx.fn->blocks.push_back(Block{id, {}, false});
+    return ctx.fn->blocks.back();
+  }
+
+  BlockId create_block(FunctionCtx& ctx) {
+    const BlockId id = next_block_id();
+    ctx.fn->blocks.push_back(Block{id, {}, false});
+    return id;
+  }
+
+  void append_stmt(FunctionCtx& ctx, Stmt stmt) {
+    Block& b = ensure_block(ctx, ctx.current_block);
+    b.stmts.push_back(std::move(stmt));
+  }
+
+  ExprId append_expr(const Node* src, ExprPayload payload, const TypeSpec& ts,
+                     ValueCategory c = ValueCategory::RValue) {
+    Expr e{};
+    e.id = next_expr_id();
+    e.span = make_span(src);
+    e.type = qtype_from(ts, c);
+    e.payload = std::move(payload);
+    module_->expr_pool.push_back(std::move(e));
+    return module_->expr_pool.back().id;
+  }
+
+  void lower_function(const Node* fn_node) {
+    Function fn{};
+    fn.id = next_fn_id();
+    fn.name = fn_node->name ? fn_node->name : "<anon_fn>";
+    fn.return_type = qtype_from(fn_node->type);
+    fn.linkage = {fn_node->is_static, fn_node->is_extern, fn_node->is_inline};
+    fn.attrs.variadic = fn_node->variadic;
+    fn.span = make_span(fn_node);
+
+    FunctionCtx ctx{};
+    ctx.fn = &fn;
+
+    for (int i = 0; i < fn_node->n_params; ++i) {
+      const Node* p = fn_node->params[i];
+      if (!p) continue;
+      Param param{};
+      param.name = p->name ? p->name : "<anon_param>";
+      param.type = qtype_from(p->type, ValueCategory::LValue);
+      param.span = make_span(p);
+      ctx.params[param.name] = static_cast<uint32_t>(fn.params.size());
+      fn.params.push_back(std::move(param));
+    }
+
+    const BlockId entry = create_block(ctx);
+    fn.entry = entry;
+    ctx.current_block = entry;
+
+    lower_stmt_node(ctx, fn_node->body);
+
+    if (fn.blocks.empty()) {
+      fn.blocks.push_back(Block{entry, {}, false});
+    }
+
+    module_->fn_index[fn.name] = fn.id;
+    module_->functions.push_back(std::move(fn));
+  }
+
+  void lower_global(const Node* gv) {
+    GlobalVar g{};
+    g.id = next_global_id();
+    g.name = gv->name ? gv->name : "<anon_global>";
+    g.type = qtype_from(gv->type, ValueCategory::LValue);
+    g.linkage = {gv->is_static, gv->is_extern, false};
+    g.is_const = gv->type.is_const;
+    g.span = make_span(gv);
+    if (gv->init) {
+      g.init = lower_global_init(gv->init);
+    }
+
+    module_->global_index[g.name] = g.id;
+    module_->globals.push_back(std::move(g));
+  }
+
+  GlobalInit lower_global_init(const Node* n) {
+    if (!n) return std::monostate{};
+    if (n->kind == NK_INIT_LIST) {
+      return lower_init_list(n);
+    }
+    InitScalar s{};
+    s.expr = lower_expr(nullptr, n);
+    return s;
+  }
+
+  InitList lower_init_list(const Node* n) {
+    InitList out{};
+    for (int i = 0; i < n->n_children; ++i) {
+      const Node* it = n->children[i];
+      if (!it) continue;
+      InitListItem item{};
+
+      const Node* value_node = it;
+      if (it->kind == NK_INIT_ITEM) {
+        if (it->is_designated) {
+          if (it->is_index_desig) {
+            item.index_designator = it->desig_val;
+          } else if (it->desig_field) {
+            item.field_designator = std::string(it->desig_field);
+          }
+        }
+        value_node = it->left ? it->left : it->right;
+        if (!value_node) value_node = it->init;
+      }
+
+      if (value_node && value_node->kind == NK_INIT_LIST) {
+        item.value = std::make_shared<InitList>(lower_init_list(value_node));
+      } else {
+        InitScalar s{};
+        s.expr = lower_expr(nullptr, value_node);
+        item.value = s;
+      }
+      out.items.push_back(std::move(item));
+    }
+    return out;
+  }
+
+  void lower_stmt_node(FunctionCtx& ctx, const Node* n) {
+    if (!n) return;
+
+    switch (n->kind) {
+      case NK_BLOCK: {
+        for (int i = 0; i < n->n_children; ++i) {
+          lower_stmt_node(ctx, n->children[i]);
+        }
+        return;
+      }
+      case NK_DECL: {
+        LocalDecl d{};
+        d.id = next_local_id();
+        d.name = n->name ? n->name : "<anon_local>";
+        d.type = qtype_from(n->type, ValueCategory::LValue);
+        d.storage = n->is_static ? StorageClass::Static : StorageClass::Auto;
+        d.span = make_span(n);
+        if (n->init) d.init = lower_expr(&ctx, n->init);
+        ctx.locals[d.name] = d.id;
+        append_stmt(ctx, Stmt{StmtPayload{std::move(d)}, make_span(n)});
+        return;
+      }
+      case NK_EXPR_STMT: {
+        ExprStmt s{};
+        if (n->left) s.expr = lower_expr(&ctx, n->left);
+        append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
+        return;
+      }
+      case NK_RETURN: {
+        ReturnStmt s{};
+        if (n->left) s.expr = lower_expr(&ctx, n->left);
+        append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
+        ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
+        return;
+      }
+      case NK_IF: {
+        IfStmt s{};
+        s.cond = lower_expr(&ctx, n->cond ? n->cond : n->left);
+        const BlockId then_b = create_block(ctx);
+        s.then_block = then_b;
+        if (n->else_) s.else_block = create_block(ctx);
+        append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
+
+        const BlockId after_b = create_block(ctx);
+
+        ctx.current_block = then_b;
+        lower_stmt_node(ctx, n->then_);
+        if (!ensure_block(ctx, ctx.current_block).has_explicit_terminator) {
+          ctx.current_block = after_b;
+        }
+
+        if (n->else_) {
+          ctx.current_block = *s.else_block;
+          lower_stmt_node(ctx, n->else_);
+          if (!ensure_block(ctx, ctx.current_block).has_explicit_terminator) {
+            ctx.current_block = after_b;
+          }
+        }
+
+        ctx.current_block = after_b;
+        return;
+      }
+      case NK_WHILE: {
+        const BlockId cond_b = create_block(ctx);
+        const BlockId body_b = create_block(ctx);
+        const BlockId after_b = create_block(ctx);
+
+        ctx.current_block = cond_b;
+        WhileStmt s{};
+        s.cond = lower_expr(&ctx, n->cond ? n->cond : n->left);
+        s.body_block = body_b;
+        s.continue_target = cond_b;
+        s.break_target = after_b;
+        append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
+
+        ctx.break_stack.push_back(after_b);
+        ctx.continue_stack.push_back(cond_b);
+        ctx.current_block = body_b;
+        lower_stmt_node(ctx, n->body);
+        ctx.break_stack.pop_back();
+        ctx.continue_stack.pop_back();
+
+        ctx.current_block = after_b;
+        return;
+      }
+      case NK_FOR: {
+        ForStmt s{};
+        if (n->init) s.init = lower_expr(&ctx, n->init);
+        if (n->cond) s.cond = lower_expr(&ctx, n->cond);
+        if (n->update) s.update = lower_expr(&ctx, n->update);
+        const BlockId body_b = create_block(ctx);
+        const BlockId after_b = create_block(ctx);
+        s.body_block = body_b;
+        s.continue_target = body_b;
+        s.break_target = after_b;
+        append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
+
+        ctx.break_stack.push_back(after_b);
+        ctx.continue_stack.push_back(body_b);
+        ctx.current_block = body_b;
+        lower_stmt_node(ctx, n->body);
+        ctx.break_stack.pop_back();
+        ctx.continue_stack.pop_back();
+
+        ctx.current_block = after_b;
+        return;
+      }
+      case NK_DO_WHILE: {
+        const BlockId body_b = create_block(ctx);
+        const BlockId after_b = create_block(ctx);
+
+        ctx.break_stack.push_back(after_b);
+        ctx.continue_stack.push_back(body_b);
+        ctx.current_block = body_b;
+        lower_stmt_node(ctx, n->body);
+
+        DoWhileStmt s{};
+        s.body_block = body_b;
+        s.cond = lower_expr(&ctx, n->cond ? n->cond : n->left);
+        s.continue_target = body_b;
+        s.break_target = after_b;
+        append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
+
+        ctx.break_stack.pop_back();
+        ctx.continue_stack.pop_back();
+        ctx.current_block = after_b;
+        return;
+      }
+      case NK_SWITCH: {
+        SwitchStmt s{};
+        s.cond = lower_expr(&ctx, n->cond ? n->cond : n->left);
+        const BlockId body_b = create_block(ctx);
+        s.body_block = body_b;
+        append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
+
+        const BlockId after_b = create_block(ctx);
+        ctx.break_stack.push_back(after_b);
+        ctx.current_block = body_b;
+        lower_stmt_node(ctx, n->body);
+        ctx.break_stack.pop_back();
+        ctx.current_block = after_b;
+        return;
+      }
+      case NK_CASE: {
+        CaseStmt s{};
+        if (n->left && n->left->kind == NK_INT_LIT) s.value = n->left->ival;
+        append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
+        lower_stmt_node(ctx, n->body);
+        return;
+      }
+      case NK_CASE_RANGE: {
+        CaseRangeStmt s{};
+        if (n->left && n->left->kind == NK_INT_LIT) s.range.lo = n->left->ival;
+        if (n->right && n->right->kind == NK_INT_LIT) s.range.hi = n->right->ival;
+        append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
+        lower_stmt_node(ctx, n->body);
+        return;
+      }
+      case NK_DEFAULT: {
+        append_stmt(ctx, Stmt{StmtPayload{DefaultStmt{}}, make_span(n)});
+        lower_stmt_node(ctx, n->body);
+        return;
+      }
+      case NK_BREAK: {
+        append_stmt(ctx, Stmt{StmtPayload{BreakStmt{}}, make_span(n)});
+        ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
+        if (!ctx.break_stack.empty()) ctx.current_block = ctx.break_stack.back();
+        return;
+      }
+      case NK_CONTINUE: {
+        append_stmt(ctx, Stmt{StmtPayload{ContinueStmt{}}, make_span(n)});
+        ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
+        if (!ctx.continue_stack.empty()) ctx.current_block = ctx.continue_stack.back();
+        return;
+      }
+      case NK_LABEL: {
+        LabelStmt s{};
+        s.name = n->name ? n->name : "<anon_label>";
+        const BlockId lb = create_block(ctx);
+        ctx.label_blocks[s.name] = lb;
+        append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
+        ctx.current_block = lb;
+        lower_stmt_node(ctx, n->body);
+        return;
+      }
+      case NK_GOTO: {
+        GotoStmt s{};
+        s.target.user_name = n->name ? n->name : "<anon_label>";
+        auto it = ctx.label_blocks.find(s.target.user_name);
+        if (it == ctx.label_blocks.end()) {
+          const BlockId lb = create_block(ctx);
+          ctx.label_blocks[s.target.user_name] = lb;
+          s.target.resolved_block = lb;
+        } else {
+          s.target.resolved_block = it->second;
+        }
+        append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
+        ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
+        return;
+      }
+      case NK_EMPTY: {
+        append_stmt(ctx, Stmt{StmtPayload{ExprStmt{}}, make_span(n)});
+        return;
+      }
+      default: {
+        ExprStmt s{};
+        s.expr = lower_expr(&ctx, n);
+        append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
+        return;
+      }
+    }
+  }
+
+  ExprId lower_expr(FunctionCtx* ctx, const Node* n) {
+    if (!n) {
+      TypeSpec ts{};
+      ts.base = TB_INT;
+      return append_expr(nullptr, IntLiteral{0, false}, ts);
+    }
+
+    switch (n->kind) {
+      case NK_INT_LIT:
+        return append_expr(n, IntLiteral{n->ival, false}, n->type);
+      case NK_FLOAT_LIT:
+        return append_expr(n, FloatLiteral{n->fval}, n->type);
+      case NK_STR_LIT: {
+        StringLiteral s{};
+        s.raw = n->sval ? n->sval : "";
+        s.is_wide = s.raw.size() >= 2 && s.raw[0] == 'L' && s.raw[1] == '"';
+        TypeSpec ts = n->type;
+        return append_expr(n, std::move(s), ts, ValueCategory::LValue);
+      }
+      case NK_CHAR_LIT:
+        return append_expr(n, CharLiteral{n->ival}, n->type);
+      case NK_VAR: {
+        DeclRef r{};
+        r.name = n->name ? n->name : "<anon_var>";
+        if (ctx) {
+          auto lit = ctx->locals.find(r.name);
+          if (lit != ctx->locals.end()) r.local = lit->second;
+          auto pit = ctx->params.find(r.name);
+          if (pit != ctx->params.end()) r.param_index = pit->second;
+        }
+        auto git = module_->global_index.find(r.name);
+        if (git != module_->global_index.end()) r.global = git->second;
+        return append_expr(n, std::move(r), n->type, ValueCategory::LValue);
+      }
+      case NK_UNARY: {
+        UnaryExpr u{};
+        u.op = map_unary_op(n->op);
+        u.operand = lower_expr(ctx, n->left);
+        return append_expr(n, u, n->type);
+      }
+      case NK_POSTFIX: {
+        UnaryExpr u{};
+        const std::string op = n->op ? n->op : "";
+        u.op = (op == "--") ? UnaryOp::PostDec : UnaryOp::PostInc;
+        u.operand = lower_expr(ctx, n->left);
+        return append_expr(n, u, n->type);
+      }
+      case NK_ADDR: {
+        UnaryExpr u{};
+        u.op = UnaryOp::AddrOf;
+        u.operand = lower_expr(ctx, n->left);
+        return append_expr(n, u, n->type);
+      }
+      case NK_DEREF: {
+        UnaryExpr u{};
+        u.op = UnaryOp::Deref;
+        u.operand = lower_expr(ctx, n->left);
+        return append_expr(n, u, n->type, ValueCategory::LValue);
+      }
+      case NK_BINOP:
+      case NK_COMMA_EXPR: {
+        BinaryExpr b{};
+        b.op = map_binary_op(n->op);
+        b.lhs = lower_expr(ctx, n->left);
+        b.rhs = lower_expr(ctx, n->right);
+        return append_expr(n, b, n->type);
+      }
+      case NK_ASSIGN:
+      case NK_COMPOUND_ASSIGN: {
+        AssignExpr a{};
+        a.op = map_assign_op(n->op, n->kind);
+        a.lhs = lower_expr(ctx, n->left);
+        a.rhs = lower_expr(ctx, n->right);
+        return append_expr(n, a, n->type);
+      }
+      case NK_CAST: {
+        CastExpr c{};
+        c.to_type = qtype_from(n->type);
+        c.expr = lower_expr(ctx, n->left);
+        return append_expr(n, c, n->type);
+      }
+      case NK_CALL: {
+        CallExpr c{};
+        c.callee = lower_expr(ctx, n->left);
+        for (int i = 0; i < n->n_children; ++i) c.args.push_back(lower_expr(ctx, n->children[i]));
+        return append_expr(n, c, n->type);
+      }
+      case NK_INDEX: {
+        IndexExpr idx{};
+        idx.base = lower_expr(ctx, n->left);
+        idx.index = lower_expr(ctx, n->right);
+        return append_expr(n, idx, n->type, ValueCategory::LValue);
+      }
+      case NK_MEMBER: {
+        MemberExpr m{};
+        m.base = lower_expr(ctx, n->left);
+        m.field = n->name ? n->name : "<anon_field>";
+        m.is_arrow = n->is_arrow;
+        return append_expr(n, m, n->type, ValueCategory::LValue);
+      }
+      case NK_TERNARY: {
+        TernaryExpr t{};
+        t.cond = lower_expr(ctx, n->cond ? n->cond : n->left);
+        t.then_expr = lower_expr(ctx, n->then_);
+        t.else_expr = lower_expr(ctx, n->else_);
+        return append_expr(n, t, n->type);
+      }
+      case NK_SIZEOF_EXPR: {
+        SizeofExpr s{};
+        s.expr = lower_expr(ctx, n->left);
+        TypeSpec ts = n->type;
+        return append_expr(n, s, ts);
+      }
+      case NK_SIZEOF_TYPE: {
+        SizeofTypeExpr s{};
+        s.type = qtype_from(n->type);
+        TypeSpec ts = n->type;
+        return append_expr(n, s, ts);
+      }
+      default: {
+        TypeSpec ts = n->type;
+        if (ts.base == TB_VOID && n->kind != NK_CALL) {
+          ts.base = TB_INT;
+        }
+        return append_expr(n, IntLiteral{0, false}, ts);
+      }
+    }
+  }
+
+  Module* module_ = nullptr;
+
+  uint32_t next_fn_id_ = 0;
+  uint32_t next_global_id_ = 0;
+  uint32_t next_local_id_ = 0;
+  uint32_t next_block_id_ = 0;
+  uint32_t next_expr_id_ = 0;
+};
+
+}  // namespace
+
+Module lower_ast_to_hir(const Node* program_root) {
+  Lowerer l;
+  return l.lower_program(program_root);
+}
+
+std::string format_summary(const Module& module) {
+  const ProgramSummary s = module.summary();
+  char buf[256];
+  std::snprintf(
+      buf,
+      sizeof(buf),
+      "HIR summary: functions=%zu globals=%zu blocks=%zu statements=%zu expressions=%zu",
+      s.functions,
+      s.globals,
+      s.blocks,
+      s.statements,
+      s.expressions);
+  return std::string(buf);
+}
+
+}  // namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir

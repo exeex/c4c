@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "arena.hpp"
+#include "ast_to_hir.hpp"
 #include "ast.hpp"
 #include "ir_builder.hpp"
 #include "lexer.hpp"
@@ -20,7 +21,8 @@ namespace {
 
 void print_usage(const char *argv0) {
   std::cerr << "usage: " << argv0
-            << " [--version] [--lex-only|--parse-only] [-o output.ll] <input.c>\n";
+            << " [--version] [--lex-only|--parse-only|--dump-hir-summary]"
+            << " [-o output.ll] <input.c>\n";
 }
 
 void print_pp_diags(const std::vector<tc::PreprocessorDiagnostic>& diags,
@@ -51,6 +53,7 @@ int main(int argc, char **argv) {
 
     bool        lex_only   = false;
     bool        parse_only = false;
+    bool        dump_hir_summary = false;
     std::string input;
     std::string output;
 
@@ -60,6 +63,8 @@ int main(int argc, char **argv) {
         lex_only = true;
       } else if (arg == "--parse-only") {
         parse_only = true;
+      } else if (arg == "--dump-hir-summary") {
+        dump_hir_summary = true;
       } else if (arg == "-o") {
         if (i + 1 < args.size()) output = args[++i];
       } else if (!arg.empty() && arg[0] == '-') {
@@ -74,8 +79,9 @@ int main(int argc, char **argv) {
       print_usage(argv[0]);
       return 1;
     }
-    if (lex_only && parse_only) {
-      std::cerr << "cannot use --lex-only and --parse-only together\n";
+    if ((lex_only && parse_only) || (lex_only && dump_hir_summary) ||
+        (parse_only && dump_hir_summary)) {
+      std::cerr << "cannot combine --lex-only, --parse-only, and --dump-hir-summary\n";
       return 2;
     }
 
@@ -113,6 +119,13 @@ int main(int argc, char **argv) {
       if (prog) {
         tc::ast_dump(prog, 0);
       }
+      return 0;
+    }
+
+    if (dump_hir_summary) {
+      tc::sema_ir::phase2::hir::Module module =
+          tc::sema_ir::phase2::hir::lower_ast_to_hir(prog);
+      std::cout << tc::sema_ir::phase2::hir::format_summary(module) << "\n";
       return 0;
     }
 

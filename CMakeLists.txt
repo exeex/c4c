@@ -35,6 +35,7 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend/parser/declarations.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/parser/common.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/sema/ir_builder.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/sema/ast_to_hir.cpp"
 )
 
 set(FRONTEND_CXX_INCLUDE_DIRS

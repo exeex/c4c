@@ -233,3 +233,34 @@ Validation completed after extraction:
   - `negative_tests`
   - `ccc_review_*`
   - `c_testsuite_*`
+
+### Phase 2 status: in progress (bootstrap landed)
+
+Completed in this step:
+
+- Added a dedicated sema IR spec header:
+  - `src/frontend/sema/ir.hpp`
+- Added minimal AST -> HIR lowering module:
+  - `src/frontend/sema/ast_to_hir.hpp`
+  - `src/frontend/sema/ast_to_hir.cpp`
+- Wired new module into build:
+  - `CMakeLists.txt` (`FRONTEND_CXX_COMMON_SRCS` now includes `ast_to_hir.cpp`)
+- Added phase-2 visibility flag to `next` driver:
+  - `src/apps/tiny-c2ll-next.cpp`
+  - new CLI option: `--dump-hir-summary`
+
+Current behavior:
+
+- `tiny-c2ll-next --dump-hir-summary <file.c>` now runs:
+  - preprocess -> lex -> parse -> lower_ast_to_hir -> summary print
+- `tiny-c2ll-next` default compile path remains unchanged:
+  - still emits LLVM IR through legacy `IRBuilder` path
+
+Validation snapshot:
+
+- `frontend_cxx_next` builds successfully after wiring.
+- Example run:
+  - command: `./build/tiny-c2ll-next --dump-hir-summary tests/tiny_c2ll/example.c`
+  - output: `HIR summary: functions=1 globals=0 blocks=1 statements=5 expressions=14`
+- Legacy output path smoke-check still works:
+  - `./build/tiny-c2ll-next tests/tiny_c2ll/example.c`
