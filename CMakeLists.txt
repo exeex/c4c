@@ -23,18 +23,22 @@ file(GLOB NEGATIVE_TEST_SRCS CONFIGURE_DEPENDS
 option(NEGATIVE_TESTS_ENFORCE "Require negative_tests bad_*.c cases to fail compilation (non-zero exit)" ON)
 
 set(FRONTEND_CXX_SRCS
-    "${PROJECT_SOURCE_DIR}/src/frontend_c/driver.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend_c/token.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend_c/lexer.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend_c/arena.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend_c/preprocessor.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend_c/parser.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend_c/ir_builder.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/driver.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/lexer/token.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/lexer/lexer.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/sema/arena.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/preprocessor.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/sema/ir_builder.cpp"
 )
 
 add_executable(frontend_cxx_stage1 ${FRONTEND_CXX_SRCS})
 target_include_directories(frontend_cxx_stage1 PRIVATE
-    "${PROJECT_SOURCE_DIR}/src/frontend_c"
+    "${PROJECT_SOURCE_DIR}/src/frontend"
+    "${PROJECT_SOURCE_DIR}/src/frontend/lexer"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser"
+    "${PROJECT_SOURCE_DIR}/src/frontend/sema"
+    "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor"
 )
 set_target_properties(frontend_cxx_stage1 PROPERTIES
     CXX_STANDARD 17
@@ -44,7 +48,7 @@ set_target_properties(frontend_cxx_stage1 PROPERTIES
 target_compile_options(frontend_cxx_stage1 PRIVATE -Wall -Wextra -Wpedantic)
 
 add_executable(frontend_cxx_stage2
-    "${PROJECT_SOURCE_DIR}/src/frontend_c/driver_stage2.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/driver_stage2.cpp"
 )
 set_target_properties(frontend_cxx_stage2 PROPERTIES
     CXX_STANDARD 17
@@ -55,10 +59,14 @@ target_compile_options(frontend_cxx_stage2 PRIVATE -Wall -Wextra -Wpedantic)
 
 add_executable(frontend_cxx_preprocessor_tests
     "${PROJECT_SOURCE_DIR}/tests/preprocessor/frontend_cxx_preprocessor_tests.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend_c/preprocessor.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/preprocessor.cpp"
 )
 target_include_directories(frontend_cxx_preprocessor_tests PRIVATE
-    "${PROJECT_SOURCE_DIR}/src/frontend_c"
+    "${PROJECT_SOURCE_DIR}/src/frontend"
+    "${PROJECT_SOURCE_DIR}/src/frontend/lexer"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser"
+    "${PROJECT_SOURCE_DIR}/src/frontend/sema"
+    "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor"
 )
 set_target_properties(frontend_cxx_preprocessor_tests PROPERTIES
     CXX_STANDARD 17
