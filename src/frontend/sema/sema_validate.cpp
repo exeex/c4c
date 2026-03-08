@@ -83,37 +83,60 @@ bool same_tagged_type(const TypeSpec& a, const TypeSpec& b) {
   return std::string(a.tag) == std::string(b.tag);
 }
 
-bool call_arg_type_compatible(const TypeSpec& param_raw, const TypeSpec& arg_raw) {
-  const TypeSpec param = decay_array(param_raw);
-  const TypeSpec arg = decay_array(arg_raw);
+// C11 6.3.2.3p3: null pointer constant is an integer constant expression with value 0,
+// or such an expression cast to void*.
+bool is_null_pointer_constant_expr(const Node* n) {
+  if (!n) return false;
+  if (n->kind == NK_INT_LIT) return n->ival == 0;
+  if (n->kind == NK_CAST) {
+    const bool cast_to_void_ptr =
+        n->type.base == TB_VOID && n->type.ptr_level > 0 && n->type.array_rank == 0;
+    if (cast_to_void_ptr) return is_null_pointer_constant_expr(n->left);
+  }
+  return false;
+}
+
+// Implicit conversion check for assignment-like contexts:
+// - function-call argument to parameter (C11 6.5.2.2p7)
+// - assignment/initializer constraints (C11 6.5.16.1)
+bool implicit_convertible(const TypeSpec& dst_raw, const TypeSpec& src_raw,
+                          bool src_is_null_ptr_const) {
+  const TypeSpec dst = decay_array(dst_raw);
+  const TypeSpec src = decay_array(src_raw);
 
   // pointer vs non-pointer mismatch
-  const bool p_ptr = param.ptr_level > 0;
-  const bool a_ptr = arg.ptr_level > 0;
-  if (p_ptr != a_ptr) return false;
+  const bool d_ptr = dst.ptr_level > 0;
+  const bool s_ptr = src.ptr_level > 0;
+  if (d_ptr != s_ptr) {
+    // Allow null pointer constant to convert to any pointer parameter.
+    if (d_ptr && !s_ptr && src_is_null_ptr_const) return true;
+    return false;
+  }
 
   // Pointer compatibility: require same depth and pointee family.
-  if (p_ptr && a_ptr) {
-    if (param.ptr_level != arg.ptr_level) return false;
-    // void* is compatible with any object pointer at level 1.
-    if (param.ptr_level == 1 && (param.base == TB_VOID || arg.base == TB_VOID)) return true;
-    if (param.base == TB_STRUCT || param.base == TB_UNION || param.base == TB_ENUM ||
-        arg.base == TB_STRUCT || arg.base == TB_UNION || arg.base == TB_ENUM) {
-      return same_tagged_type(param, arg);
+  if (d_ptr && s_ptr) {
+    // void* conversion is for object pointers, i.e. one level of indirection.
+    // C11 6.3.2.3p1.
+    if (dst.ptr_level == 1 && src.ptr_level == 1 &&
+        (dst.base == TB_VOID || src.base == TB_VOID)) return true;
+    if (dst.ptr_level != src.ptr_level) return false;
+    if (dst.base == TB_STRUCT || dst.base == TB_UNION || dst.base == TB_ENUM ||
+        src.base == TB_STRUCT || src.base == TB_UNION || src.base == TB_ENUM) {
+      return same_tagged_type(dst, src);
     }
-    return param.base == arg.base;
+    return dst.base == src.base;
   }
 
   // Non-pointer: structs/unions must match exactly.
-  if (param.base == TB_STRUCT || param.base == TB_UNION ||
-      arg.base == TB_STRUCT || arg.base == TB_UNION) {
-    return same_tagged_type(param, arg);
+  if (dst.base == TB_STRUCT || dst.base == TB_UNION ||
+      src.base == TB_STRUCT || src.base == TB_UNION) {
+    return same_tagged_type(dst, src);
   }
 
   // Arithmetic scalar conversions are allowed.
-  if (is_arithmetic_base(param.base) && is_arithmetic_base(arg.base)) return true;
+  if (is_arithmetic_base(dst.base) && is_arithmetic_base(src.base)) return true;
 
-  return param.base == arg.base;
+  return dst.base == src.base;
 }
 
 class Validator {
@@ -326,6 +349,9 @@ class Validator {
       if (drops_const_on_ptr_assign(n->type, rhs.type)) {
         emit(n->line, "discarding const qualifier in pointer initialization");
       }
+      if (rhs.valid && !implicit_convertible(n->type, rhs.type, is_null_pointer_constant_expr(n->init))) {
+        emit(n->line, "incompatible initializer type");
+      }
     }
   }
 
@@ -356,6 +382,10 @@ class Validator {
       ExprInfo rhs = infer_expr(decl->init);
       if (drops_const_on_ptr_assign(decl->type, rhs.type)) {
         emit(decl->line, "discarding const qualifier in pointer initialization");
+      }
+      if (rhs.valid &&
+          !implicit_convertible(decl->type, rhs.type, is_null_pointer_constant_expr(decl->init))) {
+        emit(decl->line, "incompatible initializer type");
       }
       mark_initialized_if_local_var(decl);
     }
@@ -579,6 +609,10 @@ class Validator {
         if (drops_const_on_ptr_assign(lhs.type, rhs.type)) {
           emit(n->line, "discarding const qualifier in pointer assignment");
         }
+        if (n->kind == NK_ASSIGN && lhs.valid && rhs.valid &&
+            !implicit_convertible(lhs.type, rhs.type, is_null_pointer_constant_expr(n->right))) {
+          emit(n->line, "incompatible assignment type");
+        }
         mark_initialized_if_local_var(n->left);
         out.valid = lhs.valid && rhs.valid;
         out.type = lhs.type;
@@ -629,7 +663,8 @@ class Validator {
               if (drops_const_on_ptr_assign(sig.params[i], arg.type)) {
                 emit(n->line, "passing const-qualified pointer to mutable parameter");
               }
-              if (!call_arg_type_compatible(sig.params[i], arg.type)) {
+              if (!implicit_convertible(
+                      sig.params[i], arg.type, is_null_pointer_constant_expr(n->children[i]))) {
                 emit(n->line, "function call argument type mismatch");
               }
             }
