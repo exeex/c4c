@@ -234,7 +234,9 @@ Validation completed after extraction:
   - `ccc_review_*`
   - `c_testsuite_*`
 
-### Phase 2 status: in progress (bootstrap landed)
+### Phase 2 status: completed
+
+### Phase 3 status: in progress (bootstrap landed)
 
 Completed in this step:
 
@@ -264,3 +266,25 @@ Validation snapshot:
   - output: `HIR summary: functions=1 globals=0 blocks=1 statements=5 expressions=14`
 - Legacy output path smoke-check still works:
   - `./build/tiny-c2ll-next tests/tiny_c2ll/example.c`
+
+### Phase 3 bootstrap: completed (as of 2026-03-08)
+
+Completed in this step:
+
+- Added `src/codegen/llvm/hir_to_llvm.{hpp,cpp}` — new HIR->LLVM backend module.
+- `hir_to_llvm::emit_module(mod, ast_root)` bridges to legacy `IRBuilder` via const_cast.
+- Updated `tiny-c2ll-next.cpp` compile path:
+  - now runs: `parse -> lower_ast_to_hir -> emit_module(hir_mod, ast_root)`
+- Added `src/codegen/llvm` to CMake include dirs.
+
+Current behavior:
+
+- `tiny-c2ll-next` default path: AST lowered to HIR, then HIR->LLVM bridge calls legacy IRBuilder.
+- All 277 non-torture tests pass; legacy/next parity confirmed on example.c.
+
+Next work for Phase 3:
+
+- Begin replacing bridge with native HIR->LLVM emission, one construct at a time.
+- Start with simple scalar functions (int literals, return, basic binops).
+- Each slice: implement construct natively, remove its AST dependency in bridge.
+- Long-term: remove `ast_root` param from `emit_module` once all constructs are covered.
