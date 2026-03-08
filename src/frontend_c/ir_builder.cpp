@@ -5621,8 +5621,28 @@ static long long static_eval_int(Node* n, const std::unordered_map<std::string, 
     auto it = enum_consts.find(n->name);
     if (it != enum_consts.end()) return it->second;
   }
-  if (n->kind == NK_CAST && n->left)
-    return static_eval_int(n->left, enum_consts);
+  if (n->kind == NK_CAST && n->left) {
+    long long v = static_eval_int(n->left, enum_consts);
+    // Apply the target type's truncation so that e.g. (unsigned int)-4 = 4294967292
+    TypeSpec ts = n->type;
+    if (ts.ptr_level == 0) {
+      int bits = 0;
+      switch (ts.base) {
+        case TB_BOOL: bits = 1; break;
+        case TB_CHAR: case TB_UCHAR: case TB_SCHAR: bits = 8; break;
+        case TB_SHORT: case TB_USHORT: bits = 16; break;
+        case TB_INT: case TB_UINT: case TB_ENUM: bits = 32; break;
+        default: break;  // long/longlong/void → no truncation needed
+      }
+      if (bits > 0 && bits < 64) {
+        long long mask = (1LL << bits) - 1;
+        v &= mask;
+        if (!is_unsigned_base(ts.base) && ts.base != TB_BOOL && (v >> (bits - 1)))
+          v |= ~mask;  // sign-extend
+      }
+    }
+    return v;
+  }
   if (n->kind == NK_UNARY && n->op) {
     if (strcmp(n->op, "-") == 0 && n->left) return -static_eval_int(n->left, enum_consts);
     if (strcmp(n->op, "+") == 0 && n->left) return static_eval_int(n->left, enum_consts);
@@ -6457,8 +6477,12 @@ std::string IRBuilder::global_const(TypeSpec ts, Node* init) {
   if (init->kind == NK_INT_LIT) return std::to_string(init->ival);
   if (init->kind == NK_CHAR_LIT) return std::to_string(init->ival);
   if (init->kind == NK_FLOAT_LIT) return fp_to_hex(init->fval);
-  if (init->kind == NK_CAST && init->left)
-    return global_const(ts, init->left);
+  if (init->kind == NK_CAST && init->left) {
+    // Evaluate with full cast semantics so that (unsigned int)-4 = 4294967292 (not -4).
+    // static_eval_int now correctly applies truncation for the cast's target type.
+    long long cv = static_eval_int(init, enum_consts_);
+    return std::to_string(cv);
+  }
   // Try static evaluation for constant expressions (BinOp, Unary, Var for enum)
   if (init->kind == NK_BINOP || init->kind == NK_UNARY ||
       (init->kind == NK_VAR && init->name)) {
