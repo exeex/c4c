@@ -24,6 +24,10 @@ struct ExprInfo {
   bool valid = false;
   bool is_lvalue = false;
   bool is_const_lvalue = false;
+  // True when this expression is a function name (from funcs_ lookup).
+  // In C, a function name and &function-name have the same pointer type, so
+  // NK_ADDR should not add an extra ptr_level when this flag is set.
+  bool is_fn_name = false;
 };
 
 TypeSpec make_int_ts() {
@@ -35,7 +39,9 @@ TypeSpec make_int_ts() {
 }
 
 TypeSpec decay_array(TypeSpec ts) {
-  if (ts.array_rank > 0) {
+  // is_ptr_to_array means the type is already a pointer wrapping an array (e.g. char (*)[4]);
+  // do not decay such types a second time.
+  if (ts.array_rank > 0 && !ts.is_ptr_to_array) {
     ts.array_rank = 0;
     ts.array_size = -1;
     ts.ptr_level += 1;
@@ -101,6 +107,13 @@ bool is_null_pointer_constant_expr(const Node* n) {
 // - assignment/initializer constraints (C11 6.5.16.1)
 bool implicit_convertible(const TypeSpec& dst_raw, const TypeSpec& src_raw,
                           bool src_is_null_ptr_const) {
+  // Function pointer types are structurally complex and not fully tracked;
+  // accept any assignment involving a function pointer type.
+  if (dst_raw.is_fn_ptr || src_raw.is_fn_ptr ||
+      dst_raw.base == TB_FUNC_PTR || src_raw.base == TB_FUNC_PTR) {
+    return true;
+  }
+
   const TypeSpec dst = decay_array(dst_raw);
   const TypeSpec src = decay_array(src_raw);
 
@@ -122,6 +135,13 @@ bool implicit_convertible(const TypeSpec& dst_raw, const TypeSpec& src_raw,
     if (dst.ptr_level != src.ptr_level) return false;
     if (dst.base == TB_STRUCT || dst.base == TB_UNION || dst.base == TB_ENUM ||
         src.base == TB_STRUCT || src.base == TB_UNION || src.base == TB_ENUM) {
+      // Allow enum* <-> integer type* (enum underlying type is int-compatible).
+      if ((dst.base == TB_ENUM && is_arithmetic_base(src.base) &&
+           src.base != TB_STRUCT && src.base != TB_UNION) ||
+          (src.base == TB_ENUM && is_arithmetic_base(dst.base) &&
+           dst.base != TB_STRUCT && dst.base != TB_UNION)) {
+        return true;
+      }
       return same_tagged_type(dst, src);
     }
     return dst.base == src.base;
@@ -170,6 +190,10 @@ class Validator {
   bool suppress_uninit_read_ = false;
 
   int loop_depth_ = 0;
+  // Set when the current function contains any goto statement.  Functions with
+  // gotos have non-trivial control flow, so uninit-read detection is suppressed
+  // to avoid false positives on dead code paths.
+  bool fn_has_goto_ = false;
 
   struct SwitchCtx {
     std::unordered_set<long long> case_vals;
@@ -349,13 +373,33 @@ class Validator {
       if (drops_const_on_ptr_assign(n->type, rhs.type)) {
         emit(n->line, "discarding const qualifier in pointer initialization");
       }
-      if (rhs.valid && !implicit_convertible(n->type, rhs.type, is_null_pointer_constant_expr(n->init))) {
+      // String literals can initialize char/wchar_t arrays with any char-like type.
+      const bool init_is_str = n->init->kind == NK_STR_LIT;
+      if (!init_is_str && rhs.valid &&
+          !implicit_convertible(n->type, rhs.type, is_null_pointer_constant_expr(n->init))) {
         emit(n->line, "incompatible initializer type");
       }
     }
   }
 
+  static bool node_contains_goto(const Node* n) {
+    if (!n) return false;
+    if (n->kind == NK_GOTO) return true;
+    if (n->left && node_contains_goto(n->left)) return true;
+    if (n->right && node_contains_goto(n->right)) return true;
+    if (n->cond && node_contains_goto(n->cond)) return true;
+    if (n->then_ && node_contains_goto(n->then_)) return true;
+    if (n->else_ && node_contains_goto(n->else_)) return true;
+    if (n->body && node_contains_goto(n->body)) return true;
+    if (n->init && node_contains_goto(n->init)) return true;
+    if (n->update && node_contains_goto(n->update)) return true;
+    for (int i = 0; i < n->n_children; ++i)
+      if (node_contains_goto(n->children[i])) return true;
+    return false;
+  }
+
   void validate_function(const Node* fn) {
+    fn_has_goto_ = fn->body && node_contains_goto(fn->body);
     enter_scope();
     for (int i = 0; i < fn->n_params; ++i) {
       const Node* p = fn->params[i];
@@ -383,7 +427,9 @@ class Validator {
       if (drops_const_on_ptr_assign(decl->type, rhs.type)) {
         emit(decl->line, "discarding const qualifier in pointer initialization");
       }
-      if (rhs.valid &&
+      // String literals can initialize char/wchar_t arrays with any char-like type.
+      const bool init_is_str = decl->init->kind == NK_STR_LIT;
+      if (!init_is_str && rhs.valid &&
           !implicit_convertible(decl->type, rhs.type, is_null_pointer_constant_expr(decl->init))) {
         emit(decl->line, "incompatible initializer type");
       }
@@ -415,7 +461,21 @@ class Validator {
         return;
       }
       case NK_RETURN: {
-        if (n->left) (void)infer_expr(n->left);
+        if (n->left) {
+          (void)infer_expr(n->left);
+          // Detect direct return of an uninitialized plain-scalar local.
+          // Skip if the function has goto statements (complex control flow
+          // can make the read unreachable, leading to false positives).
+          const Node* rv = n->left;
+          if (!fn_has_goto_ && rv->kind == NK_VAR && rv->name && rv->name[0]) {
+            auto sym = lookup_symbol(rv->name);
+            if (sym.has_value() && !sym->initialized &&
+                tracks_uninit_read(sym->type)) {
+              emit(rv->line, std::string("read of uninitialized variable '") +
+                   rv->name + "'");
+            }
+          }
+        }
         return;
       }
       case NK_IF: {
@@ -550,8 +610,8 @@ class Validator {
         out.is_const_lvalue = out.type.is_const &&
                               out.type.ptr_level == 0 &&
                               out.type.array_rank == 0;
-        // Note: reading an uninitialized local is UB in C but not a compile error.
-        // Emitting an error here causes false positives on valid programs.
+        // Mark function names so that &func doesn't add a spurious ptr_level.
+        out.is_fn_name = funcs_.find(n->name) != funcs_.end();
         return out;
       }
       case NK_ADDR: {
@@ -563,9 +623,14 @@ class Validator {
         out.valid = base.valid;
         out.is_lvalue = false;
         out.is_const_lvalue = false;
+        out.is_fn_name = false;
         out.type = base.type;
         out.type = decay_array(out.type);
-        out.type.ptr_level += 1;
+        // In C, &function-name has the same type as function-name (both decay
+        // to a function pointer).  Do not add an extra ptr_level for functions.
+        if (!base.is_fn_name) {
+          out.type.ptr_level += 1;
+        }
         return out;
       }
       case NK_DEREF: {
@@ -574,7 +639,10 @@ class Validator {
         out.type = base.type;
         out.is_lvalue = true;
         if (out.type.ptr_level > 0) out.type.ptr_level -= 1;
-        out.is_const_lvalue = out.type.is_const;
+        // is_const=true with ptr_level>0 means the *pointee* is const, not the
+        // pointer itself.  After dereference, the lvalue is const only when the
+        // resulting type is a plain (non-pointer) const-qualified object.
+        out.is_const_lvalue = out.type.is_const && out.type.ptr_level == 0;
         return out;
       }
       case NK_INDEX: {
@@ -590,7 +658,9 @@ class Validator {
       }
       case NK_MEMBER: {
         ExprInfo base = infer_expr(n->left);
-        out.valid = base.valid;
+        // We don't track struct field types, so mark valid=false to suppress
+        // false-positive incompatible-assignment-type errors for member accesses.
+        out.valid = false;
         out.is_lvalue = true;
         out.type = make_int_ts();
         out.is_const_lvalue = base.is_const_lvalue;
@@ -609,7 +679,10 @@ class Validator {
         if (drops_const_on_ptr_assign(lhs.type, rhs.type)) {
           emit(n->line, "discarding const qualifier in pointer assignment");
         }
-        if (n->kind == NK_ASSIGN && lhs.valid && rhs.valid &&
+        // Only type-check simple '=' assignments; compound operators (+=, -=, etc.)
+        // are in-place operations whose result type is always the lhs type.
+        const bool is_simple_assign = n->op && n->op[0] == '=' && n->op[1] == '\0';
+        if (is_simple_assign && lhs.valid && rhs.valid &&
             !implicit_convertible(lhs.type, rhs.type, is_null_pointer_constant_expr(n->right))) {
           emit(n->line, "incompatible assignment type");
         }
@@ -663,7 +736,8 @@ class Validator {
               if (drops_const_on_ptr_assign(sig.params[i], arg.type)) {
                 emit(n->line, "passing const-qualified pointer to mutable parameter");
               }
-              if (!implicit_convertible(
+              if (arg.valid &&
+                  !implicit_convertible(
                       sig.params[i], arg.type, is_null_pointer_constant_expr(n->children[i]))) {
                 emit(n->line, "function call argument type mismatch");
               }
@@ -696,17 +770,47 @@ class Validator {
         (void)infer_expr(n->cond);
         ExprInfo t = infer_expr(n->then_);
         ExprInfo e = infer_expr(n->else_);
-        out = t.valid ? t : e;
+        // C11 6.5.15: if one branch is a pointer and the other is integer/null,
+        // the result type is the pointer type.  Strip is_const to avoid false
+        // drops_const warnings (null-pointer-constant branches are common).
+        if (t.type.ptr_level > 0 && e.type.ptr_level == 0) {
+          out = t;
+          out.type.is_const = false;
+        } else if (e.type.ptr_level > 0 && t.type.ptr_level == 0) {
+          out = e;
+          out.type.is_const = false;
+        } else {
+          out = t.valid ? t : e;
+        }
         out.is_lvalue = false;
         out.is_const_lvalue = false;
         return out;
       }
-      case NK_BINOP:
-      case NK_COMMA_EXPR:
-        (void)infer_expr(n->left);
-        (void)infer_expr(n->right);
+      case NK_BINOP: {
+        ExprInfo l = infer_expr(n->left);
+        ExprInfo r = infer_expr(n->right);
         out.valid = true;
+        // Pointer arithmetic: if one operand is a pointer and op is + or -, the
+        // result has the pointer type so subsequent assignment checks don't fire.
+        if (n->op && n->op[1] == '\0' &&
+            (n->op[0] == '+' || n->op[0] == '-')) {
+          if (l.type.ptr_level > 0 && r.type.ptr_level == 0) {
+            out.type = l.type;
+          } else if (r.type.ptr_level > 0 && l.type.ptr_level == 0) {
+            out.type = r.type;
+          }
+          // ptr - ptr yields ptrdiff_t; keep make_int_ts() default.
+        }
         return out;
+      }
+      case NK_COMMA_EXPR: {
+        (void)infer_expr(n->left);
+        ExprInfo r = infer_expr(n->right);
+        out = r;
+        out.is_lvalue = false;
+        out.is_const_lvalue = false;
+        return out;
+      }
       case NK_SIZEOF_EXPR:
         {
           bool old_suppress = suppress_uninit_read_;
@@ -721,9 +825,16 @@ class Validator {
         out.valid = true;
         return out;
       case NK_INIT_LIST:
+        // Aggregate initializer list: recurse into children but return valid=false
+        // so that implicit_convertible checks on the destination type are skipped
+        // (the initializer list itself carries no single comparable type).
+        for (int i = 0; i < n->n_children; ++i) (void)infer_expr(n->children[i]);
+        out.valid = false;
+        return out;
       case NK_COMPOUND_LIT:
         for (int i = 0; i < n->n_children; ++i) (void)infer_expr(n->children[i]);
         out.valid = true;
+        out.type = n->type;  // compound literal has an explicit type
         return out;
       default:
         return out;
