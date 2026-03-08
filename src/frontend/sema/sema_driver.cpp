@@ -1,5 +1,9 @@
 #include "sema_driver.hpp"
 
+#include <cctype>
+#include <cstdint>
+#include <cstring>
+
 namespace tinyc2ll::frontend_cxx {
 
 TypeSpec make_ts(TypeBase base) {
@@ -158,6 +162,443 @@ TypeSpec complex_component_ts(TypeBase b) {
     default:
       return make_ts(TB_DOUBLE);
   }
+}
+
+bool is_wide_str_lit(Node* n) {
+  if (!n || n->kind != NK_STR_LIT || !n->sval) return false;
+  const char* s = n->sval;
+  return (s[0] == 'L' || s[0] == 'u' || s[0] == 'U') && s[1] == '"';
+}
+
+int str_lit_byte_len(Node* n) {
+  if (!n || n->kind != NK_STR_LIT || !n->sval || is_wide_str_lit(n)) return -1;
+  const char* raw = n->sval;
+  int start = 0;
+  if (raw[start] == '"')
+    start++;
+  else
+    return -1;
+  int len = 0;
+  for (const char* p = raw + start; *p && *p != '"'; p++) {
+    if (*p == '\\' && *(p + 1)) {
+      char esc = *(p + 1);
+      if ((esc >= '0' && esc <= '7')) {
+        p++;
+        while (*(p + 1) >= '0' && *(p + 1) <= '7') p++;
+      } else if (esc == 'x' || esc == 'X') {
+        p++;
+        while (isxdigit((unsigned char)*(p + 1))) p++;
+      } else {
+        p++;
+      }
+    }
+    len++;
+  }
+  return len + 1;
+}
+
+bool allows_string_literal_ptr_target(const TypeSpec& ts) {
+  if (ts.ptr_level <= 0) return false;
+  switch (ts.base) {
+    case TB_CHAR:
+    case TB_SCHAR:
+    case TB_UCHAR:
+    case TB_VOID:
+      return true;
+    default:
+      return false;
+  }
+}
+
+std::string decode_narrow_string_lit(const char* sval) {
+  if (!sval) return "";
+  std::string raw = sval;
+  std::string content;
+  if (raw.size() >= 2 && raw.front() == '"' && raw.back() == '"') {
+    for (size_t i = 1; i + 1 < raw.size(); i++) {
+      if (raw[i] == '\\' && i + 1 < raw.size() - 1) {
+        char esc = raw[++i];
+        switch (esc) {
+          case 'n':
+            content += '\n';
+            break;
+          case 't':
+            content += '\t';
+            break;
+          case 'r':
+            content += '\r';
+            break;
+          case '0':
+            content += '\0';
+            break;
+          case '\\':
+            content += '\\';
+            break;
+          case '"':
+            content += '"';
+            break;
+          case 'x':
+          case 'X': {
+            unsigned int v = 0;
+            int nhex = 0;
+            while (i + 1 < raw.size() - 1 &&
+                   isxdigit((unsigned char)raw[i + 1])) {
+              char h = raw[++i];
+              v = v * 16 +
+                  (isdigit((unsigned char)h) ? h - '0'
+                                             : (tolower((unsigned char)h) - 'a' + 10));
+              nhex++;
+            }
+            if (nhex == 0)
+              content += 'x';
+            else
+              content += (char)(unsigned char)v;
+            break;
+          }
+          default:
+            if (esc >= '0' && esc <= '7') {
+              unsigned int v = (unsigned int)(esc - '0');
+              int cnt = 1;
+              while (cnt < 3 && i + 1 < raw.size() - 1 && raw[i + 1] >= '0' &&
+                     raw[i + 1] <= '7') {
+                v = v * 8 + (unsigned int)(raw[++i] - '0');
+                cnt++;
+              }
+              content += (char)(unsigned char)v;
+            } else {
+              content += esc;
+            }
+            break;
+        }
+      } else {
+        content += raw[i];
+      }
+    }
+  } else {
+    content = raw;
+  }
+  return content;
+}
+
+std::string normalize_printf_longdouble_format(std::string s) {
+  std::string out;
+  out.reserve(s.size());
+  for (size_t i = 0; i < s.size(); i++) {
+    if (s[i] != '%') {
+      out.push_back(s[i]);
+      continue;
+    }
+    if (i + 1 < s.size() && s[i + 1] == '%') {
+      out += "%%";
+      i++;
+      continue;
+    }
+    size_t j = i + 1;
+    bool saw_L = false;
+    std::string spec = "%";
+    while (j < s.size()) {
+      char c = s[j];
+      if (c == 'L') {
+        saw_L = true;
+        j++;
+        continue;
+      }
+      spec.push_back(c);
+      if (isalpha((unsigned char)c) || c == '%') {
+        if (saw_L &&
+            (c == 'f' || c == 'F' || c == 'e' || c == 'E' || c == 'g' ||
+             c == 'G' || c == 'a' || c == 'A')) {
+          out += spec;
+        } else {
+          if (saw_L) out.push_back('%');
+          if (saw_L) {
+            for (size_t k = i + 1; k <= j; k++)
+              if (s[k] != 'L') out.push_back(s[k]);
+          } else {
+            out += spec;
+          }
+        }
+        break;
+      }
+      j++;
+    }
+    i = j;
+  }
+  return out;
+}
+
+std::vector<uint32_t> decode_wide_string(const char* sval) {
+  std::vector<uint32_t> codepoints;
+  if (!sval) {
+    codepoints.push_back(0);
+    return codepoints;
+  }
+  const char* p = sval;
+  while (*p && *p != '"') p++;
+  if (*p == '"') p++;
+  while (*p && *p != '"') {
+    if (*p == '\\') {
+      p++;
+      switch (*p) {
+        case 'n':
+          codepoints.push_back('\n');
+          p++;
+          break;
+        case 't':
+          codepoints.push_back('\t');
+          p++;
+          break;
+        case 'r':
+          codepoints.push_back('\r');
+          p++;
+          break;
+        case '0':
+          codepoints.push_back(0);
+          p++;
+          break;
+        case 'a':
+          codepoints.push_back('\a');
+          p++;
+          break;
+        case 'b':
+          codepoints.push_back('\b');
+          p++;
+          break;
+        case 'f':
+          codepoints.push_back('\f');
+          p++;
+          break;
+        case 'v':
+          codepoints.push_back('\v');
+          p++;
+          break;
+        case '\\':
+          codepoints.push_back('\\');
+          p++;
+          break;
+        case '"':
+          codepoints.push_back('"');
+          p++;
+          break;
+        case '\'':
+          codepoints.push_back('\'');
+          p++;
+          break;
+        case 'x':
+        case 'X': {
+          p++;
+          uint32_t v = 0;
+          while (*p && isxdigit((unsigned char)*p)) {
+            v = v * 16 + (isdigit((unsigned char)*p) ? *p - '0'
+                                                     : tolower((unsigned char)*p) - 'a' + 10);
+            p++;
+          }
+          codepoints.push_back(v);
+          break;
+        }
+        case 'u': {
+          p++;
+          uint32_t v = 0;
+          for (int k = 0; k < 4 && *p && isxdigit((unsigned char)*p); k++, p++) {
+            v = v * 16 + (isdigit((unsigned char)*p) ? *p - '0'
+                                                     : tolower((unsigned char)*p) - 'a' + 10);
+          }
+          codepoints.push_back(v);
+          break;
+        }
+        case 'U': {
+          p++;
+          uint32_t v = 0;
+          for (int k = 0; k < 8 && *p && isxdigit((unsigned char)*p); k++, p++) {
+            v = v * 16 + (isdigit((unsigned char)*p) ? *p - '0'
+                                                     : tolower((unsigned char)*p) - 'a' + 10);
+          }
+          codepoints.push_back(v);
+          break;
+        }
+        default:
+          if (*p >= '0' && *p <= '7') {
+            uint32_t v = 0;
+            for (int k = 0; k < 3 && *p >= '0' && *p <= '7'; k++, p++) v = v * 8 + (*p - '0');
+            codepoints.push_back(v);
+          } else {
+            codepoints.push_back((unsigned char)*p);
+            p++;
+          }
+          break;
+      }
+    } else {
+      unsigned char c0 = (unsigned char)*p;
+      if (c0 < 0x80) {
+        codepoints.push_back(c0);
+        p++;
+      } else if ((c0 & 0xE0) == 0xC0) {
+        uint32_t v = c0 & 0x1F;
+        if (p[1] && (unsigned char)p[1] >= 0x80) {
+          v = (v << 6) | ((unsigned char)p[1] & 0x3F);
+          p += 2;
+        } else {
+          p++;
+        }
+        codepoints.push_back(v);
+      } else if ((c0 & 0xF0) == 0xE0) {
+        uint32_t v = c0 & 0x0F;
+        if (p[1] && (unsigned char)p[1] >= 0x80) {
+          v = (v << 6) | ((unsigned char)p[1] & 0x3F);
+          p += 2;
+        } else {
+          p++;
+          codepoints.push_back(v);
+          continue;
+        }
+        if (*p && (unsigned char)*p >= 0x80) {
+          v = (v << 6) | ((unsigned char)*p & 0x3F);
+          p++;
+        }
+        codepoints.push_back(v);
+      } else if ((c0 & 0xF8) == 0xF0) {
+        uint32_t v = c0 & 0x07;
+        for (int k = 0; k < 3 && p[1] && (unsigned char)p[1] >= 0x80; k++, p++) {
+          v = (v << 6) | ((unsigned char)p[1] & 0x3F);
+        }
+        p++;
+        codepoints.push_back(v);
+      } else {
+        codepoints.push_back(c0);
+        p++;
+      }
+    }
+  }
+  codepoints.push_back(0);
+  return codepoints;
+}
+
+int infer_array_size_from_init(Node* init) {
+  if (!init) return 0;
+  if (init->kind == NK_STR_LIT) {
+    if (is_wide_str_lit(init)) {
+      auto codepoints = decode_wide_string(init->sval);
+      return (int)codepoints.size();
+    }
+    int count = 0;
+    for (int i = (init->sval && init->sval[0] == '"' ? 1 : 0);
+         init->sval && init->sval[i] && init->sval[i] != '"'; i++) {
+      if (init->sval[i] == '\\') {
+        i++;
+        if (init->sval[i] >= '0' && init->sval[i] <= '7') {
+          for (int k = 0; k < 2 && init->sval[i + 1] >= '0' &&
+                          init->sval[i + 1] <= '7';
+               k++)
+            i++;
+        } else if (init->sval[i] == 'x' || init->sval[i] == 'X') {
+          i++;
+          while (init->sval[i] && isxdigit((unsigned char)init->sval[i])) i++;
+          i--;
+        }
+      }
+      count++;
+    }
+    return count + 1;
+  }
+  if (init->kind != NK_INIT_LIST) return 0;
+  long long max_idx = -1;
+  long long cur_idx = 0;
+  for (int i = 0; i < init->n_children; i++) {
+    Node* item = init->children[i];
+    if (item && item->kind == NK_INIT_ITEM && item->is_index_desig) cur_idx = item->desig_val;
+    if (cur_idx > max_idx) max_idx = cur_idx;
+    cur_idx++;
+  }
+  return (int)(max_idx + 1);
+}
+
+long long static_eval_int(
+    Node* n,
+    const std::unordered_map<std::string, long long>& enum_consts) {
+  if (!n) return 0;
+  if (n->kind == NK_INT_LIT) return n->ival;
+  if (n->kind == NK_CHAR_LIT) return n->ival;
+  if (n->kind == NK_VAR && n->name) {
+    auto it = enum_consts.find(n->name);
+    if (it != enum_consts.end()) return it->second;
+  }
+  if (n->kind == NK_CAST && n->left) {
+    long long v = static_eval_int(n->left, enum_consts);
+    TypeSpec ts = n->type;
+    if (ts.ptr_level == 0) {
+      int bits = 0;
+      switch (ts.base) {
+        case TB_BOOL:
+          bits = 1;
+          break;
+        case TB_CHAR:
+        case TB_UCHAR:
+        case TB_SCHAR:
+          bits = 8;
+          break;
+        case TB_SHORT:
+        case TB_USHORT:
+          bits = 16;
+          break;
+        case TB_INT:
+        case TB_UINT:
+        case TB_ENUM:
+          bits = 32;
+          break;
+        default:
+          break;
+      }
+      if (bits > 0 && bits < 64) {
+        long long mask = (1LL << bits) - 1;
+        v &= mask;
+        if (!is_unsigned_base(ts.base) && ts.base != TB_BOOL && (v >> (bits - 1)))
+          v |= ~mask;
+      }
+    }
+    return v;
+  }
+  if (n->kind == NK_UNARY && n->op) {
+    if (strcmp(n->op, "-") == 0 && n->left) return -static_eval_int(n->left, enum_consts);
+    if (strcmp(n->op, "+") == 0 && n->left) return static_eval_int(n->left, enum_consts);
+    if (strcmp(n->op, "~") == 0 && n->left) return ~static_eval_int(n->left, enum_consts);
+  }
+  if (n->kind == NK_BINOP && n->op && n->left && n->right) {
+    long long l = static_eval_int(n->left, enum_consts);
+    long long r = static_eval_int(n->right, enum_consts);
+    if (strcmp(n->op, "+") == 0) return l + r;
+    if (strcmp(n->op, "-") == 0) return l - r;
+    if (strcmp(n->op, "*") == 0) return l * r;
+    if (strcmp(n->op, "/") == 0 && r != 0) return l / r;
+    if (strcmp(n->op, "%") == 0 && r != 0) return l % r;
+    if (strcmp(n->op, "&") == 0) return l & r;
+    if (strcmp(n->op, "|") == 0) return l | r;
+    if (strcmp(n->op, "^") == 0) return l ^ r;
+    if (strcmp(n->op, "<<") == 0) return l << (r & 63);
+    if (strcmp(n->op, ">>") == 0) return l >> (r & 63);
+  }
+  return 0;
+}
+
+double static_eval_float(Node* n) {
+  if (!n) return 0.0;
+  if (n->kind == NK_FLOAT_LIT) return n->fval;
+  if (n->kind == NK_INT_LIT) return (double)n->ival;
+  if (n->kind == NK_CHAR_LIT) return (double)n->ival;
+  if (n->kind == NK_CAST && n->left) return static_eval_float(n->left);
+  if (n->kind == NK_UNARY && n->op && n->left) {
+    double v = static_eval_float(n->left);
+    if (strcmp(n->op, "-") == 0) return -v;
+    if (strcmp(n->op, "+") == 0) return v;
+  }
+  if (n->kind == NK_BINOP && n->op && n->left && n->right) {
+    double l = static_eval_float(n->left);
+    double r = static_eval_float(n->right);
+    if (strcmp(n->op, "+") == 0) return l + r;
+    if (strcmp(n->op, "-") == 0) return l - r;
+    if (strcmp(n->op, "*") == 0) return l * r;
+    if (strcmp(n->op, "/") == 0) return l / r;
+  }
+  return 0.0;
 }
 
 }  // namespace tinyc2ll::frontend_cxx

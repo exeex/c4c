@@ -194,3 +194,41 @@ Do not gate early migration on:
 2. PR-2: Add `sema_driver` skeleton and move first semantic helpers from `ir_builder`.
 3. PR-3: Add minimal `HIR` structs + `ast_to_hir` for basic expressions/statements.
 
+## Current Progress (as of 2026-03-08)
+
+### Phase 0 status: completed
+
+- Added parallel entry binary `tiny-c2ll-next` (`frontend_cxx_next`) with its own `main`.
+- Kept `tiny-c2ll-stage1` (`frontend_cxx_stage1`) unchanged as default test/compiler path.
+- Matched shared CLI behavior for `--lex-only`, `--parse-only`, and `-o` on `next`.
+- Verified both binaries build and legacy CTest flow still runs via stage1.
+
+### Phase 1 status: in progress (substantial extraction done)
+
+Completed in `src/frontend/sema/sema_driver.{hpp,cpp}`:
+
+- Type construction and classification helpers:
+  - `make_ts`, `int_ts`, `void_ts`, `double_ts`, `float_ts`, `char_ts`, `ll_ts`
+  - `ptr_to`, `is_unsigned_base`, `is_float_base`, `is_complex_base`, `complex_component_ts`
+- Array-shape helpers:
+  - `array_rank_of`, `array_dim_at`, `is_array_ty`, `clear_array`,
+    `set_array_dims`, `set_first_array_dim`, `drop_array_dim`
+- String/constant-eval semantic helpers:
+  - `is_wide_str_lit`, `str_lit_byte_len`, `allows_string_literal_ptr_target`
+  - `decode_narrow_string_lit`, `normalize_printf_longdouble_format`, `decode_wide_string`
+  - `infer_array_size_from_init`, `static_eval_int`, `static_eval_float`
+
+`ir_builder.cpp` now depends on `sema_driver.hpp` for the helpers above instead of owning local static copies.
+
+Validation completed after extraction:
+
+- `legacy` vs `next` LLVM IR parity check on representative input (`example.c`): no diff.
+- Non-`llvm_gcc_c_torture` suites green:
+  - `tiny_c2ll_tests`
+  - `negative_tests`
+  - `ccc_review_*`
+  - `c_testsuite_*`
+
+Remaining Phase 1 work:
+
+- Continue moving deeper semantic decisions (especially within `expr_type` and related type-promotion logic) behind `sema_driver` facade while preserving current `IRBuilder` API and behavior.

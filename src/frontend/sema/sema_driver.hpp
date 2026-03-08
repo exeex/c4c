@@ -1,5 +1,10 @@
 #pragma once
 
+#include <cstdint>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #include "ast.hpp"
 
 namespace tinyc2ll::frontend_cxx {
@@ -27,5 +32,18 @@ bool is_unsigned_base(TypeBase b);
 bool is_float_base(TypeBase b);
 bool is_complex_base(TypeBase b);
 TypeSpec complex_component_ts(TypeBase b);
+
+bool is_wide_str_lit(Node* n);
+int str_lit_byte_len(Node* n);
+bool allows_string_literal_ptr_target(const TypeSpec& ts);
+std::string decode_narrow_string_lit(const char* sval);
+std::string normalize_printf_longdouble_format(std::string s);
+std::vector<uint32_t> decode_wide_string(const char* sval);
+
+int infer_array_size_from_init(Node* init);
+long long static_eval_int(
+    Node* n,
+    const std::unordered_map<std::string, long long>& enum_consts);
+double static_eval_float(Node* n);
 
 }  // namespace tinyc2ll::frontend_cxx
