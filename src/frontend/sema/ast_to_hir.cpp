@@ -22,12 +22,12 @@ SourceSpan make_span(const Node* n) {
 UnaryOp map_unary_op(const char* op) {
   if (!op) return UnaryOp::Plus;
   const std::string s(op);
+  if (s.rfind("++", 0) == 0) return UnaryOp::PreInc;
+  if (s.rfind("--", 0) == 0) return UnaryOp::PreDec;
   if (s == "+") return UnaryOp::Plus;
   if (s == "-") return UnaryOp::Minus;
   if (s == "!") return UnaryOp::Not;
   if (s == "~") return UnaryOp::BitNot;
-  if (s == "++") return UnaryOp::PreInc;
-  if (s == "--") return UnaryOp::PreDec;
   return UnaryOp::Plus;
 }
 
@@ -57,19 +57,20 @@ BinaryOp map_binary_op(const char* op) {
 }
 
 AssignOp map_assign_op(const char* op, NodeKind kind) {
-  if (kind == NK_ASSIGN) return AssignOp::Set;
   if (!op) return AssignOp::Set;
   const std::string s(op);
-  if (s == "+=") return AssignOp::Add;
-  if (s == "-=") return AssignOp::Sub;
-  if (s == "*=") return AssignOp::Mul;
-  if (s == "/=") return AssignOp::Div;
-  if (s == "%=") return AssignOp::Mod;
-  if (s == "<<=") return AssignOp::Shl;
-  if (s == ">>=") return AssignOp::Shr;
-  if (s == "&=") return AssignOp::BitAnd;
-  if (s == "|=") return AssignOp::BitOr;
-  if (s == "^=") return AssignOp::BitXor;
+  if (s == "=") return AssignOp::Set;
+  if (s == "+=" || s == "+") return AssignOp::Add;
+  if (s == "-=" || s == "-") return AssignOp::Sub;
+  if (s == "*=" || s == "*") return AssignOp::Mul;
+  if (s == "/=" || s == "/") return AssignOp::Div;
+  if (s == "%=" || s == "%") return AssignOp::Mod;
+  if (s == "<<=" || s == "<<") return AssignOp::Shl;
+  if (s == ">>=" || s == ">>") return AssignOp::Shr;
+  if (s == "&=" || s == "&") return AssignOp::BitAnd;
+  if (s == "|=" || s == "|") return AssignOp::BitOr;
+  if (s == "^=" || s == "^") return AssignOp::BitXor;
+  if (kind == NK_ASSIGN) return AssignOp::Set;
   return AssignOp::Set;
 }
 
@@ -96,9 +97,10 @@ class Lowerer {
       }
     }
 
-    // Phase 1: collect struct/union definitions
+    // Phase 1: collect type definitions used by later lowering
     for (const Node* item : items) {
       if (item->kind == NK_STRUCT_DEF) lower_struct_def(item);
+      if (item->kind == NK_ENUM_DEF) collect_enum_def(item);
     }
 
     // Phase 2: lower functions and globals
@@ -214,12 +216,22 @@ class Lowerer {
     module_->struct_defs[tag] = std::move(def);
   }
 
+  void collect_enum_def(const Node* ed) {
+    if (!ed || ed->kind != NK_ENUM_DEF || ed->n_enum_variants <= 0) return;
+    if (!ed->enum_names || !ed->enum_vals) return;
+    for (int i = 0; i < ed->n_enum_variants; ++i) {
+      const char* name = ed->enum_names[i];
+      if (!name || !name[0]) continue;
+      enum_consts_[name] = ed->enum_vals[i];
+    }
+  }
+
   void lower_function(const Node* fn_node) {
     Function fn{};
     fn.id = next_fn_id();
     fn.name = fn_node->name ? fn_node->name : "<anon_fn>";
     fn.return_type = qtype_from(fn_node->type);
-    fn.linkage = {fn_node->is_static, fn_node->is_extern, fn_node->is_inline};
+    fn.linkage = {fn_node->is_static, fn_node->is_extern || fn_node->body == nullptr, fn_node->is_inline};
     fn.attrs.variadic = fn_node->variadic;
     fn.span = make_span(fn_node);
 
@@ -235,6 +247,12 @@ class Lowerer {
       param.span = make_span(p);
       ctx.params[param.name] = static_cast<uint32_t>(fn.params.size());
       fn.params.push_back(std::move(param));
+    }
+
+    if (!fn_node->body) {
+      module_->fn_index[fn.name] = fn.id;
+      module_->functions.push_back(std::move(fn));
+      return;
     }
 
     const BlockId entry = create_block(ctx);
@@ -314,12 +332,14 @@ class Lowerer {
 
     switch (n->kind) {
       case NK_BLOCK: {
-        // Block scope: keep shadowing local bindings local to this block.
+        // ival==1 marks synthetic multi-declarator blocks (e.g. int a, b;).
+        // They share the current scope and must not discard bindings.
+        const bool new_scope = (n->ival != 1);
         const auto saved_locals = ctx.locals;
         for (int i = 0; i < n->n_children; ++i) {
           lower_stmt_node(ctx, n->children[i]);
         }
-        ctx.locals = saved_locals;
+        if (new_scope) ctx.locals = saved_locals;
         return;
       }
       case NK_DECL: {
@@ -356,18 +376,25 @@ class Lowerer {
         const BlockId after_b = create_block(ctx);
         s.after_block = after_b;
         append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
+        ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
 
         ctx.current_block = then_b;
         lower_stmt_node(ctx, n->then_);
         if (!ensure_block(ctx, ctx.current_block).has_explicit_terminator) {
-          ctx.current_block = after_b;
+          GotoStmt j{};
+          j.target.resolved_block = after_b;
+          append_stmt(ctx, Stmt{StmtPayload{j}, make_span(n)});
+          ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
         }
 
         if (n->else_) {
           ctx.current_block = *s.else_block;
           lower_stmt_node(ctx, n->else_);
           if (!ensure_block(ctx, ctx.current_block).has_explicit_terminator) {
-            ctx.current_block = after_b;
+            GotoStmt j{};
+            j.target.resolved_block = after_b;
+            append_stmt(ctx, Stmt{StmtPayload{j}, make_span(n)});
+            ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
           }
         }
 
@@ -393,6 +420,7 @@ class Lowerer {
         s.continue_target = cond_b;
         s.break_target = after_b;
         append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
+        ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
 
         ctx.break_stack.push_back(after_b);
         ctx.continue_stack.push_back(cond_b);
@@ -422,6 +450,7 @@ class Lowerer {
         s.continue_target = body_b;
         s.break_target = after_b;
         append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
+        ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
 
         ctx.break_stack.push_back(after_b);
         ctx.continue_stack.push_back(body_b);
@@ -462,6 +491,7 @@ class Lowerer {
         s.continue_target = body_b;
         s.break_target = after_b;
         append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
+        ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
 
         ctx.break_stack.pop_back();
         ctx.continue_stack.pop_back();
@@ -474,6 +504,7 @@ class Lowerer {
         const BlockId body_b = create_block(ctx);
         s.body_block = body_b;
         append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
+        ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
 
         const BlockId after_b = create_block(ctx);
         ctx.break_stack.push_back(after_b);
@@ -508,7 +539,6 @@ class Lowerer {
         if (!ctx.break_stack.empty()) s.target = ctx.break_stack.back();
         append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
         ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
-        if (!ctx.break_stack.empty()) ctx.current_block = ctx.break_stack.back();
         return;
       }
       case NK_CONTINUE: {
@@ -516,7 +546,6 @@ class Lowerer {
         if (!ctx.continue_stack.empty()) s.target = ctx.continue_stack.back();
         append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
         ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
-        if (!ctx.continue_stack.empty()) ctx.current_block = ctx.continue_stack.back();
         return;
       }
       case NK_LABEL: {
@@ -548,6 +577,10 @@ class Lowerer {
         append_stmt(ctx, Stmt{StmtPayload{ExprStmt{}}, make_span(n)});
         return;
       }
+      case NK_ENUM_DEF: {
+        collect_enum_def(n);
+        return;
+      }
       default: {
         ExprStmt s{};
         s.expr = lower_expr(&ctx, n);
@@ -577,8 +610,21 @@ class Lowerer {
         return append_expr(n, std::move(s), ts, ValueCategory::LValue);
       }
       case NK_CHAR_LIT:
-        return append_expr(n, CharLiteral{n->ival}, n->type);
+      {
+        // In C, character constants have type int.
+        TypeSpec ts = n->type;
+        ts.base = TB_INT;
+        return append_expr(n, CharLiteral{n->ival}, ts);
+      }
       case NK_VAR: {
+        if (n->name && n->name[0]) {
+          auto it = enum_consts_.find(n->name);
+          if (it != enum_consts_.end()) {
+            TypeSpec ts{};
+            ts.base = TB_INT;
+            return append_expr(n, IntLiteral{it->second, false}, ts);
+          }
+        }
         DeclRef r{};
         r.name = n->name ? n->name : "<anon_var>";
         if (ctx) {
@@ -673,12 +719,14 @@ class Lowerer {
         SizeofExpr s{};
         s.expr = lower_expr(ctx, n->left);
         TypeSpec ts = n->type;
+        if (ts.base == TB_VOID && ts.ptr_level == 0 && ts.array_rank == 0) ts.base = TB_INT;
         return append_expr(n, s, ts);
       }
       case NK_SIZEOF_TYPE: {
         SizeofTypeExpr s{};
         s.type = qtype_from(n->type);
         TypeSpec ts = n->type;
+        if (ts.base == TB_VOID && ts.ptr_level == 0 && ts.array_rank == 0) ts.base = TB_INT;
         return append_expr(n, s, ts);
       }
       default: {
@@ -692,6 +740,7 @@ class Lowerer {
   }
 
   Module* module_ = nullptr;
+  std::unordered_map<std::string, long long> enum_consts_;
 
 };
 

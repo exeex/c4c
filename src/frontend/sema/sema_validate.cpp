@@ -60,15 +60,7 @@ class Validator {
 
     collect_toplevel(root);
     for (int i = 0; i < root->n_children; ++i) {
-      const Node* n = root->children[i];
-      if (!n) continue;
-      if (n->kind == NK_FUNCTION) {
-        validate_function(n);
-      } else if (n->kind == NK_GLOBAL_VAR) {
-        validate_global(n);
-      } else if (n->kind == NK_STRUCT_DEF) {
-        note_struct_def(n);
-      }
+      validate_toplevel_node(root->children[i]);
     }
     return finish();
   }
@@ -81,6 +73,7 @@ class Validator {
 
   std::vector<Diagnostic> diags_;
   std::unordered_map<std::string, TypeSpec> globals_;
+  std::unordered_map<std::string, TypeSpec> enum_consts_;
   std::unordered_map<std::string, FunctionSig> funcs_;
   std::unordered_set<std::string> complete_structs_;
   std::unordered_set<std::string> complete_unions_;
@@ -94,6 +87,15 @@ class Validator {
     bool has_default = false;
   };
   std::vector<SwitchCtx> switch_stack_;
+
+  static bool tracks_uninit_read(const TypeSpec& ts) {
+    // Keep this deliberately narrow to avoid frontend false positives:
+    // only plain scalar locals participate in this check.
+    if (ts.array_rank > 0) return false;
+    if (ts.ptr_level > 0) return false;
+    if (ts.base == TB_STRUCT || ts.base == TB_UNION) return false;
+    return true;
+  }
 
   void emit(int line, std::string msg) {
     diags_.push_back(Diagnostic{line, std::move(msg)});
@@ -135,11 +137,38 @@ class Validator {
       fts.ptr_level += 1;
       return ScopedSym{fts, true};
     }
+    auto ec = enum_consts_.find(name);
+    if (ec != enum_consts_.end()) return ScopedSym{ec->second, true};
     return std::nullopt;
   }
 
+  void bind_enum_constants_global(const Node* n) {
+    if (!n || n->kind != NK_ENUM_DEF || n->n_enum_variants <= 0 || !n->enum_names) return;
+    TypeSpec its = make_int_ts();
+    for (int i = 0; i < n->n_enum_variants; ++i) {
+      if (!n->enum_names[i] || !n->enum_names[i][0]) continue;
+      enum_consts_[n->enum_names[i]] = its;
+    }
+  }
+
+  void bind_enum_constants_local(const Node* n) {
+    if (!n || n->kind != NK_ENUM_DEF || n->n_enum_variants <= 0 || !n->enum_names) return;
+    TypeSpec its = make_int_ts();
+    for (int i = 0; i < n->n_enum_variants; ++i) {
+      if (!n->enum_names[i] || !n->enum_names[i][0]) continue;
+      bind_local(n->enum_names[i], its, true, n->line);
+    }
+  }
+
   void mark_initialized_if_local_var(const Node* n) {
-    if (!n || n->kind != NK_VAR || !n->name || !n->name[0]) return;
+    if (!n) return;
+    // Drill through member access and indexing to find the base variable.
+    if (n->kind == NK_MEMBER || n->kind == NK_INDEX || n->kind == NK_DEREF ||
+        n->kind == NK_ADDR) {
+      mark_initialized_if_local_var(n->left);
+      return;
+    }
+    if (n->kind != NK_VAR || !n->name || !n->name[0]) return;
     for (auto it = scopes_.rbegin(); it != scopes_.rend(); ++it) {
       auto f = it->find(n->name);
       if (f != it->end()) {
@@ -168,29 +197,59 @@ class Validator {
     }
   }
 
+  void collect_toplevel_node(const Node* n) {
+    if (!n) return;
+    if (n->kind == NK_BLOCK) {
+      // Multi-declarator global block: recurse into children.
+      for (int i = 0; i < n->n_children; ++i) collect_toplevel_node(n->children[i]);
+      return;
+    }
+    if (n->kind == NK_GLOBAL_VAR) {
+      if (n->name && n->name[0]) globals_[n->name] = n->type;
+      if (!is_complete_object_type(n->type)) {
+        emit(n->line, "object has incomplete struct/union type");
+      }
+    } else if (n->kind == NK_FUNCTION) {
+      if (!n->name || !n->name[0]) return;
+      FunctionSig sig;
+      sig.ret = n->type;
+      sig.variadic = n->variadic;
+      for (int p = 0; p < n->n_params; ++p) {
+        const Node* param = n->params[p];
+        if (!param) continue;
+        // In C, `f(void)` means no parameters; skip the void sentinel param.
+        const TypeSpec& pt = param->type;
+        if (pt.base == TB_VOID && pt.ptr_level == 0 && pt.array_rank == 0) continue;
+        sig.params.push_back(pt);
+      }
+      funcs_[n->name] = std::move(sig);
+    } else if (n->kind == NK_STRUCT_DEF) {
+      note_struct_def(n);
+    } else if (n->kind == NK_ENUM_DEF) {
+      bind_enum_constants_global(n);
+    }
+  }
+
   void collect_toplevel(const Node* root) {
     for (int i = 0; i < root->n_children; ++i) {
-      const Node* n = root->children[i];
-      if (!n) continue;
-      if (n->kind == NK_GLOBAL_VAR) {
-        if (n->name && n->name[0]) globals_[n->name] = n->type;
-        if (!is_complete_object_type(n->type)) {
-          emit(n->line, "object has incomplete struct/union type");
-        }
-      } else if (n->kind == NK_FUNCTION) {
-        if (!n->name || !n->name[0]) continue;
-        FunctionSig sig;
-        sig.ret = n->type;
-        sig.variadic = n->variadic;
-        for (int p = 0; p < n->n_params; ++p) {
-          const Node* param = n->params[p];
-          if (!param) continue;
-          sig.params.push_back(param->type);
-        }
-        funcs_[n->name] = std::move(sig);
-      } else if (n->kind == NK_STRUCT_DEF) {
-        note_struct_def(n);
-      }
+      collect_toplevel_node(root->children[i]);
+    }
+  }
+
+  void validate_toplevel_node(const Node* n) {
+    if (!n) return;
+    if (n->kind == NK_BLOCK) {
+      for (int i = 0; i < n->n_children; ++i) validate_toplevel_node(n->children[i]);
+      return;
+    }
+    if (n->kind == NK_FUNCTION) {
+      validate_function(n);
+    } else if (n->kind == NK_GLOBAL_VAR) {
+      validate_global(n);
+    } else if (n->kind == NK_STRUCT_DEF) {
+      note_struct_def(n);
+    } else if (n->kind == NK_ENUM_DEF) {
+      bind_enum_constants_global(n);
     }
   }
 
@@ -241,9 +300,13 @@ class Validator {
 
     switch (n->kind) {
       case NK_BLOCK: {
-        enter_scope();
+        // ival == 1 marks a synthetic multi-declarator block (e.g. `int a, b;`).
+        // These share the enclosing scope; only true compound-statement blocks
+        // introduce a new scope.
+        bool new_scope = (n->ival != 1);
+        if (new_scope) enter_scope();
         for (int i = 0; i < n->n_children; ++i) visit_stmt(n->children[i]);
-        leave_scope();
+        if (new_scope) leave_scope();
         return;
       }
       case NK_DECL: {
@@ -341,6 +404,10 @@ class Validator {
         if (n->body) visit_stmt(n->body);
         return;
       }
+      case NK_ENUM_DEF: {
+        bind_enum_constants_local(n);
+        return;
+      }
       case NK_GOTO:
       case NK_EMPTY:
         return;
@@ -368,7 +435,8 @@ class Validator {
         out.type.ptr_level = 1;
         out.type.array_rank = 0;
         out.type.array_size = -1;
-        out.type.is_const = true;
+        // Keep C89/C99 compatibility for plain string literal decay in this pass.
+        out.type.is_const = false;
         return out;
       }
       case NK_VAR: {
@@ -382,13 +450,16 @@ class Validator {
         out.type = sym->type;
         out.is_lvalue = true;
         out.is_const_lvalue = out.type.is_const;
-        if (!suppress_uninit_read_ && !sym->initialized) {
+        if (!suppress_uninit_read_ && !sym->initialized && tracks_uninit_read(out.type)) {
           emit(n->line, std::string("use of uninitialized local '") + n->name + "'");
         }
         return out;
       }
       case NK_ADDR: {
+        bool old_suppress = suppress_uninit_read_;
+        suppress_uninit_read_ = true;
         ExprInfo base = infer_expr(n->left);
+        suppress_uninit_read_ = old_suppress;
         out = base;
         out.valid = base.valid;
         out.is_lvalue = false;
@@ -530,7 +601,12 @@ class Validator {
         out.valid = true;
         return out;
       case NK_SIZEOF_EXPR:
-        (void)infer_expr(n->left);
+        {
+          bool old_suppress = suppress_uninit_read_;
+          suppress_uninit_read_ = true;
+          (void)infer_expr(n->left);
+          suppress_uninit_read_ = old_suppress;
+        }
         out.valid = true;
         return out;
       case NK_SIZEOF_TYPE:

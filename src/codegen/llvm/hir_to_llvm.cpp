@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cctype>
 #include <cstring>
 #include <sstream>
 #include <stdexcept>
@@ -98,6 +99,21 @@ static std::string llvm_ty(const TypeSpec& ts) {
     return "%struct." + std::string(ts.tag);
   }
   return llvm_base(ts.base);
+}
+
+static bool has_concrete_type(const TypeSpec& ts) {
+  return ts.base != TB_VOID || ts.ptr_level > 0 || ts.array_rank > 0;
+}
+
+static std::string sanitize_llvm_ident(const std::string& raw) {
+  std::string out;
+  out.reserve(raw.size());
+  for (unsigned char c : raw) {
+    if (std::isalnum(c) || c == '_' || c == '.' || c == '$') out.push_back(static_cast<char>(c));
+    else out.push_back('_');
+  }
+  if (out.empty() || std::isdigit(static_cast<unsigned char>(out[0]))) out.insert(out.begin(), '_');
+  return out;
 }
 
 // Non-decayed LLVM type for alloca/struct field (struct/union → %struct.TAG)
@@ -199,6 +215,107 @@ static std::string fp_to_hex(double v) {
   char buf[32];
   std::snprintf(buf, sizeof(buf), "0x%016llX", (unsigned long long)bits);
   return buf;
+}
+
+static int hex_digit(unsigned char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
+  if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
+  return -1;
+}
+
+static void append_utf8(std::string& out, uint32_t cp) {
+  if (cp <= 0x7F) {
+    out.push_back(static_cast<char>(cp));
+  } else if (cp <= 0x7FF) {
+    out.push_back(static_cast<char>(0xC0 | ((cp >> 6) & 0x1F)));
+    out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+  } else if (cp <= 0xFFFF) {
+    out.push_back(static_cast<char>(0xE0 | ((cp >> 12) & 0x0F)));
+    out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+    out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+  } else {
+    out.push_back(static_cast<char>(0xF0 | ((cp >> 18) & 0x07)));
+    out.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+    out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+    out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+  }
+}
+
+static std::string decode_c_escaped_bytes(const std::string& raw) {
+  std::string out;
+  out.reserve(raw.size());
+  for (size_t i = 0; i < raw.size(); ++i) {
+    unsigned char c = static_cast<unsigned char>(raw[i]);
+    if (c != '\\' || i + 1 >= raw.size()) {
+      out.push_back(static_cast<char>(c));
+      continue;
+    }
+    unsigned char e = static_cast<unsigned char>(raw[++i]);
+    switch (e) {
+      case 'n': out.push_back('\n'); break;
+      case 'r': out.push_back('\r'); break;
+      case 't': out.push_back('\t'); break;
+      case '\\': out.push_back('\\'); break;
+      case '\'': out.push_back('\''); break;
+      case '"': out.push_back('"'); break;
+      case 'a': out.push_back('\a'); break;
+      case 'b': out.push_back('\b'); break;
+      case 'f': out.push_back('\f'); break;
+      case 'v': out.push_back('\v'); break;
+      case 'x': {
+        int v = 0;
+        bool any = false;
+        while (i + 1 < raw.size()) {
+          int h = hex_digit(static_cast<unsigned char>(raw[i + 1]));
+          if (h < 0) break;
+          any = true;
+          v = (v << 4) | h;
+          ++i;
+        }
+        out.push_back(static_cast<char>(any ? (v & 0xFF) : 'x'));
+        break;
+      }
+      case 'u':
+      case 'U': {
+        const int nhex = (e == 'u') ? 4 : 8;
+        uint32_t cp = 0;
+        bool ok = true;
+        for (int k = 0; k < nhex; ++k) {
+          if (i + 1 >= raw.size()) {
+            ok = false;
+            break;
+          }
+          int h = hex_digit(static_cast<unsigned char>(raw[i + 1]));
+          if (h < 0) {
+            ok = false;
+            break;
+          }
+          cp = (cp << 4) | static_cast<uint32_t>(h);
+          ++i;
+        }
+        if (ok) append_utf8(out, cp);
+        break;
+      }
+      default:
+        if (e >= '0' && e <= '7') {
+          int v = e - '0';
+          int count = 1;
+          while (count < 3 && i + 1 < raw.size()) {
+            unsigned char o = static_cast<unsigned char>(raw[i + 1]);
+            if (o < '0' || o > '7') break;
+            v = (v << 3) | (o - '0');
+            ++i;
+            ++count;
+          }
+          out.push_back(static_cast<char>(v & 0xFF));
+        } else {
+          out.push_back(static_cast<char>(e));
+        }
+        break;
+    }
+  }
+  return out;
 }
 
 // ── Block metadata for break/continue targets ─────────────────────────────────
@@ -362,7 +479,7 @@ class HirEmitter {
                bytes.back() == '"') {
       bytes = bytes.substr(2, bytes.size() - 3);
     }
-    return bytes;
+    return decode_c_escaped_bytes(bytes);
   }
 
   static std::string escape_llvm_c_bytes(const std::string& raw_bytes) {
@@ -603,7 +720,9 @@ class HirEmitter {
     }
 
     // int → int
-    if (is_any_int(from_ts.base) && is_any_int(to_ts.base)) {
+    if (from_ts.ptr_level == 0 && from_ts.array_rank == 0 &&
+        to_ts.ptr_level == 0 && to_ts.array_rank == 0 &&
+        is_any_int(from_ts.base) && is_any_int(to_ts.base)) {
       const int fb = int_bits(from_ts.base), tb = int_bits(to_ts.base);
       if (fb == tb) return val;
       const std::string tmp = fresh_tmp(ctx);
@@ -863,6 +982,13 @@ class HirEmitter {
     }, e.payload);
   }
 
+  TypeSpec resolve_expr_type(FnCtx& ctx, const Expr& e) {
+    if (has_concrete_type(e.type.spec)) return e.type.spec;
+    return std::visit([&](const auto& p) -> TypeSpec {
+      return resolve_payload_type(ctx, p);
+    }, e.payload);
+  }
+
   TypeSpec resolve_payload_type(FnCtx& ctx, const DeclRef& r) {
     if (r.local) {
       const auto it = ctx.local_types.find(r.local->value);
@@ -876,14 +1002,68 @@ class HirEmitter {
   }
 
   TypeSpec resolve_payload_type(FnCtx& ctx, const BinaryExpr& b) {
-    // For arithmetic/bitwise the result type matches the operand type
+    switch (b.op) {
+      case BinaryOp::Lt:
+      case BinaryOp::Le:
+      case BinaryOp::Gt:
+      case BinaryOp::Ge:
+      case BinaryOp::Eq:
+      case BinaryOp::Ne:
+      case BinaryOp::LAnd:
+      case BinaryOp::LOr: {
+        TypeSpec ts{};
+        ts.base = TB_INT;
+        return ts;
+      }
+      default:
+        break;
+    }
     const TypeSpec lts = resolve_expr_type(ctx, b.lhs);
+    const TypeSpec rts = resolve_expr_type(ctx, b.rhs);
+
+    if (b.op == BinaryOp::Sub && llvm_ty(lts) == "ptr" && llvm_ty(rts) == "ptr") {
+      TypeSpec ts{};
+      ts.base = TB_LONGLONG;
+      return ts;
+    }
+    if ((b.op == BinaryOp::Add || b.op == BinaryOp::Sub) &&
+        llvm_ty(lts) == "ptr" &&
+        rts.ptr_level == 0 && rts.array_rank == 0 && is_any_int(rts.base)) {
+      return lts;
+    }
+    if (b.op == BinaryOp::Add &&
+        llvm_ty(rts) == "ptr" &&
+        lts.ptr_level == 0 && lts.array_rank == 0 && is_any_int(lts.base)) {
+      return rts;
+    }
+
+    // For arithmetic/bitwise the result type matches the operand type
     if (lts.base != TB_VOID) return lts;
     return resolve_expr_type(ctx, b.rhs);
   }
 
   TypeSpec resolve_payload_type(FnCtx& ctx, const UnaryExpr& u) {
-    return resolve_expr_type(ctx, u.operand);
+    TypeSpec ts = resolve_expr_type(ctx, u.operand);
+    switch (u.op) {
+      case UnaryOp::AddrOf:
+        if (ts.array_rank > 0) {
+          ts.array_rank = 0;
+          ts.array_size = -1;
+        }
+        ts.ptr_level += 1;
+        return ts;
+      case UnaryOp::Deref:
+        if (ts.ptr_level > 0) ts.ptr_level -= 1;
+        else if (ts.array_rank > 0) ts.array_rank -= 1;
+        return ts;
+      case UnaryOp::Not: {
+        TypeSpec out{};
+        out.base = TB_INT;
+        return out;
+      }
+      default:
+        return ts;
+    }
   }
 
   TypeSpec resolve_payload_type(FnCtx& ctx, const AssignExpr& a) {
@@ -964,6 +1144,11 @@ class HirEmitter {
   std::string emit_rval_id(FnCtx& ctx, ExprId id, TypeSpec& out_ts) {
     const Expr& e = get_expr(id);
     out_ts = e.type.spec;
+    if (const auto* b = std::get_if<BinaryExpr>(&e.payload)) {
+      // Prefer semantic reconstruction for binary expressions; parser-provided
+      // AST types are often too coarse for pointer arithmetic.
+      out_ts = resolve_payload_type(ctx, *b);
+    }
     // AST does not annotate types on all nodes; resolve recursively.
     if (out_ts.base == TB_VOID && out_ts.ptr_level == 0 && out_ts.array_rank == 0) {
       out_ts = resolve_expr_type(ctx, id);
@@ -1008,6 +1193,7 @@ class HirEmitter {
       // Wide string: not fully handled; fall back to empty
       bytes = "";
     }
+    bytes = decode_c_escaped_bytes(bytes);
     const std::string gname = intern_str(bytes);
     const size_t len = bytes.size() + 1;
     const std::string tmp = fresh_tmp(ctx);
@@ -1034,6 +1220,12 @@ class HirEmitter {
       if (it == ctx.local_slots.end())
         throw std::runtime_error("HirEmitter: local slot not found: " + r.name);
       const TypeSpec ts = ctx.local_types.at(r.local->value);
+      if (ts.array_rank > 0) {
+        const std::string tmp = fresh_tmp(ctx);
+        emit_instr(ctx, tmp + " = getelementptr " + llvm_alloca_ty(ts) +
+                            ", ptr " + it->second + ", i64 0, i64 0");
+        return tmp;
+      }
       const std::string ty = llvm_ty(ts);
       const std::string tmp = fresh_tmp(ctx);
       emit_instr(ctx, tmp + " = load " + ty + ", ptr " + it->second);
@@ -1043,6 +1235,12 @@ class HirEmitter {
     // Global: load
     if (r.global) {
       const auto& gv = mod_.globals[r.global->value];
+      if (gv.type.spec.array_rank > 0) {
+        const std::string tmp = fresh_tmp(ctx);
+        emit_instr(ctx, tmp + " = getelementptr " + llvm_alloca_ty(gv.type.spec) +
+                            ", ptr @" + r.name + ", i64 0, i64 0");
+        return tmp;
+      }
       const std::string ty = llvm_ty(gv.type.spec);
       const std::string tmp = fresh_tmp(ctx);
       emit_instr(ctx, tmp + " = load " + ty + ", ptr @" + r.name);
@@ -1050,7 +1248,9 @@ class HirEmitter {
     }
 
     // Unresolved: load from external global
-    const std::string ty = llvm_ty(e.type.spec);
+    const TypeSpec ets = resolve_expr_type(ctx, e);
+    if (!has_concrete_type(ets)) return "0";
+    const std::string ty = llvm_ty(ets);
     const std::string tmp = fresh_tmp(ctx);
     emit_instr(ctx, tmp + " = load " + ty + ", ptr @" + r.name);
     return tmp;
@@ -1059,9 +1259,11 @@ class HirEmitter {
   // ── Unary ─────────────────────────────────────────────────────────────────
 
   std::string emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const Expr& e) {
-    const std::string ty = llvm_ty(e.type.spec);
+    TypeSpec et = resolve_expr_type(ctx, e);
     TypeSpec op_ts{};
     const std::string val = emit_rval_id(ctx, u.operand, op_ts);
+    if (!has_concrete_type(et)) et = op_ts;
+    const std::string ty = llvm_ty(et);
     const std::string op_ty = llvm_ty(op_ts);
 
     switch (u.op) {
@@ -1100,8 +1302,11 @@ class HirEmitter {
       }
 
       case UnaryOp::Deref: {
+        TypeSpec load_ts = op_ts;
+        if (load_ts.ptr_level > 0) load_ts.ptr_level -= 1;
+        const std::string load_ty = llvm_ty(load_ts);
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = load " + ty + ", ptr " + val);
+        emit_instr(ctx, tmp + " = load " + load_ty + ", ptr " + val);
         return tmp;
       }
 
@@ -1113,7 +1318,14 @@ class HirEmitter {
         const std::string loaded = fresh_tmp(ctx);
         emit_instr(ctx, loaded + " = load " + pty + ", ptr " + ptr);
         const std::string result = fresh_tmp(ctx);
-        if (is_float_base(pts.base)) {
+        if (pty == "ptr") {
+          const std::string delta = (u.op == UnaryOp::PreInc) ? "1" : "-1";
+          TypeSpec elem_ts = pts;
+          if (elem_ts.ptr_level > 0) elem_ts.ptr_level -= 1;
+          else elem_ts.base = TB_CHAR;
+          emit_instr(ctx, result + " = getelementptr " + llvm_ty(elem_ts) +
+                              ", ptr " + loaded + ", i64 " + delta);
+        } else if (is_float_base(pts.base)) {
           const std::string delta = (u.op == UnaryOp::PreInc) ? "1.0" : "-1.0";
           emit_instr(ctx, result + " = fadd " + pty + " " + loaded + ", " + delta);
         } else {
@@ -1132,7 +1344,14 @@ class HirEmitter {
         const std::string loaded = fresh_tmp(ctx);
         emit_instr(ctx, loaded + " = load " + pty + ", ptr " + ptr);
         const std::string result = fresh_tmp(ctx);
-        if (is_float_base(pts.base)) {
+        if (pty == "ptr") {
+          const std::string delta = (u.op == UnaryOp::PostInc) ? "1" : "-1";
+          TypeSpec elem_ts = pts;
+          if (elem_ts.ptr_level > 0) elem_ts.ptr_level -= 1;
+          else elem_ts.base = TB_CHAR;
+          emit_instr(ctx, result + " = getelementptr " + llvm_ty(elem_ts) +
+                              ", ptr " + loaded + ", i64 " + delta);
+        } else if (is_float_base(pts.base)) {
           const std::string delta = (u.op == UnaryOp::PostInc) ? "1.0" : "-1.0";
           emit_instr(ctx, result + " = fadd " + pty + " " + loaded + ", " + delta);
         } else {
@@ -1178,6 +1397,60 @@ class HirEmitter {
     const bool lf  = is_float_base(lts.base);
     const bool ls  = is_signed_int(lts.base);
 
+    // Pointer arithmetic: ptr +/- int and int + ptr.
+    if (b.op == BinaryOp::Add || b.op == BinaryOp::Sub) {
+      auto emit_ptr_gep = [&](const std::string& base_ptr, const TypeSpec& base_ts,
+                              const std::string& idx_val, const TypeSpec& idx_ts,
+                              bool negate_idx) -> std::string {
+        TypeSpec i64_ts{};
+        i64_ts.base = TB_LONGLONG;
+        std::string idx = coerce(ctx, idx_val, idx_ts, i64_ts);
+        if (negate_idx) {
+          const std::string neg = fresh_tmp(ctx);
+          emit_instr(ctx, neg + " = sub i64 0, " + idx);
+          idx = neg;
+        }
+        TypeSpec elem_ts = base_ts;
+        if (elem_ts.ptr_level > 0) elem_ts.ptr_level -= 1;
+        else elem_ts.base = TB_CHAR;
+        const std::string tmp = fresh_tmp(ctx);
+        emit_instr(ctx, tmp + " = getelementptr " + llvm_ty(elem_ts) +
+                            ", ptr " + base_ptr + ", i64 " + idx);
+        return tmp;
+      };
+
+      if (op_ty == "ptr" && rts.ptr_level == 0 && rts.array_rank == 0 && is_any_int(rts.base)) {
+        return emit_ptr_gep(lv, lts, rv, rts, b.op == BinaryOp::Sub);
+      }
+      if (llvm_ty(rts) == "ptr" && lts.ptr_level == 0 && lts.array_rank == 0 &&
+          is_any_int(lts.base) && b.op == BinaryOp::Add) {
+        return emit_ptr_gep(rv, rts, lv, lts, false);
+      }
+      if (b.op == BinaryOp::Sub && op_ty == "ptr" && llvm_ty(rts) == "ptr") {
+        const std::string lhs_i = fresh_tmp(ctx);
+        const std::string rhs_i = fresh_tmp(ctx);
+        emit_instr(ctx, lhs_i + " = ptrtoint ptr " + lv + " to i64");
+        emit_instr(ctx, rhs_i + " = ptrtoint ptr " + rv + " to i64");
+        const std::string byte_diff = fresh_tmp(ctx);
+        emit_instr(ctx, byte_diff + " = sub i64 " + lhs_i + ", " + rhs_i);
+        TypeSpec elem_ts = lts;
+        if (elem_ts.ptr_level > 0) elem_ts.ptr_level -= 1;
+        const int elem_sz = std::max(1, sizeof_ts(elem_ts));
+        std::string diff = byte_diff;
+        if (elem_sz != 1) {
+          const std::string scaled = fresh_tmp(ctx);
+          emit_instr(ctx, scaled + " = sdiv i64 " + byte_diff + ", " + std::to_string(elem_sz));
+          diff = scaled;
+        }
+        TypeSpec i64_ts{};
+        i64_ts.base = TB_LONGLONG;
+        if (res_spec.ptr_level > 0 || res_spec.array_rank > 0 || res_spec.base == TB_VOID) {
+          return diff;
+        }
+        return coerce(ctx, diff, i64_ts, res_spec);
+      }
+    }
+
     rv = coerce(ctx, rv, rts, lts);
 
     // Arithmetic
@@ -1214,6 +1487,12 @@ class HirEmitter {
     };
     for (const auto& row : cmp) {
       if (row.op == b.op) {
+        TypeSpec cmp_res_spec{};
+        cmp_res_spec.base = TB_INT;
+        if (res_spec.base == TB_BOOL && res_spec.ptr_level == 0 && res_spec.array_rank == 0) {
+          cmp_res_spec.base = TB_BOOL;
+        }
+        const std::string cmp_res_ty = llvm_ty(cmp_res_spec);
         const std::string cmp_tmp = fresh_tmp(ctx);
         if (lf) {
           emit_instr(ctx, cmp_tmp + " = fcmp " + row.f + " " + op_ty + " " + lv + ", " + rv);
@@ -1221,9 +1500,9 @@ class HirEmitter {
           const char* pred = ls ? row.is : row.iu;
           emit_instr(ctx, cmp_tmp + " = icmp " + pred + " " + op_ty + " " + lv + ", " + rv);
         }
-        if (res_ty == "i1") return cmp_tmp;
+        if (cmp_res_ty == "i1") return cmp_tmp;
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = zext i1 " + cmp_tmp + " to " + res_ty);
+        emit_instr(ctx, tmp + " = zext i1 " + cmp_tmp + " to " + cmp_res_ty);
         return tmp;
       }
     }
@@ -1232,7 +1511,9 @@ class HirEmitter {
   }
 
   std::string emit_logical(FnCtx& ctx, const BinaryExpr& b, const Expr& e) {
-    const std::string res_ty = llvm_ty(e.type.spec);
+    TypeSpec res_spec = resolve_expr_type(ctx, e);
+    if (!has_concrete_type(res_spec)) res_spec.base = TB_INT;
+    const std::string res_ty = llvm_ty(res_spec);
     TypeSpec lts{};
     const std::string lv = emit_rval_id(ctx, b.lhs, lts);
     const std::string lc = to_bool(ctx, lv, lts);
@@ -1251,18 +1532,35 @@ class HirEmitter {
     TypeSpec rts{};
     const std::string rv = emit_rval_id(ctx, b.rhs, rts);
     const std::string rc = to_bool(ctx, rv, rts);
-    const std::string rext = fresh_tmp(ctx);
-    emit_instr(ctx, rext + " = zext i1 " + rc + " to " + res_ty);
+    std::string rhs_val;
+    if (res_ty == "i1") {
+      rhs_val = rc;
+    } else if (is_float_base(res_spec.base)) {
+      const std::string as_i32 = fresh_tmp(ctx);
+      emit_instr(ctx, as_i32 + " = zext i1 " + rc + " to i32");
+      rhs_val = fresh_tmp(ctx);
+      emit_instr(ctx, rhs_val + " = sitofp i32 " + as_i32 + " to " + res_ty);
+    } else {
+      rhs_val = fresh_tmp(ctx);
+      emit_instr(ctx, rhs_val + " = zext i1 " + rc + " to " + res_ty);
+    }
     emit_term(ctx, "br label %" + end_lbl);
 
     emit_lbl(ctx, skip_lbl);
-    const std::string skip_val = (b.op == BinaryOp::LAnd) ? "0" : "1";
+    std::string skip_val;
+    if (res_ty == "i1") {
+      skip_val = (b.op == BinaryOp::LAnd) ? "false" : "true";
+    } else if (is_float_base(res_spec.base)) {
+      skip_val = (b.op == BinaryOp::LAnd) ? "0.0" : "1.0";
+    } else {
+      skip_val = (b.op == BinaryOp::LAnd) ? "0" : "1";
+    }
     emit_term(ctx, "br label %" + end_lbl);
 
     emit_lbl(ctx, end_lbl);
     const std::string tmp = fresh_tmp(ctx);
     emit_instr(ctx, tmp + " = phi " + res_ty +
-                        " [ " + rext + ", %" + rhs_lbl + " ]," +
+                        " [ " + rhs_val + ", %" + rhs_lbl + " ]," +
                         " [ " + skip_val + ", %" + skip_lbl + " ]");
     return tmp;
   }
@@ -1280,6 +1578,29 @@ class HirEmitter {
     if (a.op != AssignOp::Set) {
       const std::string loaded = fresh_tmp(ctx);
       emit_instr(ctx, loaded + " = load " + lty + ", ptr " + lhs_ptr);
+
+      if ((a.op == AssignOp::Add || a.op == AssignOp::Sub) && lty == "ptr") {
+        TypeSpec i64_ts{};
+        i64_ts.base = TB_LONGLONG;
+        std::string delta = coerce(ctx, rhs, rhs_ts, i64_ts);
+        if (a.op == AssignOp::Sub) {
+          const std::string neg = fresh_tmp(ctx);
+          emit_instr(ctx, neg + " = sub i64 0, " + delta);
+          delta = neg;
+        }
+        TypeSpec elem_ts = lhs_ts;
+        if (elem_ts.ptr_level > 0) {
+          elem_ts.ptr_level -= 1;
+        } else {
+          elem_ts.base = TB_CHAR;
+        }
+        const std::string result = fresh_tmp(ctx);
+        emit_instr(ctx, result + " = getelementptr " + llvm_ty(elem_ts) +
+                            ", ptr " + loaded + ", i64 " + delta);
+        emit_instr(ctx, "store ptr " + result + ", ptr " + lhs_ptr);
+        return result;
+      }
+
       rhs = coerce(ctx, rhs, rhs_ts, lhs_ts);
 
       static const struct { AssignOp op; BinaryOp bop; } compound_map[] = {
@@ -1376,20 +1697,22 @@ class HirEmitter {
     const std::string then_lbl = fresh_lbl(ctx, "tern.then.");
     const std::string else_lbl = fresh_lbl(ctx, "tern.else.");
     const std::string end_lbl  = fresh_lbl(ctx, "tern.end.");
-    const std::string res_ty   = llvm_ty(e.type.spec);
+    TypeSpec res_spec = resolve_expr_type(ctx, e);
+    if (!has_concrete_type(res_spec)) res_spec.base = TB_INT;
+    const std::string res_ty = llvm_ty(res_spec);
 
     emit_term(ctx, "br i1 " + cond_i1 + ", label %" + then_lbl + ", label %" + else_lbl);
 
     emit_lbl(ctx, then_lbl);
     TypeSpec then_ts{};
     std::string then_v = emit_rval_id(ctx, t.then_expr, then_ts);
-    then_v = coerce(ctx, then_v, then_ts, e.type.spec);
+    then_v = coerce(ctx, then_v, then_ts, res_spec);
     emit_term(ctx, "br label %" + end_lbl);
 
     emit_lbl(ctx, else_lbl);
     TypeSpec else_ts{};
     std::string else_v = emit_rval_id(ctx, t.else_expr, else_ts);
-    else_v = coerce(ctx, else_v, else_ts, e.type.spec);
+    else_v = coerce(ctx, else_v, else_ts, res_spec);
     emit_term(ctx, "br label %" + end_lbl);
 
     emit_lbl(ctx, end_lbl);
@@ -1416,7 +1739,9 @@ class HirEmitter {
   std::string emit_rval_payload(FnCtx& ctx, const IndexExpr&, const Expr& e) {
     TypeSpec pts{};
     const std::string ptr = emit_lval_dispatch(ctx, e, pts);
-    const std::string ty  = llvm_ty(e.type.spec);
+    TypeSpec load_ts = resolve_expr_type(ctx, e);
+    if (!has_concrete_type(load_ts)) load_ts = pts;
+    const std::string ty = llvm_ty(load_ts);
     const std::string tmp = fresh_tmp(ctx);
     emit_instr(ctx, tmp + " = load " + ty + ", ptr " + ptr);
     return tmp;
@@ -1629,9 +1954,10 @@ class HirEmitter {
         if (ctx.local_slots.count(d->id.value)) continue;
         // Dedup slot names for shadowing locals
         const int cnt = name_count[d->name]++;
+        const std::string base = sanitize_llvm_ident(d->name);
         const std::string slot = cnt == 0
-            ? "%lv." + d->name
-            : "%lv." + d->name + "." + std::to_string(cnt);
+            ? "%lv." + base
+            : "%lv." + base + "." + std::to_string(cnt);
         ctx.local_slots[d->id.value] = slot;
         ctx.local_types[d->id.value] = d->type.spec;
         ctx.alloca_lines.push_back("  " + slot + " = alloca " + llvm_alloca_ty(d->type.spec));
@@ -1652,13 +1978,29 @@ class HirEmitter {
         fn.params[0].type.spec.ptr_level == 0 &&
         fn.params[0].type.spec.array_rank == 0;
 
+    if (fn.linkage.is_extern && fn.blocks.empty()) {
+      out << "declare " << ret_ty << " @" << fn.name << "(";
+      for (size_t i = 0; i < fn.params.size(); ++i) {
+        if (void_param_list) break;
+        if (i) out << ", ";
+        out << llvm_ty(fn.params[i].type.spec);
+      }
+      if (fn.attrs.variadic) {
+        if (!fn.params.empty() && !void_param_list) out << ", ";
+        out << "...";
+      }
+      out << ")\n\n";
+      fn_bodies_.push_back(out.str());
+      return;
+    }
+
     // Signature
     out << "define " << ret_ty << " @" << fn.name << "(";
     for (size_t i = 0; i < fn.params.size(); ++i) {
       if (void_param_list) break;
       if (i) out << ", ";
       const std::string pty = llvm_ty(fn.params[i].type.spec);
-      const std::string pname = "%p." + fn.params[i].name;
+      const std::string pname = "%p." + sanitize_llvm_ident(fn.params[i].name);
       out << pty << " " << pname;
       ctx.param_slots[static_cast<uint32_t>(i)] = pname;
     }

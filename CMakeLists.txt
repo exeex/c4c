@@ -38,6 +38,9 @@ set(EXAMPLE_LL "${CMAKE_BINARY_DIR}/example.ll")
 file(GLOB NEGATIVE_TEST_SRCS CONFIGURE_DEPENDS
      "${PROJECT_SOURCE_DIR}/tests/tiny_c2ll/bad_*.c")
 option(NEGATIVE_TESTS_ENFORCE "Require negative_tests bad_*.c cases to fail compilation (non-zero exit)" ON)
+option(ENABLE_LLVM_GCC_C_TORTURE_TESTS
+    "Register llvm gcc-c-torture execute tests (resource-heavy during migration)"
+    OFF)
 
 set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend/lexer/token.cpp"
@@ -282,7 +285,8 @@ if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
   endforeach()
 endif()
 
-if(CLANG_EXECUTABLE AND LLVM_TEST_SUITE_ROOT AND EXISTS "${LLVM_TEST_SUITE_ROOT}")
+if(ENABLE_LLVM_GCC_C_TORTURE_TESTS AND
+   CLANG_EXECUTABLE AND LLVM_TEST_SUITE_ROOT AND EXISTS "${LLVM_TEST_SUITE_ROOT}")
   set(LLVM_GCC_C_TORTURE_ROOT
       "${LLVM_TEST_SUITE_ROOT}/SingleSource/Regression/C/gcc-c-torture/execute")
   set(LLVM_GCC_C_TORTURE_STEP_TIMEOUT_SEC "20" CACHE STRING

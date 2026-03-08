@@ -2,6 +2,74 @@
 
 Last updated: 2026-03-08
 
+## Agent Handoff (Claude 接手用)
+
+本檔主要給接手 agent，請直接照下面流程執行，不要先跑全量長測。
+
+### 0) Build / Test 基本指令
+
+```bash
+# configure（torture 預設 OFF；不要手動開）
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+
+# build
+cmake --build build -j4
+
+# 核心 gate（已排除 llvm_gcc_c_torture label）
+cmake --build build --target ctest_core -j4
+
+# focused rerun
+ctest --test-dir build -R tiny_c2ll_tests --output-on-failure
+ctest --test-dir build -R '^ccc_review_' --output-on-failure
+ctest --test-dir build -R '^negative_tests' --output-on-failure
+ctest --test-dir build -R c_testsuite --output-on-failure
+```
+
+### 1) 避免殘留無窮迴圈程序
+
+若發現 `build/llvm_gcc_c_torture/*` 或異常久跑 binary：
+
+```bash
+ps -eo pid,ppid,etime,cmd | rg '/workspaces/c4c/build/llvm_gcc_c_torture|c2ll.bin|clang.bin'
+kill -9 <pid...>
+```
+
+### 2) 下一個修復順序（照順序做）
+
+1. `c_testsuite_tests_single_exec_00051_c`
+   - 現象：switch 生成 undefined label（`%sw.end.*`）  
+   - 目標：修 switch lowering label/edge，確保無未定義 label，case/default 跳轉正確。
+   - 驗收：
+     ```bash
+     ctest --test-dir build -R c_testsuite_tests_single_exec_00051_c --output-on-failure
+     ```
+
+2. `c_testsuite_tests_single_exec_00040_c`
+   - 現象：`call void 0(...)`（callee 解析錯成常數）  
+   - 目標：修 call lowering/callee type 推導，確保函式指標與函式名都走正確 call path。
+   - 驗收：
+     ```bash
+     ctest --test-dir build -R c_testsuite_tests_single_exec_00040_c --output-on-failure
+     ```
+
+3. `c_testsuite_tests_single_exec_00050_c`
+   - 現象：IR 可編譯但 runtime 結果錯（控制流/短路語意）  
+   - 目標：修 CFG 或 short-circuit 分支語意錯接。
+   - 驗收：
+     ```bash
+     ctest --test-dir build -R c_testsuite_tests_single_exec_00050_c --output-on-failure
+     ```
+
+4. 三個都綠後，回歸這組：
+   ```bash
+   ctest --test-dir build -R 'c_testsuite_tests_single_exec_(00031|00032|00033|00037|00039|00040|00045|00049|00050|00051)_c' --output-on-failure
+   ```
+
+5. 再跑核心 gate：
+   ```bash
+   cmake --build build --target ctest_core -j4
+   ```
+
 ## Goal
 
 Refactor pipeline from:
@@ -178,6 +246,8 @@ Focused rerun commands:
 Exclusion policy in migration loop:
 
 - `llvm_gcc_c_torture_*` excluded from default gate until Phase 5+
+- keep torture test registration OFF by default in CMake
+  (`-DENABLE_LLVM_GCC_C_TORTURE_TESTS=ON` only for explicit runs)
 
 Timeout policy:
 
@@ -193,11 +263,69 @@ Timeout policy:
 - `next` architecture correction required now:
   - move hard semantic checks into sema pass before codegen.
 
+### Latest Progress Update (2026-03-08)
+
+- Stabilized a large subset of early failing cases:
+  - `tiny_c2ll_tests`: green
+  - `ccc_review_*`: all green
+  - `c_testsuite` early band now includes greens for:
+    `00004`, `00005`, `00016`, `00018`, `00020`, `00025`,
+    `00031`, `00032`, `00033`, `00034`, `00037`, `00039`, `00045`, `00049`,
+    `00054`, `00055`, `00057`, `00058`, `00072`, `00073`
+- Fixed timeout/infinite-loop class bug in control-flow lowering:
+  - `c_testsuite_tests_single_exec_00034_c` now passes (previously timeout)
+- Safety action:
+  - cleaned leftover runaway processes under `build/llvm_gcc_c_torture/*`
+  - switched default build behavior to not register torture tests unless explicitly enabled
+
 ## Immediate Next 3 PRs
 
 1. PR-A: Introduce `sema_validate` pass and wire it into `tiny-c2ll-next` before HIR/codegen.
 2. PR-B: Implement first-wave hard checks (negative suite core: control-flow misuse + const/cast/call arity).
 3. PR-C: Remove mandatory legacy bridge calls from `--pipeline=hir`; keep bridge behind explicit legacy mode only.
+
+## Priority Queue (Post-Timeout Fix)
+
+Based on current `ctest_core` snapshot (timeouts removed, many fail-fast cases remain),
+execute in this order:
+
+1. P0: Stabilize frontend sema false positives in `c_testsuite` first-fail band (`00004`-`00058`).
+   - Focus symptoms:
+     - undeclared identifier reports for valid scoped names
+     - over-strict const/arity diagnostics on accepted C patterns
+   - Acceptance:
+     - convert these from `FRONTEND_FAIL` to either pass or backend-diagnosable failures.
+
+2. P1: Fix native LLVM type emission invariants (high-churn backend failures).
+   - Focus symptoms:
+     - invalid IR such as `zext ... to void`, `load void`, illegal cast opcode combos.
+   - Acceptance:
+     - no clang parse/type errors on `00004`-`00058` subset.
+
+3. P2: Repair control-flow/block edge correctness beyond timeout set.
+   - Focus symptoms:
+     - wrong fallthrough/edge wiring causing incorrect runtime result (non-timeout).
+   - Acceptance:
+     - `c_testsuite_tests_single_exec_00041_c`-style logic cases stay green while expanding subset.
+
+4. P3: Restore `ccc_review_*` literal/lexer compatibility.
+   - Targets:
+     - `0001_binary_literal`
+     - `0002_hex_float_literal`
+     - `0003_dot_float_literal`
+     - `0004_unicode_escape_string`
+     - `0005_unicode_escape_char`
+     - `0006_dollar_identifier`
+     - `0008_octal_literal`
+   - Acceptance:
+     - all `ccc_review_*` green under `tiny-c2ll-next`.
+
+5. P4: Expand c-testsuite frontier incrementally.
+   - Suggested marching windows:
+     - batch A: `00004`-`00058`
+     - batch B: `00072`-`00096`
+   - Rule:
+     - do not expand to next window until current window has no timeout and no frontend false positives.
 
 ## Guardrails
 
