@@ -50,6 +50,72 @@ bool drops_const_on_ptr_assign(const TypeSpec& lhs, const TypeSpec& rhs) {
   return !l.is_const && r.is_const;
 }
 
+bool is_arithmetic_base(TypeBase b) {
+  switch (b) {
+    case TB_CHAR:
+    case TB_UCHAR:
+    case TB_SCHAR:
+    case TB_SHORT:
+    case TB_USHORT:
+    case TB_INT:
+    case TB_UINT:
+    case TB_LONG:
+    case TB_ULONG:
+    case TB_LONGLONG:
+    case TB_ULONGLONG:
+    case TB_INT128:
+    case TB_UINT128:
+    case TB_FLOAT:
+    case TB_DOUBLE:
+    case TB_LONGDOUBLE:
+    case TB_BOOL:
+    case TB_ENUM:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool same_tagged_type(const TypeSpec& a, const TypeSpec& b) {
+  if (a.base != b.base) return false;
+  if (a.base != TB_STRUCT && a.base != TB_UNION && a.base != TB_ENUM) return true;
+  if (a.tag == nullptr || b.tag == nullptr) return false;
+  return std::string(a.tag) == std::string(b.tag);
+}
+
+bool call_arg_type_compatible(const TypeSpec& param_raw, const TypeSpec& arg_raw) {
+  const TypeSpec param = decay_array(param_raw);
+  const TypeSpec arg = decay_array(arg_raw);
+
+  // pointer vs non-pointer mismatch
+  const bool p_ptr = param.ptr_level > 0;
+  const bool a_ptr = arg.ptr_level > 0;
+  if (p_ptr != a_ptr) return false;
+
+  // Pointer compatibility: require same depth and pointee family.
+  if (p_ptr && a_ptr) {
+    if (param.ptr_level != arg.ptr_level) return false;
+    // void* is compatible with any object pointer at level 1.
+    if (param.ptr_level == 1 && (param.base == TB_VOID || arg.base == TB_VOID)) return true;
+    if (param.base == TB_STRUCT || param.base == TB_UNION || param.base == TB_ENUM ||
+        arg.base == TB_STRUCT || arg.base == TB_UNION || arg.base == TB_ENUM) {
+      return same_tagged_type(param, arg);
+    }
+    return param.base == arg.base;
+  }
+
+  // Non-pointer: structs/unions must match exactly.
+  if (param.base == TB_STRUCT || param.base == TB_UNION ||
+      arg.base == TB_STRUCT || arg.base == TB_UNION) {
+    return same_tagged_type(param, arg);
+  }
+
+  // Arithmetic scalar conversions are allowed.
+  if (is_arithmetic_base(param.base) && is_arithmetic_base(arg.base)) return true;
+
+  return param.base == arg.base;
+}
+
 class Validator {
  public:
   ValidateResult run(const Node* root) {
@@ -562,6 +628,9 @@ class Validator {
               ExprInfo arg = infer_expr(n->children[i]);
               if (drops_const_on_ptr_assign(sig.params[i], arg.type)) {
                 emit(n->line, "passing const-qualified pointer to mutable parameter");
+              }
+              if (!call_arg_type_compatible(sig.params[i], arg.type)) {
+                emit(n->line, "function call argument type mismatch");
               }
             }
             out.valid = true;
