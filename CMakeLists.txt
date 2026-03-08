@@ -28,7 +28,12 @@ set(FRONTEND_CXX_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend/lexer/lexer.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/sema/arena.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/preprocessor.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parse.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/types.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/expressions.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/statements.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/declarations.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/common.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/sema/ir_builder.cpp"
 )
 
