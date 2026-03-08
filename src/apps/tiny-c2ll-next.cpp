@@ -161,6 +161,9 @@ int main(int argc, char **argv) {
       if (hir_requires_legacy_bridge(hir_mod)) {
         ir = tinyc2ll::codegen::llvm_backend::emit_module(hir_mod, prog);
       } else {
+        // Temporary semantic gate: keep legacy semantic diagnostics as source
+        // of truth while native HIR backend parity is still in progress.
+        (void)tinyc2ll::codegen::llvm_backend::emit_module(hir_mod, prog);
         ir = tinyc2ll::codegen::llvm_backend::emit_module_native(hir_mod);
       }
     } else {

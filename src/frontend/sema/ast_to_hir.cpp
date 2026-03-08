@@ -124,11 +124,11 @@ class Lowerer {
     std::unordered_map<std::string, BlockId> label_blocks;
   };
 
-  FunctionId next_fn_id() { return FunctionId{next_fn_id_++}; }
-  GlobalId next_global_id() { return GlobalId{next_global_id_++}; }
-  LocalId next_local_id() { return LocalId{next_local_id_++}; }
-  BlockId next_block_id() { return BlockId{next_block_id_++}; }
-  ExprId next_expr_id() { return ExprId{next_expr_id_++}; }
+  FunctionId next_fn_id() { return module_->alloc_function_id(); }
+  GlobalId next_global_id() { return module_->alloc_global_id(); }
+  LocalId next_local_id() { return module_->alloc_local_id(); }
+  BlockId next_block_id() { return module_->alloc_block_id(); }
+  ExprId next_expr_id() { return module_->alloc_expr_id(); }
 
   QualType qtype_from(const TypeSpec& t, ValueCategory c = ValueCategory::RValue) {
     QualType qt{};
@@ -661,11 +661,6 @@ class Lowerer {
 
   Module* module_ = nullptr;
 
-  uint32_t next_fn_id_ = 0;
-  uint32_t next_global_id_ = 0;
-  uint32_t next_local_id_ = 0;
-  uint32_t next_block_id_ = 0;
-  uint32_t next_expr_id_ = 0;
 };
 
 }  // namespace

@@ -6,6 +6,23 @@ if(NOT CLANG_EXECUTABLE)
   message(WARNING "clang not found: clang execution tests will be skipped")
 endif()
 
+set(CTEST_CORE_PARALLEL_LEVEL "8" CACHE STRING
+    "Parallel jobs for ctest_core target")
+set(CTEST_CORE_TEST_TIMEOUT_SEC "30" CACHE STRING
+    "Per-test timeout (seconds) for ctest_core target")
+
+add_custom_target(ctest_core
+  COMMAND "${CMAKE_CTEST_COMMAND}"
+          --output-on-failure
+          --progress
+          -j "${CTEST_CORE_PARALLEL_LEVEL}"
+          --timeout "${CTEST_CORE_TEST_TIMEOUT_SEC}"
+          -E "llvm_gcc_c_torture"
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+  COMMENT "Run core test set (exclude llvm_gcc_c_torture*, with progress/timeout)"
+  VERBATIM
+)
+
 set(C_TESTSUITE_ROOT "" CACHE PATH "Path to external c-testsuite root")
 if(NOT C_TESTSUITE_ROOT AND EXISTS "${PROJECT_SOURCE_DIR}/tests/c-testsuite")
   set(C_TESTSUITE_ROOT "${PROJECT_SOURCE_DIR}/tests/c-testsuite")
@@ -326,4 +343,13 @@ if(CLANG_EXECUTABLE AND LLVM_TEST_SUITE_ROOT AND EXISTS "${LLVM_TEST_SUITE_ROOT}
       VERBATIM
     )
   endif()
+endif()
+
+set(DEFAULT_TEST_TIMEOUT_SEC "30" CACHE STRING
+    "Default CTest timeout (seconds) applied to all registered tests")
+get_property(ALL_REGISTERED_TESTS DIRECTORY PROPERTY TESTS)
+if(ALL_REGISTERED_TESTS)
+  foreach(test_name IN LISTS ALL_REGISTERED_TESTS)
+    set_property(TEST "${test_name}" PROPERTY TIMEOUT "${DEFAULT_TEST_TIMEOUT_SEC}")
+  endforeach()
 endif()

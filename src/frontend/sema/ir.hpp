@@ -1,10 +1,13 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <variant>
@@ -73,22 +76,53 @@ struct Param {
 
 struct LocalId {
   uint32_t value = 0;
+
+  static constexpr uint32_t kInvalid = std::numeric_limits<uint32_t>::max();
+
+  [[nodiscard]] constexpr bool valid() const { return value != kInvalid; }
+  [[nodiscard]] constexpr size_t index() const { return static_cast<size_t>(value); }
+  [[nodiscard]] static constexpr LocalId invalid() { return LocalId{kInvalid}; }
 };
 
 struct BlockId {
   uint32_t value = 0;
+
+  static constexpr uint32_t kInvalid = std::numeric_limits<uint32_t>::max();
+
+  [[nodiscard]] constexpr bool valid() const { return value != kInvalid; }
+  [[nodiscard]] constexpr size_t index() const { return static_cast<size_t>(value); }
+  [[nodiscard]] static constexpr BlockId invalid() { return BlockId{kInvalid}; }
+  [[nodiscard]] std::string as_label() const { return ".LBB" + std::to_string(value); }
 };
 
 struct ExprId {
   uint32_t value = 0;
+
+  static constexpr uint32_t kInvalid = std::numeric_limits<uint32_t>::max();
+
+  [[nodiscard]] constexpr bool valid() const { return value != kInvalid; }
+  [[nodiscard]] constexpr size_t index() const { return static_cast<size_t>(value); }
+  [[nodiscard]] static constexpr ExprId invalid() { return ExprId{kInvalid}; }
 };
 
 struct GlobalId {
   uint32_t value = 0;
+
+  static constexpr uint32_t kInvalid = std::numeric_limits<uint32_t>::max();
+
+  [[nodiscard]] constexpr bool valid() const { return value != kInvalid; }
+  [[nodiscard]] constexpr size_t index() const { return static_cast<size_t>(value); }
+  [[nodiscard]] static constexpr GlobalId invalid() { return GlobalId{kInvalid}; }
 };
 
 struct FunctionId {
   uint32_t value = 0;
+
+  static constexpr uint32_t kInvalid = std::numeric_limits<uint32_t>::max();
+
+  [[nodiscard]] constexpr bool valid() const { return value != kInvalid; }
+  [[nodiscard]] constexpr size_t index() const { return static_cast<size_t>(value); }
+  [[nodiscard]] static constexpr FunctionId invalid() { return FunctionId{kInvalid}; }
 };
 
 struct IntLiteral {
@@ -355,12 +389,56 @@ using StmtPayload = std::variant<
 struct Stmt {
   StmtPayload payload{};
   SourceSpan span{};
+
+  void append_successors(std::vector<BlockId>& out) const {
+    auto push_unique = [&out](BlockId id) {
+      if (!id.valid()) return;
+      const auto it = std::find_if(
+          out.begin(), out.end(), [&](const BlockId& b) { return b.value == id.value; });
+      if (it == out.end()) out.push_back(id);
+    };
+    std::visit(
+        [&](const auto& s) {
+          using T = std::decay_t<decltype(s)>;
+          if constexpr (std::is_same_v<T, IfStmt>) {
+            push_unique(s.then_block);
+            if (s.else_block) push_unique(*s.else_block);
+            push_unique(s.after_block);
+          } else if constexpr (std::is_same_v<T, WhileStmt>) {
+            push_unique(s.body_block);
+            if (s.continue_target) push_unique(*s.continue_target);
+            if (s.break_target) push_unique(*s.break_target);
+          } else if constexpr (std::is_same_v<T, ForStmt>) {
+            push_unique(s.body_block);
+            if (s.continue_target) push_unique(*s.continue_target);
+            if (s.break_target) push_unique(*s.break_target);
+          } else if constexpr (std::is_same_v<T, DoWhileStmt>) {
+            push_unique(s.body_block);
+            if (s.continue_target) push_unique(*s.continue_target);
+            if (s.break_target) push_unique(*s.break_target);
+          } else if constexpr (std::is_same_v<T, SwitchStmt>) {
+            push_unique(s.body_block);
+            if (s.default_block) push_unique(*s.default_block);
+          } else if constexpr (std::is_same_v<T, GotoStmt>) {
+            push_unique(s.target.resolved_block);
+          }
+        },
+        payload);
+  }
 };
 
 struct Block {
   BlockId id{};
   std::vector<Stmt> stmts;
   bool has_explicit_terminator = false;
+
+  std::vector<BlockId> successor_blocks() const {
+    std::vector<BlockId> out;
+    for (const auto& stmt : stmts) {
+      stmt.append_successors(out);
+    }
+    return out;
+  }
 };
 
 struct Function {
@@ -373,6 +451,18 @@ struct Function {
   std::vector<Block> blocks;
   BlockId entry{};
   SourceSpan span{};
+
+  Block* find_block(BlockId id) {
+    auto it = std::find_if(
+        blocks.begin(), blocks.end(), [&](const Block& bb) { return bb.id.value == id.value; });
+    return it == blocks.end() ? nullptr : &(*it);
+  }
+
+  const Block* find_block(BlockId id) const {
+    auto it = std::find_if(
+        blocks.begin(), blocks.end(), [&](const Block& bb) { return bb.id.value == id.value; });
+    return it == blocks.end() ? nullptr : &(*it);
+  }
 };
 
 struct InitScalar {
@@ -409,6 +499,15 @@ struct ProgramSummary {
   size_t blocks = 0;
   size_t statements = 0;
   size_t expressions = 0;
+
+  ProgramSummary& operator+=(const ProgramSummary& rhs) {
+    functions += rhs.functions;
+    globals += rhs.globals;
+    blocks += rhs.blocks;
+    statements += rhs.statements;
+    expressions += rhs.expressions;
+    return *this;
+  }
 };
 
 // ── Struct/union layout metadata (populated by ast_to_hir) ───────────────────
@@ -441,6 +540,83 @@ struct Module {
   std::unordered_map<SymbolName, HirStructDef> struct_defs;
   std::vector<SymbolName> struct_def_order;  // insertion order for deterministic emission
 
+  // Stable ID cursors for multi-pass transforms that may append nodes.
+  uint32_t next_function_id = 0;
+  uint32_t next_global_id = 0;
+  uint32_t next_local_id = 0;
+  uint32_t next_block_id = 0;
+  uint32_t next_expr_id = 0;
+
+  [[nodiscard]] FunctionId alloc_function_id() { return FunctionId{next_function_id++}; }
+  [[nodiscard]] GlobalId alloc_global_id() { return GlobalId{next_global_id++}; }
+  [[nodiscard]] LocalId alloc_local_id() { return LocalId{next_local_id++}; }
+  [[nodiscard]] BlockId alloc_block_id() { return BlockId{next_block_id++}; }
+  [[nodiscard]] ExprId alloc_expr_id() { return ExprId{next_expr_id++}; }
+
+  void sync_next_ids_from_contents() {
+    uint32_t max_fn = 0;
+    uint32_t max_global = 0;
+    uint32_t max_local = 0;
+    uint32_t max_block = 0;
+    uint32_t max_expr = 0;
+    for (const auto& fn : functions) {
+      if (fn.id.valid()) max_fn = std::max(max_fn, fn.id.value + 1);
+      for (const auto& bb : fn.blocks) {
+        if (bb.id.valid()) max_block = std::max(max_block, bb.id.value + 1);
+        for (const auto& stmt : bb.stmts) {
+          if (const auto* decl = std::get_if<LocalDecl>(&stmt.payload)) {
+            if (decl->id.valid()) max_local = std::max(max_local, decl->id.value + 1);
+          }
+        }
+      }
+    }
+    for (const auto& gv : globals)
+      if (gv.id.valid()) max_global = std::max(max_global, gv.id.value + 1);
+    for (const auto& expr : expr_pool)
+      if (expr.id.valid()) max_expr = std::max(max_expr, expr.id.value + 1);
+    next_function_id = std::max(next_function_id, max_fn);
+    next_global_id = std::max(next_global_id, max_global);
+    next_local_id = std::max(next_local_id, max_local);
+    next_block_id = std::max(next_block_id, max_block);
+    next_expr_id = std::max(next_expr_id, max_expr);
+  }
+
+  Function* find_function(FunctionId id) {
+    auto it = std::find_if(functions.begin(), functions.end(),
+                           [&](const Function& fn) { return fn.id.value == id.value; });
+    return it == functions.end() ? nullptr : &(*it);
+  }
+
+  const Function* find_function(FunctionId id) const {
+    auto it = std::find_if(functions.begin(), functions.end(),
+                           [&](const Function& fn) { return fn.id.value == id.value; });
+    return it == functions.end() ? nullptr : &(*it);
+  }
+
+  GlobalVar* find_global(GlobalId id) {
+    auto it = std::find_if(globals.begin(), globals.end(),
+                           [&](const GlobalVar& gv) { return gv.id.value == id.value; });
+    return it == globals.end() ? nullptr : &(*it);
+  }
+
+  const GlobalVar* find_global(GlobalId id) const {
+    auto it = std::find_if(globals.begin(), globals.end(),
+                           [&](const GlobalVar& gv) { return gv.id.value == id.value; });
+    return it == globals.end() ? nullptr : &(*it);
+  }
+
+  Expr* find_expr(ExprId id) {
+    auto it = std::find_if(expr_pool.begin(), expr_pool.end(),
+                           [&](const Expr& e) { return e.id.value == id.value; });
+    return it == expr_pool.end() ? nullptr : &(*it);
+  }
+
+  const Expr* find_expr(ExprId id) const {
+    auto it = std::find_if(expr_pool.begin(), expr_pool.end(),
+                           [&](const Expr& e) { return e.id.value == id.value; });
+    return it == expr_pool.end() ? nullptr : &(*it);
+  }
+
   ProgramSummary summary() const {
     ProgramSummary out{};
     out.functions = functions.size();
@@ -472,10 +648,20 @@ enum class DagValueType : uint8_t {
 
 struct DagNodeId {
   uint32_t value = 0;
+
+  static constexpr uint32_t kInvalid = std::numeric_limits<uint32_t>::max();
+
+  [[nodiscard]] constexpr bool valid() const { return value != kInvalid; }
+  [[nodiscard]] static constexpr DagNodeId invalid() { return DagNodeId{kInvalid}; }
 };
 
 struct DagBlockId {
   uint32_t value = 0;
+
+  static constexpr uint32_t kInvalid = std::numeric_limits<uint32_t>::max();
+
+  [[nodiscard]] constexpr bool valid() const { return value != kInvalid; }
+  [[nodiscard]] static constexpr DagBlockId invalid() { return DagBlockId{kInvalid}; }
 };
 
 enum class DagOp : uint16_t {
@@ -532,16 +718,40 @@ struct DagBlock {
 
 namespace phase4::dag {
 
+struct DagSummary {
+  size_t functions = 0;
+  size_t blocks = 0;
+  size_t nodes = 0;
+};
+
 struct FunctionDag {
   FunctionId source_function{};
   std::vector<DagNode> nodes;
   std::vector<DagBlock> blocks;
   DagBlockId entry{};
+
+  DagSummary summary() const {
+    DagSummary out{};
+    out.functions = 1;
+    out.blocks = blocks.size();
+    out.nodes = nodes.size();
+    return out;
+  }
 };
 
 struct ModuleDag {
   std::vector<FunctionDag> functions;
   ProgramSummary source_summary{};
+
+  DagSummary summary() const {
+    DagSummary out{};
+    out.functions = functions.size();
+    for (const auto& fn : functions) {
+      out.blocks += fn.blocks.size();
+      out.nodes += fn.nodes.size();
+    }
+    return out;
+  }
 };
 
 }  // namespace phase4::dag

@@ -1,318 +1,194 @@
-# Sema / IR Split Migration Plan
+# Sema / IR Split Migration Plan (Rebased)
+
+Last updated: 2026-03-08
 
 ## Goal
 
-Refactor current pipeline from:
+Refactor pipeline from:
 
-- `Parser -> IRBuilder(semantic + llvm lowering mixed)`
+- `Parser -> IRBuilder (semantic + LLVM lowering mixed)`
 
 to:
 
-- `Parser -> Sema (typed program) -> IR (project IR/DAG) -> Backend`
-- keep `LLVM IR` path as a backend/debug path, not semantic core
+- `Parser -> Sema (validation + typed info) -> HIR -> Backend`
 
-Constraints for this migration:
+with these hard rules:
 
-- Keep old code and old pipeline intact during migration (no deletion yet).
-- Build a parallel new pipeline with a separate `main`.
-- Functional behavior must match old pipeline before cutover.
-- Test validation excludes `llvm_gcc_c_torture` in early phases.
+- `next` pipeline must not depend on legacy semantic behavior.
+- `codegen` must not own semantic rejection logic.
+- legacy path stays available only as comparison/fallback binary during migration.
 
-## Current-State Problems
+## Why Rebase Now
 
-- `src/frontend/sema/ir_builder.cpp` contains both semantic decisions and LLVM emission.
-- Hard to add a non-LLVM backend without duplicating semantic logic.
-- Hard to test semantic correctness independently from LLVM text output.
+Current state is effectively "Phase 3 half-done":
 
-## Target Layout (aligned with ccc split intent)
+- HIR data model and AST->HIR lowering exist.
+- Native HIR->LLVM emitter exists for a subset.
+- But semantic rejection still depends on behavior historically living in legacy IRBuilder.
+
+This causes architectural drift: failures in `next` are currently dominated by missing sema checks, not just missing codegen coverage.
+
+## Target Architecture
 
 ```txt
-src/
-  frontend/
-    sema/
-      sema_context.hpp/.cpp
-      type_check.hpp/.cpp
-      decl_resolve.hpp/.cpp
-      const_eval.hpp/.cpp
-      sema_driver.hpp/.cpp
-  ir/
-    hir.hpp/.cpp              # typed frontend IR (minimal first)
-    dag.hpp/.cpp              # optional early stub, expand later
-    lowering/
-      ast_to_hir.cpp
-      hir_to_dag.cpp
-  codegen/
-    llvm/
-      hir_to_llvm.cpp         # wraps existing IRBuilder behavior gradually
-    native/
-      # future backend
-  apps/
-    tiny-c2ll-legacy.cpp      # existing driver flow (unchanged)
-    tiny-c2ll-next.cpp        # new flow
+parse
+  -> sema_validate (hard errors + diagnostics)
+  -> lower_ast_to_hir
+  -> hir_to_llvm_native
+  -> (optional) future hir_to_dag / native backend
 ```
+
+Legacy components are allowed only for:
+
+- parity diff tooling
+- emergency debug path (`--pipeline=legacy`)
+
+They are not allowed as required runtime dependencies of `--pipeline=hir`.
 
 ## Phase Plan
 
-### Phase 0: Safety Rails and Parallel Entry
+### Phase 0: Parallel Entry (completed)
+
+- `tiny-c2ll-next` binary introduced.
+- legacy binary remains test default during migration.
+
+### Phase 1: Sema Helper Extraction (completed)
+
+- `sema_driver` helper utilities extracted from IRBuilder.
+- No behavior change target achieved.
+
+### Phase 2: Minimal HIR (completed)
+
+- `ir.hpp`, `ast_to_hir`, HIR summary/dump integrated.
+
+### Phase 3A: Independent Sema Validation Gate (now)
 
 Deliverables:
 
-- New executable target (example: `frontend_cxx_next`) with separate `main`.
-- Existing `frontend_cxx_stage1` unchanged and still default in existing tests.
-- Shared CLI flags between old/new mains (`--lex-only`, `--parse-only`, `-o`).
+- Add explicit sema validation module in `src/frontend/sema/` (new pass API).
+- `tiny-c2ll-next --pipeline=hir` flow becomes:
+  - parse -> sema_validate -> lower_hir -> emit_native
+- Remove any mandatory call path to legacy IRBuilder from `pipeline=hir`.
+
+Initial validation scope (must block compile with non-zero exit):
+
+- control-flow misuse: `break/continue/case/default` outside valid context
+- symbol resolution: undeclared/undefined usage
+- call arity mismatch for known prototypes
+- const correctness:
+  - assignment to const lvalue
+  - passing const pointer to mutable parameter
+  - dropping const in implicit pointer assignment
+  - const object inc/dec
+- invalid casts:
+  - cast to incomplete struct/union object type
+  - cast to unknown type name
 
 Acceptance:
 
-- Both binaries build.
-- Legacy tests still run via old binary.
+- All `negative_tests_*` pass under `tiny-c2ll-next` without legacy dependency.
+- Failing sema diagnostics come from sema module, not codegen exceptions.
 
-### Phase 1: Extract Semantic Facade (No behavior change)
+### Phase 3B: Native HIR->LLVM Coverage Expansion
 
 Deliverables:
 
-- Add `frontend/sema/sema_driver.{hpp,cpp}`.
-- Move semantic-only helper logic out of `ir_builder.cpp` into sema module.
-- `ir_builder` now depends on sema outputs/helpers instead of owning logic.
-
-Rules:
-
-- Start with extraction wrappers; no broad rewrites.
-- Keep old `IRBuilder` API for compatibility.
+- Complete native emission for currently incomplete high-impact features:
+  - struct/union member access
+  - string/global initializers
+  - switch/case dispatch completion
+  - variadic call lowering path
+- Keep sema and codegen responsibilities separated.
 
 Acceptance:
 
-- LLVM output of `legacy` and `next` binaries matches on small corpus.
-- Existing non-`llvm_gcc_c_torture` tests pass.
+- `tiny_c2ll_tests`, `ccc_review_*`, `c_testsuite_*` converge on parity for agreed subset.
+- No semantic regressions introduced by codegen-only changes.
 
-### Phase 2: Introduce Minimal HIR
+### Phase 3C: Bridge Retirement in `next`
 
 Deliverables:
 
-- Define minimal `HIR` for existing frontend needs:
-  - functions, params, locals, blocks
-  - integer/float literals, var refs
-  - unary/binary/assign/call
-  - if/while/for/return
-  - globals and simple initializers
-- Add `ast_to_hir` lowering.
-
-Scope control:
-
-- Model only constructs already covered by tests first.
-- Unsupported forms may fallback to legacy path behind flag.
+- Remove runtime dependency on bridge in default `next` path.
+- Keep legacy invocation only in explicit comparison mode/tooling.
 
 Acceptance:
 
-- `Parser -> Sema -> HIR` pipeline runs for current small suites.
-- Snapshot stats available (`--dump-hir-summary`).
+- `--pipeline=hir` is self-contained.
+- CI gate for non-torture suites no longer requires legacy bridge.
 
-### Phase 3: HIR -> LLVM Backend (Parallel with legacy IRBuilder)
+### Phase 4: DAG Layer Activation
 
 Deliverables:
 
-- New LLVM backend module `codegen/llvm/hir_to_llvm.cpp`.
-- Initially, this module may internally call adapted pieces of legacy `IRBuilder` to reduce risk.
-- New `tiny-c2ll-next` flow:
-  - preprocess -> lex -> parse -> sema -> hir -> llvm backend
+- Add `hir_to_dag` lowering skeleton + `--dump-dag` output.
+- Keep LLVM backend functional while DAG grows.
 
 Acceptance:
 
-- For allowed tests, `legacy` and `next` output binaries/behavior match.
-- Keep `legacy` as release default.
+- representative files produce inspectable DAG output.
 
-### Phase 4: Introduce DAG Layer Stub
+### Phase 5: Cutover Prep
 
 Deliverables:
 
-- Add `ir/dag` types and `hir_to_dag` lowering skeleton.
-- Add `--emit-dag` debug output for inspection.
-- No native codegen required yet.
+- Stabilize `next` on non-torture suites.
+- Add parity diff tooling (legacy vs next outputs/diagnostics).
 
 Acceptance:
 
-- `next` can run to DAG on representative files.
-- No regression in existing LLVM path.
+- agreed suite parity and documented perf/memory baseline.
 
-### Phase 5: Cutover Preparation
+### Phase 6: Default Switch + Legacy Decommission
 
 Deliverables:
 
-- Ensure `next` passes:
-  - `tiny_c2ll_tests`
-  - `negative_tests`
-  - `ccc_review_*`
-  - `c_testsuite_*`
-- Keep excluding `llvm_gcc_c_torture_*` for this stage.
-- Add parity checker script for legacy vs next output diff.
+- switch default compiler path to `next`
+- remove legacy monolith after sustained green runs
 
 Acceptance:
 
-- Stable parity for agreed suite subset.
-- Performance and memory within acceptable range (documented baseline).
+- team sign-off and transition window complete.
 
-### Phase 6: Default Switch and Legacy Removal (later)
+## Test Strategy (Rebased)
 
-Deliverables:
+Primary gates per iteration:
 
-- Make `next` path default target.
-- Keep legacy path behind option for one transition window.
-- Remove legacy `ir_builder` monolith only after sustained green runs.
-
-Acceptance:
-
-- Full agreed suite green.
-- Team sign-off before deletion.
-
-## Test Strategy (Current Request)
-
-Run/require in migration loop:
-
+- `ctest -R '^negative_tests'`
 - `ctest -R tiny_c2ll_tests`
-- `ctest -R negative_tests`
 - `ctest -R ccc_review`
 - `ctest -R c_testsuite`
-- `ctest -E llvm_gcc_c_torture`
 
-Do not gate early migration on:
+Core aggregate gate:
 
-- `llvm_gcc_c_torture_*`
+- `cmake --build build --target ctest_core`
 
-## Implementation Notes
+Exclusion policy in migration loop:
 
-- Keep old file names and code paths for comparison.
-- Add clear naming:
-  - old: `legacy`
-  - new: `next`
-- Use feature flags in new driver if needed:
-  - `--pipeline=legacy|next`
-  - `--dump-hir`
-  - `--dump-dag`
+- `llvm_gcc_c_torture_*` excluded from default gate until Phase 5+
+
+Timeout policy:
+
+- default per-test timeout: 30s
+- any >30s test runtime treated as suspicious regression unless explicitly documented
+
+## Current Status Snapshot (2026-03-08)
+
+- Phase 0/1/2: done.
+- Phase 3: partially done.
+  - native HIR emitter exists but sema validation is incomplete.
+  - major failure mode is semantic rejection gaps, not parser stability.
+- `next` architecture correction required now:
+  - move hard semantic checks into sema pass before codegen.
 
 ## Immediate Next 3 PRs
 
-1. PR-1: Add `apps/tiny-c2ll-next.cpp`, CMake new target, no behavior change.
-2. PR-2: Add `sema_driver` skeleton and move first semantic helpers from `ir_builder`.
-3. PR-3: Add minimal `HIR` structs + `ast_to_hir` for basic expressions/statements.
+1. PR-A: Introduce `sema_validate` pass and wire it into `tiny-c2ll-next` before HIR/codegen.
+2. PR-B: Implement first-wave hard checks (negative suite core: control-flow misuse + const/cast/call arity).
+3. PR-C: Remove mandatory legacy bridge calls from `--pipeline=hir`; keep bridge behind explicit legacy mode only.
 
-## Current Progress (as of 2026-03-08)
+## Guardrails
 
-### Phase 0 status: completed
-
-- Added parallel entry binary `tiny-c2ll-next` (`frontend_cxx_next`) with its own `main`.
-- Kept `tiny-c2ll-stage1` (`frontend_cxx_stage1`) unchanged as default test/compiler path.
-- Matched shared CLI behavior for `--lex-only`, `--parse-only`, and `-o` on `next`.
-- Verified both binaries build and legacy CTest flow still runs via stage1.
-
-### Phase 1 status: completed
-
-Completed in `src/frontend/sema/sema_driver.{hpp,cpp}`:
-
-- Type construction and classification helpers:
-  - `make_ts`, `int_ts`, `void_ts`, `double_ts`, `float_ts`, `char_ts`, `ll_ts`
-  - `ptr_to`, `is_unsigned_base`, `is_float_base`, `is_complex_base`, `complex_component_ts`
-- Array-shape helpers:
-  - `array_rank_of`, `array_dim_at`, `is_array_ty`, `clear_array`,
-    `set_array_dims`, `set_first_array_dim`, `drop_array_dim`
-- String/constant-eval semantic helpers:
-  - `is_wide_str_lit`, `str_lit_byte_len`, `allows_string_literal_ptr_target`
-  - `decode_narrow_string_lit`, `normalize_printf_longdouble_format`, `decode_wide_string`
-  - `infer_array_size_from_init`, `static_eval_int`, `static_eval_float`
-- Expression type and promotion helpers:
-  - `classify_int_literal_type`, `classify_float_literal_type`
-  - `classify_unary_result_type`, `classify_binop_result_type`
-  - `decay_array_to_ptr`
-  - `remap_builtin_et_name`, `classify_known_call_return_type`
-
-`ir_builder.cpp` now depends on `sema_driver.hpp` for the helpers above instead of owning local static copies.
-
-Validation completed after extraction:
-
-- `legacy` vs `next` LLVM IR parity check on representative input (`example.c`): no diff.
-- Non-`llvm_gcc_c_torture` suites green:
-  - `tiny_c2ll_tests`
-  - `negative_tests`
-  - `ccc_review_*`
-  - `c_testsuite_*`
-
-### Phase 2 status: completed
-
-### Phase 3 status: in progress (bootstrap landed)
-
-Completed in this step:
-
-- Added a dedicated sema IR spec header:
-  - `src/frontend/sema/ir.hpp`
-- Added minimal AST -> HIR lowering module:
-  - `src/frontend/sema/ast_to_hir.hpp`
-  - `src/frontend/sema/ast_to_hir.cpp`
-- Wired new module into build:
-  - `CMakeLists.txt` (`FRONTEND_CXX_COMMON_SRCS` now includes `ast_to_hir.cpp`)
-- Added phase-2 visibility flag to `next` driver:
-  - `src/apps/tiny-c2ll-next.cpp`
-  - new CLI option: `--dump-hir-summary`
-
-Current behavior:
-
-- `tiny-c2ll-next --dump-hir-summary <file.c>` now runs:
-  - preprocess -> lex -> parse -> lower_ast_to_hir -> summary print
-- `tiny-c2ll-next` default compile path remains unchanged:
-  - still emits LLVM IR through legacy `IRBuilder` path
-
-Validation snapshot:
-
-- `frontend_cxx_next` builds successfully after wiring.
-- Example run:
-  - command: `./build/tiny-c2ll-next --dump-hir-summary tests/tiny_c2ll/example.c`
-  - output: `HIR summary: functions=1 globals=0 blocks=1 statements=5 expressions=14`
-- Legacy output path smoke-check still works:
-  - `./build/tiny-c2ll-next tests/tiny_c2ll/example.c`
-
-### Phase 3 bootstrap: completed (as of 2026-03-08)
-
-Completed in this step:
-
-- Added `src/codegen/llvm/hir_to_llvm.{hpp,cpp}` — new HIR->LLVM backend module.
-- `hir_to_llvm::emit_module(mod, ast_root)` bridges to legacy `IRBuilder` via const_cast.
-- Updated `tiny-c2ll-next.cpp` compile path:
-  - now runs: `parse -> lower_ast_to_hir -> emit_module(hir_mod, ast_root)`
-- Added `src/codegen/llvm` to CMake include dirs.
-
-Current behavior:
-
-- `tiny-c2ll-next` default path: AST lowered to HIR, then HIR->LLVM bridge calls legacy IRBuilder.
-- All 277 non-torture tests pass; legacy/next parity confirmed on example.c.
-
-Next work for Phase 3:
-
-- Begin replacing bridge with native HIR->LLVM emission, one construct at a time.
-- Start with simple scalar functions (int literals, return, basic binops).
-- Each slice: implement construct natively, remove its AST dependency in bridge.
-- Long-term: remove `ast_root` param from `emit_module` once all constructs are covered.
-
-### Phase 3: native HirEmitter slice 1 (as of 2026-03-08)
-
-Implemented `emit_module_native()` — a native HIR → LLVM text emitter in `hir_to_llvm.cpp`:
-
-- Covers all scalar types, arithmetic/comparison/logical/bitwise ops
-- Handles compound assign, pre/post inc/dec, cast, ternary, call
-- Handles if/while/for/do-while with correct break/continue targets
-- goto/label, switch (basic), break/continue
-- Added `resolve_expr_type()` for bottom-up type inference (parser doesn't
-  annotate NK_BINOP/NK_VAR nodes; types resolved recursively from HIR)
-- Added `IfStmt::after_block` in ir.hpp; wired in ast_to_hir.cpp
-
-Added `--pipeline=hir` flag to `tiny-c2ll-next`:
-- Default path (`--pipeline=legacy`) still uses the bridge
-- `--pipeline=hir` uses `emit_module_native()`
-
-Validation:
-- `tiny-c2ll-next --pipeline=hir example.c | lli` → exit 31 ✓
-- 277/277 non-torture tests pass (0 regressions)
-
-Not yet implemented in native path (falls back to bridge):
-- MemberExpr (struct field access)
-- String literals (complex)
-- Struct/union definitions
-- Switch/case full dispatch
-- Variadic function calls
-- Global variable initializers
+- No new semantic checks in `hir_to_llvm.cpp` unless they are IR structural invariants.
+- Semantic user-facing diagnostics must originate from sema module.
+- Any temporary fallback to legacy must be feature-flagged, off by default, and tracked with removal issue.
