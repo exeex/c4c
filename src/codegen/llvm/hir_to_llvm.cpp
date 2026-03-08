@@ -247,13 +247,12 @@ class HirEmitter {
     std::unordered_map<uint32_t, std::string> param_slots;
     std::vector<std::string> alloca_lines;
     std::vector<std::string> body_lines;
-    // break/continue targets per block_id
+    // legacy per-block metadata (kept for compatibility; mostly unused now)
     std::unordered_map<uint32_t, BlockMeta> block_meta;
+    // body_block -> continue branch target label
+    std::unordered_map<uint32_t, std::string> continue_redirect;
     // user label name → LLVM label
     std::unordered_map<std::string, std::string> user_labels;
-    // current break/continue stacks (filled when entering body/switch blocks)
-    std::vector<std::string> break_stack;
-    std::vector<std::string> continue_stack;
   };
 
   // ── Instruction helpers ───────────────────────────────────────────────────
@@ -1500,12 +1499,12 @@ class HirEmitter {
         ? block_lbl(*s.break_target)
         : fresh_lbl(ctx, "while.end.");
 
-    // Push break/continue into meta for body block
-    ctx.block_meta[s.body_block.value].break_label    = end_lbl;
-    ctx.block_meta[s.body_block.value].continue_label = cond_lbl;
+    ctx.continue_redirect[s.body_block.value] = cond_lbl;
 
-    emit_term(ctx, "br label %" + cond_lbl);
-    // cond block is emitted separately; record that cond block holds the branch
+    TypeSpec cond_ts{};
+    const std::string cond_v = emit_rval_id(ctx, s.cond, cond_ts);
+    const std::string cond_i1 = to_bool(ctx, cond_v, cond_ts);
+    emit_term(ctx, "br i1 " + cond_i1 + ", label %" + body_lbl + ", label %" + end_lbl);
   }
 
   void emit_stmt_impl(FnCtx& ctx, const ForStmt& s) {
@@ -1517,14 +1516,10 @@ class HirEmitter {
     const std::string end_lbl  = s.break_target
         ? block_lbl(*s.break_target)
         : fresh_lbl(ctx, "for.end.");
-    const std::string cont_lbl = s.continue_target
-        ? block_lbl(*s.continue_target)
-        : body_lbl;
+    const std::string cond_lbl = "for.cond." + std::to_string(s.body_block.value);
+    const std::string latch_lbl = "for.latch." + std::to_string(s.body_block.value);
+    ctx.continue_redirect[s.body_block.value] = latch_lbl;
 
-    ctx.block_meta[s.body_block.value].break_label    = end_lbl;
-    ctx.block_meta[s.body_block.value].continue_label = cont_lbl;
-
-    const std::string cond_lbl = fresh_lbl(ctx, "for.cond.");
     emit_term(ctx, "br label %" + cond_lbl);
     emit_lbl(ctx, cond_lbl);
     if (s.cond) {
@@ -1535,6 +1530,12 @@ class HirEmitter {
     } else {
       emit_term(ctx, "br label %" + body_lbl);
     }
+    emit_lbl(ctx, latch_lbl);
+    if (s.update) {
+      TypeSpec uts{};
+      (void)emit_rval_id(ctx, *s.update, uts);
+    }
+    emit_term(ctx, "br label %" + cond_lbl);
   }
 
   void emit_stmt_impl(FnCtx& ctx, const DoWhileStmt& s) {
@@ -1542,14 +1543,14 @@ class HirEmitter {
     const std::string end_lbl  = s.break_target
         ? block_lbl(*s.break_target)
         : fresh_lbl(ctx, "dowhile.end.");
-    const std::string cont_lbl = s.continue_target
-        ? block_lbl(*s.continue_target)
-        : body_lbl;
-
-    ctx.block_meta[s.body_block.value].break_label    = end_lbl;
-    ctx.block_meta[s.body_block.value].continue_label = cont_lbl;
-
-    emit_term(ctx, "br label %" + body_lbl);
+    const std::string cond_lbl = "dowhile.cond." + std::to_string(s.body_block.value);
+    ctx.continue_redirect[s.body_block.value] = cond_lbl;
+    emit_term(ctx, "br label %" + cond_lbl);
+    emit_lbl(ctx, cond_lbl);
+    TypeSpec cond_ts{};
+    const std::string cond_v = emit_rval_id(ctx, s.cond, cond_ts);
+    const std::string cond_i1 = to_bool(ctx, cond_v, cond_ts);
+    emit_term(ctx, "br i1 " + cond_i1 + ", label %" + body_lbl + ", label %" + end_lbl);
   }
 
   void emit_stmt_impl(FnCtx& ctx, const SwitchStmt& s) {
@@ -1582,7 +1583,11 @@ class HirEmitter {
   }
 
   void emit_stmt_impl(FnCtx& ctx, const GotoStmt& s) {
-    emit_term(ctx, "br label %ulbl_" + s.target.user_name);
+    if (s.target.resolved_block.valid()) {
+      emit_term(ctx, "br label %" + block_lbl(s.target.resolved_block));
+    } else {
+      emit_term(ctx, "br label %ulbl_" + s.target.user_name);
+    }
   }
 
   void emit_stmt_impl(FnCtx& ctx, const LabelStmt& s) {
@@ -1595,16 +1600,18 @@ class HirEmitter {
     }
   }
 
-  void emit_stmt_impl(FnCtx& ctx, const BreakStmt&) {
-    if (!ctx.break_stack.empty()) {
-      emit_term(ctx, "br label %" + ctx.break_stack.back());
-    }
+  void emit_stmt_impl(FnCtx& ctx, const BreakStmt& s) {
+    if (s.target) emit_term(ctx, "br label %" + block_lbl(*s.target));
   }
 
-  void emit_stmt_impl(FnCtx& ctx, const ContinueStmt&) {
-    if (!ctx.continue_stack.empty()) {
-      emit_term(ctx, "br label %" + ctx.continue_stack.back());
+  void emit_stmt_impl(FnCtx& ctx, const ContinueStmt& s) {
+    if (!s.target) return;
+    const auto it = ctx.continue_redirect.find(s.target->value);
+    if (it != ctx.continue_redirect.end()) {
+      emit_term(ctx, "br label %" + it->second);
+      return;
     }
+    emit_term(ctx, "br label %" + block_lbl(*s.target));
   }
 
   void emit_stmt_impl(FnCtx&, const CaseStmt&)      {}
@@ -1691,29 +1698,16 @@ class HirEmitter {
         emit_lbl(ctx, block_lbl(blk->id));
       }
 
-      // Push break/continue from meta (set by parent loop/switch stmt)
-      const auto it = ctx.block_meta.find(blk->id.value);
-      if (it != ctx.block_meta.end()) {
-        if (it->second.break_label)
-          ctx.break_stack.push_back(*it->second.break_label);
-        if (it->second.continue_label)
-          ctx.continue_stack.push_back(*it->second.continue_label);
-      }
-
       // Emit statements
       for (const auto& stmt : blk->stmts) {
         emit_stmt(ctx, stmt);
       }
 
-      // Pop break/continue
-      if (it != ctx.block_meta.end()) {
-        if (it->second.continue_label) ctx.continue_stack.pop_back();
-        if (it->second.break_label)    ctx.break_stack.pop_back();
-      }
-
       // If block has no explicit terminator, fall through to next block
-      if (!ctx.last_term && bi + 1 < ordered.size()) {
-        emit_term(ctx, "br label %" + block_lbl(ordered[bi + 1]->id));
+      if (!ctx.last_term) {
+        if (bi + 1 < ordered.size()) {
+          emit_term(ctx, "br label %" + block_lbl(ordered[bi + 1]->id));
+        }
       }
 
       // If completely no terminator and no next block

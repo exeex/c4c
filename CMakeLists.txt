@@ -44,6 +44,7 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend/lexer/lexer.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/sema/arena.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/sema/sema_driver.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/sema/sema_validate.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/preprocessor.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/parser/parse.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/parser/types.cpp"

@@ -379,6 +379,13 @@ class Lowerer {
         const BlockId body_b = create_block(ctx);
         const BlockId after_b = create_block(ctx);
 
+        if (!ensure_block(ctx, ctx.current_block).has_explicit_terminator) {
+          GotoStmt j{};
+          j.target.resolved_block = cond_b;
+          append_stmt(ctx, Stmt{StmtPayload{j}, make_span(n)});
+          ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
+        }
+
         ctx.current_block = cond_b;
         WhileStmt s{};
         s.cond = lower_expr(&ctx, n->cond ? n->cond : n->left);
@@ -391,6 +398,13 @@ class Lowerer {
         ctx.continue_stack.push_back(cond_b);
         ctx.current_block = body_b;
         lower_stmt_node(ctx, n->body);
+        if (ctx.current_block.value != after_b.value &&
+            !ensure_block(ctx, ctx.current_block).has_explicit_terminator) {
+          ContinueStmt c{};
+          c.target = cond_b;
+          append_stmt(ctx, Stmt{StmtPayload{c}, make_span(n)});
+          ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
+        }
         ctx.break_stack.pop_back();
         ctx.continue_stack.pop_back();
 
@@ -413,6 +427,13 @@ class Lowerer {
         ctx.continue_stack.push_back(body_b);
         ctx.current_block = body_b;
         lower_stmt_node(ctx, n->body);
+        if (ctx.current_block.value != after_b.value &&
+            !ensure_block(ctx, ctx.current_block).has_explicit_terminator) {
+          ContinueStmt c{};
+          c.target = body_b;
+          append_stmt(ctx, Stmt{StmtPayload{c}, make_span(n)});
+          ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
+        }
         ctx.break_stack.pop_back();
         ctx.continue_stack.pop_back();
 
@@ -422,6 +443,13 @@ class Lowerer {
       case NK_DO_WHILE: {
         const BlockId body_b = create_block(ctx);
         const BlockId after_b = create_block(ctx);
+
+        if (!ensure_block(ctx, ctx.current_block).has_explicit_terminator) {
+          GotoStmt j{};
+          j.target.resolved_block = body_b;
+          append_stmt(ctx, Stmt{StmtPayload{j}, make_span(n)});
+          ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
+        }
 
         ctx.break_stack.push_back(after_b);
         ctx.continue_stack.push_back(body_b);
@@ -476,13 +504,17 @@ class Lowerer {
         return;
       }
       case NK_BREAK: {
-        append_stmt(ctx, Stmt{StmtPayload{BreakStmt{}}, make_span(n)});
+        BreakStmt s{};
+        if (!ctx.break_stack.empty()) s.target = ctx.break_stack.back();
+        append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
         ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
         if (!ctx.break_stack.empty()) ctx.current_block = ctx.break_stack.back();
         return;
       }
       case NK_CONTINUE: {
-        append_stmt(ctx, Stmt{StmtPayload{ContinueStmt{}}, make_span(n)});
+        ContinueStmt s{};
+        if (!ctx.continue_stack.empty()) s.target = ctx.continue_stack.back();
+        append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
         ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
         if (!ctx.continue_stack.empty()) ctx.current_block = ctx.continue_stack.back();
         return;

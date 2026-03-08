@@ -14,6 +14,7 @@
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "preprocessor.hpp"
+#include "sema_validate.hpp"
 #include "token.hpp"
 
 namespace tc = tinyc2ll::frontend_cxx;
@@ -34,7 +35,7 @@ void print_pp_diags(const std::vector<tc::PreprocessorDiagnostic>& diags,
   }
 }
 
-bool hir_requires_legacy_bridge(const tc::sema_ir::phase2::hir::Module& mod) {
+bool hir_has_unsupported_features(const tc::sema_ir::phase2::hir::Module& mod) {
   // Native HIR backend is still incomplete for these features.
   for (const auto& fn : mod.functions) {
     if (fn.attrs.variadic) return true;
@@ -142,6 +143,12 @@ int main(int argc, char **argv) {
       return 0;
     }
 
+    tc::sema::ValidateResult sema_result = tc::sema::validate_program(prog);
+    if (!sema_result.ok) {
+      tc::sema::print_diagnostics(sema_result.diagnostics, input);
+      return 1;
+    }
+
     if (dump_hir || dump_hir_summary) {
       tc::sema_ir::phase2::hir::Module module =
           tc::sema_ir::phase2::hir::lower_ast_to_hir(prog);
@@ -158,14 +165,12 @@ int main(int argc, char **argv) {
         tc::sema_ir::phase2::hir::lower_ast_to_hir(prog);
     std::string ir;
     if (pipeline_hir) {
-      if (hir_requires_legacy_bridge(hir_mod)) {
-        ir = tinyc2ll::codegen::llvm_backend::emit_module(hir_mod, prog);
-      } else {
-        // Temporary semantic gate: keep legacy semantic diagnostics as source
-        // of truth while native HIR backend parity is still in progress.
-        (void)tinyc2ll::codegen::llvm_backend::emit_module(hir_mod, prog);
-        ir = tinyc2ll::codegen::llvm_backend::emit_module_native(hir_mod);
+      if (hir_has_unsupported_features(hir_mod)) {
+        throw std::runtime_error(
+            "--pipeline=hir does not support variadic functions yet; "
+            "use --pipeline=legacy");
       }
+      ir = tinyc2ll::codegen::llvm_backend::emit_module_native(hir_mod);
     } else {
       ir = tinyc2ll::codegen::llvm_backend::emit_module(hir_mod, prog);
     }

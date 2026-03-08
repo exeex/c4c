@@ -366,8 +366,12 @@ struct CaseRangeStmt {
 };
 
 struct DefaultStmt {};
-struct BreakStmt {};
-struct ContinueStmt {};
+struct BreakStmt {
+  std::optional<BlockId> target;
+};
+struct ContinueStmt {
+  std::optional<BlockId> target;
+};
 
 using StmtPayload = std::variant<
     LocalDecl,
@@ -421,6 +425,10 @@ struct Stmt {
             if (s.default_block) push_unique(*s.default_block);
           } else if constexpr (std::is_same_v<T, GotoStmt>) {
             push_unique(s.target.resolved_block);
+          } else if constexpr (std::is_same_v<T, BreakStmt>) {
+            if (s.target) push_unique(*s.target);
+          } else if constexpr (std::is_same_v<T, ContinueStmt>) {
+            if (s.target) push_unique(*s.target);
           }
         },
         payload);
