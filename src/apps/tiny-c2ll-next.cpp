@@ -21,7 +21,7 @@ namespace {
 
 void print_usage(const char *argv0) {
   std::cerr << "usage: " << argv0
-            << " [--version] [--lex-only|--parse-only|--dump-hir-summary]"
+            << " [--version] [--lex-only|--parse-only|--dump-hir|--dump-hir-summary]"
             << " [-o output.ll] <input.c>\n";
 }
 
@@ -54,6 +54,7 @@ int main(int argc, char **argv) {
     bool        lex_only   = false;
     bool        parse_only = false;
     bool        dump_hir_summary = false;
+    bool        dump_hir = false;
     std::string input;
     std::string output;
 
@@ -63,6 +64,8 @@ int main(int argc, char **argv) {
         lex_only = true;
       } else if (arg == "--parse-only") {
         parse_only = true;
+      } else if (arg == "--dump-hir") {
+        dump_hir = true;
       } else if (arg == "--dump-hir-summary") {
         dump_hir_summary = true;
       } else if (arg == "-o") {
@@ -79,10 +82,13 @@ int main(int argc, char **argv) {
       print_usage(argv[0]);
       return 1;
     }
-    if ((lex_only && parse_only) || (lex_only && dump_hir_summary) ||
-        (parse_only && dump_hir_summary)) {
-      std::cerr << "cannot combine --lex-only, --parse-only, and --dump-hir-summary\n";
-      return 2;
+    {
+      int mode_count = (lex_only ? 1 : 0) + (parse_only ? 1 : 0) +
+                       (dump_hir ? 1 : 0) + (dump_hir_summary ? 1 : 0);
+      if (mode_count > 1) {
+        std::cerr << "cannot combine --lex-only, --parse-only, --dump-hir, --dump-hir-summary\n";
+        return 2;
+      }
     }
 
     tc::Preprocessor preprocessor;
@@ -122,10 +128,14 @@ int main(int argc, char **argv) {
       return 0;
     }
 
-    if (dump_hir_summary) {
+    if (dump_hir || dump_hir_summary) {
       tc::sema_ir::phase2::hir::Module module =
           tc::sema_ir::phase2::hir::lower_ast_to_hir(prog);
-      std::cout << tc::sema_ir::phase2::hir::format_summary(module) << "\n";
+      if (dump_hir) {
+        std::cout << tc::sema_ir::phase2::hir::format_hir(module);
+      } else {
+        std::cout << tc::sema_ir::phase2::hir::format_summary(module) << "\n";
+      }
       return 0;
     }
 
