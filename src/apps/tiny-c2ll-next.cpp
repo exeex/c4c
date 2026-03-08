@@ -9,7 +9,7 @@
 #include "arena.hpp"
 #include "ast_to_hir.hpp"
 #include "ast.hpp"
-#include "ir_builder.hpp"
+#include "hir_to_llvm.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "preprocessor.hpp"
@@ -129,9 +129,10 @@ int main(int argc, char **argv) {
       return 0;
     }
 
-    // IR emission phase (legacy backend for phase 0)
-    tc::IRBuilder builder;
-    std::string ir = builder.emit_program(prog);
+    // Phase 3: lower AST -> HIR, then HIR -> LLVM via hir_to_llvm bridge.
+    tc::sema_ir::phase2::hir::Module hir_mod =
+        tc::sema_ir::phase2::hir::lower_ast_to_hir(prog);
+    std::string ir = tinyc2ll::codegen::llvm_backend::emit_module(hir_mod, prog);
 
     // Write to output file or stdout
     if (!output.empty()) {
