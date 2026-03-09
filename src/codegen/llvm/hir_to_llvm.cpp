@@ -81,6 +81,7 @@ static std::string llvm_base(TypeBase b) {
     case TB_INT128: case TB_UINT128:            return "i128";
     case TB_FLOAT:                              return "float";
     case TB_DOUBLE: case TB_LONGDOUBLE:         return "double";
+    case TB_VA_LIST:                            return "ptr";
     default:                                    return "i32";
   }
 }
@@ -128,6 +129,7 @@ static std::string llvm_alloca_ty(const TypeSpec& ts) {
     }
     return "ptr";  // unknown size
   }
+  if (ts.base == TB_VA_LIST) return "%struct.__va_list_tag_";
   if (ts.base == TB_STRUCT || ts.base == TB_UNION) {
     if (ts.tag && ts.tag[0]) return "%struct." + std::string(ts.tag);
   }
@@ -144,6 +146,7 @@ static int sizeof_base(TypeBase b) {
     case TB_LONGLONG: case TB_ULONGLONG:       return 8;
     case TB_DOUBLE:                            return 8;
     case TB_LONGDOUBLE:                        return 16;
+    case TB_VA_LIST:                           return 32;
     default:                                   return 4;
   }
 }
@@ -392,6 +395,10 @@ class HirEmitter {
     std::ostringstream out;
     out << preamble_.str();
     if (!preamble_.str().empty()) out << "\n";
+    if (need_llvm_va_start_) out << "declare void @llvm.va_start.p0(ptr)\n";
+    if (need_llvm_va_end_) out << "declare void @llvm.va_end.p0(ptr)\n";
+    if (need_llvm_va_copy_) out << "declare void @llvm.va_copy.p0.p0(ptr, ptr)\n";
+    if (need_llvm_va_start_ || need_llvm_va_end_ || need_llvm_va_copy_) out << "\n";
     for (const auto& [name, ret_ty] : extern_call_decls_) {
       if (mod_.fn_index.count(name)) continue;
       out << "declare " << ret_ty << " @" << name << "(...)\n";
@@ -408,6 +415,9 @@ class HirEmitter {
   std::unordered_map<std::string, std::string> extern_call_decls_;  // name -> ret llvm type
   std::unordered_map<std::string, std::string> str_pool_;
   int str_idx_ = 0;
+  bool need_llvm_va_start_ = false;
+  bool need_llvm_va_end_ = false;
+  bool need_llvm_va_copy_ = false;
 
   // ── Per-function state ────────────────────────────────────────────────────
 
@@ -1538,6 +1548,11 @@ class HirEmitter {
       if (it == ctx.local_slots.end())
         throw std::runtime_error("HirEmitter: local slot not found: " + r.name);
       const TypeSpec ts = ctx.local_types.at(r.local->value);
+      if (ts.base == TB_VA_LIST && ts.ptr_level == 0 && ts.array_rank == 0) {
+        // Treat va_list as array-like in expressions: it decays to a pointer to
+        // the va_list object, so callers like vprintf(fmt, ap) receive ptr.
+        return it->second;
+      }
       if (ts.array_rank > 0 && ts.ptr_level == 0) {
         const std::string tmp = fresh_tmp(ctx);
         emit_instr(ctx, tmp + " = getelementptr " + llvm_alloca_ty(ts) +
@@ -2023,6 +2038,29 @@ class HirEmitter {
 
     // Handle GCC/Clang builtins
     if (!fn_name.empty() && fn_name.substr(0, 10) == "__builtin_") {
+      if (fn_name == "__builtin_va_start" && call.args.size() >= 1) {
+        TypeSpec ap_ts{};
+        const std::string ap_ptr = emit_lval(ctx, call.args[0], ap_ts);
+        need_llvm_va_start_ = true;
+        emit_instr(ctx, "call void @llvm.va_start.p0(ptr " + ap_ptr + ")");
+        return "";
+      }
+      if (fn_name == "__builtin_va_end" && call.args.size() >= 1) {
+        TypeSpec ap_ts{};
+        const std::string ap_ptr = emit_lval(ctx, call.args[0], ap_ts);
+        need_llvm_va_end_ = true;
+        emit_instr(ctx, "call void @llvm.va_end.p0(ptr " + ap_ptr + ")");
+        return "";
+      }
+      if (fn_name == "__builtin_va_copy" && call.args.size() >= 2) {
+        TypeSpec dst_ts{};
+        TypeSpec src_ts{};
+        const std::string dst_ptr = emit_lval(ctx, call.args[0], dst_ts);
+        const std::string src_ptr = emit_lval(ctx, call.args[1], src_ts);
+        need_llvm_va_copy_ = true;
+        emit_instr(ctx, "call void @llvm.va_copy.p0.p0(ptr " + dst_ptr + ", ptr " + src_ptr + ")");
+        return "";
+      }
       // bswap builtins → llvm.bswap intrinsic
       if (fn_name == "__builtin_bswap16" || fn_name == "__builtin_bswap32" ||
           fn_name == "__builtin_bswap64") {
@@ -2086,6 +2124,81 @@ class HirEmitter {
     const std::string tmp = fresh_tmp(ctx);
     emit_instr(ctx, tmp + " = call " + ret_ty + " " + callee_val + "(" + args_str + ")");
     return tmp;
+  }
+
+  // ── VaArg ────────────────────────────────────────────────────────────────
+
+  std::string emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const Expr& e) {
+    TypeSpec ap_ts{};
+    const std::string ap_ptr = emit_lval(ctx, v.ap, ap_ts);
+    TypeSpec res_ts = e.type.spec;
+    if (!has_concrete_type(res_ts)) res_ts = resolve_expr_type(ctx, e);
+    const std::string res_ty = llvm_ty(res_ts);
+    if (res_ty == "void") return "";
+    const bool is_gp_scalar =
+        (res_ty == "ptr") ||
+        (res_ts.ptr_level == 0 && res_ts.array_rank == 0 && is_any_int(res_ts.base));
+
+    // AArch64 va_list matches clang's __va_list_tag layout:
+    // { stack, gr_top, vr_top, gr_offs, vr_offs }.
+    // For integer/pointer args we first try GR save area, then fall back to stack.
+    if (is_gp_scalar) {
+      const std::string offs_ptr = fresh_tmp(ctx);
+      emit_instr(ctx, offs_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
+                              ", i32 0, i32 3");
+      const std::string offs = fresh_tmp(ctx);
+      emit_instr(ctx, offs + " = load i32, ptr " + offs_ptr);
+
+      const std::string stack_lbl = fresh_lbl(ctx, "vaarg.stack.");
+      const std::string reg_try_lbl = fresh_lbl(ctx, "vaarg.regtry.");
+      const std::string reg_lbl = fresh_lbl(ctx, "vaarg.reg.");
+      const std::string join_lbl = fresh_lbl(ctx, "vaarg.join.");
+
+      const std::string is_stack0 = fresh_tmp(ctx);
+      emit_instr(ctx, is_stack0 + " = icmp sge i32 " + offs + ", 0");
+      emit_term(ctx, "br i1 " + is_stack0 + ", label %" + stack_lbl + ", label %" + reg_try_lbl);
+
+      emit_lbl(ctx, reg_try_lbl);
+      const std::string next_offs = fresh_tmp(ctx);
+      emit_instr(ctx, next_offs + " = add i32 " + offs + ", 8");
+      emit_instr(ctx, "store i32 " + next_offs + ", ptr " + offs_ptr);
+      const std::string use_reg = fresh_tmp(ctx);
+      emit_instr(ctx, use_reg + " = icmp sle i32 " + next_offs + ", 0");
+      emit_term(ctx, "br i1 " + use_reg + ", label %" + reg_lbl + ", label %" + stack_lbl);
+
+      emit_lbl(ctx, reg_lbl);
+      const std::string gr_top_ptr = fresh_tmp(ctx);
+      emit_instr(ctx, gr_top_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
+                               ", i32 0, i32 1");
+      const std::string gr_top = fresh_tmp(ctx);
+      emit_instr(ctx, gr_top + " = load ptr, ptr " + gr_top_ptr);
+      const std::string reg_addr = fresh_tmp(ctx);
+      emit_instr(ctx, reg_addr + " = getelementptr i8, ptr " + gr_top + ", i32 " + offs);
+      emit_term(ctx, "br label %" + join_lbl);
+
+      emit_lbl(ctx, stack_lbl);
+      const std::string stack_ptr_ptr = fresh_tmp(ctx);
+      emit_instr(ctx, stack_ptr_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
+                                  ", i32 0, i32 0");
+      const std::string stack_ptr = fresh_tmp(ctx);
+      emit_instr(ctx, stack_ptr + " = load ptr, ptr " + stack_ptr_ptr);
+      const std::string stack_next = fresh_tmp(ctx);
+      emit_instr(ctx, stack_next + " = getelementptr i8, ptr " + stack_ptr + ", i64 8");
+      emit_instr(ctx, "store ptr " + stack_next + ", ptr " + stack_ptr_ptr);
+      emit_term(ctx, "br label %" + join_lbl);
+
+      emit_lbl(ctx, join_lbl);
+      const std::string src_ptr = fresh_tmp(ctx);
+      emit_instr(ctx, src_ptr + " = phi ptr [ " + reg_addr + ", %" + reg_lbl + " ], [ " +
+                               stack_ptr + ", %" + stack_lbl + " ]");
+      const std::string out = fresh_tmp(ctx);
+      emit_instr(ctx, out + " = load " + res_ty + ", ptr " + src_ptr);
+      return out;
+    }
+
+    const std::string out = fresh_tmp(ctx);
+    emit_instr(ctx, out + " = va_arg ptr " + ap_ptr + ", " + res_ty);
+    return out;
   }
 
   // ── Ternary ───────────────────────────────────────────────────────────────
