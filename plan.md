@@ -128,6 +128,46 @@ kill -9 <pid...>
 8. `00204`（const 規則與測試契約對齊）
 9. `negative_tests_bad_flow_uninitialized_read`（需先決策語意，再落地）
 
+### 5) 下一步主要工作：GCC Torture 回圈
+
+後續主流程改為以下 5 步，反覆執行直到收斂：
+
+1. `ctest gcc_torture`
+   - 先開啟 torture 註冊（若尚未開）：
+     ```bash
+     cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DENABLE_LLVM_GCC_C_TORTURE_TESTS=ON
+     cmake --build build -j4
+     ```
+   - 執行 torture：
+     ```bash
+     ctest --test-dir build -R llvm_gcc_c_torture --output-on-failure
+     ```
+
+2. `clean dead process`
+   - 先清理殘留 `*.bin`：
+     ```bash
+     pkill -9 -f '^/workspaces/c4c/build/llvm_gcc_c_torture/.*\.bin($| )'
+     ```
+   - 再清孤立進程（PPID=1）：
+     ```bash
+     ps -eo pid=,ppid=,cmd= | awk '$2==1 && $0 ~ /^ *[0-9]+ +1 +\\/workspaces\\/c4c\\/build\\/llvm_gcc_c_torture\\/.*\\.bin( |$)/ {print $1}' | xargs -r kill -9
+     ```
+
+3. `analysis test report`
+   - 收斂失敗類型（frontend fail / backend fail / runtime nonzero / timeout）。
+   - 以單一根因群組分類，不要逐案散修。
+
+4. `select a testcase to fix`
+   - 每輪只挑 1 個代表性 testcase 修。
+   - 先做最小重現，再做精準修復，最後只 rerun 同群案例。
+
+5. `update plan.md && commit`
+   - 每輪固定更新：
+     - 新失敗摘要
+     - 本輪處理 testcase
+     - 修復結果與下一輪目標
+   - 然後 commit（訊息需反映 testcase 與修復主題）。
+
 ## Goal
 
 Refactor pipeline from:
