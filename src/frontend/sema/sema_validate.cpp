@@ -43,9 +43,18 @@ TypeSpec decay_array(TypeSpec ts) {
   // is_ptr_to_array means the type is already a pointer wrapping an array (e.g. char (*)[4]);
   // do not decay such types a second time.
   if (ts.array_rank > 0 && !ts.is_ptr_to_array) {
-    ts.array_rank = 0;
-    ts.array_size = -1;
-    ts.ptr_level += 1;
+    if (ts.array_rank > 1) {
+      // Multi-dimensional array decays to pointer-to-inner-array.
+      // e.g. char[3][28] → char(*)[?] (one rank consumed, one remains).
+      ts.array_rank -= 1;
+      ts.array_size = -1;  // inner size not tracked in flat TypeSpec
+      ts.ptr_level += 1;
+      ts.is_ptr_to_array = true;
+    } else {
+      ts.array_rank = 0;
+      ts.array_size = -1;
+      ts.ptr_level += 1;
+    }
   }
   return ts;
 }
@@ -590,6 +599,16 @@ class Validator {
     current_fn_ret_ = fn->type;
     fn_has_goto_ = fn->body && node_contains_goto(fn->body);
     enter_scope();
+    // Pre-defined function-name identifiers (C99 §6.4.2.2, GCC extension).
+    {
+      TypeSpec func_ts{};
+      func_ts.base = TB_CHAR;
+      func_ts.ptr_level = 1;
+      func_ts.is_const = true;
+      bind_local("__func__", func_ts, true, 0);
+      bind_local("__FUNCTION__", func_ts, true, 0);
+      bind_local("__PRETTY_FUNCTION__", func_ts, true, 0);
+    }
     for (int i = 0; i < fn->n_params; ++i) {
       const Node* p = fn->params[i];
       if (!p || !p->name || !p->name[0]) continue;
@@ -851,11 +870,18 @@ class Validator {
         out.is_const_lvalue = false;
         out.is_fn_name = false;
         out.type = base.type;
-        out.type = decay_array(out.type);
         // In C, &function-name has the same type as function-name (both decay
         // to a function pointer).  Do not add an extra ptr_level for functions.
         if (!base.is_fn_name) {
-          out.type.ptr_level += 1;
+          if (out.type.array_rank > 0 && !out.type.is_ptr_to_array) {
+            // &array → pointer-to-array: preserve array dimension without decay.
+            // e.g. char arr[28] → &arr has type char(*)[28], not char**.
+            out.type.ptr_level += 1;
+            out.type.is_ptr_to_array = true;
+          } else {
+            out.type = decay_array(out.type);
+            out.type.ptr_level += 1;
+          }
         }
         return out;
       }
@@ -864,11 +890,17 @@ class Validator {
         out.valid = base.valid;
         out.type = decay_array(base.type);
         out.is_lvalue = true;
-        if (out.type.ptr_level > 0) out.type.ptr_level -= 1;
+        if (out.type.ptr_level > 0) {
+          out.type.ptr_level -= 1;
+          // After dereferencing a pointer-to-array we have a plain array, not
+          // another pointer-to-array.
+          out.type.is_ptr_to_array = false;
+        }
         // is_const=true with ptr_level>0 means the *pointee* is const, not the
         // pointer itself.  After dereference, the lvalue is const only when the
         // resulting type is a plain (non-pointer) const-qualified object.
-        out.is_const_lvalue = out.type.is_const && out.type.ptr_level == 0;
+        out.is_const_lvalue = out.type.is_const && out.type.ptr_level == 0
+                              && out.type.array_rank == 0;
         return out;
       }
       case NK_INDEX: {
@@ -876,10 +908,21 @@ class Validator {
         (void)infer_expr(n->right);
         out.valid = arr.valid;
         out.type = arr.type;
+        // decay_array now handles multi-dim arrays by reducing rank by one;
+        // then decrement ptr_level to get the element type.
         out.type = decay_array(out.type);
-        if (out.type.ptr_level > 0) out.type.ptr_level -= 1;
+        if (out.type.ptr_level > 0) {
+          out.type.ptr_level -= 1;
+          // After indexing a pointer-to-array, the result is a plain array
+          // (not another pointer-to-array).
+          out.type.is_ptr_to_array = false;
+        }
         out.is_lvalue = true;
-        out.is_const_lvalue = out.type.is_const;
+        // Only mark a const lvalue when the element itself is a non-pointer,
+        // non-array const scalar.  For const T* arrays the pointer element is
+        // not const (only the pointee is), so avoid the false positive.
+        out.is_const_lvalue = out.type.is_const && out.type.ptr_level == 0
+                              && out.type.array_rank == 0;
         return out;
       }
       case NK_MEMBER: {
