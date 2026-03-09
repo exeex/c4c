@@ -122,7 +122,25 @@ TypeSpec infer_int_literal_type(const Node* n) {
     ts.base = has_u ? TB_ULONG : TB_LONG;
     return ts;
   }
-  if (has_u) ts.base = TB_UINT;
+  if (has_u) { ts.base = TB_UINT; return ts; }
+
+  // For unsuffixed hex/octal literals the C standard allows unsigned types
+  // when the value doesn't fit in the signed type (C11 6.4.4.1p5).
+  // Decimal literals never get an unsigned type without an explicit U suffix.
+  bool is_hex_or_octal = (sv[0] == '0' && len > 1 &&
+                          (sv[1] == 'x' || sv[1] == 'X' ||
+                           (sv[1] >= '0' && sv[1] <= '9')));
+  if (is_hex_or_octal && n && ts.base == TB_INT) {
+    unsigned long long uval = static_cast<unsigned long long>(n->ival);
+    // int → unsigned int → long → unsigned long → long long → unsigned long long
+    if (uval > 0x7FFFFFFFull && uval <= 0xFFFFFFFFull) {
+      ts.base = TB_UINT;
+    } else if (uval > 0xFFFFFFFFull && uval <= 0x7FFFFFFFFFFFFFFFull) {
+      ts.base = TB_LONGLONG;
+    } else if (uval > 0x7FFFFFFFFFFFFFFFull) {
+      ts.base = TB_ULONGLONG;
+    }
+  }
   return ts;
 }
 
