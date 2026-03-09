@@ -1,10 +1,10 @@
 # Agent Prompt: tiny-c2ll Stabilization Playbook
 
-Last updated: 2026-03-07
+Last updated: 2026-03-09
 
 ## Mission
 
-Improve correctness of `src/frontend_c/` with **small, verified, reversible** fixes.
+Improve correctness of the frontend/codegen pipeline (`src/frontend/`, `src/codegen/llvm/`) with **small, verified, reversible** fixes.
 Primary acceptance metric is full-suite pass rate from `ctest -j`.
 
 ## Non-Negotiable Working Style
@@ -15,17 +15,29 @@ Primary acceptance metric is full-suite pass rate from `ctest -j`.
 4. Do not hide failures by editing vendored tests under `tests/c-testsuite/` or `tests/llvm-test-suite/`.
 5. If a test is temporarily allowlisted/disabled, record exact reason + unblock plan in `plan.md`.
 
-## Required Debug Flow (for frontend/backend failures)
+## Standard Workflow
+
+1. Build and run baseline tests.
+2. Pick one failing case to fix with this priority order:
+   - `FRONTEND_FAIL` > `BACKEND_FAIL` > `RUNTIME_FAIL`
+3. Patch one root cause, then rerun targeted and related tests.
+4. Run full regression before submit.
+
+Test timeout policy:
+- Default per-test timeout: `30s`
+- Any test runtime `>30s` is treated as suspicious regression unless explicitly documented.
+
+## Required Debug Flow (Frontend/Backend Failures)
 
 Given a failing case `<case>.c`:
 
 1. Reproduce with ctest:
-   - `ctest --output-on-failure -R <test_name>`
+   - `ctest --test-dir build --output-on-failure -R <test_name>`
 2. Capture our IR:
-   - `build/tiny-c2ll-stage1 <case>.c -o /tmp/ours.ll`
+   - `build/tiny-c2ll-next <case>.c -o /tmp/ours.ll`
 3. Capture clang IR on same target triple:
    - `clang -target aarch64-unknown-linux-gnu -S -emit-llvm -O0 <case>.c -o /tmp/clang.ll`
-4. Diff only the failing function/path:
+4. Diff only failing function/path:
    - call signature (especially variadic)
    - aggregate coercion
    - va_list layout/offset math
@@ -34,7 +46,7 @@ Given a failing case `<case>.c`:
 6. Re-run:
    - failing test
    - nearby bucket tests (same subsystem)
-   - `ctest -j` before handoff
+   - full `ctest -j` before handoff
 
 ## Rule: Variadic / ABI Cases
 
@@ -57,22 +69,30 @@ A patch is acceptable only if all pass:
 ## Suggested Command Set
 
 ```bash
-# configure/build
-cmake -S . -B build
+# configure/build (debug + torture suite)
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DENABLE_LLVM_GCC_C_TORTURE_TESTS=ON
 cmake --build build -j8
 
 # targeted repro
 ctest --test-dir build --output-on-failure -R <test_name>
 
 # full regression gate
-ctest --test-dir build -j
+ctest --test-dir build -j --output-on-failure > test_fail.log
 
 # clang IR baseline for ABI issues
 clang -target aarch64-unknown-linux-gnu -S -emit-llvm -O0 <case>.c -o /tmp/clang.ll
 ```
 
+## Commit Rule
+
+Only submit a commit when:
+
+1. Existing passing tests are not broken.
+2. Total pass count improves (or clearly fixes targeted blocker without regressions).
+3. Commit message records what changed and why.
+
 ## Collaboration Notes
 
-- Prefer explicit hypotheses: "I think mismatch is in call-site coercion".
+- Prefer explicit hypotheses, e.g. "mismatch is in call-site coercion".
 - Show evidence (line snippets / function-level diffs), then patch.
 - Avoid broad refactors during active failure loops.
