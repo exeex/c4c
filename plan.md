@@ -67,6 +67,18 @@ Last updated: 2026-03-09
   - `ctest --test-dir build -R '^positive_sema_ok_enum_scope_' --output-on-failure` ✅
   - `ctest --test-dir build -R 'tiny_c2ll_tests|negative_tests_bad_switch_duplicate_case|negative_tests_bad_switch_case_non_constant_expr|negative_tests_bad_enum_non_integer_init' --output-on-failure` ✅
 
+### Progress Update（2026-03-09, HIR static local）
+
+- 已將 `static local` 語意前移到 HIR lowering（非 codegen 臨時判斷）：
+  - 在 `ast_to_hir` 看到 `NK_DECL && is_static` 時，直接生成 module-level synthetic `GlobalVar`（internal linkage + constant init）。
+  - 函式內名稱綁定改為指向 `DeclRef.global`（local scope restore 也同步處理）。
+  - `.ll` 會產生函式外 global（例如 `@__static_local_f1_0 = internal global i32 0`），不再每次進入函式重設。
+- 這輪回歸：
+  - `llvm_gcc_c_torture_pr79354_c` ✅
+  - `llvm_gcc_c_torture_pr88739_c` ✅
+  - `llvm_gcc_c_torture_20030909_1_c` ✅
+  - `llvm_gcc_c_torture_20020529_1_c` 仍失敗，但已由 timeout 轉為 runtime abort（下一步改修 local struct init list lowering）。
+
 ## Agent Handoff (Claude 接手用)
 
 本檔主要給接手 agent，請直接照下面流程執行，不要先跑全量長測。

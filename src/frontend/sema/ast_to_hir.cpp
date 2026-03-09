@@ -19,6 +19,16 @@ SourceSpan make_span(const Node* n) {
   return s;
 }
 
+std::string sanitize_symbol(std::string s) {
+  for (char& ch : s) {
+    const bool ok = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                    (ch >= '0' && ch <= '9') || ch == '_';
+    if (!ok) ch = '_';
+  }
+  if (s.empty()) s = "anon";
+  return s;
+}
+
 UnaryOp map_unary_op(const char* op) {
   if (!op) return UnaryOp::Plus;
   const std::string s(op);
@@ -125,6 +135,7 @@ class Lowerer {
   struct FunctionCtx {
     Function* fn = nullptr;
     std::unordered_map<std::string, LocalId> locals;
+    std::unordered_map<std::string, GlobalId> static_globals;
     std::unordered_map<std::string, uint32_t> params;
     BlockId current_block{};
     std::vector<BlockId> break_stack;
@@ -338,6 +349,20 @@ class Lowerer {
     module_->globals.push_back(std::move(g));
   }
 
+  GlobalId lower_static_local_global(FunctionCtx& ctx, const Node* n) {
+    GlobalVar g{};
+    g.id = next_global_id();
+    g.name = "__static_local_" + sanitize_symbol(ctx.fn->name) + "_" + std::to_string(g.id.value);
+    g.type = qtype_from(n->type, ValueCategory::LValue);
+    g.linkage = {true, false, false};  // internal linkage
+    g.is_const = n->type.is_const;
+    g.span = make_span(n);
+    if (n->init) g.init = lower_global_init(n->init);
+    module_->global_index[g.name] = g.id;
+    module_->globals.push_back(std::move(g));
+    return g.id;
+  }
+
   GlobalInit lower_global_init(const Node* n) {
     if (!n) return std::monostate{};
     if (n->kind == NK_INIT_LIST) {
@@ -389,10 +414,14 @@ class Lowerer {
         // They share the current scope and must not discard bindings.
         const bool new_scope = (n->ival != 1);
         const auto saved_locals = ctx.locals;
+        const auto saved_static_globals = ctx.static_globals;
         for (int i = 0; i < n->n_children; ++i) {
           lower_stmt_node(ctx, n->children[i]);
         }
-        if (new_scope) ctx.locals = saved_locals;
+        if (new_scope) {
+          ctx.locals = saved_locals;
+          ctx.static_globals = saved_static_globals;
+        }
         return;
       }
       case NK_DECL: {
@@ -400,6 +429,13 @@ class Lowerer {
         // if the name is already registered as a known function, skip creating a
         // local alloca — later references will resolve directly to the global function.
         if (n->name && !n->init && module_->fn_index.count(n->name)) return;
+
+        if (n->is_static) {
+          if (n->name && n->name[0]) {
+            ctx.static_globals[n->name] = lower_static_local_global(ctx, n);
+          }
+          return;
+        }
 
         LocalDecl d{};
         d.id = next_local_id();
@@ -804,14 +840,28 @@ class Lowerer {
         }
         DeclRef r{};
         r.name = n->name ? n->name : "<anon_var>";
+        bool has_local_binding = false;
         if (ctx) {
           auto lit = ctx->locals.find(r.name);
-          if (lit != ctx->locals.end()) r.local = lit->second;
-          auto pit = ctx->params.find(r.name);
-          if (pit != ctx->params.end()) r.param_index = pit->second;
+          if (lit != ctx->locals.end()) {
+            r.local = lit->second;
+            has_local_binding = true;
+          }
+          auto sit = ctx->static_globals.find(r.name);
+          if (sit != ctx->static_globals.end()) {
+            r.global = sit->second;
+            if (const GlobalVar* gv = module_->find_global(*r.global)) r.name = gv->name;
+            has_local_binding = true;
+          }
+          if (!has_local_binding) {
+            auto pit = ctx->params.find(r.name);
+            if (pit != ctx->params.end()) r.param_index = pit->second;
+          }
         }
-        auto git = module_->global_index.find(r.name);
-        if (git != module_->global_index.end()) r.global = git->second;
+        if (!has_local_binding) {
+          auto git = module_->global_index.find(r.name);
+          if (git != module_->global_index.end()) r.global = git->second;
+        }
         return append_expr(n, std::move(r), n->type, ValueCategory::LValue);
       }
       case NK_UNARY: {

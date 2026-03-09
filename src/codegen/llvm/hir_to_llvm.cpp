@@ -1156,8 +1156,9 @@ class HirEmitter {
         return slot;
       }
       if (r->global) {
-        pts = mod_.globals[r->global->value].type.spec;
-        return "@" + r->name;
+        const auto& gv = mod_.globals[r->global->value];
+        pts = gv.type.spec;
+        return "@" + gv.name;
       }
       // Unresolved: assume external global
       pts = e.type.spec;
@@ -1568,13 +1569,13 @@ class HirEmitter {
         const TypeSpec resolved_ts = resolve_array_ts(gv.type.spec, gv.init);
         const std::string tmp = fresh_tmp(ctx);
         emit_instr(ctx, tmp + " = getelementptr " + llvm_alloca_ty(resolved_ts) +
-                            ", ptr @" + r.name + ", i64 0, i64 0");
+                            ", ptr @" + gv.name + ", i64 0, i64 0");
         return tmp;
       }
       const std::string ty = llvm_ty(gv.type.spec);
       if (ty == "void") return "0";
       const std::string tmp = fresh_tmp(ctx);
-      emit_instr(ctx, tmp + " = load " + ty + ", ptr @" + r.name);
+      emit_instr(ctx, tmp + " = load " + ty + ", ptr @" + gv.name);
       return tmp;
     }
 
@@ -2611,14 +2612,9 @@ class HirEmitter {
         emit_stmt(ctx, stmt);
       }
 
-      // If block has no explicit terminator, fall through to next block
-      if (!ctx.last_term) {
-        if (bi + 1 < ordered.size()) {
-          emit_term(ctx, "br label %" + block_lbl(ordered[bi + 1]->id));
-        }
-      }
-
-      // If completely no terminator and no next block
+      // HIR lowering must encode CFG edges explicitly.
+      // Do not auto-fallthrough into the next emitted block, otherwise
+      // unrelated blocks can be accidentally connected and create loops.
       if (!ctx.last_term) {
         if (fn.return_type.spec.base == TB_VOID) {
           emit_term(ctx, "ret void");
