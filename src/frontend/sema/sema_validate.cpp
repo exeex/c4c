@@ -283,10 +283,10 @@ bool implicit_convertible(const TypeSpec& dst_raw, const TypeSpec& src_raw,
 
   // Pointer compatibility: require same depth and pointee family.
   if (d_ptr && s_ptr) {
-    // void* conversion is for object pointers, i.e. one level of indirection.
-    // C11 6.3.2.3p1.
-    if (dst.ptr_level == 1 && src.ptr_level == 1 &&
-        (dst.base == TB_VOID || src.base == TB_VOID)) return true;
+    // void* converts to/from any object pointer type (C11 6.3.2.3p1).
+    // Either side being void* (ptr_level==1, base==TB_VOID) is sufficient.
+    if ((dst.ptr_level == 1 && dst.base == TB_VOID) ||
+        (src.ptr_level == 1 && src.base == TB_VOID)) return true;
     if (dst.ptr_level != src.ptr_level) return false;
     if (dst.base == TB_STRUCT || dst.base == TB_UNION || dst.base == TB_ENUM ||
         src.base == TB_STRUCT || src.base == TB_UNION || src.base == TB_ENUM) {

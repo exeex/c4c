@@ -349,6 +349,19 @@ class Lowerer {
     module_->globals.push_back(std::move(g));
   }
 
+  // Reconstruct the full TypeSpec for a struct field from its HirStructField.
+  TypeSpec field_type_of(const HirStructField& f) {
+    TypeSpec ts = f.elem_type;
+    ts.inner_rank = -1;
+    if (f.array_first_dim >= 0) {
+      for (int i = 0; i < 8; ++i) ts.array_dims[i] = -1;
+      ts.array_rank = 1;
+      ts.array_size = f.array_first_dim;
+      ts.array_dims[0] = f.array_first_dim;
+    }
+    return ts;
+  }
+
   GlobalId lower_static_local_global(FunctionCtx& ctx, const Node* n) {
     GlobalVar g{};
     g.id = next_global_id();
@@ -357,23 +370,23 @@ class Lowerer {
     g.linkage = {true, false, false};  // internal linkage
     g.is_const = n->type.is_const;
     g.span = make_span(n);
-    if (n->init) g.init = lower_global_init(n->init);
+    if (n->init) g.init = lower_global_init(n->init, &ctx);
     module_->global_index[g.name] = g.id;
     module_->globals.push_back(std::move(g));
     return g.id;
   }
 
-  GlobalInit lower_global_init(const Node* n) {
+  GlobalInit lower_global_init(const Node* n, FunctionCtx* ctx = nullptr) {
     if (!n) return std::monostate{};
     if (n->kind == NK_INIT_LIST) {
-      return lower_init_list(n);
+      return lower_init_list(n, ctx);
     }
     InitScalar s{};
-    s.expr = lower_expr(nullptr, n);
+    s.expr = lower_expr(ctx, n);
     return s;
   }
 
-  InitList lower_init_list(const Node* n) {
+  InitList lower_init_list(const Node* n, FunctionCtx* ctx = nullptr) {
     InitList out{};
     for (int i = 0; i < n->n_children; ++i) {
       const Node* it = n->children[i];
@@ -394,10 +407,10 @@ class Lowerer {
       }
 
       if (value_node && value_node->kind == NK_INIT_LIST) {
-        item.value = std::make_shared<InitList>(lower_init_list(value_node));
+        item.value = std::make_shared<InitList>(lower_init_list(value_node, ctx));
       } else {
         InitScalar s{};
-        s.expr = lower_expr(nullptr, value_node);
+        s.expr = lower_expr(ctx, value_node);
         item.value = s;
       }
       out.items.push_back(std::move(item));
@@ -459,7 +472,17 @@ class Lowerer {
         d.span = make_span(n);
         const bool is_array_with_init_list =
             n->init && n->init->kind == NK_INIT_LIST && d.type.spec.array_rank == 1;
-        if (!is_array_with_init_list && n->init) d.init = lower_expr(&ctx, n->init);
+        const bool is_struct_with_init_list =
+            n->init && n->init->kind == NK_INIT_LIST &&
+            (d.type.spec.base == TB_STRUCT || d.type.spec.base == TB_UNION) &&
+            d.type.spec.ptr_level == 0 && d.type.spec.array_rank == 0;
+        if (!is_array_with_init_list && !is_struct_with_init_list && n->init)
+          d.init = lower_expr(&ctx, n->init);
+        // For struct init lists, emit zeroinitializer first then field-by-field stores.
+        if (is_struct_with_init_list) {
+          TypeSpec int_ts{}; int_ts.base = TB_INT;
+          d.init = append_expr(n, IntLiteral{0, false}, int_ts);
+        }
         const LocalId lid = d.id;
         const TypeSpec decl_ts = d.type.spec;
         ctx.locals[d.name] = d.id;
@@ -499,6 +522,44 @@ class Lowerer {
             ExprId ae_id = append_expr(n, ae, elem_ts);
             ExprStmt es{}; es.expr = ae_id;
             append_stmt(ctx, Stmt{StmtPayload{es}, make_span(n)});
+          }
+        }
+        // For struct init lists, emit field-by-field assignments.
+        if (is_struct_with_init_list && decl_ts.tag) {
+          const auto sit = module_->struct_defs.find(decl_ts.tag);
+          if (sit != module_->struct_defs.end()) {
+            const auto& sd = sit->second;
+            size_t next_field = 0;
+            for (int ci = 0; ci < n->init->n_children; ++ci) {
+              const Node* item = n->init->children[ci];
+              if (!item) { ++next_field; continue; }
+              size_t fi = next_field;
+              const Node* val_node = item;
+              if (item->kind == NK_INIT_ITEM) {
+                if (item->is_designated && !item->is_index_desig && item->desig_field) {
+                  // field designator: find field index by name
+                  for (size_t k = 0; k < sd.fields.size(); ++k) {
+                    if (sd.fields[k].name == item->desig_field) { fi = k; break; }
+                  }
+                }
+                val_node = item->left ? item->left : item->right;
+                if (!val_node) val_node = item->init;
+              }
+              next_field = fi + 1;
+              if (!val_node || fi >= sd.fields.size()) continue;
+              // Build: x.field = val
+              const HirStructField& fld = sd.fields[fi];
+              TypeSpec field_ts = field_type_of(fld);
+              DeclRef dr{}; dr.name = n->name ? n->name : "<anon_local>"; dr.local = lid;
+              ExprId dr_id = append_expr(n, dr, decl_ts, ValueCategory::LValue);
+              MemberExpr me{}; me.base = dr_id; me.field = fld.name; me.is_arrow = false;
+              ExprId me_id = append_expr(n, me, field_ts, ValueCategory::LValue);
+              ExprId val_id = lower_expr(&ctx, val_node);
+              AssignExpr ae{}; ae.lhs = me_id; ae.rhs = val_id;
+              ExprId ae_id = append_expr(n, ae, field_ts);
+              ExprStmt es{}; es.expr = ae_id;
+              append_stmt(ctx, Stmt{StmtPayload{es}, make_span(n)});
+            }
           }
         }
         return;
@@ -773,6 +834,14 @@ class Lowerer {
         return;
       }
       case NK_GOTO: {
+        // GCC computed goto: goto *expr
+        if (n->name && std::string(n->name) == "__computed__" && n->left) {
+          IndirBrStmt ib{};
+          ib.target = lower_expr(&ctx, n->left);
+          append_stmt(ctx, Stmt{StmtPayload{ib}, make_span(n)});
+          ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
+          return;
+        }
         GotoStmt s{};
         s.target.user_name = n->name ? n->name : "<anon_label>";
         auto it = ctx.label_blocks.find(s.target.user_name);
@@ -811,8 +880,19 @@ class Lowerer {
     }
 
     switch (n->kind) {
-      case NK_INT_LIT:
+      case NK_INT_LIT: {
+        // GCC &&label produces NK_INT_LIT with name set to the label name.
+        if (n->name && n->name[0]) {
+          LabelAddrExpr la{};
+          la.label_name = n->name;
+          la.fn_name = ctx ? ctx->fn->name : "";
+          TypeSpec void_ptr{};
+          void_ptr.base = TB_VOID;
+          void_ptr.ptr_level = 1;
+          return append_expr(n, std::move(la), void_ptr);
+        }
         return append_expr(n, IntLiteral{n->ival, false}, n->type);
+      }
       case NK_FLOAT_LIT:
         return append_expr(n, FloatLiteral{n->fval}, n->type);
       case NK_STR_LIT: {

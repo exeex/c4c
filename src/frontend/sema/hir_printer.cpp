@@ -255,6 +255,10 @@ class Printer {
     out << "goto " << s.target.user_name << " -> block#" << s.target.resolved_block.value;
   }
 
+  void print_stmt_payload(std::ostringstream& out, const IndirBrStmt& s) {
+    out << "indirbr expr#" << s.target.value;
+  }
+
   void print_stmt_payload(std::ostringstream& out, const LabelStmt& s) {
     out << "label " << s.name << ":";
   }
@@ -408,6 +412,10 @@ class Printer {
 
   void print_expr_payload(std::ostringstream& out, const SizeofTypeExpr& x) {
     out << "sizeof(" << ts_str(x.type.spec) << ")";
+  }
+
+  void print_expr_payload(std::ostringstream& out, const LabelAddrExpr& x) {
+    out << "&&" << x.label_name;
   }
 };
 

@@ -113,7 +113,6 @@ static std::string sanitize_llvm_ident(const std::string& raw) {
 // Non-decayed LLVM type for alloca/struct field (struct/union → %struct.TAG).
 // Handles multi-dimensional arrays recursively.
 static std::string llvm_alloca_ty(const TypeSpec& ts) {
-  if (ts.ptr_level > 0 || ts.is_fn_ptr) return "ptr";
   if (ts.array_rank > 0) {
     if (ts.array_size >= 0) {
       // Build element type: drop one dimension and recurse.
@@ -129,6 +128,7 @@ static std::string llvm_alloca_ty(const TypeSpec& ts) {
     }
     return "ptr";  // unknown size
   }
+  if (ts.ptr_level > 0 || ts.is_fn_ptr) return "ptr";
   if (ts.base == TB_VA_LIST) return "%struct.__va_list_tag_";
   if (ts.base == TB_STRUCT || ts.base == TB_UNION) {
     if (ts.tag && ts.tag[0]) return "%struct." + std::string(ts.tag);
@@ -704,6 +704,8 @@ class HirEmitter {
           return std::to_string(*val);
         }
         return (llvm_ty(expected_ts) == "ptr") ? "null" : "0";
+      } else if constexpr (std::is_same_v<T, LabelAddrExpr>) {
+        return "blockaddress(@" + p.fn_name + ", %ulbl_" + p.label_name + ")";
       } else {
         return (llvm_ty(expected_ts) == "ptr") ? "null" : "0";
       }
@@ -1181,17 +1183,19 @@ class HirEmitter {
       // Widen index to i64
       TypeSpec i64_ts{}; i64_ts.base = TB_LONGLONG;
       const std::string ix64 = coerce(ctx, ix, ix_ts, i64_ts);
-      // Element type: strip one pointer or array level with proper dim shifting.
+      // Element type: strip one array or pointer level with proper dim shifting.
+      // Check array_rank first so that T*[N] strips the array dim (→ T*),
+      // not the pointer level (which would wrongly give T[N]).
       pts = base_ts;
-      if (pts.ptr_level > 0) {
-        pts.ptr_level--;
-      } else if (pts.array_rank > 0) {
+      if (pts.array_rank > 0) {
         pts = drop_one_array_dim(pts);
+      } else if (pts.ptr_level > 0) {
+        pts.ptr_level--;
       }
       const std::string tmp = fresh_tmp(ctx);
       // Use alloca type (non-decayed) for array elements so GEP advances by the
       // correct stride ([N x T] instead of ptr).
-      const std::string elem_ty = (pts.array_rank > 0 && pts.ptr_level == 0)
+      const std::string elem_ty = (pts.array_rank > 0)
                                       ? llvm_alloca_ty(pts)
                                       : llvm_ty(pts);
       const std::string safe_elem_ty = (elem_ty == "void") ? "i8" : elem_ty;
@@ -1553,7 +1557,7 @@ class HirEmitter {
         // the va_list object, so callers like vprintf(fmt, ap) receive ptr.
         return it->second;
       }
-      if (ts.array_rank > 0 && ts.ptr_level == 0) {
+      if (ts.array_rank > 0) {
         const std::string tmp = fresh_tmp(ctx);
         emit_instr(ctx, tmp + " = getelementptr " + llvm_alloca_ty(ts) +
                             ", ptr " + it->second + ", i64 0, i64 0");
@@ -1569,7 +1573,7 @@ class HirEmitter {
     // Global: load
     if (r.global) {
       const auto& gv = mod_.globals[r.global->value];
-      if (gv.type.spec.array_rank > 0 && gv.type.spec.ptr_level == 0) {
+      if (gv.type.spec.array_rank > 0) {
         // Use resolved type (deduced from initializer) for GEP — avoids "ptr" fallback.
         const TypeSpec resolved_ts = resolve_array_ts(gv.type.spec, gv.init);
         const std::string tmp = fresh_tmp(ctx);
@@ -2265,8 +2269,14 @@ class HirEmitter {
     return std::to_string(sizeof_ts(op_ts));
   }
 
-  std::string emit_rval_payload(FnCtx&, const SizeofTypeExpr& s, const Expr&) {
+  std::string emit_rval_payload(FnCtx& ctx, const SizeofTypeExpr& s, const Expr&) {
     return std::to_string(sizeof_ts(s.type.spec));
+  }
+
+  // ── LabelAddrExpr (GCC &&label extension) ────────────────────────────────
+
+  std::string emit_rval_payload(FnCtx& ctx, const LabelAddrExpr& la, const Expr&) {
+    return "blockaddress(@" + ctx.fn->name + ", %ulbl_" + la.label_name + ")";
   }
 
   // ── IndexExpr (rval: load through computed ptr) ──────────────────────────
@@ -2499,6 +2509,26 @@ class HirEmitter {
     } else {
       emit_term(ctx, "br label %ulbl_" + s.target.user_name);
     }
+  }
+
+  void emit_stmt_impl(FnCtx& ctx, const IndirBrStmt& s) {
+    // Collect all user labels in this function as possible targets.
+    std::vector<std::string> targets;
+    for (const auto& bb : ctx.fn->blocks) {
+      for (const auto& stmt : bb.stmts) {
+        if (const auto* ls = std::get_if<LabelStmt>(&stmt.payload)) {
+          targets.push_back("%ulbl_" + ls->name);
+        }
+      }
+    }
+    TypeSpec dummy_ts{};
+    const std::string val = emit_rval_id(ctx, s.target, dummy_ts);
+    std::string tgt_list;
+    for (const auto& t : targets) {
+      if (!tgt_list.empty()) tgt_list += ", ";
+      tgt_list += "label " + t;
+    }
+    emit_term(ctx, "indirectbr ptr " + val + ", [" + tgt_list + "]");
   }
 
   void emit_stmt_impl(FnCtx& ctx, const LabelStmt& s) {

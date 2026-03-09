@@ -139,6 +139,11 @@ struct StringLiteral {
   bool is_wide = false;
 };
 
+struct LabelAddrExpr {
+  SymbolName label_name;  // GCC &&label extension
+  SymbolName fn_name;     // enclosing function (for blockaddress)
+};
+
 struct CharLiteral {
   long long value = 0;
 };
@@ -275,7 +280,8 @@ using ExprPayload = std::variant<
     MemberExpr,
     TernaryExpr,
     SizeofExpr,
-    SizeofTypeExpr>;
+    SizeofTypeExpr,
+    LabelAddrExpr>;
 
 struct Expr {
   ExprId id{};
@@ -355,6 +361,10 @@ struct GotoStmt {
   LabelRef target{};
 };
 
+struct IndirBrStmt {
+  ExprId target{};  // GCC computed goto: goto *expr
+};
+
 struct LabelStmt {
   SymbolName name;
 };
@@ -385,6 +395,7 @@ using StmtPayload = std::variant<
     DoWhileStmt,
     SwitchStmt,
     GotoStmt,
+    IndirBrStmt,
     LabelStmt,
     CaseStmt,
     CaseRangeStmt,
