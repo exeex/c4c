@@ -398,7 +398,10 @@ class HirEmitter {
     if (need_llvm_va_start_) out << "declare void @llvm.va_start.p0(ptr)\n";
     if (need_llvm_va_end_) out << "declare void @llvm.va_end.p0(ptr)\n";
     if (need_llvm_va_copy_) out << "declare void @llvm.va_copy.p0.p0(ptr, ptr)\n";
-    if (need_llvm_va_start_ || need_llvm_va_end_ || need_llvm_va_copy_) out << "\n";
+    if (need_llvm_stacksave_) out << "declare ptr @llvm.stacksave()\n";
+    if (need_llvm_stackrestore_) out << "declare void @llvm.stackrestore(ptr)\n";
+    if (need_llvm_va_start_ || need_llvm_va_end_ || need_llvm_va_copy_ ||
+        need_llvm_stacksave_ || need_llvm_stackrestore_) out << "\n";
     for (const auto& [name, ret_ty] : extern_call_decls_) {
       if (mod_.fn_index.count(name)) continue;
       out << "declare " << ret_ty << " @" << name << "(...)\n";
@@ -418,6 +421,8 @@ class HirEmitter {
   bool need_llvm_va_start_ = false;
   bool need_llvm_va_end_ = false;
   bool need_llvm_va_copy_ = false;
+  bool need_llvm_stacksave_ = false;
+  bool need_llvm_stackrestore_ = false;
 
   // ── Per-function state ────────────────────────────────────────────────────
 
@@ -429,6 +434,8 @@ class HirEmitter {
     std::unordered_map<uint32_t, std::string> local_slots;
     // local_id.value → C TypeSpec
     std::unordered_map<uint32_t, TypeSpec> local_types;
+    // local_id.value → true if this local is a VLA allocated dynamically at runtime
+    std::unordered_map<uint32_t, bool> local_is_vla;
     // param_index → SSA name (e.g. "%p.x")
     std::unordered_map<uint32_t, std::string> param_slots;
     std::vector<std::string> alloca_lines;
@@ -442,6 +449,10 @@ class HirEmitter {
     // local_id.value → return TypeSpec when calling through that fn-ptr local
     // Populated when a fn-ptr local is initialized from a known function.
     std::unordered_map<uint32_t, TypeSpec> local_fn_ret_types;
+    // Per-function stacksave pointer for VLA scope rewinds.
+    std::optional<std::string> vla_stack_save_ptr;
+    // Block currently being emitted (for backward-goto detection).
+    uint32_t current_block_id = 0;
   };
 
   // ── Instruction helpers ───────────────────────────────────────────────────
@@ -888,6 +899,7 @@ class HirEmitter {
 
   std::string emit_const_init(const TypeSpec& ts, const GlobalInit& init) {
     if (ts.array_rank > 0) return emit_const_array(ts, init);
+    if (ts.base == TB_VA_LIST && ts.ptr_level == 0) return "zeroinitializer";
     if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0)
       return emit_const_struct(ts, init);
     if (const auto* s = std::get_if<InitScalar>(&init))
@@ -1552,6 +1564,12 @@ class HirEmitter {
       if (it == ctx.local_slots.end())
         throw std::runtime_error("HirEmitter: local slot not found: " + r.name);
       const TypeSpec ts = ctx.local_types.at(r.local->value);
+      const auto vit = ctx.local_is_vla.find(r.local->value);
+      if (vit != ctx.local_is_vla.end() && vit->second) {
+        const std::string tmp = fresh_tmp(ctx);
+        emit_instr(ctx, tmp + " = load ptr, ptr " + it->second);
+        return tmp;
+      }
       if (ts.base == TB_VA_LIST && ts.ptr_level == 0 && ts.array_rank == 0) {
         // Treat va_list as array-like in expressions: it decays to a pointer to
         // the va_list object, so callers like vprintf(fmt, ap) receive ptr.
@@ -2139,6 +2157,25 @@ class HirEmitter {
     if (!has_concrete_type(res_ts)) res_ts = resolve_expr_type(ctx, e);
     const std::string res_ty = llvm_ty(res_ts);
     if (res_ty == "void") return "";
+    if ((res_ts.base == TB_STRUCT || res_ts.base == TB_UNION) &&
+        res_ts.ptr_level == 0 && res_ts.array_rank == 0 &&
+        res_ts.tag && res_ts.tag[0]) {
+      const auto it = mod_.struct_defs.find(res_ts.tag);
+      if (it != mod_.struct_defs.end()) {
+        const HirStructDef& sd = it->second;
+        int payload_sz = 0;
+        if (sd.is_union) {
+          for (const auto& f : sd.fields) {
+            payload_sz = std::max(payload_sz, compute_field_size(mod_, f));
+          }
+        } else {
+          for (const auto& f : sd.fields) payload_sz += compute_field_size(mod_, f);
+        }
+        // GCC zero-size aggregate extension: va_arg yields a zero-initialized value
+        // and does not consume any argument slot.
+        if (payload_sz == 0) return "zeroinitializer";
+      }
+    }
     const bool is_gp_scalar =
         (res_ty == "ptr") ||
         (res_ts.ptr_level == 0 && res_ts.array_rank == 0 && is_any_int(res_ts.base));
@@ -2334,6 +2371,36 @@ class HirEmitter {
   }
 
   void emit_stmt_impl(FnCtx& ctx, const LocalDecl& d) {
+    if (d.vla_size) {
+      const std::string slot = ctx.local_slots.at(d.id.value);
+      TypeSpec sz_ts{};
+      std::string count = emit_rval_id(ctx, *d.vla_size, sz_ts);
+      TypeSpec i64_ts{};
+      i64_ts.base = TB_LONGLONG;
+      count = coerce(ctx, count, sz_ts, i64_ts);
+
+      long long static_mult = 1;
+      for (int i = 1; i < d.type.spec.array_rank; ++i) {
+        const long long dim = d.type.spec.array_dims[i];
+        if (dim > 0) static_mult *= dim;
+      }
+      if (static_mult > 1) {
+        const std::string scaled = fresh_tmp(ctx);
+        emit_instr(ctx, scaled + " = mul i64 " + count + ", " + std::to_string(static_mult));
+        count = scaled;
+      }
+
+      TypeSpec elem_ts = d.type.spec;
+      elem_ts.array_rank = 0;
+      elem_ts.array_size = -1;
+      for (int i = 0; i < 8; ++i) elem_ts.array_dims[i] = -1;
+      std::string elem_ty = llvm_ty(elem_ts);
+      if (elem_ty == "void") elem_ty = "i8";
+      const std::string dyn_ptr = fresh_tmp(ctx);
+      emit_instr(ctx, dyn_ptr + " = alloca " + elem_ty + ", i64 " + count);
+      emit_instr(ctx, "store ptr " + dyn_ptr + ", ptr " + slot);
+    }
+
     if (!d.init) return;
     // If this is a fn-ptr local initialized from a known function, track the
     // function's return type so nested fn-ptr calls resolve correctly.
@@ -2504,6 +2571,11 @@ class HirEmitter {
   }
 
   void emit_stmt_impl(FnCtx& ctx, const GotoStmt& s) {
+    if (ctx.vla_stack_save_ptr && s.target.resolved_block.valid() &&
+        s.target.resolved_block.value <= ctx.current_block_id) {
+      need_llvm_stackrestore_ = true;
+      emit_instr(ctx, "call void @llvm.stackrestore(ptr " + *ctx.vla_stack_save_ptr + ")");
+    }
     if (s.target.resolved_block.valid()) {
       emit_term(ctx, "br label %" + block_lbl(s.target.resolved_block));
     } else {
@@ -2632,6 +2704,17 @@ class HirEmitter {
     return result;
   }
 
+  static bool fn_has_vla_locals(const Function& fn) {
+    for (const auto& blk : fn.blocks) {
+      for (const auto& stmt : blk.stmts) {
+        if (const auto* d = std::get_if<LocalDecl>(&stmt.payload)) {
+          if (d->vla_size.has_value()) return true;
+        }
+      }
+    }
+    return false;
+  }
+
   void hoist_allocas(FnCtx& ctx, const Function& fn) {
     // Identify parameters that are modified (need spill slots)
     const std::unordered_set<uint32_t> modified_params = find_modified_params(fn);
@@ -2660,7 +2743,14 @@ class HirEmitter {
             : "%lv." + base + "." + std::to_string(cnt);
         ctx.local_slots[d->id.value] = slot;
         ctx.local_types[d->id.value] = d->type.spec;
-        ctx.alloca_lines.push_back("  " + slot + " = alloca " + llvm_alloca_ty(d->type.spec));
+        ctx.local_is_vla[d->id.value] = d->vla_size.has_value();
+        if (d->vla_size) {
+          // VLA locals are allocated dynamically at declaration time.
+          // Keep a pointer slot in entry and store the runtime alloca address into it.
+          ctx.alloca_lines.push_back("  " + slot + " = alloca ptr");
+        } else {
+          ctx.alloca_lines.push_back("  " + slot + " = alloca " + llvm_alloca_ty(d->type.spec));
+        }
       }
     }
   }
@@ -2713,6 +2803,12 @@ class HirEmitter {
 
     // Alloca hoisting
     hoist_allocas(ctx, fn);
+    if (fn_has_vla_locals(fn)) {
+      need_llvm_stacksave_ = true;
+      const std::string saved_sp = fresh_tmp(ctx);
+      emit_instr(ctx, saved_sp + " = call ptr @llvm.stacksave()");
+      ctx.vla_stack_save_ptr = saved_sp;
+    }
 
     // Also alloca params if they're assigned to (for address-takeable params)
     // We don't do this here; params are SSA values directly.
@@ -2734,6 +2830,7 @@ class HirEmitter {
 
     for (size_t bi = 0; bi < ordered.size(); ++bi) {
       const Block* blk = ordered[bi];
+      ctx.current_block_id = blk->id.value;
 
       // Emit block label (except for entry which uses "entry:")
       if (bi > 0) {

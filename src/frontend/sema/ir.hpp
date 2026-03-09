@@ -295,6 +295,7 @@ struct LocalDecl {
   SymbolName name;
   QualType type{};
   StorageClass storage = StorageClass::Auto;
+  std::optional<ExprId> vla_size;
   std::optional<ExprId> init;
   SourceSpan span{};
 };

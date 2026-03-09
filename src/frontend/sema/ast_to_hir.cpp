@@ -1,6 +1,7 @@
 #include "ast_to_hir.hpp"
 
 #include <cstdio>
+#include <cstring>
 #include <stdexcept>
 #include <unordered_map>
 
@@ -82,6 +83,41 @@ AssignOp map_assign_op(const char* op, NodeKind kind) {
   if (s == "^=" || s == "^") return AssignOp::BitXor;
   if (kind == NK_ASSIGN) return AssignOp::Set;
   return AssignOp::Set;
+}
+
+TypeSpec infer_int_literal_type(const Node* n) {
+  TypeSpec ts = n ? n->type : TypeSpec{};
+  ts.array_rank = 0;
+  ts.array_size = -1;
+  if (!n || !n->sval) return ts;
+
+  const char* sv = n->sval;
+  const size_t len = std::strlen(sv);
+  int lcount = 0;
+  bool has_u = false;
+  for (int i = static_cast<int>(len) - 1; i >= 0; --i) {
+    const char c = sv[i];
+    if (c == 'l' || c == 'L') {
+      ++lcount;
+    } else if (c == 'u' || c == 'U') {
+      has_u = true;
+    } else if (c == 'i' || c == 'I' || c == 'j' || c == 'J') {
+      // GNU imaginary suffix is ignored here for integral rank.
+    } else {
+      break;
+    }
+  }
+
+  if (lcount >= 2) {
+    ts.base = has_u ? TB_ULONGLONG : TB_LONGLONG;
+    return ts;
+  }
+  if (lcount == 1) {
+    ts.base = has_u ? TB_ULONG : TB_LONG;
+    return ts;
+  }
+  if (has_u) ts.base = TB_UINT;
+  return ts;
 }
 
 class Lowerer {
@@ -454,6 +490,10 @@ class Lowerer {
         d.id = next_local_id();
         d.name = n->name ? n->name : "<anon_local>";
         d.type = qtype_from(n->type, ValueCategory::LValue);
+        if (n->type.array_rank > 0 && n->type.array_size_expr &&
+            (n->type.array_size <= 0 || n->type.array_dims[0] <= 0)) {
+          d.vla_size = lower_expr(&ctx, n->type.array_size_expr);
+        }
         // Deduce unsized array dimension from initializer list
         if (n->init && d.type.spec.array_rank > 0 && d.type.spec.array_size < 0) {
           if (n->init->kind == NK_INIT_LIST) {
@@ -891,7 +931,7 @@ class Lowerer {
           void_ptr.ptr_level = 1;
           return append_expr(n, std::move(la), void_ptr);
         }
-        return append_expr(n, IntLiteral{n->ival, false}, n->type);
+        return append_expr(n, IntLiteral{n->ival, false}, infer_int_literal_type(n));
       }
       case NK_FLOAT_LIT:
         return append_expr(n, FloatLiteral{n->fval}, n->type);
@@ -969,8 +1009,14 @@ class Lowerer {
         u.operand = lower_expr(ctx, n->left);
         return append_expr(n, u, n->type, ValueCategory::LValue);
       }
-      case NK_BINOP:
       case NK_COMMA_EXPR: {
+        BinaryExpr b{};
+        b.op = BinaryOp::Comma;
+        b.lhs = lower_expr(ctx, n->left);
+        b.rhs = lower_expr(ctx, n->right);
+        return append_expr(n, b, n->type);
+      }
+      case NK_BINOP: {
         BinaryExpr b{};
         b.op = map_binary_op(n->op);
         b.lhs = lower_expr(ctx, n->left);
