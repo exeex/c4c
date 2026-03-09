@@ -65,6 +65,7 @@ A patch is acceptable only if all pass:
 2. Related bucket stays green (or improves).
 3. `ctest -j` does not introduce new regressions in previously passing tests.
 4. Any temporary skip/allowlist change is documented with owner and exit criteria.
+5. Full-suite result is strictly monotonic: total passed tests must increase, and no previously passing test may flip to failing.
 
 ## Suggested Command Set
 
@@ -90,6 +91,7 @@ Only submit a commit when:
 1. Existing passing tests are not broken.
 2. Total pass count improves (or clearly fixes targeted blocker without regressions).
 3. Commit message records what changed and why.
+4. When the patch meets the acceptance gates (including strict full-suite monotonic improvement), commit immediately in the same work cycle; do not leave verified fixes uncommitted.
 
 ## Collaboration Notes
 

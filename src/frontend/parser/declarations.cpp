@@ -67,6 +67,9 @@ Node* Parser::parse_local_decl() {
             }
         }
         match(TokenKind::Semi);
+        // Keep enum definition nodes for `typedef enum { ... } T;` so
+        // downstream semantic passes can bind enumerator constants.
+        if (base_ts.base == TB_ENUM && last_enum_def_) return last_enum_def_;
         return make_node(NK_EMPTY, ln);
     }
 
@@ -269,6 +272,9 @@ Node* Parser::parse_top_level() {
             }
         }
         match(TokenKind::Semi);
+        // Preserve enum definitions in typedef declarations so global
+        // enumerators are visible after `typedef enum { ... } Name;`.
+        if (base_ts.base == TB_ENUM && last_enum_def_) return last_enum_def_;
         return make_node(NK_EMPTY, ln);
     }
 
