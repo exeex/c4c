@@ -20,7 +20,7 @@ Primary acceptance metric is full-suite pass rate from `ctest -j`.
 
 1. Build and run baseline tests.
 2. Pick one failing case to fix with this priority order:
-   - `FRONTEND_FAIL` > `BACKEND_FAIL` > `RUNTIME_FAIL`
+   - `./known_issues.md` (if file exists) > `FRONTEND_FAIL` > `BACKEND_FAIL` > `RUNTIME_FAIL`
 3. Patch one root cause, then rerun targeted and related tests.
 4. Run full regression before submit.
 
