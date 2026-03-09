@@ -116,6 +116,12 @@ class Lowerer {
   }
 
  private:
+  struct SwitchCtx {
+    BlockId parent_block{};
+    std::vector<std::pair<long long, BlockId>> cases;
+    std::optional<BlockId> default_block;
+  };
+
   struct FunctionCtx {
     Function* fn = nullptr;
     std::unordered_map<std::string, LocalId> locals;
@@ -124,6 +130,7 @@ class Lowerer {
     std::vector<BlockId> break_stack;
     std::vector<BlockId> continue_stack;
     std::unordered_map<std::string, BlockId> label_blocks;
+    std::vector<SwitchCtx> switch_stack;
   };
 
   FunctionId next_fn_id() { return module_->alloc_function_id(); }
@@ -611,19 +618,62 @@ class Lowerer {
         s.body_block = body_b;
         const BlockId after_b = create_block(ctx);
         s.break_block = after_b;
+        const BlockId parent_b = ctx.current_block;
         append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
         ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
 
+        ctx.switch_stack.push_back({parent_b, {}, {}});
         ctx.break_stack.push_back(after_b);
         ctx.current_block = body_b;
         lower_stmt_node(ctx, n->body);
         ctx.break_stack.pop_back();
+
+        // If the current block (last one in the switch body) has no explicit
+        // terminator, branch to after_b (covers Duff's device after-do-while case).
+        if (!ensure_block(ctx, ctx.current_block).has_explicit_terminator) {
+          GotoStmt j{};
+          j.target.resolved_block = after_b;
+          append_stmt(ctx, Stmt{StmtPayload{j}, make_span(n)});
+          ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
+        }
+
+        // Update the SwitchStmt with collected case blocks
+        if (!ctx.switch_stack.empty()) {
+          auto& sw_ctx = ctx.switch_stack.back();
+          for (auto& blk : ctx.fn->blocks) {
+            if (blk.id.value != parent_b.value) continue;
+            for (auto& stmt : blk.stmts) {
+              if (auto* sw = std::get_if<SwitchStmt>(&stmt.payload)) {
+                sw->case_blocks = std::move(sw_ctx.cases);
+                if (sw_ctx.default_block) sw->default_block = sw_ctx.default_block;
+                break;
+              }
+            }
+            break;
+          }
+          ctx.switch_stack.pop_back();
+        }
+
         ctx.current_block = after_b;
         return;
       }
       case NK_CASE: {
+        const long long case_val = (n->left && n->left->kind == NK_INT_LIT) ? n->left->ival : 0;
+        if (!ctx.switch_stack.empty()) {
+          // Create a dedicated block for this case entry point.
+          const BlockId case_b = create_block(ctx);
+          // Fall-through from previous block (if not already terminated).
+          if (!ensure_block(ctx, ctx.current_block).has_explicit_terminator) {
+            GotoStmt j{};
+            j.target.resolved_block = case_b;
+            append_stmt(ctx, Stmt{StmtPayload{j}, make_span(n)});
+            ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
+          }
+          ctx.switch_stack.back().cases.push_back({case_val, case_b});
+          ctx.current_block = case_b;
+        }
         CaseStmt s{};
-        if (n->left && n->left->kind == NK_INT_LIT) s.value = n->left->ival;
+        s.value = case_val;
         append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
         lower_stmt_node(ctx, n->body);
         return;
@@ -637,6 +687,17 @@ class Lowerer {
         return;
       }
       case NK_DEFAULT: {
+        if (!ctx.switch_stack.empty()) {
+          const BlockId def_b = create_block(ctx);
+          if (!ensure_block(ctx, ctx.current_block).has_explicit_terminator) {
+            GotoStmt j{};
+            j.target.resolved_block = def_b;
+            append_stmt(ctx, Stmt{StmtPayload{j}, make_span(n)});
+            ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
+          }
+          ctx.switch_stack.back().default_block = def_b;
+          ctx.current_block = def_b;
+        }
         append_stmt(ctx, Stmt{StmtPayload{DefaultStmt{}}, make_span(n)});
         lower_stmt_node(ctx, n->body);
         return;
@@ -660,7 +721,17 @@ class Lowerer {
         s.name = n->name ? n->name : "<anon_label>";
         const BlockId lb = create_block(ctx);
         ctx.label_blocks[s.name] = lb;
+        // Append LabelStmt to current block (hir_to_llvm will emit "ulbl_name:" here).
         append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
+        // Always branch from the LabelStmt's sub-block to lb (the body block).
+        // LabelStmt resets hir_to_llvm's last_term state (starts a new LLVM basic block),
+        // so we always need a terminator for the "ulbl_name:" sub-block regardless of
+        // the HIR block's existing has_explicit_terminator flag.
+        {
+          GotoStmt j{};
+          j.target.resolved_block = lb;
+          append_stmt(ctx, Stmt{StmtPayload{j}, make_span(n)});
+        }
         ctx.current_block = lb;
         lower_stmt_node(ctx, n->body);
         return;
@@ -669,13 +740,12 @@ class Lowerer {
         GotoStmt s{};
         s.target.user_name = n->name ? n->name : "<anon_label>";
         auto it = ctx.label_blocks.find(s.target.user_name);
-        if (it == ctx.label_blocks.end()) {
-          const BlockId lb = create_block(ctx);
-          ctx.label_blocks[s.target.user_name] = lb;
-          s.target.resolved_block = lb;
-        } else {
+        if (it != ctx.label_blocks.end()) {
+          // Backward goto: label already defined, use its block directly.
           s.target.resolved_block = it->second;
         }
+        // Forward goto: leave resolved_block invalid; hir_to_llvm emits "br label %ulbl_name"
+        // which connects to the "ulbl_name:" emitted by the LabelStmt later.
         append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
         ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
         return;

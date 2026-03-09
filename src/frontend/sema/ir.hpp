@@ -295,7 +295,7 @@ struct LocalDecl {
 
 struct LabelRef {
   SymbolName user_name;
-  BlockId resolved_block{};
+  BlockId resolved_block = BlockId::invalid();
 };
 
 struct CaseRange {
@@ -348,6 +348,7 @@ struct SwitchStmt {
   BlockId body_block{};
   std::optional<BlockId> default_block;
   std::optional<BlockId> break_block;  // after-switch block (break target)
+  std::vector<std::pair<long long, BlockId>> case_blocks;  // case value → block
 };
 
 struct GotoStmt {
@@ -424,6 +425,7 @@ struct Stmt {
           } else if constexpr (std::is_same_v<T, SwitchStmt>) {
             push_unique(s.body_block);
             if (s.default_block) push_unique(*s.default_block);
+            for (const auto& [val, bid] : s.case_blocks) push_unique(bid);
           } else if constexpr (std::is_same_v<T, GotoStmt>) {
             push_unique(s.target.resolved_block);
           } else if constexpr (std::is_same_v<T, BreakStmt>) {

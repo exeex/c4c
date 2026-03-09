@@ -1293,6 +1293,12 @@ class HirEmitter {
       callee_ts.is_fn_ptr = false;
       return callee_ts;
     }
+    if (callee_ts.is_fn_ptr && callee_ts.ptr_level == 0) {
+      // *fp where fp was ptr_level=1: after deref, ptr_level=0.
+      // The function pointer's return type is encoded in the remaining spec.
+      callee_ts.is_fn_ptr = false;
+      return callee_ts;
+    }
     if (callee_ts.base == TB_FUNC_PTR && callee_ts.ptr_level > 0) {
       callee_ts.ptr_level--;
       return callee_ts;
@@ -1529,6 +1535,9 @@ class HirEmitter {
           load_ts.array_rank--;
           load_ts.array_size = -1;
         }
+        // In C, dereferencing a function pointer (*fp) yields the function,
+        // which immediately decays back to a function pointer — identity op.
+        if (load_ts.is_fn_ptr && load_ts.ptr_level == 0) return val;
         const std::string load_ty = llvm_ty(load_ts);
         const std::string tmp = fresh_tmp(ctx);
         emit_instr(ctx, tmp + " = load " + load_ty + ", ptr " + val);
@@ -2193,7 +2202,14 @@ class HirEmitter {
 
     const std::string body_lbl = block_lbl(s.body_block);
     std::string sw = "switch " + ty + " " + val + ", label %" + default_lbl + " [\n";
-    if (body_blk) {
+    if (!s.case_blocks.empty()) {
+      // Use pre-collected case→block mappings (supports Duff's device / interleaved cases).
+      for (const auto& [case_val, case_bid] : s.case_blocks) {
+        sw += "    " + ty + " " + std::to_string(case_val) +
+              ", label %" + block_lbl(case_bid) + "\n";
+      }
+    } else if (body_blk) {
+      // Fallback: scan body block for inline CaseStmt markers (all map to body start).
       for (const auto& stmt : body_blk->stmts) {
         if (const auto* cs = std::get_if<CaseStmt>(&stmt.payload)) {
           sw += "    " + ty + " " + std::to_string(cs->value) +
