@@ -1,6 +1,7 @@
 #include "sema_validate.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -111,6 +112,44 @@ bool is_switch_integer_type(const TypeSpec& ts_raw) {
   return is_integer_like_base(ts.base);
 }
 
+TypeSpec canonicalize_param_type(TypeSpec ts) {
+  // C function parameter adjustment: array/function parameters adjust to pointers.
+  // We only model arrays here (functions are represented as function-pointer-like types).
+  ts = decay_array(ts);
+  // Top-level qualifiers on parameters are not part of function type compatibility.
+  ts.is_const = false;
+  ts.is_volatile = false;
+  return ts;
+}
+
+bool same_types_for_function_compat(TypeSpec a, TypeSpec b, bool for_param = false) {
+  if (for_param) {
+    a = canonicalize_param_type(a);
+    b = canonicalize_param_type(b);
+  }
+
+  if (a.base != b.base) return false;
+  if (a.ptr_level != b.ptr_level) return false;
+  if (a.array_rank != b.array_rank) return false;
+  if (a.array_size != b.array_size) return false;
+  if (a.is_fn_ptr != b.is_fn_ptr) return false;
+  if (a.base == TB_STRUCT || a.base == TB_UNION || a.base == TB_ENUM) {
+    if (a.tag == nullptr || b.tag == nullptr) return false;
+    if (std::string(a.tag) != std::string(b.tag)) return false;
+  }
+  return true;
+}
+
+bool function_sig_compatible(const FunctionSig& a, const FunctionSig& b) {
+  if (!same_types_for_function_compat(a.ret, b.ret, false)) return false;
+  if (a.variadic != b.variadic) return false;
+  if (a.params.size() != b.params.size()) return false;
+  for (size_t i = 0; i < a.params.size(); ++i) {
+    if (!same_types_for_function_compat(a.params[i], b.params[i], true)) return false;
+  }
+  return true;
+}
+
 bool same_tagged_type(const TypeSpec& a, const TypeSpec& b) {
   if (a.base != b.base) return false;
   if (a.base != TB_STRUCT && a.base != TB_UNION && a.base != TB_ENUM) return true;
@@ -129,6 +168,58 @@ bool is_null_pointer_constant_expr(const Node* n) {
     if (cast_to_void_ptr) return is_null_pointer_constant_expr(n->left);
   }
   return false;
+}
+
+bool eval_int_const_expr(const Node* n, long long& out) {
+  if (!n) return false;
+  switch (n->kind) {
+    case NK_INT_LIT:
+    case NK_CHAR_LIT:
+      out = n->ival;
+      return true;
+    case NK_CAST:
+      return eval_int_const_expr(n->left, out);
+    case NK_UNARY: {
+      long long v = 0;
+      if (!eval_int_const_expr(n->left, v)) return false;
+      const char* op = n->op ? n->op : "";
+      if (std::strcmp(op, "+") == 0) out = +v;
+      else if (std::strcmp(op, "-") == 0) out = -v;
+      else if (std::strcmp(op, "~") == 0) out = ~v;
+      else if (std::strcmp(op, "!") == 0) out = !v;
+      else return false;
+      return true;
+    }
+    case NK_BINOP:
+    case NK_COMMA_EXPR: {
+      long long l = 0, r = 0;
+      if (!eval_int_const_expr(n->left, l)) return false;
+      if (!eval_int_const_expr(n->right, r)) return false;
+      const char* op = n->op ? n->op : "";
+      if (std::strcmp(op, "+") == 0) out = l + r;
+      else if (std::strcmp(op, "-") == 0) out = l - r;
+      else if (std::strcmp(op, "*") == 0) out = l * r;
+      else if (std::strcmp(op, "/") == 0) out = (r == 0) ? 0 : (l / r);
+      else if (std::strcmp(op, "%") == 0) out = (r == 0) ? 0 : (l % r);
+      else if (std::strcmp(op, "<<") == 0) out = l << r;
+      else if (std::strcmp(op, ">>") == 0) out = l >> r;
+      else if (std::strcmp(op, "&") == 0) out = l & r;
+      else if (std::strcmp(op, "|") == 0) out = l | r;
+      else if (std::strcmp(op, "^") == 0) out = l ^ r;
+      else if (std::strcmp(op, "&&") == 0) out = (l && r);
+      else if (std::strcmp(op, "||") == 0) out = (l || r);
+      else if (std::strcmp(op, "<") == 0) out = (l < r);
+      else if (std::strcmp(op, "<=") == 0) out = (l <= r);
+      else if (std::strcmp(op, ">") == 0) out = (l > r);
+      else if (std::strcmp(op, ">=") == 0) out = (l >= r);
+      else if (std::strcmp(op, "==") == 0) out = (l == r);
+      else if (std::strcmp(op, "!=") == 0) out = (l != r);
+      else return false;
+      return true;
+    }
+    default:
+      return false;
+  }
 }
 
 // Implicit conversion check for assignment-like contexts:
@@ -366,7 +457,14 @@ class Validator {
         if (pt.base == TB_VOID && pt.ptr_level == 0 && pt.array_rank == 0) continue;
         sig.params.push_back(pt);
       }
-      funcs_[n->name] = std::move(sig);
+      auto it = funcs_.find(n->name);
+      if (it != funcs_.end()) {
+        if (!function_sig_compatible(it->second, sig)) {
+          emit(n->line, std::string("conflicting types for function '") + n->name + "'");
+        }
+      } else {
+        funcs_[n->name] = std::move(sig);
+      }
     } else if (n->kind == NK_STRUCT_DEF) {
       note_struct_def(n);
     } else if (n->kind == NK_ENUM_DEF) {
@@ -588,10 +686,18 @@ class Validator {
       case NK_CASE: {
         if (switch_stack_.empty()) {
           emit(n->line, "case label not within a switch statement");
-        } else if (n->left && n->left->kind == NK_INT_LIT) {
-          long long v = n->left->ival;
-          auto [it, inserted] = switch_stack_.back().case_vals.insert(v);
-          if (!inserted) emit(n->line, "duplicate case label in switch");
+        } else if (n->left) {
+          ExprInfo case_expr = infer_expr(n->left);
+          if (case_expr.valid && !is_switch_integer_type(case_expr.type)) {
+            emit(n->line, "case label does not have an integer type");
+          }
+          long long v = 0;
+          if (!eval_int_const_expr(n->left, v)) {
+            emit(n->line, "case label does not reduce to an integer constant");
+          } else {
+            auto [it, inserted] = switch_stack_.back().case_vals.insert(v);
+            if (!inserted) emit(n->line, "duplicate case label in switch");
+          }
         }
         if (n->body) visit_stmt(n->body);
         return;
