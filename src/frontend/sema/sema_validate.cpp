@@ -82,6 +82,35 @@ bool is_arithmetic_base(TypeBase b) {
   }
 }
 
+bool is_integer_like_base(TypeBase b) {
+  switch (b) {
+    case TB_CHAR:
+    case TB_UCHAR:
+    case TB_SCHAR:
+    case TB_SHORT:
+    case TB_USHORT:
+    case TB_INT:
+    case TB_UINT:
+    case TB_LONG:
+    case TB_ULONG:
+    case TB_LONGLONG:
+    case TB_ULONGLONG:
+    case TB_INT128:
+    case TB_UINT128:
+    case TB_BOOL:
+    case TB_ENUM:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool is_switch_integer_type(const TypeSpec& ts_raw) {
+  const TypeSpec ts = decay_array(ts_raw);
+  if (ts.ptr_level > 0 || ts.array_rank > 0) return false;
+  return is_integer_like_base(ts.base);
+}
+
 bool same_tagged_type(const TypeSpec& a, const TypeSpec& b) {
   if (a.base != b.base) return false;
   if (a.base != TB_STRUCT && a.base != TB_UNION && a.base != TB_ENUM) return true;
@@ -194,6 +223,8 @@ class Validator {
   // gotos have non-trivial control flow, so uninit-read detection is suppressed
   // to avoid false positives on dead code paths.
   bool fn_has_goto_ = false;
+  bool in_function_ = false;
+  TypeSpec current_fn_ret_{};
 
   struct SwitchCtx {
     std::unordered_set<long long> case_vals;
@@ -399,6 +430,10 @@ class Validator {
   }
 
   void validate_function(const Node* fn) {
+    const bool old_in_function = in_function_;
+    const TypeSpec old_fn_ret = current_fn_ret_;
+    in_function_ = true;
+    current_fn_ret_ = fn->type;
     fn_has_goto_ = fn->body && node_contains_goto(fn->body);
     enter_scope();
     for (int i = 0; i < fn->n_params; ++i) {
@@ -415,6 +450,8 @@ class Validator {
       }
     }
     leave_scope();
+    in_function_ = old_in_function;
+    current_fn_ret_ = old_fn_ret;
   }
 
   void validate_decl_init(const Node* decl) {
@@ -461,8 +498,24 @@ class Validator {
         return;
       }
       case NK_RETURN: {
+        if (!in_function_) {
+          emit(n->line, "return statement not within function");
+          return;
+        }
+
+        const bool fn_returns_void =
+            current_fn_ret_.base == TB_VOID &&
+            current_fn_ret_.ptr_level == 0 &&
+            current_fn_ret_.array_rank == 0;
+
+        if (fn_returns_void && n->left) {
+          emit(n->line, "return with a value in function returning void");
+        } else if (!fn_returns_void && !n->left) {
+          emit(n->line, "non-void function should return a value");
+        }
+
         if (n->left) {
-          (void)infer_expr(n->left);
+          ExprInfo rv_info = infer_expr(n->left);
           // Detect direct return of an uninitialized plain-scalar local.
           // Skip if the function has goto statements (complex control flow
           // can make the read unreachable, leading to false positives).
@@ -474,6 +527,11 @@ class Validator {
               emit(rv->line, std::string("read of uninitialized variable '") +
                    rv->name + "'");
             }
+          }
+          if (!fn_returns_void && rv_info.valid &&
+              !implicit_convertible(
+                  current_fn_ret_, rv_info.type, is_null_pointer_constant_expr(n->left))) {
+            emit(n->line, "incompatible return type");
           }
         }
         return;
@@ -516,7 +574,12 @@ class Validator {
         return;
       }
       case NK_SWITCH: {
-        if (n->cond) (void)infer_expr(n->cond);
+        if (n->cond) {
+          ExprInfo c = infer_expr(n->cond);
+          if (c.valid && !is_switch_integer_type(c.type)) {
+            emit(n->line, "switch quantity is not an integer");
+          }
+        }
         switch_stack_.push_back(SwitchCtx{});
         if (n->body) visit_stmt(n->body);
         switch_stack_.pop_back();
@@ -815,13 +878,24 @@ class Validator {
         {
           bool old_suppress = suppress_uninit_read_;
           suppress_uninit_read_ = true;
-          (void)infer_expr(n->left);
+          ExprInfo e = infer_expr(n->left);
           suppress_uninit_read_ = old_suppress;
+          if (e.valid && !is_complete_object_type(e.type)) {
+            emit(n->line, "invalid application of sizeof to incomplete type");
+          }
         }
         out.valid = true;
         return out;
       case NK_SIZEOF_TYPE:
+        if (!is_complete_object_type(n->type)) {
+          emit(n->line, "invalid application of sizeof to incomplete type");
+        }
+        out.valid = true;
+        return out;
       case NK_ALIGNOF_TYPE:
+        if (!is_complete_object_type(n->type)) {
+          emit(n->line, "invalid application of _Alignof to incomplete type");
+        }
         out.valid = true;
         return out;
       case NK_INIT_LIST:
