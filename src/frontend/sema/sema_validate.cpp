@@ -175,7 +175,33 @@ bool is_null_pointer_constant_expr(const Node* n) {
 
 using EnumConstMap = std::unordered_map<std::string, long long>;
 
-bool eval_int_const_expr(const Node* n, long long& out, const EnumConstMap* ev = nullptr) {
+struct EnumConstLookup {
+  const EnumConstMap* globals = nullptr;
+  const std::vector<EnumConstMap>* scoped = nullptr;
+};
+
+static bool lookup_enum_const(const EnumConstLookup* ev, const char* name, long long& out) {
+  if (!ev || !name) return false;
+  if (ev->scoped) {
+    for (auto it = ev->scoped->rbegin(); it != ev->scoped->rend(); ++it) {
+      auto sit = it->find(name);
+      if (sit != it->end()) {
+        out = sit->second;
+        return true;
+      }
+    }
+  }
+  if (ev->globals) {
+    auto git = ev->globals->find(name);
+    if (git != ev->globals->end()) {
+      out = git->second;
+      return true;
+    }
+  }
+  return false;
+}
+
+bool eval_int_const_expr(const Node* n, long long& out, const EnumConstLookup* ev = nullptr) {
   if (!n) return false;
   switch (n->kind) {
     case NK_INT_LIT:
@@ -184,10 +210,7 @@ bool eval_int_const_expr(const Node* n, long long& out, const EnumConstMap* ev =
       return true;
     case NK_VAR:
       // Enum constant reference: look up value if available.
-      if (ev && n->name) {
-        auto it = ev->find(n->name);
-        if (it != ev->end()) { out = it->second; return true; }
-      }
+      if (lookup_enum_const(ev, n->name, out)) return true;
       return false;
     case NK_CAST:
       return eval_int_const_expr(n->left, out, ev);
@@ -315,7 +338,8 @@ class Validator {
   std::vector<Diagnostic> diags_;
   std::unordered_map<std::string, TypeSpec> globals_;
   std::unordered_map<std::string, TypeSpec> enum_consts_;
-  EnumConstMap enum_const_vals_;   // integer values of enum constants
+  EnumConstMap enum_const_vals_global_;   // integer values of global enum constants
+  std::vector<EnumConstMap> enum_const_vals_scopes_;  // block/function-scoped enum constants
   std::unordered_map<std::string, FunctionSig> funcs_;
   std::unordered_set<std::string> complete_structs_;
   std::unordered_set<std::string> complete_unions_;
@@ -356,10 +380,14 @@ class Validator {
     return r;
   }
 
-  void enter_scope() { scopes_.emplace_back(); }
+  void enter_scope() {
+    scopes_.emplace_back();
+    enum_const_vals_scopes_.emplace_back();
+  }
 
   void leave_scope() {
     if (!scopes_.empty()) scopes_.pop_back();
+    if (!enum_const_vals_scopes_.empty()) enum_const_vals_scopes_.pop_back();
   }
 
   void bind_local(const std::string& name, const TypeSpec& ts, bool initialized, int line) {
@@ -396,7 +424,7 @@ class Validator {
     for (int i = 0; i < n->n_enum_variants; ++i) {
       if (!n->enum_names[i] || !n->enum_names[i][0]) continue;
       enum_consts_[n->enum_names[i]] = its;
-      if (n->enum_vals) enum_const_vals_[n->enum_names[i]] = n->enum_vals[i];
+      if (n->enum_vals) enum_const_vals_global_[n->enum_names[i]] = n->enum_vals[i];
     }
   }
 
@@ -406,7 +434,10 @@ class Validator {
     for (int i = 0; i < n->n_enum_variants; ++i) {
       if (!n->enum_names[i] || !n->enum_names[i][0]) continue;
       bind_local(n->enum_names[i], its, true, n->line);
-      if (n->enum_vals) enum_const_vals_[n->enum_names[i]] = n->enum_vals[i];
+      if (n->enum_vals) {
+        if (enum_const_vals_scopes_.empty()) enum_const_vals_scopes_.emplace_back();
+        enum_const_vals_scopes_.back()[n->enum_names[i]] = n->enum_vals[i];
+      }
     }
   }
 
@@ -707,7 +738,8 @@ class Validator {
             emit(n->line, "case label does not have an integer type");
           }
           long long v = 0;
-          if (!eval_int_const_expr(n->left, v, &enum_const_vals_)) {
+          EnumConstLookup enum_lookup{&enum_const_vals_global_, &enum_const_vals_scopes_};
+          if (!eval_int_const_expr(n->left, v, &enum_lookup)) {
             emit(n->line, "case label does not reduce to an integer constant");
           } else {
             auto [it, inserted] = switch_stack_.back().case_vals.insert(v);

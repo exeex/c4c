@@ -44,11 +44,21 @@ Last updated: 2026-03-09
 
 ### Action Plan（High Priority）
 
-1. 將 enum 常數值改為 scope-aware 結構（與 `scopes_` 同步 push/pop），避免名稱污染。  
-2. `eval_int_const_expr` 查值先走 local-scope，再 fallback global enum map。  
-3. 補最小回歸測試：  
+1. [Done] 將 enum 常數值改為 scope-aware 結構（與 `scopes_` 同步 push/pop），避免名稱污染。  
+2. [Done] `eval_int_const_expr` 查值先走 local-scope，再 fallback global enum map。  
+3. [Todo] 補最小回歸測試：  
    - 函式內 local enum 與 global enum 同名，不同值。  
    - 離開 block 後 `switch case` 仍使用正確外層 enum 值。
+
+### Progress Update（2026-03-09）
+
+- 已在 `src/frontend/sema/sema_validate.cpp` 實作：
+  - `enum_const_vals_global_` + `enum_const_vals_scopes_` 雙層查找。
+  - `enter_scope()/leave_scope()` 同步維護 local enum value scope。
+  - `case` 常數折疊改用 scope-aware enum lookup。
+- 驗證：
+  - `cmake --build build -j4` ✅
+  - `ctest --test-dir build -R tiny_c2ll_tests --output-on-failure` ✅
 
 ## Agent Handoff (Claude 接手用)
 
