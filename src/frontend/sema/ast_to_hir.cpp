@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
@@ -90,6 +91,8 @@ AssignOp map_assign_op(const char* op, NodeKind kind) {
 
 TypeSpec infer_int_literal_type(const Node* n) {
   TypeSpec ts = n ? n->type : TypeSpec{};
+  if (ts.base == TB_VOID && ts.ptr_level == 0 && ts.array_rank == 0 && !ts.is_fn_ptr)
+    ts.base = TB_INT;
   ts.array_rank = 0;
   ts.array_size = -1;
   if (!n || !n->sval) return ts;
@@ -124,12 +127,21 @@ TypeSpec infer_int_literal_type(const Node* n) {
 }
 
 TypeSpec normalize_generic_type(TypeSpec ts) {
-  ts.is_const = false;
-  ts.is_volatile = false;
   if (ts.array_rank > 0 && !ts.is_ptr_to_array) {
     ts.array_rank = 0;
     ts.array_size = -1;
     ts.ptr_level += 1;
+  }
+  // Generic selection uses lvalue conversions on the controlling expression.
+  // Bare function designators decay to function pointers.
+  if (ts.is_fn_ptr && ts.ptr_level == 0) {
+    ts.ptr_level = 1;
+  }
+  // Strip only top-level qualifiers (scalar rvalues).  In this codebase,
+  // ptr_level>0 qualifiers model pointee qualifiers and must be preserved.
+  if (ts.ptr_level == 0 && ts.array_rank == 0) {
+    ts.is_const = false;
+    ts.is_volatile = false;
   }
   return ts;
 }
@@ -139,11 +151,19 @@ bool generic_type_compatible(TypeSpec a, TypeSpec b) {
   b = normalize_generic_type(b);
   if (a.base != b.base) return false;
   if (a.ptr_level != b.ptr_level) return false;
+  if (a.is_const != b.is_const || a.is_volatile != b.is_volatile) return false;
   if (a.array_rank != b.array_rank) return false;
   if (a.is_fn_ptr != b.is_fn_ptr) return false;
-  const char* atag = a.tag ? a.tag : "";
-  const char* btag = b.tag ? b.tag : "";
-  return std::strcmp(atag, btag) == 0;
+  if (a.base == TB_STRUCT || a.base == TB_UNION || a.base == TB_ENUM) {
+    const char* atag = a.tag ? a.tag : "";
+    const char* btag = b.tag ? b.tag : "";
+    return std::strcmp(atag, btag) == 0;
+  }
+  return true;
+}
+
+bool has_concrete_type(const TypeSpec& ts) {
+  return ts.base != TB_VOID || ts.ptr_level > 0 || ts.array_rank > 0 || ts.is_fn_ptr;
 }
 
 std::vector<long long> decode_string_literal_values(const char* sval, bool wide) {
@@ -318,6 +338,7 @@ class Lowerer {
   struct FunctionCtx {
     Function* fn = nullptr;
     std::unordered_map<std::string, LocalId> locals;
+    std::unordered_map<uint32_t, TypeSpec> local_types;
     std::unordered_map<std::string, GlobalId> static_globals;
     std::unordered_map<std::string, uint32_t> params;
     BlockId current_block{};
@@ -338,6 +359,143 @@ class Lowerer {
     qt.spec = t;
     qt.category = c;
     return qt;
+  }
+
+  TypeSpec infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
+    if (!n) return {};
+    if (has_concrete_type(n->type)) return n->type;
+    switch (n->kind) {
+      case NK_INT_LIT:
+        return infer_int_literal_type(n);
+      case NK_FLOAT_LIT: {
+        TypeSpec ts = n->type;
+        if (!has_concrete_type(ts)) ts.base = TB_DOUBLE;
+        return ts;
+      }
+      case NK_CHAR_LIT: {
+        TypeSpec ts = n->type;
+        if (!has_concrete_type(ts)) ts.base = TB_INT;
+        return ts;
+      }
+      case NK_STR_LIT: {
+        TypeSpec ts{};
+        ts.base = TB_CHAR;
+        ts.ptr_level = 1;
+        return ts;
+      }
+      case NK_VAR: {
+        const std::string name = n->name ? n->name : "";
+        if (ctx) {
+          auto lit = ctx->locals.find(name);
+          if (lit != ctx->locals.end()) {
+            auto tt = ctx->local_types.find(lit->second.value);
+            if (tt != ctx->local_types.end()) return tt->second;
+          }
+          auto pit = ctx->params.find(name);
+          if (pit != ctx->params.end() && ctx->fn &&
+              pit->second < ctx->fn->params.size())
+            return ctx->fn->params[pit->second].type.spec;
+          auto sit = ctx->static_globals.find(name);
+          if (sit != ctx->static_globals.end()) {
+            if (const GlobalVar* gv = module_->find_global(sit->second)) return gv->type.spec;
+          }
+        }
+        auto git = module_->global_index.find(name);
+        if (git != module_->global_index.end()) {
+          if (const GlobalVar* gv = module_->find_global(git->second)) return gv->type.spec;
+        }
+        auto fit = module_->fn_index.find(name);
+        if (fit != module_->fn_index.end()) {
+          if (const Function* fn = module_->find_function(fit->second)) {
+            TypeSpec ts = fn->return_type.spec;
+            ts.is_fn_ptr = true;  // bare function designator
+            ts.ptr_level = 0;
+            ts.array_rank = 0;
+            ts.array_size = -1;
+            return ts;
+          }
+        }
+        return n->type;
+      }
+      case NK_ADDR: {
+        TypeSpec ts = infer_generic_ctrl_type(ctx, n->left);
+        if (ts.array_rank > 0) {
+          ts.array_rank = 0;
+          ts.array_size = -1;
+        }
+        ts.ptr_level += 1;
+        return ts;
+      }
+      case NK_DEREF: {
+        TypeSpec ts = infer_generic_ctrl_type(ctx, n->left);
+        if (ts.ptr_level > 0) ts.ptr_level -= 1;
+        else if (ts.array_rank > 0) ts.array_rank -= 1;
+        return ts;
+      }
+      case NK_MEMBER: {
+        TypeSpec base_ts = infer_generic_ctrl_type(ctx, n->left);
+        if (n->is_arrow && base_ts.ptr_level > 0) base_ts.ptr_level -= 1;
+        if (base_ts.tag) {
+          auto it = module_->struct_defs.find(base_ts.tag);
+          if (it != module_->struct_defs.end()) {
+            for (const auto& f : it->second.fields) {
+              if (f.name == (n->name ? n->name : "")) return field_type_of(f);
+            }
+          }
+        }
+        return n->type;
+      }
+      case NK_INDEX: {
+        TypeSpec ts = infer_generic_ctrl_type(ctx, n->left);
+        if (ts.ptr_level > 0) ts.ptr_level -= 1;
+        else if (ts.array_rank > 0) {
+          ts.array_rank -= 1;
+          ts.array_size = (ts.array_rank > 0) ? ts.array_dims[0] : -1;
+        }
+        return ts;
+      }
+      case NK_CAST:
+      case NK_COMPOUND_LIT:
+        return n->type;
+      case NK_BINOP: {
+        const TypeSpec l = infer_generic_ctrl_type(ctx, n->left);
+        const TypeSpec r = infer_generic_ctrl_type(ctx, n->right);
+        const bool ptr_l = l.ptr_level > 0 || l.array_rank > 0;
+        const bool ptr_r = r.ptr_level > 0 || r.array_rank > 0;
+        if (n->op && n->op[0] && !n->op[1]) {
+          const char op = n->op[0];
+          if ((op == '+' || op == '-') && ptr_l && !ptr_r) return normalize_generic_type(l);
+          if (op == '+' && ptr_r && !ptr_l) return normalize_generic_type(r);
+        }
+        if (l.base == TB_LONGLONG || l.base == TB_ULONGLONG ||
+            r.base == TB_LONGLONG || r.base == TB_ULONGLONG) {
+          TypeSpec ts{};
+          ts.base = (l.base == TB_ULONGLONG || r.base == TB_ULONGLONG)
+                        ? TB_ULONGLONG
+                        : TB_LONGLONG;
+          return ts;
+        }
+        if (l.base == TB_LONG || l.base == TB_ULONG || r.base == TB_LONG || r.base == TB_ULONG) {
+          TypeSpec ts{};
+          ts.base = (l.base == TB_ULONG || r.base == TB_ULONG) ? TB_ULONG : TB_LONG;
+          return ts;
+        }
+        if (l.base == TB_DOUBLE || r.base == TB_DOUBLE) {
+          TypeSpec ts{};
+          ts.base = TB_DOUBLE;
+          return ts;
+        }
+        if (l.base == TB_FLOAT || r.base == TB_FLOAT) {
+          TypeSpec ts{};
+          ts.base = TB_FLOAT;
+          return ts;
+        }
+        TypeSpec ts{}; ts.base = TB_INT; return ts;
+      }
+      default:
+        break;
+    }
+    return n->type;
   }
 
   Block& ensure_block(FunctionCtx& ctx, BlockId id) {
@@ -564,6 +722,10 @@ class Lowerer {
     if (n->kind == NK_INIT_LIST) {
       return lower_init_list(n, ctx);
     }
+    // Compound literal at top level: extract its init list.
+    if (n->kind == NK_COMPOUND_LIT && n->left && n->left->kind == NK_INIT_LIST) {
+      return lower_init_list(n->left, ctx);
+    }
     InitScalar s{};
     s.expr = lower_expr(ctx, n);
     return s;
@@ -591,6 +753,11 @@ class Lowerer {
 
       if (value_node && value_node->kind == NK_INIT_LIST) {
         item.value = std::make_shared<InitList>(lower_init_list(value_node, ctx));
+      } else if (value_node && value_node->kind == NK_COMPOUND_LIT &&
+                 value_node->left && value_node->left->kind == NK_INIT_LIST) {
+        // Compound literal with init list: treat as a sub-list so the emitter
+        // can use field-by-field init (not brace elision from the parent).
+        item.value = std::make_shared<InitList>(lower_init_list(value_node->left, ctx));
       } else {
         InitScalar s{};
         s.expr = lower_expr(ctx, value_node);
@@ -681,6 +848,7 @@ class Lowerer {
         const LocalId lid = d.id;
         const TypeSpec decl_ts = d.type.spec;
         ctx.locals[d.name] = d.id;
+        ctx.local_types[d.id.value] = d.type.spec;
         append_stmt(ctx, Stmt{StmtPayload{std::move(d)}, make_span(n)});
         // For array init lists, emit element-by-element assignments.
         if (is_array_with_init_list) {
@@ -710,6 +878,55 @@ class Lowerer {
             // IndexExpr
             IndexExpr ie{}; ie.base = dr_id; ie.index = idx_id;
             ExprId ie_id = append_expr(n, ie, elem_ts, ValueCategory::LValue);
+            const bool elem_is_agg =
+                (elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION) &&
+                elem_ts.ptr_level == 0 && elem_ts.array_rank == 0;
+            if (elem_is_agg && elem_ts.tag) {
+              const Node* scalar_node = val_node;
+              if (scalar_node && scalar_node->kind == NK_COMPOUND_LIT &&
+                  scalar_node->n_children > 0) {
+                const Node* c0 = scalar_node->children[0];
+                if (c0 && c0->kind == NK_INIT_ITEM) {
+                  const Node* vv = c0->left ? c0->left : c0->right;
+                  if (!vv) vv = c0->init;
+                  if (vv) c0 = vv;
+                }
+                if (c0) scalar_node = c0;
+              }
+              bool direct_agg = false;
+              if (scalar_node) {
+                const TypeSpec st = infer_generic_ctrl_type(&ctx, scalar_node);
+                if (st.ptr_level == 0 && st.array_rank == 0 &&
+                    st.base == elem_ts.base) {
+                  const char* et = elem_ts.tag ? elem_ts.tag : "";
+                  const char* stg = st.tag ? st.tag : "";
+                  direct_agg = std::strcmp(et, stg) == 0;
+                }
+              }
+              if (!direct_agg) {
+                const auto sit = module_->struct_defs.find(elem_ts.tag);
+                if (sit != module_->struct_defs.end() && !sit->second.fields.empty() &&
+                    scalar_node) {
+                  const HirStructField& fld = sit->second.fields[0];
+                  TypeSpec field_ts = field_type_of(fld);
+                  MemberExpr me{};
+                  me.base = ie_id;
+                  me.field = fld.name;
+                  me.is_arrow = false;
+                  ExprId me_id = append_expr(n, me, field_ts, ValueCategory::LValue);
+                  ExprId val_id = lower_expr(&ctx, scalar_node);
+                  AssignExpr ae{};
+                  ae.lhs = me_id;
+                  ae.rhs = val_id;
+                  ExprId ae_id = append_expr(n, ae, field_ts);
+                  ExprStmt es{};
+                  es.expr = ae_id;
+                  append_stmt(ctx, Stmt{StmtPayload{es}, make_span(n)});
+                  continue;
+                }
+              }
+            }
+
             // Value expr
             ExprId val_id = lower_expr(&ctx, val_node);
             // AssignExpr
@@ -743,43 +960,174 @@ class Lowerer {
             append_stmt(ctx, Stmt{StmtPayload{es}, make_span(n)});
           }
         }
-        // For struct init lists, emit field-by-field assignments.
-        if (is_struct_with_init_list && decl_ts.tag) {
-          const auto sit = module_->struct_defs.find(decl_ts.tag);
-          if (sit != module_->struct_defs.end()) {
-            const auto& sd = sit->second;
-            size_t next_field = 0;
-            for (int ci = 0; ci < n->init->n_children; ++ci) {
-              const Node* item = n->init->children[ci];
-              if (!item) { ++next_field; continue; }
-              size_t fi = next_field;
-              const Node* val_node = item;
-              if (item->kind == NK_INIT_ITEM) {
-                if (item->is_designated && !item->is_index_desig && item->desig_field) {
-                  // field designator: find field index by name
-                  for (size_t k = 0; k < sd.fields.size(); ++k) {
-                    if (sd.fields[k].name == item->desig_field) { fi = k; break; }
-                  }
-                }
-                val_node = item->left ? item->left : item->right;
-                if (!val_node) val_node = item->init;
-              }
-              next_field = fi + 1;
-              if (!val_node || fi >= sd.fields.size()) continue;
-              // Build: x.field = val
-              const HirStructField& fld = sd.fields[fi];
-              TypeSpec field_ts = field_type_of(fld);
-              DeclRef dr{}; dr.name = n->name ? n->name : "<anon_local>"; dr.local = lid;
-              ExprId dr_id = append_expr(n, dr, decl_ts, ValueCategory::LValue);
-              MemberExpr me{}; me.base = dr_id; me.field = fld.name; me.is_arrow = false;
-              ExprId me_id = append_expr(n, me, field_ts, ValueCategory::LValue);
-              ExprId val_id = lower_expr(&ctx, val_node);
-              AssignExpr ae{}; ae.lhs = me_id; ae.rhs = val_id;
-              ExprId ae_id = append_expr(n, ae, field_ts);
-              ExprStmt es{}; es.expr = ae_id;
-              append_stmt(ctx, Stmt{StmtPayload{es}, make_span(n)});
+        // For struct init lists, emit recursive field-by-field assignments with
+        // brace-elision consumption, so nested aggregates don't become invalid
+        // scalar-to-aggregate stores (e.g. `store %struct.S 5`).
+        if (is_struct_with_init_list && decl_ts.tag && n->init) {
+          auto is_agg = [](const TypeSpec& ts) {
+            return (ts.base == TB_STRUCT || ts.base == TB_UNION) &&
+                   ts.ptr_level == 0 && ts.array_rank == 0;
+          };
+          auto extract_val_node = [](const Node* item) -> const Node* {
+            if (!item) return nullptr;
+            if (item->kind != NK_INIT_ITEM) return item;
+            const Node* v = item->left ? item->left : item->right;
+            if (!v) v = item->init;
+            return v;
+          };
+          auto append_assign = [&](ExprId lhs_id, const TypeSpec& lhs_ts, const Node* rhs_node) {
+            if (!rhs_node) return;
+            const Node* val_node = rhs_node;
+            if (val_node->kind == NK_INIT_LIST && val_node->n_children > 0) {
+              const Node* first = val_node->children[0];
+              const Node* unwrapped = extract_val_node(first);
+              if (unwrapped) val_node = unwrapped;
             }
-          }
+            ExprId val_id = lower_expr(&ctx, val_node);
+            AssignExpr ae{};
+            ae.lhs = lhs_id;
+            ae.rhs = val_id;
+            ExprId ae_id = append_expr(n, ae, lhs_ts);
+            ExprStmt es{};
+            es.expr = ae_id;
+            append_stmt(ctx, Stmt{StmtPayload{es}, make_span(n)});
+          };
+          auto can_direct_assign_agg = [&](const TypeSpec& lhs_ts,
+                                           const Node* rhs_node) -> bool {
+            if (!rhs_node) return false;
+            if (!is_agg(lhs_ts)) return false;
+            const TypeSpec rhs_ts = infer_generic_ctrl_type(&ctx, rhs_node);
+            if (rhs_ts.ptr_level != 0 || rhs_ts.array_rank != 0) return false;
+            if (rhs_ts.base != lhs_ts.base) return false;
+            if (rhs_ts.base == TB_STRUCT || rhs_ts.base == TB_UNION || rhs_ts.base == TB_ENUM) {
+              const char* lt = lhs_ts.tag ? lhs_ts.tag : "";
+              const char* rt = rhs_ts.tag ? rhs_ts.tag : "";
+              return std::strcmp(lt, rt) == 0;
+            }
+            return true;
+          };
+
+          std::function<void(const TypeSpec&, ExprId, const Node*, int&)> consume_from_list;
+          consume_from_list =
+              [&](const TypeSpec& cur_ts, ExprId cur_lhs, const Node* list_node, int& cursor) {
+                if (!list_node || list_node->kind != NK_INIT_LIST) return;
+                if (cursor < 0) cursor = 0;
+
+                if (is_agg(cur_ts) && cur_ts.tag) {
+                  const auto sit = module_->struct_defs.find(cur_ts.tag);
+                  if (sit == module_->struct_defs.end()) return;
+                  const auto& sd = sit->second;
+                  size_t next_field = 0;
+                  while (cursor < list_node->n_children && next_field < sd.fields.size()) {
+                    const Node* item = list_node->children[cursor];
+                    if (!item) {
+                      ++cursor;
+                      ++next_field;
+                      continue;
+                    }
+                    size_t fi = next_field;
+                    if (item->kind == NK_INIT_ITEM && item->is_designated &&
+                        !item->is_index_desig && item->desig_field) {
+                      for (size_t k = 0; k < sd.fields.size(); ++k) {
+                        if (sd.fields[k].name == item->desig_field) {
+                          fi = k;
+                          break;
+                        }
+                      }
+                    }
+                    if (fi >= sd.fields.size()) {
+                      ++cursor;
+                      continue;
+                    }
+
+                    const HirStructField& fld = sd.fields[fi];
+                    TypeSpec field_ts = field_type_of(fld);
+                    MemberExpr me{};
+                    me.base = cur_lhs;
+                    me.field = fld.name;
+                    me.is_arrow = false;
+                    ExprId me_id = append_expr(n, me, field_ts, ValueCategory::LValue);
+
+                    const Node* val_node = extract_val_node(item);
+                    if (is_agg(field_ts) || field_ts.array_rank > 0) {
+                      if (val_node && val_node->kind == NK_INIT_LIST) {
+                        int sub_cursor = 0;
+                        consume_from_list(field_ts, me_id, val_node, sub_cursor);
+                        ++cursor;
+                      } else if (can_direct_assign_agg(field_ts, val_node)) {
+                        append_assign(me_id, field_ts, val_node);
+                        ++cursor;
+                      } else {
+                        // Brace elision: nested aggregate consumes from parent list.
+                        consume_from_list(field_ts, me_id, list_node, cursor);
+                      }
+                    } else {
+                      append_assign(me_id, field_ts, val_node);
+                      ++cursor;
+                    }
+                    next_field = fi + 1;
+                  }
+                  return;
+                }
+
+                if (cur_ts.array_rank > 0) {
+                  TypeSpec elem_ts = cur_ts;
+                  elem_ts.array_rank--;
+                  elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
+                  long long next_idx = 0;
+                  const long long bound = cur_ts.array_size > 0 ? cur_ts.array_size : (1LL << 30);
+                  while (cursor < list_node->n_children && next_idx < bound) {
+                    const Node* item = list_node->children[cursor];
+                    if (!item) {
+                      ++cursor;
+                      ++next_idx;
+                      continue;
+                    }
+                    long long idx = next_idx;
+                    if (item->kind == NK_INIT_ITEM && item->is_designated &&
+                        item->is_index_desig) {
+                      idx = item->desig_val;
+                    }
+                    TypeSpec idx_ts{};
+                    idx_ts.base = TB_INT;
+                    ExprId idx_id = append_expr(n, IntLiteral{idx, false}, idx_ts);
+                    IndexExpr ie{};
+                    ie.base = cur_lhs;
+                    ie.index = idx_id;
+                    ExprId ie_id = append_expr(n, ie, elem_ts, ValueCategory::LValue);
+
+                    const Node* val_node = extract_val_node(item);
+                    if (is_agg(elem_ts) || elem_ts.array_rank > 0) {
+                      if (val_node && val_node->kind == NK_INIT_LIST) {
+                        int sub_cursor = 0;
+                        consume_from_list(elem_ts, ie_id, val_node, sub_cursor);
+                        ++cursor;
+                      } else {
+                        consume_from_list(elem_ts, ie_id, list_node, cursor);
+                      }
+                    } else {
+                      append_assign(ie_id, elem_ts, val_node);
+                      ++cursor;
+                    }
+                    next_idx = idx + 1;
+                  }
+                  return;
+                }
+
+                if (cursor < list_node->n_children) {
+                  const Node* item = list_node->children[cursor];
+                  const Node* val_node = extract_val_node(item);
+                  append_assign(cur_lhs, cur_ts, val_node);
+                  ++cursor;
+                }
+              };
+
+          DeclRef dr{};
+          dr.name = n->name ? n->name : "<anon_local>";
+          dr.local = lid;
+          ExprId base_id = append_expr(n, dr, decl_ts, ValueCategory::LValue);
+          int cursor = 0;
+          consume_from_list(decl_ts, base_id, n->init, cursor);
         }
         return;
       }
@@ -1268,8 +1616,7 @@ class Lowerer {
         return append_expr(n, t, n->type);
       }
       case NK_GENERIC: {
-        TypeSpec ctrl_ts{};
-        if (n->left) ctrl_ts = n->left->type;
+        TypeSpec ctrl_ts = infer_generic_ctrl_type(ctx, n->left);
         const Node* selected = nullptr;
         const Node* default_expr = nullptr;
         for (int i = 0; i < n->n_children; ++i) {

@@ -537,7 +537,11 @@ class HirEmitter {
       const auto it = mod_.struct_defs.find(tag);
       if (it == mod_.struct_defs.end()) continue;
       const HirStructDef& sd = it->second;
-      if (sd.fields.empty()) continue;
+      if (sd.fields.empty()) {
+        // Empty struct: emit as opaque type {}.
+        preamble_ << "%struct." << tag << " = type {}\n";
+        continue;
+      }
       if (sd.is_union) {
         const int sz = compute_struct_size(mod_, tag);
         preamble_ << "%struct." << tag << " = type { ["
@@ -736,6 +740,126 @@ class HirEmitter {
     }, e.payload);
   }
 
+  // Brace-elision-aware constant init: consume scalars from a flat InitList
+  // at the given cursor, grouping them into nested aggregates as needed.
+  std::string emit_const_from_flat(const TypeSpec& ts, const InitList& list, size_t& cursor) {
+    if (cursor >= list.items.size())
+      return emit_const_init(ts, GlobalInit(std::monostate{}));
+
+    const auto& item = list.items[cursor];
+    bool has_sublist = std::holds_alternative<std::shared_ptr<InitList>>(item.value);
+
+    // If item is already a sub-list, use it directly for this element.
+    if (has_sublist) {
+      auto sub = std::get<std::shared_ptr<InitList>>(item.value);
+      ++cursor;
+      return emit_const_init(ts, GlobalInit(*sub));
+    }
+
+    bool is_agg = (ts.array_rank > 0) ||
+        ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0);
+
+    // Scalar target: consume one item.
+    if (!is_agg) {
+      const auto* scalar = std::get_if<InitScalar>(&item.value);
+      ++cursor;
+      if (scalar) return emit_const_scalar_expr(scalar->expr, ts);
+      return emit_const_init(ts, GlobalInit(std::monostate{}));
+    }
+
+    // String literal directly initializes a char array (not brace elision).
+    if (ts.array_rank > 0) {
+      TypeSpec ets = drop_one_array_dim(ts);
+      if (is_char_like(ets.base) && ets.ptr_level == 0 && ets.array_rank == 0) {
+        const auto* scalar = std::get_if<InitScalar>(&item.value);
+        if (scalar) {
+          const Expr& e = get_expr(scalar->expr);
+          if (std::holds_alternative<StringLiteral>(e.payload)) {
+            ++cursor;
+            return emit_const_init(ts, GlobalInit(*scalar));
+          }
+        }
+      }
+    }
+
+    // Array target, scalar item -> brace elision: consume element-by-element.
+    if (ts.array_rank > 0) {
+      long long n = ts.array_size;
+      if (n <= 0) return "zeroinitializer";
+      TypeSpec elem_ts = drop_one_array_dim(ts);
+      std::string out = "[";
+      const std::string ety = llvm_alloca_ty(elem_ts);
+      for (long long i = 0; i < n; ++i) {
+        if (i) out += ", ";
+        out += ety + " ";
+        if (cursor < list.items.size())
+          out += emit_const_from_flat(elem_ts, list, cursor);
+        else
+          out += emit_const_init(elem_ts, GlobalInit(std::monostate{}));
+      }
+      out += "]";
+      return out;
+    }
+
+    // Struct target, scalar item -> brace elision: consume field-by-field.
+    if (!ts.tag || !ts.tag[0]) { ++cursor; return "zeroinitializer"; }
+    const auto it = mod_.struct_defs.find(ts.tag);
+    if (it == mod_.struct_defs.end()) { ++cursor; return "zeroinitializer"; }
+    const HirStructDef& sd = it->second;
+    if (sd.is_union) {
+      // Union brace elision: init first field only.
+      if (sd.fields.empty()) { ++cursor; return "zeroinitializer"; }
+      const int sz = compute_struct_size(mod_, std::string(ts.tag));
+      const auto* scalar = std::get_if<InitScalar>(&item.value);
+      ++cursor;
+      if (scalar) {
+        const Expr& se = get_expr(scalar->expr);
+        long long val = 0;
+        if (const auto* il = std::get_if<IntLiteral>(&se.payload)) val = il->value;
+        else if (const auto* cl = std::get_if<CharLiteral>(&se.payload)) val = cl->value;
+        if (val != 0) {
+          std::string bytes(static_cast<size_t>(sz), '\0');
+          for (int i = 0; i < sz; ++i)
+            bytes[static_cast<size_t>(i)] = static_cast<char>((val >> (8 * i)) & 0xFF);
+          return "{ [" + std::to_string(sz) + " x i8] c\"" + escape_llvm_c_bytes(bytes) + "\" }";
+        }
+      }
+      return "{ [" + std::to_string(sz) + " x i8] zeroinitializer }";
+    }
+
+    std::vector<std::string> field_vals;
+    field_vals.reserve(sd.fields.size());
+    for (const auto& f : sd.fields)
+      field_vals.push_back(emit_const_init(field_decl_type(f), GlobalInit(std::monostate{})));
+    for (size_t fi = 0; fi < sd.fields.size() && cursor < list.items.size(); ++fi)
+      field_vals[fi] = emit_const_from_flat(field_decl_type(sd.fields[fi]), list, cursor);
+
+    std::string out = "{ ";
+    for (size_t i = 0; i < sd.fields.size(); ++i) {
+      if (i) out += ", ";
+      out += llvm_field_ty(sd.fields[i]) + " " + field_vals[i];
+    }
+    out += " }";
+    return out;
+  }
+
+  // Check whether an InitList needs brace-elision: it has more items than
+  // the array size and elements are structs/arrays without sub-lists.
+  bool needs_brace_elision(const TypeSpec& ts, const InitList& list) const {
+    if (ts.array_rank <= 0 || ts.array_size <= 0) return false;
+    TypeSpec elem_ts = drop_one_array_dim(ts);
+    bool elem_is_agg = (elem_ts.array_rank > 0) ||
+        ((elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION) && elem_ts.ptr_level == 0);
+    if (!elem_is_agg) return false;
+    // If list has more items than array size, likely brace-elided.
+    if ((long long)list.items.size() > ts.array_size) return true;
+    // Also check: any item that targets an aggregate but is a scalar.
+    for (const auto& item : list.items) {
+      if (std::holds_alternative<InitScalar>(item.value)) return true;
+    }
+    return false;
+  }
+
   std::string emit_const_array(const TypeSpec& ts, const GlobalInit& init) {
     const long long n = ts.array_size;
     if (n <= 0) return "zeroinitializer";
@@ -760,6 +884,24 @@ class HirEmitter {
       }
       out += "]";
       return out;
+    }
+
+    if (const auto* list = std::get_if<InitList>(&init)) {
+      // Brace-elision path: flat scalars need to be grouped into aggregates.
+      if (needs_brace_elision(ts, *list)) {
+        std::vector<std::string> elems(static_cast<size_t>(n), "zeroinitializer");
+        size_t cursor = 0;
+        for (long long i = 0; i < n && cursor < list->items.size(); ++i)
+          elems[static_cast<size_t>(i)] = emit_const_from_flat(elem_ts, *list, cursor);
+        std::string out = "[";
+        const std::string ety = llvm_alloca_ty(elem_ts);
+        for (size_t i = 0; i < elems.size(); ++i) {
+          if (i) out += ", ";
+          out += ety + " " + elems[i];
+        }
+        out += "]";
+        return out;
+      }
     }
 
     std::vector<std::string> elems(static_cast<size_t>(n), "zeroinitializer");
@@ -872,36 +1014,133 @@ class HirEmitter {
       field_vals.push_back(emit_const_init(field_decl_type(f), GlobalInit(std::monostate{})));
     }
 
-    if (const auto* list = std::get_if<InitList>(&init)) {
-      size_t next_idx = 0;
-      for (const auto& item : list->items) {
-        size_t idx = next_idx;
-        if (item.field_designator) {
-          const auto fit = std::find_if(
-              sd.fields.begin(), sd.fields.end(),
-              [&](const HirStructField& f) { return f.name == *item.field_designator; });
-          if (fit == sd.fields.end()) continue;
-          idx = static_cast<size_t>(std::distance(sd.fields.begin(), fit));
-        } else if (item.index_designator && *item.index_designator >= 0) {
-          idx = static_cast<size_t>(*item.index_designator);
-        }
-        if (idx >= sd.fields.size()) continue;
+    // Helper: check if an InitScalar is a string literal (initializes char arrays directly).
+    auto is_string_scalar = [&](const InitScalar& s) -> bool {
+      const Expr& e = get_expr(s.expr);
+      return std::holds_alternative<StringLiteral>(e.payload);
+    };
+    // Helper: check if a scalar init for an array field is a string literal
+    // (not brace elision — string directly fills char array).
+    auto is_direct_array_scalar = [&](const TypeSpec& fts, const InitListItem& item) -> bool {
+      if (fts.array_rank <= 0) return false;
+      TypeSpec ets = drop_one_array_dim(fts);
+      if (!is_char_like(ets.base) || ets.ptr_level != 0) return false;
+      if (const auto* s = std::get_if<InitScalar>(&item.value))
+        return is_string_scalar(*s);
+      return false;
+    };
 
-        GlobalInit child_init = std::visit([&](const auto& v) -> GlobalInit {
-          using V = std::decay_t<decltype(v)>;
-          if constexpr (std::is_same_v<V, InitScalar>) return GlobalInit(v);
-          else return GlobalInit(*v);
-        }, item.value);
-        const TypeSpec field_ts = field_decl_type(sd.fields[idx]);
-        if (llvm_field_ty(sd.fields[idx]) == "ptr") {
-          if (auto ptr_init = try_emit_ptr_from_char_init(child_init)) {
-            field_vals[idx] = *ptr_init;
-            next_idx = idx + 1;
-            continue;
+    if (const auto* list = std::get_if<InitList>(&init)) {
+      // Detect brace elision: more items than fields, or scalar items for agg fields
+      // (excluding string literals for char array fields).
+      bool use_cursor = false;
+      if (list->items.size() > sd.fields.size()) {
+        // More items than fields could still be non-elided if designators are used.
+        // Check if any non-designated scalar targets an aggregate field.
+        bool has_designators = false;
+        for (const auto& item : list->items) {
+          if (item.field_designator || item.index_designator) { has_designators = true; break; }
+        }
+        if (!has_designators) use_cursor = true;
+      }
+      if (!use_cursor) {
+        size_t fi = 0;
+        for (size_t li = 0; li < list->items.size() && fi < sd.fields.size(); ++li, ++fi) {
+          const auto& item = list->items[li];
+          if (item.field_designator || item.index_designator) continue;
+          TypeSpec fts = field_decl_type(sd.fields[fi]);
+          bool f_is_agg = (fts.array_rank > 0) ||
+              ((fts.base == TB_STRUCT || fts.base == TB_UNION) && fts.ptr_level == 0);
+          if (f_is_agg && std::holds_alternative<InitScalar>(item.value) &&
+              !is_direct_array_scalar(fts, item)) {
+            use_cursor = true;
+            break;
           }
         }
-        field_vals[idx] = emit_const_init(field_ts, child_init);
-        next_idx = idx + 1;  // always advance; designators set the base, next follows
+      }
+
+      if (use_cursor) {
+        size_t cursor = 0;
+        for (size_t fi = 0; fi < sd.fields.size() && cursor < list->items.size(); ++fi) {
+          const auto& item = list->items[cursor];
+          // Handle designators.
+          if (item.field_designator) {
+            const auto fit = std::find_if(
+                sd.fields.begin(), sd.fields.end(),
+                [&](const HirStructField& f) { return f.name == *item.field_designator; });
+            if (fit != sd.fields.end()) {
+              fi = static_cast<size_t>(std::distance(sd.fields.begin(), fit));
+            }
+          }
+          if (fi >= sd.fields.size()) break;
+          const TypeSpec field_ts = field_decl_type(sd.fields[fi]);
+          // Check for sub-list.
+          bool has_sublist = std::holds_alternative<std::shared_ptr<InitList>>(item.value);
+          if (has_sublist) {
+            auto sub = std::get<std::shared_ptr<InitList>>(item.value);
+            ++cursor;
+            if (llvm_field_ty(sd.fields[fi]) == "ptr") {
+              GlobalInit child_init(*sub);
+              if (auto ptr_init = try_emit_ptr_from_char_init(child_init)) {
+                field_vals[fi] = *ptr_init;
+                continue;
+              }
+            }
+            field_vals[fi] = emit_const_init(field_ts, GlobalInit(*sub));
+          } else {
+            // Scalar item.
+            bool f_is_agg = (field_ts.array_rank > 0) ||
+                ((field_ts.base == TB_STRUCT || field_ts.base == TB_UNION) && field_ts.ptr_level == 0);
+            if (f_is_agg && !is_direct_array_scalar(field_ts, item)) {
+              // Brace elision: consume from flat list.
+              field_vals[fi] = emit_const_from_flat(field_ts, *list, cursor);
+            } else {
+              const auto* scalar = std::get_if<InitScalar>(&item.value);
+              ++cursor;
+              if (scalar) {
+                if (llvm_field_ty(sd.fields[fi]) == "ptr") {
+                  GlobalInit child_init(*scalar);
+                  if (auto ptr_init = try_emit_ptr_from_char_init(child_init)) {
+                    field_vals[fi] = *ptr_init;
+                    continue;
+                  }
+                }
+                field_vals[fi] = emit_const_init(field_ts, GlobalInit(*scalar));
+              }
+            }
+          }
+        }
+      } else {
+        size_t next_idx = 0;
+        for (const auto& item : list->items) {
+          size_t idx = next_idx;
+          if (item.field_designator) {
+            const auto fit = std::find_if(
+                sd.fields.begin(), sd.fields.end(),
+                [&](const HirStructField& f) { return f.name == *item.field_designator; });
+            if (fit == sd.fields.end()) continue;
+            idx = static_cast<size_t>(std::distance(sd.fields.begin(), fit));
+          } else if (item.index_designator && *item.index_designator >= 0) {
+            idx = static_cast<size_t>(*item.index_designator);
+          }
+          if (idx >= sd.fields.size()) continue;
+
+          GlobalInit child_init = std::visit([&](const auto& v) -> GlobalInit {
+            using V = std::decay_t<decltype(v)>;
+            if constexpr (std::is_same_v<V, InitScalar>) return GlobalInit(v);
+            else return GlobalInit(*v);
+          }, item.value);
+          const TypeSpec field_ts = field_decl_type(sd.fields[idx]);
+          if (llvm_field_ty(sd.fields[idx]) == "ptr") {
+            if (auto ptr_init = try_emit_ptr_from_char_init(child_init)) {
+              field_vals[idx] = *ptr_init;
+              next_idx = idx + 1;
+              continue;
+            }
+          }
+          field_vals[idx] = emit_const_init(field_ts, child_init);
+          next_idx = idx + 1;
+        }
       }
     } else if (const auto* scalar = std::get_if<InitScalar>(&init)) {
       // Scalar fallback for aggregates: treat as first field init.
@@ -940,6 +1179,26 @@ class HirEmitter {
     return (llvm_ty(ts) == "ptr") ? "null" : "zeroinitializer";
   }
 
+  // Compute the number of flat scalar initializers an aggregate type consumes
+  // when brace elision is in effect.
+  long long flat_scalar_count(const TypeSpec& ts) const {
+    if (ts.array_rank > 0) {
+      long long n = ts.array_size;
+      if (n <= 0) return 1;
+      return n * flat_scalar_count(drop_one_array_dim(ts));
+    }
+    if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0 && ts.tag) {
+      const auto it = mod_.struct_defs.find(ts.tag);
+      if (it == mod_.struct_defs.end()) return 1;
+      const auto& sd = it->second;
+      if (sd.is_union) return sd.fields.empty() ? 1 : flat_scalar_count(field_decl_type(sd.fields[0]));
+      long long count = 0;
+      for (const auto& f : sd.fields) count += flat_scalar_count(field_decl_type(f));
+      return count > 0 ? count : 1;
+    }
+    return 1;
+  }
+
   // Deduce the first dimension of an unsized array from its initializer.
   // Returns -1 if it cannot be deduced.
   long long deduce_array_size_from_init(const GlobalInit& init) {
@@ -968,8 +1227,28 @@ class HirEmitter {
   // Return a TypeSpec with the first array dimension filled in (if unsized).
   TypeSpec resolve_array_ts(const TypeSpec& ts, const GlobalInit& init) {
     if (ts.array_rank <= 0 || ts.array_size >= 0) return ts;
-    const long long deduced = deduce_array_size_from_init(init);
+    long long deduced = deduce_array_size_from_init(init);
     if (deduced <= 0) return ts;
+    // Account for brace elision: if element is aggregate and the flat item
+    // count exceeds the raw item count, divide by per-element flat count.
+    TypeSpec elem_ts = drop_one_array_dim(ts);
+    bool elem_is_agg = (elem_ts.array_rank > 0) ||
+        ((elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION) && elem_ts.ptr_level == 0);
+    if (elem_is_agg) {
+      if (const auto* list = std::get_if<InitList>(&init)) {
+        // Only apply flat-count division when ALL items are scalars
+        // (fully brace-elided). Mixed lists are handled by cursor-based
+        // consumption in emit_const_array.
+        bool all_scalar = true;
+        for (const auto& item : list->items) {
+          if (!std::holds_alternative<InitScalar>(item.value)) { all_scalar = false; break; }
+        }
+        if (all_scalar) {
+          long long fc = flat_scalar_count(elem_ts);
+          if (fc > 1) deduced = (deduced + fc - 1) / fc;
+        }
+      }
+    }
     TypeSpec out = ts;
     out.array_size = deduced;
     out.array_dims[0] = deduced;
@@ -2092,6 +2371,9 @@ class HirEmitter {
     }
 
     rhs = coerce(ctx, rhs, rhs_ts, lhs_ts);
+    const bool is_agg = (lhs_ts.base == TB_STRUCT || lhs_ts.base == TB_UNION) &&
+                        lhs_ts.ptr_level == 0 && lhs_ts.array_rank == 0;
+    if (is_agg && (rhs == "0" || rhs.empty())) rhs = "zeroinitializer";
     emit_instr(ctx, "store " + lty + " " + rhs + ", ptr " + lhs_ptr);
     return rhs;
   }
