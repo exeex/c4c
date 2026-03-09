@@ -10,6 +10,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "ir_builder.hpp"
@@ -131,13 +132,16 @@ static std::string llvm_alloca_ty(const TypeSpec& ts) {
       for (int i = 0; i < elem.array_rank; ++i) elem.array_dims[i] = elem.array_dims[i + 1];
       if (elem.array_rank > 0) elem.array_dims[elem.array_rank] = -1;
       elem.array_size = (elem.array_rank > 0) ? elem.array_dims[0] : -1;
-      return "[" + std::to_string(ts.array_size) + " x " + llvm_alloca_ty(elem) + "]";
+      std::string elem_ty = llvm_alloca_ty(elem);
+      if (elem_ty == "void") elem_ty = "i8";
+      return "[" + std::to_string(ts.array_size) + " x " + elem_ty + "]";
     }
     return "ptr";  // unknown size
   }
   if (ts.base == TB_STRUCT || ts.base == TB_UNION) {
     if (ts.tag && ts.tag[0]) return "%struct." + std::string(ts.tag);
   }
+  if (ts.base == TB_VOID) return "i8";
   return llvm_base(ts.base);
 }
 
@@ -398,6 +402,11 @@ class HirEmitter {
     std::ostringstream out;
     out << preamble_.str();
     if (!preamble_.str().empty()) out << "\n";
+    for (const auto& [name, ret_ty] : extern_call_decls_) {
+      if (mod_.fn_index.count(name)) continue;
+      out << "declare " << ret_ty << " @" << name << "(...)\n";
+    }
+    if (!extern_call_decls_.empty()) out << "\n";
     for (const auto& b : fn_bodies_) out << b;
     return out.str();
   }
@@ -406,6 +415,7 @@ class HirEmitter {
   const Module& mod_;
   std::ostringstream preamble_;
   std::vector<std::string> fn_bodies_;
+  std::unordered_map<std::string, std::string> extern_call_decls_;  // name -> ret llvm type
   std::unordered_map<std::string, std::string> str_pool_;
   int str_idx_ = 0;
 
@@ -455,6 +465,16 @@ class HirEmitter {
 
   std::string fresh_tmp(FnCtx& ctx) {
     return "%t" + std::to_string(ctx.tmp_idx++);
+  }
+
+  void record_extern_call_decl(const std::string& name, const std::string& ret_ty) {
+    if (name.empty() || mod_.fn_index.count(name)) return;
+    auto it = extern_call_decls_.find(name);
+    if (it == extern_call_decls_.end()) {
+      extern_call_decls_.emplace(name, ret_ty);
+      return;
+    }
+    if (it->second == "void" && ret_ty != "void") it->second = ret_ty;
   }
 
   std::string fresh_lbl(FnCtx& ctx, const std::string& pfx) {
@@ -735,6 +755,60 @@ class HirEmitter {
     return out;
   }
 
+  std::optional<std::string> try_emit_ptr_from_char_init(const GlobalInit& init) {
+    auto make_ptr_to_bytes = [&](const std::string& bytes) -> std::string {
+      const std::string gname = intern_str(bytes);
+      const size_t len = bytes.size() + 1;
+      return "getelementptr inbounds ([" + std::to_string(len) + " x i8], ptr " +
+             gname + ", i64 0, i64 0)";
+    };
+
+    if (const auto* scalar = std::get_if<InitScalar>(&init)) {
+      const Expr& e = get_expr(scalar->expr);
+      if (const auto* sl = std::get_if<StringLiteral>(&e.payload)) {
+        return make_ptr_to_bytes(bytes_from_string_literal(*sl));
+      }
+      return std::nullopt;
+    }
+
+    const auto* list = std::get_if<InitList>(&init);
+    if (!list) return std::nullopt;
+
+    std::string bytes;
+    size_t next_idx = 0;
+    for (const auto& item : list->items) {
+      size_t idx = next_idx;
+      if (item.index_designator && *item.index_designator >= 0) {
+        idx = static_cast<size_t>(*item.index_designator);
+      }
+      if (idx > bytes.size()) bytes.resize(idx, '\0');
+
+      GlobalInit child_init = std::visit([&](const auto& v) -> GlobalInit {
+        using V = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<V, InitScalar>) return GlobalInit(v);
+        else return GlobalInit(*v);
+      }, item.value);
+      const auto* child_scalar = std::get_if<InitScalar>(&child_init);
+      if (!child_scalar) return std::nullopt;
+
+      const Expr& ce = get_expr(child_scalar->expr);
+      int ch = 0;
+      if (const auto* c = std::get_if<CharLiteral>(&ce.payload)) {
+        ch = c->value;
+      } else if (const auto* i = std::get_if<IntLiteral>(&ce.payload)) {
+        ch = static_cast<int>(i->value);
+      } else {
+        return std::nullopt;
+      }
+
+      if (idx == bytes.size()) bytes.push_back(static_cast<char>(ch & 0xFF));
+      else bytes[idx] = static_cast<char>(ch & 0xFF);
+      next_idx = idx + 1;
+    }
+
+    return make_ptr_to_bytes(bytes);
+  }
+
   std::string emit_const_struct(const TypeSpec& ts, const GlobalInit& init) {
     if (!ts.tag || !ts.tag[0]) return "zeroinitializer";
     const auto it = mod_.struct_defs.find(ts.tag);
@@ -783,7 +857,15 @@ class HirEmitter {
           if constexpr (std::is_same_v<V, InitScalar>) return GlobalInit(v);
           else return GlobalInit(*v);
         }, item.value);
-        field_vals[idx] = emit_const_init(field_decl_type(sd.fields[idx]), child_init);
+        const TypeSpec field_ts = field_decl_type(sd.fields[idx]);
+        if (llvm_field_ty(sd.fields[idx]) == "ptr") {
+          if (auto ptr_init = try_emit_ptr_from_char_init(child_init)) {
+            field_vals[idx] = *ptr_init;
+            next_idx = idx + 1;
+            continue;
+          }
+        }
+        field_vals[idx] = emit_const_init(field_ts, child_init);
         next_idx = idx + 1;  // always advance; designators set the base, next follows
       }
     } else if (const auto* scalar = std::get_if<InitScalar>(&init)) {
@@ -1111,7 +1193,8 @@ class HirEmitter {
       const std::string elem_ty = (pts.array_rank > 0 && pts.ptr_level == 0)
                                       ? llvm_alloca_ty(pts)
                                       : llvm_ty(pts);
-      emit_instr(ctx, tmp + " = getelementptr " + elem_ty +
+      const std::string safe_elem_ty = (elem_ty == "void") ? "i8" : elem_ty;
+      emit_instr(ctx, tmp + " = getelementptr " + safe_elem_ty +
                           ", ptr " + base + ", i64 " + ix64);
       return tmp;
     }
@@ -1471,6 +1554,7 @@ class HirEmitter {
         return tmp;
       }
       const std::string ty = llvm_ty(ts);
+      if (ty == "void") return "0";
       const std::string tmp = fresh_tmp(ctx);
       emit_instr(ctx, tmp + " = load " + ty + ", ptr " + it->second);
       return tmp;
@@ -1488,6 +1572,7 @@ class HirEmitter {
         return tmp;
       }
       const std::string ty = llvm_ty(gv.type.spec);
+      if (ty == "void") return "0";
       const std::string tmp = fresh_tmp(ctx);
       emit_instr(ctx, tmp + " = load " + ty + ", ptr @" + r.name);
       return tmp;
@@ -1500,6 +1585,7 @@ class HirEmitter {
     const TypeSpec ets = resolve_expr_type(ctx, e);
     if (!has_concrete_type(ets)) return "0";
     const std::string ty = llvm_ty(ets);
+    if (ty == "void") return "0";
     const std::string tmp = fresh_tmp(ctx);
     emit_instr(ctx, tmp + " = load " + ty + ", ptr @" + r.name);
     return tmp;
@@ -1915,15 +2001,30 @@ class HirEmitter {
 
   std::string emit_rval_payload(FnCtx& ctx, const CallExpr& call, const Expr& e) {
     TypeSpec callee_ts{};
-    const std::string callee_val = emit_rval_id(ctx, call.callee, callee_ts);
+    std::string callee_val;
+    const Expr& callee_e = get_expr(call.callee);
+    bool unresolved_external_callee = false;
+    std::string unresolved_external_name;
+    if (const auto* r = std::get_if<DeclRef>(&callee_e.payload);
+        r && !r->local && !r->param_index && !r->global) {
+      // Treat unresolved decl refs in call position as external functions.
+      callee_val = "@" + r->name;
+      callee_ts = resolve_payload_type(ctx, *r);
+      unresolved_external_callee = true;
+      unresolved_external_name = r->name;
+    } else {
+      callee_val = emit_rval_id(ctx, call.callee, callee_ts);
+    }
     TypeSpec ret_spec = e.type.spec;
     if (ret_spec.base == TB_VOID && ret_spec.ptr_level == 0 && ret_spec.array_rank == 0) {
       ret_spec = resolve_payload_type(ctx, call);
     }
     const std::string ret_ty = llvm_ty(ret_spec);
+    if (unresolved_external_callee) {
+      record_extern_call_decl(unresolved_external_name, ret_ty);
+    }
 
     // Look up function signature for argument type coercion
-    const Expr& callee_e = get_expr(call.callee);
     std::string fn_name;
     if (const auto* r = std::get_if<DeclRef>(&callee_e.payload)) {
       fn_name = r->name;
@@ -1959,12 +2060,32 @@ class HirEmitter {
       return (ret_ty == "ptr") ? "null" : "0";
     }
 
+    const Function* target_fn = nullptr;
+    if (!fn_name.empty()) {
+      const auto fit = mod_.fn_index.find(fn_name);
+      if (fit != mod_.fn_index.end() && fit->second.value < mod_.functions.size()) {
+        target_fn = &mod_.functions[fit->second.value];
+      }
+    }
+
     std::string args_str;
     for (size_t i = 0; i < call.args.size(); ++i) {
       TypeSpec arg_ts{};
       std::string arg = emit_rval_id(ctx, call.args[i], arg_ts);
+      TypeSpec out_arg_ts = arg_ts;
+      if (target_fn) {
+        const bool has_void_param_list =
+            target_fn->params.size() == 1 &&
+            target_fn->params[0].type.spec.base == TB_VOID &&
+            target_fn->params[0].type.spec.ptr_level == 0 &&
+            target_fn->params[0].type.spec.array_rank == 0;
+        if (!has_void_param_list && i < target_fn->params.size()) {
+          out_arg_ts = target_fn->params[i].type.spec;
+          arg = coerce(ctx, arg, arg_ts, out_arg_ts);
+        }
+      }
       if (i) args_str += ", ";
-      args_str += llvm_ty(arg_ts) + " " + arg;
+      args_str += llvm_ty(out_arg_ts) + " " + arg;
     }
 
     if (ret_ty == "void") {
@@ -2072,8 +2193,16 @@ class HirEmitter {
     // Array fields: decay to pointer-to-first-element (no load needed)
     if (load_ts.array_rank > 0 || field_ts.array_rank > 0) {
       const TypeSpec& arr_ts = (field_ts.array_rank > 0) ? field_ts : load_ts;
+      const std::string arr_alloca_ty = llvm_alloca_ty(arr_ts);
+      if (arr_alloca_ty == "ptr") {
+        // Flexible-array members are represented as pointer fields in LLVM
+        // layout. Decay to pointer by loading the field value directly.
+        const std::string tmp = fresh_tmp(ctx);
+        emit_instr(ctx, tmp + " = load ptr, ptr " + gep);
+        return tmp;
+      }
       const std::string tmp = fresh_tmp(ctx);
-      emit_instr(ctx, tmp + " = getelementptr " + llvm_alloca_ty(arr_ts) +
+      emit_instr(ctx, tmp + " = getelementptr " + arr_alloca_ty +
                           ", ptr " + gep + ", i64 0, i64 0");
       return tmp;
     }

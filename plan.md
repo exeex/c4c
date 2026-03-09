@@ -9,6 +9,7 @@ Last updated: 2026-03-09
 ### 0) Build / Test 基本指令
 
 ```bash
+rm -rf build
 # configure（torture 預設 OFF；不要手動開）
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 
@@ -69,6 +70,20 @@ kill -9 <pid...>
    ```bash
    cmake --build build --target ctest_core -j4
    ```
+
+### 2.1) 本輪已修（2026-03-09）
+
+以下 gcc torture case 已由 fail 轉為 pass：
+
+- `llvm_gcc_c_torture_20000223_1_c`
+  - 修正重點：`CallExpr` unresolved callee 視為 external symbol，並補上 external `declare`；避免 `call void 0(...)` 與 undefined callee。
+  - 連帶修正：call 參數 coercion 依函式簽章對齊，避免 `float 0` 這類非法 IR 常數組合。
+- `llvm_gcc_c_torture_20020619_1_c`
+  - 修正重點：同上（`call void 0(...)` / missing external declaration）。
+- `llvm_gcc_c_torture_20041124_1_c`
+  - 修正重點：同上（`call void 0(...)` / missing external declaration）。
+- `llvm_gcc_c_torture_20010924_1_c`
+  - 修正重點：flexible-array 相關 global init 與 member decay 修正，避免非法 `getelementptr ptr, ...` 與 runtime segfault。
 
 ### 3) 目前核心失敗（2026-03-09）與簡短分析
 

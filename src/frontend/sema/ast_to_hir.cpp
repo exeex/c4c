@@ -906,6 +906,12 @@ class Lowerer {
         TypeSpec ts{}; ts.base = TB_ULONG;
         return append_expr(n, s, ts);
       }
+      case NK_ALIGNOF_TYPE: {
+        // Keep alignof as integer-typed constant in HIR to avoid inheriting the
+        // queried type (e.g. float), which would produce invalid LLVM constants.
+        TypeSpec ts{}; ts.base = TB_ULONG;
+        return append_expr(n, IntLiteral{0, false}, ts);
+      }
       default: {
         TypeSpec ts = n->type;
         if (ts.base == TB_VOID && n->kind != NK_CALL) {

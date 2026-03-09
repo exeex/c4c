@@ -5,6 +5,7 @@
 *.ll
 *.o
 /out
+*.log
 
 # Python cache
 __pycache__/
