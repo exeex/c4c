@@ -113,6 +113,9 @@ static std::string sanitize_llvm_ident(const std::string& raw) {
 // Non-decayed LLVM type for alloca/struct field (struct/union → %struct.TAG).
 // Handles multi-dimensional arrays recursively.
 static std::string llvm_alloca_ty(const TypeSpec& ts) {
+  // Pointer-to-array declarators (e.g. `int (*p)[4]`) carry both ptr_level and
+  // array metadata in TypeSpec; storage for the object itself is still a pointer.
+  if (ts.ptr_level > 0 && ts.is_ptr_to_array) return "ptr";
   if (ts.array_rank > 0) {
     if (ts.array_size >= 0) {
       // Build element type: drop one dimension and recurse.
@@ -152,6 +155,7 @@ static int sizeof_base(TypeBase b) {
 }
 
 static int sizeof_ts(const TypeSpec& ts) {
+  if (ts.ptr_level > 0 && ts.is_ptr_to_array) return 8;
   if (ts.ptr_level > 0 || ts.is_fn_ptr) return 8;
   if (ts.array_rank > 0) {
     if (ts.array_size > 0) {
@@ -174,14 +178,11 @@ static int sizeof_ts(const TypeSpec& ts) {
 // LLVM type string for a struct field (non-decayed: may be array or nested struct)
 static std::string llvm_field_ty(const HirStructField& f) {
   if (f.array_first_dim >= 0) {
-    // Array field: [N x elem]
-    if (f.elem_type.base == TB_STRUCT || f.elem_type.base == TB_UNION) {
-      if (f.elem_type.tag && f.elem_type.tag[0])
-        return "[" + std::to_string(f.array_first_dim) + " x %struct." +
-               std::string(f.elem_type.tag) + "]";
-    }
-    return "[" + std::to_string(f.array_first_dim) + " x " +
-           llvm_base(f.elem_type.base) + "]";
+    // Array field: [N x elem]. Keep pointer element types intact
+    // (e.g. struct S *a[13] -> [13 x ptr]).
+    std::string elem_ty = llvm_alloca_ty(f.elem_type);
+    if (elem_ty == "void") elem_ty = "i8";
+    return "[" + std::to_string(f.array_first_dim) + " x " + elem_ty + "]";
   }
   if (f.elem_type.ptr_level > 0 || f.elem_type.is_fn_ptr) return "ptr";
   if (f.elem_type.base == TB_STRUCT || f.elem_type.base == TB_UNION) {
@@ -1196,10 +1197,11 @@ class HirEmitter {
       TypeSpec i64_ts{}; i64_ts.base = TB_LONGLONG;
       const std::string ix64 = coerce(ctx, ix, ix_ts, i64_ts);
       // Element type: strip one array or pointer level with proper dim shifting.
-      // Check array_rank first so that T*[N] strips the array dim (→ T*),
-      // not the pointer level (which would wrongly give T[N]).
       pts = base_ts;
-      if (pts.array_rank > 0) {
+      if (pts.ptr_level > 0 && pts.is_ptr_to_array) {
+        // Pointer-to-array: subscript consumes the pointer layer first.
+        pts.ptr_level--;
+      } else if (pts.array_rank > 0) {
         pts = drop_one_array_dim(pts);
       } else if (pts.ptr_level > 0) {
         pts.ptr_level--;
@@ -1374,6 +1376,24 @@ class HirEmitter {
 
   TypeSpec resolve_payload_type(FnCtx& ctx, const CallExpr& c) {
     const Expr& callee_e = get_expr(c.callee);
+    if (const auto* dr_builtin = std::get_if<DeclRef>(&callee_e.payload)) {
+      if (dr_builtin->name.rfind("__builtin_", 0) == 0) {
+        if (dr_builtin->name == "__builtin_expect" && !c.args.empty())
+          return resolve_expr_type(ctx, c.args[0]);
+        if (dr_builtin->name == "__builtin_unreachable" ||
+            dr_builtin->name == "__builtin_va_start" ||
+            dr_builtin->name == "__builtin_va_end" ||
+            dr_builtin->name == "__builtin_va_copy")
+          return {};
+        if ((dr_builtin->name == "__builtin_bswap16" ||
+             dr_builtin->name == "__builtin_bswap32" ||
+             dr_builtin->name == "__builtin_bswap64") && !c.args.empty())
+          return resolve_expr_type(ctx, c.args[0]);
+        TypeSpec builtin_default{};
+        builtin_default.base = TB_INT;
+        return builtin_default;
+      }
+    }
     // For calls through (*local_var) where the local was initialized from a
     // known function, use that function's return type directly.  This handles
     // nested fn-ptr types like int(*(*)(...))(...) where TypeSpec alone is
@@ -1575,7 +1595,7 @@ class HirEmitter {
         // the va_list object, so callers like vprintf(fmt, ap) receive ptr.
         return it->second;
       }
-      if (ts.array_rank > 0) {
+      if (ts.array_rank > 0 && !ts.is_ptr_to_array) {
         const std::string tmp = fresh_tmp(ctx);
         emit_instr(ctx, tmp + " = getelementptr " + llvm_alloca_ty(ts) +
                             ", ptr " + it->second + ", i64 0, i64 0");
@@ -1591,7 +1611,7 @@ class HirEmitter {
     // Global: load
     if (r.global) {
       const auto& gv = mod_.globals[r.global->value];
-      if (gv.type.spec.array_rank > 0) {
+      if (gv.type.spec.array_rank > 0 && !gv.type.spec.is_ptr_to_array) {
         // Use resolved type (deduced from initializer) for GEP — avoids "ptr" fallback.
         const TypeSpec resolved_ts = resolve_array_ts(gv.type.spec, gv.init);
         const std::string tmp = fresh_tmp(ctx);
