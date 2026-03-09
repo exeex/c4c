@@ -13,17 +13,7 @@
 #include <utility>
 #include <vector>
 
-#include "ir_builder.hpp"
-
-// Phase 3 bootstrap: delegate to legacy IRBuilder.
-// emit_module_native() is the growing native path.
-
 namespace tinyc2ll::codegen::llvm_backend {
-
-std::string emit_module(const Module& /*mod*/, const Node* ast_root) {
-  tinyc2ll::frontend_cxx::IRBuilder builder;
-  return builder.emit_program(const_cast<tinyc2ll::frontend_cxx::Node*>(ast_root));
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HirEmitter: native HIR → LLVM IR text emitter

@@ -9,8 +9,8 @@
 
 namespace tinyc2ll::frontend_cxx {
 
-// Phase-1 semantic facade extracted from IRBuilder.
-// Keep function signatures simple so legacy IRBuilder call sites remain stable.
+// Phase-1 semantic facade for semantic/type utilities used by the frontend.
+// Keep function signatures simple for parser/sema integration points.
 TypeSpec make_ts(TypeBase base);
 TypeSpec int_ts();
 TypeSpec void_ts();

@@ -7,11 +7,13 @@
 #include <vector>
 
 #include "arena.hpp"
+#include "ast_to_hir.hpp"
 #include "ast.hpp"
-#include "ir_builder.hpp"
+#include "hir_to_llvm.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "preprocessor.hpp"
+#include "sema_validate.hpp"
 #include "token.hpp"
 
 namespace tc = tinyc2ll::frontend_cxx;
@@ -116,9 +118,15 @@ int main(int argc, char **argv) {
       return 0;
     }
 
-    // IR emission phase (M3)
-    tc::IRBuilder builder;
-    std::string ir = builder.emit_program(prog);
+    tc::sema::ValidateResult sema_result = tc::sema::validate_program(prog);
+    if (!sema_result.ok) {
+      tc::sema::print_diagnostics(sema_result.diagnostics, input);
+      return 1;
+    }
+
+    tc::sema_ir::phase2::hir::Module hir_mod =
+        tc::sema_ir::phase2::hir::lower_ast_to_hir(prog);
+    std::string ir = tinyc2ll::codegen::llvm_backend::emit_module_native(hir_mod);
 
     // Write to output file or stdout
     if (!output.empty()) {
