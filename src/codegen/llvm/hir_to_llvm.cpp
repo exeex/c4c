@@ -151,8 +151,7 @@ static int sizeof_base(TypeBase b) {
     case TB_INT: case TB_UINT: case TB_FLOAT:  return 4;
     case TB_LONG: case TB_ULONG:               return 8;
     case TB_LONGLONG: case TB_ULONGLONG:       return 8;
-    case TB_DOUBLE:                            return 8;
-    case TB_LONGDOUBLE:                        return 16;
+    case TB_DOUBLE: case TB_LONGDOUBLE:        return 8;
     case TB_VA_LIST:                           return 32;
     default:                                   return 4;
   }
