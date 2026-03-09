@@ -14,6 +14,7 @@ Primary acceptance metric is full-suite pass rate from `ctest -j`.
 3. Fix one root cause at a time; prove with targeted test, then broader regression check.
 4. Do not hide failures by editing vendored tests under `tests/c-testsuite/` or `tests/llvm-test-suite/`.
 5. If a test is temporarily allowlisted/disabled, record exact reason + unblock plan in `plan.md`.
+6. If a patch breaks core functionality tests (especially `c_testsuite` cases), inspect and compare corresponding logic in `ref/claudes-c-compiler/src/frontend/` before further patching; prefer adopting a proven handling pattern that avoids fixing A while breaking B.
 
 ## Standard Workflow
 
