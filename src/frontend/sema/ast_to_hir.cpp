@@ -1746,23 +1746,40 @@ class Lowerer {
         const TypeSpec clit_ts = n->type;
         const Node* init_list = (n->left && n->left->kind == NK_INIT_LIST) ? n->left : nullptr;
 
+        // Deduce array size from init list if the type is unsized (e.g. int[]).
+        TypeSpec actual_ts = clit_ts;
+        if (actual_ts.array_rank > 0 && actual_ts.array_size < 0 && init_list) {
+          long long count = init_list->n_children;
+          for (int ci = 0; ci < init_list->n_children; ++ci) {
+            const Node* item = init_list->children[ci];
+            if (item && item->kind == NK_INIT_ITEM && item->is_designated &&
+                item->is_index_desig && item->desig_val + 1 > count)
+              count = item->desig_val + 1;
+          }
+          actual_ts.array_size = count;
+          actual_ts.array_dims[0] = count;
+        }
+
         LocalDecl d{};
         d.id = next_local_id();
         d.name = "<clit>";
-        d.type = qtype_from(clit_ts, ValueCategory::LValue);
+        d.type = qtype_from(actual_ts, ValueCategory::LValue);
         d.storage = StorageClass::Auto;
         d.span = make_span(n);
         const LocalId lid = d.id;
-        const TypeSpec decl_ts = clit_ts;
+        const TypeSpec decl_ts = actual_ts;
 
         const bool is_struct_or_union =
             (decl_ts.base == TB_STRUCT || decl_ts.base == TB_UNION) &&
             decl_ts.ptr_level == 0 && decl_ts.array_rank == 0;
         const bool is_array = decl_ts.array_rank > 0;
 
-        if ((is_struct_or_union || is_array) && init_list) {
+        if (is_struct_or_union && init_list) {
+          // Struct/union: emit zeroinitializer store first, then field assignments below.
           TypeSpec int_ts{}; int_ts.base = TB_INT;
           d.init = append_expr(n, IntLiteral{0, false}, int_ts);
+        } else if (is_array) {
+          // Array: no init store; element-by-element assignments follow below.
         } else if (init_list && init_list->n_children > 0) {
           d.init = lower_expr(ctx, init_list->children[0]);
         } else if (n->left && !init_list) {
