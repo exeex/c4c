@@ -3031,6 +3031,111 @@ class HirEmitter {
         emit_instr(ctx, tmp + " = call " + fty + " " + intrinsic + "(" + fty + " " + arg + ")");
         return tmp;
       }
+      // __builtin_ffs{,l,ll}(x) → (x==0) ? 0 : (cttz(x)+1)
+      if ((fn_name == "__builtin_ffs"  || fn_name == "__builtin_ffsl" ||
+           fn_name == "__builtin_ffsll") && call.args.size() == 1) {
+        TypeSpec arg_ts{};
+        std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
+        // Coerce to i32 or i64 depending on type
+        const bool is_ll = (fn_name == "__builtin_ffsll");
+        const std::string ity = is_ll ? "i64" : "i32";
+        TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
+        arg = coerce(ctx, arg, arg_ts, target_ts);
+        const std::string cttz = fresh_tmp(ctx);
+        emit_instr(ctx, cttz + " = call " + ity + " @llvm.cttz." + ity +
+                             "(" + ity + " " + arg + ", i1 false)");
+        const std::string plus1 = fresh_tmp(ctx);
+        emit_instr(ctx, plus1 + " = add " + ity + " " + cttz + ", 1");
+        const std::string is_zero = fresh_tmp(ctx);
+        emit_instr(ctx, is_zero + " = icmp eq " + ity + " " + arg + ", 0");
+        const std::string sel = fresh_tmp(ctx);
+        emit_instr(ctx, sel + " = select i1 " + is_zero + ", " + ity + " 0, " + ity + " " + plus1);
+        // Always return i32
+        if (is_ll) {
+          const std::string trunc = fresh_tmp(ctx);
+          emit_instr(ctx, trunc + " = trunc i64 " + sel + " to i32");
+          return trunc;
+        }
+        return sel;
+      }
+      // __builtin_ctz{,l,ll}(x) → cttz(x, undef_if_zero=true)
+      if ((fn_name == "__builtin_ctz"  || fn_name == "__builtin_ctzl" ||
+           fn_name == "__builtin_ctzll") && call.args.size() == 1) {
+        TypeSpec arg_ts{};
+        std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
+        const bool is_ll = (fn_name == "__builtin_ctzll");
+        const std::string ity = is_ll ? "i64" : "i32";
+        TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
+        arg = coerce(ctx, arg, arg_ts, target_ts);
+        const std::string tmp = fresh_tmp(ctx);
+        emit_instr(ctx, tmp + " = call " + ity + " @llvm.cttz." + ity +
+                             "(" + ity + " " + arg + ", i1 true)");
+        if (is_ll) {
+          const std::string trunc = fresh_tmp(ctx);
+          emit_instr(ctx, trunc + " = trunc i64 " + tmp + " to i32");
+          return trunc;
+        }
+        return tmp;
+      }
+      // __builtin_clz{,l,ll}(x) → ctlz(x, undef_if_zero=true)
+      if ((fn_name == "__builtin_clz"  || fn_name == "__builtin_clzl" ||
+           fn_name == "__builtin_clzll") && call.args.size() == 1) {
+        TypeSpec arg_ts{};
+        std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
+        const bool is_ll = (fn_name == "__builtin_clzll");
+        const std::string ity = is_ll ? "i64" : "i32";
+        TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
+        arg = coerce(ctx, arg, arg_ts, target_ts);
+        const std::string tmp = fresh_tmp(ctx);
+        emit_instr(ctx, tmp + " = call " + ity + " @llvm.ctlz." + ity +
+                             "(" + ity + " " + arg + ", i1 true)");
+        if (is_ll) {
+          const std::string trunc = fresh_tmp(ctx);
+          emit_instr(ctx, trunc + " = trunc i64 " + tmp + " to i32");
+          return trunc;
+        }
+        return tmp;
+      }
+      // __builtin_popcount{,l,ll}(x) → ctpop(x)
+      if ((fn_name == "__builtin_popcount"  || fn_name == "__builtin_popcountl" ||
+           fn_name == "__builtin_popcountll") && call.args.size() == 1) {
+        TypeSpec arg_ts{};
+        std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
+        const bool is_ll = (fn_name == "__builtin_popcountll");
+        const std::string ity = is_ll ? "i64" : "i32";
+        TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
+        arg = coerce(ctx, arg, arg_ts, target_ts);
+        const std::string tmp = fresh_tmp(ctx);
+        emit_instr(ctx, tmp + " = call " + ity + " @llvm.ctpop." + ity +
+                             "(" + ity + " " + arg + ")");
+        if (is_ll) {
+          const std::string trunc = fresh_tmp(ctx);
+          emit_instr(ctx, trunc + " = trunc i64 " + tmp + " to i32");
+          return trunc;
+        }
+        return tmp;
+      }
+      // __builtin_parity{,l,ll}(x) → ctpop(x) & 1
+      if ((fn_name == "__builtin_parity"  || fn_name == "__builtin_parityl" ||
+           fn_name == "__builtin_parityll") && call.args.size() == 1) {
+        TypeSpec arg_ts{};
+        std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
+        const bool is_ll = (fn_name == "__builtin_parityll");
+        const std::string ity = is_ll ? "i64" : "i32";
+        TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
+        arg = coerce(ctx, arg, arg_ts, target_ts);
+        const std::string pop = fresh_tmp(ctx);
+        emit_instr(ctx, pop + " = call " + ity + " @llvm.ctpop." + ity +
+                            "(" + ity + " " + arg + ")");
+        const std::string tmp = fresh_tmp(ctx);
+        emit_instr(ctx, tmp + " = and " + ity + " " + pop + ", 1");
+        if (is_ll) {
+          const std::string trunc = fresh_tmp(ctx);
+          emit_instr(ctx, trunc + " = trunc i64 " + tmp + " to i32");
+          return trunc;
+        }
+        return tmp;
+      }
       // Unknown builtin: emit as 0/null
       if (ret_ty == "void") return "";
       return (ret_ty == "ptr") ? "null" : "0";
