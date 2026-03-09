@@ -299,6 +299,16 @@ bool implicit_convertible(const TypeSpec& dst_raw, const TypeSpec& src_raw,
       }
       return same_tagged_type(dst, src);
     }
+    // Allow signed/unsigned pointer pairs of the same underlying size
+    // (GCC warns but permits; required for many C test-suite programs).
+    auto signed_unsigned_pair = [](TypeBase a, TypeBase b) {
+      return (a == TB_CHAR    && b == TB_UCHAR)   || (a == TB_UCHAR   && b == TB_CHAR)   ||
+             (a == TB_SHORT   && b == TB_USHORT)  || (a == TB_USHORT  && b == TB_SHORT)  ||
+             (a == TB_INT     && b == TB_UINT)    || (a == TB_UINT    && b == TB_INT)    ||
+             (a == TB_LONG    && b == TB_ULONG)   || (a == TB_ULONG   && b == TB_LONG)   ||
+             (a == TB_LONGLONG && b == TB_ULONGLONG) || (a == TB_ULONGLONG && b == TB_LONGLONG);
+    };
+    if (signed_unsigned_pair(dst.base, src.base)) return true;
     return dst.base == src.base;
   }
 
@@ -852,7 +862,7 @@ class Validator {
       case NK_DEREF: {
         ExprInfo base = infer_expr(n->left);
         out.valid = base.valid;
-        out.type = base.type;
+        out.type = decay_array(base.type);
         out.is_lvalue = true;
         if (out.type.ptr_level > 0) out.type.ptr_level -= 1;
         // is_const=true with ptr_level>0 means the *pointee* is const, not the
@@ -963,7 +973,9 @@ class Validator {
             return out;
           }
         }
-        out.valid = true;
+        // Unknown function: don't infer a type (to avoid false-positive
+        // incompatible-type errors on the result).
+        out.valid = false;
         return out;
       }
       case NK_CAST: {
@@ -1006,14 +1018,16 @@ class Validator {
         ExprInfo l = infer_expr(n->left);
         ExprInfo r = infer_expr(n->right);
         out.valid = true;
-        // Pointer arithmetic: if one operand is a pointer and op is + or -, the
-        // result has the pointer type so subsequent assignment checks don't fire.
+        // Pointer arithmetic: if one operand is a pointer/array and op is + or -,
+        // the result has the pointer type so subsequent assignment checks don't fire.
         if (n->op && n->op[1] == '\0' &&
             (n->op[0] == '+' || n->op[0] == '-')) {
-          if (l.type.ptr_level > 0 && r.type.ptr_level == 0) {
-            out.type = l.type;
-          } else if (r.type.ptr_level > 0 && l.type.ptr_level == 0) {
-            out.type = r.type;
+          TypeSpec lt = decay_array(l.type);
+          TypeSpec rt = decay_array(r.type);
+          if (lt.ptr_level > 0 && rt.ptr_level == 0) {
+            out.type = lt;
+          } else if (rt.ptr_level > 0 && lt.ptr_level == 0) {
+            out.type = rt;
           }
           // ptr - ptr yields ptrdiff_t; keep make_int_ts() default.
         }

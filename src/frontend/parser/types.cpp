@@ -707,7 +707,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             bool inner_union = (cur().kind == TokenKind::KwUnion);
             consume();
             Node* inner = parse_struct_or_union(inner_union);
-            if (inner && parsing_top_level_context_) struct_defs_.push_back(inner);
+            if (inner) struct_defs_.push_back(inner);
             // Parse optional declarator (name, *name, name[], etc.)
             // This handles: struct S s; struct S *p; struct S arr[N]; (anonymous: struct S;)
             TypeSpec anon_fts{};
@@ -878,7 +878,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
 
     // Record concrete struct/union definition for parse-time offsetof evaluation.
     if (sd->name) struct_tag_def_map_[sd->name] = sd;
-    if (parsing_top_level_context_) struct_defs_.push_back(sd);
+    struct_defs_.push_back(sd);
     return sd;
 }
 
