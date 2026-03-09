@@ -1738,6 +1738,111 @@ class Lowerer {
         TypeSpec ts{}; ts.base = TB_ULONG;
         return append_expr(n, IntLiteral{0, false}, ts);
       }
+      case NK_COMPOUND_LIT: {
+        // A compound literal (T){ ... } is an lvalue with automatic storage
+        // duration.  Create an anonymous local, initialize it, and return a
+        // DeclRef so callers can take its address or load from it.
+        if (!ctx) break;  // global scope: handled elsewhere, fall to default
+        const TypeSpec clit_ts = n->type;
+        const Node* init_list = (n->left && n->left->kind == NK_INIT_LIST) ? n->left : nullptr;
+
+        LocalDecl d{};
+        d.id = next_local_id();
+        d.name = "<clit>";
+        d.type = qtype_from(clit_ts, ValueCategory::LValue);
+        d.storage = StorageClass::Auto;
+        d.span = make_span(n);
+        const LocalId lid = d.id;
+        const TypeSpec decl_ts = clit_ts;
+
+        const bool is_struct_or_union =
+            (decl_ts.base == TB_STRUCT || decl_ts.base == TB_UNION) &&
+            decl_ts.ptr_level == 0 && decl_ts.array_rank == 0;
+        const bool is_array = decl_ts.array_rank > 0;
+
+        if ((is_struct_or_union || is_array) && init_list) {
+          TypeSpec int_ts{}; int_ts.base = TB_INT;
+          d.init = append_expr(n, IntLiteral{0, false}, int_ts);
+        } else if (init_list && init_list->n_children > 0) {
+          d.init = lower_expr(ctx, init_list->children[0]);
+        } else if (n->left && !init_list) {
+          d.init = lower_expr(ctx, n->left);
+        }
+
+        ctx->local_types[lid.value] = decl_ts;
+        append_stmt(*ctx, Stmt{StmtPayload{std::move(d)}, make_span(n)});
+
+        DeclRef dr{}; dr.name = "<clit>"; dr.local = lid;
+        ExprId base_id = append_expr(n, dr, decl_ts, ValueCategory::LValue);
+
+        // Emit struct/union field-by-field initialization.
+        if (is_struct_or_union && init_list && decl_ts.tag) {
+          const auto sit = module_->struct_defs.find(decl_ts.tag);
+          if (sit != module_->struct_defs.end()) {
+            const auto& sd = sit->second;
+            size_t fi = 0;
+            for (int ci = 0; ci < init_list->n_children && fi < sd.fields.size(); ++ci) {
+              const Node* item = init_list->children[ci];
+              if (!item) { ++fi; continue; }
+              const Node* val_node = item;
+              if (item->kind == NK_INIT_ITEM) {
+                val_node = item->left ? item->left : item->right;
+                if (!val_node) val_node = item->init;
+                // Handle designated initializers.
+                if (item->is_designated && !item->is_index_desig && item->desig_field) {
+                  for (size_t k = 0; k < sd.fields.size(); ++k) {
+                    if (sd.fields[k].name == item->desig_field) { fi = k; break; }
+                  }
+                }
+              }
+              if (!val_node || fi >= sd.fields.size()) { ++fi; continue; }
+              const HirStructField& fld = sd.fields[fi];
+              TypeSpec field_ts = field_type_of(fld);
+              MemberExpr me{}; me.base = base_id; me.field = fld.name; me.is_arrow = false;
+              ExprId me_id = append_expr(n, me, field_ts, ValueCategory::LValue);
+              ExprId val_id = lower_expr(ctx, val_node);
+              AssignExpr ae{}; ae.lhs = me_id; ae.rhs = val_id;
+              ExprId ae_id = append_expr(n, ae, field_ts);
+              ExprStmt es{}; es.expr = ae_id;
+              append_stmt(*ctx, Stmt{StmtPayload{es}, make_span(n)});
+              ++fi;
+            }
+          }
+        }
+
+        // Emit array element-by-element initialization.
+        if (is_array && init_list) {
+          TypeSpec elem_ts = decl_ts;
+          elem_ts.array_rank--;
+          elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
+          const long long bound = decl_ts.array_size > 0 ? decl_ts.array_size : (1LL << 20);
+          long long next_idx = 0;
+          for (int ci = 0; ci < init_list->n_children && next_idx < bound; ++ci) {
+            const Node* item = init_list->children[ci];
+            if (!item) { ++next_idx; continue; }
+            long long idx = next_idx;
+            const Node* val_node = item;
+            if (item->kind == NK_INIT_ITEM) {
+              val_node = item->left ? item->left : item->right;
+              if (!val_node) val_node = item->init;
+              if (item->is_designated && item->is_index_desig) idx = item->desig_val;
+            }
+            if (!val_node) { ++next_idx; continue; }
+            TypeSpec idx_ts{}; idx_ts.base = TB_INT;
+            ExprId idx_id = append_expr(n, IntLiteral{idx, false}, idx_ts);
+            IndexExpr ie{}; ie.base = base_id; ie.index = idx_id;
+            ExprId ie_id = append_expr(n, ie, elem_ts, ValueCategory::LValue);
+            ExprId val_id = lower_expr(ctx, val_node);
+            AssignExpr ae{}; ae.lhs = ie_id; ae.rhs = val_id;
+            ExprId ae_id = append_expr(n, ae, elem_ts);
+            ExprStmt es{}; es.expr = ae_id;
+            append_stmt(*ctx, Stmt{StmtPayload{es}, make_span(n)});
+            next_idx = idx + 1;
+          }
+        }
+
+        return base_id;
+      }
       default: {
         TypeSpec ts = n->type;
         if (ts.base == TB_VOID && n->kind != NK_CALL) {
