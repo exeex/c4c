@@ -70,6 +70,17 @@ Node* Parser::parse_local_decl() {
         return make_node(NK_EMPTY, ln);
     }
 
+    // declaration-only tag type in local scope: `enum/struct/union ... ;`
+    if (check(TokenKind::Semi) &&
+        (base_ts.base == TB_STRUCT || base_ts.base == TB_UNION ||
+         base_ts.base == TB_ENUM)) {
+        consume();  // consume ;
+        if (base_ts.base == TB_ENUM && last_enum_def_) {
+            return last_enum_def_;
+        }
+        return make_node(NK_EMPTY, ln);
+    }
+
     // Collect all declarators for this declaration
     std::vector<Node*> decls;
     do {
@@ -266,6 +277,9 @@ Node* Parser::parse_top_level() {
         (base_ts.base == TB_STRUCT || base_ts.base == TB_UNION ||
          base_ts.base == TB_ENUM)) {
         consume();  // consume ;
+        if (base_ts.base == TB_ENUM && last_enum_def_) {
+            return last_enum_def_;
+        }
         return make_node(NK_EMPTY, ln);
     }
 

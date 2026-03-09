@@ -7,7 +7,7 @@
 namespace tinyc2ll::frontend_cxx {
 Parser::Parser(std::vector<Token> tokens, Arena& arena)
     : tokens_(std::move(tokens)), pos_(0), arena_(arena), anon_counter_(0),
-      had_error_(false), parsing_top_level_context_(false) {
+      had_error_(false), parsing_top_level_context_(false), last_enum_def_(nullptr) {
     // Pre-seed well-known typedef names from standard / system headers
     // so the parser can disambiguate type-name vs identifier.
     static const char* seed[] = {

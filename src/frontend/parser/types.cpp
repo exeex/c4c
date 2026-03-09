@@ -71,6 +71,7 @@ void Parser::skip_asm() {
 // ── type parsing ──────────────────────────────────────────────────────────────
 
 TypeSpec Parser::parse_base_type() {
+    last_enum_def_ = nullptr;
     TypeSpec ts{};
     ts.array_size = -1;
     ts.array_rank = 0;
@@ -254,6 +255,7 @@ TypeSpec Parser::parse_base_type() {
     }
     if (has_enum) {
         Node* ed = parse_enum();
+        last_enum_def_ = ed;
         ts.base = TB_ENUM;
         ts.tag  = ed ? ed->name : nullptr;
         return ts;
@@ -705,7 +707,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             bool inner_union = (cur().kind == TokenKind::KwUnion);
             consume();
             Node* inner = parse_struct_or_union(inner_union);
-            if (inner) struct_defs_.push_back(inner);
+            if (inner && parsing_top_level_context_) struct_defs_.push_back(inner);
             // Parse optional declarator (name, *name, name[], etc.)
             // This handles: struct S s; struct S *p; struct S arr[N]; (anonymous: struct S;)
             TypeSpec anon_fts{};
@@ -763,7 +765,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         if (check(TokenKind::KwEnum)) {
             consume();
             Node* ed = parse_enum();
-            if (ed) struct_defs_.push_back(ed);
+            if (ed && parsing_top_level_context_) struct_defs_.push_back(ed);
             // After the enum body, there may be one or more field declarators:
             // e.g.  enum { X } x;   or   enum E { A, B } kind;
             // If the next token starts a declarator (not ; or }), parse it.
@@ -876,7 +878,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
 
     // Record concrete struct/union definition for parse-time offsetof evaluation.
     if (sd->name) struct_tag_def_map_[sd->name] = sd;
-    struct_defs_.push_back(sd);
+    if (parsing_top_level_context_) struct_defs_.push_back(sd);
     return sd;
 }
 
@@ -961,7 +963,7 @@ Node* Parser::parse_enum() {
             ed->enum_vals[i]  = vals[i];
         }
     }
-    struct_defs_.push_back(ed);
+    if (parsing_top_level_context_) struct_defs_.push_back(ed);
     return ed;
 }
 

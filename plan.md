@@ -46,7 +46,7 @@ Last updated: 2026-03-09
 
 1. [Done] 將 enum 常數值改為 scope-aware 結構（與 `scopes_` 同步 push/pop），避免名稱污染。  
 2. [Done] `eval_int_const_expr` 查值先走 local-scope，再 fallback global enum map。  
-3. [Todo] 補最小回歸測試：  
+3. [Done] 補最小回歸測試：  
    - 函式內 local enum 與 global enum 同名，不同值。  
    - 離開 block 後 `switch case` 仍使用正確外層 enum 值。
 
@@ -56,9 +56,16 @@ Last updated: 2026-03-09
   - `enum_const_vals_global_` + `enum_const_vals_scopes_` 雙層查找。
   - `enter_scope()/leave_scope()` 同步維護 local enum value scope。
   - `case` 常數折疊改用 scope-aware enum lookup。
+- 已在 parser 補齊 local enum declaration-only 的 AST 保留，並避免 local enum 被錯誤前置為 top-level：
+  - `src/frontend/parser/types.cpp`
+  - `src/frontend/parser/declarations.cpp`
+  - `src/frontend/parser/parser.hpp`
+  - `src/frontend/parser/parse.cpp`
 - 驗證：
   - `cmake --build build -j4` ✅
   - `ctest --test-dir build -R tiny_c2ll_tests --output-on-failure` ✅
+  - `ctest --test-dir build -R '^positive_sema_ok_enum_scope_' --output-on-failure` ✅
+  - `ctest --test-dir build -R 'tiny_c2ll_tests|negative_tests_bad_switch_duplicate_case|negative_tests_bad_switch_case_non_constant_expr|negative_tests_bad_enum_non_integer_init' --output-on-failure` ✅
 
 ## Agent Handoff (Claude 接手用)
 

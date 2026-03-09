@@ -37,6 +37,8 @@ set(EXAMPLE_C "${PROJECT_SOURCE_DIR}/tests/tiny_c2ll/example.c")
 set(EXAMPLE_LL "${CMAKE_BINARY_DIR}/example.ll")
 file(GLOB NEGATIVE_TEST_SRCS CONFIGURE_DEPENDS
      "${PROJECT_SOURCE_DIR}/tests/tiny_c2ll/bad_*.c")
+file(GLOB POSITIVE_SEMA_TEST_SRCS CONFIGURE_DEPENDS
+     "${PROJECT_SOURCE_DIR}/tests/tiny_c2ll/ok_*.c")
 option(NEGATIVE_TESTS_ENFORCE "Require negative_tests bad_*.c cases to fail compilation (non-zero exit)" ON)
 option(ENABLE_LLVM_GCC_C_TORTURE_TESTS
     "Register llvm gcc-c-torture execute tests (resource-heavy during migration)"
@@ -186,6 +188,19 @@ foreach(src IN LISTS NEGATIVE_TEST_SRCS)
             -P "${PROJECT_SOURCE_DIR}/tests/cmake/run_tiny_c2ll_negative_case.cmake"
   )
   set_tests_properties("${test_name}" PROPERTIES LABELS "negative_tests")
+endforeach()
+
+foreach(src IN LISTS POSITIVE_SEMA_TEST_SRCS)
+  get_filename_component(stem "${src}" NAME_WE)
+  set(test_name "positive_sema_${stem}")
+  add_test(
+    NAME "${test_name}"
+    COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:frontend_cxx_next>
+            -DSRC=${src}
+            -P "${PROJECT_SOURCE_DIR}/tests/cmake/run_tiny_c2ll_positive_case.cmake"
+  )
+  set_tests_properties("${test_name}" PROPERTIES LABELS "positive_sema")
 endforeach()
 
 # Temporarily disabled with frontend_cxx_preprocessor_tests target.
