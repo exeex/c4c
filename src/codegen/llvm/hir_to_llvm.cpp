@@ -429,6 +429,9 @@ class HirEmitter {
     std::unordered_map<uint32_t, std::string> continue_redirect;
     // user label name → LLVM label
     std::unordered_map<std::string, std::string> user_labels;
+    // local_id.value → return TypeSpec when calling through that fn-ptr local
+    // Populated when a fn-ptr local is initialized from a known function.
+    std::unordered_map<uint32_t, TypeSpec> local_fn_ret_types;
   };
 
   // ── Instruction helpers ───────────────────────────────────────────────────
@@ -1271,6 +1274,28 @@ class HirEmitter {
 
   TypeSpec resolve_payload_type(FnCtx& ctx, const CallExpr& c) {
     const Expr& callee_e = get_expr(c.callee);
+    // For calls through (*local_var) where the local was initialized from a
+    // known function, use that function's return type directly.  This handles
+    // nested fn-ptr types like int(*(*)(...))(...) where TypeSpec alone is
+    // insufficient to distinguish the return type from a simple fn-ptr.
+    if (const auto* u = std::get_if<UnaryExpr>(&callee_e.payload)) {
+      if (u->op == UnaryOp::Deref) {
+        const Expr& inner_e = get_expr(u->operand);
+        if (const auto* dr = std::get_if<DeclRef>(&inner_e.payload)) {
+          if (dr->local) {
+            const auto frt_it = ctx.local_fn_ret_types.find(dr->local->value);
+            if (frt_it != ctx.local_fn_ret_types.end()) return frt_it->second;
+          }
+        }
+      }
+    }
+    // Direct call through a local fn-ptr local without explicit deref: local(...)
+    if (const auto* dr0 = std::get_if<DeclRef>(&callee_e.payload)) {
+      if (dr0->local) {
+        const auto frt_it = ctx.local_fn_ret_types.find(dr0->local->value);
+        if (frt_it != ctx.local_fn_ret_types.end()) return frt_it->second;
+      }
+    }
     if (const auto* r = std::get_if<DeclRef>(&callee_e.payload)) {
       const auto fit = mod_.fn_index.find(r->name);
       if (fit != mod_.fn_index.end() && fit->second.value < mod_.functions.size()) {
@@ -2067,6 +2092,18 @@ class HirEmitter {
 
   void emit_stmt_impl(FnCtx& ctx, const LocalDecl& d) {
     if (!d.init) return;
+    // If this is a fn-ptr local initialized from a known function, track the
+    // function's return type so nested fn-ptr calls resolve correctly.
+    if (d.type.spec.is_fn_ptr) {
+      const Expr& init_e = get_expr(*d.init);
+      if (const auto* dr = std::get_if<DeclRef>(&init_e.payload)) {
+        const auto fit = mod_.fn_index.find(dr->name);
+        if (fit != mod_.fn_index.end() && fit->second.value < mod_.functions.size()) {
+          ctx.local_fn_ret_types[d.id.value] =
+              mod_.functions[fit->second.value].return_type.spec;
+        }
+      }
+    }
     TypeSpec rhs_ts{};
     std::string rhs = emit_rval_id(ctx, *d.init, rhs_ts);
     const std::string ty   = llvm_ty(d.type.spec);

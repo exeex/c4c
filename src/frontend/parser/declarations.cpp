@@ -333,7 +333,10 @@ Node* Parser::parse_top_level() {
             expect(TokenKind::RParen);  // close function's own params
         }
         expect(TokenKind::RParen);  // close (*name...)
-        if (check(TokenKind::LParen)) skip_paren_group();  // skip return-fptr params
+        if (check(TokenKind::LParen)) {
+            skip_paren_group();  // skip return-fptr params
+            ts.is_fn_ptr = true; // return type is a function pointer
+        }
         if (!fn_returning_fptr) is_fptr_global = true;
     } else {
     parse_declarator(ts, &decl_name);
