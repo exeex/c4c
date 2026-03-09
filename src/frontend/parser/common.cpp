@@ -189,6 +189,9 @@ bool eval_const_int(Node* n, long long* out,
         *out = n->ival;
         return true;
     }
+    if (n->kind == NK_CAST && n->left) {
+        return eval_const_int(n->left, out, struct_map);
+    }
     if (n->kind == NK_OFFSETOF) {
         if (n->type.base == TB_STRUCT || n->type.base == TB_UNION) {
             return compute_offsetof(n->type.tag, n->name, struct_map, out);
@@ -211,11 +214,13 @@ bool eval_const_int(Node* n, long long* out,
         // For non-literals, return a conservative estimate
         return false;  // complex: skip for now
     }
-    if (n->kind == NK_UNARY && n->op && strcmp(n->op, "-") == 0 && n->left) {
+    if (n->kind == NK_UNARY && n->op && n->left) {
         long long v;
         if (!eval_const_int(n->left, &v, struct_map)) return false;
-        *out = -v;
-        return true;
+        if (strcmp(n->op, "-") == 0) { *out = -v; return true; }
+        if (strcmp(n->op, "+") == 0) { *out = v; return true; }
+        if (strcmp(n->op, "~") == 0) { *out = ~v; return true; }
+        if (strcmp(n->op, "!") == 0) { *out = !v; return true; }
     }
     if (n->kind == NK_BINOP && n->op) {
         long long l, r;
@@ -231,6 +236,19 @@ bool eval_const_int(Node* n, long long* out,
         if (strcmp(n->op, "&")  == 0) { *out = l & r;  return true; }
         if (strcmp(n->op, "|")  == 0) { *out = l | r;  return true; }
         if (strcmp(n->op, "^")  == 0) { *out = l ^ r;  return true; }
+        if (strcmp(n->op, "<")  == 0) { *out = l < r;  return true; }
+        if (strcmp(n->op, "<=") == 0) { *out = l <= r; return true; }
+        if (strcmp(n->op, ">")  == 0) { *out = l > r;  return true; }
+        if (strcmp(n->op, ">=") == 0) { *out = l >= r; return true; }
+        if (strcmp(n->op, "==") == 0) { *out = l == r; return true; }
+        if (strcmp(n->op, "!=") == 0) { *out = l != r; return true; }
+        if (strcmp(n->op, "&&") == 0) { *out = (l && r); return true; }
+        if (strcmp(n->op, "||") == 0) { *out = (l || r); return true; }
+    }
+    if (n->kind == NK_TERNARY && n->cond && n->then_ && n->else_) {
+        long long c;
+        if (!eval_const_int(n->cond, &c, struct_map)) return false;
+        return eval_const_int(c ? n->then_ : n->else_, out, struct_map);
     }
     return false;
 }

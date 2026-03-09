@@ -237,6 +237,11 @@ static std::string fp_to_hex(double v) {
   return buf;
 }
 
+static std::string fp_to_float_literal(float v) {
+  // LLVM textual IR expects float constants in a hex form.
+  return fp_to_hex(static_cast<double>(v));
+}
+
 static int hex_digit(unsigned char c) {
   if (c >= '0' && c <= '9') return c - '0';
   if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
@@ -667,10 +672,14 @@ class HirEmitter {
           if (p.value == 0) return "null";
           return "inttoptr (i64 " + std::to_string(p.value) + " to ptr)";
         }
-        if (is_float_base(expected_ts.base) && expected_ts.ptr_level == 0)
+        if (expected_ts.base == TB_FLOAT && expected_ts.ptr_level == 0 && expected_ts.array_rank == 0)
+          return fp_to_float_literal(static_cast<float>(p.value));
+        if (is_float_base(expected_ts.base) && expected_ts.ptr_level == 0 && expected_ts.array_rank == 0)
           return fp_to_hex(static_cast<double>(p.value));
         return std::to_string(p.value);
       } else if constexpr (std::is_same_v<T, FloatLiteral>) {
+        if (expected_ts.base == TB_FLOAT && expected_ts.ptr_level == 0 && expected_ts.array_rank == 0)
+          return fp_to_float_literal(static_cast<float>(p.value));
         return fp_to_hex(p.value);
       } else if constexpr (std::is_same_v<T, CharLiteral>) {
         return std::to_string(p.value);
@@ -712,7 +721,10 @@ class HirEmitter {
       } else if constexpr (std::is_same_v<T, BinaryExpr>) {
         auto val = try_const_eval_int(id);
         if (val) {
-          if (llvm_ty(expected_ts) == "ptr") return "null";
+          if (llvm_ty(expected_ts) == "ptr") {
+            if (*val == 0) return "null";
+            return "inttoptr (i64 " + std::to_string(*val) + " to ptr)";
+          }
           return std::to_string(*val);
         }
         return (llvm_ty(expected_ts) == "ptr") ? "null" : "0";
@@ -738,7 +750,16 @@ class HirEmitter {
         if ((long long)bytes.size() < n) bytes.resize(static_cast<size_t>(n), '\0');
         return "c\"" + escape_llvm_c_bytes(bytes) + "\"";
       }
-      return "zeroinitializer";
+      std::vector<std::string> elems(static_cast<size_t>(n), "zeroinitializer");
+      if (n > 0) elems[0] = emit_const_scalar_expr(s->expr, elem_ts);
+      std::string out = "[";
+      const std::string ety = llvm_alloca_ty(elem_ts);
+      for (size_t i = 0; i < elems.size(); ++i) {
+        if (i) out += ", ";
+        out += ety + " " + elems[i];
+      }
+      out += "]";
+      return out;
     }
 
     std::vector<std::string> elems(static_cast<size_t>(n), "zeroinitializer");
@@ -885,7 +906,7 @@ class HirEmitter {
     } else if (const auto* scalar = std::get_if<InitScalar>(&init)) {
       // Scalar fallback for aggregates: treat as first field init.
       if (!sd.fields.empty()) {
-        field_vals[0] = emit_const_scalar_expr(scalar->expr, field_decl_type(sd.fields[0]));
+        field_vals[0] = emit_const_init(field_decl_type(sd.fields[0]), GlobalInit(*scalar));
       }
     }
 
@@ -1913,6 +1934,7 @@ class HirEmitter {
 
     const std::string rhs_lbl  = fresh_lbl(ctx, "logic.rhs.");
     const std::string skip_lbl = fresh_lbl(ctx, "logic.skip.");
+    const std::string rhs_end_lbl = fresh_lbl(ctx, "logic.rhs.end.");
     const std::string end_lbl  = fresh_lbl(ctx, "logic.end.");
 
     if (b.op == BinaryOp::LAnd) {
@@ -1937,6 +1959,9 @@ class HirEmitter {
       rhs_val = fresh_tmp(ctx);
       emit_instr(ctx, rhs_val + " = zext i1 " + rc + " to " + res_ty);
     }
+    emit_term(ctx, "br label %" + rhs_end_lbl);
+
+    emit_lbl(ctx, rhs_end_lbl);
     emit_term(ctx, "br label %" + end_lbl);
 
     emit_lbl(ctx, skip_lbl);
@@ -1953,7 +1978,7 @@ class HirEmitter {
     emit_lbl(ctx, end_lbl);
     const std::string tmp = fresh_tmp(ctx);
     emit_instr(ctx, tmp + " = phi " + res_ty +
-                        " [ " + rhs_val + ", %" + rhs_lbl + " ]," +
+                        " [ " + rhs_val + ", %" + rhs_end_lbl + " ]," +
                         " [ " + skip_val + ", %" + skip_lbl + " ]");
     return tmp;
   }
@@ -1994,8 +2019,6 @@ class HirEmitter {
         return result;
       }
 
-      rhs = coerce(ctx, rhs, rhs_ts, lhs_ts);
-
       static const struct { AssignOp op; BinaryOp bop; } compound_map[] = {
         { AssignOp::Add, BinaryOp::Add }, { AssignOp::Sub, BinaryOp::Sub },
         { AssignOp::Mul, BinaryOp::Mul }, { AssignOp::Div, BinaryOp::Div },
@@ -2006,8 +2029,21 @@ class HirEmitter {
       const char* instr = nullptr;
       for (const auto& row : compound_map) {
         if (row.op != a.op) continue;
-        const bool lf = is_float_base(lhs_ts.base);
-        const bool ls = is_signed_int(lhs_ts.base);
+        TypeSpec op_ts = lhs_ts;
+        if (lhs_ts.ptr_level == 0 && lhs_ts.array_rank == 0 &&
+            rhs_ts.ptr_level == 0 && rhs_ts.array_rank == 0 &&
+            (is_float_base(lhs_ts.base) || is_float_base(rhs_ts.base))) {
+          op_ts.base = (lhs_ts.base == TB_DOUBLE || rhs_ts.base == TB_DOUBLE ||
+                        lhs_ts.base == TB_LONGDOUBLE || rhs_ts.base == TB_LONGDOUBLE)
+                           ? TB_DOUBLE
+                           : TB_FLOAT;
+        }
+        const std::string op_ty = llvm_ty(op_ts);
+        std::string lhs_op = loaded;
+        if (op_ty != lty) lhs_op = coerce(ctx, loaded, lhs_ts, op_ts);
+        rhs = coerce(ctx, rhs, rhs_ts, op_ts);
+        const bool lf = is_float_base(op_ts.base);
+        const bool ls = is_signed_int(op_ts.base);
         // Re-use binary arith table by emitting inline
         static const struct { BinaryOp op; const char* is; const char* iu; const char* f; } tbl[] = {
           { BinaryOp::Add, "add",  "add",  "fadd" }, { BinaryOp::Sub, "sub", "sub", "fsub" },
@@ -2027,9 +2063,23 @@ class HirEmitter {
       if (!instr) throw std::runtime_error("HirEmitter: compound assign: unknown op");
 
       const std::string result = fresh_tmp(ctx);
-      emit_instr(ctx, result + " = " + instr + " " + lty + " " + loaded + ", " + rhs);
-      emit_instr(ctx, "store " + lty + " " + result + ", ptr " + lhs_ptr);
-      return result;
+      TypeSpec op_ts = lhs_ts;
+      if (lhs_ts.ptr_level == 0 && lhs_ts.array_rank == 0 &&
+          rhs_ts.ptr_level == 0 && rhs_ts.array_rank == 0 &&
+          (is_float_base(lhs_ts.base) || is_float_base(rhs_ts.base))) {
+        op_ts.base = (lhs_ts.base == TB_DOUBLE || rhs_ts.base == TB_DOUBLE ||
+                      lhs_ts.base == TB_LONGDOUBLE || rhs_ts.base == TB_LONGDOUBLE)
+                         ? TB_DOUBLE
+                         : TB_FLOAT;
+      }
+      const std::string op_ty = llvm_ty(op_ts);
+      std::string lhs_op = loaded;
+      if (op_ty != lty) lhs_op = coerce(ctx, loaded, lhs_ts, op_ts);
+      emit_instr(ctx, result + " = " + instr + " " + op_ty + " " + lhs_op + ", " + rhs);
+      std::string store_v = result;
+      if (op_ty != lty) store_v = coerce(ctx, result, op_ts, lhs_ts);
+      emit_instr(ctx, "store " + lty + " " + store_v + ", ptr " + lhs_ptr);
+      return store_v;
     }
 
     rhs = coerce(ctx, rhs, rhs_ts, lhs_ts);
@@ -2140,6 +2190,25 @@ class HirEmitter {
     }
 
     std::string args_str;
+    auto apply_default_arg_promotion = [&](std::string& arg, TypeSpec& out_ts, const TypeSpec& in_ts) {
+      TypeSpec promoted = in_ts;
+      if (promoted.array_rank > 0 && !promoted.is_ptr_to_array) {
+        promoted.array_rank = 0;
+        promoted.array_size = -1;
+        promoted.ptr_level += 1;
+      }
+      if (promoted.ptr_level == 0 && promoted.array_rank == 0) {
+        if (promoted.base == TB_FLOAT) {
+          promoted.base = TB_DOUBLE;
+        } else if (promoted.base == TB_BOOL || promoted.base == TB_CHAR ||
+                   promoted.base == TB_SCHAR || promoted.base == TB_UCHAR ||
+                   promoted.base == TB_SHORT || promoted.base == TB_USHORT) {
+          promoted.base = TB_INT;
+        }
+      }
+      arg = coerce(ctx, arg, in_ts, promoted);
+      out_ts = promoted;
+    };
     for (size_t i = 0; i < call.args.size(); ++i) {
       TypeSpec arg_ts{};
       std::string arg = emit_rval_id(ctx, call.args[i], arg_ts);
@@ -2153,6 +2222,8 @@ class HirEmitter {
         if (!has_void_param_list && i < target_fn->params.size()) {
           out_arg_ts = target_fn->params[i].type.spec;
           arg = coerce(ctx, arg, arg_ts, out_arg_ts);
+        } else if (target_fn->attrs.variadic) {
+          apply_default_arg_promotion(arg, out_arg_ts, arg_ts);
         }
       }
       if (i) args_str += ", ";
@@ -2303,7 +2374,8 @@ class HirEmitter {
 
   std::string emit_rval_payload(FnCtx& ctx, const SizeofExpr& s, const Expr&) {
     const Expr& op = get_expr(s.expr);
-    TypeSpec op_ts = op.type.spec;
+    TypeSpec op_ts = resolve_expr_type(ctx, s.expr);
+    if (!has_concrete_type(op_ts)) op_ts = op.type.spec;
     // DeclRef: get type from global/local declaration (NK_VAR nodes have no type set).
     if (const auto* r = std::get_if<DeclRef>(&op.payload)) {
       if (r->global) {

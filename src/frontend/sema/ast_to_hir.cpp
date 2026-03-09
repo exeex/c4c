@@ -1,9 +1,12 @@
 #include "ast_to_hir.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
 #include <unordered_map>
+#include <vector>
 
 namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir {
 namespace {
@@ -118,6 +121,150 @@ TypeSpec infer_int_literal_type(const Node* n) {
   }
   if (has_u) ts.base = TB_UINT;
   return ts;
+}
+
+TypeSpec normalize_generic_type(TypeSpec ts) {
+  ts.is_const = false;
+  ts.is_volatile = false;
+  if (ts.array_rank > 0 && !ts.is_ptr_to_array) {
+    ts.array_rank = 0;
+    ts.array_size = -1;
+    ts.ptr_level += 1;
+  }
+  return ts;
+}
+
+bool generic_type_compatible(TypeSpec a, TypeSpec b) {
+  a = normalize_generic_type(a);
+  b = normalize_generic_type(b);
+  if (a.base != b.base) return false;
+  if (a.ptr_level != b.ptr_level) return false;
+  if (a.array_rank != b.array_rank) return false;
+  if (a.is_fn_ptr != b.is_fn_ptr) return false;
+  const char* atag = a.tag ? a.tag : "";
+  const char* btag = b.tag ? b.tag : "";
+  return std::strcmp(atag, btag) == 0;
+}
+
+std::vector<long long> decode_string_literal_values(const char* sval, bool wide) {
+  std::vector<long long> out;
+  if (!sval) {
+    out.push_back(0);
+    return out;
+  }
+  const char* p = sval;
+  while (*p && *p != '"') ++p;
+  if (*p == '"') ++p;
+  while (*p && *p != '"') {
+    if (*p == '\\' && *(p + 1)) {
+      ++p;
+      switch (*p) {
+        case 'n': out.push_back('\n'); ++p; break;
+        case 't': out.push_back('\t'); ++p; break;
+        case 'r': out.push_back('\r'); ++p; break;
+        case '0': out.push_back(0); ++p; break;
+        case '\\': out.push_back('\\'); ++p; break;
+        case '\'': out.push_back('\''); ++p; break;
+        case '"': out.push_back('"'); ++p; break;
+        default: out.push_back(static_cast<unsigned char>(*p)); ++p; break;
+      }
+      continue;
+    }
+
+    const unsigned char c0 = static_cast<unsigned char>(*p);
+    if (!wide || c0 < 0x80) {
+      out.push_back(static_cast<long long>(c0));
+      ++p;
+      continue;
+    }
+    if ((c0 & 0xE0) == 0xC0 && p[1]) {
+      const uint32_t cp = ((c0 & 0x1F) << 6) | (static_cast<unsigned char>(p[1]) & 0x3F);
+      out.push_back(static_cast<long long>(cp));
+      p += 2;
+      continue;
+    }
+    if ((c0 & 0xF0) == 0xE0 && p[1] && p[2]) {
+      const uint32_t cp = ((c0 & 0x0F) << 12) |
+                          ((static_cast<unsigned char>(p[1]) & 0x3F) << 6) |
+                          (static_cast<unsigned char>(p[2]) & 0x3F);
+      out.push_back(static_cast<long long>(cp));
+      p += 3;
+      continue;
+    }
+    if ((c0 & 0xF8) == 0xF0 && p[1] && p[2] && p[3]) {
+      const uint32_t cp = ((c0 & 0x07) << 18) |
+                          ((static_cast<unsigned char>(p[1]) & 0x3F) << 12) |
+                          ((static_cast<unsigned char>(p[2]) & 0x3F) << 6) |
+                          (static_cast<unsigned char>(p[3]) & 0x3F);
+      out.push_back(static_cast<long long>(cp));
+      p += 4;
+      continue;
+    }
+    out.push_back(static_cast<long long>(c0));
+    ++p;
+  }
+  out.push_back(0);
+  return out;
+}
+
+std::optional<long long> eval_int_const_expr(
+    const Node* n,
+    const std::unordered_map<std::string, long long>& enum_consts) {
+  if (!n) return std::nullopt;
+  switch (n->kind) {
+    case NK_INT_LIT:
+    case NK_CHAR_LIT:
+      return n->ival;
+    case NK_VAR: {
+      if (n->name && n->name[0]) {
+        auto it = enum_consts.find(n->name);
+        if (it != enum_consts.end()) return it->second;
+      }
+      return std::nullopt;
+    }
+    case NK_CAST:
+      return eval_int_const_expr(n->left, enum_consts);
+    case NK_UNARY: {
+      auto v = eval_int_const_expr(n->left, enum_consts);
+      if (!v || !n->op) return std::nullopt;
+      if (std::strcmp(n->op, "+") == 0) return *v;
+      if (std::strcmp(n->op, "-") == 0) return -*v;
+      if (std::strcmp(n->op, "~") == 0) return ~*v;
+      if (std::strcmp(n->op, "!") == 0) return static_cast<long long>(!*v);
+      return std::nullopt;
+    }
+    case NK_BINOP: {
+      auto l = eval_int_const_expr(n->left, enum_consts);
+      auto r = eval_int_const_expr(n->right, enum_consts);
+      if (!l || !r || !n->op) return std::nullopt;
+      if (std::strcmp(n->op, "+") == 0) return *l + *r;
+      if (std::strcmp(n->op, "-") == 0) return *l - *r;
+      if (std::strcmp(n->op, "*") == 0) return *l * *r;
+      if (std::strcmp(n->op, "/") == 0) return (*r == 0) ? 0LL : (*l / *r);
+      if (std::strcmp(n->op, "%") == 0) return (*r == 0) ? 0LL : (*l % *r);
+      if (std::strcmp(n->op, "<<") == 0) return *l << *r;
+      if (std::strcmp(n->op, ">>") == 0) return *l >> *r;
+      if (std::strcmp(n->op, "&") == 0) return *l & *r;
+      if (std::strcmp(n->op, "|") == 0) return *l | *r;
+      if (std::strcmp(n->op, "^") == 0) return *l ^ *r;
+      if (std::strcmp(n->op, "<") == 0) return static_cast<long long>(*l < *r);
+      if (std::strcmp(n->op, "<=") == 0) return static_cast<long long>(*l <= *r);
+      if (std::strcmp(n->op, ">") == 0) return static_cast<long long>(*l > *r);
+      if (std::strcmp(n->op, ">=") == 0) return static_cast<long long>(*l >= *r);
+      if (std::strcmp(n->op, "==") == 0) return static_cast<long long>(*l == *r);
+      if (std::strcmp(n->op, "!=") == 0) return static_cast<long long>(*l != *r);
+      if (std::strcmp(n->op, "&&") == 0) return static_cast<long long>(*l && *r);
+      if (std::strcmp(n->op, "||") == 0) return static_cast<long long>(*l || *r);
+      return std::nullopt;
+    }
+    case NK_TERNARY: {
+      auto c = eval_int_const_expr(n->cond ? n->cond : n->left, enum_consts);
+      if (!c) return std::nullopt;
+      return eval_int_const_expr(*c ? n->then_ : n->else_, enum_consts);
+    }
+    default:
+      return std::nullopt;
+  }
 }
 
 class Lowerer {
@@ -506,17 +653,25 @@ class Lowerer {
             }
             d.type.spec.array_size = count;
             d.type.spec.array_dims[0] = count;
+          } else if (n->init->kind == NK_STR_LIT && n->init->sval) {
+            const bool is_wide = n->init->sval[0] == 'L';
+            const auto vals = decode_string_literal_values(n->init->sval, is_wide);
+            d.type.spec.array_size = static_cast<long long>(vals.size());
+            d.type.spec.array_dims[0] = d.type.spec.array_size;
           }
         }
         d.storage = n->is_static ? StorageClass::Static : StorageClass::Auto;
         d.span = make_span(n);
         const bool is_array_with_init_list =
             n->init && n->init->kind == NK_INIT_LIST && d.type.spec.array_rank == 1;
+        const bool is_array_with_string_init =
+            n->init && n->init->kind == NK_STR_LIT && d.type.spec.array_rank == 1;
         const bool is_struct_with_init_list =
             n->init && n->init->kind == NK_INIT_LIST &&
             (d.type.spec.base == TB_STRUCT || d.type.spec.base == TB_UNION) &&
             d.type.spec.ptr_level == 0 && d.type.spec.array_rank == 0;
-        if (!is_array_with_init_list && !is_struct_with_init_list && n->init)
+        if (!is_array_with_init_list && !is_array_with_string_init &&
+            !is_struct_with_init_list && n->init)
           d.init = lower_expr(&ctx, n->init);
         // For struct init lists, emit zeroinitializer first then field-by-field stores.
         if (is_struct_with_init_list) {
@@ -558,6 +713,30 @@ class Lowerer {
             // Value expr
             ExprId val_id = lower_expr(&ctx, val_node);
             // AssignExpr
+            AssignExpr ae{}; ae.lhs = ie_id; ae.rhs = val_id;
+            ExprId ae_id = append_expr(n, ae, elem_ts);
+            ExprStmt es{}; es.expr = ae_id;
+            append_stmt(ctx, Stmt{StmtPayload{es}, make_span(n)});
+          }
+        }
+        if (is_array_with_string_init && n->init && n->init->sval) {
+          const bool is_wide = n->init->sval[0] == 'L';
+          const auto vals = decode_string_literal_values(n->init->sval, is_wide);
+          const long long max_count = decl_ts.array_size > 0 ? decl_ts.array_size : static_cast<long long>(vals.size());
+          const long long emit_n = std::min<long long>(max_count, static_cast<long long>(vals.size()));
+          for (long long idx = 0; idx < emit_n; ++idx) {
+            TypeSpec elem_ts = decl_ts;
+            elem_ts.array_rank--;
+            elem_ts.array_size = -1;
+            DeclRef dr{};
+            dr.name = n->name ? n->name : "<anon_local>";
+            dr.local = lid;
+            ExprId dr_id = append_expr(n, dr, decl_ts, ValueCategory::LValue);
+            TypeSpec idx_ts{}; idx_ts.base = TB_INT;
+            ExprId idx_id = append_expr(n, IntLiteral{idx, false}, idx_ts);
+            IndexExpr ie{}; ie.base = dr_id; ie.index = idx_id;
+            ExprId ie_id = append_expr(n, ie, elem_ts, ValueCategory::LValue);
+            ExprId val_id = append_expr(n, IntLiteral{vals[static_cast<size_t>(idx)], false}, idx_ts);
             AssignExpr ae{}; ae.lhs = ie_id; ae.rhs = val_id;
             ExprId ae_id = append_expr(n, ae, elem_ts);
             ExprStmt es{}; es.expr = ae_id;
@@ -721,6 +900,7 @@ class Lowerer {
       }
       case NK_DO_WHILE: {
         const BlockId body_b = create_block(ctx);
+        const BlockId cond_b = create_block(ctx);
         const BlockId after_b = create_block(ctx);
 
         if (!ensure_block(ctx, ctx.current_block).has_explicit_terminator) {
@@ -731,17 +911,24 @@ class Lowerer {
         }
 
         ctx.break_stack.push_back(after_b);
-        ctx.continue_stack.push_back(body_b);
+        ctx.continue_stack.push_back(cond_b);
         ctx.current_block = body_b;
         lower_stmt_node(ctx, n->body);
+        if (!ensure_block(ctx, ctx.current_block).has_explicit_terminator) {
+          GotoStmt j{};
+          j.target.resolved_block = cond_b;
+          append_stmt(ctx, Stmt{StmtPayload{j}, make_span(n)});
+          ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
+        }
 
+        ctx.current_block = cond_b;
         DoWhileStmt s{};
         s.body_block = body_b;
         s.cond = lower_expr(&ctx, n->cond ? n->cond : n->left);
-        s.continue_target = body_b;
+        s.continue_target = cond_b;
         s.break_target = after_b;
         append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
-        ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
+        ensure_block(ctx, cond_b).has_explicit_terminator = true;
 
         ctx.break_stack.pop_back();
         ctx.continue_stack.pop_back();
@@ -795,7 +982,14 @@ class Lowerer {
         return;
       }
       case NK_CASE: {
-        const long long case_val = (n->left && n->left->kind == NK_INT_LIT) ? n->left->ival : 0;
+        long long case_val = 0;
+        if (n->left) {
+          if (n->left->kind == NK_INT_LIT) {
+            case_val = n->left->ival;
+          } else if (auto v = eval_int_const_expr(n->left, enum_consts_)) {
+            case_val = *v;
+          }
+        }
         if (!ctx.switch_stack.empty()) {
           // Create a dedicated block for this case entry point.
           const BlockId case_b = create_block(ctx);
@@ -1062,11 +1256,49 @@ class Lowerer {
         return append_expr(n, m, n->type, ValueCategory::LValue);
       }
       case NK_TERNARY: {
+        if (const Node* cond = (n->cond ? n->cond : n->left)) {
+          if (auto cv = eval_int_const_expr(cond, enum_consts_)) {
+            return lower_expr(ctx, (*cv != 0) ? n->then_ : n->else_);
+          }
+        }
         TernaryExpr t{};
         t.cond = lower_expr(ctx, n->cond ? n->cond : n->left);
         t.then_expr = lower_expr(ctx, n->then_);
         t.else_expr = lower_expr(ctx, n->else_);
         return append_expr(n, t, n->type);
+      }
+      case NK_GENERIC: {
+        TypeSpec ctrl_ts{};
+        if (n->left) ctrl_ts = n->left->type;
+        const Node* selected = nullptr;
+        const Node* default_expr = nullptr;
+        for (int i = 0; i < n->n_children; ++i) {
+          const Node* assoc = n->children[i];
+          if (!assoc) continue;
+          const Node* expr = assoc->left;
+          if (!expr) continue;
+          if (assoc->ival == 1) {
+            if (!default_expr) default_expr = expr;
+            continue;
+          }
+          if (generic_type_compatible(ctrl_ts, assoc->type)) {
+            selected = expr;
+            break;
+          }
+        }
+        if (!selected) selected = default_expr;
+        if (selected) return lower_expr(ctx, selected);
+        TypeSpec ts = n->type;
+        if (ts.base == TB_VOID) ts.base = TB_INT;
+        return append_expr(n, IntLiteral{0, false}, ts);
+      }
+      case NK_STMT_EXPR: {
+        if (ctx && n->body) {
+          lower_stmt_node(*ctx, n->body);
+        }
+        TypeSpec ts = n->type;
+        if (ts.base == TB_VOID) ts.base = TB_INT;
+        return append_expr(n, IntLiteral{0, false}, ts);
       }
       case NK_SIZEOF_EXPR: {
         SizeofExpr s{};
