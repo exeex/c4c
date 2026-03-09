@@ -1825,8 +1825,17 @@ class HirEmitter {
           idx = neg;
         }
         TypeSpec elem_ts = base_ts;
-        if (elem_ts.ptr_level > 0) elem_ts.ptr_level -= 1;
-        else elem_ts.base = TB_CHAR;
+        if (elem_ts.ptr_level > 0) {
+          // T* +/- n: stride by sizeof(T).  For pointer-to-array keep the
+          // array object type after consuming one pointer layer.
+          elem_ts.ptr_level -= 1;
+        } else if (elem_ts.array_rank > 0 && !elem_ts.is_ptr_to_array) {
+          // Array expression in arithmetic decays to pointer-to-first-element.
+          elem_ts = drop_one_array_dim(elem_ts);
+        } else {
+          elem_ts = {};
+          elem_ts.base = TB_CHAR;
+        }
         const std::string tmp = fresh_tmp(ctx);
         emit_instr(ctx, tmp + " = getelementptr " + llvm_ty(elem_ts) +
                             ", ptr " + base_ptr + ", i64 " + idx);
