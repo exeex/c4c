@@ -2,6 +2,54 @@
 
 Last updated: 2026-03-09
 
+## 高優先級：背景殘留 testcase（卡資源）
+
+來源：`/workspaces/c4c/build/leftover_testcase_kill_20260309T083735Z.log` 的殘留 `*.c2ll.bin` 行程。  
+對應規則：去掉 `.c2ll.bin`，例如 `pr79354.c.c2ll.bin -> pr79354.c`。
+
+- `20020413-1.c`
+- `20020529-1.c`
+- `20030909-1.c`
+- `20050502-1.c`
+- `20070517-1.c`
+- `20090527-1.c`
+- `921113-1.c`
+- `950710-1.c`
+- `981019-1.c`
+- `990208-1.c`
+- `990604-1.c`
+- `991216-4.c`
+- `loop-2b.c`
+- `pr17078-1.c`
+- `pr40668.c`
+- `pr47538.c`
+- `pr53465.c`
+- `pr58277-2.c`
+- `pr64260.c`
+- `pr64756.c`
+- `pr79354.c`
+- `pr79737-1.c`
+- `pr88714.c`
+- `pr88739.c`
+- `vrp-6.c`
+
+## Unstash Review（2026-03-09）
+
+### Findings
+
+1. High: local enum constant value 洩漏到外層 scope / 後續函式  
+   - 檔案：`src/frontend/sema/sema_validate.cpp`（`enum_const_vals_` 與 `bind_enum_constants_local`）  
+   - 現象：`enum_const_vals_` 是 validator 級別 map，local enum 常數加入後不會在 `leave_scope()` 移除。  
+   - 風險：`case` 常數折疊 `eval_int_const_expr(..., &enum_const_vals_)` 可能拿到過期值，造成 duplicate-case 偽陽性或錯誤常數判定。
+
+### Action Plan（High Priority）
+
+1. 將 enum 常數值改為 scope-aware 結構（與 `scopes_` 同步 push/pop），避免名稱污染。  
+2. `eval_int_const_expr` 查值先走 local-scope，再 fallback global enum map。  
+3. 補最小回歸測試：  
+   - 函式內 local enum 與 global enum 同名，不同值。  
+   - 離開 block 後 `switch case` 仍使用正確外層 enum 值。
+
 ## Agent Handoff (Claude 接手用)
 
 本檔主要給接手 agent，請直接照下面流程執行，不要先跑全量長測。
@@ -20,10 +68,10 @@ cmake --build build -j4
 cmake --build build --target ctest_core -j4
 
 # focused rerun
-ctest --test-dir build -R tiny_c2ll_tests --output-on-failure
-ctest --test-dir build -R '^ccc_review_' --output-on-failure
-ctest --test-dir build -R '^negative_tests' --output-on-failure
-ctest --test-dir build -R c_testsuite --output-on-failure
+ctest -j --test-dir build -R tiny_c2ll_tests --output-on-failure
+ctest -j --test-dir build -R '^ccc_review_' --output-on-failure
+ctest -j --test-dir build -R '^negative_tests' --output-on-failure
+ctest -j --test-dir build -R c_testsuite --output-on-failure
 ```
 
 ### 1) 避免殘留無窮迴圈程序

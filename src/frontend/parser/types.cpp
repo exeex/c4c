@@ -979,9 +979,12 @@ Node* Parser::parse_param() {
     parse_declarator(pts, &pname);
     // C rule: a parameter of function type decays to a pointer to that function.
     // Abstract function-type params look like: int(int x) or int()
-    // Consume the function-type suffix so the caller's param list stays in sync.
+    // Consume the function-type suffix and apply the pointer decay.
     if (check(TokenKind::LParen)) {
         skip_paren_group();
+        // The parameter has function type — adjust it to pointer-to-function.
+        pts.is_fn_ptr = true;
+        pts.ptr_level += 1;
     }
     skip_attributes();
 
