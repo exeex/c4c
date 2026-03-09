@@ -864,6 +864,10 @@ class Validator {
         suppress_uninit_read_ = true;
         ExprInfo base = infer_expr(n->left);
         suppress_uninit_read_ = old_suppress;
+        // Taking the address of a local variable means it can be written
+        // through the pointer by any callee — mark it as initialized to
+        // avoid false-positive "read of uninitialized variable" diagnostics.
+        mark_initialized_if_local_var(n->left);
         out = base;
         out.valid = base.valid;
         out.is_lvalue = false;
