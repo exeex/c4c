@@ -558,8 +558,10 @@ class Lowerer {
       hf.name = f->name;
       TypeSpec ft = f->type;
       // Extract first array dimension (keep base element type for LLVM)
-      if (ft.array_rank > 0 && ft.array_size >= 0) {
-        hf.array_first_dim = ft.array_size;
+      if (ft.array_rank > 0) {
+        // Flexible array member (last field with unknown bound) is represented
+        // as zero-length in LLVM layout/sizeof calculations.
+        hf.array_first_dim = (ft.array_size >= 0) ? ft.array_size : 0;
         ft.array_rank = 0;
         ft.array_size = -1;
       }
@@ -883,15 +885,32 @@ class Lowerer {
                 elem_ts.ptr_level == 0 && elem_ts.array_rank == 0;
             if (elem_is_agg && elem_ts.tag) {
               const Node* scalar_node = val_node;
-              if (scalar_node && scalar_node->kind == NK_COMPOUND_LIT &&
-                  scalar_node->n_children > 0) {
-                const Node* c0 = scalar_node->children[0];
-                if (c0 && c0->kind == NK_INIT_ITEM) {
-                  const Node* vv = c0->left ? c0->left : c0->right;
-                  if (!vv) vv = c0->init;
-                  if (vv) c0 = vv;
+              if (scalar_node && scalar_node->kind == NK_COMPOUND_LIT) {
+                // Parser stores compound literal initializers in `left` as NK_INIT_LIST.
+                // Unwrap the first scalar so array-of-aggregate local init doesn't
+                // route through generic aggregate assignment (which expects a true
+                // aggregate rvalue expression).
+                const Node* init_list =
+                    (scalar_node->left && scalar_node->left->kind == NK_INIT_LIST)
+                        ? scalar_node->left
+                        : nullptr;
+                if (!init_list && scalar_node->n_children > 0) {
+                  const Node* c0 = scalar_node->children[0];
+                  if (c0 && c0->kind == NK_INIT_ITEM) {
+                    const Node* vv = c0->left ? c0->left : c0->right;
+                    if (!vv) vv = c0->init;
+                    if (vv) c0 = vv;
+                  }
+                  if (c0) scalar_node = c0;
+                } else if (init_list && init_list->n_children > 0) {
+                  const Node* c0 = init_list->children[0];
+                  if (c0 && c0->kind == NK_INIT_ITEM) {
+                    const Node* vv = c0->left ? c0->left : c0->right;
+                    if (!vv) vv = c0->init;
+                    if (vv) c0 = vv;
+                  }
+                  if (c0) scalar_node = c0;
                 }
-                if (c0) scalar_node = c0;
               }
               bool direct_agg = false;
               if (scalar_node) {
@@ -977,6 +996,40 @@ class Lowerer {
           };
           auto append_assign = [&](ExprId lhs_id, const TypeSpec& lhs_ts, const Node* rhs_node) {
             if (!rhs_node) return;
+            // char[N] = "..." inside aggregate init: emit element-wise stores
+            // instead of assigning the string pointer value.
+            if (lhs_ts.array_rank == 1 && rhs_node->kind == NK_STR_LIT && rhs_node->sval) {
+              TypeSpec elem_ts = lhs_ts;
+              elem_ts.array_rank = 0;
+              elem_ts.array_size = -1;
+              if (elem_ts.ptr_level == 0 &&
+                  (elem_ts.base == TB_CHAR || elem_ts.base == TB_SCHAR || elem_ts.base == TB_UCHAR)) {
+                const bool is_wide = rhs_node->sval[0] == 'L';
+                const auto vals = decode_string_literal_values(rhs_node->sval, is_wide);
+                const long long max_count =
+                    lhs_ts.array_size > 0 ? lhs_ts.array_size : static_cast<long long>(vals.size());
+                const long long emit_n =
+                    std::min<long long>(max_count, static_cast<long long>(vals.size()));
+                for (long long idx = 0; idx < emit_n; ++idx) {
+                  TypeSpec idx_ts{};
+                  idx_ts.base = TB_INT;
+                  ExprId idx_id = append_expr(n, IntLiteral{idx, false}, idx_ts);
+                  IndexExpr ie{};
+                  ie.base = lhs_id;
+                  ie.index = idx_id;
+                  ExprId ie_id = append_expr(n, ie, elem_ts, ValueCategory::LValue);
+                  ExprId val_id = append_expr(n, IntLiteral{vals[static_cast<size_t>(idx)], false}, idx_ts);
+                  AssignExpr ae{};
+                  ae.lhs = ie_id;
+                  ae.rhs = val_id;
+                  ExprId ae_id = append_expr(n, ae, elem_ts);
+                  ExprStmt es{};
+                  es.expr = ae_id;
+                  append_stmt(ctx, Stmt{StmtPayload{es}, make_span(n)});
+                }
+                return;
+              }
+            }
             const Node* val_node = rhs_node;
             if (val_node->kind == NK_INIT_LIST && val_node->n_children > 0) {
               const Node* first = val_node->children[0];

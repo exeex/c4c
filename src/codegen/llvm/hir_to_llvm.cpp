@@ -140,6 +140,9 @@ static std::string llvm_alloca_ty(const TypeSpec& ts) {
   return llvm_base(ts.base);
 }
 
+// Forward declaration for recursive aggregate size computation.
+static int compute_struct_size(const Module& mod, const std::string& tag);
+
 static int sizeof_base(TypeBase b) {
   switch (b) {
     case TB_BOOL: case TB_CHAR: case TB_SCHAR: case TB_UCHAR: return 1;
@@ -154,7 +157,7 @@ static int sizeof_base(TypeBase b) {
   }
 }
 
-static int sizeof_ts(const TypeSpec& ts) {
+static int sizeof_ts(const Module& mod, const TypeSpec& ts) {
   if (ts.ptr_level > 0 && ts.is_ptr_to_array) return 8;
   if (ts.ptr_level > 0 || ts.is_fn_ptr) return 8;
   if (ts.array_rank > 0) {
@@ -166,9 +169,13 @@ static int sizeof_ts(const TypeSpec& ts) {
         for (int i = 0; i < elem.array_rank; ++i) elem.array_dims[i] = elem.array_dims[i + 1];
       }
       elem.array_size = (elem.array_rank > 0) ? elem.array_dims[0] : -1;
-      return (int)(ts.array_size * sizeof_ts(elem));
+      return (int)(ts.array_size * sizeof_ts(mod, elem));
     }
     return 8;  // unknown size — treat as pointer
+  }
+  if ((ts.base == TB_STRUCT || ts.base == TB_UNION) &&
+      ts.ptr_level == 0 && ts.tag && ts.tag[0]) {
+    return compute_struct_size(mod, std::string(ts.tag));
   }
   return sizeof_base(ts.base);
 }
@@ -221,11 +228,11 @@ static int compute_struct_size(const Module& mod, const std::string& tag) {
       const int sz = compute_field_size(mod, f);
       if (sz > max_sz) max_sz = sz;
     }
-    return max_sz > 0 ? max_sz : 1;
+    return max_sz;
   }
   int total = 0;
   for (const auto& f : sd.fields) total += compute_field_size(mod, f);
-  return total > 0 ? total : 1;
+  return total;
 }
 
 static std::string fp_to_hex(double v) {
@@ -993,6 +1000,249 @@ class HirEmitter {
     const HirStructDef& sd = it->second;
     if (sd.is_union) {
       const int sz = compute_struct_size(mod_, std::string(ts.tag));
+      auto zero_union = [&]() -> std::string {
+        return "{ [" + std::to_string(sz) + " x i8] zeroinitializer }";
+      };
+
+      auto child_init_of = [&](const InitListItem& item) -> GlobalInit {
+        return std::visit([&](const auto& v) -> GlobalInit {
+          using V = std::decay_t<decltype(v)>;
+          if constexpr (std::is_same_v<V, InitScalar>) return GlobalInit(v);
+          else return GlobalInit(*v);
+        }, item.value);
+      };
+
+      std::function<bool(const TypeSpec&, const GlobalInit&, std::vector<unsigned char>&)> encode_bytes;
+      encode_bytes = [&](const TypeSpec& cur_ts, const GlobalInit& cur_init,
+                         std::vector<unsigned char>& out) -> bool {
+        const int cur_sz = std::max(1, sizeof_ts(mod_, cur_ts));
+        out.assign(static_cast<size_t>(cur_sz), 0);
+
+        if (cur_ts.ptr_level > 0 || cur_ts.is_fn_ptr) return false;
+
+        if (cur_ts.array_rank > 0) {
+          const long long n = cur_ts.array_size;
+          if (n <= 0) return true;
+          TypeSpec elem_ts = drop_one_array_dim(cur_ts);
+          const int elem_sz = std::max(1, sizeof_ts(mod_, elem_ts));
+          if (const auto* scalar = std::get_if<InitScalar>(&cur_init)) {
+            const Expr& e = get_expr(scalar->expr);
+            if (const auto* sl = std::get_if<StringLiteral>(&e.payload)) {
+              if (elem_ts.ptr_level == 0 && is_char_like(elem_ts.base)) {
+                const std::string bytes = bytes_from_string_literal(*sl);
+                const size_t max_n = static_cast<size_t>(n);
+                for (size_t i = 0; i < max_n && i < bytes.size(); ++i)
+                  out[i * static_cast<size_t>(elem_sz)] = static_cast<unsigned char>(bytes[i]);
+                if (bytes.size() < max_n) out[bytes.size() * static_cast<size_t>(elem_sz)] = 0;
+                return true;
+              }
+            }
+            std::vector<unsigned char> elem;
+            if (encode_bytes(elem_ts, cur_init, elem) && !elem.empty()) {
+              const size_t copy_n = std::min<size_t>(static_cast<size_t>(elem_sz), elem.size());
+              std::memcpy(out.data(), elem.data(), copy_n);
+              return true;
+            }
+            return false;
+          }
+          if (const auto* list = std::get_if<InitList>(&cur_init)) {
+            long long next_idx = 0;
+            for (const auto& item : list->items) {
+              long long idx = next_idx;
+              if (item.index_designator && *item.index_designator >= 0) idx = *item.index_designator;
+              if (idx >= 0 && idx < n) {
+                std::vector<unsigned char> elem;
+                GlobalInit child = child_init_of(item);
+                if (encode_bytes(elem_ts, child, elem)) {
+                  const size_t off = static_cast<size_t>(idx) * static_cast<size_t>(elem_sz);
+                  const size_t copy_n = std::min<size_t>(static_cast<size_t>(elem_sz), elem.size());
+                  std::memcpy(out.data() + off, elem.data(), copy_n);
+                }
+              }
+              next_idx = idx + 1;
+            }
+            return true;
+          }
+          return true;
+        }
+
+        if ((cur_ts.base == TB_STRUCT || cur_ts.base == TB_UNION) && cur_ts.tag && cur_ts.tag[0]) {
+          const auto sit = mod_.struct_defs.find(cur_ts.tag);
+          if (sit == mod_.struct_defs.end()) return false;
+          const HirStructDef& cur_sd = sit->second;
+          if (cur_sd.is_union) {
+            size_t fi = 0;
+            GlobalInit child = GlobalInit(std::monostate{});
+            bool has_child = false;
+            if (const auto* list = std::get_if<InitList>(&cur_init)) {
+              if (!list->items.empty()) {
+                const auto& item0 = list->items.front();
+                bool matched_union_field = false;
+                if (item0.field_designator) {
+                  const auto fit = std::find_if(
+                      cur_sd.fields.begin(), cur_sd.fields.end(),
+                      [&](const HirStructField& f) { return f.name == *item0.field_designator; });
+                  if (fit != cur_sd.fields.end()) {
+                    fi = static_cast<size_t>(std::distance(cur_sd.fields.begin(), fit));
+                    child = child_init_of(item0);
+                    has_child = true;
+                    matched_union_field = true;
+                  }
+                } else if (item0.index_designator && *item0.index_designator >= 0) {
+                  fi = static_cast<size_t>(*item0.index_designator);
+                  child = child_init_of(item0);
+                  has_child = true;
+                  matched_union_field = true;
+                }
+                if (!matched_union_field) {
+                  fi = 0;
+                  if (list->items.size() == 1 &&
+                      std::holds_alternative<std::shared_ptr<InitList>>(item0.value)) {
+                    child = GlobalInit(*std::get<std::shared_ptr<InitList>>(item0.value));
+                  } else {
+                    child = GlobalInit(*list);
+                  }
+                  has_child = true;
+                }
+              }
+            } else if (std::holds_alternative<InitScalar>(cur_init)) {
+              child = cur_init;
+              has_child = true;
+            }
+            if (!has_child || fi >= cur_sd.fields.size()) return true;
+            const HirStructField& fld = cur_sd.fields[fi];
+            TypeSpec fts = field_decl_type(fld);
+            std::vector<unsigned char> fb;
+            if (!encode_bytes(fts, child, fb)) return false;
+            const size_t copy_n = std::min(out.size(), fb.size());
+            std::memcpy(out.data(), fb.data(), copy_n);
+            return true;
+          }
+
+          if (const auto* list = std::get_if<InitList>(&cur_init)) {
+            size_t next_field = 0;
+            size_t offset = 0;
+            std::vector<size_t> field_offsets(cur_sd.fields.size(), 0);
+            for (size_t i = 0; i < cur_sd.fields.size(); ++i) {
+              field_offsets[i] = offset;
+              offset += static_cast<size_t>(std::max(1, compute_field_size(mod_, cur_sd.fields[i])));
+            }
+            for (const auto& item : list->items) {
+              size_t fi = next_field;
+              if (item.field_designator) {
+                const auto fit = std::find_if(
+                    cur_sd.fields.begin(), cur_sd.fields.end(),
+                    [&](const HirStructField& f) { return f.name == *item.field_designator; });
+                if (fit == cur_sd.fields.end()) continue;
+                fi = static_cast<size_t>(std::distance(cur_sd.fields.begin(), fit));
+              } else if (item.index_designator && *item.index_designator >= 0) {
+                fi = static_cast<size_t>(*item.index_designator);
+              }
+              if (fi >= cur_sd.fields.size()) continue;
+              std::vector<unsigned char> fb;
+              GlobalInit child = child_init_of(item);
+              if (encode_bytes(field_decl_type(cur_sd.fields[fi]), child, fb)) {
+                const size_t off = field_offsets[fi];
+                const size_t copy_n = std::min(out.size() - off, fb.size());
+                std::memcpy(out.data() + off, fb.data(), copy_n);
+              }
+              next_field = fi + 1;
+            }
+            return true;
+          }
+
+          if (const auto* scalar = std::get_if<InitScalar>(&cur_init)) {
+            if (!cur_sd.fields.empty()) {
+              std::vector<unsigned char> fb;
+              if (encode_bytes(field_decl_type(cur_sd.fields[0]), GlobalInit(*scalar), fb)) {
+                const size_t copy_n = std::min(out.size(), fb.size());
+                std::memcpy(out.data(), fb.data(), copy_n);
+              }
+            }
+            return true;
+          }
+          return true;
+        }
+
+        if (const auto* scalar = std::get_if<InitScalar>(&cur_init)) {
+          const Expr& e = get_expr(scalar->expr);
+          unsigned long long v = 0;
+          if (const auto* il = std::get_if<IntLiteral>(&e.payload)) v = static_cast<unsigned long long>(il->value);
+          else if (const auto* cl = std::get_if<CharLiteral>(&e.payload)) v = static_cast<unsigned long long>(cl->value);
+          else return false;
+          for (int i = 0; i < cur_sz; ++i)
+            out[static_cast<size_t>(i)] = static_cast<unsigned char>((v >> (8 * i)) & 0xFF);
+          return true;
+        }
+        if (const auto* list = std::get_if<InitList>(&cur_init)) {
+          if (!list->items.empty()) {
+            std::vector<unsigned char> inner;
+            if (encode_bytes(cur_ts, child_init_of(list->items.front()), inner)) {
+              const size_t copy_n = std::min(out.size(), inner.size());
+              std::memcpy(out.data(), inner.data(), copy_n);
+              return true;
+            }
+            return false;
+          }
+        }
+        return true;
+      };
+
+      auto emit_union_from_field =
+          [&](size_t field_idx, const GlobalInit& child_init) -> std::optional<std::string> {
+        if (field_idx >= sd.fields.size()) return std::nullopt;
+        std::vector<unsigned char> bytes(static_cast<size_t>(sz), 0);
+        std::vector<unsigned char> field_bytes;
+        if (!encode_bytes(field_decl_type(sd.fields[field_idx]), child_init, field_bytes))
+          return std::nullopt;
+        if (field_bytes.empty()) return std::nullopt;
+        const size_t copy_n = std::min(bytes.size(), field_bytes.size());
+        std::memcpy(bytes.data(), field_bytes.data(), copy_n);
+        const bool all_zero = std::all_of(bytes.begin(), bytes.end(), [](unsigned char b) { return b == 0; });
+        if (all_zero) return zero_union();
+        std::string arr = "[";
+        for (size_t i = 0; i < bytes.size(); ++i) {
+          if (i) arr += ", ";
+          arr += "i8 " + std::to_string(static_cast<unsigned int>(bytes[i]));
+        }
+        arr += "]";
+        return "{ [" + std::to_string(sz) + " x i8] " + arr + " }";
+      };
+
+      if (const auto* list = std::get_if<InitList>(&init)) {
+        if (!list->items.empty() && !sd.fields.empty()) {
+          const InitListItem& item0 = list->items.front();
+          size_t idx = 0;
+          bool matched_union_field = false;
+          GlobalInit child_init = GlobalInit(std::monostate{});
+          if (item0.field_designator) {
+            const auto fit = std::find_if(
+                sd.fields.begin(), sd.fields.end(),
+                [&](const HirStructField& f) { return f.name == *item0.field_designator; });
+            if (fit != sd.fields.end()) {
+              idx = static_cast<size_t>(std::distance(sd.fields.begin(), fit));
+              child_init = child_init_of(item0);
+              matched_union_field = true;
+            }
+          } else if (item0.index_designator && *item0.index_designator >= 0) {
+            idx = static_cast<size_t>(*item0.index_designator);
+            child_init = child_init_of(item0);
+            matched_union_field = true;
+          }
+          if (!matched_union_field) {
+            idx = 0;
+            if (list->items.size() == 1 &&
+                std::holds_alternative<std::shared_ptr<InitList>>(item0.value)) {
+              child_init = GlobalInit(*std::get<std::shared_ptr<InitList>>(item0.value));
+            } else {
+              child_init = GlobalInit(*list);
+            }
+          }
+          if (auto out = emit_union_from_field(idx, child_init)) return *out;
+        }
+        return zero_union();
+      }
+
       if (const auto* scalar = std::get_if<InitScalar>(&init)) {
         const Expr& se = get_expr(scalar->expr);
         long long val = 0;
@@ -1005,7 +1255,7 @@ class HirEmitter {
           return "{ [" + std::to_string(sz) + " x i8] c\"" + escape_llvm_c_bytes(bytes) + "\" }";
         }
       }
-      return "{ [" + std::to_string(sz) + " x i8] zeroinitializer }";
+      return zero_union();
     }
 
     std::vector<std::string> field_vals;
@@ -2137,7 +2387,7 @@ class HirEmitter {
         emit_instr(ctx, byte_diff + " = sub i64 " + lhs_i + ", " + rhs_i);
         TypeSpec elem_ts = lts;
         if (elem_ts.ptr_level > 0) elem_ts.ptr_level -= 1;
-        const int elem_sz = std::max(1, sizeof_ts(elem_ts));
+        const int elem_sz = std::max(1, sizeof_ts(mod_, elem_ts));
         std::string diff = byte_diff;
         if (elem_sz != 1) {
           const std::string scaled = fresh_tmp(ctx);
@@ -2686,11 +2936,11 @@ class HirEmitter {
       }
     }
     if (!has_concrete_type(op_ts)) return "8";
-    return std::to_string(sizeof_ts(op_ts));
+    return std::to_string(sizeof_ts(mod_, op_ts));
   }
 
   std::string emit_rval_payload(FnCtx& ctx, const SizeofTypeExpr& s, const Expr&) {
-    return std::to_string(sizeof_ts(s.type.spec));
+    return std::to_string(sizeof_ts(mod_, s.type.spec));
   }
 
   // ── LabelAddrExpr (GCC &&label extension) ────────────────────────────────
