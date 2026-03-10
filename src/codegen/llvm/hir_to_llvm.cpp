@@ -1993,6 +1993,24 @@ class HirEmitter {
       return out;
     }
 
+    if (!is_complex_base(from_ts.base) && is_complex_base(to_ts.base) &&
+        from_ts.ptr_level == 0 && from_ts.array_rank == 0) {
+      const TypeSpec to_elem_ts = complex_component_ts(to_ts.base);
+      const std::string real = coerce(ctx, val, from_ts, to_elem_ts);
+      const std::string elem_ty = llvm_ty(to_elem_ts);
+      const std::string zero =
+          is_float_base(to_elem_ts.base)
+              ? (to_elem_ts.base == TB_FLOAT ? fp_to_float_literal(0.0f) : fp_to_hex(0.0))
+              : "0";
+      const std::string with_real = fresh_tmp(ctx);
+      emit_instr(ctx, with_real + " = insertvalue " + tt + " undef, " + elem_ty +
+                                 " " + real + ", 0");
+      const std::string out = fresh_tmp(ctx);
+      emit_instr(ctx, out + " = insertvalue " + tt + " " + with_real + ", " +
+                            elem_ty + " " + zero + ", 1");
+      return out;
+    }
+
     // i1 → wider int
     if (ft == "i1" && tt != "ptr" && tt != "void") {
       const std::string tmp = fresh_tmp(ctx);
@@ -2502,6 +2520,15 @@ class HirEmitter {
             dr_builtin->name == "__builtin_nanf"      || dr_builtin->name == "__builtin_nansf" ||
             dr_builtin->name == "__builtin_fabsf"     || dr_builtin->name == "__builtin_copysignf") {
           TypeSpec flt{}; flt.base = TB_FLOAT; return flt;
+        }
+        if (dr_builtin->name == "__builtin_conjf") {
+          TypeSpec cflt{}; cflt.base = TB_COMPLEX_FLOAT; return cflt;
+        }
+        if (dr_builtin->name == "__builtin_conj") {
+          TypeSpec cdbl{}; cdbl.base = TB_COMPLEX_DOUBLE; return cdbl;
+        }
+        if (dr_builtin->name == "__builtin_conjl") {
+          TypeSpec cldbl{}; cldbl.base = TB_COMPLEX_LONGDOUBLE; return cldbl;
         }
         // Pointer-returning builtins (void* or first-arg type)
         if (dr_builtin->name == "__builtin_memcpy"   ||
