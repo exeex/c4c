@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "sema_driver.hpp"
+#include "../parser/parser_internal.hpp"
 
 namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir {
 namespace {
@@ -621,13 +622,126 @@ class Lowerer {
     def.is_union = sd->is_union;
 
     int llvm_idx = 0;
+    // Bitfield packing state (for structs only; unions always use offset 0)
+    int bf_unit_start_bit = -1;  // bit position where current storage unit starts (-1 = none)
+    int bf_unit_bits = 0;        // size of current storage unit in bits
+    int bf_current_bit = 0;      // current bit position within the storage unit
+
     for (int i = 0; i < num_fields; ++i) {
       const Node* f = get_field(i);
-      if (!f || !f->name) continue;
+      if (!f) continue;
+
+      const int bit_width = static_cast<int>(f->ival);  // -1 = not bitfield, 0+ = bitfield width
+      const bool is_bitfield = (bit_width >= 0);
+
+      // Skip anonymous non-bitfield fields (they have no name) but keep named fields
+      // and bitfield fields (including anonymous bitfields for layout purposes).
+      if (!f->name && !is_bitfield) continue;
+      // Zero-width bitfield: force alignment, close current storage unit
+      if (is_bitfield && bit_width == 0) {
+        if (!sd->is_union && bf_unit_start_bit >= 0) {
+          bf_unit_start_bit = -1;
+          bf_current_bit = 0;
+        }
+        continue;
+      }
+      // Anonymous bitfields with width > 0 but no name: skip as field but advance bit position
+      if (!f->name && is_bitfield) {
+        if (!sd->is_union && bf_unit_start_bit >= 0) {
+          bf_current_bit += bit_width;
+          if (bf_current_bit > bf_unit_bits) {
+            // Doesn't fit, start new unit
+            bf_unit_start_bit = -1;
+            bf_current_bit = 0;
+          }
+        }
+        continue;
+      }
 
       HirStructField hf;
       hf.name = f->name;
       TypeSpec ft = f->type;
+
+      if (is_bitfield && !sd->is_union) {
+        // Determine signedness from original declared type
+        const bool bf_signed = (ft.base == TB_INT || ft.base == TB_CHAR ||
+                                ft.base == TB_SCHAR || ft.base == TB_SHORT ||
+                                ft.base == TB_LONG || ft.base == TB_LONGLONG ||
+                                ft.base == TB_INT128);
+        // Determine storage unit size from declared type
+        int decl_unit_bits = static_cast<int>(sizeof_base(ft.base) * 8);
+        if (decl_unit_bits < 8) decl_unit_bits = 8;
+
+        // Can we pack into current storage unit?
+        bool can_pack = (bf_unit_start_bit >= 0) &&
+                        (bf_current_bit + bit_width <= bf_unit_bits);
+
+        if (can_pack) {
+          hf.bit_offset = bf_current_bit;
+          hf.storage_unit_bits = bf_unit_bits;
+          hf.bit_width = bit_width;
+          hf.llvm_idx = llvm_idx - 1;  // same LLVM field as previous
+        } else {
+          // Start new storage unit
+          bf_unit_start_bit = 0;
+          bf_unit_bits = decl_unit_bits;
+          bf_current_bit = 0;
+          hf.bit_offset = 0;
+          hf.storage_unit_bits = decl_unit_bits;
+          hf.bit_width = bit_width;
+          hf.llvm_idx = llvm_idx;
+          ++llvm_idx;
+        }
+        bf_current_bit = hf.bit_offset + bit_width;
+        hf.is_bf_signed = bf_signed;
+
+        // Set elem_type to the storage unit's integer type
+        TypeSpec sft{};
+        switch (hf.storage_unit_bits) {
+          case 8:  sft.base = TB_UCHAR; break;
+          case 16: sft.base = TB_USHORT; break;
+          case 32: sft.base = TB_UINT; break;
+          case 64: sft.base = TB_ULONGLONG; break;
+          default: sft.base = TB_UINT; break;
+        }
+        hf.elem_type = sft;
+        hf.is_anon_member = f->is_anon_field;
+        def.fields.push_back(std::move(hf));
+        continue;
+      }
+
+      if (is_bitfield && sd->is_union) {
+        const bool bf_signed = (ft.base == TB_INT || ft.base == TB_CHAR ||
+                                ft.base == TB_SCHAR || ft.base == TB_SHORT ||
+                                ft.base == TB_LONG || ft.base == TB_LONGLONG ||
+                                ft.base == TB_INT128);
+        int decl_unit_bits = static_cast<int>(sizeof_base(ft.base) * 8);
+        if (decl_unit_bits < 8) decl_unit_bits = 8;
+        hf.bit_width = bit_width;
+        hf.bit_offset = 0;
+        hf.storage_unit_bits = decl_unit_bits;
+        hf.is_bf_signed = bf_signed;
+        hf.llvm_idx = 0;
+        TypeSpec sft{};
+        switch (hf.storage_unit_bits) {
+          case 8:  sft.base = TB_UCHAR; break;
+          case 16: sft.base = TB_USHORT; break;
+          case 32: sft.base = TB_UINT; break;
+          case 64: sft.base = TB_ULONGLONG; break;
+          default: sft.base = TB_UINT; break;
+        }
+        hf.elem_type = sft;
+        hf.is_anon_member = f->is_anon_field;
+        def.fields.push_back(std::move(hf));
+        continue;
+      }
+
+      // Non-bitfield: flush any open bitfield storage unit
+      if (!sd->is_union && bf_unit_start_bit >= 0) {
+        bf_unit_start_bit = -1;
+        bf_current_bit = 0;
+      }
+
       // Extract first array dimension (keep base element type for LLVM)
       if (ft.array_rank > 0) {
         // Flexible array member (last field with unknown bound) is represented

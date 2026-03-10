@@ -551,6 +551,11 @@ struct HirStructField {
   long long array_first_dim = -1;  // >=0 if field is an array type
   int llvm_idx = 0;             // LLVM struct field index
   bool is_anon_member = false;  // anonymous struct/union embedded member
+  // Bitfield metadata (-1 = not a bitfield)
+  int bit_width = -1;           // width in bits (0 for zero-width padding bitfield)
+  int bit_offset = 0;           // offset within storage unit (from LSB)
+  int storage_unit_bits = 0;    // backing storage integer size (8, 16, 32, or 64)
+  bool is_bf_signed = false;    // true if original declared type was signed
 };
 
 struct HirStructDef {

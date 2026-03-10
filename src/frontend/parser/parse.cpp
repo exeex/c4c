@@ -1,6 +1,7 @@
 #include "parser.hpp"
 
 #include <cstdio>
+#include <cstring>
 #include <sstream>
 #include <stdexcept>
 
@@ -239,11 +240,14 @@ Node* Parser::parse() {
 
 Node* Parser::make_node(NodeKind k, int line) {
     Node* n = arena_.alloc_array<Node>(1);
+    std::memset(n, 0, sizeof(Node));
     n->kind = k;
     n->line = line;
+    n->ival = -1;  // -1 = not a bitfield (for struct field declarations)
     n->type.array_size = -1;
     n->type.array_rank = 0;
     for (int i = 0; i < 8; ++i) n->type.array_dims[i] = -1;
+    n->type.inner_rank = -1;
     n->type.is_ptr_to_array = false;
     return n;
 }

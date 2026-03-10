@@ -522,6 +522,15 @@ struct BlockMeta {
   std::optional<std::string> continue_label;
 };
 
+// Bitfield access metadata returned by emit_member_gep/emit_member_lval.
+struct BitfieldAccess {
+  int bit_width = -1;       // -1 = not a bitfield
+  int bit_offset = 0;
+  int storage_unit_bits = 0;
+  bool is_signed = false;
+  bool is_bitfield() const { return bit_width >= 0; }
+};
+
 // ── HirEmitter class ──────────────────────────────────────────────────────────
 
 class HirEmitter {
@@ -725,9 +734,13 @@ class HirEmitter {
         preamble_ << "%struct." << tag << " = type { ["
                   << sz << " x i8] }\n";
       } else {
+        // Deduplicate fields by llvm_idx (bitfields share one storage unit)
         preamble_ << "%struct." << tag << " = type { ";
         bool first = true;
+        int last_idx = -1;
         for (const auto& f : sd.fields) {
+          if (f.llvm_idx == last_idx) continue;  // same storage unit
+          last_idx = f.llvm_idx;
           if (!first) preamble_ << ", ";
           first = false;
           preamble_ << llvm_field_ty(f);
@@ -1374,10 +1387,48 @@ class HirEmitter {
     for (size_t fi = 0; fi < sd.fields.size() && cursor < list.items.size(); ++fi)
       field_vals[fi] = emit_const_from_flat(field_decl_type(sd.fields[fi]), list, cursor);
 
+    // Check if struct has bitfields
+    bool has_bf = false;
+    for (const auto& f : sd.fields) { if (f.bit_width >= 0) { has_bf = true; break; } }
+
+    if (!has_bf) {
+      std::string out = "{ ";
+      for (size_t i = 0; i < sd.fields.size(); ++i) {
+        if (i) out += ", ";
+        out += llvm_field_ty(sd.fields[i]) + " " + field_vals[i];
+      }
+      out += " }";
+      return out;
+    }
+
+    // Pack bitfields by llvm_idx
     std::string out = "{ ";
-    for (size_t i = 0; i < sd.fields.size(); ++i) {
-      if (i) out += ", ";
-      out += llvm_field_ty(sd.fields[i]) + " " + field_vals[i];
+    bool first = true;
+    int last_idx = -1;
+    for (size_t i = 0; i < sd.fields.size(); ) {
+      const auto& f0 = sd.fields[i];
+      if (f0.llvm_idx == last_idx) { ++i; continue; }
+      last_idx = f0.llvm_idx;
+      if (!first) out += ", ";
+      first = false;
+      out += llvm_field_ty(f0) + " ";
+      if (f0.bit_width < 0) {
+        out += field_vals[i];
+        ++i;
+      } else {
+        unsigned long long packed = 0;
+        while (i < sd.fields.size() && sd.fields[i].llvm_idx == last_idx) {
+          const auto& bf = sd.fields[i];
+          if (bf.bit_width > 0) {
+            long long val = 0;
+            try { val = std::stoll(field_vals[i]); } catch (...) {}
+            unsigned long long mask = (bf.bit_width >= 64) ? ~0ULL : ((1ULL << bf.bit_width) - 1);
+            packed |= (static_cast<unsigned long long>(val) & mask) << bf.bit_offset;
+          }
+          ++i;
+        }
+        out += std::to_string(static_cast<long long>(packed));
+      }
     }
     out += " }";
     return out;
@@ -1987,10 +2038,64 @@ class HirEmitter {
 
     const auto field_vals = emit_const_struct_fields(ts, sd, init);
 
-    std::string out = "{ ";
+    // Check if struct has any bitfields
+    bool has_bitfields = false;
+    for (const auto& f : sd.fields) {
+      if (f.bit_width >= 0) { has_bitfields = true; break; }
+    }
+
+    if (!has_bitfields) {
+      // No bitfields: emit one value per field as before
+      std::string out = "{ ";
+      for (size_t i = 0; i < sd.fields.size(); ++i) {
+        if (i) out += ", ";
+        out += llvm_field_ty(sd.fields[i]) + " " + field_vals[i];
+      }
+      out += " }";
+      return out;
+    }
+
+    // Has bitfields: group by llvm_idx and pack bitfield values into storage units
+    // Build list of unique LLVM fields
+    struct LlvmField {
+      int llvm_idx;
+      std::string type_str;
+      std::vector<size_t> c_field_indices;  // C field indices sharing this llvm_idx
+    };
+    std::vector<LlvmField> llvm_fields;
+    int last_idx = -1;
     for (size_t i = 0; i < sd.fields.size(); ++i) {
-      if (i) out += ", ";
-      out += llvm_field_ty(sd.fields[i]) + " " + field_vals[i];
+      if (sd.fields[i].llvm_idx != last_idx) {
+        last_idx = sd.fields[i].llvm_idx;
+        llvm_fields.push_back({last_idx, llvm_field_ty(sd.fields[i]), {}});
+      }
+      llvm_fields.back().c_field_indices.push_back(i);
+    }
+
+    std::string out = "{ ";
+    for (size_t li = 0; li < llvm_fields.size(); ++li) {
+      if (li) out += ", ";
+      const auto& lf = llvm_fields[li];
+      out += lf.type_str + " ";
+
+      if (lf.c_field_indices.size() == 1 && sd.fields[lf.c_field_indices[0]].bit_width < 0) {
+        // Single non-bitfield: use value directly
+        out += field_vals[lf.c_field_indices[0]];
+      } else {
+        // Pack bitfield values into storage unit integer
+        unsigned long long packed = 0;
+        for (size_t ci : lf.c_field_indices) {
+          const auto& f = sd.fields[ci];
+          if (f.bit_width <= 0) continue;  // skip zero-width or non-bitfield
+          // Parse the integer value from field_vals string
+          long long val = 0;
+          try { val = std::stoll(field_vals[ci]); } catch (...) {}
+          // Mask to bit_width bits and shift into position
+          unsigned long long mask = (f.bit_width >= 64) ? ~0ULL : ((1ULL << f.bit_width) - 1);
+          packed |= (static_cast<unsigned long long>(val) & mask) << f.bit_offset;
+        }
+        out += std::to_string(static_cast<long long>(packed));
+      }
     }
     out += " }";
     return out;
@@ -2285,6 +2390,11 @@ class HirEmitter {
     std::string tag;
     int llvm_idx = 0;
     bool is_union = false;
+    // Bitfield metadata (bit_width >= 0 means this is a bitfield access)
+    int bit_width = -1;
+    int bit_offset = 0;
+    int storage_unit_bits = 0;
+    bool bf_is_signed = false;
   };
 
   // Recursively find field_name in struct/union identified by tag.
@@ -2299,7 +2409,14 @@ class HirEmitter {
     // Direct lookup
     for (const auto& f : sd.fields) {
       if (!f.is_anon_member && f.name == field_name) {
-        chain.push_back({tag, f.llvm_idx, sd.is_union});
+        FieldStep step{tag, f.llvm_idx, sd.is_union};
+        if (f.bit_width >= 0) {
+          step.bit_width = f.bit_width;
+          step.bit_offset = f.bit_offset;
+          step.storage_unit_bits = f.storage_unit_bits;
+          step.bf_is_signed = f.is_bf_signed;
+        }
+        chain.push_back(std::move(step));
         out_field_ts = field_decl_type(f);  // includes array dims if array field
         return true;
       }
@@ -2326,7 +2443,8 @@ class HirEmitter {
   // Returns LLVM value (ptr to field), sets out_field_ts.
   std::string emit_member_gep(FnCtx& ctx, const std::string& base_ptr,
                                const std::string& tag, const std::string& field_name,
-                               TypeSpec& out_field_ts) {
+                               TypeSpec& out_field_ts,
+                               BitfieldAccess* out_bf = nullptr) {
     std::vector<FieldStep> chain;
     if (!find_field_chain(tag, field_name, chain, out_field_ts)) {
       throw std::runtime_error(
@@ -2348,7 +2466,105 @@ class HirEmitter {
         cur_ptr = tmp;
       }
     }
+    // Propagate bitfield info from the last (innermost) step
+    if (out_bf && !chain.empty()) {
+      const auto& last = chain.back();
+      out_bf->bit_width = last.bit_width;
+      out_bf->bit_offset = last.bit_offset;
+      out_bf->storage_unit_bits = last.storage_unit_bits;
+      out_bf->is_signed = last.bf_is_signed;
+    }
     return cur_ptr;
+  }
+
+  // ── Bitfield load/store helpers ─────────────────────────────────────────────
+
+  // Load a bitfield value from a storage unit pointer.
+  // Returns an i32 value (bitfield values are promoted to int per C standard).
+  std::string emit_bitfield_load(FnCtx& ctx, const std::string& unit_ptr,
+                                  const BitfieldAccess& bf) {
+    const std::string unit_ty = "i" + std::to_string(bf.storage_unit_bits);
+    // Load the full storage unit
+    const std::string unit = fresh_tmp(ctx);
+    emit_instr(ctx, unit + " = load " + unit_ty + ", ptr " + unit_ptr);
+    // Shift right to align bitfield to bit 0
+    std::string shifted = unit;
+    if (bf.bit_offset > 0) {
+      shifted = fresh_tmp(ctx);
+      emit_instr(ctx, shifted + " = lshr " + unit_ty + " " + unit +
+                          ", " + std::to_string(bf.bit_offset));
+    }
+    // Mask to bit_width bits
+    const unsigned long long mask = (bf.bit_width >= 64)
+        ? ~0ULL : ((1ULL << bf.bit_width) - 1);
+    const std::string masked = fresh_tmp(ctx);
+    emit_instr(ctx, masked + " = and " + unit_ty + " " + shifted +
+                        ", " + std::to_string(mask));
+    std::string result = masked;
+    // Sign-extend if needed
+    if (bf.is_signed && bf.bit_width < bf.storage_unit_bits) {
+      const int shift_amt = bf.storage_unit_bits - bf.bit_width;
+      const std::string shl = fresh_tmp(ctx);
+      emit_instr(ctx, shl + " = shl " + unit_ty + " " + masked +
+                          ", " + std::to_string(shift_amt));
+      result = fresh_tmp(ctx);
+      emit_instr(ctx, result + " = ashr " + unit_ty + " " + shl +
+                          ", " + std::to_string(shift_amt));
+    }
+    // Truncate or extend to i32 (C integer promotion)
+    if (bf.storage_unit_bits != 32) {
+      const std::string promoted = fresh_tmp(ctx);
+      if (bf.storage_unit_bits > 32) {
+        emit_instr(ctx, promoted + " = trunc " + unit_ty + " " + result + " to i32");
+      } else {
+        emit_instr(ctx, promoted + " = " +
+                        (bf.is_signed ? "sext " : "zext ") +
+                        unit_ty + " " + result + " to i32");
+      }
+      return promoted;
+    }
+    return result;
+  }
+
+  // Store a value into a bitfield within a storage unit.
+  void emit_bitfield_store(FnCtx& ctx, const std::string& unit_ptr,
+                            const BitfieldAccess& bf,
+                            const std::string& new_val, const TypeSpec& val_ts) {
+    const std::string unit_ty = "i" + std::to_string(bf.storage_unit_bits);
+    // Coerce new_val to storage unit type
+    TypeSpec unit_ts{};
+    switch (bf.storage_unit_bits) {
+      case 8:  unit_ts.base = TB_UCHAR; break;
+      case 16: unit_ts.base = TB_USHORT; break;
+      case 32: unit_ts.base = TB_UINT; break;
+      case 64: unit_ts.base = TB_ULONGLONG; break;
+      default: unit_ts.base = TB_UINT; break;
+    }
+    std::string val_coerced = coerce(ctx, new_val, val_ts, unit_ts);
+    // Load current storage unit
+    const std::string old_unit = fresh_tmp(ctx);
+    emit_instr(ctx, old_unit + " = load " + unit_ty + ", ptr " + unit_ptr);
+    // Create mask to clear the bitfield bits
+    const unsigned long long field_mask_val = (bf.bit_width >= 64)
+        ? ~0ULL : ((1ULL << bf.bit_width) - 1);
+    const unsigned long long clear_mask = ~(field_mask_val << bf.bit_offset);
+    const std::string cleared = fresh_tmp(ctx);
+    emit_instr(ctx, cleared + " = and " + unit_ty + " " + old_unit +
+                        ", " + std::to_string(static_cast<long long>(clear_mask)));
+    // Mask and shift new value into position
+    const std::string new_masked = fresh_tmp(ctx);
+    emit_instr(ctx, new_masked + " = and " + unit_ty + " " + val_coerced +
+                        ", " + std::to_string(field_mask_val));
+    std::string new_shifted = new_masked;
+    if (bf.bit_offset > 0) {
+      new_shifted = fresh_tmp(ctx);
+      emit_instr(ctx, new_shifted + " = shl " + unit_ty + " " + new_masked +
+                          ", " + std::to_string(bf.bit_offset));
+    }
+    // Combine
+    const std::string combined = fresh_tmp(ctx);
+    emit_instr(ctx, combined + " = or " + unit_ty + " " + cleared + ", " + new_shifted);
+    emit_instr(ctx, "store " + unit_ty + " " + combined + ", ptr " + unit_ptr);
   }
 
   // ── Lvalue emission ───────────────────────────────────────────────────────
@@ -2481,7 +2697,8 @@ class HirEmitter {
     throw std::runtime_error("HirEmitter: cannot take lval of expr");
   }
 
-  std::string emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeSpec& out_pts) {
+  std::string emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeSpec& out_pts,
+                                BitfieldAccess* out_bf = nullptr) {
     // Get base pointer
     const Expr& base_e = get_expr(m.base);
     TypeSpec base_ts = base_e.type.spec;
@@ -2522,7 +2739,7 @@ class HirEmitter {
       throw std::runtime_error(
           "HirEmitter: MemberExpr base has no struct tag (field='" + m.field + "')");
     }
-    return emit_member_gep(ctx, base_ptr, tag, m.field, out_pts);
+    return emit_member_gep(ctx, base_ptr, tag, m.field, out_pts, out_bf);
   }
 
   // ── Rvalue emission ───────────────────────────────────────────────────────
@@ -2867,6 +3084,12 @@ class HirEmitter {
     std::vector<FieldStep> chain;
     TypeSpec field_ts{};
     find_field_chain(std::string(base_ts.tag), m.field, chain, field_ts);
+    // Bitfield values are promoted to int
+    if (!chain.empty() && chain.back().bit_width >= 0) {
+      TypeSpec int_ts{};
+      int_ts.base = chain.back().bf_is_signed ? TB_INT : TB_UINT;
+      return int_ts;
+    }
     return field_ts;
   }
 
@@ -3717,8 +3940,47 @@ class HirEmitter {
     std::string rhs = emit_rval_id(ctx, a.rhs, rhs_ts);
 
     TypeSpec lhs_ts{};
-    const std::string lhs_ptr = emit_lval(ctx, a.lhs, lhs_ts);
+    BitfieldAccess bf;
+    // Check if LHS is a member expression (potential bitfield)
+    const Expr& lhs_e = get_expr(a.lhs);
+    std::string lhs_ptr;
+    if (const auto* m = std::get_if<MemberExpr>(&lhs_e.payload)) {
+      lhs_ptr = emit_member_lval(ctx, *m, lhs_ts, &bf);
+    } else {
+      lhs_ptr = emit_lval(ctx, a.lhs, lhs_ts);
+    }
     const std::string lty = llvm_ty(lhs_ts);
+
+    // Bitfield simple assignment
+    if (bf.is_bitfield() && a.op == AssignOp::Set) {
+      emit_bitfield_store(ctx, lhs_ptr, bf, rhs, rhs_ts);
+      return rhs;
+    }
+    // Bitfield compound assignment
+    if (bf.is_bitfield() && a.op != AssignOp::Set) {
+      TypeSpec int_ts{}; int_ts.base = TB_INT;
+      const std::string loaded = emit_bitfield_load(ctx, lhs_ptr, bf);
+      // For compound ops, promote both to int and compute
+      std::string lhs_op = loaded;
+      std::string rhs_op = coerce(ctx, rhs, rhs_ts, int_ts);
+      const bool ls = bf.is_signed;
+      const char* instr = nullptr;
+      static const struct { AssignOp op; const char* is; const char* iu; } tbl[] = {
+        {AssignOp::Add, "add", "add"}, {AssignOp::Sub, "sub", "sub"},
+        {AssignOp::Mul, "mul", "mul"}, {AssignOp::Div, "sdiv", "udiv"},
+        {AssignOp::Mod, "srem", "urem"}, {AssignOp::Shl, "shl", "shl"},
+        {AssignOp::Shr, "ashr", "lshr"}, {AssignOp::BitAnd, "and", "and"},
+        {AssignOp::BitOr, "or", "or"}, {AssignOp::BitXor, "xor", "xor"},
+      };
+      for (const auto& r : tbl) {
+        if (r.op == a.op) { instr = ls ? r.is : r.iu; break; }
+      }
+      if (!instr) throw std::runtime_error("HirEmitter: bitfield compound assign: unknown op");
+      const std::string result = fresh_tmp(ctx);
+      emit_instr(ctx, result + " = " + instr + " i32 " + lhs_op + ", " + rhs_op);
+      emit_bitfield_store(ctx, lhs_ptr, bf, result, int_ts);
+      return result;
+    }
 
     if (a.op != AssignOp::Set) {
       const std::string loaded = fresh_tmp(ctx);
@@ -4819,7 +5081,12 @@ class HirEmitter {
 
   std::string emit_rval_payload(FnCtx& ctx, const MemberExpr& m, const Expr& e) {
     TypeSpec field_ts{};
-    const std::string gep = emit_member_lval(ctx, m, field_ts);
+    BitfieldAccess bf;
+    const std::string gep = emit_member_lval(ctx, m, field_ts, &bf);
+    // Bitfield: use shift/mask load
+    if (bf.is_bitfield()) {
+      return emit_bitfield_load(ctx, gep, bf);
+    }
     // Use stored type if available, else use resolved field type
     const TypeSpec& load_ts = (e.type.spec.base != TB_VOID || e.type.spec.ptr_level > 0)
                                   ? e.type.spec
@@ -4829,8 +5096,6 @@ class HirEmitter {
       const TypeSpec& arr_ts = (field_ts.array_rank > 0) ? field_ts : load_ts;
       const std::string arr_alloca_ty = llvm_alloca_ty(arr_ts);
       if (arr_alloca_ty == "ptr") {
-        // Flexible-array members are represented as pointer fields in LLVM
-        // layout. Decay to pointer by loading the field value directly.
         const std::string tmp = fresh_tmp(ctx);
         emit_instr(ctx, tmp + " = load ptr, ptr " + gep);
         return tmp;
