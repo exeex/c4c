@@ -32,6 +32,76 @@ static bool is_float_base(TypeBase b) {
   return b == TB_FLOAT || b == TB_DOUBLE || b == TB_LONGDOUBLE;
 }
 
+static bool is_complex_base(TypeBase b) {
+  switch (b) {
+    case TB_COMPLEX_FLOAT:
+    case TB_COMPLEX_DOUBLE:
+    case TB_COMPLEX_LONGDOUBLE:
+    case TB_COMPLEX_CHAR:
+    case TB_COMPLEX_SCHAR:
+    case TB_COMPLEX_UCHAR:
+    case TB_COMPLEX_SHORT:
+    case TB_COMPLEX_USHORT:
+    case TB_COMPLEX_INT:
+    case TB_COMPLEX_UINT:
+    case TB_COMPLEX_LONG:
+    case TB_COMPLEX_ULONG:
+    case TB_COMPLEX_LONGLONG:
+    case TB_COMPLEX_ULONGLONG:
+      return true;
+    default:
+      return false;
+  }
+}
+
+static TypeSpec complex_component_ts(TypeBase b) {
+  TypeSpec ts{};
+  switch (b) {
+    case TB_COMPLEX_FLOAT: ts.base = TB_FLOAT; break;
+    case TB_COMPLEX_LONGDOUBLE: ts.base = TB_LONGDOUBLE; break;
+    case TB_COMPLEX_DOUBLE: ts.base = TB_DOUBLE; break;
+    case TB_COMPLEX_CHAR: ts.base = TB_CHAR; break;
+    case TB_COMPLEX_SCHAR: ts.base = TB_SCHAR; break;
+    case TB_COMPLEX_UCHAR: ts.base = TB_UCHAR; break;
+    case TB_COMPLEX_SHORT: ts.base = TB_SHORT; break;
+    case TB_COMPLEX_USHORT: ts.base = TB_USHORT; break;
+    case TB_COMPLEX_INT: ts.base = TB_INT; break;
+    case TB_COMPLEX_UINT: ts.base = TB_UINT; break;
+    case TB_COMPLEX_LONG: ts.base = TB_LONG; break;
+    case TB_COMPLEX_ULONG: ts.base = TB_ULONG; break;
+    case TB_COMPLEX_LONGLONG: ts.base = TB_LONGLONG; break;
+    case TB_COMPLEX_ULONGLONG: ts.base = TB_ULONGLONG; break;
+    default: ts.base = TB_INT; break;
+  }
+  return ts;
+}
+
+static std::string llvm_complex_ty(TypeBase b) {
+  const TypeSpec elem_ts = complex_component_ts(b);
+  std::string elem_ty;
+  switch (elem_ts.base) {
+    case TB_BOOL: elem_ty = "i1"; break;
+    case TB_CHAR:
+    case TB_SCHAR:
+    case TB_UCHAR: elem_ty = "i8"; break;
+    case TB_SHORT:
+    case TB_USHORT: elem_ty = "i16"; break;
+    case TB_INT:
+    case TB_UINT: elem_ty = "i32"; break;
+    case TB_LONG:
+    case TB_ULONG:
+    case TB_LONGLONG:
+    case TB_ULONGLONG: elem_ty = "i64"; break;
+    case TB_INT128:
+    case TB_UINT128: elem_ty = "i128"; break;
+    case TB_FLOAT: elem_ty = "float"; break;
+    case TB_DOUBLE:
+    case TB_LONGDOUBLE: elem_ty = "double"; break;
+    default: elem_ty = "i32"; break;
+  }
+  return "{ " + elem_ty + ", " + elem_ty + " }";
+}
+
 static bool is_signed_int(TypeBase b) {
   switch (b) {
     case TB_CHAR: case TB_SCHAR: case TB_SHORT: case TB_INT:
@@ -90,6 +160,7 @@ static std::string llvm_base(TypeBase b) {
 static std::string llvm_ty(const TypeSpec& ts) {
   if (ts.ptr_level > 0 || ts.is_fn_ptr) return "ptr";
   if (ts.array_rank > 0) return "ptr";  // decayed
+  if (is_complex_base(ts.base)) return llvm_complex_ty(ts.base);
   if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag && ts.tag[0]) {
     return "%struct." + std::string(ts.tag);
   }
@@ -133,6 +204,7 @@ static std::string llvm_alloca_ty(const TypeSpec& ts) {
     return "ptr";  // unknown size
   }
   if (ts.ptr_level > 0 || ts.is_fn_ptr) return "ptr";
+  if (is_complex_base(ts.base)) return llvm_complex_ty(ts.base);
   if (ts.base == TB_VA_LIST) return "%struct.__va_list_tag_";
   if (ts.base == TB_STRUCT || ts.base == TB_UNION) {
     if (ts.tag && ts.tag[0]) return "%struct." + std::string(ts.tag);
@@ -145,6 +217,7 @@ static std::string llvm_alloca_ty(const TypeSpec& ts) {
 static int compute_struct_size(const Module& mod, const std::string& tag);
 
 static int sizeof_base(TypeBase b) {
+  if (is_complex_base(b)) return 2 * sizeof_base(complex_component_ts(b).base);
   switch (b) {
     case TB_BOOL: case TB_CHAR: case TB_SCHAR: case TB_UCHAR: return 1;
     case TB_SHORT: case TB_USHORT:             return 2;
@@ -192,6 +265,7 @@ static std::string llvm_field_ty(const HirStructField& f) {
     return "[" + std::to_string(f.array_first_dim) + " x " + elem_ty + "]";
   }
   if (f.elem_type.ptr_level > 0 || f.elem_type.is_fn_ptr) return "ptr";
+  if (is_complex_base(f.elem_type.base)) return llvm_complex_ty(f.elem_type.base);
   if (f.elem_type.base == TB_VA_LIST) return "%struct.__va_list_tag_";
   if (f.elem_type.base == TB_STRUCT || f.elem_type.base == TB_UNION) {
     if (f.elem_type.tag && f.elem_type.tag[0])
@@ -731,10 +805,77 @@ class HirEmitter {
     }, e.payload);
   }
 
+  std::optional<std::pair<long long, long long>> try_const_eval_complex_int(ExprId id) {
+    const Expr& e = get_expr(id);
+    return std::visit([&](const auto& p) -> std::optional<std::pair<long long, long long>> {
+      using T = std::decay_t<decltype(p)>;
+      if constexpr (std::is_same_v<T, IntLiteral>) {
+        if (e.type.spec.base == TB_COMPLEX_CHAR || e.type.spec.base == TB_COMPLEX_SCHAR ||
+            e.type.spec.base == TB_COMPLEX_UCHAR || e.type.spec.base == TB_COMPLEX_SHORT ||
+            e.type.spec.base == TB_COMPLEX_USHORT || e.type.spec.base == TB_COMPLEX_INT ||
+            e.type.spec.base == TB_COMPLEX_UINT || e.type.spec.base == TB_COMPLEX_LONG ||
+            e.type.spec.base == TB_COMPLEX_ULONG || e.type.spec.base == TB_COMPLEX_LONGLONG ||
+            e.type.spec.base == TB_COMPLEX_ULONGLONG) {
+          return std::pair<long long, long long>{0, p.value};
+        }
+        return std::pair<long long, long long>{p.value, 0};
+      } else if constexpr (std::is_same_v<T, CharLiteral>) {
+        return std::pair<long long, long long>{p.value, 0};
+      } else if constexpr (std::is_same_v<T, UnaryExpr>) {
+        auto v = try_const_eval_complex_int(p.operand);
+        if (!v) return std::nullopt;
+        switch (p.op) {
+          case UnaryOp::Plus: return v;
+          case UnaryOp::Minus: return std::pair<long long, long long>{-v->first, -v->second};
+          default: return std::nullopt;
+        }
+      } else if constexpr (std::is_same_v<T, BinaryExpr>) {
+        auto lv = try_const_eval_complex_int(p.lhs);
+        auto rv = try_const_eval_complex_int(p.rhs);
+        if (!lv || !rv) return std::nullopt;
+        switch (p.op) {
+          case BinaryOp::Add:
+            return std::pair<long long, long long>{lv->first + rv->first, lv->second + rv->second};
+          case BinaryOp::Sub:
+            return std::pair<long long, long long>{lv->first - rv->first, lv->second - rv->second};
+          default:
+            return std::nullopt;
+        }
+      } else if constexpr (std::is_same_v<T, CastExpr>) {
+        return try_const_eval_complex_int(p.expr);
+      } else {
+        return std::nullopt;
+      }
+    }, e.payload);
+  }
+
+  std::string emit_const_int_like(long long value, const TypeSpec& expected_ts) {
+    if (llvm_ty(expected_ts) == "ptr") {
+      if (value == 0) return "null";
+      return "inttoptr (i64 " + std::to_string(value) + " to ptr)";
+    }
+    if (expected_ts.base == TB_FLOAT && expected_ts.ptr_level == 0 && expected_ts.array_rank == 0)
+      return fp_to_float_literal(static_cast<float>(value));
+    if (is_float_base(expected_ts.base) && expected_ts.ptr_level == 0 && expected_ts.array_rank == 0)
+      return fp_to_hex(static_cast<double>(value));
+    return std::to_string(value);
+  }
+
   std::string emit_const_scalar_expr(ExprId id, const TypeSpec& expected_ts) {
     const Expr& e = get_expr(id);
     return std::visit([&](const auto& p) -> std::string {
       using T = std::decay_t<decltype(p)>;
+      if (is_complex_base(expected_ts.base) && expected_ts.ptr_level == 0 && expected_ts.array_rank == 0) {
+        if (auto cv = try_const_eval_complex_int(id)) {
+          const TypeSpec elem_ts = complex_component_ts(expected_ts.base);
+          return "{ " + llvm_ty(elem_ts) + " " +
+                 emit_const_int_like(cv->first, elem_ts) +
+                 ", " + llvm_ty(elem_ts) + " " +
+                 emit_const_int_like(cv->second, elem_ts) +
+                 " }";
+        }
+        return "zeroinitializer";
+      }
       if constexpr (std::is_same_v<T, IntLiteral>) {
         if (llvm_ty(expected_ts) == "ptr") {
           if (p.value == 0) return "null";
@@ -1643,8 +1784,27 @@ class HirEmitter {
                      const TypeSpec& from_ts, const TypeSpec& to_ts) {
     const std::string ft = llvm_ty(from_ts);
     const std::string tt = llvm_ty(to_ts);
+    if (tt == "ptr" && val == "0") return "null";
     if (ft == tt) return val;
     if (ft == "ptr" && tt == "ptr") return val;
+
+    if (is_complex_base(from_ts.base) && is_complex_base(to_ts.base)) {
+      const TypeSpec from_elem_ts = complex_component_ts(from_ts.base);
+      const TypeSpec to_elem_ts = complex_component_ts(to_ts.base);
+      const std::string real0 = fresh_tmp(ctx);
+      emit_instr(ctx, real0 + " = extractvalue " + ft + " " + val + ", 0");
+      const std::string imag0 = fresh_tmp(ctx);
+      emit_instr(ctx, imag0 + " = extractvalue " + ft + " " + val + ", 1");
+      const std::string real1 = coerce(ctx, real0, from_elem_ts, to_elem_ts);
+      const std::string imag1 = coerce(ctx, imag0, from_elem_ts, to_elem_ts);
+      const std::string with_real = fresh_tmp(ctx);
+      emit_instr(ctx, with_real + " = insertvalue " + tt + " undef, " + llvm_ty(to_elem_ts) +
+                                 " " + real1 + ", 0");
+      const std::string out = fresh_tmp(ctx);
+      emit_instr(ctx, out + " = insertvalue " + tt + " " + with_real + ", " +
+                            llvm_ty(to_elem_ts) + " " + imag1 + ", 1");
+      return out;
+    }
 
     // i1 → wider int
     if (ft == "i1" && tt != "ptr" && tt != "void") {
@@ -1868,6 +2028,19 @@ class HirEmitter {
         if (pts.ptr_level > 0) pts.ptr_level--;
         return ptr;
       }
+      if (u->op == UnaryOp::RealPart || u->op == UnaryOp::ImagPart) {
+        TypeSpec complex_ts{};
+        const std::string complex_ptr = emit_lval(ctx, u->operand, complex_ts);
+        if (!is_complex_base(complex_ts.base)) {
+          throw std::runtime_error("HirEmitter: real/imag lvalue on non-complex expr");
+        }
+        pts = complex_component_ts(complex_ts.base);
+        const std::string tmp = fresh_tmp(ctx);
+        emit_instr(ctx, tmp + " = getelementptr " + llvm_alloca_ty(complex_ts) +
+                            ", ptr " + complex_ptr + ", i32 0, i32 " +
+                            std::to_string(u->op == UnaryOp::ImagPart ? 1 : 0));
+        return tmp;
+      }
     }
     if (const auto* idx = std::get_if<IndexExpr>(&e.payload)) {
       TypeSpec base_ts{};
@@ -2036,6 +2209,10 @@ class HirEmitter {
       case UnaryOp::Deref:
         if (ts.ptr_level > 0) ts.ptr_level -= 1;
         else if (ts.array_rank > 0) ts.array_rank -= 1;
+        return ts;
+      case UnaryOp::RealPart:
+      case UnaryOp::ImagPart:
+        if (is_complex_base(ts.base)) return complex_component_ts(ts.base);
         return ts;
       case UnaryOp::Not: {
         TypeSpec out{};
@@ -2325,6 +2502,16 @@ class HirEmitter {
     // Function reference: return as ptr value (after checking locals/params)
     if (mod_.fn_index.count(r.name)) return "@" + r.name;
 
+    if ((r.name == "__func__" || r.name == "__FUNCTION__" || r.name == "__PRETTY_FUNCTION__") &&
+        ctx.fn) {
+      const std::string gname = intern_str(ctx.fn->name);
+      const size_t len = ctx.fn->name.size() + 1;
+      const std::string tmp = fresh_tmp(ctx);
+      emit_instr(ctx, tmp + " = getelementptr [" + std::to_string(len) +
+                          " x i8], ptr " + gname + ", i64 0, i64 0");
+      return tmp;
+    }
+
     // Unresolved: load from external global
     const TypeSpec ets = resolve_expr_type(ctx, e);
     if (!has_concrete_type(ets)) return "0";
@@ -2452,8 +2639,27 @@ class HirEmitter {
       }
 
       case UnaryOp::RealPart:
-      case UnaryOp::ImagPart:
-        throw std::runtime_error("HirEmitter: complex not yet supported");
+      case UnaryOp::ImagPart: {
+        try {
+          TypeSpec complex_ts{};
+          const std::string complex_ptr = emit_lval(ctx, u.operand, complex_ts);
+          if (!is_complex_base(complex_ts.base)) throw std::runtime_error("non-complex");
+          const TypeSpec part_ts = complex_component_ts(complex_ts.base);
+          const std::string part_ptr = fresh_tmp(ctx);
+          emit_instr(ctx, part_ptr + " = getelementptr " + llvm_alloca_ty(complex_ts) +
+                                 ", ptr " + complex_ptr + ", i32 0, i32 " +
+                                 std::to_string(u.op == UnaryOp::ImagPart ? 1 : 0));
+          const std::string tmp = fresh_tmp(ctx);
+          emit_instr(ctx, tmp + " = load " + llvm_ty(part_ts) + ", ptr " + part_ptr);
+          return tmp;
+        } catch (const std::runtime_error&) {
+        }
+        if (!is_complex_base(op_ts.base)) return "0";
+        const std::string tmp = fresh_tmp(ctx);
+        emit_instr(ctx, tmp + " = extractvalue " + llvm_ty(op_ts) + " " + val + ", " +
+                            std::to_string(u.op == UnaryOp::ImagPart ? 1 : 0));
+        return tmp;
+      }
     }
     return "0";
   }
@@ -2477,6 +2683,70 @@ class HirEmitter {
     const std::string lv = emit_rval_id(ctx, b.lhs, lts);
     TypeSpec rts{};
     std::string rv = emit_rval_id(ctx, b.rhs, rts);
+
+    if ((b.op == BinaryOp::Eq || b.op == BinaryOp::Ne) &&
+        (is_complex_base(lts.base) || is_complex_base(rts.base))) {
+      TypeSpec cmp_lts = lts;
+      TypeSpec cmp_rts = rts;
+      std::string cmp_lv = lv;
+      std::string cmp_rv = rv;
+      const TypeSpec elem_ts = is_complex_base(cmp_lts.base)
+                                   ? complex_component_ts(cmp_lts.base)
+                                   : complex_component_ts(cmp_rts.base);
+      const TypeSpec complex_ts = is_complex_base(cmp_lts.base) ? cmp_lts : cmp_rts;
+      auto lift_scalar_to_complex = [&](const std::string& scalar,
+                                        const TypeSpec& scalar_ts,
+                                        bool scalar_is_lhs) -> std::string {
+        std::string real_v = coerce(ctx, scalar, scalar_ts, elem_ts);
+        const std::string imag_v = emit_const_int_like(0, elem_ts);
+        const std::string with_real = fresh_tmp(ctx);
+        emit_instr(ctx, with_real + " = insertvalue " + llvm_ty(complex_ts) + " undef, " +
+                                   llvm_ty(elem_ts) + " " + real_v + ", 0");
+        const std::string out = fresh_tmp(ctx);
+        emit_instr(ctx, out + " = insertvalue " + llvm_ty(complex_ts) + " " + with_real + ", " +
+                            llvm_ty(elem_ts) + " " + imag_v + ", 1");
+        (void)scalar_is_lhs;
+        return out;
+      };
+      if (!is_complex_base(cmp_lts.base)) {
+        cmp_lv = lift_scalar_to_complex(cmp_lv, cmp_lts, true);
+        cmp_lts = complex_ts;
+      }
+      if (!is_complex_base(cmp_rts.base)) {
+        cmp_rv = lift_scalar_to_complex(cmp_rv, cmp_rts, false);
+        cmp_rts = complex_ts;
+      }
+      const std::string lreal = fresh_tmp(ctx);
+      emit_instr(ctx, lreal + " = extractvalue " + llvm_ty(cmp_lts) + " " + cmp_lv + ", 0");
+      const std::string limag = fresh_tmp(ctx);
+      emit_instr(ctx, limag + " = extractvalue " + llvm_ty(cmp_lts) + " " + cmp_lv + ", 1");
+      const std::string rreal0 = fresh_tmp(ctx);
+      emit_instr(ctx, rreal0 + " = extractvalue " + llvm_ty(cmp_rts) + " " + cmp_rv + ", 0");
+      const std::string rimag0 = fresh_tmp(ctx);
+      emit_instr(ctx, rimag0 + " = extractvalue " + llvm_ty(cmp_rts) + " " + cmp_rv + ", 1");
+      const std::string rreal = coerce(ctx, rreal0, elem_ts, elem_ts);
+      const std::string rimag = coerce(ctx, rimag0, elem_ts, elem_ts);
+      const std::string creal = fresh_tmp(ctx);
+      const std::string cimag = fresh_tmp(ctx);
+      if (is_float_base(elem_ts.base)) {
+        emit_instr(ctx, creal + " = fcmp oeq " + llvm_ty(elem_ts) + " " + lreal + ", " + rreal);
+        emit_instr(ctx, cimag + " = fcmp oeq " + llvm_ty(elem_ts) + " " + limag + ", " + rimag);
+      } else {
+        emit_instr(ctx, creal + " = icmp eq " + llvm_ty(elem_ts) + " " + lreal + ", " + rreal);
+        emit_instr(ctx, cimag + " = icmp eq " + llvm_ty(elem_ts) + " " + limag + ", " + rimag);
+      }
+      const std::string both = fresh_tmp(ctx);
+      emit_instr(ctx, both + " = and i1 " + creal + ", " + cimag);
+      const std::string out = fresh_tmp(ctx);
+      if (b.op == BinaryOp::Eq) {
+        emit_instr(ctx, out + " = zext i1 " + both + " to i32");
+      } else {
+        const std::string inv = fresh_tmp(ctx);
+        emit_instr(ctx, inv + " = xor i1 " + both + ", true");
+        emit_instr(ctx, out + " = zext i1 " + inv + " to i32");
+      }
+      return out;
+    }
 
     // If result type is unannotated (void), use the operand type
     const TypeSpec& res_spec = (e.type.spec.base != TB_VOID || e.type.spec.ptr_level > 0)
@@ -2511,8 +2781,14 @@ class HirEmitter {
           elem_ts = {};
           elem_ts.base = TB_CHAR;
         }
+        // GCC extension: void* arithmetic uses byte stride (same as char*).
+        const std::string gep_elem_ty =
+            (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 &&
+             elem_ts.array_rank == 0)
+                ? "i8"
+                : llvm_ty(elem_ts);
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = getelementptr " + llvm_ty(elem_ts) +
+        emit_instr(ctx, tmp + " = getelementptr " + gep_elem_ty +
                             ", ptr " + base_ptr + ", i64 " + idx);
         return tmp;
       };
@@ -3160,8 +3436,36 @@ class HirEmitter {
         }
         return tmp;
       }
+      if ((fn_name == "__builtin_conj" || fn_name == "__builtin_conjf" ||
+           fn_name == "__builtin_conjl") && call.args.size() == 1) {
+        TypeSpec arg_ts{};
+        std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
+        if (!is_complex_base(arg_ts.base)) return arg;
+        const TypeSpec elem_ts = complex_component_ts(arg_ts.base);
+        const std::string complex_ty = llvm_ty(arg_ts);
+        const std::string elem_ty = llvm_ty(elem_ts);
+        const std::string real_v = fresh_tmp(ctx);
+        emit_instr(ctx, real_v + " = extractvalue " + complex_ty + " " + arg + ", 0");
+        const std::string imag_v0 = fresh_tmp(ctx);
+        emit_instr(ctx, imag_v0 + " = extractvalue " + complex_ty + " " + arg + ", 1");
+        const std::string imag_v = fresh_tmp(ctx);
+        if (is_float_base(elem_ts.base)) {
+          emit_instr(ctx, imag_v + " = fneg " + elem_ty + " " + imag_v0);
+        } else {
+          emit_instr(ctx, imag_v + " = sub " + elem_ty + " 0, " + imag_v0);
+        }
+        const std::string with_real = fresh_tmp(ctx);
+        emit_instr(ctx, with_real + " = insertvalue " + complex_ty + " undef, " + elem_ty +
+                                 " " + real_v + ", 0");
+        const std::string out = fresh_tmp(ctx);
+        emit_instr(ctx, out + " = insertvalue " + complex_ty + " " + with_real + ", " +
+                            elem_ty + " " + imag_v + ", 1");
+        return out;
+      }
       // Unknown builtin: emit as 0/null
       if (ret_ty == "void") return "";
+      if (!ret_ty.empty() && (ret_ty[0] == '{' || ret_ty[0] == '%' || ret_ty[0] == '['))
+        return "zeroinitializer";
       return (ret_ty == "ptr") ? "null" : "0";
     }
 
@@ -4105,8 +4409,12 @@ class HirEmitter {
       // Do not auto-fallthrough into the next emitted block, otherwise
       // unrelated blocks can be accidentally connected and create loops.
       if (!ctx.last_term) {
-        if (fn.return_type.spec.base == TB_VOID) {
+        if (fn.return_type.spec.base == TB_VOID &&
+            fn.return_type.spec.ptr_level == 0 &&
+            fn.return_type.spec.array_rank == 0) {
           emit_term(ctx, "ret void");
+        } else if (ret_ty == "ptr") {
+          emit_term(ctx, "ret ptr null");
         } else if (is_float_base(fn.return_type.spec.base) &&
                    fn.return_type.spec.ptr_level == 0 && fn.return_type.spec.array_rank == 0) {
           // Float/double: zero must be expressed as a float constant, not integer 0
@@ -4114,6 +4422,10 @@ class HirEmitter {
                                            ? fp_to_float_literal(0.0f)
                                            : fp_to_hex(0.0);
           emit_term(ctx, "ret " + ret_ty + " " + zero_val);
+        } else if (is_complex_base(fn.return_type.spec.base) ||
+                   ((fn.return_type.spec.base == TB_STRUCT || fn.return_type.spec.base == TB_UNION) &&
+                    fn.return_type.spec.ptr_level == 0 && fn.return_type.spec.array_rank == 0)) {
+          emit_term(ctx, "ret " + ret_ty + " zeroinitializer");
         } else {
           emit_term(ctx, "ret " + ret_ty + " 0");
         }

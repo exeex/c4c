@@ -1659,6 +1659,42 @@ class Lowerer {
     }
   }
 
+  ExprId lower_stmt_expr_block(FunctionCtx& ctx, const Node* block, const TypeSpec& result_ts) {
+    if (!block || block->kind != NK_BLOCK) {
+      TypeSpec ts = result_ts;
+      if (ts.base == TB_VOID) ts.base = TB_INT;
+      return append_expr(nullptr, IntLiteral{0, false}, ts);
+    }
+
+    const bool new_scope = (block->ival != 1);
+    const auto saved_locals = ctx.locals;
+    const auto saved_static_globals = ctx.static_globals;
+
+    ExprId result{};
+    bool have_result = false;
+    for (int i = 0; i < block->n_children; ++i) {
+      const Node* child = block->children[i];
+      const bool is_last = (i + 1 == block->n_children);
+      if (is_last && child && child->kind == NK_EXPR_STMT && child->left &&
+          result_ts.base != TB_VOID) {
+        result = lower_expr(&ctx, child->left);
+        have_result = true;
+        continue;
+      }
+      lower_stmt_node(ctx, child);
+    }
+
+    if (new_scope) {
+      ctx.locals = saved_locals;
+      ctx.static_globals = saved_static_globals;
+    }
+
+    if (have_result) return result;
+    TypeSpec ts = result_ts;
+    if (ts.base == TB_VOID) ts.base = TB_INT;
+    return append_expr(nullptr, IntLiteral{0, false}, ts);
+  }
+
   ExprId lower_expr(FunctionCtx* ctx, const Node* n) {
     if (!n) {
       TypeSpec ts{};
@@ -1845,12 +1881,21 @@ class Lowerer {
         return append_expr(n, IntLiteral{0, false}, ts);
       }
       case NK_STMT_EXPR: {
-        if (ctx && n->body) {
-          lower_stmt_node(*ctx, n->body);
-        }
         TypeSpec ts = n->type;
         if (ts.base == TB_VOID) ts.base = TB_INT;
+        if (ctx && n->body) return lower_stmt_expr_block(*ctx, n->body, ts);
         return append_expr(n, IntLiteral{0, false}, ts);
+      }
+      case NK_REAL_PART:
+      case NK_IMAG_PART: {
+        UnaryExpr u{};
+        u.op = (n->kind == NK_REAL_PART) ? UnaryOp::RealPart : UnaryOp::ImagPart;
+        u.operand = lower_expr(ctx, n->left);
+        return append_expr(n, u, n->type,
+                           (n->left && n->left->type.ptr_level == 0 &&
+                            n->left->type.array_rank == 0)
+                               ? ValueCategory::LValue
+                               : ValueCategory::RValue);
       }
       case NK_SIZEOF_EXPR: {
         SizeofExpr s{};
