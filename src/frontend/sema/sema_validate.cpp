@@ -61,13 +61,6 @@ TypeSpec decay_array(TypeSpec ts) {
   return ts;
 }
 
-bool drops_const_on_ptr_assign(const TypeSpec& lhs, const TypeSpec& rhs) {
-  TypeSpec l = decay_array(lhs);
-  TypeSpec r = decay_array(rhs);
-  if (l.ptr_level <= 0 || r.ptr_level <= 0) return false;
-  return !l.is_const && r.is_const;
-}
-
 bool is_arithmetic_base(TypeBase b) {
   switch (b) {
     case TB_CHAR:
@@ -92,6 +85,34 @@ bool is_arithmetic_base(TypeBase b) {
     default:
       return false;
   }
+}
+
+bool is_float_or_complex_base(TypeBase b) {
+  switch (b) {
+    case TB_FLOAT:
+    case TB_DOUBLE:
+    case TB_LONGDOUBLE:
+      return true;
+    default:
+      break;
+  }
+  return b >= TB_COMPLEX_FLOAT && b <= TB_COMPLEX_ULONGLONG;
+}
+
+bool is_pointer_like_type(const TypeSpec& ts_raw) {
+  const TypeSpec ts = decay_array(ts_raw);
+  return ts.ptr_level > 0 || ts.is_fn_ptr || ts.base == TB_FUNC_PTR;
+}
+
+bool is_invalid_pointer_float_implicit_conversion(
+    const TypeSpec& dst_raw, const TypeSpec& src_raw, bool /*src_is_null_ptr_const*/) {
+  const TypeSpec dst = decay_array(dst_raw);
+  const TypeSpec src = decay_array(src_raw);
+  const bool dst_ptr = is_pointer_like_type(dst);
+  const bool src_ptr = is_pointer_like_type(src);
+  const bool dst_float = is_float_or_complex_base(dst.base) && !dst_ptr;
+  const bool src_float = is_float_or_complex_base(src.base) && !src_ptr;
+  return (src_ptr && dst_float) || (src_float && dst_ptr);
 }
 
 bool is_integer_like_base(TypeBase b) {
@@ -591,13 +612,9 @@ class Validator {
     if (!n) return;
     if (n->init) {
       ExprInfo rhs = infer_expr(n->init);
-      if (drops_const_on_ptr_assign(n->type, rhs.type)) {
-        emit(n->line, "discarding const qualifier in pointer initialization");
-      }
-      // String literals can initialize char/wchar_t arrays with any char-like type.
-      const bool init_is_str = n->init->kind == NK_STR_LIT;
-      if (!init_is_str && rhs.valid &&
-          !implicit_convertible(n->type, rhs.type, is_null_pointer_constant_expr(n->init))) {
+      if (rhs.valid &&
+          is_invalid_pointer_float_implicit_conversion(
+              n->type, rhs.type, is_null_pointer_constant_expr(n->init))) {
         emit(n->line, "incompatible initializer type");
       }
     }
@@ -678,13 +695,9 @@ class Validator {
     }
     if (decl->init) {
       ExprInfo rhs = infer_expr(decl->init);
-      if (drops_const_on_ptr_assign(decl->type, rhs.type)) {
-        emit(decl->line, "discarding const qualifier in pointer initialization");
-      }
-      // String literals can initialize char/wchar_t arrays with any char-like type.
-      const bool init_is_str = decl->init->kind == NK_STR_LIT;
-      if (!init_is_str && rhs.valid &&
-          !implicit_convertible(decl->type, rhs.type, is_null_pointer_constant_expr(decl->init))) {
+      if (rhs.valid &&
+          is_invalid_pointer_float_implicit_conversion(
+              decl->type, rhs.type, is_null_pointer_constant_expr(decl->init))) {
         emit(decl->line, "incompatible initializer type");
       }
       mark_initialized_if_local_var(decl);
@@ -1008,7 +1021,8 @@ class Validator {
         // are in-place operations whose result type is always the lhs type.
         const bool is_simple_assign = n->op && n->op[0] == '=' && n->op[1] == '\0';
         if (is_simple_assign && lhs.valid && rhs.valid &&
-            !implicit_convertible(lhs.type, rhs.type, is_null_pointer_constant_expr(n->right))) {
+            is_invalid_pointer_float_implicit_conversion(
+                lhs.type, rhs.type, is_null_pointer_constant_expr(n->right))) {
           emit(n->line, "incompatible assignment type");
         }
         mark_initialized_if_local_var(n->left);
@@ -1059,11 +1073,8 @@ class Validator {
             const int check_n = std::min(argc, required);
             for (int i = 0; i < check_n; ++i) {
               ExprInfo arg = infer_expr(n->children[i]);
-              if (drops_const_on_ptr_assign(sig.params[i], arg.type)) {
-                emit(n->line, "passing const-qualified pointer to mutable parameter");
-              }
               if (arg.valid &&
-                  !implicit_convertible(
+                  is_invalid_pointer_float_implicit_conversion(
                       sig.params[i], arg.type, is_null_pointer_constant_expr(n->children[i]))) {
                 emit(n->line, "function call argument type mismatch");
               }
@@ -1079,7 +1090,7 @@ class Validator {
         return out;
       }
       case NK_CAST: {
-        ExprInfo src = infer_expr(n->left);
+        (void)infer_expr(n->left);
         out.valid = true;
         out.type = n->type;
         if (n->type.base == TB_TYPEDEF) {
