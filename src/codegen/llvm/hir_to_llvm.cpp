@@ -4449,10 +4449,10 @@ class HirEmitter {
     const std::string ty =
         (d.type.spec.array_rank > 0) ? llvm_alloca_ty(d.type.spec) : llvm_ty(d.type.spec);
     const bool is_agg_or_array =
-        d.type.spec.ptr_level == 0 &&
-        (d.type.spec.array_rank > 0 ||
-         ((d.type.spec.base == TB_STRUCT || d.type.spec.base == TB_UNION) &&
-          d.type.spec.array_rank == 0));
+        d.type.spec.array_rank > 0 ||
+        (d.type.spec.ptr_level == 0 &&
+         (d.type.spec.base == TB_STRUCT || d.type.spec.base == TB_UNION) &&
+         d.type.spec.array_rank == 0);
     if (is_agg_or_array && (rhs == "0" || rhs.empty())) {
       emit_instr(ctx, "store " + ty + " zeroinitializer, ptr " + slot);
       return;
@@ -4787,10 +4787,10 @@ class HirEmitter {
           const std::string alloca_ty = llvm_alloca_ty(d->type.spec);
           ctx.alloca_lines.push_back("  " + slot + " = alloca " + alloca_ty);
           if (d->init &&
-              d->type.spec.ptr_level == 0 &&
               (d->type.spec.array_rank > 0 ||
-               d->type.spec.base == TB_STRUCT ||
-               d->type.spec.base == TB_UNION)) {
+               (d->type.spec.ptr_level == 0 &&
+                (d->type.spec.base == TB_STRUCT ||
+                 d->type.spec.base == TB_UNION)))) {
             ctx.alloca_lines.push_back("  store " + alloca_ty + " zeroinitializer, ptr " + slot);
           }
         }
