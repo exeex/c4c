@@ -1494,8 +1494,10 @@ class HirEmitter {
     if (it == mod_.struct_defs.end()) return "zeroinitializer";
     const HirStructDef& sd = it->second;
     if (sd.is_union) {
+      if (sd.fields.empty()) return "zeroinitializer";  // empty union: type {} init
       const int sz = compute_struct_size(mod_, std::string(ts.tag));
       auto zero_union = [&]() -> std::string {
+        if (sz == 0) return "zeroinitializer";
         return "{ [" + std::to_string(sz) + " x i8] zeroinitializer }";
       };
 
