@@ -30,7 +30,7 @@ Given a failing case `<case>.c`:
 
 0. Run full test logging and select a issue:
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DENABLE_LLVM_GCC_C_TORTURE_TESTS=ON
+cmake -S . -B build
 cmake --build build -j8
 ctest --test-dir build -j --output-on-failure > test_fail_before.log
 ```
@@ -63,7 +63,7 @@ if `known_issues.md` exists, fix the issues first, else pick a fail case in `tes
    - full `ctest -j` before handoff
 ```bash
 rm -rf build
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DENABLE_LLVM_GCC_C_TORTURE_TESTS=ON
+cmake -S . -B build
 cmake --build build -j8
 ctest --test-dir build -j --output-on-failure > test_fail_after.log
 ```

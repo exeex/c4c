@@ -927,6 +927,18 @@ class Lowerer {
         // local alloca — later references will resolve directly to the global function.
         if (n->name && !n->init && module_->fn_index.count(n->name)) return;
 
+        // Local extern declaration: `extern T v;` inside a function refers to
+        // the global with that name (C99 6.2.2p4). Erase any shadowing local
+        // binding so the global is found by the NK_VAR resolution fallback.
+        if (n->is_extern && !n->init && n->name && n->name[0]) {
+          const auto git = module_->global_index.find(n->name);
+          if (git != module_->global_index.end()) {
+            ctx.locals.erase(n->name);
+            ctx.static_globals[n->name] = git->second;
+          }
+          return;
+        }
+
         if (n->is_static) {
           if (n->name && n->name[0]) {
             ctx.static_globals[n->name] = lower_static_local_global(ctx, n);

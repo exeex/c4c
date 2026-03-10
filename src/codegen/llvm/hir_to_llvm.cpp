@@ -2599,7 +2599,10 @@ class HirEmitter {
           TypeSpec elem_ts = pts;
           if (elem_ts.ptr_level > 0) elem_ts.ptr_level -= 1;
           else elem_ts.base = TB_CHAR;
-          emit_instr(ctx, result + " = getelementptr " + llvm_ty(elem_ts) +
+          const std::string gep_ety1 =
+              (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
+                  ? "i8" : llvm_ty(elem_ts);
+          emit_instr(ctx, result + " = getelementptr " + gep_ety1 +
                               ", ptr " + loaded + ", i64 " + delta);
         } else if (is_float_base(pts.base)) {
           const std::string delta = (u.op == UnaryOp::PreInc) ? "1.0" : "-1.0";
@@ -2625,7 +2628,10 @@ class HirEmitter {
           TypeSpec elem_ts = pts;
           if (elem_ts.ptr_level > 0) elem_ts.ptr_level -= 1;
           else elem_ts.base = TB_CHAR;
-          emit_instr(ctx, result + " = getelementptr " + llvm_ty(elem_ts) +
+          const std::string gep_ety2 =
+              (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
+                  ? "i8" : llvm_ty(elem_ts);
+          emit_instr(ctx, result + " = getelementptr " + gep_ety2 +
                               ", ptr " + loaded + ", i64 " + delta);
         } else if (is_float_base(pts.base)) {
           const std::string delta = (u.op == UnaryOp::PostInc) ? "1.0" : "-1.0";
@@ -2972,8 +2978,11 @@ class HirEmitter {
         } else {
           elem_ts.base = TB_CHAR;
         }
+        const std::string gep_ety3 =
+            (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
+                ? "i8" : llvm_ty(elem_ts);
         const std::string result = fresh_tmp(ctx);
-        emit_instr(ctx, result + " = getelementptr " + llvm_ty(elem_ts) +
+        emit_instr(ctx, result + " = getelementptr " + gep_ety3 +
                             ", ptr " + loaded + ", i64 " + delta);
         emit_instr(ctx, "store ptr " + result + ", ptr " + lhs_ptr);
         return result;
@@ -3834,10 +3843,18 @@ class HirEmitter {
 
     emit_lbl(ctx, end_lbl);
     if (res_ty == "void") return "";
+    // If either arm produced a void/empty value (e.g. void function call in one arm),
+    // substitute a zero value to avoid an invalid empty phi operand.
+    auto void_to_zero = [&](const std::string& v) -> std::string {
+      if (!v.empty()) return v;
+      if (res_ty == "ptr") return "null";
+      if (res_ty == "float" || res_ty == "double") return "0.0";
+      return "0";
+    };
     const std::string tmp = fresh_tmp(ctx);
     emit_instr(ctx, tmp + " = phi " + res_ty +
-                        " [ " + then_v + ", %" + then_lbl + " ]," +
-                        " [ " + else_v + ", %" + else_lbl + " ]");
+                        " [ " + void_to_zero(then_v) + ", %" + then_lbl + " ]," +
+                        " [ " + void_to_zero(else_v) + ", %" + else_lbl + " ]");
     return tmp;
   }
 
