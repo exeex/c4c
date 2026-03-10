@@ -1289,7 +1289,18 @@ class Lowerer {
       }
       case NK_FOR: {
         ForStmt s{};
-        if (n->init) s.init = lower_expr(&ctx, n->init);
+        if (n->init) {
+          // If the for-init is a declaration, lower it as a statement first.
+          // This handles `for (int i = 0; ...)` in C99.
+          const bool init_is_decl = (n->init->kind == NK_DECL ||
+                                     n->init->kind == NK_BLOCK);
+          if (init_is_decl) {
+            lower_stmt_node(ctx, n->init);
+            // Leave s.init as default (no init expression in the ForStmt).
+          } else {
+            s.init = lower_expr(&ctx, n->init);
+          }
+        }
         if (n->cond) s.cond = lower_expr(&ctx, n->cond);
         if (n->update) s.update = lower_expr(&ctx, n->update);
         const BlockId body_b = create_block(ctx);

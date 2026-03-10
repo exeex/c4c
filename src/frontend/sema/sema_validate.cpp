@@ -18,6 +18,8 @@ struct FunctionSig {
   TypeSpec ret{};
   std::vector<TypeSpec> params;
   bool variadic = false;
+  // True for K&R-style f() declarations: accepts any number of arguments.
+  bool unspecified_params = false;
 };
 
 struct ExprInfo {
@@ -367,9 +369,10 @@ class Validator {
 
   int loop_depth_ = 0;
   // Set when the current function contains any goto statement.  Functions with
-  // gotos have non-trivial control flow, so uninit-read detection is suppressed
-  // to avoid false positives on dead code paths.
+  // gotos/loops have non-trivial control flow, so uninit-read detection is
+  // suppressed to avoid false positives on dead code paths.
   bool fn_has_goto_ = false;
+  bool fn_has_loop_ = false;
   bool in_function_ = false;
   TypeSpec current_fn_ret_{};
 
@@ -488,7 +491,7 @@ class Validator {
 
   void note_struct_def(const Node* n) {
     if (!n || n->kind != NK_STRUCT_DEF || !n->name || !n->name[0]) return;
-    if (n->n_fields <= 0) return;
+    // Zero-sized structs/unions are a GCC extension; treat them as complete.
     const std::string tag(n->name);
     if (n->is_union) {
       complete_unions_.insert(tag);
@@ -514,6 +517,8 @@ class Validator {
       FunctionSig sig;
       sig.ret = n->type;
       sig.variadic = n->variadic;
+      // K&R-style f() with no param list means "unspecified arguments".
+      if (n->n_params == 0 && !n->variadic) sig.unspecified_params = true;
       for (int p = 0; p < n->n_params; ++p) {
         const Node* param = n->params[p];
         if (!param) continue;
@@ -592,12 +597,29 @@ class Validator {
     return false;
   }
 
+  static bool node_contains_loop(const Node* n) {
+    if (!n) return false;
+    if (n->kind == NK_FOR || n->kind == NK_WHILE || n->kind == NK_DO_WHILE) return true;
+    if (n->left && node_contains_loop(n->left)) return true;
+    if (n->right && node_contains_loop(n->right)) return true;
+    if (n->cond && node_contains_loop(n->cond)) return true;
+    if (n->then_ && node_contains_loop(n->then_)) return true;
+    if (n->else_ && node_contains_loop(n->else_)) return true;
+    if (n->body && node_contains_loop(n->body)) return true;
+    if (n->init && node_contains_loop(n->init)) return true;
+    if (n->update && node_contains_loop(n->update)) return true;
+    for (int i = 0; i < n->n_children; ++i)
+      if (node_contains_loop(n->children[i])) return true;
+    return false;
+  }
+
   void validate_function(const Node* fn) {
     const bool old_in_function = in_function_;
     const TypeSpec old_fn_ret = current_fn_ret_;
     in_function_ = true;
     current_fn_ret_ = fn->type;
     fn_has_goto_ = fn->body && node_contains_goto(fn->body);
+    fn_has_loop_ = fn->body && node_contains_loop(fn->body);
     enter_scope();
     // Pre-defined function-name identifiers (C99 §6.4.2.2, GCC extension).
     {
@@ -690,10 +712,11 @@ class Validator {
         if (n->left) {
           ExprInfo rv_info = infer_expr(n->left);
           // Detect direct return of an uninitialized plain-scalar local.
-          // Skip if the function has goto statements (complex control flow
+          // Skip if the function has goto/loop statements (complex control flow
           // can make the read unreachable, leading to false positives).
           const Node* rv = n->left;
-          if (!fn_has_goto_ && rv->kind == NK_VAR && rv->name && rv->name[0]) {
+          if (!fn_has_goto_ && !fn_has_loop_ &&
+              rv->kind == NK_VAR && rv->name && rv->name[0]) {
             auto sym = lookup_symbol(rv->name);
             if (sym.has_value() && !sym->initialized &&
                 tracks_uninit_read(sym->type)) {
@@ -1000,7 +1023,8 @@ class Validator {
             const FunctionSig& sig = it->second;
             const int argc = n->n_children;
             const int required = static_cast<int>(sig.params.size());
-            if ((!sig.variadic && argc != required) || (sig.variadic && argc < required)) {
+            if (!sig.unspecified_params &&
+                ((!sig.variadic && argc != required) || (sig.variadic && argc < required))) {
               emit(n->line, "function call arity mismatch");
             }
             const int check_n = std::min(argc, required);
@@ -1033,11 +1057,11 @@ class Validator {
           const std::string tname = n->type.tag ? n->type.tag : "<anonymous>";
           emit(n->line, "cast to unknown type name '" + tname + "'");
         }
-        if (drops_const_on_ptr_assign(n->type, src.type)) {
-          emit(n->line, "cast discards const qualifier from pointer target type");
-        }
         if (!is_complete_object_type(n->type)) {
           emit(n->line, "cast to incomplete struct/union object type");
+        }
+        if (drops_const_on_ptr_assign(n->type, src.type)) {
+          emit(n->line, "cast discards const qualifier");
         }
         return out;
       }
@@ -1077,6 +1101,14 @@ class Validator {
             out.type = rt;
           }
           // ptr - ptr yields ptrdiff_t; keep make_int_ts() default.
+        }
+        // Propagate operand type for arithmetic/bitwise/shift ops so that
+        // assignment checks don't falsely fire (e.g., vector types).
+        // Pointer arithmetic cases already set out.type above; don't re-override.
+        // Use l.type if it's a richer type than the default int.
+        if (out.type.ptr_level == 0 && l.type.ptr_level == 0 &&
+            (l.type.array_rank > 0 || l.type.is_vector)) {
+          out.type = l.type;
         }
         return out;
       }
