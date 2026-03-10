@@ -9,6 +9,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "sema_driver.hpp"
+
 namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir {
 namespace {
 
@@ -387,7 +389,7 @@ class Lowerer {
         return infer_int_literal_type(n);
       case NK_FLOAT_LIT: {
         TypeSpec ts = n->type;
-        if (!has_concrete_type(ts)) ts.base = TB_DOUBLE;
+        if (!has_concrete_type(ts)) ts = classify_float_literal_type(const_cast<Node*>(n));
         return ts;
       }
       case NK_CHAR_LIT: {
@@ -1752,7 +1754,11 @@ class Lowerer {
         return append_expr(n, IntLiteral{n->ival, false}, infer_int_literal_type(n));
       }
       case NK_FLOAT_LIT:
-        return append_expr(n, FloatLiteral{n->fval}, n->type);
+      {
+        TypeSpec ts = n->type;
+        if (!has_concrete_type(ts)) ts = classify_float_literal_type(const_cast<Node*>(n));
+        return append_expr(n, FloatLiteral{n->fval}, ts);
+      }
       case NK_STR_LIT: {
         StringLiteral s{};
         s.raw = n->sval ? n->sval : "";

@@ -10,6 +10,8 @@
 #include <utility>
 #include <vector>
 
+#include "sema_driver.hpp"
+
 namespace tinyc2ll::frontend_cxx::sema {
 
 namespace {
@@ -902,8 +904,12 @@ class Validator {
         }
         return out;
       case NK_FLOAT_LIT:
+        out.valid = true;
+        out.type = classify_float_literal_type(const_cast<Node*>(n));
+        return out;
       case NK_CHAR_LIT:
         out.valid = true;
+        if (n->kind == NK_CHAR_LIT) out.type = make_int_ts();
         return out;
       case NK_STR_LIT: {
         out.valid = true;
