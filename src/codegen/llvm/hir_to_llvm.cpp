@@ -140,6 +140,47 @@ static int int_bits(TypeBase b) {
   }
 }
 
+// C integer promotion: types narrower than int promote to int.
+static TypeBase integer_promote(TypeBase b) {
+  switch (b) {
+    case TB_BOOL:
+    case TB_CHAR: case TB_SCHAR: case TB_UCHAR:
+    case TB_SHORT: case TB_USHORT:
+      return TB_INT;
+    default:
+      return b;
+  }
+}
+
+// C "usual arithmetic conversions" for two integer types.
+// Returns the common type to which both operands should be converted.
+static TypeBase usual_arith_conv(TypeBase a, TypeBase b) {
+  a = integer_promote(a);
+  b = integer_promote(b);
+  if (a == b) return a;
+  const int ba = int_bits(a), bb = int_bits(b);
+  const bool as = is_signed_int(a), bs = is_signed_int(b);
+  // If same signedness, use the wider type
+  if (as == bs) return (ba >= bb) ? a : b;
+  // Different signedness: identify signed and unsigned
+  TypeBase u = as ? b : a;
+  TypeBase s = as ? a : b;
+  int bu = as ? bb : ba;
+  int bbs = as ? ba : bb;
+  // If unsigned rank >= signed rank, use unsigned
+  if (bu >= bbs) return u;
+  // If signed can represent all values of unsigned, use signed
+  if (bbs > bu) return s;
+  // Otherwise, use the unsigned counterpart of the signed type
+  switch (s) {
+    case TB_INT:      return TB_UINT;
+    case TB_LONG:     return TB_ULONG;
+    case TB_LONGLONG: return TB_ULONGLONG;
+    case TB_INT128:   return TB_UINT128;
+    default:          return TB_UINT;
+  }
+}
+
 static std::string llvm_base(TypeBase b) {
   switch (b) {
     case TB_VOID:                               return "void";
@@ -1160,6 +1201,30 @@ class HirEmitter {
         }
         return (llvm_ty(expected_ts) == "ptr") ? "null" : "0";
       } else if constexpr (std::is_same_v<T, CastExpr>) {
+        // Apply the cast's target type to properly truncate/extend the value.
+        const TypeSpec& cast_ts = p.to_type.spec;
+        if (is_any_int(cast_ts.base) && cast_ts.ptr_level == 0 &&
+            is_any_int(expected_ts.base) && expected_ts.ptr_level == 0) {
+          auto val = try_const_eval_int(p.expr);
+          if (val) {
+            // Truncate to the cast target width, then zero/sign-extend.
+            long long v = *val;
+            const int bits = int_bits(cast_ts.base);
+            if (bits < 64) {
+              unsigned long long mask = (1ULL << bits) - 1;
+              unsigned long long uv = static_cast<unsigned long long>(v) & mask;
+              if (is_signed_int(cast_ts.base) && (uv >> (bits - 1))) {
+                // Sign-extend
+                v = static_cast<long long>(uv | ~mask);
+              } else {
+                v = static_cast<long long>(uv);
+              }
+            }
+            if (is_float_base(expected_ts.base))
+              return fp_literal(expected_ts.base, static_cast<double>(v));
+            return std::to_string(v);
+          }
+        }
         return emit_const_scalar_expr(p.expr, expected_ts);
       } else if constexpr (std::is_same_v<T, BinaryExpr>) {
         // Try float eval first when target is a float type
@@ -2591,7 +2656,16 @@ class HirEmitter {
       return sizeof_ts(mod_, lts) >= sizeof_ts(mod_, rts) ? lts : rts;
     }
 
-    // For arithmetic/bitwise the result type matches the operand type
+    // For arithmetic/bitwise the result type is the UAC common type.
+    if (lts.base != TB_VOID && rts.base != TB_VOID &&
+        lts.ptr_level == 0 && rts.ptr_level == 0 &&
+        lts.array_rank == 0 && rts.array_rank == 0 &&
+        is_any_int(lts.base) && is_any_int(rts.base)) {
+      const bool is_shift = (b.op == BinaryOp::Shl || b.op == BinaryOp::Shr);
+      TypeSpec ts{};
+      ts.base = is_shift ? integer_promote(lts.base) : usual_arith_conv(lts.base, rts.base);
+      return ts;
+    }
     if (lts.base != TB_VOID) return lts;
     return resolve_expr_type(ctx, b.rhs);
   }
@@ -2988,13 +3062,27 @@ class HirEmitter {
   }
 
   std::string emit_rval_payload(FnCtx& ctx, const StringLiteral& sl, const Expr& /*e*/) {
+    if (sl.is_wide) {
+      // Wide string: emit as global array of i32 (wchar_t) values
+      const auto vals = decode_wide_string_values(sl.raw);
+      const std::string gname = "@.str" + std::to_string(str_idx_++);
+      std::string init = "[";
+      for (size_t i = 0; i < vals.size(); ++i) {
+        if (i) init += ", ";
+        init += "i32 " + std::to_string(vals[i]);
+      }
+      init += "]";
+      preamble_ << gname << " = private unnamed_addr constant ["
+                << vals.size() << " x i32] " << init << "\n";
+      const std::string tmp = fresh_tmp(ctx);
+      emit_instr(ctx, tmp + " = getelementptr [" + std::to_string(vals.size()) +
+                          " x i32], ptr " + gname + ", i64 0, i64 0");
+      return tmp;
+    }
     // Strip enclosing quotes from raw, use as bytes
     std::string bytes = sl.raw;
     if (bytes.size() >= 2 && bytes.front() == '"' && bytes.back() == '"') {
       bytes = bytes.substr(1, bytes.size() - 2);
-    } else if (bytes.size() >= 3 && bytes[0] == 'L') {
-      // Wide string: not fully handled; fall back to empty
-      bytes = "";
     }
     bytes = decode_c_escaped_bytes(bytes);
     const std::string gname = intern_str(bytes);
@@ -3295,12 +3383,12 @@ class HirEmitter {
     }
 
     TypeSpec lts{};
-    const std::string lv = emit_rval_id(ctx, b.lhs, lts);
+    std::string lv = emit_rval_id(ctx, b.lhs, lts);
     TypeSpec rts{};
     std::string rv = emit_rval_id(ctx, b.rhs, rts);
-    const TypeSpec res_spec = (e.type.spec.base != TB_VOID || e.type.spec.ptr_level > 0)
-                                  ? e.type.spec
-                                  : lts;
+    TypeSpec res_spec = (e.type.spec.base != TB_VOID || e.type.spec.ptr_level > 0)
+                            ? e.type.spec
+                            : lts;
 
     if ((b.op == BinaryOp::Eq || b.op == BinaryOp::Ne) &&
         (is_complex_base(lts.base) || is_complex_base(rts.base))) {
@@ -3378,18 +3466,56 @@ class HirEmitter {
       return emit_complex_binary_arith(ctx, b.op, lv, lts, rv, rts, res_spec);
     }
 
+    // Apply C usual arithmetic conversions (UAC) for integer operands.
+    // This promotes both operands to at least int, then to the common type.
+    const bool l_is_int = is_any_int(lts.base) && lts.ptr_level == 0 && lts.array_rank == 0;
+    const bool r_is_int = is_any_int(rts.base) && rts.ptr_level == 0 && rts.array_rank == 0;
+    const bool l_is_flt = is_float_base(lts.base) && lts.ptr_level == 0 && lts.array_rank == 0;
+    const bool r_is_flt = is_float_base(rts.base) && rts.ptr_level == 0 && rts.array_rank == 0;
+    if (l_is_int && r_is_int) {
+      // For shift operations, the result type is the promoted LHS only;
+      // the RHS (shift amount) doesn't participate in usual arithmetic conversions.
+      const bool is_shift = (b.op == BinaryOp::Shl || b.op == BinaryOp::Shr);
+      if (is_shift) {
+        TypeBase lp = integer_promote(lts.base);
+        TypeSpec lp_ts{}; lp_ts.base = lp;
+        if (lts.base != lp) lv = coerce(ctx, lv, lts, lp_ts);
+        lts = lp_ts;
+        // Coerce RHS to match LHS width for LLVM (shift needs same-width operands)
+        if (llvm_ty(rts) != llvm_ty(lts)) rv = coerce(ctx, rv, rts, lts);
+        rts = lts;
+      } else {
+        TypeBase common = usual_arith_conv(lts.base, rts.base);
+        TypeSpec common_ts{};
+        common_ts.base = common;
+        if (lts.base != common) lv = coerce(ctx, lv, lts, common_ts);
+        lts = common_ts;
+        if (rts.base != common) rv = coerce(ctx, rv, rts, common_ts);
+        rts = common_ts;
+      }
+    } else if (l_is_int && r_is_flt) {
+      lv = coerce(ctx, lv, lts, rts);
+      lts = rts;
+    } else if (l_is_flt && r_is_int) {
+      rv = coerce(ctx, rv, rts, lts);
+      rts = lts;
+    }
+
+    // After UAC, the result type should be at least as wide as the promoted
+    // operand type.  The stored res_spec may reflect the pre-promotion type
+    // from sema, so override it with the promoted lts for int arithmetic.
+    if (l_is_int && r_is_int && is_any_int(res_spec.base) &&
+        res_spec.ptr_level == 0 && res_spec.array_rank == 0) {
+      res_spec = lts;
+    }
+
     // If result type is unannotated (void), use the operand type
     const std::string res_ty = llvm_ty(res_spec);
     const std::string op_ty  = llvm_ty(lts);
     // lf/ls must be false when the LLVM type is ptr (even if base is double/float).
     const bool lf  = is_float_base(lts.base) && lts.ptr_level == 0 && lts.array_rank == 0;
-    // For arithmetic ops, use the UAC result type's signedness (res_spec includes usual
-    // arithmetic conversions, so `int op unsigned_int` → unsigned). For comparisons, use
-    // the operand type directly since comparisons always return int regardless of UAC.
     const bool ls  = is_signed_int(lts.base) && lts.ptr_level == 0 && lts.array_rank == 0;
-    // arith_ls: use signed arithmetic only when BOTH operands are signed integer types.
-    // When either operand is unsigned (per C's usual arithmetic conversions), use unsigned.
-    const bool arith_ls = ls && is_signed_int(rts.base) && rts.ptr_level == 0 && rts.array_rank == 0;
+    const bool arith_ls = ls;
 
     // Pointer arithmetic: ptr +/- int and int + ptr.
     if (b.op == BinaryOp::Add || b.op == BinaryOp::Sub) {
@@ -3509,10 +3635,9 @@ class HirEmitter {
         if (lf) {
           emit_instr(ctx, cmp_tmp + " = fcmp " + row.f + " " + op_ty + " " + lv + ", " + rv);
         } else {
-          // Use signed comparison only when BOTH operands are signed (UAC).
-          // If either operand is unsigned, use unsigned comparison predicate.
-          const bool cmp_ls = ls && is_signed_int(rts.base) && rts.ptr_level == 0 && rts.array_rank == 0;
-          const char* pred = cmp_ls ? row.is : row.iu;
+          // After UAC, both operands are at the common type.
+          // Use the common type's signedness for the comparison predicate.
+          const char* pred = ls ? row.is : row.iu;
           emit_instr(ctx, cmp_tmp + " = icmp " + pred + " " + op_ty + " " + lv + ", " + rv);
         }
         const std::string tmp = fresh_tmp(ctx);
