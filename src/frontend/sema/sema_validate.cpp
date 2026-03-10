@@ -279,6 +279,9 @@ bool implicit_convertible(const TypeSpec& dst_raw, const TypeSpec& src_raw,
       dst_raw.base == TB_FUNC_PTR || src_raw.base == TB_FUNC_PTR) {
     return true;
   }
+  // Unresolved typedef names (e.g., size_t used before full resolution) are
+  // accepted conservatively; we cannot check them without a typedef table.
+  if (dst_raw.base == TB_TYPEDEF || src_raw.base == TB_TYPEDEF) return true;
 
   const TypeSpec dst = decay_array(dst_raw);
   const TypeSpec src = decay_array(src_raw);
@@ -1097,6 +1100,9 @@ class Validator {
       case NK_BINOP: {
         ExprInfo l = infer_expr(n->left);
         ExprInfo r = infer_expr(n->right);
+        // If either operand has unknown type (e.g., struct member), the result
+        // type is also unknown; propagate valid=false to suppress false positives.
+        if (!l.valid || !r.valid) { out.valid = false; return out; }
         out.valid = true;
         // Pointer arithmetic: if one operand is a pointer/array and op is + or -,
         // the result has the pointer type so subsequent assignment checks don't fire.
