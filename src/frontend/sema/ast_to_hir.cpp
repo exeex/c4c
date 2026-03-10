@@ -788,6 +788,120 @@ class Lowerer {
     return out;
   }
 
+  const Node* init_item_value_node(const Node* item) const {
+    if (!item) return nullptr;
+    if (item->kind != NK_INIT_ITEM) return item;
+    const Node* v = item->left ? item->left : item->right;
+    if (!v) v = item->init;
+    if (!v && item->n_children > 0) {
+      for (int i = 0; i < item->n_children; ++i) {
+        if (item->children && item->children[i]) {
+          v = item->children[i];
+          break;
+        }
+      }
+    }
+    return v;
+  }
+
+  const Node* unwrap_init_scalar_value(const Node* node) const {
+    const Node* cur = node;
+    for (int guard = 0; guard < 32 && cur; ++guard) {
+      if (cur->kind == NK_INIT_ITEM) {
+        const Node* next = init_item_value_node(cur);
+        if (!next || next == cur) break;
+        cur = next;
+        continue;
+      }
+      if (cur->kind == NK_INIT_LIST) {
+        const Node* first = nullptr;
+        for (int i = 0; i < cur->n_children; ++i) {
+          if (cur->children && cur->children[i]) {
+            first = cur->children[i];
+            break;
+          }
+        }
+        if (!first) break;
+        const Node* next = init_item_value_node(first);
+        if (!next || next == cur) break;
+        cur = next;
+        continue;
+      }
+      break;
+    }
+    return cur;
+  }
+
+  bool has_side_effect_expr(const Node* n) const {
+    if (!n) return false;
+    switch (n->kind) {
+      case NK_CALL:
+      case NK_ASSIGN:
+      case NK_COMPOUND_ASSIGN:
+      case NK_COMMA_EXPR:
+        return true;
+      case NK_POSTFIX: {
+        const char* op = n->op ? n->op : "";
+        if (std::strcmp(op, "++") == 0 || std::strcmp(op, "--") == 0) return true;
+        break;
+      }
+      case NK_UNARY: {
+        const char* op = n->op ? n->op : "";
+        if (std::strcmp(op, "++pre") == 0 || std::strcmp(op, "--pre") == 0) return true;
+        break;
+      }
+      default:
+        break;
+    }
+    if (has_side_effect_expr(n->left)) return true;
+    if (has_side_effect_expr(n->right)) return true;
+    if (has_side_effect_expr(n->cond)) return true;
+    if (has_side_effect_expr(n->then_)) return true;
+    if (has_side_effect_expr(n->else_)) return true;
+    if (has_side_effect_expr(n->init)) return true;
+    if (has_side_effect_expr(n->update)) return true;
+    if (has_side_effect_expr(n->body)) return true;
+    for (int i = 0; i < n->n_children; ++i) {
+      if (has_side_effect_expr(n->children ? n->children[i] : nullptr)) return true;
+    }
+    return false;
+  }
+
+  bool is_simple_constant_expr(const Node* n) const {
+    if (!n) return false;
+    switch (n->kind) {
+      case NK_INT_LIT:
+      case NK_FLOAT_LIT:
+      case NK_CHAR_LIT:
+        return true;
+      case NK_CAST:
+        return is_simple_constant_expr(n->left);
+      case NK_UNARY: {
+        const char* op = n->op ? n->op : "";
+        if (std::strcmp(op, "+") == 0 || std::strcmp(op, "-") == 0 || std::strcmp(op, "~") == 0)
+          return is_simple_constant_expr(n->left);
+        return false;
+      }
+      default:
+        return false;
+    }
+  }
+
+  bool can_fast_path_scalar_array_init(const Node* init_list) const {
+    if (!init_list || init_list->kind != NK_INIT_LIST) return false;
+    for (int i = 0; i < init_list->n_children; ++i) {
+      const Node* item = init_list->children ? init_list->children[i] : nullptr;
+      if (!item) continue;
+      if (item->kind == NK_INIT_ITEM && item->is_designated) return false;
+      const Node* v = init_item_value_node(item);
+      if (!v) return false;
+      if (v->kind == NK_INIT_LIST || v->kind == NK_COMPOUND_LIT) return false;
+      if (has_side_effect_expr(v)) return false;
+      if (!is_simple_constant_expr(v)) return false;
+    }
+    return true;
+  }
+
   void lower_stmt_node(FunctionCtx& ctx, const Node* n) {
     if (!n) return;
 
@@ -857,6 +971,8 @@ class Lowerer {
             n->init && n->init->kind == NK_INIT_LIST &&
             (d.type.spec.base == TB_STRUCT || d.type.spec.base == TB_UNION) &&
             d.type.spec.ptr_level == 0 && d.type.spec.array_rank == 0;
+        const bool use_array_init_fast_path =
+            is_array_with_init_list && can_fast_path_scalar_array_init(n->init);
         if (!is_array_with_init_list && !is_array_with_string_init &&
             !is_struct_with_init_list && n->init)
           d.init = lower_expr(&ctx, n->init);
@@ -871,7 +987,7 @@ class Lowerer {
         ctx.local_types[d.id.value] = d.type.spec;
         append_stmt(ctx, Stmt{StmtPayload{std::move(d)}, make_span(n)});
         // For array init lists, emit element-by-element assignments.
-        if (is_array_with_init_list) {
+        if (is_array_with_init_list && use_array_init_fast_path) {
           long long next_idx = 0;
           for (int ci = 0; ci < n->init->n_children; ++ci) {
             const Node* item = n->init->children[ci];
@@ -880,8 +996,7 @@ class Lowerer {
             const Node* val_node = item;
             if (item->kind == NK_INIT_ITEM) {
               if (item->is_designated && item->is_index_desig) idx = item->desig_val;
-              val_node = item->left ? item->left : item->right;
-              if (!val_node) val_node = item->init;
+              val_node = init_item_value_node(item);
             }
             next_idx = idx + 1;
             if (!val_node) continue;
@@ -930,6 +1045,7 @@ class Lowerer {
                   if (c0) scalar_node = c0;
                 }
               }
+              scalar_node = unwrap_init_scalar_value(scalar_node);
               bool direct_agg = false;
               if (scalar_node) {
                 const TypeSpec st = infer_generic_ctrl_type(&ctx, scalar_node);
@@ -1000,17 +1116,12 @@ class Lowerer {
         // For struct init lists, emit recursive field-by-field assignments with
         // brace-elision consumption, so nested aggregates don't become invalid
         // scalar-to-aggregate stores (e.g. `store %struct.S 5`).
-        if (is_struct_with_init_list && decl_ts.tag && n->init) {
+        if (((is_struct_with_init_list && decl_ts.tag) ||
+             (is_array_with_init_list && !use_array_init_fast_path)) &&
+            n->init) {
           auto is_agg = [](const TypeSpec& ts) {
             return (ts.base == TB_STRUCT || ts.base == TB_UNION) &&
                    ts.ptr_level == 0 && ts.array_rank == 0;
-          };
-          auto extract_val_node = [](const Node* item) -> const Node* {
-            if (!item) return nullptr;
-            if (item->kind != NK_INIT_ITEM) return item;
-            const Node* v = item->left ? item->left : item->right;
-            if (!v) v = item->init;
-            return v;
           };
           auto append_assign = [&](ExprId lhs_id, const TypeSpec& lhs_ts, const Node* rhs_node) {
             if (!rhs_node) return;
@@ -1048,12 +1159,7 @@ class Lowerer {
                 return;
               }
             }
-            const Node* val_node = rhs_node;
-            if (val_node->kind == NK_INIT_LIST && val_node->n_children > 0) {
-              const Node* first = val_node->children[0];
-              const Node* unwrapped = extract_val_node(first);
-              if (unwrapped) val_node = unwrapped;
-            }
+            const Node* val_node = unwrap_init_scalar_value(rhs_node);
             ExprId val_id = lower_expr(&ctx, val_node);
             AssignExpr ae{};
             ae.lhs = lhs_id;
@@ -1119,7 +1225,7 @@ class Lowerer {
                     me.is_arrow = false;
                     ExprId me_id = append_expr(n, me, field_ts, ValueCategory::LValue);
 
-                    const Node* val_node = extract_val_node(item);
+                    const Node* val_node = init_item_value_node(item);
                     if (is_agg(field_ts) || field_ts.array_rank > 0) {
                       if (val_node && val_node->kind == NK_INIT_LIST) {
                         int sub_cursor = 0;
@@ -1133,8 +1239,14 @@ class Lowerer {
                         consume_from_list(field_ts, me_id, list_node, cursor);
                       }
                     } else {
-                      append_assign(me_id, field_ts, val_node);
-                      ++cursor;
+                      if (val_node && val_node->kind == NK_INIT_LIST) {
+                        int sub_cursor = 0;
+                        consume_from_list(field_ts, me_id, val_node, sub_cursor);
+                        ++cursor;
+                      } else {
+                        append_assign(me_id, field_ts, val_node);
+                        ++cursor;
+                      }
                     }
                     next_field = fi + 1;
                   }
@@ -1167,7 +1279,7 @@ class Lowerer {
                     ie.index = idx_id;
                     ExprId ie_id = append_expr(n, ie, elem_ts, ValueCategory::LValue);
 
-                    const Node* val_node = extract_val_node(item);
+                    const Node* val_node = init_item_value_node(item);
                     if (is_agg(elem_ts) || elem_ts.array_rank > 0) {
                       if (val_node && val_node->kind == NK_INIT_LIST) {
                         int sub_cursor = 0;
@@ -1177,8 +1289,14 @@ class Lowerer {
                         consume_from_list(elem_ts, ie_id, list_node, cursor);
                       }
                     } else {
-                      append_assign(ie_id, elem_ts, val_node);
-                      ++cursor;
+                      if (val_node && val_node->kind == NK_INIT_LIST) {
+                        int sub_cursor = 0;
+                        consume_from_list(elem_ts, ie_id, val_node, sub_cursor);
+                        ++cursor;
+                      } else {
+                        append_assign(ie_id, elem_ts, val_node);
+                        ++cursor;
+                      }
                     }
                     next_idx = idx + 1;
                   }
@@ -1187,8 +1305,13 @@ class Lowerer {
 
                 if (cursor < list_node->n_children) {
                   const Node* item = list_node->children[cursor];
-                  const Node* val_node = extract_val_node(item);
-                  append_assign(cur_lhs, cur_ts, val_node);
+                  const Node* val_node = init_item_value_node(item);
+                  if (val_node && val_node->kind == NK_INIT_LIST) {
+                    int sub_cursor = 0;
+                    consume_from_list(cur_ts, cur_lhs, val_node, sub_cursor);
+                  } else {
+                    append_assign(cur_lhs, cur_ts, val_node);
+                  }
                   ++cursor;
                 }
               };
@@ -1753,7 +1876,11 @@ class Lowerer {
         // A compound literal (T){ ... } is an lvalue with automatic storage
         // duration.  Create an anonymous local, initialize it, and return a
         // DeclRef so callers can take its address or load from it.
-        if (!ctx) break;  // global scope: handled elsewhere, fall to default
+        if (!ctx) {
+          TypeSpec ts = n->type;
+          if (ts.base == TB_VOID) ts.base = TB_INT;
+          return append_expr(n, IntLiteral{0, false}, ts);
+        }
         const TypeSpec clit_ts = n->type;
         const Node* init_list = (n->left && n->left->kind == NK_INIT_LIST) ? n->left : nullptr;
 
@@ -1792,7 +1919,7 @@ class Lowerer {
         } else if (is_array) {
           // Array: no init store; element-by-element assignments follow below.
         } else if (init_list && init_list->n_children > 0) {
-          d.init = lower_expr(ctx, init_list->children[0]);
+          d.init = lower_expr(ctx, unwrap_init_scalar_value(init_list));
         } else if (n->left && !init_list) {
           d.init = lower_expr(ctx, n->left);
         }
@@ -1803,70 +1930,204 @@ class Lowerer {
         DeclRef dr{}; dr.name = "<clit>"; dr.local = lid;
         ExprId base_id = append_expr(n, dr, decl_ts, ValueCategory::LValue);
 
-        // Emit struct/union field-by-field initialization.
-        if (is_struct_or_union && init_list && decl_ts.tag) {
-          const auto sit = module_->struct_defs.find(decl_ts.tag);
-          if (sit != module_->struct_defs.end()) {
-            const auto& sd = sit->second;
-            size_t fi = 0;
-            for (int ci = 0; ci < init_list->n_children && fi < sd.fields.size(); ++ci) {
-              const Node* item = init_list->children[ci];
-              if (!item) { ++fi; continue; }
-              const Node* val_node = item;
-              if (item->kind == NK_INIT_ITEM) {
-                val_node = item->left ? item->left : item->right;
-                if (!val_node) val_node = item->init;
-                // Handle designated initializers.
-                if (item->is_designated && !item->is_index_desig && item->desig_field) {
-                  for (size_t k = 0; k < sd.fields.size(); ++k) {
-                    if (sd.fields[k].name == item->desig_field) { fi = k; break; }
-                  }
+        if (init_list && (is_struct_or_union || is_array)) {
+          auto is_agg = [](const TypeSpec& ts) {
+            return (ts.base == TB_STRUCT || ts.base == TB_UNION) &&
+                   ts.ptr_level == 0 && ts.array_rank == 0;
+          };
+          auto append_assign = [&](ExprId lhs_id, const TypeSpec& lhs_ts, const Node* rhs_node) {
+            if (!rhs_node) return;
+            if (lhs_ts.array_rank == 1 && rhs_node->kind == NK_STR_LIT && rhs_node->sval) {
+              TypeSpec elem_ts = lhs_ts;
+              elem_ts.array_rank = 0;
+              elem_ts.array_size = -1;
+              if (elem_ts.ptr_level == 0 &&
+                  (elem_ts.base == TB_CHAR || elem_ts.base == TB_SCHAR || elem_ts.base == TB_UCHAR)) {
+                const bool is_wide = rhs_node->sval[0] == 'L';
+                const auto vals = decode_string_literal_values(rhs_node->sval, is_wide);
+                const long long max_count =
+                    lhs_ts.array_size > 0 ? lhs_ts.array_size : static_cast<long long>(vals.size());
+                const long long emit_n =
+                    std::min<long long>(max_count, static_cast<long long>(vals.size()));
+                for (long long idx = 0; idx < emit_n; ++idx) {
+                  TypeSpec idx_ts{};
+                  idx_ts.base = TB_INT;
+                  ExprId idx_id = append_expr(n, IntLiteral{idx, false}, idx_ts);
+                  IndexExpr ie{};
+                  ie.base = lhs_id;
+                  ie.index = idx_id;
+                  ExprId ie_id = append_expr(n, ie, elem_ts, ValueCategory::LValue);
+                  ExprId val_id = append_expr(
+                      n, IntLiteral{vals[static_cast<size_t>(idx)], false}, idx_ts);
+                  AssignExpr ae{};
+                  ae.lhs = ie_id;
+                  ae.rhs = val_id;
+                  ExprId ae_id = append_expr(n, ae, elem_ts);
+                  ExprStmt es{};
+                  es.expr = ae_id;
+                  append_stmt(*ctx, Stmt{StmtPayload{es}, make_span(n)});
                 }
+                return;
               }
-              if (!val_node || fi >= sd.fields.size()) { ++fi; continue; }
-              const HirStructField& fld = sd.fields[fi];
-              TypeSpec field_ts = field_type_of(fld);
-              MemberExpr me{}; me.base = base_id; me.field = fld.name; me.is_arrow = false;
-              ExprId me_id = append_expr(n, me, field_ts, ValueCategory::LValue);
-              ExprId val_id = lower_expr(ctx, val_node);
-              AssignExpr ae{}; ae.lhs = me_id; ae.rhs = val_id;
-              ExprId ae_id = append_expr(n, ae, field_ts);
-              ExprStmt es{}; es.expr = ae_id;
-              append_stmt(*ctx, Stmt{StmtPayload{es}, make_span(n)});
-              ++fi;
             }
-          }
-        }
-
-        // Emit array element-by-element initialization.
-        if (is_array && init_list) {
-          TypeSpec elem_ts = decl_ts;
-          elem_ts.array_rank--;
-          elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
-          const long long bound = decl_ts.array_size > 0 ? decl_ts.array_size : (1LL << 20);
-          long long next_idx = 0;
-          for (int ci = 0; ci < init_list->n_children && next_idx < bound; ++ci) {
-            const Node* item = init_list->children[ci];
-            if (!item) { ++next_idx; continue; }
-            long long idx = next_idx;
-            const Node* val_node = item;
-            if (item->kind == NK_INIT_ITEM) {
-              val_node = item->left ? item->left : item->right;
-              if (!val_node) val_node = item->init;
-              if (item->is_designated && item->is_index_desig) idx = item->desig_val;
-            }
-            if (!val_node) { ++next_idx; continue; }
-            TypeSpec idx_ts{}; idx_ts.base = TB_INT;
-            ExprId idx_id = append_expr(n, IntLiteral{idx, false}, idx_ts);
-            IndexExpr ie{}; ie.base = base_id; ie.index = idx_id;
-            ExprId ie_id = append_expr(n, ie, elem_ts, ValueCategory::LValue);
+            const Node* val_node = unwrap_init_scalar_value(rhs_node);
             ExprId val_id = lower_expr(ctx, val_node);
-            AssignExpr ae{}; ae.lhs = ie_id; ae.rhs = val_id;
-            ExprId ae_id = append_expr(n, ae, elem_ts);
-            ExprStmt es{}; es.expr = ae_id;
+            AssignExpr ae{};
+            ae.lhs = lhs_id;
+            ae.rhs = val_id;
+            ExprId ae_id = append_expr(n, ae, lhs_ts);
+            ExprStmt es{};
+            es.expr = ae_id;
             append_stmt(*ctx, Stmt{StmtPayload{es}, make_span(n)});
-            next_idx = idx + 1;
-          }
+          };
+          auto can_direct_assign_agg = [&](const TypeSpec& lhs_ts,
+                                           const Node* rhs_node) -> bool {
+            if (!rhs_node) return false;
+            if (!is_agg(lhs_ts)) return false;
+            const TypeSpec rhs_ts = infer_generic_ctrl_type(ctx, rhs_node);
+            if (rhs_ts.ptr_level != 0 || rhs_ts.array_rank != 0) return false;
+            if (rhs_ts.base != lhs_ts.base) return false;
+            if (rhs_ts.base == TB_STRUCT || rhs_ts.base == TB_UNION || rhs_ts.base == TB_ENUM) {
+              const char* lt = lhs_ts.tag ? lhs_ts.tag : "";
+              const char* rt = rhs_ts.tag ? rhs_ts.tag : "";
+              return std::strcmp(lt, rt) == 0;
+            }
+            return true;
+          };
+
+          std::function<void(const TypeSpec&, ExprId, const Node*, int&)> consume_from_list;
+          consume_from_list =
+              [&](const TypeSpec& cur_ts, ExprId cur_lhs, const Node* list_node, int& cursor) {
+                if (!list_node || list_node->kind != NK_INIT_LIST) return;
+                if (cursor < 0) cursor = 0;
+
+                if (is_agg(cur_ts) && cur_ts.tag) {
+                  const auto sit = module_->struct_defs.find(cur_ts.tag);
+                  if (sit == module_->struct_defs.end()) return;
+                  const auto& sd = sit->second;
+                  size_t next_field = 0;
+                  while (cursor < list_node->n_children && next_field < sd.fields.size()) {
+                    const Node* item = list_node->children[cursor];
+                    if (!item) {
+                      ++cursor;
+                      ++next_field;
+                      continue;
+                    }
+                    size_t fi = next_field;
+                    if (item->kind == NK_INIT_ITEM && item->is_designated &&
+                        !item->is_index_desig && item->desig_field) {
+                      for (size_t k = 0; k < sd.fields.size(); ++k) {
+                        if (sd.fields[k].name == item->desig_field) {
+                          fi = k;
+                          break;
+                        }
+                      }
+                    }
+                    if (fi >= sd.fields.size()) {
+                      ++cursor;
+                      continue;
+                    }
+
+                    const HirStructField& fld = sd.fields[fi];
+                    TypeSpec field_ts = field_type_of(fld);
+                    MemberExpr me{};
+                    me.base = cur_lhs;
+                    me.field = fld.name;
+                    me.is_arrow = false;
+                    ExprId me_id = append_expr(n, me, field_ts, ValueCategory::LValue);
+
+                    const Node* val_node = init_item_value_node(item);
+                    if (is_agg(field_ts) || field_ts.array_rank > 0) {
+                      if (val_node && val_node->kind == NK_INIT_LIST) {
+                        int sub_cursor = 0;
+                        consume_from_list(field_ts, me_id, val_node, sub_cursor);
+                        ++cursor;
+                      } else if (can_direct_assign_agg(field_ts, val_node)) {
+                        append_assign(me_id, field_ts, val_node);
+                        ++cursor;
+                      } else {
+                        consume_from_list(field_ts, me_id, list_node, cursor);
+                      }
+                    } else {
+                      if (val_node && val_node->kind == NK_INIT_LIST) {
+                        int sub_cursor = 0;
+                        consume_from_list(field_ts, me_id, val_node, sub_cursor);
+                        ++cursor;
+                      } else {
+                        append_assign(me_id, field_ts, val_node);
+                        ++cursor;
+                      }
+                    }
+                    next_field = fi + 1;
+                  }
+                  return;
+                }
+
+                if (cur_ts.array_rank > 0) {
+                  TypeSpec elem_ts = cur_ts;
+                  elem_ts.array_rank--;
+                  elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
+                  long long next_idx = 0;
+                  const long long bound = cur_ts.array_size > 0 ? cur_ts.array_size : (1LL << 30);
+                  while (cursor < list_node->n_children && next_idx < bound) {
+                    const Node* item = list_node->children[cursor];
+                    if (!item) {
+                      ++cursor;
+                      ++next_idx;
+                      continue;
+                    }
+                    long long idx = next_idx;
+                    if (item->kind == NK_INIT_ITEM && item->is_designated &&
+                        item->is_index_desig) {
+                      idx = item->desig_val;
+                    }
+                    TypeSpec idx_ts{};
+                    idx_ts.base = TB_INT;
+                    ExprId idx_id = append_expr(n, IntLiteral{idx, false}, idx_ts);
+                    IndexExpr ie{};
+                    ie.base = cur_lhs;
+                    ie.index = idx_id;
+                    ExprId ie_id = append_expr(n, ie, elem_ts, ValueCategory::LValue);
+
+                    const Node* val_node = init_item_value_node(item);
+                    if (is_agg(elem_ts) || elem_ts.array_rank > 0) {
+                      if (val_node && val_node->kind == NK_INIT_LIST) {
+                        int sub_cursor = 0;
+                        consume_from_list(elem_ts, ie_id, val_node, sub_cursor);
+                        ++cursor;
+                      } else {
+                        consume_from_list(elem_ts, ie_id, list_node, cursor);
+                      }
+                    } else {
+                      if (val_node && val_node->kind == NK_INIT_LIST) {
+                        int sub_cursor = 0;
+                        consume_from_list(elem_ts, ie_id, val_node, sub_cursor);
+                        ++cursor;
+                      } else {
+                        append_assign(ie_id, elem_ts, val_node);
+                        ++cursor;
+                      }
+                    }
+                    next_idx = idx + 1;
+                  }
+                  return;
+                }
+
+                if (cursor < list_node->n_children) {
+                  const Node* item = list_node->children[cursor];
+                  const Node* val_node = init_item_value_node(item);
+                  if (val_node && val_node->kind == NK_INIT_LIST) {
+                    int sub_cursor = 0;
+                    consume_from_list(cur_ts, cur_lhs, val_node, sub_cursor);
+                  } else {
+                    append_assign(cur_lhs, cur_ts, val_node);
+                  }
+                  ++cursor;
+                }
+              };
+
+          int cursor = 0;
+          consume_from_list(decl_ts, base_id, init_list, cursor);
         }
 
         return base_id;
