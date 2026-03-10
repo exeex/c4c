@@ -2448,6 +2448,26 @@ class HirEmitter {
             dr_builtin->name == "__builtin_fabsf"     || dr_builtin->name == "__builtin_copysignf") {
           TypeSpec flt{}; flt.base = TB_FLOAT; return flt;
         }
+        // Pointer-returning builtins (void* or first-arg type)
+        if (dr_builtin->name == "__builtin_memcpy"   ||
+            dr_builtin->name == "__builtin_memmove"  ||
+            dr_builtin->name == "__builtin_memset"   ||
+            dr_builtin->name == "__builtin_memchr"   ||
+            dr_builtin->name == "__builtin_strcpy"   ||
+            dr_builtin->name == "__builtin_strncpy"  ||
+            dr_builtin->name == "__builtin_strcat"   ||
+            dr_builtin->name == "__builtin_strncat"  ||
+            dr_builtin->name == "__builtin_strchr"   ||
+            dr_builtin->name == "__builtin_strstr"   ||
+            dr_builtin->name == "__builtin_malloc"   ||
+            dr_builtin->name == "__builtin_calloc"   ||
+            dr_builtin->name == "__builtin_realloc"  ||
+            dr_builtin->name == "__builtin_alloca") {
+          TypeSpec void_ptr{};
+          void_ptr.base = TB_VOID;
+          void_ptr.ptr_level = 1;
+          return void_ptr;
+        }
         TypeSpec builtin_default{};
         builtin_default.base = TB_INT;
         return builtin_default;
