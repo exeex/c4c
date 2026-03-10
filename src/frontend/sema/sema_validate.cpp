@@ -738,14 +738,23 @@ class Validator {
             current_fn_ret_.ptr_level == 0 &&
             current_fn_ret_.array_rank == 0;
 
-        if (fn_returns_void && n->left) {
-          emit(n->line, "return with a value in function returning void");
-        } else if (!fn_returns_void && !n->left) {
+        if (!fn_returns_void && !n->left) {
           emit(n->line, "non-void function should return a value");
         }
 
         if (n->left) {
           ExprInfo rv_info = infer_expr(n->left);
+          if (fn_returns_void) {
+            // GCC extension: `return void_expr;` in a void function is allowed
+            // when the expression itself is void (e.g. calling another void fn).
+            // Use rv_info.type (inferred by infer_expr) not n->left->type (AST).
+            const bool returns_void_expr =
+                rv_info.type.base == TB_VOID &&
+                rv_info.type.ptr_level == 0 &&
+                rv_info.type.array_rank == 0;
+            if (!returns_void_expr)
+              emit(n->line, "return with a value in function returning void");
+          }
           // Detect direct return of an uninitialized plain-scalar local.
           // Skip if the function has goto/loop statements (complex control flow
           // can make the read unreachable, leading to false positives).
