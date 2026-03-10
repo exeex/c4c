@@ -192,6 +192,7 @@ static std::string llvm_field_ty(const HirStructField& f) {
     return "[" + std::to_string(f.array_first_dim) + " x " + elem_ty + "]";
   }
   if (f.elem_type.ptr_level > 0 || f.elem_type.is_fn_ptr) return "ptr";
+  if (f.elem_type.base == TB_VA_LIST) return "%struct.__va_list_tag_";
   if (f.elem_type.base == TB_STRUCT || f.elem_type.base == TB_UNION) {
     if (f.elem_type.tag && f.elem_type.tag[0])
       return "%struct." + std::string(f.elem_type.tag);
@@ -411,10 +412,11 @@ class HirEmitter {
     if (need_llvm_va_start_) out << "declare void @llvm.va_start.p0(ptr)\n";
     if (need_llvm_va_end_) out << "declare void @llvm.va_end.p0(ptr)\n";
     if (need_llvm_va_copy_) out << "declare void @llvm.va_copy.p0.p0(ptr, ptr)\n";
+    if (need_llvm_memcpy_) out << "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\n";
     if (need_llvm_stacksave_) out << "declare ptr @llvm.stacksave()\n";
     if (need_llvm_stackrestore_) out << "declare void @llvm.stackrestore(ptr)\n";
     if (need_llvm_va_start_ || need_llvm_va_end_ || need_llvm_va_copy_ ||
-        need_llvm_stacksave_ || need_llvm_stackrestore_) out << "\n";
+        need_llvm_memcpy_ || need_llvm_stacksave_ || need_llvm_stackrestore_) out << "\n";
     for (const auto& [name, ret_ty] : extern_call_decls_) {
       if (mod_.fn_index.count(name)) continue;
       out << "declare " << ret_ty << " @" << name << "(...)\n";
@@ -434,6 +436,7 @@ class HirEmitter {
   bool need_llvm_va_start_ = false;
   bool need_llvm_va_end_ = false;
   bool need_llvm_va_copy_ = false;
+  bool need_llvm_memcpy_ = false;
   bool need_llvm_stacksave_ = false;
   bool need_llvm_stackrestore_ = false;
 
@@ -1804,6 +1807,27 @@ class HirEmitter {
     return emit_lval_dispatch(ctx, e, pointee_ts);
   }
 
+  std::string emit_va_list_obj_ptr(FnCtx& ctx, ExprId id, TypeSpec& ts) {
+    const Expr& e = get_expr(id);
+    ts = resolve_expr_type(ctx, id);
+    if (const auto* r = std::get_if<DeclRef>(&e.payload)) {
+      if (r->param_index && ctx.fn && *r->param_index < ctx.fn->params.size()) {
+        const TypeSpec& pts = ctx.fn->params[*r->param_index].type.spec;
+        if (pts.base == TB_VA_LIST && pts.ptr_level == 0 && pts.array_rank == 0) {
+          const auto spill_it = ctx.param_slots.find(*r->param_index + 0x80000000u);
+          if (spill_it != ctx.param_slots.end()) {
+            const std::string tmp = fresh_tmp(ctx);
+            emit_instr(ctx, tmp + " = load ptr, ptr " + spill_it->second);
+            return tmp;
+          }
+          const auto it = ctx.param_slots.find(*r->param_index);
+          if (it != ctx.param_slots.end()) return it->second;
+        }
+      }
+    }
+    return emit_lval(ctx, id, ts);
+  }
+
   std::string emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec& pts) {
     if (const auto* r = std::get_if<DeclRef>(&e.payload)) {
       if (r->local) {
@@ -2795,14 +2819,14 @@ class HirEmitter {
     if (!fn_name.empty() && fn_name.substr(0, 10) == "__builtin_") {
       if (fn_name == "__builtin_va_start" && call.args.size() >= 1) {
         TypeSpec ap_ts{};
-        const std::string ap_ptr = emit_lval(ctx, call.args[0], ap_ts);
+        const std::string ap_ptr = emit_va_list_obj_ptr(ctx, call.args[0], ap_ts);
         need_llvm_va_start_ = true;
         emit_instr(ctx, "call void @llvm.va_start.p0(ptr " + ap_ptr + ")");
         return "";
       }
       if (fn_name == "__builtin_va_end" && call.args.size() >= 1) {
         TypeSpec ap_ts{};
-        const std::string ap_ptr = emit_lval(ctx, call.args[0], ap_ts);
+        const std::string ap_ptr = emit_va_list_obj_ptr(ctx, call.args[0], ap_ts);
         need_llvm_va_end_ = true;
         emit_instr(ctx, "call void @llvm.va_end.p0(ptr " + ap_ptr + ")");
         return "";
@@ -2810,8 +2834,8 @@ class HirEmitter {
       if (fn_name == "__builtin_va_copy" && call.args.size() >= 2) {
         TypeSpec dst_ts{};
         TypeSpec src_ts{};
-        const std::string dst_ptr = emit_lval(ctx, call.args[0], dst_ts);
-        const std::string src_ptr = emit_lval(ctx, call.args[1], src_ts);
+        const std::string dst_ptr = emit_va_list_obj_ptr(ctx, call.args[0], dst_ts);
+        const std::string src_ptr = emit_va_list_obj_ptr(ctx, call.args[1], src_ts);
         need_llvm_va_copy_ = true;
         emit_instr(ctx, "call void @llvm.va_copy.p0.p0(ptr " + dst_ptr + ", ptr " + src_ptr + ")");
         return "";
@@ -3149,6 +3173,23 @@ class HirEmitter {
       }
     }
 
+    auto callee_needs_va_list_by_value_copy = [&](size_t arg_index) -> bool {
+      if (target_fn) {
+        if (arg_index < target_fn->params.size()) {
+          const TypeSpec& param_ts = target_fn->params[arg_index].type.spec;
+          return param_ts.base == TB_VA_LIST &&
+                 param_ts.ptr_level == 0 &&
+                 param_ts.array_rank == 0;
+        }
+        return false;
+      }
+      return fn_name == "vprintf"   || fn_name == "vfprintf" ||
+             fn_name == "vsprintf"  || fn_name == "vsnprintf" ||
+             fn_name == "vscanf"    || fn_name == "vfscanf" ||
+             fn_name == "vsscanf"   || fn_name == "vasprintf" ||
+             fn_name == "vdprintf";
+    };
+
     std::string args_str;
     auto apply_default_arg_promotion = [&](std::string& arg, TypeSpec& out_ts, const TypeSpec& in_ts) {
       TypeSpec promoted = in_ts;
@@ -3173,6 +3214,15 @@ class HirEmitter {
       TypeSpec arg_ts{};
       std::string arg = emit_rval_id(ctx, call.args[i], arg_ts);
       TypeSpec out_arg_ts = arg_ts;
+      const bool is_va_list_value =
+          arg_ts.base == TB_VA_LIST &&
+          arg_ts.ptr_level == 0 &&
+          arg_ts.array_rank == 0;
+      const bool is_variadic_aggregate =
+          target_fn && target_fn->attrs.variadic && i >= target_fn->params.size() &&
+          (arg_ts.base == TB_STRUCT || arg_ts.base == TB_UNION) &&
+          arg_ts.ptr_level == 0 && arg_ts.array_rank == 0 &&
+          arg_ts.tag && arg_ts.tag[0];
       if (target_fn) {
         const bool has_void_param_list =
             target_fn->params.size() == 1 &&
@@ -3182,9 +3232,61 @@ class HirEmitter {
         if (!has_void_param_list && i < target_fn->params.size()) {
           out_arg_ts = target_fn->params[i].type.spec;
           arg = coerce(ctx, arg, arg_ts, out_arg_ts);
-        } else if (target_fn->attrs.variadic) {
+        } else if (target_fn->attrs.variadic && !is_variadic_aggregate) {
           apply_default_arg_promotion(arg, out_arg_ts, arg_ts);
         }
+      }
+      if (is_va_list_value && callee_needs_va_list_by_value_copy(i)) {
+        TypeSpec ap_ts{};
+        const std::string src_ptr = emit_va_list_obj_ptr(ctx, call.args[i], ap_ts);
+        const std::string tmp_addr = fresh_tmp(ctx);
+        emit_instr(ctx, tmp_addr + " = alloca %struct.__va_list_tag_");
+        need_llvm_memcpy_ = true;
+        emit_instr(ctx, "call void @llvm.memcpy.p0.p0.i64(ptr " + tmp_addr + ", ptr " +
+                            src_ptr + ", i64 32, i1 false)");
+        arg = tmp_addr;
+        out_arg_ts = arg_ts;
+      }
+      if (is_variadic_aggregate) {
+        const int payload_sz = compute_struct_size(mod_, arg_ts.tag);
+        if (payload_sz == 0) continue;
+
+        std::string obj_ptr;
+        if (get_expr(call.args[i]).type.category == ValueCategory::LValue) {
+          TypeSpec obj_ts{};
+          obj_ptr = emit_lval(ctx, call.args[i], obj_ts);
+        } else {
+          const std::string tmp_addr = fresh_tmp(ctx);
+          emit_instr(ctx, tmp_addr + " = alloca " + llvm_ty(arg_ts));
+          emit_instr(ctx, "store " + llvm_ty(arg_ts) + " " + arg + ", ptr " + tmp_addr);
+          obj_ptr = tmp_addr;
+        }
+
+        need_llvm_memcpy_ = true;
+        if (i) args_str += ", ";
+        if (payload_sz > 16) {
+          args_str += "ptr " + obj_ptr;
+          continue;
+        }
+        if (payload_sz <= 8) {
+          const std::string tmp_addr = fresh_tmp(ctx);
+          emit_instr(ctx, tmp_addr + " = alloca i64");
+          emit_instr(ctx, "call void @llvm.memcpy.p0.p0.i64(ptr " + tmp_addr + ", ptr " + obj_ptr +
+                              ", i64 " + std::to_string(payload_sz) + ", i1 false)");
+          const std::string packed = fresh_tmp(ctx);
+          emit_instr(ctx, packed + " = load i64, ptr " + tmp_addr);
+          args_str += "i64 " + packed;
+          continue;
+        }
+
+        const std::string tmp_addr = fresh_tmp(ctx);
+        emit_instr(ctx, tmp_addr + " = alloca [2 x i64]");
+        emit_instr(ctx, "call void @llvm.memcpy.p0.p0.i64(ptr " + tmp_addr + ", ptr " + obj_ptr +
+                            ", i64 " + std::to_string(payload_sz) + ", i1 false)");
+        const std::string packed = fresh_tmp(ctx);
+        emit_instr(ctx, packed + " = load [2 x i64], ptr " + tmp_addr);
+        args_str += "[2 x i64] " + packed;
+        continue;
       }
       if (i) args_str += ", ";
       args_str += llvm_ty(out_arg_ts) + " " + arg;
@@ -3201,9 +3303,116 @@ class HirEmitter {
 
   // ── VaArg ────────────────────────────────────────────────────────────────
 
+  std::string emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::string& ap_ptr, int slot_bytes) {
+    const std::string offs_ptr = fresh_tmp(ctx);
+    emit_instr(ctx, offs_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
+                            ", i32 0, i32 3");
+    const std::string offs = fresh_tmp(ctx);
+    emit_instr(ctx, offs + " = load i32, ptr " + offs_ptr);
+
+    const std::string stack_lbl = fresh_lbl(ctx, "vaarg.stack.");
+    const std::string reg_try_lbl = fresh_lbl(ctx, "vaarg.regtry.");
+    const std::string reg_lbl = fresh_lbl(ctx, "vaarg.reg.");
+    const std::string join_lbl = fresh_lbl(ctx, "vaarg.join.");
+
+    const std::string is_stack0 = fresh_tmp(ctx);
+    emit_instr(ctx, is_stack0 + " = icmp sge i32 " + offs + ", 0");
+    emit_term(ctx, "br i1 " + is_stack0 + ", label %" + stack_lbl + ", label %" + reg_try_lbl);
+
+    emit_lbl(ctx, reg_try_lbl);
+    const std::string next_offs = fresh_tmp(ctx);
+    emit_instr(ctx, next_offs + " = add i32 " + offs + ", " + std::to_string(slot_bytes));
+    emit_instr(ctx, "store i32 " + next_offs + ", ptr " + offs_ptr);
+    const std::string use_reg = fresh_tmp(ctx);
+    emit_instr(ctx, use_reg + " = icmp sle i32 " + next_offs + ", 0");
+    emit_term(ctx, "br i1 " + use_reg + ", label %" + reg_lbl + ", label %" + stack_lbl);
+
+    emit_lbl(ctx, reg_lbl);
+    const std::string gr_top_ptr = fresh_tmp(ctx);
+    emit_instr(ctx, gr_top_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
+                             ", i32 0, i32 1");
+    const std::string gr_top = fresh_tmp(ctx);
+    emit_instr(ctx, gr_top + " = load ptr, ptr " + gr_top_ptr);
+    const std::string reg_addr = fresh_tmp(ctx);
+    emit_instr(ctx, reg_addr + " = getelementptr i8, ptr " + gr_top + ", i32 " + offs);
+    emit_term(ctx, "br label %" + join_lbl);
+
+    emit_lbl(ctx, stack_lbl);
+    const std::string stack_ptr_ptr = fresh_tmp(ctx);
+    emit_instr(ctx, stack_ptr_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
+                                ", i32 0, i32 0");
+    const std::string stack_ptr = fresh_tmp(ctx);
+    emit_instr(ctx, stack_ptr + " = load ptr, ptr " + stack_ptr_ptr);
+    const std::string stack_next = fresh_tmp(ctx);
+    emit_instr(ctx, stack_next + " = getelementptr i8, ptr " + stack_ptr + ", i64 " +
+                            std::to_string(slot_bytes));
+    emit_instr(ctx, "store ptr " + stack_next + ", ptr " + stack_ptr_ptr);
+    emit_term(ctx, "br label %" + join_lbl);
+
+    emit_lbl(ctx, join_lbl);
+    const std::string src_ptr = fresh_tmp(ctx);
+    emit_instr(ctx, src_ptr + " = phi ptr [ " + reg_addr + ", %" + reg_lbl + " ], [ " +
+                             stack_ptr + ", %" + stack_lbl + " ]");
+    return src_ptr;
+  }
+
+  std::string emit_aarch64_vaarg_fp_src_ptr(
+      FnCtx& ctx, const std::string& ap_ptr, int reg_slot_bytes, int stack_slot_bytes) {
+    const std::string offs_ptr = fresh_tmp(ctx);
+    emit_instr(ctx, offs_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
+                            ", i32 0, i32 4");
+    const std::string offs = fresh_tmp(ctx);
+    emit_instr(ctx, offs + " = load i32, ptr " + offs_ptr);
+
+    const std::string stack_lbl = fresh_lbl(ctx, "vaarg.fp.stack.");
+    const std::string reg_try_lbl = fresh_lbl(ctx, "vaarg.fp.regtry.");
+    const std::string reg_lbl = fresh_lbl(ctx, "vaarg.fp.reg.");
+    const std::string join_lbl = fresh_lbl(ctx, "vaarg.fp.join.");
+
+    const std::string is_stack0 = fresh_tmp(ctx);
+    emit_instr(ctx, is_stack0 + " = icmp sge i32 " + offs + ", 0");
+    emit_term(ctx, "br i1 " + is_stack0 + ", label %" + stack_lbl + ", label %" + reg_try_lbl);
+
+    emit_lbl(ctx, reg_try_lbl);
+    const std::string next_offs = fresh_tmp(ctx);
+    emit_instr(ctx, next_offs + " = add i32 " + offs + ", " + std::to_string(reg_slot_bytes));
+    emit_instr(ctx, "store i32 " + next_offs + ", ptr " + offs_ptr);
+    const std::string use_reg = fresh_tmp(ctx);
+    emit_instr(ctx, use_reg + " = icmp sle i32 " + next_offs + ", 0");
+    emit_term(ctx, "br i1 " + use_reg + ", label %" + reg_lbl + ", label %" + stack_lbl);
+
+    emit_lbl(ctx, reg_lbl);
+    const std::string vr_top_ptr = fresh_tmp(ctx);
+    emit_instr(ctx, vr_top_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
+                             ", i32 0, i32 2");
+    const std::string vr_top = fresh_tmp(ctx);
+    emit_instr(ctx, vr_top + " = load ptr, ptr " + vr_top_ptr);
+    const std::string reg_addr = fresh_tmp(ctx);
+    emit_instr(ctx, reg_addr + " = getelementptr i8, ptr " + vr_top + ", i32 " + offs);
+    emit_term(ctx, "br label %" + join_lbl);
+
+    emit_lbl(ctx, stack_lbl);
+    const std::string stack_ptr_ptr = fresh_tmp(ctx);
+    emit_instr(ctx, stack_ptr_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
+                                ", i32 0, i32 0");
+    const std::string stack_ptr = fresh_tmp(ctx);
+    emit_instr(ctx, stack_ptr + " = load ptr, ptr " + stack_ptr_ptr);
+    const std::string stack_next = fresh_tmp(ctx);
+    emit_instr(ctx, stack_next + " = getelementptr i8, ptr " + stack_ptr + ", i64 " +
+                            std::to_string(stack_slot_bytes));
+    emit_instr(ctx, "store ptr " + stack_next + ", ptr " + stack_ptr_ptr);
+    emit_term(ctx, "br label %" + join_lbl);
+
+    emit_lbl(ctx, join_lbl);
+    const std::string src_ptr = fresh_tmp(ctx);
+    emit_instr(ctx, src_ptr + " = phi ptr [ " + reg_addr + ", %" + reg_lbl + " ], [ " +
+                             stack_ptr + ", %" + stack_lbl + " ]");
+    return src_ptr;
+  }
+
   std::string emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const Expr& e) {
     TypeSpec ap_ts{};
-    const std::string ap_ptr = emit_lval(ctx, v.ap, ap_ts);
+    const std::string ap_ptr = emit_va_list_obj_ptr(ctx, v.ap, ap_ts);
     TypeSpec res_ts = e.type.spec;
     if (!has_concrete_type(res_ts)) res_ts = resolve_expr_type(ctx, e);
     const std::string res_ty = llvm_ty(res_ts);
@@ -3227,62 +3436,60 @@ class HirEmitter {
         if (payload_sz == 0) return "zeroinitializer";
       }
     }
+    if ((res_ts.base == TB_STRUCT || res_ts.base == TB_UNION) &&
+        res_ts.ptr_level == 0 && res_ts.array_rank == 0 &&
+        res_ts.tag && res_ts.tag[0]) {
+      const auto it = mod_.struct_defs.find(res_ts.tag);
+      if (it != mod_.struct_defs.end()) {
+        const int payload_sz = compute_struct_size(mod_, res_ts.tag);
+        if (payload_sz == 0) return "zeroinitializer";
+        if (payload_sz > 0) {
+          if (payload_sz > 16) {
+            const std::string slot_ptr = emit_aarch64_vaarg_gp_src_ptr(ctx, ap_ptr, 8);
+            const std::string src_ptr = fresh_tmp(ctx);
+            emit_instr(ctx, src_ptr + " = load ptr, ptr " + slot_ptr);
+            const std::string tmp_addr = fresh_tmp(ctx);
+            emit_instr(ctx, tmp_addr + " = alloca " + res_ty);
+            need_llvm_memcpy_ = true;
+            emit_instr(ctx, "call void @llvm.memcpy.p0.p0.i64(ptr " + tmp_addr + ", ptr " +
+                                src_ptr + ", i64 " + std::to_string(payload_sz) + ", i1 false)");
+            const std::string out = fresh_tmp(ctx);
+            emit_instr(ctx, out + " = load " + res_ty + ", ptr " + tmp_addr);
+            return out;
+          }
+
+          const int slot_bytes = payload_sz > 8 ? 16 : 8;
+          const std::string src_ptr = emit_aarch64_vaarg_gp_src_ptr(ctx, ap_ptr, slot_bytes);
+          const std::string tmp_addr = fresh_tmp(ctx);
+          emit_instr(ctx, tmp_addr + " = alloca " + res_ty);
+          need_llvm_memcpy_ = true;
+          emit_instr(ctx, "call void @llvm.memcpy.p0.p0.i64(ptr " + tmp_addr + ", ptr " +
+                              src_ptr + ", i64 " + std::to_string(payload_sz) + ", i1 false)");
+          const std::string out = fresh_tmp(ctx);
+          emit_instr(ctx, out + " = load " + res_ty + ", ptr " + tmp_addr);
+          return out;
+        }
+      }
+    }
+
     const bool is_gp_scalar =
         (res_ty == "ptr") ||
         (res_ts.ptr_level == 0 && res_ts.array_rank == 0 && is_any_int(res_ts.base));
+    const bool is_fp_scalar =
+        res_ts.ptr_level == 0 && res_ts.array_rank == 0 &&
+        (res_ts.base == TB_FLOAT || res_ts.base == TB_DOUBLE);
 
     // AArch64 va_list matches clang's __va_list_tag layout:
     // { stack, gr_top, vr_top, gr_offs, vr_offs }.
     // For integer/pointer args we first try GR save area, then fall back to stack.
     if (is_gp_scalar) {
-      const std::string offs_ptr = fresh_tmp(ctx);
-      emit_instr(ctx, offs_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
-                              ", i32 0, i32 3");
-      const std::string offs = fresh_tmp(ctx);
-      emit_instr(ctx, offs + " = load i32, ptr " + offs_ptr);
-
-      const std::string stack_lbl = fresh_lbl(ctx, "vaarg.stack.");
-      const std::string reg_try_lbl = fresh_lbl(ctx, "vaarg.regtry.");
-      const std::string reg_lbl = fresh_lbl(ctx, "vaarg.reg.");
-      const std::string join_lbl = fresh_lbl(ctx, "vaarg.join.");
-
-      const std::string is_stack0 = fresh_tmp(ctx);
-      emit_instr(ctx, is_stack0 + " = icmp sge i32 " + offs + ", 0");
-      emit_term(ctx, "br i1 " + is_stack0 + ", label %" + stack_lbl + ", label %" + reg_try_lbl);
-
-      emit_lbl(ctx, reg_try_lbl);
-      const std::string next_offs = fresh_tmp(ctx);
-      emit_instr(ctx, next_offs + " = add i32 " + offs + ", 8");
-      emit_instr(ctx, "store i32 " + next_offs + ", ptr " + offs_ptr);
-      const std::string use_reg = fresh_tmp(ctx);
-      emit_instr(ctx, use_reg + " = icmp sle i32 " + next_offs + ", 0");
-      emit_term(ctx, "br i1 " + use_reg + ", label %" + reg_lbl + ", label %" + stack_lbl);
-
-      emit_lbl(ctx, reg_lbl);
-      const std::string gr_top_ptr = fresh_tmp(ctx);
-      emit_instr(ctx, gr_top_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
-                               ", i32 0, i32 1");
-      const std::string gr_top = fresh_tmp(ctx);
-      emit_instr(ctx, gr_top + " = load ptr, ptr " + gr_top_ptr);
-      const std::string reg_addr = fresh_tmp(ctx);
-      emit_instr(ctx, reg_addr + " = getelementptr i8, ptr " + gr_top + ", i32 " + offs);
-      emit_term(ctx, "br label %" + join_lbl);
-
-      emit_lbl(ctx, stack_lbl);
-      const std::string stack_ptr_ptr = fresh_tmp(ctx);
-      emit_instr(ctx, stack_ptr_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
-                                  ", i32 0, i32 0");
-      const std::string stack_ptr = fresh_tmp(ctx);
-      emit_instr(ctx, stack_ptr + " = load ptr, ptr " + stack_ptr_ptr);
-      const std::string stack_next = fresh_tmp(ctx);
-      emit_instr(ctx, stack_next + " = getelementptr i8, ptr " + stack_ptr + ", i64 8");
-      emit_instr(ctx, "store ptr " + stack_next + ", ptr " + stack_ptr_ptr);
-      emit_term(ctx, "br label %" + join_lbl);
-
-      emit_lbl(ctx, join_lbl);
-      const std::string src_ptr = fresh_tmp(ctx);
-      emit_instr(ctx, src_ptr + " = phi ptr [ " + reg_addr + ", %" + reg_lbl + " ], [ " +
-                               stack_ptr + ", %" + stack_lbl + " ]");
+      const std::string src_ptr = emit_aarch64_vaarg_gp_src_ptr(ctx, ap_ptr, 8);
+      const std::string out = fresh_tmp(ctx);
+      emit_instr(ctx, out + " = load " + res_ty + ", ptr " + src_ptr);
+      return out;
+    }
+    if (is_fp_scalar) {
+      const std::string src_ptr = emit_aarch64_vaarg_fp_src_ptr(ctx, ap_ptr, 16, 8);
       const std::string out = fresh_tmp(ctx);
       emit_instr(ctx, out + " = load " + res_ty + ", ptr " + src_ptr);
       return out;
