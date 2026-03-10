@@ -3755,6 +3755,7 @@ class HirEmitter {
         { AssignOp::BitOr, BinaryOp::BitOr }, { AssignOp::BitXor, BinaryOp::BitXor },
       };
       const char* instr = nullptr;
+      TypeSpec op_ts = lhs_ts;
       for (const auto& row : compound_map) {
         if (row.op != a.op) continue;
         if ((row.bop == BinaryOp::Add || row.bop == BinaryOp::Sub ||
@@ -3765,18 +3766,20 @@ class HirEmitter {
           emit_instr(ctx, "store " + lty + " " + result + ", ptr " + lhs_ptr);
           return result;
         }
-        TypeSpec op_ts = lhs_ts;
+        // Compute the operation type via C usual arithmetic conversions.
         if (lhs_ts.ptr_level == 0 && lhs_ts.array_rank == 0 &&
-            rhs_ts.ptr_level == 0 && rhs_ts.array_rank == 0 &&
-            (is_float_base(lhs_ts.base) || is_float_base(rhs_ts.base))) {
-          op_ts.base = (lhs_ts.base == TB_DOUBLE || rhs_ts.base == TB_DOUBLE ||
-                        lhs_ts.base == TB_LONGDOUBLE || rhs_ts.base == TB_LONGDOUBLE)
-                           ? TB_DOUBLE
-                           : TB_FLOAT;
+            rhs_ts.ptr_level == 0 && rhs_ts.array_rank == 0) {
+          if (is_float_base(lhs_ts.base) || is_float_base(rhs_ts.base)) {
+            op_ts.base = (lhs_ts.base == TB_DOUBLE || rhs_ts.base == TB_DOUBLE ||
+                          lhs_ts.base == TB_LONGDOUBLE || rhs_ts.base == TB_LONGDOUBLE)
+                             ? TB_DOUBLE
+                             : TB_FLOAT;
+          } else if (is_any_int(lhs_ts.base) && is_any_int(rhs_ts.base)) {
+            const bool is_shift = (row.bop == BinaryOp::Shl || row.bop == BinaryOp::Shr);
+            op_ts.base = is_shift ? integer_promote(lhs_ts.base)
+                                  : usual_arith_conv(lhs_ts.base, rhs_ts.base);
+          }
         }
-        const std::string op_ty = llvm_ty(op_ts);
-        std::string lhs_op = loaded;
-        if (op_ty != lty) lhs_op = coerce(ctx, loaded, lhs_ts, op_ts);
         rhs = coerce(ctx, rhs, rhs_ts, op_ts);
         const bool lf = is_float_base(op_ts.base);
         const bool ls = is_signed_int(op_ts.base);
@@ -3800,19 +3803,10 @@ class HirEmitter {
       }
       if (!instr) throw std::runtime_error("HirEmitter: compound assign: unknown op");
 
-      const std::string result = fresh_tmp(ctx);
-      TypeSpec op_ts = lhs_ts;
-      if (lhs_ts.ptr_level == 0 && lhs_ts.array_rank == 0 &&
-          rhs_ts.ptr_level == 0 && rhs_ts.array_rank == 0 &&
-          (is_float_base(lhs_ts.base) || is_float_base(rhs_ts.base))) {
-        op_ts.base = (lhs_ts.base == TB_DOUBLE || rhs_ts.base == TB_DOUBLE ||
-                      lhs_ts.base == TB_LONGDOUBLE || rhs_ts.base == TB_LONGDOUBLE)
-                         ? TB_DOUBLE
-                         : TB_FLOAT;
-      }
       const std::string op_ty = llvm_ty(op_ts);
       std::string lhs_op = loaded;
       if (op_ty != lty) lhs_op = coerce(ctx, loaded, lhs_ts, op_ts);
+      const std::string result = fresh_tmp(ctx);
       emit_instr(ctx, result + " = " + instr + " " + op_ty + " " + lhs_op + ", " + rhs);
       std::string store_v = result;
       if (op_ty != lty) store_v = coerce(ctx, result, op_ts, lhs_ts);
