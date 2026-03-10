@@ -2354,6 +2354,13 @@ class HirEmitter {
         ts.base = TB_INT;
         return ts;
       }
+      case BinaryOp::Comma: {
+        // Comma operator: result type/value is from RHS
+        const Expr& rhs_e = get_expr(b.rhs);
+        return std::visit([&](const auto& p) -> TypeSpec {
+          return resolve_payload_type(ctx, p);
+        }, rhs_e.payload);
+      }
       default:
         break;
     }
