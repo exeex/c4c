@@ -77,7 +77,7 @@ while true; do
     # Run Claude Code with the agent prompt
     claude --dangerously-skip-permissions \
            -p "$(cat AGENT_PROMPT.md)" \
-           --model claude-sonnet-4-6 \
+           --model opus \
            2>&1 | tee "$LOGFILE"
     CLAUDE_EXIT=${PIPESTATUS[0]}
 
