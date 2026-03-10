@@ -106,6 +106,7 @@ static bool is_signed_int(TypeBase b) {
   switch (b) {
     case TB_CHAR: case TB_SCHAR: case TB_SHORT: case TB_INT:
     case TB_LONG: case TB_LONGLONG: case TB_INT128:
+    case TB_ENUM:  // C enum underlying type is int (signed)
       return true;
     default:
       return false;
@@ -121,6 +122,7 @@ static bool is_any_int(TypeBase b) {
     case TB_LONG: case TB_ULONG:
     case TB_LONGLONG: case TB_ULONGLONG:
     case TB_INT128: case TB_UINT128:
+    case TB_ENUM:
       return true;
     default:
       return false;
