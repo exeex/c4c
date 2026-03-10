@@ -1,0 +1,4 @@
+interface:
+  display_name: "C4C Regression Guard"
+  short_description: "Guard ctest regressions with monotonic pass checks"
+  default_prompt: "Enforce c4c regression guardrails using before/after test logs and monotonic pass criteria."
