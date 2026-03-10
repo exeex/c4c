@@ -922,8 +922,14 @@ class HirEmitter {
         }
         if (p.op == UnaryOp::Minus) {
           const Expr& op_e = get_expr(p.operand);
-          if (const auto* i = std::get_if<IntLiteral>(&op_e.payload))
+          if (const auto* i = std::get_if<IntLiteral>(&op_e.payload)) {
+            // When target is float, emit as float constant, not integer literal.
+            if (expected_ts.base == TB_FLOAT && expected_ts.ptr_level == 0 && expected_ts.array_rank == 0)
+              return fp_to_float_literal(static_cast<float>(-i->value));
+            if (is_float_base(expected_ts.base) && expected_ts.ptr_level == 0 && expected_ts.array_rank == 0)
+              return fp_to_hex(static_cast<double>(-i->value));
             return std::to_string(-i->value);
+          }
           if (const auto* f = std::get_if<FloatLiteral>(&op_e.payload)) {
             if (expected_ts.base == TB_FLOAT && expected_ts.ptr_level == 0 && expected_ts.array_rank == 0)
               return fp_to_float_literal(-static_cast<float>(f->value));
@@ -1878,10 +1884,12 @@ class HirEmitter {
     const std::string ty = llvm_ty(ts);
     if (ty == "i1") return val;
     const std::string tmp = fresh_tmp(ctx);
-    if (is_float_base(ts.base)) {
-      emit_instr(ctx, tmp + " = fcmp une " + ty + " " + val + ", 0.0");
-    } else if (ty == "ptr") {
+    // Check ptr FIRST: a TypeSpec with ptr_level>0 always uses icmp even if the
+    // base is a float type (e.g. function pointer typed as float-return + ptr_level=1).
+    if (ty == "ptr") {
       emit_instr(ctx, tmp + " = icmp ne ptr " + val + ", null");
+    } else if (is_float_base(ts.base) && ts.ptr_level == 0 && ts.array_rank == 0) {
+      emit_instr(ctx, tmp + " = fcmp une " + ty + " " + val + ", 0.0");
     } else {
       emit_instr(ctx, tmp + " = icmp ne " + ty + " " + val + ", 0");
     }
@@ -2012,8 +2020,21 @@ class HirEmitter {
         return slot;
       }
       if (r->global) {
-        const auto& gv = mod_.globals[r->global->value];
-        pts = gv.type.spec;
+        size_t gv_idx = r->global->value;
+        const auto& gv0 = mod_.globals[gv_idx];
+        // For incomplete array declarations (e.g. `extern T arr[]`), find the
+        // definition with a deducible size so GEP uses the correct element type.
+        if (gv0.type.spec.array_rank > 0 && gv0.type.spec.array_size < 0) {
+          for (size_t gi = 0; gi < mod_.globals.size(); ++gi) {
+            const auto& g = mod_.globals[gi];
+            if (g.name == gv0.name && g.type.spec.array_rank > 0) {
+              const TypeSpec rs = resolve_array_ts(g.type.spec, g.init);
+              if (rs.array_size > 0) { gv_idx = gi; break; }
+            }
+          }
+        }
+        const auto& gv = mod_.globals[gv_idx];
+        pts = resolve_array_ts(gv.type.spec, gv.init);
         return "@" + gv.name;
       }
       // Unresolved: assume external global
@@ -2496,7 +2517,22 @@ class HirEmitter {
 
     // Global: load
     if (r.global) {
-      const auto& gv = mod_.globals[r.global->value];
+      size_t gv_idx = r.global->value;
+      const auto& gv0 = mod_.globals[gv_idx];
+      // If this global has an incomplete array type (unknown size, array_size<0),
+      // prefer the definition entry (has initializer) so GEP uses correct element type.
+      // Both the forward declaration and the definition may have array_size=-1; the
+      // definition has a non-empty init from which resolve_array_ts deduces the size.
+      if (gv0.type.spec.array_rank > 0 && gv0.type.spec.array_size < 0) {
+        for (size_t gi = 0; gi < mod_.globals.size(); ++gi) {
+          const auto& g = mod_.globals[gi];
+          if (g.name == gv0.name && g.type.spec.array_rank > 0) {
+            const TypeSpec rs = resolve_array_ts(g.type.spec, g.init);
+            if (rs.array_size > 0) { gv_idx = gi; break; }
+          }
+        }
+      }
+      const auto& gv = mod_.globals[gv_idx];
       if (gv.type.spec.array_rank > 0 && !gv.type.spec.is_ptr_to_array) {
         // Use resolved type (deduced from initializer) for GEP — avoids "ptr" fallback.
         const TypeSpec resolved_ts = resolve_array_ts(gv.type.spec, gv.init);
@@ -2772,8 +2808,9 @@ class HirEmitter {
                                    ? e.type.spec : lts;
     const std::string res_ty = llvm_ty(res_spec);
     const std::string op_ty  = llvm_ty(lts);
-    const bool lf  = is_float_base(lts.base);
-    const bool ls  = is_signed_int(lts.base);
+    // lf/ls must be false when the LLVM type is ptr (even if base is double/float).
+    const bool lf  = is_float_base(lts.base) && lts.ptr_level == 0 && lts.array_rank == 0;
+    const bool ls  = is_signed_int(lts.base) && lts.ptr_level == 0 && lts.array_rank == 0;
 
     // Pointer arithmetic: ptr +/- int and int + ptr.
     if (b.op == BinaryOp::Add || b.op == BinaryOp::Sub) {
