@@ -2152,6 +2152,19 @@ class HirEmitter {
       return ctx.fn->params[*r.param_index].type.spec;
     if (r.global && r.global->value < mod_.globals.size())
       return mod_.globals[r.global->value].type.spec;
+    // Function reference (resolved via fn_index, not global_index): treat as ptr.
+    // Do NOT set is_fn_ptr here; that would cause call-return-type resolution to
+    // decrement ptr_level and return void. The call-return fallback (implicit int)
+    // handles the case correctly.
+    if (!r.name.empty() && mod_.fn_index.count(r.name)) {
+      const auto fit = mod_.fn_index.find(r.name);
+      if (fit != mod_.fn_index.end() && fit->second.value < mod_.functions.size()) {
+        TypeSpec ts = mod_.functions[fit->second.value].return_type.spec;
+        ts.ptr_level++;
+        ts.is_fn_ptr = true;
+        return ts;
+      }
+    }
     return {};
   }
 
