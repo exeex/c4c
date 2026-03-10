@@ -1,5 +1,5 @@
-# Frontend-failure-focused allowlist (generated from llvm_gcc_c_torture_frontend_failures.tsv)
-# Generated on 2026-03-06
+# llvm gcc-c-torture allowlist
+# Updated on 2026-03-10
 20000223-1.c
 20000722-1.c
 # 20010122-1.c  # non-frontend blocker on arm64: undefined ___builtin_return_address/_alloca

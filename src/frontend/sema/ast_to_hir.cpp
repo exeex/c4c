@@ -990,8 +990,9 @@ class Lowerer {
         if (!is_array_with_init_list && !is_array_with_string_init &&
             !is_struct_with_init_list && n->init)
           d.init = lower_expr(&ctx, n->init);
-        // For struct init lists, emit zeroinitializer first then field-by-field stores.
-        if (is_struct_with_init_list) {
+        // For aggregate init lists / string array init, emit zeroinitializer first
+        // then overlay explicit element/field assignments below.
+        if (is_struct_with_init_list || is_array_with_init_list || is_array_with_string_init) {
           TypeSpec int_ts{}; int_ts.base = TB_INT;
           d.init = append_expr(n, IntLiteral{0, false}, int_ts);
         }
@@ -1000,8 +1001,34 @@ class Lowerer {
         ctx.locals[d.name] = d.id;
         ctx.local_types[d.id.value] = d.type.spec;
         append_stmt(ctx, Stmt{StmtPayload{std::move(d)}, make_span(n)});
+        auto emit_scalar_array_zero_fill = [&](const TypeSpec& array_ts) {
+          if (array_ts.array_rank != 1 || array_ts.array_size <= 0) return;
+          TypeSpec elem_ts = array_ts;
+          elem_ts.array_rank--;
+          elem_ts.array_size = -1;
+          if ((elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION) &&
+              elem_ts.ptr_level == 0 && elem_ts.array_rank == 0) {
+            return;
+          }
+          for (long long idx = 0; idx < array_ts.array_size; ++idx) {
+            DeclRef dr{};
+            dr.name = n->name ? n->name : "<anon_local>";
+            dr.local = lid;
+            ExprId dr_id = append_expr(n, dr, array_ts, ValueCategory::LValue);
+            TypeSpec idx_ts{}; idx_ts.base = TB_INT;
+            ExprId idx_id = append_expr(n, IntLiteral{idx, false}, idx_ts);
+            IndexExpr ie{}; ie.base = dr_id; ie.index = idx_id;
+            ExprId ie_id = append_expr(n, ie, elem_ts, ValueCategory::LValue);
+            ExprId zero_id = append_expr(n, IntLiteral{0, false}, idx_ts);
+            AssignExpr ae{}; ae.lhs = ie_id; ae.rhs = zero_id;
+            ExprId ae_id = append_expr(n, ae, elem_ts);
+            ExprStmt es{}; es.expr = ae_id;
+            append_stmt(ctx, Stmt{StmtPayload{es}, make_span(n)});
+          }
+        };
         // For array init lists, emit element-by-element assignments.
         if (is_array_with_init_list && use_array_init_fast_path) {
+          emit_scalar_array_zero_fill(decl_ts);
           long long next_idx = 0;
           for (int ci = 0; ci < n->init->n_children; ++ci) {
             const Node* item = n->init->children[ci];
@@ -1104,6 +1131,7 @@ class Lowerer {
           }
         }
         if (is_array_with_string_init && n->init && n->init->sval) {
+          emit_scalar_array_zero_fill(decl_ts);
           const bool is_wide = n->init->sval[0] == 'L';
           const auto vals = decode_string_literal_values(n->init->sval, is_wide);
           const long long max_count = decl_ts.array_size > 0 ? decl_ts.array_size : static_cast<long long>(vals.size());
@@ -1998,12 +2026,11 @@ class Lowerer {
             decl_ts.ptr_level == 0 && decl_ts.array_rank == 0;
         const bool is_array = decl_ts.array_rank > 0;
 
-        if (is_struct_or_union && init_list) {
-          // Struct/union: emit zeroinitializer store first, then field assignments below.
+        if ((is_struct_or_union || is_array) && init_list) {
+          // Aggregate compound literal: emit zeroinitializer store first, then
+          // overlay explicit element/field assignments below.
           TypeSpec int_ts{}; int_ts.base = TB_INT;
           d.init = append_expr(n, IntLiteral{0, false}, int_ts);
-        } else if (is_array) {
-          // Array: no init store; element-by-element assignments follow below.
         } else if (init_list && init_list->n_children > 0) {
           d.init = lower_expr(ctx, unwrap_init_scalar_value(init_list));
         } else if (n->left && !init_list) {
