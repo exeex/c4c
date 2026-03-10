@@ -11,6 +11,23 @@ a light weight C compiler.
 - LLVM IR Builder: HIR -> LLVM IR text (.ll)
 - Backend (Clang) .ll -> .o
 
+## Build c4cll
+```bash
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j
+```
+
+## build & run hello world
+```bash
+# build 
+./build/c4cll tests/hello_world.c | clang -x ir -o hello_world.out -
+
+# run
+./hello_world.out 
+```
+PS. Backend is not impl yet, clang is necessary as a backend.
+
 # Workflow
 
 ## 1. Define testset
