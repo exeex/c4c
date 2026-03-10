@@ -156,6 +156,9 @@ bool same_types_for_function_compat(TypeSpec a, TypeSpec b, bool for_param = fal
 
 bool function_sig_compatible(const FunctionSig& a, const FunctionSig& b) {
   if (!same_types_for_function_compat(a.ret, b.ret, false)) return false;
+  // K&R unspecified-params declarations are compatible with any prototype that
+  // has the same return type (C11 6.2.7p3).
+  if (a.unspecified_params || b.unspecified_params) return true;
   if (a.variadic != b.variadic) return false;
   if (a.params.size() != b.params.size()) return false;
   for (size_t i = 0; i < a.params.size(); ++i) {
@@ -323,7 +326,11 @@ bool implicit_convertible(const TypeSpec& dst_raw, const TypeSpec& src_raw,
              (a == TB_LONGLONG && b == TB_ULONGLONG) || (a == TB_ULONGLONG && b == TB_LONGLONG);
     };
     if (signed_unsigned_pair(dst.base, src.base)) return true;
-    return dst.base == src.base;
+    if (dst.base == src.base) return true;
+    // GCC warns but does not reject pointer assignments between arithmetic
+    // base types of the same pointer depth (e.g., float* = int*).
+    if (is_arithmetic_base(dst.base) && is_arithmetic_base(src.base)) return true;
+    return false;
   }
 
   // Non-pointer: structs/unions must match exactly.
@@ -543,6 +550,9 @@ class Validator {
       if (it != funcs_.end()) {
         if (!function_sig_compatible(it->second, sig)) {
           emit(n->line, std::string("conflicting types for function '") + n->name + "'");
+        } else if (it->second.unspecified_params && !sig.unspecified_params) {
+          // Upgrade K&R unspecified-params declaration to the full prototype.
+          it->second = std::move(sig);
         }
       } else {
         funcs_[n->name] = std::move(sig);
