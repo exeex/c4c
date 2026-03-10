@@ -756,6 +756,14 @@ class Lowerer {
     g.is_const = gv->type.is_const;
     g.span = make_span(gv);
 
+    // Deduce unsized array dimension from wide string literal initializer
+    if (gv->init && g.type.spec.array_rank > 0 && g.type.spec.array_size < 0 &&
+        gv->init->kind == NK_STR_LIT && gv->init->sval && gv->init->sval[0] == 'L') {
+      const auto vals = decode_string_literal_values(gv->init->sval, true);
+      g.type.spec.array_size = static_cast<long long>(vals.size());
+      g.type.spec.array_dims[0] = g.type.spec.array_size;
+    }
+
     if (has_init) {
       g.init = computed_init;
     } else if (gv->init) {

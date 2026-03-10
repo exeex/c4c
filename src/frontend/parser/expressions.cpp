@@ -469,7 +469,25 @@ Node* Parser::parse_primary() {
                         break;
                 }
             } else {
-                cv = (unsigned char)lex[char_start + 1];
+                // For wide chars (L'...'), decode UTF-8 to Unicode codepoint
+                const unsigned char c0 = (unsigned char)lex[char_start + 1];
+                if (char_start > 0 && c0 >= 0x80) {
+                    // Multi-byte UTF-8
+                    const char* p = lex.c_str() + char_start + 1;
+                    if ((c0 & 0xE0) == 0xC0 && p[1] && p[1] != '\'') {
+                        cv = ((c0 & 0x1F) << 6) | ((unsigned char)p[1] & 0x3F);
+                    } else if ((c0 & 0xF0) == 0xE0 && p[1] && p[2] && p[2] != '\'') {
+                        cv = ((c0 & 0x0F) << 12) | (((unsigned char)p[1] & 0x3F) << 6) |
+                             ((unsigned char)p[2] & 0x3F);
+                    } else if ((c0 & 0xF8) == 0xF0 && p[1] && p[2] && p[3] && p[3] != '\'') {
+                        cv = ((c0 & 0x07) << 18) | (((unsigned char)p[1] & 0x3F) << 12) |
+                             (((unsigned char)p[2] & 0x3F) << 6) | ((unsigned char)p[3] & 0x3F);
+                    } else {
+                        cv = c0;
+                    }
+                } else {
+                    cv = c0;
+                }
             }
         }
         const char* raw_lex = arena_.strdup(lex);

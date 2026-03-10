@@ -720,6 +720,72 @@ class HirEmitter {
     return decode_c_escaped_bytes(bytes);
   }
 
+  // Decode a wide string literal (L"...") into wchar_t (i32) values with null terminator
+  static std::vector<long long> decode_wide_string_values(const std::string& raw) {
+    std::vector<long long> out;
+    // Strip L"..." wrapper
+    const char* p = raw.c_str();
+    while (*p && *p != '"') ++p;
+    if (*p == '"') ++p;
+    while (*p && *p != '"') {
+      if (*p == '\\' && *(p + 1)) {
+        ++p;
+        switch (*p) {
+          case 'n':  out.push_back('\n'); ++p; break;
+          case 't':  out.push_back('\t'); ++p; break;
+          case 'r':  out.push_back('\r'); ++p; break;
+          case '0':  out.push_back(0); ++p; break;
+          case '\\': out.push_back('\\'); ++p; break;
+          case '\'': out.push_back('\''); ++p; break;
+          case '"':  out.push_back('"'); ++p; break;
+          case 'a':  out.push_back('\a'); ++p; break;
+          case 'x': {
+            ++p;
+            long long v = 0;
+            while (isxdigit((unsigned char)*p)) {
+              v = v * 16 + (isdigit((unsigned char)*p) ? *p - '0' : tolower((unsigned char)*p) - 'a' + 10);
+              ++p;
+            }
+            out.push_back(v);
+            break;
+          }
+          default:
+            if (*p >= '0' && *p <= '7') {
+              long long v = 0;
+              for (int k = 0; k < 3 && *p >= '0' && *p <= '7'; ++k, ++p)
+                v = v * 8 + (*p - '0');
+              out.push_back(v);
+            } else {
+              out.push_back(static_cast<unsigned char>(*p)); ++p;
+            }
+            break;
+        }
+        continue;
+      }
+      // Decode UTF-8 to Unicode codepoint
+      const unsigned char c0 = static_cast<unsigned char>(*p);
+      if (c0 < 0x80) {
+        out.push_back(c0); ++p;
+      } else if ((c0 & 0xE0) == 0xC0 && p[1]) {
+        out.push_back(((c0 & 0x1F) << 6) | (static_cast<unsigned char>(p[1]) & 0x3F));
+        p += 2;
+      } else if ((c0 & 0xF0) == 0xE0 && p[1] && p[2]) {
+        out.push_back(((c0 & 0x0F) << 12) | ((static_cast<unsigned char>(p[1]) & 0x3F) << 6) |
+                       (static_cast<unsigned char>(p[2]) & 0x3F));
+        p += 3;
+      } else if ((c0 & 0xF8) == 0xF0 && p[1] && p[2] && p[3]) {
+        out.push_back(((c0 & 0x07) << 18) | ((static_cast<unsigned char>(p[1]) & 0x3F) << 12) |
+                       ((static_cast<unsigned char>(p[2]) & 0x3F) << 6) |
+                       (static_cast<unsigned char>(p[3]) & 0x3F));
+        p += 4;
+      } else {
+        out.push_back(c0); ++p;
+      }
+    }
+    out.push_back(0); // null terminator
+    return out;
+  }
+
   static std::string escape_llvm_c_bytes(const std::string& raw_bytes) {
     std::string esc;
     for (unsigned char c : raw_bytes) {
@@ -1280,6 +1346,21 @@ class HirEmitter {
         if ((long long)bytes.size() > n) bytes.resize(static_cast<size_t>(n));
         if ((long long)bytes.size() < n) bytes.resize(static_cast<size_t>(n), '\0');
         return "c\"" + escape_llvm_c_bytes(bytes) + "\"";
+      }
+      // Wide string literal → array of i32 (wchar_t) values
+      if (const auto* sl = std::get_if<StringLiteral>(&e.payload);
+          sl && sl->is_wide && ts.array_rank == 1 && elem_ts.ptr_level == 0) {
+        std::vector<long long> vals = decode_wide_string_values(sl->raw);
+        if ((long long)vals.size() > n) vals.resize(static_cast<size_t>(n));
+        while ((long long)vals.size() < n) vals.push_back(0);
+        std::string out = "[";
+        const std::string ety = llvm_alloca_ty(elem_ts);
+        for (size_t i = 0; i < vals.size(); ++i) {
+          if (i) out += ", ";
+          out += ety + " " + std::to_string(vals[i]);
+        }
+        out += "]";
+        return out;
       }
       std::vector<std::string> elems(static_cast<size_t>(n), "zeroinitializer");
       if (n > 0) elems[0] = emit_const_scalar_expr(s->expr, elem_ts);
