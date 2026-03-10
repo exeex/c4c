@@ -1195,6 +1195,14 @@ class Lowerer {
             }
             return true;
           };
+          auto is_direct_char_array_init = [&](const TypeSpec& lhs_ts,
+                                               const Node* rhs_node) -> bool {
+            if (!rhs_node) return false;
+            if (lhs_ts.array_rank != 1 || lhs_ts.ptr_level != 0) return false;
+            if (!(lhs_ts.base == TB_CHAR || lhs_ts.base == TB_SCHAR || lhs_ts.base == TB_UCHAR))
+              return false;
+            return rhs_node->kind == NK_STR_LIT;
+          };
 
           std::function<void(const TypeSpec&, ExprId, const Node*, int&)> consume_from_list;
           consume_from_list =
@@ -1207,16 +1215,19 @@ class Lowerer {
                   if (sit == module_->struct_defs.end()) return;
                   const auto& sd = sit->second;
                   size_t next_field = 0;
-                  while (cursor < list_node->n_children && next_field < sd.fields.size()) {
+                  while (cursor < list_node->n_children) {
                     const Node* item = list_node->children[cursor];
                     if (!item) {
                       ++cursor;
-                      ++next_field;
+                      if (next_field < sd.fields.size()) ++next_field;
                       continue;
                     }
+                    const bool has_field_designator =
+                        item->kind == NK_INIT_ITEM && item->is_designated &&
+                        !item->is_index_desig && item->desig_field;
+                    if (!has_field_designator && next_field >= sd.fields.size()) break;
                     size_t fi = next_field;
-                    if (item->kind == NK_INIT_ITEM && item->is_designated &&
-                        !item->is_index_desig && item->desig_field) {
+                    if (has_field_designator) {
                       for (size_t k = 0; k < sd.fields.size(); ++k) {
                         if (sd.fields[k].name == item->desig_field) {
                           fi = k;
@@ -1266,6 +1277,15 @@ class Lowerer {
                 }
 
                 if (cur_ts.array_rank > 0) {
+                  if (cursor < list_node->n_children) {
+                    const Node* item0 = list_node->children[cursor];
+                    const Node* val0 = init_item_value_node(item0);
+                    if (is_direct_char_array_init(cur_ts, val0)) {
+                      append_assign(cur_lhs, cur_ts, val0);
+                      ++cursor;
+                      return;
+                    }
+                  }
                   TypeSpec elem_ts = cur_ts;
                   elem_ts.array_rank--;
                   elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
@@ -1296,6 +1316,9 @@ class Lowerer {
                       if (val_node && val_node->kind == NK_INIT_LIST) {
                         int sub_cursor = 0;
                         consume_from_list(elem_ts, ie_id, val_node, sub_cursor);
+                        ++cursor;
+                      } else if (can_direct_assign_agg(elem_ts, val_node)) {
+                        append_assign(ie_id, elem_ts, val_node);
                         ++cursor;
                       } else {
                         consume_from_list(elem_ts, ie_id, list_node, cursor);
@@ -2051,6 +2074,14 @@ class Lowerer {
             }
             return true;
           };
+          auto is_direct_char_array_init = [&](const TypeSpec& lhs_ts,
+                                               const Node* rhs_node) -> bool {
+            if (!rhs_node) return false;
+            if (lhs_ts.array_rank != 1 || lhs_ts.ptr_level != 0) return false;
+            if (!(lhs_ts.base == TB_CHAR || lhs_ts.base == TB_SCHAR || lhs_ts.base == TB_UCHAR))
+              return false;
+            return rhs_node->kind == NK_STR_LIT;
+          };
 
           std::function<void(const TypeSpec&, ExprId, const Node*, int&)> consume_from_list;
           consume_from_list =
@@ -2099,6 +2130,9 @@ class Lowerer {
                         int sub_cursor = 0;
                         consume_from_list(field_ts, me_id, val_node, sub_cursor);
                         ++cursor;
+                      } else if (is_direct_char_array_init(field_ts, val_node)) {
+                        append_assign(me_id, field_ts, val_node);
+                        ++cursor;
                       } else if (can_direct_assign_agg(field_ts, val_node)) {
                         append_assign(me_id, field_ts, val_node);
                         ++cursor;
@@ -2121,6 +2155,15 @@ class Lowerer {
                 }
 
                 if (cur_ts.array_rank > 0) {
+                  if (cursor < list_node->n_children) {
+                    const Node* item0 = list_node->children[cursor];
+                    const Node* val0 = init_item_value_node(item0);
+                    if (is_direct_char_array_init(cur_ts, val0)) {
+                      append_assign(cur_lhs, cur_ts, val0);
+                      ++cursor;
+                      return;
+                    }
+                  }
                   TypeSpec elem_ts = cur_ts;
                   elem_ts.array_rank--;
                   elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
@@ -2151,6 +2194,12 @@ class Lowerer {
                       if (val_node && val_node->kind == NK_INIT_LIST) {
                         int sub_cursor = 0;
                         consume_from_list(elem_ts, ie_id, val_node, sub_cursor);
+                        ++cursor;
+                      } else if (is_direct_char_array_init(elem_ts, val_node)) {
+                        append_assign(ie_id, elem_ts, val_node);
+                        ++cursor;
+                      } else if (can_direct_assign_agg(elem_ts, val_node)) {
+                        append_assign(ie_id, elem_ts, val_node);
                         ++cursor;
                       } else {
                         consume_from_list(elem_ts, ie_id, list_node, cursor);

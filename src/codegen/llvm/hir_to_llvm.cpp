@@ -231,8 +231,6 @@ static int sizeof_base(TypeBase b) {
 }
 
 static int sizeof_ts(const Module& mod, const TypeSpec& ts) {
-  if (ts.ptr_level > 0 && ts.is_ptr_to_array) return 8;
-  if (ts.ptr_level > 0 || ts.is_fn_ptr) return 8;
   if (ts.array_rank > 0) {
     if (ts.array_size > 0) {
       // Recursively compute element size
@@ -246,6 +244,8 @@ static int sizeof_ts(const Module& mod, const TypeSpec& ts) {
     }
     return 8;  // unknown size — treat as pointer
   }
+  if (ts.ptr_level > 0 && ts.is_ptr_to_array) return 8;
+  if (ts.ptr_level > 0 || ts.is_fn_ptr) return 8;
   if ((ts.base == TB_STRUCT || ts.base == TB_UNION) &&
       ts.ptr_level == 0 && ts.tag && ts.tag[0]) {
     return compute_struct_size(mod, std::string(ts.tag));
@@ -289,7 +289,7 @@ static int compute_field_size(const Module& mod, const HirStructField& f) {
   } else {
     sz = sizeof_base(f.elem_type.base);
   }
-  if (f.array_first_dim > 0) sz *= (int)f.array_first_dim;
+  if (f.array_first_dim >= 0) return sz * (int)f.array_first_dim;
   return sz;
 }
 
@@ -2171,8 +2171,22 @@ class HirEmitter {
     }
     if (r.param_index && ctx.fn && *r.param_index < ctx.fn->params.size())
       return ctx.fn->params[*r.param_index].type.spec;
-    if (r.global && r.global->value < mod_.globals.size())
-      return mod_.globals[r.global->value].type.spec;
+    if (r.global) {
+      if (const GlobalVar* gv0 = mod_.find_global(*r.global)) {
+        if (gv0->type.spec.array_rank > 0) {
+          const GlobalVar* best = gv0;
+          if (gv0->type.spec.array_size < 0) {
+            for (const auto& g : mod_.globals) {
+              if (g.name != gv0->name || g.type.spec.array_rank <= 0) continue;
+              const TypeSpec rs = resolve_array_ts(g.type.spec, g.init);
+              if (rs.array_size > 0) { best = &g; break; }
+            }
+          }
+          return resolve_array_ts(best->type.spec, best->init);
+        }
+        return gv0->type.spec;
+      }
+    }
     // Function reference (resolved via fn_index, not global_index): treat as ptr.
     // Do NOT set is_fn_ptr here; that would cause call-return-type resolution to
     // decrement ptr_level and return void. The call-return fallback (implicit int)
@@ -2390,8 +2404,8 @@ class HirEmitter {
 
   TypeSpec resolve_payload_type(FnCtx& ctx, const IndexExpr& idx) {
     TypeSpec base_ts = resolve_expr_type(ctx, idx.base);
-    if (base_ts.ptr_level > 0) { base_ts.ptr_level--; return base_ts; }
     if (base_ts.array_rank > 0) { base_ts.array_rank--; return base_ts; }
+    if (base_ts.ptr_level > 0) { base_ts.ptr_level--; return base_ts; }
     return base_ts;
   }
 
@@ -2904,7 +2918,14 @@ class HirEmitter {
     };
     for (const auto& row : arith) {
       if (row.op == b.op) {
-        const char* instr = lf ? row.f : (arith_ls ? row.i_s : row.i_u);
+        const char* instr = nullptr;
+        if (lf) {
+          instr = row.f;
+        } else if (row.op == BinaryOp::Shr) {
+          instr = ls ? row.i_s : row.i_u;
+        } else {
+          instr = arith_ls ? row.i_s : row.i_u;
+        }
         if (!instr) break;
         const std::string tmp = fresh_tmp(ctx);
         emit_instr(ctx, tmp + " = " + instr + " " + op_ty + " " + lv + ", " + rv);
@@ -3082,7 +3103,9 @@ class HirEmitter {
         };
         for (const auto& r : tbl) {
           if (r.op == row.bop) {
-            instr = lf ? r.f : (ls ? r.is : r.iu);
+            if (lf) instr = r.f;
+            else if (r.op == BinaryOp::Shr) instr = is_signed_int(lhs_ts.base) ? r.is : r.iu;
+            else instr = ls ? r.is : r.iu;
             break;
           }
         }
@@ -3921,13 +3944,47 @@ class HirEmitter {
 
   std::string emit_rval_payload(FnCtx& ctx, const SizeofExpr& s, const Expr&) {
     const Expr& op = get_expr(s.expr);
-    TypeSpec op_ts = resolve_expr_type(ctx, s.expr);
+    TypeSpec op_ts = std::visit([&](const auto& p) -> TypeSpec {
+      return resolve_payload_type(ctx, p);
+    }, op.payload);
+    if (!has_concrete_type(op_ts)) op_ts = resolve_expr_type(ctx, s.expr);
     if (!has_concrete_type(op_ts)) op_ts = op.type.spec;
     // DeclRef: get type from global/local declaration (NK_VAR nodes have no type set).
     if (const auto* r = std::get_if<DeclRef>(&op.payload)) {
+      auto resolve_named_global_object_type = [&](const std::string& name) -> std::optional<TypeSpec> {
+        const GlobalVar* best = nullptr;
+        for (const auto& g : mod_.globals) {
+          if (g.name != name) continue;
+          if (!best) {
+            best = &g;
+            continue;
+          }
+          const TypeSpec best_ts = resolve_array_ts(best->type.spec, best->init);
+          const TypeSpec cand_ts = resolve_array_ts(g.type.spec, g.init);
+          if (cand_ts.array_rank > 0 && best_ts.array_rank <= 0) {
+            best = &g;
+          } else if (cand_ts.array_rank > 0 && best_ts.array_rank > 0 &&
+                     cand_ts.array_size > best_ts.array_size) {
+            best = &g;
+          } else if (cand_ts.array_rank <= 0 && best_ts.array_rank <= 0 &&
+                     g.init.index() != 0 && best->init.index() == 0) {
+            best = &g;
+          }
+        }
+        if (!best) return std::nullopt;
+        return resolve_array_ts(best->type.spec, best->init);
+      };
       if (r->global) {
-        if (const GlobalVar* gv = mod_.find_global(*r->global)) {
-          op_ts = resolve_array_ts(gv->type.spec, gv->init);
+        if (const GlobalVar* gv0 = mod_.find_global(*r->global)) {
+          const GlobalVar* best = gv0;
+          if (gv0->type.spec.array_rank > 0 && gv0->type.spec.array_size < 0) {
+            for (const auto& g : mod_.globals) {
+              if (g.name != gv0->name || g.type.spec.array_rank <= 0) continue;
+              const TypeSpec rs = resolve_array_ts(g.type.spec, g.init);
+              if (rs.array_size > 0) { best = &g; break; }
+            }
+          }
+          op_ts = resolve_array_ts(best->type.spec, best->init);
         }
       } else if (r->local) {
         const auto it = ctx.local_types.find(r->local->value);
@@ -3938,6 +3995,15 @@ class HirEmitter {
         // Array params decay to pointer in C — sizeof(param) = sizeof(void*)
         if (op_ts.array_rank > 0) {
           op_ts.array_rank = 0; op_ts.array_size = -1; op_ts.ptr_level = 1;
+        }
+      } else if (!r->name.empty()) {
+        if (auto named_ts = resolve_named_global_object_type(r->name)) {
+          op_ts = *named_ts;
+        }
+      }
+      if (op_ts.array_rank == 0 && !r->name.empty()) {
+        if (auto named_ts = resolve_named_global_object_type(r->name)) {
+          op_ts = *named_ts;
         }
       }
     }

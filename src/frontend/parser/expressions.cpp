@@ -722,11 +722,33 @@ Node* Parser::parse_init_list() {
     }
     expect(TokenKind::RBrace);
 
+    std::vector<Node*> expanded_items;
+    expanded_items.reserve(items.size());
+    for (Node* item : items) {
+        if (!item || item->kind != NK_INIT_ITEM || !item->is_designated ||
+            !item->is_index_desig || !item->right || item->right->kind != NK_INT_LIT ||
+            item->right->ival <= item->desig_val) {
+            expanded_items.push_back(item);
+            continue;
+        }
+
+        const long long lo = item->desig_val;
+        const long long hi = item->right->ival;
+        for (long long idx = lo; idx <= hi; ++idx) {
+            Node* clone = make_node(NK_INIT_ITEM, item->line);
+            clone->is_designated = true;
+            clone->is_index_desig = true;
+            clone->desig_val = idx;
+            clone->left = item->left;
+            expanded_items.push_back(clone);
+        }
+    }
+
     Node* list = make_node(NK_INIT_LIST, ln);
-    list->n_children = (int)items.size();
+    list->n_children = (int)expanded_items.size();
     if (list->n_children > 0) {
         list->children = arena_.alloc_array<Node*>(list->n_children);
-        for (int i = 0; i < list->n_children; ++i) list->children[i] = items[i];
+        for (int i = 0; i < list->n_children; ++i) list->children[i] = expanded_items[i];
     }
     return list;
 }
