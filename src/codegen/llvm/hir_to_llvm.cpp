@@ -849,6 +849,57 @@ class HirEmitter {
     }, e.payload);
   }
 
+  std::optional<std::pair<double, double>> try_const_eval_complex_fp(ExprId id) {
+    const Expr& e = get_expr(id);
+    return std::visit([&](const auto& p) -> std::optional<std::pair<double, double>> {
+      using T = std::decay_t<decltype(p)>;
+      if constexpr (std::is_same_v<T, FloatLiteral>) {
+        if (is_complex_base(e.type.spec.base)) return std::pair<double, double>{0.0, p.value};
+        return std::pair<double, double>{p.value, 0.0};
+      } else if constexpr (std::is_same_v<T, IntLiteral>) {
+        if (is_complex_base(e.type.spec.base)) return std::pair<double, double>{0.0, static_cast<double>(p.value)};
+        return std::pair<double, double>{static_cast<double>(p.value), 0.0};
+      } else if constexpr (std::is_same_v<T, CharLiteral>) {
+        return std::pair<double, double>{static_cast<double>(p.value), 0.0};
+      } else if constexpr (std::is_same_v<T, UnaryExpr>) {
+        auto v = try_const_eval_complex_fp(p.operand);
+        if (!v) return std::nullopt;
+        switch (p.op) {
+          case UnaryOp::Plus: return v;
+          case UnaryOp::Minus: return std::pair<double, double>{-v->first, -v->second};
+          default: return std::nullopt;
+        }
+      } else if constexpr (std::is_same_v<T, BinaryExpr>) {
+        auto lv = try_const_eval_complex_fp(p.lhs);
+        auto rv = try_const_eval_complex_fp(p.rhs);
+        if (!lv || !rv) return std::nullopt;
+        switch (p.op) {
+          case BinaryOp::Add:
+            return std::pair<double, double>{lv->first + rv->first, lv->second + rv->second};
+          case BinaryOp::Sub:
+            return std::pair<double, double>{lv->first - rv->first, lv->second - rv->second};
+          case BinaryOp::Mul:
+            return std::pair<double, double>{
+                lv->first * rv->first - lv->second * rv->second,
+                lv->first * rv->second + lv->second * rv->first};
+          case BinaryOp::Div: {
+            const double denom = rv->first * rv->first + rv->second * rv->second;
+            if (denom == 0.0) return std::nullopt;
+            return std::pair<double, double>{
+                (lv->first * rv->first + lv->second * rv->second) / denom,
+                (lv->second * rv->first - lv->first * rv->second) / denom};
+          }
+          default:
+            return std::nullopt;
+        }
+      } else if constexpr (std::is_same_v<T, CastExpr>) {
+        return try_const_eval_complex_fp(p.expr);
+      } else {
+        return std::nullopt;
+      }
+    }, e.payload);
+  }
+
   std::string emit_const_int_like(long long value, const TypeSpec& expected_ts) {
     if (llvm_ty(expected_ts) == "ptr") {
       if (value == 0) return "null";
@@ -866,8 +917,18 @@ class HirEmitter {
     return std::visit([&](const auto& p) -> std::string {
       using T = std::decay_t<decltype(p)>;
       if (is_complex_base(expected_ts.base) && expected_ts.ptr_level == 0 && expected_ts.array_rank == 0) {
+        const TypeSpec elem_ts = complex_component_ts(expected_ts.base);
+        if (is_float_base(elem_ts.base)) {
+          if (auto cv = try_const_eval_complex_fp(id)) {
+            const auto emit_fp = [&](double value) -> std::string {
+              return elem_ts.base == TB_FLOAT ? fp_to_float_literal(static_cast<float>(value))
+                                              : fp_to_hex(value);
+            };
+            return "{ " + llvm_ty(elem_ts) + " " + emit_fp(cv->first) +
+                   ", " + llvm_ty(elem_ts) + " " + emit_fp(cv->second) + " }";
+          }
+        }
         if (auto cv = try_const_eval_complex_int(id)) {
-          const TypeSpec elem_ts = complex_component_ts(expected_ts.base);
           return "{ " + llvm_ty(elem_ts) + " " +
                  emit_const_int_like(cv->first, elem_ts) +
                  ", " + llvm_ty(elem_ts) + " " +
@@ -2238,6 +2299,11 @@ class HirEmitter {
         lts.ptr_level == 0 && lts.array_rank == 0 && is_any_int(lts.base)) {
       return rts;
     }
+    if (is_complex_base(lts.base) || is_complex_base(rts.base)) {
+      if (!is_complex_base(lts.base)) return rts;
+      if (!is_complex_base(rts.base)) return lts;
+      return sizeof_ts(mod_, lts) >= sizeof_ts(mod_, rts) ? lts : rts;
+    }
 
     // For arithmetic/bitwise the result type matches the operand type
     if (lts.base != TB_VOID) return lts;
@@ -2473,6 +2539,124 @@ class HirEmitter {
     return std::to_string(x.value);
   }
 
+  std::string emit_complex_binary_arith(FnCtx& ctx,
+                                        BinaryOp op,
+                                        const std::string& lv,
+                                        const TypeSpec& lts,
+                                        const std::string& rv,
+                                        const TypeSpec& rts,
+                                        const TypeSpec& res_spec) {
+    TypeSpec complex_ts = lts;
+    if (!is_complex_base(complex_ts.base) ||
+        (is_complex_base(rts.base) && sizeof_ts(mod_, rts) > sizeof_ts(mod_, complex_ts))) {
+      complex_ts = rts;
+    }
+    const TypeSpec elem_ts = complex_component_ts(complex_ts.base);
+    auto lift_scalar_to_complex = [&](const std::string& scalar,
+                                      const TypeSpec& scalar_ts) -> std::string {
+      const std::string real_v = coerce(ctx, scalar, scalar_ts, elem_ts);
+      const std::string imag_v = emit_const_int_like(0, elem_ts);
+      const std::string with_real = fresh_tmp(ctx);
+      emit_instr(ctx, with_real + " = insertvalue " + llvm_ty(complex_ts) + " undef, " +
+                             llvm_ty(elem_ts) + " " + real_v + ", 0");
+      const std::string out = fresh_tmp(ctx);
+      emit_instr(ctx, out + " = insertvalue " + llvm_ty(complex_ts) + " " + with_real + ", " +
+                          llvm_ty(elem_ts) + " " + imag_v + ", 1");
+      return out;
+    };
+
+    std::string complex_lv = lv;
+    std::string complex_rv = rv;
+    TypeSpec complex_lts = lts;
+    TypeSpec complex_rts = rts;
+    if (!is_complex_base(complex_lts.base)) {
+      complex_lv = lift_scalar_to_complex(complex_lv, complex_lts);
+      complex_lts = complex_ts;
+    } else if (llvm_ty(complex_lts) != llvm_ty(complex_ts)) {
+      complex_lv = coerce(ctx, complex_lv, complex_lts, complex_ts);
+      complex_lts = complex_ts;
+    }
+    if (!is_complex_base(complex_rts.base)) {
+      complex_rv = lift_scalar_to_complex(complex_rv, complex_rts);
+      complex_rts = complex_ts;
+    } else if (llvm_ty(complex_rts) != llvm_ty(complex_ts)) {
+      complex_rv = coerce(ctx, complex_rv, complex_rts, complex_ts);
+      complex_rts = complex_ts;
+    }
+
+    const std::string lreal = fresh_tmp(ctx);
+    emit_instr(ctx, lreal + " = extractvalue " + llvm_ty(complex_ts) + " " + complex_lv + ", 0");
+    const std::string limag = fresh_tmp(ctx);
+    emit_instr(ctx, limag + " = extractvalue " + llvm_ty(complex_ts) + " " + complex_lv + ", 1");
+    const std::string rreal = fresh_tmp(ctx);
+    emit_instr(ctx, rreal + " = extractvalue " + llvm_ty(complex_ts) + " " + complex_rv + ", 0");
+    const std::string rimag = fresh_tmp(ctx);
+    emit_instr(ctx, rimag + " = extractvalue " + llvm_ty(complex_ts) + " " + complex_rv + ", 1");
+
+    const std::string elem_ty = llvm_ty(elem_ts);
+    const char* add_instr = is_float_base(elem_ts.base) ? "fadd" : "add";
+    const char* sub_instr = is_float_base(elem_ts.base) ? "fsub" : "sub";
+    const char* mul_instr = is_float_base(elem_ts.base) ? "fmul" : "mul";
+    const char* div_instr = is_float_base(elem_ts.base)
+                                ? "fdiv"
+                                : (is_signed_int(elem_ts.base) ? "sdiv" : "udiv");
+
+    std::string out_real;
+    std::string out_imag;
+    if (op == BinaryOp::Add || op == BinaryOp::Sub) {
+      out_real = fresh_tmp(ctx);
+      emit_instr(ctx, out_real + " = " + std::string(op == BinaryOp::Add ? add_instr : sub_instr) +
+                          " " + elem_ty + " " + lreal + ", " + rreal);
+      out_imag = fresh_tmp(ctx);
+      emit_instr(ctx, out_imag + " = " + std::string(op == BinaryOp::Add ? add_instr : sub_instr) +
+                          " " + elem_ty + " " + limag + ", " + rimag);
+    } else if (op == BinaryOp::Mul) {
+      const std::string ac = fresh_tmp(ctx);
+      const std::string bd = fresh_tmp(ctx);
+      const std::string ad = fresh_tmp(ctx);
+      const std::string bc = fresh_tmp(ctx);
+      emit_instr(ctx, ac + " = " + std::string(mul_instr) + " " + elem_ty + " " + lreal + ", " + rreal);
+      emit_instr(ctx, bd + " = " + std::string(mul_instr) + " " + elem_ty + " " + limag + ", " + rimag);
+      emit_instr(ctx, ad + " = " + std::string(mul_instr) + " " + elem_ty + " " + lreal + ", " + rimag);
+      emit_instr(ctx, bc + " = " + std::string(mul_instr) + " " + elem_ty + " " + limag + ", " + rreal);
+      out_real = fresh_tmp(ctx);
+      emit_instr(ctx, out_real + " = " + std::string(sub_instr) + " " + elem_ty + " " + ac + ", " + bd);
+      out_imag = fresh_tmp(ctx);
+      emit_instr(ctx, out_imag + " = " + std::string(add_instr) + " " + elem_ty + " " + ad + ", " + bc);
+    } else {
+      const std::string ac = fresh_tmp(ctx);
+      const std::string bd = fresh_tmp(ctx);
+      const std::string bc = fresh_tmp(ctx);
+      const std::string ad = fresh_tmp(ctx);
+      const std::string cc = fresh_tmp(ctx);
+      const std::string dd = fresh_tmp(ctx);
+      const std::string denom = fresh_tmp(ctx);
+      emit_instr(ctx, ac + " = " + std::string(mul_instr) + " " + elem_ty + " " + lreal + ", " + rreal);
+      emit_instr(ctx, bd + " = " + std::string(mul_instr) + " " + elem_ty + " " + limag + ", " + rimag);
+      emit_instr(ctx, bc + " = " + std::string(mul_instr) + " " + elem_ty + " " + limag + ", " + rreal);
+      emit_instr(ctx, ad + " = " + std::string(mul_instr) + " " + elem_ty + " " + lreal + ", " + rimag);
+      emit_instr(ctx, cc + " = " + std::string(mul_instr) + " " + elem_ty + " " + rreal + ", " + rreal);
+      emit_instr(ctx, dd + " = " + std::string(mul_instr) + " " + elem_ty + " " + rimag + ", " + rimag);
+      emit_instr(ctx, denom + " = " + std::string(add_instr) + " " + elem_ty + " " + cc + ", " + dd);
+      const std::string real_num = fresh_tmp(ctx);
+      const std::string imag_num = fresh_tmp(ctx);
+      emit_instr(ctx, real_num + " = " + std::string(add_instr) + " " + elem_ty + " " + ac + ", " + bd);
+      emit_instr(ctx, imag_num + " = " + std::string(sub_instr) + " " + elem_ty + " " + bc + ", " + ad);
+      out_real = fresh_tmp(ctx);
+      out_imag = fresh_tmp(ctx);
+      emit_instr(ctx, out_real + " = " + std::string(div_instr) + " " + elem_ty + " " + real_num + ", " + denom);
+      emit_instr(ctx, out_imag + " = " + std::string(div_instr) + " " + elem_ty + " " + imag_num + ", " + denom);
+    }
+
+    const std::string with_real = fresh_tmp(ctx);
+    emit_instr(ctx, with_real + " = insertvalue " + llvm_ty(complex_ts) + " undef, " +
+                               elem_ty + " " + out_real + ", 0");
+    const std::string out = fresh_tmp(ctx);
+    emit_instr(ctx, out + " = insertvalue " + llvm_ty(complex_ts) + " " + with_real + ", " +
+                          elem_ty + " " + out_imag + ", 1");
+    return llvm_ty(complex_ts) == llvm_ty(res_spec) ? out : coerce(ctx, out, complex_ts, res_spec);
+  }
+
   std::string emit_rval_payload(FnCtx& ctx, const StringLiteral& sl, const Expr& /*e*/) {
     // Strip enclosing quotes from raw, use as bytes
     std::string bytes = sl.raw;
@@ -2632,6 +2816,26 @@ class HirEmitter {
       }
 
       case UnaryOp::BitNot: {
+        if (is_complex_base(op_ts.base)) {
+          const TypeSpec elem_ts = complex_component_ts(op_ts.base);
+          const std::string real_v = fresh_tmp(ctx);
+          emit_instr(ctx, real_v + " = extractvalue " + op_ty + " " + val + ", 0");
+          const std::string imag_v0 = fresh_tmp(ctx);
+          emit_instr(ctx, imag_v0 + " = extractvalue " + op_ty + " " + val + ", 1");
+          const std::string imag_v = fresh_tmp(ctx);
+          if (is_float_base(elem_ts.base)) {
+            emit_instr(ctx, imag_v + " = fneg " + llvm_ty(elem_ts) + " " + imag_v0);
+          } else {
+            emit_instr(ctx, imag_v + " = sub " + llvm_ty(elem_ts) + " 0, " + imag_v0);
+          }
+          const std::string with_real = fresh_tmp(ctx);
+          emit_instr(ctx, with_real + " = insertvalue " + op_ty + " undef, " +
+                                 llvm_ty(elem_ts) + " " + real_v + ", 0");
+          const std::string out = fresh_tmp(ctx);
+          emit_instr(ctx, out + " = insertvalue " + op_ty + " " + with_real + ", " +
+                                llvm_ty(elem_ts) + " " + imag_v + ", 1");
+          return out;
+        }
         const std::string tmp = fresh_tmp(ctx);
         emit_instr(ctx, tmp + " = xor " + ty + " " + val + ", -1");
         return tmp;
@@ -2795,9 +2999,15 @@ class HirEmitter {
       if (!is_complex_base(cmp_lts.base)) {
         cmp_lv = lift_scalar_to_complex(cmp_lv, cmp_lts, true);
         cmp_lts = complex_ts;
+      } else if (llvm_ty(cmp_lts) != llvm_ty(complex_ts)) {
+        cmp_lv = coerce(ctx, cmp_lv, cmp_lts, complex_ts);
+        cmp_lts = complex_ts;
       }
       if (!is_complex_base(cmp_rts.base)) {
         cmp_rv = lift_scalar_to_complex(cmp_rv, cmp_rts, false);
+        cmp_rts = complex_ts;
+      } else if (llvm_ty(cmp_rts) != llvm_ty(complex_ts)) {
+        cmp_rv = coerce(ctx, cmp_rv, cmp_rts, complex_ts);
         cmp_rts = complex_ts;
       }
       const std::string lreal = fresh_tmp(ctx);
@@ -2835,115 +3045,7 @@ class HirEmitter {
     if ((b.op == BinaryOp::Add || b.op == BinaryOp::Sub ||
          b.op == BinaryOp::Mul || b.op == BinaryOp::Div) &&
         (is_complex_base(lts.base) || is_complex_base(rts.base))) {
-      TypeSpec complex_ts = lts;
-      if (!is_complex_base(complex_ts.base) ||
-          (is_complex_base(rts.base) && sizeof_ts(mod_, rts) > sizeof_ts(mod_, complex_ts))) {
-        complex_ts = rts;
-      }
-      const TypeSpec elem_ts = complex_component_ts(complex_ts.base);
-      auto lift_scalar_to_complex = [&](const std::string& scalar,
-                                        const TypeSpec& scalar_ts) -> std::string {
-        const std::string real_v = coerce(ctx, scalar, scalar_ts, elem_ts);
-        const std::string imag_v = emit_const_int_like(0, elem_ts);
-        const std::string with_real = fresh_tmp(ctx);
-        emit_instr(ctx, with_real + " = insertvalue " + llvm_ty(complex_ts) + " undef, " +
-                                   llvm_ty(elem_ts) + " " + real_v + ", 0");
-        const std::string out = fresh_tmp(ctx);
-        emit_instr(ctx, out + " = insertvalue " + llvm_ty(complex_ts) + " " + with_real + ", " +
-                            llvm_ty(elem_ts) + " " + imag_v + ", 1");
-        return out;
-      };
-
-      std::string complex_lv = lv;
-      std::string complex_rv = rv;
-      TypeSpec complex_lts = lts;
-      TypeSpec complex_rts = rts;
-      if (!is_complex_base(complex_lts.base)) {
-        complex_lv = lift_scalar_to_complex(complex_lv, complex_lts);
-        complex_lts = complex_ts;
-      } else if (llvm_ty(complex_lts) != llvm_ty(complex_ts)) {
-        complex_lv = coerce(ctx, complex_lv, complex_lts, complex_ts);
-        complex_lts = complex_ts;
-      }
-      if (!is_complex_base(complex_rts.base)) {
-        complex_rv = lift_scalar_to_complex(complex_rv, complex_rts);
-        complex_rts = complex_ts;
-      } else if (llvm_ty(complex_rts) != llvm_ty(complex_ts)) {
-        complex_rv = coerce(ctx, complex_rv, complex_rts, complex_ts);
-        complex_rts = complex_ts;
-      }
-
-      const std::string lreal = fresh_tmp(ctx);
-      emit_instr(ctx, lreal + " = extractvalue " + llvm_ty(complex_ts) + " " + complex_lv + ", 0");
-      const std::string limag = fresh_tmp(ctx);
-      emit_instr(ctx, limag + " = extractvalue " + llvm_ty(complex_ts) + " " + complex_lv + ", 1");
-      const std::string rreal = fresh_tmp(ctx);
-      emit_instr(ctx, rreal + " = extractvalue " + llvm_ty(complex_ts) + " " + complex_rv + ", 0");
-      const std::string rimag = fresh_tmp(ctx);
-      emit_instr(ctx, rimag + " = extractvalue " + llvm_ty(complex_ts) + " " + complex_rv + ", 1");
-
-      const std::string elem_ty = llvm_ty(elem_ts);
-      const char* add_instr = is_float_base(elem_ts.base) ? "fadd" : "add";
-      const char* sub_instr = is_float_base(elem_ts.base) ? "fsub" : "sub";
-      const char* mul_instr = is_float_base(elem_ts.base) ? "fmul" : "mul";
-      const char* div_instr = is_float_base(elem_ts.base)
-                                  ? "fdiv"
-                                  : (is_signed_int(elem_ts.base) ? "sdiv" : "udiv");
-
-      std::string out_real;
-      std::string out_imag;
-      if (b.op == BinaryOp::Add || b.op == BinaryOp::Sub) {
-        out_real = fresh_tmp(ctx);
-        emit_instr(ctx, out_real + " = " + std::string(b.op == BinaryOp::Add ? add_instr : sub_instr) +
-                            " " + elem_ty + " " + lreal + ", " + rreal);
-        out_imag = fresh_tmp(ctx);
-        emit_instr(ctx, out_imag + " = " + std::string(b.op == BinaryOp::Add ? add_instr : sub_instr) +
-                            " " + elem_ty + " " + limag + ", " + rimag);
-      } else if (b.op == BinaryOp::Mul) {
-        const std::string ac = fresh_tmp(ctx);
-        const std::string bd = fresh_tmp(ctx);
-        const std::string ad = fresh_tmp(ctx);
-        const std::string bc = fresh_tmp(ctx);
-        emit_instr(ctx, ac + " = " + std::string(mul_instr) + " " + elem_ty + " " + lreal + ", " + rreal);
-        emit_instr(ctx, bd + " = " + std::string(mul_instr) + " " + elem_ty + " " + limag + ", " + rimag);
-        emit_instr(ctx, ad + " = " + std::string(mul_instr) + " " + elem_ty + " " + lreal + ", " + rimag);
-        emit_instr(ctx, bc + " = " + std::string(mul_instr) + " " + elem_ty + " " + limag + ", " + rreal);
-        out_real = fresh_tmp(ctx);
-        emit_instr(ctx, out_real + " = " + std::string(sub_instr) + " " + elem_ty + " " + ac + ", " + bd);
-        out_imag = fresh_tmp(ctx);
-        emit_instr(ctx, out_imag + " = " + std::string(add_instr) + " " + elem_ty + " " + ad + ", " + bc);
-      } else {
-        const std::string ac = fresh_tmp(ctx);
-        const std::string bd = fresh_tmp(ctx);
-        const std::string bc = fresh_tmp(ctx);
-        const std::string ad = fresh_tmp(ctx);
-        const std::string cc = fresh_tmp(ctx);
-        const std::string dd = fresh_tmp(ctx);
-        const std::string denom = fresh_tmp(ctx);
-        emit_instr(ctx, ac + " = " + std::string(mul_instr) + " " + elem_ty + " " + lreal + ", " + rreal);
-        emit_instr(ctx, bd + " = " + std::string(mul_instr) + " " + elem_ty + " " + limag + ", " + rimag);
-        emit_instr(ctx, bc + " = " + std::string(mul_instr) + " " + elem_ty + " " + limag + ", " + rreal);
-        emit_instr(ctx, ad + " = " + std::string(mul_instr) + " " + elem_ty + " " + lreal + ", " + rimag);
-        emit_instr(ctx, cc + " = " + std::string(mul_instr) + " " + elem_ty + " " + rreal + ", " + rreal);
-        emit_instr(ctx, dd + " = " + std::string(mul_instr) + " " + elem_ty + " " + rimag + ", " + rimag);
-        emit_instr(ctx, denom + " = " + std::string(add_instr) + " " + elem_ty + " " + cc + ", " + dd);
-        const std::string real_num = fresh_tmp(ctx);
-        const std::string imag_num = fresh_tmp(ctx);
-        emit_instr(ctx, real_num + " = " + std::string(add_instr) + " " + elem_ty + " " + ac + ", " + bd);
-        emit_instr(ctx, imag_num + " = " + std::string(sub_instr) + " " + elem_ty + " " + bc + ", " + ad);
-        out_real = fresh_tmp(ctx);
-        out_imag = fresh_tmp(ctx);
-        emit_instr(ctx, out_real + " = " + std::string(div_instr) + " " + elem_ty + " " + real_num + ", " + denom);
-        emit_instr(ctx, out_imag + " = " + std::string(div_instr) + " " + elem_ty + " " + imag_num + ", " + denom);
-      }
-
-      const std::string with_real = fresh_tmp(ctx);
-      emit_instr(ctx, with_real + " = insertvalue " + llvm_ty(complex_ts) + " undef, " +
-                                 elem_ty + " " + out_real + ", 0");
-      const std::string out = fresh_tmp(ctx);
-      emit_instr(ctx, out + " = insertvalue " + llvm_ty(complex_ts) + " " + with_real + ", " +
-                            elem_ty + " " + out_imag + ", 1");
-      return llvm_ty(complex_ts) == llvm_ty(res_spec) ? out : coerce(ctx, out, complex_ts, res_spec);
+      return emit_complex_binary_arith(ctx, b.op, lv, lts, rv, rts, res_spec);
     }
 
     // If result type is unannotated (void), use the operand type
@@ -3205,6 +3307,14 @@ class HirEmitter {
       const char* instr = nullptr;
       for (const auto& row : compound_map) {
         if (row.op != a.op) continue;
+        if ((row.bop == BinaryOp::Add || row.bop == BinaryOp::Sub ||
+             row.bop == BinaryOp::Mul || row.bop == BinaryOp::Div) &&
+            (is_complex_base(lhs_ts.base) || is_complex_base(rhs_ts.base))) {
+          const std::string result =
+              emit_complex_binary_arith(ctx, row.bop, loaded, lhs_ts, rhs, rhs_ts, lhs_ts);
+          emit_instr(ctx, "store " + lty + " " + result + ", ptr " + lhs_ptr);
+          return result;
+        }
         TypeSpec op_ts = lhs_ts;
         if (lhs_ts.ptr_level == 0 && lhs_ts.array_rank == 0 &&
             rhs_ts.ptr_level == 0 && rhs_ts.array_rank == 0 &&
