@@ -861,6 +861,14 @@ class Validator {
 
     switch (n->kind) {
       case NK_INT_LIT:
+        out.valid = true;
+        // GCC label-address (&&label) is parsed as NK_INT_LIT with name set;
+        // its type is void* (C extension for computed goto targets).
+        if (n->name && n->name[0]) {
+          out.type.base = TB_VOID;
+          out.type.ptr_level = 1;
+        }
+        return out;
       case NK_FLOAT_LIT:
       case NK_CHAR_LIT:
         out.valid = true;
@@ -984,9 +992,8 @@ class Validator {
         if (lhs.is_const_lvalue) {
           emit(n->line, "assignment to const-qualified lvalue");
         }
-        if (drops_const_on_ptr_assign(lhs.type, rhs.type)) {
-          emit(n->line, "discarding const qualifier in pointer assignment");
-        }
+        // Note: assigning const T* to T* discards const but is GCC-warned, not
+        // an error (C11 6.5.16.1p2); we only reject const writes (is_const_lvalue).
         // Only type-check simple '=' assignments; compound operators (+=, -=, etc.)
         // are in-place operations whose result type is always the lhs type.
         const bool is_simple_assign = n->op && n->op[0] == '=' && n->op[1] == '\0';
