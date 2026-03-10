@@ -977,6 +977,52 @@ class HirEmitter {
             return "getelementptr inbounds ([" + std::to_string(len) + " x i8], ptr " +
                    gname + ", i64 0, i64 0)";
           }
+          // &arr[idx] — global array subscript: emit GEP constant
+          if (const auto* idx_e = std::get_if<IndexExpr>(&op_e.payload)) {
+            const Expr& base_e = get_expr(idx_e->base);
+            if (const auto* dr = std::get_if<DeclRef>(&base_e.payload)) {
+              auto git = mod_.global_index.find(dr->name);
+              if (git != mod_.global_index.end()) {
+                const GlobalVar* gv = mod_.find_global(git->second);
+                if (gv && gv->type.spec.array_rank > 0) {
+                  const std::string aty = llvm_alloca_ty(gv->type.spec);
+                  const long long idx_int =
+                      try_const_eval_int(idx_e->index).value_or(0);
+                  return "getelementptr inbounds (" + aty + ", ptr @" + dr->name +
+                         ", i64 0, i64 " + std::to_string(idx_int) + ")";
+                }
+              }
+            }
+          }
+          // &struct_var.field — global struct member: emit GEP constant
+          if (const auto* mem_e = std::get_if<MemberExpr>(&op_e.payload)) {
+            if (!mem_e->is_arrow) {
+              const Expr& base_e = get_expr(mem_e->base);
+              if (const auto* dr = std::get_if<DeclRef>(&base_e.payload)) {
+                auto git = mod_.global_index.find(dr->name);
+                if (git != mod_.global_index.end()) {
+                  const GlobalVar* gv = mod_.find_global(git->second);
+                  if (gv) {
+                    const std::string tag = std::string(gv->type.spec.tag);
+                    if (!tag.empty()) {
+                      const auto sit = mod_.struct_defs.find(tag);
+                    const HirStructDef* sd = (sit != mod_.struct_defs.end()) ? &sit->second : nullptr;
+                      if (sd) {
+                        int field_idx = 0;
+                        for (const auto& f : sd->fields) {
+                          if (f.name == mem_e->field) break;
+                          ++field_idx;
+                        }
+                        const std::string sty = "%struct." + tag;
+                        return "getelementptr inbounds (" + sty + ", ptr @" + dr->name +
+                               ", i32 0, i32 " + std::to_string(field_idx) + ")";
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
         if (p.op == UnaryOp::Plus) {
           return emit_const_scalar_expr(p.operand, expected_ts);
