@@ -318,8 +318,14 @@ TypeSpec Parser::parse_base_type() {
 // Parse declarator: pointer stars, name, array/function suffixes.
 // Modifies ts in place.  Sets *out_name to the declared name (or nullptr).
 // Handles abstract declarators (no name) when out_name is allowed to be null.
-void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
+void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
+                              Node*** out_fn_ptr_params,
+                              int* out_n_fn_ptr_params,
+                              bool* out_fn_ptr_variadic) {
     if (out_name) *out_name = nullptr;
+    if (out_fn_ptr_params) *out_fn_ptr_params = nullptr;
+    if (out_n_fn_ptr_params) *out_n_fn_ptr_params = 0;
+    if (out_fn_ptr_variadic) *out_fn_ptr_variadic = false;
 
     auto clear_array = [&](TypeSpec& t) {
         t.array_size = -1;
@@ -455,6 +461,8 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
     };
     if (paren_star_peek()) {
         used_paren_ptr_declarator = true;
+        std::vector<Node*> fn_ptr_params;
+        bool fn_ptr_variadic = false;
         // function pointer: (*name)(...) or block pointer: (^name)(...) — record name, skip params
         consume();  // consume (
         skip_attributes();  // skip any __attribute__((...)) before * or ^
@@ -509,10 +517,37 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name) {
             // Merge: the inner name is what we want
         }
         expect(TokenKind::RParen);
-        // Parse (and discard) the return-fptr's param list
+        // Parse the pointed-to function's parameter list.
         if (check(TokenKind::LParen)) {
-            skip_paren_group();
+            consume();  // (
+            if (!check(TokenKind::RParen)) {
+                while (!at_end()) {
+                    if (check(TokenKind::Ellipsis)) {
+                        fn_ptr_variadic = true;
+                        consume();
+                        break;
+                    }
+                    if (check(TokenKind::RParen)) break;
+                    if (!is_type_start()) {
+                        consume();
+                        if (match(TokenKind::Comma)) continue;
+                        break;
+                    }
+                    Node* p = parse_param();
+                    if (p) fn_ptr_params.push_back(p);
+                    if (!match(TokenKind::Comma)) break;
+                }
+            }
+            expect(TokenKind::RParen);
             ts.is_fn_ptr = true;  // confirmed function pointer: (*name)(params)
+            if (out_n_fn_ptr_params) *out_n_fn_ptr_params = static_cast<int>(fn_ptr_params.size());
+            if (out_fn_ptr_variadic) *out_fn_ptr_variadic = fn_ptr_variadic;
+            if (out_fn_ptr_params && !fn_ptr_params.empty()) {
+                *out_fn_ptr_params = arena_.alloc_array<Node*>(static_cast<int>(fn_ptr_params.size()));
+                for (int i = 0; i < static_cast<int>(fn_ptr_params.size()); ++i) {
+                    (*out_fn_ptr_params)[i] = fn_ptr_params[i];
+                }
+            }
         }
         // Array suffix after function pointer: (*p)[N] / (*p)[N][M]
         while (check(TokenKind::LBracket)) {
@@ -978,7 +1013,10 @@ Node* Parser::parse_param() {
     }
     TypeSpec pts = parse_base_type();
     const char* pname = nullptr;
-    parse_declarator(pts, &pname);
+    Node** fn_ptr_params = nullptr;
+    int n_fn_ptr_params = 0;
+    bool fn_ptr_variadic = false;
+    parse_declarator(pts, &pname, &fn_ptr_params, &n_fn_ptr_params, &fn_ptr_variadic);
     // C rule: a parameter of function type decays to a pointer to that function.
     // Abstract function-type params look like: int(int x) or int()
     // Consume the function-type suffix and apply the pointer decay.
@@ -993,6 +1031,9 @@ Node* Parser::parse_param() {
     Node* p = make_node(NK_DECL, ln);
     p->type = pts;
     p->name = pname ? pname : nullptr;
+    p->fn_ptr_params = fn_ptr_params;
+    p->n_fn_ptr_params = n_fn_ptr_params;
+    p->fn_ptr_variadic = fn_ptr_variadic;
     return p;
 }
 

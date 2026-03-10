@@ -210,6 +210,11 @@ struct Node {
     // NK_FUNCTION params
     Node** params;
     int    n_params;
+    // NK_DECL / NK_GLOBAL_VAR / NK_FUNCTION param decls:
+    // function pointer prototype attached to this declarator, if any.
+    Node** fn_ptr_params;
+    int    n_fn_ptr_params;
+    bool   fn_ptr_variadic;
 
     // NK_STRUCT_DEF fields  (each child is NK_DECL with type + name)
     Node** fields;

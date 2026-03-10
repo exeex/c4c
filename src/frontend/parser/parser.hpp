@@ -86,7 +86,10 @@ class Parser {
 
   // Parse declarator suffix: pointer levels, array, etc.
   // Modifies ts in place.  Returns the declared name (into out_name).
-  void parse_declarator(TypeSpec& ts, const char** out_name);
+  void parse_declarator(TypeSpec& ts, const char** out_name,
+                        Node*** out_fn_ptr_params = nullptr,
+                        int* out_n_fn_ptr_params = nullptr,
+                        bool* out_fn_ptr_variadic = nullptr);
 
   // Parse a full type-name (type + declarator with no name): e.g. for sizeof.
   TypeSpec parse_type_name();

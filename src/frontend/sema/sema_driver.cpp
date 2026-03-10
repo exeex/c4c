@@ -209,14 +209,16 @@ TypeSpec classify_int_literal_type(Node* n) {
 
 TypeSpec classify_float_literal_type(Node* n) {
   if (!n) return double_ts();
-  if (n->is_imaginary) {
-    const char* sv = n->sval;
-    bool is_f32 = sv && (strchr(sv, 'f') || strchr(sv, 'F'));
-    return is_f32 ? make_ts(TB_COMPLEX_FLOAT) : make_ts(TB_COMPLEX_DOUBLE);
-  }
   const char* sv = n->sval;
-  if (sv && sv[strlen(sv) - 1] == 'f') return float_ts();
-  if (sv && sv[strlen(sv) - 1] == 'F') return float_ts();
+  const bool is_f32 = sv && (strchr(sv, 'f') || strchr(sv, 'F'));
+  const bool is_ldbl = sv && (strchr(sv, 'l') || strchr(sv, 'L'));
+  if (n->is_imaginary) {
+    if (is_f32) return make_ts(TB_COMPLEX_FLOAT);
+    if (is_ldbl) return make_ts(TB_COMPLEX_LONGDOUBLE);
+    return make_ts(TB_COMPLEX_DOUBLE);
+  }
+  if (is_f32) return float_ts();
+  if (is_ldbl) return make_ts(TB_LONGDOUBLE);
   return double_ts();
 }
 
@@ -238,9 +240,9 @@ static bool is_compare_or_logical_op(const char* op) {
 }
 
 static TypeSpec usual_arithmetic_result_type(const TypeSpec& lhs, const TypeSpec& rhs) {
+  if (lhs.base == TB_LONGDOUBLE || rhs.base == TB_LONGDOUBLE) return make_ts(TB_LONGDOUBLE);
   if (lhs.base == TB_DOUBLE || rhs.base == TB_DOUBLE) return double_ts();
   if (lhs.base == TB_FLOAT || rhs.base == TB_FLOAT) return float_ts();
-  if (lhs.base == TB_LONGDOUBLE || rhs.base == TB_LONGDOUBLE) return double_ts();
   if (lhs.base == TB_ULONGLONG || rhs.base == TB_ULONGLONG) return make_ts(TB_ULONGLONG);
   if (lhs.base == TB_LONGLONG || rhs.base == TB_LONGLONG) {
     if (lhs.base == TB_ULONG || rhs.base == TB_ULONG) return make_ts(TB_ULONGLONG);
@@ -332,10 +334,13 @@ TypeSpec classify_known_call_return_type(const char* callee_name, bool* known) {
   if (strcmp(callee_name, "__builtin_bswap64") == 0) return make_ts(TB_ULONGLONG);
   if (strcmp(callee_name, "__builtin_bswap32") == 0) return make_ts(TB_UINT);
   if (strcmp(callee_name, "__builtin_bswap16") == 0) return make_ts(TB_USHORT);
-  if (strcmp(callee_name, "__builtin_fabs") == 0 || strcmp(callee_name, "__builtin_fabsl") == 0 ||
-      strcmp(callee_name, "__builtin_inf") == 0 || strcmp(callee_name, "__builtin_infl") == 0 ||
-      strcmp(callee_name, "__builtin_huge_val") == 0 ||
+  if (strcmp(callee_name, "__builtin_fabsl") == 0 ||
+      strcmp(callee_name, "__builtin_infl") == 0 ||
       strcmp(callee_name, "__builtin_huge_vall") == 0)
+    return make_ts(TB_LONGDOUBLE);
+  if (strcmp(callee_name, "__builtin_fabs") == 0 ||
+      strcmp(callee_name, "__builtin_inf") == 0 ||
+      strcmp(callee_name, "__builtin_huge_val") == 0)
     return double_ts();
   if (strcmp(callee_name, "__builtin_fabsf") == 0 || strcmp(callee_name, "__builtin_inff") == 0 ||
       strcmp(callee_name, "__builtin_huge_valf") == 0)
@@ -355,10 +360,10 @@ TypeSpec classify_known_call_return_type(const char* callee_name, bool* known) {
   if (strcmp(callee_name, "__builtin_classify_type") == 0) return make_ts(TB_INT);
   if (strcmp(callee_name, "__builtin_copysign") == 0 ||
       strcmp(callee_name, "__builtin_copysignl") == 0)
-    return double_ts();
+    return strcmp(callee_name, "__builtin_copysignl") == 0 ? make_ts(TB_LONGDOUBLE) : double_ts();
   if (strcmp(callee_name, "__builtin_copysignf") == 0) return float_ts();
-  if (strcmp(callee_name, "__builtin_nan") == 0 || strcmp(callee_name, "__builtin_nanl") == 0)
-    return double_ts();
+  if (strcmp(callee_name, "__builtin_nanl") == 0) return make_ts(TB_LONGDOUBLE);
+  if (strcmp(callee_name, "__builtin_nan") == 0) return double_ts();
   if (strcmp(callee_name, "__builtin_nanf") == 0) return float_ts();
   if (strcmp(callee_name, "__builtin_isgreater") == 0 ||
       strcmp(callee_name, "__builtin_isgreaterequal") == 0 ||

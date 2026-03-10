@@ -68,9 +68,17 @@ struct FnAttr {
   bool always_inline = false;
 };
 
+struct FnPtrSig {
+  QualType return_type{};
+  std::vector<QualType> params;
+  bool variadic = false;
+  bool unspecified_params = false;
+};
+
 struct Param {
   SymbolName name;
   QualType type;
+  std::optional<FnPtrSig> fn_ptr_sig;
   SourceSpan span{};
 };
 
@@ -294,6 +302,7 @@ struct LocalDecl {
   LocalId id{};
   SymbolName name;
   QualType type{};
+  std::optional<FnPtrSig> fn_ptr_sig;
   StorageClass storage = StorageClass::Auto;
   std::optional<ExprId> vla_size;
   std::optional<ExprId> init;
@@ -510,6 +519,7 @@ struct GlobalVar {
   GlobalId id{};
   SymbolName name;
   QualType type{};
+  std::optional<FnPtrSig> fn_ptr_sig;
   Linkage linkage{};
   bool is_const = false;
   GlobalInit init{};

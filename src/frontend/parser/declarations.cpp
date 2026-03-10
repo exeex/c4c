@@ -92,7 +92,10 @@ Node* Parser::parse_local_decl() {
         // produces ulong[2][2]. apply_decl_dims prepends declarator dims to base typedef dims.
         ts.array_size_expr = nullptr;
         const char* vname = nullptr;
-        parse_declarator(ts, &vname);
+        Node** fn_ptr_params = nullptr;
+        int n_fn_ptr_params = 0;
+        bool fn_ptr_variadic = false;
+        parse_declarator(ts, &vname, &fn_ptr_params, &n_fn_ptr_params, &fn_ptr_variadic);
         // Skip K&R-style function-type suffix: `float fx ()` in local decls.
         // Don't create a NK_DECL for these — they're forward declarations handled
         // implicitly when the function is called via DeclRef.
@@ -127,6 +130,9 @@ Node* Parser::parse_local_decl() {
         d->init      = init_node;
         d->is_static = is_static;
         d->is_extern = is_extern;
+        d->fn_ptr_params = fn_ptr_params;
+        d->n_fn_ptr_params = n_fn_ptr_params;
+        d->fn_ptr_variadic = fn_ptr_variadic;
         if (vname) var_types_[vname] = ts;  // for typeof(var) resolution
         decls.push_back(d);
     } while (match(TokenKind::Comma));
@@ -304,6 +310,9 @@ Node* Parser::parse_top_level() {
     // Preserve typedef array dims: apply_decl_dims prepends declarator dims to base typedef dims.
     ts.array_size_expr = nullptr;
     const char* decl_name = nullptr;
+    Node** decl_fn_ptr_params = nullptr;
+    int decl_n_fn_ptr_params = 0;
+    bool decl_fn_ptr_variadic = false;
     bool is_fptr_global = false;
 
     // Check for function-pointer global: type (*name)(...);
@@ -364,12 +373,44 @@ Node* Parser::parse_top_level() {
         }
         expect(TokenKind::RParen);  // close (*name...)
         if (check(TokenKind::LParen)) {
-            skip_paren_group();  // skip return-fptr params
+            std::vector<Node*> pointed_fn_params;
+            bool pointed_fn_variadic = false;
+            consume();  // (
+            if (!check(TokenKind::RParen)) {
+                while (!at_end()) {
+                    if (check(TokenKind::Ellipsis)) {
+                        pointed_fn_variadic = true;
+                        consume();
+                        break;
+                    }
+                    if (check(TokenKind::RParen)) break;
+                    if (!is_type_start()) {
+                        consume();
+                        if (match(TokenKind::Comma)) continue;
+                        break;
+                    }
+                    Node* p = parse_param();
+                    if (p) pointed_fn_params.push_back(p);
+                    if (!match(TokenKind::Comma)) break;
+                }
+            }
+            expect(TokenKind::RParen);
             ts.is_fn_ptr = true; // return type is a function pointer
+            if (!fn_returning_fptr) {
+                decl_n_fn_ptr_params = static_cast<int>(pointed_fn_params.size());
+                decl_fn_ptr_variadic = pointed_fn_variadic;
+                if (!pointed_fn_params.empty()) {
+                    decl_fn_ptr_params = arena_.alloc_array<Node*>(decl_n_fn_ptr_params);
+                    for (int i = 0; i < decl_n_fn_ptr_params; ++i) {
+                        decl_fn_ptr_params[i] = pointed_fn_params[i];
+                    }
+                }
+            }
         }
         if (!fn_returning_fptr) is_fptr_global = true;
     } else {
-    parse_declarator(ts, &decl_name);
+    parse_declarator(ts, &decl_name, &decl_fn_ptr_params, &decl_n_fn_ptr_params,
+                     &decl_fn_ptr_variadic);
     if (is_incomplete_object_type(ts) && !check(TokenKind::LParen))
         throw std::runtime_error(std::string("object has incomplete type: ") + (ts.tag ? ts.tag : "<anonymous>"));
     }
@@ -571,13 +612,18 @@ Node* Parser::parse_top_level() {
     // Global variable (possibly with initializer and multiple declarators)
     std::vector<Node*> gvars;
 
-    auto make_gvar = [&](TypeSpec gts, const char* gname, Node* ginit) {
+    auto make_gvar = [&](TypeSpec gts, const char* gname, Node* ginit,
+                         Node** fn_ptr_params, int n_fn_ptr_params,
+                         bool fn_ptr_variadic) {
         Node* gv = make_node(NK_GLOBAL_VAR, ln);
         gv->type      = gts;
         gv->name      = gname;
         gv->init      = ginit;
         gv->is_static = is_static;
         gv->is_extern = is_extern;
+        gv->fn_ptr_params = fn_ptr_params;
+        gv->n_fn_ptr_params = n_fn_ptr_params;
+        gv->fn_ptr_variadic = fn_ptr_variadic;
         if (gname) var_types_[gname] = gts;  // for typeof(var) resolution
         return gv;
     };
@@ -586,19 +632,25 @@ Node* Parser::parse_top_level() {
     if (match(TokenKind::Assign)) {
         first_init = parse_initializer();
     }
-    gvars.push_back(make_gvar(ts, decl_name, first_init));
+    gvars.push_back(make_gvar(ts, decl_name, first_init, decl_fn_ptr_params,
+                              decl_n_fn_ptr_params, decl_fn_ptr_variadic));
 
     while (match(TokenKind::Comma)) {
         TypeSpec ts2 = base_ts;
         // Preserve typedef ptr_level and array dims for each additional declarator.
         ts2.array_size_expr = nullptr;
         const char* n2 = nullptr;
-        parse_declarator(ts2, &n2);
+        Node** fn_ptr_params2 = nullptr;
+        int n_fn_ptr_params2 = 0;
+        bool fn_ptr_variadic2 = false;
+        parse_declarator(ts2, &n2, &fn_ptr_params2, &n_fn_ptr_params2, &fn_ptr_variadic2);
         skip_attributes();
         skip_asm();
         Node* init2 = nullptr;
         if (match(TokenKind::Assign)) init2 = parse_initializer();
-        if (n2) gvars.push_back(make_gvar(ts2, n2, init2));
+        if (n2) gvars.push_back(make_gvar(ts2, n2, init2,
+                                          fn_ptr_params2, n_fn_ptr_params2,
+                                          fn_ptr_variadic2));
     }
     match(TokenKind::Semi);
 

@@ -359,6 +359,8 @@ class Lowerer {
     Function* fn = nullptr;
     std::unordered_map<std::string, LocalId> locals;
     std::unordered_map<uint32_t, TypeSpec> local_types;
+    std::unordered_map<std::string, FnPtrSig> local_fn_ptr_sigs;
+    std::unordered_map<std::string, FnPtrSig> param_fn_ptr_sigs;
     std::unordered_map<std::string, GlobalId> static_globals;
     std::unordered_map<std::string, uint32_t> params;
     BlockId current_block{};
@@ -379,6 +381,55 @@ class Lowerer {
     qt.spec = t;
     qt.category = c;
     return qt;
+  }
+
+  std::optional<FnPtrSig> fn_ptr_sig_from_decl_node(const Node* n) {
+    if (!n || !n->type.is_fn_ptr) return std::nullopt;
+    FnPtrSig sig{};
+    TypeSpec ret_ts = n->type;
+    if (ret_ts.ptr_level > 0) {
+      ret_ts.ptr_level -= 1;
+    }
+    ret_ts.is_fn_ptr = false;
+    sig.return_type = qtype_from(ret_ts);
+    sig.variadic = n->fn_ptr_variadic;
+    sig.unspecified_params = (n->n_fn_ptr_params == 0 && !n->fn_ptr_variadic);
+    for (int i = 0; i < n->n_fn_ptr_params; ++i) {
+      const Node* p = n->fn_ptr_params ? n->fn_ptr_params[i] : nullptr;
+      if (!p) continue;
+      sig.params.push_back(qtype_from(p->type, ValueCategory::LValue));
+    }
+    return sig;
+  }
+
+  std::optional<TypeSpec> infer_call_result_type_from_callee(FunctionCtx* ctx, const Node* callee) {
+    if (!callee) return std::nullopt;
+    if (callee->kind == NK_DEREF) return infer_call_result_type_from_callee(ctx, callee->left);
+    if (callee->kind != NK_VAR || !callee->name || !callee->name[0]) return std::nullopt;
+    const std::string name = callee->name;
+    if (ctx) {
+      const auto pit = ctx->param_fn_ptr_sigs.find(name);
+      if (pit != ctx->param_fn_ptr_sigs.end()) return pit->second.return_type.spec;
+      const auto lit = ctx->local_fn_ptr_sigs.find(name);
+      if (lit != ctx->local_fn_ptr_sigs.end()) return lit->second.return_type.spec;
+      const auto sit = ctx->static_globals.find(name);
+      if (sit != ctx->static_globals.end()) {
+        if (const GlobalVar* gv = module_->find_global(sit->second)) {
+          if (gv->fn_ptr_sig) return gv->fn_ptr_sig->return_type.spec;
+        }
+      }
+    }
+    const auto git = module_->global_index.find(name);
+    if (git != module_->global_index.end()) {
+      if (const GlobalVar* gv = module_->find_global(git->second)) {
+        if (gv->fn_ptr_sig) return gv->fn_ptr_sig->return_type.spec;
+      }
+    }
+    const auto fit = module_->fn_index.find(name);
+    if (fit != module_->fn_index.end() && fit->second.value < module_->functions.size()) {
+      return module_->functions[fit->second.value].return_type.spec;
+    }
+    return std::nullopt;
   }
 
   TypeSpec infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
@@ -625,8 +676,10 @@ class Lowerer {
       Param param{};
       param.name = p->name ? p->name : "<anon_param>";
       param.type = qtype_from(p->type, ValueCategory::LValue);
+      param.fn_ptr_sig = fn_ptr_sig_from_decl_node(p);
       param.span = make_span(p);
       ctx.params[param.name] = static_cast<uint32_t>(fn.params.size());
+      if (param.fn_ptr_sig) ctx.param_fn_ptr_sigs[param.name] = *param.fn_ptr_sig;
       fn.params.push_back(std::move(param));
     }
 
@@ -698,6 +751,7 @@ class Lowerer {
     g.id = next_global_id();  // allocated AFTER any synthetic globals
     g.name = gv->name ? gv->name : "<anon_global>";
     g.type = qtype_from(gv->type, ValueCategory::LValue);
+    g.fn_ptr_sig = fn_ptr_sig_from_decl_node(gv);
     g.linkage = {gv->is_static, gv->is_extern, false};
     g.is_const = gv->type.is_const;
     g.span = make_span(gv);
@@ -730,6 +784,7 @@ class Lowerer {
     g.id = next_global_id();
     g.name = "__static_local_" + sanitize_symbol(ctx.fn->name) + "_" + std::to_string(g.id.value);
     g.type = qtype_from(n->type, ValueCategory::LValue);
+    g.fn_ptr_sig = fn_ptr_sig_from_decl_node(n);
     g.linkage = {true, false, false};  // internal linkage
     g.is_const = n->type.is_const;
     g.span = make_span(n);
@@ -952,6 +1007,8 @@ class Lowerer {
         d.id = next_local_id();
         d.name = n->name ? n->name : "<anon_local>";
         d.type = qtype_from(n->type, ValueCategory::LValue);
+        d.fn_ptr_sig = fn_ptr_sig_from_decl_node(n);
+        if (d.fn_ptr_sig) ctx.local_fn_ptr_sigs[d.name] = *d.fn_ptr_sig;
         if (n->type.array_rank > 0 && n->type.array_size_expr &&
             (n->type.array_size <= 0 || n->type.array_dims[0] <= 0)) {
           d.vla_size = lower_expr(&ctx, n->type.array_size_expr);
@@ -1893,7 +1950,11 @@ class Lowerer {
         CallExpr c{};
         c.callee = lower_expr(ctx, n->left);
         for (int i = 0; i < n->n_children; ++i) c.args.push_back(lower_expr(ctx, n->children[i]));
-        return append_expr(n, c, n->type);
+        TypeSpec ts = n->type;
+        if (auto inferred = infer_call_result_type_from_callee(ctx, n->left)) {
+          ts = *inferred;
+        }
+        return append_expr(n, c, ts);
       }
       case NK_VA_ARG: {
         VaArgExpr v{};
