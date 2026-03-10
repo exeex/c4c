@@ -93,8 +93,14 @@ Node* Parser::parse_local_decl() {
         ts.array_size_expr = nullptr;
         const char* vname = nullptr;
         parse_declarator(ts, &vname);
-        // Skip K&R-style function-type suffix: `float fx ()` in local decls
-        if (check(TokenKind::LParen)) skip_paren_group();
+        // Skip K&R-style function-type suffix: `float fx ()` in local decls.
+        // Don't create a NK_DECL for these — they're forward declarations handled
+        // implicitly when the function is called via DeclRef.
+        bool is_kr_fn_decl = false;
+        if (check(TokenKind::LParen)) {
+            skip_paren_group();
+            is_kr_fn_decl = true;
+        }
         skip_attributes();
         skip_asm();
         skip_attributes();
@@ -104,6 +110,9 @@ Node* Parser::parse_local_decl() {
             match(TokenKind::Semi);
             return make_node(NK_EMPTY, ln);
         }
+
+        if (is_kr_fn_decl) continue;  // K&R fn decl: no local variable
+
         if (is_incomplete_object_type(ts))
             throw std::runtime_error(std::string("object has incomplete type: ") + (ts.tag ? ts.tag : "<anonymous>"));
 
@@ -124,6 +133,7 @@ Node* Parser::parse_local_decl() {
 
     match(TokenKind::Semi);
 
+    if (decls.empty()) return make_node(NK_EMPTY, ln);
     if (decls.size() == 1) return decls[0];
 
     // Multiple declarators in one declaration statement (e.g. `int a, b;`):
