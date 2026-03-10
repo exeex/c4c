@@ -5018,7 +5018,16 @@ class HirEmitter {
 
   void emit_stmt_impl(FnCtx& ctx, const SwitchStmt& s) {
     TypeSpec ts{};
-    const std::string val = emit_rval_id(ctx, s.cond, ts);
+    std::string val = emit_rval_id(ctx, s.cond, ts);
+    // C requires integer promotion on the controlling expression.
+    if (ts.ptr_level == 0 && ts.array_rank == 0 && is_any_int(ts.base)) {
+      TypeBase promoted = integer_promote(ts.base);
+      if (promoted != ts.base) {
+        TypeSpec promoted_ts{}; promoted_ts.base = promoted;
+        val = coerce(ctx, val, ts, promoted_ts);
+        ts = promoted_ts;
+      }
+    }
     const std::string ty  = llvm_ty(ts);
 
     // Default label: use explicit default block if present, else the break (after-switch) block
