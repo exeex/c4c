@@ -3245,12 +3245,8 @@ class HirEmitter {
     };
     for (const auto& row : cmp) {
       if (row.op == b.op) {
-        TypeSpec cmp_res_spec{};
-        cmp_res_spec.base = TB_INT;
-        if (res_spec.base == TB_BOOL && res_spec.ptr_level == 0 && res_spec.array_rank == 0) {
-          cmp_res_spec.base = TB_BOOL;
-        }
-        const std::string cmp_res_ty = llvm_ty(cmp_res_spec);
+        // C comparisons always yield int. Always zext i1 → i32 so the returned
+        // value matches the TB_INT TypeSpec reported by resolve_payload_type.
         const std::string cmp_tmp = fresh_tmp(ctx);
         if (lf) {
           emit_instr(ctx, cmp_tmp + " = fcmp " + row.f + " " + op_ty + " " + lv + ", " + rv);
@@ -3261,9 +3257,8 @@ class HirEmitter {
           const char* pred = cmp_ls ? row.is : row.iu;
           emit_instr(ctx, cmp_tmp + " = icmp " + pred + " " + op_ty + " " + lv + ", " + rv);
         }
-        if (cmp_res_ty == "i1") return cmp_tmp;
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = zext i1 " + cmp_tmp + " to " + cmp_res_ty);
+        emit_instr(ctx, tmp + " = zext i1 " + cmp_tmp + " to i32");
         return tmp;
       }
     }
