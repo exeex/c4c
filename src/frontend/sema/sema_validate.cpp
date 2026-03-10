@@ -388,6 +388,10 @@ class Validator {
     if (ts.array_rank > 0) return false;
     if (ts.ptr_level > 0) return false;
     if (ts.base == TB_STRUCT || ts.base == TB_UNION) return false;
+    // Complex types are typically initialized piecemeal via __real/__imag;
+    // exclude them to avoid false positives.
+    if (ts.base >= TB_COMPLEX_FLOAT && ts.base <= TB_COMPLEX_ULONGLONG)
+      return false;
     return true;
   }
 
