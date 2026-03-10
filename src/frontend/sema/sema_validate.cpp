@@ -332,6 +332,11 @@ bool implicit_convertible(const TypeSpec& dst_raw, const TypeSpec& src_raw,
   // Arithmetic scalar conversions are allowed.
   if (is_arithmetic_base(dst.base) && is_arithmetic_base(src.base)) return true;
 
+  // _Complex types convert freely among themselves and to/from arithmetic types.
+  const bool d_cx = (dst.base >= TB_COMPLEX_FLOAT && dst.base <= TB_COMPLEX_ULONGLONG);
+  const bool s_cx = (src.base >= TB_COMPLEX_FLOAT && src.base <= TB_COMPLEX_ULONGLONG);
+  if (d_cx || s_cx) return true;
+
   return dst.base == src.base;
 }
 
