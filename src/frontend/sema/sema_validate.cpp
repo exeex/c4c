@@ -1064,9 +1064,9 @@ class Validator {
         if (!is_complete_object_type(n->type)) {
           emit(n->line, "cast to incomplete struct/union object type");
         }
-        if (drops_const_on_ptr_assign(n->type, src.type)) {
-          emit(n->line, "cast discards const qualifier");
-        }
+        // Note: explicit C casts that discard const are permitted by the
+        // standard (C11 6.3.2.3); GCC emits a -Wcast-qual warning but not
+        // an error.  Do not reject them here.
         return out;
       }
       case NK_TERNARY: {
