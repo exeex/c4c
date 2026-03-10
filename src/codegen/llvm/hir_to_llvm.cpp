@@ -2810,7 +2810,13 @@ class HirEmitter {
     const std::string op_ty  = llvm_ty(lts);
     // lf/ls must be false when the LLVM type is ptr (even if base is double/float).
     const bool lf  = is_float_base(lts.base) && lts.ptr_level == 0 && lts.array_rank == 0;
+    // For arithmetic ops, use the UAC result type's signedness (res_spec includes usual
+    // arithmetic conversions, so `int op unsigned_int` → unsigned). For comparisons, use
+    // the operand type directly since comparisons always return int regardless of UAC.
     const bool ls  = is_signed_int(lts.base) && lts.ptr_level == 0 && lts.array_rank == 0;
+    // arith_ls: use signed arithmetic only when BOTH operands are signed integer types.
+    // When either operand is unsigned (per C's usual arithmetic conversions), use unsigned.
+    const bool arith_ls = ls && is_signed_int(rts.base) && rts.ptr_level == 0 && rts.array_rank == 0;
 
     // Pointer arithmetic: ptr +/- int and int + ptr.
     if (b.op == BinaryOp::Add || b.op == BinaryOp::Sub) {
@@ -2898,7 +2904,7 @@ class HirEmitter {
     };
     for (const auto& row : arith) {
       if (row.op == b.op) {
-        const char* instr = lf ? row.f : (ls ? row.i_s : row.i_u);
+        const char* instr = lf ? row.f : (arith_ls ? row.i_s : row.i_u);
         if (!instr) break;
         const std::string tmp = fresh_tmp(ctx);
         emit_instr(ctx, tmp + " = " + instr + " " + op_ty + " " + lv + ", " + rv);
@@ -2927,7 +2933,10 @@ class HirEmitter {
         if (lf) {
           emit_instr(ctx, cmp_tmp + " = fcmp " + row.f + " " + op_ty + " " + lv + ", " + rv);
         } else {
-          const char* pred = ls ? row.is : row.iu;
+          // Use signed comparison only when BOTH operands are signed (UAC).
+          // If either operand is unsigned, use unsigned comparison predicate.
+          const bool cmp_ls = ls && is_signed_int(rts.base) && rts.ptr_level == 0 && rts.array_rank == 0;
+          const char* pred = cmp_ls ? row.is : row.iu;
           emit_instr(ctx, cmp_tmp + " = icmp " + pred + " " + op_ty + " " + lv + ", " + rv);
         }
         if (cmp_res_ty == "i1") return cmp_tmp;
