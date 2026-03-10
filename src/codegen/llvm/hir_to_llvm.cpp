@@ -1979,16 +1979,18 @@ class HirEmitter {
       return tmp;
     }
 
-    // int → float
-    if (is_any_int(from_ts.base) && is_float_base(to_ts.base)) {
+    // int → float (only for non-pointer scalar float types)
+    if (is_any_int(from_ts.base) && from_ts.ptr_level == 0 &&
+        is_float_base(to_ts.base) && to_ts.ptr_level == 0 && to_ts.array_rank == 0) {
       const std::string tmp = fresh_tmp(ctx);
       const std::string op = is_signed_int(from_ts.base) ? "sitofp" : "uitofp";
       emit_instr(ctx, tmp + " = " + op + " " + ft + " " + val + " to " + tt);
       return tmp;
     }
 
-    // float → int
-    if (is_float_base(from_ts.base) && is_any_int(to_ts.base)) {
+    // float → int (only for non-pointer scalar types)
+    if (is_float_base(from_ts.base) && from_ts.ptr_level == 0 && from_ts.array_rank == 0 &&
+        is_any_int(to_ts.base) && to_ts.ptr_level == 0) {
       const std::string tmp = fresh_tmp(ctx);
       const std::string op = is_signed_int(to_ts.base) ? "fptosi" : "fptoui";
       emit_instr(ctx, tmp + " = " + op + " " + ft + " " + val + " to " + tt);
