@@ -46,8 +46,8 @@ if `known_issues.md` exists, fix the issues first, else pick a fail case in `tes
 2. Capture our IR and classify the failure type to determine which file to patch:
    - `FRONTEND_FAIL`         → `src/frontend/parser/` or `src/frontend/sema/ast_to_hir.cpp`
    - `BACKEND_FAIL` / `RUNTIME_MISMATCH` → `src/codegen/llvm/hir_to_llvm.cpp`
-   - gen hir: `build/tiny-c2ll-next --dump-hir /path/to/case.c`
-   - gen llvm ir: `build/tiny-c2ll-next /path/to/case.c`
+   - gen hir: `build/c4cll --dump-hir /path/to/case.c`
+   - gen llvm ir: `build/c4cll /path/to/case.c`
 3. Capture clang IR on same target triple:
    - `clang -S -emit-llvm -O0 <case>.c -o /tmp/clang.ll`
    - (Use host triple by default; only add `-target aarch64-unknown-linux-gnu` if the test is explicitly arm64-specific)
