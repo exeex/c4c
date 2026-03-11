@@ -5020,9 +5020,11 @@ class HirEmitter {
     const std::string cond_v = emit_rval_id(ctx, t.cond, cond_ts);
     const std::string cond_i1 = to_bool(ctx, cond_v, cond_ts);
 
-    const std::string then_lbl = fresh_lbl(ctx, "tern.then.");
-    const std::string else_lbl = fresh_lbl(ctx, "tern.else.");
-    const std::string end_lbl  = fresh_lbl(ctx, "tern.end.");
+    const std::string then_lbl     = fresh_lbl(ctx, "tern.then.");
+    const std::string then_end_lbl = fresh_lbl(ctx, "tern.then.end.");
+    const std::string else_lbl     = fresh_lbl(ctx, "tern.else.");
+    const std::string else_end_lbl = fresh_lbl(ctx, "tern.else.end.");
+    const std::string end_lbl      = fresh_lbl(ctx, "tern.end.");
     TypeSpec res_spec = resolve_expr_type(ctx, e);
     if (!has_concrete_type(res_spec)) res_spec.base = TB_INT;
     const std::string res_ty = llvm_ty(res_spec);
@@ -5033,12 +5035,16 @@ class HirEmitter {
     TypeSpec then_ts{};
     std::string then_v = emit_rval_id(ctx, t.then_expr, then_ts);
     then_v = coerce(ctx, then_v, then_ts, res_spec);
+    emit_term(ctx, "br label %" + then_end_lbl);
+    emit_lbl(ctx, then_end_lbl);
     emit_term(ctx, "br label %" + end_lbl);
 
     emit_lbl(ctx, else_lbl);
     TypeSpec else_ts{};
     std::string else_v = emit_rval_id(ctx, t.else_expr, else_ts);
     else_v = coerce(ctx, else_v, else_ts, res_spec);
+    emit_term(ctx, "br label %" + else_end_lbl);
+    emit_lbl(ctx, else_end_lbl);
     emit_term(ctx, "br label %" + end_lbl);
 
     emit_lbl(ctx, end_lbl);
@@ -5053,8 +5059,8 @@ class HirEmitter {
     };
     const std::string tmp = fresh_tmp(ctx);
     emit_instr(ctx, tmp + " = phi " + res_ty +
-                        " [ " + void_to_zero(then_v) + ", %" + then_lbl + " ]," +
-                        " [ " + void_to_zero(else_v) + ", %" + else_lbl + " ]");
+                        " [ " + void_to_zero(then_v) + ", %" + then_end_lbl + " ]," +
+                        " [ " + void_to_zero(else_v) + ", %" + else_end_lbl + " ]");
     return tmp;
   }
 
