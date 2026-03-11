@@ -4622,12 +4622,15 @@ class HirEmitter {
       fn_name = r->name;
     }
 
-    const bool builtin_fallback = builtin_id == BuiltinId::Unknown && has_builtin_prefix(fn_name);
     const bool builtin_special =
         builtin && builtin->lowering != BuiltinLoweringKind::AliasCall;
 
+    if (builtin_id == BuiltinId::Unknown && has_builtin_prefix(fn_name)) {
+      throw std::runtime_error("HirEmitter: unsupported builtin call: " + fn_name);
+    }
+
     // Handle GCC/Clang builtins
-    if (builtin_special || builtin_fallback) {
+    if (builtin_special) {
       if (builtin_id == BuiltinId::Memcpy && call.args.size() >= 3) {
         TypeSpec dst_ts{};
         TypeSpec src_ts{};
@@ -4996,11 +4999,6 @@ class HirEmitter {
                             elem_ty + " " + imag_v + ", 1");
         return out;
       }
-      // Unknown builtin: emit as 0/null
-      if (ret_ty == "void") return "";
-      if (!ret_ty.empty() && (ret_ty[0] == '{' || ret_ty[0] == '%' || ret_ty[0] == '['))
-        return "zeroinitializer";
-      return (ret_ty == "ptr") ? "null" : "0";
     }
 
     const Function* target_fn = nullptr;
