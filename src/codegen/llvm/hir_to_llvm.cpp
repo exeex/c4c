@@ -2479,8 +2479,17 @@ class HirEmitter {
 
   // ── Bitfield load/store helpers ─────────────────────────────────────────────
 
+  // Determine the promoted LLVM type for a bitfield.
+  // C integer promotion: if bit_width fits in int (<=31 unsigned, <=32 signed),
+  // promote to i32. Otherwise keep the storage unit type (e.g. i64).
+  static int bitfield_promoted_bits(const BitfieldAccess& bf) {
+    if (bf.bit_width <= 31) return 32;  // fits in int
+    if (bf.bit_width == 32) return 32;  // fits in int (signed) or uint (unsigned)
+    return bf.storage_unit_bits;        // >32 bits: use storage type (i64)
+  }
+
   // Load a bitfield value from a storage unit pointer.
-  // Returns an i32 value (bitfield values are promoted to int per C standard).
+  // Returns a value of the promoted type (i32 for <=32-bit fields, i64 for wider).
   std::string emit_bitfield_load(FnCtx& ctx, const std::string& unit_ptr,
                                   const BitfieldAccess& bf) {
     const std::string unit_ty = "i" + std::to_string(bf.storage_unit_bits);
@@ -2511,15 +2520,17 @@ class HirEmitter {
       emit_instr(ctx, result + " = ashr " + unit_ty + " " + shl +
                           ", " + std::to_string(shift_amt));
     }
-    // Truncate or extend to i32 (C integer promotion)
-    if (bf.storage_unit_bits != 32) {
+    // Truncate or extend to promoted type
+    const int promoted_bits = bitfield_promoted_bits(bf);
+    const std::string promoted_ty = "i" + std::to_string(promoted_bits);
+    if (bf.storage_unit_bits != promoted_bits) {
       const std::string promoted = fresh_tmp(ctx);
-      if (bf.storage_unit_bits > 32) {
-        emit_instr(ctx, promoted + " = trunc " + unit_ty + " " + result + " to i32");
+      if (bf.storage_unit_bits > promoted_bits) {
+        emit_instr(ctx, promoted + " = trunc " + unit_ty + " " + result + " to " + promoted_ty);
       } else {
         emit_instr(ctx, promoted + " = " +
                         (bf.is_signed ? "sext " : "zext ") +
-                        unit_ty + " " + result + " to i32");
+                        unit_ty + " " + result + " to " + promoted_ty);
       }
       return promoted;
     }
@@ -3084,11 +3095,16 @@ class HirEmitter {
     std::vector<FieldStep> chain;
     TypeSpec field_ts{};
     find_field_chain(std::string(base_ts.tag), m.field, chain, field_ts);
-    // Bitfield values are promoted to int
+    // Bitfield values are promoted per C integer promotion rules
     if (!chain.empty() && chain.back().bit_width >= 0) {
-      TypeSpec int_ts{};
-      int_ts.base = chain.back().bf_is_signed ? TB_INT : TB_UINT;
-      return int_ts;
+      TypeSpec bf_ts{};
+      if (chain.back().bit_width > 32) {
+        // >32-bit bitfield: promote to the declared type (long long)
+        bf_ts.base = chain.back().bf_is_signed ? TB_LONGLONG : TB_ULONGLONG;
+      } else {
+        bf_ts.base = chain.back().bf_is_signed ? TB_INT : TB_UINT;
+      }
+      return bf_ts;
     }
     return field_ts;
   }
@@ -3510,6 +3526,27 @@ class HirEmitter {
 
       case UnaryOp::PreInc:
       case UnaryOp::PreDec: {
+        // Check for bitfield operand
+        const Expr& operand_e = get_expr(u.operand);
+        if (const auto* m = std::get_if<MemberExpr>(&operand_e.payload)) {
+          TypeSpec lhs_ts{};
+          BitfieldAccess bf;
+          const std::string bf_ptr = emit_member_lval(ctx, *m, lhs_ts, &bf);
+          if (bf.is_bitfield()) {
+            const int pbits = bitfield_promoted_bits(bf);
+            const std::string pty = "i" + std::to_string(pbits);
+            const std::string loaded = emit_bitfield_load(ctx, bf_ptr, bf);
+            const std::string delta = (u.op == UnaryOp::PreInc) ? "1" : "-1";
+            const std::string result = fresh_tmp(ctx);
+            emit_instr(ctx, result + " = add " + pty + " " + loaded + ", " + delta);
+            TypeSpec promoted_ts{};
+            promoted_ts.base = (pbits > 32) ? (bf.is_signed ? TB_LONGLONG : TB_ULONGLONG)
+                                             : (bf.is_signed ? TB_INT : TB_UINT);
+            emit_bitfield_store(ctx, bf_ptr, bf, result, promoted_ts);
+            // Re-read to get value masked to bitfield width (C semantics)
+            return emit_bitfield_load(ctx, bf_ptr, bf);
+          }
+        }
         TypeSpec pts{};
         const std::string ptr = emit_lval(ctx, u.operand, pts);
         const std::string pty = llvm_ty(pts);
@@ -3539,6 +3576,26 @@ class HirEmitter {
 
       case UnaryOp::PostInc:
       case UnaryOp::PostDec: {
+        // Check for bitfield operand
+        const Expr& post_operand_e = get_expr(u.operand);
+        if (const auto* m = std::get_if<MemberExpr>(&post_operand_e.payload)) {
+          TypeSpec lhs_ts{};
+          BitfieldAccess bf;
+          const std::string bf_ptr = emit_member_lval(ctx, *m, lhs_ts, &bf);
+          if (bf.is_bitfield()) {
+            const int pbits = bitfield_promoted_bits(bf);
+            const std::string pty = "i" + std::to_string(pbits);
+            const std::string old_val = emit_bitfield_load(ctx, bf_ptr, bf);
+            const std::string delta = (u.op == UnaryOp::PostInc) ? "1" : "-1";
+            const std::string new_val = fresh_tmp(ctx);
+            emit_instr(ctx, new_val + " = add " + pty + " " + old_val + ", " + delta);
+            TypeSpec promoted_ts{};
+            promoted_ts.base = (pbits > 32) ? (bf.is_signed ? TB_LONGLONG : TB_ULONGLONG)
+                                             : (bf.is_signed ? TB_INT : TB_UINT);
+            emit_bitfield_store(ctx, bf_ptr, bf, new_val, promoted_ts);
+            return old_val;  // post: return old value
+          }
+        }
         TypeSpec pts{};
         const std::string ptr = emit_lval(ctx, u.operand, pts);
         const std::string pty = llvm_ty(pts);
@@ -3958,11 +4015,14 @@ class HirEmitter {
     }
     // Bitfield compound assignment
     if (bf.is_bitfield() && a.op != AssignOp::Set) {
-      TypeSpec int_ts{}; int_ts.base = TB_INT;
+      const int pbits = bitfield_promoted_bits(bf);
+      const std::string promoted_ty = "i" + std::to_string(pbits);
+      TypeSpec promoted_ts{};
+      promoted_ts.base = (pbits > 32) ? (bf.is_signed ? TB_LONGLONG : TB_ULONGLONG)
+                                       : (bf.is_signed ? TB_INT : TB_UINT);
       const std::string loaded = emit_bitfield_load(ctx, lhs_ptr, bf);
-      // For compound ops, promote both to int and compute
       std::string lhs_op = loaded;
-      std::string rhs_op = coerce(ctx, rhs, rhs_ts, int_ts);
+      std::string rhs_op = coerce(ctx, rhs, rhs_ts, promoted_ts);
       const bool ls = bf.is_signed;
       const char* instr = nullptr;
       static const struct { AssignOp op; const char* is; const char* iu; } tbl[] = {
@@ -3977,8 +4037,8 @@ class HirEmitter {
       }
       if (!instr) throw std::runtime_error("HirEmitter: bitfield compound assign: unknown op");
       const std::string result = fresh_tmp(ctx);
-      emit_instr(ctx, result + " = " + instr + " i32 " + lhs_op + ", " + rhs_op);
-      emit_bitfield_store(ctx, lhs_ptr, bf, result, int_ts);
+      emit_instr(ctx, result + " = " + instr + " " + promoted_ty + " " + lhs_op + ", " + rhs_op);
+      emit_bitfield_store(ctx, lhs_ptr, bf, result, promoted_ts);
       return result;
     }
 
