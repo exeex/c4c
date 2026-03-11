@@ -77,102 +77,6 @@ static TypeSpec complex_component_ts(TypeBase b) {
   return ts;
 }
 
-static std::string builtin_dispatch_name(BuiltinId id, const std::string& fallback) {
-  if (id == BuiltinId::Unknown) return fallback;
-  const std::string name = std::string(builtin_name_from_id(id));
-  return name.empty() ? fallback : name;
-}
-
-static bool builtin_returns_pointer(BuiltinId id) {
-  switch (id) {
-    case BuiltinId::Memcpy:
-    case BuiltinId::Memmove:
-    case BuiltinId::Memset:
-    case BuiltinId::Memchr:
-    case BuiltinId::Strcpy:
-    case BuiltinId::Strncpy:
-    case BuiltinId::Strcat:
-    case BuiltinId::Strncat:
-    case BuiltinId::Strchr:
-    case BuiltinId::Strstr:
-    case BuiltinId::Malloc:
-    case BuiltinId::Calloc:
-    case BuiltinId::Realloc:
-    case BuiltinId::Alloca:
-      return true;
-    default:
-      return false;
-  }
-}
-
-static bool builtin_returns_int(BuiltinId id) {
-  switch (id) {
-    case BuiltinId::ConstantP:
-    case BuiltinId::SignBit:
-    case BuiltinId::SignBitF:
-    case BuiltinId::SignBitL:
-    case BuiltinId::AddOverflow:
-    case BuiltinId::SubOverflow:
-    case BuiltinId::MulOverflow:
-    case BuiltinId::ClassifyType:
-    case BuiltinId::IsGreater:
-    case BuiltinId::IsGreaterEqual:
-    case BuiltinId::IsLess:
-    case BuiltinId::IsLessEqual:
-    case BuiltinId::IsLessGreater:
-    case BuiltinId::IsUnordered:
-    case BuiltinId::IsNan:
-    case BuiltinId::IsNanF:
-    case BuiltinId::IsNanL:
-    case BuiltinId::IsInf:
-    case BuiltinId::IsInfF:
-    case BuiltinId::IsInfL:
-    case BuiltinId::IsFinite:
-    case BuiltinId::IsFiniteF:
-    case BuiltinId::IsFiniteL:
-    case BuiltinId::Finite:
-    case BuiltinId::FiniteF:
-    case BuiltinId::FiniteL:
-    case BuiltinId::IsInfSign:
-    case BuiltinId::Ffs:
-    case BuiltinId::FfsL:
-    case BuiltinId::FfsLL:
-    case BuiltinId::Clz:
-    case BuiltinId::ClzL:
-    case BuiltinId::ClzLL:
-    case BuiltinId::Ctz:
-    case BuiltinId::CtzL:
-    case BuiltinId::CtzLL:
-    case BuiltinId::Popcount:
-    case BuiltinId::PopcountL:
-    case BuiltinId::PopcountLL:
-    case BuiltinId::Parity:
-    case BuiltinId::ParityL:
-    case BuiltinId::ParityLL:
-      return true;
-    default:
-      return false;
-  }
-}
-
-static BuiltinId builtin_id_from_spelling(std::string_view spelling) {
-  return has_builtin_prefix(spelling) ? builtin_id_from_name(spelling)
-                                      : BuiltinId::Unknown;
-}
-
-static BuiltinId builtin_dispatch_id(BuiltinId explicit_id, const std::string& fallback) {
-  if (explicit_id != BuiltinId::Unknown) return explicit_id;
-  return builtin_id_from_spelling(fallback);
-}
-
-static BuiltinId builtin_dispatch_id(BuiltinId explicit_id, const Expr& callee_e) {
-  if (explicit_id != BuiltinId::Unknown) return explicit_id;
-  if (const auto* dr = std::get_if<DeclRef>(&callee_e.payload)) {
-    return builtin_id_from_spelling(dr->name);
-  }
-  return BuiltinId::Unknown;
-}
-
 static std::optional<TypeBase> builtin_fp_result_base(BuiltinId id) {
   switch (id) {
     case BuiltinId::HugeVal:
@@ -211,84 +115,6 @@ static std::optional<TypeBase> builtin_complex_result_base(BuiltinId id) {
       return TB_COMPLEX_LONGDOUBLE;
     default:
       return std::nullopt;
-  }
-}
-
-static std::optional<double> builtin_constant_fp_value(BuiltinId id) {
-  switch (id) {
-    case BuiltinId::HugeVal:
-    case BuiltinId::HugeValF:
-    case BuiltinId::HugeValL:
-    case BuiltinId::Inf:
-    case BuiltinId::InfF:
-    case BuiltinId::InfL:
-      return std::numeric_limits<double>::infinity();
-    case BuiltinId::Nan:
-    case BuiltinId::NanF:
-    case BuiltinId::NanL:
-    case BuiltinId::Nans:
-    case BuiltinId::NansF:
-    case BuiltinId::NansL:
-      return std::numeric_limits<double>::quiet_NaN();
-    default:
-      return std::nullopt;
-  }
-}
-
-static const char* builtin_fp_compare_predicate(BuiltinId id) {
-  switch (id) {
-    case BuiltinId::IsLess: return "olt";
-    case BuiltinId::IsLessEqual: return "ole";
-    case BuiltinId::IsGreater: return "ogt";
-    case BuiltinId::IsGreaterEqual: return "oge";
-    case BuiltinId::IsLessGreater: return "one";
-    default: return nullptr;
-  }
-}
-
-static bool builtin_is_isnan(BuiltinId id) {
-  return id == BuiltinId::IsNan || id == BuiltinId::IsNanF || id == BuiltinId::IsNanL;
-}
-
-static bool builtin_is_isinf(BuiltinId id) {
-  return id == BuiltinId::IsInf || id == BuiltinId::IsInfF || id == BuiltinId::IsInfL;
-}
-
-static bool builtin_is_isfinite(BuiltinId id) {
-  return id == BuiltinId::IsFinite || id == BuiltinId::IsFiniteF || id == BuiltinId::IsFiniteL ||
-         id == BuiltinId::Finite || id == BuiltinId::FiniteF || id == BuiltinId::FiniteL;
-}
-
-static bool builtin_is_ffs(BuiltinId id) {
-  return id == BuiltinId::Ffs || id == BuiltinId::FfsL || id == BuiltinId::FfsLL;
-}
-
-static bool builtin_is_ctz(BuiltinId id) {
-  return id == BuiltinId::Ctz || id == BuiltinId::CtzL || id == BuiltinId::CtzLL;
-}
-
-static bool builtin_is_clz(BuiltinId id) {
-  return id == BuiltinId::Clz || id == BuiltinId::ClzL || id == BuiltinId::ClzLL;
-}
-
-static bool builtin_is_popcount(BuiltinId id) {
-  return id == BuiltinId::Popcount || id == BuiltinId::PopcountL || id == BuiltinId::PopcountLL;
-}
-
-static bool builtin_is_parity(BuiltinId id) {
-  return id == BuiltinId::Parity || id == BuiltinId::ParityL || id == BuiltinId::ParityLL;
-}
-
-static bool builtin_uses_i64_width(BuiltinId id) {
-  switch (id) {
-    case BuiltinId::FfsLL:
-    case BuiltinId::CtzLL:
-    case BuiltinId::ClzLL:
-    case BuiltinId::PopcountLL:
-    case BuiltinId::ParityLL:
-      return true;
-    default:
-      return false;
   }
 }
 
@@ -1201,14 +1027,20 @@ class HirEmitter {
           default: return std::nullopt;
         }
       } else if constexpr (std::is_same_v<T, CallExpr>) {
-        const Expr& callee_e = get_expr(p.callee);
-        const BuiltinId builtin_id = builtin_dispatch_id(p.builtin_id, callee_e);
-        if (const auto value = builtin_constant_fp_value(builtin_id)) {
-          if (builtin_id == BuiltinId::HugeValF || builtin_id == BuiltinId::InfF)
-            return static_cast<double>(std::numeric_limits<float>::infinity());
-          if (builtin_id == BuiltinId::NanF || builtin_id == BuiltinId::NansF)
-            return static_cast<double>(std::numeric_limits<float>::quiet_NaN());
-          return value;
+        const BuiltinId builtin_id = p.builtin_id;
+        switch (builtin_constant_fp_kind(builtin_id)) {
+          case BuiltinConstantFpKind::Infinity:
+            if (builtin_id == BuiltinId::HugeValF || builtin_id == BuiltinId::InfF) {
+              return static_cast<double>(std::numeric_limits<float>::infinity());
+            }
+            return std::numeric_limits<double>::infinity();
+          case BuiltinConstantFpKind::QuietNaN:
+            if (builtin_id == BuiltinId::NanF || builtin_id == BuiltinId::NansF) {
+              return static_cast<double>(std::numeric_limits<float>::quiet_NaN());
+            }
+            return std::numeric_limits<double>::quiet_NaN();
+          case BuiltinConstantFpKind::None:
+            break;
         }
         return std::nullopt;
       } else {
@@ -1498,20 +1330,24 @@ class HirEmitter {
       } else if constexpr (std::is_same_v<T, LabelAddrExpr>) {
         return "blockaddress(@" + p.fn_name + ", %ulbl_" + p.label_name + ")";
       } else if constexpr (std::is_same_v<T, CallExpr>) {
-        const Expr& callee_e = get_expr(p.callee);
-        const BuiltinId builtin_id = builtin_dispatch_id(p.builtin_id, callee_e);
-        if (const auto value = builtin_constant_fp_value(builtin_id)) {
-          if (builtin_id == BuiltinId::HugeValF || builtin_id == BuiltinId::InfF) {
-            if (expected_ts.base == TB_FLOAT && expected_ts.ptr_level == 0)
-              return fp_to_float_literal(std::numeric_limits<float>::infinity());
-            return fp_to_hex(static_cast<double>(std::numeric_limits<float>::infinity()));
-          }
-          if (builtin_id == BuiltinId::NanF || builtin_id == BuiltinId::NansF) {
-            if (expected_ts.base == TB_FLOAT && expected_ts.ptr_level == 0)
-              return fp_to_float_literal(std::numeric_limits<float>::quiet_NaN());
-            return fp_to_hex(static_cast<double>(std::numeric_limits<float>::quiet_NaN()));
-          }
-          return fp_literal(expected_ts.base, *value);
+        const BuiltinId builtin_id = p.builtin_id;
+        switch (builtin_constant_fp_kind(builtin_id)) {
+          case BuiltinConstantFpKind::Infinity:
+            if (builtin_id == BuiltinId::HugeValF || builtin_id == BuiltinId::InfF) {
+              if (expected_ts.base == TB_FLOAT && expected_ts.ptr_level == 0)
+                return fp_to_float_literal(std::numeric_limits<float>::infinity());
+              return fp_to_hex(static_cast<double>(std::numeric_limits<float>::infinity()));
+            }
+            return fp_literal(expected_ts.base, std::numeric_limits<double>::infinity());
+          case BuiltinConstantFpKind::QuietNaN:
+            if (builtin_id == BuiltinId::NanF || builtin_id == BuiltinId::NansF) {
+              if (expected_ts.base == TB_FLOAT && expected_ts.ptr_level == 0)
+                return fp_to_float_literal(std::numeric_limits<float>::quiet_NaN());
+              return fp_to_hex(static_cast<double>(std::numeric_limits<float>::quiet_NaN()));
+            }
+            return fp_literal(expected_ts.base, std::numeric_limits<double>::quiet_NaN());
+          case BuiltinConstantFpKind::None:
+            break;
         }
         return (llvm_ty(expected_ts) == "ptr") ? "null" : "0";
       } else if constexpr (std::is_same_v<T, SizeofTypeExpr>) {
@@ -3267,8 +3103,7 @@ class HirEmitter {
   }
 
   TypeSpec resolve_payload_type(FnCtx& ctx, const CallExpr& c) {
-    const Expr& callee_e = get_expr(c.callee);
-    const BuiltinId builtin_id = builtin_dispatch_id(c.builtin_id, callee_e);
+    const BuiltinId builtin_id = c.builtin_id;
     if (builtin_id != BuiltinId::Unknown) {
       if (builtin_id == BuiltinId::Expect && !c.args.empty())
         return resolve_expr_type(ctx, c.args[0]);
@@ -3286,28 +3121,69 @@ class HirEmitter {
         default:
           break;
       }
-      if (const auto base = builtin_fp_result_base(builtin_id)) {
-        TypeSpec ts{};
-        ts.base = *base;
-        return ts;
-      }
-      if (const auto base = builtin_complex_result_base(builtin_id)) {
-        TypeSpec ts{};
-        ts.base = *base;
-        return ts;
-      }
-      if (builtin_returns_pointer(builtin_id)) {
-        TypeSpec void_ptr{};
-        void_ptr.base = TB_VOID;
-        void_ptr.ptr_level = 1;
-        return void_ptr;
-      }
-      if (builtin_returns_int(builtin_id)) {
-        TypeSpec builtin_int{};
-        builtin_int.base = TB_INT;
-        return builtin_int;
+      switch (builtin_result_kind(builtin_id)) {
+        case BuiltinResultKind::Pointer: {
+          TypeSpec void_ptr{};
+          void_ptr.base = TB_VOID;
+          void_ptr.ptr_level = 1;
+          return void_ptr;
+        }
+        case BuiltinResultKind::Int: {
+          TypeSpec ts{};
+          ts.base = TB_INT;
+          return ts;
+        }
+        case BuiltinResultKind::UShort: {
+          TypeSpec ts{};
+          ts.base = TB_USHORT;
+          return ts;
+        }
+        case BuiltinResultKind::UInt: {
+          TypeSpec ts{};
+          ts.base = TB_UINT;
+          return ts;
+        }
+        case BuiltinResultKind::ULongLong: {
+          TypeSpec ts{};
+          ts.base = TB_ULONGLONG;
+          return ts;
+        }
+        case BuiltinResultKind::Float: {
+          TypeSpec ts{};
+          ts.base = TB_FLOAT;
+          return ts;
+        }
+        case BuiltinResultKind::Double: {
+          TypeSpec ts{};
+          ts.base = TB_DOUBLE;
+          return ts;
+        }
+        case BuiltinResultKind::LongDouble: {
+          TypeSpec ts{};
+          ts.base = TB_LONGDOUBLE;
+          return ts;
+        }
+        case BuiltinResultKind::ComplexFloat: {
+          TypeSpec ts{};
+          ts.base = TB_COMPLEX_FLOAT;
+          return ts;
+        }
+        case BuiltinResultKind::ComplexDouble: {
+          TypeSpec ts{};
+          ts.base = TB_COMPLEX_DOUBLE;
+          return ts;
+        }
+        case BuiltinResultKind::ComplexLongDouble: {
+          TypeSpec ts{};
+          ts.base = TB_COMPLEX_LONGDOUBLE;
+          return ts;
+        }
+        case BuiltinResultKind::Void:
+        case BuiltinResultKind::Unknown:
+          break;
       }
     }
+    const Expr& callee_e = get_expr(c.callee);
     // For calls through (*local_var) where the local was initialized from a
     // known function, use that function's return type directly.  This handles
     // nested fn-ptr types like int(*(*)(...))(...) where TypeSpec alone is
@@ -4588,7 +4464,7 @@ class HirEmitter {
     const Expr& callee_e = get_expr(call.callee);
     bool unresolved_external_callee = false;
     std::string unresolved_external_name;
-    const BuiltinId builtin_id = builtin_dispatch_id(call.builtin_id, callee_e);
+    const BuiltinId builtin_id = call.builtin_id;
     const BuiltinInfo* builtin = builtin_by_id(builtin_id);
     if (builtin && builtin->category == BuiltinCategory::AliasCall &&
         !builtin->canonical_name.empty()) {
@@ -4689,16 +4565,25 @@ class HirEmitter {
         emit_term(ctx, "unreachable");
         return "";
       }
-      if (const auto fpv = builtin_constant_fp_value(builtin_id)) {
-        if (builtin_id == BuiltinId::HugeValF || builtin_id == BuiltinId::InfF) {
-          return fp_to_float_literal(std::numeric_limits<float>::infinity());
-        }
-        if (builtin_id == BuiltinId::NanF || builtin_id == BuiltinId::NansF) {
-          return fp_to_float_literal(std::numeric_limits<float>::quiet_NaN());
-        }
-        if (const auto base = builtin_fp_result_base(builtin_id)) {
-          return fp_literal(*base, *fpv);
-        }
+      switch (builtin_constant_fp_kind(builtin_id)) {
+        case BuiltinConstantFpKind::Infinity:
+          if (builtin_id == BuiltinId::HugeValF || builtin_id == BuiltinId::InfF) {
+            return fp_to_float_literal(std::numeric_limits<float>::infinity());
+          }
+          if (const auto base = builtin_fp_result_base(builtin_id)) {
+            return fp_literal(*base, std::numeric_limits<double>::infinity());
+          }
+          break;
+        case BuiltinConstantFpKind::QuietNaN:
+          if (builtin_id == BuiltinId::NanF || builtin_id == BuiltinId::NansF) {
+            return fp_to_float_literal(std::numeric_limits<float>::quiet_NaN());
+          }
+          if (const auto base = builtin_fp_result_base(builtin_id)) {
+            return fp_literal(*base, std::numeric_limits<double>::quiet_NaN());
+          }
+          break;
+        case BuiltinConstantFpKind::None:
+          break;
       }
       if (const char* pred = builtin_fp_compare_predicate(builtin_id);
           pred && call.args.size() == 2) {

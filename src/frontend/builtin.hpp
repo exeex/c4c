@@ -150,6 +150,28 @@ enum class BuiltinLoweringKind : uint8_t {
   TypeQuery,
 };
 
+enum class BuiltinResultKind : uint8_t {
+  Unknown = 0,
+  Void,
+  Int,
+  UShort,
+  UInt,
+  ULongLong,
+  Float,
+  Double,
+  LongDouble,
+  Pointer,
+  ComplexFloat,
+  ComplexDouble,
+  ComplexLongDouble,
+};
+
+enum class BuiltinConstantFpKind : uint8_t {
+  None = 0,
+  Infinity,
+  QuietNaN,
+};
+
 struct BuiltinInfo {
   BuiltinId id = BuiltinId::Unknown;
   std::string_view spelling{};
@@ -157,6 +179,11 @@ struct BuiltinInfo {
   BuiltinNodeKind node_kind = BuiltinNodeKind::None;
   BuiltinLoweringKind lowering = BuiltinLoweringKind::None;
   std::string_view canonical_name{};
+};
+
+struct KnownCallInfo {
+  std::string_view spelling{};
+  BuiltinResultKind result_kind = BuiltinResultKind::Unknown;
 };
 
 inline constexpr BuiltinInfo kBuiltinTable[] = {
@@ -391,8 +418,35 @@ inline constexpr BuiltinInfo kBuiltinTable[] = {
      BuiltinLoweringKind::TypeQuery, {}},
 };
 
+inline constexpr KnownCallInfo kKnownCallTable[] = {
+    {"malloc", BuiltinResultKind::Pointer},
+    {"calloc", BuiltinResultKind::Pointer},
+    {"realloc", BuiltinResultKind::Pointer},
+    {"strdup", BuiltinResultKind::Pointer},
+    {"strndup", BuiltinResultKind::Pointer},
+    {"memcpy", BuiltinResultKind::Pointer},
+    {"memmove", BuiltinResultKind::Pointer},
+    {"memset", BuiltinResultKind::Pointer},
+    {"alloca", BuiltinResultKind::Pointer},
+    {"memchr", BuiltinResultKind::Pointer},
+    {"strcpy", BuiltinResultKind::Pointer},
+    {"strncpy", BuiltinResultKind::Pointer},
+    {"strcat", BuiltinResultKind::Pointer},
+    {"strncat", BuiltinResultKind::Pointer},
+    {"strchr", BuiltinResultKind::Pointer},
+    {"strstr", BuiltinResultKind::Pointer},
+    {"free", BuiltinResultKind::Void},
+    {"abort", BuiltinResultKind::Void},
+    {"exit", BuiltinResultKind::Void},
+    {"puts", BuiltinResultKind::Void},
+};
+
 inline constexpr size_t builtin_count() {
   return sizeof(kBuiltinTable) / sizeof(kBuiltinTable[0]);
+}
+
+inline constexpr size_t known_call_count() {
+  return sizeof(kKnownCallTable) / sizeof(kKnownCallTable[0]);
 }
 
 inline constexpr const BuiltinInfo* builtin_by_id(BuiltinId id) {
@@ -405,6 +459,13 @@ inline constexpr const BuiltinInfo* builtin_by_id(BuiltinId id) {
 inline constexpr const BuiltinInfo* builtin_by_name(std::string_view spelling) {
   for (size_t i = 0; i < builtin_count(); ++i) {
     if (kBuiltinTable[i].spelling == spelling) return &kBuiltinTable[i];
+  }
+  return nullptr;
+}
+
+inline constexpr const KnownCallInfo* known_call_by_name(std::string_view spelling) {
+  for (size_t i = 0; i < known_call_count(); ++i) {
+    if (kKnownCallTable[i].spelling == spelling) return &kKnownCallTable[i];
   }
   return nullptr;
 }
@@ -441,6 +502,213 @@ inline constexpr bool builtin_is_alias_call(BuiltinId id) {
 inline constexpr bool builtin_is_parser_special(BuiltinId id) {
   const BuiltinInfo* info = builtin_by_id(id);
   return info && info->category == BuiltinCategory::ParserSpecial;
+}
+
+inline constexpr BuiltinResultKind builtin_result_kind(BuiltinId id) {
+  switch (id) {
+    case BuiltinId::Abort:
+    case BuiltinId::Exit:
+    case BuiltinId::Unreachable:
+      return BuiltinResultKind::Void;
+
+    case BuiltinId::Malloc:
+    case BuiltinId::Calloc:
+    case BuiltinId::Realloc:
+    case BuiltinId::Memcpy:
+    case BuiltinId::Memmove:
+    case BuiltinId::Memset:
+    case BuiltinId::Memchr:
+    case BuiltinId::Strcpy:
+    case BuiltinId::Strncpy:
+    case BuiltinId::Strcat:
+    case BuiltinId::Strncat:
+    case BuiltinId::Strchr:
+    case BuiltinId::Strstr:
+    case BuiltinId::Alloca:
+      return BuiltinResultKind::Pointer;
+
+    case BuiltinId::Bswap16:
+      return BuiltinResultKind::UShort;
+    case BuiltinId::Bswap32:
+      return BuiltinResultKind::UInt;
+    case BuiltinId::Bswap64:
+      return BuiltinResultKind::ULongLong;
+
+    case BuiltinId::FabsF:
+    case BuiltinId::InfF:
+    case BuiltinId::HugeValF:
+    case BuiltinId::NanF:
+    case BuiltinId::NansF:
+    case BuiltinId::CopysignF:
+      return BuiltinResultKind::Float;
+
+    case BuiltinId::Fabs:
+    case BuiltinId::Inf:
+    case BuiltinId::HugeVal:
+    case BuiltinId::Nan:
+    case BuiltinId::Nans:
+    case BuiltinId::Copysign:
+      return BuiltinResultKind::Double;
+
+    case BuiltinId::FabsL:
+    case BuiltinId::InfL:
+    case BuiltinId::HugeValL:
+    case BuiltinId::NanL:
+    case BuiltinId::NansL:
+    case BuiltinId::CopysignL:
+      return BuiltinResultKind::LongDouble;
+
+    case BuiltinId::ConjF:
+      return BuiltinResultKind::ComplexFloat;
+    case BuiltinId::Conj:
+      return BuiltinResultKind::ComplexDouble;
+    case BuiltinId::ConjL:
+      return BuiltinResultKind::ComplexLongDouble;
+
+    case BuiltinId::ConstantP:
+    case BuiltinId::SignBit:
+    case BuiltinId::SignBitF:
+    case BuiltinId::SignBitL:
+    case BuiltinId::AddOverflow:
+    case BuiltinId::SubOverflow:
+    case BuiltinId::MulOverflow:
+    case BuiltinId::ClassifyType:
+    case BuiltinId::IsGreater:
+    case BuiltinId::IsGreaterEqual:
+    case BuiltinId::IsLess:
+    case BuiltinId::IsLessEqual:
+    case BuiltinId::IsLessGreater:
+    case BuiltinId::IsUnordered:
+    case BuiltinId::IsNan:
+    case BuiltinId::IsNanF:
+    case BuiltinId::IsNanL:
+    case BuiltinId::IsInf:
+    case BuiltinId::IsInfF:
+    case BuiltinId::IsInfL:
+    case BuiltinId::IsFinite:
+    case BuiltinId::IsFiniteF:
+    case BuiltinId::IsFiniteL:
+    case BuiltinId::Finite:
+    case BuiltinId::FiniteF:
+    case BuiltinId::FiniteL:
+    case BuiltinId::IsInfSign:
+    case BuiltinId::Ffs:
+    case BuiltinId::FfsL:
+    case BuiltinId::FfsLL:
+    case BuiltinId::Clz:
+    case BuiltinId::ClzL:
+    case BuiltinId::ClzLL:
+    case BuiltinId::Ctz:
+    case BuiltinId::CtzL:
+    case BuiltinId::CtzLL:
+    case BuiltinId::Popcount:
+    case BuiltinId::PopcountL:
+    case BuiltinId::PopcountLL:
+    case BuiltinId::Parity:
+    case BuiltinId::ParityL:
+    case BuiltinId::ParityLL:
+      return BuiltinResultKind::Int;
+
+    default:
+      return BuiltinResultKind::Unknown;
+  }
+}
+
+inline constexpr BuiltinResultKind known_call_result_kind(std::string_view spelling) {
+  const KnownCallInfo* info = known_call_by_name(spelling);
+  return info ? info->result_kind : BuiltinResultKind::Unknown;
+}
+
+inline constexpr BuiltinConstantFpKind builtin_constant_fp_kind(BuiltinId id) {
+  switch (id) {
+    case BuiltinId::HugeVal:
+    case BuiltinId::HugeValF:
+    case BuiltinId::HugeValL:
+    case BuiltinId::Inf:
+    case BuiltinId::InfF:
+    case BuiltinId::InfL:
+      return BuiltinConstantFpKind::Infinity;
+    case BuiltinId::Nan:
+    case BuiltinId::NanF:
+    case BuiltinId::NanL:
+    case BuiltinId::Nans:
+    case BuiltinId::NansF:
+    case BuiltinId::NansL:
+      return BuiltinConstantFpKind::QuietNaN;
+    default:
+      return BuiltinConstantFpKind::None;
+  }
+}
+
+inline constexpr const char* builtin_fp_compare_predicate(BuiltinId id) {
+  switch (id) {
+    case BuiltinId::IsLess:
+      return "olt";
+    case BuiltinId::IsLessEqual:
+      return "ole";
+    case BuiltinId::IsGreater:
+      return "ogt";
+    case BuiltinId::IsGreaterEqual:
+      return "oge";
+    case BuiltinId::IsLessGreater:
+      return "one";
+    default:
+      return nullptr;
+  }
+}
+
+inline constexpr bool builtin_is_isnan(BuiltinId id) {
+  return id == BuiltinId::IsNan || id == BuiltinId::IsNanF ||
+         id == BuiltinId::IsNanL;
+}
+
+inline constexpr bool builtin_is_isinf(BuiltinId id) {
+  return id == BuiltinId::IsInf || id == BuiltinId::IsInfF ||
+         id == BuiltinId::IsInfL;
+}
+
+inline constexpr bool builtin_is_isfinite(BuiltinId id) {
+  return id == BuiltinId::IsFinite || id == BuiltinId::IsFiniteF ||
+         id == BuiltinId::IsFiniteL || id == BuiltinId::Finite ||
+         id == BuiltinId::FiniteF || id == BuiltinId::FiniteL;
+}
+
+inline constexpr bool builtin_is_ffs(BuiltinId id) {
+  return id == BuiltinId::Ffs || id == BuiltinId::FfsL ||
+         id == BuiltinId::FfsLL;
+}
+
+inline constexpr bool builtin_is_ctz(BuiltinId id) {
+  return id == BuiltinId::Ctz || id == BuiltinId::CtzL ||
+         id == BuiltinId::CtzLL;
+}
+
+inline constexpr bool builtin_is_clz(BuiltinId id) {
+  return id == BuiltinId::Clz || id == BuiltinId::ClzL ||
+         id == BuiltinId::ClzLL;
+}
+
+inline constexpr bool builtin_is_popcount(BuiltinId id) {
+  return id == BuiltinId::Popcount || id == BuiltinId::PopcountL ||
+         id == BuiltinId::PopcountLL;
+}
+
+inline constexpr bool builtin_is_parity(BuiltinId id) {
+  return id == BuiltinId::Parity || id == BuiltinId::ParityL ||
+         id == BuiltinId::ParityLL;
+}
+
+inline constexpr bool builtin_uses_i64_width(BuiltinId id) {
+  switch (id) {
+    case BuiltinId::FfsLL:
+    case BuiltinId::CtzLL:
+    case BuiltinId::ClzLL:
+    case BuiltinId::PopcountLL:
+    case BuiltinId::ParityLL:
+      return true;
+    default:
+      return false;
+  }
 }
 
 #undef TINYC2LL_BUILTIN_LIST

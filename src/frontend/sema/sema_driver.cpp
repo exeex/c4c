@@ -320,15 +320,6 @@ TypeSpec classify_binop_result_type(
   return usual_arithmetic_result_type(lhs, rhs);
 }
 
-std::string remap_builtin_et_name(std::string callee_name) {
-  const BuiltinInfo* builtin = builtin_by_name(callee_name);
-  if (builtin && builtin->category == BuiltinCategory::AliasCall &&
-      !builtin->canonical_name.empty()) {
-    callee_name = std::string(builtin->canonical_name);
-  }
-  return callee_name;
-}
-
 TypeSpec classify_known_call_return_type(const char* callee_name, bool* known);
 
 TypeSpec classify_known_builtin_return_type(BuiltinId id, bool* known) {
@@ -340,110 +331,32 @@ TypeSpec classify_known_builtin_return_type(BuiltinId id, bool* known) {
           std::string(builtin->canonical_name).c_str(), known);
     }
   }
-  switch (id) {
-    case BuiltinId::Malloc:
-    case BuiltinId::Calloc:
-    case BuiltinId::Realloc:
-    case BuiltinId::Memcpy:
-    case BuiltinId::Memmove:
-    case BuiltinId::Memset:
-    case BuiltinId::Memchr:
-    case BuiltinId::Strcpy:
-    case BuiltinId::Strncpy:
-    case BuiltinId::Strcat:
-    case BuiltinId::Strncat:
-    case BuiltinId::Strchr:
-    case BuiltinId::Strstr:
-    case BuiltinId::Alloca:
-      return ptr_to(TB_VOID);
-    case BuiltinId::Abort:
-    case BuiltinId::Exit:
-    case BuiltinId::Unreachable:
+  switch (builtin_result_kind(id)) {
+    case BuiltinResultKind::Void:
       return void_ts();
-    case BuiltinId::Bswap64:
-      return make_ts(TB_ULONGLONG);
-    case BuiltinId::Bswap32:
-      return make_ts(TB_UINT);
-    case BuiltinId::Bswap16:
+    case BuiltinResultKind::Pointer:
+      return ptr_to(TB_VOID);
+    case BuiltinResultKind::UShort:
       return make_ts(TB_USHORT);
-    case BuiltinId::FabsL:
-    case BuiltinId::InfL:
-    case BuiltinId::HugeValL:
-    case BuiltinId::NanL:
-    case BuiltinId::NansL:
-    case BuiltinId::CopysignL:
-      return make_ts(TB_LONGDOUBLE);
-    case BuiltinId::Fabs:
-    case BuiltinId::Inf:
-    case BuiltinId::HugeVal:
-    case BuiltinId::Nan:
-    case BuiltinId::Nans:
-    case BuiltinId::Copysign:
-      return double_ts();
-    case BuiltinId::FabsF:
-    case BuiltinId::InfF:
-    case BuiltinId::HugeValF:
-    case BuiltinId::NanF:
-    case BuiltinId::NansF:
-    case BuiltinId::CopysignF:
+    case BuiltinResultKind::UInt:
+      return make_ts(TB_UINT);
+    case BuiltinResultKind::ULongLong:
+      return make_ts(TB_ULONGLONG);
+    case BuiltinResultKind::Float:
       return float_ts();
-    case BuiltinId::ConstantP:
-    case BuiltinId::SignBit:
-    case BuiltinId::SignBitF:
-    case BuiltinId::SignBitL:
-    case BuiltinId::AddOverflow:
-    case BuiltinId::SubOverflow:
-    case BuiltinId::MulOverflow:
-    case BuiltinId::ClassifyType:
-    case BuiltinId::IsGreater:
-    case BuiltinId::IsGreaterEqual:
-    case BuiltinId::IsLess:
-    case BuiltinId::IsLessEqual:
-    case BuiltinId::IsLessGreater:
-    case BuiltinId::IsUnordered:
-    case BuiltinId::IsNan:
-    case BuiltinId::IsNanF:
-    case BuiltinId::IsNanL:
-    case BuiltinId::IsInf:
-    case BuiltinId::IsInfF:
-    case BuiltinId::IsInfL:
-    case BuiltinId::IsFinite:
-    case BuiltinId::IsFiniteF:
-    case BuiltinId::IsFiniteL:
-    case BuiltinId::Finite:
-    case BuiltinId::FiniteF:
-    case BuiltinId::FiniteL:
-    case BuiltinId::IsInfSign:
-    case BuiltinId::Ffs:
-    case BuiltinId::FfsL:
-    case BuiltinId::FfsLL:
-    case BuiltinId::Clz:
-    case BuiltinId::ClzL:
-    case BuiltinId::ClzLL:
-    case BuiltinId::Ctz:
-    case BuiltinId::CtzL:
-    case BuiltinId::CtzLL:
-    case BuiltinId::Popcount:
-    case BuiltinId::PopcountL:
-    case BuiltinId::PopcountLL:
-    case BuiltinId::Parity:
-    case BuiltinId::ParityL:
-    case BuiltinId::ParityLL:
-      return make_ts(TB_INT);
-    case BuiltinId::ConjF:
+    case BuiltinResultKind::Double:
+      return double_ts();
+    case BuiltinResultKind::LongDouble:
+      return make_ts(TB_LONGDOUBLE);
+    case BuiltinResultKind::ComplexFloat:
       return make_ts(TB_COMPLEX_FLOAT);
-    case BuiltinId::Conj:
+    case BuiltinResultKind::ComplexDouble:
       return make_ts(TB_COMPLEX_DOUBLE);
-    case BuiltinId::ConjL:
+    case BuiltinResultKind::ComplexLongDouble:
       return make_ts(TB_COMPLEX_LONGDOUBLE);
-    case BuiltinId::Unknown:
-    case BuiltinId::VaArg:
-    case BuiltinId::Offsetof:
-    case BuiltinId::TypesCompatibleP:
-    case BuiltinId::Expect:
-    case BuiltinId::VaStart:
-    case BuiltinId::VaEnd:
-    case BuiltinId::VaCopy:
+    case BuiltinResultKind::Int:
+      return make_ts(TB_INT);
+    case BuiltinResultKind::Unknown:
       if (known) *known = false;
       return int_ts();
   }
@@ -454,24 +367,14 @@ TypeSpec classify_known_builtin_return_type(BuiltinId id, bool* known) {
 TypeSpec classify_known_call_return_type(const char* callee_name, bool* known) {
   if (known) *known = true;
   if (!callee_name) return int_ts();
-  const BuiltinId builtin_id =
-      has_builtin_prefix(callee_name) ? builtin_id_from_name(callee_name) : BuiltinId::Unknown;
-  if (builtin_id != BuiltinId::Unknown) return classify_known_builtin_return_type(builtin_id, known);
-  std::string normalized_name = callee_name;
-  normalized_name = remap_builtin_et_name(normalized_name);
-  callee_name = normalized_name.c_str();
-  if (strcmp(callee_name, "malloc") == 0 || strcmp(callee_name, "calloc") == 0 ||
-      strcmp(callee_name, "realloc") == 0 || strcmp(callee_name, "strdup") == 0 ||
-      strcmp(callee_name, "strndup") == 0 || strcmp(callee_name, "memcpy") == 0 ||
-      strcmp(callee_name, "memmove") == 0 || strcmp(callee_name, "memset") == 0 ||
-      strcmp(callee_name, "alloca") == 0 || strcmp(callee_name, "memchr") == 0 ||
-      strcmp(callee_name, "strcpy") == 0 || strcmp(callee_name, "strncpy") == 0 ||
-      strcmp(callee_name, "strcat") == 0 || strcmp(callee_name, "strncat") == 0 ||
-      strcmp(callee_name, "strchr") == 0 || strcmp(callee_name, "strstr") == 0)
-    return ptr_to(TB_VOID);
-  if (strcmp(callee_name, "free") == 0 || strcmp(callee_name, "abort") == 0 ||
-      strcmp(callee_name, "exit") == 0 || strcmp(callee_name, "puts") == 0)
-    return void_ts();
+  switch (known_call_result_kind(callee_name)) {
+    case BuiltinResultKind::Pointer:
+      return ptr_to(TB_VOID);
+    case BuiltinResultKind::Void:
+      return void_ts();
+    default:
+      break;
+  }
   if (known) *known = false;
   return int_ts();
 }
