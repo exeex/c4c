@@ -351,7 +351,13 @@ static int compute_struct_size(const Module& mod, const std::string& tag) {
     return max_sz;
   }
   int total = 0;
-  for (const auto& f : sd.fields) total += compute_field_size(mod, f);
+  int last_llvm_idx = -1;
+  for (const auto& f : sd.fields) {
+    // Adjacent bitfields may share one backing storage unit.
+    if (f.llvm_idx == last_llvm_idx) continue;
+    last_llvm_idx = f.llvm_idx;
+    total += compute_field_size(mod, f);
+  }
   return total;
 }
 
@@ -2504,6 +2510,19 @@ class HirEmitter {
     return bf.storage_unit_bits;        // >32 bits: use storage type (i64)
   }
 
+  static TypeBase bitfield_promoted_base(int bit_width, bool is_signed, int storage_unit_bits) {
+    if (bit_width < 32) return TB_INT;
+    if (bit_width == 32) return is_signed ? TB_INT : TB_UINT;
+    if (storage_unit_bits > 32) return is_signed ? TB_LONGLONG : TB_ULONGLONG;
+    return is_signed ? TB_INT : TB_UINT;
+  }
+
+  static TypeSpec bitfield_promoted_ts(const BitfieldAccess& bf) {
+    TypeSpec ts{};
+    ts.base = bitfield_promoted_base(bf.bit_width, bf.is_signed, bf.storage_unit_bits);
+    return ts;
+  }
+
   // Load a bitfield value from a storage unit pointer.
   // Returns a value of the promoted type (i32 for <=32-bit fields, i64 for wider).
   std::string emit_bitfield_load(FnCtx& ctx, const std::string& unit_ptr,
@@ -3114,12 +3133,8 @@ class HirEmitter {
     // Bitfield values are promoted per C integer promotion rules
     if (!chain.empty() && chain.back().bit_width >= 0) {
       TypeSpec bf_ts{};
-      if (chain.back().bit_width > 32) {
-        // >32-bit bitfield: promote to the declared type (long long)
-        bf_ts.base = chain.back().bf_is_signed ? TB_LONGLONG : TB_ULONGLONG;
-      } else {
-        bf_ts.base = chain.back().bf_is_signed ? TB_INT : TB_UINT;
-      }
+      bf_ts.base = bitfield_promoted_base(
+          chain.back().bit_width, chain.back().bf_is_signed, chain.back().storage_unit_bits);
       return bf_ts;
     }
     return field_ts;
@@ -3555,9 +3570,7 @@ class HirEmitter {
             const std::string delta = (u.op == UnaryOp::PreInc) ? "1" : "-1";
             const std::string result = fresh_tmp(ctx);
             emit_instr(ctx, result + " = add " + pty + " " + loaded + ", " + delta);
-            TypeSpec promoted_ts{};
-            promoted_ts.base = (pbits > 32) ? (bf.is_signed ? TB_LONGLONG : TB_ULONGLONG)
-                                             : (bf.is_signed ? TB_INT : TB_UINT);
+            TypeSpec promoted_ts = bitfield_promoted_ts(bf);
             emit_bitfield_store(ctx, bf_ptr, bf, result, promoted_ts);
             // Re-read to get value masked to bitfield width (C semantics)
             return emit_bitfield_load(ctx, bf_ptr, bf);
@@ -3605,9 +3618,7 @@ class HirEmitter {
             const std::string delta = (u.op == UnaryOp::PostInc) ? "1" : "-1";
             const std::string new_val = fresh_tmp(ctx);
             emit_instr(ctx, new_val + " = add " + pty + " " + old_val + ", " + delta);
-            TypeSpec promoted_ts{};
-            promoted_ts.base = (pbits > 32) ? (bf.is_signed ? TB_LONGLONG : TB_ULONGLONG)
-                                             : (bf.is_signed ? TB_INT : TB_UINT);
+            TypeSpec promoted_ts = bitfield_promoted_ts(bf);
             emit_bitfield_store(ctx, bf_ptr, bf, new_val, promoted_ts);
             return old_val;  // post: return old value
           }
@@ -4035,13 +4046,11 @@ class HirEmitter {
     if (bf.is_bitfield() && a.op != AssignOp::Set) {
       const int pbits = bitfield_promoted_bits(bf);
       const std::string promoted_ty = "i" + std::to_string(pbits);
-      TypeSpec promoted_ts{};
-      promoted_ts.base = (pbits > 32) ? (bf.is_signed ? TB_LONGLONG : TB_ULONGLONG)
-                                       : (bf.is_signed ? TB_INT : TB_UINT);
+      TypeSpec promoted_ts = bitfield_promoted_ts(bf);
       const std::string loaded = emit_bitfield_load(ctx, lhs_ptr, bf);
       std::string lhs_op = loaded;
       std::string rhs_op = coerce(ctx, rhs, rhs_ts, promoted_ts);
-      const bool ls = bf.is_signed;
+      const bool ls = is_signed_int(promoted_ts.base);
       const char* instr = nullptr;
       static const struct { AssignOp op; const char* is; const char* iu; } tbl[] = {
         {AssignOp::Add, "add", "add"}, {AssignOp::Sub, "sub", "sub"},
