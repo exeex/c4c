@@ -2086,8 +2086,7 @@ class Lowerer {
         TypeSpec ts = n->type;
         if (n->builtin_id != BuiltinId::Unknown) {
           bool known = false;
-          std::string builtin_name = std::string(builtin_name_from_id(n->builtin_id));
-          TypeSpec builtin_ts = classify_known_call_return_type(builtin_name.c_str(), &known);
+          TypeSpec builtin_ts = classify_known_builtin_return_type(n->builtin_id, &known);
           if (known) ts = builtin_ts;
         } else if (auto inferred = infer_call_result_type_from_callee(ctx, n->left)) {
           ts = *inferred;

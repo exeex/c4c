@@ -331,7 +331,7 @@ std::string remap_builtin_et_name(std::string callee_name) {
 
 TypeSpec classify_known_call_return_type(const char* callee_name, bool* known);
 
-static TypeSpec classify_builtin_return_type(BuiltinId id, bool* known) {
+TypeSpec classify_known_builtin_return_type(BuiltinId id, bool* known) {
   if (known) *known = true;
   if (const BuiltinInfo* builtin = builtin_by_id(id)) {
     if (builtin->category == BuiltinCategory::AliasCall &&
@@ -456,7 +456,7 @@ TypeSpec classify_known_call_return_type(const char* callee_name, bool* known) {
   if (!callee_name) return int_ts();
   const BuiltinId builtin_id =
       has_builtin_prefix(callee_name) ? builtin_id_from_name(callee_name) : BuiltinId::Unknown;
-  if (builtin_id != BuiltinId::Unknown) return classify_builtin_return_type(builtin_id, known);
+  if (builtin_id != BuiltinId::Unknown) return classify_known_builtin_return_type(builtin_id, known);
   std::string normalized_name = callee_name;
   normalized_name = remap_builtin_et_name(normalized_name);
   callee_name = normalized_name.c_str();

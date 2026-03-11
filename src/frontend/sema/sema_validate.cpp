@@ -1090,8 +1090,7 @@ class Validator {
         }
         if (n->kind == NK_BUILTIN_CALL && n->builtin_id != BuiltinId::Unknown) {
           bool known = false;
-          const std::string builtin_name = std::string(builtin_name_from_id(n->builtin_id));
-          out.type = classify_known_call_return_type(builtin_name.c_str(), &known);
+          out.type = classify_known_builtin_return_type(n->builtin_id, &known);
           out.valid = known;
           return out;
         }
