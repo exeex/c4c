@@ -4447,7 +4447,9 @@ class HirEmitter {
       ret_spec = e.type.spec;
     }
     const std::string ret_ty = llvm_ty(ret_spec);
-    if (unresolved_external_callee) {
+    const bool builtin_special =
+        builtin && builtin->lowering != BuiltinLoweringKind::AliasCall;
+    if (unresolved_external_callee && !builtin_special) {
       record_extern_call_decl(unresolved_external_name, ret_ty);
     }
 
@@ -4458,9 +4460,6 @@ class HirEmitter {
     } else if (const auto* r = std::get_if<DeclRef>(&callee_e.payload)) {
       fn_name = r->name;
     }
-
-    const bool builtin_special =
-        builtin && builtin->lowering != BuiltinLoweringKind::AliasCall;
 
     if (builtin_id == BuiltinId::Unknown && has_builtin_prefix(fn_name)) {
       throw std::runtime_error("HirEmitter: unsupported builtin call: " + fn_name);
@@ -4506,6 +4505,86 @@ class HirEmitter {
         emit_instr(ctx, "call void @llvm.va_copy.p0.p0(ptr " + dst_ptr + ", ptr " + src_ptr + ")");
         return "";
       }
+      if (builtin_id == BuiltinId::Alloca && call.args.size() == 1) {
+        TypeSpec size_ts{};
+        std::string size = emit_rval_id(ctx, call.args[0], size_ts);
+        TypeSpec i64_ts{}; i64_ts.base = TB_ULONGLONG;
+        size = coerce(ctx, size, size_ts, i64_ts);
+        const std::string tmp = fresh_tmp(ctx);
+        emit_instr(ctx, tmp + " = alloca i8, i64 " + size);
+        return tmp;
+      }
+      if (builtin_id == BuiltinId::ConstantP) {
+        // At -O0, __builtin_constant_p always returns 0
+        // Still need to emit args for side effects
+        for (auto& a : call.args) {
+          TypeSpec dummy{};
+          emit_rval_id(ctx, a, dummy);
+        }
+        return "0";
+      }
+      if (builtin_id == BuiltinId::ClassifyType && call.args.size() == 1) {
+        // GCC __builtin_classify_type: return integer type class
+        // We need the type of the argument, not its value
+        TypeSpec arg_ts{};
+        emit_rval_id(ctx, call.args[0], arg_ts);
+        // GCC type classes:
+        // 0=void, 1=integer, 2=char, 3=enum(=integer), 5=pointer,
+        // 8=real, 9=complex, 12=record, 13=union, 14=array, 15=string(=pointer)
+        int type_class = 5; // default: pointer (for unknown)
+        if (arg_ts.ptr_level > 0 || arg_ts.is_fn_ptr) {
+          type_class = 5; // pointer
+        } else if (is_complex_base(arg_ts.base)) {
+          type_class = 9; // complex
+        } else if (is_float_base(arg_ts.base)) {
+          type_class = 8; // real
+        } else if (arg_ts.base == TB_VOID) {
+          type_class = 0; // void
+        } else if (arg_ts.base == TB_BOOL || arg_ts.base == TB_CHAR ||
+                   arg_ts.base == TB_SCHAR || arg_ts.base == TB_UCHAR) {
+          type_class = 1; // integer (char is integer class in GCC)
+        } else if (is_any_int(arg_ts.base)) {
+          type_class = 1; // integer
+        } else if (arg_ts.base == TB_STRUCT) {
+          type_class = 12; // record
+        } else if (arg_ts.base == TB_UNION) {
+          type_class = 13; // union
+        }
+        return std::to_string(type_class);
+      }
+      if ((builtin_id == BuiltinId::AddOverflow ||
+           builtin_id == BuiltinId::SubOverflow ||
+           builtin_id == BuiltinId::MulOverflow) && call.args.size() == 3) {
+        TypeSpec a_ts{}, b_ts{}, p_ts{};
+        std::string a = emit_rval_id(ctx, call.args[0], a_ts);
+        std::string b = emit_rval_id(ctx, call.args[1], b_ts);
+        const std::string result_ptr = emit_rval_id(ctx, call.args[2], p_ts);
+        // Determine the result type from the pointer target type
+        TypeSpec res_ts = p_ts;
+        res_ts.ptr_level--;
+        const std::string res_ty = llvm_ty(res_ts);
+        // Coerce operands to result type
+        a = coerce(ctx, a, a_ts, res_ts);
+        b = coerce(ctx, b, b_ts, res_ts);
+        // Choose signed or unsigned intrinsic based on result type
+        const bool is_signed = is_signed_int(res_ts.base);
+        std::string op;
+        if (builtin_id == BuiltinId::AddOverflow) op = is_signed ? "sadd" : "uadd";
+        else if (builtin_id == BuiltinId::SubOverflow) op = is_signed ? "ssub" : "usub";
+        else op = is_signed ? "smul" : "umul";
+        const std::string intrinsic = "@llvm." + op + ".with.overflow." + res_ty;
+        const std::string pair = fresh_tmp(ctx);
+        emit_instr(ctx, pair + " = call { " + res_ty + ", i1 } " + intrinsic +
+                        "(" + res_ty + " " + a + ", " + res_ty + " " + b + ")");
+        const std::string val = fresh_tmp(ctx);
+        emit_instr(ctx, val + " = extractvalue { " + res_ty + ", i1 } " + pair + ", 0");
+        const std::string ovf = fresh_tmp(ctx);
+        emit_instr(ctx, ovf + " = extractvalue { " + res_ty + ", i1 } " + pair + ", 1");
+        emit_instr(ctx, "store " + res_ty + " " + val + ", ptr " + result_ptr);
+        const std::string ret = fresh_tmp(ctx);
+        emit_instr(ctx, ret + " = zext i1 " + ovf + " to i32");
+        return ret;
+      }
       if (builtin_id == BuiltinId::Bswap16 || builtin_id == BuiltinId::Bswap32 ||
           builtin_id == BuiltinId::Bswap64) {
         if (call.args.size() == 1) {
@@ -4520,7 +4599,13 @@ class HirEmitter {
       }
       if (builtin_id == BuiltinId::Expect && call.args.size() >= 1) {
         TypeSpec arg_ts{};
-        return emit_rval_id(ctx, call.args[0], arg_ts);
+        std::string result = emit_rval_id(ctx, call.args[0], arg_ts);
+        // Evaluate remaining args for side effects (e.g., z++)
+        for (size_t i = 1; i < call.args.size(); ++i) {
+          TypeSpec dummy{};
+          emit_rval_id(ctx, call.args[i], dummy);
+        }
+        return result;
       }
       if (builtin_id == BuiltinId::Unreachable && call.args.empty()) {
         emit_term(ctx, "unreachable");

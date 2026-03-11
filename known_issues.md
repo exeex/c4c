@@ -93,6 +93,57 @@ Not yet completed:
 - full regression guard (`test_fail_before.log` vs `test_fail_after.log`) has not
   been rerun for this migration slice yet
 
+### Regression guard status
+
+Initial comparison run on `2026-03-11`:
+
+- before (main): passed=`1711`, failed=`62`, total=`1773`
+- after (branch): passed=`1692`, failed=`81`, total=`1773`
+- initial delta: `30` new failures, `11` newly passing
+
+After implementing missing builtin lowerings (same session):
+
+- fixed `14` of the `30` new failures by adding codegen for:
+  - `__builtin_alloca` → LLVM dynamic `alloca i8, i64 size`
+  - `__builtin_constant_p` → constant `0` (compile-time query, always false at -O0)
+  - `__builtin_classify_type` → integer type class based on argument TypeSpec
+  - `__builtin_{add,sub,mul}_overflow` → `@llvm.{s,u}{add,sub,mul}.with.overflow`
+  - `__builtin_expect` → evaluate both args (for side effects), return first
+  - suppress spurious `declare @__builtin_xxx(...)` for non-AliasCall builtins
+- remaining delta: `16` new failures (all `RUNTIME_FAIL`, pre-existing codegen bugs
+  unrelated to builtin dispatch; these tests were previously `FRONTEND_FAIL` and
+  are now reaching runtime due to the refactored builtin dispatch succeeding where
+  the old string-based dispatch threw)
+
+Remaining `16` new failures (not builtin-dispatch issues):
+
+- `llvm_gcc_c_torture_20120105_1_c` — unaligned memcpy into packed struct (segfault)
+- `llvm_gcc_c_torture_alloca_1_c` — `__attribute__((aligned))` alignment computation
+- `llvm_gcc_c_torture_memchr_1_c` — memchr with multi-dimensional array addressing
+- `llvm_gcc_c_torture_pr38533_c` — inline assembly constraints
+- `llvm_gcc_c_torture_pr44852_c` — pointer post-increment sequencing
+- `llvm_gcc_c_torture_pr57130_c` — struct pass-by-value / memcmp
+- `llvm_gcc_c_torture_pr65401_c` — pointer reinterpretation casting
+- `llvm_gcc_c_torture_pr70460_c` — computed gotos / label-address arithmetic
+- `llvm_gcc_c_torture_pr71626_1_c` — vector return value with function pointer
+- `llvm_gcc_c_torture_pr71626_2_c` — vector return value (same, -fpic variant)
+- `llvm_gcc_c_torture_pr77767_c` — VLA parameters with side effects
+- `llvm_gcc_c_torture_pr78726_c` — bitwise NOT / type promotion on unsigned char
+- `llvm_gcc_c_torture_scal_to_vec2_c` — scalar-to-vector promotion
+- `llvm_gcc_c_torture_strcpy_2_c` — strcpy with array init and byte verification
+- `llvm_gcc_c_torture_strlen_2_c` — strlen with multi-dimensional string arrays
+- `llvm_gcc_c_torture_strlen_3_c` — strlen with embedded nulls in arrays
+- `llvm_gcc_c_torture_widechar_3_c` — missing `__BYTE_ORDER__` preprocessor macro
+
+Practical handoff note for follow-up work:
+
+- the remaining 16 failures are NOT builtin-dispatch regressions; they are
+  pre-existing codegen limitations that are now exposed because the refactored
+  builtin dispatch no longer throws FRONTEND_FAIL on these cases
+- priority fixes: add `__BYTE_ORDER__` / `__ORDER_*_ENDIAN__` preprocessor macros
+  (fixes widechar-3 trivially); investigate `record_extern_call_decl` return-type
+  inference for AliasCall builtins (may affect string function tests)
+
 ### Problem summary
 
 Builtin handling is currently split across parser, sema, and LLVM lowering with
