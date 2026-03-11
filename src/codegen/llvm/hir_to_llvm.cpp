@@ -2539,6 +2539,12 @@ class HirEmitter {
         out.base = TB_INT;
         return out;
       }
+      case UnaryOp::BitNot:
+      case UnaryOp::Plus:
+      case UnaryOp::Minus:
+        if (ts.ptr_level == 0 && !is_vector_value(ts))
+          ts.base = integer_promote(ts.base);
+        return ts;
       default:
         return ts;
     }
@@ -3026,16 +3032,37 @@ class HirEmitter {
     const std::string op_ty = llvm_ty(op_ts);
 
     switch (u.op) {
-      case UnaryOp::Plus: return val;
+      case UnaryOp::Plus: {
+        // Integer promotion for small types
+        if (op_ty != ty && !is_vector_value(op_ts) && !is_float_base(op_ts.base)) {
+          const std::string ext = fresh_tmp(ctx);
+          const bool is_signed = is_signed_int(op_ts.base);
+          emit_instr(ctx, ext + " = " + (is_signed ? "sext" : "zext") +
+                              " " + op_ty + " " + val + " to " + ty);
+          return ext;
+        }
+        return val;
+      }
 
       case UnaryOp::Minus: {
+        // Integer promotion for small types
+        std::string promoted_val = val;
+        std::string promoted_ty = op_ty;
+        if (op_ty != ty && !is_vector_value(op_ts) && !is_float_base(op_ts.base)) {
+          const std::string ext = fresh_tmp(ctx);
+          const bool is_signed = is_signed_int(op_ts.base);
+          emit_instr(ctx, ext + " = " + (is_signed ? "sext" : "zext") +
+                              " " + op_ty + " " + val + " to " + ty);
+          promoted_val = ext;
+          promoted_ty = ty;
+        }
         const std::string tmp = fresh_tmp(ctx);
         if (is_vector_value(op_ts)) {
           emit_instr(ctx, tmp + " = sub " + ty + " zeroinitializer, " + val);
         } else if (is_float_base(op_ts.base)) {
           emit_instr(ctx, tmp + " = fneg " + ty + " " + val);
         } else {
-          emit_instr(ctx, tmp + " = sub " + ty + " 0, " + val);
+          emit_instr(ctx, tmp + " = sub " + promoted_ty + " 0, " + promoted_val);
         }
         return tmp;
       }
@@ -3086,7 +3113,18 @@ class HirEmitter {
           mask += ">";
           emit_instr(ctx, tmp + " = xor " + ty + " " + val + ", " + mask);
         } else {
-          emit_instr(ctx, tmp + " = xor " + ty + " " + val + ", -1");
+          // Integer promotion: extend small types (i8, i16) to i32 before ~
+          std::string promoted_val = val;
+          std::string promoted_ty = op_ty;
+          if (op_ty != ty && !is_vector_value(op_ts)) {
+            const std::string ext = fresh_tmp(ctx);
+            const bool is_signed = is_signed_int(op_ts.base);
+            emit_instr(ctx, ext + " = " + (is_signed ? "sext" : "zext") +
+                                " " + op_ty + " " + val + " to " + ty);
+            promoted_val = ext;
+            promoted_ty = ty;
+          }
+          emit_instr(ctx, tmp + " = xor " + promoted_ty + " " + promoted_val + ", -1");
         }
         return tmp;
       }
