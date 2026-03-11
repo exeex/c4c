@@ -4110,6 +4110,33 @@ class HirEmitter {
         case BuiltinConstantFpKind::None:
           break;
       }
+      if ((builtin_id == BuiltinId::SignBit ||
+           builtin_id == BuiltinId::SignBitF ||
+           builtin_id == BuiltinId::SignBitL) && call.args.size() == 1) {
+        TypeSpec arg_ts{};
+        std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
+        // Promote float to double for __builtin_signbit (generic version)
+        if (arg_ts.base == TB_FLOAT && builtin_id == BuiltinId::SignBit) {
+          const std::string ext = fresh_tmp(ctx);
+          emit_instr(ctx, ext + " = fpext float " + arg + " to double");
+          arg = ext;
+          arg_ts.base = TB_DOUBLE;
+        }
+        // Bitcast to integer of same width, then check sign bit
+        const std::string fp_ty = llvm_ty(arg_ts);
+        std::string int_ty;
+        if (arg_ts.base == TB_FLOAT) int_ty = "i32";
+        else if (arg_ts.base == TB_LONGDOUBLE) int_ty = "i128";
+        else int_ty = "i64"; // double or promoted
+        const std::string bc = fresh_tmp(ctx);
+        emit_instr(ctx, bc + " = bitcast " + fp_ty + " " + arg + " to " + int_ty);
+        const std::string shifted = fresh_tmp(ctx);
+        int shift_bits = (int_ty == "i32") ? 31 : (int_ty == "i128") ? 127 : 63;
+        emit_instr(ctx, shifted + " = lshr " + int_ty + " " + bc + ", " + std::to_string(shift_bits));
+        const std::string trunc = fresh_tmp(ctx);
+        emit_instr(ctx, trunc + " = trunc " + int_ty + " " + shifted + " to i32");
+        return trunc;
+      }
       if (const char* pred = builtin_fp_compare_predicate(builtin_id);
           pred && call.args.size() == 2) {
         TypeSpec at{}, bt{};
