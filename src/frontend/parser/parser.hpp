@@ -157,6 +157,7 @@ class Parser {
   Node* make_unary(const char* op, Node* operand, int line);
   Node* make_assign(const char* op, Node* lhs, Node* rhs, int line);
   Node* make_block(Node** stmts, int n, int line);
+  const char* remap_builtin_call_name(const char* name);
 };
 
 }  // namespace tinyc2ll::frontend_cxx

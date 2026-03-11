@@ -277,6 +277,30 @@ Node* Parser::make_var(const char* name, int line) {
     return n;
 }
 
+const char* Parser::remap_builtin_call_name(const char* name) {
+    if (!name) return nullptr;
+    struct BuiltinCallRemap {
+        const char* from;
+        const char* to;
+    };
+    static const BuiltinCallRemap kRemaps[] = {
+        {"__builtin_printf", "printf"},
+        {"__builtin_printf_unlocked", "printf_unlocked"},
+        {"__builtin_fprintf", "fprintf"},
+        {"__builtin_fprintf_unlocked", "fprintf_unlocked"},
+        {"__builtin_sprintf", "sprintf"},
+        {"__builtin_snprintf", "snprintf"},
+        {"__builtin_putchar", "putchar"},
+        {"__builtin_puts", "puts"},
+        {"__builtin_abort", "abort"},
+        {nullptr, nullptr},
+    };
+    for (int i = 0; kRemaps[i].from; ++i) {
+        if (strcmp(name, kRemaps[i].from) == 0) return arena_.strdup(kRemaps[i].to);
+    }
+    return name;
+}
+
 Node* Parser::make_binop(const char* op, Node* l, Node* r, int line) {
     Node* n = make_node(NK_BINOP, line);
     n->op    = arena_.strdup(op);

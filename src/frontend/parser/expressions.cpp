@@ -346,6 +346,9 @@ Node* Parser::parse_postfix(Node* base) {
             case TokenKind::LParen: {
                 // Function call
                 consume();
+                if (base && base->kind == NK_VAR && base->name) {
+                    base->name = remap_builtin_call_name(base->name);
+                }
                 std::vector<Node*> args;
                 while (!at_end() && !check(TokenKind::RParen)) {
                     args.push_back(parse_assign_expr());
