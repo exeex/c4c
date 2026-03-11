@@ -44,6 +44,10 @@ static std::string ts_str(const TypeSpec& ts) {
 
   for (int i = 0; i < ts.ptr_level; ++i) s += "*";
 
+  if (ts.is_vector && ts.vector_lanes > 0) {
+    s += "<" + std::to_string(ts.vector_lanes) + ">";
+  }
+
   if (ts.array_rank > 0) {
     for (int i = 0; i < ts.array_rank; ++i) {
       s += "[";

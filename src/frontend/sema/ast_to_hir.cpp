@@ -148,7 +148,7 @@ TypeSpec infer_int_literal_type(const Node* n) {
 }
 
 TypeSpec normalize_generic_type(TypeSpec ts) {
-  if (ts.array_rank > 0 && !ts.is_ptr_to_array) {
+  if (!is_vector_ty(ts) && ts.array_rank > 0 && !ts.is_ptr_to_array) {
     ts.array_rank = 0;
     ts.array_size = -1;
     ts.ptr_level += 1;
@@ -160,7 +160,7 @@ TypeSpec normalize_generic_type(TypeSpec ts) {
   }
   // Strip only top-level qualifiers (scalar rvalues).  In this codebase,
   // ptr_level>0 qualifiers model pointee qualifiers and must be preserved.
-  if (ts.ptr_level == 0 && ts.array_rank == 0) {
+  if (ts.ptr_level == 0 && ts.array_rank == 0 && !is_vector_ty(ts)) {
     ts.is_const = false;
     ts.is_volatile = false;
   }
@@ -171,6 +171,10 @@ bool generic_type_compatible(TypeSpec a, TypeSpec b) {
   a = normalize_generic_type(a);
   b = normalize_generic_type(b);
   if (a.base != b.base) return false;
+  if (a.is_vector != b.is_vector) return false;
+  if (a.is_vector &&
+      (a.vector_lanes != b.vector_lanes || a.vector_bytes != b.vector_bytes))
+    return false;
   if (a.ptr_level != b.ptr_level) return false;
   if (a.is_const != b.is_const || a.is_volatile != b.is_volatile) return false;
   if (a.array_rank != b.array_rank) return false;
@@ -184,7 +188,8 @@ bool generic_type_compatible(TypeSpec a, TypeSpec b) {
 }
 
 bool has_concrete_type(const TypeSpec& ts) {
-  return ts.base != TB_VOID || ts.ptr_level > 0 || ts.array_rank > 0 || ts.is_fn_ptr;
+  return ts.base != TB_VOID || ts.ptr_level > 0 || ts.array_rank > 0 ||
+         ts.is_fn_ptr || is_vector_ty(ts);
 }
 
 std::vector<long long> decode_string_literal_values(const char* sval, bool wide) {
@@ -491,7 +496,7 @@ class Lowerer {
       }
       case NK_ADDR: {
         TypeSpec ts = infer_generic_ctrl_type(ctx, n->left);
-        if (ts.array_rank > 0) {
+        if (ts.array_rank > 0 && !is_vector_ty(ts)) {
           ts.array_rank = 0;
           ts.array_size = -1;
         }
@@ -520,6 +525,7 @@ class Lowerer {
       case NK_INDEX: {
         TypeSpec ts = infer_generic_ctrl_type(ctx, n->left);
         if (ts.ptr_level > 0) ts.ptr_level -= 1;
+        else if (is_vector_ty(ts)) return vector_element_type(ts);
         else if (ts.array_rank > 0) {
           ts.array_rank -= 1;
           ts.array_size = (ts.array_rank > 0) ? ts.array_dims[0] : -1;
@@ -532,6 +538,8 @@ class Lowerer {
       case NK_BINOP: {
         const TypeSpec l = infer_generic_ctrl_type(ctx, n->left);
         const TypeSpec r = infer_generic_ctrl_type(ctx, n->right);
+        if (is_vector_ty(l)) return l;
+        if (is_vector_ty(r)) return r;
         const bool ptr_l = l.ptr_level > 0 || l.array_rank > 0;
         const bool ptr_r = r.ptr_level > 0 || r.array_rank > 0;
         if (n->op && n->op[0] && !n->op[1]) {
@@ -2208,8 +2216,9 @@ class Lowerer {
             (decl_ts.base == TB_STRUCT || decl_ts.base == TB_UNION) &&
             decl_ts.ptr_level == 0 && decl_ts.array_rank == 0;
         const bool is_array = decl_ts.array_rank > 0;
+        const bool is_vector = is_vector_ty(decl_ts);
 
-        if ((is_struct_or_union || is_array) && init_list) {
+        if ((is_struct_or_union || is_array || is_vector) && init_list) {
           // Aggregate compound literal: emit zeroinitializer store first, then
           // overlay explicit element/field assignments below.
           TypeSpec int_ts{}; int_ts.base = TB_INT;
@@ -2226,10 +2235,11 @@ class Lowerer {
         DeclRef dr{}; dr.name = "<clit>"; dr.local = lid;
         ExprId base_id = append_expr(n, dr, decl_ts, ValueCategory::LValue);
 
-        if (init_list && (is_struct_or_union || is_array)) {
+        if (init_list && (is_struct_or_union || is_array || is_vector)) {
           auto is_agg = [](const TypeSpec& ts) {
-            return (ts.base == TB_STRUCT || ts.base == TB_UNION) &&
-                   ts.ptr_level == 0 && ts.array_rank == 0;
+            return ((ts.base == TB_STRUCT || ts.base == TB_UNION) &&
+                    ts.ptr_level == 0 && ts.array_rank == 0) ||
+                   is_vector_ty(ts);
           };
           auto append_assign = [&](ExprId lhs_id, const TypeSpec& lhs_ts, const Node* rhs_node) {
             if (!rhs_node) return;
@@ -2370,7 +2380,7 @@ class Lowerer {
                   return;
                 }
 
-                if (cur_ts.array_rank > 0) {
+                if (cur_ts.array_rank > 0 || is_vector_ty(cur_ts)) {
                   if (cursor < list_node->n_children) {
                     const Node* item0 = list_node->children[cursor];
                     const Node* val0 = init_item_value_node(item0);
@@ -2381,10 +2391,16 @@ class Lowerer {
                     }
                   }
                   TypeSpec elem_ts = cur_ts;
-                  elem_ts.array_rank--;
-                  elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
+                  long long bound = 0;
+                  if (is_vector_ty(cur_ts)) {
+                    elem_ts = vector_element_type(cur_ts);
+                    bound = cur_ts.vector_lanes > 0 ? cur_ts.vector_lanes : (1LL << 30);
+                  } else {
+                    elem_ts.array_rank--;
+                    elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
+                    bound = cur_ts.array_size > 0 ? cur_ts.array_size : (1LL << 30);
+                  }
                   long long next_idx = 0;
-                  const long long bound = cur_ts.array_size > 0 ? cur_ts.array_size : (1LL << 30);
                   while (cursor < list_node->n_children && next_idx < bound) {
                     const Node* item = list_node->children[cursor];
                     if (!item) {

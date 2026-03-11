@@ -78,7 +78,9 @@ struct TypeSpec {
     int  inner_rank;         // >= 0: array_dims split: inner_rank trailing dims belong to
                              // pointed-to typedef array; outer (array_rank-inner_rank) are
                              // declarator dims → llvm_ty generates [outer x ptr]
-    bool is_vector;          // true when array dims come from __attribute__((vector_size(N)))
+    bool is_vector;          // GCC vector type from __attribute__((vector_size(N)))
+    long long vector_lanes;  // number of vector elements when is_vector=true
+    long long vector_bytes;  // total storage size in bytes when is_vector=true
     Node* array_size_expr;   // non-null when array size is a computed expression
     bool is_const;
     bool is_volatile;

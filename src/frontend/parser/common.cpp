@@ -79,6 +79,9 @@ static long long struct_sizeof(const char* tag,
 static long long field_align(const TypeSpec& ts,
     const std::unordered_map<std::string, Node*>* struct_map) {
     if (ts.ptr_level > 0) return 8;
+    if (ts.is_vector && ts.vector_bytes > 0) {
+        return ts.vector_bytes > 16 ? 16 : ts.vector_bytes;
+    }
     if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag)
         return struct_align(ts.tag, struct_map);
     return align_base(ts.base, ts.ptr_level);
@@ -119,6 +122,8 @@ static long long struct_sizeof(const char* tag,
         offset = (offset + a - 1) / a * a;
         long long sz;
         if (f->type.ptr_level > 0) sz = 8;
+        else if (f->type.is_vector && f->type.vector_bytes > 0)
+            sz = f->type.vector_bytes;
         else if (f->type.base == TB_STRUCT || f->type.base == TB_UNION)
             sz = struct_sizeof(f->type.tag, struct_map);
         else sz = sizeof_base(f->type.base);
@@ -383,6 +388,10 @@ bool types_compatible_p(TypeSpec a, TypeSpec b,
     // But for pointer types, qualifiers on the pointed-to type DO matter (char* vs const char*).
     if (a.ptr_level == 0 && a.array_rank == 0) { a.is_const = false; a.is_volatile = false; }
     if (b.ptr_level == 0 && b.array_rank == 0) { b.is_const = false; b.is_volatile = false; }
+    if (a.is_vector != b.is_vector) return false;
+    if (a.is_vector &&
+        (a.vector_lanes != b.vector_lanes || a.vector_bytes != b.vector_bytes))
+        return false;
     if (a.base != b.base) return false;
     if (a.ptr_level != b.ptr_level) return false;
     if (a.is_const != b.is_const || a.is_volatile != b.is_volatile) return false;

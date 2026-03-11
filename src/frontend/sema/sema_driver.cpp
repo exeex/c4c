@@ -30,6 +30,33 @@ TypeSpec ptr_to(TypeBase base) {
   return ts;
 }
 
+bool is_vector_ty(const TypeSpec& ts) {
+  return ts.is_vector && ts.vector_lanes > 0 && ts.ptr_level == 0 && ts.array_rank == 0;
+}
+
+void clear_vector(TypeSpec& ts) {
+  ts.is_vector = false;
+  ts.vector_lanes = 0;
+  ts.vector_bytes = 0;
+}
+
+void set_vector_type(TypeSpec& ts, long long lanes, long long total_bytes) {
+  ts.array_size = -1;
+  ts.array_rank = 0;
+  for (int i = 0; i < 8; ++i) ts.array_dims[i] = -1;
+  ts.is_ptr_to_array = false;
+  ts.inner_rank = -1;
+  ts.array_size_expr = nullptr;
+  ts.is_vector = lanes > 0;
+  ts.vector_lanes = ts.is_vector ? lanes : 0;
+  ts.vector_bytes = ts.is_vector ? total_bytes : 0;
+}
+
+TypeSpec vector_element_type(TypeSpec ts) {
+  clear_vector(ts);
+  return ts;
+}
+
 int array_rank_of(const TypeSpec& ts) {
   if (ts.array_rank > 0) return ts.array_rank;
   if (ts.array_size != -1) return 1;
@@ -165,6 +192,7 @@ TypeSpec complex_component_ts(TypeBase b) {
 }
 
 TypeSpec decay_array_to_ptr(TypeSpec ts) {
+  if (is_vector_ty(ts)) return ts;
   if (!is_array_ty(ts)) return ts;
   ts = drop_array_dim(ts);
   ts.ptr_level += 1;
@@ -269,6 +297,8 @@ TypeSpec classify_binop_result_type(
       return int_ts();
     return lhs;
   }
+  if (is_vector_ty(lhs)) return lhs;
+  if (is_vector_ty(rhs)) return rhs;
   if (is_array_ty(lhs) && lhs.ptr_level == 0 && !lhs.is_ptr_to_array &&
       is_array_ty(rhs) && rhs.ptr_level == 0 && !rhs.is_ptr_to_array &&
       array_rank_of(lhs) == 1 && array_rank_of(rhs) == 1 &&

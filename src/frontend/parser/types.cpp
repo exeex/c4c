@@ -77,6 +77,8 @@ TypeSpec Parser::parse_base_type() {
     ts.array_rank = 0;
     ts.inner_rank = -1;
     for (int i = 0; i < 8; ++i) ts.array_dims[i] = -1;
+    ts.vector_lanes = 0;
+    ts.vector_bytes = 0;
     ts.base = TB_INT;  // default
 
     bool has_signed   = false;
@@ -96,6 +98,35 @@ TypeSpec Parser::parse_base_type() {
     bool has_typedef  = false;
     bool done         = false;
     bool base_set     = false;  // true when ts.base was set directly (KwBuiltin, KwInt128, etc.)
+    auto try_parse_vector_attr = [&](TypeSpec& out_ts) -> bool {
+        if (!check(TokenKind::KwAttribute)) return false;
+        int saved = pos_;
+        consume();
+        if (!check(TokenKind::LParen)) { pos_ = saved; return false; }
+        consume();
+        if (!check(TokenKind::LParen)) { pos_ = saved; return false; }
+        consume();
+        if (!(check(TokenKind::Identifier) &&
+              (cur().lexeme == "vector_size" || cur().lexeme == "__vector_size__"))) {
+            pos_ = saved;
+            return false;
+        }
+        consume();
+        if (!check(TokenKind::LParen)) { pos_ = saved; return false; }
+        consume();
+        Node* sz_expr = parse_assign_expr();
+        long long sz_val = 0;
+        eval_const_int(sz_expr, &sz_val, &struct_tag_def_map_);
+        expect(TokenKind::RParen);
+        expect(TokenKind::RParen);
+        expect(TokenKind::RParen);
+        if (sz_val > 0) {
+            out_ts.is_vector = true;
+            out_ts.vector_bytes = sz_val;
+            if (out_ts.vector_lanes <= 0) out_ts.vector_lanes = 0;
+        }
+        return true;
+    };
 
     while (!done && !at_end()) {
         TokenKind k = cur().kind;
@@ -226,7 +257,11 @@ TypeSpec Parser::parse_base_type() {
 
             // __attribute__ may appear within type specs (e.g., packed struct)
             case TokenKind::KwAttribute:
-                skip_attributes();
+                if (!try_parse_vector_attr(ts)) {
+                    consume();
+                    if (check(TokenKind::LParen)) skip_paren_group();
+                    if (check(TokenKind::LParen)) skip_paren_group();
+                }
                 break;
 
             case TokenKind::KwAlignas: {
@@ -262,7 +297,24 @@ TypeSpec Parser::parse_base_type() {
     }
 
     // If base was set directly (KwBuiltin, KwInt128, etc.), skip combined-specifier resolution.
-    if (base_set) return ts;
+    auto finalize_vector = [&](TypeSpec& out_ts) {
+        if (!out_ts.is_vector || out_ts.vector_lanes > 0 || out_ts.vector_bytes <= 0) return;
+        long long elem_sz = 4;
+        switch (out_ts.base) {
+            case TB_CHAR: case TB_SCHAR: case TB_UCHAR: elem_sz = 1; break;
+            case TB_SHORT: case TB_USHORT: elem_sz = 2; break;
+            case TB_FLOAT: case TB_INT: case TB_UINT: elem_sz = 4; break;
+            case TB_DOUBLE: case TB_LONG: case TB_ULONG:
+            case TB_LONGLONG: case TB_ULONGLONG: elem_sz = 8; break;
+            default: elem_sz = 4; break;
+        }
+        out_ts.vector_lanes = out_ts.vector_bytes / elem_sz;
+    };
+
+    if (base_set) {
+        finalize_vector(ts);
+        return ts;
+    }
 
     // Resolve combined specifiers
     if (has_typedef) {
@@ -312,6 +364,7 @@ TypeSpec Parser::parse_base_type() {
                               : (has_unsigned ? TB_UINT : TB_INT);
     }
 
+    finalize_vector(ts);
     return ts;
 }
 
@@ -406,6 +459,58 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         return dim;
     };
     std::vector<long long> decl_dims;
+    auto parse_vector_decl_attributes = [&]() {
+        while (check(TokenKind::KwAttribute)) {
+            int saved = pos_;
+            consume();  // __attribute__
+            if (!check(TokenKind::LParen)) {
+                pos_ = saved;
+                break;
+            }
+            consume();  // (
+            if (!check(TokenKind::LParen)) {
+                pos_ = saved;
+                break;
+            }
+            consume();  // (
+            bool handled = false;
+            if (check(TokenKind::Identifier) &&
+                (cur().lexeme == "vector_size" || cur().lexeme == "__vector_size__")) {
+                consume();
+                if (check(TokenKind::LParen)) {
+                    consume();
+                    Node* sz_expr = parse_assign_expr();
+                    long long sz_val = 0;
+                    eval_const_int(sz_expr, &sz_val, &struct_tag_def_map_);
+                    expect(TokenKind::RParen);
+                    long long elem_sz = 4;
+                    switch (ts.base) {
+                        case TB_CHAR: case TB_SCHAR: case TB_UCHAR: elem_sz = 1; break;
+                        case TB_SHORT: case TB_USHORT: elem_sz = 2; break;
+                        case TB_FLOAT: case TB_INT: case TB_UINT: elem_sz = 4; break;
+                        case TB_DOUBLE: case TB_LONG: case TB_ULONG:
+                        case TB_LONGLONG: case TB_ULONGLONG: elem_sz = 8; break;
+                        default: elem_sz = 4; break;
+                    }
+                    long long count = (sz_val > 0 && elem_sz > 0) ? sz_val / elem_sz : 1;
+                    if (count > 0) {
+                        ts.is_vector = true;
+                        ts.vector_lanes = count;
+                        ts.vector_bytes = sz_val;
+                    }
+                    handled = true;
+                }
+            }
+            while (!at_end() && !(check(TokenKind::RParen) &&
+                                  pos_ + 1 < (int)tokens_.size() &&
+                                  tokens_[pos_ + 1].kind == TokenKind::RParen)) {
+                consume();
+            }
+            expect(TokenKind::RParen);
+            expect(TokenKind::RParen);
+            if (!handled && pos_ == saved) pos_ = saved;
+        }
+    };
 
     // Skip qualifiers/attributes that can appear before pointer stars
     // This handles trailing qualifiers on the base type: e.g. `struct S const *p`
@@ -596,59 +701,15 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         }
     }
 
+    parse_vector_decl_attributes();
+
     // Normal declarator: optional identifier name
     if (out_name && check(TokenKind::Identifier)) {
         *out_name = arena_.strdup(cur().lexeme);
         consume();
     }
 
-    // Check for __attribute__((vector_size(N))) — treat as array of N/elem_bytes elements.
-    // This is a GCC extension for SIMD vector types. We model them as 1D arrays.
-    if (check(TokenKind::KwAttribute)) {
-        int saved = pos_;
-        consume();  // __attribute__
-        if (check(TokenKind::LParen)) {
-            consume();  // (
-            if (check(TokenKind::LParen)) {
-                consume();  // (
-                if (check(TokenKind::Identifier) && (cur().lexeme == "vector_size" || cur().lexeme == "__vector_size__")) {
-                    consume();  // vector_size / __vector_size__
-                    if (check(TokenKind::LParen)) {
-                        consume();  // (
-                        Node* sz_expr = parse_assign_expr();
-                        long long sz_val = 0;
-                        eval_const_int(sz_expr, &sz_val, &struct_tag_def_map_);
-                        expect(TokenKind::RParen);  // )
-                        expect(TokenKind::RParen);  // ))
-                        expect(TokenKind::RParen);  // )))
-                        // Compute element count: vector_size bytes / element size bytes
-                        long long elem_sz = 4;  // default to 4 (float/int)
-                        switch (ts.base) {
-                            case TB_CHAR: case TB_SCHAR: case TB_UCHAR: elem_sz = 1; break;
-                            case TB_SHORT: case TB_USHORT: elem_sz = 2; break;
-                            case TB_FLOAT: case TB_INT: case TB_UINT: elem_sz = 4; break;
-                            case TB_DOUBLE: case TB_LONG: case TB_ULONG:
-                            case TB_LONGLONG: case TB_ULONGLONG: elem_sz = 8; break;
-                            default: elem_sz = 4; break;
-                        }
-                        long long count = (sz_val > 0 && elem_sz > 0) ? sz_val / elem_sz : 1;
-                        if (count > 0) {
-                            decl_dims.push_back(count);
-                            ts.is_vector = true;
-                        }
-                    } else {
-                        pos_ = saved;  // restore on parse failure
-                    }
-                } else {
-                    pos_ = saved;  // not vector_size, restore and let skip_attributes handle it
-                }
-            } else {
-                pos_ = saved;
-            }
-        } else {
-            pos_ = saved;
-        }
-    }
+    parse_vector_decl_attributes();
     // Also handle vector_size inside __attribute__ in the base type position
     skip_attributes();
 

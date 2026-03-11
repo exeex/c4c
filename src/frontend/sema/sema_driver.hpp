@@ -20,6 +20,10 @@ TypeSpec char_ts();
 TypeSpec ll_ts();
 TypeSpec ptr_to(TypeBase base);
 
+bool is_vector_ty(const TypeSpec& ts);
+void clear_vector(TypeSpec& ts);
+void set_vector_type(TypeSpec& ts, long long lanes, long long total_bytes);
+TypeSpec vector_element_type(TypeSpec ts);
 int array_rank_of(const TypeSpec& ts);
 long long array_dim_at(const TypeSpec& ts, int idx);
 bool is_array_ty(const TypeSpec& ts);

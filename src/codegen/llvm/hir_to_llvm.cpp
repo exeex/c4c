@@ -201,9 +201,22 @@ static std::string llvm_base(TypeBase b) {
   }
 }
 
+static std::string llvm_vector_ty(const TypeSpec& ts) {
+  TypeSpec elem_ts = ts;
+  elem_ts.is_vector = false;
+  elem_ts.vector_lanes = 0;
+  elem_ts.vector_bytes = 0;
+  return "<" + std::to_string(ts.vector_lanes) + " x " + llvm_base(elem_ts.base) + ">";
+}
+
+static bool is_vector_value(const TypeSpec& ts) {
+  return ts.is_vector && ts.vector_lanes > 0 && ts.ptr_level == 0 && ts.array_rank == 0;
+}
+
 static std::string llvm_ty(const TypeSpec& ts) {
   if (ts.ptr_level > 0 || ts.is_fn_ptr) return "ptr";
   if (ts.array_rank > 0) return "ptr";  // decayed
+  if (is_vector_value(ts)) return llvm_vector_ty(ts);
   if (is_complex_base(ts.base)) return llvm_complex_ty(ts.base);
   if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag && ts.tag[0]) {
     return "%struct." + std::string(ts.tag);
@@ -212,7 +225,8 @@ static std::string llvm_ty(const TypeSpec& ts) {
 }
 
 static bool has_concrete_type(const TypeSpec& ts) {
-  return ts.base != TB_VOID || ts.ptr_level > 0 || ts.array_rank > 0;
+  return ts.base != TB_VOID || ts.ptr_level > 0 || ts.array_rank > 0 ||
+         is_vector_value(ts);
 }
 
 static std::string sanitize_llvm_ident(const std::string& raw) {
@@ -247,6 +261,7 @@ static std::string llvm_alloca_ty(const TypeSpec& ts) {
     }
     return "ptr";  // unknown size
   }
+  if (is_vector_value(ts)) return llvm_vector_ty(ts);
   if (ts.ptr_level > 0 || ts.is_fn_ptr) return "ptr";
   if (is_complex_base(ts.base)) return llvm_complex_ty(ts.base);
   if (ts.base == TB_VA_LIST) return "%struct.__va_list_tag_";
@@ -289,6 +304,7 @@ static int sizeof_ts(const Module& mod, const TypeSpec& ts) {
     }
     return 8;  // unknown size — treat as pointer
   }
+  if (ts.is_vector && ts.vector_bytes > 0) return static_cast<int>(ts.vector_bytes);
   if (ts.ptr_level > 0 && ts.is_ptr_to_array) return 8;
   if (ts.ptr_level > 0 || ts.is_fn_ptr) return 8;
   if ((ts.base == TB_STRUCT || ts.base == TB_UNION) &&
@@ -1331,7 +1347,8 @@ class HirEmitter {
       return emit_const_init(ts, GlobalInit(*sub));
     }
 
-    bool is_agg = (ts.array_rank > 0) ||
+    bool is_agg = is_vector_value(ts) ||
+        (ts.array_rank > 0) ||
         ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0);
 
     // Scalar target: consume one item.
@@ -1343,6 +1360,22 @@ class HirEmitter {
     }
 
     // String literal directly initializes a char array (not brace elision).
+    if (is_vector_value(ts)) {
+      TypeSpec elem_ts = ts;
+      elem_ts.is_vector = false;
+      elem_ts.vector_lanes = 0;
+      elem_ts.vector_bytes = 0;
+      std::string out = "<";
+      for (long long i = 0; i < ts.vector_lanes; ++i) {
+        if (i) out += ", ";
+        out += llvm_ty(elem_ts) + " ";
+        if (cursor < list.items.size()) out += emit_const_from_flat(elem_ts, list, cursor);
+        else out += emit_const_init(elem_ts, GlobalInit(std::monostate{}));
+      }
+      out += ">";
+      return out;
+    }
+
     if (ts.array_rank > 0) {
       TypeSpec ets = drop_one_array_dim(ts);
       if (is_char_like(ets.base) && ets.ptr_level == 0 && ets.array_rank == 0) {
@@ -1471,6 +1504,40 @@ class HirEmitter {
       if (std::holds_alternative<InitScalar>(item.value)) return true;
     }
     return false;
+  }
+
+  std::string emit_const_vector(const TypeSpec& ts, const GlobalInit& init) {
+    TypeSpec elem_ts = ts;
+    elem_ts.is_vector = false;
+    elem_ts.vector_lanes = 0;
+    elem_ts.vector_bytes = 0;
+    const long long n = ts.vector_lanes > 0 ? ts.vector_lanes : 1;
+    std::vector<std::string> elems(static_cast<size_t>(n),
+                                   emit_const_init(elem_ts, GlobalInit(std::monostate{})));
+    if (const auto* s = std::get_if<InitScalar>(&init)) {
+      if (n > 0) elems[0] = emit_const_scalar_expr(s->expr, elem_ts);
+    } else if (const auto* list = std::get_if<InitList>(&init)) {
+      size_t cursor = 0;
+      if (needs_brace_elision(ts, *list)) {
+        const std::string flat = emit_const_from_flat(ts, *list, cursor);
+        if (!flat.empty()) return flat;
+      }
+      for (size_t i = 0; i < list->items.size() && i < elems.size(); ++i) {
+        GlobalInit child_init = std::visit([&](const auto& v) -> GlobalInit {
+          using V = std::decay_t<decltype(v)>;
+          if constexpr (std::is_same_v<V, InitScalar>) return GlobalInit(v);
+          else return GlobalInit(*v);
+        }, list->items[i].value);
+        elems[i] = emit_const_init(elem_ts, child_init);
+      }
+    }
+    std::string out = "<";
+    for (size_t i = 0; i < elems.size(); ++i) {
+      if (i) out += ", ";
+      out += llvm_ty(elem_ts) + " " + elems[i];
+    }
+    out += ">";
+    return out;
   }
 
   std::string emit_const_array(const TypeSpec& ts, const GlobalInit& init) {
@@ -2125,6 +2192,7 @@ class HirEmitter {
 
   std::string emit_const_init(const TypeSpec& ts, const GlobalInit& init) {
     if (ts.array_rank > 0) return emit_const_array(ts, init);
+    if (ts.is_vector && ts.vector_lanes > 0) return emit_const_vector(ts, init);
     if (ts.base == TB_VA_LIST && ts.ptr_level == 0) return "zeroinitializer";
     if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0)
       return emit_const_struct(ts, init);
@@ -2710,7 +2778,16 @@ class HirEmitter {
     }
     if (const auto* idx = std::get_if<IndexExpr>(&e.payload)) {
       TypeSpec base_ts{};
-      const std::string base = emit_rval_id(ctx, idx->base, base_ts);
+      std::string base;
+      if (const TypeSpec resolved_base_ts = resolve_expr_type(ctx, idx->base);
+          resolved_base_ts.array_rank > 0 ||
+          is_vector_value(resolved_base_ts)) {
+        TypeSpec obj_ts{};
+        base = emit_lval(ctx, idx->base, obj_ts);
+        base_ts = obj_ts;
+      } else {
+        base = emit_rval_id(ctx, idx->base, base_ts);
+      }
       TypeSpec ix_ts{};
       const std::string ix = emit_rval_id(ctx, idx->index, ix_ts);
       // Widen index to i64
@@ -2718,7 +2795,11 @@ class HirEmitter {
       const std::string ix64 = coerce(ctx, ix, ix_ts, i64_ts);
       // Element type: strip one array or pointer level with proper dim shifting.
       pts = base_ts;
-      if (pts.ptr_level > 0 && pts.is_ptr_to_array) {
+      if (is_vector_value(pts)) {
+        pts.is_vector = false;
+        pts.vector_lanes = 0;
+        pts.vector_bytes = 0;
+      } else if (pts.ptr_level > 0 && pts.is_ptr_to_array) {
         // Pointer-to-array: subscript consumes the pointer layer first.
         pts.ptr_level--;
       } else if (pts.array_rank > 0) {
@@ -2796,7 +2877,9 @@ class HirEmitter {
     const Expr& e = get_expr(id);
     // Use stored type if not void
     const TypeSpec& ts = e.type.spec;
-    if (ts.base != TB_VOID || ts.ptr_level > 0 || ts.array_rank > 0) return ts;
+    if (ts.base != TB_VOID || ts.ptr_level > 0 || ts.array_rank > 0 ||
+        is_vector_value(ts))
+      return ts;
 
     return std::visit([&](const auto& p) -> TypeSpec {
       return resolve_payload_type(ctx, p);
@@ -2920,6 +3003,8 @@ class HirEmitter {
       if (!is_complex_base(rts.base)) return lts;
       return sizeof_ts(mod_, lts) >= sizeof_ts(mod_, rts) ? lts : rts;
     }
+    if (is_vector_value(lts)) return lts;
+    if (is_vector_value(rts)) return rts;
 
     // For arithmetic/bitwise the result type is the UAC common type.
     if (lts.base != TB_VOID && rts.base != TB_VOID &&
@@ -2939,7 +3024,7 @@ class HirEmitter {
     TypeSpec ts = resolve_expr_type(ctx, u.operand);
     switch (u.op) {
       case UnaryOp::AddrOf:
-        if (ts.array_rank > 0) {
+        if (ts.array_rank > 0 && !is_vector_value(ts)) {
           ts.array_rank = 0;
           ts.array_size = -1;
         }
@@ -3142,6 +3227,12 @@ class HirEmitter {
 
   TypeSpec resolve_payload_type(FnCtx& ctx, const IndexExpr& idx) {
     TypeSpec base_ts = resolve_expr_type(ctx, idx.base);
+    if (is_vector_value(base_ts)) {
+      base_ts.is_vector = false;
+      base_ts.vector_lanes = 0;
+      base_ts.vector_bytes = 0;
+      return base_ts;
+    }
     if (base_ts.array_rank > 0) { base_ts.array_rank--; return base_ts; }
     if (base_ts.ptr_level > 0) { base_ts.ptr_level--; return base_ts; }
     return base_ts;
@@ -3149,7 +3240,9 @@ class HirEmitter {
 
   TypeSpec resolve_payload_type(FnCtx& ctx, const TernaryExpr& t) {
     TypeSpec ts = resolve_expr_type(ctx, t.then_expr);
-    if (ts.base != TB_VOID || ts.ptr_level > 0 || ts.array_rank > 0) return ts;
+    if (ts.base != TB_VOID || ts.ptr_level > 0 || ts.array_rank > 0 ||
+        is_vector_value(ts))
+      return ts;
     return resolve_expr_type(ctx, t.else_expr);
   }
 
@@ -3486,7 +3579,9 @@ class HirEmitter {
 
       case UnaryOp::Minus: {
         const std::string tmp = fresh_tmp(ctx);
-        if (is_float_base(op_ts.base)) {
+        if (is_vector_value(op_ts)) {
+          emit_instr(ctx, tmp + " = sub " + ty + " zeroinitializer, " + val);
+        } else if (is_float_base(op_ts.base)) {
           emit_instr(ctx, tmp + " = fneg " + ty + " " + val);
         } else {
           emit_instr(ctx, tmp + " = sub " + ty + " 0, " + val);
@@ -3527,7 +3622,21 @@ class HirEmitter {
           return out;
         }
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = xor " + ty + " " + val + ", -1");
+        if (is_vector_value(op_ts)) {
+          TypeSpec elem_ts = op_ts;
+          elem_ts.is_vector = false;
+          elem_ts.vector_lanes = 0;
+          elem_ts.vector_bytes = 0;
+          std::string mask = "<";
+          for (long long i = 0; i < op_ts.vector_lanes; ++i) {
+            if (i) mask += ", ";
+            mask += llvm_ty(elem_ts) + " -1";
+          }
+          mask += ">";
+          emit_instr(ctx, tmp + " = xor " + ty + " " + val + ", " + mask);
+        } else {
+          emit_instr(ctx, tmp + " = xor " + ty + " " + val + ", -1");
+        }
         return tmp;
       }
 
@@ -3699,6 +3808,33 @@ class HirEmitter {
                             ? e.type.spec
                             : lts;
 
+    if ((b.op == BinaryOp::Add || b.op == BinaryOp::Sub) &&
+        llvm_ty(lts) == "ptr" && llvm_ty(rts) != "ptr") {
+      TypeSpec i64_ts{};
+      i64_ts.base = TB_LONGLONG;
+      std::string idx = coerce(ctx, rv, rts, i64_ts);
+      if (b.op == BinaryOp::Sub) {
+        const std::string neg = fresh_tmp(ctx);
+        emit_instr(ctx, neg + " = sub i64 0, " + idx);
+        idx = neg;
+      }
+      TypeSpec elem_ts = lts;
+      if (elem_ts.ptr_level > 0) elem_ts.ptr_level -= 1;
+      else if (elem_ts.array_rank > 0 && !elem_ts.is_ptr_to_array) elem_ts = drop_one_array_dim(elem_ts);
+      else {
+        elem_ts = {};
+        elem_ts.base = TB_CHAR;
+      }
+      const std::string gep_elem_ty =
+          (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
+              ? "i8"
+              : llvm_ty(elem_ts);
+      const std::string tmp = fresh_tmp(ctx);
+      emit_instr(ctx, tmp + " = getelementptr " + gep_elem_ty +
+                          ", ptr " + lv + ", i64 " + idx);
+      return tmp;
+    }
+
     if ((b.op == BinaryOp::Eq || b.op == BinaryOp::Ne) &&
         (is_complex_base(lts.base) || is_complex_base(rts.base))) {
       TypeSpec cmp_lts = lts;
@@ -3775,12 +3911,53 @@ class HirEmitter {
       return emit_complex_binary_arith(ctx, b.op, lv, lts, rv, rts, res_spec);
     }
 
+    if (is_vector_value(res_spec)) {
+      const std::string tmp = fresh_tmp(ctx);
+      const std::string vec_ty = llvm_ty(res_spec);
+      switch (b.op) {
+        case BinaryOp::Add:
+          emit_instr(ctx, tmp + " = add " + vec_ty + " " + lv + ", " + rv);
+          return tmp;
+        case BinaryOp::Sub:
+          emit_instr(ctx, tmp + " = sub " + vec_ty + " " + lv + ", " + rv);
+          return tmp;
+        case BinaryOp::Mul:
+          emit_instr(ctx, tmp + " = mul " + vec_ty + " " + lv + ", " + rv);
+          return tmp;
+        case BinaryOp::Div:
+          emit_instr(ctx, tmp + " = " +
+                              std::string(is_signed_int(res_spec.base) ? "sdiv " : "udiv ") +
+                              vec_ty + " " + lv + ", " + rv);
+          return tmp;
+        case BinaryOp::Mod:
+          emit_instr(ctx, tmp + " = " +
+                              std::string(is_signed_int(res_spec.base) ? "srem " : "urem ") +
+                              vec_ty + " " + lv + ", " + rv);
+          return tmp;
+        case BinaryOp::BitAnd:
+          emit_instr(ctx, tmp + " = and " + vec_ty + " " + lv + ", " + rv);
+          return tmp;
+        case BinaryOp::BitOr:
+          emit_instr(ctx, tmp + " = or " + vec_ty + " " + lv + ", " + rv);
+          return tmp;
+        case BinaryOp::BitXor:
+          emit_instr(ctx, tmp + " = xor " + vec_ty + " " + lv + ", " + rv);
+          return tmp;
+        default:
+          break;
+      }
+    }
+
     // Apply C usual arithmetic conversions (UAC) for integer operands.
     // This promotes both operands to at least int, then to the common type.
-    const bool l_is_int = is_any_int(lts.base) && lts.ptr_level == 0 && lts.array_rank == 0;
-    const bool r_is_int = is_any_int(rts.base) && rts.ptr_level == 0 && rts.array_rank == 0;
-    const bool l_is_flt = is_float_base(lts.base) && lts.ptr_level == 0 && lts.array_rank == 0;
-    const bool r_is_flt = is_float_base(rts.base) && rts.ptr_level == 0 && rts.array_rank == 0;
+    const bool l_is_int = is_any_int(lts.base) && lts.ptr_level == 0 && lts.array_rank == 0 &&
+                          !is_vector_value(lts);
+    const bool r_is_int = is_any_int(rts.base) && rts.ptr_level == 0 && rts.array_rank == 0 &&
+                          !is_vector_value(rts);
+    const bool l_is_flt = is_float_base(lts.base) && lts.ptr_level == 0 && lts.array_rank == 0 &&
+                          !is_vector_value(lts);
+    const bool r_is_flt = is_float_base(rts.base) && rts.ptr_level == 0 && rts.array_rank == 0 &&
+                          !is_vector_value(rts);
     if (l_is_int && r_is_int) {
       // For shift operations, the result type is the promoted LHS only;
       // the RHS (shift amount) doesn't participate in usual arithmetic conversions.
@@ -3863,11 +4040,14 @@ class HirEmitter {
         return tmp;
       };
 
-      if (op_ty == "ptr" && rts.ptr_level == 0 && rts.array_rank == 0 && is_any_int(rts.base)) {
+      const bool rhs_is_nonptr_scalar =
+          llvm_ty(rts) != "ptr" && !is_float_base(rts.base) && rts.array_rank == 0;
+      const bool lhs_is_nonptr_scalar =
+          llvm_ty(lts) != "ptr" && !is_float_base(lts.base) && lts.array_rank == 0;
+      if (op_ty == "ptr" && rhs_is_nonptr_scalar) {
         return emit_ptr_gep(lv, lts, rv, rts, b.op == BinaryOp::Sub);
       }
-      if (llvm_ty(rts) == "ptr" && lts.ptr_level == 0 && lts.array_rank == 0 &&
-          is_any_int(lts.base) && b.op == BinaryOp::Add) {
+      if (llvm_ty(rts) == "ptr" && lhs_is_nonptr_scalar && b.op == BinaryOp::Add) {
         return emit_ptr_gep(rv, rts, lv, lts, false);
       }
       if (b.op == BinaryOp::Sub && op_ty == "ptr" && llvm_ty(rts) == "ptr") {
@@ -3912,6 +4092,36 @@ class HirEmitter {
     };
     for (const auto& row : arith) {
       if (row.op == b.op) {
+        if ((row.op == BinaryOp::Add || row.op == BinaryOp::Sub) && op_ty == "ptr") {
+          auto emit_ptr_fallback = [&](const std::string& base_ptr, const TypeSpec& base_ts,
+                                       const std::string& idx_val, const TypeSpec& idx_ts,
+                                       bool negate_idx) -> std::string {
+            TypeSpec i64_ts{};
+            i64_ts.base = TB_LONGLONG;
+            std::string idx = coerce(ctx, idx_val, idx_ts, i64_ts);
+            if (negate_idx) {
+              const std::string neg = fresh_tmp(ctx);
+              emit_instr(ctx, neg + " = sub i64 0, " + idx);
+              idx = neg;
+            }
+            TypeSpec elem_ts = base_ts;
+            if (elem_ts.ptr_level > 0) elem_ts.ptr_level -= 1;
+            else if (elem_ts.array_rank > 0 && !elem_ts.is_ptr_to_array) elem_ts = drop_one_array_dim(elem_ts);
+            else {
+              elem_ts = {};
+              elem_ts.base = TB_CHAR;
+            }
+            const std::string gep_elem_ty =
+                (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
+                    ? "i8"
+                    : llvm_ty(elem_ts);
+            const std::string tmp = fresh_tmp(ctx);
+            emit_instr(ctx, tmp + " = getelementptr " + gep_elem_ty +
+                                ", ptr " + base_ptr + ", i64 " + idx);
+            return tmp;
+          };
+          return emit_ptr_fallback(lv, lts, rv, rts, row.op == BinaryOp::Sub);
+        }
         const char* instr = nullptr;
         if (lf) {
           instr = row.f;
@@ -5267,6 +5477,7 @@ class HirEmitter {
         (d.type.spec.array_rank > 0) ? llvm_alloca_ty(d.type.spec) : llvm_ty(d.type.spec);
     const bool is_agg_or_array =
         d.type.spec.array_rank > 0 ||
+        (d.type.spec.is_vector && d.type.spec.vector_lanes > 0) ||
         (d.type.spec.ptr_level == 0 &&
          (d.type.spec.base == TB_STRUCT || d.type.spec.base == TB_UNION) &&
          d.type.spec.array_rank == 0);

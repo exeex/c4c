@@ -44,6 +44,7 @@ TypeSpec make_int_ts() {
 }
 
 TypeSpec decay_array(TypeSpec ts) {
+  if (is_vector_ty(ts)) return ts;
   // is_ptr_to_array means the type is already a pointer wrapping an array (e.g. char (*)[4]);
   // do not decay such types a second time.
   if (ts.array_rank > 0 && !ts.is_ptr_to_array) {
@@ -166,6 +167,10 @@ bool same_types_for_function_compat(TypeSpec a, TypeSpec b, bool for_param = fal
   }
 
   if (a.base != b.base) return false;
+  if (a.is_vector != b.is_vector) return false;
+  if (a.is_vector &&
+      (a.vector_lanes != b.vector_lanes || a.vector_bytes != b.vector_bytes))
+    return false;
   if (a.ptr_level != b.ptr_level) return false;
   if (a.array_rank != b.array_rank) return false;
   if (a.array_size != b.array_size) return false;
@@ -360,6 +365,13 @@ bool implicit_convertible(const TypeSpec& dst_raw, const TypeSpec& src_raw,
   if (dst.base == TB_STRUCT || dst.base == TB_UNION ||
       src.base == TB_STRUCT || src.base == TB_UNION) {
     return same_tagged_type(dst, src);
+  }
+
+  if (dst.is_vector || src.is_vector) {
+    return dst.is_vector && src.is_vector &&
+           dst.base == src.base &&
+           dst.vector_lanes == src.vector_lanes &&
+           dst.vector_bytes == src.vector_bytes;
   }
 
   // Arithmetic scalar conversions are allowed.
