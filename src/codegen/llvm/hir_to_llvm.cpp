@@ -2780,7 +2780,6 @@ class HirEmitter {
       TypeSpec base_ts{};
       std::string base;
       if (const TypeSpec resolved_base_ts = resolve_expr_type(ctx, idx->base);
-          resolved_base_ts.array_rank > 0 ||
           is_vector_value(resolved_base_ts)) {
         TypeSpec obj_ts{};
         base = emit_lval(ctx, idx->base, obj_ts);
