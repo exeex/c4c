@@ -1023,6 +1023,7 @@ class Lowerer {
     if (!n) return false;
     switch (n->kind) {
       case NK_CALL:
+      case NK_BUILTIN_CALL:
       case NK_ASSIGN:
       case NK_COMPOUND_ASSIGN:
       case NK_COMMA_EXPR:
@@ -2076,12 +2077,18 @@ class Lowerer {
         c.expr = lower_expr(ctx, n->left);
         return append_expr(n, c, n->type);
       }
-      case NK_CALL: {
+      case NK_CALL:
+      case NK_BUILTIN_CALL: {
         CallExpr c{};
         c.callee = lower_expr(ctx, n->left);
+        c.builtin_id = n->builtin_id;
         for (int i = 0; i < n->n_children; ++i) c.args.push_back(lower_expr(ctx, n->children[i]));
         TypeSpec ts = n->type;
-        if (auto inferred = infer_call_result_type_from_callee(ctx, n->left)) {
+        if (n->builtin_id != BuiltinId::Unknown) {
+          bool known = false;
+          TypeSpec builtin_ts = classify_known_builtin_return_type(n->builtin_id, &known);
+          if (known) ts = builtin_ts;
+        } else if (auto inferred = infer_call_result_type_from_callee(ctx, n->left)) {
           ts = *inferred;
         }
         return append_expr(n, c, ts);

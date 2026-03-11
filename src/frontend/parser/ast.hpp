@@ -14,6 +14,8 @@
 
 #include <cstddef>
 
+#include "../builtin.hpp"
+
 namespace tinyc2ll::frontend_cxx {
 
 // Forward declaration
@@ -112,6 +114,7 @@ enum NodeKind {
 
     // Complex expressions
     NK_CALL,            // func(...) : func=left, args=children[0..n_children-1]
+    NK_BUILTIN_CALL,    // builtin(...) : func=left, args=children, builtin_id identifies semantic
     NK_INDEX,           // array[index] : left=array, right=index
     NK_MEMBER,          // expr.field or expr->field
     NK_CAST,            // (type)expr : left=expr
@@ -181,6 +184,7 @@ struct Node {
     // --- name (for NK_VAR, NK_FUNCTION, NK_DECL, NK_GLOBAL_VAR,
     //           NK_GOTO, NK_LABEL, NK_MEMBER, NK_STRUCT_DEF, NK_ENUM_DEF) ---
     const char* name;
+    BuiltinId builtin_id;
 
     // --- operator string (for NK_BINOP, NK_UNARY, NK_POSTFIX,
     //                      NK_ASSIGN, NK_COMPOUND_ASSIGN) ---

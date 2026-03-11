@@ -1083,9 +1083,16 @@ class Validator {
         out.is_const_lvalue = false;
         return out;
       }
-      case NK_CALL: {
+      case NK_CALL:
+      case NK_BUILTIN_CALL: {
         for (int i = 0; i < n->n_children; ++i) {
           (void)infer_expr(n->children[i]);
+        }
+        if (n->kind == NK_BUILTIN_CALL && n->builtin_id != BuiltinId::Unknown) {
+          bool known = false;
+          out.type = classify_known_builtin_return_type(n->builtin_id, &known);
+          out.valid = known;
+          return out;
         }
         if (n->left && n->left->kind == NK_VAR && n->left->name && n->left->name[0]) {
           auto it = funcs_.find(n->left->name);
