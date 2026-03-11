@@ -1088,6 +1088,13 @@ class Validator {
         for (int i = 0; i < n->n_children; ++i) {
           (void)infer_expr(n->children[i]);
         }
+        if (n->kind == NK_BUILTIN_CALL && n->builtin_id != BuiltinId::Unknown) {
+          bool known = false;
+          const std::string builtin_name = std::string(builtin_name_from_id(n->builtin_id));
+          out.type = classify_known_call_return_type(builtin_name.c_str(), &known);
+          out.valid = known;
+          return out;
+        }
         if (n->left && n->left->kind == NK_VAR && n->left->name && n->left->name[0]) {
           auto it = funcs_.find(n->left->name);
           if (it != funcs_.end()) {

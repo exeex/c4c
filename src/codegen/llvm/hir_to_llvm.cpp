@@ -235,6 +235,63 @@ static std::optional<double> builtin_constant_fp_value(BuiltinId id) {
   }
 }
 
+static const char* builtin_fp_compare_predicate(BuiltinId id) {
+  switch (id) {
+    case BuiltinId::IsLess: return "olt";
+    case BuiltinId::IsLessEqual: return "ole";
+    case BuiltinId::IsGreater: return "ogt";
+    case BuiltinId::IsGreaterEqual: return "oge";
+    case BuiltinId::IsLessGreater: return "one";
+    default: return nullptr;
+  }
+}
+
+static bool builtin_is_isnan(BuiltinId id) {
+  return id == BuiltinId::IsNan || id == BuiltinId::IsNanF || id == BuiltinId::IsNanL;
+}
+
+static bool builtin_is_isinf(BuiltinId id) {
+  return id == BuiltinId::IsInf || id == BuiltinId::IsInfF || id == BuiltinId::IsInfL;
+}
+
+static bool builtin_is_isfinite(BuiltinId id) {
+  return id == BuiltinId::IsFinite || id == BuiltinId::IsFiniteF || id == BuiltinId::IsFiniteL ||
+         id == BuiltinId::Finite || id == BuiltinId::FiniteF || id == BuiltinId::FiniteL;
+}
+
+static bool builtin_is_ffs(BuiltinId id) {
+  return id == BuiltinId::Ffs || id == BuiltinId::FfsL || id == BuiltinId::FfsLL;
+}
+
+static bool builtin_is_ctz(BuiltinId id) {
+  return id == BuiltinId::Ctz || id == BuiltinId::CtzL || id == BuiltinId::CtzLL;
+}
+
+static bool builtin_is_clz(BuiltinId id) {
+  return id == BuiltinId::Clz || id == BuiltinId::ClzL || id == BuiltinId::ClzLL;
+}
+
+static bool builtin_is_popcount(BuiltinId id) {
+  return id == BuiltinId::Popcount || id == BuiltinId::PopcountL || id == BuiltinId::PopcountLL;
+}
+
+static bool builtin_is_parity(BuiltinId id) {
+  return id == BuiltinId::Parity || id == BuiltinId::ParityL || id == BuiltinId::ParityLL;
+}
+
+static bool builtin_uses_i64_width(BuiltinId id) {
+  switch (id) {
+    case BuiltinId::FfsLL:
+    case BuiltinId::CtzLL:
+    case BuiltinId::ClzLL:
+    case BuiltinId::PopcountLL:
+    case BuiltinId::ParityLL:
+      return true;
+    default:
+      return false;
+  }
+}
+
 static std::string llvm_complex_ty(TypeBase b) {
   const TypeSpec elem_ts = complex_component_ts(b);
   std::string elem_ty;
@@ -4571,7 +4628,7 @@ class HirEmitter {
 
     // Handle GCC/Clang builtins
     if (builtin_special || builtin_fallback) {
-      if (fn_name == "__builtin_memcpy" && call.args.size() >= 3) {
+      if (builtin_id == BuiltinId::Memcpy && call.args.size() >= 3) {
         TypeSpec dst_ts{};
         TypeSpec src_ts{};
         TypeSpec size_ts{};
@@ -4586,21 +4643,21 @@ class HirEmitter {
                             ", i64 " + size + ", i1 false)");
         return dst;
       }
-      if (fn_name == "__builtin_va_start" && call.args.size() >= 1) {
+      if (builtin_id == BuiltinId::VaStart && call.args.size() >= 1) {
         TypeSpec ap_ts{};
         const std::string ap_ptr = emit_va_list_obj_ptr(ctx, call.args[0], ap_ts);
         need_llvm_va_start_ = true;
         emit_instr(ctx, "call void @llvm.va_start.p0(ptr " + ap_ptr + ")");
         return "";
       }
-      if (fn_name == "__builtin_va_end" && call.args.size() >= 1) {
+      if (builtin_id == BuiltinId::VaEnd && call.args.size() >= 1) {
         TypeSpec ap_ts{};
         const std::string ap_ptr = emit_va_list_obj_ptr(ctx, call.args[0], ap_ts);
         need_llvm_va_end_ = true;
         emit_instr(ctx, "call void @llvm.va_end.p0(ptr " + ap_ptr + ")");
         return "";
       }
-      if (fn_name == "__builtin_va_copy" && call.args.size() >= 2) {
+      if (builtin_id == BuiltinId::VaCopy && call.args.size() >= 2) {
         TypeSpec dst_ts{};
         TypeSpec src_ts{};
         const std::string dst_ptr = emit_va_list_obj_ptr(ctx, call.args[0], dst_ts);
@@ -4609,9 +4666,8 @@ class HirEmitter {
         emit_instr(ctx, "call void @llvm.va_copy.p0.p0(ptr " + dst_ptr + ", ptr " + src_ptr + ")");
         return "";
       }
-      // bswap builtins → llvm.bswap intrinsic
-      if (fn_name == "__builtin_bswap16" || fn_name == "__builtin_bswap32" ||
-          fn_name == "__builtin_bswap64") {
+      if (builtin_id == BuiltinId::Bswap16 || builtin_id == BuiltinId::Bswap32 ||
+          builtin_id == BuiltinId::Bswap64) {
         if (call.args.size() == 1) {
           TypeSpec arg_ts{};
           const std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
@@ -4622,78 +4678,50 @@ class HirEmitter {
           return tmp;
         }
       }
-      // __builtin_expect(x, y) → just return x
-      if (fn_name == "__builtin_expect" && call.args.size() >= 1) {
+      if (builtin_id == BuiltinId::Expect && call.args.size() >= 1) {
         TypeSpec arg_ts{};
         return emit_rval_id(ctx, call.args[0], arg_ts);
       }
-      // __builtin_unreachable() → emit unreachable
-      if (fn_name == "__builtin_unreachable" && call.args.empty()) {
+      if (builtin_id == BuiltinId::Unreachable && call.args.empty()) {
         emit_term(ctx, "unreachable");
         return "";
       }
-      // __builtin_huge_val / __builtin_inf → double +Inf
-      if (fn_name == "__builtin_huge_val" || fn_name == "__builtin_huge_vall" ||
-          fn_name == "__builtin_inf"      || fn_name == "__builtin_infl") {
-        const TypeBase base = (fn_name == "__builtin_huge_vall" || fn_name == "__builtin_infl")
-                                  ? TB_LONGDOUBLE
-                                  : TB_DOUBLE;
-        return fp_literal(base, std::numeric_limits<double>::infinity());
-      }
-      // __builtin_huge_valf / __builtin_inff → float +Inf (as double hex for LLVM)
-      if (fn_name == "__builtin_huge_valf" || fn_name == "__builtin_inff") {
-        return fp_to_float_literal(std::numeric_limits<float>::infinity());
-      }
-      // __builtin_nan / __builtin_nans → double NaN
-      if (fn_name == "__builtin_nan" || fn_name == "__builtin_nans" ||
-          fn_name == "__builtin_nanl" || fn_name == "__builtin_nansl") {
-        const TypeBase base = (fn_name == "__builtin_nanl" || fn_name == "__builtin_nansl")
-                                  ? TB_LONGDOUBLE
-                                  : TB_DOUBLE;
-        return fp_literal(base, std::numeric_limits<double>::quiet_NaN());
-      }
-      // __builtin_nanf / __builtin_nansf → float NaN
-      if (fn_name == "__builtin_nanf" || fn_name == "__builtin_nansf") {
-        return fp_to_float_literal(std::numeric_limits<float>::quiet_NaN());
-      }
-      // IEEE ordered/unordered comparison builtins
-      // These are semantically: __builtin_isXXX(a, b) → fcmp XXX a, b (int result)
-      static const struct { const char* name; const char* pred; } fp_cmp_builtins[] = {
-        { "__builtin_isless",         "olt" },
-        { "__builtin_islessequal",    "ole" },
-        { "__builtin_isgreater",      "ogt" },
-        { "__builtin_isgreaterequal", "oge" },
-        { "__builtin_islessgreater",  "one" },
-        { nullptr, nullptr }
-      };
-      for (const auto* bc = fp_cmp_builtins; bc->name; ++bc) {
-        if (fn_name == bc->name && call.args.size() == 2) {
-          TypeSpec at{}, bt{};
-          std::string a = emit_rval_id(ctx, call.args[0], at);
-          std::string b = emit_rval_id(ctx, call.args[1], bt);
-          // Promote float to double if needed
-          auto ensure_double = [&](std::string& v, TypeSpec& ts) {
-            if (ts.base == TB_FLOAT && ts.ptr_level == 0 && ts.array_rank == 0) {
-              const std::string p = fresh_tmp(ctx);
-              emit_instr(ctx, p + " = fpext float " + v + " to double");
-              v = p; ts.base = TB_DOUBLE;
-            }
-          };
-          ensure_double(a, at); ensure_double(b, bt);
-          const std::string fty = llvm_ty(at);
-          const std::string cmp = fresh_tmp(ctx);
-          emit_instr(ctx, cmp + " = fcmp " + std::string(bc->pred) + " " + fty + " " + a + ", " + b);
-          const std::string tmp = fresh_tmp(ctx);
-          emit_instr(ctx, tmp + " = zext i1 " + cmp + " to i32");
-          return tmp;
+      if (const auto fpv = builtin_constant_fp_value(builtin_id)) {
+        if (builtin_id == BuiltinId::HugeValF || builtin_id == BuiltinId::InfF) {
+          return fp_to_float_literal(std::numeric_limits<float>::infinity());
+        }
+        if (builtin_id == BuiltinId::NanF || builtin_id == BuiltinId::NansF) {
+          return fp_to_float_literal(std::numeric_limits<float>::quiet_NaN());
+        }
+        if (const auto base = builtin_fp_result_base(builtin_id)) {
+          return fp_literal(*base, *fpv);
         }
       }
-      // __builtin_isunordered(a, b) → fcmp uno a, b (1 if either is NaN)
-      if (fn_name == "__builtin_isunordered" && call.args.size() == 2) {
+      if (const char* pred = builtin_fp_compare_predicate(builtin_id);
+          pred && call.args.size() == 2) {
         TypeSpec at{}, bt{};
         std::string a = emit_rval_id(ctx, call.args[0], at);
         std::string b = emit_rval_id(ctx, call.args[1], bt);
-        // Promote to double for comparison
+        auto promote_to_double = [&](std::string& v, TypeSpec& ts) {
+          if (ts.base == TB_FLOAT && ts.ptr_level == 0 && ts.array_rank == 0) {
+            const std::string p = fresh_tmp(ctx);
+            emit_instr(ctx, p + " = fpext float " + v + " to double");
+            v = p; ts.base = TB_DOUBLE;
+          }
+        };
+        promote_to_double(a, at);
+        promote_to_double(b, bt);
+        const std::string fty = llvm_ty(at);
+        const std::string cmp = fresh_tmp(ctx);
+        emit_instr(ctx, cmp + " = fcmp " + std::string(pred) + " " + fty + " " + a + ", " + b);
+        const std::string tmp = fresh_tmp(ctx);
+        emit_instr(ctx, tmp + " = zext i1 " + cmp + " to i32");
+        return tmp;
+      }
+      if (builtin_id == BuiltinId::IsUnordered && call.args.size() == 2) {
+        TypeSpec at{}, bt{};
+        std::string a = emit_rval_id(ctx, call.args[0], at);
+        std::string b = emit_rval_id(ctx, call.args[1], bt);
         auto promote_to_double = [&](std::string& v, TypeSpec& ts) {
           if (ts.base == TB_FLOAT && ts.ptr_level == 0 && ts.array_rank == 0) {
             const std::string p = fresh_tmp(ctx);
@@ -4710,9 +4738,7 @@ class HirEmitter {
         emit_instr(ctx, tmp + " = zext i1 " + cmp + " to i32");
         return tmp;
       }
-      // __builtin_isnan(a) → fcmp uno a, a
-      if ((fn_name == "__builtin_isnan" || fn_name == "__builtin_isnanf" ||
-           fn_name == "__builtin_isnanl") && call.args.size() == 1) {
+      if (builtin_is_isnan(builtin_id) && call.args.size() == 1) {
         TypeSpec at{};
         std::string a = emit_rval_id(ctx, call.args[0], at);
         if (at.base == TB_FLOAT && at.ptr_level == 0 && at.array_rank == 0) {
@@ -4727,9 +4753,7 @@ class HirEmitter {
         emit_instr(ctx, tmp + " = zext i1 " + cmp + " to i32");
         return tmp;
       }
-      // __builtin_isinf(a) → abs(a) == infinity
-      if ((fn_name == "__builtin_isinf" || fn_name == "__builtin_isinff" ||
-           fn_name == "__builtin_isinfl") && call.args.size() == 1) {
+      if (builtin_is_isinf(builtin_id) && call.args.size() == 1) {
         TypeSpec at{};
         std::string a = emit_rval_id(ctx, call.args[0], at);
         if (at.base == TB_FLOAT && at.ptr_level == 0 && at.array_rank == 0) {
@@ -4748,10 +4772,7 @@ class HirEmitter {
         emit_instr(ctx, tmp + " = zext i1 " + cmp + " to i32");
         return tmp;
       }
-      // __builtin_isfinite(a) → abs(a) < infinity
-      if ((fn_name == "__builtin_isfinite" || fn_name == "__builtin_isfinitef" ||
-           fn_name == "__builtin_isfinitel" || fn_name == "__builtin_finite" ||
-           fn_name == "__builtin_finitef" || fn_name == "__builtin_finitel") && call.args.size() == 1) {
+      if (builtin_is_isfinite(builtin_id) && call.args.size() == 1) {
         TypeSpec at{};
         std::string a = emit_rval_id(ctx, call.args[0], at);
         if (at.base == TB_FLOAT && at.ptr_level == 0 && at.array_rank == 0) {
@@ -4769,17 +4790,14 @@ class HirEmitter {
         emit_instr(ctx, tmp + " = zext i1 " + cmp + " to i32");
         return tmp;
       }
-      // __builtin_copysign / __builtin_copysignf / __builtin_copysignl
-      // → llvm.copysign intrinsic
-      if ((fn_name == "__builtin_copysign" || fn_name == "__builtin_copysignl" ||
-           fn_name == "__builtin_copysignf") && call.args.size() == 2) {
+      if ((builtin_id == BuiltinId::Copysign || builtin_id == BuiltinId::CopysignL ||
+           builtin_id == BuiltinId::CopysignF) && call.args.size() == 2) {
         TypeSpec at{}, bt{};
         std::string a = emit_rval_id(ctx, call.args[0], at);
         std::string b = emit_rval_id(ctx, call.args[1], bt);
-        const bool is_float = (fn_name == "__builtin_copysignf");
-        const bool is_long_double = (fn_name == "__builtin_copysignl");
+        const bool is_float = (builtin_id == BuiltinId::CopysignF);
+        const bool is_long_double = (builtin_id == BuiltinId::CopysignL);
         if (is_float) {
-          // Ensure both are float
           auto to_float = [&](std::string& v, TypeSpec& ts) {
             if (ts.base == TB_DOUBLE && ts.ptr_level == 0 && ts.array_rank == 0) {
               const std::string p = fresh_tmp(ctx); emit_instr(ctx, p + " = fptrunc double " + v + " to float");
@@ -4820,20 +4838,18 @@ class HirEmitter {
           return tmp;
         }
       }
-      // __builtin_fabs / __builtin_fabsf / __builtin_fabsl → llvm.fabs intrinsic
-      if ((fn_name == "__builtin_fabs" || fn_name == "__builtin_fabsl" ||
-           fn_name == "__builtin_fabsf") && call.args.size() == 1) {
+      if ((builtin_id == BuiltinId::Fabs || builtin_id == BuiltinId::FabsL ||
+           builtin_id == BuiltinId::FabsF) && call.args.size() == 1) {
         TypeSpec arg_ts{};
         std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
-        // Promote float arg to the expected width for fabs/fabsl.
-        if (fn_name == "__builtin_fabs") {
+        if (builtin_id == BuiltinId::Fabs) {
           if (arg_ts.base == TB_FLOAT && arg_ts.ptr_level == 0 && arg_ts.array_rank == 0) {
             const std::string promoted = fresh_tmp(ctx);
             emit_instr(ctx, promoted + " = fpext float " + arg + " to double");
             arg = promoted;
             arg_ts.base = TB_DOUBLE;
           }
-        } else if (fn_name == "__builtin_fabsl") {
+        } else if (builtin_id == BuiltinId::FabsL) {
           if (arg_ts.base == TB_FLOAT && arg_ts.ptr_level == 0 && arg_ts.array_rank == 0) {
             const std::string promoted = fresh_tmp(ctx);
             emit_instr(ctx, promoted + " = fpext float " + arg + " to fp128");
@@ -4860,13 +4876,10 @@ class HirEmitter {
         emit_instr(ctx, tmp + " = call " + fty + " " + intrinsic + "(" + fty + " " + arg + ")");
         return tmp;
       }
-      // __builtin_ffs{,l,ll}(x) → (x==0) ? 0 : (cttz(x)+1)
-      if ((fn_name == "__builtin_ffs"  || fn_name == "__builtin_ffsl" ||
-           fn_name == "__builtin_ffsll") && call.args.size() == 1) {
+      if (builtin_is_ffs(builtin_id) && call.args.size() == 1) {
         TypeSpec arg_ts{};
         std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
-        // Coerce to i32 or i64 depending on type
-        const bool is_ll = (fn_name == "__builtin_ffsll");
+        const bool is_ll = builtin_uses_i64_width(builtin_id);
         const std::string ity = is_ll ? "i64" : "i32";
         TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
         arg = coerce(ctx, arg, arg_ts, target_ts);
@@ -4887,12 +4900,10 @@ class HirEmitter {
         }
         return sel;
       }
-      // __builtin_ctz{,l,ll}(x) → cttz(x, undef_if_zero=true)
-      if ((fn_name == "__builtin_ctz"  || fn_name == "__builtin_ctzl" ||
-           fn_name == "__builtin_ctzll") && call.args.size() == 1) {
+      if (builtin_is_ctz(builtin_id) && call.args.size() == 1) {
         TypeSpec arg_ts{};
         std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
-        const bool is_ll = (fn_name == "__builtin_ctzll");
+        const bool is_ll = builtin_uses_i64_width(builtin_id);
         const std::string ity = is_ll ? "i64" : "i32";
         TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
         arg = coerce(ctx, arg, arg_ts, target_ts);
@@ -4906,12 +4917,10 @@ class HirEmitter {
         }
         return tmp;
       }
-      // __builtin_clz{,l,ll}(x) → ctlz(x, undef_if_zero=true)
-      if ((fn_name == "__builtin_clz"  || fn_name == "__builtin_clzl" ||
-           fn_name == "__builtin_clzll") && call.args.size() == 1) {
+      if (builtin_is_clz(builtin_id) && call.args.size() == 1) {
         TypeSpec arg_ts{};
         std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
-        const bool is_ll = (fn_name == "__builtin_clzll");
+        const bool is_ll = builtin_uses_i64_width(builtin_id);
         const std::string ity = is_ll ? "i64" : "i32";
         TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
         arg = coerce(ctx, arg, arg_ts, target_ts);
@@ -4925,12 +4934,10 @@ class HirEmitter {
         }
         return tmp;
       }
-      // __builtin_popcount{,l,ll}(x) → ctpop(x)
-      if ((fn_name == "__builtin_popcount"  || fn_name == "__builtin_popcountl" ||
-           fn_name == "__builtin_popcountll") && call.args.size() == 1) {
+      if (builtin_is_popcount(builtin_id) && call.args.size() == 1) {
         TypeSpec arg_ts{};
         std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
-        const bool is_ll = (fn_name == "__builtin_popcountll");
+        const bool is_ll = builtin_uses_i64_width(builtin_id);
         const std::string ity = is_ll ? "i64" : "i32";
         TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
         arg = coerce(ctx, arg, arg_ts, target_ts);
@@ -4944,12 +4951,10 @@ class HirEmitter {
         }
         return tmp;
       }
-      // __builtin_parity{,l,ll}(x) → ctpop(x) & 1
-      if ((fn_name == "__builtin_parity"  || fn_name == "__builtin_parityl" ||
-           fn_name == "__builtin_parityll") && call.args.size() == 1) {
+      if (builtin_is_parity(builtin_id) && call.args.size() == 1) {
         TypeSpec arg_ts{};
         std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
-        const bool is_ll = (fn_name == "__builtin_parityll");
+        const bool is_ll = builtin_uses_i64_width(builtin_id);
         const std::string ity = is_ll ? "i64" : "i32";
         TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
         arg = coerce(ctx, arg, arg_ts, target_ts);
@@ -4965,8 +4970,8 @@ class HirEmitter {
         }
         return tmp;
       }
-      if ((fn_name == "__builtin_conj" || fn_name == "__builtin_conjf" ||
-           fn_name == "__builtin_conjl") && call.args.size() == 1) {
+      if ((builtin_id == BuiltinId::Conj || builtin_id == BuiltinId::ConjF ||
+           builtin_id == BuiltinId::ConjL) && call.args.size() == 1) {
         TypeSpec arg_ts{};
         std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
         if (!is_complex_base(arg_ts.base)) return arg;

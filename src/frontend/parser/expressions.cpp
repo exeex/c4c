@@ -350,10 +350,6 @@ Node* Parser::parse_postfix(Node* base) {
                 if (base && base->kind == NK_VAR && base->name) {
                     if (has_builtin_prefix(base->name))
                         builtin = builtin_by_name(base->name);
-                    if (builtin && builtin->node_kind == BuiltinNodeKind::CanonicalCall &&
-                        !builtin->canonical_name.empty()) {
-                        base->name = arena_.strdup(std::string(builtin->canonical_name).c_str());
-                    }
                 }
                 std::vector<Node*> args;
                 while (!at_end() && !check(TokenKind::RParen)) {
@@ -362,12 +358,13 @@ Node* Parser::parse_postfix(Node* base) {
                 }
                 expect(TokenKind::RParen);
                 const NodeKind call_kind =
-                    (builtin && builtin->node_kind == BuiltinNodeKind::BuiltinCall)
+                    (builtin && (builtin->node_kind == BuiltinNodeKind::BuiltinCall ||
+                                 builtin->node_kind == BuiltinNodeKind::CanonicalCall))
                         ? NK_BUILTIN_CALL
                         : NK_CALL;
                 Node* n = make_node(call_kind, ln);
                 n->left       = base;
-                if (builtin) n->builtin_id = builtin->id;
+                if (call_kind == NK_BUILTIN_CALL && builtin) n->builtin_id = builtin->id;
                 n->n_children = (int)args.size();
                 if (n->n_children > 0) {
                     n->children = arena_.alloc_array<Node*>(n->n_children);

@@ -241,6 +241,7 @@ struct CastExpr {
 struct CallExpr {
   ExprId callee{};
   std::vector<ExprId> args;
+  BuiltinId builtin_id = BuiltinId::Unknown;
 };
 
 struct VaArgExpr {
