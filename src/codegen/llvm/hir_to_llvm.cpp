@@ -918,6 +918,13 @@ class HirEmitter {
           case BinaryOp::LOr:    return static_cast<long long>(*lv || *rv);
           default: return std::nullopt;
         }
+      } else if constexpr (std::is_same_v<T, SizeofTypeExpr>) {
+        return static_cast<long long>(sizeof_ts(mod_, p.type.spec));
+      } else if constexpr (std::is_same_v<T, SizeofExpr>) {
+        const Expr& op = get_expr(p.expr);
+        if (has_concrete_type(op.type.spec))
+          return static_cast<long long>(sizeof_ts(mod_, op.type.spec));
+        return std::nullopt;
       } else {
         return std::nullopt;
       }
@@ -1287,7 +1294,16 @@ class HirEmitter {
           (void)is_float_tgt;
         }
         return (llvm_ty(expected_ts) == "ptr") ? "null" : "0";
+      } else if constexpr (std::is_same_v<T, SizeofTypeExpr>) {
+        return std::to_string(sizeof_ts(mod_, p.type.spec));
+      } else if constexpr (std::is_same_v<T, SizeofExpr>) {
+        auto val = try_const_eval_int(id);
+        if (val) return std::to_string(*val);
+        return "0";
       } else {
+        // Try integer constant evaluation as a last resort
+        auto val = try_const_eval_int(id);
+        if (val) return std::to_string(*val);
         return (llvm_ty(expected_ts) == "ptr") ? "null" : "0";
       }
     }, e.payload);
@@ -5044,11 +5060,12 @@ class HirEmitter {
 
   std::string emit_rval_payload(FnCtx& ctx, const SizeofExpr& s, const Expr&) {
     const Expr& op = get_expr(s.expr);
-    TypeSpec op_ts = std::visit([&](const auto& p) -> TypeSpec {
-      return resolve_payload_type(ctx, p);
-    }, op.payload);
-    if (!has_concrete_type(op_ts)) op_ts = resolve_expr_type(ctx, s.expr);
-    if (!has_concrete_type(op_ts)) op_ts = op.type.spec;
+    TypeSpec op_ts = resolve_expr_type(ctx, op);
+    if (!has_concrete_type(op_ts)) {
+      op_ts = std::visit([&](const auto& p) -> TypeSpec {
+        return resolve_payload_type(ctx, p);
+      }, op.payload);
+    }
     // DeclRef: get type from global/local declaration (NK_VAR nodes have no type set).
     if (const auto* r = std::get_if<DeclRef>(&op.payload)) {
       auto resolve_named_global_object_type = [&](const std::string& name) -> std::optional<TypeSpec> {
