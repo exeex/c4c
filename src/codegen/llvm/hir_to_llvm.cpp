@@ -3665,6 +3665,10 @@ class HirEmitter {
           load_ts.array_rank--;
           load_ts.array_size = -1;
         }
+        // Dereferencing a pointer-to-array yields an array lvalue. In rvalue
+        // position it decays back to the same base address; loading a ptr here
+        // would incorrectly treat the first elements as an address.
+        if (load_ts.array_rank > 0) return val;
         // In C, dereferencing a function pointer (*fp) yields the function,
         // which immediately decays back to a function pointer — identity op.
         if (load_ts.is_fn_ptr && load_ts.ptr_level == 0) return val;
