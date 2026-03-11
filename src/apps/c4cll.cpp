@@ -10,7 +10,7 @@
 #include "arena.hpp"
 #include "ast_to_hir.hpp"
 #include "ast.hpp"
-#include "hir_to_llvm.hpp"
+#include "llvm_codegen.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "preprocessor.hpp"

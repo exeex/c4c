@@ -6,7 +6,7 @@
 #include <optional>
 #include <string>
 
-#include "hir_to_llvm.hpp"
+#include "llvm_codegen.hpp"
 
 namespace tinyc2ll::codegen::llvm_backend::detail {
 
