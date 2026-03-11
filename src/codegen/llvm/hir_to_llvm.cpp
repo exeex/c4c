@@ -4878,6 +4878,15 @@ class HirEmitter {
         return resolve_payload_type(ctx, p);
       }, op.payload);
     }
+    // String literals: sizeof("abc") = 4 (array size, not pointer size)
+    if (const auto* sl = std::get_if<StringLiteral>(&op.payload)) {
+      if (sl->is_wide) {
+        const auto vals = decode_wide_string_values(sl->raw);
+        return std::to_string(vals.size() * 4);  // vals includes null terminator
+      }
+      const auto bytes = bytes_from_string_literal(*sl);
+      return std::to_string(bytes.size() + 1);  // +1 for null terminator
+    }
     // DeclRef: get type from global/local declaration (NK_VAR nodes have no type set).
     if (const auto* r = std::get_if<DeclRef>(&op.payload)) {
       auto resolve_named_global_object_type = [&](const std::string& name) -> std::optional<TypeSpec> {
