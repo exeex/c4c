@@ -103,6 +103,65 @@ static std::string llvm_complex_ty(TypeBase b) {
   return "{ " + elem_ty + ", " + elem_ty + " }";
 }
 
+static std::optional<TypeSpec> type_spec_from_builtin_result_kind(
+    BuiltinResultKind result_kind) {
+  TypeSpec ts{};
+  switch (result_kind) {
+    case BuiltinResultKind::Pointer:
+      ts.base = TB_VOID;
+      ts.ptr_level = 1;
+      return ts;
+    case BuiltinResultKind::Int:
+      ts.base = TB_INT;
+      return ts;
+    case BuiltinResultKind::UShort:
+      ts.base = TB_USHORT;
+      return ts;
+    case BuiltinResultKind::UInt:
+      ts.base = TB_UINT;
+      return ts;
+    case BuiltinResultKind::ULongLong:
+      ts.base = TB_ULONGLONG;
+      return ts;
+    case BuiltinResultKind::Float:
+      ts.base = TB_FLOAT;
+      return ts;
+    case BuiltinResultKind::Double:
+      ts.base = TB_DOUBLE;
+      return ts;
+    case BuiltinResultKind::LongDouble:
+      ts.base = TB_LONGDOUBLE;
+      return ts;
+    case BuiltinResultKind::ComplexFloat:
+      ts.base = TB_COMPLEX_FLOAT;
+      return ts;
+    case BuiltinResultKind::ComplexDouble:
+      ts.base = TB_COMPLEX_DOUBLE;
+      return ts;
+    case BuiltinResultKind::ComplexLongDouble:
+      ts.base = TB_COMPLEX_LONGDOUBLE;
+      return ts;
+    case BuiltinResultKind::Void:
+    case BuiltinResultKind::Unknown:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+static std::optional<TypeBase> fp_base_from_builtin_result_kind(
+    BuiltinResultKind result_kind) {
+  switch (result_kind) {
+    case BuiltinResultKind::Float:
+      return TB_FLOAT;
+    case BuiltinResultKind::Double:
+      return TB_DOUBLE;
+    case BuiltinResultKind::LongDouble:
+      return TB_LONGDOUBLE;
+    default:
+      return std::nullopt;
+  }
+}
+
 static bool is_signed_int(TypeBase b) {
   switch (b) {
     case TB_CHAR: case TB_SCHAR: case TB_SHORT: case TB_INT:
@@ -3080,66 +3139,9 @@ class HirEmitter {
         default:
           break;
       }
-      switch (builtin_result_kind(builtin_id)) {
-        case BuiltinResultKind::Pointer: {
-          TypeSpec void_ptr{};
-          void_ptr.base = TB_VOID;
-          void_ptr.ptr_level = 1;
-          return void_ptr;
-        }
-        case BuiltinResultKind::Int: {
-          TypeSpec ts{};
-          ts.base = TB_INT;
-          return ts;
-        }
-        case BuiltinResultKind::UShort: {
-          TypeSpec ts{};
-          ts.base = TB_USHORT;
-          return ts;
-        }
-        case BuiltinResultKind::UInt: {
-          TypeSpec ts{};
-          ts.base = TB_UINT;
-          return ts;
-        }
-        case BuiltinResultKind::ULongLong: {
-          TypeSpec ts{};
-          ts.base = TB_ULONGLONG;
-          return ts;
-        }
-        case BuiltinResultKind::Float: {
-          TypeSpec ts{};
-          ts.base = TB_FLOAT;
-          return ts;
-        }
-        case BuiltinResultKind::Double: {
-          TypeSpec ts{};
-          ts.base = TB_DOUBLE;
-          return ts;
-        }
-        case BuiltinResultKind::LongDouble: {
-          TypeSpec ts{};
-          ts.base = TB_LONGDOUBLE;
-          return ts;
-        }
-        case BuiltinResultKind::ComplexFloat: {
-          TypeSpec ts{};
-          ts.base = TB_COMPLEX_FLOAT;
-          return ts;
-        }
-        case BuiltinResultKind::ComplexDouble: {
-          TypeSpec ts{};
-          ts.base = TB_COMPLEX_DOUBLE;
-          return ts;
-        }
-        case BuiltinResultKind::ComplexLongDouble: {
-          TypeSpec ts{};
-          ts.base = TB_COMPLEX_LONGDOUBLE;
-          return ts;
-        }
-        case BuiltinResultKind::Void:
-        case BuiltinResultKind::Unknown:
-          break;
+      if (auto builtin_ts = type_spec_from_builtin_result_kind(
+              builtin_result_kind(builtin_id))) {
+        return *builtin_ts;
       }
     }
     const Expr& callee_e = get_expr(c.callee);
@@ -4529,26 +4531,18 @@ class HirEmitter {
           if (builtin_id == BuiltinId::HugeValF || builtin_id == BuiltinId::InfF) {
             return fp_to_float_literal(std::numeric_limits<float>::infinity());
           }
-          switch (builtin_result_kind(builtin_id)) {
-            case BuiltinResultKind::Double:
-              return fp_literal(TB_DOUBLE, std::numeric_limits<double>::infinity());
-            case BuiltinResultKind::LongDouble:
-              return fp_literal(TB_LONGDOUBLE, std::numeric_limits<double>::infinity());
-            default:
-              break;
+          if (auto base = fp_base_from_builtin_result_kind(
+                  builtin_result_kind(builtin_id))) {
+            return fp_literal(*base, std::numeric_limits<double>::infinity());
           }
           break;
         case BuiltinConstantFpKind::QuietNaN:
           if (builtin_id == BuiltinId::NanF || builtin_id == BuiltinId::NansF) {
             return fp_to_float_literal(std::numeric_limits<float>::quiet_NaN());
           }
-          switch (builtin_result_kind(builtin_id)) {
-            case BuiltinResultKind::Double:
-              return fp_literal(TB_DOUBLE, std::numeric_limits<double>::quiet_NaN());
-            case BuiltinResultKind::LongDouble:
-              return fp_literal(TB_LONGDOUBLE, std::numeric_limits<double>::quiet_NaN());
-            default:
-              break;
+          if (auto base = fp_base_from_builtin_result_kind(
+                  builtin_result_kind(builtin_id))) {
+            return fp_literal(*base, std::numeric_limits<double>::quiet_NaN());
           }
           break;
         case BuiltinConstantFpKind::None:
