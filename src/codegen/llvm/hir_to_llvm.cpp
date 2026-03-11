@@ -77,47 +77,6 @@ static TypeSpec complex_component_ts(TypeBase b) {
   return ts;
 }
 
-static std::optional<TypeBase> builtin_fp_result_base(BuiltinId id) {
-  switch (id) {
-    case BuiltinId::HugeVal:
-    case BuiltinId::Inf:
-    case BuiltinId::Nan:
-    case BuiltinId::Nans:
-    case BuiltinId::Fabs:
-    case BuiltinId::Copysign:
-      return TB_DOUBLE;
-    case BuiltinId::HugeValF:
-    case BuiltinId::InfF:
-    case BuiltinId::NanF:
-    case BuiltinId::NansF:
-    case BuiltinId::FabsF:
-    case BuiltinId::CopysignF:
-      return TB_FLOAT;
-    case BuiltinId::HugeValL:
-    case BuiltinId::InfL:
-    case BuiltinId::NanL:
-    case BuiltinId::NansL:
-    case BuiltinId::FabsL:
-    case BuiltinId::CopysignL:
-      return TB_LONGDOUBLE;
-    default:
-      return std::nullopt;
-  }
-}
-
-static std::optional<TypeBase> builtin_complex_result_base(BuiltinId id) {
-  switch (id) {
-    case BuiltinId::Conj:
-      return TB_COMPLEX_DOUBLE;
-    case BuiltinId::ConjF:
-      return TB_COMPLEX_FLOAT;
-    case BuiltinId::ConjL:
-      return TB_COMPLEX_LONGDOUBLE;
-    default:
-      return std::nullopt;
-  }
-}
-
 static std::string llvm_complex_ty(TypeBase b) {
   const TypeSpec elem_ts = complex_component_ts(b);
   std::string elem_ty;
@@ -4570,16 +4529,26 @@ class HirEmitter {
           if (builtin_id == BuiltinId::HugeValF || builtin_id == BuiltinId::InfF) {
             return fp_to_float_literal(std::numeric_limits<float>::infinity());
           }
-          if (const auto base = builtin_fp_result_base(builtin_id)) {
-            return fp_literal(*base, std::numeric_limits<double>::infinity());
+          switch (builtin_result_kind(builtin_id)) {
+            case BuiltinResultKind::Double:
+              return fp_literal(TB_DOUBLE, std::numeric_limits<double>::infinity());
+            case BuiltinResultKind::LongDouble:
+              return fp_literal(TB_LONGDOUBLE, std::numeric_limits<double>::infinity());
+            default:
+              break;
           }
           break;
         case BuiltinConstantFpKind::QuietNaN:
           if (builtin_id == BuiltinId::NanF || builtin_id == BuiltinId::NansF) {
             return fp_to_float_literal(std::numeric_limits<float>::quiet_NaN());
           }
-          if (const auto base = builtin_fp_result_base(builtin_id)) {
-            return fp_literal(*base, std::numeric_limits<double>::quiet_NaN());
+          switch (builtin_result_kind(builtin_id)) {
+            case BuiltinResultKind::Double:
+              return fp_literal(TB_DOUBLE, std::numeric_limits<double>::quiet_NaN());
+            case BuiltinResultKind::LongDouble:
+              return fp_literal(TB_LONGDOUBLE, std::numeric_limits<double>::quiet_NaN());
+            default:
+              break;
           }
           break;
         case BuiltinConstantFpKind::None:
