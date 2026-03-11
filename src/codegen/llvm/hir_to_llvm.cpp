@@ -2354,6 +2354,17 @@ class HirEmitter {
     if (ft == tt) return val;
     if (ft == "ptr" && tt == "ptr") return val;
 
+    // Reinterpret between same-sized vector and integer scalars.
+    if (((is_vector_value(from_ts) && is_any_int(to_ts.base) && to_ts.ptr_level == 0 &&
+          to_ts.array_rank == 0) ||
+         (is_any_int(from_ts.base) && from_ts.ptr_level == 0 && from_ts.array_rank == 0 &&
+          is_vector_value(to_ts))) &&
+        sizeof_ts(mod_, from_ts) == sizeof_ts(mod_, to_ts)) {
+      const std::string tmp = fresh_tmp(ctx);
+      emit_instr(ctx, tmp + " = bitcast " + ft + " " + val + " to " + tt);
+      return tmp;
+    }
+
     if (is_complex_base(from_ts.base) && is_complex_base(to_ts.base)) {
       const TypeSpec from_elem_ts = complex_component_ts(from_ts.base);
       const TypeSpec to_elem_ts = complex_component_ts(to_ts.base);
@@ -4326,6 +4337,9 @@ class HirEmitter {
           emit_instr(ctx, "store " + lty + " " + result + ", ptr " + lhs_ptr);
           return result;
         }
+        if (is_vector_value(lhs_ts)) {
+          op_ts = lhs_ts;
+        } else
         // Compute the operation type via C usual arithmetic conversions.
         if (lhs_ts.ptr_level == 0 && lhs_ts.array_rank == 0 &&
             rhs_ts.ptr_level == 0 && rhs_ts.array_rank == 0) {
@@ -5367,6 +5381,26 @@ class HirEmitter {
   // ── IndexExpr (rval: load through computed ptr) ──────────────────────────
 
   std::string emit_rval_payload(FnCtx& ctx, const IndexExpr&, const Expr& e) {
+    if (const auto* idx = std::get_if<IndexExpr>(&e.payload)) {
+      const TypeSpec base_ts = resolve_expr_type(ctx, idx->base);
+      if (is_vector_value(base_ts)) {
+        TypeSpec vec_ts{};
+        const std::string vec = emit_rval_id(ctx, idx->base, vec_ts);
+        TypeSpec ix_ts{};
+        std::string ix = emit_rval_id(ctx, idx->index, ix_ts);
+        TypeSpec i32_ts{};
+        i32_ts.base = TB_INT;
+        ix = coerce(ctx, ix, ix_ts, i32_ts);
+        TypeSpec elem_ts = base_ts;
+        elem_ts.is_vector = false;
+        elem_ts.vector_lanes = 0;
+        elem_ts.vector_bytes = 0;
+        const std::string tmp = fresh_tmp(ctx);
+        emit_instr(ctx, tmp + " = extractelement " + llvm_ty(base_ts) + " " + vec +
+                            ", i32 " + ix);
+        return tmp;
+      }
+    }
     TypeSpec pts{};
     const std::string ptr = emit_lval_dispatch(ctx, e, pts);
     // Array element decay: if the element type is itself an array, return its
