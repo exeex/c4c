@@ -75,7 +75,17 @@ enum class BuiltinId : uint16_t {
   X(IsLessGreater, "__builtin_islessgreater")                                   \
   X(IsUnordered, "__builtin_isunordered")                                       \
   X(IsNan, "__builtin_isnan")                                                   \
+  X(IsNanF, "__builtin_isnanf")                                                 \
+  X(IsNanL, "__builtin_isnanl")                                                 \
   X(IsInf, "__builtin_isinf")                                                   \
+  X(IsInfF, "__builtin_isinff")                                                 \
+  X(IsInfL, "__builtin_isinfl")                                                 \
+  X(IsFinite, "__builtin_isfinite")                                             \
+  X(IsFiniteF, "__builtin_isfinitef")                                           \
+  X(IsFiniteL, "__builtin_isfinitel")                                           \
+  X(Finite, "__builtin_finite")                                                 \
+  X(FiniteF, "__builtin_finitef")                                               \
+  X(FiniteL, "__builtin_finitel")                                               \
   X(IsInfSign, "__builtin_isinf_sign")                                          \
   X(SignBit, "__builtin_signbit")                                               \
   X(SignBitF, "__builtin_signbitf")                                             \
@@ -296,7 +306,27 @@ inline constexpr BuiltinInfo kBuiltinTable[] = {
      BuiltinLoweringKind::FpCompare, {}},
     {BuiltinId::IsNan, "__builtin_isnan", BuiltinCategory::Intrinsic,
      BuiltinNodeKind::BuiltinCall, BuiltinLoweringKind::FpCompare, {}},
+    {BuiltinId::IsNanF, "__builtin_isnanf", BuiltinCategory::Intrinsic,
+     BuiltinNodeKind::BuiltinCall, BuiltinLoweringKind::FpCompare, {}},
+    {BuiltinId::IsNanL, "__builtin_isnanl", BuiltinCategory::Intrinsic,
+     BuiltinNodeKind::BuiltinCall, BuiltinLoweringKind::FpCompare, {}},
     {BuiltinId::IsInf, "__builtin_isinf", BuiltinCategory::Intrinsic,
+     BuiltinNodeKind::BuiltinCall, BuiltinLoweringKind::FpCompare, {}},
+    {BuiltinId::IsInfF, "__builtin_isinff", BuiltinCategory::Intrinsic,
+     BuiltinNodeKind::BuiltinCall, BuiltinLoweringKind::FpCompare, {}},
+    {BuiltinId::IsInfL, "__builtin_isinfl", BuiltinCategory::Intrinsic,
+     BuiltinNodeKind::BuiltinCall, BuiltinLoweringKind::FpCompare, {}},
+    {BuiltinId::IsFinite, "__builtin_isfinite", BuiltinCategory::Intrinsic,
+     BuiltinNodeKind::BuiltinCall, BuiltinLoweringKind::FpCompare, {}},
+    {BuiltinId::IsFiniteF, "__builtin_isfinitef", BuiltinCategory::Intrinsic,
+     BuiltinNodeKind::BuiltinCall, BuiltinLoweringKind::FpCompare, {}},
+    {BuiltinId::IsFiniteL, "__builtin_isfinitel", BuiltinCategory::Intrinsic,
+     BuiltinNodeKind::BuiltinCall, BuiltinLoweringKind::FpCompare, {}},
+    {BuiltinId::Finite, "__builtin_finite", BuiltinCategory::Intrinsic,
+     BuiltinNodeKind::BuiltinCall, BuiltinLoweringKind::FpCompare, {}},
+    {BuiltinId::FiniteF, "__builtin_finitef", BuiltinCategory::Intrinsic,
+     BuiltinNodeKind::BuiltinCall, BuiltinLoweringKind::FpCompare, {}},
+    {BuiltinId::FiniteL, "__builtin_finitel", BuiltinCategory::Intrinsic,
      BuiltinNodeKind::BuiltinCall, BuiltinLoweringKind::FpCompare, {}},
     {BuiltinId::IsInfSign, "__builtin_isinf_sign",
      BuiltinCategory::Intrinsic, BuiltinNodeKind::BuiltinCall,

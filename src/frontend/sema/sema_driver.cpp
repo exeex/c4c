@@ -321,34 +321,145 @@ TypeSpec classify_binop_result_type(
 }
 
 std::string remap_builtin_et_name(std::string callee_name) {
-  static const struct {
-    const char* from;
-    const char* to;
-  } remap[] = {
-      {"__builtin_malloc", "malloc"},   {"__builtin_free", "free"},
-      {"__builtin_calloc", "calloc"},   {"__builtin_realloc", "realloc"},
-      {"__builtin_alloca", "alloca"},   {"__builtin_memcpy", "memcpy"},
-      {"__builtin_memmove", "memmove"}, {"__builtin_memset", "memset"},
-      {"__builtin_memcmp", "memcmp"},   {"__builtin_memchr", "memchr"},
-      {"__builtin_strcpy", "strcpy"},   {"__builtin_strncpy", "strncpy"},
-      {"__builtin_strcat", "strcat"},   {"__builtin_strncat", "strncat"},
-      {"__builtin_strcmp", "strcmp"},   {"__builtin_strncmp", "strncmp"},
-      {"__builtin_strlen", "strlen"},   {"__builtin_strchr", "strchr"},
-      {"__builtin_strstr", "strstr"},   {"__builtin_printf", "printf"},
-      {"__builtin_puts", "puts"},       {"__builtin_abort", "abort"},
-      {"__builtin_exit", "exit"},       {nullptr, nullptr}};
-  for (int i = 0; remap[i].from; i++) {
-    if (callee_name == remap[i].from) {
-      callee_name = remap[i].to;
-      break;
-    }
+  const BuiltinInfo* builtin = builtin_by_name(callee_name);
+  if (builtin && builtin->category == BuiltinCategory::AliasCall &&
+      !builtin->canonical_name.empty()) {
+    callee_name = std::string(builtin->canonical_name);
   }
   return callee_name;
+}
+
+TypeSpec classify_known_call_return_type(const char* callee_name, bool* known);
+
+static TypeSpec classify_builtin_return_type(BuiltinId id, bool* known) {
+  if (known) *known = true;
+  if (const BuiltinInfo* builtin = builtin_by_id(id)) {
+    if (builtin->category == BuiltinCategory::AliasCall &&
+        !builtin->canonical_name.empty()) {
+      return classify_known_call_return_type(
+          std::string(builtin->canonical_name).c_str(), known);
+    }
+  }
+  switch (id) {
+    case BuiltinId::Malloc:
+    case BuiltinId::Calloc:
+    case BuiltinId::Realloc:
+    case BuiltinId::Memcpy:
+    case BuiltinId::Memmove:
+    case BuiltinId::Memset:
+    case BuiltinId::Memchr:
+    case BuiltinId::Strcpy:
+    case BuiltinId::Strncpy:
+    case BuiltinId::Strcat:
+    case BuiltinId::Strncat:
+    case BuiltinId::Strchr:
+    case BuiltinId::Strstr:
+    case BuiltinId::Alloca:
+      return ptr_to(TB_VOID);
+    case BuiltinId::Abort:
+    case BuiltinId::Exit:
+    case BuiltinId::Unreachable:
+      return void_ts();
+    case BuiltinId::Bswap64:
+      return make_ts(TB_ULONGLONG);
+    case BuiltinId::Bswap32:
+      return make_ts(TB_UINT);
+    case BuiltinId::Bswap16:
+      return make_ts(TB_USHORT);
+    case BuiltinId::FabsL:
+    case BuiltinId::InfL:
+    case BuiltinId::HugeValL:
+    case BuiltinId::NanL:
+    case BuiltinId::NansL:
+    case BuiltinId::CopysignL:
+      return make_ts(TB_LONGDOUBLE);
+    case BuiltinId::Fabs:
+    case BuiltinId::Inf:
+    case BuiltinId::HugeVal:
+    case BuiltinId::Nan:
+    case BuiltinId::Nans:
+    case BuiltinId::Copysign:
+      return double_ts();
+    case BuiltinId::FabsF:
+    case BuiltinId::InfF:
+    case BuiltinId::HugeValF:
+    case BuiltinId::NanF:
+    case BuiltinId::NansF:
+    case BuiltinId::CopysignF:
+      return float_ts();
+    case BuiltinId::ConstantP:
+    case BuiltinId::SignBit:
+    case BuiltinId::SignBitF:
+    case BuiltinId::SignBitL:
+    case BuiltinId::AddOverflow:
+    case BuiltinId::SubOverflow:
+    case BuiltinId::MulOverflow:
+    case BuiltinId::ClassifyType:
+    case BuiltinId::IsGreater:
+    case BuiltinId::IsGreaterEqual:
+    case BuiltinId::IsLess:
+    case BuiltinId::IsLessEqual:
+    case BuiltinId::IsLessGreater:
+    case BuiltinId::IsUnordered:
+    case BuiltinId::IsNan:
+    case BuiltinId::IsNanF:
+    case BuiltinId::IsNanL:
+    case BuiltinId::IsInf:
+    case BuiltinId::IsInfF:
+    case BuiltinId::IsInfL:
+    case BuiltinId::IsFinite:
+    case BuiltinId::IsFiniteF:
+    case BuiltinId::IsFiniteL:
+    case BuiltinId::Finite:
+    case BuiltinId::FiniteF:
+    case BuiltinId::FiniteL:
+    case BuiltinId::IsInfSign:
+    case BuiltinId::Ffs:
+    case BuiltinId::FfsL:
+    case BuiltinId::FfsLL:
+    case BuiltinId::Clz:
+    case BuiltinId::ClzL:
+    case BuiltinId::ClzLL:
+    case BuiltinId::Ctz:
+    case BuiltinId::CtzL:
+    case BuiltinId::CtzLL:
+    case BuiltinId::Popcount:
+    case BuiltinId::PopcountL:
+    case BuiltinId::PopcountLL:
+    case BuiltinId::Parity:
+    case BuiltinId::ParityL:
+    case BuiltinId::ParityLL:
+      return make_ts(TB_INT);
+    case BuiltinId::ConjF:
+      return make_ts(TB_COMPLEX_FLOAT);
+    case BuiltinId::Conj:
+      return make_ts(TB_COMPLEX_DOUBLE);
+    case BuiltinId::ConjL:
+      return make_ts(TB_COMPLEX_LONGDOUBLE);
+    case BuiltinId::Unknown:
+    case BuiltinId::VaArg:
+    case BuiltinId::Offsetof:
+    case BuiltinId::TypesCompatibleP:
+    case BuiltinId::Expect:
+    case BuiltinId::VaStart:
+    case BuiltinId::VaEnd:
+    case BuiltinId::VaCopy:
+      if (known) *known = false;
+      return int_ts();
+  }
+  if (known) *known = false;
+  return int_ts();
 }
 
 TypeSpec classify_known_call_return_type(const char* callee_name, bool* known) {
   if (known) *known = true;
   if (!callee_name) return int_ts();
+  const BuiltinId builtin_id =
+      has_builtin_prefix(callee_name) ? builtin_id_from_name(callee_name) : BuiltinId::Unknown;
+  if (builtin_id != BuiltinId::Unknown) return classify_builtin_return_type(builtin_id, known);
+  std::string normalized_name = callee_name;
+  normalized_name = remap_builtin_et_name(normalized_name);
+  callee_name = normalized_name.c_str();
   if (strcmp(callee_name, "malloc") == 0 || strcmp(callee_name, "calloc") == 0 ||
       strcmp(callee_name, "realloc") == 0 || strcmp(callee_name, "strdup") == 0 ||
       strcmp(callee_name, "strndup") == 0 || strcmp(callee_name, "memcpy") == 0 ||
@@ -361,67 +472,6 @@ TypeSpec classify_known_call_return_type(const char* callee_name, bool* known) {
   if (strcmp(callee_name, "free") == 0 || strcmp(callee_name, "abort") == 0 ||
       strcmp(callee_name, "exit") == 0 || strcmp(callee_name, "puts") == 0)
     return void_ts();
-  if (strcmp(callee_name, "__builtin_bswap64") == 0) return make_ts(TB_ULONGLONG);
-  if (strcmp(callee_name, "__builtin_bswap32") == 0) return make_ts(TB_UINT);
-  if (strcmp(callee_name, "__builtin_bswap16") == 0) return make_ts(TB_USHORT);
-  if (strcmp(callee_name, "__builtin_fabsl") == 0 ||
-      strcmp(callee_name, "__builtin_infl") == 0 ||
-      strcmp(callee_name, "__builtin_huge_vall") == 0)
-    return make_ts(TB_LONGDOUBLE);
-  if (strcmp(callee_name, "__builtin_fabs") == 0 ||
-      strcmp(callee_name, "__builtin_inf") == 0 ||
-      strcmp(callee_name, "__builtin_huge_val") == 0)
-    return double_ts();
-  if (strcmp(callee_name, "__builtin_fabsf") == 0 || strcmp(callee_name, "__builtin_inff") == 0 ||
-      strcmp(callee_name, "__builtin_huge_valf") == 0)
-    return float_ts();
-  if (strcmp(callee_name, "__builtin_constant_p") == 0) return make_ts(TB_INT);
-  if (strcmp(callee_name, "__builtin_unreachable") == 0) return void_ts();
-  if (strcmp(callee_name, "__builtin_signbit") == 0 || strcmp(callee_name, "__builtin_signbitf") == 0 ||
-      strcmp(callee_name, "__builtin_signbitl") == 0)
-    return make_ts(TB_INT);
-  if (strcmp(callee_name, "__builtin_add_overflow") == 0 ||
-      strcmp(callee_name, "__builtin_sub_overflow") == 0 ||
-      strcmp(callee_name, "__builtin_mul_overflow") == 0)
-    return make_ts(TB_INT);
-  if (strcmp(callee_name, "__builtin_conjf") == 0) return make_ts(TB_COMPLEX_FLOAT);
-  if (strcmp(callee_name, "__builtin_conj") == 0) return make_ts(TB_COMPLEX_DOUBLE);
-  if (strcmp(callee_name, "__builtin_conjl") == 0) return make_ts(TB_COMPLEX_LONGDOUBLE);
-  if (strcmp(callee_name, "__builtin_classify_type") == 0) return make_ts(TB_INT);
-  if (strcmp(callee_name, "__builtin_copysign") == 0 ||
-      strcmp(callee_name, "__builtin_copysignl") == 0)
-    return strcmp(callee_name, "__builtin_copysignl") == 0 ? make_ts(TB_LONGDOUBLE) : double_ts();
-  if (strcmp(callee_name, "__builtin_copysignf") == 0) return float_ts();
-  if (strcmp(callee_name, "__builtin_nanl") == 0) return make_ts(TB_LONGDOUBLE);
-  if (strcmp(callee_name, "__builtin_nan") == 0) return double_ts();
-  if (strcmp(callee_name, "__builtin_nanf") == 0) return float_ts();
-  if (strcmp(callee_name, "__builtin_isgreater") == 0 ||
-      strcmp(callee_name, "__builtin_isgreaterequal") == 0 ||
-      strcmp(callee_name, "__builtin_isless") == 0 ||
-      strcmp(callee_name, "__builtin_islessequal") == 0 ||
-      strcmp(callee_name, "__builtin_islessgreater") == 0 ||
-      strcmp(callee_name, "__builtin_isunordered") == 0 ||
-      strcmp(callee_name, "__builtin_isnan") == 0 ||
-      strcmp(callee_name, "__builtin_isinf") == 0 ||
-      strcmp(callee_name, "__builtin_isinf_sign") == 0)
-    return make_ts(TB_INT);
-  if (strcmp(callee_name, "__builtin_ffs") == 0 || strcmp(callee_name, "__builtin_ffsl") == 0 ||
-      strcmp(callee_name, "__builtin_ffsll") == 0)
-    return make_ts(TB_INT);
-  if (strcmp(callee_name, "__builtin_clz") == 0 || strcmp(callee_name, "__builtin_clzl") == 0 ||
-      strcmp(callee_name, "__builtin_clzll") == 0)
-    return make_ts(TB_INT);
-  if (strcmp(callee_name, "__builtin_ctz") == 0 || strcmp(callee_name, "__builtin_ctzl") == 0 ||
-      strcmp(callee_name, "__builtin_ctzll") == 0)
-    return make_ts(TB_INT);
-  if (strcmp(callee_name, "__builtin_popcount") == 0 ||
-      strcmp(callee_name, "__builtin_popcountl") == 0 ||
-      strcmp(callee_name, "__builtin_popcountll") == 0)
-    return make_ts(TB_INT);
-  if (strcmp(callee_name, "__builtin_parity") == 0 ||
-      strcmp(callee_name, "__builtin_parityl") == 0 ||
-      strcmp(callee_name, "__builtin_parityll") == 0)
-    return make_ts(TB_INT);
   if (known) *known = false;
   return int_ts();
 }
