@@ -2261,7 +2261,9 @@ class HirEmitter {
   TypeSpec resolve_array_ts(const TypeSpec& ts, const GlobalInit& init) {
     if (ts.array_rank <= 0 || ts.array_size >= 0) return ts;
     long long deduced = deduce_array_size_from_init(init);
-    if (deduced <= 0) return ts;
+    // `int a[] = {};` is a GCC extension that materializes as a zero-length
+    // first dimension, not as an unknown-size pointer-like array.
+    if (deduced < 0) return ts;
     // Account for brace elision: if element is aggregate and the flat item
     // count exceeds the raw item count, divide by per-element flat count.
     TypeSpec elem_ts = drop_one_array_dim(ts);
