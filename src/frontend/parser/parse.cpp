@@ -244,6 +244,7 @@ Node* Parser::make_node(NodeKind k, int line) {
     n->kind = k;
     n->line = line;
     n->ival = -1;  // -1 = not a bitfield (for struct field declarations)
+    n->builtin_id = BuiltinId::Unknown;
     n->type.array_size = -1;
     n->type.array_rank = 0;
     for (int i = 0; i < 8; ++i) n->type.array_dims[i] = -1;
@@ -275,30 +276,6 @@ Node* Parser::make_var(const char* name, int line) {
     Node* n = make_node(NK_VAR, line);
     n->name = name;
     return n;
-}
-
-const char* Parser::remap_builtin_call_name(const char* name) {
-    if (!name) return nullptr;
-    struct BuiltinCallRemap {
-        const char* from;
-        const char* to;
-    };
-    static const BuiltinCallRemap kRemaps[] = {
-        {"__builtin_printf", "printf"},
-        {"__builtin_printf_unlocked", "printf_unlocked"},
-        {"__builtin_fprintf", "fprintf"},
-        {"__builtin_fprintf_unlocked", "fprintf_unlocked"},
-        {"__builtin_sprintf", "sprintf"},
-        {"__builtin_snprintf", "snprintf"},
-        {"__builtin_putchar", "putchar"},
-        {"__builtin_puts", "puts"},
-        {"__builtin_abort", "abort"},
-        {nullptr, nullptr},
-    };
-    for (int i = 0; kRemaps[i].from; ++i) {
-        if (strcmp(name, kRemaps[i].from) == 0) return arena_.strdup(kRemaps[i].to);
-    }
-    return name;
 }
 
 Node* Parser::make_binop(const char* op, Node* l, Node* r, int line) {
@@ -351,6 +328,7 @@ const char* node_kind_name(NodeKind k) {
         case NK_ASSIGN:       return "Assign";
         case NK_COMPOUND_ASSIGN: return "CompoundAssign";
         case NK_CALL:         return "Call";
+        case NK_BUILTIN_CALL: return "BuiltinCall";
         case NK_INDEX:        return "Index";
         case NK_MEMBER:       return "Member";
         case NK_CAST:         return "Cast";

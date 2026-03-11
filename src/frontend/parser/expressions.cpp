@@ -346,8 +346,14 @@ Node* Parser::parse_postfix(Node* base) {
             case TokenKind::LParen: {
                 // Function call
                 consume();
+                const BuiltinInfo* builtin = nullptr;
                 if (base && base->kind == NK_VAR && base->name) {
-                    base->name = remap_builtin_call_name(base->name);
+                    if (has_builtin_prefix(base->name))
+                        builtin = builtin_by_name(base->name);
+                    if (builtin && builtin->node_kind == BuiltinNodeKind::CanonicalCall &&
+                        !builtin->canonical_name.empty()) {
+                        base->name = arena_.strdup(std::string(builtin->canonical_name).c_str());
+                    }
                 }
                 std::vector<Node*> args;
                 while (!at_end() && !check(TokenKind::RParen)) {
@@ -355,8 +361,13 @@ Node* Parser::parse_postfix(Node* base) {
                     if (!match(TokenKind::Comma)) break;
                 }
                 expect(TokenKind::RParen);
-                Node* n = make_node(NK_CALL, ln);
+                const NodeKind call_kind =
+                    (builtin && builtin->node_kind == BuiltinNodeKind::BuiltinCall)
+                        ? NK_BUILTIN_CALL
+                        : NK_CALL;
+                Node* n = make_node(call_kind, ln);
                 n->left       = base;
+                if (builtin) n->builtin_id = builtin->id;
                 n->n_children = (int)args.size();
                 if (n->n_children > 0) {
                     n->children = arena_.alloc_array<Node*>(n->n_children);
@@ -548,8 +559,10 @@ Node* Parser::parse_primary() {
     // Identifier / label address
     if (check(TokenKind::Identifier)) {
         const char* nm = arena_.strdup(cur().lexeme);
+        const BuiltinId builtin_id =
+            has_builtin_prefix(nm) ? builtin_id_from_name(nm) : BuiltinId::Unknown;
         // __builtin_offsetof(type, member) — parse as constant expression when possible
-        if (strcmp(nm, "__builtin_offsetof") == 0) {
+        if (builtin_id == BuiltinId::Offsetof) {
             consume();
             expect(TokenKind::LParen);
             TypeSpec base_ts = parse_type_name();
@@ -576,7 +589,7 @@ Node* Parser::parse_primary() {
             return off;
         }
         // __builtin_types_compatible_p(type1, type2) — evaluate at parse time
-        if (strcmp(nm, "__builtin_types_compatible_p") == 0) {
+        if (builtin_id == BuiltinId::TypesCompatibleP) {
             consume();
             expect(TokenKind::LParen);
             TypeSpec ts1 = parse_type_name();

@@ -1083,7 +1083,8 @@ class Validator {
         out.is_const_lvalue = false;
         return out;
       }
-      case NK_CALL: {
+      case NK_CALL:
+      case NK_BUILTIN_CALL: {
         for (int i = 0; i < n->n_children; ++i) {
           (void)infer_expr(n->children[i]);
         }
