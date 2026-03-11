@@ -348,8 +348,7 @@ Node* Parser::parse_postfix(Node* base) {
                 consume();
                 const BuiltinInfo* builtin = nullptr;
                 if (base && base->kind == NK_VAR && base->name) {
-                    if (has_builtin_prefix(base->name))
-                        builtin = builtin_by_name(base->name);
+                    builtin = builtin_by_name(base->name);
                 }
                 std::vector<Node*> args;
                 while (!at_end() && !check(TokenKind::RParen)) {
@@ -556,8 +555,7 @@ Node* Parser::parse_primary() {
     // Identifier / label address
     if (check(TokenKind::Identifier)) {
         const char* nm = arena_.strdup(cur().lexeme);
-        const BuiltinId builtin_id =
-            has_builtin_prefix(nm) ? builtin_id_from_name(nm) : BuiltinId::Unknown;
+        const BuiltinId builtin_id = builtin_id_from_name(nm);
         // __builtin_offsetof(type, member) — parse as constant expression when possible
         if (builtin_id == BuiltinId::Offsetof) {
             consume();

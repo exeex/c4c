@@ -53,8 +53,45 @@ compiler for the target environment.
 ### Status
 
 - date logged: `2026-03-11`
-- current status: open design issue
+- last updated: `2026-03-11`
+- current status: in progress
 - trigger case: `llvm_gcc_c_torture_pr79286_c`
+
+### Progress so far
+
+The refactor is no longer just a design note. The tree now has a real
+centralized builtin metadata layer and the main sema/codegen paths have started
+to consume it.
+
+Completed migration work:
+
+- `src/frontend/builtin.hpp` now exists and is the shared source for builtin ids,
+  categories, canonical alias-call names, result-kind classification, known libc
+  call result kinds, and several builtin-family helper predicates used by codegen
+- parser already tags builtin calls with `BuiltinId` and distinguishes parser
+  special cases from builtin-call nodes
+- HIR call nodes carry `builtin_id`
+- sema builtin return-type inference now uses centralized builtin metadata/result
+  helpers instead of a separate builtin remap table
+- sema known-libc return-type lookup was reduced to a shared table in
+  `builtin.hpp` instead of a local `strcmp` chain
+- codegen main-path builtin dispatch now uses `CallExpr::builtin_id` instead of
+  recovering builtin identity from raw callee strings
+- several duplicated codegen builtin helper groups were removed and replaced by
+  shared metadata-driven helpers or local helper consolidation
+
+Validated targeted checks so far:
+
+- `cmake --build build -j8`
+- `ctest --test-dir build --output-on-failure -R llvm_gcc_c_torture_pr79286_c`
+
+Not yet completed:
+
+- parser still contains some direct builtin spelling checks / normalization logic
+- codegen still has a large builtin lowering switch; it now keys off builtin id,
+  but the lowering rules are not yet fully metadata-driven
+- full regression guard (`test_fail_before.log` vs `test_fail_after.log`) has not
+  been rerun for this migration slice yet
 
 ### Problem summary
 
@@ -66,10 +103,12 @@ Current symptoms in the tree:
 
 - parser has special AST forms for some builtins such as `__builtin_va_arg`,
   `__builtin_offsetof`, and `__builtin_types_compatible_p`
-- parser now also has direct call-name rewriting for a small builtin subset
-- sema has a separate builtin remap table and a separate builtin return-type table
-- LLVM lowering has its own builtin-name dispatch and an "unknown builtin => 0/null"
-  fallback
+- parser still has some direct call-name rewriting for a small builtin subset
+- sema no longer keeps the previous separate builtin remap/return-type tables, but
+  ordinary call-type knowledge is still split between builtin metadata and local
+  call inference
+- LLVM lowering now dispatches builtin identity from HIR-carried `builtin_id`, but
+  still keeps a large lowering switch and has not finished the full cleanup pass
 
 This is not a coherent model. It is a set of partial workarounds.
 
@@ -174,12 +213,28 @@ Recommended builtin categories:
 5. Port LLVM lowering onto builtin id dispatch.
 6. Remove duplicated builtin remap tables from parser/sema/codegen.
 7. Remove unsafe fallbacks and replace them with explicit diagnostics.
+8. Delete transitional string-based builtin helper APIs once all call sites use
+   `BuiltinId` / builtin metadata directly.
+
+   In particular, the end state should not depend on legacy helpers whose main
+   purpose is to recover builtin meaning from raw callee strings during sema or
+   codegen. After the migration:
+
+   - removing those helper APIs should not break builtin lowering
+   - alias-call builtins should still normalize and type-check correctly
+   - intrinsic/constant/identity builtins should still lower correctly without
+     string dispatch fallback
+   - unknown builtin spellings should still fail with explicit diagnostics, not
+     by silently degrading to ordinary calls or fake values
 
 ### Immediate implementation guidance
 
 - Do not add new broad `__builtin_xxx -> xxx` remap tables in random layers.
 - Do not treat `__builtin_alloca` as an ordinary extern call target.
 - Do not rely on string comparisons in codegen as the final architecture.
+- Treat string-based builtin helper functions as temporary migration shims.
+  The target architecture should be able to delete them cleanly after builtin
+  identity is carried end-to-end.
 - Use `pr79286.c` as the motivating parser-normalized alias-call example, but
   validate against full-suite before/after logs after each migration step.
 
@@ -190,6 +245,7 @@ Builtin refactor work is only considered acceptable when all of the following ho
 - one centralized builtin definition source exists
 - parser, sema, and codegen all consume that source
 - no duplicated builtin remap/type tables remain
+- no transitional string-recovery builtin APIs remain on the main sema/codegen path
 - no "unknown builtin => 0/null" code path remains in LLVM lowering
 - regression guard passes against `test_fail_before.log` / `test_fail_after.log`
   with zero newly failing tests
