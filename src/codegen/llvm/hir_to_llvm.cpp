@@ -4027,7 +4027,9 @@ class HirEmitter {
     // Bitfield simple assignment
     if (bf.is_bitfield() && a.op == AssignOp::Set) {
       emit_bitfield_store(ctx, lhs_ptr, bf, rhs, rhs_ts);
-      return rhs;
+      // In C, (bf = val) yields the value of bf after assignment,
+      // which is truncated to the bitfield width.
+      return emit_bitfield_load(ctx, lhs_ptr, bf);
     }
     // Bitfield compound assignment
     if (bf.is_bitfield() && a.op != AssignOp::Set) {
