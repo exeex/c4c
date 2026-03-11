@@ -919,6 +919,11 @@ Preprocessor::Preprocessor() {
   macros_["__LDBL_MANT_DIG__"]   = MacroDef{"__LDBL_MANT_DIG__",   false, false, {}, "53"};
   macros_["__LDBL_MAX_EXP__"]    = MacroDef{"__LDBL_MAX_EXP__",    false, false, {}, "1024"};
   macros_["__LDBL_MIN_EXP__"]    = MacroDef{"__LDBL_MIN_EXP__",    false, false, {}, "(-1021)"};
+  // Byte-order macros (aarch64 / little-endian)
+  macros_["__ORDER_LITTLE_ENDIAN__"] = MacroDef{"__ORDER_LITTLE_ENDIAN__", false, false, {}, "1234"};
+  macros_["__ORDER_BIG_ENDIAN__"]    = MacroDef{"__ORDER_BIG_ENDIAN__",    false, false, {}, "4321"};
+  macros_["__ORDER_PDP_ENDIAN__"]    = MacroDef{"__ORDER_PDP_ENDIAN__",    false, false, {}, "3412"};
+  macros_["__BYTE_ORDER__"]          = MacroDef{"__BYTE_ORDER__",          false, false, {}, "1234"};
 }
 
 std::string Preprocessor::preprocess_file(const std::string& path) {
