@@ -2090,6 +2090,10 @@ class Lowerer {
           if (known) ts = builtin_ts;
         } else if (auto inferred = infer_call_result_type_from_callee(ctx, n->left)) {
           ts = *inferred;
+        } else if (n->left && n->left->kind == NK_VAR && n->left->name) {
+          bool known = false;
+          TypeSpec kts = classify_known_call_return_type(n->left->name, &known);
+          if (known) ts = kts;
         }
         return append_expr(n, c, ts);
       }

@@ -2640,6 +2640,13 @@ class HirEmitter {
       callee_ts.ptr_level--;
       return callee_ts;
     }
+    // Check known libc return types before falling back to implicit int
+    if (const auto* r = std::get_if<DeclRef>(&callee_e.payload)) {
+      if (auto kts = type_spec_from_builtin_result_kind(
+              known_call_result_kind(r->name.c_str()))) {
+        return *kts;
+      }
+    }
     // Unknown external call: C implicit declaration defaults to int return
     TypeSpec implicit_int{}; implicit_int.base = TB_INT;
     return implicit_int;
