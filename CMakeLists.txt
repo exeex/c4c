@@ -25,6 +25,7 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend/sema/ast_to_hir.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/sema/hir_printer.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/llvm/llvm_codegen.cpp"
+    "${PROJECT_SOURCE_DIR}/src/codegen/llvm/hir_emitter.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/llvm/hir_to_llvm_const_init.cpp"
 )
 

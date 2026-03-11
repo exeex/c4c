@@ -4347,12 +4347,13 @@ void HirEmitter::emit_function(const Function& fn){
         out << "...";
       }
       out << ")\n\n";
-      fn_bodies_.push_back(out.str());
+      fn_bodies_.push_back({std::string(fn.name), fn.linkage.is_static, out.str()});
       return;
     }
 
     // Signature
-    out << "define " << ret_ty << " @" << fn.name << "(";
+    const std::string fn_lk = fn.linkage.is_static ? "internal " : "";
+    out << "define " << fn_lk << ret_ty << " @" << fn.name << "(";
     for (size_t i = 0; i < fn.params.size(); ++i) {
       if (void_param_list) break;
       if (i) out << ", ";
@@ -4438,7 +4439,7 @@ void HirEmitter::emit_function(const Function& fn){
     for (const auto& l : ctx.alloca_lines) out << l << "\n";
     for (const auto& l : ctx.body_lines)   out << l << "\n";
     out << "}\n\n";
-    fn_bodies_.push_back(out.str());
+    fn_bodies_.push_back({std::string(fn.name), fn.linkage.is_static, out.str()});
   }
 
 }  // namespace tinyc2ll::codegen::llvm_backend
