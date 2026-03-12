@@ -1226,6 +1226,28 @@ class Lowerer {
     return is_string_scalar(init);
   }
 
+  bool union_allows_init_normalization(const TypeSpec& ts) const {
+    if (ts.base != TB_UNION || ts.ptr_level != 0 || !ts.tag || !ts.tag[0]) return false;
+    const auto it = module_->struct_defs.find(ts.tag);
+    if (it == module_->struct_defs.end()) return false;
+    const auto& sd = it->second;
+    if (!sd.is_union || sd.fields.empty()) return false;
+    for (const auto& field : sd.fields) {
+      if (field.is_anon_member) return false;
+      TypeSpec field_ts = field_init_type_of(field);
+      if (field_ts.array_rank > 0 || is_vector_ty(field_ts)) continue;
+      if (field_ts.base == TB_STRUCT && field_ts.ptr_level == 0 &&
+          !struct_allows_init_normalization(field_ts)) {
+        return false;
+      }
+      if (field_ts.base == TB_UNION && field_ts.ptr_level == 0 &&
+          !union_allows_init_normalization(field_ts)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   bool struct_allows_init_normalization(const TypeSpec& ts) const {
     if (ts.base != TB_STRUCT || ts.ptr_level != 0 || !ts.tag || !ts.tag[0]) return false;
     const auto it = module_->struct_defs.find(ts.tag);
@@ -1240,10 +1262,13 @@ class Lowerer {
         continue;
       }
       TypeSpec field_ts = field_init_type_of(field);
-      if (field_ts.base == TB_UNION && field_ts.ptr_level == 0) return false;
       if (field_ts.array_rank > 0 || is_vector_ty(field_ts)) continue;
       if (field_ts.base == TB_STRUCT && field_ts.ptr_level == 0 &&
           !struct_allows_init_normalization(field_ts)) {
+        return false;
+      }
+      if (field_ts.base == TB_UNION && field_ts.ptr_level == 0 &&
+          !union_allows_init_normalization(field_ts)) {
         return false;
       }
     }

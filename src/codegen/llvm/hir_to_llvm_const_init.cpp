@@ -212,21 +212,13 @@ class HirEmitter::ConstInitEmitter {
       return idx;
     }
 
-    std::optional<std::pair<size_t, GlobalInit>> select_union_field_init(
+    std::optional<std::pair<size_t, GlobalInit>> try_select_canonical_union_field_init(
         const HirStructDef& union_sd, const GlobalInit& union_init) const {
       if (const auto* list = std::get_if<InitList>(&union_init)) {
         if (list->items.empty()) return std::nullopt;
         const auto& item0 = list->items.front();
         const auto maybe_idx = find_union_field_index(union_sd, item0);
         if (maybe_idx) return std::pair<size_t, GlobalInit>(*maybe_idx, child_init_of(item0));
-        return std::pair<size_t, GlobalInit>(
-            0,
-            (list->items.size() == 1 && std::holds_alternative<std::shared_ptr<InitList>>(item0.value))
-                ? GlobalInit(*std::get<std::shared_ptr<InitList>>(item0.value))
-                : GlobalInit(*list));
-      }
-      if (const auto* scalar = std::get_if<InitScalar>(&union_init)) {
-        return std::pair<size_t, GlobalInit>(0, GlobalInit(*scalar));
       }
       return std::nullopt;
     }
@@ -374,12 +366,22 @@ class HirEmitter::ConstInitEmitter {
           if (sit == mod().struct_defs.end()) return false;
           const HirStructDef& cur_sd = sit->second;
           if (cur_sd.is_union) {
-            const auto selected = select_union_field_init(cur_sd, cur_init);
-            if (!selected || selected->first >= cur_sd.fields.size()) return true;
-            std::vector<unsigned char> fb;
-            if (!encode_bytes(emitter_.field_decl_type(cur_sd.fields[selected->first]), selected->second, fb))
-              return false;
-            copy_bytes(out, 0, fb, out.size());
+            if (const auto canonical = try_select_canonical_union_field_init(cur_sd, cur_init)) {
+              if (canonical->first >= cur_sd.fields.size()) return true;
+              std::vector<unsigned char> fb;
+              if (!encode_bytes(emitter_.field_decl_type(cur_sd.fields[canonical->first]), canonical->second, fb))
+                return false;
+              copy_bytes(out, 0, fb, out.size());
+              return true;
+            }
+            if (const auto* scalar = std::get_if<InitScalar>(&cur_init)) {
+              if (cur_sd.fields.empty()) return true;
+              std::vector<unsigned char> fb;
+              if (!encode_bytes(emitter_.field_decl_type(cur_sd.fields[0]), GlobalInit(*scalar), fb))
+                return false;
+              copy_bytes(out, 0, fb, out.size());
+              return true;
+            }
             return true;
           }
 
@@ -446,8 +448,11 @@ class HirEmitter::ConstInitEmitter {
         return "{ [" + std::to_string(sz) + " x i8] " + arr + " }";
       };
 
-      if (const auto selected = select_union_field_init(sd, init)) {
+      if (const auto selected = try_select_canonical_union_field_init(sd, init)) {
         if (auto out = emit_union_from_field(selected->first, selected->second)) return *out;
+      }
+      if (const auto* scalar = std::get_if<InitScalar>(&init)) {
+        if (auto out = emit_union_from_field(0, GlobalInit(*scalar))) return *out;
       }
       return zero_union();
     }
