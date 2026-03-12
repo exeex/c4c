@@ -1095,6 +1095,15 @@ class Lowerer {
     return ts;
   }
 
+  static TypeSpec field_init_type_of(const HirStructField& f) {
+    TypeSpec ts = field_type_of(f);
+    if (f.is_flexible_array && ts.array_rank > 0) {
+      ts.array_size = -1;
+      ts.array_dims[0] = -1;
+    }
+    return ts;
+  }
+
   static bool is_char_like(TypeBase base) {
     return base == TB_CHAR || base == TB_SCHAR || base == TB_UCHAR;
   }
@@ -1223,10 +1232,14 @@ class Lowerer {
     if (it == module_->struct_defs.end()) return false;
     const auto& sd = it->second;
     if (sd.is_union) return false;
-    for (const auto& field : sd.fields) {
+    for (size_t fi = 0; fi < sd.fields.size(); ++fi) {
+      const auto& field = sd.fields[fi];
       if (field.is_anon_member) return false;
-      if (field.is_flexible_array) return false;
-      TypeSpec field_ts = field_type_of(field);
+      if (field.is_flexible_array) {
+        if (fi + 1 != sd.fields.size()) return false;
+        continue;
+      }
+      TypeSpec field_ts = field_init_type_of(field);
       if (field_ts.base == TB_UNION && field_ts.ptr_level == 0) return false;
       if (field_ts.array_rank > 0 || is_vector_ty(field_ts)) continue;
       if (field_ts.base == TB_STRUCT && field_ts.ptr_level == 0 &&
@@ -1262,18 +1275,26 @@ class Lowerer {
       return idx;
     };
     auto make_field_mapped_item =
-        [&](const HirStructDef& sd, size_t idx, const GlobalInit& child) -> std::optional<InitListItem> {
+        [&](const HirStructDef& sd, size_t idx, const TypeSpec& target_ts,
+            const GlobalInit& child) -> std::optional<InitListItem> {
       auto item = make_init_item(child);
       if (!item) return std::nullopt;
       if (!sd.fields[idx].name.empty()) item->field_designator = sd.fields[idx].name;
       else item->index_designator = static_cast<long long>(idx);
+      if (target_ts.array_rank > 0 && target_ts.array_size >= 0) {
+        item->resolved_array_bound = target_ts.array_size;
+      }
       return item;
     };
-    auto make_indexed_item = [&](long long idx, const GlobalInit& child) -> std::optional<InitListItem> {
+    auto make_indexed_item =
+        [&](long long idx, const TypeSpec& target_ts, const GlobalInit& child) -> std::optional<InitListItem> {
       auto item = make_init_item(child);
       if (!item) return std::nullopt;
       item->index_designator = idx;
       item->field_designator.reset();
+      if (target_ts.array_rank > 0 && target_ts.array_size >= 0) {
+        item->resolved_array_bound = target_ts.array_size;
+      }
       return item;
     };
 
@@ -1330,14 +1351,14 @@ class Lowerer {
         if (sd.is_union) {
           InitList out{};
           if (!sd.fields.empty()) {
-            auto child = consume_from_flat(field_type_of(sd.fields.front()), list, cursor);
+            auto child = consume_from_flat(field_init_type_of(sd.fields.front()), list, cursor);
             if (auto it = make_init_item(child)) out.items.push_back(std::move(*it));
           }
           return out;
         }
         InitList out{};
         for (size_t fi = 0; fi < sd.fields.size() && cursor < list.items.size(); ++fi) {
-          auto child = consume_from_flat(field_type_of(sd.fields[fi]), list, cursor);
+          auto child = consume_from_flat(field_init_type_of(sd.fields[fi]), list, cursor);
           if (auto it = make_init_item(child)) out.items.push_back(std::move(*it));
         }
         return out;
@@ -1382,7 +1403,7 @@ class Lowerer {
         for (long long idx = 0; idx < bound; ++idx) {
           const auto& slot = slots[static_cast<size_t>(idx)];
           if (!slot) continue;
-          if (auto item = make_indexed_item(idx, *slot)) out.items.push_back(std::move(*item));
+          if (auto item = make_indexed_item(idx, elem_ts, *slot)) out.items.push_back(std::move(*item));
         }
         return out;
       }
@@ -1420,13 +1441,15 @@ class Lowerer {
         }
         has_child = true;
       } else {
-        child = normalize_scalar_like(field_type_of(sd.fields.front()), init);
+        child = normalize_scalar_like(field_init_type_of(sd.fields.front()), init);
         has_child = !std::holds_alternative<std::monostate>(child);
       }
       if (!has_child) return init;
-      auto normalized_child = normalize_global_init(field_type_of(sd.fields[idx]), child);
+      TypeSpec field_ts = field_init_type_of(sd.fields[idx]);
+      field_ts = resolve_array_ts(field_ts, child);
+      auto normalized_child = normalize_global_init(field_ts, child);
       InitList out{};
-      if (auto item = make_field_mapped_item(sd, idx, normalized_child)) {
+      if (auto item = make_field_mapped_item(sd, idx, field_ts, normalized_child)) {
         out.items.push_back(std::move(*item));
       }
       return out;
@@ -1448,8 +1471,10 @@ class Lowerer {
           const auto maybe_idx = find_aggregate_field_index(sd, item, next_idx);
           if (!maybe_idx) continue;
           const size_t idx = *maybe_idx;
-          auto child = normalize_global_init(field_type_of(sd.fields[idx]), child_init_of(item));
-          auto normalized_item = make_field_mapped_item(sd, idx, child);
+          TypeSpec field_ts = field_init_type_of(sd.fields[idx]);
+          field_ts = resolve_array_ts(field_ts, child_init_of(item));
+          auto child = normalize_global_init(field_ts, child_init_of(item));
+          auto normalized_item = make_field_mapped_item(sd, idx, field_ts, child);
           if (!normalized_item) {
             next_idx = idx + 1;
             continue;
@@ -1461,10 +1486,14 @@ class Lowerer {
       }
 
       size_t cursor = 0;
-      for (const auto& field : sd.fields) {
+      for (size_t fi = 0; fi < sd.fields.size(); ++fi) {
+        const auto& field = sd.fields[fi];
         if (cursor >= list->items.size()) break;
-        auto child = consume_from_flat(field_type_of(field), *list, cursor);
-        if (auto it = make_field_mapped_item(sd, static_cast<size_t>(&field - sd.fields.data()), child))
+        TypeSpec field_ts = field_init_type_of(field);
+        auto child = consume_from_flat(field_ts, *list, cursor);
+        field_ts = resolve_array_ts(field_ts, child);
+        child = normalize_global_init(field_ts, child);
+        if (auto it = make_field_mapped_item(sd, fi, field_ts, child))
           out.items.push_back(std::move(*it));
       }
       return out;

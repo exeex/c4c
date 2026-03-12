@@ -277,10 +277,14 @@ class HirEmitter::ConstInitEmitter {
       return make_ptr_to_bytes(bytes);
     }
 
-    TypeSpec resolve_flexible_array_field_ts(const HirStructField& f, const GlobalInit& init) {
+    TypeSpec resolve_flexible_array_field_ts(const HirStructField& f,
+                                            const InitListItem* item,
+                                            const GlobalInit& init) {
       TypeSpec ts = emitter_.field_decl_type(f);
       if (!f.is_flexible_array) return ts;
-      long long deduced = deduce_array_size_from_init(init);
+      long long deduced = -1;
+      if (item && item->resolved_array_bound) deduced = *item->resolved_array_bound;
+      if (deduced <= 0) deduced = deduce_array_size_from_init(init);
       if (deduced <= 0) return ts;
       ts.array_rank = 1;
       ts.array_size = deduced;
@@ -302,9 +306,10 @@ class HirEmitter::ConstInitEmitter {
         field_vals.push_back(emit_const_init(field_types[i], GlobalInit(std::monostate{})));
       }
 
-      auto update_field_type = [&](size_t idx, const GlobalInit& child_init) -> const TypeSpec& {
+      auto update_field_type =
+          [&](size_t idx, const InitListItem* item, const GlobalInit& child_init) -> const TypeSpec& {
         if (idx + 1 == sd.fields.size() && sd.fields[idx].is_flexible_array) {
-          field_types[idx] = resolve_flexible_array_field_ts(sd.fields[idx], child_init);
+          field_types[idx] = resolve_flexible_array_field_ts(sd.fields[idx], item, child_init);
         }
         return field_types[idx];
       };
@@ -346,7 +351,7 @@ class HirEmitter::ConstInitEmitter {
             if (!maybe_idx) continue;
             const size_t idx = *maybe_idx;
             GlobalInit child_init = child_init_of(item);
-            const TypeSpec& field_ts = update_field_type(idx, child_init);
+            const TypeSpec& field_ts = update_field_type(idx, &item, child_init);
             if (llvm_field_ty(sd.fields[idx]) == "ptr") {
               if (auto ptr_init = try_emit_ptr_from_char_init(child_init)) {
                 field_vals[idx] = *ptr_init;
@@ -405,7 +410,7 @@ class HirEmitter::ConstInitEmitter {
               auto sub = std::get<std::shared_ptr<InitList>>(item.value);
               ++cursor;
               GlobalInit child_init(*sub);
-              const TypeSpec& field_ts = update_field_type(fi, child_init);
+              const TypeSpec& field_ts = update_field_type(fi, &item, child_init);
               if (llvm_field_ty(sd.fields[fi]) == "ptr") {
                 if (auto ptr_init = try_emit_ptr_from_char_init(child_init)) {
                   field_vals[fi] = *ptr_init;
@@ -417,7 +422,7 @@ class HirEmitter::ConstInitEmitter {
             }
 
             GlobalInit child_init = child_init_of(item);
-            const TypeSpec& field_ts = update_field_type(fi, child_init);
+            const TypeSpec& field_ts = update_field_type(fi, &item, child_init);
             const bool f_is_agg = (field_ts.array_rank > 0) ||
                 ((field_ts.base == TB_STRUCT || field_ts.base == TB_UNION) && field_ts.ptr_level == 0);
             if (f_is_agg && !is_direct_array_scalar(field_ts, item)) {
@@ -452,7 +457,7 @@ class HirEmitter::ConstInitEmitter {
             if (idx >= sd.fields.size()) continue;
 
             GlobalInit child_init = child_init_of(item);
-            const TypeSpec& field_ts = update_field_type(idx, child_init);
+            const TypeSpec& field_ts = update_field_type(idx, &item, child_init);
             if (llvm_field_ty(sd.fields[idx]) == "ptr") {
               if (auto ptr_init = try_emit_ptr_from_char_init(child_init)) {
                 field_vals[idx] = *ptr_init;
@@ -467,7 +472,7 @@ class HirEmitter::ConstInitEmitter {
       } else if (const auto* scalar = std::get_if<InitScalar>(&init)) {
         if (!sd.fields.empty()) {
           GlobalInit child_init(*scalar);
-          const TypeSpec& field_ts = update_field_type(0, child_init);
+          const TypeSpec& field_ts = update_field_type(0, nullptr, child_init);
           field_vals[0] = emit_const_init(field_ts, child_init);
         }
       }

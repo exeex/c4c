@@ -508,6 +508,7 @@ struct InitList;
 struct InitListItem {
   std::optional<long long> index_designator;
   std::optional<SymbolName> field_designator;
+  std::optional<long long> resolved_array_bound;
   std::variant<InitScalar, std::shared_ptr<InitList>> value;
 };
 

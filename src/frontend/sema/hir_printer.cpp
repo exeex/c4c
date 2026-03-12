@@ -357,6 +357,7 @@ class Printer {
       const auto& item = list.items[i];
       if (item.field_designator) out << "." << *item.field_designator << " = ";
       else if (item.index_designator) out << "[" << *item.index_designator << "] = ";
+      if (item.resolved_array_bound) out << "<bound=" << *item.resolved_array_bound << "> ";
       print_global_init_inline(out, std::visit(
           [&](const auto& v) -> GlobalInit {
             using V = std::decay_t<decltype(v)>;
