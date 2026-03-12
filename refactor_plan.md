@@ -103,6 +103,7 @@ We already started moving global initializer normalization into HIR, but only fo
   bound deduction and aggregate interpretation paths still inside
   `hir_to_llvm_const_init.cpp`
 - Phase 5 helper split/shrink
+- Cross-cutting `aligned` attribute support
 
 ### Latest Validation Status
 
@@ -226,6 +227,15 @@ Re-run at minimum:
 
 
 ## Cross-Cutting Track: Explicit Alignment Attributes
+
+This track is intentionally not part of the current const-init cleanup slice.
+
+For the current refactor branch:
+
+- treat `aligned` as a known pre-existing gap
+- do not block const-init legacy-path removal on `aligned`
+- keep `pr38151.c` and related attribute-driven failures out of scope unless the
+  const-init changes directly regress them
 
 ### Objective
 
@@ -407,6 +417,37 @@ Concrete examples currently living in backend:
 - `flat_scalar_count`
 - `deduce_array_size_from_init`
 
+### Current Priority
+
+This is the active workstream now.
+
+The next cleanup target is removing the remaining legacy/raw-init fallback paths
+from `src/codegen/llvm/hir_to_llvm_const_init.cpp`, especially places where the
+backend still:
+
+- re-interprets aggregate initializer structure from raw `InitList`
+- re-deduces flexible-array or subobject bounds that should already be resolved
+  in HIR for supported cases
+- keeps alternate raw-syntax fallback behavior alongside normalized direct-path
+  emission
+
+The working rule for this phase is:
+
+- if a case is already normalized in HIR, the backend should only emit it
+- if a case is not yet normalized, either normalize it first or keep the
+  fallback isolated and clearly temporary
+
+### Concrete Deletion Order
+
+1. Remove dead struct/union/array fallback branches that are now unreachable for
+   normalized global initializers.
+2. Narrow flexible-array fallback deduction so it is only used for genuinely
+   unsupported raw paths.
+3. Delete helper routines that only served the old raw aggregate
+   interpretation path.
+4. Re-run focused aggregate regressions after each deletion step before moving
+   to Phase 2 / Phase 5 cleanup.
+
 ### Desired End State
 
 `hir_to_llvm_const_init.cpp` should mostly become:
@@ -455,16 +496,20 @@ and delete the layout/initializer-semantics half entirely.
 ## Suggested Execution Order
 
 1. Phase 1: layout metadata in HIR
-2. Phase 2: shared string literal decoding helpers
-3. Phase 3: continue HIR global-init normalization
-4. Phase 4: remove backend initializer interpretation incrementally
+2. Phase 3: continue HIR global-init normalization where needed to unlock code deletion
+3. Phase 4: remove backend initializer interpretation incrementally
+4. Phase 2: shared string literal decoding helpers
 5. Phase 5: split/shrink `hir_to_llvm_helpers.hpp`
+6. Cross-cutting `aligned` track
 
 This order is intentional:
 
-- layout metadata is the safest migration
-- string decoding unifies semantics early
-- only then is it safe to remove backend init logic
+- layout metadata was the safest migration and is already done
+- current leverage is highest in deleting now-obsolete backend const-init logic
+- string decoding should still be shared later, but it is not the blocker for
+  the current legacy-path cleanup
+- `aligned` remains separate because it is not part of the const-init semantic
+  move
 
 
 ## Practical Work Breakdown
@@ -479,11 +524,12 @@ Replace backend layout helper call sites with HIR metadata reads.
 
 ### Step C
 
-Move shared string decode helpers out of LLVM code.
+Delete legacy const-init paths from `hir_to_llvm_const_init.cpp` once the
+normalized HIR path is proven equivalent for that family.
 
 ### Step D
 
-Choose one initializer family at a time and migrate it:
+Choose one initializer family at a time and finish the delete-after-migrate loop:
 
 - struct brace elision
 - array brace elision
@@ -492,6 +538,10 @@ Choose one initializer family at a time and migrate it:
 - unions
 
 ### Step E
+
+Move shared string decode helpers out of LLVM code.
+
+### Step F
 
 Delete backend logic only after HIR dump clearly shows the resolved shape.
 
@@ -516,10 +566,16 @@ If doing a broader gate later, use the regression-guard skill and compare before
 
 ## Immediate Next Step
 
-Start with Phase 1.
+Delete the remaining legacy/raw aggregate interpretation paths in
+`src/codegen/llvm/hir_to_llvm_const_init.cpp`, starting with the branches that
+are now redundant for normalized global struct/union/array initializers.
+
+Keep `aligned` out of scope for this slice unless the cleanup introduces a new
+regression in an `aligned` case.
 
 Reason:
 
 - it removes clearly misplaced backend responsibilities
-- it is mechanically safer than expanding initializer normalization
-- it creates the metadata foundation needed for the later cleanup
+- it is mechanically safer to delete proven-redundant paths than to broaden
+  semantics and cleanup at the same time
+- it shrinks the backend before the later string-helper and helper-file split
