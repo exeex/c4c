@@ -1246,6 +1246,21 @@ class Lowerer {
             return item.field_designator.has_value() || item.index_designator.has_value();
           });
     };
+    auto find_struct_field_index =
+        [&](const HirStructDef& sd, const InitListItem& item, size_t next_idx) -> std::optional<size_t> {
+      size_t idx = next_idx;
+      if (item.field_designator) {
+        const auto fit = std::find_if(
+            sd.fields.begin(), sd.fields.end(),
+            [&](const HirStructField& field) { return field.name == *item.field_designator; });
+        if (fit == sd.fields.end()) return std::nullopt;
+        idx = static_cast<size_t>(std::distance(sd.fields.begin(), fit));
+      } else if (item.index_designator && *item.index_designator >= 0) {
+        idx = static_cast<size_t>(*item.index_designator);
+      }
+      if (idx >= sd.fields.size()) return std::nullopt;
+      return idx;
+    };
 
     auto normalize_scalar_like = [&](const TypeSpec& cur_ts, const GlobalInit& cur_init) -> GlobalInit {
       if (const auto* scalar = std::get_if<InitScalar>(&cur_init)) return GlobalInit(*scalar);
@@ -1358,13 +1373,35 @@ class Lowerer {
       if (!struct_allows_init_normalization(ts)) return init;
 
       InitList out{};
-      if (has_designators(*list)) return init;
+      if (has_designators(*list)) {
+        size_t next_idx = 0;
+        for (const auto& item : list->items) {
+          const auto maybe_idx = find_struct_field_index(sd, item, next_idx);
+          if (!maybe_idx) continue;
+          const size_t idx = *maybe_idx;
+          auto child = normalize_global_init(field_type_of(sd.fields[idx]), child_init_of(item));
+          auto normalized_item = make_init_item(child);
+          if (!normalized_item) {
+            next_idx = idx + 1;
+            continue;
+          }
+          normalized_item->field_designator = sd.fields[idx].name;
+          normalized_item->index_designator.reset();
+          out.items.push_back(std::move(*normalized_item));
+          next_idx = idx + 1;
+        }
+        return out;
+      }
 
       size_t cursor = 0;
       for (const auto& field : sd.fields) {
         if (cursor >= list->items.size()) break;
         auto child = consume_from_flat(field_type_of(field), *list, cursor);
-        if (auto it = make_init_item(child)) out.items.push_back(std::move(*it));
+        if (auto it = make_init_item(child)) {
+          it->field_designator = field.name;
+          it->index_designator.reset();
+          out.items.push_back(std::move(*it));
+        }
       }
       return out;
     }
@@ -1940,6 +1977,12 @@ class Lowerer {
                         consume_from_list(field_ts, me_id, val_node, sub_cursor);
                         ++cursor;
                       } else if (can_direct_assign_agg(field_ts, val_node)) {
+                        append_assign(me_id, field_ts, val_node);
+                        ++cursor;
+                      } else if (val_node && has_field_designator) {
+                        // Designated init with explicit non-list value — direct assign
+                        // even when can_direct_assign_agg fails (e.g. empty struct from
+                        // function call whose return type was not inferred).
                         append_assign(me_id, field_ts, val_node);
                         ++cursor;
                       } else {
@@ -2859,6 +2902,12 @@ class Lowerer {
                         append_assign(me_id, field_ts, val_node);
                         ++cursor;
                       } else if (can_direct_assign_agg(field_ts, val_node)) {
+                        append_assign(me_id, field_ts, val_node);
+                        ++cursor;
+                      } else if (val_node &&
+                                 item->kind == NK_INIT_ITEM && item->is_designated &&
+                                 !item->is_index_desig && item->desig_field) {
+                        // Designated init with explicit non-list value — direct assign
                         append_assign(me_id, field_ts, val_node);
                         ++cursor;
                       } else {

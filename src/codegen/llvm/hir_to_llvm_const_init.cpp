@@ -306,8 +306,47 @@ class HirEmitter::ConstInitEmitter {
         if (const auto* s = std::get_if<InitScalar>(&item.value)) return is_string_scalar(*s);
         return false;
       };
+      auto find_field_index = [&](const InitListItem& item, size_t next_idx) -> std::optional<size_t> {
+        size_t idx = next_idx;
+        if (item.field_designator) {
+          const auto fit = std::find_if(
+              sd.fields.begin(), sd.fields.end(),
+              [&](const HirStructField& f) { return f.name == *item.field_designator; });
+          if (fit == sd.fields.end()) return std::nullopt;
+          idx = static_cast<size_t>(std::distance(sd.fields.begin(), fit));
+        } else if (item.index_designator && *item.index_designator >= 0) {
+          idx = static_cast<size_t>(*item.index_designator);
+        }
+        if (idx >= sd.fields.size()) return std::nullopt;
+        return idx;
+      };
 
       if (const auto* list = std::get_if<InitList>(&init)) {
+        const bool field_mapped_list = std::all_of(
+            list->items.begin(), list->items.end(),
+            [](const InitListItem& item) { return item.field_designator.has_value(); });
+        if (field_mapped_list) {
+          size_t next_idx = 0;
+          for (const auto& item : list->items) {
+            const auto maybe_idx = find_field_index(item, next_idx);
+            if (!maybe_idx) continue;
+            const size_t idx = *maybe_idx;
+            GlobalInit child_init = child_init_of(item);
+            const TypeSpec& field_ts = update_field_type(idx, child_init);
+            if (llvm_field_ty(sd.fields[idx]) == "ptr") {
+              if (auto ptr_init = try_emit_ptr_from_char_init(child_init)) {
+                field_vals[idx] = *ptr_init;
+                next_idx = idx + 1;
+                continue;
+              }
+            }
+            field_vals[idx] = emit_const_init(field_ts, child_init);
+            next_idx = idx + 1;
+          }
+          if (out_field_types) *out_field_types = std::move(field_types);
+          return field_vals;
+        }
+
         bool use_cursor = false;
         if (list->items.size() > sd.fields.size()) {
           bool has_designators = false;
