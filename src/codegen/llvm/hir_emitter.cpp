@@ -584,6 +584,17 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
                 }
               }
             }
+            // &"string"[i] — address of character in string literal
+            if (const auto* sl = std::get_if<StringLiteral>(&cur_e->payload)) {
+              const std::string bytes = bytes_from_string_literal(*sl);
+              const std::string gname = intern_str(bytes);
+              const size_t len = bytes.size() + 1;
+              const std::string aty = "[" + std::to_string(len) + " x i8]";
+              std::string gep = "getelementptr inbounds (" + aty + ", ptr " + gname + ", i64 0";
+              for (auto idx : indices) gep += ", i64 " + std::to_string(idx);
+              gep += ")";
+              return gep;
+            }
           }
           // &struct_var.field or &(arr+N)->field — global struct member: emit GEP constant
           if (const auto* mem_e = std::get_if<MemberExpr>(&op_e.payload)) {
