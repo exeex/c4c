@@ -1246,7 +1246,7 @@ class Lowerer {
             return item.field_designator.has_value() || item.index_designator.has_value();
           });
     };
-    auto find_struct_field_index =
+    auto find_aggregate_field_index =
         [&](const HirStructDef& sd, const InitListItem& item, size_t next_idx) -> std::optional<size_t> {
       size_t idx = next_idx;
       if (item.field_designator) {
@@ -1260,6 +1260,21 @@ class Lowerer {
       }
       if (idx >= sd.fields.size()) return std::nullopt;
       return idx;
+    };
+    auto make_field_mapped_item =
+        [&](const HirStructDef& sd, size_t idx, const GlobalInit& child) -> std::optional<InitListItem> {
+      auto item = make_init_item(child);
+      if (!item) return std::nullopt;
+      if (!sd.fields[idx].name.empty()) item->field_designator = sd.fields[idx].name;
+      else item->index_designator = static_cast<long long>(idx);
+      return item;
+    };
+    auto make_indexed_item = [&](long long idx, const GlobalInit& child) -> std::optional<InitListItem> {
+      auto item = make_init_item(child);
+      if (!item) return std::nullopt;
+      item->index_designator = idx;
+      item->field_designator.reset();
+      return item;
     };
 
     auto normalize_scalar_like = [&](const TypeSpec& cur_ts, const GlobalInit& cur_init) -> GlobalInit {
@@ -1336,7 +1351,6 @@ class Lowerer {
     if (is_vector_ty(ts) || ts.array_rank > 0) {
       const auto* list = std::get_if<InitList>(&init);
       if (!list) return init;
-      if (has_designators(*list)) return init;
       TypeSpec elem_ts = ts;
       long long bound = 0;
       if (is_vector_ty(ts)) {
@@ -1352,6 +1366,27 @@ class Lowerer {
         return child_init_of(list->items.front());
       }
 
+      if (!is_vector_ty(ts) && has_designators(*list)) {
+        if (bound <= 0) return init;
+        std::vector<std::optional<GlobalInit>> slots(static_cast<size_t>(bound));
+        long long next_idx = 0;
+        for (const auto& item : list->items) {
+          long long idx = next_idx;
+          if (item.index_designator && *item.index_designator >= 0) idx = *item.index_designator;
+          if (idx >= 0 && idx < bound) {
+            slots[static_cast<size_t>(idx)] = normalize_global_init(elem_ts, child_init_of(item));
+          }
+          next_idx = idx + 1;
+        }
+        InitList out{};
+        for (long long idx = 0; idx < bound; ++idx) {
+          const auto& slot = slots[static_cast<size_t>(idx)];
+          if (!slot) continue;
+          if (auto item = make_indexed_item(idx, *slot)) out.items.push_back(std::move(*item));
+        }
+        return out;
+      }
+
       InitList out{};
       size_t cursor = 0;
       for (long long i = 0; i < bound && cursor < list->items.size(); ++i) {
@@ -1361,7 +1396,41 @@ class Lowerer {
       return out;
     }
 
-    if (ts.base == TB_UNION && ts.ptr_level == 0) return init;
+    if (ts.base == TB_UNION && ts.ptr_level == 0 && ts.tag) {
+      const auto sit = module_->struct_defs.find(ts.tag);
+      if (sit == module_->struct_defs.end()) return init;
+      const auto& sd = sit->second;
+      if (!sd.is_union || sd.fields.empty()) return init;
+
+      size_t idx = 0;
+      GlobalInit child = std::monostate{};
+      bool has_child = false;
+      if (const auto* list = std::get_if<InitList>(&init)) {
+        if (list->items.empty()) return init;
+        const auto& item0 = list->items.front();
+        const auto maybe_idx = find_aggregate_field_index(sd, item0, 0);
+        if (maybe_idx && (item0.field_designator || item0.index_designator)) {
+          idx = *maybe_idx;
+          child = child_init_of(item0);
+        } else {
+          child = (list->items.size() == 1 &&
+                   std::holds_alternative<std::shared_ptr<InitList>>(item0.value))
+              ? GlobalInit(*std::get<std::shared_ptr<InitList>>(item0.value))
+              : GlobalInit(*list);
+        }
+        has_child = true;
+      } else {
+        child = normalize_scalar_like(field_type_of(sd.fields.front()), init);
+        has_child = !std::holds_alternative<std::monostate>(child);
+      }
+      if (!has_child) return init;
+      auto normalized_child = normalize_global_init(field_type_of(sd.fields[idx]), child);
+      InitList out{};
+      if (auto item = make_field_mapped_item(sd, idx, normalized_child)) {
+        out.items.push_back(std::move(*item));
+      }
+      return out;
+    }
 
     if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0 && ts.tag) {
       const auto* list = std::get_if<InitList>(&init);
@@ -1376,17 +1445,15 @@ class Lowerer {
       if (has_designators(*list)) {
         size_t next_idx = 0;
         for (const auto& item : list->items) {
-          const auto maybe_idx = find_struct_field_index(sd, item, next_idx);
+          const auto maybe_idx = find_aggregate_field_index(sd, item, next_idx);
           if (!maybe_idx) continue;
           const size_t idx = *maybe_idx;
           auto child = normalize_global_init(field_type_of(sd.fields[idx]), child_init_of(item));
-          auto normalized_item = make_init_item(child);
+          auto normalized_item = make_field_mapped_item(sd, idx, child);
           if (!normalized_item) {
             next_idx = idx + 1;
             continue;
           }
-          normalized_item->field_designator = sd.fields[idx].name;
-          normalized_item->index_designator.reset();
           out.items.push_back(std::move(*normalized_item));
           next_idx = idx + 1;
         }
@@ -1397,11 +1464,8 @@ class Lowerer {
       for (const auto& field : sd.fields) {
         if (cursor >= list->items.size()) break;
         auto child = consume_from_flat(field_type_of(field), *list, cursor);
-        if (auto it = make_init_item(child)) {
-          it->field_designator = field.name;
-          it->index_designator.reset();
+        if (auto it = make_field_mapped_item(sd, static_cast<size_t>(&field - sd.fields.data()), child))
           out.items.push_back(std::move(*it));
-        }
       }
       return out;
     }

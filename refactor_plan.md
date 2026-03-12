@@ -67,6 +67,13 @@ We already started moving global initializer normalization into HIR, but only fo
     plain struct brace-elision cases.
   - Plain array/vector brace-elision without designators is now normalized in
     HIR before LLVM emission.
+  - Plain struct global initializers are now normalized into explicit
+    field-mapped HIR init items, including designator-driven cases that can be
+    resolved without ambiguity.
+  - Union global initializers now normalize active-field selection into HIR for
+    first-member, explicit-designator, and anonymous-member fallback cases.
+  - Designated global array initializers are now normalized into canonical
+    indexed HIR init lists with later overrides already resolved.
   - Flexible-array global constant emission is partially normalized through HIR
     field metadata instead of backend-only shape inference.
 - Phase 4 / partial
@@ -76,6 +83,12 @@ We already started moving global initializer normalization into HIR, but only fo
     type when multiple declarations/definitions share a name.
   - Top-level array/vector const-init emission no longer performs its own
     brace-elision flattening pass.
+  - Struct const-init emission has a direct fast path for field-mapped HIR
+    initializer lists instead of re-targeting raw list syntax.
+  - Union const-init emission has a direct fast path for normalized active-field
+    HIR initializer lists.
+  - Array const-init emission has a direct fast path for canonical indexed HIR
+    initializer lists.
 
 ### Not Yet Completed
 
@@ -91,7 +104,12 @@ We already started moving global initializer normalization into HIR, but only fo
 - After the latest const-init/HIR normalization pass, a full local test run
   passed except for the pre-existing `aligned`-attribute gap.
 - Focused regressions exercised during this step included:
+  - `tests/c-testsuite/tests/single-exec/00147.c`
+  - `tests/c-testsuite/tests/single-exec/00148.c`
   - `tests/c-testsuite/tests/single-exec/00216.c`
+  - `tests/c-testsuite/tests/single-exec/00150.c`
+  - `tests/c-testsuite/tests/single-exec/00151.c`
+  - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/20000227-1.c`
   - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/20020615-1.c`
   - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/20100416-1.c`
   - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/20120427-1.c`
@@ -293,6 +311,16 @@ Recommended order:
 5. designated struct init
 6. union active-field selection
 7. flexible-array initialization
+
+Status after the latest pass:
+
+- `1` complete for the conservative global cases already tracked above
+- `2` complete for plain global array/vector cases without designators
+- `3` complete for global char-array string initialization already normalized
+- `4` complete for ordinary global designated arrays
+- `5` complete for ordinary global designated structs
+- `6` complete for ordinary global unions, including anonymous-member fallback
+- `7` still pending
 
 ### Important Constraint
 

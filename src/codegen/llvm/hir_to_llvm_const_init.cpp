@@ -205,6 +205,20 @@ class HirEmitter::ConstInitEmitter {
 
       std::vector<std::string> elems(static_cast<size_t>(n), "zeroinitializer");
       if (const auto* list = std::get_if<InitList>(&init)) {
+        const bool indexed_list = std::all_of(
+            list->items.begin(), list->items.end(),
+            [](const InitListItem& item) {
+              return item.index_designator.has_value() && *item.index_designator >= 0;
+            });
+        if (indexed_list) {
+          for (const auto& item : list->items) {
+            const size_t idx = static_cast<size_t>(*item.index_designator);
+            if (idx >= static_cast<size_t>(n)) continue;
+            elems[idx] = emit_const_init(elem_ts, child_init_of(item));
+          }
+          return format_array_literal(elem_ts, elems);
+        }
+
         size_t next_idx = 0;
         for (const auto& item : list->items) {
           size_t idx = next_idx;
@@ -478,6 +492,20 @@ class HirEmitter::ConstInitEmitter {
         if (sz == 0) return "zeroinitializer";
         return "{ [" + std::to_string(sz) + " x i8] zeroinitializer }";
       };
+      auto find_field_index = [&](const InitListItem& item) -> std::optional<size_t> {
+        if (item.field_designator) {
+          const auto fit = std::find_if(
+              sd.fields.begin(), sd.fields.end(),
+              [&](const HirStructField& f) { return f.name == *item.field_designator; });
+          if (fit == sd.fields.end()) return std::nullopt;
+          return static_cast<size_t>(std::distance(sd.fields.begin(), fit));
+        }
+        if (item.index_designator && *item.index_designator >= 0) {
+          size_t idx = static_cast<size_t>(*item.index_designator);
+          if (idx < sd.fields.size()) return idx;
+        }
+        return std::nullopt;
+      };
 
       std::function<bool(const TypeSpec&, const GlobalInit&, std::vector<unsigned char>&)> encode_bytes;
       encode_bytes = [&](const TypeSpec& cur_ts, const GlobalInit& cur_init,
@@ -539,6 +567,32 @@ class HirEmitter::ConstInitEmitter {
           if (sit == mod().struct_defs.end()) return false;
           const HirStructDef& cur_sd = sit->second;
           if (cur_sd.is_union) {
+            if (const auto* list = std::get_if<InitList>(&cur_init)) {
+              if (list->items.size() == 1 &&
+                  (list->items.front().field_designator || list->items.front().index_designator)) {
+                size_t fi = 0;
+                if (list->items.front().field_designator) {
+                  const auto fit = std::find_if(
+                      cur_sd.fields.begin(), cur_sd.fields.end(),
+                      [&](const HirStructField& f) { return f.name == *list->items.front().field_designator; });
+                  if (fit == cur_sd.fields.end()) return false;
+                  fi = static_cast<size_t>(std::distance(cur_sd.fields.begin(), fit));
+                } else if (list->items.front().index_designator &&
+                           *list->items.front().index_designator >= 0) {
+                  fi = static_cast<size_t>(*list->items.front().index_designator);
+                }
+                if (fi >= cur_sd.fields.size()) return false;
+                std::vector<unsigned char> fb;
+                if (!encode_bytes(emitter_.field_decl_type(cur_sd.fields[fi]),
+                                  child_init_of(list->items.front()), fb)) {
+                  return false;
+                }
+                const size_t copy_n = std::min(out.size(), fb.size());
+                std::memcpy(out.data(), fb.data(), copy_n);
+                return true;
+              }
+            }
+
             size_t fi = 0;
             GlobalInit child = GlobalInit(std::monostate{});
             bool has_child = false;
@@ -669,6 +723,14 @@ class HirEmitter::ConstInitEmitter {
       };
 
       if (const auto* list = std::get_if<InitList>(&init)) {
+        if (list->items.size() == 1 &&
+            (list->items.front().field_designator || list->items.front().index_designator)) {
+          if (const auto field_idx = find_field_index(list->items.front())) {
+            if (auto out = emit_union_from_field(*field_idx, child_init_of(list->items.front()))) return *out;
+          }
+          return zero_union();
+        }
+
         if (!list->items.empty()) {
           const InitListItem& item0 = list->items.front();
           size_t idx = 0;
