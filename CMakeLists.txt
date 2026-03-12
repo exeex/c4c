@@ -24,8 +24,8 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend/parser/statements.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/parser/declarations.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/parser/common.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend/sema/ast_to_hir.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend/sema/hir_printer.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/ast_to_hir.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_printer.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/llvm/llvm_codegen.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/llvm/hir_emitter.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/llvm/hir_to_llvm_const_init.cpp"
@@ -36,6 +36,7 @@ set(FRONTEND_CXX_INCLUDE_DIRS
     "${PROJECT_SOURCE_DIR}/src/frontend/lexer"
     "${PROJECT_SOURCE_DIR}/src/frontend/parser"
     "${PROJECT_SOURCE_DIR}/src/frontend/sema"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir"
     "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor"
     "${PROJECT_SOURCE_DIR}/src/codegen/llvm"
 )
