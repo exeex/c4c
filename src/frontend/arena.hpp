@@ -40,7 +40,7 @@ class Arena {
 
  private:
   struct Block {
-    char*  data;
+    char* data;
     std::size_t cap;
     std::size_t used;
     Block* next;

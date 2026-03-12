@@ -18,15 +18,14 @@ void Arena::new_block(std::size_t min_size) {
   Block* b = static_cast<Block*>(std::malloc(sizeof(Block) + cap));
   if (!b) throw std::bad_alloc();
   b->data = reinterpret_cast<char*>(b + 1);
-  b->cap  = cap;
+  b->cap = cap;
   b->used = 0;
   b->next = head_;
-  head_   = b;
+  head_ = b;
 }
 
 void* Arena::alloc(std::size_t n) {
   if (n == 0) n = 1;
-  // Round up to 8-byte alignment.
   std::size_t aligned = (n + 7u) & ~7u;
 
   if (!head_ || head_->used + aligned > head_->cap) {

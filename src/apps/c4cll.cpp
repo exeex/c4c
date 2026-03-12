@@ -8,13 +8,12 @@
 #include <variant>
 
 #include "arena.hpp"
-#include "ast_to_hir.hpp"
 #include "ast.hpp"
 #include "llvm_codegen.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "preprocessor.hpp"
-#include "sema_validate.hpp"
+#include "sema.hpp"
 #include "token.hpp"
 
 namespace tc = tinyc2ll::frontend_cxx;
@@ -130,27 +129,23 @@ int main(int argc, char **argv) {
       return 0;
     }
 
-    tc::sema::ValidateResult sema_result = tc::sema::validate_program(prog);
-    if (!sema_result.ok) {
-      tc::sema::print_diagnostics(sema_result.diagnostics, input);
+    tc::sema::AnalyzeResult sema_result = tc::sema::analyze_program(prog);
+    if (!sema_result.validation.ok) {
+      tc::sema::print_diagnostics(sema_result.validation.diagnostics, input);
       return 1;
     }
 
     if (dump_hir || dump_hir_summary) {
-      tc::sema_ir::phase2::hir::Module module =
-          tc::sema_ir::phase2::hir::lower_ast_to_hir(prog);
       if (dump_hir) {
-        std::cout << tc::sema_ir::phase2::hir::format_hir(module);
+        std::cout << tc::sema::format_hir(*sema_result.hir_module);
       } else {
-        std::cout << tc::sema_ir::phase2::hir::format_summary(module) << "\n";
+        std::cout << tc::sema::format_summary(*sema_result.hir_module) << "\n";
       }
       return 0;
     }
 
-    // Phase 3: lower AST -> HIR, then emit LLVM IR.
-    tc::sema_ir::phase2::hir::Module hir_mod =
-        tc::sema_ir::phase2::hir::lower_ast_to_hir(prog);
-    std::string ir = tinyc2ll::codegen::llvm_backend::emit_module_native(hir_mod);
+    std::string ir = tinyc2ll::codegen::llvm_backend::emit_module_native(
+        *sema_result.hir_module);
 
     // Write to output file or stdout
     if (!output.empty()) {

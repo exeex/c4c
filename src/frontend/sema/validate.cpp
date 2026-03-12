@@ -1,4 +1,4 @@
-#include "sema_validate.hpp"
+#include "validate.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-#include "sema_driver.hpp"
+#include "type_utils.hpp"
 
 namespace tinyc2ll::frontend_cxx::sema {
 
