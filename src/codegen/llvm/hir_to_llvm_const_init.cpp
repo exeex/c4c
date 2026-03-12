@@ -27,34 +27,6 @@ class HirEmitter::ConstInitEmitter {
       return emit_const_struct_fields_impl(ts, sd, init, out_field_types);
     }
 
-    TypeSpec resolve_array_ts(const TypeSpec& ts, const GlobalInit& init) {
-      if (ts.array_rank <= 0 || ts.array_size >= 0) return ts;
-      long long deduced = deduce_array_size_from_init(init);
-      if (deduced < 0) return ts;
-      TypeSpec elem_ts = drop_one_array_dim(ts);
-      bool elem_is_agg = (elem_ts.array_rank > 0) ||
-          ((elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION) && elem_ts.ptr_level == 0);
-      if (elem_is_agg) {
-        if (const auto* list = std::get_if<InitList>(&init)) {
-          bool all_scalar = true;
-          for (const auto& item : list->items) {
-            if (!std::holds_alternative<InitScalar>(item.value)) {
-              all_scalar = false;
-              break;
-            }
-          }
-          if (all_scalar) {
-            long long fc = flat_scalar_count(elem_ts);
-            if (fc > 1) deduced = (deduced + fc - 1) / fc;
-          }
-        }
-      }
-      TypeSpec out = ts;
-      out.array_size = deduced;
-      out.array_dims[0] = deduced;
-      return out;
-    }
-
    private:
     HirEmitter& emitter_;
 
@@ -800,26 +772,6 @@ class HirEmitter::ConstInitEmitter {
       return out;
     }
 
-    long long flat_scalar_count(const TypeSpec& ts) const {
-      if (ts.array_rank > 0) {
-        const long long n = ts.array_size;
-        if (n <= 0) return 1;
-        return n * flat_scalar_count(drop_one_array_dim(ts));
-      }
-      if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0 && ts.tag) {
-        const auto it = mod().struct_defs.find(ts.tag);
-        if (it == mod().struct_defs.end()) return 1;
-        const auto& sd = it->second;
-        if (sd.is_union) {
-          return sd.fields.empty() ? 1 : flat_scalar_count(emitter_.field_decl_type(sd.fields[0]));
-        }
-        long long count = 0;
-        for (const auto& f : sd.fields) count += flat_scalar_count(emitter_.field_decl_type(f));
-        return count > 0 ? count : 1;
-      }
-      return 1;
-    }
-
     long long deduce_array_size_from_init(const GlobalInit& init) const {
       if (const auto* list = std::get_if<InitList>(&init)) {
         long long max_idx = -1;
@@ -840,6 +792,7 @@ class HirEmitter::ConstInitEmitter {
       }
       return -1;
     }
+
   };
 
 std::vector<std::string> HirEmitter::emit_const_struct_fields(const TypeSpec& ts,
@@ -851,10 +804,6 @@ std::vector<std::string> HirEmitter::emit_const_struct_fields(const TypeSpec& ts
 
 std::string HirEmitter::emit_const_init(const TypeSpec& ts, const GlobalInit& init) {
   return ConstInitEmitter(*this).emit_const_init(ts, init);
-}
-
-TypeSpec HirEmitter::resolve_array_ts(const TypeSpec& ts, const GlobalInit& init) {
-  return ConstInitEmitter(*this).resolve_array_ts(ts, init);
 }
 
 }  // namespace tinyc2ll::codegen::llvm_backend

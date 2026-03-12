@@ -151,7 +151,8 @@ class HirEmitter {
                                                     const GlobalInit& init,
                                                     std::vector<TypeSpec>* out_field_types = nullptr);
   std::string emit_const_init(const TypeSpec& ts, const GlobalInit& init);
-  TypeSpec resolve_array_ts(const TypeSpec& ts, const GlobalInit& init);
+  const GlobalVar* select_global_object(const std::string& name) const;
+  const GlobalVar* select_global_object(GlobalId id) const;
   void emit_global(const GlobalVar& gv);
 
 

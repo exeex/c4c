@@ -67,12 +67,19 @@ We already started moving global initializer normalization into HIR, but only fo
     plain struct brace-elision cases.
   - Flexible-array global constant emission is partially normalized through HIR
     field metadata instead of backend-only shape inference.
+- Phase 4 / partial
+  - LLVM backend no longer re-deduces ordinary global array bounds from raw
+    initializers.
+  - Global/object type selection now prefers the already-resolved HIR object
+    type when multiple declarations/definitions share a name.
 
 ### Not Yet Completed
 
 - Phase 2 shared string literal decoding extraction
 - Remaining Phase 3 initializer families
-- Phase 4 backend const-init simplification
+- Remaining Phase 4 backend const-init simplification, including flexible-array
+  bound deduction and aggregate interpretation paths still inside
+  `hir_to_llvm_const_init.cpp`
 - Phase 5 helper split/shrink
 
 

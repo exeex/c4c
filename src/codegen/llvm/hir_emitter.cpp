@@ -66,6 +66,36 @@ std::string HirEmitter::emit(){
     return out.str();
   }
 
+const GlobalVar* HirEmitter::select_global_object(const std::string& name) const {
+    const GlobalVar* best = nullptr;
+    for (const auto& g : mod_.globals) {
+      if (g.name != name) continue;
+      if (!best) {
+        best = &g;
+        continue;
+      }
+      const TypeSpec& best_ts = best->type.spec;
+      const TypeSpec& cand_ts = g.type.spec;
+      if (cand_ts.array_rank > 0 && best_ts.array_rank <= 0) {
+        best = &g;
+      } else if (cand_ts.array_rank > 0 && best_ts.array_rank > 0 &&
+                 cand_ts.array_size > best_ts.array_size) {
+        best = &g;
+      } else if (cand_ts.array_rank <= 0 && best_ts.array_rank <= 0 &&
+                 g.init.index() != 0 && best->init.index() == 0) {
+        best = &g;
+      }
+    }
+    return best;
+  }
+
+const GlobalVar* HirEmitter::select_global_object(GlobalId id) const {
+    const GlobalVar* gv = mod_.find_global(id);
+    if (!gv) return nullptr;
+    if (const GlobalVar* best = select_global_object(gv->name)) return best;
+    return gv;
+  }
+
 void HirEmitter::emit_instr(FnCtx& ctx, const std::string& line){
     ctx.body_lines.push_back("  " + line);
     ctx.last_term = false;
@@ -573,9 +603,9 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
             if (const auto* dr = std::get_if<DeclRef>(&cur_e->payload)) {
               auto git = mod_.global_index.find(dr->name);
               if (git != mod_.global_index.end()) {
-                const GlobalVar* gv = mod_.find_global(git->second);
+                const GlobalVar* gv = select_global_object(git->second);
                 if (gv && gv->type.spec.array_rank > 0) {
-                  const TypeSpec resolved = resolve_array_ts(gv->type.spec, gv->init);
+                  const TypeSpec& resolved = gv->type.spec;
                   const std::string aty = llvm_alloca_ty(resolved);
                   std::string gep = "getelementptr inbounds (" + aty + ", ptr @" + dr->name + ", i64 0";
                   for (auto idx : indices) gep += ", i64 " + std::to_string(idx);
@@ -640,7 +670,7 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
                 if (const auto* dr = std::get_if<DeclRef>(&cur_e->payload)) {
                   auto git = mod_.global_index.find(dr->name);
                   if (git != mod_.global_index.end()) {
-                    const GlobalVar* gv = mod_.find_global(git->second);
+                    const GlobalVar* gv = select_global_object(git->second);
                     if (gv && gv->type.spec.array_rank > 0) {
                       // Find the struct tag from the element type
                       TypeSpec elem_ts = gv->type.spec;
@@ -656,7 +686,7 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
                         const std::string tag(elem_ts.tag);
                         if (const auto* sd = find_struct_def(tag)) {
                           int fi = find_field_idx(*sd, mem_e->field);
-                          const std::string aty = llvm_alloca_ty(resolve_array_ts(gv->type.spec, gv->init));
+                          const std::string aty = llvm_alloca_ty(gv->type.spec);
                           std::string gep = "getelementptr inbounds (" + aty + ", ptr @" + dr->name + ", i64 0";
                           for (auto idx : indices) gep += ", i64 " + std::to_string(idx);
                           gep += ", i32 " + std::to_string(fi) + ")";
@@ -676,12 +706,12 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
               if (const auto* dr = std::get_if<DeclRef>(&base_e.payload)) {
                 auto git = mod_.global_index.find(dr->name);
                 if (git != mod_.global_index.end()) {
-                  const GlobalVar* gv = mod_.find_global(git->second);
+                  const GlobalVar* gv = select_global_object(git->second);
                   if (gv && gv->type.spec.array_rank > 0 && gv->type.spec.tag && gv->type.spec.tag[0]) {
                     const std::string tag(gv->type.spec.tag);
                     if (const auto* sd = find_struct_def(tag)) {
                       int fi = find_field_idx(*sd, mem_e->field);
-                      const std::string aty = llvm_alloca_ty(resolve_array_ts(gv->type.spec, gv->init));
+                      const std::string aty = llvm_alloca_ty(gv->type.spec);
                       return "getelementptr inbounds (" + aty + ", ptr @" + dr->name +
                              ", i64 0, i64 0, i32 " + std::to_string(fi) + ")";
                     }
@@ -702,12 +732,12 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
                   if (dr2 && rhs_val) {
                     auto git = mod_.global_index.find(dr2->name);
                     if (git != mod_.global_index.end()) {
-                      const GlobalVar* gv = mod_.find_global(git->second);
+                      const GlobalVar* gv = select_global_object(git->second);
                       if (gv && gv->type.spec.array_rank > 0 && gv->type.spec.tag && gv->type.spec.tag[0]) {
                         const std::string tag(gv->type.spec.tag);
                         if (const auto* sd = find_struct_def(tag)) {
                           int fi = find_field_idx(*sd, mem_e->field);
-                          const std::string aty = llvm_alloca_ty(resolve_array_ts(gv->type.spec, gv->init));
+                          const std::string aty = llvm_alloca_ty(gv->type.spec);
                           return "getelementptr inbounds (" + aty + ", ptr @" + dr2->name +
                                  ", i64 0, i64 " + std::to_string(*rhs_val) +
                                  ", i32 " + std::to_string(fi) + ")";
@@ -808,7 +838,7 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
           if (dr && rhs_val) {
             auto git = mod_.global_index.find(dr->name);
             if (git != mod_.global_index.end()) {
-              const GlobalVar* gv = mod_.find_global(git->second);
+              const GlobalVar* gv = select_global_object(git->second);
               if (gv) {
                 if (gv->type.spec.array_rank > 0) {
                   const std::string aty = llvm_alloca_ty(gv->type.spec);
@@ -862,8 +892,8 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
   }
 
 void HirEmitter::emit_global(const GlobalVar& gv){
-    // Resolve unsized array dimensions from the initializer (e.g. int a[] = {1,2,3}).
-    const TypeSpec ts = resolve_array_ts(gv.type.spec, gv.init);
+    // Global object types arrive from HIR with ordinary array bounds already resolved.
+    const TypeSpec& ts = gv.type.spec;
     if (!gv.linkage.is_extern &&
         ts.ptr_level == 0 &&
         ts.array_rank == 0 &&
@@ -1284,19 +1314,9 @@ std::string HirEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec& 
       if (r->global) {
         size_t gv_idx = r->global->value;
         const auto& gv0 = mod_.globals[gv_idx];
-        // For incomplete array declarations (e.g. `extern T arr[]`), find the
-        // definition with a deducible size so GEP uses the correct element type.
-        if (gv0.type.spec.array_rank > 0 && gv0.type.spec.array_size < 0) {
-          for (size_t gi = 0; gi < mod_.globals.size(); ++gi) {
-            const auto& g = mod_.globals[gi];
-            if (g.name == gv0.name && g.type.spec.array_rank > 0) {
-              const TypeSpec rs = resolve_array_ts(g.type.spec, g.init);
-              if (rs.array_size > 0) { gv_idx = gi; break; }
-            }
-          }
-        }
+        if (const GlobalVar* best = select_global_object(gv0.name)) gv_idx = best->id.value;
         const auto& gv = mod_.globals[gv_idx];
-        pts = resolve_array_ts(gv.type.spec, gv.init);
+        pts = gv.type.spec;
         return "@" + gv.name;
       }
       // Unresolved: assume external global
@@ -1469,20 +1489,7 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const DeclRef& r){
     if (r.param_index && ctx.fn && *r.param_index < ctx.fn->params.size())
       return ctx.fn->params[*r.param_index].type.spec;
     if (r.global) {
-      if (const GlobalVar* gv0 = mod_.find_global(*r.global)) {
-        if (gv0->type.spec.array_rank > 0) {
-          const GlobalVar* best = gv0;
-          if (gv0->type.spec.array_size < 0) {
-            for (const auto& g : mod_.globals) {
-              if (g.name != gv0->name || g.type.spec.array_rank <= 0) continue;
-              const TypeSpec rs = resolve_array_ts(g.type.spec, g.init);
-              if (rs.array_size > 0) { best = &g; break; }
-            }
-          }
-          return resolve_array_ts(best->type.spec, best->init);
-        }
-        return gv0->type.spec;
-      }
+      if (const GlobalVar* gv = select_global_object(*r.global)) return gv->type.spec;
     }
     // Function reference (resolved via fn_index, not global_index): treat as ptr.
     // Do NOT set is_fn_ptr here; that would cause call-return-type resolution to
@@ -2018,25 +2025,11 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const Ex
     if (r.global) {
       size_t gv_idx = r.global->value;
       const auto& gv0 = mod_.globals[gv_idx];
-      // If this global has an incomplete array type (unknown size, array_size<0),
-      // prefer the definition entry (has initializer) so GEP uses correct element type.
-      // Both the forward declaration and the definition may have array_size=-1; the
-      // definition has a non-empty init from which resolve_array_ts deduces the size.
-      if (gv0.type.spec.array_rank > 0 && gv0.type.spec.array_size < 0) {
-        for (size_t gi = 0; gi < mod_.globals.size(); ++gi) {
-          const auto& g = mod_.globals[gi];
-          if (g.name == gv0.name && g.type.spec.array_rank > 0) {
-            const TypeSpec rs = resolve_array_ts(g.type.spec, g.init);
-            if (rs.array_size > 0) { gv_idx = gi; break; }
-          }
-        }
-      }
+      if (const GlobalVar* best = select_global_object(gv0.name)) gv_idx = best->id.value;
       const auto& gv = mod_.globals[gv_idx];
       if (gv.type.spec.array_rank > 0 && !gv.type.spec.is_ptr_to_array) {
-        // Use resolved type (deduced from initializer) for GEP — avoids "ptr" fallback.
-        const TypeSpec resolved_ts = resolve_array_ts(gv.type.spec, gv.init);
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = getelementptr " + llvm_alloca_ty(resolved_ts) +
+        emit_instr(ctx, tmp + " = getelementptr " + llvm_alloca_ty(gv.type.spec) +
                             ", ptr @" + gv.name + ", i64 0, i64 0");
         return tmp;
       }
@@ -3936,40 +3929,11 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const SizeofExpr& s, const
     // DeclRef: get type from global/local declaration (NK_VAR nodes have no type set).
     if (const auto* r = std::get_if<DeclRef>(&op.payload)) {
       auto resolve_named_global_object_type = [&](const std::string& name) -> std::optional<TypeSpec> {
-        const GlobalVar* best = nullptr;
-        for (const auto& g : mod_.globals) {
-          if (g.name != name) continue;
-          if (!best) {
-            best = &g;
-            continue;
-          }
-          const TypeSpec best_ts = resolve_array_ts(best->type.spec, best->init);
-          const TypeSpec cand_ts = resolve_array_ts(g.type.spec, g.init);
-          if (cand_ts.array_rank > 0 && best_ts.array_rank <= 0) {
-            best = &g;
-          } else if (cand_ts.array_rank > 0 && best_ts.array_rank > 0 &&
-                     cand_ts.array_size > best_ts.array_size) {
-            best = &g;
-          } else if (cand_ts.array_rank <= 0 && best_ts.array_rank <= 0 &&
-                     g.init.index() != 0 && best->init.index() == 0) {
-            best = &g;
-          }
-        }
-        if (!best) return std::nullopt;
-        return resolve_array_ts(best->type.spec, best->init);
+        if (const GlobalVar* best = select_global_object(name)) return best->type.spec;
+        return std::nullopt;
       };
       if (r->global) {
-        if (const GlobalVar* gv0 = mod_.find_global(*r->global)) {
-          const GlobalVar* best = gv0;
-          if (gv0->type.spec.array_rank > 0 && gv0->type.spec.array_size < 0) {
-            for (const auto& g : mod_.globals) {
-              if (g.name != gv0->name || g.type.spec.array_rank <= 0) continue;
-              const TypeSpec rs = resolve_array_ts(g.type.spec, g.init);
-              if (rs.array_size > 0) { best = &g; break; }
-            }
-          }
-          op_ts = resolve_array_ts(best->type.spec, best->init);
-        }
+        if (const GlobalVar* gv = select_global_object(*r->global)) op_ts = gv->type.spec;
       } else if (r->local) {
         const auto it = ctx.local_types.find(r->local->value);
         if (it != ctx.local_types.end()) op_ts = it->second;
