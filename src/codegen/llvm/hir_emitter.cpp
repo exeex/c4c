@@ -1734,7 +1734,7 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const IndexExpr& idx){
       base_ts.vector_bytes = 0;
       return base_ts;
     }
-    if (base_ts.array_rank > 0) { base_ts.array_rank--; return base_ts; }
+    if (base_ts.array_rank > 0) return drop_one_array_dim(base_ts);
     if (base_ts.ptr_level > 0) { base_ts.ptr_level--; return base_ts; }
     return base_ts;
   }
