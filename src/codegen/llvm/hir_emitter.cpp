@@ -62,7 +62,7 @@ std::string HirEmitter::emit(){
       out << "declare " << ret_ty << " @" << name << "(...)\n";
     }
     if (!extern_call_decls_.empty()) out << "\n";
-    for (const auto& b : fn_bodies_) out << b;
+    for (const auto& b : fn_bodies_) out << b.body;
     return out.str();
   }
 
@@ -560,45 +560,147 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
             return "getelementptr inbounds ([" + std::to_string(len) + " x i8], ptr " +
                    gname + ", i64 0, i64 0)";
           }
-          // &arr[idx] — global array subscript: emit GEP constant
+          // &arr[i] or &arr[i][j][k] — global array subscript: emit GEP constant
+          // Recursively collect indices from nested IndexExpr chains.
           if (const auto* idx_e = std::get_if<IndexExpr>(&op_e.payload)) {
-            const Expr& base_e = get_expr(idx_e->base);
-            if (const auto* dr = std::get_if<DeclRef>(&base_e.payload)) {
+            std::vector<long long> indices;
+            const Expr* cur_e = &op_e;
+            while (const auto* ie = std::get_if<IndexExpr>(&cur_e->payload)) {
+              indices.push_back(try_const_eval_int(ie->index).value_or(0));
+              cur_e = &get_expr(ie->base);
+            }
+            std::reverse(indices.begin(), indices.end());
+            if (const auto* dr = std::get_if<DeclRef>(&cur_e->payload)) {
               auto git = mod_.global_index.find(dr->name);
               if (git != mod_.global_index.end()) {
                 const GlobalVar* gv = mod_.find_global(git->second);
                 if (gv && gv->type.spec.array_rank > 0) {
-                  const std::string aty = llvm_alloca_ty(gv->type.spec);
-                  const long long idx_int =
-                      try_const_eval_int(idx_e->index).value_or(0);
-                  return "getelementptr inbounds (" + aty + ", ptr @" + dr->name +
-                         ", i64 0, i64 " + std::to_string(idx_int) + ")";
+                  const TypeSpec resolved = resolve_array_ts(gv->type.spec, gv->init);
+                  const std::string aty = llvm_alloca_ty(resolved);
+                  std::string gep = "getelementptr inbounds (" + aty + ", ptr @" + dr->name + ", i64 0";
+                  for (auto idx : indices) gep += ", i64 " + std::to_string(idx);
+                  gep += ")";
+                  return gep;
                 }
               }
             }
           }
-          // &struct_var.field — global struct member: emit GEP constant
+          // &struct_var.field or &(arr+N)->field — global struct member: emit GEP constant
           if (const auto* mem_e = std::get_if<MemberExpr>(&op_e.payload)) {
+            // Helper to find field index in a struct definition
+            auto find_field_idx = [&](const HirStructDef& sd, const std::string& field_name) -> int {
+              int idx = 0;
+              for (const auto& f : sd.fields) {
+                if (f.name == field_name) return idx;
+                ++idx;
+              }
+              return 0;
+            };
+            auto find_struct_def = [&](const std::string& tag) -> const HirStructDef* {
+              auto sit = mod_.struct_defs.find(tag);
+              return (sit != mod_.struct_defs.end()) ? &sit->second : nullptr;
+            };
             if (!mem_e->is_arrow) {
               const Expr& base_e = get_expr(mem_e->base);
+              // &struct_var.field
               if (const auto* dr = std::get_if<DeclRef>(&base_e.payload)) {
                 auto git = mod_.global_index.find(dr->name);
                 if (git != mod_.global_index.end()) {
                   const GlobalVar* gv = mod_.find_global(git->second);
-                  if (gv) {
-                    const std::string tag = std::string(gv->type.spec.tag);
-                    if (!tag.empty()) {
-                      const auto sit = mod_.struct_defs.find(tag);
-                    const HirStructDef* sd = (sit != mod_.struct_defs.end()) ? &sit->second : nullptr;
-                      if (sd) {
-                        int field_idx = 0;
-                        for (const auto& f : sd->fields) {
-                          if (f.name == mem_e->field) break;
-                          ++field_idx;
+                  if (gv && gv->type.spec.tag && gv->type.spec.tag[0]) {
+                    const std::string tag(gv->type.spec.tag);
+                    if (const auto* sd = find_struct_def(tag)) {
+                      int fi = find_field_idx(*sd, mem_e->field);
+                      return "getelementptr inbounds (%struct." + tag + ", ptr @" + dr->name +
+                             ", i32 0, i32 " + std::to_string(fi) + ")";
+                    }
+                  }
+                }
+              }
+              // &arr[i].field — array of structs with field access
+              if (const auto* idx_e = std::get_if<IndexExpr>(&base_e.payload)) {
+                std::vector<long long> indices;
+                const Expr* cur_e = &base_e;
+                while (const auto* ie = std::get_if<IndexExpr>(&cur_e->payload)) {
+                  indices.push_back(try_const_eval_int(ie->index).value_or(0));
+                  cur_e = &get_expr(ie->base);
+                }
+                std::reverse(indices.begin(), indices.end());
+                if (const auto* dr = std::get_if<DeclRef>(&cur_e->payload)) {
+                  auto git = mod_.global_index.find(dr->name);
+                  if (git != mod_.global_index.end()) {
+                    const GlobalVar* gv = mod_.find_global(git->second);
+                    if (gv && gv->type.spec.array_rank > 0) {
+                      // Find the struct tag from the element type
+                      TypeSpec elem_ts = gv->type.spec;
+                      for (int i = 0; i < (int)indices.size() && elem_ts.array_rank > 0; ++i) {
+                        elem_ts.array_rank--;
+                        if (elem_ts.array_rank > 0) {
+                          for (int j = 0; j < 7; ++j) elem_ts.array_dims[j] = elem_ts.array_dims[j+1];
+                          elem_ts.array_dims[7] = -1;
+                          elem_ts.array_size = elem_ts.array_dims[0];
                         }
-                        const std::string sty = "%struct." + tag;
-                        return "getelementptr inbounds (" + sty + ", ptr @" + dr->name +
-                               ", i32 0, i32 " + std::to_string(field_idx) + ")";
+                      }
+                      if (elem_ts.tag && elem_ts.tag[0]) {
+                        const std::string tag(elem_ts.tag);
+                        if (const auto* sd = find_struct_def(tag)) {
+                          int fi = find_field_idx(*sd, mem_e->field);
+                          const std::string aty = llvm_alloca_ty(resolve_array_ts(gv->type.spec, gv->init));
+                          std::string gep = "getelementptr inbounds (" + aty + ", ptr @" + dr->name + ", i64 0";
+                          for (auto idx : indices) gep += ", i64 " + std::to_string(idx);
+                          gep += ", i32 " + std::to_string(fi) + ")";
+                          return gep;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            } else {
+              // &(ptr+N)->field  or &(arr[i])->field
+              // Arrow member: base is a pointer expression. Common pattern:
+              // (Upgrade_items + 1)->uaattrid  → GEP on Upgrade_items array
+              const Expr& base_e = get_expr(mem_e->base);
+              // arr->field  where arr is global array of structs (no offset, index 0)
+              if (const auto* dr = std::get_if<DeclRef>(&base_e.payload)) {
+                auto git = mod_.global_index.find(dr->name);
+                if (git != mod_.global_index.end()) {
+                  const GlobalVar* gv = mod_.find_global(git->second);
+                  if (gv && gv->type.spec.array_rank > 0 && gv->type.spec.tag && gv->type.spec.tag[0]) {
+                    const std::string tag(gv->type.spec.tag);
+                    if (const auto* sd = find_struct_def(tag)) {
+                      int fi = find_field_idx(*sd, mem_e->field);
+                      const std::string aty = llvm_alloca_ty(resolve_array_ts(gv->type.spec, gv->init));
+                      return "getelementptr inbounds (" + aty + ", ptr @" + dr->name +
+                             ", i64 0, i64 0, i32 " + std::to_string(fi) + ")";
+                    }
+                  }
+                }
+              }
+              // (arr + N)->field  where arr is global array of structs
+              if (const auto* bin_e = std::get_if<BinaryExpr>(&base_e.payload)) {
+                if (bin_e->op == BinaryOp::Add) {
+                  const Expr& lhs_e = get_expr(bin_e->lhs);
+                  const Expr& rhs_e = get_expr(bin_e->rhs);
+                  const DeclRef* dr2 = std::get_if<DeclRef>(&lhs_e.payload);
+                  auto rhs_val = try_const_eval_int(bin_e->rhs);
+                  if (!dr2) {
+                    dr2 = std::get_if<DeclRef>(&rhs_e.payload);
+                    rhs_val = try_const_eval_int(bin_e->lhs);
+                  }
+                  if (dr2 && rhs_val) {
+                    auto git = mod_.global_index.find(dr2->name);
+                    if (git != mod_.global_index.end()) {
+                      const GlobalVar* gv = mod_.find_global(git->second);
+                      if (gv && gv->type.spec.array_rank > 0 && gv->type.spec.tag && gv->type.spec.tag[0]) {
+                        const std::string tag(gv->type.spec.tag);
+                        if (const auto* sd = find_struct_def(tag)) {
+                          int fi = find_field_idx(*sd, mem_e->field);
+                          const std::string aty = llvm_alloca_ty(resolve_array_ts(gv->type.spec, gv->init));
+                          return "getelementptr inbounds (" + aty + ", ptr @" + dr2->name +
+                                 ", i64 0, i64 " + std::to_string(*rhs_val) +
+                                 ", i32 " + std::to_string(fi) + ")";
+                        }
                       }
                     }
                   }
@@ -669,6 +771,45 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
             return "inttoptr (i64 " + std::to_string(*val) + " to ptr)";
           }
           return std::to_string(*val);
+        }
+        // Pointer arithmetic: ptr + int or int + ptr → emit GEP constant
+        if (llvm_ty(expected_ts) == "ptr" && p.op == BinaryOp::Add) {
+          const Expr& lhs_e = get_expr(p.lhs);
+          const Expr& rhs_e = get_expr(p.rhs);
+          // string + N
+          if (const auto* sl = std::get_if<StringLiteral>(&lhs_e.payload)) {
+            auto offset = try_const_eval_int(p.rhs);
+            if (offset) {
+              const std::string bytes = bytes_from_string_literal(*sl);
+              const std::string gname = intern_str(bytes);
+              const size_t len = bytes.size() + 1;
+              return "getelementptr inbounds ([" + std::to_string(len) + " x i8], ptr " +
+                     gname + ", i64 0, i64 " + std::to_string(*offset) + ")";
+            }
+          }
+          // global_array + N  or  N + global_array
+          const DeclRef* dr = std::get_if<DeclRef>(&lhs_e.payload);
+          auto rhs_val = try_const_eval_int(p.rhs);
+          if (!dr) {
+            dr = std::get_if<DeclRef>(&rhs_e.payload);
+            rhs_val = try_const_eval_int(p.lhs);
+          }
+          if (dr && rhs_val) {
+            auto git = mod_.global_index.find(dr->name);
+            if (git != mod_.global_index.end()) {
+              const GlobalVar* gv = mod_.find_global(git->second);
+              if (gv) {
+                if (gv->type.spec.array_rank > 0) {
+                  const std::string aty = llvm_alloca_ty(gv->type.spec);
+                  return "getelementptr inbounds (" + aty + ", ptr @" + dr->name +
+                         ", i64 0, i64 " + std::to_string(*rhs_val) + ")";
+                }
+                // Non-array global: byte-level GEP
+                return "getelementptr inbounds (i8, ptr @" + dr->name +
+                       ", i64 " + std::to_string(*rhs_val) + ")";
+              }
+            }
+          }
         }
         return (llvm_ty(expected_ts) == "ptr") ? "null" : "0";
       } else if constexpr (std::is_same_v<T, LabelAddrExpr>) {
