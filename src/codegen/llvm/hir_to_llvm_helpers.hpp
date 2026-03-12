@@ -368,6 +368,22 @@ inline std::string llvm_field_ty(const HirStructField& f) {
   return llvm_ty(f.elem_type);
 }
 
+inline int compute_struct_align(const Module& mod, const std::string& tag);
+
+// Return the natural alignment of a field's element type (ignoring arrays).
+inline int alignof_field_elem(const Module& mod, const HirStructField& f) {
+  if (f.elem_type.ptr_level > 0 || f.elem_type.is_fn_ptr) return 8;
+  if (f.elem_type.base == TB_STRUCT || f.elem_type.base == TB_UNION) {
+    if (f.elem_type.tag && f.elem_type.tag[0])
+      return compute_struct_align(mod, f.elem_type.tag);
+    return 4;
+  }
+  int sz = sizeof_base(f.elem_type.base);
+  // LLVM caps natural alignment at 8 for most targets (aarch64).
+  // long double (16 bytes) has 16-byte alignment on aarch64.
+  return sz;
+}
+
 inline int compute_field_size(const Module& mod, const HirStructField& f) {
   int sz = 0;
   if (f.elem_type.ptr_level > 0 || f.elem_type.is_fn_ptr) {
@@ -385,26 +401,52 @@ inline int compute_field_size(const Module& mod, const HirStructField& f) {
   return sz;
 }
 
+inline int compute_struct_align(const Module& mod, const std::string& tag) {
+  const auto it = mod.struct_defs.find(tag);
+  if (it == mod.struct_defs.end()) return 4;
+  const HirStructDef& sd = it->second;
+  int max_align = 1;
+  int last_llvm_idx = -1;
+  for (const auto& f : sd.fields) {
+    if (f.llvm_idx == last_llvm_idx) continue;
+    last_llvm_idx = f.llvm_idx;
+    const int a = alignof_field_elem(mod, f);
+    if (a > max_align) max_align = a;
+  }
+  return max_align;
+}
+
 inline int compute_struct_size(const Module& mod, const std::string& tag) {
   const auto it = mod.struct_defs.find(tag);
   if (it == mod.struct_defs.end()) return 4;
   const HirStructDef& sd = it->second;
   if (sd.is_union) {
     int max_sz = 0;
+    int max_align = 1;
     for (const auto& f : sd.fields) {
       const int sz = compute_field_size(mod, f);
       if (sz > max_sz) max_sz = sz;
+      const int a = alignof_field_elem(mod, f);
+      if (a > max_align) max_align = a;
     }
-    return max_sz;
+    // Round up to max field alignment
+    return (max_sz + max_align - 1) / max_align * max_align;
   }
-  int total = 0;
+  int offset = 0;
+  int max_align = 1;
   int last_llvm_idx = -1;
   for (const auto& f : sd.fields) {
     if (f.llvm_idx == last_llvm_idx) continue;
     last_llvm_idx = f.llvm_idx;
-    total += compute_field_size(mod, f);
+    const int field_align = alignof_field_elem(mod, f);
+    if (field_align > max_align) max_align = field_align;
+    // Align the current offset
+    offset = (offset + field_align - 1) / field_align * field_align;
+    offset += compute_field_size(mod, f);
   }
-  return total;
+  // Round up total size to struct alignment
+  offset = (offset + max_align - 1) / max_align * max_align;
+  return offset;
 }
 
 inline std::string fp_to_hex(double v) {
