@@ -329,6 +329,7 @@ inline int compute_struct_size(const Module& mod, const std::string& tag);
 
 inline int sizeof_ts(const Module& mod, const TypeSpec& ts) {
   if (ts.array_rank > 0) {
+    if (ts.array_size == 0) return 0;  // zero-length array
     if (ts.array_size > 0) {
       TypeSpec elem = ts;
       elem.array_rank--;
