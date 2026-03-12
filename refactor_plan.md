@@ -65,6 +65,8 @@ We already started moving global initializer normalization into HIR, but only fo
 - Phase 3 / partial
   - Conservative global const-init normalization already exists for a subset of
     plain struct brace-elision cases.
+  - Plain array/vector brace-elision without designators is now normalized in
+    HIR before LLVM emission.
   - Flexible-array global constant emission is partially normalized through HIR
     field metadata instead of backend-only shape inference.
 - Phase 4 / partial
@@ -72,6 +74,8 @@ We already started moving global initializer normalization into HIR, but only fo
     initializers.
   - Global/object type selection now prefers the already-resolved HIR object
     type when multiple declarations/definitions share a name.
+  - Top-level array/vector const-init emission no longer performs its own
+    brace-elision flattening pass.
 
 ### Not Yet Completed
 
@@ -81,6 +85,23 @@ We already started moving global initializer normalization into HIR, but only fo
   bound deduction and aggregate interpretation paths still inside
   `hir_to_llvm_const_init.cpp`
 - Phase 5 helper split/shrink
+
+### Latest Validation Status
+
+- After the latest const-init/HIR normalization pass, a full local test run
+  passed except for the pre-existing `aligned`-attribute gap.
+- Focused regressions exercised during this step included:
+  - `tests/c-testsuite/tests/single-exec/00216.c`
+  - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/20020615-1.c`
+  - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/20100416-1.c`
+  - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/20120427-1.c`
+  - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/20120427-2.c`
+  - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/921113-1.c`
+  - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/pr57130.c`
+  - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/pr60017.c`
+- `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/pr38151.c`
+  remains blocked by missing support for `__attribute__((aligned))`, not by the
+  const-init refactor itself.
 
 
 ## Phase 1: Move Layout Metadata Into HIR

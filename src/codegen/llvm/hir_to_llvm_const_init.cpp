@@ -146,19 +146,6 @@ class HirEmitter::ConstInitEmitter {
       return format_struct_literal(sd, field_vals);
     }
 
-    bool needs_brace_elision(const TypeSpec& ts, const InitList& list) const {
-      if (ts.array_rank <= 0 || ts.array_size <= 0) return false;
-      TypeSpec elem_ts = drop_one_array_dim(ts);
-      const bool elem_is_agg = (elem_ts.array_rank > 0) ||
-          ((elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION) && elem_ts.ptr_level == 0);
-      if (!elem_is_agg) return false;
-      if ((long long)list.items.size() > ts.array_size) return true;
-      for (const auto& item : list.items) {
-        if (std::holds_alternative<InitScalar>(item.value)) return true;
-      }
-      return false;
-    }
-
     std::string emit_const_vector(const TypeSpec& ts, const GlobalInit& init) {
       TypeSpec elem_ts = ts;
       elem_ts.is_vector = false;
@@ -170,11 +157,6 @@ class HirEmitter::ConstInitEmitter {
       if (const auto* scalar = std::get_if<InitScalar>(&init)) {
         if (n > 0) elems[0] = emitter_.emit_const_scalar_expr(scalar->expr, elem_ts);
       } else if (const auto* list = std::get_if<InitList>(&init)) {
-        size_t cursor = 0;
-        if (needs_brace_elision(ts, *list)) {
-          const std::string flat = emit_const_from_flat(ts, *list, cursor);
-          if (!flat.empty()) return flat;
-        }
         for (size_t i = 0; i < list->items.size() && i < elems.size(); ++i) {
           elems[i] = emit_const_init(elem_ts, child_init_of(list->items[i]));
         }
@@ -219,17 +201,6 @@ class HirEmitter::ConstInitEmitter {
         std::vector<std::string> elems(static_cast<size_t>(n), "zeroinitializer");
         if (n > 0) elems[0] = emitter_.emit_const_scalar_expr(scalar->expr, elem_ts);
         return format_array_literal(elem_ts, elems);
-      }
-
-      if (const auto* list = std::get_if<InitList>(&init)) {
-        if (needs_brace_elision(ts, *list)) {
-          std::vector<std::string> elems(static_cast<size_t>(n), "zeroinitializer");
-          size_t cursor = 0;
-          for (long long i = 0; i < n && cursor < list->items.size(); ++i) {
-            elems[static_cast<size_t>(i)] = emit_const_from_flat(elem_ts, *list, cursor);
-          }
-          return format_array_literal(elem_ts, elems);
-        }
       }
 
       std::vector<std::string> elems(static_cast<size_t>(n), "zeroinitializer");

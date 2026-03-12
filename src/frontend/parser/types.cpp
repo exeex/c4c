@@ -356,7 +356,7 @@ TypeSpec Parser::parse_base_type() {
     } else if (long_count == 1) {
         ts.base = has_complex ? (has_unsigned ? TB_COMPLEX_ULONG : TB_COMPLEX_LONG)
                               : (has_unsigned ? TB_ULONG : TB_LONG);
-    } else if (has_complex) {
+    } else if (has_complex && !has_int_kw && !has_signed && !has_unsigned) {
         ts.base = TB_COMPLEX_DOUBLE;  // __complex__ with no type = double _Complex
     } else {
         // plain int (possibly unsigned)

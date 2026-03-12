@@ -1239,6 +1239,13 @@ class Lowerer {
 
   GlobalInit normalize_global_init(const TypeSpec& ts, const GlobalInit& init) {
     std::function<GlobalInit(const TypeSpec&, const InitList&, size_t&)> consume_from_flat;
+    auto has_designators = [](const InitList& list) {
+      return std::any_of(
+          list.items.begin(), list.items.end(),
+          [](const InitListItem& item) {
+            return item.field_designator.has_value() || item.index_designator.has_value();
+          });
+    };
 
     auto normalize_scalar_like = [&](const TypeSpec& cur_ts, const GlobalInit& cur_init) -> GlobalInit {
       if (const auto* scalar = std::get_if<InitScalar>(&cur_init)) return GlobalInit(*scalar);
@@ -1311,7 +1318,33 @@ class Lowerer {
 
     if (is_scalar_init_type(ts)) return normalize_scalar_like(ts, init);
 
-    if (is_vector_ty(ts) || ts.array_rank > 0) return init;
+    if (is_vector_ty(ts) || ts.array_rank > 0) {
+      const auto* list = std::get_if<InitList>(&init);
+      if (!list) return init;
+      if (has_designators(*list)) return init;
+      TypeSpec elem_ts = ts;
+      long long bound = 0;
+      if (is_vector_ty(ts)) {
+        elem_ts = vector_element_type(ts);
+        bound = ts.vector_lanes > 0 ? ts.vector_lanes : 0;
+      } else {
+        elem_ts.array_rank--;
+        elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
+        bound = resolve_array_ts(ts, init).array_size;
+      }
+      if (!list->items.empty() && !is_vector_ty(ts) &&
+          is_direct_char_array_init(ts, child_init_of(list->items.front()))) {
+        return child_init_of(list->items.front());
+      }
+
+      InitList out{};
+      size_t cursor = 0;
+      for (long long i = 0; i < bound && cursor < list->items.size(); ++i) {
+        auto child = consume_from_flat(elem_ts, *list, cursor);
+        if (auto it = make_init_item(child)) out.items.push_back(std::move(*it));
+      }
+      return out;
+    }
 
     if (ts.base == TB_UNION && ts.ptr_level == 0) return init;
 
@@ -1324,13 +1357,8 @@ class Lowerer {
       if (sd.is_union) return init;
       if (!struct_allows_init_normalization(ts)) return init;
 
-      const bool has_designators = std::any_of(
-          list->items.begin(), list->items.end(),
-          [](const InitListItem& item) {
-            return item.field_designator.has_value() || item.index_designator.has_value();
-          });
       InitList out{};
-      if (has_designators) return init;
+      if (has_designators(*list)) return init;
 
       size_t cursor = 0;
       for (const auto& field : sd.fields) {
