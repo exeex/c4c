@@ -49,6 +49,33 @@ We already started moving global initializer normalization into HIR, but only fo
 5. Expand normalization only when a case is clearly represented in HIR without ambiguity.
 
 
+## Progress Snapshot
+
+### Completed
+
+- Phase 1 / Step A
+  - HIR now carries struct/union layout metadata.
+  - `HirStructDef` includes `size_bytes` and `align_bytes`.
+  - `HirStructField` includes `offset_bytes`, `size_bytes`, `align_bytes`, and explicit flexible-array marking.
+- Phase 1 / Step B
+  - `--dump-hir` prints struct/union layout metadata.
+  - LLVM backend no longer calls `compute_struct_size`, `compute_struct_align`,
+    `compute_field_size`, or `alignof_field_elem`.
+  - Layout-sensitive lowering now reads HIR metadata directly.
+- Phase 3 / partial
+  - Conservative global const-init normalization already exists for a subset of
+    plain struct brace-elision cases.
+  - Flexible-array global constant emission is partially normalized through HIR
+    field metadata instead of backend-only shape inference.
+
+### Not Yet Completed
+
+- Phase 2 shared string literal decoding extraction
+- Remaining Phase 3 initializer families
+- Phase 4 backend const-init simplification
+- Phase 5 helper split/shrink
+
+
 ## Phase 1: Move Layout Metadata Into HIR
 
 ### Objective
@@ -136,6 +163,87 @@ Re-run at minimum:
 
 - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/20000227-1.c`
 - string-array initializer cases from `00216.c`
+
+
+## Cross-Cutting Track: Explicit Alignment Attributes
+
+### Objective
+
+Support GNU/C alignment attributes without forcing HIR to know the final target
+triple or ABI at parse/lowering time.
+
+### Scope
+
+Support at minimum:
+
+- `__attribute__((aligned))`
+- `__attribute__((aligned(N)))`
+- field-level aligned attributes
+- typedef-level aligned attributes
+- struct/union-level aligned attributes
+
+### Representation Rule
+
+Do not model alignment as a boolean.
+
+Use a numeric request in AST/HIR:
+
+- `0` (or absent): no explicit alignment request
+- `> 0`: explicit `aligned(N)`
+- `-1`: bare `aligned` with no argument; backend/target lowering resolves it
+
+This keeps HIR target-agnostic while preserving source semantics.
+
+### Design Notes
+
+- Separate requested alignment from resolved layout alignment.
+- Parser/sema should preserve the request exactly; it should not guess a target
+  value for bare `aligned`.
+- Target-aware lowering may later turn `-1` into a concrete ABI alignment.
+- Field-level requested alignment must participate in aggregate layout once a
+  target-aware layout phase exists.
+- Struct-level requested alignment must be able to raise final aggregate align
+  and round final size upward.
+- Typedef-level requested alignment must propagate when the typedef is used as a
+  field or object type.
+
+### Suggested Data Model
+
+Possible minimal representation:
+
+- `TypeSpec`
+  - add `requested_align`
+- `HirStructField`
+  - add `requested_align`
+- `HirStructDef`
+  - add `requested_align`
+
+If current HIR layout metadata remains target-aware, keep both:
+
+- `requested_align`
+- resolved `align_bytes`
+
+and do not conflate them.
+
+### Implementation Order
+
+1. Parse and store aligned attributes as numeric requests.
+2. Thread requests through typedefs, fields, and struct/union defs.
+3. Decide where target-aware layout resolution lives:
+   - current HIR lowering, if the pipeline remains single-target there
+   - or a later target-aware lowering stage, if HIR is kept target-agnostic
+4. Only after that, fix regressions such as:
+   - `pr38151.c`
+   - target-dependent bare `aligned` cases
+
+### Validation
+
+Minimum focused tests:
+
+- `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/pr38151.c`
+- explicit `aligned(16)` struct/field cases
+- typedef-carried aligned cases
+- interactions with zero-sized / empty trailing members
 
 
 ## Phase 3: Expand HIR Global Initializer Normalization

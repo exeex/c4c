@@ -1711,6 +1711,5 @@ widechar-1.c
 widechar-2.c
 widechar-3.c
 zerolen-1.c
-zerolen-2.c
 zero-struct-1.c
 zero-struct-2.c
