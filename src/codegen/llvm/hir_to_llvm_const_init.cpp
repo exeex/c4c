@@ -40,112 +40,6 @@ class HirEmitter::ConstInitEmitter {
       }, item.value);
     }
 
-    std::string emit_const_from_flat(const TypeSpec& ts, const InitList& list, size_t& cursor) {
-      if (cursor >= list.items.size()) return emit_const_init(ts, GlobalInit(std::monostate{}));
-
-      const auto& item = list.items[cursor];
-      if (std::holds_alternative<std::shared_ptr<InitList>>(item.value)) {
-        auto sub = std::get<std::shared_ptr<InitList>>(item.value);
-        ++cursor;
-        return emit_const_init(ts, GlobalInit(*sub));
-      }
-
-      const bool is_agg = is_vector_value(ts) || (ts.array_rank > 0) ||
-          ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0);
-      if (!is_agg) {
-        const auto* scalar = std::get_if<InitScalar>(&item.value);
-        ++cursor;
-        if (scalar) return emitter_.emit_const_scalar_expr(scalar->expr, ts);
-        return emit_const_init(ts, GlobalInit(std::monostate{}));
-      }
-
-      if (is_vector_value(ts)) {
-        TypeSpec elem_ts = ts;
-        elem_ts.is_vector = false;
-        elem_ts.vector_lanes = 0;
-        elem_ts.vector_bytes = 0;
-        std::string out = "<";
-        for (long long i = 0; i < ts.vector_lanes; ++i) {
-          if (i) out += ", ";
-          out += llvm_ty(elem_ts) + " ";
-          if (cursor < list.items.size()) out += emit_const_from_flat(elem_ts, list, cursor);
-          else out += emit_const_init(elem_ts, GlobalInit(std::monostate{}));
-        }
-        out += ">";
-        return out;
-      }
-
-      if (ts.array_rank > 0) {
-        TypeSpec elem_ts = drop_one_array_dim(ts);
-        if (is_char_like(elem_ts.base) && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0) {
-          const auto* scalar = std::get_if<InitScalar>(&item.value);
-          if (scalar) {
-            const Expr& e = emitter_.get_expr(scalar->expr);
-            if (std::holds_alternative<StringLiteral>(e.payload)) {
-              ++cursor;
-              return emit_const_init(ts, GlobalInit(*scalar));
-            }
-          }
-        }
-
-        const long long n = ts.array_size;
-        if (n <= 0) return "zeroinitializer";
-        std::string out = "[";
-        const std::string elem_ty = llvm_alloca_ty(elem_ts);
-        for (long long i = 0; i < n; ++i) {
-          if (i) out += ", ";
-          out += elem_ty + " ";
-          if (cursor < list.items.size()) out += emit_const_from_flat(elem_ts, list, cursor);
-          else out += emit_const_init(elem_ts, GlobalInit(std::monostate{}));
-        }
-        out += "]";
-        return out;
-      }
-
-      if (!ts.tag || !ts.tag[0]) {
-        ++cursor;
-        return "zeroinitializer";
-      }
-      const auto it = mod().struct_defs.find(ts.tag);
-      if (it == mod().struct_defs.end()) {
-        ++cursor;
-        return "zeroinitializer";
-      }
-      const HirStructDef& sd = it->second;
-      if (sd.is_union) {
-        if (sd.fields.empty()) {
-          ++cursor;
-          return "zeroinitializer";
-        }
-        const int sz = sd.size_bytes;
-        const auto* scalar = std::get_if<InitScalar>(&item.value);
-        ++cursor;
-        if (scalar) {
-          const Expr& se = emitter_.get_expr(scalar->expr);
-          long long val = 0;
-          if (const auto* il = std::get_if<IntLiteral>(&se.payload)) val = il->value;
-          else if (const auto* cl = std::get_if<CharLiteral>(&se.payload)) val = cl->value;
-          if (val != 0) {
-            std::string bytes(static_cast<size_t>(sz), '\0');
-            for (int i = 0; i < sz; ++i)
-              bytes[static_cast<size_t>(i)] = static_cast<char>((val >> (8 * i)) & 0xFF);
-            return "{ [" + std::to_string(sz) + " x i8] c\"" + escape_llvm_c_bytes(bytes) + "\" }";
-          }
-        }
-        return "{ [" + std::to_string(sz) + " x i8] zeroinitializer }";
-      }
-
-      std::vector<std::string> field_vals;
-      field_vals.reserve(sd.fields.size());
-      for (const auto& f : sd.fields) {
-        field_vals.push_back(emit_const_init(emitter_.field_decl_type(f), GlobalInit(std::monostate{})));
-      }
-      for (size_t fi = 0; fi < sd.fields.size() && cursor < list.items.size(); ++fi) {
-        field_vals[fi] = emit_const_from_flat(emitter_.field_decl_type(sd.fields[fi]), list, cursor);
-      }
-      return format_struct_literal(sd, field_vals);
-    }
-
     std::string emit_const_vector(const TypeSpec& ts, const GlobalInit& init) {
       TypeSpec elem_ts = ts;
       elem_ts.is_vector = false;
@@ -339,6 +233,17 @@ class HirEmitter::ConstInitEmitter {
         if (idx >= sd.fields.size()) return std::nullopt;
         return idx;
       };
+      auto emit_field_mapped_item = [&](size_t idx, const InitListItem& item) {
+        GlobalInit child_init = child_init_of(item);
+        const TypeSpec& field_ts = update_field_type(idx, &item, child_init);
+        if (llvm_field_ty(sd.fields[idx]) == "ptr") {
+          if (auto ptr_init = try_emit_ptr_from_char_init(child_init)) {
+            field_vals[idx] = *ptr_init;
+            return;
+          }
+        }
+        field_vals[idx] = emit_const_init(field_ts, child_init);
+      };
 
       if (const auto* list = std::get_if<InitList>(&init)) {
         const bool field_mapped_list = std::all_of(
@@ -350,124 +255,28 @@ class HirEmitter::ConstInitEmitter {
             const auto maybe_idx = find_field_index(item, next_idx);
             if (!maybe_idx) continue;
             const size_t idx = *maybe_idx;
-            GlobalInit child_init = child_init_of(item);
-            const TypeSpec& field_ts = update_field_type(idx, &item, child_init);
-            if (llvm_field_ty(sd.fields[idx]) == "ptr") {
-              if (auto ptr_init = try_emit_ptr_from_char_init(child_init)) {
-                field_vals[idx] = *ptr_init;
-                next_idx = idx + 1;
-                continue;
-              }
-            }
-            field_vals[idx] = emit_const_init(field_ts, child_init);
+            emit_field_mapped_item(idx, item);
             next_idx = idx + 1;
           }
           if (out_field_types) *out_field_types = std::move(field_types);
           return field_vals;
         }
 
-        bool use_cursor = false;
-        if (list->items.size() > sd.fields.size()) {
-          bool has_designators = false;
-          for (const auto& item : list->items) {
-            if (item.field_designator || item.index_designator) {
-              has_designators = true;
-              break;
-            }
+        size_t next_idx = 0;
+        for (const auto& item : list->items) {
+          size_t idx = next_idx;
+          if (item.field_designator) {
+            const auto fit = std::find_if(
+                sd.fields.begin(), sd.fields.end(),
+                [&](const HirStructField& f) { return f.name == *item.field_designator; });
+            if (fit == sd.fields.end()) continue;
+            idx = static_cast<size_t>(std::distance(sd.fields.begin(), fit));
+          } else if (item.index_designator && *item.index_designator >= 0) {
+            idx = static_cast<size_t>(*item.index_designator);
           }
-          if (!has_designators) use_cursor = true;
-        }
-        if (!use_cursor) {
-          size_t fi = 0;
-          for (size_t li = 0; li < list->items.size() && fi < sd.fields.size(); ++li, ++fi) {
-            const auto& item = list->items[li];
-            if (item.field_designator || item.index_designator) continue;
-            const TypeSpec& fts = field_types[fi];
-            const bool f_is_agg = (fts.array_rank > 0) ||
-                ((fts.base == TB_STRUCT || fts.base == TB_UNION) && fts.ptr_level == 0);
-            if (f_is_agg && std::holds_alternative<InitScalar>(item.value) &&
-                !is_direct_array_scalar(fts, item)) {
-              use_cursor = true;
-              break;
-            }
-          }
-        }
-
-        if (use_cursor) {
-          size_t cursor = 0;
-          for (size_t fi = 0; fi < sd.fields.size() && cursor < list->items.size(); ++fi) {
-            const auto& item = list->items[cursor];
-            if (item.field_designator) {
-              const auto fit = std::find_if(
-                  sd.fields.begin(), sd.fields.end(),
-                  [&](const HirStructField& f) { return f.name == *item.field_designator; });
-              if (fit != sd.fields.end()) {
-                fi = static_cast<size_t>(std::distance(sd.fields.begin(), fit));
-              }
-            }
-            if (fi >= sd.fields.size()) break;
-            if (std::holds_alternative<std::shared_ptr<InitList>>(item.value)) {
-              auto sub = std::get<std::shared_ptr<InitList>>(item.value);
-              ++cursor;
-              GlobalInit child_init(*sub);
-              const TypeSpec& field_ts = update_field_type(fi, &item, child_init);
-              if (llvm_field_ty(sd.fields[fi]) == "ptr") {
-                if (auto ptr_init = try_emit_ptr_from_char_init(child_init)) {
-                  field_vals[fi] = *ptr_init;
-                  continue;
-                }
-              }
-              field_vals[fi] = emit_const_init(field_ts, child_init);
-              continue;
-            }
-
-            GlobalInit child_init = child_init_of(item);
-            const TypeSpec& field_ts = update_field_type(fi, &item, child_init);
-            const bool f_is_agg = (field_ts.array_rank > 0) ||
-                ((field_ts.base == TB_STRUCT || field_ts.base == TB_UNION) && field_ts.ptr_level == 0);
-            if (f_is_agg && !is_direct_array_scalar(field_ts, item)) {
-              field_vals[fi] = emit_const_from_flat(field_ts, *list, cursor);
-              continue;
-            }
-
-            const auto* scalar = std::get_if<InitScalar>(&item.value);
-            ++cursor;
-            if (!scalar) continue;
-            if (llvm_field_ty(sd.fields[fi]) == "ptr") {
-              if (auto ptr_init = try_emit_ptr_from_char_init(child_init)) {
-                field_vals[fi] = *ptr_init;
-                continue;
-              }
-            }
-            field_vals[fi] = emit_const_init(field_ts, child_init);
-          }
-        } else {
-          size_t next_idx = 0;
-          for (const auto& item : list->items) {
-            size_t idx = next_idx;
-            if (item.field_designator) {
-              const auto fit = std::find_if(
-                  sd.fields.begin(), sd.fields.end(),
-                  [&](const HirStructField& f) { return f.name == *item.field_designator; });
-              if (fit == sd.fields.end()) continue;
-              idx = static_cast<size_t>(std::distance(sd.fields.begin(), fit));
-            } else if (item.index_designator && *item.index_designator >= 0) {
-              idx = static_cast<size_t>(*item.index_designator);
-            }
-            if (idx >= sd.fields.size()) continue;
-
-            GlobalInit child_init = child_init_of(item);
-            const TypeSpec& field_ts = update_field_type(idx, &item, child_init);
-            if (llvm_field_ty(sd.fields[idx]) == "ptr") {
-              if (auto ptr_init = try_emit_ptr_from_char_init(child_init)) {
-                field_vals[idx] = *ptr_init;
-                next_idx = idx + 1;
-                continue;
-              }
-            }
-            field_vals[idx] = emit_const_init(field_ts, child_init);
-            next_idx = idx + 1;
-          }
+          if (idx >= sd.fields.size()) continue;
+          emit_field_mapped_item(idx, item);
+          next_idx = idx + 1;
         }
       } else if (const auto* scalar = std::get_if<InitScalar>(&init)) {
         if (!sd.fields.empty()) {

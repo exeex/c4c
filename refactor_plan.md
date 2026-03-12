@@ -74,8 +74,8 @@ We already started moving global initializer normalization into HIR, but only fo
     first-member, explicit-designator, and anonymous-member fallback cases.
   - Designated global array initializers are now normalized into canonical
     indexed HIR init lists with later overrides already resolved.
-  - Flexible-array global constant emission is partially normalized through HIR
-    field metadata instead of backend-only shape inference.
+  - Flexible-array global constant emission now carries resolved per-subobject
+    array bounds in HIR init items for normalized global cases.
 - Phase 4 / partial
   - LLVM backend no longer re-deduces ordinary global array bounds from raw
     initializers.
@@ -89,6 +89,11 @@ We already started moving global initializer normalization into HIR, but only fo
     HIR initializer lists.
   - Array const-init emission has a direct fast path for canonical indexed HIR
     initializer lists.
+  - Flexible-array field emission now prefers resolved HIR bounds over backend
+    re-deduction for normalized global initializers.
+  - Struct const-init emission no longer keeps the old flat scalar-consumption
+    legacy handler; current aggregate regressions pass using normalized/direct
+    paths only.
 
 ### Not Yet Completed
 
@@ -110,13 +115,22 @@ We already started moving global initializer normalization into HIR, but only fo
   - `tests/c-testsuite/tests/single-exec/00150.c`
   - `tests/c-testsuite/tests/single-exec/00151.c`
   - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/20000227-1.c`
+  - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/20010924-1.c`
+  - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/20011113-1.c`
+  - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/20021118-1.c`
+  - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/20030109-1.c`
   - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/20020615-1.c`
   - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/20100416-1.c`
   - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/20120427-1.c`
   - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/20120427-2.c`
+  - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/961223-1.c`
+  - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/981130-1.c`
+  - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/pr41239.c`
   - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/921113-1.c`
+  - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/pr65215-5.c`
   - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/pr57130.c`
   - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/pr60017.c`
+  - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/struct-ini-4.c`
 - `tests/llvm-test-suite/SingleSource/Regression/C/gcc-c-torture/execute/pr38151.c`
   remains blocked by missing support for `__attribute__((aligned))`, not by the
   const-init refactor itself.
@@ -320,7 +334,8 @@ Status after the latest pass:
 - `4` complete for ordinary global designated arrays
 - `5` complete for ordinary global designated structs
 - `6` complete for ordinary global unions, including anonymous-member fallback
-- `7` still pending
+- `7` partially complete for normalized global flexible-array cases; backend
+  still keeps fallback re-deduction for non-normalized/raw paths
 
 ### Important Constraint
 
