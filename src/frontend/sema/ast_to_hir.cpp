@@ -253,6 +253,65 @@ std::vector<long long> decode_string_literal_values(const char* sval, bool wide)
   return out;
 }
 
+std::string decode_c_escaped_bytes_local(const std::string& raw) {
+  std::string out;
+  for (size_t i = 0; i < raw.size();) {
+    const unsigned char c = static_cast<unsigned char>(raw[i]);
+    if (c != '\\') {
+      out.push_back(static_cast<char>(c));
+      ++i;
+      continue;
+    }
+    ++i;
+    if (i >= raw.size()) break;
+    const char esc = raw[i++];
+    switch (esc) {
+      case 'n': out.push_back('\n'); break;
+      case 't': out.push_back('\t'); break;
+      case 'r': out.push_back('\r'); break;
+      case 'a': out.push_back('\a'); break;
+      case 'b': out.push_back('\b'); break;
+      case 'f': out.push_back('\f'); break;
+      case 'v': out.push_back('\v'); break;
+      case '\\': out.push_back('\\'); break;
+      case '\'': out.push_back('\''); break;
+      case '"': out.push_back('"'); break;
+      case '?': out.push_back('\?'); break;
+      case 'x': {
+        unsigned value = 0;
+        while (i < raw.size() && std::isxdigit(static_cast<unsigned char>(raw[i]))) {
+          const unsigned char h = static_cast<unsigned char>(raw[i++]);
+          value = value * 16 + (std::isdigit(h) ? h - '0' : std::tolower(h) - 'a' + 10);
+        }
+        out.push_back(static_cast<char>(value & 0xFF));
+        break;
+      }
+      default:
+        if (esc >= '0' && esc <= '7') {
+          unsigned value = static_cast<unsigned>(esc - '0');
+          for (int k = 0; k < 2 && i < raw.size() && raw[i] >= '0' && raw[i] <= '7'; ++k, ++i) {
+            value = value * 8 + static_cast<unsigned>(raw[i] - '0');
+          }
+          out.push_back(static_cast<char>(value & 0xFF));
+        } else {
+          out.push_back(esc);
+        }
+        break;
+    }
+  }
+  return out;
+}
+
+std::string bytes_from_string_literal(const StringLiteral& sl) {
+  std::string bytes = sl.raw;
+  if (bytes.size() >= 2 && bytes.front() == '"' && bytes.back() == '"') {
+    bytes = bytes.substr(1, bytes.size() - 2);
+  } else if (bytes.size() >= 3 && bytes[0] == 'L' && bytes[1] == '"' && bytes.back() == '"') {
+    bytes = bytes.substr(2, bytes.size() - 3);
+  }
+  return decode_c_escaped_bytes_local(bytes);
+}
+
 std::optional<long long> eval_int_const_expr(
     const Node* n,
     const std::unordered_map<std::string, long long>& enum_consts) {
@@ -849,6 +908,8 @@ class Lowerer {
       // Lower the compound literal's init list (stored in clit->left).
       if (clit->left && clit->left->kind == NK_INIT_LIST) {
         cg.init = lower_init_list(clit->left);
+        cg.type.spec = resolve_array_ts(cg.type.spec, cg.init);
+        cg.init = normalize_global_init(cg.type.spec, cg.init);
       }
       module_->global_index[clit_name] = cg.id;
       module_->globals.push_back(std::move(cg));
@@ -891,6 +952,8 @@ class Lowerer {
       g.init = computed_init;
     } else if (gv->init) {
       g.init = lower_global_init(gv->init);
+      g.type.spec = resolve_array_ts(g.type.spec, g.init);
+      g.init = normalize_global_init(g.type.spec, g.init);
     }
 
     module_->global_index[g.name] = g.id;
@@ -898,7 +961,7 @@ class Lowerer {
   }
 
   // Reconstruct the full TypeSpec for a struct field from its HirStructField.
-  TypeSpec field_type_of(const HirStructField& f) {
+  static TypeSpec field_type_of(const HirStructField& f) {
     TypeSpec ts = f.elem_type;
     ts.inner_rank = -1;
     if (f.array_first_dim >= 0) {
@@ -910,6 +973,255 @@ class Lowerer {
     return ts;
   }
 
+  static bool is_char_like(TypeBase base) {
+    return base == TB_CHAR || base == TB_SCHAR || base == TB_UCHAR;
+  }
+
+  static bool is_scalar_init_type(const TypeSpec& ts) {
+    return !is_vector_ty(ts) &&
+           ts.array_rank == 0 &&
+           !((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0);
+  }
+
+  static GlobalInit child_init_of(const InitListItem& item) {
+    return std::visit(
+        [&](const auto& v) -> GlobalInit {
+          using V = std::decay_t<decltype(v)>;
+          if constexpr (std::is_same_v<V, InitScalar>) return GlobalInit(v);
+          else return GlobalInit(*v);
+        },
+        item.value);
+  }
+
+  static std::optional<InitListItem> make_init_item(const GlobalInit& init) {
+    if (std::holds_alternative<std::monostate>(init)) return std::nullopt;
+    InitListItem item{};
+    if (const auto* scalar = std::get_if<InitScalar>(&init)) {
+      item.value = *scalar;
+    } else {
+      item.value = std::make_shared<InitList>(std::get<InitList>(init));
+    }
+    return item;
+  }
+
+  bool is_string_scalar(const GlobalInit& init) const {
+    const auto* scalar = std::get_if<InitScalar>(&init);
+    if (!scalar) return false;
+    const Expr& e = module_->expr_pool[scalar->expr.value];
+    return std::holds_alternative<StringLiteral>(e.payload);
+  }
+
+  long long flat_scalar_count(const TypeSpec& ts) const {
+    if (is_vector_ty(ts)) return ts.vector_lanes > 0 ? ts.vector_lanes : 1;
+    if (ts.array_rank > 0) {
+      if (ts.array_size <= 0) return 1;
+      TypeSpec elem_ts = ts;
+      elem_ts.array_rank--;
+      elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
+      return ts.array_size * flat_scalar_count(elem_ts);
+    }
+    if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0 && ts.tag) {
+      const auto it = module_->struct_defs.find(ts.tag);
+      if (it == module_->struct_defs.end()) return 1;
+      const auto& sd = it->second;
+      if (sd.fields.empty()) return 1;
+      if (sd.is_union) return flat_scalar_count(field_type_of(sd.fields.front()));
+      long long count = 0;
+      for (const auto& f : sd.fields) count += flat_scalar_count(field_type_of(f));
+      return count > 0 ? count : 1;
+    }
+    return 1;
+  }
+
+  long long deduce_array_size_from_init(const GlobalInit& init) const {
+    if (const auto* list = std::get_if<InitList>(&init)) {
+      long long max_idx = -1;
+      long long next = 0;
+      for (const auto& item : list->items) {
+        long long idx = next;
+        if (item.index_designator && *item.index_designator >= 0) idx = *item.index_designator;
+        if (idx > max_idx) max_idx = idx;
+        next = idx + 1;
+      }
+      return max_idx + 1;
+    }
+    if (is_string_scalar(init)) {
+      const auto& scalar = std::get<InitScalar>(init);
+      const Expr& e = module_->expr_pool[scalar.expr.value];
+      const auto& sl = std::get<StringLiteral>(e.payload);
+      if (sl.is_wide) {
+        return static_cast<long long>(decode_string_literal_values(sl.raw.c_str(), true).size());
+      }
+      return static_cast<long long>(bytes_from_string_literal(sl).size()) + 1;
+    }
+    return -1;
+  }
+
+  TypeSpec resolve_array_ts(const TypeSpec& ts, const GlobalInit& init) const {
+    if (ts.array_rank <= 0 || ts.array_size >= 0) return ts;
+    long long deduced = deduce_array_size_from_init(init);
+    if (deduced < 0) return ts;
+    TypeSpec elem_ts = ts;
+    elem_ts.array_rank--;
+    elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
+    const bool elem_is_agg = is_vector_ty(elem_ts) ||
+                             elem_ts.array_rank > 0 ||
+                             ((elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION) &&
+                              elem_ts.ptr_level == 0);
+    if (elem_is_agg) {
+      if (const auto* list = std::get_if<InitList>(&init)) {
+        bool all_scalar = true;
+        for (const auto& item : list->items) {
+          if (!std::holds_alternative<InitScalar>(item.value)) {
+            all_scalar = false;
+            break;
+          }
+        }
+        if (all_scalar) {
+          const long long fc = flat_scalar_count(elem_ts);
+          if (fc > 1) deduced = (deduced + fc - 1) / fc;
+        }
+      }
+    }
+    TypeSpec out = ts;
+    out.array_size = deduced;
+    out.array_dims[0] = deduced;
+    return out;
+  }
+
+  bool is_direct_char_array_init(const TypeSpec& ts, const GlobalInit& init) const {
+    if (ts.array_rank != 1 || ts.ptr_level != 0) return false;
+    if (!is_char_like(ts.base)) return false;
+    return is_string_scalar(init);
+  }
+
+  bool struct_allows_init_normalization(const TypeSpec& ts) const {
+    if (ts.base != TB_STRUCT || ts.ptr_level != 0 || !ts.tag || !ts.tag[0]) return false;
+    const auto it = module_->struct_defs.find(ts.tag);
+    if (it == module_->struct_defs.end()) return false;
+    const auto& sd = it->second;
+    if (sd.is_union) return false;
+    for (const auto& field : sd.fields) {
+      if (field.is_anon_member) return false;
+      if (field.array_first_dim == 0) return false;
+      TypeSpec field_ts = field_type_of(field);
+      if (field_ts.base == TB_UNION && field_ts.ptr_level == 0) return false;
+      if (field_ts.array_rank > 0 || is_vector_ty(field_ts)) continue;
+      if (field_ts.base == TB_STRUCT && field_ts.ptr_level == 0 &&
+          !struct_allows_init_normalization(field_ts)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  GlobalInit normalize_global_init(const TypeSpec& ts, const GlobalInit& init) {
+    std::function<GlobalInit(const TypeSpec&, const InitList&, size_t&)> consume_from_flat;
+
+    auto normalize_scalar_like = [&](const TypeSpec& cur_ts, const GlobalInit& cur_init) -> GlobalInit {
+      if (const auto* scalar = std::get_if<InitScalar>(&cur_init)) return GlobalInit(*scalar);
+      if (const auto* list = std::get_if<InitList>(&cur_init)) {
+        if (!list->items.empty()) return normalize_global_init(cur_ts, child_init_of(list->items.front()));
+      }
+      return std::monostate{};
+    };
+
+    consume_from_flat = [&](const TypeSpec& cur_ts, const InitList& list, size_t& cursor) -> GlobalInit {
+      if (cursor >= list.items.size()) return std::monostate{};
+      const auto& item = list.items[cursor];
+      if (std::holds_alternative<std::shared_ptr<InitList>>(item.value)) {
+        auto sub = std::get<std::shared_ptr<InitList>>(item.value);
+        ++cursor;
+        return normalize_global_init(cur_ts, GlobalInit(*sub));
+      }
+      if (is_scalar_init_type(cur_ts)) {
+        ++cursor;
+        if (const auto* scalar = std::get_if<InitScalar>(&item.value)) return GlobalInit(*scalar);
+        return std::monostate{};
+      }
+      if (is_vector_ty(cur_ts) || cur_ts.array_rank > 0) {
+        TypeSpec elem_ts = cur_ts;
+        long long bound = 0;
+        if (is_vector_ty(cur_ts)) {
+          elem_ts = vector_element_type(cur_ts);
+          bound = cur_ts.vector_lanes > 0 ? cur_ts.vector_lanes : 0;
+        } else {
+          elem_ts.array_rank--;
+          elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
+          bound = resolve_array_ts(cur_ts, GlobalInit(list)).array_size;
+        }
+        if (!is_vector_ty(cur_ts) && is_direct_char_array_init(cur_ts, child_init_of(item))) {
+          ++cursor;
+          return child_init_of(item);
+        }
+        InitList out{};
+        for (long long i = 0; i < bound && cursor < list.items.size(); ++i) {
+          auto child = consume_from_flat(elem_ts, list, cursor);
+          if (auto it = make_init_item(child)) out.items.push_back(std::move(*it));
+        }
+        return out;
+      }
+      if ((cur_ts.base == TB_STRUCT || cur_ts.base == TB_UNION) && cur_ts.ptr_level == 0 && cur_ts.tag) {
+        const auto sit = module_->struct_defs.find(cur_ts.tag);
+        if (sit == module_->struct_defs.end()) {
+          ++cursor;
+          return std::monostate{};
+        }
+        const auto& sd = sit->second;
+        if (sd.is_union) {
+          InitList out{};
+          if (!sd.fields.empty()) {
+            auto child = consume_from_flat(field_type_of(sd.fields.front()), list, cursor);
+            if (auto it = make_init_item(child)) out.items.push_back(std::move(*it));
+          }
+          return out;
+        }
+        InitList out{};
+        for (size_t fi = 0; fi < sd.fields.size() && cursor < list.items.size(); ++fi) {
+          auto child = consume_from_flat(field_type_of(sd.fields[fi]), list, cursor);
+          if (auto it = make_init_item(child)) out.items.push_back(std::move(*it));
+        }
+        return out;
+      }
+      ++cursor;
+      return std::monostate{};
+    };
+
+    if (is_scalar_init_type(ts)) return normalize_scalar_like(ts, init);
+
+    if (is_vector_ty(ts) || ts.array_rank > 0) return init;
+
+    if (ts.base == TB_UNION && ts.ptr_level == 0) return init;
+
+    if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0 && ts.tag) {
+      const auto* list = std::get_if<InitList>(&init);
+      if (!list) return normalize_scalar_like(ts, init);
+      const auto sit = module_->struct_defs.find(ts.tag);
+      if (sit == module_->struct_defs.end()) return init;
+      const auto& sd = sit->second;
+      if (sd.is_union) return init;
+      if (!struct_allows_init_normalization(ts)) return init;
+
+      const bool has_designators = std::any_of(
+          list->items.begin(), list->items.end(),
+          [](const InitListItem& item) {
+            return item.field_designator.has_value() || item.index_designator.has_value();
+          });
+      InitList out{};
+      if (has_designators) return init;
+
+      size_t cursor = 0;
+      for (const auto& field : sd.fields) {
+        if (cursor >= list->items.size()) break;
+        auto child = consume_from_flat(field_type_of(field), *list, cursor);
+        if (auto it = make_init_item(child)) out.items.push_back(std::move(*it));
+      }
+      return out;
+    }
+
+    return init;
+  }
+
   GlobalId lower_static_local_global(FunctionCtx& ctx, const Node* n) {
     GlobalVar g{};
     g.id = next_global_id();
@@ -919,7 +1231,11 @@ class Lowerer {
     g.linkage = {true, false, false};  // internal linkage
     g.is_const = n->type.is_const;
     g.span = make_span(n);
-    if (n->init) g.init = lower_global_init(n->init, &ctx);
+    if (n->init) {
+      g.init = lower_global_init(n->init, &ctx);
+      g.type.spec = resolve_array_ts(g.type.spec, g.init);
+      g.init = normalize_global_init(g.type.spec, g.init);
+    }
     module_->global_index[g.name] = g.id;
     module_->globals.push_back(std::move(g));
     return g.id;

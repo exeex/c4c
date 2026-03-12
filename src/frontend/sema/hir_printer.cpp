@@ -158,6 +158,10 @@ class Printer {
     if (g.linkage.is_static) out << " static";
     if (g.linkage.is_extern) out << " extern";
     if (g.is_const) out << " const";
+    if (!std::holds_alternative<std::monostate>(g.init)) {
+      out << " = ";
+      print_global_init_inline(out, g.init);
+    }
     out << "\n";
   }
 
@@ -303,6 +307,33 @@ class Printer {
       return;
     }
     std::visit([&](const auto& p) { print_expr_payload(out, p); }, e->payload);
+  }
+
+  void print_global_init_inline(std::ostringstream& out, const GlobalInit& init) {
+    if (std::holds_alternative<std::monostate>(init)) {
+      out << "{}";
+      return;
+    }
+    if (const auto* scalar = std::get_if<InitScalar>(&init)) {
+      print_expr_inline(out, scalar->expr);
+      return;
+    }
+    const auto& list = std::get<InitList>(init);
+    out << "{";
+    for (size_t i = 0; i < list.items.size(); ++i) {
+      if (i) out << ", ";
+      const auto& item = list.items[i];
+      if (item.field_designator) out << "." << *item.field_designator << " = ";
+      else if (item.index_designator) out << "[" << *item.index_designator << "] = ";
+      print_global_init_inline(out, std::visit(
+          [&](const auto& v) -> GlobalInit {
+            using V = std::decay_t<decltype(v)>;
+            if constexpr (std::is_same_v<V, InitScalar>) return GlobalInit(v);
+            else return GlobalInit(*v);
+          },
+          item.value));
+    }
+    out << "}";
   }
 
   void print_expr_payload(std::ostringstream& out, const IntLiteral& x) {
