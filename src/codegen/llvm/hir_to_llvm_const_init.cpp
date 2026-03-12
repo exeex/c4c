@@ -511,6 +511,36 @@ class HirEmitter::ConstInitEmitter {
         }
         return std::nullopt;
       };
+      auto select_union_field_init =
+          [&](const HirStructDef& union_sd, const GlobalInit& union_init)
+              -> std::optional<std::pair<size_t, GlobalInit>> {
+        if (const auto* list = std::get_if<InitList>(&union_init)) {
+          if (list->items.empty()) return std::nullopt;
+          const auto& item0 = list->items.front();
+          if (item0.field_designator) {
+            const auto fit = std::find_if(
+                union_sd.fields.begin(), union_sd.fields.end(),
+                [&](const HirStructField& f) { return f.name == *item0.field_designator; });
+            if (fit != union_sd.fields.end()) {
+              return std::pair<size_t, GlobalInit>(
+                  static_cast<size_t>(std::distance(union_sd.fields.begin(), fit)),
+                  child_init_of(item0));
+            }
+          } else if (item0.index_designator && *item0.index_designator >= 0) {
+            const size_t idx = static_cast<size_t>(*item0.index_designator);
+            if (idx < union_sd.fields.size()) return std::pair<size_t, GlobalInit>(idx, child_init_of(item0));
+          }
+          return std::pair<size_t, GlobalInit>(
+              0,
+              (list->items.size() == 1 && std::holds_alternative<std::shared_ptr<InitList>>(item0.value))
+                  ? GlobalInit(*std::get<std::shared_ptr<InitList>>(item0.value))
+                  : GlobalInit(*list));
+        }
+        if (const auto* scalar = std::get_if<InitScalar>(&union_init)) {
+          return std::pair<size_t, GlobalInit>(0, GlobalInit(*scalar));
+        }
+        return std::nullopt;
+      };
 
       std::function<bool(const TypeSpec&, const GlobalInit&, std::vector<unsigned char>&)> encode_bytes;
       encode_bytes = [&](const TypeSpec& cur_ts, const GlobalInit& cur_init,
@@ -572,71 +602,11 @@ class HirEmitter::ConstInitEmitter {
           if (sit == mod().struct_defs.end()) return false;
           const HirStructDef& cur_sd = sit->second;
           if (cur_sd.is_union) {
-            if (const auto* list = std::get_if<InitList>(&cur_init)) {
-              if (list->items.size() == 1 &&
-                  (list->items.front().field_designator || list->items.front().index_designator)) {
-                size_t fi = 0;
-                if (list->items.front().field_designator) {
-                  const auto fit = std::find_if(
-                      cur_sd.fields.begin(), cur_sd.fields.end(),
-                      [&](const HirStructField& f) { return f.name == *list->items.front().field_designator; });
-                  if (fit == cur_sd.fields.end()) return false;
-                  fi = static_cast<size_t>(std::distance(cur_sd.fields.begin(), fit));
-                } else if (list->items.front().index_designator &&
-                           *list->items.front().index_designator >= 0) {
-                  fi = static_cast<size_t>(*list->items.front().index_designator);
-                }
-                if (fi >= cur_sd.fields.size()) return false;
-                std::vector<unsigned char> fb;
-                if (!encode_bytes(emitter_.field_decl_type(cur_sd.fields[fi]),
-                                  child_init_of(list->items.front()), fb)) {
-                  return false;
-                }
-                const size_t copy_n = std::min(out.size(), fb.size());
-                std::memcpy(out.data(), fb.data(), copy_n);
-                return true;
-              }
-            }
-
-            size_t fi = 0;
-            GlobalInit child = GlobalInit(std::monostate{});
-            bool has_child = false;
-            if (const auto* list = std::get_if<InitList>(&cur_init)) {
-              if (!list->items.empty()) {
-                const auto& item0 = list->items.front();
-                bool matched_union_field = false;
-                if (item0.field_designator) {
-                  const auto fit = std::find_if(
-                      cur_sd.fields.begin(), cur_sd.fields.end(),
-                      [&](const HirStructField& f) { return f.name == *item0.field_designator; });
-                  if (fit != cur_sd.fields.end()) {
-                    fi = static_cast<size_t>(std::distance(cur_sd.fields.begin(), fit));
-                    child = child_init_of(item0);
-                    has_child = true;
-                    matched_union_field = true;
-                  }
-                } else if (item0.index_designator && *item0.index_designator >= 0) {
-                  fi = static_cast<size_t>(*item0.index_designator);
-                  child = child_init_of(item0);
-                  has_child = true;
-                  matched_union_field = true;
-                }
-                if (!matched_union_field) {
-                  fi = 0;
-                  child = (list->items.size() == 1 &&
-                           std::holds_alternative<std::shared_ptr<InitList>>(item0.value))
-                      ? GlobalInit(*std::get<std::shared_ptr<InitList>>(item0.value))
-                      : GlobalInit(*list);
-                  has_child = true;
-                }
-              }
-            } else if (std::holds_alternative<InitScalar>(cur_init)) {
-              child = cur_init;
-              has_child = true;
-            }
-            if (!has_child || fi >= cur_sd.fields.size()) return true;
+            const auto selected = select_union_field_init(cur_sd, cur_init);
+            if (!selected || selected->first >= cur_sd.fields.size()) return true;
             std::vector<unsigned char> fb;
-            if (!encode_bytes(emitter_.field_decl_type(cur_sd.fields[fi]), child, fb)) return false;
+            if (!encode_bytes(emitter_.field_decl_type(cur_sd.fields[selected->first]), selected->second, fb))
+              return false;
             const size_t copy_n = std::min(out.size(), fb.size());
             std::memcpy(out.data(), fb.data(), copy_n);
             return true;
@@ -728,41 +698,8 @@ class HirEmitter::ConstInitEmitter {
       };
 
       if (const auto* list = std::get_if<InitList>(&init)) {
-        if (list->items.size() == 1 &&
-            (list->items.front().field_designator || list->items.front().index_designator)) {
-          if (const auto field_idx = find_field_index(list->items.front())) {
-            if (auto out = emit_union_from_field(*field_idx, child_init_of(list->items.front()))) return *out;
-          }
-          return zero_union();
-        }
-
-        if (!list->items.empty()) {
-          const InitListItem& item0 = list->items.front();
-          size_t idx = 0;
-          bool matched_union_field = false;
-          GlobalInit child_init = GlobalInit(std::monostate{});
-          if (item0.field_designator) {
-            const auto fit = std::find_if(
-                sd.fields.begin(), sd.fields.end(),
-                [&](const HirStructField& f) { return f.name == *item0.field_designator; });
-            if (fit != sd.fields.end()) {
-              idx = static_cast<size_t>(std::distance(sd.fields.begin(), fit));
-              child_init = child_init_of(item0);
-              matched_union_field = true;
-            }
-          } else if (item0.index_designator && *item0.index_designator >= 0) {
-            idx = static_cast<size_t>(*item0.index_designator);
-            child_init = child_init_of(item0);
-            matched_union_field = true;
-          }
-          if (!matched_union_field) {
-            idx = 0;
-            child_init = (list->items.size() == 1 &&
-                          std::holds_alternative<std::shared_ptr<InitList>>(item0.value))
-                ? GlobalInit(*std::get<std::shared_ptr<InitList>>(item0.value))
-                : GlobalInit(*list);
-          }
-          if (auto out = emit_union_from_field(idx, child_init)) return *out;
+        if (const auto selected = select_union_field_init(sd, init)) {
+          if (auto out = emit_union_from_field(selected->first, selected->second)) return *out;
         }
         return zero_union();
       }
