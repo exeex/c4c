@@ -347,7 +347,7 @@ struct-ini-4.c
 20030916-1.c
 20030920-1.c
 20030928-1.c
-20031003-1.c
+# 20031003-1.c  # CLANG_ABORT: clang binary aborts, c2ll exits 0
 20031010-1.c
 20031011-1.c
 20031012-1.c
@@ -845,9 +845,9 @@ bf-sign-1.c
 bf-sign-2.c
 bitfld-1.c
 bitfld-2.c
-bitfld-3.c
+# bitfld-3.c  # BOTH_ABORT: both clang and c2ll abort
 bitfld-4.c
-bitfld-5.c
+# bitfld-5.c  # BOTH_ABORT: both clang and c2ll abort
 bitfld-6.c
 bitfld-7.c
 bswap-1.c
@@ -1027,7 +1027,7 @@ divconst-3.c
 divmod-1.c
 doloop-1.c
 doloop-2.c
-eeprof-1.c
+# eeprof-1.c  # BOTH_ABORT: both clang and c2ll abort
 enum-1.c
 enum-2.c
 enum-3.c
@@ -1153,7 +1153,7 @@ nestfunc-4.c
 # nestfunc-6.c  # CLANG_COMPILE_FAIL: GCC extension not supported by clang
 # nestfunc-7.c  # CLANG_COMPILE_FAIL: GCC extension not supported by clang
 # nest-stdar-1.c  # CLANG_COMPILE_FAIL: GCC extension not supported by clang
-noinit-attribute.c
+# noinit-attribute.c  # BOTH_ABORT: both clang and c2ll abort
 p18298.c
 packed-1.c
 packed-2.c
@@ -1232,7 +1232,7 @@ pr31169.c
 pr31448-2.c
 pr31448.c
 pr31605.c
-pr32244-1.c
+# pr32244-1.c  # BOTH_ABORT: both clang and c2ll abort
 pr32500.c
 pr33142.c
 pr33631.c
@@ -1618,7 +1618,7 @@ pure-1.c
 pushpop_macro.c
 regstack-1.c
 restrict-1.c
-return-addr.c
+# return-addr.c  # ASLR_MISMATCH: both exit 0, output differs only by ASLR addresses
 # scal-to-vec1.c  # CLANG_COMPILE_FAIL or BACKEND_FAIL
 scal-to-vec2.c
 # scal-to-vec3.c  # CLANG_COMPILE_FAIL: GCC extension not supported by clang
