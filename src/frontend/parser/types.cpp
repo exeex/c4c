@@ -501,6 +501,11 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
                     handled = true;
                 }
             }
+            if (!handled) {
+                // Not a vector_size attribute — backtrack and let skip_attributes() handle it
+                pos_ = saved;
+                break;
+            }
             while (!at_end() && !(check(TokenKind::RParen) &&
                                   pos_ + 1 < (int)tokens_.size() &&
                                   tokens_[pos_ + 1].kind == TokenKind::RParen)) {
@@ -508,7 +513,6 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
             }
             expect(TokenKind::RParen);
             expect(TokenKind::RParen);
-            if (!handled && pos_ == saved) pos_ = saved;
         }
     };
 
