@@ -358,6 +358,7 @@ class Lowerer {
   struct SwitchCtx {
     BlockId parent_block{};
     std::vector<std::pair<long long, BlockId>> cases;
+    std::vector<std::tuple<long long, long long, BlockId>> case_ranges;
     std::optional<BlockId> default_block;
   };
 
@@ -1752,7 +1753,7 @@ class Lowerer {
         append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
         ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
 
-        ctx.switch_stack.push_back({parent_b, {}, {}});
+        ctx.switch_stack.push_back({parent_b, {}, {}, {}});
         ctx.break_stack.push_back(after_b);
         ctx.current_block = body_b;
         lower_stmt_node(ctx, n->body);
@@ -1775,6 +1776,7 @@ class Lowerer {
             for (auto& stmt : blk.stmts) {
               if (auto* sw = std::get_if<SwitchStmt>(&stmt.payload)) {
                 sw->case_blocks = std::move(sw_ctx.cases);
+                sw->case_range_blocks = std::move(sw_ctx.case_ranges);
                 if (sw_ctx.default_block) sw->default_block = sw_ctx.default_block;
                 break;
               }
@@ -1816,9 +1818,29 @@ class Lowerer {
         return;
       }
       case NK_CASE_RANGE: {
+        long long lo = 0, hi = 0;
+        if (n->left) {
+          if (n->left->kind == NK_INT_LIT) lo = n->left->ival;
+          else if (auto v = eval_int_const_expr(n->left, enum_consts_)) lo = *v;
+        }
+        if (n->right) {
+          if (n->right->kind == NK_INT_LIT) hi = n->right->ival;
+          else if (auto v = eval_int_const_expr(n->right, enum_consts_)) hi = *v;
+        }
+        if (!ctx.switch_stack.empty()) {
+          const BlockId case_b = create_block(ctx);
+          if (!ensure_block(ctx, ctx.current_block).has_explicit_terminator) {
+            GotoStmt j{};
+            j.target.resolved_block = case_b;
+            append_stmt(ctx, Stmt{StmtPayload{j}, make_span(n)});
+            ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
+          }
+          ctx.switch_stack.back().case_ranges.push_back({lo, hi, case_b});
+          ctx.current_block = case_b;
+        }
         CaseRangeStmt s{};
-        if (n->left && n->left->kind == NK_INT_LIT) s.range.lo = n->left->ival;
-        if (n->right && n->right->kind == NK_INT_LIT) s.range.hi = n->right->ival;
+        s.range.lo = lo;
+        s.range.hi = hi;
         append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
         lower_stmt_node(ctx, n->body);
         return;

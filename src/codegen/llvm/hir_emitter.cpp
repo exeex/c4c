@@ -4241,6 +4241,28 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const SwitchStmt& s){
     }
 
     const std::string body_lbl = block_lbl(s.body_block);
+
+    // Case ranges need comparison chains before the switch.
+    // For each range [lo, hi], emit: if (val >= lo && val <= hi) goto case_block
+    // This is done before the switch instruction so the switch only handles discrete cases.
+    if (!s.case_range_blocks.empty()) {
+      for (const auto& [lo, hi, bid] : s.case_range_blocks) {
+        const std::string cmp_ge = is_signed_int(ts.base)
+            ? "icmp sge" : "icmp uge";
+        const std::string cmp_le = is_signed_int(ts.base)
+            ? "icmp sle" : "icmp ule";
+        const std::string t_ge = fresh_tmp(ctx);
+        emit_instr(ctx, t_ge + " = " + cmp_ge + " " + ty + " " + val + ", " + std::to_string(lo));
+        const std::string t_le = fresh_tmp(ctx);
+        emit_instr(ctx, t_le + " = " + cmp_le + " " + ty + " " + val + ", " + std::to_string(hi));
+        const std::string t_and = fresh_tmp(ctx);
+        emit_instr(ctx, t_and + " = and i1 " + t_ge + ", " + t_le);
+        const std::string next_lbl = fresh_lbl(ctx, "sw.range.next.");
+        emit_term(ctx, "br i1 " + t_and + ", label %" + block_lbl(bid) + ", label %" + next_lbl);
+        emit_lbl(ctx, next_lbl);
+      }
+    }
+
     std::string sw = "switch " + ty + " " + val + ", label %" + default_lbl + " [\n";
     if (!s.case_blocks.empty()) {
       // Use pre-collected case→block mappings (supports Duff's device / interleaved cases).
@@ -4255,7 +4277,7 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const SwitchStmt& s){
           sw += "    " + ty + " " + std::to_string(cs->value) +
                 ", label %" + body_lbl + "\n";
         } else if (std::get_if<CaseRangeStmt>(&stmt.payload)) {
-          // GCC range extension: skip for now
+          // Handled by range chains above
         }
       }
     }

@@ -366,6 +366,7 @@ struct SwitchStmt {
   std::optional<BlockId> default_block;
   std::optional<BlockId> break_block;  // after-switch block (break target)
   std::vector<std::pair<long long, BlockId>> case_blocks;  // case value → block
+  std::vector<std::tuple<long long, long long, BlockId>> case_range_blocks;  // lo, hi, block
 };
 
 struct GotoStmt {
