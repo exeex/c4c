@@ -22,7 +22,7 @@ compiler pipeline:
 2. Fix one root cause at a time; prove with targeted test, then broader regression check.
 3. Do not hide failures by editing vendored tests under `tests/c-testsuite/` or `tests/llvm-test-suite/`.
 4. If a patch breaks core functionality tests (especially `c_testsuite` cases), inspect and compare corresponding logic in `ref/claudes-c-compiler/src/frontend/` before further patching; prefer adopting a proven handling pattern that avoids fixing A while breaking B.
-
+5. The only aceptable workaround is when clang can't compile and run a testcase, the testcase could be ignore.
 
 ## Required Debug Flow (Frontend/Backend Failures)
 
