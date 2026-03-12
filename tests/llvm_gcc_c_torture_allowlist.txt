@@ -1253,7 +1253,7 @@ pr34415.c
 pr34456.c
 pr34768-1.c
 pr34768-2.c
-pr34971.c
+# pr34971.c  # BOTH_ABORT: both clang and c2ll abort
 pr34982.c
 pr35163.c
 pr35231.c

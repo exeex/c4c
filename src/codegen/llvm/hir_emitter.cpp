@@ -2060,9 +2060,28 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const Ex
   }
 
 std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const Expr& e){
+    // Short-circuit ops that use emit_lval (not emit_rval_id) to avoid
+    // double-evaluating the operand and duplicating side effects (e.g. cnt++).
+    if (u.op == UnaryOp::AddrOf) {
+      TypeSpec pts{};
+      return emit_lval(ctx, u.operand, pts);
+    }
+    if (u.op == UnaryOp::PreInc || u.op == UnaryOp::PreDec ||
+        u.op == UnaryOp::PostInc || u.op == UnaryOp::PostDec) {
+      // Fall through to the switch below but skip the rval evaluation
+      // that would duplicate side effects.
+    } else {
+      // Only evaluate operand as rval for ops that actually need it.
+    }
+
     TypeSpec et = resolve_expr_type(ctx, e);
     TypeSpec op_ts{};
-    const std::string val = emit_rval_id(ctx, u.operand, op_ts);
+    // For pre/post inc/dec, the operand is an lvalue — avoid evaluating as rval
+    // which would duplicate any side effects in the operand expression.
+    const bool skip_rval = (u.op == UnaryOp::PreInc || u.op == UnaryOp::PreDec ||
+                            u.op == UnaryOp::PostInc || u.op == UnaryOp::PostDec);
+    const std::string val = skip_rval ? "" : emit_rval_id(ctx, u.operand, op_ts);
+    if (skip_rval) op_ts = resolve_expr_type(ctx, u.operand);
     if (!has_concrete_type(et)) et = op_ts;
     const std::string ty = llvm_ty(et);
     const std::string op_ty = llvm_ty(op_ts);
@@ -2166,8 +2185,8 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const 
       }
 
       case UnaryOp::AddrOf: {
-        TypeSpec pts{};
-        return emit_lval(ctx, u.operand, pts);
+        // Handled above before emit_rval_id to avoid side-effect duplication.
+        __builtin_unreachable();
       }
 
       case UnaryOp::Deref: {
