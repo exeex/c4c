@@ -1233,7 +1233,6 @@ class Lowerer {
     const auto& sd = it->second;
     if (!sd.is_union || sd.fields.empty()) return false;
     for (const auto& field : sd.fields) {
-      if (field.is_anon_member) return false;
       TypeSpec field_ts = field_init_type_of(field);
       if (field_ts.array_rank > 0 || is_vector_ty(field_ts)) continue;
       if (field_ts.base == TB_STRUCT && field_ts.ptr_level == 0 &&
@@ -1256,7 +1255,6 @@ class Lowerer {
     if (sd.is_union) return false;
     for (size_t fi = 0; fi < sd.fields.size(); ++fi) {
       const auto& field = sd.fields[fi];
-      if (field.is_anon_member) return false;
       if (field.is_flexible_array) {
         if (fi + 1 != sd.fields.size()) return false;
         continue;
@@ -1376,15 +1374,21 @@ class Lowerer {
         if (sd.is_union) {
           InitList out{};
           if (!sd.fields.empty()) {
-            auto child = consume_from_flat(field_init_type_of(sd.fields.front()), list, cursor);
-            if (auto it = make_init_item(child)) out.items.push_back(std::move(*it));
+            TypeSpec field_ts = field_init_type_of(sd.fields.front());
+            auto child = consume_from_flat(field_ts, list, cursor);
+            field_ts = resolve_array_ts(field_ts, child);
+            child = normalize_global_init(field_ts, child);
+            if (auto it = make_field_mapped_item(sd, 0, field_ts, child)) out.items.push_back(std::move(*it));
           }
           return out;
         }
         InitList out{};
         for (size_t fi = 0; fi < sd.fields.size() && cursor < list.items.size(); ++fi) {
-          auto child = consume_from_flat(field_init_type_of(sd.fields[fi]), list, cursor);
-          if (auto it = make_init_item(child)) out.items.push_back(std::move(*it));
+          TypeSpec field_ts = field_init_type_of(sd.fields[fi]);
+          auto child = consume_from_flat(field_ts, list, cursor);
+          field_ts = resolve_array_ts(field_ts, child);
+          child = normalize_global_init(field_ts, child);
+          if (auto it = make_field_mapped_item(sd, fi, field_ts, child)) out.items.push_back(std::move(*it));
         }
         return out;
       }
@@ -1437,7 +1441,11 @@ class Lowerer {
       size_t cursor = 0;
       for (long long i = 0; i < bound && cursor < list->items.size(); ++i) {
         auto child = consume_from_flat(elem_ts, *list, cursor);
-        if (auto it = make_init_item(child)) out.items.push_back(std::move(*it));
+        if (!is_vector_ty(ts)) {
+          if (auto it = make_indexed_item(i, elem_ts, child)) out.items.push_back(std::move(*it));
+        } else if (auto it = make_init_item(child)) {
+          out.items.push_back(std::move(*it));
+        }
       }
       return out;
     }
@@ -1482,12 +1490,22 @@ class Lowerer {
 
     if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0 && ts.tag) {
       const auto* list = std::get_if<InitList>(&init);
-      if (!list) return normalize_scalar_like(ts, init);
       const auto sit = module_->struct_defs.find(ts.tag);
-      if (sit == module_->struct_defs.end()) return init;
+      if (sit == module_->struct_defs.end()) return list ? init : normalize_scalar_like(ts, init);
       const auto& sd = sit->second;
       if (sd.is_union) return init;
-      if (!struct_allows_init_normalization(ts)) return init;
+      if (!struct_allows_init_normalization(ts)) return list ? init : normalize_scalar_like(ts, init);
+      if (!list) {
+        if (sd.fields.empty()) return std::monostate{};
+        TypeSpec field_ts = field_init_type_of(sd.fields.front());
+        field_ts = resolve_array_ts(field_ts, init);
+        auto child = normalize_global_init(field_ts, init);
+        InitList out{};
+        if (auto item = make_field_mapped_item(sd, 0, field_ts, child)) {
+          out.items.push_back(std::move(*item));
+        }
+        return out;
+      }
 
       InitList out{};
       if (has_designators(*list)) {
@@ -1512,9 +1530,8 @@ class Lowerer {
 
       size_t cursor = 0;
       for (size_t fi = 0; fi < sd.fields.size(); ++fi) {
-        const auto& field = sd.fields[fi];
         if (cursor >= list->items.size()) break;
-        TypeSpec field_ts = field_init_type_of(field);
+        TypeSpec field_ts = field_init_type_of(sd.fields[fi]);
         auto child = consume_from_flat(field_ts, *list, cursor);
         field_ts = resolve_array_ts(field_ts, child);
         child = normalize_global_init(field_ts, child);

@@ -14,9 +14,6 @@ class HirEmitter::ConstInitEmitter {
         return emit_const_struct(ts, init);
       if (const auto* s = std::get_if<InitScalar>(&init))
         return emitter_.emit_const_scalar_expr(s->expr, ts);
-      if (const auto* list = std::get_if<InitList>(&init)) {
-        if (!list->items.empty()) return emit_const_init(ts, child_init_of(list->items.front()));
-      }
       return (llvm_ty(ts) == "ptr") ? "null" : "zeroinitializer";
     }
 
@@ -92,13 +89,12 @@ class HirEmitter::ConstInitEmitter {
           out += "]";
           return out;
         }
-        std::vector<std::string> elems(static_cast<size_t>(n), "zeroinitializer");
-        if (n > 0) elems[0] = emitter_.emit_const_scalar_expr(scalar->expr, elem_ts);
-        return format_array_literal(elem_ts, elems);
+        return format_array_literal(elem_ts, std::vector<std::string>(static_cast<size_t>(n), "zeroinitializer"));
       }
 
       std::vector<std::string> elems(static_cast<size_t>(n), "zeroinitializer");
       if (const auto* list = std::get_if<InitList>(&init)) {
+        if (!is_indexed_list(*list)) return format_array_literal(elem_ts, elems);
         long long next_idx = 0;
         for (const auto& item : list->items) {
           const auto maybe_idx = find_array_index(item, next_idx, n);
@@ -195,6 +191,22 @@ class HirEmitter::ConstInitEmitter {
       return idx;
     }
 
+    bool is_explicitly_mapped_item(const InitListItem& item) const {
+      return item.field_designator.has_value() || item.index_designator.has_value();
+    }
+
+    bool is_explicitly_mapped_list(const InitList& list) const {
+      return std::all_of(list.items.begin(), list.items.end(), [&](const InitListItem& item) {
+        return is_explicitly_mapped_item(item);
+      });
+    }
+
+    bool is_indexed_list(const InitList& list) const {
+      return std::all_of(list.items.begin(), list.items.end(), [](const InitListItem& item) {
+        return item.index_designator.has_value() && *item.index_designator >= 0;
+      });
+    }
+
     std::optional<size_t> find_struct_field_index(const HirStructDef& sd,
                                                   const InitListItem& item,
                                                   size_t next_idx) const {
@@ -236,7 +248,6 @@ class HirEmitter::ConstInitEmitter {
       for (size_t i = 0; i < sd.fields.size(); ++i) {
         field_vals.push_back(emit_const_init(field_types[i], GlobalInit(std::monostate{})));
       }
-
       auto update_field_type =
           [&](size_t idx, const InitListItem* item, const GlobalInit& child_init) -> const TypeSpec& {
         if (idx + 1 == sd.fields.size() && sd.fields[idx].is_flexible_array) {
@@ -257,6 +268,10 @@ class HirEmitter::ConstInitEmitter {
       };
 
       if (const auto* list = std::get_if<InitList>(&init)) {
+        if (!is_explicitly_mapped_list(*list)) {
+          if (out_field_types) *out_field_types = std::move(field_types);
+          return field_vals;
+        }
         size_t next_idx = 0;
         for (const auto& item : list->items) {
           const auto maybe_idx = find_struct_field_index(sd, item, next_idx);
@@ -264,12 +279,6 @@ class HirEmitter::ConstInitEmitter {
           const size_t idx = *maybe_idx;
           emit_field_mapped_item(idx, item);
           next_idx = idx + 1;
-        }
-      } else if (const auto* scalar = std::get_if<InitScalar>(&init)) {
-        if (!sd.fields.empty()) {
-          GlobalInit child_init(*scalar);
-          const TypeSpec& field_ts = update_field_type(0, nullptr, child_init);
-          field_vals[0] = emit_const_init(field_ts, child_init);
         }
       }
 
@@ -310,12 +319,7 @@ class HirEmitter::ConstInitEmitter {
         const bool is_aggregate_target =
             cur_ts.array_rank > 0 ||
             ((cur_ts.base == TB_STRUCT || cur_ts.base == TB_UNION) && cur_ts.ptr_level == 0);
-        if (!is_aggregate_target) {
-          if (const auto* list = std::get_if<InitList>(&cur_init)) {
-            if (list->items.empty()) return true;
-            return encode_bytes(cur_ts, child_init_of(list->items.front()), out);
-          }
-        }
+        if (!is_aggregate_target && std::holds_alternative<InitList>(cur_init)) return true;
 
         if (cur_ts.array_rank > 0) {
           const long long n = cur_ts.array_size;
@@ -337,14 +341,10 @@ class HirEmitter::ConstInitEmitter {
                 return true;
               }
             }
-            std::vector<unsigned char> elem;
-            if (encode_bytes(elem_ts, cur_init, elem) && !elem.empty()) {
-              copy_bytes(out, 0, elem, static_cast<size_t>(elem_sz));
-              return true;
-            }
-            return false;
+            return true;
           }
           if (const auto* list = std::get_if<InitList>(&cur_init)) {
+            if (!is_indexed_list(*list)) return true;
             long long next_idx = 0;
             for (const auto& item : list->items) {
               const auto maybe_idx = find_array_index(item, next_idx, n);
@@ -374,18 +374,11 @@ class HirEmitter::ConstInitEmitter {
               copy_bytes(out, 0, fb, out.size());
               return true;
             }
-            if (const auto* scalar = std::get_if<InitScalar>(&cur_init)) {
-              if (cur_sd.fields.empty()) return true;
-              std::vector<unsigned char> fb;
-              if (!encode_bytes(emitter_.field_decl_type(cur_sd.fields[0]), GlobalInit(*scalar), fb))
-                return false;
-              copy_bytes(out, 0, fb, out.size());
-              return true;
-            }
             return true;
           }
 
           if (const auto* list = std::get_if<InitList>(&cur_init)) {
+            if (!is_explicitly_mapped_list(*list)) return true;
             size_t next_field = 0;
             for (const auto& item : list->items) {
               const auto maybe_field = find_struct_field_index(cur_sd, item, next_field);
@@ -397,16 +390,6 @@ class HirEmitter::ConstInitEmitter {
                 copy_bytes(out, off, fb, out.size() - off);
               }
               next_field = fi + 1;
-            }
-            return true;
-          }
-
-          if (const auto* scalar = std::get_if<InitScalar>(&cur_init)) {
-            if (!cur_sd.fields.empty()) {
-              std::vector<unsigned char> fb;
-              if (encode_bytes(emitter_.field_decl_type(cur_sd.fields[0]), GlobalInit(*scalar), fb)) {
-                copy_bytes(out, 0, fb, out.size());
-              }
             }
             return true;
           }
@@ -450,9 +433,6 @@ class HirEmitter::ConstInitEmitter {
 
       if (const auto selected = try_select_canonical_union_field_init(sd, init)) {
         if (auto out = emit_union_from_field(selected->first, selected->second)) return *out;
-      }
-      if (const auto* scalar = std::get_if<InitScalar>(&init)) {
-        if (auto out = emit_union_from_field(0, GlobalInit(*scalar))) return *out;
       }
       return zero_union();
     }
