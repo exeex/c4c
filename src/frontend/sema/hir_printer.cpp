@@ -136,6 +136,14 @@ class Printer {
         << " stmts=" << s.statements
         << " exprs=" << s.expressions << "\n";
 
+    if (!m_.struct_def_order.empty()) {
+      out << "\n--- structs ---\n";
+      for (const auto& tag : m_.struct_def_order) {
+        const auto it = m_.struct_defs.find(tag);
+        if (it != m_.struct_defs.end()) print_struct_def(out, it->second);
+      }
+    }
+
     if (!m_.globals.empty()) {
       out << "\n--- globals ---\n";
       for (const auto& g : m_.globals) {
@@ -152,6 +160,30 @@ class Printer {
 
  private:
   const Module& m_;
+
+  void print_struct_def(std::ostringstream& out, const HirStructDef& sd) {
+    out << "  " << (sd.is_union ? "union " : "struct ") << sd.tag
+        << " size=" << sd.size_bytes
+        << " align=" << sd.align_bytes << "\n";
+    for (const auto& field : sd.fields) {
+      out << "    field " << field.name << ": " << ts_str(field.elem_type);
+      if (field.array_first_dim >= 0) out << "[" << field.array_first_dim << "]";
+      if (field.is_flexible_array) out << " flexible";
+      out << " llvm_idx=" << field.llvm_idx
+          << " offset=" << field.offset_bytes
+          << " size=" << field.size_bytes
+          << " align=" << field.align_bytes;
+      if (field.is_anon_member) out << " anon";
+      if (field.bit_width >= 0) {
+        out << " bitfield(width=" << field.bit_width
+            << ", bit_offset=" << field.bit_offset
+            << ", storage_bits=" << field.storage_unit_bits;
+        if (field.is_bf_signed) out << ", signed";
+        out << ")";
+      }
+      out << "\n";
+    }
+  }
 
   void print_global(std::ostringstream& out, const GlobalVar& g) {
     out << "  global " << g.name << ": " << ts_str(g.type.spec);

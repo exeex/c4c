@@ -192,6 +192,125 @@ bool has_concrete_type(const TypeSpec& ts) {
          ts.is_fn_ptr || is_vector_ty(ts);
 }
 
+int align_to(int value, int align) {
+  if (align <= 1) return value;
+  return (value + align - 1) / align * align;
+}
+
+int struct_size_bytes(const phase2::hir::Module& module, const char* tag) {
+  if (!tag || !tag[0]) return 4;
+  const auto it = module.struct_defs.find(tag);
+  if (it == module.struct_defs.end()) return 4;
+  return it->second.size_bytes;
+}
+
+int struct_align_bytes(const phase2::hir::Module& module, const char* tag) {
+  if (!tag || !tag[0]) return 4;
+  const auto it = module.struct_defs.find(tag);
+  if (it == module.struct_defs.end()) return 4;
+  return std::max(1, it->second.align_bytes);
+}
+
+int type_size_bytes(const phase2::hir::Module& module, const TypeSpec& ts) {
+  if (ts.array_rank > 0) {
+    if (ts.array_size == 0) return 0;
+    if (ts.array_size > 0) {
+      TypeSpec elem = ts;
+      elem.array_rank--;
+      if (elem.array_rank > 0) {
+        for (int i = 0; i < elem.array_rank; ++i) elem.array_dims[i] = elem.array_dims[i + 1];
+      }
+      elem.array_size = (elem.array_rank > 0) ? elem.array_dims[0] : -1;
+      return static_cast<int>(ts.array_size) * type_size_bytes(module, elem);
+    }
+    return 8;
+  }
+  if (ts.is_vector && ts.vector_bytes > 0) return static_cast<int>(ts.vector_bytes);
+  if (ts.ptr_level > 0 && ts.is_ptr_to_array) return 8;
+  if (ts.ptr_level > 0 || ts.is_fn_ptr) return 8;
+  if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0) {
+    return struct_size_bytes(module, ts.tag);
+  }
+  return sizeof_base(ts.base);
+}
+
+int type_align_bytes(const phase2::hir::Module& module, const TypeSpec& ts) {
+  if (ts.array_rank > 0) {
+    TypeSpec elem = ts;
+    elem.array_rank--;
+    if (elem.array_rank > 0) {
+      for (int i = 0; i < elem.array_rank; ++i) elem.array_dims[i] = elem.array_dims[i + 1];
+    }
+    elem.array_size = (elem.array_rank > 0) ? elem.array_dims[0] : -1;
+    return type_align_bytes(module, elem);
+  }
+  if (ts.is_vector && ts.vector_bytes > 0) return static_cast<int>(ts.vector_bytes);
+  if (ts.ptr_level > 0 || ts.is_fn_ptr) return 8;
+  if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0) {
+    return struct_align_bytes(module, ts.tag);
+  }
+  return std::max(1, static_cast<int>(sizeof_base(ts.base)));
+}
+
+int field_size_bytes(const phase2::hir::Module& module, const HirStructField& f) {
+  if (f.size_bytes > 0 || f.is_flexible_array) return f.size_bytes;
+  return type_size_bytes(module, f.elem_type);
+}
+
+int field_align_bytes(const phase2::hir::Module& module, const HirStructField& f) {
+  if (f.align_bytes > 0) return f.align_bytes;
+  return type_align_bytes(module, f.elem_type);
+}
+
+void compute_struct_layout(phase2::hir::Module* module, HirStructDef& def) {
+  if (!module) return;
+
+  for (auto& field : def.fields) {
+    if (field.bit_width >= 0) {
+      field.align_bytes = std::max(1, field.storage_unit_bits / 8);
+      field.size_bytes = std::max(1, field.storage_unit_bits / 8);
+    } else {
+      TypeSpec field_ts = field.elem_type;
+      if (field.array_first_dim >= 0) {
+        field_ts.array_rank = std::max(field_ts.array_rank, 1);
+        field_ts.array_size = field.array_first_dim;
+        field_ts.array_dims[0] = field.array_first_dim;
+      }
+      field.align_bytes = type_align_bytes(*module, field_ts);
+      field.size_bytes = type_size_bytes(*module, field_ts);
+    }
+  }
+
+  if (def.is_union) {
+    def.align_bytes = 1;
+    def.size_bytes = 0;
+    for (auto& field : def.fields) {
+      field.offset_bytes = 0;
+      def.align_bytes = std::max(def.align_bytes, field_align_bytes(*module, field));
+      def.size_bytes = std::max(def.size_bytes, field_size_bytes(*module, field));
+    }
+    def.size_bytes = align_to(def.size_bytes, def.align_bytes);
+    return;
+  }
+
+  def.align_bytes = 1;
+  int offset = 0;
+  int last_llvm_idx = -1;
+  int last_offset = 0;
+  for (auto& field : def.fields) {
+    if (field.llvm_idx != last_llvm_idx) {
+      const int field_align = field_align_bytes(*module, field);
+      offset = align_to(offset, field_align);
+      last_offset = offset;
+      offset += field_size_bytes(*module, field);
+      last_llvm_idx = field.llvm_idx;
+      def.align_bytes = std::max(def.align_bytes, field_align);
+    }
+    field.offset_bytes = last_offset;
+  }
+  def.size_bytes = align_to(offset, def.align_bytes);
+}
+
 std::vector<long long> decode_string_literal_values(const char* sval, bool wide) {
   std::vector<long long> out;
   if (!sval) {
@@ -812,8 +931,9 @@ class Lowerer {
 
       // Extract first array dimension (keep base element type for LLVM)
       if (ft.array_rank > 0) {
-        // Flexible array member (last field with unknown bound) is represented
-        // as zero-length in LLVM layout/sizeof calculations.
+        hf.is_flexible_array = (ft.array_size < 0);
+        // Flexible array member is represented as zero-length for the nominal
+        // struct layout, while remaining explicit in HIR metadata.
         hf.array_first_dim = (ft.array_size >= 0) ? ft.array_size : 0;
         ft.array_rank = 0;
         ft.array_size = -1;
@@ -824,6 +944,8 @@ class Lowerer {
       def.fields.push_back(std::move(hf));
       if (!sd->is_union) ++llvm_idx;
     }
+
+    compute_struct_layout(module_, def);
 
     if (!module_->struct_defs.count(tag))
       module_->struct_def_order.push_back(tag);
@@ -1103,7 +1225,7 @@ class Lowerer {
     if (sd.is_union) return false;
     for (const auto& field : sd.fields) {
       if (field.is_anon_member) return false;
-      if (field.array_first_dim == 0) return false;
+      if (field.is_flexible_array) return false;
       TypeSpec field_ts = field_type_of(field);
       if (field_ts.base == TB_UNION && field_ts.ptr_level == 0) return false;
       if (field_ts.array_rank > 0 || is_vector_ty(field_ts)) continue;

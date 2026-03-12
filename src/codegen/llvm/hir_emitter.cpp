@@ -142,7 +142,7 @@ void HirEmitter::emit_preamble(){
         continue;
       }
       if (sd.is_union) {
-        const int sz = compute_struct_size(mod_, tag);
+        const int sz = sd.size_bytes;
         preamble_ << "%struct." << tag << " = type { ["
                   << sz << " x i8] }\n";
       } else {
@@ -872,7 +872,7 @@ void HirEmitter::emit_global(const GlobalVar& gv){
       const auto it = mod_.struct_defs.find(ts.tag);
       if (it != mod_.struct_defs.end()) {
         const HirStructDef& sd = it->second;
-        if (!sd.is_union && !sd.fields.empty() && sd.fields.back().array_first_dim == 0) {
+        if (!sd.is_union && !sd.fields.empty() && sd.fields.back().is_flexible_array) {
           std::vector<TypeSpec> field_types;
           const auto field_vals = emit_const_struct_fields(ts, sd, gv.init, &field_types);
           const TypeSpec& last_ts = field_types.back();
@@ -3594,7 +3594,8 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         out_arg_ts = arg_ts;
       }
       if (is_variadic_aggregate) {
-        const int payload_sz = compute_struct_size(mod_, arg_ts.tag);
+        const auto sit = mod_.struct_defs.find(arg_ts.tag);
+        const int payload_sz = sit == mod_.struct_defs.end() ? 0 : sit->second.size_bytes;
         if (payload_sz == 0) continue;
 
         std::string obj_ptr;
@@ -3784,10 +3785,10 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const 
         int payload_sz = 0;
         if (sd.is_union) {
           for (const auto& f : sd.fields) {
-            payload_sz = std::max(payload_sz, compute_field_size(mod_, f));
+            payload_sz = std::max(payload_sz, f.size_bytes);
           }
         } else {
-          for (const auto& f : sd.fields) payload_sz += compute_field_size(mod_, f);
+          payload_sz = sd.size_bytes;
         }
         // GCC zero-size aggregate extension: va_arg yields a zero-initialized value
         // and does not consume any argument slot.
@@ -3799,7 +3800,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const 
         res_ts.tag && res_ts.tag[0]) {
       const auto it = mod_.struct_defs.find(res_ts.tag);
       if (it != mod_.struct_defs.end()) {
-        const int payload_sz = compute_struct_size(mod_, res_ts.tag);
+        const int payload_sz = it->second.size_bytes;
         if (payload_sz == 0) return "zeroinitializer";
         if (payload_sz > 0) {
           if (payload_sz > 16) {

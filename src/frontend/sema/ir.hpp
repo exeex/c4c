@@ -553,6 +553,10 @@ struct HirStructField {
   long long array_first_dim = -1;  // >=0 if field is an array type
   int llvm_idx = 0;             // LLVM struct field index
   bool is_anon_member = false;  // anonymous struct/union embedded member
+  bool is_flexible_array = false;
+  int offset_bytes = 0;
+  int size_bytes = 0;
+  int align_bytes = 1;
   // Bitfield metadata (-1 = not a bitfield)
   int bit_width = -1;           // width in bits (0 for zero-width padding bitfield)
   int bit_offset = 0;           // offset within storage unit (from LSB)
@@ -563,6 +567,8 @@ struct HirStructField {
 struct HirStructDef {
   SymbolName tag;
   bool is_union = false;
+  int size_bytes = 0;
+  int align_bytes = 1;
   std::vector<HirStructField> fields;
 };
 

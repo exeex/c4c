@@ -145,7 +145,7 @@ class HirEmitter::ConstInitEmitter {
           ++cursor;
           return "zeroinitializer";
         }
-        const int sz = compute_struct_size(mod(), std::string(ts.tag));
+        const int sz = sd.size_bytes;
         const auto* scalar = std::get_if<InitScalar>(&item.value);
         ++cursor;
         if (scalar) {
@@ -322,7 +322,7 @@ class HirEmitter::ConstInitEmitter {
 
     TypeSpec resolve_flexible_array_field_ts(const HirStructField& f, const GlobalInit& init) {
       TypeSpec ts = emitter_.field_decl_type(f);
-      if (f.array_first_dim != 0) return ts;
+      if (!f.is_flexible_array) return ts;
       long long deduced = deduce_array_size_from_init(init);
       if (deduced <= 0) return ts;
       ts.array_rank = 1;
@@ -346,7 +346,7 @@ class HirEmitter::ConstInitEmitter {
       }
 
       auto update_field_type = [&](size_t idx, const GlobalInit& child_init) -> const TypeSpec& {
-        if (idx + 1 == sd.fields.size() && sd.fields[idx].array_first_dim == 0) {
+        if (idx + 1 == sd.fields.size() && sd.fields[idx].is_flexible_array) {
           field_types[idx] = resolve_flexible_array_field_ts(sd.fields[idx], child_init);
         }
         return field_types[idx];
@@ -491,7 +491,7 @@ class HirEmitter::ConstInitEmitter {
 
     std::string emit_const_union(const TypeSpec& ts, const HirStructDef& sd, const GlobalInit& init) {
       if (sd.fields.empty()) return "zeroinitializer";
-      const int sz = compute_struct_size(mod(), std::string(ts.tag));
+      const int sz = sd.size_bytes;
       auto zero_union = [&]() -> std::string {
         if (sz == 0) return "zeroinitializer";
         return "{ [" + std::to_string(sz) + " x i8] zeroinitializer }";
@@ -603,12 +603,6 @@ class HirEmitter::ConstInitEmitter {
 
           if (const auto* list = std::get_if<InitList>(&cur_init)) {
             size_t next_field = 0;
-            size_t offset = 0;
-            std::vector<size_t> field_offsets(cur_sd.fields.size(), 0);
-            for (size_t i = 0; i < cur_sd.fields.size(); ++i) {
-              field_offsets[i] = offset;
-              offset += static_cast<size_t>(std::max(1, compute_field_size(mod(), cur_sd.fields[i])));
-            }
             for (const auto& item : list->items) {
               size_t fi = next_field;
               if (item.field_designator) {
@@ -623,7 +617,7 @@ class HirEmitter::ConstInitEmitter {
               if (fi >= cur_sd.fields.size()) continue;
               std::vector<unsigned char> fb;
               if (encode_bytes(emitter_.field_decl_type(cur_sd.fields[fi]), child_init_of(item), fb)) {
-                const size_t off = field_offsets[fi];
+                const size_t off = static_cast<size_t>(cur_sd.fields[fi].offset_bytes);
                 const size_t copy_n = std::min(out.size() - off, fb.size());
                 std::memcpy(out.data() + off, fb.data(), copy_n);
               }
