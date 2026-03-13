@@ -1,12 +1,12 @@
-[submodule "tests/c-testsuite"]
-	path = tests/c-testsuite
-	url = https://github.com/c-testsuite/c-testsuite.git
-[submodule "tests/llvm-test-suite"]
-	path = tests/llvm-test-suite
-	url = https://github.com/llvm/llvm-test-suite.git
 [submodule "ref/claudes-c-compiler"]
 	path = ref/claudes-c-compiler
 	url = https://github.com/anthropics/claudes-c-compiler.git
 [submodule "tests/external/llvm-preprocessor-tests"]
 	path = tests/external/llvm-preprocessor-tests
 	url = https://github.com/llvm/llvm-project.git
+[submodule "tests/external/c-testsuite"]
+	path = tests/external/c-testsuite
+	url = https://github.com/exeex/c4c-c-testsuite.git
+[submodule "tests/external/gcc_torture"]
+	path = tests/external/gcc_torture
+	url = https://github.com/exeex/c4c-gcc-torture.git

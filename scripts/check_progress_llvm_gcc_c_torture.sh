@@ -7,7 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 BUILD_DIR="${BUILD_DIR:-build_debug}"
-LLVM_TEST_SUITE_ROOT="${LLVM_TEST_SUITE_ROOT:-tests/llvm-test-suite}"
+LLVM_TEST_SUITE_ROOT="${LLVM_TEST_SUITE_ROOT:-tests/external/gcc_torture}"
 LABEL="${LABEL:-llvm_gcc_c_torture}"
 STOP_ON_FAILURE="${STOP_ON_FAILURE:-1}"
 JOBS="${JOBS:-1}"

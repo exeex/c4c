@@ -15,14 +15,14 @@ add_custom_target(ctest_core
   VERBATIM
 )
 
-set(C_TESTSUITE_ROOT "" CACHE PATH "Path to external c-testsuite root")
-if(NOT C_TESTSUITE_ROOT AND EXISTS "${PROJECT_SOURCE_DIR}/tests/c-testsuite")
-  set(C_TESTSUITE_ROOT "${PROJECT_SOURCE_DIR}/tests/c-testsuite")
+set(C_TESTSUITE_ROOT "" CACHE PATH "Path to vendored c-testsuite subset root")
+if(NOT C_TESTSUITE_ROOT AND EXISTS "${PROJECT_SOURCE_DIR}/tests/external/c-testsuite")
+  set(C_TESTSUITE_ROOT "${PROJECT_SOURCE_DIR}/tests/external/c-testsuite")
 endif()
 
-set(LLVM_TEST_SUITE_ROOT "" CACHE PATH "Path to external llvm-test-suite root")
-if(NOT LLVM_TEST_SUITE_ROOT AND EXISTS "${PROJECT_SOURCE_DIR}/tests/llvm-test-suite")
-  set(LLVM_TEST_SUITE_ROOT "${PROJECT_SOURCE_DIR}/tests/llvm-test-suite")
+set(LLVM_TEST_SUITE_ROOT "" CACHE PATH "Path to vendored gcc torture subset root")
+if(NOT LLVM_TEST_SUITE_ROOT AND EXISTS "${PROJECT_SOURCE_DIR}/tests/external/gcc_torture")
+  set(LLVM_TEST_SUITE_ROOT "${PROJECT_SOURCE_DIR}/tests/external/gcc_torture")
 endif()
 
 option(ENABLE_LLVM_GCC_C_TORTURE_TESTS
@@ -34,7 +34,8 @@ enable_testing()
 include("${PROJECT_SOURCE_DIR}/tests/internal/InternalTests.cmake")
 
 if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
-  file(STRINGS "${PROJECT_SOURCE_DIR}/tests/c_testsuite_allowlist.txt" C_TESTSUITE_ALLOWLIST_RAW)
+  set(C_TESTSUITE_ALLOWLIST "${C_TESTSUITE_ROOT}/allowlist.txt")
+  file(STRINGS "${C_TESTSUITE_ALLOWLIST}" C_TESTSUITE_ALLOWLIST_RAW)
   foreach(entry IN LISTS C_TESTSUITE_ALLOWLIST_RAW)
     string(STRIP "${entry}" entry)
     if(entry STREQUAL "" OR entry MATCHES "^#")
@@ -59,7 +60,7 @@ if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
               -DROOT=${C_TESTSUITE_ROOT}
               -DOUT_LL=${CMAKE_BINARY_DIR}/c_testsuite/${entry}.ll
               -DOUT_BIN=${CMAKE_BINARY_DIR}/c_testsuite/${entry}.bin
-              -P "${PROJECT_SOURCE_DIR}/tests/cmake/run_c_testsuite_case.cmake"
+              -P "${PROJECT_SOURCE_DIR}/tests/external/c-testsuite/RunCase.cmake"
     )
     set_tests_properties("${test_name}" PROPERTIES LABELS "c_testsuite")
   endforeach()
@@ -67,8 +68,8 @@ endif()
 
 if(ENABLE_LLVM_GCC_C_TORTURE_TESTS AND
    CLANG_EXECUTABLE AND LLVM_TEST_SUITE_ROOT AND EXISTS "${LLVM_TEST_SUITE_ROOT}")
-  set(LLVM_GCC_C_TORTURE_ROOT
-      "${LLVM_TEST_SUITE_ROOT}/SingleSource/Regression/C/gcc-c-torture/execute")
+  set(LLVM_GCC_C_TORTURE_ROOT "${LLVM_TEST_SUITE_ROOT}")
+  set(LLVM_GCC_C_TORTURE_ALLOWLIST "${LLVM_TEST_SUITE_ROOT}/allowlist.txt")
   set(LLVM_GCC_C_TORTURE_STEP_TIMEOUT_SEC "20" CACHE STRING
       "Per-step timeout (seconds) for llvm gcc-c-torture case script")
   set(LLVM_GCC_C_TORTURE_TEST_TIMEOUT_SEC "90" CACHE STRING
@@ -79,8 +80,8 @@ if(ENABLE_LLVM_GCC_C_TORTURE_TESTS AND
       "Runtime CPU time cap (seconds) for test binaries; 0 disables cap")
 
   if(EXISTS "${LLVM_GCC_C_TORTURE_ROOT}" AND
-     EXISTS "${PROJECT_SOURCE_DIR}/tests/llvm_gcc_c_torture_allowlist.txt")
-    file(STRINGS "${PROJECT_SOURCE_DIR}/tests/llvm_gcc_c_torture_allowlist.txt"
+     EXISTS "${LLVM_GCC_C_TORTURE_ALLOWLIST}")
+    file(STRINGS "${LLVM_GCC_C_TORTURE_ALLOWLIST}"
          LLVM_GCC_C_TORTURE_ALLOWLIST_RAW)
     set(LLVM_GCC_C_TORTURE_TEST_MAP
         "${CMAKE_BINARY_DIR}/llvm_gcc_c_torture_test_map.tsv")
@@ -114,7 +115,7 @@ if(ENABLE_LLVM_GCC_C_TORTURE_TESTS AND
                 -DCASE_TIMEOUT_SEC=${LLVM_GCC_C_TORTURE_STEP_TIMEOUT_SEC}
                 -DRUN_MEM_MB=${LLVM_GCC_C_TORTURE_RUN_MEM_MB}
                 -DRUN_CPU_SEC=${LLVM_GCC_C_TORTURE_RUN_CPU_SEC}
-                -P "${PROJECT_SOURCE_DIR}/tests/cmake/run_llvm_gcc_c_torture_case.cmake"
+                -P "${PROJECT_SOURCE_DIR}/tests/external/gcc_torture/RunCase.cmake"
       )
       set_tests_properties("${test_name}" PROPERTIES
         LABELS "llvm_gcc_c_torture"
@@ -126,9 +127,9 @@ if(ENABLE_LLVM_GCC_C_TORTURE_TESTS AND
       COMMAND "${CMAKE_COMMAND}"
               -DTEST_MAP=${LLVM_GCC_C_TORTURE_TEST_MAP}
               -DLAST_FAILED=${CMAKE_BINARY_DIR}/Testing/Temporary/LastTestsFailed.log
-              -DALLOWLIST=${PROJECT_SOURCE_DIR}/tests/llvm_gcc_c_torture_allowlist.txt
-              -P "${PROJECT_SOURCE_DIR}/tests/cmake/prune_llvm_gcc_c_torture_allowlist_to_failed.cmake"
-      COMMENT "Rewrite tests/llvm_gcc_c_torture_allowlist.txt to keep only failed cases from last ctest run"
+              -DALLOWLIST=${LLVM_GCC_C_TORTURE_ALLOWLIST}
+              -P "${PROJECT_SOURCE_DIR}/tests/external/gcc_torture/PruneAllowlistToFailed.cmake"
+      COMMENT "Rewrite tests/external/gcc_torture/allowlist.txt to keep only failed cases from last ctest run"
       VERBATIM
     )
   endif()

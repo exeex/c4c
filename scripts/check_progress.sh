@@ -1,12 +1,12 @@
 #!/bin/bash
-# Quick progress check: run c-testsuite allowlist tests via CTest.
+# Quick progress check: run vendored c-testsuite subset tests via CTest.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 BUILD_DIR="${BUILD_DIR:-build_debug}"
 JOBS="${JOBS:-0}"
-C_TESTSUITE_ROOT="${C_TESTSUITE_ROOT:-tests/c-testsuite}"
+C_TESTSUITE_ROOT="${C_TESTSUITE_ROOT:-tests/external/c-testsuite}"
 
 if [[ "$JOBS" -le 0 ]]; then
   if command -v sysctl >/dev/null 2>&1; then

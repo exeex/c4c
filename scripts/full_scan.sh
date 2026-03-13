@@ -1,12 +1,12 @@
 #!/bin/bash
-# Full scan helper: run all registered c-testsuite tests in parallel via CTest.
+# Full scan helper: run all vendored c-testsuite subset tests in parallel via CTest.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 BUILD_DIR="${BUILD_DIR:-build_debug}"
 JOBS="${JOBS:-0}"
-C_TESTSUITE_ROOT="${C_TESTSUITE_ROOT:-tests/c-testsuite}"
+C_TESTSUITE_ROOT="${C_TESTSUITE_ROOT:-tests/external/c-testsuite}"
 
 if [[ "$JOBS" -le 0 ]]; then
   if command -v sysctl >/dev/null 2>&1; then
