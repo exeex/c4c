@@ -949,8 +949,6 @@ class Lowerer {
     // Handle compound literal at global scope: `T *p = &(T){...};`
     // The compound literal must be lowered to a separate static global, and
     // the parent global initialized to point at it.
-    // IMPORTANT: the synthetic global must be pushed BEFORE allocating g.id,
-    // since hir_to_llvm.cpp uses GlobalId.value as a direct vector index.
     if (gv->init && gv->init->kind == NK_ADDR &&
         gv->init->left && gv->init->left->kind == NK_COMPOUND_LIT) {
       ExprId addr_id = hoist_compound_literal_to_global(gv->init, gv->init->left);
@@ -960,8 +958,18 @@ class Lowerer {
       has_init = true;
     }
 
+    // For init lists that may contain nested &(compound_lit) items, lower the
+    // init BEFORE allocating this global's id so that compound-literal globals
+    // are created first (their DeclRef exprs need valid GlobalIds).
+    GlobalInit early_init{};
+    bool early_init_done = false;
+    if (!has_init && gv->init) {
+      early_init = lower_global_init(gv->init);
+      early_init_done = true;
+    }
+
     GlobalVar g{};
-    g.id = next_global_id();  // allocated AFTER any synthetic globals
+    g.id = next_global_id();
     g.name = gv->name ? gv->name : "<anon_global>";
     g.type = qtype_from(gv->type, ValueCategory::LValue);
     g.fn_ptr_sig = fn_ptr_sig_from_decl_node(gv);
@@ -979,8 +987,8 @@ class Lowerer {
 
     if (has_init) {
       g.init = computed_init;
-    } else if (gv->init) {
-      g.init = lower_global_init(gv->init);
+    } else if (early_init_done) {
+      g.init = early_init;
       g.type.spec = resolve_array_ts(g.type.spec, g.init);
       g.init = normalize_global_init(g.type.spec, g.init);
     }
