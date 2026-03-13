@@ -298,7 +298,12 @@ Node* Parser::parse_stmt() {
                     if (!out.expr) continue;
                     const std::string out_constraint = strip_quotes(out.constraint);
                     if (out_constraint.find('+') != std::string::npos) {
-                        continue;  // read-write tied to itself; empty asm leaves value unchanged
+                        // read-write tied to itself; empty asm leaves value unchanged,
+                        // but we must still evaluate the expression for side effects.
+                        Node* expr_stmt = make_node(NK_EXPR_STMT, ln);
+                        expr_stmt->left = out.expr;
+                        lowered.push_back(expr_stmt);
+                        continue;
                     }
                     Node* rhs = nullptr;
                     for (const AsmOperand& in : inputs) {
