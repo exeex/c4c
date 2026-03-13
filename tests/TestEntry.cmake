@@ -112,11 +112,10 @@ foreach(src IN LISTS POSITIVE_SEMA_TEST_SRCS)
   set_tests_properties("${test_name}" PROPERTIES LABELS "positive_sema")
 endforeach()
 
-# Temporarily disabled with frontend_cxx_preprocessor_tests target.
-# add_test(
-#     NAME frontend_cxx_preprocessor_tests
-#     COMMAND frontend_cxx_preprocessor_tests
-# )
+add_test(
+    NAME frontend_cxx_preprocessor_tests
+    COMMAND frontend_cxx_preprocessor_tests
+)
 
 add_test(
     NAME frontend_cxx_stage1_version

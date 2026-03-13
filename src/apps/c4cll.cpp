@@ -22,7 +22,7 @@ namespace {
 
 void print_usage(const char *argv0) {
   std::cerr << "usage: " << argv0
-            << " [--version] [--lex-only|--parse-only|--dump-hir|--dump-hir-summary]"
+            << " [--version] [--pp-only|--lex-only|--parse-only|--dump-hir|--dump-hir-summary]"
             << " [-o output.ll] <input.c>\n";
 }
 
@@ -52,6 +52,7 @@ int main(int argc, char **argv) {
       return 0;
     }
 
+    bool        pp_only    = false;
     bool        lex_only   = false;
     bool        parse_only = false;
     bool        dump_hir_summary = false;
@@ -61,7 +62,9 @@ int main(int argc, char **argv) {
 
     for (size_t i = 0; i < args.size(); i++) {
       const std::string& arg = args[i];
-      if (arg == "--lex-only") {
+      if (arg == "--pp-only") {
+        pp_only = true;
+      } else if (arg == "--lex-only") {
         lex_only = true;
       } else if (arg == "--parse-only") {
         parse_only = true;
@@ -84,10 +87,10 @@ int main(int argc, char **argv) {
       return 1;
     }
     {
-      int mode_count = (lex_only ? 1 : 0) + (parse_only ? 1 : 0) +
+      int mode_count = (pp_only ? 1 : 0) + (lex_only ? 1 : 0) + (parse_only ? 1 : 0) +
                        (dump_hir ? 1 : 0) + (dump_hir_summary ? 1 : 0);
       if (mode_count > 1) {
-        std::cerr << "cannot combine --lex-only, --parse-only, --dump-hir, --dump-hir-summary\n";
+        std::cerr << "cannot combine --pp-only, --lex-only, --parse-only, --dump-hir, --dump-hir-summary\n";
         return 2;
       }
     }
@@ -100,6 +103,10 @@ int main(int argc, char **argv) {
     if (!preprocessor.errors().empty()) {
       print_pp_diags(preprocessor.errors(), "error");
       return 1;
+    }
+    if (pp_only) {
+      std::cout << source;
+      return 0;
     }
     tc::Lexer lexer(source);
     std::vector<tc::Token> tokens = lexer.scan_all();

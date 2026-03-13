@@ -53,6 +53,18 @@ set_target_properties(c4cll PROPERTIES
     CXX_STANDARD_REQUIRED ON
 )
 
+add_executable(frontend_cxx_preprocessor_tests
+    "${PROJECT_SOURCE_DIR}/tests/preprocessor/frontend_cxx_preprocessor_tests.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/preprocessor.cpp"
+)
+target_include_directories(frontend_cxx_preprocessor_tests PRIVATE
+    "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor"
+)
+set_target_properties(frontend_cxx_preprocessor_tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
 add_custom_command(
   OUTPUT "${EXAMPLE_LL}"
   COMMAND $<TARGET_FILE:c4cll> "${EXAMPLE_C}" -o "${EXAMPLE_LL}"

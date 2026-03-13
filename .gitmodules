@@ -10,3 +10,6 @@
 [submodule "ref/claudes-c-compiler"]
 	path = ref/claudes-c-compiler
 	url = https://github.com/anthropics/claudes-c-compiler.git
+[submodule "tests/external/llvm-preprocessor-tests"]
+	path = tests/external/llvm-preprocessor-tests
+	url = https://github.com/llvm/llvm-project.git
