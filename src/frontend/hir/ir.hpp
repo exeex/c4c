@@ -66,6 +66,7 @@ struct FnAttr {
   bool no_return = false;
   bool no_inline = false;
   bool always_inline = false;
+  int align_bytes = 0;       // from __attribute__((aligned(N)))
 };
 
 struct FnPtrSig {

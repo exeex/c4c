@@ -1222,6 +1222,15 @@ class Validator {
         }
         out.valid = true;
         return out;
+      case NK_ALIGNOF_EXPR:
+        {
+          bool old_suppress = suppress_uninit_read_;
+          suppress_uninit_read_ = true;
+          infer_expr(n->left);
+          suppress_uninit_read_ = old_suppress;
+        }
+        out.valid = true;
+        return out;
       case NK_ALIGNOF_TYPE:
         if (!is_complete_object_type(n->type)) {
           emit(n->line, "invalid application of _Alignof to incomplete type");

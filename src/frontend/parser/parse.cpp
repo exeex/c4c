@@ -336,6 +336,7 @@ const char* node_kind_name(NodeKind k) {
         case NK_SIZEOF_EXPR:  return "SizeofExpr";
         case NK_SIZEOF_TYPE:  return "SizeofType";
         case NK_ALIGNOF_TYPE: return "AlignofType";
+        case NK_ALIGNOF_EXPR: return "AlignofExpr";
         case NK_COMMA_EXPR:   return "CommaExpr";
         case NK_STMT_EXPR:    return "StmtExpr";
         case NK_COMPOUND_LIT: return "CompoundLit";

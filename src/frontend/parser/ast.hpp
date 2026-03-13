@@ -123,6 +123,7 @@ enum NodeKind {
     NK_SIZEOF_EXPR,     // sizeof(expr) : left=expr
     NK_SIZEOF_TYPE,     // sizeof(type)
     NK_ALIGNOF_TYPE,    // _Alignof(type) / __alignof__(type)
+    NK_ALIGNOF_EXPR,    // __alignof__(expr) : left=expr
     NK_COMMA_EXPR,      // left, right
     NK_STMT_EXPR,       // ({ ... }) : body=block node
     NK_COMPOUND_LIT,    // (type){...} : type + children=init items

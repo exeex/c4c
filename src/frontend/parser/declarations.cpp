@@ -511,9 +511,9 @@ Node* Parser::parse_top_level() {
             }
         }
         expect(TokenKind::RParen);
-        skip_attributes();
+        parse_attributes(&ts);
         skip_asm();
-        skip_attributes();
+        parse_attributes(&ts);
 
         // K&R style parameter declarations before body:
         //   f(a, b) int a; short *b; { ... }

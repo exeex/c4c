@@ -871,6 +871,16 @@ class Lowerer {
     fn.return_type = qtype_from(fn_node->type);
     fn.linkage = {fn_node->is_static, fn_node->is_extern || fn_node->body == nullptr, fn_node->is_inline};
     fn.attrs.variadic = fn_node->variadic;
+    if (fn_node->type.align_bytes > 0)
+      fn.attrs.align_bytes = fn_node->type.align_bytes;
+    // Inherit alignment from prior declaration if definition doesn't repeat the attribute.
+    if (fn.attrs.align_bytes == 0) {
+      auto fit = module_->fn_index.find(fn.name);
+      if (fit != module_->fn_index.end() && fit->second.value < module_->functions.size()) {
+        int prev_align = module_->functions[fit->second.value].attrs.align_bytes;
+        if (prev_align > 0) fn.attrs.align_bytes = prev_align;
+      }
+    }
     fn.span = make_span(fn_node);
 
     FunctionCtx ctx{};
@@ -2837,6 +2847,29 @@ class Lowerer {
       case NK_ALIGNOF_TYPE: {
         // Compute alignment of the queried type and emit as integer constant.
         const int align = type_align_bytes(*module_, n->type);
+        TypeSpec ts{}; ts.base = TB_ULONG;
+        return append_expr(n, IntLiteral{static_cast<long long>(align), false}, ts);
+      }
+      case NK_ALIGNOF_EXPR: {
+        // __alignof__(expr) — alignment of the expression's type.
+        TypeSpec expr_ts = infer_generic_ctrl_type(ctx, n->left);
+        int align = 0;
+        // For function identifiers, check the function's aligned attribute.
+        if (n->left && n->left->kind == NK_VAR && n->left->name) {
+          const std::string fn_name(n->left->name);
+          auto fit = module_->fn_index.find(fn_name);
+          if (fit != module_->fn_index.end() &&
+              fit->second.value < module_->functions.size()) {
+            int fa = module_->functions[fit->second.value].attrs.align_bytes;
+            if (fa > 0) align = fa;
+          }
+        }
+        if (align == 0) {
+          if (expr_ts.align_bytes > 0)
+            align = expr_ts.align_bytes;
+          else
+            align = type_align_bytes(*module_, expr_ts);
+        }
         TypeSpec ts{}; ts.base = TB_ULONG;
         return append_expr(n, IntLiteral{static_cast<long long>(align), false}, ts);
       }

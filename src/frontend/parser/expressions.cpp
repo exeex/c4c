@@ -245,7 +245,7 @@ Node* Parser::parse_unary() {
             } else {
                 Node* inner = parse_assign_expr();
                 expect(TokenKind::RParen);
-                Node* n = make_node(NK_SIZEOF_EXPR, ln);
+                Node* n = make_node(NK_ALIGNOF_EXPR, ln);
                 n->left = inner;
                 return n;
             }
