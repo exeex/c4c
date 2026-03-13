@@ -73,6 +73,64 @@ std::string HirEmitter::emit(){
       if (best_fn.count(fn.name) && best_fn[fn.name] == i) emit_function(fn);
     }
 
+    // Dead-code elimination: remove unreferenced internal (static) functions.
+    // Collect names of internal functions.
+    std::unordered_set<std::string> internal_fns;
+    for (const auto& b : fn_bodies_) {
+      if (b.is_internal) internal_fns.insert(b.name);
+    }
+    // Find all @name references in each function body and propagate reachability.
+    auto find_refs = [](const std::string& body) {
+      std::unordered_set<std::string> refs;
+      size_t pos = 0;
+      while ((pos = body.find('@', pos)) != std::string::npos) {
+        ++pos;
+        size_t start = pos;
+        while (pos < body.size() && (std::isalnum(static_cast<unsigned char>(body[pos])) || body[pos] == '_' || body[pos] == '.'))
+          ++pos;
+        if (pos > start) refs.insert(body.substr(start, pos - start));
+      }
+      return refs;
+    };
+    std::unordered_set<std::string> reachable;
+    // Seed: all non-internal function bodies are reachable roots.
+    std::vector<std::string> worklist;
+    for (const auto& b : fn_bodies_) {
+      if (!b.is_internal) {
+        for (const auto& r : find_refs(b.body)) {
+          if (internal_fns.count(r) && !reachable.count(r)) {
+            reachable.insert(r);
+            worklist.push_back(r);
+          }
+        }
+      }
+    }
+    // Also treat global initializers as roots.
+    {
+      std::string preamble_str = preamble_.str();
+      for (const auto& r : find_refs(preamble_str)) {
+        if (internal_fns.count(r) && !reachable.count(r)) {
+          reachable.insert(r);
+          worklist.push_back(r);
+        }
+      }
+    }
+    // Propagate: internal functions referenced by reachable internal functions.
+    std::unordered_map<std::string, const FnBody*> fn_by_name;
+    for (const auto& b : fn_bodies_) fn_by_name[b.name] = &b;
+    while (!worklist.empty()) {
+      std::string cur = std::move(worklist.back());
+      worklist.pop_back();
+      auto it = fn_by_name.find(cur);
+      if (it == fn_by_name.end()) continue;
+      for (const auto& r : find_refs(it->second->body)) {
+        if (internal_fns.count(r) && !reachable.count(r)) {
+          reachable.insert(r);
+          worklist.push_back(r);
+        }
+      }
+    }
+
     std::ostringstream out;
     out << preamble_.str();
     if (!preamble_.str().empty()) out << "\n";
@@ -89,7 +147,11 @@ std::string HirEmitter::emit(){
       out << "declare " << ret_ty << " @" << name << "(...)\n";
     }
     if (!extern_call_decls_.empty()) out << "\n";
-    for (const auto& b : fn_bodies_) out << b.body;
+    for (const auto& b : fn_bodies_) {
+      // Skip unreachable internal functions.
+      if (b.is_internal && !reachable.count(b.name)) continue;
+      out << b.body;
+    }
     return out.str();
   }
 
