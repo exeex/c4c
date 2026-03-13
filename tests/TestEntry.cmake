@@ -25,156 +25,13 @@ if(NOT LLVM_TEST_SUITE_ROOT AND EXISTS "${PROJECT_SOURCE_DIR}/tests/llvm-test-su
   set(LLVM_TEST_SUITE_ROOT "${PROJECT_SOURCE_DIR}/tests/llvm-test-suite")
 endif()
 
-file(GLOB NEGATIVE_TEST_SRCS CONFIGURE_DEPENDS
-     "${PROJECT_SOURCE_DIR}/tests/tiny_c2ll/bad_*.c")
-file(GLOB POSITIVE_SEMA_TEST_SRCS CONFIGURE_DEPENDS
-     "${PROJECT_SOURCE_DIR}/tests/tiny_c2ll/ok_*.c")
-option(NEGATIVE_TESTS_ENFORCE "Require negative_tests bad_*.c cases to fail compilation (non-zero exit)" ON)
-
-# In the relaxed sema mode we only reject clear pointer<->float/complex implicit
-# conversions. Keep these legacy negative cases non-enforced so they can compile
-# without failing CTest.
-set(NEGATIVE_TESTS_ALLOW_SUCCESS_STEMS
-    bad_assign_type_mismatch_ptr_base
-    bad_assign_type_mismatch_struct
-    bad_call_arg_type_mismatch_ptr_base
-    bad_call_arg_type_mismatch_ptr_depth
-    bad_call_arg_type_mismatch_scalar_to_ptr
-    bad_call_arg_type_mismatch_struct
-    bad_call_undeclared_function
-    bad_const_cast_discard_assign
-    bad_const_cast_discard_write
-    bad_const_charptr_discard_assign
-    bad_const_charptr_literal_to_mut
-    bad_const_charptr_pass_mut_param
-    bad_const_discard_qualifier_assign
-    bad_const_discard_qualifier_param
-    bad_global_redefinition_with_init
-    bad_init_type_mismatch_scalar_to_ptr
-    bad_static_init_non_constant
-)
 option(ENABLE_LLVM_GCC_C_TORTURE_TESTS
     "Register llvm gcc-c-torture execute tests (resource-heavy during migration)"
     ON)
 
 enable_testing()
 
-if(CLANG_EXECUTABLE)
-  add_test(
-    NAME tiny_c2ll_tests
-    COMMAND "${CMAKE_COMMAND}"
-            -DCOMPILER=$<TARGET_FILE:c4cll>
-            -DEXAMPLE_C=${EXAMPLE_C}
-            -DOUT_LL=${CMAKE_BINARY_DIR}/tiny_c2ll_tests/test_example.ll
-            -DCLANG=${CLANG_EXECUTABLE}
-            -DOUT_BIN=${CMAKE_BINARY_DIR}/tiny_c2ll_tests/test_example_bin
-            -P "${PROJECT_SOURCE_DIR}/tests/cmake/run_tiny_c2ll_tests.cmake"
-  )
-else()
-  add_test(
-    NAME tiny_c2ll_tests
-    COMMAND "${CMAKE_COMMAND}"
-            -DCOMPILER=$<TARGET_FILE:c4cll>
-            -DEXAMPLE_C=${EXAMPLE_C}
-            -DOUT_LL=${CMAKE_BINARY_DIR}/tiny_c2ll_tests/test_example.ll
-            -P "${PROJECT_SOURCE_DIR}/tests/cmake/run_tiny_c2ll_tests.cmake"
-  )
-endif()
-
-foreach(src IN LISTS NEGATIVE_TEST_SRCS)
-  get_filename_component(stem "${src}" NAME_WE)
-  set(test_name "negative_tests_${stem}")
-  set(enforce_negative "${NEGATIVE_TESTS_ENFORCE}")
-  if(stem IN_LIST NEGATIVE_TESTS_ALLOW_SUCCESS_STEMS)
-    set(enforce_negative OFF)
-  endif()
-  add_test(
-    NAME "${test_name}"
-    COMMAND "${CMAKE_COMMAND}"
-            -DCOMPILER=$<TARGET_FILE:c4cll>
-            -DSRC=${src}
-            -DENFORCE_NEGATIVE=${enforce_negative}
-            -P "${PROJECT_SOURCE_DIR}/tests/cmake/run_tiny_c2ll_negative_case.cmake"
-  )
-  set_tests_properties("${test_name}" PROPERTIES LABELS "negative_tests")
-endforeach()
-
-foreach(src IN LISTS POSITIVE_SEMA_TEST_SRCS)
-  get_filename_component(stem "${src}" NAME_WE)
-  set(test_name "positive_sema_${stem}")
-  add_test(
-    NAME "${test_name}"
-    COMMAND "${CMAKE_COMMAND}"
-            -DCOMPILER=$<TARGET_FILE:c4cll>
-            -DSRC=${src}
-            -P "${PROJECT_SOURCE_DIR}/tests/cmake/run_tiny_c2ll_positive_case.cmake"
-  )
-  set_tests_properties("${test_name}" PROPERTIES LABELS "positive_sema")
-endforeach()
-
-add_test(
-    NAME frontend_cxx_preprocessor_tests
-    COMMAND frontend_cxx_preprocessor_tests
-)
-
-add_test(
-    NAME frontend_cxx_stage1_version
-    COMMAND c4cll --version
-)
-set_tests_properties(frontend_cxx_stage1_version PROPERTIES
-    PASS_REGULAR_EXPRESSION "tiny-c2ll"
-)
-
-if(EXISTS "${EXAMPLE_C}")
-  add_test(
-      NAME frontend_cxx_stage1_lex
-      COMMAND c4cll --lex-only "${EXAMPLE_C}"
-  )
-  set_tests_properties(frontend_cxx_stage1_lex PROPERTIES
-      PASS_REGULAR_EXPRESSION "EOF"
-  )
-endif()
-
-if(EXISTS "${EXAMPLE_C}")
-  add_test(
-      NAME frontend_cxx_stage1_parse
-      COMMAND c4cll --parse-only "${EXAMPLE_C}"
-  )
-  set_tests_properties(frontend_cxx_stage1_parse PROPERTIES
-      PASS_REGULAR_EXPRESSION "Program"
-  )
-endif()
-
-if(EXISTS "${EXAMPLE_C}")
-  add_test(
-      NAME frontend_cxx_stage1_emit_ir
-      COMMAND c4cll "${EXAMPLE_C}"
-  )
-  set_tests_properties(frontend_cxx_stage1_emit_ir PROPERTIES
-      PASS_REGULAR_EXPRESSION "define"
-  )
-endif()
-
-if(CLANG_EXECUTABLE)
-  file(GLOB CCC_REVIEW_SRCS CONFIGURE_DEPENDS
-       "${PROJECT_SOURCE_DIR}/tests/ccc-review-tests/*.c")
-  foreach(src IN LISTS CCC_REVIEW_SRCS)
-    get_filename_component(stem "${src}" NAME_WE)
-    set(test_name "ccc_review_${stem}")
-    add_test(
-      NAME "${test_name}"
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DCLANG=${CLANG_EXECUTABLE}
-              -DSRC=${src}
-              -DOUT_LL=${CMAKE_BINARY_DIR}/ccc_review_tests/${stem}.ll
-              -DOUT_CLANG_BIN=${CMAKE_BINARY_DIR}/ccc_review_tests/${stem}.clang.bin
-              -DOUT_C2LL_BIN=${CMAKE_BINARY_DIR}/ccc_review_tests/${stem}.c2ll.bin
-              -P "${PROJECT_SOURCE_DIR}/tests/cmake/run_ccc_review_case.cmake"
-    )
-    set_tests_properties("${test_name}" PROPERTIES LABELS "ccc_review")
-  endforeach()
-endif()
+include("${PROJECT_SOURCE_DIR}/tests/internal/InternalTests.cmake")
 
 if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
   file(STRINGS "${PROJECT_SOURCE_DIR}/tests/c_testsuite_allowlist.txt" C_TESTSUITE_ALLOWLIST_RAW)
@@ -206,22 +63,6 @@ if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
     )
     set_tests_properties("${test_name}" PROPERTIES LABELS "c_testsuite")
   endforeach()
-endif()
-
-if(CLANG_EXECUTABLE AND
-   (CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64") AND
-   EXISTS "${PROJECT_SOURCE_DIR}/tests/inline_asm/aarch64/simple.c")
-  add_test(
-    NAME inline_asm_aarch64_simple
-    COMMAND "${CMAKE_COMMAND}"
-            -DCOMPILER=$<TARGET_FILE:c4cll>
-            -DCLANG=${CLANG_EXECUTABLE}
-            -DSRC=${PROJECT_SOURCE_DIR}/tests/inline_asm/aarch64/simple.c
-            -DOUT_LL=${CMAKE_BINARY_DIR}/inline_asm/aarch64/simple.ll
-            -DOUT_BIN=${CMAKE_BINARY_DIR}/inline_asm/aarch64/simple.bin
-            -P "${PROJECT_SOURCE_DIR}/tests/inline_asm/inline_asm_test.cmake"
-  )
-  set_tests_properties(inline_asm_aarch64_simple PROPERTIES LABELS "inline_asm")
 endif()
 
 if(ENABLE_LLVM_GCC_C_TORTURE_TESTS AND
