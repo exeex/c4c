@@ -1,8 +1,9 @@
 #ifndef TINYC2LL_FRONTEND_CXX_PREPROCESSOR_HPP
 #define TINYC2LL_FRONTEND_CXX_PREPROCESSOR_HPP
 
+#include "pp_macro_def.hpp"
+
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -27,14 +28,6 @@ public:
   const std::vector<PreprocessorDiagnostic>& warnings() const { return warnings_; }
 
 private:
-  struct MacroDef {
-    std::string name;
-    bool function_like = false;
-    bool variadic = false;
-    std::vector<std::string> params;
-    std::string body;
-  };
-
   struct ConditionalFrame {
     bool parent_active = true;
     bool any_taken = false;
@@ -45,10 +38,6 @@ private:
   // Top-level pipeline.
   std::string preprocess_text(const std::string& source, const std::string& file,
                               int include_depth);
-
-  // Translation phase helpers.
-  static std::string join_continued_lines(const std::string& source);
-  static std::string strip_comments(const std::string& source);
 
   // Directive and expansion helpers.
   void process_directive(const std::string& raw_line, std::string& out,
@@ -72,19 +61,12 @@ private:
   bool evaluate_if_expr(const std::string& expr);
   bool is_active() const;
 
-  // Include resolution framework.
+  // Include resolution.
   std::string handle_include(const std::string& args, const std::string& current_file,
                              int include_depth, int line_no);
-  static std::string dirname_of(const std::string& path);
-  static bool read_file(const std::string& path, std::string* out);
-
-  // External fallback to preserve current behavior while framework grows.
-  std::string preprocess_external(const std::string& path) const;
-  static std::string shell_quote(const std::string& s);
-  static bool run_capture(const std::string& cmd, std::string& out_text);
 
 private:
-  std::unordered_map<std::string, MacroDef> macros_;
+  MacroTable macros_;
   std::vector<ConditionalFrame> cond_stack_;
   std::vector<std::string> include_paths_;
   std::vector<PreprocessorDiagnostic> errors_;

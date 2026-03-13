@@ -18,6 +18,12 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend/sema/validate.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/sema/consteval.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/preprocessor.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/pp_text.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/pp_cond.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/pp_include.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/pp_macro_expand.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/pp_pragma.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/pp_predefined.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/parser/parse.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/parser/types.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/parser/expressions.cpp"
@@ -56,6 +62,12 @@ set_target_properties(c4cll PROPERTIES
 add_executable(frontend_cxx_preprocessor_tests
     "${PROJECT_SOURCE_DIR}/tests/preprocessor/frontend_cxx_preprocessor_tests.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/preprocessor.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/pp_text.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/pp_cond.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/pp_include.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/pp_macro_expand.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/pp_pragma.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/pp_predefined.cpp"
 )
 target_include_directories(frontend_cxx_preprocessor_tests PRIVATE
     "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor"
