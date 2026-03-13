@@ -1817,8 +1817,11 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx&, const CharLiteral&){
     TypeSpec ts{}; ts.base = TB_CHAR; return ts;
   }
 
-TypeSpec HirEmitter::resolve_payload_type(FnCtx&, const StringLiteral&){
-    TypeSpec ts{}; ts.base = TB_CHAR; ts.ptr_level = 1; return ts;
+TypeSpec HirEmitter::resolve_payload_type(FnCtx&, const StringLiteral& sl){
+    TypeSpec ts{};
+    ts.base = sl.is_wide ? TB_INT : TB_CHAR;
+    ts.ptr_level = 1;
+    return ts;
   }
 
 TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const MemberExpr& m){
