@@ -27,11 +27,19 @@ need_cmd bison
 
 cd "$ROOT_DIR"
 
-log "Init linux submodule"
-if git ls-files --stage -- tests/linux | awk '{print $1}' | grep -q '^160000$'; then
-  git submodule update --init --recursive tests/linux
-else
-  log "tests/linux is not a git-tracked submodule in current checkout; skip submodule init"
+if [[ "$KERNEL_SRC" == "$ROOT_DIR/tests/linux" ]]; then
+  if git ls-files --stage -- tests/linux | awk '{print $1}' | grep -q '^160000$'; then
+    log "Init linux submodule"
+    git submodule update --init --recursive tests/linux
+  else
+    log "tests/linux is not a git-tracked submodule in current checkout"
+  fi
+fi
+
+if [[ ! -d "$KERNEL_SRC" ]]; then
+  echo "error: linux source tree not found: $KERNEL_SRC" >&2
+  echo "hint: set KERNEL_SRC to an external checkout if you still want to use this script" >&2
+  exit 1
 fi
 
 log "Build Ubuntu compiler binaries (stage1/stage2) in $BUILD_DIR"
