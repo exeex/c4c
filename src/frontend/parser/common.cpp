@@ -52,6 +52,25 @@ long long sizeof_base(TypeBase b) {
         case TB_DOUBLE: return 8;
         case TB_LONGDOUBLE: return 16;
         case TB_INT128: case TB_UINT128: return 16;
+        case TB_COMPLEX_CHAR:
+        case TB_COMPLEX_SCHAR:
+        case TB_COMPLEX_UCHAR:
+            return 2;
+        case TB_COMPLEX_SHORT:
+        case TB_COMPLEX_USHORT:
+            return 4;
+        case TB_COMPLEX_INT:
+        case TB_COMPLEX_UINT:
+        case TB_COMPLEX_FLOAT:
+            return 8;
+        case TB_COMPLEX_LONG:
+        case TB_COMPLEX_ULONG:
+        case TB_COMPLEX_LONGLONG:
+        case TB_COMPLEX_ULONGLONG:
+        case TB_COMPLEX_DOUBLE:
+            return 16;
+        case TB_COMPLEX_LONGDOUBLE:
+            return 32;
         default: return 4;
     }
 }
@@ -62,6 +81,25 @@ long long align_base(TypeBase b, int ptr_level) {
         case TB_BOOL: case TB_CHAR: case TB_SCHAR: case TB_UCHAR: return 1;
         case TB_SHORT: case TB_USHORT: return 2;
         case TB_INT: case TB_UINT: case TB_FLOAT: case TB_ENUM: return 4;
+        case TB_COMPLEX_CHAR:
+        case TB_COMPLEX_SCHAR:
+        case TB_COMPLEX_UCHAR:
+            return 1;
+        case TB_COMPLEX_SHORT:
+        case TB_COMPLEX_USHORT:
+            return 2;
+        case TB_COMPLEX_INT:
+        case TB_COMPLEX_UINT:
+        case TB_COMPLEX_FLOAT:
+            return 4;
+        case TB_COMPLEX_LONG:
+        case TB_COMPLEX_ULONG:
+        case TB_COMPLEX_LONGLONG:
+        case TB_COMPLEX_ULONGLONG:
+        case TB_COMPLEX_DOUBLE:
+            return 8;
+        case TB_COMPLEX_LONGDOUBLE:
+            return 16;
         default: return 8;
     }
 }
@@ -78,13 +116,17 @@ static long long struct_sizeof(const char* tag,
 // Compute the ABI alignment of a field type.
 static long long field_align(const TypeSpec& ts,
     const std::unordered_map<std::string, Node*>* struct_map) {
+    long long natural = 0;
     if (ts.ptr_level > 0) return 8;
     if (ts.is_vector && ts.vector_bytes > 0) {
-        return ts.vector_bytes > 16 ? 16 : ts.vector_bytes;
+        natural = ts.vector_bytes > 16 ? 16 : ts.vector_bytes;
+    } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag) {
+        natural = struct_align(ts.tag, struct_map);
+    } else {
+        natural = align_base(ts.base, ts.ptr_level);
     }
-    if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag)
-        return struct_align(ts.tag, struct_map);
-    return align_base(ts.base, ts.ptr_level);
+    if (ts.align_bytes > 0 && ts.align_bytes > natural) return ts.align_bytes;
+    return natural;
 }
 
 // Compute the alignment of a struct/union (max alignment of its fields).

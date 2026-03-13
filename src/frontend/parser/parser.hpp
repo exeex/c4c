@@ -97,6 +97,10 @@ class Parser {
   // Skip __attribute__((...)) sequences (zero or more).
   void skip_attributes();
 
+  // Consume __attribute__((...)) sequences, recording supported attributes
+  // into the type when provided (currently aligned/vector_size).
+  void parse_attributes(TypeSpec* ts);
+
   // Skip __asm__("...") or asm("...") sequences.
   void skip_asm();
 

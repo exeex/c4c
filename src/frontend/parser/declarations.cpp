@@ -24,7 +24,7 @@ Node* Parser::parse_local_decl() {
     }
 
     TypeSpec base_ts = parse_base_type();
-    skip_attributes();
+    parse_attributes(&base_ts);
 
     auto is_incomplete_object_type = [&](const TypeSpec& ts) -> bool {
         if (ts.ptr_level > 0) return false;
@@ -234,7 +234,7 @@ Node* Parser::parse_top_level() {
         base_ts.base = TB_INT;
     } else {
         base_ts = parse_base_type();
-        skip_attributes();
+        parse_attributes(&base_ts);
         // Re-scan for storage class specifiers that appear after the base type
         // (e.g. `struct a {...} static g = ...` — GCC allows storage class mid-decl).
         while (true) {
@@ -522,6 +522,7 @@ Node* Parser::parse_top_level() {
             std::unordered_map<std::string, Node*> knr_param_decl_map;
             while (is_type_start() && !check(TokenKind::LBrace)) {
                 TypeSpec knr_base = parse_base_type();
+                parse_attributes(&knr_base);
                 do {
                     TypeSpec knr_ts = knr_base;
                     knr_ts.array_size = -1;

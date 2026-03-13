@@ -236,6 +236,7 @@ int type_size_bytes(const phase2::hir::Module& module, const TypeSpec& ts) {
 }
 
 int type_align_bytes(const phase2::hir::Module& module, const TypeSpec& ts) {
+  int natural = 1;
   if (ts.array_rank > 0) {
     TypeSpec elem = ts;
     elem.array_rank--;
@@ -243,14 +244,18 @@ int type_align_bytes(const phase2::hir::Module& module, const TypeSpec& ts) {
       for (int i = 0; i < elem.array_rank; ++i) elem.array_dims[i] = elem.array_dims[i + 1];
     }
     elem.array_size = (elem.array_rank > 0) ? elem.array_dims[0] : -1;
-    return type_align_bytes(module, elem);
+    natural = type_align_bytes(module, elem);
+  } else if (ts.is_vector && ts.vector_bytes > 0) {
+    natural = static_cast<int>(ts.vector_bytes);
+  } else if (ts.ptr_level > 0 || ts.is_fn_ptr) {
+    natural = 8;
+  } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0) {
+    natural = struct_align_bytes(module, ts.tag);
+  } else {
+    natural = std::max(1, static_cast<int>(align_base(ts.base, ts.ptr_level)));
   }
-  if (ts.is_vector && ts.vector_bytes > 0) return static_cast<int>(ts.vector_bytes);
-  if (ts.ptr_level > 0 || ts.is_fn_ptr) return 8;
-  if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0) {
-    return struct_align_bytes(module, ts.tag);
-  }
-  return std::max(1, static_cast<int>(sizeof_base(ts.base)));
+  if (ts.align_bytes > 0) natural = std::max(natural, ts.align_bytes);
+  return natural;
 }
 
 int field_size_bytes(const phase2::hir::Module& module, const HirStructField& f) {
@@ -760,6 +765,7 @@ class Lowerer {
         ft.array_size = -1;
       }
       hf.elem_type = ft;
+      hf.align_bytes = ft.align_bytes > 0 ? ft.align_bytes : 0;
       hf.is_anon_member = f->is_anon_field;
       hf.llvm_idx = sd->is_union ? 0 : llvm_idx;
       def.fields.push_back(std::move(hf));
