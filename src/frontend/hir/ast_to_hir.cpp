@@ -2793,10 +2793,10 @@ class Lowerer {
         return append_expr(n, s, ts);
       }
       case NK_ALIGNOF_TYPE: {
-        // Keep alignof as integer-typed constant in HIR to avoid inheriting the
-        // queried type (e.g. float), which would produce invalid LLVM constants.
+        // Compute alignment of the queried type and emit as integer constant.
+        const int align = type_align_bytes(*module_, n->type);
         TypeSpec ts{}; ts.base = TB_ULONG;
-        return append_expr(n, IntLiteral{0, false}, ts);
+        return append_expr(n, IntLiteral{static_cast<long long>(align), false}, ts);
       }
       case NK_COMPOUND_LIT: {
         // A compound literal (T){ ... } is an lvalue with automatic storage
