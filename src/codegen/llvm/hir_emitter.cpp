@@ -740,6 +740,57 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
               return (sit != mod_.struct_defs.end()) ? &sit->second : nullptr;
             };
             if (!mem_e->is_arrow) {
+              // Walk nested MemberExpr chain to collect field path and find root DeclRef.
+              // Handles &v.d.b (arbitrary nesting depth).
+              {
+                std::vector<std::string> field_path;
+                const Expr* walk = &op_e;
+                while (const auto* me = std::get_if<MemberExpr>(&walk->payload)) {
+                  if (me->is_arrow) break;
+                  field_path.push_back(me->field);
+                  walk = &get_expr(me->base);
+                }
+                std::reverse(field_path.begin(), field_path.end());
+                if (field_path.size() >= 2) {
+                  if (const auto* dr = std::get_if<DeclRef>(&walk->payload)) {
+                    auto git = mod_.global_index.find(dr->name);
+                    if (git != mod_.global_index.end()) {
+                      const GlobalVar* gv = mod_.find_global(git->second);
+                      if (gv && gv->type.spec.tag && gv->type.spec.tag[0]) {
+                        // Compute cumulative byte offset through all member accesses.
+                        long long total_offset = 0;
+                        std::string cur_tag(gv->type.spec.tag);
+                        bool ok = true;
+                        for (const auto& fname : field_path) {
+                          const auto* sd = find_struct_def(cur_tag);
+                          if (!sd) { ok = false; break; }
+                          bool found = false;
+                          for (const auto& f : sd->fields) {
+                            if (f.name == fname) {
+                              total_offset += f.offset_bytes;
+                              // Determine the tag for next level (if this field is a struct/union).
+                              TypeSpec ft = f.elem_type;
+                              ft.inner_rank = -1;
+                              if (ft.tag && ft.tag[0] && ft.ptr_level == 0 &&
+                                  (ft.base == TB_STRUCT || ft.base == TB_UNION)) {
+                                cur_tag = ft.tag;
+                              }
+                              found = true;
+                              break;
+                            }
+                          }
+                          if (!found) { ok = false; break; }
+                        }
+                        if (ok) {
+                          if (total_offset == 0) return "@" + dr->name;
+                          return "getelementptr (i8, ptr @" + dr->name +
+                                 ", i64 " + std::to_string(total_offset) + ")";
+                        }
+                      }
+                    }
+                  }
+                }
+              }
               const Expr& base_e = get_expr(mem_e->base);
               // &struct_var.field
               if (const auto* dr = std::get_if<DeclRef>(&base_e.payload)) {
