@@ -140,8 +140,13 @@ std::string HirEmitter::emit(){
     if (need_llvm_memcpy_) out << "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\n";
     if (need_llvm_stacksave_) out << "declare ptr @llvm.stacksave()\n";
     if (need_llvm_stackrestore_) out << "declare void @llvm.stackrestore(ptr)\n";
+    if (need_llvm_abs_) {
+      out << "declare i32 @llvm.abs.i32(i32, i1 immarg)\n";
+      out << "declare i64 @llvm.abs.i64(i64, i1 immarg)\n";
+    }
     if (need_llvm_va_start_ || need_llvm_va_end_ || need_llvm_va_copy_ ||
-        need_llvm_memcpy_ || need_llvm_stacksave_ || need_llvm_stackrestore_) out << "\n";
+        need_llvm_memcpy_ || need_llvm_stacksave_ || need_llvm_stackrestore_ ||
+        need_llvm_abs_) out << "\n";
     for (const auto& [name, ret_ty] : extern_call_decls_) {
       if (mod_.fn_index.count(name)) continue;
       out << "declare " << ret_ty << " @" << name << "(...)\n";
@@ -3573,6 +3578,23 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
                             elem_ty + " " + imag_v + ", 1");
         return out;
       }
+    }
+
+    // Implicit builtins: standard library functions recognized by GCC/Clang
+    // even without __builtin_ prefix. abs/labs/llabs → llvm.abs intrinsic.
+    if (builtin_id == BuiltinId::Unknown && call.args.size() == 1 &&
+        (fn_name == "abs" || fn_name == "labs" || fn_name == "llabs")) {
+      TypeSpec arg_ts{};
+      std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
+      const bool is_ll = (fn_name == "llabs" || fn_name == "labs");
+      const std::string ity = is_ll ? "i64" : "i32";
+      TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
+      arg = coerce(ctx, arg, arg_ts, target_ts);
+      const std::string tmp = fresh_tmp(ctx);
+      emit_instr(ctx, tmp + " = call " + ity + " @llvm.abs." + ity +
+                           "(" + ity + " " + arg + ", i1 true)");
+      need_llvm_abs_ = true;
+      return tmp;
     }
 
     const Function* target_fn = nullptr;

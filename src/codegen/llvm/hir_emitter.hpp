@@ -106,6 +106,7 @@ class HirEmitter {
   bool need_llvm_memcpy_ = false;
   bool need_llvm_stacksave_ = false;
   bool need_llvm_stackrestore_ = false;
+  bool need_llvm_abs_ = false;
 
   // ── Instruction helpers ───────────────────────────────────────────────────
 
