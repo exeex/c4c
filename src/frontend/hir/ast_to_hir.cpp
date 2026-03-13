@@ -1737,7 +1737,8 @@ class Lowerer {
         d.storage = n->is_static ? StorageClass::Static : StorageClass::Auto;
         d.span = make_span(n);
         const bool is_array_with_init_list =
-            n->init && n->init->kind == NK_INIT_LIST && d.type.spec.array_rank == 1;
+            n->init && n->init->kind == NK_INIT_LIST &&
+            (d.type.spec.array_rank == 1 || d.type.spec.is_vector);
         const bool is_array_with_string_init =
             n->init && n->init->kind == NK_STR_LIT && d.type.spec.array_rank == 1;
         const bool is_struct_with_init_list =
@@ -1745,7 +1746,8 @@ class Lowerer {
             (d.type.spec.base == TB_STRUCT || d.type.spec.base == TB_UNION) &&
             d.type.spec.ptr_level == 0 && d.type.spec.array_rank == 0;
         const bool use_array_init_fast_path =
-            is_array_with_init_list && can_fast_path_scalar_array_init(n->init);
+            is_array_with_init_list && !d.type.spec.is_vector &&
+            can_fast_path_scalar_array_init(n->init);
         if (!is_array_with_init_list && !is_array_with_string_init &&
             !is_struct_with_init_list && n->init)
           d.init = lower_expr(&ctx, n->init);
