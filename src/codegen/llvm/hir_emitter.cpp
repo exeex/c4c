@@ -4111,9 +4111,36 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ExprStmt& s){
     emit_rval_id(ctx, *s.expr, ts);
   }
 
+// Rewrite GCC inline asm constraints that LLVM aarch64 backend doesn't support.
+// 'g' (general operand) → 'imr' (immediate, memory, register).
+static std::string rewrite_asm_constraints(const std::string& raw) {
+    std::string result;
+    result.reserve(raw.size() + 8);
+    for (size_t i = 0; i < raw.size(); ++i) {
+        if (raw[i] == '~' && i + 1 < raw.size() && raw[i + 1] == '{') {
+            // skip clobber spec ~{...} verbatim
+            auto end = raw.find('}', i);
+            if (end != std::string::npos) {
+                result.append(raw, i, end - i + 1);
+                i = end;
+                continue;
+            }
+        }
+        if (raw[i] == 'g') {
+            // Ensure 'g' is a standalone constraint letter, not part of a clobber name.
+            // In the constraint string, each comma-separated segment is a constraint spec.
+            // 'g' should be replaced with 'imr'.
+            result += "imr";
+        } else {
+            result += raw[i];
+        }
+    }
+    return result;
+}
+
 void HirEmitter::emit_stmt_impl(FnCtx& ctx, const InlineAsmStmt& s){
     const std::string asm_text = escape_llvm_c_bytes(s.asm_template);
-    const std::string constraints = escape_llvm_c_bytes(s.constraints);
+    const std::string constraints = rewrite_asm_constraints(escape_llvm_c_bytes(s.constraints));
     TypeSpec ret_ts{};
     std::string ret_ty = "void";
     if (s.output) {
