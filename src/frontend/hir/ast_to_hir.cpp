@@ -909,6 +909,39 @@ class Lowerer {
     module_->functions.push_back(std::move(fn));
   }
 
+  // Hoist a compound literal to an anonymous global variable.
+  // Returns the ExprId of an AddrOf(DeclRef{clit_name}) expression.
+  ExprId hoist_compound_literal_to_global(const Node* addr_node, const Node* clit) {
+    GlobalVar cg{};
+    cg.id = next_global_id();
+    const std::string clit_name = "__clit_" + std::to_string(cg.id.value);
+    cg.name = clit_name;
+    cg.type = qtype_from(clit->type, ValueCategory::LValue);
+    cg.linkage = {true, false, false};  // internal linkage
+    cg.is_const = false;
+    cg.span = make_span(clit);
+    // Lower the compound literal's init list (stored in clit->left).
+    if (clit->left && clit->left->kind == NK_INIT_LIST) {
+      cg.init = lower_init_list(clit->left);
+      cg.type.spec = resolve_array_ts(cg.type.spec, cg.init);
+      cg.init = normalize_global_init(cg.type.spec, cg.init);
+    }
+    module_->global_index[clit_name] = cg.id;
+    module_->globals.push_back(std::move(cg));
+
+    // Build a scalar init: AddrOf(DeclRef{clit_name})
+    TypeSpec ptr_ts = clit->type;
+    ptr_ts.ptr_level++;
+    DeclRef dr{};
+    dr.name = clit_name;
+    dr.global = module_->global_index[clit_name];
+    ExprId dr_id = append_expr(clit, dr, clit->type, ValueCategory::LValue);
+    UnaryExpr addr{};
+    addr.op = UnaryOp::AddrOf;
+    addr.operand = dr_id;
+    return append_expr(addr_node, addr, ptr_ts);
+  }
+
   void lower_global(const Node* gv) {
     GlobalInit computed_init{};
     bool has_init = false;
@@ -920,35 +953,7 @@ class Lowerer {
     // since hir_to_llvm.cpp uses GlobalId.value as a direct vector index.
     if (gv->init && gv->init->kind == NK_ADDR &&
         gv->init->left && gv->init->left->kind == NK_COMPOUND_LIT) {
-      const Node* clit = gv->init->left;
-      GlobalVar cg{};
-      cg.id = next_global_id();
-      const std::string clit_name = "__clit_" + std::to_string(cg.id.value);
-      cg.name = clit_name;
-      cg.type = qtype_from(clit->type, ValueCategory::LValue);
-      cg.linkage = {true, false, false};  // internal linkage
-      cg.is_const = false;
-      cg.span = make_span(clit);
-      // Lower the compound literal's init list (stored in clit->left).
-      if (clit->left && clit->left->kind == NK_INIT_LIST) {
-        cg.init = lower_init_list(clit->left);
-        cg.type.spec = resolve_array_ts(cg.type.spec, cg.init);
-        cg.init = normalize_global_init(cg.type.spec, cg.init);
-      }
-      module_->global_index[clit_name] = cg.id;
-      module_->globals.push_back(std::move(cg));
-
-      // Build a scalar init: AddrOf(DeclRef{clit_name})
-      TypeSpec ptr_ts = clit->type;
-      ptr_ts.ptr_level++;
-      DeclRef dr{};
-      dr.name = clit_name;
-      dr.global = module_->global_index[clit_name];
-      ExprId dr_id = append_expr(clit, dr, clit->type, ValueCategory::LValue);
-      UnaryExpr addr{};
-      addr.op = UnaryOp::AddrOf;
-      addr.operand = dr_id;
-      ExprId addr_id = append_expr(gv->init, addr, ptr_ts);
+      ExprId addr_id = hoist_compound_literal_to_global(gv->init, gv->init->left);
       InitScalar sc{};
       sc.expr = addr_id;
       computed_init = sc;
@@ -1506,6 +1511,13 @@ class Lowerer {
         // Compound literal with init list: treat as a sub-list so the emitter
         // can use field-by-field init (not brace elision from the parent).
         item.value = std::make_shared<InitList>(lower_init_list(value_node->left, ctx));
+      } else if (!ctx && value_node && value_node->kind == NK_ADDR &&
+                 value_node->left && value_node->left->kind == NK_COMPOUND_LIT) {
+        // Global scope: &(T){...} inside an init list — hoist the compound
+        // literal to an anonymous global and use its address.
+        InitScalar s{};
+        s.expr = hoist_compound_literal_to_global(value_node, value_node->left);
+        item.value = s;
       } else {
         InitScalar s{};
         s.expr = lower_expr(ctx, value_node);
