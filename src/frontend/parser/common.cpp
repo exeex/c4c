@@ -249,6 +249,9 @@ bool eval_const_int(Node* n, long long* out,
         // sizeof(type): use LP64 sizes
         long long sz = sizeof_base(n->type.base);
         if (n->type.ptr_level > 0) sz = 8;
+        if ((n->type.base == TB_STRUCT || n->type.base == TB_UNION) && n->type.tag) {
+            sz = struct_sizeof(n->type.tag, struct_map);
+        }
         if (n->type.array_rank > 0) {
             for (int i = 0; i < n->type.array_rank; ++i)
                 if (n->type.array_dims[i] > 0) sz *= n->type.array_dims[i];

@@ -450,25 +450,9 @@ class HirEmitter::ConstInitEmitter {
 
     std::string format_struct_literal(const HirStructDef& sd,
                                       const std::vector<std::string>& field_vals) const {
-      bool has_bitfields = false;
-      for (const auto& f : sd.fields) {
-        if (f.bit_width >= 0) {
-          has_bitfields = true;
-          break;
-        }
-      }
-      if (!has_bitfields) {
-        std::string out = "{ ";
-        for (size_t i = 0; i < sd.fields.size(); ++i) {
-          if (i) out += ", ";
-          out += llvm_field_ty(sd.fields[i]) + " " + field_vals[i];
-        }
-        out += " }";
-        return out;
-      }
-
       std::string out = "{ ";
       bool first = true;
+      int cur_offset = 0;
       int last_idx = -1;
       for (size_t i = 0; i < sd.fields.size();) {
         const auto& field = sd.fields[i];
@@ -477,15 +461,24 @@ class HirEmitter::ConstInitEmitter {
           continue;
         }
         last_idx = field.llvm_idx;
+        if (field.offset_bytes > cur_offset) {
+          if (!first) out += ", ";
+          first = false;
+          out += "[" + std::to_string(field.offset_bytes - cur_offset) +
+                 " x i8] zeroinitializer";
+          cur_offset = field.offset_bytes;
+        }
         if (!first) out += ", ";
         first = false;
         out += llvm_field_ty(field) + " ";
         if (field.bit_width < 0) {
           out += field_vals[i];
+          cur_offset = field.offset_bytes + std::max(0, field.size_bytes);
           ++i;
           continue;
         }
         unsigned long long packed = 0;
+        int storage_size = std::max(0, field.size_bytes);
         while (i < sd.fields.size() && sd.fields[i].llvm_idx == last_idx) {
           const auto& bf = sd.fields[i];
           if (bf.bit_width > 0) {
@@ -495,9 +488,15 @@ class HirEmitter::ConstInitEmitter {
                 (bf.bit_width >= 64) ? ~0ULL : ((1ULL << bf.bit_width) - 1);
             packed |= (static_cast<unsigned long long>(val) & mask) << bf.bit_offset;
           }
+          storage_size = std::max(storage_size, bf.size_bytes);
           ++i;
         }
         out += std::to_string(static_cast<long long>(packed));
+        cur_offset = field.offset_bytes + storage_size;
+      }
+      if (sd.size_bytes > cur_offset) {
+        if (!first) out += ", ";
+        out += "[" + std::to_string(sd.size_bytes - cur_offset) + " x i8] zeroinitializer";
       }
       out += " }";
       return out;

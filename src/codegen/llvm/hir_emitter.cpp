@@ -2,6 +2,33 @@
 
 namespace tinyc2ll::codegen::llvm_backend {
 
+namespace {
+
+int llvm_struct_field_slot(const HirStructDef& sd, int target_llvm_idx) {
+  if (sd.is_union) return 0;
+  int last_idx = -1;
+  int cur_offset = 0;
+  int slot = 0;
+  for (const auto& f : sd.fields) {
+    if (f.llvm_idx == last_idx) continue;
+    last_idx = f.llvm_idx;
+    if (f.offset_bytes > cur_offset) ++slot;
+    if (f.llvm_idx == target_llvm_idx) return slot;
+    cur_offset = f.offset_bytes + std::max(0, f.size_bytes);
+    ++slot;
+  }
+  return 0;
+}
+
+int llvm_struct_field_slot_by_name(const HirStructDef& sd, const std::string& field_name) {
+  for (const auto& f : sd.fields) {
+    if (f.name == field_name) return llvm_struct_field_slot(sd, f.llvm_idx);
+  }
+  return 0;
+}
+
+}  // namespace
+
 HirEmitter::HirEmitter(const Module& m) : mod_(m){}
 
 std::string HirEmitter::emit(){
@@ -176,16 +203,29 @@ void HirEmitter::emit_preamble(){
         preamble_ << "%struct." << tag << " = type { ["
                   << sz << " x i8] }\n";
       } else {
-        // Deduplicate fields by llvm_idx (bitfields share one storage unit)
+        // Materialize HIR-computed padding so LLVM layout matches frontend
+        // offsets/sizes, including over-aligned arrays and tail padding.
         preamble_ << "%struct." << tag << " = type { ";
         bool first = true;
         int last_idx = -1;
+        int cur_offset = 0;
         for (const auto& f : sd.fields) {
           if (f.llvm_idx == last_idx) continue;  // same storage unit
           last_idx = f.llvm_idx;
+          if (f.offset_bytes > cur_offset) {
+            if (!first) preamble_ << ", ";
+            first = false;
+            preamble_ << "[" << (f.offset_bytes - cur_offset) << " x i8]";
+            cur_offset = f.offset_bytes;
+          }
           if (!first) preamble_ << ", ";
           first = false;
           preamble_ << llvm_field_ty(f);
+          cur_offset = f.offset_bytes + std::max(0, f.size_bytes);
+        }
+        if (sd.size_bytes > cur_offset) {
+          if (!first) preamble_ << ", ";
+          preamble_ << "[" << (sd.size_bytes - cur_offset) << " x i8]";
         }
         preamble_ << " }\n";
       }
@@ -628,15 +668,6 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
           }
           // &struct_var.field or &(arr+N)->field — global struct member: emit GEP constant
           if (const auto* mem_e = std::get_if<MemberExpr>(&op_e.payload)) {
-            // Helper to find field index in a struct definition
-            auto find_field_idx = [&](const HirStructDef& sd, const std::string& field_name) -> int {
-              int idx = 0;
-              for (const auto& f : sd.fields) {
-                if (f.name == field_name) return idx;
-                ++idx;
-              }
-              return 0;
-            };
             auto find_struct_def = [&](const std::string& tag) -> const HirStructDef* {
               auto sit = mod_.struct_defs.find(tag);
               return (sit != mod_.struct_defs.end()) ? &sit->second : nullptr;
@@ -651,7 +682,7 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
                   if (gv && gv->type.spec.tag && gv->type.spec.tag[0]) {
                     const std::string tag(gv->type.spec.tag);
                     if (const auto* sd = find_struct_def(tag)) {
-                      int fi = find_field_idx(*sd, mem_e->field);
+                      const int fi = llvm_struct_field_slot_by_name(*sd, mem_e->field);
                       return "getelementptr inbounds (%struct." + tag + ", ptr @" + dr->name +
                              ", i32 0, i32 " + std::to_string(fi) + ")";
                     }
@@ -685,7 +716,7 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
                       if (elem_ts.tag && elem_ts.tag[0]) {
                         const std::string tag(elem_ts.tag);
                         if (const auto* sd = find_struct_def(tag)) {
-                          int fi = find_field_idx(*sd, mem_e->field);
+                          const int fi = llvm_struct_field_slot_by_name(*sd, mem_e->field);
                           const std::string aty = llvm_alloca_ty(gv->type.spec);
                           std::string gep = "getelementptr inbounds (" + aty + ", ptr @" + dr->name + ", i64 0";
                           for (auto idx : indices) gep += ", i64 " + std::to_string(idx);
@@ -710,7 +741,7 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
                   if (gv && gv->type.spec.array_rank > 0 && gv->type.spec.tag && gv->type.spec.tag[0]) {
                     const std::string tag(gv->type.spec.tag);
                     if (const auto* sd = find_struct_def(tag)) {
-                      int fi = find_field_idx(*sd, mem_e->field);
+                      const int fi = llvm_struct_field_slot_by_name(*sd, mem_e->field);
                       const std::string aty = llvm_alloca_ty(gv->type.spec);
                       return "getelementptr inbounds (" + aty + ", ptr @" + dr->name +
                              ", i64 0, i64 0, i32 " + std::to_string(fi) + ")";
@@ -736,7 +767,7 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
                       if (gv && gv->type.spec.array_rank > 0 && gv->type.spec.tag && gv->type.spec.tag[0]) {
                         const std::string tag(gv->type.spec.tag);
                         if (const auto* sd = find_struct_def(tag)) {
-                          int fi = find_field_idx(*sd, mem_e->field);
+                          const int fi = llvm_struct_field_slot_by_name(*sd, mem_e->field);
                           const std::string aty = llvm_alloca_ty(gv->type.spec);
                           return "getelementptr inbounds (" + aty + ", ptr @" + dr2->name +
                                  ", i64 0, i64 " + std::to_string(*rhs_val) +
@@ -1091,7 +1122,7 @@ bool HirEmitter::find_field_chain(const std::string& tag, const std::string& fie
     // Direct lookup
     for (const auto& f : sd.fields) {
       if (!f.is_anon_member && f.name == field_name) {
-        FieldStep step{tag, f.llvm_idx, sd.is_union};
+        FieldStep step{tag, llvm_struct_field_slot(sd, f.llvm_idx), sd.is_union};
         if (f.bit_width >= 0) {
           step.bit_width = f.bit_width;
           step.bit_offset = f.bit_offset;
@@ -1111,7 +1142,7 @@ bool HirEmitter::find_field_chain(const std::string& tag, const std::string& fie
       TypeSpec sub_ts{};
       if (find_field_chain(f.elem_type.tag, field_name, sub_chain, sub_ts)) {
         // prepend: current struct's step to reach the anon member
-        chain.push_back({tag, f.llvm_idx, sd.is_union});
+        chain.push_back({tag, llvm_struct_field_slot(sd, f.llvm_idx), sd.is_union});
         for (const auto& s : sub_chain) chain.push_back(s);
         out_field_ts = sub_ts;
         return true;

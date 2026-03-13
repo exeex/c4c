@@ -899,6 +899,16 @@ class Lowerer {
     fn.entry = entry;
     ctx.current_block = entry;
 
+    for (int i = 0; i < fn_node->n_params; ++i) {
+      const Node* p = fn_node->params[i];
+      if (!p) continue;
+      if (p->type.array_rank <= 0 || !p->type.array_size_expr) continue;
+      if (p->type.array_size > 0 && p->type.array_dims[0] > 0) continue;
+      ExprStmt side_effect{};
+      side_effect.expr = lower_expr(&ctx, p->type.array_size_expr);
+      append_stmt(ctx, Stmt{StmtPayload{side_effect}, make_span(p)});
+    }
+
     lower_stmt_node(ctx, fn_node->body);
 
     if (fn.blocks.empty()) {
@@ -2794,6 +2804,28 @@ class Lowerer {
         return append_expr(n, s, ts);
       }
       case NK_SIZEOF_TYPE: {
+        if (ctx && n->type.array_rank > 0 && n->type.array_size_expr &&
+            (n->type.array_size <= 0 || n->type.array_dims[0] <= 0)) {
+          TypeSpec elem_ts = n->type;
+          elem_ts.array_rank--;
+          if (elem_ts.array_rank > 0) {
+            for (int i = 0; i < elem_ts.array_rank; ++i) {
+              elem_ts.array_dims[i] = elem_ts.array_dims[i + 1];
+            }
+          }
+          elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
+
+          TypeSpec ts{};
+          ts.base = TB_ULONG;
+          const ExprId count_id = lower_expr(ctx, n->type.array_size_expr);
+          const ExprId elem_sz_id = append_expr(
+              n, IntLiteral{static_cast<long long>(type_size_bytes(*module_, elem_ts)), false}, ts);
+          BinaryExpr mul{};
+          mul.op = BinaryOp::Mul;
+          mul.lhs = count_id;
+          mul.rhs = elem_sz_id;
+          return append_expr(n, mul, ts);
+        }
         SizeofTypeExpr s{};
         s.type = qtype_from(n->type);
         // sizeof always returns an integer (size_t ~ unsigned long)
