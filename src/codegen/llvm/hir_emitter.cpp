@@ -3032,7 +3032,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         TypeSpec i64_ts{}; i64_ts.base = TB_ULONGLONG;
         size = coerce(ctx, size, size_ts, i64_ts);
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = alloca i8, i64 " + size);
+        emit_instr(ctx, tmp + " = alloca i8, i64 " + size + ", align 16");
         return tmp;
       }
       if (builtin_id == BuiltinId::ConstantP) {
