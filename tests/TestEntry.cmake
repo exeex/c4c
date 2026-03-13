@@ -209,6 +209,22 @@ if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
   endforeach()
 endif()
 
+if(CLANG_EXECUTABLE AND
+   (CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64") AND
+   EXISTS "${PROJECT_SOURCE_DIR}/tests/inline_asm/aarch64/simple.c")
+  add_test(
+    NAME inline_asm_aarch64_simple
+    COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:c4cll>
+            -DCLANG=${CLANG_EXECUTABLE}
+            -DSRC=${PROJECT_SOURCE_DIR}/tests/inline_asm/aarch64/simple.c
+            -DOUT_LL=${CMAKE_BINARY_DIR}/inline_asm/aarch64/simple.ll
+            -DOUT_BIN=${CMAKE_BINARY_DIR}/inline_asm/aarch64/simple.bin
+            -P "${PROJECT_SOURCE_DIR}/tests/inline_asm/inline_asm_test.cmake"
+  )
+  set_tests_properties(inline_asm_aarch64_simple PROPERTIES LABELS "inline_asm")
+endif()
+
 if(ENABLE_LLVM_GCC_C_TORTURE_TESTS AND
    CLANG_EXECUTABLE AND LLVM_TEST_SUITE_ROOT AND EXISTS "${LLVM_TEST_SUITE_ROOT}")
   set(LLVM_GCC_C_TORTURE_ROOT

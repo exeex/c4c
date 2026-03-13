@@ -886,6 +886,13 @@ class Validator {
         if (n->body) visit_stmt(n->body);
         return;
       }
+      case NK_ASM: {
+        if (n->left) (void)infer_expr(n->left);
+        for (int i = 0; i < n->n_children; ++i) {
+          if (n->children[i]) (void)infer_expr(n->children[i]);
+        }
+        return;
+      }
       case NK_ENUM_DEF: {
         bind_enum_constants_local(n);
         return;

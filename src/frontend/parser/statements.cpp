@@ -1,5 +1,9 @@
 #include "parser.hpp"
 
+#include <cctype>
+#include <string>
+#include <vector>
+
 namespace tinyc2ll::frontend_cxx {
 Node* Parser::parse_block() {
     int ln = cur().line;
@@ -197,14 +201,151 @@ Node* Parser::parse_stmt() {
         }
 
         case TokenKind::KwAsm: {
-            // asm volatile ("..." : outputs : inputs : clobbers) — skip entirely
+            struct AsmOperand {
+                std::string constraint;
+                Node* expr = nullptr;
+            };
+            std::vector<Node*> clobbers;
+            auto parse_asm_operand = [&]() -> AsmOperand {
+                AsmOperand op{};
+                if (check(TokenKind::StrLit)) {
+                    op.constraint = cur().lexeme;
+                    consume();
+                }
+                if (match(TokenKind::LParen)) {
+                    op.expr = parse_expr();
+                    expect(TokenKind::RParen);
+                }
+                return op;
+            };
+            auto parse_asm_operand_list = [&]() -> std::vector<AsmOperand> {
+                std::vector<AsmOperand> ops;
+                if (check(TokenKind::Colon) || check(TokenKind::RParen)) return ops;
+                while (!at_end() && !check(TokenKind::Colon) && !check(TokenKind::RParen)) {
+                    ops.push_back(parse_asm_operand());
+                    if (!match(TokenKind::Comma)) break;
+                }
+                return ops;
+            };
+            auto strip_quotes = [](const std::string& s) -> std::string {
+                if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
+                    return s.substr(1, s.size() - 2);
+                return s;
+            };
+            auto is_digit_constraint = [](const std::string& s) -> bool {
+                if (s.empty()) return false;
+                for (char ch : s) {
+                    if (!std::isdigit(static_cast<unsigned char>(ch))) return false;
+                }
+                return true;
+            };
+
             consume();
             // Skip optional qualifiers: volatile, goto, inline
+            bool saw_volatile = false;
             while (check(TokenKind::KwVolatile) || check(TokenKind::KwInline) ||
-                   check(TokenKind::KwGoto))
+                   check(TokenKind::KwGoto)) {
+                if (check(TokenKind::KwVolatile)) saw_volatile = true;
                 consume();
-            if (check(TokenKind::LParen)) skip_paren_group();
+            }
+            if (!check(TokenKind::LParen)) {
+                match(TokenKind::Semi);
+                return make_node(NK_EMPTY, ln);
+            }
+            consume();  // (
+
+            Node* asm_template = nullptr;
+            if (check(TokenKind::StrLit)) {
+                asm_template = make_str_lit(arena_.strdup(cur().lexeme), cur().line);
+                consume();
+            } else if (!check(TokenKind::Colon) && !check(TokenKind::RParen)) {
+                asm_template = parse_expr();
+            }
+
+            std::vector<AsmOperand> outputs;
+            std::vector<AsmOperand> inputs;
+            if (match(TokenKind::Colon)) {
+                outputs = parse_asm_operand_list();
+                if (match(TokenKind::Colon)) {
+                    inputs = parse_asm_operand_list();
+                    if (match(TokenKind::Colon)) {
+                        while (!at_end() && !check(TokenKind::RParen)) {
+                            if (check(TokenKind::StrLit)) {
+                                clobbers.push_back(
+                                    make_str_lit(arena_.strdup(cur().lexeme), cur().line));
+                                consume();
+                            }
+                            else if (check(TokenKind::LParen)) skip_paren_group();
+                            else consume();
+                            if (!match(TokenKind::Comma)) break;
+                        }
+                        if (match(TokenKind::Colon)) {
+                            while (!at_end() && !check(TokenKind::RParen)) consume();
+                        }
+                    }
+                }
+            }
+            expect(TokenKind::RParen);
             match(TokenKind::Semi);
+
+            const bool empty_template =
+                asm_template && asm_template->kind == NK_STR_LIT && asm_template->sval &&
+                strip_quotes(asm_template->sval).empty();
+            if (empty_template && !outputs.empty()) {
+                std::vector<Node*> lowered;
+                for (int oi = 0; oi < static_cast<int>(outputs.size()); ++oi) {
+                    const AsmOperand& out = outputs[oi];
+                    if (!out.expr) continue;
+                    const std::string out_constraint = strip_quotes(out.constraint);
+                    if (out_constraint.find('+') != std::string::npos) {
+                        continue;  // read-write tied to itself; empty asm leaves value unchanged
+                    }
+                    Node* rhs = nullptr;
+                    for (const AsmOperand& in : inputs) {
+                        const std::string in_constraint = strip_quotes(in.constraint);
+                        if (!is_digit_constraint(in_constraint)) continue;
+                        if (std::stoi(in_constraint) == oi) {
+                            rhs = in.expr;
+                            break;
+                        }
+                    }
+                    if (!rhs) continue;
+                    Node* expr_stmt = make_node(NK_EXPR_STMT, ln);
+                    expr_stmt->left = make_assign("=", out.expr, rhs, ln);
+                    lowered.push_back(expr_stmt);
+                }
+                if (lowered.empty()) return make_node(NK_EMPTY, ln);
+                return make_block(lowered.data(), static_cast<int>(lowered.size()), ln);
+            }
+
+            if (asm_template && asm_template->kind == NK_STR_LIT) {
+                Node* n = make_node(NK_ASM, ln);
+                n->left = asm_template;
+                n->is_volatile_asm = saw_volatile;
+                n->asm_num_outputs = static_cast<int>(outputs.size());
+                n->asm_num_inputs = static_cast<int>(inputs.size());
+                n->asm_num_clobbers = static_cast<int>(clobbers.size());
+                n->asm_n_constraints = n->asm_num_outputs + n->asm_num_inputs;
+                if (n->asm_n_constraints > 0) {
+                    n->asm_constraints = arena_.alloc_array<const char*>(n->asm_n_constraints);
+                    int ci = 0;
+                    for (const AsmOperand& out : outputs) {
+                        n->asm_constraints[ci++] = arena_.strdup(out.constraint.c_str());
+                    }
+                    for (const AsmOperand& in : inputs) {
+                        n->asm_constraints[ci++] = arena_.strdup(in.constraint.c_str());
+                    }
+                }
+                n->n_children = n->asm_num_outputs + n->asm_num_inputs + n->asm_num_clobbers;
+                if (n->n_children > 0) {
+                    n->children = arena_.alloc_array<Node*>(n->n_children);
+                    int idx = 0;
+                    for (const AsmOperand& out : outputs) n->children[idx++] = out.expr;
+                    for (const AsmOperand& in : inputs) n->children[idx++] = in.expr;
+                    for (Node* clobber : clobbers) n->children[idx++] = clobber;
+                }
+                return n;
+            }
             return make_node(NK_EMPTY, ln);
         }
 

@@ -152,6 +152,7 @@ enum NodeKind {
     NK_CONTINUE,        // continue;
     NK_GOTO,            // goto label;
     NK_LABEL,           // name: body
+    NK_ASM,             // asm("...":...): left=template, children=clobber strings
     NK_EMPTY,           // ; (empty statement)
 
     // Declarations
@@ -233,11 +234,19 @@ struct Node {
     int          n_enum_variants;
     int          enum_has_explicit;   // bitmask: bit i = variant i has explicit value
 
+    // NK_ASM operand metadata
+    const char** asm_constraints; // outputs first, then inputs
+    int          asm_n_constraints;
+    int          asm_num_outputs;
+    int          asm_num_inputs;
+    int          asm_num_clobbers;
+
     // --- flags ---
     bool variadic;      // NK_FUNCTION
     bool is_static;     // NK_FUNCTION, NK_DECL, NK_GLOBAL_VAR
     bool is_extern;     // NK_FUNCTION, NK_GLOBAL_VAR
     bool is_inline;     // NK_FUNCTION
+    bool is_volatile_asm; // NK_ASM
     bool is_arrow;      // NK_MEMBER (-> = true, . = false)
     bool is_union;      // NK_STRUCT_DEF
     bool is_anon_field; // NK_DECL: synthetic field for anonymous sub-struct/union

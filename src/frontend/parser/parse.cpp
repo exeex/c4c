@@ -358,6 +358,7 @@ const char* node_kind_name(NodeKind k) {
         case NK_CONTINUE:     return "Continue";
         case NK_GOTO:         return "Goto";
         case NK_LABEL:        return "Label";
+        case NK_ASM:          return "Asm";
         case NK_EMPTY:        return "Empty";
         case NK_DECL:         return "Decl";
         case NK_FUNCTION:     return "Function";
@@ -395,6 +396,7 @@ void ast_dump(const Node* n, int indent) {
         case NK_ENUM_DEF:  printf("(enum %s)", n->name ? n->name : "?"); break;
         case NK_GOTO:      printf("(%s)", n->name ? n->name : "?"); break;
         case NK_LABEL:     printf("(%s)", n->name ? n->name : "?"); break;
+        case NK_ASM:       printf("(%s)", n->is_volatile_asm ? "volatile" : "plain"); break;
         default: break;
     }
     printf("\n");

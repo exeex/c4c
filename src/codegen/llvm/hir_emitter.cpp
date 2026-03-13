@@ -4111,6 +4111,43 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ExprStmt& s){
     emit_rval_id(ctx, *s.expr, ts);
   }
 
+void HirEmitter::emit_stmt_impl(FnCtx& ctx, const InlineAsmStmt& s){
+    const std::string asm_text = escape_llvm_c_bytes(s.asm_template);
+    const std::string constraints = escape_llvm_c_bytes(s.constraints);
+    TypeSpec ret_ts{};
+    std::string ret_ty = "void";
+    if (s.output) {
+      ret_ts = resolve_expr_type(ctx, *s.output);
+      ret_ty = llvm_ty(ret_ts);
+    }
+    std::vector<std::string> arg_vals;
+    std::vector<TypeSpec> arg_tys;
+    for (ExprId input : s.inputs) {
+      TypeSpec in_ts{};
+      arg_vals.push_back(emit_rval_id(ctx, input, in_ts));
+      arg_tys.push_back(in_ts);
+    }
+    std::string call = "call " + ret_ty + " asm ";
+    if (s.has_side_effects) call += "sideeffect ";
+    call += "\"" + asm_text + "\", \"" + constraints + "\"(";
+    for (size_t i = 0; i < arg_vals.size(); ++i) {
+      if (i) call += ", ";
+      call += llvm_ty(arg_tys[i]) + " " + arg_vals[i];
+    }
+    call += ")";
+    if (!s.output) {
+      emit_instr(ctx, call);
+      return;
+    }
+
+    const std::string result = fresh_tmp(ctx);
+    emit_instr(ctx, result + " = " + call);
+    TypeSpec out_pointee_ts{};
+    const std::string out_ptr = emit_lval(ctx, *s.output, out_pointee_ts);
+    const std::string coerced = coerce(ctx, result, ret_ts, out_pointee_ts);
+    emit_instr(ctx, "store " + llvm_ty(out_pointee_ts) + " " + coerced + ", ptr " + out_ptr);
+  }
+
 void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ReturnStmt& s){
     if (!s.expr) { emit_term(ctx, "ret void"); return; }
     TypeSpec ts{};

@@ -326,6 +326,15 @@ struct ExprStmt {
   std::optional<ExprId> expr;
 };
 
+struct InlineAsmStmt {
+  std::string asm_template;
+  std::string constraints;
+  std::optional<ExprId> output;
+  QualType output_type{};
+  std::vector<ExprId> inputs;
+  bool has_side_effects = true;
+};
+
 struct ReturnStmt {
   std::optional<ExprId> expr;
 };
@@ -400,6 +409,7 @@ struct ContinueStmt {
 using StmtPayload = std::variant<
     LocalDecl,
     ExprStmt,
+    InlineAsmStmt,
     ReturnStmt,
     IfStmt,
     WhileStmt,

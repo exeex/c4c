@@ -296,6 +296,7 @@ class HirEmitter {
   void emit_stmt(FnCtx& ctx, const Stmt& stmt);
   void emit_stmt_impl(FnCtx& ctx, const LocalDecl& d);
   void emit_stmt_impl(FnCtx& ctx, const ExprStmt& s);
+  void emit_stmt_impl(FnCtx& ctx, const InlineAsmStmt& s);
   void emit_stmt_impl(FnCtx& ctx, const ReturnStmt& s);
   void emit_stmt_impl(FnCtx& ctx, const IfStmt& s);
   void emit_stmt_impl(FnCtx& ctx, const WhileStmt& s);

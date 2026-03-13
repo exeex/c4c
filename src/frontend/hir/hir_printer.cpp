@@ -248,6 +248,11 @@ class Printer {
     }
   }
 
+  void print_stmt_payload(std::ostringstream& out, const InlineAsmStmt& s) {
+    out << "asm \"" << s.asm_template << "\", \"" << s.constraints << "\"";
+    if (s.output) out << " -> expr#" << s.output->value;
+  }
+
   void print_stmt_payload(std::ostringstream& out, const ReturnStmt& s) {
     out << "return";
     if (s.expr) {

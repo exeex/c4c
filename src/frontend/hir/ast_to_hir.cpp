@@ -28,6 +28,81 @@ SourceSpan make_span(const Node* n) {
   return s;
 }
 
+std::string decode_string_node(const Node* n) {
+  if (!n || n->kind != NK_STR_LIT || !n->sval) return {};
+  std::string raw = n->sval;
+  if (raw.size() >= 2 && raw.front() == '"' && raw.back() == '"') {
+    raw = raw.substr(1, raw.size() - 2);
+  } else if (raw.size() >= 3 && raw[0] == 'L' && raw[1] == '"' && raw.back() == '"') {
+    raw = raw.substr(2, raw.size() - 3);
+  }
+  std::string out;
+  for (size_t i = 0; i < raw.size(); ++i) {
+    const unsigned char ch = static_cast<unsigned char>(raw[i]);
+    if (ch != '\\' || i + 1 >= raw.size()) {
+      out.push_back(static_cast<char>(ch));
+      continue;
+    }
+    const char esc = raw[++i];
+    switch (esc) {
+      case 'n': out.push_back('\n'); break;
+      case 'r': out.push_back('\r'); break;
+      case 't': out.push_back('\t'); break;
+      case '\\': out.push_back('\\'); break;
+      case '\'': out.push_back('\''); break;
+      case '"': out.push_back('"'); break;
+      case '0': out.push_back('\0'); break;
+      default: out.push_back(esc); break;
+    }
+  }
+  return out;
+}
+
+std::string strip_quoted_string(const char* raw) {
+  if (!raw) return {};
+  std::string s = raw;
+  if (s.size() >= 2 && s.front() == '"' && s.back() == '"') {
+    s = s.substr(1, s.size() - 2);
+  }
+  return s;
+}
+
+std::string rewrite_gcc_asm_template(std::string text) {
+  std::string out;
+  for (size_t i = 0; i < text.size(); ++i) {
+    if (text[i] != '%') {
+      out.push_back(text[i]);
+      continue;
+    }
+    if (i + 1 < text.size() && text[i + 1] == '%') {
+      out += "%%";
+      ++i;
+      continue;
+    }
+    size_t j = i + 1;
+    std::string modifier;
+    if (j < text.size() && std::isalpha(static_cast<unsigned char>(text[j]))) {
+      modifier.push_back(text[j]);
+      ++j;
+    }
+    size_t num_begin = j;
+    while (j < text.size() && std::isdigit(static_cast<unsigned char>(text[j]))) ++j;
+    if (j == num_begin) {
+      out.push_back('%');
+      continue;
+    }
+    out += "${";
+    out += text.substr(num_begin, j - num_begin);
+    if (!modifier.empty()) {
+      out += ":";
+      out += modifier;
+    }
+    out += "}";
+    i = j - 1;
+  }
+  return out;
+}
+
 std::string sanitize_symbol(std::string s) {
   for (char& ch : s) {
     const bool ok = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
@@ -2053,6 +2128,36 @@ class Lowerer {
       case NK_EXPR_STMT: {
         ExprStmt s{};
         if (n->left) s.expr = lower_expr(&ctx, n->left);
+        append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
+        return;
+      }
+      case NK_ASM: {
+        InlineAsmStmt s{};
+        s.asm_template = rewrite_gcc_asm_template(decode_string_node(n->left));
+        s.has_side_effects = true;
+        if (n->asm_num_outputs == 1 && n->children[0]) {
+          s.output = lower_expr(&ctx, n->children[0]);
+          s.output_type.spec = n->children[0]->type;
+          s.output_type.category = ValueCategory::LValue;
+        }
+        for (int i = 0; i < n->asm_num_inputs; ++i) {
+          const Node* input = n->children[n->asm_num_outputs + i];
+          if (!input) continue;
+          s.inputs.push_back(lower_expr(&ctx, input));
+        }
+        for (int i = 0; i < n->asm_n_constraints; ++i) {
+          const std::string constraint = strip_quoted_string(n->asm_constraints[i]);
+          if (!s.constraints.empty()) s.constraints += ",";
+          s.constraints += constraint;
+        }
+        for (int i = 0; i < n->asm_num_clobbers; ++i) {
+          const Node* clobber =
+              n->children[n->asm_num_outputs + n->asm_num_inputs + i];
+          std::string name = decode_string_node(clobber);
+          if (name.empty()) continue;
+          if (!s.constraints.empty()) s.constraints += ",";
+          s.constraints += "~{" + name + "}";
+        }
         append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
         return;
       }
