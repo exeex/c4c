@@ -467,9 +467,18 @@ class HirEmitter::ConstInitEmitter {
     std::string format_array_literal(const TypeSpec& elem_ts, const std::vector<std::string>& elems) const {
       std::string out = "[";
       const std::string elem_ty = llvm_alloca_ty(elem_ts);
+      // For scalar element types, zeroinitializer is invalid — use "0" or "0.0".
+      const bool elem_is_scalar = elem_ts.array_rank == 0 && elem_ts.ptr_level == 0 &&
+                                  !elem_ts.is_fn_ptr && elem_ts.base != TB_STRUCT &&
+                                  elem_ts.base != TB_UNION && elem_ts.base != TB_VA_LIST &&
+                                  !elem_ts.is_vector;
+      const std::string zero_val = elem_is_scalar
+          ? (is_float_base(elem_ts.base) ? "0.0" : "0")
+          : "zeroinitializer";
       for (size_t i = 0; i < elems.size(); ++i) {
         if (i) out += ", ";
-        out += elem_ty + " " + elems[i];
+        const std::string& val = (elems[i] == "zeroinitializer" && elem_is_scalar) ? zero_val : elems[i];
+        out += elem_ty + " " + val;
       }
       out += "]";
       return out;

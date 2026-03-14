@@ -2716,6 +2716,37 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const
       res_spec = lts;
     }
 
+    // Scalar-to-vector splatting: when one operand is scalar and the other
+    // is a vector, splat the scalar to match the vector type.
+    auto emit_splat = [&](const std::string& scalar, const TypeSpec& scalar_ts,
+                          const TypeSpec& vec_ts) -> std::string {
+      // First coerce the scalar to the vector element type
+      TypeSpec elem_ts = vec_ts;
+      elem_ts.is_vector = false;
+      elem_ts.vector_lanes = 0;
+      elem_ts.vector_bytes = 0;
+      std::string coerced = coerce(ctx, scalar, scalar_ts, elem_ts);
+      const std::string elem_ty = llvm_ty(elem_ts);
+      const std::string vec_ty = llvm_vector_ty(vec_ts);
+      const int lanes = vec_ts.vector_lanes;
+      // insertelement + shufflevector to broadcast
+      const std::string ins = fresh_tmp(ctx);
+      emit_instr(ctx, ins + " = insertelement " + vec_ty + " poison, " +
+                          elem_ty + " " + coerced + ", i64 0");
+      const std::string shuf = fresh_tmp(ctx);
+      emit_instr(ctx, shuf + " = shufflevector " + vec_ty + " " + ins +
+                          ", " + vec_ty + " poison, <" + std::to_string(lanes) +
+                          " x i32> zeroinitializer");
+      return shuf;
+    };
+    if (is_vector_value(lts) && !is_vector_value(rts) && rts.ptr_level == 0) {
+      rv = emit_splat(rv, rts, lts);
+      rts = lts;
+    } else if (is_vector_value(rts) && !is_vector_value(lts) && lts.ptr_level == 0) {
+      lv = emit_splat(lv, lts, rts);
+      lts = rts;
+    }
+
     // If result type is unannotated (void), use the operand type
     const std::string res_ty = llvm_ty(res_spec);
     const std::string op_ty  = llvm_ty(lts);
