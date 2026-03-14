@@ -256,6 +256,25 @@ void test_anti_paste_guards() {
   expect_contains(out, "int x5 = 0xFF;", "## with hex prefix body");
 }
 
+void test_multiline_funclike_invocation() {
+  fs::path dir = make_test_dir("multiline_funclike_invocation");
+  fs::path file = dir / "main.c";
+
+  write_text(file,
+             "#define ADD(a, b) ((a) + (b))\n"
+             "int x = ADD(1,\n"
+             "            2);\n"
+             "int y = ADD(\n"
+             "  10,\n"
+             "  20\n"
+             ");\n");
+
+  Preprocessor pp;
+  std::string out = pp.preprocess_file(file.string());
+  expect_contains(out, "((1) + (2))", "multi-line macro: two-line invocation");
+  expect_contains(out, "((10) + (20))", "multi-line macro: four-line invocation");
+}
+
 void test_predefined_lp64_macro() {
   fs::path dir = make_test_dir("predefined_lp64_macro");
   fs::path file = dir / "main.c";
@@ -718,6 +737,7 @@ int main() {
     test_macro_rescan_uses_following_source_tokens();
     test_token_paste_empty_operand_preserves_boundary();
     test_anti_paste_guards();
+    test_multiline_funclike_invocation();
     test_predefined_lp64_macro();
     test_line_directive();
     test_pending_function_like_macro(pending);

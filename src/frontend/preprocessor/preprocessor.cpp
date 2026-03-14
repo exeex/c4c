@@ -85,6 +85,33 @@ std::string Preprocessor::preprocess_source(const std::string& source,
   return internal;
 }
 
+namespace {
+// Check if a line has more '(' than ')' outside of string/char literals,
+// indicating a multi-line function-like macro invocation.
+bool has_unbalanced_parens(const std::string& line) {
+  int depth = 0;
+  bool in_str = false, in_chr = false;
+  for (size_t i = 0; i < line.size(); ++i) {
+    char c = line[i];
+    if (in_str) {
+      if (c == '\\' && i + 1 < line.size()) { ++i; continue; }
+      if (c == '"') in_str = false;
+      continue;
+    }
+    if (in_chr) {
+      if (c == '\\' && i + 1 < line.size()) { ++i; continue; }
+      if (c == '\'') in_chr = false;
+      continue;
+    }
+    if (c == '"') { in_str = true; continue; }
+    if (c == '\'') { in_chr = true; continue; }
+    if (c == '(') ++depth;
+    else if (c == ')') --depth;
+  }
+  return depth > 0;
+}
+}  // namespace
+
 std::string Preprocessor::preprocess_text(const std::string& source,
                                           const std::string& file,
                                           int include_depth) {
@@ -129,8 +156,38 @@ std::string Preprocessor::preprocess_text(const std::string& source,
     }
 
     if (is_active()) {
+      // Multi-line function-like macro invocation: if the line has unbalanced
+      // parentheses (more '(' than ')'), accumulate subsequent lines until
+      // balanced so that expand_line sees the complete argument list.
+      // Interleaved directives (#define, #undef, etc.) are processed in-place.
+      int extra_lines = 0;
+      while (has_unbalanced_parens(line)) {
+        std::string next;
+        if (!std::getline(in, next)) break;
+        ++line_no;
+        ++extra_lines;
+        // Update __LINE__ for any directives encountered mid-accumulation.
+        int vl = line_no + virtual_line_offset_;
+        macros_["__LINE__"] = MacroDef{"__LINE__", false, false, {}, std::to_string(vl)};
+        // Check if the next line is a directive.
+        size_t ni = 0;
+        while (ni < next.size() && (next[ni] == ' ' || next[ni] == '\t')) ++ni;
+        if (ni < next.size() && next[ni] == '#') {
+          // Process directive in-place (e.g., #define, #undef between args).
+          process_directive(next.substr(ni + 1), out, file, line_no, include_depth);
+        } else {
+          // Expand the line with current macro state before accumulating,
+          // so that directives processed in-between take correct effect.
+          line.push_back(' ');
+          line += expand_line(next);
+        }
+      }
       out += expand_line(line);
       out.push_back('\n');
+      // Emit blank lines to preserve line count for accumulated lines.
+      for (int el = 0; el < extra_lines; ++el) {
+        out.push_back('\n');
+      }
     } else {
       // Preserve line count in inactive conditional branches.
       out.push_back('\n');

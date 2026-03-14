@@ -91,7 +91,7 @@ All work items done:
 ### Phase 5 remainder
 - [x] `_Pragma("...")` operator ← NEW
 - [x] Anti-paste guard behavior ← NEW
-- Multi-line function-like invocation accumulation
+- [x] Multi-line function-like invocation accumulation ← NEW
 
 ### Phase 6 remainder
 - Target-family macro sets (full coverage)
@@ -105,7 +105,6 @@ All work items done:
 - **scal_to_vec2**: scalar-to-vector coercion — requires full vector type support (__attribute__((vector_size(...))))
 
 ## Next Suggested Work
-- Multi-line function-like invocation accumulation (Phase 5)
 - `#pragma pack(...)` real support (Phase 3, low priority — tests pass without it)
 - Target-family macro sets / config toggles (Phase 6)
 - More POSIX headers / INT64_C macro helpers (Phase 7)
