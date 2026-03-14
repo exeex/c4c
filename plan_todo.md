@@ -116,6 +116,7 @@ All work items done:
 - [x] Vector init list lowering: added vector path to `consume_from_list` in ast_to_hir.cpp
 - [x] Scalar-to-vector binary op result type: update `res_spec` after splatting in hir_emitter.cpp
 - [x] `__attribute__((packed))` on struct types: recognized in parse_attributes, sets pack_align=1 ← NEW
+- [x] `__attribute__((aligned(N)))` on struct types: was parsed but never applied to layout ← NEW
 
 ## Next Suggested Work
 - `#pragma weak` (Phase 3, low priority)
