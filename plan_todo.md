@@ -3,9 +3,9 @@
 Last updated: 2026-03-14
 
 ## Current Results
-- Tests: 1773/1773 passed (100%), 0 failed
-- Improvement: +9 tests across sessions (from 1764)
-- Previous: 1772/1773 (99.9%)
+- Tests: 1774/1774 passed (100%), 0 failed
+- Improvement: +10 tests across sessions (from 1764)
+- Previous: 1773/1773 (100%)
 
 ## Completed: Phase 0 — Structure Refactor
 All 6 slices done.
@@ -115,8 +115,8 @@ All work items done:
 - [x] `__attribute__((vector_size(N)))` parsing: fixed `skip_attributes()` in `parse_stmt()` and `parse_global_decl_or_function()` discarding type-affecting attributes before parse_base_type could capture them
 - [x] Vector init list lowering: added vector path to `consume_from_list` in ast_to_hir.cpp
 - [x] Scalar-to-vector binary op result type: update `res_spec` after splatting in hir_emitter.cpp
+- [x] `__attribute__((packed))` on struct types: recognized in parse_attributes, sets pack_align=1 ← NEW
 
 ## Next Suggested Work
 - `#pragma weak` (Phase 3, low priority)
 - `__VA_OPT__` support (C2x feature, not yet in plan)
-- `__attribute__((packed))` on struct types (complement to #pragma pack)
