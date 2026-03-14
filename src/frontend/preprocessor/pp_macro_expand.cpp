@@ -7,11 +7,8 @@ namespace tinyc2ll::frontend_cxx {
 
 namespace {
 
-bool is_token_boundary_char(char c) {
-  return std::isalnum(static_cast<unsigned char>(c)) || c == '_' ||
-         c == '.' || c == '+' || c == '-' || c == '*' || c == '/' ||
-         c == '%' || c == '&' || c == '|' || c == '^' || c == '!' ||
-         c == '=' || c == '<' || c == '>' || c == '#';
+bool is_ident_or_num_char(char c) {
+  return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '.';
 }
 
 bool needs_token_separator(char left, char right) {
@@ -19,19 +16,44 @@ bool needs_token_separator(char left, char right) {
       std::isspace(static_cast<unsigned char>(right))) {
     return false;
   }
-  if (!is_token_boundary_char(left) || !is_token_boundary_char(right)) {
-    return false;
+  // Two identifier/number chars would merge into one token
+  if (is_ident_or_num_char(left) && is_ident_or_num_char(right)) {
+    return true;
   }
-  return true;
+  // Same punctuation char could form digraph: ++ -- << >> && || == ## etc.
+  if (left == right) {
+    switch (left) {
+      case '+': case '-': case '<': case '>': case '&': case '|':
+      case '=': case '#':
+        return true;
+      default:
+        break;
+    }
+  }
+  // Compound assignment/comparison: != <= >= *= /= %= ^= &= |= += -= <<= >>= ->
+  if (right == '=') {
+    switch (left) {
+      case '!': case '<': case '>': case '=': case '*': case '/':
+      case '%': case '^': case '&': case '|': case '+': case '-':
+        return true;
+      default:
+        break;
+    }
+  }
+  // -> operator
+  if (left == '-' && right == '>') return true;
+  // ## in macro body
+  if (left == '#' && right == '#') return true;
+  return false;
 }
+
+}  // namespace
 
 void maybe_insert_token_separator(std::string& out, char next) {
   if (!out.empty() && needs_token_separator(out.back(), next)) {
     out.push_back(' ');
   }
 }
-
-}  // namespace
 
 std::vector<std::string> collect_funclike_args(const std::string& line, size_t* pos) {
   std::vector<std::string> args;
@@ -196,9 +218,25 @@ std::string substitute_funclike_body(const std::string& body,
         std::string left = trim_copy(get_raw(tok));
         k += 2;
         while (k < body.size() && (body[k] == ' ' || body[k] == '\t')) ++k;
-        if (k < body.size() && is_ident_start(body[k])) {
-          size_t m = k + 1;
-          while (m < body.size() && is_ident_continue(body[m])) ++m;
+        if (k < body.size() && !std::isspace(static_cast<unsigned char>(body[k]))) {
+          size_t m = k;
+          if (is_ident_start(body[m])) {
+            ++m;
+            while (m < body.size() && is_ident_continue(body[m])) ++m;
+          } else if (std::isdigit(static_cast<unsigned char>(body[m])) || body[m] == '.') {
+            // PP-number: digits, dots, identifiers, and +/- after e/E/p/P
+            ++m;
+            while (m < body.size()) {
+              char mc = body[m];
+              if (std::isalnum(static_cast<unsigned char>(mc)) || mc == '_' || mc == '.') { ++m; continue; }
+              if ((mc == '+' || mc == '-') && m > k &&
+                  (body[m-1] == 'e' || body[m-1] == 'E' || body[m-1] == 'p' || body[m-1] == 'P')) { ++m; continue; }
+              break;
+            }
+          } else {
+            // Single punctuation character
+            ++m;
+          }
           std::string rtok = body.substr(k, m - k);
           std::string right = trim_copy(get_raw(rtok));
           bool pasted_empty_operand = left.empty() || right.empty();
@@ -211,14 +249,32 @@ std::string substitute_funclike_body(const std::string& body,
           }
           i = m;
         } else {
-          if (k < body.size()) { out.push_back(body[k]); i = k + 1; }
-          else i = k;
+          out += left;
+          i = k;
         }
         continue;
       }
 
       // Normal parameter substitution (use pre-scan expanded arg)
-      out += get_exp(tok);
+      {
+        bool is_param = (find_param_idx(params, tok) >= 0) ||
+                        (variadic && is_va_ident(tok));
+        std::string exp = get_exp(tok);
+        if (is_param) {
+          // Anti-paste: check boundary between out and expanded arg
+          if (!exp.empty() && !out.empty()) {
+            maybe_insert_token_separator(out, exp.front());
+          }
+          out += exp;
+          // Anti-paste: check boundary between expanded arg and next body char
+          if (!out.empty() && j < body.size() &&
+              !std::isspace(static_cast<unsigned char>(body[j]))) {
+            maybe_insert_token_separator(out, body[j]);
+          }
+        } else {
+          out += exp;
+        }
+      }
       i = j;
       continue;
     }
@@ -228,9 +284,23 @@ std::string substitute_funclike_body(const std::string& body,
       while (!out.empty() && (out.back() == ' ' || out.back() == '\t')) out.pop_back();
       i += 2;
       while (i < body.size() && (body[i] == ' ' || body[i] == '\t')) ++i;
-      if (i < body.size() && is_ident_start(body[i])) {
-        size_t j = i + 1;
-        while (j < body.size() && is_ident_continue(body[j])) ++j;
+      if (i < body.size() && !std::isspace(static_cast<unsigned char>(body[i]))) {
+        size_t j = i;
+        if (is_ident_start(body[j])) {
+          ++j;
+          while (j < body.size() && is_ident_continue(body[j])) ++j;
+        } else if (std::isdigit(static_cast<unsigned char>(body[j])) || body[j] == '.') {
+          ++j;
+          while (j < body.size()) {
+            char mc = body[j];
+            if (std::isalnum(static_cast<unsigned char>(mc)) || mc == '_' || mc == '.') { ++j; continue; }
+            if ((mc == '+' || mc == '-') && j > i &&
+                (body[j-1] == 'e' || body[j-1] == 'E' || body[j-1] == 'p' || body[j-1] == 'P')) { ++j; continue; }
+            break;
+          }
+        } else {
+          ++j;  // Single punctuation character
+        }
         std::string rtok = body.substr(i, j - i);
         std::string right = trim_copy(get_raw(rtok));
         out += right;

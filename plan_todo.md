@@ -90,7 +90,7 @@ All work items done:
 
 ### Phase 5 remainder
 - [x] `_Pragma("...")` operator ← NEW
-- Anti-paste guard behavior
+- [x] Anti-paste guard behavior ← NEW
 - Multi-line function-like invocation accumulation
 
 ### Phase 6 remainder
@@ -105,7 +105,6 @@ All work items done:
 - **scal_to_vec2**: scalar-to-vector coercion — requires full vector type support (__attribute__((vector_size(...))))
 
 ## Next Suggested Work
-- Anti-paste guard behavior (Phase 5)
 - Multi-line function-like invocation accumulation (Phase 5)
 - `#pragma pack(...)` real support (Phase 3, low priority — tests pass without it)
 - Target-family macro sets / config toggles (Phase 6)

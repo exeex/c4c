@@ -606,7 +606,16 @@ std::string Preprocessor::expand_text(const std::string& text,
               k = p;
             }
 
+            // Anti-paste: guard boundary between previous output and expansion
+            if (!expanded.empty() && !out.empty()) {
+              maybe_insert_token_separator(out, expanded.front());
+            }
             out += expanded;
+            // Anti-paste: guard boundary between expansion and next source char
+            if (!out.empty() && k < text.size() &&
+                !std::isspace(static_cast<unsigned char>(text[k]))) {
+              maybe_insert_token_separator(out, text[k]);
+            }
             i = k;
           } else {
             // No '(' — not a macro invocation; leave as-is.
@@ -628,7 +637,16 @@ std::string Preprocessor::expand_text(const std::string& text,
           } else {
             std::unordered_set<std::string> new_disabled = disabled;
             new_disabled.insert(ident);
-            out += expand_text(def.body, std::move(new_disabled));
+            std::string expanded_obj = expand_text(def.body, std::move(new_disabled));
+            // Anti-paste: guard boundaries
+            if (!expanded_obj.empty() && !out.empty()) {
+              maybe_insert_token_separator(out, expanded_obj.front());
+            }
+            out += expanded_obj;
+            if (!out.empty() && j < text.size() &&
+                !std::isspace(static_cast<unsigned char>(text[j]))) {
+              maybe_insert_token_separator(out, text[j]);
+            }
             i = j;
           }
         }

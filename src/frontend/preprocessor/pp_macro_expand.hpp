@@ -33,6 +33,10 @@ std::string substitute_funclike_body(const std::string& body,
 // Split a directive line (text after '#') into (keyword, rest).
 std::pair<std::string, std::string> split_directive(const std::string& line);
 
+// Anti-paste guard: insert a space into `out` if the last character of `out` and
+// `next` would accidentally form a single token after macro expansion.
+void maybe_insert_token_separator(std::string& out, char next);
+
 }  // namespace tinyc2ll::frontend_cxx
 
 #endif

@@ -225,6 +225,37 @@ void test_token_paste_empty_operand_preserves_boundary() {
   expect_contains(out, "int x = 60 + +3;", "empty-operand token paste should not accidentally form ++");
 }
 
+void test_anti_paste_guards() {
+  fs::path dir = make_test_dir("anti_paste_guards");
+  fs::path file = dir / "main.c";
+
+  write_text(file,
+             // 1. Parameter substitution: expanded arg ending with + before body +
+             "#define FOO(a) a+\n"
+             "int x1 = FOO(x+)3;\n"
+             // 2. ## with number right operand
+             "#define PASTE_NUM(a) a ## 1\n"
+             "int PASTE_NUM(var);\n"
+             // 3. ## with punctuation right operand
+             "#define PASTE_EQ(a) a ## =\n"
+             "int PASTE_EQ(x);\n"
+             // 4. Anti-paste at macro expansion boundary with following text
+             "#define BAR(a, b) a b\n"
+             "int x4 = BAR(1, +)+3;\n"
+             // 5. ## with 0x prefix in body pasted with identifier arg
+             "#define HEX(a) 0x ## a\n"
+             "int x5 = HEX(FF);\n"
+             );
+
+  Preprocessor pp;
+  std::string out = pp.preprocess_file(file.string());
+  expect_contains(out, "x+ +3", "anti-paste: FOO(x+)3 should not form x++");
+  expect_contains(out, "int var1;", "## with number right operand");
+  expect_contains(out, "int x=;", "## with punctuation right operand");
+  expect_contains(out, "1 + +3", "anti-paste: BAR(1, +)+3 should not form ++");
+  expect_contains(out, "int x5 = 0xFF;", "## with hex prefix body");
+}
+
 void test_predefined_lp64_macro() {
   fs::path dir = make_test_dir("predefined_lp64_macro");
   fs::path file = dir / "main.c";
@@ -686,6 +717,7 @@ int main() {
     test_error_warning_diagnostics();
     test_macro_rescan_uses_following_source_tokens();
     test_token_paste_empty_operand_preserves_boundary();
+    test_anti_paste_guards();
     test_predefined_lp64_macro();
     test_line_directive();
     test_pending_function_like_macro(pending);
