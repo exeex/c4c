@@ -2779,9 +2779,11 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const
     if (is_vector_value(lts) && !is_vector_value(rts) && rts.ptr_level == 0) {
       rv = emit_splat(rv, rts, lts);
       rts = lts;
+      res_spec = lts;  // update result type to vector
     } else if (is_vector_value(rts) && !is_vector_value(lts) && lts.ptr_level == 0) {
       lv = emit_splat(lv, lts, rts);
       lts = rts;
+      res_spec = rts;  // update result type to vector
     }
 
     // If result type is unannotated (void), use the operand type

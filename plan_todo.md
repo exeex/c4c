@@ -3,9 +3,9 @@
 Last updated: 2026-03-14
 
 ## Current Results
-- Tests: 1772/1773 passed (99.9%), 1 failed
-- Improvement: +8 tests across sessions (from 1764)
-- Previous: 1770/1773 (99.8%)
+- Tests: 1773/1773 passed (100%), 0 failed
+- Improvement: +9 tests across sessions (from 1764)
+- Previous: 1772/1773 (99.9%)
 
 ## Completed: Phase 0 — Structure Refactor
 All 6 slices done.
@@ -108,10 +108,14 @@ All work items done:
 - [x] `<time.h>` builtin header (time_t, clock_t, struct tm, time, clock, etc.) ← NEW
 - [x] `__has_include` now checks builtin headers (was missing) ← NEW
 
-## Remaining 1 Failure (categorized)
-- **scal_to_vec2**: scalar-to-vector coercion — requires full vector type support (__attribute__((vector_size(...))))
+## Remaining Failures
+- None! All 1773 tests pass.
+
+## Non-preprocessor Fixes (this session)
+- [x] `__attribute__((vector_size(N)))` parsing: fixed `skip_attributes()` in `parse_stmt()` and `parse_global_decl_or_function()` discarding type-affecting attributes before parse_base_type could capture them
+- [x] Vector init list lowering: added vector path to `consume_from_list` in ast_to_hir.cpp
+- [x] Scalar-to-vector binary op result type: update `res_spec` after splatting in hir_emitter.cpp
 
 ## Next Suggested Work
 - `#pragma pack(...)` real support (Phase 3, low priority — tests pass without it)
 - Config toggles: __OPTIMIZE__, __PIC__, __PIE__ (Phase 6 — require CLI flag wiring)
-- `__attribute__((vector_size(...)))` support (would fix scal_to_vec2, last failing test)

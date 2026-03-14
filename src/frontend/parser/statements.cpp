@@ -23,7 +23,17 @@ Node* Parser::parse_block() {
 
 Node* Parser::parse_stmt() {
     int ln = cur().line;
-    skip_attributes();
+
+    // Skip leading __attribute__ UNLESS a real type keyword follows, in which
+    // case we must let parse_local_decl / parse_base_type capture the attribute
+    // (e.g. __attribute__((vector_size(N))) char c0).
+    if (check(TokenKind::KwAttribute)) {
+        int save = pos_;
+        skip_attributes();
+        if (is_type_start()) {
+            pos_ = save;  // restore: let parse_local_decl handle it
+        }
+    }
 
     switch (cur().kind) {
         case TokenKind::LBrace:

@@ -2110,6 +2110,25 @@ class Lowerer {
                   return;
                 }
 
+                if (is_vector_ty(cur_ts)) {
+                  TypeSpec elem_ts = vector_element_type(cur_ts);
+                  long long next_idx = 0;
+                  const long long bound = cur_ts.vector_lanes > 0 ? cur_ts.vector_lanes : 0;
+                  while (cursor < list_node->n_children && next_idx < bound) {
+                    const Node* item = list_node->children[cursor];
+                    if (!item) { ++cursor; ++next_idx; continue; }
+                    TypeSpec idx_ts{}; idx_ts.base = TB_INT;
+                    ExprId idx_id = append_expr(n, IntLiteral{next_idx, false}, idx_ts);
+                    IndexExpr ie{}; ie.base = cur_lhs; ie.index = idx_id;
+                    ExprId ie_id = append_expr(n, ie, elem_ts, ValueCategory::LValue);
+                    const Node* val_node = init_item_value_node(item);
+                    append_assign(ie_id, elem_ts, val_node);
+                    ++cursor;
+                    ++next_idx;
+                  }
+                  return;
+                }
+
                 if (cur_ts.array_rank > 0) {
                   if (cursor < list_node->n_children) {
                     const Node* item0 = list_node->children[cursor];

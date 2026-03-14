@@ -166,7 +166,8 @@ Node* Parser::parse_top_level() {
     int ln = cur().line;
     if (at_end()) return nullptr;
 
-    skip_attributes();
+    // Don't skip_attributes() here — type-affecting attributes like
+    // __attribute__((vector_size(N))) must flow to parse_base_type().
     if (at_end()) return nullptr;
 
     // Handle top-level asm
@@ -211,7 +212,8 @@ Node* Parser::parse_top_level() {
         else if (match(TokenKind::KwNoreturn))  {}
         else break;
     }
-    skip_attributes();
+    // Don't skip_attributes() here — let parse_base_type() handle them so
+    // type-affecting attributes like vector_size are captured.
 
     TypeSpec base_ts{};
     if (!is_type_start()) {

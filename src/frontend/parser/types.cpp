@@ -6,6 +6,22 @@
 #include <unordered_set>
 
 namespace tinyc2ll::frontend_cxx {
+
+// Compute vector_lanes from vector_bytes and base type.
+// Called after the final base type is resolved.
+static void finalize_vector_type(TypeSpec& ts) {
+    if (!ts.is_vector || ts.vector_bytes <= 0) return;
+    long long elem_sz = 4;
+    switch (ts.base) {
+        case TB_CHAR: case TB_SCHAR: case TB_UCHAR: elem_sz = 1; break;
+        case TB_SHORT: case TB_USHORT: elem_sz = 2; break;
+        case TB_FLOAT: case TB_INT: case TB_UINT: elem_sz = 4; break;
+        case TB_DOUBLE: case TB_LONG: case TB_ULONG:
+        case TB_LONGLONG: case TB_ULONGLONG: elem_sz = 8; break;
+        default: elem_sz = 4; break;
+    }
+    ts.vector_lanes = ts.vector_bytes / elem_sz;
+}
 bool Parser::is_typedef_name(const std::string& s) const {
     return typedefs_.count(s) > 0;
 }
@@ -67,34 +83,9 @@ void Parser::parse_attributes(TypeSpec* ts) {
         if (!ts || bytes <= 0) return;
         ts->is_vector = true;
         ts->vector_bytes = bytes;
-        long long elem_sz = 4;
-        switch (ts->base) {
-            case TB_CHAR:
-            case TB_SCHAR:
-            case TB_UCHAR:
-                elem_sz = 1;
-                break;
-            case TB_SHORT:
-            case TB_USHORT:
-                elem_sz = 2;
-                break;
-            case TB_FLOAT:
-            case TB_INT:
-            case TB_UINT:
-                elem_sz = 4;
-                break;
-            case TB_DOUBLE:
-            case TB_LONG:
-            case TB_ULONG:
-            case TB_LONGLONG:
-            case TB_ULONGLONG:
-                elem_sz = 8;
-                break;
-            default:
-                elem_sz = 4;
-                break;
-        }
-        ts->vector_lanes = (bytes > 0 && elem_sz > 0) ? (bytes / elem_sz) : 0;
+        // Leave vector_lanes=0; finalize_vector() computes it once the
+        // final base type is known.
+        ts->vector_lanes = 0;
     };
 
     while (check(TokenKind::KwAttribute)) {
@@ -154,6 +145,9 @@ void Parser::parse_attributes(TypeSpec* ts) {
 
     while (check(TokenKind::KwExtension)) consume();
     while (check(TokenKind::KwNoreturn)) consume();
+
+    // If vector_size was set and the base type is already known, compute lanes.
+    if (ts) finalize_vector_type(*ts);
 }
 
 void Parser::skip_asm() {
@@ -377,22 +371,8 @@ TypeSpec Parser::parse_base_type() {
     }
 
     // If base was set directly (KwBuiltin, KwInt128, etc.), skip combined-specifier resolution.
-    auto finalize_vector = [&](TypeSpec& out_ts) {
-        if (!out_ts.is_vector || out_ts.vector_lanes > 0 || out_ts.vector_bytes <= 0) return;
-        long long elem_sz = 4;
-        switch (out_ts.base) {
-            case TB_CHAR: case TB_SCHAR: case TB_UCHAR: elem_sz = 1; break;
-            case TB_SHORT: case TB_USHORT: elem_sz = 2; break;
-            case TB_FLOAT: case TB_INT: case TB_UINT: elem_sz = 4; break;
-            case TB_DOUBLE: case TB_LONG: case TB_ULONG:
-            case TB_LONGLONG: case TB_ULONGLONG: elem_sz = 8; break;
-            default: elem_sz = 4; break;
-        }
-        out_ts.vector_lanes = out_ts.vector_bytes / elem_sz;
-    };
-
     if (base_set) {
-        finalize_vector(ts);
+        finalize_vector_type(ts);
         return ts;
     }
 
@@ -444,7 +424,7 @@ TypeSpec Parser::parse_base_type() {
                               : (has_unsigned ? TB_UINT : TB_INT);
     }
 
-    finalize_vector(ts);
+    finalize_vector_type(ts);
     return ts;
 }
 
