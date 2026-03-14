@@ -3,9 +3,9 @@
 Last updated: 2026-03-14
 
 ## Current Results
-- Tests: 1764/1773 passed (99.5%), 9 failed
-- Improvement: +5 tests this session (from 1759)
-- Previous session: 1753/1770 (99.0%)
+- Tests: 1768/1773 passed (99.7%), 5 failed
+- Improvement: +4 tests this session (from 1764)
+- Previous session: 1764/1773 (99.5%)
 
 ## Completed: Phase 0 — Structure Refactor
 All 6 slices done.
@@ -32,13 +32,15 @@ All work items done:
 - [x] `__has_builtin` table (common GCC/Clang builtins)
 - [x] `__has_attribute` table (common GNU attributes)
 - [x] `__has_feature` / `__has_extension` table (C features)
+- [x] Wide/prefixed char literals (`L'\400'`) in `#if` expressions ← NEW
+- [x] Multi-digit octal and hex escapes in `#if` char literals ← NEW
 
 ## Completed: Phase 5 partial — Macro Expansion
 - [x] Variadic macro __VA_ARGS__ spacing fix
 - [x] GNU named variadic macros (`args...` syntax)
-- [x] PP-number suffix protection (float suffixes F/L not expanded as macros) ← NEW
+- [x] PP-number suffix protection (float suffixes F/L not expanded as macros)
 
-## Completed: Phase 6 partial — Predefined Macros and Target Configuration ← NEW
+## Completed: Phase 6 partial — Predefined Macros and Target Configuration
 - [x] GCC compatibility macros (__GNUC__, __GNUC_MINOR__, __VERSION__, __STDC_HOSTED__)
 - [x] Target architecture macros (__aarch64__, __x86_64__, __i386__, __riscv)
 - [x] OS macros (__linux__, __unix__, __APPLE__, _WIN32, __ELF__)
@@ -57,16 +59,17 @@ All work items done:
 - [x] `<setjmp.h>` (jmp_buf, setjmp, longjmp)
 - [x] `<ctype.h>` (isalpha, toupper, etc.)
 - [x] `<math.h>` (sqrt, sin, cos, etc.)
-- [x] `<fcntl.h>` (O_RDONLY, open, etc.) ← NEW
-- [x] `<sys/mman.h>` (mmap, PROT_READ, MAP_PRIVATE, etc.) ← NEW
-- [x] `<sys/types.h>` (size_t, pid_t, off_t, etc.) ← NEW
-- [x] `<sys/stat.h>` (chmod, stat, mode macros) ← NEW
-- [x] `<unistd.h>` (read, write, close, fork, etc.) ← NEW
+- [x] `<fcntl.h>` (O_RDONLY, open, etc.)
+- [x] `<sys/mman.h>` (mmap, PROT_READ, MAP_PRIVATE, etc.)
+- [x] `<sys/types.h>` (size_t, pid_t, off_t, etc.)
+- [x] `<sys/stat.h>` (chmod, stat, mode macros)
+- [x] `<unistd.h>` (read, write, close, fork, etc.)
 
-## Non-preprocessor Fixes This Session ← NEW
+## Non-preprocessor Fixes (cumulative)
 - [x] Enum scope leak: inner block enum constants no longer leak to outer scope
-  - Fixed in both parser (statements.cpp) and HIR lowerer (ast_to_hir.cpp)
-  - Save/restore `enum_consts_` around block boundaries
+- [x] `__typeof_unqual__` / `typeof_unqual` keyword support ← NEW
+- [x] Statement expressions in ternary branches: side effects now conditional ← NEW
+- [x] Ptr-to-array global init type/initializer (partial: types correct, deref still broken) ← NEW
 
 ## Not Yet Started
 ### Phase 2 remainder
@@ -91,16 +94,13 @@ All work items done:
 - More POSIX headers as needed
 - INT64_C, UINT32_C macro helpers
 
-## Remaining 9 Failures (categorized)
-- **positive_sema (2)**: typeof_unqual_expr, typeof_stmt_expr_combo — sema issues
+## Remaining 5 Failures (categorized)
 - **comp_goto_1, pr70460**: computed goto / label differences — pre-existing codegen issue
 - **scal_to_vec2**: scalar-to-vector coercion — pre-existing codegen issue
-- **widechar_1**: wide char — pre-existing codegen issue
-- **strlen_4**: global init for ptr-to-array type — codegen bug
+- **strlen_4**: ptr-to-array global init types now correct, but ptr-to-array deref codegen still wrong
 - **strlen_5**: runtime mismatch (relies on UB across adjacent subarrays)
-- **20001203_2**: segfault (complex nested unions) — codegen bug
 
 ## Next Suggested Work
 - `#include_next` (needed for system header chaining)
+- Fix ptr-to-array deref codegen (would fix strlen_4)
 - More Phase 6 predefined macros if needed
-- Investigate strlen_4 ptr-to-array global init codegen

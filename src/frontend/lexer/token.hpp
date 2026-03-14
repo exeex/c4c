@@ -66,6 +66,7 @@ enum class TokenKind {
 
   // GCC extension keywords
   KwTypeof,
+  KwTypeofUnqual,
   KwAsm,
   KwAttribute,   // __attribute__
   KwExtension,   // __extension__

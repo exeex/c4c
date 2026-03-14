@@ -339,6 +339,7 @@ bool is_type_kw(TokenKind k) {
         case TokenKind::KwBuiltin:   // __builtin_va_list
         case TokenKind::KwAutoType:  // __auto_type
         case TokenKind::KwTypeof:
+        case TokenKind::KwTypeofUnqual:
         case TokenKind::KwComplex:
             return true;
         default:

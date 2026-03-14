@@ -462,6 +462,22 @@ class Lowerer {
   BlockId next_block_id() { return module_->alloc_block_id(); }
   ExprId next_expr_id() { return module_->alloc_expr_id(); }
 
+  static bool contains_stmt_expr(const Node* n) {
+    if (!n) return false;
+    if (n->kind == NK_STMT_EXPR) return true;
+    if (contains_stmt_expr(n->left)) return true;
+    if (contains_stmt_expr(n->right)) return true;
+    if (contains_stmt_expr(n->cond)) return true;
+    if (contains_stmt_expr(n->then_)) return true;
+    if (contains_stmt_expr(n->else_)) return true;
+    if (contains_stmt_expr(n->body)) return true;
+    if (contains_stmt_expr(n->init)) return true;
+    if (contains_stmt_expr(n->update)) return true;
+    for (int i = 0; i < n->n_children; ++i)
+      if (contains_stmt_expr(n->children[i])) return true;
+    return false;
+  }
+
   QualType qtype_from(const TypeSpec& t, ValueCategory c = ValueCategory::RValue) {
     QualType qt{};
     qt.spec = t;
@@ -2762,6 +2778,72 @@ class Lowerer {
           if (auto cv = eval_int_const_expr(cond, enum_consts_)) {
             return lower_expr(ctx, (*cv != 0) ? n->then_ : n->else_);
           }
+        }
+        // If either branch contains a statement expression, lower to
+        // if/else with a temp variable so side effects are conditional.
+        if (ctx && (contains_stmt_expr(n->then_) || contains_stmt_expr(n->else_))) {
+          TypeSpec result_ts = n->type;
+          if (result_ts.base == TB_VOID) result_ts.base = TB_INT;
+
+          // Create temp local
+          LocalDecl tmp{};
+          tmp.id = next_local_id();
+          tmp.name = "__tern_tmp";
+          tmp.type = qtype_from(result_ts, ValueCategory::LValue);
+          TypeSpec zero_ts{}; zero_ts.base = TB_INT;
+          tmp.init = append_expr(n, IntLiteral{0, false}, zero_ts);
+          const LocalId tmp_lid = tmp.id;
+          ctx->locals[tmp.name] = tmp.id;
+          ctx->local_types[tmp.id.value] = result_ts;
+          append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
+
+          // Lower condition
+          ExprId cond_expr = lower_expr(ctx, n->cond ? n->cond : n->left);
+
+          // Create then/else/after blocks
+          const BlockId then_b = create_block(*ctx);
+          const BlockId else_b = create_block(*ctx);
+          const BlockId after_b = create_block(*ctx);
+          IfStmt ifs{};
+          ifs.cond = cond_expr;
+          ifs.then_block = then_b;
+          ifs.else_block = else_b;
+          ifs.after_block = after_b;
+          append_stmt(*ctx, Stmt{StmtPayload{ifs}, make_span(n)});
+          ensure_block(*ctx, ctx->current_block).has_explicit_terminator = true;
+
+          auto emit_branch = [&](BlockId blk, const Node* branch) {
+            ctx->current_block = blk;
+            ExprId val = lower_expr(ctx, branch);
+            // tmp = val
+            DeclRef lhs_ref{};
+            lhs_ref.name = "__tern_tmp";
+            lhs_ref.local = tmp_lid;
+            ExprId lhs_id = append_expr(n, lhs_ref, result_ts, ValueCategory::LValue);
+            AssignExpr assign{};
+            assign.op = AssignOp::Set;
+            assign.lhs = lhs_id;
+            assign.rhs = val;
+            ExprId assign_id = append_expr(n, assign, result_ts);
+            append_stmt(*ctx, Stmt{StmtPayload{ExprStmt{assign_id}}, make_span(n)});
+            if (!ensure_block(*ctx, ctx->current_block).has_explicit_terminator) {
+              GotoStmt j{};
+              j.target.resolved_block = after_b;
+              append_stmt(*ctx, Stmt{StmtPayload{j}, make_span(n)});
+              ensure_block(*ctx, ctx->current_block).has_explicit_terminator = true;
+            }
+          };
+
+          emit_branch(then_b, n->then_);
+          emit_branch(else_b, n->else_);
+
+          ctx->current_block = after_b;
+
+          // Return DeclRef to tmp
+          DeclRef ref{};
+          ref.name = "__tern_tmp";
+          ref.local = tmp_lid;
+          return append_expr(n, ref, result_ts, ValueCategory::LValue);
         }
         TernaryExpr t{};
         t.cond = lower_expr(ctx, n->cond ? n->cond : n->left);

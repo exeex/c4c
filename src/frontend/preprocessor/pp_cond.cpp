@@ -529,6 +529,11 @@ ExprValue IfExprParser::parse_primary() {
       }
       return make_signed(is_defined_name_(name) ? 1 : 0);
     }
+    // L'x', u'x', U'x' — prefixed character literals
+    if ((ident == "L" || ident == "u" || ident == "U") &&
+        pos_ < text_.size() && text_[pos_] == '\'') {
+      return parse_char_literal();
+    }
     return make_signed(0);
   }
 
@@ -565,7 +570,28 @@ ExprValue IfExprParser::parse_char_literal() {
       case 't': ch = '\t'; break;
       case '\\': ch = '\\'; break;
       case '\'': ch = '\''; break;
-      case '0': ch = '\0'; break;
+      case '0': case '1': case '2': case '3':
+      case '4': case '5': case '6': case '7': {
+        // Octal escape: up to 3 digits
+        ch = static_cast<unsigned int>(e - '0');
+        for (int d = 0; d < 2 && pos_ < text_.size() &&
+             text_[pos_] >= '0' && text_[pos_] <= '7'; ++d)
+          ch = ch * 8 + static_cast<unsigned int>(text_[pos_++] - '0');
+        break;
+      }
+      case 'x': {
+        // Hex escape
+        ch = 0;
+        while (pos_ < text_.size() &&
+               std::isxdigit(static_cast<unsigned char>(text_[pos_]))) {
+          char hc = text_[pos_++];
+          unsigned int hv = (hc >= '0' && hc <= '9') ? (hc - '0') :
+                            (hc >= 'a' && hc <= 'f') ? (hc - 'a' + 10) :
+                            (hc - 'A' + 10);
+          ch = ch * 16 + hv;
+        }
+        break;
+      }
       default: ch = static_cast<unsigned char>(e); break;
     }
   } else {

@@ -60,6 +60,7 @@ const char *token_kind_name(TokenKind kind) {
 
     // GCC extensions
     case TokenKind::KwTypeof:       return "KW_typeof";
+    case TokenKind::KwTypeofUnqual: return "KW_typeof_unqual";
     case TokenKind::KwAsm:          return "KW_asm";
     case TokenKind::KwAttribute:    return "KW___attribute__";
     case TokenKind::KwExtension:    return "KW___extension__";
@@ -214,6 +215,8 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions) {
   // GCC extensions
   if (s == "__typeof__" || s == "__typeof")     return TokenKind::KwTypeof;
   if (gnu_extensions && s == "typeof")          return TokenKind::KwTypeof;
+  if (s == "__typeof_unqual__" || s == "typeof_unqual")
+                                                return TokenKind::KwTypeofUnqual;
   if (s == "__asm__" || s == "__asm")           return TokenKind::KwAsm;
   if (gnu_extensions && s == "asm")             return TokenKind::KwAsm;
   if (s == "__attribute__" || s == "__attribute")

@@ -254,14 +254,20 @@ TypeSpec Parser::parse_base_type() {
             case TokenKind::KwUnion: has_union = true; consume(); done = true; break;
             case TokenKind::KwEnum:  has_enum  = true; consume(); done = true; break;
 
+            case TokenKind::KwTypeofUnqual:
             case TokenKind::KwTypeof: {
                 // typeof(type) or typeof(expr)
-                consume();  // consume typeof
+                bool strip_qual = (cur().kind == TokenKind::KwTypeofUnqual);
+                consume();  // consume typeof / typeof_unqual
                 expect(TokenKind::LParen);  // consume (
                 if (is_type_start()) {
                     // typeof(type): parse type directly, merging outer qualifiers
                     bool save_c = ts.is_const, save_v = ts.is_volatile;
                     ts = parse_type_name();
+                    if (strip_qual) {
+                        ts.is_const = false;
+                        ts.is_volatile = false;
+                    }
                     ts.is_const   |= save_c;
                     ts.is_volatile |= save_v;
                     expect(TokenKind::RParen);
@@ -274,6 +280,10 @@ TypeSpec Parser::parse_base_type() {
                         ts = vit->second;
                     } else {
                         ts.base = TB_INT;  // enum constants and unknowns → int
+                    }
+                    if (strip_qual) {
+                        ts.is_const = false;
+                        ts.is_volatile = false;
                     }
                     // Skip remaining tokens (handles expressions like `i + 1`) to closing )
                     int depth = 0;
@@ -292,6 +302,10 @@ TypeSpec Parser::parse_base_type() {
                         consume();
                     }
                     ts.base = TB_INT;
+                    if (strip_qual) {
+                        ts.is_const = false;
+                        ts.is_volatile = false;
+                    }
                 }
                 base_set = true;
                 done = true; break;

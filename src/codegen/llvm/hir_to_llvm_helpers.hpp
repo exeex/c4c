@@ -284,8 +284,27 @@ inline std::string sanitize_llvm_ident(const std::string& raw) {
   return out;
 }
 
+// Number of array dimensions that belong to the declarator (outer), NOT the
+// pointed-to typedef array (inner).  For non-ptr-to-array types this is just
+// array_rank.  For ptr-to-array types, inner_rank trailing dims are the
+// pointed-to type's array, so outer = array_rank - inner_rank.
+// Number of array dimensions that belong to the declarator (outer), NOT the
+// pointed-to typedef array (inner).
+// - is_ptr_to_array && inner_rank < 0: all dims are inner → outer = 0
+// - inner_rank >= 0: inner_rank trailing dims are inner → outer = array_rank - inner_rank
+// - otherwise: all dims are outer
+inline int outer_array_rank(const TypeSpec& ts) {
+  if (ts.is_ptr_to_array && ts.inner_rank < 0) return 0;
+  if (ts.inner_rank >= 0 && ts.ptr_level > 0) {
+    int outer = ts.array_rank - ts.inner_rank;
+    return (outer > 0) ? outer : 0;
+  }
+  return ts.array_rank;
+}
+
 inline std::string llvm_alloca_ty(const TypeSpec& ts) {
-  if (ts.ptr_level > 0 && ts.is_ptr_to_array) return "ptr";
+  // Pure pointer-to-array with no outer array dims → just ptr
+  if (ts.ptr_level > 0 && outer_array_rank(ts) == 0) return "ptr";
   if (ts.array_rank > 0) {
     if (ts.array_size >= 0) {
       TypeSpec elem = ts;

@@ -7,7 +7,9 @@ class HirEmitter::ConstInitEmitter {
     explicit ConstInitEmitter(HirEmitter& emitter) : emitter_(emitter) {}
 
     std::string emit_const_init(const TypeSpec& ts, const GlobalInit& init) {
-      if (ts.array_rank > 0) return emit_const_array(ts, init);
+      // Pure pointer-to-array (no outer array dims) is a scalar pointer, not an array
+      if (ts.array_rank > 0 && !(ts.ptr_level > 0 && outer_array_rank(ts) == 0))
+        return emit_const_array(ts, init);
       if (ts.is_vector && ts.vector_lanes > 0) return emit_const_vector(ts, init);
       if (ts.base == TB_VA_LIST && ts.ptr_level == 0) return "zeroinitializer";
       if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0)
@@ -96,11 +98,36 @@ class HirEmitter::ConstInitEmitter {
       if (const auto* list = std::get_if<InitList>(&init)) {
         if (!is_indexed_list(*list)) return format_array_literal(elem_ts, elems);
         long long next_idx = 0;
+        // When the element type is a scalar pointer (ptr-to-array with no outer dims),
+        // but the init list was built for a multi-dim array, an item with bound > 1
+        // and an InitList child needs to be "expanded" — each inner item maps to one
+        // outer element.
+        const bool elem_is_scalar_ptr = (elem_ts.ptr_level > 0 && outer_array_rank(elem_ts) == 0);
         for (const auto& item : list->items) {
           const auto maybe_idx = find_array_index(item, next_idx, n);
           if (!maybe_idx) continue;
-          const size_t idx = static_cast<size_t>(*maybe_idx);
-          elems[idx] = emit_const_init(elem_ts, child_init_of(item));
+          size_t idx = static_cast<size_t>(*maybe_idx);
+          GlobalInit child = child_init_of(item);
+          if (elem_is_scalar_ptr) {
+            // If the child is a list, expand its items as individual scalar elements.
+            // Recursively collect all scalar values from nested InitLists.
+            std::function<void(const GlobalInit&, size_t&)> collect_scalars;
+            collect_scalars = [&](const GlobalInit& gi, size_t& out_idx) {
+              if (const auto* s = std::get_if<InitScalar>(&gi)) {
+                if (out_idx < static_cast<size_t>(n))
+                  elems[out_idx++] = emit_const_init(elem_ts, gi);
+              } else if (const auto* cl = std::get_if<InitList>(&gi)) {
+                for (const auto& inner_item : cl->items)
+                  collect_scalars(child_init_of(inner_item), out_idx);
+              }
+            };
+            if (std::holds_alternative<InitList>(child)) {
+              collect_scalars(child, idx);
+              next_idx = static_cast<long long>(idx);
+              continue;
+            }
+          }
+          elems[idx] = emit_const_init(elem_ts, child);
           next_idx = *maybe_idx + 1;
         }
       }
