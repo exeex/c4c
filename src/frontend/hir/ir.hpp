@@ -36,11 +36,18 @@ struct SourceSpan {
   SourceLoc end{};
 };
 
+enum class Visibility : uint8_t {
+  Default,
+  Hidden,
+  Protected,
+};
+
 struct Linkage {
   bool is_static = false;
   bool is_extern = false;
   bool is_inline = false;
   bool is_weak = false;
+  Visibility visibility = Visibility::Default;
 };
 
 enum class StorageClass : uint8_t {

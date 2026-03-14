@@ -183,6 +183,24 @@ void Parser::handle_pragma_pack(const std::string& args) {
     }
 }
 
+void Parser::handle_pragma_gcc_visibility(const std::string& args) {
+    // Lexeme format: "push,<visibility>" or "pop"
+    if (args == "pop") {
+        if (!visibility_stack_.empty()) {
+            visibility_ = visibility_stack_.back();
+            visibility_stack_.pop_back();
+        } else {
+            visibility_ = 0;  // default
+        }
+    } else if (args.substr(0, 5) == "push,") {
+        visibility_stack_.push_back(visibility_);
+        const std::string vis = args.substr(5);
+        if (vis == "hidden") visibility_ = 1;
+        else if (vis == "protected") visibility_ = 2;
+        else visibility_ = 0;  // "default" or unknown → default
+    }
+}
+
 // ── token cursor helpers ──────────────────────────────────────────────────────
 
 const Token& Parser::cur() const {

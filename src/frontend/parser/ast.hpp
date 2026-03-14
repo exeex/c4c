@@ -252,6 +252,7 @@ struct Node {
     bool is_static;     // NK_FUNCTION, NK_DECL, NK_GLOBAL_VAR
     bool is_extern;     // NK_FUNCTION, NK_GLOBAL_VAR
     bool is_inline;     // NK_FUNCTION
+    uint8_t visibility; // 0=default, 1=hidden, 2=protected (from #pragma GCC visibility)
     bool is_volatile_asm; // NK_ASM
     bool is_arrow;      // NK_MEMBER (-> = true, . = false)
     bool is_union;      // NK_STRUCT_DEF

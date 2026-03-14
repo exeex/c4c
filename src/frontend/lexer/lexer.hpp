@@ -42,6 +42,8 @@ class Lexer {
   Token pending_pragma_pack_{};
   bool has_pending_pragma_weak_ = false;
   Token pending_pragma_weak_{};
+  bool has_pending_pragma_gcc_visibility_ = false;
+  Token pending_pragma_gcc_visibility_{};
 };
 
 }  // namespace tinyc2ll::frontend_cxx

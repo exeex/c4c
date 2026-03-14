@@ -910,7 +910,7 @@ class Lowerer {
     fn.name = fn_node->name ? fn_node->name : "<anon_fn>";
     fn.return_type = qtype_from(fn_node->type);
     fn.linkage = {fn_node->is_static, fn_node->is_extern || fn_node->body == nullptr, fn_node->is_inline,
-                   weak_symbols_.count(fn.name) > 0};
+                   weak_symbols_.count(fn.name) > 0, static_cast<Visibility>(fn_node->visibility)};
     fn.attrs.variadic = fn_node->variadic;
     if (fn_node->type.align_bytes > 0)
       fn.attrs.align_bytes = fn_node->type.align_bytes;
@@ -1034,7 +1034,8 @@ class Lowerer {
     g.name = gv->name ? gv->name : "<anon_global>";
     g.type = qtype_from(gv->type, ValueCategory::LValue);
     g.fn_ptr_sig = fn_ptr_sig_from_decl_node(gv);
-    g.linkage = {gv->is_static, gv->is_extern, false, weak_symbols_.count(g.name) > 0};
+    g.linkage = {gv->is_static, gv->is_extern, false, weak_symbols_.count(g.name) > 0,
+                  static_cast<Visibility>(gv->visibility)};
     g.is_const = gv->type.is_const;
     g.span = make_span(gv);
 

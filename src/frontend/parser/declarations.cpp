@@ -181,6 +181,13 @@ Node* Parser::parse_top_level() {
         return node;
     }
 
+    // Handle #pragma GCC visibility push/pop tokens
+    if (check(TokenKind::PragmaGccVisibility)) {
+        handle_pragma_gcc_visibility(cur().lexeme);
+        consume();
+        return make_node(NK_EMPTY, ln);
+    }
+
     // Don't skip_attributes() here — type-affecting attributes like
     // __attribute__((vector_size(N))) must flow to parse_base_type().
     if (at_end()) return nullptr;
@@ -458,6 +465,7 @@ Node* Parser::parse_top_level() {
             fn->is_static = is_static;
             fn->is_extern = is_extern;
             fn->is_inline = is_inline;
+            fn->visibility = visibility_;
             fn->body      = body;
             fn->n_params  = (int)fptr_fn_params.size();
             if (fn->n_params > 0) {
@@ -475,6 +483,7 @@ Node* Parser::parse_top_level() {
         fn->is_static = is_static;
         fn->is_extern = is_extern;
         fn->is_inline = is_inline;
+        fn->visibility = visibility_;
         fn->body      = nullptr;
         fn->n_params  = (int)fptr_fn_params.size();
         if (fn->n_params > 0) {
@@ -600,6 +609,7 @@ Node* Parser::parse_top_level() {
             fn->is_static = is_static;
             fn->is_extern = is_extern;
             fn->is_inline = is_inline;
+            fn->visibility = visibility_;
             fn->body      = body;
             fn->n_params  = (int)params.size();
             if (fn->n_params > 0) {
@@ -618,6 +628,7 @@ Node* Parser::parse_top_level() {
         fn->is_static = is_static;
         fn->is_extern = is_extern;
         fn->is_inline = is_inline;
+        fn->visibility = visibility_;
         fn->body      = nullptr;  // declaration only
         fn->n_params  = (int)params.size();
         if (fn->n_params > 0) {
@@ -639,6 +650,7 @@ Node* Parser::parse_top_level() {
         gv->init      = ginit;
         gv->is_static = is_static;
         gv->is_extern = is_extern;
+        gv->visibility = visibility_;
         gv->fn_ptr_params = fn_ptr_params;
         gv->n_fn_ptr_params = n_fn_ptr_params;
         gv->fn_ptr_variadic = fn_ptr_variadic;

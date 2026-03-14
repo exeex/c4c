@@ -69,8 +69,13 @@ class Parser {
   int pack_alignment_ = 0;
   std::vector<int> pack_stack_;  // for #pragma pack(push/pop)
 
+  // #pragma GCC visibility state: 0=default, 1=hidden, 2=protected.
+  uint8_t visibility_ = 0;
+  std::vector<uint8_t> visibility_stack_;  // for push/pop
+
   // ── pragma helpers ────────────────────────────────────────────────────────
   void handle_pragma_pack(const std::string& args);
+  void handle_pragma_gcc_visibility(const std::string& args);
 
   // ── token cursor helpers ──────────────────────────────────────────────────
   const Token& cur() const;              // current token

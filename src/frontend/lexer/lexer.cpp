@@ -21,6 +21,11 @@ std::vector<Token> Lexer::scan_all() {
       has_pending_pragma_weak_ = false;
       continue;
     }
+    if (has_pending_pragma_gcc_visibility_) {
+      out.push_back(std::move(pending_pragma_gcc_visibility_));
+      has_pending_pragma_gcc_visibility_ = false;
+      continue;
+    }
     if (at_end()) {
       out.push_back(make_token(TokenKind::EndOfFile, "", line_, column_));
       break;
@@ -183,6 +188,47 @@ void Lexer::skip_whitespace_and_comments() {
           if (!sym.empty()) {
             pending_pragma_weak_ = make_token(TokenKind::PragmaWeak, sym, tok_line, tok_col);
             has_pending_pragma_weak_ = true;
+            return;
+          }
+          continue;
+        }
+        // Check if this is #pragma GCC visibility push/pop.
+        static const char pragma_gv[] = "#pragma GCC visibility";
+        size_t gv_len = sizeof(pragma_gv) - 1;
+        if (index_ + gv_len <= source_.size() &&
+            source_.compare(index_, gv_len, pragma_gv) == 0) {
+          int tok_line = line_;
+          int tok_col = column_;
+          for (size_t j = 0; j < gv_len; ++j) advance();
+          // Skip whitespace
+          while (!at_end() && peek() != '\n' && (peek() == ' ' || peek() == '\t')) advance();
+          // Collect the directive: "push" or "pop"
+          std::string directive;
+          while (!at_end() && peek() != '\n' && peek() != '(' && peek() != ' ' && peek() != '\t') {
+            directive += advance();
+          }
+          std::string lexeme;
+          if (directive == "push") {
+            // Expect push(visibility)
+            while (!at_end() && peek() != '\n' && (peek() == ' ' || peek() == '\t')) advance();
+            std::string vis;
+            if (!at_end() && peek() == '(') {
+              advance();  // consume '('
+              while (!at_end() && peek() != ')' && peek() != '\n') {
+                char ch = advance();
+                if (ch != ' ' && ch != '\t') vis += ch;
+              }
+              if (!at_end() && peek() == ')') advance();
+            }
+            lexeme = "push," + vis;
+          } else if (directive == "pop") {
+            lexeme = "pop";
+          }
+          // Skip rest of line
+          while (!at_end() && peek() != '\n') advance();
+          if (!lexeme.empty()) {
+            pending_pragma_gcc_visibility_ = make_token(TokenKind::PragmaGccVisibility, lexeme, tok_line, tok_col);
+            has_pending_pragma_gcc_visibility_ = true;
             return;
           }
           continue;

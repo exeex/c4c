@@ -27,6 +27,14 @@ int llvm_struct_field_slot_by_name(const HirStructDef& sd, const std::string& fi
   return 0;
 }
 
+const char* llvm_visibility(Visibility v) {
+  switch (v) {
+    case Visibility::Hidden: return "hidden ";
+    case Visibility::Protected: return "protected ";
+    default: return "";
+  }
+}
+
 }  // namespace
 
 HirEmitter::HirEmitter(const Module& m) : mod_(m){}
@@ -1095,6 +1103,7 @@ void HirEmitter::emit_global(const GlobalVar& gv){
           if (last_ts.array_rank > 0 && last_ts.array_size > 0) {
             std::string lk = gv.linkage.is_static ? "internal " : "";
             if (gv.linkage.is_weak && !gv.linkage.is_static) lk = "weak ";
+            lk += llvm_visibility(gv.linkage.visibility);
             const std::string qual = (gv.is_const && ts.ptr_level == 0) ? "constant " : "global ";
             std::string literal_ty = "{ ";
             std::string literal_init = "{ ";
@@ -1117,12 +1126,14 @@ void HirEmitter::emit_global(const GlobalVar& gv){
     }
     const std::string ty = llvm_alloca_ty(ts);
     if (gv.linkage.is_extern) {
-      const std::string ext = gv.linkage.is_weak ? "extern_weak " : "external ";
+      std::string ext = gv.linkage.is_weak ? "extern_weak " : "external ";
+      ext += llvm_visibility(gv.linkage.visibility);
       preamble_ << "@" << gv.name << " = " << ext << "global " << ty << "\n";
       return;
     }
     std::string lk = gv.linkage.is_static ? "internal " : "";
     if (gv.linkage.is_weak && !gv.linkage.is_static) lk = "weak ";
+    lk += llvm_visibility(gv.linkage.visibility);
     const std::string qual = (gv.is_const && ts.ptr_level == 0) ? "constant " : "global ";
     const std::string init = emit_const_init(ts, gv.init);
     preamble_ << "@" << gv.name << " = " << lk << qual << ty << " " << init << "\n";
@@ -4827,7 +4838,7 @@ void HirEmitter::emit_function(const Function& fn){
 
     if (fn.linkage.is_extern && fn.blocks.empty()) {
       const std::string decl_kw = fn.linkage.is_weak ? "declare extern_weak " : "declare ";
-      out << decl_kw << ret_ty << " @" << fn.name << "(";
+      out << decl_kw << llvm_visibility(fn.linkage.visibility) << ret_ty << " @" << fn.name << "(";
       for (size_t i = 0; i < fn.params.size(); ++i) {
         if (void_param_list) break;
         if (i) out << ", ";
@@ -4845,7 +4856,7 @@ void HirEmitter::emit_function(const Function& fn){
     // Signature
     std::string fn_lk = fn.linkage.is_static ? "internal " : "";
     if (fn.linkage.is_weak && !fn.linkage.is_static) fn_lk = "weak ";
-    out << "define " << fn_lk << ret_ty << " @" << fn.name << "(";
+    out << "define " << fn_lk << llvm_visibility(fn.linkage.visibility) << ret_ty << " @" << fn.name << "(";
     for (size_t i = 0; i < fn.params.size(); ++i) {
       if (void_param_list) break;
       if (i) out << ", ";
