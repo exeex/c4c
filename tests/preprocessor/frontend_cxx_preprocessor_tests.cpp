@@ -483,6 +483,30 @@ void test_computed_include() {
   expect_contains(out, "int x = 42;", "computed include should expand macro then include");
 }
 
+void test_has_include() {
+  fs::path dir = make_test_dir("has_include");
+  fs::path header = dir / "exists.h";
+  fs::path file = dir / "main.c";
+  write_text(header, "// exists\n");
+  write_text(file,
+             "#if __has_include(\"exists.h\")\n"
+             "int found = 1;\n"
+             "#else\n"
+             "int found = 0;\n"
+             "#endif\n"
+             "#if __has_include(\"nope.h\")\n"
+             "int missing = 1;\n"
+             "#else\n"
+             "int missing = 0;\n"
+             "#endif\n");
+  Preprocessor pp;
+  std::string out = pp.preprocess_file(file.string());
+  expect_contains(out, "int found = 1;",
+                  "__has_include should return true for existing file");
+  expect_contains(out, "int missing = 0;",
+                  "__has_include should return false for non-existing file");
+}
+
 void test_preprocess_source() {
   // preprocess_source() preprocesses from a string instead of a file
   {
@@ -595,6 +619,7 @@ int main() {
     test_include_quoted();
     test_include_path_buckets();
     test_computed_include();
+    test_has_include();
     test_define_undefine_api();
     test_preprocess_source();
     test_builtin_location_macros();

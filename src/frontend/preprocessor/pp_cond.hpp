@@ -6,11 +6,16 @@
 
 namespace tinyc2ll::frontend_cxx {
 
+// Callback for __has_include / __has_include_next.
+// Takes the raw path string (e.g., "<stdio.h>" or "\"myfile.h\"") and returns true/false.
+using HasIncludeCallback = std::function<bool(const std::string&)>;
+
 // Resolve `defined(NAME)`, `__has_builtin(X)`, etc. in a #if expression string.
 // Replaces them with "0" or "1" literals.
 std::string resolve_defined_and_intrinsics(
     const std::string& expr,
-    const std::function<bool(const std::string&)>& is_defined_name);
+    const std::function<bool(const std::string&)>& is_defined_name,
+    const HasIncludeCallback& has_include = nullptr);
 
 struct ExprValue {
   unsigned long long bits = 0;

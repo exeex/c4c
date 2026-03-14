@@ -374,13 +374,17 @@ bool Preprocessor::evaluate_if_expr(const std::string& expr) {
     return macros_.find(name) != macros_.end();
   };
 
+  auto has_include_cb = [this](const std::string& arg) -> bool {
+    return can_resolve_include(arg, virtual_file_);
+  };
+
   // C11-ish pipeline:
   // 1) resolve defined()/__has_* intrinsics
   // 2) macro expansion
   // 3) resolve again in case expansion introduced intrinsics
-  std::string r1 = resolve_defined_and_intrinsics(expr, is_defined_name);
+  std::string r1 = resolve_defined_and_intrinsics(expr, is_defined_name, has_include_cb);
   std::string expanded = expand_line(r1);
-  std::string r2 = resolve_defined_and_intrinsics(expanded, is_defined_name);
+  std::string r2 = resolve_defined_and_intrinsics(expanded, is_defined_name, has_include_cb);
   std::string s = trim_copy(r2);
   if (s.empty()) return false;
 
@@ -661,6 +665,38 @@ std::string Preprocessor::handle_include(const std::string& args,
   result += preprocess_text(child_src, resolved, include_depth + 1);
   result += "# " + std::to_string(line_no + 1) + " \"" + current_file + "\" 2\n";
   return result;
+}
+
+bool Preprocessor::can_resolve_include(const std::string& path_arg,
+                                       const std::string& current_file) {
+  std::string s = trim_copy(path_arg);
+  if (s.empty()) return false;
+
+  bool is_quoted = s.size() >= 2 && s.front() == '"' && s.back() == '"';
+  bool is_angle  = s.size() >= 2 && s.front() == '<' && s.back() == '>';
+  if (!is_quoted && !is_angle) return false;
+
+  std::string rel = s.substr(1, s.size() - 2);
+
+  auto try_exists = [&](const std::string& dir) -> bool {
+    std::string full = dir.empty() ? rel : (dir + "/" + rel);
+    std::string content;
+    return read_file(full, &content);
+  };
+
+  if (is_quoted) {
+    if (try_exists(dirname_of(current_file))) return true;
+    for (const auto& d : quote_include_paths_)
+      if (try_exists(d)) return true;
+  }
+  for (const auto& d : normal_include_paths_)
+    if (try_exists(d)) return true;
+  for (const auto& d : system_include_paths_)
+    if (try_exists(d)) return true;
+  for (const auto& d : after_include_paths_)
+    if (try_exists(d)) return true;
+
+  return false;
 }
 
 }  // namespace tinyc2ll::frontend_cxx

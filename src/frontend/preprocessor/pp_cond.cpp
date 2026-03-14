@@ -29,7 +29,8 @@ void skip_ws(const std::string& s, size_t* i) {
 
 std::string resolve_defined_and_intrinsics(
     const std::string& expr,
-    const std::function<bool(const std::string&)>& is_defined_name) {
+    const std::function<bool(const std::string&)>& is_defined_name,
+    const HasIncludeCallback& has_include) {
   std::string out;
   out.reserve(expr.size() + 8);
 
@@ -80,9 +81,40 @@ std::string resolve_defined_and_intrinsics(
         continue;
       }
 
+      if ((ident == "__has_include" || ident == "__has_include_next") &&
+          is_word_boundary(expr, i)) {
+        // Parse __has_include(<path>) or __has_include("path")
+        size_t j = i;
+        skip_ws(expr, &j);
+        if (j < expr.size() && expr[j] == '(') {
+          ++j;
+          skip_ws(expr, &j);
+          // Collect everything until matching ')'
+          size_t arg_start = j;
+          int depth = 0;
+          while (j < expr.size()) {
+            if (expr[j] == '(') ++depth;
+            else if (expr[j] == ')') {
+              if (depth == 0) break;
+              --depth;
+            }
+            ++j;
+          }
+          std::string arg = trim_copy(expr.substr(arg_start, j - arg_start));
+          if (j < expr.size()) ++j;  // skip ')'
+          i = j;
+
+          if (has_include && !arg.empty()) {
+            out += (has_include(arg) ? "1" : "0");
+          } else {
+            out += "0";
+          }
+          continue;
+        }
+      }
+
       if ((ident == "__has_builtin" || ident == "__has_attribute" ||
-           ident == "__has_feature" || ident == "__has_extension" ||
-           ident == "__has_include" || ident == "__has_include_next") &&
+           ident == "__has_feature" || ident == "__has_extension") &&
           is_word_boundary(expr, i)) {
         bool ok = false;
         std::string arg;
