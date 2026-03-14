@@ -5,3 +5,11 @@ int f(int *p) {
     (typeof(*q))__u.__val;
   });
 }
+
+int main(void) {
+  int value = 9;
+  int result = f(&value);
+  int expect = 1;
+  if (result == expect) return 0;
+  else return -1;
+}

@@ -79,20 +79,28 @@ foreach(src IN LISTS INTERNAL_NEGATIVE_TEST_SRCS)
   set_tests_properties("${test_name}" PROPERTIES LABELS "internal;negative_case")
 endforeach()
 
-foreach(src IN LISTS INTERNAL_POSITIVE_TEST_SRCS INTERNAL_LINUX_STAGE2_REPRO_SRCS)
-  file(RELATIVE_PATH rel_src "${INTERNAL_TEST_ROOT}/positive_case" "${src}")
-  string(REGEX REPLACE "[^A-Za-z0-9_]" "_" test_id "${rel_src}")
-  set(test_name "positive_sema_${test_id}")
+if(CLANG_EXECUTABLE)
+  foreach(src IN LISTS INTERNAL_POSITIVE_TEST_SRCS INTERNAL_LINUX_STAGE2_REPRO_SRCS)
+    file(RELATIVE_PATH rel_src "${INTERNAL_TEST_ROOT}/positive_case" "${src}")
+    string(REGEX REPLACE "[^A-Za-z0-9_]" "_" test_id "${rel_src}")
+    set(test_name "positive_sema_${test_id}")
 
-  add_test(
-    NAME "${test_name}"
-    COMMAND "${CMAKE_COMMAND}"
-            -DCOMPILER=$<TARGET_FILE:c4cll>
-            -DSRC=${src}
-            -P "${INTERNAL_TEST_CMAKE_ROOT}/run_positive_case.cmake"
-  )
-  set_tests_properties("${test_name}" PROPERTIES LABELS "internal;positive_case")
-endforeach()
+    add_test(
+      NAME "${test_name}"
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DSRC=${src}
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_positive/${rel_src}.ll
+              -DOUT_CLANG_BIN=${CMAKE_BINARY_DIR}/internal_positive/${rel_src}.clang.bin
+              -DOUT_C2LL_BIN=${CMAKE_BINARY_DIR}/internal_positive/${rel_src}.c2ll.bin
+              -P "${INTERNAL_TEST_CMAKE_ROOT}/run_positive_case.cmake"
+    )
+    set_tests_properties("${test_name}" PROPERTIES LABELS "internal;positive_case")
+  endforeach()
+else()
+  message(WARNING "clang not found: skipping internal positive_case runtime tests")
+endif()
 
 add_test(
     NAME frontend_cxx_preprocessor_tests
