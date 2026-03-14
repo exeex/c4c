@@ -79,15 +79,15 @@ All work items done:
 ## Not Yet Started
 ### Phase 2 remainder
 - [x] `#include_next` support (done in b957e0e)
-- Include resolution cache
-- Include guard optimization
+- [x] Include resolution cache ← NEW
+- [x] Include guard optimization ← NEW
 
 ### Phase 3 remainder
-- `#pragma pack(...)` support
+- `#pragma pack(...)` support (currently ignored, no test failures)
 - `#pragma weak`
 
 ### Phase 5 remainder
-- `_Pragma("...")` operator
+- [x] `_Pragma("...")` operator ← NEW
 - Anti-paste guard behavior
 - Multi-line function-like invocation accumulation
 
@@ -104,7 +104,8 @@ All work items done:
 - **scal_to_vec2**: scalar-to-vector coercion — pre-existing codegen issue
 
 ## Next Suggested Work
-- Include resolution cache / include guard optimization
-- `#pragma pack(...)` support
-- `_Pragma("...")` operator
-- More Phase 6 predefined macros if needed
+- Anti-paste guard behavior (Phase 5)
+- Multi-line function-like invocation accumulation (Phase 5)
+- `#pragma pack(...)` real support (Phase 3, low priority — tests pass without it)
+- Target-family macro sets / config toggles (Phase 6)
+- More POSIX headers / INT64_C macro helpers (Phase 7)
