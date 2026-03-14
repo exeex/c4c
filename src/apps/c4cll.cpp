@@ -24,6 +24,7 @@ void print_usage(const char *argv0) {
   std::cerr << "usage: " << argv0
             << " [--version] [--pp-only|--lex-only|--parse-only|--dump-hir|--dump-hir-summary]"
             << " [-D macro[=val]] [-U macro] [-I dir] [-iquote dir] [-isystem dir] [-idirafter dir]"
+            << " [-O0|-O1|-O2|-O3|-Os] [-fPIC|-fpic] [-fPIE|-fpie]"
             << " [-o output.ll] <input.c>\n";
 }
 
@@ -68,6 +69,10 @@ int main(int argc, char **argv) {
     std::vector<std::string> quote_include_paths;
     std::vector<std::string> system_include_paths;
     std::vector<std::string> after_include_paths;
+    int  opt_level = 0;   // -O0 (default), -O1, -O2, -O3; -Os maps to 2
+    bool opt_size  = false; // -Os
+    int  pic_level = 0;   // -fPIC=2, -fpic=1
+    int  pie_level = 0;   // -fPIE=2, -fpie=1
 
     for (size_t i = 0; i < args.size(); i++) {
       const std::string& arg = args[i];
@@ -101,6 +106,24 @@ int main(int argc, char **argv) {
         system_include_paths.push_back(args[++i]);
       } else if (arg == "-idirafter" && i + 1 < args.size()) {
         after_include_paths.push_back(args[++i]);
+      } else if (arg == "-O0") {
+        opt_level = 0; opt_size = false;
+      } else if (arg == "-O1" || arg == "-O") {
+        opt_level = 1;
+      } else if (arg == "-O2") {
+        opt_level = 2;
+      } else if (arg == "-O3") {
+        opt_level = 3;
+      } else if (arg == "-Os") {
+        opt_level = 2; opt_size = true;
+      } else if (arg == "-fPIC") {
+        pic_level = 2;
+      } else if (arg == "-fpic") {
+        pic_level = 1;
+      } else if (arg == "-fPIE") {
+        pie_level = 2;
+      } else if (arg == "-fpie") {
+        pie_level = 1;
       } else if (!arg.empty() && arg[0] == '-') {
         std::cerr << "unknown option: " << arg << "\n";
         return 2;
@@ -123,6 +146,22 @@ int main(int argc, char **argv) {
     }
 
     tc::Preprocessor preprocessor;
+    // Apply optimization / PIC / PIE config toggles.
+    if (opt_level > 0) {
+      preprocessor.define_macro("__OPTIMIZE__");
+      preprocessor.undefine_macro("__NO_INLINE__");
+    }
+    if (opt_size) {
+      preprocessor.define_macro("__OPTIMIZE_SIZE__");
+    }
+    if (pic_level > 0) {
+      preprocessor.define_macro("__PIC__=" + std::to_string(pic_level));
+      preprocessor.define_macro("__pic__=" + std::to_string(pic_level));
+    }
+    if (pie_level > 0) {
+      preprocessor.define_macro("__PIE__=" + std::to_string(pie_level));
+      preprocessor.define_macro("__pie__=" + std::to_string(pie_level));
+    }
     for (const auto& d : defines) preprocessor.define_macro(d);
     for (const auto& u : undefines) preprocessor.undefine_macro(u);
     for (const auto& p : include_paths) preprocessor.add_include_path(p);

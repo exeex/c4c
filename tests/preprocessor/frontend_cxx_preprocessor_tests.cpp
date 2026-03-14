@@ -713,6 +713,122 @@ void test_line_directive() {
   expect_contains(out, "int x;", "#line directive should preserve following code");
 }
 
+void test_config_toggle_macros() {
+  // Test __OPTIMIZE__: defined when optimization is enabled
+  {
+    fs::path dir = make_test_dir("config_toggle_optimize");
+    fs::path file = dir / "main.c";
+    write_text(file,
+               "#ifdef __OPTIMIZE__\n"
+               "int opt = 1;\n"
+               "#else\n"
+               "int opt = 0;\n"
+               "#endif\n"
+               "#ifdef __NO_INLINE__\n"
+               "int noinline = 1;\n"
+               "#else\n"
+               "int noinline = 0;\n"
+               "#endif\n");
+
+    // Default (no optimization): __OPTIMIZE__ not defined, __NO_INLINE__ defined
+    {
+      Preprocessor pp;
+      std::string out = pp.preprocess_file(file.string());
+      expect_contains(out, "int opt = 0;",
+                      "default: __OPTIMIZE__ should not be defined");
+      expect_contains(out, "int noinline = 1;",
+                      "default: __NO_INLINE__ should be defined");
+    }
+
+    // With optimization: __OPTIMIZE__ defined, __NO_INLINE__ not defined
+    {
+      Preprocessor pp;
+      pp.define_macro("__OPTIMIZE__");
+      pp.undefine_macro("__NO_INLINE__");
+      std::string out = pp.preprocess_file(file.string());
+      expect_contains(out, "int opt = 1;",
+                      "optimizing: __OPTIMIZE__ should be defined");
+      expect_contains(out, "int noinline = 0;",
+                      "optimizing: __NO_INLINE__ should not be defined");
+    }
+  }
+
+  // Test __OPTIMIZE_SIZE__
+  {
+    fs::path dir = make_test_dir("config_toggle_opt_size");
+    fs::path file = dir / "main.c";
+    write_text(file,
+               "#ifdef __OPTIMIZE_SIZE__\n"
+               "int os = 1;\n"
+               "#else\n"
+               "int os = 0;\n"
+               "#endif\n");
+
+    Preprocessor pp;
+    pp.define_macro("__OPTIMIZE_SIZE__");
+    std::string out = pp.preprocess_file(file.string());
+    expect_contains(out, "int os = 1;",
+                    "__OPTIMIZE_SIZE__ should be definable");
+  }
+
+  // Test __PIC__ / __pic__
+  {
+    fs::path dir = make_test_dir("config_toggle_pic");
+    fs::path file = dir / "main.c";
+    write_text(file,
+               "#ifdef __PIC__\n"
+               "int pic = __PIC__;\n"
+               "#else\n"
+               "int pic = 0;\n"
+               "#endif\n"
+               "#ifdef __pic__\n"
+               "int pic_lower = __pic__;\n"
+               "#else\n"
+               "int pic_lower = 0;\n"
+               "#endif\n");
+
+    // Default: no PIC
+    {
+      Preprocessor pp;
+      std::string out = pp.preprocess_file(file.string());
+      expect_contains(out, "int pic = 0;",
+                      "default: __PIC__ should not be defined");
+      expect_contains(out, "int pic_lower = 0;",
+                      "default: __pic__ should not be defined");
+    }
+
+    // -fPIC: level 2
+    {
+      Preprocessor pp;
+      pp.define_macro("__PIC__=2");
+      pp.define_macro("__pic__=2");
+      std::string out = pp.preprocess_file(file.string());
+      expect_contains(out, "int pic = 2;",
+                      "-fPIC: __PIC__ should be 2");
+      expect_contains(out, "int pic_lower = 2;",
+                      "-fPIC: __pic__ should be 2");
+    }
+  }
+
+  // Test __PIE__ / __pie__
+  {
+    fs::path dir = make_test_dir("config_toggle_pie");
+    fs::path file = dir / "main.c";
+    write_text(file,
+               "#ifdef __PIE__\n"
+               "int pie = __PIE__;\n"
+               "#else\n"
+               "int pie = 0;\n"
+               "#endif\n");
+
+    Preprocessor pp;
+    pp.define_macro("__PIE__=2");
+    std::string out = pp.preprocess_file(file.string());
+    expect_contains(out, "int pie = 2;",
+                    "__PIE__ should be definable with level");
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -740,6 +856,7 @@ int main() {
     test_multiline_funclike_invocation();
     test_predefined_lp64_macro();
     test_line_directive();
+    test_config_toggle_macros();
     test_pending_function_like_macro(pending);
     test_pending_stringify(pending);
     test_pending_token_paste(pending);

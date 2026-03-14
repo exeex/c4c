@@ -98,7 +98,7 @@ All work items done:
 - [x] Common GCC compat macros (__ATOMIC_*, __GCC_HAVE_SYNC_*, __BIGGEST_ALIGNMENT__, __FINITE_MATH_ONLY__, __NO_INLINE__, __GNUC_STDC_INLINE__, __STDC_UTF_*, __USER_LABEL_PREFIX__, __GCC_ASM_FLAG_OUTPUTS__) ← NEW
 - [x] x86_64 feature macros (__SSE__, __SSE2__, __MMX__, __SSE_MATH__, __SSE2_MATH__, __NO_MATH_INLINES, __SEG_FS/GS, __GCC_HAVE_DWARF2_CFI_ASM, __REGISTER_PREFIX__) ← NEW
 - [x] i386 feature macros (__code_model_32__, __NO_MATH_INLINES, __REGISTER_PREFIX__) ← NEW
-- Config toggles (__OPTIMIZE__, __PIC__, __PIE__ — require CLI flag wiring)
+- [x] Config toggles: -O0/-O1/-O2/-O3/-Os, -fPIC/-fpic, -fPIE/-fpie → __OPTIMIZE__, __OPTIMIZE_SIZE__, __NO_INLINE__, __PIC__/__pic__, __PIE__/__pie__ ← NEW
 
 ### Phase 7 remainder
 - More POSIX headers as needed
@@ -118,4 +118,5 @@ All work items done:
 
 ## Next Suggested Work
 - `#pragma pack(...)` real support (Phase 3, low priority — tests pass without it)
-- Config toggles: __OPTIMIZE__, __PIC__, __PIE__ (Phase 6 — require CLI flag wiring)
+- `#pragma weak` (Phase 3, low priority)
+- `__VA_OPT__` support (C2x feature, not yet in plan)
