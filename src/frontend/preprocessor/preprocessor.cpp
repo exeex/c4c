@@ -14,6 +14,25 @@
 
 namespace tinyc2ll::frontend_cxx {
 
+namespace {
+
+bool parse_single_identifier(const std::string& text, std::string* ident) {
+  size_t i = 0;
+  while (i < text.size() && std::isspace(static_cast<unsigned char>(text[i]))) ++i;
+  if (i >= text.size() || !is_ident_start(text[i])) return false;
+
+  size_t j = i + 1;
+  while (j < text.size() && is_ident_continue(text[j])) ++j;
+  while (j < text.size() && std::isspace(static_cast<unsigned char>(text[j]))) ++j;
+  if (j != text.size()) return false;
+
+  *ident = text.substr(i, j - i);
+  ident->erase(ident->find_last_not_of(" \t\r\n") + 1);
+  return true;
+}
+
+}  // namespace
+
 Preprocessor::Preprocessor() {
   init_predefined_macros(macros_);
 }
@@ -481,7 +500,36 @@ std::string Preprocessor::expand_text(const std::string& text,
                 raw_args.size() == 1 && trim_copy(raw_args[0]).empty()) {
               raw_args.clear();
             }
-            out += expand_funclike_call(def, raw_args, disabled);
+            std::string expanded = expand_funclike_call(def, raw_args, disabled);
+
+            // Rescan may need to combine the replacement with still-unread source
+            // tokens, e.g. CAT(A,B)(x) -> AB(x) where "(x)" comes from the caller.
+            while (true) {
+              std::string chained_ident;
+              if (!parse_single_identifier(expanded, &chained_ident)) break;
+
+              auto chained = macros_.find(chained_ident);
+              if (chained == macros_.end() || !chained->second.function_like ||
+                  disabled.find(chained_ident) != disabled.end()) {
+                break;
+              }
+
+              size_t p = k;
+              while (p < text.size() && (text[p] == ' ' || text[p] == '\t')) ++p;
+              if (p >= text.size() || text[p] != '(') break;
+
+              ++p;  // skip '('
+              std::vector<std::string> chained_args = collect_funclike_args(text, &p);
+              if (chained->second.params.empty() && !chained->second.variadic &&
+                  chained_args.size() == 1 && trim_copy(chained_args[0]).empty()) {
+                chained_args.clear();
+              }
+
+              expanded = expand_funclike_call(chained->second, chained_args, disabled);
+              k = p;
+            }
+
+            out += expanded;
             i = k;
           } else {
             // No '(' — not a macro invocation; leave as-is.

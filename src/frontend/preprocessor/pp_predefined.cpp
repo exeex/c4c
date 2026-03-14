@@ -13,6 +13,8 @@ void def(MacroTable& t, const char* name, const char* body) {
 void init_predefined_macros(MacroTable& table) {
   def(table, "__STDC__", "1");
   def(table, "__STDC_VERSION__", "201710L");
+  def(table, "__LP64__", "1");
+  def(table, "_LP64", "1");
 
   // __COUNTER__ is handled specially in expand_text (auto-incrementing).
   // This entry ensures defined(__COUNTER__) is true and the expansion path fires.

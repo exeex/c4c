@@ -5,6 +5,34 @@
 
 namespace tinyc2ll::frontend_cxx {
 
+namespace {
+
+bool is_token_boundary_char(char c) {
+  return std::isalnum(static_cast<unsigned char>(c)) || c == '_' ||
+         c == '.' || c == '+' || c == '-' || c == '*' || c == '/' ||
+         c == '%' || c == '&' || c == '|' || c == '^' || c == '!' ||
+         c == '=' || c == '<' || c == '>' || c == '#';
+}
+
+bool needs_token_separator(char left, char right) {
+  if (std::isspace(static_cast<unsigned char>(left)) ||
+      std::isspace(static_cast<unsigned char>(right))) {
+    return false;
+  }
+  if (!is_token_boundary_char(left) || !is_token_boundary_char(right)) {
+    return false;
+  }
+  return true;
+}
+
+void maybe_insert_token_separator(std::string& out, char next) {
+  if (!out.empty() && needs_token_separator(out.back(), next)) {
+    out.push_back(' ');
+  }
+}
+
+}  // namespace
+
 std::vector<std::string> collect_funclike_args(const std::string& line, size_t* pos) {
   std::vector<std::string> args;
   std::string cur;
@@ -165,15 +193,22 @@ std::string substitute_funclike_body(const std::string& body,
       size_t k = j;
       while (k < body.size() && (body[k] == ' ' || body[k] == '\t')) ++k;
       if (k + 1 < body.size() && body[k] == '#' && body[k + 1] == '#') {
-        std::string left = get_raw(tok);
-        out += trim_copy(left);
+        std::string left = trim_copy(get_raw(tok));
         k += 2;
         while (k < body.size() && (body[k] == ' ' || body[k] == '\t')) ++k;
         if (k < body.size() && is_ident_start(body[k])) {
           size_t m = k + 1;
           while (m < body.size() && is_ident_continue(body[m])) ++m;
           std::string rtok = body.substr(k, m - k);
-          out += get_raw(rtok);
+          std::string right = trim_copy(get_raw(rtok));
+          bool pasted_empty_operand = left.empty() || right.empty();
+          out += left;
+          out += right;
+          if (pasted_empty_operand) {
+            size_t n = m;
+            while (n < body.size() && (body[n] == ' ' || body[n] == '\t')) ++n;
+            if (n < body.size()) maybe_insert_token_separator(out, body[n]);
+          }
           i = m;
         } else {
           if (k < body.size()) { out.push_back(body[k]); i = k + 1; }
@@ -197,7 +232,13 @@ std::string substitute_funclike_body(const std::string& body,
         size_t j = i + 1;
         while (j < body.size() && is_ident_continue(body[j])) ++j;
         std::string rtok = body.substr(i, j - i);
-        out += get_raw(rtok);
+        std::string right = trim_copy(get_raw(rtok));
+        out += right;
+        if (right.empty()) {
+          size_t n = j;
+          while (n < body.size() && (body[n] == ' ' || body[n] == '\t')) ++n;
+          if (n < body.size()) maybe_insert_token_separator(out, body[n]);
+        }
         i = j;
       } else if (i < body.size()) {
         out.push_back(body[i++]);

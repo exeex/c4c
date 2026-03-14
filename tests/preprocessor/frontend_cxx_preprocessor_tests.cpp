@@ -196,6 +196,52 @@ void test_error_warning_diagnostics() {
   expect_contains(pp.errors()[0].message, "hard fail", "error message should be captured");
 }
 
+void test_macro_rescan_uses_following_source_tokens() {
+  fs::path dir = make_test_dir("macro_rescan_following_tokens");
+  fs::path file = dir / "main.c";
+
+  write_text(file,
+             "#define CAT2(a,b) a##b\n"
+             "#define CAT(a,b) CAT2(a,b)\n"
+             "#define AB(x) CAT(x,y)\n"
+             "int xy = 42;\n"
+             "int z = CAT(A,B)(x);\n");
+
+  Preprocessor pp;
+  std::string out = pp.preprocess_file(file.string());
+  expect_contains(out, "int z = xy;", "rescan should expand a function-like macro introduced by replacement");
+}
+
+void test_token_paste_empty_operand_preserves_boundary() {
+  fs::path dir = make_test_dir("token_paste_empty_operand_boundary");
+  fs::path file = dir / "main.c";
+
+  write_text(file,
+             "#define Q(A,B) A ## B+\n"
+             "int x = 60 Q(+,)3;\n");
+
+  Preprocessor pp;
+  std::string out = pp.preprocess_file(file.string());
+  expect_contains(out, "int x = 60 + +3;", "empty-operand token paste should not accidentally form ++");
+}
+
+void test_predefined_lp64_macro() {
+  fs::path dir = make_test_dir("predefined_lp64_macro");
+  fs::path file = dir / "main.c";
+
+  write_text(file,
+             "#if defined(__LP64__)\n"
+             "int lp64 = 1;\n"
+             "#else\n"
+             "int lp64 = 0;\n"
+             "#endif\n");
+
+  Preprocessor pp;
+  std::string out = pp.preprocess_file(file.string());
+  expect_contains(out, "int lp64 = 1;", "__LP64__ should be predefined on the current target model");
+  expect_not_contains(out, "int lp64 = 0;", "__LP64__ false branch should be inactive");
+}
+
 // ---- README-aligned pending skeletons ----
 // These tests document target behavior from
 // ref/claudes-c-compiler/src/frontend/preprocessor/README.md.
@@ -638,6 +684,9 @@ int main() {
     test_builtin_location_macros();
     test_line_markers();
     test_error_warning_diagnostics();
+    test_macro_rescan_uses_following_source_tokens();
+    test_token_paste_empty_operand_preserves_boundary();
+    test_predefined_lp64_macro();
     test_line_directive();
     test_pending_function_like_macro(pending);
     test_pending_stringify(pending);

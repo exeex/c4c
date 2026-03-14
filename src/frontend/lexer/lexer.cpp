@@ -92,7 +92,7 @@ void Lexer::skip_whitespace_and_comments() {
     char c = peek();
 
     // Plain whitespace
-    if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+    if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f' || c == '\v') {
       advance();
       continue;
     }
