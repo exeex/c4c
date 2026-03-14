@@ -81,7 +81,7 @@ private:
 
   // Include resolution.
   std::string handle_include(const std::string& args, const std::string& current_file,
-                             int include_depth, int line_no);
+                             int include_depth, int line_no, bool is_include_next = false);
   bool can_resolve_include(const std::string& path_arg, const std::string& current_file);
 
   // Builtin header injection for well-known system headers.

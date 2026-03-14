@@ -192,7 +192,10 @@ void Preprocessor::process_directive(const std::string& raw_line, std::string& o
   } else if (key == "undef") {
     handle_undef(rest);
   } else if (key == "include") {
-    out += handle_include(rest, current_file, include_depth, line_no);
+    out += handle_include(rest, current_file, include_depth, line_no, false);
+    return;
+  } else if (key == "include_next") {
+    out += handle_include(rest, current_file, include_depth, line_no, true);
     return;
   } else if (key == "error") {
     errors_.push_back(PreprocessorDiagnostic{current_file, line_no, 1,
@@ -683,7 +686,8 @@ void Preprocessor::add_after_include_path(const std::string& path) {
 std::string Preprocessor::handle_include(const std::string& args,
                                          const std::string& current_file,
                                          int include_depth,
-                                         int line_no) {
+                                         int line_no,
+                                         bool is_include_next) {
   std::string s = trim_copy(args);
   if (s.empty()) {
     errors_.push_back(PreprocessorDiagnostic{current_file, line_no, 1,
@@ -721,42 +725,44 @@ std::string Preprocessor::handle_include(const std::string& args,
 
   std::string resolved;
 
-  if (is_quoted) {
-    // 1. Current file's directory (always first for quoted includes)
-    std::string base_dir = dirname_of(current_file);
-    resolved = try_resolve(base_dir);
+  // For #include_next: determine which search directory the current file
+  // belongs to, then skip all entries up to and including that directory.
+  // We build a flat list of all search dirs and find the current file's position.
+  auto starts_with = [](const std::string& path, const std::string& dir) -> bool {
+    if (dir.empty()) return false;
+    std::string prefix = dir;
+    if (prefix.back() != '/') prefix += '/';
+    return path.size() >= prefix.size() && path.compare(0, prefix.size(), prefix) == 0;
+  };
 
-    // 2. Quote include paths (-iquote)
-    if (resolved.empty()) {
-      for (const auto& dir : quote_include_paths_) {
-        resolved = try_resolve(dir);
-        if (!resolved.empty()) break;
+  // Build ordered list of all search directories for #include_next skipping.
+  // Each entry: (dir, list_id) where list_id identifies which list it's from.
+  // list_id: 0=curdir, 1=quote, 2=normal, 3=system, 4=after
+  enum SearchList { SL_CurDir = 0, SL_Quote = 1, SL_Normal = 2, SL_System = 3, SL_After = 4 };
+  struct SearchEntry { std::string dir; int list_id; };
+  std::vector<SearchEntry> all_dirs;
+  if (is_quoted) {
+    all_dirs.push_back({dirname_of(current_file), SL_CurDir});
+    for (const auto& d : quote_include_paths_) all_dirs.push_back({d, SL_Quote});
+  }
+  for (const auto& d : normal_include_paths_) all_dirs.push_back({d, SL_Normal});
+  for (const auto& d : system_include_paths_) all_dirs.push_back({d, SL_System});
+  for (const auto& d : after_include_paths_) all_dirs.push_back({d, SL_After});
+
+  size_t start_idx = 0;
+  if (is_include_next) {
+    // Find the directory the current file was included from, then start after it.
+    for (size_t i = 0; i < all_dirs.size(); ++i) {
+      if (starts_with(current_file, all_dirs[i].dir) ||
+          dirname_of(current_file) == all_dirs[i].dir) {
+        start_idx = i + 1;
+        break;
       }
     }
   }
 
-  // 3. Normal include paths (-I) — both quoted and angle
-  if (resolved.empty()) {
-    for (const auto& dir : normal_include_paths_) {
-      resolved = try_resolve(dir);
-      if (!resolved.empty()) break;
-    }
-  }
-
-  // 4. System include paths (-isystem)
-  if (resolved.empty()) {
-    for (const auto& dir : system_include_paths_) {
-      resolved = try_resolve(dir);
-      if (!resolved.empty()) break;
-    }
-  }
-
-  // 5. After include paths (-idirafter)
-  if (resolved.empty()) {
-    for (const auto& dir : after_include_paths_) {
-      resolved = try_resolve(dir);
-      if (!resolved.empty()) break;
-    }
+  for (size_t i = start_idx; i < all_dirs.size() && resolved.empty(); ++i) {
+    resolved = try_resolve(all_dirs[i].dir);
   }
 
   if (resolved.empty()) {
