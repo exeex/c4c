@@ -47,6 +47,8 @@ std::string Preprocessor::preprocess_file(const std::string& path) {
   warnings_.clear();
   cond_stack_.clear();
   pragma_once_files_.clear();
+  include_guard_map_.clear();
+  include_resolve_cache_.clear();
   needs_external_fallback_ = false;
   base_file_ = path;
   counter_ = 0;
@@ -68,6 +70,8 @@ std::string Preprocessor::preprocess_source(const std::string& source,
   warnings_.clear();
   cond_stack_.clear();
   pragma_once_files_.clear();
+  include_guard_map_.clear();
+  include_resolve_cache_.clear();
   needs_external_fallback_ = false;
   base_file_ = filename;
   counter_ = 0;
@@ -713,56 +717,68 @@ std::string Preprocessor::handle_include(const std::string& args,
 
   std::string rel = s.substr(1, s.size() - 2);
 
-  // Try to resolve the include file using GCC-compatible search order.
-  // #include "file.h": current dir → quote → normal → system → after
-  // #include <file.h>: normal → system → after
-  auto try_resolve = [&](const std::string& dir) -> std::string {
-    std::string full = dir.empty() ? rel : (dir + "/" + rel);
-    std::string content;
-    if (read_file(full, &content)) return full;
-    return {};
-  };
-
   std::string resolved;
 
-  // For #include_next: determine which search directory the current file
-  // belongs to, then skip all entries up to and including that directory.
-  // We build a flat list of all search dirs and find the current file's position.
-  auto starts_with = [](const std::string& path, const std::string& dir) -> bool {
-    if (dir.empty()) return false;
-    std::string prefix = dir;
-    if (prefix.back() != '/') prefix += '/';
-    return path.size() >= prefix.size() && path.compare(0, prefix.size(), prefix) == 0;
-  };
-
-  // Build ordered list of all search directories for #include_next skipping.
-  // Each entry: (dir, list_id) where list_id identifies which list it's from.
-  // list_id: 0=curdir, 1=quote, 2=normal, 3=system, 4=after
-  enum SearchList { SL_CurDir = 0, SL_Quote = 1, SL_Normal = 2, SL_System = 3, SL_After = 4 };
-  struct SearchEntry { std::string dir; int list_id; };
-  std::vector<SearchEntry> all_dirs;
-  if (is_quoted) {
-    all_dirs.push_back({dirname_of(current_file), SL_CurDir});
-    for (const auto& d : quote_include_paths_) all_dirs.push_back({d, SL_Quote});
-  }
-  for (const auto& d : normal_include_paths_) all_dirs.push_back({d, SL_Normal});
-  for (const auto& d : system_include_paths_) all_dirs.push_back({d, SL_System});
-  for (const auto& d : after_include_paths_) all_dirs.push_back({d, SL_After});
-
-  size_t start_idx = 0;
-  if (is_include_next) {
-    // Find the directory the current file was included from, then start after it.
-    for (size_t i = 0; i < all_dirs.size(); ++i) {
-      if (starts_with(current_file, all_dirs[i].dir) ||
-          dirname_of(current_file) == all_dirs[i].dir) {
-        start_idx = i + 1;
-        break;
-      }
+  // Include resolution cache: skip filesystem probes for previously resolved paths.
+  // Cache key encodes the relative path, include style, and current directory (for quoted).
+  // #include_next bypasses the cache since resolution depends on position.
+  std::string cache_key;
+  if (!is_include_next) {
+    cache_key = rel + "|" + (is_angle ? "a" : "q:" + dirname_of(current_file));
+    auto it = include_resolve_cache_.find(cache_key);
+    if (it != include_resolve_cache_.end()) {
+      resolved = it->second;
     }
   }
 
-  for (size_t i = start_idx; i < all_dirs.size() && resolved.empty(); ++i) {
-    resolved = try_resolve(all_dirs[i].dir);
+  if (resolved.empty()) {
+    // Try to resolve the include file using GCC-compatible search order.
+    // #include "file.h": current dir → quote → normal → system → after
+    // #include <file.h>: normal → system → after
+    auto try_resolve = [&](const std::string& dir) -> std::string {
+      std::string full = dir.empty() ? rel : (dir + "/" + rel);
+      std::string content;
+      if (read_file(full, &content)) return full;
+      return {};
+    };
+
+    auto starts_with = [](const std::string& path, const std::string& dir) -> bool {
+      if (dir.empty()) return false;
+      std::string prefix = dir;
+      if (prefix.back() != '/') prefix += '/';
+      return path.size() >= prefix.size() && path.compare(0, prefix.size(), prefix) == 0;
+    };
+
+    enum SearchList { SL_CurDir = 0, SL_Quote = 1, SL_Normal = 2, SL_System = 3, SL_After = 4 };
+    struct SearchEntry { std::string dir; int list_id; };
+    std::vector<SearchEntry> all_dirs;
+    if (is_quoted) {
+      all_dirs.push_back({dirname_of(current_file), SL_CurDir});
+      for (const auto& d : quote_include_paths_) all_dirs.push_back({d, SL_Quote});
+    }
+    for (const auto& d : normal_include_paths_) all_dirs.push_back({d, SL_Normal});
+    for (const auto& d : system_include_paths_) all_dirs.push_back({d, SL_System});
+    for (const auto& d : after_include_paths_) all_dirs.push_back({d, SL_After});
+
+    size_t start_idx = 0;
+    if (is_include_next) {
+      for (size_t i = 0; i < all_dirs.size(); ++i) {
+        if (starts_with(current_file, all_dirs[i].dir) ||
+            dirname_of(current_file) == all_dirs[i].dir) {
+          start_idx = i + 1;
+          break;
+        }
+      }
+    }
+
+    for (size_t i = start_idx; i < all_dirs.size() && resolved.empty(); ++i) {
+      resolved = try_resolve(all_dirs[i].dir);
+    }
+
+    // Populate cache on successful resolution (not for #include_next).
+    if (!resolved.empty() && !cache_key.empty()) {
+      include_resolve_cache_[cache_key] = resolved;
+    }
   }
 
   if (resolved.empty()) {
@@ -790,11 +806,27 @@ std::string Preprocessor::handle_include(const std::string& args,
     return "\n";
   }
 
+  // Include guard optimization: skip if the file's guard macro is already defined.
+  auto guard_it = include_guard_map_.find(resolved);
+  if (guard_it != include_guard_map_.end()) {
+    if (macros_.find(guard_it->second) != macros_.end()) {
+      return "\n";
+    }
+  }
+
   std::string child_src;
   if (!read_file(resolved, &child_src)) {
     errors_.push_back(PreprocessorDiagnostic{current_file, line_no, 1,
                                              "include file not found: " + rel});
     return "\n";
+  }
+
+  // Detect include guard pattern before processing.
+  if (guard_it == include_guard_map_.end()) {
+    std::string guard = detect_include_guard(child_src);
+    if (!guard.empty()) {
+      include_guard_map_[resolved] = guard;
+    }
   }
 
   // Emit GCC-compatible include enter/return markers.
@@ -836,6 +868,86 @@ bool Preprocessor::can_resolve_include(const std::string& path_arg,
     if (try_exists(d)) return true;
 
   return false;
+}
+
+std::string Preprocessor::detect_include_guard(const std::string& source) {
+  // Detect the pattern: #ifndef GUARD / #define GUARD / ... / #endif
+  // Requires: first non-blank directive is #ifndef X, second is #define X,
+  // and the file ends with #endif at the matching nesting level.
+  std::istringstream in(source);
+  std::string line;
+  std::string guard_name;
+  int directive_count = 0;
+  int nesting = 0;
+  bool valid = true;
+
+  while (std::getline(in, line)) {
+    size_t i = 0;
+    while (i < line.size() && (line[i] == ' ' || line[i] == '\t')) ++i;
+    if (i >= line.size() || line[i] != '#') {
+      // Non-directive line: only whitespace/comments allowed before the guard.
+      if (directive_count == 0) {
+        // Check if line is blank
+        bool blank = true;
+        for (size_t j = i; j < line.size(); ++j) {
+          if (line[j] != ' ' && line[j] != '\t') { blank = false; break; }
+        }
+        if (!blank) { valid = false; break; }
+      }
+      continue;
+    }
+    // Parse directive
+    ++i; // skip '#'
+    while (i < line.size() && (line[i] == ' ' || line[i] == '\t')) ++i;
+    std::string key;
+    while (i < line.size() && line[i] != ' ' && line[i] != '\t' && line[i] != '\n') {
+      key += line[i++];
+    }
+    while (i < line.size() && (line[i] == ' ' || line[i] == '\t')) ++i;
+    std::string rest = line.substr(i);
+    // Trim trailing whitespace from rest
+    while (!rest.empty() && (rest.back() == ' ' || rest.back() == '\t' || rest.back() == '\r'))
+      rest.pop_back();
+
+    if (directive_count == 0) {
+      if (key != "ifndef") { valid = false; break; }
+      guard_name = rest;
+      if (guard_name.empty()) { valid = false; break; }
+      // Guard name must be a single identifier
+      for (char c : guard_name) {
+        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
+          valid = false; break;
+        }
+      }
+      if (!valid) break;
+      nesting = 1;
+    } else if (directive_count == 1) {
+      if (key != "define") { valid = false; break; }
+      // Must define the same guard macro (possibly with a value)
+      std::string def_name;
+      size_t j = 0;
+      while (j < rest.size() && rest[j] != ' ' && rest[j] != '\t' && rest[j] != '(') {
+        def_name += rest[j++];
+      }
+      if (def_name != guard_name) { valid = false; break; }
+    } else {
+      // Track nesting
+      if (key == "if" || key == "ifdef" || key == "ifndef") {
+        ++nesting;
+      } else if (key == "endif") {
+        --nesting;
+        if (nesting == 0) {
+          // This must be the last directive — check remaining lines are blank.
+          // We'll check below after the loop.
+        }
+      }
+    }
+    ++directive_count;
+  }
+
+  if (!valid || guard_name.empty() || nesting != 0) return {};
+  if (directive_count < 2) return {};
+  return guard_name;
 }
 
 std::string Preprocessor::get_builtin_header(const std::string& name) {

@@ -6,6 +6,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -84,6 +85,9 @@ private:
                              int include_depth, int line_no, bool is_include_next = false);
   bool can_resolve_include(const std::string& path_arg, const std::string& current_file);
 
+  // Include guard detection — scans source for #ifndef GUARD / #define GUARD / #endif pattern.
+  static std::string detect_include_guard(const std::string& source);
+
   // Builtin header injection for well-known system headers.
   static std::string get_builtin_header(const std::string& name);
 
@@ -113,6 +117,13 @@ private:
 
   // #pragma once — set of canonical file paths that should not be re-included.
   std::set<std::string> pragma_once_files_;
+
+  // Include guard optimization — maps file path to its guard macro name.
+  // When the guard macro is defined, re-inclusion is skipped.
+  std::unordered_map<std::string, std::string> include_guard_map_;
+
+  // Include resolution cache — maps (rel_path + "|" + is_angle) to resolved path.
+  std::unordered_map<std::string, std::string> include_resolve_cache_;
 
   // #pragma push_macro / pop_macro — stack of saved macro definitions per name.
   std::map<std::string, std::vector<MacroDef>> macro_stack_;
