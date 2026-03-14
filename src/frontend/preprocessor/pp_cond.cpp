@@ -113,14 +113,82 @@ std::string resolve_defined_and_intrinsics(
         }
       }
 
-      if ((ident == "__has_builtin" || ident == "__has_attribute" ||
-           ident == "__has_feature" || ident == "__has_extension") &&
+      if (ident == "__has_builtin" && is_word_boundary(expr, i)) {
+        bool ok = false;
+        std::string arg;
+        parse_intrinsic_arg(&ok, &arg);
+        if (ok) {
+          // Common GCC/Clang builtins we support or that code commonly checks for.
+          static const char* known_builtins[] = {
+            "__builtin_expect", "__builtin_unreachable", "__builtin_trap",
+            "__builtin_clz", "__builtin_clzl", "__builtin_clzll",
+            "__builtin_ctz", "__builtin_ctzl", "__builtin_ctzll",
+            "__builtin_popcount", "__builtin_popcountl", "__builtin_popcountll",
+            "__builtin_bswap16", "__builtin_bswap32", "__builtin_bswap64",
+            "__builtin_constant_p", "__builtin_types_compatible_p",
+            "__builtin_choose_expr", "__builtin_offsetof",
+            "__builtin_va_start", "__builtin_va_end", "__builtin_va_arg",
+            "__builtin_va_copy", "__builtin_va_list",
+            "__builtin_memcpy", "__builtin_memset", "__builtin_memmove",
+            "__builtin_strlen", "__builtin_strcmp", "__builtin_strcpy",
+            "__builtin_abs", "__builtin_labs", "__builtin_llabs",
+            "__builtin_fabs", "__builtin_fabsf", "__builtin_fabsl",
+            "__builtin_huge_val", "__builtin_huge_valf", "__builtin_inf",
+            "__builtin_inff", "__builtin_nan", "__builtin_nanf",
+            "__builtin_isnan", "__builtin_isinf", "__builtin_isfinite",
+            "__builtin_add_overflow", "__builtin_sub_overflow", "__builtin_mul_overflow",
+            nullptr
+          };
+          bool found = false;
+          for (const char** p = known_builtins; *p; ++p) {
+            if (arg == *p) { found = true; break; }
+          }
+          out += (found ? "1" : "0");
+          continue;
+        }
+      }
+
+      if (ident == "__has_attribute" && is_word_boundary(expr, i)) {
+        bool ok = false;
+        std::string arg;
+        parse_intrinsic_arg(&ok, &arg);
+        if (ok) {
+          static const char* known_attrs[] = {
+            "aligned", "packed", "unused", "used", "weak", "alias",
+            "deprecated", "visibility", "format", "format_arg",
+            "noinline", "always_inline", "noreturn", "nonnull",
+            "warn_unused_result", "constructor", "destructor",
+            "section", "cleanup", "cold", "hot", "pure", "const",
+            "malloc", "sentinel", "may_alias", "transparent_union",
+            "vector_size", "__vector_size__",
+            nullptr
+          };
+          bool found = false;
+          for (const char** p = known_attrs; *p; ++p) {
+            if (arg == *p) { found = true; break; }
+          }
+          out += (found ? "1" : "0");
+          continue;
+        }
+      }
+
+      if ((ident == "__has_feature" || ident == "__has_extension") &&
           is_word_boundary(expr, i)) {
         bool ok = false;
         std::string arg;
         parse_intrinsic_arg(&ok, &arg);
         if (ok) {
-          out += "0";
+          // We support a small set of C features/extensions.
+          static const char* known_features[] = {
+            "c_alignas", "c_alignof", "c_atomic", "c_generic_selections",
+            "c_static_assert", "c_thread_local",
+            nullptr
+          };
+          bool found = false;
+          for (const char** p = known_features; *p; ++p) {
+            if (arg == *p) { found = true; break; }
+          }
+          out += (found ? "1" : "0");
           continue;
         }
       }
