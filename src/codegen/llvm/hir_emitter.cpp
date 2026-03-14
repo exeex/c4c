@@ -1001,6 +1001,43 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
             }
           }
         }
+        // Label address difference: &&lab1 - &&lab0 → constant expr with blockaddress
+        if (p.op == BinaryOp::Sub || p.op == BinaryOp::Add) {
+          auto emit_label_ce = [&](auto& self, ExprId eid) -> std::optional<std::string> {
+            const Expr& ex = get_expr(eid);
+            return std::visit([&](const auto& q) -> std::optional<std::string> {
+              using U = std::decay_t<decltype(q)>;
+              if constexpr (std::is_same_v<U, LabelAddrExpr>) {
+                return "ptrtoint (ptr blockaddress(@" + q.fn_name +
+                       ", %ulbl_" + q.label_name + ") to i64)";
+              } else if constexpr (std::is_same_v<U, CastExpr>) {
+                return self(self, q.expr);
+              } else if constexpr (std::is_same_v<U, BinaryExpr>) {
+                auto lstr = self(self, q.lhs);
+                auto rstr = self(self, q.rhs);
+                if (!lstr || !rstr) return std::nullopt;
+                const char* opname = (q.op == BinaryOp::Sub) ? "sub" : "add";
+                return std::string(opname) + " (i64 " + *lstr + ", i64 " + *rstr + ")";
+              } else if constexpr (std::is_same_v<U, IntLiteral>) {
+                return std::to_string(q.value);
+              } else {
+                return std::nullopt;
+              }
+            }, ex.payload);
+          };
+          auto lstr = emit_label_ce(emit_label_ce, p.lhs);
+          auto rstr = emit_label_ce(emit_label_ce, p.rhs);
+          if (lstr && rstr) {
+            const char* opname = (p.op == BinaryOp::Sub) ? "sub" : "add";
+            std::string ce = std::string(opname) + " (i64 " + *lstr + ", i64 " + *rstr + ")";
+            // Truncate to target type if narrower than i64
+            const std::string tgt_ty = llvm_ty(expected_ts);
+            if (tgt_ty != "i64" && tgt_ty != "ptr") {
+              ce = "trunc (i64 " + ce + " to " + tgt_ty + ")";
+            }
+            return ce;
+          }
+        }
         return (llvm_ty(expected_ts) == "ptr") ? "null" : "0";
       } else if constexpr (std::is_same_v<T, LabelAddrExpr>) {
         return "blockaddress(@" + p.fn_name + ", %ulbl_" + p.label_name + ")";
@@ -2813,7 +2850,9 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const
         emit_instr(ctx, byte_diff + " = sub i64 " + lhs_i + ", " + rhs_i);
         TypeSpec elem_ts = lts;
         if (elem_ts.ptr_level > 0) elem_ts.ptr_level -= 1;
-        const int elem_sz = std::max(1, sizeof_ts(mod_, elem_ts));
+        // GCC extension: void* arithmetic is byte-granular (sizeof(void) == 1)
+        const int elem_sz = (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0)
+                                ? 1 : std::max(1, sizeof_ts(mod_, elem_ts));
         std::string diff = byte_diff;
         if (elem_sz != 1) {
           const std::string scaled = fresh_tmp(ctx);

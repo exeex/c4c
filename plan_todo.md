@@ -3,9 +3,9 @@
 Last updated: 2026-03-14
 
 ## Current Results
-- Tests: 1770/1773 passed (99.8%), 3 failed
-- Improvement: +6 tests this session (from 1764)
-- Previous session: 1764/1773 (99.5%)
+- Tests: 1772/1773 passed (99.9%), 1 failed
+- Improvement: +8 tests across sessions (from 1764)
+- Previous: 1770/1773 (99.8%)
 
 ## Completed: Phase 0 — Structure Refactor
 All 6 slices done.
@@ -75,6 +75,8 @@ All work items done:
 - [x] Ptr-to-array deref: array decay instead of scalar load ← NEW
 - [x] AddrOf array: preserve array dims and set is_ptr_to_array ← NEW
 - [x] Local multi-dim array init: VLA false positive fix, 2D+ init lists, dim shift ← NEW
+- [x] void* pointer subtraction: byte-granular (GCC extension, sizeof(void)==1) ← NEW
+- [x] blockaddress constant exprs in static initializers (&&lab1 - &&lab0) ← NEW
 
 ## Not Yet Started
 ### Phase 2 remainder
@@ -99,9 +101,8 @@ All work items done:
 - More POSIX headers as needed
 - INT64_C, UINT32_C macro helpers
 
-## Remaining 3 Failures (categorized)
-- **comp_goto_1, pr70460**: computed goto / label differences — pre-existing codegen issue
-- **scal_to_vec2**: scalar-to-vector coercion — pre-existing codegen issue
+## Remaining 1 Failure (categorized)
+- **scal_to_vec2**: scalar-to-vector coercion — requires full vector type support (__attribute__((vector_size(...))))
 
 ## Next Suggested Work
 - Anti-paste guard behavior (Phase 5)
