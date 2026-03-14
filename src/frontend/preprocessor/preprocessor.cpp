@@ -497,7 +497,7 @@ std::string Preprocessor::expand_funclike_call(const MacroDef& def,
   std::string va_raw, va_exp;
   if (def.variadic) {
     for (size_t k = def.params.size(); k < raw_args.size(); ++k) {
-      if (k > def.params.size()) { va_raw += ","; va_exp += ","; }
+      if (k > def.params.size()) { va_raw += ","; va_exp += ", "; }
       va_raw += raw_args[k];
       if (k < raw_args.size()) va_exp += expand_text(trim_copy(raw_args[k]), disabled);
     }
