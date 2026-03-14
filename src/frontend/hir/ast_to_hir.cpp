@@ -378,6 +378,9 @@ void compute_struct_layout(phase2::hir::Module* module, HirStructDef& def) {
       def.align_bytes = std::max(def.align_bytes, fa);
       def.size_bytes = std::max(def.size_bytes, field_size_bytes(*module, field));
     }
+    // __attribute__((aligned(N))) boosts struct alignment
+    if (def.struct_align > 0)
+      def.align_bytes = std::max(def.align_bytes, def.struct_align);
     def.size_bytes = align_to(def.size_bytes, def.align_bytes);
     return;
   }
@@ -398,6 +401,9 @@ void compute_struct_layout(phase2::hir::Module* module, HirStructDef& def) {
     }
     field.offset_bytes = last_offset;
   }
+  // __attribute__((aligned(N))) boosts struct alignment
+  if (def.struct_align > 0)
+    def.align_bytes = std::max(def.align_bytes, def.struct_align);
   def.size_bytes = align_to(offset, def.align_bytes);
 }
 
@@ -734,6 +740,7 @@ class Lowerer {
     def.tag = tag;
     def.is_union = sd->is_union;
     def.pack_align = sd->pack_align;
+    def.struct_align = sd->struct_align;
 
     int llvm_idx = 0;
     // Bitfield packing state (for structs only; unions always use offset 0)

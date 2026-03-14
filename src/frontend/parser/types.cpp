@@ -790,10 +790,11 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     defined_struct_tags_.insert(tag);
 
     Node* sd = make_node(NK_STRUCT_DEF, ln);
-    sd->name       = tag;
-    sd->is_union   = is_union;
+    sd->name         = tag;
+    sd->is_union     = is_union;
     // __attribute__((packed)) => pack_align=1; otherwise use #pragma pack state
-    sd->pack_align = attr_ts.is_packed ? 1 : pack_alignment_;
+    sd->pack_align   = attr_ts.is_packed ? 1 : pack_alignment_;
+    sd->struct_align = attr_ts.align_bytes;  // __attribute__((aligned(N)))
 
     consume();  // consume {
 
@@ -978,14 +979,17 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     expect(TokenKind::RBrace);
 
     // Check for trailing __attribute__((packed)) after closing brace.
-    // We must only peek, not consume — other attributes like aligned()
-    // belong to the enclosing declaration (typedef, variable, etc.).
-    if (check(TokenKind::KwAttribute) && sd->pack_align == 0) {
+    // Peek at trailing attributes for packed/aligned on the struct type.
+    // We must restore position — the caller re-parses for the declaration.
+    if (check(TokenKind::KwAttribute)) {
         int save = pos_;
         TypeSpec trailing_attr{};
         parse_attributes(&trailing_attr);
-        if (trailing_attr.is_packed) {
+        if (trailing_attr.is_packed && sd->pack_align == 0) {
             sd->pack_align = 1;
+        }
+        if (trailing_attr.align_bytes > 0 && sd->struct_align == 0) {
+            sd->struct_align = trailing_attr.align_bytes;
         }
         // Restore position so the caller can re-parse attributes for the declaration.
         pos_ = save;

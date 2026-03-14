@@ -581,7 +581,8 @@ struct HirStructDef {
   bool is_union = false;
   int size_bytes = 0;
   int align_bytes = 1;
-  int pack_align = 0;  // #pragma pack alignment (0 = default, >0 = cap field alignment to N)
+  int pack_align = 0;    // #pragma pack alignment (0 = default, >0 = cap field alignment to N)
+  int struct_align = 0;  // __attribute__((aligned(N))) on struct (0 = default)
   std::vector<HirStructField> fields;
 };
 
