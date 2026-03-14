@@ -483,6 +483,18 @@ void test_computed_include() {
   expect_contains(out, "int x = 42;", "computed include should expand macro then include");
 }
 
+void test_gnu_named_variadic() {
+  fs::path dir = make_test_dir("gnu_named_variadic");
+  fs::path file = dir / "main.c";
+  write_text(file,
+             "#define debug(fmt, args...) call(fmt, args)\n"
+             "int r = debug(\"hello\", 1, 2);\n");
+  Preprocessor pp;
+  std::string out = pp.preprocess_file(file.string());
+  expect_contains(out, "int r = call(\"hello\", 1, 2);",
+                  "GNU named variadic should substitute named args");
+}
+
 void test_has_include() {
   fs::path dir = make_test_dir("has_include");
   fs::path header = dir / "exists.h";
@@ -620,6 +632,7 @@ int main() {
     test_include_path_buckets();
     test_computed_include();
     test_has_include();
+    test_gnu_named_variadic();
     test_define_undefine_api();
     test_preprocess_source();
     test_builtin_location_macros();

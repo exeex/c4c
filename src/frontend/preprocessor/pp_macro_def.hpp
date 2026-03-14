@@ -13,6 +13,9 @@ struct MacroDef {
   bool variadic = false;
   std::vector<std::string> params;
   std::string body;
+  // GNU named variadic: e.g., #define F(fmt, args...) — va_name = "args"
+  // Empty for standard variadic (... / __VA_ARGS__).
+  std::string va_name;
 };
 
 using MacroTable = std::unordered_map<std::string, MacroDef>;

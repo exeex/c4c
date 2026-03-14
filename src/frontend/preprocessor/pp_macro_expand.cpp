@@ -85,17 +85,24 @@ std::string substitute_funclike_body(const std::string& body,
                                      const std::vector<std::string>& exp_args,
                                      bool variadic,
                                      const std::string& va_raw,
-                                     const std::string& va_exp) {
+                                     const std::string& va_exp,
+                                     const std::string& va_name) {
   std::string out;
   size_t i = 0;
 
+  auto is_va_ident = [&](const std::string& name) -> bool {
+    if (name == "__VA_ARGS__") return true;
+    if (!va_name.empty() && name == va_name) return true;
+    return false;
+  };
+
   auto get_raw = [&](const std::string& name) -> std::string {
-    if (variadic && name == "__VA_ARGS__") return va_raw;
+    if (variadic && is_va_ident(name)) return va_raw;
     int idx = find_param_idx(params, name);
     return (idx >= 0 && idx < static_cast<int>(raw_args.size())) ? trim_copy(raw_args[idx]) : name;
   };
   auto get_exp = [&](const std::string& name) -> std::string {
-    if (variadic && name == "__VA_ARGS__") return va_exp;
+    if (variadic && is_va_ident(name)) return va_exp;
     int idx = find_param_idx(params, name);
     return (idx >= 0 && idx < static_cast<int>(exp_args.size())) ? exp_args[idx] : name;
   };
@@ -122,7 +129,7 @@ std::string substitute_funclike_body(const std::string& body,
         while (k < body.size() && is_ident_continue(body[k])) ++k;
         std::string pname = body.substr(j, k - j);
         bool is_param = (find_param_idx(params, pname) >= 0) ||
-                        (variadic && pname == "__VA_ARGS__");
+                        (variadic && is_va_ident(pname));
         if (is_param) {
           out += stringify_arg(get_raw(pname));
           i = k;

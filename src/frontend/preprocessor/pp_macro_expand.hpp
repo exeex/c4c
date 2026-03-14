@@ -20,13 +20,15 @@ std::string stringify_arg(const std::string& raw);
 int find_param_idx(const std::vector<std::string>& params, const std::string& name);
 
 // Perform parameter substitution on a function-like macro body.
+// va_name is the GNU named variadic parameter (empty for standard __VA_ARGS__).
 std::string substitute_funclike_body(const std::string& body,
                                      const std::vector<std::string>& params,
                                      const std::vector<std::string>& raw_args,
                                      const std::vector<std::string>& exp_args,
                                      bool variadic,
                                      const std::string& va_raw,
-                                     const std::string& va_exp);
+                                     const std::string& va_exp,
+                                     const std::string& va_name = "");
 
 // Split a directive line (text after '#') into (keyword, rest).
 std::pair<std::string, std::string> split_directive(const std::string& line);

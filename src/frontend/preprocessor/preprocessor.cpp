@@ -261,6 +261,11 @@ void Preprocessor::handle_define(const std::string& args,
           if (p == "...") {
             def.variadic = true;
             seen_variadic = true;
+          } else if (p.size() > 3 && p.substr(p.size() - 3) == "...") {
+            // GNU named variadic: args...
+            def.variadic = true;
+            seen_variadic = true;
+            def.va_name = trim_copy(p.substr(0, p.size() - 3));
           } else {
             def.params.push_back(p);
           }
@@ -275,6 +280,10 @@ void Preprocessor::handle_define(const std::string& args,
           if (p == "...") {
             def.variadic = true;
             seen_variadic = true;
+          } else if (p.size() > 3 && p.substr(p.size() - 3) == "...") {
+            def.variadic = true;
+            seen_variadic = true;
+            def.va_name = trim_copy(p.substr(0, p.size() - 3));
           } else {
             def.params.push_back(p);
           }
@@ -511,7 +520,8 @@ std::string Preprocessor::expand_funclike_call(const MacroDef& def,
   // Substitute body: handles #, ## and parameter replacement.
   std::string substituted = substitute_funclike_body(def.body, def.params,
                                                      raw_args, exp_args,
-                                                     def.variadic, va_raw, va_exp);
+                                                     def.variadic, va_raw, va_exp,
+                                                     def.va_name);
 
   // Rescan result for further macro expansion (C11 6.10.3.4).
   // Add the macro's own name to the disabled set to prevent self-re-expansion.
