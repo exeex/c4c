@@ -301,6 +301,10 @@ void Preprocessor::process_directive(const std::string& raw_line, std::string& o
           }
         }
       }
+    } else if (pragma_text.substr(0, 4) == "pack") {
+      // #pragma pack(...) — emit into output for parser to consume.
+      // Preserved as: #pragma pack(ARGS)\n
+      out += "#pragma pack" + pragma_text.substr(4) + "\n";
     } else {
       PragmaResult pr = dispatch_pragma(rest, current_file, line_no);
       if (pr == PragmaResult::Unhandled) {
@@ -607,7 +611,7 @@ std::string Preprocessor::expand_text(const std::string& text,
             if (k < text.size() && text[k] == ')') {
               ++k;  // skip closing )
               // Process the destringized content as a pragma directive.
-              process_pragma_text(str_content);
+              out += process_pragma_text(str_content);
               i = k;
               continue;
             }
@@ -985,7 +989,7 @@ bool Preprocessor::can_resolve_include(const std::string& path_arg,
   return false;
 }
 
-void Preprocessor::process_pragma_text(const std::string& pragma_text) {
+std::string Preprocessor::process_pragma_text(const std::string& pragma_text) {
   std::string s = trim_copy(pragma_text);
   if (s == "once") {
     pragma_once_files_.insert(virtual_file_);
@@ -1018,10 +1022,14 @@ void Preprocessor::process_pragma_text(const std::string& pragma_text) {
         }
       }
     }
+  } else if (s.substr(0, 4) == "pack") {
+    // #pragma pack(...) — emit into output for parser to consume.
+    return "#pragma pack" + s.substr(4) + "\n";
   } else {
     // Dispatch to pragma handler (ignores unknown pragmas).
     dispatch_pragma(s, virtual_file_, 0);
   }
+  return {};
 }
 
 std::string Preprocessor::detect_include_guard(const std::string& source) {

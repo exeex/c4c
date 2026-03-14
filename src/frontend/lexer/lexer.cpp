@@ -11,6 +11,11 @@ std::vector<Token> Lexer::scan_all() {
   std::vector<Token> out;
   while (true) {
     skip_whitespace_and_comments();
+    if (has_pending_pragma_pack_) {
+      out.push_back(std::move(pending_pragma_pack_));
+      has_pending_pragma_pack_ = false;
+      continue;
+    }
     if (at_end()) {
       out.push_back(make_token(TokenKind::EndOfFile, "", line_, column_));
       break;
@@ -119,12 +124,39 @@ void Lexer::skip_whitespace_and_comments() {
     // GCC line-marker: '#' at column 1 (after whitespace consumption puts us
     // at a fresh position).  A line marker looks like:
     //   # <decimal-number> "filename" [flags]
-    // We skip the entire line.
+    // We skip the entire line, EXCEPT for #pragma pack which produces a token.
     if (c == '#') {
       // Only treat as line marker if the '#' is at the logical start of a
       // source line (column == 1 after all leading whitespace).
       // We use column_ == 1 here since we just processed whitespace above.
       if (column_ == 1) {
+        // Check if this is #pragma pack — peek ahead without consuming.
+        static const char pragma_pack[] = "#pragma pack";
+        size_t pp_len = sizeof(pragma_pack) - 1;
+        if (index_ + pp_len <= source_.size() &&
+            source_.compare(index_, pp_len, pragma_pack) == 0) {
+          // Extract the arguments: everything between ( and ) on this line.
+          int tok_line = line_;
+          int tok_col = column_;
+          // Skip past "#pragma pack"
+          for (size_t j = 0; j < pp_len; ++j) advance();
+          // Skip whitespace before '('
+          while (!at_end() && peek() != '\n' && (peek() == ' ' || peek() == '\t')) advance();
+          std::string args;
+          if (!at_end() && peek() == '(') {
+            advance();  // consume '('
+            while (!at_end() && peek() != ')' && peek() != '\n') {
+              char ch = advance();
+              if (ch != ' ' && ch != '\t') args += ch;  // strip whitespace from args
+            }
+            if (!at_end() && peek() == ')') advance();  // consume ')'
+          }
+          // Skip rest of line
+          while (!at_end() && peek() != '\n') advance();
+          pending_pragma_pack_ = make_token(TokenKind::PragmaPack, args, tok_line, tok_col);
+          has_pending_pragma_pack_ = true;
+          return;  // exit skip loop to let scan_all() pick up the pending token
+        }
         // Skip to end of line
         while (!at_end() && peek() != '\n') advance();
         continue;

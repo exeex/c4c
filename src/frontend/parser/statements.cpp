@@ -36,6 +36,12 @@ Node* Parser::parse_stmt() {
     }
 
     switch (cur().kind) {
+        case TokenKind::PragmaPack: {
+            handle_pragma_pack(cur().lexeme);
+            consume();
+            return make_node(NK_EMPTY, ln);
+        }
+
         case TokenKind::LBrace:
             return parse_block();
 

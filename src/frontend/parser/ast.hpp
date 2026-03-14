@@ -228,6 +228,7 @@ struct Node {
     // NK_STRUCT_DEF fields  (each child is NK_DECL with type + name)
     Node** fields;
     int    n_fields;
+    int    pack_align;  // #pragma pack alignment (0 = default, >0 = packed to N bytes)
 
     // NK_ENUM_DEF variants
     const char** enum_names;  // arena-allocated array of variant names

@@ -785,8 +785,9 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     defined_struct_tags_.insert(tag);
 
     Node* sd = make_node(NK_STRUCT_DEF, ln);
-    sd->name     = tag;
-    sd->is_union = is_union;
+    sd->name       = tag;
+    sd->is_union   = is_union;
+    sd->pack_align = pack_alignment_;  // capture current #pragma pack state
 
     consume();  // consume {
 

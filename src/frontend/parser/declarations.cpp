@@ -166,6 +166,13 @@ Node* Parser::parse_top_level() {
     int ln = cur().line;
     if (at_end()) return nullptr;
 
+    // Handle #pragma pack tokens
+    if (check(TokenKind::PragmaPack)) {
+        handle_pragma_pack(cur().lexeme);
+        consume();
+        return make_node(NK_EMPTY, ln);
+    }
+
     // Don't skip_attributes() here — type-affecting attributes like
     // __attribute__((vector_size(N))) must flow to parse_base_type().
     if (at_end()) return nullptr;

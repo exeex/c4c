@@ -85,7 +85,7 @@ All work items done:
 - [x] Include guard optimization ← NEW
 
 ### Phase 3 remainder
-- `#pragma pack(...)` support (currently ignored, no test failures)
+- [x] `#pragma pack(...)` support — full pipeline: preprocessor→lexer→parser→HIR layout ← NEW
 - `#pragma weak`
 
 ### Phase 5 remainder
@@ -117,6 +117,6 @@ All work items done:
 - [x] Scalar-to-vector binary op result type: update `res_spec` after splatting in hir_emitter.cpp
 
 ## Next Suggested Work
-- `#pragma pack(...)` real support (Phase 3, low priority — tests pass without it)
 - `#pragma weak` (Phase 3, low priority)
 - `__VA_OPT__` support (C2x feature, not yet in plan)
+- `__attribute__((packed))` on struct types (complement to #pragma pack)

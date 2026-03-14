@@ -86,7 +86,8 @@ private:
   bool can_resolve_include(const std::string& path_arg, const std::string& current_file);
 
   // _Pragma("...") operator — process destringized pragma text.
-  void process_pragma_text(const std::string& pragma_text);
+  // Returns text to inject into the output (e.g. #pragma pack directives).
+  std::string process_pragma_text(const std::string& pragma_text);
 
   // Include guard detection — scans source for #ifndef GUARD / #define GUARD / #endif pattern.
   static std::string detect_include_guard(const std::string& source);

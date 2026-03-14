@@ -19,7 +19,7 @@ PragmaResult dispatch_pragma(const std::string& args,
   // "once" is handled by the caller (Preprocessor::process_directive).
 
   // Pragmas that are safe to ignore in a compiler frontend:
-  if (kind == "pack" || kind == "push_macro" || kind == "pop_macro" ||
+  if (kind == "push_macro" || kind == "pop_macro" ||
       kind == "weak" || kind == "redefine_extname" || kind == "comment" ||
       kind == "message" || kind == "warning" || kind == "error" ||
       kind == "poison" || kind == "system_header" || kind == "clang" ||

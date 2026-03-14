@@ -346,6 +346,8 @@ int field_align_bytes(const phase2::hir::Module& module, const HirStructField& f
 void compute_struct_layout(phase2::hir::Module* module, HirStructDef& def) {
   if (!module) return;
 
+  const int pack = def.pack_align;  // 0 = default, >0 = cap alignment
+
   for (auto& field : def.fields) {
     if (field.bit_width >= 0) {
       field.align_bytes = std::max(1, field.storage_unit_bits / 8);
@@ -360,6 +362,10 @@ void compute_struct_layout(phase2::hir::Module* module, HirStructDef& def) {
       field.align_bytes = type_align_bytes(*module, field_ts);
       field.size_bytes = type_size_bytes(*module, field_ts);
     }
+    // Apply #pragma pack: cap field alignment to pack value
+    if (pack > 0 && field.align_bytes > pack) {
+      field.align_bytes = pack;
+    }
   }
 
   if (def.is_union) {
@@ -367,7 +373,9 @@ void compute_struct_layout(phase2::hir::Module* module, HirStructDef& def) {
     def.size_bytes = 0;
     for (auto& field : def.fields) {
       field.offset_bytes = 0;
-      def.align_bytes = std::max(def.align_bytes, field_align_bytes(*module, field));
+      int fa = field_align_bytes(*module, field);
+      if (pack > 0 && fa > pack) fa = pack;
+      def.align_bytes = std::max(def.align_bytes, fa);
       def.size_bytes = std::max(def.size_bytes, field_size_bytes(*module, field));
     }
     def.size_bytes = align_to(def.size_bytes, def.align_bytes);
@@ -380,7 +388,8 @@ void compute_struct_layout(phase2::hir::Module* module, HirStructDef& def) {
   int last_offset = 0;
   for (auto& field : def.fields) {
     if (field.llvm_idx != last_llvm_idx) {
-      const int field_align = field_align_bytes(*module, field);
+      int field_align = field_align_bytes(*module, field);
+      if (pack > 0 && field_align > pack) field_align = pack;
       offset = align_to(offset, field_align);
       last_offset = offset;
       offset += field_size_bytes(*module, field);
@@ -724,6 +733,7 @@ class Lowerer {
     HirStructDef def;
     def.tag = tag;
     def.is_union = sd->is_union;
+    def.pack_align = sd->pack_align;
 
     int llvm_idx = 0;
     // Bitfield packing state (for structs only; unions always use offset 0)

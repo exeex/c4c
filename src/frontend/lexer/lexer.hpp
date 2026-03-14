@@ -36,6 +36,10 @@ class Lexer {
   std::size_t index_ = 0;
   int line_   = 1;
   int column_ = 1;
+
+  // Pending #pragma pack token detected during whitespace/comment skipping.
+  bool has_pending_pragma_pack_ = false;
+  Token pending_pragma_pack_{};
 };
 
 }  // namespace tinyc2ll::frontend_cxx

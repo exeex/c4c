@@ -65,6 +65,13 @@ class Parser {
   // Used so declaration-only enum statements (`enum { ... };`) can be retained.
   Node* last_enum_def_;
 
+  // #pragma pack state: current packing alignment (0 = default/no packing).
+  int pack_alignment_ = 0;
+  std::vector<int> pack_stack_;  // for #pragma pack(push/pop)
+
+  // ── pragma helpers ────────────────────────────────────────────────────────
+  void handle_pragma_pack(const std::string& args);
+
   // ── token cursor helpers ──────────────────────────────────────────────────
   const Token& cur() const;              // current token
   const Token& peek(int offset = 0) const; // peek at pos_+offset (0=current)

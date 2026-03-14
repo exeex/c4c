@@ -127,6 +127,8 @@ const char *token_kind_name(TokenKind kind) {
     case TokenKind::PipePipe:             return "PIPE_PIPE";
     case TokenKind::HashHash:             return "HASH_HASH";
 
+    case TokenKind::PragmaPack: return "PRAGMA_PACK";
+
     case TokenKind::EndOfFile: return "EOF";
     case TokenKind::Invalid:   return "INVALID";
   }

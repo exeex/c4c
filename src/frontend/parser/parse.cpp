@@ -146,6 +146,43 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena)
     }
 }
 
+// ── pragma helpers ────────────────────────────────────────────────────────────
+
+void Parser::handle_pragma_pack(const std::string& args) {
+    // #pragma pack(N)        — set pack alignment to N
+    // #pragma pack()         — reset to default (0)
+    // #pragma pack(push)     — push current alignment
+    // #pragma pack(push,N)   — push current alignment, set to N
+    // #pragma pack(pop)      — pop previous alignment
+    // #pragma pack(pop,N)    — pop and set to N
+    // The lexeme has whitespace stripped and contains just the args, e.g. "1", "push,2", "pop", ""
+
+    if (args.empty()) {
+        pack_alignment_ = 0;
+        return;
+    }
+
+    if (args.substr(0, 4) == "push") {
+        pack_stack_.push_back(pack_alignment_);
+        if (args.size() > 4 && args[4] == ',') {
+            pack_alignment_ = std::stoi(args.substr(5));
+        }
+    } else if (args.substr(0, 3) == "pop") {
+        if (!pack_stack_.empty()) {
+            pack_alignment_ = pack_stack_.back();
+            pack_stack_.pop_back();
+        } else {
+            pack_alignment_ = 0;
+        }
+        if (args.size() > 3 && args[3] == ',') {
+            pack_alignment_ = std::stoi(args.substr(4));
+        }
+    } else {
+        // Simple numeric value
+        pack_alignment_ = std::stoi(args);
+    }
+}
+
 // ── token cursor helpers ──────────────────────────────────────────────────────
 
 const Token& Parser::cur() const {
