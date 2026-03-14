@@ -525,6 +525,43 @@ std::string Preprocessor::expand_text(const std::string& text,
       while (j < text.size() && is_ident_continue(text[j])) ++j;
       std::string ident = text.substr(i, j - i);
 
+      // _Pragma("...") operator (C99 6.10.9): destringize and process as #pragma.
+      if (ident == "_Pragma") {
+        size_t k = j;
+        while (k < text.size() && (text[k] == ' ' || text[k] == '\t')) ++k;
+        if (k < text.size() && text[k] == '(') {
+          ++k;
+          while (k < text.size() && (text[k] == ' ' || text[k] == '\t')) ++k;
+          if (k < text.size() && text[k] == '"') {
+            // Collect string literal
+            std::string str_content;
+            ++k;  // skip opening "
+            while (k < text.size() && text[k] != '"') {
+              if (text[k] == '\\' && k + 1 < text.size()) {
+                char esc = text[k + 1];
+                if (esc == '"') { str_content += '"'; k += 2; continue; }
+                if (esc == '\\') { str_content += '\\'; k += 2; continue; }
+              }
+              str_content += text[k];
+              ++k;
+            }
+            if (k < text.size()) ++k;  // skip closing "
+            while (k < text.size() && (text[k] == ' ' || text[k] == '\t')) ++k;
+            if (k < text.size() && text[k] == ')') {
+              ++k;  // skip closing )
+              // Process the destringized content as a pragma directive.
+              process_pragma_text(str_content);
+              i = k;
+              continue;
+            }
+          }
+        }
+        // Not a valid _Pragma invocation — output as-is.
+        out += ident;
+        i = j;
+        continue;
+      }
+
       auto it = macros_.find(ident);
       if (it != macros_.end() && disabled.find(ident) == disabled.end()) {
         const MacroDef& def = it->second;
@@ -868,6 +905,45 @@ bool Preprocessor::can_resolve_include(const std::string& path_arg,
     if (try_exists(d)) return true;
 
   return false;
+}
+
+void Preprocessor::process_pragma_text(const std::string& pragma_text) {
+  std::string s = trim_copy(pragma_text);
+  if (s == "once") {
+    pragma_once_files_.insert(virtual_file_);
+  } else if (s.substr(0, 10) == "push_macro") {
+    auto q1 = s.find('"');
+    auto q2 = s.find('"', q1 + 1);
+    if (q1 != std::string::npos && q2 != std::string::npos) {
+      std::string name = s.substr(q1 + 1, q2 - q1 - 1);
+      auto it = macros_.find(name);
+      if (it != macros_.end()) {
+        macro_stack_[name].push_back(it->second);
+      } else {
+        macro_stack_[name].push_back(MacroDef{name, false, false, {}, ""});
+        macro_stack_[name].back().name = "";
+      }
+    }
+  } else if (s.substr(0, 9) == "pop_macro") {
+    auto q1 = s.find('"');
+    auto q2 = s.find('"', q1 + 1);
+    if (q1 != std::string::npos && q2 != std::string::npos) {
+      std::string name = s.substr(q1 + 1, q2 - q1 - 1);
+      auto it = macro_stack_.find(name);
+      if (it != macro_stack_.end() && !it->second.empty()) {
+        MacroDef saved = std::move(it->second.back());
+        it->second.pop_back();
+        if (saved.name.empty()) {
+          macros_.erase(name);
+        } else {
+          macros_[name] = std::move(saved);
+        }
+      }
+    }
+  } else {
+    // Dispatch to pragma handler (ignores unknown pragmas).
+    dispatch_pragma(s, virtual_file_, 0);
+  }
 }
 
 std::string Preprocessor::detect_include_guard(const std::string& source) {
