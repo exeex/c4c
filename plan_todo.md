@@ -99,7 +99,8 @@ All work items done:
 
 ### Phase 7 remainder
 - More POSIX headers as needed
-- INT64_C, UINT32_C macro helpers
+- [x] `<stdint.h>` builtin header (INT64_C, UINT32_C, INT8_C, etc.) ← NEW
+- [x] `<inttypes.h>` builtin header (PRId64, PRIu32, imaxabs, etc.) ← NEW
 
 ## Remaining 1 Failure (categorized)
 - **scal_to_vec2**: scalar-to-vector coercion — requires full vector type support (__attribute__((vector_size(...))))
