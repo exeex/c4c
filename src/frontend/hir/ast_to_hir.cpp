@@ -1747,10 +1747,6 @@ class Lowerer {
         d.type = qtype_from(n->type, ValueCategory::LValue);
         d.fn_ptr_sig = fn_ptr_sig_from_decl_node(n);
         if (d.fn_ptr_sig) ctx.local_fn_ptr_sigs[d.name] = *d.fn_ptr_sig;
-        if (n->type.array_rank > 0 && n->type.array_size_expr &&
-            (n->type.array_size <= 0 || n->type.array_dims[0] <= 0)) {
-          d.vla_size = lower_expr(&ctx, n->type.array_size_expr);
-        }
         // Deduce unsized array dimension from initializer list
         if (n->init && d.type.spec.array_rank > 0 && d.type.spec.array_size < 0) {
           if (n->init->kind == NK_INIT_LIST) {
@@ -1770,11 +1766,16 @@ class Lowerer {
             d.type.spec.array_dims[0] = d.type.spec.array_size;
           }
         }
+        // VLA: only if size is still unknown after deduction
+        if (n->type.array_rank > 0 && n->type.array_size_expr &&
+            (d.type.spec.array_size <= 0 || d.type.spec.array_dims[0] <= 0)) {
+          d.vla_size = lower_expr(&ctx, n->type.array_size_expr);
+        }
         d.storage = n->is_static ? StorageClass::Static : StorageClass::Auto;
         d.span = make_span(n);
         const bool is_array_with_init_list =
             n->init && n->init->kind == NK_INIT_LIST &&
-            (d.type.spec.array_rank == 1 || d.type.spec.is_vector);
+            (d.type.spec.array_rank > 0 || d.type.spec.is_vector);
         const bool is_array_with_string_init =
             n->init && n->init->kind == NK_STR_LIT && d.type.spec.array_rank == 1;
         const bool is_struct_with_init_list =
@@ -2120,6 +2121,10 @@ class Lowerer {
                     }
                   }
                   TypeSpec elem_ts = cur_ts;
+                  // Shift array_dims to drop the outermost dimension
+                  for (int di = 0; di < elem_ts.array_rank - 1; ++di)
+                    elem_ts.array_dims[di] = elem_ts.array_dims[di + 1];
+                  elem_ts.array_dims[elem_ts.array_rank - 1] = -1;
                   elem_ts.array_rank--;
                   elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
                   long long next_idx = 0;
