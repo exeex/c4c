@@ -3,9 +3,9 @@
 Last updated: 2026-03-14
 
 ## Current Results
-- Tests: 1753/1770 passed (99.0%), 17 failed
-- Improvement: +117 tests from builtin header injection and push/pop_macro
-- Previous: 1636/1770 (92.5%)
+- Tests: 1764/1773 passed (99.5%), 9 failed
+- Improvement: +5 tests this session (from 1759)
+- Previous session: 1753/1770 (99.0%)
 
 ## Completed: Phase 0 — Structure Refactor
 All 6 slices done.
@@ -25,7 +25,7 @@ All work items done:
 - [x] Computed includes (macro-expanded `#include`)
 - [x] `#pragma once`
 - [x] Unknown pragmas non-fatal (ignore instead of fallback)
-- [x] `#pragma push_macro` / `#pragma pop_macro` ← NEW
+- [x] `#pragma push_macro` / `#pragma pop_macro`
 
 ## Completed: Phase 4 partial — #if Expressions and Intrinsics
 - [x] `__has_include("file")` and `__has_include(<file>)` with real resolution
@@ -36,8 +36,14 @@ All work items done:
 ## Completed: Phase 5 partial — Macro Expansion
 - [x] Variadic macro __VA_ARGS__ spacing fix
 - [x] GNU named variadic macros (`args...` syntax)
+- [x] PP-number suffix protection (float suffixes F/L not expanded as macros) ← NEW
 
-## Completed: Phase 7 partial — Builtin Header Injection ← NEW
+## Completed: Phase 6 partial — Predefined Macros and Target Configuration ← NEW
+- [x] GCC compatibility macros (__GNUC__, __GNUC_MINOR__, __VERSION__, __STDC_HOSTED__)
+- [x] Target architecture macros (__aarch64__, __x86_64__, __i386__, __riscv)
+- [x] OS macros (__linux__, __unix__, __APPLE__, _WIN32, __ELF__)
+
+## Completed: Phase 7 partial — Builtin Header Injection
 - [x] `<stdarg.h>` (va_list, va_start, va_end, va_arg, va_copy)
 - [x] `<limits.h>` (INT_MAX, INT_MIN, CHAR_BIT, etc.)
 - [x] `<stddef.h>` (NULL, size_t, ptrdiff_t, offsetof)
@@ -51,6 +57,16 @@ All work items done:
 - [x] `<setjmp.h>` (jmp_buf, setjmp, longjmp)
 - [x] `<ctype.h>` (isalpha, toupper, etc.)
 - [x] `<math.h>` (sqrt, sin, cos, etc.)
+- [x] `<fcntl.h>` (O_RDONLY, open, etc.) ← NEW
+- [x] `<sys/mman.h>` (mmap, PROT_READ, MAP_PRIVATE, etc.) ← NEW
+- [x] `<sys/types.h>` (size_t, pid_t, off_t, etc.) ← NEW
+- [x] `<sys/stat.h>` (chmod, stat, mode macros) ← NEW
+- [x] `<unistd.h>` (read, write, close, fork, etc.) ← NEW
+
+## Non-preprocessor Fixes This Session ← NEW
+- [x] Enum scope leak: inner block enum constants no longer leak to outer scope
+  - Fixed in both parser (statements.cpp) and HIR lowerer (ast_to_hir.cpp)
+  - Save/restore `enum_consts_` around block boundaries
 
 ## Not Yet Started
 ### Phase 2 remainder
@@ -67,30 +83,24 @@ All work items done:
 - Anti-paste guard behavior
 - Multi-line function-like invocation accumulation
 
-### Phase 6 — Predefined Macros and Target Configuration
-- Target-family macro sets
+### Phase 6 remainder
+- Target-family macro sets (full coverage)
 - Config toggles (PIC, optimize, etc.)
-- Compatibility macros (__GNUC__, __VERSION__, etc.)
 
-### Phase 7 remainder — Builtin Header Injection
-- POSIX headers (fcntl.h, sys/mman.h, unistd.h, etc.)
+### Phase 7 remainder
+- More POSIX headers as needed
 - INT64_C, UINT32_C macro helpers
 
-## Remaining 17 Failures (categorized)
-- **c_testsuite (5)**: 00201, 00202, 00206, 00212, 00216 — pre-existing, not preprocessor-related
+## Remaining 9 Failures (categorized)
 - **positive_sema (2)**: typeof_unqual_expr, typeof_stmt_expr_combo — sema issues
-- **comp_goto_1**: computed goto — pre-existing codegen issue
+- **comp_goto_1, pr70460**: computed goto / label differences — pre-existing codegen issue
 - **scal_to_vec2**: scalar-to-vector coercion — pre-existing codegen issue
 - **widechar_1**: wide char — pre-existing codegen issue
-- **strlen_4**: backend fail — global array init codegen bug
-- **strlen_5**: runtime mismatch
-- **cmpsf_1, 20101011_1**: runtime aborts
-- **20001203_2**: segfault (complex nested unions)
-- **loop_2f, loop_2g**: missing POSIX headers (fcntl.h, sys/mman.h)
-- **pr70460**: runtime mismatch
-- **pushpop_macro**: FIXED ← (already reflected in count)
+- **strlen_4**: global init for ptr-to-array type — codegen bug
+- **strlen_5**: runtime mismatch (relies on UB across adjacent subarrays)
+- **20001203_2**: segfault (complex nested unions) — codegen bug
 
 ## Next Suggested Work
 - `#include_next` (needed for system header chaining)
-- POSIX builtin headers (fcntl.h, sys/mman.h) for loop_2f/2g
-- Phase 6 predefined macros if needed
+- More Phase 6 predefined macros if needed
+- Investigate strlen_4 ptr-to-array global init codegen

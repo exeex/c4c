@@ -1681,12 +1681,14 @@ class Lowerer {
         const bool new_scope = (n->ival != 1);
         const auto saved_locals = ctx.locals;
         const auto saved_static_globals = ctx.static_globals;
+        const auto saved_enum_consts = enum_consts_;
         for (int i = 0; i < n->n_children; ++i) {
           lower_stmt_node(ctx, n->children[i]);
         }
         if (new_scope) {
           ctx.locals = saved_locals;
           ctx.static_globals = saved_static_globals;
+          enum_consts_ = saved_enum_consts;
         }
         return;
       }

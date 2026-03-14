@@ -480,6 +480,39 @@ std::string Preprocessor::expand_text(const std::string& text,
   for (size_t i = 0; i < text.size();) {
     char c = text[i];
 
+    // Skip pp-numbers: digit (or . followed by digit) starts a pp-number.
+    // A pp-number consists of digits, letters, underscores, dots,
+    // and [eEpP][+-] sequences.  The trailing letters (e.g. F, L, ULL)
+    // are part of the number and must NOT be treated as identifiers.
+    if (!in_str && !in_chr &&
+        (std::isdigit(static_cast<unsigned char>(c)) ||
+         (c == '.' && i + 1 < text.size() &&
+          std::isdigit(static_cast<unsigned char>(text[i + 1]))))) {
+      size_t j = i;
+      while (j < text.size()) {
+        char ch = text[j];
+        if (std::isdigit(static_cast<unsigned char>(ch)) ||
+            std::isalpha(static_cast<unsigned char>(ch)) ||
+            ch == '_' || ch == '.') {
+          // [eEpP] may be followed by [+-] as part of the exponent.
+          if ((ch == 'e' || ch == 'E' || ch == 'p' || ch == 'P') &&
+              j + 1 < text.size() && (text[j + 1] == '+' || text[j + 1] == '-')) {
+            out.push_back(ch);
+            ++j;
+            out.push_back(text[j]);
+            ++j;
+            continue;
+          }
+          out.push_back(ch);
+          ++j;
+        } else {
+          break;
+        }
+      }
+      i = j;
+      continue;
+    }
+
     if (!in_str && !in_chr && is_ident_start(c)) {
       size_t j = i + 1;
       while (j < text.size() && is_ident_continue(text[j])) ++j;
@@ -1154,6 +1187,116 @@ std::string Preprocessor::get_builtin_header(const std::string& name) {
       "float ceilf(float);\n"
       "float floorf(float);\n"
       "float fmodf(float, float);\n"
+      "#endif\n";
+  }
+  if (name == "fcntl.h") {
+    return
+      "#ifndef _FCNTL_H\n"
+      "#define _FCNTL_H\n"
+      "#define O_RDONLY 0\n"
+      "#define O_WRONLY 1\n"
+      "#define O_RDWR 2\n"
+      "#define O_CREAT 0100\n"
+      "#define O_EXCL 0200\n"
+      "#define O_NOCTTY 0400\n"
+      "#define O_TRUNC 01000\n"
+      "#define O_APPEND 02000\n"
+      "#define O_NONBLOCK 04000\n"
+      "#define O_CLOEXEC 02000000\n"
+      "int open(const char *, int, ...);\n"
+      "int creat(const char *, unsigned int);\n"
+      "int fcntl(int, int, ...);\n"
+      "#endif\n";
+  }
+  if (name == "sys/mman.h") {
+    return
+      "#ifndef _SYS_MMAN_H\n"
+      "#define _SYS_MMAN_H\n"
+      "#ifndef NULL\n"
+      "#define NULL ((void*)0)\n"
+      "#endif\n"
+      "typedef __SIZE_TYPE__ size_t;\n"
+      "typedef long off_t;\n"
+      "#define PROT_NONE 0\n"
+      "#define PROT_READ 1\n"
+      "#define PROT_WRITE 2\n"
+      "#define PROT_EXEC 4\n"
+      "#define MAP_SHARED 0x01\n"
+      "#define MAP_PRIVATE 0x02\n"
+      "#define MAP_FIXED 0x10\n"
+      "#define MAP_ANONYMOUS 0x20\n"
+      "#define MAP_ANON MAP_ANONYMOUS\n"
+      "#define MAP_FAILED ((void *)-1)\n"
+      "void *mmap(void *, size_t, int, int, int, off_t);\n"
+      "int munmap(void *, size_t);\n"
+      "int mprotect(void *, size_t, int);\n"
+      "int msync(void *, size_t, int);\n"
+      "#endif\n";
+  }
+  if (name == "sys/types.h") {
+    return
+      "#ifndef _SYS_TYPES_H\n"
+      "#define _SYS_TYPES_H\n"
+      "typedef __SIZE_TYPE__ size_t;\n"
+      "typedef long ssize_t;\n"
+      "typedef long off_t;\n"
+      "typedef int pid_t;\n"
+      "typedef unsigned int uid_t;\n"
+      "typedef unsigned int gid_t;\n"
+      "typedef unsigned int mode_t;\n"
+      "#endif\n";
+  }
+  if (name == "sys/stat.h") {
+    return
+      "#ifndef _SYS_STAT_H\n"
+      "#define _SYS_STAT_H\n"
+      "typedef unsigned int mode_t;\n"
+      "typedef long off_t;\n"
+      "#define S_IRWXU 0700\n"
+      "#define S_IRUSR 0400\n"
+      "#define S_IWUSR 0200\n"
+      "#define S_IXUSR 0100\n"
+      "#define S_IRWXG 070\n"
+      "#define S_IRGRP 040\n"
+      "#define S_IWGRP 020\n"
+      "#define S_IXGRP 010\n"
+      "#define S_IRWXO 07\n"
+      "#define S_IROTH 04\n"
+      "#define S_IWOTH 02\n"
+      "#define S_IXOTH 01\n"
+      "int chmod(const char *, mode_t);\n"
+      "int mkdir(const char *, mode_t);\n"
+      "int stat(const char *, void *);\n"
+      "int fstat(int, void *);\n"
+      "#endif\n";
+  }
+  if (name == "unistd.h") {
+    return
+      "#ifndef _UNISTD_H\n"
+      "#define _UNISTD_H\n"
+      "typedef __SIZE_TYPE__ size_t;\n"
+      "typedef long ssize_t;\n"
+      "typedef long off_t;\n"
+      "typedef int pid_t;\n"
+      "#ifndef NULL\n"
+      "#define NULL ((void*)0)\n"
+      "#endif\n"
+      "#define STDIN_FILENO 0\n"
+      "#define STDOUT_FILENO 1\n"
+      "#define STDERR_FILENO 2\n"
+      "ssize_t read(int, void *, size_t);\n"
+      "ssize_t write(int, const void *, size_t);\n"
+      "int close(int);\n"
+      "off_t lseek(int, off_t, int);\n"
+      "int unlink(const char *);\n"
+      "int rmdir(const char *);\n"
+      "char *getcwd(char *, size_t);\n"
+      "int chdir(const char *);\n"
+      "pid_t fork(void);\n"
+      "pid_t getpid(void);\n"
+      "unsigned int sleep(unsigned int);\n"
+      "int usleep(unsigned int);\n"
+      "int access(const char *, int);\n"
       "#endif\n";
   }
   return {};

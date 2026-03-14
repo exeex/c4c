@@ -8,12 +8,16 @@ namespace tinyc2ll::frontend_cxx {
 Node* Parser::parse_block() {
     int ln = cur().line;
     expect(TokenKind::LBrace);
+    // Save enum constant scope — inner block enums must not leak to outer scope.
+    auto saved_enum_consts = enum_consts_;
     std::vector<Node*> stmts;
     while (!at_end() && !check(TokenKind::RBrace)) {
         Node* s = parse_stmt();
         if (s) stmts.push_back(s);
     }
     expect(TokenKind::RBrace);
+    // Restore enum constants so inner-block definitions don't leak.
+    enum_consts_ = std::move(saved_enum_consts);
     return make_block(stmts.empty() ? nullptr : stmts.data(), (int)stmts.size(), ln);
 }
 

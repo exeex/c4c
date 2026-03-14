@@ -119,6 +119,60 @@ void init_predefined_macros(MacroTable& table) {
   def(table, "__ORDER_BIG_ENDIAN__", "4321");
   def(table, "__ORDER_PDP_ENDIAN__", "3412");
   def(table, "__BYTE_ORDER__", "1234");
+
+  // GCC compatibility macros
+  def(table, "__GNUC__", "4");
+  def(table, "__GNUC_MINOR__", "2");
+  def(table, "__GNUC_PATCHLEVEL__", "1");
+  def(table, "__VERSION__", "\"4.2.1 Compatible c4c\"");
+  def(table, "__STDC_HOSTED__", "1");
+
+  // Target architecture macros (host-detected at compile time)
+#if defined(__aarch64__) || defined(_M_ARM64)
+  def(table, "__aarch64__", "1");
+  def(table, "__ARM_64BIT_STATE", "1");
+  def(table, "__ARM_ARCH", "8");
+  def(table, "__ARM_ARCH_ISA_A64", "1");
+#elif defined(__x86_64__) || defined(_M_X64)
+  def(table, "__x86_64__", "1");
+  def(table, "__x86_64", "1");
+  def(table, "__amd64__", "1");
+  def(table, "__amd64", "1");
+#elif defined(__i386__) || defined(_M_IX86)
+  def(table, "__i386__", "1");
+  def(table, "__i386", "1");
+#elif defined(__riscv)
+  def(table, "__riscv", "1");
+  def(table, "__riscv_xlen", "64");
+#endif
+
+  // OS macros
+#if defined(__linux__)
+  def(table, "__linux__", "1");
+  def(table, "__linux", "1");
+  def(table, "linux", "1");
+  def(table, "__gnu_linux__", "1");
+#endif
+#if defined(__unix__) || defined(__unix)
+  def(table, "__unix__", "1");
+  def(table, "__unix", "1");
+  def(table, "unix", "1");
+#endif
+#if defined(__APPLE__)
+  def(table, "__APPLE__", "1");
+  def(table, "__MACH__", "1");
+#endif
+#if defined(_WIN32)
+  def(table, "_WIN32", "1");
+#endif
+#if defined(_WIN64)
+  def(table, "_WIN64", "1");
+#endif
+
+  // ELF target (common on Linux)
+#if defined(__ELF__)
+  def(table, "__ELF__", "1");
+#endif
 }
 
 }  // namespace tinyc2ll::frontend_cxx
