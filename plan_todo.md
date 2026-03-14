@@ -3,8 +3,8 @@
 Last updated: 2026-03-14
 
 ## Current Results
-- Tests: 1768/1773 passed (99.7%), 5 failed
-- Improvement: +4 tests this session (from 1764)
+- Tests: 1769/1773 passed (99.8%), 4 failed
+- Improvement: +5 tests this session (from 1764)
 - Previous session: 1764/1773 (99.5%)
 
 ## Completed: Phase 0 — Structure Refactor
@@ -69,11 +69,15 @@ All work items done:
 - [x] Enum scope leak: inner block enum constants no longer leak to outer scope
 - [x] `__typeof_unqual__` / `typeof_unqual` keyword support ← NEW
 - [x] Statement expressions in ternary branches: side effects now conditional ← NEW
-- [x] Ptr-to-array global init type/initializer (partial: types correct, deref still broken) ← NEW
+- [x] Ptr-to-array global init type/initializer ← DONE
+- [x] 3D+ array initializer: shift array_dims when dropping outer dimension ← NEW
+- [x] Ptr-to-array pointer arithmetic: correct GEP stride via llvm_alloca_ty ← NEW
+- [x] Ptr-to-array deref: array decay instead of scalar load ← NEW
+- [x] AddrOf array: preserve array dims and set is_ptr_to_array ← NEW
 
 ## Not Yet Started
 ### Phase 2 remainder
-- `#include_next` support
+- [x] `#include_next` support (done in b957e0e)
 - Include resolution cache
 - Include guard optimization
 
@@ -94,13 +98,13 @@ All work items done:
 - More POSIX headers as needed
 - INT64_C, UINT32_C macro helpers
 
-## Remaining 5 Failures (categorized)
+## Remaining 4 Failures (categorized)
 - **comp_goto_1, pr70460**: computed goto / label differences — pre-existing codegen issue
 - **scal_to_vec2**: scalar-to-vector coercion — pre-existing codegen issue
-- **strlen_4**: ptr-to-array global init types now correct, but ptr-to-array deref codegen still wrong
 - **strlen_5**: runtime mismatch (relies on UB across adjacent subarrays)
 
 ## Next Suggested Work
-- `#include_next` (needed for system header chaining)
-- Fix ptr-to-array deref codegen (would fix strlen_4)
+- Include resolution cache / include guard optimization
+- `#pragma pack(...)` support
+- `_Pragma("...")` operator
 - More Phase 6 predefined macros if needed

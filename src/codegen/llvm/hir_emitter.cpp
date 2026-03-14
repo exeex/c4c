@@ -1725,14 +1725,22 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const UnaryExpr& u){
     switch (u.op) {
       case UnaryOp::AddrOf:
         if (ts.array_rank > 0 && !is_vector_value(ts)) {
-          ts.array_rank = 0;
-          ts.array_size = -1;
+          // &array produces a pointer-to-array; preserve array dims so that
+          // pointer arithmetic uses the correct stride and deref produces
+          // array decay instead of a scalar load.
+          ts.is_ptr_to_array = true;
         }
         ts.ptr_level += 1;
         return ts;
       case UnaryOp::Deref:
-        if (ts.ptr_level > 0) ts.ptr_level -= 1;
-        else if (ts.array_rank > 0) ts.array_rank -= 1;
+        if (ts.ptr_level > 0) {
+          ts.ptr_level -= 1;
+          // After consuming the pointer level, the result is an array value
+          // (not a pointer-to-array), so clear the flag.
+          if (ts.ptr_level == 0) ts.is_ptr_to_array = false;
+        } else if (ts.array_rank > 0) {
+          ts.array_rank -= 1;
+        }
         return ts;
       case UnaryOp::RealPart:
       case UnaryOp::ImagPart:
@@ -2400,9 +2408,13 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const 
           TypeSpec elem_ts = pts;
           if (elem_ts.ptr_level > 0) elem_ts.ptr_level -= 1;
           else elem_ts.base = TB_CHAR;
-          const std::string gep_ety1 =
-              (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
-                  ? "i8" : llvm_ty(elem_ts);
+          std::string gep_ety1;
+          if (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
+            gep_ety1 = "i8";
+          else if (elem_ts.array_rank > 0 && elem_ts.ptr_level == 0)
+            gep_ety1 = llvm_alloca_ty(elem_ts);
+          else
+            gep_ety1 = llvm_ty(elem_ts);
           emit_instr(ctx, result + " = getelementptr " + gep_ety1 +
                               ", ptr " + loaded + ", i64 " + delta);
         } else if (is_float_base(pts.base)) {
@@ -2447,9 +2459,13 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const 
           TypeSpec elem_ts = pts;
           if (elem_ts.ptr_level > 0) elem_ts.ptr_level -= 1;
           else elem_ts.base = TB_CHAR;
-          const std::string gep_ety2 =
-              (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
-                  ? "i8" : llvm_ty(elem_ts);
+          std::string gep_ety2;
+          if (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
+            gep_ety2 = "i8";
+          else if (elem_ts.array_rank > 0 && elem_ts.ptr_level == 0)
+            gep_ety2 = llvm_alloca_ty(elem_ts);
+          else
+            gep_ety2 = llvm_ty(elem_ts);
           emit_instr(ctx, result + " = getelementptr " + gep_ety2 +
                               ", ptr " + loaded + ", i64 " + delta);
         } else if (is_float_base(pts.base)) {
@@ -2527,10 +2543,13 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const
         elem_ts = {};
         elem_ts.base = TB_CHAR;
       }
-      const std::string gep_elem_ty =
-          (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
-              ? "i8"
-              : llvm_ty(elem_ts);
+      std::string gep_elem_ty;
+      if (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
+        gep_elem_ty = "i8";
+      else if (elem_ts.array_rank > 0 && elem_ts.ptr_level == 0)
+        gep_elem_ty = llvm_alloca_ty(elem_ts);
+      else
+        gep_elem_ty = llvm_ty(elem_ts);
       const std::string tmp = fresh_tmp(ctx);
       emit_instr(ctx, tmp + " = getelementptr " + gep_elem_ty +
                           ", ptr " + lv + ", i64 " + idx);
@@ -2731,11 +2750,13 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const
           elem_ts.base = TB_CHAR;
         }
         // GCC extension: void* arithmetic uses byte stride (same as char*).
-        const std::string gep_elem_ty =
-            (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 &&
-             elem_ts.array_rank == 0)
-                ? "i8"
-                : llvm_ty(elem_ts);
+        std::string gep_elem_ty;
+        if (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
+          gep_elem_ty = "i8";
+        else if (elem_ts.array_rank > 0 && elem_ts.ptr_level == 0)
+          gep_elem_ty = llvm_alloca_ty(elem_ts);
+        else
+          gep_elem_ty = llvm_ty(elem_ts);
         const std::string tmp = fresh_tmp(ctx);
         emit_instr(ctx, tmp + " = getelementptr " + gep_elem_ty +
                             ", ptr " + base_ptr + ", i64 " + idx);
@@ -2813,10 +2834,13 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const
               elem_ts = {};
               elem_ts.base = TB_CHAR;
             }
-            const std::string gep_elem_ty =
-                (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
-                    ? "i8"
-                    : llvm_ty(elem_ts);
+            std::string gep_elem_ty;
+            if (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
+              gep_elem_ty = "i8";
+            else if (elem_ts.array_rank > 0 && elem_ts.ptr_level == 0)
+              gep_elem_ty = llvm_alloca_ty(elem_ts);
+            else
+              gep_elem_ty = llvm_ty(elem_ts);
             const std::string tmp = fresh_tmp(ctx);
             emit_instr(ctx, tmp + " = getelementptr " + gep_elem_ty +
                                 ", ptr " + base_ptr + ", i64 " + idx);

@@ -1300,6 +1300,10 @@ class Lowerer {
           elem_ts = vector_element_type(cur_ts);
           bound = cur_ts.vector_lanes > 0 ? cur_ts.vector_lanes : 0;
         } else {
+          // Shift array_dims to drop the outermost dimension
+          for (int di = 0; di < elem_ts.array_rank - 1; ++di)
+            elem_ts.array_dims[di] = elem_ts.array_dims[di + 1];
+          elem_ts.array_dims[elem_ts.array_rank - 1] = -1;
           elem_ts.array_rank--;
           elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
           bound = resolve_array_ts(cur_ts, GlobalInit(list)).array_size;
@@ -1358,6 +1362,10 @@ class Lowerer {
         elem_ts = vector_element_type(ts);
         bound = ts.vector_lanes > 0 ? ts.vector_lanes : 0;
       } else {
+        // Shift array_dims to drop the outermost dimension
+        for (int di = 0; di < elem_ts.array_rank - 1; ++di)
+          elem_ts.array_dims[di] = elem_ts.array_dims[di + 1];
+        elem_ts.array_dims[elem_ts.array_rank - 1] = -1;
         elem_ts.array_rank--;
         elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
         bound = resolve_array_ts(ts, init).array_size;
