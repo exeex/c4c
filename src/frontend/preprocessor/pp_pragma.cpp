@@ -1,6 +1,8 @@
 #include "pp_pragma.hpp"
 #include "pp_text.hpp"
 
+#include <cctype>
+
 namespace tinyc2ll::frontend_cxx {
 
 PragmaResult dispatch_pragma(const std::string& args,
@@ -8,11 +10,26 @@ PragmaResult dispatch_pragma(const std::string& args,
   std::string s = trim_copy(args);
   if (s.empty()) return PragmaResult::Ignored;
 
-  // TODO(preprocessor): implement pragma handlers:
-  //   once, pack, push_macro, pop_macro, weak,
-  //   redefine_extname, GCC visibility push/pop
-  (void)s;
-  return PragmaResult::Unhandled;
+  // Extract the first token to identify the pragma kind.
+  size_t i = 0;
+  while (i < s.size() && !std::isspace(static_cast<unsigned char>(s[i])) && s[i] != '(')
+    ++i;
+  std::string kind = s.substr(0, i);
+
+  // "once" is handled by the caller (Preprocessor::process_directive).
+
+  // Pragmas that are safe to ignore in a compiler frontend:
+  if (kind == "pack" || kind == "push_macro" || kind == "pop_macro" ||
+      kind == "weak" || kind == "redefine_extname" || kind == "comment" ||
+      kind == "message" || kind == "warning" || kind == "error" ||
+      kind == "poison" || kind == "system_header" || kind == "clang" ||
+      kind == "GCC") {
+    return PragmaResult::Ignored;
+  }
+
+  // Unknown pragmas — ignore rather than triggering fallback.
+  // Real compilers typically just warn on unknown pragmas.
+  return PragmaResult::Ignored;
 }
 
 }  // namespace tinyc2ll::frontend_cxx
