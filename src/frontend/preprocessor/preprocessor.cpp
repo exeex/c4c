@@ -42,6 +42,24 @@ std::string Preprocessor::preprocess_file(const std::string& path) {
   return internal;
 }
 
+std::string Preprocessor::preprocess_source(const std::string& source,
+                                            const std::string& filename) {
+  errors_.clear();
+  warnings_.clear();
+  cond_stack_.clear();
+  needs_external_fallback_ = false;
+  base_file_ = filename;
+  counter_ = 0;
+
+  macros_["__BASE_FILE__"] = MacroDef{"__BASE_FILE__", false, false, {},
+                                       "\"" + filename + "\""};
+
+  std::string internal;
+  internal += "# 1 \"" + filename + "\"\n";
+  internal += preprocess_text(source, filename, 0);
+  return internal;
+}
+
 std::string Preprocessor::preprocess_text(const std::string& source,
                                           const std::string& file,
                                           int include_depth) {

@@ -23,6 +23,7 @@ namespace {
 void print_usage(const char *argv0) {
   std::cerr << "usage: " << argv0
             << " [--version] [--pp-only|--lex-only|--parse-only|--dump-hir|--dump-hir-summary]"
+            << " [-D macro[=val]] [-U macro] [-I dir] [-iquote dir] [-isystem dir] [-idirafter dir]"
             << " [-o output.ll] <input.c>\n";
 }
 
@@ -60,6 +61,14 @@ int main(int argc, char **argv) {
     std::string input;
     std::string output;
 
+    // Preprocessor configuration collected from CLI flags.
+    std::vector<std::string> defines;
+    std::vector<std::string> undefines;
+    std::vector<std::string> include_paths;
+    std::vector<std::string> quote_include_paths;
+    std::vector<std::string> system_include_paths;
+    std::vector<std::string> after_include_paths;
+
     for (size_t i = 0; i < args.size(); i++) {
       const std::string& arg = args[i];
       if (arg == "--pp-only") {
@@ -74,6 +83,24 @@ int main(int argc, char **argv) {
         dump_hir_summary = true;
       } else if (arg == "-o") {
         if (i + 1 < args.size()) output = args[++i];
+      } else if (arg == "-D" && i + 1 < args.size()) {
+        defines.push_back(args[++i]);
+      } else if (arg.size() > 2 && arg[0] == '-' && arg[1] == 'D') {
+        defines.push_back(arg.substr(2));
+      } else if (arg == "-U" && i + 1 < args.size()) {
+        undefines.push_back(args[++i]);
+      } else if (arg.size() > 2 && arg[0] == '-' && arg[1] == 'U') {
+        undefines.push_back(arg.substr(2));
+      } else if (arg == "-I" && i + 1 < args.size()) {
+        include_paths.push_back(args[++i]);
+      } else if (arg.size() > 2 && arg[0] == '-' && arg[1] == 'I') {
+        include_paths.push_back(arg.substr(2));
+      } else if (arg == "-iquote" && i + 1 < args.size()) {
+        quote_include_paths.push_back(args[++i]);
+      } else if (arg == "-isystem" && i + 1 < args.size()) {
+        system_include_paths.push_back(args[++i]);
+      } else if (arg == "-idirafter" && i + 1 < args.size()) {
+        after_include_paths.push_back(args[++i]);
       } else if (!arg.empty() && arg[0] == '-') {
         std::cerr << "unknown option: " << arg << "\n";
         return 2;
@@ -96,6 +123,12 @@ int main(int argc, char **argv) {
     }
 
     tc::Preprocessor preprocessor;
+    for (const auto& d : defines) preprocessor.define_macro(d);
+    for (const auto& u : undefines) preprocessor.undefine_macro(u);
+    for (const auto& p : include_paths) preprocessor.add_include_path(p);
+    for (const auto& p : quote_include_paths) preprocessor.add_quote_include_path(p);
+    for (const auto& p : system_include_paths) preprocessor.add_system_include_path(p);
+    for (const auto& p : after_include_paths) preprocessor.add_after_include_path(p);
     std::string source = preprocessor.preprocess_file(input);
     if (!preprocessor.warnings().empty()) {
       print_pp_diags(preprocessor.warnings(), "warning");

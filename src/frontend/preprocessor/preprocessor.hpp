@@ -20,8 +20,10 @@ class Preprocessor {
 public:
   Preprocessor();
 
-  // Main entry point used by the frontend driver.
+  // Main entry points.
   std::string preprocess_file(const std::string& path);
+  std::string preprocess_source(const std::string& source,
+                                const std::string& filename = "<stdin>");
 
   // Include path configuration (GCC-compatible buckets).
   // Search order for #include "file.h": current dir → quote → normal → system → after

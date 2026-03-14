@@ -469,6 +469,23 @@ void test_define_undefine_api() {
   }
 }
 
+void test_preprocess_source() {
+  // preprocess_source() preprocesses from a string instead of a file
+  {
+    Preprocessor pp;
+    std::string out = pp.preprocess_source("#define X 42\nint x = X;\n", "test.c");
+    expect_contains(out, "int x = 42;", "preprocess_source should expand macros");
+    expect_contains(out, "# 1 \"test.c\"", "preprocess_source should emit line marker with given filename");
+  }
+
+  // Default filename is <stdin>
+  {
+    Preprocessor pp;
+    std::string out = pp.preprocess_source("int y;\n");
+    expect_contains(out, "# 1 \"<stdin>\"", "preprocess_source default filename should be <stdin>");
+  }
+}
+
 void test_builtin_location_macros() {
   // Test __BASE_FILE__
   {
@@ -564,6 +581,7 @@ int main() {
     test_include_quoted();
     test_include_path_buckets();
     test_define_undefine_api();
+    test_preprocess_source();
     test_builtin_location_macros();
     test_line_markers();
     test_error_warning_diagnostics();
