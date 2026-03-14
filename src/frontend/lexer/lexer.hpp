@@ -37,9 +37,11 @@ class Lexer {
   int line_   = 1;
   int column_ = 1;
 
-  // Pending #pragma pack token detected during whitespace/comment skipping.
+  // Pending pragma tokens detected during whitespace/comment skipping.
   bool has_pending_pragma_pack_ = false;
   Token pending_pragma_pack_{};
+  bool has_pending_pragma_weak_ = false;
+  Token pending_pragma_weak_{};
 };
 
 }  // namespace tinyc2ll::frontend_cxx

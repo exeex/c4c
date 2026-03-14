@@ -1093,7 +1093,8 @@ void HirEmitter::emit_global(const GlobalVar& gv){
           const auto field_vals = emit_const_struct_fields(ts, sd, gv.init, &field_types);
           const TypeSpec& last_ts = field_types.back();
           if (last_ts.array_rank > 0 && last_ts.array_size > 0) {
-            const std::string lk = gv.linkage.is_static ? "internal " : "";
+            std::string lk = gv.linkage.is_static ? "internal " : "";
+            if (gv.linkage.is_weak && !gv.linkage.is_static) lk = "weak ";
             const std::string qual = (gv.is_const && ts.ptr_level == 0) ? "constant " : "global ";
             std::string literal_ty = "{ ";
             std::string literal_init = "{ ";
@@ -1116,10 +1117,12 @@ void HirEmitter::emit_global(const GlobalVar& gv){
     }
     const std::string ty = llvm_alloca_ty(ts);
     if (gv.linkage.is_extern) {
-      preamble_ << "@" << gv.name << " = external global " << ty << "\n";
+      const std::string ext = gv.linkage.is_weak ? "extern_weak " : "external ";
+      preamble_ << "@" << gv.name << " = " << ext << "global " << ty << "\n";
       return;
     }
-    const std::string lk = gv.linkage.is_static ? "internal " : "";
+    std::string lk = gv.linkage.is_static ? "internal " : "";
+    if (gv.linkage.is_weak && !gv.linkage.is_static) lk = "weak ";
     const std::string qual = (gv.is_const && ts.ptr_level == 0) ? "constant " : "global ";
     const std::string init = emit_const_init(ts, gv.init);
     preamble_ << "@" << gv.name << " = " << lk << qual << ty << " " << init << "\n";
@@ -4823,7 +4826,8 @@ void HirEmitter::emit_function(const Function& fn){
         fn.params[0].type.spec.array_rank == 0;
 
     if (fn.linkage.is_extern && fn.blocks.empty()) {
-      out << "declare " << ret_ty << " @" << fn.name << "(";
+      const std::string decl_kw = fn.linkage.is_weak ? "declare extern_weak " : "declare ";
+      out << decl_kw << ret_ty << " @" << fn.name << "(";
       for (size_t i = 0; i < fn.params.size(); ++i) {
         if (void_param_list) break;
         if (i) out << ", ";
@@ -4839,7 +4843,8 @@ void HirEmitter::emit_function(const Function& fn){
     }
 
     // Signature
-    const std::string fn_lk = fn.linkage.is_static ? "internal " : "";
+    std::string fn_lk = fn.linkage.is_static ? "internal " : "";
+    if (fn.linkage.is_weak && !fn.linkage.is_static) fn_lk = "weak ";
     out << "define " << fn_lk << ret_ty << " @" << fn.name << "(";
     for (size_t i = 0; i < fn.params.size(); ++i) {
       if (void_param_list) break;

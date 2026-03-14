@@ -135,6 +135,7 @@ enum class TokenKind {
 
   // Pragma tokens (emitted by preprocessor, consumed by parser)
   PragmaPack,    // #pragma pack(...) — lexeme holds the arguments e.g. "1", "push,2", "pop", ""
+  PragmaWeak,    // #pragma weak symbol — lexeme holds the symbol name
 
   // Special
   EndOfFile,

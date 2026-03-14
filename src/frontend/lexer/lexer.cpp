@@ -16,6 +16,11 @@ std::vector<Token> Lexer::scan_all() {
       has_pending_pragma_pack_ = false;
       continue;
     }
+    if (has_pending_pragma_weak_) {
+      out.push_back(std::move(pending_pragma_weak_));
+      has_pending_pragma_weak_ = false;
+      continue;
+    }
     if (at_end()) {
       out.push_back(make_token(TokenKind::EndOfFile, "", line_, column_));
       break;
@@ -156,6 +161,31 @@ void Lexer::skip_whitespace_and_comments() {
           pending_pragma_pack_ = make_token(TokenKind::PragmaPack, args, tok_line, tok_col);
           has_pending_pragma_pack_ = true;
           return;  // exit skip loop to let scan_all() pick up the pending token
+        }
+        // Check if this is #pragma weak — peek ahead without consuming.
+        static const char pragma_weak[] = "#pragma weak";
+        size_t pw_len = sizeof(pragma_weak) - 1;
+        if (index_ + pw_len <= source_.size() &&
+            source_.compare(index_, pw_len, pragma_weak) == 0) {
+          int tok_line = line_;
+          int tok_col = column_;
+          // Skip past "#pragma weak"
+          for (size_t j = 0; j < pw_len; ++j) advance();
+          // Skip whitespace before symbol name
+          while (!at_end() && peek() != '\n' && (peek() == ' ' || peek() == '\t')) advance();
+          // Collect the symbol name (identifier chars)
+          std::string sym;
+          while (!at_end() && peek() != '\n' && peek() != ' ' && peek() != '\t') {
+            sym += advance();
+          }
+          // Skip rest of line
+          while (!at_end() && peek() != '\n') advance();
+          if (!sym.empty()) {
+            pending_pragma_weak_ = make_token(TokenKind::PragmaWeak, sym, tok_line, tok_col);
+            has_pending_pragma_weak_ = true;
+            return;
+          }
+          continue;
         }
         // Skip to end of line
         while (!at_end() && peek() != '\n') advance();

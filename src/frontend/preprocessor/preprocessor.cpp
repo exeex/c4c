@@ -305,6 +305,9 @@ void Preprocessor::process_directive(const std::string& raw_line, std::string& o
       // #pragma pack(...) — emit into output for parser to consume.
       // Preserved as: #pragma pack(ARGS)\n
       out += "#pragma pack" + pragma_text.substr(4) + "\n";
+    } else if (pragma_text.substr(0, 4) == "weak") {
+      // #pragma weak symbol — emit into output for parser to consume.
+      out += "#pragma " + pragma_text + "\n";
     } else {
       PragmaResult pr = dispatch_pragma(rest, current_file, line_no);
       if (pr == PragmaResult::Unhandled) {
@@ -1025,6 +1028,9 @@ std::string Preprocessor::process_pragma_text(const std::string& pragma_text) {
   } else if (s.substr(0, 4) == "pack") {
     // #pragma pack(...) — emit into output for parser to consume.
     return "#pragma pack" + s.substr(4) + "\n";
+  } else if (s.substr(0, 4) == "weak") {
+    // #pragma weak symbol — emit into output for parser to consume.
+    return "#pragma " + s + "\n";
   } else {
     // Dispatch to pragma handler (ignores unknown pragmas).
     dispatch_pragma(s, virtual_file_, 0);

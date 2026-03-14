@@ -8,6 +8,7 @@
 #include <functional>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "type_utils.hpp"
@@ -428,6 +429,12 @@ class Lowerer {
       } else {
         items.push_back(item);
       }
+    }
+
+    // Phase 0: collect #pragma weak symbol names
+    for (const Node* item : items) {
+      if (item->kind == NK_PRAGMA_WEAK && item->name)
+        weak_symbols_.insert(item->name);
     }
 
     // Phase 1: collect type definitions used by later lowering
@@ -902,7 +909,8 @@ class Lowerer {
     fn.id = next_fn_id();
     fn.name = fn_node->name ? fn_node->name : "<anon_fn>";
     fn.return_type = qtype_from(fn_node->type);
-    fn.linkage = {fn_node->is_static, fn_node->is_extern || fn_node->body == nullptr, fn_node->is_inline};
+    fn.linkage = {fn_node->is_static, fn_node->is_extern || fn_node->body == nullptr, fn_node->is_inline,
+                   weak_symbols_.count(fn.name) > 0};
     fn.attrs.variadic = fn_node->variadic;
     if (fn_node->type.align_bytes > 0)
       fn.attrs.align_bytes = fn_node->type.align_bytes;
@@ -1026,7 +1034,7 @@ class Lowerer {
     g.name = gv->name ? gv->name : "<anon_global>";
     g.type = qtype_from(gv->type, ValueCategory::LValue);
     g.fn_ptr_sig = fn_ptr_sig_from_decl_node(gv);
-    g.linkage = {gv->is_static, gv->is_extern, false};
+    g.linkage = {gv->is_static, gv->is_extern, false, weak_symbols_.count(g.name) > 0};
     g.is_const = gv->type.is_const;
     g.span = make_span(gv);
 
@@ -3317,6 +3325,7 @@ class Lowerer {
 
   Module* module_ = nullptr;
   std::unordered_map<std::string, long long> enum_consts_;
+  std::unordered_set<std::string> weak_symbols_;
 
 };
 

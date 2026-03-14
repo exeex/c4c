@@ -20,7 +20,7 @@ PragmaResult dispatch_pragma(const std::string& args,
 
   // Pragmas that are safe to ignore in a compiler frontend:
   if (kind == "push_macro" || kind == "pop_macro" ||
-      kind == "weak" || kind == "redefine_extname" || kind == "comment" ||
+      kind == "redefine_extname" || kind == "comment" ||
       kind == "message" || kind == "warning" || kind == "error" ||
       kind == "poison" || kind == "system_header" || kind == "clang" ||
       kind == "GCC") {

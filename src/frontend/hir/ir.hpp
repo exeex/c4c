@@ -40,6 +40,7 @@ struct Linkage {
   bool is_static = false;
   bool is_extern = false;
   bool is_inline = false;
+  bool is_weak = false;
 };
 
 enum class StorageClass : uint8_t {

@@ -3,7 +3,7 @@
 Last updated: 2026-03-14
 
 ## Current Results
-- Tests: 1774/1774 passed (100%), 0 failed
+- Tests: 1775/1775 passed (100%), 0 failed
 - Improvement: +10 tests across sessions (from 1764)
 - Previous: 1773/1773 (100%)
 
@@ -86,7 +86,7 @@ All work items done:
 
 ### Phase 3 remainder
 - [x] `#pragma pack(...)` support — full pipeline: preprocessor→lexer→parser→HIR layout ← NEW
-- `#pragma weak`
+- [x] `#pragma weak` — full pipeline: preprocessor→lexer→parser→HIR→codegen (weak/extern_weak linkage) ← NEW
 
 ### Phase 5 remainder
 - [x] `_Pragma("...")` operator ← NEW
@@ -109,7 +109,7 @@ All work items done:
 - [x] `__has_include` now checks builtin headers (was missing) ← NEW
 
 ## Remaining Failures
-- None! All 1773 tests pass.
+- None! All 1775 tests pass.
 
 ## Non-preprocessor Fixes (this session)
 - [x] `__attribute__((vector_size(N)))` parsing: fixed `skip_attributes()` in `parse_stmt()` and `parse_global_decl_or_function()` discarding type-affecting attributes before parse_base_type could capture them
@@ -119,5 +119,6 @@ All work items done:
 - [x] `__attribute__((aligned(N)))` on struct types: was parsed but never applied to layout ← NEW
 
 ## Next Suggested Work
-- `#pragma weak` (Phase 3, low priority)
 - `__VA_OPT__` support (C2x feature, not yet in plan)
+- `#pragma GCC visibility push/pop` (Phase 3)
+- `#pragma redefine_extname` (Phase 3)

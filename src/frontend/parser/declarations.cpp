@@ -173,6 +173,14 @@ Node* Parser::parse_top_level() {
         return make_node(NK_EMPTY, ln);
     }
 
+    // Handle #pragma weak tokens
+    if (check(TokenKind::PragmaWeak)) {
+        auto* node = make_node(NK_PRAGMA_WEAK, ln);
+        node->name = arena_.strdup(cur().lexeme);
+        consume();
+        return node;
+    }
+
     // Don't skip_attributes() here — type-affecting attributes like
     // __attribute__((vector_size(N))) must flow to parse_base_type().
     if (at_end()) return nullptr;

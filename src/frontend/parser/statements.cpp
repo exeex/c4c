@@ -42,6 +42,13 @@ Node* Parser::parse_stmt() {
             return make_node(NK_EMPTY, ln);
         }
 
+        case TokenKind::PragmaWeak: {
+            auto* node = make_node(NK_PRAGMA_WEAK, ln);
+            node->name = arena_.strdup(cur().lexeme);
+            consume();
+            return node;
+        }
+
         case TokenKind::LBrace:
             return parse_block();
 
