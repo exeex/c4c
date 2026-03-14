@@ -159,9 +159,23 @@ void init_predefined_macros(MacroTable& table) {
   def(table, "__x86_64", "1");
   def(table, "__amd64__", "1");
   def(table, "__amd64", "1");
+  def(table, "__code_model_small__", "1");
+  def(table, "__MMX__", "1");
+  def(table, "__SSE__", "1");
+  def(table, "__SSE2__", "1");
+  def(table, "__SSE_MATH__", "1");
+  def(table, "__SSE2_MATH__", "1");
+  def(table, "__NO_MATH_INLINES", "1");
+  def(table, "__SEG_FS", "1");
+  def(table, "__SEG_GS", "1");
+  def(table, "__GCC_HAVE_DWARF2_CFI_ASM", "1");
+  def(table, "__REGISTER_PREFIX__", "");
 #elif defined(__i386__) || defined(_M_IX86)
   def(table, "__i386__", "1");
   def(table, "__i386", "1");
+  def(table, "__code_model_32__", "1");
+  def(table, "__NO_MATH_INLINES", "1");
+  def(table, "__REGISTER_PREFIX__", "");
 #elif defined(__riscv)
   def(table, "__riscv", "1");
   def(table, "__riscv_xlen", "64");

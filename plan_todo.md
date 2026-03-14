@@ -96,12 +96,17 @@ All work items done:
 ### Phase 6 remainder
 - [x] aarch64 feature macros (__ARM_NEON, __ARM_FP, __ARM_FEATURE_*, __ARM_PCS_AAPCS64, etc.) ← NEW
 - [x] Common GCC compat macros (__ATOMIC_*, __GCC_HAVE_SYNC_*, __BIGGEST_ALIGNMENT__, __FINITE_MATH_ONLY__, __NO_INLINE__, __GNUC_STDC_INLINE__, __STDC_UTF_*, __USER_LABEL_PREFIX__, __GCC_ASM_FLAG_OUTPUTS__) ← NEW
+- [x] x86_64 feature macros (__SSE__, __SSE2__, __MMX__, __SSE_MATH__, __SSE2_MATH__, __NO_MATH_INLINES, __SEG_FS/GS, __GCC_HAVE_DWARF2_CFI_ASM, __REGISTER_PREFIX__) ← NEW
+- [x] i386 feature macros (__code_model_32__, __NO_MATH_INLINES, __REGISTER_PREFIX__) ← NEW
 - Config toggles (__OPTIMIZE__, __PIC__, __PIE__ — require CLI flag wiring)
 
 ### Phase 7 remainder
 - More POSIX headers as needed
 - [x] `<stdint.h>` builtin header (INT64_C, UINT32_C, INT8_C, etc.) ← NEW
 - [x] `<inttypes.h>` builtin header (PRId64, PRIu32, imaxabs, etc.) ← NEW
+- [x] `<errno.h>` builtin header (errno, EINVAL, ENOENT, etc.) ← NEW
+- [x] `<time.h>` builtin header (time_t, clock_t, struct tm, time, clock, etc.) ← NEW
+- [x] `__has_include` now checks builtin headers (was missing) ← NEW
 
 ## Remaining 1 Failure (categorized)
 - **scal_to_vec2**: scalar-to-vector coercion — requires full vector type support (__attribute__((vector_size(...))))
@@ -109,4 +114,4 @@ All work items done:
 ## Next Suggested Work
 - `#pragma pack(...)` real support (Phase 3, low priority — tests pass without it)
 - Config toggles: __OPTIMIZE__, __PIC__, __PIE__ (Phase 6 — require CLI flag wiring)
-- More POSIX headers as needed (Phase 7)
+- `__attribute__((vector_size(...)))` support (would fix scal_to_vec2, last failing test)

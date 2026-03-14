@@ -979,6 +979,9 @@ bool Preprocessor::can_resolve_include(const std::string& path_arg,
   for (const auto& d : after_include_paths_)
     if (try_exists(d)) return true;
 
+  // Check builtin headers as fallback.
+  if (!get_builtin_header(rel).empty()) return true;
+
   return false;
 }
 
@@ -1675,6 +1678,84 @@ std::string Preprocessor::get_builtin_header(const std::string& name) {
       "#define SCNu64 \"lu\"\n"
       "#define SCNx32 \"x\"\n"
       "#define SCNx64 \"lx\"\n"
+      "#endif\n";
+  }
+  if (name == "errno.h") {
+    return
+      "#ifndef _ERRNO_H\n"
+      "#define _ERRNO_H\n"
+      "extern int *__errno_location(void);\n"
+      "#define errno (*__errno_location())\n"
+      "#define EPERM 1\n"
+      "#define ENOENT 2\n"
+      "#define ESRCH 3\n"
+      "#define EINTR 4\n"
+      "#define EIO 5\n"
+      "#define ENXIO 6\n"
+      "#define E2BIG 7\n"
+      "#define ENOEXEC 8\n"
+      "#define EBADF 9\n"
+      "#define ECHILD 10\n"
+      "#define EAGAIN 11\n"
+      "#define ENOMEM 12\n"
+      "#define EACCES 13\n"
+      "#define EFAULT 14\n"
+      "#define EBUSY 16\n"
+      "#define EEXIST 17\n"
+      "#define EXDEV 18\n"
+      "#define ENODEV 19\n"
+      "#define ENOTDIR 20\n"
+      "#define EISDIR 21\n"
+      "#define EINVAL 22\n"
+      "#define ENFILE 23\n"
+      "#define EMFILE 24\n"
+      "#define ENOTTY 25\n"
+      "#define EFBIG 27\n"
+      "#define ENOSPC 28\n"
+      "#define ESPIPE 29\n"
+      "#define EROFS 30\n"
+      "#define EMLINK 31\n"
+      "#define EPIPE 32\n"
+      "#define EDOM 33\n"
+      "#define ERANGE 34\n"
+      "#define EDEADLK 35\n"
+      "#define ENAMETOOLONG 36\n"
+      "#define ENOSYS 38\n"
+      "#define ENOTEMPTY 39\n"
+      "#define EWOULDBLOCK EAGAIN\n"
+      "#endif\n";
+  }
+  if (name == "time.h") {
+    return
+      "#ifndef _TIME_H\n"
+      "#define _TIME_H\n"
+      "#ifndef NULL\n"
+      "#define NULL ((void*)0)\n"
+      "#endif\n"
+      "typedef __SIZE_TYPE__ size_t;\n"
+      "typedef long time_t;\n"
+      "typedef long clock_t;\n"
+      "#define CLOCKS_PER_SEC 1000000L\n"
+      "struct tm {\n"
+      "  int tm_sec;\n"
+      "  int tm_min;\n"
+      "  int tm_hour;\n"
+      "  int tm_mday;\n"
+      "  int tm_mon;\n"
+      "  int tm_year;\n"
+      "  int tm_wday;\n"
+      "  int tm_yday;\n"
+      "  int tm_isdst;\n"
+      "};\n"
+      "time_t time(time_t *);\n"
+      "clock_t clock(void);\n"
+      "double difftime(time_t, time_t);\n"
+      "time_t mktime(struct tm *);\n"
+      "struct tm *localtime(const time_t *);\n"
+      "struct tm *gmtime(const time_t *);\n"
+      "char *asctime(const struct tm *);\n"
+      "char *ctime(const time_t *);\n"
+      "size_t strftime(char *, size_t, const char *, const struct tm *);\n"
       "#endif\n";
   }
   return {};
