@@ -23,6 +23,20 @@ public:
   // Main entry point used by the frontend driver.
   std::string preprocess_file(const std::string& path);
 
+  // Include path configuration (GCC-compatible buckets).
+  // Search order for #include "file.h": current dir → quote → normal → system → after
+  // Search order for #include <file.h>: normal → system → after
+  void add_quote_include_path(const std::string& path);   // -iquote
+  void add_include_path(const std::string& path);         // -I
+  void add_system_include_path(const std::string& path);  // -isystem
+  void add_after_include_path(const std::string& path);   // -idirafter
+
+  // Define/undefine macros from driver (for -D/-U command-line flags).
+  // define_macro("FOO") defines FOO as 1.
+  // define_macro("FOO=bar") defines FOO as bar.
+  void define_macro(const std::string& def);
+  void undefine_macro(const std::string& name);
+
   // Side-channel diagnostics (framework hooks).
   const std::vector<PreprocessorDiagnostic>& errors() const { return errors_; }
   const std::vector<PreprocessorDiagnostic>& warnings() const { return warnings_; }
@@ -68,7 +82,13 @@ private:
 private:
   MacroTable macros_;
   std::vector<ConditionalFrame> cond_stack_;
-  std::vector<std::string> include_paths_;
+
+  // Include search path buckets (GCC-compatible order).
+  std::vector<std::string> quote_include_paths_;   // -iquote: quoted includes only
+  std::vector<std::string> normal_include_paths_;   // -I: both quoted and angle
+  std::vector<std::string> system_include_paths_;   // -isystem: both quoted and angle
+  std::vector<std::string> after_include_paths_;    // -idirafter: searched last
+
   std::vector<PreprocessorDiagnostic> errors_;
   std::vector<PreprocessorDiagnostic> warnings_;
 
@@ -79,6 +99,9 @@ private:
   // virtual_line at physical line L = L + virtual_line_offset_.
   int virtual_line_offset_ = 0;
   std::string virtual_file_;
+
+  // __COUNTER__ state — monotonically increasing across all files.
+  int counter_ = 0;
 };
 
 }  // namespace tinyc2ll::frontend_cxx

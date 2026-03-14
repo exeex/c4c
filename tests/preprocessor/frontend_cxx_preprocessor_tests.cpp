@@ -302,6 +302,241 @@ void test_pending_pragma_once(PendingTracker& pending) {
   }
 }
 
+void test_include_path_buckets() {
+  // Test the GCC-compatible include search order:
+  //   #include "file.h": current dir → quote → normal → system → after
+  //   #include <file.h>: normal → system → after
+  fs::path dir = make_test_dir("include_path_buckets");
+
+  // Create subdirectories for each bucket
+  fs::path quote_dir = dir / "quote";
+  fs::path normal_dir = dir / "normal";
+  fs::path system_dir = dir / "system";
+  fs::path after_dir = dir / "after";
+  fs::create_directories(quote_dir);
+  fs::create_directories(normal_dir);
+  fs::create_directories(system_dir);
+  fs::create_directories(after_dir);
+
+  // Place distinct headers in each bucket
+  write_text(quote_dir / "q.h", "#define FROM_QUOTE 1\n");
+  write_text(normal_dir / "n.h", "#define FROM_NORMAL 1\n");
+  write_text(system_dir / "s.h", "#define FROM_SYSTEM 1\n");
+  write_text(after_dir / "a.h", "#define FROM_AFTER 1\n");
+
+  // Test 1: quoted include finds file in quote path
+  {
+    fs::path file = dir / "test_quote.c";
+    write_text(file, "#include \"q.h\"\nint x = FROM_QUOTE;\n");
+    Preprocessor pp;
+    pp.add_quote_include_path(quote_dir.string());
+    std::string out = pp.preprocess_file(file.string());
+    expect_contains(out, "int x = 1;", "quoted include should find file in quote path");
+  }
+
+  // Test 2: angle include finds file in normal path
+  {
+    fs::path file = dir / "test_normal.c";
+    write_text(file, "#include <n.h>\nint x = FROM_NORMAL;\n");
+    Preprocessor pp;
+    pp.add_include_path(normal_dir.string());
+    std::string out = pp.preprocess_file(file.string());
+    expect_contains(out, "int x = 1;", "angle include should find file in normal (-I) path");
+  }
+
+  // Test 3: angle include finds file in system path
+  {
+    fs::path file = dir / "test_system.c";
+    write_text(file, "#include <s.h>\nint x = FROM_SYSTEM;\n");
+    Preprocessor pp;
+    pp.add_system_include_path(system_dir.string());
+    std::string out = pp.preprocess_file(file.string());
+    expect_contains(out, "int x = 1;", "angle include should find file in system path");
+  }
+
+  // Test 4: angle include finds file in after path
+  {
+    fs::path file = dir / "test_after.c";
+    write_text(file, "#include <a.h>\nint x = FROM_AFTER;\n");
+    Preprocessor pp;
+    pp.add_after_include_path(after_dir.string());
+    std::string out = pp.preprocess_file(file.string());
+    expect_contains(out, "int x = 1;", "angle include should find file in after path");
+  }
+
+  // Test 5: search order priority — normal before system before after
+  {
+    write_text(normal_dir / "priority.h", "#define PRIO 10\n");
+    write_text(system_dir / "priority.h", "#define PRIO 20\n");
+    write_text(after_dir / "priority.h", "#define PRIO 30\n");
+
+    fs::path file = dir / "test_priority.c";
+    write_text(file, "#include <priority.h>\nint x = PRIO;\n");
+
+    Preprocessor pp;
+    pp.add_include_path(normal_dir.string());
+    pp.add_system_include_path(system_dir.string());
+    pp.add_after_include_path(after_dir.string());
+    std::string out = pp.preprocess_file(file.string());
+    expect_contains(out, "int x = 10;",
+                    "normal path should have priority over system and after");
+  }
+
+  // Test 6: quoted include searches quote paths before normal paths
+  {
+    write_text(quote_dir / "qprio.h", "#define QPRIO 1\n");
+    write_text(normal_dir / "qprio.h", "#define QPRIO 2\n");
+
+    fs::path file = dir / "test_qprio.c";
+    write_text(file, "#include \"qprio.h\"\nint x = QPRIO;\n");
+
+    Preprocessor pp;
+    pp.add_quote_include_path(quote_dir.string());
+    pp.add_include_path(normal_dir.string());
+    std::string out = pp.preprocess_file(file.string());
+    expect_contains(out, "int x = 1;",
+                    "quoted include should search quote paths before normal paths");
+  }
+
+  // Test 7: quoted include falls back to current dir first
+  {
+    fs::path subdir = dir / "curdir_test";
+    fs::create_directories(subdir);
+    write_text(subdir / "local.h", "#define LOCAL 99\n");
+    fs::path file = subdir / "main.c";
+    write_text(file, "#include \"local.h\"\nint x = LOCAL;\n");
+
+    Preprocessor pp;
+    std::string out = pp.preprocess_file(file.string());
+    expect_contains(out, "int x = 99;",
+                    "quoted include should search current dir first (no paths configured)");
+  }
+}
+
+void test_define_undefine_api() {
+  fs::path dir = make_test_dir("define_undefine_api");
+
+  // Test 1: define_macro("FOO") defines FOO as 1
+  {
+    fs::path file = dir / "test1.c";
+    write_text(file, "int x = FOO;\n");
+    Preprocessor pp;
+    pp.define_macro("FOO");
+    std::string out = pp.preprocess_file(file.string());
+    expect_contains(out, "int x = 1;", "define_macro(\"FOO\") should define FOO as 1");
+  }
+
+  // Test 2: define_macro("FOO=42") defines FOO as 42
+  {
+    fs::path file = dir / "test2.c";
+    write_text(file, "int x = FOO;\n");
+    Preprocessor pp;
+    pp.define_macro("FOO=42");
+    std::string out = pp.preprocess_file(file.string());
+    expect_contains(out, "int x = 42;", "define_macro(\"FOO=42\") should define FOO as 42");
+  }
+
+  // Test 3: undefine_macro removes a predefined macro
+  {
+    fs::path file = dir / "test3.c";
+    write_text(file,
+               "#ifdef __STDC__\n"
+               "int stdc = 1;\n"
+               "#else\n"
+               "int stdc = 0;\n"
+               "#endif\n");
+    Preprocessor pp;
+    pp.undefine_macro("__STDC__");
+    std::string out = pp.preprocess_file(file.string());
+    expect_contains(out, "int stdc = 0;",
+                    "undefine_macro should remove predefined macros");
+  }
+
+  // Test 4: driver-defined macro visible in #if
+  {
+    fs::path file = dir / "test4.c";
+    write_text(file,
+               "#if LEVEL > 2\n"
+               "int high = 1;\n"
+               "#else\n"
+               "int high = 0;\n"
+               "#endif\n");
+    Preprocessor pp;
+    pp.define_macro("LEVEL=5");
+    std::string out = pp.preprocess_file(file.string());
+    expect_contains(out, "int high = 1;",
+                    "driver-defined macro should be usable in #if expressions");
+  }
+}
+
+void test_builtin_location_macros() {
+  // Test __BASE_FILE__
+  {
+    fs::path dir = make_test_dir("builtin_location_macros");
+    fs::path header = dir / "inc.h";
+    fs::path file = dir / "main.c";
+    write_text(header, "const char* base_in_header = __BASE_FILE__;\n");
+    write_text(file,
+               "#include \"inc.h\"\n"
+               "const char* base_in_main = __BASE_FILE__;\n");
+    Preprocessor pp;
+    std::string out = pp.preprocess_file(file.string());
+    // __BASE_FILE__ should always be the top-level file, even inside includes
+    expect_contains(out, "const char* base_in_header = \"" + file.string() + "\";",
+                    "__BASE_FILE__ in included file should refer to top-level file");
+    expect_contains(out, "const char* base_in_main = \"" + file.string() + "\";",
+                    "__BASE_FILE__ in main file should refer to itself");
+  }
+
+  // Test __COUNTER__
+  {
+    fs::path dir = make_test_dir("builtin_counter");
+    fs::path file = dir / "main.c";
+    write_text(file,
+               "int a = __COUNTER__;\n"
+               "int b = __COUNTER__;\n"
+               "int c = __COUNTER__;\n");
+    Preprocessor pp;
+    std::string out = pp.preprocess_file(file.string());
+    expect_contains(out, "int a = 0;", "__COUNTER__ should start at 0");
+    expect_contains(out, "int b = 1;", "__COUNTER__ should increment to 1");
+    expect_contains(out, "int c = 2;", "__COUNTER__ should increment to 2");
+  }
+}
+
+void test_line_markers() {
+  // Test initial line marker
+  {
+    fs::path dir = make_test_dir("line_markers_initial");
+    fs::path file = dir / "main.c";
+    write_text(file, "int x;\n");
+    Preprocessor pp;
+    std::string out = pp.preprocess_file(file.string());
+    expect_contains(out, "# 1 \"" + file.string() + "\"",
+                    "output should start with initial line marker");
+  }
+
+  // Test include enter/return markers
+  {
+    fs::path dir = make_test_dir("line_markers_include");
+    fs::path header = dir / "h.h";
+    fs::path file = dir / "main.c";
+    write_text(header, "int from_header;\n");
+    write_text(file,
+               "int before;\n"
+               "#include \"h.h\"\n"
+               "int after;\n");
+    Preprocessor pp;
+    std::string out = pp.preprocess_file(file.string());
+    // Include enter marker: # 1 "h.h" 1
+    expect_contains(out, "# 1 \"" + header.string() + "\" 1",
+                    "include enter marker should be emitted");
+    // Include return marker: # 3 "main.c" 2
+    expect_contains(out, "# 3 \"" + file.string() + "\" 2",
+                    "include return marker should be emitted");
+  }
+}
+
 void test_line_directive() {
   fs::path dir = make_test_dir("line_directive");
   fs::path file = dir / "main.c";
@@ -327,6 +562,10 @@ int main() {
     test_conditional_ifdef_ifndef();
     test_conditional_if_elif_else();
     test_include_quoted();
+    test_include_path_buckets();
+    test_define_undefine_api();
+    test_builtin_location_macros();
+    test_line_markers();
     test_error_warning_diagnostics();
     test_line_directive();
     test_pending_function_like_macro(pending);

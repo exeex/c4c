@@ -14,6 +14,10 @@ void init_predefined_macros(MacroTable& table) {
   def(table, "__STDC__", "1");
   def(table, "__STDC_VERSION__", "201710L");
 
+  // __COUNTER__ is handled specially in expand_text (auto-incrementing).
+  // This entry ensures defined(__COUNTER__) is true and the expansion path fires.
+  def(table, "__COUNTER__", "0");
+
   // Type size macros (LP64 / ILP32 targets: int=4, long=8, pointer=8)
   def(table, "__SIZEOF_INT__", "4");
   def(table, "__SIZEOF_SHORT__", "2");

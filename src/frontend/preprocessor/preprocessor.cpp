@@ -29,8 +29,16 @@ std::string Preprocessor::preprocess_file(const std::string& path) {
   cond_stack_.clear();
   needs_external_fallback_ = false;
   base_file_ = path;
+  counter_ = 0;
 
-  std::string internal = preprocess_text(source, path, 0);
+  // Set __BASE_FILE__ — remains constant across all included files.
+  macros_["__BASE_FILE__"] = MacroDef{"__BASE_FILE__", false, false, {},
+                                       "\"" + path + "\""};
+
+  // Emit initial line marker (GCC-compatible: # 1 "filename").
+  std::string internal;
+  internal += "# 1 \"" + path + "\"\n";
+  internal += preprocess_text(source, path, 0);
   return internal;
 }
 
@@ -417,6 +425,10 @@ std::string Preprocessor::expand_text(const std::string& text,
               j < text.size() && (text[j] == '\'' || text[j] == '"')) {
             out += ident;
             i = j;
+          } else if (ident == "__COUNTER__") {
+            // __COUNTER__ increments each time it is expanded.
+            out += std::to_string(counter_++);
+            i = j;
           } else {
             std::unordered_set<std::string> new_disabled = disabled;
             new_disabled.insert(ident);
@@ -482,6 +494,39 @@ std::string Preprocessor::expand_line(const std::string& line) {
   return expand_text(line, {});
 }
 
+void Preprocessor::define_macro(const std::string& def) {
+  auto eq = def.find('=');
+  std::string name, body;
+  if (eq == std::string::npos) {
+    name = def;
+    body = "1";
+  } else {
+    name = def.substr(0, eq);
+    body = def.substr(eq + 1);
+  }
+  macros_[name] = MacroDef{name, false, false, {}, body};
+}
+
+void Preprocessor::undefine_macro(const std::string& name) {
+  macros_.erase(name);
+}
+
+void Preprocessor::add_quote_include_path(const std::string& path) {
+  quote_include_paths_.push_back(path);
+}
+
+void Preprocessor::add_include_path(const std::string& path) {
+  normal_include_paths_.push_back(path);
+}
+
+void Preprocessor::add_system_include_path(const std::string& path) {
+  system_include_paths_.push_back(path);
+}
+
+void Preprocessor::add_after_include_path(const std::string& path) {
+  after_include_paths_.push_back(path);
+}
+
 std::string Preprocessor::handle_include(const std::string& args,
                                          const std::string& current_file,
                                          int include_depth,
@@ -493,26 +538,92 @@ std::string Preprocessor::handle_include(const std::string& args,
     return "\n";
   }
 
-  // TODO(preprocessor): support computed include and <...> search chain
-  // (-I/-iquote/-isystem/-idirafter/default system paths).
-  bool quoted = s.size() >= 2 && s.front() == '"' && s.back() == '"';
-  if (!quoted) {
+  bool is_quoted = s.size() >= 2 && s.front() == '"' && s.back() == '"';
+  bool is_angle  = s.size() >= 2 && s.front() == '<' && s.back() == '>';
+
+  if (!is_quoted && !is_angle) {
+    // Computed include — not yet supported.
     needs_external_fallback_ = true;
     return "\n";
   }
 
   std::string rel = s.substr(1, s.size() - 2);
-  std::string base_dir = dirname_of(current_file);
-  std::string full = base_dir.empty() ? rel : (base_dir + "/" + rel);
+
+  // Try to resolve the include file using GCC-compatible search order.
+  // #include "file.h": current dir → quote → normal → system → after
+  // #include <file.h>: normal → system → after
+  auto try_resolve = [&](const std::string& dir) -> std::string {
+    std::string full = dir.empty() ? rel : (dir + "/" + rel);
+    std::string content;
+    if (read_file(full, &content)) return full;
+    return {};
+  };
+
+  std::string resolved;
+
+  if (is_quoted) {
+    // 1. Current file's directory (always first for quoted includes)
+    std::string base_dir = dirname_of(current_file);
+    resolved = try_resolve(base_dir);
+
+    // 2. Quote include paths (-iquote)
+    if (resolved.empty()) {
+      for (const auto& dir : quote_include_paths_) {
+        resolved = try_resolve(dir);
+        if (!resolved.empty()) break;
+      }
+    }
+  }
+
+  // 3. Normal include paths (-I) — both quoted and angle
+  if (resolved.empty()) {
+    for (const auto& dir : normal_include_paths_) {
+      resolved = try_resolve(dir);
+      if (!resolved.empty()) break;
+    }
+  }
+
+  // 4. System include paths (-isystem)
+  if (resolved.empty()) {
+    for (const auto& dir : system_include_paths_) {
+      resolved = try_resolve(dir);
+      if (!resolved.empty()) break;
+    }
+  }
+
+  // 5. After include paths (-idirafter)
+  if (resolved.empty()) {
+    for (const auto& dir : after_include_paths_) {
+      resolved = try_resolve(dir);
+      if (!resolved.empty()) break;
+    }
+  }
+
+  if (resolved.empty()) {
+    if (is_angle) {
+      // Angle includes without configured paths — fall back to external.
+      needs_external_fallback_ = true;
+    } else {
+      errors_.push_back(PreprocessorDiagnostic{current_file, line_no, 1,
+                                               "include file not found: " + rel});
+    }
+    return "\n";
+  }
 
   std::string child_src;
-  if (!read_file(full, &child_src)) {
+  if (!read_file(resolved, &child_src)) {
     errors_.push_back(PreprocessorDiagnostic{current_file, line_no, 1,
                                              "include file not found: " + rel});
     return "\n";
   }
 
-  return preprocess_text(child_src, full, include_depth + 1);
+  // Emit GCC-compatible include enter/return markers.
+  // Flag 1 = entering a new file, flag 2 = returning to a file.
+  std::string result;
+  result += "# 1 \"" + resolved + "\" 1\n";
+  result += preprocess_text(child_src, resolved, include_depth + 1);
+  result += "# " + std::to_string(line_no + 1) + " \"" + current_file + "\" 2\n";
+  return result;
 }
 
 }  // namespace tinyc2ll::frontend_cxx
