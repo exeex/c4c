@@ -3,6 +3,7 @@
 
 #include "pp_macro_def.hpp"
 
+#include <map>
 #include <set>
 #include <string>
 #include <unordered_set>
@@ -83,6 +84,9 @@ private:
                              int include_depth, int line_no);
   bool can_resolve_include(const std::string& path_arg, const std::string& current_file);
 
+  // Builtin header injection for well-known system headers.
+  static std::string get_builtin_header(const std::string& name);
+
 private:
   MacroTable macros_;
   std::vector<ConditionalFrame> cond_stack_;
@@ -109,6 +113,9 @@ private:
 
   // #pragma once — set of canonical file paths that should not be re-included.
   std::set<std::string> pragma_once_files_;
+
+  // #pragma push_macro / pop_macro — stack of saved macro definitions per name.
+  std::map<std::string, std::vector<MacroDef>> macro_stack_;
 };
 
 }  // namespace tinyc2ll::frontend_cxx

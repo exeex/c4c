@@ -185,6 +185,39 @@ void Preprocessor::process_directive(const std::string& raw_line, std::string& o
     std::string pragma_text = trim_copy(rest);
     if (pragma_text == "once") {
       pragma_once_files_.insert(current_file);
+    } else if (pragma_text.substr(0, 10) == "push_macro") {
+      // #pragma push_macro("NAME") — save current macro definition.
+      auto q1 = pragma_text.find('"');
+      auto q2 = pragma_text.find('"', q1 + 1);
+      if (q1 != std::string::npos && q2 != std::string::npos) {
+        std::string name = pragma_text.substr(q1 + 1, q2 - q1 - 1);
+        auto it = macros_.find(name);
+        if (it != macros_.end()) {
+          macro_stack_[name].push_back(it->second);
+        } else {
+          // Push a sentinel to indicate the macro was undefined.
+          macro_stack_[name].push_back(MacroDef{name, false, false, {}, ""});
+          macro_stack_[name].back().name = "";  // sentinel: empty name = undefined
+        }
+      }
+    } else if (pragma_text.substr(0, 9) == "pop_macro") {
+      // #pragma pop_macro("NAME") — restore saved macro definition.
+      auto q1 = pragma_text.find('"');
+      auto q2 = pragma_text.find('"', q1 + 1);
+      if (q1 != std::string::npos && q2 != std::string::npos) {
+        std::string name = pragma_text.substr(q1 + 1, q2 - q1 - 1);
+        auto it = macro_stack_.find(name);
+        if (it != macro_stack_.end() && !it->second.empty()) {
+          MacroDef saved = std::move(it->second.back());
+          it->second.pop_back();
+          if (saved.name.empty()) {
+            // Sentinel: macro was undefined before push.
+            macros_.erase(name);
+          } else {
+            macros_[name] = std::move(saved);
+          }
+        }
+      }
     } else {
       PragmaResult pr = dispatch_pragma(rest, current_file, line_no);
       if (pr == PragmaResult::Unhandled) {
@@ -646,6 +679,15 @@ std::string Preprocessor::handle_include(const std::string& args,
   }
 
   if (resolved.empty()) {
+    // Try builtin header injection for well-known system headers.
+    std::string builtin = get_builtin_header(rel);
+    if (!builtin.empty()) {
+      std::string result;
+      result += "# 1 \"<builtin-" + rel + ">\" 1\n";
+      result += preprocess_text(builtin, "<builtin-" + rel + ">", include_depth + 1);
+      result += "# " + std::to_string(line_no + 1) + " \"" + current_file + "\" 2\n";
+      return result;
+    }
     if (is_angle) {
       // Angle includes without configured paths — fall back to external.
       needs_external_fallback_ = true;
@@ -707,6 +749,366 @@ bool Preprocessor::can_resolve_include(const std::string& path_arg,
     if (try_exists(d)) return true;
 
   return false;
+}
+
+std::string Preprocessor::get_builtin_header(const std::string& name) {
+  if (name == "stdarg.h") {
+    return
+      "#ifndef _STDARG_H\n"
+      "#define _STDARG_H\n"
+      "typedef __builtin_va_list va_list;\n"
+      "typedef __builtin_va_list __gnuc_va_list;\n"
+      "#define va_start(ap, param) __builtin_va_start(ap, param)\n"
+      "#define va_end(ap) __builtin_va_end(ap)\n"
+      "#define va_arg(ap, type) __builtin_va_arg(ap, type)\n"
+      "#define va_copy(dest, src) __builtin_va_copy(dest, src)\n"
+      "#define __va_copy(dest, src) __builtin_va_copy(dest, src)\n"
+      "#endif\n";
+  }
+  if (name == "limits.h") {
+    return
+      "#ifndef _LIMITS_H\n"
+      "#define _LIMITS_H\n"
+      "#define CHAR_BIT __CHAR_BIT__\n"
+      "#define SCHAR_MIN (-__SCHAR_MAX__ - 1)\n"
+      "#define SCHAR_MAX __SCHAR_MAX__\n"
+      "#define UCHAR_MAX ((__SCHAR_MAX__ * 2) + 1)\n"
+      "#define CHAR_MIN SCHAR_MIN\n"
+      "#define CHAR_MAX SCHAR_MAX\n"
+      "#define SHRT_MIN (-__SHRT_MAX__ - 1)\n"
+      "#define SHRT_MAX __SHRT_MAX__\n"
+      "#define USHRT_MAX ((__SHRT_MAX__ * 2) + 1)\n"
+      "#define INT_MIN (-__INT_MAX__ - 1)\n"
+      "#define INT_MAX __INT_MAX__\n"
+      "#define UINT_MAX ((__INT_MAX__ * 2U) + 1U)\n"
+      "#define LONG_MIN (-__LONG_MAX__ - 1L)\n"
+      "#define LONG_MAX __LONG_MAX__\n"
+      "#define ULONG_MAX ((__LONG_MAX__ * 2UL) + 1UL)\n"
+      "#define LLONG_MIN (-__LONG_LONG_MAX__ - 1LL)\n"
+      "#define LLONG_MAX __LONG_LONG_MAX__\n"
+      "#define ULLONG_MAX ((__LONG_LONG_MAX__ * 2ULL) + 1ULL)\n"
+      "#define LONG_LONG_MIN LLONG_MIN\n"
+      "#define LONG_LONG_MAX LLONG_MAX\n"
+      "#define ULONG_LONG_MAX ULLONG_MAX\n"
+      "#define MB_LEN_MAX 16\n"
+      "#endif\n";
+  }
+  if (name == "stddef.h") {
+    return
+      "#ifndef _STDDEF_H\n"
+      "#define _STDDEF_H\n"
+      "typedef __SIZE_TYPE__ size_t;\n"
+      "typedef __PTRDIFF_TYPE__ ptrdiff_t;\n"
+      "typedef int wchar_t;\n"
+      "#define NULL ((void*)0)\n"
+      "#define offsetof(type, member) __builtin_offsetof(type, member)\n"
+      "#endif\n";
+  }
+  if (name == "stdbool.h") {
+    return
+      "#ifndef _STDBOOL_H\n"
+      "#define _STDBOOL_H\n"
+      "#define bool _Bool\n"
+      "#define true 1\n"
+      "#define false 0\n"
+      "#define __bool_true_false_are_defined 1\n"
+      "#endif\n";
+  }
+  if (name == "stdio.h") {
+    return
+      "#ifndef _STDIO_H\n"
+      "#define _STDIO_H\n"
+      "#ifndef NULL\n"
+      "#define NULL ((void*)0)\n"
+      "#endif\n"
+      "typedef __SIZE_TYPE__ size_t;\n"
+      "typedef struct _IO_FILE FILE;\n"
+      "extern FILE *stdin;\n"
+      "extern FILE *stdout;\n"
+      "extern FILE *stderr;\n"
+      "#define EOF (-1)\n"
+      "#define SEEK_SET 0\n"
+      "#define SEEK_CUR 1\n"
+      "#define SEEK_END 2\n"
+      "int printf(const char *, ...);\n"
+      "int fprintf(FILE *, const char *, ...);\n"
+      "int sprintf(char *, const char *, ...);\n"
+      "int snprintf(char *, size_t, const char *, ...);\n"
+      "int vprintf(const char *, __builtin_va_list);\n"
+      "int vfprintf(FILE *, const char *, __builtin_va_list);\n"
+      "int vsprintf(char *, const char *, __builtin_va_list);\n"
+      "int vsnprintf(char *, size_t, const char *, __builtin_va_list);\n"
+      "int scanf(const char *, ...);\n"
+      "int fscanf(FILE *, const char *, ...);\n"
+      "int sscanf(const char *, const char *, ...);\n"
+      "int fputc(int, FILE *);\n"
+      "int fputs(const char *, FILE *);\n"
+      "int putc(int, FILE *);\n"
+      "int putchar(int);\n"
+      "int puts(const char *);\n"
+      "int fgetc(FILE *);\n"
+      "int getc(FILE *);\n"
+      "int getchar(void);\n"
+      "char *fgets(char *, int, FILE *);\n"
+      "size_t fread(void *, size_t, size_t, FILE *);\n"
+      "size_t fwrite(const void *, size_t, size_t, FILE *);\n"
+      "FILE *fopen(const char *, const char *);\n"
+      "int fclose(FILE *);\n"
+      "int fflush(FILE *);\n"
+      "int fseek(FILE *, long, int);\n"
+      "long ftell(FILE *);\n"
+      "void rewind(FILE *);\n"
+      "int feof(FILE *);\n"
+      "int ferror(FILE *);\n"
+      "void perror(const char *);\n"
+      "int remove(const char *);\n"
+      "int rename(const char *, const char *);\n"
+      "FILE *tmpfile(void);\n"
+      "char *tmpnam(char *);\n"
+      "FILE *freopen(const char *, const char *, FILE *);\n"
+      "int setvbuf(FILE *, char *, int, size_t);\n"
+      "void setbuf(FILE *, char *);\n"
+      "int ungetc(int, FILE *);\n"
+      "void clearerr(FILE *);\n"
+      "#define _IOFBF 0\n"
+      "#define _IOLBF 1\n"
+      "#define _IONBF 2\n"
+      "#define BUFSIZ 8192\n"
+      "#endif\n";
+  }
+  if (name == "stdlib.h") {
+    return
+      "#ifndef _STDLIB_H\n"
+      "#define _STDLIB_H\n"
+      "#ifndef NULL\n"
+      "#define NULL ((void*)0)\n"
+      "#endif\n"
+      "typedef __SIZE_TYPE__ size_t;\n"
+      "#define EXIT_SUCCESS 0\n"
+      "#define EXIT_FAILURE 1\n"
+      "#define RAND_MAX 2147483647\n"
+      "void abort(void);\n"
+      "void exit(int);\n"
+      "void _Exit(int);\n"
+      "int atexit(void (*)(void));\n"
+      "void *malloc(size_t);\n"
+      "void *calloc(size_t, size_t);\n"
+      "void *realloc(void *, size_t);\n"
+      "void free(void *);\n"
+      "int atoi(const char *);\n"
+      "long atol(const char *);\n"
+      "long long atoll(const char *);\n"
+      "double atof(const char *);\n"
+      "long strtol(const char *, char **, int);\n"
+      "unsigned long strtoul(const char *, char **, int);\n"
+      "long long strtoll(const char *, char **, int);\n"
+      "unsigned long long strtoull(const char *, char **, int);\n"
+      "double strtod(const char *, char **);\n"
+      "int abs(int);\n"
+      "long labs(long);\n"
+      "long long llabs(long long);\n"
+      "int rand(void);\n"
+      "void srand(unsigned int);\n"
+      "void qsort(void *, size_t, size_t, int (*)(const void *, const void *));\n"
+      "void *bsearch(const void *, const void *, size_t, size_t, int (*)(const void *, const void *));\n"
+      "char *getenv(const char *);\n"
+      "int system(const char *);\n"
+      "#endif\n";
+  }
+  if (name == "string.h") {
+    return
+      "#ifndef _STRING_H\n"
+      "#define _STRING_H\n"
+      "#ifndef NULL\n"
+      "#define NULL ((void*)0)\n"
+      "#endif\n"
+      "typedef __SIZE_TYPE__ size_t;\n"
+      "void *memcpy(void *, const void *, size_t);\n"
+      "void *memmove(void *, const void *, size_t);\n"
+      "void *memset(void *, int, size_t);\n"
+      "int memcmp(const void *, const void *, size_t);\n"
+      "void *memchr(const void *, int, size_t);\n"
+      "char *strcpy(char *, const char *);\n"
+      "char *strncpy(char *, const char *, size_t);\n"
+      "char *strcat(char *, const char *);\n"
+      "char *strncat(char *, const char *, size_t);\n"
+      "int strcmp(const char *, const char *);\n"
+      "int strncmp(const char *, const char *, size_t);\n"
+      "char *strchr(const char *, int);\n"
+      "char *strrchr(const char *, int);\n"
+      "char *strstr(const char *, const char *);\n"
+      "size_t strlen(const char *);\n"
+      "size_t strspn(const char *, const char *);\n"
+      "size_t strcspn(const char *, const char *);\n"
+      "char *strdup(const char *);\n"
+      "char *strerror(int);\n"
+      "#endif\n";
+  }
+  if (name == "signal.h") {
+    return
+      "#ifndef _SIGNAL_H\n"
+      "#define _SIGNAL_H\n"
+      "typedef void (*__sighandler_t)(int);\n"
+      "#define SIG_DFL ((__sighandler_t)0)\n"
+      "#define SIG_IGN ((__sighandler_t)1)\n"
+      "#define SIG_ERR ((__sighandler_t)-1)\n"
+      "#define SIGHUP 1\n"
+      "#define SIGINT 2\n"
+      "#define SIGQUIT 3\n"
+      "#define SIGILL 4\n"
+      "#define SIGTRAP 5\n"
+      "#define SIGABRT 6\n"
+      "#define SIGFPE 8\n"
+      "#define SIGKILL 9\n"
+      "#define SIGSEGV 11\n"
+      "#define SIGPIPE 13\n"
+      "#define SIGALRM 14\n"
+      "#define SIGTERM 15\n"
+      "__sighandler_t signal(int, __sighandler_t);\n"
+      "int raise(int);\n"
+      "#endif\n";
+  }
+  if (name == "assert.h") {
+    return
+      "#ifndef _ASSERT_H\n"
+      "#define _ASSERT_H\n"
+      "#ifdef NDEBUG\n"
+      "#define assert(expr) ((void)0)\n"
+      "#else\n"
+      "extern void __assert_fail(const char *, const char *, unsigned int, const char *);\n"
+      "#define assert(expr) ((expr) ? (void)0 : __assert_fail(#expr, __FILE__, __LINE__, __func__))\n"
+      "#endif\n"
+      "#endif\n";
+  }
+  if (name == "stdbool.h") {
+    return
+      "#ifndef _STDBOOL_H\n"
+      "#define _STDBOOL_H\n"
+      "#define bool _Bool\n"
+      "#define true 1\n"
+      "#define false 0\n"
+      "#define __bool_true_false_are_defined 1\n"
+      "#endif\n";
+  }
+  if (name == "float.h") {
+    return
+      "#ifndef _FLOAT_H\n"
+      "#define _FLOAT_H\n"
+      "#define FLT_RADIX 2\n"
+      "#define FLT_MANT_DIG 24\n"
+      "#define FLT_DIG 6\n"
+      "#define FLT_MIN_EXP (-125)\n"
+      "#define FLT_MIN_10_EXP (-37)\n"
+      "#define FLT_MAX_EXP 128\n"
+      "#define FLT_MAX_10_EXP 38\n"
+      "#define FLT_MAX 3.40282347e+38F\n"
+      "#define FLT_MIN 1.17549435e-38F\n"
+      "#define FLT_EPSILON 1.19209290e-07F\n"
+      "#define DBL_MANT_DIG 53\n"
+      "#define DBL_DIG 15\n"
+      "#define DBL_MIN_EXP (-1021)\n"
+      "#define DBL_MIN_10_EXP (-307)\n"
+      "#define DBL_MAX_EXP 1024\n"
+      "#define DBL_MAX_10_EXP 308\n"
+      "#define DBL_MAX 1.7976931348623157e+308\n"
+      "#define DBL_MIN 2.2250738585072014e-308\n"
+      "#define DBL_EPSILON 2.2204460492503131e-16\n"
+      "#define LDBL_MANT_DIG 64\n"
+      "#define LDBL_DIG 18\n"
+      "#define LDBL_MIN_EXP (-16381)\n"
+      "#define LDBL_MIN_10_EXP (-4931)\n"
+      "#define LDBL_MAX_EXP 16384\n"
+      "#define LDBL_MAX_10_EXP 4932\n"
+      "#define LDBL_MAX 1.18973149535723176502e+4932L\n"
+      "#define LDBL_MIN 3.36210314311209350626e-4932L\n"
+      "#define LDBL_EPSILON 1.08420217248550443401e-19L\n"
+      "#define FLT_ROUNDS 1\n"
+      "#define FLT_EVAL_METHOD 0\n"
+      "#define DECIMAL_DIG 21\n"
+      "#endif\n";
+  }
+  if (name == "setjmp.h") {
+    return
+      "#ifndef _SETJMP_H\n"
+      "#define _SETJMP_H\n"
+      "typedef long jmp_buf[8];\n"
+      "typedef long sigjmp_buf[9];\n"
+      "int setjmp(jmp_buf);\n"
+      "void longjmp(jmp_buf, int);\n"
+      "int _setjmp(jmp_buf);\n"
+      "void _longjmp(jmp_buf, int);\n"
+      "int sigsetjmp(sigjmp_buf, int);\n"
+      "void siglongjmp(sigjmp_buf, int);\n"
+      "#endif\n";
+  }
+  if (name == "ctype.h") {
+    return
+      "#ifndef _CTYPE_H\n"
+      "#define _CTYPE_H\n"
+      "int isalnum(int);\n"
+      "int isalpha(int);\n"
+      "int isblank(int);\n"
+      "int iscntrl(int);\n"
+      "int isdigit(int);\n"
+      "int isgraph(int);\n"
+      "int islower(int);\n"
+      "int isprint(int);\n"
+      "int ispunct(int);\n"
+      "int isspace(int);\n"
+      "int isupper(int);\n"
+      "int isxdigit(int);\n"
+      "int tolower(int);\n"
+      "int toupper(int);\n"
+      "#endif\n";
+  }
+  if (name == "math.h") {
+    return
+      "#ifndef _MATH_H\n"
+      "#define _MATH_H\n"
+      "#define HUGE_VAL __builtin_huge_val()\n"
+      "#define HUGE_VALF __builtin_huge_valf()\n"
+      "#define INFINITY __builtin_inff()\n"
+      "#define NAN __builtin_nanf(\"\")\n"
+      "#define isinf(x) __builtin_isinf(x)\n"
+      "#define isnan(x) __builtin_isnan(x)\n"
+      "#define isnormal(x) __builtin_isnormal(x)\n"
+      "#define isfinite(x) __builtin_isfinite(x)\n"
+      "#define signbit(x) __builtin_signbit(x)\n"
+      "double fabs(double);\n"
+      "float fabsf(float);\n"
+      "double sqrt(double);\n"
+      "float sqrtf(float);\n"
+      "double sin(double);\n"
+      "double cos(double);\n"
+      "double tan(double);\n"
+      "double asin(double);\n"
+      "double acos(double);\n"
+      "double atan(double);\n"
+      "double atan2(double, double);\n"
+      "double exp(double);\n"
+      "double log(double);\n"
+      "double log10(double);\n"
+      "double pow(double, double);\n"
+      "double ceil(double);\n"
+      "double floor(double);\n"
+      "double fmod(double, double);\n"
+      "double ldexp(double, int);\n"
+      "double frexp(double, int *);\n"
+      "double modf(double, double *);\n"
+      "float sinf(float);\n"
+      "float cosf(float);\n"
+      "float tanf(float);\n"
+      "float sqrtf(float);\n"
+      "float expf(float);\n"
+      "float logf(float);\n"
+      "float log10f(float);\n"
+      "float powf(float, float);\n"
+      "float ceilf(float);\n"
+      "float floorf(float);\n"
+      "float fmodf(float, float);\n"
+      "#endif\n";
+  }
+  return {};
 }
 
 }  // namespace tinyc2ll::frontend_cxx
