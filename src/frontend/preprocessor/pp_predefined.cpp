@@ -130,9 +130,30 @@ void init_predefined_macros(MacroTable& table) {
   // Target architecture macros (host-detected at compile time)
 #if defined(__aarch64__) || defined(_M_ARM64)
   def(table, "__aarch64__", "1");
+  def(table, "__AARCH64EL__", "1");
+  def(table, "__AARCH64_CMODEL_SMALL__", "1");
   def(table, "__ARM_64BIT_STATE", "1");
   def(table, "__ARM_ARCH", "8");
   def(table, "__ARM_ARCH_ISA_A64", "1");
+  def(table, "__ARM_ARCH_PROFILE", "'A'");
+  def(table, "__ARM_ACLE", "200");
+  def(table, "__ARM_ALIGN_MAX_STACK_PWR", "4");
+  def(table, "__ARM_FEATURE_CLZ", "1");
+  def(table, "__ARM_FEATURE_DIRECTED_ROUNDING", "1");
+  def(table, "__ARM_FEATURE_DIV", "1");
+  def(table, "__ARM_FEATURE_FMA", "1");
+  def(table, "__ARM_FEATURE_IDIV", "1");
+  def(table, "__ARM_FEATURE_LDREX", "0xF");
+  def(table, "__ARM_FEATURE_NUMERIC_MAXMIN", "1");
+  def(table, "__ARM_FEATURE_UNALIGNED", "1");
+  def(table, "__ARM_FP", "0xE");
+  def(table, "__ARM_FP16_ARGS", "1");
+  def(table, "__ARM_FP16_FORMAT_IEEE", "1");
+  def(table, "__ARM_NEON", "1");
+  def(table, "__ARM_NEON_FP", "0xE");
+  def(table, "__ARM_PCS_AAPCS64", "1");
+  def(table, "__ARM_SIZEOF_MINIMAL_ENUM", "4");
+  def(table, "__ARM_SIZEOF_WCHAR_T", "4");
 #elif defined(__x86_64__) || defined(_M_X64)
   def(table, "__x86_64__", "1");
   def(table, "__x86_64", "1");
@@ -173,6 +194,39 @@ void init_predefined_macros(MacroTable& table) {
 #if defined(__ELF__)
   def(table, "__ELF__", "1");
 #endif
+
+  // Atomic memory order constants (used by <stdatomic.h> and __atomic builtins)
+  def(table, "__ATOMIC_RELAXED", "0");
+  def(table, "__ATOMIC_CONSUME", "1");
+  def(table, "__ATOMIC_ACQUIRE", "2");
+  def(table, "__ATOMIC_RELEASE", "3");
+  def(table, "__ATOMIC_ACQ_REL", "4");
+  def(table, "__ATOMIC_SEQ_CST", "5");
+
+  // GCC sync builtins availability (arch-dependent)
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__x86_64__) || defined(_M_X64)
+  def(table, "__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1", "1");
+  def(table, "__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2", "1");
+  def(table, "__GCC_HAVE_SYNC_COMPARE_AND_SWAP_4", "1");
+  def(table, "__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8", "1");
+  def(table, "__GCC_HAVE_SYNC_COMPARE_AND_SWAP_16", "1");
+#elif defined(__i386__) || defined(_M_IX86)
+  def(table, "__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1", "1");
+  def(table, "__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2", "1");
+  def(table, "__GCC_HAVE_SYNC_COMPARE_AND_SWAP_4", "1");
+  def(table, "__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8", "1");
+#endif
+
+  // Common GCC/Clang compatibility macros
+  def(table, "__BIGGEST_ALIGNMENT__", "16");
+  def(table, "__FINITE_MATH_ONLY__", "0");
+  def(table, "__NO_INLINE__", "1");
+  def(table, "__GNUC_STDC_INLINE__", "1");
+  def(table, "__PRAGMA_REDEFINE_EXTNAME", "1");
+  def(table, "__STDC_UTF_16__", "1");
+  def(table, "__STDC_UTF_32__", "1");
+  def(table, "__USER_LABEL_PREFIX__", "");
+  def(table, "__GCC_ASM_FLAG_OUTPUTS__", "1");
 }
 
 }  // namespace tinyc2ll::frontend_cxx

@@ -94,8 +94,9 @@ All work items done:
 - [x] Multi-line function-like invocation accumulation ← NEW
 
 ### Phase 6 remainder
-- Target-family macro sets (full coverage)
-- Config toggles (PIC, optimize, etc.)
+- [x] aarch64 feature macros (__ARM_NEON, __ARM_FP, __ARM_FEATURE_*, __ARM_PCS_AAPCS64, etc.) ← NEW
+- [x] Common GCC compat macros (__ATOMIC_*, __GCC_HAVE_SYNC_*, __BIGGEST_ALIGNMENT__, __FINITE_MATH_ONLY__, __NO_INLINE__, __GNUC_STDC_INLINE__, __STDC_UTF_*, __USER_LABEL_PREFIX__, __GCC_ASM_FLAG_OUTPUTS__) ← NEW
+- Config toggles (__OPTIMIZE__, __PIC__, __PIE__ — require CLI flag wiring)
 
 ### Phase 7 remainder
 - More POSIX headers as needed
@@ -107,5 +108,5 @@ All work items done:
 
 ## Next Suggested Work
 - `#pragma pack(...)` real support (Phase 3, low priority — tests pass without it)
-- Target-family macro sets / config toggles (Phase 6)
-- More POSIX headers / INT64_C macro helpers (Phase 7)
+- Config toggles: __OPTIMIZE__, __PIC__, __PIE__ (Phase 6 — require CLI flag wiring)
+- More POSIX headers as needed (Phase 7)
