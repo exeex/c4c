@@ -3,55 +3,44 @@
 Last updated: 2026-03-14
 
 ## Baseline
-- Tests: 1635/1770 passed (92%), 135 failed
+- Tests: 1635/1770 passed (92%), 135 failed (unchanged after all Phase 1 work)
 
 ## Completed: Phase 0 — Structure Refactor
 
-All 6 slices done. No regressions (1635/1770 before and after).
+All 6 slices done.
 
-- Slice 1: `pp_text.hpp/cpp` — trim_copy, is_ident_start, is_ident_continue, join_continued_lines, strip_comments
-- Slice 2: `pp_include.hpp/cpp` — dirname_of, read_file, shell_quote, run_capture, preprocess_external
-- Slice 3: `pp_pragma.hpp/cpp` — dispatch_pragma (PragmaResult: Handled/Ignored/Unhandled)
-- Slice 4: `pp_macro_def.hpp` + `pp_predefined.hpp/cpp` — MacroDef, MacroTable, init_predefined_macros
-- Slice 5: `pp_macro_expand.hpp/cpp` — collect_funclike_args, stringify_arg, find_param_idx, substitute_funclike_body, split_directive
-- Slice 6: `pp_cond.hpp/cpp` — resolve_defined_and_intrinsics, ExprValue, IfExprParser
+## Completed: Phase 1 — Output Contract and Public API
 
-Result: preprocessor.cpp reduced from 1541 to 518 lines (orchestration only).
+All work items done:
 
-## In Progress: Phase 1 — Output Contract and Public API
-
-### Completed
 - [x] Split include paths into quote / normal / system / after buckets
-  - Replaced single `include_paths_` with 4 buckets: `quote_include_paths_`, `normal_include_paths_`, `system_include_paths_`, `after_include_paths_`
-  - Added public API: `add_quote_include_path()`, `add_include_path()`, `add_system_include_path()`, `add_after_include_path()`
-  - Updated `handle_include()` to support `#include <...>` with GCC-compatible search order
-  - Added 7 test cases covering all buckets and priority ordering
-
-- [x] Add public API for define/undefine
-  - Added `define_macro(def)`: supports `"FOO"` (=1) and `"FOO=bar"` forms
-  - Added `undefine_macro(name)`
-  - Added 4 test cases
-
-- [x] Add initial line marker emission
-  - Emit `# 1 "filename"` at start of preprocessed output
-  - Added test for initial marker
-
-- [x] Add include enter and include return markers
-  - Emit `# 1 "included_file" 1` on include enter
-  - Emit `# N "parent_file" 2` on include return
-  - Added test for enter/return markers
-
+- [x] Add public API for source-based preprocessing and file name control (`preprocess_source()`)
+- [x] Add public API for define/undefine (`define_macro()`, `undefine_macro()`)
+- [x] Add initial line marker emission (`# 1 "filename"`)
+- [x] Add include enter and include return markers (`# 1 "file" 1` / `# N "file" 2`)
 - [x] Move __FILE__, __LINE__, __BASE_FILE__, __COUNTER__ into explicit managed state
-  - __BASE_FILE__: set once in preprocess_file(), constant across includes
-  - __COUNTER__: auto-incrementing counter (handled specially in expand_text)
-  - __FILE__/__LINE__: continue using macro table updates in preprocess_text() loop
-  - Added tests for __BASE_FILE__ and __COUNTER__
+- [x] Wire CLI flags (-D, -U, -I, -iquote, -isystem, -idirafter) in c4cll driver
+- [x] Side-channel: not implemented as separate containers (deferred — not blocking anything)
 
-- No regressions throughout (1635/1770 before and after all slices)
+## Completed: Phase 2/3 partial — Include/Pragma System
+
+- [x] Support `<...>` angle bracket includes (done with path buckets)
+- [x] Implement `#pragma once`
+- [x] Make unknown pragmas non-fatal (ignore instead of fallback)
+
+## Completed: Phase 5 partial — Macro Expansion
+
+- [x] Fix variadic macro __VA_ARGS__ spacing (all preprocessor pending features resolved)
+
+## Next Phase: Phase 2 remainder
 
 ### Not Started
-- Add public API for source-based preprocessing and file name control
-- Define side-channel containers for pragma and macro-expansion metadata
+- Support computed includes after macro expansion
+- Implement full include search order
+- Add include resolution cache
+- Add `#include_next`
+- Add include guard optimization
+- Preserve symlink-aware path behavior where practical
 
-### Next Slice
-- Add public API for source-based preprocessing (preprocess from string with configurable filename)
+### Suggested Next Slice
+- `#include_next` support (needed for system header chaining)
