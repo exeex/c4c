@@ -3,8 +3,8 @@
 Last updated: 2026-03-14
 
 ## Current Results
-- Tests: 1769/1773 passed (99.8%), 4 failed
-- Improvement: +5 tests this session (from 1764)
+- Tests: 1770/1773 passed (99.8%), 3 failed
+- Improvement: +6 tests this session (from 1764)
 - Previous session: 1764/1773 (99.5%)
 
 ## Completed: Phase 0 — Structure Refactor
@@ -74,6 +74,7 @@ All work items done:
 - [x] Ptr-to-array pointer arithmetic: correct GEP stride via llvm_alloca_ty ← NEW
 - [x] Ptr-to-array deref: array decay instead of scalar load ← NEW
 - [x] AddrOf array: preserve array dims and set is_ptr_to_array ← NEW
+- [x] Local multi-dim array init: VLA false positive fix, 2D+ init lists, dim shift ← NEW
 
 ## Not Yet Started
 ### Phase 2 remainder
@@ -98,10 +99,9 @@ All work items done:
 - More POSIX headers as needed
 - INT64_C, UINT32_C macro helpers
 
-## Remaining 4 Failures (categorized)
+## Remaining 3 Failures (categorized)
 - **comp_goto_1, pr70460**: computed goto / label differences — pre-existing codegen issue
 - **scal_to_vec2**: scalar-to-vector coercion — pre-existing codegen issue
-- **strlen_5**: runtime mismatch (relies on UB across adjacent subarrays)
 
 ## Next Suggested Work
 - Include resolution cache / include guard optimization
