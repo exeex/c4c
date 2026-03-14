@@ -567,9 +567,16 @@ std::string Preprocessor::handle_include(const std::string& args,
   bool is_angle  = s.size() >= 2 && s.front() == '<' && s.back() == '>';
 
   if (!is_quoted && !is_angle) {
-    // Computed include — not yet supported.
-    needs_external_fallback_ = true;
-    return "\n";
+    // Computed include: macro-expand the argument, then re-check.
+    std::string expanded = trim_copy(expand_line(s));
+    is_quoted = expanded.size() >= 2 && expanded.front() == '"' && expanded.back() == '"';
+    is_angle  = expanded.size() >= 2 && expanded.front() == '<' && expanded.back() == '>';
+    if (!is_quoted && !is_angle) {
+      errors_.push_back(PreprocessorDiagnostic{current_file, line_no, 1,
+                                               "computed #include did not expand to a valid path"});
+      return "\n";
+    }
+    s = expanded;
   }
 
   std::string rel = s.substr(1, s.size() - 2);

@@ -469,6 +469,20 @@ void test_define_undefine_api() {
   }
 }
 
+void test_computed_include() {
+  fs::path dir = make_test_dir("computed_include");
+  fs::path header = dir / "target.h";
+  fs::path file = dir / "main.c";
+  write_text(header, "#define FROM_TARGET 42\n");
+  write_text(file,
+             "#define HEADER \"target.h\"\n"
+             "#include HEADER\n"
+             "int x = FROM_TARGET;\n");
+  Preprocessor pp;
+  std::string out = pp.preprocess_file(file.string());
+  expect_contains(out, "int x = 42;", "computed include should expand macro then include");
+}
+
 void test_preprocess_source() {
   // preprocess_source() preprocesses from a string instead of a file
   {
@@ -580,6 +594,7 @@ int main() {
     test_conditional_if_elif_else();
     test_include_quoted();
     test_include_path_buckets();
+    test_computed_include();
     test_define_undefine_api();
     test_preprocess_source();
     test_builtin_location_macros();
