@@ -3,6 +3,7 @@
 
 #include "pp_macro_def.hpp"
 
+#include <set>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -104,6 +105,9 @@ private:
 
   // __COUNTER__ state — monotonically increasing across all files.
   int counter_ = 0;
+
+  // #pragma once — set of canonical file paths that should not be re-included.
+  std::set<std::string> pragma_once_files_;
 };
 
 }  // namespace tinyc2ll::frontend_cxx

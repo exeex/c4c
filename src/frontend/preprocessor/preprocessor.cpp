@@ -27,6 +27,7 @@ std::string Preprocessor::preprocess_file(const std::string& path) {
   errors_.clear();
   warnings_.clear();
   cond_stack_.clear();
+  pragma_once_files_.clear();
   needs_external_fallback_ = false;
   base_file_ = path;
   counter_ = 0;
@@ -47,6 +48,7 @@ std::string Preprocessor::preprocess_source(const std::string& source,
   errors_.clear();
   warnings_.clear();
   cond_stack_.clear();
+  pragma_once_files_.clear();
   needs_external_fallback_ = false;
   base_file_ = filename;
   counter_ = 0;
@@ -180,9 +182,14 @@ void Preprocessor::process_directive(const std::string& raw_line, std::string& o
     warnings_.push_back(PreprocessorDiagnostic{current_file, line_no, 1,
                                                trim_copy(rest)});
   } else if (key == "pragma") {
-    PragmaResult pr = dispatch_pragma(rest, current_file, line_no);
-    if (pr == PragmaResult::Unhandled) {
-      needs_external_fallback_ = true;
+    std::string pragma_text = trim_copy(rest);
+    if (pragma_text == "once") {
+      pragma_once_files_.insert(current_file);
+    } else {
+      PragmaResult pr = dispatch_pragma(rest, current_file, line_no);
+      if (pr == PragmaResult::Unhandled) {
+        needs_external_fallback_ = true;
+      }
     }
   } else if (key == "line") {
     // C11 6.10.4: #line <digit-sequence> ["filename"]
@@ -625,6 +632,11 @@ std::string Preprocessor::handle_include(const std::string& args,
       errors_.push_back(PreprocessorDiagnostic{current_file, line_no, 1,
                                                "include file not found: " + rel});
     }
+    return "\n";
+  }
+
+  // #pragma once check: skip if this file was already included with pragma once.
+  if (pragma_once_files_.count(resolved)) {
     return "\n";
   }
 
