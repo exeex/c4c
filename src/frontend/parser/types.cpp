@@ -123,6 +123,9 @@ void Parser::parse_attributes(TypeSpec* ts) {
                     expect(TokenKind::RParen);
                 }
                 apply_aligned_attr(align);
+            } else if (attr_name == "packed" || attr_name == "__packed__") {
+                if (ts) ts->is_packed = true;
+                if (check(TokenKind::LParen)) skip_paren_group();
             } else if (attr_name == "vector_size" || attr_name == "__vector_size__") {
                 if (check(TokenKind::LParen)) {
                     consume();
@@ -741,14 +744,16 @@ TypeSpec Parser::parse_type_name() {
 
 Node* Parser::parse_struct_or_union(bool is_union) {
     int ln = cur().line;
-    skip_attributes();
+    // Parse attributes before tag name — capture packed attribute.
+    TypeSpec attr_ts{};
+    parse_attributes(&attr_ts);
 
     const char* tag = nullptr;
     if (check(TokenKind::Identifier)) {
         tag = arena_.strdup(cur().lexeme);
         consume();
     }
-    skip_attributes();
+    parse_attributes(&attr_ts);
 
     if (!check(TokenKind::LBrace)) {
         // Forward reference only; create a reference node
@@ -787,7 +792,8 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     Node* sd = make_node(NK_STRUCT_DEF, ln);
     sd->name       = tag;
     sd->is_union   = is_union;
-    sd->pack_align = pack_alignment_;  // capture current #pragma pack state
+    // __attribute__((packed)) => pack_align=1; otherwise use #pragma pack state
+    sd->pack_align = attr_ts.is_packed ? 1 : pack_alignment_;
 
     consume();  // consume {
 
@@ -970,6 +976,20 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         match(TokenKind::Semi);
     }
     expect(TokenKind::RBrace);
+
+    // Check for trailing __attribute__((packed)) after closing brace.
+    // We must only peek, not consume — other attributes like aligned()
+    // belong to the enclosing declaration (typedef, variable, etc.).
+    if (check(TokenKind::KwAttribute) && sd->pack_align == 0) {
+        int save = pos_;
+        TypeSpec trailing_attr{};
+        parse_attributes(&trailing_attr);
+        if (trailing_attr.is_packed) {
+            sd->pack_align = 1;
+        }
+        // Restore position so the caller can re-parse attributes for the declaration.
+        pos_ = save;
+    }
 
     // Store fields in arena
     sd->n_fields = (int)fields.size();

@@ -88,6 +88,7 @@ struct TypeSpec {
     bool is_const;
     bool is_volatile;
     bool is_fn_ptr;      // true when this TypeSpec was derived from a (*)(params) declarator
+    bool is_packed;      // __attribute__((packed)) — struct layout uses alignment 1
 };
 
 // ── NodeKind ──────────────────────────────────────────────────────────────────
