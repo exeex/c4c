@@ -1,151 +1,403 @@
-# Plan Execution State
+# c4 / cpp Mode Refactor Implementation Plan
 
-Last updated: 2026-03-15
+## Goal
 
-## Current Results
-- Tests: 1784/1784 passed (100%), 0 failed
-- Improvement: +10 tests across sessions (from 1764)
-- Previous: 1776/1776 (100%)
+Turn the architectural direction in `c4_cpp_mode_plan.md` into a concrete, behavior-preserving implementation sequence.
 
-## Completed: Top Priority — Include Test Coverage
-- [x] Add dedicated regression tests for `#include_next` (4 sub-tests + bug fix for infinite recursion)
-- [x] Add dedicated regression tests for include resolution cache behavior (3 sub-tests)
-- [x] Add dedicated regression tests for include guard optimization (5 sub-tests)
-- [x] Add CLI integration tests for `src/apps/c4cll.cpp` include flags (6 sub-tests: -I, -isystem, -iquote, -idirafter, priority, -D interaction)
+This plan is for the refactor only:
 
-## Completed: Phase 0 — Structure Refactor
-All 6 slices done.
+- no `.cpp` syntax support yet
+- no `.c4` syntax support yet
+- no parser fork
+- no semantic feature expansion yet
+- existing `.c` behavior must remain unchanged
 
-## Completed: Phase 1 — Output Contract and Public API
-All work items done:
-- [x] Split include paths into quote / normal / system / after buckets
-- [x] Public API for source-based preprocessing (`preprocess_source()`)
-- [x] Public API for define/undefine (`define_macro()`, `undefine_macro()`)
-- [x] Initial line marker emission (`# 1 "filename"`)
-- [x] Include enter/return markers (`# 1 "file" 1` / `# N "file" 2`)
-- [x] __FILE__, __LINE__, __BASE_FILE__, __COUNTER__ managed state
-- [x] CLI flags wired (-D, -U, -I, -iquote, -isystem, -idirafter)
+The target end state of this plan is:
 
-## Completed: Phase 2/3 partial — Include/Pragma System
-- [x] `#include <...>` angle bracket includes with path search
-- [x] Computed includes (macro-expanded `#include`)
-- [x] `#pragma once`
-- [x] Unknown pragmas non-fatal (ignore instead of fallback)
-- [x] `#pragma push_macro` / `#pragma pop_macro`
+- frontend mode is explicit at translation-unit entry
+- lexer keyword classification is profile-aware
+- sema entrypoint is profile-aware and structurally layered
+- include handling can carry/infer profile context
+- `.h` / `.hpp` policy is representable in code, even if feature use stays minimal
 
-## Completed: Phase 4 partial — #if Expressions and Intrinsics
-- [x] `__has_include("file")` and `__has_include(<file>)` with real resolution
-- [x] `__has_builtin` table (common GCC/Clang builtins)
-- [x] `__has_attribute` table (common GNU attributes)
-- [x] `__has_feature` / `__has_extension` table (C features)
-- [x] Wide/prefixed char literals (`L'\400'`) in `#if` expressions ← NEW
-- [x] Multi-digit octal and hex escapes in `#if` char literals ← NEW
+## Ground Rules
 
-## Completed: Phase 5 partial — Macro Expansion
-- [x] Variadic macro __VA_ARGS__ spacing fix
-- [x] GNU named variadic macros (`args...` syntax)
-- [x] PP-number suffix protection (float suffixes F/L not expanded as macros)
+- Preserve current C CLI behavior for `.c` inputs.
+- Keep lexer, parser, and AST shared.
+- Prefer introducing new enums/context objects before moving logic.
+- Land this in small, reviewable steps with test coverage after each stage.
+- Do not add placeholder syntax parsing for templates or c4-only constructs.
+- Do not duplicate C semantic logic in new profile-specific entrypoints.
 
-## Completed: Phase 6 partial — Predefined Macros and Target Configuration
-- [x] GCC compatibility macros (__GNUC__, __GNUC_MINOR__, __VERSION__, __STDC_HOSTED__)
-- [x] Target architecture macros (__aarch64__, __x86_64__, __i386__, __riscv)
-- [x] OS macros (__linux__, __unix__, __APPLE__, _WIN32, __ELF__)
+## Current Code Touch Points
 
-## Completed: Phase 7 partial — Builtin Header Injection
-- [x] `<stdarg.h>` (va_list, va_start, va_end, va_arg, va_copy)
-- [x] `<limits.h>` (INT_MAX, INT_MIN, CHAR_BIT, etc.)
-- [x] `<stddef.h>` (NULL, size_t, ptrdiff_t, offsetof)
-- [x] `<stdbool.h>` (bool, true, false)
-- [x] `<stdio.h>` (FILE, stdin/stdout/stderr, printf family, file I/O)
-- [x] `<stdlib.h>` (malloc, free, exit, abort, atoi, qsort, etc.)
-- [x] `<string.h>` (memcpy, strlen, strcmp, etc.)
-- [x] `<signal.h>` (SIGFPE, signal, raise, etc.)
-- [x] `<assert.h>` (assert macro via __assert_fail)
-- [x] `<float.h>` (FLT_MAX, DBL_MAX, etc.)
-- [x] `<setjmp.h>` (jmp_buf, setjmp, longjmp)
-- [x] `<ctype.h>` (isalpha, toupper, etc.)
-- [x] `<math.h>` (sqrt, sin, cos, etc.)
-- [x] `<fcntl.h>` (O_RDONLY, open, etc.)
-- [x] `<sys/mman.h>` (mmap, PROT_READ, MAP_PRIVATE, etc.)
-- [x] `<sys/types.h>` (size_t, pid_t, off_t, etc.)
-- [x] `<sys/stat.h>` (chmod, stat, mode macros)
-- [x] `<unistd.h>` (read, write, close, fork, etc.)
+Primary files likely involved:
 
-## Non-preprocessor Fixes (cumulative)
-- [x] Enum scope leak: inner block enum constants no longer leak to outer scope
-- [x] `__typeof_unqual__` / `typeof_unqual` keyword support ← NEW
-- [x] Statement expressions in ternary branches: side effects now conditional ← NEW
-- [x] Ptr-to-array global init type/initializer ← DONE
-- [x] 3D+ array initializer: shift array_dims when dropping outer dimension ← NEW
-- [x] Ptr-to-array pointer arithmetic: correct GEP stride via llvm_alloca_ty ← NEW
-- [x] Ptr-to-array deref: array decay instead of scalar load ← NEW
-- [x] AddrOf array: preserve array dims and set is_ptr_to_array ← NEW
-- [x] Local multi-dim array init: VLA false positive fix, 2D+ init lists, dim shift ← NEW
-- [x] void* pointer subtraction: byte-granular (GCC extension, sizeof(void)==1) ← NEW
-- [x] blockaddress constant exprs in static initializers (&&lab1 - &&lab0) ← NEW
+- `src/frontend/driver.cpp`
+- `src/frontend/preprocessor/preprocessor.hpp`
+- `src/frontend/preprocessor/preprocessor.cpp`
+- `src/frontend/preprocessor/pp_include.cpp`
+- `src/frontend/lexer/token.hpp`
+- `src/frontend/lexer/token.cpp`
+- `src/frontend/lexer/lexer.hpp`
+- `src/frontend/lexer/lexer.cpp`
+- `src/frontend/sema/sema.hpp`
+- `src/frontend/sema/sema.cpp`
+- `src/frontend/sema/validate.cpp`
+- parser files only if constructor signatures or token plumbing need light adaptation
 
-## Not Yet Started
-### Phase 2 remainder
-- [x] `#include_next` support (done in b957e0e)
-- [x] Include resolution cache ← NEW
-- [x] Include guard optimization ← NEW
+Suggested new files:
 
-### Phase 3 remainder
-- [x] `#pragma pack(...)` support — full pipeline: preprocessor→lexer→parser→HIR layout ← NEW
-- [x] `#pragma weak` — full pipeline: preprocessor→lexer→parser→HIR→codegen (weak/extern_weak linkage) ← NEW
-- [x] `#pragma GCC visibility push/pop` — full pipeline: preprocessor→lexer→parser→HIR→codegen (hidden/protected visibility) ← NEW
+- `src/frontend/source_profile.hpp`
+- optionally `src/frontend/source_profile.cpp`
 
-### Phase 5 remainder
-- [x] `_Pragma("...")` operator ← NEW
-- [x] Anti-paste guard behavior ← NEW
-- [x] Multi-line function-like invocation accumulation ← NEW
+If the codebase prefers fewer new files, the profile enums can live in an existing frontend header, but they should not be buried inside lexer-only or sema-only headers.
 
-### Phase 6 remainder
-- [x] aarch64 feature macros (__ARM_NEON, __ARM_FP, __ARM_FEATURE_*, __ARM_PCS_AAPCS64, etc.) ← NEW
-- [x] Common GCC compat macros (__ATOMIC_*, __GCC_HAVE_SYNC_*, __BIGGEST_ALIGNMENT__, __FINITE_MATH_ONLY__, __NO_INLINE__, __GNUC_STDC_INLINE__, __STDC_UTF_*, __USER_LABEL_PREFIX__, __GCC_ASM_FLAG_OUTPUTS__) ← NEW
-- [x] x86_64 feature macros (__SSE__, __SSE2__, __MMX__, __SSE_MATH__, __SSE2_MATH__, __NO_MATH_INLINES, __SEG_FS/GS, __GCC_HAVE_DWARF2_CFI_ASM, __REGISTER_PREFIX__) ← NEW
-- [x] i386 feature macros (__code_model_32__, __NO_MATH_INLINES, __REGISTER_PREFIX__) ← NEW
-- [x] Config toggles: -O0/-O1/-O2/-O3/-Os, -fPIC/-fpic, -fPIE/-fpie → __OPTIMIZE__, __OPTIMIZE_SIZE__, __NO_INLINE__, __PIC__/__pic__, __PIE__/__pie__ ← NEW
+## Implementation Phases
 
-### Phase 7 remainder
-- More POSIX headers as needed
-- [x] `<stdint.h>` builtin header (INT64_C, UINT32_C, INT8_C, etc.) ← NEW
-- [x] `<inttypes.h>` builtin header (PRId64, PRIu32, imaxabs, etc.) ← NEW
-- [x] `<errno.h>` builtin header (errno, EINVAL, ENOENT, etc.) ← NEW
-- [x] `<time.h>` builtin header (time_t, clock_t, struct tm, time, clock, etc.) ← NEW
-- [x] `__has_include` now checks builtin headers (was missing) ← NEW
+### Phase 0: Define Shared Profile Model
 
-## Remaining Failures
-- None! All 1776 tests pass.
+Objective:
+Introduce the core enums and mapping helpers without changing behavior.
 
-## Non-preprocessor Fixes (this session)
-- [x] `__attribute__((vector_size(N)))` parsing: fixed `skip_attributes()` in `parse_stmt()` and `parse_global_decl_or_function()` discarding type-affecting attributes before parse_base_type could capture them
-- [x] Vector init list lowering: added vector path to `consume_from_list` in ast_to_hir.cpp
-- [x] Scalar-to-vector binary op result type: update `res_spec` after splatting in hir_emitter.cpp
-- [x] `__attribute__((packed))` on struct types: recognized in parse_attributes, sets pack_align=1 ← NEW
-- [x] `__attribute__((aligned(N)))` on struct types: was parsed but never applied to layout ← NEW
+Work:
 
-## Next Suggested Work
-- `__VA_OPT__` support (C2x feature, not yet in plan)
-- `#pragma redefine_extname` (Phase 3)
-- `__attribute__((visibility("...")))` on individual declarations
+1. Add explicit profile types in a shared frontend header:
+   - `SourceProfile`
+   - `LexProfile`
+   - `SemaProfile`
+2. Add conversion helpers:
+   - file extension -> `SourceProfile`
+   - `SourceProfile` -> `LexProfile`
+   - `SourceProfile` -> `SemaProfile` where valid
+3. Add helpers for header classification:
+   - `.c` -> C translation unit
+   - `.cpp` -> cpp-subset translation unit
+   - `.c4` -> c4 translation unit
+   - `.h` -> shared C-family header
+   - `.hpp` -> shared cpp-family header
+4. Keep unknown-extension handling conservative:
+   - either preserve current behavior
+   - or default only where current driver already assumes C
 
-## README Gap Audit (2026-03-15)
-Compared against `ref/claudes-c-compiler/src/frontend/preprocessor/README.md`.
+Deliverable:
 
-### Not implemented yet
-- `#pragma redefine_extname` full pipeline (currently ignored by pragma dispatcher)
-- `__VA_OPT__` support
-- `__attribute__((visibility("...")))` on individual declarations
-- `preprocess_force_include()` API (`-include` style forced include entry point in preprocessor API)
-- `dump_defines()` API (`-dM` style macro dump)
-- Preprocessor configuration APIs parity:
-  `set_asm_mode`, `set_riscv_abi`, `set_riscv_march`, `set_strict_ansi`,
-  `set_target`, `set_pic`, `set_optimize`, `set_gnu89_inline`,
-  `set_sse_macros`, `set_extended_simd_macros`
-- Builtin/fallback coverage gap: `<complex.h>`, `<stdatomic.h>`
+- A compile-time profile vocabulary exists and is not yet required by the rest of the pipeline.
 
-### Partially implemented / behavior mismatch
-- `__has_include_next(...)`: parser recognizes it, but resolution uses same callback as `__has_include(...)` (no next-search semantics separation yet)
-- `#pragma weak sym = tgt`: weak pragma path exists, but no explicit alias side-channel structure matching README contract
-- Output side channels mismatch: only `errors()`/`warnings()` are exposed; README-level `weak_pragmas` / `redefine_extname_pragmas` accessor contract not exposed
+Acceptance criteria:
+
+- Build passes.
+- No CLI behavior changes.
+
+Notes:
+
+- Keep `SourceProfile` and `SemaProfile` separate even if they map 1:1 for translation units right now.
+- This phase should not modify lexer or sema behavior yet.
+
+### Phase 1: Thread Translation-Unit Profile Through Driver
+
+Objective:
+Make frontend mode explicit at entry without changing parsing or validation results for `.c`.
+
+Work:
+
+1. Update `src/frontend/driver.cpp` to determine source profile from input path.
+2. Introduce a small per-translation-unit context if useful:
+   - input path
+   - `SourceProfile`
+   - `LexProfile`
+   - `SemaProfile`
+3. Continue using one parser path.
+4. Keep `.c` as the only fully exercised path, but make `.cpp` and `.c4` flow through the same pipeline shape.
+
+Deliverable:
+
+- Driver no longer hardcodes an implicit C-only pipeline.
+
+Acceptance criteria:
+
+- `.c` inputs behave exactly as before.
+- `--lex-only`, `--parse-only`, and normal codegen still work on `.c`.
+- Profile selection is visible in code review and testable.
+
+Suggested tests:
+
+- Add unit tests for extension-to-profile mapping.
+- If there is no test harness yet for driver behavior, add a small focused test around mapping helpers instead.
+
+### Phase 2: Refactor Lexer to Use `LexProfile`
+
+Objective:
+Make keyword recognition profile-sensitive while keeping one lexer implementation.
+
+Work:
+
+1. Extend `Lexer` constructor to accept `LexProfile`.
+   - Keep a compatibility overload temporarily if that reduces churn.
+   - Final target should make profile explicit at call sites.
+2. Update `keyword_from_string(...)` in `token.hpp` / `token.cpp` to accept `LexProfile`.
+3. Split keyword policy into:
+   - always-on C keywords
+   - cpp-subset-only reserved keywords
+   - c4-only reserved keywords
+4. For this phase, add only the policy structure and the cpp placeholder keywords named in the design:
+   - `template`
+   - `constexpr`
+   - `consteval`
+5. Ensure those tokens are reserved only in:
+   - `LexProfile::CppSubset`
+   - `LexProfile::C4`
+6. Keep c4-only keyword set empty or scaffolded but inactive.
+7. Do not change operator lexing:
+   - `>>` stays `GreaterGreater`
+   - `<<` stays `LessLess`
+
+Deliverable:
+
+- Lexer behavior varies by profile only for keyword classification.
+
+Acceptance criteria:
+
+- Existing C tokenization is unchanged for `.c`.
+- In C mode, `template` lexes as `Identifier`.
+- In cpp-subset mode, `template` lexes as a keyword token.
+- No parser changes are required for `.c` inputs.
+
+Suggested implementation detail:
+
+- If adding new token kinds for future keywords causes parser churn, it is acceptable to add them now but leave parser support absent.
+- The parser should only encounter them in `.cpp` or `.c4` paths, which are not expected to succeed yet.
+
+Suggested tests:
+
+- Lexer unit tests for `template`, `constexpr`, `consteval` under:
+   - C
+   - cpp-subset
+   - c4
+- Regression test that core C keywords remain keywords in all profiles.
+
+### Phase 3: Make Sema Profile-Explicit Without Forking Logic
+
+Objective:
+Replace the implicit single-mode sema entrypoint with a profile-aware one, while keeping existing C validation and HIR lowering as the base layer.
+
+Work:
+
+1. Update `src/frontend/sema/sema.hpp`:
+   - add `analyze_program(const Node* root, SemaProfile profile)`
+   - optionally keep old overload as a thin wrapper to `SemaProfile::C` during transition
+2. Rework `src/frontend/sema/sema.cpp` so that:
+   - common C validation always runs first
+   - HIR lowering remains shared
+   - future extension hooks have a clear insertion point
+3. Introduce internal layering helpers, for example:
+   - `analyze_program_base_c(...)`
+   - `apply_cpp_subset_extensions(...)`
+   - `apply_c4_extensions(...)`
+4. For now, cpp and c4 extension layers should be no-op or reject-unimplemented in a narrowly scoped way, but they must not duplicate C behavior.
+5. Update driver to pass `SemaProfile`.
+
+Deliverable:
+
+- Sema architecture now makes profile explicit and future extension points concrete.
+
+Acceptance criteria:
+
+- `.c` behavior is unchanged.
+- C validation and HIR lowering are still the only real semantics executed.
+- The code structure makes it obvious that cpp builds on C and c4 builds on cpp.
+
+Suggested tests:
+
+- Existing semantic regression tests still pass in C mode.
+- Add focused tests that `analyze_program(..., SemaProfile::C)` matches previous behavior.
+
+### Phase 4: Introduce Include/Profile Context Plumbing
+
+Objective:
+Make include processing capable of carrying active source profile, especially for `.h` / `.hpp` policy.
+
+Work:
+
+1. Extend preprocessor include handling to know the active includer profile.
+2. Add profile-aware include resolution/classification helpers:
+   - included file path -> `SourceProfile`
+   - effective profile inherited from includer when file is `.h`
+   - `.hpp` inherits includer profile but rejects C mode
+3. Decide where the effective profile lives during preprocessing:
+   - include stack metadata
+   - preprocess context object
+   - side-channel per-file profile map
+4. Ensure enough information survives to the lex/parse/sema handoff.
+5. Emit a clean diagnostic path for:
+   - `.hpp` included under C mode
+
+Deliverable:
+
+- The pipeline can represent header mode inheritance correctly.
+
+Acceptance criteria:
+
+- `.h` can be classified as inheriting active mode.
+- `.hpp` under C mode produces a deterministic diagnostic.
+- Pure `.c` workflows without `.hpp` remain unchanged.
+
+Notes:
+
+- This phase may expose that the current preprocessor returns only flattened text and loses per-file context.
+- If so, add the smallest metadata channel that preserves current architecture while enabling profile checks.
+- Do not redesign the whole preprocessor in this task.
+
+Suggested tests:
+
+- C TU including `.h` stays accepted.
+- C TU including `.hpp` fails with a targeted diagnostic.
+- cpp-subset TU including `.hpp` reaches lexer/parser pipeline shape successfully, even if later parsing fails on unimplemented syntax.
+
+### Phase 5: Tighten API Surface and Remove Transitional Shims
+
+Objective:
+Finish the refactor cleanly so future feature work starts from explicit mode-aware APIs.
+
+Work:
+
+1. Remove temporary compatibility overloads if added earlier:
+   - `Lexer(std::string source)` shim
+   - `analyze_program(const Node* root)` shim
+2. Ensure all top-level frontend call sites pass explicit profiles.
+3. Audit for hidden C assumptions in helper code.
+4. Document the final mode flow in a short developer note or code comment near the shared profile definitions.
+
+Deliverable:
+
+- No major frontend stage relies on implicit C mode anymore.
+
+Acceptance criteria:
+
+- Profile is explicit at translation-unit entry, lexing, and sema entry.
+- No dead compatibility scaffolding remains unless intentionally retained for API stability.
+
+## Recommended Stage Breakdown for Another Agent
+
+If this needs to be split into reviewable PR-sized chunks, use this order:
+
+1. Shared profile enums and extension mapping helpers.
+2. Driver wiring for explicit profile selection.
+3. Lexer constructor and keyword table refactor.
+4. Lexer tests for profile-sensitive keywords.
+5. Sema signature refactor with shared base pipeline.
+6. Include-context/profile propagation in preprocessor.
+7. `.hpp` rejection and header inheritance tests.
+8. Cleanup pass removing temporary shims.
+
+This keeps semantic risk low and makes regressions easier to isolate.
+
+## File-Level Task Checklist
+
+### `src/frontend/driver.cpp`
+
+- Infer source profile from input file extension.
+- Pass explicit `LexProfile` into `Lexer`.
+- Pass explicit `SemaProfile` into `analyze_program`.
+- Keep current CLI semantics unchanged for `.c`.
+
+### `src/frontend/lexer/token.hpp` and `src/frontend/lexer/token.cpp`
+
+- Add profile-aware keyword lookup.
+- Add token kinds for future cpp keywords if needed.
+- Keep C keyword behavior stable.
+
+### `src/frontend/lexer/lexer.hpp` and `src/frontend/lexer/lexer.cpp`
+
+- Store `LexProfile` in lexer state.
+- Route identifier scanning through profile-aware keyword lookup.
+- Avoid any parser-style context sensitivity.
+
+### `src/frontend/sema/sema.hpp` and `src/frontend/sema/sema.cpp`
+
+- Add profile-explicit analysis entrypoint.
+- Keep C validation/lowering as the base layer.
+- Create no-op extension hooks for cpp and c4.
+
+### `src/frontend/preprocessor/preprocessor.hpp`
+### `src/frontend/preprocessor/preprocessor.cpp`
+### `src/frontend/preprocessor/pp_include.cpp`
+
+- Carry effective source profile through include expansion.
+- Support `.h` profile inheritance.
+- Reject `.hpp` under C mode with a clear diagnostic.
+- Preserve current flattening behavior as much as possible.
+
+## Validation Plan
+
+Run after each phase where practical:
+
+1. Build the project.
+2. Run existing frontend tests.
+3. Run focused lexer tests for keyword-profile behavior.
+4. Run focused include tests for `.h` / `.hpp` policy.
+5. For a representative `.c` corpus, compare:
+   - lex output
+   - parse success/failure
+   - semantic diagnostics
+   - generated LLVM IR where applicable
+
+Minimum regression bar:
+
+- zero newly failing C tests
+- no behavior change for existing `.c` inputs except improved diagnostics where explicitly intended
+
+## Risks and Mitigations
+
+### Risk 1: Parser churn caused by new keyword token kinds
+
+Mitigation:
+
+- Keep parser untouched for C mode.
+- Limit new reserved keywords to profiles that are not yet expected to parse successfully.
+
+### Risk 2: Preprocessor currently loses file/profile context
+
+Mitigation:
+
+- Add a narrow metadata channel rather than redesigning preprocessing.
+- Keep include-profile checks close to include handling.
+
+### Risk 3: Accidental semantic duplication
+
+Mitigation:
+
+- Implement extension layers as wrappers around the existing C pipeline.
+- Make no-op hooks explicit rather than copying validation code.
+
+### Risk 4: Hidden implicit-C assumptions remain after refactor
+
+Mitigation:
+
+- Audit constructor signatures and top-level APIs.
+- Remove compatibility shims before declaring the refactor complete.
+
+## Definition of Done
+
+This implementation plan is complete when:
+
+- frontend mode is explicit in driver, lexer, and sema
+- keyword recognition is profile-sensitive
+- C mode behavior is preserved
+- `.h` / `.hpp` mode policy is representable and enforced at include boundaries
+- sema is structurally ready for `C -> cpp -> c4` extension layering
+- no parser fork or duplicated semantic pipeline has been introduced
+
+## Non-Goals for This Plan
+
+Do not implement in this refactor:
+
+- template parsing
+- constexpr semantics
+- consteval semantics
+- c4 reflection
+- c4 module system
+- c4-native type system
+- headerless module semantics
+
+Those belong to later feature plans after this architectural seam is in place.
