@@ -1,256 +1,152 @@
-# c4 Preprocessor Execution Plan
-
-Last updated: 2026-03-13
-
-This file is the execution-oriented plan for the preprocessor track.
-Source analysis lives in [`preprocessor_plan.md`](preprocessor_plan.md); this file is the implementation queue that agents should follow.
-
-## Goal
-
-Turn the internal preprocessor into the default, reliable path for frontend work, with Clang-compatible behavior for:
-
-1. output contract
-2. include handling
-3. pragma handling
-4. `#if` evaluation
-5. macro expansion
-
-The main strategy is:
-
-1. stabilize structure first
-2. make internal behavior deterministic
-3. reduce external fallback to last-resort only
-
-## Priorities
-
-Work in this order unless a later item is required to unblock the current slice:
-
-1. Phase 0: structure refactor
-2. Phase 1: output contract and public API
-3. Phase 2: include system
-4. Phase 3: pragma system
-5. Phase 4: `#if` expression and intrinsics
-6. Phase 5: macro expansion completeness
-7. Phase 6: predefined macros and target configuration
-8. Phase 7: builtin header injection and fallback declarations
-
-## Global Rules
-
-1. Prefer small, shippable slices over large rewrites.
-2. Keep behavior monotonic: no previously passing test may regress.
-3. Add or update focused tests before implementing a new behavior.
-4. Compare internal behavior against `clang -E` or `clang -S -emit-llvm` when relevant.
-5. External fallback is allowed only as a temporary safety net, not as the intended implementation path.
-
-## Phase 0: Structure Refactor
-
-Objective: stop `preprocessor.cpp` from growing as a single monolith.
-
-Target outcomes:
-
-1. split helper logic into focused modules
-2. keep `Preprocessor` as the façade
-3. preserve current behavior while improving change isolation
-
-Work items:
-
-1. extract text processing helpers
-2. extract conditional state and helpers
-3. extract include/path state and helpers
-4. extract pragma handling entry points
-5. extract predefined macro initialization
-6. extract macro expansion helpers
-
-Acceptance:
-
-1. no intended behavior change
-2. existing tests still pass
-3. `preprocessor.cpp` becomes orchestration-focused instead of feature-dense
-
-Recommended slice order:
-
-1. text processing
-2. include/path state
-3. pragma dispatcher shell
-4. predefined macros
-5. macro expansion helpers
-6. conditionals
-
-## Phase 1: Output Contract and Public API
-
-Objective: make the internal preprocessor a stable, configurable component.
-
-Work items:
-
-1. add public API for source-based preprocessing and file name control
-2. add public API for define/undefine
-3. split include paths into quote / normal / system / after buckets
-4. add initial line marker emission
-5. add include enter and include return markers
-6. move `__FILE__`, `__LINE__`, `__BASE_FILE__`, and `__COUNTER__` into explicit managed state
-7. define side-channel containers for pragma and macro-expansion metadata
-
-Acceptance:
-
-1. line markers are emitted deterministically without relying on external fallback
-2. include boundaries are visible to downstream lexer/frontend stages
-3. driver-side configuration is possible without patching internals directly
-
-## Phase 2: Include System
-
-Objective: remove include handling as the main reason for fallback.
-
-Work items:
-
-1. support `<...>` includes
-2. support computed includes after macro expansion
-3. implement full include search order
-4. add include resolution cache
-5. add `#include_next`
-6. add `#pragma once`
-7. add include guard optimization
-8. preserve symlink-aware path behavior where practical
-
-Acceptance:
-
-1. `handle_include()` no longer falls back just because the include is not quoted
-2. `__has_include` and `__has_include_next` can reuse the same resolver
-3. include search behavior is testable and deterministic
-
-## Phase 3: Pragma System
-
-Objective: stop `#pragma` from forcing external fallback.
-
-Work items:
-
-1. implement a real pragma dispatcher
-2. support `#pragma once`
-3. support `#pragma pack(...)`
-4. support `#pragma push_macro`
-5. support `#pragma pop_macro`
-6. support `#pragma weak`
-7. support `#pragma redefine_extname`
-8. support `#pragma GCC visibility push/pop`
-9. define synthetic token or side-channel output format
-10. make unknown pragmas ignore or warn deterministically
-
-Acceptance:
-
-1. `#pragma` no longer forces fallback by default
-2. pragma side effects are visible through stable internal state or output
-
-## Phase 4: `#if` Expressions and Intrinsics
-
-Objective: make conditional compilation robust enough for real headers.
-
-Work items:
-
-1. separate expression preprocessing into explicit stages
-2. implement real `__has_include` and `__has_include_next`
-3. add builtin and attribute feature tables
-4. improve literal parsing
-5. replace fallback-on-parse-failure with deterministic internal handling
-
-Expression preprocessing stages:
-
-1. resolve `defined` and `__has_*`
-2. expand macros
-3. replace remaining identifiers with zero
-4. evaluate integer constant expression
-
-Acceptance:
-
-1. common libc/compiler header conditions evaluate correctly
-2. parse failures no longer silently escape into external fallback
-
-## Phase 5: Macro Expansion Completeness
-
-Objective: close the most important semantic gaps in macro behavior.
-
-Work items:
-
-1. support GNU named variadic macros
-2. add anti-paste guard behavior
-3. implement `_Pragma("...")`
-4. introduce reusable expansion state
-5. add macro expansion side-channel info
-6. support multi-line function-like invocation accumulation
-
-Acceptance:
-
-1. macro behavior is closer to GCC/Clang on nontrivial test cases
-2. multi-line macro invocation no longer depends on external preprocessing
-
-## Phase 6: Predefined Macros and Target Configuration
-
-Objective: stop assuming a single fixed host/target model.
-
-Work items:
-
-1. centralize predefined macro emission
-2. add target-family macro sets for `x86_64`, `aarch64`, `riscv64`, `i686`, and `i386`
-3. add config toggles for PIC, optimize, GNU89 inline, SIMD flags, and strict ANSI
-4. add common compatibility macros such as `__GNUC__`, `__VERSION__`, `__STDC_HOSTED__`, `__DATE__`, and `__TIME__`
-
-Acceptance:
-
-1. common third-party headers stop selecting obviously wrong branches due to missing compatibility macros
-2. target/config behavior is externally configurable
-
-## Phase 7: Builtin Header Injection and Fallback Declarations
-
-Objective: improve survivability when a full sysroot or system headers are unavailable.
-
-Work items:
-
-1. inject builtin macros for well-known headers
-2. add builtin function-like macros such as `INT64_C(x)` and `UINT32_C(x)`
-3. add minimal fallback declarations for a small set of common headers
-
-Acceptance:
-
-1. no-sysroot scenarios can pass more frontend cases
-2. builtin substitutes are deterministic and explicitly scoped
-
-## Testing Strategy
-
-Every phase should add focused tests in the narrowest useful scope.
-
-Core test groups:
-
-1. macro expansion
-2. conditionals
-3. includes
-4. pragmas
-5. predefined macros
-6. output contract and line markers
-
-Validation modes:
-
-1. targeted tests for the exact slice being implemented
-2. golden-output comparisons for expanded text, markers, and diagnostics
-3. Clang comparison harnesses for macro expansion, include resolution, and branch selection
-4. full `ctest -j` regression check before handoff
-
-## First Implementation Slices
-
-Start here unless the codebase state clearly requires a smaller preparatory refactor.
-
-1. split include path state into quote / normal / system / after buckets
-2. add line marker infrastructure:
-   - initial marker
-   - include enter marker
-   - include return marker
-3. extract pragma handling into a dedicated function, even if the first supported pragma is only `#pragma once`
-
-Rationale:
-
-1. this reduces common fallback triggers quickly
-2. this prepares the ground for `__has_include` and `#include_next`
-3. this improves output stability without requiring a full macro-engine rewrite
-
-## Plan Maintenance
-
-1. `plan.md` is the authoritative feature roadmap for this track.
-2. `plan_todo.md` is the iteration-to-iteration execution state derived from this file.
-3. When the roadmap changes materially, update both `preprocessor_plan.md` and `plan.md`.
+# Plan Execution State
+
+Last updated: 2026-03-15
+
+## Current Results
+- Tests: 1776/1776 passed (100%), 0 failed
+- Improvement: +10 tests across sessions (from 1764)
+- Previous: 1773/1773 (100%)
+
+## Top Priority — Implemented But Untested
+- [ ] Add dedicated regression tests for `#include_next` (current behavior is implemented, but no direct internal test coverage)
+- [ ] Add dedicated regression tests for include resolution cache behavior (cache-hit path and correctness invariants)
+- [ ] Add dedicated regression tests for include guard optimization (`#ifndef`/`#define` guard fast-path skip on re-include)
+- [ ] Convert pending/non-gating include dedup coverage into hard assertions where applicable (avoid `PendingTracker`-only coverage for implemented behavior)
+- [ ] Add CLI integration tests for `src/apps/c4cll.cpp` include flags: verify `-I` and `-isystem` search order/effect from command-line path wiring (not only direct `Preprocessor` unit tests)
+
+## Completed: Phase 0 — Structure Refactor
+All 6 slices done.
+
+## Completed: Phase 1 — Output Contract and Public API
+All work items done:
+- [x] Split include paths into quote / normal / system / after buckets
+- [x] Public API for source-based preprocessing (`preprocess_source()`)
+- [x] Public API for define/undefine (`define_macro()`, `undefine_macro()`)
+- [x] Initial line marker emission (`# 1 "filename"`)
+- [x] Include enter/return markers (`# 1 "file" 1` / `# N "file" 2`)
+- [x] __FILE__, __LINE__, __BASE_FILE__, __COUNTER__ managed state
+- [x] CLI flags wired (-D, -U, -I, -iquote, -isystem, -idirafter)
+
+## Completed: Phase 2/3 partial — Include/Pragma System
+- [x] `#include <...>` angle bracket includes with path search
+- [x] Computed includes (macro-expanded `#include`)
+- [x] `#pragma once`
+- [x] Unknown pragmas non-fatal (ignore instead of fallback)
+- [x] `#pragma push_macro` / `#pragma pop_macro`
+
+## Completed: Phase 4 partial — #if Expressions and Intrinsics
+- [x] `__has_include("file")` and `__has_include(<file>)` with real resolution
+- [x] `__has_builtin` table (common GCC/Clang builtins)
+- [x] `__has_attribute` table (common GNU attributes)
+- [x] `__has_feature` / `__has_extension` table (C features)
+- [x] Wide/prefixed char literals (`L'\400'`) in `#if` expressions ← NEW
+- [x] Multi-digit octal and hex escapes in `#if` char literals ← NEW
+
+## Completed: Phase 5 partial — Macro Expansion
+- [x] Variadic macro __VA_ARGS__ spacing fix
+- [x] GNU named variadic macros (`args...` syntax)
+- [x] PP-number suffix protection (float suffixes F/L not expanded as macros)
+
+## Completed: Phase 6 partial — Predefined Macros and Target Configuration
+- [x] GCC compatibility macros (__GNUC__, __GNUC_MINOR__, __VERSION__, __STDC_HOSTED__)
+- [x] Target architecture macros (__aarch64__, __x86_64__, __i386__, __riscv)
+- [x] OS macros (__linux__, __unix__, __APPLE__, _WIN32, __ELF__)
+
+## Completed: Phase 7 partial — Builtin Header Injection
+- [x] `<stdarg.h>` (va_list, va_start, va_end, va_arg, va_copy)
+- [x] `<limits.h>` (INT_MAX, INT_MIN, CHAR_BIT, etc.)
+- [x] `<stddef.h>` (NULL, size_t, ptrdiff_t, offsetof)
+- [x] `<stdbool.h>` (bool, true, false)
+- [x] `<stdio.h>` (FILE, stdin/stdout/stderr, printf family, file I/O)
+- [x] `<stdlib.h>` (malloc, free, exit, abort, atoi, qsort, etc.)
+- [x] `<string.h>` (memcpy, strlen, strcmp, etc.)
+- [x] `<signal.h>` (SIGFPE, signal, raise, etc.)
+- [x] `<assert.h>` (assert macro via __assert_fail)
+- [x] `<float.h>` (FLT_MAX, DBL_MAX, etc.)
+- [x] `<setjmp.h>` (jmp_buf, setjmp, longjmp)
+- [x] `<ctype.h>` (isalpha, toupper, etc.)
+- [x] `<math.h>` (sqrt, sin, cos, etc.)
+- [x] `<fcntl.h>` (O_RDONLY, open, etc.)
+- [x] `<sys/mman.h>` (mmap, PROT_READ, MAP_PRIVATE, etc.)
+- [x] `<sys/types.h>` (size_t, pid_t, off_t, etc.)
+- [x] `<sys/stat.h>` (chmod, stat, mode macros)
+- [x] `<unistd.h>` (read, write, close, fork, etc.)
+
+## Non-preprocessor Fixes (cumulative)
+- [x] Enum scope leak: inner block enum constants no longer leak to outer scope
+- [x] `__typeof_unqual__` / `typeof_unqual` keyword support ← NEW
+- [x] Statement expressions in ternary branches: side effects now conditional ← NEW
+- [x] Ptr-to-array global init type/initializer ← DONE
+- [x] 3D+ array initializer: shift array_dims when dropping outer dimension ← NEW
+- [x] Ptr-to-array pointer arithmetic: correct GEP stride via llvm_alloca_ty ← NEW
+- [x] Ptr-to-array deref: array decay instead of scalar load ← NEW
+- [x] AddrOf array: preserve array dims and set is_ptr_to_array ← NEW
+- [x] Local multi-dim array init: VLA false positive fix, 2D+ init lists, dim shift ← NEW
+- [x] void* pointer subtraction: byte-granular (GCC extension, sizeof(void)==1) ← NEW
+- [x] blockaddress constant exprs in static initializers (&&lab1 - &&lab0) ← NEW
+
+## Not Yet Started
+### Phase 2 remainder
+- [x] `#include_next` support (done in b957e0e)
+- [x] Include resolution cache ← NEW
+- [x] Include guard optimization ← NEW
+
+### Phase 3 remainder
+- [x] `#pragma pack(...)` support — full pipeline: preprocessor→lexer→parser→HIR layout ← NEW
+- [x] `#pragma weak` — full pipeline: preprocessor→lexer→parser→HIR→codegen (weak/extern_weak linkage) ← NEW
+- [x] `#pragma GCC visibility push/pop` — full pipeline: preprocessor→lexer→parser→HIR→codegen (hidden/protected visibility) ← NEW
+
+### Phase 5 remainder
+- [x] `_Pragma("...")` operator ← NEW
+- [x] Anti-paste guard behavior ← NEW
+- [x] Multi-line function-like invocation accumulation ← NEW
+
+### Phase 6 remainder
+- [x] aarch64 feature macros (__ARM_NEON, __ARM_FP, __ARM_FEATURE_*, __ARM_PCS_AAPCS64, etc.) ← NEW
+- [x] Common GCC compat macros (__ATOMIC_*, __GCC_HAVE_SYNC_*, __BIGGEST_ALIGNMENT__, __FINITE_MATH_ONLY__, __NO_INLINE__, __GNUC_STDC_INLINE__, __STDC_UTF_*, __USER_LABEL_PREFIX__, __GCC_ASM_FLAG_OUTPUTS__) ← NEW
+- [x] x86_64 feature macros (__SSE__, __SSE2__, __MMX__, __SSE_MATH__, __SSE2_MATH__, __NO_MATH_INLINES, __SEG_FS/GS, __GCC_HAVE_DWARF2_CFI_ASM, __REGISTER_PREFIX__) ← NEW
+- [x] i386 feature macros (__code_model_32__, __NO_MATH_INLINES, __REGISTER_PREFIX__) ← NEW
+- [x] Config toggles: -O0/-O1/-O2/-O3/-Os, -fPIC/-fpic, -fPIE/-fpie → __OPTIMIZE__, __OPTIMIZE_SIZE__, __NO_INLINE__, __PIC__/__pic__, __PIE__/__pie__ ← NEW
+
+### Phase 7 remainder
+- More POSIX headers as needed
+- [x] `<stdint.h>` builtin header (INT64_C, UINT32_C, INT8_C, etc.) ← NEW
+- [x] `<inttypes.h>` builtin header (PRId64, PRIu32, imaxabs, etc.) ← NEW
+- [x] `<errno.h>` builtin header (errno, EINVAL, ENOENT, etc.) ← NEW
+- [x] `<time.h>` builtin header (time_t, clock_t, struct tm, time, clock, etc.) ← NEW
+- [x] `__has_include` now checks builtin headers (was missing) ← NEW
+
+## Remaining Failures
+- None! All 1776 tests pass.
+
+## Non-preprocessor Fixes (this session)
+- [x] `__attribute__((vector_size(N)))` parsing: fixed `skip_attributes()` in `parse_stmt()` and `parse_global_decl_or_function()` discarding type-affecting attributes before parse_base_type could capture them
+- [x] Vector init list lowering: added vector path to `consume_from_list` in ast_to_hir.cpp
+- [x] Scalar-to-vector binary op result type: update `res_spec` after splatting in hir_emitter.cpp
+- [x] `__attribute__((packed))` on struct types: recognized in parse_attributes, sets pack_align=1 ← NEW
+- [x] `__attribute__((aligned(N)))` on struct types: was parsed but never applied to layout ← NEW
+
+## Next Suggested Work
+- `__VA_OPT__` support (C2x feature, not yet in plan)
+- `#pragma redefine_extname` (Phase 3)
+- `__attribute__((visibility("...")))` on individual declarations
+
+## README Gap Audit (2026-03-15)
+Compared against `ref/claudes-c-compiler/src/frontend/preprocessor/README.md`.
+
+### Not implemented yet
+- `#pragma redefine_extname` full pipeline (currently ignored by pragma dispatcher)
+- `__VA_OPT__` support
+- `__attribute__((visibility("...")))` on individual declarations
+- `preprocess_force_include()` API (`-include` style forced include entry point in preprocessor API)
+- `dump_defines()` API (`-dM` style macro dump)
+- Preprocessor configuration APIs parity:
+  `set_asm_mode`, `set_riscv_abi`, `set_riscv_march`, `set_strict_ansi`,
+  `set_target`, `set_pic`, `set_optimize`, `set_gnu89_inline`,
+  `set_sse_macros`, `set_extended_simd_macros`
+- Builtin/fallback coverage gap: `<complex.h>`, `<stdatomic.h>`
+
+### Partially implemented / behavior mismatch
+- `__has_include_next(...)`: parser recognizes it, but resolution uses same callback as `__has_include(...)` (no next-search semantics separation yet)
+- `#pragma weak sym = tgt`: weak pragma path exists, but no explicit alias side-channel structure matching README contract
+- Output side channels mismatch: only `errors()`/`warnings()` are exposed; README-level `weak_pragmas` / `redefine_extname_pragmas` accessor contract not exposed
