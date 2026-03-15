@@ -3,16 +3,15 @@
 Last updated: 2026-03-15
 
 ## Current Results
-- Tests: 1776/1776 passed (100%), 0 failed
+- Tests: 1784/1784 passed (100%), 0 failed
 - Improvement: +10 tests across sessions (from 1764)
-- Previous: 1773/1773 (100%)
+- Previous: 1776/1776 (100%)
 
-## Top Priority — Implemented But Untested
-- [ ] Add dedicated regression tests for `#include_next` (current behavior is implemented, but no direct internal test coverage)
-- [ ] Add dedicated regression tests for include resolution cache behavior (cache-hit path and correctness invariants)
-- [ ] Add dedicated regression tests for include guard optimization (`#ifndef`/`#define` guard fast-path skip on re-include)
-- [ ] Convert pending/non-gating include dedup coverage into hard assertions where applicable (avoid `PendingTracker`-only coverage for implemented behavior)
-- [ ] Add CLI integration tests for `src/apps/c4cll.cpp` include flags: verify `-I` and `-isystem` search order/effect from command-line path wiring (not only direct `Preprocessor` unit tests)
+## Completed: Top Priority — Include Test Coverage
+- [x] Add dedicated regression tests for `#include_next` (4 sub-tests + bug fix for infinite recursion)
+- [x] Add dedicated regression tests for include resolution cache behavior (3 sub-tests)
+- [x] Add dedicated regression tests for include guard optimization (5 sub-tests)
+- [x] Add CLI integration tests for `src/apps/c4cll.cpp` include flags (6 sub-tests: -I, -isystem, -iquote, -idirafter, priority, -D interaction)
 
 ## Completed: Phase 0 — Structure Refactor
 All 6 slices done.

@@ -874,8 +874,13 @@ std::string Preprocessor::handle_include(const std::string& args,
     enum SearchList { SL_CurDir = 0, SL_Quote = 1, SL_Normal = 2, SL_System = 3, SL_After = 4 };
     struct SearchEntry { std::string dir; int list_id; };
     std::vector<SearchEntry> all_dirs;
-    if (is_quoted) {
+    if (is_quoted && !is_include_next) {
       all_dirs.push_back({dirname_of(current_file), SL_CurDir});
+      for (const auto& d : quote_include_paths_) all_dirs.push_back({d, SL_Quote});
+    } else if (is_quoted && is_include_next) {
+      // For #include_next with quoted includes, still add quote paths
+      // (they are real search entries), but skip CurDir — the next-search
+      // logic must only match against configured search paths.
       for (const auto& d : quote_include_paths_) all_dirs.push_back({d, SL_Quote});
     }
     for (const auto& d : normal_include_paths_) all_dirs.push_back({d, SL_Normal});
