@@ -7,6 +7,8 @@ file(GLOB INTERNAL_POSITIVE_TEST_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_TEST_ROOT}/positive_case/*.c")
 file(GLOB INTERNAL_CPP_POSITIVE_TEST_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_TEST_ROOT}/cpp/postive_case/*.cpp")
+file(GLOB INTERNAL_CPP_NEGATIVE_TEST_SRCS CONFIGURE_DEPENDS
+     "${INTERNAL_TEST_ROOT}/cpp/negative_case/*.cpp")
 file(GLOB INTERNAL_LINUX_STAGE2_REPRO_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_TEST_ROOT}/positive_case/linux_stage2_repro/*.c")
 file(GLOB INTERNAL_CCC_REVIEW_SRCS CONFIGURE_DEPENDS
@@ -107,6 +109,20 @@ foreach(src IN LISTS INTERNAL_NEGATIVE_TEST_SRCS)
             -P "${INTERNAL_TEST_CMAKE_ROOT}/run_negative_case.cmake"
   )
   set_tests_properties("${test_name}" PROPERTIES LABELS "internal;negative_case")
+endforeach()
+
+foreach(src IN LISTS INTERNAL_CPP_NEGATIVE_TEST_SRCS)
+  get_filename_component(stem "${src}" NAME_WE)
+  set(test_name "cpp_negative_tests_${stem}")
+  add_test(
+    NAME "${test_name}"
+    COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:c4cll>
+            -DSRC=${src}
+            -DENFORCE_NEGATIVE=ON
+            -P "${INTERNAL_TEST_CMAKE_ROOT}/run_negative_case.cmake"
+  )
+  set_tests_properties("${test_name}" PROPERTIES LABELS "internal;negative_case;cpp")
 endforeach()
 
 if(CLANG_EXECUTABLE)

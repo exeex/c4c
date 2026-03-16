@@ -2897,6 +2897,14 @@ class Lowerer {
         return append_expr(n, u, n->type);
       }
       case NK_ADDR: {
+        // Reject taking the address of a consteval function.
+        if (n->left && n->left->kind == NK_VAR && n->left->name &&
+            consteval_fns_.count(n->left->name)) {
+          std::string diag = "error: cannot take address of consteval function '";
+          diag += n->left->name;
+          diag += "'";
+          throw std::runtime_error(diag);
+        }
         UnaryExpr u{};
         u.op = UnaryOp::AddrOf;
         u.operand = lower_expr(ctx, n->left);
