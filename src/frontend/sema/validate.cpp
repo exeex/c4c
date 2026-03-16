@@ -10,9 +10,14 @@
 #include <utility>
 #include <vector>
 
+#include "consteval.hpp"
 #include "type_utils.hpp"
 
 namespace tinyc2ll::frontend_cxx::sema {
+
+using sema_ir::phase2::hir::ConstEvalEnv;
+using sema_ir::phase2::hir::ConstMap;
+using sema_ir::phase2::hir::evaluate_constant_expr;
 
 namespace {
 
@@ -215,99 +220,6 @@ bool is_null_pointer_constant_expr(const Node* n) {
   return false;
 }
 
-using EnumConstMap = std::unordered_map<std::string, long long>;
-
-struct EnumConstLookup {
-  const EnumConstMap* globals = nullptr;
-  const std::vector<EnumConstMap>* scoped = nullptr;
-  const std::vector<EnumConstMap>* named_consts = nullptr;
-};
-
-static bool lookup_enum_const(const EnumConstLookup* ev, const char* name, long long& out) {
-  if (!ev || !name) return false;
-  if (ev->scoped) {
-    for (auto it = ev->scoped->rbegin(); it != ev->scoped->rend(); ++it) {
-      auto sit = it->find(name);
-      if (sit != it->end()) {
-        out = sit->second;
-        return true;
-      }
-    }
-  }
-  if (ev->named_consts) {
-    for (auto it = ev->named_consts->rbegin(); it != ev->named_consts->rend(); ++it) {
-      auto sit = it->find(name);
-      if (sit != it->end()) {
-        out = sit->second;
-        return true;
-      }
-    }
-  }
-  if (ev->globals) {
-    auto git = ev->globals->find(name);
-    if (git != ev->globals->end()) {
-      out = git->second;
-      return true;
-    }
-  }
-  return false;
-}
-
-bool eval_int_const_expr(const Node* n, long long& out, const EnumConstLookup* ev = nullptr) {
-  if (!n) return false;
-  switch (n->kind) {
-    case NK_INT_LIT:
-    case NK_CHAR_LIT:
-      out = n->ival;
-      return true;
-    case NK_VAR:
-      // Enum constant reference: look up value if available.
-      if (lookup_enum_const(ev, n->name, out)) return true;
-      return false;
-    case NK_CAST:
-      return eval_int_const_expr(n->left, out, ev);
-    case NK_UNARY: {
-      long long v = 0;
-      if (!eval_int_const_expr(n->left, v, ev)) return false;
-      const char* op = n->op ? n->op : "";
-      if (std::strcmp(op, "+") == 0) out = +v;
-      else if (std::strcmp(op, "-") == 0) out = -v;
-      else if (std::strcmp(op, "~") == 0) out = ~v;
-      else if (std::strcmp(op, "!") == 0) out = !v;
-      else return false;
-      return true;
-    }
-    case NK_BINOP:
-    case NK_COMMA_EXPR: {
-      long long l = 0, r = 0;
-      if (!eval_int_const_expr(n->left, l, ev)) return false;
-      if (!eval_int_const_expr(n->right, r, ev)) return false;
-      const char* op = n->op ? n->op : "";
-      if (std::strcmp(op, "+") == 0) out = l + r;
-      else if (std::strcmp(op, "-") == 0) out = l - r;
-      else if (std::strcmp(op, "*") == 0) out = l * r;
-      else if (std::strcmp(op, "/") == 0) out = (r == 0) ? 0 : (l / r);
-      else if (std::strcmp(op, "%") == 0) out = (r == 0) ? 0 : (l % r);
-      else if (std::strcmp(op, "<<") == 0) out = l << r;
-      else if (std::strcmp(op, ">>") == 0) out = l >> r;
-      else if (std::strcmp(op, "&") == 0) out = l & r;
-      else if (std::strcmp(op, "|") == 0) out = l | r;
-      else if (std::strcmp(op, "^") == 0) out = l ^ r;
-      else if (std::strcmp(op, "&&") == 0) out = (l && r);
-      else if (std::strcmp(op, "||") == 0) out = (l || r);
-      else if (std::strcmp(op, "<") == 0) out = (l < r);
-      else if (std::strcmp(op, "<=") == 0) out = (l <= r);
-      else if (std::strcmp(op, ">") == 0) out = (l > r);
-      else if (std::strcmp(op, ">=") == 0) out = (l >= r);
-      else if (std::strcmp(op, "==") == 0) out = (l == r);
-      else if (std::strcmp(op, "!=") == 0) out = (l != r);
-      else return false;
-      return true;
-    }
-    default:
-      return false;
-  }
-}
 
 // Implicit conversion check for assignment-like contexts:
 // - function-call argument to parameter (C11 6.5.2.2p7)
@@ -419,9 +331,9 @@ class Validator {
   std::vector<Diagnostic> diags_;
   std::unordered_map<std::string, TypeSpec> globals_;
   std::unordered_map<std::string, TypeSpec> enum_consts_;
-  EnumConstMap enum_const_vals_global_;   // integer values of global enum constants
-  std::vector<EnumConstMap> enum_const_vals_scopes_;  // block/function-scoped enum constants
-  std::vector<EnumConstMap> local_const_vals_scopes_;  // block-scoped const/constexpr local values
+  ConstMap enum_const_vals_global_;   // integer values of global enum constants
+  std::vector<ConstMap> enum_const_vals_scopes_;  // block/function-scoped enum constants
+  std::vector<ConstMap> local_const_vals_scopes_;  // block-scoped const/constexpr local values
   std::unordered_map<std::string, FunctionSig> funcs_;
   std::unordered_set<std::string> complete_structs_;
   std::unordered_set<std::string> complete_unions_;
@@ -752,11 +664,13 @@ class Validator {
         if (n->name && n->name[0] && n->init &&
             (n->type.is_const || n->is_constexpr) &&
             n->type.ptr_level == 0 && n->type.array_rank == 0) {
-          EnumConstLookup lookup{&enum_const_vals_global_, &enum_const_vals_scopes_, &local_const_vals_scopes_};
-          long long v = 0;
-          if (eval_int_const_expr(n->init, v, &lookup)) {
+          ConstEvalEnv env;
+          env.enum_consts = &enum_const_vals_global_;
+          env.enum_scopes = &enum_const_vals_scopes_;
+          env.local_const_scopes = &local_const_vals_scopes_;
+          if (auto r = evaluate_constant_expr(n->init, env); r.ok()) {
             if (local_const_vals_scopes_.empty()) local_const_vals_scopes_.emplace_back();
-            local_const_vals_scopes_.back()[n->name] = v;
+            local_const_vals_scopes_.back()[n->name] = r.as_int();
           }
         }
         return;
@@ -871,12 +785,14 @@ class Validator {
           if (case_expr.valid && !is_switch_integer_type(case_expr.type)) {
             emit(n->line, "case label does not have an integer type");
           }
-          long long v = 0;
-          EnumConstLookup enum_lookup{&enum_const_vals_global_, &enum_const_vals_scopes_, &local_const_vals_scopes_};
-          if (!eval_int_const_expr(n->left, v, &enum_lookup)) {
+          ConstEvalEnv case_env;
+          case_env.enum_consts = &enum_const_vals_global_;
+          case_env.enum_scopes = &enum_const_vals_scopes_;
+          case_env.local_const_scopes = &local_const_vals_scopes_;
+          if (auto r = evaluate_constant_expr(n->left, case_env); !r.ok()) {
             emit(n->line, "case label does not reduce to an integer constant");
           } else {
-            auto [it, inserted] = switch_stack_.back().case_vals.insert(v);
+            auto [it, inserted] = switch_stack_.back().case_vals.insert(r.as_int());
             if (!inserted) emit(n->line, "duplicate case label in switch");
           }
         }

@@ -48,20 +48,45 @@ struct ConstEvalResult {
 
 // ── Constant-evaluation environment ──────────────────────────────────────────
 
+using ConstMap = std::unordered_map<std::string, long long>;
+
 struct ConstEvalEnv {
-  const std::unordered_map<std::string, long long>* enum_consts = nullptr;
-  const std::unordered_map<std::string, long long>* named_consts = nullptr;
-  const std::unordered_map<std::string, long long>* local_consts = nullptr;
+  // Flat maps (used by ast_to_hir.cpp where scoping is managed externally).
+  const ConstMap* enum_consts = nullptr;
+  const ConstMap* named_consts = nullptr;
+  const ConstMap* local_consts = nullptr;
+
+  // Scoped maps (used by validate.cpp where block scoping uses vector-of-maps).
+  // Searched innermost (back) to outermost (front).
+  const std::vector<ConstMap>* enum_scopes = nullptr;
+  const std::vector<ConstMap>* local_const_scopes = nullptr;
 
   std::optional<long long> lookup(const std::string& name) const {
+    // 1. Scoped enum constants (innermost first).
+    if (enum_scopes) {
+      for (auto it = enum_scopes->rbegin(); it != enum_scopes->rend(); ++it) {
+        auto sit = it->find(name);
+        if (sit != it->end()) return sit->second;
+      }
+    }
+    // 2. Flat enum constants.
     if (enum_consts) {
       auto it = enum_consts->find(name);
       if (it != enum_consts->end()) return it->second;
     }
+    // 3. Scoped local constants (innermost first).
+    if (local_const_scopes) {
+      for (auto it = local_const_scopes->rbegin(); it != local_const_scopes->rend(); ++it) {
+        auto sit = it->find(name);
+        if (sit != it->end()) return sit->second;
+      }
+    }
+    // 4. Flat local constants.
     if (local_consts) {
       auto it = local_consts->find(name);
       if (it != local_consts->end()) return it->second;
     }
+    // 5. Named constants (global const/constexpr bindings).
     if (named_consts) {
       auto it = named_consts->find(name);
       if (it != named_consts->end()) return it->second;

@@ -18,15 +18,20 @@
   - ast_to_hir.cpp tracks local_const_bindings in FunctionCtx with proper block scoping
   - All ConstEvalEnv usage sites (case, case_range, ternary) receive local bindings
   - constexpr_local_switch.cpp test added
+- [x] Phase 1, Task 3: Replace duplicated integer-folding in validate.cpp
+  - Extended ConstEvalEnv with scoped lookup support (enum_scopes, local_const_scopes)
+  - Removed validate.cpp's local eval_int_const_expr, EnumConstLookup, lookup_enum_const
+  - Both call sites (NK_DECL const tracking, NK_CASE label eval) now use evaluate_constant_expr
+  - Added consteval.hpp include and using declarations to validate.cpp
+  - Phase 1 complete: all constant evaluation goes through unified evaluator
 
 ### Not Started
-- Phase 1, Task 3: Replace duplicated integer-folding in validate.cpp
 - Phase 2: Immediate-function interpretation
 - Phase 3: Enforce consteval rules
 - Phase 4: Integrate with if constexpr, builtins, templates
 
 ## Next Intended Slice
-- Phase 1, Task 3: Migrate validate.cpp eval_int_const_expr to use unified evaluator from consteval.cpp
+- Phase 2, Task 1: Build minimal function-body interpreter for consteval functions
 
 ## Blockers
 - None
