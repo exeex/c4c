@@ -17,6 +17,7 @@ All previously-known remaining failures have been resolved:
 
 - `scal-to-vec1.c` — fixed scalar-to-vector splatting in early vector op path + float vector ops
 - `pr60960.c` — previously blocked by sema false positive, now passes
+- `pr56837.c` — fixed complex type array zero-initializer (was emitting `{ i32, i32 } 0` instead of `zeroinitializer`)
 
 ## Remaining failures
 

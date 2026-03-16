@@ -74,6 +74,9 @@
 - **Codegen**: scalar-to-vector splatting in early vector op path (was missing, caused LLVM type errors)
 - Enabled `scal-to-vec1.c` and `pr60960.c` in allowlist
 - Test suite: 1786/1786 passed (was 1784)
+- **Codegen**: complex type arrays now emit `zeroinitializer` instead of invalid `0` for zero elements
+- Enabled `pr56837.c` in allowlist
+- Test suite: 1787/1787 passed (was 1786)
 
 ## Known Limitations (pre-existing)
 - Functions returning function pointers: parser does not fully capture fn_ptr params on the function node, so canonicalization inherits that gap

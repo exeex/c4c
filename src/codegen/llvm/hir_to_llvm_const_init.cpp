@@ -468,10 +468,11 @@ class HirEmitter::ConstInitEmitter {
       std::string out = "[";
       const std::string elem_ty = llvm_alloca_ty(elem_ts);
       // For scalar element types, zeroinitializer is invalid — use "0" or "0.0".
+      // Complex types lower to { iN, iN } structs, so they are not scalar.
       const bool elem_is_scalar = elem_ts.array_rank == 0 && elem_ts.ptr_level == 0 &&
                                   !elem_ts.is_fn_ptr && elem_ts.base != TB_STRUCT &&
                                   elem_ts.base != TB_UNION && elem_ts.base != TB_VA_LIST &&
-                                  !elem_ts.is_vector;
+                                  !elem_ts.is_vector && !is_complex_base(elem_ts.base);
       const std::string zero_val = elem_is_scalar
           ? (is_float_base(elem_ts.base) ? "0.0" : "0")
           : "zeroinitializer";
