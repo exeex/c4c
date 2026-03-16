@@ -2965,6 +2965,20 @@ class Lowerer {
                 TypeSpec ts = n->type;
                 return append_expr(n, IntLiteral{result.as_int(), false}, ts);
               }
+              // Consteval call failed — emit diagnostic.
+              std::string diag = "error: call to consteval function '";
+              diag += n->left->name;
+              diag += "' could not be evaluated at compile time";
+              if (!result.error.empty()) {
+                diag += "\n  note: ";
+                diag += result.error;
+              }
+              std::fprintf(stderr, "%s\n", diag.c_str());
+            } else {
+              // Non-constant arguments to consteval function.
+              std::fprintf(stderr,
+                  "error: call to consteval function '%s' with non-constant arguments\n",
+                  n->left->name);
             }
           }
         }

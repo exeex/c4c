@@ -82,7 +82,7 @@ ConstValue apply_integer_cast(long long value, const TypeSpec& ts) {
 }
 
 ConstEvalResult eval_impl(const Node* n, const ConstEvalEnv& env) {
-  if (!n) return ConstEvalResult::failure();
+  if (!n) return ConstEvalResult::failure("null expression");
   switch (n->kind) {
     case NK_INT_LIT:
     case NK_CHAR_LIT:
@@ -91,8 +91,10 @@ ConstEvalResult eval_impl(const Node* n, const ConstEvalEnv& env) {
       if (n->name && n->name[0]) {
         auto v = env.lookup(n->name);
         if (v) return ConstEvalResult::success(ConstValue::make_int(*v));
+        return ConstEvalResult::failure(
+            std::string("read of non-constant variable '") + n->name + "'");
       }
-      return ConstEvalResult::failure();
+      return ConstEvalResult::failure("unnamed variable reference");
     }
     case NK_CAST: {
       auto r = eval_impl(n->left, env);
@@ -101,18 +103,22 @@ ConstEvalResult eval_impl(const Node* n, const ConstEvalEnv& env) {
     }
     case NK_UNARY: {
       auto r = eval_impl(n->left, env);
-      if (!r.ok() || !n->op) return ConstEvalResult::failure();
+      if (!r.ok()) return r;
+      if (!n->op) return ConstEvalResult::failure("unary operator missing");
       long long v = r.as_int();
       if (std::strcmp(n->op, "+") == 0) return ConstEvalResult::success(ConstValue::make_int(v));
       if (std::strcmp(n->op, "-") == 0) return ConstEvalResult::success(ConstValue::make_int(-v));
       if (std::strcmp(n->op, "~") == 0) return ConstEvalResult::success(ConstValue::make_int(~v));
       if (std::strcmp(n->op, "!") == 0) return ConstEvalResult::success(ConstValue::make_int(!v));
-      return ConstEvalResult::failure();
+      return ConstEvalResult::failure(
+          std::string("unsupported unary operator '") + n->op + "' in constant expression");
     }
     case NK_BINOP: {
       auto lr = eval_impl(n->left, env);
       auto rr = eval_impl(n->right, env);
-      if (!lr.ok() || !rr.ok() || !n->op) return ConstEvalResult::failure();
+      if (!lr.ok()) return lr;
+      if (!rr.ok()) return rr;
+      if (!n->op) return ConstEvalResult::failure("binary operator missing");
       long long l = lr.as_int(), r = rr.as_int();
       long long result;
       if (std::strcmp(n->op, "+") == 0) result = l + r;
@@ -133,16 +139,19 @@ ConstEvalResult eval_impl(const Node* n, const ConstEvalEnv& env) {
       else if (std::strcmp(n->op, "!=") == 0) result = static_cast<long long>(l != r);
       else if (std::strcmp(n->op, "&&") == 0) result = static_cast<long long>(l && r);
       else if (std::strcmp(n->op, "||") == 0) result = static_cast<long long>(l || r);
-      else return ConstEvalResult::failure();
+      else return ConstEvalResult::failure(
+          std::string("unsupported binary operator '") + n->op + "' in constant expression");
       return ConstEvalResult::success(ConstValue::make_int(result));
     }
     case NK_TERNARY: {
       auto cr = eval_impl(n->cond ? n->cond : n->left, env);
-      if (!cr.ok()) return ConstEvalResult::failure();
+      if (!cr.ok()) return cr;
       return eval_impl(cr.as_int() ? n->then_ : n->else_, env);
     }
     default:
-      return ConstEvalResult::failure();
+      return ConstEvalResult::failure(
+          std::string("unsupported expression kind (NK=") +
+          std::to_string(static_cast<int>(n->kind)) + ") in constant expression");
   }
 }
 
@@ -217,6 +226,7 @@ struct StmtResult {
   bool did_break = false;
   bool did_continue = false;
   ConstValue return_val = ConstValue::unknown();
+  std::string error;  // non-empty if evaluation failed
 };
 
 StmtResult interp_stmt(const Node* n, ConstMap& locals,
@@ -228,7 +238,7 @@ ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
                             const ConstEvalEnv& outer_env,
                             const std::unordered_map<std::string, const Node*>& consteval_fns,
                             int depth) {
-  if (!n) return ConstEvalResult::failure();
+  if (!n) return ConstEvalResult::failure("null expression in consteval body");
 
   // Build an env that includes the interpreter locals on top of the outer env.
   ConstEvalEnv env = outer_env;
@@ -247,15 +257,22 @@ ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
     case NK_CALL: {
       // Check if the callee is a consteval function we can interpret.
       if (!n->left || n->left->kind != NK_VAR || !n->left->name)
-        return ConstEvalResult::failure();
+        return ConstEvalResult::failure("non-trivial callee in consteval context");
       auto it = consteval_fns.find(n->left->name);
-      if (it == consteval_fns.end()) return ConstEvalResult::failure();
+      if (it == consteval_fns.end())
+        return ConstEvalResult::failure(
+            std::string("call to non-consteval function '") + n->left->name +
+            "' is not allowed in constant evaluation");
 
       // Evaluate all arguments.
       std::vector<ConstValue> args;
       for (int i = 0; i < n->n_children; ++i) {
         auto r = interp_expr(n->children[i], locals, outer_env, consteval_fns, depth);
-        if (!r.ok()) return ConstEvalResult::failure();
+        if (!r.ok())
+          return ConstEvalResult::failure(
+              std::string("argument ") + std::to_string(i) +
+              " of call to '" + n->left->name + "' is not a constant expression" +
+              (r.error.empty() ? "" : ": " + r.error));
         args.push_back(*r.value);
       }
 
@@ -265,9 +282,9 @@ ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
     case NK_ASSIGN: {
       // left = right: evaluate right, assign to left (must be NK_VAR).
       if (!n->left || !n->right || n->left->kind != NK_VAR || !n->left->name)
-        return ConstEvalResult::failure();
+        return ConstEvalResult::failure("unsupported assignment target in consteval context");
       auto r = interp_expr(n->right, locals, outer_env, consteval_fns, depth);
-      if (!r.ok()) return ConstEvalResult::failure();
+      if (!r.ok()) return r;
       locals[n->left->name] = r.as_int();
       return r;
     }
@@ -279,7 +296,9 @@ ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
     }
 
     default:
-      return ConstEvalResult::failure();
+      return ConstEvalResult::failure(
+          std::string("unsupported expression kind (NK=") +
+          std::to_string(static_cast<int>(n->kind)) + ") in consteval body");
   }
 }
 
@@ -304,13 +323,17 @@ StmtResult interp_stmt(const Node* n, ConstMap& locals,
                         const std::unordered_map<std::string, const Node*>& consteval_fns,
                         int depth, int& steps) {
   if (!n) return {};
-  if (++steps > kMaxConstevalSteps) return {true, false, false, ConstValue::unknown()};
+  if (++steps > kMaxConstevalSteps)
+    return {true, false, false, ConstValue::unknown(), "step limit exceeded in consteval evaluation"};
 
   switch (n->kind) {
     case NK_RETURN: {
       if (!n->left) return {true, false, false, ConstValue::make_int(0)};
       auto r = interp_expr(n->left, locals, outer_env, consteval_fns, depth);
-      if (!r.ok()) return {true, false, false, ConstValue::unknown()};
+      if (!r.ok())
+        return {true, false, false, ConstValue::unknown(),
+                "return expression is not a constant expression" +
+                (r.error.empty() ? std::string{} : ": " + r.error)};
       return {true, false, false, *r.value};
     }
 
@@ -320,6 +343,11 @@ StmtResult interp_stmt(const Node* n, ConstMap& locals,
         auto r = interp_expr(n->init, locals, outer_env, consteval_fns, depth);
         if (r.ok()) {
           locals[n->name] = r.as_int();
+        } else {
+          return {true, false, false, ConstValue::unknown(),
+                  std::string("initializer of '") + n->name +
+                  "' is not a constant expression" +
+                  (r.error.empty() ? std::string{} : ": " + r.error)};
         }
       } else if (n->name) {
         // Declaration without initializer — default to 0.
@@ -330,7 +358,10 @@ StmtResult interp_stmt(const Node* n, ConstMap& locals,
 
     case NK_IF: {
       auto cr = interp_expr(n->cond, locals, outer_env, consteval_fns, depth);
-      if (!cr.ok()) return {true, false, false, ConstValue::unknown()};
+      if (!cr.ok())
+        return {true, false, false, ConstValue::unknown(),
+                "if condition is not a constant expression" +
+                (cr.error.empty() ? std::string{} : ": " + cr.error)};
       if (cr.as_int()) {
         return interp_block(n->then_, locals, outer_env, consteval_fns, depth, steps);
       } else if (n->else_) {
@@ -342,13 +373,17 @@ StmtResult interp_stmt(const Node* n, ConstMap& locals,
     case NK_WHILE: {
       while (true) {
         auto cr = interp_expr(n->cond, locals, outer_env, consteval_fns, depth);
-        if (!cr.ok()) return {true, false, false, ConstValue::unknown()};
+        if (!cr.ok())
+          return {true, false, false, ConstValue::unknown(),
+                  "while condition is not a constant expression" +
+                  (cr.error.empty() ? std::string{} : ": " + cr.error)};
         if (!cr.as_int()) break;
         auto r = interp_block(n->body, locals, outer_env, consteval_fns, depth, steps);
         if (r.returned) return r;
         if (r.did_break) break;
         // did_continue: just continue the loop
-        if (++steps > kMaxConstevalSteps) return {true, false, false, ConstValue::unknown()};
+        if (++steps > kMaxConstevalSteps)
+          return {true, false, false, ConstValue::unknown(), "step limit exceeded in consteval evaluation"};
       }
       return {};
     }
@@ -363,7 +398,10 @@ StmtResult interp_stmt(const Node* n, ConstMap& locals,
         // cond
         if (n->cond) {
           auto cr = interp_expr(n->cond, locals, outer_env, consteval_fns, depth);
-          if (!cr.ok()) return {true, false, false, ConstValue::unknown()};
+          if (!cr.ok())
+            return {true, false, false, ConstValue::unknown(),
+                    "for condition is not a constant expression" +
+                    (cr.error.empty() ? std::string{} : ": " + cr.error)};
           if (!cr.as_int()) break;
         }
         // body
@@ -374,7 +412,8 @@ StmtResult interp_stmt(const Node* n, ConstMap& locals,
         if (n->update) {
           interp_expr(n->update, locals, outer_env, consteval_fns, depth);
         }
-        if (++steps > kMaxConstevalSteps) return {true, false, false, ConstValue::unknown()};
+        if (++steps > kMaxConstevalSteps)
+          return {true, false, false, ConstValue::unknown(), "step limit exceeded in consteval evaluation"};
       }
       return {};
     }
@@ -385,9 +424,13 @@ StmtResult interp_stmt(const Node* n, ConstMap& locals,
         if (r.returned) return r;
         if (r.did_break) break;
         auto cr = interp_expr(n->cond, locals, outer_env, consteval_fns, depth);
-        if (!cr.ok()) return {true, false, false, ConstValue::unknown()};
+        if (!cr.ok())
+          return {true, false, false, ConstValue::unknown(),
+                  "do-while condition is not a constant expression" +
+                  (cr.error.empty() ? std::string{} : ": " + cr.error)};
         if (!cr.as_int()) break;
-        if (++steps > kMaxConstevalSteps) return {true, false, false, ConstValue::unknown()};
+        if (++steps > kMaxConstevalSteps)
+          return {true, false, false, ConstValue::unknown(), "step limit exceeded in consteval evaluation"};
       } while (true);
       return {};
     }
@@ -424,8 +467,10 @@ ConstEvalResult evaluate_consteval_call(
     const ConstEvalEnv& env,
     const std::unordered_map<std::string, const Node*>& consteval_fns,
     int depth) {
-  if (!func_def || func_def->kind != NK_FUNCTION) return ConstEvalResult::failure();
-  if (depth > kMaxConstevalDepth) return ConstEvalResult::failure();
+  if (!func_def || func_def->kind != NK_FUNCTION)
+    return ConstEvalResult::failure("consteval target is not a function definition");
+  if (depth > kMaxConstevalDepth)
+    return ConstEvalResult::failure("consteval recursion depth limit exceeded");
 
   // Build local bindings from parameters.
   ConstMap locals;
@@ -443,7 +488,17 @@ ConstEvalResult evaluate_consteval_call(
   if (result.returned && result.return_val.is_known()) {
     return ConstEvalResult::success(result.return_val);
   }
-  return ConstEvalResult::failure();
+  // Propagate the error from the statement result if available.
+  std::string err = result.error;
+  if (err.empty()) {
+    if (!result.returned)
+      err = "consteval function did not return a value";
+    else
+      err = "consteval function returned a non-constant value";
+  }
+  const char* fname = func_def->name ? func_def->name : "<anonymous>";
+  return ConstEvalResult::failure(
+      std::string("in consteval function '") + fname + "': " + err);
 }
 
 // ── Legacy API (thin wrapper) ────────────────────────────────────────────────

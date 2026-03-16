@@ -34,6 +34,7 @@ struct ConstValue {
 
 struct ConstEvalResult {
   std::optional<ConstValue> value;
+  std::string error;  // non-empty on failure: describes why evaluation failed
 
   bool ok() const { return value.has_value() && value->is_known(); }
   long long as_int() const { return value->as_int(); }
@@ -42,8 +43,8 @@ struct ConstEvalResult {
     return std::nullopt;
   }
 
-  static ConstEvalResult success(ConstValue v) { return {v}; }
-  static ConstEvalResult failure() { return {std::nullopt}; }
+  static ConstEvalResult success(ConstValue v) { return {v, {}}; }
+  static ConstEvalResult failure(std::string msg = {}) { return {std::nullopt, std::move(msg)}; }
 };
 
 // ── Constant-evaluation environment ──────────────────────────────────────────
