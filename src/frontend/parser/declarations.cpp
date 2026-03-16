@@ -34,6 +34,13 @@ Node* Parser::parse_local_decl() {
         else break;
     }
 
+    // C++ consteval is only valid on functions, not local variable declarations.
+    if (is_consteval) {
+        throw std::runtime_error(
+            std::string("error: 'consteval' can only be applied to a function declaration (line ")
+            + std::to_string(ln) + ")");
+    }
+
     TypeSpec base_ts = parse_base_type();
     parse_attributes(&base_ts);
 
@@ -407,6 +414,13 @@ Node* Parser::parse_top_level() {
         }
         skip_attributes();
     }
+    // C++: consteval and constexpr cannot both appear on the same declaration.
+    if (is_consteval && is_constexpr) {
+        throw std::runtime_error(
+            std::string("error: 'consteval' and 'constexpr' cannot be combined (line ")
+            + std::to_string(ln) + ")");
+    }
+
     // Phase C: save the return-type typedef name for fn_ptr propagation to NK_FUNCTION.
     const std::string ret_typedef_name = last_resolved_typedef_;
 
@@ -903,6 +917,12 @@ Node* Parser::parse_top_level() {
                          Node** ret_fn_ptr_params = nullptr,
                          int n_ret_fn_ptr_params = 0,
                          bool ret_fn_ptr_variadic = false) {
+        // C++ consteval is only valid on functions, not variable declarations.
+        if (is_consteval) {
+            throw std::runtime_error(
+                std::string("error: 'consteval' can only be applied to a function declaration (line ")
+                + std::to_string(ln) + ")");
+        }
         Node* gv = make_node(NK_GLOBAL_VAR, ln);
         gv->type      = gts;
         if (is_constexpr) gv->type.is_const = true;
@@ -911,7 +931,7 @@ Node* Parser::parse_top_level() {
         gv->is_static = is_static;
         gv->is_extern = is_extern;
         gv->is_constexpr = is_constexpr;
-        gv->is_consteval = is_consteval;
+        gv->is_consteval = false;
         gv->linkage_spec = linkage_spec;
         gv->visibility = visibility_;
         gv->fn_ptr_params = fn_ptr_params;
