@@ -177,11 +177,17 @@ bool types_equal(const CanonicalType& a, const CanonicalType& b);
 /// variadic flag must match.
 bool prototypes_compatible(const CanonicalType& a, const CanonicalType& b);
 
-/// Produce a mangling-ready identifier for a canonical symbol.
+// ── Phase 6: Itanium ABI mangling ────────────────────────────────────────────
+
+/// Produce a mangled identifier for a canonical symbol using Itanium ABI rules.
 /// For extern "C" linkage, returns the source name unchanged.
-/// For C++ linkage, produces a placeholder mangled name from canonical type
-/// (full Itanium ABI mangling is deferred to Phase 6).
+/// For C++ linkage, produces an Itanium-style mangled name (_Z prefix, encoded
+/// parameter types for functions, nested names for scoped symbols).
 std::string mangle_symbol(const CanonicalSymbol& sym);
+
+/// Encode a canonical type using Itanium ABI type encoding.
+/// Useful for type-level mangling (e.g., function pointer types, template args).
+std::string mangle_type(const CanonicalType& ct);
 
 /// A unique declaration identity combining scope, name, kind, and linkage.
 /// In C, two declarations at file scope with the same name and compatible

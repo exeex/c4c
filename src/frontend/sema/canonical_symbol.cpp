@@ -598,28 +598,228 @@ bool prototypes_compatible(const CanonicalType& a, const CanonicalType& b) {
   return types_equal(*fa, *fb);
 }
 
+// ── Phase 6: Itanium ABI mangling ────────────────────────────────────────────
+
+/// Encode a canonical type as an Itanium ABI type string.
+/// Reference: https://itanium-cxx-abi.github.io/cxx-abi/abi.html#mangling-type
+static void mangle_type_impl(const CanonicalType& ct, std::string& out) {
+  // Qualifiers: const → K, volatile → V (applied outermost-first,
+  // but in Itanium ABI the order is: cv-qualifiers wrap the type,
+  // so const volatile int → KVi, read as K(V(i))).
+  // We emit qualifiers before the base type encoding.
+  if (ct.is_const && ct.is_volatile) {
+    out += "VK";  // volatile(const(type))
+  } else if (ct.is_const) {
+    out += "K";
+  } else if (ct.is_volatile) {
+    out += "V";
+  }
+
+  switch (ct.kind) {
+    case CanonicalTypeKind::Void:          out += 'v'; return;
+    case CanonicalTypeKind::Bool:          out += 'b'; return;
+    case CanonicalTypeKind::Char:          out += 'c'; return;
+    case CanonicalTypeKind::SignedChar:    out += 'a'; return;
+    case CanonicalTypeKind::UnsignedChar:  out += 'h'; return;
+    case CanonicalTypeKind::Short:         out += 's'; return;
+    case CanonicalTypeKind::UnsignedShort: out += 't'; return;
+    case CanonicalTypeKind::Int:           out += 'i'; return;
+    case CanonicalTypeKind::UnsignedInt:   out += 'j'; return;
+    case CanonicalTypeKind::Long:          out += 'l'; return;
+    case CanonicalTypeKind::UnsignedLong:  out += 'm'; return;
+    case CanonicalTypeKind::LongLong:      out += 'x'; return;
+    case CanonicalTypeKind::UnsignedLongLong: out += 'y'; return;
+    case CanonicalTypeKind::Float:         out += 'f'; return;
+    case CanonicalTypeKind::Double:        out += 'd'; return;
+    case CanonicalTypeKind::LongDouble:    out += 'e'; return;
+    case CanonicalTypeKind::Int128:        out += 'n'; return;
+    case CanonicalTypeKind::UInt128:       out += 'o'; return;
+
+    case CanonicalTypeKind::VaList:
+      // __builtin_va_list is typically a vendor type or struct; encode as
+      // vendor extended type: u <len> <name>
+      out += "u17__builtin_va_list";
+      return;
+
+    case CanonicalTypeKind::Complex:
+      // Itanium ABI: C <base-type>
+      out += 'C';
+      if (ct.source_base) {
+        switch (*ct.source_base) {
+          case TB_COMPLEX_FLOAT:      out += 'f'; break;
+          case TB_COMPLEX_DOUBLE:     out += 'd'; break;
+          case TB_COMPLEX_LONGDOUBLE: out += 'e'; break;
+          case TB_COMPLEX_CHAR:       out += 'c'; break;
+          case TB_COMPLEX_SCHAR:      out += 'a'; break;
+          case TB_COMPLEX_UCHAR:      out += 'h'; break;
+          case TB_COMPLEX_SHORT:      out += 's'; break;
+          case TB_COMPLEX_USHORT:     out += 't'; break;
+          case TB_COMPLEX_INT:        out += 'i'; break;
+          case TB_COMPLEX_UINT:       out += 'j'; break;
+          case TB_COMPLEX_LONG:       out += 'l'; break;
+          case TB_COMPLEX_ULONG:      out += 'm'; break;
+          case TB_COMPLEX_LONGLONG:   out += 'x'; break;
+          case TB_COMPLEX_ULONGLONG:  out += 'y'; break;
+          default:                    out += 'd'; break;  // fallback to complex double
+        }
+      } else {
+        out += 'd';  // default to complex double
+      }
+      return;
+
+    case CanonicalTypeKind::Pointer:
+      out += 'P';
+      if (ct.element_type) {
+        mangle_type_impl(*ct.element_type, out);
+      } else {
+        out += 'v';  // ptr to void
+      }
+      return;
+
+    case CanonicalTypeKind::Array:
+      // A <dimension> _ <element-type>
+      out += 'A';
+      if (ct.array_size >= 0) out += std::to_string(ct.array_size);
+      out += '_';
+      if (ct.element_type) {
+        mangle_type_impl(*ct.element_type, out);
+      } else {
+        out += 'v';
+      }
+      return;
+
+    case CanonicalTypeKind::Function:
+      // F <return-type> <param-types> [v if no params] E
+      out += 'F';
+      if (ct.function_sig) {
+        if (ct.function_sig->return_type) {
+          mangle_type_impl(*ct.function_sig->return_type, out);
+        } else {
+          out += 'v';
+        }
+        if (ct.function_sig->params.empty() && !ct.function_sig->is_variadic) {
+          // No parameters → encode as void
+          // (but only if not variadic, which would be pathological)
+        } else {
+          for (const auto& p : ct.function_sig->params) {
+            mangle_type_impl(p, out);
+          }
+        }
+        if (ct.function_sig->is_variadic) out += 'z';
+        out += 'E';
+      } else {
+        out += "vE";  // no sig → void() fallback
+      }
+      return;
+
+    case CanonicalTypeKind::Struct:
+    case CanonicalTypeKind::Union:
+    case CanonicalTypeKind::Enum:
+    case CanonicalTypeKind::TypedefName:
+      // <source-name> ::= <positive length number> <identifier>
+      out += std::to_string(ct.user_spelling.size());
+      out += ct.user_spelling;
+      return;
+
+    case CanonicalTypeKind::VendorExtended:
+      // u <len> <name>
+      if (!ct.user_spelling.empty()) {
+        out += 'u';
+        out += std::to_string(ct.user_spelling.size());
+        out += ct.user_spelling;
+      } else {
+        out += "u7unknown";  // fallback
+      }
+      return;
+  }
+}
+
+/// Encode a single unqualified name: <source-name> ::= <length> <identifier>
+static void mangle_unqualified_name(const std::string& name, std::string& out) {
+  out += std::to_string(name.size());
+  out += name;
+}
+
+/// Encode nested name if scope has namespace/record segments.
+/// <nested-name> ::= N [<prefix>] <unqualified-name> E
+static void mangle_name(const CanonicalSymbol& sym, std::string& out) {
+  bool has_nesting = false;
+  for (const auto& seg : sym.scope.segments) {
+    if (seg.kind == CanonicalScopeKind::Namespace ||
+        seg.kind == CanonicalScopeKind::Record) {
+      has_nesting = true;
+      break;
+    }
+  }
+
+  if (has_nesting) {
+    out += 'N';
+    for (const auto& seg : sym.scope.segments) {
+      if (seg.kind == CanonicalScopeKind::TranslationUnit) continue;
+      if (!seg.name.empty()) mangle_unqualified_name(seg.name, out);
+    }
+    mangle_unqualified_name(sym.source_name, out);
+    out += 'E';
+  } else {
+    mangle_unqualified_name(sym.source_name, out);
+  }
+}
+
+/// Mangle a function symbol: _Z <name> <bare-function-type>
+/// <bare-function-type> is the parameter types only (no return type for
+/// non-template functions per Itanium ABI).
+static void mangle_function(const CanonicalSymbol& sym, std::string& out) {
+  out += "_Z";
+  mangle_name(sym, out);
+
+  // Encode parameter types (bare-function-type).
+  const auto* sig = sym.type ? get_function_sig(*sym.type) : nullptr;
+  if (sig) {
+    if (sig->params.empty() && !sig->is_variadic) {
+      out += 'v';  // void parameter list → "v"
+    } else {
+      for (const auto& p : sig->params) {
+        mangle_type_impl(p, out);
+      }
+      if (sig->is_variadic) out += 'z';
+    }
+  } else {
+    out += 'v';  // unknown sig → treat as void()
+  }
+}
+
+/// Mangle an object (variable) symbol: _Z <name>
+static void mangle_object(const CanonicalSymbol& sym, std::string& out) {
+  out += "_Z";
+  mangle_name(sym, out);
+}
+
 std::string mangle_symbol(const CanonicalSymbol& sym) {
   // extern "C" linkage: no mangling, return source name as-is.
   if (sym.linkage == LanguageLinkage::C) {
     return sym.source_name;
   }
 
-  // C++ linkage: produce a placeholder mangled name.
-  // Full Itanium ABI mangling is deferred to Phase 6.
-  // For now, encode _Z + name length + name as the minimal prefix.
-  std::string mangled = "_Z";
-  mangled += std::to_string(sym.source_name.size());
-  mangled += sym.source_name;
-
-  // Append a type discriminator suffix for functions.
-  if (sym.kind == CanonicalSymbolKind::Function && sym.type) {
-    const auto* sig = get_function_sig(*sym.type);
-    if (sig) {
-      mangled += "v";  // placeholder encoding; Phase 6 will replace
-    }
+  // C++ linkage: Itanium ABI mangling.
+  std::string mangled;
+  if (sym.kind == CanonicalSymbolKind::Function) {
+    mangle_function(sym, mangled);
+  } else if (sym.kind == CanonicalSymbolKind::Object) {
+    mangle_object(sym, mangled);
+  } else {
+    // Type symbols (struct/enum defs) are not typically mangled as linker
+    // symbols; return the source name as a fallback.
+    return sym.source_name;
   }
-
   return mangled;
+}
+
+/// Encode a canonical type using Itanium ABI encoding.
+/// This is the public entry point for type mangling.
+std::string mangle_type(const CanonicalType& ct) {
+  std::string out;
+  mangle_type_impl(ct, out);
+  return out;
 }
 
 bool CanonicalIdentity::operator==(const CanonicalIdentity& o) const {

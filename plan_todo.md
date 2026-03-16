@@ -46,6 +46,26 @@
     - Definitions (specified params) take precedence over forward declarations
   - Added `build_symbol_table()`: Phase 5 entry point wrapping build_canonical_symbols
   - All 1784 tests pass with no regressions
+- **Phase 6**: Enable mangling on top of canonical symbols — done
+  - Replaced placeholder `mangle_symbol()` with full Itanium ABI mangling:
+    - `mangle_type_impl()`: recursive type encoder for all CanonicalTypeKind variants
+    - Itanium builtin type codes: void→v, bool→b, char→c, int→i, long→l, etc.
+    - Pointer: `P` + pointee encoding
+    - Array: `A` + dimension + `_` + element encoding
+    - Function: `F` + return + params + `E`
+    - Qualifiers: const→`K`, volatile→`V` wrapping
+    - Complex: `C` + base encoding
+    - Vendor extended: `u` + length + name
+    - Struct/union/enum/typedef: source-name encoding (length + identifier)
+    - VaList: vendor type `u17__builtin_va_list`
+  - `mangle_function()`: `_Z` + name + bare-function-type (params only, no return per Itanium ABI)
+  - `mangle_object()`: `_Z` + name
+  - `mangle_name()`: handles nested names with `N...E` for namespace/record scopes
+  - `mangle_type()`: public entry point for type-level encoding
+  - `extern "C"` bypass preserved (returns source name as-is)
+  - Type symbols (struct/enum defs) return source name (not linker symbols)
+  - Variadic encoded as `z` suffix after last param
+  - All 1784 tests pass with no regressions
 
 ## Known Limitations (pre-existing)
 - Functions returning function pointers: parser does not fully capture fn_ptr params on the function node, so canonicalization inherits that gap
@@ -54,10 +74,11 @@
 - Legacy TypeSpec-based return type recovery paths retained for undeclared extern calls and expression-level fn-ptrs
 
 ## Next Intended Slice
-- **Phase 6**: Enable mangling on top of canonical symbols
-  - Define mangler input purely in terms of canonical symbol and canonical type
-  - Keep `extern "C"` as a bypass path
-  - Reserve vendor extension mechanism for non-standard types like `fp8`
+- All 6 phases of the canonical type refactor plan are now complete
+- Future work: expression-level canonical types, local variable tracking, legacy path removal
 
 ## Deferred
-- (none — Phase 6 is next)
+- Substitution compression (S0_, S1_, etc.) for repeated type references in mangled names
+- Template argument mangling (I...E) — reserved in CanonicalTemplateArg but not yet encoded
+- Reference types (R, O) — deferred until C++ reference support is added
+- Member function qualifiers — deferred until C++ method support
