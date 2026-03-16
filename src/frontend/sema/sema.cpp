@@ -6,10 +6,11 @@
 namespace tinyc2ll::frontend_cxx::sema {
 
 // Base C analysis: validate + lower to HIR.
-static AnalyzeResult analyze_program_base_c(const Node* root) {
+static AnalyzeResult analyze_program_base(const Node* root, SourceProfile source_profile) {
   AnalyzeResult result{};
   result.validation = validate_program(root);
   if (!result.validation.ok) return result;
+  result.canonical = build_canonical_symbols(root, source_profile);
   result.hir_module = sema_ir::phase2::hir::lower_ast_to_hir(root);
   return result;
 }
@@ -25,7 +26,20 @@ static void apply_c4_extensions(AnalyzeResult& /*result*/) {
 }
 
 AnalyzeResult analyze_program(const Node* root, SemaProfile profile) {
-  AnalyzeResult result = analyze_program_base_c(root);
+  SourceProfile source_profile = SourceProfile::C;
+  switch (profile) {
+    case SemaProfile::C:
+      source_profile = SourceProfile::C;
+      break;
+    case SemaProfile::CppSubset:
+      source_profile = SourceProfile::CppSubset;
+      break;
+    case SemaProfile::C4:
+      source_profile = SourceProfile::C4;
+      break;
+  }
+
+  AnalyzeResult result = analyze_program_base(root, source_profile);
   if (!result.validation.ok) return result;
 
   switch (profile) {

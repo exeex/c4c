@@ -14,6 +14,7 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend/lexer/token.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/lexer/lexer.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/sema/type_utils.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/sema/canonical_symbol.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/sema/sema.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/sema/validate.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/sema/consteval.cpp"
