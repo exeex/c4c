@@ -88,7 +88,8 @@ struct FnPtrSig {
   bool unspecified_params = false;
   /// Canonical type for this function pointer (Pointer→Function).
   /// Populated from sema's ResolvedTypeTable when available.
-  /// Phase 4 migration target: codegen should consume this instead of QualType fields.
+  /// Phase 4: codegen now consumes this via sig_return_type() / sig_param_type()
+  /// helpers, falling back to the QualType fields when canonical_sig is null.
   std::shared_ptr<sema::CanonicalType> canonical_sig;
 };
 

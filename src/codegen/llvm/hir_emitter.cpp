@@ -1,8 +1,67 @@
 #include "hir_emitter.hpp"
+#include "canonical_symbol.hpp"
 
 namespace tinyc2ll::codegen::llvm_backend {
 
 namespace {
+
+// ── Phase 4: canonical-aware FnPtrSig accessors ──────────────────────────
+// These helpers extract return type and parameter types from FnPtrSig,
+// preferring the canonical_sig (sema-resolved type) when available and
+// falling back to the legacy QualType fields otherwise.
+
+/// Extract the return TypeSpec from a FnPtrSig, preferring canonical_sig.
+TypeSpec sig_return_type(const FnPtrSig& sig) {
+  if (sig.canonical_sig) {
+    const auto* fsig = sema::get_function_sig(*sig.canonical_sig);
+    if (fsig && fsig->return_type) {
+      return sema::typespec_from_canonical(*fsig->return_type);
+    }
+  }
+  return sig.return_type.spec;
+}
+
+/// Extract the i-th parameter TypeSpec from a FnPtrSig, preferring canonical_sig.
+TypeSpec sig_param_type(const FnPtrSig& sig, size_t i) {
+  if (sig.canonical_sig) {
+    const auto* fsig = sema::get_function_sig(*sig.canonical_sig);
+    if (fsig && i < fsig->params.size()) {
+      return sema::typespec_from_canonical(fsig->params[i]);
+    }
+  }
+  return i < sig.params.size() ? sig.params[i].spec : TypeSpec{};
+}
+
+/// Check if the i-th parameter is va_list by value via canonical_sig.
+bool sig_param_is_va_list_value(const FnPtrSig& sig, size_t i) {
+  const TypeSpec ts = sig_param_type(sig, i);
+  return ts.base == TB_VA_LIST && ts.ptr_level == 0 && ts.array_rank == 0;
+}
+
+/// Return the number of declared parameters from canonical_sig or legacy.
+size_t sig_param_count(const FnPtrSig& sig) {
+  if (sig.canonical_sig) {
+    const auto* fsig = sema::get_function_sig(*sig.canonical_sig);
+    if (fsig) return fsig->params.size();
+  }
+  return sig.params.size();
+}
+
+/// Check if sig is variadic via canonical_sig or legacy.
+bool sig_is_variadic(const FnPtrSig& sig) {
+  if (sig.canonical_sig) {
+    const auto* fsig = sema::get_function_sig(*sig.canonical_sig);
+    if (fsig) return fsig->is_variadic;
+  }
+  return sig.variadic;
+}
+
+/// Check if sig has a void parameter list (i.e. f(void)).
+bool sig_has_void_param_list(const FnPtrSig& sig) {
+  if (sig_param_count(sig) != 1) return false;
+  const TypeSpec ts = sig_param_type(sig, 0);
+  return ts.base == TB_VOID && ts.ptr_level == 0 && ts.array_rank == 0;
+}
 
 int llvm_struct_field_slot(const HirStructDef& sd, int target_llvm_idx) {
   if (sd.is_union) return 0;
@@ -1691,10 +1750,11 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const DeclRef& r){
     if (r.global) {
       if (const GlobalVar* gv = select_global_object(*r.global)) return gv->type.spec;
     }
-    // Function reference (resolved via fn_index, not global_index): treat as ptr.
+    // Legacy: Function reference (resolved via fn_index, not global_index): treat as ptr.
     // Do NOT set is_fn_ptr here; that would cause call-return-type resolution to
     // decrement ptr_level and return void. The call-return fallback (implicit int)
     // handles the case correctly.
+    // TODO(phase5): replace with canonical type lookup once expression-level types are tracked.
     if (!r.name.empty() && mod_.fn_index.count(r.name)) {
       const auto fit = mod_.fn_index.find(r.name);
       if (fit != mod_.fn_index.end() && fit->second.value < mod_.functions.size()) {
@@ -1868,9 +1928,15 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const CallExpr& c){
         if (frt_it != ctx.local_fn_ret_types.end()) return frt_it->second;
       }
     }
+    // Phase 4: prefer canonical_sig for return type extraction.
     if (const FnPtrSig* sig = resolve_callee_fn_ptr_sig(ctx, callee_e)) {
-      return sig->return_type.spec;
+      return sig_return_type(*sig);
     }
+    // Legacy fallback: TypeSpec-based prototype recovery.
+    // These paths reconstruct return types by peeling is_fn_ptr / ptr_level
+    // from TypeSpec.  They are retained for cases where canonical_sig is not
+    // available (e.g. undeclared extern calls, expression-level fn-ptrs).
+    // TODO(phase5): remove once expression-level canonical types are tracked.
     if (const auto* r = std::get_if<DeclRef>(&callee_e.payload)) {
       const auto fit = mod_.fn_index.find(r->name);
       if (fit != mod_.fn_index.end() && fit->second.value < mod_.functions.size()) {
@@ -3780,12 +3846,10 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         }
         return false;
       }
+      // Phase 4: use canonical-aware helper for va_list detection.
       if (callee_fn_ptr_sig) {
-        if (arg_index < callee_fn_ptr_sig->params.size()) {
-          const TypeSpec& param_ts = callee_fn_ptr_sig->params[arg_index].spec;
-          return param_ts.base == TB_VA_LIST &&
-                 param_ts.ptr_level == 0 &&
-                 param_ts.array_rank == 0;
+        if (arg_index < sig_param_count(*callee_fn_ptr_sig)) {
+          return sig_param_is_va_list_value(*callee_fn_ptr_sig, arg_index);
         }
         return false;
       }
@@ -3842,15 +3906,12 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
           apply_default_arg_promotion(arg, out_arg_ts, arg_ts);
         }
       } else if (callee_fn_ptr_sig) {
-        const bool has_void_param_list =
-            callee_fn_ptr_sig->params.size() == 1 &&
-            callee_fn_ptr_sig->params[0].spec.base == TB_VOID &&
-            callee_fn_ptr_sig->params[0].spec.ptr_level == 0 &&
-            callee_fn_ptr_sig->params[0].spec.array_rank == 0;
-        if (!has_void_param_list && i < callee_fn_ptr_sig->params.size()) {
-          out_arg_ts = callee_fn_ptr_sig->params[i].spec;
+        // Phase 4: use canonical-aware helpers for param type extraction.
+        const bool has_void_pl = sig_has_void_param_list(*callee_fn_ptr_sig);
+        if (!has_void_pl && i < sig_param_count(*callee_fn_ptr_sig)) {
+          out_arg_ts = sig_param_type(*callee_fn_ptr_sig, i);
           arg = coerce(ctx, arg, arg_ts, out_arg_ts);
-        } else if (callee_fn_ptr_sig->variadic && !is_variadic_aggregate) {
+        } else if (sig_is_variadic(*callee_fn_ptr_sig) && !is_variadic_aggregate) {
           apply_default_arg_promotion(arg, out_arg_ts, arg_ts);
         }
       }
@@ -4320,7 +4381,8 @@ void HirEmitter::emit_stmt(FnCtx& ctx, const Stmt& stmt){
 void HirEmitter::emit_stmt_impl(FnCtx& ctx, const LocalDecl& d){
     if (d.fn_ptr_sig) {
       ctx.local_fn_ptr_sigs[d.id.value] = *d.fn_ptr_sig;
-      ctx.local_fn_ret_types[d.id.value] = d.fn_ptr_sig->return_type.spec;
+      // Phase 4: prefer canonical_sig for return type.
+      ctx.local_fn_ret_types[d.id.value] = sig_return_type(*d.fn_ptr_sig);
     }
     if (d.vla_size) {
       const std::string slot = ctx.local_slots.at(d.id.value);
