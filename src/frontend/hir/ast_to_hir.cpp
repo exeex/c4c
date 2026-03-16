@@ -454,6 +454,8 @@ class Lowerer {
     // Phase 2: lower functions and globals
     for (const Node* item : items) {
       if (item->kind == NK_FUNCTION) {
+        // Skip consteval functions — they are evaluated at compile time only.
+        if (item->is_consteval) continue;
         lower_function(item);
       } else if (item->kind == NK_GLOBAL_VAR) {
         lower_global(item);
@@ -2965,7 +2967,7 @@ class Lowerer {
                 TypeSpec ts = n->type;
                 return append_expr(n, IntLiteral{result.as_int(), false}, ts);
               }
-              // Consteval call failed — emit diagnostic.
+              // Consteval call failed — hard error, no runtime fallback.
               std::string diag = "error: call to consteval function '";
               diag += n->left->name;
               diag += "' could not be evaluated at compile time";
@@ -2973,12 +2975,13 @@ class Lowerer {
                 diag += "\n  note: ";
                 diag += result.error;
               }
-              std::fprintf(stderr, "%s\n", diag.c_str());
+              throw std::runtime_error(diag);
             } else {
-              // Non-constant arguments to consteval function.
-              std::fprintf(stderr,
-                  "error: call to consteval function '%s' with non-constant arguments\n",
-                  n->left->name);
+              // Non-constant arguments to consteval function — hard error.
+              std::string diag = "error: call to consteval function '";
+              diag += n->left->name;
+              diag += "' with non-constant arguments";
+              throw std::runtime_error(diag);
             }
           }
         }

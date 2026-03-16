@@ -1,7 +1,7 @@
 # Plan Execution State
 
 ## Baseline
-- 1817/1817 tests pass (2026-03-16)
+- 1818/1818 tests pass (2026-03-16)
 
 ## Current Phase: Phase 2 — Immediate-function interpretation
 
@@ -24,19 +24,19 @@
   - Added `error` field to `StmtResult` for statement-level failure propagation
   - Every failure point in eval_impl, interp_expr, interp_stmt, evaluate_consteval_call now carries a message
   - Categories: unsupported expr kind, read of non-constant variable, call to non-consteval function, step/depth limit exceeded, missing return value, non-constant return expression
-  - HIR lowerer (ast_to_hir.cpp) emits stderr diagnostics when consteval call fails:
-    - "call to consteval function 'X' with non-constant arguments" (arg eval failure)
-    - "call to consteval function 'X' could not be evaluated at compile time" + note (body interp failure)
-  - consteval_diag.cpp test verifies valid consteval calls still fold correctly
-  - Currently diagnostics are warnings (code still falls through to runtime); Phase 3 will make them hard errors
+  - Currently diagnostics are hard errors (throw std::runtime_error)
+- [x] Phase 2, Task 4: Hook call resolution
+  - Failed consteval calls are now hard errors (throw std::runtime_error) — no runtime fallback
+  - Consteval function bodies are skipped during HIR lowering (not emitted as runtime code)
+  - interp_expr now handles NK_BINOP, NK_UNARY, NK_CAST, NK_TERNARY directly (not via eval_impl) so nested consteval calls in expressions are properly resolved
+  - consteval_call_resolution.cpp test covers: factorial, fibonacci, chained consteval (choose), arithmetic over consteval results
 
 ### Not Started
-- Phase 2, Task 4: Hook call resolution (reject non-constant args in consteval context)
-- Phase 3: Enforce consteval rules
+- Phase 3: Enforce consteval rules (diagnose non-immediate calls, forbid &consteval, tighten decl rules)
 - Phase 4: Integrate with if constexpr, builtins, templates
 
 ## Next Intended Slice
-- Phase 2, Task 4: Hook call resolution — reject consteval calls that fail evaluation (make diagnostic a hard error)
+- Phase 3, Task 1: Diagnose non-immediate calls (consteval call with non-constant args is already a hard error; add negative tests)
 
 ## Blockers
 - None

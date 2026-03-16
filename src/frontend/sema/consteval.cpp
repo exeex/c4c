@@ -247,12 +247,66 @@ ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
   switch (n->kind) {
     case NK_INT_LIT:
     case NK_CHAR_LIT:
-    case NK_VAR:
-    case NK_CAST:
-    case NK_UNARY:
-    case NK_BINOP:
-    case NK_TERNARY:
       return eval_impl(n, env);
+
+    case NK_VAR:
+      return eval_impl(n, env);
+
+    case NK_CAST: {
+      auto r = interp_expr(n->left, locals, outer_env, consteval_fns, depth);
+      if (!r.ok()) return r;
+      return ConstEvalResult::success(apply_integer_cast(r.as_int(), n->type));
+    }
+
+    case NK_UNARY: {
+      auto r = interp_expr(n->left, locals, outer_env, consteval_fns, depth);
+      if (!r.ok()) return r;
+      if (!n->op) return ConstEvalResult::failure("unary operator missing");
+      long long v = r.as_int();
+      if (std::strcmp(n->op, "+") == 0) return ConstEvalResult::success(ConstValue::make_int(v));
+      if (std::strcmp(n->op, "-") == 0) return ConstEvalResult::success(ConstValue::make_int(-v));
+      if (std::strcmp(n->op, "~") == 0) return ConstEvalResult::success(ConstValue::make_int(~v));
+      if (std::strcmp(n->op, "!") == 0) return ConstEvalResult::success(ConstValue::make_int(!v));
+      return ConstEvalResult::failure(
+          std::string("unsupported unary operator '") + n->op + "' in consteval context");
+    }
+
+    case NK_BINOP: {
+      auto lr = interp_expr(n->left, locals, outer_env, consteval_fns, depth);
+      auto rr = interp_expr(n->right, locals, outer_env, consteval_fns, depth);
+      if (!lr.ok()) return lr;
+      if (!rr.ok()) return rr;
+      if (!n->op) return ConstEvalResult::failure("binary operator missing");
+      long long l = lr.as_int(), r = rr.as_int();
+      long long result;
+      if (std::strcmp(n->op, "+") == 0) result = l + r;
+      else if (std::strcmp(n->op, "-") == 0) result = l - r;
+      else if (std::strcmp(n->op, "*") == 0) result = l * r;
+      else if (std::strcmp(n->op, "/") == 0) result = (r == 0) ? 0LL : (l / r);
+      else if (std::strcmp(n->op, "%") == 0) result = (r == 0) ? 0LL : (l % r);
+      else if (std::strcmp(n->op, "<<") == 0) result = l << r;
+      else if (std::strcmp(n->op, ">>") == 0) result = l >> r;
+      else if (std::strcmp(n->op, "&") == 0) result = l & r;
+      else if (std::strcmp(n->op, "|") == 0) result = l | r;
+      else if (std::strcmp(n->op, "^") == 0) result = l ^ r;
+      else if (std::strcmp(n->op, "<") == 0) result = static_cast<long long>(l < r);
+      else if (std::strcmp(n->op, "<=") == 0) result = static_cast<long long>(l <= r);
+      else if (std::strcmp(n->op, ">") == 0) result = static_cast<long long>(l > r);
+      else if (std::strcmp(n->op, ">=") == 0) result = static_cast<long long>(l >= r);
+      else if (std::strcmp(n->op, "==") == 0) result = static_cast<long long>(l == r);
+      else if (std::strcmp(n->op, "!=") == 0) result = static_cast<long long>(l != r);
+      else if (std::strcmp(n->op, "&&") == 0) result = static_cast<long long>(l && r);
+      else if (std::strcmp(n->op, "||") == 0) result = static_cast<long long>(l || r);
+      else return ConstEvalResult::failure(
+          std::string("unsupported binary operator '") + n->op + "' in consteval context");
+      return ConstEvalResult::success(ConstValue::make_int(result));
+    }
+
+    case NK_TERNARY: {
+      auto cr = interp_expr(n->cond ? n->cond : n->left, locals, outer_env, consteval_fns, depth);
+      if (!cr.ok()) return cr;
+      return interp_expr(cr.as_int() ? n->then_ : n->else_, locals, outer_env, consteval_fns, depth);
+    }
 
     case NK_CALL: {
       // Check if the callee is a consteval function we can interpret.
