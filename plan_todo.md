@@ -1,7 +1,7 @@
 # Plan Execution State
 
 ## Baseline
-- 1815/1815 tests pass (2026-03-16)
+- 1816/1816 tests pass (2026-03-16)
 
 ## Current Phase: Phase 2 — Immediate-function interpretation
 
@@ -14,16 +14,20 @@
   - NK_CALL handler in `lower_expr` intercepts consteval calls with constant args → folds to IntLiteral
   - consteval_interp.cpp test covers: basic call, chained calls, local binding, if/else branching
   - Depth limit (64) prevents infinite recursion
+- [x] Phase 2, Task 2: Mutable locals, loops, break/continue, assignments
+  - Interpreter now supports: NK_ASSIGN, NK_FOR, NK_WHILE, NK_DO_WHILE, NK_BREAK, NK_CONTINUE, NK_EXPR_STMT, NK_COMMA_EXPR
+  - Mutable locals: NK_DECL without initializer defaults to 0; NK_ASSIGN mutates locals map
+  - Loop step counter (1M limit) prevents infinite loops
+  - consteval_mutable.cpp test covers: for loop, while loop, do-while, assignment, break, continue
 
 ### Not Started
-- Phase 2, Task 2: Function-evaluation frames (more complex bodies, loops, mutable locals)
 - Phase 2, Task 3: Define failure modes / diagnostics
 - Phase 2, Task 4: Hook call resolution (reject non-constant args in consteval context)
 - Phase 3: Enforce consteval rules
 - Phase 4: Integrate with if constexpr, builtins, templates
 
 ## Next Intended Slice
-- Phase 2, Task 2: Extend interpreter to support mutable local variables and more statement kinds
+- Phase 2, Task 3: Add structured failure diagnostics for consteval evaluation failures
 
 ## Blockers
 - None

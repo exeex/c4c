@@ -209,18 +209,22 @@ namespace {
 
 constexpr int kMaxConstevalDepth = 64;
 
-// Result of interpreting a statement: either continue executing, or return a value.
+constexpr int kMaxConstevalSteps = 1000000;  // prevent infinite loops
+
+// Result of interpreting a statement: either continue executing, or return/break/continue.
 struct StmtResult {
   bool returned = false;
+  bool did_break = false;
+  bool did_continue = false;
   ConstValue return_val = ConstValue::unknown();
 };
 
 StmtResult interp_stmt(const Node* n, ConstMap& locals,
                        const ConstEvalEnv& outer_env,
                        const std::unordered_map<std::string, const Node*>& consteval_fns,
-                       int depth);
+                       int depth, int& steps);
 
-ConstEvalResult interp_expr(const Node* n, const ConstMap& locals,
+ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
                             const ConstEvalEnv& outer_env,
                             const std::unordered_map<std::string, const Node*>& consteval_fns,
                             int depth) {
@@ -258,6 +262,22 @@ ConstEvalResult interp_expr(const Node* n, const ConstMap& locals,
       return evaluate_consteval_call(it->second, args, outer_env, consteval_fns, depth + 1);
     }
 
+    case NK_ASSIGN: {
+      // left = right: evaluate right, assign to left (must be NK_VAR).
+      if (!n->left || !n->right || n->left->kind != NK_VAR || !n->left->name)
+        return ConstEvalResult::failure();
+      auto r = interp_expr(n->right, locals, outer_env, consteval_fns, depth);
+      if (!r.ok()) return ConstEvalResult::failure();
+      locals[n->left->name] = r.as_int();
+      return r;
+    }
+
+    case NK_COMMA_EXPR: {
+      // left, right — evaluate both, return right.
+      interp_expr(n->left, locals, outer_env, consteval_fns, depth);
+      return interp_expr(n->right, locals, outer_env, consteval_fns, depth);
+    }
+
     default:
       return ConstEvalResult::failure();
   }
@@ -266,62 +286,132 @@ ConstEvalResult interp_expr(const Node* n, const ConstMap& locals,
 StmtResult interp_block(const Node* block, ConstMap& locals,
                         const ConstEvalEnv& outer_env,
                         const std::unordered_map<std::string, const Node*>& consteval_fns,
-                        int depth) {
+                        int depth, int& steps) {
   if (!block) return {};
   if (block->kind == NK_BLOCK) {
     for (int i = 0; i < block->n_children; ++i) {
-      auto r = interp_stmt(block->children[i], locals, outer_env, consteval_fns, depth);
-      if (r.returned) return r;
+      auto r = interp_stmt(block->children[i], locals, outer_env, consteval_fns, depth, steps);
+      if (r.returned || r.did_break || r.did_continue) return r;
     }
     return {};
   }
   // Single statement (not wrapped in block).
-  return interp_stmt(block, locals, outer_env, consteval_fns, depth);
+  return interp_stmt(block, locals, outer_env, consteval_fns, depth, steps);
 }
 
 StmtResult interp_stmt(const Node* n, ConstMap& locals,
                         const ConstEvalEnv& outer_env,
                         const std::unordered_map<std::string, const Node*>& consteval_fns,
-                        int depth) {
+                        int depth, int& steps) {
   if (!n) return {};
+  if (++steps > kMaxConstevalSteps) return {true, false, false, ConstValue::unknown()};
 
   switch (n->kind) {
     case NK_RETURN: {
-      if (!n->left) return {true, ConstValue::make_int(0)};
+      if (!n->left) return {true, false, false, ConstValue::make_int(0)};
       auto r = interp_expr(n->left, locals, outer_env, consteval_fns, depth);
-      if (!r.ok()) return {true, ConstValue::unknown()};
-      // Apply return type cast if available.
-      // The function's return type is on the parent; we handle it in evaluate_consteval_call.
-      return {true, *r.value};
+      if (!r.ok()) return {true, false, false, ConstValue::unknown()};
+      return {true, false, false, *r.value};
     }
 
     case NK_DECL: {
-      // Local variable declaration — track if const/constexpr with initializer.
+      // Local variable declaration — mutable or const with initializer.
       if (n->name && n->init) {
         auto r = interp_expr(n->init, locals, outer_env, consteval_fns, depth);
         if (r.ok()) {
           locals[n->name] = r.as_int();
         }
+      } else if (n->name) {
+        // Declaration without initializer — default to 0.
+        locals[n->name] = 0;
       }
       return {};
     }
 
     case NK_IF: {
       auto cr = interp_expr(n->cond, locals, outer_env, consteval_fns, depth);
-      if (!cr.ok()) return {true, ConstValue::unknown()};  // can't evaluate condition
+      if (!cr.ok()) return {true, false, false, ConstValue::unknown()};
       if (cr.as_int()) {
-        return interp_block(n->then_, locals, outer_env, consteval_fns, depth);
+        return interp_block(n->then_, locals, outer_env, consteval_fns, depth, steps);
       } else if (n->else_) {
-        return interp_block(n->else_, locals, outer_env, consteval_fns, depth);
+        return interp_block(n->else_, locals, outer_env, consteval_fns, depth, steps);
       }
       return {};
     }
 
+    case NK_WHILE: {
+      while (true) {
+        auto cr = interp_expr(n->cond, locals, outer_env, consteval_fns, depth);
+        if (!cr.ok()) return {true, false, false, ConstValue::unknown()};
+        if (!cr.as_int()) break;
+        auto r = interp_block(n->body, locals, outer_env, consteval_fns, depth, steps);
+        if (r.returned) return r;
+        if (r.did_break) break;
+        // did_continue: just continue the loop
+        if (++steps > kMaxConstevalSteps) return {true, false, false, ConstValue::unknown()};
+      }
+      return {};
+    }
+
+    case NK_FOR: {
+      // init
+      if (n->init) {
+        auto r = interp_stmt(n->init, locals, outer_env, consteval_fns, depth, steps);
+        if (r.returned) return r;
+      }
+      while (true) {
+        // cond
+        if (n->cond) {
+          auto cr = interp_expr(n->cond, locals, outer_env, consteval_fns, depth);
+          if (!cr.ok()) return {true, false, false, ConstValue::unknown()};
+          if (!cr.as_int()) break;
+        }
+        // body
+        auto r = interp_block(n->body, locals, outer_env, consteval_fns, depth, steps);
+        if (r.returned) return r;
+        if (r.did_break) break;
+        // update
+        if (n->update) {
+          interp_expr(n->update, locals, outer_env, consteval_fns, depth);
+        }
+        if (++steps > kMaxConstevalSteps) return {true, false, false, ConstValue::unknown()};
+      }
+      return {};
+    }
+
+    case NK_DO_WHILE: {
+      do {
+        auto r = interp_block(n->body, locals, outer_env, consteval_fns, depth, steps);
+        if (r.returned) return r;
+        if (r.did_break) break;
+        auto cr = interp_expr(n->cond, locals, outer_env, consteval_fns, depth);
+        if (!cr.ok()) return {true, false, false, ConstValue::unknown()};
+        if (!cr.as_int()) break;
+        if (++steps > kMaxConstevalSteps) return {true, false, false, ConstValue::unknown()};
+      } while (true);
+      return {};
+    }
+
+    case NK_EXPR_STMT: {
+      // Expression statement: evaluate the expression for side effects.
+      if (n->left) {
+        interp_expr(n->left, locals, outer_env, consteval_fns, depth);
+      }
+      return {};
+    }
+
+    case NK_BREAK:
+      return {false, true, false, ConstValue::unknown()};
+
+    case NK_CONTINUE:
+      return {false, false, true, ConstValue::unknown()};
+
     case NK_BLOCK:
-      return interp_block(n, locals, outer_env, consteval_fns, depth);
+      return interp_block(n, locals, outer_env, consteval_fns, depth, steps);
 
     default:
-      // Unsupported statement kind — skip (best-effort for now).
+      // Expression used as statement (e.g., assignment in for-init) — evaluate for side effects.
+      interp_expr(n, locals, outer_env, consteval_fns, depth);
       return {};
   }
 }
@@ -348,7 +438,8 @@ ConstEvalResult evaluate_consteval_call(
   }
 
   // Interpret the body.
-  auto result = interp_block(func_def->body, locals, env, consteval_fns, depth);
+  int steps = 0;
+  auto result = interp_block(func_def->body, locals, env, consteval_fns, depth, steps);
   if (result.returned && result.return_val.is_known()) {
     return ConstEvalResult::success(result.return_val);
   }
