@@ -186,6 +186,39 @@ void record_param_types(const Node* fn_node, ResolvedTypeTable* table) {
   }
 }
 
+/// Recursively walk an AST subtree (function body) and record canonical types
+/// for every NK_DECL node found.  This fills ResolvedTypeTable for locals so
+/// that downstream lowering can use canonical signatures instead of falling
+/// back to parser-field reconstruction.
+void record_local_decl_types(const Node* node, ResolvedTypeTable* resolved) {
+  if (!node || !resolved) return;
+
+  if (node->kind == NK_DECL) {
+    auto ct = std::make_shared<CanonicalType>(canonicalize_declarator_type(node));
+    resolved->record(node, std::move(ct));
+    // Don't return — NK_DECL can have an init subtree with nested decls
+    // (e.g. statement expressions), so keep walking.
+  }
+
+  // Recurse into children (NK_BLOCK stmts, NK_IF branches, etc.)
+  if (node->children) {
+    for (int i = 0; i < node->n_children; ++i) {
+      record_local_decl_types(node->children[i], resolved);
+    }
+  }
+  // Recurse into body (NK_WHILE, NK_FOR, NK_IF, NK_SWITCH, NK_BLOCK, etc.)
+  if (node->body) record_local_decl_types(node->body, resolved);
+  // Recurse into then/else/cond branches (NK_IF, NK_TERNARY)
+  if (node->then_) record_local_decl_types(node->then_, resolved);
+  if (node->else_) record_local_decl_types(node->else_, resolved);
+  if (node->cond) record_local_decl_types(node->cond, resolved);
+  // Recurse into init (NK_FOR init, NK_DECL init)
+  if (node->init) record_local_decl_types(node->init, resolved);
+  // Recurse into left/right for expression trees that may contain stmt-exprs
+  if (node->left) record_local_decl_types(node->left, resolved);
+  if (node->right) record_local_decl_types(node->right, resolved);
+}
+
 void collect_top_level_symbol(const Node* item,
                               SourceProfile profile,
                               std::vector<CanonicalSymbol>* out,
@@ -206,6 +239,8 @@ void collect_top_level_symbol(const Node* item,
       symbol.type = std::make_shared<CanonicalType>(canonicalize_declarator_type(item));
       // Record parameter types.
       if (resolved) record_param_types(item, resolved);
+      // Record local declaration types within the function body.
+      if (resolved && item->body) record_local_decl_types(item->body, resolved);
     } else if (item->kind == NK_GLOBAL_VAR) {
       symbol.kind = CanonicalSymbolKind::Object;
       symbol.source_name = item->name ? item->name : "<anon_global>";
