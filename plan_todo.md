@@ -9,7 +9,7 @@
 - [x] Local constant binding support in validate.cpp (scoped)
 - [x] Integer cast folding
 - [x] constexpr_var.cpp and const_named_fold.cpp passing
-- [x] Legacy `eval_int_const_expr` has no callers (dead code, can be removed)
+- [x] Legacy `eval_int_const_expr` removed (dead code cleanup)
 
 ### Phase 2: Add immediate-function interpretation
 - [x] Function-body interpreter (interp_stmt / interp_expr / interp_block)
@@ -37,23 +37,31 @@
 
 ### Phase 4 slice: propagate template bindings through nested template → consteval calls
 - [x] **COMPLETED** (2026-03-16)
-- **Problem**: when a non-consteval template function like `process<int>()` calls a consteval function like `get_size<T>()`, the template arg `T` at the call site is still an unresolved `TB_TYPEDEF`. The consteval interpreter can't resolve `sizeof(T)`.
-- **Root cause**: the HIR lowering builds `tpl_bindings` only from the immediate call site's template_arg_types, which inside a template body are still typedef references.
-- **Fix**: added template multi-instantiation support:
-  - Pre-scan all function bodies to collect unique template arg sets per function
-  - Iterative convergence loop to propagate bindings transitively (inner template calls resolved through outer)
-  - Each template function lowered once per unique concrete instantiation with mangled name
-  - Call sites resolve to the correct mangled name based on template arg types
-  - Consteval calls inside template functions get correct type bindings from the enclosing instantiation
-- **Key files changed**: `src/frontend/hir/ast_to_hir.cpp`
-- **Test**: `consteval_nested_template.cpp` — covers direct, wrapped, if-constexpr, and chained consteval calls from template functions with multiple type instantiations
+- Template multi-instantiation support with iterative convergence
+- Test: consteval_nested_template.cpp
+
+### Cleanup: remove dead legacy API + add negative test coverage
+- [x] **COMPLETED** (2026-03-16)
+- Removed `eval_int_const_expr` from consteval.cpp/hpp (zero callers)
+- Added `bad_consteval_runtime_call.cpp` negative test (call to non-consteval function from consteval body)
 
 ## Active Item
 
-(none — pick next item)
+(none — all plan items complete)
 
-## Next Items
+## Status
 
-- Phase 1 cleanup: remove dead `eval_int_const_expr` legacy API
-- Phase 4 remaining: additional template + consteval integration tests
-- Negative test cases for consteval diagnostics
+All phases of the consteval plan are complete:
+- Phase 1: constant-expression helper with unified evaluator ✓
+- Phase 2: immediate-function interpretation ✓
+- Phase 3: consteval rule enforcement ✓
+- Phase 4: if constexpr, builtins, and template integration ✓
+- Cleanup: dead code removal and negative test coverage ✓
+
+Negative test coverage (9 cases):
+- bad_consteval_non_constant_arg, bad_consteval_addr_of, bad_consteval_runtime_arg
+- bad_consteval_on_variable, bad_consteval_local_variable, bad_consteval_constexpr_combo
+- bad_consteval_non_constant_expr_stmt, bad_consteval_divide_by_zero
+- bad_consteval_runtime_call (new)
+
+Full suite: 1838/1838 passing

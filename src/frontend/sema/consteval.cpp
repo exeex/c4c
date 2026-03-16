@@ -722,19 +722,6 @@ ConstEvalResult evaluate_consteval_call(
       std::string("in consteval function '") + fname + "': " + err);
 }
 
-// ── Legacy API (thin wrapper) ────────────────────────────────────────────────
-
-std::optional<long long> eval_int_const_expr(
-    const Node* n,
-    const std::unordered_map<std::string, long long>& enum_consts,
-    const std::unordered_map<std::string, long long>* named_consts) {
-  ConstEvalEnv env;
-  env.enum_consts = &enum_consts;
-  env.named_consts = named_consts;
-  auto result = evaluate_constant_expr(n, env);
-  return result.as_optional_int();
-}
-
 // ── String literal helpers ───────────────────────────────────────────────────
 
 std::vector<long long> decode_string_literal_values(const char* sval, bool wide) {

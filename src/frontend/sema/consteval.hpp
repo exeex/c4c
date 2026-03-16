@@ -120,13 +120,6 @@ ConstEvalResult evaluate_consteval_call(
     const std::unordered_map<std::string, const Node*>& consteval_fns,
     int depth = 0);
 
-// ── Legacy API (thin wrapper) ────────────────────────────────────────────────
-
-std::optional<long long> eval_int_const_expr(
-    const Node* n,
-    const std::unordered_map<std::string, long long>& enum_consts,
-    const std::unordered_map<std::string, long long>* named_consts = nullptr);
-
 // ── String literal helpers ───────────────────────────────────────────────────
 
 std::vector<long long> decode_string_literal_values(const char* sval, bool wide);
