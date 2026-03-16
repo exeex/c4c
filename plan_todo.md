@@ -1,7 +1,7 @@
 # Plan Execution State
 
 ## Baseline
-- Test suite: **1800/1800** (2026-03-16, after Phase D slice 1)
+- Test suite: **1800/1800** (2026-03-16, after Phase D slice 2)
 
 ## Completed
 - Phase A: Lock Current Behavior With Tests
@@ -19,14 +19,20 @@
   - Simplified `sig_return_type` to use `sig.return_type.spec` directly
   - Fixed canonical path in `fn_ptr_sig_from_decl_node` with ret_fn_ptr_params correction
   - Reordered CallExpr resolution: fn_index → canonical fn_ptr_sig → known libc → implicit int
+- Phase D slice 2: Move DeclRef fn_index type resolution to HIR lowering
+  - Pre-register functions in fn_index before body lowering (self-reference support)
+  - NK_VAR handler annotates DeclRef with fn_ptr type from fn_index
+  - Removed codegen fallback in `resolve_payload_type(DeclRef)` that built synthetic TypeSpec
+  - Tightened local fn prototype skip (require n_params > 0) to prevent variable/function name collision
 
 ## Active Item
 - **Phase D: Delete Legacy Callable Recovery** (remaining slices)
 
 ## Next Slice
-- Clean up DeclRef `resolve_payload_type` fn_index path (currently builds synthetic TypeSpec with is_fn_ptr)
+- Audit remaining `resolve_payload_type` overloads for legacy TypeSpec reconstruction
 - Consider removing `sig_*` helper canonical fallbacks (sig_param_type, sig_param_count, etc.) — canonical_sig is still needed for param extraction
 - Remove remaining legacy comment references
+- Evaluate if all Phase D exit conditions are met
 
 ## Blockers
 - None known

@@ -1784,16 +1784,6 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const DeclRef& r){
     if (r.global) {
       if (const GlobalVar* gv = select_global_object(*r.global)) return gv->type.spec;
     }
-    // Function reference (resolved via fn_index, not global_index): treat as fn-ptr.
-    if (!r.name.empty() && mod_.fn_index.count(r.name)) {
-      const auto fit = mod_.fn_index.find(r.name);
-      if (fit != mod_.fn_index.end() && fit->second.value < mod_.functions.size()) {
-        TypeSpec ts = mod_.functions[fit->second.value].return_type.spec;
-        ts.ptr_level++;
-        ts.is_fn_ptr = true;
-        return ts;
-      }
-    }
     return {};
   }
 

@@ -1031,6 +1031,16 @@ class Lowerer {
       return;
     }
 
+    // Pre-register the function so that self-references during body
+    // lowering (e.g. recursive function using its own name as a value)
+    // can look up the return type via fn_index.
+    const bool had_prior_decl = module_->fn_index.count(fn.name) > 0;
+    module_->fn_index[fn.name] = fn.id;
+    if (fn.id.value == module_->functions.size()) {
+      // Push a skeleton; will be replaced after body lowering.
+      module_->functions.push_back(Function{fn.id, fn.name, fn.return_type});
+    }
+
     const BlockId entry = create_block(ctx);
     fn.entry = entry;
     ctx.current_block = entry;
@@ -1051,8 +1061,8 @@ class Lowerer {
       fn.blocks.push_back(Block{entry, {}, false});
     }
 
-    module_->fn_index[fn.name] = fn.id;
-    module_->functions.push_back(std::move(fn));
+    // Replace the skeleton with the fully lowered function.
+    module_->functions[fn.id.value] = std::move(fn);
   }
 
   // Hoist a compound literal to an anonymous global variable.
@@ -1831,7 +1841,9 @@ class Lowerer {
         // Local function prototype (e.g. `int f1(char *);` inside a function body):
         // if the name is already registered as a known function, skip creating a
         // local alloca — later references will resolve directly to the global function.
-        if (n->name && !n->init && module_->fn_index.count(n->name)) return;
+        // Require n_params > 0 to distinguish from a plain variable declaration
+        // whose name coincidentally matches a function name.
+        if (n->name && !n->init && n->n_params > 0 && module_->fn_index.count(n->name)) return;
 
         // Local extern declaration: `extern T v;` inside a function refers to
         // the global with that name (C99 6.2.2p4). Erase any shadowing local
@@ -2823,7 +2835,21 @@ class Lowerer {
           auto git = module_->global_index.find(r.name);
           if (git != module_->global_index.end()) r.global = git->second;
         }
-        return append_expr(n, std::move(r), n->type, ValueCategory::LValue);
+        // If the name refers to a function (not a variable), annotate the
+        // DeclRef with a function-pointer type so codegen does not need to
+        // reconstruct it from fn_index at emit time.
+        TypeSpec var_ts = n->type;
+        if (var_ts.base == TB_VOID && var_ts.ptr_level == 0 &&
+            var_ts.array_rank == 0 && !r.local && !r.param_index && !r.global) {
+          auto fit = module_->fn_index.find(r.name);
+          if (fit != module_->fn_index.end() &&
+              fit->second.value < module_->functions.size()) {
+            var_ts = module_->functions[fit->second.value].return_type.spec;
+            var_ts.ptr_level++;
+            var_ts.is_fn_ptr = true;
+          }
+        }
+        return append_expr(n, std::move(r), var_ts, ValueCategory::LValue);
       }
       case NK_UNARY: {
         UnaryExpr u{};
