@@ -2,6 +2,7 @@
 #define TINYC2LL_FRONTEND_CXX_PREPROCESSOR_HPP
 
 #include "pp_macro_def.hpp"
+#include "source_profile.hpp"
 
 #include <map>
 #include <set>
@@ -35,6 +36,11 @@ public:
   void add_include_path(const std::string& path);         // -I
   void add_system_include_path(const std::string& path);  // -isystem
   void add_after_include_path(const std::string& path);   // -idirafter
+
+  // Set the active source profile for this translation unit.
+  // Controls header inclusion policy (.hpp rejection under C mode).
+  void set_source_profile(SourceProfile profile) { source_profile_ = profile; }
+  SourceProfile source_profile() const { return source_profile_; }
 
   // Define/undefine macros from driver (for -D/-U command-line flags).
   // define_macro("FOO") defines FOO as 1.
@@ -107,6 +113,8 @@ private:
 
   std::vector<PreprocessorDiagnostic> errors_;
   std::vector<PreprocessorDiagnostic> warnings_;
+
+  SourceProfile source_profile_ = SourceProfile::C;
 
   bool needs_external_fallback_ = false;
   std::string base_file_;

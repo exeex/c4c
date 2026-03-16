@@ -14,6 +14,7 @@
 #include "parser.hpp"
 #include "preprocessor.hpp"
 #include "sema.hpp"
+#include "source_profile.hpp"
 #include "token.hpp"
 
 namespace tc = tinyc2ll::frontend_cxx;
@@ -145,7 +146,13 @@ int main(int argc, char **argv) {
       }
     }
 
+    // Determine source profile from input file extension.
+    auto source_profile = tc::source_profile_from_extension(input);
+    auto lex_profile    = tc::lex_profile_from(source_profile);
+    auto sema_profile   = tc::sema_profile_from(source_profile);
+
     tc::Preprocessor preprocessor;
+    preprocessor.set_source_profile(source_profile);
     // Apply optimization / PIC / PIE config toggles.
     if (opt_level > 0) {
       preprocessor.define_macro("__OPTIMIZE__");
@@ -180,7 +187,7 @@ int main(int argc, char **argv) {
       std::cout << source;
       return 0;
     }
-    tc::Lexer lexer(source);
+    tc::Lexer lexer(source, lex_profile);
     std::vector<tc::Token> tokens = lexer.scan_all();
 
     if (lex_only) {
@@ -208,7 +215,7 @@ int main(int argc, char **argv) {
       return 0;
     }
 
-    tc::sema::AnalyzeResult sema_result = tc::sema::analyze_program(prog);
+    tc::sema::AnalyzeResult sema_result = tc::sema::analyze_program(prog, sema_profile);
     if (!sema_result.validation.ok) {
       tc::sema::print_diagnostics(sema_result.validation.diagnostics, input);
       return 1;

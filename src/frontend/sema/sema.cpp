@@ -5,11 +5,41 @@
 
 namespace tinyc2ll::frontend_cxx::sema {
 
-AnalyzeResult analyze_program(const Node* root) {
+// Base C analysis: validate + lower to HIR.
+static AnalyzeResult analyze_program_base_c(const Node* root) {
   AnalyzeResult result{};
   result.validation = validate_program(root);
   if (!result.validation.ok) return result;
   result.hir_module = sema_ir::phase2::hir::lower_ast_to_hir(root);
+  return result;
+}
+
+// C++ subset extension layer (no-op for now).
+static void apply_cpp_subset_extensions(AnalyzeResult& /*result*/) {
+  // Future: cpp-subset semantic checks go here.
+}
+
+// c4 extension layer (no-op for now).
+static void apply_c4_extensions(AnalyzeResult& /*result*/) {
+  // Future: c4-specific semantic checks go here.
+}
+
+AnalyzeResult analyze_program(const Node* root, SemaProfile profile) {
+  AnalyzeResult result = analyze_program_base_c(root);
+  if (!result.validation.ok) return result;
+
+  switch (profile) {
+    case SemaProfile::C:
+      break;
+    case SemaProfile::CppSubset:
+      apply_cpp_subset_extensions(result);
+      break;
+    case SemaProfile::C4:
+      apply_cpp_subset_extensions(result);
+      apply_c4_extensions(result);
+      break;
+  }
+
   return result;
 }
 

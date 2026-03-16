@@ -4,6 +4,7 @@
 #include <string>
 
 #include "ir.hpp"
+#include "source_profile.hpp"
 #include "validate.hpp"
 
 namespace tinyc2ll::frontend_cxx::sema {
@@ -15,7 +16,8 @@ struct AnalyzeResult {
   std::optional<HirModule> hir_module;
 };
 
-AnalyzeResult analyze_program(const Node* root);
+AnalyzeResult analyze_program(const Node* root,
+                              SemaProfile profile = SemaProfile::C);
 std::string format_hir(const HirModule& module);
 std::string format_summary(const HirModule& module);
 

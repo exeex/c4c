@@ -129,3 +129,4 @@ ctest --test-dir build -j --output-on-failure > test_after.log
 10. Optionally update `known_issues.md` if new blockers or deferred failures are discovered.
 
 11. Commit one plan item slice per commit. Before committing, update `plan_todo.md` so the repo state clearly reflects current progress. Do not bundle unrelated fixes together.
+**important** this is not an interative conversation, you must git commit after finished.

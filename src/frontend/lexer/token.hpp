@@ -2,6 +2,8 @@
 
 #include <string>
 
+#include "source_profile.hpp"
+
 namespace tinyc2ll::frontend_cxx {
 
 // Token kinds mirroring ref/claudes-c-compiler/src/frontend/lexer/token.rs
@@ -78,6 +80,11 @@ enum class TokenKind {
   KwGnuAlignof,  // __alignof__
   KwGccReal,     // __real__ / __real
   KwGccImag,     // __imag__ / __imag
+
+  // ---- C++ subset keywords (only reserved in CppSubset/C4 profiles) ----
+  KwTemplate,    // template
+  KwConstexpr,   // constexpr
+  KwConsteval,   // consteval
 
   // ---- Punctuation ----
   LParen,    // (
@@ -156,6 +163,7 @@ const char *token_kind_name(TokenKind kind);
 // Returns the keyword TokenKind for a given identifier string, or
 // TokenKind::Identifier if not a keyword. gnu_extensions enables bare
 // "asm"/"typeof".
-TokenKind keyword_from_string(const std::string &s, bool gnu_extensions = true);
+TokenKind keyword_from_string(const std::string &s, bool gnu_extensions = true,
+                              LexProfile profile = LexProfile::C);
 
 }  // namespace tinyc2ll::frontend_cxx

@@ -70,6 +70,7 @@ add_executable(frontend_cxx_preprocessor_tests
     "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/pp_predefined.cpp"
 )
 target_include_directories(frontend_cxx_preprocessor_tests PRIVATE
+    "${PROJECT_SOURCE_DIR}/src/frontend"
     "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor"
 )
 set_target_properties(frontend_cxx_preprocessor_tests PROPERTIES

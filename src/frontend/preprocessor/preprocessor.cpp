@@ -928,6 +928,17 @@ std::string Preprocessor::handle_include(const std::string& args,
     return "\n";
   }
 
+  // Profile-aware header policy: reject .hpp under C mode.
+  if (source_profile_ == SourceProfile::C) {
+    auto hk = header_kind_from_extension(resolved);
+    if (hk == HeaderKind::DotHpp) {
+      errors_.push_back(PreprocessorDiagnostic{
+          current_file, line_no, 1,
+          "cannot include C++ header '" + rel + "' in C mode"});
+      return "\n";
+    }
+  }
+
   // #pragma once check: skip if this file was already included with pragma once.
   if (pragma_once_files_.count(resolved)) {
     return "\n";

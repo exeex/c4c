@@ -127,6 +127,11 @@ const char *token_kind_name(TokenKind kind) {
     case TokenKind::PipePipe:             return "PIPE_PIPE";
     case TokenKind::HashHash:             return "HASH_HASH";
 
+    // C++ subset keywords
+    case TokenKind::KwTemplate:  return "KW_template";
+    case TokenKind::KwConstexpr: return "KW_constexpr";
+    case TokenKind::KwConsteval: return "KW_consteval";
+
     case TokenKind::PragmaPack: return "PRAGMA_PACK";
 
     case TokenKind::EndOfFile: return "EOF";
@@ -138,8 +143,9 @@ const char *token_kind_name(TokenKind kind) {
 // keyword_from_string: map identifier text to its keyword TokenKind.
 // Returns TokenKind::Identifier when the string is not a keyword.
 // Pure-C backport note: replace std::string param with const char* + strlen.
-TokenKind keyword_from_string(const std::string &s, bool gnu_extensions) {
-  // Fast-reject: all C/GCC keywords start with one of these chars.
+TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
+                              LexProfile profile) {
+  // Fast-reject: all C/GCC/cpp keywords start with one of these chars.
   if (s.empty()) return TokenKind::Identifier;
   char first = s[0];
   if (first != '_' && first != 'a' && first != 'b' && first != 'c' &&
@@ -232,6 +238,13 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions) {
   if (s == "__alignof__" || s == "__alignof")   return TokenKind::KwGnuAlignof;
   if (s == "__real__" || s == "__real")         return TokenKind::KwGccReal;
   if (s == "__imag__" || s == "__imag")         return TokenKind::KwGccImag;
+
+  // C++ subset keywords (only in CppSubset or C4 profiles)
+  if (profile != LexProfile::C) {
+    if (s == "template")  return TokenKind::KwTemplate;
+    if (s == "constexpr") return TokenKind::KwConstexpr;
+    if (s == "consteval") return TokenKind::KwConsteval;
+  }
 
   return TokenKind::Identifier;
 }

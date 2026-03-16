@@ -11,7 +11,8 @@ namespace tinyc2ll::frontend_cxx {
 // Pure-C backport note: replace class with a Lexer struct + free functions.
 class Lexer {
  public:
-  explicit Lexer(std::string source);
+  explicit Lexer(std::string source,
+                 LexProfile profile = LexProfile::C);
   std::vector<Token> scan_all();
 
  private:
@@ -33,6 +34,7 @@ class Lexer {
   void scan_int_suffix(std::string &text);
 
   std::string source_;
+  LexProfile  lex_profile_;
   std::size_t index_ = 0;
   int line_   = 1;
   int column_ = 1;

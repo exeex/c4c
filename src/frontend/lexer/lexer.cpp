@@ -5,7 +5,8 @@
 
 namespace tinyc2ll::frontend_cxx {
 
-Lexer::Lexer(std::string source) : source_(std::move(source)) {}
+Lexer::Lexer(std::string source, LexProfile profile)
+    : source_(std::move(source)), lex_profile_(profile) {}
 
 std::vector<Token> Lexer::scan_all() {
   std::vector<Token> out;
@@ -259,7 +260,7 @@ Token Lexer::scan_identifier_or_keyword() {
     }
   }
   // Classify keyword vs identifier
-  TokenKind kind = keyword_from_string(text, /*gnu_extensions=*/true);
+  TokenKind kind = keyword_from_string(text, /*gnu_extensions=*/true, lex_profile_);
 
   // Handle wide/unicode string and char literal prefixes: L"..." u"..." U"..." u8"..."
   if (kind == TokenKind::Identifier &&
