@@ -2975,6 +2975,18 @@ class Lowerer {
             // Evaluate all arguments as constant expressions.
             ConstEvalEnv arg_env{&enum_consts_, &const_int_bindings_,
                                  ctx ? &ctx->local_const_bindings : nullptr};
+            // Build template type substitution map from call-site template args
+            // and the consteval function's template parameter names.
+            TypeBindings tpl_bindings;
+            const Node* fn_def = ce_it->second;
+            if (n->left->n_template_args > 0 && fn_def->n_template_params > 0) {
+              int count = std::min(n->left->n_template_args, fn_def->n_template_params);
+              for (int i = 0; i < count; ++i) {
+                if (fn_def->template_param_names[i])
+                  tpl_bindings[fn_def->template_param_names[i]] = n->left->template_arg_types[i];
+              }
+              arg_env.type_bindings = &tpl_bindings;
+            }
             std::vector<ConstValue> args;
             bool all_const = true;
             for (int i = 0; i < n->n_children; ++i) {

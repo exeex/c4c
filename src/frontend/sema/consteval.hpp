@@ -51,6 +51,9 @@ struct ConstEvalResult {
 
 using ConstMap = std::unordered_map<std::string, long long>;
 
+// Map from template parameter name to concrete TypeSpec (for template-substituted evaluation).
+using TypeBindings = std::unordered_map<std::string, TypeSpec>;
+
 struct ConstEvalEnv {
   // Flat maps (used by ast_to_hir.cpp where scoping is managed externally).
   const ConstMap* enum_consts = nullptr;
@@ -61,6 +64,9 @@ struct ConstEvalEnv {
   // Searched innermost (back) to outermost (front).
   const std::vector<ConstMap>* enum_scopes = nullptr;
   const std::vector<ConstMap>* local_const_scopes = nullptr;
+
+  // Template type substitution map (template param name → concrete type).
+  const TypeBindings* type_bindings = nullptr;
 
   std::optional<long long> lookup(const std::string& name) const {
     // 1. Scoped enum constants (innermost first).

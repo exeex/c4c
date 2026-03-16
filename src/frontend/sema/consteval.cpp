@@ -81,6 +81,14 @@ ConstValue apply_integer_cast(long long value, const TypeSpec& ts) {
   return ConstValue::make_int(static_cast<long long>(uv));
 }
 
+// Resolve a TypeSpec through type_bindings if it's a TB_TYPEDEF with a known substitution.
+TypeSpec resolve_type(const TypeSpec& ts, const TypeBindings* bindings) {
+  if (!bindings || ts.base != TB_TYPEDEF || !ts.tag) return ts;
+  auto it = bindings->find(ts.tag);
+  if (it == bindings->end()) return ts;
+  return it->second;
+}
+
 // Compute sizeof for a TypeSpec (scalar, pointer, array of scalar).
 // Returns failure for struct/union/void/typedef types (require Module context or type resolution).
 ConstEvalResult compute_sizeof_type(const TypeSpec& ts) {
@@ -209,16 +217,16 @@ ConstEvalResult eval_impl(const Node* n, const ConstEvalEnv& env) {
       return eval_impl(cr.as_int() ? n->then_ : n->else_, env);
     }
     case NK_SIZEOF_TYPE:
-      return compute_sizeof_type(n->type);
+      return compute_sizeof_type(resolve_type(n->type, env.type_bindings));
     case NK_SIZEOF_EXPR:
       // sizeof(expr) — use the expression's type from the AST.
-      if (n->left) return compute_sizeof_type(n->left->type);
+      if (n->left) return compute_sizeof_type(resolve_type(n->left->type, env.type_bindings));
       return ConstEvalResult::failure("sizeof(expr): missing expression");
     case NK_ALIGNOF_TYPE:
-      return compute_alignof_type(n->type);
+      return compute_alignof_type(resolve_type(n->type, env.type_bindings));
     case NK_ALIGNOF_EXPR:
       // alignof(expr) — use the expression's type from the AST.
-      if (n->left) return compute_alignof_type(n->left->type);
+      if (n->left) return compute_alignof_type(resolve_type(n->left->type, env.type_bindings));
       return ConstEvalResult::failure("alignof(expr): missing expression");
     default:
       return ConstEvalResult::failure(
@@ -327,7 +335,8 @@ ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
     case NK_CAST: {
       auto r = interp_expr(n->left, locals, outer_env, consteval_fns, depth);
       if (!r.ok()) return r;
-      return ConstEvalResult::success(apply_integer_cast(r.as_int(), n->type));
+      return ConstEvalResult::success(apply_integer_cast(r.as_int(),
+          resolve_type(n->type, env.type_bindings)));
     }
 
     case NK_UNARY: {
@@ -422,14 +431,14 @@ ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
     }
 
     case NK_SIZEOF_TYPE:
-      return compute_sizeof_type(n->type);
+      return compute_sizeof_type(resolve_type(n->type, env.type_bindings));
     case NK_SIZEOF_EXPR:
-      if (n->left) return compute_sizeof_type(n->left->type);
+      if (n->left) return compute_sizeof_type(resolve_type(n->left->type, env.type_bindings));
       return ConstEvalResult::failure("sizeof(expr): missing expression");
     case NK_ALIGNOF_TYPE:
-      return compute_alignof_type(n->type);
+      return compute_alignof_type(resolve_type(n->type, env.type_bindings));
     case NK_ALIGNOF_EXPR:
-      if (n->left) return compute_alignof_type(n->left->type);
+      if (n->left) return compute_alignof_type(resolve_type(n->left->type, env.type_bindings));
       return ConstEvalResult::failure("alignof(expr): missing expression");
 
     default:
