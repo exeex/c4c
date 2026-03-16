@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "ast.hpp"
@@ -112,13 +113,39 @@ struct CanonicalSymbol {
   std::vector<CanonicalTemplateArg> template_args;
 };
 
+/// Per-Node resolved type table.  Populated during build_canonical_symbols for
+/// every declaration node (functions, globals, params, struct/enum defs).
+/// Downstream stages can query this instead of re-deriving types from TypeSpec.
+struct ResolvedTypeTable {
+  std::unordered_map<const Node*, std::shared_ptr<CanonicalType>> types;
+
+  /// Look up the canonical type for a given AST node.  Returns nullptr if not
+  /// recorded.
+  std::shared_ptr<CanonicalType> lookup(const Node* node) const {
+    auto it = types.find(node);
+    return it != types.end() ? it->second : nullptr;
+  }
+
+  /// Record a canonical type for a node.
+  void record(const Node* node, std::shared_ptr<CanonicalType> type) {
+    if (node && type) types[node] = std::move(type);
+  }
+};
+
 struct SemaCanonicalResult {
   std::vector<CanonicalSymbol> symbols;
+  ResolvedTypeTable resolved_types;
 };
 
 CanonicalType canonicalize_type(const TypeSpec& ts);
 CanonicalType canonicalize_declarator_type(const Node* decl_like_node);
 SemaCanonicalResult build_canonical_symbols(const Node* root,
                                             SourceProfile profile = SourceProfile::C);
+
+/// Format a canonical type as a human-readable string for debugging.
+std::string format_canonical_type(const CanonicalType& type);
+
+/// Format the full SemaCanonicalResult (symbols + resolved types summary).
+std::string format_canonical_result(const SemaCanonicalResult& result);
 
 }  // namespace tinyc2ll::frontend_cxx::sema

@@ -148,14 +148,6 @@ std::vector<CanonicalType> canonicalize_param_types(Node* const* params, int cou
   return out;
 }
 
-CanonicalType canonicalize_function_node_type(const Node* fn_node) {
-  CanonicalType return_type = canonicalize_type(fn_node->type);
-  std::vector<CanonicalType> params =
-      canonicalize_param_types(fn_node->params, fn_node->n_params);
-  return wrap_function(std::move(return_type), std::move(params), fn_node->variadic,
-                       is_unspecified_param_list(fn_node));
-}
-
 CanonicalType canonicalize_fn_ptr_type(const Node* decl_like_node) {
   TypeSpec return_ts = decl_like_node->type;
   if (return_ts.ptr_level > 0) --return_ts.ptr_level;
@@ -169,9 +161,35 @@ CanonicalType canonicalize_fn_ptr_type(const Node* decl_like_node) {
   return wrap_pointer(std::move(fn_type));
 }
 
+CanonicalType canonicalize_function_node_type(const Node* fn_node) {
+  CanonicalType return_type;
+  // If the function returns a function pointer, the fn_ptr info is on the
+  // function node itself (fn_ptr_params, fn_ptr_variadic).
+  if (fn_node->type.is_fn_ptr) {
+    return_type = canonicalize_fn_ptr_type(fn_node);
+  } else {
+    return_type = canonicalize_type(fn_node->type);
+  }
+  std::vector<CanonicalType> params =
+      canonicalize_param_types(fn_node->params, fn_node->n_params);
+  return wrap_function(std::move(return_type), std::move(params), fn_node->variadic,
+                       is_unspecified_param_list(fn_node));
+}
+
+void record_param_types(const Node* fn_node, ResolvedTypeTable* table) {
+  if (!fn_node || !table) return;
+  for (int i = 0; i < fn_node->n_params; ++i) {
+    const Node* param = fn_node->params ? fn_node->params[i] : nullptr;
+    if (!param) continue;
+    auto ct = std::make_shared<CanonicalType>(canonicalize_declarator_type(param));
+    table->record(param, std::move(ct));
+  }
+}
+
 void collect_top_level_symbol(const Node* item,
                               SourceProfile profile,
-                              std::vector<CanonicalSymbol>* out) {
+                              std::vector<CanonicalSymbol>* out,
+                              ResolvedTypeTable* resolved) {
   if (!item || !out) return;
 
   if (item->kind == NK_FUNCTION || item->kind == NK_GLOBAL_VAR ||
@@ -186,18 +204,69 @@ void collect_top_level_symbol(const Node* item,
       symbol.kind = CanonicalSymbolKind::Function;
       symbol.source_name = item->name ? item->name : "<anon_fn>";
       symbol.type = std::make_shared<CanonicalType>(canonicalize_declarator_type(item));
+      // Record parameter types.
+      if (resolved) record_param_types(item, resolved);
     } else if (item->kind == NK_GLOBAL_VAR) {
       symbol.kind = CanonicalSymbolKind::Object;
       symbol.source_name = item->name ? item->name : "<anon_global>";
       symbol.type = std::make_shared<CanonicalType>(canonicalize_declarator_type(item));
-    } else {
+    } else if (item->kind == NK_STRUCT_DEF) {
       symbol.kind = CanonicalSymbolKind::Type;
-      symbol.source_name = item->name ? item->name : "<anon_type>";
-      symbol.type = std::make_shared<CanonicalType>(canonicalize_type(item->type));
+      symbol.source_name = item->name ? item->name : "<anon_struct>";
+      CanonicalType ct{};
+      ct.kind = item->type.base == TB_UNION ? CanonicalTypeKind::Union
+                                            : CanonicalTypeKind::Struct;
+      ct.user_spelling = item->name ? item->name : "";
+      symbol.type = std::make_shared<CanonicalType>(std::move(ct));
+    } else {
+      // NK_ENUM_DEF
+      symbol.kind = CanonicalSymbolKind::Type;
+      symbol.source_name = item->name ? item->name : "<anon_enum>";
+      CanonicalType ct{};
+      ct.kind = CanonicalTypeKind::Enum;
+      ct.user_spelling = item->name ? item->name : "";
+      symbol.type = std::make_shared<CanonicalType>(std::move(ct));
     }
+
+    // Record the node's resolved type.
+    if (resolved) resolved->record(item, symbol.type);
 
     out->push_back(std::move(symbol));
   }
+}
+
+std::string canonical_type_kind_str(CanonicalTypeKind kind) {
+  switch (kind) {
+    case CanonicalTypeKind::Void: return "void";
+    case CanonicalTypeKind::Bool: return "_Bool";
+    case CanonicalTypeKind::Char: return "char";
+    case CanonicalTypeKind::SignedChar: return "signed char";
+    case CanonicalTypeKind::UnsignedChar: return "unsigned char";
+    case CanonicalTypeKind::Short: return "short";
+    case CanonicalTypeKind::UnsignedShort: return "unsigned short";
+    case CanonicalTypeKind::Int: return "int";
+    case CanonicalTypeKind::UnsignedInt: return "unsigned int";
+    case CanonicalTypeKind::Long: return "long";
+    case CanonicalTypeKind::UnsignedLong: return "unsigned long";
+    case CanonicalTypeKind::LongLong: return "long long";
+    case CanonicalTypeKind::UnsignedLongLong: return "unsigned long long";
+    case CanonicalTypeKind::Float: return "float";
+    case CanonicalTypeKind::Double: return "double";
+    case CanonicalTypeKind::LongDouble: return "long double";
+    case CanonicalTypeKind::Int128: return "__int128";
+    case CanonicalTypeKind::UInt128: return "unsigned __int128";
+    case CanonicalTypeKind::VaList: return "__builtin_va_list";
+    case CanonicalTypeKind::Struct: return "struct";
+    case CanonicalTypeKind::Union: return "union";
+    case CanonicalTypeKind::Enum: return "enum";
+    case CanonicalTypeKind::TypedefName: return "typedef";
+    case CanonicalTypeKind::Complex: return "_Complex";
+    case CanonicalTypeKind::VendorExtended: return "<vendor>";
+    case CanonicalTypeKind::Pointer: return "pointer";
+    case CanonicalTypeKind::Array: return "array";
+    case CanonicalTypeKind::Function: return "function";
+  }
+  return "?";
 }
 
 }  // namespace
@@ -228,15 +297,89 @@ SemaCanonicalResult build_canonical_symbols(const Node* root, SourceProfile prof
   if (!root) return result;
 
   if (root->kind != NK_PROGRAM) {
-    collect_top_level_symbol(root, profile, &result.symbols);
+    collect_top_level_symbol(root, profile, &result.symbols, &result.resolved_types);
     return result;
   }
 
   for (int i = 0; i < root->n_children; ++i) {
     const Node* item = root->children ? root->children[i] : nullptr;
-    collect_top_level_symbol(item, profile, &result.symbols);
+    collect_top_level_symbol(item, profile, &result.symbols, &result.resolved_types);
   }
   return result;
+}
+
+std::string format_canonical_type(const CanonicalType& type) {
+  std::string result;
+
+  if (type.is_const) result += "const ";
+  if (type.is_volatile) result += "volatile ";
+
+  if (type.kind == CanonicalTypeKind::Pointer) {
+    result += "ptr(";
+    if (type.element_type)
+      result += format_canonical_type(*type.element_type);
+    result += ")";
+  } else if (type.kind == CanonicalTypeKind::Array) {
+    result += "array[";
+    result += std::to_string(type.array_size);
+    result += "](";
+    if (type.element_type)
+      result += format_canonical_type(*type.element_type);
+    result += ")";
+  } else if (type.kind == CanonicalTypeKind::Function) {
+    result += "fn(";
+    if (type.function_sig) {
+      if (type.function_sig->return_type)
+        result += format_canonical_type(*type.function_sig->return_type);
+      result += ")(";
+      for (size_t i = 0; i < type.function_sig->params.size(); ++i) {
+        if (i > 0) result += ", ";
+        result += format_canonical_type(type.function_sig->params[i]);
+      }
+      if (type.function_sig->is_variadic) {
+        if (!type.function_sig->params.empty()) result += ", ";
+        result += "...";
+      }
+      if (type.function_sig->unspecified_params) result += "/*unspecified*/";
+      result += ")";
+    }
+  } else {
+    result += canonical_type_kind_str(type.kind);
+    if (!type.user_spelling.empty()) {
+      result += " '";
+      result += type.user_spelling;
+      result += "'";
+    }
+  }
+
+  if (type.is_vector) {
+    result += " __vector(";
+    result += std::to_string(type.vector_bytes);
+    result += ")";
+  }
+
+  return result;
+}
+
+std::string format_canonical_result(const SemaCanonicalResult& result) {
+  std::string out;
+  out += "=== Canonical Symbols ===\n";
+  for (const auto& sym : result.symbols) {
+    switch (sym.kind) {
+      case CanonicalSymbolKind::Function: out += "  fn "; break;
+      case CanonicalSymbolKind::Object: out += "  obj "; break;
+      case CanonicalSymbolKind::Type: out += "  type "; break;
+    }
+    out += sym.source_name;
+    if (sym.type) {
+      out += " : ";
+      out += format_canonical_type(*sym.type);
+    }
+    out += "\n";
+  }
+  out += "=== Resolved Type Table (" +
+         std::to_string(result.resolved_types.types.size()) + " entries) ===\n";
+  return out;
 }
 
 }  // namespace tinyc2ll::frontend_cxx::sema

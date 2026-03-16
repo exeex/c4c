@@ -23,7 +23,7 @@ namespace {
 
 void print_usage(const char *argv0) {
   std::cerr << "usage: " << argv0
-            << " [--version] [--pp-only|--lex-only|--parse-only|--dump-hir|--dump-hir-summary]"
+            << " [--version] [--pp-only|--lex-only|--parse-only|--dump-hir|--dump-hir-summary|--dump-canonical]"
             << " [-D macro[=val]] [-U macro] [-I dir] [-iquote dir] [-isystem dir] [-idirafter dir]"
             << " [-O0|-O1|-O2|-O3|-Os] [-fPIC|-fpic] [-fPIE|-fpie]"
             << " [-o output.ll] <input.c>\n";
@@ -60,6 +60,7 @@ int main(int argc, char **argv) {
     bool        parse_only = false;
     bool        dump_hir_summary = false;
     bool        dump_hir = false;
+    bool        dump_canonical = false;
     std::string input;
     std::string output;
 
@@ -87,6 +88,8 @@ int main(int argc, char **argv) {
         dump_hir = true;
       } else if (arg == "--dump-hir-summary") {
         dump_hir_summary = true;
+      } else if (arg == "--dump-canonical") {
+        dump_canonical = true;
       } else if (arg == "-o") {
         if (i + 1 < args.size()) output = args[++i];
       } else if (arg == "-D" && i + 1 < args.size()) {
@@ -139,9 +142,10 @@ int main(int argc, char **argv) {
     }
     {
       int mode_count = (pp_only ? 1 : 0) + (lex_only ? 1 : 0) + (parse_only ? 1 : 0) +
-                       (dump_hir ? 1 : 0) + (dump_hir_summary ? 1 : 0);
+                       (dump_hir ? 1 : 0) + (dump_hir_summary ? 1 : 0) +
+                       (dump_canonical ? 1 : 0);
       if (mode_count > 1) {
-        std::cerr << "cannot combine --pp-only, --lex-only, --parse-only, --dump-hir, --dump-hir-summary\n";
+        std::cerr << "cannot combine --pp-only, --lex-only, --parse-only, --dump-hir, --dump-hir-summary, --dump-canonical\n";
         return 2;
       }
     }
@@ -219,6 +223,11 @@ int main(int argc, char **argv) {
     if (!sema_result.validation.ok) {
       tc::sema::print_diagnostics(sema_result.validation.diagnostics, input);
       return 1;
+    }
+
+    if (dump_canonical) {
+      std::cout << tc::sema::format_canonical_result(sema_result.canonical);
+      return 0;
     }
 
     if (dump_hir || dump_hir_summary) {
