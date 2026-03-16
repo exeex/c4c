@@ -824,6 +824,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     consume();  // consume {
 
     std::vector<Node*> fields;
+    std::vector<Node*> methods;
     std::unordered_set<std::string> field_names_seen;
     auto check_dup_field = [&](const char* fname) {
         if (!fname) return;
@@ -984,6 +985,63 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                              &n_fn_ptr_params, &fn_ptr_variadic);
             skip_attributes();
 
+            if (fname && check(TokenKind::LParen)) {
+                consume();
+                std::vector<Node*> params;
+                bool variadic = false;
+                if (!check(TokenKind::RParen)) {
+                    while (!at_end()) {
+                        if (check(TokenKind::Ellipsis)) {
+                            variadic = true;
+                            consume();
+                            break;
+                        }
+                        if (check(TokenKind::RParen)) break;
+                        if (!is_type_start()) break;
+                        Node* p = parse_param();
+                        if (p) params.push_back(p);
+                        if (check(TokenKind::Ellipsis)) {
+                            variadic = true;
+                            consume();
+                            break;
+                        }
+                        if (!match(TokenKind::Comma)) break;
+                    }
+                }
+                expect(TokenKind::RParen);
+                bool is_method_constexpr = false;
+                bool is_method_consteval = false;
+                while (true) {
+                    if (match(TokenKind::KwConst)) {}
+                    else if (is_cpp_mode() && match(TokenKind::KwConstexpr)) {
+                        is_method_constexpr = true;
+                    } else if (is_cpp_mode() && match(TokenKind::KwConsteval)) {
+                        is_method_consteval = true;
+                    } else {
+                        break;
+                    }
+                }
+                Node* method = make_node(NK_FUNCTION, cur().line);
+                method->type = cur_fts;
+                method->name = fname;
+                method->variadic = variadic;
+                method->is_constexpr = is_method_constexpr;
+                method->is_consteval = is_method_consteval;
+                method->n_params = (int)params.size();
+                if (method->n_params > 0) {
+                    method->params = arena_.alloc_array<Node*>(method->n_params);
+                    for (int i = 0; i < method->n_params; ++i) method->params[i] = params[i];
+                }
+                if (check(TokenKind::LBrace)) {
+                    method->body = parse_block();
+                } else {
+                    match(TokenKind::Semi);
+                }
+                methods.push_back(method);
+                if (!match(TokenKind::Comma)) break;
+                continue;
+            }
+
             // Bitfield: : expr
             long long bf_width = -1;
             if (check(TokenKind::Colon)) {
@@ -1042,9 +1100,23 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         sd->fields = arena_.alloc_array<Node*>(sd->n_fields);
         for (int i = 0; i < sd->n_fields; ++i) sd->fields[i] = fields[i];
     }
+    sd->n_children = (int)methods.size();
+    if (sd->n_children > 0) {
+        sd->children = arena_.alloc_array<Node*>(sd->n_children);
+        for (int i = 0; i < sd->n_children; ++i) sd->children[i] = methods[i];
+    }
 
     // Record concrete struct/union definition for parse-time offsetof evaluation.
     if (sd->name) struct_tag_def_map_[sd->name] = sd;
+    if (is_cpp_mode() && sd->name && sd->name[0]) {
+        typedefs_.insert(sd->name);
+        TypeSpec injected_ts{};
+        injected_ts.array_size = -1;
+        injected_ts.array_rank = 0;
+        injected_ts.base = is_union ? TB_UNION : TB_STRUCT;
+        injected_ts.tag = sd->name;
+        typedef_types_[sd->name] = injected_ts;
+    }
     struct_defs_.push_back(sd);
     return sd;
 }

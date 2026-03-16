@@ -6,9 +6,10 @@
 #include <stdexcept>
 
 namespace tinyc2ll::frontend_cxx {
-Parser::Parser(std::vector<Token> tokens, Arena& arena)
-    : tokens_(std::move(tokens)), pos_(0), arena_(arena), anon_counter_(0),
-      had_error_(false), parsing_top_level_context_(false), last_enum_def_(nullptr) {
+Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_profile)
+    : tokens_(std::move(tokens)), pos_(0), arena_(arena), source_profile_(source_profile),
+      anon_counter_(0), had_error_(false), parsing_top_level_context_(false),
+      last_enum_def_(nullptr) {
     // Pre-seed well-known typedef names from standard / system headers
     // so the parser can disambiguate type-name vs identifier.
     static const char* seed[] = {
@@ -455,6 +456,20 @@ void ast_dump(const Node* n, int indent) {
         case NK_ASM:       printf("(%s)", n->is_volatile_asm ? "volatile" : "plain"); break;
         default: break;
     }
+    if (n->n_template_params > 0) {
+        printf(" template<");
+        for (int i = 0; i < n->n_template_params; ++i) {
+            if (i) printf(", ");
+            printf("%s", n->template_param_names[i] ? n->template_param_names[i] : "?");
+        }
+        printf(">");
+    }
+    if (n->n_template_args > 0) {
+        printf(" specialize<%d>", n->n_template_args);
+    }
+    if (n->is_consteval) printf(" consteval");
+    else if (n->is_constexpr) printf(" constexpr");
+    if (n->linkage_spec) printf(" linkage=\"%s\"", n->linkage_spec);
     printf("\n");
 
     // Recurse into children

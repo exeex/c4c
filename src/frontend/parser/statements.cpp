@@ -66,6 +66,10 @@ Node* Parser::parse_stmt() {
 
         case TokenKind::KwIf: {
             consume();
+            bool is_constexpr_if = false;
+            if (is_cpp_mode() && match(TokenKind::KwConstexpr)) {
+                is_constexpr_if = true;
+            }
             expect(TokenKind::LParen);
             Node* cnd = parse_expr();
             expect(TokenKind::RParen);
@@ -78,6 +82,7 @@ Node* Parser::parse_stmt() {
             n->cond  = cnd;
             n->then_ = then_stmt;
             n->else_ = else_stmt;
+            n->is_constexpr = is_constexpr_if;
             return n;
         }
 

@@ -21,6 +21,7 @@
 
 #include "arena.hpp"
 #include "ast.hpp"
+#include "source_profile.hpp"
 #include "token.hpp"
 
 namespace tinyc2ll::frontend_cxx {
@@ -28,7 +29,8 @@ namespace tinyc2ll::frontend_cxx {
 class Parser {
  public:
   // All members public (required by project coding constraints).
-  explicit Parser(std::vector<Token> tokens, Arena& arena);
+  explicit Parser(std::vector<Token> tokens, Arena& arena,
+                  SourceProfile source_profile = SourceProfile::C);
 
   // Parse the entire token stream and return a NK_PROGRAM node.
   Node* parse();
@@ -37,6 +39,7 @@ class Parser {
   std::vector<Token> tokens_;
   int                pos_;
   Arena&             arena_;
+  SourceProfile      source_profile_;
   std::set<std::string> typedefs_;  // known typedef names
   // Typedef names declared in the current translation unit (not pre-seeded).
   std::set<std::string> user_typedefs_;
@@ -103,6 +106,10 @@ class Parser {
   // ── type parsing helpers ──────────────────────────────────────────────────
   bool is_type_start() const;            // can current token start a type?
   bool is_typedef_name(const std::string& s) const;
+  bool is_cpp_mode() const {
+    return source_profile_ == SourceProfile::CppSubset ||
+           source_profile_ == SourceProfile::C4;
+  }
 
   // Parse a complete type specifier (base type + qualifiers).
   // ptr_level and array_size are NOT parsed here (those are in the declarator).

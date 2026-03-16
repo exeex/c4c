@@ -204,7 +204,7 @@ int main(int argc, char **argv) {
 
     // Parse phase
     tc::Arena arena;
-    tc::Parser parser(std::move(tokens), arena);
+    tc::Parser parser(std::move(tokens), arena, source_profile);
     tc::Node* prog = parser.parse();
     if (parser.had_error_) {
       return 1;

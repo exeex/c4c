@@ -11,14 +11,25 @@ Node* Parser::parse_local_decl() {
     bool is_static  = false;
     bool is_extern  = false;
     bool is_typedef = false;
+    bool is_constexpr = false;
+    bool is_consteval = false;
+    const char* linkage_spec = nullptr;
 
     // Consume storage class specifiers before the type
     while (true) {
         if (match(TokenKind::KwStatic))  { is_static = true; }
-        else if (match(TokenKind::KwExtern))  { is_extern = true; }
+        else if (match(TokenKind::KwExtern))  {
+            is_extern = true;
+            if (is_cpp_mode() && check(TokenKind::StrLit) && cur().lexeme == "\"C\"") {
+                linkage_spec = "C";
+                consume();
+            }
+        }
         else if (match(TokenKind::KwTypedef)) { is_typedef = true; }
         else if (match(TokenKind::KwRegister)) {}
         else if (match(TokenKind::KwInline))   {}
+        else if (is_cpp_mode() && match(TokenKind::KwConstexpr)) { is_constexpr = true; }
+        else if (is_cpp_mode() && match(TokenKind::KwConsteval)) { is_consteval = true; }
         else if (match(TokenKind::KwExtension)) {}
         else break;
     }
@@ -139,7 +150,8 @@ Node* Parser::parse_local_decl() {
             throw std::runtime_error(std::string("object has incomplete type: ") + (ts.tag ? ts.tag : "<anonymous>"));
 
         Node* init_node = nullptr;
-        if (match(TokenKind::Assign)) {
+        if (match(TokenKind::Assign) ||
+            (is_cpp_mode() && check(TokenKind::LBrace))) {
             init_node = parse_initializer();
         }
 
@@ -149,6 +161,9 @@ Node* Parser::parse_local_decl() {
         d->init      = init_node;
         d->is_static = is_static;
         d->is_extern = is_extern;
+        d->is_constexpr = is_constexpr;
+        d->is_consteval = is_consteval;
+        d->linkage_spec = linkage_spec;
         d->fn_ptr_params = fn_ptr_params;
         d->n_fn_ptr_params = n_fn_ptr_params;
         d->fn_ptr_variadic = fn_ptr_variadic;
@@ -196,6 +211,75 @@ Node* Parser::parse_top_level() {
 
     int ln = cur().line;
     if (at_end()) return nullptr;
+
+    if (is_cpp_mode() && check(TokenKind::KwTemplate)) {
+        consume();
+        expect(TokenKind::Less);
+        std::vector<const char*> template_params;
+        while (!at_end() && !check(TokenKind::Greater)) {
+            if (check(TokenKind::Identifier) &&
+                (cur().lexeme == "typename" || cur().lexeme == "class")) {
+                consume();
+            }
+            if (!check(TokenKind::Identifier)) {
+                throw std::runtime_error("expected template parameter name");
+            }
+            const char* pname = arena_.strdup(cur().lexeme);
+            consume();
+            if (match(TokenKind::Assign)) {
+                int depth = 0;
+                while (!at_end()) {
+                    if (check(TokenKind::Less)) ++depth;
+                    else if (check(TokenKind::Greater)) {
+                        if (depth == 0) break;
+                        --depth;
+                    } else if (check(TokenKind::Comma) && depth == 0) {
+                        break;
+                    }
+                    consume();
+                }
+            }
+            template_params.push_back(pname);
+            if (!match(TokenKind::Comma)) break;
+        }
+        expect(TokenKind::Greater);
+
+        std::vector<std::string> injected_names;
+        for (const char* pname : template_params) {
+            if (!pname || !pname[0]) continue;
+            injected_names.emplace_back(pname);
+            typedefs_.insert(pname);
+            TypeSpec param_ts{};
+            param_ts.array_size = -1;
+            param_ts.array_rank = 0;
+            param_ts.base = TB_TYPEDEF;
+            param_ts.tag = pname;
+            typedef_types_[pname] = param_ts;
+        }
+
+        Node* templated = parse_top_level();
+        for (const std::string& pname : injected_names) {
+            typedefs_.erase(pname);
+            typedef_types_.erase(pname);
+        }
+
+        auto attach_template_params = [&](Node* n) {
+            if (!n || template_params.empty()) return;
+            n->n_template_params = (int)template_params.size();
+            n->template_param_names = arena_.alloc_array<const char*>(n->n_template_params);
+            for (int i = 0; i < n->n_template_params; ++i)
+                n->template_param_names[i] = template_params[i];
+        };
+
+        if (templated && templated->kind == NK_BLOCK) {
+            for (int i = 0; i < templated->n_children; ++i) {
+                attach_template_params(templated->children[i]);
+            }
+        } else {
+            attach_template_params(templated);
+        }
+        return templated;
+    }
 
     // Handle #pragma pack tokens
     if (check(TokenKind::PragmaPack)) {
@@ -254,13 +338,24 @@ Node* Parser::parse_top_level() {
     bool is_extern   = false;
     bool is_typedef  = false;
     bool is_inline   = false;
+    bool is_constexpr = false;
+    bool is_consteval = false;
+    const char* linkage_spec = nullptr;
 
     // Consume storage class specifiers
     while (true) {
         if (match(TokenKind::KwStatic))    { is_static  = true; }
-        else if (match(TokenKind::KwExtern))   { is_extern  = true; }
+        else if (match(TokenKind::KwExtern))   {
+            is_extern  = true;
+            if (is_cpp_mode() && check(TokenKind::StrLit) && cur().lexeme == "\"C\"") {
+                linkage_spec = "C";
+                consume();
+            }
+        }
         else if (match(TokenKind::KwTypedef))  { is_typedef = true; }
         else if (match(TokenKind::KwInline))   { is_inline  = true; }
+        else if (is_cpp_mode() && match(TokenKind::KwConstexpr)) { is_constexpr = true; }
+        else if (is_cpp_mode() && match(TokenKind::KwConsteval)) { is_consteval = true; }
         else if (match(TokenKind::KwExtension)) {}
         else if (match(TokenKind::KwNoreturn))  {}
         else break;
@@ -294,9 +389,17 @@ Node* Parser::parse_top_level() {
         // (e.g. `struct a {...} static g = ...` — GCC allows storage class mid-decl).
         while (true) {
             if (match(TokenKind::KwStatic))    { is_static  = true; }
-            else if (match(TokenKind::KwExtern))   { is_extern  = true; }
+            else if (match(TokenKind::KwExtern))   {
+                is_extern  = true;
+                if (is_cpp_mode() && check(TokenKind::StrLit) && cur().lexeme == "\"C\"") {
+                    linkage_spec = "C";
+                    consume();
+                }
+            }
             else if (match(TokenKind::KwTypedef))  { is_typedef = true; }
             else if (match(TokenKind::KwInline))   { is_inline  = true; }
+            else if (is_cpp_mode() && match(TokenKind::KwConstexpr)) { is_constexpr = true; }
+            else if (is_cpp_mode() && match(TokenKind::KwConsteval)) { is_consteval = true; }
             else if (match(TokenKind::KwExtension)) {}
             else if (match(TokenKind::KwNoreturn))  {}
             else break;
@@ -583,6 +686,9 @@ Node* Parser::parse_top_level() {
             fn->is_static = is_static;
             fn->is_extern = is_extern;
             fn->is_inline = is_inline;
+            fn->is_constexpr = is_constexpr;
+            fn->is_consteval = is_consteval;
+            fn->linkage_spec = linkage_spec;
             fn->visibility = visibility_;
             fn->body      = body;
             fn->n_params  = (int)fptr_fn_params.size();
@@ -605,6 +711,9 @@ Node* Parser::parse_top_level() {
         fn->is_static = is_static;
         fn->is_extern = is_extern;
         fn->is_inline = is_inline;
+        fn->is_constexpr = is_constexpr;
+        fn->is_consteval = is_consteval;
+        fn->linkage_spec = linkage_spec;
         fn->visibility = visibility_;
         fn->body      = nullptr;
         fn->n_params  = (int)fptr_fn_params.size();
@@ -747,6 +856,9 @@ Node* Parser::parse_top_level() {
             fn->is_static = is_static;
             fn->is_extern = is_extern;
             fn->is_inline = is_inline;
+            fn->is_constexpr = is_constexpr;
+            fn->is_consteval = is_consteval;
+            fn->linkage_spec = linkage_spec;
             fn->visibility = visibility_;
             fn->body      = body;
             fn->n_params  = (int)params.size();
@@ -767,6 +879,9 @@ Node* Parser::parse_top_level() {
         fn->is_static = is_static;
         fn->is_extern = is_extern;
         fn->is_inline = is_inline;
+        fn->is_constexpr = is_constexpr;
+        fn->is_consteval = is_consteval;
+        fn->linkage_spec = linkage_spec;
         fn->visibility = visibility_;
         fn->body      = nullptr;  // declaration only
         fn->n_params  = (int)params.size();
@@ -789,10 +904,14 @@ Node* Parser::parse_top_level() {
                          bool ret_fn_ptr_variadic = false) {
         Node* gv = make_node(NK_GLOBAL_VAR, ln);
         gv->type      = gts;
+        if (is_constexpr) gv->type.is_const = true;
         gv->name      = gname;
         gv->init      = ginit;
         gv->is_static = is_static;
         gv->is_extern = is_extern;
+        gv->is_constexpr = is_constexpr;
+        gv->is_consteval = is_consteval;
+        gv->linkage_spec = linkage_spec;
         gv->visibility = visibility_;
         gv->fn_ptr_params = fn_ptr_params;
         gv->n_fn_ptr_params = n_fn_ptr_params;
@@ -814,7 +933,8 @@ Node* Parser::parse_top_level() {
     };
 
     Node* first_init = nullptr;
-    if (match(TokenKind::Assign)) {
+    if (match(TokenKind::Assign) ||
+        (is_cpp_mode() && check(TokenKind::LBrace))) {
         first_init = parse_initializer();
     }
     gvars.push_back(make_gvar(ts, decl_name, first_init, decl_fn_ptr_params,
@@ -834,7 +954,8 @@ Node* Parser::parse_top_level() {
         skip_attributes();
         skip_asm();
         Node* init2 = nullptr;
-        if (match(TokenKind::Assign)) init2 = parse_initializer();
+        if (match(TokenKind::Assign) ||
+            (is_cpp_mode() && check(TokenKind::LBrace))) init2 = parse_initializer();
         if (n2) gvars.push_back(make_gvar(ts2, n2, init2,
                                           fn_ptr_params2, n_fn_ptr_params2,
                                           fn_ptr_variadic2));

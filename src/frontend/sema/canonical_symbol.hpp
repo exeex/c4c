@@ -72,6 +72,10 @@ struct CanonicalTemplateArg {
   std::optional<long long> integral_value;
 };
 
+struct CanonicalTemplateParam {
+  std::string name;
+};
+
 struct CanonicalFunctionSig {
   std::shared_ptr<CanonicalType> return_type;
   std::vector<CanonicalType> params;
@@ -110,6 +114,7 @@ struct CanonicalSymbol {
   int line = 0;
 
   std::shared_ptr<CanonicalType> type;
+  std::vector<CanonicalTemplateParam> template_params;
   std::vector<CanonicalTemplateArg> template_args;
 };
 
@@ -147,6 +152,24 @@ std::string format_canonical_type(const CanonicalType& type);
 
 /// Format the full SemaCanonicalResult (symbols + resolved types summary).
 std::string format_canonical_result(const SemaCanonicalResult& result);
+
+/// Format a canonical template argument for debugging.
+std::string format_template_arg(const CanonicalTemplateArg& arg);
+
+/// Apply template arguments positionally to a canonical type.
+/// Unbound template parameters remain as TypedefName leaves, enabling partial
+/// specialization / delayed instantiation.
+CanonicalType substitute_template_args(
+    const CanonicalType& type,
+    const std::vector<CanonicalTemplateParam>& params,
+    const std::vector<CanonicalTemplateArg>& args);
+
+/// Instantiate a templated canonical symbol by applying template arguments to
+/// its type. Any unapplied parameters remain in template_params on the returned
+/// symbol, modeling a higher-order decorator.
+CanonicalSymbol instantiate_symbol(
+    const CanonicalSymbol& sym,
+    const std::vector<CanonicalTemplateArg>& args);
 
 // ── Phase 3: callable/prototype helpers ──────────────────────────────────────
 

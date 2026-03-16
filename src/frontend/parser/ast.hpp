@@ -222,6 +222,11 @@ struct Node {
     // NK_FUNCTION params
     Node** params;
     int    n_params;
+    // C++ subset template metadata carried on declarations / references.
+    const char** template_param_names;
+    int          n_template_params;
+    TypeSpec*    template_arg_types;
+    int          n_template_args;
     // NK_DECL / NK_GLOBAL_VAR / NK_FUNCTION param decls:
     // function pointer prototype attached to this declarator, if any.
     Node** fn_ptr_params;
@@ -259,6 +264,8 @@ struct Node {
     bool is_static;     // NK_FUNCTION, NK_DECL, NK_GLOBAL_VAR
     bool is_extern;     // NK_FUNCTION, NK_GLOBAL_VAR
     bool is_inline;     // NK_FUNCTION
+    bool is_constexpr;  // NK_IF, NK_FUNCTION, NK_DECL, NK_GLOBAL_VAR
+    bool is_consteval;  // NK_FUNCTION
     uint8_t visibility; // 0=default, 1=hidden, 2=protected (from #pragma GCC visibility)
     bool is_volatile_asm; // NK_ASM
     bool is_arrow;      // NK_MEMBER (-> = true, . = false)
@@ -268,6 +275,7 @@ struct Node {
     bool is_index_desig;// NK_INIT_ITEM (designator is index [N])
     long long desig_val;// NK_INIT_ITEM index designator value
     const char* desig_field; // NK_INIT_ITEM field designator name
+    const char* linkage_spec; // C++ subset linkage string, e.g. "C"
 };
 
 // ── Free functions ────────────────────────────────────────────────────────────

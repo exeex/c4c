@@ -1,5 +1,7 @@
 #include "canonical_symbol.hpp"
 
+#include <algorithm>
+#include <string_view>
 #include <utility>
 
 namespace tinyc2ll::frontend_cxx::sema {
@@ -107,6 +109,13 @@ CanonicalScope translation_unit_scope() {
   CanonicalScope scope{};
   scope.segments.push_back({CanonicalScopeKind::TranslationUnit, {}});
   return scope;
+}
+
+LanguageLinkage linkage_for_node(const Node* node, SourceProfile profile) {
+  if (node && node->linkage_spec && std::string_view(node->linkage_spec) == "C") {
+    return LanguageLinkage::C;
+  }
+  return default_linkage_for(profile);
 }
 
 bool is_unspecified_param_list(const Node* fn_like_node) {
@@ -234,9 +243,14 @@ void collect_top_level_symbol(const Node* item,
       item->kind == NK_STRUCT_DEF || item->kind == NK_ENUM_DEF) {
     CanonicalSymbol symbol{};
     symbol.scope = translation_unit_scope();
-    symbol.linkage = default_linkage_for(profile);
+    symbol.linkage = linkage_for_node(item, profile);
     symbol.source_profile = profile;
     symbol.line = item->line;
+    for (int i = 0; i < item->n_template_params; ++i) {
+      const char* pname = item->template_param_names ? item->template_param_names[i] : nullptr;
+      if (!pname || !pname[0]) continue;
+      symbol.template_params.push_back({pname});
+    }
 
     if (item->kind == NK_FUNCTION) {
       symbol.kind = CanonicalSymbolKind::Function;
@@ -273,6 +287,40 @@ void collect_top_level_symbol(const Node* item,
 
     out->push_back(std::move(symbol));
   }
+}
+
+CanonicalType substitute_template_args_impl(
+    const CanonicalType& type,
+    const std::unordered_map<std::string, CanonicalTemplateArg>& bindings) {
+  if (type.kind == CanonicalTypeKind::TypedefName && !type.user_spelling.empty()) {
+    auto it = bindings.find(type.user_spelling);
+    if (it != bindings.end() && it->second.type) {
+      CanonicalType substituted = *it->second.type;
+      substituted.is_const = substituted.is_const || type.is_const;
+      substituted.is_volatile = substituted.is_volatile || type.is_volatile;
+      return substituted;
+    }
+  }
+
+  CanonicalType out = type;
+  if (type.element_type) {
+    out.element_type = std::make_shared<CanonicalType>(
+        substitute_template_args_impl(*type.element_type, bindings));
+  }
+  if (type.function_sig) {
+    auto sig = std::make_shared<CanonicalFunctionSig>();
+    sig->is_variadic = type.function_sig->is_variadic;
+    sig->unspecified_params = type.function_sig->unspecified_params;
+    if (type.function_sig->return_type) {
+      sig->return_type = std::make_shared<CanonicalType>(
+          substitute_template_args_impl(*type.function_sig->return_type, bindings));
+    }
+    for (const auto& param : type.function_sig->params) {
+      sig->params.push_back(substitute_template_args_impl(param, bindings));
+    }
+    out.function_sig = std::move(sig);
+  }
+  return out;
 }
 
 std::string canonical_type_kind_str(CanonicalTypeKind kind) {
@@ -401,6 +449,12 @@ std::string format_canonical_type(const CanonicalType& type) {
   return result;
 }
 
+std::string format_template_arg(const CanonicalTemplateArg& arg) {
+  if (arg.type) return format_canonical_type(*arg.type);
+  if (arg.integral_value) return std::to_string(*arg.integral_value);
+  return "?";
+}
+
 std::string format_canonical_result(const SemaCanonicalResult& result) {
   std::string out;
   out += "=== Canonical Symbols ===\n";
@@ -411,15 +465,67 @@ std::string format_canonical_result(const SemaCanonicalResult& result) {
       case CanonicalSymbolKind::Type: out += "  type "; break;
     }
     out += sym.source_name;
+    out += " : ";
+    if (!sym.template_params.empty()) {
+      out += "consteval (";
+      for (size_t i = 0; i < sym.template_params.size(); ++i) {
+        if (i > 0) out += ", ";
+        out += "typename ";
+        out += sym.template_params[i].name;
+      }
+      out += ") -> ";
+    }
+    if (!sym.template_args.empty()) {
+      out += "apply<";
+      for (size_t i = 0; i < sym.template_args.size(); ++i) {
+        if (i > 0) out += ", ";
+        out += format_template_arg(sym.template_args[i]);
+      }
+      out += "> ";
+    }
     if (sym.type) {
-      out += " : ";
       out += format_canonical_type(*sym.type);
+    } else {
+      out += "<null>";
+    }
+    if (sym.linkage == LanguageLinkage::C) {
+      out += " [extern \"C\"]";
     }
     out += "\n";
   }
   out += "=== Resolved Type Table (" +
          std::to_string(result.resolved_types.types.size()) + " entries) ===\n";
   return out;
+}
+
+CanonicalType substitute_template_args(
+    const CanonicalType& type,
+    const std::vector<CanonicalTemplateParam>& params,
+    const std::vector<CanonicalTemplateArg>& args) {
+  std::unordered_map<std::string, CanonicalTemplateArg> bindings;
+  const size_t count = std::min(params.size(), args.size());
+  for (size_t i = 0; i < count; ++i) {
+    bindings.emplace(params[i].name, args[i]);
+  }
+  return substitute_template_args_impl(type, bindings);
+}
+
+CanonicalSymbol instantiate_symbol(
+    const CanonicalSymbol& sym,
+    const std::vector<CanonicalTemplateArg>& args) {
+  CanonicalSymbol instantiated = sym;
+  if (!sym.template_params.empty() && sym.type) {
+    instantiated.type = std::make_shared<CanonicalType>(
+        substitute_template_args(*sym.type, sym.template_params, args));
+  }
+  const size_t consumed = std::min(sym.template_params.size(), args.size());
+  instantiated.template_args.insert(instantiated.template_args.end(),
+                                    args.begin(), args.begin() + consumed);
+  if (consumed > 0 && consumed <= instantiated.template_params.size()) {
+    instantiated.template_params.erase(instantiated.template_params.begin(),
+                                       instantiated.template_params.begin() + consumed);
+  }
+  return instantiated;
 }
 
 // ── Phase 3: callable/prototype helpers ──────────────────────────────────────

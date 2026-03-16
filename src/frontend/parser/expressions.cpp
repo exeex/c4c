@@ -604,7 +604,36 @@ Node* Parser::parse_primary() {
             return make_int_lit(result, ln);
         }
         consume();
-        return parse_postfix(make_var(nm, ln));
+        Node* ident = make_var(nm, ln);
+        if (is_cpp_mode() && check(TokenKind::Less)) {
+            int save_pos = pos_;
+            consume();  // <
+            std::vector<TypeSpec> template_args;
+            bool ok = true;
+            while (!at_end() && !check(TokenKind::Greater)) {
+                if (!is_type_start()) {
+                    ok = false;
+                    break;
+                }
+                template_args.push_back(parse_type_name());
+                if (!match(TokenKind::Comma)) break;
+            }
+            if (ok && check(TokenKind::Greater)) {
+                consume();
+                if (check(TokenKind::LParen) && !template_args.empty()) {
+                    ident->n_template_args = (int)template_args.size();
+                    ident->template_arg_types = arena_.alloc_array<TypeSpec>(ident->n_template_args);
+                    for (int i = 0; i < ident->n_template_args; ++i) {
+                        ident->template_arg_types[i] = template_args[i];
+                    }
+                } else {
+                    pos_ = save_pos;
+                }
+            } else {
+                pos_ = save_pos;
+            }
+        }
+        return parse_postfix(ident);
     }
 
     // _Generic selection
