@@ -254,6 +254,8 @@ struct AssignExpr {
 struct CastExpr {
   QualType to_type{};
   ExprId expr{};
+  /// Phase C: fn_ptr signature when cast target is a callable type.
+  std::optional<FnPtrSig> fn_ptr_sig;
 };
 
 struct CallExpr {
@@ -513,6 +515,8 @@ struct Function {
   std::vector<Block> blocks;
   BlockId entry{};
   SourceSpan span{};
+  /// Phase C: fn_ptr signature of the return type when it is callable.
+  std::optional<FnPtrSig> ret_fn_ptr_sig;
 
   Block* find_block(BlockId id) {
     auto it = std::find_if(

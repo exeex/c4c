@@ -1756,6 +1756,25 @@ const FnPtrSig* HirEmitter::resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& ca
     if (const auto* t = std::get_if<TernaryExpr>(&callee_e.payload)) {
       return resolve_callee_fn_ptr_sig(ctx, get_expr(t->then_expr));
     }
+    // Phase C slice 2: CastExpr — use the cast target's fn_ptr_sig.
+    if (const auto* c = std::get_if<CastExpr>(&callee_e.payload)) {
+      if (c->fn_ptr_sig) return &*c->fn_ptr_sig;
+    }
+    // Phase C slice 2: IndexExpr — recurse on base (array/ptr of fn_ptrs).
+    if (const auto* idx = std::get_if<IndexExpr>(&callee_e.payload)) {
+      return resolve_callee_fn_ptr_sig(ctx, get_expr(idx->base));
+    }
+    // Phase C slice 2: CallExpr — look up called function's ret_fn_ptr_sig.
+    if (const auto* call = std::get_if<CallExpr>(&callee_e.payload)) {
+      const Expr& inner_callee = get_expr(call->callee);
+      if (const auto* dr = std::get_if<DeclRef>(&inner_callee.payload)) {
+        const auto fit = mod_.fn_index.find(dr->name);
+        if (fit != mod_.fn_index.end() && fit->second.value < mod_.functions.size()) {
+          const Function& target = mod_.functions[fit->second.value];
+          if (target.ret_fn_ptr_sig) return &*target.ret_fn_ptr_sig;
+        }
+      }
+    }
     return nullptr;
   }
 

@@ -152,6 +152,11 @@ CanonicalType canonicalize_fn_ptr_type(const Node* decl_like_node) {
   TypeSpec return_ts = decl_like_node->type;
   if (return_ts.ptr_level > 0) --return_ts.ptr_level;
   return_ts.is_fn_ptr = false;
+  // Strip declarator array dims — they belong to the variable, not the fn_ptr return type.
+  return_ts.array_rank = 0;
+  return_ts.array_size = -1;
+  for (int i = 0; i < 8; ++i) return_ts.array_dims[i] = -1;
+  return_ts.is_ptr_to_array = false;
   CanonicalType return_type = canonicalize_type(return_ts);
   std::vector<CanonicalType> params =
       canonicalize_param_types(decl_like_node->fn_ptr_params, decl_like_node->n_fn_ptr_params);

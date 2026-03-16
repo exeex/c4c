@@ -296,6 +296,8 @@ Node* Parser::parse_top_level() {
         }
         skip_attributes();
     }
+    // Phase C: save the return-type typedef name for fn_ptr propagation to NK_FUNCTION.
+    const std::string ret_typedef_name = last_resolved_typedef_;
 
     auto is_incomplete_object_type = [&](const TypeSpec& ts) -> bool {
         if (ts.ptr_level > 0) return false;
@@ -508,6 +510,10 @@ Node* Parser::parse_top_level() {
                 fn->params = arena_.alloc_array<Node*>(fn->n_params);
                 for (int i = 0; i < fn->n_params; ++i) fn->params[i] = fptr_fn_params[i];
             }
+            // Phase C: propagate return type fn_ptr params.
+            fn->fn_ptr_params   = decl_fn_ptr_params;
+            fn->n_fn_ptr_params = decl_n_fn_ptr_params;
+            fn->fn_ptr_variadic = decl_fn_ptr_variadic;
             return fn;
         }
         // Function declaration (no body): consume semicolon and return
@@ -526,6 +532,10 @@ Node* Parser::parse_top_level() {
             fn->params = arena_.alloc_array<Node*>(fn->n_params);
             for (int i = 0; i < fn->n_params; ++i) fn->params[i] = fptr_fn_params[i];
         }
+        // Phase C: propagate return type fn_ptr params.
+        fn->fn_ptr_params   = decl_fn_ptr_params;
+        fn->n_fn_ptr_params = decl_n_fn_ptr_params;
+        fn->fn_ptr_variadic = decl_fn_ptr_variadic;
         return fn;
     }
 
@@ -632,6 +642,18 @@ Node* Parser::parse_top_level() {
             }
         }
 
+        // Phase C: helper lambda to propagate return type fn_ptr params to NK_FUNCTION.
+        auto propagate_ret_fn_ptr = [&](Node* fn) {
+            if (ts.is_fn_ptr && !ret_typedef_name.empty()) {
+                auto tdit = typedef_fn_ptr_info_.find(ret_typedef_name);
+                if (tdit != typedef_fn_ptr_info_.end()) {
+                    fn->fn_ptr_params   = tdit->second.params;
+                    fn->n_fn_ptr_params = tdit->second.n_params;
+                    fn->fn_ptr_variadic = tdit->second.variadic;
+                }
+            }
+        };
+
         if (check(TokenKind::LBrace)) {
             // Function definition
             bool saved_top = parsing_top_level_context_;
@@ -652,6 +674,7 @@ Node* Parser::parse_top_level() {
                 fn->params = arena_.alloc_array<Node*>(fn->n_params);
                 for (int i = 0; i < fn->n_params; ++i) fn->params[i] = params[i];
             }
+            propagate_ret_fn_ptr(fn);
             return fn;
         }
 
@@ -671,6 +694,7 @@ Node* Parser::parse_top_level() {
             fn->params = arena_.alloc_array<Node*>(fn->n_params);
             for (int i = 0; i < fn->n_params; ++i) fn->params[i] = params[i];
         }
+        propagate_ret_fn_ptr(fn);
         return fn;
     }
 

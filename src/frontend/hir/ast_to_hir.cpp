@@ -542,6 +542,11 @@ class Lowerer {
       ret_ts.ptr_level -= 1;
     }
     ret_ts.is_fn_ptr = false;
+    // Strip declarator array dims — they belong to the variable, not the fn_ptr return type.
+    ret_ts.array_rank = 0;
+    ret_ts.array_size = -1;
+    for (int i = 0; i < 8; ++i) ret_ts.array_dims[i] = -1;
+    ret_ts.is_ptr_to_array = false;
     sig.return_type = qtype_from(ret_ts);
     sig.variadic = n->fn_ptr_variadic;
     sig.unspecified_params = (n->n_fn_ptr_params == 0 && !n->fn_ptr_variadic);
@@ -955,6 +960,27 @@ class Lowerer {
     fn.id = next_fn_id();
     fn.name = fn_node->name ? fn_node->name : "<anon_fn>";
     fn.return_type = qtype_from(fn_node->type);
+    // Phase C slice 2: build fn_ptr_sig for the return type when it is callable.
+    // Cannot use fn_ptr_sig_from_decl_node(fn_node) because that would return
+    // the function's own sig, not the return type's fn_ptr sig.
+    if (fn_node->type.is_fn_ptr && fn_node->n_fn_ptr_params > 0) {
+      FnPtrSig ret_sig{};
+      TypeSpec ret_ts = fn_node->type;
+      if (ret_ts.ptr_level > 0) --ret_ts.ptr_level;
+      ret_ts.is_fn_ptr = false;
+      ret_ts.array_rank = 0;
+      ret_ts.array_size = -1;
+      for (int i = 0; i < 8; ++i) ret_ts.array_dims[i] = -1;
+      ret_sig.return_type = qtype_from(ret_ts);
+      ret_sig.variadic = fn_node->fn_ptr_variadic;
+      ret_sig.unspecified_params = (fn_node->n_fn_ptr_params == 0 && !fn_node->fn_ptr_variadic);
+      for (int i = 0; i < fn_node->n_fn_ptr_params; ++i) {
+        const Node* p = fn_node->fn_ptr_params ? fn_node->fn_ptr_params[i] : nullptr;
+        if (!p) continue;
+        ret_sig.params.push_back(qtype_from(p->type, ValueCategory::LValue));
+      }
+      fn.ret_fn_ptr_sig = std::move(ret_sig);
+    }
     fn.linkage = {fn_node->is_static, fn_node->is_extern || fn_node->body == nullptr, fn_node->is_inline,
                    weak_symbols_.count(fn.name) > 0, static_cast<Visibility>(fn_node->visibility)};
     fn.attrs.variadic = fn_node->variadic;
@@ -2837,6 +2863,10 @@ class Lowerer {
         CastExpr c{};
         c.to_type = qtype_from(n->type);
         c.expr = lower_expr(ctx, n->left);
+        // Phase C: build fn_ptr_sig for casts to callable types.
+        if (n->type.is_fn_ptr) {
+          c.fn_ptr_sig = fn_ptr_sig_from_decl_node(n);
+        }
         return append_expr(n, c, n->type);
       }
       case NK_CALL:

@@ -531,6 +531,15 @@ Node* Parser::parse_primary() {
                 Node* n = make_node(NK_CAST, ln);
                 n->type = cast_ts;
                 n->left = operand;
+                // Phase C: propagate fn_ptr params from typedef onto cast node.
+                if (cast_ts.is_fn_ptr && !last_resolved_typedef_.empty()) {
+                    auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
+                    if (tdit != typedef_fn_ptr_info_.end()) {
+                        n->fn_ptr_params = tdit->second.params;
+                        n->n_fn_ptr_params = tdit->second.n_params;
+                        n->fn_ptr_variadic = tdit->second.variadic;
+                    }
+                }
                 return n;
             } else {
                 // Not a type name after all — restore and parse as expression
