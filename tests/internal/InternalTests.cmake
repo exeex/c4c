@@ -46,6 +46,7 @@ set(CPP_POSITIVE_RUNTIME_STEMS
     consteval_template
     constexpr_var
     constexpr_if
+    constexpr_local
     extern_c
     template_chain
     template_func

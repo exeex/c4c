@@ -66,20 +66,84 @@ int int_bits_local(TypeBase b) {
   }
 }
 
-std::optional<long long> apply_integer_cast_local(long long value, const TypeSpec& ts) {
+ConstValue apply_integer_cast(long long value, const TypeSpec& ts) {
   if (ts.ptr_level != 0 || ts.array_rank != 0 || !is_any_int_base_local(ts.base)) {
-    return value;
+    return ConstValue::make_int(value);
   }
   const int bits = int_bits_local(ts.base);
-  if (bits <= 0) return value;
-  if (bits >= 64) return value;
+  if (bits <= 0 || bits >= 64) return ConstValue::make_int(value);
 
   const unsigned long long mask = (1ULL << bits) - 1;
   const unsigned long long uv = static_cast<unsigned long long>(value) & mask;
   if (is_signed_int_base_local(ts.base) && bits > 1 && (uv >> (bits - 1))) {
-    return static_cast<long long>(uv | ~mask);
+    return ConstValue::make_int(static_cast<long long>(uv | ~mask));
   }
-  return static_cast<long long>(uv);
+  return ConstValue::make_int(static_cast<long long>(uv));
+}
+
+ConstEvalResult eval_impl(const Node* n, const ConstEvalEnv& env) {
+  if (!n) return ConstEvalResult::failure();
+  switch (n->kind) {
+    case NK_INT_LIT:
+    case NK_CHAR_LIT:
+      return ConstEvalResult::success(ConstValue::make_int(n->ival));
+    case NK_VAR: {
+      if (n->name && n->name[0]) {
+        auto v = env.lookup(n->name);
+        if (v) return ConstEvalResult::success(ConstValue::make_int(*v));
+      }
+      return ConstEvalResult::failure();
+    }
+    case NK_CAST: {
+      auto r = eval_impl(n->left, env);
+      if (!r.ok()) return r;
+      return ConstEvalResult::success(apply_integer_cast(r.as_int(), n->type));
+    }
+    case NK_UNARY: {
+      auto r = eval_impl(n->left, env);
+      if (!r.ok() || !n->op) return ConstEvalResult::failure();
+      long long v = r.as_int();
+      if (std::strcmp(n->op, "+") == 0) return ConstEvalResult::success(ConstValue::make_int(v));
+      if (std::strcmp(n->op, "-") == 0) return ConstEvalResult::success(ConstValue::make_int(-v));
+      if (std::strcmp(n->op, "~") == 0) return ConstEvalResult::success(ConstValue::make_int(~v));
+      if (std::strcmp(n->op, "!") == 0) return ConstEvalResult::success(ConstValue::make_int(!v));
+      return ConstEvalResult::failure();
+    }
+    case NK_BINOP: {
+      auto lr = eval_impl(n->left, env);
+      auto rr = eval_impl(n->right, env);
+      if (!lr.ok() || !rr.ok() || !n->op) return ConstEvalResult::failure();
+      long long l = lr.as_int(), r = rr.as_int();
+      long long result;
+      if (std::strcmp(n->op, "+") == 0) result = l + r;
+      else if (std::strcmp(n->op, "-") == 0) result = l - r;
+      else if (std::strcmp(n->op, "*") == 0) result = l * r;
+      else if (std::strcmp(n->op, "/") == 0) result = (r == 0) ? 0LL : (l / r);
+      else if (std::strcmp(n->op, "%") == 0) result = (r == 0) ? 0LL : (l % r);
+      else if (std::strcmp(n->op, "<<") == 0) result = l << r;
+      else if (std::strcmp(n->op, ">>") == 0) result = l >> r;
+      else if (std::strcmp(n->op, "&") == 0) result = l & r;
+      else if (std::strcmp(n->op, "|") == 0) result = l | r;
+      else if (std::strcmp(n->op, "^") == 0) result = l ^ r;
+      else if (std::strcmp(n->op, "<") == 0) result = static_cast<long long>(l < r);
+      else if (std::strcmp(n->op, "<=") == 0) result = static_cast<long long>(l <= r);
+      else if (std::strcmp(n->op, ">") == 0) result = static_cast<long long>(l > r);
+      else if (std::strcmp(n->op, ">=") == 0) result = static_cast<long long>(l >= r);
+      else if (std::strcmp(n->op, "==") == 0) result = static_cast<long long>(l == r);
+      else if (std::strcmp(n->op, "!=") == 0) result = static_cast<long long>(l != r);
+      else if (std::strcmp(n->op, "&&") == 0) result = static_cast<long long>(l && r);
+      else if (std::strcmp(n->op, "||") == 0) result = static_cast<long long>(l || r);
+      else return ConstEvalResult::failure();
+      return ConstEvalResult::success(ConstValue::make_int(result));
+    }
+    case NK_TERNARY: {
+      auto cr = eval_impl(n->cond ? n->cond : n->left, env);
+      if (!cr.ok()) return ConstEvalResult::failure();
+      return eval_impl(cr.as_int() ? n->then_ : n->else_, env);
+    }
+    default:
+      return ConstEvalResult::failure();
+  }
 }
 
 std::string decode_c_escaped_bytes_local(const std::string& raw) {
@@ -132,6 +196,27 @@ std::string decode_c_escaped_bytes_local(const std::string& raw) {
 }
 
 }  // namespace
+
+// ── Unified evaluator entry point ────────────────────────────────────────────
+
+ConstEvalResult evaluate_constant_expr(const Node* n, const ConstEvalEnv& env) {
+  return eval_impl(n, env);
+}
+
+// ── Legacy API (thin wrapper) ────────────────────────────────────────────────
+
+std::optional<long long> eval_int_const_expr(
+    const Node* n,
+    const std::unordered_map<std::string, long long>& enum_consts,
+    const std::unordered_map<std::string, long long>* named_consts) {
+  ConstEvalEnv env;
+  env.enum_consts = &enum_consts;
+  env.named_consts = named_consts;
+  auto result = evaluate_constant_expr(n, env);
+  return result.as_optional_int();
+}
+
+// ── String literal helpers ───────────────────────────────────────────────────
 
 std::vector<long long> decode_string_literal_values(const char* sval, bool wide) {
   std::vector<long long> out;
@@ -202,74 +287,6 @@ std::string bytes_from_string_literal(const StringLiteral& sl) {
     bytes = bytes.substr(2, bytes.size() - 3);
   }
   return decode_c_escaped_bytes_local(bytes);
-}
-
-std::optional<long long> eval_int_const_expr(
-    const Node* n,
-    const std::unordered_map<std::string, long long>& enum_consts,
-    const std::unordered_map<std::string, long long>* named_consts) {
-  if (!n) return std::nullopt;
-  switch (n->kind) {
-    case NK_INT_LIT:
-    case NK_CHAR_LIT:
-      return n->ival;
-    case NK_VAR: {
-      if (n->name && n->name[0]) {
-        auto it = enum_consts.find(n->name);
-        if (it != enum_consts.end()) return it->second;
-        if (named_consts) {
-          auto nit = named_consts->find(n->name);
-          if (nit != named_consts->end()) return nit->second;
-        }
-      }
-      return std::nullopt;
-    }
-    case NK_CAST:
-      if (auto v = eval_int_const_expr(n->left, enum_consts, named_consts)) {
-        return apply_integer_cast_local(*v, n->type);
-      }
-      return std::nullopt;
-    case NK_UNARY: {
-      auto v = eval_int_const_expr(n->left, enum_consts, named_consts);
-      if (!v || !n->op) return std::nullopt;
-      if (std::strcmp(n->op, "+") == 0) return *v;
-      if (std::strcmp(n->op, "-") == 0) return -*v;
-      if (std::strcmp(n->op, "~") == 0) return ~*v;
-      if (std::strcmp(n->op, "!") == 0) return static_cast<long long>(!*v);
-      return std::nullopt;
-    }
-    case NK_BINOP: {
-      auto l = eval_int_const_expr(n->left, enum_consts, named_consts);
-      auto r = eval_int_const_expr(n->right, enum_consts, named_consts);
-      if (!l || !r || !n->op) return std::nullopt;
-      if (std::strcmp(n->op, "+") == 0) return *l + *r;
-      if (std::strcmp(n->op, "-") == 0) return *l - *r;
-      if (std::strcmp(n->op, "*") == 0) return *l * *r;
-      if (std::strcmp(n->op, "/") == 0) return (*r == 0) ? 0LL : (*l / *r);
-      if (std::strcmp(n->op, "%") == 0) return (*r == 0) ? 0LL : (*l % *r);
-      if (std::strcmp(n->op, "<<") == 0) return *l << *r;
-      if (std::strcmp(n->op, ">>") == 0) return *l >> *r;
-      if (std::strcmp(n->op, "&") == 0) return *l & *r;
-      if (std::strcmp(n->op, "|") == 0) return *l | *r;
-      if (std::strcmp(n->op, "^") == 0) return *l ^ *r;
-      if (std::strcmp(n->op, "<") == 0) return static_cast<long long>(*l < *r);
-      if (std::strcmp(n->op, "<=") == 0) return static_cast<long long>(*l <= *r);
-      if (std::strcmp(n->op, ">") == 0) return static_cast<long long>(*l > *r);
-      if (std::strcmp(n->op, ">=") == 0) return static_cast<long long>(*l >= *r);
-      if (std::strcmp(n->op, "==") == 0) return static_cast<long long>(*l == *r);
-      if (std::strcmp(n->op, "!=") == 0) return static_cast<long long>(*l != *r);
-      if (std::strcmp(n->op, "&&") == 0) return static_cast<long long>(*l && *r);
-      if (std::strcmp(n->op, "||") == 0) return static_cast<long long>(*l || *r);
-      return std::nullopt;
-    }
-    case NK_TERNARY: {
-      auto c = eval_int_const_expr(n->cond ? n->cond : n->left, enum_consts, named_consts);
-      if (!c) return std::nullopt;
-      return eval_int_const_expr(*c ? n->then_ : n->else_, enum_consts, named_consts);
-    }
-    default:
-      return std::nullopt;
-  }
 }
 
 }  // namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir

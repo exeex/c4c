@@ -157,6 +157,7 @@ Node* Parser::parse_local_decl() {
 
         Node* d = make_node(NK_DECL, ln);
         d->type      = ts;
+        if (is_constexpr) d->type.is_const = true;
         d->name      = vname;
         d->init      = init_node;
         d->is_static = is_static;

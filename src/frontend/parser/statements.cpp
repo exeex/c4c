@@ -420,6 +420,11 @@ Node* Parser::parse_stmt() {
         return n;
     }
 
+    // constexpr / consteval local declarations (C++ mode)
+    if (is_cpp_mode() && (check(TokenKind::KwConstexpr) || check(TokenKind::KwConsteval))) {
+        return parse_local_decl();
+    }
+
     // Local declaration?
     if (is_type_start()) {
         return parse_local_decl();

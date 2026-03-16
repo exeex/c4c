@@ -1652,10 +1652,11 @@ class Lowerer {
     }
     InitScalar s{};
     if (!ctx && allow_named_const_fold) {
-      if (auto cv = eval_int_const_expr(n, enum_consts_, &const_int_bindings_)) {
+      ConstEvalEnv env{&enum_consts_, &const_int_bindings_};
+      if (auto r = evaluate_constant_expr(n, env); r.ok()) {
         TypeSpec ts = n->type;
         if (ts.base == TB_VOID) ts.base = TB_INT;
-        s.expr = append_expr(n, IntLiteral{*cv, false}, ts);
+        s.expr = append_expr(n, IntLiteral{r.as_int(), false}, ts);
         return s;
       }
     }
@@ -2591,8 +2592,10 @@ class Lowerer {
         if (n->left) {
           if (n->left->kind == NK_INT_LIT) {
             case_val = n->left->ival;
-          } else if (auto v = eval_int_const_expr(n->left, enum_consts_)) {
-            case_val = *v;
+          } else {
+            ConstEvalEnv env{&enum_consts_};
+            if (auto r = evaluate_constant_expr(n->left, env); r.ok())
+              case_val = r.as_int();
           }
         }
         if (!ctx.switch_stack.empty()) {
@@ -2616,13 +2619,16 @@ class Lowerer {
       }
       case NK_CASE_RANGE: {
         long long lo = 0, hi = 0;
-        if (n->left) {
-          if (n->left->kind == NK_INT_LIT) lo = n->left->ival;
-          else if (auto v = eval_int_const_expr(n->left, enum_consts_)) lo = *v;
-        }
-        if (n->right) {
-          if (n->right->kind == NK_INT_LIT) hi = n->right->ival;
-          else if (auto v = eval_int_const_expr(n->right, enum_consts_)) hi = *v;
+        {
+          ConstEvalEnv env{&enum_consts_};
+          if (n->left) {
+            if (n->left->kind == NK_INT_LIT) lo = n->left->ival;
+            else if (auto r = evaluate_constant_expr(n->left, env); r.ok()) lo = r.as_int();
+          }
+          if (n->right) {
+            if (n->right->kind == NK_INT_LIT) hi = n->right->ival;
+            else if (auto r = evaluate_constant_expr(n->right, env); r.ok()) hi = r.as_int();
+          }
         }
         if (!ctx.switch_stack.empty()) {
           const BlockId case_b = create_block(ctx);
@@ -2954,8 +2960,9 @@ class Lowerer {
       }
       case NK_TERNARY: {
         if (const Node* cond = (n->cond ? n->cond : n->left)) {
-          if (auto cv = eval_int_const_expr(cond, enum_consts_)) {
-            return lower_expr(ctx, (*cv != 0) ? n->then_ : n->else_);
+          ConstEvalEnv env{&enum_consts_};
+          if (auto r = evaluate_constant_expr(cond, env); r.ok()) {
+            return lower_expr(ctx, (r.as_int() != 0) ? n->then_ : n->else_);
           }
         }
         // If either branch contains a statement expression, lower to
