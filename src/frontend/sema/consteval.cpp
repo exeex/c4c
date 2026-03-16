@@ -182,18 +182,39 @@ ConstEvalResult eval_impl(const Node* n, const ConstEvalEnv& env) {
           std::string("unsupported unary operator '") + n->op + "' in constant expression");
     }
     case NK_BINOP: {
+      if (!n->op) return ConstEvalResult::failure("binary operator missing");
+      if (std::strcmp(n->op, "&&") == 0) {
+        auto lr = eval_impl(n->left, env);
+        if (!lr.ok()) return lr;
+        if (!lr.as_int()) return ConstEvalResult::success(ConstValue::make_int(0));
+        auto rr = eval_impl(n->right, env);
+        if (!rr.ok()) return rr;
+        return ConstEvalResult::success(ConstValue::make_int(static_cast<long long>(!!rr.as_int())));
+      }
+      if (std::strcmp(n->op, "||") == 0) {
+        auto lr = eval_impl(n->left, env);
+        if (!lr.ok()) return lr;
+        if (lr.as_int()) return ConstEvalResult::success(ConstValue::make_int(1));
+        auto rr = eval_impl(n->right, env);
+        if (!rr.ok()) return rr;
+        return ConstEvalResult::success(ConstValue::make_int(static_cast<long long>(!!rr.as_int())));
+      }
       auto lr = eval_impl(n->left, env);
       auto rr = eval_impl(n->right, env);
       if (!lr.ok()) return lr;
       if (!rr.ok()) return rr;
-      if (!n->op) return ConstEvalResult::failure("binary operator missing");
       long long l = lr.as_int(), r = rr.as_int();
       long long result;
       if (std::strcmp(n->op, "+") == 0) result = l + r;
       else if (std::strcmp(n->op, "-") == 0) result = l - r;
       else if (std::strcmp(n->op, "*") == 0) result = l * r;
-      else if (std::strcmp(n->op, "/") == 0) result = (r == 0) ? 0LL : (l / r);
-      else if (std::strcmp(n->op, "%") == 0) result = (r == 0) ? 0LL : (l % r);
+      else if (std::strcmp(n->op, "/") == 0) {
+        if (r == 0) return ConstEvalResult::failure("division by zero in constant expression");
+        result = l / r;
+      } else if (std::strcmp(n->op, "%") == 0) {
+        if (r == 0) return ConstEvalResult::failure("modulo by zero in constant expression");
+        result = l % r;
+      }
       else if (std::strcmp(n->op, "<<") == 0) result = l << r;
       else if (std::strcmp(n->op, ">>") == 0) result = l >> r;
       else if (std::strcmp(n->op, "&") == 0) result = l & r;
@@ -205,8 +226,6 @@ ConstEvalResult eval_impl(const Node* n, const ConstEvalEnv& env) {
       else if (std::strcmp(n->op, ">=") == 0) result = static_cast<long long>(l >= r);
       else if (std::strcmp(n->op, "==") == 0) result = static_cast<long long>(l == r);
       else if (std::strcmp(n->op, "!=") == 0) result = static_cast<long long>(l != r);
-      else if (std::strcmp(n->op, "&&") == 0) result = static_cast<long long>(l && r);
-      else if (std::strcmp(n->op, "||") == 0) result = static_cast<long long>(l || r);
       else return ConstEvalResult::failure(
           std::string("unsupported binary operator '") + n->op + "' in constant expression");
       return ConstEvalResult::success(ConstValue::make_int(result));
@@ -353,18 +372,39 @@ ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
     }
 
     case NK_BINOP: {
+      if (!n->op) return ConstEvalResult::failure("binary operator missing");
+      if (std::strcmp(n->op, "&&") == 0) {
+        auto lr = interp_expr(n->left, locals, outer_env, consteval_fns, depth);
+        if (!lr.ok()) return lr;
+        if (!lr.as_int()) return ConstEvalResult::success(ConstValue::make_int(0));
+        auto rr = interp_expr(n->right, locals, outer_env, consteval_fns, depth);
+        if (!rr.ok()) return rr;
+        return ConstEvalResult::success(ConstValue::make_int(static_cast<long long>(!!rr.as_int())));
+      }
+      if (std::strcmp(n->op, "||") == 0) {
+        auto lr = interp_expr(n->left, locals, outer_env, consteval_fns, depth);
+        if (!lr.ok()) return lr;
+        if (lr.as_int()) return ConstEvalResult::success(ConstValue::make_int(1));
+        auto rr = interp_expr(n->right, locals, outer_env, consteval_fns, depth);
+        if (!rr.ok()) return rr;
+        return ConstEvalResult::success(ConstValue::make_int(static_cast<long long>(!!rr.as_int())));
+      }
       auto lr = interp_expr(n->left, locals, outer_env, consteval_fns, depth);
       auto rr = interp_expr(n->right, locals, outer_env, consteval_fns, depth);
       if (!lr.ok()) return lr;
       if (!rr.ok()) return rr;
-      if (!n->op) return ConstEvalResult::failure("binary operator missing");
       long long l = lr.as_int(), r = rr.as_int();
       long long result;
       if (std::strcmp(n->op, "+") == 0) result = l + r;
       else if (std::strcmp(n->op, "-") == 0) result = l - r;
       else if (std::strcmp(n->op, "*") == 0) result = l * r;
-      else if (std::strcmp(n->op, "/") == 0) result = (r == 0) ? 0LL : (l / r);
-      else if (std::strcmp(n->op, "%") == 0) result = (r == 0) ? 0LL : (l % r);
+      else if (std::strcmp(n->op, "/") == 0) {
+        if (r == 0) return ConstEvalResult::failure("division by zero in consteval context");
+        result = l / r;
+      } else if (std::strcmp(n->op, "%") == 0) {
+        if (r == 0) return ConstEvalResult::failure("modulo by zero in consteval context");
+        result = l % r;
+      }
       else if (std::strcmp(n->op, "<<") == 0) result = l << r;
       else if (std::strcmp(n->op, ">>") == 0) result = l >> r;
       else if (std::strcmp(n->op, "&") == 0) result = l & r;
@@ -376,8 +416,6 @@ ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
       else if (std::strcmp(n->op, ">=") == 0) result = static_cast<long long>(l >= r);
       else if (std::strcmp(n->op, "==") == 0) result = static_cast<long long>(l == r);
       else if (std::strcmp(n->op, "!=") == 0) result = static_cast<long long>(l != r);
-      else if (std::strcmp(n->op, "&&") == 0) result = static_cast<long long>(l && r);
-      else if (std::strcmp(n->op, "||") == 0) result = static_cast<long long>(l || r);
       else return ConstEvalResult::failure(
           std::string("unsupported binary operator '") + n->op + "' in consteval context");
       return ConstEvalResult::success(ConstValue::make_int(result));
@@ -426,7 +464,8 @@ ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
 
     case NK_COMMA_EXPR: {
       // left, right — evaluate both, return right.
-      interp_expr(n->left, locals, outer_env, consteval_fns, depth);
+      auto left = interp_expr(n->left, locals, outer_env, consteval_fns, depth);
+      if (!left.ok()) return left;
       return interp_expr(n->right, locals, outer_env, consteval_fns, depth);
     }
 
@@ -454,9 +493,33 @@ StmtResult interp_block(const Node* block, ConstMap& locals,
                         int depth, int& steps) {
   if (!block) return {};
   if (block->kind == NK_BLOCK) {
+    const bool new_scope = (block->ival != 1);
+    std::unordered_map<std::string, std::optional<long long>> shadowed;
     for (int i = 0; i < block->n_children; ++i) {
+      if (new_scope) {
+        const Node* child = block->children[i];
+        if (child && child->kind == NK_DECL && child->name && !shadowed.count(child->name)) {
+          auto it = locals.find(child->name);
+          if (it != locals.end()) shadowed[child->name] = it->second;
+          else shadowed[child->name] = std::nullopt;
+        }
+      }
       auto r = interp_stmt(block->children[i], locals, outer_env, consteval_fns, depth, steps);
-      if (r.returned || r.did_break || r.did_continue) return r;
+      if (r.returned || r.did_break || r.did_continue) {
+        if (new_scope) {
+          for (const auto& [name, old] : shadowed) {
+            if (old) locals[name] = *old;
+            else locals.erase(name);
+          }
+        }
+        return r;
+      }
+    }
+    if (new_scope) {
+      for (const auto& [name, old] : shadowed) {
+        if (old) locals[name] = *old;
+        else locals.erase(name);
+      }
     }
     return {};
   }
@@ -556,7 +619,11 @@ StmtResult interp_stmt(const Node* n, ConstMap& locals,
         if (r.did_break) break;
         // update
         if (n->update) {
-          interp_expr(n->update, locals, outer_env, consteval_fns, depth);
+          auto ur = interp_expr(n->update, locals, outer_env, consteval_fns, depth);
+          if (!ur.ok())
+            return {true, false, false, ConstValue::unknown(),
+                    "for update is not a constant expression" +
+                    (ur.error.empty() ? std::string{} : ": " + ur.error)};
         }
         if (++steps > kMaxConstevalSteps)
           return {true, false, false, ConstValue::unknown(), "step limit exceeded in consteval evaluation"};
@@ -584,7 +651,11 @@ StmtResult interp_stmt(const Node* n, ConstMap& locals,
     case NK_EXPR_STMT: {
       // Expression statement: evaluate the expression for side effects.
       if (n->left) {
-        interp_expr(n->left, locals, outer_env, consteval_fns, depth);
+        auto r = interp_expr(n->left, locals, outer_env, consteval_fns, depth);
+        if (!r.ok())
+          return {true, false, false, ConstValue::unknown(),
+                  "expression statement is not a constant expression" +
+                  (r.error.empty() ? std::string{} : ": " + r.error)};
       }
       return {};
     }
@@ -600,7 +671,11 @@ StmtResult interp_stmt(const Node* n, ConstMap& locals,
 
     default:
       // Expression used as statement (e.g., assignment in for-init) — evaluate for side effects.
-      interp_expr(n, locals, outer_env, consteval_fns, depth);
+      if (auto r = interp_expr(n, locals, outer_env, consteval_fns, depth); !r.ok()) {
+        return {true, false, false, ConstValue::unknown(),
+                "statement is not a constant expression" +
+                (r.error.empty() ? std::string{} : ": " + r.error)};
+      }
       return {};
   }
 }

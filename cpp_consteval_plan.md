@@ -2,100 +2,86 @@
 
 ## Goal
 
-Build a real C++ subset constant-evaluation pipeline instead of treating `consteval` as a parser-only annotation.
+Build and stabilize a real C++ subset constant-evaluation pipeline for `consteval`, instead of treating it as a parser-only marker.
 
-Long-term target:
+## Status Summary
 
-- `consteval` functions are modeled as immediate functions
-- calls to immediate functions are evaluated during semantic analysis or an explicit constant-evaluation stage
-- named constant objects can participate in constant expressions
-- constant-evaluation results can be reused by:
-  - `constexpr` / `consteval` function calls
-  - `if constexpr`
-  - global `constexpr` initializers
-  - future template/type-trait queries
+### Completed
 
-Immediate target:
+- Parser support for `constexpr`, `consteval`, and `if constexpr`
+- AST flags for `is_constexpr` and `is_consteval`
+- Unified constant-expression entry point in [src/frontend/sema/consteval.cpp](/workspaces/c4c/src/frontend/sema/consteval.cpp)
+- Named constant lookup for:
+  - enum constants
+  - foldable global const bindings
+  - foldable local const/constexpr bindings
+  - consteval parameters and locals during interpretation
+- Consteval function-body interpretation for the current subset:
+  - locals
+  - block shadowing
+  - assignment
+  - `if`
+  - `for` / `while` / `do while`
+  - nested consteval calls
+  - template-substituted `sizeof(T)` / `alignof(T)`
+  - logical short-circuiting
+- Immediate-call enforcement in HIR lowering:
+  - consteval calls must fold at compile time
+  - non-constant arguments are rejected
+  - evaluation failure is a hard error
+  - taking the address of a consteval function is rejected
+- Regression coverage for the current implementation, including:
+  - [tests/internal/cpp/postive_case/consteval_func.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_func.cpp)
+  - [tests/internal/cpp/postive_case/consteval_interp.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_interp.cpp)
+  - [tests/internal/cpp/postive_case/consteval_mutable.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_mutable.cpp)
+  - [tests/internal/cpp/postive_case/consteval_call_resolution.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_call_resolution.cpp)
+  - [tests/internal/cpp/postive_case/consteval_recursive_fib.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_recursive_fib.cpp)
+  - [tests/internal/cpp/postive_case/consteval_template.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_template.cpp)
+  - [tests/internal/cpp/postive_case/consteval_template_sizeof.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_template_sizeof.cpp)
+  - [tests/internal/cpp/postive_case/consteval_block_scope.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_block_scope.cpp)
+  - [tests/internal/cpp/postive_case/consteval_short_circuit.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_short_circuit.cpp)
+  - [tests/internal/cpp/negative_case/bad_consteval_non_constant_arg.cpp](/workspaces/c4c/tests/internal/cpp/negative_case/bad_consteval_non_constant_arg.cpp)
+  - [tests/internal/cpp/negative_case/bad_consteval_non_constant_expr_stmt.cpp](/workspaces/c4c/tests/internal/cpp/negative_case/bad_consteval_non_constant_expr_stmt.cpp)
+  - [tests/internal/cpp/negative_case/bad_consteval_divide_by_zero.cpp](/workspaces/c4c/tests/internal/cpp/negative_case/bad_consteval_divide_by_zero.cpp)
+  - [tests/internal/cpp/negative_case/bad_consteval_addr_of.cpp](/workspaces/c4c/tests/internal/cpp/negative_case/bad_consteval_addr_of.cpp)
 
-- upgrade the current C-style integer constant-expression helper into a reusable constant-evaluation subsystem for the C++ subset
+### Remaining
 
-## Current State
+- Broaden the value domain beyond integer-like values where the subset needs it
+- Reuse the same engine more consistently for all `constexpr` and global-initializer paths
+- Tighten diagnostics and unsupported-AST handling so failures are precise and predictable
+- Expand coverage for edge cases that are still outside the supported subset
 
-### 1. Parser support already exists
+## Current Architecture
 
-The parser already accepts and preserves:
+### 1. Constant evaluation is now a real subsystem
 
-- `constexpr`
-- `consteval`
-- `if constexpr`
+The old integer-expression helper has been expanded into a reusable evaluator plus a small consteval interpreter.
 
-AST nodes already carry:
+Key files:
 
-- `is_constexpr`
-- `is_consteval`
-
-Relevant files:
-
-- [src/frontend/parser/ast.hpp](/workspaces/c4c/src/frontend/parser/ast.hpp)
-- [src/frontend/parser/declarations.cpp](/workspaces/c4c/src/frontend/parser/declarations.cpp)
-- [src/frontend/parser/statements.cpp](/workspaces/c4c/src/frontend/parser/statements.cpp)
-- [src/frontend/parser/types.cpp](/workspaces/c4c/src/frontend/parser/types.cpp)
-
-### 2. `src/frontend/sema/consteval.cpp` is currently a C-style constant-expression helper
-
-Today this file does **not** implement C++ `consteval` function semantics.
-
-What it currently does:
-
-- decodes string literal bytes
-- evaluates simple integer constant expressions over AST nodes
-- supports:
-  - integer / char literals
-  - unary operators
-  - binary operators
-  - ternary expressions
-  - cast passthrough
-- resolves named constants only for enum constants
-
-What it does **not** do yet:
-
-- evaluate ordinary named `const` / `constexpr` variables
-- interpret `consteval` function bodies
-- maintain an evaluation environment for locals/parameters
-- diagnose invalid non-constant immediate calls
-- prevent taking the address of a `consteval` function
-
-Relevant files:
-
+- [src/frontend/sema/consteval.hpp](/workspaces/c4c/src/frontend/sema/consteval.hpp)
 - [src/frontend/sema/consteval.cpp](/workspaces/c4c/src/frontend/sema/consteval.cpp)
-- [src/frontend/sema/validate.cpp](/workspaces/c4c/src/frontend/sema/validate.cpp)
+
+### 2. Immediate calls are enforced during lowering
+
+HIR lowering collects consteval function definitions, evaluates calls with constant arguments, and emits hard errors instead of runtime fallback.
+
+Key file:
+
 - [src/frontend/hir/ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
 
-### 3. C++ subset semantic layer is still mostly a pass-through
+### 3. Semantic validation already reuses part of the evaluator
 
-Current C++ extension hook is effectively empty:
+The same constant-evaluation entry point is already used for local const folding and switch-case constant checks.
 
-- [src/frontend/sema/sema.cpp](/workspaces/c4c/src/frontend/sema/sema.cpp)
+Key file:
 
-This means:
+- [src/frontend/sema/validate.cpp](/workspaces/c4c/src/frontend/sema/validate.cpp)
 
-- `consteval` is parsed and printed
-- but there is not yet a real immediate-function semantic pass
+## Architectural Direction
 
-### 4. Current behavior is closer to “ordinary function with a marker”
-
-Current positive cases such as:
-
-- [consteval_func.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_func.cpp)
-- [consteval_template.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_template.cpp)
-
-compile and run because the frontend still lowers them like ordinary functions.
-
-That is useful for parser bring-up, but it is not correct final `consteval` behavior.
-
-## Architectural Decision
-
-We should separate three concepts that are currently blurred together:
+We still want to keep these three concepts separate:
 
 1. constant expression evaluation
 
@@ -109,111 +95,57 @@ We should separate three concepts that are currently blurred together:
 
 - immediate-function policy saying a call must be evaluated in an immediate context
 
-This matters because:
+This remains important because:
 
 - not every constant expression comes from a `consteval` function
 - not every `constexpr` function call must be folded immediately
 - `consteval` is a semantic rule on calls, not just a flag on declarations
 
-## Problems To Solve
+## Recommended Follow-Up
 
-### A. Named constant propagation is incomplete
+### 1. Keep the explicit constant-evaluation domain and extend it carefully
 
-Examples that should eventually fold:
+Current value/result types are enough for the current arithmetic subset.
 
-```cpp
-const int x = 4;
-const int y = 5;
-const int z = x + y;
-```
-
-Today the existing helper can evaluate literals and enum constants, but not ordinary named constant objects like `x` and `y`.
-
-### B. Immediate-function calls are not modeled
-
-Examples that should become semantic rules:
-
-- a `consteval` call must be evaluated immediately
-- failure to evaluate should be a diagnostic
-- taking the address of a `consteval` function should be rejected
-- non-immediate contexts should not silently lower to runtime calls
-
-### C. `if constexpr` should consume the same constant-evaluation engine
-
-Right now `if constexpr` and ternary constant folding are partly handled ad hoc.
-
-We want one common source of truth for:
-
-- branch condition folding
-- named constant lookup
-- builtin constant queries
-- immediate call results
-
-### D. Global `constexpr` initialization needs end-to-end folding
-
-The plan should cover:
-
-- semantic evaluation of constant initializer expressions
-- conversion into global initializer form
-- stable behavior for `constexpr_var.cpp`
-
-## Recommended Design
-
-## 1. Introduce an explicit constant-evaluation domain
-
-Create a small value model, separate from raw AST nodes.
-
-Suggested types:
-
-- `ConstValue`
-- `ConstEvalResult`
-- `ConstEvalContext`
-- `ConstEvalEnv`
-
-Suggested `ConstValue` cases for the current subset:
+When extending further, keep the domain intentionally narrow:
 
 - integer
 - boolean
 - character
 - null pointer
-- string literal reference
 - invalid / unknown
 
-Keep the first version intentionally narrow.
-
-Do not try to support:
+Do not widen scope prematurely into:
 
 - heap objects
 - dynamic type / RTTI
 - virtual dispatch
 - arbitrary class object interpretation
 
-That matches the current subset boundaries.
+### 2. Continue unifying constant evaluation behind a single API
 
-## 2. Unify constant evaluation behind a single API
-
-Instead of multiple loosely related helpers, expose a single semantic API:
+The project should keep converging on:
 
 ```text
 evaluate_constant_expr(node, context) -> ConstEvalResult
 ```
 
-And thinner wrappers on top:
+With thinner wrappers on top:
 
 - `evaluate_ice(...)`
 - `evaluate_immediate_call(...)`
 - `evaluate_global_initializer(...)`
 
-This avoids duplicating logic between:
+This keeps logic from drifting between:
 
 - `validate.cpp`
 - `consteval.cpp`
 - `ast_to_hir.cpp`
 - future C++ semantic passes
 
-## 3. Add an environment for named constant objects
+### 3. Keep expanding named constant support only where the subset needs it
 
-To support:
+Already supported today:
 
 ```cpp
 const int x = 4;
@@ -221,20 +153,22 @@ const int y = 5;
 const int z = x + y;
 ```
 
-the evaluator needs bindings for names.
-
-Recommended environment sources:
+Current environment sources:
 
 - enum constants
-- global `const` / `constexpr` objects with constant initializers
-- local `const` / `constexpr` objects inside an active constant-evaluation frame
-- parameters bound during `consteval` / `constexpr` call interpretation
+- global constant bindings
+- local constant bindings
+- consteval frame locals and parameters
 
-The environment should be lexical and immutable per frame.
+Still worth preserving:
 
-## 4. Treat `consteval` calls as semantic evaluation requests
+- lexical lookup rules
+- clear frame boundaries
+- deterministic failure diagnostics
 
-When the analyzer sees a call to a function marked `is_consteval`:
+### 4. Keep treating `consteval` calls as semantic evaluation requests
+
+When the analyzer sees a call to a function marked `is_consteval`, the intended flow remains:
 
 - resolve the target function
 - create an evaluation frame
@@ -247,226 +181,45 @@ If evaluation fails:
 - emit a semantic error
 - do not silently fall back to runtime lowering
 
-This is the core change that turns `consteval` from an annotation into real behavior.
+### 5. Keep runtime codegen as an implementation detail, not the meaning
 
-## 5. Keep runtime codegen as a later policy decision
-
-For the subset, we may still choose to materialize the body as a normal function temporarily for debugging or transition purposes.
+For the subset, temporary implementation scaffolding is acceptable.
 
 But semantically:
 
-- the call result should come from constant evaluation
-- runtime lowering should be optional implementation scaffolding, not the meaning of `consteval`
-
-## Implementation Phases
-
-### Phase 1: strengthen the existing constant-expression helper
-
-Goal:
-
-- make the current helper useful for named constants and C++ subset folding without yet interpreting function bodies
-
-Tasks:
-
-1. Refactor `src/frontend/sema/consteval.cpp`
-
-- replace the current narrow helper interface with `ConstValue` / `ConstEvalResult`
-- preserve existing integer operator support
-
-2. Extend name lookup beyond enums
-
-- teach evaluator to resolve references to constant globals
-- support simple local constant bindings
-
-3. Replace duplicated integer-folding entry points where practical
-
-- migrate users in [src/frontend/sema/validate.cpp](/workspaces/c4c/src/frontend/sema/validate.cpp)
-- migrate users in [src/frontend/hir/ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
-
-4. Fix `constexpr_var.cpp`
-
-- make `base`, `offset`, and `answer` fold through named bindings
-
-Exit criteria:
-
-- `const int x = 4; const int y = 5; const int z = x + y;` folds correctly
-- `tests/internal/cpp/postive_case/constexpr_var.cpp` can move from frontend-only to runtime mode
-
-### Phase 2: add immediate-function interpretation
-
-Goal:
-
-- evaluate simple `consteval` functions instead of lowering them as ordinary runtime calls
-
-Tasks:
-
-1. Build a minimal function-body interpreter
-
-Support only the subset we already care about:
-
-- parameter references
-- local constant declarations
-- arithmetic expressions
-- `return`
-- simple `if` / `if constexpr`
-- calls to other constant-evaluable functions
-
-2. Add function-evaluation frames
-
-- map parameters to values
-- maintain local constant bindings
-- track return state
-
-3. Define failure modes
-
-Examples:
-
-- use of unsupported expression kind
-- read of non-constant object
-- missing return value
-- call to non-constant function from immediate context
-
-4. Hook call resolution
-
-- when lowering or validating a call to a `consteval` function, evaluate it first
-- replace the call with a constant result when successful
-
-Exit criteria:
-
-- `consteval_func.cpp` remains passing without relying on runtime semantics
-- simple chained immediate calls can be folded
-
-### Phase 3: enforce C++ subset `consteval` rules
-
-Goal:
-
-- stop accepting incorrect runtime behavior for immediate functions
-
-Tasks:
-
-1. Diagnose non-immediate calls
-
-- a `consteval` call that cannot be evaluated as a constant expression should be rejected
-
-2. Diagnose taking function address
-
-- reject `&f` when `f` is `consteval`
-
-3. Forbid runtime fallback
-
-- once semantic evaluation is required, codegen should not emit ordinary runtime call sites for failed immediate invocations
-
-4. Tighten declaration rules
-
-- reject invalid combinations as needed by the supported subset
-
-Exit criteria:
-
-- current success cases still pass
-- invalid `consteval` use becomes a semantic error instead of silently lowering
-
-### Phase 4: integrate with `if constexpr`, builtins, and templates
-
-Goal:
-
-- make the same evaluator power the rest of the C++ subset work
-
-Tasks:
-
-1. Route `if constexpr` condition folding through the unified evaluator
-
-2. Make builtin constant queries evaluator-aware
-
-Examples:
-
-- type-trait style builtins
-- `sizeof`
-- already-foldable parser/sema builtins
-
-3. Allow template-substituted constant evaluation
-
-- after template args are substituted, consteval/constexpr bodies should evaluate over the specialized environment
-
-Exit criteria:
-
-- `if constexpr` branch selection does not rely on ad hoc logic
-- template + consteval positive cases fold through the same engine
-
-## File-Level Work Plan
-
-### `src/frontend/sema/consteval.cpp` and `.hpp`
-
-Primary changes:
-
-- define constant-evaluation value/result/context types
-- implement expression interpreter
-- implement function-body evaluation entry point
-
-### `src/frontend/sema/validate.cpp`
-
-Primary changes:
-
-- stop using bespoke integer-only evaluation where richer constant-evaluation results are needed
-- use the unified evaluator for constant-expression checks
-
-### `src/frontend/sema/sema.cpp`
-
-Primary changes:
-
-- add a real C++ subset semantic pass
-- trigger immediate-function diagnostics and replacement/folding
-
-### `src/frontend/hir/ast_to_hir.cpp`
-
-Primary changes:
-
-- consume already-folded constants where available
-- avoid encoding runtime calls for semantically immediate invocations
-
-### `src/frontend/sema/canonical_symbol.cpp`
-
-Primary changes:
-
-- stop overloading template pretty-printing with `consteval` wording
-- keep `consteval` semantics distinct from template-decoration semantics
+- the call result must come from constant evaluation
+- runtime fallback must not define the meaning of `consteval`
 
 ## Validation Plan
 
 ### Positive cases to keep/add
 
-Existing useful cases:
+Core coverage:
 
-- [consteval_func.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_func.cpp)
-- [consteval_template.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_template.cpp)
-- [constexpr_var.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/constexpr_var.cpp)
-- [constexpr_if.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/constexpr_if.cpp)
+- [tests/internal/cpp/postive_case/consteval_func.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_func.cpp)
+- [tests/internal/cpp/postive_case/consteval_template.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_template.cpp)
+- [tests/internal/cpp/postive_case/consteval_interp.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_interp.cpp)
+- [tests/internal/cpp/postive_case/consteval_mutable.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_mutable.cpp)
+- [tests/internal/cpp/postive_case/consteval_call_resolution.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_call_resolution.cpp)
+- [tests/internal/cpp/postive_case/consteval_recursive_fib.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_recursive_fib.cpp)
+- [tests/internal/cpp/postive_case/consteval_template_sizeof.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_template_sizeof.cpp)
+- [tests/internal/cpp/postive_case/consteval_block_scope.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_block_scope.cpp)
+- [tests/internal/cpp/postive_case/consteval_short_circuit.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_short_circuit.cpp)
 
-Recommended new positive cases:
+### Negative cases to keep/add
 
-- named constant propagation:
-  - `const int x = 4; const int y = 5; const int z = x + y;`
-- chained immediate calls
-- `consteval` using local constant bindings
-- `if constexpr` driven by immediate-call result
-
-### Negative cases to add later
-
-- `consteval` call with non-constant argument
-- taking address of `consteval` function
-- immediate body reading non-constant local
-- immediate call to unsupported runtime-only function
-
-## Suggested Execution Order
-
-1. Refactor the existing constant-expression helper into a reusable evaluator.
-2. Add named constant bindings so `constexpr_var.cpp` becomes fully correct.
-3. Add immediate-function interpretation for the current arithmetic subset.
-4. Enforce `consteval` call rules and remove silent runtime fallback.
-5. Reuse the same evaluator for `if constexpr`, builtin traits, and template-specialized evaluation.
+- [tests/internal/cpp/negative_case/bad_consteval_non_constant_arg.cpp](/workspaces/c4c/tests/internal/cpp/negative_case/bad_consteval_non_constant_arg.cpp)
+- [tests/internal/cpp/negative_case/bad_consteval_runtime_arg.cpp](/workspaces/c4c/tests/internal/cpp/negative_case/bad_consteval_runtime_arg.cpp)
+- [tests/internal/cpp/negative_case/bad_consteval_non_constant_expr_stmt.cpp](/workspaces/c4c/tests/internal/cpp/negative_case/bad_consteval_non_constant_expr_stmt.cpp)
+- [tests/internal/cpp/negative_case/bad_consteval_divide_by_zero.cpp](/workspaces/c4c/tests/internal/cpp/negative_case/bad_consteval_divide_by_zero.cpp)
+- [tests/internal/cpp/negative_case/bad_consteval_addr_of.cpp](/workspaces/c4c/tests/internal/cpp/negative_case/bad_consteval_addr_of.cpp)
+- [tests/internal/cpp/negative_case/bad_consteval_on_variable.cpp](/workspaces/c4c/tests/internal/cpp/negative_case/bad_consteval_on_variable.cpp)
+- [tests/internal/cpp/negative_case/bad_consteval_local_variable.cpp](/workspaces/c4c/tests/internal/cpp/negative_case/bad_consteval_local_variable.cpp)
+- [tests/internal/cpp/negative_case/bad_consteval_constexpr_combo.cpp](/workspaces/c4c/tests/internal/cpp/negative_case/bad_consteval_constexpr_combo.cpp)
 
 ## Non-Goals For This Plan
 
-The following are intentionally out of scope for the first full `consteval` implementation:
+The following remain out of scope for the first full `consteval` implementation:
 
 - full class-object constant evaluation
 - inheritance / virtual dispatch
@@ -475,4 +228,4 @@ The following are intentionally out of scope for the first full `consteval` impl
 - complete standard-library `type_traits`
 - full C++ constant-evaluation compliance
 
-The target is a correct and composable **subset** implementation that matches the project’s current C++ scope.
+The target is a correct and composable subset implementation that matches the project’s current C++ scope.

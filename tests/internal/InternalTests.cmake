@@ -44,12 +44,16 @@ set(NEGATIVE_TESTS_ALLOW_SUCCESS_STEMS
 
 set(CPP_POSITIVE_RUNTIME_STEMS
     const_named_fold
+    consteval_block_scope
     consteval_call_resolution
     consteval_diag
     consteval_func
     consteval_interp
     consteval_mutable
+    consteval_recursive_fib
+    consteval_short_circuit
     consteval_template
+    consteval_template_sizeof
     constexpr_var
     constexpr_if
     if_constexpr_fold
