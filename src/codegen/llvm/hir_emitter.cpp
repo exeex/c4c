@@ -10,14 +10,10 @@ namespace {
 // preferring the canonical_sig (sema-resolved type) when available and
 // falling back to the legacy QualType fields otherwise.
 
-/// Extract the return TypeSpec from a FnPtrSig, preferring canonical_sig.
+/// Extract the return TypeSpec from a FnPtrSig.
+/// Uses sig.return_type which is already correctly set during HIR lowering
+/// (including the ret_fn_ptr_params fix for nested fn_ptr declarators).
 TypeSpec sig_return_type(const FnPtrSig& sig) {
-  if (sig.canonical_sig) {
-    const auto* fsig = sema::get_function_sig(*sig.canonical_sig);
-    if (fsig && fsig->return_type) {
-      return sema::typespec_from_canonical(*fsig->return_type);
-    }
-  }
   return sig.return_type.spec;
 }
 
@@ -1941,32 +1937,6 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const CallExpr& c){
       }
     }
     const Expr& callee_e = get_expr(c.callee);
-    // For calls through (*local_var) where the local was initialized from a
-    // known function, use that function's return type directly.  This handles
-    // nested fn-ptr types like int(*(*)(...))(...) where TypeSpec alone is
-    // insufficient to distinguish the return type from a simple fn-ptr.
-    if (const auto* u = std::get_if<UnaryExpr>(&callee_e.payload)) {
-      if (u->op == UnaryOp::Deref) {
-        const Expr& inner_e = get_expr(u->operand);
-        if (const auto* dr = std::get_if<DeclRef>(&inner_e.payload)) {
-          if (dr->local) {
-            const auto frt_it = ctx.local_fn_ret_types.find(dr->local->value);
-            if (frt_it != ctx.local_fn_ret_types.end()) return frt_it->second;
-          }
-        }
-      }
-    }
-    // Direct call through a local fn-ptr without explicit deref: local(...)
-    if (const auto* dr0 = std::get_if<DeclRef>(&callee_e.payload)) {
-      if (dr0->local) {
-        const auto frt_it = ctx.local_fn_ret_types.find(dr0->local->value);
-        if (frt_it != ctx.local_fn_ret_types.end()) return frt_it->second;
-      }
-    }
-    // Canonical fn_ptr_sig for return type extraction.
-    if (const FnPtrSig* sig = resolve_callee_fn_ptr_sig(ctx, callee_e)) {
-      return sig_return_type(*sig);
-    }
     // Direct function call: look up return type from the function definition.
     if (const auto* r = std::get_if<DeclRef>(&callee_e.payload)) {
       const auto fit = mod_.fn_index.find(r->name);
@@ -1974,21 +1944,9 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const CallExpr& c){
         return mod_.functions[fit->second.value].return_type.spec;
       }
     }
-    // Legacy fallback: TypeSpec-based prototype recovery for cases where
-    // canonical_sig is not available (e.g. undeclared extern calls).
-    TypeSpec callee_ts = resolve_expr_type(ctx, c.callee);
-    if (callee_ts.is_fn_ptr && callee_ts.ptr_level > 0) {
-      callee_ts.ptr_level--;
-      callee_ts.is_fn_ptr = false;
-      return callee_ts;
-    }
-    if (callee_ts.is_fn_ptr && callee_ts.ptr_level == 0) {
-      callee_ts.is_fn_ptr = false;
-      return callee_ts;
-    }
-    if (callee_ts.base == TB_FUNC_PTR && callee_ts.ptr_level > 0) {
-      callee_ts.ptr_level--;
-      return callee_ts;
+    // Indirect call through fn-ptr: use canonical fn_ptr_sig for return type.
+    if (const FnPtrSig* sig = resolve_callee_fn_ptr_sig(ctx, callee_e)) {
+      return sig_return_type(*sig);
     }
     // Check known libc return types before falling back to implicit int
     if (const auto* r = std::get_if<DeclRef>(&callee_e.payload)) {
@@ -4482,7 +4440,6 @@ void HirEmitter::emit_stmt(FnCtx& ctx, const Stmt& stmt){
 void HirEmitter::emit_stmt_impl(FnCtx& ctx, const LocalDecl& d){
     if (d.fn_ptr_sig) {
       ctx.local_fn_ptr_sigs[d.id.value] = *d.fn_ptr_sig;
-      ctx.local_fn_ret_types[d.id.value] = sig_return_type(*d.fn_ptr_sig);
     }
     if (d.vla_size) {
       const std::string slot = ctx.local_slots.at(d.id.value);
@@ -4516,18 +4473,6 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const LocalDecl& d){
 
     if (!d.init) return;
     const std::string slot = ctx.local_slots.at(d.id.value);
-    // If this is a fn-ptr local initialized from a known function, track the
-    // function's return type so nested fn-ptr calls resolve correctly.
-    if (d.type.spec.is_fn_ptr) {
-      const Expr& init_e = get_expr(*d.init);
-      if (const auto* dr = std::get_if<DeclRef>(&init_e.payload)) {
-        const auto fit = mod_.fn_index.find(dr->name);
-        if (fit != mod_.fn_index.end() && fit->second.value < mod_.functions.size()) {
-          ctx.local_fn_ret_types[d.id.value] =
-              mod_.functions[fit->second.value].return_type.spec;
-        }
-      }
-    }
     TypeSpec rhs_ts{};
     std::string rhs = emit_rval_id(ctx, *d.init, rhs_ts);
     const std::string ty =

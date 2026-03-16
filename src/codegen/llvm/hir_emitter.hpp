@@ -60,9 +60,6 @@ struct FnCtx {
   std::unordered_map<uint32_t, std::string> continue_redirect;
   // user label name → LLVM label
   std::unordered_map<std::string, std::string> user_labels;
-  // local_id.value → return TypeSpec when calling through that fn-ptr local
-  // Populated when a fn-ptr local is initialized from a known function.
-  std::unordered_map<uint32_t, TypeSpec> local_fn_ret_types;
   // local_id.value / param_index / global_id.value → fn-ptr signature metadata.
   std::unordered_map<uint32_t, FnPtrSig> local_fn_ptr_sigs;
   std::unordered_map<uint32_t, FnPtrSig> param_fn_ptr_sigs;

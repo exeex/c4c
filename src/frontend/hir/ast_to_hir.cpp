@@ -522,7 +522,15 @@ class Lowerer {
           sig.canonical_sig = ct;
           // Derive return type from canonical sig.
           if (fsig->return_type) {
-            sig.return_type = qtype_from(sema::typespec_from_canonical(*fsig->return_type));
+            TypeSpec ret_ts = sema::typespec_from_canonical(*fsig->return_type);
+            // Fix for nested fn_ptr: canonical type doesn't capture nested fn_ptr
+            // return structure. Use parser's ret_fn_ptr_params to correct it.
+            if ((n->n_ret_fn_ptr_params > 0 || n->ret_fn_ptr_variadic) &&
+                !ret_ts.is_fn_ptr) {
+              ret_ts.is_fn_ptr = true;
+              ret_ts.ptr_level = std::max(ret_ts.ptr_level, 1);
+            }
+            sig.return_type = qtype_from(ret_ts);
           }
           sig.variadic = fsig->is_variadic;
           sig.unspecified_params = fsig->unspecified_params;
