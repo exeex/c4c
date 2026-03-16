@@ -14,6 +14,7 @@
 #include "parser.hpp"
 #include "preprocessor.hpp"
 #include "sema.hpp"
+#include "inline_expand.hpp"
 #include "source_profile.hpp"
 #include "token.hpp"
 
@@ -238,6 +239,10 @@ int main(int argc, char **argv) {
       }
       return 0;
     }
+
+    // Run semantic inline expansion pass (Phase 1: discovery only, no-op for now).
+    tinyc2ll::frontend_cxx::sema_ir::phase2::hir::run_inline_expansion(
+        *sema_result.hir_module);
 
     std::string ir = tinyc2ll::codegen::llvm_backend::emit_module_native(
         *sema_result.hir_module);
