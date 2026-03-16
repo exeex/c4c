@@ -1,7 +1,7 @@
 # Plan Execution State
 
 ## Baseline
-- Test suite: **1800/1800** (2026-03-16, after Phase D slice 2)
+- Test suite: **1800/1800** (2026-03-16, after Phase D slice 3)
 
 ## Completed
 - Phase A: Lock Current Behavior With Tests
@@ -24,15 +24,22 @@
   - NK_VAR handler annotates DeclRef with fn_ptr type from fn_index
   - Removed codegen fallback in `resolve_payload_type(DeclRef)` that built synthetic TypeSpec
   - Tightened local fn prototype skip (require n_params > 0) to prevent variable/function name collision
+- Phase D slice 3: Canonicalize ret_fn_ptr_sig in lower_function
+  - ret_fn_ptr_sig now built from canonical type (via canonicalize_declarator_type)
+  - canonical_sig populated on ret_fn_ptr_sig (was missing before)
+  - Nested fn_ptr fixup applied same as fn_ptr_sig_from_decl_node
+  - Updated Phase 4 comments → final canonical approach language
 
 ## Active Item
-- **Phase D: Delete Legacy Callable Recovery** (remaining slices)
+- **Phase D: Delete Legacy Callable Recovery** (evaluation)
 
 ## Next Slice
-- Audit remaining `resolve_payload_type` overloads for legacy TypeSpec reconstruction
-- Consider removing `sig_*` helper canonical fallbacks (sig_param_type, sig_param_count, etc.) — canonical_sig is still needed for param extraction
-- Remove remaining legacy comment references
-- Evaluate if all Phase D exit conditions are met
+- Evaluate Phase D exit conditions:
+  - All FnPtrSig creation paths now populate canonical_sig (fn_ptr_sig_from_decl_node canonical path, struct fields, ret_fn_ptr_sig)
+  - Only remaining legacy path: fn_ptr_sig_from_decl_node fallback (for nodes not in ResolvedTypeTable)
+  - sig_* helper fallbacks still present as safety net but canonical_sig should always be set
+- Consider: mark Phase D complete if exit conditions substantially met
+- Remaining gap: legacy path in fn_ptr_sig_from_decl_node (needed for safety when canonical lookup fails)
 
 ## Blockers
 - None known

@@ -512,7 +512,7 @@ class Lowerer {
   std::optional<FnPtrSig> fn_ptr_sig_from_decl_node(const Node* n) {
     if (!n) return std::nullopt;
 
-    // Phase 3: try canonical type path first.
+    // Canonical path: extract fn_ptr sig from sema's resolved type table.
     if (resolved_types_) {
       auto ct = resolved_types_->lookup(n);
       if (ct && sema::is_callable_type(*ct)) {
@@ -973,26 +973,34 @@ class Lowerer {
     fn.id = next_fn_id();
     fn.name = fn_node->name ? fn_node->name : "<anon_fn>";
     fn.return_type = qtype_from(fn_node->type);
-    // Phase C slice 2: build fn_ptr_sig for the return type when it is callable.
-    // Cannot use fn_ptr_sig_from_decl_node(fn_node) because that would return
-    // the function's own sig, not the return type's fn_ptr sig.
+    // Build fn_ptr_sig for the return type when the function returns a fn_ptr.
+    // Uses canonical type to extract the return type's callable signature.
     if (fn_node->type.is_fn_ptr) {
-      FnPtrSig ret_sig{};
-      TypeSpec ret_ts = fn_node->type;
-      if (ret_ts.ptr_level > 0) --ret_ts.ptr_level;
-      ret_ts.is_fn_ptr = false;
-      ret_ts.array_rank = 0;
-      ret_ts.array_size = -1;
-      for (int i = 0; i < 8; ++i) ret_ts.array_dims[i] = -1;
-      ret_sig.return_type = qtype_from(ret_ts);
-      ret_sig.variadic = fn_node->fn_ptr_variadic;
-      ret_sig.unspecified_params = (fn_node->n_fn_ptr_params == 0 && !fn_node->fn_ptr_variadic);
-      for (int i = 0; i < fn_node->n_fn_ptr_params; ++i) {
-        const Node* p = fn_node->fn_ptr_params ? fn_node->fn_ptr_params[i] : nullptr;
-        if (!p) continue;
-        ret_sig.params.push_back(qtype_from(p->type, ValueCategory::LValue));
+      auto fn_ct = sema::canonicalize_declarator_type(fn_node);
+      const auto* fn_fsig = sema::get_function_sig(fn_ct);
+      if (fn_fsig && fn_fsig->return_type && sema::is_callable_type(*fn_fsig->return_type)) {
+        const auto* ret_fsig = sema::get_function_sig(*fn_fsig->return_type);
+        if (ret_fsig) {
+          FnPtrSig ret_sig{};
+          ret_sig.canonical_sig = fn_fsig->return_type;
+          if (ret_fsig->return_type) {
+            TypeSpec ret_ts = sema::typespec_from_canonical(*ret_fsig->return_type);
+            // Nested fn_ptr fixup: canonical type doesn't capture nested fn_ptr
+            // return structure. Use parser's ret_fn_ptr_params to correct it.
+            if ((fn_node->n_ret_fn_ptr_params > 0 || fn_node->ret_fn_ptr_variadic) &&
+                !ret_ts.is_fn_ptr) {
+              ret_ts.is_fn_ptr = true;
+              ret_ts.ptr_level = std::max(ret_ts.ptr_level, 1);
+            }
+            ret_sig.return_type = qtype_from(ret_ts);
+          }
+          ret_sig.variadic = ret_fsig->is_variadic;
+          ret_sig.unspecified_params = ret_fsig->unspecified_params;
+          for (const auto& param : ret_fsig->params)
+            ret_sig.params.push_back(qtype_from(sema::typespec_from_canonical(param), ValueCategory::LValue));
+          fn.ret_fn_ptr_sig = std::move(ret_sig);
+        }
       }
-      fn.ret_fn_ptr_sig = std::move(ret_sig);
     }
     fn.linkage = {fn_node->is_static, fn_node->is_extern || fn_node->body == nullptr, fn_node->is_inline,
                    weak_symbols_.count(fn.name) > 0, static_cast<Visibility>(fn_node->visibility)};

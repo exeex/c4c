@@ -5,10 +5,10 @@ namespace tinyc2ll::codegen::llvm_backend {
 
 namespace {
 
-// ── Phase 4: canonical-aware FnPtrSig accessors ──────────────────────────
-// These helpers extract return type and parameter types from FnPtrSig,
-// preferring the canonical_sig (sema-resolved type) when available and
-// falling back to the legacy QualType fields otherwise.
+// ── FnPtrSig accessors ───────────────────────────────────────────────────
+// These helpers extract return type and parameter types from FnPtrSig.
+// canonical_sig is populated for all FnPtrSig instances created during
+// HIR lowering. The QualType fallback paths remain as a safety net.
 
 /// Extract the return TypeSpec from a FnPtrSig.
 /// Uses sig.return_type which is already correctly set during HIR lowering
