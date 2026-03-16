@@ -1105,7 +1105,7 @@ class Lowerer {
     GlobalInit early_init{};
     bool early_init_done = false;
     if (!has_init && gv->init) {
-      early_init = lower_global_init(gv->init);
+      early_init = lower_global_init(gv->init, nullptr, gv->type.is_const || gv->is_constexpr);
       early_init_done = true;
     }
 
@@ -1133,6 +1133,17 @@ class Lowerer {
       g.init = early_init;
       g.type.spec = resolve_array_ts(g.type.spec, g.init);
       g.init = normalize_global_init(g.type.spec, g.init);
+    }
+
+    if (g.is_const) {
+      if (const auto* scalar = std::get_if<InitScalar>(&g.init)) {
+        const Expr& e = module_->expr_pool[scalar->expr.value];
+        if (const auto* lit = std::get_if<IntLiteral>(&e.payload)) {
+          const_int_bindings_[g.name] = lit->value;
+        } else if (const auto* ch = std::get_if<CharLiteral>(&e.payload)) {
+          const_int_bindings_[g.name] = ch->value;
+        }
+      }
     }
 
     module_->global_index[g.name] = g.id;
@@ -1628,7 +1639,9 @@ class Lowerer {
     return g.id;
   }
 
-  GlobalInit lower_global_init(const Node* n, FunctionCtx* ctx = nullptr) {
+  GlobalInit lower_global_init(const Node* n,
+                              FunctionCtx* ctx = nullptr,
+                              bool allow_named_const_fold = false) {
     if (!n) return std::monostate{};
     if (n->kind == NK_INIT_LIST) {
       return lower_init_list(n, ctx);
@@ -1638,6 +1651,14 @@ class Lowerer {
       return lower_init_list(n->left, ctx);
     }
     InitScalar s{};
+    if (!ctx && allow_named_const_fold) {
+      if (auto cv = eval_int_const_expr(n, enum_consts_, &const_int_bindings_)) {
+        TypeSpec ts = n->type;
+        if (ts.base == TB_VOID) ts.base = TB_INT;
+        s.expr = append_expr(n, IntLiteral{*cv, false}, ts);
+        return s;
+      }
+    }
     s.expr = lower_expr(ctx, n);
     return s;
   }
@@ -3426,6 +3447,7 @@ class Lowerer {
 
   Module* module_ = nullptr;
   std::unordered_map<std::string, long long> enum_consts_;
+  std::unordered_map<std::string, long long> const_int_bindings_;
   std::unordered_set<std::string> weak_symbols_;
 
 };

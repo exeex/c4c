@@ -7,6 +7,81 @@
 namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir {
 namespace {
 
+bool is_any_int_base_local(TypeBase b) {
+  switch (b) {
+    case TB_BOOL:
+    case TB_CHAR:
+    case TB_SCHAR:
+    case TB_UCHAR:
+    case TB_SHORT:
+    case TB_USHORT:
+    case TB_INT:
+    case TB_UINT:
+    case TB_LONG:
+    case TB_ULONG:
+    case TB_LONGLONG:
+    case TB_ULONGLONG:
+    case TB_INT128:
+    case TB_UINT128:
+    case TB_ENUM:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool is_signed_int_base_local(TypeBase b) {
+  switch (b) {
+    case TB_CHAR:
+    case TB_SCHAR:
+    case TB_SHORT:
+    case TB_INT:
+    case TB_LONG:
+    case TB_LONGLONG:
+    case TB_INT128:
+    case TB_ENUM:
+      return true;
+    default:
+      return false;
+  }
+}
+
+int int_bits_local(TypeBase b) {
+  switch (b) {
+    case TB_BOOL: return 1;
+    case TB_CHAR:
+    case TB_SCHAR:
+    case TB_UCHAR: return 8;
+    case TB_SHORT:
+    case TB_USHORT: return 16;
+    case TB_INT:
+    case TB_UINT: return 32;
+    case TB_LONG:
+    case TB_ULONG:
+    case TB_LONGLONG:
+    case TB_ULONGLONG: return 64;
+    case TB_INT128:
+    case TB_UINT128: return 128;
+    default: return 32;
+  }
+}
+
+std::optional<long long> apply_integer_cast_local(long long value, const TypeSpec& ts) {
+  if (ts.ptr_level != 0 || ts.array_rank != 0 || !is_any_int_base_local(ts.base)) {
+    return value;
+  }
+  const int bits = int_bits_local(ts.base);
+  if (bits <= 0) return value;
+  if (bits >= 64) return value;
+
+  const unsigned long long mask = (1ULL << bits) - 1;
+  const unsigned long long uv = static_cast<unsigned long long>(value) & mask;
+  if (is_signed_int_base_local(ts.base) && bits > 1 && (uv >> (bits - 1))) {
+    return static_cast<long long>(uv | ~mask);
+  }
+  return static_cast<long long>(uv);
+}
+
 std::string decode_c_escaped_bytes_local(const std::string& raw) {
   std::string out;
   for (size_t i = 0; i < raw.size();) {
@@ -131,7 +206,8 @@ std::string bytes_from_string_literal(const StringLiteral& sl) {
 
 std::optional<long long> eval_int_const_expr(
     const Node* n,
-    const std::unordered_map<std::string, long long>& enum_consts) {
+    const std::unordered_map<std::string, long long>& enum_consts,
+    const std::unordered_map<std::string, long long>* named_consts) {
   if (!n) return std::nullopt;
   switch (n->kind) {
     case NK_INT_LIT:
@@ -141,13 +217,20 @@ std::optional<long long> eval_int_const_expr(
       if (n->name && n->name[0]) {
         auto it = enum_consts.find(n->name);
         if (it != enum_consts.end()) return it->second;
+        if (named_consts) {
+          auto nit = named_consts->find(n->name);
+          if (nit != named_consts->end()) return nit->second;
+        }
       }
       return std::nullopt;
     }
     case NK_CAST:
-      return eval_int_const_expr(n->left, enum_consts);
+      if (auto v = eval_int_const_expr(n->left, enum_consts, named_consts)) {
+        return apply_integer_cast_local(*v, n->type);
+      }
+      return std::nullopt;
     case NK_UNARY: {
-      auto v = eval_int_const_expr(n->left, enum_consts);
+      auto v = eval_int_const_expr(n->left, enum_consts, named_consts);
       if (!v || !n->op) return std::nullopt;
       if (std::strcmp(n->op, "+") == 0) return *v;
       if (std::strcmp(n->op, "-") == 0) return -*v;
@@ -156,8 +239,8 @@ std::optional<long long> eval_int_const_expr(
       return std::nullopt;
     }
     case NK_BINOP: {
-      auto l = eval_int_const_expr(n->left, enum_consts);
-      auto r = eval_int_const_expr(n->right, enum_consts);
+      auto l = eval_int_const_expr(n->left, enum_consts, named_consts);
+      auto r = eval_int_const_expr(n->right, enum_consts, named_consts);
       if (!l || !r || !n->op) return std::nullopt;
       if (std::strcmp(n->op, "+") == 0) return *l + *r;
       if (std::strcmp(n->op, "-") == 0) return *l - *r;
@@ -180,9 +263,9 @@ std::optional<long long> eval_int_const_expr(
       return std::nullopt;
     }
     case NK_TERNARY: {
-      auto c = eval_int_const_expr(n->cond ? n->cond : n->left, enum_consts);
+      auto c = eval_int_const_expr(n->cond ? n->cond : n->left, enum_consts, named_consts);
       if (!c) return std::nullopt;
-      return eval_int_const_expr(*c ? n->then_ : n->else_, enum_consts);
+      return eval_int_const_expr(*c ? n->then_ : n->else_, enum_consts, named_consts);
     }
     default:
       return std::nullopt;
