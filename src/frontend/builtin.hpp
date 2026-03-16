@@ -111,7 +111,11 @@ enum class BuiltinId : uint16_t {
   X(Conj, "__builtin_conj")                                                     \
   X(ConjF, "__builtin_conjf")                                                   \
   X(ConjL, "__builtin_conjl")                                                   \
-  X(ClassifyType, "__builtin_classify_type")
+  X(ClassifyType, "__builtin_classify_type")                                   \
+  X(Prefetch, "__builtin_prefetch")                                            \
+  X(Clrsb, "__builtin_clrsb")                                                 \
+  X(ClrsbL, "__builtin_clrsbl")                                               \
+  X(ClrsbLL, "__builtin_clrsbll")
 #define TINYC2LL_BUILTIN_ID_ENUM(id, spelling) id,
   TINYC2LL_BUILTIN_LIST(TINYC2LL_BUILTIN_ID_ENUM)
 #undef TINYC2LL_BUILTIN_ID_ENUM
@@ -416,6 +420,14 @@ inline constexpr BuiltinInfo kBuiltinTable[] = {
     {BuiltinId::ClassifyType, "__builtin_classify_type",
      BuiltinCategory::Intrinsic, BuiltinNodeKind::BuiltinCall,
      BuiltinLoweringKind::TypeQuery, {}},
+    {BuiltinId::Prefetch, "__builtin_prefetch", BuiltinCategory::Intrinsic,
+     BuiltinNodeKind::BuiltinCall, BuiltinLoweringKind::Control, {}},
+    {BuiltinId::Clrsb, "__builtin_clrsb", BuiltinCategory::Intrinsic,
+     BuiltinNodeKind::BuiltinCall, BuiltinLoweringKind::BitIntrinsic, {}},
+    {BuiltinId::ClrsbL, "__builtin_clrsbl", BuiltinCategory::Intrinsic,
+     BuiltinNodeKind::BuiltinCall, BuiltinLoweringKind::BitIntrinsic, {}},
+    {BuiltinId::ClrsbLL, "__builtin_clrsbll", BuiltinCategory::Intrinsic,
+     BuiltinNodeKind::BuiltinCall, BuiltinLoweringKind::BitIntrinsic, {}},
 };
 
 inline constexpr KnownCallInfo kKnownCallTable[] = {
@@ -607,6 +619,9 @@ inline constexpr BuiltinResultKind builtin_result_kind(BuiltinId id) {
     case BuiltinId::Parity:
     case BuiltinId::ParityL:
     case BuiltinId::ParityLL:
+    case BuiltinId::Clrsb:
+    case BuiltinId::ClrsbL:
+    case BuiltinId::ClrsbLL:
       return BuiltinResultKind::Int;
 
     default:
@@ -698,6 +713,25 @@ inline constexpr bool builtin_is_parity(BuiltinId id) {
          id == BuiltinId::ParityLL;
 }
 
+inline constexpr bool builtin_is_clrsb(BuiltinId id) {
+  return id == BuiltinId::Clrsb || id == BuiltinId::ClrsbL ||
+         id == BuiltinId::ClrsbLL;
+}
+
+inline constexpr bool builtin_uses_long_width(BuiltinId id) {
+  switch (id) {
+    case BuiltinId::FfsL:
+    case BuiltinId::CtzL:
+    case BuiltinId::ClzL:
+    case BuiltinId::PopcountL:
+    case BuiltinId::ParityL:
+    case BuiltinId::ClrsbL:
+      return true;
+    default:
+      return false;
+  }
+}
+
 inline constexpr bool builtin_uses_i64_width(BuiltinId id) {
   switch (id) {
     case BuiltinId::FfsLL:
@@ -705,9 +739,10 @@ inline constexpr bool builtin_uses_i64_width(BuiltinId id) {
     case BuiltinId::ClzLL:
     case BuiltinId::PopcountLL:
     case BuiltinId::ParityLL:
+    case BuiltinId::ClrsbLL:
       return true;
     default:
-      return false;
+      return builtin_uses_long_width(id);
   }
 }
 

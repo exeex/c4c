@@ -1891,6 +1891,7 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const CallExpr& c){
         case BuiltinId::VaStart:
         case BuiltinId::VaEnd:
         case BuiltinId::VaCopy:
+        case BuiltinId::Prefetch:
           return {};
         case BuiltinId::Bswap16:
         case BuiltinId::Bswap32:
@@ -3495,6 +3496,14 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         emit_term(ctx, "unreachable");
         return "";
       }
+      if (builtin_id == BuiltinId::Prefetch) {
+        // __builtin_prefetch is a no-op hint; evaluate args for side effects only
+        TypeSpec dummy{};
+        for (size_t i = 0; i < call.args.size(); ++i) {
+          emit_rval_id(ctx, call.args[i], dummy);
+        }
+        return "";
+      }
       switch (builtin_constant_fp_kind(builtin_id)) {
         case BuiltinConstantFpKind::Infinity:
           if (builtin_id == BuiltinId::HugeValF || builtin_id == BuiltinId::InfF) {
@@ -3816,6 +3825,31 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
           return trunc;
         }
         return tmp;
+      }
+      if (builtin_is_clrsb(builtin_id) && call.args.size() == 1) {
+        // clrsb(x) = clz(x ^ (x >> (bitwidth-1))) - 1
+        TypeSpec arg_ts{};
+        std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
+        const bool is_ll = builtin_uses_i64_width(builtin_id);
+        const std::string ity = is_ll ? "i64" : "i32";
+        const int bitwidth = is_ll ? 64 : 32;
+        TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
+        arg = coerce(ctx, arg, arg_ts, target_ts);
+        const std::string shift = fresh_tmp(ctx);
+        emit_instr(ctx, shift + " = ashr " + ity + " " + arg + ", " + std::to_string(bitwidth - 1));
+        const std::string xored = fresh_tmp(ctx);
+        emit_instr(ctx, xored + " = xor " + ity + " " + arg + ", " + shift);
+        const std::string clz = fresh_tmp(ctx);
+        emit_instr(ctx, clz + " = call " + ity + " @llvm.ctlz." + ity +
+                             "(" + ity + " " + xored + ", i1 false)");
+        const std::string sub1 = fresh_tmp(ctx);
+        emit_instr(ctx, sub1 + " = sub " + ity + " " + clz + ", 1");
+        if (is_ll) {
+          const std::string trunc = fresh_tmp(ctx);
+          emit_instr(ctx, trunc + " = trunc i64 " + sub1 + " to i32");
+          return trunc;
+        }
+        return sub1;
       }
       if ((builtin_id == BuiltinId::Conj || builtin_id == BuiltinId::ConjF ||
            builtin_id == BuiltinId::ConjL) && call.args.size() == 1) {

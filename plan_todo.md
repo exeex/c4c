@@ -77,6 +77,12 @@
 - **Codegen**: complex type arrays now emit `zeroinitializer` instead of invalid `0` for zero elements
 - Enabled `pr56837.c` in allowlist
 - Test suite: 1787/1787 passed (was 1786)
+- **Codegen**: implement `__builtin_prefetch` as no-op (evaluate args, discard)
+- Enabled `builtin-prefetch-4.c`, `builtin-prefetch-5.c`, `builtin-prefetch-6.c`
+- **Codegen**: implement `__builtin_clrsb`/`clrsbl`/`clrsbll` (count leading redundant sign bits)
+- **Codegen**: fix `builtin_uses_i64_width` for `L` variants (long is 64-bit on LP64/aarch64)
+- Enabled `builtin-bitops-1.c`
+- Test suite: 1791/1791 passed (was 1787)
 
 ## Known Limitations (pre-existing)
 - Functions returning function pointers: parser does not fully capture fn_ptr params on the function node, so canonicalization inherits that gap
