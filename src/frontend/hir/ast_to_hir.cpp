@@ -991,6 +991,8 @@ class Lowerer {
     fn.linkage = {fn_node->is_static, fn_node->is_extern || fn_node->body == nullptr, fn_node->is_inline,
                    weak_symbols_.count(fn.name) > 0, static_cast<Visibility>(fn_node->visibility)};
     fn.attrs.variadic = fn_node->variadic;
+    fn.attrs.no_inline = fn_node->type.is_noinline;
+    fn.attrs.always_inline = fn_node->type.is_always_inline;
     if (fn_node->type.align_bytes > 0)
       fn.attrs.align_bytes = fn_node->type.align_bytes;
     // Inherit alignment from prior declaration if definition doesn't repeat the attribute.

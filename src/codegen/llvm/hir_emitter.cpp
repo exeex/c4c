@@ -4979,7 +4979,11 @@ void HirEmitter::emit_function(const Function& fn){
       if (!fn.params.empty()) out << ", ";
       out << "...";
     }
-    out << ")\n";
+    out << ")";
+    // Emit function attributes.
+    if (fn.attrs.no_inline) out << " noinline";
+    if (fn.attrs.always_inline) out << " alwaysinline";
+    out << "\n";
     out << "{\nentry:\n";
 
     // Alloca hoisting

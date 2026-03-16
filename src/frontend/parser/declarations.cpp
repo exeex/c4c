@@ -412,7 +412,7 @@ Node* Parser::parse_top_level() {
             else if (match(TokenKind::KwNoreturn))  {}
             else break;
         }
-        skip_attributes();
+        parse_attributes(&base_ts);
     }
     // C++: consteval and constexpr cannot both appear on the same declaration.
     if (is_consteval && is_constexpr) {
@@ -675,9 +675,9 @@ Node* Parser::parse_top_level() {
         throw std::runtime_error(std::string("object has incomplete type: ") + (ts.tag ? ts.tag : "<anonymous>"));
     }
 
-    skip_attributes();
+    parse_attributes(&ts);
     skip_asm();
-    skip_attributes();
+    parse_attributes(&ts);
 
     if (!decl_name) {
         // No name: just a type declaration; skip to ;
@@ -688,7 +688,7 @@ Node* Parser::parse_top_level() {
     // Handle function-returning-fptr: int (* f1(a, b))(c, d) { body }
     // Params were already parsed into fptr_fn_params; now look for { body }.
     if (fn_returning_fptr && decl_name) {
-        skip_attributes(); skip_asm(); skip_attributes();
+        parse_attributes(&ts); skip_asm(); parse_attributes(&ts);
         if (check(TokenKind::LBrace)) {
             bool saved_top = parsing_top_level_context_;
             parsing_top_level_context_ = false;

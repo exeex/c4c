@@ -135,6 +135,12 @@ void Parser::parse_attributes(TypeSpec* ts) {
                     expect(TokenKind::RParen);
                     apply_vector_size_attr(sz_val);
                 }
+            } else if (attr_name == "noinline" || attr_name == "__noinline__") {
+                if (ts) ts->is_noinline = true;
+                if (check(TokenKind::LParen)) skip_paren_group();
+            } else if (attr_name == "always_inline" || attr_name == "__always_inline__") {
+                if (ts) ts->is_always_inline = true;
+                if (check(TokenKind::LParen)) skip_paren_group();
             } else {
                 if (check(TokenKind::LParen)) skip_paren_group();
             }
