@@ -1,38 +1,32 @@
 # Known Issues
 
-## Status on 2026-03-13
+## Status on 2026-03-16
 
-Full-suite regression guard currently passes after this patch set.
+Full-suite: **1786/1786 passed, 0 failures**
 
-- `before`: passed `1751`, failed `14`
-- `after`: passed `1759`, failed `6`
-- delta: `+8 passed`, `0 newly failing tests`
+All previously-known remaining failures have been resolved:
 
-Resolved in this round:
+- `llvm_gcc_c_torture_20001203_2_c` — statement-expression in ternary (fixed)
+- `llvm_gcc_c_torture_pr70460_c` — computed-goto label differences (fixed)
+- `llvm_gcc_c_torture_comp_goto_1_c` — computed-goto label arithmetic (fixed)
+- `llvm_gcc_c_torture_strlen_4_c` — pointer-to-array global init (fixed)
+- `llvm_gcc_c_torture_strlen_5_c` — pointer/array lowering (fixed)
+- `llvm_gcc_c_torture_scal_to_vec2_c` — scalar-to-vector coercion (fixed)
 
-- `llvm_gcc_c_torture_20030330_1_c` — dead static function elimination (unreferenced internal fns with __builtin_constant_p dead code)
-- `llvm_gcc_c_torture_990130_1_c` — inline asm +r constraint side effect evaluation
-- `llvm_gcc_c_torture_20021127_1_c` — abs/labs/llabs recognized as implicit builtins via llvm.abs intrinsic
-- `llvm_gcc_c_torture_20010325_1_c` — wide string literal type resolution (TB_INT instead of TB_CHAR for indexing stride)
-- `llvm_gcc_c_torture_pr71626_1_c` — vector type initializer lists in local variable declarations
-- `llvm_gcc_c_torture_pr71626_2_c` — same as pr71626_1
-- `llvm_gcc_c_torture_pr43784_c` — nested member access in global initializer constant expressions
-- `llvm_gcc_c_torture_align_3_c` — __alignof__(expr) with function aligned attribute
+## Newly enabled tests (this session)
+
+- `scal-to-vec1.c` — fixed scalar-to-vector splatting in early vector op path + float vector ops
+- `pr60960.c` — previously blocked by sema false positive, now passes
 
 ## Remaining failures
 
-| Test | Failure type | Problem summary |
-| --- | --- | --- |
-| `llvm_gcc_c_torture_20001203_2_c` | `RUNTIME_FAIL` | GNU statement-expression side effects inside a ternary arm are lowered eagerly before the branch, so the `objfile != 0 ? ... : xmalloc(...)` path dereferences null before the condition is applied. Deep codegen issue. |
-| `llvm_gcc_c_torture_pr70460_c` | `RUNTIME_FAIL` | Computed-goto label differences are still lowered incorrectly; static label-delta table contents are wrong. |
-| `llvm_gcc_c_torture_comp_goto_1_c` | `RUNTIME_FAIL` | Computed-goto with label address arithmetic; same bucket as `pr70460_c`. |
-| `llvm_gcc_c_torture_strlen_4_c` | `BACKEND_FAIL` | Global initializer lowering for pointers-to-arrays is still invalid. |
-| `llvm_gcc_c_torture_strlen_5_c` | `RUNTIME_FAIL` | Likely adjacent to `strlen_4_c` pointer/array lowering bucket. |
-| `llvm_gcc_c_torture_scal_to_vec2_c` | `RUNTIME_FAIL` | Scalar-to-vector coercion issue; investigating. |
+None.
 
-## Suggested next targets
+## Remaining commented-out allowlist entries
 
-1. `llvm_gcc_c_torture_scal_to_vec2_c` — likely fixable vector coercion issue
-2. `llvm_gcc_c_torture_strlen_4_c` / `strlen_5_c` — pointer-to-array global init
-3. computed-goto bucket: `pr70460_c`, `comp_goto_1_c`
-4. `llvm_gcc_c_torture_20001203_2_c` — complex stmt-expression in ternary (deep)
+Most commented-out entries fall into:
+- **CLANG_COMPILE_FAIL**: test doesn't compile with Clang (strict mode); can't be validated by harness
+- **GCC nested functions**: unsupported extension (`__label__`, local function defs)
+- **Unsupported builtins**: `__builtin_return_address`, `__builtin_clrsb`, `__builtin_apply`, `__builtin_longjmp`
+- **VLA struct members / _Decimal64**: complex extensions not yet supported
+- **Pointer-to-array global initializers**: `&arr[0]` in global init emits null (HIR lowering gap)

@@ -752,9 +752,9 @@ class Validator {
             current_fn_ret_.ptr_level == 0 &&
             current_fn_ret_.array_rank == 0;
 
-        if (!fn_returns_void && !n->left) {
-          emit(n->line, "non-void function should return a value");
-        }
+        // C89/gnu89: bare `return;` in a non-void function is allowed
+        // (undefined behaviour only if the caller uses the value).
+        // GCC and Clang accept this with just -Wreturn-type.
 
         if (n->left) {
           ExprInfo rv_info = infer_expr(n->left);
@@ -890,6 +890,10 @@ class Validator {
         if (n->left) (void)infer_expr(n->left);
         for (int i = 0; i < n->n_children; ++i) {
           if (n->children[i]) (void)infer_expr(n->children[i]);
+        }
+        // Output operands are written by the asm statement — mark initialized.
+        for (int i = 0; i < n->asm_num_outputs && i < n->n_children; ++i) {
+          mark_initialized_if_local_var(n->children[i]);
         }
         return;
       }

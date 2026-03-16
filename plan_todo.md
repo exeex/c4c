@@ -67,6 +67,14 @@
   - Variadic encoded as `z` suffix after last param
   - All 1784 tests pass with no regressions
 
+## Post-plan fixes (2026-03-16)
+- **Sema**: removed hard error for `return;` in non-void function (C89 allows this)
+- **Sema**: asm output operands now mark variables as initialized (fixes false-positive uninit reads)
+- **Codegen**: vector binary ops now use fadd/fsub/fmul/fdiv/frem for float vectors
+- **Codegen**: scalar-to-vector splatting in early vector op path (was missing, caused LLVM type errors)
+- Enabled `scal-to-vec1.c` and `pr60960.c` in allowlist
+- Test suite: 1786/1786 passed (was 1784)
+
 ## Known Limitations (pre-existing)
 - Functions returning function pointers: parser does not fully capture fn_ptr params on the function node, so canonicalization inherits that gap
 - Expression-level canonical type tracking not yet implemented (only declaration nodes)
@@ -76,6 +84,7 @@
 ## Next Intended Slice
 - All 6 phases of the canonical type refactor plan are now complete
 - Future work: expression-level canonical types, local variable tracking, legacy path removal
+- Potential fixes: pointer-to-array global initializers (`&arr[0]` in global init), unsupported builtins
 
 ## Deferred
 - Substitution compression (S0_, S1_, etc.) for repeated type references in mangled names

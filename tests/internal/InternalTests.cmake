@@ -34,6 +34,7 @@ set(NEGATIVE_TESTS_ALLOW_SUCCESS_STEMS
     bad_const_discard_qualifier_param
     bad_global_redefinition_with_init
     bad_init_type_mismatch_scalar_to_ptr
+    bad_return_missing_value_nonvoid
     bad_static_init_non_constant
 )
 

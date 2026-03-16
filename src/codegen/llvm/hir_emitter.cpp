@@ -2750,27 +2750,62 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const
     }
 
     if (is_vector_value(res_spec)) {
+      // Scalar-to-vector splatting: when one operand is scalar and the other
+      // is a vector, splat the scalar to match the vector type before the op.
+      auto emit_splat_vec = [&](const std::string& scalar, const TypeSpec& scalar_ts,
+                            const TypeSpec& vec_ts) -> std::string {
+        TypeSpec elem_ts = vec_ts;
+        elem_ts.is_vector = false;
+        elem_ts.vector_lanes = 0;
+        elem_ts.vector_bytes = 0;
+        std::string coerced = coerce(ctx, scalar, scalar_ts, elem_ts);
+        const std::string elem_ty = llvm_ty(elem_ts);
+        const std::string vec_ty_s = llvm_vector_ty(vec_ts);
+        const int lanes = vec_ts.vector_lanes;
+        const std::string ins = fresh_tmp(ctx);
+        emit_instr(ctx, ins + " = insertelement " + vec_ty_s + " poison, " +
+                            elem_ty + " " + coerced + ", i64 0");
+        const std::string shuf = fresh_tmp(ctx);
+        emit_instr(ctx, shuf + " = shufflevector " + vec_ty_s + " " + ins +
+                            ", " + vec_ty_s + " poison, <" + std::to_string(lanes) +
+                            " x i32> zeroinitializer");
+        return shuf;
+      };
+      if (is_vector_value(lts) && !is_vector_value(rts) && rts.ptr_level == 0) {
+        rv = emit_splat_vec(rv, rts, lts);
+        rts = lts;
+      } else if (is_vector_value(rts) && !is_vector_value(lts) && lts.ptr_level == 0) {
+        lv = emit_splat_vec(lv, lts, rts);
+        lts = rts;
+      }
       const std::string tmp = fresh_tmp(ctx);
       const std::string vec_ty = llvm_ty(res_spec);
+      const bool vec_float = is_float_base(res_spec.base);
       switch (b.op) {
         case BinaryOp::Add:
-          emit_instr(ctx, tmp + " = add " + vec_ty + " " + lv + ", " + rv);
+          emit_instr(ctx, tmp + " = " + (vec_float ? "fadd " : "add ") + vec_ty + " " + lv + ", " + rv);
           return tmp;
         case BinaryOp::Sub:
-          emit_instr(ctx, tmp + " = sub " + vec_ty + " " + lv + ", " + rv);
+          emit_instr(ctx, tmp + " = " + (vec_float ? "fsub " : "sub ") + vec_ty + " " + lv + ", " + rv);
           return tmp;
         case BinaryOp::Mul:
-          emit_instr(ctx, tmp + " = mul " + vec_ty + " " + lv + ", " + rv);
+          emit_instr(ctx, tmp + " = " + (vec_float ? "fmul " : "mul ") + vec_ty + " " + lv + ", " + rv);
           return tmp;
         case BinaryOp::Div:
-          emit_instr(ctx, tmp + " = " +
-                              std::string(is_signed_int(res_spec.base) ? "sdiv " : "udiv ") +
-                              vec_ty + " " + lv + ", " + rv);
+          if (vec_float)
+            emit_instr(ctx, tmp + " = fdiv " + vec_ty + " " + lv + ", " + rv);
+          else
+            emit_instr(ctx, tmp + " = " +
+                                std::string(is_signed_int(res_spec.base) ? "sdiv " : "udiv ") +
+                                vec_ty + " " + lv + ", " + rv);
           return tmp;
         case BinaryOp::Mod:
-          emit_instr(ctx, tmp + " = " +
-                              std::string(is_signed_int(res_spec.base) ? "srem " : "urem ") +
-                              vec_ty + " " + lv + ", " + rv);
+          if (vec_float)
+            emit_instr(ctx, tmp + " = frem " + vec_ty + " " + lv + ", " + rv);
+          else
+            emit_instr(ctx, tmp + " = " +
+                                std::string(is_signed_int(res_spec.base) ? "srem " : "urem ") +
+                                vec_ty + " " + lv + ", " + rv);
           return tmp;
         case BinaryOp::BitAnd:
           emit_instr(ctx, tmp + " = and " + vec_ty + " " + lv + ", " + rv);
