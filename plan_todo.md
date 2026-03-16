@@ -1,7 +1,7 @@
 # Plan Execution State
 
 ## Baseline
-- 1829/1829 tests pass (2026-03-16)
+- 1830/1830 tests pass (2026-03-16)
 
 ## Active Plan: HIR Inline Expansion (inline_plan.md)
 
@@ -31,12 +31,18 @@
   - `clone_block()` — clones all statements in a block with fresh BlockId
   - `preallocate_block_ids()` — pre-maps all callee blocks so forward references resolve during cloning
   - Handles all 16 ExprPayload variants and all 16 StmtPayload variants
+- [x] Phase 3: Argument capture and parameter binding
+  - `param_to_local` map added to InlineCloneContext
+  - `bind_callee_params()`: synthesizes one LocalDecl per callee parameter, initialized with call argument
+  - `clone_expr` DeclRef handling: rewrites `param_index` to synthetic local via `param_to_local` map
+  - Added `inline_param_bind.c` test case: multi-param, void callee, side-effect-once, nested calls
 
 ### Next
-- [ ] Phase 3: Argument capture and parameter binding
-  - Synthesize one LocalDecl per callee parameter in caller
-  - Emit initialization from actual arguments
-  - Rewrite DeclRef.param_index in cloned body to those synthetic locals
+- [ ] Phase 4: Minimal CFG splice for single-return bodies
+  - Split caller block around call site into pre-call / inlined region / continuation
+  - Clone callee blocks into caller
+  - Replace return with store to result local + branch to continuation
+  - Replace original call expression with read from result local
 
 ### Previous Plan (Consteval) — Complete
 - [x] Phase 1–4 of consteval plan fully implemented

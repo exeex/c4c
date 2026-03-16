@@ -18,6 +18,9 @@ struct InlineCloneContext {
   std::unordered_map<uint32_t, ExprId> expr_map;
   std::string debug_prefix;
 
+  // Phase 3: parameter index → synthetic local for argument capture.
+  std::unordered_map<uint32_t, LocalId> param_to_local;
+
   /// Allocate a fresh LocalId mapped from the callee's local.
   LocalId remap_local(LocalId old_id);
 
@@ -52,6 +55,18 @@ Block clone_block(InlineCloneContext& ctx, const Block& src);
 /// Pre-allocate block ID mappings for all blocks in the callee.
 /// Must be called before clone_block so forward block references resolve.
 void preallocate_block_ids(InlineCloneContext& ctx, const Function& callee);
+
+// ── Phase 3: Argument Capture and Parameter Binding ──────────────────────────
+
+/// Synthesize one LocalDecl per callee parameter in the caller.
+/// Each synthetic local is initialized with the corresponding argument expression.
+/// Records the mapping in ctx.param_to_local so that subsequent clone_expr calls
+/// rewrite DeclRef.param_index references to the captured locals.
+/// Returns the list of Stmt (LocalDecl) that should be inserted at the call site.
+std::vector<Stmt> bind_callee_params(
+    InlineCloneContext& ctx,
+    const Function& callee,
+    const CallExpr& call);
 
 // ── Phase 1: Call-site discovery and eligibility ─────────────────────────────
 

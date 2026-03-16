@@ -104,13 +104,19 @@ ExprId clone_expr(InlineCloneContext& ctx, const Expr& src) {
           cloned.payload = p;
         } else if constexpr (std::is_same_v<T, DeclRef>) {
           DeclRef r = p;
+          // Phase 3: rewrite callee parameter references to synthetic locals.
+          if (r.param_index) {
+            auto pit = ctx.param_to_local.find(*r.param_index);
+            if (pit != ctx.param_to_local.end()) {
+              r.local = pit->second;
+              r.param_index = std::nullopt;
+            }
+          }
           // Remap local reference if it was cloned.
           if (r.local) {
             LocalId mapped = ctx.lookup_local(*r.local);
             if (mapped.valid()) r.local = mapped;
           }
-          // param_index and global refs are not remapped during inline cloning;
-          // param binding is handled separately in Phase 3.
           cloned.payload = r;
         } else if constexpr (std::is_same_v<T, UnaryExpr>) {
           UnaryExpr u = p;
@@ -410,6 +416,41 @@ std::vector<InlineCandidate> discover_inline_candidates(const Module& module) {
   }
 
   return candidates;
+}
+
+// ── Phase 3: bind_callee_params ──────────────────────────────────────────────
+
+std::vector<Stmt> bind_callee_params(
+    InlineCloneContext& ctx,
+    const Function& callee,
+    const CallExpr& call) {
+
+  std::vector<Stmt> param_decls;
+  const size_t n = callee.params.size();
+  assert(call.args.size() >= n && "not enough arguments for callee parameters");
+
+  for (size_t i = 0; i < n; ++i) {
+    const Param& param = callee.params[i];
+
+    // Allocate a fresh local for this parameter capture.
+    LocalId new_local = ctx.module->alloc_local_id();
+    ctx.param_to_local[static_cast<uint32_t>(i)] = new_local;
+
+    // Build a LocalDecl statement.
+    LocalDecl decl;
+    decl.id = new_local;
+    decl.name = ctx.debug_prefix + param.name;
+    decl.type = param.type;
+    decl.fn_ptr_sig = param.fn_ptr_sig;
+    decl.storage = StorageClass::Auto;
+    decl.init = call.args[i];  // argument expression, already evaluated once
+
+    Stmt stmt;
+    stmt.payload = decl;
+    param_decls.push_back(std::move(stmt));
+  }
+
+  return param_decls;
 }
 
 // ── run_inline_expansion (stub) ──────────────────────────────────────────────
