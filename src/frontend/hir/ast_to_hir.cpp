@@ -542,33 +542,10 @@ class Lowerer {
       }
     }
 
-    // Legacy path: derive from parser AST fields.
-    if (!n->type.is_fn_ptr) return std::nullopt;
-    FnPtrSig sig{};
-    TypeSpec ret_ts = n->type;
-    if (ret_ts.ptr_level > 0) {
-      ret_ts.ptr_level -= 1;
-    }
-    ret_ts.is_fn_ptr = false;
-    // Strip declarator array dims — they belong to the variable, not the fn_ptr return type.
-    ret_ts.array_rank = 0;
-    ret_ts.array_size = -1;
-    for (int i = 0; i < 8; ++i) ret_ts.array_dims[i] = -1;
-    ret_ts.is_ptr_to_array = false;
-    // For nested fn_ptr declarators, the return type is itself a fn_ptr.
-    if (n->n_ret_fn_ptr_params > 0 || n->ret_fn_ptr_variadic) {
-      ret_ts.is_fn_ptr = true;
-      ret_ts.ptr_level = 1;
-    }
-    sig.return_type = qtype_from(ret_ts);
-    sig.variadic = n->fn_ptr_variadic;
-    sig.unspecified_params = (n->n_fn_ptr_params == 0 && !n->fn_ptr_variadic);
-    for (int i = 0; i < n->n_fn_ptr_params; ++i) {
-      const Node* p = n->fn_ptr_params ? n->fn_ptr_params[i] : nullptr;
-      if (!p) continue;
-      sig.params.push_back(qtype_from(p->type, ValueCategory::LValue));
-    }
-    return sig;
+    // Legacy path removed (Phase D slice 4).
+    // All fn_ptr declarations should be in ResolvedTypeTable after sema.
+    // If canonical lookup fails, the node is not a callable fn_ptr.
+    return std::nullopt;
   }
 
   std::optional<TypeSpec> infer_call_result_type_from_callee(FunctionCtx* ctx, const Node* callee) {

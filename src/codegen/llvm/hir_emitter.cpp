@@ -7,17 +7,14 @@ namespace {
 
 // ── FnPtrSig accessors ───────────────────────────────────────────────────
 // These helpers extract return type and parameter types from FnPtrSig.
-// canonical_sig is populated for all FnPtrSig instances created during
-// HIR lowering. The QualType fallback paths remain as a safety net.
+// canonical_sig is always populated during HIR lowering.
 
 /// Extract the return TypeSpec from a FnPtrSig.
-/// Uses sig.return_type which is already correctly set during HIR lowering
-/// (including the ret_fn_ptr_params fix for nested fn_ptr declarators).
 TypeSpec sig_return_type(const FnPtrSig& sig) {
   return sig.return_type.spec;
 }
 
-/// Extract the i-th parameter TypeSpec from a FnPtrSig, preferring canonical_sig.
+/// Extract the i-th parameter TypeSpec from a FnPtrSig via canonical_sig.
 TypeSpec sig_param_type(const FnPtrSig& sig, size_t i) {
   if (sig.canonical_sig) {
     const auto* fsig = sema::get_function_sig(*sig.canonical_sig);
@@ -28,13 +25,13 @@ TypeSpec sig_param_type(const FnPtrSig& sig, size_t i) {
   return i < sig.params.size() ? sig.params[i].spec : TypeSpec{};
 }
 
-/// Check if the i-th parameter is va_list by value via canonical_sig.
+/// Check if the i-th parameter is va_list by value.
 bool sig_param_is_va_list_value(const FnPtrSig& sig, size_t i) {
   const TypeSpec ts = sig_param_type(sig, i);
   return ts.base == TB_VA_LIST && ts.ptr_level == 0 && ts.array_rank == 0;
 }
 
-/// Return the number of declared parameters from canonical_sig or legacy.
+/// Return the number of declared parameters.
 size_t sig_param_count(const FnPtrSig& sig) {
   if (sig.canonical_sig) {
     const auto* fsig = sema::get_function_sig(*sig.canonical_sig);
@@ -43,7 +40,7 @@ size_t sig_param_count(const FnPtrSig& sig) {
   return sig.params.size();
 }
 
-/// Check if sig is variadic via canonical_sig or legacy.
+/// Check if sig is variadic.
 bool sig_is_variadic(const FnPtrSig& sig) {
   if (sig.canonical_sig) {
     const auto* fsig = sema::get_function_sig(*sig.canonical_sig);

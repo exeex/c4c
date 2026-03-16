@@ -1,7 +1,7 @@
 # Plan Execution State
 
 ## Baseline
-- Test suite: **1800/1800** (2026-03-16, after Phase D slice 3)
+- Test suite: **1800/1800** (2026-03-16, after Phase D slice 4)
 
 ## Completed
 - Phase A: Lock Current Behavior With Tests
@@ -29,20 +29,24 @@
   - canonical_sig populated on ret_fn_ptr_sig (was missing before)
   - Nested fn_ptr fixup applied same as fn_ptr_sig_from_decl_node
   - Updated Phase 4 comments → final canonical approach language
+- Phase D slice 4: Remove legacy fallback path in fn_ptr_sig_from_decl_node
+  - Removed TypeSpec-peeling legacy path (ptr_level decrement, array dim strip)
+  - All fn_ptr sig creation now uses canonical types exclusively
+  - sig_* helper comments updated to reflect canonical-only design
 
 ## Active Item
-- **Phase D: Delete Legacy Callable Recovery** (evaluation)
+- **Phase D: Delete Legacy Callable Recovery** — COMPLETE
 
-## Next Slice
-- Evaluate Phase D exit conditions:
-  - All FnPtrSig creation paths now populate canonical_sig (fn_ptr_sig_from_decl_node canonical path, struct fields, ret_fn_ptr_sig)
-  - Only remaining legacy path: fn_ptr_sig_from_decl_node fallback (for nodes not in ResolvedTypeTable)
-  - sig_* helper fallbacks still present as safety net but canonical_sig should always be set
-- Consider: mark Phase D complete if exit conditions substantially met
-- Remaining gap: legacy path in fn_ptr_sig_from_decl_node (needed for safety when canonical lookup fails)
+## Plan Status
+All cleanup phases (A, B, C, D) and cleanup item 1 are complete.
+Success criteria met:
+- Nested raw fn-ptr return declarators parse and lower correctly ✓
+- Local declarations present in ResolvedTypeTable ✓
+- Expression nodes needed by indirect calls have canonical types ✓
+- Legacy callable TypeSpec recovery code removed ✓
 
 ## Blockers
-- None known
+- None
 
 ## Deferred
 - (none)
