@@ -41,7 +41,11 @@ Node* Parser::parse_local_decl() {
         // Also handles typedef base_type (*fn_name)(...);
         const char* tdname = nullptr;
         TypeSpec ts_copy = base_ts;
-        parse_declarator(ts_copy, &tdname);
+        Node** td_fn_ptr_params = nullptr;
+        int td_n_fn_ptr_params = 0;
+        bool td_fn_ptr_variadic = false;
+        parse_declarator(ts_copy, &tdname, &td_fn_ptr_params,
+                         &td_n_fn_ptr_params, &td_fn_ptr_variadic);
         if (tdname) {
             auto it = typedef_types_.find(tdname);
             if (user_typedefs_.count(tdname) && it != typedef_types_.end() &&
@@ -50,12 +54,20 @@ Node* Parser::parse_local_decl() {
             typedefs_.insert(tdname);
             user_typedefs_.insert(tdname);
             typedef_types_[tdname] = ts_copy;
+            // Phase C: store fn_ptr param info for typedef'd function pointers.
+            if (ts_copy.is_fn_ptr && (td_n_fn_ptr_params > 0 || td_fn_ptr_variadic)) {
+                typedef_fn_ptr_info_[tdname] = {td_fn_ptr_params, td_n_fn_ptr_params, td_fn_ptr_variadic};
+            }
         }
         // multiple declarators in typedef
         while (match(TokenKind::Comma)) {
             TypeSpec ts2 = base_ts;
             const char* tdn2 = nullptr;
-            parse_declarator(ts2, &tdn2);
+            Node** td2_fn_ptr_params = nullptr;
+            int td2_n_fn_ptr_params = 0;
+            bool td2_fn_ptr_variadic = false;
+            parse_declarator(ts2, &tdn2, &td2_fn_ptr_params,
+                             &td2_n_fn_ptr_params, &td2_fn_ptr_variadic);
             if (tdn2) {
                 auto it = typedef_types_.find(tdn2);
                 if (user_typedefs_.count(tdn2) && it != typedef_types_.end() &&
@@ -64,6 +76,9 @@ Node* Parser::parse_local_decl() {
                 typedefs_.insert(tdn2);
                 user_typedefs_.insert(tdn2);
                 typedef_types_[tdn2] = ts2;
+                if (ts2.is_fn_ptr && (td2_n_fn_ptr_params > 0 || td2_fn_ptr_variadic)) {
+                    typedef_fn_ptr_info_[tdn2] = {td2_fn_ptr_params, td2_n_fn_ptr_params, td2_fn_ptr_variadic};
+                }
             }
         }
         match(TokenKind::Semi);
@@ -133,6 +148,15 @@ Node* Parser::parse_local_decl() {
         d->fn_ptr_params = fn_ptr_params;
         d->n_fn_ptr_params = n_fn_ptr_params;
         d->fn_ptr_variadic = fn_ptr_variadic;
+        // Phase C: propagate fn_ptr params from typedef if not set by declarator.
+        if (ts.is_fn_ptr && n_fn_ptr_params == 0 && !fn_ptr_variadic) {
+            auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
+            if (tdit != typedef_fn_ptr_info_.end()) {
+                d->fn_ptr_params = tdit->second.params;
+                d->n_fn_ptr_params = tdit->second.n_params;
+                d->fn_ptr_variadic = tdit->second.variadic;
+            }
+        }
         if (vname) var_types_[vname] = ts;  // for typeof(var) resolution
         decls.push_back(d);
     } while (match(TokenKind::Comma));
@@ -287,7 +311,11 @@ Node* Parser::parse_top_level() {
         // Local typedef
         const char* tdname = nullptr;
         TypeSpec ts_copy = base_ts;
-        parse_declarator(ts_copy, &tdname);
+        Node** td_fn_ptr_params = nullptr;
+        int td_n_fn_ptr_params = 0;
+        bool td_fn_ptr_variadic = false;
+        parse_declarator(ts_copy, &tdname, &td_fn_ptr_params,
+                         &td_n_fn_ptr_params, &td_fn_ptr_variadic);
         if (tdname) {
             auto it = typedef_types_.find(tdname);
             if (user_typedefs_.count(tdname) && it != typedef_types_.end() &&
@@ -296,11 +324,17 @@ Node* Parser::parse_top_level() {
             typedefs_.insert(tdname);
             user_typedefs_.insert(tdname);
             typedef_types_[tdname] = ts_copy;
+            if (ts_copy.is_fn_ptr && (td_n_fn_ptr_params > 0 || td_fn_ptr_variadic))
+                typedef_fn_ptr_info_[tdname] = {td_fn_ptr_params, td_n_fn_ptr_params, td_fn_ptr_variadic};
         }
         while (match(TokenKind::Comma)) {
             TypeSpec ts2 = base_ts;
             const char* tdn2 = nullptr;
-            parse_declarator(ts2, &tdn2);
+            Node** td2_fn_ptr_params = nullptr;
+            int td2_n_fn_ptr_params = 0;
+            bool td2_fn_ptr_variadic = false;
+            parse_declarator(ts2, &tdn2, &td2_fn_ptr_params,
+                             &td2_n_fn_ptr_params, &td2_fn_ptr_variadic);
             if (tdn2) {
                 auto it = typedef_types_.find(tdn2);
                 if (user_typedefs_.count(tdn2) && it != typedef_types_.end() &&
@@ -309,6 +343,8 @@ Node* Parser::parse_top_level() {
                 typedefs_.insert(tdn2);
                 user_typedefs_.insert(tdn2);
                 typedef_types_[tdn2] = ts2;
+                if (ts2.is_fn_ptr && (td2_n_fn_ptr_params > 0 || td2_fn_ptr_variadic))
+                    typedef_fn_ptr_info_[tdn2] = {td2_fn_ptr_params, td2_n_fn_ptr_params, td2_fn_ptr_variadic};
             }
         }
         match(TokenKind::Semi);
@@ -654,6 +690,15 @@ Node* Parser::parse_top_level() {
         gv->fn_ptr_params = fn_ptr_params;
         gv->n_fn_ptr_params = n_fn_ptr_params;
         gv->fn_ptr_variadic = fn_ptr_variadic;
+        // Phase C: propagate fn_ptr params from typedef if not set by declarator.
+        if (gts.is_fn_ptr && n_fn_ptr_params == 0 && !fn_ptr_variadic) {
+            auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
+            if (tdit != typedef_fn_ptr_info_.end()) {
+                gv->fn_ptr_params = tdit->second.params;
+                gv->n_fn_ptr_params = tdit->second.n_params;
+                gv->fn_ptr_variadic = tdit->second.variadic;
+            }
+        }
         if (gname) var_types_[gname] = gts;  // for typeof(var) resolution
         return gv;
     };

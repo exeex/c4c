@@ -1737,6 +1737,25 @@ const FnPtrSig* HirEmitter::resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& ca
         if (it != ctx.global_fn_ptr_sigs.end()) return &it->second;
       }
     }
+    // Phase C: MemberExpr — look up the struct field's fn_ptr_sig.
+    if (const auto* m = std::get_if<MemberExpr>(&callee_e.payload)) {
+      TypeSpec base_ts = resolve_expr_type(ctx, m->base);
+      if (m->is_arrow && base_ts.ptr_level > 0) base_ts.ptr_level--;
+      if (base_ts.tag && base_ts.tag[0]) {
+        const auto sit = mod_.struct_defs.find(base_ts.tag);
+        if (sit != mod_.struct_defs.end()) {
+          for (const auto& f : sit->second.fields) {
+            if (f.name == m->field && f.fn_ptr_sig) {
+              return &*f.fn_ptr_sig;
+            }
+          }
+        }
+      }
+    }
+    // Phase C: TernaryExpr — recurse on the then branch.
+    if (const auto* t = std::get_if<TernaryExpr>(&callee_e.payload)) {
+      return resolve_callee_fn_ptr_sig(ctx, get_expr(t->then_expr));
+    }
     return nullptr;
   }
 

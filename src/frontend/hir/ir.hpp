@@ -591,6 +591,7 @@ struct HirStructField {
   int bit_offset = 0;           // offset within storage unit (from LSB)
   int storage_unit_bits = 0;    // backing storage integer size (8, 16, 32, or 64)
   bool is_bf_signed = false;    // true if original declared type was signed
+  std::optional<FnPtrSig> fn_ptr_sig;  // Phase C: fn_ptr signature for callable fields
 };
 
 struct HirStructDef {

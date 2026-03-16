@@ -391,6 +391,8 @@ TypeSpec Parser::parse_base_type() {
                 ts = it->second;
                 ts.is_const   |= save_const;
                 ts.is_volatile |= save_vol;
+                // Phase C: remember the typedef name for fn_ptr param propagation.
+                last_resolved_typedef_ = tname;
                 return ts;
             }
         }
@@ -952,7 +954,11 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             }
             first = false;
             const char* fname = nullptr;
-            parse_declarator(cur_fts, &fname);
+            Node** fn_ptr_params = nullptr;
+            int n_fn_ptr_params = 0;
+            bool fn_ptr_variadic = false;
+            parse_declarator(cur_fts, &fname, &fn_ptr_params,
+                             &n_fn_ptr_params, &fn_ptr_variadic);
             skip_attributes();
 
             // Bitfield: : expr
@@ -968,6 +974,18 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 f->type = cur_fts;
                 f->name = fname;
                 f->ival = bf_width;  // -1 = not a bitfield; N = N-bit bitfield
+                f->fn_ptr_params = fn_ptr_params;
+                f->n_fn_ptr_params = n_fn_ptr_params;
+                f->fn_ptr_variadic = fn_ptr_variadic;
+                // Phase C: propagate fn_ptr params from typedef if not set by declarator.
+                if (cur_fts.is_fn_ptr && n_fn_ptr_params == 0 && !fn_ptr_variadic) {
+                    auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
+                    if (tdit != typedef_fn_ptr_info_.end()) {
+                        f->fn_ptr_params = tdit->second.params;
+                        f->n_fn_ptr_params = tdit->second.n_params;
+                        f->fn_ptr_variadic = tdit->second.variadic;
+                    }
+                }
                 check_dup_field(fname);
                 fields.push_back(f);
             }
@@ -1125,6 +1143,15 @@ Node* Parser::parse_param() {
     p->fn_ptr_params = fn_ptr_params;
     p->n_fn_ptr_params = n_fn_ptr_params;
     p->fn_ptr_variadic = fn_ptr_variadic;
+    // Phase C: propagate fn_ptr params from typedef if not set by declarator.
+    if (pts.is_fn_ptr && n_fn_ptr_params == 0 && !fn_ptr_variadic) {
+        auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
+        if (tdit != typedef_fn_ptr_info_.end()) {
+            p->fn_ptr_params = tdit->second.params;
+            p->n_fn_ptr_params = tdit->second.n_params;
+            p->fn_ptr_variadic = tdit->second.variadic;
+        }
+    }
     return p;
 }
 

@@ -910,6 +910,25 @@ class Lowerer {
       hf.align_bytes = ft.align_bytes > 0 ? ft.align_bytes : 0;
       hf.is_anon_member = f->is_anon_field;
       hf.llvm_idx = sd->is_union ? 0 : llvm_idx;
+      // Phase C: capture fn_ptr signature for callable struct fields.
+      // Use canonical type directly (struct fields aren't in ResolvedTypeTable).
+      {
+        auto ct = std::make_shared<sema::CanonicalType>(sema::canonicalize_declarator_type(f));
+        if (sema::is_callable_type(*ct)) {
+          const auto* fsig = sema::get_function_sig(*ct);
+          if (fsig) {
+            FnPtrSig sig{};
+            sig.canonical_sig = ct;
+            if (fsig->return_type)
+              sig.return_type = qtype_from(sema::typespec_from_canonical(*fsig->return_type));
+            sig.variadic = fsig->is_variadic;
+            sig.unspecified_params = fsig->unspecified_params;
+            for (const auto& param : fsig->params)
+              sig.params.push_back(qtype_from(sema::typespec_from_canonical(param), ValueCategory::LValue));
+            hf.fn_ptr_sig = std::move(sig);
+          }
+        }
+      }
       def.fields.push_back(std::move(hf));
       if (!sd->is_union) ++llvm_idx;
     }

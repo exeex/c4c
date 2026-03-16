@@ -43,6 +43,18 @@ class Parser {
   // Maps typedef name → resolved TypeSpec (populated when registering typedefs)
   // so subsequent uses of the typedef name resolve to the actual struct/base type.
   std::unordered_map<std::string, TypeSpec> typedef_types_;
+  // Phase C: fn_ptr parameter info for typedef'd function pointer types.
+  // Stores (fn_ptr_params, n_fn_ptr_params, fn_ptr_variadic) for typedefs
+  // whose TypeSpec has is_fn_ptr=true, so the info can be propagated to
+  // declaration nodes that use the typedef.
+  struct FnPtrTypedefInfo {
+    Node** params = nullptr;
+    int n_params = 0;
+    bool variadic = false;
+  };
+  std::unordered_map<std::string, FnPtrTypedefInfo> typedef_fn_ptr_info_;
+  // Last resolved typedef name from parse_base_type() (for fn_ptr propagation).
+  std::string last_resolved_typedef_;
   std::vector<Node*>    struct_defs_;  // collected struct/enum defs (prepended)
   int                anon_counter_;  // counter for anonymous tag names
   // Struct/union tags that already have a full definition (with body).
