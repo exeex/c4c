@@ -22,11 +22,21 @@
   - `run_inline_expansion()`: stub entry point wired into pipeline (c4cll.cpp, between HIR and LLVM emission)
   - Added `inline_call_discovery.c` test case with always_inline, noinline, and nested call patterns
   - Current policy: only `always_inline` callees are eligible; default/noinline rejected
+- [x] Phase 2: ID remapping infrastructure
+  - `InlineCloneContext` struct with local_map, block_map, expr_map, debug_prefix
+  - `remap_local()`, `remap_block()`, `remap_expr()` — allocate fresh IDs on first encounter
+  - `lookup_local()`, `lookup_block()`, `lookup_expr()` — query existing mappings
+  - `clone_expr()` — deep-clones expression tree, remapping all sub-expr/local/block references
+  - `clone_stmt()` — clones any statement variant, remapping locals, exprs, and block targets
+  - `clone_block()` — clones all statements in a block with fresh BlockId
+  - `preallocate_block_ids()` — pre-maps all callee blocks so forward references resolve during cloning
+  - Handles all 16 ExprPayload variants and all 16 StmtPayload variants
 
 ### Next
-- [ ] Phase 2: ID remapping infrastructure
-  - InlineCloneContext with local_map, block_map, expr_map
-  - Clone helpers for Expr, Stmt, Block, DeclRef, branch targets
+- [ ] Phase 3: Argument capture and parameter binding
+  - Synthesize one LocalDecl per callee parameter in caller
+  - Emit initialization from actual arguments
+  - Rewrite DeclRef.param_index in cloned body to those synthetic locals
 
 ### Previous Plan (Consteval) — Complete
 - [x] Phase 1–4 of consteval plan fully implemented

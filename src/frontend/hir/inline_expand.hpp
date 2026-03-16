@@ -3,9 +3,55 @@
 #include "ir.hpp"
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir {
+
+// ── Phase 2: ID Remapping Infrastructure ─────────────────────────────────────
+
+/// Context for cloning callee HIR nodes into a caller with fresh IDs.
+struct InlineCloneContext {
+  Module* module = nullptr;
+  std::unordered_map<uint32_t, LocalId> local_map;
+  std::unordered_map<uint32_t, BlockId> block_map;
+  std::unordered_map<uint32_t, ExprId> expr_map;
+  std::string debug_prefix;
+
+  /// Allocate a fresh LocalId mapped from the callee's local.
+  LocalId remap_local(LocalId old_id);
+
+  /// Allocate a fresh BlockId mapped from the callee's block.
+  BlockId remap_block(BlockId old_id);
+
+  /// Allocate a fresh ExprId mapped from the callee's expr.
+  ExprId remap_expr(ExprId old_id);
+
+  /// Look up a previously remapped LocalId, or return invalid if not mapped.
+  [[nodiscard]] LocalId lookup_local(LocalId old_id) const;
+
+  /// Look up a previously remapped BlockId, or return invalid if not mapped.
+  [[nodiscard]] BlockId lookup_block(BlockId old_id) const;
+
+  /// Look up a previously remapped ExprId, or return invalid if not mapped.
+  [[nodiscard]] ExprId lookup_expr(ExprId old_id) const;
+};
+
+/// Clone an expression (deep: recursively clones sub-expressions).
+/// Allocates fresh ExprIds and remaps internal references.
+/// Returns the new ExprId of the cloned root expression.
+ExprId clone_expr(InlineCloneContext& ctx, const Expr& src);
+
+/// Clone a statement, remapping all internal IDs (locals, blocks, exprs).
+Stmt clone_stmt(InlineCloneContext& ctx, const Stmt& src);
+
+/// Clone a block (all statements), remapping all IDs.
+/// Returns a new Block with a fresh BlockId.
+Block clone_block(InlineCloneContext& ctx, const Block& src);
+
+/// Pre-allocate block ID mappings for all blocks in the callee.
+/// Must be called before clone_block so forward block references resolve.
+void preallocate_block_ids(InlineCloneContext& ctx, const Function& callee);
 
 // ── Phase 1: Call-site discovery and eligibility ─────────────────────────────
 
