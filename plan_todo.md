@@ -1,7 +1,7 @@
 # Plan Execution State
 
 ## Baseline
-- 1830/1830 tests pass (2026-03-16)
+- 1831/1831 tests pass (2026-03-16)
 
 ## Active Plan: HIR Inline Expansion (inline_plan.md)
 
@@ -36,13 +36,24 @@
   - `bind_callee_params()`: synthesizes one LocalDecl per callee parameter, initialized with call argument
   - `clone_expr` DeclRef handling: rewrites `param_index` to synthetic local via `param_to_local` map
   - Added `inline_param_bind.c` test case: multi-param, void callee, side-effect-once, nested calls
+- [x] Phase 4: Minimal CFG splice for single-return bodies
+  - `expand_inline_site()`: splits caller block, clones callee body, rewrites returns, wires control flow
+  - `run_inline_expansion()`: iterative loop discovering and expanding one candidate at a time
+  - Handles ExprStmt, LocalDecl init, and ReturnStmt call contexts
+  - Creates synthetic result local for non-void callees; assigns return value via AssignExpr
+  - Rewrites ReturnStmt in cloned body to assign + GotoStmt to continuation block
+  - Adds GotoStmt to continuation for blocks without explicit terminators (void callees with no return)
+  - Handles `f(void)` parameter lists correctly (skip binding for single void param)
+  - Phase 4 restrictions: single-return, single-block callees only; no va_arg in callee body
+  - Added `inline_cfg_splice.c` test: add1, add, void callee, side-effect-once args, chained inlines
+  - 1831/1831 tests pass (0 regressions, +1 new test)
 
 ### Next
-- [ ] Phase 4: Minimal CFG splice for single-return bodies
-  - Split caller block around call site into pre-call / inlined region / continuation
-  - Clone callee blocks into caller
-  - Replace return with store to result local + branch to continuation
-  - Replace original call expression with read from result local
+- [ ] Phase 5: General return rewriting and multi-block bodies
+  - Support multiple return sites (all rewrite to single continuation)
+  - Support conditionals and loops in inlined bodies
+  - Remove single-block restriction
+  - Remap break/continue/switch targets within cloned region
 
 ### Previous Plan (Consteval) — Complete
 - [x] Phase 1–4 of consteval plan fully implemented

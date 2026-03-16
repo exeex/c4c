@@ -426,7 +426,14 @@ std::vector<Stmt> bind_callee_params(
     const CallExpr& call) {
 
   std::vector<Stmt> param_decls;
-  const size_t n = callee.params.size();
+  size_t n = callee.params.size();
+
+  // Skip binding for (void) parameter lists: single void param with no args.
+  if (n == 1 && call.args.empty() &&
+      callee.params[0].type.spec.base == TB_VOID &&
+      callee.params[0].type.spec.ptr_level == 0) {
+    return param_decls;
+  }
   assert(call.args.size() >= n && "not enough arguments for callee parameters");
 
   for (size_t i = 0; i < n; ++i) {
@@ -453,11 +460,362 @@ std::vector<Stmt> bind_callee_params(
   return param_decls;
 }
 
-// ── run_inline_expansion (stub) ──────────────────────────────────────────────
+// ── Phase 4: Minimal CFG Splice ──────────────────────────────────────────────
 
-void run_inline_expansion(Module& /*module*/) {
-  // Phase 2+ will implement actual expansion.
-  // For now, this is a no-op entry point for pipeline integration.
+/// Check if any expression in the module's expr_pool that is reachable from
+/// a function's body contains VaArgExpr.
+static bool contains_va_arg(const Module& module, const Function& fn) {
+  // Collect all ExprIds used in this function's blocks, then scan the pool.
+  // Simpler approach: scan the entire expr pool for VaArgExpr that belong to
+  // the callee. Since we only care about the callee body, just check if any
+  // expression referenced from callee stmts (transitively) is VaArgExpr.
+  // For simplicity, scan all exprs in the function blocks for VaArgExpr.
+  std::vector<ExprId> worklist;
+  auto enqueue = [&](ExprId id) { worklist.push_back(id); };
+
+  for (const auto& bb : fn.blocks) {
+    for (const auto& stmt : bb.stmts) {
+      std::visit([&](const auto& s) {
+        using T = std::decay_t<decltype(s)>;
+        if constexpr (std::is_same_v<T, ExprStmt>) {
+          if (s.expr) enqueue(*s.expr);
+        } else if constexpr (std::is_same_v<T, ReturnStmt>) {
+          if (s.expr) enqueue(*s.expr);
+        } else if constexpr (std::is_same_v<T, LocalDecl>) {
+          if (s.init) enqueue(*s.init);
+        } else if constexpr (std::is_same_v<T, IfStmt>) {
+          enqueue(s.cond);
+        }
+      }, stmt.payload);
+    }
+  }
+
+  // BFS through expression tree.
+  std::vector<bool> visited(module.expr_pool.size(), false);
+  while (!worklist.empty()) {
+    ExprId eid = worklist.back();
+    worklist.pop_back();
+    const Expr* e = module.find_expr(eid);
+    if (!e) continue;
+    size_t idx = 0;
+    for (size_t i = 0; i < module.expr_pool.size(); ++i) {
+      if (module.expr_pool[i].id.value == eid.value) { idx = i; break; }
+    }
+    if (visited[idx]) continue;
+    visited[idx] = true;
+
+    if (std::holds_alternative<VaArgExpr>(e->payload)) return true;
+
+    // Recurse into sub-expressions.
+    std::visit([&](const auto& p) {
+      using T = std::decay_t<decltype(p)>;
+      if constexpr (std::is_same_v<T, UnaryExpr>) { enqueue(p.operand); }
+      else if constexpr (std::is_same_v<T, BinaryExpr>) { enqueue(p.lhs); enqueue(p.rhs); }
+      else if constexpr (std::is_same_v<T, AssignExpr>) { enqueue(p.lhs); enqueue(p.rhs); }
+      else if constexpr (std::is_same_v<T, CastExpr>) { enqueue(p.expr); }
+      else if constexpr (std::is_same_v<T, CallExpr>) {
+        enqueue(p.callee);
+        for (const auto& a : p.args) enqueue(a);
+      }
+      else if constexpr (std::is_same_v<T, IndexExpr>) { enqueue(p.base); enqueue(p.index); }
+      else if constexpr (std::is_same_v<T, MemberExpr>) { enqueue(p.base); }
+      else if constexpr (std::is_same_v<T, TernaryExpr>) {
+        enqueue(p.cond); enqueue(p.then_expr); enqueue(p.else_expr);
+      }
+      else if constexpr (std::is_same_v<T, SizeofExpr>) { enqueue(p.expr); }
+    }, e->payload);
+  }
+  return false;
+}
+
+/// Count the number of ReturnStmt nodes in a function's body.
+static int count_returns(const Function& fn) {
+  int count = 0;
+  for (const auto& bb : fn.blocks) {
+    for (const auto& stmt : bb.stmts) {
+      if (std::holds_alternative<ReturnStmt>(stmt.payload)) {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
+/// Check if a callee's return type is void (no pointer indirection).
+static bool is_void_return(const Function& fn) {
+  return fn.return_type.spec.base == TB_VOID &&
+         fn.return_type.spec.ptr_level == 0;
+}
+
+/// Create a DeclRef expression referencing a local variable.
+static ExprId make_local_ref(Module& module, LocalId local, const std::string& name,
+                             QualType type) {
+  ExprId id = module.alloc_expr_id();
+  Expr e;
+  e.id = id;
+  e.type = type;
+  DeclRef ref;
+  ref.name = name;
+  ref.local = local;
+  e.payload = ref;
+  module.expr_pool.push_back(std::move(e));
+  return id;
+}
+
+/// Create an AssignExpr (lhs = rhs) and return the wrapping ExprId.
+static ExprId make_assign(Module& module, ExprId lhs, ExprId rhs, QualType type) {
+  ExprId id = module.alloc_expr_id();
+  Expr e;
+  e.id = id;
+  e.type = type;
+  AssignExpr assign;
+  assign.op = AssignOp::Set;
+  assign.lhs = lhs;
+  assign.rhs = rhs;
+  e.payload = assign;
+  module.expr_pool.push_back(std::move(e));
+  return id;
+}
+
+/// Perform inline expansion for one candidate.
+/// Returns true if the expansion was performed, false if skipped.
+static bool expand_inline_site(Module& module, Function& caller,
+                               const InlineCandidate& cand) {
+  const Function& callee = *cand.callee;
+
+  // Phase 4 restrictions:
+  // - only single-return callees
+  // - only single-block callees (no loops/branches in callee body)
+  // - no va_arg in callee (va_list copy semantics are ABI-sensitive)
+  int ret_count = count_returns(callee);
+  if (ret_count > 1) return false;
+  if (callee.blocks.size() != 1) return false;
+  if (contains_va_arg(module, callee)) return false;
+
+  bool is_void = is_void_return(callee);
+
+  // Find caller block by linear scan (pointer into vector).
+  Block* caller_block = nullptr;
+  size_t caller_block_idx = 0;
+  for (size_t i = 0; i < caller.blocks.size(); ++i) {
+    if (caller.blocks[i].id.value == cand.caller_block.value) {
+      caller_block = &caller.blocks[i];
+      caller_block_idx = i;
+      break;
+    }
+  }
+  if (!caller_block) return false;
+
+  // Get the call expression.
+  const Expr* call_expr = module.find_expr(cand.call_expr_id);
+  if (!call_expr) return false;
+  const auto* call = std::get_if<CallExpr>(&call_expr->payload);
+  if (!call) return false;
+
+  // Determine the statement context of the call.
+  const Stmt& call_stmt = caller_block->stmts[cand.stmt_index];
+  enum class Ctx { ExprStmt, LocalDecl, Return };
+  Ctx ctx_kind;
+  if (std::holds_alternative<ExprStmt>(call_stmt.payload)) {
+    ctx_kind = Ctx::ExprStmt;
+  } else if (std::holds_alternative<LocalDecl>(call_stmt.payload)) {
+    ctx_kind = Ctx::LocalDecl;
+  } else if (std::holds_alternative<ReturnStmt>(call_stmt.payload)) {
+    ctx_kind = Ctx::Return;
+  } else {
+    return false;  // unsupported call context
+  }
+
+  // --- 1. Create continuation block ---
+  BlockId cont_id = module.alloc_block_id();
+  Block cont_block;
+  cont_block.id = cont_id;
+  cont_block.has_explicit_terminator = caller_block->has_explicit_terminator;
+
+  // Move stmts after stmt_index to continuation.
+  for (size_t i = cand.stmt_index + 1; i < caller_block->stmts.size(); ++i) {
+    cont_block.stmts.push_back(std::move(caller_block->stmts[i]));
+  }
+
+  // --- 2. Create result local if needed ---
+  LocalId result_local = LocalId::invalid();
+  std::string result_name;
+  if (!is_void && ctx_kind != Ctx::ExprStmt) {
+    result_local = module.alloc_local_id();
+    result_name = "inl_" + callee.name + "_result";
+  }
+
+  // --- 3. Handle the call statement (rebuild in continuation) ---
+  if (ctx_kind == Ctx::LocalDecl) {
+    // Move LocalDecl to start of continuation, replacing init with result ref.
+    LocalDecl decl = std::get<LocalDecl>(call_stmt.payload);
+    QualType ref_type = callee.return_type;
+    ref_type.category = ValueCategory::LValue;
+    ExprId ref_id = make_local_ref(module, result_local, result_name, ref_type);
+    decl.init = ref_id;
+    Stmt s;
+    s.payload = decl;
+    s.span = call_stmt.span;
+    cont_block.stmts.insert(cont_block.stmts.begin(), std::move(s));
+  } else if (ctx_kind == Ctx::Return) {
+    if (!is_void) {
+      QualType ref_type = callee.return_type;
+      ref_type.category = ValueCategory::LValue;
+      ExprId ref_id = make_local_ref(module, result_local, result_name, ref_type);
+      ReturnStmt ret;
+      ret.expr = ref_id;
+      Stmt s;
+      s.payload = ret;
+      s.span = call_stmt.span;
+      cont_block.stmts.insert(cont_block.stmts.begin(), std::move(s));
+    } else {
+      ReturnStmt ret;
+      Stmt s;
+      s.payload = ret;
+      s.span = call_stmt.span;
+      cont_block.stmts.insert(cont_block.stmts.begin(), std::move(s));
+    }
+    cont_block.has_explicit_terminator = true;
+  }
+  // For ExprStmt: nothing needed in continuation (call result is discarded).
+
+  // --- 4. Truncate caller block to [0, stmt_index) ---
+  caller_block->stmts.resize(cand.stmt_index);
+
+  // --- 5. Declare result local at end of pre-call block ---
+  if (result_local.valid()) {
+    LocalDecl result_decl;
+    result_decl.id = result_local;
+    result_decl.name = result_name;
+    result_decl.type = callee.return_type;
+    result_decl.storage = StorageClass::Auto;
+    Stmt s;
+    s.payload = result_decl;
+    caller_block->stmts.push_back(std::move(s));
+  }
+
+  // --- 6. Set up clone context and bind parameters ---
+  InlineCloneContext ctx;
+  ctx.module = &module;
+  ctx.debug_prefix = "inl_" + callee.name + "_";
+
+  auto param_stmts = bind_callee_params(ctx, callee, *call);
+  for (auto& s : param_stmts) {
+    caller_block->stmts.push_back(std::move(s));
+  }
+
+  // --- 7. Clone callee blocks ---
+  preallocate_block_ids(ctx, callee);
+
+  std::vector<Block> cloned_blocks;
+  for (const auto& bb : callee.blocks) {
+    cloned_blocks.push_back(clone_block(ctx, bb));
+  }
+
+  // --- 8. Rewrite ReturnStmt in cloned blocks ---
+  for (auto& bb : cloned_blocks) {
+    for (size_t i = 0; i < bb.stmts.size(); ++i) {
+      auto* ret = std::get_if<ReturnStmt>(&bb.stmts[i].payload);
+      if (!ret) continue;
+
+      if (result_local.valid() && ret->expr) {
+        // result_local = return_expr; goto continuation
+        QualType lhs_type = callee.return_type;
+        lhs_type.category = ValueCategory::LValue;
+        ExprId lhs_id = make_local_ref(module, result_local, result_name, lhs_type);
+        ExprId assign_id = make_assign(module, lhs_id, *ret->expr, callee.return_type);
+
+        Stmt assign_stmt;
+        ExprStmt es;
+        es.expr = assign_id;
+        assign_stmt.payload = es;
+
+        GotoStmt gs;
+        gs.target.resolved_block = cont_id;
+        Stmt goto_stmt;
+        goto_stmt.payload = gs;
+
+        bb.stmts[i] = std::move(assign_stmt);
+        bb.stmts.insert(bb.stmts.begin() + static_cast<long>(i) + 1,
+                         std::move(goto_stmt));
+      } else {
+        // Void or no expr: just goto continuation.
+        GotoStmt gs;
+        gs.target.resolved_block = cont_id;
+        Stmt goto_stmt;
+        goto_stmt.payload = gs;
+        bb.stmts[i] = std::move(goto_stmt);
+      }
+      bb.has_explicit_terminator = true;
+      break;  // Phase 4: only one return per callee
+    }
+  }
+
+  // For cloned blocks that have no explicit terminator (e.g., void callee
+  // with no return statement), add a goto to the continuation block.
+  for (auto& bb : cloned_blocks) {
+    if (!bb.has_explicit_terminator) {
+      GotoStmt gs;
+      gs.target.resolved_block = cont_id;
+      Stmt goto_stmt;
+      goto_stmt.payload = gs;
+      bb.stmts.push_back(std::move(goto_stmt));
+      bb.has_explicit_terminator = true;
+    }
+  }
+
+  // --- 9. Add goto from pre-call block to callee entry ---
+  BlockId callee_entry_clone = ctx.lookup_block(callee.entry);
+  assert(callee_entry_clone.valid());
+  GotoStmt entry_goto;
+  entry_goto.target.resolved_block = callee_entry_clone;
+  Stmt entry_goto_stmt;
+  entry_goto_stmt.payload = entry_goto;
+  caller_block->stmts.push_back(std::move(entry_goto_stmt));
+  caller_block->has_explicit_terminator = true;
+
+  // --- 10. Insert cloned blocks + continuation into caller ---
+  // IMPORTANT: after inserting, caller_block pointer is invalidated.
+  auto insert_pos = caller.blocks.begin() +
+                    static_cast<long>(caller_block_idx) + 1;
+  for (auto& cb : cloned_blocks) {
+    insert_pos = caller.blocks.insert(insert_pos, std::move(cb));
+    ++insert_pos;
+  }
+  caller.blocks.insert(insert_pos, std::move(cont_block));
+
+  return true;
+}
+
+// ── run_inline_expansion ─────────────────────────────────────────────────────
+
+void run_inline_expansion(Module& module) {
+  // Iteratively discover and expand one candidate at a time.
+  // Re-discover after each expansion because block/stmt indices change.
+  bool changed = true;
+  int max_iterations = 256;  // guard against infinite expansion
+  while (changed && max_iterations-- > 0) {
+    changed = false;
+    auto candidates = discover_inline_candidates(module);
+    for (const auto& cand : candidates) {
+      if (!cand.eligible()) continue;
+
+      // Find the mutable caller function.
+      Function* caller = nullptr;
+      for (auto& fn : module.functions) {
+        if (fn.id.value == cand.caller->id.value) {
+          caller = &fn;
+          break;
+        }
+      }
+      if (!caller) continue;
+
+      if (expand_inline_site(module, *caller, cand)) {
+        changed = true;
+        break;  // re-discover after each expansion
+      }
+    }
+  }
 }
 
 }  // namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir
