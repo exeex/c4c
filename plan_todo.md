@@ -1,7 +1,7 @@
 # Plan Execution State
 
 ## Baseline
-- Test suite: **1800/1800** (2026-03-16, after Phase C slice 2)
+- Test suite: **1800/1800** (2026-03-16, after Phase C slice 3)
 
 ## Completed
 - Phase A: Lock Current Behavior With Tests — existing tests cover fn-ptr return cases; XFAIL guard exists for nested raw syntax
@@ -23,17 +23,23 @@
   - Codegen: resolve_callee_fn_ptr_sig handles CastExpr, IndexExpr (recurse on base), and CallExpr (lookup ret_fn_ptr_sig)
   - Bugfix: canonicalize_fn_ptr_type + fn_ptr_sig_from_decl_node strip declarator array dims from return type
   - Test: `ok_expr_canonical_cast_index.c` covers cast, index, and call-returning-fn_ptr patterns
+- Phase C slice 3: ret_fn_ptr_sig zero-param fix + CallExpr resolution cleanup
+  - Bugfix: `lower_function` ret_fn_ptr_sig condition widened from `is_fn_ptr && n_fn_ptr_params > 0` to `is_fn_ptr` — fixes functions returning zero-param fn_ptrs (e.g. `struct S * (*)()`)
+  - Codegen: reorganized CallExpr return type resolution — canonical fn_ptr_sig now checked before fn_index direct-call lookup; removed redundant DeclRef-specific TypeSpec peeling (covered by general callee_ts path)
+  - Codegen: cleaned up stale phase comments and TODO markers
 
 ## Active Item
 - **Phase C: Add Expression Canonical Types** (remaining slices)
 
 ## Next Slice
-- Remove legacy TypeSpec-based call-result peeling once expression types are fully covered (Phase D overlap)
-- Handle remaining expression forms (NK_ADDR, CommaExpr) if needed by test cases
+- Phase D: Legacy fallback removal — blocked by parser gap for nested fn-returning-fn-ptr declarators
+  - Attempted removal of `local_fn_ret_types` map revealed that canonical type system doesn't correctly represent nested fn_ptr return types (e.g. `int (* (*p)(int, int))(int, int)`)
+  - The `local_fn_ret_types` workaround must remain until the parser gap is fixed
+- Cleanup item 1: Parser gap for nested fn-returning-fn-ptr declarators — prerequisite for Phase D
 
 ## Blockers
-- None known
+- Phase D blocked by parser gap (Cleanup item 1): canonical types inherit the parser's inability to fully represent nested fn-ptr return types
 
 ## Deferred
-- Phase D: Legacy fallback removal
+- Phase D: Legacy fallback removal (needs parser gap fix first)
 - Cleanup item 1: Parser gap for nested fn-returning-fn-ptr declarators

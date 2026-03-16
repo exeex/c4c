@@ -1788,11 +1788,7 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const DeclRef& r){
     if (r.global) {
       if (const GlobalVar* gv = select_global_object(*r.global)) return gv->type.spec;
     }
-    // Legacy: Function reference (resolved via fn_index, not global_index): treat as ptr.
-    // Do NOT set is_fn_ptr here; that would cause call-return-type resolution to
-    // decrement ptr_level and return void. The call-return fallback (implicit int)
-    // handles the case correctly.
-    // TODO(phase5): replace with canonical type lookup once expression-level types are tracked.
+    // Function reference (resolved via fn_index, not global_index): treat as fn-ptr.
     if (!r.name.empty() && mod_.fn_index.count(r.name)) {
       const auto fit = mod_.fn_index.find(r.name);
       if (fit != mod_.fn_index.end() && fit->second.value < mod_.functions.size()) {
@@ -1960,38 +1956,26 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const CallExpr& c){
         }
       }
     }
-    // Direct call through a local fn-ptr local without explicit deref: local(...)
+    // Direct call through a local fn-ptr without explicit deref: local(...)
     if (const auto* dr0 = std::get_if<DeclRef>(&callee_e.payload)) {
       if (dr0->local) {
         const auto frt_it = ctx.local_fn_ret_types.find(dr0->local->value);
         if (frt_it != ctx.local_fn_ret_types.end()) return frt_it->second;
       }
     }
-    // Phase 4: prefer canonical_sig for return type extraction.
+    // Canonical fn_ptr_sig for return type extraction.
     if (const FnPtrSig* sig = resolve_callee_fn_ptr_sig(ctx, callee_e)) {
       return sig_return_type(*sig);
     }
-    // Legacy fallback: TypeSpec-based prototype recovery.
-    // These paths reconstruct return types by peeling is_fn_ptr / ptr_level
-    // from TypeSpec.  They are retained for cases where canonical_sig is not
-    // available (e.g. undeclared extern calls, expression-level fn-ptrs).
-    // TODO(phase5): remove once expression-level canonical types are tracked.
+    // Direct function call: look up return type from the function definition.
     if (const auto* r = std::get_if<DeclRef>(&callee_e.payload)) {
       const auto fit = mod_.fn_index.find(r->name);
       if (fit != mod_.fn_index.end() && fit->second.value < mod_.functions.size()) {
         return mod_.functions[fit->second.value].return_type.spec;
       }
-      TypeSpec ref_ts = resolve_payload_type(ctx, *r);
-      if (ref_ts.is_fn_ptr && ref_ts.ptr_level > 0) {
-        ref_ts.ptr_level--;
-        ref_ts.is_fn_ptr = false;
-        return ref_ts;
-      }
-      if (ref_ts.base == TB_FUNC_PTR && ref_ts.ptr_level > 0) {
-        ref_ts.ptr_level--;
-        return ref_ts;
-      }
     }
+    // Legacy fallback: TypeSpec-based prototype recovery for cases where
+    // canonical_sig is not available (e.g. undeclared extern calls).
     TypeSpec callee_ts = resolve_expr_type(ctx, c.callee);
     if (callee_ts.is_fn_ptr && callee_ts.ptr_level > 0) {
       callee_ts.ptr_level--;
@@ -1999,8 +1983,6 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const CallExpr& c){
       return callee_ts;
     }
     if (callee_ts.is_fn_ptr && callee_ts.ptr_level == 0) {
-      // *fp where fp was ptr_level=1: after deref, ptr_level=0.
-      // The function pointer's return type is encoded in the remaining spec.
       callee_ts.is_fn_ptr = false;
       return callee_ts;
     }
@@ -4500,7 +4482,6 @@ void HirEmitter::emit_stmt(FnCtx& ctx, const Stmt& stmt){
 void HirEmitter::emit_stmt_impl(FnCtx& ctx, const LocalDecl& d){
     if (d.fn_ptr_sig) {
       ctx.local_fn_ptr_sigs[d.id.value] = *d.fn_ptr_sig;
-      // Phase 4: prefer canonical_sig for return type.
       ctx.local_fn_ret_types[d.id.value] = sig_return_type(*d.fn_ptr_sig);
     }
     if (d.vla_size) {

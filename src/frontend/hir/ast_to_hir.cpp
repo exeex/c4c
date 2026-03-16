@@ -963,7 +963,7 @@ class Lowerer {
     // Phase C slice 2: build fn_ptr_sig for the return type when it is callable.
     // Cannot use fn_ptr_sig_from_decl_node(fn_node) because that would return
     // the function's own sig, not the return type's fn_ptr sig.
-    if (fn_node->type.is_fn_ptr && fn_node->n_fn_ptr_params > 0) {
+    if (fn_node->type.is_fn_ptr) {
       FnPtrSig ret_sig{};
       TypeSpec ret_ts = fn_node->type;
       if (ret_ts.ptr_level > 0) --ret_ts.ptr_level;
