@@ -148,6 +148,32 @@ ConstEvalResult eval_impl(const Node* n, const ConstEvalEnv& env) {
       if (!cr.ok()) return cr;
       return eval_impl(cr.as_int() ? n->then_ : n->else_, env);
     }
+    case NK_SIZEOF_TYPE: {
+      const TypeSpec& ts = n->type;
+      if (ts.ptr_level > 0 || ts.is_fn_ptr) return ConstEvalResult::success(ConstValue::make_int(8));
+      if (ts.base == TB_STRUCT || ts.base == TB_UNION)
+        return ConstEvalResult::failure("sizeof(struct/union) not supported in constant evaluator");
+      int sz = 0;
+      switch (ts.base) {
+        case TB_BOOL: case TB_CHAR: case TB_SCHAR: case TB_UCHAR: sz = 1; break;
+        case TB_SHORT: case TB_USHORT: sz = 2; break;
+        case TB_INT: case TB_UINT: case TB_FLOAT: sz = 4; break;
+        case TB_LONG: case TB_ULONG: case TB_LONGLONG: case TB_ULONGLONG:
+        case TB_DOUBLE: sz = 8; break;
+        case TB_LONGDOUBLE: sz = 16; break;
+        default:
+          return ConstEvalResult::failure("sizeof: unsupported type base");
+      }
+      if (ts.array_rank > 0 && ts.array_size > 0) {
+        long long total = sz;
+        total *= ts.array_size;
+        for (int i = 1; i < ts.array_rank && i < 4; ++i) {
+          if (ts.array_dims[i] > 0) total *= ts.array_dims[i];
+        }
+        return ConstEvalResult::success(ConstValue::make_int(total));
+      }
+      return ConstEvalResult::success(ConstValue::make_int(sz));
+    }
     default:
       return ConstEvalResult::failure(
           std::string("unsupported expression kind (NK=") +

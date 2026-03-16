@@ -2411,6 +2411,24 @@ class Lowerer {
         return;
       }
       case NK_IF: {
+        // if constexpr: try compile-time branch elimination
+        if (n->is_constexpr) {
+          const Node* cond_node = n->cond ? n->cond : n->left;
+          ConstEvalEnv cenv{&enum_consts_, &const_int_bindings_, &ctx.local_const_bindings};
+          auto cr = evaluate_constant_expr(cond_node, cenv);
+          if (cr.ok()) {
+            // Condition is compile-time known — only lower the selected branch
+            if (cr.as_int()) {
+              lower_stmt_node(ctx, n->then_);
+            } else if (n->else_) {
+              lower_stmt_node(ctx, n->else_);
+            }
+            return;
+          }
+          // Fall through to regular if when condition can't be folded
+          // (e.g. template-dependent sizeof)
+        }
+
         IfStmt s{};
         s.cond = lower_expr(&ctx, n->cond ? n->cond : n->left);
         const BlockId then_b = create_block(ctx);

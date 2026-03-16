@@ -52,6 +52,7 @@ set(CPP_POSITIVE_RUNTIME_STEMS
     consteval_template
     constexpr_var
     constexpr_if
+    if_constexpr_fold
     constexpr_local
     constexpr_local_switch
     extern_c
