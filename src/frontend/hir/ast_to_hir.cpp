@@ -478,6 +478,7 @@ class Lowerer {
     std::vector<BlockId> continue_stack;
     std::unordered_map<std::string, BlockId> label_blocks;
     std::vector<SwitchCtx> switch_stack;
+    std::unordered_map<std::string, long long> local_const_bindings;
   };
 
   FunctionId next_fn_id() { return module_->alloc_function_id(); }
@@ -1834,6 +1835,7 @@ class Lowerer {
         const auto saved_locals = ctx.locals;
         const auto saved_static_globals = ctx.static_globals;
         const auto saved_enum_consts = enum_consts_;
+        const auto saved_local_consts = ctx.local_const_bindings;
         for (int i = 0; i < n->n_children; ++i) {
           lower_stmt_node(ctx, n->children[i]);
         }
@@ -1841,6 +1843,7 @@ class Lowerer {
           ctx.locals = saved_locals;
           ctx.static_globals = saved_static_globals;
           enum_consts_ = saved_enum_consts;
+          ctx.local_const_bindings = saved_local_consts;
         }
         return;
       }
@@ -1928,6 +1931,15 @@ class Lowerer {
         const TypeSpec decl_ts = d.type.spec;
         ctx.locals[d.name] = d.id;
         ctx.local_types[d.id.value] = d.type.spec;
+        // Track const/constexpr locals with foldable int initializers.
+        if (n->name && n->name[0] && n->init &&
+            (n->type.is_const || n->is_constexpr) &&
+            n->type.ptr_level == 0 && n->type.array_rank == 0) {
+          ConstEvalEnv cenv{&enum_consts_, &const_int_bindings_, &ctx.local_const_bindings};
+          if (auto cr = evaluate_constant_expr(n->init, cenv); cr.ok()) {
+            ctx.local_const_bindings[n->name] = cr.as_int();
+          }
+        }
         append_stmt(ctx, Stmt{StmtPayload{std::move(d)}, make_span(n)});
         auto emit_scalar_array_zero_fill = [&](const TypeSpec& array_ts) {
           if (array_ts.array_rank != 1 || array_ts.array_size <= 0) return;
@@ -2593,7 +2605,7 @@ class Lowerer {
           if (n->left->kind == NK_INT_LIT) {
             case_val = n->left->ival;
           } else {
-            ConstEvalEnv env{&enum_consts_};
+            ConstEvalEnv env{&enum_consts_, nullptr, &ctx.local_const_bindings};
             if (auto r = evaluate_constant_expr(n->left, env); r.ok())
               case_val = r.as_int();
           }
@@ -2620,7 +2632,7 @@ class Lowerer {
       case NK_CASE_RANGE: {
         long long lo = 0, hi = 0;
         {
-          ConstEvalEnv env{&enum_consts_};
+          ConstEvalEnv env{&enum_consts_, nullptr, &ctx.local_const_bindings};
           if (n->left) {
             if (n->left->kind == NK_INT_LIT) lo = n->left->ival;
             else if (auto r = evaluate_constant_expr(n->left, env); r.ok()) lo = r.as_int();
@@ -2960,7 +2972,7 @@ class Lowerer {
       }
       case NK_TERNARY: {
         if (const Node* cond = (n->cond ? n->cond : n->left)) {
-          ConstEvalEnv env{&enum_consts_};
+          ConstEvalEnv env{&enum_consts_, nullptr, ctx ? &ctx->local_const_bindings : nullptr};
           if (auto r = evaluate_constant_expr(cond, env); r.ok()) {
             return lower_expr(ctx, (r.as_int() != 0) ? n->then_ : n->else_);
           }

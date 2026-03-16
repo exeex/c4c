@@ -51,11 +51,16 @@ struct ConstEvalResult {
 struct ConstEvalEnv {
   const std::unordered_map<std::string, long long>* enum_consts = nullptr;
   const std::unordered_map<std::string, long long>* named_consts = nullptr;
+  const std::unordered_map<std::string, long long>* local_consts = nullptr;
 
   std::optional<long long> lookup(const std::string& name) const {
     if (enum_consts) {
       auto it = enum_consts->find(name);
       if (it != enum_consts->end()) return it->second;
+    }
+    if (local_consts) {
+      auto it = local_consts->find(name);
+      if (it != local_consts->end()) return it->second;
     }
     if (named_consts) {
       auto it = named_consts->find(name);

@@ -220,12 +220,22 @@ using EnumConstMap = std::unordered_map<std::string, long long>;
 struct EnumConstLookup {
   const EnumConstMap* globals = nullptr;
   const std::vector<EnumConstMap>* scoped = nullptr;
+  const std::vector<EnumConstMap>* named_consts = nullptr;
 };
 
 static bool lookup_enum_const(const EnumConstLookup* ev, const char* name, long long& out) {
   if (!ev || !name) return false;
   if (ev->scoped) {
     for (auto it = ev->scoped->rbegin(); it != ev->scoped->rend(); ++it) {
+      auto sit = it->find(name);
+      if (sit != it->end()) {
+        out = sit->second;
+        return true;
+      }
+    }
+  }
+  if (ev->named_consts) {
+    for (auto it = ev->named_consts->rbegin(); it != ev->named_consts->rend(); ++it) {
       auto sit = it->find(name);
       if (sit != it->end()) {
         out = sit->second;
@@ -411,6 +421,7 @@ class Validator {
   std::unordered_map<std::string, TypeSpec> enum_consts_;
   EnumConstMap enum_const_vals_global_;   // integer values of global enum constants
   std::vector<EnumConstMap> enum_const_vals_scopes_;  // block/function-scoped enum constants
+  std::vector<EnumConstMap> local_const_vals_scopes_;  // block-scoped const/constexpr local values
   std::unordered_map<std::string, FunctionSig> funcs_;
   std::unordered_set<std::string> complete_structs_;
   std::unordered_set<std::string> complete_unions_;
@@ -459,11 +470,13 @@ class Validator {
   void enter_scope() {
     scopes_.emplace_back();
     enum_const_vals_scopes_.emplace_back();
+    local_const_vals_scopes_.emplace_back();
   }
 
   void leave_scope() {
     if (!scopes_.empty()) scopes_.pop_back();
     if (!enum_const_vals_scopes_.empty()) enum_const_vals_scopes_.pop_back();
+    if (!local_const_vals_scopes_.empty()) local_const_vals_scopes_.pop_back();
   }
 
   void bind_local(const std::string& name, const TypeSpec& ts, bool initialized, int line) {
@@ -735,6 +748,17 @@ class Validator {
       case NK_DECL: {
         if (n->name && n->name[0]) bind_local(n->name, n->type, n->init != nullptr, n->line);
         validate_decl_init(n);
+        // Track const/constexpr locals with foldable initializers for case label evaluation.
+        if (n->name && n->name[0] && n->init &&
+            (n->type.is_const || n->is_constexpr) &&
+            n->type.ptr_level == 0 && n->type.array_rank == 0) {
+          EnumConstLookup lookup{&enum_const_vals_global_, &enum_const_vals_scopes_, &local_const_vals_scopes_};
+          long long v = 0;
+          if (eval_int_const_expr(n->init, v, &lookup)) {
+            if (local_const_vals_scopes_.empty()) local_const_vals_scopes_.emplace_back();
+            local_const_vals_scopes_.back()[n->name] = v;
+          }
+        }
         return;
       }
       case NK_EXPR_STMT: {
@@ -848,7 +872,7 @@ class Validator {
             emit(n->line, "case label does not have an integer type");
           }
           long long v = 0;
-          EnumConstLookup enum_lookup{&enum_const_vals_global_, &enum_const_vals_scopes_};
+          EnumConstLookup enum_lookup{&enum_const_vals_global_, &enum_const_vals_scopes_, &local_const_vals_scopes_};
           if (!eval_int_const_expr(n->left, v, &enum_lookup)) {
             emit(n->line, "case label does not reduce to an integer constant");
           } else {
