@@ -83,6 +83,10 @@
 - **Codegen**: fix `builtin_uses_i64_width` for `L` variants (long is 64-bit on LP64/aarch64)
 - Enabled `builtin-bitops-1.c`
 - Test suite: 1791/1791 passed (was 1787)
+- **Codegen**: intercept plain `alloca()` as implicit builtin (emit LLVM alloca instruction, like `__builtin_alloca`)
+- **Codegen**: bare `return;` in non-void (implicit int) functions now emits `ret i32 0` instead of invalid `ret void`
+- Enabled `20020314-1.c`, `20021113-1.c`, `20040223-1.c`
+- Test suite: 1794/1794 passed (was 1791)
 
 ## Known Limitations (pre-existing)
 - Functions returning function pointers: parser does not fully capture fn_ptr params on the function node, so canonicalization inherits that gap
@@ -94,6 +98,7 @@
 - All 6 phases of the canonical type refactor plan are now complete
 - Future work: expression-level canonical types, local variable tracking, legacy path removal
 - Potential fixes: pointer-to-array global initializers (`&arr[0]` in global init), unsupported builtins
+- Potential fix: fp128 literal pipeline (needed for correct `__LDBL_MAX__` on aarch64; currently double-precision)
 
 ## Deferred
 - Substitution compression (S0_, S1_, etc.) for repeated type references in mangled names

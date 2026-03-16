@@ -3896,6 +3896,18 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
       return tmp;
     }
 
+    // Implicit builtin: alloca() → LLVM alloca instruction (like __builtin_alloca).
+    if (builtin_id == BuiltinId::Unknown && call.args.size() == 1 &&
+        fn_name == "alloca") {
+      TypeSpec size_ts{};
+      std::string size = emit_rval_id(ctx, call.args[0], size_ts);
+      TypeSpec i64_ts{}; i64_ts.base = TB_ULONGLONG;
+      size = coerce(ctx, size, size_ts, i64_ts);
+      const std::string tmp = fresh_tmp(ctx);
+      emit_instr(ctx, tmp + " = alloca i8, i64 " + size + ", align 16");
+      return tmp;
+    }
+
     const Function* target_fn = nullptr;
     if (!fn_name.empty()) {
       const auto fit = mod_.fn_index.find(fn_name);
@@ -4586,7 +4598,23 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const InlineAsmStmt& s){
   }
 
 void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ReturnStmt& s){
-    if (!s.expr) { emit_term(ctx, "ret void"); return; }
+    if (!s.expr) {
+      const auto& rts = ctx.fn->return_type.spec;
+      if (rts.base == TB_VOID && rts.ptr_level == 0 && rts.array_rank == 0) {
+        emit_term(ctx, "ret void");
+      } else {
+        // C89: bare 'return;' in non-void function → return 0/null/0.0
+        const std::string ret_ty = llvm_ty(rts);
+        if (ret_ty == "ptr") {
+          emit_term(ctx, "ret ptr null");
+        } else if (is_float_base(rts.base) && rts.ptr_level == 0) {
+          emit_term(ctx, "ret " + ret_ty + " 0.0");
+        } else {
+          emit_term(ctx, "ret " + ret_ty + " 0");
+        }
+      }
+      return;
+    }
     TypeSpec ts{};
     std::string val = emit_rval_id(ctx, *s.expr, ts);
     val = coerce(ctx, val, ts, ctx.fn->return_type.spec);
