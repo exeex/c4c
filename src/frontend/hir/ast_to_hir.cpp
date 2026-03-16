@@ -451,12 +451,46 @@ class Lowerer {
         consteval_fns_[item->name] = item;
     }
 
+    // Phase 1.6: collect template instantiation info from call sites.
+    // For each template function, collect all unique sets of concrete template
+    // arg types, so template functions that contain consteval calls with
+    // template-dependent args can be lowered once per instantiation.
+    for (const Node* item : items) {
+      if (item->kind == NK_FUNCTION && item->name && item->n_template_params > 0)
+        template_fn_defs_[item->name] = item;
+    }
+    // Iterate until convergence: inner template calls (e.g., add<T>() inside
+    // twice<T>()) depend on outer instantiation bindings (e.g., twice<int>()
+    // from main) which may be discovered in a later function body.
+    for (int pass = 0; pass < 8; ++pass) {
+      size_t prev_size = 0;
+      for (const auto& [k, v] : template_fn_instances_) prev_size += v.size();
+      for (const Node* item : items) {
+        if (item->kind == NK_FUNCTION && item->body)
+          collect_template_instantiations(item->body, item);
+      }
+      size_t cur_size = 0;
+      for (const auto& [k, v] : template_fn_instances_) cur_size += v.size();
+      if (cur_size == prev_size) break;
+    }
+
     // Phase 2: lower functions and globals
     for (const Node* item : items) {
       if (item->kind == NK_FUNCTION) {
-        // Skip consteval functions — they are evaluated at compile time only.
         if (item->is_consteval) continue;
-        lower_function(item);
+        if (item->n_template_params > 0 && item->name) {
+          // Template function: lower once per collected instantiation.
+          auto inst_it = template_fn_instances_.find(item->name);
+          if (inst_it != template_fn_instances_.end() && !inst_it->second.empty()) {
+            for (const auto& inst : inst_it->second)
+              lower_function(item, &inst.mangled_name, &inst.bindings);
+          } else {
+            // No call sites found — lower once generically.
+            lower_function(item);
+          }
+        } else {
+          lower_function(item);
+        }
       } else if (item->kind == NK_GLOBAL_VAR) {
         lower_global(item);
       }
@@ -487,6 +521,7 @@ class Lowerer {
     std::unordered_map<std::string, BlockId> label_blocks;
     std::vector<SwitchCtx> switch_stack;
     std::unordered_map<std::string, long long> local_const_bindings;
+    TypeBindings tpl_bindings;  // template param → concrete type for enclosing template fn
   };
 
   FunctionId next_fn_id() { return module_->alloc_function_id(); }
@@ -954,10 +989,13 @@ class Lowerer {
     }
   }
 
-  void lower_function(const Node* fn_node) {
+  void lower_function(const Node* fn_node,
+                      const std::string* name_override = nullptr,
+                      const TypeBindings* tpl_override = nullptr) {
     Function fn{};
     fn.id = next_fn_id();
-    fn.name = fn_node->name ? fn_node->name : "<anon_fn>";
+    fn.name = name_override ? *name_override
+                            : (fn_node->name ? fn_node->name : "<anon_fn>");
     fn.return_type = qtype_from(fn_node->type);
     // Build fn_ptr_sig for the return type when the function returns a fn_ptr.
     // Uses canonical type to extract the return type's callable signature.
@@ -1007,6 +1045,10 @@ class Lowerer {
 
     FunctionCtx ctx{};
     ctx.fn = &fn;
+
+    // Populate template bindings for template function instantiations.
+    if (tpl_override)
+      ctx.tpl_bindings = *tpl_override;
 
     for (int i = 0; i < fn_node->n_params; ++i) {
       const Node* p = fn_node->params[i];
@@ -2979,13 +3021,24 @@ class Lowerer {
                                  ctx ? &ctx->local_const_bindings : nullptr};
             // Build template type substitution map from call-site template args
             // and the consteval function's template parameter names.
+            // When call-site template args are unresolved typedefs (template params
+            // of the enclosing function), resolve them through the enclosing
+            // function's template bindings.
             TypeBindings tpl_bindings;
             const Node* fn_def = ce_it->second;
             if (n->left->n_template_args > 0 && fn_def->n_template_params > 0) {
               int count = std::min(n->left->n_template_args, fn_def->n_template_params);
               for (int i = 0; i < count; ++i) {
-                if (fn_def->template_param_names[i])
-                  tpl_bindings[fn_def->template_param_names[i]] = n->left->template_arg_types[i];
+                if (fn_def->template_param_names[i]) {
+                  TypeSpec arg_ts = n->left->template_arg_types[i];
+                  // Resolve through enclosing template function's bindings.
+                  if (arg_ts.base == TB_TYPEDEF && arg_ts.tag && ctx &&
+                      !ctx->tpl_bindings.empty()) {
+                    auto resolved = ctx->tpl_bindings.find(arg_ts.tag);
+                    if (resolved != ctx->tpl_bindings.end()) arg_ts = resolved->second;
+                  }
+                  tpl_bindings[fn_def->template_param_names[i]] = arg_ts;
+                }
               }
               arg_env.type_bindings = &tpl_bindings;
             }
@@ -3027,7 +3080,30 @@ class Lowerer {
         }
 
         CallExpr c{};
-        c.callee = lower_expr(ctx, n->left);
+        // For template function calls, resolve the mangled instantiation name.
+        std::string resolved_callee_name;
+        if (n->left && n->left->kind == NK_VAR && n->left->name &&
+            n->left->n_template_args > 0 &&
+            template_fn_defs_.count(n->left->name) &&
+            !consteval_fns_.count(n->left->name)) {
+          const TypeBindings* enc = (ctx && !ctx->tpl_bindings.empty())
+                                        ? &ctx->tpl_bindings : nullptr;
+          resolved_callee_name = resolve_template_call_name(n->left, enc);
+          // Create a DeclRef with the mangled name directly.
+          DeclRef dr{};
+          dr.name = resolved_callee_name;
+          auto fit = module_->fn_index.find(dr.name);
+          if (fit != module_->fn_index.end() &&
+              fit->second.value < module_->functions.size()) {
+            TypeSpec fn_ts = module_->functions[fit->second.value].return_type.spec;
+            fn_ts.ptr_level++;
+            c.callee = append_expr(n->left, dr, fn_ts);
+          } else {
+            c.callee = append_expr(n->left, dr, n->left->type);
+          }
+        } else {
+          c.callee = lower_expr(ctx, n->left);
+        }
         c.builtin_id = n->builtin_id;
         for (int i = 0; i < n->n_children; ++i) c.args.push_back(lower_expr(ctx, n->children[i]));
         TypeSpec ts = n->type;
@@ -3556,11 +3632,173 @@ class Lowerer {
     }
   }
 
+  // ── Template multi-instantiation support ──────────────────────────────────
+
+  struct TemplateInstance {
+    TypeBindings bindings;
+    std::string mangled_name;
+  };
+
+  // Produce a deterministic type suffix for name mangling.
+  static std::string type_suffix(const TypeSpec& ts) {
+    if (ts.ptr_level > 0) return "p" + std::to_string(ts.ptr_level);
+    switch (ts.base) {
+      case TB_BOOL: return "b";
+      case TB_CHAR: case TB_SCHAR: return "c";
+      case TB_UCHAR: return "uc";
+      case TB_SHORT: return "s";
+      case TB_USHORT: return "us";
+      case TB_INT: return "i";
+      case TB_UINT: return "ui";
+      case TB_LONG: return "l";
+      case TB_ULONG: return "ul";
+      case TB_LONGLONG: return "ll";
+      case TB_ULONGLONG: return "ull";
+      case TB_FLOAT: return "f";
+      case TB_DOUBLE: return "d";
+      case TB_LONGDOUBLE: return "ld";
+      case TB_INT128: return "i128";
+      case TB_UINT128: return "u128";
+      case TB_VOID: return "v";
+      default:
+        if (ts.tag) return std::string("T") + ts.tag;
+        return "unknown";
+    }
+  }
+
+  // Build a mangled name from base name and template bindings.
+  static std::string mangle_template_name(const std::string& base,
+                                           const TypeBindings& bindings) {
+    if (bindings.empty()) return base;
+    // Sort by param name for determinism.
+    std::vector<std::pair<std::string, TypeSpec>> sorted(bindings.begin(), bindings.end());
+    std::sort(sorted.begin(), sorted.end(),
+              [](const auto& a, const auto& b) { return a.first < b.first; });
+    std::string result = base;
+    for (const auto& [param, ts] : sorted) {
+      result += "_";
+      result += type_suffix(ts);
+    }
+    return result;
+  }
+
+  // Build TypeBindings from a call-site template args and a function definition.
+  // Resolves typedef args through `enclosing_bindings` if provided.
+  TypeBindings build_call_bindings(const Node* call_var, const Node* fn_def,
+                                   const TypeBindings* enclosing_bindings) {
+    TypeBindings bindings;
+    if (!call_var || !fn_def || call_var->n_template_args <= 0 ||
+        fn_def->n_template_params <= 0) return bindings;
+    int count = std::min(call_var->n_template_args, fn_def->n_template_params);
+    for (int i = 0; i < count; ++i) {
+      if (!fn_def->template_param_names[i]) continue;
+      TypeSpec arg_ts = call_var->template_arg_types[i];
+      // Resolve typedef template args through enclosing function's bindings.
+      if (arg_ts.base == TB_TYPEDEF && arg_ts.tag && enclosing_bindings) {
+        auto resolved = enclosing_bindings->find(arg_ts.tag);
+        if (resolved != enclosing_bindings->end()) arg_ts = resolved->second;
+      }
+      bindings[fn_def->template_param_names[i]] = arg_ts;
+    }
+    return bindings;
+  }
+
+  // Check if an instantiation with the given mangled name already exists.
+  bool has_instance(const std::string& fn_name, const std::string& mangled) {
+    auto it = template_fn_instances_.find(fn_name);
+    if (it == template_fn_instances_.end()) return false;
+    for (const auto& inst : it->second) {
+      if (inst.mangled_name == mangled) return true;
+    }
+    return false;
+  }
+
+  // Check if all bindings are concrete (no unresolved TB_TYPEDEF).
+  static bool bindings_are_concrete(const TypeBindings& bindings) {
+    for (const auto& [param, ts] : bindings) {
+      if (ts.base == TB_TYPEDEF) return false;
+    }
+    return true;
+  }
+
+  // Record a template instantiation. Returns the mangled name.
+  // Only records if all bindings are concrete (no unresolved typedefs).
+  std::string record_instance(const std::string& fn_name, TypeBindings bindings) {
+    if (!bindings_are_concrete(bindings)) return "";  // Skip unresolved.
+    std::string mangled = mangle_template_name(fn_name, bindings);
+    template_fn_instances_[fn_name].push_back({std::move(bindings), mangled});
+    return mangled;
+  }
+
+  // Resolve the mangled name for a call to a template function.
+  std::string resolve_template_call_name(const Node* call_var,
+                                          const TypeBindings* enclosing_bindings) {
+    if (!call_var || !call_var->name || call_var->n_template_args <= 0)
+      return call_var ? (call_var->name ? call_var->name : "") : "";
+    auto fn_it = template_fn_defs_.find(call_var->name);
+    if (fn_it == template_fn_defs_.end()) return call_var->name;
+    const Node* fn_def = fn_it->second;
+    if (fn_def->is_consteval) return call_var->name;  // consteval handled separately
+    TypeBindings bindings = build_call_bindings(call_var, fn_def, enclosing_bindings);
+    return mangle_template_name(call_var->name, bindings);
+  }
+
+  // Recursively collect template instantiations from call sites in AST.
+  void collect_template_instantiations(const Node* n, const Node* enclosing_fn) {
+    if (!n) return;
+    if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR &&
+        n->left->name && n->left->n_template_args > 0) {
+      auto fn_it = template_fn_defs_.find(n->left->name);
+      if (fn_it != template_fn_defs_.end()) {
+        const Node* fn_def = fn_it->second;
+        if (!fn_def->is_consteval && fn_def->n_template_params > 0) {
+          // Determine the enclosing function's template bindings (if any).
+          const TypeBindings* enclosing_bindings = nullptr;
+          TypeBindings enc_bindings;
+          if (enclosing_fn && enclosing_fn->name) {
+            auto enc_it = template_fn_instances_.find(enclosing_fn->name);
+            if (enc_it != template_fn_instances_.end()) {
+              // For each enclosing instantiation, record an inner instantiation.
+              for (const auto& enc_inst : enc_it->second) {
+                TypeBindings inner = build_call_bindings(n->left, fn_def, &enc_inst.bindings);
+                std::string mangled = mangle_template_name(n->left->name, inner);
+                if (!has_instance(n->left->name, mangled))
+                  record_instance(n->left->name, std::move(inner));
+              }
+              goto recurse;  // Already handled all enclosing instantiations.
+            }
+          }
+          {
+            TypeBindings bindings = build_call_bindings(n->left, fn_def, nullptr);
+            std::string mangled = mangle_template_name(n->left->name, bindings);
+            if (!has_instance(n->left->name, mangled))
+              record_instance(n->left->name, std::move(bindings));
+          }
+        }
+      }
+    }
+    recurse:
+    if (n->left) collect_template_instantiations(n->left, enclosing_fn);
+    if (n->right) collect_template_instantiations(n->right, enclosing_fn);
+    if (n->cond) collect_template_instantiations(n->cond, enclosing_fn);
+    if (n->then_) collect_template_instantiations(n->then_, enclosing_fn);
+    if (n->else_) collect_template_instantiations(n->else_, enclosing_fn);
+    if (n->body) collect_template_instantiations(n->body, enclosing_fn);
+    if (n->init) collect_template_instantiations(n->init, enclosing_fn);
+    if (n->update) collect_template_instantiations(n->update, enclosing_fn);
+    for (int i = 0; i < n->n_children; ++i)
+      if (n->children[i]) collect_template_instantiations(n->children[i], enclosing_fn);
+  }
+
   Module* module_ = nullptr;
   std::unordered_map<std::string, long long> enum_consts_;
   std::unordered_map<std::string, long long> const_int_bindings_;
   std::unordered_set<std::string> weak_symbols_;
   std::unordered_map<std::string, const Node*> consteval_fns_;
+  // All template function definitions indexed by name (consteval and non-consteval).
+  std::unordered_map<std::string, const Node*> template_fn_defs_;
+  // Template function name → all unique instantiations.
+  std::unordered_map<std::string, std::vector<TemplateInstance>> template_fn_instances_;
 
 };
 
