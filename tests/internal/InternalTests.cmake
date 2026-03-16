@@ -5,6 +5,8 @@ file(GLOB INTERNAL_NEGATIVE_TEST_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_TEST_ROOT}/negative_case/*.c")
 file(GLOB INTERNAL_POSITIVE_TEST_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_TEST_ROOT}/positive_case/*.c")
+file(GLOB INTERNAL_CPP_POSITIVE_TEST_SRCS CONFIGURE_DEPENDS
+     "${INTERNAL_TEST_ROOT}/cpp/postive_case/*.cpp")
 file(GLOB INTERNAL_LINUX_STAGE2_REPRO_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_TEST_ROOT}/positive_case/linux_stage2_repro/*.c")
 file(GLOB INTERNAL_CCC_REVIEW_SRCS CONFIGURE_DEPENDS
@@ -36,6 +38,26 @@ set(NEGATIVE_TESTS_ALLOW_SUCCESS_STEMS
     bad_init_type_mismatch_scalar_to_ptr
     bad_return_missing_value_nonvoid
     bad_static_init_non_constant
+)
+
+set(CPP_POSITIVE_RUNTIME_STEMS
+    consteval_func
+    consteval_template
+    constexpr_if
+    extern_c
+    template_chain
+    template_func
+)
+
+set(CPP_POSITIVE_FRONTEND_STEMS
+    constexpr_var
+    if_constexpr_template_chain
+    template_type_traits_builtin
+    type_traits_builtin
+)
+
+set(CPP_POSITIVE_PARSE_STEMS
+    struct_method
 )
 
 if(CLANG_EXECUTABLE)
@@ -101,6 +123,39 @@ if(CLANG_EXECUTABLE)
   endforeach()
 else()
   message(WARNING "clang not found: skipping internal positive_case runtime tests")
+endif()
+
+if(CLANG_EXECUTABLE)
+  foreach(src IN LISTS INTERNAL_CPP_POSITIVE_TEST_SRCS)
+    file(RELATIVE_PATH rel_src "${INTERNAL_TEST_ROOT}/cpp/postive_case" "${src}")
+    get_filename_component(stem "${src}" NAME_WE)
+    string(REGEX REPLACE "[^A-Za-z0-9_]" "_" test_id "${rel_src}")
+    set(test_name "cpp_positive_sema_${test_id}")
+    set(test_mode runtime)
+    if(stem IN_LIST CPP_POSITIVE_FRONTEND_STEMS)
+      set(test_mode frontend)
+    endif()
+    if(stem IN_LIST CPP_POSITIVE_PARSE_STEMS)
+      set(test_mode parse)
+    endif()
+
+    add_test(
+      NAME "${test_name}"
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DCXX_COMPILER=${CMAKE_CXX_COMPILER}
+              -DTEST_MODE=${test_mode}
+              -DSRC=${src}
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_cpp_positive/${rel_src}.ll
+              -DOUT_CLANG_BIN=${CMAKE_BINARY_DIR}/internal_cpp_positive/${rel_src}.host.bin
+              -DOUT_C2LL_BIN=${CMAKE_BINARY_DIR}/internal_cpp_positive/${rel_src}.c2ll.bin
+              -P "${INTERNAL_TEST_CMAKE_ROOT}/run_positive_case.cmake"
+    )
+    set_tests_properties("${test_name}" PROPERTIES LABELS "internal;positive_case;cpp")
+  endforeach()
+else()
+  message(WARNING "clang not found: skipping internal cpp positive_case runtime tests")
 endif()
 
 add_test(
