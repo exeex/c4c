@@ -11,18 +11,27 @@
   - `--dump-canonical` CLI flag for inspection
   - Fixed struct/enum def canonicalization (proper nominal types)
   - Fixed fn_ptr return type canonicalization in `canonicalize_function_node_type`
+- **Phase 3**: Migrate callable/prototype logic — done
+  - Added `is_callable_type()` and `get_function_sig()` canonical type helpers
+  - Added `typespec_from_canonical()` reverse conversion (canonical → TypeSpec)
+  - Threaded `ResolvedTypeTable` to `lower_ast_to_hir` via new parameter
+  - Added `canonical_sig` field to `FnPtrSig` (shared_ptr<CanonicalType>)
+  - `fn_ptr_sig_from_decl_node()` now derives FnPtrSig from canonical type when available
+  - Falls back to legacy parser-based extraction when canonical type is absent
+  - All 1784 tests pass with no regressions
 
 ## Known Limitations (pre-existing)
 - Functions returning function pointers: parser does not fully capture fn_ptr params on the function node, so canonicalization inherits that gap
 - Expression-level canonical type tracking not yet implemented (only declaration nodes)
+- Local variable declarations not yet in ResolvedTypeTable (canonical path falls back to legacy for locals)
 
 ## Next Intended Slice
-- **Phase 3**: Migrate callable/prototype logic to canonical type
-  - Convert function prototype extraction to use canonical type
-  - Convert function pointer declaration handling to use canonical type
-  - Convert indirect call analysis to use canonical type
+- **Phase 4**: Migrate lowering hooks
+  - Replace lowering-side function-signature reconstruction with canonical type access
+  - Use canonical type for indirect call lowering in `hir_emitter.cpp`
+  - Reduce dependence on duplicated `FnPtrSig`-style side structures
+  - Delete redundant lowering-side TypeSpec prototype recovery once parity is established
 
 ## Deferred
-- Phase 4: Migrate lowering hooks
 - Phase 5: Connect canonical symbol building
 - Phase 6: Enable mangling

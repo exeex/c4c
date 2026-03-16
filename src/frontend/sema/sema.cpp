@@ -11,7 +11,7 @@ static AnalyzeResult analyze_program_base(const Node* root, SourceProfile source
   result.validation = validate_program(root);
   if (!result.validation.ok) return result;
   result.canonical = build_canonical_symbols(root, source_profile);
-  result.hir_module = sema_ir::phase2::hir::lower_ast_to_hir(root);
+  result.hir_module = sema_ir::phase2::hir::lower_ast_to_hir(root, &result.canonical.resolved_types);
   return result;
 }
 

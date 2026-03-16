@@ -148,4 +148,20 @@ std::string format_canonical_type(const CanonicalType& type);
 /// Format the full SemaCanonicalResult (symbols + resolved types summary).
 std::string format_canonical_result(const SemaCanonicalResult& result);
 
+// ── Phase 3: callable/prototype helpers ──────────────────────────────────────
+
+/// Returns true if the canonical type represents a callable function pointer
+/// (i.e. Pointer → Function).
+bool is_callable_type(const CanonicalType& ct);
+
+/// Returns the function signature from a canonical type.
+/// Works for both Function types and Pointer(Function) types.
+/// Returns nullptr if the type is not callable.
+const CanonicalFunctionSig* get_function_sig(const CanonicalType& ct);
+
+/// Convert a canonical type back to a TypeSpec.
+/// The returned TypeSpec's tag field points into the canonical type's
+/// user_spelling storage, so the canonical type must outlive the TypeSpec.
+TypeSpec typespec_from_canonical(const CanonicalType& ct);
+
 }  // namespace tinyc2ll::frontend_cxx::sema

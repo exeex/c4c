@@ -410,6 +410,8 @@ void compute_struct_layout(phase2::hir::Module* module, HirStructDef& def) {
 
 class Lowerer {
  public:
+  const sema::ResolvedTypeTable* resolved_types_ = nullptr;
+
   Module lower_program(const Node* root) {
     if (!root || root->kind != NK_PROGRAM) {
       throw std::runtime_error("ast_to_hir: root is not NK_PROGRAM");
@@ -508,7 +510,32 @@ class Lowerer {
   }
 
   std::optional<FnPtrSig> fn_ptr_sig_from_decl_node(const Node* n) {
-    if (!n || !n->type.is_fn_ptr) return std::nullopt;
+    if (!n) return std::nullopt;
+
+    // Phase 3: try canonical type path first.
+    if (resolved_types_) {
+      auto ct = resolved_types_->lookup(n);
+      if (ct && sema::is_callable_type(*ct)) {
+        const auto* fsig = sema::get_function_sig(*ct);
+        if (fsig) {
+          FnPtrSig sig{};
+          sig.canonical_sig = ct;
+          // Derive return type from canonical sig.
+          if (fsig->return_type) {
+            sig.return_type = qtype_from(sema::typespec_from_canonical(*fsig->return_type));
+          }
+          sig.variadic = fsig->is_variadic;
+          sig.unspecified_params = fsig->unspecified_params;
+          for (const auto& param : fsig->params) {
+            sig.params.push_back(qtype_from(sema::typespec_from_canonical(param), ValueCategory::LValue));
+          }
+          return sig;
+        }
+      }
+    }
+
+    // Legacy path: derive from parser AST fields.
+    if (!n->type.is_fn_ptr) return std::nullopt;
     FnPtrSig sig{};
     TypeSpec ret_ts = n->type;
     if (ret_ts.ptr_level > 0) {
@@ -3332,8 +3359,10 @@ class Lowerer {
 
 }  // namespace
 
-Module lower_ast_to_hir(const Node* program_root) {
+Module lower_ast_to_hir(const Node* program_root,
+                        const sema::ResolvedTypeTable* resolved_types) {
   Lowerer l;
+  l.resolved_types_ = resolved_types;
   return l.lower_program(program_root);
 }
 

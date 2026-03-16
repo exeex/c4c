@@ -382,4 +382,144 @@ std::string format_canonical_result(const SemaCanonicalResult& result) {
   return out;
 }
 
+// ── Phase 3: callable/prototype helpers ──────────────────────────────────────
+
+bool is_callable_type(const CanonicalType& ct) {
+  if (ct.kind == CanonicalTypeKind::Function) return true;
+  if (ct.kind == CanonicalTypeKind::Pointer && ct.element_type &&
+      ct.element_type->kind == CanonicalTypeKind::Function)
+    return true;
+  return false;
+}
+
+const CanonicalFunctionSig* get_function_sig(const CanonicalType& ct) {
+  if (ct.kind == CanonicalTypeKind::Function) return ct.function_sig.get();
+  if (ct.kind == CanonicalTypeKind::Pointer && ct.element_type &&
+      ct.element_type->kind == CanonicalTypeKind::Function)
+    return ct.element_type->function_sig.get();
+  return nullptr;
+}
+
+/// Map CanonicalTypeKind back to TypeBase when source_base is absent.
+static TypeBase typebase_from_kind(CanonicalTypeKind kind) {
+  switch (kind) {
+    case CanonicalTypeKind::Void: return TB_VOID;
+    case CanonicalTypeKind::Bool: return TB_BOOL;
+    case CanonicalTypeKind::Char: return TB_CHAR;
+    case CanonicalTypeKind::SignedChar: return TB_SCHAR;
+    case CanonicalTypeKind::UnsignedChar: return TB_UCHAR;
+    case CanonicalTypeKind::Short: return TB_SHORT;
+    case CanonicalTypeKind::UnsignedShort: return TB_USHORT;
+    case CanonicalTypeKind::Int: return TB_INT;
+    case CanonicalTypeKind::UnsignedInt: return TB_UINT;
+    case CanonicalTypeKind::Long: return TB_LONG;
+    case CanonicalTypeKind::UnsignedLong: return TB_ULONG;
+    case CanonicalTypeKind::LongLong: return TB_LONGLONG;
+    case CanonicalTypeKind::UnsignedLongLong: return TB_ULONGLONG;
+    case CanonicalTypeKind::Float: return TB_FLOAT;
+    case CanonicalTypeKind::Double: return TB_DOUBLE;
+    case CanonicalTypeKind::LongDouble: return TB_LONGDOUBLE;
+    case CanonicalTypeKind::Int128: return TB_INT128;
+    case CanonicalTypeKind::UInt128: return TB_UINT128;
+    case CanonicalTypeKind::VaList: return TB_VA_LIST;
+    case CanonicalTypeKind::Struct: return TB_STRUCT;
+    case CanonicalTypeKind::Union: return TB_UNION;
+    case CanonicalTypeKind::Enum: return TB_ENUM;
+    case CanonicalTypeKind::TypedefName: return TB_TYPEDEF;
+    case CanonicalTypeKind::Complex: return TB_COMPLEX_DOUBLE;
+    case CanonicalTypeKind::VendorExtended: return TB_FUNC_PTR;
+    case CanonicalTypeKind::Pointer: return TB_INT;   // shouldn't reach
+    case CanonicalTypeKind::Array: return TB_INT;      // shouldn't reach
+    case CanonicalTypeKind::Function: return TB_FUNC_PTR;
+  }
+  return TB_INT;
+}
+
+TypeSpec typespec_from_canonical(const CanonicalType& ct) {
+  TypeSpec ts{};
+  ts.tag = nullptr;
+  ts.ptr_level = 0;
+  ts.align_bytes = 0;
+  ts.array_size = -1;
+  ts.array_rank = 0;
+  ts.is_ptr_to_array = false;
+  ts.inner_rank = -1;
+  ts.is_vector = false;
+  ts.vector_lanes = 0;
+  ts.vector_bytes = 0;
+  ts.array_size_expr = nullptr;
+  ts.is_const = false;
+  ts.is_volatile = false;
+  ts.is_fn_ptr = false;
+  ts.is_packed = false;
+  for (int i = 0; i < 8; ++i) ts.array_dims[i] = 0;
+
+  if (ct.kind == CanonicalTypeKind::Pointer) {
+    if (!ct.element_type) {
+      ts.base = TB_VOID;
+      ts.ptr_level = 1;
+      return ts;
+    }
+    // Pointer → Function → encode as fn_ptr TypeSpec
+    if (ct.element_type->kind == CanonicalTypeKind::Function) {
+      const auto* sig = ct.element_type->function_sig.get();
+      if (sig && sig->return_type) {
+        ts = typespec_from_canonical(*sig->return_type);
+      } else {
+        ts.base = TB_VOID;
+      }
+      ts.ptr_level += 1;
+      ts.is_fn_ptr = true;
+      return ts;
+    }
+    // Pointer → Array → is_ptr_to_array
+    if (ct.element_type->kind == CanonicalTypeKind::Array) {
+      ts = typespec_from_canonical(*ct.element_type);
+      ts.ptr_level += 1;
+      ts.is_ptr_to_array = true;
+      return ts;
+    }
+    // Regular pointer
+    ts = typespec_from_canonical(*ct.element_type);
+    ts.ptr_level += 1;
+    return ts;
+  }
+
+  if (ct.kind == CanonicalTypeKind::Array) {
+    if (!ct.element_type) {
+      ts.base = TB_INT;
+      return ts;
+    }
+    ts = typespec_from_canonical(*ct.element_type);
+    // Prepend this array dimension
+    if (ts.array_rank < 8) {
+      for (int i = ts.array_rank; i > 0; --i) {
+        ts.array_dims[i] = ts.array_dims[i - 1];
+      }
+      ts.array_dims[0] = ct.array_size;
+      ts.array_rank += 1;
+      ts.array_size = ts.array_dims[0];
+    }
+    return ts;
+  }
+
+  // Leaf type
+  ts.base = ct.source_base ? *ct.source_base : typebase_from_kind(ct.kind);
+  ts.is_const = ct.is_const;
+  ts.is_volatile = ct.is_volatile;
+  ts.is_vector = ct.is_vector;
+  ts.vector_lanes = ct.vector_lanes;
+  ts.vector_bytes = ct.vector_bytes;
+
+  // For nominal types, point tag to the canonical type's user_spelling storage.
+  // SAFETY: the canonical type must outlive the returned TypeSpec.
+  if (!ct.user_spelling.empty() &&
+      (ct.kind == CanonicalTypeKind::Struct || ct.kind == CanonicalTypeKind::Union ||
+       ct.kind == CanonicalTypeKind::Enum || ct.kind == CanonicalTypeKind::TypedefName)) {
+    ts.tag = ct.user_spelling.c_str();
+  }
+
+  return ts;
+}
+
 }  // namespace tinyc2ll::frontend_cxx::sema

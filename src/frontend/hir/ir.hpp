@@ -15,6 +15,10 @@
 
 #include "ast.hpp"
 
+namespace tinyc2ll::frontend_cxx::sema {
+struct CanonicalType;
+}  // namespace tinyc2ll::frontend_cxx::sema
+
 namespace tinyc2ll::frontend_cxx::sema_ir {
 
 // This header is the migration IR contract for docs/sema_ir_split_plan.md.
@@ -82,6 +86,10 @@ struct FnPtrSig {
   std::vector<QualType> params;
   bool variadic = false;
   bool unspecified_params = false;
+  /// Canonical type for this function pointer (Pointer→Function).
+  /// Populated from sema's ResolvedTypeTable when available.
+  /// Phase 4 migration target: codegen should consume this instead of QualType fields.
+  std::shared_ptr<sema::CanonicalType> canonical_sig;
 };
 
 struct Param {
