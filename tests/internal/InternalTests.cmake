@@ -53,6 +53,7 @@ set(CPP_POSITIVE_RUNTIME_STEMS
     constexpr_var
     constexpr_if
     if_constexpr_fold
+    constexpr_builtin_queries
     constexpr_local
     constexpr_local_switch
     extern_c

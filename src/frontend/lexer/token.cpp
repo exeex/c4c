@@ -244,6 +244,7 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
     if (s == "template")  return TokenKind::KwTemplate;
     if (s == "constexpr") return TokenKind::KwConstexpr;
     if (s == "consteval") return TokenKind::KwConsteval;
+    if (s == "alignof")   return TokenKind::KwAlignof;
   }
 
   return TokenKind::Identifier;

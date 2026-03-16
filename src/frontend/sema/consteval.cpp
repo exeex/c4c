@@ -81,6 +81,66 @@ ConstValue apply_integer_cast(long long value, const TypeSpec& ts) {
   return ConstValue::make_int(static_cast<long long>(uv));
 }
 
+// Compute sizeof for a TypeSpec (scalar, pointer, array of scalar).
+// Returns failure for struct/union/void/typedef types (require Module context or type resolution).
+ConstEvalResult compute_sizeof_type(const TypeSpec& ts) {
+  if (ts.ptr_level > 0 || ts.is_fn_ptr) return ConstEvalResult::success(ConstValue::make_int(8));
+  if (ts.base == TB_STRUCT || ts.base == TB_UNION)
+    return ConstEvalResult::failure("sizeof(struct/union) not supported in constant evaluator");
+  if (ts.base == TB_VOID || ts.base == TB_TYPEDEF)
+    return ConstEvalResult::failure("sizeof: unresolved type");
+  int sz = 0;
+  switch (ts.base) {
+    case TB_BOOL: case TB_CHAR: case TB_SCHAR: case TB_UCHAR: sz = 1; break;
+    case TB_SHORT: case TB_USHORT: sz = 2; break;
+    case TB_INT: case TB_UINT: case TB_FLOAT: sz = 4; break;
+    case TB_LONG: case TB_ULONG: case TB_LONGLONG: case TB_ULONGLONG:
+    case TB_DOUBLE: sz = 8; break;
+    case TB_LONGDOUBLE: sz = 16; break;
+    case TB_INT128: case TB_UINT128: sz = 16; break;
+    default:
+      return ConstEvalResult::failure("sizeof: unsupported type base");
+  }
+  if (ts.array_rank > 0 && ts.array_size > 0) {
+    long long total = sz;
+    total *= ts.array_size;
+    for (int i = 1; i < ts.array_rank && i < 4; ++i) {
+      if (ts.array_dims[i] > 0) total *= ts.array_dims[i];
+    }
+    return ConstEvalResult::success(ConstValue::make_int(total));
+  }
+  return ConstEvalResult::success(ConstValue::make_int(sz));
+}
+
+// Compute alignof for a TypeSpec (scalar, pointer, array).
+// Returns failure for struct/union/void/typedef types.
+ConstEvalResult compute_alignof_type(const TypeSpec& ts) {
+  if (ts.ptr_level > 0 || ts.is_fn_ptr) return ConstEvalResult::success(ConstValue::make_int(8));
+  if (ts.base == TB_STRUCT || ts.base == TB_UNION)
+    return ConstEvalResult::failure("alignof(struct/union) not supported in constant evaluator");
+  if (ts.base == TB_VOID || ts.base == TB_TYPEDEF)
+    return ConstEvalResult::failure("alignof: unresolved type");
+  // For arrays, alignment is that of the element type.
+  TypeSpec elem = ts;
+  if (elem.array_rank > 0) {
+    elem.array_rank = 0;
+    elem.array_size = -1;
+  }
+  int align = 1;
+  switch (elem.base) {
+    case TB_BOOL: case TB_CHAR: case TB_SCHAR: case TB_UCHAR: align = 1; break;
+    case TB_SHORT: case TB_USHORT: align = 2; break;
+    case TB_INT: case TB_UINT: case TB_FLOAT: case TB_ENUM: align = 4; break;
+    case TB_LONG: case TB_ULONG: case TB_LONGLONG: case TB_ULONGLONG:
+    case TB_DOUBLE: align = 8; break;
+    case TB_LONGDOUBLE: align = 16; break;
+    case TB_INT128: case TB_UINT128: align = 16; break;
+    default: align = 4; break;
+  }
+  if (ts.align_bytes > 0 && ts.align_bytes > align) align = ts.align_bytes;
+  return ConstEvalResult::success(ConstValue::make_int(align));
+}
+
 ConstEvalResult eval_impl(const Node* n, const ConstEvalEnv& env) {
   if (!n) return ConstEvalResult::failure("null expression");
   switch (n->kind) {
@@ -148,32 +208,18 @@ ConstEvalResult eval_impl(const Node* n, const ConstEvalEnv& env) {
       if (!cr.ok()) return cr;
       return eval_impl(cr.as_int() ? n->then_ : n->else_, env);
     }
-    case NK_SIZEOF_TYPE: {
-      const TypeSpec& ts = n->type;
-      if (ts.ptr_level > 0 || ts.is_fn_ptr) return ConstEvalResult::success(ConstValue::make_int(8));
-      if (ts.base == TB_STRUCT || ts.base == TB_UNION)
-        return ConstEvalResult::failure("sizeof(struct/union) not supported in constant evaluator");
-      int sz = 0;
-      switch (ts.base) {
-        case TB_BOOL: case TB_CHAR: case TB_SCHAR: case TB_UCHAR: sz = 1; break;
-        case TB_SHORT: case TB_USHORT: sz = 2; break;
-        case TB_INT: case TB_UINT: case TB_FLOAT: sz = 4; break;
-        case TB_LONG: case TB_ULONG: case TB_LONGLONG: case TB_ULONGLONG:
-        case TB_DOUBLE: sz = 8; break;
-        case TB_LONGDOUBLE: sz = 16; break;
-        default:
-          return ConstEvalResult::failure("sizeof: unsupported type base");
-      }
-      if (ts.array_rank > 0 && ts.array_size > 0) {
-        long long total = sz;
-        total *= ts.array_size;
-        for (int i = 1; i < ts.array_rank && i < 4; ++i) {
-          if (ts.array_dims[i] > 0) total *= ts.array_dims[i];
-        }
-        return ConstEvalResult::success(ConstValue::make_int(total));
-      }
-      return ConstEvalResult::success(ConstValue::make_int(sz));
-    }
+    case NK_SIZEOF_TYPE:
+      return compute_sizeof_type(n->type);
+    case NK_SIZEOF_EXPR:
+      // sizeof(expr) — use the expression's type from the AST.
+      if (n->left) return compute_sizeof_type(n->left->type);
+      return ConstEvalResult::failure("sizeof(expr): missing expression");
+    case NK_ALIGNOF_TYPE:
+      return compute_alignof_type(n->type);
+    case NK_ALIGNOF_EXPR:
+      // alignof(expr) — use the expression's type from the AST.
+      if (n->left) return compute_alignof_type(n->left->type);
+      return ConstEvalResult::failure("alignof(expr): missing expression");
     default:
       return ConstEvalResult::failure(
           std::string("unsupported expression kind (NK=") +
@@ -374,6 +420,17 @@ ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
       interp_expr(n->left, locals, outer_env, consteval_fns, depth);
       return interp_expr(n->right, locals, outer_env, consteval_fns, depth);
     }
+
+    case NK_SIZEOF_TYPE:
+      return compute_sizeof_type(n->type);
+    case NK_SIZEOF_EXPR:
+      if (n->left) return compute_sizeof_type(n->left->type);
+      return ConstEvalResult::failure("sizeof(expr): missing expression");
+    case NK_ALIGNOF_TYPE:
+      return compute_alignof_type(n->type);
+    case NK_ALIGNOF_EXPR:
+      if (n->left) return compute_alignof_type(n->left->type);
+      return ConstEvalResult::failure("alignof(expr): missing expression");
 
     default:
       return ConstEvalResult::failure(
