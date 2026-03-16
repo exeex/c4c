@@ -99,6 +99,20 @@ struct ConstEvalEnv {
 
 ConstEvalResult evaluate_constant_expr(const Node* n, const ConstEvalEnv& env);
 
+// ── Consteval function-body interpreter ──────────────────────────────────────
+
+// Evaluate a consteval function call at compile time.
+// `func_def` must be an NK_FUNCTION node with is_consteval=true.
+// `args` are the constant values for each parameter.
+// `consteval_fns` maps function names to their NK_FUNCTION AST nodes,
+// allowing recursive/chained consteval calls.
+ConstEvalResult evaluate_consteval_call(
+    const Node* func_def,
+    const std::vector<ConstValue>& args,
+    const ConstEvalEnv& env,
+    const std::unordered_map<std::string, const Node*>& consteval_fns,
+    int depth = 0);
+
 // ── Legacy API (thin wrapper) ────────────────────────────────────────────────
 
 std::optional<long long> eval_int_const_expr(

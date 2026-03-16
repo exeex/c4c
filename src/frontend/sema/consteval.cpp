@@ -203,6 +203,158 @@ ConstEvalResult evaluate_constant_expr(const Node* n, const ConstEvalEnv& env) {
   return eval_impl(n, env);
 }
 
+// ── Consteval function-body interpreter ──────────────────────────────────────
+
+namespace {
+
+constexpr int kMaxConstevalDepth = 64;
+
+// Result of interpreting a statement: either continue executing, or return a value.
+struct StmtResult {
+  bool returned = false;
+  ConstValue return_val = ConstValue::unknown();
+};
+
+StmtResult interp_stmt(const Node* n, ConstMap& locals,
+                       const ConstEvalEnv& outer_env,
+                       const std::unordered_map<std::string, const Node*>& consteval_fns,
+                       int depth);
+
+ConstEvalResult interp_expr(const Node* n, const ConstMap& locals,
+                            const ConstEvalEnv& outer_env,
+                            const std::unordered_map<std::string, const Node*>& consteval_fns,
+                            int depth) {
+  if (!n) return ConstEvalResult::failure();
+
+  // Build an env that includes the interpreter locals on top of the outer env.
+  ConstEvalEnv env = outer_env;
+  env.local_consts = &locals;
+
+  switch (n->kind) {
+    case NK_INT_LIT:
+    case NK_CHAR_LIT:
+    case NK_VAR:
+    case NK_CAST:
+    case NK_UNARY:
+    case NK_BINOP:
+    case NK_TERNARY:
+      return eval_impl(n, env);
+
+    case NK_CALL: {
+      // Check if the callee is a consteval function we can interpret.
+      if (!n->left || n->left->kind != NK_VAR || !n->left->name)
+        return ConstEvalResult::failure();
+      auto it = consteval_fns.find(n->left->name);
+      if (it == consteval_fns.end()) return ConstEvalResult::failure();
+
+      // Evaluate all arguments.
+      std::vector<ConstValue> args;
+      for (int i = 0; i < n->n_children; ++i) {
+        auto r = interp_expr(n->children[i], locals, outer_env, consteval_fns, depth);
+        if (!r.ok()) return ConstEvalResult::failure();
+        args.push_back(*r.value);
+      }
+
+      return evaluate_consteval_call(it->second, args, outer_env, consteval_fns, depth + 1);
+    }
+
+    default:
+      return ConstEvalResult::failure();
+  }
+}
+
+StmtResult interp_block(const Node* block, ConstMap& locals,
+                        const ConstEvalEnv& outer_env,
+                        const std::unordered_map<std::string, const Node*>& consteval_fns,
+                        int depth) {
+  if (!block) return {};
+  if (block->kind == NK_BLOCK) {
+    for (int i = 0; i < block->n_children; ++i) {
+      auto r = interp_stmt(block->children[i], locals, outer_env, consteval_fns, depth);
+      if (r.returned) return r;
+    }
+    return {};
+  }
+  // Single statement (not wrapped in block).
+  return interp_stmt(block, locals, outer_env, consteval_fns, depth);
+}
+
+StmtResult interp_stmt(const Node* n, ConstMap& locals,
+                        const ConstEvalEnv& outer_env,
+                        const std::unordered_map<std::string, const Node*>& consteval_fns,
+                        int depth) {
+  if (!n) return {};
+
+  switch (n->kind) {
+    case NK_RETURN: {
+      if (!n->left) return {true, ConstValue::make_int(0)};
+      auto r = interp_expr(n->left, locals, outer_env, consteval_fns, depth);
+      if (!r.ok()) return {true, ConstValue::unknown()};
+      // Apply return type cast if available.
+      // The function's return type is on the parent; we handle it in evaluate_consteval_call.
+      return {true, *r.value};
+    }
+
+    case NK_DECL: {
+      // Local variable declaration — track if const/constexpr with initializer.
+      if (n->name && n->init) {
+        auto r = interp_expr(n->init, locals, outer_env, consteval_fns, depth);
+        if (r.ok()) {
+          locals[n->name] = r.as_int();
+        }
+      }
+      return {};
+    }
+
+    case NK_IF: {
+      auto cr = interp_expr(n->cond, locals, outer_env, consteval_fns, depth);
+      if (!cr.ok()) return {true, ConstValue::unknown()};  // can't evaluate condition
+      if (cr.as_int()) {
+        return interp_block(n->then_, locals, outer_env, consteval_fns, depth);
+      } else if (n->else_) {
+        return interp_block(n->else_, locals, outer_env, consteval_fns, depth);
+      }
+      return {};
+    }
+
+    case NK_BLOCK:
+      return interp_block(n, locals, outer_env, consteval_fns, depth);
+
+    default:
+      // Unsupported statement kind — skip (best-effort for now).
+      return {};
+  }
+}
+
+}  // namespace
+
+ConstEvalResult evaluate_consteval_call(
+    const Node* func_def,
+    const std::vector<ConstValue>& args,
+    const ConstEvalEnv& env,
+    const std::unordered_map<std::string, const Node*>& consteval_fns,
+    int depth) {
+  if (!func_def || func_def->kind != NK_FUNCTION) return ConstEvalResult::failure();
+  if (depth > kMaxConstevalDepth) return ConstEvalResult::failure();
+
+  // Build local bindings from parameters.
+  ConstMap locals;
+  const int n_params = func_def->n_params;
+  for (int i = 0; i < n_params && i < static_cast<int>(args.size()); ++i) {
+    const Node* p = func_def->params[i];
+    if (p && p->name && args[i].is_known()) {
+      locals[p->name] = args[i].as_int();
+    }
+  }
+
+  // Interpret the body.
+  auto result = interp_block(func_def->body, locals, env, consteval_fns, depth);
+  if (result.returned && result.return_val.is_known()) {
+    return ConstEvalResult::success(result.return_val);
+  }
+  return ConstEvalResult::failure();
+}
+
 // ── Legacy API (thin wrapper) ────────────────────────────────────────────────
 
 std::optional<long long> eval_int_const_expr(

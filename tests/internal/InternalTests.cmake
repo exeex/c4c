@@ -43,6 +43,7 @@ set(NEGATIVE_TESTS_ALLOW_SUCCESS_STEMS
 set(CPP_POSITIVE_RUNTIME_STEMS
     const_named_fold
     consteval_func
+    consteval_interp
     consteval_template
     constexpr_var
     constexpr_if

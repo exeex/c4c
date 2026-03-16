@@ -445,6 +445,12 @@ class Lowerer {
       if (item->kind == NK_ENUM_DEF) collect_enum_def(item);
     }
 
+    // Phase 1.5: collect consteval function definitions for compile-time evaluation
+    for (const Node* item : items) {
+      if (item->kind == NK_FUNCTION && item->is_consteval && item->name)
+        consteval_fns_[item->name] = item;
+    }
+
     // Phase 2: lower functions and globals
     for (const Node* item : items) {
       if (item->kind == NK_FUNCTION) {
@@ -2934,6 +2940,35 @@ class Lowerer {
       }
       case NK_CALL:
       case NK_BUILTIN_CALL: {
+        // Try consteval interpretation for calls to consteval functions.
+        if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR && n->left->name) {
+          auto ce_it = consteval_fns_.find(n->left->name);
+          if (ce_it != consteval_fns_.end()) {
+            // Evaluate all arguments as constant expressions.
+            ConstEvalEnv arg_env{&enum_consts_, &const_int_bindings_,
+                                 ctx ? &ctx->local_const_bindings : nullptr};
+            std::vector<ConstValue> args;
+            bool all_const = true;
+            for (int i = 0; i < n->n_children; ++i) {
+              auto r = evaluate_constant_expr(n->children[i], arg_env);
+              if (r.ok()) {
+                args.push_back(*r.value);
+              } else {
+                all_const = false;
+                break;
+              }
+            }
+            if (all_const) {
+              auto result = evaluate_consteval_call(
+                  ce_it->second, args, arg_env, consteval_fns_);
+              if (result.ok()) {
+                TypeSpec ts = n->type;
+                return append_expr(n, IntLiteral{result.as_int(), false}, ts);
+              }
+            }
+          }
+        }
+
         CallExpr c{};
         c.callee = lower_expr(ctx, n->left);
         c.builtin_id = n->builtin_id;
@@ -3468,6 +3503,7 @@ class Lowerer {
   std::unordered_map<std::string, long long> enum_consts_;
   std::unordered_map<std::string, long long> const_int_bindings_;
   std::unordered_set<std::string> weak_symbols_;
+  std::unordered_map<std::string, const Node*> consteval_fns_;
 
 };
 

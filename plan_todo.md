@@ -1,37 +1,29 @@
 # Plan Execution State
 
 ## Baseline
-- 1814/1814 tests pass (2026-03-16)
+- 1815/1815 tests pass (2026-03-16)
 
-## Current Phase: Phase 1 — Strengthen existing constant-expression helper
+## Current Phase: Phase 2 — Immediate-function interpretation
 
 ### Completed
-- [x] Global named constant folding for const/constexpr scalar globals
-- [x] Global binding propagation (const_int_bindings_ in ast_to_hir.cpp)
-- [x] Integer cast folding (unsigned int/short/char casts)
-- [x] constexpr_var.cpp folds correctly and runs
-- [x] const_named_fold.cpp added as regression coverage
-- [x] Phase 1, Task 1: Refactor consteval.cpp with ConstValue/ConstEvalResult/ConstEvalEnv
-- [x] Phase 1, Task 2: Local constant binding support in evaluator
-  - ConstEvalEnv gains `local_consts` field
-  - validate.cpp tracks local const/constexpr values in scoped maps; passes them to case label eval
-  - ast_to_hir.cpp tracks local_const_bindings in FunctionCtx with proper block scoping
-  - All ConstEvalEnv usage sites (case, case_range, ternary) receive local bindings
-  - constexpr_local_switch.cpp test added
-- [x] Phase 1, Task 3: Replace duplicated integer-folding in validate.cpp
-  - Extended ConstEvalEnv with scoped lookup support (enum_scopes, local_const_scopes)
-  - Removed validate.cpp's local eval_int_const_expr, EnumConstLookup, lookup_enum_const
-  - Both call sites (NK_DECL const tracking, NK_CASE label eval) now use evaluate_constant_expr
-  - Added consteval.hpp include and using declarations to validate.cpp
-  - Phase 1 complete: all constant evaluation goes through unified evaluator
+- [x] Phase 1 (all tasks complete — see previous commits)
+- [x] Phase 2, Task 1: Minimal function-body interpreter for consteval functions
+  - Added `evaluate_consteval_call()` to consteval.cpp/hpp
+  - Interpreter supports: parameter refs, local const decls, arithmetic, return, if/else, chained consteval calls
+  - Lowerer collects consteval function defs in Phase 1.5 of `lower_program`
+  - NK_CALL handler in `lower_expr` intercepts consteval calls with constant args → folds to IntLiteral
+  - consteval_interp.cpp test covers: basic call, chained calls, local binding, if/else branching
+  - Depth limit (64) prevents infinite recursion
 
 ### Not Started
-- Phase 2: Immediate-function interpretation
+- Phase 2, Task 2: Function-evaluation frames (more complex bodies, loops, mutable locals)
+- Phase 2, Task 3: Define failure modes / diagnostics
+- Phase 2, Task 4: Hook call resolution (reject non-constant args in consteval context)
 - Phase 3: Enforce consteval rules
 - Phase 4: Integrate with if constexpr, builtins, templates
 
 ## Next Intended Slice
-- Phase 2, Task 1: Build minimal function-body interpreter for consteval functions
+- Phase 2, Task 2: Extend interpreter to support mutable local variables and more statement kinds
 
 ## Blockers
 - None
