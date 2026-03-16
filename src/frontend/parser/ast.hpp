@@ -228,6 +228,13 @@ struct Node {
     int    n_fn_ptr_params;
     bool   fn_ptr_variadic;
 
+    // For nested fn-ptr declarators like int (* (*p)(int a, int b))(int c, int d):
+    // ret_fn_ptr_params stores the RETURN type's fn_ptr params (int c, int d),
+    // while fn_ptr_params stores the declaration's own fn_ptr params (int a, int b).
+    Node** ret_fn_ptr_params;
+    int    n_ret_fn_ptr_params;
+    bool   ret_fn_ptr_variadic;
+
     // NK_STRUCT_DEF fields  (each child is NK_DECL with type + name)
     Node** fields;
     int    n_fields;

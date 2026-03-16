@@ -439,11 +439,17 @@ TypeSpec Parser::parse_base_type() {
 void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
                               Node*** out_fn_ptr_params,
                               int* out_n_fn_ptr_params,
-                              bool* out_fn_ptr_variadic) {
+                              bool* out_fn_ptr_variadic,
+                              Node*** out_ret_fn_ptr_params,
+                              int* out_n_ret_fn_ptr_params,
+                              bool* out_ret_fn_ptr_variadic) {
     if (out_name) *out_name = nullptr;
     if (out_fn_ptr_params) *out_fn_ptr_params = nullptr;
     if (out_n_fn_ptr_params) *out_n_fn_ptr_params = 0;
     if (out_fn_ptr_variadic) *out_fn_ptr_variadic = false;
+    if (out_ret_fn_ptr_params) *out_ret_fn_ptr_params = nullptr;
+    if (out_n_ret_fn_ptr_params) *out_n_ret_fn_ptr_params = 0;
+    if (out_ret_fn_ptr_variadic) *out_ret_fn_ptr_variadic = false;
 
     auto clear_array = [&](TypeSpec& t) {
         t.array_size = -1;
@@ -578,6 +584,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     };
     if (paren_star_peek()) {
         used_paren_ptr_declarator = true;
+        bool is_nested_fn_ptr = false;
         std::vector<Node*> fn_ptr_params;
         bool fn_ptr_variadic = false;
         // function pointer: (*name)(...) or block pointer: (^name)(...) — record name, skip params
@@ -625,13 +632,16 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         if (got_name && check(TokenKind::LParen)) {
             skip_paren_group();  // skip own params: (int a, int b)
         } else if (!got_name && check(TokenKind::LParen)) {
-            // Nested declarator: (* (*p)(...)) — parse the inner declarator
-            // to extract the name, then skip any trailing param lists
+            // Nested declarator: (* (*p)(inner_params))(outer_params)
+            // The inner parse_declarator captures the inner fn_ptr_params
+            // (the declaration's own params). The outer params (parsed below)
+            // are the RETURN type's fn_ptr params.
             TypeSpec inner_ts = ts;
             inner_ts.ptr_level = 0;
-            parse_declarator(inner_ts, out_name);
-            // skip_paren_group was handled inside inner parse_declarator
-            // Merge: the inner name is what we want
+            is_nested_fn_ptr = true;
+            parse_declarator(inner_ts, out_name,
+                             out_fn_ptr_params, out_n_fn_ptr_params,
+                             out_fn_ptr_variadic);
         }
         expect(TokenKind::RParen);
         // Parse the pointed-to function's parameter list.
@@ -657,12 +667,25 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
             }
             expect(TokenKind::RParen);
             ts.is_fn_ptr = true;  // confirmed function pointer: (*name)(params)
-            if (out_n_fn_ptr_params) *out_n_fn_ptr_params = static_cast<int>(fn_ptr_params.size());
-            if (out_fn_ptr_variadic) *out_fn_ptr_variadic = fn_ptr_variadic;
-            if (out_fn_ptr_params && !fn_ptr_params.empty()) {
-                *out_fn_ptr_params = arena_.alloc_array<Node*>(static_cast<int>(fn_ptr_params.size()));
-                for (int i = 0; i < static_cast<int>(fn_ptr_params.size()); ++i) {
-                    (*out_fn_ptr_params)[i] = fn_ptr_params[i];
+            if (is_nested_fn_ptr) {
+                // For nested fn_ptr: inner params already set on out_fn_ptr_params;
+                // the outer params here are the RETURN type's fn_ptr params.
+                if (out_n_ret_fn_ptr_params) *out_n_ret_fn_ptr_params = static_cast<int>(fn_ptr_params.size());
+                if (out_ret_fn_ptr_variadic) *out_ret_fn_ptr_variadic = fn_ptr_variadic;
+                if (out_ret_fn_ptr_params && !fn_ptr_params.empty()) {
+                    *out_ret_fn_ptr_params = arena_.alloc_array<Node*>(static_cast<int>(fn_ptr_params.size()));
+                    for (int i = 0; i < static_cast<int>(fn_ptr_params.size()); ++i) {
+                        (*out_ret_fn_ptr_params)[i] = fn_ptr_params[i];
+                    }
+                }
+            } else {
+                if (out_n_fn_ptr_params) *out_n_fn_ptr_params = static_cast<int>(fn_ptr_params.size());
+                if (out_fn_ptr_variadic) *out_fn_ptr_variadic = fn_ptr_variadic;
+                if (out_fn_ptr_params && !fn_ptr_params.empty()) {
+                    *out_fn_ptr_params = arena_.alloc_array<Node*>(static_cast<int>(fn_ptr_params.size()));
+                    for (int i = 0; i < static_cast<int>(fn_ptr_params.size()); ++i) {
+                        (*out_fn_ptr_params)[i] = fn_ptr_params[i];
+                    }
                 }
             }
         }

@@ -1,4 +1,4 @@
-// CCC_EXPECT: fail
+// CCC_EXPECT: pass
 
 int plus1(int x) { return x + 1; }
 int minus1(int x) { return x - 1; }

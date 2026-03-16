@@ -547,6 +547,11 @@ class Lowerer {
     ret_ts.array_size = -1;
     for (int i = 0; i < 8; ++i) ret_ts.array_dims[i] = -1;
     ret_ts.is_ptr_to_array = false;
+    // For nested fn_ptr declarators, the return type is itself a fn_ptr.
+    if (n->n_ret_fn_ptr_params > 0 || n->ret_fn_ptr_variadic) {
+      ret_ts.is_fn_ptr = true;
+      ret_ts.ptr_level = 1;
+    }
     sig.return_type = qtype_from(ret_ts);
     sig.variadic = n->fn_ptr_variadic;
     sig.unspecified_params = (n->n_fn_ptr_params == 0 && !n->fn_ptr_variadic);

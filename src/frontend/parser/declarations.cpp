@@ -110,7 +110,11 @@ Node* Parser::parse_local_decl() {
         Node** fn_ptr_params = nullptr;
         int n_fn_ptr_params = 0;
         bool fn_ptr_variadic = false;
-        parse_declarator(ts, &vname, &fn_ptr_params, &n_fn_ptr_params, &fn_ptr_variadic);
+        Node** ret_fn_ptr_params = nullptr;
+        int n_ret_fn_ptr_params = 0;
+        bool ret_fn_ptr_variadic = false;
+        parse_declarator(ts, &vname, &fn_ptr_params, &n_fn_ptr_params, &fn_ptr_variadic,
+                         &ret_fn_ptr_params, &n_ret_fn_ptr_params, &ret_fn_ptr_variadic);
         // Skip K&R-style function-type suffix: `float fx ()` in local decls.
         // Don't create a NK_DECL for these — they're forward declarations handled
         // implicitly when the function is called via DeclRef.
@@ -148,6 +152,9 @@ Node* Parser::parse_local_decl() {
         d->fn_ptr_params = fn_ptr_params;
         d->n_fn_ptr_params = n_fn_ptr_params;
         d->fn_ptr_variadic = fn_ptr_variadic;
+        d->ret_fn_ptr_params = ret_fn_ptr_params;
+        d->n_ret_fn_ptr_params = n_ret_fn_ptr_params;
+        d->ret_fn_ptr_variadic = ret_fn_ptr_variadic;
         // Phase C: propagate fn_ptr params from typedef if not set by declarator.
         if (ts.is_fn_ptr && n_fn_ptr_params == 0 && !fn_ptr_variadic) {
             auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
@@ -375,6 +382,9 @@ Node* Parser::parse_top_level() {
     Node** decl_fn_ptr_params = nullptr;
     int decl_n_fn_ptr_params = 0;
     bool decl_fn_ptr_variadic = false;
+    Node** decl_ret_fn_ptr_params = nullptr;
+    int decl_n_ret_fn_ptr_params = 0;
+    bool decl_ret_fn_ptr_variadic = false;
     bool is_fptr_global = false;
 
     // Check for function-pointer global: type (*name)(...);
@@ -414,8 +424,77 @@ Node* Parser::parse_top_level() {
             if (ts.array_rank < 8) ts.array_dims[ts.array_rank++] = dim;
             if (ts.array_rank == 1) ts.array_size = ts.array_dims[0];
         }
-        // Detect function-returning-fptr: (* f1(params)) — has inner params before ')'
-        if (check(TokenKind::LParen)) {
+        // Detect nested fn_ptr: (* (*name(params))(ret_params)) or function-returning-fptr: (* f1(params))
+        if (check(TokenKind::LParen) && check2(TokenKind::Star)) {
+            // Nested fn_ptr: (* (*name(fn_params))(inner_ret_params) )(outer_ret_params)
+            // Recurse: consume '(' '*' to enter the inner level.
+            consume();  // (
+            consume();  // *
+            ts.ptr_level++;
+            while (check(TokenKind::Star)) { consume(); ts.ptr_level++; }
+            // Skip qualifiers/nullability
+            while (is_qualifier(cur().kind)) consume();
+            while (check(TokenKind::Identifier)) {
+                const std::string& ql = cur().lexeme;
+                if (ql == "_Nullable" || ql == "_Nonnull" || ql == "_Null_unspecified" ||
+                    ql == "__nullable" || ql == "__nonnull") { consume(); continue; }
+                break;
+            }
+            if (check(TokenKind::Identifier)) {
+                decl_name = arena_.strdup(cur().lexeme);
+                consume();
+            }
+            // Function's own params (pick_outer(int which))
+            if (decl_name && check(TokenKind::LParen)) {
+                fn_returning_fptr = true;
+                consume();
+                if (!check(TokenKind::RParen)) {
+                    while (!at_end()) {
+                        if (check(TokenKind::Ellipsis)) {
+                            fptr_fn_variadic = true; consume(); break;
+                        }
+                        if (check(TokenKind::RParen)) break;
+                        if (!is_type_start()) { consume(); if (match(TokenKind::Comma)) continue; break; }
+                        Node* p = parse_param();
+                        if (p) fptr_fn_params.push_back(p);
+                        if (!match(TokenKind::Comma)) break;
+                    }
+                }
+                expect(TokenKind::RParen);
+            }
+            expect(TokenKind::RParen);  // close inner (*name(params))
+            // Parse inner return fn_ptr params: (int)
+            if (check(TokenKind::LParen)) {
+                std::vector<Node*> inner_ret_params;
+                bool inner_ret_variadic = false;
+                consume();
+                if (!check(TokenKind::RParen)) {
+                    while (!at_end()) {
+                        if (check(TokenKind::Ellipsis)) {
+                            inner_ret_variadic = true; consume(); break;
+                        }
+                        if (check(TokenKind::RParen)) break;
+                        if (!is_type_start()) { consume(); if (match(TokenKind::Comma)) continue; break; }
+                        Node* p = parse_param();
+                        if (p) inner_ret_params.push_back(p);
+                        if (!match(TokenKind::Comma)) break;
+                    }
+                }
+                expect(TokenKind::RParen);
+                ts.is_fn_ptr = true;
+                // For fn-returning-fptr: these are the inner return params (the first level of return fn_ptr).
+                // Store as fn_ptr_params for now; outer params (below) become ret_fn_ptr_params.
+                if (fn_returning_fptr) {
+                    decl_n_fn_ptr_params = static_cast<int>(inner_ret_params.size());
+                    decl_fn_ptr_variadic = inner_ret_variadic;
+                    if (!inner_ret_params.empty()) {
+                        decl_fn_ptr_params = arena_.alloc_array<Node*>(decl_n_fn_ptr_params);
+                        for (int i = 0; i < decl_n_fn_ptr_params; ++i)
+                            decl_fn_ptr_params[i] = inner_ret_params[i];
+                    }
+                }
+            }
+        } else if (check(TokenKind::LParen)) {
             fn_returning_fptr = true;
             // Parse the function's own parameter list properly
             consume();  // consume '('
@@ -472,7 +551,8 @@ Node* Parser::parse_top_level() {
         if (!fn_returning_fptr) is_fptr_global = true;
     } else {
     parse_declarator(ts, &decl_name, &decl_fn_ptr_params, &decl_n_fn_ptr_params,
-                     &decl_fn_ptr_variadic);
+                     &decl_fn_ptr_variadic, &decl_ret_fn_ptr_params,
+                     &decl_n_ret_fn_ptr_params, &decl_ret_fn_ptr_variadic);
     if (is_incomplete_object_type(ts) && !check(TokenKind::LParen))
         throw std::runtime_error(std::string("object has incomplete type: ") + (ts.tag ? ts.tag : "<anonymous>"));
     }
@@ -703,7 +783,10 @@ Node* Parser::parse_top_level() {
 
     auto make_gvar = [&](TypeSpec gts, const char* gname, Node* ginit,
                          Node** fn_ptr_params, int n_fn_ptr_params,
-                         bool fn_ptr_variadic) {
+                         bool fn_ptr_variadic,
+                         Node** ret_fn_ptr_params = nullptr,
+                         int n_ret_fn_ptr_params = 0,
+                         bool ret_fn_ptr_variadic = false) {
         Node* gv = make_node(NK_GLOBAL_VAR, ln);
         gv->type      = gts;
         gv->name      = gname;
@@ -714,6 +797,9 @@ Node* Parser::parse_top_level() {
         gv->fn_ptr_params = fn_ptr_params;
         gv->n_fn_ptr_params = n_fn_ptr_params;
         gv->fn_ptr_variadic = fn_ptr_variadic;
+        gv->ret_fn_ptr_params = ret_fn_ptr_params;
+        gv->n_ret_fn_ptr_params = n_ret_fn_ptr_params;
+        gv->ret_fn_ptr_variadic = ret_fn_ptr_variadic;
         // Phase C: propagate fn_ptr params from typedef if not set by declarator.
         if (gts.is_fn_ptr && n_fn_ptr_params == 0 && !fn_ptr_variadic) {
             auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
@@ -732,7 +818,9 @@ Node* Parser::parse_top_level() {
         first_init = parse_initializer();
     }
     gvars.push_back(make_gvar(ts, decl_name, first_init, decl_fn_ptr_params,
-                              decl_n_fn_ptr_params, decl_fn_ptr_variadic));
+                              decl_n_fn_ptr_params, decl_fn_ptr_variadic,
+                              decl_ret_fn_ptr_params, decl_n_ret_fn_ptr_params,
+                              decl_ret_fn_ptr_variadic));
 
     while (match(TokenKind::Comma)) {
         TypeSpec ts2 = base_ts;
