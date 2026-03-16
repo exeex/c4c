@@ -522,4 +522,184 @@ TypeSpec typespec_from_canonical(const CanonicalType& ct) {
   return ts;
 }
 
+// ── Phase 5: canonical declaration identity ──────────────────────────────────
+
+bool types_equal(const CanonicalType& a, const CanonicalType& b) {
+  if (a.kind != b.kind) return false;
+  if (a.is_const != b.is_const) return false;
+  if (a.is_volatile != b.is_volatile) return false;
+  if (a.is_vector != b.is_vector) return false;
+  if (a.is_vector && (a.vector_lanes != b.vector_lanes || a.vector_bytes != b.vector_bytes))
+    return false;
+
+  switch (a.kind) {
+    case CanonicalTypeKind::Pointer:
+      if (!a.element_type || !b.element_type) return a.element_type == b.element_type;
+      return types_equal(*a.element_type, *b.element_type);
+
+    case CanonicalTypeKind::Array:
+      if (a.array_size != b.array_size) return false;
+      if (!a.element_type || !b.element_type) return a.element_type == b.element_type;
+      return types_equal(*a.element_type, *b.element_type);
+
+    case CanonicalTypeKind::Function: {
+      if (!a.function_sig || !b.function_sig) return a.function_sig == b.function_sig;
+      const auto& sa = *a.function_sig;
+      const auto& sb = *b.function_sig;
+      if (sa.is_variadic != sb.is_variadic) return false;
+      if (sa.unspecified_params != sb.unspecified_params) return false;
+      if (sa.params.size() != sb.params.size()) return false;
+      if (!sa.return_type || !sb.return_type) {
+        if (sa.return_type != sb.return_type) return false;
+      } else if (!types_equal(*sa.return_type, *sb.return_type)) {
+        return false;
+      }
+      for (size_t i = 0; i < sa.params.size(); ++i) {
+        if (!types_equal(sa.params[i], sb.params[i])) return false;
+      }
+      return true;
+    }
+
+    case CanonicalTypeKind::Struct:
+    case CanonicalTypeKind::Union:
+    case CanonicalTypeKind::Enum:
+    case CanonicalTypeKind::TypedefName:
+      return a.user_spelling == b.user_spelling;
+
+    default:
+      // Leaf primitive types: kind + qualifiers already compared above.
+      return true;
+  }
+}
+
+bool prototypes_compatible(const CanonicalType& a, const CanonicalType& b) {
+  // Both must be function types to compare prototypes.
+  const auto* sa = get_function_sig(a);
+  const auto* sb = get_function_sig(b);
+  if (!sa || !sb) return false;
+
+  // Unspecified parameter lists are compatible with anything.
+  if (sa->unspecified_params || sb->unspecified_params) {
+    // Return types must still match.
+    if (sa->return_type && sb->return_type) {
+      return types_equal(*sa->return_type, *sb->return_type);
+    }
+    return true;
+  }
+
+  // Otherwise, full structural equality on the function type.
+  // Peel pointer wrapper if present so we compare the Function nodes.
+  const CanonicalType* fa = &a;
+  const CanonicalType* fb = &b;
+  if (fa->kind == CanonicalTypeKind::Pointer && fa->element_type)
+    fa = fa->element_type.get();
+  if (fb->kind == CanonicalTypeKind::Pointer && fb->element_type)
+    fb = fb->element_type.get();
+  return types_equal(*fa, *fb);
+}
+
+std::string mangle_symbol(const CanonicalSymbol& sym) {
+  // extern "C" linkage: no mangling, return source name as-is.
+  if (sym.linkage == LanguageLinkage::C) {
+    return sym.source_name;
+  }
+
+  // C++ linkage: produce a placeholder mangled name.
+  // Full Itanium ABI mangling is deferred to Phase 6.
+  // For now, encode _Z + name length + name as the minimal prefix.
+  std::string mangled = "_Z";
+  mangled += std::to_string(sym.source_name.size());
+  mangled += sym.source_name;
+
+  // Append a type discriminator suffix for functions.
+  if (sym.kind == CanonicalSymbolKind::Function && sym.type) {
+    const auto* sig = get_function_sig(*sym.type);
+    if (sig) {
+      mangled += "v";  // placeholder encoding; Phase 6 will replace
+    }
+  }
+
+  return mangled;
+}
+
+bool CanonicalIdentity::operator==(const CanonicalIdentity& o) const {
+  if (kind != o.kind) return false;
+  if (name != o.name) return false;
+  if (linkage != o.linkage) return false;
+  // For C linkage, name+kind is sufficient identity.
+  if (linkage == LanguageLinkage::C) return true;
+  // For C++ linkage, function overloads need type discrimination.
+  if (kind == CanonicalSymbolKind::Function) {
+    if (!discriminator_type && !o.discriminator_type) return true;
+    if (!discriminator_type || !o.discriminator_type) return false;
+    return types_equal(*discriminator_type, *o.discriminator_type);
+  }
+  return true;
+}
+
+std::size_t CanonicalIdentityHash::operator()(const CanonicalIdentity& id) const {
+  std::size_t h = std::hash<std::string>{}(id.name);
+  h ^= std::hash<uint8_t>{}(static_cast<uint8_t>(id.kind)) << 1;
+  h ^= std::hash<uint8_t>{}(static_cast<uint8_t>(id.linkage)) << 2;
+  return h;
+}
+
+CanonicalIdentity identity_of(const CanonicalSymbol& sym) {
+  CanonicalIdentity id;
+  id.kind = sym.kind;
+  id.name = sym.source_name;
+  id.linkage = sym.linkage;
+  // For C++ function overloads, use the canonical type as discriminator.
+  if (sym.linkage == LanguageLinkage::Cxx &&
+      sym.kind == CanonicalSymbolKind::Function && sym.type) {
+    id.discriminator_type = sym.type;
+  }
+  return id;
+}
+
+void CanonicalSymbolTable::insert_or_merge(CanonicalSymbol sym) {
+  auto id = identity_of(sym);
+  auto it = by_identity.find(id);
+  if (it == by_identity.end()) {
+    by_identity.emplace(std::move(id), std::move(sym));
+    return;
+  }
+
+  // Merge: prefer the symbol with a more complete type.
+  // A definition (with line > 0 and a Function type that has specified params)
+  // takes precedence over a forward declaration (unspecified params).
+  auto& existing = it->second;
+  bool new_is_more_complete = false;
+
+  if (sym.type && existing.type) {
+    const auto* new_sig = get_function_sig(*sym.type);
+    const auto* old_sig = get_function_sig(*existing.type);
+    if (new_sig && old_sig) {
+      // Prefer specified params over unspecified.
+      if (old_sig->unspecified_params && !new_sig->unspecified_params)
+        new_is_more_complete = true;
+    }
+  } else if (sym.type && !existing.type) {
+    new_is_more_complete = true;
+  }
+
+  if (new_is_more_complete) {
+    existing = std::move(sym);
+  }
+}
+
+const CanonicalSymbol* CanonicalSymbolTable::lookup(const CanonicalIdentity& id) const {
+  auto it = by_identity.find(id);
+  return it != by_identity.end() ? &it->second : nullptr;
+}
+
+CanonicalSymbolTable build_symbol_table(const Node* root, SourceProfile profile) {
+  auto result = build_canonical_symbols(root, profile);
+  CanonicalSymbolTable table;
+  for (auto& sym : result.symbols) {
+    table.insert_or_merge(std::move(sym));
+  }
+  return table;
+}
+
 }  // namespace tinyc2ll::frontend_cxx::sema

@@ -34,6 +34,18 @@
   - Marked legacy TypeSpec-based prototype recovery paths with TODO(phase5) comments
   - Updated FnPtrSig doc comment in ir.hpp
   - All 1784 tests pass with no regressions
+- **Phase 5**: Connect canonical symbol building — done
+  - Added `types_equal()`: recursive structural equality for CanonicalType
+  - Added `prototypes_compatible()`: prototype compatibility check (handles unspecified params)
+  - Added `mangle_symbol()`: mangling-input guard (extern "C" passthrough, C++ placeholder _Z prefix)
+  - Added `CanonicalIdentity` struct with equality/hash for declaration identity
+    - C linkage: name+kind suffices
+    - C++ linkage: adds discriminator_type for overload resolution
+  - Added `identity_of()`: builds CanonicalIdentity from CanonicalSymbol
+  - Added `CanonicalSymbolTable`: identity-based deduplication with insert_or_merge
+    - Definitions (specified params) take precedence over forward declarations
+  - Added `build_symbol_table()`: Phase 5 entry point wrapping build_canonical_symbols
+  - All 1784 tests pass with no regressions
 
 ## Known Limitations (pre-existing)
 - Functions returning function pointers: parser does not fully capture fn_ptr params on the function node, so canonicalization inherits that gap
@@ -42,11 +54,10 @@
 - Legacy TypeSpec-based return type recovery paths retained for undeclared extern calls and expression-level fn-ptrs
 
 ## Next Intended Slice
-- **Phase 5**: Connect canonical symbol building
-  - Build canonical declaration identity from sema-resolved canonical types
-  - Ensure function prototypes and function definitions map to the same canonical function identity
-  - Prepare template declaration vs instantiation distinction
-  - Forbid parser-only type fragments from acting as mangling input
+- **Phase 6**: Enable mangling on top of canonical symbols
+  - Define mangler input purely in terms of canonical symbol and canonical type
+  - Keep `extern "C"` as a bypass path
+  - Reserve vendor extension mechanism for non-standard types like `fp8`
 
 ## Deferred
-- Phase 6: Enable mangling
+- (none — Phase 6 is next)

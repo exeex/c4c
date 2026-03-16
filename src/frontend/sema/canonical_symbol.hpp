@@ -164,4 +164,66 @@ const CanonicalFunctionSig* get_function_sig(const CanonicalType& ct);
 /// user_spelling storage, so the canonical type must outlive the TypeSpec.
 TypeSpec typespec_from_canonical(const CanonicalType& ct);
 
+// ── Phase 5: canonical declaration identity ──────────────────────────────────
+
+/// Structural equality comparison for canonical types.
+/// Two types are equal when they have the same recursive structure,
+/// qualifiers, and nominal names.
+bool types_equal(const CanonicalType& a, const CanonicalType& b);
+
+/// Check whether two function prototypes are compatible.
+/// Unspecified parameter lists are compatible with any parameter list.
+/// Otherwise, return type, parameter count, parameter types, and
+/// variadic flag must match.
+bool prototypes_compatible(const CanonicalType& a, const CanonicalType& b);
+
+/// Produce a mangling-ready identifier for a canonical symbol.
+/// For extern "C" linkage, returns the source name unchanged.
+/// For C++ linkage, produces a placeholder mangled name from canonical type
+/// (full Itanium ABI mangling is deferred to Phase 6).
+std::string mangle_symbol(const CanonicalSymbol& sym);
+
+/// A unique declaration identity combining scope, name, kind, and linkage.
+/// In C, two declarations at file scope with the same name and compatible
+/// types refer to the same entity.  In C++, overload discrimination will
+/// additionally consider canonical function type.
+struct CanonicalIdentity {
+  CanonicalSymbolKind kind = CanonicalSymbolKind::Object;
+  std::string name;
+  LanguageLinkage linkage = LanguageLinkage::C;
+  /// For C++ overload discrimination; unused for C linkage.
+  std::shared_ptr<CanonicalType> discriminator_type;
+
+  bool operator==(const CanonicalIdentity& o) const;
+  bool operator!=(const CanonicalIdentity& o) const { return !(*this == o); }
+};
+
+struct CanonicalIdentityHash {
+  std::size_t operator()(const CanonicalIdentity& id) const;
+};
+
+/// Build a CanonicalIdentity from a CanonicalSymbol.
+CanonicalIdentity identity_of(const CanonicalSymbol& sym);
+
+/// Extended sema result with identity-based symbol deduplication.
+/// Maps each unique identity to a single canonical symbol (the most complete
+/// definition wins over forward declarations).
+struct CanonicalSymbolTable {
+  std::unordered_map<CanonicalIdentity, CanonicalSymbol, CanonicalIdentityHash> by_identity;
+
+  /// Insert or merge a symbol.  If a symbol with the same identity already
+  /// exists, the one with a function body (definition) takes precedence over
+  /// a forward declaration.  Type compatibility is verified.
+  void insert_or_merge(CanonicalSymbol sym);
+
+  /// Look up a symbol by identity.  Returns nullptr if not found.
+  const CanonicalSymbol* lookup(const CanonicalIdentity& id) const;
+};
+
+/// Build canonical symbols with identity-based deduplication.
+/// This is the Phase 5 entry point; it calls build_canonical_symbols
+/// internally and then deduplicates into a CanonicalSymbolTable.
+CanonicalSymbolTable build_symbol_table(const Node* root,
+                                        SourceProfile profile = SourceProfile::C);
+
 }  // namespace tinyc2ll::frontend_cxx::sema
