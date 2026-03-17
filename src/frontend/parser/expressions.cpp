@@ -508,9 +508,11 @@ Node* Parser::parse_primary() {
         return n;
     }
 
-    // C++ static_cast<T>(expr)
-    if (check(TokenKind::KwStaticCast)) {
-        consume();  // consume 'static_cast'
+    // C++ named casts: static_cast<T>(expr), reinterpret_cast<T>(expr), const_cast<T>(expr)
+    if (check(TokenKind::KwStaticCast) ||
+        check(TokenKind::KwReinterpretCast) ||
+        check(TokenKind::KwConstCast)) {
+        consume();  // consume cast keyword
         expect(TokenKind::Less);       // <
         TypeSpec cast_ts = parse_type_name();
         expect(TokenKind::Greater);    // >

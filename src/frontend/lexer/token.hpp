@@ -85,7 +85,9 @@ enum class TokenKind {
   KwTemplate,    // template
   KwConstexpr,   // constexpr
   KwConsteval,   // consteval
-  KwStaticCast,  // static_cast
+  KwStaticCast,      // static_cast
+  KwReinterpretCast, // reinterpret_cast
+  KwConstCast,       // const_cast
 
   // ---- Punctuation ----
   LParen,    // (
