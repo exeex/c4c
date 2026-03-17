@@ -42,4 +42,20 @@ CompileTimePassStats run_compile_time_reduction(Module& module);
 /// Format pass statistics for debug output (used by --dump-hir).
 std::string format_compile_time_stats(const CompileTimePassStats& stats);
 
+/// Result of materialization.
+struct MaterializationStats {
+  size_t materialized = 0;      // functions marked for emission
+  size_t non_materialized = 0;  // functions kept for compile-time only
+};
+
+/// Mark functions in the module for materialization.
+///
+/// Current policy: all concrete functions are materialized.  This pass
+/// makes the materialization decision explicit and separable from codegen,
+/// so future policies (lazy emission, JIT deferral) can override it.
+MaterializationStats materialize_ready_functions(Module& module);
+
+/// Format materialization stats for debug output.
+std::string format_materialization_stats(const MaterializationStats& stats);
+
 }  // namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir

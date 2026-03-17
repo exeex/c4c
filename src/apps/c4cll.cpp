@@ -236,11 +236,17 @@ int main(int argc, char **argv) {
     auto ct_stats = tinyc2ll::frontend_cxx::sema_ir::phase2::hir::run_compile_time_reduction(
         *sema_result.hir_module);
 
+    // Run materialization pass — decide which functions become concrete LLVM output.
+    auto mat_stats = tinyc2ll::frontend_cxx::sema_ir::phase2::hir::materialize_ready_functions(
+        *sema_result.hir_module);
+
     if (dump_hir || dump_hir_summary) {
       if (dump_hir) {
         std::cout << tc::sema::format_hir(*sema_result.hir_module);
         std::cout << "\n--- compile-time reduction ---\n"
                   << "  " << tinyc2ll::frontend_cxx::sema_ir::phase2::hir::format_compile_time_stats(ct_stats)
+                  << "\n--- materialization ---\n"
+                  << "  " << tinyc2ll::frontend_cxx::sema_ir::phase2::hir::format_materialization_stats(mat_stats)
                   << "\n";
       } else {
         std::cout << tc::sema::format_summary(*sema_result.hir_module) << "\n";

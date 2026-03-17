@@ -287,6 +287,16 @@ set_tests_properties(cpp_hir_fixpoint_convergence PROPERTIES
   PASS_REGULAR_EXPRESSION "1 iteration, 6 template calls resolved, 8 consteval reductions \\(converged\\)"
 )
 
+# HIR materialization: verify materialization pass reports on template+consteval code
+add_test(
+  NAME cpp_hir_materialization_stats
+  COMMAND c4cll --dump-hir "${INTERNAL_TEST_ROOT}/cpp/postive_case/consteval_template.cpp"
+)
+set_tests_properties(cpp_hir_materialization_stats PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "materialization:.*function.*materialized"
+)
+
 add_test(
     NAME frontend_cxx_preprocessor_tests
     COMMAND frontend_cxx_preprocessor_tests

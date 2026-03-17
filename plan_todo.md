@@ -1,7 +1,7 @@
 # Plan Execution State
 
 ## Baseline
-- 1848/1848 tests passing (2026-03-17)
+- 1849/1849 tests passing (2026-03-17)
 
 ## Phase 1: Constrain sema to conservative compile-time work
 **Status: COMPLETE** (already satisfied by current architecture)
@@ -170,6 +170,31 @@ Make compile-time behavior converge through repeated passes instead of fixed fro
 
 ---
 
+## Phase 6: Materialization boundary
+**Status: COMPLETE**
+
+### Goal
+Separate compile-time specialization from code emission. Make materialization an explicit policy step.
+
+### Completed Slices
+- [x] Slice 1: Add materialization flag, pass, and codegen filter
+
+### What was added (Slice 1)
+- `ir.hpp`: `Function::materialized` bool flag (default true for backward compatibility)
+- `compile_time_pass.hpp`: `MaterializationStats`, `materialize_ready_functions()`, `format_materialization_stats()` API
+- `compile_time_pass.cpp`: `materialize_ready_functions()` — current policy: materialize all concrete functions; reports stats
+- `hir_emitter.cpp`: Codegen dedup loop skips non-materialized functions
+- `c4cll.cpp`: Materialization pass runs after compile-time reduction; `--- materialization ---` section in `--dump-hir` output
+- `InternalTests.cmake`: `cpp_hir_materialization_stats` test
+
+### Exit criteria met
+- Materialized specialized function = concrete function in module with `materialized=true`
+- Non-materialized template entities representable via `template_defs` metadata (already in place since Phase 2)
+- Codegen only consumes materialized entities (dedup loop checks `fn.materialized`)
+- Materialization policy is a separate step from template/consteval semantics
+- Compile-time reduction semantics remain independent of emission
+
+---
+
 ## Remaining Phases
-- Phase 6: Materialization boundary
 - Phase 7: Specialization identity and caching

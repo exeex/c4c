@@ -524,6 +524,10 @@ struct Function {
   SourceSpan span{};
   /// Phase C: fn_ptr signature of the return type when it is callable.
   std::optional<FnPtrSig> ret_fn_ptr_sig;
+  /// Phase 6: materialization flag.  A function is materialized when it should
+  /// be emitted as a concrete LLVM function.  Non-materialized functions remain
+  /// in the module for compile-time analysis but are not emitted.
+  bool materialized = true;
 
   Block* find_block(BlockId id) {
     auto it = std::find_if(

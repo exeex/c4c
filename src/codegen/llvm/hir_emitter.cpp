@@ -115,9 +115,11 @@ std::string HirEmitter::emit(){
       if (best_gv.count(gv.name) && best_gv[gv.name] == i) emit_global(gv);
     }
     // Deduplicate functions: prefer definitions (non-empty blocks) over declarations.
+    // Skip non-materialized functions — they exist for compile-time analysis only.
     std::unordered_map<std::string, size_t> best_fn; // name -> index
     for (size_t i = 0; i < mod_.functions.size(); ++i) {
       const Function& fn = mod_.functions[i];
+      if (!fn.materialized) continue;
       auto it = best_fn.find(fn.name);
       if (it == best_fn.end()) {
         best_fn[fn.name] = i;
