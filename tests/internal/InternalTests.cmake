@@ -287,6 +287,19 @@ set_tests_properties(cpp_hir_fixpoint_convergence PROPERTIES
   PASS_REGULAR_EXPRESSION "1 iteration, 6 template calls resolved, 8 consteval reductions \\(converged\\)"
 )
 
+# HIR deferred template instantiation: verify that nested template calls
+# (e.g., add<T>() inside twice<T>()) are instantiated by the compile-time
+# reduction pass, not during initial lowering.  The "deferred instantiation"
+# stat proves the pass performed real work.
+add_test(
+  NAME cpp_hir_deferred_template_instantiation
+  COMMAND c4cll --dump-hir "${INTERNAL_TEST_ROOT}/cpp/postive_case/template_chain.cpp"
+)
+set_tests_properties(cpp_hir_deferred_template_instantiation PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "1 deferred instantiation.*\\(converged\\)"
+)
+
 # HIR specialization key: verify stable identity keys for template instantiations
 add_test(
   NAME cpp_hir_specialization_key

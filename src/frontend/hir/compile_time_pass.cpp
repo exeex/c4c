@@ -12,16 +12,15 @@ namespace {
 /// Attempt one round of template instantiation resolution.
 ///
 /// Walks all CallExpr nodes with template_info and checks whether the
-/// instantiated target function exists in the module.  Returns the number
-/// of resolved and pending template applications.
-///
-/// Currently, AST-to-HIR lowering produces all instantiations, so every
-/// template call should already have a corresponding function.  This step
-/// provides the verification hook and will later drive deferred instantiation.
+/// instantiated target function exists in the module.  When a deferred
+/// instantiation callback is provided, unresolved calls trigger on-demand
+/// lowering of the missing template function.
 struct TemplateInstantiationStep {
-  const Module& module;
+  Module& module;
+  DeferredInstantiateFn instantiate_fn;
   size_t resolved = 0;
   size_t pending = 0;
+  size_t newly_instantiated = 0;
   std::vector<CompileTimeDiagnostic> pending_diags;
 
   void run() {
@@ -29,15 +28,6 @@ struct TemplateInstantiationStep {
     std::unordered_set<std::string> instantiated_fns;
     for (const auto& fn : module.functions) {
       instantiated_fns.insert(fn.name);
-    }
-
-    // Also build a set of all known template instance mangled names from
-    // template_defs metadata, so we can cross-reference.
-    std::unordered_set<std::string> template_instance_names;
-    for (const auto& [name, tdef] : module.template_defs) {
-      for (const auto& inst : tdef.instances) {
-        template_instance_names.insert(inst.mangled_name);
-      }
     }
 
     // Walk all expressions looking for template-originated calls.
@@ -69,6 +59,40 @@ struct TemplateInstantiationStep {
       // Check if the target function exists in the module.
       if (instantiated_fns.count(target_name)) {
         ++resolved;
+      } else if (instantiate_fn) {
+        // Attempt deferred instantiation: reconstruct TypeBindings from
+        // TemplateCallInfo + HirTemplateDef parameter names.
+        auto tdef_it = module.template_defs.find(tci.source_template);
+        if (tdef_it != module.template_defs.end()) {
+          const auto& tdef = tdef_it->second;
+          TypeBindings bindings;
+          size_t count = std::min(tdef.template_params.size(), tci.template_args.size());
+          for (size_t i = 0; i < count; ++i) {
+            bindings[tdef.template_params[i]] = tci.template_args[i];
+          }
+          if (instantiate_fn(tci.source_template, bindings, target_name)) {
+            instantiated_fns.insert(target_name);
+            ++resolved;
+            ++newly_instantiated;
+            // Update template_defs metadata with the new instance.
+            HirTemplateInstantiation hi;
+            hi.mangled_name = target_name;
+            hi.bindings = bindings;
+            hi.spec_key = make_specialization_key(
+                tci.source_template, tdef.template_params, bindings);
+            tdef_it->second.instances.push_back(std::move(hi));
+          } else {
+            ++pending;
+            pending_diags.push_back({CompileTimeDiagnostic::UnresolvedTemplate,
+                "unresolved template call: " + tci.source_template +
+                " (deferred instantiation of '" + target_name + "' failed)"});
+          }
+        } else {
+          ++pending;
+          pending_diags.push_back({CompileTimeDiagnostic::UnresolvedTemplate,
+              "unresolved template call: " + tci.source_template +
+              " (no template definition found)"});
+        }
       } else {
         ++pending;
         pending_diags.push_back({CompileTimeDiagnostic::UnresolvedTemplate,
@@ -84,11 +108,6 @@ struct TemplateInstantiationStep {
 /// Walks all ConstevalCallInfo records and checks whether the result_expr
 /// points to a valid IntLiteral in the module's expr_pool with a matching
 /// value.  Returns the number of verified (reduced) and pending records.
-///
-/// Currently, AST-to-HIR lowering reduces all consteval calls eagerly, so
-/// every record should already have a valid result.  This step provides the
-/// verification hook and will later drive deferred consteval reduction when
-/// template instantiation produces new consteval call sites.
 struct ConstevalReductionStep {
   const Module& module;
   size_t reduced = 0;
@@ -126,7 +145,8 @@ struct ConstevalReductionStep {
 
 }  // namespace
 
-CompileTimePassStats run_compile_time_reduction(Module& module) {
+CompileTimePassStats run_compile_time_reduction(
+    Module& module, DeferredInstantiateFn instantiate_fn) {
   CompileTimePassStats stats{};
 
   static constexpr int kMaxIterations = 8;
@@ -137,12 +157,13 @@ CompileTimePassStats run_compile_time_reduction(Module& module) {
   for (int iter = 0; iter < kMaxIterations; ++iter) {
     ++stats.iterations;
 
-    // Step 1: template instantiation resolution.
-    TemplateInstantiationStep tpl_step{module};
+    // Step 1: template instantiation resolution (with optional deferred lowering).
+    TemplateInstantiationStep tpl_step{module, instantiate_fn};
     tpl_step.run();
 
     stats.templates_instantiated = tpl_step.resolved;
     stats.templates_pending = tpl_step.pending;
+    stats.templates_deferred += tpl_step.newly_instantiated;
 
     // Step 2: consteval reduction verification.
     ConstevalReductionStep ce_step{module};
@@ -178,8 +199,6 @@ CompileTimePassStats run_compile_time_reduction(Module& module) {
     }
 
     // Progress was made but pending items remain — continue iterating.
-    // Future work: trigger deferred template instantiation or consteval
-    // reduction here to resolve newly-ready items.
   }
 
   return stats;
@@ -195,6 +214,10 @@ std::string format_compile_time_stats(const CompileTimePassStats& stats) {
       << " resolved"
       << ", " << stats.consteval_reduced << " consteval reduction"
       << (stats.consteval_reduced != 1 ? "s" : "");
+  if (stats.templates_deferred > 0) {
+    out << " (" << stats.templates_deferred << " deferred instantiation"
+        << (stats.templates_deferred != 1 ? "s" : "") << ")";
+  }
   if (stats.templates_pending > 0 || stats.consteval_pending > 0) {
     out << " (";
     bool first = true;

@@ -1,27 +1,66 @@
 # Plan Execution State
 
 ## Baseline
-- 1850/1850 tests passing (2026-03-17)
+- 1851/1851 tests passing (2026-03-17)
 
 ## Overall Assessment
 
-The implementation has made real progress, but it does not yet fully match the architecture described in `plan.md`.
+Phase 5 has made meaningful progress: `run_compile_time_reduction()` now performs real deferred template instantiation work.
 
-Current state in one sentence:
-- HIR now preserves useful template/consteval metadata and exposes debug visibility for compile-time activity
-- but template instantiation and consteval reduction are still performed eagerly during AST-to-HIR lowering, not by a true HIR-owned reduction loop
+Current state:
+- HIR preserves template/consteval metadata and exposes debug visibility
+- **Nested template instantiation is now owned by the HIR compile-time reduction pass** (Phase 5 milestone met for templates)
+- Consteval reduction is still performed eagerly during AST-to-HIR lowering
+- Direct (depth-0) template calls are still collected and lowered eagerly in Phase 1.6/2
 
-So the fairest summary is:
+Summary:
 - Phase 1: complete
 - Phases 2-4: partially complete, with good observability and metadata preservation
-- Phases 5-6: scaffolded, but not complete relative to the original plan goals
+- Phase 5: **partially complete** — deferred template instantiation works; deferred consteval reduction not yet moved
+- Phase 6: scaffolded, not yet a meaningful materialization boundary
 - Phase 7: largely complete for current scope
+
+---
+
+## What was done in this session (2026-03-17)
+
+### Deferred template instantiation via HIR compile-time pass
+
+**Architecture change**: Nested template calls (e.g., `add<T>()` inside `twice<T>()`) are no longer discovered and lowered during the initial AST-to-HIR lowering fixpoint. Instead:
+
+1. **Phase 1.6** only collects depth-0 instantiations (direct calls from non-template functions)
+2. **Phase 2** lowers only those depth-0 instantiations; nested template calls produce DeclRefs to not-yet-existing functions
+3. **Phase 3 (new)**: `run_compile_time_reduction()` discovers unresolved template calls, reconstructs TypeBindings from TemplateCallInfo + HirTemplateDef params, and invokes a deferred lowering callback to instantiate the missing functions
+4. The pass iterates until convergence
+
+**Key API change**: `run_compile_time_reduction()` now accepts an optional `DeferredInstantiateFn` callback. When provided, the pass performs real work (lowering new functions). When null, it operates in verification-only mode.
+
+**Data flow**:
+- `compile_time_pass.hpp`: added `DeferredInstantiateFn` callback type and `templates_deferred` stat
+- `compile_time_pass.cpp`: `TemplateInstantiationStep` reconstructs bindings and calls the callback for pending template calls
+- `ast_to_hir.cpp`: Phase 3 creates a lambda that invokes `lower_function()` for deferred templates
+- `ir.hpp`: `Module::CompileTimeInfo` stores deferred instantiation stats
+- `c4cll.cpp`: propagates deferred count from `ct_info` into verification stats for HIR dump
+
+**Consteval still handled eagerly**: `collect_consteval_template_instantiations()` was added to Phase 1.6 to ensure consteval template calls within template bodies are still collected pre-lowering (since consteval evaluation requires all bindings at lowering time).
+
+### Test additions
+- `cpp_hir_deferred_template_instantiation`: verifies "1 deferred instantiation" appears in HIR dump for `template_chain.cpp`
+- This test **only passes** if the HIR pass (not lowering) performs the nested instantiation
+
+### Files changed
+- `src/frontend/hir/compile_time_pass.hpp` — DeferredInstantiateFn, templates_deferred stat
+- `src/frontend/hir/compile_time_pass.cpp` — deferred instantiation logic in TemplateInstantiationStep
+- `src/frontend/hir/ast_to_hir.cpp` — Phase 1.6 depth-0 only, Phase 3 deferred callback, collect_consteval_template_instantiations
+- `src/frontend/hir/ir.hpp` — Module::CompileTimeInfo
+- `src/apps/c4cll.cpp` — propagate deferred count
+- `tests/internal/InternalTests.cmake` — new test
 
 ---
 
 ## Added Testcases
 
-The work added 12 HIR-oriented regression tests in `tests/internal/InternalTests.cmake`:
+The work added 13 HIR-oriented regression tests in `tests/internal/InternalTests.cmake`:
 
 - `cpp_hir_template_def_dump`
 - `cpp_hir_consteval_template_dump`
@@ -35,220 +74,64 @@ The work added 12 HIR-oriented regression tests in `tests/internal/InternalTests
 - `cpp_hir_fixpoint_convergence`
 - `cpp_hir_specialization_key`
 - `cpp_hir_materialization_stats`
+- **`cpp_hir_deferred_template_instantiation`** (NEW — proves HIR pass does real work)
 
-What these tests do verify:
+What these tests now verify:
 - template metadata appears in `--dump-hir`
 - template-originated calls keep printable template call info
 - consteval calls are recorded in HIR dump output
 - compile-time pass stats are printed
 - specialization keys are printed
 - materialization stats are printed
+- **deferred template instantiation by the HIR pass** (NEW)
 
 What these tests do not yet verify:
-- deferred template instantiation in HIR
 - deferred consteval reduction in HIR
 - irreducible compile-time nodes flowing through the new diagnostics path
 - a real materialization policy that leaves some functions non-materialized
-- convergence driven by HIR doing new work, rather than by eager lowering having already done the work
-
----
-
-## Phase 1: Constrain sema to conservative compile-time work
-**Status: COMPLETE**
-
-### Assessment
-This phase is effectively satisfied by the current architecture.
-
-### Verified state
-- sema still uses constant evaluation mainly for legality and diagnostic-oriented folding
-- sema is not the owner of template instantiation
-- sema is not the owner of consteval function body interpretation
-- heavy compile-time behavior lives in HIR lowering, not in sema
-
-### Notes
-This phase being complete does not imply the long-term architecture is complete; it only means sema has not become the wrong owner.
-
----
-
-## Phase 2: Make HIR preserve template function definitions
-**Status: PARTIAL**
-
-### What is implemented
-- `HirTemplateDef`, `HirTemplateInstantiation`, and `TypeBindings` were added to HIR
-- `Module::template_defs` now records template metadata
-- HIR printer emits a `--- templates ---` section
-- dump tests confirm the metadata is inspectable
-
-### What is working well
-- template definitions are visible as first-class metadata in HIR dumps
-- instantiation bindings and specialization keys can be attached to template definitions
-
-### Gap vs `plan.md`
-The original plan required template bodies to remain available after lowering for later compile-time reduction and materialization policy.
-
-That is not true yet:
-- `HirTemplateDef` preserves metadata only
-- the original template body is not stored in HIR
-- lowering still lowers concrete instantiated functions eagerly
-
-### Revised conclusion
-Phase 2 is partially complete as metadata preservation, but not complete as template-definition preservation in the stronger architectural sense intended by `plan.md`.
-
----
-
-## Phase 3: Preserve template applications/calls in HIR
-**Status: PARTIAL**
-
-### What is implemented
-- `TemplateCallInfo` was added to `CallExpr`
-- lowering records template source name and resolved template arguments
-- HIR printer renders calls in `add<int>(...)` style
-- dump tests validate the printed form
-
-### What is working well
-- HIR can now remember that a call originated from a template application
-- debug output is much better than before
-
-### Gap vs `plan.md`
-The original plan wanted template application to remain distinct from an ordinary concrete call, including the notion of a specialized callable request.
-
-Current behavior is weaker:
-- the callee is still lowered to an already resolved concrete function symbol
-- `TemplateCallInfo` is attached metadata, not a separate HIR node with independent semantics
-- specialized callable values are not represented as a first-class HIR concept
-
-### Revised conclusion
-Phase 3 is partially complete as call-site annotation and observability, but not complete as a semantic preservation layer for template application.
-
----
-
-## Phase 4: Represent consteval as HIR-reducible compile-time nodes
-**Status: PARTIAL**
-
-### What is implemented
-- `ConstevalCallInfo` was added to HIR
-- lowering records consteval call name, constant args, template bindings, and result
-- HIR printer emits a `--- consteval calls ---` section
-- dump tests verify the recorded metadata
-
-### What is working well
-- consteval activity is no longer invisible in dumps
-- template-aware consteval metadata is preserved for inspection
-- the data model is a reasonable base for future deferred reduction
-
-### Gap vs `plan.md`
-The original plan wanted consteval to survive into HIR as reducible nodes before final reduction.
-
-Current behavior is still eager:
-- consteval calls are interpreted during lowering
-- the call is replaced immediately by an `IntLiteral`
-- HIR stores a side record describing what happened, rather than preserving an unreduced HIR node that later passes own
-
-### Revised conclusion
-Phase 4 is partially complete as metadata preservation and debugging support, but not complete as true HIR-owned consteval reduction infrastructure.
 
 ---
 
 ## Phase 5: Add HIR compile-time reduction loop
-**Status: NOT COMPLETE**
+**Status: PARTIALLY COMPLETE**
 
-### What is implemented
-- a `run_compile_time_reduction()` pass entry point exists
-- pass stats and formatting exist
-- the pass scans template-originated calls and consteval records
-- the pass can report pending items and structured diagnostics
-- dump tests verify the stats section appears and contains expected counts
+### What is now implemented
+- `run_compile_time_reduction()` performs real deferred template instantiation via `DeferredInstantiateFn` callback
+- Phase 1.6 collects only depth-0 instantiations; nested calls are left for the HIR pass
+- The pass discovers unresolved template calls, reconstructs bindings, and triggers on-demand lowering
+- The pass iterates until convergence (fixpoint loop)
+- Stats track `templates_deferred` to distinguish pass-driven work from eager lowering
+- Regression test proves the pass does real work (`cpp_hir_deferred_template_instantiation`)
 
-### What is not implemented yet
-- the pass does not instantiate templates
-- the pass does not reduce consteval calls
-- the pass does not mutate HIR to unlock additional work across iterations
-- the apparent convergence is mostly a post-hoc verification of work already done in lowering
+### What is not yet implemented
+- deferred consteval reduction (consteval is still evaluated eagerly during lowering)
+- the pass does not yet mutate HIR expression nodes (consteval calls are not deferred)
+- multi-step convergence where template instantiation unlocks new consteval calls that unlock new templates
 
-### Important reality check
-The code itself documents this clearly:
-- template instantiation is still done during AST-to-HIR lowering
-- consteval reduction is still done during AST-to-HIR lowering
-- the compile-time pass is currently a verification/reporting hook
-
-### Revised conclusion
-Phase 5 should be considered scaffolded, not complete.
-
-### Remaining work to satisfy `plan.md`
-- preserve unresolved template applications in HIR until the pass resolves them
-- preserve reducible consteval calls in HIR until the pass evaluates them
-- let one iteration create new ready work for the next
-- prove convergence on cases that genuinely require multi-step HIR-owned reduction
-- add tests that fail if lowering eagerly erases the structure again
+### Remaining work
+- move one class of consteval reduction into the HIR pass
+- add a test where template instantiation unlocks a new consteval call that the pass evaluates
+- prove multi-step convergence (template → consteval → template cycle)
 
 ---
 
 ## Phase 6: Define materialization boundary
 **Status: NOT COMPLETE**
 
-### What is implemented
-- `Function::materialized` flag exists
-- `materialize_ready_functions()` pass exists
-- codegen skips non-materialized functions
-- dump output includes materialization stats
-
-### What is not implemented yet
-- current policy marks every concrete function as materialized
-- there is no real deferred-emission behavior
-- no code path demonstrates template semantics remaining valid while emission is delayed
-- tests only prove that a stats line is printed
-
-### Revised conclusion
-Phase 6 currently establishes an API seam, but not a meaningful materialization boundary or policy.
-
-### Remaining work to satisfy `plan.md`
-- keep compile-time-only entities unmaterialized in at least some cases
-- make codegen consume only the functions selected by policy
-- add tests that distinguish preserved template semantics from emitted concrete functions
+(unchanged from previous assessment)
 
 ---
 
 ## Phase 7: Specialization identity and caching
 **Status: MOSTLY COMPLETE**
 
-### What is implemented
-- `SpecializationKey` exists
-- canonical type stringification exists
-- instantiations record a stable key
-- HIR printer shows the key
-- dump tests verify the expected printed form
-
-### Why this is stronger than some earlier phases
-- the feature is concrete, local, and already exercised by HIR metadata
-- its current scope is clear and does not depend on deferred reduction being implemented first
-
-### Remaining caveats
-- cross-TU and future JIT reuse are architectural goals, not yet demonstrated end-to-end
-- current validation is still dump-based rather than integration-level caching behavior
-
-### Revised conclusion
-Phase 7 is mostly complete for current in-process metadata needs, with future integration still outstanding.
+(unchanged from previous assessment)
 
 ---
 
-## Revised Summary
-
-What is genuinely delivered:
-- sema remains conservative
-- HIR now preserves template and consteval metadata
-- HIR dumps are much more informative
-- compile-time and materialization passes now have visible API seams
-- specialization identity has a concrete deterministic representation
-
-What is not yet delivered from the original plan:
-- HIR as the actual owner of template instantiation
-- HIR as the actual owner of consteval reduction
-- a real instantiate/reduce fixpoint loop that performs new work each iteration
-- a meaningful delayed materialization policy
-
 ## Recommended next milestone
 
-The next honest milestone should be:
-- move one real class of deferred template instantiation out of lowering and into `run_compile_time_reduction()`
-- move one real class of deferred consteval evaluation out of lowering and into the same loop
-- add at least one regression test that only passes if HIR, not lowering, performs the second-step reduction
+Move one class of deferred consteval evaluation into `run_compile_time_reduction()`:
+- During lowering of deferred template instantiations, consteval calls within those functions are already evaluated eagerly (since the callback invokes `lower_function` which runs the full lowering path including consteval)
+- The next step would be to defer consteval calls that depend on template bindings not yet resolved, and have the pass evaluate them after the bindings become available
+- Add a regression test that only passes if the HIR pass evaluates a consteval call that was unlocked by a deferred template instantiation

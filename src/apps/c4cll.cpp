@@ -232,9 +232,12 @@ int main(int argc, char **argv) {
       return 0;
     }
 
-    // Run HIR compile-time reduction pass (template instantiation + consteval).
+    // Run HIR compile-time reduction pass (verification only — actual deferred
+    // instantiation already happened inside lower_ast_to_hir).
     auto ct_stats = c4c::hir::run_compile_time_reduction(
         *sema_result.hir_module);
+    // Propagate deferred instantiation count from the lowering-time pass.
+    ct_stats.templates_deferred = sema_result.hir_module->ct_info.deferred_instantiations;
 
     // Run materialization pass — decide which functions become concrete LLVM output.
     auto mat_stats = c4c::hir::materialize_ready_functions(

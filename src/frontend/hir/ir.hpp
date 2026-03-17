@@ -754,6 +754,19 @@ struct Module {
   // Consteval call records (populated by lower_ast_to_hir)
   std::vector<ConstevalCallInfo> consteval_calls;
 
+  // Compile-time reduction info (populated by the compile-time pass in lower_ast_to_hir).
+  // These capture the result of the HIR-owned reduction pass that runs after
+  // initial lowering, so subsequent verification calls can distinguish
+  // deferred work from eagerly-lowered work.
+  struct CompileTimeInfo {
+    size_t deferred_instantiations = 0;  // template fns instantiated by the pass
+    size_t total_iterations = 0;         // fixpoint iterations performed
+    size_t templates_resolved = 0;       // total template calls resolved
+    size_t consteval_reduced = 0;        // total consteval calls reduced
+    bool converged = false;
+  };
+  CompileTimeInfo ct_info;
+
   // Stable ID cursors for multi-pass transforms that may append nodes.
   uint32_t next_function_id = 0;
   uint32_t next_global_id = 0;

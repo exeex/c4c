@@ -1,4 +1,5 @@
 #include "ast_to_hir.hpp"
+#include "compile_time_pass.hpp"
 #include "consteval.hpp"
 
 #include <algorithm>
@@ -457,15 +458,24 @@ class Lowerer {
       if (item->kind == NK_FUNCTION && item->name && item->n_template_params > 0)
         template_fn_defs_[item->name] = item;
     }
-    // Iterate until convergence: inner template calls (e.g., add<T>() inside
-    // twice<T>()) depend on outer instantiation bindings (e.g., twice<int>()
-    // from main) which may be discovered in a later function body.
+    // Collect only depth-0 instantiations: direct template calls from
+    // non-template functions (e.g., main() calling twice<int>()).
+    // Nested template calls (e.g., add<T>() inside twice<T>()) will be
+    // discovered and instantiated by the HIR compile-time reduction pass.
+    for (const Node* item : items) {
+      if (item->kind == NK_FUNCTION && item->body && item->n_template_params == 0)
+        collect_template_instantiations(item->body, item);
+    }
+    // Also collect consteval template calls from template function bodies,
+    // since consteval is still evaluated eagerly during lowering and needs
+    // all instantiation bindings to be available at lowering time.
+    // This uses the fixpoint loop because consteval templates may chain.
     for (int pass = 0; pass < 8; ++pass) {
       size_t prev_size = 0;
       for (const auto& [k, v] : template_fn_instances_) prev_size += v.size();
       for (const Node* item : items) {
-        if (item->kind == NK_FUNCTION && item->body)
-          collect_template_instantiations(item->body, item);
+        if (item->kind == NK_FUNCTION && item->body && item->n_template_params > 0)
+          collect_consteval_template_instantiations(item->body, item);
       }
       size_t cur_size = 0;
       for (const auto& [k, v] : template_fn_instances_) cur_size += v.size();
@@ -516,6 +526,28 @@ class Lowerer {
         lower_global(item);
       }
     }
+
+    // Phase 3: run HIR compile-time reduction with deferred instantiation.
+    // Nested template calls (e.g., add<T>() inside twice<T>()) were not
+    // collected in Phase 1.6 and thus not lowered in Phase 2.  The
+    // compile-time reduction pass discovers these unresolved calls and
+    // triggers on-demand lowering via the callback below.
+    auto deferred_lower = [this](const std::string& tpl_name,
+                                 const TypeBindings& bindings,
+                                 const std::string& mangled) -> bool {
+      auto fn_it = template_fn_defs_.find(tpl_name);
+      if (fn_it == template_fn_defs_.end()) return false;
+      const Node* fn_def = fn_it->second;
+      if (fn_def->is_consteval) return false;  // consteval handled eagerly
+      lower_function(fn_def, &mangled, &bindings);
+      return true;
+    };
+    auto ct_stats = run_compile_time_reduction(m, deferred_lower);
+    m.ct_info.deferred_instantiations = ct_stats.templates_deferred;
+    m.ct_info.total_iterations = ct_stats.iterations;
+    m.ct_info.templates_resolved = ct_stats.templates_instantiated;
+    m.ct_info.consteval_reduced = ct_stats.consteval_reduced;
+    m.ct_info.converged = ct_stats.converged;
 
     return m;
   }
@@ -3844,6 +3876,52 @@ class Lowerer {
     if (n->update) collect_template_instantiations(n->update, enclosing_fn);
     for (int i = 0; i < n->n_children; ++i)
       if (n->children[i]) collect_template_instantiations(n->children[i], enclosing_fn);
+  }
+
+  // Like collect_template_instantiations, but only records instances for
+  // consteval template functions.  Non-consteval template calls inside template
+  // bodies are left for the compile-time reduction pass to discover and lower.
+  void collect_consteval_template_instantiations(const Node* n, const Node* enclosing_fn) {
+    if (!n) return;
+    if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR &&
+        n->left->name && n->left->n_template_args > 0) {
+      auto fn_it = template_fn_defs_.find(n->left->name);
+      if (fn_it != template_fn_defs_.end()) {
+        const Node* fn_def = fn_it->second;
+        if (fn_def->is_consteval && fn_def->n_template_params > 0) {
+          const TypeBindings* enclosing_bindings = nullptr;
+          if (enclosing_fn && enclosing_fn->name) {
+            auto enc_it = template_fn_instances_.find(enclosing_fn->name);
+            if (enc_it != template_fn_instances_.end()) {
+              for (const auto& enc_inst : enc_it->second) {
+                TypeBindings inner = build_call_bindings(n->left, fn_def, &enc_inst.bindings);
+                std::string mangled = mangle_template_name(n->left->name, inner);
+                if (!has_instance(n->left->name, mangled))
+                  record_instance(n->left->name, std::move(inner));
+              }
+              goto recurse_ce;
+            }
+          }
+          {
+            TypeBindings bindings = build_call_bindings(n->left, fn_def, nullptr);
+            std::string mangled = mangle_template_name(n->left->name, bindings);
+            if (!has_instance(n->left->name, mangled))
+              record_instance(n->left->name, std::move(bindings));
+          }
+        }
+      }
+    }
+    recurse_ce:
+    if (n->left) collect_consteval_template_instantiations(n->left, enclosing_fn);
+    if (n->right) collect_consteval_template_instantiations(n->right, enclosing_fn);
+    if (n->cond) collect_consteval_template_instantiations(n->cond, enclosing_fn);
+    if (n->then_) collect_consteval_template_instantiations(n->then_, enclosing_fn);
+    if (n->else_) collect_consteval_template_instantiations(n->else_, enclosing_fn);
+    if (n->body) collect_consteval_template_instantiations(n->body, enclosing_fn);
+    if (n->init) collect_consteval_template_instantiations(n->init, enclosing_fn);
+    if (n->update) collect_consteval_template_instantiations(n->update, enclosing_fn);
+    for (int i = 0; i < n->n_children; ++i)
+      if (n->children[i]) collect_consteval_template_instantiations(n->children[i], enclosing_fn);
   }
 
   Module* module_ = nullptr;
