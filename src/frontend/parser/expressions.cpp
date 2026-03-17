@@ -508,6 +508,21 @@ Node* Parser::parse_primary() {
         return n;
     }
 
+    // C++ static_cast<T>(expr)
+    if (check(TokenKind::KwStaticCast)) {
+        consume();  // consume 'static_cast'
+        expect(TokenKind::Less);       // <
+        TypeSpec cast_ts = parse_type_name();
+        expect(TokenKind::Greater);    // >
+        expect(TokenKind::LParen);     // (
+        Node* operand = parse_assign_expr();
+        expect(TokenKind::RParen);     // )
+        Node* n = make_node(NK_CAST, ln);
+        n->type = cast_ts;
+        n->left = operand;
+        return n;
+    }
+
     // Parenthesised expression or cast or compound literal
     if (check(TokenKind::LParen)) {
         consume();  // consume (

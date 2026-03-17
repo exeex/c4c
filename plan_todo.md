@@ -1,11 +1,11 @@
 # Plan Execution State
 
 ## Baseline
-- 1870/1870 tests passing (2026-03-17)
+- 1871/1871 tests passing (2026-03-17)
 
 ## Overall Assessment
 
-Phase 5 slice 7 is now implemented: template type parameter substitution in function signatures and local variable declarations.
+Phase 5 slice 8 is now implemented: `static_cast<T>(expr)` C++ named cast syntax.
 
 Current state:
 - HIR preserves template/consteval metadata and exposes debug visibility
@@ -17,43 +17,47 @@ Current state:
 - **Phase 5 slice 4**: Mixed type + NTTP params (`template<typename T, int N>`) and consteval NTTP functions supported end-to-end.
 - **Phase 5 slice 5**: NTTP forwarding in deferred chains — `template<int N> f() { return g<N>(); }` where g is another template or consteval template.
 - **Phase 5 slice 6**: Mixed type+NTTP forwarding in deferred chains works end-to-end.
-- **Phase 5 slice 7 (NEW)**: Template type parameter substitution in function signatures and locals. Previously, `TB_TYPEDEF` template params fell through to `i32` in codegen (via `llvm_base()` default case). Now `lower_function()` correctly substitutes template type params in return types, parameter types, and local variable types. Pointer/array modifiers from declarators are preserved (only base+tag are substituted).
+- **Phase 5 slice 7**: Template type parameter substitution in function signatures and locals.
+- **Phase 5 slice 8 (NEW)**: `static_cast<T>(expr)` support — C++ named cast syntax parsed into NK_CAST nodes, works in regular code, consteval, and template contexts. Template type parameter substitution applied to cast target types in HIR lowering. Sema validator suppresses "unknown type name" for template type params in casts.
 
 Summary:
 - Phase 1: complete
 - Phases 2-4: partially complete, with good observability and metadata preservation
-- Phase 5: **substantially complete** — deferred template instantiation works; truly deferred consteval evaluation works via PendingConstevalExpr; NTTP support added; mixed type+NTTP params work; consteval with NTTP works; NTTP forwarding in deferred chains works; mixed type+NTTP forwarding works; **type parameter substitution in signatures and locals works**
+- Phase 5: **substantially complete** — deferred template instantiation works; truly deferred consteval evaluation works via PendingConstevalExpr; NTTP support added; mixed type+NTTP params work; consteval with NTTP works; NTTP forwarding in deferred chains works; mixed type+NTTP forwarding works; type parameter substitution in signatures and locals works; **static_cast support added**
 - Phase 6: **complete** — materialization boundary separates compile-time entities from emitted code
 - Phase 7: **complete** — specialization identity is stable, hashable, serializable via LLVM named metadata
 
 ---
 
-## What was done in this session (2026-03-17, session 11)
+## What was done in this session (2026-03-17, session 12)
 
-### Phase 5 slice 7: Template type parameter substitution in function signatures and locals
+### Phase 5 slice 8: `static_cast<T>(expr)` support
 
-**Root cause**: `lower_function()` in `ast_to_hir.cpp` set `fn.return_type`, parameter types, and local variable types directly from AST `TypeSpec` without substituting template type bindings. Since `TB_TYPEDEF` falls through to `i32` in `llvm_base()` (the default case in the switch), template instantiations with non-int types (long, short, char) silently produced wrong LLVM types.
+**Changes**:
+1. **Lexer**: Added `KwStaticCast` token kind; `static_cast` recognized as keyword in C++ profiles
+2. **Parser**: `parse_primary()` handles `static_cast<Type>(expr)` → produces NK_CAST node with parsed type and operand
+3. **Sema validator**: Suppresses "cast to unknown type name" error when cast target is a template type parameter of the enclosing function
+4. **HIR lowering**: Template type parameter substitution applied to NK_CAST target types (both in `lower_expr` NK_CAST case and `infer_generic_ctrl_type` NK_CAST/NK_COMPOUND_LIT case)
 
-**Fix**: Three substitution points added in `ast_to_hir.cpp`:
-1. **Return type** (line ~1146): Check if `fn_node->type.base == TB_TYPEDEF` and tag matches a template binding → substitute `base` and `tag` from the concrete type
-2. **Parameter types** (line ~1215): Same check on each `p->type`
-3. **Local variable types** (line ~2097): Same check on `n->type` using `ctx.tpl_bindings`
-
-**Key design decision**: Only `base` and `tag` fields are substituted; declarator modifiers (`ptr_level`, `array_rank`, etc.) are preserved from the original TypeSpec. This ensures `T*` correctly becomes `long*` (not just `long`).
+**Design**: `static_cast<T>(expr)` reuses the existing NK_CAST node kind. No new AST node needed — the only difference from C-style `(T)expr` is the parse syntax.
 
 ### Test additions
-- **`template_type_subst.cpp`**: Tests type substitution across return types, parameters, locals, and pointer parameters with long, short, and char types. Verifies no truncation/overflow for 64-bit values.
+- **`static_cast_basic.cpp`**: Tests integer conversions (narrowing, widening), static_cast in expressions, consteval context, and template context.
 
 ### Files changed
-- `src/frontend/hir/ast_to_hir.cpp` (3 substitution points)
-- `tests/internal/cpp/postive_case/template_type_subst.cpp` (new)
+- `src/frontend/lexer/token.hpp` (KwStaticCast token kind)
+- `src/frontend/lexer/token.cpp` (debug name + keyword recognition)
+- `src/frontend/parser/expressions.cpp` (parse static_cast in parse_primary)
+- `src/frontend/sema/validate.cpp` (suppress false positive for template type params)
+- `src/frontend/hir/ast_to_hir.cpp` (template type substitution in cast target types)
+- `tests/internal/cpp/postive_case/static_cast_basic.cpp` (new)
 
 ---
 
 ## Recommended next milestone
 
 Potential next work:
-- `static_cast` support in consteval interpreter (currently fails for deferred consteval with static_cast)
 - Template return type substitution for more complex types (struct, fn_ptr)
 - Phase 2-4 remaining: deeper template/consteval HIR preservation
 - Template class/struct support
+- `reinterpret_cast`, `const_cast` support

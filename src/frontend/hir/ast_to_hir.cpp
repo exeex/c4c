@@ -863,8 +863,18 @@ class Lowerer {
         return ts;
       }
       case NK_CAST:
-      case NK_COMPOUND_LIT:
-        return n->type;
+      case NK_COMPOUND_LIT: {
+        TypeSpec ts = n->type;
+        if (ctx && !ctx->tpl_bindings.empty() &&
+            ts.base == TB_TYPEDEF && ts.tag) {
+          auto it = ctx->tpl_bindings.find(ts.tag);
+          if (it != ctx->tpl_bindings.end()) {
+            ts.base = it->second.base;
+            ts.tag = it->second.tag;
+          }
+        }
+        return ts;
+      }
       case NK_BINOP: {
         const TypeSpec l = infer_generic_ctrl_type(ctx, n->left);
         const TypeSpec r = infer_generic_ctrl_type(ctx, n->right);
@@ -3200,13 +3210,24 @@ class Lowerer {
       }
       case NK_CAST: {
         CastExpr c{};
-        c.to_type = qtype_from(n->type);
+        // Substitute template type parameters in cast target type.
+        TypeSpec cast_ts = n->type;
+        if (ctx && !ctx->tpl_bindings.empty() &&
+            cast_ts.base == TB_TYPEDEF && cast_ts.tag) {
+          auto it = ctx->tpl_bindings.find(cast_ts.tag);
+          if (it != ctx->tpl_bindings.end()) {
+            const TypeSpec& concrete = it->second;
+            cast_ts.base = concrete.base;
+            cast_ts.tag = concrete.tag;
+          }
+        }
+        c.to_type = qtype_from(cast_ts);
         c.expr = lower_expr(ctx, n->left);
         // Phase C: build fn_ptr_sig for casts to callable types.
-        if (n->type.is_fn_ptr) {
+        if (cast_ts.is_fn_ptr) {
           c.fn_ptr_sig = fn_ptr_sig_from_decl_node(n);
         }
-        return append_expr(n, c, n->type);
+        return append_expr(n, c, cast_ts);
       }
       case NK_CALL:
       case NK_BUILTIN_CALL: {

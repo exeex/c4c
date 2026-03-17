@@ -348,6 +348,7 @@ class Validator {
   bool fn_has_loop_ = false;
   bool in_function_ = false;
   TypeSpec current_fn_ret_{};
+  const Node* current_fn_node_ = nullptr;  // for template param lookup
 
   struct SwitchCtx {
     std::unordered_set<long long> case_vals;
@@ -594,8 +595,10 @@ class Validator {
   void validate_function(const Node* fn) {
     const bool old_in_function = in_function_;
     const TypeSpec old_fn_ret = current_fn_ret_;
+    const Node* old_fn_node = current_fn_node_;
     in_function_ = true;
     current_fn_ret_ = fn->type;
+    current_fn_node_ = fn;
     fn_has_goto_ = fn->body && node_contains_goto(fn->body);
     fn_has_loop_ = fn->body && node_contains_loop(fn->body);
     enter_scope();
@@ -637,6 +640,7 @@ class Validator {
     leave_scope();
     in_function_ = old_in_function;
     current_fn_ret_ = old_fn_ret;
+    current_fn_node_ = old_fn_node;
   }
 
   void validate_decl_init(const Node* decl) {
@@ -1091,8 +1095,22 @@ class Validator {
         out.valid = true;
         out.type = n->type;
         if (n->type.base == TB_TYPEDEF) {
-          const std::string tname = n->type.tag ? n->type.tag : "<anonymous>";
-          emit(n->line, "cast to unknown type name '" + tname + "'");
+          // Suppress for template type parameters — they're resolved at instantiation.
+          bool is_tpl_type_param = false;
+          if (current_fn_node_ && n->type.tag) {
+            for (int i = 0; i < current_fn_node_->n_template_params; ++i) {
+              if (current_fn_node_->template_param_names[i] &&
+                  !(current_fn_node_->template_param_is_nttp && current_fn_node_->template_param_is_nttp[i]) &&
+                  std::strcmp(current_fn_node_->template_param_names[i], n->type.tag) == 0) {
+                is_tpl_type_param = true;
+                break;
+              }
+            }
+          }
+          if (!is_tpl_type_param) {
+            const std::string tname = n->type.tag ? n->type.tag : "<anonymous>";
+            emit(n->line, "cast to unknown type name '" + tname + "'");
+          }
         }
         if (!is_complete_object_type(n->type)) {
           emit(n->line, "cast to incomplete struct/union object type");

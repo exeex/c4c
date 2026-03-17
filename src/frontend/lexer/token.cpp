@@ -131,6 +131,7 @@ const char *token_kind_name(TokenKind kind) {
     case TokenKind::KwTemplate:  return "KW_template";
     case TokenKind::KwConstexpr: return "KW_constexpr";
     case TokenKind::KwConsteval: return "KW_consteval";
+    case TokenKind::KwStaticCast: return "KW_static_cast";
 
     case TokenKind::PragmaPack: return "PRAGMA_PACK";
 
@@ -243,8 +244,9 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
   if (profile != LexProfile::C) {
     if (s == "template")  return TokenKind::KwTemplate;
     if (s == "constexpr") return TokenKind::KwConstexpr;
-    if (s == "consteval") return TokenKind::KwConsteval;
-    if (s == "alignof")   return TokenKind::KwAlignof;
+    if (s == "consteval")    return TokenKind::KwConsteval;
+    if (s == "static_cast") return TokenKind::KwStaticCast;
+    if (s == "alignof")     return TokenKind::KwAlignof;
   }
 
   return TokenKind::Identifier;
