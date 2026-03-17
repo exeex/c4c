@@ -26,7 +26,7 @@ namespace c4c::hir {
 // Phase mapping:
 // - Phase 2: hir::* (typed frontend IR, AST lowering target)
 // - Phase 3: backend-facing hooks embedded in HIR (attrs/debug/meta)
-// - Phase 4: phase4::dag::* (lowering skeleton + inspectable DAG)
+// - Phase 4: dag::* (lowering skeleton + inspectable DAG)
 // - Phase 5+: stable IDs, summaries, and debug dumps for parity tooling
 
 using SymbolName = std::string;
@@ -929,7 +929,7 @@ struct DagBlock {
   std::vector<DagBlockId> succs;
 };
 
-namespace phase4::dag {
+namespace dag {
 
 struct DagSummary {
   size_t functions = 0;
@@ -967,6 +967,6 @@ struct ModuleDag {
   }
 };
 
-}  // namespace phase4::dag
+}  // namespace dag
 
 }  // namespace c4c::hir

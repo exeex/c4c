@@ -181,7 +181,7 @@ Suggested additions:
 
 Suggested entry point:
 
-- `phase2::hir::run_inline_expansion(Module&)`
+- `hir::run_inline_expansion(Module&)`
 
 Suggested integration point:
 
@@ -192,7 +192,7 @@ Suggested integration point:
 
 ### Input
 
-- fully built `phase2::hir::Module`
+- fully built `hir::Module`
 - `fn_index` resolved
 - function bodies, block graph, and expr pool stable
 

@@ -35,7 +35,7 @@ Relevant code:
 
 ### 1. Keep HIR unchanged as frontend IR
 
-Do not force backend-oriented details back into `phase2::hir::Module`.
+Do not force backend-oriented details back into `hir::Module`.
 
 HIR should continue to represent:
 
