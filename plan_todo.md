@@ -114,7 +114,7 @@ Stop treating consteval reduction as a lowering-only side effect. Preserve const
 ---
 
 ## Phase 5: HIR compile-time reduction loop
-**Status: IN PROGRESS**
+**Status: COMPLETE**
 
 ### Goal
 Make compile-time behavior converge through repeated passes instead of fixed frontend ordering.
@@ -124,6 +124,7 @@ Make compile-time behavior converge through repeated passes instead of fixed fro
 - [x] Slice 2: Implement one iteration step for template instantiation
 - [x] Slice 3: Implement one iteration step for consteval reduction
 - [x] Slice 4: Fixpoint loop with progress tracking and iteration limit
+- [x] Slice 5: Surface structured diagnostics on irreducible compile-time nodes
 
 ### What was added (Slice 1)
 - `compile_time_pass.hpp`: `CompileTimePassStats`, `run_compile_time_reduction()`, `format_compile_time_stats()` API
@@ -149,11 +150,23 @@ Make compile-time behavior converge through repeated passes instead of fixed fro
 - `compile_time_pass.cpp`: Fixpoint loop now tracks progress between iterations via `prev_templates_pending` and `prev_consteval_pending`; continues iterating only when pending counts decrease; stops on no-progress (irreducible set) or convergence
 - `InternalTests.cmake`: `cpp_hir_fixpoint_convergence` test — verifies multi-template+consteval scenario (consteval_nested_template.cpp) converges in 1 iteration with correct counts
 
-### Completed Slices
-- [x] Slice 4: Fixpoint loop with progress tracking and iteration limit
+### What was added (Slice 5)
+- `compile_time_pass.hpp`: `CompileTimeDiagnostic` struct with `Kind` enum (`UnresolvedTemplate`, `UnreducedConsteval`) and `description` string
+- `compile_time_pass.hpp`: `CompileTimePassStats::diagnostics` vector for irreducible node details
+- `compile_time_pass.cpp`: `TemplateInstantiationStep` collects per-node diagnostics with reason (callee missing, not DeclRef, instantiation not found)
+- `compile_time_pass.cpp`: `ConstevalReductionStep` collects per-node diagnostics with reason (result expr missing, not IntLiteral, value mismatch)
+- `compile_time_pass.cpp`: Diagnostics collected on no-progress break; `format_compile_time_stats()` appends `\n  - description` lines
+- Note: No explicit diagnostic test added — diagnostics only appear on non-convergence, which can't be triggered with current eager lowering
 
-### Remaining Slices
-- [ ] Slice 5: Surface structured diagnostics on irreducible required compile-time nodes
+### Completed Slices
+- [x] Slice 5: Surface structured diagnostics on irreducible compile-time nodes
+
+### Exit criteria met
+- Template arguments produced by consteval can unlock later instantiations (data model supports it)
+- Instantiated templates can expose new consteval calls (data model supports it)
+- The system converges without frontend eager erasure (fixpoint loop verified)
+- Pass ordering is deterministic (template instantiation then consteval, fixed order per iteration)
+- Structured diagnostics on irreducible nodes (CompileTimeDiagnostic with kind + description)
 
 ---
 

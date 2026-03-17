@@ -7,6 +7,13 @@
 
 namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir {
 
+/// A diagnostic for a single irreducible compile-time node.
+struct CompileTimeDiagnostic {
+  enum Kind { UnresolvedTemplate, UnreducedConsteval };
+  Kind kind;
+  std::string description;  // human-readable description of the irreducible node
+};
+
 /// Result of a single compile-time reduction iteration.
 struct CompileTimePassStats {
   size_t templates_instantiated = 0;  // template calls with resolved target functions
@@ -15,6 +22,7 @@ struct CompileTimePassStats {
   size_t consteval_pending = 0;       // consteval calls whose result is missing or invalid
   size_t iterations = 0;              // total fixpoint iterations performed
   bool converged = false;             // true if no new work was found
+  std::vector<CompileTimeDiagnostic> diagnostics;  // details on irreducible nodes
 };
 
 /// Run the HIR compile-time reduction loop.

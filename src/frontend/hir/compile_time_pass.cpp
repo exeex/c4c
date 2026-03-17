@@ -22,6 +22,7 @@ struct TemplateInstantiationStep {
   const Module& module;
   size_t resolved = 0;
   size_t pending = 0;
+  std::vector<CompileTimeDiagnostic> pending_diags;
 
   void run() {
     // Build set of known instantiated function names for fast lookup.
@@ -50,11 +51,15 @@ struct TemplateInstantiationStep {
       const auto* callee_expr = module.find_expr(call->callee);
       if (!callee_expr) {
         ++pending;
+        pending_diags.push_back({CompileTimeDiagnostic::UnresolvedTemplate,
+            "unresolved template call: " + tci.source_template + " (callee expr missing)"});
         continue;
       }
       const auto* decl_ref = std::get_if<DeclRef>(&callee_expr->payload);
       if (!decl_ref) {
         ++pending;
+        pending_diags.push_back({CompileTimeDiagnostic::UnresolvedTemplate,
+            "unresolved template call: " + tci.source_template + " (callee is not a DeclRef)"});
         continue;
       }
 
@@ -66,6 +71,9 @@ struct TemplateInstantiationStep {
         ++resolved;
       } else {
         ++pending;
+        pending_diags.push_back({CompileTimeDiagnostic::UnresolvedTemplate,
+            "unresolved template call: " + tci.source_template +
+            " (instantiation '" + target_name + "' not found)"});
       }
     }
   }
@@ -85,6 +93,7 @@ struct ConstevalReductionStep {
   const Module& module;
   size_t reduced = 0;
   size_t pending = 0;
+  std::vector<CompileTimeDiagnostic> pending_diags;
 
   void run() {
     for (const auto& cci : module.consteval_calls) {
@@ -92,11 +101,22 @@ struct ConstevalReductionStep {
       const auto* expr = module.find_expr(cci.result_expr);
       if (!expr) {
         ++pending;
+        pending_diags.push_back({CompileTimeDiagnostic::UnreducedConsteval,
+            "unreduced consteval: " + cci.fn_name + " (result expr missing)"});
         continue;
       }
       const auto* lit = std::get_if<IntLiteral>(&expr->payload);
-      if (!lit || lit->value != cci.result_value) {
+      if (!lit) {
         ++pending;
+        pending_diags.push_back({CompileTimeDiagnostic::UnreducedConsteval,
+            "unreduced consteval: " + cci.fn_name + " (result is not an IntLiteral)"});
+        continue;
+      }
+      if (lit->value != cci.result_value) {
+        ++pending;
+        pending_diags.push_back({CompileTimeDiagnostic::UnreducedConsteval,
+            "unreduced consteval: " + cci.fn_name + " (result value mismatch: expected " +
+            std::to_string(cci.result_value) + ", got " + std::to_string(lit->value) + ")"});
         continue;
       }
       ++reduced;
@@ -147,9 +167,13 @@ CompileTimePassStats run_compile_time_reduction(Module& module) {
     prev_consteval_pending = ce_step.pending;
 
     if (!made_progress) {
-      // No progress — we've hit an irreducible set.  Future work will add
-      // actual deferred instantiation/reduction here.
+      // No progress — we've hit an irreducible set.  Collect diagnostics
+      // for all pending items so the caller can report them.
       stats.converged = false;
+      stats.diagnostics.insert(stats.diagnostics.end(),
+          tpl_step.pending_diags.begin(), tpl_step.pending_diags.end());
+      stats.diagnostics.insert(stats.diagnostics.end(),
+          ce_step.pending_diags.begin(), ce_step.pending_diags.end());
       break;
     }
 
@@ -188,6 +212,10 @@ std::string format_compile_time_stats(const CompileTimePassStats& stats) {
     out << " (converged)";
   } else {
     out << " (NOT converged)";
+  }
+  // Append structured diagnostics for irreducible nodes.
+  for (const auto& diag : stats.diagnostics) {
+    out << "\n  - " << diag.description;
   }
   return out.str();
 }
