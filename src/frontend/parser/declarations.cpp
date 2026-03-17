@@ -224,16 +224,33 @@ Node* Parser::parse_top_level() {
         consume();
         expect(TokenKind::Less);
         std::vector<const char*> template_params;
+        std::vector<bool> template_param_nttp;  // true if non-type template param
         while (!at_end() && !check(TokenKind::Greater)) {
             if (check(TokenKind::Identifier) &&
                 (cur().lexeme == "typename" || cur().lexeme == "class")) {
+                // Type template parameter.
                 consume();
-            }
-            if (!check(TokenKind::Identifier)) {
+                if (!check(TokenKind::Identifier)) {
+                    throw std::runtime_error("expected template parameter name");
+                }
+                const char* pname = arena_.strdup(cur().lexeme);
+                consume();
+                template_params.push_back(pname);
+                template_param_nttp.push_back(false);
+            } else if (is_type_kw(cur().kind)) {
+                // Non-type template parameter (NTTP): e.g. int N, unsigned N.
+                // Consume the type specifier tokens, then the parameter name.
+                while (!at_end() && is_type_kw(cur().kind)) consume();
+                if (!check(TokenKind::Identifier)) {
+                    throw std::runtime_error("expected template parameter name");
+                }
+                const char* pname = arena_.strdup(cur().lexeme);
+                consume();
+                template_params.push_back(pname);
+                template_param_nttp.push_back(true);
+            } else {
                 throw std::runtime_error("expected template parameter name");
             }
-            const char* pname = arena_.strdup(cur().lexeme);
-            consume();
             if (match(TokenKind::Assign)) {
                 int depth = 0;
                 while (!at_end()) {
@@ -247,14 +264,15 @@ Node* Parser::parse_top_level() {
                     consume();
                 }
             }
-            template_params.push_back(pname);
             if (!match(TokenKind::Comma)) break;
         }
         expect(TokenKind::Greater);
 
         std::vector<std::string> injected_names;
-        for (const char* pname : template_params) {
+        for (size_t i = 0; i < template_params.size(); ++i) {
+            const char* pname = template_params[i];
             if (!pname || !pname[0]) continue;
+            if (template_param_nttp[i]) continue;  // NTTP: don't inject as typedef
             injected_names.emplace_back(pname);
             typedefs_.insert(pname);
             TypeSpec param_ts{};
@@ -275,8 +293,11 @@ Node* Parser::parse_top_level() {
             if (!n || template_params.empty()) return;
             n->n_template_params = (int)template_params.size();
             n->template_param_names = arena_.alloc_array<const char*>(n->n_template_params);
-            for (int i = 0; i < n->n_template_params; ++i)
+            n->template_param_is_nttp = arena_.alloc_array<bool>(n->n_template_params);
+            for (int i = 0; i < n->n_template_params; ++i) {
                 n->template_param_names[i] = template_params[i];
+                n->template_param_is_nttp[i] = template_param_nttp[i];
+            }
         };
 
         if (templated && templated->kind == NK_BLOCK) {

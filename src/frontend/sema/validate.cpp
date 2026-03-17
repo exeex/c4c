@@ -609,6 +609,18 @@ class Validator {
       bind_local("__FUNCTION__", func_ts, true, 0);
       bind_local("__PRETTY_FUNCTION__", func_ts, true, 0);
     }
+    // Inject non-type template parameter names as int locals so body validation
+    // can resolve references to them.
+    for (int i = 0; i < fn->n_template_params; ++i) {
+      if (fn->template_param_is_nttp && fn->template_param_is_nttp[i] &&
+          fn->template_param_names[i]) {
+        TypeSpec nttp_ts{};
+        nttp_ts.base = TB_INT;
+        nttp_ts.array_size = -1;
+        nttp_ts.inner_rank = -1;
+        bind_local(fn->template_param_names[i], nttp_ts, true, fn->line);
+      }
+    }
     for (int i = 0; i < fn->n_params; ++i) {
       const Node* p = fn->params[i];
       if (!p || !p->name || !p->name[0]) continue;

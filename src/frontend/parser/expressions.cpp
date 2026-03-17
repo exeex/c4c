@@ -609,13 +609,33 @@ Node* Parser::parse_primary() {
             int save_pos = pos_;
             consume();  // <
             std::vector<TypeSpec> template_args;
+            std::vector<bool> template_arg_is_val;
+            std::vector<long long> template_arg_vals;
             bool ok = true;
             while (!at_end() && !check(TokenKind::Greater)) {
-                if (!is_type_start()) {
+                if (is_type_start()) {
+                    template_args.push_back(parse_type_name());
+                    template_arg_is_val.push_back(false);
+                    template_arg_vals.push_back(0);
+                } else if (check(TokenKind::IntLit) ||
+                           (check(TokenKind::Minus) && pos_ + 1 < (int)tokens_.size() &&
+                            tokens_[pos_ + 1].kind == TokenKind::IntLit)) {
+                    // Non-type template argument: integer constant.
+                    long long sign = 1;
+                    if (match(TokenKind::Minus)) sign = -1;
+                    long long val = parse_int_lexeme(cur().lexeme.c_str());
+                    consume();
+                    val *= sign;
+                    TypeSpec dummy{};
+                    dummy.array_size = -1;
+                    dummy.inner_rank = -1;
+                    template_args.push_back(dummy);
+                    template_arg_is_val.push_back(true);
+                    template_arg_vals.push_back(val);
+                } else {
                     ok = false;
                     break;
                 }
-                template_args.push_back(parse_type_name());
                 if (!match(TokenKind::Comma)) break;
             }
             if (ok && check(TokenKind::Greater)) {
@@ -623,8 +643,12 @@ Node* Parser::parse_primary() {
                 if (check(TokenKind::LParen) && !template_args.empty()) {
                     ident->n_template_args = (int)template_args.size();
                     ident->template_arg_types = arena_.alloc_array<TypeSpec>(ident->n_template_args);
+                    ident->template_arg_is_value = arena_.alloc_array<bool>(ident->n_template_args);
+                    ident->template_arg_values = arena_.alloc_array<long long>(ident->n_template_args);
                     for (int i = 0; i < ident->n_template_args; ++i) {
                         ident->template_arg_types[i] = template_args[i];
+                        ident->template_arg_is_value[i] = template_arg_is_val[i];
+                        ident->template_arg_values[i] = template_arg_vals[i];
                     }
                 } else {
                     pos_ = save_pos;

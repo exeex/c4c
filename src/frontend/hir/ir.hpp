@@ -667,6 +667,9 @@ struct HirStructDef {
 /// Type bindings for template parameter substitution.
 using TypeBindings = std::unordered_map<std::string, TypeSpec>;
 
+/// Non-type template parameter value bindings.
+using NttpBindings = std::unordered_map<std::string, long long>;
+
 /// Canonical type string for specialization keys (deterministic, no whitespace).
 inline std::string canonical_type_str(const TypeSpec& ts) {
   std::string s;
@@ -733,10 +736,39 @@ inline SpecializationKey make_specialization_key(
   return SpecializationKey{std::move(key)};
 }
 
+/// Overload that includes non-type template parameter values.
+inline SpecializationKey make_specialization_key(
+    const std::string& template_name,
+    const std::vector<std::string>& param_order,
+    const TypeBindings& bindings,
+    const NttpBindings& nttp_bindings) {
+  std::string key = template_name + "<";
+  bool first = true;
+  for (const auto& param : param_order) {
+    if (!first) key += ",";
+    first = false;
+    key += param + "=";
+    auto nttp_it = nttp_bindings.find(param);
+    if (nttp_it != nttp_bindings.end()) {
+      key += std::to_string(nttp_it->second);
+    } else {
+      auto it = bindings.find(param);
+      if (it != bindings.end()) {
+        key += canonical_type_str(it->second);
+      } else {
+        key += "?";
+      }
+    }
+  }
+  key += ">";
+  return SpecializationKey{std::move(key)};
+}
+
 /// A single template instantiation produced during lowering.
 struct HirTemplateInstantiation {
   std::string mangled_name;    // e.g. "add_i" for add<int>
   TypeBindings bindings;       // template param → concrete type
+  NttpBindings nttp_bindings;  // non-type template param → constant value
   SpecializationKey spec_key;  // stable identity for dedup/caching
 };
 

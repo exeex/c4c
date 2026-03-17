@@ -226,8 +226,11 @@ struct Node {
     int    n_params;
     // C++ subset template metadata carried on declarations / references.
     const char** template_param_names;
+    bool*        template_param_is_nttp;  // parallel: true if non-type template param
     int          n_template_params;
     TypeSpec*    template_arg_types;
+    bool*        template_arg_is_value;   // parallel: true if arg is a constant value
+    long long*   template_arg_values;     // parallel: NTTP arg values (valid when is_value)
     int          n_template_args;
     // NK_DECL / NK_GLOBAL_VAR / NK_FUNCTION param decls:
     // function pointer prototype attached to this declarator, if any.

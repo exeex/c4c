@@ -498,7 +498,10 @@ class Lowerer {
           HirTemplateInstantiation hi;
           hi.mangled_name = inst.mangled_name;
           hi.bindings = inst.bindings;
-          hi.spec_key = make_specialization_key(name, tdef.template_params, inst.bindings);
+          hi.nttp_bindings = inst.nttp_bindings;
+          hi.spec_key = inst.nttp_bindings.empty()
+              ? make_specialization_key(name, tdef.template_params, inst.bindings)
+              : make_specialization_key(name, tdef.template_params, inst.bindings, inst.nttp_bindings);
           tdef.instances.push_back(std::move(hi));
         }
       }
@@ -538,7 +541,8 @@ class Lowerer {
           auto inst_it = template_fn_instances_.find(item->name);
           if (inst_it != template_fn_instances_.end() && !inst_it->second.empty()) {
             for (const auto& inst : inst_it->second) {
-              lower_function(item, &inst.mangled_name, &inst.bindings);
+              lower_function(item, &inst.mangled_name, &inst.bindings,
+                             inst.nttp_bindings.empty() ? nullptr : &inst.nttp_bindings);
               if (!m.functions.empty()) {
                 m.functions.back().template_origin = item->name ? item->name : "";
                 m.functions.back().spec_key = inst.spec_key;
@@ -643,6 +647,7 @@ class Lowerer {
     std::vector<SwitchCtx> switch_stack;
     std::unordered_map<std::string, long long> local_const_bindings;
     TypeBindings tpl_bindings;  // template param → concrete type for enclosing template fn
+    NttpBindings nttp_bindings; // non-type template param → constant value
   };
 
   FunctionId next_fn_id() { return module_->alloc_function_id(); }
@@ -767,6 +772,17 @@ class Lowerer {
       }
       case NK_VAR: {
         const std::string name = n->name ? n->name : "";
+        // Non-type template parameter: infer as int.
+        if (ctx && !name.empty()) {
+          auto nttp_it = ctx->nttp_bindings.find(name);
+          if (nttp_it != ctx->nttp_bindings.end()) {
+            TypeSpec ts{};
+            ts.base = TB_INT;
+            ts.array_size = -1;
+            ts.inner_rank = -1;
+            return ts;
+          }
+        }
         if (ctx) {
           auto lit = ctx->locals.find(name);
           if (lit != ctx->locals.end()) {
@@ -1112,7 +1128,8 @@ class Lowerer {
 
   void lower_function(const Node* fn_node,
                       const std::string* name_override = nullptr,
-                      const TypeBindings* tpl_override = nullptr) {
+                      const TypeBindings* tpl_override = nullptr,
+                      const NttpBindings* nttp_override = nullptr) {
     Function fn{};
     fn.id = next_fn_id();
     fn.name = name_override ? *name_override
@@ -1170,6 +1187,8 @@ class Lowerer {
     // Populate template bindings for template function instantiations.
     if (tpl_override)
       ctx.tpl_bindings = *tpl_override;
+    if (nttp_override)
+      ctx.nttp_bindings = *nttp_override;
 
     for (int i = 0; i < fn_node->n_params; ++i) {
       const Node* p = fn_node->params[i];
@@ -3025,6 +3044,17 @@ class Lowerer {
             ts.base = TB_INT;
             return append_expr(n, IntLiteral{it->second, false}, ts);
           }
+          // Non-type template parameter: emit as integer literal.
+          if (ctx) {
+            auto nttp_it = ctx->nttp_bindings.find(n->name);
+            if (nttp_it != ctx->nttp_bindings.end()) {
+              TypeSpec ts{};
+              ts.base = TB_INT;
+              ts.array_size = -1;
+              ts.inner_rank = -1;
+              return append_expr(n, IntLiteral{nttp_it->second, false}, ts);
+            }
+          }
         }
         DeclRef r{};
         r.name = n->name ? n->name : "<anon_var>";
@@ -3794,6 +3824,7 @@ class Lowerer {
 
   struct TemplateInstance {
     TypeBindings bindings;
+    NttpBindings nttp_bindings;  // non-type template param → constant value
     std::string mangled_name;
     SpecializationKey spec_key;  // stable identity for dedup/caching
   };
@@ -3827,16 +3858,28 @@ class Lowerer {
 
   // Build a mangled name from base name and template bindings.
   static std::string mangle_template_name(const std::string& base,
-                                           const TypeBindings& bindings) {
-    if (bindings.empty()) return base;
-    // Sort by param name for determinism.
-    std::vector<std::pair<std::string, TypeSpec>> sorted(bindings.begin(), bindings.end());
-    std::sort(sorted.begin(), sorted.end(),
-              [](const auto& a, const auto& b) { return a.first < b.first; });
+                                           const TypeBindings& bindings,
+                                           const NttpBindings& nttp_bindings = {}) {
+    if (bindings.empty() && nttp_bindings.empty()) return base;
+    // Collect all param names for deterministic ordering.
+    std::vector<std::string> all_params;
+    for (const auto& [k, v] : bindings) all_params.push_back(k);
+    for (const auto& [k, v] : nttp_bindings) all_params.push_back(k);
+    std::sort(all_params.begin(), all_params.end());
     std::string result = base;
-    for (const auto& [param, ts] : sorted) {
+    for (const auto& param : all_params) {
       result += "_";
-      result += type_suffix(ts);
+      auto nttp_it = nttp_bindings.find(param);
+      if (nttp_it != nttp_bindings.end()) {
+        // NTTP: encode value (use 'n' prefix for negatives).
+        if (nttp_it->second < 0)
+          result += "n" + std::to_string(-nttp_it->second);
+        else
+          result += std::to_string(nttp_it->second);
+      } else {
+        auto it = bindings.find(param);
+        if (it != bindings.end()) result += type_suffix(it->second);
+      }
     }
     return result;
   }
@@ -3851,6 +3894,8 @@ class Lowerer {
     int count = std::min(call_var->n_template_args, fn_def->n_template_params);
     for (int i = 0; i < count; ++i) {
       if (!fn_def->template_param_names[i]) continue;
+      // Skip NTTP params in type bindings — they go in nttp_bindings.
+      if (fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]) continue;
       TypeSpec arg_ts = call_var->template_arg_types[i];
       // Resolve typedef template args through enclosing function's bindings.
       if (arg_ts.base == TB_TYPEDEF && arg_ts.tag && enclosing_bindings) {
@@ -3858,6 +3903,20 @@ class Lowerer {
         if (resolved != enclosing_bindings->end()) arg_ts = resolved->second;
       }
       bindings[fn_def->template_param_names[i]] = arg_ts;
+    }
+    return bindings;
+  }
+
+  NttpBindings build_call_nttp_bindings(const Node* call_var, const Node* fn_def) {
+    NttpBindings bindings;
+    if (!call_var || !fn_def || call_var->n_template_args <= 0 ||
+        fn_def->n_template_params <= 0) return bindings;
+    int count = std::min(call_var->n_template_args, fn_def->n_template_params);
+    for (int i = 0; i < count; ++i) {
+      if (!fn_def->template_param_names[i]) continue;
+      if (!fn_def->template_param_is_nttp || !fn_def->template_param_is_nttp[i]) continue;
+      if (call_var->template_arg_is_value && call_var->template_arg_is_value[i])
+        bindings[fn_def->template_param_names[i]] = call_var->template_arg_values[i];
     }
     return bindings;
   }
@@ -3895,12 +3954,16 @@ class Lowerer {
 
   // Record a template instantiation. Returns the mangled name.
   // Only records if all bindings are concrete (no unresolved typedefs).
-  std::string record_instance(const std::string& fn_name, TypeBindings bindings) {
+  std::string record_instance(const std::string& fn_name, TypeBindings bindings,
+                               NttpBindings nttp_bindings = {}) {
     if (!bindings_are_concrete(bindings)) return "";  // Skip unresolved.
-    std::string mangled = mangle_template_name(fn_name, bindings);
+    std::string mangled = mangle_template_name(fn_name, bindings, nttp_bindings);
     auto param_order = get_template_param_order_from_instances(fn_name);
-    SpecializationKey sk = make_specialization_key(fn_name, param_order, bindings);
-    template_fn_instances_[fn_name].push_back({std::move(bindings), mangled, sk});
+    SpecializationKey sk = nttp_bindings.empty()
+        ? make_specialization_key(fn_name, param_order, bindings)
+        : make_specialization_key(fn_name, param_order, bindings, nttp_bindings);
+    template_fn_instances_[fn_name].push_back(
+        {std::move(bindings), std::move(nttp_bindings), mangled, sk});
     instance_keys_.insert(fn_name + "::" + mangled);
     return mangled;
   }
@@ -3915,7 +3978,8 @@ class Lowerer {
     const Node* fn_def = fn_it->second;
     if (fn_def->is_consteval) return call_var->name;  // consteval handled separately
     TypeBindings bindings = build_call_bindings(call_var, fn_def, enclosing_bindings);
-    return mangle_template_name(call_var->name, bindings);
+    NttpBindings nttp_bindings = build_call_nttp_bindings(call_var, fn_def);
+    return mangle_template_name(call_var->name, bindings, nttp_bindings);
   }
 
   // Recursively collect template instantiations from call sites in AST.
@@ -3930,24 +3994,25 @@ class Lowerer {
           // Determine the enclosing function's template bindings (if any).
           const TypeBindings* enclosing_bindings = nullptr;
           TypeBindings enc_bindings;
+          NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def);
           if (enclosing_fn && enclosing_fn->name) {
             auto enc_it = template_fn_instances_.find(enclosing_fn->name);
             if (enc_it != template_fn_instances_.end()) {
               // For each enclosing instantiation, record an inner instantiation.
               for (const auto& enc_inst : enc_it->second) {
                 TypeBindings inner = build_call_bindings(n->left, fn_def, &enc_inst.bindings);
-                std::string mangled = mangle_template_name(n->left->name, inner);
+                std::string mangled = mangle_template_name(n->left->name, inner, call_nttp);
                 if (!has_instance(n->left->name, mangled))
-                  record_instance(n->left->name, std::move(inner));
+                  record_instance(n->left->name, std::move(inner), call_nttp);
               }
               goto recurse;  // Already handled all enclosing instantiations.
             }
           }
           {
             TypeBindings bindings = build_call_bindings(n->left, fn_def, nullptr);
-            std::string mangled = mangle_template_name(n->left->name, bindings);
+            std::string mangled = mangle_template_name(n->left->name, bindings, call_nttp);
             if (!has_instance(n->left->name, mangled))
-              record_instance(n->left->name, std::move(bindings));
+              record_instance(n->left->name, std::move(bindings), call_nttp);
           }
         }
       }

@@ -65,6 +65,7 @@ set(CPP_POSITIVE_RUNTIME_STEMS
     deferred_consteval_multi
     template_chain
     template_func
+    template_nttp
 )
 
 set(CPP_POSITIVE_FRONTEND_STEMS
