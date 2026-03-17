@@ -1143,7 +1143,21 @@ class Lowerer {
     fn.id = next_fn_id();
     fn.name = name_override ? *name_override
                             : (fn_node->name ? fn_node->name : "<anon_fn>");
-    fn.return_type = qtype_from(fn_node->type);
+    // Substitute template type parameters in the return type.
+    {
+      TypeSpec ret_ts = fn_node->type;
+      if (tpl_override && ret_ts.base == TB_TYPEDEF && ret_ts.tag) {
+        auto it = tpl_override->find(ret_ts.tag);
+        if (it != tpl_override->end()) {
+          // Merge: replace the base type but preserve declarator modifiers
+          // (ptr_level, array_rank, etc.) from the original TypeSpec.
+          const TypeSpec& concrete = it->second;
+          ret_ts.base = concrete.base;
+          ret_ts.tag = concrete.tag;
+        }
+      }
+      fn.return_type = qtype_from(ret_ts);
+    }
     // Build fn_ptr_sig for the return type when the function returns a fn_ptr.
     // Uses canonical type to extract the return type's callable signature.
     if (fn_node->type.is_fn_ptr) {
@@ -1204,7 +1218,19 @@ class Lowerer {
       if (!p) continue;
       Param param{};
       param.name = p->name ? p->name : "<anon_param>";
-      param.type = qtype_from(p->type, ValueCategory::LValue);
+      // Substitute template type parameters in parameter types.
+      {
+        TypeSpec param_ts = p->type;
+        if (tpl_override && param_ts.base == TB_TYPEDEF && param_ts.tag) {
+          auto it = tpl_override->find(param_ts.tag);
+          if (it != tpl_override->end()) {
+            const TypeSpec& concrete = it->second;
+            param_ts.base = concrete.base;
+            param_ts.tag = concrete.tag;
+          }
+        }
+        param.type = qtype_from(param_ts, ValueCategory::LValue);
+      }
       param.fn_ptr_sig = fn_ptr_sig_from_decl_node(p);
       param.span = make_span(p);
       ctx.params[param.name] = static_cast<uint32_t>(fn.params.size());
@@ -2078,7 +2104,19 @@ class Lowerer {
         LocalDecl d{};
         d.id = next_local_id();
         d.name = n->name ? n->name : "<anon_local>";
-        d.type = qtype_from(n->type, ValueCategory::LValue);
+        // Substitute template type parameters in local variable types.
+        {
+          TypeSpec decl_ts = n->type;
+          if (ctx.tpl_bindings.size() && decl_ts.base == TB_TYPEDEF && decl_ts.tag) {
+            auto it = ctx.tpl_bindings.find(decl_ts.tag);
+            if (it != ctx.tpl_bindings.end()) {
+              const TypeSpec& concrete = it->second;
+              decl_ts.base = concrete.base;
+              decl_ts.tag = concrete.tag;
+            }
+          }
+          d.type = qtype_from(decl_ts, ValueCategory::LValue);
+        }
         d.fn_ptr_sig = fn_ptr_sig_from_decl_node(n);
         if (d.fn_ptr_sig) ctx.local_fn_ptr_sigs[d.name] = *d.fn_ptr_sig;
         // Deduce unsized array dimension from initializer list
