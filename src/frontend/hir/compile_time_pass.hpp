@@ -44,20 +44,40 @@ using DeferredInstantiateFn = std::function<bool(
     const TypeBindings& bindings,
     const std::string& mangled_name)>;
 
+/// Callback for deferred consteval evaluation.
+///
+/// Called by the compile-time reduction pass when it encounters a
+/// PendingConstevalExpr node that needs to be evaluated.
+///
+/// Parameters:
+///   fn_name    - consteval function name
+///   const_args - evaluated constant argument values
+///   bindings   - template param → concrete type
+///
+/// Returns the computed result value, or std::nullopt on failure.
+using DeferredConstevalEvalFn = std::function<std::optional<long long>(
+    const std::string& fn_name,
+    const std::vector<long long>& const_args,
+    const TypeBindings& bindings)>;
+
 /// Run the HIR compile-time reduction loop.
 ///
 /// This pass iterates:
 ///   1. template instantiation for newly-ready applications
 ///   2. consteval reduction for newly-ready immediate calls
+///   3. pending consteval evaluation for deferred consteval nodes
 /// until convergence or the iteration limit is reached.
 ///
 /// When instantiate_fn is provided, the pass will invoke it to lower template
 /// functions that were not instantiated during initial AST-to-HIR lowering
 /// (e.g., nested template calls like add<T>() inside twice<T>()).
-/// When instantiate_fn is null, the pass only verifies existing state.
+/// When consteval_fn is provided, the pass will evaluate PendingConstevalExpr
+/// nodes created during deferred instantiation.
+/// When callbacks are null, the pass only verifies existing state.
 CompileTimePassStats run_compile_time_reduction(
     Module& module,
-    DeferredInstantiateFn instantiate_fn = nullptr);
+    DeferredInstantiateFn instantiate_fn = nullptr,
+    DeferredConstevalEvalFn consteval_fn = nullptr);
 
 /// Format pass statistics for debug output (used by --dump-hir).
 std::string format_compile_time_stats(const CompileTimePassStats& stats);

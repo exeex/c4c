@@ -147,10 +147,54 @@ struct ConstevalReductionStep {
   }
 };
 
+/// Attempt one round of pending consteval evaluation.
+///
+/// Walks the module's expr_pool looking for PendingConstevalExpr nodes.
+/// For each one, invokes the evaluation callback and replaces the node
+/// with an IntLiteral on success, recording a ConstevalCallInfo.
+struct PendingConstevalEvalStep {
+  Module& module;
+  DeferredConstevalEvalFn eval_fn;
+  size_t evaluated = 0;
+  size_t pending = 0;
+  std::vector<CompileTimeDiagnostic> pending_diags;
+
+  void run() {
+    if (!eval_fn) return;
+
+    for (auto& expr : module.expr_pool) {
+      auto* pce = std::get_if<PendingConstevalExpr>(&expr.payload);
+      if (!pce) continue;
+
+      auto result = eval_fn(pce->fn_name, pce->const_args, pce->tpl_bindings);
+      if (result.has_value()) {
+        long long rv = *result;
+        // Record consteval call metadata.
+        ConstevalCallInfo info;
+        info.fn_name = pce->fn_name;
+        info.const_args = pce->const_args;
+        info.template_bindings = pce->tpl_bindings;
+        info.result_value = rv;
+        info.result_expr = expr.id;
+        info.span = pce->call_span;
+        module.consteval_calls.push_back(std::move(info));
+        // Replace the PendingConstevalExpr with an IntLiteral in-place.
+        expr.payload = IntLiteral{rv, false};
+        ++evaluated;
+      } else {
+        ++pending;
+        pending_diags.push_back({CompileTimeDiagnostic::UnreducedConsteval,
+            "pending consteval: " + pce->fn_name + " (evaluation failed)"});
+      }
+    }
+  }
+};
+
 }  // namespace
 
 CompileTimePassStats run_compile_time_reduction(
-    Module& module, DeferredInstantiateFn instantiate_fn) {
+    Module& module, DeferredInstantiateFn instantiate_fn,
+    DeferredConstevalEvalFn consteval_fn) {
   CompileTimePassStats stats{};
 
   static constexpr int kMaxIterations = 8;
@@ -170,27 +214,37 @@ CompileTimePassStats run_compile_time_reduction(
     stats.templates_deferred += tpl_step.newly_instantiated;
     stats.consteval_deferred += tpl_step.consteval_unlocked;
 
-    // Step 2: consteval reduction verification.
+    // Step 2: evaluate pending consteval expressions created during deferred
+    // template instantiation.  These are PendingConstevalExpr nodes that
+    // were deferred instead of being evaluated eagerly during lowering.
+    PendingConstevalEvalStep pce_step{module, consteval_fn};
+    pce_step.run();
+
+    stats.consteval_deferred += pce_step.evaluated;
+
+    // Step 3: consteval reduction verification.
     ConstevalReductionStep ce_step{module};
     ce_step.run();
 
     stats.consteval_reduced = ce_step.reduced;
-    stats.consteval_pending = ce_step.pending;
+    stats.consteval_pending = ce_step.pending + pce_step.pending;
 
-    // Convergence: no pending work remains in either step.
-    if (tpl_step.pending == 0 && ce_step.pending == 0) {
+    // Convergence: no pending work remains in any step.
+    size_t total_pending = tpl_step.pending + pce_step.pending + ce_step.pending;
+    if (total_pending == 0) {
       stats.converged = true;
       break;
     }
 
     // Check whether this iteration made progress compared to the previous one.
     // Progress means at least one pending count decreased.
+    size_t cur_consteval_pending = ce_step.pending + pce_step.pending;
     bool made_progress =
         tpl_step.pending < prev_templates_pending ||
-        ce_step.pending < prev_consteval_pending;
+        cur_consteval_pending < prev_consteval_pending;
 
     prev_templates_pending = tpl_step.pending;
-    prev_consteval_pending = ce_step.pending;
+    prev_consteval_pending = cur_consteval_pending;
 
     if (!made_progress) {
       // No progress — we've hit an irreducible set.  Collect diagnostics
@@ -198,6 +252,8 @@ CompileTimePassStats run_compile_time_reduction(
       stats.converged = false;
       stats.diagnostics.insert(stats.diagnostics.end(),
           tpl_step.pending_diags.begin(), tpl_step.pending_diags.end());
+      stats.diagnostics.insert(stats.diagnostics.end(),
+          pce_step.pending_diags.begin(), pce_step.pending_diags.end());
       stats.diagnostics.insert(stats.diagnostics.end(),
           ce_step.pending_diags.begin(), ce_step.pending_diags.end());
       break;

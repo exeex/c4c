@@ -300,6 +300,16 @@ struct SizeofTypeExpr {
   QualType type{};
 };
 
+/// A consteval call that has not yet been evaluated.
+/// Created during deferred template instantiation when the consteval call's
+/// arguments are constant but evaluation is deferred to the compile-time pass.
+struct PendingConstevalExpr {
+  SymbolName fn_name;                                            // consteval function to call
+  std::vector<long long> const_args;                             // evaluated constant argument values
+  std::unordered_map<std::string, TypeSpec> tpl_bindings;        // template param → concrete type
+  SourceSpan call_span{};
+};
+
 using ExprPayload = std::variant<
     IntLiteral,
     FloatLiteral,
@@ -317,7 +327,8 @@ using ExprPayload = std::variant<
     TernaryExpr,
     SizeofExpr,
     SizeofTypeExpr,
-    LabelAddrExpr>;
+    LabelAddrExpr,
+    PendingConstevalExpr>;
 
 struct Expr {
   ExprId id{};

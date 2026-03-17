@@ -546,10 +546,34 @@ class Lowerer {
       if (fn_it == template_fn_defs_.end()) return false;
       const Node* fn_def = fn_it->second;
       if (fn_def->is_consteval) return false;  // consteval handled eagerly
+      // Enable deferred consteval: consteval calls inside this function
+      // will create PendingConstevalExpr nodes instead of evaluating.
+      defer_consteval_ = true;
       lower_function(fn_def, &mangled, &bindings);
+      defer_consteval_ = false;
       return true;
     };
-    auto ct_stats = run_compile_time_reduction(m, deferred_lower);
+    // Consteval evaluation callback for the compile-time pass.
+    // Evaluates PendingConstevalExpr nodes using the AST-level interpreter.
+    auto deferred_consteval = [this](const std::string& fn_name,
+                                     const std::vector<long long>& const_args,
+                                     const TypeBindings& bindings)
+        -> std::optional<long long> {
+      auto ce_it = consteval_fns_.find(fn_name);
+      if (ce_it == consteval_fns_.end()) return std::nullopt;
+      // Build ConstValue args and evaluation environment.
+      std::vector<ConstValue> args;
+      args.reserve(const_args.size());
+      for (long long v : const_args) args.push_back(ConstValue::make_int(v));
+      ConstEvalEnv env{&enum_consts_, &const_int_bindings_, nullptr};
+      TypeBindings tpl_bindings = bindings;
+      env.type_bindings = &tpl_bindings;
+      auto result = evaluate_consteval_call(
+          ce_it->second, args, env, consteval_fns_);
+      if (result.ok()) return result.as_int();
+      return std::nullopt;
+    };
+    auto ct_stats = run_compile_time_reduction(m, deferred_lower, deferred_consteval);
     m.ct_info.deferred_instantiations = ct_stats.templates_deferred;
     m.ct_info.deferred_consteval = ct_stats.consteval_deferred;
     m.ct_info.total_iterations = ct_stats.iterations;
@@ -3115,6 +3139,19 @@ class Lowerer {
               }
             }
             if (all_const) {
+              // When defer_consteval_ is set (deferred template instantiation),
+              // create a PendingConstevalExpr instead of evaluating eagerly.
+              // The compile-time pass will evaluate it later.
+              if (defer_consteval_) {
+                PendingConstevalExpr pce;
+                pce.fn_name = n->left->name;
+                for (const auto& cv : args)
+                  pce.const_args.push_back(cv.as_int());
+                pce.tpl_bindings = tpl_bindings;
+                pce.call_span = make_span(n);
+                TypeSpec ts = n->type;
+                return append_expr(n, std::move(pce), ts);
+              }
               auto result = evaluate_consteval_call(
                   ce_it->second, args, arg_env, consteval_fns_);
               if (result.ok()) {
@@ -3979,6 +4016,9 @@ class Lowerer {
   std::unordered_map<std::string, const Node*> template_fn_defs_;
   // Template function name → all unique instantiations.
   std::unordered_map<std::string, std::vector<TemplateInstance>> template_fn_instances_;
+  // When true, consteval calls create PendingConstevalExpr instead of
+  // evaluating eagerly.  Set during deferred template instantiation.
+  bool defer_consteval_ = false;
 
 };
 

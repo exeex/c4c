@@ -563,6 +563,25 @@ class Printer {
   void print_expr_payload(std::ostringstream& out, const LabelAddrExpr& x) {
     out << "&&" << x.label_name;
   }
+
+  void print_expr_payload(std::ostringstream& out, const PendingConstevalExpr& x) {
+    out << "pending_consteval " << x.fn_name << "(";
+    for (size_t i = 0; i < x.const_args.size(); ++i) {
+      if (i > 0) out << ", ";
+      out << x.const_args[i];
+    }
+    out << ")";
+    if (!x.tpl_bindings.empty()) {
+      out << " <";
+      bool first = true;
+      for (const auto& [k, v] : x.tpl_bindings) {
+        if (!first) out << ", ";
+        out << k << "=" << ts_str(v);
+        first = false;
+      }
+      out << ">";
+    }
+  }
 };
 
 }  // namespace
