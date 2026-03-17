@@ -1,11 +1,11 @@
 # Plan Execution State
 
 ## Baseline
-- 1876/1876 tests passing (2026-03-17)
+- 1877/1877 tests passing (2026-03-17)
 
 ## Overall Assessment
 
-Phase 5 slice 13 is now implemented: basic template struct support (`template<typename T> struct Pair { T first; T second; };`).
+Phase 5 slice 14 is now implemented: template struct with NTTP parameters (`template<typename T, int N> struct Array { T data[N]; }`).
 
 Current state:
 - HIR preserves template/consteval metadata and exposes debug visibility
@@ -23,51 +23,44 @@ Current state:
 - **Phase 5 slice 10**: `sizeof(T)`, `__alignof__(T)`, and `sizeof(local_var)` in template bodies — template type parameter substitution applied to sizeof/alignof target types.
 - **Phase 5 slice 11**: Default template arguments (`template<typename T = int>`, `template<int N = 5>`) and empty angle brackets `f<>()` for using all defaults.
 - **Phase 5 slice 12**: Explicit template specialization (`template<> int add<int>(...)`) — specialization bodies override generic template for matching type/NTTP args.
-- **Phase 5 slice 13 (NEW)**: Template struct support — `template<typename T> struct Pair { T first; T second; };` with parser-level instantiation. `Pair<int>` generates a concrete struct `Pair_T_int` with substituted field types.
+- **Phase 5 slice 13**: Template struct support — `template<typename T> struct Pair { T first; T second; };` with parser-level instantiation.
+- **Phase 5 slice 14 (NEW)**: Template struct NTTP support — `template<typename T, int N> struct Array { T data[N]; };` and NTTP-only structs. NTTP values substitute into array dimensions via `array_size_expr` propagation. Default template arguments also work for template struct NTTP params.
 
 Summary:
 - Phase 1: complete
 - Phases 2-4: partially complete, with good observability and metadata preservation
-- Phase 5: **substantially complete** — deferred template instantiation works; truly deferred consteval evaluation works via PendingConstevalExpr; NTTP support added; mixed type+NTTP params work; consteval with NTTP works; NTTP forwarding in deferred chains works; mixed type+NTTP forwarding works; type parameter substitution in signatures and locals works; all three C++ named casts supported; sizeof/alignof template type substitution works; default template arguments supported; explicit template specialization supported; **template struct support added**
+- Phase 5: **substantially complete** — deferred template instantiation works; truly deferred consteval evaluation works via PendingConstevalExpr; NTTP support added; mixed type+NTTP params work; consteval with NTTP works; NTTP forwarding in deferred chains works; mixed type+NTTP forwarding works; type parameter substitution in signatures and locals works; all three C++ named casts supported; sizeof/alignof template type substitution works; default template arguments supported; explicit template specialization supported; **template struct support with NTTP added**
 - Phase 6: **complete** — materialization boundary separates compile-time entities from emitted code
 - Phase 7: **complete** — specialization identity is stable, hashable, serializable via LLVM named metadata
 
 ---
 
-## What was done in this session (2026-03-17, session 17)
+## What was done in this session (2026-03-17, session 18)
 
-### Phase 5 slice 13: Template struct support
+### Phase 5 slice 14: Template struct NTTP support
 
 **Changes**:
-1. **Parser** (`parser.hpp`): Added `template_struct_defs_` map (struct name → NK_STRUCT_DEF*) and `instantiated_template_structs_` set for tracking already-instantiated mangled names.
-2. **Parser** (`declarations.cpp`): After `attach_template_params` in template parsing, detect NK_STRUCT_DEF in `struct_defs_` and:
-   - Store in `template_struct_defs_`
-   - Register struct name as typedef (C++ mode: struct names usable as type names)
-3. **Parser** (`types.cpp`): In `parse_base_type()` typedef resolution path, detect template struct usage followed by `<Args>`:
-   - Parse template type arguments
-   - Build mangled struct tag name (e.g., `Pair_T_int`)
-   - Create concrete NK_STRUCT_DEF with cloned fields and substituted types
-   - Register in `struct_defs_`, `struct_tag_def_map_`, `defined_struct_tags_`
-4. **HIR** (`ast_to_hir.cpp`): Skip template struct defs (n_template_params > 0) in `lower_struct_def()` — only instantiated concrete structs are lowered.
+1. **Parser** (`types.cpp`): Template struct instantiation now handles both type and NTTP arguments:
+   - Separate `type_bindings` and `nttp_bindings` vectors
+   - NTTP params parsed as integer expressions (with sign support)
+   - Default template arguments filled in for unspecified params
+   - Mangled name includes NTTP values (e.g., `Array_T_int_N_4`)
+   - Field cloning substitutes NTTP values into array dimensions via `array_size_expr` check
 
-**Design**: Parser-level instantiation approach — when `Pair<int>` is encountered as a type, the parser creates a concrete NK_STRUCT_DEF with mangled name `Pair_T_int` and cloned/substituted fields. HIR sees this as a regular struct def and lowers it normally with no special handling needed.
+**Design**: When `array_size_expr` on a field TypeSpec is an NK_VAR node matching an NTTP param name, the first array dimension is replaced with the NTTP value. This uses the existing `array_size_expr` infrastructure from `parse_one_array_dim` which stores the unevaluated expression when `eval_const_int` fails during template struct body parsing.
 
 ### Test additions
-- **`template_struct.cpp`**: Tests `template<typename T> struct Pair { T first; T second; };` with int and long instantiations, plus a second template struct `Box<T>` with single field.
+- **`template_struct_nttp.cpp`**: Tests `Array<int, 4>`, `Array<long, 2>`, and NTTP-only `IntBuf<3>`.
 
 ### Files changed
-- `src/frontend/parser/parser.hpp` (2 new data structures)
-- `src/frontend/parser/declarations.cpp` (template struct registration)
-- `src/frontend/parser/types.cpp` (template struct instantiation in parse_base_type)
-- `src/frontend/hir/ast_to_hir.cpp` (skip template struct defs)
-- `tests/internal/cpp/postive_case/template_struct.cpp` (new)
+- `src/frontend/parser/types.cpp` (NTTP argument parsing, mangling, field substitution)
+- `tests/internal/cpp/postive_case/template_struct_nttp.cpp` (new)
 
 ---
 
 ## Recommended next milestone
 
 Potential next work:
-- Template struct with NTTP parameters (`template<typename T, int N> struct Array { T data[N]; }`)
 - Template struct pointer fields (`Pair<int*>`)
 - Template struct used as function parameter/return type
 - Template struct with `struct Pair<int>` keyword syntax (currently only typedef-style `Pair<int>` supported)

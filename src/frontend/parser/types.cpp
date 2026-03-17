@@ -399,31 +399,54 @@ TypeSpec Parser::parse_base_type() {
                 ts.is_volatile |= save_vol;
                 // Phase C: remember the typedef name for fn_ptr param propagation.
                 last_resolved_typedef_ = tname;
-                // Template struct instantiation: Pair<int> in type context.
+                // Template struct instantiation: Pair<int> or Array<int, 4> in type context.
                 if (is_cpp_mode() && ts.base == TB_STRUCT && ts.tag &&
                     template_struct_defs_.count(ts.tag) && check(TokenKind::Less)) {
                     std::string tpl_name = ts.tag;
                     const Node* tpl_def = template_struct_defs_[tpl_name];
                     consume();  // <
-                    // Parse template arguments
-                    std::vector<std::pair<std::string, TypeSpec>> arg_bindings;
+                    // Parse template arguments (type or NTTP)
+                    std::vector<std::pair<std::string, TypeSpec>> type_bindings;
+                    std::vector<std::pair<std::string, long long>> nttp_bindings;
                     int arg_idx = 0;
                     while (!at_end() && !check(TokenKind::Greater)) {
                         if (arg_idx >= tpl_def->n_template_params) break;
                         const char* param_name = tpl_def->template_param_names[arg_idx];
-                        TypeSpec arg_ts = parse_type_name();
-                        arg_bindings.push_back({param_name, arg_ts});
+                        if (tpl_def->template_param_is_nttp[arg_idx]) {
+                            // NTTP: parse integer expression
+                            long long sign = 1;
+                            if (match(TokenKind::Minus)) sign = -1;
+                            long long val = 0;
+                            if (check(TokenKind::IntLit)) {
+                                val = parse_int_lexeme(cur().lexeme.c_str());
+                                consume();
+                            }
+                            nttp_bindings.push_back({param_name, val * sign});
+                        } else {
+                            // Type parameter
+                            TypeSpec arg_ts = parse_type_name();
+                            type_bindings.push_back({param_name, arg_ts});
+                        }
                         ++arg_idx;
                         if (!match(TokenKind::Comma)) break;
                     }
+                    // Fill in defaults for remaining params
+                    while (arg_idx < tpl_def->n_template_params) {
+                        if (tpl_def->template_param_has_default[arg_idx]) {
+                            const char* param_name = tpl_def->template_param_names[arg_idx];
+                            if (tpl_def->template_param_is_nttp[arg_idx]) {
+                                nttp_bindings.push_back({param_name, tpl_def->template_param_default_values[arg_idx]});
+                            } else {
+                                type_bindings.push_back({param_name, tpl_def->template_param_default_types[arg_idx]});
+                            }
+                        }
+                        ++arg_idx;
+                    }
                     expect(TokenKind::Greater);
-                    // Build mangled name: Pair_T_int
+                    // Build mangled name
                     std::string mangled = tpl_name;
-                    for (const auto& [pname, pts] : arg_bindings) {
-                        mangled += "_";
-                        mangled += pname;
-                        mangled += "_";
-                        // Type suffix for mangling
+                    // Helper lambda for type suffix
+                    auto append_type_suffix = [&](const TypeSpec& pts) {
                         switch (pts.base) {
                             case TB_INT: mangled += "int"; break;
                             case TB_UINT: mangled += "uint"; break;
@@ -446,6 +469,24 @@ TypeSpec Parser::parse_base_type() {
                             default: mangled += "T"; break;
                         }
                         for (int p = 0; p < pts.ptr_level; ++p) mangled += "p";
+                    };
+                    // Interleave type and NTTP args in template param order
+                    int ti = 0, ni = 0;
+                    for (int pi = 0; pi < tpl_def->n_template_params; ++pi) {
+                        mangled += "_";
+                        mangled += tpl_def->template_param_names[pi];
+                        mangled += "_";
+                        if (tpl_def->template_param_is_nttp[pi]) {
+                            if (ni < (int)nttp_bindings.size())
+                                mangled += std::to_string(nttp_bindings[ni++].second);
+                            else
+                                mangled += "0";
+                        } else {
+                            if (ti < (int)type_bindings.size())
+                                append_type_suffix(type_bindings[ti++].second);
+                            else
+                                mangled += "T";
+                        }
                     }
                     // Instantiate if not already done
                     if (!instantiated_template_structs_.count(mangled)) {
@@ -456,7 +497,7 @@ TypeSpec Parser::parse_base_type() {
                         inst->is_union = tpl_def->is_union;
                         inst->pack_align = tpl_def->pack_align;
                         inst->struct_align = tpl_def->struct_align;
-                        // Clone fields with type substitution
+                        // Clone fields with type and NTTP substitution
                         int num_fields = tpl_def->n_fields > 0 ? tpl_def->n_fields : 0;
                         inst->n_fields = num_fields;
                         inst->fields = arena_.alloc_array<Node*>(num_fields);
@@ -468,17 +509,31 @@ TypeSpec Parser::parse_base_type() {
                             new_f->ival = orig_f->ival;
                             new_f->is_anon_field = orig_f->is_anon_field;
                             // Substitute template type parameters in field type
-                            for (const auto& [pname, pts] : arg_bindings) {
+                            for (const auto& [pname, pts] : type_bindings) {
                                 if (new_f->type.base == TB_TYPEDEF && new_f->type.tag &&
                                     std::string(new_f->type.tag) == pname) {
-                                    int save_ptr = new_f->type.ptr_level;
-                                    bool save_c = new_f->type.is_const;
-                                    bool save_v = new_f->type.is_volatile;
                                     new_f->type.base = pts.base;
                                     new_f->type.tag = pts.tag;
                                     new_f->type.ptr_level += pts.ptr_level;
                                     new_f->type.is_const |= pts.is_const;
                                     new_f->type.is_volatile |= pts.is_volatile;
+                                }
+                            }
+                            // Substitute NTTP values in array dimensions
+                            if (new_f->type.array_size_expr) {
+                                Node* ase = new_f->type.array_size_expr;
+                                if (ase->kind == NK_VAR && ase->name) {
+                                    for (const auto& [npname, nval] : nttp_bindings) {
+                                        if (std::string(ase->name) == npname) {
+                                            // Replace the first array dim with the NTTP value
+                                            if (new_f->type.array_rank > 0) {
+                                                new_f->type.array_dims[0] = nval;
+                                                new_f->type.array_size = nval;
+                                            }
+                                            new_f->type.array_size_expr = nullptr;
+                                            break;
+                                        }
+                                    }
                                 }
                             }
                             inst->fields[fi] = new_f;
