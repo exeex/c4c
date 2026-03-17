@@ -151,6 +151,13 @@ class Printer {
       }
     }
 
+    if (!m_.consteval_calls.empty()) {
+      out << "\n--- consteval calls ---\n";
+      for (const auto& ce : m_.consteval_calls) {
+        print_consteval_call(out, ce);
+      }
+    }
+
     if (!m_.globals.empty()) {
       out << "\n--- globals ---\n";
       for (const auto& g : m_.globals) {
@@ -192,6 +199,26 @@ class Printer {
       }
       out << "}\n";
     }
+  }
+
+  void print_consteval_call(std::ostringstream& out, const ConstevalCallInfo& ce) {
+    out << "  consteval " << ce.fn_name;
+    if (!ce.template_bindings.empty()) {
+      out << "<";
+      bool first = true;
+      for (const auto& [param, ts] : ce.template_bindings) {
+        if (!first) out << ", ";
+        out << param << "=" << ts_str(ts);
+        first = false;
+      }
+      out << ">";
+    }
+    out << "(";
+    for (size_t i = 0; i < ce.const_args.size(); ++i) {
+      if (i) out << ", ";
+      out << ce.const_args[i];
+    }
+    out << ") = " << ce.result_value << "\n";
   }
 
   void print_struct_def(std::ostringstream& out, const HirStructDef& sd) {

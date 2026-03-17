@@ -3080,7 +3080,19 @@ class Lowerer {
                   ce_it->second, args, arg_env, consteval_fns_);
               if (result.ok()) {
                 TypeSpec ts = n->type;
-                return append_expr(n, IntLiteral{result.as_int(), false}, ts);
+                long long rv = result.as_int();
+                ExprId eid = append_expr(n, IntLiteral{rv, false}, ts);
+                // Record consteval call metadata for HIR inspection.
+                ConstevalCallInfo info;
+                info.fn_name = n->left->name;
+                for (const auto& cv : args)
+                  info.const_args.push_back(cv.as_int());
+                info.template_bindings = tpl_bindings;
+                info.result_value = rv;
+                info.result_expr = eid;
+                info.span = make_span(n);
+                module_->consteval_calls.push_back(std::move(info));
+                return eid;
               }
               // Consteval call failed — hard error, no runtime fallback.
               std::string diag = "error: call to consteval function '";

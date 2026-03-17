@@ -217,6 +217,26 @@ set_tests_properties(cpp_hir_template_call_info_dump PROPERTIES
   PASS_REGULAR_EXPRESSION "add<int>\\(20, 22\\)"
 )
 
+# HIR consteval call info dump test: verify consteval call metadata preserved
+add_test(
+  NAME cpp_hir_consteval_call_info_dump
+  COMMAND c4cll --dump-hir "${INTERNAL_TEST_ROOT}/cpp/postive_case/consteval_func.cpp"
+)
+set_tests_properties(cpp_hir_consteval_call_info_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "consteval square\\(6\\) = 36"
+)
+
+# HIR consteval template call info dump test: verify template consteval call metadata
+add_test(
+  NAME cpp_hir_consteval_template_call_info_dump
+  COMMAND c4cll --dump-hir "${INTERNAL_TEST_ROOT}/cpp/postive_case/consteval_template.cpp"
+)
+set_tests_properties(cpp_hir_consteval_template_call_info_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "consteval square<T=int>\\(6\\) = 36"
+)
+
 add_test(
     NAME frontend_cxx_preprocessor_tests
     COMMAND frontend_cxx_preprocessor_tests

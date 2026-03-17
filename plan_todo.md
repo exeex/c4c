@@ -1,7 +1,7 @@
 # Plan Execution State
 
 ## Baseline
-- 1841/1841 tests passing (2026-03-17)
+- 1843/1843 tests passing (2026-03-17)
 
 ## Phase 1: Constrain sema to conservative compile-time work
 **Status: COMPLETE** (already satisfied by current architecture)
@@ -85,20 +85,48 @@ Distinguish template application (e.g., `add<int>`) from ordinary function call 
 
 ---
 
-## Next: Phase 4: Preserve consteval as HIR-reducible nodes
+## Phase 4: Preserve consteval as HIR-reducible nodes
+**Status: COMPLETE**
 
 ### Goal
 Stop treating consteval reduction as a lowering-only side effect. Preserve consteval call intent in HIR.
 
+### Completed Slices
+- [x] Slice 1: Add `ConstevalCallInfo` to HIR (function name, args, result) in `ir.hpp`
+- [x] Slice 2: Populate consteval call metadata during lowering in `ast_to_hir.cpp`
+- [x] Slice 3: Add printer support — `--- consteval calls ---` section with `consteval fn<bindings>(args) = result` format
+- [x] Slice 4: Add `cpp_hir_consteval_call_info_dump` and `cpp_hir_consteval_template_call_info_dump` tests
+
+### What was added
+- `ir.hpp`: `ConstevalCallInfo` struct with fn_name, const_args, template_bindings, result_value, result_expr, span
+- `ir.hpp`: `Module::consteval_calls` vector
+- `ast_to_hir.cpp`: records `ConstevalCallInfo` after successful `evaluate_consteval_call()` evaluation
+- `hir_printer.cpp`: `print_consteval_call()` method, `--- consteval calls ---` section in dump output
+- `InternalTests.cmake`: 2 new `--dump-hir` regex tests
+
+### Exit criteria met
+- Consteval call intent is representable in HIR (ConstevalCallInfo preserves fn name, args, bindings, result)
+- Environment info attached: constant args and template bindings preserved
+- `evaluate_consteval_call()` remains reusable — metadata recording is non-invasive
+- Consteval reduction is no longer an invisible side effect: the `--- consteval calls ---` section makes it inspectable
+- HIR can defer consteval when inputs are not ready yet (future Phase 5 work — the data structure supports it)
+
+---
+
+## Next: Phase 5: HIR compile-time reduction loop
+
+### Goal
+Make compile-time behavior converge through repeated passes instead of fixed frontend ordering.
+
 ### Planned Slices
-- [ ] Slice 1: Add `ConstevalCallInfo` to HIR (function name, args, result) in `ir.hpp`
-- [ ] Slice 2: Populate consteval call metadata during lowering
-- [ ] Slice 3: Add printer support for consteval call nodes
-- [ ] Slice 4: Add test for `--dump-hir` consteval call inspection
+- [ ] Slice 1: Add HIR pass entry point for compile-time reduction
+- [ ] Slice 2: Implement one iteration step for template instantiation
+- [ ] Slice 3: Implement one iteration step for consteval reduction
+- [ ] Slice 4: Re-run until convergence or explicit iteration limit
+- [ ] Slice 5: Surface structured diagnostics on irreducible required compile-time nodes
 
 ---
 
 ## Remaining Phases
-- Phase 5: HIR compile-time reduction loop
 - Phase 6: Materialization boundary
 - Phase 7: Specialization identity and caching

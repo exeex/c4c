@@ -626,6 +626,19 @@ struct HirTemplateInstantiation {
   TypeBindings bindings;     // template param → concrete type
 };
 
+// ── Consteval call metadata (populated by ast_to_hir) ────────────────────────
+
+/// Records a consteval call that was evaluated during lowering.
+/// Preserves the call intent so a future HIR pass can re-evaluate or defer.
+struct ConstevalCallInfo {
+  SymbolName fn_name;                           // consteval function name
+  std::vector<long long> const_args;            // evaluated constant argument values
+  TypeBindings template_bindings;               // template param → concrete type (empty if non-template)
+  long long result_value = 0;                   // computed result
+  ExprId result_expr{};                         // ExprId of the IntLiteral that replaced this call
+  SourceSpan span{};
+};
+
 /// A template function definition preserved through lowering.
 /// The original AST body is not stored here (it would require AST lifetime management);
 /// instead, this captures the template metadata and the list of instantiations produced.
@@ -653,6 +666,9 @@ struct Module {
 
   // Template function definitions (populated by lower_ast_to_hir)
   std::unordered_map<SymbolName, HirTemplateDef> template_defs;
+
+  // Consteval call records (populated by lower_ast_to_hir)
+  std::vector<ConstevalCallInfo> consteval_calls;
 
   // Stable ID cursors for multi-pass transforms that may append nodes.
   uint32_t next_function_id = 0;
