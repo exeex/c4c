@@ -181,7 +181,10 @@ class Printer {
     out << " " << td.name << "<";
     for (size_t i = 0; i < td.template_params.size(); ++i) {
       if (i) out << ", ";
-      out << "typename " << td.template_params[i];
+      if (i < td.param_is_nttp.size() && td.param_is_nttp[i])
+        out << "int " << td.template_params[i];
+      else
+        out << "typename " << td.template_params[i];
     }
     out << ">";
     if (!td.instances.empty()) {

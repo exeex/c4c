@@ -307,6 +307,7 @@ struct PendingConstevalExpr {
   SymbolName fn_name;                                            // consteval function to call
   std::vector<long long> const_args;                             // evaluated constant argument values
   std::unordered_map<std::string, TypeSpec> tpl_bindings;        // template param → concrete type
+  std::unordered_map<std::string, long long> nttp_bindings;      // NTTP param → constant value
   SourceSpan call_span{};
 };
 
@@ -791,6 +792,7 @@ struct ConstevalCallInfo {
 struct HirTemplateDef {
   SymbolName name;                                  // generic name (e.g. "add")
   std::vector<std::string> template_params;         // parameter names (e.g. ["T"])
+  std::vector<bool> param_is_nttp;                  // true if param is non-type (int N)
   bool is_consteval = false;                        // consteval template functions
   std::vector<HirTemplateInstantiation> instances;  // instantiations produced
   SourceSpan span{};

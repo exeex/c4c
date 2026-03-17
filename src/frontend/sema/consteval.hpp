@@ -68,6 +68,9 @@ struct ConstEvalEnv {
   // Template type substitution map (template param name → concrete type).
   const TypeBindings* type_bindings = nullptr;
 
+  // Non-type template parameter bindings (NTTP name → constant value).
+  const std::unordered_map<std::string, long long>* nttp_bindings = nullptr;
+
   std::optional<long long> lookup(const std::string& name) const {
     // 1. Scoped enum constants (innermost first).
     if (enum_scopes) {
@@ -97,6 +100,11 @@ struct ConstEvalEnv {
     if (named_consts) {
       auto it = named_consts->find(name);
       if (it != named_consts->end()) return it->second;
+    }
+    // 6. Non-type template parameter bindings.
+    if (nttp_bindings) {
+      auto it = nttp_bindings->find(name);
+      if (it != nttp_bindings->end()) return it->second;
     }
     return std::nullopt;
   }

@@ -491,6 +491,8 @@ class Lowerer {
       for (int i = 0; i < fn_def->n_template_params; ++i) {
         if (fn_def->template_param_names[i])
           tdef.template_params.emplace_back(fn_def->template_param_names[i]);
+        tdef.param_is_nttp.push_back(
+            fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]);
       }
       auto inst_it = template_fn_instances_.find(name);
       if (inst_it != template_fn_instances_.end()) {
@@ -597,7 +599,8 @@ class Lowerer {
     // Evaluates PendingConstevalExpr nodes using the AST-level interpreter.
     auto deferred_consteval = [this](const std::string& fn_name,
                                      const std::vector<long long>& const_args,
-                                     const TypeBindings& bindings)
+                                     const TypeBindings& bindings,
+                                     const NttpBindings& nttp_binds)
         -> std::optional<long long> {
       auto ce_it = consteval_fns_.find(fn_name);
       if (ce_it == consteval_fns_.end()) return std::nullopt;
@@ -608,6 +611,9 @@ class Lowerer {
       ConstEvalEnv env{&enum_consts_, &const_int_bindings_, nullptr};
       TypeBindings tpl_bindings = bindings;
       env.type_bindings = &tpl_bindings;
+      NttpBindings nttp_copy = nttp_binds;
+      if (!nttp_copy.empty())
+        env.nttp_bindings = &nttp_copy;
       auto result = evaluate_consteval_call(
           ce_it->second, args, env, consteval_fns_);
       if (result.ok()) return result.as_int();
@@ -3176,22 +3182,34 @@ class Lowerer {
             // of the enclosing function), resolve them through the enclosing
             // function's template bindings.
             TypeBindings tpl_bindings;
+            NttpBindings ce_nttp_bindings;
             const Node* fn_def = ce_it->second;
             if (n->left->n_template_args > 0 && fn_def->n_template_params > 0) {
               int count = std::min(n->left->n_template_args, fn_def->n_template_params);
               for (int i = 0; i < count; ++i) {
-                if (fn_def->template_param_names[i]) {
-                  TypeSpec arg_ts = n->left->template_arg_types[i];
-                  // Resolve through enclosing template function's bindings.
-                  if (arg_ts.base == TB_TYPEDEF && arg_ts.tag && ctx &&
-                      !ctx->tpl_bindings.empty()) {
-                    auto resolved = ctx->tpl_bindings.find(arg_ts.tag);
-                    if (resolved != ctx->tpl_bindings.end()) arg_ts = resolved->second;
+                if (!fn_def->template_param_names[i]) continue;
+                // NTTP argument: store as constant binding, not type binding.
+                if (fn_def->template_param_is_nttp &&
+                    fn_def->template_param_is_nttp[i]) {
+                  if (n->left->template_arg_is_value &&
+                      n->left->template_arg_is_value[i]) {
+                    ce_nttp_bindings[fn_def->template_param_names[i]] =
+                        n->left->template_arg_values[i];
                   }
-                  tpl_bindings[fn_def->template_param_names[i]] = arg_ts;
+                  continue;
                 }
+                TypeSpec arg_ts = n->left->template_arg_types[i];
+                // Resolve through enclosing template function's bindings.
+                if (arg_ts.base == TB_TYPEDEF && arg_ts.tag && ctx &&
+                    !ctx->tpl_bindings.empty()) {
+                  auto resolved = ctx->tpl_bindings.find(arg_ts.tag);
+                  if (resolved != ctx->tpl_bindings.end()) arg_ts = resolved->second;
+                }
+                tpl_bindings[fn_def->template_param_names[i]] = arg_ts;
               }
               arg_env.type_bindings = &tpl_bindings;
+              if (!ce_nttp_bindings.empty())
+                arg_env.nttp_bindings = &ce_nttp_bindings;
             }
             std::vector<ConstValue> args;
             bool all_const = true;
@@ -3214,6 +3232,7 @@ class Lowerer {
                 for (const auto& cv : args)
                   pce.const_args.push_back(cv.as_int());
                 pce.tpl_bindings = tpl_bindings;
+                pce.nttp_bindings = ce_nttp_bindings;
                 pce.call_span = make_span(n);
                 TypeSpec ts = n->type;
                 return append_expr(n, std::move(pce), ts);

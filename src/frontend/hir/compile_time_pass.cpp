@@ -166,7 +166,7 @@ struct PendingConstevalEvalStep {
       auto* pce = std::get_if<PendingConstevalExpr>(&expr.payload);
       if (!pce) continue;
 
-      auto result = eval_fn(pce->fn_name, pce->const_args, pce->tpl_bindings);
+      auto result = eval_fn(pce->fn_name, pce->const_args, pce->tpl_bindings, pce->nttp_bindings);
       if (result.has_value()) {
         long long rv = *result;
         // Record consteval call metadata.

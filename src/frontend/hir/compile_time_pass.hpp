@@ -50,15 +50,17 @@ using DeferredInstantiateFn = std::function<bool(
 /// PendingConstevalExpr node that needs to be evaluated.
 ///
 /// Parameters:
-///   fn_name    - consteval function name
-///   const_args - evaluated constant argument values
-///   bindings   - template param → concrete type
+///   fn_name        - consteval function name
+///   const_args     - evaluated constant argument values
+///   bindings       - template param → concrete type
+///   nttp_bindings  - NTTP param → constant value
 ///
 /// Returns the computed result value, or std::nullopt on failure.
 using DeferredConstevalEvalFn = std::function<std::optional<long long>(
     const std::string& fn_name,
     const std::vector<long long>& const_args,
-    const TypeBindings& bindings)>;
+    const TypeBindings& bindings,
+    const NttpBindings& nttp_bindings)>;
 
 /// Run the HIR compile-time reduction loop.
 ///
