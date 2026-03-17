@@ -5,7 +5,7 @@
 #include <sstream>
 #include <vector>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 std::string dirname_of(const std::string& path) {
   size_t pos = path.find_last_of("/");
@@ -66,4 +66,4 @@ std::string preprocess_external(const std::string& path) {
   return std::string();
 }
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

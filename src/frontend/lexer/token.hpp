@@ -4,7 +4,7 @@
 
 #include "source_profile.hpp"
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 // Token kinds mirroring ref/claudes-c-compiler/src/frontend/lexer/token.rs
 // Pure-C backport note: map to a plain enum + tagged union when porting.
@@ -166,4 +166,4 @@ const char *token_kind_name(TokenKind kind);
 TokenKind keyword_from_string(const std::string &s, bool gnu_extensions = true,
                               LexProfile profile = LexProfile::C);
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

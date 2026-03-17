@@ -11,7 +11,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 struct PreprocessorDiagnostic {
   std::string file;
@@ -141,6 +141,6 @@ private:
   std::map<std::string, std::vector<MacroDef>> macro_stack_;
 };
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c
 
 #endif

@@ -1,6 +1,6 @@
 #include "token.hpp"
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 const char *token_kind_name(TokenKind kind) {
   switch (kind) {
@@ -250,4 +250,4 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
   return TokenKind::Identifier;
 }
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

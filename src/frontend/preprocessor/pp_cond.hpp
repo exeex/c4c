@@ -4,7 +4,7 @@
 #include <functional>
 #include <string>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 // Callback for __has_include / __has_include_next.
 // Takes the raw path string (e.g., "<stdio.h>" or "\"myfile.h\"") and returns true/false.
@@ -63,6 +63,6 @@ private:
   std::function<bool(const std::string&)> is_defined_name_;
 };
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c
 
 #endif

@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 enum class BuiltinId : uint16_t {
   Unknown = 0,
@@ -748,4 +748,4 @@ inline constexpr bool builtin_uses_i64_width(BuiltinId id) {
 
 #undef TINYC2LL_BUILTIN_LIST
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

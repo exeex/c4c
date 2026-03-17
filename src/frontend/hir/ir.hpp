@@ -15,16 +15,16 @@
 
 #include "ast.hpp"
 
-namespace tinyc2ll::frontend_cxx::sema {
+namespace c4c::sema {
 struct CanonicalType;
-}  // namespace tinyc2ll::frontend_cxx::sema
+}  // namespace c4c::sema
 
-namespace tinyc2ll::frontend_cxx::sema_ir {
+namespace c4c::hir {
 
 // This header is the migration IR contract for docs/sema_ir_split_plan.md.
 //
 // Phase mapping:
-// - Phase 2: phase2::hir::* (typed frontend IR, AST lowering target)
+// - Phase 2: hir::* (typed frontend IR, AST lowering target)
 // - Phase 3: backend-facing hooks embedded in HIR (attrs/debug/meta)
 // - Phase 4: phase4::dag::* (lowering skeleton + inspectable DAG)
 // - Phase 5+: stable IDs, summaries, and debug dumps for parity tooling
@@ -736,8 +736,6 @@ struct HirTemplateDef {
   SourceSpan span{};
 };
 
-namespace phase2::hir {
-
 struct Module {
   std::vector<Function> functions;
   std::vector<GlobalVar> globals;
@@ -848,7 +846,6 @@ struct Module {
   }
 };
 
-}  // namespace phase2::hir
 
 enum class DagValueType : uint8_t {
   I1,
@@ -972,4 +969,4 @@ struct ModuleDag {
 
 }  // namespace phase4::dag
 
-}  // namespace tinyc2ll::frontend_cxx::sema_ir
+}  // namespace c4c::hir

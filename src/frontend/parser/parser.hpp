@@ -24,7 +24,7 @@
 #include "source_profile.hpp"
 #include "token.hpp"
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 class Parser {
  public:
@@ -197,4 +197,4 @@ class Parser {
   Node* make_block(Node** stmts, int n, int line);
 };
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

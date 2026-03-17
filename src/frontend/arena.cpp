@@ -4,7 +4,7 @@
 #include <cstring>
 #include <stdexcept>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 Arena::Arena(std::size_t block_size)
     : head_(nullptr), block_size_(block_size) {}
@@ -64,4 +64,4 @@ void Arena::free_all() {
   head_ = nullptr;
 }
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

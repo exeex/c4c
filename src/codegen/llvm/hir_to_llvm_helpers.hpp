@@ -8,11 +8,10 @@
 
 #include "llvm_codegen.hpp"
 
-namespace tinyc2ll::codegen::llvm_backend::detail {
+namespace c4c::codegen::llvm_backend::detail {
 
-using namespace tinyc2ll::frontend_cxx;
-using namespace tinyc2ll::frontend_cxx::sema_ir;
-using namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir;
+using namespace c4c;
+using namespace c4c::hir;
 
 inline bool is_float_base(TypeBase b) {
   return b == TB_FLOAT || b == TB_DOUBLE || b == TB_LONGDOUBLE;

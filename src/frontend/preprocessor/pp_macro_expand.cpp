@@ -3,7 +3,7 @@
 
 #include <cctype>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 namespace {
 
@@ -333,4 +333,4 @@ std::pair<std::string, std::string> split_directive(const std::string& line) {
   return {key, rest};
 }
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

@@ -9,7 +9,7 @@
 #include "preprocessor.hpp"
 
 namespace fs = std::filesystem;
-using tinyc2ll::frontend_cxx::Preprocessor;
+using c4c::Preprocessor;
 
 namespace {
 

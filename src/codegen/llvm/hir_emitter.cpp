@@ -1,7 +1,7 @@
 #include "hir_emitter.hpp"
 #include "canonical_symbol.hpp"
 
-namespace tinyc2ll::codegen::llvm_backend {
+namespace c4c::codegen::llvm_backend {
 
 namespace {
 

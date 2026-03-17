@@ -4,7 +4,7 @@
 #include <string_view>
 #include <utility>
 
-namespace tinyc2ll::frontend_cxx::sema {
+namespace c4c::sema {
 namespace {
 
 CanonicalType make_leaf_type(TypeBase base,
@@ -1048,4 +1048,4 @@ CanonicalSymbolTable build_symbol_table(const Node* root, SourceProfile profile)
   return table;
 }
 
-}  // namespace tinyc2ll::frontend_cxx::sema
+}  // namespace c4c::sema

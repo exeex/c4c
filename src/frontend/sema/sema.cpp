@@ -3,7 +3,7 @@
 #include "ast_to_hir.hpp"
 #include "hir_printer.hpp"
 
-namespace tinyc2ll::frontend_cxx::sema {
+namespace c4c::sema {
 
 // Base C analysis: validate + lower to HIR.
 static AnalyzeResult analyze_program_base(const Node* root, SourceProfile source_profile) {
@@ -11,7 +11,7 @@ static AnalyzeResult analyze_program_base(const Node* root, SourceProfile source
   result.validation = validate_program(root);
   if (!result.validation.ok) return result;
   result.canonical = build_canonical_symbols(root, source_profile);
-  result.hir_module = sema_ir::phase2::hir::lower_ast_to_hir(root, &result.canonical.resolved_types);
+  result.hir_module = hir::lower_ast_to_hir(root, &result.canonical.resolved_types);
   return result;
 }
 
@@ -58,11 +58,11 @@ AnalyzeResult analyze_program(const Node* root, SemaProfile profile) {
 }
 
 std::string format_hir(const HirModule& module) {
-  return sema_ir::phase2::hir::format_hir(module);
+  return hir::format_hir(module);
 }
 
 std::string format_summary(const HirModule& module) {
-  return sema_ir::phase2::hir::format_summary(module);
+  return hir::format_summary(module);
 }
 
-}  // namespace tinyc2ll::frontend_cxx::sema
+}  // namespace c4c::sema

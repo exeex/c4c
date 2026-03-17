@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir {
+namespace c4c::hir {
 
 /// A diagnostic for a single irreducible compile-time node.
 struct CompileTimeDiagnostic {
@@ -58,4 +58,4 @@ MaterializationStats materialize_ready_functions(Module& module);
 /// Format materialization stats for debug output.
 std::string format_materialization_stats(const MaterializationStats& stats);
 
-}  // namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir
+}  // namespace c4c::hir

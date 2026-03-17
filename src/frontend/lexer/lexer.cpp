@@ -3,7 +3,7 @@
 #include <cctype>
 #include <stdexcept>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 Lexer::Lexer(std::string source, LexProfile profile)
     : source_(std::move(source)), lex_profile_(profile) {}
@@ -607,4 +607,4 @@ Token Lexer::scan_punct() {
   }
 }
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

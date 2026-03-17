@@ -10,7 +10,7 @@
 #include "ast.hpp"
 #include "source_profile.hpp"
 
-namespace tinyc2ll::frontend_cxx::sema {
+namespace c4c::sema {
 
 enum class LanguageLinkage : uint8_t {
   C,
@@ -255,4 +255,4 @@ struct CanonicalSymbolTable {
 CanonicalSymbolTable build_symbol_table(const Node* root,
                                         SourceProfile profile = SourceProfile::C);
 
-}  // namespace tinyc2ll::frontend_cxx::sema
+}  // namespace c4c::sema

@@ -3,11 +3,11 @@
 
 #include "pp_macro_def.hpp"
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 // Populate |table| with predefined macros for the default target (LP64 aarch64).
 void init_predefined_macros(MacroTable& table);
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c
 
 #endif

@@ -5,7 +5,7 @@
 #include <utility>
 #include <vector>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 // Collect balanced parenthesised argument list for function-like macro expansion.
 // *pos must point at the character AFTER the opening '('. On return *pos points
@@ -37,6 +37,6 @@ std::pair<std::string, std::string> split_directive(const std::string& line);
 // `next` would accidentally form a single token after macro expansion.
 void maybe_insert_token_separator(std::string& out, char next);
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c
 
 #endif

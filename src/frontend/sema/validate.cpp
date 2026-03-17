@@ -13,11 +13,11 @@
 #include "consteval.hpp"
 #include "type_utils.hpp"
 
-namespace tinyc2ll::frontend_cxx::sema {
+namespace c4c::sema {
 
-using sema_ir::phase2::hir::ConstEvalEnv;
-using sema_ir::phase2::hir::ConstMap;
-using sema_ir::phase2::hir::evaluate_constant_expr;
+using hir::ConstEvalEnv;
+using hir::ConstMap;
+using hir::evaluate_constant_expr;
 
 namespace {
 
@@ -1212,4 +1212,4 @@ void print_diagnostics(const std::vector<Diagnostic>& diags, const std::string& 
   }
 }
 
-}  // namespace tinyc2ll::frontend_cxx::sema
+}  // namespace c4c::sema

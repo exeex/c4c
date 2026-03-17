@@ -8,7 +8,7 @@
 
 #include "ir.hpp"
 
-namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir {
+namespace c4c::hir {
 
 // ── Constant-evaluation value model ──────────────────────────────────────────
 
@@ -125,4 +125,4 @@ ConstEvalResult evaluate_consteval_call(
 std::vector<long long> decode_string_literal_values(const char* sval, bool wide);
 std::string bytes_from_string_literal(const StringLiteral& sl);
 
-}  // namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir
+}  // namespace c4c::hir

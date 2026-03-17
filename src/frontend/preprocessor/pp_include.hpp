@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 // Extract the directory component of a file path.
 std::string dirname_of(const std::string& path);
@@ -22,6 +22,6 @@ bool run_capture(const std::string& cmd, std::string& out_text);
 // (ccc, cc, or cpp). Returns empty string on failure.
 std::string preprocess_external(const std::string& path);
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c
 
 #endif

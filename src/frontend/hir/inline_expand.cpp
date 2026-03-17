@@ -2,7 +2,7 @@
 
 #include <cassert>
 
-namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir {
+namespace c4c::hir {
 
 // ── Phase 2: InlineCloneContext ──────────────────────────────────────────────
 
@@ -818,4 +818,4 @@ void run_inline_expansion(Module& module) {
   }
 }
 
-}  // namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir
+}  // namespace c4c::hir

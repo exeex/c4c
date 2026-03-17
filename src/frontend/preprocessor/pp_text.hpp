@@ -3,7 +3,7 @@
 
 #include <string>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 // Lexical utility: trim leading/trailing whitespace.
 std::string trim_copy(const std::string& s);
@@ -18,6 +18,6 @@ std::string join_continued_lines(const std::string& source);
 // Translation phase 3: strip C-style comments (// and /* */).
 std::string strip_comments(const std::string& source);
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c
 
 #endif

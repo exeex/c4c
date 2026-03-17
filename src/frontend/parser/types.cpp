@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <unordered_set>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 // Compute vector_lanes from vector_bytes and base type.
 // Called after the final base type is resolved.
@@ -1260,4 +1260,4 @@ Node* Parser::parse_param() {
 
 // Operator precedence table (higher = tighter binding).
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

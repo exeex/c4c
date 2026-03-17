@@ -16,7 +16,7 @@
 
 #include "../builtin.hpp"
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 // Forward declaration
 struct Node;
@@ -288,4 +288,4 @@ void ast_dump(const Node* n, int indent);
 // Return a short debug name for a NodeKind.
 const char* node_kind_name(NodeKind k);
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

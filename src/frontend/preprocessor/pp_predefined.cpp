@@ -1,6 +1,6 @@
 #include "pp_predefined.hpp"
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 namespace {
 
@@ -243,4 +243,4 @@ void init_predefined_macros(MacroTable& table) {
   def(table, "__GCC_ASM_FLAG_OUTPUTS__", "1");
 }
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

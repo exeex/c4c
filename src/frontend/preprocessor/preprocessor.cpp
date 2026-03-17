@@ -12,7 +12,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 namespace {
 
@@ -1794,4 +1794,4 @@ std::string Preprocessor::get_builtin_header(const std::string& name) {
   return {};
 }
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

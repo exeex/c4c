@@ -19,7 +19,7 @@
 #include "source_profile.hpp"
 #include "token.hpp"
 
-namespace tc = tinyc2ll::frontend_cxx;
+namespace tc = c4c;
 
 namespace {
 
@@ -233,20 +233,20 @@ int main(int argc, char **argv) {
     }
 
     // Run HIR compile-time reduction pass (template instantiation + consteval).
-    auto ct_stats = tinyc2ll::frontend_cxx::sema_ir::phase2::hir::run_compile_time_reduction(
+    auto ct_stats = c4c::hir::run_compile_time_reduction(
         *sema_result.hir_module);
 
     // Run materialization pass — decide which functions become concrete LLVM output.
-    auto mat_stats = tinyc2ll::frontend_cxx::sema_ir::phase2::hir::materialize_ready_functions(
+    auto mat_stats = c4c::hir::materialize_ready_functions(
         *sema_result.hir_module);
 
     if (dump_hir || dump_hir_summary) {
       if (dump_hir) {
         std::cout << tc::sema::format_hir(*sema_result.hir_module);
         std::cout << "\n--- compile-time reduction ---\n"
-                  << "  " << tinyc2ll::frontend_cxx::sema_ir::phase2::hir::format_compile_time_stats(ct_stats)
+                  << "  " << c4c::hir::format_compile_time_stats(ct_stats)
                   << "\n--- materialization ---\n"
-                  << "  " << tinyc2ll::frontend_cxx::sema_ir::phase2::hir::format_materialization_stats(mat_stats)
+                  << "  " << c4c::hir::format_materialization_stats(mat_stats)
                   << "\n";
       } else {
         std::cout << tc::sema::format_summary(*sema_result.hir_module) << "\n";
@@ -255,10 +255,10 @@ int main(int argc, char **argv) {
     }
 
     // Run semantic inline expansion pass (Phase 1: discovery only, no-op for now).
-    tinyc2ll::frontend_cxx::sema_ir::phase2::hir::run_inline_expansion(
+    c4c::hir::run_inline_expansion(
         *sema_result.hir_module);
 
-    std::string ir = tinyc2ll::codegen::llvm_backend::emit_module_native(
+    std::string ir = c4c::codegen::llvm_backend::emit_module_native(
         *sema_result.hir_module);
 
     // Write to output file or stdout

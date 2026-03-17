@@ -2,7 +2,7 @@
 
 #include <cctype>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 std::string trim_copy(const std::string& s) {
   size_t b = 0;
@@ -78,4 +78,4 @@ std::string strip_comments(const std::string& source) {
   return out;
 }
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

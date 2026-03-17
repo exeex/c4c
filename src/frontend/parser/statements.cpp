@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 Node* Parser::parse_block() {
     int ln = cur().line;
     expect(TokenKind::LBrace);
@@ -441,4 +441,4 @@ Node* Parser::parse_stmt() {
 // ── local declaration parsing ─────────────────────────────────────────────────
 
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

@@ -7,7 +7,7 @@
 
 #include "ast.hpp"
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 // Phase-1 semantic facade for semantic/type utilities used by the frontend.
 // Keep function signatures simple for parser/sema integration points.
@@ -62,4 +62,4 @@ long long static_eval_int(
     const std::unordered_map<std::string, long long>& enum_consts);
 double static_eval_float(Node* n);
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

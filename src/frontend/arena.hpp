@@ -11,7 +11,7 @@
 #include <cstddef>
 #include <string>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 class Arena {
  public:
@@ -52,4 +52,4 @@ class Arena {
   std::size_t block_size_;
 };
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

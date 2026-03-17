@@ -4,7 +4,7 @@
 #include <cstring>
 #include <stdexcept>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 Node* Parser::parse_local_decl() {
     int ln = cur().line;
 
@@ -993,4 +993,4 @@ Node* Parser::parse_top_level() {
     return blk;
 }
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

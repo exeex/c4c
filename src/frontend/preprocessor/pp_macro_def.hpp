@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 struct MacroDef {
   std::string name;
@@ -20,6 +20,6 @@ struct MacroDef {
 
 using MacroTable = std::unordered_map<std::string, MacroDef>;
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c
 
 #endif

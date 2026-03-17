@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir {
+namespace c4c::hir {
 
 // ── Phase 2: ID Remapping Infrastructure ─────────────────────────────────────
 
@@ -115,4 +115,4 @@ std::vector<InlineCandidate> discover_inline_candidates(const Module& module);
 /// Run the full inline expansion pass on the module (Phase 2+, stub for now).
 void run_inline_expansion(Module& module);
 
-}  // namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir
+}  // namespace c4c::hir

@@ -3,7 +3,7 @@
 
 #include <cctype>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 PragmaResult dispatch_pragma(const std::string& args,
                              const std::string& /*file*/, int /*line_no*/) {
@@ -32,4 +32,4 @@ PragmaResult dispatch_pragma(const std::string& args,
   return PragmaResult::Ignored;
 }
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

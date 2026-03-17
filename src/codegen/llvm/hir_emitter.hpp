@@ -18,12 +18,11 @@
 #include <utility>
 #include <vector>
 
-namespace tinyc2ll::codegen::llvm_backend {
+namespace c4c::codegen::llvm_backend {
 
-using namespace tinyc2ll::frontend_cxx;
-using namespace tinyc2ll::frontend_cxx::sema_ir;
-using namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir;
-using namespace tinyc2ll::codegen::llvm_backend::detail;
+using namespace c4c;
+using namespace c4c::hir;
+using namespace c4c::codegen::llvm_backend::detail;
 
 struct BlockMeta {
   std::optional<std::string> break_label;

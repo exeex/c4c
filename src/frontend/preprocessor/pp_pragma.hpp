@@ -3,7 +3,7 @@
 
 #include <string>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 enum class PragmaResult {
   Handled,
@@ -17,6 +17,6 @@ enum class PragmaResult {
 PragmaResult dispatch_pragma(const std::string& args,
                              const std::string& file, int line_no);
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c
 
 #endif

@@ -14,10 +14,8 @@
 #include "type_utils.hpp"
 #include "../parser/parser_internal.hpp"
 
-namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir {
-namespace {
+namespace c4c::hir {
 
-using namespace tinyc2ll::frontend_cxx::sema_ir;
 
 SourceSpan make_span(const Node* n) {
   if (!n) {
@@ -274,21 +272,21 @@ int align_to(int value, int align) {
   return (value + align - 1) / align * align;
 }
 
-int struct_size_bytes(const phase2::hir::Module& module, const char* tag) {
+int struct_size_bytes(const hir::Module& module, const char* tag) {
   if (!tag || !tag[0]) return 4;
   const auto it = module.struct_defs.find(tag);
   if (it == module.struct_defs.end()) return 4;
   return it->second.size_bytes;
 }
 
-int struct_align_bytes(const phase2::hir::Module& module, const char* tag) {
+int struct_align_bytes(const hir::Module& module, const char* tag) {
   if (!tag || !tag[0]) return 4;
   const auto it = module.struct_defs.find(tag);
   if (it == module.struct_defs.end()) return 4;
   return std::max(1, it->second.align_bytes);
 }
 
-int type_size_bytes(const phase2::hir::Module& module, const TypeSpec& ts) {
+int type_size_bytes(const hir::Module& module, const TypeSpec& ts) {
   if (ts.array_rank > 0) {
     if (ts.array_size == 0) return 0;
     if (ts.array_size > 0) {
@@ -311,7 +309,7 @@ int type_size_bytes(const phase2::hir::Module& module, const TypeSpec& ts) {
   return sizeof_base(ts.base);
 }
 
-int type_align_bytes(const phase2::hir::Module& module, const TypeSpec& ts) {
+int type_align_bytes(const hir::Module& module, const TypeSpec& ts) {
   int natural = 1;
   if (ts.array_rank > 0) {
     TypeSpec elem = ts;
@@ -334,17 +332,17 @@ int type_align_bytes(const phase2::hir::Module& module, const TypeSpec& ts) {
   return natural;
 }
 
-int field_size_bytes(const phase2::hir::Module& module, const HirStructField& f) {
+int field_size_bytes(const hir::Module& module, const HirStructField& f) {
   if (f.size_bytes > 0 || f.is_flexible_array) return f.size_bytes;
   return type_size_bytes(module, f.elem_type);
 }
 
-int field_align_bytes(const phase2::hir::Module& module, const HirStructField& f) {
+int field_align_bytes(const hir::Module& module, const HirStructField& f) {
   if (f.align_bytes > 0) return f.align_bytes;
   return type_align_bytes(module, f.elem_type);
 }
 
-void compute_struct_layout(phase2::hir::Module* module, HirStructDef& def) {
+void compute_struct_layout(hir::Module* module, HirStructDef& def) {
   if (!module) return;
 
   const int pack = def.pack_align;  // 0 = default, >0 = cap alignment
@@ -3860,7 +3858,6 @@ class Lowerer {
 
 };
 
-}  // namespace
 
 Module lower_ast_to_hir(const Node* program_root,
                         const sema::ResolvedTypeTable* resolved_types) {
@@ -3884,4 +3881,4 @@ std::string format_summary(const Module& module) {
   return std::string(buf);
 }
 
-}  // namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir
+}  // namespace c4c::hir

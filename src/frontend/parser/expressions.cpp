@@ -6,7 +6,7 @@
 #include <functional>
 #include <stdexcept>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 int Parser::bin_prec(TokenKind k) {
     switch (k) {
         case TokenKind::PipePipe:       return 4;
@@ -823,4 +823,4 @@ Node* Parser::parse_init_list() {
 // ── statement parsing ─────────────────────────────────────────────────────────
 
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

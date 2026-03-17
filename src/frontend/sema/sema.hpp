@@ -8,9 +8,9 @@
 #include "source_profile.hpp"
 #include "validate.hpp"
 
-namespace tinyc2ll::frontend_cxx::sema {
+namespace c4c::sema {
 
-using HirModule = tinyc2ll::frontend_cxx::sema_ir::phase2::hir::Module;
+using HirModule = c4c::hir::Module;
 
 struct AnalyzeResult {
   ValidateResult validation;
@@ -23,4 +23,4 @@ AnalyzeResult analyze_program(const Node* root,
 std::string format_hir(const HirModule& module);
 std::string format_summary(const HirModule& module);
 
-}  // namespace tinyc2ll::frontend_cxx::sema
+}  // namespace c4c::sema

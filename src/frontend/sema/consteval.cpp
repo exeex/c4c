@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <cstring>
 
-namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir {
+namespace c4c::hir {
 namespace {
 
 bool is_any_int_base_local(TypeBase b) {
@@ -795,4 +795,4 @@ std::string bytes_from_string_literal(const StringLiteral& sl) {
   return decode_c_escaped_bytes_local(bytes);
 }
 
-}  // namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir
+}  // namespace c4c::hir

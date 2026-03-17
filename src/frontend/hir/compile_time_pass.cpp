@@ -5,7 +5,7 @@
 #include <unordered_set>
 #include <variant>
 
-namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir {
+namespace c4c::hir {
 
 namespace {
 
@@ -258,4 +258,4 @@ std::string format_materialization_stats(const MaterializationStats& stats) {
   return out.str();
 }
 
-}  // namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir
+}  // namespace c4c::hir

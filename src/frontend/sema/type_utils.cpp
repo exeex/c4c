@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <cstring>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 TypeSpec make_ts(TypeBase base) {
   TypeSpec ts{};
@@ -816,4 +816,4 @@ double static_eval_float(Node* n) {
   return 0.0;
 }
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

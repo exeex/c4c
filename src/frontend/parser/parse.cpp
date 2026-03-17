@@ -5,7 +5,7 @@
 #include <sstream>
 #include <stdexcept>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_profile)
     : tokens_(std::move(tokens)), pos_(0), arena_(arena), source_profile_(source_profile),
       anon_counter_(0), had_error_(false), parsing_top_level_context_(false),
@@ -488,4 +488,4 @@ void ast_dump(const Node* n, int indent) {
 }
 
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

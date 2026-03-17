@@ -5,7 +5,7 @@
 #include <cstdlib>
 #include <limits>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 namespace {
 
@@ -666,4 +666,4 @@ ExprValue IfExprParser::parse_int_literal() {
   return is_unsigned ? make_unsigned(v) : make_signed(static_cast<long long>(v));
 }
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

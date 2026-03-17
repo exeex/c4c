@@ -1,6 +1,6 @@
 #include "hir_emitter.hpp"
 
-namespace tinyc2ll::codegen::llvm_backend {
+namespace c4c::codegen::llvm_backend {
 
 class HirEmitter::ConstInitEmitter {
    public:

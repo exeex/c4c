@@ -2,7 +2,7 @@
 
 #include <string>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 // Translation-unit source language.
 enum class SourceProfile {
@@ -83,4 +83,4 @@ inline const char* source_profile_name(SourceProfile sp) {
   return "unknown";
 }
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

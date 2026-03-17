@@ -5,7 +5,7 @@
 
 #include "token.hpp"
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 // C lexer: tokenizes preprocessed C source into a Token stream.
 // Pure-C backport note: replace class with a Lexer struct + free functions.
@@ -48,4 +48,4 @@ class Lexer {
   Token pending_pragma_gcc_visibility_{};
 };
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

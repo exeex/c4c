@@ -6,10 +6,10 @@
 
 #include "ast.hpp"  // TypeBase, TypeSpec
 
-namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir {
+namespace c4c::hir {
 namespace {
 
-using namespace tinyc2ll::frontend_cxx;
+using namespace c4c;
 
 // ── TypeSpec -> readable string ───────────────────────────────────────────────
 
@@ -572,4 +572,4 @@ std::string format_hir(const Module& module) {
   return p.run();
 }
 
-}  // namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir
+}  // namespace c4c::hir

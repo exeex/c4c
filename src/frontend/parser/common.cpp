@@ -3,7 +3,7 @@
 #include <cstring>
 #include <cstdlib>
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 bool eval_enum_expr(Node* n, const std::unordered_map<std::string, long long>& consts,
                            long long* out) {
     if (!n || !out) return false;
@@ -454,4 +454,4 @@ bool types_compatible_p(TypeSpec a, TypeSpec b,
     return true;
 }
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c

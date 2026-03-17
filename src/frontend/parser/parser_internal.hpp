@@ -6,7 +6,7 @@
 #include "ast.hpp"
 #include "token.hpp"
 
-namespace tinyc2ll::frontend_cxx {
+namespace c4c {
 
 bool eval_enum_expr(Node* n, const std::unordered_map<std::string, long long>& consts,
                     long long* out);
@@ -28,4 +28,4 @@ TypeSpec resolve_typedef_chain(TypeSpec ts,
 bool types_compatible_p(TypeSpec a, TypeSpec b,
                         const std::unordered_map<std::string, TypeSpec>& tmap);
 
-}  // namespace tinyc2ll::frontend_cxx
+}  // namespace c4c
