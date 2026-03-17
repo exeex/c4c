@@ -370,6 +370,27 @@ Node* Parser::parse_top_level() {
         } else {
             attach_template_params(templated);
         }
+        // Template struct definitions: struct Pair { ... } was parsed inside the
+        // recursive parse_top_level() call and stored in struct_defs_, while
+        // `templated` is NK_EMPTY (struct-only declaration).  Find the struct
+        // def and attach template params to it.
+        if (!struct_defs_.empty() && !template_params.empty()) {
+            Node* last_sd = struct_defs_.back();
+            if (last_sd && last_sd->kind == NK_STRUCT_DEF &&
+                last_sd->n_template_params == 0) {
+                attach_template_params(last_sd);
+                template_struct_defs_[last_sd->name] = last_sd;
+                // In C++ mode, register the template struct name as a typedef
+                // so it's recognized as a type start for Pair<int> syntax.
+                typedefs_.insert(last_sd->name);
+                TypeSpec struct_ts{};
+                struct_ts.array_size = -1;
+                struct_ts.inner_rank = -1;
+                struct_ts.base = TB_STRUCT;
+                struct_ts.tag = last_sd->name;
+                typedef_types_[last_sd->name] = struct_ts;
+            }
+        }
         return templated;
     }
 

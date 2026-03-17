@@ -399,6 +399,96 @@ TypeSpec Parser::parse_base_type() {
                 ts.is_volatile |= save_vol;
                 // Phase C: remember the typedef name for fn_ptr param propagation.
                 last_resolved_typedef_ = tname;
+                // Template struct instantiation: Pair<int> in type context.
+                if (is_cpp_mode() && ts.base == TB_STRUCT && ts.tag &&
+                    template_struct_defs_.count(ts.tag) && check(TokenKind::Less)) {
+                    std::string tpl_name = ts.tag;
+                    const Node* tpl_def = template_struct_defs_[tpl_name];
+                    consume();  // <
+                    // Parse template arguments
+                    std::vector<std::pair<std::string, TypeSpec>> arg_bindings;
+                    int arg_idx = 0;
+                    while (!at_end() && !check(TokenKind::Greater)) {
+                        if (arg_idx >= tpl_def->n_template_params) break;
+                        const char* param_name = tpl_def->template_param_names[arg_idx];
+                        TypeSpec arg_ts = parse_type_name();
+                        arg_bindings.push_back({param_name, arg_ts});
+                        ++arg_idx;
+                        if (!match(TokenKind::Comma)) break;
+                    }
+                    expect(TokenKind::Greater);
+                    // Build mangled name: Pair_T_int
+                    std::string mangled = tpl_name;
+                    for (const auto& [pname, pts] : arg_bindings) {
+                        mangled += "_";
+                        mangled += pname;
+                        mangled += "_";
+                        // Type suffix for mangling
+                        switch (pts.base) {
+                            case TB_INT: mangled += "int"; break;
+                            case TB_UINT: mangled += "uint"; break;
+                            case TB_CHAR: case TB_SCHAR: mangled += "char"; break;
+                            case TB_UCHAR: mangled += "uchar"; break;
+                            case TB_SHORT: mangled += "short"; break;
+                            case TB_USHORT: mangled += "ushort"; break;
+                            case TB_LONG: mangled += "long"; break;
+                            case TB_ULONG: mangled += "ulong"; break;
+                            case TB_LONGLONG: mangled += "llong"; break;
+                            case TB_ULONGLONG: mangled += "ullong"; break;
+                            case TB_FLOAT: mangled += "float"; break;
+                            case TB_DOUBLE: mangled += "double"; break;
+                            case TB_LONGDOUBLE: mangled += "ldouble"; break;
+                            case TB_VOID: mangled += "void"; break;
+                            case TB_BOOL: mangled += "bool"; break;
+                            case TB_STRUCT: case TB_UNION:
+                                mangled += pts.tag ? pts.tag : "anon";
+                                break;
+                            default: mangled += "T"; break;
+                        }
+                        for (int p = 0; p < pts.ptr_level; ++p) mangled += "p";
+                    }
+                    // Instantiate if not already done
+                    if (!instantiated_template_structs_.count(mangled)) {
+                        instantiated_template_structs_.insert(mangled);
+                        // Create a concrete NK_STRUCT_DEF with substituted field types
+                        Node* inst = make_node(NK_STRUCT_DEF, tpl_def->line);
+                        inst->name = arena_.strdup(mangled.c_str());
+                        inst->is_union = tpl_def->is_union;
+                        inst->pack_align = tpl_def->pack_align;
+                        inst->struct_align = tpl_def->struct_align;
+                        // Clone fields with type substitution
+                        int num_fields = tpl_def->n_fields > 0 ? tpl_def->n_fields : 0;
+                        inst->n_fields = num_fields;
+                        inst->fields = arena_.alloc_array<Node*>(num_fields);
+                        for (int fi = 0; fi < num_fields; ++fi) {
+                            const Node* orig_f = tpl_def->fields[fi];
+                            Node* new_f = make_node(NK_DECL, orig_f->line);
+                            new_f->name = orig_f->name;
+                            new_f->type = orig_f->type;
+                            new_f->ival = orig_f->ival;
+                            new_f->is_anon_field = orig_f->is_anon_field;
+                            // Substitute template type parameters in field type
+                            for (const auto& [pname, pts] : arg_bindings) {
+                                if (new_f->type.base == TB_TYPEDEF && new_f->type.tag &&
+                                    std::string(new_f->type.tag) == pname) {
+                                    int save_ptr = new_f->type.ptr_level;
+                                    bool save_c = new_f->type.is_const;
+                                    bool save_v = new_f->type.is_volatile;
+                                    new_f->type.base = pts.base;
+                                    new_f->type.tag = pts.tag;
+                                    new_f->type.ptr_level += pts.ptr_level;
+                                    new_f->type.is_const |= pts.is_const;
+                                    new_f->type.is_volatile |= pts.is_volatile;
+                                }
+                            }
+                            inst->fields[fi] = new_f;
+                        }
+                        struct_defs_.push_back(inst);
+                        struct_tag_def_map_[mangled] = inst;
+                        defined_struct_tags_.insert(mangled);
+                    }
+                    ts.tag = arena_.strdup(mangled.c_str());
+                }
                 return ts;
             }
         }

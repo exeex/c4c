@@ -78,6 +78,11 @@ class Parser {
   bool parsing_top_level_context_;
   // True while parsing an explicit template specialization (template<>).
   bool parsing_explicit_specialization_ = false;
+  // Template struct definitions: maps struct tag → NK_STRUCT_DEF node with
+  // n_template_params > 0.  Used to instantiate template structs at usage sites.
+  std::unordered_map<std::string, Node*> template_struct_defs_;
+  // Already-instantiated template struct mangled names (avoid double instantiation).
+  std::set<std::string> instantiated_template_structs_;
   // Last enum definition node produced by parse_base_type(), if any.
   // Used so declaration-only enum statements (`enum { ... };`) can be retained.
   Node* last_enum_def_;

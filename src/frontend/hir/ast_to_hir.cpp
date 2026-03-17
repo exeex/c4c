@@ -975,6 +975,8 @@ class Lowerer {
 
   void lower_struct_def(const Node* sd) {
     if (!sd || sd->kind != NK_STRUCT_DEF) return;
+    // Skip template struct definitions — only instantiated structs are lowered.
+    if (sd->n_template_params > 0) return;
     const char* tag = sd->name;
     if (!tag || !tag[0]) return;
 
