@@ -369,6 +369,36 @@ set_tests_properties(cpp_hir_template_origin PROPERTIES
   PASS_REGULAR_EXPRESSION "template<apply>"
 )
 
+# Phase 7: specialization identity — distinct spec keys per instantiation in HIR
+add_test(
+  NAME cpp_hir_spec_key_identity
+  COMMAND c4cll --dump-hir "${INTERNAL_TEST_ROOT}/cpp/postive_case/specialization_identity.cpp"
+)
+set_tests_properties(cpp_hir_spec_key_identity PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "key=add<T=int>"
+)
+
+# Phase 7: specialization identity — multiple distinct keys in HIR
+add_test(
+  NAME cpp_hir_spec_key_distinct
+  COMMAND c4cll --dump-hir "${INTERNAL_TEST_ROOT}/cpp/postive_case/specialization_identity.cpp"
+)
+set_tests_properties(cpp_hir_spec_key_distinct PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "key=add<T=double>"
+)
+
+# Phase 7: specialization identity — spec-key in LLVM IR metadata comments
+add_test(
+  NAME cpp_llvm_spec_key_metadata
+  COMMAND c4cll "${INTERNAL_TEST_ROOT}/cpp/postive_case/specialization_identity.cpp"
+)
+set_tests_properties(cpp_llvm_spec_key_metadata PROPERTIES
+  LABELS "internal;positive_case;cpp;llvm"
+  PASS_REGULAR_EXPRESSION "spec-key: add<T=int>"
+)
+
 add_test(
     NAME frontend_cxx_preprocessor_tests
     COMMAND frontend_cxx_preprocessor_tests

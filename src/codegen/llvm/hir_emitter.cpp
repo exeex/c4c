@@ -4965,6 +4965,13 @@ void HirEmitter::emit_function(const Function& fn){
       return;
     }
 
+    // Emit specialization identity metadata as comments for template instantiations.
+    if (!fn.template_origin.empty()) {
+      out << "; template-origin: " << fn.template_origin << "\n";
+      if (!fn.spec_key.empty())
+        out << "; spec-key: " << fn.spec_key.canonical << "\n";
+    }
+
     // Signature
     std::string fn_lk = fn.linkage.is_static ? "internal " : "";
     if (fn.linkage.is_weak && !fn.linkage.is_static) fn_lk = "weak ";

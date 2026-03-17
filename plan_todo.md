@@ -1,103 +1,83 @@
 # Plan Execution State
 
 ## Baseline
-- 1858/1858 tests passing (2026-03-17)
+- 1862/1862 tests passing (2026-03-17)
 
 ## Overall Assessment
 
-Phase 6 is now implemented with a meaningful materialization boundary.
+Phase 7 slice 1 is now implemented: specialization identity with hashing, O(1) dedup, and LLVM IR metadata.
 
 Current state:
 - HIR preserves template/consteval metadata and exposes debug visibility
 - **Nested template instantiation is owned by the HIR compile-time reduction pass**
 - **Truly deferred consteval is implemented**: consteval calls during deferred template instantiation are NOT evaluated eagerly during lowering. Instead, they create `PendingConstevalExpr` HIR nodes that the compile-time pass evaluates in a separate step.
 - **Phase 6 materialization boundary**: consteval functions are lowered to HIR as declaration-only entities marked `consteval_only`, and the materialization pass excludes them from code emission. Template instantiations track their `template_origin` for provenance.
+- **Phase 7 slice 1**: SpecializationKey has hash support (`SpecializationKeyHash`), `has_instance()` uses O(1) lookup via `instance_keys_` set, `spec_key` is set on `Function` during both eager and deferred lowering, LLVM IR emits `; spec-key:` and `; template-origin:` comments on instantiated functions.
 
 Summary:
 - Phase 1: complete
 - Phases 2-4: partially complete, with good observability and metadata preservation
 - Phase 5: **substantially complete** — deferred template instantiation works; truly deferred consteval evaluation works via PendingConstevalExpr
 - Phase 6: **complete** — materialization boundary separates compile-time entities from emitted code
-- Phase 7: largely complete for current scope
+- Phase 7: **slice 1 complete** — specialization identity is stable, hashable, and emitted in LLVM IR
 
 ---
 
-## What was done in this session (2026-03-17, session 4)
+## What was done in this session (2026-03-17, session 5)
 
-### Phase 6: Materialization boundary
+### Phase 7 slice 1: Specialization identity hashing, O(1) dedup, and LLVM metadata
 
-**Goal**: Separate compile-time specialization from code emission. Make materialization a real policy step, not a trivial "materialize everything" pass.
+**Goal**: Make specialization identity stable, hashable, and visible in emitted LLVM IR.
 
 **Implementation changes**:
 
-1. **`ir.hpp`**: Added `consteval_only` (bool) and `template_origin` (string) fields to `Function`
-   - `consteval_only`: true for functions that exist only for compile-time analysis
-   - `template_origin`: records which template a function was instantiated from (e.g., "add" for add_i)
+1. **`ir.hpp`**: Moved `SpecializationKey` and added `SpecializationKeyHash` before `Function` struct. Added `spec_key` field to `Function`.
 
-2. **`ast_to_hir.cpp`**: Non-template consteval functions are now lowered to HIR as declaration-only entities (no body) with `consteval_only = true`. Previously they were completely skipped during lowering. Template instantiations now set `template_origin` both during Phase 2 (eager lowering) and Phase 3 (deferred lowering callback).
+2. **`ast_to_hir.cpp`**:
+   - Added `spec_key` to `TemplateInstance` struct
+   - Added `instance_keys_` (`unordered_set<string>`) for O(1) dedup in `has_instance()`
+   - `record_instance()` now builds and stores `SpecializationKey` per instantiation
+   - `spec_key` propagated to `Function` during both eager (Phase 2) and deferred (Phase 3) lowering
 
-3. **`compile_time_pass.cpp`**: `materialize_ready_functions()` now implements a real materialization policy:
-   - `consteval_only` functions → `materialized = false` (not emitted)
-   - All other functions → `materialized = true` (emitted as LLVM code)
-   - Stats report both materialized and "compile-time only" counts
+3. **`hir_emitter.cpp`**: Template-instantiated functions now emit `; template-origin:` and `; spec-key:` comments before the function definition in LLVM IR output.
 
-4. **`hir_printer.cpp`**: `print_function()` now shows `consteval_only`, `template<origin>`, and `[non-materialized]` annotations
-
-5. **`hir_emitter.cpp`**: Already had the `if (!fn.materialized) continue;` check — no changes needed
+4. **`hir_printer.cpp`**: Functions now show `key=...` annotation when spec_key is present.
 
 ### Test additions
-- **`materialization_boundary.cpp`**: Test case with 2 consteval functions + 1 template instantiation + main. Verifies consteval functions are not emitted and template instantiations work correctly.
-- **`cpp_hir_materialization_boundary`**: HIR dump test verifying "2 compile-time only" appears
-- **`cpp_hir_template_origin`**: HIR dump test verifying `template<apply>` appears
-- **`cpp_positive_sema_materialization_boundary_cpp`**: Runtime correctness test (auto-discovered)
+- **`specialization_identity.cpp`**: Test case with 2 templates × multiple instantiations (add<int>, add<double>, mul<int>)
+- **`cpp_hir_spec_key_identity`**: HIR test verifying `key=add<T=int>` appears
+- **`cpp_hir_spec_key_distinct`**: HIR test verifying `key=add<T=double>` appears (distinct from int)
+- **`cpp_llvm_spec_key_metadata`**: LLVM IR test verifying `spec-key: add<T=int>` appears
+- **`cpp_positive_sema_specialization_identity_cpp`**: Runtime correctness test (auto-discovered)
 
-### Exit criteria met
-- Concrete codegen is a policy step (`materialize_ready_functions()` decides; codegen only emits materialized)
-- Template semantics remain valid even if emission is delayed (non-materialized functions persist in HIR)
-- consteval_only functions demonstrate the boundary: visible in HIR, absent from LLVM IR
+### Exit criteria progress (Phase 7)
+- [x] Define a stable specialization key — `SpecializationKey` struct with canonical string format
+- [x] Include canonicalized template args in the key — `make_specialization_key()` uses `canonical_type_str()`
+- [x] Ensure identity is deterministic across TUs — params sorted by declaration order, type strings canonical
+- [ ] Keep encoding serializable for future link-time/JIT use — key is a string, but no cross-TU serialization yet
 
 ### Files changed
-- `src/frontend/hir/ir.hpp` — `consteval_only`, `template_origin` fields on Function
-- `src/frontend/hir/ast_to_hir.cpp` — consteval function declarations in HIR, template_origin tracking
-- `src/frontend/hir/compile_time_pass.cpp` — real materialization policy
-- `src/frontend/hir/hir_printer.cpp` — materialization annotations
-- `tests/internal/InternalTests.cmake` — 2 new HIR tests
-- `tests/internal/cpp/postive_case/materialization_boundary.cpp` — new test case
+- `src/frontend/hir/ir.hpp` — moved SpecializationKey before Function, added SpecializationKeyHash, added spec_key to Function
+- `src/frontend/hir/ast_to_hir.cpp` — O(1) dedup, spec_key on TemplateInstance and Function
+- `src/codegen/llvm/hir_emitter.cpp` — LLVM IR metadata comments for template origin and spec key
+- `src/frontend/hir/hir_printer.cpp` — key= annotation on functions
+- `tests/internal/InternalTests.cmake` — 3 new tests
+- `tests/internal/cpp/postive_case/specialization_identity.cpp` — new test case
 
 ---
 
 ## Added Testcases
 
-The work now includes 19 HIR-oriented regression tests:
+The work now includes 23 HIR-oriented regression tests:
 
-Previous 16 + 3 new:
-- **`cpp_hir_materialization_boundary`** (NEW — proves consteval_only functions are non-materialized)
-- **`cpp_hir_template_origin`** (NEW — proves template_origin tracking works)
-- **`cpp_positive_sema_materialization_boundary_cpp`** (NEW — runtime correctness for materialization boundary)
-
----
-
-## Phase 6: Define materialization boundary
-**Status: COMPLETE**
-
-### What is now implemented
-- `consteval_only` flag on `Function` for compile-time-only entities
-- `template_origin` tracking for template instantiation provenance
-- `materialize_ready_functions()` implements a real policy (not trivial "materialize all")
-- Consteval functions are visible in HIR (declaration-only) but not emitted
-- HIR printer shows materialization annotations
-- Codegen filters on `materialized` flag (was already in place)
-
-### Exit criteria
-- [x] Decide what counts as a materialized specialized function
-- [x] Keep non-materialized template entities representable in HIR
-- [x] Ensure codegen only consumes materialized entities
-- [x] Keep compile-time reduction semantics separate from emission policy
+Previous 19 + 4 new:
+- **`cpp_hir_spec_key_identity`** (NEW — proves spec_key appears in HIR)
+- **`cpp_hir_spec_key_distinct`** (NEW — proves distinct instantiations have distinct keys)
+- **`cpp_llvm_spec_key_metadata`** (NEW — proves spec-key emitted in LLVM IR)
+- **`cpp_positive_sema_specialization_identity_cpp`** (NEW — runtime correctness)
 
 ---
 
 ## Recommended next milestone
 
-Phase 5 remaining work: non-type template parameters (prerequisite for consteval→template feedback loop, the final convergence test).
-
-Alternatively, begin exploring Phase 7 depth: cross-TU dedup testing, or link-time serialization of specialization keys.
+Phase 7 slice 2: Cross-TU serialization format for specialization keys (e.g., LLVM named metadata or custom section), or begin Phase 5 remaining work (non-type template parameters).

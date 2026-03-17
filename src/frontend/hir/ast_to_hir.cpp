@@ -539,8 +539,10 @@ class Lowerer {
           if (inst_it != template_fn_instances_.end() && !inst_it->second.empty()) {
             for (const auto& inst : inst_it->second) {
               lower_function(item, &inst.mangled_name, &inst.bindings);
-              if (!m.functions.empty())
+              if (!m.functions.empty()) {
                 m.functions.back().template_origin = item->name ? item->name : "";
+                m.functions.back().spec_key = inst.spec_key;
+              }
             }
           } else {
             // No explicit-arg call sites found.
@@ -578,9 +580,13 @@ class Lowerer {
       defer_consteval_ = true;
       lower_function(fn_def, &mangled, &bindings);
       defer_consteval_ = false;
-      // Track template origin for deferred instantiations.
-      if (!module_->functions.empty())
+      // Track template origin and specialization key for deferred instantiations.
+      if (!module_->functions.empty()) {
         module_->functions.back().template_origin = tpl_name;
+        auto param_order = get_template_param_order_from_instances(tpl_name);
+        module_->functions.back().spec_key =
+            make_specialization_key(tpl_name, param_order, bindings);
+      }
       return true;
     };
     // Consteval evaluation callback for the compile-time pass.
@@ -3789,6 +3795,7 @@ class Lowerer {
   struct TemplateInstance {
     TypeBindings bindings;
     std::string mangled_name;
+    SpecializationKey spec_key;  // stable identity for dedup/caching
   };
 
   // Produce a deterministic type suffix for name mangling.
@@ -3855,14 +3862,9 @@ class Lowerer {
     return bindings;
   }
 
-  // Check if an instantiation with the given mangled name already exists.
+  // Check if an instantiation with the given mangled name already exists (O(1)).
   bool has_instance(const std::string& fn_name, const std::string& mangled) {
-    auto it = template_fn_instances_.find(fn_name);
-    if (it == template_fn_instances_.end()) return false;
-    for (const auto& inst : it->second) {
-      if (inst.mangled_name == mangled) return true;
-    }
-    return false;
+    return instance_keys_.count(fn_name + "::" + mangled) > 0;
   }
 
   // Check if all bindings are concrete (no unresolved TB_TYPEDEF).
@@ -3884,12 +3886,22 @@ class Lowerer {
     return params;
   }
 
+  // Get template parameter order from the definition (for specialization key).
+  std::vector<std::string> get_template_param_order_from_instances(const std::string& fn_name) {
+    auto it = template_fn_defs_.find(fn_name);
+    if (it != template_fn_defs_.end()) return get_template_param_order(it->second);
+    return {};
+  }
+
   // Record a template instantiation. Returns the mangled name.
   // Only records if all bindings are concrete (no unresolved typedefs).
   std::string record_instance(const std::string& fn_name, TypeBindings bindings) {
     if (!bindings_are_concrete(bindings)) return "";  // Skip unresolved.
     std::string mangled = mangle_template_name(fn_name, bindings);
-    template_fn_instances_[fn_name].push_back({std::move(bindings), mangled});
+    auto param_order = get_template_param_order_from_instances(fn_name);
+    SpecializationKey sk = make_specialization_key(fn_name, param_order, bindings);
+    template_fn_instances_[fn_name].push_back({std::move(bindings), mangled, sk});
+    instance_keys_.insert(fn_name + "::" + mangled);
     return mangled;
   }
 
@@ -4046,6 +4058,8 @@ class Lowerer {
   std::unordered_map<std::string, const Node*> template_fn_defs_;
   // Template function name → all unique instantiations.
   std::unordered_map<std::string, std::vector<TemplateInstance>> template_fn_instances_;
+  // O(1) dedup set: "fn_name::mangled_name" for each recorded instance.
+  std::unordered_set<std::string> instance_keys_;
   // When true, consteval calls create PendingConstevalExpr instead of
   // evaluating eagerly.  Set during deferred template instantiation.
   bool defer_consteval_ = false;

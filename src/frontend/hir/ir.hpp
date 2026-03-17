@@ -523,6 +523,28 @@ struct Block {
   }
 };
 
+/// A stable specialization key for template instantiation identity.
+/// Encodes template name + canonicalized argument types in a deterministic,
+/// serializable format suitable for cross-TU dedup and future JIT caching.
+///
+/// Format: "template_name<param1=type1,param2=type2,...>"
+/// Parameters are sorted alphabetically for determinism.
+struct SpecializationKey {
+  std::string canonical;  // serialized canonical form
+
+  bool operator==(const SpecializationKey& other) const { return canonical == other.canonical; }
+  bool operator!=(const SpecializationKey& other) const { return canonical != other.canonical; }
+  bool operator<(const SpecializationKey& other) const { return canonical < other.canonical; }
+  bool empty() const { return canonical.empty(); }
+};
+
+/// Hash support for SpecializationKey — enables use in unordered containers.
+struct SpecializationKeyHash {
+  std::size_t operator()(const SpecializationKey& k) const noexcept {
+    return std::hash<std::string>{}(k.canonical);
+  }
+};
+
 struct Function {
   FunctionId id{};
   SymbolName name;
@@ -546,6 +568,9 @@ struct Function {
   /// When this function is a template instantiation, records the source template
   /// name (e.g. "add" for add<int>).  Empty for non-template functions.
   std::string template_origin;
+  /// Stable specialization key for cross-TU dedup and future JIT caching.
+  /// Only set for template instantiations.
+  SpecializationKey spec_key;
 
   Block* find_block(BlockId id) {
     auto it = std::find_if(
@@ -641,21 +666,6 @@ struct HirStructDef {
 
 /// Type bindings for template parameter substitution.
 using TypeBindings = std::unordered_map<std::string, TypeSpec>;
-
-/// A stable specialization key for template instantiation identity.
-/// Encodes template name + canonicalized argument types in a deterministic,
-/// serializable format suitable for cross-TU dedup and future JIT caching.
-///
-/// Format: "template_name<param1=type1,param2=type2,...>"
-/// Parameters are sorted alphabetically for determinism.
-struct SpecializationKey {
-  std::string canonical;  // serialized canonical form
-
-  bool operator==(const SpecializationKey& other) const { return canonical == other.canonical; }
-  bool operator!=(const SpecializationKey& other) const { return canonical != other.canonical; }
-  bool operator<(const SpecializationKey& other) const { return canonical < other.canonical; }
-  bool empty() const { return canonical.empty(); }
-};
 
 /// Canonical type string for specialization keys (deterministic, no whitespace).
 inline std::string canonical_type_str(const TypeSpec& ts) {

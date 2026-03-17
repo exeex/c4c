@@ -273,6 +273,7 @@ class Printer {
     if (fn.linkage.is_extern) out << " extern";
     if (fn.consteval_only) out << " consteval_only";
     if (!fn.template_origin.empty()) out << " template<" << fn.template_origin << ">";
+    if (!fn.spec_key.empty()) out << " key=" << fn.spec_key.canonical;
     if (!fn.materialized) out << " [non-materialized]";
     out << "  [entry: block#" << fn.entry.value << "]\n";
 
