@@ -399,6 +399,26 @@ set_tests_properties(cpp_llvm_spec_key_metadata PROPERTIES
   PASS_REGULAR_EXPRESSION "spec-key: add<T=int>"
 )
 
+# Phase 7 slice 2: specialization keys as LLVM named metadata for cross-TU serialization
+add_test(
+  NAME cpp_llvm_spec_key_named_metadata
+  COMMAND c4cll "${INTERNAL_TEST_ROOT}/cpp/postive_case/specialization_identity.cpp"
+)
+set_tests_properties(cpp_llvm_spec_key_named_metadata PROPERTIES
+  LABELS "internal;positive_case;cpp;llvm"
+  PASS_REGULAR_EXPRESSION "!c4c\\.specializations"
+)
+
+# Phase 7 slice 2: named metadata entries contain spec-key strings
+add_test(
+  NAME cpp_llvm_spec_key_named_metadata_entry
+  COMMAND c4cll "${INTERNAL_TEST_ROOT}/cpp/postive_case/specialization_identity.cpp"
+)
+set_tests_properties(cpp_llvm_spec_key_named_metadata_entry PROPERTIES
+  LABELS "internal;positive_case;cpp;llvm"
+  PASS_REGULAR_EXPRESSION "!\"add<T=int>\""
+)
+
 add_test(
     NAME frontend_cxx_preprocessor_tests
     COMMAND frontend_cxx_preprocessor_tests

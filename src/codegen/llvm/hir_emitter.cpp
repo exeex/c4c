@@ -219,6 +219,26 @@ std::string HirEmitter::emit(){
       if (b.is_internal && !reachable.count(b.name)) continue;
       out << b.body;
     }
+
+    // Emit LLVM named metadata for specialization identity (cross-TU serialization).
+    if (!spec_entries_.empty()) {
+      out << "\n";
+      // Emit individual metadata entries.
+      int md_id = 0;
+      for (const auto& e : spec_entries_) {
+        out << "!" << md_id << " = !{!\"" << e.spec_key << "\", !\""
+            << e.template_origin << "\", !\"" << e.mangled_name << "\"}\n";
+        ++md_id;
+      }
+      // Emit named metadata node referencing all entries.
+      out << "!c4c.specializations = !{";
+      for (int i = 0; i < md_id; ++i) {
+        if (i) out << ", ";
+        out << "!" << i;
+      }
+      out << "}\n";
+    }
+
     return out.str();
   }
 
@@ -4968,8 +4988,10 @@ void HirEmitter::emit_function(const Function& fn){
     // Emit specialization identity metadata as comments for template instantiations.
     if (!fn.template_origin.empty()) {
       out << "; template-origin: " << fn.template_origin << "\n";
-      if (!fn.spec_key.empty())
+      if (!fn.spec_key.empty()) {
         out << "; spec-key: " << fn.spec_key.canonical << "\n";
+        spec_entries_.push_back({fn.spec_key.canonical, fn.template_origin, std::string(fn.name)});
+      }
     }
 
     // Signature

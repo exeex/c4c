@@ -104,6 +104,10 @@ class HirEmitter {
   bool need_llvm_stackrestore_ = false;
   bool need_llvm_abs_ = false;
 
+  // ── Specialization metadata for cross-TU serialization ──────────────────
+  struct SpecEntry { std::string spec_key; std::string template_origin; std::string mangled_name; };
+  std::vector<SpecEntry> spec_entries_;
+
   // ── Instruction helpers ───────────────────────────────────────────────────
 
   void emit_instr(FnCtx& ctx, const std::string& line);
