@@ -144,6 +144,13 @@ class Printer {
       }
     }
 
+    if (!m_.template_defs.empty()) {
+      out << "\n--- templates ---\n";
+      for (const auto& [name, tdef] : m_.template_defs) {
+        print_template_def(out, tdef);
+      }
+    }
+
     if (!m_.globals.empty()) {
       out << "\n--- globals ---\n";
       for (const auto& g : m_.globals) {
@@ -160,6 +167,32 @@ class Printer {
 
  private:
   const Module& m_;
+
+  void print_template_def(std::ostringstream& out, const HirTemplateDef& td) {
+    out << "  template";
+    if (td.is_consteval) out << " consteval";
+    out << " " << td.name << "<";
+    for (size_t i = 0; i < td.template_params.size(); ++i) {
+      if (i) out << ", ";
+      out << "typename " << td.template_params[i];
+    }
+    out << ">";
+    if (!td.instances.empty()) {
+      out << " [" << td.instances.size() << " instantiation"
+          << (td.instances.size() > 1 ? "s" : "") << "]";
+    }
+    out << "\n";
+    for (const auto& inst : td.instances) {
+      out << "    -> " << inst.mangled_name << " {";
+      bool first = true;
+      for (const auto& [param, ts] : inst.bindings) {
+        if (!first) out << ", ";
+        out << param << "=" << ts_str(ts);
+        first = false;
+      }
+      out << "}\n";
+    }
+  }
 
   void print_struct_def(std::ostringstream& out, const HirStructDef& sd) {
     out << "  " << (sd.is_union ? "union " : "struct ") << sd.tag

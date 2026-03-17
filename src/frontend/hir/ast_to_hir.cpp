@@ -474,6 +474,28 @@ class Lowerer {
       if (cur_size == prev_size) break;
     }
 
+    // Phase 1.7: populate HirTemplateDef metadata for all template functions.
+    for (const auto& [name, fn_def] : template_fn_defs_) {
+      HirTemplateDef tdef;
+      tdef.name = name;
+      tdef.is_consteval = fn_def->is_consteval;
+      tdef.span = make_span(fn_def);
+      for (int i = 0; i < fn_def->n_template_params; ++i) {
+        if (fn_def->template_param_names[i])
+          tdef.template_params.emplace_back(fn_def->template_param_names[i]);
+      }
+      auto inst_it = template_fn_instances_.find(name);
+      if (inst_it != template_fn_instances_.end()) {
+        for (const auto& inst : inst_it->second) {
+          HirTemplateInstantiation hi;
+          hi.mangled_name = inst.mangled_name;
+          hi.bindings = inst.bindings;
+          tdef.instances.push_back(std::move(hi));
+        }
+      }
+      m.template_defs[name] = std::move(tdef);
+    }
+
     // Phase 2: lower functions and globals
     for (const Node* item : items) {
       if (item->kind == NK_FUNCTION) {

@@ -187,6 +187,26 @@ else()
   message(WARNING "clang not found: skipping internal cpp positive_case runtime tests")
 endif()
 
+# HIR template definition dump test: verify template metadata survives lowering
+add_test(
+  NAME cpp_hir_template_def_dump
+  COMMAND c4cll --dump-hir "${INTERNAL_TEST_ROOT}/cpp/postive_case/template_func.cpp"
+)
+set_tests_properties(cpp_hir_template_def_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "template add<typename T>.*instantiation"
+)
+
+# HIR consteval template dump test: verify consteval template metadata preserved
+add_test(
+  NAME cpp_hir_consteval_template_dump
+  COMMAND c4cll --dump-hir "${INTERNAL_TEST_ROOT}/cpp/postive_case/consteval_template.cpp"
+)
+set_tests_properties(cpp_hir_consteval_template_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "template consteval square<typename T>"
+)
+
 add_test(
     NAME frontend_cxx_preprocessor_tests
     COMMAND frontend_cxx_preprocessor_tests

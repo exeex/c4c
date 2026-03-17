@@ -607,6 +607,28 @@ struct HirStructDef {
   std::vector<HirStructField> fields;
 };
 
+// ── Template function definition metadata (populated by ast_to_hir) ──────────
+
+/// Type bindings for template parameter substitution.
+using TypeBindings = std::unordered_map<std::string, TypeSpec>;
+
+/// A single template instantiation produced during lowering.
+struct HirTemplateInstantiation {
+  std::string mangled_name;  // e.g. "add_i" for add<int>
+  TypeBindings bindings;     // template param → concrete type
+};
+
+/// A template function definition preserved through lowering.
+/// The original AST body is not stored here (it would require AST lifetime management);
+/// instead, this captures the template metadata and the list of instantiations produced.
+struct HirTemplateDef {
+  SymbolName name;                                  // generic name (e.g. "add")
+  std::vector<std::string> template_params;         // parameter names (e.g. ["T"])
+  bool is_consteval = false;                        // consteval template functions
+  std::vector<HirTemplateInstantiation> instances;  // instantiations produced
+  SourceSpan span{};
+};
+
 namespace phase2::hir {
 
 struct Module {
@@ -620,6 +642,9 @@ struct Module {
   // Struct/union definitions (populated by lower_ast_to_hir)
   std::unordered_map<SymbolName, HirStructDef> struct_defs;
   std::vector<SymbolName> struct_def_order;  // insertion order for deterministic emission
+
+  // Template function definitions (populated by lower_ast_to_hir)
+  std::unordered_map<SymbolName, HirTemplateDef> template_defs;
 
   // Stable ID cursors for multi-pass transforms that may append nodes.
   uint32_t next_function_id = 0;
