@@ -71,6 +71,39 @@ struct TemplateInstantiationStep {
   }
 };
 
+/// Attempt one round of consteval reduction verification.
+///
+/// Walks all ConstevalCallInfo records and checks whether the result_expr
+/// points to a valid IntLiteral in the module's expr_pool with a matching
+/// value.  Returns the number of verified (reduced) and pending records.
+///
+/// Currently, AST-to-HIR lowering reduces all consteval calls eagerly, so
+/// every record should already have a valid result.  This step provides the
+/// verification hook and will later drive deferred consteval reduction when
+/// template instantiation produces new consteval call sites.
+struct ConstevalReductionStep {
+  const Module& module;
+  size_t reduced = 0;
+  size_t pending = 0;
+
+  void run() {
+    for (const auto& cci : module.consteval_calls) {
+      // Check that result_expr points to a valid IntLiteral with the expected value.
+      const auto* expr = module.find_expr(cci.result_expr);
+      if (!expr) {
+        ++pending;
+        continue;
+      }
+      const auto* lit = std::get_if<IntLiteral>(&expr->payload);
+      if (!lit || lit->value != cci.result_value) {
+        ++pending;
+        continue;
+      }
+      ++reduced;
+    }
+  }
+};
+
 }  // namespace
 
 CompileTimePassStats run_compile_time_reduction(Module& module) {
@@ -88,19 +121,22 @@ CompileTimePassStats run_compile_time_reduction(Module& module) {
     stats.templates_instantiated = tpl_step.resolved;
     stats.templates_pending = tpl_step.pending;
 
-    // Step 2: consteval reduction count (verification).
-    // Currently all consteval calls are reduced during lowering.
-    stats.consteval_reduced = module.consteval_calls.size();
+    // Step 2: consteval reduction verification.
+    ConstevalReductionStep ce_step{module};
+    ce_step.run();
 
-    // Convergence: no pending work remains.
-    if (tpl_step.pending == 0) {
+    stats.consteval_reduced = ce_step.reduced;
+    stats.consteval_pending = ce_step.pending;
+
+    // Convergence: no pending work remains in either step.
+    if (tpl_step.pending == 0 && ce_step.pending == 0) {
       stats.converged = true;
       break;
     }
 
     // If there are pending items but no progress was made, we've hit an
-    // irreducible set.  Future slices will add actual instantiation here;
-    // for now, we report non-convergence and stop.
+    // irreducible set.  Future slices will add actual instantiation/reduction
+    // here; for now, we report non-convergence and stop.
     stats.converged = false;
     break;
   }
@@ -118,8 +154,18 @@ std::string format_compile_time_stats(const CompileTimePassStats& stats) {
       << " resolved"
       << ", " << stats.consteval_reduced << " consteval reduction"
       << (stats.consteval_reduced != 1 ? "s" : "");
-  if (stats.templates_pending > 0) {
-    out << ", " << stats.templates_pending << " pending";
+  if (stats.templates_pending > 0 || stats.consteval_pending > 0) {
+    out << " (";
+    bool first = true;
+    if (stats.templates_pending > 0) {
+      out << stats.templates_pending << " template" << (stats.templates_pending != 1 ? "s" : "") << " pending";
+      first = false;
+    }
+    if (stats.consteval_pending > 0) {
+      if (!first) out << ", ";
+      out << stats.consteval_pending << " consteval" << (stats.consteval_pending != 1 ? "s" : "") << " pending";
+    }
+    out << ")";
   }
   if (stats.converged) {
     out << " (converged)";

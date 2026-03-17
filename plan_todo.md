@@ -1,7 +1,7 @@
 # Plan Execution State
 
 ## Baseline
-- 1844/1844 tests passing (2026-03-17)
+- 1847/1847 tests passing (2026-03-17)
 
 ## Phase 1: Constrain sema to conservative compile-time work
 **Status: COMPLETE** (already satisfied by current architecture)
@@ -122,6 +122,7 @@ Make compile-time behavior converge through repeated passes instead of fixed fro
 ### Completed Slices
 - [x] Slice 1: Add HIR pass entry point for compile-time reduction
 - [x] Slice 2: Implement one iteration step for template instantiation
+- [x] Slice 3: Implement one iteration step for consteval reduction
 
 ### What was added (Slice 1)
 - `compile_time_pass.hpp`: `CompileTimePassStats`, `run_compile_time_reduction()`, `format_compile_time_stats()` API
@@ -136,9 +137,15 @@ Make compile-time behavior converge through repeated passes instead of fixed fro
 - `compile_time_pass.cpp`: Updated `format_compile_time_stats()` to show "N template calls resolved" and optional pending count
 - `InternalTests.cmake`: `cpp_hir_template_instantiation_resolved` test verifying "1 template call resolved" + "(converged)"
 
+### What was added (Slice 3)
+- `compile_time_pass.hpp`: Added `consteval_pending` field to `CompileTimePassStats`
+- `compile_time_pass.cpp`: `ConstevalReductionStep` — walks `consteval_calls`, verifies each `result_expr` points to valid IntLiteral with matching value; counts reduced vs pending
+- `compile_time_pass.cpp`: Convergence now checks both template pending and consteval pending
+- `compile_time_pass.cpp`: Updated `format_compile_time_stats()` to show detailed pending breakdown
+- `InternalTests.cmake`: `cpp_hir_consteval_reduction_verified` and `cpp_hir_consteval_template_reduction_verified` tests
+
 ### Remaining Slices
-- [ ] Slice 3: Implement one iteration step for consteval reduction
-- [ ] Slice 4: Re-run until convergence or explicit iteration limit
+- [ ] Slice 4: Re-run until convergence or explicit iteration limit (already structurally in place — needs real deferred work to exercise)
 - [ ] Slice 5: Surface structured diagnostics on irreducible required compile-time nodes
 
 ---

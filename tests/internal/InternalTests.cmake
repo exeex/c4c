@@ -257,6 +257,26 @@ set_tests_properties(cpp_hir_template_instantiation_resolved PROPERTIES
   PASS_REGULAR_EXPRESSION "1 template call resolved.*\\(converged\\)"
 )
 
+# HIR consteval reduction verification: verify all consteval calls verified as reduced
+add_test(
+  NAME cpp_hir_consteval_reduction_verified
+  COMMAND c4cll --dump-hir "${INTERNAL_TEST_ROOT}/cpp/postive_case/consteval_func.cpp"
+)
+set_tests_properties(cpp_hir_consteval_reduction_verified PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "1 consteval reduction.*\\(converged\\)"
+)
+
+# HIR consteval+template reduction verification: verify both steps converge
+add_test(
+  NAME cpp_hir_consteval_template_reduction_verified
+  COMMAND c4cll --dump-hir "${INTERNAL_TEST_ROOT}/cpp/postive_case/consteval_template.cpp"
+)
+set_tests_properties(cpp_hir_consteval_template_reduction_verified PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "1 consteval reduction.*\\(converged\\)"
+)
+
 add_test(
     NAME frontend_cxx_preprocessor_tests
     COMMAND frontend_cxx_preprocessor_tests

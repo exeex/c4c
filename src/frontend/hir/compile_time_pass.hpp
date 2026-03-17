@@ -11,7 +11,8 @@ namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir {
 struct CompileTimePassStats {
   size_t templates_instantiated = 0;  // template calls with resolved target functions
   size_t templates_pending = 0;       // template calls whose target is missing
-  size_t consteval_reduced = 0;       // consteval calls reduced to constants
+  size_t consteval_reduced = 0;       // consteval calls successfully reduced to constants
+  size_t consteval_pending = 0;       // consteval calls whose result is missing or invalid
   size_t iterations = 0;              // total fixpoint iterations performed
   bool converged = false;             // true if no new work was found
 };
