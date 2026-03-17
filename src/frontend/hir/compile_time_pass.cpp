@@ -111,6 +111,9 @@ CompileTimePassStats run_compile_time_reduction(Module& module) {
 
   static constexpr int kMaxIterations = 8;
 
+  size_t prev_templates_pending = SIZE_MAX;
+  size_t prev_consteval_pending = SIZE_MAX;
+
   for (int iter = 0; iter < kMaxIterations; ++iter) {
     ++stats.iterations;
 
@@ -134,11 +137,25 @@ CompileTimePassStats run_compile_time_reduction(Module& module) {
       break;
     }
 
-    // If there are pending items but no progress was made, we've hit an
-    // irreducible set.  Future slices will add actual instantiation/reduction
-    // here; for now, we report non-convergence and stop.
-    stats.converged = false;
-    break;
+    // Check whether this iteration made progress compared to the previous one.
+    // Progress means at least one pending count decreased.
+    bool made_progress =
+        tpl_step.pending < prev_templates_pending ||
+        ce_step.pending < prev_consteval_pending;
+
+    prev_templates_pending = tpl_step.pending;
+    prev_consteval_pending = ce_step.pending;
+
+    if (!made_progress) {
+      // No progress — we've hit an irreducible set.  Future work will add
+      // actual deferred instantiation/reduction here.
+      stats.converged = false;
+      break;
+    }
+
+    // Progress was made but pending items remain — continue iterating.
+    // Future work: trigger deferred template instantiation or consteval
+    // reduction here to resolve newly-ready items.
   }
 
   return stats;

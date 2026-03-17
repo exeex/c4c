@@ -1,7 +1,7 @@
 # Plan Execution State
 
 ## Baseline
-- 1847/1847 tests passing (2026-03-17)
+- 1848/1848 tests passing (2026-03-17)
 
 ## Phase 1: Constrain sema to conservative compile-time work
 **Status: COMPLETE** (already satisfied by current architecture)
@@ -123,6 +123,7 @@ Make compile-time behavior converge through repeated passes instead of fixed fro
 - [x] Slice 1: Add HIR pass entry point for compile-time reduction
 - [x] Slice 2: Implement one iteration step for template instantiation
 - [x] Slice 3: Implement one iteration step for consteval reduction
+- [x] Slice 4: Fixpoint loop with progress tracking and iteration limit
 
 ### What was added (Slice 1)
 - `compile_time_pass.hpp`: `CompileTimePassStats`, `run_compile_time_reduction()`, `format_compile_time_stats()` API
@@ -144,8 +145,14 @@ Make compile-time behavior converge through repeated passes instead of fixed fro
 - `compile_time_pass.cpp`: Updated `format_compile_time_stats()` to show detailed pending breakdown
 - `InternalTests.cmake`: `cpp_hir_consteval_reduction_verified` and `cpp_hir_consteval_template_reduction_verified` tests
 
+### What was added (Slice 4)
+- `compile_time_pass.cpp`: Fixpoint loop now tracks progress between iterations via `prev_templates_pending` and `prev_consteval_pending`; continues iterating only when pending counts decrease; stops on no-progress (irreducible set) or convergence
+- `InternalTests.cmake`: `cpp_hir_fixpoint_convergence` test — verifies multi-template+consteval scenario (consteval_nested_template.cpp) converges in 1 iteration with correct counts
+
+### Completed Slices
+- [x] Slice 4: Fixpoint loop with progress tracking and iteration limit
+
 ### Remaining Slices
-- [ ] Slice 4: Re-run until convergence or explicit iteration limit (already structurally in place — needs real deferred work to exercise)
 - [ ] Slice 5: Surface structured diagnostics on irreducible required compile-time nodes
 
 ---

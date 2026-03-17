@@ -277,6 +277,16 @@ set_tests_properties(cpp_hir_consteval_template_reduction_verified PROPERTIES
   PASS_REGULAR_EXPRESSION "1 consteval reduction.*\\(converged\\)"
 )
 
+# HIR fixpoint convergence: verify multi-template+consteval scenario converges in 1 iteration
+add_test(
+  NAME cpp_hir_fixpoint_convergence
+  COMMAND c4cll --dump-hir "${INTERNAL_TEST_ROOT}/cpp/postive_case/consteval_nested_template.cpp"
+)
+set_tests_properties(cpp_hir_fixpoint_convergence PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "1 iteration, 6 template calls resolved, 8 consteval reductions \\(converged\\)"
+)
+
 add_test(
     NAME frontend_cxx_preprocessor_tests
     COMMAND frontend_cxx_preprocessor_tests
