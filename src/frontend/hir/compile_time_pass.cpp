@@ -318,24 +318,16 @@ std::string format_compile_time_stats(const CompileTimePassStats& stats) {
 MaterializationStats materialize_ready_functions(Module& module) {
   MaterializationStats stats{};
 
-  // Build a set of template-only function names (those that exist solely as
-  // uninstantiated template definitions).  Currently, ast_to_hir only adds
-  // instantiated copies to module.functions, so this set is empty — all
-  // functions in the module are concrete.  The check is here for future use
-  // when template definitions may be preserved without instantiation.
-  std::unordered_set<std::string> consteval_fn_names;
-  for (const auto& [name, tdef] : module.template_defs) {
-    if (tdef.is_consteval) {
-      consteval_fn_names.insert(name);
-    }
-  }
-
   for (auto& fn : module.functions) {
-    // Policy: all concrete functions are materialized.
-    // Consteval-only functions (no body, or pure compile-time) could be
-    // excluded here in the future.
-    fn.materialized = true;
-    ++stats.materialized;
+    if (fn.consteval_only) {
+      // Consteval-only functions are preserved in HIR for analysis but
+      // are not emitted as LLVM code.
+      fn.materialized = false;
+      ++stats.non_materialized;
+    } else {
+      fn.materialized = true;
+      ++stats.materialized;
+    }
   }
 
   return stats;
@@ -348,7 +340,7 @@ std::string format_materialization_stats(const MaterializationStats& stats) {
       << (stats.materialized != 1 ? "s" : "")
       << " materialized";
   if (stats.non_materialized > 0) {
-    out << ", " << stats.non_materialized << " deferred";
+    out << ", " << stats.non_materialized << " compile-time only";
   }
   return out.str();
 }

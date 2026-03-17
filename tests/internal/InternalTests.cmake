@@ -349,6 +349,26 @@ set_tests_properties(cpp_hir_materialization_stats PROPERTIES
   PASS_REGULAR_EXPRESSION "materialization:.*function.*materialized"
 )
 
+# Phase 6: materialization boundary — consteval functions lowered to HIR but not materialized
+add_test(
+  NAME cpp_hir_materialization_boundary
+  COMMAND c4cll --dump-hir "${INTERNAL_TEST_ROOT}/cpp/postive_case/materialization_boundary.cpp"
+)
+set_tests_properties(cpp_hir_materialization_boundary PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "2 compile-time only"
+)
+
+# Phase 6: template_origin tracking in HIR dump
+add_test(
+  NAME cpp_hir_template_origin
+  COMMAND c4cll --dump-hir "${INTERNAL_TEST_ROOT}/cpp/postive_case/materialization_boundary.cpp"
+)
+set_tests_properties(cpp_hir_template_origin PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "template<apply>"
+)
+
 add_test(
     NAME frontend_cxx_preprocessor_tests
     COMMAND frontend_cxx_preprocessor_tests

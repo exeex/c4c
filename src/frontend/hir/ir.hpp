@@ -539,6 +539,13 @@ struct Function {
   /// be emitted as a concrete LLVM function.  Non-materialized functions remain
   /// in the module for compile-time analysis but are not emitted.
   bool materialized = true;
+  /// True when this function exists only for compile-time evaluation (consteval).
+  /// Consteval-only functions are lowered to HIR for analysis/debugging but are
+  /// not materialized for code emission.
+  bool consteval_only = false;
+  /// When this function is a template instantiation, records the source template
+  /// name (e.g. "add" for add<int>).  Empty for non-template functions.
+  std::string template_origin;
 
   Block* find_block(BlockId id) {
     auto it = std::find_if(

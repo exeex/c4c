@@ -271,6 +271,9 @@ class Printer {
     if (fn.attrs.variadic) out << " variadic";
     if (fn.linkage.is_static) out << " static";
     if (fn.linkage.is_extern) out << " extern";
+    if (fn.consteval_only) out << " consteval_only";
+    if (!fn.template_origin.empty()) out << " template<" << fn.template_origin << ">";
+    if (!fn.materialized) out << " [non-materialized]";
     out << "  [entry: block#" << fn.entry.value << "]\n";
 
     for (const auto& blk : fn.blocks) {

@@ -508,13 +508,40 @@ class Lowerer {
     // Phase 2: lower functions and globals
     for (const Node* item : items) {
       if (item->kind == NK_FUNCTION) {
-        if (item->is_consteval) continue;
+        if (item->is_consteval && item->n_template_params == 0) {
+          // Non-template consteval function: add as declaration-only to HIR
+          // for analysis/debugging.  The body is not lowered (it's evaluated
+          // by the AST-level consteval interpreter).  Marked consteval_only
+          // so the materialization pass won't emit it.
+          Function ce_fn{};
+          ce_fn.id = next_fn_id();
+          ce_fn.name = item->name ? item->name : "<anon_consteval>";
+          ce_fn.return_type = qtype_from(item->type);
+          ce_fn.consteval_only = true;
+          ce_fn.span = make_span(item);
+          for (int i = 0; i < item->n_params; ++i) {
+            const Node* p = item->params[i];
+            if (!p) continue;
+            Param param{};
+            param.name = p->name ? p->name : "<anon_param>";
+            param.type = qtype_from(p->type, ValueCategory::LValue);
+            param.span = make_span(p);
+            ce_fn.params.push_back(std::move(param));
+          }
+          m.fn_index[ce_fn.name] = ce_fn.id;
+          m.functions.push_back(std::move(ce_fn));
+          continue;
+        }
+        if (item->is_consteval) continue;  // consteval template: handled by AST interpreter
         if (item->n_template_params > 0 && item->name) {
           // Template function: lower once per collected instantiation.
           auto inst_it = template_fn_instances_.find(item->name);
           if (inst_it != template_fn_instances_.end() && !inst_it->second.empty()) {
-            for (const auto& inst : inst_it->second)
+            for (const auto& inst : inst_it->second) {
               lower_function(item, &inst.mangled_name, &inst.bindings);
+              if (!m.functions.empty())
+                m.functions.back().template_origin = item->name ? item->name : "";
+            }
           } else {
             // No explicit-arg call sites found.
             // If the function is called from a non-template function without
@@ -551,6 +578,9 @@ class Lowerer {
       defer_consteval_ = true;
       lower_function(fn_def, &mangled, &bindings);
       defer_consteval_ = false;
+      // Track template origin for deferred instantiations.
+      if (!module_->functions.empty())
+        module_->functions.back().template_origin = tpl_name;
       return true;
     };
     // Consteval evaluation callback for the compile-time pass.
