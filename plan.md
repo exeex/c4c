@@ -1,542 +1,387 @@
-# C++ Consteval Plan
+# Implementation Plan
 
 ## Goal
 
-Build a real C++ subset constant-evaluation pipeline instead of treating `consteval` as a parser-only annotation.
+Implement template and consteval support in an order that preserves long-term flexibility for:
 
-Long-term target:
+- delayed template instantiation
+- HIR-level compile-time reduction
+- future JIT specialization
 
-- `consteval` functions are modeled as immediate functions
-- calls to immediate functions are evaluated during semantic analysis or an explicit constant-evaluation stage
-- named constant objects can participate in constant expressions
-- constant-evaluation results can be reused by:
-  - `constexpr` / `consteval` function calls
-  - `if constexpr`
-  - global `constexpr` initializers
-  - future template/type-trait queries
+The key decision is:
 
-Immediate target:
+- sema may do conservative early folding and diagnostics
+- but HIR must own template preservation, template instantiation, and the full compile-time reduction loop
 
-- upgrade the current C-style integer constant-expression helper into a reusable constant-evaluation subsystem for the C++ subset
+## Core Model
 
-## Current State
+Template functions should not be treated as eager frontend syntax sugar.
 
-### 1. Parser support already exists
+They should be preserved as compile-time decorator-like entities.
 
-The parser already accepts and preserves:
-
-- `constexpr`
-- `consteval`
-- `if constexpr`
-
-AST nodes already carry:
-
-- `is_constexpr`
-- `is_consteval`
-
-Relevant files:
-
-- [src/frontend/parser/ast.hpp](/workspaces/c4c/src/frontend/parser/ast.hpp)
-- [src/frontend/parser/declarations.cpp](/workspaces/c4c/src/frontend/parser/declarations.cpp)
-- [src/frontend/parser/statements.cpp](/workspaces/c4c/src/frontend/parser/statements.cpp)
-- [src/frontend/parser/types.cpp](/workspaces/c4c/src/frontend/parser/types.cpp)
-
-### 2. `src/frontend/sema/consteval.cpp` is currently a C-style constant-expression helper
-
-Today this file does **not** implement C++ `consteval` function semantics.
-
-What it currently does:
-
-- decodes string literal bytes
-- evaluates simple integer constant expressions over AST nodes
-- supports:
-  - integer / char literals
-  - unary operators
-  - binary operators
-  - ternary expressions
-  - integer cast folding
-- resolves named constants for:
-  - enum constants
-  - selected named constant globals when the caller provides a binding map
-
-What it does **not** do yet:
-
-- evaluate local named `const` / `constexpr` variables
-- interpret `consteval` function bodies
-- maintain an evaluation environment for locals/parameters
-- diagnose invalid non-constant immediate calls
-- prevent taking the address of a `consteval` function
-
-Relevant files:
-
-- [src/frontend/sema/consteval.cpp](/workspaces/c4c/src/frontend/sema/consteval.cpp)
-- [src/frontend/sema/validate.cpp](/workspaces/c4c/src/frontend/sema/validate.cpp)
-- [src/frontend/hir/ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
-
-### 3. C++ subset semantic layer is still mostly a pass-through
-
-Current C++ extension hook is effectively empty:
-
-- [src/frontend/sema/sema.cpp](/workspaces/c4c/src/frontend/sema/sema.cpp)
-
-This means:
-
-- `consteval` is parsed and printed
-- but there is not yet a real immediate-function semantic pass
-
-### 4. Current behavior is still closer to “ordinary function with a marker”
-
-Current positive cases such as:
-
-- [consteval_func.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_func.cpp)
-- [consteval_template.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_template.cpp)
-
-compile and run because the frontend still lowers them like ordinary functions.
-
-That is useful for parser bring-up, but it is not correct final `consteval` behavior.
-
-### 5. Phase 1 now has a working first slice
-
-Implemented so far:
-
-- named constant global folding for `const` / `constexpr` scalar globals during global-init lowering
-- global binding propagation so later constant globals can reference earlier ones
-- integer cast folding in the AST constant evaluator for cases like:
-  - `(unsigned int)-4`
-  - `(unsigned short)-4`
-  - `(unsigned char)-4`
-
-Current validated examples:
-
-- [constexpr_var.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/constexpr_var.cpp)
-  now folds to `@answer = constant i32 42`
-- [const_named_fold.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/const_named_fold.cpp)
-  now folds `z = x + y` to `9`
-- `tests/external/gcc_torture/src/pr39240.c`
-  now passes again after restoring correct integer-cast constant folding
-
-Important constraint discovered during implementation:
-
-- named-global pre-folding must not be applied to every global initializer indiscriminately
-- it is currently gated to `const` / `constexpr` global initializers
-- ordinary C global initializers still rely on the existing HIR/codegen constant path
-
-This keeps:
-
-- C++ named-const folding working
-- C integer-cast constant initializers working
-- regressions like `pr39240.c` avoided
-
-## Architectural Decision
-
-We should separate three concepts that are currently blurred together:
-
-1. constant expression evaluation
-
-- expression interpreter for AST/HIR values
-
-2. `constexpr`
-
-- declaration/property saying something may participate in constant evaluation
-
-3. `consteval`
-
-- immediate-function policy saying a call must be evaluated in an immediate context
-
-This matters because:
-
-- not every constant expression comes from a `consteval` function
-- not every `constexpr` function call must be folded immediately
-- `consteval` is a semantic rule on calls, not just a flag on declarations
-
-## Problems To Solve
-
-### A. Named constant propagation is partially complete
-
-Examples that should eventually fold:
+Example:
 
 ```cpp
-const int x = 4;
-const int y = 5;
-const int z = x + y;
+template<typename T>
+T add(T, T);
 ```
 
-Status now:
-
-- global named constant objects like `x` and `y` can fold when they are scalar `const` / `constexpr` globals lowered in declaration order
-
-Still missing:
-
-- local named constant bindings
-- richer non-scalar constant objects
-- a single shared environment used consistently across sema, HIR, and immediate calls
-
-### B. Immediate-function calls are not modeled
-
-Examples that should become semantic rules:
-
-- a `consteval` call must be evaluated immediately
-- failure to evaluate should be a diagnostic
-- taking the address of a `consteval` function should be rejected
-- non-immediate contexts should not silently lower to runtime calls
-
-### C. `if constexpr` should consume the same constant-evaluation engine
-
-Right now `if constexpr` and ternary constant folding are partly handled ad hoc.
-
-We want one common source of truth for:
-
-- branch condition folding
-- named constant lookup
-- builtin constant queries
-- immediate call results
-
-### D. Global `constexpr` initialization needs end-to-end folding
-
-The plan should cover:
-
-- semantic evaluation of constant initializer expressions
-- conversion into global initializer form
-- stable behavior for `constexpr_var.cpp`
-
-Status now:
-
-- `constexpr_var.cpp` is fixed for the current scalar integer subset
-
-Still missing:
-
-- broader initializer forms
-- one unified evaluator instead of the current targeted bridge in HIR lowering
-
-## Recommended Design
-
-## 1. Introduce an explicit constant-evaluation domain
-
-Create a small value model, separate from raw AST nodes.
-
-Suggested types:
-
-- `ConstValue`
-- `ConstEvalResult`
-- `ConstEvalContext`
-- `ConstEvalEnv`
-
-Suggested `ConstValue` cases for the current subset:
-
-- integer
-- boolean
-- character
-- null pointer
-- string literal reference
-- invalid / unknown
-
-Keep the first version intentionally narrow.
-
-Do not try to support:
-
-- heap objects
-- dynamic type / RTTI
-- virtual dispatch
-- arbitrary class object interpretation
-
-That matches the current subset boundaries.
-
-## 2. Unify constant evaluation behind a single API
-
-Instead of multiple loosely related helpers, expose a single semantic API:
+Conceptually:
 
 ```text
-evaluate_constant_expr(node, context) -> ConstEvalResult
+consteval add(typename T) -> (add<T>(T, T) -> T)
 ```
 
-And thinner wrappers on top:
+Interpretation:
 
-- `evaluate_ice(...)`
-- `evaluate_immediate_call(...)`
-- `evaluate_global_initializer(...)`
+- `add` is a compile-time decorator
+- `add<T>` is a specialized callable produced by applying template arguments
+- specialization/materialization is a later policy decision
 
-This avoids duplicating logic between:
+## Required Ordering
 
-- `validate.cpp`
-- `consteval.cpp`
-- `ast_to_hir.cpp`
-- future C++ semantic passes
+For the long-term architecture, we should not hardcode:
 
-## 3. Add an environment for named constant objects
+- template instantiate
+- then consteval
 
-To support:
+because template arguments may themselves depend on consteval results.
 
-```cpp
-const int x = 4;
-const int y = 5;
-const int z = x + y;
+Instead, the full compile-time pipeline should converge through iteration in HIR:
+
+1. preserve template and consteval structure into HIR
+2. instantiate templates that are ready
+3. reduce consteval calls that are ready
+4. repeat instantiate/reduce until no additional compile-time nodes can be eliminated
+
+So the intended steady-state HIR loop is:
+
+```text
+template instantiate -> consteval -> template instantiate -> consteval -> ...
 ```
 
-the evaluator needs bindings for names.
+until convergence.
 
-Recommended environment sources:
+## Division Of Responsibility
 
-- enum constants
-- global `const` / `constexpr` objects with constant initializers
-- local `const` / `constexpr` objects inside an active constant-evaluation frame
-- parameters bound during `consteval` / `constexpr` call interpretation
+### Sema
 
-The environment should be lexical and immutable per frame.
+Sema is allowed to do:
 
-## 4. Treat `consteval` calls as semantic evaluation requests
+- legality diagnostics
+- local constant folding
+- simple non-template consteval folding
+- preservation of template and compile-time shape
 
-When the analyzer sees a call to a function marked `is_consteval`:
+Sema must not become the final owner of:
 
-- resolve the target function
-- create an evaluation frame
-- bind arguments as `ConstValue`
-- interpret the body
-- produce a constant result or a structured failure
+- full template instantiation
+- final template materialization
+- erasing template application structure needed by HIR/JIT
 
-If evaluation fails:
+### HIR
 
-- emit a semantic error
-- do not silently fall back to runtime lowering
+HIR must eventually own:
 
-This is the core change that turns `consteval` from an annotation into real behavior.
+- template function preservation
+- template function call/application preservation
+- instantiation scheduling
+- consteval reduction scheduling
+- fixpoint iteration until compile-time convergence
+- later materialization policy
 
-## 5. Keep runtime codegen as a later policy decision
+## Implementation Sequence
 
-For the subset, we may still choose to materialize the body as a normal function temporarily for debugging or transition purposes.
+### Phase 1: constrain sema to conservative compile-time work
 
-But semantically:
+Goals:
 
-- the call result should come from constant evaluation
-- runtime lowering should be optional implementation scaffolding, not the meaning of `consteval`
-
-## Implementation Phases
-
-### Phase 1: strengthen the existing constant-expression helper
-
-Goal:
-
-- make the current helper useful for named constants and C++ subset folding without yet interpreting function bodies
-
-Status:
-
-- **completed**
+- keep sema useful for diagnostics and simple folding
+- avoid baking eager template materialization into sema
 
 Tasks:
 
-1. Refactor `src/frontend/sema/consteval.cpp`
-
-- replace the current narrow helper interface with `ConstValue` / `ConstEvalResult`
-- preserve existing integer operator support
-
-Status: **done** — `ConstValue`, `ConstEvalResult`, `ConstEvalEnv` defined in consteval.hpp; unified `evaluate_constant_expr()` API
-
-2. Extend name lookup beyond enums
-
-- teach evaluator to resolve references to constant globals
-- support simple local constant bindings
-
-Status: **done** — global and local constant bindings supported via `ConstEvalEnv`
-
-3. Replace duplicated integer-folding entry points where practical
-
-- migrate users in [src/frontend/sema/validate.cpp](/workspaces/c4c/src/frontend/sema/validate.cpp)
-- migrate users in [src/frontend/hir/ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
-
-Status: **done** — both validate.cpp and ast_to_hir.cpp use `evaluate_constant_expr()`
-
-4. Fix `constexpr_var.cpp`
-
-- make `base`, `offset`, and `answer` fold through named bindings
-
-Status: **done**
-
-Exit criteria: **all met**
-
-- `const int x = 4; const int y = 5; const int z = x + y;` folds correctly
-- `tests/internal/cpp/postive_case/constexpr_var.cpp` moved to runtime coverage
-- [const_named_fold.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/const_named_fold.cpp) added as regression coverage
-
-### Phase 2: add immediate-function interpretation
-
-Goal:
-
-- evaluate simple `consteval` functions instead of lowering them as ordinary runtime calls
-
-Tasks:
-
-1. Build a minimal function-body interpreter
-
-Support only the subset we already care about:
-
-- parameter references
-- local constant declarations
-- arithmetic expressions
-- `return`
-- simple `if` / `if constexpr`
-- calls to other constant-evaluable functions
-
-2. Add function-evaluation frames
-
-- map parameters to values
-- maintain local constant bindings
-- track return state
-
-3. Define failure modes
-
-Examples:
-
-- use of unsupported expression kind
-- read of non-constant object
-- missing return value
-- call to non-constant function from immediate context
-
-4. Hook call resolution
-
-- when lowering or validating a call to a `consteval` function, evaluate it first
-- replace the call with a constant result when successful
+- keep simple non-template consteval folding in sema only where it is obviously safe
+- keep diagnostics in sema for:
+  - invalid consteval usage
+  - non-constant immediate arguments
+  - address-of consteval function
+- do not require sema to fully instantiate template functions
+- do not rewrite away template application structure that HIR will need
 
 Exit criteria:
 
-- `consteval_func.cpp` remains passing without relying on runtime semantics
-- simple chained immediate calls can be folded
+- sema can still reject invalid consteval uses early
+- sema does not become the only place where template+consteval semantics work
 
-### Phase 3: enforce C++ subset `consteval` rules
+### Phase 2: make HIR preserve template function definitions
 
-Goal:
+Goals:
 
-- stop accepting incorrect runtime behavior for immediate functions
-
-Tasks:
-
-1. Diagnose non-immediate calls
-
-- a `consteval` call that cannot be evaluated as a constant expression should be rejected
-
-2. Diagnose taking function address
-
-- reject `&f` when `f` is `consteval`
-
-3. Forbid runtime fallback
-
-- once semantic evaluation is required, codegen should not emit ordinary runtime call sites for failed immediate invocations
-
-4. Tighten declaration rules
-
-- reject invalid combinations as needed by the supported subset
-
-Exit criteria:
-
-- current success cases still pass
-- invalid `consteval` use becomes a semantic error instead of silently lowering
-
-### Phase 4: integrate with `if constexpr`, builtins, and templates
-
-Goal:
-
-- make the same evaluator power the rest of the C++ subset work
+- lower template functions into HIR without immediately erasing them into concrete functions
 
 Tasks:
 
-1. Route `if constexpr` condition folding through the unified evaluator
-
-2. Make builtin constant queries evaluator-aware
-
-Examples:
-
-- type-trait style builtins
-- `sizeof`
-- already-foldable parser/sema builtins
-
-3. Allow template-substituted constant evaluation
-
-- after template args are substituted, consteval/constexpr bodies should evaluate over the specialized environment
+- add a HIR representation for template function definitions
+- preserve template parameter environment on the HIR-side definition
+- keep the function body available for later compile-time reduction/materialization
 
 Exit criteria:
 
-- `if constexpr` branch selection does not rely on ad hoc logic
-- template + consteval positive cases fold through the same engine
+- template definitions survive lowering as first-class HIR entities
+- template bodies remain available after lowering
 
-## File-Level Work Plan
+### Phase 3: make HIR preserve template function application/calls
 
-### `src/frontend/sema/consteval.cpp` and `.hpp`
+Goals:
 
-Primary changes:
+- distinguish template application from ordinary function call
 
-- define constant-evaluation value/result/context types
-- implement expression interpreter
-- implement function-body evaluation entry point
+Tasks:
 
-### `src/frontend/sema/validate.cpp`
+- add a HIR representation for template application requests such as `add<int>`
+- ensure `add<int>(1, 2)` is not flattened into an ordinary call too early
+- represent specialized callable values distinctly from plain function symbols
 
-Primary changes:
+Exit criteria:
 
-- stop using bespoke integer-only evaluation where richer constant-evaluation results are needed
-- use the unified evaluator for constant-expression checks
+- HIR can represent:
+  - template definition
+  - template application
+  - specialized callable request
 
-### `src/frontend/sema/sema.cpp`
+### Phase 4: represent consteval as HIR-reducible compile-time nodes
 
-Primary changes:
+Goals:
 
-- add a real C++ subset semantic pass
-- trigger immediate-function diagnostics and replacement/folding
+- stop treating consteval reduction as a lowering-only side effect
 
-### `src/frontend/hir/ast_to_hir.cpp`
+Tasks:
 
-Primary changes:
+- preserve consteval call intent in HIR
+- attach enough environment information for later reduction:
+  - constant arguments
+  - template bindings
+  - enclosing compile-time context
+- keep reduction failures structured enough for diagnostics
 
-- consume already-folded constants where available
-- avoid encoding runtime calls for semantically immediate invocations
+Exit criteria:
 
-### `src/frontend/sema/canonical_symbol.cpp`
+- consteval is representable in HIR before final reduction
+- HIR can defer consteval when inputs are not ready yet
 
-Primary changes:
+### Phase 5: add HIR compile-time reduction loop
 
-- stop overloading template pretty-printing with `consteval` wording
-- keep `consteval` semantics distinct from template-decoration semantics
+Goals:
 
-## Validation Plan
+- make compile-time behavior converge through repeated passes instead of fixed frontend ordering
 
-### Positive cases to keep/add
+Tasks:
 
-Existing useful cases:
+- implement a worklist or fixpoint pass in HIR
+- repeatedly run:
+  - template instantiation for newly-ready applications
+  - consteval reduction for newly-ready immediate calls
+- continue until no new compile-time nodes are reducible
 
-- [consteval_func.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_func.cpp)
-- [consteval_template.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/consteval_template.cpp)
-- [constexpr_var.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/constexpr_var.cpp)
-- [constexpr_if.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/constexpr_if.cpp)
+Exit criteria:
 
-Recommended new positive cases:
+- template arguments produced by consteval can unlock later instantiations
+- instantiated templates can expose new consteval calls
+- the system converges without frontend eager erasure
 
-- named constant propagation:
-  - `const int x = 4; const int y = 5; const int z = x + y;`
-- chained immediate calls
-- `consteval` using local constant bindings
-- `if constexpr` driven by immediate-call result
+### Phase 6: define materialization boundary
 
-### Negative cases to add later
+Goals:
 
-- `consteval` call with non-constant argument
-- taking address of `consteval` function
-- immediate body reading non-constant local
-- immediate call to unsupported runtime-only function
+- separate compile-time specialization from code emission
 
-## Suggested Execution Order
+Tasks:
 
-1. Refactor the existing constant-expression helper into a reusable evaluator.
-2. Expand the current global named-constant support into a shared lexical environment model.
-3. Add immediate-function interpretation for the current arithmetic subset.
-4. Enforce `consteval` call rules and remove silent runtime fallback.
-5. Reuse the same evaluator for `if constexpr`, builtin traits, and template-specialized evaluation.
+- decide when a specialized callable becomes a concrete emitted function
+- keep that decision separate from:
+  - template definition semantics
+  - template application semantics
+  - consteval semantics
 
-## Non-Goals For This Plan
+Exit criteria:
 
-The following are intentionally out of scope for the first full `consteval` implementation:
+- concrete codegen is a policy step
+- template semantics remain valid even if emission is delayed to link-time/JIT
 
-- full class-object constant evaluation
-- inheritance / virtual dispatch
-- dynamic cast / RTTI
-- variadic templates
-- complete standard-library `type_traits`
-- full C++ constant-evaluation compliance
+### Phase 7: specialization identity and caching
 
-The target is a correct and composable **subset** implementation that matches the project’s current C++ scope.
+Goals:
+
+- make later link-time/JIT reuse deterministic
+
+Tasks:
+
+- define a stable specialization key
+- ensure template application encoding is deterministic
+- preserve enough identity for:
+  - cross-TU dedup
+  - lazy materialization
+  - future JIT caches
+
+Exit criteria:
+
+- specialization identity is stable and serializable
+
+## Recommended Transitional Strategy
+
+Before introducing fully separate HIR node families, we may use a simpler transitional model:
+
+- treat template definitions as compile-time decorator-shaped callable entities
+- treat `add<T>` as decorator application producing a specialized callable
+- reuse existing callable/call node machinery where practical
+
+This is acceptable as a transition as long as:
+
+- the semantics are documented clearly
+- template structure is still preserved
+- later migration to explicit HIR nodes remains possible
+
+## Final Success Criteria
+
+The implementation is on the right track when:
+
+- sema only performs conservative early compile-time work
+- HIR preserves template function definitions and template applications
+- template instantiation is no longer forced entirely in sema/frontend lowering
+- consteval reduction can interact with template instantiation through HIR iteration
+- compile-time-only structure can remain intact long enough for future JIT specialization
+
+## Checklist
+
+### Phase 1 Checklist: constrain sema
+
+- [ ] Audit current consteval entry points in:
+  - `src/frontend/sema/sema.cpp`
+  - `src/frontend/sema/consteval.cpp`
+  - `src/frontend/hir/ast_to_hir.cpp`
+- [ ] Document which existing consteval folds are:
+  - safe to keep in sema
+  - required to move to HIR later
+- [ ] Keep sema-side diagnostics working for:
+  - non-constant consteval arguments
+  - invalid consteval declarations
+  - address-of consteval function
+- [ ] Avoid adding new sema logic that eagerly erases template application structure
+
+### Phase 2 Checklist: preserve template definitions in HIR
+
+- [ ] Add or reserve a HIR representation for template function definitions
+- [ ] Ensure template parameter names/bindings survive lowering
+- [ ] Ensure template function bodies remain available after lowering
+- [ ] Stop lowering template functions only as concrete emitted functions
+- [ ] Add printer/debug output so preserved template definitions are inspectable
+
+Files likely involved:
+
+- `src/frontend/hir/ir.hpp`
+- `src/frontend/hir/ast_to_hir.cpp`
+- `src/frontend/hir/hir_printer.cpp`
+
+### Phase 3 Checklist: preserve template applications/calls in HIR
+
+- [ ] Add or reserve a HIR representation for template application requests
+- [ ] Distinguish:
+  - plain function call
+  - template application
+  - call of a specialized callable
+- [ ] Preserve call-site template arguments in HIR
+- [ ] Avoid flattening `add<int>(...)` into an ordinary call too early
+- [ ] Add printer/debug output for template applications
+
+Files likely involved:
+
+- `src/frontend/hir/ir.hpp`
+- `src/frontend/hir/ast_to_hir.cpp`
+- `src/frontend/hir/hir_printer.cpp`
+
+### Phase 4 Checklist: preserve consteval as HIR-reducible nodes
+
+- [ ] Define how consteval call intent appears in HIR
+- [ ] Preserve enough environment for later reduction:
+  - argument constants when known
+  - template bindings when known
+  - enclosing compile-time context when needed
+- [ ] Keep `evaluate_consteval_call()` reusable from a later HIR pass
+- [ ] Avoid making consteval reduction only a side effect of lowering
+- [ ] Add printer/debug support for unreduced compile-time call nodes
+
+Files likely involved:
+
+- `src/frontend/sema/consteval.hpp`
+- `src/frontend/sema/consteval.cpp`
+- `src/frontend/hir/ir.hpp`
+- `src/frontend/hir/ast_to_hir.cpp`
+- `src/frontend/hir/hir_printer.cpp`
+
+### Phase 5 Checklist: add HIR fixpoint reduction loop
+
+- [ ] Add a HIR pass entry point for compile-time reduction
+- [ ] Implement one iteration step for template instantiation
+- [ ] Implement one iteration step for consteval reduction
+- [ ] Re-run until convergence or explicit iteration limit
+- [ ] Surface structured diagnostics on irreducible required compile-time nodes
+- [ ] Ensure pass ordering is deterministic
+
+Files likely involved:
+
+- `src/frontend/hir/ast_to_hir.cpp`
+- `src/frontend/sema/sema.cpp`
+- new HIR pass files if needed
+
+### Phase 6 Checklist: define materialization boundary
+
+- [ ] Decide what counts as a materialized specialized function
+- [ ] Keep non-materialized template entities representable in HIR
+- [ ] Ensure codegen only consumes materialized entities
+- [ ] Keep compile-time reduction semantics separate from emission policy
+
+Files likely involved:
+
+- `src/frontend/hir/ir.hpp`
+- `src/frontend/hir/ast_to_hir.cpp`
+- later codegen/lowering files
+
+### Phase 7 Checklist: specialization identity
+
+- [ ] Define a stable specialization key
+- [ ] Include canonicalized template args in the key
+- [ ] Ensure identity is deterministic across TUs
+- [ ] Keep encoding serializable for future link-time/JIT use
+
+Files likely involved:
+
+- `src/frontend/sema/canonical_symbol.hpp`
+- `src/frontend/sema/canonical_symbol.cpp`
+- future HIR metadata files
+
+## First Patch Checklist
+
+If we want the smallest useful first implementation step, do this first:
+
+- [ ] Introduce a HIR-visible representation for template function definitions
+- [ ] Introduce a HIR-visible representation for template applications/calls
+- [ ] Preserve existing parser/canonical template metadata through lowering
+- [ ] Add HIR printer support so we can inspect preserved template structure
+- [ ] Do not change final materialization semantics yet
+
+Suggested files for the first patch:
+
+- `src/frontend/hir/ir.hpp`
+- `src/frontend/hir/ast_to_hir.cpp`
+- `src/frontend/hir/hir_printer.cpp`
+
+## Regression Checklist
+
+- [ ] `tests/internal/cpp/postive_case/template_func.cpp` still passes
+- [ ] `tests/internal/cpp/postive_case/consteval_template.cpp` still passes
+- [ ] `tests/internal/cpp/postive_case/consteval_template_sizeof.cpp` still passes
+- [ ] `tests/internal/cpp/postive_case/consteval_nested_template.cpp` still passes
+- [ ] `tests/internal/cpp/postive_case/if_constexpr_template_chain.cpp` still passes
+- [ ] Existing non-template consteval tests still pass
+- [ ] HIR/canonical dump output remains inspectable for template cases

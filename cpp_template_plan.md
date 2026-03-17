@@ -139,6 +139,41 @@ That means:
 - HIR must eventually gain explicit template entities and template application nodes
 - materialization must be a later stage decision
 
+Related decision for the current consteval work:
+
+- sema may do light, local constant folding and diagnostics
+- but full template instantiation must not be forced in sema
+- HIR should become the first stage that can preserve:
+  - template function definitions
+  - template function application requests
+  - compile-time decorator/application nodes
+- eager compile-time materialization should be one policy, not the only meaning
+
+In particular, template arguments may themselves depend on consteval results.
+That means a fixed frontend order like:
+
+- template instantiate
+- then consteval
+
+is too rigid for the long-term design.
+
+The more correct long-term model is:
+
+- preserve template/application structure into HIR
+- run an iterative compile-time reduction loop in HIR:
+  - template instantiate
+  - consteval
+  - template instantiate
+  - consteval
+  - ...
+- stop only when no additional compile-time-only nodes can be reduced
+
+This keeps the door open for:
+
+- delayed specialization
+- link-time materialization
+- runtime / JIT specialization
+
 ## Near-Term Work Needed
 
 ### A. Finish semantic correctness for current `.cpp` cases
@@ -217,6 +252,29 @@ Intent:
 
 Materialization policy should remain separate from the template entity itself.
 
+Near-term representation shortcut:
+
+- before introducing brand new HIR node families, we can model template functions
+  in a decorator-shaped form that reuses existing callable-node conventions
+- for example:
+  - `template<typename T> T add(T, T);`
+  - interpret as:
+    - `add` = compile-time decorator
+    - `add<T>` = specialized callable produced by decorator application
+
+Informally:
+
+```text
+consteval add(typename T) -> (add<T>(T, T) -> T)
+```
+
+This is not the final syntax, but it captures the intended semantics:
+
+- `add` itself is compile-time-only
+- applying template args produces a specialized callable value
+- the specialized callable can then be lowered or materialized later
+- existing node/call machinery can be reused where practical
+
 Possible policies later:
 
 - eager compile-time
@@ -249,19 +307,34 @@ These constraints should guide current work even before HIR template nodes are i
 
 ## Suggested Execution Order
 
-### Phase 1: finish current frontend correctness
+### Phase 1: finish current frontend correctness without forcing eager template erasure
 
 - constexpr global folding
 - struct member-function lowering
 - template call interpretation for existing positive cases
+- keep sema-side consteval limited to simple local folding / diagnostics
 
-### Phase 2: define explicit HIR template nodes
+### Phase 2: make HIR preserve template function and template call structure
+
+- represent template function definitions in HIR
+- represent template application requests in HIR
+- keep template decorators unapplied until a later reduction/materialization pass
+
+### Phase 3: run compile-time reduction as a fixpoint in HIR
+
+- template instantiate
+- consteval
+- template instantiate
+- consteval
+- continue until convergence
+
+### Phase 4: define explicit HIR template nodes cleanly
 
 - `TemplateDef`
 - `TemplateApply`
 - `TemplateMaterialize`
 
-### Phase 3: specialization identity and dedup
+### Phase 5: specialization identity and dedup
 
 - canonical specialization key
 - cross-TU stable encoding
@@ -272,6 +345,7 @@ These constraints should guide current work even before HIR template nodes are i
 What this iteration intentionally did not complete:
 
 - no true template instantiation in sema or HIR yet
+- no HIR-level template-preserving representation yet
 - no member-function lowering yet
 - no constexpr-global folding completion yet
 - no mangled-name integration for template specializations yet
