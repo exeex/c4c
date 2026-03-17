@@ -516,7 +516,14 @@ class Lowerer {
             for (const auto& inst : inst_it->second)
               lower_function(item, &inst.mangled_name, &inst.bindings);
           } else {
-            // No call sites found — lower once generically.
+            // No explicit-arg call sites found.
+            // If the function is called from a non-template function without
+            // explicit template args (implicit deduction), it still needs
+            // generic lowering.  Only skip if we know it will be deferred
+            // (it's referenced only from other template functions with
+            // explicit template args).
+            if (!is_referenced_without_template_args(item->name, items))
+              continue;  // Will be instantiated by the HIR compile-time pass.
             lower_function(item);
           }
         } else {
@@ -544,6 +551,7 @@ class Lowerer {
     };
     auto ct_stats = run_compile_time_reduction(m, deferred_lower);
     m.ct_info.deferred_instantiations = ct_stats.templates_deferred;
+    m.ct_info.deferred_consteval = ct_stats.consteval_deferred;
     m.ct_info.total_iterations = ct_stats.iterations;
     m.ct_info.templates_resolved = ct_stats.templates_instantiated;
     m.ct_info.consteval_reduced = ct_stats.consteval_reduced;
@@ -3889,7 +3897,6 @@ class Lowerer {
       if (fn_it != template_fn_defs_.end()) {
         const Node* fn_def = fn_it->second;
         if (fn_def->is_consteval && fn_def->n_template_params > 0) {
-          const TypeBindings* enclosing_bindings = nullptr;
           if (enclosing_fn && enclosing_fn->name) {
             auto enc_it = template_fn_instances_.find(enclosing_fn->name);
             if (enc_it != template_fn_instances_.end()) {
@@ -3901,6 +3908,12 @@ class Lowerer {
               }
               goto recurse_ce;
             }
+            // Enclosing template function has no concrete instances yet.
+            // Skip recording — the consteval call will be discovered when
+            // the enclosing function is later instantiated by the HIR
+            // compile-time reduction pass (deferred consteval).
+            if (enclosing_fn->n_template_params > 0)
+              goto recurse_ce;
           }
           {
             TypeBindings bindings = build_call_bindings(n->left, fn_def, nullptr);
@@ -3922,6 +3935,39 @@ class Lowerer {
     if (n->update) collect_consteval_template_instantiations(n->update, enclosing_fn);
     for (int i = 0; i < n->n_children; ++i)
       if (n->children[i]) collect_consteval_template_instantiations(n->children[i], enclosing_fn);
+  }
+
+  // Check if a template function is called from any non-template function
+  // without explicit template args (implicit deduction / plain call).
+  static bool is_referenced_without_template_args(
+      const char* fn_name, const std::vector<const Node*>& items) {
+    if (!fn_name) return false;
+    for (const Node* item : items) {
+      if (item->kind != NK_FUNCTION || !item->body) continue;
+      if (item->n_template_params > 0) continue;  // Skip template function bodies
+      if (has_plain_call(item->body, fn_name)) return true;
+    }
+    return false;
+  }
+
+  static bool has_plain_call(const Node* n, const char* fn_name) {
+    if (!n) return false;
+    if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR &&
+        n->left->name && strcmp(n->left->name, fn_name) == 0 &&
+        n->left->n_template_args == 0) {
+      return true;
+    }
+    if (has_plain_call(n->left, fn_name)) return true;
+    if (has_plain_call(n->right, fn_name)) return true;
+    if (has_plain_call(n->cond, fn_name)) return true;
+    if (has_plain_call(n->then_, fn_name)) return true;
+    if (has_plain_call(n->else_, fn_name)) return true;
+    if (has_plain_call(n->body, fn_name)) return true;
+    if (has_plain_call(n->init, fn_name)) return true;
+    if (has_plain_call(n->update, fn_name)) return true;
+    for (int i = 0; i < n->n_children; ++i)
+      if (has_plain_call(n->children[i], fn_name)) return true;
+    return false;
   }
 
   Module* module_ = nullptr;

@@ -760,6 +760,7 @@ struct Module {
   // deferred work from eagerly-lowered work.
   struct CompileTimeInfo {
     size_t deferred_instantiations = 0;  // template fns instantiated by the pass
+    size_t deferred_consteval = 0;       // consteval reductions unlocked by deferred instantiation
     size_t total_iterations = 0;         // fixpoint iterations performed
     size_t templates_resolved = 0;       // total template calls resolved
     size_t consteval_reduced = 0;        // total consteval calls reduced

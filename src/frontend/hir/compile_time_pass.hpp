@@ -22,6 +22,7 @@ struct CompileTimePassStats {
   size_t templates_deferred = 0;      // template instantiations created by this pass
   size_t consteval_reduced = 0;       // consteval calls successfully reduced to constants
   size_t consteval_pending = 0;       // consteval calls whose result is missing or invalid
+  size_t consteval_deferred = 0;      // consteval reductions unlocked by deferred template instantiation
   size_t iterations = 0;              // total fixpoint iterations performed
   bool converged = false;             // true if no new work was found
   std::vector<CompileTimeDiagnostic> diagnostics;  // details on irreducible nodes

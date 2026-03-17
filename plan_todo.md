@@ -1,80 +1,75 @@
 # Plan Execution State
 
 ## Baseline
-- 1851/1851 tests passing (2026-03-17)
+- 1853/1853 tests passing (2026-03-17)
 
 ## Overall Assessment
 
-Phase 5 has made meaningful progress: `run_compile_time_reduction()` now performs real deferred template instantiation work.
+Phase 5 is now further along: deferred consteval reduction is tracked alongside deferred template instantiation.
 
 Current state:
 - HIR preserves template/consteval metadata and exposes debug visibility
-- **Nested template instantiation is now owned by the HIR compile-time reduction pass** (Phase 5 milestone met for templates)
-- Consteval reduction is still performed eagerly during AST-to-HIR lowering
+- **Nested template instantiation is owned by the HIR compile-time reduction pass** (Phase 5 milestone met for templates)
+- **Deferred consteval reduction is tracked**: consteval calls inside deferred template instantiations are counted as "deferred consteval reductions" in the pass stats
 - Direct (depth-0) template calls are still collected and lowered eagerly in Phase 1.6/2
+- Consteval calls whose arguments are fully resolved at lowering time are still evaluated eagerly
 
 Summary:
 - Phase 1: complete
 - Phases 2-4: partially complete, with good observability and metadata preservation
-- Phase 5: **partially complete** — deferred template instantiation works; deferred consteval reduction not yet moved
+- Phase 5: **partially complete** — deferred template instantiation works; deferred consteval reduction is tracked via the pass; true deferred-evaluation-from-HIR (where consteval is not evaluated during lowering at all) not yet implemented
 - Phase 6: scaffolded, not yet a meaningful materialization boundary
 - Phase 7: largely complete for current scope
 
 ---
 
-## What was done in this session (2026-03-17)
+## What was done in this session (2026-03-17, session 2)
 
-### Deferred template instantiation via HIR compile-time pass
+### Deferred consteval reduction tracking
 
-**Architecture change**: Nested template calls (e.g., `add<T>()` inside `twice<T>()`) are no longer discovered and lowered during the initial AST-to-HIR lowering fixpoint. Instead:
+**Problem**: Consteval calls inside functions instantiated by the HIR compile-time reduction pass were not tracked separately. There was no proof that the pass could unlock consteval reductions.
 
-1. **Phase 1.6** only collects depth-0 instantiations (direct calls from non-template functions)
-2. **Phase 2** lowers only those depth-0 instantiations; nested template calls produce DeclRefs to not-yet-existing functions
-3. **Phase 3 (new)**: `run_compile_time_reduction()` discovers unresolved template calls, reconstructs TypeBindings from TemplateCallInfo + HirTemplateDef params, and invokes a deferred lowering callback to instantiate the missing functions
-4. The pass iterates until convergence
+**Test case**: `deferred_consteval_chain.cpp` — 3-level chain:
+- `main()` → `outer<int>()` (depth-0, collected in Phase 1.6)
+- `outer<int>()` → `middle<int>()` (nested, deferred to HIR pass)
+- `middle<int>()` → `get_size<int>()` (consteval, evaluated during deferred lowering)
 
-**Key API change**: `run_compile_time_reduction()` now accepts an optional `DeferredInstantiateFn` callback. When provided, the pass performs real work (lowering new functions). When null, it operates in verification-only mode.
+**Implementation changes**:
 
-**Data flow**:
-- `compile_time_pass.hpp`: added `DeferredInstantiateFn` callback type and `templates_deferred` stat
-- `compile_time_pass.cpp`: `TemplateInstantiationStep` reconstructs bindings and calls the callback for pending template calls
-- `ast_to_hir.cpp`: Phase 3 creates a lambda that invokes `lower_function()` for deferred templates
-- `ir.hpp`: `Module::CompileTimeInfo` stores deferred instantiation stats
-- `c4cll.cpp`: propagates deferred count from `ct_info` into verification stats for HIR dump
+1. **`compile_time_pass.hpp`**: Added `consteval_deferred` field to `CompileTimePassStats`
+2. **`compile_time_pass.cpp`**: `TemplateInstantiationStep` tracks `module.consteval_calls.size()` before/after each deferred instantiation; difference is accumulated as `consteval_unlocked`
+3. **`compile_time_pass.cpp`**: `format_compile_time_stats` reports "N deferred consteval reductions" alongside deferred instantiations
+4. **`ir.hpp`**: `Module::CompileTimeInfo` has new `deferred_consteval` field
+5. **`ast_to_hir.cpp`**: Propagate `consteval_deferred` stat from compile-time pass to module info
+6. **`c4cll.cpp`**: Propagate deferred consteval count for HIR dump
 
-**Consteval still handled eagerly**: `collect_consteval_template_instantiations()` was added to Phase 1.6 to ensure consteval template calls within template bodies are still collected pre-lowering (since consteval evaluation requires all bindings at lowering time).
+**Bug fixes required to make the 3-level chain work**:
 
-### Test additions
-- `cpp_hir_deferred_template_instantiation`: verifies "1 deferred instantiation" appears in HIR dump for `template_chain.cpp`
-- This test **only passes** if the HIR pass (not lowering) performs the nested instantiation
+1. **Generic lowering of template functions with no instances**: Template functions with no collected instances were unconditionally lowered generically (without bindings). For functions like `middle<T>()` that contain consteval calls with unresolved T, this causes hard errors. Fixed by adding `is_referenced_without_template_args()` check: if a template function is NOT called from any non-template function without explicit template args, skip generic lowering (it will be deferred instead).
+
+2. **Consteval template collection from unresolved template bodies**: `collect_consteval_template_instantiations` was recording consteval calls (e.g., `get_size<T>()`) from template function bodies (e.g., `middle<T>()`) even when the enclosing function had no concrete instances. This produced entries with unresolved type bindings. Fixed by checking: if the enclosing function is a template with no instances, skip recording (the consteval will be handled during deferred instantiation).
 
 ### Files changed
-- `src/frontend/hir/compile_time_pass.hpp` — DeferredInstantiateFn, templates_deferred stat
-- `src/frontend/hir/compile_time_pass.cpp` — deferred instantiation logic in TemplateInstantiationStep
-- `src/frontend/hir/ast_to_hir.cpp` — Phase 1.6 depth-0 only, Phase 3 deferred callback, collect_consteval_template_instantiations
-- `src/frontend/hir/ir.hpp` — Module::CompileTimeInfo
-- `src/apps/c4cll.cpp` — propagate deferred count
-- `tests/internal/InternalTests.cmake` — new test
+- `src/frontend/hir/compile_time_pass.hpp` — consteval_deferred stat
+- `src/frontend/hir/compile_time_pass.cpp` — track consteval unlocked by deferred instantiation, format output
+- `src/frontend/hir/ir.hpp` — Module::CompileTimeInfo deferred_consteval
+- `src/frontend/hir/ast_to_hir.cpp` — skip generic lowering for deferred templates, skip consteval collection from unresolved bodies, propagate stats
+- `src/apps/c4cll.cpp` — propagate deferred consteval count
+- `tests/internal/InternalTests.cmake` — new tests
+- `tests/internal/cpp/postive_case/deferred_consteval_chain.cpp` — new test case
+
+### Test additions
+- `cpp_hir_deferred_consteval_chain`: verifies "deferred consteval reduction" appears in HIR dump (proves HIR pass unlocked the consteval)
+- `cpp_positive_deferred_consteval_chain_cpp`: runtime correctness test (added via CPP_POSITIVE_RUNTIME_STEMS)
 
 ---
 
 ## Added Testcases
 
-The work added 13 HIR-oriented regression tests in `tests/internal/InternalTests.cmake`:
+The work now includes 14 HIR-oriented regression tests plus the new deferred consteval tests:
 
-- `cpp_hir_template_def_dump`
-- `cpp_hir_consteval_template_dump`
-- `cpp_hir_template_call_info_dump`
-- `cpp_hir_consteval_call_info_dump`
-- `cpp_hir_consteval_template_call_info_dump`
-- `cpp_hir_compile_time_reduction_stats`
-- `cpp_hir_template_instantiation_resolved`
-- `cpp_hir_consteval_reduction_verified`
-- `cpp_hir_consteval_template_reduction_verified`
-- `cpp_hir_fixpoint_convergence`
-- `cpp_hir_specialization_key`
-- `cpp_hir_materialization_stats`
-- **`cpp_hir_deferred_template_instantiation`** (NEW — proves HIR pass does real work)
+Previous 13 + 1 new:
+- **`cpp_hir_deferred_consteval_chain`** (NEW — proves HIR pass unlocks consteval reductions)
 
 What these tests now verify:
 - template metadata appears in `--dump-hir`
@@ -83,10 +78,11 @@ What these tests now verify:
 - compile-time pass stats are printed
 - specialization keys are printed
 - materialization stats are printed
-- **deferred template instantiation by the HIR pass** (NEW)
+- deferred template instantiation by the HIR pass
+- **deferred consteval reduction unlocked by HIR pass** (NEW)
 
 What these tests do not yet verify:
-- deferred consteval reduction in HIR
+- truly deferred consteval (where consteval call is NOT evaluated during lowering but deferred to a later pass)
 - irreducible compile-time nodes flowing through the new diagnostics path
 - a real materialization policy that leaves some functions non-materialized
 
@@ -98,20 +94,21 @@ What these tests do not yet verify:
 ### What is now implemented
 - `run_compile_time_reduction()` performs real deferred template instantiation via `DeferredInstantiateFn` callback
 - Phase 1.6 collects only depth-0 instantiations; nested calls are left for the HIR pass
+- Template functions with no collected instances and no plain-call references are deferred (not generically lowered)
 - The pass discovers unresolved template calls, reconstructs bindings, and triggers on-demand lowering
+- Consteval calls inside deferred instantiations are tracked as "deferred consteval reductions"
 - The pass iterates until convergence (fixpoint loop)
-- Stats track `templates_deferred` to distinguish pass-driven work from eager lowering
-- Regression test proves the pass does real work (`cpp_hir_deferred_template_instantiation`)
+- Stats track `templates_deferred` and `consteval_deferred`
+- Regression tests prove the pass does real work
 
 ### What is not yet implemented
-- deferred consteval reduction (consteval is still evaluated eagerly during lowering)
-- the pass does not yet mutate HIR expression nodes (consteval calls are not deferred)
-- multi-step convergence where template instantiation unlocks new consteval calls that unlock new templates
+- truly deferred consteval (consteval calls that are NOT evaluated during lowering but instead stored as pending HIR nodes and evaluated by the pass)
+- multi-step convergence where template instantiation unlocks new consteval calls that unlock new templates (the current system evaluates consteval eagerly during deferred lowering, so there's no true HIR-level consteval deferral)
 
 ### Remaining work
-- move one class of consteval reduction into the HIR pass
-- add a test where template instantiation unlocks a new consteval call that the pass evaluates
-- prove multi-step convergence (template → consteval → template cycle)
+- represent pending consteval calls as HIR expression nodes (not IntLiteral placeholders)
+- have the pass evaluate those pending nodes when bindings become available
+- add a test where true multi-step convergence occurs at the HIR level
 
 ---
 
@@ -131,7 +128,7 @@ What these tests do not yet verify:
 
 ## Recommended next milestone
 
-Move one class of deferred consteval evaluation into `run_compile_time_reduction()`:
-- During lowering of deferred template instantiations, consteval calls within those functions are already evaluated eagerly (since the callback invokes `lower_function` which runs the full lowering path including consteval)
-- The next step would be to defer consteval calls that depend on template bindings not yet resolved, and have the pass evaluate them after the bindings become available
-- Add a regression test that only passes if the HIR pass evaluates a consteval call that was unlocked by a deferred template instantiation
+Implement truly deferred consteval in HIR:
+- During lowering, if a consteval call's template arguments can't be resolved (because the enclosing function's bindings aren't concrete), emit a "pending consteval" marker expression instead of failing or eagerly evaluating
+- The HIR pass would later evaluate these pending calls after deferred template instantiation resolves the bindings
+- This would enable true multi-step convergence: template instantiation → consteval reduction → template instantiation (if consteval result feeds back into template args)

@@ -61,6 +61,7 @@ set(CPP_POSITIVE_RUNTIME_STEMS
     constexpr_local
     constexpr_local_switch
     extern_c
+    deferred_consteval_chain
     template_chain
     template_func
 )
@@ -298,6 +299,19 @@ add_test(
 set_tests_properties(cpp_hir_deferred_template_instantiation PROPERTIES
   LABELS "internal;positive_case;cpp;hir"
   PASS_REGULAR_EXPRESSION "1 deferred instantiation.*\\(converged\\)"
+)
+
+# HIR deferred consteval: verify that consteval calls inside deferred template
+# instantiations are evaluated by the compile-time reduction pass.
+# The 3-level chain (outer → middle → get_size consteval) means get_size<int>()
+# can only be evaluated after the HIR pass instantiates middle<int>().
+add_test(
+  NAME cpp_hir_deferred_consteval_chain
+  COMMAND c4cll --dump-hir "${INTERNAL_TEST_ROOT}/cpp/postive_case/deferred_consteval_chain.cpp"
+)
+set_tests_properties(cpp_hir_deferred_consteval_chain PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "deferred consteval reduction.*\\(converged\\)"
 )
 
 # HIR specialization key: verify stable identity keys for template instantiations

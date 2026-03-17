@@ -21,6 +21,7 @@ struct TemplateInstantiationStep {
   size_t resolved = 0;
   size_t pending = 0;
   size_t newly_instantiated = 0;
+  size_t consteval_unlocked = 0;  // consteval reductions produced by deferred instantiation
   std::vector<CompileTimeDiagnostic> pending_diags;
 
   void run() {
@@ -70,10 +71,13 @@ struct TemplateInstantiationStep {
           for (size_t i = 0; i < count; ++i) {
             bindings[tdef.template_params[i]] = tci.template_args[i];
           }
+          size_t ce_before = module.consteval_calls.size();
           if (instantiate_fn(tci.source_template, bindings, target_name)) {
             instantiated_fns.insert(target_name);
             ++resolved;
             ++newly_instantiated;
+            // Track consteval reductions unlocked by this deferred instantiation.
+            consteval_unlocked += module.consteval_calls.size() - ce_before;
             // Update template_defs metadata with the new instance.
             HirTemplateInstantiation hi;
             hi.mangled_name = target_name;
@@ -164,6 +168,7 @@ CompileTimePassStats run_compile_time_reduction(
     stats.templates_instantiated = tpl_step.resolved;
     stats.templates_pending = tpl_step.pending;
     stats.templates_deferred += tpl_step.newly_instantiated;
+    stats.consteval_deferred += tpl_step.consteval_unlocked;
 
     // Step 2: consteval reduction verification.
     ConstevalReductionStep ce_step{module};
@@ -214,9 +219,20 @@ std::string format_compile_time_stats(const CompileTimePassStats& stats) {
       << " resolved"
       << ", " << stats.consteval_reduced << " consteval reduction"
       << (stats.consteval_reduced != 1 ? "s" : "");
-  if (stats.templates_deferred > 0) {
-    out << " (" << stats.templates_deferred << " deferred instantiation"
-        << (stats.templates_deferred != 1 ? "s" : "") << ")";
+  if (stats.templates_deferred > 0 || stats.consteval_deferred > 0) {
+    out << " (";
+    bool need_comma = false;
+    if (stats.templates_deferred > 0) {
+      out << stats.templates_deferred << " deferred instantiation"
+          << (stats.templates_deferred != 1 ? "s" : "");
+      need_comma = true;
+    }
+    if (stats.consteval_deferred > 0) {
+      if (need_comma) out << ", ";
+      out << stats.consteval_deferred << " deferred consteval reduction"
+          << (stats.consteval_deferred != 1 ? "s" : "");
+    }
+    out << ")";
   }
   if (stats.templates_pending > 0 || stats.consteval_pending > 0) {
     out << " (";
