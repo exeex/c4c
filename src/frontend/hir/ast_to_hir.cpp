@@ -3550,9 +3550,22 @@ class Lowerer {
         return append_expr(n, s, ts);
       }
       case NK_SIZEOF_TYPE: {
-        if (ctx && n->type.array_rank > 0 && n->type.array_size_expr &&
-            (n->type.array_size <= 0 || n->type.array_dims[0] <= 0)) {
-          TypeSpec elem_ts = n->type;
+        // Substitute template type parameters in sizeof(T).
+        TypeSpec sizeof_target = n->type;
+        if (ctx && !ctx->tpl_bindings.empty() &&
+            sizeof_target.base == TB_TYPEDEF && sizeof_target.tag) {
+          auto it = ctx->tpl_bindings.find(sizeof_target.tag);
+          if (it != ctx->tpl_bindings.end()) {
+            const TypeSpec& concrete = it->second;
+            sizeof_target.base = concrete.base;
+            sizeof_target.tag = concrete.tag;
+            if (concrete.ptr_level > 0)
+              sizeof_target.ptr_level += concrete.ptr_level;
+          }
+        }
+        if (ctx && sizeof_target.array_rank > 0 && n->type.array_size_expr &&
+            (sizeof_target.array_size <= 0 || sizeof_target.array_dims[0] <= 0)) {
+          TypeSpec elem_ts = sizeof_target;
           elem_ts.array_rank--;
           if (elem_ts.array_rank > 0) {
             for (int i = 0; i < elem_ts.array_rank; ++i) {
@@ -3573,14 +3586,26 @@ class Lowerer {
           return append_expr(n, mul, ts);
         }
         SizeofTypeExpr s{};
-        s.type = qtype_from(n->type);
+        s.type = qtype_from(sizeof_target);
         // sizeof always returns an integer (size_t ~ unsigned long)
         TypeSpec ts{}; ts.base = TB_ULONG;
         return append_expr(n, s, ts);
       }
       case NK_ALIGNOF_TYPE: {
-        // Compute alignment of the queried type and emit as integer constant.
-        const int align = type_align_bytes(*module_, n->type);
+        // Substitute template type parameters in alignof(T).
+        TypeSpec alignof_target = n->type;
+        if (ctx && !ctx->tpl_bindings.empty() &&
+            alignof_target.base == TB_TYPEDEF && alignof_target.tag) {
+          auto it = ctx->tpl_bindings.find(alignof_target.tag);
+          if (it != ctx->tpl_bindings.end()) {
+            const TypeSpec& concrete = it->second;
+            alignof_target.base = concrete.base;
+            alignof_target.tag = concrete.tag;
+            if (concrete.ptr_level > 0)
+              alignof_target.ptr_level += concrete.ptr_level;
+          }
+        }
+        const int align = type_align_bytes(*module_, alignof_target);
         TypeSpec ts{}; ts.base = TB_ULONG;
         return append_expr(n, IntLiteral{static_cast<long long>(align), false}, ts);
       }
