@@ -223,6 +223,18 @@ Node* Parser::parse_top_level() {
     if (is_cpp_mode() && check(TokenKind::KwTemplate)) {
         consume();
         expect(TokenKind::Less);
+
+        // Explicit template specialization: template<> RetType name<Args>(...) { ... }
+        if (check(TokenKind::Greater)) {
+            consume();  // consume >
+            bool saved_spec = parsing_explicit_specialization_;
+            parsing_explicit_specialization_ = true;
+            Node* spec = parse_top_level();
+            parsing_explicit_specialization_ = saved_spec;
+            if (spec) spec->is_explicit_specialization = true;
+            return spec;
+        }
+
         std::vector<const char*> template_params;
         std::vector<bool> template_param_nttp;  // true if non-type template param
         std::vector<bool> template_param_has_default;
@@ -747,6 +759,39 @@ Node* Parser::parse_top_level() {
         throw std::runtime_error(std::string("object has incomplete type: ") + (ts.tag ? ts.tag : "<anonymous>"));
     }
 
+    // Explicit template specialization: parse <type_args> after function name.
+    // e.g. template<> int add<int>(int a, int b) { ... }
+    //                          ^^^^^ captured here
+    std::vector<TypeSpec> spec_arg_types;
+    std::vector<bool> spec_arg_is_value;
+    std::vector<long long> spec_arg_values;
+    if (parsing_explicit_specialization_ && decl_name && check(TokenKind::Less)) {
+        consume();  // <
+        while (!at_end() && !check(TokenKind::Greater)) {
+            // Try to parse as type first (int, long, char, etc.)
+            if (is_type_start()) {
+                TypeSpec arg_ts = parse_type_name();
+                spec_arg_types.push_back(arg_ts);
+                spec_arg_is_value.push_back(false);
+                spec_arg_values.push_back(0);
+            } else if (check(TokenKind::IntLit)) {
+                // NTTP value
+                long long val = parse_int_lexeme(cur().lexeme.c_str());
+                consume();
+                TypeSpec dummy{};
+                dummy.array_size = -1;
+                dummy.inner_rank = -1;
+                spec_arg_types.push_back(dummy);
+                spec_arg_is_value.push_back(true);
+                spec_arg_values.push_back(val);
+            } else {
+                break;
+            }
+            if (!match(TokenKind::Comma)) break;
+        }
+        expect(TokenKind::Greater);
+    }
+
     parse_attributes(&ts);
     skip_asm();
     parse_attributes(&ts);
@@ -918,6 +963,23 @@ Node* Parser::parse_top_level() {
             }
         }
 
+        // Helper: attach explicit specialization args to NK_FUNCTION.
+        auto attach_spec_args = [&](Node* fn) {
+            if (spec_arg_types.empty()) return;
+            int n = (int)spec_arg_types.size();
+            fn->n_template_args = n;
+            fn->template_arg_types = arena_.alloc_array<TypeSpec>(n);
+            fn->template_arg_is_value = arena_.alloc_array<bool>(n);
+            fn->template_arg_values = arena_.alloc_array<long long>(n);
+            fn->template_arg_nttp_names = arena_.alloc_array<const char*>(n);
+            for (int i = 0; i < n; ++i) {
+                fn->template_arg_types[i] = spec_arg_types[i];
+                fn->template_arg_is_value[i] = spec_arg_is_value[i];
+                fn->template_arg_values[i] = spec_arg_values[i];
+                fn->template_arg_nttp_names[i] = nullptr;
+            }
+        };
+
         // Phase C: helper lambda to propagate return type fn_ptr params to NK_FUNCTION.
         auto propagate_ret_fn_ptr = [&](Node* fn) {
             if (ts.is_fn_ptr && !ret_typedef_name.empty()) {
@@ -954,6 +1016,7 @@ Node* Parser::parse_top_level() {
                 for (int i = 0; i < fn->n_params; ++i) fn->params[i] = params[i];
             }
             propagate_ret_fn_ptr(fn);
+            attach_spec_args(fn);
             return fn;
         }
 
@@ -977,6 +1040,7 @@ Node* Parser::parse_top_level() {
             for (int i = 0; i < fn->n_params; ++i) fn->params[i] = params[i];
         }
         propagate_ret_fn_ptr(fn);
+        attach_spec_args(fn);
         return fn;
     }
 

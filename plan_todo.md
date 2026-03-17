@@ -1,11 +1,11 @@
 # Plan Execution State
 
 ## Baseline
-- 1874/1874 tests passing (2026-03-17)
+- 1875/1875 tests passing (2026-03-17)
 
 ## Overall Assessment
 
-Phase 5 slice 11 is now implemented: default template arguments and empty angle brackets `<>`.
+Phase 5 slice 12 is now implemented: explicit template specialization (`template<>`).
 
 Current state:
 - HIR preserves template/consteval metadata and exposes debug visibility
@@ -21,47 +21,53 @@ Current state:
 - **Phase 5 slice 8**: `static_cast<T>(expr)` support — C++ named cast syntax parsed into NK_CAST nodes, works in regular code, consteval, and template contexts.
 - **Phase 5 slice 9**: `reinterpret_cast<T>(expr)` and `const_cast<T>(expr)` — all three C++ named casts now share the same parser path, producing NK_CAST nodes.
 - **Phase 5 slice 10**: `sizeof(T)`, `__alignof__(T)`, and `sizeof(local_var)` in template bodies — template type parameter substitution applied to sizeof/alignof target types.
-- **Phase 5 slice 11 (NEW)**: Default template arguments (`template<typename T = int>`, `template<int N = 5>`) and empty angle brackets `f<>()` for using all defaults.
+- **Phase 5 slice 11**: Default template arguments (`template<typename T = int>`, `template<int N = 5>`) and empty angle brackets `f<>()` for using all defaults.
+- **Phase 5 slice 12 (NEW)**: Explicit template specialization (`template<> int add<int>(...)`) — specialization bodies override generic template for matching type/NTTP args.
 
 Summary:
 - Phase 1: complete
 - Phases 2-4: partially complete, with good observability and metadata preservation
-- Phase 5: **substantially complete** — deferred template instantiation works; truly deferred consteval evaluation works via PendingConstevalExpr; NTTP support added; mixed type+NTTP params work; consteval with NTTP works; NTTP forwarding in deferred chains works; mixed type+NTTP forwarding works; type parameter substitution in signatures and locals works; all three C++ named casts supported; sizeof/alignof template type substitution works; **default template arguments supported**
+- Phase 5: **substantially complete** — deferred template instantiation works; truly deferred consteval evaluation works via PendingConstevalExpr; NTTP support added; mixed type+NTTP params work; consteval with NTTP works; NTTP forwarding in deferred chains works; mixed type+NTTP forwarding works; type parameter substitution in signatures and locals works; all three C++ named casts supported; sizeof/alignof template type substitution works; default template arguments supported; **explicit template specialization supported**
 - Phase 6: **complete** — materialization boundary separates compile-time entities from emitted code
 - Phase 7: **complete** — specialization identity is stable, hashable, serializable via LLVM named metadata
 
 ---
 
-## What was done in this session (2026-03-17, session 15)
+## What was done in this session (2026-03-17, session 16)
 
-### Phase 5 slice 11: Default template arguments
+### Phase 5 slice 12: Explicit template specialization
 
 **Changes**:
-1. **AST** (`ast.hpp`): Added `template_param_has_default`, `template_param_default_types`, `template_param_default_values` arrays on `Node` for storing default template parameter values.
-2. **AST** (`ast.hpp`): Added `has_template_args` boolean to distinguish `f()` from `f<>()`.
-3. **Parser** (`declarations.cpp`): Template parameter default values are now captured instead of skipped. Type defaults use `parse_type_name()`, NTTP defaults parse integer literals.
-4. **Parser** (`expressions.cpp`): Empty `<>` at call sites now accepted (previously rejected by `!template_args.empty()` check). Sets `has_template_args = true`.
-5. **HIR** (`ast_to_hir.cpp`): `build_call_bindings()` and `build_call_nttp_bindings()` fill missing args from `fn_def`'s defaults. Template call detection updated to recognize `has_template_args` for empty `<>` calls.
-6. **HIR** (`ast_to_hir.cpp`): Consteval inline binding path also fills defaults for missing params.
+1. **AST** (`ast.hpp`): Added `is_explicit_specialization` flag on `Node` for `template<>` functions.
+2. **Parser** (`declarations.cpp`): Detect `template<>` (empty param list) at top-level, set flag, parse specialization type args `<Args>` after function name.
+3. **Parser** (`parser.hpp`): Added `parsing_explicit_specialization_` context flag.
+4. **Sema** (`validate.cpp`): Skip conflicting-types error for explicit specializations (they intentionally differ in signature from the generic template).
+5. **HIR** (`ast_to_hir.cpp`):
+   - `template_fn_specs_` map: mangled_name → specialization AST node
+   - `mangle_specialization()`: builds mangled name from specialization's type args mapped to generic template's param names
+   - Phase 1.6: collects explicit specializations into `template_fn_specs_`
+   - Phase 2: checks `template_fn_specs_` before lowering each instantiation — uses specialization body when matched
+   - Phase 3 (deferred): same specialization check in the deferred lowering callback
+   - Explicit specializations are skipped during normal function lowering (they're only used via their mangled template name)
 
-**Design**: Default template args are stored alongside the existing parallel arrays for template params. At call sites, explicit args are consumed first, then remaining params are filled from defaults. The `has_template_args` flag distinguishes `f()` (not a template call) from `f<>()` (template call with all defaults).
+**Design**: Explicit specializations are stored by mangled name (same key as generic instantiations). When lowering a template instantiation, the mangled name is looked up in `template_fn_specs_` first. If found, the specialization body is lowered directly (no template bindings needed since it's already concrete). This works for both eager (Phase 2) and deferred (Phase 3) instantiation paths.
 
 ### Test additions
-- **`template_default_args.cpp`**: Tests default type args, default NTTP args, partial defaults, empty `<>`, mixed type+NTTP defaults.
+- **`template_explicit_spec.cpp`**: Tests `template<> int add<int>(...)` overriding generic `add<T>`, `template<> char identity<char>(...)` overriding generic, and that non-specialized instantiations still use the generic body.
 
 ### Files changed
-- `src/frontend/parser/ast.hpp` (3 new Node fields + has_template_args flag)
-- `src/frontend/parser/declarations.cpp` (capture defaults instead of skip)
-- `src/frontend/parser/expressions.cpp` (allow empty `<>`)
-- `src/frontend/hir/ast_to_hir.cpp` (fill defaults in binding builders + detect empty `<>`)
-- `tests/internal/cpp/postive_case/template_default_args.cpp` (new)
+- `src/frontend/parser/ast.hpp` (1 new Node flag)
+- `src/frontend/parser/parser.hpp` (1 new context flag)
+- `src/frontend/parser/declarations.cpp` (template<> detection + spec arg parsing)
+- `src/frontend/sema/validate.cpp` (skip conflicting-types for specializations)
+- `src/frontend/hir/ast_to_hir.cpp` (specialization collection, lookup, mangle helper)
+- `tests/internal/cpp/postive_case/template_explicit_spec.cpp` (new)
 
 ---
 
 ## Recommended next milestone
 
 Potential next work:
-- Explicit template specialization (`template<> T foo<T>()`)
 - Template return type substitution for more complex types (struct, fn_ptr)
 - Phase 2-4 remaining: deeper template/consteval HIR preservation
 - Template class/struct support

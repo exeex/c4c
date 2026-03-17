@@ -509,7 +509,7 @@ class Validator {
       }
       auto it = funcs_.find(n->name);
       if (it != funcs_.end()) {
-        if (!function_sig_compatible(it->second, sig)) {
+        if (!function_sig_compatible(it->second, sig) && !n->is_explicit_specialization) {
           emit(n->line, std::string("conflicting types for function '") + n->name + "'");
         } else if (it->second.unspecified_params && !sig.unspecified_params) {
           // Upgrade K&R unspecified-params declaration to the full prototype.

@@ -76,6 +76,8 @@ class Parser {
   bool had_error_;
   // True while parsing a file-scope declaration in parse_top_level().
   bool parsing_top_level_context_;
+  // True while parsing an explicit template specialization (template<>).
+  bool parsing_explicit_specialization_ = false;
   // Last enum definition node produced by parse_base_type(), if any.
   // Used so declaration-only enum statements (`enum { ... };`) can be retained.
   Node* last_enum_def_;

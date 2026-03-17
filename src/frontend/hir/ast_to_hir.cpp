@@ -458,6 +458,18 @@ class Lowerer {
       if (item->kind == NK_FUNCTION && item->name && item->n_template_params > 0)
         template_fn_defs_[item->name] = item;
     }
+    // Collect explicit template specializations (template<> T foo<Args>(...)).
+    for (const Node* item : items) {
+      if (item->kind == NK_FUNCTION && item->name && item->is_explicit_specialization
+          && item->n_template_args > 0) {
+        auto def_it = template_fn_defs_.find(item->name);
+        if (def_it != template_fn_defs_.end()) {
+          std::string mangled = mangle_specialization(item, def_it->second);
+          if (!mangled.empty())
+            template_fn_specs_[mangled] = item;
+        }
+      }
+    }
     // Collect only depth-0 instantiations: direct template calls from
     // non-template functions (e.g., main() calling twice<int>()).
     // Nested template calls (e.g., add<T>() inside twice<T>()) will be
@@ -543,8 +555,15 @@ class Lowerer {
           auto inst_it = template_fn_instances_.find(item->name);
           if (inst_it != template_fn_instances_.end() && !inst_it->second.empty()) {
             for (const auto& inst : inst_it->second) {
-              lower_function(item, &inst.mangled_name, &inst.bindings,
-                             inst.nttp_bindings.empty() ? nullptr : &inst.nttp_bindings);
+              // Check for explicit specialization matching this instantiation.
+              auto spec_it = template_fn_specs_.find(inst.mangled_name);
+              if (spec_it != template_fn_specs_.end()) {
+                // Use the specialization body (no template bindings needed).
+                lower_function(spec_it->second, &inst.mangled_name);
+              } else {
+                lower_function(item, &inst.mangled_name, &inst.bindings,
+                               inst.nttp_bindings.empty() ? nullptr : &inst.nttp_bindings);
+              }
               if (!m.functions.empty()) {
                 m.functions.back().template_origin = item->name ? item->name : "";
                 m.functions.back().spec_key = inst.spec_key;
@@ -561,7 +580,7 @@ class Lowerer {
               continue;  // Will be instantiated by the HIR compile-time pass.
             lower_function(item);
           }
-        } else {
+        } else if (!item->is_explicit_specialization) {
           lower_function(item);
         }
       } else if (item->kind == NK_GLOBAL_VAR) {
@@ -582,12 +601,18 @@ class Lowerer {
       if (fn_it == template_fn_defs_.end()) return false;
       const Node* fn_def = fn_it->second;
       if (fn_def->is_consteval) return false;  // consteval handled eagerly
-      // Enable deferred consteval: consteval calls inside this function
-      // will create PendingConstevalExpr nodes instead of evaluating.
-      defer_consteval_ = true;
-      const NttpBindings* nttp_ptr = nttp_bindings.empty() ? nullptr : &nttp_bindings;
-      lower_function(fn_def, &mangled, &bindings, nttp_ptr);
-      defer_consteval_ = false;
+      // Check for explicit specialization matching this instantiation.
+      auto spec_it = template_fn_specs_.find(mangled);
+      if (spec_it != template_fn_specs_.end()) {
+        lower_function(spec_it->second, &mangled);
+      } else {
+        // Enable deferred consteval: consteval calls inside this function
+        // will create PendingConstevalExpr nodes instead of evaluating.
+        defer_consteval_ = true;
+        const NttpBindings* nttp_ptr = nttp_bindings.empty() ? nullptr : &nttp_bindings;
+        lower_function(fn_def, &mangled, &bindings, nttp_ptr);
+        defer_consteval_ = false;
+      }
       // Track template origin and specialization key for deferred instantiations.
       if (!module_->functions.empty()) {
         module_->functions.back().template_origin = tpl_name;
@@ -4020,6 +4045,28 @@ class Lowerer {
     return result;
   }
 
+  // Build a mangled name for an explicit specialization node by mapping its
+  // template_arg_types/values to the generic template's param names.
+  std::string mangle_specialization(const Node* spec, const Node* generic_def) {
+    if (!spec || !generic_def || generic_def->n_template_params <= 0) return "";
+    TypeBindings bindings;
+    NttpBindings nttp_bindings;
+    int n = std::min(spec->n_template_args, generic_def->n_template_params);
+    for (int i = 0; i < n; ++i) {
+      const char* pname = generic_def->template_param_names[i];
+      if (!pname) continue;
+      bool is_nttp = generic_def->template_param_is_nttp &&
+                     generic_def->template_param_is_nttp[i];
+      if (is_nttp) {
+        if (spec->template_arg_is_value && spec->template_arg_is_value[i])
+          nttp_bindings[pname] = spec->template_arg_values[i];
+      } else {
+        bindings[pname] = spec->template_arg_types[i];
+      }
+    }
+    return mangle_template_name(spec->name, bindings, nttp_bindings);
+  }
+
   // Build TypeBindings from a call-site template args and a function definition.
   // Resolves typedef args through `enclosing_bindings` if provided.
   // Fills missing args from fn_def's default template parameters.
@@ -4315,6 +4362,8 @@ class Lowerer {
   std::unordered_map<std::string, std::vector<TemplateInstance>> template_fn_instances_;
   // O(1) dedup set: "fn_name::mangled_name" for each recorded instance.
   std::unordered_set<std::string> instance_keys_;
+  // Explicit template specializations: mangled_name → specialization AST node.
+  std::unordered_map<std::string, const Node*> template_fn_specs_;
   // When true, consteval calls create PendingConstevalExpr instead of
   // evaluating eagerly.  Set during deferred template instantiation.
   bool defer_consteval_ = false;
