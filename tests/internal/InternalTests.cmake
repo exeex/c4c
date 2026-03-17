@@ -247,6 +247,16 @@ set_tests_properties(cpp_hir_compile_time_reduction_stats PROPERTIES
   PASS_REGULAR_EXPRESSION "compile-time reduction:.*\\(converged\\)"
 )
 
+# HIR template instantiation resolution: verify all template calls resolved to functions
+add_test(
+  NAME cpp_hir_template_instantiation_resolved
+  COMMAND c4cll --dump-hir "${INTERNAL_TEST_ROOT}/cpp/postive_case/template_func.cpp"
+)
+set_tests_properties(cpp_hir_template_instantiation_resolved PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "1 template call resolved.*\\(converged\\)"
+)
+
 add_test(
     NAME frontend_cxx_preprocessor_tests
     COMMAND frontend_cxx_preprocessor_tests

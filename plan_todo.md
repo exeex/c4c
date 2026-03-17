@@ -121,6 +121,7 @@ Make compile-time behavior converge through repeated passes instead of fixed fro
 
 ### Completed Slices
 - [x] Slice 1: Add HIR pass entry point for compile-time reduction
+- [x] Slice 2: Implement one iteration step for template instantiation
 
 ### What was added (Slice 1)
 - `compile_time_pass.hpp`: `CompileTimePassStats`, `run_compile_time_reduction()`, `format_compile_time_stats()` API
@@ -129,8 +130,13 @@ Make compile-time behavior converge through repeated passes instead of fixed fro
 - `CMakeLists.txt`: Added `compile_time_pass.cpp` to build
 - `InternalTests.cmake`: `cpp_hir_compile_time_reduction_stats` test
 
+### What was added (Slice 2)
+- `compile_time_pass.hpp`: Added `templates_pending` field to `CompileTimePassStats`
+- `compile_time_pass.cpp`: `TemplateInstantiationStep` — walks CallExpr nodes with `template_info`, resolves callee DeclRef against module function list, counts resolved vs pending; fixpoint loop with kMaxIterations=8
+- `compile_time_pass.cpp`: Updated `format_compile_time_stats()` to show "N template calls resolved" and optional pending count
+- `InternalTests.cmake`: `cpp_hir_template_instantiation_resolved` test verifying "1 template call resolved" + "(converged)"
+
 ### Remaining Slices
-- [ ] Slice 2: Implement one iteration step for template instantiation
 - [ ] Slice 3: Implement one iteration step for consteval reduction
 - [ ] Slice 4: Re-run until convergence or explicit iteration limit
 - [ ] Slice 5: Surface structured diagnostics on irreducible required compile-time nodes

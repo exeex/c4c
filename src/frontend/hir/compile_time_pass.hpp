@@ -9,7 +9,8 @@ namespace tinyc2ll::frontend_cxx::sema_ir::phase2::hir {
 
 /// Result of a single compile-time reduction iteration.
 struct CompileTimePassStats {
-  size_t templates_instantiated = 0;  // new template instantiations produced
+  size_t templates_instantiated = 0;  // template calls with resolved target functions
+  size_t templates_pending = 0;       // template calls whose target is missing
   size_t consteval_reduced = 0;       // consteval calls reduced to constants
   size_t iterations = 0;              // total fixpoint iterations performed
   bool converged = false;             // true if no new work was found
@@ -23,9 +24,9 @@ struct CompileTimePassStats {
 /// until convergence or the iteration limit is reached.
 ///
 /// Currently, all template instantiation and consteval reduction is performed
-/// during AST-to-HIR lowering.  This pass validates that no unreduced
-/// compile-time nodes remain and reports statistics.  Future iterations will
-/// move reduction work here for cases where lowering cannot resolve all
+/// during AST-to-HIR lowering.  This pass validates that all template
+/// applications have been resolved and reports statistics.  Future iterations
+/// will move reduction work here for cases where lowering cannot resolve all
 /// compile-time dependencies in a single pass.
 CompileTimePassStats run_compile_time_reduction(Module& module);
 
