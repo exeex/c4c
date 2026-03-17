@@ -3246,7 +3246,8 @@ class Lowerer {
             TypeBindings tpl_bindings;
             NttpBindings ce_nttp_bindings;
             const Node* fn_def = ce_it->second;
-            if (n->left->n_template_args > 0 && fn_def->n_template_params > 0) {
+            if ((n->left->n_template_args > 0 || n->left->has_template_args) &&
+                fn_def->n_template_params > 0) {
               int count = std::min(n->left->n_template_args, fn_def->n_template_params);
               for (int i = 0; i < count; ++i) {
                 if (!fn_def->template_param_names[i]) continue;
@@ -3280,6 +3281,20 @@ class Lowerer {
                   if (resolved != ctx->tpl_bindings.end()) arg_ts = resolved->second;
                 }
                 tpl_bindings[fn_def->template_param_names[i]] = arg_ts;
+              }
+              // Fill remaining params from defaults.
+              if (fn_def->template_param_has_default) {
+                for (int i = count; i < fn_def->n_template_params; ++i) {
+                  if (!fn_def->template_param_names[i]) continue;
+                  if (!fn_def->template_param_has_default[i]) continue;
+                  if (fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]) {
+                    ce_nttp_bindings[fn_def->template_param_names[i]] =
+                        fn_def->template_param_default_values[i];
+                  } else {
+                    tpl_bindings[fn_def->template_param_names[i]] =
+                        fn_def->template_param_default_types[i];
+                  }
+                }
               }
               arg_env.type_bindings = &tpl_bindings;
               if (!ce_nttp_bindings.empty())
@@ -3352,7 +3367,7 @@ class Lowerer {
         // For template function calls, resolve the mangled instantiation name.
         std::string resolved_callee_name;
         if (n->left && n->left->kind == NK_VAR && n->left->name &&
-            n->left->n_template_args > 0 &&
+            (n->left->n_template_args > 0 || n->left->has_template_args) &&
             template_fn_defs_.count(n->left->name) &&
             !consteval_fns_.count(n->left->name)) {
           const TypeBindings* enc = (ctx && !ctx->tpl_bindings.empty())
@@ -4007,13 +4022,15 @@ class Lowerer {
 
   // Build TypeBindings from a call-site template args and a function definition.
   // Resolves typedef args through `enclosing_bindings` if provided.
+  // Fills missing args from fn_def's default template parameters.
   TypeBindings build_call_bindings(const Node* call_var, const Node* fn_def,
                                    const TypeBindings* enclosing_bindings) {
     TypeBindings bindings;
-    if (!call_var || !fn_def || call_var->n_template_args <= 0 ||
-        fn_def->n_template_params <= 0) return bindings;
-    int count = std::min(call_var->n_template_args, fn_def->n_template_params);
-    for (int i = 0; i < count; ++i) {
+    if (!call_var || !fn_def || fn_def->n_template_params <= 0) return bindings;
+    // Allow n_template_args == 0 when defaults are available.
+    int explicit_count = call_var->n_template_args > 0
+        ? std::min(call_var->n_template_args, fn_def->n_template_params) : 0;
+    for (int i = 0; i < explicit_count; ++i) {
       if (!fn_def->template_param_names[i]) continue;
       // Skip NTTP params in type bindings — they go in nttp_bindings.
       if (fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]) continue;
@@ -4025,16 +4042,26 @@ class Lowerer {
       }
       bindings[fn_def->template_param_names[i]] = arg_ts;
     }
+    // Fill remaining type params from defaults.
+    if (fn_def->template_param_has_default) {
+      for (int i = explicit_count; i < fn_def->n_template_params; ++i) {
+        if (!fn_def->template_param_names[i]) continue;
+        if (fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]) continue;
+        if (fn_def->template_param_has_default[i]) {
+          bindings[fn_def->template_param_names[i]] = fn_def->template_param_default_types[i];
+        }
+      }
+    }
     return bindings;
   }
 
   NttpBindings build_call_nttp_bindings(const Node* call_var, const Node* fn_def,
                                         const NttpBindings* enclosing_nttp = nullptr) {
     NttpBindings bindings;
-    if (!call_var || !fn_def || call_var->n_template_args <= 0 ||
-        fn_def->n_template_params <= 0) return bindings;
-    int count = std::min(call_var->n_template_args, fn_def->n_template_params);
-    for (int i = 0; i < count; ++i) {
+    if (!call_var || !fn_def || fn_def->n_template_params <= 0) return bindings;
+    int explicit_count = call_var->n_template_args > 0
+        ? std::min(call_var->n_template_args, fn_def->n_template_params) : 0;
+    for (int i = 0; i < explicit_count; ++i) {
       if (!fn_def->template_param_names[i]) continue;
       if (!fn_def->template_param_is_nttp || !fn_def->template_param_is_nttp[i]) continue;
       if (call_var->template_arg_is_value && call_var->template_arg_is_value[i]) {
@@ -4051,6 +4078,16 @@ class Lowerer {
           continue;
         }
         bindings[fn_def->template_param_names[i]] = call_var->template_arg_values[i];
+      }
+    }
+    // Fill remaining NTTP params from defaults.
+    if (fn_def->template_param_has_default) {
+      for (int i = explicit_count; i < fn_def->n_template_params; ++i) {
+        if (!fn_def->template_param_names[i]) continue;
+        if (!fn_def->template_param_is_nttp || !fn_def->template_param_is_nttp[i]) continue;
+        if (fn_def->template_param_has_default[i]) {
+          bindings[fn_def->template_param_names[i]] = fn_def->template_param_default_values[i];
+        }
       }
     }
     return bindings;
@@ -4116,7 +4153,8 @@ class Lowerer {
   std::string resolve_template_call_name(const Node* call_var,
                                           const TypeBindings* enclosing_bindings,
                                           const NttpBindings* enclosing_nttp = nullptr) {
-    if (!call_var || !call_var->name || call_var->n_template_args <= 0)
+    if (!call_var || !call_var->name ||
+        (call_var->n_template_args <= 0 && !call_var->has_template_args))
       return call_var ? (call_var->name ? call_var->name : "") : "";
     auto fn_it = template_fn_defs_.find(call_var->name);
     if (fn_it == template_fn_defs_.end()) return call_var->name;
@@ -4131,7 +4169,8 @@ class Lowerer {
   void collect_template_instantiations(const Node* n, const Node* enclosing_fn) {
     if (!n) return;
     if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR &&
-        n->left->name && n->left->n_template_args > 0) {
+        n->left->name &&
+        (n->left->n_template_args > 0 || n->left->has_template_args)) {
       auto fn_it = template_fn_defs_.find(n->left->name);
       if (fn_it != template_fn_defs_.end()) {
         const Node* fn_def = fn_it->second;
@@ -4183,7 +4222,8 @@ class Lowerer {
   void collect_consteval_template_instantiations(const Node* n, const Node* enclosing_fn) {
     if (!n) return;
     if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR &&
-        n->left->name && n->left->n_template_args > 0) {
+        n->left->name &&
+        (n->left->n_template_args > 0 || n->left->has_template_args)) {
       auto fn_it = template_fn_defs_.find(n->left->name);
       if (fn_it != template_fn_defs_.end()) {
         const Node* fn_def = fn_it->second;

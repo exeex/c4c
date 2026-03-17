@@ -225,6 +225,9 @@ Node* Parser::parse_top_level() {
         expect(TokenKind::Less);
         std::vector<const char*> template_params;
         std::vector<bool> template_param_nttp;  // true if non-type template param
+        std::vector<bool> template_param_has_default;
+        std::vector<TypeSpec> template_param_default_types;
+        std::vector<long long> template_param_default_values;
         while (!at_end() && !check(TokenKind::Greater)) {
             if (check(TokenKind::Identifier) &&
                 (cur().lexeme == "typename" || cur().lexeme == "class")) {
@@ -237,6 +240,20 @@ Node* Parser::parse_top_level() {
                 consume();
                 template_params.push_back(pname);
                 template_param_nttp.push_back(false);
+                // Check for default type argument: = type
+                if (match(TokenKind::Assign)) {
+                    TypeSpec def_ts = parse_type_name();
+                    template_param_has_default.push_back(true);
+                    template_param_default_types.push_back(def_ts);
+                    template_param_default_values.push_back(0);
+                } else {
+                    template_param_has_default.push_back(false);
+                    TypeSpec dummy{};
+                    dummy.array_size = -1;
+                    dummy.inner_rank = -1;
+                    template_param_default_types.push_back(dummy);
+                    template_param_default_values.push_back(0);
+                }
             } else if (is_type_kw(cur().kind)) {
                 // Non-type template parameter (NTTP): e.g. int N, unsigned N.
                 // Consume the type specifier tokens, then the parameter name.
@@ -248,21 +265,49 @@ Node* Parser::parse_top_level() {
                 consume();
                 template_params.push_back(pname);
                 template_param_nttp.push_back(true);
+                // Check for default NTTP value: = expr
+                if (match(TokenKind::Assign)) {
+                    long long sign = 1;
+                    if (match(TokenKind::Minus)) sign = -1;
+                    if (check(TokenKind::IntLit)) {
+                        long long val = parse_int_lexeme(cur().lexeme.c_str());
+                        consume();
+                        template_param_has_default.push_back(true);
+                        TypeSpec dummy{};
+                        dummy.array_size = -1;
+                        dummy.inner_rank = -1;
+                        template_param_default_types.push_back(dummy);
+                        template_param_default_values.push_back(val * sign);
+                    } else {
+                        // Complex default expression — skip for now
+                        int depth = 0;
+                        while (!at_end()) {
+                            if (check(TokenKind::Less)) ++depth;
+                            else if (check(TokenKind::Greater)) {
+                                if (depth == 0) break;
+                                --depth;
+                            } else if (check(TokenKind::Comma) && depth == 0) {
+                                break;
+                            }
+                            consume();
+                        }
+                        template_param_has_default.push_back(false);
+                        TypeSpec dummy{};
+                        dummy.array_size = -1;
+                        dummy.inner_rank = -1;
+                        template_param_default_types.push_back(dummy);
+                        template_param_default_values.push_back(0);
+                    }
+                } else {
+                    template_param_has_default.push_back(false);
+                    TypeSpec dummy{};
+                    dummy.array_size = -1;
+                    dummy.inner_rank = -1;
+                    template_param_default_types.push_back(dummy);
+                    template_param_default_values.push_back(0);
+                }
             } else {
                 throw std::runtime_error("expected template parameter name");
-            }
-            if (match(TokenKind::Assign)) {
-                int depth = 0;
-                while (!at_end()) {
-                    if (check(TokenKind::Less)) ++depth;
-                    else if (check(TokenKind::Greater)) {
-                        if (depth == 0) break;
-                        --depth;
-                    } else if (check(TokenKind::Comma) && depth == 0) {
-                        break;
-                    }
-                    consume();
-                }
             }
             if (!match(TokenKind::Comma)) break;
         }
@@ -294,9 +339,15 @@ Node* Parser::parse_top_level() {
             n->n_template_params = (int)template_params.size();
             n->template_param_names = arena_.alloc_array<const char*>(n->n_template_params);
             n->template_param_is_nttp = arena_.alloc_array<bool>(n->n_template_params);
+            n->template_param_has_default = arena_.alloc_array<bool>(n->n_template_params);
+            n->template_param_default_types = arena_.alloc_array<TypeSpec>(n->n_template_params);
+            n->template_param_default_values = arena_.alloc_array<long long>(n->n_template_params);
             for (int i = 0; i < n->n_template_params; ++i) {
                 n->template_param_names[i] = template_params[i];
                 n->template_param_is_nttp[i] = template_param_nttp[i];
+                n->template_param_has_default[i] = template_param_has_default[i];
+                n->template_param_default_types[i] = template_param_default_types[i];
+                n->template_param_default_values[i] = template_param_default_values[i];
             }
         };
 

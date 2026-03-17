@@ -671,7 +671,9 @@ Node* Parser::parse_primary() {
             }
             if (ok && check(TokenKind::Greater)) {
                 consume();
-                if (check(TokenKind::LParen) && !template_args.empty()) {
+                if (check(TokenKind::LParen)) {
+                    // Allow empty <> for default template args; n_template_args==0 is fine.
+                    ident->has_template_args = true;
                     ident->n_template_args = (int)template_args.size();
                     ident->template_arg_types = arena_.alloc_array<TypeSpec>(ident->n_template_args);
                     ident->template_arg_is_value = arena_.alloc_array<bool>(ident->n_template_args);
