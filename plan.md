@@ -319,7 +319,7 @@ Goal:
 
 Status:
 
-- partially completed
+- **completed**
 
 Tasks:
 
@@ -328,55 +328,33 @@ Tasks:
 - replace the current narrow helper interface with `ConstValue` / `ConstEvalResult`
 - preserve existing integer operator support
 
-Status:
-
-- not started in full
-- current code still uses `std::optional<long long>`
+Status: **done** — `ConstValue`, `ConstEvalResult`, `ConstEvalEnv` defined in consteval.hpp; unified `evaluate_constant_expr()` API
 
 2. Extend name lookup beyond enums
 
 - teach evaluator to resolve references to constant globals
 - support simple local constant bindings
 
-Status:
-
-- global constant bindings: done for the current scalar path
-- local constant bindings: not started
+Status: **done** — global and local constant bindings supported via `ConstEvalEnv`
 
 3. Replace duplicated integer-folding entry points where practical
 
 - migrate users in [src/frontend/sema/validate.cpp](/workspaces/c4c/src/frontend/sema/validate.cpp)
 - migrate users in [src/frontend/hir/ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
 
-Status:
-
-- partial use added in [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) for gated named-global pre-folding
-- `validate.cpp` still uses its own evaluator
+Status: **done** — both validate.cpp and ast_to_hir.cpp use `evaluate_constant_expr()`
 
 4. Fix `constexpr_var.cpp`
 
 - make `base`, `offset`, and `answer` fold through named bindings
 
-Status:
+Status: **done**
 
-- done
-
-Exit criteria:
+Exit criteria: **all met**
 
 - `const int x = 4; const int y = 5; const int z = x + y;` folds correctly
-- `tests/internal/cpp/postive_case/constexpr_var.cpp` can move from frontend-only to runtime mode
-
-Current result:
-
-- achieved for the current scalar integer subset
+- `tests/internal/cpp/postive_case/constexpr_var.cpp` moved to runtime coverage
 - [const_named_fold.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/const_named_fold.cpp) added as regression coverage
-- [constexpr_var.cpp](/workspaces/c4c/tests/internal/cpp/postive_case/constexpr_var.cpp) moved to runtime coverage
-
-Remaining Phase 1 work:
-
-- unify duplicated constant-expression code paths
-- add local binding support
-- stop relying on HIR-lowering-specific glue for named global constants
 
 ### Phase 2: add immediate-function interpretation
 

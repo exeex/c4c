@@ -28,7 +28,7 @@
 - [x] Forbid runtime fallback (consteval functions not emitted to LLVM IR)
 - [x] Tests: consteval_diag (positive coverage after diagnostics added)
 
-### Phase 4: Integrate with if constexpr, builtins, and templates (partial)
+### Phase 4: Integrate with if constexpr, builtins, and templates
 - [x] if constexpr condition folding through unified evaluator
 - [x] sizeof/alignof as constant expressions in constexpr/if constexpr
 - [x] Direct consteval template calls with concrete template args (e.g., `get_size<int>()`)
