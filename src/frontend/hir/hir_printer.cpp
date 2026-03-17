@@ -473,7 +473,16 @@ class Printer {
   }
 
   void print_expr_payload(std::ostringstream& out, const CallExpr& x) {
-    print_expr_inline(out, x.callee);
+    if (x.template_info) {
+      out << x.template_info->source_template << "<";
+      for (size_t i = 0; i < x.template_info->template_args.size(); ++i) {
+        if (i) out << ", ";
+        out << ts_str(x.template_info->template_args[i]);
+      }
+      out << ">";
+    } else {
+      print_expr_inline(out, x.callee);
+    }
     out << "(";
     for (size_t i = 0; i < x.args.size(); ++i) {
       if (i) out << ", ";

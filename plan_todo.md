@@ -1,7 +1,7 @@
 # Plan Execution State
 
 ## Baseline
-- 1840/1840 tests passing (2026-03-17)
+- 1841/1841 tests passing (2026-03-17)
 
 ## Phase 1: Constrain sema to conservative compile-time work
 **Status: COMPLETE** (already satisfied by current architecture)
@@ -65,21 +65,40 @@ Keep template definitions as first-class HIR entities alongside instantiated cop
 
 ---
 
-## Next: Phase 3: Preserve template applications/calls in HIR
+## Phase 3: Preserve template applications/calls in HIR
+**Status: COMPLETE**
 
 ### Goal
 Distinguish template application (e.g., `add<int>`) from ordinary function call in HIR.
 
+### Completed Slices
+- [x] Slice 1: Add `TemplateCallInfo` struct to `ir.hpp` with `source_template` and `template_args`; add `optional<TemplateCallInfo>` field to `CallExpr`
+- [x] Slice 2: Populate `TemplateCallInfo` during lowering in `ast_to_hir.cpp` when resolving template call names; added `get_template_param_order()` helper
+- [x] Slice 3: Add printer support — `CallExpr` printer shows `add<int>(...)` syntax when `template_info` is present
+- [x] Slice 4: Add `cpp_hir_template_call_info_dump` test matching `add<int>(20, 22)` pattern
+
+### What was added
+- `ir.hpp`: `TemplateCallInfo` struct; `CallExpr::template_info` optional field
+- `ast_to_hir.cpp`: `get_template_param_order()` static helper; template call info population at call sites
+- `hir_printer.cpp`: template-aware `CallExpr` printer using `source_template<args>(...)` format
+- `InternalTests.cmake`: `cpp_hir_template_call_info_dump` test
+
+---
+
+## Next: Phase 4: Preserve consteval as HIR-reducible nodes
+
+### Goal
+Stop treating consteval reduction as a lowering-only side effect. Preserve consteval call intent in HIR.
+
 ### Planned Slices
-- [ ] Slice 1: Add `TemplateCallInfo` to HIR `CallExpr` (template args, source template name)
-- [ ] Slice 2: Populate `TemplateCallInfo` during lowering
-- [ ] Slice 3: Add printer support for template call info
-- [ ] Slice 4: Add test for `--dump-hir` template application inspection
+- [ ] Slice 1: Add `ConstevalCallInfo` to HIR (function name, args, result) in `ir.hpp`
+- [ ] Slice 2: Populate consteval call metadata during lowering
+- [ ] Slice 3: Add printer support for consteval call nodes
+- [ ] Slice 4: Add test for `--dump-hir` consteval call inspection
 
 ---
 
 ## Remaining Phases
-- Phase 4: Preserve consteval as HIR-reducible nodes
 - Phase 5: HIR compile-time reduction loop
 - Phase 6: Materialization boundary
 - Phase 7: Specialization identity and caching

@@ -257,10 +257,18 @@ struct CastExpr {
   std::optional<FnPtrSig> fn_ptr_sig;
 };
 
+/// Metadata preserved for template function application calls.
+struct TemplateCallInfo {
+  std::string source_template;       // original template name (e.g., "add")
+  std::vector<TypeSpec> template_args; // resolved concrete template arguments
+};
+
 struct CallExpr {
   ExprId callee{};
   std::vector<ExprId> args;
   BuiltinId builtin_id = BuiltinId::Unknown;
+  /// Non-null for calls that originated from a template application (e.g., add<int>).
+  std::optional<TemplateCallInfo> template_info;
 };
 
 struct VaArgExpr {

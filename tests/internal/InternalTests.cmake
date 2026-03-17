@@ -207,6 +207,16 @@ set_tests_properties(cpp_hir_consteval_template_dump PROPERTIES
   PASS_REGULAR_EXPRESSION "template consteval square<typename T>"
 )
 
+# HIR template call info dump test: verify template application metadata on calls
+add_test(
+  NAME cpp_hir_template_call_info_dump
+  COMMAND c4cll --dump-hir "${INTERNAL_TEST_ROOT}/cpp/postive_case/template_func.cpp"
+)
+set_tests_properties(cpp_hir_template_call_info_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "add<int>\\(20, 22\\)"
+)
+
 add_test(
     NAME frontend_cxx_preprocessor_tests
     COMMAND frontend_cxx_preprocessor_tests

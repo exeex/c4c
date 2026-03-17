@@ -3123,6 +3123,18 @@ class Lowerer {
           } else {
             c.callee = append_expr(n->left, dr, n->left->type);
           }
+          // Preserve template application metadata.
+          TemplateCallInfo tci;
+          tci.source_template = n->left->name;
+          auto fn_it = template_fn_defs_.find(n->left->name);
+          if (fn_it != template_fn_defs_.end()) {
+            TypeBindings bindings = build_call_bindings(n->left, fn_it->second, enc);
+            for (const auto& pname : get_template_param_order(fn_it->second)) {
+              auto bit = bindings.find(pname);
+              if (bit != bindings.end()) tci.template_args.push_back(bit->second);
+            }
+          }
+          c.template_info = std::move(tci);
         } else {
           c.callee = lower_expr(ctx, n->left);
         }
@@ -3741,6 +3753,17 @@ class Lowerer {
       if (ts.base == TB_TYPEDEF) return false;
     }
     return true;
+  }
+
+  // Get template parameter names in declaration order.
+  static std::vector<std::string> get_template_param_order(const Node* fn_def) {
+    std::vector<std::string> params;
+    if (!fn_def) return params;
+    for (int i = 0; i < fn_def->n_template_params; ++i) {
+      if (fn_def->template_param_names[i])
+        params.emplace_back(fn_def->template_param_names[i]);
+    }
+    return params;
   }
 
   // Record a template instantiation. Returns the mangled name.
