@@ -68,6 +68,7 @@ set(CPP_POSITIVE_RUNTIME_STEMS
     template_nttp
     template_mixed_params
     consteval_nttp
+    deferred_consteval_nttp
 )
 
 set(CPP_POSITIVE_FRONTEND_STEMS

@@ -31,6 +31,9 @@ namespace c4c::hir {
 
 using SymbolName = std::string;
 
+/// Non-type template parameter value bindings (forward decl for TemplateCallInfo).
+using NttpBindings = std::unordered_map<std::string, long long>;
+
 struct SourceLoc {
   int line = 0;
 };
@@ -261,6 +264,7 @@ struct CastExpr {
 struct TemplateCallInfo {
   std::string source_template;       // original template name (e.g., "add")
   std::vector<TypeSpec> template_args; // resolved concrete template arguments
+  NttpBindings nttp_args;             // resolved NTTP values (param name → value)
 };
 
 struct CallExpr {
@@ -667,9 +671,6 @@ struct HirStructDef {
 
 /// Type bindings for template parameter substitution.
 using TypeBindings = std::unordered_map<std::string, TypeSpec>;
-
-/// Non-type template parameter value bindings.
-using NttpBindings = std::unordered_map<std::string, long long>;
 
 /// Canonical type string for specialization keys (deterministic, no whitespace).
 inline std::string canonical_type_str(const TypeSpec& ts) {

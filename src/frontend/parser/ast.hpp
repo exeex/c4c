@@ -231,6 +231,7 @@ struct Node {
     TypeSpec*    template_arg_types;
     bool*        template_arg_is_value;   // parallel: true if arg is a constant value
     long long*   template_arg_values;     // parallel: NTTP arg values (valid when is_value)
+    const char** template_arg_nttp_names; // parallel: forwarded NTTP name (null if literal)
     int          n_template_args;
     // NK_DECL / NK_GLOBAL_VAR / NK_FUNCTION param decls:
     // function pointer prototype attached to this declarator, if any.

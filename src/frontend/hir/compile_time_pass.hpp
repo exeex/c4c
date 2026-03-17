@@ -42,6 +42,7 @@ struct CompileTimePassStats {
 using DeferredInstantiateFn = std::function<bool(
     const std::string& template_name,
     const TypeBindings& bindings,
+    const NttpBindings& nttp_bindings,
     const std::string& mangled_name)>;
 
 /// Callback for deferred consteval evaluation.

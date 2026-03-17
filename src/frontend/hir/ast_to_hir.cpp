@@ -576,6 +576,7 @@ class Lowerer {
     // triggers on-demand lowering via the callback below.
     auto deferred_lower = [this](const std::string& tpl_name,
                                  const TypeBindings& bindings,
+                                 const NttpBindings& nttp_bindings,
                                  const std::string& mangled) -> bool {
       auto fn_it = template_fn_defs_.find(tpl_name);
       if (fn_it == template_fn_defs_.end()) return false;
@@ -584,14 +585,16 @@ class Lowerer {
       // Enable deferred consteval: consteval calls inside this function
       // will create PendingConstevalExpr nodes instead of evaluating.
       defer_consteval_ = true;
-      lower_function(fn_def, &mangled, &bindings);
+      const NttpBindings* nttp_ptr = nttp_bindings.empty() ? nullptr : &nttp_bindings;
+      lower_function(fn_def, &mangled, &bindings, nttp_ptr);
       defer_consteval_ = false;
       // Track template origin and specialization key for deferred instantiations.
       if (!module_->functions.empty()) {
         module_->functions.back().template_origin = tpl_name;
         auto param_order = get_template_param_order_from_instances(tpl_name);
-        module_->functions.back().spec_key =
-            make_specialization_key(tpl_name, param_order, bindings);
+        module_->functions.back().spec_key = nttp_bindings.empty()
+            ? make_specialization_key(tpl_name, param_order, bindings)
+            : make_specialization_key(tpl_name, param_order, bindings, nttp_bindings);
       }
       return true;
     };
@@ -3193,8 +3196,20 @@ class Lowerer {
                     fn_def->template_param_is_nttp[i]) {
                   if (n->left->template_arg_is_value &&
                       n->left->template_arg_is_value[i]) {
-                    ce_nttp_bindings[fn_def->template_param_names[i]] =
-                        n->left->template_arg_values[i];
+                    // Check for forwarded NTTP name that needs resolution.
+                    if (n->left->template_arg_nttp_names &&
+                        n->left->template_arg_nttp_names[i] && ctx &&
+                        !ctx->nttp_bindings.empty()) {
+                      auto it = ctx->nttp_bindings.find(
+                          n->left->template_arg_nttp_names[i]);
+                      if (it != ctx->nttp_bindings.end()) {
+                        ce_nttp_bindings[fn_def->template_param_names[i]] =
+                            it->second;
+                      }
+                    } else {
+                      ce_nttp_bindings[fn_def->template_param_names[i]] =
+                          n->left->template_arg_values[i];
+                    }
                   }
                   continue;
                 }
@@ -3283,7 +3298,9 @@ class Lowerer {
             !consteval_fns_.count(n->left->name)) {
           const TypeBindings* enc = (ctx && !ctx->tpl_bindings.empty())
                                         ? &ctx->tpl_bindings : nullptr;
-          resolved_callee_name = resolve_template_call_name(n->left, enc);
+          const NttpBindings* enc_nttp = (ctx && !ctx->nttp_bindings.empty())
+                                              ? &ctx->nttp_bindings : nullptr;
+          resolved_callee_name = resolve_template_call_name(n->left, enc, enc_nttp);
           // Create a DeclRef with the mangled name directly.
           DeclRef dr{};
           dr.name = resolved_callee_name;
@@ -3306,6 +3323,7 @@ class Lowerer {
               auto bit = bindings.find(pname);
               if (bit != bindings.end()) tci.template_args.push_back(bit->second);
             }
+            tci.nttp_args = build_call_nttp_bindings(n->left, fn_it->second, enc_nttp);
           }
           c.template_info = std::move(tci);
         } else {
@@ -3926,7 +3944,8 @@ class Lowerer {
     return bindings;
   }
 
-  NttpBindings build_call_nttp_bindings(const Node* call_var, const Node* fn_def) {
+  NttpBindings build_call_nttp_bindings(const Node* call_var, const Node* fn_def,
+                                        const NttpBindings* enclosing_nttp = nullptr) {
     NttpBindings bindings;
     if (!call_var || !fn_def || call_var->n_template_args <= 0 ||
         fn_def->n_template_params <= 0) return bindings;
@@ -3934,8 +3953,21 @@ class Lowerer {
     for (int i = 0; i < count; ++i) {
       if (!fn_def->template_param_names[i]) continue;
       if (!fn_def->template_param_is_nttp || !fn_def->template_param_is_nttp[i]) continue;
-      if (call_var->template_arg_is_value && call_var->template_arg_is_value[i])
+      if (call_var->template_arg_is_value && call_var->template_arg_is_value[i]) {
+        // Check if this is a forwarded NTTP name that needs resolution.
+        if (call_var->template_arg_nttp_names && call_var->template_arg_nttp_names[i]) {
+          if (enclosing_nttp) {
+            auto it = enclosing_nttp->find(call_var->template_arg_nttp_names[i]);
+            if (it != enclosing_nttp->end()) {
+              bindings[fn_def->template_param_names[i]] = it->second;
+              continue;
+            }
+          }
+          // Unresolved forwarded NTTP — skip (will be resolved during deferred instantiation).
+          continue;
+        }
         bindings[fn_def->template_param_names[i]] = call_var->template_arg_values[i];
+      }
     }
     return bindings;
   }
@@ -3943,6 +3975,15 @@ class Lowerer {
   // Check if an instantiation with the given mangled name already exists (O(1)).
   bool has_instance(const std::string& fn_name, const std::string& mangled) {
     return instance_keys_.count(fn_name + "::" + mangled) > 0;
+  }
+
+  // Check if a call node has any forwarded NTTP names (not yet resolved to values).
+  static bool has_forwarded_nttp(const Node* call_var) {
+    if (!call_var || !call_var->template_arg_nttp_names) return false;
+    for (int i = 0; i < call_var->n_template_args; ++i) {
+      if (call_var->template_arg_nttp_names[i]) return true;
+    }
+    return false;
   }
 
   // Check if all bindings are concrete (no unresolved TB_TYPEDEF).
@@ -3989,7 +4030,8 @@ class Lowerer {
 
   // Resolve the mangled name for a call to a template function.
   std::string resolve_template_call_name(const Node* call_var,
-                                          const TypeBindings* enclosing_bindings) {
+                                          const TypeBindings* enclosing_bindings,
+                                          const NttpBindings* enclosing_nttp = nullptr) {
     if (!call_var || !call_var->name || call_var->n_template_args <= 0)
       return call_var ? (call_var->name ? call_var->name : "") : "";
     auto fn_it = template_fn_defs_.find(call_var->name);
@@ -3997,7 +4039,7 @@ class Lowerer {
     const Node* fn_def = fn_it->second;
     if (fn_def->is_consteval) return call_var->name;  // consteval handled separately
     TypeBindings bindings = build_call_bindings(call_var, fn_def, enclosing_bindings);
-    NttpBindings nttp_bindings = build_call_nttp_bindings(call_var, fn_def);
+    NttpBindings nttp_bindings = build_call_nttp_bindings(call_var, fn_def, enclosing_nttp);
     return mangle_template_name(call_var->name, bindings, nttp_bindings);
   }
 
@@ -4013,13 +4055,13 @@ class Lowerer {
           // Determine the enclosing function's template bindings (if any).
           const TypeBindings* enclosing_bindings = nullptr;
           TypeBindings enc_bindings;
-          NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def);
           if (enclosing_fn && enclosing_fn->name) {
             auto enc_it = template_fn_instances_.find(enclosing_fn->name);
             if (enc_it != template_fn_instances_.end()) {
               // For each enclosing instantiation, record an inner instantiation.
               for (const auto& enc_inst : enc_it->second) {
                 TypeBindings inner = build_call_bindings(n->left, fn_def, &enc_inst.bindings);
+                NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def, &enc_inst.nttp_bindings);
                 std::string mangled = mangle_template_name(n->left->name, inner, call_nttp);
                 if (!has_instance(n->left->name, mangled))
                   record_instance(n->left->name, std::move(inner), call_nttp);
@@ -4028,6 +4070,8 @@ class Lowerer {
             }
           }
           {
+            NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def);
+            if (has_forwarded_nttp(n->left)) goto recurse;  // Deferred: forwarded NTTPs not yet resolved.
             TypeBindings bindings = build_call_bindings(n->left, fn_def, nullptr);
             std::string mangled = mangle_template_name(n->left->name, bindings, call_nttp);
             if (!has_instance(n->left->name, mangled))
@@ -4065,9 +4109,10 @@ class Lowerer {
             if (enc_it != template_fn_instances_.end()) {
               for (const auto& enc_inst : enc_it->second) {
                 TypeBindings inner = build_call_bindings(n->left, fn_def, &enc_inst.bindings);
-                std::string mangled = mangle_template_name(n->left->name, inner);
+                NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def, &enc_inst.nttp_bindings);
+                std::string mangled = mangle_template_name(n->left->name, inner, call_nttp);
                 if (!has_instance(n->left->name, mangled))
-                  record_instance(n->left->name, std::move(inner));
+                  record_instance(n->left->name, std::move(inner), call_nttp);
               }
               goto recurse_ce;
             }
@@ -4079,10 +4124,12 @@ class Lowerer {
               goto recurse_ce;
           }
           {
+            NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def);
+            if (has_forwarded_nttp(n->left)) goto recurse_ce;  // Deferred.
             TypeBindings bindings = build_call_bindings(n->left, fn_def, nullptr);
-            std::string mangled = mangle_template_name(n->left->name, bindings);
+            std::string mangled = mangle_template_name(n->left->name, bindings, call_nttp);
             if (!has_instance(n->left->name, mangled))
-              record_instance(n->left->name, std::move(bindings));
+              record_instance(n->left->name, std::move(bindings), call_nttp);
           }
         }
       }

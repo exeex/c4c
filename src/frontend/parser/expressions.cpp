@@ -611,12 +611,14 @@ Node* Parser::parse_primary() {
             std::vector<TypeSpec> template_args;
             std::vector<bool> template_arg_is_val;
             std::vector<long long> template_arg_vals;
+            std::vector<const char*> template_arg_nttp_names;
             bool ok = true;
             while (!at_end() && !check(TokenKind::Greater)) {
                 if (is_type_start()) {
                     template_args.push_back(parse_type_name());
                     template_arg_is_val.push_back(false);
                     template_arg_vals.push_back(0);
+                    template_arg_nttp_names.push_back(nullptr);
                 } else if (check(TokenKind::IntLit) ||
                            (check(TokenKind::Minus) && pos_ + 1 < (int)tokens_.size() &&
                             tokens_[pos_ + 1].kind == TokenKind::IntLit)) {
@@ -632,6 +634,18 @@ Node* Parser::parse_primary() {
                     template_args.push_back(dummy);
                     template_arg_is_val.push_back(true);
                     template_arg_vals.push_back(val);
+                    template_arg_nttp_names.push_back(nullptr);
+                } else if (check(TokenKind::Identifier) && !is_type_start()) {
+                    // Non-type template argument: forwarded NTTP name (e.g. compute<N>()).
+                    const char* fwd_name = arena_.strdup(cur().lexeme.c_str());
+                    consume();
+                    TypeSpec dummy{};
+                    dummy.array_size = -1;
+                    dummy.inner_rank = -1;
+                    template_args.push_back(dummy);
+                    template_arg_is_val.push_back(true);
+                    template_arg_vals.push_back(0);  // placeholder; resolved by HIR
+                    template_arg_nttp_names.push_back(fwd_name);
                 } else {
                     ok = false;
                     break;
@@ -645,10 +659,12 @@ Node* Parser::parse_primary() {
                     ident->template_arg_types = arena_.alloc_array<TypeSpec>(ident->n_template_args);
                     ident->template_arg_is_value = arena_.alloc_array<bool>(ident->n_template_args);
                     ident->template_arg_values = arena_.alloc_array<long long>(ident->n_template_args);
+                    ident->template_arg_nttp_names = arena_.alloc_array<const char*>(ident->n_template_args);
                     for (int i = 0; i < ident->n_template_args; ++i) {
                         ident->template_arg_types[i] = template_args[i];
                         ident->template_arg_is_value[i] = template_arg_is_val[i];
                         ident->template_arg_values[i] = template_arg_vals[i];
+                        ident->template_arg_nttp_names[i] = template_arg_nttp_names[i];
                     }
                 } else {
                     pos_ = save_pos;

@@ -69,10 +69,13 @@ struct TemplateInstantiationStep {
           TypeBindings bindings;
           size_t count = std::min(tdef.template_params.size(), tci.template_args.size());
           for (size_t i = 0; i < count; ++i) {
+            // Skip NTTP params in type bindings (they use dummy TypeSpec).
+            if (i < tdef.param_is_nttp.size() && tdef.param_is_nttp[i]) continue;
             bindings[tdef.template_params[i]] = tci.template_args[i];
           }
+          NttpBindings nttp_bindings = tci.nttp_args;
           size_t ce_before = module.consteval_calls.size();
-          if (instantiate_fn(tci.source_template, bindings, target_name)) {
+          if (instantiate_fn(tci.source_template, bindings, nttp_bindings, target_name)) {
             instantiated_fns.insert(target_name);
             ++resolved;
             ++newly_instantiated;
@@ -82,8 +85,12 @@ struct TemplateInstantiationStep {
             HirTemplateInstantiation hi;
             hi.mangled_name = target_name;
             hi.bindings = bindings;
-            hi.spec_key = make_specialization_key(
-                tci.source_template, tdef.template_params, bindings);
+            hi.nttp_bindings = nttp_bindings;
+            hi.spec_key = nttp_bindings.empty()
+                ? make_specialization_key(
+                    tci.source_template, tdef.template_params, bindings)
+                : make_specialization_key(
+                    tci.source_template, tdef.template_params, bindings, nttp_bindings);
             tdef_it->second.instances.push_back(std::move(hi));
           } else {
             ++pending;
