@@ -197,7 +197,11 @@ class Printer {
         out << param << "=" << ts_str(ts);
         first = false;
       }
-      out << "}\n";
+      out << "}";
+      if (!inst.spec_key.empty()) {
+        out << " key=" << inst.spec_key.canonical;
+      }
+      out << "\n";
     }
   }
 

@@ -490,6 +490,7 @@ class Lowerer {
           HirTemplateInstantiation hi;
           hi.mangled_name = inst.mangled_name;
           hi.bindings = inst.bindings;
+          hi.spec_key = make_specialization_key(name, tdef.template_params, inst.bindings);
           tdef.instances.push_back(std::move(hi));
         }
       }

@@ -624,10 +624,92 @@ struct HirStructDef {
 /// Type bindings for template parameter substitution.
 using TypeBindings = std::unordered_map<std::string, TypeSpec>;
 
+/// A stable specialization key for template instantiation identity.
+/// Encodes template name + canonicalized argument types in a deterministic,
+/// serializable format suitable for cross-TU dedup and future JIT caching.
+///
+/// Format: "template_name<param1=type1,param2=type2,...>"
+/// Parameters are sorted alphabetically for determinism.
+struct SpecializationKey {
+  std::string canonical;  // serialized canonical form
+
+  bool operator==(const SpecializationKey& other) const { return canonical == other.canonical; }
+  bool operator!=(const SpecializationKey& other) const { return canonical != other.canonical; }
+  bool operator<(const SpecializationKey& other) const { return canonical < other.canonical; }
+  bool empty() const { return canonical.empty(); }
+};
+
+/// Canonical type string for specialization keys (deterministic, no whitespace).
+inline std::string canonical_type_str(const TypeSpec& ts) {
+  std::string s;
+  if (ts.is_const) s += "const_";
+  if (ts.is_volatile) s += "volatile_";
+  switch (ts.base) {
+    case TB_VOID:          s += "void"; break;
+    case TB_BOOL:          s += "bool"; break;
+    case TB_CHAR:          s += "char"; break;
+    case TB_SCHAR:         s += "schar"; break;
+    case TB_UCHAR:         s += "uchar"; break;
+    case TB_SHORT:         s += "short"; break;
+    case TB_USHORT:        s += "ushort"; break;
+    case TB_INT:           s += "int"; break;
+    case TB_UINT:          s += "uint"; break;
+    case TB_LONG:          s += "long"; break;
+    case TB_ULONG:         s += "ulong"; break;
+    case TB_LONGLONG:      s += "llong"; break;
+    case TB_ULONGLONG:     s += "ullong"; break;
+    case TB_FLOAT:         s += "float"; break;
+    case TB_DOUBLE:        s += "double"; break;
+    case TB_LONGDOUBLE:    s += "ldouble"; break;
+    case TB_INT128:        s += "i128"; break;
+    case TB_UINT128:       s += "u128"; break;
+    case TB_STRUCT:        s += ts.tag ? std::string("struct.") + ts.tag : "struct.?"; break;
+    case TB_UNION:         s += ts.tag ? std::string("union.") + ts.tag : "union.?"; break;
+    case TB_ENUM:          s += ts.tag ? std::string("enum.") + ts.tag : "enum.?"; break;
+    case TB_FUNC_PTR:      s += "fnptr"; break;
+    default:               s += "unknown"; break;
+  }
+  for (int i = 0; i < ts.ptr_level; ++i) s += "*";
+  if (ts.array_rank > 0) {
+    for (int i = 0; i < ts.array_rank; ++i) {
+      s += "[";
+      const long long dim = (i == 0) ? ts.array_size : ts.array_dims[i];
+      if (dim >= 0) s += std::to_string(dim);
+      s += "]";
+    }
+  }
+  return s;
+}
+
+/// Build a specialization key from template name, parameter order, and bindings.
+/// Format: "template_name<param1=type1,param2=type2>"
+/// Parameters are in declaration order for determinism.
+inline SpecializationKey make_specialization_key(
+    const std::string& template_name,
+    const std::vector<std::string>& param_order,
+    const TypeBindings& bindings) {
+  std::string key = template_name + "<";
+  bool first = true;
+  for (const auto& param : param_order) {
+    if (!first) key += ",";
+    first = false;
+    key += param + "=";
+    auto it = bindings.find(param);
+    if (it != bindings.end()) {
+      key += canonical_type_str(it->second);
+    } else {
+      key += "?";
+    }
+  }
+  key += ">";
+  return SpecializationKey{std::move(key)};
+}
+
 /// A single template instantiation produced during lowering.
 struct HirTemplateInstantiation {
-  std::string mangled_name;  // e.g. "add_i" for add<int>
-  TypeBindings bindings;     // template param → concrete type
+  std::string mangled_name;    // e.g. "add_i" for add<int>
+  TypeBindings bindings;       // template param → concrete type
+  SpecializationKey spec_key;  // stable identity for dedup/caching
 };
 
 // ── Consteval call metadata (populated by ast_to_hir) ────────────────────────

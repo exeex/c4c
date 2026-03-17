@@ -1,7 +1,7 @@
 # Plan Execution State
 
 ## Baseline
-- 1849/1849 tests passing (2026-03-17)
+- 1850/1850 tests passing (2026-03-17)
 
 ## Phase 1: Constrain sema to conservative compile-time work
 **Status: COMPLETE** (already satisfied by current architecture)
@@ -196,5 +196,31 @@ Separate compile-time specialization from code emission. Make materialization an
 
 ---
 
-## Remaining Phases
-- Phase 7: Specialization identity and caching
+## Phase 7: Specialization identity and caching
+**Status: COMPLETE**
+
+### Goal
+Make specialization identity stable, deterministic, and serializable for future link-time/JIT reuse.
+
+### Completed Slices
+- [x] Slice 1: Add SpecializationKey, canonical type encoding, and printer/test support
+
+### What was added (Slice 1)
+- `ir.hpp`: `SpecializationKey` struct with `canonical` string, comparison operators, `empty()` method
+- `ir.hpp`: `canonical_type_str()` — deterministic type stringification covering all base types, qualifiers, pointers, arrays
+- `ir.hpp`: `make_specialization_key()` — builds `"name<param=type,...>"` format using declaration-order params
+- `ir.hpp`: `HirTemplateInstantiation::spec_key` field
+- `ast_to_hir.cpp`: Computes `spec_key` during Phase 1.7 when populating template instantiation metadata
+- `hir_printer.cpp`: Prints `key=name<T=int>` after each instantiation in `--dump-hir` output
+- `InternalTests.cmake`: `cpp_hir_specialization_key` test matching `key=add<T=int>`
+
+### Exit criteria met
+- Stable specialization key: `SpecializationKey.canonical` is deterministic (param declaration order, canonical type strings)
+- Canonicalized template args in the key (via `canonical_type_str()`)
+- Identity is deterministic across TUs (same template name + same bindings = same key)
+- Encoding is serializable: plain string format `"name<param=type>"` suitable for future link-time/JIT caching
+
+---
+
+## All phases complete
+Plan fully implemented. Phases 1-7 delivered.
