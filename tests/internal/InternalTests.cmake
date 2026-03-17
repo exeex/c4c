@@ -237,6 +237,16 @@ set_tests_properties(cpp_hir_consteval_template_call_info_dump PROPERTIES
   PASS_REGULAR_EXPRESSION "consteval square<T=int>\\(6\\) = 36"
 )
 
+# HIR compile-time reduction pass stats: verify pass runs and reports on template+consteval code
+add_test(
+  NAME cpp_hir_compile_time_reduction_stats
+  COMMAND c4cll --dump-hir "${INTERNAL_TEST_ROOT}/cpp/postive_case/consteval_template.cpp"
+)
+set_tests_properties(cpp_hir_compile_time_reduction_stats PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "compile-time reduction:.*\\(converged\\)"
+)
+
 add_test(
     NAME frontend_cxx_preprocessor_tests
     COMMAND frontend_cxx_preprocessor_tests

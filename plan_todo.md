@@ -1,7 +1,7 @@
 # Plan Execution State
 
 ## Baseline
-- 1843/1843 tests passing (2026-03-17)
+- 1844/1844 tests passing (2026-03-17)
 
 ## Phase 1: Constrain sema to conservative compile-time work
 **Status: COMPLETE** (already satisfied by current architecture)
@@ -113,13 +113,23 @@ Stop treating consteval reduction as a lowering-only side effect. Preserve const
 
 ---
 
-## Next: Phase 5: HIR compile-time reduction loop
+## Phase 5: HIR compile-time reduction loop
+**Status: IN PROGRESS**
 
 ### Goal
 Make compile-time behavior converge through repeated passes instead of fixed frontend ordering.
 
-### Planned Slices
-- [ ] Slice 1: Add HIR pass entry point for compile-time reduction
+### Completed Slices
+- [x] Slice 1: Add HIR pass entry point for compile-time reduction
+
+### What was added (Slice 1)
+- `compile_time_pass.hpp`: `CompileTimePassStats`, `run_compile_time_reduction()`, `format_compile_time_stats()` API
+- `compile_time_pass.cpp`: Scanner walks `expr_pool` for template calls + counts consteval records; reports convergence stats
+- `c4cll.cpp`: Pass runs after lowering, before `--dump-hir` output; stats shown in `--- compile-time reduction ---` section
+- `CMakeLists.txt`: Added `compile_time_pass.cpp` to build
+- `InternalTests.cmake`: `cpp_hir_compile_time_reduction_stats` test
+
+### Remaining Slices
 - [ ] Slice 2: Implement one iteration step for template instantiation
 - [ ] Slice 3: Implement one iteration step for consteval reduction
 - [ ] Slice 4: Re-run until convergence or explicit iteration limit
