@@ -242,8 +242,8 @@ Node* Parser::parse_top_level() {
         std::vector<TypeSpec> template_param_default_types;
         std::vector<long long> template_param_default_values;
         while (!at_end() && !check(TokenKind::Greater)) {
-            if (check(TokenKind::Identifier) &&
-                (cur().lexeme == "typename" || cur().lexeme == "class")) {
+            if ((check(TokenKind::Identifier) && cur().lexeme == "typename") ||
+                check(TokenKind::KwClass)) {
                 // Type template parameter.
                 consume();
                 if (!check(TokenKind::Identifier)) {

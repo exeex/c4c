@@ -134,6 +134,7 @@ const char *token_kind_name(TokenKind kind) {
     case TokenKind::KwStaticCast: return "KW_static_cast";
     case TokenKind::KwReinterpretCast: return "KW_reinterpret_cast";
     case TokenKind::KwConstCast: return "KW_const_cast";
+    case TokenKind::KwClass: return "KW_class";
 
     case TokenKind::PragmaPack: return "PRAGMA_PACK";
 
@@ -250,6 +251,7 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
     if (s == "static_cast")      return TokenKind::KwStaticCast;
     if (s == "reinterpret_cast") return TokenKind::KwReinterpretCast;
     if (s == "const_cast")       return TokenKind::KwConstCast;
+    if (s == "class")            return TokenKind::KwClass;
     if (s == "alignof")          return TokenKind::KwAlignof;
   }
 

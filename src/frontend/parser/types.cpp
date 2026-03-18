@@ -249,6 +249,7 @@ TypeSpec Parser::parse_base_type() {
                 consume(); done = true; break;
 
             case TokenKind::KwStruct:
+            case TokenKind::KwClass:
                 has_struct = true;
                 consume();
                 done = true;
@@ -1057,7 +1058,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         if (check(TokenKind::RBrace)) break;
 
         // Handle nested anonymous struct/union
-        if (check(TokenKind::KwStruct) || check(TokenKind::KwUnion)) {
+        if (check(TokenKind::KwStruct) || check(TokenKind::KwClass) || check(TokenKind::KwUnion)) {
             bool inner_union = (cur().kind == TokenKind::KwUnion);
             consume();
             Node* inner = parse_struct_or_union(inner_union);

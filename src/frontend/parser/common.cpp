@@ -332,6 +332,7 @@ bool is_type_kw(TokenKind k) {
         case TokenKind::KwUnsigned:
         case TokenKind::KwBool:
         case TokenKind::KwStruct:
+        case TokenKind::KwClass:
         case TokenKind::KwUnion:
         case TokenKind::KwEnum:
         case TokenKind::KwInt128:

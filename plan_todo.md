@@ -1,11 +1,11 @@
 # Plan Execution State
 
 ## Baseline
-- 1880/1880 tests passing (2026-03-18)
+- 1881/1881 tests passing (2026-03-18)
 
 ## Overall Assessment
 
-Phase 5 slice 17 is now implemented: `struct Pair<int>` keyword syntax for template structs.
+Phase 5 slice 18 is now implemented: `class` keyword as synonym for `struct` in template contexts.
 
 Current state:
 - HIR preserves template/consteval metadata and exposes debug visibility
@@ -27,31 +27,30 @@ Current state:
 - **Phase 5 slice 14**: Template struct NTTP support — `template<typename T, int N> struct Array { T data[N]; };` and NTTP-only structs. NTTP values substitute into array dimensions via `array_size_expr` propagation. Default template arguments also work for template struct NTTP params.
 - **Phase 5 slice 15**: Template function + template struct combined usage — `Pair<T>` inside template function bodies deferred and resolved at HIR instantiation time.
 - **Phase 5 slice 16**: Nested template struct + >> disambiguation — `Pair<Pair<int>>`, `Box<Pair<T>>` in template functions, parser >> token splitting.
-- **Phase 5 slice 17 (NEW)**: `struct Pair<int>` keyword syntax — `struct` keyword before template struct types now triggers template instantiation.
+- **Phase 5 slice 17**: `struct Pair<int>` keyword syntax — `struct` keyword before template struct types now triggers template instantiation.
+- **Phase 5 slice 18 (NEW)**: `class` keyword as synonym for `struct` — `KwClass` token, `template<class T>`, `class Name<args>` instantiation, `template<...> class Name { ... }` definitions.
 
 Summary:
 - Phase 1: complete
 - Phases 2-4: partially complete, with good observability and metadata preservation
-- Phase 5: **substantially complete** — struct keyword syntax for template structs now works
+- Phase 5: **substantially complete** — class keyword synonym for struct now works
 - Phase 6: **complete** — materialization boundary separates compile-time entities from emitted code
 - Phase 7: **complete** — specialization identity is stable, hashable, serializable via LLVM named metadata
 
 ---
 
-## What was done in this session (2026-03-18, session 21)
+## What was done in this session (2026-03-18, session 22)
 
-### Phase 5 slice 17: `struct Pair<int>` keyword syntax for template structs
+### Phase 5 slice 18: `class` keyword as synonym for `struct` in template contexts
 
-**Root cause**: `struct Pair<int> p;` went through `parse_struct_or_union` which read `Pair` as the tag, saw `<` (not `{`), and returned a forward reference to `Pair` — losing the template arguments.
-
-**Fix**: In `parse_base_type`, when `has_struct` is true and the tag is a known template struct with `<` following, redirect to the existing typedef-path template instantiation code. This avoids duplicating the ~200-line instantiation logic.
-
-Two changes in `types.cpp`:
-1. In `has_struct` block: instead of always returning, check if this is a template struct with `<`. If so, fall through.
-2. Before `has_typedef` block: new guard that converts the `has_struct` fall-through into a `has_typedef` flow, allowing the existing template instantiation code to handle it.
+**Changes**:
+1. **token.hpp/token.cpp**: Added `KwClass` token kind, mapped `"class"` → `KwClass` in C++ profile
+2. **common.cpp**: Added `KwClass` to `is_type_kw()` so it's recognized as a type-start token
+3. **types.cpp**: `parse_base_type()` handles `KwClass` identically to `KwStruct` (sets `has_struct=true`); nested struct field parsing also accepts `KwClass`
+4. **declarations.cpp**: Template parameter parsing updated — `template<class T>` now matches `KwClass` token instead of identifier-string comparison (since `class` is now a keyword)
 
 ### Test additions
-- **`template_struct_keyword.cpp`**: Tests `struct Pair<int>`, `struct Array<int, 3>`, function return/param types with `struct` keyword, mixing keyword and non-keyword syntax.
+- **`template_class_keyword.cpp`**: Tests `class Pair<int>`, `class Array<int, 3>`, function return/param types with `class` keyword, mixing `class`/`struct`/bare syntax, `public:` access specifier for clang compatibility.
 
 ---
 
@@ -59,12 +58,11 @@ Two changes in `types.cpp`:
 
 Potential next work:
 - Template struct member functions (methods)
-- Template class keyword (`class` as synonym for `struct` in template context)
 - Phase 2-4 remaining: deeper template/consteval HIR preservation
 - `dynamic_cast` support (requires RTTI, lower priority)
 
 Already verified working (no action needed):
 - Template struct pointer fields (`Pair<int*>`) — works
-- `struct Pair<int>` keyword syntax — implemented in slice 17
+- `struct Pair<int>` / `class Pair<int>` keyword syntax — implemented in slices 17-18
 - Triple-nested template structs (`Box<Box<Box<int>>>`) — works via recursive >> splitting
 - Multi-type param template structs (`KVPair<int, long>`) — works
