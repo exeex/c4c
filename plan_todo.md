@@ -104,13 +104,25 @@ Completed:
   API and `consteval_fn_defs()` const-ref accessor to `CompileTimeState`.
   Removed unused `CompileTimePassStats` type alias.
 
-Not completed:
+Intentionally kept (evaluated, not worth removing):
 
 - DeferredInstantiateFn still captures the Lowerer for `lower_function()` — this is
   fundamentally required since only the Lowerer can lower AST to HIR
-- Lowerer still owns `enum_consts_` / `const_int_bindings_` maps (used extensively
-  during initial HIR construction; engine has copies in CompileTimeState)
-- Phase 3 tasks 2-3: further legacy removal if beneficial (diminishing returns)
+- Lowerer still owns `enum_consts_` / `const_int_bindings_` maps — intentionally kept
+  because the Lowerer needs mutable save/restore semantics for block-scoped enum
+  definitions (NK_BLOCK scope handling).  CompileTimeState copies accumulate the
+  final global state and are used exclusively during the engine normalization phase.
+  Merging would require exposing mutable save/restore API on CompileTimeState for
+  no behavioral benefit.
+
+## Plan Status: COMPLETE
+
+All success criteria from plan.md are met:
+- `hir.cpp` is a thin orchestration file
+- `ast_to_hir.cpp` clearly owns AST-to-initial-HIR construction
+- `compile_time_engine.cpp` is the place for compile-time normalization
+- File names and code layout reflect the intended compile-time architecture
+- Behavior remains stable (1891/1891 tests passing)
 
 ## Phase 1: Move Compile-Time State Toward The Engine
 
@@ -241,4 +253,4 @@ After parity is proven, remove legacy ownership paths and keep the cleaner model
 9. ~~further reduce callback surface for template instantiation~~ (done: Phase 2.5 — engine owns pre-checks + post-metadata)
 10. ~~Phase 3 slice 1: remove compatibility aliases, DeferredConstevalEvalFn, null ct_state fallbacks, update README~~ (done: Phase 3.1)
 11. ~~Phase 3 slice 2: remove duplicate Lowerer definition maps (consteval_fns_, template_fn_defs_) and CompileTimePassStats alias~~ (done: Phase 3.2)
-12. Phase 3 remaining: evaluate further legacy removal (enum_consts_/const_int_bindings_ duplication — diminishing returns)
+12. ~~Phase 3 remaining: evaluate further legacy removal (enum_consts_/const_int_bindings_ duplication)~~ (evaluated: intentionally kept — Lowerer needs mutable save/restore for block-scoped enums; CompileTimeState holds accumulated final state for engine phase)

@@ -439,10 +439,17 @@ struct CompileTimeState {
 
   // ── Constant environment (for consteval evaluation) ──────────────────
   //
-  // The Lowerer populates these maps during initial HIR construction.
+  // The Lowerer populates these maps during initial HIR construction
+  // by calling register_enum_const() / register_const_int_binding().
   // The engine uses them to build a ConstEvalEnv when evaluating
   // PendingConstevalExpr nodes directly, without going through the
   // Lowerer callback.
+  //
+  // NOTE: The Lowerer also keeps its own working copies of these maps
+  // because it needs mutable save/restore semantics for block-scoped
+  // enum definitions (see NK_BLOCK handling in lower_stmt_node).
+  // The CompileTimeState copies accumulate the final global state and
+  // are used exclusively during the engine normalization phase.
 
   /// Register an enum constant value.
   void register_enum_const(const std::string& name, long long value) {
