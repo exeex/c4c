@@ -154,8 +154,16 @@ keep only the cleaner responsibility split.
    - Phase 1.7a calls `realize_seeds()` between seed collection and metadata population
    - `seed_keys_` dedup set added; `total_seed_count()` helper added
    - dual-write in `record_instance()` preserved — realize_seeds() is currently a no-op
-5. split seed population from instance realization in the registry
-   - migrate callers from `record_instance()` to `record_seed_only()`
-   - remove dual-write from `record_instance()`
-   - `realize_seeds()` becomes the sole path to create instances
+5. split seed population from instance realization in the registry ✅
+
+- all 5 call sites in `collect_template_instantiations` and `collect_consteval_template_instantiations` migrated from `record_instance()` to `record_seed()` (wrapper for `record_seed_only()`)
+- dual-write removed from `record_instance()` — it now forwards to `record_seed_only()`
+- `realize_seeds()` is the sole path to create instances, called at three points:
+  - after `collect_template_instantiations` (non-template fn bodies)
+  - inside the consteval fixpoint loop (after each pass)
+  - final catch-all before metadata population
+- `has_seed()`, `has_seed_or_instance()` queries added to registry
+- wrapper `has_instance()` updated to check both seeds and instances via `has_seed_or_instance()`
+- 1891/1891 tests pass (no regressions)
+
 6. add debug dump or comparison output to verify seed/instance parity

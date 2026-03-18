@@ -483,6 +483,10 @@ class Lowerer {
       if (item->kind == NK_FUNCTION && item->body && item->n_template_params == 0)
         collect_template_instantiations(item->body, item);
     }
+    // Realize seeds collected from non-template function bodies so that
+    // instances are available for the consteval fixpoint loop below.
+    registry_.realize_seeds();
+
     // Also collect consteval template calls from template function bodies,
     // since consteval is still evaluated eagerly during lowering and needs
     // all instantiation bindings to be available at lowering time.
@@ -493,16 +497,14 @@ class Lowerer {
         if (item->kind == NK_FUNCTION && item->body && item->n_template_params > 0)
           collect_consteval_template_instantiations(item->body, item);
       }
+      // Realize seeds discovered in this pass so enclosing-expansion
+      // paths in the next pass can find_instances() for them.
+      registry_.realize_seeds();
       if (registry_.total_instance_count() == prev_size) break;
     }
 
-    // Phase 1.7a: realize seeds into instances.
-    // This is the HIR-side consumption path: any seed that was recorded
-    // (via record_seed_only or record_instance) but not yet realized as
-    // an instance gets promoted here.  While record_instance currently
-    // dual-writes (making this a no-op today), this call establishes the
-    // path for the future decoupling where AST only records seeds and
-    // HIR is responsible for realization.
+    // Final realize — catch any stragglers (e.g. seeds added by paths
+    // that bypass the loops above).
     registry_.realize_seeds();
 
     // Phase 1.7b: populate HirTemplateDef metadata for all template functions.
@@ -4539,10 +4541,23 @@ class Lowerer {
    public:
     // ── Queries ──────────────────────────────────────────────────────────
 
-    /// O(1) dedup check: has this (fn_name, mangled) pair been recorded?
+    /// O(1) dedup check: has this (fn_name, mangled) pair been realized?
     bool has_instance(const std::string& fn_name,
                       const std::string& mangled) const {
       return instance_keys_.count(fn_name + "::" + mangled) > 0;
+    }
+
+    /// O(1) dedup check: has this (fn_name, mangled) pair been recorded as a seed?
+    bool has_seed(const std::string& fn_name,
+                  const std::string& mangled) const {
+      return seed_keys_.count(fn_name + "::" + mangled) > 0;
+    }
+
+    /// O(1) dedup check: has this pair been recorded as either seed or instance?
+    bool has_seed_or_instance(const std::string& fn_name,
+                              const std::string& mangled) const {
+      std::string key = fn_name + "::" + mangled;
+      return seed_keys_.count(key) > 0 || instance_keys_.count(key) > 0;
     }
 
     /// Look up realized instances for a template function (may be empty).
@@ -4576,32 +4591,16 @@ class Lowerer {
       specs_[mangled] = spec_node;
     }
 
-    /// Record a template instantiation.  Returns the mangled name, or ""
-    /// if bindings are not concrete.  Populates both seed_work and
-    /// instances (dual write, to be split later).
+    /// Record a template instantiation as a seed.  Returns the mangled
+    /// name, or "" if bindings are not concrete.  Instances are created
+    /// exclusively by realize_seeds().
     std::string record_instance(
         const std::string& fn_name, TypeBindings bindings,
         NttpBindings nttp_bindings,
         const std::vector<std::string>& param_order,
         TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall) {
-      if (!bindings_are_concrete(bindings)) return "";
-      std::string mangled = mangle_template_name(fn_name, bindings,
-                                                  nttp_bindings);
-      SpecializationKey sk = nttp_bindings.empty()
-          ? make_specialization_key(fn_name, param_order, bindings)
-          : make_specialization_key(fn_name, param_order, bindings,
-                                    nttp_bindings);
-      std::string key = fn_name + "::" + mangled;
-      // Seed record (todo list).
-      seed_work_[fn_name].push_back(
-          TemplateSeedWorkItem{fn_name, bindings, nttp_bindings, mangled,
-                               sk, origin});
-      seed_keys_.insert(key);
-      // Realized instance (dual write for now).
-      instances_[fn_name].push_back(
-          {std::move(bindings), std::move(nttp_bindings), mangled, sk});
-      instance_keys_.insert(std::move(key));
-      return mangled;
+      return record_seed_only(fn_name, std::move(bindings),
+                              std::move(nttp_bindings), param_order, origin);
     }
 
     /// Record a seed only (no realized instance).  Used when AST discovery
@@ -4827,9 +4826,10 @@ class Lowerer {
     return bindings;
   }
 
-  // Check if an instantiation with the given mangled name already exists (O(1)).
+  // Check if an instantiation with the given mangled name has already been
+  // discovered (as seed or realized instance).
   bool has_instance(const std::string& fn_name, const std::string& mangled) {
-    return registry_.has_instance(fn_name, mangled);
+    return registry_.has_seed_or_instance(fn_name, mangled);
   }
 
   // Check if a call node has any forwarded NTTP names (not yet resolved to values).
@@ -5073,6 +5073,17 @@ class Lowerer {
                                      origin);
   }
 
+  // Record a template seed (discovery only, no immediate realization).
+  // Returns the mangled name, or "" if bindings are not concrete.
+  std::string record_seed(const std::string& fn_name, TypeBindings bindings,
+                           NttpBindings nttp_bindings = {},
+                           TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall) {
+    auto param_order = get_template_param_order_from_instances(fn_name);
+    return registry_.record_seed_only(fn_name, std::move(bindings),
+                                      std::move(nttp_bindings), param_order,
+                                      origin);
+  }
+
   // Resolve the mangled name for a call to a template function.
   std::string resolve_template_call_name(const Node* call_var,
                                           const TypeBindings* enclosing_bindings,
@@ -5111,7 +5122,7 @@ class Lowerer {
                 NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def, &enc_inst.nttp_bindings);
                 std::string mangled = mangle_template_name(n->left->name, inner, call_nttp);
                 if (!has_instance(n->left->name, mangled))
-                  record_instance(
+                  record_seed(
                       n->left->name, std::move(inner), call_nttp,
                       TemplateSeedOrigin::EnclosingTemplateExpansion);
               }
@@ -5124,7 +5135,7 @@ class Lowerer {
             TypeBindings bindings = build_call_bindings(n->left, fn_def, nullptr);
             std::string mangled = mangle_template_name(n->left->name, bindings, call_nttp);
             if (!has_instance(n->left->name, mangled))
-              record_instance(
+              record_seed(
                   n->left->name, std::move(bindings), call_nttp,
                   TemplateSeedOrigin::DirectCall);
           }
@@ -5157,7 +5168,7 @@ class Lowerer {
             }
             std::string mangled = mangle_template_name(n->left->name, deduced, nttp);
             if (!has_instance(n->left->name, mangled))
-              record_instance(
+              record_seed(
                   n->left->name, TypeBindings(deduced), nttp,
                   TemplateSeedOrigin::DeducedCall);
             // Store the deduction result for use during call lowering.
@@ -5199,7 +5210,7 @@ class Lowerer {
                 NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def, &enc_inst.nttp_bindings);
                 std::string mangled = mangle_template_name(n->left->name, inner, call_nttp);
                 if (!has_instance(n->left->name, mangled))
-                  record_instance(
+                  record_seed(
                       n->left->name, std::move(inner), call_nttp,
                       TemplateSeedOrigin::ConstevalEnclosingExpansion);
               }
@@ -5218,7 +5229,7 @@ class Lowerer {
             TypeBindings bindings = build_call_bindings(n->left, fn_def, nullptr);
             std::string mangled = mangle_template_name(n->left->name, bindings, call_nttp);
             if (!has_instance(n->left->name, mangled))
-              record_instance(
+              record_seed(
                   n->left->name, std::move(bindings), call_nttp,
                   TemplateSeedOrigin::ConstevalSeed);
           }
