@@ -1138,6 +1138,8 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     // inside its own body (e.g., for operator return types like `Counter`).
     // Only add to typedefs_ (name recognition), not typedef_types_ (full
     // resolution), because the struct is still incomplete at this point.
+    // Method parameters that use the self type (e.g., Vec2 other) will have
+    // TB_TYPEDEF with tag matching the struct; HIR lowering resolves these.
     if (is_cpp_mode() && tag && tag[0])
       typedefs_.insert(tag);
 

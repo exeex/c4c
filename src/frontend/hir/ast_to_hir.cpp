@@ -677,6 +677,19 @@ class Lowerer {
     return ts;
   }
 
+  // Resolve TB_TYPEDEF to TB_STRUCT/TB_UNION when the tag matches a known
+  // struct definition.  Handles the injected-class-name case where the parser
+  // cannot fully resolve the typedef because the struct is still incomplete
+  // during body parsing.
+  void resolve_typedef_to_struct(TypeSpec& ts) const {
+    if (ts.base != TB_TYPEDEF || !ts.tag) return;
+    auto sit = module_->struct_defs.find(ts.tag);
+    if (sit != module_->struct_defs.end()) {
+      ts.base = TB_STRUCT;
+      ts.tag = sit->second.tag.c_str();
+    }
+  }
+
   FunctionId next_fn_id() { return module_->alloc_function_id(); }
   GlobalId next_global_id() { return module_->alloc_global_id(); }
   LocalId next_local_id() { return module_->alloc_local_id(); }
@@ -1607,6 +1620,7 @@ class Lowerer {
         resolve_pending_tpl_struct(ret_ts, *tpl_bindings,
             nttp_bindings ? *nttp_bindings : nttp_empty);
       }
+      resolve_typedef_to_struct(ret_ts);
       fn.return_type = qtype_from(ret_ts);
     }
     fn.linkage = {true, false, false, false, Visibility::Default};  // internal
@@ -1658,6 +1672,7 @@ class Lowerer {
           resolve_pending_tpl_struct(param_ts, *tpl_bindings,
               nttp_bindings ? *nttp_bindings : nttp_empty);
         }
+        resolve_typedef_to_struct(param_ts);
         param.type = qtype_from(reference_storage_ts(param_ts), ValueCategory::LValue);
       }
       param.span = make_span(p);
@@ -1838,6 +1853,7 @@ class Lowerer {
       // Resolve pending template struct types in local variable decls.
       if (!ctx.tpl_bindings.empty() && decl_ts.tpl_struct_origin)
         resolve_pending_tpl_struct(decl_ts, ctx.tpl_bindings, ctx.nttp_bindings);
+      resolve_typedef_to_struct(decl_ts);
       d.type = qtype_from(reference_storage_ts(decl_ts), ValueCategory::LValue);
     }
     d.fn_ptr_sig = fn_ptr_sig_from_decl_node(n);
