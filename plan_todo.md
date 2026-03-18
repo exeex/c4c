@@ -1,11 +1,11 @@
 # Plan Execution State
 
 ## Baseline
-- 1882/1882 tests passing (2026-03-18)
+- 1883/1883 tests passing (2026-03-18)
 
 ## Overall Assessment
 
-Phase 5 slice 19 is now implemented: struct member functions (methods), both non-template and template.
+Phase 5 slice 20 is now implemented: deferred method calls on template structs inside template function bodies.
 
 Current state:
 - HIR preserves template/consteval metadata and exposes debug visibility
@@ -29,46 +29,36 @@ Current state:
 - **Phase 5 slice 16**: Nested template struct + >> disambiguation — `Pair<Pair<int>>`, `Box<Pair<T>>` in template functions, parser >> token splitting.
 - **Phase 5 slice 17**: `struct Pair<int>` keyword syntax — `struct` keyword before template struct types now triggers template instantiation.
 - **Phase 5 slice 18**: `class` keyword as synonym for `struct` — `KwClass` token, `template<class T>`, `class Name<args>` instantiation, `template<...> class Name { ... }` definitions.
-- **Phase 5 slice 19 (NEW)**: Struct member functions (methods) — non-template and template struct methods lowered as standalone functions with implicit `this` pointer, method calls rewritten to mangled function calls.
+- **Phase 5 slice 19**: Struct member functions (methods) — non-template and template struct methods lowered as standalone functions with implicit `this` pointer, method calls rewritten to mangled function calls.
+- **Phase 5 slice 20 (NEW)**: Deferred method calls on template structs inside template function bodies — `resolve_pending_tpl_struct()` now registers and lowers methods when instantiating template structs, with full type parameter substitution in method signatures and bodies.
 
 Summary:
 - Phase 1: complete
 - Phases 2-4: partially complete, with good observability and metadata preservation
-- Phase 5: **substantially complete** — struct methods now work for both plain and template structs
+- Phase 5: **substantially complete** — template struct methods work in deferred contexts
 - Phase 6: **complete** — materialization boundary separates compile-time entities from emitted code
 - Phase 7: **complete** — specialization identity is stable, hashable, serializable via LLVM named metadata
 
 ---
 
-## What was done in this session (2026-03-18, session 23)
+## What was done in this session (2026-03-18, session 24)
 
-### Phase 5 slice 19: Struct member functions (methods)
+### Phase 5 slice 20: Deferred method calls on template structs in template functions
 
 **Changes**:
-1. **ast_to_hir.cpp**: `lower_struct_def()` now collects methods from `sd->children[]` and queues them as `pending_methods_`
-2. **ast_to_hir.cpp**: New `lower_struct_method()` — lowers method as standalone function with implicit `this` pointer (ptr to struct) as first parameter
-3. **ast_to_hir.cpp**: Phase 2.5 added — lowers all pending struct methods after regular function lowering
-4. **ast_to_hir.cpp**: `NK_CALL` handler detects method calls (`obj.method(args)`) and rewrites to `StructTag__method(&obj, args)` using `struct_methods_` map
-5. **ast_to_hir.cpp**: `NK_VAR` handler resolves unqualified field names inside method bodies via implicit `this->field` access
-6. **ast_to_hir.cpp**: `FunctionCtx` gains `method_struct_tag` field for method body lowering context
-7. **types.cpp**: Template struct instantiation now clones methods from `tpl_def->children[]` with type parameter substitution in return type and parameter types
-8. **InternalTests.cmake**: `struct_method` upgraded from parse-only to runtime test
+1. **ast_to_hir.cpp**: `resolve_pending_tpl_struct()` now registers and immediately lowers methods from template struct definitions when instantiating concrete structs. Methods are added to `struct_methods_` map and lowered via `lower_struct_method()` with type bindings.
+2. **ast_to_hir.cpp**: `lower_struct_method()` extended with optional `tpl_bindings` and `nttp_bindings` parameters for template type substitution in return type, parameter types, and method body expressions.
 
 ### Test additions
-- **`template_struct_method.cpp`**: Tests non-template struct methods (get, add), template struct methods with int and long instantiations
+- **`template_deferred_method.cpp`**: Tests deferred method calls on template structs inside template function bodies — dot operator, arrow operator, method with argument, multiple type instantiations (int, long).
 
 ---
 
 ## Recommended next milestone
 
 Potential next work:
-- Arrow operator method calls (`ptr->method()`)
-- Method calls on template structs inside template function bodies (deferred)
+- Template argument deduction from function arguments (implicit template args)
+- Method calls on template structs inside template function bodies without explicit template args
 - Phase 2-4 remaining: deeper template/consteval HIR preservation
 - `dynamic_cast` support (requires RTTI, lower priority)
-
-Already verified working (no action needed):
-- Template struct pointer fields (`Pair<int*>`) — works
-- `struct Pair<int>` / `class Pair<int>` keyword syntax — implemented in slices 17-18
-- Triple-nested template structs (`Box<Box<Box<int>>>`) — works via recursive >> splitting
-- Multi-type param template structs (`KVPair<int, long>`) — works
+- Operator overloading for template structs

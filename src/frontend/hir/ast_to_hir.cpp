@@ -1386,6 +1386,25 @@ class Lowerer {
       compute_struct_layout(module_, def);
       module_->struct_def_order.push_back(mangled);
       module_->struct_defs[mangled] = std::move(def);
+
+      // Register and immediately lower methods from the template struct.
+      TypeBindings method_tpl_bindings;
+      for (const auto& [pname, pts] : resolved_type_bindings)
+        method_tpl_bindings[pname] = pts;
+      NttpBindings method_nttp_bindings;
+      for (const auto& [npname, nval] : resolved_nttp_bindings)
+        method_nttp_bindings[npname] = nval;
+      for (int mi = 0; mi < tpl_def->n_children; ++mi) {
+        const Node* method = tpl_def->children[mi];
+        if (!method || method->kind != NK_FUNCTION || !method->name) continue;
+        std::string mmangled = mangled + "__" + method->name;
+        std::string mkey = mangled + "::" + method->name;
+        if (!struct_methods_.count(mkey)) {
+          struct_methods_[mkey] = mmangled;
+          lower_struct_method(mmangled, mangled, method,
+                              &method_tpl_bindings, &method_nttp_bindings);
+        }
+      }
     }
 
     // Update the TypeSpec to point to the concrete struct.
@@ -1551,17 +1570,32 @@ class Lowerer {
   // Lower a struct method as a standalone function with an implicit `this` pointer.
   void lower_struct_method(const std::string& mangled_name,
                            const std::string& struct_tag,
-                           const Node* method_node) {
+                           const Node* method_node,
+                           const TypeBindings* tpl_bindings = nullptr,
+                           const NttpBindings* nttp_bindings = nullptr) {
     Function fn{};
     fn.id = next_fn_id();
     fn.name = mangled_name;
-    fn.return_type = qtype_from(method_node->type);
+    // Substitute template type parameters in the return type.
+    {
+      TypeSpec ret_ts = method_node->type;
+      if (tpl_bindings && ret_ts.base == TB_TYPEDEF && ret_ts.tag) {
+        auto it = tpl_bindings->find(ret_ts.tag);
+        if (it != tpl_bindings->end()) {
+          ret_ts.base = it->second.base;
+          ret_ts.tag = it->second.tag;
+        }
+      }
+      fn.return_type = qtype_from(ret_ts);
+    }
     fn.linkage = {true, false, false, false, Visibility::Default};  // internal
     fn.attrs.variadic = method_node->variadic;
     fn.span = make_span(method_node);
 
     FunctionCtx ctx{};
     ctx.fn = &fn;
+    if (tpl_bindings) ctx.tpl_bindings = *tpl_bindings;
+    if (nttp_bindings) ctx.nttp_bindings = *nttp_bindings;
 
     // Add implicit `this` parameter (pointer to struct).
     {
@@ -1587,7 +1621,18 @@ class Lowerer {
       if (!p) continue;
       Param param{};
       param.name = p->name ? p->name : "<anon_param>";
-      param.type = qtype_from(p->type, ValueCategory::LValue);
+      // Substitute template type parameters in parameter types.
+      {
+        TypeSpec param_ts = p->type;
+        if (tpl_bindings && param_ts.base == TB_TYPEDEF && param_ts.tag) {
+          auto it = tpl_bindings->find(param_ts.tag);
+          if (it != tpl_bindings->end()) {
+            param_ts.base = it->second.base;
+            param_ts.tag = it->second.tag;
+          }
+        }
+        param.type = qtype_from(param_ts, ValueCategory::LValue);
+      }
       param.span = make_span(p);
       ctx.params[param.name] = static_cast<uint32_t>(fn.params.size());
       fn.params.push_back(std::move(param));
