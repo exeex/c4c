@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <functional>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -415,10 +416,39 @@ struct CompileTimeState {
     return result;
   }
 
+  // ── Constant environment (for consteval evaluation) ──────────────────
+  //
+  // The Lowerer populates these maps during initial HIR construction.
+  // The engine uses them to build a ConstEvalEnv when evaluating
+  // PendingConstevalExpr nodes directly, without going through the
+  // Lowerer callback.
+
+  /// Register an enum constant value.
+  void register_enum_const(const std::string& name, long long value) {
+    enum_consts_[name] = value;
+  }
+
+  /// Register a global const-integer binding.
+  void register_const_int_binding(const std::string& name, long long value) {
+    const_int_bindings_[name] = value;
+  }
+
+  /// Evaluate a consteval function call using engine-owned state.
+  /// This is the engine-internal equivalent of the DeferredConstevalEvalFn
+  /// callback, but operates on state owned by CompileTimeState rather
+  /// than captured Lowerer internals.
+  std::optional<long long> evaluate_consteval(
+      const std::string& fn_name,
+      const std::vector<long long>& const_args,
+      const TypeBindings& bindings,
+      const NttpBindings& nttp_bindings) const;
+
   /// Dump debug visibility for seed work vs realized instances.
   void dump(FILE* out) const {
     std::fprintf(out, "[CompileTimeState] template_defs=%zu consteval_defs=%zu\n",
                  template_fn_defs_.size(), consteval_fn_defs_.size());
+    std::fprintf(out, "[CompileTimeState] enum_consts=%zu const_int_bindings=%zu\n",
+                 enum_consts_.size(), const_int_bindings_.size());
     std::fprintf(out, "[CompileTimeState] registry parity:\n");
     registry.dump_parity(out);
   }
@@ -428,6 +458,10 @@ struct CompileTimeState {
   std::unordered_map<std::string, const Node*> template_fn_defs_;
   // Consteval function definitions indexed by name (AST node pointers).
   std::unordered_map<std::string, const Node*> consteval_fn_defs_;
+  // Enum constant values (name → value).
+  std::unordered_map<std::string, long long> enum_consts_;
+  // Global const-integer bindings (name → value).
+  std::unordered_map<std::string, long long> const_int_bindings_;
 };
 
 /// A diagnostic for a single irreducible compile-time node.

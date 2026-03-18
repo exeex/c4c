@@ -67,12 +67,21 @@ Completed:
   Engine steps have direct visibility into what definitions exist rather than
   blindly probing opaque Lowerer callbacks.
 
+- **Phase 2.4 (2026-03-18):** Moved consteval evaluation into engine-owned state.
+  Added `register_enum_const()`, `register_const_int_binding()`, and
+  `evaluate_consteval()` methods to `CompileTimeState`.  Lowerer mirrors
+  enum constants and global const-int bindings into `ct_state_` during
+  initial HIR construction.  `PendingConstevalEvalStep` now prefers
+  `ct_state->evaluate_consteval()` directly when ct_state is available,
+  falling back to the `DeferredConstevalEvalFn` callback only when no
+  ct_state is provided.  The compile-time engine can now evaluate consteval
+  expressions without routing through opaque Lowerer callbacks.
+
 Not completed:
 
-- engine still uses callbacks for actual lowering/evaluation (lambdas capture Lowerer)
+- engine still uses callbacks for template instantiation (DeferredInstantiateFn captures Lowerer)
 - Phase 2 task 4: switch remaining readers to engine-owned state
-- next: Phase 2.4 — further reduce callback surface (e.g., make consteval
-  evaluation engine-internal by moving consteval evaluator into CompileTimeState)
+- next: Phase 2.5 — further reduce callback surface for template instantiation
 
 ## Phase 1: Move Compile-Time State Toward The Engine
 
@@ -199,4 +208,5 @@ After parity is proven, remove legacy ownership paths and keep the cleaner model
 5. ~~switch reads to engine-owned path via CompileTimeState API~~ (done: Phase 2.1)
 6. ~~make three pipeline stages (initial / normalized / materialized) explicit in code~~ (done: Phase 2.2)
 7. ~~reduce reliance on AST-owned callback semantics~~ (done: Phase 2.3 — definition registries in CompileTimeState)
-8. further reduce callback surface (move consteval evaluator into engine-owned state)
+8. ~~move consteval evaluator into engine-owned state~~ (done: Phase 2.4 — CompileTimeState::evaluate_consteval)
+9. further reduce callback surface for template instantiation (DeferredInstantiateFn)

@@ -1206,6 +1206,7 @@ class Lowerer {
       const char* name = ed->enum_names[i];
       if (!name || !name[0]) continue;
       enum_consts_[name] = ed->enum_vals[i];
+      ct_state_->register_enum_const(name, ed->enum_vals[i]);
     }
   }
 
@@ -1781,8 +1782,10 @@ class Lowerer {
         const Expr& e = module_->expr_pool[scalar->expr.value];
         if (const auto* lit = std::get_if<IntLiteral>(&e.payload)) {
           const_int_bindings_[g.name] = lit->value;
+          ct_state_->register_const_int_binding(g.name, lit->value);
         } else if (const auto* ch = std::get_if<CharLiteral>(&e.payload)) {
           const_int_bindings_[g.name] = ch->value;
+          ct_state_->register_const_int_binding(g.name, ch->value);
         }
       }
     }

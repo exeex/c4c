@@ -1,4 +1,5 @@
 #include "compile_time_engine.hpp"
+#include "consteval.hpp"
 
 #include <sstream>
 #include <string>
@@ -6,6 +7,28 @@
 #include <variant>
 
 namespace c4c::hir {
+
+std::optional<long long> CompileTimeState::evaluate_consteval(
+    const std::string& fn_name,
+    const std::vector<long long>& const_args,
+    const TypeBindings& bindings,
+    const NttpBindings& nttp_bindings) const {
+  auto ce_it = consteval_fn_defs_.find(fn_name);
+  if (ce_it == consteval_fn_defs_.end()) return std::nullopt;
+  std::vector<ConstValue> args;
+  args.reserve(const_args.size());
+  for (long long v : const_args) args.push_back(ConstValue::make_int(v));
+  ConstEvalEnv env{&enum_consts_, &const_int_bindings_, nullptr};
+  TypeBindings tpl_bindings = bindings;
+  env.type_bindings = &tpl_bindings;
+  NttpBindings nttp_copy = nttp_bindings;
+  if (!nttp_copy.empty())
+    env.nttp_bindings = &nttp_copy;
+  auto result = evaluate_consteval_call(
+      ce_it->second, args, env, consteval_fn_defs_);
+  if (result.ok()) return result.as_int();
+  return std::nullopt;
+}
 
 namespace {
 
@@ -189,7 +212,7 @@ struct PendingConstevalEvalStep {
   std::vector<CompileTimeDiagnostic> pending_diags;
 
   void run() {
-    if (!eval_fn) return;
+    if (!eval_fn && !ct_state) return;
 
     for (auto& expr : module.expr_pool) {
       auto* pce = std::get_if<PendingConstevalExpr>(&expr.payload);
@@ -204,7 +227,15 @@ struct PendingConstevalEvalStep {
         continue;
       }
 
-      auto result = eval_fn(pce->fn_name, pce->const_args, pce->tpl_bindings, pce->nttp_bindings);
+      // Prefer engine-owned evaluation when ct_state is available;
+      // fall back to the callback for compatibility.
+      std::optional<long long> result;
+      if (ct_state) {
+        result = ct_state->evaluate_consteval(
+            pce->fn_name, pce->const_args, pce->tpl_bindings, pce->nttp_bindings);
+      } else if (eval_fn) {
+        result = eval_fn(pce->fn_name, pce->const_args, pce->tpl_bindings, pce->nttp_bindings);
+      }
       if (result.has_value()) {
         long long rv = *result;
         // Record consteval call metadata.
