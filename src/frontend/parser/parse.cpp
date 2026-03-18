@@ -393,6 +393,23 @@ Node* Parser::make_block(Node** stmts, int n_stmts, int line) {
 
 // ── AST dump ─────────────────────────────────────────────────────────────────
 
+const char* operator_kind_mangled_name(OperatorKind ok) {
+    switch (ok) {
+        case OP_NONE:      return nullptr;
+        case OP_SUBSCRIPT: return "operator_subscript";
+        case OP_DEREF:     return "operator_deref";
+        case OP_ARROW:     return "operator_arrow";
+        case OP_PRE_INC:   return "operator_preinc";
+        case OP_POST_INC:  return "operator_postinc";
+        case OP_EQ:        return "operator_eq";
+        case OP_NEQ:       return "operator_neq";
+        case OP_BOOL:      return "operator_bool";
+        case OP_PLUS:      return "operator_plus";
+        case OP_MINUS:     return "operator_minus";
+    }
+    return nullptr;
+}
+
 const char* node_kind_name(NodeKind k) {
     switch (k) {
         case NK_INT_LIT:      return "IntLit";

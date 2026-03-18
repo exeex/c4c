@@ -99,6 +99,26 @@ struct TypeSpec {
     const char* tpl_struct_arg_refs;   // comma-sep arg refs in param order (e.g., "T" or "T,4")
 };
 
+// ── OperatorKind ─────────────────────────────────────────────────────────────
+// Identifies which C++ overloaded operator a method implements.
+// OP_NONE means the method is an ordinary (non-operator) method.
+enum OperatorKind {
+    OP_NONE = 0,
+    OP_SUBSCRIPT,   // operator[]
+    OP_DEREF,       // operator*  (unary dereference)
+    OP_ARROW,       // operator->
+    OP_PRE_INC,     // operator++ (prefix)
+    OP_POST_INC,    // operator++(int) (postfix)
+    OP_EQ,          // operator==
+    OP_NEQ,         // operator!=
+    OP_BOOL,        // operator bool
+    OP_PLUS,        // operator+
+    OP_MINUS,       // operator-
+};
+
+// Return a canonical mangled suffix for an operator kind (e.g. "operator_subscript").
+const char* operator_kind_mangled_name(OperatorKind ok);
+
 // ── NodeKind ──────────────────────────────────────────────────────────────────
 
 enum NodeKind {
@@ -293,6 +313,7 @@ struct Node {
     long long desig_val;// NK_INIT_ITEM index designator value
     const char* desig_field; // NK_INIT_ITEM field designator name
     const char* linkage_spec; // C++ subset linkage string, e.g. "C"
+    OperatorKind operator_kind; // C++ operator overloading: which operator this method implements
 };
 
 // ── Free functions ────────────────────────────────────────────────────────────

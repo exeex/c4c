@@ -91,6 +91,7 @@ enum class TokenKind {
   KwClass,           // class (synonym for struct in C++ template contexts)
   KwTrue,            // true
   KwFalse,           // false
+  KwOperator,        // operator (C++ operator overloading)
 
   // ---- Punctuation ----
   LParen,    // (

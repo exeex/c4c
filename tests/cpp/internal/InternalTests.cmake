@@ -13,6 +13,13 @@ set(CPP_POSITIVE_FRONTEND_STEMS
 )
 
 set(CPP_POSITIVE_PARSE_STEMS
+    operator_decl_subscript_parse
+    operator_decl_deref_parse
+    operator_decl_arrow_parse
+    operator_decl_preinc_parse
+    operator_decl_eq_parse
+    operator_decl_bool_parse
+    operator_decl_plus_minus_parse
 )
 
 foreach(src IN LISTS INTERNAL_CPP_NEGATIVE_TEST_SRCS)

@@ -1265,6 +1265,111 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         TypeSpec fts = parse_base_type();
         parse_attributes(&fts);
 
+        // C++ operator method: <return-type> operator<symbol>(<params>) { ... }
+        if (is_cpp_mode() && check(TokenKind::KwOperator)) {
+            OperatorKind op_kind = OP_NONE;
+            const char* op_mangled = nullptr;
+            consume(); // eat 'operator'
+
+            // Determine which operator
+            if (check(TokenKind::LBracket)) {
+                consume(); expect(TokenKind::RBracket);
+                op_kind = OP_SUBSCRIPT;
+            } else if (check(TokenKind::Star)) {
+                consume();
+                op_kind = OP_DEREF;
+            } else if (check(TokenKind::Arrow)) {
+                consume();
+                op_kind = OP_ARROW;
+            } else if (check(TokenKind::PlusPlus)) {
+                consume();
+                op_kind = OP_PRE_INC; // may become OP_POST_INC based on params
+            } else if (check(TokenKind::EqualEqual)) {
+                consume();
+                op_kind = OP_EQ;
+            } else if (check(TokenKind::BangEqual)) {
+                consume();
+                op_kind = OP_NEQ;
+            } else if (check(TokenKind::Plus)) {
+                consume();
+                op_kind = OP_PLUS;
+            } else if (check(TokenKind::Minus)) {
+                consume();
+                op_kind = OP_MINUS;
+            } else if (check(TokenKind::KwBool)) {
+                // operator bool — conversion operator; return type is bool
+                consume();
+                op_kind = OP_BOOL;
+                fts = TypeSpec{};
+                fts.base = TB_BOOL;
+            } else {
+                // Unknown operator token — error
+                throw std::runtime_error(
+                    std::string("unsupported operator overload token '") +
+                    cur().lexeme + "' at line " + std::to_string(cur().line));
+            }
+
+            op_mangled = operator_kind_mangled_name(op_kind);
+
+            // Parse parameter list
+            expect(TokenKind::LParen);
+            std::vector<Node*> params;
+            bool variadic = false;
+            if (!check(TokenKind::RParen)) {
+                while (!at_end()) {
+                    if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
+                    if (check(TokenKind::RParen)) break;
+                    if (!is_type_start()) break;
+                    Node* p = parse_param();
+                    if (p) params.push_back(p);
+                    if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
+                    if (!match(TokenKind::Comma)) break;
+                }
+            }
+            expect(TokenKind::RParen);
+
+            // Distinguish prefix vs postfix operator++ by parameter count:
+            // prefix: operator++() — 0 params; postfix: operator++(int) — 1 param
+            if (op_kind == OP_PRE_INC && !params.empty()) {
+                op_kind = OP_POST_INC;
+                op_mangled = operator_kind_mangled_name(op_kind);
+            }
+
+            // Parse trailing qualifiers (const, constexpr, consteval)
+            bool is_method_constexpr = false;
+            bool is_method_consteval = false;
+            while (true) {
+                if (match(TokenKind::KwConst)) {}
+                else if (is_cpp_mode() && match(TokenKind::KwConstexpr)) {
+                    is_method_constexpr = true;
+                } else if (is_cpp_mode() && match(TokenKind::KwConsteval)) {
+                    is_method_consteval = true;
+                } else {
+                    break;
+                }
+            }
+
+            Node* method = make_node(NK_FUNCTION, cur().line);
+            method->type = fts;
+            method->name = arena_.strdup(op_mangled);
+            method->operator_kind = op_kind;
+            method->variadic = variadic;
+            method->is_constexpr = is_method_constexpr;
+            method->is_consteval = is_method_consteval;
+            method->n_params = (int)params.size();
+            if (method->n_params > 0) {
+                method->params = arena_.alloc_array<Node*>(method->n_params);
+                for (int i = 0; i < method->n_params; ++i) method->params[i] = params[i];
+            }
+            if (check(TokenKind::LBrace)) {
+                method->body = parse_block();
+            } else {
+                match(TokenKind::Semi);
+            }
+            methods.push_back(method);
+            continue;
+        }
+
         // Handle anonymous bitfield: just ': expr;'
         if (check(TokenKind::Colon)) {
             consume();
