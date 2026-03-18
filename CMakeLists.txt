@@ -6,7 +6,7 @@ if(NOT CLANG_EXECUTABLE)
   message(WARNING "clang not found: clang execution tests will be skipped")
 endif()
 
-set(EXAMPLE_C "${PROJECT_SOURCE_DIR}/tests/internal/example/example.c")
+set(EXAMPLE_C "${PROJECT_SOURCE_DIR}/tests/c/internal/example/example.c")
 set(EXAMPLE_LL "${CMAKE_BINARY_DIR}/example.ll")
 
 set(FRONTEND_CXX_COMMON_SRCS

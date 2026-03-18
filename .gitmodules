@@ -1,9 +1,6 @@
 [submodule "ref/claudes-c-compiler"]
 	path = ref/claudes-c-compiler
 	url = https://github.com/anthropics/claudes-c-compiler.git
-[submodule "tests/external/llvm-preprocessor-tests"]
-	path = tests/external/llvm-preprocessor-tests
-	url = https://github.com/llvm/llvm-project.git
 [submodule "tests/external/c-testsuite"]
 	path = tests/external/c-testsuite
 	url = https://github.com/exeex/c4c-c-testsuite.git
