@@ -1,11 +1,11 @@
 # Plan Execution State
 
 ## Baseline
-- 1883/1883 tests passing (2026-03-18)
+- 1884/1884 tests passing (2026-03-18)
 
 ## Overall Assessment
 
-Phase 5 slice 20 is now implemented: deferred method calls on template structs inside template function bodies.
+Phase 5 slice 21 is now implemented: template argument deduction from call arguments.
 
 Current state:
 - HIR preserves template/consteval metadata and exposes debug visibility
@@ -30,34 +30,39 @@ Current state:
 - **Phase 5 slice 17**: `struct Pair<int>` keyword syntax — `struct` keyword before template struct types now triggers template instantiation.
 - **Phase 5 slice 18**: `class` keyword as synonym for `struct` — `KwClass` token, `template<class T>`, `class Name<args>` instantiation, `template<...> class Name { ... }` definitions.
 - **Phase 5 slice 19**: Struct member functions (methods) — non-template and template struct methods lowered as standalone functions with implicit `this` pointer, method calls rewritten to mangled function calls.
-- **Phase 5 slice 20 (NEW)**: Deferred method calls on template structs inside template function bodies — `resolve_pending_tpl_struct()` now registers and lowers methods when instantiating template structs, with full type parameter substitution in method signatures and bodies.
+- **Phase 5 slice 20**: Deferred method calls on template structs inside template function bodies — `resolve_pending_tpl_struct()` now registers and lowers methods when instantiating template structs, with full type parameter substitution in method signatures and bodies.
+- **Phase 5 slice 21 (NEW)**: Template argument deduction — `add(1, 2)` deduces `T = int` from call arguments without explicit `<int>`. Supports literals (int, float, char, string), variables (params and locals), address-of, dereference, and pointer-to-T patterns.
 
 Summary:
 - Phase 1: complete
 - Phases 2-4: partially complete, with good observability and metadata preservation
-- Phase 5: **substantially complete** — template struct methods work in deferred contexts
+- Phase 5: **substantially complete** — template argument deduction works for common patterns
 - Phase 6: **complete** — materialization boundary separates compile-time entities from emitted code
 - Phase 7: **complete** — specialization identity is stable, hashable, serializable via LLVM named metadata
 
 ---
 
-## What was done in this session (2026-03-18, session 24)
+## What was done in this session (2026-03-18, session 25)
 
-### Phase 5 slice 20: Deferred method calls on template structs in template functions
+### Phase 5 slice 21: Template argument deduction from call arguments
 
 **Changes**:
-1. **ast_to_hir.cpp**: `resolve_pending_tpl_struct()` now registers and immediately lowers methods from template struct definitions when instantiating concrete structs. Methods are added to `struct_methods_` map and lowered via `lower_struct_method()` with type bindings.
-2. **ast_to_hir.cpp**: `lower_struct_method()` extended with optional `tpl_bindings` and `nttp_bindings` parameters for template type substitution in return type, parameter types, and method body expressions.
+1. **ast_to_hir.cpp**: Added `try_infer_arg_type_for_deduction()` — infers TypeSpec from AST expression nodes (literals, variables, NK_ADDR, NK_DEREF, NK_CAST).
+2. **ast_to_hir.cpp**: Added `try_deduce_template_type_args()` — matches call argument types against template function parameter types to deduce type bindings. Handles direct type param match (T x) and pointer-to-param match (T* ptr).
+3. **ast_to_hir.cpp**: Added `deduction_covers_all_type_params()` and `fill_deduced_defaults()` helpers.
+4. **ast_to_hir.cpp**: Extended `collect_template_instantiations()` — new branch for calls without explicit template args tries deduction, stores results in `deduced_template_calls_` map.
+5. **ast_to_hir.cpp**: Extended call lowering in `lower_expr()` — checks `deduced_template_calls_` map to resolve deduced template calls to mangled instantiation names.
+6. **ast_to_hir.cpp**: Added `DeducedTemplateCall` struct and `deduced_template_calls_` member map.
 
 ### Test additions
-- **`template_deferred_method.cpp`**: Tests deferred method calls on template structs inside template function bodies — dot operator, arrow operator, method with argument, multiple type instantiations (int, long).
+- **`template_arg_deduction.cpp`**: Tests template argument deduction — deduction from int literals, long variables, single arg, mixed with explicit args, pointer parameter deduction via &.
 
 ---
 
 ## Recommended next milestone
 
 Potential next work:
-- Template argument deduction from function arguments (implicit template args)
+- Template argument deduction in deferred template contexts (nested deduction)
 - Method calls on template structs inside template function bodies without explicit template args
 - Phase 2-4 remaining: deeper template/consteval HIR preservation
 - `dynamic_cast` support (requires RTTI, lower priority)

@@ -3864,6 +3864,34 @@ class Lowerer {
             tci.nttp_args = build_call_nttp_bindings(n->left, fn_it->second, enc_nttp);
           }
           c.template_info = std::move(tci);
+        } else if (auto ded_it = deduced_template_calls_.find(n);
+                   ded_it != deduced_template_calls_.end()) {
+          // Deduced template call (no explicit template args).
+          resolved_callee_name = ded_it->second.mangled_name;
+          DeclRef dr{};
+          dr.name = resolved_callee_name;
+          auto fit = module_->fn_index.find(dr.name);
+          if (fit != module_->fn_index.end() &&
+              fit->second.value < module_->functions.size()) {
+            TypeSpec fn_ts = module_->functions[fit->second.value].return_type.spec;
+            fn_ts.ptr_level++;
+            c.callee = append_expr(n->left, dr, fn_ts);
+          } else {
+            c.callee = append_expr(n->left, dr, n->left->type);
+          }
+          // Preserve template application metadata.
+          TemplateCallInfo tci;
+          tci.source_template = n->left->name;
+          auto fn_it = template_fn_defs_.find(n->left->name);
+          if (fn_it != template_fn_defs_.end()) {
+            for (const auto& pname : get_template_param_order(fn_it->second)) {
+              auto bit = ded_it->second.bindings.find(pname);
+              if (bit != ded_it->second.bindings.end())
+                tci.template_args.push_back(bit->second);
+            }
+            tci.nttp_args = ded_it->second.nttp_bindings;
+          }
+          c.template_info = std::move(tci);
         } else {
           c.callee = lower_expr(ctx, n->left);
         }
@@ -4593,6 +4621,201 @@ class Lowerer {
     return false;
   }
 
+  // ── Template argument deduction ──────────────────────────────────────────
+
+  // Try to infer the type of an AST expression node for template argument
+  // deduction.  Only handles cases where the type is statically obvious
+  // from the AST (literals, typed variables, address-of, casts).
+  // Returns nullopt when the type cannot be determined.
+  static std::optional<TypeSpec> try_infer_arg_type_for_deduction(
+      const Node* expr, const Node* enclosing_fn) {
+    if (!expr) return std::nullopt;
+
+    // If the node already carries a concrete type, use it.
+    if (has_concrete_type(expr->type)) return expr->type;
+
+    switch (expr->kind) {
+      case NK_INT_LIT:
+        return infer_int_literal_type(expr);
+      case NK_FLOAT_LIT: {
+        TypeSpec ts = expr->type;
+        if (!has_concrete_type(ts))
+          ts = classify_float_literal_type(const_cast<Node*>(expr));
+        return ts;
+      }
+      case NK_CHAR_LIT: {
+        TypeSpec ts = expr->type;
+        if (!has_concrete_type(ts)) ts.base = TB_INT;
+        return ts;
+      }
+      case NK_STR_LIT: {
+        TypeSpec ts{};
+        ts.base = TB_CHAR;
+        ts.ptr_level = 1;
+        return ts;
+      }
+      case NK_VAR: {
+        if (!expr->name || !enclosing_fn) return std::nullopt;
+        // Check enclosing function parameters.
+        for (int i = 0; i < enclosing_fn->n_params; ++i) {
+          const Node* p = enclosing_fn->params[i];
+          if (p && p->name && std::strcmp(p->name, expr->name) == 0 &&
+              has_concrete_type(p->type))
+            return p->type;
+        }
+        // Check local declarations in the function body (shallow walk).
+        if (enclosing_fn->body) {
+          const Node* body = enclosing_fn->body;
+          for (int i = 0; i < body->n_children; ++i) {
+            const Node* stmt = body->children[i];
+            if (stmt && stmt->kind == NK_DECL && stmt->name &&
+                std::strcmp(stmt->name, expr->name) == 0 &&
+                has_concrete_type(stmt->type))
+              return stmt->type;
+          }
+        }
+        return std::nullopt;
+      }
+      case NK_CAST: {
+        // Cast target type is in the node's type field.
+        if (has_concrete_type(expr->type)) return expr->type;
+        return std::nullopt;
+      }
+      case NK_ADDR: {
+        // Address-of: &expr → pointer to expr's type.
+        if (expr->left) {
+          auto inner = try_infer_arg_type_for_deduction(expr->left, enclosing_fn);
+          if (inner) {
+            inner->ptr_level++;
+            return inner;
+          }
+        }
+        return std::nullopt;
+      }
+      case NK_DEREF: {
+        // Dereference: *expr → remove one pointer level.
+        if (expr->left) {
+          auto inner = try_infer_arg_type_for_deduction(expr->left, enclosing_fn);
+          if (inner && inner->ptr_level > 0) {
+            inner->ptr_level--;
+            return inner;
+          }
+        }
+        return std::nullopt;
+      }
+      case NK_UNARY: {
+        // Unary operators: try to infer from the operand for simple cases.
+        return std::nullopt;
+      }
+      default:
+        return std::nullopt;
+    }
+  }
+
+  // Try to deduce template type arguments from call arguments.
+  // Matches each function parameter whose type is a template type parameter
+  // (TB_TYPEDEF with tag matching a template param name) against the
+  // corresponding call argument's inferred type.
+  // Returns the deduced bindings.  May be incomplete if some params cannot
+  // be deduced (caller should fill from defaults or reject).
+  static TypeBindings try_deduce_template_type_args(
+      const Node* call_node, const Node* fn_def, const Node* enclosing_fn) {
+    TypeBindings deduced;
+    if (!call_node || !fn_def || fn_def->n_template_params <= 0) return deduced;
+
+    // Build set of type parameter names (skip NTTPs).
+    std::unordered_set<std::string> type_param_names;
+    for (int i = 0; i < fn_def->n_template_params; ++i) {
+      if (fn_def->template_param_names[i] &&
+          !(fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]))
+        type_param_names.insert(fn_def->template_param_names[i]);
+    }
+    if (type_param_names.empty()) return deduced;
+
+    // Match each function parameter against the corresponding call argument.
+    int n_args = call_node->n_children;
+    int n_params = fn_def->n_params;
+    int match_count = std::min(n_args, n_params);
+
+    for (int i = 0; i < match_count; ++i) {
+      const Node* param = fn_def->params[i];
+      const Node* arg = call_node->children[i];
+      if (!param || !arg) continue;
+
+      const TypeSpec& param_ts = param->type;
+
+      // Case 1: parameter type IS the template type param directly (e.g., T x).
+      if (param_ts.base == TB_TYPEDEF && param_ts.tag &&
+          type_param_names.count(param_ts.tag) &&
+          param_ts.ptr_level == 0 && param_ts.array_rank == 0) {
+        auto arg_type = try_infer_arg_type_for_deduction(arg, enclosing_fn);
+        if (!arg_type) continue;
+        // Strip array/pointer qualifiers from arg to get the base type for T.
+        TypeSpec deduced_ts = *arg_type;
+        auto existing = deduced.find(param_ts.tag);
+        if (existing != deduced.end()) {
+          // Conflict check: deduced types must match.
+          if (existing->second.base != deduced_ts.base ||
+              existing->second.ptr_level != deduced_ts.ptr_level ||
+              existing->second.tag != deduced_ts.tag)
+            return {};  // Conflicting deductions → fail.
+        } else {
+          deduced[param_ts.tag] = deduced_ts;
+        }
+      }
+      // Case 2: parameter type is T* (pointer to template param).
+      else if (param_ts.base == TB_TYPEDEF && param_ts.tag &&
+               type_param_names.count(param_ts.tag) &&
+               param_ts.ptr_level > 0 && param_ts.array_rank == 0) {
+        auto arg_type = try_infer_arg_type_for_deduction(arg, enclosing_fn);
+        if (!arg_type || arg_type->ptr_level < param_ts.ptr_level) continue;
+        TypeSpec deduced_ts = *arg_type;
+        deduced_ts.ptr_level -= param_ts.ptr_level;
+        auto existing = deduced.find(param_ts.tag);
+        if (existing != deduced.end()) {
+          if (existing->second.base != deduced_ts.base ||
+              existing->second.ptr_level != deduced_ts.ptr_level)
+            return {};
+        } else {
+          deduced[param_ts.tag] = deduced_ts;
+        }
+      }
+    }
+
+    return deduced;
+  }
+
+  // Check if deduced bindings cover all required type parameters (those
+  // without defaults).
+  static bool deduction_covers_all_type_params(const TypeBindings& deduced,
+                                                const Node* fn_def) {
+    for (int i = 0; i < fn_def->n_template_params; ++i) {
+      if (!fn_def->template_param_names[i]) continue;
+      if (fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]) continue;
+      const std::string pname = fn_def->template_param_names[i];
+      if (deduced.count(pname)) continue;
+      // Not deduced — check for default.
+      if (fn_def->template_param_has_default && fn_def->template_param_has_default[i]) continue;
+      return false;  // Missing type param with no default.
+    }
+    return true;
+  }
+
+  // Fill missing deduced bindings from defaults.
+  static void fill_deduced_defaults(TypeBindings& deduced, const Node* fn_def) {
+    if (!fn_def->template_param_has_default) return;
+    for (int i = 0; i < fn_def->n_template_params; ++i) {
+      if (!fn_def->template_param_names[i]) continue;
+      if (fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]) continue;
+      const std::string pname = fn_def->template_param_names[i];
+      if (deduced.count(pname)) continue;
+      if (fn_def->template_param_has_default[i])
+        deduced[pname] = fn_def->template_param_default_types[i];
+    }
+  }
+
+  // ── End template argument deduction ────────────────────────────────────
+
   // Check if all bindings are concrete (no unresolved TB_TYPEDEF).
   static bool bindings_are_concrete(const TypeBindings& bindings) {
     for (const auto& [param, ts] : bindings) {
@@ -4685,6 +4908,39 @@ class Lowerer {
             std::string mangled = mangle_template_name(n->left->name, bindings, call_nttp);
             if (!has_instance(n->left->name, mangled))
               record_instance(n->left->name, std::move(bindings), call_nttp);
+          }
+        }
+      }
+    }
+    // Template argument deduction: if the call has no explicit template args
+    // but the callee name matches a template function, try to deduce type
+    // args from the call arguments.
+    if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR &&
+        n->left->name &&
+        n->left->n_template_args == 0 && !n->left->has_template_args) {
+      auto fn_it = template_fn_defs_.find(n->left->name);
+      if (fn_it != template_fn_defs_.end()) {
+        const Node* fn_def = fn_it->second;
+        if (!fn_def->is_consteval && fn_def->n_template_params > 0) {
+          TypeBindings deduced = try_deduce_template_type_args(n, fn_def, enclosing_fn);
+
+          if (deduction_covers_all_type_params(deduced, fn_def)) {
+            fill_deduced_defaults(deduced, fn_def);
+            NttpBindings nttp{};
+            // Fill NTTP defaults if any.
+            if (fn_def->template_param_has_default) {
+              for (int i = 0; i < fn_def->n_template_params; ++i) {
+                if (!fn_def->template_param_names[i]) continue;
+                if (!fn_def->template_param_is_nttp || !fn_def->template_param_is_nttp[i]) continue;
+                if (fn_def->template_param_has_default[i])
+                  nttp[fn_def->template_param_names[i]] = fn_def->template_param_default_values[i];
+              }
+            }
+            std::string mangled = mangle_template_name(n->left->name, deduced, nttp);
+            if (!has_instance(n->left->name, mangled))
+              record_instance(n->left->name, TypeBindings(deduced), nttp);
+            // Store the deduction result for use during call lowering.
+            deduced_template_calls_[n] = {mangled, std::move(deduced), std::move(nttp)};
           }
         }
       }
@@ -4811,6 +5067,13 @@ class Lowerer {
   std::unordered_map<std::string, std::string> struct_methods_;
   // Pending struct methods to lower: (mangled_name, struct_tag, method_node).
   std::vector<std::tuple<std::string, std::string, const Node*>> pending_methods_;
+  // Deduced template call info: call_node → mangled name + bindings.
+  struct DeducedTemplateCall {
+    std::string mangled_name;
+    TypeBindings bindings;
+    NttpBindings nttp_bindings;
+  };
+  std::unordered_map<const Node*, DeducedTemplateCall> deduced_template_calls_;
   // When true, consteval calls create PendingConstevalExpr instead of
   // evaluating eagerly.  Set during deferred template instantiation.
   bool defer_consteval_ = false;
