@@ -166,4 +166,15 @@ keep only the cleaner responsibility split.
 - wrapper `has_instance()` updated to check both seeds and instances via `has_seed_or_instance()`
 - 1891/1891 tests pass (no regressions)
 
-6. add debug dump or comparison output to verify seed/instance parity
+6. add debug dump or comparison output to verify seed/instance parity ✅
+
+- `verify_parity()`: returns true when every seed has a realized instance and vice versa
+- `dump_parity(FILE*)`: prints per-function seed/instance counts, flags UNREALIZED seeds and ORPHAN instances
+- parity assertion added after final `realize_seeds()` — throws with dump on mismatch
+- 1891/1891 tests pass (parity holds for all cases)
+
+## Next Steps
+
+7. begin Phase 2 task 1: make HIR prefer the new source of truth in limited areas
+   - start with metadata updates (Phase 1.7b already reads from registry)
+   - identify remaining direct reads of old containers

@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstring>
 #include <functional>
+#include <set>
 #include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
@@ -506,6 +507,16 @@ class Lowerer {
     // Final realize — catch any stragglers (e.g. seeds added by paths
     // that bypass the loops above).
     registry_.realize_seeds();
+
+    // Verify seed/instance parity after all realization is done.
+    // This assertion guards against seeds being lost or instances appearing
+    // without a corresponding seed — a sign of dual-write inconsistency.
+    if (!registry_.verify_parity()) {
+      registry_.dump_parity(stderr);
+      throw std::runtime_error(
+          "InstantiationRegistry: seed/instance parity violation after "
+          "realize_seeds()");
+    }
 
     // Phase 1.7b: populate HirTemplateDef metadata for all template functions.
     for (const auto& [name, fn_def] : template_fn_defs_) {
@@ -4659,6 +4670,75 @@ class Lowerer {
       size_t n = 0;
       for (const auto& [k, v] : seed_work_) n += v.size();
       return n;
+    }
+
+    /// Verify that every seed has a corresponding realized instance and
+    /// vice versa.  Returns true when seeds and instances are in perfect
+    /// parity.
+    bool verify_parity() const {
+      // Every seed must be realized.
+      for (const auto& [fn_name, seeds] : seed_work_) {
+        for (const auto& s : seeds) {
+          if (instance_keys_.count(fn_name + "::" + s.mangled_name) == 0)
+            return false;
+        }
+      }
+      // Every instance must have a seed.
+      for (const auto& [fn_name, insts] : instances_) {
+        for (const auto& inst : insts) {
+          if (seed_keys_.count(fn_name + "::" + inst.mangled_name) == 0)
+            return false;
+        }
+      }
+      return total_seed_count() == total_instance_count();
+    }
+
+    /// Dump seed/instance parity report to the given stream.
+    /// Useful for debugging the transition from AST-owned to HIR-owned
+    /// instantiation bookkeeping.
+    void dump_parity(FILE* out) const {
+      size_t seeds = total_seed_count();
+      size_t insts = total_instance_count();
+      std::fprintf(out, "[InstantiationRegistry] seeds=%zu instances=%zu",
+                   seeds, insts);
+      if (seeds == insts)
+        std::fprintf(out, " (parity OK)\n");
+      else
+        std::fprintf(out, " (MISMATCH)\n");
+
+      // Report per-function detail.
+      // Collect all function names from both maps.
+      std::set<std::string> all_fns;
+      for (const auto& [k, _] : seed_work_) all_fns.insert(k);
+      for (const auto& [k, _] : instances_) all_fns.insert(k);
+      for (const auto& fn : all_fns) {
+        auto sit = seed_work_.find(fn);
+        auto iit = instances_.find(fn);
+        size_t s = sit != seed_work_.end() ? sit->second.size() : 0;
+        size_t i = iit != instances_.end() ? iit->second.size() : 0;
+        const char* status = (s == i) ? "ok" : "MISMATCH";
+        std::fprintf(out, "  %-40s seeds=%-3zu instances=%-3zu %s\n",
+                     fn.c_str(), s, i, status);
+
+        // List unrealized seeds.
+        if (sit != seed_work_.end()) {
+          for (const auto& seed : sit->second) {
+            bool realized = instance_keys_.count(fn + "::" + seed.mangled_name) > 0;
+            if (!realized)
+              std::fprintf(out, "    UNREALIZED seed: %s\n",
+                           seed.mangled_name.c_str());
+          }
+        }
+        // List orphan instances (instance without seed).
+        if (iit != instances_.end()) {
+          for (const auto& inst : iit->second) {
+            bool has_s = seed_keys_.count(fn + "::" + inst.mangled_name) > 0;
+            if (!has_s)
+              std::fprintf(out, "    ORPHAN instance: %s\n",
+                           inst.mangled_name.c_str());
+          }
+        }
+      }
     }
 
    private:
