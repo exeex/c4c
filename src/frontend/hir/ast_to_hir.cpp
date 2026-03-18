@@ -471,7 +471,7 @@ class Lowerer {
         if (def_it != template_fn_defs_.end()) {
           std::string mangled = mangle_specialization(item, def_it->second);
           if (!mangled.empty())
-            template_fn_specs_[mangled] = item;
+            registry_.register_specialization(mangled, item);
         }
       }
     }
@@ -488,15 +488,12 @@ class Lowerer {
     // all instantiation bindings to be available at lowering time.
     // This uses the fixpoint loop because consteval templates may chain.
     for (int pass = 0; pass < 8; ++pass) {
-      size_t prev_size = 0;
-      for (const auto& [k, v] : template_fn_instances_) prev_size += v.size();
+      size_t prev_size = registry_.total_instance_count();
       for (const Node* item : items) {
         if (item->kind == NK_FUNCTION && item->body && item->n_template_params > 0)
           collect_consteval_template_instantiations(item->body, item);
       }
-      size_t cur_size = 0;
-      for (const auto& [k, v] : template_fn_instances_) cur_size += v.size();
-      if (cur_size == prev_size) break;
+      if (registry_.total_instance_count() == prev_size) break;
     }
 
     // Phase 1.7: populate HirTemplateDef metadata for all template functions.
@@ -511,9 +508,9 @@ class Lowerer {
         tdef.param_is_nttp.push_back(
             fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]);
       }
-      auto inst_it = template_fn_instances_.find(name);
-      if (inst_it != template_fn_instances_.end()) {
-        for (const auto& inst : inst_it->second) {
+      auto* inst_list = registry_.find_instances(name);
+      if (inst_list) {
+        for (const auto& inst : *inst_list) {
           HirTemplateInstantiation hi;
           hi.mangled_name = inst.mangled_name;
           hi.bindings = inst.bindings;
@@ -557,14 +554,14 @@ class Lowerer {
         if (item->is_consteval) continue;  // consteval template: handled by AST interpreter
         if (item->n_template_params > 0 && item->name) {
           // Template function: lower once per collected instantiation.
-          auto inst_it = template_fn_instances_.find(item->name);
-          if (inst_it != template_fn_instances_.end() && !inst_it->second.empty()) {
-            for (const auto& inst : inst_it->second) {
+          auto* inst_list = registry_.find_instances(item->name);
+          if (inst_list && !inst_list->empty()) {
+            for (const auto& inst : *inst_list) {
               // Check for explicit specialization matching this instantiation.
-              auto spec_it = template_fn_specs_.find(inst.mangled_name);
-              if (spec_it != template_fn_specs_.end()) {
+              const Node* spec_node = registry_.find_specialization(inst.mangled_name);
+              if (spec_node) {
                 // Use the specialization body (no template bindings needed).
-                lower_function(spec_it->second, &inst.mangled_name);
+                lower_function(spec_node, &inst.mangled_name);
               } else {
                 lower_function(item, &inst.mangled_name, &inst.bindings,
                                inst.nttp_bindings.empty() ? nullptr : &inst.nttp_bindings);
@@ -614,9 +611,9 @@ class Lowerer {
       const Node* fn_def = fn_it->second;
       if (fn_def->is_consteval) return false;  // consteval handled eagerly
       // Check for explicit specialization matching this instantiation.
-      auto spec_it = template_fn_specs_.find(mangled);
-      if (spec_it != template_fn_specs_.end()) {
-        lower_function(spec_it->second, &mangled);
+      const Node* spec_node = registry_.find_specialization(mangled);
+      if (spec_node) {
+        lower_function(spec_node, &mangled);
       } else {
         // Enable deferred consteval: consteval calls inside this function
         // will create PendingConstevalExpr nodes instead of evaluating.
@@ -4510,6 +4507,109 @@ class Lowerer {
     SpecializationKey spec_key;  // stable identity for dedup/caching
   };
 
+  // ── InstantiationRegistry ──────────────────────────────────────────────
+  //
+  // Centralized bookkeeping for template instantiation discovery and
+  // realization.  Both AST-side seed collection (Phase 1.6) and HIR-side
+  // deferred instantiation (Phase 3) go through this registry so that
+  // dedup, specialization lookup, and instance recording share a single
+  // code path.
+  //
+  // Ownership split:
+  //   seed_work   – discovered template application candidates (todo list)
+  //   instances   – realized instantiations (authoritative for lowering)
+  //   specs       – explicit specialization AST nodes keyed by mangled name
+  //
+  // For now both containers are populated together in record_instance();
+  // the long-term plan is to decouple them so that seed_work is populated
+  // during AST discovery and instances only during HIR reduction.
+  class InstantiationRegistry {
+   public:
+    // ── Queries ──────────────────────────────────────────────────────────
+
+    /// O(1) dedup check: has this (fn_name, mangled) pair been recorded?
+    bool has_instance(const std::string& fn_name,
+                      const std::string& mangled) const {
+      return instance_keys_.count(fn_name + "::" + mangled) > 0;
+    }
+
+    /// Look up realized instances for a template function (may be empty).
+    const std::vector<TemplateInstance>* find_instances(
+        const std::string& fn_name) const {
+      auto it = instances_.find(fn_name);
+      if (it == instances_.end()) return nullptr;
+      return &it->second;
+    }
+
+    /// Look up explicit specialization AST node by mangled name.
+    const Node* find_specialization(const std::string& mangled) const {
+      auto it = specs_.find(mangled);
+      if (it == specs_.end()) return nullptr;
+      return it->second;
+    }
+
+    /// All realized instances (for iteration, e.g., Phase 1.7 metadata).
+    const std::unordered_map<std::string, std::vector<TemplateInstance>>&
+    all_instances() const { return instances_; }
+
+    /// All seed work items (for debugging / future HIR consumption).
+    const std::unordered_map<std::string, std::vector<TemplateSeedWorkItem>>&
+    all_seeds() const { return seed_work_; }
+
+    // ── Mutations ────────────────────────────────────────────────────────
+
+    /// Register an explicit specialization (called during Phase 1.6 setup).
+    void register_specialization(const std::string& mangled,
+                                 const Node* spec_node) {
+      specs_[mangled] = spec_node;
+    }
+
+    /// Record a template instantiation.  Returns the mangled name, or ""
+    /// if bindings are not concrete.  Populates both seed_work and
+    /// instances (dual write, to be split later).
+    std::string record_instance(
+        const std::string& fn_name, TypeBindings bindings,
+        NttpBindings nttp_bindings,
+        const std::vector<std::string>& param_order,
+        TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall) {
+      if (!bindings_are_concrete(bindings)) return "";
+      std::string mangled = mangle_template_name(fn_name, bindings,
+                                                  nttp_bindings);
+      SpecializationKey sk = nttp_bindings.empty()
+          ? make_specialization_key(fn_name, param_order, bindings)
+          : make_specialization_key(fn_name, param_order, bindings,
+                                    nttp_bindings);
+      // Seed record (todo list).
+      seed_work_[fn_name].push_back(
+          TemplateSeedWorkItem{fn_name, bindings, nttp_bindings, mangled,
+                               sk, origin});
+      // Realized instance (dual write for now).
+      instances_[fn_name].push_back(
+          {std::move(bindings), std::move(nttp_bindings), mangled, sk});
+      instance_keys_.insert(fn_name + "::" + mangled);
+      return mangled;
+    }
+
+    /// Compute total instance count across all template functions.
+    size_t total_instance_count() const {
+      size_t n = 0;
+      for (const auto& [k, v] : instances_) n += v.size();
+      return n;
+    }
+
+   private:
+    // Seed / todo list — AST-discovered template application candidates.
+    std::unordered_map<std::string, std::vector<TemplateSeedWorkItem>>
+        seed_work_;
+    // Realized instances — authoritative for lowering.
+    std::unordered_map<std::string, std::vector<TemplateInstance>>
+        instances_;
+    // O(1) dedup set: "fn_name::mangled_name".
+    std::unordered_set<std::string> instance_keys_;
+    // Explicit specializations: mangled_name → AST node.
+    std::unordered_map<std::string, const Node*> specs_;
+  };
+
   // Produce a deterministic type suffix for name mangling.
   static std::string type_suffix(const TypeSpec& ts) {
     if (ts.ptr_level > 0) return "p" + std::to_string(ts.ptr_level);
@@ -4662,7 +4762,7 @@ class Lowerer {
 
   // Check if an instantiation with the given mangled name already exists (O(1)).
   bool has_instance(const std::string& fn_name, const std::string& mangled) {
-    return instance_keys_.count(fn_name + "::" + mangled) > 0;
+    return registry_.has_instance(fn_name, mangled);
   }
 
   // Check if a call node has any forwarded NTTP names (not yet resolved to values).
@@ -4895,32 +4995,15 @@ class Lowerer {
     return {};
   }
 
-  void record_seed_work(const std::string& fn_name,
-                        const TypeBindings& bindings,
-                        const NttpBindings& nttp_bindings,
-                        const std::string& mangled,
-                        const SpecializationKey& spec_key,
-                        TemplateSeedOrigin origin) {
-    template_seed_work_[fn_name].push_back(
-        TemplateSeedWorkItem{fn_name, bindings, nttp_bindings, mangled, spec_key, origin});
-  }
-
-  // Record a template instantiation. Returns the mangled name.
-  // Only records if all bindings are concrete (no unresolved typedefs).
+  // Record a template instantiation via the centralized registry.
+  // Returns the mangled name, or "" if bindings are not concrete.
   std::string record_instance(const std::string& fn_name, TypeBindings bindings,
                                NttpBindings nttp_bindings = {},
                                TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall) {
-    if (!bindings_are_concrete(bindings)) return "";  // Skip unresolved.
-    std::string mangled = mangle_template_name(fn_name, bindings, nttp_bindings);
     auto param_order = get_template_param_order_from_instances(fn_name);
-    SpecializationKey sk = nttp_bindings.empty()
-        ? make_specialization_key(fn_name, param_order, bindings)
-        : make_specialization_key(fn_name, param_order, bindings, nttp_bindings);
-    record_seed_work(fn_name, bindings, nttp_bindings, mangled, sk, origin);
-    template_fn_instances_[fn_name].push_back(
-        {std::move(bindings), std::move(nttp_bindings), mangled, sk});
-    instance_keys_.insert(fn_name + "::" + mangled);
-    return mangled;
+    return registry_.record_instance(fn_name, std::move(bindings),
+                                     std::move(nttp_bindings), param_order,
+                                     origin);
   }
 
   // Resolve the mangled name for a call to a template function.
@@ -4953,10 +5036,10 @@ class Lowerer {
           const TypeBindings* enclosing_bindings = nullptr;
           TypeBindings enc_bindings;
           if (enclosing_fn && enclosing_fn->name) {
-            auto enc_it = template_fn_instances_.find(enclosing_fn->name);
-            if (enc_it != template_fn_instances_.end()) {
+            auto* enc_list = registry_.find_instances(enclosing_fn->name);
+            if (enc_list) {
               // For each enclosing instantiation, record an inner instantiation.
-              for (const auto& enc_inst : enc_it->second) {
+              for (const auto& enc_inst : *enc_list) {
                 TypeBindings inner = build_call_bindings(n->left, fn_def, &enc_inst.bindings);
                 NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def, &enc_inst.nttp_bindings);
                 std::string mangled = mangle_template_name(n->left->name, inner, call_nttp);
@@ -5042,9 +5125,9 @@ class Lowerer {
         const Node* fn_def = fn_it->second;
         if (fn_def->is_consteval && fn_def->n_template_params > 0) {
           if (enclosing_fn && enclosing_fn->name) {
-            auto enc_it = template_fn_instances_.find(enclosing_fn->name);
-            if (enc_it != template_fn_instances_.end()) {
-              for (const auto& enc_inst : enc_it->second) {
+            auto* enc_list = registry_.find_instances(enclosing_fn->name);
+            if (enc_list) {
+              for (const auto& enc_inst : *enc_list) {
                 TypeBindings inner = build_call_bindings(n->left, fn_def, &enc_inst.bindings);
                 NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def, &enc_inst.nttp_bindings);
                 std::string mangled = mangle_template_name(n->left->name, inner, call_nttp);
@@ -5128,22 +5211,11 @@ class Lowerer {
   std::unordered_map<std::string, const Node*> consteval_fns_;
   // All template function definitions indexed by name (consteval and non-consteval).
   std::unordered_map<std::string, const Node*> template_fn_defs_;
-  // AST-discovered seed work items.
-  //
-  // Short term this is informational only so we can start separating
-  // "discovered template work" from "realized template instance".
-  // Current behavior still flows through template_fn_instances_ below.
-  std::unordered_map<std::string, std::vector<TemplateSeedWorkItem>> template_seed_work_;
-  // Template function name → all unique realized instantiations.
-  //
-  // Note: at the moment AST preprocessing still populates this directly,
-  // so it acts as both a seed result and a realized-instance list. The
-  // long-term refactor should remove that dual role.
-  std::unordered_map<std::string, std::vector<TemplateInstance>> template_fn_instances_;
-  // O(1) dedup set: "fn_name::mangled_name" for each recorded instance.
-  std::unordered_set<std::string> instance_keys_;
-  // Explicit template specializations: mangled_name → specialization AST node.
-  std::unordered_map<std::string, const Node*> template_fn_specs_;
+  // Centralized template instantiation bookkeeping.
+  // Owns seed work items, realized instances, dedup keys, and explicit
+  // specializations.  Both AST collection and deferred HIR paths go
+  // through this registry.
+  InstantiationRegistry registry_;
   // Template struct definitions indexed by struct tag name.
   std::unordered_map<std::string, const Node*> template_struct_defs_;
   // Already-instantiated template struct mangled names (avoid double instantiation).

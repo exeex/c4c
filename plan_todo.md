@@ -26,45 +26,42 @@ HIR-owned structures and helpers, without removing the current AST-driven behavi
 
 ### Tasks
 
-1. formalize AST seed data
+1. formalize AST seed data ✅
 
-- keep filling `template_seed_work_`
-- ensure each seed records enough context for later HIR ownership
-- extend seed metadata if needed
-  - origin kind
-  - source template name
-  - bindings / NTTP bindings
-  - mangled name
-  - specialization key
+- `TemplateSeedWorkItem` struct with origin, bindings, nttp, mangled, spec_key
+- `TemplateSeedOrigin` enum: DirectCall, EnclosingTemplateExpansion, DeducedCall, ConstevalSeed, ConstevalEnclosingExpansion
+- all seed items recorded via `record_instance()` → `record_seed_work()`
 
-2. identify AST responsibilities that should migrate
+2. identify AST responsibilities that should migrate ✅
 
 - AST-side fixpoint-like consteval-template seed expansion
 - AST-owned realized instance bookkeeping
 - AST-driven population of final template instance metadata
 - AST influence over which template functions are lowered immediately
 
-3. introduce HIR-side registry / driver scaffolding
+3. introduce HIR-side registry / driver scaffolding ✅
 
-- add a shared instantiation registry or equivalent helper
-- centralize:
-  - dedup
-  - specialization identity
-  - explicit specialization lookup
-  - realized-instance metadata update
-- wire it so it can coexist with old AST-produced realized instances
+- `InstantiationRegistry` class introduced
+- centralizes:
+  - dedup (`has_instance`)
+  - specialization identity (`make_specialization_key` via `record_instance`)
+  - explicit specialization lookup (`find_specialization`, `register_specialization`)
+  - realized-instance metadata (`find_instances`, `all_instances`)
+  - seed work tracking (`all_seeds`)
+- all AST collection and deferred HIR paths now go through `registry_`
+- old `template_fn_instances_`, `template_seed_work_`, `instance_keys_`, `template_fn_specs_` replaced by single `registry_` member
 
 4. make HIR capable of consuming AST seed work
 
-- add a path that reads `template_seed_work_`
+- add a path that reads seed work from the registry
 - translate seeds into HIR-side todo/work items
 - do not yet disable the old AST-driven realized-instance path
 
 ### Exit Criteria
 
-- AST seed/todo data is complete enough for HIR to consume
-- HIR has a parallel path for instance bookkeeping
-- old AST-driven behavior still remains active
+- AST seed/todo data is complete enough for HIR to consume ✅
+- HIR has a parallel path for instance bookkeeping ✅ (registry centralizes both)
+- old AST-driven behavior still remains active ✅ (dual write in registry)
 
 ## Phase 2: Gradually Switch HIR To The New Path
 
@@ -147,8 +144,11 @@ keep only the cleaner responsibility split.
 
 ## Immediate Next Steps
 
-1. keep enriching `template_seed_work_` until it is a trustworthy todo list
-2. add visibility for the new container
-   - debug dump or temporary comparison output
-3. introduce the first HIR-side instantiation registry helper
-4. mirror current instance bookkeeping into that helper without removing old behavior
+1. ~~introduce the first HIR-side instantiation registry helper~~ ✅ done
+2. ~~mirror current instance bookkeeping into that helper~~ ✅ done (dual write)
+3. ~~route all AST collection and Phase 2/3 lookups through the registry~~ ✅ done
+4. add a HIR-side path that reads seed work from the registry (Phase 1 task 4)
+5. split seed population from instance realization in the registry
+   - seeds populated during AST discovery
+   - instances populated only during HIR reduction
+6. add debug dump or comparison output to verify seed/instance parity
