@@ -317,14 +317,16 @@ struct SizeofTypeExpr {
 };
 
 /// A consteval call that has not yet been evaluated.
-/// Created during deferred template instantiation when the consteval call's
-/// arguments are constant but evaluation is deferred to the compile-time pass.
+/// Initial HIR construction records these nodes and leaves evaluation to the
+/// compile-time engine. Some are present from the start; others are unlocked
+/// later by deferred template instantiation.
 struct PendingConstevalExpr {
   SymbolName fn_name;                                            // consteval function to call
   std::vector<long long> const_args;                             // evaluated constant argument values
   std::unordered_map<std::string, TypeSpec> tpl_bindings;        // template param → concrete type
   std::unordered_map<std::string, long long> nttp_bindings;      // NTTP param → constant value
   SourceSpan call_span{};
+  bool unlocked_by_deferred_instantiation = false;
 };
 
 using ExprPayload = std::variant<

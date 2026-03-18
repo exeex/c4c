@@ -376,6 +376,16 @@ struct CompileTimeState {
     return consteval_fn_defs_;
   }
 
+  /// Const reference to registered enum constants used during consteval.
+  const std::unordered_map<std::string, long long>& enum_consts() const {
+    return enum_consts_;
+  }
+
+  /// Const reference to registered global const-int bindings used during consteval.
+  const std::unordered_map<std::string, long long>& const_int_bindings() const {
+    return const_int_bindings_;
+  }
+
   /// Number of registered template function definitions.
   size_t template_def_count() const { return template_fn_defs_.size(); }
 
@@ -461,16 +471,6 @@ struct CompileTimeState {
     const_int_bindings_[name] = value;
   }
 
-  /// Evaluate a consteval function call using engine-owned state.
-  /// Evaluates a consteval function call using engine-owned state,
-  /// operating on definitions and constant environment owned by
-  /// CompileTimeState rather than Lowerer internals.
-  std::optional<long long> evaluate_consteval(
-      const std::string& fn_name,
-      const std::vector<long long>& const_args,
-      const TypeBindings& bindings,
-      const NttpBindings& nttp_bindings) const;
-
   /// Dump debug visibility for seed work vs realized instances.
   void dump(FILE* out) const {
     std::fprintf(out, "[CompileTimeState] template_defs=%zu consteval_defs=%zu\n",
@@ -541,14 +541,15 @@ using DeferredInstantiateFn = std::function<bool(
 /// This pass iterates:
 ///   1. template instantiation for newly-ready applications
 ///   2. consteval reduction for newly-ready immediate calls
-///   3. pending consteval evaluation for deferred consteval nodes
+///   3. pending consteval evaluation for engine-owned PendingConstevalExpr nodes
 /// until convergence or the iteration limit is reached.
 ///
 /// When instantiate_fn is provided, the pass will invoke it to lower template
 /// functions that were not instantiated during initial AST-to-HIR lowering
 /// (e.g., nested template calls like add<T>() inside twice<T>()).
-/// Consteval evaluation uses ct_state->evaluate_consteval() directly.
-/// When callbacks are null, the pass only verifies existing state.
+/// Consteval evaluation uses engine-owned CompileTimeState definitions and
+/// constant bindings directly. When callbacks are null, the pass only verifies
+/// existing state.
 CompileTimeEngineStats run_compile_time_engine(
     Module& module,
     std::shared_ptr<CompileTimeState> ct_state = nullptr,

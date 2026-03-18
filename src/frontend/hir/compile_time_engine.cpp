@@ -8,29 +8,27 @@
 
 namespace c4c::hir {
 
-std::optional<long long> CompileTimeState::evaluate_consteval(
-    const std::string& fn_name,
-    const std::vector<long long>& const_args,
-    const TypeBindings& bindings,
-    const NttpBindings& nttp_bindings) const {
-  auto ce_it = consteval_fn_defs_.find(fn_name);
-  if (ce_it == consteval_fn_defs_.end()) return std::nullopt;
-  std::vector<ConstValue> args;
-  args.reserve(const_args.size());
-  for (long long v : const_args) args.push_back(ConstValue::make_int(v));
-  ConstEvalEnv env{&enum_consts_, &const_int_bindings_, nullptr};
-  TypeBindings tpl_bindings = bindings;
-  env.type_bindings = &tpl_bindings;
-  NttpBindings nttp_copy = nttp_bindings;
-  if (!nttp_copy.empty())
-    env.nttp_bindings = &nttp_copy;
-  auto result = evaluate_consteval_call(
-      ce_it->second, args, env, consteval_fn_defs_);
-  if (result.ok()) return result.as_int();
-  return std::nullopt;
-}
-
 namespace {
+
+ConstEvalResult evaluate_pending_consteval(
+    const CompileTimeState& ct_state,
+    const PendingConstevalExpr& pce) {
+  const Node* ce_fn_def = ct_state.find_consteval_def(pce.fn_name);
+  if (!ce_fn_def) {
+    return ConstEvalResult::failure(
+        "no consteval definition registered for '" + pce.fn_name + "'");
+  }
+  std::vector<ConstValue> args;
+  args.reserve(pce.const_args.size());
+  for (long long v : pce.const_args) args.push_back(ConstValue::make_int(v));
+  ConstEvalEnv env{&ct_state.enum_consts(), &ct_state.const_int_bindings(), nullptr};
+  TypeBindings tpl_bindings = pce.tpl_bindings;
+  env.type_bindings = &tpl_bindings;
+  NttpBindings nttp_copy = pce.nttp_bindings;
+  if (!nttp_copy.empty()) env.nttp_bindings = &nttp_copy;
+  return evaluate_consteval_call(
+      ce_fn_def, args, env, ct_state.consteval_fn_defs());
+}
 
 /// Attempt one round of template instantiation resolution.
 ///
@@ -215,6 +213,7 @@ struct PendingConstevalEvalStep {
   Module& module;
   CompileTimeState* ct_state = nullptr;
   size_t evaluated = 0;
+  size_t deferred_evaluated = 0;
   size_t pending = 0;
   std::vector<CompileTimeDiagnostic> pending_diags;
 
@@ -234,10 +233,9 @@ struct PendingConstevalEvalStep {
         continue;
       }
 
-      auto result = ct_state->evaluate_consteval(
-          pce->fn_name, pce->const_args, pce->tpl_bindings, pce->nttp_bindings);
-      if (result.has_value()) {
-        long long rv = *result;
+      auto result = evaluate_pending_consteval(*ct_state, *pce);
+      if (result.ok()) {
+        long long rv = result.as_int();
         // Record consteval call metadata.
         ConstevalCallInfo info;
         info.fn_name = pce->fn_name;
@@ -248,12 +246,16 @@ struct PendingConstevalEvalStep {
         info.span = pce->call_span;
         module.consteval_calls.push_back(std::move(info));
         // Replace the PendingConstevalExpr with an IntLiteral in-place.
+        if (pce->unlocked_by_deferred_instantiation) ++deferred_evaluated;
         expr.payload = IntLiteral{rv, false};
         ++evaluated;
       } else {
         ++pending;
         pending_diags.push_back({CompileTimeDiagnostic::UnreducedConsteval,
-            "pending consteval: " + pce->fn_name + " (evaluation failed)"});
+            "pending consteval: " + pce->fn_name +
+            (result.error.empty()
+                ? " (evaluation failed)"
+                : " (" + result.error + ")")});
       }
     }
   }
@@ -284,14 +286,14 @@ CompileTimeEngineStats run_compile_time_engine(
     stats.templates_deferred += tpl_step.newly_instantiated;
     stats.consteval_deferred += tpl_step.consteval_unlocked;
 
-    // Step 2: evaluate pending consteval expressions created during deferred
-    // template instantiation.  These are PendingConstevalExpr nodes that
-    // were deferred instead of being evaluated eagerly during lowering.
+    // Step 2: evaluate PendingConstevalExpr nodes using engine-owned state.
+    // Some come from the initial HIR build; others are unlocked later by
+    // deferred template instantiation.
     PendingConstevalEvalStep pce_step{module,
                                      ct_state ? ct_state.get() : nullptr};
     pce_step.run();
 
-    stats.consteval_deferred += pce_step.evaluated;
+    stats.consteval_deferred += pce_step.deferred_evaluated;
 
     // Step 3: consteval reduction verification.
     ConstevalReductionStep ce_step{module};
