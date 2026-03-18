@@ -789,9 +789,196 @@ static bool expand_inline_site(Module& module, Function& caller,
   return true;
 }
 
+// ── Phase 6: Expression-context normalization ────────────────────────────────
+
+/// Check if a CallExpr is eligible for hoisting (inline-eligible, non-void).
+static bool is_hoistable_inline_call(const Module& module, ExprId eid) {
+  const Expr* e = module.find_expr(eid);
+  if (!e) return false;
+  const auto* call = std::get_if<CallExpr>(&e->payload);
+  if (!call) return false;
+
+  const Function* callee = resolve_direct_callee(module, *call);
+  if (!callee) return false;
+  if (callee->blocks.empty()) return false;
+  if (callee->attrs.variadic) return false;
+  if (callee->attrs.no_inline) return false;
+  if (!callee->attrs.always_inline) return false;
+  if (is_void_return(*callee)) return false;
+
+  // Check array params.
+  for (const auto& param : callee->params) {
+    if (param.type.spec.array_rank > 0) return false;
+  }
+  return true;
+}
+
+/// Recursively walk an expression tree. If any sub-expression (not the root)
+/// is an inline-eligible call, hoist it: create a temp LocalDecl initialized
+/// with the call, and replace the sub-expression reference with a DeclRef
+/// to the temp. Hoisted stmts are collected in `hoisted`.
+/// Returns the (possibly new) ExprId for this position.
+static ExprId hoist_nested_calls(Module& module, ExprId eid,
+                                 std::vector<Stmt>& hoisted,
+                                 bool is_root) {
+  const Expr* e = module.find_expr(eid);
+  if (!e) return eid;
+
+  // If this is a non-root inline-eligible call, hoist it.
+  if (!is_root && is_hoistable_inline_call(module, eid)) {
+    const Function* callee = resolve_direct_callee(
+        module, std::get<CallExpr>(e->payload));
+
+    // First, recurse into this call's arguments to hoist nested calls there.
+    // Copy args to avoid invalidation during recursion.
+    auto args_copy = std::get<CallExpr>(e->payload).args;
+    for (auto& arg : args_copy) {
+      arg = hoist_nested_calls(module, arg, hoisted, false);
+    }
+    // Write updated args back (re-lookup after possible reallocation).
+    Expr* me_updated = module.find_expr(eid);
+    if (me_updated) std::get<CallExpr>(me_updated->payload).args = std::move(args_copy);
+
+    // Now hoist this call itself.
+    LocalId tmp_id = module.alloc_local_id();
+    std::string tmp_name = "inl_hoist_" + callee->name;
+
+    LocalDecl decl;
+    decl.id = tmp_id;
+    decl.name = tmp_name;
+    decl.type = callee->return_type;
+    decl.storage = StorageClass::Auto;
+    decl.init = eid;
+
+    Stmt s;
+    s.payload = decl;
+    hoisted.push_back(std::move(s));
+
+    // Create DeclRef referencing the temp.
+    QualType ref_type = callee->return_type;
+    ref_type.category = ValueCategory::LValue;
+    return make_local_ref(module, tmp_id, tmp_name, ref_type);
+  }
+
+  // Recurse into sub-expressions and update references.
+  // IMPORTANT: We must copy the payload before recursing because recursive
+  // calls may push to expr_pool, invalidating pointers into it.
+  Expr* me = module.find_expr(eid);
+  if (!me) return eid;
+
+  // Copy payload by value to avoid invalidation during recursion.
+  auto payload_copy = me->payload;
+
+  std::visit(
+      [&](auto& p) {
+        using T = std::decay_t<decltype(p)>;
+        if constexpr (std::is_same_v<T, UnaryExpr>) {
+          p.operand = hoist_nested_calls(module, p.operand, hoisted, false);
+        } else if constexpr (std::is_same_v<T, BinaryExpr>) {
+          p.lhs = hoist_nested_calls(module, p.lhs, hoisted, false);
+          p.rhs = hoist_nested_calls(module, p.rhs, hoisted, false);
+        } else if constexpr (std::is_same_v<T, AssignExpr>) {
+          // Don't hoist LHS (it's an lvalue), only RHS.
+          p.rhs = hoist_nested_calls(module, p.rhs, hoisted, false);
+        } else if constexpr (std::is_same_v<T, CastExpr>) {
+          p.expr = hoist_nested_calls(module, p.expr, hoisted, false);
+        } else if constexpr (std::is_same_v<T, CallExpr>) {
+          // Recurse into arguments of calls (including non-inline calls).
+          for (auto& arg : p.args) {
+            arg = hoist_nested_calls(module, arg, hoisted, false);
+          }
+        } else if constexpr (std::is_same_v<T, IndexExpr>) {
+          p.base = hoist_nested_calls(module, p.base, hoisted, false);
+          p.index = hoist_nested_calls(module, p.index, hoisted, false);
+        } else if constexpr (std::is_same_v<T, MemberExpr>) {
+          p.base = hoist_nested_calls(module, p.base, hoisted, false);
+        } else if constexpr (std::is_same_v<T, TernaryExpr>) {
+          // Hoist calls out of ternary operands.
+          p.cond = hoist_nested_calls(module, p.cond, hoisted, false);
+          p.then_expr = hoist_nested_calls(module, p.then_expr, hoisted, false);
+          p.else_expr = hoist_nested_calls(module, p.else_expr, hoisted, false);
+        } else if constexpr (std::is_same_v<T, SizeofExpr>) {
+          // sizeof operand is not evaluated, skip.
+        }
+        // Leaf types (IntLiteral, FloatLiteral, StringLiteral, CharLiteral,
+        // DeclRef, LabelAddrExpr, SizeofTypeExpr, VaArgExpr): nothing to do.
+      },
+      payload_copy);
+
+  // Write modified payload back (re-lookup in case expr_pool was reallocated).
+  Expr* me2 = module.find_expr(eid);
+  if (me2) me2->payload = std::move(payload_copy);
+
+  return eid;
+}
+
+/// Normalize a single statement: hoist inline-eligible calls from
+/// non-top-level expression positions into temp LocalDecls.
+/// Returns the list of Stmts to insert before this statement.
+static std::vector<Stmt> normalize_stmt_inline_calls(Module& module,
+                                                      Stmt& stmt) {
+  std::vector<Stmt> hoisted;
+
+  std::visit(
+      [&](auto& s) {
+        using T = std::decay_t<decltype(s)>;
+        if constexpr (std::is_same_v<T, ExprStmt>) {
+          if (s.expr) {
+            // The root expression can be a call (handled by existing inliner).
+            // But its sub-expressions may also contain calls.
+            // Walk the expression tree, treating the top as root.
+            s.expr = hoist_nested_calls(module, *s.expr, hoisted, true);
+          }
+        } else if constexpr (std::is_same_v<T, ReturnStmt>) {
+          if (s.expr) {
+            s.expr = hoist_nested_calls(module, *s.expr, hoisted, true);
+          }
+        } else if constexpr (std::is_same_v<T, LocalDecl>) {
+          if (s.init) {
+            s.init = hoist_nested_calls(module, *s.init, hoisted, true);
+          }
+        } else if constexpr (std::is_same_v<T, IfStmt>) {
+          s.cond = hoist_nested_calls(module, s.cond, hoisted, false);
+        } else if constexpr (std::is_same_v<T, WhileStmt>) {
+          // Don't hoist from loop conditions — they're re-evaluated each iteration.
+        } else if constexpr (std::is_same_v<T, ForStmt>) {
+          // Don't hoist from for-loop parts — they may be re-evaluated.
+        } else if constexpr (std::is_same_v<T, DoWhileStmt>) {
+          // Don't hoist from do-while condition.
+        } else if constexpr (std::is_same_v<T, SwitchStmt>) {
+          s.cond = hoist_nested_calls(module, s.cond, hoisted, false);
+        }
+      },
+      stmt.payload);
+
+  return hoisted;
+}
+
+/// Run normalization across all functions: hoist nested inline-eligible calls
+/// out of expression trees into temporary LocalDecls.
+static void normalize_inline_calls(Module& module) {
+  for (auto& fn : module.functions) {
+    for (auto& bb : fn.blocks) {
+      // Process statements, inserting hoisted decls before each stmt.
+      // Iterate carefully since we're inserting into the vector.
+      for (size_t i = 0; i < bb.stmts.size(); ++i) {
+        auto hoisted = normalize_stmt_inline_calls(module, bb.stmts[i]);
+        if (!hoisted.empty()) {
+          bb.stmts.insert(bb.stmts.begin() + static_cast<long>(i),
+                          std::make_move_iterator(hoisted.begin()),
+                          std::make_move_iterator(hoisted.end()));
+          i += hoisted.size();  // skip past inserted stmts
+        }
+      }
+    }
+  }
+}
+
 // ── run_inline_expansion ─────────────────────────────────────────────────────
 
 void run_inline_expansion(Module& module) {
+  // Phase 6: normalize nested inline calls into statement position first.
+  normalize_inline_calls(module);
   // Iteratively discover and expand one candidate at a time.
   // Re-discover after each expansion because block/stmt indices change.
   bool changed = true;

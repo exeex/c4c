@@ -1,7 +1,7 @@
 # Plan Execution State
 
 ## Baseline
-- 1896/1896 tests pass (2026-03-18)
+- 1897/1897 tests pass (2026-03-18)
 
 ## Active Plan: HIR Inline Expansion (inline_plan.md)
 
@@ -56,11 +56,21 @@
   - Added `inline_multi_block.c` test: abs_val, clamp, sum_to_n, classify, swap_if_greater, factorial, chained calls
   - 1896/1896 tests pass (0 regressions, +1 new test)
 
+- [x] Phase 6: Call replacement in expression contexts
+  - Added `normalize_inline_calls()` pre-pass: hoists nested inline-eligible calls from expression trees into temp LocalDecls
+  - `hoist_nested_calls()`: recursive walk of expression tree; non-root inline-eligible CallExpr → hoisted to temp
+  - `is_hoistable_inline_call()`: checks inline eligibility + non-void return for hoisting
+  - Handles BinaryExpr, UnaryExpr, CastExpr, TernaryExpr, AssignExpr, IndexExpr, MemberExpr, CallExpr args
+  - Careful iterator-invalidation handling: payload copied by value before recursion, written back after
+  - Normalization runs once before expansion loop in `run_inline_expansion()`
+  - Added `inline_expr_ctx.c` test: 11 cases covering binary ops, casts, ternary, nested calls, unary
+  - 1897/1897 tests pass (0 regressions, +1 new test)
+
 ### Next
-- [ ] Phase 6: Call replacement in expression contexts
-  - Normalize call-containing expressions into statement form
-  - Introduce temporary materialization for expression-result consumption
-  - Support inlining in assignments, binary-expression operands
+- [ ] Phase 7: Diagnostics and unsupported cases
+  - Produce clear reasons for refusal (recursive, indirect, variadic, unsupported form)
+  - Ensure noinline always suppresses expansion
+  - Decide permissive vs strict mode
 
 ### Previous Plan (Consteval) — Complete
 - [x] Phase 1–4 of consteval plan fully implemented
