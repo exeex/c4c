@@ -363,7 +363,15 @@ TypeSpec Parser::parse_base_type() {
         Node* sd = parse_struct_or_union(false);
         ts.base = TB_STRUCT;
         ts.tag  = sd ? sd->name : nullptr;
-        return ts;
+        // In C++ mode, 'struct Pair<int>' should trigger template struct instantiation
+        // just like 'Pair<int>' does via the typedef path. If the tag matches a known
+        // template struct and '<' follows, fall through to the template instantiation
+        // code below instead of returning immediately.
+        if (!(is_cpp_mode() && ts.tag && template_struct_defs_.count(ts.tag) &&
+              check(TokenKind::Less))) {
+            return ts;
+        }
+        // Fall through to template struct instantiation below
     }
     if (has_union) {
         Node* sd = parse_struct_or_union(true);
@@ -383,6 +391,16 @@ TypeSpec Parser::parse_base_type() {
     if (base_set) {
         finalize_vector_type(ts);
         return ts;
+    }
+
+    // Template struct instantiation for 'struct Pair<int>' syntax (has_struct fall-through).
+    // ts.base is already TB_STRUCT and ts.tag is the template name.
+    if (has_struct && is_cpp_mode() && ts.tag &&
+        template_struct_defs_.count(ts.tag) && check(TokenKind::Less)) {
+        // Reuse the typedef-path template instantiation by setting has_typedef and
+        // preparing ts as if the typedef had been resolved.
+        has_typedef = true;
+        has_struct = false;
     }
 
     // Resolve combined specifiers

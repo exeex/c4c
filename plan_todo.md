@@ -1,11 +1,11 @@
 # Plan Execution State
 
 ## Baseline
-- 1879/1879 tests passing (2026-03-18)
+- 1880/1880 tests passing (2026-03-18)
 
 ## Overall Assessment
 
-Phase 5 slice 16 is now implemented: nested template struct usage and >> disambiguation.
+Phase 5 slice 17 is now implemented: `struct Pair<int>` keyword syntax for template structs.
 
 Current state:
 - HIR preserves template/consteval metadata and exposes debug visibility
@@ -26,57 +26,45 @@ Current state:
 - **Phase 5 slice 13**: Template struct support — `template<typename T> struct Pair { T first; T second; };` with parser-level instantiation.
 - **Phase 5 slice 14**: Template struct NTTP support — `template<typename T, int N> struct Array { T data[N]; };` and NTTP-only structs. NTTP values substitute into array dimensions via `array_size_expr` propagation. Default template arguments also work for template struct NTTP params.
 - **Phase 5 slice 15**: Template function + template struct combined usage — `Pair<T>` inside template function bodies deferred and resolved at HIR instantiation time.
-- **Phase 5 slice 16 (NEW)**: Nested template struct + >> disambiguation — `Pair<Pair<int>>`, `Box<Pair<T>>` in template functions, parser >> token splitting.
+- **Phase 5 slice 16**: Nested template struct + >> disambiguation — `Pair<Pair<int>>`, `Box<Pair<T>>` in template functions, parser >> token splitting.
+- **Phase 5 slice 17 (NEW)**: `struct Pair<int>` keyword syntax — `struct` keyword before template struct types now triggers template instantiation.
 
 Summary:
 - Phase 1: complete
 - Phases 2-4: partially complete, with good observability and metadata preservation
-- Phase 5: **substantially complete** — nested template structs and >> disambiguation now work
+- Phase 5: **substantially complete** — struct keyword syntax for template structs now works
 - Phase 6: **complete** — materialization boundary separates compile-time entities from emitted code
 - Phase 7: **complete** — specialization identity is stable, hashable, serializable via LLVM named metadata
 
 ---
 
-## What was done in this session (2026-03-18, session 20)
+## What was done in this session (2026-03-18, session 21)
 
-### Phase 5 slice 16: Nested template struct + >> disambiguation
+### Phase 5 slice 17: `struct Pair<int>` keyword syntax for template structs
 
-Three fixes in one slice:
+**Root cause**: `struct Pair<int> p;` went through `parse_struct_or_union` which read `Pair` as the tag, saw `<` (not `{`), and returned a forward reference to `Pair` — losing the template arguments.
 
-**Fix 1: `>>` token splitting in template argument contexts**
-- Added `check_template_close()`, `match_template_close()`, `expect_template_close()` helpers to Parser
-- When `>>` (GreaterGreater) is encountered where `>` is expected (closing a template arg list), the token is split: mutate current token to `>` and don't advance, leaving the remaining `>` for the outer context
-- Applied to: template struct type arg parsing (types.cpp), function template arg parsing (expressions.cpp)
+**Fix**: In `parse_base_type`, when `has_struct` is true and the tag is a known template struct with `<` following, redirect to the existing typedef-path template instantiation code. This avoids duplicating the ~200-line instantiation logic.
 
-**Fix 2: Nested pending template struct propagation in parser**
-- When parsing `Box<Pair<T>>` in a template function body, `Pair<T>` is deferred (pending). Previously the outer `Box` check only looked for `TB_TYPEDEF` as unresolved — now also checks `tpl_struct_origin` to detect nested pending template structs
-- Arg_refs encoding: nested pending template structs use `@origin:inner_args` format (e.g., `@Pair:T` for `Pair<T>`)
-- HIR resolver: when an arg_ref starts with `@`, recursively resolves the inner pending template struct before using it as a type argument
-
-**Fix 3: Template param attachment corruption**
-- **Root cause**: After parsing `template<typename T> T unbox_sum(Box<Pair<T>> bp)`, the code checked `struct_defs_.back()` to attach template params. But `struct_defs_.back()` was `Pair_T_Pair_T_int` (from a previous non-template function), not the template struct being defined.
-- **Symptom**: `Pair_T_Pair_T_int` got `n_template_params=1` incorrectly, causing HIR to skip it as a template def instead of lowering it as a concrete struct.
-- **Fix**: Save `struct_defs_.size()` before parsing the template body; only check the last struct def if new structs were added during this parse.
+Two changes in `types.cpp`:
+1. In `has_struct` block: instead of always returning, check if this is a template struct with `<`. If so, fall through.
+2. Before `has_typedef` block: new guard that converts the `has_struct` fall-through into a `has_typedef` flow, allowing the existing template instantiation code to handle it.
 
 ### Test additions
-- **`template_struct_nested.cpp`**: Tests `Box<Pair<int>>`, `Pair<Pair<int>>`, template functions with nested template struct params and return types.
-
-### Files changed
-- `src/frontend/parser/parser.hpp` (new template close helpers)
-- `src/frontend/parser/parse.cpp` (implement template close helpers)
-- `src/frontend/parser/types.cpp` (>> handling, nested pending struct detection, arg_refs encoding)
-- `src/frontend/parser/expressions.cpp` (>> handling in function template args)
-- `src/frontend/parser/declarations.cpp` (template param attachment fix)
-- `src/frontend/hir/ast_to_hir.cpp` (recursive nested pending template struct resolution)
-- `tests/internal/cpp/postive_case/template_struct_nested.cpp` (new)
+- **`template_struct_keyword.cpp`**: Tests `struct Pair<int>`, `struct Array<int, 3>`, function return/param types with `struct` keyword, mixing keyword and non-keyword syntax.
 
 ---
 
 ## Recommended next milestone
 
 Potential next work:
-- Template struct pointer fields (`Pair<int*>`)
-- Template struct with `struct Pair<int>` keyword syntax (currently only typedef-style `Pair<int>` supported)
-- Triple-nested template structs (`Pair<Pair<Pair<int>>>` — would need `>>>` splitting or recursive `>>` handling)
+- Template struct member functions (methods)
+- Template class keyword (`class` as synonym for `struct` in template context)
 - Phase 2-4 remaining: deeper template/consteval HIR preservation
 - `dynamic_cast` support (requires RTTI, lower priority)
+
+Already verified working (no action needed):
+- Template struct pointer fields (`Pair<int*>`) — works
+- `struct Pair<int>` keyword syntax — implemented in slice 17
+- Triple-nested template structs (`Box<Box<Box<int>>>`) — works via recursive >> splitting
+- Multi-type param template structs (`KVPair<int, long>`) — works
