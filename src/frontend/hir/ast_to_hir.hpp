@@ -13,7 +13,6 @@ struct InitialHirBuildResult {
   std::shared_ptr<Module> module;
   std::shared_ptr<CompileTimeState> ct_state;
   DeferredInstantiateFn deferred_instantiate;
-  DeferredConstevalEvalFn deferred_consteval;
 };
 
 InitialHirBuildResult build_initial_hir(

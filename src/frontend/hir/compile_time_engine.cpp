@@ -143,19 +143,6 @@ struct TemplateInstantiationStep {
                   tci.source_template, bindings, nttp_bindings,
                   target_name, tdef.template_params);
               tdef_it->second.instances.push_back(std::move(hi));
-            } else {
-              // Fallback when no engine state: build metadata directly.
-              HirTemplateInstantiation hi;
-              hi.mangled_name = target_name;
-              hi.bindings = bindings;
-              hi.nttp_bindings = nttp_bindings;
-              hi.spec_key = nttp_bindings.empty()
-                  ? make_specialization_key(
-                      tci.source_template, tdef.template_params, bindings)
-                  : make_specialization_key(
-                      tci.source_template, tdef.template_params, bindings,
-                      nttp_bindings);
-              tdef_it->second.instances.push_back(std::move(hi));
             }
           } else {
             ++pending;
@@ -226,21 +213,20 @@ struct ConstevalReductionStep {
 /// with an IntLiteral on success, recording a ConstevalCallInfo.
 struct PendingConstevalEvalStep {
   Module& module;
-  DeferredConstevalEvalFn eval_fn;
   CompileTimeState* ct_state = nullptr;
   size_t evaluated = 0;
   size_t pending = 0;
   std::vector<CompileTimeDiagnostic> pending_diags;
 
   void run() {
-    if (!eval_fn && !ct_state) return;
+    if (!ct_state) return;
 
     for (auto& expr : module.expr_pool) {
       auto* pce = std::get_if<PendingConstevalExpr>(&expr.payload);
       if (!pce) continue;
 
       // Pre-check: does the compile-time state know about this consteval fn?
-      if (ct_state && !ct_state->has_consteval_def(pce->fn_name)) {
+      if (!ct_state->has_consteval_def(pce->fn_name)) {
         ++pending;
         pending_diags.push_back({CompileTimeDiagnostic::UnreducedConsteval,
             "pending consteval: " + pce->fn_name +
@@ -248,15 +234,8 @@ struct PendingConstevalEvalStep {
         continue;
       }
 
-      // Prefer engine-owned evaluation when ct_state is available;
-      // fall back to the callback for compatibility.
-      std::optional<long long> result;
-      if (ct_state) {
-        result = ct_state->evaluate_consteval(
-            pce->fn_name, pce->const_args, pce->tpl_bindings, pce->nttp_bindings);
-      } else if (eval_fn) {
-        result = eval_fn(pce->fn_name, pce->const_args, pce->tpl_bindings, pce->nttp_bindings);
-      }
+      auto result = ct_state->evaluate_consteval(
+          pce->fn_name, pce->const_args, pce->tpl_bindings, pce->nttp_bindings);
       if (result.has_value()) {
         long long rv = *result;
         // Record consteval call metadata.
@@ -284,8 +263,7 @@ struct PendingConstevalEvalStep {
 
 CompileTimeEngineStats run_compile_time_engine(
     Module& module, std::shared_ptr<CompileTimeState> ct_state,
-    DeferredInstantiateFn instantiate_fn,
-    DeferredConstevalEvalFn consteval_fn) {
+    DeferredInstantiateFn instantiate_fn) {
   CompileTimeEngineStats stats{};
 
   static constexpr int kMaxIterations = 8;
@@ -309,7 +287,7 @@ CompileTimeEngineStats run_compile_time_engine(
     // Step 2: evaluate pending consteval expressions created during deferred
     // template instantiation.  These are PendingConstevalExpr nodes that
     // were deferred instead of being evaluated eagerly during lowering.
-    PendingConstevalEvalStep pce_step{module, consteval_fn,
+    PendingConstevalEvalStep pce_step{module,
                                      ct_state ? ct_state.get() : nullptr};
     pce_step.run();
 

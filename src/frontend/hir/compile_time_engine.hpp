@@ -442,9 +442,9 @@ struct CompileTimeState {
   }
 
   /// Evaluate a consteval function call using engine-owned state.
-  /// This is the engine-internal equivalent of the DeferredConstevalEvalFn
-  /// callback, but operates on state owned by CompileTimeState rather
-  /// than captured Lowerer internals.
+  /// Evaluates a consteval function call using engine-owned state,
+  /// operating on definitions and constant environment owned by
+  /// CompileTimeState rather than Lowerer internals.
   std::optional<long long> evaluate_consteval(
       const std::string& fn_name,
       const std::vector<long long>& const_args,
@@ -518,24 +518,6 @@ using DeferredInstantiateFn = std::function<bool(
     const NttpBindings& nttp_bindings,
     const std::string& mangled_name)>;
 
-/// Callback for deferred consteval evaluation.
-///
-/// Called by the compile-time reduction pass when it encounters a
-/// PendingConstevalExpr node that needs to be evaluated.
-///
-/// Parameters:
-///   fn_name        - consteval function name
-///   const_args     - evaluated constant argument values
-///   bindings       - template param → concrete type
-///   nttp_bindings  - NTTP param → constant value
-///
-/// Returns the computed result value, or std::nullopt on failure.
-using DeferredConstevalEvalFn = std::function<std::optional<long long>(
-    const std::string& fn_name,
-    const std::vector<long long>& const_args,
-    const TypeBindings& bindings,
-    const NttpBindings& nttp_bindings)>;
-
 /// Run the HIR compile-time reduction loop.
 ///
 /// This pass iterates:
@@ -547,25 +529,12 @@ using DeferredConstevalEvalFn = std::function<std::optional<long long>(
 /// When instantiate_fn is provided, the pass will invoke it to lower template
 /// functions that were not instantiated during initial AST-to-HIR lowering
 /// (e.g., nested template calls like add<T>() inside twice<T>()).
-/// When consteval_fn is provided, the pass will evaluate PendingConstevalExpr
-/// nodes created during deferred instantiation.
+/// Consteval evaluation uses ct_state->evaluate_consteval() directly.
 /// When callbacks are null, the pass only verifies existing state.
 CompileTimeEngineStats run_compile_time_engine(
     Module& module,
     std::shared_ptr<CompileTimeState> ct_state = nullptr,
-    DeferredInstantiateFn instantiate_fn = nullptr,
-    DeferredConstevalEvalFn consteval_fn = nullptr);
-
-// Compatibility alias while call sites transition to the new naming.
-inline CompileTimeEngineStats run_compile_time_reduction(
-    Module& module,
-    std::shared_ptr<CompileTimeState> ct_state = nullptr,
-    DeferredInstantiateFn instantiate_fn = nullptr,
-    DeferredConstevalEvalFn consteval_fn = nullptr) {
-  return run_compile_time_engine(
-      module, std::move(ct_state),
-      std::move(instantiate_fn), std::move(consteval_fn));
-}
+    DeferredInstantiateFn instantiate_fn = nullptr);
 
 /// Format pass statistics for debug output (used by --dump-hir).
 std::string format_compile_time_stats(const CompileTimeEngineStats& stats);

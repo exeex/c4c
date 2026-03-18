@@ -33,19 +33,16 @@ until the frontend has reduced it as far as required.
 
 ```txt
 hir/
-  ir.hpp                -- core HIR data structures
-  hir.*                 -- HIR entrypoint: AST seed collection + HIR construction
-  compile_time_engine.* -- current compile-time engine / normalization logic
+  ir.hpp                -- core HIR data structures (the contract surface)
+  hir.*                 -- public pipeline entrypoint (thin orchestrator)
+  ast_to_hir.*          -- AST -> initial HIR construction
+  compile_time_engine.* -- compile-time engine: state, reduction, materialization
   inline_expand.*       -- HIR-level inline expansion helpers
   hir_printer.*         -- debug printing and summaries
 ```
 
 `ir.hpp` is the main contract file. The other files either build, transform, or
 inspect that IR.
-
-Compatibility headers with the old names (`ast_to_hir.hpp`,
-`compile_time_pass.hpp`) still exist during migration, but the canonical names
-are now `hir.*` and `compile_time_engine.*`.
 
 ## Current Role In The Pipeline
 
@@ -66,33 +63,47 @@ The HIR layer should be thought of as a mixed compile-time/runtime IR.
 Some nodes are already runtime-ready. Others still require compile-time
 normalization before final code generation should treat them as settled.
 
+## Pipeline
+
+The HIR build pipeline has three explicit stages:
+
+1. **Initial** — `build_initial_hir()` in `ast_to_hir.*` lowers the AST into a
+   mixed compile-time/runtime HIR. Template seeds and consteval definitions are
+   recorded in `CompileTimeState`.
+
+2. **Normalized** — `run_compile_time_engine()` in `compile_time_engine.*`
+   iterates a fixpoint loop: template instantiation, consteval evaluation,
+   and reduction verification until convergence.
+
+3. **Materialized** — `materialize_ready_functions()` marks functions for
+   emission. Consteval-only functions are excluded from LLVM output.
+
+`build_hir()` in `hir.*` is the public entrypoint that orchestrates all three
+stages and returns the final module.
+
 ## Public Entry Points
 
-The main entry points to know about are:
-
-- `build_hir(...)` in `hir.hpp`
+- `build_hir(...)` in `hir.hpp` — the main pipeline entrypoint
+- `build_initial_hir(...)` in `ast_to_hir.hpp` — AST to initial HIR
+- `run_compile_time_engine(...)` in `compile_time_engine.hpp` — fixpoint reduction
 - HIR formatting / summaries in `hir_printer.*`
-- compile-time normalization / engine helpers in `compile_time_engine.*`
 - inline expansion helpers in `inline_expand.*`
-
-If you are tracing a feature from parsed syntax into emitted LLVM IR, HIR is
-usually the most important intermediate checkpoint.
 
 ## What To Read First
 
-For a quick orientation:
-
 1. `ir.hpp`
-2. `compile_time_engine.*`
-3. `hir.hpp` and `hir.cpp`
-4. `hir_printer.hpp` and `hir_printer.cpp`
-5. `inline_expand.*`
+2. `hir.hpp` and `hir.cpp` (pipeline orchestration)
+3. `ast_to_hir.*` (AST lowering)
+4. `compile_time_engine.*` (compile-time state + reduction)
+5. `hir_printer.*`
+6. `inline_expand.*`
 
 ## Where To Edit
 
 - core IR shapes and IDs: `ir.hpp`
-- AST seed collection + HIR construction rules: `hir.cpp`
-- compile-time normalization behavior: `compile_time_engine.cpp`
+- AST-to-HIR lowering rules: `ast_to_hir.cpp`
+- pipeline orchestration: `hir.cpp`
+- compile-time engine behavior and state: `compile_time_engine.cpp`
 - HIR debug output / summaries: `hir_printer.cpp`
 - inline expansion behavior: `inline_expand.cpp`
 

@@ -86,12 +86,24 @@ Completed:
   `Lowerer::instantiate_deferred_template()` is now a pure lowering operation:
   def lookup → specialization check → `lower_function()` call.
 
+- **Phase 3.1 (2026-03-18):** Removed legacy compatibility aliases and fallback paths.
+  Deleted `lower_ast_to_hir()` (hir.hpp) and `run_compile_time_reduction()`
+  (compile_time_engine.hpp) — neither had call sites.  Removed
+  `DeferredConstevalEvalFn` callback type and parameter: consteval evaluation
+  now uses `CompileTimeState::evaluate_consteval()` exclusively; the Lowerer's
+  `evaluate_deferred_consteval()` method (duplicate of engine-owned logic) deleted.
+  Removed null `ct_state` fallback metadata construction in
+  `TemplateInstantiationStep`.  Updated `README.md` with current three-stage
+  pipeline architecture and accurate file roles.
+
 Not completed:
 
 - DeferredInstantiateFn still captures the Lowerer for `lower_function()` — this is
   fundamentally required since only the Lowerer can lower AST to HIR
-- Phase 2 task 4: switch remaining readers to engine-owned state
-- next: Phase 3 — verify, simplify, remove old paths
+- Lowerer still maintains duplicate `consteval_fns_` / `template_fn_defs_` maps
+  (used during initial HIR construction; engine has copies in CompileTimeState)
+- `CompileTimePassStats` type alias could be removed
+- Phase 3 tasks 2-3: further legacy removal if beneficial
 
 ## Phase 1: Move Compile-Time State Toward The Engine
 
@@ -220,4 +232,5 @@ After parity is proven, remove legacy ownership paths and keep the cleaner model
 7. ~~reduce reliance on AST-owned callback semantics~~ (done: Phase 2.3 — definition registries in CompileTimeState)
 8. ~~move consteval evaluator into engine-owned state~~ (done: Phase 2.4 — CompileTimeState::evaluate_consteval)
 9. ~~further reduce callback surface for template instantiation~~ (done: Phase 2.5 — engine owns pre-checks + post-metadata)
-10. Phase 3: verify, simplify, remove old paths (legacy ownership, compatibility aliases)
+10. ~~Phase 3 slice 1: remove compatibility aliases, DeferredConstevalEvalFn, null ct_state fallbacks, update README~~ (done: Phase 3.1)
+11. Phase 3 remaining: evaluate further legacy removal (duplicate Lowerer maps, CompileTimePassStats alias)

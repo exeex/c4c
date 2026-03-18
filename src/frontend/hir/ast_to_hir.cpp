@@ -639,28 +639,6 @@ class Lowerer {
     return true;
   }
 
-  std::optional<long long> evaluate_deferred_consteval(
-      const std::string& fn_name,
-      const std::vector<long long>& const_args,
-      const TypeBindings& bindings,
-      const NttpBindings& nttp_binds) {
-    auto ce_it = consteval_fns_.find(fn_name);
-    if (ce_it == consteval_fns_.end()) return std::nullopt;
-    std::vector<ConstValue> args;
-    args.reserve(const_args.size());
-    for (long long v : const_args) args.push_back(ConstValue::make_int(v));
-    ConstEvalEnv env{&enum_consts_, &const_int_bindings_, nullptr};
-    TypeBindings tpl_bindings = bindings;
-    env.type_bindings = &tpl_bindings;
-    NttpBindings nttp_copy = nttp_binds;
-    if (!nttp_copy.empty())
-      env.nttp_bindings = &nttp_copy;
-    auto result = evaluate_consteval_call(
-        ce_it->second, args, env, consteval_fns_);
-    if (result.ok()) return result.as_int();
-    return std::nullopt;
-  }
-
  private:
   struct SwitchCtx {
     BlockId parent_block{};
@@ -5079,16 +5057,6 @@ InitialHirBuildResult build_initial_hir(
     (void)module;
     return lowerer->instantiate_deferred_template(
         tpl_name, bindings, nttp_bindings, mangled);
-  };
-  result.deferred_consteval =
-      [lowerer, module](const std::string& fn_name,
-                        const std::vector<long long>& const_args,
-                        const TypeBindings& bindings,
-                        const NttpBindings& nttp_binds)
-          -> std::optional<long long> {
-    (void)module;
-    return lowerer->evaluate_deferred_consteval(
-        fn_name, const_args, bindings, nttp_binds);
   };
   return result;
 }
