@@ -56,11 +56,23 @@ Completed:
   Materialization stats (`materialized_functions`, `non_materialized_functions`)
   recorded in `Module::CompileTimeInfo`.
 
+- **Phase 2.3 (2026-03-18):** Moved template/consteval function definition
+  awareness into `CompileTimeState`.  Added `register_template_def()`,
+  `register_consteval_def()`, `has_template_def()`, `has_consteval_def()`,
+  `find_template_def()`, `find_consteval_def()` methods.  Lowerer registers
+  defs in `ct_state_` during initial construction (Phase 1.5/1.6).
+  `TemplateInstantiationStep` and `PendingConstevalEvalStep` now pre-check
+  definition availability via `ct_state` before invoking callbacks.
+  `CompileTimeEngineStats` reports `template_defs_known` / `consteval_defs_known`.
+  Engine steps have direct visibility into what definitions exist rather than
+  blindly probing opaque Lowerer callbacks.
+
 Not completed:
 
-- engine is still callback-driven (deferred instantiation/consteval go through lambdas)
-- Phase 2 tasks 2, 4: reduce callback coupling, switch remaining readers
-- next: Phase 2.3 — reduce reliance on AST-owned callback semantics
+- engine still uses callbacks for actual lowering/evaluation (lambdas capture Lowerer)
+- Phase 2 task 4: switch remaining readers to engine-owned state
+- next: Phase 2.4 — further reduce callback surface (e.g., make consteval
+  evaluation engine-internal by moving consteval evaluator into CompileTimeState)
 
 ## Phase 1: Move Compile-Time State Toward The Engine
 
@@ -186,4 +198,5 @@ After parity is proven, remove legacy ownership paths and keep the cleaner model
 4. ~~have `run_compile_time_engine` use `ct_state->registry` for its own queries~~ (done: Phase 1.3)
 5. ~~switch reads to engine-owned path via CompileTimeState API~~ (done: Phase 2.1)
 6. ~~make three pipeline stages (initial / normalized / materialized) explicit in code~~ (done: Phase 2.2)
-7. reduce reliance on AST-owned callback semantics
+7. ~~reduce reliance on AST-owned callback semantics~~ (done: Phase 2.3 — definition registries in CompileTimeState)
+8. further reduce callback surface (move consteval evaluator into engine-owned state)

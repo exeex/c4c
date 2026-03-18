@@ -322,6 +322,51 @@ class InstantiationRegistry {
 struct CompileTimeState {
   InstantiationRegistry registry;
 
+  // ── Template / consteval definition registries ──────────────────────
+  //
+  // These maps give the compile-time engine direct visibility into which
+  // template and consteval functions exist, without having to probe the
+  // opaque Lowerer callback.  The Lowerer populates them during initial
+  // HIR construction; the engine reads them during the fixpoint loop.
+
+  /// Register a template function definition (AST node pointer).
+  void register_template_def(const std::string& name, const Node* node) {
+    template_fn_defs_[name] = node;
+  }
+
+  /// Register a consteval function definition (AST node pointer).
+  void register_consteval_def(const std::string& name, const Node* node) {
+    consteval_fn_defs_[name] = node;
+  }
+
+  /// Check whether a template function definition is known.
+  bool has_template_def(const std::string& name) const {
+    return template_fn_defs_.count(name) > 0;
+  }
+
+  /// Check whether a consteval function definition is known.
+  bool has_consteval_def(const std::string& name) const {
+    return consteval_fn_defs_.count(name) > 0;
+  }
+
+  /// Look up a template function definition by name (nullptr if unknown).
+  const Node* find_template_def(const std::string& name) const {
+    auto it = template_fn_defs_.find(name);
+    return it != template_fn_defs_.end() ? it->second : nullptr;
+  }
+
+  /// Look up a consteval function definition by name (nullptr if unknown).
+  const Node* find_consteval_def(const std::string& name) const {
+    auto it = consteval_fn_defs_.find(name);
+    return it != consteval_fn_defs_.end() ? it->second : nullptr;
+  }
+
+  /// Number of registered template function definitions.
+  size_t template_def_count() const { return template_fn_defs_.size(); }
+
+  /// Number of registered consteval function definitions.
+  size_t consteval_def_count() const { return consteval_fn_defs_.size(); }
+
   /// Record a deferred template instance discovered during the engine's
   /// fixpoint loop.  Updates the registry (seed + realize) and returns a
   /// HirTemplateInstantiation suitable for appending to module metadata.
@@ -372,9 +417,17 @@ struct CompileTimeState {
 
   /// Dump debug visibility for seed work vs realized instances.
   void dump(FILE* out) const {
+    std::fprintf(out, "[CompileTimeState] template_defs=%zu consteval_defs=%zu\n",
+                 template_fn_defs_.size(), consteval_fn_defs_.size());
     std::fprintf(out, "[CompileTimeState] registry parity:\n");
     registry.dump_parity(out);
   }
+
+ private:
+  // Template function definitions indexed by name (AST node pointers).
+  std::unordered_map<std::string, const Node*> template_fn_defs_;
+  // Consteval function definitions indexed by name (AST node pointers).
+  std::unordered_map<std::string, const Node*> consteval_fn_defs_;
 };
 
 /// A diagnostic for a single irreducible compile-time node.
@@ -394,6 +447,9 @@ struct CompileTimeEngineStats {
   size_t consteval_deferred = 0;      // consteval reductions unlocked by deferred template instantiation
   size_t iterations = 0;              // total fixpoint iterations performed
   bool converged = false;             // true if no new work was found
+  // Definition registries (populated when ct_state is provided).
+  size_t template_defs_known = 0;      // template function definitions registered
+  size_t consteval_defs_known = 0;     // consteval function definitions registered
   // Registry parity (populated when ct_state is provided).
   size_t registry_seeds = 0;           // total seeds in registry after engine run
   size_t registry_instances = 0;       // total realized instances in registry after engine run

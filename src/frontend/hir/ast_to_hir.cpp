@@ -453,8 +453,10 @@ class Lowerer {
 
     // Phase 1.5: collect consteval function definitions for compile-time evaluation
     for (const Node* item : items) {
-      if (item->kind == NK_FUNCTION && item->is_consteval && item->name)
+      if (item->kind == NK_FUNCTION && item->is_consteval && item->name) {
         consteval_fns_[item->name] = item;
+        ct_state_->register_consteval_def(item->name, item);
+      }
     }
 
     // Phase 1.6: collect template instantiation info from call sites.
@@ -462,8 +464,10 @@ class Lowerer {
     // arg types, so template functions that contain consteval calls with
     // template-dependent args can be lowered once per instantiation.
     for (const Node* item : items) {
-      if (item->kind == NK_FUNCTION && item->name && item->n_template_params > 0)
+      if (item->kind == NK_FUNCTION && item->name && item->n_template_params > 0) {
         template_fn_defs_[item->name] = item;
+        ct_state_->register_template_def(item->name, item);
+      }
     }
     // Collect explicit template specializations (template<> T foo<Args>(...)).
     for (const Node* item : items) {

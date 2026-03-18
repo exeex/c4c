@@ -62,6 +62,17 @@ struct TemplateInstantiationStep {
       if (instantiated_fns.count(target_name)) {
         ++resolved;
       } else if (instantiate_fn) {
+        // Pre-check: does the compile-time state know about this template?
+        // This gives the engine direct visibility into available definitions
+        // rather than blindly probing the callback.
+        if (ct_state && !ct_state->has_template_def(tci.source_template)) {
+          ++pending;
+          pending_diags.push_back({CompileTimeDiagnostic::UnresolvedTemplate,
+              "unresolved template call: " + tci.source_template +
+              " (no definition registered in compile-time state)"});
+          continue;
+        }
+
         // Attempt deferred instantiation: reconstruct TypeBindings from
         // TemplateCallInfo + HirTemplateDef parameter names.
         auto tdef_it = module.template_defs.find(tci.source_template);
@@ -172,6 +183,7 @@ struct ConstevalReductionStep {
 struct PendingConstevalEvalStep {
   Module& module;
   DeferredConstevalEvalFn eval_fn;
+  CompileTimeState* ct_state = nullptr;
   size_t evaluated = 0;
   size_t pending = 0;
   std::vector<CompileTimeDiagnostic> pending_diags;
@@ -182,6 +194,15 @@ struct PendingConstevalEvalStep {
     for (auto& expr : module.expr_pool) {
       auto* pce = std::get_if<PendingConstevalExpr>(&expr.payload);
       if (!pce) continue;
+
+      // Pre-check: does the compile-time state know about this consteval fn?
+      if (ct_state && !ct_state->has_consteval_def(pce->fn_name)) {
+        ++pending;
+        pending_diags.push_back({CompileTimeDiagnostic::UnreducedConsteval,
+            "pending consteval: " + pce->fn_name +
+            " (no definition registered in compile-time state)"});
+        continue;
+      }
 
       auto result = eval_fn(pce->fn_name, pce->const_args, pce->tpl_bindings, pce->nttp_bindings);
       if (result.has_value()) {
@@ -236,7 +257,8 @@ CompileTimeEngineStats run_compile_time_engine(
     // Step 2: evaluate pending consteval expressions created during deferred
     // template instantiation.  These are PendingConstevalExpr nodes that
     // were deferred instead of being evaluated eagerly during lowering.
-    PendingConstevalEvalStep pce_step{module, consteval_fn};
+    PendingConstevalEvalStep pce_step{module, consteval_fn,
+                                     ct_state ? ct_state.get() : nullptr};
     pce_step.run();
 
     stats.consteval_deferred += pce_step.evaluated;
@@ -281,8 +303,10 @@ CompileTimeEngineStats run_compile_time_engine(
     // Progress was made but pending items remain — continue iterating.
   }
 
-  // Populate registry parity stats from engine-owned state.
+  // Populate definition and registry parity stats from engine-owned state.
   if (ct_state) {
+    stats.template_defs_known = ct_state->template_def_count();
+    stats.consteval_defs_known = ct_state->consteval_def_count();
     stats.registry_seeds = ct_state->registry.total_seed_count();
     stats.registry_instances = ct_state->registry.total_instance_count();
     stats.registry_parity = ct_state->registry.verify_parity();
@@ -333,6 +357,11 @@ std::string format_compile_time_stats(const CompileTimeEngineStats& stats) {
     out << " (converged)";
   } else {
     out << " (NOT converged)";
+  }
+  // Append definition registry info when available.
+  if (stats.template_defs_known > 0 || stats.consteval_defs_known > 0) {
+    out << "\n  definitions: template_defs=" << stats.template_defs_known
+        << " consteval_defs=" << stats.consteval_defs_known;
   }
   // Append registry parity info when available.
   if (stats.registry_seeds > 0 || stats.registry_instances > 0) {
