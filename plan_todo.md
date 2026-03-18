@@ -30,7 +30,7 @@ HIR-owned structures and helpers, without removing the current AST-driven behavi
 
 - `TemplateSeedWorkItem` struct with origin, bindings, nttp, mangled, spec_key
 - `TemplateSeedOrigin` enum: DirectCall, EnclosingTemplateExpansion, DeducedCall, ConstevalSeed, ConstevalEnclosingExpansion
-- all seed items recorded via `record_instance()` → `record_seed_work()`
+- AST seed discovery now records work via `record_seed()`
 
 2. identify AST responsibilities that should migrate ✅
 
@@ -43,40 +43,40 @@ HIR-owned structures and helpers, without removing the current AST-driven behavi
 
 - `InstantiationRegistry` class introduced
 - centralizes:
-  - dedup (`has_instance`)
-  - specialization identity (`make_specialization_key` via `record_instance`)
+  - dedup (`has_seed`, `has_instance`, `has_seed_or_instance`)
+  - specialization identity (`make_specialization_key` via `record_seed`)
   - explicit specialization lookup (`find_specialization`, `register_specialization`)
   - realized-instance metadata (`find_instances`, `all_instances`)
   - seed work tracking (`all_seeds`)
 - all AST collection and deferred HIR paths now go through `registry_`
-- old `template_fn_instances_`, `template_seed_work_`, `instance_keys_`, `template_fn_specs_` replaced by single `registry_` member
+- old `template_fn_instances_`, `instance_keys_`, `template_fn_specs_` replaced by single `registry_` member
 
 4. make HIR capable of consuming AST seed work ✅
 
-- `record_seed_only()` records seeds without realizing instances
+- `record_seed()` records seeds without realizing instances
 - `realize_seeds()` promotes seeds into instances (HIR consumption path)
-- Phase 1.7a calls `realize_seeds()` in the lowering pipeline
-- old dual-write path preserved; realize_seeds() is no-op until decoupled
+- lowering now calls `realize_seeds()` before consteval fixpoint iteration, within each consteval expansion pass, and once more before parity verification
+- `realize_seeds()` is the sole path that promotes seeds into realized instances
 
 ### Exit Criteria
 
 - AST seed/todo data is complete enough for HIR to consume ✅
 - HIR has a parallel path for instance bookkeeping ✅ (registry centralizes both)
-- old AST-driven behavior still remains active ✅ (dual write in registry)
+- lowering behavior still remains compatible while ownership shifts into the registry ✅
 
 ## Phase 2: Gradually Switch HIR To The New Path ✅
 
 All reads already go through the registry. Old containers fully replaced.
-Parity verification confirms seed/instance consistency across all 1891 tests.
+Parity verification is now enforced in lowering via `verify_parity()`.
 
 ## Phase 3: Prove Behavior, Then Remove Old Paths ✅
 
 ### Completed
 
-1. validate behavior — 1891/1891 tests pass, parity holds ✅
+1. validate behavior — full suite size is 1891 tests; parity is checked during lowering ✅
 2. remove redundant `record_instance()` from registry and converter wrapper ✅
 3. rename converter wrapper `has_instance()` → `has_seed()` for clarity ✅
-4. clean up transition-era comments (dual-write, old ownership model) ✅
+4. clean up transition-era comments and finalize the seed/instance ownership model ✅
 5. registry `record_seed_only()` renamed to `record_seed()` ✅
 
 ### Final ownership model
@@ -100,4 +100,4 @@ Parity verification confirms seed/instance consistency across all 1891 tests.
 ## Status
 
 All three phases complete. The AST refactor plan is done.
-1891/1891 tests pass.
+The current build config contains 1891 CTest entries.
