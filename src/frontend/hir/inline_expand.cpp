@@ -390,17 +390,7 @@ InlineCandidate check_inline_eligibility(
     return cand;
   }
 
-  // 7. Skip callees with array-typed parameters (codegen produces wrong GEP
-  //    when array parameter is stored to a synthetic local instead of passed
-  //    as a function parameter).
-  for (const auto& param : callee->params) {
-    if (param.type.spec.array_rank > 0) {
-      cand.reject = InlineRejectReason::ArrayParam;
-      return cand;
-    }
-  }
-
-  // 8. Skip callees whose body contains va_arg (ABI-sensitive).
+  // 7. Skip callees whose body contains va_arg (ABI-sensitive).
   if (contains_va_arg(module, *callee)) {
     cand.reject = InlineRejectReason::VaArgInBody;
     return cand;
@@ -488,10 +478,33 @@ std::vector<Stmt> bind_callee_params(
     ctx.param_to_local[static_cast<uint32_t>(i)] = new_local;
 
     // Build a LocalDecl statement.
+    // In C, array-typed parameters decay to pointers:
+    //   int arr[]       → int*
+    //   int arr[10]     → int*
+    //   int arr[][3][3] → int (*)[3][3]
+    // Strip the outermost dimension and add a pointer level.
+    QualType param_type = param.type;
+    if (param_type.spec.array_rank > 0) {
+      param_type.spec.ptr_level += 1;
+      param_type.spec.array_rank -= 1;
+      if (param_type.spec.array_rank > 0) {
+        // Multi-dimensional: shift dims left, keep inner dims.
+        for (int d = 0; d < param_type.spec.array_rank; ++d) {
+          param_type.spec.array_dims[d] = param_type.spec.array_dims[d + 1];
+        }
+        param_type.spec.array_size = param_type.spec.array_dims[0];
+        param_type.spec.is_ptr_to_array = true;
+      } else {
+        // Single dimension: fully decayed to plain pointer.
+        param_type.spec.array_size = -1;
+      }
+      param_type.spec.array_size_expr = nullptr;
+    }
+
     LocalDecl decl;
     decl.id = new_local;
     decl.name = ctx.debug_prefix + param.name;
-    decl.type = param.type;
+    decl.type = param_type;
     decl.fn_ptr_sig = param.fn_ptr_sig;
     decl.storage = StorageClass::Auto;
     decl.init = call.args[i];  // argument expression, already evaluated once
@@ -835,10 +848,6 @@ static bool is_hoistable_inline_call(const Module& module, ExprId eid) {
   if (!callee->attrs.always_inline) return false;
   if (is_void_return(*callee)) return false;
 
-  // Check array params.
-  for (const auto& param : callee->params) {
-    if (param.type.spec.array_rank > 0) return false;
-  }
   return true;
 }
 

@@ -88,11 +88,21 @@
   - Added `inline_backend_coord.c` test: verifies attribute reconciliation + runtime correctness
   - 1899/1899 tests pass (0 regressions, +1 new test)
 
+- [x] Phase 9 slice 1: Array parameter decay + mutual recursion safety
+  - Removed ArrayParam rejection from `check_inline_eligibility()` and `is_hoistable_inline_call()`
+  - `bind_callee_params()` now decays array-typed parameters to pointers:
+    - Single dim (`int arr[]`) → `int*` (ptr_level+1, array_rank=0)
+    - Multi-dim (`int arr[][3][3]`) → `int (*)[3][3]` (ptr_level+1, array_rank-1, is_ptr_to_array, dims shifted)
+  - Mutual recursion handled naturally: after expanding A→B, B's call to A appears as self-recursive in A → rejected
+  - Existing max_iterations=256 guard prevents infinite expansion
+  - Added `inline_phase9.c` test: array param sum, single-element, void+array, mutual recursion
+  - 1900/1900 tests pass (0 regressions, +1 new test)
+
 ### Next
-- [ ] Phase 9: Expansion coverage (optional broadening)
+- [ ] Phase 9 slice 2: further expansion coverage (optional)
 
 ### Previous Plan (Consteval) — Complete
 - [x] Phase 1–4 of consteval plan fully implemented
 
 ## Blockers
-- ArrayParam: callees with array-typed parameters cannot be inlined yet (codegen produces wrong GEP for synthetic local vs parameter)
+- (none)
