@@ -322,6 +322,54 @@ class InstantiationRegistry {
 struct CompileTimeState {
   InstantiationRegistry registry;
 
+  /// Record a deferred template instance discovered during the engine's
+  /// fixpoint loop.  Updates the registry (seed + realize) and returns a
+  /// HirTemplateInstantiation suitable for appending to module metadata.
+  HirTemplateInstantiation record_deferred_instance(
+      const std::string& source_template,
+      const TypeBindings& bindings,
+      const NttpBindings& nttp_bindings,
+      const std::string& mangled_name,
+      const std::vector<std::string>& template_params) {
+    registry.record_seed(source_template, bindings, nttp_bindings,
+                         template_params,
+                         TemplateSeedOrigin::EnclosingTemplateExpansion);
+    registry.realize_seeds();
+    HirTemplateInstantiation hi;
+    hi.mangled_name = mangled_name;
+    hi.bindings = bindings;
+    hi.nttp_bindings = nttp_bindings;
+    hi.spec_key = nttp_bindings.empty()
+        ? make_specialization_key(source_template, template_params, bindings)
+        : make_specialization_key(source_template, template_params, bindings,
+                                  nttp_bindings);
+    return hi;
+  }
+
+  /// Convert all realized instances for a given template into
+  /// HirTemplateInstantiation metadata objects.  Used to populate
+  /// module.template_defs during initial HIR construction.
+  std::vector<HirTemplateInstantiation> instances_to_hir_metadata(
+      const std::string& fn_name,
+      const std::vector<std::string>& template_params) const {
+    std::vector<HirTemplateInstantiation> result;
+    auto* inst_list = registry.find_instances(fn_name);
+    if (!inst_list) return result;
+    result.reserve(inst_list->size());
+    for (const auto& inst : *inst_list) {
+      HirTemplateInstantiation hi;
+      hi.mangled_name = inst.mangled_name;
+      hi.bindings = inst.bindings;
+      hi.nttp_bindings = inst.nttp_bindings;
+      hi.spec_key = inst.nttp_bindings.empty()
+          ? make_specialization_key(fn_name, template_params, inst.bindings)
+          : make_specialization_key(fn_name, template_params, inst.bindings,
+                                    inst.nttp_bindings);
+      result.push_back(std::move(hi));
+    }
+    return result;
+  }
+
   /// Dump debug visibility for seed work vs realized instances.
   void dump(FILE* out) const {
     std::fprintf(out, "[CompileTimeState] registry parity:\n");

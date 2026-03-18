@@ -82,25 +82,25 @@ struct TemplateInstantiationStep {
             ++newly_instantiated;
             // Track consteval reductions unlocked by this deferred instantiation.
             consteval_unlocked += module.consteval_calls.size() - ce_before;
-            // Update template_defs metadata with the new instance.
-            HirTemplateInstantiation hi;
-            hi.mangled_name = target_name;
-            hi.bindings = bindings;
-            hi.nttp_bindings = nttp_bindings;
-            hi.spec_key = nttp_bindings.empty()
-                ? make_specialization_key(
-                    tci.source_template, tdef.template_params, bindings)
-                : make_specialization_key(
-                    tci.source_template, tdef.template_params, bindings, nttp_bindings);
-            tdef_it->second.instances.push_back(std::move(hi));
-
-            // Record in the engine-owned registry so it stays in sync.
+            // Record in engine-owned state and update module metadata.
             if (ct_state) {
-              ct_state->registry.record_seed(
+              auto hi = ct_state->record_deferred_instance(
                   tci.source_template, bindings, nttp_bindings,
-                  tdef.template_params,
-                  TemplateSeedOrigin::EnclosingTemplateExpansion);
-              ct_state->registry.realize_seeds();
+                  target_name, tdef.template_params);
+              tdef_it->second.instances.push_back(std::move(hi));
+            } else {
+              // Fallback when no engine state: build metadata directly.
+              HirTemplateInstantiation hi;
+              hi.mangled_name = target_name;
+              hi.bindings = bindings;
+              hi.nttp_bindings = nttp_bindings;
+              hi.spec_key = nttp_bindings.empty()
+                  ? make_specialization_key(
+                      tci.source_template, tdef.template_params, bindings)
+                  : make_specialization_key(
+                      tci.source_template, tdef.template_params, bindings,
+                      nttp_bindings);
+              tdef_it->second.instances.push_back(std::move(hi));
             }
           } else {
             ++pending;

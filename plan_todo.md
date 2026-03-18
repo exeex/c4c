@@ -39,11 +39,20 @@ Completed:
   `CompileTimeState::dump()` added for debug visibility.  `format_compile_time_stats()`
   includes registry parity line.
 
+- **Phase 2.1 (2026-03-18):** Added `record_deferred_instance()` and
+  `instances_to_hir_metadata()` methods to `CompileTimeState`.
+  `TemplateInstantiationStep` now delegates deferred-instance bookkeeping
+  (seed recording + realization + HirTemplateInstantiation creation) to
+  `ct_state->record_deferred_instance()` instead of manual registry calls.
+  Lowerer's Phase 1.7b metadata population replaced with single call to
+  `ct_state_->instances_to_hir_metadata()`.  Engine and Lowerer both route
+  instance lifecycle through CompileTimeState API rather than raw registry.
+
 Not completed:
 
-- template instance lifecycle is still centered in `ast_to_hir.cpp` (reads go through Lowerer's alias)
-- engine is still callback-driven and thinner than the intended final design
-- next: start switching reads to engine-owned registry path (Phase 2 work)
+- engine is still callback-driven (deferred instantiation/consteval go through lambdas)
+- Phase 2 tasks 2-4: reduce callback coupling, make three stages explicit, switch remaining readers
+- next: Phase 2.2 — make three pipeline stages (initial / normalized / materialized) explicit in code
 
 ## Phase 1: Move Compile-Time State Toward The Engine
 
@@ -167,4 +176,5 @@ After parity is proven, remove legacy ownership paths and keep the cleaner model
 2. ~~move `InstantiationRegistry` into `CompileTimeState`, pass through pipeline~~ (done: Phase 1.2)
 3. ~~add debug visibility for seed work vs realized instances via engine-owned state~~ (done: Phase 1.3)
 4. ~~have `run_compile_time_engine` use `ct_state->registry` for its own queries~~ (done: Phase 1.3)
-5. only after parity checks, start switching reads over to the engine-owned path
+5. ~~switch reads to engine-owned path via CompileTimeState API~~ (done: Phase 2.1)
+6. make three pipeline stages (initial / normalized / materialized) explicit in code

@@ -529,19 +529,8 @@ class Lowerer {
         tdef.param_is_nttp.push_back(
             fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]);
       }
-      auto* inst_list = registry_.find_instances(name);
-      if (inst_list) {
-        for (const auto& inst : *inst_list) {
-          HirTemplateInstantiation hi;
-          hi.mangled_name = inst.mangled_name;
-          hi.bindings = inst.bindings;
-          hi.nttp_bindings = inst.nttp_bindings;
-          hi.spec_key = inst.nttp_bindings.empty()
-              ? make_specialization_key(name, tdef.template_params, inst.bindings)
-              : make_specialization_key(name, tdef.template_params, inst.bindings, inst.nttp_bindings);
-          tdef.instances.push_back(std::move(hi));
-        }
-      }
+      tdef.instances = ct_state_->instances_to_hir_metadata(
+          name, tdef.template_params);
       m.template_defs[name] = std::move(tdef);
     }
 
