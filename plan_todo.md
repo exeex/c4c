@@ -1,7 +1,7 @@
 # Plan Execution State
 
 ## Baseline
-- 1897/1897 tests pass (2026-03-18)
+- 1899/1899 tests pass (2026-03-18)
 
 ## Active Plan: HIR Inline Expansion (inline_plan.md)
 
@@ -78,11 +78,18 @@
   - Added `inline_diagnostics.c` test: noinline, default, self-recursive, variadic, noinline+inline conflict, simple always_inline
   - 1898/1898 tests pass (0 regressions, +1 new test)
 
+- [x] Phase 8: Backend coordination
+  - Backend already does not run LLVM opt passes — no independent heuristic inlining
+  - `reconcile_backend_attrs()`: post-expansion pass strips `alwaysinline` from functions whose call sites were all expanded
+  - `has_remaining_call_sites()`: scans all expressions in module for CallExpr referencing a target function
+  - Prevents downstream LLVM from redundantly trying to inline already-expanded functions
+  - `noinline` attribute preserved on noinline functions; default functions have no inline attr
+  - Contract: semantic expansion happens in HIR; LLVM IR attributes reflect post-expansion state
+  - Added `inline_backend_coord.c` test: verifies attribute reconciliation + runtime correctness
+  - 1899/1899 tests pass (0 regressions, +1 new test)
+
 ### Next
-- [ ] Phase 8: Backend coordination
-  - Default backend pipeline should not introduce independent heuristic inlining
-  - Optionally emit LLVM noinline for non-expanded calls
-  - Document contract between HIR inline pass and LLVM emission
+- [ ] Phase 9: Expansion coverage (optional broadening)
 
 ### Previous Plan (Consteval) — Complete
 - [x] Phase 1–4 of consteval plan fully implemented

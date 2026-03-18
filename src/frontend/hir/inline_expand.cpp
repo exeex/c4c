@@ -1070,6 +1070,103 @@ static void find_always_inline_calls_in_expr(
   }, e->payload);
 }
 
+// ── Phase 8: Backend Coordination ────────────────────────────────────────────
+
+/// Scan all expressions in the module for CallExpr nodes referencing a function.
+/// Returns true if at least one call site still references the given function.
+static bool has_remaining_call_sites(const Module& module, const Function& target) {
+  for (const auto& fn : module.functions) {
+    for (const auto& bb : fn.blocks) {
+      for (const auto& stmt : bb.stmts) {
+        // Check expression roots from all statement types.
+        auto check_expr = [&](ExprId eid, auto&& self) -> bool {
+          const Expr* e = module.find_expr(eid);
+          if (!e) return false;
+          bool found = false;
+          std::visit([&](const auto& p) {
+            using T = std::decay_t<decltype(p)>;
+            if constexpr (std::is_same_v<T, CallExpr>) {
+              const Function* callee = resolve_direct_callee(module, p);
+              if (callee && callee->id.value == target.id.value) {
+                found = true;
+                return;
+              }
+              for (const auto& arg : p.args) {
+                if (self(arg, self)) { found = true; return; }
+              }
+            } else if constexpr (std::is_same_v<T, UnaryExpr>) {
+              if (self(p.operand, self)) found = true;
+            } else if constexpr (std::is_same_v<T, BinaryExpr>) {
+              if (self(p.lhs, self) || self(p.rhs, self)) found = true;
+            } else if constexpr (std::is_same_v<T, AssignExpr>) {
+              if (self(p.lhs, self) || self(p.rhs, self)) found = true;
+            } else if constexpr (std::is_same_v<T, CastExpr>) {
+              if (self(p.expr, self)) found = true;
+            } else if constexpr (std::is_same_v<T, IndexExpr>) {
+              if (self(p.base, self) || self(p.index, self)) found = true;
+            } else if constexpr (std::is_same_v<T, MemberExpr>) {
+              if (self(p.base, self)) found = true;
+            } else if constexpr (std::is_same_v<T, TernaryExpr>) {
+              if (self(p.cond, self) || self(p.then_expr, self) || self(p.else_expr, self)) found = true;
+            } else if constexpr (std::is_same_v<T, SizeofExpr>) {
+              if (self(p.expr, self)) found = true;
+            }
+          }, e->payload);
+          return found;
+        };
+
+        bool hit = false;
+        std::visit([&](const auto& s) {
+          using T = std::decay_t<decltype(s)>;
+          if constexpr (std::is_same_v<T, ExprStmt>) {
+            if (s.expr && check_expr(*s.expr, check_expr)) hit = true;
+          } else if constexpr (std::is_same_v<T, ReturnStmt>) {
+            if (s.expr && check_expr(*s.expr, check_expr)) hit = true;
+          } else if constexpr (std::is_same_v<T, LocalDecl>) {
+            if (s.init && check_expr(*s.init, check_expr)) hit = true;
+          } else if constexpr (std::is_same_v<T, IfStmt>) {
+            if (check_expr(s.cond, check_expr)) hit = true;
+          } else if constexpr (std::is_same_v<T, WhileStmt>) {
+            if (check_expr(s.cond, check_expr)) hit = true;
+          } else if constexpr (std::is_same_v<T, ForStmt>) {
+            if ((s.init && check_expr(*s.init, check_expr)) ||
+                (s.cond && check_expr(*s.cond, check_expr)) ||
+                (s.update && check_expr(*s.update, check_expr))) hit = true;
+          } else if constexpr (std::is_same_v<T, DoWhileStmt>) {
+            if (check_expr(s.cond, check_expr)) hit = true;
+          } else if constexpr (std::is_same_v<T, SwitchStmt>) {
+            if (check_expr(s.cond, check_expr)) hit = true;
+          } else if constexpr (std::is_same_v<T, InlineAsmStmt>) {
+            if (s.output && check_expr(*s.output, check_expr)) hit = true;
+            for (const auto& inp : s.inputs) {
+              if (check_expr(inp, check_expr)) hit = true;
+            }
+          }
+        }, stmt.payload);
+        if (hit) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/// Post-expansion attribute reconciliation.
+/// - For always_inline functions where ALL call sites were expanded: strip
+///   the always_inline flag so LLVM IR won't carry a redundant alwaysinline
+///   attribute that could confuse downstream passes.
+/// - For non-inline functions (default policy, no always_inline): add noinline
+///   to prevent accidental backend inlining if the IR is later optimized.
+static void reconcile_backend_attrs(Module& module) {
+  for (auto& fn : module.functions) {
+    if (fn.attrs.always_inline && !fn.blocks.empty()) {
+      if (!has_remaining_call_sites(module, fn)) {
+        // All call sites were successfully expanded — strip alwaysinline.
+        fn.attrs.always_inline = false;
+      }
+    }
+  }
+}
+
 /// Emit a warning for always_inline callees that could not be expanded.
 /// Walks all expressions in all functions to find remaining always_inline calls.
 static void emit_inline_diagnostics(const Module& module) {
@@ -1168,6 +1265,12 @@ void run_inline_expansion(Module& module) {
   // Final pass: any remaining always_inline call sites that weren't expanded
   // get a warning (permissive mode — not an error).
   emit_inline_diagnostics(module);
+
+  // Phase 8: reconcile backend attributes after expansion.
+  // Strip alwaysinline from fully-expanded functions so LLVM IR doesn't carry
+  // redundant attributes. This ensures the backend does not re-inline what the
+  // frontend already expanded.
+  reconcile_backend_attrs(module);
 }
 
 }  // namespace c4c::hir
