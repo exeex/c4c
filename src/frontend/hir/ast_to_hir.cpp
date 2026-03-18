@@ -4481,6 +4481,28 @@ class Lowerer {
 
   // ── Template multi-instantiation support ──────────────────────────────────
 
+  // AST-side discovered template work item.
+  //
+  // This is the "todo list" shape we eventually want AST preprocessing to own:
+  // a seed describing a discovered template application, not proof that the
+  // specialization has been fully realized/lowered yet.
+  enum class TemplateSeedOrigin {
+    DirectCall,
+    EnclosingTemplateExpansion,
+    DeducedCall,
+    ConstevalSeed,
+    ConstevalEnclosingExpansion,
+  };
+
+  struct TemplateSeedWorkItem {
+    std::string template_name;
+    TypeBindings bindings;
+    NttpBindings nttp_bindings;
+    std::string mangled_name;
+    SpecializationKey spec_key;
+    TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall;
+  };
+
   struct TemplateInstance {
     TypeBindings bindings;
     NttpBindings nttp_bindings;  // non-type template param → constant value
@@ -4873,16 +4895,28 @@ class Lowerer {
     return {};
   }
 
+  void record_seed_work(const std::string& fn_name,
+                        const TypeBindings& bindings,
+                        const NttpBindings& nttp_bindings,
+                        const std::string& mangled,
+                        const SpecializationKey& spec_key,
+                        TemplateSeedOrigin origin) {
+    template_seed_work_[fn_name].push_back(
+        TemplateSeedWorkItem{fn_name, bindings, nttp_bindings, mangled, spec_key, origin});
+  }
+
   // Record a template instantiation. Returns the mangled name.
   // Only records if all bindings are concrete (no unresolved typedefs).
   std::string record_instance(const std::string& fn_name, TypeBindings bindings,
-                               NttpBindings nttp_bindings = {}) {
+                               NttpBindings nttp_bindings = {},
+                               TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall) {
     if (!bindings_are_concrete(bindings)) return "";  // Skip unresolved.
     std::string mangled = mangle_template_name(fn_name, bindings, nttp_bindings);
     auto param_order = get_template_param_order_from_instances(fn_name);
     SpecializationKey sk = nttp_bindings.empty()
         ? make_specialization_key(fn_name, param_order, bindings)
         : make_specialization_key(fn_name, param_order, bindings, nttp_bindings);
+    record_seed_work(fn_name, bindings, nttp_bindings, mangled, sk, origin);
     template_fn_instances_[fn_name].push_back(
         {std::move(bindings), std::move(nttp_bindings), mangled, sk});
     instance_keys_.insert(fn_name + "::" + mangled);
@@ -4927,7 +4961,9 @@ class Lowerer {
                 NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def, &enc_inst.nttp_bindings);
                 std::string mangled = mangle_template_name(n->left->name, inner, call_nttp);
                 if (!has_instance(n->left->name, mangled))
-                  record_instance(n->left->name, std::move(inner), call_nttp);
+                  record_instance(
+                      n->left->name, std::move(inner), call_nttp,
+                      TemplateSeedOrigin::EnclosingTemplateExpansion);
               }
               goto recurse;  // Already handled all enclosing instantiations.
             }
@@ -4938,7 +4974,9 @@ class Lowerer {
             TypeBindings bindings = build_call_bindings(n->left, fn_def, nullptr);
             std::string mangled = mangle_template_name(n->left->name, bindings, call_nttp);
             if (!has_instance(n->left->name, mangled))
-              record_instance(n->left->name, std::move(bindings), call_nttp);
+              record_instance(
+                  n->left->name, std::move(bindings), call_nttp,
+                  TemplateSeedOrigin::DirectCall);
           }
         }
       }
@@ -4969,7 +5007,9 @@ class Lowerer {
             }
             std::string mangled = mangle_template_name(n->left->name, deduced, nttp);
             if (!has_instance(n->left->name, mangled))
-              record_instance(n->left->name, TypeBindings(deduced), nttp);
+              record_instance(
+                  n->left->name, TypeBindings(deduced), nttp,
+                  TemplateSeedOrigin::DeducedCall);
             // Store the deduction result for use during call lowering.
             deduced_template_calls_[n] = {mangled, std::move(deduced), std::move(nttp)};
           }
@@ -5009,7 +5049,9 @@ class Lowerer {
                 NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def, &enc_inst.nttp_bindings);
                 std::string mangled = mangle_template_name(n->left->name, inner, call_nttp);
                 if (!has_instance(n->left->name, mangled))
-                  record_instance(n->left->name, std::move(inner), call_nttp);
+                  record_instance(
+                      n->left->name, std::move(inner), call_nttp,
+                      TemplateSeedOrigin::ConstevalEnclosingExpansion);
               }
               goto recurse_ce;
             }
@@ -5026,7 +5068,9 @@ class Lowerer {
             TypeBindings bindings = build_call_bindings(n->left, fn_def, nullptr);
             std::string mangled = mangle_template_name(n->left->name, bindings, call_nttp);
             if (!has_instance(n->left->name, mangled))
-              record_instance(n->left->name, std::move(bindings), call_nttp);
+              record_instance(
+                  n->left->name, std::move(bindings), call_nttp,
+                  TemplateSeedOrigin::ConstevalSeed);
           }
         }
       }
@@ -5084,7 +5128,17 @@ class Lowerer {
   std::unordered_map<std::string, const Node*> consteval_fns_;
   // All template function definitions indexed by name (consteval and non-consteval).
   std::unordered_map<std::string, const Node*> template_fn_defs_;
-  // Template function name → all unique instantiations.
+  // AST-discovered seed work items.
+  //
+  // Short term this is informational only so we can start separating
+  // "discovered template work" from "realized template instance".
+  // Current behavior still flows through template_fn_instances_ below.
+  std::unordered_map<std::string, std::vector<TemplateSeedWorkItem>> template_seed_work_;
+  // Template function name → all unique realized instantiations.
+  //
+  // Note: at the moment AST preprocessing still populates this directly,
+  // so it acts as both a seed result and a realized-instance list. The
+  // long-term refactor should remove that dual role.
   std::unordered_map<std::string, std::vector<TemplateInstance>> template_fn_instances_;
   // O(1) dedup set: "fn_name::mangled_name" for each recorded instance.
   std::unordered_set<std::string> instance_keys_;

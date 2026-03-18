@@ -1,82 +1,154 @@
-# Plan Execution State
+# Plan Todo
 
-## Baseline
+## Goal
 
-- 1891/1891 tests passing (2026-03-18)
+Refactor template-reduction ownership so AST preprocessing becomes a seed/todo builder,
+while HIR gradually takes over the work that currently exceeds AST's intended role.
 
-## Status: MILESTONE COMPLETE
+This migration should be incremental:
 
-All phases of the template struct plan are complete.
+- keep old behavior working during the transition
+- introduce new paths alongside old ones first
+- only delete old paths after behavior is proven equivalent
 
-## Completed Work
+## Phase 1: Move AST Overreach Into HIR, But Keep Old Paths
 
-### Phase A: stabilize plain template struct support — DONE
-- template struct definitions preserve template parameter bindings ✓
-- field types substitute correctly during instantiation ✓
-- instantiated struct layouts represented consistently ✓
-- plain template struct cases compile and lower consistently ✓
+### Objective
 
-### Phase B: nested template struct forms — DONE
-- nested type parsing (Pair<Pair<int>>, Box<Pair<int>>) works ✓
-- triple-nested (Box<Box<Box<int>>>) works ✓
-- canonical type construction works for nested template args ✓
-- nested template struct cases work in declarations, locals, params, returns ✓
+Identify AST work that exceeds seed-collection responsibility and mirror that logic into
+HIR-owned structures and helpers, without removing the current AST-driven behavior yet.
 
-### Phase C: mixed template function + template struct nesting — DONE
-- Pair<T> and Box<Pair<T>> inside template function bodies works ✓
-- return types / local variables / call arguments involving template structs ✓
-- substitution order is correct ✓
-- deferred resolution works at HIR time ✓
+### Scope
 
-### Phase C fix: template struct method with template struct return type
-- **Root cause**: Parser method cloning during template struct instantiation only substituted simple TB_TYPEDEF types, not pending template struct types (tpl_struct_origin)
-- **Symptom**: Method like `Pair<T> as_pair()` on `Container<T>` had unresolved `Pair_T_T` after instantiating `Container<int>`
-- **Fix**: Store template bindings on instantiated struct node; HIR extracts and passes them to lower_struct_method
+- keep AST consteval behavior unchanged
+- keep current test behavior unchanged
+- add new HIR-side data flow in parallel with old AST-side flow
 
-### Phase D: targeted validation and cleanup — DONE
-- [x] add regression tests for plain, nested, and mixed nested template-struct cases
-- [x] add test for template struct method returning template struct
-- [x] add test for triple-nested, deferred double-nested, non-template struct with template fields, pointers
-- [x] confirm no RTTI-dependent scenario is accidentally required by the tests
-- [x] no stale planning notes that imply RTTI work in source or tests
+### Tasks
 
-## Checklist — All Complete
+1. formalize AST seed data
 
-### Template Struct Core
-- [x] Preserve template struct parameter bindings through lowering
-- [x] Substitute template params in struct fields correctly
-- [x] Instantiate concrete struct forms deterministically
-- [x] Keep canonical naming/identity stable for instantiated template structs
+- keep filling `template_seed_work_`
+- ensure each seed records enough context for later HIR ownership
+- extend seed metadata if needed
+  - origin kind
+  - source template name
+  - bindings / NTTP bindings
+  - mangled name
+  - specialization key
 
-### Nested Template Structs
-- [x] Parse nested `>>` forms correctly
-- [x] Lower nested template struct types correctly
-- [x] Handle nested template structs in locals/params/returns
+2. identify AST responsibilities that should migrate
 
-### Mixed Function/Struct Nesting
-- [x] Support template structs inside template function bodies
-- [x] Support template struct return types in template functions
-- [x] Support nested mixed forms such as `Box<Pair<T>>`
-- [x] Ensure deferred instantiation resolves these cases at HIR time
+- AST-side fixpoint-like consteval-template seed expansion
+- AST-owned realized instance bookkeeping
+- AST-driven population of final template instance metadata
+- AST influence over which template functions are lowered immediately
 
-### Explicit Non-Goals
-- [x] Do not add RTTI requirements to this milestone
-- [x] Do not work on `dynamic_cast` in this milestone
+3. introduce HIR-side registry / driver scaffolding
 
-## Regression Targets — All Complete
-- [x] Existing template function tests still pass
-- [x] Existing consteval-template tests still pass
-- [x] Plain template struct test
-- [x] Nested template struct test
-- [x] Mixed template function + template struct test
+- add a shared instantiation registry or equivalent helper
+- centralize:
+  - dedup
+  - specialization identity
+  - explicit specialization lookup
+  - realized-instance metadata update
+- wire it so it can coexist with old AST-produced realized instances
 
-## Test Coverage Summary
+4. make HIR capable of consuming AST seed work
 
-7 template struct test files:
-- template_struct.cpp — basic field substitution with int/long
-- template_struct_nttp.cpp — NTTP with Array<T,N>, IntBuf<N>
-- template_struct_keyword.cpp — struct keyword syntax
-- template_struct_method.cpp — member functions on template structs
-- template_struct_method_tpl_return.cpp — methods returning template structs (NEW)
-- template_struct_nested.cpp — nested + mixed deferred (Box<Pair<T>>)
-- template_struct_advanced.cpp — triple-nested, pointers, non-template struct fields (NEW)
+- add a path that reads `template_seed_work_`
+- translate seeds into HIR-side todo/work items
+- do not yet disable the old AST-driven realized-instance path
+
+### Exit Criteria
+
+- AST seed/todo data is complete enough for HIR to consume
+- HIR has a parallel path for instance bookkeeping
+- old AST-driven behavior still remains active
+
+## Phase 2: Gradually Switch HIR To The New Path
+
+### Objective
+
+Move step by step from AST-owned realized instantiation behavior to HIR-owned processing,
+while keeping both systems available long enough to compare results safely.
+
+### Tasks
+
+1. make HIR prefer the new source of truth in limited areas
+
+- start with metadata updates
+- then instance bookkeeping
+- then deferred discovery / completion
+
+2. compare old and new paths during transition
+
+- add debug assertions or dumps where useful
+- compare:
+  - discovered seeds
+  - realized instances
+  - specialization keys
+  - explicit specialization resolution
+
+3. narrow AST responsibility
+
+- keep AST as:
+  - definition index builder
+  - specialization index builder
+  - seed collector
+  - deduction helper
+- stop treating AST containers as the authoritative realized-instance store
+
+4. route lowering decisions through HIR-side ownership
+
+- reduce direct dependence on `template_fn_instances_` as the final authority
+- have lowering consult the new HIR-side registry/driver first
+- keep fallback to old behavior until parity is proven
+
+### Exit Criteria
+
+- HIR path can reproduce current realized instances
+- lowering can use the new path with fallback retained
+- AST is no longer conceptually the owner of realized instantiation results
+
+## Phase 3: Prove Behavior, Then Remove Old Paths
+
+### Objective
+
+After parity is established, remove the legacy AST-owned realized-instantiation path and
+keep only the cleaner responsibility split.
+
+### Tasks
+
+1. validate behavior thoroughly
+
+- build successfully
+- run relevant template / consteval tests
+- compare `--dump-hir` output where useful
+- ensure no regression in emitted `.ll`
+
+2. remove old AST-owned realized-instance path
+
+- delete legacy bookkeeping that duplicates HIR-owned state
+- remove temporary fallback logic
+- remove comments that describe the old mixed-ownership model
+
+3. keep only the final responsibility split
+
+- AST owns discovery and seed generation
+- HIR owns realized instance lifecycle and deferred completion
+- AST consteval remains as-is unless later work chooses to change it
+
+### Exit Criteria
+
+- tests pass
+- old path is removed
+- code clearly reflects the new ownership model
+
+## Immediate Next Steps
+
+1. keep enriching `template_seed_work_` until it is a trustworthy todo list
+2. add visibility for the new container
+   - debug dump or temporary comparison output
+3. introduce the first HIR-side instantiation registry helper
+4. mirror current instance bookkeeping into that helper without removing old behavior
