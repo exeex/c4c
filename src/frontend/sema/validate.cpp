@@ -463,6 +463,7 @@ class Validator {
 
   bool is_complete_object_type(const TypeSpec& ts) const {
     if (ts.ptr_level > 0 || ts.array_rank > 0) return true;
+    if (ts.tpl_struct_origin) return true;  // pending template struct — resolved at HIR level
     if ((ts.base != TB_STRUCT && ts.base != TB_UNION) || !ts.tag || !ts.tag[0]) return true;
     const std::string tag(ts.tag);
     if (ts.base == TB_STRUCT) return complete_structs_.count(tag) > 0;

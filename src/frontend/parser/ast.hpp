@@ -91,6 +91,11 @@ struct TypeSpec {
     bool is_packed;      // __attribute__((packed)) — struct layout uses alignment 1
     bool is_noinline;    // __attribute__((noinline))
     bool is_always_inline; // __attribute__((always_inline))
+    // Pending template struct instantiation: non-null when this struct type
+    // depends on unresolved template type params (e.g., Pair<T> inside a
+    // template function body).  The HIR resolves it during instantiation.
+    const char* tpl_struct_origin;     // original template struct name (e.g., "Pair")
+    const char* tpl_struct_arg_refs;   // comma-sep arg refs in param order (e.g., "T" or "T,4")
 };
 
 // ── NodeKind ──────────────────────────────────────────────────────────────────

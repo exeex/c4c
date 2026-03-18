@@ -488,6 +488,47 @@ TypeSpec Parser::parse_base_type() {
                                 mangled += "T";
                         }
                     }
+                    // Check if any type arg is an unresolved template param.
+                    // If so, defer instantiation to HIR template function lowering.
+                    bool has_unresolved_type_arg = false;
+                    for (const auto& [pn, pts] : type_bindings) {
+                        if (pts.base == TB_TYPEDEF) {
+                            has_unresolved_type_arg = true;
+                            break;
+                        }
+                    }
+                    // Also check if any NTTP arg references a template param name
+                    // (would have been stored as 0 if unresolvable — but we only
+                    // defer for unresolved type args for now).
+
+                    if (has_unresolved_type_arg) {
+                        // Build arg_refs: comma-separated list of arg values
+                        // in template param order. Type args use the TypeSpec tag
+                        // (e.g., "T"), NTTP args use the numeric value.
+                        std::string arg_refs;
+                        int ati = 0, ani = 0;
+                        for (int pi = 0; pi < tpl_def->n_template_params; ++pi) {
+                            if (pi > 0) arg_refs += ",";
+                            if (tpl_def->template_param_is_nttp[pi]) {
+                                if (ani < (int)nttp_bindings.size())
+                                    arg_refs += std::to_string(nttp_bindings[ani++].second);
+                                else
+                                    arg_refs += "0";
+                            } else {
+                                if (ati < (int)type_bindings.size()) {
+                                    const TypeSpec& ats = type_bindings[ati++].second;
+                                    arg_refs += ats.tag ? ats.tag : "?";
+                                } else {
+                                    arg_refs += "?";
+                                }
+                            }
+                        }
+                        ts.tpl_struct_origin = arena_.strdup(tpl_name.c_str());
+                        ts.tpl_struct_arg_refs = arena_.strdup(arg_refs.c_str());
+                        ts.tag = arena_.strdup(mangled.c_str());
+                        return ts;
+                    }
+
                     // Instantiate if not already done
                     if (!instantiated_template_structs_.count(mangled)) {
                         instantiated_template_structs_.insert(mangled);

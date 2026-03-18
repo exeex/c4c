@@ -47,6 +47,7 @@ Node* Parser::parse_local_decl() {
     auto is_incomplete_object_type = [&](const TypeSpec& ts) -> bool {
         if (ts.ptr_level > 0) return false;
         if (ts.base != TB_STRUCT && ts.base != TB_UNION) return false;
+        if (ts.tpl_struct_origin) return false;  // pending template struct — resolved at HIR level
         if (!ts.tag) return true;
         auto it = struct_tag_def_map_.find(ts.tag);
         if (it == struct_tag_def_map_.end()) return true;
@@ -532,6 +533,7 @@ Node* Parser::parse_top_level() {
     auto is_incomplete_object_type = [&](const TypeSpec& ts) -> bool {
         if (ts.ptr_level > 0) return false;
         if (ts.base != TB_STRUCT && ts.base != TB_UNION) return false;
+        if (ts.tpl_struct_origin) return false;  // pending template struct — resolved at HIR level
         if (!ts.tag) return true;
         auto it = struct_tag_def_map_.find(ts.tag);
         if (it == struct_tag_def_map_.end()) return true;

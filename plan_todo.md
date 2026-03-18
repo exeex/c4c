@@ -1,11 +1,11 @@
 # Plan Execution State
 
 ## Baseline
-- 1877/1877 tests passing (2026-03-17)
+- 1878/1878 tests passing (2026-03-18)
 
 ## Overall Assessment
 
-Phase 5 slice 14 is now implemented: template struct with NTTP parameters (`template<typename T, int N> struct Array { T data[N]; }`).
+Phase 5 slice 15 is now implemented: template function + template struct combined usage.
 
 Current state:
 - HIR preserves template/consteval metadata and exposes debug visibility
@@ -24,37 +24,50 @@ Current state:
 - **Phase 5 slice 11**: Default template arguments (`template<typename T = int>`, `template<int N = 5>`) and empty angle brackets `f<>()` for using all defaults.
 - **Phase 5 slice 12**: Explicit template specialization (`template<> int add<int>(...)`) — specialization bodies override generic template for matching type/NTTP args.
 - **Phase 5 slice 13**: Template struct support — `template<typename T> struct Pair { T first; T second; };` with parser-level instantiation.
-- **Phase 5 slice 14 (NEW)**: Template struct NTTP support — `template<typename T, int N> struct Array { T data[N]; };` and NTTP-only structs. NTTP values substitute into array dimensions via `array_size_expr` propagation. Default template arguments also work for template struct NTTP params.
+- **Phase 5 slice 14**: Template struct NTTP support — `template<typename T, int N> struct Array { T data[N]; };` and NTTP-only structs. NTTP values substitute into array dimensions via `array_size_expr` propagation. Default template arguments also work for template struct NTTP params.
+- **Phase 5 slice 15 (NEW)**: Template function + template struct combined usage — `Pair<T>` inside template function bodies deferred and resolved at HIR instantiation time.
 
 Summary:
 - Phase 1: complete
 - Phases 2-4: partially complete, with good observability and metadata preservation
-- Phase 5: **substantially complete** — deferred template instantiation works; truly deferred consteval evaluation works via PendingConstevalExpr; NTTP support added; mixed type+NTTP params work; consteval with NTTP works; NTTP forwarding in deferred chains works; mixed type+NTTP forwarding works; type parameter substitution in signatures and locals works; all three C++ named casts supported; sizeof/alignof template type substitution works; default template arguments supported; explicit template specialization supported; **template struct support with NTTP added**
+- Phase 5: **substantially complete** — template function + template struct interop now works
 - Phase 6: **complete** — materialization boundary separates compile-time entities from emitted code
 - Phase 7: **complete** — specialization identity is stable, hashable, serializable via LLVM named metadata
 
 ---
 
-## What was done in this session (2026-03-17, session 18)
+## What was done in this session (2026-03-18, session 19)
 
-### Phase 5 slice 14: Template struct NTTP support
+### Phase 5 slice 15: Template function + template struct combined usage
+
+**Problem**: When parsing a template function body that references `Pair<T>` (where T is a template type parameter), the parser eagerly instantiated a broken `Pair_T_T` struct with unresolved field types. The HIR lowerer then failed when trying to use this struct for concrete instantiations like `sum<int>(Pair<int>)`.
 
 **Changes**:
-1. **Parser** (`types.cpp`): Template struct instantiation now handles both type and NTTP arguments:
-   - Separate `type_bindings` and `nttp_bindings` vectors
-   - NTTP params parsed as integer expressions (with sign support)
-   - Default template arguments filled in for unspecified params
-   - Mangled name includes NTTP values (e.g., `Array_T_int_N_4`)
-   - Field cloning substitutes NTTP values into array dimensions via `array_size_expr` check
+1. **TypeSpec** (`ast.hpp`): Added `tpl_struct_origin` and `tpl_struct_arg_refs` fields to mark pending template struct instantiations that depend on unresolved template type params.
 
-**Design**: When `array_size_expr` on a field TypeSpec is an NK_VAR node matching an NTTP param name, the first array dimension is replaced with the NTTP value. This uses the existing `array_size_expr` infrastructure from `parse_one_array_dim` which stores the unevaluated expression when `eval_const_int` fails during template struct body parsing.
+2. **Parser** (`types.cpp`): When template struct type args include unresolved template type params (`base == TB_TYPEDEF`), defer instantiation — don't create the struct def, instead store origin/args metadata on the TypeSpec for HIR resolution.
+
+3. **Parser** (`declarations.cpp`): `is_incomplete_object_type` now skips pending template structs (they're resolved at HIR level).
+
+4. **Sema** (`validate.cpp`): `is_complete_object_type` also skips pending template structs.
+
+5. **HIR** (`ast_to_hir.cpp`):
+   - Collects template struct defs in Phase 1 (like template fn defs)
+   - `resolve_pending_tpl_struct()` helper: parses arg refs, substitutes via tpl_bindings, computes concrete mangled name, instantiates struct with proper field types if needed
+   - Called at all type substitution points: return types, param types, local var decls, cast expressions
+
+**Design**: The key insight is that template function bodies share a single AST across all instantiations. Template struct references like `Pair<T>` can't be eagerly resolved because different instantiations need different concrete structs (`Pair_T_int` vs `Pair_T_long`). The deferred approach stores the template struct origin + arg references, and the HIR resolves them per-instantiation using the concrete type bindings.
 
 ### Test additions
-- **`template_struct_nttp.cpp`**: Tests `Array<int, 4>`, `Array<long, 2>`, and NTTP-only `IntBuf<3>`.
+- **`template_fn_struct.cpp`**: Tests template struct as param, return type, local var, and with NTTP.
 
 ### Files changed
-- `src/frontend/parser/types.cpp` (NTTP argument parsing, mangling, field substitution)
-- `tests/internal/cpp/postive_case/template_struct_nttp.cpp` (new)
+- `src/frontend/parser/ast.hpp` (TypeSpec fields)
+- `src/frontend/parser/types.cpp` (deferred instantiation)
+- `src/frontend/parser/declarations.cpp` (incomplete type skip)
+- `src/frontend/sema/validate.cpp` (complete type skip)
+- `src/frontend/hir/ast_to_hir.cpp` (template struct collection, resolution helper, call sites)
+- `tests/internal/cpp/postive_case/template_fn_struct.cpp` (new)
 
 ---
 
@@ -62,8 +75,7 @@ Summary:
 
 Potential next work:
 - Template struct pointer fields (`Pair<int*>`)
-- Template struct used as function parameter/return type
 - Template struct with `struct Pair<int>` keyword syntax (currently only typedef-style `Pair<int>` supported)
-- Template function + template struct combined usage
+- Nested template struct usage (`Pair<Pair<int>>`)
 - Phase 2-4 remaining: deeper template/consteval HIR preservation
 - `dynamic_cast` support (requires RTTI, lower priority)

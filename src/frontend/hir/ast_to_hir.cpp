@@ -440,7 +440,12 @@ class Lowerer {
 
     // Phase 1: collect type definitions used by later lowering
     for (const Node* item : items) {
-      if (item->kind == NK_STRUCT_DEF) lower_struct_def(item);
+      if (item->kind == NK_STRUCT_DEF) {
+        lower_struct_def(item);
+        // Also collect template struct defs for deferred instantiation.
+        if (item->n_template_params > 0 && item->name)
+          template_struct_defs_[item->name] = item;
+      }
       if (item->kind == NK_ENUM_DEF) collect_enum_def(item);
     }
 
@@ -898,6 +903,8 @@ class Lowerer {
             ts.tag = it->second.tag;
           }
         }
+        if (ctx && !ctx->tpl_bindings.empty() && ts.tpl_struct_origin)
+          resolve_pending_tpl_struct(ts, ctx->tpl_bindings, ctx->nttp_bindings);
         return ts;
       }
       case NK_BINOP: {
@@ -1172,6 +1179,189 @@ class Lowerer {
     }
   }
 
+  // Resolve a pending template struct type using concrete template bindings.
+  // If ts.tpl_struct_origin is non-null, this type references a template struct
+  // with unresolved type params (e.g., Pair<T>).  Resolve it by:
+  //   1. Looking up the template struct def
+  //   2. Substituting type params from tpl_bindings
+  //   3. Computing the concrete mangled name
+  //   4. Instantiating the concrete struct in the HIR if needed
+  //   5. Updating ts.tag to the concrete struct name
+  void resolve_pending_tpl_struct(TypeSpec& ts,
+                                  const TypeBindings& tpl_bindings,
+                                  const NttpBindings& nttp_bindings) {
+    if (!ts.tpl_struct_origin) return;
+    const char* origin = ts.tpl_struct_origin;
+    auto def_it = template_struct_defs_.find(origin);
+    if (def_it == template_struct_defs_.end()) return;
+    const Node* tpl_def = def_it->second;
+
+    // Parse arg_refs: comma-separated list of arg values in param order.
+    std::vector<std::string> arg_refs;
+    if (ts.tpl_struct_arg_refs) {
+      std::string refs(ts.tpl_struct_arg_refs);
+      size_t pos = 0;
+      while (pos < refs.size()) {
+        size_t comma = refs.find(',', pos);
+        if (comma == std::string::npos) {
+          arg_refs.push_back(refs.substr(pos));
+          break;
+        }
+        arg_refs.push_back(refs.substr(pos, comma - pos));
+        pos = comma + 1;
+      }
+    }
+
+    // Resolve each arg using tpl_bindings / nttp_bindings.
+    std::vector<std::pair<std::string, TypeSpec>> resolved_type_bindings;
+    std::vector<std::pair<std::string, long long>> resolved_nttp_bindings;
+    int ai = 0;
+    for (int pi = 0; pi < tpl_def->n_template_params && ai < (int)arg_refs.size(); ++pi, ++ai) {
+      const char* param_name = tpl_def->template_param_names[pi];
+      if (tpl_def->template_param_is_nttp[pi]) {
+        // NTTP: try nttp_bindings first, then parse as number.
+        auto nit = nttp_bindings.find(arg_refs[ai]);
+        if (nit != nttp_bindings.end()) {
+          resolved_nttp_bindings.push_back({param_name, nit->second});
+        } else {
+          try {
+            resolved_nttp_bindings.push_back({param_name, std::stoll(arg_refs[ai])});
+          } catch (...) {
+            resolved_nttp_bindings.push_back({param_name, 0});
+          }
+        }
+      } else {
+        // Type param: look up in tpl_bindings.
+        auto tit = tpl_bindings.find(arg_refs[ai]);
+        if (tit != tpl_bindings.end()) {
+          resolved_type_bindings.push_back({param_name, tit->second});
+        } else {
+          // Unresolved — shouldn't happen if called with full bindings.
+          TypeSpec fallback{};
+          fallback.base = TB_INT;
+          fallback.array_size = -1;
+          fallback.inner_rank = -1;
+          resolved_type_bindings.push_back({param_name, fallback});
+        }
+      }
+    }
+
+    // Compute concrete mangled name using the same logic as the parser.
+    std::string mangled(origin);
+    auto append_type_suffix = [&](const TypeSpec& pts) {
+      switch (pts.base) {
+        case TB_INT: mangled += "int"; break;
+        case TB_UINT: mangled += "uint"; break;
+        case TB_CHAR: case TB_SCHAR: mangled += "char"; break;
+        case TB_UCHAR: mangled += "uchar"; break;
+        case TB_SHORT: mangled += "short"; break;
+        case TB_USHORT: mangled += "ushort"; break;
+        case TB_LONG: mangled += "long"; break;
+        case TB_ULONG: mangled += "ulong"; break;
+        case TB_LONGLONG: mangled += "llong"; break;
+        case TB_ULONGLONG: mangled += "ullong"; break;
+        case TB_FLOAT: mangled += "float"; break;
+        case TB_DOUBLE: mangled += "double"; break;
+        case TB_LONGDOUBLE: mangled += "ldouble"; break;
+        case TB_VOID: mangled += "void"; break;
+        case TB_BOOL: mangled += "bool"; break;
+        case TB_STRUCT: case TB_UNION:
+          mangled += pts.tag ? pts.tag : "anon";
+          break;
+        default: mangled += "T"; break;
+      }
+      for (int p = 0; p < pts.ptr_level; ++p) mangled += "p";
+    };
+    int ti = 0, ni = 0;
+    for (int pi = 0; pi < tpl_def->n_template_params; ++pi) {
+      mangled += "_";
+      mangled += tpl_def->template_param_names[pi];
+      mangled += "_";
+      if (tpl_def->template_param_is_nttp[pi]) {
+        if (ni < (int)resolved_nttp_bindings.size())
+          mangled += std::to_string(resolved_nttp_bindings[ni++].second);
+        else
+          mangled += "0";
+      } else {
+        if (ti < (int)resolved_type_bindings.size())
+          append_type_suffix(resolved_type_bindings[ti++].second);
+        else
+          mangled += "T";
+      }
+    }
+
+    // Instantiate the concrete struct if not already done.
+    if (!module_->struct_defs.count(mangled) &&
+        !instantiated_tpl_structs_.count(mangled)) {
+      instantiated_tpl_structs_.insert(mangled);
+
+      HirStructDef def;
+      def.tag = mangled;
+      def.is_union = tpl_def->is_union;
+      def.pack_align = tpl_def->pack_align;
+      def.struct_align = tpl_def->struct_align;
+
+      int num_fields = tpl_def->n_fields > 0 ? tpl_def->n_fields : 0;
+      int llvm_idx = 0;
+      for (int fi = 0; fi < num_fields; ++fi) {
+        const Node* orig_f = tpl_def->fields[fi];
+        if (!orig_f || !orig_f->name) continue;
+
+        TypeSpec ft = orig_f->type;
+        // Substitute type params in field type.
+        for (const auto& [pname, pts] : resolved_type_bindings) {
+          if (ft.base == TB_TYPEDEF && ft.tag && std::string(ft.tag) == pname) {
+            ft.base = pts.base;
+            ft.tag = pts.tag;
+            ft.ptr_level += pts.ptr_level;
+            ft.is_const |= pts.is_const;
+            ft.is_volatile |= pts.is_volatile;
+          }
+        }
+        // Substitute NTTP values in array dimensions.
+        if (ft.array_size_expr) {
+          Node* ase = ft.array_size_expr;
+          if (ase->kind == NK_VAR && ase->name) {
+            for (const auto& [npname, nval] : resolved_nttp_bindings) {
+              if (std::string(ase->name) == npname) {
+                if (ft.array_rank > 0) {
+                  ft.array_dims[0] = nval;
+                  ft.array_size = nval;
+                }
+                ft.array_size_expr = nullptr;
+                break;
+              }
+            }
+          }
+        }
+
+        HirStructField hf;
+        hf.name = orig_f->name;
+        if (ft.array_rank > 0) {
+          hf.is_flexible_array = (ft.array_size < 0);
+          hf.array_first_dim = (ft.array_size >= 0) ? ft.array_size : 0;
+          ft.array_rank = 0;
+          ft.array_size = -1;
+        }
+        hf.elem_type = ft;
+        hf.is_anon_member = orig_f->is_anon_field;
+        hf.llvm_idx = tpl_def->is_union ? 0 : llvm_idx;
+        def.fields.push_back(std::move(hf));
+        if (!tpl_def->is_union) ++llvm_idx;
+      }
+
+      compute_struct_layout(module_, def);
+      module_->struct_def_order.push_back(mangled);
+      module_->struct_defs[mangled] = std::move(def);
+    }
+
+    // Update the TypeSpec to point to the concrete struct.
+    ts.tag = module_->struct_defs.count(mangled) ?
+        module_->struct_defs.at(mangled).tag.c_str() : nullptr;
+    ts.tpl_struct_origin = nullptr;
+    ts.tpl_struct_arg_refs = nullptr;
+  }
+
   void lower_function(const Node* fn_node,
                       const std::string* name_override = nullptr,
                       const TypeBindings* tpl_override = nullptr,
@@ -1186,12 +1376,16 @@ class Lowerer {
       if (tpl_override && ret_ts.base == TB_TYPEDEF && ret_ts.tag) {
         auto it = tpl_override->find(ret_ts.tag);
         if (it != tpl_override->end()) {
-          // Merge: replace the base type but preserve declarator modifiers
-          // (ptr_level, array_rank, etc.) from the original TypeSpec.
           const TypeSpec& concrete = it->second;
           ret_ts.base = concrete.base;
           ret_ts.tag = concrete.tag;
         }
+      }
+      // Resolve pending template struct types (e.g., Pair<T> → Pair_T_int).
+      if (tpl_override && ret_ts.tpl_struct_origin) {
+        NttpBindings nttp_empty;
+        resolve_pending_tpl_struct(ret_ts, *tpl_override,
+            nttp_override ? *nttp_override : nttp_empty);
       }
       fn.return_type = qtype_from(ret_ts);
     }
@@ -1265,6 +1459,12 @@ class Lowerer {
             param_ts.base = concrete.base;
             param_ts.tag = concrete.tag;
           }
+        }
+        // Resolve pending template struct types in params.
+        if (tpl_override && param_ts.tpl_struct_origin) {
+          NttpBindings nttp_empty;
+          resolve_pending_tpl_struct(param_ts, *tpl_override,
+              nttp_override ? *nttp_override : nttp_empty);
         }
         param.type = qtype_from(param_ts, ValueCategory::LValue);
       }
@@ -2152,6 +2352,9 @@ class Lowerer {
               decl_ts.tag = concrete.tag;
             }
           }
+          // Resolve pending template struct types in local variable decls.
+          if (!ctx.tpl_bindings.empty() && decl_ts.tpl_struct_origin)
+            resolve_pending_tpl_struct(decl_ts, ctx.tpl_bindings, ctx.nttp_bindings);
           d.type = qtype_from(decl_ts, ValueCategory::LValue);
         }
         d.fn_ptr_sig = fn_ptr_sig_from_decl_node(n);
@@ -3248,6 +3451,8 @@ class Lowerer {
             cast_ts.tag = concrete.tag;
           }
         }
+        if (ctx && !ctx->tpl_bindings.empty() && cast_ts.tpl_struct_origin)
+          resolve_pending_tpl_struct(cast_ts, ctx->tpl_bindings, ctx->nttp_bindings);
         c.to_type = qtype_from(cast_ts);
         c.expr = lower_expr(ctx, n->left);
         // Phase C: build fn_ptr_sig for casts to callable types.
@@ -4366,6 +4571,10 @@ class Lowerer {
   std::unordered_set<std::string> instance_keys_;
   // Explicit template specializations: mangled_name → specialization AST node.
   std::unordered_map<std::string, const Node*> template_fn_specs_;
+  // Template struct definitions indexed by struct tag name.
+  std::unordered_map<std::string, const Node*> template_struct_defs_;
+  // Already-instantiated template struct mangled names (avoid double instantiation).
+  std::unordered_set<std::string> instantiated_tpl_structs_;
   // When true, consteval calls create PendingConstevalExpr instead of
   // evaluating eagerly.  Set during deferred template instantiation.
   bool defer_consteval_ = false;
