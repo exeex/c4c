@@ -350,6 +350,14 @@ struct CompileTimeState {
     return consteval_fn_defs_.count(name) > 0;
   }
 
+  /// Check whether a registered template definition is marked consteval.
+  /// Returns true only if the definition exists AND has is_consteval set.
+  bool is_consteval_template(const std::string& name) const {
+    auto it = template_fn_defs_.find(name);
+    if (it == template_fn_defs_.end()) return false;
+    return it->second && it->second->is_consteval;
+  }
+
   /// Look up a template function definition by name (nullptr if unknown).
   const Node* find_template_def(const std::string& name) const {
     auto it = template_fn_defs_.find(name);

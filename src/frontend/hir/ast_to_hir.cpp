@@ -618,10 +618,13 @@ class Lowerer {
                                      const TypeBindings& bindings,
                                      const NttpBindings& nttp_bindings,
                                      const std::string& mangled) {
+    // NOTE: consteval pre-check and post-instantiation metadata
+    // (template_origin, spec_key) are now handled by the engine's
+    // TemplateInstantiationStep.  This callback is a pure lowering
+    // operation.
     auto fn_it = template_fn_defs_.find(tpl_name);
     if (fn_it == template_fn_defs_.end()) return false;
     const Node* fn_def = fn_it->second;
-    if (fn_def->is_consteval) return false;  // consteval handled eagerly
     const Node* spec_node = registry_.find_specialization(mangled);
     if (spec_node) {
       lower_function(spec_node, &mangled);
@@ -632,13 +635,6 @@ class Lowerer {
       const NttpBindings* nttp_ptr = nttp_bindings.empty() ? nullptr : &nttp_bindings;
       lower_function(fn_def, &mangled, &bindings, nttp_ptr);
       defer_consteval_ = false;
-    }
-    if (!module_->functions.empty()) {
-      module_->functions.back().template_origin = tpl_name;
-      auto param_order = get_template_param_order_from_instances(tpl_name);
-      module_->functions.back().spec_key = nttp_bindings.empty()
-          ? make_specialization_key(tpl_name, param_order, bindings)
-          : make_specialization_key(tpl_name, param_order, bindings, nttp_bindings);
     }
     return true;
   }

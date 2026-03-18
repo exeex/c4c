@@ -77,11 +77,21 @@ Completed:
   ct_state is provided.  The compile-time engine can now evaluate consteval
   expressions without routing through opaque Lowerer callbacks.
 
+- **Phase 2.5 (2026-03-18):** Moved pre-checks and post-metadata out of the
+  `DeferredInstantiateFn` callback into the engine's `TemplateInstantiationStep`.
+  Added `is_consteval_template()` to `CompileTimeState` — engine now skips
+  consteval templates before invoking the callback (previously checked inside
+  Lowerer).  Engine now sets `template_origin` and `spec_key` on newly-lowered
+  functions after the callback returns (previously set inside Lowerer).
+  `Lowerer::instantiate_deferred_template()` is now a pure lowering operation:
+  def lookup → specialization check → `lower_function()` call.
+
 Not completed:
 
-- engine still uses callbacks for template instantiation (DeferredInstantiateFn captures Lowerer)
+- DeferredInstantiateFn still captures the Lowerer for `lower_function()` — this is
+  fundamentally required since only the Lowerer can lower AST to HIR
 - Phase 2 task 4: switch remaining readers to engine-owned state
-- next: Phase 2.5 — further reduce callback surface for template instantiation
+- next: Phase 3 — verify, simplify, remove old paths
 
 ## Phase 1: Move Compile-Time State Toward The Engine
 
@@ -209,4 +219,5 @@ After parity is proven, remove legacy ownership paths and keep the cleaner model
 6. ~~make three pipeline stages (initial / normalized / materialized) explicit in code~~ (done: Phase 2.2)
 7. ~~reduce reliance on AST-owned callback semantics~~ (done: Phase 2.3 — definition registries in CompileTimeState)
 8. ~~move consteval evaluator into engine-owned state~~ (done: Phase 2.4 — CompileTimeState::evaluate_consteval)
-9. further reduce callback surface for template instantiation (DeferredInstantiateFn)
+9. ~~further reduce callback surface for template instantiation~~ (done: Phase 2.5 — engine owns pre-checks + post-metadata)
+10. Phase 3: verify, simplify, remove old paths (legacy ownership, compatibility aliases)

@@ -96,6 +96,13 @@ struct TemplateInstantiationStep {
           continue;
         }
 
+        // Pre-check: consteval templates are handled by the consteval
+        // evaluation path, not by deferred instantiation.
+        if (ct_state && ct_state->is_consteval_template(tci.source_template)) {
+          ++pending;
+          continue;
+        }
+
         // Attempt deferred instantiation: reconstruct TypeBindings from
         // TemplateCallInfo + HirTemplateDef parameter names.
         auto tdef_it = module.template_defs.find(tci.source_template);
@@ -109,6 +116,7 @@ struct TemplateInstantiationStep {
             bindings[tdef.template_params[i]] = tci.template_args[i];
           }
           NttpBindings nttp_bindings = tci.nttp_args;
+          size_t fn_count_before = module.functions.size();
           size_t ce_before = module.consteval_calls.size();
           if (instantiate_fn(tci.source_template, bindings, nttp_bindings, target_name)) {
             instantiated_fns.insert(target_name);
@@ -116,6 +124,19 @@ struct TemplateInstantiationStep {
             ++newly_instantiated;
             // Track consteval reductions unlocked by this deferred instantiation.
             consteval_unlocked += module.consteval_calls.size() - ce_before;
+            // Set template metadata on the newly-lowered function.
+            // The engine now owns this post-instantiation bookkeeping
+            // rather than relying on the callback to set it.
+            if (module.functions.size() > fn_count_before) {
+              auto& new_fn = module.functions.back();
+              new_fn.template_origin = tci.source_template;
+              new_fn.spec_key = nttp_bindings.empty()
+                  ? make_specialization_key(
+                      tci.source_template, tdef.template_params, bindings)
+                  : make_specialization_key(
+                      tci.source_template, tdef.template_params, bindings,
+                      nttp_bindings);
+            }
             // Record in engine-owned state and update module metadata.
             if (ct_state) {
               auto hi = ct_state->record_deferred_instance(
