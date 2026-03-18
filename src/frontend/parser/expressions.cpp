@@ -394,6 +394,16 @@ Node* Parser::parse_primary() {
         return n;
     }
 
+    if (is_cpp_mode() && check(TokenKind::KwTrue)) {
+        consume();
+        return make_int_lit(1, ln);
+    }
+
+    if (is_cpp_mode() && check(TokenKind::KwFalse)) {
+        consume();
+        return make_int_lit(0, ln);
+    }
+
     // Float literal
     if (check(TokenKind::FloatLit)) {
         bool imag   = lexeme_is_imaginary(cur().lexeme.c_str());
@@ -637,13 +647,26 @@ Node* Parser::parse_primary() {
                     template_arg_vals.push_back(0);
                     template_arg_nttp_names.push_back(nullptr);
                 } else if (check(TokenKind::IntLit) ||
+                           check(TokenKind::CharLit) ||
+                           (is_cpp_mode() &&
+                            (check(TokenKind::KwTrue) || check(TokenKind::KwFalse))) ||
                            (check(TokenKind::Minus) && pos_ + 1 < (int)tokens_.size() &&
                             tokens_[pos_ + 1].kind == TokenKind::IntLit)) {
                     // Non-type template argument: integer constant.
                     long long sign = 1;
                     if (match(TokenKind::Minus)) sign = -1;
-                    long long val = parse_int_lexeme(cur().lexeme.c_str());
-                    consume();
+                    long long val = 0;
+                    if (check(TokenKind::KwTrue)) {
+                        val = 1;
+                    } else if (check(TokenKind::KwFalse)) {
+                        val = 0;
+                    } else if (check(TokenKind::CharLit)) {
+                        Node* lit = parse_primary();
+                        val = lit ? lit->ival : 0;
+                    } else {
+                        val = parse_int_lexeme(cur().lexeme.c_str());
+                        consume();
+                    }
                     val *= sign;
                     TypeSpec dummy{};
                     dummy.array_size = -1;

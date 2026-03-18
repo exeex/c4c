@@ -89,6 +89,8 @@ enum class TokenKind {
   KwReinterpretCast, // reinterpret_cast
   KwConstCast,       // const_cast
   KwClass,           // class (synonym for struct in C++ template contexts)
+  KwTrue,            // true
+  KwFalse,           // false
 
   // ---- Punctuation ----
   LParen,    // (

@@ -135,6 +135,8 @@ const char *token_kind_name(TokenKind kind) {
     case TokenKind::KwReinterpretCast: return "KW_reinterpret_cast";
     case TokenKind::KwConstCast: return "KW_const_cast";
     case TokenKind::KwClass: return "KW_class";
+    case TokenKind::KwTrue: return "KW_true";
+    case TokenKind::KwFalse: return "KW_false";
 
     case TokenKind::PragmaPack: return "PRAGMA_PACK";
 
@@ -245,6 +247,7 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
 
   // C++ subset keywords (only in CppSubset or C4 profiles)
   if (profile != LexProfile::C) {
+    if (s == "bool")      return TokenKind::KwBool;
     if (s == "template")  return TokenKind::KwTemplate;
     if (s == "constexpr") return TokenKind::KwConstexpr;
     if (s == "consteval")    return TokenKind::KwConsteval;
@@ -252,6 +255,8 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
     if (s == "reinterpret_cast") return TokenKind::KwReinterpretCast;
     if (s == "const_cast")       return TokenKind::KwConstCast;
     if (s == "class")            return TokenKind::KwClass;
+    if (s == "true")             return TokenKind::KwTrue;
+    if (s == "false")            return TokenKind::KwFalse;
     if (s == "alignof")          return TokenKind::KwAlignof;
   }
 
