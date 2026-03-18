@@ -1265,17 +1265,30 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         }
 
         // Regular field declaration
-        if (!is_type_start()) {
+        // C++ conversion operators (e.g., operator bool()) have no return
+        // type prefix, so KwOperator can appear directly here.
+        bool is_conversion_operator = false;
+        if (is_cpp_mode() && check(TokenKind::KwOperator)) {
+            is_conversion_operator = true;
+        } else if (!is_type_start()) {
             // unknown token in struct body — skip
             consume();
             continue;
         }
 
-        TypeSpec fts = parse_base_type();
-        parse_attributes(&fts);
+        TypeSpec fts{};
+        if (!is_conversion_operator) {
+            fts = parse_base_type();
+            parse_attributes(&fts);
+        }
 
         // C++ operator method: <return-type> operator<symbol>(<params>) { ... }
-        if (is_cpp_mode() && check(TokenKind::KwOperator)) {
+        // Consume pointer/reference declarator tokens between the base type
+        // and the 'operator' keyword (e.g., Inner* operator->()).
+        if (is_cpp_mode() && !is_conversion_operator && check(TokenKind::Star)) {
+            while (check(TokenKind::Star)) { consume(); fts.ptr_level++; }
+        }
+        if (is_cpp_mode() && (is_conversion_operator || check(TokenKind::KwOperator))) {
             OperatorKind op_kind = OP_NONE;
             const char* op_mangled = nullptr;
             consume(); // eat 'operator'

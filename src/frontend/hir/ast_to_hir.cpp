@@ -3317,7 +3317,10 @@ class Lowerer {
         }
 
         IfStmt s{};
-        s.cond = lower_expr(&ctx, n->cond ? n->cond : n->left);
+        {
+          const Node* cond_n = n->cond ? n->cond : n->left;
+          s.cond = maybe_bool_convert(&ctx, lower_expr(&ctx, cond_n), cond_n);
+        }
         const BlockId then_b = create_block(ctx);
         s.then_block = then_b;
         if (n->else_) s.else_block = create_block(ctx);
@@ -3363,7 +3366,10 @@ class Lowerer {
 
         ctx.current_block = cond_b;
         WhileStmt s{};
-        s.cond = lower_expr(&ctx, n->cond ? n->cond : n->left);
+        {
+          const Node* cond_n = n->cond ? n->cond : n->left;
+          s.cond = maybe_bool_convert(&ctx, lower_expr(&ctx, cond_n), cond_n);
+        }
         s.body_block = body_b;
         s.continue_target = cond_b;
         s.break_target = after_b;
@@ -3401,7 +3407,7 @@ class Lowerer {
             s.init = lower_expr(&ctx, n->init);
           }
         }
-        if (n->cond) s.cond = lower_expr(&ctx, n->cond);
+        if (n->cond) s.cond = maybe_bool_convert(&ctx, lower_expr(&ctx, n->cond), n->cond);
         if (n->update) s.update = lower_expr(&ctx, n->update);
         const BlockId body_b = create_block(ctx);
         const BlockId after_b = create_block(ctx);
@@ -3454,7 +3460,10 @@ class Lowerer {
         ctx.current_block = cond_b;
         DoWhileStmt s{};
         s.body_block = body_b;
-        s.cond = lower_expr(&ctx, n->cond ? n->cond : n->left);
+        {
+          const Node* cond_n = n->cond ? n->cond : n->left;
+          s.cond = maybe_bool_convert(&ctx, lower_expr(&ctx, cond_n), cond_n);
+        }
         s.continue_target = cond_b;
         s.break_target = after_b;
         append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
@@ -3711,7 +3720,8 @@ class Lowerer {
   ExprId try_lower_operator_call(
       FunctionCtx* ctx, const Node* result_node,
       const Node* obj_node, const char* op_method_name,
-      const std::vector<const Node*>& arg_nodes) {
+      const std::vector<const Node*>& arg_nodes,
+      const std::vector<ExprId>& extra_args = {}) {
     TypeSpec obj_ts = infer_generic_ctrl_type(ctx, obj_node);
     // If the object is a pointer-to-struct, it's not directly a struct value.
     if (obj_ts.ptr_level != 0 || obj_ts.base != TB_STRUCT || !obj_ts.tag)
@@ -3764,8 +3774,46 @@ class Lowerer {
       }
       c.args.push_back(arg_id);
     }
+    for (auto ea : extra_args) c.args.push_back(ea);
 
     return append_expr(result_node, c, fn_ts);
+  }
+
+  // If the expression resolves to a struct type that has operator_bool,
+  // insert an implicit call to operator_bool(). Otherwise return as-is.
+  ExprId maybe_bool_convert(FunctionCtx* ctx, ExprId expr, const Node* n) {
+    if (!expr.valid() || !n) return expr;
+    TypeSpec ts = infer_generic_ctrl_type(ctx, n);
+    if (ts.ptr_level != 0 || ts.base != TB_STRUCT || !ts.tag)
+      return expr;
+    std::string key = std::string(ts.tag) + "::operator_bool";
+    auto mit = struct_methods_.find(key);
+    if (mit == struct_methods_.end()) return expr;
+
+    // Build a CallExpr to operator_bool with &obj as this.
+    CallExpr c{};
+    DeclRef dr{};
+    dr.name = mit->second;
+    auto fit = module_->fn_index.find(dr.name);
+    TypeSpec fn_ts{};
+    fn_ts.base = TB_BOOL;
+    if (fit != module_->fn_index.end() &&
+        fit->second.value < module_->functions.size()) {
+      fn_ts = module_->functions[fit->second.value].return_type.spec;
+    }
+    TypeSpec callee_ts = fn_ts;
+    callee_ts.ptr_level++;
+    c.callee = append_expr(n, dr, callee_ts);
+
+    // &obj (this pointer)
+    UnaryExpr addr{};
+    addr.op = UnaryOp::AddrOf;
+    addr.operand = expr;
+    TypeSpec ptr_ts = ts;
+    ptr_ts.ptr_level++;
+    c.args.push_back(append_expr(n, addr, ptr_ts));
+
+    return append_expr(n, c, fn_ts);
   }
 
   ExprId lower_expr(FunctionCtx* ctx, const Node* n) {
@@ -3922,9 +3970,28 @@ class Lowerer {
         UnaryExpr u{};
         u.op = map_unary_op(n->op);
         u.operand = lower_expr(ctx, n->left);
+        // Implicit operator bool for logical NOT on struct types.
+        if (u.op == UnaryOp::Not)
+          u.operand = maybe_bool_convert(ctx, u.operand, n->left);
         return append_expr(n, u, n->type);
       }
       case NK_POSTFIX: {
+        // Try postfix operator++ / operator-- on struct types.
+        if (n->op) {
+          const char* op_name = nullptr;
+          std::string op_str(n->op);
+          if (op_str == "++") op_name = "operator_postinc";
+          else if (op_str == "--") op_name = "operator_postdec";
+          if (op_name) {
+            // Postfix operator takes a dummy int 0 argument.
+            TypeSpec int_ts{};
+            int_ts.base = TB_INT;
+            ExprId dummy = append_expr(n, IntLiteral{0, false}, int_ts);
+            ExprId op = try_lower_operator_call(
+                ctx, n, n->left, op_name, {}, {dummy});
+            if (op.valid()) return op;
+          }
+        }
         UnaryExpr u{};
         const std::string op = n->op ? n->op : "";
         u.op = (op == "--") ? UnaryOp::PostDec : UnaryOp::PostInc;
@@ -3983,6 +4050,11 @@ class Lowerer {
         b.op = map_binary_op(n->op);
         b.lhs = lower_expr(ctx, n->left);
         b.rhs = lower_expr(ctx, n->right);
+        // Implicit operator bool for logical && / || on struct operands.
+        if (b.op == BinaryOp::LAnd || b.op == BinaryOp::LOr) {
+          b.lhs = maybe_bool_convert(ctx, b.lhs, n->left);
+          b.rhs = maybe_bool_convert(ctx, b.rhs, n->right);
+        }
         return append_expr(n, b, n->type);
       }
       case NK_ASSIGN:
@@ -4038,6 +4110,19 @@ class Lowerer {
         return append_expr(n, idx, n->type, ValueCategory::LValue);
       }
       case NK_MEMBER: {
+        // Try operator-> on struct types when arrow access is used.
+        if (n->is_arrow && n->left) {
+          ExprId arrow_ptr = try_lower_operator_call(
+              ctx, n, n->left, "operator_arrow", {});
+          if (arrow_ptr.valid()) {
+            // operator-> returned a pointer; apply field access on it.
+            MemberExpr m{};
+            m.base = arrow_ptr;
+            m.field = n->name ? n->name : "<anon_field>";
+            m.is_arrow = true;
+            return append_expr(n, m, n->type, ValueCategory::LValue);
+          }
+        }
         MemberExpr m{};
         m.base = lower_expr(ctx, n->left);
         m.field = n->name ? n->name : "<anon_field>";
@@ -4070,7 +4155,8 @@ class Lowerer {
           append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
 
           // Lower condition
-          ExprId cond_expr = lower_expr(ctx, n->cond ? n->cond : n->left);
+          const Node* cond_n = n->cond ? n->cond : n->left;
+          ExprId cond_expr = maybe_bool_convert(ctx, lower_expr(ctx, cond_n), cond_n);
 
           // Create then/else/after blocks
           const BlockId then_b = create_block(*ctx);
@@ -4118,7 +4204,10 @@ class Lowerer {
           return append_expr(n, ref, result_ts, ValueCategory::LValue);
         }
         TernaryExpr t{};
-        t.cond = lower_expr(ctx, n->cond ? n->cond : n->left);
+        {
+          const Node* cond_n = n->cond ? n->cond : n->left;
+          t.cond = maybe_bool_convert(ctx, lower_expr(ctx, cond_n), cond_n);
+        }
         t.then_expr = lower_expr(ctx, n->then_);
         t.else_expr = lower_expr(ctx, n->else_);
         return append_expr(n, t, n->type);

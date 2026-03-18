@@ -2,10 +2,10 @@
 
 ## Active Plan
 - Parent: `plan.md` (STL Enablement Umbrella)
-- Active child: `operator_overload_plan.md` — Phase 1: Member-call semantic resolution
+- Active child: `operator_overload_plan.md` — Phase 3: Iterator-critical operators
 
 ## Current Target
-- **Phase 1, Slice 2**: DONE
+- **Phase 2/3 combined slice**: DONE
 
 ## Completed Items
 - Phase 0, Slice 1: KwOperator token + operator-function declarator parsing + parse tests
@@ -43,18 +43,30 @@
   - **Test**: `operator_struct_byval_param.cpp` — Vec2 with `operator==(Vec2)`, `operator!=(Vec2)`, `operator+(Vec2)`, `operator-(Vec2)` all passing struct by value and returning struct
   - Suite: 1913/1913 (was 1912)
 
+- Phase 2/3 combined: Postfix operator++, operator->, operator bool
+  - **Postfix operator++(int)**: Added dispatch in NK_POSTFIX to `try_lower_operator_call` with dummy int 0 arg. Extended `try_lower_operator_call` to accept optional pre-lowered `extra_args`.
+  - **operator->**: Added dispatch in NK_MEMBER when `is_arrow` on struct types. Calls `operator_arrow()` which returns a pointer, then applies arrow field access on the result. Fixed parser to consume `*` pointer declarator tokens between base type and `operator` keyword (e.g., `Inner* operator->()`).
+  - **operator bool**: Fixed parser to handle conversion operators where `operator` appears directly without a return type prefix (added `is_conversion_operator` early detection before `is_type_start()` guard). Added `maybe_bool_convert()` helper that detects struct types with `operator_bool` and inserts implicit call. Applied at all boolean context sites: if, while, do-while, for conditions; ternary condition; logical NOT (`!`); logical AND/OR (`&&`/`||`).
+  - Tests:
+    - `operator_postinc_member_basic.cpp` — Counter with `operator++(int)` returning old value
+    - `operator_arrow_member_basic.cpp` — Wrapper with `operator->()` returning Inner*
+    - `operator_bool_member_basic.cpp` — Handle with `operator bool()` in if/while/! contexts
+  - Suite: 1916/1916 (was 1913)
+
 ## Next Intended Slice
-- Phase 2: Lowering completeness — postfix operator++, operator->, operator bool (implicit conversion)
-- Phase 3: Iterator-critical operators
+- Phase 4: Container-facing operators (const/non-const operator[] pair, operator bool for handles)
+- Or: Integration test — write a full manual iterator loop test combining all operators
 
 ## Known Limitations
-- Self-referencing struct types as local VARIABLE types inside inline method bodies now work (fixed in slice 2)
-- operator bool implicit conversion in boolean contexts (`if (obj)`) not yet supported
-- Postfix operator++(int) not yet supported
-- operator-> not yet supported
+- operator-> chaining (e.g., `a->b->c` where both a and b have operator->) not yet supported
+- No const-qualified operator overloads (e.g., `int operator[](int) const`)
+- No free-function (non-member) operators
+- No operator() (function call operator)
 
 ## Notes
 - try_lower_operator_call() builds CallExpr with &obj as implicit this + explicit args
 - Uses ExprId::invalid() sentinel (not ExprId{} which has value 0 = valid first expr)
 - n->op for prefix unary is "++pre"/"--pre", not "++"/"--"
 - resolve_typedef_to_struct() needed because parser can't add full typedef resolution before struct body is complete (causes "incomplete type" errors for local vars)
+- maybe_bool_convert() inserted at: if/while/do-while/for cond, ternary cond, logical !, &&, ||
+- Conversion operators (operator bool) have no return type prefix — parser detects KwOperator directly
