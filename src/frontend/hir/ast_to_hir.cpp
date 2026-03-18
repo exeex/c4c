@@ -3682,6 +3682,76 @@ class Lowerer {
     return append_expr(nullptr, IntLiteral{0, false}, ts);
   }
 
+  // Try to resolve an operator expression on a struct type to a member operator
+  // method call.  Returns a valid ExprId if the struct has the corresponding
+  // operator method, or an invalid ExprId otherwise.
+  //
+  // `obj_node`      – AST node for the object (LHS for binary/index, operand
+  //                   for unary)
+  // `op_method_name` – canonical mangled name, e.g. "operator_subscript"
+  // `arg_nodes`     – additional argument AST nodes (index for [], RHS for ==,
+  //                   etc.)
+  // `result_node`   – the top-level expression AST node (for source location)
+  ExprId try_lower_operator_call(
+      FunctionCtx* ctx, const Node* result_node,
+      const Node* obj_node, const char* op_method_name,
+      const std::vector<const Node*>& arg_nodes) {
+    TypeSpec obj_ts = infer_generic_ctrl_type(ctx, obj_node);
+    // If the object is a pointer-to-struct, it's not directly a struct value.
+    if (obj_ts.ptr_level != 0 || obj_ts.base != TB_STRUCT || !obj_ts.tag)
+      return ExprId::invalid();
+
+    std::string key = std::string(obj_ts.tag) + "::" + op_method_name;
+    auto mit = struct_methods_.find(key);
+    if (mit == struct_methods_.end()) return ExprId::invalid();
+
+    // Found the operator method. Build a CallExpr.
+    CallExpr c{};
+
+    // Callee: DeclRef pointing to the mangled method name.
+    DeclRef dr{};
+    dr.name = mit->second;
+    auto fit = module_->fn_index.find(dr.name);
+    TypeSpec fn_ts{};
+    fn_ts.base = TB_VOID;
+    if (fit != module_->fn_index.end() &&
+        fit->second.value < module_->functions.size()) {
+      fn_ts = module_->functions[fit->second.value].return_type.spec;
+    }
+    TypeSpec callee_ts = fn_ts;
+    callee_ts.ptr_level++;
+    c.callee = append_expr(result_node, dr, callee_ts);
+
+    // First arg: &obj (this pointer).
+    ExprId obj_id = lower_expr(ctx, obj_node);
+    UnaryExpr addr{};
+    addr.op = UnaryOp::AddrOf;
+    addr.operand = obj_id;
+    TypeSpec ptr_ts = obj_ts;
+    ptr_ts.ptr_level++;
+    c.args.push_back(append_expr(obj_node, addr, ptr_ts));
+
+    // Remaining args: explicit operands.
+    const Function* callee_fn = nullptr;
+    if (fit != module_->fn_index.end() &&
+        fit->second.value < module_->functions.size())
+      callee_fn = &module_->functions[fit->second.value];
+    for (size_t i = 0; i < arg_nodes.size(); ++i) {
+      const TypeSpec* param_ts =
+          (callee_fn && (i + 1) < callee_fn->params.size())
+              ? &callee_fn->params[i + 1].type.spec
+              : nullptr;
+      ExprId arg_id = lower_expr(ctx, arg_nodes[i]);
+      if (param_ts) {
+        // Coerce argument type if needed (e.g., struct by value).
+        // For now, just pass through.
+      }
+      c.args.push_back(arg_id);
+    }
+
+    return append_expr(result_node, c, fn_ts);
+  }
+
   ExprId lower_expr(FunctionCtx* ctx, const Node* n) {
     if (!n) {
       TypeSpec ts{};
@@ -3822,6 +3892,17 @@ class Lowerer {
         return ref_id;
       }
       case NK_UNARY: {
+        // Try prefix operator++ / operator-- on struct types.
+        if (n->op) {
+          const char* op_name = nullptr;
+          if (std::string(n->op) == "++pre") op_name = "operator_preinc";
+          else if (std::string(n->op) == "--pre") op_name = "operator_predec";
+          if (op_name) {
+            ExprId op = try_lower_operator_call(
+                ctx, n, n->left, op_name, {});
+            if (op.valid()) return op;
+          }
+        }
         UnaryExpr u{};
         u.op = map_unary_op(n->op);
         u.operand = lower_expr(ctx, n->left);
@@ -3849,6 +3930,12 @@ class Lowerer {
         return append_expr(n, u, n->type);
       }
       case NK_DEREF: {
+        // Try operator* on struct types.
+        {
+          ExprId op = try_lower_operator_call(
+              ctx, n, n->left, "operator_deref", {});
+          if (op.valid()) return op;
+        }
         UnaryExpr u{};
         u.op = UnaryOp::Deref;
         u.operand = lower_expr(ctx, n->left);
@@ -3862,6 +3949,20 @@ class Lowerer {
         return append_expr(n, b, n->type);
       }
       case NK_BINOP: {
+        // Try operator== / operator!= on struct types.
+        if (n->op && n->right) {
+          const char* op_name = nullptr;
+          std::string op_str(n->op);
+          if (op_str == "==") op_name = "operator_eq";
+          else if (op_str == "!=") op_name = "operator_neq";
+          else if (op_str == "+") op_name = "operator_plus";
+          else if (op_str == "-") op_name = "operator_minus";
+          if (op_name) {
+            ExprId op = try_lower_operator_call(
+                ctx, n, n->left, op_name, {n->right});
+            if (op.valid()) return op;
+          }
+        }
         BinaryExpr b{};
         b.op = map_binary_op(n->op);
         b.lhs = lower_expr(ctx, n->left);
@@ -3909,6 +4010,12 @@ class Lowerer {
         return append_expr(n, v, n->type);
       }
       case NK_INDEX: {
+        // Try operator[] on struct types.
+        if (n->right) {
+          ExprId op = try_lower_operator_call(
+              ctx, n, n->left, "operator_subscript", {n->right});
+          if (op.valid()) return op;
+        }
         IndexExpr idx{};
         idx.base = lower_expr(ctx, n->left);
         idx.index = lower_expr(ctx, n->right);

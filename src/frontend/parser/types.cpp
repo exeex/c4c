@@ -1134,6 +1134,13 @@ Node* Parser::parse_struct_or_union(bool is_union) {
 
     consume();  // consume {
 
+    // C++ injected-class-name: the struct/class name is usable as a type
+    // inside its own body (e.g., for operator return types like `Counter`).
+    // Only add to typedefs_ (name recognition), not typedef_types_ (full
+    // resolution), because the struct is still incomplete at this point.
+    if (is_cpp_mode() && tag && tag[0])
+      typedefs_.insert(tag);
+
     std::vector<Node*> fields;
     std::vector<Node*> methods;
     std::unordered_set<std::string> field_names_seen;
