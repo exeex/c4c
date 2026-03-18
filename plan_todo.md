@@ -1,256 +1,62 @@
-# Plan Todo
+# Plan Execution State
 
-## Goal
+## Baseline
+- 1831/1831 tests pass (2026-03-16)
 
-Continue the HIR frontend refactor toward a clearer compile-time architecture:
+## Active Plan: HIR Inline Expansion (inline_plan.md)
 
-- `ast_to_hir.*` builds the initial HIR
-- `compile_time_engine.*` owns compile-time normalization
-- `hir.*` is the public pipeline orchestrator
+### Completed
+- [x] Phase 0: Attribute and Policy Plumbing
+  - Added `is_noinline` and `is_always_inline` to TypeSpec (ast.hpp)
+  - `parse_attributes()` now captures `noinline`/`__noinline__` and `always_inline`/`__always_inline__`
+  - Replaced `skip_attributes()` with `parse_attributes()` at function-definition sites in declarations.cpp
+  - Propagated to HIR `FnAttr.no_inline` and `FnAttr.always_inline` in ast_to_hir.cpp
+  - LLVM IR emission emits `noinline`/`alwaysinline` function attributes in hir_emitter.cpp
+  - Added `inline_attrs.c` test case validating attribute parsing and IR emission
+  - Precedence: noinline and always_inline stored independently; noinline wins at inline-expansion time (Phase 1+)
+- [x] Phase 1: Call-site discovery and eligibility
+  - Created `inline_expand.hpp` / `inline_expand.cpp` with Phase 1 APIs
+  - `resolve_direct_callee()`: resolves CallExpr callee DeclRef → Function* via fn_index
+  - `check_inline_eligibility()`: checks body present, not variadic, not self-recursive, not noinline, is always_inline
+  - `discover_inline_candidates()`: scans all functions/blocks for CallExpr in ExprStmt, ReturnStmt, LocalDecl init
+  - `run_inline_expansion()`: stub entry point wired into pipeline (c4cll.cpp, between HIR and LLVM emission)
+  - Added `inline_call_discovery.c` test case with always_inline, noinline, and nested call patterns
+  - Current policy: only `always_inline` callees are eligible; default/noinline rejected
+- [x] Phase 2: ID remapping infrastructure
+  - `InlineCloneContext` struct with local_map, block_map, expr_map, debug_prefix
+  - `remap_local()`, `remap_block()`, `remap_expr()` — allocate fresh IDs on first encounter
+  - `lookup_local()`, `lookup_block()`, `lookup_expr()` — query existing mappings
+  - `clone_expr()` — deep-clones expression tree, remapping all sub-expr/local/block references
+  - `clone_stmt()` — clones any statement variant, remapping locals, exprs, and block targets
+  - `clone_block()` — clones all statements in a block with fresh BlockId
+  - `preallocate_block_ids()` — pre-maps all callee blocks so forward references resolve during cloning
+  - Handles all 16 ExprPayload variants and all 16 StmtPayload variants
+- [x] Phase 3: Argument capture and parameter binding
+  - `param_to_local` map added to InlineCloneContext
+  - `bind_callee_params()`: synthesizes one LocalDecl per callee parameter, initialized with call argument
+  - `clone_expr` DeclRef handling: rewrites `param_index` to synthetic local via `param_to_local` map
+  - Added `inline_param_bind.c` test case: multi-param, void callee, side-effect-once, nested calls
+- [x] Phase 4: Minimal CFG splice for single-return bodies
+  - `expand_inline_site()`: splits caller block, clones callee body, rewrites returns, wires control flow
+  - `run_inline_expansion()`: iterative loop discovering and expanding one candidate at a time
+  - Handles ExprStmt, LocalDecl init, and ReturnStmt call contexts
+  - Creates synthetic result local for non-void callees; assigns return value via AssignExpr
+  - Rewrites ReturnStmt in cloned body to assign + GotoStmt to continuation block
+  - Adds GotoStmt to continuation for blocks without explicit terminators (void callees with no return)
+  - Handles `f(void)` parameter lists correctly (skip binding for single void param)
+  - Phase 4 restrictions: single-return, single-block callees only; no va_arg in callee body
+  - Added `inline_cfg_splice.c` test: add1, add, void callee, side-effect-once args, chained inlines
+  - 1831/1831 tests pass (0 regressions, +1 new test)
 
-The structural split is already done.
-The remaining work is mainly about moving ownership and semantics, while keeping
-old behavior alive long enough to verify parity.
+### Next
+- [ ] Phase 5: General return rewriting and multi-block bodies
+  - Support multiple return sites (all rewrite to single continuation)
+  - Support conditionals and loops in inlined bodies
+  - Remove single-block restriction
+  - Remap break/continue/switch targets within cloned region
 
-## Current Status
+### Previous Plan (Consteval) — Complete
+- [x] Phase 1–4 of consteval plan fully implemented
 
-Completed:
-
-- `src/frontend/hir/ast_to_hir.*` now holds AST -> initial HIR construction again
-- `src/frontend/hir/hir.*` is now a thin orchestration entrypoint
-- `src/frontend/hir/compile_time_engine.*` is the canonical engine naming
-- seed/todo container exists: `template_seed_work_`
-- seed origins are recorded
-- compatibility names are still present where helpful
-- **Phase 1.1 (2026-03-18):** Extracted `InstantiationRegistry` class, `TemplateSeedOrigin`,
-  `TemplateSeedWorkItem`, `TemplateInstance` types, and mangling utilities
-  (`mangle_template_name`, `type_suffix_for_mangling`, `bindings_are_concrete`)
-  from `ast_to_hir.cpp` into `compile_time_engine.hpp` as public engine-owned types.
-  `ast_to_hir.cpp` now uses the shared definitions from the engine header.
-- **Phase 1.2 (2026-03-18):** Introduced `CompileTimeState` struct in `compile_time_engine.hpp`
-  wrapping `InstantiationRegistry`.  Lowerer now owns a `shared_ptr<CompileTimeState>`
-  (initialized inline) with a convenience `registry_` reference alias.  `CompileTimeState`
-  is passed through the pipeline: `InitialHirBuildResult.ct_state` →
-  `run_compile_time_engine(module, ct_state, ...)`.  Engine accepts but does not yet
-  read from it — future phases will switch reads to engine-owned state.
-- **Phase 1.3 (2026-03-18):** Engine now uses `ct_state->registry` for its own queries.
-  `TemplateInstantiationStep` records deferred instances in the registry via `record_seed()`
-  + `realize_seeds()`.  `CompileTimeEngineStats` reports registry parity (seeds vs instances).
-  `CompileTimeState::dump()` added for debug visibility.  `format_compile_time_stats()`
-  includes registry parity line.
-
-- **Phase 2.1 (2026-03-18):** Added `record_deferred_instance()` and
-  `instances_to_hir_metadata()` methods to `CompileTimeState`.
-  `TemplateInstantiationStep` now delegates deferred-instance bookkeeping
-  (seed recording + realization + HirTemplateInstantiation creation) to
-  `ct_state->record_deferred_instance()` instead of manual registry calls.
-  Lowerer's Phase 1.7b metadata population replaced with single call to
-  `ct_state_->instances_to_hir_metadata()`.  Engine and Lowerer both route
-  instance lifecycle through CompileTimeState API rather than raw registry.
-
-- **Phase 2.2 (2026-03-18):** Made three pipeline stages explicit in code.
-  Added `HirPipelineStage` enum (`Initial`, `Normalized`, `Materialized`) to `ir.hpp`.
-  `Module::pipeline_stage` tracks current stage.  `build_hir()` now explicitly
-  orchestrates all three stages: build_initial_hir → run_compile_time_engine →
-  materialize_ready_functions, advancing `pipeline_stage` after each.
-  Materialization stats (`materialized_functions`, `non_materialized_functions`)
-  recorded in `Module::CompileTimeInfo`.
-
-- **Phase 2.3 (2026-03-18):** Moved template/consteval function definition
-  awareness into `CompileTimeState`.  Added `register_template_def()`,
-  `register_consteval_def()`, `has_template_def()`, `has_consteval_def()`,
-  `find_template_def()`, `find_consteval_def()` methods.  Lowerer registers
-  defs in `ct_state_` during initial construction (Phase 1.5/1.6).
-  `TemplateInstantiationStep` and `PendingConstevalEvalStep` now pre-check
-  definition availability via `ct_state` before invoking callbacks.
-  `CompileTimeEngineStats` reports `template_defs_known` / `consteval_defs_known`.
-  Engine steps have direct visibility into what definitions exist rather than
-  blindly probing opaque Lowerer callbacks.
-
-- **Phase 2.4 (2026-03-18):** Moved consteval evaluation into engine-owned state.
-  Added `register_enum_const()`, `register_const_int_binding()`, and
-  `evaluate_consteval()` methods to `CompileTimeState`.  Lowerer mirrors
-  enum constants and global const-int bindings into `ct_state_` during
-  initial HIR construction.  `PendingConstevalEvalStep` now prefers
-  `ct_state->evaluate_consteval()` directly when ct_state is available,
-  falling back to the `DeferredConstevalEvalFn` callback only when no
-  ct_state is provided.  The compile-time engine can now evaluate consteval
-  expressions without routing through opaque Lowerer callbacks.
-
-- **Phase 2.5 (2026-03-18):** Moved pre-checks and post-metadata out of the
-  `DeferredInstantiateFn` callback into the engine's `TemplateInstantiationStep`.
-  Added `is_consteval_template()` to `CompileTimeState` — engine now skips
-  consteval templates before invoking the callback (previously checked inside
-  Lowerer).  Engine now sets `template_origin` and `spec_key` on newly-lowered
-  functions after the callback returns (previously set inside Lowerer).
-  `Lowerer::instantiate_deferred_template()` is now a pure lowering operation:
-  def lookup → specialization check → `lower_function()` call.
-
-- **Phase 3.1 (2026-03-18):** Removed legacy compatibility aliases and fallback paths.
-  Deleted `lower_ast_to_hir()` (hir.hpp) and `run_compile_time_reduction()`
-  (compile_time_engine.hpp) — neither had call sites.  Removed
-  `DeferredConstevalEvalFn` callback type and parameter: consteval evaluation
-  now uses `CompileTimeState::evaluate_consteval()` exclusively; the Lowerer's
-  `evaluate_deferred_consteval()` method (duplicate of engine-owned logic) deleted.
-  Removed null `ct_state` fallback metadata construction in
-  `TemplateInstantiationStep`.  Updated `README.md` with current three-stage
-  pipeline architecture and accurate file roles.
-
-- **Phase 3.2 (2026-03-18):** Removed duplicate Lowerer-owned definition maps.
-  Deleted `consteval_fns_` and `template_fn_defs_` member maps from Lowerer —
-  all lookups now go through `ct_state_->find_consteval_def()`,
-  `ct_state_->has_consteval_def()`, `ct_state_->find_template_def()`,
-  `ct_state_->has_template_def()`.  Added `for_each_template_def()` iteration
-  API and `consteval_fn_defs()` const-ref accessor to `CompileTimeState`.
-  Removed unused `CompileTimePassStats` type alias.
-
-Intentionally kept (evaluated, not worth removing):
-
-- DeferredInstantiateFn still captures the Lowerer for `lower_function()` — this is
-  fundamentally required since only the Lowerer can lower AST to HIR
-- Lowerer still owns `enum_consts_` / `const_int_bindings_` maps — intentionally kept
-  because the Lowerer needs mutable save/restore semantics for block-scoped enum
-  definitions (NK_BLOCK scope handling).  CompileTimeState copies accumulate the
-  final global state and are used exclusively during the engine normalization phase.
-  Merging would require exposing mutable save/restore API on CompileTimeState for
-  no behavioral benefit.
-
-## Plan Status: COMPLETE
-
-All success criteria from plan.md are met:
-- `hir.cpp` is a thin orchestration file
-- `ast_to_hir.cpp` clearly owns AST-to-initial-HIR construction
-- `compile_time_engine.cpp` is the place for compile-time normalization
-- File names and code layout reflect the intended compile-time architecture
-- Behavior remains stable (1891/1891 tests passing)
-
-## Phase 1: Move Compile-Time State Toward The Engine
-
-### Objective
-
-Keep the new file split stable, and move ownership of compile-time state away
-from AST-lowering internals.
-
-### Tasks
-
-1. define the first explicit engine-owned state structure
-
-- add a compile-time engine state object in `compile_time_engine.*`
-- begin moving or mirroring:
-  - realized template instances
-  - instance dedup keys
-  - specialization lookup ownership
-  - seed consumption state
-
-2. reduce builder-owned compile-time state
-
-- stop treating `ast_to_hir.cpp` as the conceptual owner of:
-  - `template_fn_instances_`
-  - instance dedup rules
-  - realized instance lifecycle
-
-3. keep migration parallel
-
-- do not delete current AST-side bookkeeping yet
-- mirror data into the new engine-owned state first
-- compare parity before switching reads
-
-4. improve observability
-
-- add dump/debug support for:
-  - seed work
-  - realized instances
-  - parity comparison between old and new paths
-
-### Exit Criteria
-
-- compile-time engine has an explicit state object
-- builder-owned instance state is no longer the only source of truth
-- old and new state can be compared safely
-
-## Phase 2: Make The Engine The Real Owner
-
-### Objective
-
-Gradually change the runtime of the pipeline so compile-time normalization logic
-uses engine-owned state as the primary source of truth.
-
-### Tasks
-
-1. route instance realization through engine APIs
-
-- move `record_instance` / `has_instance` style logic behind engine-owned helpers
-- make `ast_to_hir.cpp` produce seeds and initial HIR, not act like the final owner
-
-2. reduce reliance on AST-owned callback semantics
-
-- keep callbacks during transition
-- but reshape them so the engine works on explicit compile-time state rather than
-  opaque builder-owned internals
-
-3. make the three stages explicit in code and comments
-
-- initial HIR
-- normalized HIR
-- materialized HIR
-
-4. switch readers incrementally
-
-- first metadata population
-- then instance lookup
-- then lowering decisions
-
-### Exit Criteria
-
-- engine-owned state reproduces the current realized instances
-- primary reads use the new engine-owned path
-- AST lowering is no longer conceptually the owner of normalization results
-
-## Phase 3: Verify, Simplify, Remove Old Paths
-
-### Objective
-
-After parity is proven, remove legacy ownership paths and keep the cleaner model.
-
-### Tasks
-
-1. verify behavior
-
-- build successfully
-- run relevant template / consteval tests
-- compare `--dump-hir` output where useful
-- compare emitted `.ll` where useful
-
-2. remove legacy ownership paths
-
-- delete old builder-owned realized-instance bookkeeping
-- delete fallback or duplicate state once parity is proven
-
-3. remove compatibility naming when safe
-
-- old function aliases
-- old compatibility headers
-- outdated comments/docs
-
-4. update `src/frontend/hir/README.md`
-
-### Exit Criteria
-
-- tests pass
-- old ownership path is removed
-- code layout and code behavior both reflect the new model
-
-## Immediate Next Steps
-
-1. ~~introduce engine-owned type definitions~~ (done: types now in compile_time_engine.hpp)
-2. ~~move `InstantiationRegistry` into `CompileTimeState`, pass through pipeline~~ (done: Phase 1.2)
-3. ~~add debug visibility for seed work vs realized instances via engine-owned state~~ (done: Phase 1.3)
-4. ~~have `run_compile_time_engine` use `ct_state->registry` for its own queries~~ (done: Phase 1.3)
-5. ~~switch reads to engine-owned path via CompileTimeState API~~ (done: Phase 2.1)
-6. ~~make three pipeline stages (initial / normalized / materialized) explicit in code~~ (done: Phase 2.2)
-7. ~~reduce reliance on AST-owned callback semantics~~ (done: Phase 2.3 — definition registries in CompileTimeState)
-8. ~~move consteval evaluator into engine-owned state~~ (done: Phase 2.4 — CompileTimeState::evaluate_consteval)
-9. ~~further reduce callback surface for template instantiation~~ (done: Phase 2.5 — engine owns pre-checks + post-metadata)
-10. ~~Phase 3 slice 1: remove compatibility aliases, DeferredConstevalEvalFn, null ct_state fallbacks, update README~~ (done: Phase 3.1)
-11. ~~Phase 3 slice 2: remove duplicate Lowerer definition maps (consteval_fns_, template_fn_defs_) and CompileTimePassStats alias~~ (done: Phase 3.2)
-12. ~~Phase 3 remaining: evaluate further legacy removal (enum_consts_/const_int_bindings_ duplication)~~ (evaluated: intentionally kept — Lowerer needs mutable save/restore for block-scoped enums; CompileTimeState holds accumulated final state for engine phase)
+## Blockers
+- None

@@ -1,344 +1,642 @@
-# Lightweight Error Recovery Plan
+# HIR Inline Expansion Plan
 
 ## Goal
 
-We want a minimal error-recovery strategy for `c4cll` that is good enough to:
+Implement semantic inlining as an explicit HIR-to-HIR transform that runs:
 
-- keep parsing after common syntax/sema failures,
-- avoid turning one real error into a flood of useless cascade errors,
-- support a practical subset of Clang-style negative tests,
-- stay small and maintainable instead of growing into a full Clang-like recovery engine.
+`AST -> HIR -> inline expansion pass -> LLVM emission`
 
-This plan intentionally targets the lightweight path:
+Target semantics for this project:
 
-- panic-mode parser recovery,
-- a small number of `invalid` placeholder nodes/types,
-- sema short-circuiting on invalid inputs,
-- test-runner support for `expected-error`,
-- no attempt to fully emulate `lit`, `-verify`, or `FileCheck`.
+- `inline` means: expand at call sites when the callee body is available and the call shape is supported
+- `noinline` means: never expand
+- default means: never expand
 
+This is intentionally different from backend optimization inlining.
 
-## Non-Goals
+## Scope Boundary
 
-This work does **not** try to:
+### What this plan covers
 
-- fully match Clang diagnostics,
-- support `expected-warning` / `expected-note` as a hard requirement,
-- support `RUN:` command parsing,
-- support `FileCheck`,
-- support every `@+N`, `@-N`, label, or note-chaining feature from Clang,
-- preserve perfect AST quality after malformed input.
+- a frontend-owned HIR pass that performs body expansion deterministically
+- preservation of source language intent for `inline` / `noinline`
+- elimination of ordinary call/return ABI boundaries for expanded calls
 
-The target is much narrower: keep enough structure alive so we can continue and report multiple useful errors in one file.
+### What this plan does not cover
 
+- LLVM heuristic inlining
+- code-size or hot/cold profitability decisions
+- general-purpose whole-program call-graph optimization
 
-## Why This Matters
+## Architectural Decision
 
-Without recovery, external Clang negative tests are hard to use:
+The compiler should treat inlining as two separate concepts:
 
-- the first parse error often stops meaningful progress,
-- later `expected-error` comments become unreachable,
-- diagnostics become noisy and unstable,
-- the suite can only be used as crude `pass/fail`.
+1. Semantic inline expansion
 
-With lightweight recovery, we can move to:
+- owned by the frontend/HIR pipeline
+- driven only by source-level attributes or keywords
+- no cost model
 
-- multiple useful errors per file,
-- selective support for `verify`-style tests,
-- better regression coverage for parser and sema.
+2. Backend optimization inline
 
+- owned by LLVM or later codegen passes
+- optional
+- disabled by default for this feature
 
-## Strategy
+For this project, semantic inline expansion should happen after HIR construction and before [hir_emitter.cpp](/workspaces/c4c/src/codegen/llvm/hir_emitter.cpp).
 
-### 1. Parser Uses Panic-Mode Recovery
+## Pipeline Order With Templates And Consteval
 
-When parsing fails, do not try to fully repair the program.
+Semantic inline expansion is not the first caller-driven transformation.
 
-Instead:
+When template instantiation and `consteval` are also present, the intended ordering should be:
 
-- emit one primary diagnostic,
-- discard tokens until a safe synchronization point,
-- resume parsing from there.
+1. template instantiation
+2. semantic/type resolution of the instantiated callee
+3. `consteval` evaluation for immediate calls
+4. HIR construction or HIR normalization
+5. semantic inline expansion
+6. backend lowering
+7. optional backend optimization inlining
 
-Primary synchronization points:
+### Why template instantiation comes first
 
-- `;`
-- `}`
-- `)`
-- `,`
-- top-level declaration starters such as type/specifier keywords
+Template instantiation answers:
 
-This gives us cheap forward progress without building a heavy recovery system.
+- which concrete callee is being called
+- what its final parameter and return types are
+- what function body will exist for later analysis
 
+Inlining cannot safely clone a template pattern directly. It needs a concrete instantiated function body.
 
-### 2. Introduce Minimal Invalid Placeholders
+For an inline function template, the intended behavior is:
 
-We should represent broken constructs explicitly instead of aborting whole subtrees.
+1. instantiate the template at the call site
+2. produce a specialized function entity with a concrete body
+3. carry forward its inline policy
+4. let the semantic inline pass decide whether to expand that specialized callee
 
-Useful placeholder concepts:
+So an `inline` template function should be treated as:
 
-- `InvalidExpr`
-- `InvalidType`
-- `InvalidDecl`
-- possibly `InvalidStmt`
+- first: specialized into a concrete function
+- later: expanded by the same inline pass used for non-template functions
 
-These only need to carry enough information for later stages to:
+### Why consteval comes before inline
 
-- recognize the node is already broken,
-- avoid duplicate diagnostics,
-- skip deeper processing safely.
+`consteval` call handling is a semantic evaluation rule, not an optimization.
 
+That means:
 
-### 3. Sema Short-Circuits On Invalid Inputs
+- immediate calls should be evaluated first
+- successful evaluation should replace the call with a constant result
+- only remaining runtime-relevant calls should reach inline expansion
 
-If parser recovery creates invalid placeholders, sema should not keep digging.
+This avoids mixing two very different mechanisms:
 
-Rules:
+- `consteval`: execute at compile time and erase the call
+- `inline`: clone the runtime body into the caller
 
-- if an operand/type/decl is invalid, return invalid immediately,
-- do not emit follow-up errors that are obviously consequences of an earlier failure,
-- keep walking sibling declarations/statements when safe.
+### Practical interpretation
 
-This is the cheapest way to reduce cascade noise.
+For a plain inline function:
 
+- it reaches the semantic inline pass and may be expanded there
 
-### 4. Cap Error Count
+For an inline template function:
 
-Set a hard maximum number of hard errors per translation unit.
+- instantiate first
+- then inline the specialized function if policy says to do so
 
-Example:
+For a consteval template function:
 
-- default max: `20`
-- after limit is reached, stop with a final message
+- instantiate first
+- then evaluate the immediate call
+- normally no runtime inline step is needed afterward
 
-This prevents pathological files from producing noisy output and keeps recovery cheap.
+For a consteval inline template function:
 
+- instantiate first
+- try consteval evaluation first
+- only if a runtime-relevant form remains should semantic inline expansion even be considered
 
-## Minimal Recovery Points
+## Current State
 
-The first implementation only needs a few high-value recovery hooks.
+The current codebase already has the right HIR shape for an inlining pass:
 
-### A. Top-Level Declarations
+- stable `LocalId`, `BlockId`, and `ExprId` identities exist in [ir.hpp](/workspaces/c4c/src/frontend/hir/ir.hpp#L102)
+- the HIR module already provides `alloc_local_id()`, `alloc_block_id()`, and `alloc_expr_id()` in [ir.hpp](/workspaces/c4c/src/frontend/hir/ir.hpp#L631)
+- expressions, statements, and control-flow edges refer to each other by IDs rather than raw pointers
 
-If a declaration parse fails:
+Current inline-related status:
 
-- report the error,
-- skip to the next `;` or top-level declaration boundary,
-- continue parsing the next declaration.
+- `inline` keyword is preserved into HIR linkage metadata in [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp#L989)
+- `FnAttr.no_inline` and `FnAttr.always_inline` exist in HIR in [ir.hpp](/workspaces/c4c/src/frontend/hir/ir.hpp#L76)
+- there is currently no HIR inline-expansion pass
+- there is currently no LLVM emission path that enforces `alwaysinline` / `noinline`
 
-This is the most important recovery point for Clang-style conformance files.
+## Design Principles
 
+### 1. Inline by cloning IDs, not by renaming strings
 
-### B. Statements In Blocks
+Collision avoidance should be based on fresh IDs:
 
-If a statement parse fails:
+- old callee `LocalId` -> fresh caller `LocalId`
+- old callee `BlockId` -> fresh caller `BlockId`
+- old callee `ExprId` -> fresh caller `ExprId`
 
-- report the error,
-- skip to `;` or `}`,
-- continue with the next statement.
+Debug names may be rewritten for readability, but correctness must not depend on names.
 
-This helps negative tests that intentionally place one bad statement among many good ones.
+### 2. Expand CFG, not text
 
+Inlining must splice cloned HIR blocks/statements/expressions into the caller CFG.
 
-### C. Parenthesized Lists
+This is not an LLVM-text substitution step.
 
-If parsing fails inside:
+### 3. Evaluate arguments exactly once
 
-- parameter lists,
-- argument lists,
-- control-flow conditions,
+Before expansion:
 
-then:
+- each actual argument is evaluated once
+- result is stored in a temp/local/expr form suitable for reuse
+- parameter references inside the cloned callee body resolve to those captured values
 
-- skip to the matching `)` if possible,
-- produce an invalid node,
-- continue from the outer construct.
+### 4. Return becomes local control flow
 
-This is especially valuable because malformed parens often poison the rest of the file.
+Each `return` in the cloned callee body should be rewritten into:
 
+- optional assignment to a synthetic return-result temp
+- branch to the inline continuation block
 
-### D. Expression Parsing
+### 5. Keep first implementation narrow
 
-If an expression cannot be completed:
+The first working slice should support only direct calls to known function definitions with simple, non-recursive bodies.
 
-- emit one diagnostic,
-- return `InvalidExpr`,
-- let the caller decide how far to resync.
+## Proposed Files
 
-Avoid repeatedly diagnosing the same token sequence.
+Suggested additions:
 
+- `src/frontend/hir/inline_expand.hpp`
+- `src/frontend/hir/inline_expand.cpp`
 
-### E. Type Parsing
+Suggested entry point:
 
-If a type-specifier sequence is malformed:
+- `hir::run_inline_expansion(Module&)`
 
-- emit one diagnostic,
-- return `InvalidType`,
-- let declaration parsing continue where possible.
+Suggested integration point:
 
+- run after HIR is fully built
+- run before LLVM emission starts
 
-## Minimum Viable Alignment With Clang Negative Tests
+## Pass Contract
 
-We only want to align with the simplest and most useful subset of Clang-style negative tests.
+### Input
 
-### Supported Form
+- fully built `hir::Module`
+- `fn_index` resolved
+- function bodies, block graph, and expr pool stable
 
-Support only:
+### Output
 
-- `expected-error {{message fragment}}`
-- `expected-error@+N {{message fragment}}`
-- `expected-error@-N {{message fragment}}`
-- optional simple count forms like `expected-error 2{{...}}`
+- caller functions rewritten so supported `inline` call sites are expanded in place
+- unsupported `inline` call sites either:
+  - remain as calls with a clear diagnostic strategy, or
+  - are rejected during the phase if strict semantic enforcement is desired
 
-But only for **errors**.
+### Invariants
 
-We do **not** need warnings or notes as a first milestone.
+- no ID collisions
+- `expr_pool` remains internally consistent
+- every referenced `ExprId` exists
+- every referenced `BlockId` exists in the owning function
+- control-flow successors remain valid after splice
 
+## Phase Plan
 
-### Matching Policy
+## Phase 0: Attribute And Policy Plumbing
 
-The runner should:
+Goal:
 
-- collect all hard errors emitted by `c4cll`,
-- compare them against `expected-error` annotations,
-- match on:
-  - diagnostic kind = `error`
-  - approximate source line
-  - substring match on message text
+- make `inline`, `noinline`, and default policy explicit and observable in HIR
 
-Line matching can be tolerant at first:
+Tasks:
 
-- exact line match preferred,
-- allow `±1` as a temporary compatibility rule if current line accounting is unstable.
+- ensure parser/HIR lowering distinguishes:
+  - source `inline`
+  - source `__attribute__((noinline))`
+  - source `__attribute__((always_inline))` if you want that alias
+- define one canonical policy in HIR:
+  - `InlinePolicy::Never`
+  - `InlinePolicy::Always`
+  - `InlinePolicy::DefaultNever`
+- decide precedence when attributes conflict
 
+Recommended rule:
 
-### What We Need From The Compiler
+- `noinline` wins over everything
+- `inline` means semantic expansion request
+- default stays non-inline
 
-For this to work reliably, compiler diagnostics should follow a stable format:
+Deliverables:
 
-- `path:line:column: error: message`
+- HIR carries enough metadata to decide expansion without reparsing tokens
+- debug dump/printer shows inline policy
 
-If parse recovery uses fallback diagnostics, they should still try to include:
+Tests:
 
-- line number,
-- error severity,
-- a consistent message.
+- parser/HIR unit tests for:
+  - plain function
+  - `inline` function
+  - `__attribute__((noinline))`
+  - conflicting combinations
 
+## Phase 1: Call-Site Discovery And Eligibility
 
-## Recommended Test Scope
+Goal:
 
-We should not try to ingest arbitrary Clang negative tests immediately.
+- identify which call sites are expandable
 
-Start with files that are:
+Tasks:
 
-- mostly independent errors,
-- not heavily template-dependent,
-- not dependent on Clang note chains,
-- not dependent on exact wording of rich semantic diagnostics,
-- not dependent on `FileCheck`,
-- not dependent on `RUN:` variations.
+- scan each function body for `CallExpr`
+- resolve callee for direct calls only
+- determine whether the callee:
+  - has a body
+  - is marked inline-always under project semantics
+  - is not marked noinline
+- reject or defer unsupported cases
 
-Good early targets:
+Initial supported cases:
 
-- simple declaration errors,
-- scope/name lookup failures,
-- bad initializer or arity cases,
-- basic access-control or invalid-type cases where one main error is expected.
+- direct call by function name
+- callee definition available in same HIR module
+- non-variadic functions
+- non-recursive calls
+- ordinary return value or `void`
 
-Avoid initially:
+Initial deferred cases:
 
-- tests with many `expected-note`,
-- tests with dense `@label` references,
-- tests relying on many distinct later-phase diagnostics,
-- tests where one parser failure ruins the whole grammar context.
+- indirect calls through function pointers
+- recursive/self-recursive inline
+- mutually recursive inline SCCs
+- varargs
+- computed goto interactions
+- inline asm-heavy bodies if they complicate cloning
 
+Deliverables:
 
-## Implementation Phases
+- helper APIs like:
+  - `const Function* resolve_direct_callee(const Function&, ExprId)`
+  - `bool can_inline_callsite(const Module&, const Function&, const CallExpr&, Reason*)`
 
-### Phase 1. Stabilize Diagnostic Surface
+Tests:
 
-- Ensure hard errors use a consistent `file:line:column: error: ...` shape.
-- Keep parse-error messages deterministic.
-- Add an error limit.
+- positive direct-call detection
+- negative cases for indirect/variadic/missing-body calls
 
-Success criterion:
+## Phase 2: ID Remapping Infrastructure
 
-- repeated runs on the same malformed file produce the same diagnostics.
+Goal:
 
+- build the reusable cloning machinery
 
-### Phase 2. Add Minimal Invalid Nodes
+Tasks:
 
-- Introduce `InvalidExpr` and `InvalidType`.
-- Optionally introduce `InvalidDecl` if needed by declaration recovery.
+- define an `InlineCloneContext` containing:
+  - `local_map`
+  - `block_map`
+  - `expr_map`
+  - optional call-site serial/debug prefix
+- add clone helpers for:
+  - `Expr`
+  - `Stmt`
+  - `Block`
+  - `DeclRef`
+  - branch/loop/switch target references
+- ensure cloned nodes allocate fresh IDs from `Module`
 
-Success criterion:
+Suggested structure:
 
-- parser and sema can continue past a malformed subexpression or declaration without crashing or re-reporting endlessly.
+```cpp
+struct InlineCloneContext {
+  Module* module = nullptr;
+  std::unordered_map<uint32_t, LocalId> local_map;
+  std::unordered_map<uint32_t, BlockId> block_map;
+  std::unordered_map<uint32_t, ExprId> expr_map;
+  std::string debug_prefix;
+};
+```
 
+Deliverables:
 
-### Phase 3. Add Synchronization Hooks
+- generic remap/clone helpers usable independently of the final splice logic
 
-- top-level declaration recovery,
-- statement recovery,
-- paren-list recovery.
+Tests:
 
-Success criterion:
+- cloning a block tree produces all-new IDs
+- cloned expr references point only to cloned expr IDs
+- cloned branch targets point only to cloned block IDs
 
-- one malformed declaration/statement does not prevent later independent declarations from being checked.
+## Phase 3: Argument Capture And Parameter Binding
 
+Goal:
 
-### Phase 4. Negative Test Runner: Errors Only
+- preserve call semantics while preparing for body splice
 
-- keep `pass` / `fail`,
-- add `verify` for `expected-error`,
-- support simple line offsets and counts,
-- ignore warnings and notes for now.
+Tasks:
 
-Success criterion:
+- for each inline call site, evaluate every actual argument exactly once
+- store argument values in synthetic caller-side temporaries or locals
+- map each callee parameter to the captured value representation
 
-- a curated subset of external Clang negative tests can be checked meaningfully.
+Recommended initial strategy:
 
+- synthesize one `LocalDecl` per parameter capture
+- emit initialization in the inline prelude at the original call location
+- rewrite `DeclRef.param_index` uses inside the cloned body into those synthetic locals
 
-### Phase 5. Curate Allowlists
+Why this is a good first step:
 
-Split external negative tests into buckets:
+- easy to reason about
+- avoids duplicated side effects
+- avoids needing a special “parameter alias” expr kind immediately
 
-- `fail`: compiler should reject, but no stable verify yet
-- `verify`: compiler should reject and diagnostics are stable enough to match
-- `defer`: recovery or wording too unstable right now
+Deliverables:
 
-Success criterion:
+- parameter references inside cloned body no longer depend on original callee parameter numbering
 
-- the external suite gives useful regression signal instead of noise.
+Tests:
 
+- side-effecting arguments evaluated once
+- multiple parameter references read same captured value
+- argument order preserved
 
-## Practical Rules To Keep This Small
+## Phase 4: Minimal CFG Splice For Single-Return Bodies
 
-- Never try to fully repair syntax if skipping is enough.
-- Prefer dropping broken subtrees over preserving rich malformed AST.
-- Emit one primary error per broken region when possible.
-- Stop semantic work early on invalid placeholders.
-- Keep recovery local and explicit instead of adding global complexity.
+Goal:
 
+- get the first end-to-end inline expansion working
 
-## Definition Of Done For The First Version
+Tasks:
 
-The lightweight plan is successful when all of the following are true:
+- split the caller block around the original call site into:
+  - pre-call block
+  - inlined callee region
+  - continuation block
+- clone callee blocks into caller
+- redirect entry to cloned callee entry
+- replace single `return expr` with:
+  - store into synthetic result local if non-void
+  - branch to continuation block
+- replace the original call expression use with a read from the synthetic result local
 
-- `c4cll` can report multiple useful errors from one malformed file,
-- one bad declaration does not destroy the whole translation unit,
-- cascade diagnostics are noticeably reduced,
-- a small curated subset of external Clang negative tests can run in `verify` mode,
-- the implementation remains understandable and small.
+Initial restriction:
 
+- support only callees with exactly one return site
+- support only call sites used as standalone expr stmt or simple initializer if that reduces first-slice complexity
 
-## Suggested Next Step
+Deliverables:
 
-After agreeing on this plan, the first coding task should be:
+- first working inliner on a narrow subset
 
-1. add a hard error limit,
-2. add `InvalidExpr` / `InvalidType`,
-3. add top-level declaration synchronization,
-4. validate against a tiny curated `verify` allowlist.
+Tests:
 
-That gives the highest payoff with the lowest complexity.
+- `int add1(int x) { return x + 1; }`
+- void callee
+- inline call nested in a simple expression context if supported
+
+## Phase 5: General Return Rewriting And Multi-Block Bodies
+
+Goal:
+
+- support real-world structured functions
+
+Tasks:
+
+- rewrite all callee `ReturnStmt` nodes to target one shared continuation block
+- support multiple return sites
+- support conditionals and loops in inlined bodies
+- remap break/continue/switch targets within cloned region
+
+Key requirement:
+
+- cloned internal control flow must stay internal
+- only rewritten returns may exit to the caller continuation
+
+Deliverables:
+
+- full structured-control-flow inline support for ordinary HIR bodies
+
+Tests:
+
+- `if/else` with distinct returns
+- loop with early return
+- switch with return in cases
+
+## Phase 6: Call Replacement In Expression Contexts
+
+Goal:
+
+- inline calls that appear inside larger expressions
+
+Tasks:
+
+- define how an inlined call produces a value in expression position
+- normalize call sites into statement form when necessary
+- introduce temporary materialization for expression-result consumption
+
+Recommended implementation path:
+
+- add a normalization step before inlining that hoists complex call-containing expressions into:
+  - temp decl
+  - expr stmt
+  - later use of temp via `DeclRef`
+
+This can dramatically simplify the inliner.
+
+Deliverables:
+
+- inlining works not only for standalone call statements but also for:
+  - assignments
+  - local initializers
+  - binary-expression operands after normalization
+
+Tests:
+
+- `int y = inl(x) + 3;`
+- `return inl(a) * inl(b);`
+
+## Phase 7: Diagnostics And Unsupported Cases
+
+Goal:
+
+- make semantic behavior explicit when a requested inline cannot be performed
+
+Decision to make:
+
+- strict mode:
+  - source `inline` requires successful expansion
+  - unsupported cases are errors
+- permissive mode:
+  - source `inline` is a request
+  - unsupported cases fall back to normal call, possibly with warning
+
+Recommended for this project:
+
+- start permissive during bring-up
+- move to strict once supported surface is broad enough
+
+Tasks:
+
+- produce clear reasons for refusal:
+  - recursive inline unsupported
+  - indirect callee
+  - variadic callee
+  - unsupported control-flow form
+- ensure `noinline` always suppresses expansion
+
+Deliverables:
+
+- stable diagnostics and testable refusal behavior
+
+Tests:
+
+- negative tests per unsupported category
+
+## Phase 8: Backend Coordination
+
+Goal:
+
+- keep LLVM from silently redefining project semantics
+
+Tasks:
+
+- default backend pipeline should not introduce independent heuristic inlining for this feature
+- optionally emit LLVM `noinline` for non-expanded calls if you want extra backend protection
+- optionally emit LLVM `alwaysinline` only when it matches an intentional policy and a later LLVM pipeline is expected to honor it
+
+Recommended default:
+
+- semantic expansion happens in HIR
+- backend should not be relied on for correctness
+
+Deliverables:
+
+- documented contract between HIR inline pass and LLVM emission
+
+## Phase 9: Expansion Coverage
+
+Goal:
+
+- broaden support after the core pass is stable
+
+Possible follow-up support:
+
+- inline through function aliases if represented canonically
+- selected function-pointer calls with proven direct target
+- variadic subset
+- better debug-name decoration for inlined locals
+- recursion guards and max-inline-depth limits
+
+Non-goals unless required:
+
+- heuristic size thresholds
+- PGO-guided inlining
+
+## Recommended Implementation Order
+
+Suggested execution order:
+
+1. Phase 0
+2. Phase 1
+3. Phase 2
+4. Phase 3
+5. Phase 4
+6. Phase 5
+7. Phase 6
+8. Phase 7
+9. Phase 8
+
+This reaches a useful end-to-end system before broadening expression coverage.
+
+## Testing Strategy
+
+### Unit-level checks
+
+- clone/remap helper correctness
+- no reused IDs after expansion
+- valid block successor references
+- valid expr references in `expr_pool`
+
+### Integration tests
+
+Add internal positive cases for:
+
+- simple inline return
+- inline with two parameters
+- inline with local temporaries
+- inline with branching
+- inline in initializer/expression position
+
+Add internal negative or deferred cases for:
+
+- noinline function stays a call
+- plain unannotated function stays a call
+- recursive inline
+- indirect call
+- variadic inline
+
+### Output validation
+
+For expanded calls, emitted LLVM IR should show:
+
+- no call instruction at the targeted site
+- caller-local allocas/temps only as needed
+- no ABI lowering artifacts attributable to a separate callee invocation
+
+## Risks
+
+### 1. Expression-context complexity
+
+Inlining directly inside nested expressions can become much harder than statement-position inlining.
+
+Mitigation:
+
+- normalize call expressions before full expansion
+
+### 2. CFG corruption
+
+Incorrect block remapping can silently create invalid fallthrough or broken successor edges.
+
+Mitigation:
+
+- add post-pass verifier for block and expr references
+
+### 3. Recursive expansion blow-up
+
+Even without heuristics, semantic inline can recurse infinitely or explode code size.
+
+Mitigation:
+
+- forbid recursive expansion initially
+- add inline-depth and visited-callstack guards
+
+### 4. Parameter aliasing and side effects
+
+Naive substitution can duplicate evaluation or change sequencing.
+
+Mitigation:
+
+- capture arguments once before cloning
+
+## Definition Of Done
+
+The semantic inliner is complete when:
+
+- HIR has an explicit inline policy
+- supported `inline` calls are expanded before LLVM emission
+- `noinline` calls are never expanded
+- default calls remain ordinary calls
+- argument evaluation order is preserved
+- return-value and control-flow rewriting are correct
+- emitted LLVM IR no longer depends on backend inlining for source-level inline semantics
