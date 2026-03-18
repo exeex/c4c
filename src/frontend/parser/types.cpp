@@ -566,6 +566,32 @@ TypeSpec Parser::parse_base_type() {
                         inst->is_union = tpl_def->is_union;
                         inst->pack_align = tpl_def->pack_align;
                         inst->struct_align = tpl_def->struct_align;
+                        // Store template bindings so HIR can resolve pending types
+                        // in method bodies and signatures.
+                        {
+                            int n = tpl_def->n_template_params;
+                            inst->n_template_params = n;
+                            inst->template_param_names = tpl_def->template_param_names;
+                            inst->template_param_is_nttp = tpl_def->template_param_is_nttp;
+                            inst->n_template_args = n;
+                            inst->template_arg_types = arena_.alloc_array<TypeSpec>(n);
+                            inst->template_arg_is_value = arena_.alloc_array<bool>(n);
+                            inst->template_arg_values = arena_.alloc_array<long long>(n);
+                            int tti = 0, nni = 0;
+                            for (int pi = 0; pi < n; ++pi) {
+                                if (tpl_def->template_param_is_nttp[pi]) {
+                                    inst->template_arg_is_value[pi] = true;
+                                    inst->template_arg_values[pi] =
+                                        nni < (int)nttp_bindings.size() ? nttp_bindings[nni++].second : 0;
+                                    inst->template_arg_types[pi] = {};
+                                } else {
+                                    inst->template_arg_is_value[pi] = false;
+                                    inst->template_arg_types[pi] =
+                                        tti < (int)type_bindings.size() ? type_bindings[tti++].second : TypeSpec{};
+                                    inst->template_arg_values[pi] = 0;
+                                }
+                            }
+                        }
                         // Clone fields with type and NTTP substitution
                         int num_fields = tpl_def->n_fields > 0 ? tpl_def->n_fields : 0;
                         inst->n_fields = num_fields;

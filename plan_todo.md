@@ -2,7 +2,7 @@
 
 ## Baseline
 
-- 1889/1889 tests passing (2026-03-18)
+- 1891/1891 tests passing (2026-03-18)
 
 ## Replan Summary
 
@@ -23,60 +23,56 @@ Not in scope for now:
 - `dynamic_cast`
 - any feature whose correctness depends on RTTI materialization/runtime support
 
+## Completed Work
+
+### Phase A: stabilize plain template struct support — DONE
+- template struct definitions preserve template parameter bindings ✓
+- field types substitute correctly during instantiation ✓
+- instantiated struct layouts represented consistently ✓
+- plain template struct cases compile and lower consistently ✓
+
+### Phase B: nested template struct forms — DONE
+- nested type parsing (Pair<Pair<int>>, Box<Pair<int>>) works ✓
+- triple-nested (Box<Box<Box<int>>>) works ✓
+- canonical type construction works for nested template args ✓
+- nested template struct cases work in declarations, locals, params, returns ✓
+
+### Phase C: mixed template function + template struct nesting — DONE
+- Pair<T> and Box<Pair<T>> inside template function bodies works ✓
+- return types / local variables / call arguments involving template structs ✓
+- substitution order is correct ✓
+- deferred resolution works at HIR time ✓
+
+### Phase A-C fix: template struct method with template struct return type
+- **Root cause**: Parser method cloning during template struct instantiation only substituted simple TB_TYPEDEF types, not pending template struct types (tpl_struct_origin)
+- **Symptom**: Method like `Pair<T> as_pair()` on `Container<T>` had unresolved `Pair_T_T` after instantiating `Container<int>`
+- **Fix**:
+  1. Parser stores template bindings (n_template_args, template_arg_types, etc.) on instantiated struct node
+  2. HIR collect_struct_def extracts bindings and passes them to lower_struct_method
+  3. lower_struct_method resolves tpl_struct_origin in return type and param types
+  4. Method body locals also resolve via ctx.tpl_bindings
+
 ## Remaining Work
 
-The unfinished work we should treat as active is:
+### Phase D: targeted validation and cleanup
+- [x] add regression tests for plain, nested, and mixed nested template-struct cases
+- [x] add test for template struct method returning template struct
+- [x] add test for triple-nested, deferred double-nested, non-template struct with template fields, pointers
+- [ ] confirm no RTTI-dependent scenario is accidentally required by the tests
+- [ ] remove stale planning notes that imply RTTI work is part of this milestone
 
-1. `template struct`
-2. mixed nested cases between `template function` and `template struct`
+## Next Intended Slice
 
-Concretely, the focus is:
-
-- template struct definition/preservation/instantiation that is reliable end-to-end
-- type substitution inside template struct fields
-- nested template struct forms such as `Pair<Pair<int>>`
-- template struct usage inside template function bodies
-- mixed nested cases such as:
-  - `Pair<T>`
-  - `Box<Pair<T>>`
-  - `Pair<typename_id<...>>`-style deferred shapes if they do not need RTTI
-- deferred resolution at HIR instantiation time rather than eager frontend-only rewriting
-
-## What We Are Explicitly Not Tracking In This Plan
-
-These may be revisited later, but should not block the current milestone:
-
-- RTTI
-- `dynamic_cast`
-- template features that require RTTI-aware lowering or runtime metadata
-- operator overloading follow-up work
-
-## Next Milestone
-
-The next meaningful milestone is:
-
-Complete template struct support, including mixed nested template function/template struct cases, without expanding scope into RTTI.
-
-## Suggested Execution Order
-
-1. Stabilize plain `template struct` instantiation and substitution.
-2. Cover nested `template struct` forms and parser/lowering edge cases such as `>>`.
-3. Cover mixed nested usage inside template functions.
-4. Verify deferred HIR-side instantiation still owns the final resolution path.
-5. Keep RTTI-dependent scenarios excluded from both implementation and test expectations.
+Phase D cleanup: verify no RTTI dependency in tests, clean up stale notes.
 
 ## Validation Targets
 
-Add or keep coverage for:
-
-- plain template struct field substitution
-- nested template structs
-- template struct with NTTP where RTTI is not involved
-- template function returning or locally using template structs
-- template function bodies that instantiate nested template structs
-
-Do not spend effort in this cycle on:
-
-- RTTI validation
-- `dynamic_cast` validation
-
+- [x] plain template struct field substitution
+- [x] nested template structs
+- [x] template struct with NTTP
+- [x] template function returning or locally using template structs
+- [x] template function bodies that instantiate nested template structs
+- [x] template struct methods returning template structs
+- [x] triple-nested template structs
+- [x] non-template struct with template struct fields
+- [x] pointers to template structs

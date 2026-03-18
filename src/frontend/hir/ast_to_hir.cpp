@@ -594,8 +594,10 @@ class Lowerer {
     }
 
     // Phase 2.5: lower struct methods collected during Phase 1.
-    for (const auto& [mangled, struct_tag, method_node] : pending_methods_) {
-      lower_struct_method(mangled, struct_tag, method_node);
+    for (const auto& pm : pending_methods_) {
+      lower_struct_method(pm.mangled, pm.struct_tag, pm.method_node,
+                          pm.tpl_bindings.empty() ? nullptr : &pm.tpl_bindings,
+                          pm.nttp_bindings.empty() ? nullptr : &pm.nttp_bindings);
     }
 
     // Phase 3: run HIR compile-time reduction with deferred instantiation.
@@ -989,7 +991,8 @@ class Lowerer {
   void lower_struct_def(const Node* sd) {
     if (!sd || sd->kind != NK_STRUCT_DEF) return;
     // Skip template struct definitions — only instantiated structs are lowered.
-    if (sd->n_template_params > 0) return;
+    // An instantiated struct has n_template_args > 0 (concrete bindings stored).
+    if (sd->n_template_params > 0 && sd->n_template_args == 0) return;
     const char* tag = sd->name;
     if (!tag || !tag[0]) return;
 
@@ -1175,13 +1178,29 @@ class Lowerer {
     module_->struct_defs[tag] = std::move(def);
 
     // Collect struct methods (stored in sd->children[]) for later lowering.
+    // If the struct was parser-instantiated from a template, extract the
+    // template bindings so method bodies can resolve pending template types.
+    TypeBindings method_tpl_bindings;
+    NttpBindings method_nttp_bindings;
+    if (sd->n_template_args > 0 && sd->template_param_names) {
+      for (int i = 0; i < sd->n_template_args; ++i) {
+        const char* pname = sd->template_param_names[i];
+        if (!pname) continue;
+        if (sd->template_param_is_nttp && sd->template_param_is_nttp[i]) {
+          method_nttp_bindings[pname] = sd->template_arg_values[i];
+        } else if (sd->template_arg_types) {
+          method_tpl_bindings[pname] = sd->template_arg_types[i];
+        }
+      }
+    }
     for (int i = 0; i < sd->n_children; ++i) {
       const Node* method = sd->children[i];
       if (!method || method->kind != NK_FUNCTION || !method->name) continue;
       std::string mangled = std::string(tag) + "__" + method->name;
       std::string key = std::string(tag) + "::" + method->name;
       struct_methods_[key] = mangled;
-      pending_methods_.emplace_back(mangled, std::string(tag), method);
+      pending_methods_.push_back({mangled, std::string(tag), method,
+                                  method_tpl_bindings, method_nttp_bindings});
     }
   }
 
@@ -1586,6 +1605,12 @@ class Lowerer {
           ret_ts.tag = it->second.tag;
         }
       }
+      // Resolve pending template struct types (e.g., Pair<T> → Pair_T_int).
+      if (tpl_bindings && ret_ts.tpl_struct_origin) {
+        NttpBindings nttp_empty;
+        resolve_pending_tpl_struct(ret_ts, *tpl_bindings,
+            nttp_bindings ? *nttp_bindings : nttp_empty);
+      }
       fn.return_type = qtype_from(ret_ts);
     }
     fn.linkage = {true, false, false, false, Visibility::Default};  // internal
@@ -1630,6 +1655,12 @@ class Lowerer {
             param_ts.base = it->second.base;
             param_ts.tag = it->second.tag;
           }
+        }
+        // Resolve pending template struct types in params.
+        if (tpl_bindings && param_ts.tpl_struct_origin) {
+          NttpBindings nttp_empty;
+          resolve_pending_tpl_struct(param_ts, *tpl_bindings,
+              nttp_bindings ? *nttp_bindings : nttp_empty);
         }
         param.type = qtype_from(param_ts, ValueCategory::LValue);
       }
@@ -5065,8 +5096,15 @@ class Lowerer {
   std::unordered_set<std::string> instantiated_tpl_structs_;
   // Struct method map: "struct_tag::method_name" → mangled function name.
   std::unordered_map<std::string, std::string> struct_methods_;
-  // Pending struct methods to lower: (mangled_name, struct_tag, method_node).
-  std::vector<std::tuple<std::string, std::string, const Node*>> pending_methods_;
+  // Pending struct methods to lower.
+  struct PendingMethod {
+    std::string mangled;
+    std::string struct_tag;
+    const Node* method_node;
+    TypeBindings tpl_bindings;
+    NttpBindings nttp_bindings;
+  };
+  std::vector<PendingMethod> pending_methods_;
   // Deduced template call info: call_node → mangled name + bindings.
   struct DeducedTemplateCall {
     std::string mangled_name;
