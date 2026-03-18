@@ -13,6 +13,18 @@
 #include <variant>
 #include <vector>
 
+// ── HIR pipeline stage ──────────────────────────────────────────────────────
+//
+// The HIR pipeline processes modules through three explicit stages:
+//   1. Initial    — AST lowered to initial HIR (ast_to_hir)
+//   2. Normalized — compile-time work reduced to fixpoint (compile_time_engine)
+//   3. Materialized — emission decisions finalized (materialize_ready_functions)
+enum class HirPipelineStage {
+  Initial,       // after build_initial_hir: mixed compile-time/runtime HIR
+  Normalized,    // after run_compile_time_engine: compile-time work resolved
+  Materialized,  // after materialize_ready_functions: emission decisions final
+};
+
 #include "ast.hpp"
 
 namespace c4c::sema {
@@ -817,6 +829,10 @@ struct Module {
   // Consteval call records (populated by build_hir)
   std::vector<ConstevalCallInfo> consteval_calls;
 
+  // Pipeline stage tracking — records how far this module has progressed
+  // through the HIR pipeline (initial → normalized → materialized).
+  HirPipelineStage pipeline_stage = HirPipelineStage::Initial;
+
   // Compile-time normalization info (populated by the compile-time engine in build_hir).
   // These capture the result of the HIR-owned reduction pass that runs after
   // initial lowering, so subsequent verification calls can distinguish
@@ -828,6 +844,9 @@ struct Module {
     size_t templates_resolved = 0;       // total template calls resolved
     size_t consteval_reduced = 0;        // total consteval calls reduced
     bool converged = false;
+    // Materialization stats (populated by Stage 3: materialize_ready_functions).
+    size_t materialized_functions = 0;      // functions marked for emission
+    size_t non_materialized_functions = 0;  // compile-time-only functions
   };
   CompileTimeInfo ct_info;
 

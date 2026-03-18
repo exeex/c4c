@@ -48,11 +48,19 @@ Completed:
   `ct_state_->instances_to_hir_metadata()`.  Engine and Lowerer both route
   instance lifecycle through CompileTimeState API rather than raw registry.
 
+- **Phase 2.2 (2026-03-18):** Made three pipeline stages explicit in code.
+  Added `HirPipelineStage` enum (`Initial`, `Normalized`, `Materialized`) to `ir.hpp`.
+  `Module::pipeline_stage` tracks current stage.  `build_hir()` now explicitly
+  orchestrates all three stages: build_initial_hir → run_compile_time_engine →
+  materialize_ready_functions, advancing `pipeline_stage` after each.
+  Materialization stats (`materialized_functions`, `non_materialized_functions`)
+  recorded in `Module::CompileTimeInfo`.
+
 Not completed:
 
 - engine is still callback-driven (deferred instantiation/consteval go through lambdas)
-- Phase 2 tasks 2-4: reduce callback coupling, make three stages explicit, switch remaining readers
-- next: Phase 2.2 — make three pipeline stages (initial / normalized / materialized) explicit in code
+- Phase 2 tasks 2, 4: reduce callback coupling, switch remaining readers
+- next: Phase 2.3 — reduce reliance on AST-owned callback semantics
 
 ## Phase 1: Move Compile-Time State Toward The Engine
 
@@ -177,4 +185,5 @@ After parity is proven, remove legacy ownership paths and keep the cleaner model
 3. ~~add debug visibility for seed work vs realized instances via engine-owned state~~ (done: Phase 1.3)
 4. ~~have `run_compile_time_engine` use `ct_state->registry` for its own queries~~ (done: Phase 1.3)
 5. ~~switch reads to engine-owned path via CompileTimeState API~~ (done: Phase 2.1)
-6. make three pipeline stages (initial / normalized / materialized) explicit in code
+6. ~~make three pipeline stages (initial / normalized / materialized) explicit in code~~ (done: Phase 2.2)
+7. reduce reliance on AST-owned callback semantics
