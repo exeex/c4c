@@ -509,8 +509,6 @@ class Lowerer {
     registry_.realize_seeds();
 
     // Verify seed/instance parity after all realization is done.
-    // This assertion guards against seeds being lost or instances appearing
-    // without a corresponding seed — a sign of dual-write inconsistency.
     if (!registry_.verify_parity()) {
       registry_.dump_parity(stderr);
       throw std::runtime_error(
@@ -4542,12 +4540,8 @@ class Lowerer {
   //   instances   – realized instantiations (authoritative for lowering)
   //   specs       – explicit specialization AST nodes keyed by mangled name
   //
-  // record_instance() currently dual-writes to both seed_work and instances.
-  // record_seed_only() writes only to seed_work; realize_seeds() promotes
-  // unrealized seeds into instances.  The long-term plan is to migrate
-  // callers from record_instance() to record_seed_only() so that AST
-  // discovery only records seeds, and HIR's realize_seeds() is the sole
-  // path to create instances.
+  // AST discovery records seeds via record_seed().  HIR's realize_seeds()
+  // is the sole path that promotes seeds into realized instances.
   class InstantiationRegistry {
    public:
     // ── Queries ──────────────────────────────────────────────────────────
@@ -4602,22 +4596,10 @@ class Lowerer {
       specs_[mangled] = spec_node;
     }
 
-    /// Record a template instantiation as a seed.  Returns the mangled
-    /// name, or "" if bindings are not concrete.  Instances are created
+    /// Record a template instantiation seed.  Returns the mangled name,
+    /// or "" if bindings are not concrete.  Instances are created
     /// exclusively by realize_seeds().
-    std::string record_instance(
-        const std::string& fn_name, TypeBindings bindings,
-        NttpBindings nttp_bindings,
-        const std::vector<std::string>& param_order,
-        TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall) {
-      return record_seed_only(fn_name, std::move(bindings),
-                              std::move(nttp_bindings), param_order, origin);
-    }
-
-    /// Record a seed only (no realized instance).  Used when AST discovery
-    /// wants to record a candidate without immediately realizing it.
-    /// Returns the mangled name, or "" if bindings are not concrete.
-    std::string record_seed_only(
+    std::string record_seed(
         const std::string& fn_name, TypeBindings bindings,
         NttpBindings nttp_bindings,
         const std::vector<std::string>& param_order,
@@ -4694,8 +4676,6 @@ class Lowerer {
     }
 
     /// Dump seed/instance parity report to the given stream.
-    /// Useful for debugging the transition from AST-owned to HIR-owned
-    /// instantiation bookkeeping.
     void dump_parity(FILE* out) const {
       size_t seeds = total_seed_count();
       size_t insts = total_instance_count();
@@ -4906,9 +4886,8 @@ class Lowerer {
     return bindings;
   }
 
-  // Check if an instantiation with the given mangled name has already been
-  // discovered (as seed or realized instance).
-  bool has_instance(const std::string& fn_name, const std::string& mangled) {
+  // Check if a template instantiation has already been discovered as a seed.
+  bool has_seed(const std::string& fn_name, const std::string& mangled) {
     return registry_.has_seed_or_instance(fn_name, mangled);
   }
 
@@ -5142,26 +5121,15 @@ class Lowerer {
     return {};
   }
 
-  // Record a template instantiation via the centralized registry.
-  // Returns the mangled name, or "" if bindings are not concrete.
-  std::string record_instance(const std::string& fn_name, TypeBindings bindings,
-                               NttpBindings nttp_bindings = {},
-                               TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall) {
-    auto param_order = get_template_param_order_from_instances(fn_name);
-    return registry_.record_instance(fn_name, std::move(bindings),
-                                     std::move(nttp_bindings), param_order,
-                                     origin);
-  }
-
-  // Record a template seed (discovery only, no immediate realization).
+  // Record a template seed via the centralized registry.
   // Returns the mangled name, or "" if bindings are not concrete.
   std::string record_seed(const std::string& fn_name, TypeBindings bindings,
                            NttpBindings nttp_bindings = {},
                            TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall) {
     auto param_order = get_template_param_order_from_instances(fn_name);
-    return registry_.record_seed_only(fn_name, std::move(bindings),
-                                      std::move(nttp_bindings), param_order,
-                                      origin);
+    return registry_.record_seed(fn_name, std::move(bindings),
+                                 std::move(nttp_bindings), param_order,
+                                 origin);
   }
 
   // Resolve the mangled name for a call to a template function.
@@ -5201,7 +5169,7 @@ class Lowerer {
                 TypeBindings inner = build_call_bindings(n->left, fn_def, &enc_inst.bindings);
                 NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def, &enc_inst.nttp_bindings);
                 std::string mangled = mangle_template_name(n->left->name, inner, call_nttp);
-                if (!has_instance(n->left->name, mangled))
+                if (!has_seed(n->left->name, mangled))
                   record_seed(
                       n->left->name, std::move(inner), call_nttp,
                       TemplateSeedOrigin::EnclosingTemplateExpansion);
@@ -5214,7 +5182,7 @@ class Lowerer {
             if (has_forwarded_nttp(n->left)) goto recurse;  // Deferred: forwarded NTTPs not yet resolved.
             TypeBindings bindings = build_call_bindings(n->left, fn_def, nullptr);
             std::string mangled = mangle_template_name(n->left->name, bindings, call_nttp);
-            if (!has_instance(n->left->name, mangled))
+            if (!has_seed(n->left->name, mangled))
               record_seed(
                   n->left->name, std::move(bindings), call_nttp,
                   TemplateSeedOrigin::DirectCall);
@@ -5247,7 +5215,7 @@ class Lowerer {
               }
             }
             std::string mangled = mangle_template_name(n->left->name, deduced, nttp);
-            if (!has_instance(n->left->name, mangled))
+            if (!has_seed(n->left->name, mangled))
               record_seed(
                   n->left->name, TypeBindings(deduced), nttp,
                   TemplateSeedOrigin::DeducedCall);
@@ -5289,7 +5257,7 @@ class Lowerer {
                 TypeBindings inner = build_call_bindings(n->left, fn_def, &enc_inst.bindings);
                 NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def, &enc_inst.nttp_bindings);
                 std::string mangled = mangle_template_name(n->left->name, inner, call_nttp);
-                if (!has_instance(n->left->name, mangled))
+                if (!has_seed(n->left->name, mangled))
                   record_seed(
                       n->left->name, std::move(inner), call_nttp,
                       TemplateSeedOrigin::ConstevalEnclosingExpansion);
@@ -5308,7 +5276,7 @@ class Lowerer {
             if (has_forwarded_nttp(n->left)) goto recurse_ce;  // Deferred.
             TypeBindings bindings = build_call_bindings(n->left, fn_def, nullptr);
             std::string mangled = mangle_template_name(n->left->name, bindings, call_nttp);
-            if (!has_instance(n->left->name, mangled))
+            if (!has_seed(n->left->name, mangled))
               record_seed(
                   n->left->name, std::move(bindings), call_nttp,
                   TemplateSeedOrigin::ConstevalSeed);
