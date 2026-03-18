@@ -200,8 +200,12 @@ struct PendingConstevalEvalStep {
 }  // namespace
 
 CompileTimeEngineStats run_compile_time_engine(
-    Module& module, DeferredInstantiateFn instantiate_fn,
+    Module& module, std::shared_ptr<CompileTimeState> ct_state,
+    DeferredInstantiateFn instantiate_fn,
     DeferredConstevalEvalFn consteval_fn) {
+  // ct_state is accepted and stored for future phases where the engine
+  // will use it directly.  Currently unused.
+  (void)ct_state;
   CompileTimeEngineStats stats{};
 
   static constexpr int kMaxIterations = 8;

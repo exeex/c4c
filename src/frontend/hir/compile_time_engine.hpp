@@ -311,6 +311,18 @@ class InstantiationRegistry {
   std::unordered_map<std::string, const Node*> specs_;
 };
 
+// ── CompileTimeState ─────────────────────────────────────────────────────
+//
+// Engine-owned state that travels through the HIR pipeline.
+// Created during initial HIR construction (build_initial_hir), then
+// passed to the compile-time engine (run_compile_time_engine) for
+// iterative reduction.  This is the intended single source of truth
+// for compile-time bookkeeping.
+
+struct CompileTimeState {
+  InstantiationRegistry registry;
+};
+
 /// A diagnostic for a single irreducible compile-time node.
 struct CompileTimeDiagnostic {
   enum Kind { UnresolvedTemplate, UnreducedConsteval };
@@ -384,16 +396,19 @@ using DeferredConstevalEvalFn = std::function<std::optional<long long>(
 /// When callbacks are null, the pass only verifies existing state.
 CompileTimeEngineStats run_compile_time_engine(
     Module& module,
+    std::shared_ptr<CompileTimeState> ct_state = nullptr,
     DeferredInstantiateFn instantiate_fn = nullptr,
     DeferredConstevalEvalFn consteval_fn = nullptr);
 
 // Compatibility alias while call sites transition to the new naming.
 inline CompileTimeEngineStats run_compile_time_reduction(
     Module& module,
+    std::shared_ptr<CompileTimeState> ct_state = nullptr,
     DeferredInstantiateFn instantiate_fn = nullptr,
     DeferredConstevalEvalFn consteval_fn = nullptr) {
   return run_compile_time_engine(
-      module, std::move(instantiate_fn), std::move(consteval_fn));
+      module, std::move(ct_state),
+      std::move(instantiate_fn), std::move(consteval_fn));
 }
 
 /// Format pass statistics for debug output (used by --dump-hir).

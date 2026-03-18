@@ -27,12 +27,18 @@ Completed:
   (`mangle_template_name`, `type_suffix_for_mangling`, `bindings_are_concrete`)
   from `ast_to_hir.cpp` into `compile_time_engine.hpp` as public engine-owned types.
   `ast_to_hir.cpp` now uses the shared definitions from the engine header.
+- **Phase 1.2 (2026-03-18):** Introduced `CompileTimeState` struct in `compile_time_engine.hpp`
+  wrapping `InstantiationRegistry`.  Lowerer now owns a `shared_ptr<CompileTimeState>`
+  (initialized inline) with a convenience `registry_` reference alias.  `CompileTimeState`
+  is passed through the pipeline: `InitialHirBuildResult.ct_state` →
+  `run_compile_time_engine(module, ct_state, ...)`.  Engine accepts but does not yet
+  read from it — future phases will switch reads to engine-owned state.
 
 Not completed:
 
-- compile-time state ownership is still mostly builder-owned (registry_ instance lives in Lowerer)
-- template instance lifecycle is still centered in `ast_to_hir.cpp`
+- template instance lifecycle is still centered in `ast_to_hir.cpp` (reads go through Lowerer's alias)
 - engine is still callback-driven and thinner than the intended final design
+- engine does not yet use ct_state for its own queries (next step)
 
 ## Phase 1: Move Compile-Time State Toward The Engine
 
@@ -153,7 +159,7 @@ After parity is proven, remove legacy ownership paths and keep the cleaner model
 ## Immediate Next Steps
 
 1. ~~introduce engine-owned type definitions~~ (done: types now in compile_time_engine.hpp)
-2. move the `InstantiationRegistry` instance from `Lowerer` into a `CompileTimeState` struct
-   owned by the engine, passed through the pipeline
+2. ~~move `InstantiationRegistry` into `CompileTimeState`, pass through pipeline~~ (done: Phase 1.2)
 3. add debug visibility for seed work vs realized instances via engine-owned state
-4. only after parity checks, start switching reads over to the engine-owned path
+4. have `run_compile_time_engine` use `ct_state->registry` for its own queries
+5. only after parity checks, start switching reads over to the engine-owned path

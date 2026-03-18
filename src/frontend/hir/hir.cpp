@@ -14,6 +14,7 @@ Module build_hir(const Node* program_root,
 
   auto ct_stats = run_compile_time_engine(
       *initial.module,
+      initial.ct_state,
       initial.deferred_instantiate,
       initial.deferred_consteval);
 

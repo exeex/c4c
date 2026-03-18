@@ -411,6 +411,9 @@ class Lowerer {
  public:
   const sema::ResolvedTypeTable* resolved_types_ = nullptr;
 
+  /// Engine-owned compile-time state, shared with the pipeline.
+  std::shared_ptr<CompileTimeState> ct_state() const { return ct_state_; }
+
   void lower_initial_program(const Node* root, Module& m) {
     if (!root || root->kind != NK_PROGRAM) {
       throw std::runtime_error("build_initial_hir: root is not NK_PROGRAM");
@@ -5030,11 +5033,11 @@ class Lowerer {
   std::unordered_map<std::string, const Node*> consteval_fns_;
   // All template function definitions indexed by name (consteval and non-consteval).
   std::unordered_map<std::string, const Node*> template_fn_defs_;
-  // Centralized template instantiation bookkeeping.
-  // Owns seed work items, realized instances, dedup keys, and explicit
-  // specializations.  Both AST collection and deferred HIR paths go
-  // through this registry.
-  InstantiationRegistry registry_;
+  // Engine-owned compile-time state.  Shared with the pipeline so
+  // the compile-time engine can access the registry directly.
+  std::shared_ptr<CompileTimeState> ct_state_ = std::make_shared<CompileTimeState>();
+  // Convenience alias — shorthand for ct_state_->registry.
+  InstantiationRegistry& registry_ = ct_state_->registry;
   // Template struct definitions indexed by struct tag name.
   std::unordered_map<std::string, const Node*> template_struct_defs_;
   // Already-instantiated template struct mangled names (avoid double instantiation).
@@ -5075,6 +5078,7 @@ InitialHirBuildResult build_initial_hir(
 
   InitialHirBuildResult result{};
   result.module = module;
+  result.ct_state = lowerer->ct_state();
   result.deferred_instantiate =
       [lowerer, module](const std::string& tpl_name,
                         const TypeBindings& bindings,
