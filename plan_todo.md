@@ -51,11 +51,12 @@ HIR-owned structures and helpers, without removing the current AST-driven behavi
 - all AST collection and deferred HIR paths now go through `registry_`
 - old `template_fn_instances_`, `template_seed_work_`, `instance_keys_`, `template_fn_specs_` replaced by single `registry_` member
 
-4. make HIR capable of consuming AST seed work
+4. make HIR capable of consuming AST seed work ✅
 
-- add a path that reads seed work from the registry
-- translate seeds into HIR-side todo/work items
-- do not yet disable the old AST-driven realized-instance path
+- `record_seed_only()` records seeds without realizing instances
+- `realize_seeds()` promotes seeds into instances (HIR consumption path)
+- Phase 1.7a calls `realize_seeds()` in the lowering pipeline
+- old dual-write path preserved; realize_seeds() is no-op until decoupled
 
 ### Exit Criteria
 
@@ -147,8 +148,14 @@ keep only the cleaner responsibility split.
 1. ~~introduce the first HIR-side instantiation registry helper~~ ✅ done
 2. ~~mirror current instance bookkeeping into that helper~~ ✅ done (dual write)
 3. ~~route all AST collection and Phase 2/3 lookups through the registry~~ ✅ done
-4. add a HIR-side path that reads seed work from the registry (Phase 1 task 4)
+4. ~~add a HIR-side path that reads seed work from the registry (Phase 1 task 4)~~ ✅ done
+   - `record_seed_only()`: writes only to seed_work_ (seed-only recording path)
+   - `realize_seeds()`: promotes unrealized seeds into instances (HIR consumption path)
+   - Phase 1.7a calls `realize_seeds()` between seed collection and metadata population
+   - `seed_keys_` dedup set added; `total_seed_count()` helper added
+   - dual-write in `record_instance()` preserved — realize_seeds() is currently a no-op
 5. split seed population from instance realization in the registry
-   - seeds populated during AST discovery
-   - instances populated only during HIR reduction
+   - migrate callers from `record_instance()` to `record_seed_only()`
+   - remove dual-write from `record_instance()`
+   - `realize_seeds()` becomes the sole path to create instances
 6. add debug dump or comparison output to verify seed/instance parity

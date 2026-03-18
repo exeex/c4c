@@ -496,7 +496,16 @@ class Lowerer {
       if (registry_.total_instance_count() == prev_size) break;
     }
 
-    // Phase 1.7: populate HirTemplateDef metadata for all template functions.
+    // Phase 1.7a: realize seeds into instances.
+    // This is the HIR-side consumption path: any seed that was recorded
+    // (via record_seed_only or record_instance) but not yet realized as
+    // an instance gets promoted here.  While record_instance currently
+    // dual-writes (making this a no-op today), this call establishes the
+    // path for the future decoupling where AST only records seeds and
+    // HIR is responsible for realization.
+    registry_.realize_seeds();
+
+    // Phase 1.7b: populate HirTemplateDef metadata for all template functions.
     for (const auto& [name, fn_def] : template_fn_defs_) {
       HirTemplateDef tdef;
       tdef.name = name;
@@ -4520,9 +4529,12 @@ class Lowerer {
   //   instances   – realized instantiations (authoritative for lowering)
   //   specs       – explicit specialization AST nodes keyed by mangled name
   //
-  // For now both containers are populated together in record_instance();
-  // the long-term plan is to decouple them so that seed_work is populated
-  // during AST discovery and instances only during HIR reduction.
+  // record_instance() currently dual-writes to both seed_work and instances.
+  // record_seed_only() writes only to seed_work; realize_seeds() promotes
+  // unrealized seeds into instances.  The long-term plan is to migrate
+  // callers from record_instance() to record_seed_only() so that AST
+  // discovery only records seeds, and HIR's realize_seeds() is the sole
+  // path to create instances.
   class InstantiationRegistry {
    public:
     // ── Queries ──────────────────────────────────────────────────────────
@@ -4552,7 +4564,7 @@ class Lowerer {
     const std::unordered_map<std::string, std::vector<TemplateInstance>>&
     all_instances() const { return instances_; }
 
-    /// All seed work items (for debugging / future HIR consumption).
+    /// All seed work items (for debugging / HIR-side realize_seeds()).
     const std::unordered_map<std::string, std::vector<TemplateSeedWorkItem>>&
     all_seeds() const { return seed_work_; }
 
@@ -4579,21 +4591,74 @@ class Lowerer {
           ? make_specialization_key(fn_name, param_order, bindings)
           : make_specialization_key(fn_name, param_order, bindings,
                                     nttp_bindings);
+      std::string key = fn_name + "::" + mangled;
       // Seed record (todo list).
       seed_work_[fn_name].push_back(
           TemplateSeedWorkItem{fn_name, bindings, nttp_bindings, mangled,
                                sk, origin});
+      seed_keys_.insert(key);
       // Realized instance (dual write for now).
       instances_[fn_name].push_back(
           {std::move(bindings), std::move(nttp_bindings), mangled, sk});
-      instance_keys_.insert(fn_name + "::" + mangled);
+      instance_keys_.insert(std::move(key));
       return mangled;
+    }
+
+    /// Record a seed only (no realized instance).  Used when AST discovery
+    /// wants to record a candidate without immediately realizing it.
+    /// Returns the mangled name, or "" if bindings are not concrete.
+    std::string record_seed_only(
+        const std::string& fn_name, TypeBindings bindings,
+        NttpBindings nttp_bindings,
+        const std::vector<std::string>& param_order,
+        TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall) {
+      if (!bindings_are_concrete(bindings)) return "";
+      std::string mangled = mangle_template_name(fn_name, bindings,
+                                                  nttp_bindings);
+      std::string key = fn_name + "::" + mangled;
+      if (seed_keys_.count(key) > 0) return mangled;  // already recorded
+      SpecializationKey sk = nttp_bindings.empty()
+          ? make_specialization_key(fn_name, param_order, bindings)
+          : make_specialization_key(fn_name, param_order, bindings,
+                                    nttp_bindings);
+      seed_work_[fn_name].push_back(
+          TemplateSeedWorkItem{fn_name, bindings, nttp_bindings, mangled,
+                               sk, origin});
+      seed_keys_.insert(std::move(key));
+      return mangled;
+    }
+
+    /// Realize all seeds that have not yet been converted to instances.
+    /// This is the HIR-side path: it reads seed_work_ and populates
+    /// instances_ for any seed whose (fn_name, mangled) key is not yet
+    /// in instance_keys_.  Returns the number of newly realized instances.
+    size_t realize_seeds() {
+      size_t realized = 0;
+      for (const auto& [fn_name, seeds] : seed_work_) {
+        for (const auto& seed : seeds) {
+          std::string key = fn_name + "::" + seed.mangled_name;
+          if (instance_keys_.count(key) > 0) continue;  // already realized
+          instances_[fn_name].push_back(
+              {seed.bindings, seed.nttp_bindings, seed.mangled_name,
+               seed.spec_key});
+          instance_keys_.insert(std::move(key));
+          ++realized;
+        }
+      }
+      return realized;
     }
 
     /// Compute total instance count across all template functions.
     size_t total_instance_count() const {
       size_t n = 0;
       for (const auto& [k, v] : instances_) n += v.size();
+      return n;
+    }
+
+    /// Compute total seed count across all template functions.
+    size_t total_seed_count() const {
+      size_t n = 0;
+      for (const auto& [k, v] : seed_work_) n += v.size();
       return n;
     }
 
@@ -4604,8 +4669,10 @@ class Lowerer {
     // Realized instances — authoritative for lowering.
     std::unordered_map<std::string, std::vector<TemplateInstance>>
         instances_;
-    // O(1) dedup set: "fn_name::mangled_name".
+    // O(1) dedup set for realized instances: "fn_name::mangled_name".
     std::unordered_set<std::string> instance_keys_;
+    // O(1) dedup set for seeds: "fn_name::mangled_name".
+    std::unordered_set<std::string> seed_keys_;
     // Explicit specializations: mangled_name → AST node.
     std::unordered_map<std::string, const Node*> specs_;
   };
