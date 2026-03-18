@@ -1,7 +1,7 @@
 # Plan Execution State
 
 ## Baseline
-- 1831/1831 tests pass (2026-03-16)
+- 1896/1896 tests pass (2026-03-18)
 
 ## Active Plan: HIR Inline Expansion (inline_plan.md)
 
@@ -44,19 +44,26 @@
   - Rewrites ReturnStmt in cloned body to assign + GotoStmt to continuation block
   - Adds GotoStmt to continuation for blocks without explicit terminators (void callees with no return)
   - Handles `f(void)` parameter lists correctly (skip binding for single void param)
-  - Phase 4 restrictions: single-return, single-block callees only; no va_arg in callee body
   - Added `inline_cfg_splice.c` test: add1, add, void callee, side-effect-once args, chained inlines
-  - 1831/1831 tests pass (0 regressions, +1 new test)
+- [x] Phase 5: General return rewriting and multi-block bodies
+  - Removed single-block and single-return restrictions from expand_inline_site
+  - All ReturnStmt in cloned callee blocks rewritten to assign + goto continuation
+  - After rewriting a return, remaining stmts in that block trimmed as dead code
+  - Supports if/else branches, while loops, for loops, and multi-return callees
+  - Fixed iterator invalidation bug: clone_expr copies src Expr by value before recursive cloning (expr_pool push_back may reallocate)
+  - Fixed iterator invalidation bug: expand_inline_site copies CallExpr by value before make_local_ref/make_assign (which push to expr_pool)
+  - Added ArrayParam rejection in eligibility check: callees with array-typed parameters skipped (codegen GEP limitation)
+  - Added `inline_multi_block.c` test: abs_val, clamp, sum_to_n, classify, swap_if_greater, factorial, chained calls
+  - 1896/1896 tests pass (0 regressions, +1 new test)
 
 ### Next
-- [ ] Phase 5: General return rewriting and multi-block bodies
-  - Support multiple return sites (all rewrite to single continuation)
-  - Support conditionals and loops in inlined bodies
-  - Remove single-block restriction
-  - Remap break/continue/switch targets within cloned region
+- [ ] Phase 6: Call replacement in expression contexts
+  - Normalize call-containing expressions into statement form
+  - Introduce temporary materialization for expression-result consumption
+  - Support inlining in assignments, binary-expression operands
 
 ### Previous Plan (Consteval) — Complete
 - [x] Phase 1–4 of consteval plan fully implemented
 
 ## Blockers
-- None
+- ArrayParam: callees with array-typed parameters cannot be inlined yet (codegen produces wrong GEP for synthetic local vs parameter)

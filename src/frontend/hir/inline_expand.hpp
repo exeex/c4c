@@ -81,6 +81,7 @@ enum class InlineRejectReason : uint8_t {
   CallerIsNoinline,   // caller is marked noinline (not relevant for expansion)
   CalleeIsNoinline,   // callee is marked noinline
   NotAlwaysInline,    // callee is not marked always_inline (current policy)
+  ArrayParam,         // callee has array-typed parameter (codegen limitation)
 };
 
 /// Result of call-site eligibility analysis.

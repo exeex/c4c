@@ -83,12 +83,17 @@ static std::optional<BlockId> remap_opt_block(InlineCloneContext& ctx,
 }
 
 ExprId clone_expr(InlineCloneContext& ctx, const Expr& src) {
-  ExprId new_id = ctx.remap_expr(src.id);
+  // Copy src by value to avoid iterator invalidation: recursive cloning
+  // pushes to expr_pool, which may reallocate and invalidate references
+  // into the pool.
+  Expr src_copy = src;
+
+  ExprId new_id = ctx.remap_expr(src_copy.id);
 
   Expr cloned;
   cloned.id = new_id;
-  cloned.type = src.type;
-  cloned.span = src.span;
+  cloned.type = src_copy.type;
+  cloned.span = src_copy.span;
 
   // Deep-clone payload, remapping sub-expression references.
   std::visit(
@@ -168,7 +173,7 @@ ExprId clone_expr(InlineCloneContext& ctx, const Expr& src) {
           cloned.payload = s;
         }
       },
-      src.payload);
+      src_copy.payload);
 
   ctx.module->expr_pool.push_back(std::move(cloned));
   return new_id;
@@ -362,6 +367,16 @@ InlineCandidate check_inline_eligibility(
     return cand;
   }
 
+  // 7. Skip callees with array-typed parameters (codegen produces wrong GEP
+  //    when array parameter is stored to a synthetic local instead of passed
+  //    as a function parameter).
+  for (const auto& param : callee->params) {
+    if (param.type.spec.array_rank > 0) {
+      cand.reject = InlineRejectReason::ArrayParam;
+      return cand;
+    }
+  }
+
   // All checks passed.
   cand.reject = InlineRejectReason::None;
   return cand;
@@ -460,16 +475,11 @@ std::vector<Stmt> bind_callee_params(
   return param_decls;
 }
 
-// ── Phase 4: Minimal CFG Splice ──────────────────────────────────────────────
+// ── Phase 4+5: CFG Splice ────────────────────────────────────────────────────
 
 /// Check if any expression in the module's expr_pool that is reachable from
 /// a function's body contains VaArgExpr.
 static bool contains_va_arg(const Module& module, const Function& fn) {
-  // Collect all ExprIds used in this function's blocks, then scan the pool.
-  // Simpler approach: scan the entire expr pool for VaArgExpr that belong to
-  // the callee. Since we only care about the callee body, just check if any
-  // expression referenced from callee stmts (transitively) is VaArgExpr.
-  // For simplicity, scan all exprs in the function blocks for VaArgExpr.
   std::vector<ExprId> worklist;
   auto enqueue = [&](ExprId id) { worklist.push_back(id); };
 
@@ -528,19 +538,6 @@ static bool contains_va_arg(const Module& module, const Function& fn) {
   return false;
 }
 
-/// Count the number of ReturnStmt nodes in a function's body.
-static int count_returns(const Function& fn) {
-  int count = 0;
-  for (const auto& bb : fn.blocks) {
-    for (const auto& stmt : bb.stmts) {
-      if (std::holds_alternative<ReturnStmt>(stmt.payload)) {
-        count++;
-      }
-    }
-  }
-  return count;
-}
-
 /// Check if a callee's return type is void (no pointer indirection).
 static bool is_void_return(const Function& fn) {
   return fn.return_type.spec.base == TB_VOID &&
@@ -583,13 +580,8 @@ static bool expand_inline_site(Module& module, Function& caller,
                                const InlineCandidate& cand) {
   const Function& callee = *cand.callee;
 
-  // Phase 4 restrictions:
-  // - only single-return callees
-  // - only single-block callees (no loops/branches in callee body)
+  // Restrictions:
   // - no va_arg in callee (va_list copy semantics are ABI-sensitive)
-  int ret_count = count_returns(callee);
-  if (ret_count > 1) return false;
-  if (callee.blocks.size() != 1) return false;
   if (contains_va_arg(module, callee)) return false;
 
   bool is_void = is_void_return(callee);
@@ -605,12 +597,17 @@ static bool expand_inline_site(Module& module, Function& caller,
     }
   }
   if (!caller_block) return false;
+  if (cand.stmt_index >= caller_block->stmts.size()) return false;
 
-  // Get the call expression.
-  const Expr* call_expr = module.find_expr(cand.call_expr_id);
-  if (!call_expr) return false;
-  const auto* call = std::get_if<CallExpr>(&call_expr->payload);
-  if (!call) return false;
+  // Get the call expression.  Copy it to avoid iterator invalidation
+  // (subsequent make_local_ref/make_assign calls push to expr_pool,
+  // which may reallocate and invalidate pointers into it).
+  const Expr* call_expr_ptr = module.find_expr(cand.call_expr_id);
+  if (!call_expr_ptr) return false;
+  const auto* call_ptr = std::get_if<CallExpr>(&call_expr_ptr->payload);
+  if (!call_ptr) return false;
+  CallExpr call_copy = *call_ptr;
+  const CallExpr* call = &call_copy;
 
   // Determine the statement context of the call.
   const Stmt& call_stmt = caller_block->stmts[cand.stmt_index];
@@ -712,7 +709,7 @@ static bool expand_inline_site(Module& module, Function& caller,
     cloned_blocks.push_back(clone_block(ctx, bb));
   }
 
-  // --- 8. Rewrite ReturnStmt in cloned blocks ---
+  // --- 8. Rewrite all ReturnStmt in cloned blocks ---
   for (auto& bb : cloned_blocks) {
     for (size_t i = 0; i < bb.stmts.size(); ++i) {
       auto* ret = std::get_if<ReturnStmt>(&bb.stmts[i].payload);
@@ -738,6 +735,8 @@ static bool expand_inline_site(Module& module, Function& caller,
         bb.stmts[i] = std::move(assign_stmt);
         bb.stmts.insert(bb.stmts.begin() + static_cast<long>(i) + 1,
                          std::move(goto_stmt));
+        // Skip past the inserted goto
+        ++i;
       } else {
         // Void or no expr: just goto continuation.
         GotoStmt gs;
@@ -747,7 +746,10 @@ static bool expand_inline_site(Module& module, Function& caller,
         bb.stmts[i] = std::move(goto_stmt);
       }
       bb.has_explicit_terminator = true;
-      break;  // Phase 4: only one return per callee
+      // After rewriting a return, remaining stmts in this block are dead code.
+      // Trim them for cleanliness.
+      bb.stmts.resize(i + 1);
+      break;
     }
   }
 
