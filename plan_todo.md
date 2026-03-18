@@ -4,24 +4,9 @@
 
 - 1891/1891 tests passing (2026-03-18)
 
-## Replan Summary
+## Status: MILESTONE COMPLETE
 
-This plan is now narrowed to the remaining template work that still matters for the current milestone.
-
-Already considered done enough for this round:
-
-- template function basics
-- non-type template parameters (NTTP)
-- mixed type + NTTP function templates
-- delayed template instantiation in HIR
-- consteval / template interaction that does not require RTTI
-- template argument deduction for common function-call cases
-
-Not in scope for now:
-
-- RTTI-related work
-- `dynamic_cast`
-- any feature whose correctness depends on RTTI materialization/runtime support
+All phases of the template struct plan are complete.
 
 ## Completed Work
 
@@ -43,36 +28,55 @@ Not in scope for now:
 - substitution order is correct ✓
 - deferred resolution works at HIR time ✓
 
-### Phase A-C fix: template struct method with template struct return type
+### Phase C fix: template struct method with template struct return type
 - **Root cause**: Parser method cloning during template struct instantiation only substituted simple TB_TYPEDEF types, not pending template struct types (tpl_struct_origin)
 - **Symptom**: Method like `Pair<T> as_pair()` on `Container<T>` had unresolved `Pair_T_T` after instantiating `Container<int>`
-- **Fix**:
-  1. Parser stores template bindings (n_template_args, template_arg_types, etc.) on instantiated struct node
-  2. HIR collect_struct_def extracts bindings and passes them to lower_struct_method
-  3. lower_struct_method resolves tpl_struct_origin in return type and param types
-  4. Method body locals also resolve via ctx.tpl_bindings
+- **Fix**: Store template bindings on instantiated struct node; HIR extracts and passes them to lower_struct_method
 
-## Remaining Work
-
-### Phase D: targeted validation and cleanup
+### Phase D: targeted validation and cleanup — DONE
 - [x] add regression tests for plain, nested, and mixed nested template-struct cases
 - [x] add test for template struct method returning template struct
 - [x] add test for triple-nested, deferred double-nested, non-template struct with template fields, pointers
-- [ ] confirm no RTTI-dependent scenario is accidentally required by the tests
-- [ ] remove stale planning notes that imply RTTI work is part of this milestone
+- [x] confirm no RTTI-dependent scenario is accidentally required by the tests
+- [x] no stale planning notes that imply RTTI work in source or tests
 
-## Next Intended Slice
+## Checklist — All Complete
 
-Phase D cleanup: verify no RTTI dependency in tests, clean up stale notes.
+### Template Struct Core
+- [x] Preserve template struct parameter bindings through lowering
+- [x] Substitute template params in struct fields correctly
+- [x] Instantiate concrete struct forms deterministically
+- [x] Keep canonical naming/identity stable for instantiated template structs
 
-## Validation Targets
+### Nested Template Structs
+- [x] Parse nested `>>` forms correctly
+- [x] Lower nested template struct types correctly
+- [x] Handle nested template structs in locals/params/returns
 
-- [x] plain template struct field substitution
-- [x] nested template structs
-- [x] template struct with NTTP
-- [x] template function returning or locally using template structs
-- [x] template function bodies that instantiate nested template structs
-- [x] template struct methods returning template structs
-- [x] triple-nested template structs
-- [x] non-template struct with template struct fields
-- [x] pointers to template structs
+### Mixed Function/Struct Nesting
+- [x] Support template structs inside template function bodies
+- [x] Support template struct return types in template functions
+- [x] Support nested mixed forms such as `Box<Pair<T>>`
+- [x] Ensure deferred instantiation resolves these cases at HIR time
+
+### Explicit Non-Goals
+- [x] Do not add RTTI requirements to this milestone
+- [x] Do not work on `dynamic_cast` in this milestone
+
+## Regression Targets — All Complete
+- [x] Existing template function tests still pass
+- [x] Existing consteval-template tests still pass
+- [x] Plain template struct test
+- [x] Nested template struct test
+- [x] Mixed template function + template struct test
+
+## Test Coverage Summary
+
+7 template struct test files:
+- template_struct.cpp — basic field substitution with int/long
+- template_struct_nttp.cpp — NTTP with Array<T,N>, IntBuf<N>
+- template_struct_keyword.cpp — struct keyword syntax
+- template_struct_method.cpp — member functions on template structs
+- template_struct_method_tpl_return.cpp — methods returning template structs (NEW)
+- template_struct_nested.cpp — nested + mixed deferred (Box<Pair<T>>)
+- template_struct_advanced.cpp — triple-nested, pointers, non-template struct fields (NEW)
