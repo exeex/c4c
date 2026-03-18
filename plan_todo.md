@@ -22,10 +22,15 @@ Completed:
 - seed/todo container exists: `template_seed_work_`
 - seed origins are recorded
 - compatibility names are still present where helpful
+- **Phase 1.1 (2026-03-18):** Extracted `InstantiationRegistry` class, `TemplateSeedOrigin`,
+  `TemplateSeedWorkItem`, `TemplateInstance` types, and mangling utilities
+  (`mangle_template_name`, `type_suffix_for_mangling`, `bindings_are_concrete`)
+  from `ast_to_hir.cpp` into `compile_time_engine.hpp` as public engine-owned types.
+  `ast_to_hir.cpp` now uses the shared definitions from the engine header.
 
 Not completed:
 
-- compile-time state ownership is still mostly builder-owned
+- compile-time state ownership is still mostly builder-owned (registry_ instance lives in Lowerer)
 - template instance lifecycle is still centered in `ast_to_hir.cpp`
 - engine is still callback-driven and thinner than the intended final design
 
@@ -147,7 +152,8 @@ After parity is proven, remove legacy ownership paths and keep the cleaner model
 
 ## Immediate Next Steps
 
-1. introduce a first engine-owned compile-time state object
-2. mirror `template_fn_instances_`-style state into the engine layer
-3. add debug visibility for seed work vs realized instances
+1. ~~introduce engine-owned type definitions~~ (done: types now in compile_time_engine.hpp)
+2. move the `InstantiationRegistry` instance from `Lowerer` into a `CompileTimeState` struct
+   owned by the engine, passed through the pipeline
+3. add debug visibility for seed work vs realized instances via engine-owned state
 4. only after parity checks, start switching reads over to the engine-owned path
