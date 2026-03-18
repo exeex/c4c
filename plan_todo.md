@@ -2,10 +2,10 @@
 
 ## Active Plan
 - Parent: `plan.md` (STL Enablement Umbrella)
-- Active child: `operator_overload_plan.md` — Phase 3: Iterator-critical operators
+- Active child: `operator_overload_plan.md` — Phase 4 complete, Phase 5 deferred
 
 ## Current Target
-- **Phase 2/3 combined slice**: DONE
+- **Phase 4: Container-facing operators**: DONE
 
 ## Completed Items
 - Phase 0, Slice 1: KwOperator token + operator-function declarator parsing + parse tests
@@ -53,15 +53,28 @@
     - `operator_bool_member_basic.cpp` — Handle with `operator bool()` in if/while/! contexts
   - Suite: 1916/1916 (was 1913)
 
+- Phase 4: Container-facing operators
+  - **Const method qualifier support**: Added `is_const_method` flag to Node (ast.hpp). Parser captures trailing `const` on methods (both operator and regular). Const methods get `_const` suffix in mangled name and lookup key.
+  - **Const/non-const method dispatch**: Updated `try_lower_operator_call()`, `maybe_bool_convert()`, and direct method call dispatch to select between const and non-const overloads. Const objects prefer const overload; non-const objects prefer non-const, falling back to const.
+  - **operator_deref type inference fix**: `infer_generic_ctrl_type` for NK_DEREF on struct with `operator_deref` now returns the operator's return type instead of the struct type. Uses `struct_method_ret_types_` map (populated at method registration) since fn_index isn't available during early type inference.
+  - Tests:
+    - `container_subscript_pair.cpp` — Vec with `int* operator[](int)` and `int operator[](int) const`, plus `size() const`
+    - `container_bool_state.cpp` — Handle and OptionalInt with `operator bool()` in various boolean contexts
+    - `iterator_plus_basic.cpp` — Iter with `operator+(int)` and `operator-(int)` for stepping, combined with `operator*()` and `operator!=(Iter)`
+    - `iterator_minus_basic.cpp` — Iter with `operator-(int)` for backward stepping
+    - `manual_iterator_loop.cpp` — Full integration test: Container with begin()/end(), Iter with operator*/++/!=, manual while loop summing elements
+  - Suite: 1921/1921 (was 1916)
+
 ## Next Intended Slice
-- Phase 4: Container-facing operators (const/non-const operator[] pair, operator bool for handles)
-- Or: Integration test — write a full manual iterator loop test combining all operators
+- Move to `iterator_plan.md` — custom iterator class viability and begin/end member usage
+- Or: Phase 5 (free-function operators) if iterator tests require it
 
 ## Known Limitations
 - operator-> chaining (e.g., `a->b->c` where both a and b have operator->) not yet supported
-- No const-qualified operator overloads (e.g., `int operator[](int) const`)
 - No free-function (non-member) operators
 - No operator() (function call operator)
+- No parameter-type-based overload resolution for same operator (e.g., `operator-(int)` vs `operator-(Iter)`)
+- Const method dispatch relies on TypeSpec.is_const — const reference parameters work but requires proper const propagation through the type system
 
 ## Notes
 - try_lower_operator_call() builds CallExpr with &obj as implicit this + explicit args
@@ -70,3 +83,5 @@
 - resolve_typedef_to_struct() needed because parser can't add full typedef resolution before struct body is complete (causes "incomplete type" errors for local vars)
 - maybe_bool_convert() inserted at: if/while/do-while/for cond, ternary cond, logical !, &&, ||
 - Conversion operators (operator bool) have no return type prefix — parser detects KwOperator directly
+- struct_method_ret_types_ map stores return types at registration time (before fn_index is available)
+- Const methods use "_const" suffix: mangled="Struct__method_const", key="Struct::method_const"

@@ -1358,10 +1358,11 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             }
 
             // Parse trailing qualifiers (const, constexpr, consteval)
+            bool is_method_const = false;
             bool is_method_constexpr = false;
             bool is_method_consteval = false;
             while (true) {
-                if (match(TokenKind::KwConst)) {}
+                if (match(TokenKind::KwConst)) { is_method_const = true; }
                 else if (is_cpp_mode() && match(TokenKind::KwConstexpr)) {
                     is_method_constexpr = true;
                 } else if (is_cpp_mode() && match(TokenKind::KwConsteval)) {
@@ -1376,6 +1377,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             method->name = arena_.strdup(op_mangled);
             method->operator_kind = op_kind;
             method->variadic = variadic;
+            method->is_const_method = is_method_const;
             method->is_constexpr = is_method_constexpr;
             method->is_consteval = is_method_consteval;
             method->n_params = (int)params.size();
@@ -1447,10 +1449,11 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                     }
                 }
                 expect(TokenKind::RParen);
+                bool is_method_const = false;
                 bool is_method_constexpr = false;
                 bool is_method_consteval = false;
                 while (true) {
-                    if (match(TokenKind::KwConst)) {}
+                    if (match(TokenKind::KwConst)) { is_method_const = true; }
                     else if (is_cpp_mode() && match(TokenKind::KwConstexpr)) {
                         is_method_constexpr = true;
                     } else if (is_cpp_mode() && match(TokenKind::KwConsteval)) {
@@ -1463,6 +1466,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 method->type = cur_fts;
                 method->name = fname;
                 method->variadic = variadic;
+                method->is_const_method = is_method_const;
                 method->is_constexpr = is_method_constexpr;
                 method->is_consteval = is_method_consteval;
                 method->n_params = (int)params.size();

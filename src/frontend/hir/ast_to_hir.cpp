@@ -881,6 +881,13 @@ class Lowerer {
       }
       case NK_DEREF: {
         TypeSpec ts = infer_generic_ctrl_type(ctx, n->left);
+        if (ts.ptr_level == 0 && ts.base == TB_STRUCT && ts.tag) {
+          // Check for operator_deref method — return its return type.
+          std::string key = std::string(ts.tag) + "::operator_deref";
+          auto rit = struct_method_ret_types_.find(key);
+          if (rit != struct_method_ret_types_.end())
+            return rit->second;
+        }
         if (ts.ptr_level > 0) ts.ptr_level -= 1;
         else if (ts.array_rank > 0) ts.array_rank -= 1;
         return ts;
@@ -1204,9 +1211,11 @@ class Lowerer {
     for (int i = 0; i < sd->n_children; ++i) {
       const Node* method = sd->children[i];
       if (!method || method->kind != NK_FUNCTION || !method->name) continue;
-      std::string mangled = std::string(tag) + "__" + method->name;
-      std::string key = std::string(tag) + "::" + method->name;
+      const char* const_suffix = method->is_const_method ? "_const" : "";
+      std::string mangled = std::string(tag) + "__" + method->name + const_suffix;
+      std::string key = std::string(tag) + "::" + method->name + const_suffix;
       struct_methods_[key] = mangled;
+      struct_method_ret_types_[key] = method->type;
       pending_methods_.push_back({mangled, std::string(tag), method,
                                   method_tpl_bindings, method_nttp_bindings});
     }
@@ -1425,10 +1434,12 @@ class Lowerer {
       for (int mi = 0; mi < tpl_def->n_children; ++mi) {
         const Node* method = tpl_def->children[mi];
         if (!method || method->kind != NK_FUNCTION || !method->name) continue;
-        std::string mmangled = mangled + "__" + method->name;
-        std::string mkey = mangled + "::" + method->name;
+        const char* csuf = method->is_const_method ? "_const" : "";
+        std::string mmangled = mangled + "__" + method->name + csuf;
+        std::string mkey = mangled + "::" + method->name + csuf;
         if (!struct_methods_.count(mkey)) {
           struct_methods_[mkey] = mmangled;
+          struct_method_ret_types_[mkey] = method->type;
           lower_struct_method(mmangled, mangled, method,
                               &method_tpl_bindings, &method_nttp_bindings);
         }
@@ -2419,8 +2430,18 @@ class Lowerer {
         base_ts.ptr_level--;
       const char* tag = base_ts.tag;
       if (tag) {
-        std::string key = std::string(tag) + "::" + method_name;
-        auto mit = struct_methods_.find(key);
+        std::string base_key = std::string(tag) + "::" + method_name;
+        std::string const_key = base_key + "_const";
+        decltype(struct_methods_)::iterator mit;
+        if (base_ts.is_const) {
+          mit = struct_methods_.find(const_key);
+          if (mit == struct_methods_.end())
+            mit = struct_methods_.find(base_key);
+        } else {
+          mit = struct_methods_.find(base_key);
+          if (mit == struct_methods_.end())
+            mit = struct_methods_.find(const_key);
+        }
         if (mit != struct_methods_.end()) {
           DeclRef dr{};
           dr.name = mit->second;
@@ -3727,8 +3748,21 @@ class Lowerer {
     if (obj_ts.ptr_level != 0 || obj_ts.base != TB_STRUCT || !obj_ts.tag)
       return ExprId::invalid();
 
-    std::string key = std::string(obj_ts.tag) + "::" + op_method_name;
-    auto mit = struct_methods_.find(key);
+    // Select const vs non-const overload based on object constness.
+    std::string base_key = std::string(obj_ts.tag) + "::" + op_method_name;
+    std::string const_key = base_key + "_const";
+    decltype(struct_methods_)::iterator mit;
+    if (obj_ts.is_const) {
+      // Const object: must use const overload.
+      mit = struct_methods_.find(const_key);
+      if (mit == struct_methods_.end())
+        mit = struct_methods_.find(base_key); // fallback to non-const
+    } else {
+      // Non-const object: prefer non-const, fallback to const.
+      mit = struct_methods_.find(base_key);
+      if (mit == struct_methods_.end())
+        mit = struct_methods_.find(const_key);
+    }
     if (mit == struct_methods_.end()) return ExprId::invalid();
 
     // Found the operator method. Build a CallExpr.
@@ -3786,8 +3820,11 @@ class Lowerer {
     TypeSpec ts = infer_generic_ctrl_type(ctx, n);
     if (ts.ptr_level != 0 || ts.base != TB_STRUCT || !ts.tag)
       return expr;
-    std::string key = std::string(ts.tag) + "::operator_bool";
-    auto mit = struct_methods_.find(key);
+    std::string base_key = std::string(ts.tag) + "::operator_bool";
+    std::string const_key = base_key + "_const";
+    auto mit = struct_methods_.find(base_key);
+    if (mit == struct_methods_.end())
+      mit = struct_methods_.find(const_key);
     if (mit == struct_methods_.end()) return expr;
 
     // Build a CallExpr to operator_bool with &obj as this.
@@ -5208,6 +5245,8 @@ class Lowerer {
   std::unordered_set<std::string> instantiated_tpl_structs_;
   // Struct method map: "struct_tag::method_name" → mangled function name.
   std::unordered_map<std::string, std::string> struct_methods_;
+  // Struct method return types: "struct_tag::method_name" → return TypeSpec.
+  std::unordered_map<std::string, TypeSpec> struct_method_ret_types_;
   // Pending struct methods to lower.
   struct PendingMethod {
     std::string mangled;

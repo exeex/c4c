@@ -302,6 +302,7 @@ struct Node {
     bool is_inline;     // NK_FUNCTION
     bool is_constexpr;  // NK_IF, NK_FUNCTION, NK_DECL, NK_GLOBAL_VAR
     bool is_consteval;  // NK_FUNCTION
+    bool is_const_method; // NK_FUNCTION: const-qualified member function
     bool is_explicit_specialization; // NK_FUNCTION: template<> explicit specialization
     uint8_t visibility; // 0=default, 1=hidden, 2=protected (from #pragma GCC visibility)
     bool is_volatile_asm; // NK_ASM
