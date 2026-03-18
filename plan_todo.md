@@ -96,14 +96,21 @@ Completed:
   `TemplateInstantiationStep`.  Updated `README.md` with current three-stage
   pipeline architecture and accurate file roles.
 
+- **Phase 3.2 (2026-03-18):** Removed duplicate Lowerer-owned definition maps.
+  Deleted `consteval_fns_` and `template_fn_defs_` member maps from Lowerer —
+  all lookups now go through `ct_state_->find_consteval_def()`,
+  `ct_state_->has_consteval_def()`, `ct_state_->find_template_def()`,
+  `ct_state_->has_template_def()`.  Added `for_each_template_def()` iteration
+  API and `consteval_fn_defs()` const-ref accessor to `CompileTimeState`.
+  Removed unused `CompileTimePassStats` type alias.
+
 Not completed:
 
 - DeferredInstantiateFn still captures the Lowerer for `lower_function()` — this is
   fundamentally required since only the Lowerer can lower AST to HIR
-- Lowerer still maintains duplicate `consteval_fns_` / `template_fn_defs_` maps
-  (used during initial HIR construction; engine has copies in CompileTimeState)
-- `CompileTimePassStats` type alias could be removed
-- Phase 3 tasks 2-3: further legacy removal if beneficial
+- Lowerer still owns `enum_consts_` / `const_int_bindings_` maps (used extensively
+  during initial HIR construction; engine has copies in CompileTimeState)
+- Phase 3 tasks 2-3: further legacy removal if beneficial (diminishing returns)
 
 ## Phase 1: Move Compile-Time State Toward The Engine
 
@@ -233,4 +240,5 @@ After parity is proven, remove legacy ownership paths and keep the cleaner model
 8. ~~move consteval evaluator into engine-owned state~~ (done: Phase 2.4 — CompileTimeState::evaluate_consteval)
 9. ~~further reduce callback surface for template instantiation~~ (done: Phase 2.5 — engine owns pre-checks + post-metadata)
 10. ~~Phase 3 slice 1: remove compatibility aliases, DeferredConstevalEvalFn, null ct_state fallbacks, update README~~ (done: Phase 3.1)
-11. Phase 3 remaining: evaluate further legacy removal (duplicate Lowerer maps, CompileTimePassStats alias)
+11. ~~Phase 3 slice 2: remove duplicate Lowerer definition maps (consteval_fns_, template_fn_defs_) and CompileTimePassStats alias~~ (done: Phase 3.2)
+12. Phase 3 remaining: evaluate further legacy removal (enum_consts_/const_int_bindings_ duplication — diminishing returns)

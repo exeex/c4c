@@ -454,7 +454,6 @@ class Lowerer {
     // Phase 1.5: collect consteval function definitions for compile-time evaluation
     for (const Node* item : items) {
       if (item->kind == NK_FUNCTION && item->is_consteval && item->name) {
-        consteval_fns_[item->name] = item;
         ct_state_->register_consteval_def(item->name, item);
       }
     }
@@ -465,7 +464,6 @@ class Lowerer {
     // template-dependent args can be lowered once per instantiation.
     for (const Node* item : items) {
       if (item->kind == NK_FUNCTION && item->name && item->n_template_params > 0) {
-        template_fn_defs_[item->name] = item;
         ct_state_->register_template_def(item->name, item);
       }
     }
@@ -473,9 +471,9 @@ class Lowerer {
     for (const Node* item : items) {
       if (item->kind == NK_FUNCTION && item->name && item->is_explicit_specialization
           && item->n_template_args > 0) {
-        auto def_it = template_fn_defs_.find(item->name);
-        if (def_it != template_fn_defs_.end()) {
-          std::string mangled = mangle_specialization(item, def_it->second);
+        const Node* tpl_def = ct_state_->find_template_def(item->name);
+        if (tpl_def) {
+          std::string mangled = mangle_specialization(item, tpl_def);
           if (!mangled.empty())
             registry_.register_specialization(mangled, item);
         }
@@ -522,7 +520,7 @@ class Lowerer {
     }
 
     // Phase 1.7b: populate HirTemplateDef metadata for all template functions.
-    for (const auto& [name, fn_def] : template_fn_defs_) {
+    ct_state_->for_each_template_def([&](const std::string& name, const Node* fn_def) {
       HirTemplateDef tdef;
       tdef.name = name;
       tdef.is_consteval = fn_def->is_consteval;
@@ -536,7 +534,7 @@ class Lowerer {
       tdef.instances = ct_state_->instances_to_hir_metadata(
           name, tdef.template_params);
       m.template_defs[name] = std::move(tdef);
-    }
+    });
 
     // Phase 2: lower functions and globals
     for (const Node* item : items) {
@@ -622,9 +620,8 @@ class Lowerer {
     // (template_origin, spec_key) are now handled by the engine's
     // TemplateInstantiationStep.  This callback is a pure lowering
     // operation.
-    auto fn_it = template_fn_defs_.find(tpl_name);
-    if (fn_it == template_fn_defs_.end()) return false;
-    const Node* fn_def = fn_it->second;
+    const Node* fn_def = ct_state_->find_template_def(tpl_name);
+    if (!fn_def) return false;
     const Node* spec_node = registry_.find_specialization(mangled);
     if (spec_node) {
       lower_function(spec_node, &mangled);
@@ -3580,7 +3577,7 @@ class Lowerer {
       case NK_ADDR: {
         // Reject taking the address of a consteval function.
         if (n->left && n->left->kind == NK_VAR && n->left->name &&
-            consteval_fns_.count(n->left->name)) {
+            ct_state_->has_consteval_def(n->left->name)) {
           std::string diag = "error: cannot take address of consteval function '";
           diag += n->left->name;
           diag += "'";
@@ -3646,8 +3643,8 @@ class Lowerer {
       case NK_BUILTIN_CALL: {
         // Try consteval interpretation for calls to consteval functions.
         if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR && n->left->name) {
-          auto ce_it = consteval_fns_.find(n->left->name);
-          if (ce_it != consteval_fns_.end()) {
+          const Node* ce_fn_def = ct_state_->find_consteval_def(n->left->name);
+          if (ce_fn_def) {
             // Evaluate all arguments as constant expressions.
             ConstEvalEnv arg_env{&enum_consts_, &const_int_bindings_,
                                  ctx ? &ctx->local_const_bindings : nullptr};
@@ -3658,7 +3655,7 @@ class Lowerer {
             // function's template bindings.
             TypeBindings tpl_bindings;
             NttpBindings ce_nttp_bindings;
-            const Node* fn_def = ce_it->second;
+            const Node* fn_def = ce_fn_def;
             if ((n->left->n_template_args > 0 || n->left->has_template_args) &&
                 fn_def->n_template_params > 0) {
               int count = std::min(n->left->n_template_args, fn_def->n_template_params);
@@ -3740,7 +3737,7 @@ class Lowerer {
                 return append_expr(n, std::move(pce), ts);
               }
               auto result = evaluate_consteval_call(
-                  ce_it->second, args, arg_env, consteval_fns_);
+                  ce_fn_def, args, arg_env, ct_state_->consteval_fn_defs());
               if (result.ok()) {
                 TypeSpec ts = n->type;
                 long long rv = result.as_int();
@@ -3835,8 +3832,8 @@ class Lowerer {
         std::string resolved_callee_name;
         if (n->left && n->left->kind == NK_VAR && n->left->name &&
             (n->left->n_template_args > 0 || n->left->has_template_args) &&
-            template_fn_defs_.count(n->left->name) &&
-            !consteval_fns_.count(n->left->name)) {
+            ct_state_->has_template_def(n->left->name) &&
+            !ct_state_->has_consteval_def(n->left->name)) {
           const TypeBindings* enc = (ctx && !ctx->tpl_bindings.empty())
                                         ? &ctx->tpl_bindings : nullptr;
           const NttpBindings* enc_nttp = (ctx && !ctx->nttp_bindings.empty())
@@ -3857,14 +3854,14 @@ class Lowerer {
           // Preserve template application metadata.
           TemplateCallInfo tci;
           tci.source_template = n->left->name;
-          auto fn_it = template_fn_defs_.find(n->left->name);
-          if (fn_it != template_fn_defs_.end()) {
-            TypeBindings bindings = build_call_bindings(n->left, fn_it->second, enc);
-            for (const auto& pname : get_template_param_order(fn_it->second)) {
+          const Node* tpl_fn = ct_state_->find_template_def(n->left->name);
+          if (tpl_fn) {
+            TypeBindings bindings = build_call_bindings(n->left, tpl_fn, enc);
+            for (const auto& pname : get_template_param_order(tpl_fn)) {
               auto bit = bindings.find(pname);
               if (bit != bindings.end()) tci.template_args.push_back(bit->second);
             }
-            tci.nttp_args = build_call_nttp_bindings(n->left, fn_it->second, enc_nttp);
+            tci.nttp_args = build_call_nttp_bindings(n->left, tpl_fn, enc_nttp);
           }
           c.template_info = std::move(tci);
         } else if (auto ded_it = deduced_template_calls_.find(n);
@@ -3885,9 +3882,9 @@ class Lowerer {
           // Preserve template application metadata.
           TemplateCallInfo tci;
           tci.source_template = n->left->name;
-          auto fn_it = template_fn_defs_.find(n->left->name);
-          if (fn_it != template_fn_defs_.end()) {
-            for (const auto& pname : get_template_param_order(fn_it->second)) {
+          const Node* tpl_fn = ct_state_->find_template_def(n->left->name);
+          if (tpl_fn) {
+            for (const auto& pname : get_template_param_order(tpl_fn)) {
               auto bit = ded_it->second.bindings.find(pname);
               if (bit != ded_it->second.bindings.end())
                 tci.template_args.push_back(bit->second);
@@ -4782,8 +4779,8 @@ class Lowerer {
 
   // Get template parameter order from the definition (for specialization key).
   std::vector<std::string> get_template_param_order_from_instances(const std::string& fn_name) {
-    auto it = template_fn_defs_.find(fn_name);
-    if (it != template_fn_defs_.end()) return get_template_param_order(it->second);
+    const Node* tpl_def = ct_state_->find_template_def(fn_name);
+    if (tpl_def) return get_template_param_order(tpl_def);
     return {};
   }
 
@@ -4805,9 +4802,8 @@ class Lowerer {
     if (!call_var || !call_var->name ||
         (call_var->n_template_args <= 0 && !call_var->has_template_args))
       return call_var ? (call_var->name ? call_var->name : "") : "";
-    auto fn_it = template_fn_defs_.find(call_var->name);
-    if (fn_it == template_fn_defs_.end()) return call_var->name;
-    const Node* fn_def = fn_it->second;
+    const Node* fn_def = ct_state_->find_template_def(call_var->name);
+    if (!fn_def) return call_var->name;
     if (fn_def->is_consteval) return call_var->name;  // consteval handled separately
     TypeBindings bindings = build_call_bindings(call_var, fn_def, enclosing_bindings);
     NttpBindings nttp_bindings = build_call_nttp_bindings(call_var, fn_def, enclosing_nttp);
@@ -4820,9 +4816,8 @@ class Lowerer {
     if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR &&
         n->left->name &&
         (n->left->n_template_args > 0 || n->left->has_template_args)) {
-      auto fn_it = template_fn_defs_.find(n->left->name);
-      if (fn_it != template_fn_defs_.end()) {
-        const Node* fn_def = fn_it->second;
+      const Node* fn_def = ct_state_->find_template_def(n->left->name);
+      if (fn_def) {
         if (!fn_def->is_consteval && fn_def->n_template_params > 0) {
           // Determine the enclosing function's template bindings (if any).
           const TypeBindings* enclosing_bindings = nullptr;
@@ -4862,9 +4857,8 @@ class Lowerer {
     if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR &&
         n->left->name &&
         n->left->n_template_args == 0 && !n->left->has_template_args) {
-      auto fn_it = template_fn_defs_.find(n->left->name);
-      if (fn_it != template_fn_defs_.end()) {
-        const Node* fn_def = fn_it->second;
+      const Node* fn_def = ct_state_->find_template_def(n->left->name);
+      if (fn_def) {
         if (!fn_def->is_consteval && fn_def->n_template_params > 0) {
           TypeBindings deduced = try_deduce_template_type_args(n, fn_def, enclosing_fn);
 
@@ -4912,9 +4906,8 @@ class Lowerer {
     if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR &&
         n->left->name &&
         (n->left->n_template_args > 0 || n->left->has_template_args)) {
-      auto fn_it = template_fn_defs_.find(n->left->name);
-      if (fn_it != template_fn_defs_.end()) {
-        const Node* fn_def = fn_it->second;
+      const Node* fn_def = ct_state_->find_template_def(n->left->name);
+      if (fn_def) {
         if (fn_def->is_consteval && fn_def->n_template_params > 0) {
           if (enclosing_fn && enclosing_fn->name) {
             auto* enc_list = registry_.find_instances(enclosing_fn->name);
@@ -5000,9 +4993,6 @@ class Lowerer {
   std::unordered_map<std::string, long long> enum_consts_;
   std::unordered_map<std::string, long long> const_int_bindings_;
   std::unordered_set<std::string> weak_symbols_;
-  std::unordered_map<std::string, const Node*> consteval_fns_;
-  // All template function definitions indexed by name (consteval and non-consteval).
-  std::unordered_map<std::string, const Node*> template_fn_defs_;
   // Engine-owned compile-time state.  Shared with the pipeline so
   // the compile-time engine can access the registry directly.
   std::shared_ptr<CompileTimeState> ct_state_ = std::make_shared<CompileTimeState>();

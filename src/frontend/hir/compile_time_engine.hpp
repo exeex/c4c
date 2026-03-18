@@ -370,11 +370,24 @@ struct CompileTimeState {
     return it != consteval_fn_defs_.end() ? it->second : nullptr;
   }
 
+  /// Const reference to the internal consteval function definition map.
+  /// Useful for passing to evaluate_consteval_call() which expects a map ref.
+  const std::unordered_map<std::string, const Node*>& consteval_fn_defs() const {
+    return consteval_fn_defs_;
+  }
+
   /// Number of registered template function definitions.
   size_t template_def_count() const { return template_fn_defs_.size(); }
 
   /// Number of registered consteval function definitions.
   size_t consteval_def_count() const { return consteval_fn_defs_.size(); }
+
+  /// Iterate over all registered template function definitions.
+  template<typename Fn>
+  void for_each_template_def(Fn&& fn) const {
+    for (const auto& [name, node] : template_fn_defs_)
+      fn(name, node);
+  }
 
   /// Record a deferred template instance discovered during the engine's
   /// fixpoint loop.  Updates the registry (seed + realize) and returns a
@@ -498,8 +511,6 @@ struct CompileTimeEngineStats {
   bool registry_parity = true;         // true if seeds == instances (all realized)
   std::vector<CompileTimeDiagnostic> diagnostics;  // details on irreducible nodes
 };
-
-using CompileTimePassStats = CompileTimeEngineStats;
 
 /// Callback for deferred template instantiation.
 ///
