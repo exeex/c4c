@@ -1,9 +1,18 @@
 [submodule "ref/claudes-c-compiler"]
 	path = ref/claudes-c-compiler
 	url = https://github.com/anthropics/claudes-c-compiler.git
-[submodule "tests/external/c-testsuite"]
-	path = tests/external/c-testsuite
+[submodule "ref/llvm-project"]
+	path = ref/llvm-project
+	url = https://github.com/llvm/llvm-project.git
+[submodule "tests/c/external/c-testsuite"]
+	path = tests/c/external/c-testsuite
 	url = https://github.com/exeex/c4c-c-testsuite.git
-[submodule "tests/external/gcc_torture"]
-	path = tests/external/gcc_torture
+[submodule "tests/c/external/gcc_torture"]
+	path = tests/c/external/gcc_torture
 	url = https://github.com/exeex/c4c-gcc-torture.git
+[submodule "tests/cpp/external/clang"]
+	path = tests/cpp/external/clang
+	url = https://github.com/exeex/c4c-clangtestcpp.git
+[submodule "tests/c/external/clang"]
+	path = tests/c/external/clang
+	url = https://github.com/exeex/c4c-clangtestc.git
