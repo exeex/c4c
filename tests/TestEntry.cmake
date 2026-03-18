@@ -20,13 +20,31 @@ if(NOT C_TESTSUITE_ROOT AND EXISTS "${PROJECT_SOURCE_DIR}/tests/c/external/c-tes
   set(C_TESTSUITE_ROOT "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite")
 endif()
 
+find_program(PYTHON3_EXECUTABLE NAMES python3)
+
+set(C_CLANG_TEST_SUITE_ROOT "" CACHE PATH "Path to vendored external clang C subset root")
+if(NOT C_CLANG_TEST_SUITE_ROOT AND EXISTS "${PROJECT_SOURCE_DIR}/tests/c/external/clang")
+  set(C_CLANG_TEST_SUITE_ROOT "${PROJECT_SOURCE_DIR}/tests/c/external/clang")
+endif()
+
 set(LLVM_TEST_SUITE_ROOT "" CACHE PATH "Path to vendored gcc torture subset root")
 if(NOT LLVM_TEST_SUITE_ROOT AND EXISTS "${PROJECT_SOURCE_DIR}/tests/c/external/gcc_torture")
   set(LLVM_TEST_SUITE_ROOT "${PROJECT_SOURCE_DIR}/tests/c/external/gcc_torture")
 endif()
 
+set(CPP_CLANG_TEST_SUITE_ROOT "" CACHE PATH "Path to vendored external clang C++ subset root")
+if(NOT CPP_CLANG_TEST_SUITE_ROOT AND EXISTS "${PROJECT_SOURCE_DIR}/tests/cpp/external/clang")
+  set(CPP_CLANG_TEST_SUITE_ROOT "${PROJECT_SOURCE_DIR}/tests/cpp/external/clang")
+endif()
+
 option(ENABLE_LLVM_GCC_C_TORTURE_TESTS
     "Register llvm gcc-c-torture execute tests (resource-heavy during migration)"
+    ON)
+option(ENABLE_C_CLANG_EXTERNAL_TESTS
+    "Register curated external clang C subset tests"
+    ON)
+option(ENABLE_CPP_CLANG_EXTERNAL_TESTS
+    "Register curated external clang C++ subset tests"
     ON)
 
 enable_testing()
@@ -65,6 +83,104 @@ if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
     )
     set_tests_properties("${test_name}" PROPERTIES LABELS "c_testsuite")
   endforeach()
+endif()
+
+if(ENABLE_C_CLANG_EXTERNAL_TESTS AND
+   C_CLANG_TEST_SUITE_ROOT AND EXISTS "${C_CLANG_TEST_SUITE_ROOT}")
+  set(C_CLANG_TEST_ALLOWLIST "${C_CLANG_TEST_SUITE_ROOT}/allowlist.txt")
+  if(EXISTS "${C_CLANG_TEST_ALLOWLIST}")
+    file(STRINGS "${C_CLANG_TEST_ALLOWLIST}" C_CLANG_TEST_ALLOWLIST_RAW)
+    foreach(entry IN LISTS C_CLANG_TEST_ALLOWLIST_RAW)
+      string(STRIP "${entry}" entry)
+      if(entry STREQUAL "" OR entry MATCHES "^#")
+        continue()
+      endif()
+
+      set(fields "${entry}")
+      string(REPLACE "|" ";" fields "${fields}")
+      list(LENGTH fields field_count)
+      if(field_count LESS 1)
+        continue()
+      endif()
+
+      list(GET fields 0 rel_src)
+      set(expect_mode "pass")
+      if(field_count GREATER 1)
+        list(GET fields 1 expect_mode)
+      endif()
+
+      set(src "${C_CLANG_TEST_SUITE_ROOT}/${rel_src}")
+      if(NOT EXISTS "${src}")
+        message(WARNING "clang c allowlist entry not found: ${rel_src}")
+        continue()
+      endif()
+
+      string(REGEX REPLACE "[^A-Za-z0-9_]" "_" test_id "${rel_src}")
+      set(test_name "clang_c_external_${test_id}")
+
+      add_test(
+        NAME "${test_name}"
+        COMMAND "${CMAKE_COMMAND}"
+                -DCOMPILER=$<TARGET_FILE:c4cll>
+                -DPYTHON3_EXECUTABLE=${PYTHON3_EXECUTABLE}
+                -DRUNNER=${PROJECT_SOURCE_DIR}/tests/verify_external_clang_case.py
+                -DSRC=${src}
+                -DEXPECT_MODE=${expect_mode}
+                -DOUT_LL=${CMAKE_BINARY_DIR}/clang_c_external/${rel_src}.ll
+                -P "${C_CLANG_TEST_SUITE_ROOT}/RunCase.cmake"
+      )
+      set_tests_properties("${test_name}" PROPERTIES LABELS "clang_c_external;c")
+    endforeach()
+  endif()
+endif()
+
+if(ENABLE_CPP_CLANG_EXTERNAL_TESTS AND
+   CPP_CLANG_TEST_SUITE_ROOT AND EXISTS "${CPP_CLANG_TEST_SUITE_ROOT}")
+  set(CPP_CLANG_TEST_ALLOWLIST "${CPP_CLANG_TEST_SUITE_ROOT}/allowlist.txt")
+  if(EXISTS "${CPP_CLANG_TEST_ALLOWLIST}")
+    file(STRINGS "${CPP_CLANG_TEST_ALLOWLIST}" CPP_CLANG_TEST_ALLOWLIST_RAW)
+    foreach(entry IN LISTS CPP_CLANG_TEST_ALLOWLIST_RAW)
+      string(STRIP "${entry}" entry)
+      if(entry STREQUAL "" OR entry MATCHES "^#")
+        continue()
+      endif()
+
+      set(fields "${entry}")
+      string(REPLACE "|" ";" fields "${fields}")
+      list(LENGTH fields field_count)
+      if(field_count LESS 1)
+        continue()
+      endif()
+
+      list(GET fields 0 rel_src)
+      set(expect_mode "pass")
+      if(field_count GREATER 1)
+        list(GET fields 1 expect_mode)
+      endif()
+
+      set(src "${CPP_CLANG_TEST_SUITE_ROOT}/${rel_src}")
+      if(NOT EXISTS "${src}")
+        message(WARNING "clang cpp allowlist entry not found: ${rel_src}")
+        continue()
+      endif()
+
+      string(REGEX REPLACE "[^A-Za-z0-9_]" "_" test_id "${rel_src}")
+      set(test_name "clang_cpp_external_${test_id}")
+
+      add_test(
+        NAME "${test_name}"
+        COMMAND "${CMAKE_COMMAND}"
+                -DCOMPILER=$<TARGET_FILE:c4cll>
+                -DPYTHON3_EXECUTABLE=${PYTHON3_EXECUTABLE}
+                -DRUNNER=${PROJECT_SOURCE_DIR}/tests/verify_external_clang_case.py
+                -DSRC=${src}
+                -DEXPECT_MODE=${expect_mode}
+                -DOUT_LL=${CMAKE_BINARY_DIR}/clang_cpp_external/${rel_src}.ll
+                -P "${CPP_CLANG_TEST_SUITE_ROOT}/RunCase.cmake"
+      )
+      set_tests_properties("${test_name}" PROPERTIES LABELS "clang_cpp_external;cpp")
+    endforeach()
+  endif()
 endif()
 
 if(ENABLE_LLVM_GCC_C_TORTURE_TESTS AND

@@ -1,263 +1,344 @@
-# AST Refactor Plan 2
+# Lightweight Error Recovery Plan
 
 ## Goal
 
-Restructure the HIR frontend files so the pipeline clearly reflects the intended
-compile-time model:
+We want a minimal error-recovery strategy for `c4cll` that is good enough to:
 
-1. AST is lowered into an initial HIR form
-2. compile-time-required work is normalized by the compile-time engine
-3. the public HIR entrypoint orchestrates the pipeline instead of owning the details
+- keep parsing after common syntax/sema failures,
+- avoid turning one real error into a flood of useless cascade errors,
+- support a practical subset of Clang-style negative tests,
+- stay small and maintainable instead of growing into a full Clang-like recovery engine.
 
-This plan focuses on file and flow separation first.
-It does not yet require deeper behavior changes.
+This plan intentionally targets the lightweight path:
 
-## Why A Second Refactor Plan
+- panic-mode parser recovery,
+- a small number of `invalid` placeholder nodes/types,
+- sema short-circuiting on invalid inputs,
+- test-runner support for `expected-error`,
+- no attempt to fully emulate `lit`, `-verify`, or `FileCheck`.
 
-The first refactor plan focused on responsibility boundaries:
 
-- AST should act like a seed/todo builder
-- HIR-side logic should increasingly own compile-time reduction
+## Non-Goals
 
-This second plan narrows the immediate task to something more mechanical:
+This work does **not** try to:
 
-- separate the files by role
-- make the pipeline visible in code structure
-- move toward the final architecture without changing semantics yet
+- fully match Clang diagnostics,
+- support `expected-warning` / `expected-note` as a hard requirement,
+- support `RUN:` command parsing,
+- support `FileCheck`,
+- support every `@+N`, `@-N`, label, or note-chaining feature from Clang,
+- preserve perfect AST quality after malformed input.
 
-## Target File Roles
+The target is much narrower: keep enough structure alive so we can continue and report multiple useful errors in one file.
 
-### `src/frontend/hir/ast_to_hir.*`
 
-This file pair should return to its literal responsibility:
+## Why This Matters
 
-- AST to initial HIR construction
+Without recovery, external Clang negative tests are hard to use:
 
-It should own:
+- the first parse error often stops meaningful progress,
+- later `expected-error` comments become unreachable,
+- diagnostics become noisy and unstable,
+- the suite can only be used as crude `pass/fail`.
 
-- AST walking and typed lowering
-- initial HIR node creation
-- preservation of compile-time-related nodes/metadata
-- AST-side seed collection that is still needed during transition
+With lightweight recovery, we can move to:
 
-It should not appear to be the full owner of:
+- multiple useful errors per file,
+- selective support for `verify`-style tests,
+- better regression coverage for parser and sema.
 
-- the public HIR pipeline
-- compile-time normalization policy
-- the final compile-time reduction loop
 
-### `src/frontend/hir/compile_time_engine.*`
+## Strategy
 
-This file pair should be the home of compile-time normalization mechanics.
+### 1. Parser Uses Panic-Mode Recovery
 
-It should own:
+When parsing fails, do not try to fully repair the program.
 
-- compile-time reduction loop
-- compile-time engine state
-- template instantiation bookkeeping
-- seed/todo consumption
-- convergence / non-convergence logic
-- deferred compile-time completion
+Instead:
 
-This is the main place where the "compile-time computation unification" goal
-should become visible.
+- emit one primary diagnostic,
+- discard tokens until a safe synchronization point,
+- resume parsing from there.
 
-### `src/frontend/hir/hir.*`
+Primary synchronization points:
 
-This file pair should become the public pipeline entrypoint for the HIR subsystem.
+- `;`
+- `}`
+- `)`
+- `,`
+- top-level declaration starters such as type/specifier keywords
 
-It should own:
+This gives us cheap forward progress without building a heavy recovery system.
 
-- the top-level HIR build flow
-- calling AST-to-initial-HIR construction
-- calling compile-time normalization
-- returning the final HIR module
 
-It should not own:
+### 2. Introduce Minimal Invalid Placeholders
 
-- detailed AST lowering logic
-- detailed compile-time engine internals
+We should represent broken constructs explicitly instead of aborting whole subtrees.
 
-Conceptually this file should play the same role for HIR that
-`src/frontend/sema/sema.cpp` plays for sema:
+Useful placeholder concepts:
 
-- pipeline coordinator
-- thin orchestration layer
+- `InvalidExpr`
+- `InvalidType`
+- `InvalidDecl`
+- possibly `InvalidStmt`
 
-## Desired Pipeline Shape
+These only need to carry enough information for later stages to:
 
-The intended code-level pipeline is:
+- recognize the node is already broken,
+- avoid duplicate diagnostics,
+- skip deeper processing safely.
 
-```txt
-AST
-  -> ast_to_hir.build_initial_hir(...)
-  -> compile_time_engine.run_compile_time_engine(...)
-  -> hir.build_hir(...)
-```
 
-More precisely:
+### 3. Sema Short-Circuits On Invalid Inputs
 
-1. `ast_to_hir.*` builds the initial mixed compile-time/runtime HIR
-2. `compile_time_engine.*` reduces compile-time-required work
-3. `hir.*` is the public entrypoint that wires those pieces together
+If parser recovery creates invalid placeholders, sema should not keep digging.
 
-## Immediate Refactor Objective
+Rules:
 
-The first step is not to redesign the logic.
-The first step is to make the file boundaries match the intended roles.
+- if an operand/type/decl is invalid, return invalid immediately,
+- do not emit follow-up errors that are obviously consequences of an earlier failure,
+- keep walking sibling declarations/statements when safe.
 
-That means:
+This is the cheapest way to reduce cascade noise.
 
-- move detailed AST/HIR lowering logic out of `hir.cpp`
-- restore `ast_to_hir.cpp` as the implementation home for AST lowering
-- keep `hir.cpp` as a thin orchestrator
-- keep behavior stable while this split happens
 
-## Proposed Transition Strategy
+### 4. Cap Error Count
 
-### Step 1: Restore Physical Separation
+Set a hard maximum number of hard errors per translation unit.
 
-Move the detailed lowering implementation currently living in `hir.cpp`
-back into `ast_to_hir.cpp`.
+Example:
 
-During this step:
+- default max: `20`
+- after limit is reached, stop with a final message
 
-- keep exported APIs stable or provide compatibility aliases
-- do not intentionally change behavior
-- keep current compile-time behavior intact
+This prevents pathological files from producing noisy output and keeps recovery cheap.
 
-Expected result:
 
-- `ast_to_hir.cpp` becomes large again temporarily
-- `hir.cpp` becomes much smaller and easier to understand
+## Minimal Recovery Points
 
-That is acceptable because the main point is role clarity.
+The first implementation only needs a few high-value recovery hooks.
 
-### Step 2: Make `hir.cpp` A Thin Orchestrator
+### A. Top-Level Declarations
 
-After physical separation, `hir.cpp` should mostly do:
+If a declaration parse fails:
 
-1. call AST-to-HIR construction
-2. call compile-time engine
-3. return the module
+- report the error,
+- skip to the next `;` or top-level declaration boundary,
+- continue parsing the next declaration.
 
-It may also:
+This is the most important recovery point for Clang-style conformance files.
 
-- apply future materialization entrypoints
-- expose the public API used by sema or tools
 
-But it should avoid re-growing detailed logic.
+### B. Statements In Blocks
 
-### Step 3: Keep Old Internal Behavior During Split
+If a statement parse fails:
 
-Even after the files are separated again:
+- report the error,
+- skip to `;` or `}`,
+- continue with the next statement.
 
-- AST-side seed collection can remain
-- current callbacks can remain
-- old instance bookkeeping can remain
+This helps negative tests that intentionally place one bad statement among many good ones.
 
-The purpose of this plan is file and flow clarity first, not semantic cleanup.
 
-### Step 4: Only After The Split, Start Internal Cleanup
+### C. Parenthesized Lists
 
-Once the file roles are restored:
+If parsing fails inside:
 
-- move instance bookkeeping into `compile_time_engine.*`
-- shrink AST-side ownership
-- make `compile_time_engine.*` the true owner of compile-time reduction state
+- parameter lists,
+- argument lists,
+- control-flow conditions,
 
-That deeper work belongs to later phases.
+then:
 
-## Recommended API Shape
+- skip to the matching `)` if possible,
+- produce an invalid node,
+- continue from the outer construct.
 
-### In `ast_to_hir.hpp`
+This is especially valuable because malformed parens often poison the rest of the file.
 
-Introduce or rename toward an API with "initial HIR" semantics.
 
-Example direction:
+### D. Expression Parsing
 
-- `build_initial_hir(...)`
+If an expression cannot be completed:
 
-This name makes it clear that the result is not necessarily fully normalized yet.
+- emit one diagnostic,
+- return `InvalidExpr`,
+- let the caller decide how far to resync.
 
-### In `hir.hpp`
+Avoid repeatedly diagnosing the same token sequence.
 
-Keep the public subsystem entrypoint:
 
-- `build_hir(...)`
+### E. Type Parsing
 
-Meaning:
+If a type-specifier sequence is malformed:
 
-- build the initial HIR
-- run compile-time normalization
-- return the resulting module
+- emit one diagnostic,
+- return `InvalidType`,
+- let declaration parsing continue where possible.
 
-This distinction helps communicate the two-stage model:
 
-- initial construction
-- compile-time normalization
+## Minimum Viable Alignment With Clang Negative Tests
 
-### In `compile_time_engine.hpp`
+We only want to align with the simplest and most useful subset of Clang-style negative tests.
 
-Keep the engine entrypoint explicit:
+### Supported Form
 
-- `run_compile_time_engine(...)`
+Support only:
 
-Long term this should operate on explicit engine state rather than relying on
-ad hoc builder-owned internal state.
+- `expected-error {{message fragment}}`
+- `expected-error@+N {{message fragment}}`
+- `expected-error@-N {{message fragment}}`
+- optional simple count forms like `expected-error 2{{...}}`
 
-## Responsibility Matrix
+But only for **errors**.
 
-### `ast_to_hir.*`
+We do **not** need warnings or notes as a first milestone.
 
-Owns:
 
-- syntax-to-HIR construction
-- compile-time node preservation
-- transition-period AST seed extraction
+### Matching Policy
 
-Does not own:
+The runner should:
 
-- final compile-time normalization semantics
-- compile-time engine convergence policy
+- collect all hard errors emitted by `c4cll`,
+- compare them against `expected-error` annotations,
+- match on:
+  - diagnostic kind = `error`
+  - approximate source line
+  - substring match on message text
 
-### `compile_time_engine.*`
+Line matching can be tolerant at first:
 
-Owns:
+- exact line match preferred,
+- allow `±1` as a temporary compatibility rule if current line accounting is unstable.
 
-- compile-time reduction state
-- iterative reduction
-- deferred completion
-- normalization diagnostics
 
-Does not own:
+### What We Need From The Compiler
 
-- raw AST walking
-- general HIR construction
+For this to work reliably, compiler diagnostics should follow a stable format:
 
-### `hir.*`
+- `path:line:column: error: message`
 
-Owns:
+If parse recovery uses fallback diagnostics, they should still try to include:
 
-- pipeline orchestration
-- public subsystem entrypoint
+- line number,
+- error severity,
+- a consistent message.
 
-Does not own:
 
-- detailed lowering implementation
-- detailed reduction implementation
+## Recommended Test Scope
 
-## Success Criteria
+We should not try to ingest arbitrary Clang negative tests immediately.
 
-- `hir.cpp` becomes a thin orchestration file
-- `ast_to_hir.cpp` again clearly owns AST-to-initial-HIR construction
-- `compile_time_engine.cpp` is clearly the place for compile-time normalization
-- file names and code layout reflect the intended compile-time architecture
-- behavior remains stable during this structural split
+Start with files that are:
 
-## Immediate Next Steps
+- mostly independent errors,
+- not heavily template-dependent,
+- not dependent on Clang note chains,
+- not dependent on exact wording of rich semantic diagnostics,
+- not dependent on `FileCheck`,
+- not dependent on `RUN:` variations.
 
-1. move detailed lowering implementation from `hir.cpp` back to `ast_to_hir.cpp`
-2. define a dedicated "initial HIR" builder API in `ast_to_hir.hpp`
-3. keep `build_hir(...)` in `hir.cpp` as the pipeline entrypoint
-4. only after that, begin moving template instance state into `compile_time_engine.*`
+Good early targets:
+
+- simple declaration errors,
+- scope/name lookup failures,
+- bad initializer or arity cases,
+- basic access-control or invalid-type cases where one main error is expected.
+
+Avoid initially:
+
+- tests with many `expected-note`,
+- tests with dense `@label` references,
+- tests relying on many distinct later-phase diagnostics,
+- tests where one parser failure ruins the whole grammar context.
+
+
+## Implementation Phases
+
+### Phase 1. Stabilize Diagnostic Surface
+
+- Ensure hard errors use a consistent `file:line:column: error: ...` shape.
+- Keep parse-error messages deterministic.
+- Add an error limit.
+
+Success criterion:
+
+- repeated runs on the same malformed file produce the same diagnostics.
+
+
+### Phase 2. Add Minimal Invalid Nodes
+
+- Introduce `InvalidExpr` and `InvalidType`.
+- Optionally introduce `InvalidDecl` if needed by declaration recovery.
+
+Success criterion:
+
+- parser and sema can continue past a malformed subexpression or declaration without crashing or re-reporting endlessly.
+
+
+### Phase 3. Add Synchronization Hooks
+
+- top-level declaration recovery,
+- statement recovery,
+- paren-list recovery.
+
+Success criterion:
+
+- one malformed declaration/statement does not prevent later independent declarations from being checked.
+
+
+### Phase 4. Negative Test Runner: Errors Only
+
+- keep `pass` / `fail`,
+- add `verify` for `expected-error`,
+- support simple line offsets and counts,
+- ignore warnings and notes for now.
+
+Success criterion:
+
+- a curated subset of external Clang negative tests can be checked meaningfully.
+
+
+### Phase 5. Curate Allowlists
+
+Split external negative tests into buckets:
+
+- `fail`: compiler should reject, but no stable verify yet
+- `verify`: compiler should reject and diagnostics are stable enough to match
+- `defer`: recovery or wording too unstable right now
+
+Success criterion:
+
+- the external suite gives useful regression signal instead of noise.
+
+
+## Practical Rules To Keep This Small
+
+- Never try to fully repair syntax if skipping is enough.
+- Prefer dropping broken subtrees over preserving rich malformed AST.
+- Emit one primary error per broken region when possible.
+- Stop semantic work early on invalid placeholders.
+- Keep recovery local and explicit instead of adding global complexity.
+
+
+## Definition Of Done For The First Version
+
+The lightweight plan is successful when all of the following are true:
+
+- `c4cll` can report multiple useful errors from one malformed file,
+- one bad declaration does not destroy the whole translation unit,
+- cascade diagnostics are noticeably reduced,
+- a small curated subset of external Clang negative tests can run in `verify` mode,
+- the implementation remains understandable and small.
+
+
+## Suggested Next Step
+
+After agreeing on this plan, the first coding task should be:
+
+1. add a hard error limit,
+2. add `InvalidExpr` / `InvalidType`,
+3. add top-level declaration synchronization,
+4. validate against a tiny curated `verify` allowlist.
+
+That gives the highest payoff with the lowest complexity.
