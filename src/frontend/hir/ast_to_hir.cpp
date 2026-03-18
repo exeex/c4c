@@ -1232,16 +1232,33 @@ class Lowerer {
         }
       } else {
         // Type param: look up in tpl_bindings.
-        auto tit = tpl_bindings.find(arg_refs[ai]);
-        if (tit != tpl_bindings.end()) {
-          resolved_type_bindings.push_back({param_name, tit->second});
+        const std::string& ref = arg_refs[ai];
+        if (ref.size() > 1 && ref[0] == '@') {
+          // Nested pending template struct: @origin:inner_args
+          size_t colon = ref.find(':', 1);
+          std::string inner_origin = ref.substr(1, colon == std::string::npos ? std::string::npos : colon - 1);
+          std::string inner_args = (colon != std::string::npos) ? ref.substr(colon + 1) : "";
+          // Build a temporary TypeSpec for the nested pending struct and resolve it.
+          TypeSpec nested_ts{};
+          nested_ts.base = TB_STRUCT;
+          nested_ts.array_size = -1;
+          nested_ts.inner_rank = -1;
+          nested_ts.tpl_struct_origin = inner_origin.c_str();
+          nested_ts.tpl_struct_arg_refs = inner_args.c_str();
+          resolve_pending_tpl_struct(nested_ts, tpl_bindings, nttp_bindings);
+          resolved_type_bindings.push_back({param_name, nested_ts});
         } else {
-          // Unresolved — shouldn't happen if called with full bindings.
-          TypeSpec fallback{};
-          fallback.base = TB_INT;
-          fallback.array_size = -1;
-          fallback.inner_rank = -1;
-          resolved_type_bindings.push_back({param_name, fallback});
+          auto tit = tpl_bindings.find(ref);
+          if (tit != tpl_bindings.end()) {
+            resolved_type_bindings.push_back({param_name, tit->second});
+          } else {
+            // Unresolved — shouldn't happen if called with full bindings.
+            TypeSpec fallback{};
+            fallback.base = TB_INT;
+            fallback.array_size = -1;
+            fallback.inner_rank = -1;
+            resolved_type_bindings.push_back({param_name, fallback});
+          }
         }
       }
     }

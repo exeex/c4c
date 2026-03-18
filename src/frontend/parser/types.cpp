@@ -409,7 +409,7 @@ TypeSpec Parser::parse_base_type() {
                     std::vector<std::pair<std::string, TypeSpec>> type_bindings;
                     std::vector<std::pair<std::string, long long>> nttp_bindings;
                     int arg_idx = 0;
-                    while (!at_end() && !check(TokenKind::Greater)) {
+                    while (!at_end() && !check_template_close()) {
                         if (arg_idx >= tpl_def->n_template_params) break;
                         const char* param_name = tpl_def->template_param_names[arg_idx];
                         if (tpl_def->template_param_is_nttp[arg_idx]) {
@@ -442,7 +442,7 @@ TypeSpec Parser::parse_base_type() {
                         }
                         ++arg_idx;
                     }
-                    expect(TokenKind::Greater);
+                    expect_template_close();
                     // Build mangled name
                     std::string mangled = tpl_name;
                     // Helper lambda for type suffix
@@ -488,11 +488,12 @@ TypeSpec Parser::parse_base_type() {
                                 mangled += "T";
                         }
                     }
-                    // Check if any type arg is an unresolved template param.
+                    // Check if any type arg is an unresolved template param
+                    // or a pending template struct (e.g. Pair<T> inside Box<Pair<T>>).
                     // If so, defer instantiation to HIR template function lowering.
                     bool has_unresolved_type_arg = false;
                     for (const auto& [pn, pts] : type_bindings) {
-                        if (pts.base == TB_TYPEDEF) {
+                        if (pts.base == TB_TYPEDEF || pts.tpl_struct_origin) {
                             has_unresolved_type_arg = true;
                             break;
                         }
@@ -517,7 +518,15 @@ TypeSpec Parser::parse_base_type() {
                             } else {
                                 if (ati < (int)type_bindings.size()) {
                                     const TypeSpec& ats = type_bindings[ati++].second;
-                                    arg_refs += ats.tag ? ats.tag : "?";
+                                    if (ats.tpl_struct_origin) {
+                                        // Nested pending template struct: encode as @origin:args
+                                        arg_refs += "@";
+                                        arg_refs += ats.tpl_struct_origin;
+                                        arg_refs += ":";
+                                        arg_refs += ats.tpl_struct_arg_refs ? ats.tpl_struct_arg_refs : "";
+                                    } else {
+                                        arg_refs += ats.tag ? ats.tag : "?";
+                                    }
                                 } else {
                                     arg_refs += "?";
                                 }

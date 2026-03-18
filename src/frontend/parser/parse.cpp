@@ -252,6 +252,30 @@ void Parser::expect(TokenKind k) {
     consume();
 }
 
+bool Parser::check_template_close() const {
+    return check(TokenKind::Greater) || check(TokenKind::GreaterGreater);
+}
+
+bool Parser::match_template_close() {
+    if (check(TokenKind::Greater)) { consume(); return true; }
+    if (check(TokenKind::GreaterGreater)) {
+        // Split >> into >: mutate current token to > and don't advance.
+        tokens_[pos_].kind = TokenKind::Greater;
+        tokens_[pos_].lexeme = ">";
+        return true;
+    }
+    return false;
+}
+
+void Parser::expect_template_close() {
+    if (!match_template_close()) {
+        std::ostringstream msg;
+        msg << "expected " << token_kind_name(TokenKind::Greater) << " but got '"
+            << cur().lexeme << "' at line " << cur().line;
+        throw std::runtime_error(msg.str());
+    }
+}
+
 void Parser::skip_until(TokenKind k) {
     while (!at_end() && !check(k)) consume();
     if (!at_end()) consume();  // consume the terminator

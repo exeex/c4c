@@ -341,6 +341,7 @@ Node* Parser::parse_top_level() {
             typedef_types_[pname] = param_ts;
         }
 
+        size_t struct_defs_before = struct_defs_.size();
         Node* templated = parse_top_level();
         for (const std::string& pname : injected_names) {
             typedefs_.erase(pname);
@@ -374,8 +375,9 @@ Node* Parser::parse_top_level() {
         // Template struct definitions: struct Pair { ... } was parsed inside the
         // recursive parse_top_level() call and stored in struct_defs_, while
         // `templated` is NK_EMPTY (struct-only declaration).  Find the struct
-        // def and attach template params to it.
-        if (!struct_defs_.empty() && !template_params.empty()) {
+        // def and attach template params to it.  Only consider structs that were
+        // added during THIS template parse (not pre-existing instantiated structs).
+        if (struct_defs_.size() > struct_defs_before && !template_params.empty()) {
             Node* last_sd = struct_defs_.back();
             if (last_sd && last_sd->kind == NK_STRUCT_DEF &&
                 last_sd->n_template_params == 0) {

@@ -108,6 +108,10 @@ class Parser {
   bool check2(TokenKind k) const;        // is next token kind k?
   bool match(TokenKind k);               // consume if check(k)
   void expect(TokenKind k);              // consume or throw
+  // Template angle-bracket helpers: handle >> as two > tokens.
+  bool check_template_close() const;     // is current > or >>?
+  bool match_template_close();           // consume > or split >>
+  void expect_template_close();          // match_template_close or throw
   void skip_until(TokenKind k);          // skip tokens until k (consume k)
 
   // ── type parsing helpers ──────────────────────────────────────────────────

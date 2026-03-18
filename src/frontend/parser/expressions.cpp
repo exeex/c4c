@@ -630,7 +630,7 @@ Node* Parser::parse_primary() {
             std::vector<long long> template_arg_vals;
             std::vector<const char*> template_arg_nttp_names;
             bool ok = true;
-            while (!at_end() && !check(TokenKind::Greater)) {
+            while (!at_end() && !check_template_close()) {
                 if (is_type_start()) {
                     template_args.push_back(parse_type_name());
                     template_arg_is_val.push_back(false);
@@ -669,8 +669,7 @@ Node* Parser::parse_primary() {
                 }
                 if (!match(TokenKind::Comma)) break;
             }
-            if (ok && check(TokenKind::Greater)) {
-                consume();
+            if (ok && match_template_close()) {
                 if (check(TokenKind::LParen)) {
                     // Allow empty <> for default template args; n_template_args==0 is fine.
                     ident->has_template_args = true;
