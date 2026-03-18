@@ -2030,6 +2030,33 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const TernaryExpr& t){
     return resolve_expr_type(ctx, t.else_expr);
   }
 
+TypeSpec HirEmitter::resolve_payload_type(FnCtx&, const VaArgExpr&){
+    return {};
+  }
+
+TypeSpec HirEmitter::resolve_payload_type(FnCtx&, const SizeofExpr&){
+    TypeSpec ts{};
+    ts.base = TB_ULONGLONG;
+    return ts;
+  }
+
+TypeSpec HirEmitter::resolve_payload_type(FnCtx&, const SizeofTypeExpr&){
+    TypeSpec ts{};
+    ts.base = TB_ULONGLONG;
+    return ts;
+  }
+
+TypeSpec HirEmitter::resolve_payload_type(FnCtx&, const LabelAddrExpr&){
+    TypeSpec ts{};
+    ts.base = TB_VOID;
+    ts.ptr_level = 1;
+    return ts;
+  }
+
+TypeSpec HirEmitter::resolve_payload_type(FnCtx&, const PendingConstevalExpr&){
+    return {};
+  }
+
 template <typename T>
   TypeSpec HirEmitter::resolve_payload_type(FnCtx&, const T&){ return {}; }
 
@@ -4373,6 +4400,11 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const SizeofTypeExpr& s, c
 
 std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const LabelAddrExpr& la, const Expr&){
     return "blockaddress(@" + ctx.fn->name + ", %ulbl_" + la.label_name + ")";
+  }
+
+std::string HirEmitter::emit_rval_payload(FnCtx&, const PendingConstevalExpr& p, const Expr&){
+    throw std::runtime_error(
+        "HirEmitter: unevaluated PendingConstevalExpr reached codegen for '" + p.fn_name + "'");
   }
 
 std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const IndexExpr&, const Expr& e){

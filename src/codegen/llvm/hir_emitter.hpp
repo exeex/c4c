@@ -228,6 +228,11 @@ class HirEmitter {
   TypeSpec resolve_payload_type(FnCtx& ctx, const MemberExpr& m);
   TypeSpec resolve_payload_type(FnCtx& ctx, const IndexExpr& idx);
   TypeSpec resolve_payload_type(FnCtx& ctx, const TernaryExpr& t);
+  TypeSpec resolve_payload_type(FnCtx& ctx, const VaArgExpr& v);
+  TypeSpec resolve_payload_type(FnCtx& ctx, const SizeofExpr& s);
+  TypeSpec resolve_payload_type(FnCtx& ctx, const SizeofTypeExpr& s);
+  TypeSpec resolve_payload_type(FnCtx& ctx, const LabelAddrExpr& la);
+  TypeSpec resolve_payload_type(FnCtx& ctx, const PendingConstevalExpr& p);
   template <typename T>
   TypeSpec resolve_payload_type(FnCtx&, const T&);
   std::string emit_rval_id(FnCtx& ctx, ExprId id, TypeSpec& out_ts);
@@ -285,6 +290,9 @@ class HirEmitter {
 
   // ── LabelAddrExpr (GCC &&label extension) ────────────────────────────────
   std::string emit_rval_payload(FnCtx& ctx, const LabelAddrExpr& la, const Expr&);
+
+  // ── PendingConstevalExpr ────────────────────────────────────────────────
+  std::string emit_rval_payload(FnCtx& ctx, const PendingConstevalExpr& p, const Expr& e);
 
   // ── IndexExpr (rval: load through computed ptr) ──────────────────────────
   std::string emit_rval_payload(FnCtx& ctx, const IndexExpr&, const Expr& e);

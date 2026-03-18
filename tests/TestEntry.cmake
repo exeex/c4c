@@ -52,37 +52,45 @@ enable_testing()
 include("${PROJECT_SOURCE_DIR}/tests/c/internal/InternalTests.cmake")
 include("${PROJECT_SOURCE_DIR}/tests/cpp/internal/InternalTests.cmake")
 
+set(C_TESTSUITE_ALLOWLIST "${C_TESTSUITE_ROOT}/allowlist.txt")
+set(C_TESTSUITE_RUN_CASE "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/RunCase.cmake")
+
 if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
-  set(C_TESTSUITE_ALLOWLIST "${C_TESTSUITE_ROOT}/allowlist.txt")
-  file(STRINGS "${C_TESTSUITE_ALLOWLIST}" C_TESTSUITE_ALLOWLIST_RAW)
-  foreach(entry IN LISTS C_TESTSUITE_ALLOWLIST_RAW)
-    string(STRIP "${entry}" entry)
-    if(entry STREQUAL "" OR entry MATCHES "^#")
-      continue()
-    endif()
+  if(NOT EXISTS "${C_TESTSUITE_ALLOWLIST}" OR NOT EXISTS "${C_TESTSUITE_RUN_CASE}")
+    message(STATUS
+      "Skipping c-testsuite external tests: missing submodule contents under "
+      "${C_TESTSUITE_ROOT} (expected allowlist.txt and RunCase.cmake)")
+  else()
+    file(STRINGS "${C_TESTSUITE_ALLOWLIST}" C_TESTSUITE_ALLOWLIST_RAW)
+    foreach(entry IN LISTS C_TESTSUITE_ALLOWLIST_RAW)
+      string(STRIP "${entry}" entry)
+      if(entry STREQUAL "" OR entry MATCHES "^#")
+        continue()
+      endif()
 
-    set(src "${C_TESTSUITE_ROOT}/${entry}")
-    if(NOT EXISTS "${src}")
-      message(WARNING "c-testsuite allowlist entry not found: ${entry}")
-      continue()
-    endif()
+      set(src "${C_TESTSUITE_ROOT}/${entry}")
+      if(NOT EXISTS "${src}")
+        message(WARNING "c-testsuite allowlist entry not found: ${entry}")
+        continue()
+      endif()
 
-    string(REGEX REPLACE "[^A-Za-z0-9_]" "_" test_id "${entry}")
-    set(test_name "c_testsuite_${test_id}")
+      string(REGEX REPLACE "[^A-Za-z0-9_]" "_" test_id "${entry}")
+      set(test_name "c_testsuite_${test_id}")
 
-    add_test(
-      NAME "${test_name}"
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DCLANG=${CLANG_EXECUTABLE}
-              -DSRC=${src}
-              -DROOT=${C_TESTSUITE_ROOT}
-              -DOUT_LL=${CMAKE_BINARY_DIR}/c_testsuite/${entry}.ll
-              -DOUT_BIN=${CMAKE_BINARY_DIR}/c_testsuite/${entry}.bin
-              -P "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/RunCase.cmake"
-    )
-    set_tests_properties("${test_name}" PROPERTIES LABELS "c_testsuite")
-  endforeach()
+      add_test(
+        NAME "${test_name}"
+        COMMAND "${CMAKE_COMMAND}"
+                -DCOMPILER=$<TARGET_FILE:c4cll>
+                -DCLANG=${CLANG_EXECUTABLE}
+                -DSRC=${src}
+                -DROOT=${C_TESTSUITE_ROOT}
+                -DOUT_LL=${CMAKE_BINARY_DIR}/c_testsuite/${entry}.ll
+                -DOUT_BIN=${CMAKE_BINARY_DIR}/c_testsuite/${entry}.bin
+                -P "${C_TESTSUITE_RUN_CASE}"
+      )
+      set_tests_properties("${test_name}" PROPERTIES LABELS "c_testsuite")
+    endforeach()
+  endif()
 endif()
 
 if(ENABLE_C_CLANG_EXTERNAL_TESTS AND
