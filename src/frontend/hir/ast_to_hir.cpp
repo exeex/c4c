@@ -593,6 +593,11 @@ class Lowerer {
       }
     }
 
+    // Phase 2.5: lower struct methods collected during Phase 1.
+    for (const auto& [mangled, struct_tag, method_node] : pending_methods_) {
+      lower_struct_method(mangled, struct_tag, method_node);
+    }
+
     // Phase 3: run HIR compile-time reduction with deferred instantiation.
     // Nested template calls (e.g., add<T>() inside twice<T>()) were not
     // collected in Phase 1.6 and thus not lowered in Phase 2.  The
@@ -687,6 +692,7 @@ class Lowerer {
     std::unordered_map<std::string, long long> local_const_bindings;
     TypeBindings tpl_bindings;  // template param → concrete type for enclosing template fn
     NttpBindings nttp_bindings; // non-type template param → constant value
+    std::string method_struct_tag; // non-empty when lowering a struct method body
   };
 
   FunctionId next_fn_id() { return module_->alloc_function_id(); }
@@ -1167,6 +1173,16 @@ class Lowerer {
     if (!module_->struct_defs.count(tag))
       module_->struct_def_order.push_back(tag);
     module_->struct_defs[tag] = std::move(def);
+
+    // Collect struct methods (stored in sd->children[]) for later lowering.
+    for (int i = 0; i < sd->n_children; ++i) {
+      const Node* method = sd->children[i];
+      if (!method || method->kind != NK_FUNCTION || !method->name) continue;
+      std::string mangled = std::string(tag) + "__" + method->name;
+      std::string key = std::string(tag) + "::" + method->name;
+      struct_methods_[key] = mangled;
+      pending_methods_.emplace_back(mangled, std::string(tag), method);
+    }
   }
 
   void collect_enum_def(const Node* ed) {
@@ -1529,6 +1545,78 @@ class Lowerer {
     }
 
     // Replace the skeleton with the fully lowered function.
+    module_->functions[fn.id.value] = std::move(fn);
+  }
+
+  // Lower a struct method as a standalone function with an implicit `this` pointer.
+  void lower_struct_method(const std::string& mangled_name,
+                           const std::string& struct_tag,
+                           const Node* method_node) {
+    Function fn{};
+    fn.id = next_fn_id();
+    fn.name = mangled_name;
+    fn.return_type = qtype_from(method_node->type);
+    fn.linkage = {true, false, false, false, Visibility::Default};  // internal
+    fn.attrs.variadic = method_node->variadic;
+    fn.span = make_span(method_node);
+
+    FunctionCtx ctx{};
+    ctx.fn = &fn;
+
+    // Add implicit `this` parameter (pointer to struct).
+    {
+      Param this_param{};
+      this_param.name = "this";
+      TypeSpec this_ts{};
+      this_ts.base = TB_STRUCT;
+      // Use the persistent tag pointer from the struct_def in the module.
+      auto sit = module_->struct_defs.find(struct_tag);
+      this_ts.tag = sit != module_->struct_defs.end()
+                        ? sit->second.tag.c_str()
+                        : struct_tag.c_str();
+      this_ts.ptr_level = 1;
+      this_param.type = qtype_from(this_ts, ValueCategory::LValue);
+      this_param.span = make_span(method_node);
+      ctx.params[this_param.name] = static_cast<uint32_t>(fn.params.size());
+      fn.params.push_back(std::move(this_param));
+    }
+
+    // Add explicit parameters.
+    for (int i = 0; i < method_node->n_params; ++i) {
+      const Node* p = method_node->params[i];
+      if (!p) continue;
+      Param param{};
+      param.name = p->name ? p->name : "<anon_param>";
+      param.type = qtype_from(p->type, ValueCategory::LValue);
+      param.span = make_span(p);
+      ctx.params[param.name] = static_cast<uint32_t>(fn.params.size());
+      fn.params.push_back(std::move(param));
+    }
+
+    // Store the struct tag so field accesses in the body can resolve via `this`.
+    ctx.method_struct_tag = struct_tag;
+
+    if (!method_node->body) {
+      module_->fn_index[fn.name] = fn.id;
+      module_->functions.push_back(std::move(fn));
+      return;
+    }
+
+    module_->fn_index[fn.name] = fn.id;
+    if (fn.id.value == module_->functions.size()) {
+      module_->functions.push_back(Function{fn.id, fn.name, fn.return_type});
+    }
+
+    const BlockId entry = create_block(ctx);
+    fn.entry = entry;
+    ctx.current_block = entry;
+
+    lower_stmt_node(ctx, method_node->body);
+
+    if (fn.blocks.empty()) {
+      fn.blocks.push_back(Block{entry, {}, false});
+    }
+
     module_->functions[fn.id.value] = std::move(fn);
   }
 
@@ -3384,6 +3472,34 @@ class Lowerer {
           auto git = module_->global_index.find(r.name);
           if (git != module_->global_index.end()) r.global = git->second;
         }
+        // Inside a struct method body, resolve unqualified names as this->field
+        // when the name is not a local, param, or global.
+        if (ctx && !ctx->method_struct_tag.empty() && !has_local_binding &&
+            !r.param_index && !r.global) {
+          auto sit = module_->struct_defs.find(ctx->method_struct_tag);
+          if (sit != module_->struct_defs.end()) {
+            for (const auto& fld : sit->second.fields) {
+              if (fld.name == r.name) {
+                // Rewrite as this->field: load `this` param, then MemberExpr.
+                DeclRef this_ref{};
+                this_ref.name = "this";
+                auto pit = ctx->params.find("this");
+                if (pit != ctx->params.end()) this_ref.param_index = pit->second;
+                TypeSpec this_ts{};
+                this_ts.base = TB_STRUCT;
+                // Use persistent tag from struct_defs.
+                this_ts.tag = sit->second.tag.c_str();
+                this_ts.ptr_level = 1;
+                ExprId this_id = append_expr(n, this_ref, this_ts, ValueCategory::LValue);
+                MemberExpr me{};
+                me.base = this_id;
+                me.field = r.name;
+                me.is_arrow = true;
+                return append_expr(n, me, n->type, ValueCategory::LValue);
+              }
+            }
+          }
+        }
         // If the name refers to a function (not a variable), annotate the
         // DeclRef with a function-pointer type so codegen does not need to
         // reconstruct it from fn_index at emit time.
@@ -3613,6 +3729,60 @@ class Lowerer {
         }
 
         CallExpr c{};
+        // Method call: obj.method(args) → StructTag__method(&obj, args)
+        if (n->left && n->left->kind == NK_MEMBER && n->left->name) {
+          const Node* base_node = n->left->left;
+          const char* method_name = n->left->name;
+          // Infer the struct tag from the base expression's resolved type.
+          TypeSpec base_ts = infer_generic_ctrl_type(ctx, base_node);
+          if (n->left->is_arrow && base_ts.ptr_level > 0)
+            base_ts.ptr_level--;
+          const char* tag = base_ts.tag;
+          if (tag) {
+            std::string key = std::string(tag) + "::" + method_name;
+            auto mit = struct_methods_.find(key);
+            if (mit != struct_methods_.end()) {
+              // Found method — rewrite call.
+              DeclRef dr{};
+              dr.name = mit->second;
+              auto fit = module_->fn_index.find(dr.name);
+              TypeSpec fn_ts{};
+              fn_ts.base = TB_VOID;
+              if (fit != module_->fn_index.end() &&
+                  fit->second.value < module_->functions.size()) {
+                fn_ts = module_->functions[fit->second.value].return_type.spec;
+              }
+              fn_ts.ptr_level++;
+              c.callee = append_expr(n->left, dr, fn_ts);
+              // Add implicit `this` argument: &obj (or ptr for ->).
+              ExprId base_id = lower_expr(ctx, base_node);
+              if (n->left->is_arrow) {
+                // Base is already a pointer — use it directly.
+                c.args.push_back(base_id);
+              } else {
+                // Take address of base: &obj.
+                UnaryExpr addr{};
+                addr.op = UnaryOp::AddrOf;
+                addr.operand = base_id;
+                TypeSpec ptr_ts = base_ts;
+                ptr_ts.ptr_level++;
+                c.args.push_back(append_expr(base_node, addr, ptr_ts));
+              }
+              // Add explicit arguments.
+              for (int i = 0; i < n->n_children; ++i)
+                c.args.push_back(lower_expr(ctx, n->children[i]));
+              TypeSpec ts = n->type;
+              // Infer return type from the method function's signature.
+              if (ts.base == TB_VOID && ts.ptr_level == 0) {
+                auto mfit = module_->fn_index.find(mit->second);
+                if (mfit != module_->fn_index.end() &&
+                    mfit->second.value < module_->functions.size())
+                  ts = module_->functions[mfit->second.value].return_type.spec;
+              }
+              return append_expr(n, c, ts);
+            }
+          }
+        }
         // For template function calls, resolve the mangled instantiation name.
         std::string resolved_callee_name;
         if (n->left && n->left->kind == NK_VAR && n->left->name &&
@@ -4592,6 +4762,10 @@ class Lowerer {
   std::unordered_map<std::string, const Node*> template_struct_defs_;
   // Already-instantiated template struct mangled names (avoid double instantiation).
   std::unordered_set<std::string> instantiated_tpl_structs_;
+  // Struct method map: "struct_tag::method_name" → mangled function name.
+  std::unordered_map<std::string, std::string> struct_methods_;
+  // Pending struct methods to lower: (mangled_name, struct_tag, method_node).
+  std::vector<std::tuple<std::string, std::string, const Node*>> pending_methods_;
   // When true, consteval calls create PendingConstevalExpr instead of
   // evaluating eagerly.  Set during deferred template instantiation.
   bool defer_consteval_ = false;

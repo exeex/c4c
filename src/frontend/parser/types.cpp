@@ -607,6 +607,58 @@ TypeSpec Parser::parse_base_type() {
                             }
                             inst->fields[fi] = new_f;
                         }
+                        // Clone methods with type substitution
+                        int num_methods = tpl_def->n_children > 0 ? tpl_def->n_children : 0;
+                        inst->n_children = num_methods;
+                        if (num_methods > 0) {
+                            inst->children = arena_.alloc_array<Node*>(num_methods);
+                            for (int mi = 0; mi < num_methods; ++mi) {
+                                const Node* orig_m = tpl_def->children[mi];
+                                if (!orig_m || orig_m->kind != NK_FUNCTION) {
+                                    inst->children[mi] = nullptr;
+                                    continue;
+                                }
+                                Node* new_m = make_node(NK_FUNCTION, orig_m->line);
+                                new_m->name = orig_m->name;
+                                new_m->variadic = orig_m->variadic;
+                                new_m->is_constexpr = orig_m->is_constexpr;
+                                new_m->is_consteval = orig_m->is_consteval;
+                                // Substitute template type params in return type
+                                new_m->type = orig_m->type;
+                                for (const auto& [pname, pts] : type_bindings) {
+                                    if (new_m->type.base == TB_TYPEDEF && new_m->type.tag &&
+                                        std::string(new_m->type.tag) == pname) {
+                                        new_m->type.base = pts.base;
+                                        new_m->type.tag = pts.tag;
+                                        new_m->type.ptr_level += pts.ptr_level;
+                                    }
+                                }
+                                // Clone params with type substitution
+                                new_m->n_params = orig_m->n_params;
+                                if (new_m->n_params > 0) {
+                                    new_m->params = arena_.alloc_array<Node*>(new_m->n_params);
+                                    for (int pi = 0; pi < new_m->n_params; ++pi) {
+                                        const Node* orig_p = orig_m->params[pi];
+                                        Node* new_p = make_node(NK_DECL, orig_p->line);
+                                        new_p->name = orig_p->name;
+                                        new_p->type = orig_p->type;
+                                        for (const auto& [pname, pts] : type_bindings) {
+                                            if (new_p->type.base == TB_TYPEDEF && new_p->type.tag &&
+                                                std::string(new_p->type.tag) == pname) {
+                                                new_p->type.base = pts.base;
+                                                new_p->type.tag = pts.tag;
+                                                new_p->type.ptr_level += pts.ptr_level;
+                                            }
+                                        }
+                                        new_m->params[pi] = new_p;
+                                    }
+                                }
+                                // Body is shared (not deep-cloned) — HIR lowering
+                                // handles field access via this->field resolution.
+                                new_m->body = orig_m->body;
+                                inst->children[mi] = new_m;
+                            }
+                        }
                         struct_defs_.push_back(inst);
                         struct_tag_def_map_[mangled] = inst;
                         defined_struct_tags_.insert(mangled);

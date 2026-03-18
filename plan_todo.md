@@ -1,11 +1,11 @@
 # Plan Execution State
 
 ## Baseline
-- 1881/1881 tests passing (2026-03-18)
+- 1882/1882 tests passing (2026-03-18)
 
 ## Overall Assessment
 
-Phase 5 slice 18 is now implemented: `class` keyword as synonym for `struct` in template contexts.
+Phase 5 slice 19 is now implemented: struct member functions (methods), both non-template and template.
 
 Current state:
 - HIR preserves template/consteval metadata and exposes debug visibility
@@ -28,36 +28,42 @@ Current state:
 - **Phase 5 slice 15**: Template function + template struct combined usage — `Pair<T>` inside template function bodies deferred and resolved at HIR instantiation time.
 - **Phase 5 slice 16**: Nested template struct + >> disambiguation — `Pair<Pair<int>>`, `Box<Pair<T>>` in template functions, parser >> token splitting.
 - **Phase 5 slice 17**: `struct Pair<int>` keyword syntax — `struct` keyword before template struct types now triggers template instantiation.
-- **Phase 5 slice 18 (NEW)**: `class` keyword as synonym for `struct` — `KwClass` token, `template<class T>`, `class Name<args>` instantiation, `template<...> class Name { ... }` definitions.
+- **Phase 5 slice 18**: `class` keyword as synonym for `struct` — `KwClass` token, `template<class T>`, `class Name<args>` instantiation, `template<...> class Name { ... }` definitions.
+- **Phase 5 slice 19 (NEW)**: Struct member functions (methods) — non-template and template struct methods lowered as standalone functions with implicit `this` pointer, method calls rewritten to mangled function calls.
 
 Summary:
 - Phase 1: complete
 - Phases 2-4: partially complete, with good observability and metadata preservation
-- Phase 5: **substantially complete** — class keyword synonym for struct now works
+- Phase 5: **substantially complete** — struct methods now work for both plain and template structs
 - Phase 6: **complete** — materialization boundary separates compile-time entities from emitted code
 - Phase 7: **complete** — specialization identity is stable, hashable, serializable via LLVM named metadata
 
 ---
 
-## What was done in this session (2026-03-18, session 22)
+## What was done in this session (2026-03-18, session 23)
 
-### Phase 5 slice 18: `class` keyword as synonym for `struct` in template contexts
+### Phase 5 slice 19: Struct member functions (methods)
 
 **Changes**:
-1. **token.hpp/token.cpp**: Added `KwClass` token kind, mapped `"class"` → `KwClass` in C++ profile
-2. **common.cpp**: Added `KwClass` to `is_type_kw()` so it's recognized as a type-start token
-3. **types.cpp**: `parse_base_type()` handles `KwClass` identically to `KwStruct` (sets `has_struct=true`); nested struct field parsing also accepts `KwClass`
-4. **declarations.cpp**: Template parameter parsing updated — `template<class T>` now matches `KwClass` token instead of identifier-string comparison (since `class` is now a keyword)
+1. **ast_to_hir.cpp**: `lower_struct_def()` now collects methods from `sd->children[]` and queues them as `pending_methods_`
+2. **ast_to_hir.cpp**: New `lower_struct_method()` — lowers method as standalone function with implicit `this` pointer (ptr to struct) as first parameter
+3. **ast_to_hir.cpp**: Phase 2.5 added — lowers all pending struct methods after regular function lowering
+4. **ast_to_hir.cpp**: `NK_CALL` handler detects method calls (`obj.method(args)`) and rewrites to `StructTag__method(&obj, args)` using `struct_methods_` map
+5. **ast_to_hir.cpp**: `NK_VAR` handler resolves unqualified field names inside method bodies via implicit `this->field` access
+6. **ast_to_hir.cpp**: `FunctionCtx` gains `method_struct_tag` field for method body lowering context
+7. **types.cpp**: Template struct instantiation now clones methods from `tpl_def->children[]` with type parameter substitution in return type and parameter types
+8. **InternalTests.cmake**: `struct_method` upgraded from parse-only to runtime test
 
 ### Test additions
-- **`template_class_keyword.cpp`**: Tests `class Pair<int>`, `class Array<int, 3>`, function return/param types with `class` keyword, mixing `class`/`struct`/bare syntax, `public:` access specifier for clang compatibility.
+- **`template_struct_method.cpp`**: Tests non-template struct methods (get, add), template struct methods with int and long instantiations
 
 ---
 
 ## Recommended next milestone
 
 Potential next work:
-- Template struct member functions (methods)
+- Arrow operator method calls (`ptr->method()`)
+- Method calls on template structs inside template function bodies (deferred)
 - Phase 2-4 remaining: deeper template/consteval HIR preservation
 - `dynamic_cast` support (requires RTTI, lower priority)
 
