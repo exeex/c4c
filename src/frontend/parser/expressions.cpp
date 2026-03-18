@@ -658,8 +658,10 @@ Node* Parser::parse_primary() {
                     long long val = 0;
                     if (check(TokenKind::KwTrue)) {
                         val = 1;
+                        consume();
                     } else if (check(TokenKind::KwFalse)) {
                         val = 0;
+                        consume();
                     } else if (check(TokenKind::CharLit)) {
                         Node* lit = parse_primary();
                         val = lit ? lit->ival : 0;
