@@ -848,6 +848,13 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         parse_attributes(&ts);
     }
 
+    if (is_cpp_mode() && check(TokenKind::Amp)) {
+        consume();
+        ts.is_lvalue_ref = true;
+        while (is_qualifier(cur().kind)) consume();
+        parse_attributes(&ts);
+    }
+
     // Skip any extra qualifiers / nullability (macOS: _Nullable, _Nonnull, etc.)
     while (is_qualifier(cur().kind)) consume();
     if (check(TokenKind::Identifier)) {
@@ -878,7 +885,9 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
             }
         }
         return pk < (int)tokens_.size() &&
-               (tokens_[pk].kind == TokenKind::Star || tokens_[pk].kind == TokenKind::Caret);
+               (tokens_[pk].kind == TokenKind::Star ||
+                tokens_[pk].kind == TokenKind::Caret ||
+                (is_cpp_mode() && tokens_[pk].kind == TokenKind::Amp));
     };
     if (paren_star_peek()) {
         used_paren_ptr_declarator = true;
@@ -888,10 +897,14 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         // function pointer: (*name)(...) or block pointer: (^name)(...) — record name, skip params
         consume();  // consume (
         skip_attributes();  // skip any __attribute__((...)) before * or ^
-        consume();  // consume * or ^
-        ts.ptr_level++;
-        // Skip extra stars for **fpp
-        while (check(TokenKind::Star)) { consume(); ts.ptr_level++; }
+        consume();  // consume * or ^ or &
+        if (tokens_[pos_ - 1].kind == TokenKind::Amp) {
+            ts.is_lvalue_ref = true;
+        } else {
+            ts.ptr_level++;
+            // Skip extra stars for **fpp
+            while (check(TokenKind::Star)) { consume(); ts.ptr_level++; }
+        }
         // Skip nullability / qualifier annotations inside the parens: (* _Nullable name)
         while (check(TokenKind::Identifier)) {
             const std::string& lex = cur().lexeme;

@@ -661,6 +661,22 @@ class Lowerer {
     std::string method_struct_tag; // non-empty when lowering a struct method body
   };
 
+  static bool is_lvalue_ref_ts(const TypeSpec& ts) {
+    return ts.is_lvalue_ref;
+  }
+
+  static TypeSpec reference_storage_ts(TypeSpec ts) {
+    if (ts.is_lvalue_ref) ts.ptr_level += 1;
+    return ts;
+  }
+
+  static TypeSpec reference_value_ts(TypeSpec ts) {
+    if (!ts.is_lvalue_ref) return ts;
+    ts.is_lvalue_ref = false;
+    if (ts.ptr_level > 0) ts.ptr_level -= 1;
+    return ts;
+  }
+
   FunctionId next_fn_id() { return module_->alloc_function_id(); }
   GlobalId next_global_id() { return module_->alloc_global_id(); }
   LocalId next_local_id() { return module_->alloc_local_id(); }
@@ -759,6 +775,19 @@ class Lowerer {
     return std::nullopt;
   }
 
+  std::optional<TypeSpec> storage_type_for_declref(FunctionCtx* ctx, const DeclRef& r) {
+    if (r.local && ctx) {
+      auto it = ctx->local_types.find(r.local->value);
+      if (it != ctx->local_types.end()) return it->second;
+    }
+    if (r.param_index && ctx && ctx->fn && *r.param_index < ctx->fn->params.size())
+      return ctx->fn->params[*r.param_index].type.spec;
+    if (r.global) {
+      if (const GlobalVar* gv = module_->find_global(*r.global)) return gv->type.spec;
+    }
+    return std::nullopt;
+  }
+
   TypeSpec infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
     if (!n) return {};
     if (has_concrete_type(n->type)) return n->type;
@@ -798,20 +827,22 @@ class Lowerer {
           auto lit = ctx->locals.find(name);
           if (lit != ctx->locals.end()) {
             auto tt = ctx->local_types.find(lit->second.value);
-            if (tt != ctx->local_types.end()) return tt->second;
+            if (tt != ctx->local_types.end()) return reference_value_ts(tt->second);
           }
           auto pit = ctx->params.find(name);
           if (pit != ctx->params.end() && ctx->fn &&
               pit->second < ctx->fn->params.size())
-            return ctx->fn->params[pit->second].type.spec;
+            return reference_value_ts(ctx->fn->params[pit->second].type.spec);
           auto sit = ctx->static_globals.find(name);
           if (sit != ctx->static_globals.end()) {
-            if (const GlobalVar* gv = module_->find_global(sit->second)) return gv->type.spec;
+            if (const GlobalVar* gv = module_->find_global(sit->second))
+              return reference_value_ts(gv->type.spec);
           }
         }
         auto git = module_->global_index.find(name);
         if (git != module_->global_index.end()) {
-          if (const GlobalVar* gv = module_->find_global(git->second)) return gv->type.spec;
+          if (const GlobalVar* gv = module_->find_global(git->second))
+            return reference_value_ts(gv->type.spec);
         }
         auto fit = module_->fn_index.find(name);
         if (fit != module_->fn_index.end()) {
@@ -1502,7 +1533,7 @@ class Lowerer {
           resolve_pending_tpl_struct(param_ts, *tpl_override,
               nttp_override ? *nttp_override : nttp_empty);
         }
-        param.type = qtype_from(param_ts, ValueCategory::LValue);
+        param.type = qtype_from(reference_storage_ts(param_ts), ValueCategory::LValue);
       }
       param.fn_ptr_sig = fn_ptr_sig_from_decl_node(p);
       param.span = make_span(p);
@@ -1627,7 +1658,7 @@ class Lowerer {
           resolve_pending_tpl_struct(param_ts, *tpl_bindings,
               nttp_bindings ? *nttp_bindings : nttp_empty);
         }
-        param.type = qtype_from(param_ts, ValueCategory::LValue);
+        param.type = qtype_from(reference_storage_ts(param_ts), ValueCategory::LValue);
       }
       param.span = make_span(p);
       ctx.params[param.name] = static_cast<uint32_t>(fn.params.size());
@@ -1807,7 +1838,7 @@ class Lowerer {
       // Resolve pending template struct types in local variable decls.
       if (!ctx.tpl_bindings.empty() && decl_ts.tpl_struct_origin)
         resolve_pending_tpl_struct(decl_ts, ctx.tpl_bindings, ctx.nttp_bindings);
-      d.type = qtype_from(decl_ts, ValueCategory::LValue);
+      d.type = qtype_from(reference_storage_ts(decl_ts), ValueCategory::LValue);
     }
     d.fn_ptr_sig = fn_ptr_sig_from_decl_node(n);
     if (d.fn_ptr_sig) ctx.local_fn_ptr_sigs[d.name] = *d.fn_ptr_sig;
@@ -1849,8 +1880,13 @@ class Lowerer {
     const bool use_array_init_fast_path =
         is_array_with_init_list && !d.type.spec.is_vector &&
         can_fast_path_scalar_array_init(n->init);
-    if (!is_array_with_init_list && !is_array_with_string_init &&
-        !is_struct_with_init_list && n->init)
+    if (is_lvalue_ref_ts(n->type) && n->init) {
+      UnaryExpr addr{};
+      addr.op = UnaryOp::AddrOf;
+      addr.operand = lower_expr(&ctx, n->init);
+      d.init = append_expr(n->init, addr, d.type.spec);
+    } else if (!is_array_with_init_list && !is_array_with_string_init &&
+               !is_struct_with_init_list && n->init)
       d.init = lower_expr(&ctx, n->init);
     // For aggregate init lists / string array init, emit zeroinitializer first
     // then overlay explicit element/field assignments below.
@@ -1865,6 +1901,7 @@ class Lowerer {
     // Track const/constexpr locals with foldable int initializers.
     if (n->name && n->name[0] && n->init &&
         (n->type.is_const || n->is_constexpr) &&
+        !n->type.is_lvalue_ref &&
         n->type.ptr_level == 0 && n->type.array_rank == 0) {
       ConstEvalEnv cenv{&enum_consts_, &const_int_bindings_, &ctx.local_const_bindings};
       if (auto cr = evaluate_constant_expr(n->init, cenv); cr.ok()) {
@@ -2346,6 +2383,18 @@ class Lowerer {
     }
 
     CallExpr c{};
+    auto maybe_lower_ref_arg = [&](const Node* arg_node, const TypeSpec* param_ts) -> ExprId {
+      if (!param_ts || !param_ts->is_lvalue_ref) return lower_expr(ctx, arg_node);
+      UnaryExpr addr{};
+      addr.op = UnaryOp::AddrOf;
+      addr.operand = lower_expr(ctx, arg_node);
+      return append_expr(arg_node, addr, *param_ts);
+    };
+    auto direct_callee_fn = [&](const std::string& name) -> const Function* {
+      auto fit = module_->fn_index.find(name);
+      if (fit == module_->fn_index.end()) return nullptr;
+      return module_->find_function(fit->second);
+    };
     if (n->left && n->left->kind == NK_MEMBER && n->left->name) {
       const Node* base_node = n->left->left;
       const char* method_name = n->left->name;
@@ -2379,8 +2428,14 @@ class Lowerer {
             ptr_ts.ptr_level++;
             c.args.push_back(append_expr(base_node, addr, ptr_ts));
           }
-          for (int i = 0; i < n->n_children; ++i)
-            c.args.push_back(lower_expr(ctx, n->children[i]));
+          const Function* callee_fn = direct_callee_fn(mit->second);
+          for (int i = 0; i < n->n_children; ++i) {
+            const TypeSpec* param_ts =
+                (callee_fn && static_cast<size_t>(i + 1) < callee_fn->params.size())
+                    ? &callee_fn->params[static_cast<size_t>(i + 1)].type.spec
+                    : nullptr;
+            c.args.push_back(maybe_lower_ref_arg(n->children[i], param_ts));
+          }
           TypeSpec ts = n->type;
           if (ts.base == TB_VOID && ts.ptr_level == 0) {
             auto mfit = module_->fn_index.find(mit->second);
@@ -2456,7 +2511,18 @@ class Lowerer {
       c.callee = lower_expr(ctx, n->left);
     }
     c.builtin_id = n->builtin_id;
-    for (int i = 0; i < n->n_children; ++i) c.args.push_back(lower_expr(ctx, n->children[i]));
+    const Function* callee_fn = !resolved_callee_name.empty()
+                                    ? direct_callee_fn(resolved_callee_name)
+                                    : (n->left && n->left->kind == NK_VAR && n->left->name
+                                           ? direct_callee_fn(n->left->name)
+                                           : nullptr);
+    for (int i = 0; i < n->n_children; ++i) {
+      const TypeSpec* param_ts =
+          (callee_fn && static_cast<size_t>(i) < callee_fn->params.size())
+              ? &callee_fn->params[static_cast<size_t>(i)].type.spec
+              : nullptr;
+      c.args.push_back(maybe_lower_ref_arg(n->children[i], param_ts));
+    }
     TypeSpec ts = n->type;
     if (n->builtin_id != BuiltinId::Unknown) {
       bool known = false;
@@ -3743,7 +3809,17 @@ class Lowerer {
             var_ts.is_fn_ptr = true;
           }
         }
-        return append_expr(n, std::move(r), var_ts, ValueCategory::LValue);
+        ExprId ref_id = append_expr(n, r, var_ts, ValueCategory::LValue);
+        if (ctx) {
+          if (auto storage_ts = storage_type_for_declref(ctx, r);
+              storage_ts && is_lvalue_ref_ts(*storage_ts)) {
+            UnaryExpr u{};
+            u.op = UnaryOp::Deref;
+            u.operand = ref_id;
+            return append_expr(n, u, reference_value_ts(*storage_ts), ValueCategory::LValue);
+          }
+        }
+        return ref_id;
       }
       case NK_UNARY: {
         UnaryExpr u{};

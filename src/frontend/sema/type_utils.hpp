@@ -19,6 +19,10 @@ TypeSpec float_ts();
 TypeSpec char_ts();
 TypeSpec ll_ts();
 TypeSpec ptr_to(TypeBase base);
+bool is_lvalue_ref_ty(const TypeSpec& ts);
+TypeSpec remove_lvalue_ref(TypeSpec ts);
+TypeSpec add_lvalue_ref(TypeSpec ts);
+TypeSpec ref_storage_type(TypeSpec ts);
 
 bool is_vector_ty(const TypeSpec& ts);
 void clear_vector(TypeSpec& ts);

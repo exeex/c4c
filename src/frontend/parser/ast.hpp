@@ -73,6 +73,7 @@ struct TypeSpec {
     TypeBase base;
     const char* tag;         // struct/union/enum tag or typedef name (may be null)
     int ptr_level;           // 0 = not a pointer; 1 = *; 2 = **; ...
+    bool is_lvalue_ref;      // true for C++ lvalue references (T&)
     int align_bytes;         // explicit alignment from __attribute__((aligned)) / aligned(N)
     long long array_size;    // -1 = not array; -2 = [] (unsized); >= 0 = size
     int array_rank;          // number of array dimensions (0 = not array)

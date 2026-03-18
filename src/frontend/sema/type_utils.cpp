@@ -30,6 +30,26 @@ TypeSpec ptr_to(TypeBase base) {
   return ts;
 }
 
+bool is_lvalue_ref_ty(const TypeSpec& ts) {
+  return ts.is_lvalue_ref;
+}
+
+TypeSpec remove_lvalue_ref(TypeSpec ts) {
+  ts.is_lvalue_ref = false;
+  return ts;
+}
+
+TypeSpec add_lvalue_ref(TypeSpec ts) {
+  ts.is_lvalue_ref = true;
+  return ts;
+}
+
+TypeSpec ref_storage_type(TypeSpec ts) {
+  if (!ts.is_lvalue_ref) return ts;
+  ts.ptr_level += 1;
+  return ts;
+}
+
 bool is_vector_ty(const TypeSpec& ts) {
   return ts.is_vector && ts.vector_lanes > 0 && ts.ptr_level == 0 && ts.array_rank == 0;
 }

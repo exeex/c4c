@@ -61,6 +61,7 @@ enum class CanonicalTypeKind : uint8_t {
   Complex,
   VendorExtended,
   Pointer,
+  LValueReference,
   Array,
   Function,
 };

@@ -49,6 +49,7 @@ TypeSpec make_int_ts() {
 }
 
 TypeSpec decay_array(TypeSpec ts) {
+  if (ts.is_lvalue_ref) ts.is_lvalue_ref = false;
   if (is_vector_ty(ts)) return ts;
   // is_ptr_to_array means the type is already a pointer wrapping an array (e.g. char (*)[4]);
   // do not decay such types a second time.
@@ -110,6 +111,11 @@ bool is_float_or_complex_base(TypeBase b) {
 bool is_pointer_like_type(const TypeSpec& ts_raw) {
   const TypeSpec ts = decay_array(ts_raw);
   return ts.ptr_level > 0 || ts.is_fn_ptr || ts.base == TB_FUNC_PTR;
+}
+
+TypeSpec referred_type(TypeSpec ts) {
+  ts.is_lvalue_ref = false;
+  return ts;
 }
 
 bool is_invalid_pointer_float_implicit_conversion(
@@ -177,6 +183,7 @@ bool same_types_for_function_compat(TypeSpec a, TypeSpec b, bool for_param = fal
       (a.vector_lanes != b.vector_lanes || a.vector_bytes != b.vector_bytes))
     return false;
   if (a.ptr_level != b.ptr_level) return false;
+  if (a.is_lvalue_ref != b.is_lvalue_ref) return false;
   if (a.array_rank != b.array_rank) return false;
   if (a.array_size != b.array_size) return false;
   if (a.is_fn_ptr != b.is_fn_ptr) return false;
@@ -462,7 +469,7 @@ class Validator {
   }
 
   bool is_complete_object_type(const TypeSpec& ts) const {
-    if (ts.ptr_level > 0 || ts.array_rank > 0) return true;
+    if (ts.ptr_level > 0 || ts.array_rank > 0 || ts.is_lvalue_ref) return true;
     if (ts.tpl_struct_origin) return true;  // pending template struct — resolved at HIR level
     if ((ts.base != TB_STRUCT && ts.base != TB_UNION) || !ts.tag || !ts.tag[0]) return true;
     const std::string tag(ts.tag);
@@ -551,11 +558,17 @@ class Validator {
 
   void validate_global(const Node* n) {
     if (!n) return;
+    if (n->type.is_lvalue_ref && !n->init) {
+      emit(n->line, "lvalue reference must be initialized");
+    }
     if (n->init) {
       ExprInfo rhs = infer_expr(n->init);
+      if (n->type.is_lvalue_ref && !rhs.is_lvalue) {
+        emit(n->line, "lvalue reference must bind to an lvalue");
+      }
       if (rhs.valid &&
           is_invalid_pointer_float_implicit_conversion(
-              n->type, rhs.type, is_null_pointer_constant_expr(n->init))) {
+              referred_type(n->type), rhs.type, is_null_pointer_constant_expr(n->init))) {
         emit(n->line, "incompatible initializer type");
       }
     }
@@ -649,11 +662,17 @@ class Validator {
     if (!is_complete_object_type(decl->type)) {
       emit(decl->line, "object has incomplete struct/union type");
     }
+    if (decl->type.is_lvalue_ref && !decl->init) {
+      emit(decl->line, "lvalue reference must be initialized");
+    }
     if (decl->init) {
       ExprInfo rhs = infer_expr(decl->init);
+      if (decl->type.is_lvalue_ref && !rhs.is_lvalue) {
+        emit(decl->line, "lvalue reference must bind to an lvalue");
+      }
       if (rhs.valid &&
           is_invalid_pointer_float_implicit_conversion(
-              decl->type, rhs.type, is_null_pointer_constant_expr(decl->init))) {
+              referred_type(decl->type), rhs.type, is_null_pointer_constant_expr(decl->init))) {
         emit(decl->line, "incompatible initializer type");
       }
       mark_initialized_if_local_var(decl);
@@ -910,6 +929,7 @@ class Validator {
         }
         out.valid = true;
         out.type = sym->type;
+        if (out.type.is_lvalue_ref) out.type.is_lvalue_ref = false;
         out.is_lvalue = true;
         // is_const with ptr_level>0 means the pointee is const, not the pointer.
         // Only the pointer variable itself is a const lvalue if ptr_level==0.
@@ -1075,9 +1095,13 @@ class Validator {
             const int check_n = std::min(argc, required);
             for (int i = 0; i < check_n; ++i) {
               ExprInfo arg = infer_expr(n->children[i]);
+              if (sig.params[i].is_lvalue_ref && arg.valid && !arg.is_lvalue) {
+                emit(n->line, "function call argument must be an lvalue for reference parameter");
+              }
               if (arg.valid &&
                   is_invalid_pointer_float_implicit_conversion(
-                      sig.params[i], arg.type, is_null_pointer_constant_expr(n->children[i]))) {
+                      referred_type(sig.params[i]), arg.type,
+                      is_null_pointer_constant_expr(n->children[i]))) {
                 emit(n->line, "function call argument type mismatch");
               }
             }

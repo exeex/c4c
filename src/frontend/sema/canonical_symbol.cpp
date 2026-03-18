@@ -78,6 +78,13 @@ CanonicalType wrap_pointer(CanonicalType pointee) {
   return type;
 }
 
+CanonicalType wrap_lvalue_reference(CanonicalType referred) {
+  CanonicalType type{};
+  type.kind = CanonicalTypeKind::LValueReference;
+  type.element_type = std::make_shared<CanonicalType>(std::move(referred));
+  return type;
+}
+
 CanonicalType wrap_array(CanonicalType element, long long dim) {
   CanonicalType type{};
   type.kind = CanonicalTypeKind::Array;
@@ -143,6 +150,13 @@ CanonicalType apply_array_layers(CanonicalType type, const TypeSpec& ts) {
 CanonicalType apply_pointer_layers(CanonicalType type, int pointer_depth) {
   for (int i = 0; i < pointer_depth; ++i) {
     type = wrap_pointer(std::move(type));
+  }
+  return type;
+}
+
+CanonicalType apply_reference_layer(CanonicalType type, const TypeSpec& ts) {
+  if (ts.is_lvalue_ref) {
+    type = wrap_lvalue_reference(std::move(type));
   }
   return type;
 }
@@ -351,6 +365,7 @@ std::string canonical_type_kind_str(CanonicalTypeKind kind) {
     case CanonicalTypeKind::Complex: return "_Complex";
     case CanonicalTypeKind::VendorExtended: return "<vendor>";
     case CanonicalTypeKind::Pointer: return "pointer";
+    case CanonicalTypeKind::LValueReference: return "lvalue reference";
     case CanonicalTypeKind::Array: return "array";
     case CanonicalTypeKind::Function: return "function";
   }
@@ -363,6 +378,7 @@ CanonicalType canonicalize_type(const TypeSpec& ts) {
   CanonicalType type = canonicalize_base_type(ts);
   type = apply_array_layers(std::move(type), ts);
   type = apply_pointer_layers(std::move(type), ts.ptr_level);
+  type = apply_reference_layer(std::move(type), ts);
   return type;
 }
 
@@ -575,6 +591,7 @@ static TypeBase typebase_from_kind(CanonicalTypeKind kind) {
     case CanonicalTypeKind::Complex: return TB_COMPLEX_DOUBLE;
     case CanonicalTypeKind::VendorExtended: return TB_FUNC_PTR;
     case CanonicalTypeKind::Pointer: return TB_INT;   // shouldn't reach
+    case CanonicalTypeKind::LValueReference: return TB_INT;   // shouldn't reach
     case CanonicalTypeKind::Array: return TB_INT;      // shouldn't reach
     case CanonicalTypeKind::Function: return TB_FUNC_PTR;
   }
@@ -597,8 +614,20 @@ TypeSpec typespec_from_canonical(const CanonicalType& ct) {
   ts.is_const = false;
   ts.is_volatile = false;
   ts.is_fn_ptr = false;
+  ts.is_lvalue_ref = false;
   ts.is_packed = false;
   for (int i = 0; i < 8; ++i) ts.array_dims[i] = 0;
+
+  if (ct.kind == CanonicalTypeKind::LValueReference) {
+    if (!ct.element_type) {
+      ts.base = TB_INT;
+      ts.is_lvalue_ref = true;
+      return ts;
+    }
+    ts = typespec_from_canonical(*ct.element_type);
+    ts.is_lvalue_ref = true;
+    return ts;
+  }
 
   if (ct.kind == CanonicalTypeKind::Pointer) {
     if (!ct.element_type) {
@@ -680,6 +709,7 @@ bool types_equal(const CanonicalType& a, const CanonicalType& b) {
 
   switch (a.kind) {
     case CanonicalTypeKind::Pointer:
+    case CanonicalTypeKind::LValueReference:
       if (!a.element_type || !b.element_type) return a.element_type == b.element_type;
       return types_equal(*a.element_type, *b.element_type);
 
@@ -737,9 +767,11 @@ bool prototypes_compatible(const CanonicalType& a, const CanonicalType& b) {
   // Peel pointer wrapper if present so we compare the Function nodes.
   const CanonicalType* fa = &a;
   const CanonicalType* fb = &b;
-  if (fa->kind == CanonicalTypeKind::Pointer && fa->element_type)
+  if ((fa->kind == CanonicalTypeKind::Pointer ||
+       fa->kind == CanonicalTypeKind::LValueReference) && fa->element_type)
     fa = fa->element_type.get();
-  if (fb->kind == CanonicalTypeKind::Pointer && fb->element_type)
+  if ((fb->kind == CanonicalTypeKind::Pointer ||
+       fb->kind == CanonicalTypeKind::LValueReference) && fb->element_type)
     fb = fb->element_type.get();
   return types_equal(*fa, *fb);
 }
@@ -819,6 +851,15 @@ static void mangle_type_impl(const CanonicalType& ct, std::string& out) {
         mangle_type_impl(*ct.element_type, out);
       } else {
         out += 'v';  // ptr to void
+      }
+      return;
+
+    case CanonicalTypeKind::LValueReference:
+      out += 'R';
+      if (ct.element_type) {
+        mangle_type_impl(*ct.element_type, out);
+      } else {
+        out += 'v';
       }
       return;
 
