@@ -66,11 +66,23 @@
   - Added `inline_expr_ctx.c` test: 11 cases covering binary ops, casts, ternary, nested calls, unary
   - 1897/1897 tests pass (0 regressions, +1 new test)
 
+- [x] Phase 7: Diagnostics and unsupported cases
+  - `inline_reject_reason_str()`: human-readable description for each InlineRejectReason
+  - Added `VaArgInBody` reject reason: callees with va_arg in body rejected at eligibility check (not just expand time)
+  - `emit_inline_diagnostics()`: post-expansion pass walks all expressions recursively to find remaining always_inline calls
+  - Scans all statement types (ExprStmt, ReturnStmt, LocalDecl, IfStmt, WhileStmt, ForStmt, DoWhileStmt, SwitchStmt, InlineAsmStmt)
+  - Recursively walks expression trees to find CallExpr nodes at any depth
+  - Deduplicates warnings by (callee, caller, reason) tuple
+  - Permissive mode: warnings on stderr, not errors — unsupported always_inline calls fall back to normal calls
+  - noinline always suppresses expansion (already enforced since Phase 1)
+  - Added `inline_diagnostics.c` test: noinline, default, self-recursive, variadic, noinline+inline conflict, simple always_inline
+  - 1898/1898 tests pass (0 regressions, +1 new test)
+
 ### Next
-- [ ] Phase 7: Diagnostics and unsupported cases
-  - Produce clear reasons for refusal (recursive, indirect, variadic, unsupported form)
-  - Ensure noinline always suppresses expansion
-  - Decide permissive vs strict mode
+- [ ] Phase 8: Backend coordination
+  - Default backend pipeline should not introduce independent heuristic inlining
+  - Optionally emit LLVM noinline for non-expanded calls
+  - Document contract between HIR inline pass and LLVM emission
 
 ### Previous Plan (Consteval) — Complete
 - [x] Phase 1–4 of consteval plan fully implemented

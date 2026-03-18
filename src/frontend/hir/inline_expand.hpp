@@ -82,7 +82,11 @@ enum class InlineRejectReason : uint8_t {
   CalleeIsNoinline,   // callee is marked noinline
   NotAlwaysInline,    // callee is not marked always_inline (current policy)
   ArrayParam,         // callee has array-typed parameter (codegen limitation)
+  VaArgInBody,        // callee body contains va_arg (ABI-sensitive)
 };
+
+/// Return a human-readable description of the reject reason.
+const char* inline_reject_reason_str(InlineRejectReason reason);
 
 /// Result of call-site eligibility analysis.
 struct InlineCandidate {

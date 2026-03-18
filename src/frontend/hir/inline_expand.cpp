@@ -1,8 +1,28 @@
 #include "inline_expand.hpp"
 
 #include <cassert>
+#include <cstdio>
 
 namespace c4c::hir {
+
+// ── Phase 7: Diagnostics ────────────────────────────────────────────────────
+
+const char* inline_reject_reason_str(InlineRejectReason reason) {
+  switch (reason) {
+    case InlineRejectReason::None:            return "eligible";
+    case InlineRejectReason::IndirectCall:     return "indirect call (not a direct function reference)";
+    case InlineRejectReason::CalleeMissing:    return "callee not found in module";
+    case InlineRejectReason::NoBody:           return "callee has no body (extern declaration)";
+    case InlineRejectReason::Variadic:         return "callee is variadic";
+    case InlineRejectReason::SelfRecursive:    return "self-recursive call";
+    case InlineRejectReason::CallerIsNoinline: return "caller is marked noinline";
+    case InlineRejectReason::CalleeIsNoinline: return "callee is marked noinline";
+    case InlineRejectReason::NotAlwaysInline:  return "callee is not marked always_inline";
+    case InlineRejectReason::ArrayParam:       return "callee has array-typed parameter";
+    case InlineRejectReason::VaArgInBody:      return "callee body contains va_arg";
+  }
+  return "unknown reason";
+}
 
 // ── Phase 2: InlineCloneContext ──────────────────────────────────────────────
 
@@ -297,6 +317,9 @@ void preallocate_block_ids(InlineCloneContext& ctx, const Function& callee) {
   }
 }
 
+// Forward declaration for use in eligibility check.
+static bool contains_va_arg(const Module& module, const Function& fn);
+
 // ── resolve_direct_callee ────────────────────────────────────────────────────
 
 const Function* resolve_direct_callee(const Module& module, const CallExpr& call) {
@@ -375,6 +398,12 @@ InlineCandidate check_inline_eligibility(
       cand.reject = InlineRejectReason::ArrayParam;
       return cand;
     }
+  }
+
+  // 8. Skip callees whose body contains va_arg (ABI-sensitive).
+  if (contains_va_arg(module, *callee)) {
+    cand.reject = InlineRejectReason::VaArgInBody;
+    return cand;
   }
 
   // All checks passed.
@@ -976,6 +1005,135 @@ static void normalize_inline_calls(Module& module) {
 
 // ── run_inline_expansion ─────────────────────────────────────────────────────
 
+/// Recursively walk an expression tree looking for CallExpr nodes that
+/// reference always_inline functions. Used for diagnostics only.
+static void find_always_inline_calls_in_expr(
+    const Module& module,
+    const Function& caller,
+    ExprId eid,
+    std::vector<InlineCandidate>& out,
+    std::vector<bool>& visited) {
+  const Expr* e = module.find_expr(eid);
+  if (!e) return;
+
+  // Avoid visiting the same expression twice.
+  for (size_t i = 0; i < module.expr_pool.size(); ++i) {
+    if (module.expr_pool[i].id.value == eid.value) {
+      if (visited[i]) return;
+      visited[i] = true;
+      break;
+    }
+  }
+
+  // If this is a CallExpr, check eligibility.
+  if (const auto* call = std::get_if<CallExpr>(&e->payload)) {
+    auto cand = check_inline_eligibility(
+        module, caller, *call, eid, BlockId::invalid(), 0);
+    // Only collect rejected always_inline calls.
+    if (!cand.eligible() && cand.callee && cand.callee->attrs.always_inline &&
+        cand.reject != InlineRejectReason::NotAlwaysInline) {
+      out.push_back(cand);
+    }
+    // Recurse into args.
+    for (const auto& arg : call->args) {
+      find_always_inline_calls_in_expr(module, caller, arg, out, visited);
+    }
+    find_always_inline_calls_in_expr(module, caller, call->callee, out, visited);
+    return;
+  }
+
+  // Recurse into sub-expressions.
+  std::visit([&](const auto& p) {
+    using T = std::decay_t<decltype(p)>;
+    if constexpr (std::is_same_v<T, UnaryExpr>) {
+      find_always_inline_calls_in_expr(module, caller, p.operand, out, visited);
+    } else if constexpr (std::is_same_v<T, BinaryExpr>) {
+      find_always_inline_calls_in_expr(module, caller, p.lhs, out, visited);
+      find_always_inline_calls_in_expr(module, caller, p.rhs, out, visited);
+    } else if constexpr (std::is_same_v<T, AssignExpr>) {
+      find_always_inline_calls_in_expr(module, caller, p.lhs, out, visited);
+      find_always_inline_calls_in_expr(module, caller, p.rhs, out, visited);
+    } else if constexpr (std::is_same_v<T, CastExpr>) {
+      find_always_inline_calls_in_expr(module, caller, p.expr, out, visited);
+    } else if constexpr (std::is_same_v<T, IndexExpr>) {
+      find_always_inline_calls_in_expr(module, caller, p.base, out, visited);
+      find_always_inline_calls_in_expr(module, caller, p.index, out, visited);
+    } else if constexpr (std::is_same_v<T, MemberExpr>) {
+      find_always_inline_calls_in_expr(module, caller, p.base, out, visited);
+    } else if constexpr (std::is_same_v<T, TernaryExpr>) {
+      find_always_inline_calls_in_expr(module, caller, p.cond, out, visited);
+      find_always_inline_calls_in_expr(module, caller, p.then_expr, out, visited);
+      find_always_inline_calls_in_expr(module, caller, p.else_expr, out, visited);
+    } else if constexpr (std::is_same_v<T, SizeofExpr>) {
+      find_always_inline_calls_in_expr(module, caller, p.expr, out, visited);
+    }
+  }, e->payload);
+}
+
+/// Emit a warning for always_inline callees that could not be expanded.
+/// Walks all expressions in all functions to find remaining always_inline calls.
+static void emit_inline_diagnostics(const Module& module) {
+  std::vector<InlineCandidate> rejected;
+  std::vector<bool> visited(module.expr_pool.size(), false);
+
+  for (const auto& fn : module.functions) {
+    for (const auto& bb : fn.blocks) {
+      for (const auto& stmt : bb.stmts) {
+        // Collect all expression roots from all statement types.
+        auto scan_expr = [&](ExprId eid) {
+          find_always_inline_calls_in_expr(module, fn, eid, rejected, visited);
+        };
+        std::visit([&](const auto& s) {
+          using T = std::decay_t<decltype(s)>;
+          if constexpr (std::is_same_v<T, ExprStmt>) {
+            if (s.expr) scan_expr(*s.expr);
+          } else if constexpr (std::is_same_v<T, ReturnStmt>) {
+            if (s.expr) scan_expr(*s.expr);
+          } else if constexpr (std::is_same_v<T, LocalDecl>) {
+            if (s.init) scan_expr(*s.init);
+          } else if constexpr (std::is_same_v<T, IfStmt>) {
+            scan_expr(s.cond);
+          } else if constexpr (std::is_same_v<T, WhileStmt>) {
+            scan_expr(s.cond);
+          } else if constexpr (std::is_same_v<T, ForStmt>) {
+            if (s.init) scan_expr(*s.init);
+            if (s.cond) scan_expr(*s.cond);
+            if (s.update) scan_expr(*s.update);
+          } else if constexpr (std::is_same_v<T, DoWhileStmt>) {
+            scan_expr(s.cond);
+          } else if constexpr (std::is_same_v<T, SwitchStmt>) {
+            scan_expr(s.cond);
+          } else if constexpr (std::is_same_v<T, InlineAsmStmt>) {
+            if (s.output) scan_expr(*s.output);
+            for (const auto& inp : s.inputs) scan_expr(inp);
+          }
+        }, stmt.payload);
+      }
+    }
+  }
+
+  // Deduplicate by callee name + caller name + reason.
+  std::vector<std::tuple<std::string, std::string, InlineRejectReason>> seen;
+  for (const auto& cand : rejected) {
+    auto key = std::make_tuple(
+        cand.callee->name,
+        cand.caller ? cand.caller->name : std::string(),
+        cand.reject);
+    bool dup = false;
+    for (const auto& s : seen) {
+      if (s == key) { dup = true; break; }
+    }
+    if (dup) continue;
+    seen.push_back(key);
+
+    fprintf(stderr, "warning: always_inline function '%s' could not be "
+            "inlined into '%s': %s\n",
+            cand.callee->name.c_str(),
+            cand.caller ? cand.caller->name.c_str() : "<unknown>",
+            inline_reject_reason_str(cand.reject));
+  }
+}
+
 void run_inline_expansion(Module& module) {
   // Phase 6: normalize nested inline calls into statement position first.
   normalize_inline_calls(module);
@@ -1005,6 +1163,11 @@ void run_inline_expansion(Module& module) {
       }
     }
   }
+
+  // Phase 7: emit diagnostics for always_inline calls that remain unexpanded.
+  // Final pass: any remaining always_inline call sites that weren't expanded
+  // get a warning (permissive mode — not an error).
+  emit_inline_diagnostics(module);
 }
 
 }  // namespace c4c::hir
