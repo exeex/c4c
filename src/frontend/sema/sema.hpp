@@ -20,7 +20,6 @@ struct AnalyzeResult {
 
 AnalyzeResult analyze_program(const Node* root,
                               SemaProfile profile = SemaProfile::C);
-std::string format_hir(const HirModule& module);
-std::string format_summary(const HirModule& module);
+
 
 }  // namespace c4c::sema

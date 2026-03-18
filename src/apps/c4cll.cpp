@@ -14,12 +14,12 @@
 #include "parser.hpp"
 #include "preprocessor.hpp"
 #include "sema.hpp"
-#include "compile_time_pass.hpp"
+#include "hir.hpp"
+#include "compile_time_engine.hpp"
 #include "inline_expand.hpp"
 #include "source_profile.hpp"
 #include "token.hpp"
 
-namespace tc = c4c;
 
 namespace {
 
@@ -31,7 +31,7 @@ void print_usage(const char *argv0) {
             << " [-o output.ll] <input.c>\n";
 }
 
-void print_pp_diags(const std::vector<tc::PreprocessorDiagnostic>& diags,
+void print_pp_diags(const std::vector<c4c::PreprocessorDiagnostic>& diags,
                     const char* level) {
   for (const auto& d : diags) {
     std::cerr << d.file << ":" << d.line << ":" << d.column << ": "
@@ -153,11 +153,11 @@ int main(int argc, char **argv) {
     }
 
     // Determine source profile from input file extension.
-    auto source_profile = tc::source_profile_from_extension(input);
-    auto lex_profile    = tc::lex_profile_from(source_profile);
-    auto sema_profile   = tc::sema_profile_from(source_profile);
+    auto source_profile = c4c::source_profile_from_extension(input);
+    auto lex_profile    = c4c::lex_profile_from(source_profile);
+    auto sema_profile   = c4c::sema_profile_from(source_profile);
 
-    tc::Preprocessor preprocessor;
+    c4c::Preprocessor preprocessor;
     preprocessor.set_source_profile(source_profile);
     // Apply optimization / PIC / PIE config toggles.
     if (opt_level > 0) {
@@ -193,21 +193,21 @@ int main(int argc, char **argv) {
       std::cout << source;
       return 0;
     }
-    tc::Lexer lexer(source, lex_profile);
-    std::vector<tc::Token> tokens = lexer.scan_all();
+    c4c::Lexer lexer(source, lex_profile);
+    std::vector<c4c::Token> tokens = lexer.scan_all();
 
     if (lex_only) {
       for (const auto &tok : tokens) {
-        std::cout << tc::token_kind_name(tok.kind) << " '" << tok.lexeme << "'"
+        std::cout << c4c::token_kind_name(tok.kind) << " '" << tok.lexeme << "'"
                   << " @" << tok.line << ":" << tok.column << "\n";
       }
       return 0;
     }
 
     // Parse phase
-    tc::Arena arena;
-    tc::Parser parser(std::move(tokens), arena, source_profile);
-    tc::Node* prog = parser.parse();
+    c4c::Arena arena;
+    c4c::Parser parser(std::move(tokens), arena, source_profile);
+    c4c::Node* prog = parser.parse();
     if (parser.had_error_) {
       return 1;
     }
@@ -216,25 +216,25 @@ int main(int argc, char **argv) {
       // Print a summary line followed by the full AST dump
       printf("Program(%d items)\n", prog ? prog->n_children : 0);
       if (prog) {
-        tc::ast_dump(prog, 0);
+        c4c::ast_dump(prog, 0);
       }
       return 0;
     }
 
-    tc::sema::AnalyzeResult sema_result = tc::sema::analyze_program(prog, sema_profile);
+    c4c::sema::AnalyzeResult sema_result = c4c::sema::analyze_program(prog, sema_profile);
     if (!sema_result.validation.ok) {
-      tc::sema::print_diagnostics(sema_result.validation.diagnostics, input);
+      c4c::sema::print_diagnostics(sema_result.validation.diagnostics, input);
       return 1;
     }
 
     if (dump_canonical) {
-      std::cout << tc::sema::format_canonical_result(sema_result.canonical);
+      std::cout << c4c::sema::format_canonical_result(sema_result.canonical);
       return 0;
     }
 
-    // Run HIR compile-time reduction pass (verification only — actual deferred
-    // instantiation already happened inside lower_ast_to_hir).
-    auto ct_stats = c4c::hir::run_compile_time_reduction(
+    // Run the HIR compile-time engine in verification mode; actual deferred
+    // instantiation already happened inside build_hir().
+    auto ct_stats = c4c::hir::run_compile_time_engine(
         *sema_result.hir_module);
     // Propagate deferred counts from the lowering-time pass.
     ct_stats.templates_deferred = sema_result.hir_module->ct_info.deferred_instantiations;
@@ -246,14 +246,14 @@ int main(int argc, char **argv) {
 
     if (dump_hir || dump_hir_summary) {
       if (dump_hir) {
-        std::cout << tc::sema::format_hir(*sema_result.hir_module);
+        std::cout << c4c::hir::format_hir(*sema_result.hir_module);
         std::cout << "\n--- compile-time reduction ---\n"
                   << "  " << c4c::hir::format_compile_time_stats(ct_stats)
                   << "\n--- materialization ---\n"
                   << "  " << c4c::hir::format_materialization_stats(mat_stats)
                   << "\n";
       } else {
-        std::cout << tc::sema::format_summary(*sema_result.hir_module) << "\n";
+        std::cout << c4c::hir::format_summary(*sema_result.hir_module) << "\n";
       }
       return 0;
     }

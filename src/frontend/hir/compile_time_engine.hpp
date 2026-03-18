@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace c4c::hir {
@@ -16,7 +17,7 @@ struct CompileTimeDiagnostic {
 };
 
 /// Result of a single compile-time reduction iteration.
-struct CompileTimePassStats {
+struct CompileTimeEngineStats {
   size_t templates_instantiated = 0;  // template calls with resolved target functions
   size_t templates_pending = 0;       // template calls whose target is missing
   size_t templates_deferred = 0;      // template instantiations created by this pass
@@ -27,6 +28,8 @@ struct CompileTimePassStats {
   bool converged = false;             // true if no new work was found
   std::vector<CompileTimeDiagnostic> diagnostics;  // details on irreducible nodes
 };
+
+using CompileTimePassStats = CompileTimeEngineStats;
 
 /// Callback for deferred template instantiation.
 ///
@@ -77,13 +80,22 @@ using DeferredConstevalEvalFn = std::function<std::optional<long long>(
 /// When consteval_fn is provided, the pass will evaluate PendingConstevalExpr
 /// nodes created during deferred instantiation.
 /// When callbacks are null, the pass only verifies existing state.
-CompileTimePassStats run_compile_time_reduction(
+CompileTimeEngineStats run_compile_time_engine(
     Module& module,
     DeferredInstantiateFn instantiate_fn = nullptr,
     DeferredConstevalEvalFn consteval_fn = nullptr);
 
+// Compatibility alias while call sites transition to the new naming.
+inline CompileTimeEngineStats run_compile_time_reduction(
+    Module& module,
+    DeferredInstantiateFn instantiate_fn = nullptr,
+    DeferredConstevalEvalFn consteval_fn = nullptr) {
+  return run_compile_time_engine(
+      module, std::move(instantiate_fn), std::move(consteval_fn));
+}
+
 /// Format pass statistics for debug output (used by --dump-hir).
-std::string format_compile_time_stats(const CompileTimePassStats& stats);
+std::string format_compile_time_stats(const CompileTimeEngineStats& stats);
 
 /// Result of materialization.
 struct MaterializationStats {

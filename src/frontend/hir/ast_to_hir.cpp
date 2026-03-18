@@ -1,5 +1,4 @@
 #include "ast_to_hir.hpp"
-#include "compile_time_pass.hpp"
 #include "consteval.hpp"
 
 #include <algorithm>
@@ -412,12 +411,11 @@ class Lowerer {
  public:
   const sema::ResolvedTypeTable* resolved_types_ = nullptr;
 
-  Module lower_program(const Node* root) {
+  void lower_initial_program(const Node* root, Module& m) {
     if (!root || root->kind != NK_PROGRAM) {
-      throw std::runtime_error("ast_to_hir: root is not NK_PROGRAM");
+      throw std::runtime_error("build_initial_hir: root is not NK_PROGRAM");
     }
 
-    Module m{};
     module_ = &m;
 
     // Flatten top-level items (may be wrapped in NK_BLOCK)
@@ -617,74 +615,58 @@ class Lowerer {
                           pm.nttp_bindings.empty() ? nullptr : &pm.nttp_bindings);
     }
 
-    // Phase 3: run HIR compile-time reduction with deferred instantiation.
-    // Nested template calls (e.g., add<T>() inside twice<T>()) were not
-    // collected in Phase 1.6 and thus not lowered in Phase 2.  The
-    // compile-time reduction pass discovers these unresolved calls and
-    // triggers on-demand lowering via the callback below.
-    auto deferred_lower = [this](const std::string& tpl_name,
-                                 const TypeBindings& bindings,
-                                 const NttpBindings& nttp_bindings,
-                                 const std::string& mangled) -> bool {
-      auto fn_it = template_fn_defs_.find(tpl_name);
-      if (fn_it == template_fn_defs_.end()) return false;
-      const Node* fn_def = fn_it->second;
-      if (fn_def->is_consteval) return false;  // consteval handled eagerly
-      // Check for explicit specialization matching this instantiation.
-      const Node* spec_node = registry_.find_specialization(mangled);
-      if (spec_node) {
-        lower_function(spec_node, &mangled);
-      } else {
-        // Enable deferred consteval: consteval calls inside this function
-        // will create PendingConstevalExpr nodes instead of evaluating.
-        defer_consteval_ = true;
-        const NttpBindings* nttp_ptr = nttp_bindings.empty() ? nullptr : &nttp_bindings;
-        lower_function(fn_def, &mangled, &bindings, nttp_ptr);
-        defer_consteval_ = false;
-      }
-      // Track template origin and specialization key for deferred instantiations.
-      if (!module_->functions.empty()) {
-        module_->functions.back().template_origin = tpl_name;
-        auto param_order = get_template_param_order_from_instances(tpl_name);
-        module_->functions.back().spec_key = nttp_bindings.empty()
-            ? make_specialization_key(tpl_name, param_order, bindings)
-            : make_specialization_key(tpl_name, param_order, bindings, nttp_bindings);
-      }
-      return true;
-    };
-    // Consteval evaluation callback for the compile-time pass.
-    // Evaluates PendingConstevalExpr nodes using the AST-level interpreter.
-    auto deferred_consteval = [this](const std::string& fn_name,
-                                     const std::vector<long long>& const_args,
-                                     const TypeBindings& bindings,
-                                     const NttpBindings& nttp_binds)
-        -> std::optional<long long> {
-      auto ce_it = consteval_fns_.find(fn_name);
-      if (ce_it == consteval_fns_.end()) return std::nullopt;
-      // Build ConstValue args and evaluation environment.
-      std::vector<ConstValue> args;
-      args.reserve(const_args.size());
-      for (long long v : const_args) args.push_back(ConstValue::make_int(v));
-      ConstEvalEnv env{&enum_consts_, &const_int_bindings_, nullptr};
-      TypeBindings tpl_bindings = bindings;
-      env.type_bindings = &tpl_bindings;
-      NttpBindings nttp_copy = nttp_binds;
-      if (!nttp_copy.empty())
-        env.nttp_bindings = &nttp_copy;
-      auto result = evaluate_consteval_call(
-          ce_it->second, args, env, consteval_fns_);
-      if (result.ok()) return result.as_int();
-      return std::nullopt;
-    };
-    auto ct_stats = run_compile_time_reduction(m, deferred_lower, deferred_consteval);
-    m.ct_info.deferred_instantiations = ct_stats.templates_deferred;
-    m.ct_info.deferred_consteval = ct_stats.consteval_deferred;
-    m.ct_info.total_iterations = ct_stats.iterations;
-    m.ct_info.templates_resolved = ct_stats.templates_instantiated;
-    m.ct_info.consteval_reduced = ct_stats.consteval_reduced;
-    m.ct_info.converged = ct_stats.converged;
+    return;
+  }
 
-    return m;
+  bool instantiate_deferred_template(const std::string& tpl_name,
+                                     const TypeBindings& bindings,
+                                     const NttpBindings& nttp_bindings,
+                                     const std::string& mangled) {
+    auto fn_it = template_fn_defs_.find(tpl_name);
+    if (fn_it == template_fn_defs_.end()) return false;
+    const Node* fn_def = fn_it->second;
+    if (fn_def->is_consteval) return false;  // consteval handled eagerly
+    const Node* spec_node = registry_.find_specialization(mangled);
+    if (spec_node) {
+      lower_function(spec_node, &mangled);
+    } else {
+      // Enable deferred consteval so newly-exposed compile-time work remains
+      // visible to the compile-time engine instead of being eagerly collapsed.
+      defer_consteval_ = true;
+      const NttpBindings* nttp_ptr = nttp_bindings.empty() ? nullptr : &nttp_bindings;
+      lower_function(fn_def, &mangled, &bindings, nttp_ptr);
+      defer_consteval_ = false;
+    }
+    if (!module_->functions.empty()) {
+      module_->functions.back().template_origin = tpl_name;
+      auto param_order = get_template_param_order_from_instances(tpl_name);
+      module_->functions.back().spec_key = nttp_bindings.empty()
+          ? make_specialization_key(tpl_name, param_order, bindings)
+          : make_specialization_key(tpl_name, param_order, bindings, nttp_bindings);
+    }
+    return true;
+  }
+
+  std::optional<long long> evaluate_deferred_consteval(
+      const std::string& fn_name,
+      const std::vector<long long>& const_args,
+      const TypeBindings& bindings,
+      const NttpBindings& nttp_binds) {
+    auto ce_it = consteval_fns_.find(fn_name);
+    if (ce_it == consteval_fns_.end()) return std::nullopt;
+    std::vector<ConstValue> args;
+    args.reserve(const_args.size());
+    for (long long v : const_args) args.push_back(ConstValue::make_int(v));
+    ConstEvalEnv env{&enum_consts_, &const_int_bindings_, nullptr};
+    TypeBindings tpl_bindings = bindings;
+    env.type_bindings = &tpl_bindings;
+    NttpBindings nttp_copy = nttp_binds;
+    if (!nttp_copy.empty())
+      env.nttp_bindings = &nttp_copy;
+    auto result = evaluate_consteval_call(
+        ce_it->second, args, env, consteval_fns_);
+    if (result.ok()) return result.as_int();
+    return std::nullopt;
   }
 
  private:
@@ -5371,26 +5353,37 @@ class Lowerer {
 };
 
 
-Module lower_ast_to_hir(const Node* program_root,
-                        const sema::ResolvedTypeTable* resolved_types) {
-  Lowerer l;
-  l.resolved_types_ = resolved_types;
-  return l.lower_program(program_root);
-}
+InitialHirBuildResult build_initial_hir(
+    const Node* program_root,
+    const sema::ResolvedTypeTable* resolved_types) {
+  auto lowerer = std::make_shared<Lowerer>();
+  lowerer->resolved_types_ = resolved_types;
 
-std::string format_summary(const Module& module) {
-  const ProgramSummary s = module.summary();
-  char buf[256];
-  std::snprintf(
-      buf,
-      sizeof(buf),
-      "HIR summary: functions=%zu globals=%zu blocks=%zu statements=%zu expressions=%zu",
-      s.functions,
-      s.globals,
-      s.blocks,
-      s.statements,
-      s.expressions);
-  return std::string(buf);
+  auto module = std::make_shared<Module>();
+  lowerer->lower_initial_program(program_root, *module);
+
+  InitialHirBuildResult result{};
+  result.module = module;
+  result.deferred_instantiate =
+      [lowerer, module](const std::string& tpl_name,
+                        const TypeBindings& bindings,
+                        const NttpBindings& nttp_bindings,
+                        const std::string& mangled) -> bool {
+    (void)module;
+    return lowerer->instantiate_deferred_template(
+        tpl_name, bindings, nttp_bindings, mangled);
+  };
+  result.deferred_consteval =
+      [lowerer, module](const std::string& fn_name,
+                        const std::vector<long long>& const_args,
+                        const TypeBindings& bindings,
+                        const NttpBindings& nttp_binds)
+          -> std::optional<long long> {
+    (void)module;
+    return lowerer->evaluate_deferred_consteval(
+        fn_name, const_args, bindings, nttp_binds);
+  };
+  return result;
 }
 
 }  // namespace c4c::hir

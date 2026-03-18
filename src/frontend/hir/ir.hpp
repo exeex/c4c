@@ -637,7 +637,7 @@ struct ProgramSummary {
   }
 };
 
-// ── Struct/union layout metadata (populated by ast_to_hir) ───────────────────
+// ── Struct/union layout metadata (populated by hir build) ────────────────────
 
 struct HirStructField {
   SymbolName name;
@@ -667,7 +667,7 @@ struct HirStructDef {
   std::vector<HirStructField> fields;
 };
 
-// ── Template function definition metadata (populated by ast_to_hir) ──────────
+// ── Template function definition metadata (populated by hir build) ───────────
 
 /// Type bindings for template parameter substitution.
 using TypeBindings = std::unordered_map<std::string, TypeSpec>;
@@ -774,7 +774,7 @@ struct HirTemplateInstantiation {
   SpecializationKey spec_key;  // stable identity for dedup/caching
 };
 
-// ── Consteval call metadata (populated by ast_to_hir) ────────────────────────
+// ── Consteval call metadata (populated by hir build) ─────────────────────────
 
 /// Records a consteval call that was evaluated during lowering.
 /// Preserves the call intent so a future HIR pass can re-evaluate or defer.
@@ -807,17 +807,17 @@ struct Module {
   std::unordered_map<SymbolName, FunctionId> fn_index;
   std::unordered_map<SymbolName, GlobalId> global_index;
 
-  // Struct/union definitions (populated by lower_ast_to_hir)
+  // Struct/union definitions (populated by build_hir)
   std::unordered_map<SymbolName, HirStructDef> struct_defs;
   std::vector<SymbolName> struct_def_order;  // insertion order for deterministic emission
 
-  // Template function definitions (populated by lower_ast_to_hir)
+  // Template function definitions (populated by build_hir)
   std::unordered_map<SymbolName, HirTemplateDef> template_defs;
 
-  // Consteval call records (populated by lower_ast_to_hir)
+  // Consteval call records (populated by build_hir)
   std::vector<ConstevalCallInfo> consteval_calls;
 
-  // Compile-time reduction info (populated by the compile-time pass in lower_ast_to_hir).
+  // Compile-time normalization info (populated by the compile-time engine in build_hir).
   // These capture the result of the HIR-owned reduction pass that runs after
   // initial lowering, so subsequent verification calls can distinguish
   // deferred work from eagerly-lowered work.

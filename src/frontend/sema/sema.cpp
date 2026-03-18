@@ -1,6 +1,6 @@
 #include "sema.hpp"
 
-#include "ast_to_hir.hpp"
+#include "hir.hpp"
 #include "hir_printer.hpp"
 
 namespace c4c::sema {
@@ -11,7 +11,7 @@ static AnalyzeResult analyze_program_base(const Node* root, SourceProfile source
   result.validation = validate_program(root);
   if (!result.validation.ok) return result;
   result.canonical = build_canonical_symbols(root, source_profile);
-  result.hir_module = hir::lower_ast_to_hir(root, &result.canonical.resolved_types);
+  result.hir_module = hir::build_hir(root, &result.canonical.resolved_types);
   return result;
 }
 
@@ -57,12 +57,5 @@ AnalyzeResult analyze_program(const Node* root, SemaProfile profile) {
   return result;
 }
 
-std::string format_hir(const HirModule& module) {
-  return hir::format_hir(module);
-}
-
-std::string format_summary(const HirModule& module) {
-  return hir::format_summary(module);
-}
 
 }  // namespace c4c::sema

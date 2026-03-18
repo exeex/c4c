@@ -55,7 +55,7 @@ using ConstMap = std::unordered_map<std::string, long long>;
 using TypeBindings = std::unordered_map<std::string, TypeSpec>;
 
 struct ConstEvalEnv {
-  // Flat maps (used by ast_to_hir.cpp where scoping is managed externally).
+  // Flat maps (used by hir.cpp where scoping is managed externally).
   const ConstMap* enum_consts = nullptr;
   const ConstMap* named_consts = nullptr;
   const ConstMap* local_consts = nullptr;

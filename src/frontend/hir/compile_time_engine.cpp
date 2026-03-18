@@ -1,4 +1,4 @@
-#include "compile_time_pass.hpp"
+#include "compile_time_engine.hpp"
 
 #include <sstream>
 #include <string>
@@ -199,10 +199,10 @@ struct PendingConstevalEvalStep {
 
 }  // namespace
 
-CompileTimePassStats run_compile_time_reduction(
+CompileTimeEngineStats run_compile_time_engine(
     Module& module, DeferredInstantiateFn instantiate_fn,
     DeferredConstevalEvalFn consteval_fn) {
-  CompileTimePassStats stats{};
+  CompileTimeEngineStats stats{};
 
   static constexpr int kMaxIterations = 8;
 
@@ -272,7 +272,7 @@ CompileTimePassStats run_compile_time_reduction(
   return stats;
 }
 
-std::string format_compile_time_stats(const CompileTimePassStats& stats) {
+std::string format_compile_time_stats(const CompileTimeEngineStats& stats) {
   std::ostringstream out;
   out << "compile-time reduction: "
       << stats.iterations << " iteration"

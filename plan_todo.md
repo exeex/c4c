@@ -2,102 +2,152 @@
 
 ## Goal
 
-Refactor template-reduction ownership so AST preprocessing becomes a seed/todo builder,
-while HIR gradually takes over the work that currently exceeds AST's intended role.
+Continue the HIR frontend refactor toward a clearer compile-time architecture:
 
-This migration should be incremental:
+- `ast_to_hir.*` builds the initial HIR
+- `compile_time_engine.*` owns compile-time normalization
+- `hir.*` is the public pipeline orchestrator
 
-- keep old behavior working during the transition
-- introduce new paths alongside old ones first
-- only delete old paths after behavior is proven equivalent
+The structural split is already done.
+The remaining work is mainly about moving ownership and semantics, while keeping
+old behavior alive long enough to verify parity.
 
-## Phase 1: Move AST Overreach Into HIR, But Keep Old Paths
+## Current Status
+
+Completed:
+
+- `src/frontend/hir/ast_to_hir.*` now holds AST -> initial HIR construction again
+- `src/frontend/hir/hir.*` is now a thin orchestration entrypoint
+- `src/frontend/hir/compile_time_engine.*` is the canonical engine naming
+- seed/todo container exists: `template_seed_work_`
+- seed origins are recorded
+- compatibility names are still present where helpful
+
+Not completed:
+
+- compile-time state ownership is still mostly builder-owned
+- template instance lifecycle is still centered in `ast_to_hir.cpp`
+- engine is still callback-driven and thinner than the intended final design
+
+## Phase 1: Move Compile-Time State Toward The Engine
 
 ### Objective
 
-Identify AST work that exceeds seed-collection responsibility and mirror that logic into
-HIR-owned structures and helpers, without removing the current AST-driven behavior yet.
-
-### Scope
-
-- keep AST consteval behavior unchanged
-- keep current test behavior unchanged
-- add new HIR-side data flow in parallel with old AST-side flow
+Keep the new file split stable, and move ownership of compile-time state away
+from AST-lowering internals.
 
 ### Tasks
 
-1. formalize AST seed data ✅
+1. define the first explicit engine-owned state structure
 
-- `TemplateSeedWorkItem` struct with origin, bindings, nttp, mangled, spec_key
-- `TemplateSeedOrigin` enum: DirectCall, EnclosingTemplateExpansion, DeducedCall, ConstevalSeed, ConstevalEnclosingExpansion
-- AST seed discovery now records work via `record_seed()`
+- add a compile-time engine state object in `compile_time_engine.*`
+- begin moving or mirroring:
+  - realized template instances
+  - instance dedup keys
+  - specialization lookup ownership
+  - seed consumption state
 
-2. identify AST responsibilities that should migrate ✅
+2. reduce builder-owned compile-time state
 
-- AST-side fixpoint-like consteval-template seed expansion
-- AST-owned realized instance bookkeeping
-- AST-driven population of final template instance metadata
-- AST influence over which template functions are lowered immediately
+- stop treating `ast_to_hir.cpp` as the conceptual owner of:
+  - `template_fn_instances_`
+  - instance dedup rules
+  - realized instance lifecycle
 
-3. introduce HIR-side registry / driver scaffolding ✅
+3. keep migration parallel
 
-- `InstantiationRegistry` class introduced
-- centralizes:
-  - dedup (`has_seed`, `has_instance`, `has_seed_or_instance`)
-  - specialization identity (`make_specialization_key` via `record_seed`)
-  - explicit specialization lookup (`find_specialization`, `register_specialization`)
-  - realized-instance metadata (`find_instances`, `all_instances`)
-  - seed work tracking (`all_seeds`)
-- all AST collection and deferred HIR paths now go through `registry_`
-- old `template_fn_instances_`, `instance_keys_`, `template_fn_specs_` replaced by single `registry_` member
+- do not delete current AST-side bookkeeping yet
+- mirror data into the new engine-owned state first
+- compare parity before switching reads
 
-4. make HIR capable of consuming AST seed work ✅
+4. improve observability
 
-- `record_seed()` records seeds without realizing instances
-- `realize_seeds()` promotes seeds into instances (HIR consumption path)
-- lowering now calls `realize_seeds()` before consteval fixpoint iteration, within each consteval expansion pass, and once more before parity verification
-- `realize_seeds()` is the sole path that promotes seeds into realized instances
+- add dump/debug support for:
+  - seed work
+  - realized instances
+  - parity comparison between old and new paths
 
 ### Exit Criteria
 
-- AST seed/todo data is complete enough for HIR to consume ✅
-- HIR has a parallel path for instance bookkeeping ✅ (registry centralizes both)
-- lowering behavior still remains compatible while ownership shifts into the registry ✅
+- compile-time engine has an explicit state object
+- builder-owned instance state is no longer the only source of truth
+- old and new state can be compared safely
 
-## Phase 2: Gradually Switch HIR To The New Path ✅
+## Phase 2: Make The Engine The Real Owner
 
-All reads already go through the registry. Old containers fully replaced.
-Parity verification is now enforced in lowering via `verify_parity()`.
+### Objective
 
-## Phase 3: Prove Behavior, Then Remove Old Paths ✅
+Gradually change the runtime of the pipeline so compile-time normalization logic
+uses engine-owned state as the primary source of truth.
 
-### Completed
+### Tasks
 
-1. validate behavior — full suite size is 1891 tests; parity is checked during lowering ✅
-2. remove redundant `record_instance()` from registry and converter wrapper ✅
-3. rename converter wrapper `has_instance()` → `has_seed()` for clarity ✅
-4. clean up transition-era comments and finalize the seed/instance ownership model ✅
-5. registry `record_seed_only()` renamed to `record_seed()` ✅
+1. route instance realization through engine APIs
 
-### Final ownership model
+- move `record_instance` / `has_instance` style logic behind engine-owned helpers
+- make `ast_to_hir.cpp` produce seeds and initial HIR, not act like the final owner
 
-- AST owns discovery and seed generation (via `record_seed()`)
-- HIR owns realized instance lifecycle (`realize_seeds()` is the sole path)
-- `InstantiationRegistry` is the single source of truth for all template bookkeeping
-- AST consteval remains as-is
+2. reduce reliance on AST-owned callback semantics
 
-## Completed Steps
+- keep callbacks during transition
+- but reshape them so the engine works on explicit compile-time state rather than
+  opaque builder-owned internals
 
-1. ~~introduce the first HIR-side instantiation registry helper~~ ✅
-2. ~~mirror current instance bookkeeping into that helper~~ ✅
-3. ~~route all AST collection and Phase 2/3 lookups through the registry~~ ✅
-4. ~~add a HIR-side path that reads seed work from the registry~~ ✅
-5. ~~split seed population from instance realization in the registry~~ ✅
-6. ~~add parity verification~~ ✅
-7. ~~Phase 2: switch HIR to new path~~ ✅ (all reads already through registry)
-8. ~~Phase 3: remove old paths and clean up~~ ✅
+3. make the three stages explicit in code and comments
 
-## Status
+- initial HIR
+- normalized HIR
+- materialized HIR
 
-All three phases complete. The AST refactor plan is done.
-The current build config contains 1891 CTest entries.
+4. switch readers incrementally
+
+- first metadata population
+- then instance lookup
+- then lowering decisions
+
+### Exit Criteria
+
+- engine-owned state reproduces the current realized instances
+- primary reads use the new engine-owned path
+- AST lowering is no longer conceptually the owner of normalization results
+
+## Phase 3: Verify, Simplify, Remove Old Paths
+
+### Objective
+
+After parity is proven, remove legacy ownership paths and keep the cleaner model.
+
+### Tasks
+
+1. verify behavior
+
+- build successfully
+- run relevant template / consteval tests
+- compare `--dump-hir` output where useful
+- compare emitted `.ll` where useful
+
+2. remove legacy ownership paths
+
+- delete old builder-owned realized-instance bookkeeping
+- delete fallback or duplicate state once parity is proven
+
+3. remove compatibility naming when safe
+
+- old function aliases
+- old compatibility headers
+- outdated comments/docs
+
+4. update `src/frontend/hir/README.md`
+
+### Exit Criteria
+
+- tests pass
+- old ownership path is removed
+- code layout and code behavior both reflect the new model
+
+## Immediate Next Steps
+
+1. introduce a first engine-owned compile-time state object
+2. mirror `template_fn_instances_`-style state into the engine layer
+3. add debug visibility for seed work vs realized instances
+4. only after parity checks, start switching reads over to the engine-owned path
