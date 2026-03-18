@@ -2,386 +2,176 @@
 
 ## Goal
 
-Implement template and consteval support in an order that preserves long-term flexibility for:
+Finish the remaining template work by focusing only on:
 
-- delayed template instantiation
-- HIR-level compile-time reduction
-- future JIT specialization
+- `template struct`
+- mixed nested cases between `template function` and `template struct`
 
-The key decision is:
+For this planning round, RTTI-related work is intentionally out of scope.
 
-- sema may do conservative early folding and diagnostics
-- but HIR must own template preservation, template instantiation, and the full compile-time reduction loop
+## Scope
 
-## Core Model
+### In Scope
 
-Template functions should not be treated as eager frontend syntax sugar.
+- template struct definition handling
+- template struct parameter substitution
+- template struct instantiation in normal and deferred paths
+- nested template struct types
+- mixed nested template function/template struct usage
+- HIR ownership of deferred instantiation for these cases
 
-They should be preserved as compile-time decorator-like entities.
+### Out Of Scope
 
-Example:
+- RTTI
+- `dynamic_cast`
+- RTTI-dependent lowering/materialization/runtime behavior
+
+## Current Assessment
+
+The broad compile-time architecture is good enough for this milestone:
+
+- sema remains conservative
+- HIR owns the delayed template/consteval reduction path
+- template function support is far enough along that the remaining risk is now concentrated in template structs and mixed nesting
+
+So the plan should stop expanding feature surface and instead close the remaining template-struct gaps.
+
+## Required Behavior
+
+By the end of this milestone, we want:
+
+1. `template<typename T> struct Box { T value; };` to work reliably.
+2. nested forms like `Box<Box<int>>` to parse and lower correctly.
+3. template functions to use template structs in deferred contexts, for example:
 
 ```cpp
 template<typename T>
-T add(T, T);
+Box<T> make_box(T x) {
+    Box<T> out;
+    out.value = x;
+    return out;
+}
 ```
 
-Conceptually:
+4. mixed nested forms to survive until HIR instantiation time, for example:
 
-```text
-consteval add(typename T) -> (add<T>(T, T) -> T)
+```cpp
+template<typename T>
+Box<Pair<T>> wrap_pair(T a, T b);
 ```
 
-Interpretation:
-
-- `add` is a compile-time decorator
-- `add<T>` is a specialized callable produced by applying template arguments
-- specialization/materialization is a later policy decision
-
-## Required Ordering
-
-For the long-term architecture, we should not hardcode:
-
-- template instantiate
-- then consteval
-
-because template arguments may themselves depend on consteval results.
-
-Instead, the full compile-time pipeline should converge through iteration in HIR:
-
-1. preserve template and consteval structure into HIR
-2. instantiate templates that are ready
-3. reduce consteval calls that are ready
-4. repeat instantiate/reduce until no additional compile-time nodes can be eliminated
-
-So the intended steady-state HIR loop is:
-
-```text
-template instantiate -> consteval -> template instantiate -> consteval -> ...
-```
-
-until convergence.
-
-## Division Of Responsibility
-
-### Sema
-
-Sema is allowed to do:
-
-- legality diagnostics
-- local constant folding
-- simple non-template consteval folding
-- preservation of template and compile-time shape
-
-Sema must not become the final owner of:
-
-- full template instantiation
-- final template materialization
-- erasing template application structure needed by HIR/JIT
-
-### HIR
-
-HIR must eventually own:
-
-- template function preservation
-- template function call/application preservation
-- instantiation scheduling
-- consteval reduction scheduling
-- fixpoint iteration until compile-time convergence
-- later materialization policy
+5. none of the above to depend on RTTI support.
 
 ## Implementation Sequence
 
-### Phase 1: constrain sema to conservative compile-time work
+### Phase A: stabilize plain template struct support
 
 Goals:
 
-- keep sema useful for diagnostics and simple folding
-- avoid baking eager template materialization into sema
+- make non-nested template structs reliable end-to-end
 
 Tasks:
 
-- keep simple non-template consteval folding in sema only where it is obviously safe
-- keep diagnostics in sema for:
-  - invalid consteval usage
-  - non-constant immediate arguments
-  - address-of consteval function
-- do not require sema to fully instantiate template functions
-- do not rewrite away template application structure that HIR will need
+- verify template struct definitions preserve template parameter bindings
+- ensure field types substitute correctly during instantiation
+- ensure instantiated struct layouts are represented consistently
+- keep instantiation ownership in the existing deferred/HIR path where applicable
 
 Exit criteria:
 
-- sema can still reject invalid consteval uses early
-- sema does not become the only place where template+consteval semantics work
+- plain `template struct` cases compile and lower consistently
+- field substitution is correct in emitted/instantiated forms
 
-### Phase 2: make HIR preserve template function definitions
+### Phase B: nested template struct forms
 
 Goals:
 
-- lower template functions into HIR without immediately erasing them into concrete functions
+- support nested template struct types without parser/lowering ambiguity
 
 Tasks:
 
-- add a HIR representation for template function definitions
-- preserve template parameter environment on the HIR-side definition
-- keep the function body available for later compile-time reduction/materialization
+- validate nested type parsing such as `Pair<Pair<int>>`
+- ensure canonical type construction works for nested template args
+- ensure lowering does not collapse or mis-resolve nested template struct types
 
 Exit criteria:
 
-- template definitions survive lowering as first-class HIR entities
-- template bodies remain available after lowering
+- nested template struct cases work in declarations, locals, params, and returns
 
-### Phase 3: make HIR preserve template function application/calls
+### Phase C: mixed template function + template struct nesting
 
 Goals:
 
-- distinguish template application from ordinary function call
+- make deferred template function instantiation cooperate with template struct instantiation
 
 Tasks:
 
-- add a HIR representation for template application requests such as `add<int>`
-- ensure `add<int>(1, 2)` is not flattened into an ordinary call too early
-- represent specialized callable values distinctly from plain function symbols
+- support `Pair<T>` and `Box<Pair<T>>` inside template function bodies
+- support return types / local variables / call arguments involving template structs
+- ensure substitution order is correct when both function-template params and struct-template params participate
+- keep resolution deferred until enough bindings are known
 
 Exit criteria:
 
-- HIR can represent:
-  - template definition
-  - template application
-  - specialized callable request
+- mixed nested function/struct cases work without eager frontend-only hacks
 
-### Phase 4: represent consteval as HIR-reducible compile-time nodes
+### Phase D: targeted validation and cleanup
 
 Goals:
 
-- stop treating consteval reduction as a lowering-only side effect
+- lock in the milestone without scope creep
 
 Tasks:
 
-- preserve consteval call intent in HIR
-- attach enough environment information for later reduction:
-  - constant arguments
-  - template bindings
-  - enclosing compile-time context
-- keep reduction failures structured enough for diagnostics
+- add regression tests for plain, nested, and mixed nested template-struct cases
+- confirm no RTTI-dependent scenario is accidentally required by the tests
+- remove stale planning notes that imply RTTI work is part of this milestone
 
 Exit criteria:
 
-- consteval is representable in HIR before final reduction
-- HIR can defer consteval when inputs are not ready yet
-
-### Phase 5: add HIR compile-time reduction loop
-
-Goals:
-
-- make compile-time behavior converge through repeated passes instead of fixed frontend ordering
-
-Tasks:
-
-- implement a worklist or fixpoint pass in HIR
-- repeatedly run:
-  - template instantiation for newly-ready applications
-  - consteval reduction for newly-ready immediate calls
-- continue until no new compile-time nodes are reducible
-
-Exit criteria:
-
-- template arguments produced by consteval can unlock later instantiations
-- instantiated templates can expose new consteval calls
-- the system converges without frontend eager erasure
-
-### Phase 6: define materialization boundary
-
-Goals:
-
-- separate compile-time specialization from code emission
-
-Tasks:
-
-- decide when a specialized callable becomes a concrete emitted function
-- keep that decision separate from:
-  - template definition semantics
-  - template application semantics
-  - consteval semantics
-
-Exit criteria:
-
-- concrete codegen is a policy step
-- template semantics remain valid even if emission is delayed to link-time/JIT
-
-### Phase 7: specialization identity and caching
-
-Goals:
-
-- make later link-time/JIT reuse deterministic
-
-Tasks:
-
-- define a stable specialization key
-- ensure template application encoding is deterministic
-- preserve enough identity for:
-  - cross-TU dedup
-  - lazy materialization
-  - future JIT caches
-
-Exit criteria:
-
-- specialization identity is stable and serializable
-
-## Recommended Transitional Strategy
-
-Before introducing fully separate HIR node families, we may use a simpler transitional model:
-
-- treat template definitions as compile-time decorator-shaped callable entities
-- treat `add<T>` as decorator application producing a specialized callable
-- reuse existing callable/call node machinery where practical
-
-This is acceptable as a transition as long as:
-
-- the semantics are documented clearly
-- template structure is still preserved
-- later migration to explicit HIR nodes remains possible
-
-## Final Success Criteria
-
-The implementation is on the right track when:
-
-- sema only performs conservative early compile-time work
-- HIR preserves template function definitions and template applications
-- template instantiation is no longer forced entirely in sema/frontend lowering
-- consteval reduction can interact with template instantiation through HIR iteration
-- compile-time-only structure can remain intact long enough for future JIT specialization
+- tests cover the intended surface
+- plan/docs/code comments all reflect the narrowed scope
 
 ## Checklist
 
-### Phase 1 Checklist: constrain sema
+### Template Struct Core
 
-- [ ] Audit current consteval entry points in:
-  - `src/frontend/sema/sema.cpp`
-  - `src/frontend/sema/consteval.cpp`
-  - `src/frontend/hir/ast_to_hir.cpp`
-- [ ] Document which existing consteval folds are:
-  - safe to keep in sema
-  - required to move to HIR later
-- [ ] Keep sema-side diagnostics working for:
-  - non-constant consteval arguments
-  - invalid consteval declarations
-  - address-of consteval function
-- [ ] Avoid adding new sema logic that eagerly erases template application structure
+- [ ] Preserve template struct parameter bindings through lowering
+- [ ] Substitute template params in struct fields correctly
+- [ ] Instantiate concrete struct forms deterministically
+- [ ] Keep canonical naming/identity stable for instantiated template structs
 
-### Phase 2 Checklist: preserve template definitions in HIR
+### Nested Template Structs
 
-- [ ] Add or reserve a HIR representation for template function definitions
-- [ ] Ensure template parameter names/bindings survive lowering
-- [ ] Ensure template function bodies remain available after lowering
-- [ ] Stop lowering template functions only as concrete emitted functions
-- [ ] Add printer/debug output so preserved template definitions are inspectable
+- [ ] Parse nested `>>` forms correctly
+- [ ] Lower nested template struct types correctly
+- [ ] Handle nested template structs in locals/params/returns
 
-Files likely involved:
+### Mixed Function/Struct Nesting
 
-- `src/frontend/hir/ir.hpp`
-- `src/frontend/hir/ast_to_hir.cpp`
-- `src/frontend/hir/hir_printer.cpp`
+- [ ] Support template structs inside template function bodies
+- [ ] Support template struct return types in template functions
+- [ ] Support nested mixed forms such as `Box<Pair<T>>`
+- [ ] Ensure deferred instantiation resolves these cases at HIR time
 
-### Phase 3 Checklist: preserve template applications/calls in HIR
+### Explicit Non-Goals
 
-- [ ] Add or reserve a HIR representation for template application requests
-- [ ] Distinguish:
-  - plain function call
-  - template application
-  - call of a specialized callable
-- [ ] Preserve call-site template arguments in HIR
-- [ ] Avoid flattening `add<int>(...)` into an ordinary call too early
-- [ ] Add printer/debug output for template applications
+- [ ] Do not add RTTI requirements to this milestone
+- [ ] Do not work on `dynamic_cast` in this milestone
 
-Files likely involved:
+## Regression Targets
 
-- `src/frontend/hir/ir.hpp`
-- `src/frontend/hir/ast_to_hir.cpp`
-- `src/frontend/hir/hir_printer.cpp`
+- [ ] Existing template function tests still pass
+- [ ] Existing consteval-template tests that do not depend on RTTI still pass
+- [ ] Add/keep a plain template struct test
+- [ ] Add/keep a nested template struct test
+- [ ] Add/keep a mixed template function + template struct test
 
-### Phase 4 Checklist: preserve consteval as HIR-reducible nodes
+## Milestone Definition
 
-- [ ] Define how consteval call intent appears in HIR
-- [ ] Preserve enough environment for later reduction:
-  - argument constants when known
-  - template bindings when known
-  - enclosing compile-time context when needed
-- [ ] Keep `evaluate_consteval_call()` reusable from a later HIR pass
-- [ ] Avoid making consteval reduction only a side effect of lowering
-- [ ] Add printer/debug support for unreduced compile-time call nodes
+This milestone is complete when:
 
-Files likely involved:
-
-- `src/frontend/sema/consteval.hpp`
-- `src/frontend/sema/consteval.cpp`
-- `src/frontend/hir/ir.hpp`
-- `src/frontend/hir/ast_to_hir.cpp`
-- `src/frontend/hir/hir_printer.cpp`
-
-### Phase 5 Checklist: add HIR fixpoint reduction loop
-
-- [ ] Add a HIR pass entry point for compile-time reduction
-- [ ] Implement one iteration step for template instantiation
-- [ ] Implement one iteration step for consteval reduction
-- [ ] Re-run until convergence or explicit iteration limit
-- [ ] Surface structured diagnostics on irreducible required compile-time nodes
-- [ ] Ensure pass ordering is deterministic
-
-Files likely involved:
-
-- `src/frontend/hir/ast_to_hir.cpp`
-- `src/frontend/sema/sema.cpp`
-- new HIR pass files if needed
-
-### Phase 6 Checklist: define materialization boundary
-
-- [ ] Decide what counts as a materialized specialized function
-- [ ] Keep non-materialized template entities representable in HIR
-- [ ] Ensure codegen only consumes materialized entities
-- [ ] Keep compile-time reduction semantics separate from emission policy
-
-Files likely involved:
-
-- `src/frontend/hir/ir.hpp`
-- `src/frontend/hir/ast_to_hir.cpp`
-- later codegen/lowering files
-
-### Phase 7 Checklist: specialization identity
-
-- [ ] Define a stable specialization key
-- [ ] Include canonicalized template args in the key
-- [ ] Ensure identity is deterministic across TUs
-- [ ] Keep encoding serializable for future link-time/JIT use
-
-Files likely involved:
-
-- `src/frontend/sema/canonical_symbol.hpp`
-- `src/frontend/sema/canonical_symbol.cpp`
-- future HIR metadata files
-
-## First Patch Checklist
-
-If we want the smallest useful first implementation step, do this first:
-
-- [ ] Introduce a HIR-visible representation for template function definitions
-- [ ] Introduce a HIR-visible representation for template applications/calls
-- [ ] Preserve existing parser/canonical template metadata through lowering
-- [ ] Add HIR printer support so we can inspect preserved template structure
-- [ ] Do not change final materialization semantics yet
-
-Suggested files for the first patch:
-
-- `src/frontend/hir/ir.hpp`
-- `src/frontend/hir/ast_to_hir.cpp`
-- `src/frontend/hir/hir_printer.cpp`
-
-## Regression Checklist
-
-- [ ] `tests/internal/cpp/postive_case/template_func.cpp` still passes
-- [ ] `tests/internal/cpp/postive_case/consteval_template.cpp` still passes
-- [ ] `tests/internal/cpp/postive_case/consteval_template_sizeof.cpp` still passes
-- [ ] `tests/internal/cpp/postive_case/consteval_nested_template.cpp` still passes
-- [ ] `tests/internal/cpp/postive_case/if_constexpr_template_chain.cpp` still passes
-- [ ] Existing non-template consteval tests still pass
-- [ ] HIR/canonical dump output remains inspectable for template cases
+- plain `template struct` works
+- nested `template struct` works
+- mixed nested `template function` + `template struct` cases work
+- no RTTI work was required to get there
