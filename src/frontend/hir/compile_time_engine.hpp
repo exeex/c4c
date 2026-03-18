@@ -321,6 +321,12 @@ class InstantiationRegistry {
 
 struct CompileTimeState {
   InstantiationRegistry registry;
+
+  /// Dump debug visibility for seed work vs realized instances.
+  void dump(FILE* out) const {
+    std::fprintf(out, "[CompileTimeState] registry parity:\n");
+    registry.dump_parity(out);
+  }
 };
 
 /// A diagnostic for a single irreducible compile-time node.
@@ -340,6 +346,10 @@ struct CompileTimeEngineStats {
   size_t consteval_deferred = 0;      // consteval reductions unlocked by deferred template instantiation
   size_t iterations = 0;              // total fixpoint iterations performed
   bool converged = false;             // true if no new work was found
+  // Registry parity (populated when ct_state is provided).
+  size_t registry_seeds = 0;           // total seeds in registry after engine run
+  size_t registry_instances = 0;       // total realized instances in registry after engine run
+  bool registry_parity = true;         // true if seeds == instances (all realized)
   std::vector<CompileTimeDiagnostic> diagnostics;  // details on irreducible nodes
 };
 

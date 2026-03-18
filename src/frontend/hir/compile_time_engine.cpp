@@ -18,6 +18,7 @@ namespace {
 struct TemplateInstantiationStep {
   Module& module;
   DeferredInstantiateFn instantiate_fn;
+  CompileTimeState* ct_state = nullptr;  // engine-owned state for registry queries
   size_t resolved = 0;
   size_t pending = 0;
   size_t newly_instantiated = 0;
@@ -92,6 +93,15 @@ struct TemplateInstantiationStep {
                 : make_specialization_key(
                     tci.source_template, tdef.template_params, bindings, nttp_bindings);
             tdef_it->second.instances.push_back(std::move(hi));
+
+            // Record in the engine-owned registry so it stays in sync.
+            if (ct_state) {
+              ct_state->registry.record_seed(
+                  tci.source_template, bindings, nttp_bindings,
+                  tdef.template_params,
+                  TemplateSeedOrigin::EnclosingTemplateExpansion);
+              ct_state->registry.realize_seeds();
+            }
           } else {
             ++pending;
             pending_diags.push_back({CompileTimeDiagnostic::UnresolvedTemplate,
@@ -203,9 +213,6 @@ CompileTimeEngineStats run_compile_time_engine(
     Module& module, std::shared_ptr<CompileTimeState> ct_state,
     DeferredInstantiateFn instantiate_fn,
     DeferredConstevalEvalFn consteval_fn) {
-  // ct_state is accepted and stored for future phases where the engine
-  // will use it directly.  Currently unused.
-  (void)ct_state;
   CompileTimeEngineStats stats{};
 
   static constexpr int kMaxIterations = 8;
@@ -217,7 +224,8 @@ CompileTimeEngineStats run_compile_time_engine(
     ++stats.iterations;
 
     // Step 1: template instantiation resolution (with optional deferred lowering).
-    TemplateInstantiationStep tpl_step{module, instantiate_fn};
+    TemplateInstantiationStep tpl_step{module, instantiate_fn,
+                                       ct_state ? ct_state.get() : nullptr};
     tpl_step.run();
 
     stats.templates_instantiated = tpl_step.resolved;
@@ -273,6 +281,13 @@ CompileTimeEngineStats run_compile_time_engine(
     // Progress was made but pending items remain — continue iterating.
   }
 
+  // Populate registry parity stats from engine-owned state.
+  if (ct_state) {
+    stats.registry_seeds = ct_state->registry.total_seed_count();
+    stats.registry_instances = ct_state->registry.total_instance_count();
+    stats.registry_parity = ct_state->registry.verify_parity();
+  }
+
   return stats;
 }
 
@@ -318,6 +333,12 @@ std::string format_compile_time_stats(const CompileTimeEngineStats& stats) {
     out << " (converged)";
   } else {
     out << " (NOT converged)";
+  }
+  // Append registry parity info when available.
+  if (stats.registry_seeds > 0 || stats.registry_instances > 0) {
+    out << "\n  registry: seeds=" << stats.registry_seeds
+        << " instances=" << stats.registry_instances
+        << (stats.registry_parity ? " (parity OK)" : " (MISMATCH)");
   }
   // Append structured diagnostics for irreducible nodes.
   for (const auto& diag : stats.diagnostics) {

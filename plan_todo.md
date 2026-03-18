@@ -33,12 +33,17 @@ Completed:
   is passed through the pipeline: `InitialHirBuildResult.ct_state` →
   `run_compile_time_engine(module, ct_state, ...)`.  Engine accepts but does not yet
   read from it — future phases will switch reads to engine-owned state.
+- **Phase 1.3 (2026-03-18):** Engine now uses `ct_state->registry` for its own queries.
+  `TemplateInstantiationStep` records deferred instances in the registry via `record_seed()`
+  + `realize_seeds()`.  `CompileTimeEngineStats` reports registry parity (seeds vs instances).
+  `CompileTimeState::dump()` added for debug visibility.  `format_compile_time_stats()`
+  includes registry parity line.
 
 Not completed:
 
 - template instance lifecycle is still centered in `ast_to_hir.cpp` (reads go through Lowerer's alias)
 - engine is still callback-driven and thinner than the intended final design
-- engine does not yet use ct_state for its own queries (next step)
+- next: start switching reads to engine-owned registry path (Phase 2 work)
 
 ## Phase 1: Move Compile-Time State Toward The Engine
 
@@ -160,6 +165,6 @@ After parity is proven, remove legacy ownership paths and keep the cleaner model
 
 1. ~~introduce engine-owned type definitions~~ (done: types now in compile_time_engine.hpp)
 2. ~~move `InstantiationRegistry` into `CompileTimeState`, pass through pipeline~~ (done: Phase 1.2)
-3. add debug visibility for seed work vs realized instances via engine-owned state
-4. have `run_compile_time_engine` use `ct_state->registry` for its own queries
+3. ~~add debug visibility for seed work vs realized instances via engine-owned state~~ (done: Phase 1.3)
+4. ~~have `run_compile_time_engine` use `ct_state->registry` for its own queries~~ (done: Phase 1.3)
 5. only after parity checks, start switching reads over to the engine-owned path
