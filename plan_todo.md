@@ -163,20 +163,37 @@
   - `range_for_auto_ref.cpp` — `for (auto& x : c)` mutating elements, `for (const auto& x : c)` reading, `&x` taking address
 - Suite: 1945/1945 (was 1944)
 
+### Rvalue Reference Plan Phase 0 (rvalue_ref_plan.md)
+- **`is_rvalue_ref` in TypeSpec**: new boolean field for T&& types
+- **Parser**: `&&` (AmpAmp) in declarators sets `is_rvalue_ref` in C++ mode — handles direct declarators, parenthesized declarators, and method return types
+- **Type utilities**: `is_rvalue_ref_ty`, `remove_rvalue_ref`, `add_rvalue_ref`, `is_any_ref_ty`, `remove_any_ref` helpers
+- **`ref_storage_type`**: updated to also bump ptr_level for rvalue refs (stored as pointers like lvalue refs)
+- **Sema validation**: `is_rvalue_ref` in type comparison; rvalue refs must be initialized; `decay_array` / `referred_type` clear rvalue ref
+- **Canonical type system**: `RValueReference` kind added; mangled as `O` (Itanium ABI); full round-trip through `typespec_from_canonical`
+- **HIR lowering**: `is_any_ref_ts()` helper; rvalue ref locals materialize temp + store address; rvalue ref params materialize temp for rvalue args; return/declref paths handle rvalue refs
+- **Codegen**: `llvm_ret_ty` returns "ptr" for rvalue refs; coerce handles ref-dereference (load) when ref return value is assigned to non-ref variable
+- **Bugfix**: Reference-returning function result assigned to non-ref variable now emits `load` instead of `ptrtoint` (fixes both lvalue and rvalue ref cases)
+- Tests:
+  - `rvalue_ref_decl_basic.cpp` — `int&& r = 42`, modify through ref, const rvalue ref
+  - `rvalue_ref_param_basic.cpp` — `int&&` function parameters, passing rvalues
+- Suite: 1947/1947 (was 1945)
+
 ## Next Intended Slice
 ### Recommended next target
 - **Milestone 3 is complete** — the core vector-like usability goal from `plan.md` is achieved
 - **Range-for Phase 1 is complete** — auto, const auto, auto&, const auto& all work
+- **Rvalue ref Phase 0 is complete** — T&& syntax, type identity, basic declaration and param passing
 - Next priority:
-  1. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
-  2. `rvalue_ref_plan.md` Phase 0: T&& support (if container mutation/copy cost becomes a friction point)
-  3. Additional container tests: template container, dynamic storage, more complex element types
+  1. `rvalue_ref_plan.md` Phase 1: binding rules (rvalue ref binds rvalues, rejects lvalues)
+  2. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
+  3. `rvalue_ref_plan.md` Phase 2: overload distinction for `&` vs `&&`
 
 ### Explicitly deferred for now
 - Free-function operator overloading
 - Structured bindings in range-for
 - General `auto` deduction outside range-for
-- Rvalue references and move operations
+- Move constructor / move assignment (Phase 3)
+- `static_cast<T&&>` / `std::move` support
 
 ## Known Limitations
 - No free-function (non-member) operators
@@ -187,7 +204,9 @@
 - No `using` alias declarations (only `typedef`)
 - `auto` type deduction only works in range-for context, not general variable declarations
 - Milestone 3 child plan: `container_plan.md` (Phase 0 complete)
-- Reference return types (`T&`) only supported on struct methods; general free functions returning T& not tested
+- Rvalue refs do not yet enforce binding rules (lvalues can bind to T&&, Phase 1 will add rejection)
+- No `static_cast`, so T&& return from function requires workaround
+- No overload resolution between T& and T&& parameter variants
 
 ## Notes
 - try_lower_operator_call() builds CallExpr with &obj as implicit this + explicit args

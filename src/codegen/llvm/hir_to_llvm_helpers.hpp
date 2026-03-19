@@ -264,7 +264,7 @@ inline std::string llvm_ty(const TypeSpec& ts) {
 
 // llvm_ty for types that may be references — returns ptr for T& types.
 inline std::string llvm_ret_ty(const TypeSpec& ts) {
-  if (ts.is_lvalue_ref) return "ptr";
+  if (ts.is_lvalue_ref || ts.is_rvalue_ref) return "ptr";
   return llvm_ty(ts);
 }
 

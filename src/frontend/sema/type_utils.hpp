@@ -22,6 +22,11 @@ TypeSpec ptr_to(TypeBase base);
 bool is_lvalue_ref_ty(const TypeSpec& ts);
 TypeSpec remove_lvalue_ref(TypeSpec ts);
 TypeSpec add_lvalue_ref(TypeSpec ts);
+bool is_rvalue_ref_ty(const TypeSpec& ts);
+TypeSpec remove_rvalue_ref(TypeSpec ts);
+TypeSpec add_rvalue_ref(TypeSpec ts);
+bool is_any_ref_ty(const TypeSpec& ts);
+TypeSpec remove_any_ref(TypeSpec ts);
 TypeSpec ref_storage_type(TypeSpec ts);
 
 bool is_vector_ty(const TypeSpec& ts);

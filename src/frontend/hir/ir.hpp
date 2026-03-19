@@ -718,6 +718,7 @@ inline std::string canonical_type_str(const TypeSpec& ts) {
   }
   for (int i = 0; i < ts.ptr_level; ++i) s += "*";
   if (ts.is_lvalue_ref) s += "&";
+  if (ts.is_rvalue_ref) s += "&&";
   if (ts.array_rank > 0) {
     for (int i = 0; i < ts.array_rank; ++i) {
       s += "[";

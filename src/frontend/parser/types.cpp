@@ -884,7 +884,12 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         parse_attributes(&ts);
     }
 
-    if (is_cpp_mode() && check(TokenKind::Amp)) {
+    if (is_cpp_mode() && check(TokenKind::AmpAmp)) {
+        consume();
+        ts.is_rvalue_ref = true;
+        while (is_qualifier(cur().kind)) consume();
+        parse_attributes(&ts);
+    } else if (is_cpp_mode() && check(TokenKind::Amp)) {
         consume();
         ts.is_lvalue_ref = true;
         while (is_qualifier(cur().kind)) consume();
@@ -923,7 +928,8 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         return pk < (int)tokens_.size() &&
                (tokens_[pk].kind == TokenKind::Star ||
                 tokens_[pk].kind == TokenKind::Caret ||
-                (is_cpp_mode() && tokens_[pk].kind == TokenKind::Amp));
+                (is_cpp_mode() && (tokens_[pk].kind == TokenKind::Amp ||
+                                   tokens_[pk].kind == TokenKind::AmpAmp)));
     };
     if (paren_star_peek()) {
         used_paren_ptr_declarator = true;
@@ -933,8 +939,10 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         // function pointer: (*name)(...) or block pointer: (^name)(...) — record name, skip params
         consume();  // consume (
         skip_attributes();  // skip any __attribute__((...)) before * or ^
-        consume();  // consume * or ^ or &
-        if (tokens_[pos_ - 1].kind == TokenKind::Amp) {
+        consume();  // consume * or ^ or & or &&
+        if (tokens_[pos_ - 1].kind == TokenKind::AmpAmp) {
+            ts.is_rvalue_ref = true;
+        } else if (tokens_[pos_ - 1].kind == TokenKind::Amp) {
             ts.is_lvalue_ref = true;
         } else {
             ts.ptr_level++;
@@ -1390,7 +1398,10 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         if (is_cpp_mode() && !is_conversion_operator && check(TokenKind::Star)) {
             while (check(TokenKind::Star)) { consume(); fts.ptr_level++; }
         }
-        if (is_cpp_mode() && !is_conversion_operator && check(TokenKind::Amp)) {
+        if (is_cpp_mode() && !is_conversion_operator && check(TokenKind::AmpAmp)) {
+            consume();
+            fts.is_rvalue_ref = true;
+        } else if (is_cpp_mode() && !is_conversion_operator && check(TokenKind::Amp)) {
             consume();
             fts.is_lvalue_ref = true;
         }

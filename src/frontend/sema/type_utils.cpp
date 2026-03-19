@@ -44,8 +44,32 @@ TypeSpec add_lvalue_ref(TypeSpec ts) {
   return ts;
 }
 
+bool is_rvalue_ref_ty(const TypeSpec& ts) {
+  return ts.is_rvalue_ref;
+}
+
+TypeSpec remove_rvalue_ref(TypeSpec ts) {
+  ts.is_rvalue_ref = false;
+  return ts;
+}
+
+TypeSpec add_rvalue_ref(TypeSpec ts) {
+  ts.is_rvalue_ref = true;
+  return ts;
+}
+
+bool is_any_ref_ty(const TypeSpec& ts) {
+  return ts.is_lvalue_ref || ts.is_rvalue_ref;
+}
+
+TypeSpec remove_any_ref(TypeSpec ts) {
+  ts.is_lvalue_ref = false;
+  ts.is_rvalue_ref = false;
+  return ts;
+}
+
 TypeSpec ref_storage_type(TypeSpec ts) {
-  if (!ts.is_lvalue_ref) return ts;
+  if (!ts.is_lvalue_ref && !ts.is_rvalue_ref) return ts;
   ts.ptr_level += 1;
   return ts;
 }

@@ -1324,6 +1324,15 @@ std::string HirEmitter::coerce(FnCtx& ctx, const std::string& val,
       return tmp;
     }
 
+    // Reference dereference: ptr (reference) → value type by loading
+    if (ft == "ptr" && (from_ts.is_lvalue_ref || from_ts.is_rvalue_ref) &&
+        to_ts.ptr_level == 0 && !to_ts.is_lvalue_ref && !to_ts.is_rvalue_ref &&
+        !to_ts.is_fn_ptr) {
+      const std::string tmp = fresh_tmp(ctx);
+      emit_instr(ctx, tmp + " = load " + tt + ", ptr " + val);
+      return tmp;
+    }
+
     // ptr ↔ int
     if (ft == "ptr" && is_any_int(to_ts.base)) {
       const std::string tmp = fresh_tmp(ctx);
@@ -1953,7 +1962,7 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const CallExpr& c){
         TypeSpec ret = mod_.functions[fit->second.value].return_type.spec;
         // Reference return: the LLVM call actually returns ptr, so bump ptr_level
         // to keep the type annotation consistent with the LLVM value.
-        if (ret.is_lvalue_ref && ret.ptr_level == 0) ret.ptr_level++;
+        if ((ret.is_lvalue_ref || ret.is_rvalue_ref) && ret.ptr_level == 0) ret.ptr_level++;
         return ret;
       }
     }
@@ -4610,7 +4619,7 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ReturnStmt& s){
     if (!s.expr) {
       const auto& rts = ctx.fn->return_type.spec;
       if (rts.base == TB_VOID && rts.ptr_level == 0 && rts.array_rank == 0 &&
-          !rts.is_lvalue_ref) {
+          !rts.is_lvalue_ref && !rts.is_rvalue_ref) {
         emit_term(ctx, "ret void");
       } else {
         // C89: bare 'return;' in non-void function → return 0/null/0.0
@@ -4629,7 +4638,7 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ReturnStmt& s){
     std::string val = emit_rval_id(ctx, *s.expr, ts);
     // For reference returns, the LLVM return type is ptr, so coerce to ptr.
     TypeSpec coerce_target = ctx.fn->return_type.spec;
-    if (coerce_target.is_lvalue_ref && coerce_target.ptr_level == 0) {
+    if ((coerce_target.is_lvalue_ref || coerce_target.is_rvalue_ref) && coerce_target.ptr_level == 0) {
       coerce_target.ptr_level++;
     }
     val = coerce(ctx, val, ts, coerce_target);
@@ -5107,7 +5116,8 @@ void HirEmitter::emit_function(const Function& fn){
         if (fn.return_type.spec.base == TB_VOID &&
             fn.return_type.spec.ptr_level == 0 &&
             fn.return_type.spec.array_rank == 0 &&
-            !fn.return_type.spec.is_lvalue_ref) {
+            !fn.return_type.spec.is_lvalue_ref &&
+            !fn.return_type.spec.is_rvalue_ref) {
           emit_term(ctx, "ret void");
         } else if (ret_ty == "ptr") {
           emit_term(ctx, "ret ptr null");

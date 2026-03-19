@@ -665,14 +665,19 @@ class Lowerer {
     return ts.is_lvalue_ref;
   }
 
+  static bool is_any_ref_ts(const TypeSpec& ts) {
+    return ts.is_lvalue_ref || ts.is_rvalue_ref;
+  }
+
   static TypeSpec reference_storage_ts(TypeSpec ts) {
-    if (ts.is_lvalue_ref) ts.ptr_level += 1;
+    if (ts.is_lvalue_ref || ts.is_rvalue_ref) ts.ptr_level += 1;
     return ts;
   }
 
   static TypeSpec reference_value_ts(TypeSpec ts) {
-    if (!ts.is_lvalue_ref) return ts;
+    if (!ts.is_lvalue_ref && !ts.is_rvalue_ref) return ts;
     ts.is_lvalue_ref = false;
+    ts.is_rvalue_ref = false;
     if (ts.ptr_level > 0) ts.ptr_level -= 1;
     return ts;
   }
@@ -1915,6 +1920,30 @@ class Lowerer {
       addr.op = UnaryOp::AddrOf;
       addr.operand = lower_expr(&ctx, n->init);
       d.init = append_expr(n->init, addr, d.type.spec);
+    } else if (n->type.is_rvalue_ref && n->init) {
+      // Rvalue reference: materialize the rvalue into a temporary, then
+      // store a pointer to that temporary as the reference value.
+      ExprId init_val = lower_expr(&ctx, n->init);
+      TypeSpec val_ts = reference_value_ts(n->type);
+      // Create a hidden temporary local for the rvalue
+      LocalDecl tmp{};
+      tmp.id = next_local_id();
+      tmp.name = ("__rref_tmp_" + std::to_string(d.id.value)).c_str();
+      tmp.type = qtype_from(val_ts, ValueCategory::LValue);
+      tmp.init = init_val;
+      const LocalId tmp_lid = tmp.id;
+      ctx.locals[tmp.name] = tmp.id;
+      ctx.local_types[tmp.id.value] = val_ts;
+      append_stmt(ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
+      // Take address of temporary
+      DeclRef tmp_ref{};
+      tmp_ref.name = ("__rref_tmp_" + std::to_string(d.id.value)).c_str();
+      tmp_ref.local = tmp_lid;
+      ExprId var_id = append_expr(n->init, tmp_ref, val_ts, ValueCategory::LValue);
+      UnaryExpr addr{};
+      addr.op = UnaryOp::AddrOf;
+      addr.operand = var_id;
+      d.init = append_expr(n->init, addr, d.type.spec);
     } else if (!is_array_with_init_list && !is_array_with_string_init &&
                !is_struct_with_init_list && n->init)
       d.init = lower_expr(&ctx, n->init);
@@ -1931,7 +1960,7 @@ class Lowerer {
     // Track const/constexpr locals with foldable int initializers.
     if (n->name && n->name[0] && n->init &&
         (n->type.is_const || n->is_constexpr) &&
-        !n->type.is_lvalue_ref &&
+        !n->type.is_lvalue_ref && !n->type.is_rvalue_ref &&
         n->type.ptr_level == 0 && n->type.array_rank == 0) {
       ConstEvalEnv cenv{&enum_consts_, &const_int_bindings_, &ctx.local_const_bindings};
       if (auto cr = evaluate_constant_expr(n->init, cenv); cr.ok()) {
@@ -2414,7 +2443,29 @@ class Lowerer {
 
     CallExpr c{};
     auto maybe_lower_ref_arg = [&](const Node* arg_node, const TypeSpec* param_ts) -> ExprId {
-      if (!param_ts || !param_ts->is_lvalue_ref) return lower_expr(ctx, arg_node);
+      if (!param_ts || (!param_ts->is_lvalue_ref && !param_ts->is_rvalue_ref)) return lower_expr(ctx, arg_node);
+      if (param_ts->is_rvalue_ref) {
+        // Rvalue ref param: materialize arg into a temporary, then pass &temp
+        ExprId arg_val = lower_expr(ctx, arg_node);
+        TypeSpec val_ts = reference_value_ts(*param_ts);
+        LocalDecl tmp{};
+        tmp.id = next_local_id();
+        tmp.name = "__rref_arg_tmp";
+        tmp.type = qtype_from(val_ts, ValueCategory::LValue);
+        tmp.init = arg_val;
+        const LocalId tmp_lid = tmp.id;
+        ctx->locals[tmp.name] = tmp.id;
+        ctx->local_types[tmp.id.value] = val_ts;
+        append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(arg_node)});
+        DeclRef tmp_ref{};
+        tmp_ref.name = "__rref_arg_tmp";
+        tmp_ref.local = tmp_lid;
+        ExprId var_id = append_expr(arg_node, tmp_ref, val_ts, ValueCategory::LValue);
+        UnaryExpr addr{};
+        addr.op = UnaryOp::AddrOf;
+        addr.operand = var_id;
+        return append_expr(arg_node, addr, *param_ts);
+      }
       UnaryExpr addr{};
       addr.op = UnaryOp::AddrOf;
       addr.operand = lower_expr(ctx, arg_node);
@@ -3319,12 +3370,13 @@ class Lowerer {
         if (n->left) {
           ExprId val = lower_expr(&ctx, n->left);
           // For reference return types, return the address of the expression.
-          if (ctx.fn && is_lvalue_ref_ts(ctx.fn->return_type.spec)) {
+          if (ctx.fn && is_any_ref_ts(ctx.fn->return_type.spec)) {
             UnaryExpr addr{};
             addr.op = UnaryOp::AddrOf;
             addr.operand = val;
             TypeSpec ptr_ts = ctx.fn->return_type.spec;
             ptr_ts.is_lvalue_ref = false;
+            ptr_ts.is_rvalue_ref = false;
             ptr_ts.ptr_level++;
             val = append_expr(n, addr, ptr_ts);
           }
@@ -4321,7 +4373,7 @@ class Lowerer {
         ExprId ref_id = append_expr(n, r, var_ts, ValueCategory::LValue);
         if (ctx) {
           if (auto storage_ts = storage_type_for_declref(ctx, r);
-              storage_ts && is_lvalue_ref_ts(*storage_ts)) {
+              storage_ts && is_any_ref_ts(*storage_ts)) {
             UnaryExpr u{};
             u.op = UnaryOp::Deref;
             u.operand = ref_id;

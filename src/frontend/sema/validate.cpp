@@ -50,6 +50,7 @@ TypeSpec make_int_ts() {
 
 TypeSpec decay_array(TypeSpec ts) {
   if (ts.is_lvalue_ref) ts.is_lvalue_ref = false;
+  if (ts.is_rvalue_ref) ts.is_rvalue_ref = false;
   if (is_vector_ty(ts)) return ts;
   // is_ptr_to_array means the type is already a pointer wrapping an array (e.g. char (*)[4]);
   // do not decay such types a second time.
@@ -115,6 +116,7 @@ bool is_pointer_like_type(const TypeSpec& ts_raw) {
 
 TypeSpec referred_type(TypeSpec ts) {
   ts.is_lvalue_ref = false;
+  ts.is_rvalue_ref = false;
   return ts;
 }
 
@@ -184,6 +186,7 @@ bool same_types_for_function_compat(TypeSpec a, TypeSpec b, bool for_param = fal
     return false;
   if (a.ptr_level != b.ptr_level) return false;
   if (a.is_lvalue_ref != b.is_lvalue_ref) return false;
+  if (a.is_rvalue_ref != b.is_rvalue_ref) return false;
   if (a.array_rank != b.array_rank) return false;
   if (a.array_size != b.array_size) return false;
   if (a.is_fn_ptr != b.is_fn_ptr) return false;
@@ -469,7 +472,7 @@ class Validator {
   }
 
   bool is_complete_object_type(const TypeSpec& ts) const {
-    if (ts.ptr_level > 0 || ts.array_rank > 0 || ts.is_lvalue_ref) return true;
+    if (ts.ptr_level > 0 || ts.array_rank > 0 || ts.is_lvalue_ref || ts.is_rvalue_ref) return true;
     if (ts.tpl_struct_origin) return true;  // pending template struct — resolved at HIR level
     if ((ts.base != TB_STRUCT && ts.base != TB_UNION) || !ts.tag || !ts.tag[0]) return true;
     const std::string tag(ts.tag);
@@ -560,6 +563,9 @@ class Validator {
     if (!n) return;
     if (n->type.is_lvalue_ref && !n->init) {
       emit(n->line, "lvalue reference must be initialized");
+    }
+    if (n->type.is_rvalue_ref && !n->init) {
+      emit(n->line, "rvalue reference must be initialized");
     }
     if (n->init) {
       ExprInfo rhs = infer_expr(n->init);
@@ -664,6 +670,9 @@ class Validator {
     }
     if (decl->type.is_lvalue_ref && !decl->init) {
       emit(decl->line, "lvalue reference must be initialized");
+    }
+    if (decl->type.is_rvalue_ref && !decl->init) {
+      emit(decl->line, "rvalue reference must be initialized");
     }
     if (decl->init) {
       ExprInfo rhs = infer_expr(decl->init);
