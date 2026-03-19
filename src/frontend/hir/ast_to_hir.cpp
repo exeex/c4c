@@ -433,18 +433,20 @@ class Lowerer {
 
     module_ = &m;
 
-    // Flatten top-level items (may be wrapped in NK_BLOCK)
+    // Recursively flatten top-level items (may be nested NK_BLOCKs from
+    // nested namespace blocks).
     std::vector<const Node*> items;
-    for (int i = 0; i < root->n_children; ++i) {
-      const Node* item = root->children[i];
-      if (!item) continue;
-      if (item->kind == NK_BLOCK) {
-        for (int j = 0; j < item->n_children; ++j)
-          if (item->children[j]) items.push_back(item->children[j]);
+    std::function<void(const Node*)> flatten = [&](const Node* n) {
+      if (!n) return;
+      if (n->kind == NK_BLOCK) {
+        for (int j = 0; j < n->n_children; ++j)
+          flatten(n->children[j]);
       } else {
-        items.push_back(item);
+        items.push_back(n);
       }
-    }
+    };
+    for (int i = 0; i < root->n_children; ++i)
+      flatten(root->children[i]);
 
     // Phase 0: collect #pragma weak symbol names
     for (const Node* item : items) {

@@ -228,7 +228,7 @@ std::string HirEmitter::emit(){
         need_llvm_abs_) out << "\n";
     for (const auto& [name, ret_ty] : extern_call_decls_) {
       if (mod_.fn_index.count(name)) continue;
-      out << "declare " << ret_ty << " @" << name << "(...)\n";
+      out << "declare " << ret_ty << " " << llvm_global_sym(name) << "(...)\n";
     }
     if (!extern_call_decls_.empty()) out << "\n";
     for (const auto& b : fn_bodies_) {
