@@ -275,13 +275,21 @@
   - `bad_deleted_destructor.cpp` — `~NoDtor() = delete` then `NoDtor n;` rejected
 - Suite: 1970/1970 (was 1968)
 
+### Copy Assignment Operator (`operator=(const T&)`)
+- **Ref-overload resolution in `try_lower_operator_call`**: When an operator method has both `const T&` and `T&&` overloads (stored in `ref_overload_set_`), the function now scores argument value categories (lvalue vs rvalue) to pick the correct overload, matching the logic in `resolve_ref_overload()` for regular method calls.
+- **Pending method lookup fix**: AST fallback for parameter types now uses `resolved_mangled` instead of `mit->second` (which was overwritten by the second overload during registration).
+- Tests:
+  - `copy_assign_basic.cpp` — `Obj& operator=(const Obj&)`, lvalue copy, source unchanged
+  - `copy_move_assign_overload.cpp` — both `operator=(const T&)` and `operator=(T&&)` coexist; lvalue selects copy, rvalue selects move
+  - `copy_assign_const_src.cpp` — copy from `const Data` source, multi-field struct
+- Suite: 1973/1973 (was 1970)
+
 ## Next Intended Slice
 ### Recommended next target
 - Next priority:
-  1. Copy assignment operator (`operator=(const T&)`)
-  2. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
-  3. Template member access through T&& params (blocked on template member resolution)
-  4. Constructor initializer lists (`: member(init), ...`)
+  1. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
+  2. Template member access through T&& params (blocked on template member resolution)
+  3. Constructor initializer lists (`: member(init), ...`)
 
 ### Explicitly deferred for now
 - Free-function operator overloading

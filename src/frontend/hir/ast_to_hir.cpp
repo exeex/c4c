@@ -4596,12 +4596,35 @@ class Lowerer {
     }
     if (mit == struct_methods_.end()) return ExprId::invalid();
 
+    // Resolve ref-overloaded operators (e.g., operator=(const T&) vs operator=(T&&)).
+    std::string resolved_mangled = mit->second;
+    auto ovit = ref_overload_set_.find(base_key);
+    if (ovit != ref_overload_set_.end() && !ovit->second.empty()) {
+      const auto& overloads = ovit->second;
+      const std::string* best_name = nullptr;
+      int best_score = -1;
+      for (const auto& ov : overloads) {
+        bool viable = true;
+        int score = 0;
+        for (size_t i = 0; i < arg_nodes.size() && i < ov.param_is_rvalue_ref.size(); ++i) {
+          bool arg_is_lvalue = is_ast_lvalue(arg_nodes[i]);
+          if (ov.param_is_lvalue_ref[i] && !arg_is_lvalue) { viable = false; break; }
+          if (ov.param_is_rvalue_ref[i] && arg_is_lvalue) { viable = false; break; }
+          if (ov.param_is_rvalue_ref[i] && !arg_is_lvalue) score += 2;
+          else if (ov.param_is_lvalue_ref[i] && arg_is_lvalue) score += 2;
+          else score += 1;
+        }
+        if (viable && score > best_score) { best_name = &ov.mangled_name; best_score = score; }
+      }
+      if (best_name) resolved_mangled = *best_name;
+    }
+
     // Found the operator method. Build a CallExpr.
     CallExpr c{};
 
     // Callee: DeclRef pointing to the mangled method name.
     DeclRef dr{};
-    dr.name = mit->second;
+    dr.name = resolved_mangled;
     auto fit = module_->fn_index.find(dr.name);
     TypeSpec fn_ts{};
     fn_ts.base = TB_VOID;
@@ -4638,7 +4661,7 @@ class Lowerer {
     const Node* method_ast = nullptr;
     if (!callee_fn) {
       for (const auto& pm : pending_methods_) {
-        if (pm.mangled == mit->second) { method_ast = pm.method_node; break; }
+        if (pm.mangled == resolved_mangled) { method_ast = pm.method_node; break; }
       }
     }
     for (size_t i = 0; i < arg_nodes.size(); ++i) {
