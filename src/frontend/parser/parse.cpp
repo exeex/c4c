@@ -6,8 +6,10 @@
 #include <stdexcept>
 
 namespace c4c {
-Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_profile)
+Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_profile,
+               const std::string& source_file)
     : tokens_(std::move(tokens)), pos_(0), arena_(arena), source_profile_(source_profile),
+      source_file_(source_file),
       anon_counter_(0), had_error_(false), parsing_top_level_context_(false),
       last_enum_def_(nullptr) {
     namespace_contexts_.push_back(
@@ -585,13 +587,16 @@ Node* Parser::parse() {
         try {
             item = parse_top_level();
         } catch (const std::exception& e) {
-            // Parse error: print warning and try to recover to next semicolon / }
-            fprintf(stderr, "parse error: %s (skipping to next ';' or '}')\n", e.what());
+            // Parse error: emit stable diagnostic and try to recover.
+            int err_line = (!at_end()) ? cur().line : (pos_ > 0 ? tokens_[pos_-1].line : 1);
+            int err_col  = (!at_end()) ? cur().column : 1;
+            fprintf(stderr, "%s:%d:%d: error: %s\n",
+                    source_file_.c_str(), err_line, err_col, e.what());
             had_error_ = true;
             ++parse_error_count_;
             if (parse_error_count_ >= max_parse_errors_) {
-                fprintf(stderr, "parse error: stopping after %d recoverable errors\n",
-                        parse_error_count_);
+                fprintf(stderr, "%s:%d:%d: error: too many errors emitted, stopping now\n",
+                        source_file_.c_str(), err_line, err_col);
                 break;
             }
             if (pos_ == loop_start_pos && !at_end()) consume();
@@ -605,12 +610,16 @@ Node* Parser::parse() {
         if (pos_ == loop_start_pos && !at_end()) {
             had_error_ = true;
             ++no_progress_steps;
-            fprintf(stderr, "parse error: parser made no progress at token '%s' line %d\n",
-                    cur().lexeme.c_str(), cur().line);
+            fprintf(stderr, "%s:%d:%d: error: unexpected token '%s'\n",
+                    source_file_.c_str(), cur().line, cur().column,
+                    cur().lexeme.c_str());
             consume();
+            ++parse_error_count_;
             if (no_progress_steps >= max_no_progress_steps_) {
-                fprintf(stderr, "parse error: stopping after %d no-progress recovery steps\n",
-                        no_progress_steps);
+                fprintf(stderr, "%s:%d:%d: error: too many errors emitted, stopping now\n",
+                        source_file_.c_str(),
+                        !at_end() ? cur().line : tokens_.back().line,
+                        !at_end() ? cur().column : 1);
                 break;
             }
             continue;
@@ -787,6 +796,12 @@ const char* node_kind_name(NodeKind k) {
         case NK_GLOBAL_VAR:   return "GlobalVar";
         case NK_STRUCT_DEF:   return "StructDef";
         case NK_ENUM_DEF:     return "EnumDef";
+        case NK_OFFSETOF:     return "Offsetof";
+        case NK_PRAGMA_WEAK:  return "PragmaWeak";
+        case NK_REAL_PART:    return "RealPart";
+        case NK_IMAG_PART:    return "ImagPart";
+        case NK_INVALID_EXPR: return "InvalidExpr";
+        case NK_INVALID_STMT: return "InvalidStmt";
         case NK_PROGRAM:      return "Program";
         default:              return "Unknown";
     }

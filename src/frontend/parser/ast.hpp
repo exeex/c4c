@@ -208,6 +208,10 @@ enum NodeKind {
 
     NK_PRAGMA_WEAK,     // #pragma weak symbol: name = symbol
 
+    // Error recovery placeholders
+    NK_INVALID_EXPR,    // placeholder for a malformed expression
+    NK_INVALID_STMT,    // placeholder for a malformed statement
+
     // Top-level
     NK_PROGRAM,         // root node: children = top-level items
 };

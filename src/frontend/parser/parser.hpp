@@ -44,7 +44,8 @@ class Parser {
 
   // All members public (required by project coding constraints).
   explicit Parser(std::vector<Token> tokens, Arena& arena,
-                  SourceProfile source_profile = SourceProfile::C);
+                  SourceProfile source_profile = SourceProfile::C,
+                  const std::string& source_file = "<input>");
 
   // Parse the entire token stream and return a NK_PROGRAM node.
   Node* parse();
@@ -86,6 +87,8 @@ class Parser {
   // Struct/union tag → NK_STRUCT_DEF node (populated when parsing struct bodies).
   // Used by eval_const_int to compute __builtin_offsetof at parse time.
   std::unordered_map<std::string, Node*> struct_tag_def_map_;
+  // Source file name for diagnostic messages.
+  std::string source_file_;
   // True if parse() encountered any recoverable parse error.
   bool had_error_;
   int parse_error_count_ = 0;

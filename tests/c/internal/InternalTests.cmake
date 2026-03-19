@@ -80,6 +80,17 @@ foreach(src IN LISTS INTERNAL_NEGATIVE_TEST_SRCS)
   set_tests_properties("${test_name}" PROPERTIES LABELS "internal;negative_case")
 endforeach()
 
+# Diagnostic format verification: ensure parse errors use file:line:col: error: format
+add_test(
+  NAME negative_tests_diagnostic_format_check
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_C_TEST_ROOT}/negative_case/bad_multi_error_recovery.c
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_diagnostic_format_check.cmake"
+)
+set_tests_properties(negative_tests_diagnostic_format_check PROPERTIES
+    LABELS "internal;negative_case;diagnostic_format")
+
 if(CLANG_EXECUTABLE)
   foreach(src IN LISTS INTERNAL_POSITIVE_TEST_SRCS INTERNAL_LINUX_STAGE2_REPRO_SRCS)
     file(RELATIVE_PATH rel_src "${INTERNAL_C_TEST_ROOT}/positive_case" "${src}")

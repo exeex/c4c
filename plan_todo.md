@@ -13,17 +13,19 @@
   1. HIR top-level flattening was only one level deep; nested namespace blocks (NK_BLOCK inside NK_BLOCK) lost inner declarations. Fixed with recursive flattening.
   2. `extern_call_decls_` output used raw `@name` instead of `llvm_global_sym()`, producing unquoted `::` in LLVM IR declares.
   New runtime test `namespace_cross_type_reference_runtime.cpp` covers cross-namespace type references and nested namespace functions. All 2018/2018 tests pass.
+- **Milestone B Phase 1+2 slice 1: Diagnostic format + invalid node kinds** — Standardized parser diagnostics to `file:line:col: error: message` format. Added `NK_INVALID_EXPR` and `NK_INVALID_STMT` to NodeKind enum as error recovery placeholders. Parser now receives source filename. HIR lowering gracefully skips invalid nodes. New diagnostic format verification test. All 2020/2020 tests pass.
 
 ## Active Item
 None — ready for next slice.
 
 ## Next
-- Namespace Phase 2 completion: remaining items (TypeSpec qualifier propagation for type references across namespaces, namespace-aware type lookup in HIR)
-- Or: Milestone B (error recovery / diagnostics)
+- Milestone B Phase 3: Parser synchronization hooks (statement-level recovery, paren-list recovery)
+- Or: Milestone B Phase 4: Negative test runner with expected-error support
+- Or: Namespace Phase 2 completion (TypeSpec qualifier propagation)
 - Or: Milestone C (iterator/container usability)
 
 ## Test Suite
-- Baseline: 2018/2018 (100%)
+- Baseline: 2020/2020 (100%)
 
 ## Blockers
 None known

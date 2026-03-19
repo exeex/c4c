@@ -5110,6 +5110,10 @@ class Lowerer {
         collect_enum_def(n);
         return;
       }
+      case NK_INVALID_EXPR:
+      case NK_INVALID_STMT:
+        // Error recovery placeholders — silently skip.
+        return;
       default: {
         ExprStmt s{};
         s.expr = lower_expr(&ctx, n);
@@ -6244,6 +6248,13 @@ class Lowerer {
         }
 
         return base_id;
+      }
+      case NK_INVALID_EXPR:
+      case NK_INVALID_STMT: {
+        // Error recovery placeholder — emit a zero literal.
+        TypeSpec ts{};
+        ts.base = TB_INT;
+        return append_expr(n, IntLiteral{0, false}, ts);
       }
       default: {
         TypeSpec ts = n->type;

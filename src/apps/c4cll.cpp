@@ -206,7 +206,7 @@ int main(int argc, char **argv) {
 
     // Parse phase
     c4c::Arena arena;
-    c4c::Parser parser(std::move(tokens), arena, source_profile);
+    c4c::Parser parser(std::move(tokens), arena, source_profile, input);
     c4c::Node* prog = parser.parse();
     if (parser.had_error_) {
       return 1;
