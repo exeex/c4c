@@ -2237,6 +2237,50 @@ class Lowerer {
       }
     }
 
+    // C++ implicit default constructor: T var; where T has a zero-arg ctor.
+    if (!n->is_ctor_init && !n->init && decl_ts.tag &&
+        decl_ts.base == TB_STRUCT && decl_ts.ptr_level == 0 &&
+        decl_ts.array_rank == 0) {
+      auto cit = struct_constructors_.find(decl_ts.tag);
+      if (cit != struct_constructors_.end()) {
+        // Find a zero-arg constructor.
+        const CtorOverload* default_ctor = nullptr;
+        for (const auto& ov : cit->second) {
+          if (ov.method_node->n_params == 0) {
+            default_ctor = &ov;
+            break;
+          }
+        }
+        if (default_ctor) {
+          if (default_ctor->method_node->is_deleted) {
+            std::string diag = "error: call to deleted default constructor '";
+            diag += decl_ts.tag;
+            diag += "'";
+            throw std::runtime_error(diag);
+          }
+          CallExpr c{};
+          DeclRef callee_ref{};
+          callee_ref.name = default_ctor->mangled_name;
+          TypeSpec fn_ts{}; fn_ts.base = TB_VOID;
+          TypeSpec callee_ts = fn_ts; callee_ts.ptr_level++;
+          c.callee = append_expr(n, callee_ref, callee_ts);
+          // First arg: &var (this pointer).
+          DeclRef var_ref{};
+          var_ref.name = n->name ? n->name : "<anon_local>";
+          var_ref.local = lid;
+          ExprId var_id = append_expr(n, var_ref, decl_ts, ValueCategory::LValue);
+          UnaryExpr addr{};
+          addr.op = UnaryOp::AddrOf;
+          addr.operand = var_id;
+          TypeSpec ptr_ts = decl_ts; ptr_ts.ptr_level++;
+          c.args.push_back(append_expr(n, addr, ptr_ts));
+          ExprId call_id = append_expr(n, c, fn_ts);
+          ExprStmt es{}; es.expr = call_id;
+          append_stmt(ctx, Stmt{StmtPayload{es}, make_span(n)});
+        }
+      }
+    }
+
     auto emit_scalar_array_zero_fill = [&](const TypeSpec& array_ts) {
       if (array_ts.array_rank != 1 || array_ts.array_size <= 0) return;
       TypeSpec elem_ts = array_ts;

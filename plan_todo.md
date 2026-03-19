@@ -254,15 +254,21 @@
   - `bad_forwarding_ref_bind.cpp` — non-template `int&&` param rejects lvalue arg (already worked)
 - Suite: 1966/1966 (was 1963)
 
+### Default Constructor (`T()`)
+- **Implicit default ctor call**: When `T var;` is declared (no init, no is_ctor_init) and T is a struct with a zero-arg constructor in `struct_constructors_`, HIR now emits the constructor call automatically
+- **Deleted default ctor check**: If the zero-arg ctor has `is_deleted=true`, throws error
+- Tests:
+  - `default_ctor_basic.cpp` — Counter/Pair with default ctor, T var; calls it, overload with parameterized ctor
+  - `bad_deleted_default_ctor.cpp` — `T() = delete` then `T var;` rejected
+- Suite: 1968/1968 (was 1966)
+
 ## Next Intended Slice
 ### Recommended next target
-- **Rvalue ref Phase 4 is complete** — move helper + template rvalue ref param
-- **Negative tests complete** — bad_deleted_move_ctor_call, bad_move_assign_const, bad_forwarding_ref_bind
 - Next priority:
   1. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
   2. Template member access through T&& params (blocked on template member resolution)
   3. Copy assignment operator (`operator=(const T&)`)
-  4. Default constructor (`T()`)
+  4. Destructor support (`~ClassName()`)
 
 ### Explicitly deferred for now
 - Free-function operator overloading
@@ -270,7 +276,6 @@
 - General `auto` deduction outside range-for
 - Ambiguous overload detection (bad_ref_overload_ambiguous.cpp)
 - Copy assignment operator (`operator=(const T&)`)
-- Default constructor (`T()`)
 - Constructor initializer lists (`: member(init), ...`)
 - Template function T&& param member access (e.g. `obj.value` where obj is T&&)
 
