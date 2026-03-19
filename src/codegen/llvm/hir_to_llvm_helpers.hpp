@@ -252,6 +252,7 @@ inline bool is_vector_value(const TypeSpec& ts) {
 }
 
 inline std::string sanitize_llvm_ident(const std::string& raw);
+inline std::string llvm_struct_type_str(const std::string& tag);
 
 inline std::string llvm_ty(const TypeSpec& ts) {
   if (ts.ptr_level > 0 || ts.is_fn_ptr) return "ptr";
@@ -259,7 +260,7 @@ inline std::string llvm_ty(const TypeSpec& ts) {
   if (is_vector_value(ts)) return llvm_vector_ty(ts);
   if (is_complex_base(ts.base)) return llvm_complex_ty(ts.base);
   if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag && ts.tag[0]) {
-    return "%struct." + sanitize_llvm_ident(ts.tag);
+    return llvm_struct_type_str(ts.tag);
   }
   return llvm_base(ts.base);
 }
@@ -275,6 +276,18 @@ inline bool has_concrete_type(const TypeSpec& ts) {
          is_vector_value(ts);
 }
 
+// Returns true when raw contains characters that are not valid in a bare
+// LLVM identifier ([a-zA-Z0-9._$]) and thus require quoting.
+inline bool needs_llvm_quoting(const std::string& raw) {
+  for (unsigned char c : raw) {
+    if (!(std::isalnum(c) || c == '_' || c == '.' || c == '$')) return true;
+  }
+  return false;
+}
+
+// Produce a safe bare LLVM identifier by replacing non-[a-zA-Z0-9._$] chars
+// with underscores.  Used for local variables and other contexts where the
+// identifier is composed with a prefix (e.g. %lv.NAME).
 inline std::string sanitize_llvm_ident(const std::string& raw) {
   std::string out;
   out.reserve(raw.size());
@@ -288,6 +301,40 @@ inline std::string sanitize_llvm_ident(const std::string& raw) {
   if (out.empty() || std::isdigit(static_cast<unsigned char>(out[0]))) {
     out.insert(out.begin(), '_');
   }
+  return out;
+}
+
+// Produce a valid LLVM identifier that preserves the source spelling by using
+// LLVM double-quote syntax when necessary.  Intended for global symbols and
+// type names where the full identifier (after sigil) is the result.
+inline std::string quote_llvm_ident(const std::string& raw) {
+  if (!needs_llvm_quoting(raw)) {
+    if (raw.empty() || std::isdigit(static_cast<unsigned char>(raw[0]))) {
+      return "_" + raw;
+    }
+    return raw;
+  }
+  std::string out = "\"";
+  for (char c : raw) {
+    if (c == '"')       out += "\\22";
+    else if (c == '\\') out += "\\5C";
+    else                out.push_back(c);
+  }
+  out += "\"";
+  return out;
+}
+
+// Produce an LLVM struct/union type name with correct quoting.
+// Returns e.g. "%struct.Foo" or "%\"struct.ns::Foo\"".
+inline std::string llvm_struct_type_str(const std::string& tag) {
+  if (!needs_llvm_quoting(tag)) return "%struct." + tag;
+  std::string out = "%\"struct.";
+  for (char c : tag) {
+    if (c == '"')       out += "\\22";
+    else if (c == '\\') out += "\\5C";
+    else                out.push_back(c);
+  }
+  out += "\"";
   return out;
 }
 
@@ -330,7 +377,7 @@ inline std::string llvm_alloca_ty(const TypeSpec& ts) {
   if (is_complex_base(ts.base)) return llvm_complex_ty(ts.base);
   if (ts.base == TB_VA_LIST) return "%struct.__va_list_tag_";
   if (ts.base == TB_STRUCT || ts.base == TB_UNION) {
-    if (ts.tag && ts.tag[0]) return "%struct." + sanitize_llvm_ident(ts.tag);
+    if (ts.tag && ts.tag[0]) return llvm_struct_type_str(ts.tag);
   }
   if (ts.base == TB_VOID) return "i8";
   return llvm_base(ts.base);
@@ -388,7 +435,7 @@ inline std::string llvm_field_ty(const HirStructField& f) {
   if (f.elem_type.base == TB_VA_LIST) return "%struct.__va_list_tag_";
   if (f.elem_type.base == TB_STRUCT || f.elem_type.base == TB_UNION) {
     if (f.elem_type.tag && f.elem_type.tag[0]) {
-      return "%struct." + sanitize_llvm_ident(f.elem_type.tag);
+      return llvm_struct_type_str(f.elem_type.tag);
     }
   }
   return llvm_ty(f.elem_type);

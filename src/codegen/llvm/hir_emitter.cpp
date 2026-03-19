@@ -80,7 +80,7 @@ int llvm_struct_field_slot_by_name(const HirStructDef& sd, const std::string& fi
 }
 
 std::string llvm_global_sym(const std::string& raw) {
-  return "@" + sanitize_llvm_ident(raw);
+  return "@" + quote_llvm_ident(raw);
 }
 
 const char* llvm_visibility(Visibility v) {
@@ -145,16 +145,29 @@ std::string HirEmitter::emit(){
     for (const auto& b : fn_bodies_) {
       if (b.is_internal) internal_fns.insert(b.name);
     }
-    // Find all @name references in each function body and propagate reachability.
+    // Find all @name and @"quoted name" references in each function body.
     auto find_refs = [](const std::string& body) {
       std::unordered_set<std::string> refs;
       size_t pos = 0;
       while ((pos = body.find('@', pos)) != std::string::npos) {
         ++pos;
-        size_t start = pos;
-        while (pos < body.size() && (std::isalnum(static_cast<unsigned char>(body[pos])) || body[pos] == '_' || body[pos] == '.'))
-          ++pos;
-        if (pos > start) refs.insert(body.substr(start, pos - start));
+        if (pos < body.size() && body[pos] == '"') {
+          // Quoted identifier: @"ns::foo"
+          ++pos;  // skip opening "
+          size_t start = pos;
+          while (pos < body.size() && body[pos] != '"') ++pos;
+          if (pos > start) {
+            // Store as the quoted form including quotes to match fn_bodies_ key
+            refs.insert("\"" + body.substr(start, pos - start) + "\"");
+          }
+          if (pos < body.size()) ++pos;  // skip closing "
+        } else {
+          // Bare identifier: @foo
+          size_t start = pos;
+          while (pos < body.size() && (std::isalnum(static_cast<unsigned char>(body[pos])) || body[pos] == '_' || body[pos] == '.'))
+            ++pos;
+          if (pos > start) refs.insert(body.substr(start, pos - start));
+        }
       }
       return refs;
     };
@@ -346,20 +359,20 @@ void HirEmitter::emit_preamble(){
       const auto it = mod_.struct_defs.find(tag);
       if (it == mod_.struct_defs.end()) continue;
       const HirStructDef& sd = it->second;
-      const std::string llvm_tag = sanitize_llvm_ident(tag);
+      const std::string sty = llvm_struct_type_str(tag);
       if (sd.fields.empty()) {
         // Empty struct: emit as opaque type {}.
-        preamble_ << "%struct." << llvm_tag << " = type {}\n";
+        preamble_ << sty << " = type {}\n";
         continue;
       }
       if (sd.is_union) {
         const int sz = sd.size_bytes;
-        preamble_ << "%struct." << llvm_tag << " = type { ["
+        preamble_ << sty << " = type { ["
                   << sz << " x i8] }\n";
       } else {
         // Materialize HIR-computed padding so LLVM layout matches frontend
         // offsets/sizes, including over-aligned arrays and tail padding.
-        preamble_ << "%struct." << llvm_tag << " = type { ";
+        preamble_ << sty << " = type { ";
         bool first = true;
         int last_idx = -1;
         int cur_offset = 0;
@@ -888,8 +901,8 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
                     const std::string tag(gv->type.spec.tag);
                     if (const auto* sd = find_struct_def(tag)) {
                       const int fi = llvm_struct_field_slot_by_name(*sd, mem_e->field);
-                      return "getelementptr inbounds (%struct." + sanitize_llvm_ident(tag) +
-                             ", ptr @" + dr->name +
+                      return "getelementptr inbounds (" + llvm_struct_type_str(tag) +
+                             ", ptr " + llvm_global_sym(dr->name) +
                              ", i32 0, i32 " + std::to_string(fi) + ")";
                     }
                   }
@@ -1420,16 +1433,16 @@ std::string HirEmitter::emit_member_gep(FnCtx& ctx, const std::string& base_ptr,
     }
     std::string cur_ptr = base_ptr;
     for (const auto& step : chain) {
-      const std::string llvm_tag = sanitize_llvm_ident(step.tag);
+      const std::string sty = llvm_struct_type_str(step.tag);
       if (step.is_union) {
         // Union: GEP to field 0 (byte array); with opaque ptrs same addr
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = getelementptr %struct." + llvm_tag +
+        emit_instr(ctx, tmp + " = getelementptr " + sty +
                            ", ptr " + cur_ptr + ", i32 0, i32 0");
         cur_ptr = tmp;
       } else {
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = getelementptr %struct." + llvm_tag +
+        emit_instr(ctx, tmp + " = getelementptr " + sty +
                            ", ptr " + cur_ptr + ", i32 0, i32 " +
                            std::to_string(step.llvm_idx));
         cur_ptr = tmp;
@@ -5047,7 +5060,7 @@ void HirEmitter::emit_function(const Function& fn){
         out << "...";
       }
       out << ")\n\n";
-      fn_bodies_.push_back({sanitize_llvm_ident(fn.name), fn.linkage.is_static, out.str()});
+      fn_bodies_.push_back({quote_llvm_ident(fn.name), fn.linkage.is_static, out.str()});
       return;
     }
 
@@ -5156,7 +5169,7 @@ void HirEmitter::emit_function(const Function& fn){
     for (const auto& l : ctx.alloca_lines) out << l << "\n";
     for (const auto& l : ctx.body_lines)   out << l << "\n";
     out << "}\n\n";
-    fn_bodies_.push_back({sanitize_llvm_ident(fn.name), fn.linkage.is_static, out.str()});
+    fn_bodies_.push_back({quote_llvm_ident(fn.name), fn.linkage.is_static, out.str()});
   }
 
 }  // namespace tinyc2ll::codegen::llvm_backend
