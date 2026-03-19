@@ -351,12 +351,23 @@
   - `copy_move_init_basic.cpp` — lvalue selects copy ctor, `static_cast<T&&>` selects move ctor
 - Suite: 1981/1981 (was 1979)
 
+### `= default` Syntax for Special Member Functions
+- **Parser**: Added `is_defaulted` flag to Node (ast.hpp); detect `= default` pattern in all 4 parser locations (constructor, destructor, operator method with `operator_kind`, regular method)
+- **HIR lowering**: `emit_defaulted_method_body()` generates synthetic bodies:
+  - Default ctor: empty body (ret void only)
+  - Copy/move ctor: memberwise field copy from source param to `this`
+  - Copy/move assignment (`operator=`): memberwise field copy + `ret ptr %this`
+  - Destructor: empty body; member dtor calls emitted by caller epilogue (existing infrastructure)
+- **Key fix**: operator methods (with `operator_kind` set) had a separate parser path at line ~1678 that lacked `= delete` / `= default` handling — added there too
+- Tests:
+  - `default_special_members.cpp` — Simple (default ctor, copy ctor, copy assign, dtor), Outer (defaulted dtor with member dtor), Movable (copy ctor, move ctor, copy assign, move assign all defaulted)
+- Suite: 2005/2007 (same 2 pre-existing namespace failures, new test passes)
+
 ## Next Intended Slice
 ### Recommended next target
 - Next priority:
-  1. `= default` syntax for special member functions (defaulted copy/move/default ctor)
-  2. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
-  3. Template member access through T&& params (blocked on template member resolution)
+  1. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
+  2. Template member access through T&& params (blocked on template member resolution)
 
 ### Explicitly deferred for now
 - Free-function operator overloading

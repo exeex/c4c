@@ -1859,7 +1859,7 @@ class Lowerer {
     // Store the struct tag so field accesses in the body can resolve via `this`.
     ctx.method_struct_tag = struct_tag;
 
-    if (!method_node->body) {
+    if (!method_node->body && !method_node->is_defaulted) {
       module_->fn_index[fn.name] = fn.id;
       module_->functions.push_back(std::move(fn));
       return;
@@ -1873,6 +1873,38 @@ class Lowerer {
     const BlockId entry = create_block(ctx);
     fn.entry = entry;
     ctx.current_block = entry;
+
+    // Generate synthetic body for = default special member functions.
+    if (method_node->is_defaulted) {
+      emit_defaulted_method_body(ctx, fn, struct_tag, method_node);
+      // For destructors: emit member destructor calls after the (empty) body.
+      if (method_node->is_destructor) {
+        DeclRef this_ref{};
+        this_ref.name = "this";
+        auto pit = ctx.params.find("this");
+        if (pit != ctx.params.end()) this_ref.param_index = pit->second;
+        TypeSpec this_ts{};
+        this_ts.base = TB_STRUCT;
+        auto sit2 = module_->struct_defs.find(struct_tag);
+        this_ts.tag = sit2 != module_->struct_defs.end()
+                          ? sit2->second.tag.c_str()
+                          : struct_tag.c_str();
+        this_ts.ptr_level = 1;
+        ExprId this_ptr = append_expr(method_node, this_ref, this_ts, ValueCategory::LValue);
+        emit_member_dtor_calls(ctx, struct_tag, this_ptr, method_node);
+      }
+      // Emit ret void for destructors (after member dtor calls) and any other
+      // defaulted methods that didn't already emit a return.
+      if (method_node->is_destructor) {
+        ReturnStmt rs{};
+        append_stmt(ctx, Stmt{StmtPayload{rs}, make_span(method_node)});
+      }
+      if (fn.blocks.empty()) {
+        fn.blocks.push_back(Block{entry, {}, false});
+      }
+      module_->functions[fn.id.value] = std::move(fn);
+      return;
+    }
 
     // Emit constructor initializer list assignments before body.
     if (method_node->is_constructor && method_node->n_ctor_inits > 0) {
@@ -4102,6 +4134,100 @@ class Lowerer {
       }
     }
     return false;
+  }
+
+  // Generate the synthetic body for a = default special member function.
+  // - Default constructor: empty (alloca zeroed by default)
+  // - Copy/move constructor: memberwise copy from source param to this
+  // - Copy/move assignment: memberwise copy from source param to this + return this
+  // - Default destructor: empty (member dtors handled by caller)
+  void emit_defaulted_method_body(FunctionCtx& ctx, Function& fn,
+                                   const std::string& struct_tag,
+                                   const Node* method_node) {
+    auto sit = module_->struct_defs.find(struct_tag);
+    bool is_copy_or_move_ctor = method_node->is_constructor && method_node->n_params == 1;
+    bool is_copy_or_move_assign = (method_node->operator_kind == OP_ASSIGN) && method_node->n_params == 1;
+
+    if (is_copy_or_move_ctor || is_copy_or_move_assign) {
+      // Emit memberwise copy: this->field = other.field for each field.
+      if (sit != module_->struct_defs.end()) {
+        // Build 'this' reference.
+        DeclRef this_ref{};
+        this_ref.name = "this";
+        auto pit = ctx.params.find("this");
+        if (pit != ctx.params.end()) this_ref.param_index = pit->second;
+        TypeSpec this_ts{};
+        this_ts.base = TB_STRUCT;
+        this_ts.tag = sit->second.tag.c_str();
+        this_ts.ptr_level = 1;
+        ExprId this_id = append_expr(method_node, this_ref, this_ts, ValueCategory::LValue);
+
+        // Build 'other' reference (second parameter — the source).
+        // For ref params the storage is a pointer, so we use it directly.
+        std::string other_name = method_node->params[0]->name
+            ? method_node->params[0]->name : "<anon_param>";
+        DeclRef other_ref{};
+        other_ref.name = other_name;
+        auto opit = ctx.params.find(other_name);
+        if (opit != ctx.params.end()) other_ref.param_index = opit->second;
+        TypeSpec other_ts = this_ts; // ptr to struct
+        ExprId other_id = append_expr(method_node, other_ref, other_ts, ValueCategory::LValue);
+
+        for (const auto& field : sit->second.fields) {
+          TypeSpec field_ts = field.elem_type;
+          // Restore array dim if present.
+          if (field.array_first_dim >= 0) {
+            field_ts.array_rank = 1;
+            field_ts.array_size = field.array_first_dim;
+          }
+
+          // this->field
+          MemberExpr lhs_me{};
+          lhs_me.base = this_id;
+          lhs_me.field = field.name;
+          lhs_me.is_arrow = true;
+          ExprId lhs_member = append_expr(method_node, lhs_me, field_ts, ValueCategory::LValue);
+
+          // other->field
+          MemberExpr rhs_me{};
+          rhs_me.base = other_id;
+          rhs_me.field = field.name;
+          rhs_me.is_arrow = true;
+          ExprId rhs_member = append_expr(method_node, rhs_me, field_ts, ValueCategory::LValue);
+
+          // this->field = other->field
+          AssignExpr ae{};
+          ae.lhs = lhs_member;
+          ae.rhs = rhs_member;
+          ExprId assign_id = append_expr(method_node, ae, field_ts);
+          ExprStmt es{}; es.expr = assign_id;
+          append_stmt(ctx, Stmt{StmtPayload{es}, make_span(method_node)});
+        }
+      }
+    }
+
+    if (is_copy_or_move_assign) {
+      // Return *this (as pointer for T& return type).
+      DeclRef this_ref2{};
+      this_ref2.name = "this";
+      auto pit2 = ctx.params.find("this");
+      if (pit2 != ctx.params.end()) this_ref2.param_index = pit2->second;
+      TypeSpec this_ts2{};
+      this_ts2.base = TB_STRUCT;
+      this_ts2.tag = sit != module_->struct_defs.end()
+                         ? sit->second.tag.c_str()
+                         : struct_tag.c_str();
+      this_ts2.ptr_level = 1;
+      ExprId this_ret = append_expr(method_node, this_ref2, this_ts2, ValueCategory::LValue);
+      ReturnStmt rs{};
+      rs.expr = this_ret;
+      append_stmt(ctx, Stmt{StmtPayload{rs}, make_span(method_node)});
+    } else if (!method_node->is_destructor) {
+      // Default ctor, copy/move ctor: return void.
+      // (Destructors: ret void is emitted by caller after member dtor calls.)
+      ReturnStmt rs{};
+      append_stmt(ctx, Stmt{StmtPayload{rs}, make_span(method_node)});
+    }
   }
 
   // Emit destructor calls for struct member fields that have destructors.

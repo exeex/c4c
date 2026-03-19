@@ -328,6 +328,7 @@ struct Node {
     bool is_destructor;   // NK_FUNCTION: this method is a destructor (~ClassName)
     bool is_ctor_init;    // NK_DECL: initialized via constructor call  Type var(args)
     bool is_deleted;      // NK_FUNCTION: = delete (deleted function)
+    bool is_defaulted;    // NK_FUNCTION: = default (defaulted special member)
 
     // C++ constructor initializer list: ClassName(params) : mem1(expr1), mem2(a,b) { body }
     const char** ctor_init_names;  // arena-allocated array of member names

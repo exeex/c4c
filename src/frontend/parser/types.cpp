@@ -1472,6 +1472,13 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 consume(); // 'delete'
                 method->is_deleted = true;
                 match(TokenKind::Semi);
+            } else if (is_cpp_mode() && check(TokenKind::Assign) &&
+                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                       tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+                consume(); // '='
+                consume(); // 'default'
+                method->is_defaulted = true;
+                match(TokenKind::Semi);
             } else {
                 match(TokenKind::Semi);
             }
@@ -1505,6 +1512,13 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 consume(); // '='
                 consume(); // 'delete'
                 method->is_deleted = true;
+                match(TokenKind::Semi);
+            } else if (is_cpp_mode() && check(TokenKind::Assign) &&
+                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                       tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+                consume(); // '='
+                consume(); // 'default'
+                method->is_defaulted = true;
                 match(TokenKind::Semi);
             } else {
                 match(TokenKind::Semi);
@@ -1663,6 +1677,20 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             }
             if (check(TokenKind::LBrace)) {
                 method->body = parse_block();
+            } else if (is_cpp_mode() && check(TokenKind::Assign) &&
+                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                       tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
+                consume(); // '='
+                consume(); // 'delete'
+                method->is_deleted = true;
+                match(TokenKind::Semi);
+            } else if (is_cpp_mode() && check(TokenKind::Assign) &&
+                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                       tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+                consume(); // '='
+                consume(); // 'default'
+                method->is_defaulted = true;
+                match(TokenKind::Semi);
             } else {
                 match(TokenKind::Semi);
             }
@@ -1758,6 +1786,13 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                     consume(); // '='
                     consume(); // 'delete'
                     method->is_deleted = true;
+                    match(TokenKind::Semi);
+                } else if (is_cpp_mode() && check(TokenKind::Assign) &&
+                           pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                           tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+                    consume(); // '='
+                    consume(); // 'default'
+                    method->is_defaulted = true;
                     match(TokenKind::Semi);
                 } else {
                     match(TokenKind::Semi);
