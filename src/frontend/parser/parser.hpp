@@ -74,6 +74,9 @@ class Parser {
   std::unordered_map<std::string, Node*> struct_tag_def_map_;
   // True if parse() encountered any recoverable parse error.
   bool had_error_;
+  int parse_error_count_ = 0;
+  int max_parse_errors_ = 20;
+  int max_no_progress_steps_ = 8;
   // True while parsing a file-scope declaration in parse_top_level().
   bool parsing_top_level_context_;
   // True while parsing an explicit template specialization (template<>).

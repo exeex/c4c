@@ -284,21 +284,46 @@ void Parser::skip_until(TokenKind k) {
 Node* Parser::parse() {
     std::vector<Node*> items;
     had_error_ = false;
+    parse_error_count_ = 0;
+    int no_progress_steps = 0;
 
     while (!at_end()) {
         Node* item = nullptr;
+        int loop_start_pos = pos_;
         try {
             item = parse_top_level();
         } catch (const std::exception& e) {
             // Parse error: print warning and try to recover to next semicolon / }
             fprintf(stderr, "parse error: %s (skipping to next ';' or '}')\n", e.what());
             had_error_ = true;
+            ++parse_error_count_;
+            if (parse_error_count_ >= max_parse_errors_) {
+                fprintf(stderr, "parse error: stopping after %d recoverable errors\n",
+                        parse_error_count_);
+                break;
+            }
+            if (pos_ == loop_start_pos && !at_end()) consume();
             while (!at_end() && !check(TokenKind::Semi) && !check(TokenKind::RBrace)) {
                 consume();
             }
             if (!at_end()) consume();
+            no_progress_steps = 0;
             continue;
         }
+        if (pos_ == loop_start_pos && !at_end()) {
+            had_error_ = true;
+            ++no_progress_steps;
+            fprintf(stderr, "parse error: parser made no progress at token '%s' line %d\n",
+                    cur().lexeme.c_str(), cur().line);
+            consume();
+            if (no_progress_steps >= max_no_progress_steps_) {
+                fprintf(stderr, "parse error: stopping after %d no-progress recovery steps\n",
+                        no_progress_steps);
+                break;
+            }
+            continue;
+        }
+        no_progress_steps = 0;
         if (item) items.push_back(item);
     }
 
