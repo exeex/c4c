@@ -2014,6 +2014,24 @@ class Lowerer {
 
     lower_stmt_node(ctx, method_node->body);
 
+    // For destructors: emit member destructor calls after the user body.
+    if (method_node->is_destructor) {
+      // Build `this` parameter reference as the pointer to pass to member dtors.
+      DeclRef this_ref{};
+      this_ref.name = "this";
+      auto pit = ctx.params.find("this");
+      if (pit != ctx.params.end()) this_ref.param_index = pit->second;
+      TypeSpec this_ts{};
+      this_ts.base = TB_STRUCT;
+      auto sit2 = module_->struct_defs.find(struct_tag);
+      this_ts.tag = sit2 != module_->struct_defs.end()
+                        ? sit2->second.tag.c_str()
+                        : struct_tag.c_str();
+      this_ts.ptr_level = 1;
+      ExprId this_ptr = append_expr(method_node, this_ref, this_ts, ValueCategory::LValue);
+      emit_member_dtor_calls(ctx, struct_tag, this_ptr, method_node);
+    }
+
     if (fn.blocks.empty()) {
       fn.blocks.push_back(Block{entry, {}, false});
     }
@@ -2441,6 +2459,7 @@ class Lowerer {
     }
 
     // Track struct locals with destructors for implicit scope-exit calls.
+    // Also track structs whose members have destructors (even without explicit dtor).
     if (decl_ts.tag && decl_ts.base == TB_STRUCT && decl_ts.ptr_level == 0 &&
         decl_ts.array_rank == 0 && !n->type.is_lvalue_ref && !n->type.is_rvalue_ref) {
       auto dit = struct_destructors_.find(decl_ts.tag);
@@ -2453,6 +2472,8 @@ class Lowerer {
           diag += "' has a deleted destructor";
           throw std::runtime_error(diag);
         }
+        ctx.dtor_stack.push_back({lid, std::string(decl_ts.tag)});
+      } else if (struct_has_member_dtors(decl_ts.tag)) {
         ctx.dtor_stack.push_back({lid, std::string(decl_ts.tag)});
       }
     }
@@ -3860,20 +3881,81 @@ class Lowerer {
     return true;
   }
 
+  // Check whether a struct has any member fields whose types have destructors.
+  bool struct_has_member_dtors(const std::string& tag) {
+    auto sit = module_->struct_defs.find(tag);
+    if (sit == module_->struct_defs.end()) return false;
+    for (auto it = sit->second.fields.rbegin(); it != sit->second.fields.rend(); ++it) {
+      if (it->elem_type.base == TB_STRUCT && it->elem_type.ptr_level == 0 &&
+          it->elem_type.tag) {
+        std::string ftag = it->elem_type.tag;
+        if (struct_destructors_.count(ftag) || struct_has_member_dtors(ftag))
+          return true;
+      }
+    }
+    return false;
+  }
+
+  // Emit destructor calls for struct member fields that have destructors.
+  // Calls are emitted in reverse field order. `this_ptr_id` is an ExprId
+  // of type pointer-to-struct.
+  void emit_member_dtor_calls(FunctionCtx& ctx, const std::string& struct_tag,
+                              ExprId this_ptr_id, const Node* span_node) {
+    auto sit = module_->struct_defs.find(struct_tag);
+    if (sit == module_->struct_defs.end()) return;
+    const auto& fields = sit->second.fields;
+    // Reverse field order for destruction.
+    for (auto it = fields.rbegin(); it != fields.rend(); ++it) {
+      const auto& field = *it;
+      if (field.elem_type.base != TB_STRUCT || field.elem_type.ptr_level != 0 ||
+          !field.elem_type.tag)
+        continue;
+      std::string ftag = field.elem_type.tag;
+      bool has_explicit_dtor = struct_destructors_.count(ftag) > 0;
+      bool has_member_dtors = struct_has_member_dtors(ftag);
+      if (!has_explicit_dtor && !has_member_dtors) continue;
+
+      // Build GEP: &(this->field)
+      MemberExpr me{};
+      me.base = this_ptr_id;
+      me.field = field.name;
+      me.is_arrow = true;
+      TypeSpec field_ts = field.elem_type;
+      ExprId member_id = append_expr(span_node, me, field_ts, ValueCategory::LValue);
+      UnaryExpr addr{};
+      addr.op = UnaryOp::AddrOf;
+      addr.operand = member_id;
+      TypeSpec ptr_ts = field_ts; ptr_ts.ptr_level++;
+      ExprId member_ptr_id = append_expr(span_node, addr, ptr_ts);
+
+      if (has_explicit_dtor) {
+        // Call the explicit destructor (it handles its own member dtors internally).
+        auto dit = struct_destructors_.find(ftag);
+        CallExpr c{};
+        DeclRef callee_ref{};
+        callee_ref.name = dit->second.mangled_name;
+        TypeSpec fn_ts{}; fn_ts.base = TB_VOID;
+        TypeSpec callee_ts = fn_ts; callee_ts.ptr_level++;
+        c.callee = append_expr(span_node, callee_ref, callee_ts);
+        c.args.push_back(member_ptr_id);
+        ExprId call_id = append_expr(span_node, c, fn_ts);
+        ExprStmt es{}; es.expr = call_id;
+        append_stmt(ctx, Stmt{StmtPayload{es}, make_span(span_node)});
+      } else {
+        // No explicit dtor — recursively emit member dtors for this field's type.
+        emit_member_dtor_calls(ctx, ftag, member_ptr_id, span_node);
+      }
+    }
+  }
+
   // Emit destructor calls for locals pushed since dtor_stack index `since`.
   // Calls are emitted in reverse order (LIFO).
   void emit_dtor_calls(FunctionCtx& ctx, size_t since, const Node* span_node) {
     for (size_t i = ctx.dtor_stack.size(); i > since; --i) {
       const auto& dl = ctx.dtor_stack[i - 1];
       auto dit = struct_destructors_.find(dl.struct_tag);
-      if (dit == struct_destructors_.end()) continue;
-      CallExpr c{};
-      DeclRef callee_ref{};
-      callee_ref.name = dit->second.mangled_name;
-      TypeSpec fn_ts{}; fn_ts.base = TB_VOID;
-      TypeSpec callee_ts = fn_ts; callee_ts.ptr_level++;
-      c.callee = append_expr(span_node, callee_ref, callee_ts);
-      // Arg: &var (this pointer).
+
+      // Build the &var expression for this local.
       DeclRef var_ref{};
       var_ref.local = dl.local_id;
       auto lt = ctx.local_types.find(dl.local_id.value);
@@ -3884,10 +3966,24 @@ class Lowerer {
       addr.op = UnaryOp::AddrOf;
       addr.operand = var_id;
       TypeSpec ptr_ts = var_ts; ptr_ts.ptr_level++;
-      c.args.push_back(append_expr(span_node, addr, ptr_ts));
-      ExprId call_id = append_expr(span_node, c, fn_ts);
-      ExprStmt es{}; es.expr = call_id;
-      append_stmt(ctx, Stmt{StmtPayload{es}, make_span(span_node)});
+      ExprId addr_id = append_expr(span_node, addr, ptr_ts);
+
+      if (dit != struct_destructors_.end()) {
+        // Call explicit destructor (which handles its own member dtors).
+        CallExpr c{};
+        DeclRef callee_ref{};
+        callee_ref.name = dit->second.mangled_name;
+        TypeSpec fn_ts{}; fn_ts.base = TB_VOID;
+        TypeSpec callee_ts = fn_ts; callee_ts.ptr_level++;
+        c.callee = append_expr(span_node, callee_ref, callee_ts);
+        c.args.push_back(addr_id);
+        ExprId call_id = append_expr(span_node, c, fn_ts);
+        ExprStmt es{}; es.expr = call_id;
+        append_stmt(ctx, Stmt{StmtPayload{es}, make_span(span_node)});
+      } else {
+        // No explicit dtor, but has member dtors — emit them directly.
+        emit_member_dtor_calls(ctx, dl.struct_tag, addr_id, span_node);
+      }
     }
   }
 

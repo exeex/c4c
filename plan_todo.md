@@ -302,13 +302,23 @@
   - `ctor_init_member_ctor.cpp` — Inner(int), Pair(int,int) members; Wrapper/Container/Box/TwoInner/Hybrid patterns
 - Suite: 1975/1975 (was 1974)
 
+### Member Destructor Calls for Struct-Typed Members
+- **`emit_member_dtor_calls` helper**: emits destructor calls for all struct-typed member fields in reverse field order; GEPs into `this->field` and calls `Tag__dtor(ptr)` for each
+- **`struct_has_member_dtors` helper**: recursively checks if any member field's type has a destructor (explicit or via its own members)
+- **User-defined dtor body epilogue**: after `lower_stmt_node(body)` for `is_destructor` methods, emits member dtor calls via `emit_member_dtor_calls`
+- **Implicit member dtor tracking**: structs without explicit dtor but with member dtors are pushed to `dtor_stack`; `emit_dtor_calls` calls `emit_member_dtor_calls` directly for them
+- **No double-call**: when a field has an explicit dtor, only the dtor is called (it handles its own members); recursive member emission only for fields without explicit dtor
+- Tests:
+  - `destructor_member_basic.cpp` — Outer with two Inner members (user dtor + member dtors), Wrapper with no dtor (implicit member dtor), Top→Middle→Inner nested chain
+- Suite: 1976/1976 (was 1975)
+
 ## Next Intended Slice
 ### Recommended next target
 - Next priority:
   1. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
   2. Template member access through T&& params (blocked on template member resolution)
   3. Delegating constructors
-  4. Destructor calls for struct members of struct types
+  4. `operator()` (function call operator)
 
 ### Explicitly deferred for now
 - Free-function operator overloading
@@ -328,7 +338,6 @@
 - Milestone 3 child plan: `container_plan.md` (Phase 0 complete)
 - No full `static_cast` implementation model yet; only baseline named-cast coverage is tracked
 - Constructor overload resolution is basic — scores by param count + base type + ref-qualifier, no implicit conversions across types
-- Destructor calls not emitted for struct members of struct types (only direct locals)
 - Constructor initializer list does not support delegating constructors (only scalar/member-ctor init)
 
 ## Notes
