@@ -572,6 +572,9 @@ class Validator {
       if (n->type.is_lvalue_ref && !rhs.is_lvalue) {
         emit(n->line, "lvalue reference must bind to an lvalue");
       }
+      if (n->type.is_rvalue_ref && rhs.is_lvalue) {
+        emit(n->line, "rvalue reference cannot bind to an lvalue");
+      }
       if (rhs.valid &&
           is_invalid_pointer_float_implicit_conversion(
               referred_type(n->type), rhs.type, is_null_pointer_constant_expr(n->init))) {
@@ -678,6 +681,9 @@ class Validator {
       ExprInfo rhs = infer_expr(decl->init);
       if (decl->type.is_lvalue_ref && !rhs.is_lvalue) {
         emit(decl->line, "lvalue reference must bind to an lvalue");
+      }
+      if (decl->type.is_rvalue_ref && rhs.is_lvalue) {
+        emit(decl->line, "rvalue reference cannot bind to an lvalue");
       }
       if (rhs.valid &&
           is_invalid_pointer_float_implicit_conversion(
@@ -1123,6 +1129,9 @@ class Validator {
               ExprInfo arg = infer_expr(n->children[i]);
               if (sig.params[i].is_lvalue_ref && arg.valid && !arg.is_lvalue) {
                 emit(n->line, "function call argument must be an lvalue for reference parameter");
+              }
+              if (sig.params[i].is_rvalue_ref && arg.valid && arg.is_lvalue) {
+                emit(n->line, "rvalue reference parameter cannot bind to an lvalue argument");
               }
               if (arg.valid &&
                   is_invalid_pointer_float_implicit_conversion(

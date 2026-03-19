@@ -178,15 +178,27 @@
   - `rvalue_ref_param_basic.cpp` — `int&&` function parameters, passing rvalues
 - Suite: 1947/1947 (was 1945)
 
+### Rvalue Reference Plan Phase 1 (rvalue_ref_plan.md)
+- **Sema validation**: rvalue reference binding rules enforced at three sites:
+  - Global declarations: `is_rvalue_ref && rhs.is_lvalue` → error
+  - Local declarations: `is_rvalue_ref && rhs.is_lvalue` → error
+  - Function call arguments: `is_rvalue_ref && arg.is_lvalue` → error
+- **Diagnostics**: "rvalue reference cannot bind to an lvalue" (decl), "rvalue reference parameter cannot bind to an lvalue argument" (call)
+- Tests:
+  - `rvalue_ref_bind_literal.cpp` — int&&, long&&, char&&, const int&& binding literals and expressions
+  - `rvalue_ref_bind_temp.cpp` — T&& binding function return values and cast expressions
+  - `rvalue_ref_param_call_basic.cpp` — T&& params with rvalue args (literals, expressions)
+  - `bad_rvalue_ref_bind_lvalue.cpp` — `int&& r = x` rejected
+  - `bad_rvalue_ref_param_lvalue.cpp` — `consume(x)` with `int&&` param rejected
+- Suite: 1952/1952 (was 1947)
+
 ## Next Intended Slice
 ### Recommended next target
-- **Milestone 3 is complete** — the core vector-like usability goal from `plan.md` is achieved
-- **Range-for Phase 1 is complete** — auto, const auto, auto&, const auto& all work
-- **Rvalue ref Phase 0 is complete** — T&& syntax, type identity, basic declaration and param passing
+- **Rvalue ref Phase 1 is complete** — binding rules enforced
 - Next priority:
-  1. `rvalue_ref_plan.md` Phase 1: binding rules (rvalue ref binds rvalues, rejects lvalues)
+  1. `rvalue_ref_plan.md` Phase 2: overload distinction for `&` vs `&&`
   2. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
-  3. `rvalue_ref_plan.md` Phase 2: overload distinction for `&` vs `&&`
+  3. `rvalue_ref_plan.md` Phase 3: move constructor / move assignment
 
 ### Explicitly deferred for now
 - Free-function operator overloading
@@ -204,7 +216,6 @@
 - No `using` alias declarations (only `typedef`)
 - `auto` type deduction only works in range-for context, not general variable declarations
 - Milestone 3 child plan: `container_plan.md` (Phase 0 complete)
-- Rvalue refs do not yet enforce binding rules (lvalues can bind to T&&, Phase 1 will add rejection)
 - No `static_cast`, so T&& return from function requires workaround
 - No overload resolution between T& and T&& parameter variants
 
