@@ -270,24 +270,24 @@ Node* Parser::parse_top_level() {
 
     if (is_cpp_mode() && check(TokenKind::KwNamespace)) {
         consume();
-        std::string ns_name;
+        QualifiedNameRef ns_name;
+        bool has_name = false;
         if (check(TokenKind::Identifier)) {
-            ns_name = cur().lexeme;
-            consume();
-            while (match(TokenKind::ColonColon)) {
-                if (!check(TokenKind::Identifier))
-                    throw std::runtime_error("expected namespace name after '::'");
-                ns_name += "::";
-                ns_name += cur().lexeme;
-                consume();
-            }
+            ns_name = parse_qualified_name(false);
+            has_name = true;
         }
         expect(TokenKind::LBrace);
 
-        const std::string saved_ns = current_namespace_;
-        if (!ns_name.empty()) {
-            current_namespace_ = saved_ns.empty() ? ns_name : saved_ns + "::" + ns_name;
+        int context_id = current_namespace_context_id();
+        if (has_name) {
+            for (const std::string& segment : ns_name.qualifier_segments) {
+                context_id = ensure_named_namespace_context(context_id, segment);
+            }
+            context_id = ensure_named_namespace_context(context_id, ns_name.base_name);
+        } else {
+            context_id = create_anonymous_namespace_context(context_id);
         }
+        push_namespace_context(context_id);
 
         std::vector<Node*> items;
         while (!at_end() && !check(TokenKind::RBrace)) {
@@ -296,7 +296,7 @@ Node* Parser::parse_top_level() {
         }
         expect(TokenKind::RBrace);
         match(TokenKind::Semi);
-        current_namespace_ = saved_ns;
+        pop_namespace_context();
 
         if (items.empty()) return make_node(NK_EMPTY, ln);
         if (items.size() == 1) return items[0];
@@ -309,19 +309,16 @@ Node* Parser::parse_top_level() {
 
     if (is_cpp_mode() && check(TokenKind::KwUsing)) {
         consume();
+        const int using_context_id = current_namespace_context_id();
         if (match(TokenKind::KwNamespace)) {
             if (!check(TokenKind::Identifier))
                 throw std::runtime_error("expected namespace name after 'using namespace'");
-            std::string target = cur().lexeme;
-            consume();
-            while (match(TokenKind::ColonColon)) {
-                if (!check(TokenKind::Identifier))
-                    throw std::runtime_error("expected namespace name after '::'");
-                target += "::";
-                target += cur().lexeme;
-                consume();
+            QualifiedNameRef target_name = parse_qualified_name(true);
+            int target_context = resolve_namespace_name(target_name);
+            if (target_context < 0) {
+                throw std::runtime_error("unknown namespace in using-directive");
             }
-            using_namespace_prefixes_.push_back(target);
+            using_namespace_contexts_[using_context_id].push_back(target_context);
             match(TokenKind::Semi);
             return make_node(NK_EMPTY, ln);
         }
@@ -334,13 +331,14 @@ Node* Parser::parse_top_level() {
 
         if (match(TokenKind::Assign)) {
             TypeSpec alias_ts = parse_type_name();
-            typedefs_.insert(first_name);
-            user_typedefs_.insert(first_name);
-            typedef_types_[first_name] = alias_ts;
-            if (!current_namespace_.empty()) {
-                const std::string qualified = qualify_name(first_name);
-                typedefs_.insert(qualified);
-                typedef_types_[qualified] = alias_ts;
+            const std::string qualified = canonical_name_in_context(using_context_id, first_name);
+            typedefs_.insert(qualified);
+            user_typedefs_.insert(qualified);
+            typedef_types_[qualified] = alias_ts;
+            if (using_context_id == 0) {
+                typedefs_.insert(first_name);
+                user_typedefs_.insert(first_name);
+                typedef_types_[first_name] = alias_ts;
             }
             match(TokenKind::Semi);
             return make_node(NK_EMPTY, ln);
@@ -360,11 +358,18 @@ Node* Parser::parse_top_level() {
             (last_sep == std::string::npos) ? target : target.substr(last_sep + 2);
         auto td_it = typedef_types_.find(target);
         if (td_it != typedef_types_.end()) {
-            typedefs_.insert(imported_name);
-            user_typedefs_.insert(imported_name);
-            typedef_types_[imported_name] = td_it->second;
+            const std::string imported_key =
+                canonical_name_in_context(using_context_id, imported_name);
+            typedefs_.insert(imported_key);
+            user_typedefs_.insert(imported_key);
+            typedef_types_[imported_key] = td_it->second;
+            if (using_context_id == 0) {
+                typedefs_.insert(imported_name);
+                user_typedefs_.insert(imported_name);
+                typedef_types_[imported_name] = td_it->second;
+            }
         } else {
-            using_value_aliases_[imported_name] = target;
+            using_value_aliases_[using_context_id][imported_name] = target;
         }
         match(TokenKind::Semi);
         return make_node(NK_EMPTY, ln);
@@ -547,12 +552,11 @@ Node* Parser::parse_top_level() {
                 typedef_types_[last_sd->name] = struct_ts;
                 // If inside a namespace, also register ns::Name so
                 // qualified references like std::vector<int> work.
-                if (!current_namespace_.empty()) {
-                    std::string qn = current_namespace_ + "::" + last_sd->name;
-                    typedefs_.insert(qn);
-                    typedef_types_[qn] = struct_ts;
-                    template_struct_defs_[qn] = last_sd;
-                }
+                const std::string qn =
+                    canonical_name_in_context(current_namespace_context_id(), last_sd->name);
+                typedefs_.insert(qn);
+                typedef_types_[qn] = struct_ts;
+                template_struct_defs_[qn] = last_sd;
             }
         }
         return templated;
@@ -1025,6 +1029,7 @@ Node* Parser::parse_top_level() {
             Node* fn = make_node(NK_FUNCTION, ln);
             fn->type      = ts;
             fn->name      = scoped_decl_name;
+            apply_decl_namespace(fn, current_namespace_context_id(), decl_name);
             fn->variadic  = fptr_fn_variadic;
             fn->is_static = is_static;
             fn->is_extern = is_extern;
@@ -1050,6 +1055,7 @@ Node* Parser::parse_top_level() {
         Node* fn = make_node(NK_FUNCTION, ln);
         fn->type      = ts;
         fn->name      = scoped_decl_name;
+        apply_decl_namespace(fn, current_namespace_context_id(), decl_name);
         fn->variadic  = fptr_fn_variadic;
         fn->is_static = is_static;
         fn->is_extern = is_extern;
@@ -1212,6 +1218,7 @@ Node* Parser::parse_top_level() {
             Node* fn = make_node(NK_FUNCTION, ln);
             fn->type      = ts;
             fn->name      = scoped_decl_name;
+            apply_decl_namespace(fn, current_namespace_context_id(), decl_name);
             fn->variadic  = variadic;
             fn->is_static = is_static;
             fn->is_extern = is_extern;
@@ -1236,6 +1243,7 @@ Node* Parser::parse_top_level() {
         Node* fn = make_node(NK_FUNCTION, ln);
         fn->type      = ts;
         fn->name      = scoped_decl_name;
+        apply_decl_namespace(fn, current_namespace_context_id(), decl_name);
         fn->variadic  = variadic;
         fn->is_static = is_static;
         fn->is_extern = is_extern;
@@ -1258,7 +1266,7 @@ Node* Parser::parse_top_level() {
     // Global variable (possibly with initializer and multiple declarators)
     std::vector<Node*> gvars;
 
-    auto make_gvar = [&](TypeSpec gts, const char* gname, Node* ginit,
+    auto make_gvar = [&](TypeSpec gts, const char* gname, const char* source_name, Node* ginit,
                          Node** fn_ptr_params, int n_fn_ptr_params,
                          bool fn_ptr_variadic,
                          Node** ret_fn_ptr_params = nullptr,
@@ -1274,6 +1282,7 @@ Node* Parser::parse_top_level() {
         gv->type      = gts;
         if (is_constexpr) gv->type.is_const = true;
         gv->name      = gname;
+        apply_decl_namespace(gv, current_namespace_context_id(), source_name);
         gv->init      = ginit;
         gv->is_static = is_static;
         gv->is_extern = is_extern;
@@ -1305,7 +1314,7 @@ Node* Parser::parse_top_level() {
         (is_cpp_mode() && check(TokenKind::LBrace))) {
         first_init = parse_initializer();
     }
-    gvars.push_back(make_gvar(ts, scoped_decl_name, first_init, decl_fn_ptr_params,
+    gvars.push_back(make_gvar(ts, scoped_decl_name, decl_name, first_init, decl_fn_ptr_params,
                               decl_n_fn_ptr_params, decl_fn_ptr_variadic,
                               decl_ret_fn_ptr_params, decl_n_ret_fn_ptr_params,
                               decl_ret_fn_ptr_variadic));
@@ -1326,7 +1335,7 @@ Node* Parser::parse_top_level() {
             (is_cpp_mode() && check(TokenKind::LBrace))) init2 = parse_initializer();
         if (n2) {
             const char* scoped_n2 = qualify_name_arena(n2);
-            gvars.push_back(make_gvar(ts2, scoped_n2, init2,
+            gvars.push_back(make_gvar(ts2, scoped_n2, n2, init2,
                                           fn_ptr_params2, n_fn_ptr_params2,
                                           fn_ptr_variadic2));
         }

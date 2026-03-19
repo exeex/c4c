@@ -10,6 +10,9 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_pro
     : tokens_(std::move(tokens)), pos_(0), arena_(arena), source_profile_(source_profile),
       anon_counter_(0), had_error_(false), parsing_top_level_context_(false),
       last_enum_def_(nullptr) {
+    namespace_contexts_.push_back(
+        NamespaceContext{0, -1, false, arena_.strdup(""), arena_.strdup("")});
+    namespace_stack_.push_back(0);
     // Pre-seed well-known typedef names from standard / system headers
     // so the parser can disambiguate type-name vs identifier.
     static const char* seed[] = {
@@ -145,6 +148,7 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_pro
         typedef_types_["wchar_t"]  = wchar_ts;
         typedef_types_["wint_t"]   = wchar_ts;
     }
+    refresh_current_namespace_bridge();
 }
 
 // ── pragma helpers ────────────────────────────────────────────────────────────
@@ -244,9 +248,10 @@ bool Parser::match(TokenKind k) {
 
 std::string Parser::qualify_name(const std::string& name) const {
     if (name.empty()) return name;
-    if (current_namespace_.empty()) return name;
+    const int context_id = current_namespace_context_id();
+    if (context_id <= 0) return name;
     if (name.find("::") != std::string::npos) return name;
-    return current_namespace_ + "::" + name;
+    return canonical_name_in_context(context_id, name);
 }
 
 const char* Parser::qualify_name_arena(const char* name) {
@@ -257,20 +262,276 @@ const char* Parser::qualify_name_arena(const char* name) {
 }
 
 std::string Parser::resolve_visible_value_name(const std::string& name) const {
-    auto it = using_value_aliases_.find(name);
-    if (it != using_value_aliases_.end()) return it->second;
-
-    if (!current_namespace_.empty()) {
-        std::string local = current_namespace_ + "::" + name;
-        if (var_types_.count(local)) return local;
+    std::string resolved;
+    for (int i = static_cast<int>(namespace_stack_.size()) - 1; i >= 0; --i) {
+        const int context_id = namespace_stack_[i];
+        auto alias_it = using_value_aliases_.find(context_id);
+        if (alias_it != using_value_aliases_.end()) {
+            auto value_it = alias_it->second.find(name);
+            if (value_it != alias_it->second.end()) return value_it->second;
+        }
+        if (lookup_value_in_context(context_id, name, &resolved)) return resolved;
     }
-
-    for (const std::string& ns : using_namespace_prefixes_) {
-        std::string candidate = ns + "::" + name;
-        if (var_types_.count(candidate)) return candidate;
-    }
-
     return name;
+}
+
+std::string Parser::resolve_visible_type_name(const std::string& name) const {
+    std::string resolved;
+    for (int i = static_cast<int>(namespace_stack_.size()) - 1; i >= 0; --i) {
+        const int context_id = namespace_stack_[i];
+        auto alias_it = using_value_aliases_.find(context_id);
+        if (alias_it != using_value_aliases_.end()) {
+            auto value_it = alias_it->second.find(name);
+            if (value_it != alias_it->second.end() && typedef_types_.count(value_it->second)) {
+                return value_it->second;
+            }
+        }
+        if (lookup_type_in_context(context_id, name, &resolved)) return resolved;
+    }
+    return name;
+}
+
+void Parser::refresh_current_namespace_bridge() {
+    current_namespace_.clear();
+    for (size_t i = 1; i < namespace_stack_.size(); ++i) {
+        const NamespaceContext& ctx = namespace_contexts_[namespace_stack_[i]];
+        if (!ctx.canonical_name || !ctx.canonical_name[0]) continue;
+        current_namespace_ = ctx.canonical_name;
+    }
+}
+
+int Parser::current_namespace_context_id() const {
+    if (namespace_stack_.empty()) return 0;
+    return namespace_stack_.back();
+}
+
+int Parser::ensure_named_namespace_context(int parent_id, const std::string& name) {
+    const std::string key = std::to_string(parent_id) + "::" + name;
+    auto it = named_namespace_contexts_.find(key);
+    if (it != named_namespace_contexts_.end()) return it->second;
+
+    const NamespaceContext& parent = namespace_contexts_[parent_id];
+    std::string canonical = parent.canonical_name ? parent.canonical_name : "";
+    if (!canonical.empty()) canonical += "::";
+    canonical += name;
+
+    const int id = static_cast<int>(namespace_contexts_.size());
+    namespace_contexts_.push_back(
+        NamespaceContext{id, parent_id, false, arena_.strdup(name.c_str()),
+                         arena_.strdup(canonical.c_str())});
+    named_namespace_contexts_[key] = id;
+    return id;
+}
+
+int Parser::create_anonymous_namespace_context(int parent_id) {
+    const NamespaceContext& parent = namespace_contexts_[parent_id];
+    std::string canonical = parent.canonical_name ? parent.canonical_name : "";
+    if (!canonical.empty()) canonical += "::";
+    canonical += "__anon_ns_";
+    canonical += std::to_string(anon_counter_++);
+
+    const int id = static_cast<int>(namespace_contexts_.size());
+    namespace_contexts_.push_back(
+        NamespaceContext{id, parent_id, true, arena_.strdup(""),
+                         arena_.strdup(canonical.c_str())});
+    anonymous_namespace_children_[parent_id].push_back(id);
+    return id;
+}
+
+void Parser::push_namespace_context(int context_id) {
+    namespace_stack_.push_back(context_id);
+    refresh_current_namespace_bridge();
+}
+
+void Parser::pop_namespace_context() {
+    if (namespace_stack_.size() > 1) namespace_stack_.pop_back();
+    refresh_current_namespace_bridge();
+}
+
+std::string Parser::canonical_name_in_context(int context_id, const std::string& name) const {
+    if (name.empty()) return name;
+    if (context_id <= 0) return name;
+    const NamespaceContext& ctx = namespace_contexts_[context_id];
+    if (!ctx.canonical_name || !ctx.canonical_name[0]) return name;
+    return std::string(ctx.canonical_name) + "::" + name;
+}
+
+int Parser::resolve_namespace_context(const QualifiedNameRef& name) const {
+    auto follow_path = [&](int start_id) -> int {
+        int context_id = start_id;
+        for (const std::string& segment : name.qualifier_segments) {
+            const std::string key = std::to_string(context_id) + "::" + segment;
+            auto it = named_namespace_contexts_.find(key);
+            if (it == named_namespace_contexts_.end()) return -1;
+            context_id = it->second;
+        }
+        return context_id;
+    };
+
+    if (name.is_global_qualified) return follow_path(0);
+
+    for (int i = static_cast<int>(namespace_stack_.size()) - 1; i >= 0; --i) {
+        int resolved = follow_path(namespace_stack_[i]);
+        if (resolved >= 0) return resolved;
+    }
+    return follow_path(0);
+}
+
+int Parser::resolve_namespace_name(const QualifiedNameRef& name) const {
+    auto follow_name = [&](int start_id) -> int {
+        int context_id = start_id;
+        for (const std::string& segment : name.qualifier_segments) {
+            const std::string key = std::to_string(context_id) + "::" + segment;
+            auto it = named_namespace_contexts_.find(key);
+            if (it == named_namespace_contexts_.end()) return -1;
+            context_id = it->second;
+        }
+        const std::string final_key = std::to_string(context_id) + "::" + name.base_name;
+        auto it = named_namespace_contexts_.find(final_key);
+        if (it == named_namespace_contexts_.end()) return -1;
+        return it->second;
+    };
+
+    if (name.is_global_qualified) return follow_name(0);
+
+    for (int i = static_cast<int>(namespace_stack_.size()) - 1; i >= 0; --i) {
+        int resolved = follow_name(namespace_stack_[i]);
+        if (resolved >= 0) return resolved;
+    }
+    return follow_name(0);
+}
+
+bool Parser::lookup_value_in_context(int context_id, const std::string& name,
+                                     std::string* resolved) const {
+    const std::string candidate = canonical_name_in_context(context_id, name);
+    if (var_types_.count(candidate)) {
+        *resolved = candidate;
+        return true;
+    }
+    if (context_id == 0 && var_types_.count(name)) {
+        *resolved = name;
+        return true;
+    }
+
+    auto anon_it = anonymous_namespace_children_.find(context_id);
+    if (anon_it != anonymous_namespace_children_.end()) {
+        for (int anon_id : anon_it->second) {
+            if (lookup_value_in_context(anon_id, name, resolved)) return true;
+        }
+    }
+
+    auto using_it = using_namespace_contexts_.find(context_id);
+    if (using_it != using_namespace_contexts_.end()) {
+        for (int imported_id : using_it->second) {
+            if (lookup_value_in_context(imported_id, name, resolved)) return true;
+        }
+    }
+    return false;
+}
+
+bool Parser::lookup_type_in_context(int context_id, const std::string& name,
+                                    std::string* resolved) const {
+    const std::string candidate = canonical_name_in_context(context_id, name);
+    if (typedef_types_.count(candidate)) {
+        *resolved = candidate;
+        return true;
+    }
+    if (context_id == 0 && typedef_types_.count(name)) {
+        *resolved = name;
+        return true;
+    }
+
+    auto anon_it = anonymous_namespace_children_.find(context_id);
+    if (anon_it != anonymous_namespace_children_.end()) {
+        for (int anon_id : anon_it->second) {
+            if (lookup_type_in_context(anon_id, name, resolved)) return true;
+        }
+    }
+
+    auto using_it = using_namespace_contexts_.find(context_id);
+    if (using_it != using_namespace_contexts_.end()) {
+        for (int imported_id : using_it->second) {
+            if (lookup_type_in_context(imported_id, name, resolved)) return true;
+        }
+    }
+    return false;
+}
+
+bool Parser::peek_qualified_name(QualifiedNameRef* out, bool allow_global) const {
+    if (!out) return false;
+    QualifiedNameRef result;
+    int p = pos_;
+    if (allow_global && p < static_cast<int>(tokens_.size()) &&
+        tokens_[p].kind == TokenKind::ColonColon) {
+        result.is_global_qualified = true;
+        ++p;
+    }
+    if (p >= static_cast<int>(tokens_.size()) || tokens_[p].kind != TokenKind::Identifier) {
+        return false;
+    }
+    result.base_name = tokens_[p].lexeme;
+    ++p;
+    while (p + 1 < static_cast<int>(tokens_.size()) &&
+           tokens_[p].kind == TokenKind::ColonColon &&
+           tokens_[p + 1].kind == TokenKind::Identifier) {
+        result.qualifier_segments.push_back(result.base_name);
+        result.base_name = tokens_[p + 1].lexeme;
+        p += 2;
+    }
+    *out = std::move(result);
+    return true;
+}
+
+Parser::QualifiedNameRef Parser::parse_qualified_name(bool allow_global) {
+    QualifiedNameRef result;
+    if (!peek_qualified_name(&result, allow_global)) {
+        throw std::runtime_error("expected qualified name");
+    }
+    if (result.is_global_qualified) expect(TokenKind::ColonColon);
+    expect(TokenKind::Identifier);
+    for (size_t i = 0; i < result.qualifier_segments.size(); ++i) {
+        expect(TokenKind::ColonColon);
+        expect(TokenKind::Identifier);
+    }
+    return result;
+}
+
+void Parser::apply_qualified_name(Node* node, const QualifiedNameRef& qn,
+                                  const char* resolved_name) {
+    if (!node) return;
+    node->is_global_qualified = qn.is_global_qualified;
+    node->unqualified_name = arena_.strdup(qn.base_name.c_str());
+    node->n_qualifier_segments = static_cast<int>(qn.qualifier_segments.size());
+    if (node->n_qualifier_segments > 0) {
+        node->qualifier_segments = arena_.alloc_array<const char*>(node->n_qualifier_segments);
+        for (int i = 0; i < node->n_qualifier_segments; ++i) {
+            node->qualifier_segments[i] = arena_.strdup(qn.qualifier_segments[i].c_str());
+        }
+    }
+    if (resolved_name && resolved_name[0]) {
+        QualifiedNameRef qualifier_only = qn;
+        node->namespace_context_id = resolve_namespace_context(qualifier_only);
+    }
+}
+
+void Parser::apply_decl_namespace(Node* node, int context_id, const char* unqualified_name) {
+    if (!node) return;
+    node->namespace_context_id = context_id;
+    node->unqualified_name = unqualified_name;
+
+    std::vector<const char*> segments;
+    for (int walk = context_id; walk > 0; walk = namespace_contexts_[walk].parent_id) {
+        const NamespaceContext& ctx = namespace_contexts_[walk];
+        if (ctx.is_anonymous || !ctx.display_name || !ctx.display_name[0]) continue;
+        segments.push_back(ctx.display_name);
+    }
+    node->n_qualifier_segments = static_cast<int>(segments.size());
+    if (node->n_qualifier_segments > 0) {
+        node->qualifier_segments = arena_.alloc_array<const char*>(node->n_qualifier_segments);
+        for (int i = 0; i < node->n_qualifier_segments; ++i) {
+            node->qualifier_segments[i] = segments[node->n_qualifier_segments - 1 - i];
+        }
+    }
 }
 
 void Parser::expect(TokenKind k) {

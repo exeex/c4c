@@ -33,24 +33,51 @@ bool Parser::is_type_start() const {
     if (is_storage_class(k)) return true;
     if (k == TokenKind::KwAttribute) return true;  // __attribute__((x)) type cast
     if (k == TokenKind::KwAlignas || k == TokenKind::KwStaticAssert) return false;
-    if (k == TokenKind::Identifier && is_typedef_name(cur().lexeme)) return true;
+    if (k == TokenKind::Identifier) {
+        if (is_typedef_name(cur().lexeme)) return true;
+        if (typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0) return true;
+    }
+    if (k == TokenKind::ColonColon) {
+        QualifiedNameRef qn;
+        if (peek_qualified_name(&qn, true)) {
+            std::string qualified = qn.base_name;
+            if (!qn.qualifier_segments.empty()) {
+                qualified.clear();
+                for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
+                    if (i) qualified += "::";
+                    qualified += qn.qualifier_segments[i];
+                }
+                if (!qualified.empty()) qualified += "::";
+                qualified += qn.base_name;
+            }
+            if (typedef_types_.count(qualified) > 0) return true;
+            if (!qn.qualifier_segments.empty()) {
+                int context_id = resolve_namespace_context(qn);
+                if (context_id >= 0) qualified = canonical_name_in_context(context_id, qn.base_name);
+            }
+            if (typedef_types_.count(qualified) > 0) return true;
+        }
+    }
     // C++ qualified type: StructName::TypedefName or ns::ns2::Type
     if (k == TokenKind::Identifier &&
         pos_ + 2 < static_cast<int>(tokens_.size()) &&
         tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
         tokens_[pos_ + 2].kind == TokenKind::Identifier) {
-        // Build longest possible qualified name and check each prefix
-        std::string scoped = cur().lexeme + "::" + tokens_[pos_ + 2].lexeme;
-        if (is_typedef_name(scoped)) return true;
-        // Try longer paths: a::b::c, a::b::c::d, ...
-        int p = pos_ + 2;
-        while (p + 2 < static_cast<int>(tokens_.size()) &&
-               tokens_[p + 1].kind == TokenKind::ColonColon &&
-               tokens_[p + 2].kind == TokenKind::Identifier) {
-            scoped += "::";
-            scoped += tokens_[p + 2].lexeme;
-            if (is_typedef_name(scoped)) return true;
-            p += 2;
+        QualifiedNameRef qn;
+        if (peek_qualified_name(&qn, false)) {
+            std::string scoped;
+            for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
+                if (i) scoped += "::";
+                scoped += qn.qualifier_segments[i];
+            }
+            if (!scoped.empty()) scoped += "::";
+            scoped += qn.base_name;
+            if (typedef_types_.count(scoped) > 0) return true;
+            int context_id = resolve_namespace_context(qn);
+            if (context_id >= 0) {
+                std::string ns_scoped = canonical_name_in_context(context_id, qn.base_name);
+                if (typedef_types_.count(ns_scoped) > 0) return true;
+            }
         }
     }
     return false;
@@ -348,49 +375,65 @@ TypeSpec Parser::parse_base_type() {
                 done = true; break;
             }
 
+            case TokenKind::ColonColon:
+                if (!is_cpp_mode()) {
+                    done = true;
+                    break;
+                }
+                [[fallthrough]];
+
             case TokenKind::Identifier:
-                // C++ qualified type: StructName::TypedefName or ns::ns2::Type
-                if (is_cpp_mode() && !has_typedef &&
-                    pos_ + 2 < static_cast<int>(tokens_.size()) &&
-                    tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
-                    tokens_[pos_ + 2].kind == TokenKind::Identifier) {
-                    // Build longest matching qualified name
-                    std::string scoped = cur().lexeme + "::" + tokens_[pos_ + 2].lexeme;
-                    std::string best_match;
-                    int best_end_pos = pos_ + 2;  // position of last identifier in match
-                    if (is_typedef_name(scoped)) {
-                        best_match = scoped;
-                    }
-                    int p = pos_ + 2;
-                    while (p + 2 < static_cast<int>(tokens_.size()) &&
-                           tokens_[p + 1].kind == TokenKind::ColonColon &&
-                           tokens_[p + 2].kind == TokenKind::Identifier) {
-                        scoped += "::";
-                        scoped += tokens_[p + 2].lexeme;
-                        p += 2;
-                        if (is_typedef_name(scoped)) {
-                            best_match = scoped;
-                            best_end_pos = p;
-                        }
-                    }
-                    if (!best_match.empty()) {
-                        bool already_have_base =
+                if (is_cpp_mode()) {
+                    QualifiedNameRef qn;
+                    if (peek_qualified_name(&qn, true)) {
+                        const bool already_have_base =
                             has_signed || has_unsigned || has_short || long_count > 0 ||
                             has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
                             has_struct || has_union || has_enum || base_set;
-                        if (!already_have_base) {
-                            has_typedef = true;
-                            ts.tag = arena_.strdup(best_match);
-                            // Consume all tokens up to and including last identifier
-                            while (pos_ < best_end_pos)
-                                consume();
-                            consume();  // consume the last identifier
+                        std::string resolved_name;
+                        if (!qn.qualifier_segments.empty()) {
+                            for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
+                                if (i) resolved_name += "::";
+                                resolved_name += qn.qualifier_segments[i];
+                            }
+                            if (!resolved_name.empty()) resolved_name += "::";
+                            resolved_name += qn.base_name;
                         }
-                        done = true;
-                        break;
+                        if (!resolved_name.empty() && typedef_types_.count(resolved_name) == 0) {
+                            resolved_name.clear();
+                        }
+                        if (!qn.qualifier_segments.empty() || qn.is_global_qualified) {
+                            if (resolved_name.empty()) {
+                                int context_id = resolve_namespace_context(qn);
+                                if (context_id >= 0) {
+                                    resolved_name = canonical_name_in_context(context_id, qn.base_name);
+                                }
+                            }
+                        } else {
+                            resolved_name = resolve_visible_type_name(qn.base_name);
+                        }
+                        if (!already_have_base && typedef_types_.count(resolved_name) > 0) {
+                            has_typedef = true;
+                            ts.tag = arena_.strdup(resolved_name.c_str());
+                            ts.is_global_qualified = qn.is_global_qualified;
+                            ts.n_qualifier_segments =
+                                static_cast<int>(qn.qualifier_segments.size());
+                            if (ts.n_qualifier_segments > 0) {
+                                ts.qualifier_segments =
+                                    arena_.alloc_array<const char*>(ts.n_qualifier_segments);
+                                for (int i = 0; i < ts.n_qualifier_segments; ++i) {
+                                    ts.qualifier_segments[i] =
+                                        arena_.strdup(qn.qualifier_segments[i].c_str());
+                                }
+                            }
+                            parse_qualified_name(true);
+                            done = true;
+                            break;
+                        }
                     }
                 }
-                if (is_typedef_name(cur().lexeme)) {
+                if (is_typedef_name(cur().lexeme) ||
+                    typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0) {
                     // If we've already seen concrete type specifiers/modifiers,
                     // this identifier is the declarator name (e.g. `int s;` even
                     // when `s` is also a typedef name in outer scope).
@@ -400,7 +443,8 @@ TypeSpec Parser::parse_base_type() {
                         has_struct || has_union || has_enum || base_set;
                     if (!already_have_base) {
                         has_typedef = true;
-                        ts.tag      = arena_.strdup(cur().lexeme);
+                        const std::string resolved = resolve_visible_type_name(cur().lexeme);
+                        ts.tag = arena_.strdup(resolved.c_str());
                         consume();
                     }
                     done = true;
@@ -1213,6 +1257,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     }
     defined_struct_tags_.insert(tag);
 
+    const char* source_tag = tag;
     Node* sd = make_node(NK_STRUCT_DEF, ln);
     sd->name         = tag;
     sd->is_union     = is_union;
@@ -1898,7 +1943,14 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     }
 
     // Record concrete struct/union definition for parse-time offsetof evaluation.
-    if (sd->name) struct_tag_def_map_[sd->name] = sd;
+    if (source_tag && source_tag[0]) {
+        const std::string canonical =
+            canonical_name_in_context(current_namespace_context_id(), source_tag);
+        sd->name = arena_.strdup(canonical.c_str());
+        apply_decl_namespace(sd, current_namespace_context_id(), source_tag);
+        struct_tag_def_map_[source_tag] = sd;
+        struct_tag_def_map_[sd->name] = sd;
+    }
     if (is_cpp_mode() && sd->name && sd->name[0]) {
         typedefs_.insert(sd->name);
         TypeSpec injected_ts{};
@@ -1907,12 +1959,6 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         injected_ts.base = is_union ? TB_UNION : TB_STRUCT;
         injected_ts.tag = sd->name;
         typedef_types_[sd->name] = injected_ts;
-        // Also register namespace-qualified name for use outside the namespace
-        if (!current_namespace_.empty()) {
-            std::string qn = current_namespace_ + "::" + sd->name;
-            typedefs_.insert(qn);
-            typedef_types_[qn] = injected_ts;
-        }
     }
     struct_defs_.push_back(sd);
     return sd;
@@ -1938,7 +1984,9 @@ Node* Parser::parse_enum() {
             tag = arena_.strdup(buf);
         }
         Node* ref = make_node(NK_ENUM_DEF, ln);
-        ref->name = tag;
+        ref->name = arena_.strdup(canonical_name_in_context(
+            current_namespace_context_id(), tag).c_str());
+        apply_decl_namespace(ref, current_namespace_context_id(), tag);
         ref->n_enum_variants = -1;
         return ref;
     }
@@ -1950,7 +1998,9 @@ Node* Parser::parse_enum() {
     }
 
     Node* ed = make_node(NK_ENUM_DEF, ln);
-    ed->name = tag;
+    ed->name = arena_.strdup(canonical_name_in_context(
+        current_namespace_context_id(), tag).c_str());
+    apply_decl_namespace(ed, current_namespace_context_id(), tag);
 
     consume();  // consume {
 

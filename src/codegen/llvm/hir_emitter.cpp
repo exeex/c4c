@@ -79,6 +79,10 @@ int llvm_struct_field_slot_by_name(const HirStructDef& sd, const std::string& fi
   return 0;
 }
 
+std::string llvm_global_sym(const std::string& raw) {
+  return "@" + sanitize_llvm_ident(raw);
+}
+
 const char* llvm_visibility(Visibility v) {
   switch (v) {
     case Visibility::Hidden: return "hidden ";
@@ -342,19 +346,20 @@ void HirEmitter::emit_preamble(){
       const auto it = mod_.struct_defs.find(tag);
       if (it == mod_.struct_defs.end()) continue;
       const HirStructDef& sd = it->second;
+      const std::string llvm_tag = sanitize_llvm_ident(tag);
       if (sd.fields.empty()) {
         // Empty struct: emit as opaque type {}.
-        preamble_ << "%struct." << tag << " = type {}\n";
+        preamble_ << "%struct." << llvm_tag << " = type {}\n";
         continue;
       }
       if (sd.is_union) {
         const int sz = sd.size_bytes;
-        preamble_ << "%struct." << tag << " = type { ["
+        preamble_ << "%struct." << llvm_tag << " = type { ["
                   << sz << " x i8] }\n";
       } else {
         // Materialize HIR-computed padding so LLVM layout matches frontend
         // offsets/sizes, including over-aligned arrays and tail padding.
-        preamble_ << "%struct." << tag << " = type { ";
+        preamble_ << "%struct." << llvm_tag << " = type { ";
         bool first = true;
         int last_idx = -1;
         int cur_offset = 0;
@@ -764,14 +769,14 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
       } else if constexpr (std::is_same_v<T, DeclRef>) {
         if (mod_.fn_index.count(p.name) || llvm_ty(expected_ts) == "ptr" ||
             expected_ts.ptr_level > 0 || expected_ts.is_fn_ptr) {
-          return "@" + p.name;
+          return llvm_global_sym(p.name);
         }
         return "0";
       } else if constexpr (std::is_same_v<T, UnaryExpr>) {
         if (p.op == UnaryOp::AddrOf) {
           const Expr& op_e = get_expr(p.operand);
           if (const auto* r = std::get_if<DeclRef>(&op_e.payload))
-            return "@" + r->name;
+            return llvm_global_sym(r->name);
           if (const auto* s = std::get_if<StringLiteral>(&op_e.payload)) {
             const std::string bytes = bytes_from_string_literal(*s);
             const std::string gname = intern_str(bytes);
@@ -883,7 +888,8 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
                     const std::string tag(gv->type.spec.tag);
                     if (const auto* sd = find_struct_def(tag)) {
                       const int fi = llvm_struct_field_slot_by_name(*sd, mem_e->field);
-                      return "getelementptr inbounds (%struct." + tag + ", ptr @" + dr->name +
+                      return "getelementptr inbounds (%struct." + sanitize_llvm_ident(tag) +
+                             ", ptr @" + dr->name +
                              ", i32 0, i32 " + std::to_string(fi) + ")";
                     }
                   }
@@ -1191,7 +1197,7 @@ void HirEmitter::emit_global(const GlobalVar& gv){
             }
             literal_ty += " }";
             literal_init += " }";
-            preamble_ << "@" << gv.name << " = " << lk << qual
+            preamble_ << llvm_global_sym(gv.name) << " = " << lk << qual
                       << literal_ty << " " << literal_init << "\n";
             return;
           }
@@ -1202,7 +1208,7 @@ void HirEmitter::emit_global(const GlobalVar& gv){
     if (gv.linkage.is_extern) {
       std::string ext = gv.linkage.is_weak ? "extern_weak " : "external ";
       ext += llvm_visibility(gv.linkage.visibility);
-      preamble_ << "@" << gv.name << " = " << ext << "global " << ty << "\n";
+      preamble_ << llvm_global_sym(gv.name) << " = " << ext << "global " << ty << "\n";
       return;
     }
     std::string lk = gv.linkage.is_static ? "internal " : "";
@@ -1210,7 +1216,7 @@ void HirEmitter::emit_global(const GlobalVar& gv){
     lk += llvm_visibility(gv.linkage.visibility);
     const std::string qual = (gv.is_const && ts.ptr_level == 0) ? "constant " : "global ";
     const std::string init = emit_const_init(ts, gv.init);
-    preamble_ << "@" << gv.name << " = " << lk << qual << ty << " " << init << "\n";
+    preamble_ << llvm_global_sym(gv.name) << " = " << lk << qual << ty << " " << init << "\n";
   }
 
 const Expr& HirEmitter::get_expr(ExprId id) const{
@@ -1414,15 +1420,16 @@ std::string HirEmitter::emit_member_gep(FnCtx& ctx, const std::string& base_ptr,
     }
     std::string cur_ptr = base_ptr;
     for (const auto& step : chain) {
+      const std::string llvm_tag = sanitize_llvm_ident(step.tag);
       if (step.is_union) {
         // Union: GEP to field 0 (byte array); with opaque ptrs same addr
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = getelementptr %struct." + step.tag +
+        emit_instr(ctx, tmp + " = getelementptr %struct." + llvm_tag +
                            ", ptr " + cur_ptr + ", i32 0, i32 0");
         cur_ptr = tmp;
       } else {
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = getelementptr %struct." + step.tag +
+        emit_instr(ctx, tmp + " = getelementptr %struct." + llvm_tag +
                            ", ptr " + cur_ptr + ", i32 0, i32 " +
                            std::to_string(step.llvm_idx));
         cur_ptr = tmp;
@@ -1600,11 +1607,11 @@ std::string HirEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec& 
         if (const GlobalVar* best = select_global_object(gv0.name)) gv_idx = best->id.value;
         const auto& gv = mod_.globals[gv_idx];
         pts = gv.type.spec;
-        return "@" + gv.name;
+        return llvm_global_sym(gv.name);
       }
       // Unresolved: assume external global
       pts = e.type.spec;
-      return "@" + r->name;
+      return llvm_global_sym(r->name);
     }
     if (const auto* u = std::get_if<UnaryExpr>(&e.payload)) {
       if (u->op == UnaryOp::Deref) {
@@ -2342,18 +2349,18 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const Ex
       if (gv.type.spec.array_rank > 0 && !gv.type.spec.is_ptr_to_array) {
         const std::string tmp = fresh_tmp(ctx);
         emit_instr(ctx, tmp + " = getelementptr " + llvm_alloca_ty(gv.type.spec) +
-                            ", ptr @" + gv.name + ", i64 0, i64 0");
+                            ", ptr " + llvm_global_sym(gv.name) + ", i64 0, i64 0");
         return tmp;
       }
       const std::string ty = llvm_ty(gv.type.spec);
       if (ty == "void") return "0";
       const std::string tmp = fresh_tmp(ctx);
-      emit_instr(ctx, tmp + " = load " + ty + ", ptr @" + gv.name);
+      emit_instr(ctx, tmp + " = load " + ty + ", ptr " + llvm_global_sym(gv.name));
       return tmp;
     }
 
     // Function reference: return as ptr value (after checking locals/params)
-    if (mod_.fn_index.count(r.name)) return "@" + r.name;
+    if (mod_.fn_index.count(r.name)) return llvm_global_sym(r.name);
 
     if ((r.name == "__func__" || r.name == "__FUNCTION__" || r.name == "__PRETTY_FUNCTION__") &&
         ctx.fn) {
@@ -3348,13 +3355,13 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
     const BuiltinInfo* builtin = builtin_by_id(builtin_id);
     if (builtin && builtin->category == BuiltinCategory::AliasCall &&
         !builtin->canonical_name.empty()) {
-      callee_val = "@" + std::string(builtin->canonical_name);
+      callee_val = llvm_global_sym(std::string(builtin->canonical_name));
       unresolved_external_callee = true;
       unresolved_external_name = std::string(builtin->canonical_name);
     } else if (const auto* r = std::get_if<DeclRef>(&callee_e.payload);
         r && !r->local && !r->param_index && !r->global) {
       // Treat unresolved decl refs in call position as external functions.
-      callee_val = "@" + r->name;
+      callee_val = llvm_global_sym(r->name);
       callee_ts = resolve_payload_type(ctx, *r);
       unresolved_external_callee = true;
       unresolved_external_name = r->name;
@@ -5028,7 +5035,8 @@ void HirEmitter::emit_function(const Function& fn){
 
     if (fn.linkage.is_extern && fn.blocks.empty()) {
       const std::string decl_kw = fn.linkage.is_weak ? "declare extern_weak " : "declare ";
-      out << decl_kw << llvm_visibility(fn.linkage.visibility) << ret_ty << " @" << fn.name << "(";
+      out << decl_kw << llvm_visibility(fn.linkage.visibility) << ret_ty << " "
+          << llvm_global_sym(fn.name) << "(";
       for (size_t i = 0; i < fn.params.size(); ++i) {
         if (void_param_list) break;
         if (i) out << ", ";
@@ -5039,7 +5047,7 @@ void HirEmitter::emit_function(const Function& fn){
         out << "...";
       }
       out << ")\n\n";
-      fn_bodies_.push_back({std::string(fn.name), fn.linkage.is_static, out.str()});
+      fn_bodies_.push_back({sanitize_llvm_ident(fn.name), fn.linkage.is_static, out.str()});
       return;
     }
 
@@ -5055,7 +5063,8 @@ void HirEmitter::emit_function(const Function& fn){
     // Signature
     std::string fn_lk = fn.linkage.is_static ? "internal " : "";
     if (fn.linkage.is_weak && !fn.linkage.is_static) fn_lk = "weak ";
-    out << "define " << fn_lk << llvm_visibility(fn.linkage.visibility) << ret_ty << " @" << fn.name << "(";
+    out << "define " << fn_lk << llvm_visibility(fn.linkage.visibility) << ret_ty << " "
+        << llvm_global_sym(fn.name) << "(";
     for (size_t i = 0; i < fn.params.size(); ++i) {
       if (void_param_list) break;
       if (i) out << ", ";
@@ -5147,7 +5156,7 @@ void HirEmitter::emit_function(const Function& fn){
     for (const auto& l : ctx.alloca_lines) out << l << "\n";
     for (const auto& l : ctx.body_lines)   out << l << "\n";
     out << "}\n\n";
-    fn_bodies_.push_back({std::string(fn.name), fn.linkage.is_static, out.str()});
+    fn_bodies_.push_back({sanitize_llvm_ident(fn.name), fn.linkage.is_static, out.str()});
   }
 
 }  // namespace tinyc2ll::codegen::llvm_backend

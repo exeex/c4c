@@ -251,13 +251,15 @@ inline bool is_vector_value(const TypeSpec& ts) {
          ts.array_rank == 0;
 }
 
+inline std::string sanitize_llvm_ident(const std::string& raw);
+
 inline std::string llvm_ty(const TypeSpec& ts) {
   if (ts.ptr_level > 0 || ts.is_fn_ptr) return "ptr";
   if (ts.array_rank > 0) return "ptr";
   if (is_vector_value(ts)) return llvm_vector_ty(ts);
   if (is_complex_base(ts.base)) return llvm_complex_ty(ts.base);
   if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag && ts.tag[0]) {
-    return "%struct." + std::string(ts.tag);
+    return "%struct." + sanitize_llvm_ident(ts.tag);
   }
   return llvm_base(ts.base);
 }
@@ -328,7 +330,7 @@ inline std::string llvm_alloca_ty(const TypeSpec& ts) {
   if (is_complex_base(ts.base)) return llvm_complex_ty(ts.base);
   if (ts.base == TB_VA_LIST) return "%struct.__va_list_tag_";
   if (ts.base == TB_STRUCT || ts.base == TB_UNION) {
-    if (ts.tag && ts.tag[0]) return "%struct." + std::string(ts.tag);
+    if (ts.tag && ts.tag[0]) return "%struct." + sanitize_llvm_ident(ts.tag);
   }
   if (ts.base == TB_VOID) return "i8";
   return llvm_base(ts.base);
@@ -386,7 +388,7 @@ inline std::string llvm_field_ty(const HirStructField& f) {
   if (f.elem_type.base == TB_VA_LIST) return "%struct.__va_list_tag_";
   if (f.elem_type.base == TB_STRUCT || f.elem_type.base == TB_UNION) {
     if (f.elem_type.tag && f.elem_type.tag[0]) {
-      return "%struct." + std::string(f.elem_type.tag);
+      return "%struct." + sanitize_llvm_ident(f.elem_type.tag);
     }
   }
   return llvm_ty(f.elem_type);

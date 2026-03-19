@@ -73,6 +73,9 @@ enum TypeBase {
 struct TypeSpec {
     TypeBase base;
     const char* tag;         // struct/union/enum tag or typedef name (may be null)
+    const char** qualifier_segments; // structured qualifier path for tagged/typedef names
+    int n_qualifier_segments;        // qualifier segment count (excludes base name)
+    bool is_global_qualified;        // true when the source type started with ::
     int ptr_level;           // 0 = not a pointer; 1 = *; 2 = **; ...
     bool is_lvalue_ref;      // true for C++ lvalue references (T&)
     bool is_rvalue_ref;      // true for C++ rvalue references (T&&)
@@ -219,6 +222,7 @@ enum NodeKind {
 struct Node {
     NodeKind kind;
     int line;
+    int namespace_context_id; // owning namespace for declarations / resolved namespace for refs
 
     // --- type (for NK_DECL, NK_GLOBAL_VAR, NK_FUNCTION ret, NK_CAST,
     //           NK_SIZEOF_TYPE, NK_ALIGNOF_TYPE, NK_COMPOUND_LIT, NK_PARAM) ---
@@ -227,6 +231,10 @@ struct Node {
     // --- name (for NK_VAR, NK_FUNCTION, NK_DECL, NK_GLOBAL_VAR,
     //           NK_GOTO, NK_LABEL, NK_MEMBER, NK_STRUCT_DEF, NK_ENUM_DEF) ---
     const char* name;
+    const char* unqualified_name; // source spelling base name before namespace canonicalization
+    const char** qualifier_segments; // structured qualifier path from source spelling
+    int n_qualifier_segments;        // qualifier segment count (excludes base name)
+    bool is_global_qualified;        // true when the source spelling started with ::
     BuiltinId builtin_id;
 
     // --- operator string (for NK_BINOP, NK_UNARY, NK_POSTFIX,

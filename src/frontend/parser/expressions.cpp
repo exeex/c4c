@@ -592,43 +592,51 @@ Node* Parser::parse_primary() {
     if (is_cpp_mode() && check(TokenKind::ColonColon) &&
         pos_ + 1 < static_cast<int>(tokens_.size()) &&
         tokens_[pos_ + 1].kind == TokenKind::Identifier) {
-        consume();  // ::
-        std::string qualified_name = cur().lexeme;
-        while (pos_ + 2 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
-               tokens_[pos_ + 2].kind == TokenKind::Identifier) {
-            qualified_name += "::";
-            qualified_name += tokens_[pos_ + 2].lexeme;
-            consume();  // current identifier
-            consume();  // ::
+        QualifiedNameRef qn = parse_qualified_name(true);
+        std::string qualified_name = qn.base_name;
+        if (!qn.qualifier_segments.empty()) {
+            int context_id = resolve_namespace_context(qn);
+            if (context_id >= 0) {
+                qualified_name = canonical_name_in_context(context_id, qn.base_name);
+            } else {
+                qualified_name.clear();
+                for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
+                    qualified_name += qn.qualifier_segments[i];
+                    qualified_name += "::";
+                }
+                qualified_name += qn.base_name;
+            }
         }
-        // Already fully qualified — skip resolve_visible_value_name
         const char* nm = arena_.strdup(qualified_name.c_str());
-        int ln = cur().line;
-        consume();
         Node* var_node = make_node(NK_VAR, ln);
         var_node->name = nm;
+        apply_qualified_name(var_node, qn, nm);
         return parse_postfix(var_node);
     }
 
     // Identifier / label address
     if (check(TokenKind::Identifier)) {
-        std::string qualified_name = cur().lexeme;
-        while (is_cpp_mode() &&
-               pos_ + 2 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
-               tokens_[pos_ + 2].kind == TokenKind::Identifier) {
-            qualified_name += "::";
-            qualified_name += tokens_[pos_ + 2].lexeme;
-            consume();  // current identifier
-            consume();  // ::
+        QualifiedNameRef qn = parse_qualified_name(false);
+        std::string qualified_name;
+        if (!qn.qualifier_segments.empty()) {
+            int context_id = resolve_namespace_context(qn);
+            if (context_id >= 0) {
+                qualified_name = canonical_name_in_context(context_id, qn.base_name);
+            } else {
+                for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
+                    if (i) qualified_name += "::";
+                    qualified_name += qn.qualifier_segments[i];
+                }
+                if (!qualified_name.empty()) qualified_name += "::";
+                qualified_name += qn.base_name;
+            }
+        } else {
+            qualified_name = resolve_visible_value_name(qn.base_name);
         }
-        qualified_name = resolve_visible_value_name(qualified_name);
         const char* nm = arena_.strdup(qualified_name.c_str());
         const BuiltinId builtin_id = builtin_id_from_name(nm);
         // __builtin_offsetof(type, member) — parse as constant expression when possible
         if (builtin_id == BuiltinId::Offsetof) {
-            consume();
             expect(TokenKind::LParen);
             TypeSpec base_ts = parse_type_name();
             expect(TokenKind::Comma);
@@ -655,7 +663,6 @@ Node* Parser::parse_primary() {
         }
         // __builtin_types_compatible_p(type1, type2) — evaluate at parse time
         if (builtin_id == BuiltinId::TypesCompatibleP) {
-            consume();
             expect(TokenKind::LParen);
             TypeSpec ts1 = parse_type_name();
             expect(TokenKind::Comma);
@@ -664,8 +671,8 @@ Node* Parser::parse_primary() {
             int result = types_compatible_p(ts1, ts2, typedef_types_) ? 1 : 0;
             return make_int_lit(result, ln);
         }
-        consume();
         Node* ident = make_var(nm, ln);
+        apply_qualified_name(ident, qn, nm);
         if (is_cpp_mode() && check(TokenKind::Less)) {
             int save_pos = pos_;
             consume();  // <
@@ -811,19 +818,22 @@ Node* Parser::parse_primary() {
                     pos_ + 2 < static_cast<int>(tokens_.size()) &&
                     tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
                     tokens_[pos_ + 2].kind == TokenKind::Identifier) {
-                    std::string qualified_name = cur().lexeme;
-                    while (pos_ + 2 < static_cast<int>(tokens_.size()) &&
-                           tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
-                           tokens_[pos_ + 2].kind == TokenKind::Identifier) {
-                        qualified_name += "::";
-                        qualified_name += tokens_[pos_ + 2].lexeme;
-                        consume();  // current identifier
-                        consume();  // ::
+                    QualifiedNameRef operand_name = parse_qualified_name(false);
+                    std::string qualified_name;
+                    int context_id = resolve_namespace_context(operand_name);
+                    if (context_id >= 0) {
+                        qualified_name = canonical_name_in_context(context_id, operand_name.base_name);
+                    } else {
+                        for (size_t i = 0; i < operand_name.qualifier_segments.size(); ++i) {
+                            if (i) qualified_name += "::";
+                            qualified_name += operand_name.qualifier_segments[i];
+                        }
+                        if (!qualified_name.empty()) qualified_name += "::";
+                        qualified_name += operand_name.base_name;
                     }
-                    qualified_name = resolve_visible_value_name(qualified_name);
                     const char* nm = arena_.strdup(qualified_name.c_str());
-                    consume();  // final identifier
                     operand = make_var(nm, ln);
+                    apply_qualified_name(operand, operand_name, nm);
                 } else {
                     operand = parse_assign_expr();
                 }

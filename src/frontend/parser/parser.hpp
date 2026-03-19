@@ -28,6 +28,20 @@ namespace c4c {
 
 class Parser {
  public:
+  struct NamespaceContext {
+    int id = 0;
+    int parent_id = -1;
+    bool is_anonymous = false;
+    const char* display_name = nullptr;
+    const char* canonical_name = nullptr;
+  };
+
+  struct QualifiedNameRef {
+    bool is_global_qualified = false;
+    std::vector<std::string> qualifier_segments;
+    std::string base_name;
+  };
+
   // All members public (required by project coding constraints).
   explicit Parser(std::vector<Token> tokens, Arena& arena,
                   SourceProfile source_profile = SourceProfile::C);
@@ -95,11 +109,15 @@ class Parser {
   std::unordered_map<std::string, TypeSpec> struct_typedefs_;
   // Tag of the struct currently being parsed (empty if not in struct body).
   std::string current_struct_tag_;
-  // Current enclosing namespace path while parsing top-level namespace blocks.
+  // Transitional flattened path kept only as a compatibility bridge.
   std::string current_namespace_;
-  // Unqualified visible aliases introduced by using-declarations/directives.
-  std::unordered_map<std::string, std::string> using_value_aliases_;
-  std::vector<std::string> using_namespace_prefixes_;
+  std::vector<NamespaceContext> namespace_contexts_;
+  std::vector<int> namespace_stack_;
+  std::unordered_map<std::string, int> named_namespace_contexts_;
+  std::unordered_map<int, std::vector<int>> anonymous_namespace_children_;
+  // Unqualified visible aliases introduced by using-declarations per namespace context.
+  std::unordered_map<int, std::unordered_map<std::string, std::string>> using_value_aliases_;
+  std::unordered_map<int, std::vector<int>> using_namespace_contexts_;
 
   // #pragma pack state: current packing alignment (0 = default/no packing).
   int pack_alignment_ = 0;
@@ -135,9 +153,28 @@ class Parser {
     return source_profile_ == SourceProfile::CppSubset ||
            source_profile_ == SourceProfile::C4;
   }
+  void refresh_current_namespace_bridge();
+  int current_namespace_context_id() const;
+  int ensure_named_namespace_context(int parent_id, const std::string& name);
+  int create_anonymous_namespace_context(int parent_id);
+  void push_namespace_context(int context_id);
+  void pop_namespace_context();
+  std::string canonical_name_in_context(int context_id, const std::string& name) const;
+  int resolve_namespace_context(const QualifiedNameRef& name) const;
+  int resolve_namespace_name(const QualifiedNameRef& name) const;
+  bool lookup_value_in_context(int context_id, const std::string& name,
+                               std::string* resolved) const;
+  bool lookup_type_in_context(int context_id, const std::string& name,
+                              std::string* resolved) const;
   std::string qualify_name(const std::string& name) const;
   const char* qualify_name_arena(const char* name);
   std::string resolve_visible_value_name(const std::string& name) const;
+  std::string resolve_visible_type_name(const std::string& name) const;
+  bool peek_qualified_name(QualifiedNameRef* out, bool allow_global = true) const;
+  QualifiedNameRef parse_qualified_name(bool allow_global = true);
+  void apply_qualified_name(Node* node, const QualifiedNameRef& qn,
+                            const char* resolved_name = nullptr);
+  void apply_decl_namespace(Node* node, int context_id, const char* unqualified_name);
 
   // Parse a complete type specifier (base type + qualifiers).
   // ptr_level and array_size are NOT parsed here (those are in the declarator).
