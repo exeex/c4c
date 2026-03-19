@@ -139,6 +139,7 @@ const char *token_kind_name(TokenKind kind) {
     case TokenKind::KwTrue: return "KW_true";
     case TokenKind::KwFalse: return "KW_false";
     case TokenKind::KwOperator: return "KW_operator";
+    case TokenKind::KwDelete: return "KW_delete";
 
     case TokenKind::PragmaPack: return "PRAGMA_PACK";
 
@@ -262,6 +263,7 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
     if (s == "false")            return TokenKind::KwFalse;
     if (s == "alignof")          return TokenKind::KwAlignof;
     if (s == "operator")         return TokenKind::KwOperator;
+    if (s == "delete")           return TokenKind::KwDelete;
   }
 
   return TokenKind::Identifier;

@@ -1754,6 +1754,8 @@ class Lowerer {
                            const Node* method_node,
                            const TypeBindings* tpl_bindings = nullptr,
                            const NttpBindings* nttp_bindings = nullptr) {
+    // Skip deleted methods — they have no body and must not be lowered.
+    if (method_node->is_deleted) return;
     Function fn{};
     fn.id = next_fn_id();
     fn.name = mangled_name;
@@ -2155,6 +2157,12 @@ class Lowerer {
           }
         }
         if (best) {
+          if (best->method_node->is_deleted) {
+            std::string diag = "error: call to deleted constructor '";
+            diag += decl_ts.tag;
+            diag += "'";
+            throw std::runtime_error(diag);
+          }
           CallExpr c{};
           DeclRef callee_ref{};
           callee_ref.name = best->mangled_name;

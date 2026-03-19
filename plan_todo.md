@@ -245,20 +245,30 @@
   - `template_rvalue_ref_param_basic.cpp` — scalar T&& binding, chained move ctor calls
 - Suite: 1963/1963 (was 1961)
 
+### Rvalue Reference Negative Tests (rvalue_ref_plan.md Phases 3-4)
+- **`= delete` support**: `KwDelete` token, `is_deleted` Node flag, parser handles `= delete` after constructor/method declarations, HIR rejects calls to deleted constructors
+- **Deleted methods skip lowering**: `lower_struct_method` returns early for `is_deleted` methods
+- Tests:
+  - `bad_deleted_move_ctor_call.cpp` — `Obj(Obj&&) = delete` then `Obj b(static_cast<Obj&&>(a))` rejected
+  - `bad_move_assign_const.cpp` — move-assignment to const object rejected (already worked)
+  - `bad_forwarding_ref_bind.cpp` — non-template `int&&` param rejects lvalue arg (already worked)
+- Suite: 1966/1966 (was 1963)
+
 ## Next Intended Slice
 ### Recommended next target
 - **Rvalue ref Phase 4 is complete** — move helper + template rvalue ref param
+- **Negative tests complete** — bad_deleted_move_ctor_call, bad_move_assign_const, bad_forwarding_ref_bind
 - Next priority:
   1. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
-  2. Negative tests: `bad_deleted_move_ctor_call.cpp`, `bad_move_assign_const.cpp`, `bad_forwarding_ref_bind.cpp`
-  3. Template member access through T&& params (blocked on template member resolution)
+  2. Template member access through T&& params (blocked on template member resolution)
+  3. Copy assignment operator (`operator=(const T&)`)
+  4. Default constructor (`T()`)
 
 ### Explicitly deferred for now
 - Free-function operator overloading
 - Structured bindings in range-for
 - General `auto` deduction outside range-for
 - Ambiguous overload detection (bad_ref_overload_ambiguous.cpp)
-- Deleted constructor/operator support (`= delete`)
 - Copy assignment operator (`operator=(const T&)`)
 - Default constructor (`T()`)
 - Constructor initializer lists (`: member(init), ...`)
