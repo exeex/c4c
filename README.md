@@ -74,3 +74,13 @@ Or use the convenience target:
 cd build
 cmake --build . --target ctest_core
 ```
+
+## License
+
+This project is licensed under the Apache License v2.0 with LLVM Exceptions.
+See [LICENSE](/workspaces/c4c/LICENSE) for details.
+
+## Contributing
+
+By submitting contributions to this project, you agree that they will be licensed under the project license.
+See [CONTRIBUTING.md](/workspaces/c4c/CONTRIBUTING.md) for details.
