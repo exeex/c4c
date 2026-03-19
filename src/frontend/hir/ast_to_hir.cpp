@@ -1282,6 +1282,24 @@ class Lowerer {
       const Node* method = sd->children[i];
       if (!method || method->kind != NK_FUNCTION || !method->name) continue;
       const char* const_suffix = method->is_const_method ? "_const" : "";
+      // Constructors get special handling: stored in struct_constructors_
+      // with unique mangled names to support overloading by parameter types.
+      if (method->is_constructor) {
+        auto& ctors = struct_constructors_[tag];
+        int ctor_idx = (int)ctors.size();
+        std::string mangled = std::string(tag) + "__" + method->name;
+        if (ctor_idx > 0) mangled += "__" + std::to_string(ctor_idx);
+        ctors.push_back({mangled, method});
+        // Also register in struct_methods_ so the first ctor is findable.
+        if (ctor_idx == 0) {
+          std::string key = std::string(tag) + "::" + method->name;
+          struct_methods_[key] = mangled;
+          struct_method_ret_types_[key] = method->type;
+        }
+        pending_methods_.push_back({mangled, std::string(tag), method,
+                                    method_tpl_bindings, method_nttp_bindings});
+        continue;
+      }
       std::string mangled = std::string(tag) + "__" + method->name + const_suffix;
       std::string key = std::string(tag) + "::" + method->name + const_suffix;
       // Detect ref-overloaded methods: if this key already exists, check for
@@ -2061,6 +2079,104 @@ class Lowerer {
       }
     }
     append_stmt(ctx, Stmt{StmtPayload{std::move(d)}, make_span(n)});
+
+    // C++ constructor invocation: Type var(args) → call StructTag__StructTag(&var, args...)
+    if (n->is_ctor_init && decl_ts.tag) {
+      auto cit = struct_constructors_.find(decl_ts.tag);
+      if (cit != struct_constructors_.end() && !cit->second.empty()) {
+        // Resolve best constructor overload by matching argument types.
+        const CtorOverload* best = nullptr;
+        if (cit->second.size() == 1) {
+          best = &cit->second[0];
+        } else {
+          // Score each constructor overload.
+          int best_score = -1;
+          for (const auto& ov : cit->second) {
+            if (ov.method_node->n_params != n->n_children) continue;
+            int score = 0;
+            bool viable = true;
+            for (int pi = 0; pi < ov.method_node->n_params && viable; ++pi) {
+              TypeSpec param_ts = ov.method_node->params[pi]->type;
+              resolve_typedef_to_struct(param_ts);
+              TypeSpec arg_ts = infer_generic_ctrl_type(&ctx, n->children[pi]);
+              bool arg_is_lvalue = is_ast_lvalue(n->children[pi]);
+              // Strip ref qualifiers for base type comparison.
+              TypeSpec param_base = param_ts;
+              param_base.is_lvalue_ref = false;
+              param_base.is_rvalue_ref = false;
+              if (param_base.base == arg_ts.base &&
+                  param_base.ptr_level == arg_ts.ptr_level) {
+                score += 2;  // base type match
+                // Ref-qualifier scoring: prefer T&& for rvalues, const T& for lvalues.
+                if (param_ts.is_rvalue_ref && !arg_is_lvalue) {
+                  score += 4;  // rvalue ref matches rvalue arg
+                } else if (param_ts.is_rvalue_ref && arg_is_lvalue) {
+                  viable = false;  // T&& cannot bind lvalue
+                } else if (param_ts.is_lvalue_ref && arg_is_lvalue) {
+                  score += 3;  // lvalue ref matches lvalue arg
+                } else if (param_ts.is_lvalue_ref && !arg_is_lvalue) {
+                  score += 1;  // const T& can bind rvalue (lower priority)
+                }
+              } else if (param_base.ptr_level == 0 && arg_ts.ptr_level == 0 &&
+                         param_base.base != TB_STRUCT && arg_ts.base != TB_STRUCT &&
+                         param_base.base != TB_VOID && arg_ts.base != TB_VOID) {
+                score += 1;  // implicit scalar conversion
+              } else {
+                viable = false;
+              }
+            }
+            if (viable && score > best_score) {
+              best_score = score;
+              best = &ov;
+            }
+          }
+        }
+        if (best) {
+          CallExpr c{};
+          DeclRef callee_ref{};
+          callee_ref.name = best->mangled_name;
+          TypeSpec fn_ts{}; fn_ts.base = TB_VOID;
+          TypeSpec callee_ts = fn_ts; callee_ts.ptr_level++;
+          c.callee = append_expr(n, callee_ref, callee_ts);
+          // First arg: &var (this pointer).
+          DeclRef var_ref{};
+          var_ref.name = n->name ? n->name : "<anon_local>";
+          var_ref.local = lid;
+          ExprId var_id = append_expr(n, var_ref, decl_ts, ValueCategory::LValue);
+          UnaryExpr addr{};
+          addr.op = UnaryOp::AddrOf;
+          addr.operand = var_id;
+          TypeSpec ptr_ts = decl_ts; ptr_ts.ptr_level++;
+          c.args.push_back(append_expr(n, addr, ptr_ts));
+          // Explicit args — handle reference params.
+          for (int i = 0; i < n->n_children; ++i) {
+            TypeSpec param_ts = best->method_node->params[i]->type;
+            resolve_typedef_to_struct(param_ts);
+            if (param_ts.is_rvalue_ref || param_ts.is_lvalue_ref) {
+              // Reference parameter: pass address of the argument.
+              // For static_cast<T&&>(x), pass &x directly (xvalue).
+              const Node* arg = n->children[i];
+              const Node* inner = arg;
+              // Unwrap static_cast<T&&>(x) to get x.
+              if (inner->kind == NK_CAST && inner->left)
+                inner = inner->left;
+              ExprId arg_val = lower_expr(&ctx, inner);
+              TypeSpec storage_ts = reference_storage_ts(param_ts);
+              UnaryExpr addr_e{};
+              addr_e.op = UnaryOp::AddrOf;
+              addr_e.operand = arg_val;
+              c.args.push_back(append_expr(arg, addr_e, storage_ts));
+            } else {
+              c.args.push_back(lower_expr(&ctx, n->children[i]));
+            }
+          }
+          ExprId call_id = append_expr(n, c, fn_ts);
+          ExprStmt es{}; es.expr = call_id;
+          append_stmt(ctx, Stmt{StmtPayload{es}, make_span(n)});
+        }
+      }
+    }
+
     auto emit_scalar_array_zero_fill = [&](const TypeSpec& array_ts) {
       if (array_ts.array_rank != 1 || array_ts.array_size <= 0) return;
       TypeSpec elem_ts = array_ts;
@@ -4348,17 +4464,41 @@ class Lowerer {
     if (fit != module_->fn_index.end() &&
         fit->second.value < module_->functions.size())
       callee_fn = &module_->functions[fit->second.value];
+    // Fallback: find the method AST node from pending_methods_ for param types.
+    const Node* method_ast = nullptr;
+    if (!callee_fn) {
+      for (const auto& pm : pending_methods_) {
+        if (pm.mangled == mit->second) { method_ast = pm.method_node; break; }
+      }
+    }
     for (size_t i = 0; i < arg_nodes.size(); ++i) {
       const TypeSpec* param_ts =
           (callee_fn && (i + 1) < callee_fn->params.size())
               ? &callee_fn->params[i + 1].type.spec
               : nullptr;
-      ExprId arg_id = lower_expr(ctx, arg_nodes[i]);
-      if (param_ts) {
-        // Coerce argument type if needed (e.g., struct by value).
-        // For now, just pass through.
+      // Fallback param type from AST method node.
+      TypeSpec ast_param_ts{};
+      if (!param_ts && method_ast && (int)i < method_ast->n_params) {
+        ast_param_ts = method_ast->params[i]->type;
+        param_ts = &ast_param_ts;
       }
-      c.args.push_back(arg_id);
+      // Handle reference parameters: pass address instead of value.
+      if (param_ts && (param_ts->is_rvalue_ref || param_ts->is_lvalue_ref)) {
+        const Node* arg = arg_nodes[i];
+        const Node* inner = arg;
+        // Unwrap static_cast<T&&>(x) to get x for xvalue semantics.
+        if (inner->kind == NK_CAST && inner->left &&
+            inner->type.is_rvalue_ref)
+          inner = inner->left;
+        ExprId arg_val = lower_expr(ctx, inner);
+        TypeSpec storage_ts = reference_storage_ts(*param_ts);
+        UnaryExpr addr_e{};
+        addr_e.op = UnaryOp::AddrOf;
+        addr_e.operand = arg_val;
+        c.args.push_back(append_expr(arg, addr_e, storage_ts));
+      } else {
+        c.args.push_back(lower_expr(ctx, arg_nodes[i]));
+      }
     }
     for (auto ea : extra_args) c.args.push_back(ea);
 
@@ -4646,7 +4786,19 @@ class Lowerer {
         }
         return append_expr(n, b, n->type);
       }
-      case NK_ASSIGN:
+      case NK_ASSIGN: {
+        // Check for operator= on struct types.
+        if (n->kind == NK_ASSIGN && ctx) {
+          ExprId op = try_lower_operator_call(
+              ctx, n, n->left, "operator_assign", {n->right});
+          if (op.valid()) return op;
+        }
+        AssignExpr a{};
+        a.op = map_assign_op(n->op, n->kind);
+        a.lhs = lower_expr(ctx, n->left);
+        a.rhs = lower_expr(ctx, n->right);
+        return append_expr(n, a, n->type);
+      }
       case NK_COMPOUND_ASSIGN: {
         AssignExpr a{};
         a.op = map_assign_op(n->op, n->kind);
@@ -5883,6 +6035,12 @@ class Lowerer {
     NttpBindings nttp_bindings;
   };
   std::unordered_map<const Node*, DeducedTemplateCall> deduced_template_calls_;
+  // Constructor overloads per struct tag: tag → list of {mangled, method_node}.
+  struct CtorOverload {
+    std::string mangled_name;
+    const Node* method_node;  // for parameter type matching
+  };
+  std::unordered_map<std::string, std::vector<CtorOverload>> struct_constructors_;
   // Ref-overload resolution: base function name → list of overload entries.
   struct RefOverloadEntry {
     std::string mangled_name;

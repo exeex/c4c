@@ -1374,6 +1374,49 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             continue;
         }
 
+        // C++ constructor: ClassName(params) { body }
+        // Detect when the current identifier matches the struct tag and is
+        // followed by '(' — this is a constructor declaration, not a type.
+        if (is_cpp_mode() && !current_struct_tag_.empty() &&
+            check(TokenKind::Identifier) && cur().lexeme == current_struct_tag_ &&
+            pos_ + 1 < static_cast<int>(tokens_.size()) &&
+            tokens_[pos_ + 1].kind == TokenKind::LParen) {
+            const char* ctor_name = arena_.strdup(cur().lexeme);
+            consume();  // consume the struct tag name
+            consume();  // consume '('
+            std::vector<Node*> params;
+            bool variadic = false;
+            if (!check(TokenKind::RParen)) {
+                while (!at_end()) {
+                    if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
+                    if (check(TokenKind::RParen)) break;
+                    if (!is_type_start()) break;
+                    Node* p = parse_param();
+                    if (p) params.push_back(p);
+                    if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
+                    if (!match(TokenKind::Comma)) break;
+                }
+            }
+            expect(TokenKind::RParen);
+            Node* method = make_node(NK_FUNCTION, cur().line);
+            method->type.base = TB_VOID;
+            method->name = ctor_name;
+            method->variadic = variadic;
+            method->is_constructor = true;
+            method->n_params = (int)params.size();
+            if (method->n_params > 0) {
+                method->params = arena_.alloc_array<Node*>(method->n_params);
+                for (int i = 0; i < method->n_params; ++i) method->params[i] = params[i];
+            }
+            if (check(TokenKind::LBrace)) {
+                method->body = parse_block();
+            } else {
+                match(TokenKind::Semi);
+            }
+            methods.push_back(method);
+            continue;
+        }
+
         // Regular field declaration
         // C++ conversion operators (e.g., operator bool()) have no return
         // type prefix, so KwOperator can appear directly here.
@@ -1435,6 +1478,9 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             } else if (check(TokenKind::Minus)) {
                 consume();
                 op_kind = OP_MINUS;
+            } else if (check(TokenKind::Assign)) {
+                consume();
+                op_kind = OP_ASSIGN;
             } else if (check(TokenKind::KwBool)) {
                 // operator bool — conversion operator; return type is bool
                 consume();

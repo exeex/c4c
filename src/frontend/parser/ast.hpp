@@ -116,6 +116,7 @@ enum OperatorKind {
     OP_BOOL,        // operator bool
     OP_PLUS,        // operator+
     OP_MINUS,       // operator-
+    OP_ASSIGN,      // operator=
 };
 
 // Return a canonical mangled suffix for an operator kind (e.g. "operator_subscript").
@@ -318,7 +319,10 @@ struct Node {
     const char* desig_field; // NK_INIT_ITEM field designator name
     const char* linkage_spec; // C++ subset linkage string, e.g. "C"
     OperatorKind operator_kind; // C++ operator overloading: which operator this method implements
+    bool is_constructor;  // NK_FUNCTION: this method is a constructor (name == struct tag)
+    bool is_ctor_init;    // NK_DECL: initialized via constructor call  Type var(args)
 };
+
 
 // ── Free functions ────────────────────────────────────────────────────────────
 

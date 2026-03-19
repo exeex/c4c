@@ -709,6 +709,13 @@ class Validator {
     if (!is_complete_object_type(decl->type)) {
       emit(decl->line, "object has incomplete struct/union type");
     }
+    // Constructor-initialized declarations: validate the constructor args.
+    if (decl->is_ctor_init) {
+      for (int i = 0; i < decl->n_children; ++i) {
+        if (decl->children[i]) infer_expr(decl->children[i]);
+      }
+      return;
+    }
     if (decl->type.is_lvalue_ref && !decl->init) {
       emit(decl->line, "lvalue reference must be initialized");
     }

@@ -134,13 +134,32 @@ Node* Parser::parse_local_decl() {
         bool ret_fn_ptr_variadic = false;
         parse_declarator(ts, &vname, &fn_ptr_params, &n_fn_ptr_params, &fn_ptr_variadic,
                          &ret_fn_ptr_params, &n_ret_fn_ptr_params, &ret_fn_ptr_variadic);
-        // Skip K&R-style function-type suffix: `float fx ()` in local decls.
-        // Don't create a NK_DECL for these — they're forward declarations handled
-        // implicitly when the function is called via DeclRef.
+        // C++ constructor invocation: `Type var(args)` where Type is a struct.
+        // In C mode this is a K&R function-type suffix that we skip.
         bool is_kr_fn_decl = false;
+        bool is_ctor_init = false;
+        std::vector<Node*> ctor_args;
         if (check(TokenKind::LParen)) {
-            skip_paren_group();
-            is_kr_fn_decl = true;
+            if (is_cpp_mode() && vname &&
+                (base_ts.base == TB_STRUCT || base_ts.base == TB_UNION ||
+                 (base_ts.base == TB_TYPEDEF && base_ts.tag))) {
+                // C++ constructor call: parse arguments
+                consume();  // '('
+                if (!check(TokenKind::RParen)) {
+                    while (!at_end()) {
+                        if (check(TokenKind::RParen)) break;
+                        Node* arg = parse_assign_expr();
+                        if (arg) ctor_args.push_back(arg);
+                        if (!match(TokenKind::Comma)) break;
+                    }
+                }
+                expect(TokenKind::RParen);
+                is_ctor_init = true;
+            } else {
+                // K&R-style function-type suffix: `float fx ()` in local decls.
+                skip_paren_group();
+                is_kr_fn_decl = true;
+            }
         }
         skip_attributes();
         skip_asm();
@@ -158,9 +177,11 @@ Node* Parser::parse_local_decl() {
             throw std::runtime_error(std::string("object has incomplete type: ") + (ts.tag ? ts.tag : "<anonymous>"));
 
         Node* init_node = nullptr;
-        if (match(TokenKind::Assign) ||
-            (is_cpp_mode() && check(TokenKind::LBrace))) {
-            init_node = parse_initializer();
+        if (!is_ctor_init) {
+            if (match(TokenKind::Assign) ||
+                (is_cpp_mode() && check(TokenKind::LBrace))) {
+                init_node = parse_initializer();
+            }
         }
 
         Node* d = make_node(NK_DECL, ln);
@@ -168,6 +189,12 @@ Node* Parser::parse_local_decl() {
         if (is_constexpr) d->type.is_const = true;
         d->name      = vname;
         d->init      = init_node;
+        d->is_ctor_init = is_ctor_init;
+        if (is_ctor_init && !ctor_args.empty()) {
+            d->n_children = (int)ctor_args.size();
+            d->children = arena_.alloc_array<Node*>(d->n_children);
+            for (int i = 0; i < d->n_children; ++i) d->children[i] = ctor_args[i];
+        }
         d->is_static = is_static;
         d->is_extern = is_extern;
         d->is_constexpr = is_constexpr;

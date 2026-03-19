@@ -220,12 +220,27 @@
     - Lower xvalue reference arguments by passing the original object's address directly; keep temp materialization only for true prvalues
     - Add a follow-up regression where mutating through `int&&` after `static_cast<int&&>(a)` is observed through `a`, to prove same-object binding
 
+### Rvalue Reference Plan Phase 3 (rvalue_ref_plan.md)
+- **Constructor declaration parsing**: `ClassName(params)` recognized in struct body when identifier matches `current_struct_tag_` followed by `(`; sets `is_constructor=true` on NK_FUNCTION node; return type implicitly void
+- **Constructor invocation syntax**: `Type var(args)` in C++ mode parses constructor arguments (not K&R fn decl) when base type is struct/typedef
+- **Constructor overload resolution**: `struct_constructors_` map stores all constructors per struct tag with unique mangled names (`Tag__Tag`, `Tag__Tag__1`, etc.); scoring considers param count, base type match, and ref-qualifier/value-category matching (T&& prefers rvalue, const T& prefers lvalue)
+- **operator= support**: `OP_ASSIGN` added to OperatorKind; parser recognizes `operator=`; NK_ASSIGN on struct types dispatches to `try_lower_operator_call` before falling back to memcpy
+- **Reference param handling in operator calls**: `try_lower_operator_call` now detects rvalue/lvalue ref params (via fn_index or fallback to pending AST node) and passes address instead of value; `static_cast<T&&>(x)` unwrapped to pass `&x` directly (xvalue semantics)
+- **Node additions**: `is_constructor` (NK_FUNCTION), `is_ctor_init` (NK_DECL) flags in ast.hpp
+- Tests:
+  - `constructor_basic.cpp` — `Box(int v)` constructor declaration and `Box b(42)` invocation
+  - `move_ctor_basic.cpp` — `Obj(Obj&&)` move constructor, `static_cast<Obj&&>` to trigger, source marked moved-from
+  - `move_assign_basic.cpp` — `Obj& operator=(Obj&&)` move assignment operator with `static_cast<Obj&&>`
+  - `move_ctor_over_copy.cpp` — copy ctor `Obj(const Obj&)` vs move ctor `Obj(Obj&&)`, lvalue selects copy, rvalue selects move
+- Suite: 1961/1961 (was 1957)
+
 ## Next Intended Slice
 ### Recommended next target
-- **Rvalue ref Phase 2 is complete** — overload distinction for `&` vs `&&`
+- **Rvalue ref Phase 3 is complete** — constructors + move ctor + operator= + move assignment
 - Next priority:
-  1. `rvalue_ref_plan.md` Phase 3: move constructor / move assignment
+  1. `rvalue_ref_plan.md` Phase 4: utility-layer enablers (move helper, template rvalue ref)
   2. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
+  3. Negative tests: `bad_deleted_move_ctor_call.cpp`, `bad_move_assign_const.cpp`
 
 ### Explicitly deferred for now
 - Free-function operator overloading
@@ -233,6 +248,10 @@
 - General `auto` deduction outside range-for
 - Full `static_cast<T&&>` / `std::move` semantics beyond the current basic cast and test coverage
 - Ambiguous overload detection (bad_ref_overload_ambiguous.cpp)
+- Deleted constructor/operator support (`= delete`)
+- Copy assignment operator (`operator=(const T&)`)
+- Default constructor (`T()`)
+- Constructor initializer lists (`: member(init), ...`)
 
 ## Known Limitations
 - No free-function (non-member) operators
@@ -243,9 +262,10 @@
 - No `using` alias declarations (only `typedef`)
 - `auto` type deduction only works in range-for context, not general variable declarations
 - Milestone 3 child plan: `container_plan.md` (Phase 0 complete)
-- No full `static_cast` implementation model yet; only baseline named-cast coverage is tracked, and xvalue/category semantics still need a dedicated slice
-- `static_cast<T&&>(lvalue)` currently behaves as "copy value into temp, then bind T&& to temp" in IR; this is sufficient for basic overload selection but does not preserve same-object xvalue identity like Clang
-- Ref-overload resolution limited to simple lvalue/rvalue detection via AST node kind
+- No full `static_cast` implementation model yet; only baseline named-cast coverage is tracked
+- Constructor overload resolution is basic — scores by param count + base type + ref-qualifier, no implicit conversions across types
+- No destructor support (`~ClassName()`)
+- No constructor initializer lists (`: member(init), ...`)
 
 ## Notes
 - try_lower_operator_call() builds CallExpr with &obj as implicit this + explicit args
@@ -259,3 +279,8 @@
 - ColonColon token only emitted in CppSubset lex profile; C mode unaffected
 - current_struct_tag_ tracks active struct during parsing for scoped typedef registration
 - NK_RANGE_FOR desugaring: parser saves pos_ + typedefs_ for backtracking; HIR builds method calls directly using struct_methods_ map
+- Constructor detection: identifier == current_struct_tag_ + LParen in struct body → is_constructor=true method
+- Constructor invocation: Type var(args) in C++ mode → is_ctor_init=true on NK_DECL, args in children[]
+- Constructor overloads: struct_constructors_ map stores all ctors per tag; scoring considers ref-qualifier match
+- operator= dispatched before fallback memcpy in NK_ASSIGN; uses try_lower_operator_call("operator_assign")
+- try_lower_operator_call now handles ref params: falls back to pending method AST node for param types when fn_index not yet populated
