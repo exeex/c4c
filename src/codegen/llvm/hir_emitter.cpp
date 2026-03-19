@@ -1950,7 +1950,11 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const CallExpr& c){
     if (const auto* r = std::get_if<DeclRef>(&callee_e.payload)) {
       const auto fit = mod_.fn_index.find(r->name);
       if (fit != mod_.fn_index.end() && fit->second.value < mod_.functions.size()) {
-        return mod_.functions[fit->second.value].return_type.spec;
+        TypeSpec ret = mod_.functions[fit->second.value].return_type.spec;
+        // Reference return: the LLVM call actually returns ptr, so bump ptr_level
+        // to keep the type annotation consistent with the LLVM value.
+        if (ret.is_lvalue_ref && ret.ptr_level == 0) ret.ptr_level++;
+        return ret;
       }
     }
     // Indirect call through fn-ptr: use canonical fn_ptr_sig for return type.
@@ -3345,7 +3349,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
     if (ret_spec.base == TB_VOID && ret_spec.ptr_level == 0 && ret_spec.array_rank == 0) {
       ret_spec = e.type.spec;
     }
-    const std::string ret_ty = llvm_ty(ret_spec);
+    const std::string ret_ty = llvm_ret_ty(ret_spec);
     const bool builtin_special =
         builtin && builtin->lowering != BuiltinLoweringKind::AliasCall;
     if (unresolved_external_callee && !builtin_special) {
@@ -4605,11 +4609,12 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const InlineAsmStmt& s){
 void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ReturnStmt& s){
     if (!s.expr) {
       const auto& rts = ctx.fn->return_type.spec;
-      if (rts.base == TB_VOID && rts.ptr_level == 0 && rts.array_rank == 0) {
+      if (rts.base == TB_VOID && rts.ptr_level == 0 && rts.array_rank == 0 &&
+          !rts.is_lvalue_ref) {
         emit_term(ctx, "ret void");
       } else {
         // C89: bare 'return;' in non-void function → return 0/null/0.0
-        const std::string ret_ty = llvm_ty(rts);
+        const std::string ret_ty = llvm_ret_ty(rts);
         if (ret_ty == "ptr") {
           emit_term(ctx, "ret ptr null");
         } else if (is_float_base(rts.base) && rts.ptr_level == 0) {
@@ -4622,8 +4627,13 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ReturnStmt& s){
     }
     TypeSpec ts{};
     std::string val = emit_rval_id(ctx, *s.expr, ts);
-    val = coerce(ctx, val, ts, ctx.fn->return_type.spec);
-    emit_term(ctx, "ret " + llvm_ty(ctx.fn->return_type.spec) + " " + val);
+    // For reference returns, the LLVM return type is ptr, so coerce to ptr.
+    TypeSpec coerce_target = ctx.fn->return_type.spec;
+    if (coerce_target.is_lvalue_ref && coerce_target.ptr_level == 0) {
+      coerce_target.ptr_level++;
+    }
+    val = coerce(ctx, val, ts, coerce_target);
+    emit_term(ctx, "ret " + llvm_ret_ty(ctx.fn->return_type.spec) + " " + val);
   }
 
 void HirEmitter::emit_stmt_impl(FnCtx& ctx, const IfStmt& s){
@@ -4992,7 +5002,7 @@ void HirEmitter::emit_function(const Function& fn){
     }
 
     std::ostringstream out;
-    const std::string ret_ty = llvm_ty(fn.return_type.spec);
+    const std::string ret_ty = llvm_ret_ty(fn.return_type.spec);
 
     const bool void_param_list =
         fn.params.size() == 1 &&
@@ -5096,7 +5106,8 @@ void HirEmitter::emit_function(const Function& fn){
       if (!ctx.last_term) {
         if (fn.return_type.spec.base == TB_VOID &&
             fn.return_type.spec.ptr_level == 0 &&
-            fn.return_type.spec.array_rank == 0) {
+            fn.return_type.spec.array_rank == 0 &&
+            !fn.return_type.spec.is_lvalue_ref) {
           emit_term(ctx, "ret void");
         } else if (ret_ty == "ptr") {
           emit_term(ctx, "ret ptr null");

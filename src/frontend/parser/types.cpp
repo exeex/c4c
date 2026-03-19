@@ -1386,9 +1386,13 @@ Node* Parser::parse_struct_or_union(bool is_union) {
 
         // C++ operator method: <return-type> operator<symbol>(<params>) { ... }
         // Consume pointer/reference declarator tokens between the base type
-        // and the 'operator' keyword (e.g., Inner* operator->()).
+        // and the 'operator' keyword (e.g., Inner* operator->(), int& operator*()).
         if (is_cpp_mode() && !is_conversion_operator && check(TokenKind::Star)) {
             while (check(TokenKind::Star)) { consume(); fts.ptr_level++; }
+        }
+        if (is_cpp_mode() && !is_conversion_operator && check(TokenKind::Amp)) {
+            consume();
+            fts.is_lvalue_ref = true;
         }
         if (is_cpp_mode() && (is_conversion_operator || check(TokenKind::KwOperator))) {
             OperatorKind op_kind = OP_NONE;

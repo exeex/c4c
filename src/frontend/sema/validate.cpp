@@ -803,7 +803,14 @@ class Validator {
       }
       case NK_RANGE_FOR: {
         enter_scope();
-        if (n->init) visit_stmt(n->init);   // loop variable declaration
+        // Range-for loop variable: skip "must be initialized" check for lvalue
+        // references — the init is synthesized during HIR desugaring.
+        if (n->init) {
+          if (n->init->kind == NK_DECL && n->init->name && n->init->name[0])
+            bind_local(n->init->name, n->init->type, true /*will be initialized*/, n->init->line);
+          // Still validate the init expression if present, but skip ref-init checks
+          if (n->init->init) (void)infer_expr(n->init->init);
+        }
         if (n->right) (void)infer_expr(n->right); // range expression
         loop_depth_ += 1;
         if (n->body) visit_stmt(n->body);

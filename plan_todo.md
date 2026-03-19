@@ -150,14 +150,27 @@
 - Suite: 1944/1944 (was 1943)
 - **Result**: Milestone 3 validated — all landed features (operators, iterators, range-for, auto) compose correctly for vector-like container code
 
+### Range-For Plan Phase 1 slice 2 (range_for_plan.md)
+- **Parser**: `&` between return type and `operator` keyword (e.g., `int& operator*()`)
+- **Sema**: Skip lvalue-ref "must be initialized" check for range-for loop variable decl
+- **HIR lowering**: NK_RETURN wraps in AddrOf when function returns T& (reference)
+- **HIR lowering**: Range-for auto deduction strips is_lvalue_ref from deref_ret_ts before applying user's auto& qualifier
+- **HIR lowering**: Reference loop variable uses direct call result (no AddrOf) when operator* returns T&
+- **Codegen**: `llvm_ret_ty()` helper — returns "ptr" for T& types in function signatures
+- **Codegen**: Function signatures, ret instructions, call instructions use `llvm_ret_ty`
+- **Codegen**: `resolve_payload_type` for CallExpr bumps ptr_level when return type is T&
+- Tests:
+  - `range_for_auto_ref.cpp` — `for (auto& x : c)` mutating elements, `for (const auto& x : c)` reading, `&x` taking address
+- Suite: 1945/1945 (was 1944)
+
 ## Next Intended Slice
 ### Recommended next target
 - **Milestone 3 is complete** — the core vector-like usability goal from `plan.md` is achieved
-- Next priority: decide between these based on what feels most valuable:
-  1. `range_for_plan.md` Phase 2: `auto&` / `const auto&` reference loop variables (syntax ergonomics)
-  2. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
-  3. `rvalue_ref_plan.md` Phase 0: T&& support (if container mutation/copy cost becomes a friction point)
-  4. Additional container tests: template container, dynamic storage, more complex element types
+- **Range-for Phase 1 is complete** — auto, const auto, auto&, const auto& all work
+- Next priority:
+  1. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
+  2. `rvalue_ref_plan.md` Phase 0: T&& support (if container mutation/copy cost becomes a friction point)
+  3. Additional container tests: template container, dynamic storage, more complex element types
 
 ### Explicitly deferred for now
 - Free-function operator overloading
@@ -172,9 +185,9 @@
 - Const method dispatch relies on TypeSpec.is_const — const reference parameters work but requires proper const propagation through the type system
 - Nested typedef names are also registered globally (potential conflicts if two structs define same typedef name)
 - No `using` alias declarations (only `typedef`)
-- Range-for does not support `auto&` / `const auto&` reference loop variable types yet
 - `auto` type deduction only works in range-for context, not general variable declarations
 - Milestone 3 child plan: `container_plan.md` (Phase 0 complete)
+- Reference return types (`T&`) only supported on struct methods; general free functions returning T& not tested
 
 ## Notes
 - try_lower_operator_call() builds CallExpr with &obj as implicit this + explicit args

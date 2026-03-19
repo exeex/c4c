@@ -76,11 +76,19 @@ Implementation:
 - Basic test: `range_for_basic.cpp`
 - Const test: `range_for_const.cpp`
 
-### Phase 1 (future)
+### Phase 1
 - `auto` type deduction for loop variable
-- `auto&` and `const auto&` variants
+- `auto&` and `const auto&` reference loop variables
+- Reference return types (`T&`) for `operator*`
+
+### Phase 2 (future)
+- `int&` / `const int&` explicit reference loop variables (non-auto)
+- Structured bindings in range-for
 
 ## Test Cases
 
 - `range_for_basic.cpp` — sum elements of a container using range-for
 - `range_for_const.cpp` — const container access via range-for
+- `range_for_auto.cpp` — `for (auto x : c)` with auto deduction
+- `range_for_const_auto.cpp` — `for (const auto x : c)` with const auto
+- `range_for_auto_ref.cpp` — `for (auto& x : c)` and `for (const auto& x : c)` reference loop variables

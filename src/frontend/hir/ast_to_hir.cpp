@@ -3316,7 +3316,20 @@ class Lowerer {
       }
       case NK_RETURN: {
         ReturnStmt s{};
-        if (n->left) s.expr = lower_expr(&ctx, n->left);
+        if (n->left) {
+          ExprId val = lower_expr(&ctx, n->left);
+          // For reference return types, return the address of the expression.
+          if (ctx.fn && is_lvalue_ref_ts(ctx.fn->return_type.spec)) {
+            UnaryExpr addr{};
+            addr.op = UnaryOp::AddrOf;
+            addr.operand = val;
+            TypeSpec ptr_ts = ctx.fn->return_type.spec;
+            ptr_ts.is_lvalue_ref = false;
+            ptr_ts.ptr_level++;
+            val = append_expr(n, addr, ptr_ts);
+          }
+          s.expr = val;
+        }
         append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
         ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
         return;
@@ -3710,7 +3723,9 @@ class Lowerer {
             TypeSpec ptr_ts = iter_ts;
             ptr_ts.ptr_level++;
             cc.args.push_back(append_expr(n, addr, ptr_ts));
-            deref_expr = append_expr(n, cc, deref_ret_ts);
+            // Use storage type for call annotation when operator* returns a ref:
+            // the LLVM call will return ptr, so annotate the expr as ptr too.
+            deref_expr = append_expr(n, cc, reference_storage_ts(deref_ret_ts));
           }
 
           // Declare loop variable with init = deref_expr
@@ -3719,16 +3734,36 @@ class Lowerer {
             ld.id = next_local_id();
             ld.name = decl_node->name ? decl_node->name : "__range_var";
             TypeSpec var_ts = decl_node->type;
+            bool is_ref = var_ts.is_lvalue_ref;
             // auto type deduction: use operator* return type
             if (var_ts.base == TB_AUTO) {
+              bool was_const = var_ts.is_const;
               var_ts = deref_ret_ts;
-              // Strip pointer level if operator* returns a reference-like pointer
-              // but keep const/ref qualifiers from the declaration
-              if (decl_node->type.is_const) var_ts.is_const = true;
+              // Strip reference from deduced type — auto& adds its own reference
+              var_ts.is_lvalue_ref = false;
+              // Preserve const/ref qualifiers from the declaration
+              if (was_const) var_ts.is_const = true;
+              if (is_ref) var_ts.is_lvalue_ref = true;
             }
             resolve_typedef_to_struct(var_ts);
             ld.type = qtype_from(reference_storage_ts(var_ts), ValueCategory::LValue);
-            ld.init = deref_expr;
+            if (is_ref) {
+              // Reference loop variable: operator* returns T& (stored as T*),
+              // which is already a pointer — use it directly as the reference
+              // storage. If operator* returns by value, wrap in AddrOf.
+              if (deref_ret_ts.is_lvalue_ref) {
+                // operator* returns a reference — result is already a pointer
+                ld.init = deref_expr;
+              } else {
+                // operator* returns by value — take address of the result
+                UnaryExpr addr{};
+                addr.op = UnaryOp::AddrOf;
+                addr.operand = deref_expr;
+                ld.init = append_expr(n, addr, ld.type.spec);
+              }
+            } else {
+              ld.init = deref_expr;
+            }
             ctx.locals[ld.name] = ld.id;
             ctx.local_types[ld.id.value] = var_ts;
             append_stmt(ctx, Stmt{StmtPayload{std::move(ld)}, make_span(n)});

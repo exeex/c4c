@@ -262,6 +262,12 @@ inline std::string llvm_ty(const TypeSpec& ts) {
   return llvm_base(ts.base);
 }
 
+// llvm_ty for types that may be references — returns ptr for T& types.
+inline std::string llvm_ret_ty(const TypeSpec& ts) {
+  if (ts.is_lvalue_ref) return "ptr";
+  return llvm_ty(ts);
+}
+
 inline bool has_concrete_type(const TypeSpec& ts) {
   return ts.base != TB_VOID || ts.ptr_level > 0 || ts.array_rank > 0 ||
          is_vector_value(ts);
