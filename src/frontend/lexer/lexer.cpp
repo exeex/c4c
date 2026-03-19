@@ -525,7 +525,12 @@ Token Lexer::scan_punct() {
     case ',':  return make_token(TokenKind::Comma,    text, tok_line, tok_col);
     case '~':  return make_token(TokenKind::Tilde,    text, tok_line, tok_col);
     case '?':  return make_token(TokenKind::Question, text, tok_line, tok_col);
-    case ':':  return make_token(TokenKind::Colon,    text, tok_line, tok_col);
+    case ':':
+      if (lex_profile_ == LexProfile::CppSubset && peek() == ':') {
+        text.push_back(advance());
+        return make_token(TokenKind::ColonColon, text, tok_line, tok_col);
+      }
+      return make_token(TokenKind::Colon, text, tok_line, tok_col);
 
     case '.':
       // Could be '...' (ellipsis)

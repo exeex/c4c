@@ -34,6 +34,14 @@ bool Parser::is_type_start() const {
     if (k == TokenKind::KwAttribute) return true;  // __attribute__((x)) type cast
     if (k == TokenKind::KwAlignas || k == TokenKind::KwStaticAssert) return false;
     if (k == TokenKind::Identifier && is_typedef_name(cur().lexeme)) return true;
+    // C++ qualified type: StructName::TypedefName
+    if (k == TokenKind::Identifier &&
+        pos_ + 2 < static_cast<int>(tokens_.size()) &&
+        tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
+        tokens_[pos_ + 2].kind == TokenKind::Identifier) {
+        std::string scoped = cur().lexeme + "::" + tokens_[pos_ + 2].lexeme;
+        if (is_typedef_name(scoped)) return true;
+    }
     return false;
 }
 
@@ -324,6 +332,28 @@ TypeSpec Parser::parse_base_type() {
             }
 
             case TokenKind::Identifier:
+                // C++ qualified type: StructName::TypedefName
+                if (is_cpp_mode() && !has_typedef &&
+                    pos_ + 2 < static_cast<int>(tokens_.size()) &&
+                    tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
+                    tokens_[pos_ + 2].kind == TokenKind::Identifier) {
+                    std::string scoped = cur().lexeme + "::" + tokens_[pos_ + 2].lexeme;
+                    if (is_typedef_name(scoped)) {
+                        bool already_have_base =
+                            has_signed || has_unsigned || has_short || long_count > 0 ||
+                            has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
+                            has_struct || has_union || has_enum || base_set;
+                        if (!already_have_base) {
+                            has_typedef = true;
+                            ts.tag = arena_.strdup(scoped);
+                            consume(); // StructName
+                            consume(); // ::
+                            consume(); // TypedefName
+                        }
+                        done = true;
+                        break;
+                    }
+                }
                 if (is_typedef_name(cur().lexeme)) {
                     // If we've already seen concrete type specifiers/modifiers,
                     // this identifier is the declarator name (e.g. `int s;` even
@@ -1143,6 +1173,10 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     if (is_cpp_mode() && tag && tag[0])
       typedefs_.insert(tag);
 
+    // Track current struct tag for scoped typedef registration.
+    std::string saved_struct_tag = current_struct_tag_;
+    current_struct_tag_ = (tag && tag[0]) ? tag : "";
+
     std::vector<Node*> fields;
     std::vector<Node*> methods;
     std::unordered_set<std::string> field_names_seen;
@@ -1258,6 +1292,68 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                     }
                     (void)first_f; first_f = false;
                     if (!match(TokenKind::Comma)) break;
+                }
+            }
+            match(TokenKind::Semi);
+            continue;
+        }
+
+        // C++ typedef inside struct body: typedef <type> <name>;
+        // Registered in the same typedef maps as global/local typedefs.
+        if (is_cpp_mode() && check(TokenKind::KwTypedef)) {
+            consume(); // eat 'typedef'
+            TypeSpec td_base = parse_base_type();
+            parse_attributes(&td_base);
+            const char* tdname = nullptr;
+            TypeSpec ts_copy = td_base;
+            Node** td_fn_ptr_params = nullptr;
+            int td_n_fn_ptr_params = 0;
+            bool td_fn_ptr_variadic = false;
+            parse_declarator(ts_copy, &tdname, &td_fn_ptr_params,
+                             &td_n_fn_ptr_params, &td_fn_ptr_variadic);
+            if (tdname) {
+                typedefs_.insert(tdname);
+                user_typedefs_.insert(tdname);
+                typedef_types_[tdname] = ts_copy;
+                if (ts_copy.is_fn_ptr &&
+                    (td_n_fn_ptr_params > 0 || td_fn_ptr_variadic)) {
+                    typedef_fn_ptr_info_[tdname] = {
+                        td_fn_ptr_params, td_n_fn_ptr_params,
+                        td_fn_ptr_variadic};
+                }
+                // Register scoped name: StructTag::TypeName
+                if (!current_struct_tag_.empty()) {
+                    std::string scoped = current_struct_tag_ + "::" + tdname;
+                    struct_typedefs_[scoped] = ts_copy;
+                    typedefs_.insert(scoped);
+                    typedef_types_[scoped] = ts_copy;
+                }
+            }
+            // Handle multiple declarators: typedef int a, b;
+            while (match(TokenKind::Comma)) {
+                TypeSpec ts2 = td_base;
+                const char* tdn2 = nullptr;
+                Node** td2_fn_ptr_params = nullptr;
+                int td2_n_fn_ptr_params = 0;
+                bool td2_fn_ptr_variadic = false;
+                parse_declarator(ts2, &tdn2, &td2_fn_ptr_params,
+                                 &td2_n_fn_ptr_params, &td2_fn_ptr_variadic);
+                if (tdn2) {
+                    typedefs_.insert(tdn2);
+                    user_typedefs_.insert(tdn2);
+                    typedef_types_[tdn2] = ts2;
+                    if (ts2.is_fn_ptr &&
+                        (td2_n_fn_ptr_params > 0 || td2_fn_ptr_variadic)) {
+                        typedef_fn_ptr_info_[tdn2] = {
+                            td2_fn_ptr_params, td2_n_fn_ptr_params,
+                            td2_fn_ptr_variadic};
+                    }
+                    if (!current_struct_tag_.empty()) {
+                        std::string scoped = current_struct_tag_ + "::" + tdn2;
+                        struct_typedefs_[scoped] = ts2;
+                        typedefs_.insert(scoped);
+                        typedef_types_[scoped] = ts2;
+                    }
                 }
             }
             match(TokenKind::Semi);
@@ -1518,6 +1614,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         match(TokenKind::Semi);
     }
     expect(TokenKind::RBrace);
+    current_struct_tag_ = saved_struct_tag;
 
     // Check for trailing __attribute__((packed)) after closing brace.
     // Peek at trailing attributes for packed/aligned on the struct type.

@@ -126,6 +126,7 @@ const char *token_kind_name(TokenKind kind) {
     case TokenKind::AmpAmp:               return "AMP_AMP";
     case TokenKind::PipePipe:             return "PIPE_PIPE";
     case TokenKind::HashHash:             return "HASH_HASH";
+    case TokenKind::ColonColon:           return "COLON_COLON";
 
     // C++ subset keywords
     case TokenKind::KwTemplate:  return "KW_template";

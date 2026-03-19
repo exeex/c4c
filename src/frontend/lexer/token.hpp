@@ -146,6 +146,7 @@ enum class TokenKind {
   AmpAmp,                // &&
   PipePipe,              // ||
   HashHash,              // ##
+  ColonColon,            // :: (C++ scope resolution)
 
   // Pragma tokens (emitted by preprocessor, consumed by parser)
   PragmaPack,    // #pragma pack(...) — lexeme holds the arguments e.g. "1", "push,2", "pop", ""

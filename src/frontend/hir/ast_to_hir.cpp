@@ -883,8 +883,11 @@ class Lowerer {
         TypeSpec ts = infer_generic_ctrl_type(ctx, n->left);
         if (ts.ptr_level == 0 && ts.base == TB_STRUCT && ts.tag) {
           // Check for operator_deref method — return its return type.
-          std::string key = std::string(ts.tag) + "::operator_deref";
-          auto rit = struct_method_ret_types_.find(key);
+          // Try both non-const and const variants.
+          std::string base_key = std::string(ts.tag) + "::operator_deref";
+          auto rit = struct_method_ret_types_.find(base_key);
+          if (rit == struct_method_ret_types_.end())
+            rit = struct_method_ret_types_.find(base_key + "_const");
           if (rit != struct_method_ret_types_.end())
             return rit->second;
         }
@@ -3778,6 +3781,13 @@ class Lowerer {
         fit->second.value < module_->functions.size()) {
       fn_ts = module_->functions[fit->second.value].return_type.spec;
     }
+    // Fallback: if fn_index doesn't have the return type yet (method not
+    // lowered), use struct_method_ret_types_ which is populated at collection.
+    if (fn_ts.base == TB_VOID) {
+      auto rit = struct_method_ret_types_.find(
+          std::string(obj_ts.tag) + "::" + op_method_name);
+      if (rit != struct_method_ret_types_.end()) fn_ts = rit->second;
+    }
     TypeSpec callee_ts = fn_ts;
     callee_ts.ptr_level++;
     c.callee = append_expr(result_node, dr, callee_ts);
@@ -4148,11 +4158,79 @@ class Lowerer {
       }
       case NK_MEMBER: {
         // Try operator-> on struct types when arrow access is used.
+        // C++ chains operator-> until a raw pointer is obtained.
         if (n->is_arrow && n->left) {
           ExprId arrow_ptr = try_lower_operator_call(
               ctx, n, n->left, "operator_arrow", {});
           if (arrow_ptr.valid()) {
-            // operator-> returned a pointer; apply field access on it.
+            // Chain: if the result is a struct (not a pointer), call its
+            // operator->() repeatedly until we get a raw pointer.
+            for (int depth = 0; depth < 8; ++depth) {
+              const Expr* res_expr = module_->find_expr(arrow_ptr);
+              if (!res_expr) break;
+              TypeSpec rts = res_expr->type.spec;
+              if (rts.ptr_level > 0) break; // raw pointer — done chaining
+              if (rts.base != TB_STRUCT || !rts.tag) break;
+              // Result is a struct; check for operator_arrow on it.
+              std::string base_key = std::string(rts.tag) + "::operator_arrow";
+              std::string const_key = base_key + "_const";
+              auto mit = rts.is_const
+                  ? struct_methods_.find(const_key)
+                  : struct_methods_.find(base_key);
+              if (mit == struct_methods_.end())
+                mit = rts.is_const
+                    ? struct_methods_.find(base_key)
+                    : struct_methods_.find(const_key);
+              if (mit == struct_methods_.end()) break;
+              // Build call: method(&tmp) where tmp holds the
+              // intermediate struct result (rvalue needs storage).
+              auto fit = module_->fn_index.find(mit->second);
+              TypeSpec fn_ts{};
+              fn_ts.base = TB_VOID;
+              if (fit != module_->fn_index.end() &&
+                  fit->second.value < module_->functions.size())
+                fn_ts = module_->functions[fit->second.value].return_type.spec;
+              if (fn_ts.base == TB_VOID) {
+                auto rit2 = struct_method_ret_types_.find(
+                    std::string(rts.tag) + "::operator_arrow");
+                if (rit2 == struct_method_ret_types_.end())
+                  rit2 = struct_method_ret_types_.find(
+                      std::string(rts.tag) + "::operator_arrow_const");
+                if (rit2 != struct_method_ret_types_.end())
+                  fn_ts = rit2->second;
+              }
+              // Store intermediate result in a temp local so we can
+              // take its address for the this-pointer.
+              LocalDecl tmp{};
+              tmp.id = next_local_id();
+              tmp.name = "__arrow_tmp";
+              tmp.type = qtype_from(rts, ValueCategory::LValue);
+              tmp.init = arrow_ptr;
+              const LocalId tmp_lid = tmp.id;
+              ctx->locals[tmp.name] = tmp.id;
+              ctx->local_types[tmp.id.value] = rts;
+              append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
+              // Reference the temp local.
+              DeclRef tmp_ref{};
+              tmp_ref.name = "__arrow_tmp";
+              tmp_ref.local = tmp_lid;
+              ExprId tmp_id = append_expr(n, tmp_ref, rts, ValueCategory::LValue);
+              // Call method(&tmp)
+              CallExpr cc{};
+              DeclRef dr{};
+              dr.name = mit->second;
+              TypeSpec callee_ts = fn_ts;
+              callee_ts.ptr_level++;
+              cc.callee = append_expr(n, dr, callee_ts);
+              UnaryExpr addr{};
+              addr.op = UnaryOp::AddrOf;
+              addr.operand = tmp_id;
+              TypeSpec ptr_ts = rts;
+              ptr_ts.ptr_level++;
+              cc.args.push_back(append_expr(n, addr, ptr_ts));
+              arrow_ptr = append_expr(n, cc, fn_ts);
+            }
+            // Apply field access on the final pointer.
             MemberExpr m{};
             m.base = arrow_ptr;
             m.field = n->name ? n->name : "<anon_field>";

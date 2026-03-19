@@ -2,11 +2,11 @@
 
 ## Active Plan
 - Parent: `plan.md` (STL Enablement Umbrella)
-- Active child: `iterator_plan.md` — Phases 0–3 complete
+- Active child: `iterator_plan.md` — Phases 0–4 complete
 - Previous child: `operator_overload_plan.md` — Phase 4 complete, Phase 5 deferred
 
 ## Current Target
-- **Iterator Plan Phases 0–3**: DONE
+- **Iterator Plan Phase 4**: DONE
 
 ## Completed Items
 
@@ -97,18 +97,31 @@
   - `container_iterator_smoke.cpp` — full smoke: multiple containers, sum_all helper, empty container
   - All container integration patterns work correctly
 
+- Phase 4: Iterator/container ergonomics
+  - **const_iterator pattern**: ConstIter type with const int* field, const operator* and operator!=, container with const begin/end returning ConstIter, sum through const pointer
+  - **operator-> chaining**: C++ compliant chaining — when operator->() returns a struct (not pointer), recursively calls that struct's operator->() until a raw pointer is obtained. Intermediate struct results stored in temp locals for addressability.
+  - **Nested type aliases (typedef in struct)**: Parser handles `typedef` inside struct body in C++ mode. Registers both plain name (usable inside struct methods) and scoped `StructName::TypeName` (usable outside). Added `ColonColon` token to lexer, `StructName::TypeName` resolution in `parse_base_type()` and `is_type_start()`.
+  - **Bugfixes**:
+    - `infer_generic_ctrl_type` NK_DEREF now checks both `operator_deref` and `operator_deref_const` in `struct_method_ret_types_`
+    - `try_lower_operator_call` falls back to `struct_method_ret_types_` when `fn_index` doesn't have the method yet (methods not lowered before main)
+  - Tests:
+    - `const_iterator_basic.cpp` — ConstIter with const int*, const methods, const container access
+    - `iterator_arrow_chain_basic.cpp` — Outer->Wrapper->Inner* chaining
+    - `iterator_alias_basic.cpp` — typedef Iter iterator inside Container, Container::iterator usage
+  - Suite: 1939/1939 (was 1936)
+
 ## Next Intended Slice
-- Iterator Plan Phase 4: Iterator/container ergonomics (operator->, const_iterator, nested aliases)
+- Iterator Plan Phase 5: Range-for integration (requires range_for_plan.md)
 - Or: Operator Overload Phase 5 (free-function operators) if needed
-- Or: Range-for plan (Phase 5 of iterator plan)
 
 ## Known Limitations
-- operator-> chaining (e.g., `a->b->c` where both a and b have operator->) not yet supported
 - No free-function (non-member) operators
 - No operator() (function call operator)
 - No parameter-type-based overload resolution for same operator (e.g., `operator-(int)` vs `operator-(Iter)`)
 - Const method dispatch relies on TypeSpec.is_const — const reference parameters work but requires proper const propagation through the type system
 - No `auto` type deduction — iterator tests use explicit type names
+- Nested typedef names are also registered globally (potential conflicts if two structs define same typedef name)
+- No `using` alias declarations (only `typedef`)
 
 ## Notes
 - try_lower_operator_call() builds CallExpr with &obj as implicit this + explicit args
@@ -119,3 +132,5 @@
 - Conversion operators (operator bool) have no return type prefix — parser detects KwOperator directly
 - struct_method_ret_types_ map stores return types at registration time (before fn_index is available)
 - Const methods use "_const" suffix: mangled="Struct__method_const", key="Struct::method_const"
+- ColonColon token only emitted in CppSubset lex profile; C mode unaffected
+- current_struct_tag_ tracks active struct during parsing for scoped typedef registration

@@ -87,6 +87,12 @@ class Parser {
   // Used so declaration-only enum statements (`enum { ... };`) can be retained.
   Node* last_enum_def_;
 
+  // Struct member typedef scoped names: "StructTag::TypeName" → TypeSpec.
+  // Populated when parsing typedef inside struct bodies.
+  std::unordered_map<std::string, TypeSpec> struct_typedefs_;
+  // Tag of the struct currently being parsed (empty if not in struct body).
+  std::string current_struct_tag_;
+
   // #pragma pack state: current packing alignment (0 = default/no packing).
   int pack_alignment_ = 0;
   std::vector<int> pack_stack_;  // for #pragma pack(push/pop)
