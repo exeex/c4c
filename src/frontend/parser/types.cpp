@@ -1230,6 +1230,12 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             char buf[32];
             snprintf(buf, sizeof(buf), "_anon_%d", anon_counter_++);
             tag = arena_.strdup(buf);
+        } else {
+            // Qualify forward-reference tag with namespace context so that
+            // HIR struct lookups use the same qualified key.
+            const std::string qtag =
+                canonical_name_in_context(current_namespace_context_id(), tag);
+            tag = arena_.strdup(qtag.c_str());
         }
         Node* ref = make_node(NK_STRUCT_DEF, ln);
         ref->name     = tag;
@@ -1243,19 +1249,25 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         char buf[32];
         snprintf(buf, sizeof(buf), "_anon_%d", anon_counter_++);
         tag = arena_.strdup(buf);
-    } else if (defined_struct_tags_.count(tag)) {
-        if (parsing_top_level_context_) {
-            throw std::runtime_error(std::string("redefinition of ") +
-                                     (is_union ? "union " : "struct ") + tag);
+    } else {
+        // Use namespace-qualified tag for collision detection so that
+        // same-named structs in different namespaces don't collide.
+        const std::string qtag =
+            canonical_name_in_context(current_namespace_context_id(), tag);
+        if (defined_struct_tags_.count(qtag)) {
+            if (parsing_top_level_context_) {
+                throw std::runtime_error(std::string("redefinition of ") +
+                                         (is_union ? "union " : "struct ") + tag);
+            }
+            // Block-scoped redefinition of an already-defined tag (C tag shadowing).
+            // Generate a unique shadow tag so both definitions coexist in struct_defs_.
+            // Variables declared inline with this definition will get the shadow tag.
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%s.__shadow_%d", tag, anon_counter_++);
+            tag = arena_.strdup(buf);
         }
-        // Block-scoped redefinition of an already-defined tag (C tag shadowing).
-        // Generate a unique shadow tag so both definitions coexist in struct_defs_.
-        // Variables declared inline with this definition will get the shadow tag.
-        char buf[64];
-        snprintf(buf, sizeof(buf), "%s.__shadow_%d", tag, anon_counter_++);
-        tag = arena_.strdup(buf);
+        defined_struct_tags_.insert(qtag);
     }
-    defined_struct_tags_.insert(tag);
 
     const char* source_tag = tag;
     Node* sd = make_node(NK_STRUCT_DEF, ln);
