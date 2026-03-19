@@ -242,6 +242,37 @@ bool Parser::match(TokenKind k) {
     return false;
 }
 
+std::string Parser::qualify_name(const std::string& name) const {
+    if (name.empty()) return name;
+    if (current_namespace_.empty()) return name;
+    if (name.find("::") != std::string::npos) return name;
+    return current_namespace_ + "::" + name;
+}
+
+const char* Parser::qualify_name_arena(const char* name) {
+    if (!name || !name[0]) return name;
+    std::string qualified = qualify_name(name);
+    if (qualified == name) return name;
+    return arena_.strdup(qualified.c_str());
+}
+
+std::string Parser::resolve_visible_value_name(const std::string& name) const {
+    auto it = using_value_aliases_.find(name);
+    if (it != using_value_aliases_.end()) return it->second;
+
+    if (!current_namespace_.empty()) {
+        std::string local = current_namespace_ + "::" + name;
+        if (var_types_.count(local)) return local;
+    }
+
+    for (const std::string& ns : using_namespace_prefixes_) {
+        std::string candidate = ns + "::" + name;
+        if (var_types_.count(candidate)) return candidate;
+    }
+
+    return name;
+}
+
 void Parser::expect(TokenKind k) {
     if (!check(k)) {
         std::ostringstream msg;

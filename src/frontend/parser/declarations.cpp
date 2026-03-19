@@ -268,6 +268,108 @@ Node* Parser::parse_top_level() {
     int ln = cur().line;
     if (at_end()) return nullptr;
 
+    if (is_cpp_mode() && check(TokenKind::KwNamespace)) {
+        consume();
+        std::string ns_name;
+        if (check(TokenKind::Identifier)) {
+            ns_name = cur().lexeme;
+            consume();
+            while (match(TokenKind::ColonColon)) {
+                if (!check(TokenKind::Identifier))
+                    throw std::runtime_error("expected namespace name after '::'");
+                ns_name += "::";
+                ns_name += cur().lexeme;
+                consume();
+            }
+        }
+        expect(TokenKind::LBrace);
+
+        const std::string saved_ns = current_namespace_;
+        if (!ns_name.empty()) {
+            current_namespace_ = saved_ns.empty() ? ns_name : saved_ns + "::" + ns_name;
+        }
+
+        std::vector<Node*> items;
+        while (!at_end() && !check(TokenKind::RBrace)) {
+            Node* item = parse_top_level();
+            if (item) items.push_back(item);
+        }
+        expect(TokenKind::RBrace);
+        match(TokenKind::Semi);
+        current_namespace_ = saved_ns;
+
+        if (items.empty()) return make_node(NK_EMPTY, ln);
+        if (items.size() == 1) return items[0];
+        Node* blk = make_node(NK_BLOCK, ln);
+        blk->n_children = (int)items.size();
+        blk->children = arena_.alloc_array<Node*>(blk->n_children);
+        for (int i = 0; i < blk->n_children; ++i) blk->children[i] = items[i];
+        return blk;
+    }
+
+    if (is_cpp_mode() && check(TokenKind::KwUsing)) {
+        consume();
+        if (match(TokenKind::KwNamespace)) {
+            if (!check(TokenKind::Identifier))
+                throw std::runtime_error("expected namespace name after 'using namespace'");
+            std::string target = cur().lexeme;
+            consume();
+            while (match(TokenKind::ColonColon)) {
+                if (!check(TokenKind::Identifier))
+                    throw std::runtime_error("expected namespace name after '::'");
+                target += "::";
+                target += cur().lexeme;
+                consume();
+            }
+            using_namespace_prefixes_.push_back(target);
+            match(TokenKind::Semi);
+            return make_node(NK_EMPTY, ln);
+        }
+
+        if (!check(TokenKind::Identifier))
+            throw std::runtime_error("expected identifier after 'using'");
+
+        std::string first_name = cur().lexeme;
+        consume();
+
+        if (match(TokenKind::Assign)) {
+            TypeSpec alias_ts = parse_type_name();
+            typedefs_.insert(first_name);
+            user_typedefs_.insert(first_name);
+            typedef_types_[first_name] = alias_ts;
+            if (!current_namespace_.empty()) {
+                const std::string qualified = qualify_name(first_name);
+                typedefs_.insert(qualified);
+                typedef_types_[qualified] = alias_ts;
+            }
+            match(TokenKind::Semi);
+            return make_node(NK_EMPTY, ln);
+        }
+
+        std::string target = first_name;
+        while (match(TokenKind::ColonColon)) {
+            if (!check(TokenKind::Identifier))
+                throw std::runtime_error("expected identifier after '::'");
+            target += "::";
+            target += cur().lexeme;
+            consume();
+        }
+
+        const size_t last_sep = target.rfind("::");
+        const std::string imported_name =
+            (last_sep == std::string::npos) ? target : target.substr(last_sep + 2);
+        auto td_it = typedef_types_.find(target);
+        if (td_it != typedef_types_.end()) {
+            typedefs_.insert(imported_name);
+            user_typedefs_.insert(imported_name);
+            typedef_types_[imported_name] = td_it->second;
+        } else {
+            using_value_aliases_[imported_name] = target;
+        }
+        match(TokenKind::Semi);
+        return make_node(NK_EMPTY, ln);
+    }
+
     if (is_cpp_mode() && check(TokenKind::KwTemplate)) {
         consume();
         expect(TokenKind::Less);
@@ -598,6 +700,7 @@ Node* Parser::parse_top_level() {
         parse_declarator(ts_copy, &tdname, &td_fn_ptr_params,
                          &td_n_fn_ptr_params, &td_fn_ptr_variadic);
         if (tdname) {
+            const char* scoped_tdname = qualify_name_arena(tdname);
             auto it = typedef_types_.find(tdname);
             if (user_typedefs_.count(tdname) && it != typedef_types_.end() &&
                 !types_compatible_p(it->second, ts_copy, typedef_types_))
@@ -605,6 +708,10 @@ Node* Parser::parse_top_level() {
             typedefs_.insert(tdname);
             user_typedefs_.insert(tdname);
             typedef_types_[tdname] = ts_copy;
+            if (scoped_tdname != tdname) {
+                typedefs_.insert(scoped_tdname);
+                typedef_types_[scoped_tdname] = ts_copy;
+            }
             if (ts_copy.is_fn_ptr && (td_n_fn_ptr_params > 0 || td_fn_ptr_variadic))
                 typedef_fn_ptr_info_[tdname] = {td_fn_ptr_params, td_n_fn_ptr_params, td_fn_ptr_variadic};
         }
@@ -617,6 +724,7 @@ Node* Parser::parse_top_level() {
             parse_declarator(ts2, &tdn2, &td2_fn_ptr_params,
                              &td2_n_fn_ptr_params, &td2_fn_ptr_variadic);
             if (tdn2) {
+                const char* scoped_tdn2 = qualify_name_arena(tdn2);
                 auto it = typedef_types_.find(tdn2);
                 if (user_typedefs_.count(tdn2) && it != typedef_types_.end() &&
                     !types_compatible_p(it->second, ts2, typedef_types_))
@@ -624,6 +732,10 @@ Node* Parser::parse_top_level() {
                 typedefs_.insert(tdn2);
                 user_typedefs_.insert(tdn2);
                 typedef_types_[tdn2] = ts2;
+                if (scoped_tdn2 != tdn2) {
+                    typedefs_.insert(scoped_tdn2);
+                    typedef_types_[scoped_tdn2] = ts2;
+                }
                 if (ts2.is_fn_ptr && (td2_n_fn_ptr_params > 0 || td2_fn_ptr_variadic))
                     typedef_fn_ptr_info_[tdn2] = {td2_fn_ptr_params, td2_n_fn_ptr_params, td2_fn_ptr_variadic};
             }
@@ -891,6 +1003,8 @@ Node* Parser::parse_top_level() {
         return make_node(NK_EMPTY, ln);
     }
 
+    const char* scoped_decl_name = qualify_name_arena(decl_name);
+
     // Handle function-returning-fptr: int (* f1(a, b))(c, d) { body }
     // Params were already parsed into fptr_fn_params; now look for { body }.
     if (fn_returning_fptr && decl_name) {
@@ -902,7 +1016,7 @@ Node* Parser::parse_top_level() {
             parsing_top_level_context_ = saved_top;
             Node* fn = make_node(NK_FUNCTION, ln);
             fn->type      = ts;
-            fn->name      = decl_name;
+            fn->name      = scoped_decl_name;
             fn->variadic  = fptr_fn_variadic;
             fn->is_static = is_static;
             fn->is_extern = is_extern;
@@ -927,7 +1041,7 @@ Node* Parser::parse_top_level() {
         match(TokenKind::Semi);
         Node* fn = make_node(NK_FUNCTION, ln);
         fn->type      = ts;
-        fn->name      = decl_name;
+        fn->name      = scoped_decl_name;
         fn->variadic  = fptr_fn_variadic;
         fn->is_static = is_static;
         fn->is_extern = is_extern;
@@ -1089,7 +1203,7 @@ Node* Parser::parse_top_level() {
             parsing_top_level_context_ = saved_top;
             Node* fn = make_node(NK_FUNCTION, ln);
             fn->type      = ts;
-            fn->name      = decl_name;
+            fn->name      = scoped_decl_name;
             fn->variadic  = variadic;
             fn->is_static = is_static;
             fn->is_extern = is_extern;
@@ -1113,7 +1227,7 @@ Node* Parser::parse_top_level() {
         match(TokenKind::Semi);
         Node* fn = make_node(NK_FUNCTION, ln);
         fn->type      = ts;
-        fn->name      = decl_name;
+        fn->name      = scoped_decl_name;
         fn->variadic  = variadic;
         fn->is_static = is_static;
         fn->is_extern = is_extern;
@@ -1183,7 +1297,7 @@ Node* Parser::parse_top_level() {
         (is_cpp_mode() && check(TokenKind::LBrace))) {
         first_init = parse_initializer();
     }
-    gvars.push_back(make_gvar(ts, decl_name, first_init, decl_fn_ptr_params,
+    gvars.push_back(make_gvar(ts, scoped_decl_name, first_init, decl_fn_ptr_params,
                               decl_n_fn_ptr_params, decl_fn_ptr_variadic,
                               decl_ret_fn_ptr_params, decl_n_ret_fn_ptr_params,
                               decl_ret_fn_ptr_variadic));
@@ -1202,9 +1316,12 @@ Node* Parser::parse_top_level() {
         Node* init2 = nullptr;
         if (match(TokenKind::Assign) ||
             (is_cpp_mode() && check(TokenKind::LBrace))) init2 = parse_initializer();
-        if (n2) gvars.push_back(make_gvar(ts2, n2, init2,
+        if (n2) {
+            const char* scoped_n2 = qualify_name_arena(n2);
+            gvars.push_back(make_gvar(ts2, scoped_n2, init2,
                                           fn_ptr_params2, n_fn_ptr_params2,
                                           fn_ptr_variadic2));
+        }
     }
     match(TokenKind::Semi);
 

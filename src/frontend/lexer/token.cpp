@@ -132,6 +132,8 @@ const char *token_kind_name(TokenKind kind) {
     case TokenKind::KwTemplate:  return "KW_template";
     case TokenKind::KwConstexpr: return "KW_constexpr";
     case TokenKind::KwConsteval: return "KW_consteval";
+    case TokenKind::KwNamespace: return "KW_namespace";
+    case TokenKind::KwUsing: return "KW_using";
     case TokenKind::KwStaticCast: return "KW_static_cast";
     case TokenKind::KwReinterpretCast: return "KW_reinterpret_cast";
     case TokenKind::KwConstCast: return "KW_const_cast";
@@ -159,7 +161,7 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
   char first = s[0];
   if (first != '_' && first != 'a' && first != 'b' && first != 'c' &&
       first != 'd' && first != 'e' && first != 'f' && first != 'g' &&
-      first != 'i' && first != 'l' && first != 'o' && first != 'r' &&
+      first != 'i' && first != 'l' && first != 'n' && first != 'o' && first != 'r' &&
       first != 's' && first != 't' && first != 'u' && first != 'v' &&
       first != 'w') {
     return TokenKind::Identifier;
@@ -254,7 +256,9 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
     if (s == "bool")      return TokenKind::KwBool;
     if (s == "template")  return TokenKind::KwTemplate;
     if (s == "constexpr") return TokenKind::KwConstexpr;
-    if (s == "consteval")    return TokenKind::KwConsteval;
+    if (s == "consteval") return TokenKind::KwConsteval;
+    if (s == "namespace") return TokenKind::KwNamespace;
+    if (s == "using") return TokenKind::KwUsing;
     if (s == "static_cast")      return TokenKind::KwStaticCast;
     if (s == "reinterpret_cast") return TokenKind::KwReinterpretCast;
     if (s == "const_cast")       return TokenKind::KwConstCast;

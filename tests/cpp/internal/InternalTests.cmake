@@ -25,6 +25,19 @@ set(CPP_POSITIVE_PARSE_STEMS
     scope_resolution_expr_parse
     template_dependent_enum_parse
     template_type_context_nttp_parse
+    namespace_basic_parse
+    namespace_nested_parse
+    namespace_three_level_parse
+    namespace_anonymous_basic_parse
+    namespace_anonymous_nested_parse
+    namespace_global_qualifier_parse
+    namespace_cross_namespace_lookup_parse
+    namespace_global_qualified_self_parse
+    using_alias_basic_parse
+    using_scoped_typedef_parse
+    using_declaration_namespace_parse
+    using_namespace_directive_parse
+    using_nested_namespace_parse
 )
 
 foreach(src IN LISTS INTERNAL_CPP_NEGATIVE_TEST_SRCS)

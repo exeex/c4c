@@ -95,6 +95,11 @@ class Parser {
   std::unordered_map<std::string, TypeSpec> struct_typedefs_;
   // Tag of the struct currently being parsed (empty if not in struct body).
   std::string current_struct_tag_;
+  // Current enclosing namespace path while parsing top-level namespace blocks.
+  std::string current_namespace_;
+  // Unqualified visible aliases introduced by using-declarations/directives.
+  std::unordered_map<std::string, std::string> using_value_aliases_;
+  std::vector<std::string> using_namespace_prefixes_;
 
   // #pragma pack state: current packing alignment (0 = default/no packing).
   int pack_alignment_ = 0;
@@ -130,6 +135,9 @@ class Parser {
     return source_profile_ == SourceProfile::CppSubset ||
            source_profile_ == SourceProfile::C4;
   }
+  std::string qualify_name(const std::string& name) const;
+  const char* qualify_name_arena(const char* name);
+  std::string resolve_visible_value_name(const std::string& name) const;
 
   // Parse a complete type specifier (base type + qualifiers).
   // ptr_level and array_size are NOT parsed here (those are in the declarator).

@@ -600,6 +600,7 @@ Node* Parser::parse_primary() {
             consume();  // current identifier
             consume();  // ::
         }
+        qualified_name = resolve_visible_value_name(qualified_name);
         const char* nm = arena_.strdup(qualified_name.c_str());
         const BuiltinId builtin_id = builtin_id_from_name(nm);
         // __builtin_offsetof(type, member) — parse as constant expression when possible
@@ -796,6 +797,7 @@ Node* Parser::parse_primary() {
                         consume();  // current identifier
                         consume();  // ::
                     }
+                    qualified_name = resolve_visible_value_name(qualified_name);
                     const char* nm = arena_.strdup(qualified_name.c_str());
                     consume();  // final identifier
                     operand = make_var(nm, ln);
