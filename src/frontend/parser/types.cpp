@@ -468,12 +468,26 @@ TypeSpec Parser::parse_base_type() {
                         if (arg_idx >= tpl_def->n_template_params) break;
                         const char* param_name = tpl_def->template_param_names[arg_idx];
                         if (tpl_def->template_param_is_nttp[arg_idx]) {
-                            // NTTP: parse integer expression
+                            // NTTP: parse integer-like constant expression
                             long long sign = 1;
                             if (match(TokenKind::Minus)) sign = -1;
                             long long val = 0;
-                            if (check(TokenKind::IntLit)) {
+                            if (check(TokenKind::KwTrue)) {
+                                val = 1;
+                                consume();
+                            } else if (check(TokenKind::KwFalse)) {
+                                val = 0;
+                                consume();
+                            } else if (check(TokenKind::CharLit)) {
+                                Node* lit = parse_primary();
+                                val = lit ? lit->ival : 0;
+                            } else if (check(TokenKind::IntLit)) {
                                 val = parse_int_lexeme(cur().lexeme.c_str());
+                                consume();
+                            } else if (check(TokenKind::Identifier) && !is_type_start()) {
+                                // Forwarded NTTP name (e.g. Box<N> inside a template).
+                                // Keep a placeholder value so parsing can continue;
+                                // full dependent NTTP handling happens later.
                                 consume();
                             }
                             nttp_bindings.push_back({param_name, val * sign});
@@ -1889,8 +1903,13 @@ Node* Parser::parse_enum() {
         long long vval = cur_val;
         if (match(TokenKind::Assign)) {
             Node* ve = parse_assign_expr();
-            if (!eval_enum_expr(ve, enum_consts_, &vval))
+            if (!eval_enum_expr(ve, enum_consts_, &vval)) {
+                if (is_cpp_mode() && is_dependent_enum_expr(ve, enum_consts_)) {
+                    vval = 0;  // Placeholder until template/dependent evaluation exists.
+                } else {
                 throw std::runtime_error("enum initializer is not an integer constant expression");
+                }
+            }
         }
         // Skip __attribute__((...)) annotations after enum value (e.g. availability macros)
         skip_attributes();

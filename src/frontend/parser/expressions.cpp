@@ -590,7 +590,17 @@ Node* Parser::parse_primary() {
 
     // Identifier / label address
     if (check(TokenKind::Identifier)) {
-        const char* nm = arena_.strdup(cur().lexeme);
+        std::string qualified_name = cur().lexeme;
+        while (is_cpp_mode() &&
+               pos_ + 2 < static_cast<int>(tokens_.size()) &&
+               tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
+               tokens_[pos_ + 2].kind == TokenKind::Identifier) {
+            qualified_name += "::";
+            qualified_name += tokens_[pos_ + 2].lexeme;
+            consume();  // current identifier
+            consume();  // ::
+        }
+        const char* nm = arena_.strdup(qualified_name.c_str());
         const BuiltinId builtin_id = builtin_id_from_name(nm);
         // __builtin_offsetof(type, member) — parse as constant expression when possible
         if (builtin_id == BuiltinId::Offsetof) {
@@ -751,6 +761,65 @@ Node* Parser::parse_primary() {
     // Initializer list in some contexts — just parse it
     if (check(TokenKind::LBrace)) {
         return parse_init_list();
+    }
+
+    // C++ functional cast: T(expr)
+    if (is_cpp_mode() && is_type_start()) {
+        int save_pos = pos_;
+        std::string saved_typedef = last_resolved_typedef_;
+        TypeSpec cast_ts = parse_base_type();
+        while (check(TokenKind::Star)) {
+            consume();
+            cast_ts.ptr_level++;
+        }
+        if (check(TokenKind::AmpAmp)) {
+            consume();
+            cast_ts.is_rvalue_ref = true;
+        } else if (check(TokenKind::Amp)) {
+            consume();
+            cast_ts.is_lvalue_ref = true;
+        }
+        if (check(TokenKind::LParen)) {
+            consume();  // (
+            Node* operand = nullptr;
+            if (!check(TokenKind::RParen)) {
+                if (is_cpp_mode() && check(TokenKind::Identifier) &&
+                    pos_ + 2 < static_cast<int>(tokens_.size()) &&
+                    tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
+                    tokens_[pos_ + 2].kind == TokenKind::Identifier) {
+                    std::string qualified_name = cur().lexeme;
+                    while (pos_ + 2 < static_cast<int>(tokens_.size()) &&
+                           tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
+                           tokens_[pos_ + 2].kind == TokenKind::Identifier) {
+                        qualified_name += "::";
+                        qualified_name += tokens_[pos_ + 2].lexeme;
+                        consume();  // current identifier
+                        consume();  // ::
+                    }
+                    const char* nm = arena_.strdup(qualified_name.c_str());
+                    consume();  // final identifier
+                    operand = make_var(nm, ln);
+                } else {
+                    operand = parse_assign_expr();
+                }
+            }
+            expect(TokenKind::RParen);
+            if (!operand) operand = make_int_lit(0, ln);
+            Node* n = make_node(NK_CAST, ln);
+            n->type = cast_ts;
+            n->left = operand;
+            if (cast_ts.is_fn_ptr && !last_resolved_typedef_.empty()) {
+                auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
+                if (tdit != typedef_fn_ptr_info_.end()) {
+                    n->fn_ptr_params = tdit->second.params;
+                    n->n_fn_ptr_params = tdit->second.n_params;
+                    n->fn_ptr_variadic = tdit->second.variadic;
+                }
+            }
+            return n;
+        }
+        pos_ = save_pos;
+        last_resolved_typedef_ = saved_typedef;
     }
 
     // Hard error for unrecognized primaries (was permissive fallback to 0).

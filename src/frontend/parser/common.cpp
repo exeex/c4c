@@ -39,6 +39,28 @@ bool eval_enum_expr(Node* n, const std::unordered_map<std::string, long long>& c
     return false;
 }
 
+bool is_dependent_enum_expr(Node* n,
+                            const std::unordered_map<std::string, long long>& consts) {
+    if (!n) return false;
+    if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) return false;
+    if (n->kind == NK_VAR && n->name) {
+        if (consts.count(n->name) > 0) return false;
+        return true;
+    }
+    if (n->kind == NK_CAST && n->left) return is_dependent_enum_expr(n->left, consts);
+    if (n->kind == NK_UNARY && n->left) return is_dependent_enum_expr(n->left, consts);
+    if (n->kind == NK_BINOP && n->left && n->right) {
+        return is_dependent_enum_expr(n->left, consts) ||
+               is_dependent_enum_expr(n->right, consts);
+    }
+    if (n->kind == NK_TERNARY && n->cond && n->then_ && n->else_) {
+        return is_dependent_enum_expr(n->cond, consts) ||
+               is_dependent_enum_expr(n->then_, consts) ||
+               is_dependent_enum_expr(n->else_, consts);
+    }
+    return false;
+}
+
 // ── constant expression evaluator ─────────────────────────────────────────────
 // Evaluate a simple AST subtree as an integer constant (for array sizes).
 // Returns true and sets *out on success; false if the expression is dynamic.

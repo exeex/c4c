@@ -20,6 +20,11 @@ set(CPP_POSITIVE_PARSE_STEMS
     operator_decl_eq_parse
     operator_decl_bool_parse
     operator_decl_plus_minus_parse
+    template_anon_param_extern_cxx_parse
+    template_bool_specialization_parse
+    scope_resolution_expr_parse
+    template_dependent_enum_parse
+    template_type_context_nttp_parse
 )
 
 foreach(src IN LISTS INTERNAL_CPP_NEGATIVE_TEST_SRCS)

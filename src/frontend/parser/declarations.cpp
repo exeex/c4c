@@ -5,6 +5,29 @@
 #include <stdexcept>
 
 namespace c4c {
+namespace {
+
+const char* maybe_parse_linkage_spec(Parser* parser) {
+    if (!parser->is_cpp_mode() || !parser->check(TokenKind::StrLit)) return nullptr;
+    if (parser->cur().lexeme == "\"C\"") {
+        parser->consume();
+        return "C";
+    }
+    if (parser->cur().lexeme == "\"C++\"") {
+        parser->consume();
+        return "C++";
+    }
+    return nullptr;
+}
+
+const char* make_anon_template_param_name(Arena& arena, bool is_nttp, size_t index) {
+    std::string name = is_nttp ? "__anon_nttp_" : "__anon_tparam_";
+    name += std::to_string(index);
+    return arena.strdup(name.c_str());
+}
+
+}  // namespace
+
 Node* Parser::parse_local_decl() {
     int ln = cur().line;
 
@@ -20,10 +43,7 @@ Node* Parser::parse_local_decl() {
         if (match(TokenKind::KwStatic))  { is_static = true; }
         else if (match(TokenKind::KwExtern))  {
             is_extern = true;
-            if (is_cpp_mode() && check(TokenKind::StrLit) && cur().lexeme == "\"C\"") {
-                linkage_spec = "C";
-                consume();
-            }
+            if (const char* spec = maybe_parse_linkage_spec(this)) linkage_spec = spec;
         }
         else if (match(TokenKind::KwTypedef)) { is_typedef = true; }
         else if (match(TokenKind::KwRegister)) {}
@@ -273,11 +293,13 @@ Node* Parser::parse_top_level() {
                 check(TokenKind::KwClass)) {
                 // Type template parameter.
                 consume();
-                if (!check(TokenKind::Identifier)) {
-                    throw std::runtime_error("expected template parameter name");
+                const char* pname = nullptr;
+                if (check(TokenKind::Identifier)) {
+                    pname = arena_.strdup(cur().lexeme);
+                    consume();
+                } else {
+                    pname = make_anon_template_param_name(arena_, false, template_params.size());
                 }
-                const char* pname = arena_.strdup(cur().lexeme);
-                consume();
                 template_params.push_back(pname);
                 template_param_nttp.push_back(false);
                 // Check for default type argument: = type
@@ -298,11 +320,13 @@ Node* Parser::parse_top_level() {
                 // Non-type template parameter (NTTP): e.g. int N, unsigned N.
                 // Consume the type specifier tokens, then the parameter name.
                 while (!at_end() && is_type_kw(cur().kind)) consume();
-                if (!check(TokenKind::Identifier)) {
-                    throw std::runtime_error("expected template parameter name");
+                const char* pname = nullptr;
+                if (check(TokenKind::Identifier)) {
+                    pname = arena_.strdup(cur().lexeme);
+                    consume();
+                } else {
+                    pname = make_anon_template_param_name(arena_, true, template_params.size());
                 }
-                const char* pname = arena_.strdup(cur().lexeme);
-                consume();
                 template_params.push_back(pname);
                 template_param_nttp.push_back(true);
                 // Check for default NTTP value: = expr
@@ -490,10 +514,7 @@ Node* Parser::parse_top_level() {
         if (match(TokenKind::KwStatic))    { is_static  = true; }
         else if (match(TokenKind::KwExtern))   {
             is_extern  = true;
-            if (is_cpp_mode() && check(TokenKind::StrLit) && cur().lexeme == "\"C\"") {
-                linkage_spec = "C";
-                consume();
-            }
+            if (const char* spec = maybe_parse_linkage_spec(this)) linkage_spec = spec;
         }
         else if (match(TokenKind::KwTypedef))  { is_typedef = true; }
         else if (match(TokenKind::KwInline))   { is_inline  = true; }
@@ -534,10 +555,7 @@ Node* Parser::parse_top_level() {
             if (match(TokenKind::KwStatic))    { is_static  = true; }
             else if (match(TokenKind::KwExtern))   {
                 is_extern  = true;
-                if (is_cpp_mode() && check(TokenKind::StrLit) && cur().lexeme == "\"C\"") {
-                    linkage_spec = "C";
-                    consume();
-                }
+                if (const char* spec = maybe_parse_linkage_spec(this)) linkage_spec = spec;
             }
             else if (match(TokenKind::KwTypedef))  { is_typedef = true; }
             else if (match(TokenKind::KwInline))   { is_inline  = true; }
@@ -826,16 +844,35 @@ Node* Parser::parse_top_level() {
                 spec_arg_types.push_back(arg_ts);
                 spec_arg_is_value.push_back(false);
                 spec_arg_values.push_back(0);
-            } else if (check(TokenKind::IntLit)) {
+            } else if (check(TokenKind::IntLit) || check(TokenKind::CharLit) ||
+                       (is_cpp_mode() &&
+                        (check(TokenKind::KwTrue) || check(TokenKind::KwFalse))) ||
+                       (check(TokenKind::Minus) && pos_ + 1 < (int)tokens_.size() &&
+                        (tokens_[pos_ + 1].kind == TokenKind::IntLit ||
+                         tokens_[pos_ + 1].kind == TokenKind::CharLit))) {
                 // NTTP value
+                long long sign = 1;
+                if (match(TokenKind::Minus)) sign = -1;
                 long long val = parse_int_lexeme(cur().lexeme.c_str());
-                consume();
+                if (check(TokenKind::KwTrue)) {
+                    val = 1;
+                    consume();
+                } else if (check(TokenKind::KwFalse)) {
+                    val = 0;
+                    consume();
+                } else if (check(TokenKind::CharLit)) {
+                    Node* lit = parse_primary();
+                    val = lit ? lit->ival : 0;
+                } else {
+                    val = parse_int_lexeme(cur().lexeme.c_str());
+                    consume();
+                }
                 TypeSpec dummy{};
                 dummy.array_size = -1;
                 dummy.inner_rank = -1;
                 spec_arg_types.push_back(dummy);
                 spec_arg_is_value.push_back(true);
-                spec_arg_values.push_back(val);
+                spec_arg_values.push_back(val * sign);
             } else {
                 break;
             }
