@@ -1408,6 +1408,32 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 method->params = arena_.alloc_array<Node*>(method->n_params);
                 for (int i = 0; i < method->n_params; ++i) method->params[i] = params[i];
             }
+            // Constructor initializer list: : member(expr), ...
+            if (check(TokenKind::Colon)) {
+                consume(); // ':'
+                std::vector<const char*> init_names;
+                std::vector<Node*> init_exprs;
+                while (!at_end() && !check(TokenKind::LBrace)) {
+                    if (!check(TokenKind::Identifier)) break;
+                    const char* mem_name = arena_.strdup(cur().lexeme);
+                    consume(); // member name
+                    expect(TokenKind::LParen);
+                    Node* expr = parse_expr();
+                    expect(TokenKind::RParen);
+                    init_names.push_back(mem_name);
+                    init_exprs.push_back(expr);
+                    if (!match(TokenKind::Comma)) break;
+                }
+                method->n_ctor_inits = (int)init_names.size();
+                if (method->n_ctor_inits > 0) {
+                    method->ctor_init_names = arena_.alloc_array<const char*>(method->n_ctor_inits);
+                    method->ctor_init_exprs = arena_.alloc_array<Node*>(method->n_ctor_inits);
+                    for (int i = 0; i < method->n_ctor_inits; ++i) {
+                        method->ctor_init_names[i] = init_names[i];
+                        method->ctor_init_exprs[i] = init_exprs[i];
+                    }
+                }
+            }
             if (check(TokenKind::LBrace)) {
                 method->body = parse_block();
             } else if (is_cpp_mode() && check(TokenKind::Assign) &&

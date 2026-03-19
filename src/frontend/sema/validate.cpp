@@ -691,6 +691,11 @@ class Validator {
       bind_local(p->name, p->type, true, p->line);
     }
 
+    // Validate constructor initializer list expressions.
+    for (int i = 0; i < fn->n_ctor_inits; ++i) {
+      if (fn->ctor_init_exprs[i]) (void)infer_expr(fn->ctor_init_exprs[i]);
+    }
+
     if (fn->body) {
       if (fn->body->kind == NK_BLOCK) {
         for (int i = 0; i < fn->body->n_children; ++i) visit_stmt(fn->body->children[i]);

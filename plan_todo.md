@@ -284,19 +284,27 @@
   - `copy_assign_const_src.cpp` — copy from `const Data` source, multi-field struct
 - Suite: 1973/1973 (was 1970)
 
+### Constructor Initializer Lists (`: member(init), ...`)
+- **Parser**: After `expect(RParen)` in constructor parsing, check for `Colon` token; parse `member(expr), ...` sequence into `ctor_init_names[]` + `ctor_init_exprs[]` arrays
+- **AST**: Added `ctor_init_names` (const char**), `ctor_init_exprs` (Node**), `n_ctor_inits` (int) to Node struct
+- **HIR lowering**: In `lower_struct_method`, before `lower_stmt_node(body)`, emit member assignments: `this->member = expr` for each init list item, using struct field types from `module_->struct_defs`
+- **Sema**: Validate initializer list expressions via `infer_expr()` after params are bound
+- Tests:
+  - `ctor_init_list_basic.cpp` — Point(a,b):x(a),y(b), Rect 4-member, Counter with expressions, Mixed init-list + body
+- Suite: 1974/1974 (was 1973)
+
 ## Next Intended Slice
 ### Recommended next target
 - Next priority:
   1. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
   2. Template member access through T&& params (blocked on template member resolution)
-  3. Constructor initializer lists (`: member(init), ...`)
+  3. Delegating constructors, or further initializer list features (constructor calls in init list)
 
 ### Explicitly deferred for now
 - Free-function operator overloading
 - Structured bindings in range-for
 - General `auto` deduction outside range-for
 - Ambiguous overload detection (bad_ref_overload_ambiguous.cpp)
-- Constructor initializer lists (`: member(init), ...`)
 - Template function T&& param member access (e.g. `obj.value` where obj is T&&)
 
 ## Known Limitations
@@ -311,7 +319,7 @@
 - No full `static_cast` implementation model yet; only baseline named-cast coverage is tracked
 - Constructor overload resolution is basic — scores by param count + base type + ref-qualifier, no implicit conversions across types
 - Destructor calls not emitted for struct members of struct types (only direct locals)
-- No constructor initializer lists (`: member(init), ...`)
+- Constructor initializer list does not support delegating constructors or member constructor calls (only scalar/expression init)
 
 ## Notes
 - try_lower_operator_call() builds CallExpr with &obj as implicit this + explicit args
@@ -330,3 +338,4 @@
 - Constructor overloads: struct_constructors_ map stores all ctors per tag; scoring considers ref-qualifier match
 - operator= dispatched before fallback memcpy in NK_ASSIGN; uses try_lower_operator_call("operator_assign")
 - try_lower_operator_call now handles ref params: falls back to pending method AST node for param types when fn_index not yet populated
+- Constructor initializer list: parsed after RParen before LBrace; lowered as this->member = expr assignments before body in lower_struct_method

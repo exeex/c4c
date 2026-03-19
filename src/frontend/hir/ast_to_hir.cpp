@@ -1866,6 +1866,57 @@ class Lowerer {
     fn.entry = entry;
     ctx.current_block = entry;
 
+    // Emit constructor initializer list assignments before body.
+    if (method_node->is_constructor && method_node->n_ctor_inits > 0) {
+      auto sit = module_->struct_defs.find(struct_tag);
+      for (int i = 0; i < method_node->n_ctor_inits; ++i) {
+        const char* mem_name = method_node->ctor_init_names[i];
+        const Node* init_expr = method_node->ctor_init_exprs[i];
+        // Build this->member as lvalue.
+        DeclRef this_ref{};
+        this_ref.name = "this";
+        auto pit = ctx.params.find("this");
+        if (pit != ctx.params.end()) this_ref.param_index = pit->second;
+        TypeSpec this_ts{};
+        this_ts.base = TB_STRUCT;
+        this_ts.tag = sit != module_->struct_defs.end()
+                          ? sit->second.tag.c_str()
+                          : struct_tag.c_str();
+        this_ts.ptr_level = 1;
+        ExprId this_id = append_expr(method_node, this_ref, this_ts, ValueCategory::LValue);
+        // Find field type.
+        TypeSpec field_ts{};
+        if (sit != module_->struct_defs.end()) {
+          for (const auto& fld : sit->second.fields) {
+            if (fld.name == mem_name) {
+              field_ts = fld.elem_type;
+              // Restore array type if needed.
+              if (fld.array_first_dim >= 0) {
+                field_ts.array_rank = 1;
+                field_ts.array_size = fld.array_first_dim;
+              }
+              break;
+            }
+          }
+        }
+        MemberExpr me{};
+        me.base = this_id;
+        me.field = mem_name;
+        me.is_arrow = true;
+        ExprId lhs_id = append_expr(method_node, me, field_ts, ValueCategory::LValue);
+        // Lower the initializer expression.
+        ExprId rhs_id = lower_expr(&ctx, init_expr);
+        // Build assignment.
+        AssignExpr ae{};
+        ae.op = AssignOp::Set;
+        ae.lhs = lhs_id;
+        ae.rhs = rhs_id;
+        ExprId ae_id = append_expr(method_node, ae, field_ts);
+        ExprStmt es{}; es.expr = ae_id;
+        append_stmt(ctx, Stmt{StmtPayload{es}, make_span(method_node)});
+      }
+    }
+
     lower_stmt_node(ctx, method_node->body);
 
     if (fn.blocks.empty()) {
