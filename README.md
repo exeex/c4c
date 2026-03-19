@@ -1,51 +1,49 @@
 # c4c
 
-`c4c` is a lightweight C-family frontend that lowers source code to LLVM IR.
+`c4c` is a C/C++ compiler project for AI infrastructure and general RISC-V-based xPU systems.
 
-Today the project is best understood as:
+It is designed for a future where accelerator software is not limited to a fixed vendor toolchain. The goal is to make C/C++ a practical systems language for heterogeneous AI hardware, while keeping the path from language feature to hardware feature short enough for real hardware teams to use.
 
-- a custom frontend pipeline implemented in C++
-- an LLVM IR text emitter
-- a test-heavy migration project that still relies on `clang` as the executable backend
+## Vision
 
-The frontend primarily targets C input, but the current codebase and test suite also
-contain experimental C++-style features such as templates and `consteval`.
+`c4c` is being built to support the compilation of modern C++ AI projects such as `llama.cpp`, `torch`, and other performance-critical runtime stacks.
 
-## Architecture
+Beyond compiling conventional C/C++ code, `c4c` aims to provide an integrated heterogeneous programming and linking model similar in spirit to `__host__` and `__device__` in CUDA, but designed for open and customizable RISC-V-based accelerator systems.
 
-Current pipeline:
+This means one toolchain can eventually describe, compile, and link software across:
 
-1. Preprocessor: `.c` / `.h` / `.cpp` -> preprocessed source text
-2. Lexer: source text -> token stream
-3. Parser: token stream -> AST
-4. Semantic analysis: AST validation + canonical typing + HIR lowering
-5. HIR passes: compile-time reduction + materialization / inline expansion
-6. LLVM IR builder: HIR -> `.ll`
-7. Backend: `clang` consumes emitted `.ll` and produces a native binary
+- host CPU code
+- RISC-V control processors
+- DMA engines
+- custom ASIC datapaths
+- vendor-specific xPU execution units
 
-The main executable is `c4cll`.
+## Why c4c
 
-## Repository Layout
+Today, adding custom instructions or hardware-specific behavior to a compiler stack often requires touching multiple LLVM layers and maintaining `.td` files across a complex backend flow. That approach is powerful, but it is also expensive, slow to iterate, and difficult for many hardware vendors to adopt.
 
-```txt
-src/
-  apps/                CLI entrypoints
-  frontend/
-    preprocessor/      macro expansion, includes, conditionals, pragmas
-    lexer/             tokenization
-    parser/            recursive-descent parser and AST
-    sema/              validation, canonical symbols, consteval/type logic
-    hir/               AST -> HIR lowering and HIR passes
-  codegen/llvm/        HIR -> LLVM IR emission
+`c4c` takes a different direction.
 
-tests/
-  internal/            project-owned positive / negative / runtime cases
-  preprocessor/        focused preprocessor unit-style tests
-  external/            vendored or derived compatibility suites
+By strengthening `consteval` as a core mechanism, `c4c` is intended to give hardware vendors a much faster way to introduce custom instructions and hardware-specific programming models, without having to modify the compiler core for every architectural experiment.
 
-scripts/               local workflows and automation helpers
-ref/                   reference implementations and upstream corpora
-```
+The long-term idea is simple:
+
+- vendors should be able to express hardware behavior in C++-level constructs
+- custom instruction definitions should be easier to prototype and evolve
+- architecture bring-up should not require deep LLVM backend expertise
+
+## Custom xPU Architecture Definition
+
+`c4c` is intended to let you define your own heterogeneous xPU architecture on top of arbitrary combinations of:
+
+- RISC-V cores
+- DMA subsystems
+- fixed-function ASIC blocks
+- custom accelerators and instruction extensions
+
+The key goal is that you can customize this hardware programming model without touching the compiler kernel itself.
+
+In other words, `c4c` is not only a compiler project. It is an attempt to make compiler-driven hardware customization accessible enough that vendors can explore and productize new xPU designs with much lower integration cost.
 
 ## Build
 
@@ -59,59 +57,9 @@ make -j
 Notes:
 
 - `clang` is optional for building `c4cll` itself.
-- `clang` is required for runtime / execute-style tests and for turning emitted LLVM IR
-  into a runnable binary.
-
-## Quick Start
-
-Emit LLVM IR:
-
-```bash
-./build/c4cll tests/internal/example/example.c -o hello.ll
-```
-
-Build and run the emitted program with `clang`:
-
-```bash
-clang hello.ll -o hello.out
-./hello.out
-```
-
-Pipe directly:
-
-```bash
-./build/c4cll tests/internal/example/example.c | clang -x ir -o hello.out -
-./hello.out
-```
-
-## Useful CLI Modes
-
-`c4cll` exposes several frontend-debugging modes:
-
-- `--pp-only` print preprocessed source
-- `--lex-only` dump tokens
-- `--parse-only` dump AST
-- `--dump-canonical` dump canonical symbol/type information
-- `--dump-hir` dump full HIR plus compile-time/materialization stats
-- `--dump-hir-summary` dump a compact HIR summary
-
-Example:
-
-```bash
-./build/c4cll --dump-hir tests/internal/example/example.c
-```
+- `clang` is required for runtime or execute-style tests and for turning emitted LLVM IR into a runnable binary.
 
 ## Testing
-
-CTest is the main test entrypoint.
-
-Core test layers in this repository:
-
-- `tests/internal/positive_case`: frontend + IR + runtime positive coverage
-- `tests/internal/negative_case`: expected compile failures
-- `tests/preprocessor`: focused preprocessor tests
-- `tests/external/c-testsuite`: curated external C coverage
-- `tests/external/gcc_torture`: curated tricky / migration-heavy cases
 
 Run the default core suite:
 
@@ -126,27 +74,3 @@ Or use the convenience target:
 cd build
 cmake --build . --target ctest_core
 ```
-
-## Current Status
-
-- Frontend stages are implemented in-repo.
-- LLVM IR emission is implemented in-repo.
-- Native code generation is delegated to external `clang`.
-- The project is actively driven by regression tests and incremental bug fixing.
-
-## Development Workflow
-
-Typical loop:
-
-1. Add or adjust a case under `tests/`
-2. Rebuild `c4cll`
-3. Run the relevant CTest subset
-4. Inspect `--pp-only`, `--parse-only`, or `--dump-hir` output when debugging
-
-There is also a local automation helper:
-
-```bash
-./scripts/run_agent.sh
-```
-
-Use it only if your environment is set up for that workflow.
