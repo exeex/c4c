@@ -86,18 +86,13 @@ not just the flattened final symbol spelling.
 
 ### Current Known Failing Cases
 
-The currently observed runtime failures are:
+All previously failing namespace tests now pass:
 
-- `cpp_positive_sema_namespace_global_qualified_self_parse_cpp`
-- `cpp_positive_sema_namespace_global_qualifier_parse_cpp`
+- `::some_global_var` and `::oo::a` — fixed: leading `::` in expressions
+- `ns::StructType` declarations — fixed: qualified type lookup
 
-These correspond to leading-global qualified expressions:
-
-- `::some_global_var`
-- `::oo::a`
-
-At the moment, cross-namespace qualified lookup like `xx::some_xx_var` parses,
-but leading `::` still fails in expression position.
+Remaining known gap: namespace-qualified function/global names produce `::` in
+LLVM IR identifiers, needing quoting or mangling in the emitter.
 
 ## Current Codebase Gap Audit
 

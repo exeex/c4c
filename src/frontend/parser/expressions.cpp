@@ -588,6 +588,29 @@ Node* Parser::parse_primary() {
         return parse_postfix(inner);
     }
 
+    // Global-qualified identifier (::name or ::ns::name)
+    if (is_cpp_mode() && check(TokenKind::ColonColon) &&
+        pos_ + 1 < static_cast<int>(tokens_.size()) &&
+        tokens_[pos_ + 1].kind == TokenKind::Identifier) {
+        consume();  // ::
+        std::string qualified_name = cur().lexeme;
+        while (pos_ + 2 < static_cast<int>(tokens_.size()) &&
+               tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
+               tokens_[pos_ + 2].kind == TokenKind::Identifier) {
+            qualified_name += "::";
+            qualified_name += tokens_[pos_ + 2].lexeme;
+            consume();  // current identifier
+            consume();  // ::
+        }
+        // Already fully qualified — skip resolve_visible_value_name
+        const char* nm = arena_.strdup(qualified_name.c_str());
+        int ln = cur().line;
+        consume();
+        Node* var_node = make_node(NK_VAR, ln);
+        var_node->name = nm;
+        return parse_postfix(var_node);
+    }
+
     // Identifier / label address
     if (check(TokenKind::Identifier)) {
         std::string qualified_name = cur().lexeme;

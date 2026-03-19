@@ -17,7 +17,6 @@
 
 namespace c4c::hir {
 
-
 SourceSpan make_span(const Node* n) {
   if (!n) {
     return {};

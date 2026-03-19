@@ -34,13 +34,24 @@ bool Parser::is_type_start() const {
     if (k == TokenKind::KwAttribute) return true;  // __attribute__((x)) type cast
     if (k == TokenKind::KwAlignas || k == TokenKind::KwStaticAssert) return false;
     if (k == TokenKind::Identifier && is_typedef_name(cur().lexeme)) return true;
-    // C++ qualified type: StructName::TypedefName
+    // C++ qualified type: StructName::TypedefName or ns::ns2::Type
     if (k == TokenKind::Identifier &&
         pos_ + 2 < static_cast<int>(tokens_.size()) &&
         tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
         tokens_[pos_ + 2].kind == TokenKind::Identifier) {
+        // Build longest possible qualified name and check each prefix
         std::string scoped = cur().lexeme + "::" + tokens_[pos_ + 2].lexeme;
         if (is_typedef_name(scoped)) return true;
+        // Try longer paths: a::b::c, a::b::c::d, ...
+        int p = pos_ + 2;
+        while (p + 2 < static_cast<int>(tokens_.size()) &&
+               tokens_[p + 1].kind == TokenKind::ColonColon &&
+               tokens_[p + 2].kind == TokenKind::Identifier) {
+            scoped += "::";
+            scoped += tokens_[p + 2].lexeme;
+            if (is_typedef_name(scoped)) return true;
+            p += 2;
+        }
     }
     return false;
 }
@@ -338,23 +349,42 @@ TypeSpec Parser::parse_base_type() {
             }
 
             case TokenKind::Identifier:
-                // C++ qualified type: StructName::TypedefName
+                // C++ qualified type: StructName::TypedefName or ns::ns2::Type
                 if (is_cpp_mode() && !has_typedef &&
                     pos_ + 2 < static_cast<int>(tokens_.size()) &&
                     tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
                     tokens_[pos_ + 2].kind == TokenKind::Identifier) {
+                    // Build longest matching qualified name
                     std::string scoped = cur().lexeme + "::" + tokens_[pos_ + 2].lexeme;
+                    std::string best_match;
+                    int best_end_pos = pos_ + 2;  // position of last identifier in match
                     if (is_typedef_name(scoped)) {
+                        best_match = scoped;
+                    }
+                    int p = pos_ + 2;
+                    while (p + 2 < static_cast<int>(tokens_.size()) &&
+                           tokens_[p + 1].kind == TokenKind::ColonColon &&
+                           tokens_[p + 2].kind == TokenKind::Identifier) {
+                        scoped += "::";
+                        scoped += tokens_[p + 2].lexeme;
+                        p += 2;
+                        if (is_typedef_name(scoped)) {
+                            best_match = scoped;
+                            best_end_pos = p;
+                        }
+                    }
+                    if (!best_match.empty()) {
                         bool already_have_base =
                             has_signed || has_unsigned || has_short || long_count > 0 ||
                             has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
                             has_struct || has_union || has_enum || base_set;
                         if (!already_have_base) {
                             has_typedef = true;
-                            ts.tag = arena_.strdup(scoped);
-                            consume(); // StructName
-                            consume(); // ::
-                            consume(); // TypedefName
+                            ts.tag = arena_.strdup(best_match);
+                            // Consume all tokens up to and including last identifier
+                            while (pos_ < best_end_pos)
+                                consume();
+                            consume();  // consume the last identifier
                         }
                         done = true;
                         break;
@@ -1877,6 +1907,12 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         injected_ts.base = is_union ? TB_UNION : TB_STRUCT;
         injected_ts.tag = sd->name;
         typedef_types_[sd->name] = injected_ts;
+        // Also register namespace-qualified name for use outside the namespace
+        if (!current_namespace_.empty()) {
+            std::string qn = current_namespace_ + "::" + sd->name;
+            typedefs_.insert(qn);
+            typedef_types_[qn] = injected_ts;
+        }
     }
     struct_defs_.push_back(sd);
     return sd;

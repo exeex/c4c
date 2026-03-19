@@ -363,11 +363,24 @@
   - `default_special_members.cpp` — Simple (default ctor, copy ctor, copy assign, dtor), Outer (defaulted dtor with member dtor), Movable (copy ctor, move ctor, copy assign, move assign all defaulted)
 - Suite: 2005/2007 (same 2 pre-existing namespace failures, new test passes)
 
+### Namespace Qualified Type Support (namespace_plan.md Phase 1 slice)
+- **Global qualifier `::` in expressions**: `parse_primary()` handles leading `::` token followed by identifier(s); builds fully qualified name bypassing `resolve_visible_value_name` (already global-scope)
+- **Namespace-qualified struct types**: structs defined inside `namespace ns { ... }` register both unqualified and `ns::Name` in `typedefs_` and `typedef_types_`
+  - Non-template structs: registered at end of `parse_struct_or_union()` when `current_namespace_` is non-empty
+  - Template structs: registered at template struct finalization in `parse_global_decl_or_function()` when `current_namespace_` is non-empty; also added to `template_struct_defs_`
+- **Multi-level qualified type lookup**: `is_type_start()` and `parse_base_type()` extended to try longer `a::b::c` chains (not just single `A::B`)
+- Tests:
+  - `namespace_struct_type_basic.cpp` — `geo::Point` struct from namespace, field access, runtime
+  - `namespace_template_struct_basic.cpp` — `coll::Box<int>` and `coll::Box<long>` from namespace, methods, runtime
+  - `namespace_using_struct_type.cpp` — `using namespace lib;` makes `Data` struct visible
+- Suite: 2010/2010 (was 2007, fixed 2 pre-existing namespace failures + 3 new tests)
+
 ## Next Intended Slice
 ### Recommended next target
 - Next priority:
-  1. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
-  2. Template member access through T&& params (blocked on template member resolution)
+  1. LLVM IR name quoting for namespace-qualified function/global names (`::`→quoted `@"name"`)
+  2. `namespace_plan.md` Phase 2: dependent names and nested type access
+  3. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
 
 ### Explicitly deferred for now
 - Free-function operator overloading
@@ -377,6 +390,7 @@
 - Template function T&& param member access (e.g. `obj.value` where obj is T&&)
 
 ## Known Limitations
+- Namespace-qualified function/global names contain `::` which is invalid in bare LLVM IR identifiers; need quoting or mangling in emitter
 - No free-function (non-member) operators
 - No parameter-type-based overload resolution for same operator (e.g., `operator-(int)` vs `operator-(Iter)`)
 - Const method dispatch relies on TypeSpec.is_const — const reference parameters work but requires proper const propagation through the type system

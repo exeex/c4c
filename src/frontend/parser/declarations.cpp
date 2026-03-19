@@ -545,6 +545,14 @@ Node* Parser::parse_top_level() {
                 struct_ts.base = TB_STRUCT;
                 struct_ts.tag = last_sd->name;
                 typedef_types_[last_sd->name] = struct_ts;
+                // If inside a namespace, also register ns::Name so
+                // qualified references like std::vector<int> work.
+                if (!current_namespace_.empty()) {
+                    std::string qn = current_namespace_ + "::" + last_sd->name;
+                    typedefs_.insert(qn);
+                    typedef_types_[qn] = struct_ts;
+                    template_struct_defs_[qn] = last_sd;
+                }
             }
         }
         return templated;
