@@ -1037,6 +1037,29 @@ class Lowerer {
         }
         TypeSpec ts{}; ts.base = TB_INT; return ts;
       }
+      case NK_CALL:
+      case NK_BUILTIN_CALL: {
+        // Try to infer the return type of the called function.
+        if (n->left && n->left->kind == NK_VAR && n->left->name) {
+          const std::string callee_name = n->left->name;
+          // Check deduced template call first.
+          auto dit = deduced_template_calls_.find(n);
+          if (dit != deduced_template_calls_.end()) {
+            auto fit = module_->fn_index.find(dit->second.mangled_name);
+            if (fit != module_->fn_index.end()) {
+              const Function* fn = module_->find_function(fit->second);
+              if (fn) return reference_value_ts(fn->return_type.spec);
+            }
+          }
+          // Direct function lookup.
+          auto fit = module_->fn_index.find(callee_name);
+          if (fit != module_->fn_index.end()) {
+            const Function* fn = module_->find_function(fit->second);
+            if (fn) return reference_value_ts(fn->return_type.spec);
+          }
+        }
+        break;
+      }
       default:
         break;
     }
@@ -2154,18 +2177,47 @@ class Lowerer {
             resolve_typedef_to_struct(param_ts);
             if (param_ts.is_rvalue_ref || param_ts.is_lvalue_ref) {
               // Reference parameter: pass address of the argument.
-              // For static_cast<T&&>(x), pass &x directly (xvalue).
               const Node* arg = n->children[i];
               const Node* inner = arg;
               // Unwrap static_cast<T&&>(x) to get x.
               if (inner->kind == NK_CAST && inner->left)
                 inner = inner->left;
-              ExprId arg_val = lower_expr(&ctx, inner);
-              TypeSpec storage_ts = reference_storage_ts(param_ts);
-              UnaryExpr addr_e{};
-              addr_e.op = UnaryOp::AddrOf;
-              addr_e.operand = arg_val;
-              c.args.push_back(append_expr(arg, addr_e, storage_ts));
+              // Check if the argument is a function call returning a reference type.
+              // In that case, the call already returns a pointer — no AddrOf needed.
+              bool arg_returns_ref = false;
+              if (inner->kind == NK_CALL && inner->left &&
+                  inner->left->kind == NK_VAR && inner->left->name) {
+                TypeSpec call_ret = infer_generic_ctrl_type(&ctx, arg);
+                // infer_generic_ctrl_type strips refs, so check original return type.
+                auto dit = deduced_template_calls_.find(inner);
+                if (dit != deduced_template_calls_.end()) {
+                  auto fit = module_->fn_index.find(dit->second.mangled_name);
+                  if (fit != module_->fn_index.end()) {
+                    const Function* fn = module_->find_function(fit->second);
+                    if (fn && is_any_ref_ts(fn->return_type.spec))
+                      arg_returns_ref = true;
+                  }
+                }
+                if (!arg_returns_ref) {
+                  auto fit = module_->fn_index.find(inner->left->name);
+                  if (fit != module_->fn_index.end()) {
+                    const Function* fn = module_->find_function(fit->second);
+                    if (fn && is_any_ref_ts(fn->return_type.spec))
+                      arg_returns_ref = true;
+                  }
+                }
+              }
+              if (arg_returns_ref) {
+                // Call already returns a pointer (reference ABI).
+                c.args.push_back(lower_expr(&ctx, arg));
+              } else {
+                ExprId arg_val = lower_expr(&ctx, inner);
+                TypeSpec storage_ts = reference_storage_ts(param_ts);
+                UnaryExpr addr_e{};
+                addr_e.op = UnaryOp::AddrOf;
+                addr_e.operand = arg_val;
+                c.args.push_back(append_expr(arg, addr_e, storage_ts));
+              }
             } else {
               c.args.push_back(lower_expr(&ctx, n->children[i]));
             }

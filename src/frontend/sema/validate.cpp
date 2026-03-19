@@ -754,7 +754,7 @@ class Validator {
         return;
       }
       case NK_DECL: {
-        if (n->name && n->name[0]) bind_local(n->name, n->type, n->init != nullptr, n->line);
+        if (n->name && n->name[0]) bind_local(n->name, n->type, n->init != nullptr || n->is_ctor_init, n->line);
         validate_decl_init(n);
         // Track const/constexpr locals with foldable initializers for case label evaluation.
         if (n->name && n->name[0] && n->init &&

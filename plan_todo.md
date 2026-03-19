@@ -234,24 +234,35 @@
   - `move_ctor_over_copy.cpp` — copy ctor `Obj(const Obj&)` vs move ctor `Obj(Obj&&)`, lvalue selects copy, rvalue selects move
 - Suite: 1961/1961 (was 1957)
 
+### Rvalue Reference Plan Phase 4 (rvalue_ref_plan.md)
+- **Template move helper**: `template <typename T> T&& my_move(T& x)` works end-to-end
+  - **emit_lval CastExpr**: reference-type casts (T&&, T&) now preserve addressability (xvalue semantics) — `static_cast<T&&>(x)` returns same address as x
+  - **infer_generic_ctrl_type NK_CALL**: added case for function call return type inference, supports deduced template calls and direct fn_index lookup
+  - **Constructor arg ref-returning call**: when arg to reference param is a function call returning T&/T&&, pass call result directly (already a pointer) instead of wrapping in AddrOf
+  - **Sema is_ctor_init**: constructor-initialized variables now marked as initialized in sema validator (fixes false "uninitialized variable" on `T result(ctor_args)`)
+- Tests:
+  - `move_helper_basic.cpp` — template `my_move()` triggers move ctor, source marked moved-from
+  - `template_rvalue_ref_param_basic.cpp` — scalar T&& binding, chained move ctor calls
+- Suite: 1963/1963 (was 1961)
+
 ## Next Intended Slice
 ### Recommended next target
-- **Rvalue ref Phase 3 is complete** — constructors + move ctor + operator= + move assignment
+- **Rvalue ref Phase 4 is complete** — move helper + template rvalue ref param
 - Next priority:
-  1. `rvalue_ref_plan.md` Phase 4: utility-layer enablers (move helper, template rvalue ref)
-  2. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
-  3. Negative tests: `bad_deleted_move_ctor_call.cpp`, `bad_move_assign_const.cpp`
+  1. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
+  2. Negative tests: `bad_deleted_move_ctor_call.cpp`, `bad_move_assign_const.cpp`, `bad_forwarding_ref_bind.cpp`
+  3. Template member access through T&& params (blocked on template member resolution)
 
 ### Explicitly deferred for now
 - Free-function operator overloading
 - Structured bindings in range-for
 - General `auto` deduction outside range-for
-- Full `static_cast<T&&>` / `std::move` semantics beyond the current basic cast and test coverage
 - Ambiguous overload detection (bad_ref_overload_ambiguous.cpp)
 - Deleted constructor/operator support (`= delete`)
 - Copy assignment operator (`operator=(const T&)`)
 - Default constructor (`T()`)
 - Constructor initializer lists (`: member(init), ...`)
+- Template function T&& param member access (e.g. `obj.value` where obj is T&&)
 
 ## Known Limitations
 - No free-function (non-member) operators

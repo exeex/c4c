@@ -1672,6 +1672,13 @@ std::string HirEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec& 
     if (const auto* m = std::get_if<MemberExpr>(&e.payload)) {
       return emit_member_lval(ctx, *m, pts);
     }
+    // Reference-type cast preserves addressability (xvalue semantics).
+    // e.g. static_cast<T&&>(x) → same address as x.
+    if (const auto* c = std::get_if<CastExpr>(&e.payload)) {
+      if (c->to_type.spec.is_rvalue_ref || c->to_type.spec.is_lvalue_ref) {
+        return emit_lval(ctx, c->expr, pts);
+      }
+    }
     throw std::runtime_error("HirEmitter: cannot take lval of expr");
   }
 
