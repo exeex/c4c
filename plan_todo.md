@@ -3,11 +3,11 @@
 ## Active Plan
 - Parent: `plan.md` (STL Enablement Umbrella)
 - Active child: `iterator_plan.md` — Phases 0–5 complete (range-for landed)
-- Active child: `range_for_plan.md` — Phase 0 complete
+- Active child: `range_for_plan.md` — Phase 0–1 complete
 - Previous child: `operator_overload_plan.md` — Phase 4 complete, Phase 5 deferred
 
 ## Current Target
-- **Iterator Plan Phase 5 / Range-For Phase 0**: DONE
+- **Range-For Phase 1**: DONE (auto type deduction)
 
 ## Completed Items
 
@@ -127,19 +127,28 @@
     - `range_for_const.cpp` — range-for with const begin/end methods, ConstIter with const operator*
   - Suite: 1941/1941 (was 1939)
 
+### Range-For Plan Phase 1 (range_for_plan.md)
+- **TB_AUTO type base**: added to TypeBase enum as placeholder for auto deduction
+- **Parser**: In C++ mode, `KwAuto` sets `TB_AUTO` instead of being ignored as storage class
+- **HIR lowering**: In NK_RANGE_FOR, when `decl_node->type.base == TB_AUTO`, deduces loop variable type from `operator*` return type. Preserves const qualifier from declaration (`const auto`).
+- Tests:
+  - `range_for_auto.cpp` — `for (auto x : c)` with int elements, two loops
+  - `range_for_const_auto.cpp` — `for (const auto x : c)` with const begin/end
+- Suite: 1943/1943 (was 1941)
+
 ## Next Intended Slice
-- Range-For Phase 1: `auto` type deduction for loop variable (`for (auto x : c)`, `for (auto& x : c)`)
-- Or: Operator Overload Phase 5 (free-function operators) if needed
+- Operator Overload Phase 5 (free-function operators) if needed
+- Or: additional range-for features (auto&, structured bindings)
 
 ## Known Limitations
 - No free-function (non-member) operators
 - No operator() (function call operator)
 - No parameter-type-based overload resolution for same operator (e.g., `operator-(int)` vs `operator-(Iter)`)
 - Const method dispatch relies on TypeSpec.is_const — const reference parameters work but requires proper const propagation through the type system
-- No `auto` type deduction — range-for requires explicit loop variable type
 - Nested typedef names are also registered globally (potential conflicts if two structs define same typedef name)
 - No `using` alias declarations (only `typedef`)
-- Range-for does not support `auto` / `auto&` / `const auto&` loop variable types yet
+- Range-for does not support `auto&` / `const auto&` reference loop variable types yet
+- `auto` type deduction only works in range-for context, not general variable declarations
 
 ## Notes
 - try_lower_operator_call() builds CallExpr with &obj as implicit this + explicit args

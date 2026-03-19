@@ -223,7 +223,13 @@ TypeSpec Parser::parse_base_type() {
             case TokenKind::KwNoreturn:
             case TokenKind::KwThreadLocal:
                 consume(); break;
-            case TokenKind::KwAuto:   consume(); break;  // ignore auto storage
+            case TokenKind::KwAuto:
+                if (is_cpp_mode() && !base_set) {
+                    ts.base = TB_AUTO;
+                    base_set = true;
+                    consume(); done = true; break;
+                }
+                consume(); break;  // ignore auto storage (C mode)
 
             // Signed / unsigned modifiers
             case TokenKind::KwSigned:   has_signed   = true; consume(); break;

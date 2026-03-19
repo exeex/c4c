@@ -67,6 +67,7 @@ enum TypeBase {
     TB_COMPLEX_ULONG,      // _Complex unsigned long
     TB_COMPLEX_LONGLONG,   // _Complex long long
     TB_COMPLEX_ULONGLONG,  // _Complex unsigned long long
+    TB_AUTO,               // C++ auto type deduction placeholder
 };
 
 struct TypeSpec {

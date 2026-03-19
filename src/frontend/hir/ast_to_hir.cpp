@@ -3669,6 +3669,8 @@ class Lowerer {
         {
           // Build *__range_begin (operator*)
           ExprId deref_expr;
+          TypeSpec deref_ret_ts{};
+          deref_ret_ts.base = TB_INT; // fallback
           {
             std::string deref_base = std::string(iter_ts.tag) + "::operator_deref";
             std::string deref_const = deref_base + "_const";
@@ -3684,8 +3686,6 @@ class Lowerer {
             DeclRef dr{};
             dr.name = mit->second;
             // Get return type of operator*
-            TypeSpec deref_ret_ts{};
-            deref_ret_ts.base = TB_INT; // fallback
             {
               auto fit2 = module_->fn_index.find(mit->second);
               if (fit2 != module_->fn_index.end() &&
@@ -3719,6 +3719,13 @@ class Lowerer {
             ld.id = next_local_id();
             ld.name = decl_node->name ? decl_node->name : "__range_var";
             TypeSpec var_ts = decl_node->type;
+            // auto type deduction: use operator* return type
+            if (var_ts.base == TB_AUTO) {
+              var_ts = deref_ret_ts;
+              // Strip pointer level if operator* returns a reference-like pointer
+              // but keep const/ref qualifiers from the declaration
+              if (decl_node->type.is_const) var_ts.is_const = true;
+            }
             resolve_typedef_to_struct(var_ts);
             ld.type = qtype_from(reference_storage_ts(var_ts), ValueCategory::LValue);
             ld.init = deref_expr;
