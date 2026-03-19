@@ -1563,6 +1563,18 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             } else if (check(TokenKind::Assign)) {
                 consume();
                 op_kind = OP_ASSIGN;
+            } else if (check(TokenKind::LessEqual)) {
+                consume();
+                op_kind = OP_LE;
+            } else if (check(TokenKind::GreaterEqual)) {
+                consume();
+                op_kind = OP_GE;
+            } else if (check(TokenKind::Less)) {
+                consume();
+                op_kind = OP_LT;
+            } else if (check(TokenKind::Greater)) {
+                consume();
+                op_kind = OP_GT;
             } else if (check(TokenKind::LParen)) {
                 // operator() — function call operator
                 consume(); // eat '('

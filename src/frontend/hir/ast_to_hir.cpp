@@ -5224,6 +5224,10 @@ class Lowerer {
           else if (op_str == "!=") op_name = "operator_neq";
           else if (op_str == "+") op_name = "operator_plus";
           else if (op_str == "-") op_name = "operator_minus";
+          else if (op_str == "<") op_name = "operator_lt";
+          else if (op_str == ">") op_name = "operator_gt";
+          else if (op_str == "<=") op_name = "operator_le";
+          else if (op_str == ">=") op_name = "operator_ge";
           if (op_name) {
             ExprId op = try_lower_operator_call(
                 ctx, n, n->left, op_name, {n->right});

@@ -118,6 +118,10 @@ enum OperatorKind {
     OP_MINUS,       // operator-
     OP_ASSIGN,      // operator=
     OP_CALL,        // operator()
+    OP_LT,          // operator<
+    OP_GT,          // operator>
+    OP_LE,          // operator<=
+    OP_GE,          // operator>=
 };
 
 // Return a canonical mangled suffix for an operator kind (e.g. "operator_subscript").

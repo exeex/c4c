@@ -322,13 +322,21 @@
   - `operator_call_basic.cpp` — Adder(int x), Multiplier(int a, int b), Counter() zero-arg; all return int
 - Suite: 1977/1977 (was 1976)
 
+### Comparison Operators (`operator<`, `operator>`, `operator<=`, `operator>=`)
+- **OP_LT, OP_GT, OP_LE, OP_GE enum values**: added to OperatorKind in ast.hpp
+- **Parser**: `<`, `>`, `<=`, `>=` recognized after `operator` keyword (LessEqual/GreaterEqual checked before Less/Greater)
+- **Mangled names**: `operator_lt`, `operator_gt`, `operator_le`, `operator_ge`
+- **HIR dispatch**: NK_BINOP maps `<`, `>`, `<=`, `>=` ops to `try_lower_operator_call` on struct types
+- Tests:
+  - `operator_compare_basic.cpp` — Val with all 4 comparison operators + == and !=, 16 assertion points
+- Suite: 1978/1978 (was 1977)
+
 ## Next Intended Slice
 ### Recommended next target
 - Next priority:
   1. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
   2. Template member access through T&& params (blocked on template member resolution)
   3. Delegating constructors
-  4. `operator<` / `operator>` / `operator<=` / `operator>=` (comparison operators)
 
 ### Explicitly deferred for now
 - Free-function operator overloading

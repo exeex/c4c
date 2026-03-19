@@ -408,6 +408,10 @@ const char* operator_kind_mangled_name(OperatorKind ok) {
         case OP_MINUS:     return "operator_minus";
         case OP_ASSIGN:    return "operator_assign";
         case OP_CALL:      return "operator_call";
+        case OP_LT:        return "operator_lt";
+        case OP_GT:        return "operator_gt";
+        case OP_LE:        return "operator_le";
+        case OP_GE:        return "operator_ge";
     }
     return nullptr;
 }
