@@ -11,6 +11,20 @@ namespace {
 
 using namespace c4c;
 
+// ── Namespace qualifier formatting ───────────────────────────────────────────
+
+static std::string ns_qual_str(const NamespaceQualifier& q) {
+  if (q.empty()) return {};
+  std::string s = " ns=";
+  if (q.is_global_qualified) s += "::";
+  for (size_t i = 0; i < q.segments.size(); ++i) {
+    if (i > 0) s += "::";
+    s += q.segments[i];
+  }
+  if (q.context_id >= 0) s += "(ctx=" + std::to_string(q.context_id) + ")";
+  return s;
+}
+
 // ── TypeSpec -> readable string ───────────────────────────────────────────────
 
 static std::string ts_str(const TypeSpec& ts) {
@@ -233,7 +247,8 @@ class Printer {
   void print_struct_def(std::ostringstream& out, const HirStructDef& sd) {
     out << "  " << (sd.is_union ? "union " : "struct ") << sd.tag
         << " size=" << sd.size_bytes
-        << " align=" << sd.align_bytes << "\n";
+        << " align=" << sd.align_bytes
+        << ns_qual_str(sd.ns_qual) << "\n";
     for (const auto& field : sd.fields) {
       out << "    field " << field.name << ": " << ts_str(field.elem_type);
       if (field.array_first_dim >= 0) out << "[" << field.array_first_dim << "]";
@@ -256,6 +271,7 @@ class Printer {
 
   void print_global(std::ostringstream& out, const GlobalVar& g) {
     out << "  global " << g.name << ": " << ts_str(g.type.spec);
+    out << ns_qual_str(g.ns_qual);
     if (g.linkage.is_static) out << " static";
     if (g.linkage.is_extern) out << " extern";
     if (g.is_const) out << " const";
@@ -273,6 +289,7 @@ class Printer {
       out << fn.params[i].name << ": " << ts_str(fn.params[i].type.spec);
     }
     out << ") -> " << ts_str(fn.return_type.spec);
+    out << ns_qual_str(fn.ns_qual);
     if (fn.attrs.variadic) out << " variadic";
     if (fn.linkage.is_static) out << " static";
     if (fn.linkage.is_extern) out << " extern";
@@ -475,6 +492,7 @@ class Printer {
     if (x.local) out << "#L" << x.local->value;
     else if (x.param_index) out << "#P" << *x.param_index;
     else if (x.global) out << "#G" << x.global->value;
+    if (!x.ns_qual.empty()) out << ns_qual_str(x.ns_qual);
   }
 
   void print_expr_payload(std::ostringstream& out, const UnaryExpr& x) {

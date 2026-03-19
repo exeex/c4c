@@ -43,6 +43,17 @@ namespace c4c::hir {
 
 using SymbolName = std::string;
 
+/// Structured namespace qualifier preserved from the AST.
+/// Captures the qualifier path (e.g., ["math", "detail"] for math::detail::foo)
+/// and whether the reference was global-qualified (::foo).
+struct NamespaceQualifier {
+  std::vector<std::string> segments;  // qualifier path (empty = unqualified)
+  bool is_global_qualified = false;   // true for ::name or ::ns::name
+  int context_id = -1;               // owning namespace context id (-1 = global/unknown)
+
+  bool empty() const { return segments.empty() && !is_global_qualified; }
+};
+
 /// Non-type template parameter value bindings (forward decl for TemplateCallInfo).
 using NttpBindings = std::unordered_map<std::string, long long>;
 
@@ -193,6 +204,7 @@ struct DeclRef {
   std::optional<LocalId> local;
   std::optional<uint32_t> param_index;
   std::optional<GlobalId> global;
+  NamespaceQualifier ns_qual;  // structured qualifier from source (empty for locals/params)
 };
 
 enum class UnaryOp : uint8_t {
@@ -567,6 +579,7 @@ struct SpecializationKeyHash {
 struct Function {
   FunctionId id{};
   SymbolName name;
+  NamespaceQualifier ns_qual;  // owning namespace context from AST
   QualType return_type{};
   std::vector<Param> params;
   FnAttr attrs{};
@@ -626,6 +639,7 @@ using GlobalInit = std::variant<std::monostate, InitScalar, InitList>;
 struct GlobalVar {
   GlobalId id{};
   SymbolName name;
+  NamespaceQualifier ns_qual;  // owning namespace context from AST
   QualType type{};
   std::optional<FnPtrSig> fn_ptr_sig;
   Linkage linkage{};
@@ -673,6 +687,7 @@ struct HirStructField {
 
 struct HirStructDef {
   SymbolName tag;
+  NamespaceQualifier ns_qual;  // owning namespace context from AST
   bool is_union = false;
   int size_bytes = 0;
   int align_bytes = 1;

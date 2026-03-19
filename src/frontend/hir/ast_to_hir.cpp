@@ -27,6 +27,19 @@ SourceSpan make_span(const Node* n) {
   return s;
 }
 
+/// Build a NamespaceQualifier from an AST node's structured qualifier fields.
+NamespaceQualifier make_ns_qual(const Node* n) {
+  NamespaceQualifier q;
+  if (!n) return q;
+  q.is_global_qualified = n->is_global_qualified;
+  q.context_id = n->namespace_context_id;
+  for (int i = 0; i < n->n_qualifier_segments; ++i) {
+    if (n->qualifier_segments[i])
+      q.segments.emplace_back(n->qualifier_segments[i]);
+  }
+  return q;
+}
+
 std::string decode_string_node(const Node* n) {
   if (!n || n->kind != NK_STR_LIT || !n->sval) return {};
   std::string raw = n->sval;
@@ -603,6 +616,7 @@ class Lowerer {
           Function ce_fn{};
           ce_fn.id = next_fn_id();
           ce_fn.name = item->name ? item->name : "<anon_consteval>";
+          ce_fn.ns_qual = make_ns_qual(item);
           ce_fn.return_type = qtype_from(item->type);
           ce_fn.consteval_only = true;
           ce_fn.span = make_span(item);
@@ -1131,6 +1145,7 @@ class Lowerer {
 
     HirStructDef def;
     def.tag = tag;
+    def.ns_qual = make_ns_qual(sd);
     def.is_union = sd->is_union;
     def.pack_align = sd->pack_align;
     def.struct_align = sd->struct_align;
@@ -1529,6 +1544,7 @@ class Lowerer {
 
       HirStructDef def;
       def.tag = mangled;
+      def.ns_qual = make_ns_qual(tpl_def);
       def.is_union = tpl_def->is_union;
       def.pack_align = tpl_def->pack_align;
       def.struct_align = tpl_def->struct_align;
@@ -1623,6 +1639,7 @@ class Lowerer {
     fn.id = next_fn_id();
     fn.name = name_override ? *name_override
                             : (fn_node->name ? fn_node->name : "<anon_fn>");
+    fn.ns_qual = make_ns_qual(fn_node);
     // Substitute template type parameters in the return type.
     {
       TypeSpec ret_ts = fn_node->type;
@@ -1741,7 +1758,7 @@ class Lowerer {
     module_->fn_index[fn.name] = fn.id;
     if (fn.id.value == module_->functions.size()) {
       // Push a skeleton; will be replaced after body lowering.
-      module_->functions.push_back(Function{fn.id, fn.name, fn.return_type});
+      module_->functions.push_back(Function{fn.id, fn.name, fn.ns_qual, fn.return_type});
     }
 
     const BlockId entry = create_block(ctx);
@@ -1779,6 +1796,7 @@ class Lowerer {
     Function fn{};
     fn.id = next_fn_id();
     fn.name = mangled_name;
+    fn.ns_qual = make_ns_qual(method_node);
     // Substitute template type parameters in the return type.
     {
       TypeSpec ret_ts = method_node->type;
@@ -1866,7 +1884,7 @@ class Lowerer {
 
     module_->fn_index[fn.name] = fn.id;
     if (fn.id.value == module_->functions.size()) {
-      module_->functions.push_back(Function{fn.id, fn.name, fn.return_type});
+      module_->functions.push_back(Function{fn.id, fn.name, fn.ns_qual, fn.return_type});
     }
 
     const BlockId entry = create_block(ctx);
@@ -2231,6 +2249,7 @@ class Lowerer {
     GlobalVar g{};
     g.id = next_global_id();
     g.name = gv->name ? gv->name : "<anon_global>";
+    g.ns_qual = make_ns_qual(gv);
     g.type = qtype_from(gv->type, ValueCategory::LValue);
     g.fn_ptr_sig = fn_ptr_sig_from_decl_node(gv);
     g.linkage = {gv->is_static, gv->is_extern, false, weak_symbols_.count(g.name) > 0,
@@ -5376,6 +5395,7 @@ class Lowerer {
         }
         DeclRef r{};
         r.name = n->name ? n->name : "<anon_var>";
+        r.ns_qual = make_ns_qual(n);
         bool has_local_binding = false;
         if (ctx) {
           auto lit = ctx->locals.find(r.name);
