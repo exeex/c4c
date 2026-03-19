@@ -2,12 +2,15 @@
 
 ## Active Plan
 - Parent: `plan.md` (STL Enablement Umbrella)
-- Active child: `operator_overload_plan.md` — Phase 4 complete, Phase 5 deferred
+- Active child: `iterator_plan.md` — Phases 0–3 complete
+- Previous child: `operator_overload_plan.md` — Phase 4 complete, Phase 5 deferred
 
 ## Current Target
-- **Phase 4: Container-facing operators**: DONE
+- **Iterator Plan Phases 0–3**: DONE
 
 ## Completed Items
+
+### Operator Overload Plan (operator_overload_plan.md)
 - Phase 0, Slice 1: KwOperator token + operator-function declarator parsing + parse tests
   - Added `KwOperator` token kind to lexer
   - Added `OperatorKind` enum to ast.hpp (OP_SUBSCRIPT, OP_DEREF, OP_ARROW, OP_PRE_INC, OP_POST_INC, OP_EQ, OP_NEQ, OP_BOOL, OP_PLUS, OP_MINUS)
@@ -65,9 +68,39 @@
     - `manual_iterator_loop.cpp` — Full integration test: Container with begin()/end(), Iter with operator*/++/!=, manual while loop summing elements
   - Suite: 1921/1921 (was 1916)
 
+### Iterator Plan (iterator_plan.md)
+- Phase 0: Iterator model and test contract
+  - `iterator_contract_basic.cpp` — validates operator*, prefix ++, !=, == on standalone Iter
+  - `container_begin_end_manual_loop.cpp` — for loop with begin/end + iterator operators
+  - All operators and iterator shape work correctly
+  - Suite: 1936/1936 (was 1921)
+
+- Phase 1: Iterator object basics
+  - `iterator_class_basic.cpp` — Iter with fields, method calls (value(), at_end())
+  - `iterator_return_from_method.cpp` — returning Iter from container methods
+  - `iterator_copy_basic.cpp` — copy init, copy assignment, independence after copy
+  - `iterator_const_method_basic.cpp` — const methods on iterator type
+  - All iterator object semantics work correctly
+
+- Phase 2: Operator-dependent iterator surface
+  - `iterator_deref_basic.cpp` — operator* returning int and int*
+  - `iterator_preinc_basic.cpp` — prefix ++ stepping through elements
+  - `iterator_neq_basic.cpp` — operator!= for loop termination
+  - `iterator_eq_basic.cpp` — operator== for equality checks
+  - `iterator_arrow_basic.cpp` — operator-> for field access on Point structs
+  - All required iterator operators work correctly
+
+- Phase 3: Container integration
+  - `begin_end_member_basic.cpp` — basic begin/end returning iterators
+  - `const_begin_end_member.cpp` — const begin/end members
+  - `iterator_pair_loop.cpp` — classic for(it=begin; it!=end; ++it) pattern
+  - `container_iterator_smoke.cpp` — full smoke: multiple containers, sum_all helper, empty container
+  - All container integration patterns work correctly
+
 ## Next Intended Slice
-- Move to `iterator_plan.md` — custom iterator class viability and begin/end member usage
-- Or: Phase 5 (free-function operators) if iterator tests require it
+- Iterator Plan Phase 4: Iterator/container ergonomics (operator->, const_iterator, nested aliases)
+- Or: Operator Overload Phase 5 (free-function operators) if needed
+- Or: Range-for plan (Phase 5 of iterator plan)
 
 ## Known Limitations
 - operator-> chaining (e.g., `a->b->c` where both a and b have operator->) not yet supported
@@ -75,6 +108,7 @@
 - No operator() (function call operator)
 - No parameter-type-based overload resolution for same operator (e.g., `operator-(int)` vs `operator-(Iter)`)
 - Const method dispatch relies on TypeSpec.is_const — const reference parameters work but requires proper const propagation through the type system
+- No `auto` type deduction — iterator tests use explicit type names
 
 ## Notes
 - try_lower_operator_call() builds CallExpr with &obj as implicit this + explicit args
