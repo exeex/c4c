@@ -9,6 +9,42 @@ This plan is not about full move-semantics completeness on day one.
 It is about making `T&&` a first-class language feature with enough semantic
 support to build on later.
 
+## Status
+
+Completed for the current move-aware language-support milestone.
+
+Implemented and validated in-tree:
+
+- parsing and internal representation for `T&&`
+- basic rvalue-reference binding rules for declarations and function calls
+- simple overload distinction between `T&`, `const T&`, and `T&&`
+- constructor and assignment selection needed by small move-aware class tests
+- user-declared move constructor and move assignment usage
+- template `move(x)`-style helper coverage in the narrow supported subset
+
+Validated by in-tree tests including:
+
+- `rvalue_ref_decl_basic.cpp`
+- `rvalue_ref_param_basic.cpp`
+- `rvalue_ref_bind_literal.cpp`
+- `rvalue_ref_bind_temp.cpp`
+- `rvalue_ref_param_call_basic.cpp`
+- `ref_overload_lvalue_vs_rvalue.cpp`
+- `ref_overload_method_basic.cpp`
+- `ref_overload_const_lvalue_vs_rvalue.cpp`
+- `move_ctor_basic.cpp`
+- `move_assign_basic.cpp`
+- `move_ctor_over_copy.cpp`
+- `move_helper_basic.cpp`
+- `template_rvalue_ref_param_basic.cpp`
+
+Not required to close this plan:
+
+- full reference-collapsing parity
+- complete forwarding-reference semantics in all template contexts
+- perfect xvalue/prvalue object-identity modeling
+- broad `std::move` / `std::forward` library parity
+
 ## Why This Needs To Be Its Own Plan
 
 Several upcoming language slices depend on `T&&` directly or indirectly:
@@ -43,8 +79,10 @@ STL or iterator plan.
 - representing rvalue-reference types in the frontend
 - basic binding rules for lvalues vs rvalues
 - function parameters of type `T&&`
-- return types of type `T&&` only if straightforward
+- return types of type `T&&` in the straightforward supported cases
 - enough overload resolution to distinguish `T&` and `T&&` in simple cases
+- move-constructor / move-assignment hooks needed by small class tests
+- narrow `move(x)`-style helper support if required by real tests
 
 ### Out of scope for the first milestone
 
@@ -114,6 +152,8 @@ Teach the parser and internal type model to distinguish `T&&` from `T&`.
 
 - The frontend can parse and preserve `T&&` types distinctly from `T&`.
 
+Status: complete
+
 ## Phase 1: Basic binding rules
 
 ### Objective
@@ -142,6 +182,8 @@ Apply the minimum semantic rules that make rvalue references meaningful.
 
 - Simple `T&&` declarations and parameter passing follow the basic lvalue/rvalue
   split expected by users.
+
+Status: complete
 
 ## Phase 2: Overload distinction for `&` vs `&&`
 
@@ -173,6 +215,8 @@ Make overload sets able to distinguish lvalue-reference and rvalue-reference
 - The compiler picks the expected overload between `&` and `&&` for ordinary
   calls in straightforward cases.
 
+Status: complete
+
 ## Phase 3: Move-oriented object model hooks
 
 ### Objective
@@ -201,6 +245,8 @@ Prepare for move-aware classes without requiring full STL machinery.
 
 - Small classes can declare and use move operations in controlled test cases.
 
+Status: complete
+
 ## Phase 4: Utility-layer enablers
 
 ### Objective
@@ -227,6 +273,8 @@ lean on modern C++ value categories.
 
 - Enough utility-level support exists to write realistic move-aware helper code
   without pretending the entire modern reference model is done.
+
+Status: complete for the narrow helper subset currently exercised by tests
 
 ## Recommended priority
 
@@ -272,6 +320,19 @@ This plan is successful when:
 - basic binding rules behave correctly
 - `&` vs `&&` overloads resolve correctly in simple cases
 - move-oriented class tests can be added without architectural hacks
+
+This definition is now satisfied for the currently supported rvalue-reference
+and move-helper subset. Remaining gaps are quality/parity issues, not blockers
+on closing this plan.
+
+## Known Limitations
+
+- `static_cast<T&&>(lvalue)` coverage exists, but object-identity/xvalue
+  handling is still not full Clang parity in every lowering path
+- forwarding-reference behavior is only supported in narrow, test-driven cases
+- no claim of complete reference-collapsing or universal-reference semantics
+- diagnostics and overload ranking remain intentionally simpler than Clang in
+  edge cases
 
 ## Non-goals
 

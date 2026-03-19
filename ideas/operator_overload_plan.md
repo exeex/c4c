@@ -17,6 +17,32 @@ We need the smallest coherent subset that unlocks:
 - lightweight state checks via `operator bool`
 - optional simple iterator arithmetic via `operator+` / `operator-`
 
+## Status
+
+Completed for the first STL-enablement milestone.
+
+Implemented and validated in-tree:
+
+- member operator declaration parsing and canonical naming
+- member operator call rewriting/lowering through the ordinary call path
+- iterator/container-critical member operators:
+  - `operator[]`
+  - `operator*`
+  - `operator->`
+  - prefix/postfix `operator++`
+  - `operator==`
+  - `operator!=`
+  - `operator bool`
+  - simple member `operator+` / `operator-`
+- const/non-const method selection needed by container-like APIs
+- runtime coverage through iterator/container integration tests
+
+Not required to close this plan:
+
+- non-member/free-function operators
+- ADL-complete operator lookup
+- broad parity with Clang overload ranking
+
 ## Why This Must Be A Separate Prerequisite
 
 `stl_plan.md` currently assumes iterator/container APIs such as:
@@ -301,6 +327,12 @@ iterator ergonomics.
 - Only pursued if container/iterator tests demonstrate that member-only support
   is too limiting.
 
+### Closure decision
+
+- Not required for this plan's definition of done.
+- Leave deferred unless a real iterator/container test is blocked on a
+  non-member operator.
+
 ## Recommended priority
 
 The highest-payoff first batch is:
@@ -345,6 +377,10 @@ This plan is successful when:
 - supported operator expressions resolve semantically
 - lowering/codegen execute those operators through ordinary call paths
 - iterator/container-facing operator tests pass without ad hoc hacks
+
+This definition is now satisfied for the member-operator subset that the STL
+milestones depend on. Phase 5 remains an intentionally deferred extension, not
+an open blocker on plan completion.
 
 ## Non-goals
 
