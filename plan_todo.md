@@ -293,12 +293,22 @@
   - `ctor_init_list_basic.cpp` — Point(a,b):x(a),y(b), Rect 4-member, Counter with expressions, Mixed init-list + body
 - Suite: 1974/1974 (was 1973)
 
+### Member Constructor Calls in Initializer Lists
+- **Parser**: Init list now parses comma-separated args per member: `member(a, b, ...)` and zero-arg `member()`
+- **AST**: Changed `ctor_init_exprs` → `ctor_init_args` (Node***) + `ctor_init_nargs` (int*) for multi-arg support
+- **HIR lowering**: Detects struct-typed members with constructors in `struct_constructors_`; emits `MemberTag__MemberTag(&this->member, args...)` instead of simple assignment; includes overload resolution with ref-qualifier scoring
+- **Sema**: Validates all per-init args via `infer_expr()`
+- Tests:
+  - `ctor_init_member_ctor.cpp` — Inner(int), Pair(int,int) members; Wrapper/Container/Box/TwoInner/Hybrid patterns
+- Suite: 1975/1975 (was 1974)
+
 ## Next Intended Slice
 ### Recommended next target
 - Next priority:
   1. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
   2. Template member access through T&& params (blocked on template member resolution)
-  3. Delegating constructors, or further initializer list features (constructor calls in init list)
+  3. Delegating constructors
+  4. Destructor calls for struct members of struct types
 
 ### Explicitly deferred for now
 - Free-function operator overloading
@@ -319,7 +329,7 @@
 - No full `static_cast` implementation model yet; only baseline named-cast coverage is tracked
 - Constructor overload resolution is basic — scores by param count + base type + ref-qualifier, no implicit conversions across types
 - Destructor calls not emitted for struct members of struct types (only direct locals)
-- Constructor initializer list does not support delegating constructors or member constructor calls (only scalar/expression init)
+- Constructor initializer list does not support delegating constructors (only scalar/member-ctor init)
 
 ## Notes
 - try_lower_operator_call() builds CallExpr with &obj as implicit this + explicit args
@@ -338,4 +348,4 @@
 - Constructor overloads: struct_constructors_ map stores all ctors per tag; scoring considers ref-qualifier match
 - operator= dispatched before fallback memcpy in NK_ASSIGN; uses try_lower_operator_call("operator_assign")
 - try_lower_operator_call now handles ref params: falls back to pending method AST node for param types when fn_index not yet populated
-- Constructor initializer list: parsed after RParen before LBrace; lowered as this->member = expr assignments before body in lower_struct_method
+- Constructor initializer list: parsed after RParen before LBrace; per-init multi-arg support; struct members dispatched to constructor calls, scalar members use direct assignment

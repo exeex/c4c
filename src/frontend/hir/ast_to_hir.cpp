@@ -1871,7 +1871,8 @@ class Lowerer {
       auto sit = module_->struct_defs.find(struct_tag);
       for (int i = 0; i < method_node->n_ctor_inits; ++i) {
         const char* mem_name = method_node->ctor_init_names[i];
-        const Node* init_expr = method_node->ctor_init_exprs[i];
+        int nargs = method_node->ctor_init_nargs[i];
+        Node** args = method_node->ctor_init_args[i];
         // Build this->member as lvalue.
         DeclRef this_ref{};
         this_ref.name = "this";
@@ -1904,16 +1905,110 @@ class Lowerer {
         me.field = mem_name;
         me.is_arrow = true;
         ExprId lhs_id = append_expr(method_node, me, field_ts, ValueCategory::LValue);
-        // Lower the initializer expression.
-        ExprId rhs_id = lower_expr(&ctx, init_expr);
-        // Build assignment.
-        AssignExpr ae{};
-        ae.op = AssignOp::Set;
-        ae.lhs = lhs_id;
-        ae.rhs = rhs_id;
-        ExprId ae_id = append_expr(method_node, ae, field_ts);
-        ExprStmt es{}; es.expr = ae_id;
-        append_stmt(ctx, Stmt{StmtPayload{es}, make_span(method_node)});
+
+        // Check if member is a struct type with constructors — call constructor.
+        bool did_ctor_call = false;
+        if (field_ts.base == TB_STRUCT && field_ts.tag && field_ts.ptr_level == 0) {
+          auto cit = struct_constructors_.find(field_ts.tag);
+          if (cit != struct_constructors_.end() && !cit->second.empty()) {
+            // Resolve best constructor overload.
+            const CtorOverload* best = nullptr;
+            if (cit->second.size() == 1 && cit->second[0].method_node->n_params == nargs) {
+              best = &cit->second[0];
+            } else {
+              int best_score = -1;
+              for (const auto& ov : cit->second) {
+                if (ov.method_node->n_params != nargs) continue;
+                int score = 0;
+                bool viable = true;
+                for (int pi = 0; pi < nargs && viable; ++pi) {
+                  TypeSpec param_ts = ov.method_node->params[pi]->type;
+                  resolve_typedef_to_struct(param_ts);
+                  TypeSpec arg_ts = infer_generic_ctrl_type(&ctx, args[pi]);
+                  bool arg_is_lvalue = is_ast_lvalue(args[pi]);
+                  TypeSpec param_base = param_ts;
+                  param_base.is_lvalue_ref = false;
+                  param_base.is_rvalue_ref = false;
+                  if (param_base.base == arg_ts.base &&
+                      param_base.ptr_level == arg_ts.ptr_level) {
+                    score += 2;
+                    if (param_ts.is_rvalue_ref && !arg_is_lvalue) score += 4;
+                    else if (param_ts.is_rvalue_ref && arg_is_lvalue) viable = false;
+                    else if (param_ts.is_lvalue_ref && arg_is_lvalue) score += 3;
+                    else if (param_ts.is_lvalue_ref && !arg_is_lvalue) score += 1;
+                  } else if (param_base.ptr_level == 0 && arg_ts.ptr_level == 0 &&
+                             param_base.base != TB_STRUCT && arg_ts.base != TB_STRUCT) {
+                    score += 1;
+                  } else {
+                    viable = false;
+                  }
+                }
+                if (viable && score > best_score) {
+                  best_score = score;
+                  best = &ov;
+                }
+              }
+            }
+            if (best) {
+              if (best->method_node->is_deleted) {
+                std::string diag = "error: call to deleted constructor '";
+                diag += field_ts.tag;
+                diag += "'";
+                throw std::runtime_error(diag);
+              }
+              // Emit: MemberTag__MemberTag(&this->member, args...)
+              CallExpr c{};
+              DeclRef callee_ref{};
+              callee_ref.name = best->mangled_name;
+              TypeSpec fn_ts{}; fn_ts.base = TB_VOID;
+              TypeSpec callee_ts = fn_ts; callee_ts.ptr_level++;
+              c.callee = append_expr(method_node, callee_ref, callee_ts);
+              // First arg: &(this->member) as the constructor's this pointer.
+              UnaryExpr addr{};
+              addr.op = UnaryOp::AddrOf;
+              addr.operand = lhs_id;
+              TypeSpec ptr_ts = field_ts; ptr_ts.ptr_level++;
+              c.args.push_back(append_expr(method_node, addr, ptr_ts));
+              // Explicit args — handle reference params.
+              for (int ai = 0; ai < nargs; ++ai) {
+                TypeSpec param_ts = best->method_node->params[ai]->type;
+                resolve_typedef_to_struct(param_ts);
+                if (param_ts.is_rvalue_ref || param_ts.is_lvalue_ref) {
+                  ExprId arg_val = lower_expr(&ctx, args[ai]);
+                  TypeSpec storage_ts = reference_storage_ts(param_ts);
+                  UnaryExpr addr_e{};
+                  addr_e.op = UnaryOp::AddrOf;
+                  addr_e.operand = arg_val;
+                  c.args.push_back(append_expr(args[ai], addr_e, storage_ts));
+                } else {
+                  c.args.push_back(lower_expr(&ctx, args[ai]));
+                }
+              }
+              ExprId call_id = append_expr(method_node, c, fn_ts);
+              ExprStmt es{}; es.expr = call_id;
+              append_stmt(ctx, Stmt{StmtPayload{es}, make_span(method_node)});
+              did_ctor_call = true;
+            }
+          }
+        }
+
+        if (!did_ctor_call) {
+          // Scalar member: simple assignment this->member = expr.
+          if (nargs != 1) {
+            std::string diag = "error: initializer for scalar member '";
+            diag += mem_name;
+            diag += "' must have exactly one argument";
+            throw std::runtime_error(diag);
+          }
+          ExprId rhs_id = lower_expr(&ctx, args[0]);
+          AssignExpr ae{};
+          ae.op = AssignOp::Set;
+          ae.lhs = lhs_id;
+          ae.rhs = rhs_id;
+          ExprId ae_id = append_expr(method_node, ae, field_ts);
+          ExprStmt es{}; es.expr = ae_id;
+          append_stmt(ctx, Stmt{StmtPayload{es}, make_span(method_node)});
+        }
       }
     }
 

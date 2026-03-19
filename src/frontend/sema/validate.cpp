@@ -693,7 +693,9 @@ class Validator {
 
     // Validate constructor initializer list expressions.
     for (int i = 0; i < fn->n_ctor_inits; ++i) {
-      if (fn->ctor_init_exprs[i]) (void)infer_expr(fn->ctor_init_exprs[i]);
+      for (int j = 0; j < fn->ctor_init_nargs[i]; ++j) {
+        if (fn->ctor_init_args[i][j]) (void)infer_expr(fn->ctor_init_args[i][j]);
+      }
     }
 
     if (fn->body) {

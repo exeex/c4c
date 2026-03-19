@@ -1408,29 +1408,44 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 method->params = arena_.alloc_array<Node*>(method->n_params);
                 for (int i = 0; i < method->n_params; ++i) method->params[i] = params[i];
             }
-            // Constructor initializer list: : member(expr), ...
+            // Constructor initializer list: : member(args...), ...
             if (check(TokenKind::Colon)) {
                 consume(); // ':'
                 std::vector<const char*> init_names;
-                std::vector<Node*> init_exprs;
+                std::vector<std::vector<Node*>> init_args_list;
                 while (!at_end() && !check(TokenKind::LBrace)) {
                     if (!check(TokenKind::Identifier)) break;
                     const char* mem_name = arena_.strdup(cur().lexeme);
                     consume(); // member name
                     expect(TokenKind::LParen);
-                    Node* expr = parse_expr();
+                    std::vector<Node*> args;
+                    if (!check(TokenKind::RParen)) {
+                        while (true) {
+                            Node* arg = parse_assign_expr();
+                            if (arg) args.push_back(arg);
+                            if (!match(TokenKind::Comma)) break;
+                        }
+                    }
                     expect(TokenKind::RParen);
                     init_names.push_back(mem_name);
-                    init_exprs.push_back(expr);
+                    init_args_list.push_back(std::move(args));
                     if (!match(TokenKind::Comma)) break;
                 }
                 method->n_ctor_inits = (int)init_names.size();
                 if (method->n_ctor_inits > 0) {
                     method->ctor_init_names = arena_.alloc_array<const char*>(method->n_ctor_inits);
-                    method->ctor_init_exprs = arena_.alloc_array<Node*>(method->n_ctor_inits);
+                    method->ctor_init_args = arena_.alloc_array<Node**>(method->n_ctor_inits);
+                    method->ctor_init_nargs = arena_.alloc_array<int>(method->n_ctor_inits);
                     for (int i = 0; i < method->n_ctor_inits; ++i) {
                         method->ctor_init_names[i] = init_names[i];
-                        method->ctor_init_exprs[i] = init_exprs[i];
+                        method->ctor_init_nargs[i] = (int)init_args_list[i].size();
+                        if (method->ctor_init_nargs[i] > 0) {
+                            method->ctor_init_args[i] = arena_.alloc_array<Node*>(method->ctor_init_nargs[i]);
+                            for (int j = 0; j < method->ctor_init_nargs[i]; ++j)
+                                method->ctor_init_args[i][j] = init_args_list[i][j];
+                        } else {
+                            method->ctor_init_args[i] = nullptr;
+                        }
                     }
                 }
             }

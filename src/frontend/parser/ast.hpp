@@ -324,9 +324,10 @@ struct Node {
     bool is_ctor_init;    // NK_DECL: initialized via constructor call  Type var(args)
     bool is_deleted;      // NK_FUNCTION: = delete (deleted function)
 
-    // C++ constructor initializer list: ClassName(params) : mem1(expr1), mem2(expr2) { body }
+    // C++ constructor initializer list: ClassName(params) : mem1(expr1), mem2(a,b) { body }
     const char** ctor_init_names;  // arena-allocated array of member names
-    Node**       ctor_init_exprs;  // arena-allocated array of init expressions
+    Node***      ctor_init_args;   // arena-allocated: per-init array of arg nodes
+    int*         ctor_init_nargs;  // arena-allocated: per-init argument count
     int          n_ctor_inits;     // number of initializer list items
 };
 
