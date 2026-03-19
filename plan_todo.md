@@ -331,12 +331,22 @@
   - `operator_compare_basic.cpp` — Val with all 4 comparison operators + == and !=, 16 assertion points
 - Suite: 1978/1978 (was 1977)
 
+### Delegating Constructors
+- **HIR lowering**: In constructor init-list processing, detect when init name matches struct tag → delegating constructor call
+- **Overload resolution**: Same scoring algorithm as member-ctor calls; skips self (current ctor) to avoid infinite recursion
+- **Call emission**: Passes `this` directly (already a pointer) to target constructor, handles ref params
+- **Chain delegation**: `Ctor() : Ctor(x)` → `Ctor(int) : Ctor(x, y)` works via constructor overload resolution
+- **Body after delegation**: delegating ctor body executes after target ctor returns
+- Tests:
+  - `delegating_ctor_basic.cpp` — Point/Counter chain delegation, Logger delegation with post-body
+- Suite: 1979/1979 (was 1978)
+
 ## Next Intended Slice
 ### Recommended next target
 - Next priority:
   1. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
   2. Template member access through T&& params (blocked on template member resolution)
-  3. Delegating constructors
+  3. Copy constructor (`T(const T&)`) implicit generation or further testing
 
 ### Explicitly deferred for now
 - Free-function operator overloading
@@ -355,7 +365,6 @@
 - Milestone 3 child plan: `container_plan.md` (Phase 0 complete)
 - No full `static_cast` implementation model yet; only baseline named-cast coverage is tracked
 - Constructor overload resolution is basic — scores by param count + base type + ref-qualifier, no implicit conversions across types
-- Constructor initializer list does not support delegating constructors (only scalar/member-ctor init)
 
 ## Notes
 - try_lower_operator_call() builds CallExpr with &obj as implicit this + explicit args

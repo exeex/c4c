@@ -1881,6 +1881,97 @@ class Lowerer {
         const char* mem_name = method_node->ctor_init_names[i];
         int nargs = method_node->ctor_init_nargs[i];
         Node** args = method_node->ctor_init_args[i];
+
+        // Delegating constructor: init name matches struct tag.
+        if (mem_name == struct_tag || (mem_name && struct_tag == mem_name)) {
+          // Resolve and call target constructor with same 'this' pointer.
+          auto cit = struct_constructors_.find(struct_tag);
+          if (cit == struct_constructors_.end() || cit->second.empty()) {
+            throw std::runtime_error("error: no constructors found for delegating constructor call to '" + struct_tag + "'");
+          }
+          const CtorOverload* best = nullptr;
+          if (cit->second.size() == 1 && cit->second[0].method_node->n_params == nargs) {
+            best = &cit->second[0];
+          } else {
+            int best_score = -1;
+            for (const auto& ov : cit->second) {
+              if (ov.method_node->n_params != nargs) continue;
+              // Skip self (same mangled name as current ctor).
+              if (ov.mangled_name == mangled_name) continue;
+              int score = 0;
+              bool viable = true;
+              for (int pi = 0; pi < nargs && viable; ++pi) {
+                TypeSpec param_ts = ov.method_node->params[pi]->type;
+                resolve_typedef_to_struct(param_ts);
+                TypeSpec arg_ts = infer_generic_ctrl_type(&ctx, args[pi]);
+                bool arg_is_lvalue = is_ast_lvalue(args[pi]);
+                TypeSpec param_base = param_ts;
+                param_base.is_lvalue_ref = false;
+                param_base.is_rvalue_ref = false;
+                if (param_base.base == arg_ts.base &&
+                    param_base.ptr_level == arg_ts.ptr_level) {
+                  score += 2;
+                  if (param_ts.is_rvalue_ref && !arg_is_lvalue) score += 4;
+                  else if (param_ts.is_rvalue_ref && arg_is_lvalue) viable = false;
+                  else if (param_ts.is_lvalue_ref && arg_is_lvalue) score += 3;
+                  else if (param_ts.is_lvalue_ref && !arg_is_lvalue) score += 1;
+                } else if (param_base.ptr_level == 0 && arg_ts.ptr_level == 0 &&
+                           param_base.base != TB_STRUCT && arg_ts.base != TB_STRUCT) {
+                  score += 1;
+                } else {
+                  viable = false;
+                }
+              }
+              if (viable && score > best_score) {
+                best_score = score;
+                best = &ov;
+              }
+            }
+          }
+          if (!best) {
+            throw std::runtime_error("error: no matching constructor for delegating constructor call to '" + struct_tag + "'");
+          }
+          if (best->method_node->is_deleted) {
+            throw std::runtime_error("error: call to deleted constructor '" + struct_tag + "'");
+          }
+          // Emit: Tag__Tag(&this, args...)
+          DeclRef this_ref{};
+          this_ref.name = "this";
+          auto pit = ctx.params.find("this");
+          if (pit != ctx.params.end()) this_ref.param_index = pit->second;
+          TypeSpec this_ts{};
+          this_ts.base = TB_STRUCT;
+          this_ts.tag = struct_tag.c_str();
+          this_ts.ptr_level = 1;
+          ExprId this_id = append_expr(method_node, this_ref, this_ts, ValueCategory::LValue);
+
+          CallExpr c{};
+          DeclRef callee_ref{};
+          callee_ref.name = best->mangled_name;
+          TypeSpec fn_ts{}; fn_ts.base = TB_VOID;
+          TypeSpec callee_ts = fn_ts; callee_ts.ptr_level++;
+          c.callee = append_expr(method_node, callee_ref, callee_ts);
+          c.args.push_back(this_id);  // pass 'this' directly (already a ptr)
+          for (int ai = 0; ai < nargs; ++ai) {
+            TypeSpec param_ts = best->method_node->params[ai]->type;
+            resolve_typedef_to_struct(param_ts);
+            if (param_ts.is_rvalue_ref || param_ts.is_lvalue_ref) {
+              ExprId arg_val = lower_expr(&ctx, args[ai]);
+              TypeSpec storage_ts = reference_storage_ts(param_ts);
+              UnaryExpr addr_e{};
+              addr_e.op = UnaryOp::AddrOf;
+              addr_e.operand = arg_val;
+              c.args.push_back(append_expr(args[ai], addr_e, storage_ts));
+            } else {
+              c.args.push_back(lower_expr(&ctx, args[ai]));
+            }
+          }
+          ExprId call_id = append_expr(method_node, c, fn_ts);
+          ExprStmt es{}; es.expr = call_id;
+          append_stmt(ctx, Stmt{StmtPayload{es}, make_span(method_node)});
+          continue;  // skip normal member init processing
+        }
+
         // Build this->member as lvalue.
         DeclRef this_ref{};
         this_ref.name = "this";
