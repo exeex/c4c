@@ -8,6 +8,7 @@
 
 ## Current Target
 - **Range-For Phase 1**: DONE (auto type deduction)
+- **Next target**: `plan.md` Milestone 3 — Small vector-like usability
 
 ## Completed Items
 
@@ -137,8 +138,56 @@
 - Suite: 1943/1943 (was 1941)
 
 ## Next Intended Slice
-- Operator Overload Phase 5 (free-function operators) if needed
-- Or: additional range-for features (auto&, structured bindings)
+### Recommended next milestone
+- Move the active implementation focus from `range_for_plan.md` back to the umbrella plan target in `plan.md`
+- Treat **Milestone 3: Small vector-like usability** as the next primary deliverable
+- Keep `operator_overload_plan.md` Phase 5 (free-function operators) deferred unless a real container test proves it is required
+- Keep `rvalue_ref_plan.md` deferred until value-move behavior becomes necessary for realistic container mutation paths
+
+### Why this is next
+- `plan.md` defines `range-for` as ergonomics on top of iterator support, not the end goal
+- Iterator support and first range-for slices are already in place, so the highest-value next step is validating that they unlock a real container-shaped abstraction
+- This closes the gap between "language features landed" and "STL-like code actually feels usable"
+
+### Next execution plan
+
+#### Step 1: Create a dedicated Milestone 3 child plan
+- Add a new child plan file for minimal container usability, or expand `iterator_plan.md` only if the scope stays narrowly iterator/container-facing
+- Parent it under `plan.md` as the concrete owner for vector-like usability work
+- Define success around a **small fixed-storage or simple-owned-storage container**, not full `std::vector` parity
+
+#### Step 2: Lock the first acceptance tests
+- Add positive tests for:
+  - `size()`, `empty()`, `data()`
+  - `front()`, `back()`
+  - `operator[]` with const/non-const access
+  - `begin()` / `end()` plus both manual loop and `range-for`
+  - happy-path `push_back()` / `pop_back()` if the current object model can already support them
+- Add a smoke test for a vector-like container that exercises these APIs together instead of testing each method in isolation
+
+#### Step 3: Audit blockers before implementation
+- Verify whether current object/class semantics already cover:
+  - field mutation through methods
+  - returning pointers/references from methods
+  - const method dispatch for container accessors
+  - copying container/iterator values without accidental aliasing bugs
+- If any of those fail, record them as the actual blockers rather than jumping ahead to unrelated language features
+
+#### Step 4: Land the minimum container-usable slice
+- Implement only the minimum frontend/compiler work required to make the Milestone 3 smoke tests pass
+- Prefer fixed-storage first if dynamic ownership would drag in unrelated runtime/model work
+- Reuse the already-landed operator and iterator machinery instead of broadening overload support early
+
+#### Step 5: Re-evaluate after Milestone 3
+- If the remaining friction is mostly syntax ergonomics, continue `range_for_plan.md` with `auto&` and `const auto&`
+- If the remaining friction is operator expressiveness, resume `operator_overload_plan.md` Phase 5 for free-function operators
+- If the remaining friction is container mutation/copy cost, start `rvalue_ref_plan.md` Phase 0
+
+### Explicitly deferred for now
+- Free-function operator overloading
+- Structured bindings in range-for
+- General `auto` deduction outside range-for
+- Rvalue references and move operations before a container test demonstrates the need
 
 ## Known Limitations
 - No free-function (non-member) operators
@@ -149,6 +198,7 @@
 - No `using` alias declarations (only `typedef`)
 - Range-for does not support `auto&` / `const auto&` reference loop variable types yet
 - `auto` type deduction only works in range-for context, not general variable declarations
+- No dedicated Milestone 3 container-usability child plan exists yet
 
 ## Notes
 - try_lower_operator_call() builds CallExpr with &obj as implicit this + explicit args
