@@ -341,12 +341,22 @@
   - `delegating_ctor_basic.cpp` — Point/Counter chain delegation, Logger delegation with post-body
 - Suite: 1979/1979 (was 1978)
 
+### Copy Initialization (`T var = expr;`)
+- **HIR lowering**: When `T var = expr;` (not `is_ctor_init`, not init-list) and T is a struct with a copy/move constructor, emit constructor call instead of memcpy
+- **`is_struct_copy_init` detection**: checks `struct_constructors_` for single-param ctors with `const T&` or `T&&` param matching struct tag
+- **Overload resolution**: scores T&& for rvalue (4), const T& for lvalue (3), const T& for rvalue (1); T&& rejects lvalue
+- **Init skipped**: `d.init` not set for copy-init structs; constructor call emitted after LocalDecl
+- Tests:
+  - `copy_init_basic.cpp` — `Obj b = a;` calls copy ctor (value + 100 distinguishes from memcpy)
+  - `copy_move_init_basic.cpp` — lvalue selects copy ctor, `static_cast<T&&>` selects move ctor
+- Suite: 1981/1981 (was 1979)
+
 ## Next Intended Slice
 ### Recommended next target
 - Next priority:
-  1. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
-  2. Template member access through T&& params (blocked on template member resolution)
-  3. Copy constructor (`T(const T&)`) implicit generation or further testing
+  1. `= default` syntax for special member functions (defaulted copy/move/default ctor)
+  2. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
+  3. Template member access through T&& params (blocked on template member resolution)
 
 ### Explicitly deferred for now
 - Free-function operator overloading

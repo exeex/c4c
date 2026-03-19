@@ -2327,6 +2327,30 @@ class Lowerer {
     const bool use_array_init_fast_path =
         is_array_with_init_list && !d.type.spec.is_vector &&
         can_fast_path_scalar_array_init(n->init);
+    // C++ copy initialization: T var = expr; where T has a copy/move constructor.
+    // Detect this early so we can skip setting d.init (the ctor call is emitted
+    // after the decl, similar to the is_ctor_init path).
+    bool is_struct_copy_init = false;
+    if (n->init && !n->is_ctor_init && n->init->kind != NK_INIT_LIST &&
+        d.type.spec.base == TB_STRUCT && d.type.spec.ptr_level == 0 &&
+        d.type.spec.array_rank == 0 && d.type.spec.tag &&
+        !is_lvalue_ref_ts(n->type) && !n->type.is_rvalue_ref) {
+      auto cit = struct_constructors_.find(d.type.spec.tag);
+      if (cit != struct_constructors_.end()) {
+        // Check if any constructor takes a single param of same struct type (copy/move ctor).
+        for (const auto& ov : cit->second) {
+          if (ov.method_node->n_params == 1) {
+            TypeSpec param_ts = ov.method_node->params[0]->type;
+            resolve_typedef_to_struct(param_ts);
+            if (param_ts.tag && strcmp(param_ts.tag, d.type.spec.tag) == 0 &&
+                (param_ts.is_lvalue_ref || param_ts.is_rvalue_ref)) {
+              is_struct_copy_init = true;
+              break;
+            }
+          }
+        }
+      }
+    }
     if (is_lvalue_ref_ts(n->type) && n->init) {
       UnaryExpr addr{};
       addr.op = UnaryOp::AddrOf;
@@ -2357,7 +2381,7 @@ class Lowerer {
       addr.operand = var_id;
       d.init = append_expr(n->init, addr, d.type.spec);
     } else if (!is_array_with_init_list && !is_array_with_string_init &&
-               !is_struct_with_init_list && n->init)
+               !is_struct_with_init_list && !is_struct_copy_init && n->init)
       d.init = lower_expr(&ctx, n->init);
     // For aggregate init lists / string array init, emit zeroinitializer first
     // then overlay explicit element/field assignments below.
@@ -2550,6 +2574,79 @@ class Lowerer {
           addr.operand = var_id;
           TypeSpec ptr_ts = decl_ts; ptr_ts.ptr_level++;
           c.args.push_back(append_expr(n, addr, ptr_ts));
+          ExprId call_id = append_expr(n, c, fn_ts);
+          ExprStmt es{}; es.expr = call_id;
+          append_stmt(ctx, Stmt{StmtPayload{es}, make_span(n)});
+        }
+      }
+    }
+
+    // C++ copy initialization: T var = expr; → call copy/move constructor.
+    if (is_struct_copy_init) {
+      auto cit = struct_constructors_.find(decl_ts.tag);
+      if (cit != struct_constructors_.end() && !cit->second.empty()) {
+        // Score constructors: prefer T&& for rvalue, const T& for lvalue.
+        bool init_is_lvalue = is_ast_lvalue(n->init);
+        const CtorOverload* best = nullptr;
+        int best_score = -1;
+        for (const auto& ov : cit->second) {
+          if (ov.method_node->n_params != 1) continue;
+          TypeSpec param_ts = ov.method_node->params[0]->type;
+          resolve_typedef_to_struct(param_ts);
+          if (!param_ts.tag || strcmp(param_ts.tag, decl_ts.tag) != 0) continue;
+          if (!param_ts.is_lvalue_ref && !param_ts.is_rvalue_ref) continue;
+          int score = 0;
+          if (param_ts.is_rvalue_ref && !init_is_lvalue) {
+            score = 4;  // rvalue ref matches rvalue arg
+          } else if (param_ts.is_rvalue_ref && init_is_lvalue) {
+            continue;  // T&& cannot bind lvalue — skip
+          } else if (param_ts.is_lvalue_ref && init_is_lvalue) {
+            score = 3;  // const T& matches lvalue
+          } else if (param_ts.is_lvalue_ref && !init_is_lvalue) {
+            score = 1;  // const T& can bind rvalue (lower priority)
+          }
+          if (score > best_score) {
+            best_score = score;
+            best = &ov;
+          }
+        }
+        if (best) {
+          if (best->method_node->is_deleted) {
+            std::string diag = "error: call to deleted constructor '";
+            diag += decl_ts.tag;
+            diag += "'";
+            throw std::runtime_error(diag);
+          }
+          CallExpr c{};
+          DeclRef callee_ref{};
+          callee_ref.name = best->mangled_name;
+          TypeSpec fn_ts{}; fn_ts.base = TB_VOID;
+          TypeSpec callee_ts = fn_ts; callee_ts.ptr_level++;
+          c.callee = append_expr(n, callee_ref, callee_ts);
+          // First arg: &var (this pointer).
+          DeclRef var_ref{};
+          var_ref.name = n->name ? n->name : "<anon_local>";
+          var_ref.local = lid;
+          ExprId var_id = append_expr(n, var_ref, decl_ts, ValueCategory::LValue);
+          UnaryExpr addr{};
+          addr.op = UnaryOp::AddrOf;
+          addr.operand = var_id;
+          TypeSpec ptr_ts = decl_ts; ptr_ts.ptr_level++;
+          c.args.push_back(append_expr(n, addr, ptr_ts));
+          // Second arg: the init expression (passed as &expr for ref param).
+          TypeSpec param_ts = best->method_node->params[0]->type;
+          resolve_typedef_to_struct(param_ts);
+          if (param_ts.is_lvalue_ref || param_ts.is_rvalue_ref) {
+            // Reference param: pass address of init expression.
+            ExprId init_val = lower_expr(&ctx, n->init);
+            UnaryExpr addr_e{};
+            addr_e.op = UnaryOp::AddrOf;
+            addr_e.operand = init_val;
+            TypeSpec storage_ts = decl_ts; storage_ts.ptr_level++;
+            c.args.push_back(append_expr(n->init, addr_e, storage_ts));
+          } else {
+            c.args.push_back(lower_expr(&ctx, n->init));
+          }
           ExprId call_id = append_expr(n, c, fn_ts);
           ExprStmt es{}; es.expr = call_id;
           append_stmt(ctx, Stmt{StmtPayload{es}, make_span(n)});
