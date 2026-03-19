@@ -2566,6 +2566,13 @@ class Lowerer {
     return best_name ? *best_name : base_name;
   }
 
+  const Node* find_pending_method_by_mangled(const std::string& mangled_name) const {
+    for (const auto& pm : pending_methods_) {
+      if (pm.mangled == mangled_name) return pm.method_node;
+    }
+    return nullptr;
+  }
+
   ExprId lower_call_expr(FunctionCtx* ctx, const Node* n) {
     if (auto consteval_expr = try_lower_consteval_call_expr(ctx, n)) {
       return *consteval_expr;
@@ -2574,6 +2581,7 @@ class Lowerer {
     CallExpr c{};
     auto maybe_lower_ref_arg = [&](const Node* arg_node, const TypeSpec* param_ts) -> ExprId {
       if (!param_ts || (!param_ts->is_lvalue_ref && !param_ts->is_rvalue_ref)) return lower_expr(ctx, arg_node);
+      TypeSpec storage_ts = reference_storage_ts(*param_ts);
       if (param_ts->is_rvalue_ref) {
         // Rvalue ref param: materialize arg into a temporary, then pass &temp
         ExprId arg_val = lower_expr(ctx, arg_node);
@@ -2594,12 +2602,12 @@ class Lowerer {
         UnaryExpr addr{};
         addr.op = UnaryOp::AddrOf;
         addr.operand = var_id;
-        return append_expr(arg_node, addr, *param_ts);
+        return append_expr(arg_node, addr, storage_ts);
       }
       UnaryExpr addr{};
       addr.op = UnaryOp::AddrOf;
       addr.operand = lower_expr(ctx, arg_node);
-      return append_expr(arg_node, addr, *param_ts);
+      return append_expr(arg_node, addr, storage_ts);
     };
     auto direct_callee_fn = [&](const std::string& name) -> const Function* {
       auto fit = module_->fn_index.find(name);
@@ -2655,12 +2663,13 @@ class Lowerer {
             ptr_ts.ptr_level++;
             c.args.push_back(append_expr(base_node, addr, ptr_ts));
           }
-          const Function* callee_fn = direct_callee_fn(resolved_method);
+          const Node* callee_method = find_pending_method_by_mangled(resolved_method);
           for (int i = 0; i < n->n_children; ++i) {
-            const TypeSpec* param_ts =
-                (callee_fn && static_cast<size_t>(i + 1) < callee_fn->params.size())
-                    ? &callee_fn->params[static_cast<size_t>(i + 1)].type.spec
-                    : nullptr;
+            const TypeSpec* param_ts = nullptr;
+            if (callee_method && i < callee_method->n_params &&
+                callee_method->params[i]) {
+              param_ts = &callee_method->params[i]->type;
+            }
             c.args.push_back(maybe_lower_ref_arg(n->children[i], param_ts));
           }
           TypeSpec ts = n->type;

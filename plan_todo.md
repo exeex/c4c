@@ -203,8 +203,22 @@
 - Tests:
   - `ref_overload_lvalue_vs_rvalue.cpp` — free function `f(int&)` vs `f(int&&)`, lvalue/rvalue dispatch
   - `ref_overload_method_basic.cpp` — struct method `set(int&)` vs `set(int&&)`, lvalue/rvalue dispatch
+  - `ref_overload_method_reads_arg.cpp` — method ref-overload call must pass the bound object's address, not coerce the argument value to a pointer
   - `ref_overload_const_lvalue_vs_rvalue.cpp` — `f(const int&)` vs `f(int&&)`, rvalue prefers T&&
 - Suite: 1955/1955 (was 1952)
+
+### Named Cast Coverage
+- `static_cast_basic.cpp` — baseline `static_cast<T>(expr)` coverage for scalar conversions, expression contexts, consteval calls, and template code
+- `static_cast_rvalue_ref_basic.cpp` — `static_cast<T&&>(lvalue)` coverage for rvalue-ref overload selection and `int&&` parameter binding
+  - Current observation: this test passes, and `static_cast<int&&>(a)` is treated as an rvalue for overload resolution/binding
+  - IR limitation: lowering currently materializes a fresh temporary from `a` and passes the temp address, instead of treating `a` itself as an xvalue view
+  - Clang comparison: Clang passes the original object's address for `static_cast<int&&>(a)`; our IR currently does `load a -> store temp -> pass &temp`
+  - Recommended fix:
+    - Teach sema/HIR to distinguish "same-object xvalue" from ordinary prvalue temporaries
+    - Special-case `static_cast<T&&>(lvalue)` so it preserves object identity instead of forcing materialization
+    - Update ref-overload resolution to use value category metadata rather than simple AST-kind heuristics when a cast produces xvalue
+    - Lower xvalue reference arguments by passing the original object's address directly; keep temp materialization only for true prvalues
+    - Add a follow-up regression where mutating through `int&&` after `static_cast<int&&>(a)` is observed through `a`, to prove same-object binding
 
 ## Next Intended Slice
 ### Recommended next target
@@ -217,7 +231,7 @@
 - Free-function operator overloading
 - Structured bindings in range-for
 - General `auto` deduction outside range-for
-- `static_cast<T&&>` / `std::move` support
+- Full `static_cast<T&&>` / `std::move` semantics beyond the current basic cast and test coverage
 - Ambiguous overload detection (bad_ref_overload_ambiguous.cpp)
 
 ## Known Limitations
@@ -229,7 +243,8 @@
 - No `using` alias declarations (only `typedef`)
 - `auto` type deduction only works in range-for context, not general variable declarations
 - Milestone 3 child plan: `container_plan.md` (Phase 0 complete)
-- No `static_cast`, so T&& return from function requires workaround
+- No full `static_cast` implementation model yet; only baseline named-cast coverage is tracked, and xvalue/category semantics still need a dedicated slice
+- `static_cast<T&&>(lvalue)` currently behaves as "copy value into temp, then bind T&& to temp" in IR; this is sufficient for basic overload selection but does not preserve same-object xvalue identity like Clang
 - Ref-overload resolution limited to simple lvalue/rvalue detection via AST node kind
 
 ## Notes
