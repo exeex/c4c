@@ -536,6 +536,63 @@ class Lowerer {
       m.template_defs[name] = std::move(tdef);
     });
 
+    // Phase 1.9: detect ref-overloaded free functions (e.g. f(T&) vs f(T&&)).
+    // Build overload sets so Phase 2 can mangle them to unique names.
+    {
+      // Track first occurrence of each function name and its param ref pattern.
+      std::unordered_map<std::string, const Node*> first_fn_decl;
+      for (const Node* item : items) {
+        if (item->kind != NK_FUNCTION || !item->name || item->is_consteval
+            || item->n_template_params > 0 || item->is_explicit_specialization)
+          continue;
+        std::string fn_name = item->name;
+        auto prev_it = first_fn_decl.find(fn_name);
+        if (prev_it == first_fn_decl.end()) {
+          first_fn_decl[fn_name] = item;
+          continue;
+        }
+        // Check if the param lists differ only in ref-qualifiers.
+        const Node* prev = prev_it->second;
+        if (prev->n_params != item->n_params) continue;
+        bool has_ref_diff = false;
+        bool base_match = true;
+        for (int pi = 0; pi < item->n_params; ++pi) {
+          const TypeSpec& a = prev->params[pi]->type;
+          const TypeSpec& b = item->params[pi]->type;
+          if (a.is_lvalue_ref != b.is_lvalue_ref || a.is_rvalue_ref != b.is_rvalue_ref)
+            has_ref_diff = true;
+          // Compare base types (ignoring ref/const qualifiers).
+          if (a.base != b.base || a.ptr_level != b.ptr_level) { base_match = false; break; }
+          if ((a.base == TB_STRUCT || a.base == TB_UNION) && a.tag && b.tag) {
+            if (std::string(a.tag) != std::string(b.tag)) { base_match = false; break; }
+          }
+        }
+        if (!has_ref_diff || !base_match) continue;
+        // This is a ref-overload pair. Register both in the overload set.
+        auto& ovset = ref_overload_set_[fn_name];
+        if (ovset.empty()) {
+          // Register the first overload.
+          RefOverloadEntry e0;
+          e0.mangled_name = fn_name;
+          for (int pi = 0; pi < prev->n_params; ++pi) {
+            e0.param_is_rvalue_ref.push_back(prev->params[pi]->type.is_rvalue_ref);
+            e0.param_is_lvalue_ref.push_back(prev->params[pi]->type.is_lvalue_ref);
+          }
+          ovset.push_back(std::move(e0));
+          ref_overload_mangled_[prev] = fn_name;
+        }
+        // Register the new overload with a mangled name.
+        RefOverloadEntry e1;
+        e1.mangled_name = fn_name + "__rref_overload";
+        for (int pi = 0; pi < item->n_params; ++pi) {
+          e1.param_is_rvalue_ref.push_back(item->params[pi]->type.is_rvalue_ref);
+          e1.param_is_lvalue_ref.push_back(item->params[pi]->type.is_lvalue_ref);
+        }
+        ovset.push_back(std::move(e1));
+        ref_overload_mangled_[item] = fn_name + "__rref_overload";
+      }
+    }
+
     // Phase 2: lower functions and globals
     for (const Node* item : items) {
       if (item->kind == NK_FUNCTION) {
@@ -595,7 +652,12 @@ class Lowerer {
             lower_function(item);
           }
         } else if (!item->is_explicit_specialization) {
-          lower_function(item);
+          auto ovit = ref_overload_mangled_.find(item);
+          if (ovit != ref_overload_mangled_.end()) {
+            lower_function(item, &ovit->second);
+          } else {
+            lower_function(item);
+          }
         }
       } else if (item->kind == NK_GLOBAL_VAR) {
         lower_global(item);
@@ -1222,6 +1284,37 @@ class Lowerer {
       const char* const_suffix = method->is_const_method ? "_const" : "";
       std::string mangled = std::string(tag) + "__" + method->name + const_suffix;
       std::string key = std::string(tag) + "::" + method->name + const_suffix;
+      // Detect ref-overloaded methods: if this key already exists, check for
+      // ref-qualifier difference and register in the overload set.
+      if (struct_methods_.count(key)) {
+        // This is a second overload of the same method — mangle differently.
+        mangled += "__rref";
+        // Register both in the ref_overload_set_ for call-site resolution.
+        auto& ovset = ref_overload_set_[key];
+        if (ovset.empty()) {
+          // Register the first overload.
+          RefOverloadEntry e0;
+          e0.mangled_name = struct_methods_[key];
+          // Find the first method's params from pending_methods_.
+          for (const auto& pm : pending_methods_) {
+            if (pm.mangled == struct_methods_[key]) {
+              for (int pi = 0; pi < pm.method_node->n_params; ++pi) {
+                e0.param_is_rvalue_ref.push_back(pm.method_node->params[pi]->type.is_rvalue_ref);
+                e0.param_is_lvalue_ref.push_back(pm.method_node->params[pi]->type.is_lvalue_ref);
+              }
+              break;
+            }
+          }
+          ovset.push_back(std::move(e0));
+        }
+        RefOverloadEntry e1;
+        e1.mangled_name = mangled;
+        for (int pi = 0; pi < method->n_params; ++pi) {
+          e1.param_is_rvalue_ref.push_back(method->params[pi]->type.is_rvalue_ref);
+          e1.param_is_lvalue_ref.push_back(method->params[pi]->type.is_lvalue_ref);
+        }
+        ovset.push_back(std::move(e1));
+      }
       struct_methods_[key] = mangled;
       struct_method_ret_types_[key] = method->type;
       pending_methods_.push_back({mangled, std::string(tag), method,
@@ -2436,6 +2529,43 @@ class Lowerer {
     return append_expr(n, std::move(pce), ts);
   }
 
+  // Check if an AST expression is an lvalue (variable, subscript, deref, member).
+  static bool is_ast_lvalue(const Node* n) {
+    if (!n) return false;
+    switch (n->kind) {
+      case NK_VAR: case NK_INDEX: case NK_DEREF: case NK_MEMBER:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  // Resolve a ref-overloaded function call: pick the best overload based on
+  // argument value categories. Returns the mangled name of the best match,
+  // or empty string if no overload set exists.
+  std::string resolve_ref_overload(const std::string& base_name, const Node* call_node) {
+    auto ovit = ref_overload_set_.find(base_name);
+    if (ovit == ref_overload_set_.end()) return {};
+    const auto& overloads = ovit->second;
+    const std::string* best_name = nullptr;
+    int best_score = -1;
+    for (const auto& ov : overloads) {
+      bool viable = true;
+      int score = 0;
+      for (int i = 0; i < call_node->n_children && i < static_cast<int>(ov.param_is_rvalue_ref.size()); ++i) {
+        bool arg_is_lvalue = is_ast_lvalue(call_node->children[i]);
+        if (ov.param_is_lvalue_ref[static_cast<size_t>(i)] && !arg_is_lvalue) { viable = false; break; }
+        if (ov.param_is_rvalue_ref[static_cast<size_t>(i)] && arg_is_lvalue) { viable = false; break; }
+        // Exact match scores higher.
+        if (ov.param_is_rvalue_ref[static_cast<size_t>(i)] && !arg_is_lvalue) score += 2;
+        else if (ov.param_is_lvalue_ref[static_cast<size_t>(i)] && arg_is_lvalue) score += 2;
+        else score += 1;
+      }
+      if (viable && score > best_score) { best_name = &ov.mangled_name; best_score = score; }
+    }
+    return best_name ? *best_name : base_name;
+  }
+
   ExprId lower_call_expr(FunctionCtx* ctx, const Node* n) {
     if (auto consteval_expr = try_lower_consteval_call_expr(ctx, n)) {
       return *consteval_expr;
@@ -2498,7 +2628,13 @@ class Lowerer {
         }
         if (mit != struct_methods_.end()) {
           DeclRef dr{};
-          dr.name = mit->second;
+          // Check for ref-overloaded methods and resolve based on arg value categories.
+          std::string resolved_method = mit->second;
+          auto ovit = ref_overload_set_.find(mit->first);
+          if (ovit != ref_overload_set_.end() && !ovit->second.empty()) {
+            resolved_method = resolve_ref_overload(mit->first, n);
+          }
+          dr.name = resolved_method;
           auto fit = module_->fn_index.find(dr.name);
           TypeSpec fn_ts{};
           fn_ts.base = TB_VOID;
@@ -2519,7 +2655,7 @@ class Lowerer {
             ptr_ts.ptr_level++;
             c.args.push_back(append_expr(base_node, addr, ptr_ts));
           }
-          const Function* callee_fn = direct_callee_fn(mit->second);
+          const Function* callee_fn = direct_callee_fn(resolved_method);
           for (int i = 0; i < n->n_children; ++i) {
             const TypeSpec* param_ts =
                 (callee_fn && static_cast<size_t>(i + 1) < callee_fn->params.size())
@@ -2529,7 +2665,7 @@ class Lowerer {
           }
           TypeSpec ts = n->type;
           if (ts.base == TB_VOID && ts.ptr_level == 0) {
-            auto mfit = module_->fn_index.find(mit->second);
+            auto mfit = module_->fn_index.find(resolved_method);
             if (mfit != module_->fn_index.end() &&
                 mfit->second.value < module_->functions.size())
               ts = module_->functions[mfit->second.value].return_type.spec;
@@ -2599,7 +2735,24 @@ class Lowerer {
       }
       c.template_info = std::move(tci);
     } else {
-      c.callee = lower_expr(ctx, n->left);
+      // Check for ref-overloaded function call.
+      if (n->left && n->left->kind == NK_VAR && n->left->name &&
+          ref_overload_set_.count(n->left->name)) {
+        resolved_callee_name = resolve_ref_overload(n->left->name, n);
+        DeclRef dr{};
+        dr.name = resolved_callee_name;
+        auto fit = module_->fn_index.find(dr.name);
+        if (fit != module_->fn_index.end() &&
+            fit->second.value < module_->functions.size()) {
+          TypeSpec fn_ts = module_->functions[fit->second.value].return_type.spec;
+          fn_ts.ptr_level++;
+          c.callee = append_expr(n->left, dr, fn_ts);
+        } else {
+          c.callee = append_expr(n->left, dr, n->left->type);
+        }
+      } else {
+        c.callee = lower_expr(ctx, n->left);
+      }
     }
     c.builtin_id = n->builtin_id;
     const Function* callee_fn = !resolved_callee_name.empty()
@@ -5721,6 +5874,15 @@ class Lowerer {
     NttpBindings nttp_bindings;
   };
   std::unordered_map<const Node*, DeducedTemplateCall> deduced_template_calls_;
+  // Ref-overload resolution: base function name → list of overload entries.
+  struct RefOverloadEntry {
+    std::string mangled_name;
+    std::vector<bool> param_is_rvalue_ref;
+    std::vector<bool> param_is_lvalue_ref;
+  };
+  std::unordered_map<std::string, std::vector<RefOverloadEntry>> ref_overload_set_;
+  // Reverse mapping: AST Node* of overloaded function → mangled name.
+  std::unordered_map<const Node*, std::string> ref_overload_mangled_;
   // Marks lowering performed on behalf of the compile-time engine so pending
   // consteval nodes can preserve deferred-instantiation provenance.
   bool lowering_deferred_instantiation_ = false;

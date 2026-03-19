@@ -192,20 +192,33 @@
   - `bad_rvalue_ref_param_lvalue.cpp` — `consume(x)` with `int&&` param rejected
 - Suite: 1952/1952 (was 1947)
 
+### Rvalue Reference Plan Phase 2 (rvalue_ref_plan.md)
+- **Sema**: `canonicalize_param_type` preserves ref qualifiers across `decay_array` (was stripping them)
+- **Sema**: `is_ref_overload()` helper detects function declarations that differ only in ref-qualifier params
+- **Sema**: `ref_overload_sigs_` stores multiple overloads per function name; call validation picks best viable overload by argument value category scoring
+- **HIR**: Phase 1.9 pre-scan detects ref-overloaded free functions; second overload gets `__rref_overload` suffix
+- **HIR**: Struct method ref-overloads detected during method collection; second overload gets `__rref` suffix
+- **HIR**: `resolve_ref_overload()` at call sites determines arg lvalue/rvalue status via `is_ast_lvalue()`, picks best overload by score
+- **HIR**: Method call dispatch uses resolved overload name for callee lookup and param coercion
+- Tests:
+  - `ref_overload_lvalue_vs_rvalue.cpp` — free function `f(int&)` vs `f(int&&)`, lvalue/rvalue dispatch
+  - `ref_overload_method_basic.cpp` — struct method `set(int&)` vs `set(int&&)`, lvalue/rvalue dispatch
+  - `ref_overload_const_lvalue_vs_rvalue.cpp` — `f(const int&)` vs `f(int&&)`, rvalue prefers T&&
+- Suite: 1955/1955 (was 1952)
+
 ## Next Intended Slice
 ### Recommended next target
-- **Rvalue ref Phase 1 is complete** — binding rules enforced
+- **Rvalue ref Phase 2 is complete** — overload distinction for `&` vs `&&`
 - Next priority:
-  1. `rvalue_ref_plan.md` Phase 2: overload distinction for `&` vs `&&`
+  1. `rvalue_ref_plan.md` Phase 3: move constructor / move assignment
   2. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
-  3. `rvalue_ref_plan.md` Phase 3: move constructor / move assignment
 
 ### Explicitly deferred for now
 - Free-function operator overloading
 - Structured bindings in range-for
 - General `auto` deduction outside range-for
-- Move constructor / move assignment (Phase 3)
 - `static_cast<T&&>` / `std::move` support
+- Ambiguous overload detection (bad_ref_overload_ambiguous.cpp)
 
 ## Known Limitations
 - No free-function (non-member) operators
@@ -217,7 +230,7 @@
 - `auto` type deduction only works in range-for context, not general variable declarations
 - Milestone 3 child plan: `container_plan.md` (Phase 0 complete)
 - No `static_cast`, so T&& return from function requires workaround
-- No overload resolution between T& and T&& parameter variants
+- Ref-overload resolution limited to simple lvalue/rvalue detection via AST node kind
 
 ## Notes
 - try_lower_operator_call() builds CallExpr with &obj as implicit this + explicit args

@@ -162,7 +162,12 @@ bool is_switch_integer_type(const TypeSpec& ts_raw) {
 
 TypeSpec canonicalize_param_type(TypeSpec ts) {
   // C function parameter adjustment: array/function parameters adjust to pointers.
+  // Preserve ref qualifiers across decay_array (which strips them for its own purposes).
+  const bool save_lref = ts.is_lvalue_ref;
+  const bool save_rref = ts.is_rvalue_ref;
   ts = decay_array(ts);
+  ts.is_lvalue_ref = save_lref;
+  ts.is_rvalue_ref = save_rref;
   // C11 6.7.6.3p8: a parameter of function type adjusts to pointer-to-function type.
   // Our TypeSpec uses is_fn_ptr=true,ptr_level=0 for bare function type "int()"
   // and is_fn_ptr=true,ptr_level=1 for function pointer "int(*)()".
@@ -208,6 +213,30 @@ bool function_sig_compatible(const FunctionSig& a, const FunctionSig& b) {
     if (!same_types_for_function_compat(a.params[i], b.params[i], true)) return false;
   }
   return true;
+}
+
+// Check if two function signatures are ref-overloads: same param count/base types
+// but differ in lvalue-ref vs rvalue-ref qualifier on at least one parameter.
+bool is_ref_overload(const FunctionSig& a, const FunctionSig& b) {
+  if (a.variadic != b.variadic) return false;
+  if (a.params.size() != b.params.size()) return false;
+  bool has_ref_diff = false;
+  for (size_t i = 0; i < a.params.size(); ++i) {
+    TypeSpec ap = a.params[i], bp = b.params[i];
+    bool ref_differs = (ap.is_lvalue_ref != bp.is_lvalue_ref) ||
+                       (ap.is_rvalue_ref != bp.is_rvalue_ref);
+    if (ref_differs) {
+      has_ref_diff = true;
+      // Strip ref and const for base-type comparison.
+      ap.is_lvalue_ref = bp.is_lvalue_ref = false;
+      ap.is_rvalue_ref = bp.is_rvalue_ref = false;
+      ap.is_const = bp.is_const = false;
+      if (!same_types_for_function_compat(ap, bp, true)) return false;
+    } else if (!same_types_for_function_compat(ap, bp, true)) {
+      return false;
+    }
+  }
+  return has_ref_diff;
 }
 
 bool same_tagged_type(const TypeSpec& a, const TypeSpec& b) {
@@ -345,6 +374,8 @@ class Validator {
   std::vector<ConstMap> enum_const_vals_scopes_;  // block/function-scoped enum constants
   std::vector<ConstMap> local_const_vals_scopes_;  // block-scoped const/constexpr local values
   std::unordered_map<std::string, FunctionSig> funcs_;
+  // Ref-overloaded function signatures: name → multiple overloads differing in ref-qualifier.
+  std::unordered_map<std::string, std::vector<FunctionSig>> ref_overload_sigs_;
   std::unordered_set<std::string> complete_structs_;
   std::unordered_set<std::string> complete_unions_;
   std::vector<std::unordered_map<std::string, ScopedSym>> scopes_;
@@ -521,7 +552,14 @@ class Validator {
       auto it = funcs_.find(n->name);
       if (it != funcs_.end()) {
         if (!function_sig_compatible(it->second, sig) && !n->is_explicit_specialization) {
-          emit(n->line, std::string("conflicting types for function '") + n->name + "'");
+          // Check if this is a ref-overload (T& vs T&&) before emitting error.
+          if (is_ref_overload(it->second, sig)) {
+            auto& ovset = ref_overload_sigs_[n->name];
+            if (ovset.empty()) ovset.push_back(it->second);
+            ovset.push_back(std::move(sig));
+          } else {
+            emit(n->line, std::string("conflicting types for function '") + n->name + "'");
+          }
         } else if (it->second.unspecified_params && !sig.unspecified_params) {
           // Upgrade K&R unspecified-params declaration to the full prototype.
           it->second = std::move(sig);
@@ -1115,6 +1153,45 @@ class Validator {
           return out;
         }
         if (n->left && n->left->kind == NK_VAR && n->left->name && n->left->name[0]) {
+          // Check for ref-overloaded functions first.
+          auto ovit = ref_overload_sigs_.find(n->left->name);
+          if (ovit != ref_overload_sigs_.end() && !ovit->second.empty()) {
+            const auto& overloads = ovit->second;
+            const int argc = n->n_children;
+            // Infer arg value categories.
+            std::vector<ExprInfo> arg_infos;
+            for (int i = 0; i < argc; ++i)
+              arg_infos.push_back(infer_expr(n->children[i]));
+            // Find best viable overload.
+            const FunctionSig* best = nullptr;
+            int best_score = -1;
+            for (const auto& sig : overloads) {
+              const int required = static_cast<int>(sig.params.size());
+              if (!sig.variadic && argc != required) continue;
+              if (sig.variadic && argc < required) continue;
+              bool viable = true;
+              int score = 0;
+              const int check_n = std::min(argc, required);
+              for (int i = 0; i < check_n; ++i) {
+                const auto& arg = arg_infos[static_cast<size_t>(i)];
+                if (!arg.valid) continue;
+                if (sig.params[static_cast<size_t>(i)].is_lvalue_ref && !arg.is_lvalue) { viable = false; break; }
+                if (sig.params[static_cast<size_t>(i)].is_rvalue_ref && arg.is_lvalue) { viable = false; break; }
+                // Exact ref-category match scores higher.
+                if (sig.params[static_cast<size_t>(i)].is_rvalue_ref && !arg.is_lvalue) score += 2;
+                else if (sig.params[static_cast<size_t>(i)].is_lvalue_ref && arg.is_lvalue) score += 2;
+                else score += 1;
+              }
+              if (viable && score > best_score) { best = &sig; best_score = score; }
+            }
+            if (best) {
+              out.valid = true;
+              out.type = best->ret;
+            } else {
+              emit(n->line, "no viable overload for function call");
+            }
+            return out;
+          }
           auto it = funcs_.find(n->left->name);
           if (it != funcs_.end()) {
             const FunctionSig& sig = it->second;
