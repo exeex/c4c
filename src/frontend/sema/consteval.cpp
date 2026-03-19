@@ -631,6 +631,10 @@ StmtResult interp_stmt(const Node* n, ConstMap& locals,
       return {};
     }
 
+    case NK_RANGE_FOR:
+      return {true, false, false, ConstValue::unknown(),
+              "range-for is not supported in consteval context"};
+
     case NK_DO_WHILE: {
       do {
         auto r = interp_block(n->body, locals, outer_env, consteval_fns, depth, steps);

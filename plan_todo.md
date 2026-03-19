@@ -2,11 +2,12 @@
 
 ## Active Plan
 - Parent: `plan.md` (STL Enablement Umbrella)
-- Active child: `iterator_plan.md` — Phases 0–4 complete
+- Active child: `iterator_plan.md` — Phases 0–5 complete (range-for landed)
+- Active child: `range_for_plan.md` — Phase 0 complete
 - Previous child: `operator_overload_plan.md` — Phase 4 complete, Phase 5 deferred
 
 ## Current Target
-- **Iterator Plan Phase 4**: DONE
+- **Iterator Plan Phase 5 / Range-For Phase 0**: DONE
 
 ## Completed Items
 
@@ -110,8 +111,24 @@
     - `iterator_alias_basic.cpp` — typedef Iter iterator inside Container, Container::iterator usage
   - Suite: 1939/1939 (was 1936)
 
+- Phase 5: Range-for integration
+  - **Created `range_for_plan.md`**: child plan for range-for syntax support
+  - **NK_RANGE_FOR node kind**: new AST node for `for (Type var : range_expr) body`
+  - **Parser**: detects range-for in C++ mode by parsing decl then checking for `:` vs `;`. Uses save/restore of parser position for backtracking if not range-for.
+  - **HIR desugaring**: `NK_RANGE_FOR` lowered to equivalent of:
+    - `__range_begin = range_expr.begin()`
+    - `__range_end = range_expr.end()`
+    - `ForStmt { cond: __begin != __end, update: ++__begin }`
+    - Body: `Type var = *__begin; user_body`
+  - **Sema**: `NK_RANGE_FOR` handled in validate.cpp (visits decl, range expr, body with loop_depth)
+  - **Consteval**: `NK_RANGE_FOR` returns unsupported error (not needed for consteval)
+  - Tests:
+    - `range_for_basic.cpp` — sum elements of Container using `for (int x : c)`, two loops over same container
+    - `range_for_const.cpp` — range-for with const begin/end methods, ConstIter with const operator*
+  - Suite: 1941/1941 (was 1939)
+
 ## Next Intended Slice
-- Iterator Plan Phase 5: Range-for integration (requires range_for_plan.md)
+- Range-For Phase 1: `auto` type deduction for loop variable (`for (auto x : c)`, `for (auto& x : c)`)
 - Or: Operator Overload Phase 5 (free-function operators) if needed
 
 ## Known Limitations
@@ -119,9 +136,10 @@
 - No operator() (function call operator)
 - No parameter-type-based overload resolution for same operator (e.g., `operator-(int)` vs `operator-(Iter)`)
 - Const method dispatch relies on TypeSpec.is_const — const reference parameters work but requires proper const propagation through the type system
-- No `auto` type deduction — iterator tests use explicit type names
+- No `auto` type deduction — range-for requires explicit loop variable type
 - Nested typedef names are also registered globally (potential conflicts if two structs define same typedef name)
 - No `using` alias declarations (only `typedef`)
+- Range-for does not support `auto` / `auto&` / `const auto&` loop variable types yet
 
 ## Notes
 - try_lower_operator_call() builds CallExpr with &obj as implicit this + explicit args
@@ -134,3 +152,4 @@
 - Const methods use "_const" suffix: mangled="Struct__method_const", key="Struct::method_const"
 - ColonColon token only emitted in CppSubset lex profile; C mode unaffected
 - current_struct_tag_ tracks active struct during parsing for scoped typedef registration
+- NK_RANGE_FOR desugaring: parser saves pos_ + typedefs_ for backtracking; HIR builds method calls directly using struct_methods_ map

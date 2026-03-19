@@ -447,6 +447,7 @@ const char* node_kind_name(NodeKind k) {
         case NK_IF:           return "If";
         case NK_WHILE:        return "While";
         case NK_FOR:          return "For";
+        case NK_RANGE_FOR:    return "RangeFor";
         case NK_DO_WHILE:     return "DoWhile";
         case NK_SWITCH:       return "Switch";
         case NK_CASE:         return "Case";

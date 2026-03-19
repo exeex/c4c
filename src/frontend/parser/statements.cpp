@@ -118,6 +118,33 @@ Node* Parser::parse_stmt() {
             Node* for_init = nullptr;
             if (!check(TokenKind::Semi)) {
                 if (is_type_start()) {
+                    // C++ range-for detection: save position, parse decl,
+                    // check if ':' follows (range-for) vs ';' (regular for).
+                    if (is_cpp_mode()) {
+                        int saved_pos = pos_;
+                        auto saved_typedefs = typedefs_;
+                        auto saved_user_typedefs = user_typedefs_;
+                        auto saved_typedef_types = typedef_types_;
+                        Node* decl = parse_local_decl();
+                        if (check(TokenKind::Colon)) {
+                            // Range-for: for (Type var : range_expr) body
+                            consume(); // consume ':'
+                            Node* range_expr = parse_expr();
+                            expect(TokenKind::RParen);
+                            Node* bd = parse_stmt();
+                            Node* n = make_node(NK_RANGE_FOR, ln);
+                            n->init  = decl;       // loop variable declaration
+                            n->right = range_expr;  // range expression
+                            n->body  = bd;
+                            return n;
+                        }
+                        // Not range-for — restore position and fall through
+                        // to regular for-loop parsing.
+                        pos_ = saved_pos;
+                        typedefs_ = std::move(saved_typedefs);
+                        user_typedefs_ = std::move(saved_user_typedefs);
+                        typedef_types_ = std::move(saved_typedef_types);
+                    }
                     for_init = parse_local_decl();
                     // for-decl init already consumed the semicolon via parse_local_decl
                     // Actually parse_local_decl doesn't consume ';' for for-init context

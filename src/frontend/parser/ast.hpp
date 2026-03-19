@@ -173,6 +173,7 @@ enum NodeKind {
     NK_IF,              // if(cond) then [else else_]
     NK_WHILE,           // while(cond) body
     NK_FOR,             // for(init;cond;update) body
+    NK_RANGE_FOR,       // for(decl : range_expr) body  (C++11 range-based for)
     NK_DO_WHILE,        // do body while(cond);
     NK_SWITCH,          // switch(cond) body
     NK_CASE,            // case val: body (next stmt)

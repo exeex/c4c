@@ -801,6 +801,16 @@ class Validator {
         leave_scope();
         return;
       }
+      case NK_RANGE_FOR: {
+        enter_scope();
+        if (n->init) visit_stmt(n->init);   // loop variable declaration
+        if (n->right) (void)infer_expr(n->right); // range expression
+        loop_depth_ += 1;
+        if (n->body) visit_stmt(n->body);
+        loop_depth_ -= 1;
+        leave_scope();
+        return;
+      }
       case NK_SWITCH: {
         if (n->cond) {
           ExprInfo c = infer_expr(n->cond);
