@@ -312,13 +312,23 @@
   - `destructor_member_basic.cpp` — Outer with two Inner members (user dtor + member dtors), Wrapper with no dtor (implicit member dtor), Top→Middle→Inner nested chain
 - Suite: 1976/1976 (was 1975)
 
+### operator() (Function Call Operator)
+- **OP_CALL enum value**: added to OperatorKind in ast.hpp
+- **Parser**: `operator()` recognized — consumes `(` `)` after `operator` keyword, then parses normal parameter list
+- **Mangled name**: `operator_call` via `operator_kind_mangled_name()`
+- **HIR dispatch**: In `lower_call_expr`, when callee is NK_VAR resolving to a struct type, tries `try_lower_operator_call(ctx, n, n->left, "operator_call", arg_nodes)` before regular call handling
+- **Type inference**: `infer_generic_ctrl_type` for NK_CALL checks `struct_method_ret_types_` for `Tag::operator_call` when callee is struct
+- Tests:
+  - `operator_call_basic.cpp` — Adder(int x), Multiplier(int a, int b), Counter() zero-arg; all return int
+- Suite: 1977/1977 (was 1976)
+
 ## Next Intended Slice
 ### Recommended next target
 - Next priority:
   1. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
   2. Template member access through T&& params (blocked on template member resolution)
   3. Delegating constructors
-  4. `operator()` (function call operator)
+  4. `operator<` / `operator>` / `operator<=` / `operator>=` (comparison operators)
 
 ### Explicitly deferred for now
 - Free-function operator overloading
@@ -329,7 +339,6 @@
 
 ## Known Limitations
 - No free-function (non-member) operators
-- No operator() (function call operator)
 - No parameter-type-based overload resolution for same operator (e.g., `operator-(int)` vs `operator-(Iter)`)
 - Const method dispatch relies on TypeSpec.is_const — const reference parameters work but requires proper const propagation through the type system
 - Nested typedef names are also registered globally (potential conflicts if two structs define same typedef name)

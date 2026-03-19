@@ -117,6 +117,7 @@ enum OperatorKind {
     OP_PLUS,        // operator+
     OP_MINUS,       // operator-
     OP_ASSIGN,      // operator=
+    OP_CALL,        // operator()
 };
 
 // Return a canonical mangled suffix for an operator kind (e.g. "operator_subscript").

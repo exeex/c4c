@@ -1563,6 +1563,11 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             } else if (check(TokenKind::Assign)) {
                 consume();
                 op_kind = OP_ASSIGN;
+            } else if (check(TokenKind::LParen)) {
+                // operator() — function call operator
+                consume(); // eat '('
+                expect(TokenKind::RParen); // eat ')'
+                op_kind = OP_CALL;
             } else if (check(TokenKind::KwBool)) {
                 // operator bool — conversion operator; return type is bool
                 consume();

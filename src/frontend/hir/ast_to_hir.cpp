@@ -1063,6 +1063,14 @@ class Lowerer {
             const Function* fn = module_->find_function(fit->second);
             if (fn) return reference_value_ts(fn->return_type.spec);
           }
+          // operator() on struct variable: look up operator_call return type.
+          TypeSpec callee_ts = infer_generic_ctrl_type(ctx, n->left);
+          if (callee_ts.base == TB_STRUCT && callee_ts.ptr_level == 0 && callee_ts.tag) {
+            std::string key = std::string(callee_ts.tag) + "::operator_call";
+            auto rit = struct_method_ret_types_.find(key);
+            if (rit != struct_method_ret_types_.end())
+              return reference_value_ts(rit->second);
+          }
         }
         break;
       }
@@ -2993,6 +3001,18 @@ class Lowerer {
   ExprId lower_call_expr(FunctionCtx* ctx, const Node* n) {
     if (auto consteval_expr = try_lower_consteval_call_expr(ctx, n)) {
       return *consteval_expr;
+    }
+
+    // Try operator() dispatch: if callee is a struct variable, call operator_call.
+    if (n->left && n->left->kind == NK_VAR && n->left->name) {
+      TypeSpec callee_ts = infer_generic_ctrl_type(ctx, n->left);
+      if (callee_ts.base == TB_STRUCT && callee_ts.ptr_level == 0 && callee_ts.tag) {
+        std::vector<const Node*> arg_nodes;
+        for (int i = 0; i < n->n_children; ++i)
+          arg_nodes.push_back(n->children[i]);
+        ExprId op = try_lower_operator_call(ctx, n, n->left, "operator_call", arg_nodes);
+        if (op.valid()) return op;
+      }
     }
 
     CallExpr c{};
