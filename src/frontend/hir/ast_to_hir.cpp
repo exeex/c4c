@@ -721,6 +721,12 @@ class Lowerer {
     TypeBindings tpl_bindings;  // template param → concrete type for enclosing template fn
     NttpBindings nttp_bindings; // non-type template param → constant value
     std::string method_struct_tag; // non-empty when lowering a struct method body
+    // Destructor tracking: records locals that need destructor calls at scope exit.
+    struct DtorLocal {
+      LocalId local_id;
+      std::string struct_tag;
+    };
+    std::vector<DtorLocal> dtor_stack;
   };
 
   static bool is_lvalue_ref_ts(const TypeSpec& ts) {
@@ -1319,6 +1325,13 @@ class Lowerer {
           struct_methods_[key] = mangled;
           struct_method_ret_types_[key] = method->type;
         }
+        pending_methods_.push_back({mangled, std::string(tag), method,
+                                    method_tpl_bindings, method_nttp_bindings});
+        continue;
+      }
+      if (method->is_destructor) {
+        std::string mangled = std::string(tag) + "__dtor";
+        struct_destructors_[tag] = {mangled, method};
         pending_methods_.push_back({mangled, std::string(tag), method,
                                     method_tpl_bindings, method_nttp_bindings});
         continue;
@@ -2278,6 +2291,23 @@ class Lowerer {
           ExprStmt es{}; es.expr = call_id;
           append_stmt(ctx, Stmt{StmtPayload{es}, make_span(n)});
         }
+      }
+    }
+
+    // Track struct locals with destructors for implicit scope-exit calls.
+    if (decl_ts.tag && decl_ts.base == TB_STRUCT && decl_ts.ptr_level == 0 &&
+        decl_ts.array_rank == 0 && !n->type.is_lvalue_ref && !n->type.is_rvalue_ref) {
+      auto dit = struct_destructors_.find(decl_ts.tag);
+      if (dit != struct_destructors_.end()) {
+        if (dit->second.method_node->is_deleted) {
+          std::string diag = "error: variable '";
+          diag += n->name ? n->name : "<anon>";
+          diag += "' of type '";
+          diag += decl_ts.tag;
+          diag += "' has a deleted destructor";
+          throw std::runtime_error(diag);
+        }
+        ctx.dtor_stack.push_back({lid, std::string(decl_ts.tag)});
       }
     }
 
@@ -3684,6 +3714,37 @@ class Lowerer {
     return true;
   }
 
+  // Emit destructor calls for locals pushed since dtor_stack index `since`.
+  // Calls are emitted in reverse order (LIFO).
+  void emit_dtor_calls(FunctionCtx& ctx, size_t since, const Node* span_node) {
+    for (size_t i = ctx.dtor_stack.size(); i > since; --i) {
+      const auto& dl = ctx.dtor_stack[i - 1];
+      auto dit = struct_destructors_.find(dl.struct_tag);
+      if (dit == struct_destructors_.end()) continue;
+      CallExpr c{};
+      DeclRef callee_ref{};
+      callee_ref.name = dit->second.mangled_name;
+      TypeSpec fn_ts{}; fn_ts.base = TB_VOID;
+      TypeSpec callee_ts = fn_ts; callee_ts.ptr_level++;
+      c.callee = append_expr(span_node, callee_ref, callee_ts);
+      // Arg: &var (this pointer).
+      DeclRef var_ref{};
+      var_ref.local = dl.local_id;
+      auto lt = ctx.local_types.find(dl.local_id.value);
+      TypeSpec var_ts{};
+      if (lt != ctx.local_types.end()) var_ts = lt->second;
+      ExprId var_id = append_expr(span_node, var_ref, var_ts, ValueCategory::LValue);
+      UnaryExpr addr{};
+      addr.op = UnaryOp::AddrOf;
+      addr.operand = var_id;
+      TypeSpec ptr_ts = var_ts; ptr_ts.ptr_level++;
+      c.args.push_back(append_expr(span_node, addr, ptr_ts));
+      ExprId call_id = append_expr(span_node, c, fn_ts);
+      ExprStmt es{}; es.expr = call_id;
+      append_stmt(ctx, Stmt{StmtPayload{es}, make_span(span_node)});
+    }
+  }
+
   void lower_stmt_node(FunctionCtx& ctx, const Node* n) {
     if (!n) return;
 
@@ -3696,10 +3757,13 @@ class Lowerer {
         const auto saved_static_globals = ctx.static_globals;
         const auto saved_enum_consts = enum_consts_;
         const auto saved_local_consts = ctx.local_const_bindings;
+        const size_t saved_dtor_depth = ctx.dtor_stack.size();
         for (int i = 0; i < n->n_children; ++i) {
           lower_stmt_node(ctx, n->children[i]);
         }
         if (new_scope) {
+          emit_dtor_calls(ctx, saved_dtor_depth, n);
+          ctx.dtor_stack.resize(saved_dtor_depth);
           ctx.locals = saved_locals;
           ctx.static_globals = saved_static_globals;
           enum_consts_ = saved_enum_consts;
@@ -3764,6 +3828,8 @@ class Lowerer {
           }
           s.expr = val;
         }
+        // Emit destructor calls for all locals in scope before returning.
+        emit_dtor_calls(ctx, 0, n);
         append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
         ensure_block(ctx, ctx.current_block).has_explicit_terminator = true;
         return;
@@ -6145,6 +6211,12 @@ class Lowerer {
     const Node* method_node;  // for parameter type matching
   };
   std::unordered_map<std::string, std::vector<CtorOverload>> struct_constructors_;
+  // Destructor per struct tag: tag → {mangled, method_node}.
+  struct DtorInfo {
+    std::string mangled_name;
+    const Node* method_node;
+  };
+  std::unordered_map<std::string, DtorInfo> struct_destructors_;
   // Ref-overload resolution: base function name → list of overload entries.
   struct RefOverloadEntry {
     std::string mangled_name;

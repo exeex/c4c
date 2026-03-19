@@ -1424,6 +1424,40 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             continue;
         }
 
+        // C++ destructor: ~ClassName() { body }
+        if (is_cpp_mode() && !current_struct_tag_.empty() &&
+            check(TokenKind::Tilde) &&
+            pos_ + 1 < static_cast<int>(tokens_.size()) &&
+            tokens_[pos_ + 1].kind == TokenKind::Identifier &&
+            tokens_[pos_ + 1].lexeme == current_struct_tag_) {
+            consume();  // consume '~'
+            const char* dtor_name = arena_.strdup(cur().lexeme);
+            consume();  // consume struct tag name
+            expect(TokenKind::LParen);
+            expect(TokenKind::RParen);
+            // Build mangled name: Tag__dtor
+            std::string mangled = std::string("~") + dtor_name;
+            Node* method = make_node(NK_FUNCTION, cur().line);
+            method->type.base = TB_VOID;
+            method->name = arena_.strdup(mangled.c_str());
+            method->is_destructor = true;
+            method->n_params = 0;
+            if (check(TokenKind::LBrace)) {
+                method->body = parse_block();
+            } else if (is_cpp_mode() && check(TokenKind::Assign) &&
+                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                       tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
+                consume(); // '='
+                consume(); // 'delete'
+                method->is_deleted = true;
+                match(TokenKind::Semi);
+            } else {
+                match(TokenKind::Semi);
+            }
+            methods.push_back(method);
+            continue;
+        }
+
         // Regular field declaration
         // C++ conversion operators (e.g., operator bool()) have no return
         // type prefix, so KwOperator can appear directly here.

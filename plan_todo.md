@@ -262,20 +262,32 @@
   - `bad_deleted_default_ctor.cpp` — `T() = delete` then `T var;` rejected
 - Suite: 1968/1968 (was 1966)
 
+### Destructor Support (`~ClassName()`)
+- **Parser**: `~ClassName()` recognized in struct body when `Tilde` + `Identifier` matching `current_struct_tag_` + `()`; sets `is_destructor=true` on NK_FUNCTION node
+- **`= delete` support**: destructors can be `= delete`; attempting to declare a variable of such type is rejected
+- **HIR registration**: `struct_destructors_` map stores one destructor per struct tag with mangled name `Tag__dtor`
+- **Implicit destructor calls**: scope-exit and return-path destructor emission via `dtor_stack` in FunctionCtx
+  - NK_BLOCK: saves dtor_stack depth on entry, emits dtor calls (reverse order) on exit
+  - NK_RETURN: emits dtor calls for all locals in scope before the return statement
+- **DtorLocal tracking**: struct locals with destructors are pushed to `ctx.dtor_stack` during `lower_local_decl_stmt`
+- Tests:
+  - `destructor_basic.cpp` — Widget with `~Widget()`, single scope, multiple objects (reverse order), nested scopes
+  - `bad_deleted_destructor.cpp` — `~NoDtor() = delete` then `NoDtor n;` rejected
+- Suite: 1970/1970 (was 1968)
+
 ## Next Intended Slice
 ### Recommended next target
 - Next priority:
-  1. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
-  2. Template member access through T&& params (blocked on template member resolution)
-  3. Copy assignment operator (`operator=(const T&)`)
-  4. Destructor support (`~ClassName()`)
+  1. Copy assignment operator (`operator=(const T&)`)
+  2. `operator_overload_plan.md` Phase 5: free-function operators (if real tests need them)
+  3. Template member access through T&& params (blocked on template member resolution)
+  4. Constructor initializer lists (`: member(init), ...`)
 
 ### Explicitly deferred for now
 - Free-function operator overloading
 - Structured bindings in range-for
 - General `auto` deduction outside range-for
 - Ambiguous overload detection (bad_ref_overload_ambiguous.cpp)
-- Copy assignment operator (`operator=(const T&)`)
 - Constructor initializer lists (`: member(init), ...`)
 - Template function T&& param member access (e.g. `obj.value` where obj is T&&)
 
@@ -290,7 +302,7 @@
 - Milestone 3 child plan: `container_plan.md` (Phase 0 complete)
 - No full `static_cast` implementation model yet; only baseline named-cast coverage is tracked
 - Constructor overload resolution is basic — scores by param count + base type + ref-qualifier, no implicit conversions across types
-- No destructor support (`~ClassName()`)
+- Destructor calls not emitted for struct members of struct types (only direct locals)
 - No constructor initializer lists (`: member(init), ...`)
 
 ## Notes

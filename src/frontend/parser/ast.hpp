@@ -320,6 +320,7 @@ struct Node {
     const char* linkage_spec; // C++ subset linkage string, e.g. "C"
     OperatorKind operator_kind; // C++ operator overloading: which operator this method implements
     bool is_constructor;  // NK_FUNCTION: this method is a constructor (name == struct tag)
+    bool is_destructor;   // NK_FUNCTION: this method is a destructor (~ClassName)
     bool is_ctor_init;    // NK_DECL: initialized via constructor call  Type var(args)
     bool is_deleted;      // NK_FUNCTION: = delete (deleted function)
 };
