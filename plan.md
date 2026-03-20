@@ -1,168 +1,380 @@
-# c4c Next-Step Plan
+# Codegen Refactor Plan
 
 ## Goal
 
-從 `ideas/*plan.md` 中挑選幾個目前最有價值、而且彼此能串成合理路線的任務，
-整理成一份新的總計畫。這份計畫優先考慮：
+把目前名義上的 HIR -> LIR split，落實成真正的兩段式 pipeline：
 
-- 能直接擴大 C++ 可用能力的項目
-- 能降低後續實作成本與除錯成本的項目
-- 已完成項目不重複納入主線
+`HIR -> HIRToLIR -> LIR -> LLVM emitter/printer`
 
-## Chosen Tasks
+最終目標不是停在「產生 `.ll` 字串」，而是建立一條之後可以：
 
-本計畫選擇以下來源的任務：
+- 直接呼叫 LLVM / libclang / LLVM C++ API 來 emit IR，
+- 用 flag 在新舊 codegen 間切換，
+- 在重構期間持續保住現有測試，
+- 用新舊雙路輸出快速比對差異。
 
-- `ideas/namespace_plan.md`
-- `ideas/clangtest_plan.md`
-- `ideas/iterator_plan.md`
-- `ideas/container_plan.md`
-- `ideas/lir_split_plan.md`
 
-未納入主線的項目：
+## Reality Check
 
-- `ideas/rvalue_ref_plan.md`
-- `ideas/operator_overload_plan.md`
-- `ideas/range_for_plan.md`
+目前 repo 的狀態不是「LIR split 已完成」，而是：
 
-原因：這三項在原始文件中已標示為目前里程碑內完成，適合作為依賴前提，不再列為新的主任務。
+- `src/codegen/lir/hir_to_lir.cpp` 仍是 stub
+- `src/codegen/llvm/hir_emitter.cpp` 仍然持有真正的 lowering 邏輯
+- `src/codegen/lir/lir_printer.cpp` 已存在，但目前吃到的 `LirModule`
+  仍主要是由 `HirEmitter` 直接組出來
 
-## Priority Order
+換句話說，現在完成的是：
 
-### 1. Namespace support refactor
+- LIR data structures 已建立
+- printer 已抽出
 
-來源：`ideas/namespace_plan.md`
+但**尚未完成**的是：
 
-這是最值得優先處理的語言基礎設施之一。namespace 如果仍主要依賴字串攤平，
-後續在名稱查找、匿名 namespace、符號命名與標頭可擴充性上都會持續付出成本。
+- 將 lowering responsibility 從 `hir_emitter.cpp` 搬到 `hir_to_lir.cpp`
 
-本階段目標：
 
-- 引入明確的 namespace context 物件
-- 讓 qualified name 保留結構，而不是只保留字串
-- 讓 declaration 直接記錄所屬 context
-- 把 lookup 從字串重寫逐步搬到 context-based model
+## Main Objective
 
-完成標準：
+這份計畫只聚焦一條主線：
 
-- `::a::b` 與 `a::b` 可被正確區分
-- reopen namespace 與 anonymous namespace 有穩定語意
-- runtime/frontend 測試可驗證 namespace lookup，而不只是 parse-only
+1. 真正完成 `hir_emitter.cpp -> hir_to_lir.cpp` 的責任搬移
+2. 保留舊路徑，讓新舊可並行
+3. 加入快速 diff 驗證模式
+4. 為後續「不經 `.ll` 字串、直接透過 LLVM API emit IR」鋪路
 
-### 2. Lightweight error recovery + negative test verify
 
-來源：`ideas/clangtest_plan.md`
+## Non-Goals
 
-這個任務的價值很高，因為它會直接改善開發效率、診斷品質與外部測試的可用性。
-一旦能穩定地在單一檔案中回報多個有效錯誤，之後做 namespace、iterator 這類功能時，
-回歸成本會明顯下降。
+這份計畫不做：
 
-本階段目標：
+- 一次性刪掉舊的 `HirEmitter`
+- 同一波直接導入完整 LLVM IRBuilder backend
+- 同時處理 unrelated frontend feature work
+- 把 `.ll` printer 全部重寫成另一種 IR 格式
 
-- 固定 diagnostics 格式為穩定的 `file:line:column: error: ...`
-- 加入 hard error limit
-- 加入最小 `InvalidExpr` / `InvalidType`
-- 補 top-level、statement、paren-list 的同步恢復
-- 讓測試 runner 支援最小 `expected-error` 子集
+原則是：
 
-完成標準：
+- 先把 lowering 邊界搬正
+- 再讓新舊並行
+- 最後才考慮把 LLVM API emitter 接上
 
-- 一個壞 declaration 不會毀掉整個 TU
-- cascade errors 顯著下降
-- 可跑一小批 curated Clang-style negative tests in `verify` mode
 
-### 3. Finish iterator/container usability slice
+## Architectural Decision
 
-來源：`ideas/iterator_plan.md` + `ideas/container_plan.md`
+### Preferred path
 
-operator overload 與 range-for 已完成，現在最值得做的是把 iterator 與小型 container
-這條使用路徑補成一條完整、可驗證的能力線。這能把先前的語言支援轉成真正的可用案例。
+主程式先維持單一入口，靠 flag 切換 codegen 路徑。
 
-本階段目標：
+建議加入：
 
-- 完成第一個可工作的 custom iterator slice
-- 支援 container 的 `begin()` / `end()`
-- 驗證 manual iterator loop
-- 補一個固定容量 `FixedVec` smoke test
-- 確認 `size()`, `empty()`, `data()`, `front()`, `back()`, `operator[]`,
-  `push_back()`, `pop_back()`, `begin()`, `end()`, `range-for` 可一起工作
+- `--codegen=legacy`
+- `--codegen=lir`
+- `--codegen=compare`
 
-建議切法：
+其中：
 
-- 先做 iterator Phase 0-3
-- 再跑 `fixed_vec_smoke.cpp` 作為整合驗證
-- 只在 smoke test 真正卡住時補最小必要修正
+- `legacy`: 走現有 `HirEmitter`
+- `lir`: 走 `hir_to_lir` + LLVM printer
+- `compare`: 同一個輸入跑兩次，輸出兩份 `.ll` 並比較差異
 
-完成標準：
+### Optional support tool
 
-- 自訂 iterator 可在一般 loop 中穩定運作
-- 小型 fixed-storage container 可通過整合 smoke test
-- 不需要再加 iterator 專用 hack 來支撐 range-for
+若 CLI/測試隔離上比較方便，可以補第二個 app：
 
-### 4. HIR -> LIR split
+- `src/apps/c4clle2e.cpp`
 
-來源：`ideas/lir_split_plan.md`
+用途不是永久取代 `c4cll`，而是：
 
-這是架構價值最高的重構項，但不適合排在最前面。等前面幾個語言/測試面向更穩定後，
-再做這個分層，風險和返工都會比較低。
+- 專門跑新路徑
+- 專門做新舊 diff 驗證
+- 避免主 CLI 在過渡期堆太多 debug 旗標
 
-本階段目標：
+### Decision rule
 
-- 把目前 `hir_emitter` 的 lowering 與 LLVM text emission 分離
-- 建立最小可檢視的 `LirModule`
-- 讓 `llvm_codegen.cpp` 轉為 `HIR -> LIR -> LLVM printer`
+優先順序建議：
 
-建議階段：
+1. 先做 `--codegen=` flag
+2. 若 compare/debug 流程太雜，再補 `c4clle2e`
 
-- Stage 0: skeleton 與最小 `LirModule`
-- Stage 1: 先把字串 sink 換成結構化 LIR
-- Stage 2: 抽出 `LirPrinter`
-- Stage 3: 再逐步把特殊 case 正規化成 LIR ops
 
-完成標準：
+## Deliverables
 
-- 行為維持相容
-- printer 不再承擔語意修補責任
-- 後續 backend work 有清楚邊界可依附
+這個 refactor 結束時，至少要有：
 
-## Execution Roadmap
+- 真正有內容的 `src/codegen/lir/hir_to_lir.cpp`
+- 舊 `src/codegen/llvm/hir_emitter.cpp` 只保留 legacy path 所需邏輯
+- `llvm_codegen.cpp` 可按 flag 選擇新舊路徑
+- 可自動產出 legacy/new 兩份 `.ll`
+- 可直接比較新舊 `.ll` 差異
+- 針對 compare mode 的回歸測試
+- 一條在主線後自動接續的 `std::vector` bring-up 任務，
+  具體定義於 `ideas/std_vector_bringup_plan.md`
 
-### Milestone A: Frontend correctness foundation
 
-1. 做 namespace context refactor 的 Phase 1-4
-2. 同步補 parse/runtime tests
-3. 避免再擴張字串攤平 namespace 模型
+## Concrete Split Boundary
 
-### Milestone B: Diagnostics and regression quality
+### What must move out of `hir_emitter.cpp`
 
-1. 落地 minimal error recovery
-2. 加入 `expected-error` 驗證能力
-3. 建立小型 curated negative-test allowlist
+以下責任應逐步搬到 `src/codegen/lir/hir_to_lir.cpp`：
 
-### Milestone C: User-visible container usability
+- `FnCtx` 型 lowering state
+- block / label 建立
+- temp / SSA value naming state
+- alloca hoisting decision
+- lvalue lowering
+- rvalue lowering
+- statement lowering
+- CFG terminator construction
+- string pool / extern decl / intrinsic requirement tracking
+- function / global lowering into `LirModule`
 
-1. 完成 iterator 最小可用面
-2. 補 container `begin()/end()` 與 manual loop 測試
-3. 以 `fixed_vec_smoke.cpp` 做整合驗證
+### What can stay printer-side
 
-### Milestone D: Codegen architecture cleanup
+以下責任應留在 printer / LLVM-specific rendering：
 
-1. 建立 LIR 邊界
-2. 將 lowering 與 printer 分離
-3. 保持 LLVM IR 行為相容，避免一次性重寫
+- LLVM textual syntax
+- `%` / `@` / label naming policy
+- `declare` / `define` 文本格式
+- LLVM intrinsic spelling
+- target triple / datalayout 的最終文本輸出
 
-## Why This Order
+### What legacy `HirEmitter` should become
 
-- Namespace 是真實 C++ 程式可擴展性的基礎，越晚修越容易讓 hack 滲透到更多層。
-- Error recovery 能立即提高之後每個功能開發的回饋品質，投資報酬率很高。
-- Iterator/container slice 能把已完成的 operator/range-for 支援轉化為具體成果。
-- HIR/LIR split 很重要，但屬於在功能面較穩後再做的架構整理，順序放後面更穩。
+重構後 `HirEmitter` 不應再是唯一 lowering owner。
 
-## Definition Of Success
+它應該變成二擇一：
 
-這份新計畫完成時，專案應該具備以下特徵：
+1. legacy backend wrapper
+2. 或完全保留不動，僅作為 `--codegen=legacy` 路徑
 
-- namespace 不再主要依賴字串攤平
-- 編譯器能在壞輸入下回報多個穩定且有用的錯誤
-- 小型 iterator/container 範例可作為端到端能力證明
-- codegen 內部具有清楚的 HIR/LIR/LLVM printer 邊界
+但不應再繼續承擔新 LIR 路徑的主實作。
+
+
+## Migration Strategy
+
+## Follow-on Track
+
+主線完成第一個安全落點後，agent 應自動接續下一條 bring-up 線：
+
+- `ideas/std_vector_bringup_plan.md`
+
+自動接續條件：
+
+1. `--codegen=legacy|lir|compare` 已存在
+2. compare mode 已能產生雙 `.ll`
+3. 至少一組 compare-mode smoke test 已落地
+
+一旦以上三項完成，下一個預設工作不是再抽象討論 LIR，
+而是直接推進：
+
+- `tests/cpp/std/std_vector_simple.cpp`
+
+這樣做的目的，是讓 codegen refactor 完成第一段後，立刻有一個真實、
+系統標頭密集、且能同時驗證新舊路徑的 end-to-end 目標。
+
+## Phase 0: Freeze The Boundary
+
+### Objective
+
+先明確定義「什麼叫完成 HIR -> LIR split」。
+
+### Tasks
+
+- 在文件中明寫：`hir_to_lir.cpp` 不是 skeleton，而是 lowering owner
+- 列出 `hir_emitter.cpp` 中必搬的函式群
+- 標記哪些函式屬於 lowering，哪些屬於 printing
+
+### Exit Criteria
+
+- 不再用「已有 LIR struct」當作 split 完成的判準
+
+
+## Phase 1: Add Parallel Codegen Selection
+
+### Objective
+
+讓新舊路徑可以同時存在，避免重構一次打壞全部。
+
+### Tasks
+
+1. 在 CLI 加入 codegen path 選項
+
+- `--codegen=legacy`
+- `--codegen=lir`
+- `--codegen=compare`
+
+2. 在 `llvm_codegen.cpp` 加入口由
+
+- legacy path: 現有 `HirEmitter`
+- lir path: `hir_to_lir` + `lir_printer`
+
+3. 在 compare mode 支援雙輸出
+
+- 產出 `legacy.ll`
+- 產出 `lir.ll`
+- 回報 diff 結果
+
+### Exit Criteria
+
+- 新舊路徑都能從同一個 CLI 執行
+- compare mode 可做 smoke verification
+- 完成後，預設接續 `ideas/std_vector_bringup_plan.md` 的 Phase A
+
+
+## Phase 2: Make `hir_to_lir.cpp` Own Module Lowering
+
+### Objective
+
+先搬最外層骨架，不先碰所有 expression 細節。
+
+### Tasks
+
+1. 搬 module-level lowering
+
+- globals
+- function enumeration / dedup
+- extern decl tracking
+- string pool ownership
+- intrinsic requirement flags
+
+2. 把 `LirModule` 建構邏輯從 `HirEmitter::emit()` 移到 `lower(...)`
+
+3. 保持 printer 完全吃 `LirModule`
+
+### Exit Criteria
+
+- `hir_to_lir.cpp` 不再回傳空 module
+- `HirEmitter::emit()` 不再自己組完整 `LirModule`
+
+
+## Phase 3: Move Function Skeleton Lowering
+
+### Objective
+
+把 function/block/terminator 架構先搬過去，再搬 expression 細節。
+
+### Tasks
+
+1. 搬 `FnCtx` 到 LIR lowering side
+2. 搬 block creation / label creation
+3. 搬 terminator emission
+
+- branch
+- cond branch
+- return
+- switch
+- indirectbr
+
+4. 搬 alloca hoisting
+
+### Exit Criteria
+
+- `hir_to_lir.cpp` 能產生完整 block graph
+- function 結構不再由 `hir_emitter.cpp` 主導
+
+
+## Phase 4: Move Statement / Expression Lowering In Slices
+
+### Objective
+
+按風險分組，把真正的 lowering 一塊一塊搬走。
+
+### Recommended slice order
+
+1. simple expressions
+
+- literals
+- decl refs
+- casts
+- basic arithmetic / compare
+
+2. storage and addressability
+
+- load/store
+- lvalue lowering
+- member/index gep
+
+3. control-flow-bearing expressions/statements
+
+- assign
+- ternary
+- logical short-circuit
+- if/while/for/do-while
+
+4. ABI-heavy and special cases
+
+- calls
+- va_arg
+- memcpy / va_start / va_end / va_copy
+- stacksave / stackrestore
+- bitfield ops
+- inline asm
+
+### Exit Criteria
+
+- 對每個 slice，都有 legacy vs lir compare 測試
+- 每搬完一組，就把 `hir_emitter.cpp` 對應邏輯標成 legacy-only
+
+
+## Phase 5: Add Fast Regression Guard
+
+### Objective
+
+讓重構可以用差異比對快速守住行為。
+
+### Tasks
+
+1. compare mode 產生兩份 `.ll`
+2. 提供 deterministic diff
+
+- 先做文字 diff
+- 必要時加入 normalize pass
+
+3. 建立小型 allowlist
+
+- smoke cases
+- iterator/container cases
+- namespace-heavy cases
+- varargs / bitfield / switch / indirectbr cases
+
+### Exit Criteria
+
+- 每次搬移都能快速回答「新舊輸出差在哪」
+- 有差異時可快速定位是 printer 還是 lowering
+- 此階段的第一個後續 consumer 應是 `tests/cpp/std/std_vector_simple.cpp`
+
+
+## Phase 6: Prepare For LLVM API Emission
+
+### Objective
+
+在 LIR 路徑穩定後，為未來直接呼叫 LLVM API emit IR 鋪路。
+
+### Tasks
+
+1. 將 `LirModule` 的資訊需求補齊到足以支撐 API emitter
+2. 定義新的 backend 介面
+
+- `emit_llvm_text_from_lir(...)`
+- `emit_llvm_module_from_lir(...)`
+
+3. 保持 text printer 與 API emitter 共享同一份 LIR
+
+### Exit Criteria
+
+- `.ll` printer 不再是唯一 backend consumer
+- 未來可新增 LLVM C++ API emitter，而不需要再回頭重拆 lowering
+
+
+## Success Criteria
+
+這份計畫完成時，應該能明確做到：
+
+- `src/codegen/lir/hir_to_lir.cpp` 不是 stub，而是主要 lowering owner
+- `src/codegen/llvm/hir_emitter.cpp` 不再是假名上的 legacy、實際上的主 lowering
+- 新舊 codegen 可以靠 flag 並行
+- 可以一鍵產生新舊 `.ll` 並看 diff
+- 現有測試能在重構中持續守住
+- 前述基礎完成後，agent 會自動轉去執行 `ideas/std_vector_bringup_plan.md`
+  推進 `tests/cpp/std/std_vector_simple.cpp`
+- 後續導入 LLVM API emitter 時，不需要再先重做一次 HIR/LIR split

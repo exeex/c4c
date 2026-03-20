@@ -1,70 +1,274 @@
-# Plan Execution State
+# Codegen Refactor Todo
 
-## Status: ALL MILESTONES COMPLETE
+## Status
 
-All four milestones from `plan.md` are fully executed.
-Test suite: **2069/2069 (100%)**
+In progress.
 
----
+The current repository is in a transitional state:
 
-## Completed Milestones
+- `src/codegen/lir/ir.hpp` exists
+- `src/codegen/lir/lir_printer.cpp` exists
+- `src/codegen/lir/hir_to_lir.cpp` is still a stub
+- `src/codegen/llvm/hir_emitter.cpp` still owns the real lowering work
 
-### Milestone A: Namespace context refactor
-- Namespace Phase 0: Stop Digging
-- Namespace Phase 1: Namespace Context Objects (parser has NamespaceContext, namespace_stack_, context management)
-- Namespace Phase 2 (partial): Qualified names parsed structurally (QualifiedNameRef, qualifier_segments on Node)
-- Namespace Phase 3 (partial): Declaration ownership by context (namespace_context_id on Node)
-- Namespace Phase 4 (partial): Context-based lookup (lookup_value_in_context, lookup_type_in_context, using directives)
-- **Namespace Phase 5 slice 1: LLVM name quoting** — `quote_llvm_ident()` and `llvm_struct_type_str()` use LLVM double-quote syntax for names with `::`. `sanitize_llvm_ident()` preserved for local vars. Dead-fn scanner handles quoted `@"name"` refs. 4 new runtime tests added.
-- **Namespace Phase 5 slice 2: HIR namespace propagation** — `NamespaceQualifier` struct in ir.hpp with `segments`, `is_global_qualified`, `context_id`. Added to `DeclRef`, `Function`, `GlobalVar`, `HirStructDef`. `make_ns_qual()` helper propagates qualifier_segments and namespace_context_id from AST nodes during lowering. HIR printer displays `ns=...` annotations.
-- **Namespace Phase 2 slice 3: Namespace-qualified struct tags** — `defined_struct_tags_` and forward references now use namespace-qualified tags via `canonical_name_in_context()`. Same-named structs in different namespaces no longer collide. New runtime test `namespace_struct_collision_runtime.cpp`.
-- **Namespace Phase 5 slice 3: Nested namespace lowering + extern decl quoting** — Fixed recursive flattening for nested namespace blocks and `extern_call_decls_` quoting.
-- **Namespace Phase 4 slice 2: Function name lookup across namespaces** — `known_fn_names_` set; unqualified calls work across anonymous namespaces and via `using namespace` directives.
+So the key unfinished task is not "invent LIR", but:
 
-Completion criteria met:
-- `::a::b` and `a::b` correctly distinguished
-- Reopen namespace and anonymous namespace have stable semantics
-- 28 namespace tests (27 positive + 1 negative) all pass
+- move lowering ownership from `hir_emitter.cpp` into `hir_to_lir.cpp`
 
-### Milestone B: Diagnostics and error recovery
-- **Phase 1+2: Diagnostic format + invalid node kinds** — `file:line:col: error: message` format. `NK_INVALID_EXPR`/`NK_INVALID_STMT` placeholders.
-- **Phase 3: Statement-level synchronization hooks** — try-catch in `parse_block()`, skip-to-`;`/`}`, produce `NK_INVALID_STMT`, continue parsing.
-- **Phase 4: Negative test runner with expected-error support** — `verify_case/` tests, `run_verify_case.cmake`, 5 curated verify tests.
-- **Phase 5: Curate external C clang allowlists** — 37 pass + 1 verify from 144 external C files.
 
-Completion criteria met:
-- One bad declaration doesn't destroy entire TU
-- Cascade errors significantly reduced
-- Small batch of curated Clang-style negative tests run in verify mode
+## Phase 0: Re-baseline The Plan
 
-### Milestone C: Iterator/container usability
-- Iterator phases 0-5 complete (18 iterator tests, 4 container tests, all passing)
-- `fixed_vec_smoke.cpp` passes: size/empty/data/front/back/operator[]/push_back/pop_back/begin/end/range-for all work together
+### Objective
 
-Completion criteria met:
-- Custom iterators compile and work in plain loops
-- Small fixed-storage container passes integrated smoke test
-- Range-for works as thin layer over iterator model
+Replace the false "already complete" narrative with concrete, verifiable work items.
 
-### Milestone D: Codegen architecture cleanup (LIR split)
-- **Stage 0: LIR mechanical prep** — `LirModule`, `LirFunction`, `LirBlock`, `LirInst`, `LirTerminator` skeleton.
-- **Stage 1 slice 1: Replace string sinks with LIR blocks** — `alloca_lines`/`body_lines` → structured `LirBlock`. `fn_bodies_` → `LirModule`.
-- **Stage 1 slice 2: Replace preamble_ with structured LIR containers** — type_decls, string_pool, globals, intrinsic flags, extern_decls in `LirModule`.
-- **Stage 2: Split printer into standalone LirPrinter** — `lir::print_llvm()` handles all rendering. `HirEmitter::emit()` only lowers.
-- **Stage 3 slice 1: Typed intrinsic LIR ops** — `LirMemcpyOp`, `LirVaStartOp`, `LirVaEndOp`, `LirVaCopyOp`, `LirStackSaveOp`, `LirStackRestoreOp`, `LirAbsOp`.
-- **Stage 3 slice 2: Typed bitfield LIR ops** — `LirBitfieldExtract`, `LirBitfieldInsert` with string SSA names.
-- **Stage 3 slice 3: Typed indirectbr LIR op** — `LirIndirectBrOp`.
+### Tasks
 
-Completion criteria met:
-- Behavior preserved (identical LLVM IR output)
-- Printer no longer performs semantic repair
-- Clear HIR/LIR/printer boundary for future backend work
+1. mark current state accurately
 
-## Housekeeping
-- Removed `C/C23/n2683_2.c` from clang external allowlist (requires `stdckdint.h` we don't provide)
+- LIR data model exists
+- printer exists
+- lowering split is not complete
 
-## Test Suite
-- Final: **2069/2069 (100%)**
+2. define completion test
 
-## Blockers
-None
+- `hir_to_lir.cpp` must build non-empty `LirModule`
+- new path must be selectable independently
+
+### Exit Criteria
+
+- plan and todo no longer claim the split is done
+
+
+## Phase 1: Add New/Old Path Selection
+
+### Objective
+
+Make refactor-safe parallel execution possible.
+
+### Tasks
+
+1. add CLI/backend selection
+
+- `--codegen=legacy`
+- `--codegen=lir`
+- `--codegen=compare`
+
+2. thread the selection into codegen entry
+
+- route legacy to `HirEmitter`
+- route new path to `hir_to_lir` + `lir_printer`
+
+3. optional follow-up: add `src/apps/c4clle2e.cpp` if compare/debug flow becomes too noisy in `c4cll`
+
+### Exit Criteria
+
+- both codegen paths are runnable without source edits
+
+
+## Phase 2: Implement Compare Mode
+
+### Objective
+
+Create a fast verification loop for behavior-preserving refactor work.
+
+### Tasks
+
+1. compare mode emits two outputs
+
+- legacy `.ll`
+- lir `.ll`
+
+2. report textual diff
+
+- non-zero exit on unexpected diff
+- readable diff summary in CLI output
+
+3. support deterministic output locations / naming
+
+- stable temp filenames or explicit output prefix
+
+### Exit Criteria
+
+- one command can show new-vs-old codegen differences
+
+
+## Phase 3: Move Module-Level Lowering
+
+### Objective
+
+Give `hir_to_lir.cpp` real ownership without first moving every expression helper.
+
+### Tasks
+
+1. lower globals in `hir_to_lir.cpp`
+2. lower function list / dedup policy in `hir_to_lir.cpp`
+3. move string pool ownership into `hir_to_lir.cpp`
+4. move extern declaration accumulation into `hir_to_lir.cpp`
+5. move intrinsic requirement flags into `hir_to_lir.cpp`
+
+### Exit Criteria
+
+- `lower(const hir::Module&)` returns a meaningful `LirModule`
+- `HirEmitter::emit()` is no longer assembling full module state for the new path
+
+
+## Phase 4: Move Function Skeleton Lowering
+
+### Objective
+
+Move the control skeleton before the leaf details.
+
+### Tasks
+
+1. move `FnCtx` or equivalent lowering state to LIR layer
+2. move block allocation and label generation
+3. move terminator construction
+
+- return
+- br
+- cond br
+- switch
+- indirectbr
+
+4. move alloca hoisting
+
+### Exit Criteria
+
+- LIR path can construct complete function CFG shells
+
+
+## Phase 5: Move Expression/Statement Lowering By Risk Slice
+
+### Objective
+
+Avoid one massive unsafe port.
+
+### Slice A: low-risk expression forms
+
+- int / float / char / string literals
+- decl refs
+- simple casts
+- simple unary/binary ops
+
+### Slice B: storage and address forms
+
+- lvalue lowering
+- load/store
+- member gep
+- index gep
+
+### Slice C: statement and control flow
+
+- expr stmt
+- local decl
+- return
+- if / while / for / do-while
+- logical short-circuit
+- ternary
+
+### Slice D: backend-sensitive cases
+
+- calls
+- varargs
+- memcpy / va_start / va_end / va_copy
+- stacksave / stackrestore
+- bitfields
+- inline asm
+
+### Exit Criteria
+
+- each slice has compare-mode validation before the next slice starts
+
+
+## Phase 6: Shrink Legacy Surface
+
+### Objective
+
+Prevent `hir_emitter.cpp` from remaining the de facto source of truth forever.
+
+### Tasks
+
+1. label migrated functions in `hir_emitter.cpp` as legacy-only
+2. remove new-path-only responsibilities from `HirEmitter`
+3. ensure `llvm_codegen.cpp` new path does not instantiate `HirEmitter`
+
+### Exit Criteria
+
+- new path can run end-to-end without depending on legacy lowering internals
+
+
+## Phase 7: Regression Coverage
+
+### Objective
+
+Make refactor progress measurable.
+
+### Tasks
+
+1. create compare-mode smoke suite
+
+- scalar arithmetic
+- globals
+- calls
+- control flow
+- switch
+- indirectbr
+- varargs
+- bitfields
+- namespace-heavy functions
+
+2. gate migration slices on
+
+- no crash
+- no unexpected diff
+- no regression in existing tests under legacy mode
+
+3. add at least one end-to-end container/iterator case in compare mode
+
+### Exit Criteria
+
+- every migration slice has a stable regression guard
+
+
+## Phase 8: Prepare LLVM API Backend
+
+### Objective
+
+Make the next step obvious once LIR lowering is real.
+
+### Tasks
+
+1. define backend interface on top of LIR
+
+- text backend
+- LLVM API backend
+
+2. identify LIR fields missing for API-based emission
+3. keep compare mode available even after API emitter appears
+
+### Exit Criteria
+
+- LIR is clearly the contract for both textual and API emitters
+
+
+## Immediate Next Work
+
+These should happen first, in order:
+
+1. add `--codegen=legacy|lir|compare`
+2. wire `llvm_codegen.cpp` so the new path calls `hir_to_lir.cpp`
+3. implement compare mode with two `.ll` outputs
+4. move module-level `LirModule` assembly out of `HirEmitter::emit()`
+5. add the first compare-mode smoke tests
+
+
+## Definition Of Done
+
+This todo is complete when:
+
+- `hir_to_lir.cpp` is the real lowering owner for the new path
+- `hir_emitter.cpp` is only the legacy path
+- new and old codegen paths can be switched by flag
+- compare mode can emit and diff two `.ll` files
+- the new path is stable enough to serve as the base for a future LLVM API emitter
