@@ -307,6 +307,14 @@ struct LirGlobal {
   std::string raw_line;
 };
 
+// ── Specialization metadata entry ────────────────────────────────────────────
+
+struct LirSpecEntry {
+  std::string spec_key;
+  std::string template_origin;
+  std::string mangled_name;
+};
+
 // ── Module ───────────────────────────────────────────────────────────────────
 
 struct LirModule {
@@ -331,6 +339,9 @@ struct LirModule {
   bool need_stacksave = false;
   bool need_stackrestore = false;
   bool need_abs = false;
+
+  // Specialization metadata for cross-TU serialization.
+  std::vector<LirSpecEntry> spec_entries;
 };
 
 }  // namespace c4c::codegen::lir

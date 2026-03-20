@@ -31,11 +31,13 @@
 
 - **Milestone D Stage 1 slice 2: Replace preamble_ with structured LIR containers** — Eliminated `preamble_` ostringstream from `HirEmitter`. Struct/union type definitions now stored in `module_.type_decls` (vector of pre-formatted strings). String constants (narrow and wide) stored in `module_.string_pool` (vector of `LirStringConst`). Global variable definitions stored in `module_.globals` (vector of `LirGlobal` with `raw_line` text). Intrinsic requirement flags propagated to `module_.need_*` booleans. External function declarations populated into `module_.extern_decls`. DCE global-initializer scanning now iterates `module_.globals` raw_lines. Render in `emit()` walks structured containers in order: type_decls → string_pool → globals → intrinsics → extern_decls → functions. All 2067/2067 tests pass.
 
+- **Milestone D Stage 2: Split printer into standalone LirPrinter** — Extracted all LLVM IR rendering logic from `HirEmitter::emit()` into `lir::print_llvm()` in `lir_printer.cpp`. Added `LirSpecEntry` and `spec_entries` to `LirModule` for specialization metadata. `HirEmitter::emit()` now only performs lowering (emit_preamble, emit_global, emit_function) and module_ finalization (intrinsic flags, extern_decls, spec_entries), then delegates to `lir::print_llvm(module_)`. DCE, function/block rendering, intrinsic declarations, extern decls, string pool, and metadata are all handled by the standalone printer. All 2067/2067 tests pass.
+
 ## Active Item
-**Milestone D Stage 2**: Split printer out into standalone LirPrinter
+**Milestone D Stage 3**: Normalize special cases into LIR ops
 
 ## Next
-- Milestone D Stage 3: Normalize special cases into LIR ops
+- Milestone C: Iterator/container usability
 
 ## Test Suite
 - Baseline: 2067/2067 (100%)

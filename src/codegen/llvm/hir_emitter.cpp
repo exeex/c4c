@@ -1,5 +1,6 @@
 #include "hir_emitter.hpp"
 #include "canonical_symbol.hpp"
+#include "../lir/lir_printer.hpp"
 
 namespace c4c::codegen::llvm_backend {
 
@@ -139,135 +140,15 @@ std::string HirEmitter::emit(){
       if (best_fn.count(fn.name) && best_fn[fn.name] == i) emit_function(fn);
     }
 
-    // Helper: render a LirInst to text (for LirRawLine).
-    auto render_inst = [](std::ostringstream& os, const lir::LirInst& inst) {
-      if (const auto* raw = std::get_if<lir::LirRawLine>(&inst)) {
-        os << raw->line << "\n";
-      }
-    };
-
-    // Helper: render a LirFunction to LLVM IR text.
-    auto render_fn = [&render_inst](const lir::LirFunction& f) -> std::string {
-      if (f.is_declaration) return f.signature_text;
-      std::ostringstream fout;
-      fout << f.signature_text;
-      fout << "{\n";
-      for (size_t i = 0; i < f.blocks.size(); ++i) {
-        const auto& blk = f.blocks[i];
-        fout << blk.label << ":\n";
-        // Alloca instructions are hoisted to the start of the entry block.
-        if (i == 0) {
-          for (const auto& inst : f.alloca_insts) render_inst(fout, inst);
-        }
-        for (const auto& inst : blk.insts) render_inst(fout, inst);
-      }
-      fout << "}\n\n";
-      return fout.str();
-    };
-
-    // Dead-code elimination: remove unreferenced internal (static) functions.
-    // Collect names of internal functions.
-    std::unordered_set<std::string> internal_fns;
-    for (const auto& f : module_.functions) {
-      if (f.is_internal) internal_fns.insert(f.name);
-    }
-    // Find all @name and @"quoted name" references in a text block.
-    auto find_refs = [](const std::string& body) {
-      std::unordered_set<std::string> refs;
-      size_t pos = 0;
-      while ((pos = body.find('@', pos)) != std::string::npos) {
-        ++pos;
-        if (pos < body.size() && body[pos] == '"') {
-          // Quoted identifier: @"ns::foo"
-          ++pos;  // skip opening "
-          size_t start = pos;
-          while (pos < body.size() && body[pos] != '"') ++pos;
-          if (pos > start) {
-            refs.insert("\"" + body.substr(start, pos - start) + "\"");
-          }
-          if (pos < body.size()) ++pos;  // skip closing "
-        } else {
-          // Bare identifier: @foo
-          size_t start = pos;
-          while (pos < body.size() && (std::isalnum(static_cast<unsigned char>(body[pos])) || body[pos] == '_' || body[pos] == '.'))
-            ++pos;
-          if (pos > start) refs.insert(body.substr(start, pos - start));
-        }
-      }
-      return refs;
-    };
-
-    // Pre-render function bodies for DCE reference scanning.
-    std::vector<std::string> rendered_bodies;
-    rendered_bodies.reserve(module_.functions.size());
-    for (const auto& f : module_.functions) {
-      rendered_bodies.push_back(render_fn(f));
-    }
-
-    std::unordered_set<std::string> reachable;
-    // Seed: all non-internal function bodies are reachable roots.
-    std::vector<std::string> worklist;
-    for (size_t i = 0; i < module_.functions.size(); ++i) {
-      if (!module_.functions[i].is_internal) {
-        for (const auto& r : find_refs(rendered_bodies[i])) {
-          if (internal_fns.count(r) && !reachable.count(r)) {
-            reachable.insert(r);
-            worklist.push_back(r);
-          }
-        }
-      }
-    }
-    // Also treat global initializers as roots.
-    for (const auto& g : module_.globals) {
-      for (const auto& r : find_refs(g.raw_line)) {
-        if (internal_fns.count(r) && !reachable.count(r)) {
-          reachable.insert(r);
-          worklist.push_back(r);
-        }
-      }
-    }
-    // Propagate: internal functions referenced by reachable internal functions.
-    std::unordered_map<std::string, size_t> fn_idx_by_name;
-    for (size_t i = 0; i < module_.functions.size(); ++i) {
-      fn_idx_by_name[module_.functions[i].name] = i;
-    }
-    while (!worklist.empty()) {
-      std::string cur = std::move(worklist.back());
-      worklist.pop_back();
-      auto it = fn_idx_by_name.find(cur);
-      if (it == fn_idx_by_name.end()) continue;
-      for (const auto& r : find_refs(rendered_bodies[it->second])) {
-        if (internal_fns.count(r) && !reachable.count(r)) {
-          reachable.insert(r);
-          worklist.push_back(r);
-        }
-      }
-    }
-
-    std::ostringstream out;
-    // Render type declarations (struct/union definitions).
-    for (const auto& td : module_.type_decls) out << td << "\n";
-    // Render string pool constants.
-    for (const auto& sc : module_.string_pool) {
-      if (sc.byte_length < 0) {
-        // Pre-formatted wide string: raw_bytes holds "type init"
-        out << sc.pool_name << " = private unnamed_addr constant " << sc.raw_bytes << "\n";
-      } else {
-        out << sc.pool_name << " = private unnamed_addr constant ["
-            << sc.byte_length << " x i8] c\"" << sc.raw_bytes << "\\00\"\n";
-      }
-    }
-    // Render global variable definitions.
-    for (const auto& g : module_.globals) out << g.raw_line << "\n";
-    if (!module_.type_decls.empty() || !module_.string_pool.empty() || !module_.globals.empty())
-      out << "\n";
-    if (need_llvm_va_start_)    module_.need_va_start = true;
-    if (need_llvm_va_end_)      module_.need_va_end = true;
-    if (need_llvm_va_copy_)     module_.need_va_copy = true;
-    if (need_llvm_memcpy_)      module_.need_memcpy = true;
-    if (need_llvm_stacksave_)   module_.need_stacksave = true;
+    // ── Finalize module_ state before printing ─────────────────────────────
+    // Propagate intrinsic requirement flags.
+    if (need_llvm_va_start_)     module_.need_va_start = true;
+    if (need_llvm_va_end_)       module_.need_va_end = true;
+    if (need_llvm_va_copy_)      module_.need_va_copy = true;
+    if (need_llvm_memcpy_)       module_.need_memcpy = true;
+    if (need_llvm_stacksave_)    module_.need_stacksave = true;
     if (need_llvm_stackrestore_) module_.need_stackrestore = true;
-    if (need_llvm_abs_)         module_.need_abs = true;
+    if (need_llvm_abs_)          module_.need_abs = true;
     // Populate LirModule extern_decls from extern_call_decls_.
     for (const auto& [name, ret_ty] : extern_call_decls_) {
       if (mod_.fn_index.count(name)) continue;
@@ -276,51 +157,13 @@ std::string HirEmitter::emit(){
       ed.return_type_str = ret_ty;
       module_.extern_decls.push_back(std::move(ed));
     }
-    // Render intrinsic declarations.
-    if (module_.need_va_start)    out << "declare void @llvm.va_start.p0(ptr)\n";
-    if (module_.need_va_end)      out << "declare void @llvm.va_end.p0(ptr)\n";
-    if (module_.need_va_copy)     out << "declare void @llvm.va_copy.p0.p0(ptr, ptr)\n";
-    if (module_.need_memcpy)      out << "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\n";
-    if (module_.need_stacksave)   out << "declare ptr @llvm.stacksave()\n";
-    if (module_.need_stackrestore) out << "declare void @llvm.stackrestore(ptr)\n";
-    if (module_.need_abs) {
-      out << "declare i32 @llvm.abs.i32(i32, i1 immarg)\n";
-      out << "declare i64 @llvm.abs.i64(i64, i1 immarg)\n";
-    }
-    if (module_.need_va_start || module_.need_va_end || module_.need_va_copy ||
-        module_.need_memcpy || module_.need_stacksave || module_.need_stackrestore ||
-        module_.need_abs) out << "\n";
-    // Render external function declarations.
-    for (const auto& ed : module_.extern_decls) {
-      out << "declare " << ed.return_type_str << " " << llvm_global_sym(ed.name) << "(...)\n";
-    }
-    if (!module_.extern_decls.empty()) out << "\n";
-    for (size_t i = 0; i < module_.functions.size(); ++i) {
-      // Skip unreachable internal functions.
-      if (module_.functions[i].is_internal && !reachable.count(module_.functions[i].name)) continue;
-      out << rendered_bodies[i];
+    // Populate specialization metadata.
+    for (const auto& e : spec_entries_) {
+      module_.spec_entries.push_back({e.spec_key, e.template_origin, e.mangled_name});
     }
 
-    // Emit LLVM named metadata for specialization identity (cross-TU serialization).
-    if (!spec_entries_.empty()) {
-      out << "\n";
-      // Emit individual metadata entries.
-      int md_id = 0;
-      for (const auto& e : spec_entries_) {
-        out << "!" << md_id << " = !{!\"" << e.spec_key << "\", !\""
-            << e.template_origin << "\", !\"" << e.mangled_name << "\"}\n";
-        ++md_id;
-      }
-      // Emit named metadata node referencing all entries.
-      out << "!c4c.specializations = !{";
-      for (int i = 0; i < md_id; ++i) {
-        if (i) out << ", ";
-        out << "!" << i;
-      }
-      out << "}\n";
-    }
-
-    return out.str();
+    // ── Render via standalone LIR printer ────────────────────────────────────
+    return lir::print_llvm(module_);
   }
 
 const GlobalVar* HirEmitter::select_global_object(const std::string& name) const {
