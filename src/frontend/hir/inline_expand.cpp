@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <cstdio>
+#include <unordered_map>
 
 namespace c4c::hir {
 
@@ -1247,11 +1248,21 @@ void run_inline_expansion(Module& module) {
   // Re-discover after each expansion because block/stmt indices change.
   bool changed = true;
   int max_iterations = 256;  // guard against infinite expansion
+  // Per-callee expansion count to detect mutual recursion chains.
+  // Cap each callee at 16 expansions — enough for reasonable always_inline
+  // depth but prevents runaway mutual recursion (A→B→A→B→...).
+  constexpr int max_per_callee = 16;
+  std::unordered_map<uint32_t, int> callee_expand_count;
   while (changed && max_iterations-- > 0) {
     changed = false;
     auto candidates = discover_inline_candidates(module);
     for (const auto& cand : candidates) {
       if (!cand.eligible()) continue;
+
+      // Skip callees that have already been expanded too many times
+      // (mutual recursion guard).
+      auto callee_id = cand.callee->id.value;
+      if (callee_expand_count[callee_id] >= max_per_callee) continue;
 
       // Find the mutable caller function.
       Function* caller = nullptr;
@@ -1264,6 +1275,7 @@ void run_inline_expansion(Module& module) {
       if (!caller) continue;
 
       if (expand_inline_site(module, *caller, cand)) {
+        callee_expand_count[callee_id]++;
         changed = true;
         break;  // re-discover after each expansion
       }
