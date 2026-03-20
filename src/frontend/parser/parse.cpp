@@ -406,11 +406,11 @@ int Parser::resolve_namespace_name(const QualifiedNameRef& name) const {
 bool Parser::lookup_value_in_context(int context_id, const std::string& name,
                                      std::string* resolved) const {
     const std::string candidate = canonical_name_in_context(context_id, name);
-    if (var_types_.count(candidate)) {
+    if (var_types_.count(candidate) || known_fn_names_.count(candidate)) {
         *resolved = candidate;
         return true;
     }
-    if (context_id == 0 && var_types_.count(name)) {
+    if (context_id == 0 && (var_types_.count(name) || known_fn_names_.count(name))) {
         *resolved = name;
         return true;
     }

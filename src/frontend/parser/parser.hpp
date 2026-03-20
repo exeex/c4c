@@ -84,6 +84,9 @@ class Parser {
   // Variable name → TypeSpec (populated as variables are declared).
   // Used to resolve typeof(variable) in type expressions.
   std::unordered_map<std::string, TypeSpec> var_types_;
+  // Qualified function names (populated as functions are declared/defined).
+  // Used by lookup_value_in_context for namespace-aware function lookup.
+  std::set<std::string> known_fn_names_;
   // Struct/union tag → NK_STRUCT_DEF node (populated when parsing struct bodies).
   // Used by eval_const_int to compute __builtin_offsetof at parse time.
   std::unordered_map<std::string, Node*> struct_tag_def_map_;

@@ -1048,6 +1048,7 @@ Node* Parser::parse_top_level() {
             fn->fn_ptr_params   = decl_fn_ptr_params;
             fn->n_fn_ptr_params = decl_n_fn_ptr_params;
             fn->fn_ptr_variadic = decl_fn_ptr_variadic;
+            known_fn_names_.insert(scoped_decl_name);
             return fn;
         }
         // Function declaration (no body): consume semicolon and return
@@ -1074,6 +1075,7 @@ Node* Parser::parse_top_level() {
         fn->fn_ptr_params   = decl_fn_ptr_params;
         fn->n_fn_ptr_params = decl_n_fn_ptr_params;
         fn->fn_ptr_variadic = decl_fn_ptr_variadic;
+        known_fn_names_.insert(scoped_decl_name);
         return fn;
     }
 
@@ -1235,6 +1237,7 @@ Node* Parser::parse_top_level() {
             }
             propagate_ret_fn_ptr(fn);
             attach_spec_args(fn);
+            known_fn_names_.insert(scoped_decl_name);
             return fn;
         }
 
@@ -1260,6 +1263,7 @@ Node* Parser::parse_top_level() {
         }
         propagate_ret_fn_ptr(fn);
         attach_spec_args(fn);
+        known_fn_names_.insert(scoped_decl_name);
         return fn;
     }
 

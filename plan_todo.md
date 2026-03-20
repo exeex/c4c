@@ -23,15 +23,17 @@
   - 30 positive tests our compiler fails on (our bugs, not added)
   Allowlist grew from 1 to 38 entries. Test suite: 2065/2065 (100%).
 
+- **Namespace Phase 4 slice 2: Function name lookup across namespaces** — Added `known_fn_names_` set to parser; functions register their qualified name when declared/defined. `lookup_value_in_context()` now checks both `var_types_` and `known_fn_names_`, enabling unqualified calls to functions in anonymous namespaces and via `using namespace` directives. Two new runtime tests: `anon_namespace_fn_lookup.cpp`, `using_namespace_fn_lookup.cpp`. All 2067/2067 tests pass.
+
 ## Active Item
-None — Milestone B complete.
+None — Namespace Phase 4 slice 2 complete.
 
 ## Next
-- Namespace Phase 2 completion (TypeSpec qualifier propagation)
-- Or: Milestone C (iterator/container usability)
+- Namespace: further lookup gaps (e.g., forward-declared functions in namespaces, enum constants across namespaces)
+- Or: Milestone D (HIR -> LIR split)
 
 ## Test Suite
-- Baseline: 2065/2065 (100%)
+- Baseline: 2067/2067 (100%)
 
 ## Blockers
 None known
