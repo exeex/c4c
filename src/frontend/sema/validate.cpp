@@ -259,6 +259,15 @@ bool is_null_pointer_constant_expr(const Node* n) {
   return false;
 }
 
+std::optional<std::string> qualified_method_owner_struct(const Node* fn) {
+  if (!fn || fn->kind != NK_FUNCTION || !fn->name) return std::nullopt;
+  const std::string name(fn->name);
+  const size_t sep = name.rfind("::");
+  if (sep == std::string::npos || sep == 0 || sep + 2 >= name.size())
+    return std::nullopt;
+  return name.substr(0, sep);
+}
+
 
 // Implicit conversion check for assignment-like contexts:
 // - function-call argument to parameter (C11 6.5.2.2p7)
@@ -689,6 +698,17 @@ class Validator {
       const Node* p = fn->params[i];
       if (!p || !p->name || !p->name[0]) continue;
       bind_local(p->name, p->type, true, p->line);
+    }
+    if (auto owner = qualified_method_owner_struct(fn); owner.has_value()) {
+      TypeSpec this_ts{};
+      this_ts.base = TB_STRUCT;
+      this_ts.tag = owner->c_str();
+      this_ts.ptr_level = 1;
+      this_ts.array_size = -1;
+      this_ts.inner_rank = -1;
+      // In this codebase, is_const with ptr_level>0 models pointee constness.
+      this_ts.is_const = fn->is_const_method;
+      bind_local("this", this_ts, true, fn->line);
     }
 
     // Validate constructor initializer list expressions.

@@ -125,6 +125,28 @@ std::string sanitize_symbol(std::string s) {
   return s;
 }
 
+struct QualifiedMethodRef {
+  std::string struct_tag;
+  std::string method_name;
+  std::string key;
+};
+
+std::optional<QualifiedMethodRef> try_parse_qualified_struct_method_name(
+    const Node* fn, bool include_const_suffix = true) {
+  if (!fn || fn->kind != NK_FUNCTION || !fn->name) return std::nullopt;
+  const std::string name(fn->name);
+  const size_t sep = name.rfind("::");
+  if (sep == std::string::npos || sep == 0 || sep + 2 >= name.size())
+    return std::nullopt;
+
+  QualifiedMethodRef ref;
+  ref.struct_tag = name.substr(0, sep);
+  ref.method_name = name.substr(sep + 2);
+  ref.key = ref.struct_tag + "::" + ref.method_name;
+  if (include_const_suffix && fn->is_const_method) ref.key += "_const";
+  return ref;
+}
+
 UnaryOp map_unary_op(const char* op) {
   if (!op) return UnaryOp::Plus;
   const std::string s(op);
@@ -607,9 +629,32 @@ class Lowerer {
       }
     }
 
+    // Phase 1.95: attach out-of-class struct method definitions to the
+    // pending method entries collected from their in-class declarations.
+    for (const Node* item : items) {
+      if (item->kind != NK_FUNCTION || !item->body) continue;
+      auto method_ref = try_parse_qualified_struct_method_name(item);
+      if (!method_ref.has_value()) continue;
+      if (!m.struct_defs.count(method_ref->struct_tag)) continue;
+      auto mit = struct_methods_.find(method_ref->key);
+      if (mit == struct_methods_.end()) continue;
+      for (auto& pm : pending_methods_) {
+        if (pm.mangled == mit->second) {
+          pm.method_node = item;
+          break;
+        }
+      }
+    }
+
     // Phase 2: lower functions and globals
     for (const Node* item : items) {
       if (item->kind == NK_FUNCTION) {
+        auto method_ref = try_parse_qualified_struct_method_name(item);
+        if (method_ref.has_value() &&
+            m.struct_defs.count(method_ref->struct_tag) &&
+            struct_methods_.count(method_ref->key)) {
+          continue;
+        }
         if (item->is_consteval && item->n_template_params == 0) {
           // Non-template consteval function: add as declaration-only to HIR
           // for analysis/debugging.  The body is not lowered (it's evaluated
