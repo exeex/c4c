@@ -112,6 +112,38 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod) {
   return decls;
 }
 
+// ── Module-level finalization ─────────────────────────────────────────────────
+// After per-item lowering, the emitter holds accumulated intrinsic flags,
+// extern call declarations, and spec entries.  This function transfers them
+// into the LirModule so the printer / future backends can consume them.
+
+static void finalize_module(LirModule& module,
+                            const c4c::hir::Module& hir_mod,
+                            const c4c::codegen::llvm_backend::HirEmitter& emitter) {
+  // Intrinsic requirement flags
+  if (emitter.needs_va_start())     module.need_va_start = true;
+  if (emitter.needs_va_end())       module.need_va_end = true;
+  if (emitter.needs_va_copy())      module.need_va_copy = true;
+  if (emitter.needs_memcpy())       module.need_memcpy = true;
+  if (emitter.needs_stacksave())    module.need_stacksave = true;
+  if (emitter.needs_stackrestore()) module.need_stackrestore = true;
+  if (emitter.needs_abs())          module.need_abs = true;
+
+  // Extern call declarations (functions called but not defined in this TU)
+  for (const auto& [name, ret_ty] : emitter.extern_call_decls()) {
+    if (hir_mod.fn_index.count(name)) continue;
+    LirExternDecl ed;
+    ed.name = name;
+    ed.return_type_str = ret_ty;
+    module.extern_decls.push_back(std::move(ed));
+  }
+
+  // Specialization metadata
+  for (const auto& e : emitter.spec_entries()) {
+    module.spec_entries.push_back({e.spec_key, e.template_origin, e.mangled_name});
+  }
+}
+
 // ── Main lowering entry point ────────────────────────────────────────────────
 
 LirModule lower(const c4c::hir::Module& hir_mod) {
@@ -133,6 +165,9 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
   // Delegate per-item lowering to HirEmitter (will migrate in later phases).
   c4c::codegen::llvm_backend::HirEmitter emitter(hir_mod);
   emitter.lower_items(module, global_indices, fn_indices);
+
+  // Module-level finalization: owned by hir_to_lir.
+  finalize_module(module, hir_mod, emitter);
 
   return module;
 }

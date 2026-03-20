@@ -143,21 +143,9 @@ const char* llvm_visibility(Visibility v) {
 HirEmitter::HirEmitter(const Module& m) : mod_(m){}
 
 lir::LirModule HirEmitter::lower_to_lir(){
-    // Delegate to the shared orchestration in hir_to_lir::lower().
-    // This keeps the legacy path using the same code as the lir path.
-    set_active_target_triple(mod_.target_triple);
-
-    lir::LirModule module;
-    module.target_triple = mod_.target_triple;
-    module.data_layout = !mod_.data_layout.empty() ? mod_.data_layout
-                                                    : llvm_default_datalayout(mod_.target_triple);
-    module.type_decls = lir::build_type_decls(mod_);
-
-    auto global_indices = lir::dedup_globals(mod_);
-    auto fn_indices = lir::dedup_functions(mod_);
-
-    lower_items(module, global_indices, fn_indices);
-    return module;
+    // Delegate to hir_to_lir::lower() which owns module-level orchestration
+    // and finalization (intrinsic flags, extern decls, spec entries).
+    return lir::lower(mod_);
   }
 
 void HirEmitter::lower_items(lir::LirModule& module,
@@ -167,27 +155,12 @@ void HirEmitter::lower_items(lir::LirModule& module,
     module_ = std::move(module);
 
     // Emit globals and functions in the order given by the caller.
+    // This accumulates string pool entries (directly into module_),
+    // extern_call_decls_, intrinsic flags, and spec_entries_.
+    // Module-level finalization is left to the caller (hir_to_lir::lower)
+    // via the post-lowering accessors.
     for (size_t idx : global_indices) emit_global(mod_.globals[idx]);
     for (size_t idx : fn_indices) emit_function(mod_.functions[idx]);
-
-    // ── Finalize module_ state before returning ─────────────────────────────
-    if (need_llvm_va_start_)     module_.need_va_start = true;
-    if (need_llvm_va_end_)       module_.need_va_end = true;
-    if (need_llvm_va_copy_)      module_.need_va_copy = true;
-    if (need_llvm_memcpy_)       module_.need_memcpy = true;
-    if (need_llvm_stacksave_)    module_.need_stacksave = true;
-    if (need_llvm_stackrestore_) module_.need_stackrestore = true;
-    if (need_llvm_abs_)          module_.need_abs = true;
-    for (const auto& [name, ret_ty] : extern_call_decls_) {
-      if (mod_.fn_index.count(name)) continue;
-      lir::LirExternDecl ed;
-      ed.name = name;
-      ed.return_type_str = ret_ty;
-      module_.extern_decls.push_back(std::move(ed));
-    }
-    for (const auto& e : spec_entries_) {
-      module_.spec_entries.push_back({e.spec_key, e.template_origin, e.mangled_name});
-    }
 
     // Move the result back to the caller.
     module = std::move(module_);

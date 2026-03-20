@@ -2,7 +2,7 @@
 
 ## Status
 
-In progress. Phases 0–3 slice 2 complete.
+In progress. Phases 0–3 slice 3 complete.
 
 ## Completed
 
@@ -41,6 +41,18 @@ In progress. Phases 0–3 slice 2 complete.
 - Removed dead `emit_preamble()` from HirEmitter
 - Both legacy and lir paths produce identical output; compare tests pass
 
+### Phase 3: Move Module-Level Lowering — slice 3 ✓
+
+- Moved module-level finalization from `HirEmitter::lower_items()` to `hir_to_lir::lower()`:
+  - Intrinsic flags (va_start, va_end, va_copy, memcpy, stacksave, stackrestore, abs)
+  - Extern call declarations (functions called but not defined in TU)
+  - Specialization metadata (spec entries)
+- Added post-lowering accessors on `HirEmitter` for accumulated state
+- Moved `SpecEntry` struct to public section of `HirEmitter`
+- `HirEmitter::lower_to_lir()` now delegates entirely to `lir::lower()`
+- New `finalize_module()` static helper in `hir_to_lir.cpp` owns all module-level finalization
+- Both legacy and lir paths produce identical output; compare tests pass
+
 ### Test results
 
 - Full suite: **2073/2073 passed** (no regressions)
@@ -50,10 +62,9 @@ In progress. Phases 0–3 slice 2 complete.
 
 The next slices, in priority order:
 
-1. Phase 3 slice 3: Move string pool, extern decl tracking, and intrinsic flags to LIR lowering layer
-2. Phase 4: Move function skeleton lowering (FnCtx, blocks, terminators)
-3. Phase 5: Move expression/statement lowering by risk slice
-4. Phase 7: Expand compare-mode smoke suite (varargs, bitfields, indirectbr, etc.)
+1. Phase 4: Move function skeleton lowering (FnCtx, blocks, terminators)
+2. Phase 5: Move expression/statement lowering by risk slice
+3. Phase 7: Expand compare-mode smoke suite (varargs, bitfields, indirectbr, etc.)
 
 
 ## Blockers

@@ -89,6 +89,9 @@ struct FieldStep {
 
 class HirEmitter {
  public:
+  // ── Specialization metadata for cross-TU serialization ──────────────────
+  struct SpecEntry { std::string spec_key; std::string template_origin; std::string mangled_name; };
+
   explicit HirEmitter(const Module& m);
   std::string emit();
 
@@ -100,11 +103,28 @@ class HirEmitter {
   /// Lower per-item content (globals, functions) into an already-initialized
   /// LirModule.  Module-level setup (target, data_layout, type_decls, dedup)
   /// is expected to have been done by the caller (hir_to_lir::lower).
-  /// The emitter takes ownership of `module` and populates globals, functions,
-  /// string pool, extern decls, intrinsic flags, and spec entries.
+  /// The emitter populates globals, functions, and string pool entries.
+  /// Module-level finalization (intrinsic flags, extern decls, spec entries)
+  /// is left to the caller via the accessors below.
   void lower_items(lir::LirModule& module,
                    const std::vector<size_t>& global_indices,
                    const std::vector<size_t>& fn_indices);
+
+  // ── Post-lowering accessors for module-level finalization ──────────────
+  // These expose accumulated state so that hir_to_lir::lower() can own
+  // the decision of what goes into the final LirModule.
+  bool needs_va_start()     const { return need_llvm_va_start_; }
+  bool needs_va_end()       const { return need_llvm_va_end_; }
+  bool needs_va_copy()      const { return need_llvm_va_copy_; }
+  bool needs_memcpy()       const { return need_llvm_memcpy_; }
+  bool needs_stacksave()    const { return need_llvm_stacksave_; }
+  bool needs_stackrestore() const { return need_llvm_stackrestore_; }
+  bool needs_abs()          const { return need_llvm_abs_; }
+
+  const std::unordered_map<std::string, std::string>& extern_call_decls() const {
+    return extern_call_decls_;
+  }
+  const std::vector<SpecEntry>& spec_entries() const { return spec_entries_; }
 
 
  private:
@@ -123,8 +143,6 @@ class HirEmitter {
   mutable std::unordered_map<uint32_t, FnPtrSig> inferred_ret_fn_ptr_sigs_;
   mutable std::unordered_map<uint32_t, FnPtrSig> inferred_direct_fn_sigs_;
 
-  // ── Specialization metadata for cross-TU serialization ──────────────────
-  struct SpecEntry { std::string spec_key; std::string template_origin; std::string mangled_name; };
   std::vector<SpecEntry> spec_entries_;
 
   // ── Instruction helpers ───────────────────────────────────────────────────
