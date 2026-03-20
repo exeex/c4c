@@ -2,7 +2,7 @@
 
 ## Status
 
-In progress. Phases 0–3 slice 3 complete.
+In progress. Phases 0–4 slice 1 complete.
 
 ## Completed
 
@@ -53,18 +53,36 @@ In progress. Phases 0–3 slice 3 complete.
 - New `finalize_module()` static helper in `hir_to_lir.cpp` owns all module-level finalization
 - Both legacy and lir paths produce identical output; compare tests pass
 
+### Phase 4: Move Function Skeleton Lowering — slice 0 (terminator separation) ✓
+
+- Added `LirRawTerminator` variant to `LirTerminator` in `ir.hpp`
+- Terminators stored in `LirBlock::terminator` field (was mixed into `insts`)
+- `emit_term()` sets `LirBlock::terminator` instead of pushing to `insts`
+- `emit_instr()` and `emit_lir_op()` skip dead code after terminator placed
+- `render_terminator()` in printer handles `LirRawTerminator`
+
+### Phase 4: Move Function Skeleton Lowering — slice 1 (iteration ownership) ✓
+
+- Replaced `HirEmitter::lower_items()` with finer-grained API:
+  - `adopt_module()` / `release_module()` — hand module in/out
+  - `lower_globals(indices)` — lower globals only
+  - `lower_single_function(fn)` — lower one function
+- `hir_to_lir::lower()` now drives per-function iteration directly
+- HirEmitter retains per-function body lowering (emit_function)
+- Both legacy and lir paths produce identical output; all tests pass
+
 ### Test results
 
-- Full suite: **2073/2073 passed** (no regressions)
+- Full suite: **2075/2075 passed** (no regressions)
 
 
 ## Immediate Next Work
 
 The next slices, in priority order:
 
-1. Phase 4: Move function skeleton lowering (FnCtx, blocks, terminators)
-2. Phase 5: Move expression/statement lowering by risk slice
-3. Phase 7: Expand compare-mode smoke suite (varargs, bitfields, indirectbr, etc.)
+1. Phase 4 slice 2: Extract function signature building to hir_to_lir
+2. Phase 4 slice 3: Move block ordering and fallthrough terminator to hir_to_lir
+3. Phase 5: Move expression/statement lowering by risk slice
 
 
 ## Blockers

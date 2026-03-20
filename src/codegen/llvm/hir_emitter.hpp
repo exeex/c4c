@@ -100,15 +100,17 @@ class HirEmitter {
   /// or any future backend.
   lir::LirModule lower_to_lir();
 
-  /// Lower per-item content (globals, functions) into an already-initialized
-  /// LirModule.  Module-level setup (target, data_layout, type_decls, dedup)
-  /// is expected to have been done by the caller (hir_to_lir::lower).
-  /// The emitter populates globals, functions, and string pool entries.
-  /// Module-level finalization (intrinsic flags, extern decls, spec entries)
-  /// is left to the caller via the accessors below.
-  void lower_items(lir::LirModule& module,
-                   const std::vector<size_t>& global_indices,
-                   const std::vector<size_t>& fn_indices);
+  /// Adopt/release the working LirModule.  The caller (hir_to_lir::lower)
+  /// builds the module shell, then hands it to the emitter for per-item
+  /// lowering, and finally takes it back for finalization.
+  void adopt_module(lir::LirModule module);
+  lir::LirModule release_module();
+
+  /// Lower all globals whose indices are given.
+  void lower_globals(const std::vector<size_t>& global_indices);
+
+  /// Lower a single HIR function into the working LirModule.
+  void lower_single_function(const hir::Function& fn);
 
   // ── Post-lowering accessors for module-level finalization ──────────────
   // These expose accumulated state so that hir_to_lir::lower() can own

@@ -162,9 +162,16 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
   auto global_indices = dedup_globals(hir_mod);
   auto fn_indices = dedup_functions(hir_mod);
 
-  // Delegate per-item lowering to HirEmitter (will migrate in later phases).
+  // Per-item lowering: hir_to_lir owns iteration; HirEmitter owns lowering.
   c4c::codegen::llvm_backend::HirEmitter emitter(hir_mod);
-  emitter.lower_items(module, global_indices, fn_indices);
+  emitter.adopt_module(std::move(module));
+
+  emitter.lower_globals(global_indices);
+  for (size_t idx : fn_indices) {
+    emitter.lower_single_function(hir_mod.functions[idx]);
+  }
+
+  module = emitter.release_module();
 
   // Module-level finalization: owned by hir_to_lir.
   finalize_module(module, hir_mod, emitter);

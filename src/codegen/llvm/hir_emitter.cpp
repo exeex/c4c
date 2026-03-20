@@ -148,22 +148,20 @@ lir::LirModule HirEmitter::lower_to_lir(){
     return lir::lower(mod_);
   }
 
-void HirEmitter::lower_items(lir::LirModule& module,
-                              const std::vector<size_t>& global_indices,
-                              const std::vector<size_t>& fn_indices) {
-    // Adopt the caller's module as our working module.
+void HirEmitter::adopt_module(lir::LirModule module) {
     module_ = std::move(module);
+  }
 
-    // Emit globals and functions in the order given by the caller.
-    // This accumulates string pool entries (directly into module_),
-    // extern_call_decls_, intrinsic flags, and spec_entries_.
-    // Module-level finalization is left to the caller (hir_to_lir::lower)
-    // via the post-lowering accessors.
+lir::LirModule HirEmitter::release_module() {
+    return std::move(module_);
+  }
+
+void HirEmitter::lower_globals(const std::vector<size_t>& global_indices) {
     for (size_t idx : global_indices) emit_global(mod_.globals[idx]);
-    for (size_t idx : fn_indices) emit_function(mod_.functions[idx]);
+  }
 
-    // Move the result back to the caller.
-    module = std::move(module_);
+void HirEmitter::lower_single_function(const Function& fn) {
+    emit_function(fn);
   }
 
 std::string HirEmitter::emit(){
