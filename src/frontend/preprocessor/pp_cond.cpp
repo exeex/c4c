@@ -137,6 +137,12 @@ std::string resolve_defined_and_intrinsics(
             "__builtin_inff", "__builtin_nan", "__builtin_nanf",
             "__builtin_isnan", "__builtin_isinf", "__builtin_isfinite",
             "__builtin_add_overflow", "__builtin_sub_overflow", "__builtin_mul_overflow",
+            "__remove_reference_t", "__remove_reference",
+            "__is_trivially_destructible", "__has_trivial_destructor",
+            "__make_integer_seq", "__integer_pack",
+            "__is_target_arch", "__is_target_vendor", "__is_target_os",
+            "__is_target_environment", "__is_target_variant_os",
+            "__is_target_variant_environment", "__is_identifier",
             nullptr
           };
           bool found = false;
@@ -144,6 +150,82 @@ std::string resolve_defined_and_intrinsics(
             if (arg == *p) { found = true; break; }
           }
           out += (found ? "1" : "0");
+          continue;
+        }
+      }
+
+      if (ident == "__is_target_arch" && is_word_boundary(expr, i)) {
+        bool ok = false;
+        std::string arg;
+        parse_intrinsic_arg(&ok, &arg);
+        if (ok) {
+          bool match = false;
+#if defined(__aarch64__) || defined(_M_ARM64)
+          match = (arg == "arm64" || arg == "arm64e" || arg == "arm64_32");
+#elif defined(__x86_64__) || defined(_M_X64)
+          match = (arg == "x86_64");
+#elif defined(__i386__) || defined(_M_IX86)
+          match = (arg == "i386");
+#elif defined(__arm__)
+          match = (arg == "arm");
+#endif
+          out += (match ? "1" : "0");
+          continue;
+        }
+      }
+
+      if (ident == "__is_target_vendor" && is_word_boundary(expr, i)) {
+        bool ok = false;
+        std::string arg;
+        parse_intrinsic_arg(&ok, &arg);
+        if (ok) {
+#if defined(__APPLE__)
+          out += (arg == "apple" ? "1" : "0");
+#else
+          out += "0";
+#endif
+          continue;
+        }
+      }
+
+      if (ident == "__is_target_os" && is_word_boundary(expr, i)) {
+        bool ok = false;
+        std::string arg;
+        parse_intrinsic_arg(&ok, &arg);
+        if (ok) {
+          bool match = false;
+#if defined(__APPLE__)
+          match = (arg == "macos");
+#elif defined(__linux__)
+          match = (arg == "linux");
+#endif
+          out += (match ? "1" : "0");
+          continue;
+        }
+      }
+
+      if ((ident == "__is_target_environment" || ident == "__is_target_variant_environment" ||
+           ident == "__is_target_variant_os") &&
+          is_word_boundary(expr, i)) {
+        bool ok = false;
+        std::string arg;
+        parse_intrinsic_arg(&ok, &arg);
+        if (ok) {
+          (void)arg;
+          out += "0";
+          continue;
+        }
+      }
+
+      if (ident == "__is_identifier" && is_word_boundary(expr, i)) {
+        bool ok = false;
+        std::string arg;
+        parse_intrinsic_arg(&ok, &arg);
+        if (ok) {
+          const bool is_keyword =
+              arg == "_Atomic" || arg == "alignof" || arg == "constexpr" ||
+              arg == "decltype" || arg == "noexcept" || arg == "nullptr";
+          out += (is_keyword ? "0" : "1");
           continue;
         }
       }
@@ -181,7 +263,7 @@ std::string resolve_defined_and_intrinsics(
           // We support a small set of C features/extensions.
           static const char* known_features[] = {
             "c_alignas", "c_alignof", "c_atomic", "c_generic_selections",
-            "c_static_assert", "c_thread_local",
+            "c_static_assert", "c_thread_local", "cxx_atomic",
             nullptr
           };
           bool found = false;

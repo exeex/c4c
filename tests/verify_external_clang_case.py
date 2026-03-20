@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass
+from typing import List, Optional
 
 
 EXPECT_RE = re.compile(
@@ -26,30 +27,30 @@ class Expectation:
     line: int
     text: str
     min_count: int
-    max_count: int | None
+    max_count: Optional[int]
 
 
 @dataclass
 class Diagnostic:
     kind: str
-    line: int | None
+    line: Optional[int]
     text: str
 
 
-def line_matches(expected_line: int, actual_line: int | None) -> bool:
+def line_matches(expected_line: int, actual_line: Optional[int]) -> bool:
     if actual_line is None:
         return True
     return abs(actual_line - expected_line) <= 1
 
 
-def parse_expectations(src: pathlib.Path) -> list[Expectation]:
-    expectations: list[Expectation] = []
+def parse_expectations(src: pathlib.Path) -> List[Expectation]:
+    expectations: List[Expectation] = []
     for lineno, raw in enumerate(src.read_text(encoding="utf-8").splitlines(), start=1):
         for match in EXPECT_RE.finditer(raw):
             kind, offset_text, count_text, text = match.groups()
             target_line = lineno + int(offset_text or "0")
             min_count = 1
-            max_count: int | None = 1
+            max_count: Optional[int] = 1
             if count_text:
                 if count_text.endswith("+"):
                     min_count = int(count_text[:-1])
@@ -73,8 +74,8 @@ def parse_expectations(src: pathlib.Path) -> list[Expectation]:
     return expectations
 
 
-def parse_diagnostics(stderr: str) -> list[Diagnostic]:
-    diagnostics: list[Diagnostic] = []
+def parse_diagnostics(stderr: str) -> List[Diagnostic]:
+    diagnostics: List[Diagnostic] = []
     for raw in stderr.splitlines():
         line = raw.strip()
         if not line:
@@ -95,8 +96,8 @@ def parse_diagnostics(stderr: str) -> list[Diagnostic]:
     return diagnostics
 
 
-def match_expectations(expectations: list[Expectation], diagnostics: list[Diagnostic]) -> list[str]:
-    failures: list[str] = []
+def match_expectations(expectations: List[Expectation], diagnostics: List[Diagnostic]) -> List[str]:
+    failures: List[str] = []
     for exp in expectations:
         count = 0
         for diag in diagnostics:

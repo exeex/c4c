@@ -57,6 +57,44 @@ bool sig_has_void_param_list(const FnPtrSig& sig) {
   return ts.base == TB_VOID && ts.ptr_level == 0 && ts.array_rank == 0;
 }
 
+std::string llvm_fn_type_suffix_str(const FnPtrSig& sig) {
+  std::ostringstream out;
+  out << "(";
+  const bool void_param_list = sig_has_void_param_list(sig);
+  for (size_t i = 0; i < sig_param_count(sig); ++i) {
+    if (void_param_list) break;
+    if (i) out << ", ";
+    out << llvm_ty(sig_param_type(sig, i));
+  }
+  if (sig_is_variadic(sig)) {
+    if (sig_param_count(sig) > 0 && !void_param_list) out << ", ";
+    out << "...";
+  }
+  out << ")";
+  return out.str();
+}
+
+std::string llvm_fn_type_suffix_str(const Function& fn) {
+  std::ostringstream out;
+  out << "(";
+  const bool void_param_list =
+      fn.params.size() == 1 &&
+      fn.params[0].type.spec.base == TB_VOID &&
+      fn.params[0].type.spec.ptr_level == 0 &&
+      fn.params[0].type.spec.array_rank == 0;
+  for (size_t i = 0; i < fn.params.size(); ++i) {
+    if (void_param_list) break;
+    if (i) out << ", ";
+    out << llvm_ty(fn.params[i].type.spec);
+  }
+  if (fn.attrs.variadic) {
+    if (!fn.params.empty() && !void_param_list) out << ", ";
+    out << "...";
+  }
+  out << ")";
+  return out.str();
+}
+
 int llvm_struct_field_slot(const HirStructDef& sd, int target_llvm_idx) {
   if (sd.is_union) return 0;
   int last_idx = -1;
@@ -267,7 +305,9 @@ std::string HirEmitter::intern_str(const std::string& raw_bytes){
   }
 
 void HirEmitter::emit_preamble(){
-    module_.type_decls.push_back("%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }");
+    if (!llvm_va_list_is_pointer_object()) {
+      module_.type_decls.push_back("%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }");
+    }
     // Emit struct/union type definitions in declaration order
     for (const auto& tag : mod_.struct_def_order) {
       const auto it = mod_.struct_defs.find(tag);
@@ -1691,12 +1731,79 @@ const FnPtrSig* HirEmitter::resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& ca
     }
     // Phase C slice 2: CallExpr — look up called function's ret_fn_ptr_sig.
     if (const auto* call = std::get_if<CallExpr>(&callee_e.payload)) {
+      auto find_function = [&](const std::string& name) -> const Function* {
+        const auto fit = mod_.fn_index.find(name);
+        if (fit == mod_.fn_index.end() || fit->second.value >= mod_.functions.size()) return nullptr;
+        return &mod_.functions[fit->second.value];
+      };
+      auto build_fn_sig = [&](const Function& fn) -> const FnPtrSig* {
+        auto [it, _] = inferred_direct_fn_sigs_.try_emplace(fn.id.value);
+        FnPtrSig& sig = it->second;
+        if (sig.params.empty() && !sig.variadic && sig.return_type.spec.base == TB_VOID &&
+            sig.return_type.spec.ptr_level == 0 && sig.return_type.spec.array_rank == 0) {
+          sig.return_type = fn.return_type;
+          sig.variadic = fn.attrs.variadic;
+          sig.unspecified_params = false;
+          for (const auto& param : fn.params) sig.params.push_back(param.type);
+        }
+        return &sig;
+      };
+      auto infer_returned_function = [&](auto&& self, const Function& fn) -> const Function* {
+        for (const Block& bb : fn.blocks) {
+          for (const Stmt& stmt : bb.stmts) {
+            const auto* ret = std::get_if<ReturnStmt>(&stmt.payload);
+            if (!ret || !ret->expr) continue;
+            const Expr& expr = get_expr(*ret->expr);
+            if (const auto* dr2 = std::get_if<DeclRef>(&expr.payload)) {
+              if (const Function* returned = find_function(dr2->name)) return returned;
+            }
+            if (const auto* ternary = std::get_if<TernaryExpr>(&expr.payload)) {
+              const Expr& then_e = get_expr(ternary->then_expr);
+              if (const auto* then_dr = std::get_if<DeclRef>(&then_e.payload)) {
+                if (const Function* returned = find_function(then_dr->name)) return returned;
+              }
+              const Expr& else_e = get_expr(ternary->else_expr);
+              if (const auto* else_dr = std::get_if<DeclRef>(&else_e.payload)) {
+                if (const Function* returned = find_function(else_dr->name)) return returned;
+              }
+            }
+            if (const auto* call_expr = std::get_if<CallExpr>(&expr.payload)) {
+              const Expr& nested_callee = get_expr(call_expr->callee);
+              if (const auto* nested_dr = std::get_if<DeclRef>(&nested_callee.payload)) {
+                if (const Function* called = find_function(nested_dr->name)) {
+                  if (const Function* returned = self(self, *called)) return returned;
+                }
+              }
+            }
+          }
+        }
+        return nullptr;
+      };
+
       const Expr& inner_callee = get_expr(call->callee);
       if (const auto* dr = std::get_if<DeclRef>(&inner_callee.payload)) {
-        const auto fit = mod_.fn_index.find(dr->name);
-        if (fit != mod_.fn_index.end() && fit->second.value < mod_.functions.size()) {
-          const Function& target = mod_.functions[fit->second.value];
-          if (target.ret_fn_ptr_sig) return &*target.ret_fn_ptr_sig;
+        if (const Function* target = find_function(dr->name)) {
+          if (const Function* returned = infer_returned_function(infer_returned_function, *target)) {
+            return build_fn_sig(*returned);
+          }
+          if (target->ret_fn_ptr_sig &&
+              (!target->ret_fn_ptr_sig->params.empty() || target->ret_fn_ptr_sig->variadic)) {
+            return &*target->ret_fn_ptr_sig;
+          }
+        }
+      }
+      if (const auto* nested_call = std::get_if<CallExpr>(&inner_callee.payload)) {
+        const Expr& nested_callee = get_expr(nested_call->callee);
+        if (const auto* nested_dr = std::get_if<DeclRef>(&nested_callee.payload)) {
+          if (const Function* target = find_function(nested_dr->name)) {
+            if (const Function* returned = infer_returned_function(infer_returned_function, *target)) {
+              if (const Function* nested_returned =
+                      infer_returned_function(infer_returned_function, *returned)) {
+                return build_fn_sig(*nested_returned);
+              }
+              return build_fn_sig(*returned);
+            }
+          }
         }
       }
     }
@@ -3847,6 +3954,12 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
       }
     }
     const FnPtrSig* callee_fn_ptr_sig = target_fn ? nullptr : resolve_callee_fn_ptr_sig(ctx, callee_e);
+    std::string callee_type_suffix;
+    if (target_fn) {
+      callee_type_suffix = llvm_fn_type_suffix_str(*target_fn);
+    } else if (callee_fn_ptr_sig) {
+      callee_type_suffix = llvm_fn_type_suffix_str(*callee_fn_ptr_sig);
+    }
 
     auto callee_needs_va_list_by_value_copy = [&](size_t arg_index) -> bool {
       if (target_fn) {
@@ -3931,9 +4044,10 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         TypeSpec ap_ts{};
         const std::string src_ptr = emit_va_list_obj_ptr(ctx, call.args[i], ap_ts);
         const std::string tmp_addr = fresh_tmp(ctx);
-        emit_instr(ctx, tmp_addr + " = alloca %struct.__va_list_tag_");
+        emit_instr(ctx, tmp_addr + " = alloca " + llvm_va_list_storage_ty());
         need_llvm_memcpy_ = true;
-        emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, src_ptr, "32", false});
+        emit_lir_op(ctx, lir::LirMemcpyOp{
+            tmp_addr, src_ptr, std::to_string(llvm_va_list_storage_size()), false});
         arg = tmp_addr;
         out_arg_ts = arg_ts;
       }
@@ -3982,11 +4096,15 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
     }
 
     if (ret_ty == "void") {
-      emit_instr(ctx, "call void " + callee_val + "(" + args_str + ")");
+      emit_instr(ctx, "call void " +
+                          (callee_type_suffix.empty() ? "" : callee_type_suffix + " ") +
+                          callee_val + "(" + args_str + ")");
       return "";
     }
     const std::string tmp = fresh_tmp(ctx);
-    emit_instr(ctx, tmp + " = call " + ret_ty + " " + callee_val + "(" + args_str + ")");
+    emit_instr(ctx, tmp + " = call " + ret_ty + " " +
+                        (callee_type_suffix.empty() ? "" : callee_type_suffix + " ") +
+                        callee_val + "(" + args_str + ")");
     return tmp;
   }
 
@@ -4136,6 +4254,11 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const 
         // and does not consume any argument slot.
         if (payload_sz == 0) return "zeroinitializer";
       }
+    }
+    if (llvm_va_list_is_pointer_object()) {
+      const std::string out = fresh_tmp(ctx);
+      emit_instr(ctx, out + " = va_arg ptr " + ap_ptr + ", " + res_ty);
+      return out;
     }
     if ((res_ts.base == TB_STRUCT || res_ts.base == TB_UNION) &&
         res_ts.ptr_level == 0 && res_ts.array_rank == 0 &&

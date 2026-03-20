@@ -8,6 +8,54 @@ void def(MacroTable& t, const char* name, const char* body) {
   t[name] = MacroDef{name, false, false, {}, body};
 }
 
+void add_apple_host_predefines(MacroTable& table) {
+#if defined(__APPLE__)
+  def(table, "__APPLE__", "1");
+  def(table, "__MACH__", "1");
+  def(table, "__APPLE_CC__", "6000");
+  def(table, "TARGET_OS_MAC", "1");
+  def(table, "TARGET_OS_OSX", "1");
+  def(table, "TARGET_OS_IPHONE", "0");
+  def(table, "TARGET_OS_IOS", "0");
+  def(table, "TARGET_OS_MACCATALYST", "0");
+  def(table, "TARGET_OS_SIMULATOR", "0");
+  def(table, "TARGET_OS_DRIVERKIT", "0");
+  def(table, "TARGET_OS_EMBEDDED", "0");
+  def(table, "TARGET_OS_TV", "0");
+  def(table, "TARGET_OS_WATCH", "0");
+  def(table, "TARGET_OS_VISION", "0");
+  def(table, "TARGET_OS_BRIDGE", "0");
+  def(table, "TARGET_OS_UNIX", "0");
+  def(table, "TARGET_OS_LINUX", "0");
+  def(table, "TARGET_OS_WINDOWS", "0");
+  def(table, "TARGET_OS_WIN32", "0");
+  def(table, "TARGET_RT_LITTLE_ENDIAN", "1");
+  def(table, "TARGET_RT_BIG_ENDIAN", "0");
+  def(table, "TARGET_RT_64_BIT", "1");
+  def(table, "TARGET_RT_MAC_MACHO", "1");
+  def(table, "TARGET_RT_MAC_CFM", "0");
+#if defined(__aarch64__) || defined(_M_ARM64)
+  def(table, "TARGET_CPU_ARM64", "1");
+  def(table, "TARGET_CPU_ARM", "0");
+  def(table, "TARGET_CPU_X86", "0");
+  def(table, "TARGET_CPU_X86_64", "0");
+#elif defined(__x86_64__) || defined(_M_X64)
+  def(table, "TARGET_CPU_ARM64", "0");
+  def(table, "TARGET_CPU_ARM", "0");
+  def(table, "TARGET_CPU_X86", "0");
+  def(table, "TARGET_CPU_X86_64", "1");
+#endif
+#if defined(__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__)
+#define C4C_STR2(x) #x
+#define C4C_STR(x) C4C_STR2(x)
+  def(table, "__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__",
+      C4C_STR(__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__));
+#undef C4C_STR
+#undef C4C_STR2
+#endif
+#endif
+}
+
 }  // namespace
 
 void init_predefined_macros(MacroTable& table) {
@@ -130,6 +178,7 @@ void init_predefined_macros(MacroTable& table) {
   // Target architecture macros (host-detected at compile time)
 #if defined(__aarch64__) || defined(_M_ARM64)
   def(table, "__aarch64__", "1");
+  def(table, "__arm64__", "1");
   def(table, "__AARCH64EL__", "1");
   def(table, "__AARCH64_CMODEL_SMALL__", "1");
   def(table, "__ARM_64BIT_STATE", "1");
@@ -194,8 +243,7 @@ void init_predefined_macros(MacroTable& table) {
   def(table, "unix", "1");
 #endif
 #if defined(__APPLE__)
-  def(table, "__APPLE__", "1");
-  def(table, "__MACH__", "1");
+  add_apple_host_predefines(table);
 #endif
 #if defined(_WIN32)
   def(table, "_WIN32", "1");
