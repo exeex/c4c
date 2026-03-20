@@ -97,6 +97,15 @@ class HirEmitter {
   /// or any future backend.
   lir::LirModule lower_to_lir();
 
+  /// Lower per-item content (globals, functions) into an already-initialized
+  /// LirModule.  Module-level setup (target, data_layout, type_decls, dedup)
+  /// is expected to have been done by the caller (hir_to_lir::lower).
+  /// The emitter takes ownership of `module` and populates globals, functions,
+  /// string pool, extern decls, intrinsic flags, and spec entries.
+  void lower_items(lir::LirModule& module,
+                   const std::vector<size_t>& global_indices,
+                   const std::vector<size_t>& fn_indices);
+
 
  private:
   const Module& mod_;
@@ -138,8 +147,7 @@ class HirEmitter {
   // ── String constant pool ──────────────────────────────────────────────────
   std::string intern_str(const std::string& raw_bytes);
 
-  // ── Preamble ──────────────────────────────────────────────────────────────
-  void emit_preamble();
+  // NOTE: preamble (type decls) generation moved to lir::build_type_decls().
 
 
   // ── Globals ───────────────────────────────────────────────────────────────

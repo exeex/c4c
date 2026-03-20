@@ -3,13 +3,15 @@
 // ── HIR-to-LIR lowering ─────────────────────────────────────────────────────
 //
 // Transforms a HIR Module into a LIR Module.
-// This is a behavior-preserving extraction of the lowering logic currently
-// embedded in HirEmitter.  Stage 0 provides only the interface skeleton;
-// actual lowering will be migrated in Stage 1+.
+// Module-level orchestration (dedup, type decls, target setup) lives here.
+// Per-item lowering (globals, functions) is still delegated to HirEmitter
+// until later phases migrate it.
 
 #include "ir.hpp"
 
+#include <cstddef>
 #include <string>
+#include <vector>
 
 namespace c4c::hir {
 struct Module;
@@ -18,8 +20,24 @@ struct Module;
 namespace c4c::codegen::lir {
 
 /// Lower a HIR module to a LIR module.
-/// Stage 0: stub that returns an empty LirModule.
-/// Stage 1+: will contain the full lowering pipeline.
 LirModule lower(const c4c::hir::Module& hir_mod);
+
+// ── Module-level orchestration helpers (usable by both lir path and legacy) ──
+
+/// Deduplicate globals: prefer entries with explicit initializers; among
+/// equals, prefer later entries (last-wins for extern/tentative semantics).
+/// Returns indices into mod.globals of the "best" entry per name, in
+/// original order.
+std::vector<size_t> dedup_globals(const c4c::hir::Module& mod);
+
+/// Deduplicate functions: prefer definitions (non-empty blocks) over
+/// declarations.  Skips non-materialized functions.
+/// Returns indices into mod.functions of the "best" entry per name, in
+/// original order.
+std::vector<size_t> dedup_functions(const c4c::hir::Module& mod);
+
+/// Build LLVM struct/union type declaration strings from the HIR module's
+/// struct definitions.
+std::vector<std::string> build_type_decls(const c4c::hir::Module& mod);
 
 }  // namespace c4c::codegen::lir

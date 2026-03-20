@@ -2,7 +2,7 @@
 
 ## Status
 
-In progress. Phases 0–3 slice 1 complete.
+In progress. Phases 0–3 slice 2 complete.
 
 ## Completed
 
@@ -29,20 +29,31 @@ In progress. Phases 0–3 slice 1 complete.
 - Compare mode (`--codegen=compare`) confirms outputs match
 - 3 compare-mode smoke tests added: `smoke_scalar`, `smoke_struct`, `smoke_switch`
 
+### Phase 3: Move Module-Level Lowering — slice 2 ✓
+
+- Extracted module-level orchestration from `HirEmitter` into standalone free functions:
+  - `lir::dedup_globals()` — global dedup logic (tentative def resolution)
+  - `lir::dedup_functions()` — function dedup logic (prefer definitions over declarations)
+  - `lir::build_type_decls()` — struct/union type declaration generation (was `emit_preamble()`)
+- `hir_to_lir::lower()` now owns module construction: target triple, data_layout, type_decls, dedup
+- Added `HirEmitter::lower_items(module, global_indices, fn_indices)` for per-item lowering
+- `HirEmitter::lower_to_lir()` delegates to same shared helpers for consistency
+- Removed dead `emit_preamble()` from HirEmitter
+- Both legacy and lir paths produce identical output; compare tests pass
+
 ### Test results
 
-- Full suite: **2073/2073 passed** (baseline was 2070, +3 new compare tests)
+- Full suite: **2073/2073 passed** (no regressions)
 
 
 ## Immediate Next Work
 
 The next slices, in priority order:
 
-1. Phase 3 slice 2: Extract module-level orchestration (global dedup, function dedup, preamble) from `HirEmitter` into standalone functions callable by `hir_to_lir::lower()` directly
-2. Phase 3 slice 3: Move string pool, extern decl tracking, and intrinsic flags to LIR lowering layer
-3. Phase 4: Move function skeleton lowering (FnCtx, blocks, terminators)
-4. Phase 5: Move expression/statement lowering by risk slice
-5. Phase 7: Expand compare-mode smoke suite (varargs, bitfields, indirectbr, etc.)
+1. Phase 3 slice 3: Move string pool, extern decl tracking, and intrinsic flags to LIR lowering layer
+2. Phase 4: Move function skeleton lowering (FnCtx, blocks, terminators)
+3. Phase 5: Move expression/statement lowering by risk slice
+4. Phase 7: Expand compare-mode smoke suite (varargs, bitfields, indirectbr, etc.)
 
 
 ## Blockers

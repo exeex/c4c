@@ -1,5 +1,6 @@
 #include "hir_emitter.hpp"
 #include "canonical_symbol.hpp"
+#include "../lir/hir_to_lir.hpp"
 #include "../lir/lir_printer.hpp"
 
 namespace c4c::codegen::llvm_backend {
@@ -142,55 +143,34 @@ const char* llvm_visibility(Visibility v) {
 HirEmitter::HirEmitter(const Module& m) : mod_(m){}
 
 lir::LirModule HirEmitter::lower_to_lir(){
+    // Delegate to the shared orchestration in hir_to_lir::lower().
+    // This keeps the legacy path using the same code as the lir path.
     set_active_target_triple(mod_.target_triple);
-    module_.target_triple = mod_.target_triple;
-    module_.data_layout = !mod_.data_layout.empty() ? mod_.data_layout
+
+    lir::LirModule module;
+    module.target_triple = mod_.target_triple;
+    module.data_layout = !mod_.data_layout.empty() ? mod_.data_layout
                                                     : llvm_default_datalayout(mod_.target_triple);
-    emit_preamble();
-    // Deduplicate globals: C tentative definitions can produce multiple entries
-    // for the same name. Prefer the entry with an explicit initializer; among
-    // equals, prefer later entries (last wins for extern semantics).
-    std::unordered_map<std::string, size_t> best_gv; // name -> index in mod_.globals
-    for (size_t i = 0; i < mod_.globals.size(); ++i) {
-      const GlobalVar& gv = mod_.globals[i];
-      auto it = best_gv.find(gv.name);
-      if (it == best_gv.end()) {
-        best_gv[gv.name] = i;
-      } else {
-        // Prefer explicitly initialized over tentative (monostate)
-        const bool cur_has_init = !std::holds_alternative<std::monostate>(mod_.globals[it->second].init);
-        const bool new_has_init = !std::holds_alternative<std::monostate>(gv.init);
-        if (new_has_init || !cur_has_init) it->second = i;
-      }
-    }
-    // Emit in original order, skipping non-best duplicates
-    for (size_t i = 0; i < mod_.globals.size(); ++i) {
-      const GlobalVar& gv = mod_.globals[i];
-      if (best_gv.count(gv.name) && best_gv[gv.name] == i) emit_global(gv);
-    }
-    // Deduplicate functions: prefer definitions (non-empty blocks) over declarations.
-    // Skip non-materialized functions — they exist for compile-time analysis only.
-    std::unordered_map<std::string, size_t> best_fn; // name -> index
-    for (size_t i = 0; i < mod_.functions.size(); ++i) {
-      const Function& fn = mod_.functions[i];
-      if (!fn.materialized) continue;
-      auto it = best_fn.find(fn.name);
-      if (it == best_fn.end()) {
-        best_fn[fn.name] = i;
-      } else {
-        const bool cur_is_def = !mod_.functions[it->second].blocks.empty();
-        const bool new_is_def = !fn.blocks.empty();
-        if (new_is_def && !cur_is_def) it->second = i;
-      }
-    }
-    // Emit in original order, skipping non-best duplicates
-    for (size_t i = 0; i < mod_.functions.size(); ++i) {
-      const Function& fn = mod_.functions[i];
-      if (best_fn.count(fn.name) && best_fn[fn.name] == i) emit_function(fn);
-    }
+    module.type_decls = lir::build_type_decls(mod_);
+
+    auto global_indices = lir::dedup_globals(mod_);
+    auto fn_indices = lir::dedup_functions(mod_);
+
+    lower_items(module, global_indices, fn_indices);
+    return module;
+  }
+
+void HirEmitter::lower_items(lir::LirModule& module,
+                              const std::vector<size_t>& global_indices,
+                              const std::vector<size_t>& fn_indices) {
+    // Adopt the caller's module as our working module.
+    module_ = std::move(module);
+
+    // Emit globals and functions in the order given by the caller.
+    for (size_t idx : global_indices) emit_global(mod_.globals[idx]);
+    for (size_t idx : fn_indices) emit_function(mod_.functions[idx]);
 
     // ── Finalize module_ state before returning ─────────────────────────────
-    // Propagate intrinsic requirement flags.
     if (need_llvm_va_start_)     module_.need_va_start = true;
     if (need_llvm_va_end_)       module_.need_va_end = true;
     if (need_llvm_va_copy_)      module_.need_va_copy = true;
@@ -198,7 +178,6 @@ lir::LirModule HirEmitter::lower_to_lir(){
     if (need_llvm_stacksave_)    module_.need_stacksave = true;
     if (need_llvm_stackrestore_) module_.need_stackrestore = true;
     if (need_llvm_abs_)          module_.need_abs = true;
-    // Populate LirModule extern_decls from extern_call_decls_.
     for (const auto& [name, ret_ty] : extern_call_decls_) {
       if (mod_.fn_index.count(name)) continue;
       lir::LirExternDecl ed;
@@ -206,12 +185,12 @@ lir::LirModule HirEmitter::lower_to_lir(){
       ed.return_type_str = ret_ty;
       module_.extern_decls.push_back(std::move(ed));
     }
-    // Populate specialization metadata.
     for (const auto& e : spec_entries_) {
       module_.spec_entries.push_back({e.spec_key, e.template_origin, e.mangled_name});
     }
 
-    return std::move(module_);
+    // Move the result back to the caller.
+    module = std::move(module_);
   }
 
 std::string HirEmitter::emit(){
@@ -319,53 +298,8 @@ std::string HirEmitter::intern_str(const std::string& raw_bytes){
     return name;
   }
 
-void HirEmitter::emit_preamble(){
-    if (!llvm_va_list_is_pointer_object(mod_.target_triple)) {
-      module_.type_decls.push_back("%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }");
-    }
-    // Emit struct/union type definitions in declaration order
-    for (const auto& tag : mod_.struct_def_order) {
-      const auto it = mod_.struct_defs.find(tag);
-      if (it == mod_.struct_defs.end()) continue;
-      const HirStructDef& sd = it->second;
-      const std::string sty = llvm_struct_type_str(tag);
-      if (sd.fields.empty()) {
-        module_.type_decls.push_back(sty + " = type {}");
-        continue;
-      }
-      if (sd.is_union) {
-        const int sz = sd.size_bytes;
-        module_.type_decls.push_back(sty + " = type { [" +
-                                     std::to_string(sz) + " x i8] }");
-      } else {
-        std::ostringstream line;
-        line << sty << " = type { ";
-        bool first = true;
-        int last_idx = -1;
-        int cur_offset = 0;
-        for (const auto& f : sd.fields) {
-          if (f.llvm_idx == last_idx) continue;
-          last_idx = f.llvm_idx;
-          if (f.offset_bytes > cur_offset) {
-            if (!first) line << ", ";
-            first = false;
-            line << "[" << (f.offset_bytes - cur_offset) << " x i8]";
-            cur_offset = f.offset_bytes;
-          }
-          if (!first) line << ", ";
-          first = false;
-          line << llvm_field_ty(f);
-          cur_offset = f.offset_bytes + std::max(0, f.size_bytes);
-        }
-        if (sd.size_bytes > cur_offset) {
-          if (!first) line << ", ";
-          line << "[" << (sd.size_bytes - cur_offset) << " x i8]";
-        }
-        line << " }";
-        module_.type_decls.push_back(line.str());
-      }
-    }
-  }
+// NOTE: emit_preamble() has been replaced by lir::build_type_decls() in hir_to_lir.cpp.
+// Type declaration generation is now part of module-level orchestration owned by hir_to_lir.
 
 bool HirEmitter::is_char_like(TypeBase b){
     return b == TB_CHAR || b == TB_SCHAR || b == TB_UCHAR;
