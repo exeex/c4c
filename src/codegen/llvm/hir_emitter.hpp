@@ -92,6 +92,11 @@ class HirEmitter {
   explicit HirEmitter(const Module& m);
   std::string emit();
 
+  /// Lower the HIR module to a LirModule without printing.
+  /// This is the structured lowering result that can be consumed by lir::print_llvm()
+  /// or any future backend.
+  lir::LirModule lower_to_lir();
+
 
  private:
   const Module& mod_;

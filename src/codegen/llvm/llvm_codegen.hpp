@@ -8,6 +8,14 @@ namespace c4c::codegen::llvm_backend {
 
 using Module = c4c::hir::Module;
 
-std::string emit_module_native(const Module& mod);
+/// Codegen path selection.
+enum class CodegenPath {
+  Legacy,   // HirEmitter (current default)
+  Lir,      // hir_to_lir + lir_printer (stub, under construction)
+  Compare,  // run both, diff output
+};
 
-}  // namespace tinyc2ll::codegen::llvm_backend
+std::string emit_module_native(const Module& mod,
+                               CodegenPath path = CodegenPath::Legacy);
+
+}  // namespace c4c::codegen::llvm_backend

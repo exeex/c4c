@@ -216,6 +216,23 @@ if(CLANG_EXECUTABLE)
   endforeach()
 endif()
 
+# ── Compare-mode smoke tests (legacy vs LIR codegen) ──────────────────────────
+file(GLOB INTERNAL_COMPARE_TEST_SRCS CONFIGURE_DEPENDS
+     "${INTERNAL_C_TEST_ROOT}/compare_case/*.c")
+
+foreach(src IN LISTS INTERNAL_COMPARE_TEST_SRCS)
+  get_filename_component(stem "${src}" NAME_WE)
+  set(test_name "compare_${stem}")
+  add_test(
+    NAME "${test_name}"
+    COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:c4cll>
+            -DSRC=${src}
+            -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_compare_case.cmake"
+  )
+  set_tests_properties("${test_name}" PROPERTIES LABELS "internal;compare_case")
+endforeach()
+
 if(CLANG_EXECUTABLE AND
    (CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64") AND
    EXISTS "${INTERNAL_C_TEST_ROOT}/inline_asm/aarch64/simple.c")

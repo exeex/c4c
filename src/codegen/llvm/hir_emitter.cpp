@@ -141,7 +141,7 @@ const char* llvm_visibility(Visibility v) {
 
 HirEmitter::HirEmitter(const Module& m) : mod_(m){}
 
-std::string HirEmitter::emit(){
+lir::LirModule HirEmitter::lower_to_lir(){
     set_active_target_triple(mod_.target_triple);
     module_.target_triple = mod_.target_triple;
     module_.data_layout = !mod_.data_layout.empty() ? mod_.data_layout
@@ -189,7 +189,7 @@ std::string HirEmitter::emit(){
       if (best_fn.count(fn.name) && best_fn[fn.name] == i) emit_function(fn);
     }
 
-    // ── Finalize module_ state before printing ─────────────────────────────
+    // ── Finalize module_ state before returning ─────────────────────────────
     // Propagate intrinsic requirement flags.
     if (need_llvm_va_start_)     module_.need_va_start = true;
     if (need_llvm_va_end_)       module_.need_va_end = true;
@@ -211,8 +211,12 @@ std::string HirEmitter::emit(){
       module_.spec_entries.push_back({e.spec_key, e.template_origin, e.mangled_name});
     }
 
-    // ── Render via standalone LIR printer ────────────────────────────────────
-    return lir::print_llvm(module_);
+    return std::move(module_);
+  }
+
+std::string HirEmitter::emit(){
+    auto lir_mod = lower_to_lir();
+    return lir::print_llvm(lir_mod);
   }
 
 const GlobalVar* HirEmitter::select_global_object(const std::string& name) const {

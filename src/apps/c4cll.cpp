@@ -144,7 +144,7 @@ void seed_default_system_include_paths(c4c::SourceProfile source_profile,
 void print_usage(const char *argv0) {
   std::cerr << "usage: " << argv0
             << " [--version] [--pp-only|--lex-only|--parse-only|--dump-hir|--dump-hir-summary|--dump-canonical]"
-            << " [--target triple]"
+            << " [--target triple] [--codegen legacy|lir|compare]"
             << " [-D macro[=val]] [-U macro] [-I dir] [-iquote dir] [-isystem dir] [-idirafter dir]"
             << " [-O0|-O1|-O2|-O3|-Os] [-fPIC|-fpic] [-fPIE|-fpie]"
             << " [-o output.ll] <input.c>\n";
@@ -197,6 +197,7 @@ int main(int argc, char **argv) {
     bool opt_size  = false; // -Os
     int  pic_level = 0;   // -fPIC=2, -fpic=1
     int  pie_level = 0;   // -fPIE=2, -fpie=1
+    auto codegen_path = c4c::codegen::llvm_backend::CodegenPath::Legacy;
 
     for (size_t i = 0; i < args.size(); i++) {
       const std::string& arg = args[i];
@@ -252,6 +253,19 @@ int main(int argc, char **argv) {
         pie_level = 2;
       } else if (arg == "-fpie") {
         pie_level = 1;
+      } else if (arg == "--codegen" && i + 1 < args.size()) {
+        const std::string& val = args[++i];
+        if (val == "legacy") {
+          codegen_path = c4c::codegen::llvm_backend::CodegenPath::Legacy;
+        } else if (val == "lir") {
+          codegen_path = c4c::codegen::llvm_backend::CodegenPath::Lir;
+        } else if (val == "compare") {
+          codegen_path = c4c::codegen::llvm_backend::CodegenPath::Compare;
+        } else {
+          std::cerr << "unknown --codegen value: " << val
+                    << " (expected legacy, lir, or compare)\n";
+          return 2;
+        }
       } else if (!arg.empty() && arg[0] == '-') {
         std::cerr << "unknown option: " << arg << "\n";
         return 2;
@@ -388,7 +402,7 @@ int main(int argc, char **argv) {
         *sema_result.hir_module);
 
     std::string ir = c4c::codegen::llvm_backend::emit_module_native(
-        *sema_result.hir_module);
+        *sema_result.hir_module, codegen_path);
 
     // Write to output file or stdout
     if (!output.empty()) {
