@@ -621,7 +621,16 @@ Node* Parser::parse_primary() {
         if (!qn.qualifier_segments.empty()) {
             int context_id = resolve_namespace_context(qn);
             if (context_id >= 0) {
-                qualified_name = canonical_name_in_context(context_id, qn.base_name);
+                auto alias_it = using_value_aliases_.find(context_id);
+                if (alias_it != using_value_aliases_.end()) {
+                    auto value_it = alias_it->second.find(qn.base_name);
+                    if (value_it != alias_it->second.end()) {
+                        qualified_name = value_it->second;
+                    }
+                }
+                if (qualified_name.empty()) {
+                    qualified_name = canonical_name_in_context(context_id, qn.base_name);
+                }
             } else {
                 for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
                     if (i) qualified_name += "::";

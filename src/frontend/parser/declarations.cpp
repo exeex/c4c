@@ -339,28 +339,36 @@ Node* Parser::parse_top_level() {
             return make_node(NK_EMPTY, ln);
         }
 
-        if (!check(TokenKind::Identifier))
+        if (!check(TokenKind::Identifier) && !check(TokenKind::ColonColon))
             throw std::runtime_error("expected identifier after 'using'");
 
-        std::string first_name = cur().lexeme;
-        consume();
+        std::string target;
+        if (match(TokenKind::ColonColon)) {
+            target = "::";
+            if (!check(TokenKind::Identifier))
+                throw std::runtime_error("expected identifier after '::'");
+            target += cur().lexeme;
+            consume();
+        } else {
+            std::string first_name = cur().lexeme;
+            consume();
 
-        if (match(TokenKind::Assign)) {
-            TypeSpec alias_ts = parse_type_name();
-            const std::string qualified = canonical_name_in_context(using_context_id, first_name);
-            typedefs_.insert(qualified);
-            user_typedefs_.insert(qualified);
-            typedef_types_[qualified] = alias_ts;
-            if (using_context_id == 0) {
-                typedefs_.insert(first_name);
-                user_typedefs_.insert(first_name);
-                typedef_types_[first_name] = alias_ts;
+            if (match(TokenKind::Assign)) {
+                TypeSpec alias_ts = parse_type_name();
+                const std::string qualified = canonical_name_in_context(using_context_id, first_name);
+                typedefs_.insert(qualified);
+                user_typedefs_.insert(qualified);
+                typedef_types_[qualified] = alias_ts;
+                if (using_context_id == 0) {
+                    typedefs_.insert(first_name);
+                    user_typedefs_.insert(first_name);
+                    typedef_types_[first_name] = alias_ts;
+                }
+                match(TokenKind::Semi);
+                return make_node(NK_EMPTY, ln);
             }
-            match(TokenKind::Semi);
-            return make_node(NK_EMPTY, ln);
+            target = first_name;
         }
-
-        std::string target = first_name;
         while (match(TokenKind::ColonColon)) {
             if (!check(TokenKind::Identifier))
                 throw std::runtime_error("expected identifier after '::'");
@@ -369,10 +377,12 @@ Node* Parser::parse_top_level() {
             consume();
         }
 
+        const std::string lookup_target =
+            (target.rfind("::", 0) == 0) ? target.substr(2) : target;
         const size_t last_sep = target.rfind("::");
         const std::string imported_name =
             (last_sep == std::string::npos) ? target : target.substr(last_sep + 2);
-        auto td_it = typedef_types_.find(target);
+        auto td_it = typedef_types_.find(lookup_target);
         if (td_it != typedef_types_.end()) {
             const std::string imported_key =
                 canonical_name_in_context(using_context_id, imported_name);
@@ -385,7 +395,16 @@ Node* Parser::parse_top_level() {
                 typedef_types_[imported_name] = td_it->second;
             }
         } else {
-            using_value_aliases_[using_context_id][imported_name] = target;
+            const std::string imported_key =
+                canonical_name_in_context(using_context_id, imported_name);
+            auto var_it = var_types_.find(lookup_target);
+            if (var_it != var_types_.end()) {
+                var_types_[imported_key] = var_it->second;
+            }
+            if (known_fn_names_.count(lookup_target)) {
+                known_fn_names_.insert(imported_key);
+            }
+            using_value_aliases_[using_context_id][imported_name] = lookup_target;
         }
         match(TokenKind::Semi);
         return make_node(NK_EMPTY, ln);
@@ -1055,6 +1074,7 @@ top_level_base_ready:
     parse_attributes(&ts);
     skip_asm();
     parse_attributes(&ts);
+    skip_attributes();
 
     if (!decl_name) {
         // No name: just a type declaration; skip to ;
@@ -1067,7 +1087,7 @@ top_level_base_ready:
     // Handle function-returning-fptr: int (* f1(a, b))(c, d) { body }
     // Params were already parsed into fptr_fn_params; now look for { body }.
     if (fn_returning_fptr && decl_name) {
-        parse_attributes(&ts); skip_asm(); parse_attributes(&ts);
+        parse_attributes(&ts); skip_asm(); parse_attributes(&ts); skip_attributes();
         if (check(TokenKind::LBrace)) {
             bool saved_top = parsing_top_level_context_;
             parsing_top_level_context_ = false;
@@ -1173,6 +1193,7 @@ top_level_base_ready:
         parse_attributes(&ts);
         skip_asm();
         parse_attributes(&ts);
+        skip_attributes();
 
         // K&R style parameter declarations before body:
         //   f(a, b) int a; short *b; { ... }

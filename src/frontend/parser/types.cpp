@@ -117,6 +117,10 @@ void Parser::skip_attributes() {
     while (check(TokenKind::KwNoreturn)) {
         consume();
     }
+    while (check(TokenKind::Identifier) && cur().lexeme == "noexcept") {
+        consume();
+        if (check(TokenKind::LParen)) skip_paren_group();
+    }
 }
 
 void Parser::parse_attributes(TypeSpec* ts) {
