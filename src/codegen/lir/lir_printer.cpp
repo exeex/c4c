@@ -84,6 +84,13 @@ void render_inst(std::ostringstream& os, const LirInst& inst) {
       // Actually, just emit an 'add 0' to rename
       os << "  " << op->result << " = add " << unit_ty << " " << result << ", 0\n";
     }
+  } else if (const auto* op = std::get_if<LirIndirectBrOp>(&inst)) {
+    os << "  indirectbr ptr " << op->addr << ", [";
+    for (size_t i = 0; i < op->targets.size(); ++i) {
+      if (i) os << ", ";
+      os << "label " << op->targets[i];
+    }
+    os << "]\n";
   } else if (const auto* op = std::get_if<LirBitfieldInsert>(&inst)) {
     const std::string unit_ty = "i" + std::to_string(op->storage_unit_bits);
     // Load current storage unit

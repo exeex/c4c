@@ -4730,12 +4730,11 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const IndirBrStmt& s){
     }
     TypeSpec dummy_ts{};
     const std::string val = emit_rval_id(ctx, s.target, dummy_ts);
-    std::string tgt_list;
-    for (const auto& t : targets) {
-      if (!tgt_list.empty()) tgt_list += ", ";
-      tgt_list += "label " + t;
+    if (!ctx.last_term) {
+      ctx.cur_block().insts.push_back(
+          lir::LirIndirectBrOp{val, std::move(targets)});
+      ctx.last_term = true;
     }
-    emit_term(ctx, "indirectbr ptr " + val + ", [" + tgt_list + "]");
   }
 
 void HirEmitter::emit_stmt_impl(FnCtx& ctx, const LabelStmt& s){
