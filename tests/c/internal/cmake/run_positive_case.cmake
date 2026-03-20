@@ -37,15 +37,6 @@ if(src_ext STREQUAL ".cpp" OR src_ext STREQUAL ".cc" OR src_ext STREQUAL ".cxx")
   set(host_std_flag "-std=gnu++20")
 endif()
 
-if(TEST_MODE STREQUAL "runtime" OR TEST_MODE STREQUAL "frontend")
-  foreach(v OUT_LL)
-    if(NOT DEFINED ${v} OR "${${v}}" STREQUAL "")
-      message(FATAL_ERROR "Missing required -D${v}=... for TEST_MODE=${TEST_MODE}")
-    endif()
-  endforeach()
-  file(MAKE_DIRECTORY "${out_ll_dir}")
-endif()
-
 if(TEST_MODE STREQUAL "runtime")
   foreach(v OUT_CLANG_BIN OUT_C2LL_BIN)
     if(NOT DEFINED ${v} OR "${${v}}" STREQUAL "")
@@ -54,6 +45,11 @@ if(TEST_MODE STREQUAL "runtime")
   endforeach()
   file(MAKE_DIRECTORY "${out_clang_dir}")
   file(MAKE_DIRECTORY "${out_c2ll_dir}")
+
+  find_program(BASH_EXECUTABLE NAMES bash)
+  if(NOT BASH_EXECUTABLE)
+    message(FATAL_ERROR "bash is required for piped test execution")
+  endif()
 
   execute_process(
     COMMAND "${host_compiler}" "${host_std_flag}" -w "${SRC}" -o "${OUT_CLANG_BIN}"
@@ -104,7 +100,7 @@ if(TEST_MODE STREQUAL "parse")
   message(STATUS "[PASS][parse] ${SRC}")
 elseif(TEST_MODE STREQUAL "frontend")
   execute_process(
-    COMMAND "${COMPILER}" "${SRC}" -o "${OUT_LL}"
+    COMMAND "${COMPILER}" "${SRC}"
     TIMEOUT "${CASE_TIMEOUT_SEC}"
     RESULT_VARIABLE front_rc
     OUTPUT_VARIABLE front_out
@@ -120,31 +116,29 @@ elseif(TEST_MODE STREQUAL "frontend")
   message(STATUS "[PASS][frontend] ${SRC}")
 else()
   execute_process(
-    COMMAND "${COMPILER}" "${SRC}" -o "${OUT_LL}"
+    COMMAND "${BASH_EXECUTABLE}" "-lc"
+            "front_err=$(mktemp); back_err=$(mktemp); \
+             \"${COMPILER}\" \"${SRC}\" 2>\"\${front_err}\" | \"${CLANG}\" -x ir - -o \"${OUT_C2LL_BIN}\" 2>\"\${back_err}\"; \
+             st_front=\${PIPESTATUS[0]}; st_back=\${PIPESTATUS[1]}; \
+             if [ \${st_front} -ne 0 ]; then cat \"\${front_err}\"; rm -f \"\${front_err}\" \"\${back_err}\"; exit 101; fi; \
+             if [ \${st_back} -ne 0 ]; then cat \"\${back_err}\"; rm -f \"\${front_err}\" \"\${back_err}\"; exit 102; fi; \
+             rm -f \"\${front_err}\" \"\${back_err}\""
     TIMEOUT "${CASE_TIMEOUT_SEC}"
-    RESULT_VARIABLE front_rc
-    OUTPUT_VARIABLE front_out
-    ERROR_VARIABLE front_err
+    RESULT_VARIABLE pipe_rc
+    OUTPUT_VARIABLE pipe_out
+    ERROR_VARIABLE pipe_err
   )
-  if(front_rc MATCHES "timeout")
-    message(FATAL_ERROR "[FRONTEND_TIMEOUT] ${SRC} exceeded ${CASE_TIMEOUT_SEC}s")
+  if(pipe_rc MATCHES "timeout")
+    message(FATAL_ERROR "[COMPILE_PIPE_TIMEOUT] ${SRC} exceeded ${CASE_TIMEOUT_SEC}s")
   endif()
-  if(NOT front_rc EQUAL 0)
-    message(FATAL_ERROR "[FRONTEND_FAIL] ${SRC}\n${front_err}")
+  if(pipe_rc EQUAL 101)
+    message(FATAL_ERROR "[FRONTEND_FAIL] ${SRC}\n${pipe_out}${pipe_err}")
   endif()
-
-  execute_process(
-    COMMAND "${CLANG}" "${OUT_LL}" -o "${OUT_C2LL_BIN}"
-    TIMEOUT "${CASE_TIMEOUT_SEC}"
-    RESULT_VARIABLE back_rc
-    OUTPUT_VARIABLE back_out
-    ERROR_VARIABLE back_err
-  )
-  if(back_rc MATCHES "timeout")
-    message(FATAL_ERROR "[BACKEND_TIMEOUT] ${SRC} exceeded ${CASE_TIMEOUT_SEC}s")
+  if(pipe_rc EQUAL 102)
+    message(FATAL_ERROR "[BACKEND_FAIL] ${SRC}\n${pipe_out}${pipe_err}")
   endif()
-  if(NOT back_rc EQUAL 0)
-    message(FATAL_ERROR "[BACKEND_FAIL] ${SRC}\n${back_err}")
+  if(NOT pipe_rc EQUAL 0)
+    message(FATAL_ERROR "[COMPILE_PIPE_FAIL] ${SRC}\n${pipe_out}${pipe_err}")
   endif()
 
   execute_process(
