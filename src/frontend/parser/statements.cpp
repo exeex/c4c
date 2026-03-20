@@ -1,6 +1,8 @@
 #include "parser.hpp"
+#include "parser_internal.hpp"
 
 #include <cctype>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -73,6 +75,23 @@ Node* Parser::parse_stmt() {
             node->name = arena_.strdup(cur().lexeme);
             consume();
             return node;
+        }
+
+        case TokenKind::KwStaticAssert: {
+            consume();
+            expect(TokenKind::LParen);
+            Node* cond = parse_assign_expr();
+            long long cv = 0;
+            if (!eval_const_int(cond, &cv, &struct_tag_def_map_))
+                throw std::runtime_error("_Static_assert requires an integer constant expression");
+            if (cv == 0)
+                throw std::runtime_error("_Static_assert condition is false");
+            if (match(TokenKind::Comma)) {
+                parse_assign_expr();  // message argument
+            }
+            expect(TokenKind::RParen);
+            match(TokenKind::Semi);
+            return make_node(NK_EMPTY, ln);
         }
 
         case TokenKind::LBrace:
@@ -172,10 +191,8 @@ Node* Parser::parse_stmt() {
                         typedef_types_ = std::move(saved_typedef_types);
                     }
                     for_init = parse_local_decl();
-                    // for-decl init already consumed the semicolon via parse_local_decl
-                    // Actually parse_local_decl doesn't consume ';' for for-init context
-                    // We'll handle with a flag — just consume ; here
-                    match(TokenKind::Semi);
+                    // parse_local_decl already consumed the ';' — do NOT
+                    // consume another one, or we eat the condition separator.
                 } else {
                     for_init = parse_expr();
                     match(TokenKind::Semi);
