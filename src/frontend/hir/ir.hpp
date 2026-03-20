@@ -831,6 +831,8 @@ struct HirTemplateDef {
 };
 
 struct Module {
+  std::string target_triple;
+  std::string data_layout;
   std::vector<Function> functions;
   std::vector<GlobalVar> globals;
   std::vector<Expr> expr_pool;

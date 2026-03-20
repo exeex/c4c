@@ -6,7 +6,7 @@
 namespace c4c {
 
 // Populate |table| with predefined macros for the default target (LP64 aarch64).
-void init_predefined_macros(MacroTable& table);
+void init_predefined_macros(MacroTable& table, const std::string& target_triple = "");
 
 }  // namespace c4c
 

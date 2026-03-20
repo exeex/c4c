@@ -34,7 +34,7 @@ bool parse_single_identifier(const std::string& text, std::string* ident) {
 }  // namespace
 
 Preprocessor::Preprocessor() {
-  init_predefined_macros(macros_);
+  init_predefined_macros(macros_, target_triple_);
 }
 
 void Preprocessor::set_source_profile(SourceProfile profile) {
@@ -49,6 +49,13 @@ void Preprocessor::set_source_profile(SourceProfile profile) {
     macros_.erase("__GNUG__");
     macros_.erase("__GXX_ABI_VERSION");
   }
+}
+
+void Preprocessor::set_target_triple(const std::string& triple) {
+  target_triple_ = triple;
+  macros_.clear();
+  init_predefined_macros(macros_, target_triple_);
+  set_source_profile(source_profile_);
 }
 
 std::string Preprocessor::preprocess_file(const std::string& path) {

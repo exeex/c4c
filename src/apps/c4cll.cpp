@@ -26,6 +26,28 @@
 
 namespace {
 
+std::string default_host_target_triple() {
+#if defined(__aarch64__) || defined(_M_ARM64)
+#if defined(__APPLE__)
+  return "aarch64-apple-darwin";
+#elif defined(__linux__)
+  return "aarch64-unknown-linux-gnu";
+#else
+  return "aarch64-unknown-unknown";
+#endif
+#elif defined(__x86_64__) || defined(_M_X64)
+#if defined(__APPLE__)
+  return "x86_64-apple-darwin";
+#elif defined(__linux__)
+  return "x86_64-unknown-linux-gnu";
+#else
+  return "x86_64-unknown-unknown";
+#endif
+#else
+  return "unknown-unknown-unknown";
+#endif
+}
+
 void append_env_include_paths(std::vector<std::string>& out,
                               std::set<std::string>& seen,
                               const char* env_name) {
@@ -122,6 +144,7 @@ void seed_default_system_include_paths(c4c::SourceProfile source_profile,
 void print_usage(const char *argv0) {
   std::cerr << "usage: " << argv0
             << " [--version] [--pp-only|--lex-only|--parse-only|--dump-hir|--dump-hir-summary|--dump-canonical]"
+            << " [--target triple]"
             << " [-D macro[=val]] [-U macro] [-I dir] [-iquote dir] [-isystem dir] [-idirafter dir]"
             << " [-O0|-O1|-O2|-O3|-Os] [-fPIC|-fpic] [-fPIE|-fpie]"
             << " [-o output.ll] <input.c>\n";
@@ -161,6 +184,7 @@ int main(int argc, char **argv) {
     bool        dump_canonical = false;
     std::string input;
     std::string output;
+    std::string target_triple = default_host_target_triple();
 
     // Preprocessor configuration collected from CLI flags.
     std::vector<std::string> defines;
@@ -190,6 +214,8 @@ int main(int argc, char **argv) {
         dump_canonical = true;
       } else if (arg == "-o") {
         if (i + 1 < args.size()) output = args[++i];
+      } else if (arg == "--target" && i + 1 < args.size()) {
+        target_triple = args[++i];
       } else if (arg == "-D" && i + 1 < args.size()) {
         defines.push_back(args[++i]);
       } else if (arg.size() > 2 && arg[0] == '-' && arg[1] == 'D') {
@@ -255,6 +281,7 @@ int main(int argc, char **argv) {
     seed_default_system_include_paths(source_profile, system_include_paths);
 
     c4c::Preprocessor preprocessor;
+    preprocessor.set_target_triple(target_triple);
     preprocessor.set_source_profile(source_profile);
     // Apply optimization / PIC / PIE config toggles.
     if (opt_level > 0) {
@@ -318,7 +345,8 @@ int main(int argc, char **argv) {
       return 0;
     }
 
-    c4c::sema::AnalyzeResult sema_result = c4c::sema::analyze_program(prog, sema_profile);
+    c4c::sema::AnalyzeResult sema_result =
+        c4c::sema::analyze_program(prog, sema_profile, target_triple);
     if (!sema_result.validation.ok) {
       c4c::sema::print_diagnostics(sema_result.validation.diagnostics, input);
       return 1;

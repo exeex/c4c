@@ -13,20 +13,66 @@ namespace c4c::codegen::llvm_backend::detail {
 using namespace c4c;
 using namespace c4c::hir;
 
+inline bool target_triple_contains(const std::string& triple, const char* needle) {
+  return !triple.empty() && triple.find(needle) != std::string::npos;
+}
+
+inline std::string& active_target_triple_storage() {
+  static thread_local std::string triple;
+  return triple;
+}
+
+inline void set_active_target_triple(const std::string& target_triple) {
+  active_target_triple_storage() = target_triple;
+}
+
+inline const std::string& active_target_triple() {
+  return active_target_triple_storage();
+}
+
+inline bool llvm_target_is_aarch64(const std::string& triple) {
+  return target_triple_contains(triple, "aarch64") || target_triple_contains(triple, "arm64");
+}
+
+inline bool llvm_target_is_apple(const std::string& triple) {
+  return target_triple_contains(triple, "apple") || target_triple_contains(triple, "darwin");
+}
+
+inline bool llvm_va_list_is_pointer_object(const std::string& target_triple) {
+  return llvm_target_is_apple(target_triple) && llvm_target_is_aarch64(target_triple);
+}
+
 inline bool llvm_va_list_is_pointer_object() {
-#if defined(__APPLE__) && defined(__aarch64__)
-  return true;
-#else
-  return false;
-#endif
+  return llvm_va_list_is_pointer_object(active_target_triple());
+}
+
+inline std::string llvm_va_list_storage_ty(const std::string& target_triple) {
+  return llvm_va_list_is_pointer_object(target_triple) ? "ptr" : "%struct.__va_list_tag_";
 }
 
 inline std::string llvm_va_list_storage_ty() {
-  return llvm_va_list_is_pointer_object() ? "ptr" : "%struct.__va_list_tag_";
+  return llvm_va_list_storage_ty(active_target_triple());
+}
+
+inline int llvm_va_list_storage_size(const std::string& target_triple) {
+  return llvm_va_list_is_pointer_object(target_triple) ? 8 : 32;
 }
 
 inline int llvm_va_list_storage_size() {
-  return llvm_va_list_is_pointer_object() ? 8 : 32;
+  return llvm_va_list_storage_size(active_target_triple());
+}
+
+inline std::string llvm_default_datalayout(const std::string& target_triple) {
+  if (target_triple.empty()) return "";
+  if (llvm_target_is_aarch64(target_triple) && llvm_target_is_apple(target_triple))
+    return "e-m:o-i64:64-i128:128-n32:64-S128-Fn32";
+  if (llvm_target_is_aarch64(target_triple))
+    return "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32";
+  if (target_triple_contains(target_triple, "x86_64") && llvm_target_is_apple(target_triple))
+    return "e-m:o-i64:64-f80:128-n8:16:32:64-S128";
+  if (target_triple_contains(target_triple, "x86_64"))
+    return "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  return "";
 }
 
 inline bool is_float_base(TypeBase b) {

@@ -6,12 +6,14 @@
 namespace c4c::sema {
 
 // Base C analysis: validate + lower to HIR.
-static AnalyzeResult analyze_program_base(const Node* root, SourceProfile source_profile) {
+static AnalyzeResult analyze_program_base(const Node* root,
+                                          SourceProfile source_profile,
+                                          const std::string& target_triple) {
   AnalyzeResult result{};
   result.validation = validate_program(root);
   if (!result.validation.ok) return result;
   result.canonical = build_canonical_symbols(root, source_profile);
-  result.hir_module = hir::build_hir(root, &result.canonical.resolved_types);
+  result.hir_module = hir::build_hir(root, &result.canonical.resolved_types, target_triple);
   return result;
 }
 
@@ -25,7 +27,8 @@ static void apply_c4_extensions(AnalyzeResult& /*result*/) {
   // Future: c4-specific semantic checks go here.
 }
 
-AnalyzeResult analyze_program(const Node* root, SemaProfile profile) {
+AnalyzeResult analyze_program(const Node* root, SemaProfile profile,
+                              const std::string& target_triple) {
   SourceProfile source_profile = SourceProfile::C;
   switch (profile) {
     case SemaProfile::C:
@@ -39,7 +42,7 @@ AnalyzeResult analyze_program(const Node* root, SemaProfile profile) {
       break;
   }
 
-  AnalyzeResult result = analyze_program_base(root, source_profile);
+  AnalyzeResult result = analyze_program_base(root, source_profile, target_triple);
   if (!result.validation.ok) return result;
 
   switch (profile) {

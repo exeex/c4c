@@ -168,6 +168,7 @@ std::unordered_set<std::string> find_refs(const std::string& body) {
 }  // namespace
 
 std::string print_llvm(const LirModule& mod) {
+  c4c::codegen::llvm_backend::detail::set_active_target_triple(mod.target_triple);
   // Pre-render function bodies for DCE reference scanning.
   std::vector<std::string> rendered_bodies;
   rendered_bodies.reserve(mod.functions.size());
@@ -226,6 +227,10 @@ std::string print_llvm(const LirModule& mod) {
 
   // Render final output.
   std::ostringstream out;
+
+  if (!mod.data_layout.empty()) out << "target datalayout = \"" << mod.data_layout << "\"\n";
+  if (!mod.target_triple.empty()) out << "target triple = \"" << mod.target_triple << "\"\n";
+  if (!mod.data_layout.empty() || !mod.target_triple.empty()) out << "\n";
 
   // Type declarations (struct/union definitions).
   for (const auto& td : mod.type_decls) out << td << "\n";

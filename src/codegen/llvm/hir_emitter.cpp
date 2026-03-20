@@ -57,7 +57,13 @@ bool sig_has_void_param_list(const FnPtrSig& sig) {
   return ts.base == TB_VOID && ts.ptr_level == 0 && ts.array_rank == 0;
 }
 
+bool sig_has_explicit_prototype(const FnPtrSig& sig) {
+  if (sig.unspecified_params) return false;
+  return sig_is_variadic(sig) || sig_has_void_param_list(sig) || sig_param_count(sig) > 0;
+}
+
 std::string llvm_fn_type_suffix_str(const FnPtrSig& sig) {
+  if (!sig_has_explicit_prototype(sig)) return "";
   std::ostringstream out;
   out << "(";
   const bool void_param_list = sig_has_void_param_list(sig);
@@ -75,6 +81,7 @@ std::string llvm_fn_type_suffix_str(const FnPtrSig& sig) {
 }
 
 std::string llvm_fn_type_suffix_str(const Function& fn) {
+  if (fn.params.empty() && !fn.attrs.variadic) return "";
   std::ostringstream out;
   out << "(";
   const bool void_param_list =
@@ -135,6 +142,10 @@ const char* llvm_visibility(Visibility v) {
 HirEmitter::HirEmitter(const Module& m) : mod_(m){}
 
 std::string HirEmitter::emit(){
+    set_active_target_triple(mod_.target_triple);
+    module_.target_triple = mod_.target_triple;
+    module_.data_layout = !mod_.data_layout.empty() ? mod_.data_layout
+                                                    : llvm_default_datalayout(mod_.target_triple);
     emit_preamble();
     // Deduplicate globals: C tentative definitions can produce multiple entries
     // for the same name. Prefer the entry with an explicit initializer; among
@@ -305,7 +316,7 @@ std::string HirEmitter::intern_str(const std::string& raw_bytes){
   }
 
 void HirEmitter::emit_preamble(){
-    if (!llvm_va_list_is_pointer_object()) {
+    if (!llvm_va_list_is_pointer_object(mod_.target_triple)) {
       module_.type_decls.push_back("%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }");
     }
     // Emit struct/union type definitions in declaration order
@@ -1754,6 +1765,14 @@ const FnPtrSig* HirEmitter::resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& ca
             const auto* ret = std::get_if<ReturnStmt>(&stmt.payload);
             if (!ret || !ret->expr) continue;
             const Expr& expr = get_expr(*ret->expr);
+            if (const auto* uret = std::get_if<UnaryExpr>(&expr.payload)) {
+              if (uret->op == UnaryOp::AddrOf) {
+                const Expr& inner = get_expr(uret->operand);
+                if (const auto* inner_dr = std::get_if<DeclRef>(&inner.payload)) {
+                  if (const Function* returned = find_function(inner_dr->name)) return returned;
+                }
+              }
+            }
             if (const auto* dr2 = std::get_if<DeclRef>(&expr.payload)) {
               if (const Function* returned = find_function(dr2->name)) return returned;
             }
@@ -1783,12 +1802,9 @@ const FnPtrSig* HirEmitter::resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& ca
       const Expr& inner_callee = get_expr(call->callee);
       if (const auto* dr = std::get_if<DeclRef>(&inner_callee.payload)) {
         if (const Function* target = find_function(dr->name)) {
+          if (target->ret_fn_ptr_sig) return &*target->ret_fn_ptr_sig;
           if (const Function* returned = infer_returned_function(infer_returned_function, *target)) {
             return build_fn_sig(*returned);
-          }
-          if (target->ret_fn_ptr_sig &&
-              (!target->ret_fn_ptr_sig->params.empty() || target->ret_fn_ptr_sig->variadic)) {
-            return &*target->ret_fn_ptr_sig;
           }
         }
       }
@@ -4255,7 +4271,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const 
         if (payload_sz == 0) return "zeroinitializer";
       }
     }
-    if (llvm_va_list_is_pointer_object()) {
+    if (llvm_va_list_is_pointer_object(mod_.target_triple)) {
       const std::string out = fresh_tmp(ctx);
       emit_instr(ctx, out + " = va_arg ptr " + ap_ptr + ", " + res_ty);
       return out;

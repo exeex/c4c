@@ -19,7 +19,8 @@ struct AnalyzeResult {
 };
 
 AnalyzeResult analyze_program(const Node* root,
-                              SemaProfile profile = SemaProfile::C);
+                              SemaProfile profile = SemaProfile::C,
+                              const std::string& target_triple = "");
 
 
 }  // namespace c4c::sema
