@@ -112,8 +112,11 @@ class HirEmitter {
   /// Lower a single HIR function into the working LirModule.
   /// If signature_text is non-empty, it is used as the pre-built LLVM IR
   /// signature line; otherwise the emitter builds it internally (legacy path).
+  /// If block_order is non-empty, it specifies the HIR block iteration order
+  /// (entry first, rest in order); otherwise the emitter computes it internally.
   void lower_single_function(const hir::Function& fn,
-                             const std::string& signature_text = {});
+                             const std::string& signature_text = {},
+                             const std::vector<const hir::Block*>& block_order = {});
 
   // ── Post-lowering accessors for module-level finalization ──────────────
   // These expose accumulated state so that hir_to_lir::lower() can own
@@ -377,7 +380,8 @@ class HirEmitter {
   std::unordered_set<uint32_t> find_modified_params(const Function& fn);
   static bool fn_has_vla_locals(const Function& fn);
   void hoist_allocas(FnCtx& ctx, const Function& fn);
-  void emit_function(const Function& fn, const std::string& pre_sig = {});
+  void emit_function(const Function& fn, const std::string& pre_sig = {},
+                     const std::vector<const Block*>& block_order = {});
 };
 
 

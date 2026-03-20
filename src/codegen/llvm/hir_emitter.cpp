@@ -149,8 +149,9 @@ void HirEmitter::lower_globals(const std::vector<size_t>& global_indices) {
   }
 
 void HirEmitter::lower_single_function(const Function& fn,
-                                       const std::string& signature_text) {
-    emit_function(fn, signature_text);
+                                       const std::string& signature_text,
+                                       const std::vector<const Block*>& block_order) {
+    emit_function(fn, signature_text, block_order);
   }
 
 std::string HirEmitter::emit(){
@@ -4939,7 +4940,8 @@ void HirEmitter::hoist_allocas(FnCtx& ctx, const Function& fn){
     }
   }
 
-void HirEmitter::emit_function(const Function& fn, const std::string& pre_sig){
+void HirEmitter::emit_function(const Function& fn, const std::string& pre_sig,
+                               const std::vector<const Block*>& ext_block_order){
     FnCtx ctx;
     ctx.fn = &fn;
     for (size_t i = 0; i < fn.params.size(); ++i) {
@@ -5052,15 +5054,20 @@ void HirEmitter::emit_function(const Function& fn, const std::string& pre_sig){
       ctx.vla_stack_save_ptr = saved_sp;
     }
 
-    // Emit blocks in order (entry first, then rest)
-    const Block* entry_blk = nullptr;
+    // Use externally-provided block order if available, otherwise compute it.
     std::vector<const Block*> ordered;
-    for (const auto& blk : fn.blocks) {
-      if (blk.id.value == fn.entry.value) { entry_blk = &blk; }
-    }
-    if (entry_blk) ordered.push_back(entry_blk);
-    for (const auto& blk : fn.blocks) {
-      if (blk.id.value != fn.entry.value) ordered.push_back(&blk);
+    if (!ext_block_order.empty()) {
+      ordered = ext_block_order;
+    } else {
+      // Legacy path: entry first, then rest in original order.
+      const Block* entry_blk = nullptr;
+      for (const auto& blk : fn.blocks) {
+        if (blk.id.value == fn.entry.value) { entry_blk = &blk; }
+      }
+      if (entry_blk) ordered.push_back(entry_blk);
+      for (const auto& blk : fn.blocks) {
+        if (blk.id.value != fn.entry.value) ordered.push_back(&blk);
+      }
     }
 
     for (size_t bi = 0; bi < ordered.size(); ++bi) {
@@ -5075,29 +5082,6 @@ void HirEmitter::emit_function(const Function& fn, const std::string& pre_sig){
       // Emit statements
       for (const auto& stmt : blk->stmts) {
         emit_stmt(ctx, stmt);
-      }
-
-      // HIR lowering must encode CFG edges explicitly.
-      if (!ctx.last_term) {
-        if (fn.return_type.spec.base == TB_VOID &&
-            fn.return_type.spec.ptr_level == 0 &&
-            fn.return_type.spec.array_rank == 0 &&
-            !fn.return_type.spec.is_lvalue_ref &&
-            !fn.return_type.spec.is_rvalue_ref) {
-          emit_term(ctx, "ret void");
-        } else if (ret_ty == "ptr") {
-          emit_term(ctx, "ret ptr null");
-        } else if (is_float_base(fn.return_type.spec.base) &&
-                   fn.return_type.spec.ptr_level == 0 && fn.return_type.spec.array_rank == 0) {
-          const std::string zero_val = fp_literal(fn.return_type.spec.base, 0.0);
-          emit_term(ctx, "ret " + ret_ty + " " + zero_val);
-        } else if (is_complex_base(fn.return_type.spec.base) ||
-                   ((fn.return_type.spec.base == TB_STRUCT || fn.return_type.spec.base == TB_UNION) &&
-                    fn.return_type.spec.ptr_level == 0 && fn.return_type.spec.array_rank == 0)) {
-          emit_term(ctx, "ret " + ret_ty + " zeroinitializer");
-        } else {
-          emit_term(ctx, "ret " + ret_ty + " 0");
-        }
       }
     }
 

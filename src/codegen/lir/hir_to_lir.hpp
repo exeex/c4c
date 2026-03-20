@@ -42,7 +42,7 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod);
 
 }  // namespace c4c::codegen::lir
 
-namespace c4c::hir { struct Function; }
+namespace c4c::hir { struct Function; struct Block; }
 
 namespace c4c::codegen::lir {
 
@@ -51,5 +51,11 @@ namespace c4c::codegen::lir {
 /// parameter list, variadic marker, and function attributes.
 /// Ownership of signature construction belongs to hir_to_lir, not HirEmitter.
 std::string build_fn_signature(const c4c::hir::Function& fn);
+
+/// Compute the HIR block iteration order for a function: entry block first,
+/// then remaining blocks in their original order.
+/// Ownership of block ordering belongs to hir_to_lir, not HirEmitter.
+std::vector<const c4c::hir::Block*>
+build_block_order(const c4c::hir::Function& fn);
 
 }  // namespace c4c::codegen::lir

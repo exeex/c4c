@@ -214,6 +214,65 @@ static void finalize_module(LirModule& module,
   }
 }
 
+// ── Block ordering ───────────────────────────────────────────────────────────
+// Computes the HIR block iteration order: entry block first, then remaining
+// blocks in their original order.  Ownership of this decision belongs to
+// hir_to_lir, not HirEmitter.
+
+std::vector<const c4c::hir::Block*>
+build_block_order(const c4c::hir::Function& fn) {
+  std::vector<const c4c::hir::Block*> ordered;
+  ordered.reserve(fn.blocks.size());
+  const c4c::hir::Block* entry_blk = nullptr;
+  for (const auto& blk : fn.blocks) {
+    if (blk.id.value == fn.entry.value) { entry_blk = &blk; }
+  }
+  if (entry_blk) ordered.push_back(entry_blk);
+  for (const auto& blk : fn.blocks) {
+    if (blk.id.value != fn.entry.value) ordered.push_back(&blk);
+  }
+  return ordered;
+}
+
+// ── Fallthrough return injection ─────────────────────────────────────────────
+// After per-statement lowering, any LirBlock whose terminator is still
+// LirUnreachable did not receive an explicit terminator from the HIR.
+// This post-pass injects a default "ret" matching the function's return type.
+
+static void inject_fallthrough_returns(LirFunction& lir_fn,
+                                       const c4c::hir::Function& fn) {
+  using namespace c4c::codegen::llvm_backend::detail;
+  const std::string ret_ty = llvm_ret_ty(fn.return_type.spec);
+
+  for (auto& blk : lir_fn.blocks) {
+    if (!std::holds_alternative<LirUnreachable>(blk.terminator)) continue;
+
+    std::string term_line;
+    if (fn.return_type.spec.base == TB_VOID &&
+        fn.return_type.spec.ptr_level == 0 &&
+        fn.return_type.spec.array_rank == 0 &&
+        !fn.return_type.spec.is_lvalue_ref &&
+        !fn.return_type.spec.is_rvalue_ref) {
+      term_line = "ret void";
+    } else if (ret_ty == "ptr") {
+      term_line = "ret ptr null";
+    } else if (is_float_base(fn.return_type.spec.base) &&
+               fn.return_type.spec.ptr_level == 0 &&
+               fn.return_type.spec.array_rank == 0) {
+      term_line = "ret " + ret_ty + " " + fp_literal(fn.return_type.spec.base, 0.0);
+    } else if (is_complex_base(fn.return_type.spec.base) ||
+               ((fn.return_type.spec.base == TB_STRUCT ||
+                 fn.return_type.spec.base == TB_UNION) &&
+                fn.return_type.spec.ptr_level == 0 &&
+                fn.return_type.spec.array_rank == 0)) {
+      term_line = "ret " + ret_ty + " zeroinitializer";
+    } else {
+      term_line = "ret " + ret_ty + " 0";
+    }
+    blk.terminator = LirRawTerminator{"  " + term_line};
+  }
+}
+
 // ── Main lowering entry point ────────────────────────────────────────────────
 
 LirModule lower(const c4c::hir::Module& hir_mod) {
@@ -240,10 +299,33 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
   for (size_t idx : fn_indices) {
     const auto& fn = hir_mod.functions[idx];
     std::string sig = build_fn_signature(fn);
-    emitter.lower_single_function(fn, sig);
+    auto block_order = build_block_order(fn);
+    emitter.lower_single_function(fn, sig, block_order);
   }
 
   module = emitter.release_module();
+
+  // Post-pass: inject fallthrough returns for blocks missing terminators.
+  // LirFunctions are appended in the same order as fn_indices.
+  {
+    size_t lir_fn_idx = 0;
+    for (size_t idx : fn_indices) {
+      // Find next LirFunction that matches this HIR function.
+      // Skip until we find the matching name.
+      const auto& fn = hir_mod.functions[idx];
+      const std::string expected_name =
+          c4c::codegen::llvm_backend::detail::quote_llvm_ident(fn.name);
+      while (lir_fn_idx < module.functions.size() &&
+             module.functions[lir_fn_idx].name != expected_name)
+        ++lir_fn_idx;
+      if (lir_fn_idx >= module.functions.size()) break;
+      auto& lir_fn = module.functions[lir_fn_idx];
+      if (!lir_fn.is_declaration) {
+        inject_fallthrough_returns(lir_fn, fn);
+      }
+      ++lir_fn_idx;
+    }
+  }
 
   // Module-level finalization: owned by hir_to_lir.
   finalize_module(module, hir_mod, emitter);

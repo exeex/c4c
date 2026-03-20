@@ -2,7 +2,7 @@
 
 ## Status
 
-In progress. Phases 0–4 slice 2 complete.
+In progress. Phases 0–4 slice 3 complete.
 
 ## Completed
 
@@ -81,6 +81,17 @@ In progress. Phases 0–4 slice 2 complete.
 - param_slots populated independently of signature source
 - Both legacy and lir paths produce identical output; all compare tests pass
 
+### Phase 4: Move Function Skeleton Lowering — slice 3 (block ordering + fallthrough) ✓
+
+- Extracted `build_block_order(fn)` free function in `hir_to_lir.cpp`:
+  computes HIR block iteration order (entry first, rest in original order)
+- Extracted `inject_fallthrough_returns(lir_fn, fn)` post-pass in `hir_to_lir.cpp`:
+  walks LirBlocks after lowering; replaces `LirUnreachable` terminators with default returns
+- `hir_to_lir::lower()` now passes block order to `lower_single_function(fn, sig, block_order)`
+- `emit_function()` uses externally-provided block order when available; computes internally for legacy
+- Fallthrough return generation removed from `emit_function()`; now a post-pass in `hir_to_lir::lower()`
+- Both legacy and lir paths produce identical output; all compare tests pass
+
 ### Test results
 
 - Full suite: **2075/2075 passed** (no regressions)
@@ -90,8 +101,8 @@ In progress. Phases 0–4 slice 2 complete.
 
 The next slices, in priority order:
 
-1. Phase 4 slice 3: Move block ordering and fallthrough terminator to hir_to_lir
-2. Phase 5: Move expression/statement lowering by risk slice
+1. Phase 5: Move expression/statement lowering by risk slice
+2. Phase 5 slice 1: simple expressions (literals, decl refs, casts, basic arithmetic/compare)
 
 
 ## Blockers
