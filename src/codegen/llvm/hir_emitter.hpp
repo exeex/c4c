@@ -82,12 +82,15 @@ class HirEmitter {
                              const std::string& signature_text = {},
                              const std::vector<const hir::Block*>& block_order = {});
 
-  /// Lower a function definition's block bodies using a pre-initialized FnCtx
-  /// (LIR path).  The caller (hir_to_lir) is responsible for FnCtx setup,
-  /// alloca hoisting, VLA stack save, spec entry collection, and LirFunction
-  /// construction.  This method only emits statements into ctx.lir_blocks.
-  void emit_function_body(FnCtx& ctx,
-                          const std::vector<const hir::Block*>& block_order);
+  /// Emit a single HIR statement into the FnCtx.  Exposed so that
+  /// hir_to_lir::lower() can drive block iteration directly.
+  void emit_stmt(FnCtx& ctx, const Stmt& stmt);
+
+  /// Create a new LIR block with the given label and make it current in ctx.
+  void emit_lbl(FnCtx& ctx, const std::string& lbl);
+
+  /// Map a HIR BlockId to its LLVM IR label string.
+  static std::string block_lbl(BlockId id);
 
   /// Push a pre-built LirFunction into the working module.
   void push_lir_function(lir::LirFunction fn);
@@ -139,12 +142,10 @@ class HirEmitter {
     ctx.cur_block().insts.push_back(std::forward<T>(op));
     ctx.last_term = false;
   }
-  void emit_lbl(FnCtx& ctx, const std::string& lbl);
   void emit_term(FnCtx& ctx, const std::string& line);
   std::string fresh_tmp(FnCtx& ctx);
   void record_extern_call_decl(const std::string& name, const std::string& ret_ty);
   std::string fresh_lbl(FnCtx& ctx, const std::string& pfx);
-  static std::string block_lbl(BlockId id);
 
 
   // ── String constant pool ──────────────────────────────────────────────────
@@ -329,7 +330,6 @@ class HirEmitter {
 
   // ── Statement emission ────────────────────────────────────────────────────
 
-  void emit_stmt(FnCtx& ctx, const Stmt& stmt);
   void emit_stmt_impl(FnCtx& ctx, const LocalDecl& d);
   void emit_stmt_impl(FnCtx& ctx, const ExprStmt& s);
   void emit_stmt_impl(FnCtx& ctx, const InlineAsmStmt& s);

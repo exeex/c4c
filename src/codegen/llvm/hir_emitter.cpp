@@ -5097,21 +5097,6 @@ void HirEmitter::emit_function(const Function& fn, const std::string& pre_sig,
     module_.functions.push_back(std::move(lir_fn));
   }
 
-void HirEmitter::emit_function_body(FnCtx& ctx,
-                                     const std::vector<const Block*>& block_order) {
-    // Emit block bodies — statement / expression emission only.
-    for (size_t bi = 0; bi < block_order.size(); ++bi) {
-      const Block* blk = block_order[bi];
-      ctx.current_block_id = blk->id.value;
-      if (bi > 0) {
-        emit_lbl(ctx, block_lbl(blk->id));
-      }
-      for (const auto& stmt : blk->stmts) {
-        emit_stmt(ctx, stmt);
-      }
-    }
-  }
-
 void HirEmitter::push_lir_function(lir::LirFunction fn) {
     module_.functions.push_back(std::move(fn));
   }

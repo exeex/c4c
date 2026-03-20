@@ -503,7 +503,17 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
         spec_entries.push_back({fn.spec_key.canonical, fn.template_origin, std::string(fn.name)});
       }
 
-      emitter.emit_function_body(ctx, block_order);
+      // Block iteration — owned by hir_to_lir.
+      for (size_t bi = 0; bi < block_order.size(); ++bi) {
+        const auto* blk = block_order[bi];
+        ctx.current_block_id = blk->id.value;
+        if (bi > 0) {
+          emitter.emit_lbl(ctx, emitter.block_lbl(blk->id));
+        }
+        for (const auto& stmt : blk->stmts) {
+          emitter.emit_stmt(ctx, stmt);
+        }
+      }
 
       // Build LirFunction from accumulated ctx — owned by hir_to_lir.
       LirFunction lir_fn;

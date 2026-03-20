@@ -113,6 +113,16 @@ In progress. Phase 5 slice 0 complete.
 - `lower()` tracks `any_vla` flag and sets `module.need_stacksave` directly
 - Both legacy and lir paths produce identical output; all compare tests pass
 
+### Phase 5: Move Expression/Statement Lowering — slice 1 (block iteration ownership) ✓
+
+- Moved block iteration loop from `HirEmitter::emit_function_body()` to `hir_to_lir::lower()`
+- Made `emit_stmt()`, `emit_lbl()`, `block_lbl()` public on HirEmitter
+- `lower()` now directly iterates blocks and calls `emitter.emit_stmt()` per statement
+- Removed `emit_function_body()` from HirEmitter (no longer needed)
+- hir_to_lir now owns the complete function lowering flow: FnCtx setup → block iteration → statement dispatch → LirFunction construction
+- HirEmitter retains statement/expression dispatch (emit_stmt, emit_rval_*) as public API
+- Both legacy and lir paths produce identical output; all compare tests pass
+
 ### Test results
 
 - Full suite: **2075/2075 passed** (no regressions)
@@ -122,7 +132,7 @@ In progress. Phase 5 slice 0 complete.
 
 The next slices, in priority order:
 
-1. Phase 5 slice 1: simple expressions (literals, decl refs, casts, basic arithmetic/compare)
+1. Phase 5 slice 2: extract emit_stmt dispatch as free function or make HirEmitter a thin wrapper around shared lowering functions
 
 
 ## Blockers
