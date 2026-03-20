@@ -579,6 +579,20 @@ void test_computed_include() {
   expect_contains(out, "int x = 42;", "computed include should expand macro then include");
 }
 
+void test_missing_angle_include_reports_error() {
+  fs::path dir = make_test_dir("missing_angle_include_reports_error");
+  fs::path file = dir / "main.c";
+  write_text(file,
+             "#include <definitely_missing_header_for_c4c_tests.h>\n"
+             "int x = 1;\n");
+
+  Preprocessor pp;
+  (void)pp.preprocess_file(file.string());
+  expect_true(pp.errors().size() == 1, "missing <...> include should record one error");
+  expect_contains(pp.errors()[0].message, "include file not found: definitely_missing_header_for_c4c_tests.h",
+                  "missing <...> include should surface a direct diagnostic");
+}
+
 void test_gnu_named_variadic() {
   fs::path dir = make_test_dir("gnu_named_variadic");
   fs::path file = dir / "main.c";
@@ -1329,6 +1343,24 @@ void test_cli_include_flags() {
     expect_contains(out, "int defined_val = 123;",
                     "CLI -D+include: -D macro should be visible inside included header");
   }
+
+  // Test 7: CPLUS_INCLUDE_PATH should seed default system include search for C++ input
+  {
+    fs::path sys = dir / "cli_env_cplus";
+    fs::create_directories(sys);
+    write_text(sys / "env_header.hpp", "#define ENV_HEADER_VAL 77\n");
+
+    fs::path src = dir / "cli_env_test.cpp";
+    write_text(src,
+               "#include <env_header.hpp>\n"
+               "int x = ENV_HEADER_VAL;\n");
+
+    auto [rc, out] = run_cmd("env CPLUS_INCLUDE_PATH=" + sys.string() + " " +
+                             c4cll.string() + " --pp-only " + src.string());
+    expect_true(rc == 0, "CLI env include path: should succeed");
+    expect_contains(out, "int x = 77;",
+                    "CLI env include path: CPLUS_INCLUDE_PATH should be searched automatically");
+  }
 }
 
 }  // namespace
@@ -1345,6 +1377,7 @@ int main() {
     test_include_quoted();
     test_include_path_buckets();
     test_computed_include();
+    test_missing_angle_include_reports_error();
     test_has_include();
     test_gnu_named_variadic();
     test_define_undefine_api();

@@ -919,12 +919,10 @@ std::string Preprocessor::handle_include(const std::string& args,
       return result;
     }
     if (is_angle) {
-      // Angle includes without configured paths — fall back to external.
       needs_external_fallback_ = true;
-    } else {
-      errors_.push_back(PreprocessorDiagnostic{current_file, line_no, 1,
-                                               "include file not found: " + rel});
     }
+    errors_.push_back(PreprocessorDiagnostic{current_file, line_no, 1,
+                                             "include file not found: " + rel});
     return "\n";
   }
 

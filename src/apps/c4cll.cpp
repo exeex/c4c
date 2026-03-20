@@ -1,6 +1,9 @@
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <set>
 #include <stdexcept>
 #include <sstream>
 #include <string>
@@ -22,6 +25,81 @@
 
 
 namespace {
+
+void append_env_include_paths(std::vector<std::string>& out,
+                              std::set<std::string>& seen,
+                              const char* env_name) {
+  const char* raw = std::getenv(env_name);
+  if (!raw || !raw[0]) return;
+  std::string value(raw);
+  size_t start = 0;
+  while (start <= value.size()) {
+    size_t end = value.find(':', start);
+    std::string path = value.substr(start, end == std::string::npos ? std::string::npos
+                                                                     : end - start);
+    if (!path.empty() && std::filesystem::is_directory(path) && seen.insert(path).second) {
+      out.push_back(path);
+    }
+    if (end == std::string::npos) break;
+    start = end + 1;
+  }
+}
+
+void append_default_include_path(std::vector<std::string>& out,
+                                 std::set<std::string>& seen,
+                                 const std::string& path) {
+  if (path.empty()) return;
+  if (!std::filesystem::is_directory(path)) return;
+  if (seen.insert(path).second) out.push_back(path);
+}
+
+void seed_default_system_include_paths(c4c::SourceProfile source_profile,
+                                       std::vector<std::string>& system_include_paths) {
+  std::set<std::string> seen(system_include_paths.begin(), system_include_paths.end());
+
+  append_env_include_paths(system_include_paths, seen, "CPATH");
+  if (source_profile == c4c::SourceProfile::CppSubset ||
+      source_profile == c4c::SourceProfile::C4) {
+    append_env_include_paths(system_include_paths, seen, "CPLUS_INCLUDE_PATH");
+  } else {
+    append_env_include_paths(system_include_paths, seen, "C_INCLUDE_PATH");
+  }
+
+  append_default_include_path(system_include_paths, seen, "/usr/local/include");
+  append_default_include_path(system_include_paths, seen, "/usr/include");
+  const std::filesystem::path usr_include_root("/usr/include");
+  if (std::filesystem::is_directory(usr_include_root)) {
+    for (const auto& arch_entry : std::filesystem::directory_iterator(usr_include_root)) {
+      if (!arch_entry.is_directory()) continue;
+      const std::string arch_name = arch_entry.path().filename().string();
+      if (arch_name.find("-linux-gnu") == std::string::npos) continue;
+      append_default_include_path(system_include_paths, seen, arch_entry.path().string());
+    }
+  }
+
+  if (source_profile == c4c::SourceProfile::CppSubset ||
+      source_profile == c4c::SourceProfile::C4) {
+    const std::filesystem::path cpp_root("/usr/include/c++");
+    if (std::filesystem::is_directory(cpp_root)) {
+      for (const auto& entry : std::filesystem::directory_iterator(cpp_root)) {
+        if (!entry.is_directory()) continue;
+        const std::string version_dir = entry.path().string();
+        append_default_include_path(system_include_paths, seen, version_dir);
+        append_default_include_path(system_include_paths, seen, version_dir + "/backward");
+        if (std::filesystem::is_directory(usr_include_root)) {
+          for (const auto& arch_entry : std::filesystem::directory_iterator(usr_include_root)) {
+            if (!arch_entry.is_directory()) continue;
+            const std::string arch_name = arch_entry.path().filename().string();
+            if (arch_name.find("-linux-gnu") == std::string::npos) continue;
+            append_default_include_path(system_include_paths, seen,
+                                        arch_entry.path().string() + "/c++/" +
+                                            entry.path().filename().string());
+          }
+        }
+      }
+    }
+  }
+}
 
 void print_usage(const char *argv0) {
   std::cerr << "usage: " << argv0
@@ -156,6 +234,7 @@ int main(int argc, char **argv) {
     auto source_profile = c4c::source_profile_from_extension(input);
     auto lex_profile    = c4c::lex_profile_from(source_profile);
     auto sema_profile   = c4c::sema_profile_from(source_profile);
+    seed_default_system_include_paths(source_profile, system_include_paths);
 
     c4c::Preprocessor preprocessor;
     preprocessor.set_source_profile(source_profile);
