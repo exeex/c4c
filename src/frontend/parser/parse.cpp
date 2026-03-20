@@ -190,6 +190,14 @@ void Parser::handle_pragma_pack(const std::string& args) {
     }
 }
 
+const char* Parser::diag_file_at(int token_index) const {
+    if (token_index >= 0 && token_index < static_cast<int>(tokens_.size())) {
+        const std::string& file = tokens_[token_index].file;
+        if (!file.empty()) return file.c_str();
+    }
+    return source_file_.c_str();
+}
+
 void Parser::handle_pragma_gcc_visibility(const std::string& args) {
     // Lexeme format: "push,<visibility>" or "pop"
     if (args == "pop") {
@@ -588,15 +596,16 @@ Node* Parser::parse() {
             item = parse_top_level();
         } catch (const std::exception& e) {
             // Parse error: emit stable diagnostic and try to recover.
+            int err_idx = !at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1);
             int err_line = (!at_end()) ? cur().line : (pos_ > 0 ? tokens_[pos_-1].line : 1);
             int err_col  = (!at_end()) ? cur().column : 1;
             fprintf(stderr, "%s:%d:%d: error: %s\n",
-                    source_file_.c_str(), err_line, err_col, e.what());
+                    diag_file_at(err_idx), err_line, err_col, e.what());
             had_error_ = true;
             ++parse_error_count_;
             if (parse_error_count_ >= max_parse_errors_) {
                 fprintf(stderr, "%s:%d:%d: error: too many errors emitted, stopping now\n",
-                        source_file_.c_str(), err_line, err_col);
+                        diag_file_at(err_idx), err_line, err_col);
                 break;
             }
             if (pos_ == loop_start_pos && !at_end()) consume();
@@ -611,13 +620,13 @@ Node* Parser::parse() {
             had_error_ = true;
             ++no_progress_steps;
             fprintf(stderr, "%s:%d:%d: error: unexpected token '%s'\n",
-                    source_file_.c_str(), cur().line, cur().column,
+                    diag_file_at(pos_), cur().line, cur().column,
                     cur().lexeme.c_str());
             consume();
             ++parse_error_count_;
             if (no_progress_steps >= max_no_progress_steps_) {
                 fprintf(stderr, "%s:%d:%d: error: too many errors emitted, stopping now\n",
-                        source_file_.c_str(),
+                        diag_file_at(!at_end() ? pos_ : static_cast<int>(tokens_.size()) - 1),
                         !at_end() ? cur().line : tokens_.back().line,
                         !at_end() ? cur().column : 1);
                 break;

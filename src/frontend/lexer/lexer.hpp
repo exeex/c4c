@@ -22,6 +22,7 @@ class Lexer {
   bool at_end() const;
   char advance();
   void skip_whitespace_and_comments();
+  bool consume_line_marker();
 
   Token make_token(TokenKind kind, std::string lexeme, int line, int col) const;
   Token scan_identifier_or_keyword();
@@ -38,6 +39,7 @@ class Lexer {
   std::size_t index_ = 0;
   int line_   = 1;
   int column_ = 1;
+  std::string current_file_;
 
   // Pending pragma tokens detected during whitespace/comment skipping.
   bool has_pending_pragma_pack_ = false;

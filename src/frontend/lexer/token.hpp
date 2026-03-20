@@ -164,6 +164,7 @@ enum class TokenKind {
 struct Token {
   TokenKind kind;
   std::string lexeme;  // raw source text
+  std::string file;    // logical source file after #line / include markers
   int line;
   int column;
 };

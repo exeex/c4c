@@ -95,7 +95,7 @@ char Lexer::advance() {
 }
 
 Token Lexer::make_token(TokenKind kind, std::string lexeme, int line, int col) const {
-  return Token{kind, std::move(lexeme), line, col};
+  return Token{kind, std::move(lexeme), current_file_, line, col};
 }
 
 // ── whitespace / comment / GCC line-marker skipping ─────────────────────────
@@ -234,6 +234,7 @@ void Lexer::skip_whitespace_and_comments() {
           }
           continue;
         }
+        if (consume_line_marker()) continue;
         // Skip to end of line
         while (!at_end() && peek() != '\n') advance();
         continue;
@@ -243,6 +244,41 @@ void Lexer::skip_whitespace_and_comments() {
 
     break;
   }
+}
+
+bool Lexer::consume_line_marker() {
+  if (peek() != '#' || column_ != 1) return false;
+
+  size_t p = index_ + 1;
+  while (p < source_.size() && (source_[p] == ' ' || source_[p] == '\t')) ++p;
+  if (p >= source_.size() || !std::isdigit(static_cast<unsigned char>(source_[p]))) {
+    return false;
+  }
+
+  int new_line = 0;
+  while (p < source_.size() && std::isdigit(static_cast<unsigned char>(source_[p]))) {
+    new_line = new_line * 10 + (source_[p] - '0');
+    ++p;
+  }
+
+  while (p < source_.size() && (source_[p] == ' ' || source_[p] == '\t')) ++p;
+  if (p >= source_.size() || source_[p] != '"') return false;
+  ++p;
+
+  std::string new_file;
+  while (p < source_.size() && source_[p] != '"') {
+    if (source_[p] == '\\' && p + 1 < source_.size()) ++p;
+    new_file.push_back(source_[p++]);
+  }
+  if (p >= source_.size() || source_[p] != '"') return false;
+
+  while (!at_end() && peek() != '\n') advance();
+  if (!at_end() && peek() == '\n') advance();
+
+  current_file_ = std::move(new_file);
+  line_ = new_line;
+  column_ = 1;
+  return true;
 }
 
 // ── identifier / keyword ─────────────────────────────────────────────────────

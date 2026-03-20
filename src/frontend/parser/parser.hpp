@@ -146,6 +146,7 @@ class Parser {
   bool check2(TokenKind k) const;        // is next token kind k?
   bool match(TokenKind k);               // consume if check(k)
   void expect(TokenKind k);              // consume or throw
+  const char* diag_file_at(int token_index) const;
   // Template angle-bracket helpers: handle >> as two > tokens.
   bool check_template_close() const;     // is current > or >>?
   bool match_template_close();           // consume > or split >>

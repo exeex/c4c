@@ -19,15 +19,16 @@ Node* Parser::parse_block() {
         } catch (const std::exception& e) {
             // Statement-level recovery: emit diagnostic, skip to ; or },
             // produce NK_INVALID_STMT, and continue parsing next statement.
+            int err_idx = !at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1);
             int err_line = (!at_end()) ? cur().line : (pos_ > 0 ? tokens_[pos_-1].line : 1);
             int err_col  = (!at_end()) ? cur().column : 1;
             fprintf(stderr, "%s:%d:%d: error: %s\n",
-                    source_file_.c_str(), err_line, err_col, e.what());
+                    diag_file_at(err_idx), err_line, err_col, e.what());
             had_error_ = true;
             ++parse_error_count_;
             if (parse_error_count_ >= max_parse_errors_) {
                 fprintf(stderr, "%s:%d:%d: error: too many errors emitted, stopping now\n",
-                        source_file_.c_str(), err_line, err_col);
+                        diag_file_at(err_idx), err_line, err_col);
                 break;
             }
             // Advance at least one token to avoid infinite loop.
