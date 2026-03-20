@@ -19,6 +19,25 @@ std::string llvm_global_sym(const std::string& raw) {
 void render_inst(std::ostringstream& os, const LirInst& inst) {
   if (const auto* raw = std::get_if<LirRawLine>(&inst)) {
     os << raw->line << "\n";
+  } else if (const auto* op = std::get_if<LirMemcpyOp>(&inst)) {
+    os << "  call void @llvm.memcpy.p0.p0.i64(ptr " << op->dst
+       << ", ptr " << op->src << ", i64 " << op->size
+       << ", i1 " << (op->is_volatile ? "true" : "false") << ")\n";
+  } else if (const auto* op = std::get_if<LirVaStartOp>(&inst)) {
+    os << "  call void @llvm.va_start.p0(ptr " << op->ap_ptr << ")\n";
+  } else if (const auto* op = std::get_if<LirVaEndOp>(&inst)) {
+    os << "  call void @llvm.va_end.p0(ptr " << op->ap_ptr << ")\n";
+  } else if (const auto* op = std::get_if<LirVaCopyOp>(&inst)) {
+    os << "  call void @llvm.va_copy.p0.p0(ptr " << op->dst_ptr
+       << ", ptr " << op->src_ptr << ")\n";
+  } else if (const auto* op = std::get_if<LirStackSaveOp>(&inst)) {
+    os << "  " << op->result << " = call ptr @llvm.stacksave()\n";
+  } else if (const auto* op = std::get_if<LirStackRestoreOp>(&inst)) {
+    os << "  call void @llvm.stackrestore(ptr " << op->saved_ptr << ")\n";
+  } else if (const auto* op = std::get_if<LirAbsOp>(&inst)) {
+    os << "  " << op->result << " = call " << op->int_type
+       << " @llvm.abs." << op->int_type << "(" << op->int_type
+       << " " << op->arg << ", i1 true)\n";
   }
 }
 

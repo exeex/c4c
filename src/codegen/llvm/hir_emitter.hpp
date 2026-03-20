@@ -114,6 +114,12 @@ class HirEmitter {
   // ── Instruction helpers ───────────────────────────────────────────────────
 
   void emit_instr(FnCtx& ctx, const std::string& line);
+  // Push a typed LIR instruction (non-terminator) into the current block.
+  template<typename T>
+  void emit_lir_op(FnCtx& ctx, T&& op) {
+    ctx.cur_block().insts.push_back(std::forward<T>(op));
+    ctx.last_term = false;
+  }
   void emit_lbl(FnCtx& ctx, const std::string& lbl);
   void emit_term(FnCtx& ctx, const std::string& line);
   std::string fresh_tmp(FnCtx& ctx);

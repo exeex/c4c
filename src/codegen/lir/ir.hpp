@@ -142,6 +142,44 @@ struct LirIntrinsic {
   std::vector<LirValueId> args;
 };
 
+// ── Typed intrinsic operations (Stage 3) ────────────────────────────────────
+// These replace LirRawLine for well-known intrinsic calls.
+// Operands use string SSA names (matching current emitter convention).
+
+struct LirMemcpyOp {
+  std::string dst;        // ptr operand
+  std::string src;        // ptr operand
+  std::string size;       // i64 operand
+  bool is_volatile = false;
+};
+
+struct LirVaStartOp {
+  std::string ap_ptr;     // ptr operand
+};
+
+struct LirVaEndOp {
+  std::string ap_ptr;     // ptr operand
+};
+
+struct LirVaCopyOp {
+  std::string dst_ptr;    // ptr operand
+  std::string src_ptr;    // ptr operand
+};
+
+struct LirStackSaveOp {
+  std::string result;     // SSA name for saved stack pointer
+};
+
+struct LirStackRestoreOp {
+  std::string saved_ptr;  // SSA name of saved stack pointer
+};
+
+struct LirAbsOp {
+  std::string result;     // SSA name for result
+  std::string arg;        // SSA name for input
+  std::string int_type;   // e.g. "i32" or "i64"
+};
+
 struct LirInlineAsm {
   LirValueId result{};
   std::string asm_string;
@@ -189,6 +227,13 @@ using LirInst = std::variant<
     LirInlineAsm,
     LirBitfieldExtract,
     LirBitfieldInsert,
+    LirMemcpyOp,
+    LirVaStartOp,
+    LirVaEndOp,
+    LirVaCopyOp,
+    LirStackSaveOp,
+    LirStackRestoreOp,
+    LirAbsOp,
     LirRawLine
 >;
 

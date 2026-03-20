@@ -3344,22 +3344,21 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         i64_ts.base = TB_ULONGLONG;
         size = coerce(ctx, size, size_ts, i64_ts);
         need_llvm_memcpy_ = true;
-        emit_instr(ctx, "call void @llvm.memcpy.p0.p0.i64(ptr " + dst + ", ptr " + src +
-                            ", i64 " + size + ", i1 false)");
+        emit_lir_op(ctx, lir::LirMemcpyOp{dst, src, size, false});
         return dst;
       }
       if (builtin_id == BuiltinId::VaStart && call.args.size() >= 1) {
         TypeSpec ap_ts{};
         const std::string ap_ptr = emit_va_list_obj_ptr(ctx, call.args[0], ap_ts);
         need_llvm_va_start_ = true;
-        emit_instr(ctx, "call void @llvm.va_start.p0(ptr " + ap_ptr + ")");
+        emit_lir_op(ctx, lir::LirVaStartOp{ap_ptr});
         return "";
       }
       if (builtin_id == BuiltinId::VaEnd && call.args.size() >= 1) {
         TypeSpec ap_ts{};
         const std::string ap_ptr = emit_va_list_obj_ptr(ctx, call.args[0], ap_ts);
         need_llvm_va_end_ = true;
-        emit_instr(ctx, "call void @llvm.va_end.p0(ptr " + ap_ptr + ")");
+        emit_lir_op(ctx, lir::LirVaEndOp{ap_ptr});
         return "";
       }
       if (builtin_id == BuiltinId::VaCopy && call.args.size() >= 2) {
@@ -3368,7 +3367,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         const std::string dst_ptr = emit_va_list_obj_ptr(ctx, call.args[0], dst_ts);
         const std::string src_ptr = emit_va_list_obj_ptr(ctx, call.args[1], src_ts);
         need_llvm_va_copy_ = true;
-        emit_instr(ctx, "call void @llvm.va_copy.p0.p0(ptr " + dst_ptr + ", ptr " + src_ptr + ")");
+        emit_lir_op(ctx, lir::LirVaCopyOp{dst_ptr, src_ptr});
         return "";
       }
       if (builtin_id == BuiltinId::Alloca && call.args.size() == 1) {
@@ -3871,8 +3870,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
       TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
       arg = coerce(ctx, arg, arg_ts, target_ts);
       const std::string tmp = fresh_tmp(ctx);
-      emit_instr(ctx, tmp + " = call " + ity + " @llvm.abs." + ity +
-                           "(" + ity + " " + arg + ", i1 true)");
+      emit_lir_op(ctx, lir::LirAbsOp{tmp, arg, ity});
       need_llvm_abs_ = true;
       return tmp;
     }
@@ -3983,8 +3981,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         const std::string tmp_addr = fresh_tmp(ctx);
         emit_instr(ctx, tmp_addr + " = alloca %struct.__va_list_tag_");
         need_llvm_memcpy_ = true;
-        emit_instr(ctx, "call void @llvm.memcpy.p0.p0.i64(ptr " + tmp_addr + ", ptr " +
-                            src_ptr + ", i64 32, i1 false)");
+        emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, src_ptr, "32", false});
         arg = tmp_addr;
         out_arg_ts = arg_ts;
       }
@@ -4013,8 +4010,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         if (payload_sz <= 8) {
           const std::string tmp_addr = fresh_tmp(ctx);
           emit_instr(ctx, tmp_addr + " = alloca i64");
-          emit_instr(ctx, "call void @llvm.memcpy.p0.p0.i64(ptr " + tmp_addr + ", ptr " + obj_ptr +
-                              ", i64 " + std::to_string(payload_sz) + ", i1 false)");
+          emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, obj_ptr, std::to_string(payload_sz), false});
           const std::string packed = fresh_tmp(ctx);
           emit_instr(ctx, packed + " = load i64, ptr " + tmp_addr);
           args_str += "i64 " + packed;
@@ -4023,8 +4019,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
 
         const std::string tmp_addr = fresh_tmp(ctx);
         emit_instr(ctx, tmp_addr + " = alloca [2 x i64]");
-        emit_instr(ctx, "call void @llvm.memcpy.p0.p0.i64(ptr " + tmp_addr + ", ptr " + obj_ptr +
-                            ", i64 " + std::to_string(payload_sz) + ", i1 false)");
+        emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, obj_ptr, std::to_string(payload_sz), false});
         const std::string packed = fresh_tmp(ctx);
         emit_instr(ctx, packed + " = load [2 x i64], ptr " + tmp_addr);
         args_str += "[2 x i64] " + packed;
@@ -4205,8 +4200,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const 
             const std::string tmp_addr = fresh_tmp(ctx);
             emit_instr(ctx, tmp_addr + " = alloca " + res_ty);
             need_llvm_memcpy_ = true;
-            emit_instr(ctx, "call void @llvm.memcpy.p0.p0.i64(ptr " + tmp_addr + ", ptr " +
-                                src_ptr + ", i64 " + std::to_string(payload_sz) + ", i1 false)");
+            emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, src_ptr, std::to_string(payload_sz), false});
             const std::string out = fresh_tmp(ctx);
             emit_instr(ctx, out + " = load " + res_ty + ", ptr " + tmp_addr);
             return out;
@@ -4217,8 +4211,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const 
           const std::string tmp_addr = fresh_tmp(ctx);
           emit_instr(ctx, tmp_addr + " = alloca " + res_ty);
           need_llvm_memcpy_ = true;
-          emit_instr(ctx, "call void @llvm.memcpy.p0.p0.i64(ptr " + tmp_addr + ", ptr " +
-                              src_ptr + ", i64 " + std::to_string(payload_sz) + ", i1 false)");
+          emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, src_ptr, std::to_string(payload_sz), false});
           const std::string out = fresh_tmp(ctx);
           emit_instr(ctx, out + " = load " + res_ty + ", ptr " + tmp_addr);
           return out;
@@ -4764,7 +4757,7 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const GotoStmt& s){
     if (ctx.vla_stack_save_ptr && s.target.resolved_block.valid() &&
         s.target.resolved_block.value <= ctx.current_block_id) {
       need_llvm_stackrestore_ = true;
-      emit_instr(ctx, "call void @llvm.stackrestore(ptr " + *ctx.vla_stack_save_ptr + ")");
+      emit_lir_op(ctx, lir::LirStackRestoreOp{*ctx.vla_stack_save_ptr});
     }
     if (s.target.resolved_block.valid()) {
       emit_term(ctx, "br label %" + block_lbl(s.target.resolved_block));
@@ -5040,7 +5033,7 @@ void HirEmitter::emit_function(const Function& fn){
     if (fn_has_vla_locals(fn)) {
       need_llvm_stacksave_ = true;
       const std::string saved_sp = fresh_tmp(ctx);
-      emit_instr(ctx, saved_sp + " = call ptr @llvm.stacksave()");
+      emit_lir_op(ctx, lir::LirStackSaveOp{saved_sp});
       ctx.vla_stack_save_ptr = saved_sp;
     }
 

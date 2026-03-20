@@ -36,7 +36,14 @@
 ## Active Item
 **Milestone D Stage 3**: Normalize special cases into LIR ops
 
-## Next
+### Completed slices
+- **Stage 3 slice 1: Typed intrinsic LIR ops** — Added `LirMemcpyOp`, `LirVaStartOp`, `LirVaEndOp`, `LirVaCopyOp`, `LirStackSaveOp`, `LirStackRestoreOp`, `LirAbsOp` to `LirInst` variant. Replaced 7 raw LLVM IR string emissions in `hir_emitter.cpp` with typed ops. `lir_printer.cpp` `render_inst` renders each op to identical LLVM IR text. All 2067/2067 tests pass.
+
+### Next slices
+- Stage 3 slice 2: Normalize bitfield extract/insert into typed LIR ops
+- Stage 3 slice 3: Normalize computed goto (blockaddress + indirectbr) into typed LIR ops
+
+## After Stage 3
 - Milestone C: Iterator/container usability
 
 ## Test Suite
