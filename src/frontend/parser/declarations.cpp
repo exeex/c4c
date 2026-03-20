@@ -5,6 +5,29 @@
 #include <stdexcept>
 
 namespace c4c {
+
+static void finalize_pending_operator_name(std::string& name, size_t param_count) {
+    if (name.find("operator_star_pending") != std::string::npos) {
+        name.replace(name.find("operator_star_pending"),
+                     sizeof("operator_star_pending") - 1,
+                     param_count == 0 ? "operator_deref" : "operator_mul");
+    }
+    if (name.find("operator_amp_pending") != std::string::npos) {
+        name.replace(name.find("operator_amp_pending"),
+                     sizeof("operator_amp_pending") - 1,
+                     param_count == 0 ? "operator_addr" : "operator_bitand");
+    }
+    if (name.find("operator_inc_pending") != std::string::npos) {
+        name.replace(name.find("operator_inc_pending"),
+                     sizeof("operator_inc_pending") - 1,
+                     param_count == 0 ? "operator_preinc" : "operator_postinc");
+    }
+    if (name.find("operator_dec_pending") != std::string::npos) {
+        name.replace(name.find("operator_dec_pending"),
+                     sizeof("operator_dec_pending") - 1,
+                     param_count == 0 ? "operator_predec" : "operator_postdec");
+    }
+}
 namespace {
 
 const char* maybe_parse_linkage_spec(Parser* parser) {
@@ -1190,10 +1213,32 @@ top_level_base_ready:
             }
         }
         expect(TokenKind::RParen);
+        if (decl_name) {
+            std::string adjusted_name(decl_name);
+            finalize_pending_operator_name(adjusted_name, params.size());
+            decl_name = arena_.strdup(adjusted_name.c_str());
+            scoped_decl_name = qualify_name_arena(decl_name);
+        }
         parse_attributes(&ts);
         skip_asm();
         parse_attributes(&ts);
         skip_attributes();
+        bool is_const_method = false;
+        while (is_cpp_mode() && decl_name && std::string(decl_name).find("::") != std::string::npos) {
+            if (match(TokenKind::KwConst)) {
+                is_const_method = true;
+                continue;
+            }
+            if (match(TokenKind::KwConstexpr)) {
+                is_constexpr = true;
+                continue;
+            }
+            if (match(TokenKind::KwConsteval)) {
+                is_consteval = true;
+                continue;
+            }
+            break;
+        }
 
         // K&R style parameter declarations before body:
         //   f(a, b) int a; short *b; { ... }
@@ -1295,6 +1340,7 @@ top_level_base_ready:
             fn->is_inline = is_inline;
             fn->is_constexpr = is_constexpr;
             fn->is_consteval = is_consteval;
+            fn->is_const_method = is_const_method;
             fn->linkage_spec = linkage_spec;
             fn->visibility = visibility_;
             fn->body      = body;
@@ -1321,6 +1367,7 @@ top_level_base_ready:
         fn->is_inline = is_inline;
         fn->is_constexpr = is_constexpr;
         fn->is_consteval = is_consteval;
+        fn->is_const_method = is_const_method;
         fn->linkage_spec = linkage_spec;
         fn->visibility = visibility_;
         fn->body      = nullptr;  // declaration only

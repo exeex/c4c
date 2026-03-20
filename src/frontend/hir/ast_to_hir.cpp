@@ -5520,6 +5520,10 @@ class Lowerer {
           const char* op_name = nullptr;
           if (std::string(n->op) == "++pre") op_name = "operator_preinc";
           else if (std::string(n->op) == "--pre") op_name = "operator_predec";
+          else if (std::string(n->op) == "+") op_name = "operator_plus";
+          else if (std::string(n->op) == "-") op_name = "operator_minus";
+          else if (std::string(n->op) == "!") op_name = "operator_not";
+          else if (std::string(n->op) == "~") op_name = "operator_bitnot";
           if (op_name) {
             ExprId op = try_lower_operator_call(
                 ctx, n, n->left, op_name, {});
@@ -5558,6 +5562,11 @@ class Lowerer {
         return append_expr(n, u, n->type);
       }
       case NK_ADDR: {
+        {
+          ExprId op = try_lower_operator_call(
+              ctx, n, n->left, "operator_addr", {});
+          if (op.valid()) return op;
+        }
         // Reject taking the address of a consteval function.
         if (n->left && n->left->kind == NK_VAR && n->left->name &&
             ct_state_->has_consteval_def(n->left->name)) {
@@ -5599,6 +5608,14 @@ class Lowerer {
           else if (op_str == "!=") op_name = "operator_neq";
           else if (op_str == "+") op_name = "operator_plus";
           else if (op_str == "-") op_name = "operator_minus";
+          else if (op_str == "*") op_name = "operator_mul";
+          else if (op_str == "/") op_name = "operator_div";
+          else if (op_str == "%") op_name = "operator_mod";
+          else if (op_str == "&") op_name = "operator_bitand";
+          else if (op_str == "|") op_name = "operator_bitor";
+          else if (op_str == "^") op_name = "operator_bitxor";
+          else if (op_str == "<<") op_name = "operator_shl";
+          else if (op_str == ">>") op_name = "operator_shr";
           else if (op_str == "<") op_name = "operator_lt";
           else if (op_str == ">") op_name = "operator_gt";
           else if (op_str == "<=") op_name = "operator_le";
@@ -5621,11 +5638,25 @@ class Lowerer {
         return append_expr(n, b, n->type);
       }
       case NK_ASSIGN: {
-        // Check for operator= on struct types.
-        if (n->kind == NK_ASSIGN && ctx) {
-          ExprId op = try_lower_operator_call(
-              ctx, n, n->left, "operator_assign", {n->right});
-          if (op.valid()) return op;
+        if (n->kind == NK_ASSIGN && ctx && n->op) {
+          const char* op_name = nullptr;
+          std::string op_str(n->op);
+          if (op_str == "=") op_name = "operator_assign";
+          else if (op_str == "+=") op_name = "operator_plus_assign";
+          else if (op_str == "-=") op_name = "operator_minus_assign";
+          else if (op_str == "*=") op_name = "operator_mul_assign";
+          else if (op_str == "/=") op_name = "operator_div_assign";
+          else if (op_str == "%=") op_name = "operator_mod_assign";
+          else if (op_str == "&=") op_name = "operator_and_assign";
+          else if (op_str == "|=") op_name = "operator_or_assign";
+          else if (op_str == "^=") op_name = "operator_xor_assign";
+          else if (op_str == "<<=") op_name = "operator_shl_assign";
+          else if (op_str == ">>=") op_name = "operator_shr_assign";
+          if (op_name) {
+            ExprId op = try_lower_operator_call(
+                ctx, n, n->left, op_name, {n->right});
+            if (op.valid()) return op;
+          }
         }
         AssignExpr a{};
         a.op = map_assign_op(n->op, n->kind);
@@ -5634,6 +5665,25 @@ class Lowerer {
         return append_expr(n, a, n->type);
       }
       case NK_COMPOUND_ASSIGN: {
+        if (n->op && ctx) {
+          const char* op_name = nullptr;
+          std::string op_str(n->op);
+          if (op_str == "+=") op_name = "operator_plus_assign";
+          else if (op_str == "-=") op_name = "operator_minus_assign";
+          else if (op_str == "*=") op_name = "operator_mul_assign";
+          else if (op_str == "/=") op_name = "operator_div_assign";
+          else if (op_str == "%=") op_name = "operator_mod_assign";
+          else if (op_str == "&=") op_name = "operator_and_assign";
+          else if (op_str == "|=") op_name = "operator_or_assign";
+          else if (op_str == "^=") op_name = "operator_xor_assign";
+          else if (op_str == "<<=") op_name = "operator_shl_assign";
+          else if (op_str == ">>=") op_name = "operator_shr_assign";
+          if (op_name) {
+            ExprId op = try_lower_operator_call(
+                ctx, n, n->left, op_name, {n->right});
+            if (op.valid()) return op;
+          }
+        }
         AssignExpr a{};
         a.op = map_assign_op(n->op, n->kind);
         a.lhs = lower_expr(ctx, n->left);

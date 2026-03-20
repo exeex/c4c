@@ -22,6 +22,87 @@ static void finalize_vector_type(TypeSpec& ts) {
     }
     ts.vector_lanes = ts.vector_bytes / elem_sz;
 }
+
+static void append_type_mangled_suffix(std::string& out, const TypeSpec& ts) {
+    switch (ts.base) {
+        case TB_INT: out += "int"; break;
+        case TB_UINT: out += "uint"; break;
+        case TB_CHAR: out += "char"; break;
+        case TB_SCHAR: out += "schar"; break;
+        case TB_UCHAR: out += "uchar"; break;
+        case TB_SHORT: out += "short"; break;
+        case TB_USHORT: out += "ushort"; break;
+        case TB_LONG: out += "long"; break;
+        case TB_ULONG: out += "ulong"; break;
+        case TB_LONGLONG: out += "llong"; break;
+        case TB_ULONGLONG: out += "ullong"; break;
+        case TB_FLOAT: out += "float"; break;
+        case TB_DOUBLE: out += "double"; break;
+        case TB_LONGDOUBLE: out += "ldouble"; break;
+        case TB_VOID: out += "void"; break;
+        case TB_BOOL: out += "bool"; break;
+        case TB_INT128: out += "i128"; break;
+        case TB_UINT128: out += "u128"; break;
+        case TB_STRUCT: out += "struct_"; out += (ts.tag ? ts.tag : "anon"); break;
+        case TB_UNION: out += "union_"; out += (ts.tag ? ts.tag : "anon"); break;
+        case TB_ENUM: out += "enum_"; out += (ts.tag ? ts.tag : "anon"); break;
+        case TB_TYPEDEF: out += (ts.tag ? ts.tag : "typedef"); break;
+        default: out += "T"; break;
+    }
+    for (int p = 0; p < ts.ptr_level; ++p) out += "_ptr";
+    if (ts.is_lvalue_ref) out += "_ref";
+    if (ts.is_rvalue_ref) out += "_rref";
+}
+
+static const char* extra_operator_mangled_name(TokenKind kind) {
+    switch (kind) {
+        case TokenKind::Bang: return "operator_not";
+        case TokenKind::Tilde: return "operator_bitnot";
+        case TokenKind::MinusMinus: return "operator_dec_pending";
+        case TokenKind::PlusPlus: return "operator_inc_pending";
+        case TokenKind::Slash: return "operator_div";
+        case TokenKind::Percent: return "operator_mod";
+        case TokenKind::Amp: return "operator_bitand";
+        case TokenKind::Pipe: return "operator_bitor";
+        case TokenKind::Caret: return "operator_bitxor";
+        case TokenKind::LessLess: return "operator_shl";
+        case TokenKind::GreaterGreater: return "operator_shr";
+        case TokenKind::PlusAssign: return "operator_plus_assign";
+        case TokenKind::MinusAssign: return "operator_minus_assign";
+        case TokenKind::StarAssign: return "operator_mul_assign";
+        case TokenKind::SlashAssign: return "operator_div_assign";
+        case TokenKind::PercentAssign: return "operator_mod_assign";
+        case TokenKind::AmpAssign: return "operator_and_assign";
+        case TokenKind::PipeAssign: return "operator_or_assign";
+        case TokenKind::CaretAssign: return "operator_xor_assign";
+        case TokenKind::LessLessAssign: return "operator_shl_assign";
+        case TokenKind::GreaterGreaterAssign: return "operator_shr_assign";
+        default: return nullptr;
+    }
+}
+
+static void finalize_pending_operator_name(std::string& name, size_t param_count) {
+    if (name.find("operator_star_pending") != std::string::npos) {
+        name.replace(name.find("operator_star_pending"),
+                     sizeof("operator_star_pending") - 1,
+                     param_count == 0 ? "operator_deref" : "operator_mul");
+    }
+    if (name.find("operator_amp_pending") != std::string::npos) {
+        name.replace(name.find("operator_amp_pending"),
+                     sizeof("operator_amp_pending") - 1,
+                     param_count == 0 ? "operator_addr" : "operator_bitand");
+    }
+    if (name.find("operator_inc_pending") != std::string::npos) {
+        name.replace(name.find("operator_inc_pending"),
+                     sizeof("operator_inc_pending") - 1,
+                     param_count == 0 ? "operator_preinc" : "operator_postinc");
+    }
+    if (name.find("operator_dec_pending") != std::string::npos) {
+        name.replace(name.find("operator_dec_pending"),
+                     sizeof("operator_dec_pending") - 1,
+                     param_count == 0 ? "operator_predec" : "operator_postdec");
+    }
+}
 bool Parser::is_typedef_name(const std::string& s) const {
     return typedefs_.count(s) > 0;
 }
@@ -259,6 +340,8 @@ TypeSpec Parser::parse_base_type() {
             case TokenKind::KwVolatile: ts.is_volatile = true; consume(); break;
             case TokenKind::KwRestrict:
             case TokenKind::KwAtomic:
+            case TokenKind::KwStatic:
+            case TokenKind::KwExtern:
             case TokenKind::KwRegister:
             case TokenKind::KwInline:
             case TokenKind::KwExtension:
@@ -641,28 +724,7 @@ TypeSpec Parser::parse_base_type() {
                     std::string mangled = tpl_name;
                     // Helper lambda for type suffix
                     auto append_type_suffix = [&](const TypeSpec& pts) {
-                        switch (pts.base) {
-                            case TB_INT: mangled += "int"; break;
-                            case TB_UINT: mangled += "uint"; break;
-                            case TB_CHAR: case TB_SCHAR: mangled += "char"; break;
-                            case TB_UCHAR: mangled += "uchar"; break;
-                            case TB_SHORT: mangled += "short"; break;
-                            case TB_USHORT: mangled += "ushort"; break;
-                            case TB_LONG: mangled += "long"; break;
-                            case TB_ULONG: mangled += "ulong"; break;
-                            case TB_LONGLONG: mangled += "llong"; break;
-                            case TB_ULONGLONG: mangled += "ullong"; break;
-                            case TB_FLOAT: mangled += "float"; break;
-                            case TB_DOUBLE: mangled += "double"; break;
-                            case TB_LONGDOUBLE: mangled += "ldouble"; break;
-                            case TB_VOID: mangled += "void"; break;
-                            case TB_BOOL: mangled += "bool"; break;
-                            case TB_STRUCT: case TB_UNION:
-                                mangled += pts.tag ? pts.tag : "anon";
-                                break;
-                            default: mangled += "T"; break;
-                        }
-                        for (int p = 0; p < pts.ptr_level; ++p) mangled += "p";
+                        append_type_mangled_suffix(mangled, pts);
                     };
                     // Interleave type and NTTP args in template param order
                     int ti = 0, ni = 0;
@@ -1232,8 +1294,136 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
 
     parse_attributes(&ts);
 
-    // Normal declarator: optional identifier name
-    if (out_name && check(TokenKind::Identifier)) {
+    // Normal declarator: optional identifier name, including C++ qualified names
+    // such as `Type::method` or `Type::operator+=`.
+    if (out_name && is_cpp_mode() &&
+        (check(TokenKind::Identifier) || check(TokenKind::ColonColon))) {
+        int saved_pos = pos_;
+        std::string qualified_name;
+        bool parsed_qualified = false;
+
+        auto append_scope_sep = [&]() {
+            if (!qualified_name.empty() &&
+                qualified_name.size() >= 2 &&
+                qualified_name.substr(qualified_name.size() - 2) != "::") {
+                qualified_name += "::";
+            }
+        };
+
+        auto parse_operator_name = [&]() -> bool {
+            if (!match(TokenKind::KwOperator)) return false;
+            std::string op_name;
+            if (check(TokenKind::LBracket)) {
+                consume();
+                expect(TokenKind::RBracket);
+                op_name = "operator_subscript";
+            } else if (check(TokenKind::LParen)) {
+                consume();
+                expect(TokenKind::RParen);
+                op_name = "operator_call";
+            } else if (check(TokenKind::KwBool)) {
+                consume();
+                op_name = "operator_bool";
+            } else if (check(TokenKind::Star)) {
+                consume();
+                op_name = "operator_star_pending";
+            } else if (check(TokenKind::Arrow)) {
+                consume();
+                op_name = "operator_arrow";
+            } else if (check(TokenKind::PlusPlus)) {
+                consume();
+                op_name = "operator_inc_pending";
+            } else if (check(TokenKind::MinusMinus)) {
+                consume();
+                op_name = "operator_dec_pending";
+            } else if (check(TokenKind::EqualEqual)) {
+                consume();
+                op_name = "operator_eq";
+            } else if (check(TokenKind::BangEqual)) {
+                consume();
+                op_name = "operator_neq";
+            } else if (check(TokenKind::Plus)) {
+                consume();
+                op_name = "operator_plus";
+            } else if (check(TokenKind::Minus)) {
+                consume();
+                op_name = "operator_minus";
+            } else if (check(TokenKind::Assign)) {
+                consume();
+                op_name = "operator_assign";
+            } else if (check(TokenKind::LessEqual)) {
+                consume();
+                op_name = "operator_le";
+            } else if (check(TokenKind::GreaterEqual)) {
+                consume();
+                op_name = "operator_ge";
+            } else if (check(TokenKind::Less)) {
+                consume();
+                op_name = "operator_lt";
+            } else if (check(TokenKind::Greater)) {
+                consume();
+                op_name = "operator_gt";
+            } else if (check(TokenKind::Amp)) {
+                consume();
+                op_name = "operator_amp_pending";
+            } else if (const char* extra_mangled = extra_operator_mangled_name(cur().kind)) {
+                op_name = extra_mangled;
+                consume();
+            } else if (is_type_start()) {
+                TypeSpec conv_ts = parse_base_type();
+                parse_attributes(&conv_ts);
+                while (check(TokenKind::Star)) {
+                    consume();
+                    conv_ts.ptr_level++;
+                }
+                if (check(TokenKind::AmpAmp)) {
+                    consume();
+                    conv_ts.is_rvalue_ref = true;
+                } else if (check(TokenKind::Amp)) {
+                    consume();
+                    conv_ts.is_lvalue_ref = true;
+                }
+                op_name = "operator_conv_";
+                append_type_mangled_suffix(op_name, conv_ts);
+            } else {
+                return false;
+            }
+            qualified_name += op_name;
+            return true;
+        };
+
+        if (match(TokenKind::ColonColon))
+            qualified_name = "::";
+
+        if (check(TokenKind::Identifier)) {
+            qualified_name += cur().lexeme;
+            consume();
+            parsed_qualified = true;
+        }
+
+        while (parsed_qualified && match(TokenKind::ColonColon)) {
+            append_scope_sep();
+            if (check(TokenKind::Identifier)) {
+                qualified_name += cur().lexeme;
+                consume();
+                continue;
+            }
+            if (check(TokenKind::KwOperator)) {
+                parsed_qualified = parse_operator_name();
+                break;
+            }
+            parsed_qualified = false;
+            break;
+        }
+
+        if (parsed_qualified) {
+            *out_name = arena_.strdup(qualified_name.c_str());
+        } else {
+            pos_ = saved_pos;
+        }
+    }
+
+    if (out_name && !*out_name && check(TokenKind::Identifier)) {
         *out_name = arena_.strdup(cur().lexeme);
         consume();
     }
@@ -1273,6 +1463,25 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         consume();
     }
     parse_attributes(&attr_ts);
+
+    if (is_cpp_mode() && check(TokenKind::Colon)) {
+        consume();
+        int angle_depth = 0;
+        int paren_depth = 0;
+        while (!at_end()) {
+            if (check(TokenKind::LBrace) && angle_depth == 0 && paren_depth == 0)
+                break;
+            if (check(TokenKind::Less))
+                ++angle_depth;
+            else if (check(TokenKind::Greater) && angle_depth > 0)
+                --angle_depth;
+            else if (check(TokenKind::LParen))
+                ++paren_depth;
+            else if (check(TokenKind::RParen) && paren_depth > 0)
+                --paren_depth;
+            consume();
+        }
+    }
 
     if (!check(TokenKind::LBrace)) {
         // Forward reference only; create a reference node
@@ -1356,6 +1565,14 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     while (!at_end() && !check(TokenKind::RBrace)) {
         skip_attributes();
         if (check(TokenKind::RBrace)) break;
+
+        if (is_cpp_mode() && check(TokenKind::KwUsing)) {
+            consume();
+            while (!at_end() && !check(TokenKind::Semi) && !check(TokenKind::RBrace))
+                consume();
+            match(TokenKind::Semi);
+            continue;
+        }
 
         // Handle nested anonymous struct/union
         if (check(TokenKind::KwStruct) || check(TokenKind::KwClass) || check(TokenKind::KwUnion)) {
@@ -1702,12 +1919,37 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             consume(); // eat 'operator'
 
             // Determine which operator
-            if (check(TokenKind::LBracket)) {
+            std::string conversion_mangled_name;
+            if (is_conversion_operator && is_type_start()) {
+                fts = parse_base_type();
+                parse_attributes(&fts);
+                if (check(TokenKind::Star)) {
+                    while (check(TokenKind::Star)) {
+                        consume();
+                        fts.ptr_level++;
+                    }
+                }
+                if (check(TokenKind::AmpAmp)) {
+                    consume();
+                    fts.is_rvalue_ref = true;
+                } else if (check(TokenKind::Amp)) {
+                    consume();
+                    fts.is_lvalue_ref = true;
+                }
+                if (fts.base == TB_BOOL && fts.ptr_level == 0 &&
+                    !fts.is_lvalue_ref && !fts.is_rvalue_ref) {
+                    op_kind = OP_BOOL;
+                } else {
+                    conversion_mangled_name = "operator_conv_";
+                    append_type_mangled_suffix(conversion_mangled_name, fts);
+                }
+            } else if (check(TokenKind::LBracket)) {
                 consume(); expect(TokenKind::RBracket);
                 op_kind = OP_SUBSCRIPT;
             } else if (check(TokenKind::Star)) {
                 consume();
                 op_kind = OP_DEREF;
+                conversion_mangled_name = "operator_star_pending";
             } else if (check(TokenKind::Arrow)) {
                 consume();
                 op_kind = OP_ARROW;
@@ -1746,6 +1988,13 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 consume(); // eat '('
                 expect(TokenKind::RParen); // eat ')'
                 op_kind = OP_CALL;
+            } else if (check(TokenKind::Amp)) {
+                consume();
+                conversion_mangled_name = "operator_amp_pending";
+            } else if (const char* extra_mangled = extra_operator_mangled_name(cur().kind)) {
+                TokenKind extra_kind = cur().kind;
+                consume();
+                conversion_mangled_name = extra_mangled;
             } else if (check(TokenKind::KwBool)) {
                 // operator bool — conversion operator; return type is bool
                 consume();
@@ -1760,6 +2009,9 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             }
 
             op_mangled = operator_kind_mangled_name(op_kind);
+            if (!conversion_mangled_name.empty()) {
+                op_mangled = arena_.strdup(conversion_mangled_name.c_str());
+            }
 
             // Parse parameter list
             expect(TokenKind::LParen);
@@ -1783,6 +2035,10 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             if (op_kind == OP_PRE_INC && !params.empty()) {
                 op_kind = OP_POST_INC;
                 op_mangled = operator_kind_mangled_name(op_kind);
+            }
+            if (!conversion_mangled_name.empty()) {
+                finalize_pending_operator_name(conversion_mangled_name, params.size());
+                op_mangled = arena_.strdup(conversion_mangled_name.c_str());
             }
 
             // Parse trailing qualifiers (const, constexpr, consteval)
@@ -2129,6 +2385,11 @@ Node* Parser::parse_param() {
         // variadic marker — handled by caller
         consume();
         return nullptr;
+    }
+    if (check(TokenKind::KwStatic)) {
+        throw std::runtime_error(
+            std::string("invalid use of storage class 'static' in parameter declaration at line ") +
+            std::to_string(cur().line));
     }
     TypeSpec pts = parse_base_type();
     const char* pname = nullptr;
