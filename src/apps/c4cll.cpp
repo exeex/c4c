@@ -53,6 +53,14 @@ void append_default_include_path(std::vector<std::string>& out,
   if (seen.insert(path).second) out.push_back(path);
 }
 
+void append_sdk_include_paths(std::vector<std::string>& out,
+                              std::set<std::string>& seen,
+                              const std::string& sdk_root) {
+  if (sdk_root.empty()) return;
+  append_default_include_path(out, seen, sdk_root + "/usr/include/c++/v1");
+  append_default_include_path(out, seen, sdk_root + "/usr/include");
+}
+
 void seed_default_system_include_paths(c4c::SourceProfile source_profile,
                                        std::vector<std::string>& system_include_paths) {
   std::set<std::string> seen(system_include_paths.begin(), system_include_paths.end());
@@ -99,6 +107,16 @@ void seed_default_system_include_paths(c4c::SourceProfile source_profile,
       }
     }
   }
+
+#if defined(__APPLE__)
+  append_sdk_include_paths(system_include_paths, seen, std::getenv("SDKROOT") ? std::getenv("SDKROOT") : "");
+  append_sdk_include_paths(system_include_paths, seen,
+                           "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk");
+  append_sdk_include_paths(system_include_paths, seen,
+                           "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk");
+  append_default_include_path(system_include_paths, seen,
+                              "/Library/Developer/CommandLineTools/usr/include");
+#endif
 }
 
 void print_usage(const char *argv0) {

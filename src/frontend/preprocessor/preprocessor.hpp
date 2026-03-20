@@ -39,7 +39,7 @@ public:
 
   // Set the active source profile for this translation unit.
   // Controls header inclusion policy (.hpp rejection under C mode).
-  void set_source_profile(SourceProfile profile) { source_profile_ = profile; }
+  void set_source_profile(SourceProfile profile);
   SourceProfile source_profile() const { return source_profile_; }
 
   // Define/undefine macros from driver (for -D/-U command-line flags).
