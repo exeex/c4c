@@ -151,6 +151,9 @@ class HirEmitter {
   // Push a typed LIR instruction (non-terminator) into the current block.
   template<typename T>
   void emit_lir_op(FnCtx& ctx, T&& op) {
+    // Skip dead code after a terminator has been placed in this block.
+    if (!std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator))
+      return;
     ctx.cur_block().insts.push_back(std::forward<T>(op));
     ctx.last_term = false;
   }

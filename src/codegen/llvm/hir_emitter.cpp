@@ -202,6 +202,9 @@ const GlobalVar* HirEmitter::select_global_object(GlobalId id) const {
   }
 
 void HirEmitter::emit_instr(FnCtx& ctx, const std::string& line){
+    // Skip dead code after a terminator has been placed in this block.
+    if (!std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator))
+      return;
     ctx.cur_block().insts.push_back(lir::LirRawLine{"  " + line});
     ctx.last_term = false;
   }
@@ -216,8 +219,13 @@ void HirEmitter::emit_lbl(FnCtx& ctx, const std::string& lbl){
   }
 
 void HirEmitter::emit_term(FnCtx& ctx, const std::string& line){
-    if (!ctx.last_term) {
-      ctx.cur_block().insts.push_back(lir::LirRawLine{"  " + line});
+    // Only set if no terminator has been placed yet for this block.
+    // Note: emit_instr() resets last_term, so dead code after a terminator
+    // (e.g. after goto) could re-enter here.  Guard on the field itself to
+    // preserve "first terminator wins" semantics (matching old in-insts behavior
+    // where LLVM used the first terminator encountered in a basic block).
+    if (std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) {
+      ctx.cur_block().terminator = lir::LirRawTerminator{"  " + line};
       ctx.last_term = true;
     }
   }

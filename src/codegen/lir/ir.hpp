@@ -276,13 +276,20 @@ struct LirIndirectBr {
 
 struct LirUnreachable {};
 
+// Catch-all for terminators not yet migrated to typed LIR variants.
+// Contains the raw LLVM IR line produced by the legacy emitter.
+struct LirRawTerminator {
+  std::string line;
+};
+
 using LirTerminator = std::variant<
     LirBr,
     LirCondBr,
     LirRet,
     LirSwitch,
     LirIndirectBr,
-    LirUnreachable
+    LirUnreachable,
+    LirRawTerminator
 >;
 
 // ── Block ────────────────────────────────────────────────────────────────────

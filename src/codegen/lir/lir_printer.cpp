@@ -120,6 +120,15 @@ void render_inst(std::ostringstream& os, const LirInst& inst) {
   }
 }
 
+// Render a LirTerminator to text.
+void render_terminator(std::ostringstream& os, const LirTerminator& term) {
+  if (const auto* raw = std::get_if<LirRawTerminator>(&term)) {
+    os << raw->line << "\n";
+  }
+  // Typed terminator variants (LirBr, LirCondBr, etc.) will be handled
+  // in later phases as they replace LirRawTerminator usage.
+}
+
 // Render a LirFunction to LLVM IR text.
 std::string render_fn(const LirFunction& f) {
   if (f.is_declaration) return f.signature_text;
@@ -134,6 +143,7 @@ std::string render_fn(const LirFunction& f) {
       for (const auto& inst : f.alloca_insts) render_inst(fout, inst);
     }
     for (const auto& inst : blk.insts) render_inst(fout, inst);
+    render_terminator(fout, blk.terminator);
   }
   fout << "}\n\n";
   return fout.str();
