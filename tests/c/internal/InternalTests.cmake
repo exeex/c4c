@@ -91,6 +91,17 @@ add_test(
 set_tests_properties(negative_tests_diagnostic_format_check PROPERTIES
     LABELS "internal;negative_case;diagnostic_format")
 
+# Statement-level recovery: ensure bad statements don't prevent further parsing
+add_test(
+  NAME negative_tests_stmt_recovery_check
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_C_TEST_ROOT}/negative_case/bad_stmt_recovery.c
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_stmt_recovery_check.cmake"
+)
+set_tests_properties(negative_tests_stmt_recovery_check PROPERTIES
+    LABELS "internal;negative_case;error_recovery")
+
 if(CLANG_EXECUTABLE)
   foreach(src IN LISTS INTERNAL_POSITIVE_TEST_SRCS INTERNAL_LINUX_STAGE2_REPRO_SRCS)
     file(RELATIVE_PATH rel_src "${INTERNAL_C_TEST_ROOT}/positive_case" "${src}")

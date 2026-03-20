@@ -14,18 +14,18 @@
   2. `extern_call_decls_` output used raw `@name` instead of `llvm_global_sym()`, producing unquoted `::` in LLVM IR declares.
   New runtime test `namespace_cross_type_reference_runtime.cpp` covers cross-namespace type references and nested namespace functions. All 2018/2018 tests pass.
 - **Milestone B Phase 1+2 slice 1: Diagnostic format + invalid node kinds** — Standardized parser diagnostics to `file:line:col: error: message` format. Added `NK_INVALID_EXPR` and `NK_INVALID_STMT` to NodeKind enum as error recovery placeholders. Parser now receives source filename. HIR lowering gracefully skips invalid nodes. New diagnostic format verification test. All 2020/2020 tests pass.
+- **Milestone B Phase 3: Statement-level synchronization hooks** — Added try-catch in `parse_block()` around `parse_stmt()` calls. On exception: emits `file:line:col: error:` diagnostic, skips to `;`/`}`, produces `NK_INVALID_STMT`, continues parsing. Paren-list errors inside statements are also caught by this layer. Two new negative test cases (`bad_stmt_recovery.c`, `bad_stmt_recovery_multi.c`) + cmake check. All 2023/2023 tests pass.
 
 ## Active Item
 None — ready for next slice.
 
 ## Next
-- Milestone B Phase 3: Parser synchronization hooks (statement-level recovery, paren-list recovery)
-- Or: Milestone B Phase 4: Negative test runner with expected-error support
+- Milestone B Phase 4: Negative test runner with expected-error support
 - Or: Namespace Phase 2 completion (TypeSpec qualifier propagation)
 - Or: Milestone C (iterator/container usability)
 
 ## Test Suite
-- Baseline: 2020/2020 (100%)
+- Baseline: 2023/2023 (100%)
 
 ## Blockers
 None known
