@@ -41,3 +41,15 @@ std::vector<size_t> dedup_functions(const c4c::hir::Module& mod);
 std::vector<std::string> build_type_decls(const c4c::hir::Module& mod);
 
 }  // namespace c4c::codegen::lir
+
+namespace c4c::hir { struct Function; }
+
+namespace c4c::codegen::lir {
+
+/// Build the LLVM IR signature text for a function (define/declare line).
+/// This includes template-origin comments, linkage, visibility, return type,
+/// parameter list, variadic marker, and function attributes.
+/// Ownership of signature construction belongs to hir_to_lir, not HirEmitter.
+std::string build_fn_signature(const c4c::hir::Function& fn);
+
+}  // namespace c4c::codegen::lir

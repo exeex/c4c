@@ -660,4 +660,18 @@ inline std::string decode_c_escaped_bytes(const std::string& raw) {
   return out;
 }
 
+// ── Global symbol name formatting ─────────────────────────────────────────────
+
+inline std::string llvm_global_sym(const std::string& raw) {
+  return "@" + quote_llvm_ident(raw);
+}
+
+inline const char* llvm_visibility(Visibility v) {
+  switch (v) {
+    case Visibility::Hidden: return "hidden ";
+    case Visibility::Protected: return "protected ";
+    default: return "";
+  }
+}
+
 }  // namespace tinyc2ll::codegen::llvm_backend::detail

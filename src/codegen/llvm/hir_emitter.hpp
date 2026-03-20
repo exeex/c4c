@@ -110,7 +110,10 @@ class HirEmitter {
   void lower_globals(const std::vector<size_t>& global_indices);
 
   /// Lower a single HIR function into the working LirModule.
-  void lower_single_function(const hir::Function& fn);
+  /// If signature_text is non-empty, it is used as the pre-built LLVM IR
+  /// signature line; otherwise the emitter builds it internally (legacy path).
+  void lower_single_function(const hir::Function& fn,
+                             const std::string& signature_text = {});
 
   // ── Post-lowering accessors for module-level finalization ──────────────
   // These expose accumulated state so that hir_to_lir::lower() can own
@@ -374,7 +377,7 @@ class HirEmitter {
   std::unordered_set<uint32_t> find_modified_params(const Function& fn);
   static bool fn_has_vla_locals(const Function& fn);
   void hoist_allocas(FnCtx& ctx, const Function& fn);
-  void emit_function(const Function& fn);
+  void emit_function(const Function& fn, const std::string& pre_sig = {});
 };
 
 

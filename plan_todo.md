@@ -2,7 +2,7 @@
 
 ## Status
 
-In progress. Phases 0–4 slice 1 complete.
+In progress. Phases 0–4 slice 2 complete.
 
 ## Completed
 
@@ -71,6 +71,16 @@ In progress. Phases 0–4 slice 1 complete.
 - HirEmitter retains per-function body lowering (emit_function)
 - Both legacy and lir paths produce identical output; all tests pass
 
+### Phase 4: Move Function Skeleton Lowering — slice 2 (signature building) ✓
+
+- Extracted function signature building into `lir::build_fn_signature()` free function in `hir_to_lir.cpp`
+- Moved `llvm_global_sym()` and `llvm_visibility()` from anonymous namespace in `hir_emitter.cpp` to shared `hir_to_llvm_helpers.hpp`
+- `hir_to_lir::lower()` now builds signature text and passes it to `lower_single_function(fn, sig)`
+- `emit_function()` accepts optional pre-built signature; legacy path builds it inline
+- Spec entry collection moved to after signature selection (works for both paths)
+- param_slots populated independently of signature source
+- Both legacy and lir paths produce identical output; all compare tests pass
+
 ### Test results
 
 - Full suite: **2075/2075 passed** (no regressions)
@@ -80,9 +90,8 @@ In progress. Phases 0–4 slice 1 complete.
 
 The next slices, in priority order:
 
-1. Phase 4 slice 2: Extract function signature building to hir_to_lir
-2. Phase 4 slice 3: Move block ordering and fallthrough terminator to hir_to_lir
-3. Phase 5: Move expression/statement lowering by risk slice
+1. Phase 4 slice 3: Move block ordering and fallthrough terminator to hir_to_lir
+2. Phase 5: Move expression/statement lowering by risk slice
 
 
 ## Blockers

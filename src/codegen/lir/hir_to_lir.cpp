@@ -112,6 +112,76 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod) {
   return decls;
 }
 
+// ── Function signature building ───────────────────────────────────────────────
+// Builds the LLVM IR signature text for a HIR function.  Ownership of this
+// logic belongs to hir_to_lir; HirEmitter consumes the pre-built text.
+
+std::string build_fn_signature(const c4c::hir::Function& fn) {
+  using namespace c4c::codegen::llvm_backend::detail;
+
+  std::ostringstream sig_out;
+  const std::string ret_ty = llvm_ret_ty(fn.return_type.spec);
+
+  const bool void_param_list =
+      fn.params.size() == 1 &&
+      fn.params[0].type.spec.base == TB_VOID &&
+      fn.params[0].type.spec.ptr_level == 0 &&
+      fn.params[0].type.spec.array_rank == 0;
+
+  // Declaration (extern with no body)
+  if (fn.linkage.is_extern && fn.blocks.empty()) {
+    const std::string decl_kw = fn.linkage.is_weak ? "declare extern_weak " : "declare ";
+    sig_out << decl_kw << llvm_visibility(fn.linkage.visibility) << ret_ty << " "
+            << llvm_global_sym(fn.name) << "(";
+    for (size_t i = 0; i < fn.params.size(); ++i) {
+      if (void_param_list) break;
+      if (i) sig_out << ", ";
+      sig_out << llvm_ty(fn.params[i].type.spec);
+    }
+    if (fn.attrs.variadic) {
+      if (!fn.params.empty() && !void_param_list) sig_out << ", ";
+      sig_out << "...";
+    }
+    sig_out << ")\n\n";
+    return sig_out.str();
+  }
+
+  // Definition — template comments
+  if (!fn.template_origin.empty()) {
+    sig_out << "; template-origin: " << fn.template_origin << "\n";
+    if (!fn.spec_key.empty()) {
+      sig_out << "; spec-key: " << fn.spec_key.canonical << "\n";
+    }
+  }
+
+  // Definition — linkage + visibility + return type + name
+  std::string fn_lk = fn.linkage.is_static ? "internal " : "";
+  if (fn.linkage.is_weak && !fn.linkage.is_static) fn_lk = "weak ";
+  sig_out << "define " << fn_lk << llvm_visibility(fn.linkage.visibility) << ret_ty << " "
+          << llvm_global_sym(fn.name) << "(";
+
+  // Parameters
+  for (size_t i = 0; i < fn.params.size(); ++i) {
+    if (void_param_list) break;
+    if (i) sig_out << ", ";
+    const std::string pty = llvm_ty(fn.params[i].type.spec);
+    const std::string pname = "%p." + sanitize_llvm_ident(fn.params[i].name);
+    sig_out << pty << " " << pname;
+  }
+  if (fn.attrs.variadic) {
+    if (!fn.params.empty()) sig_out << ", ";
+    sig_out << "...";
+  }
+  sig_out << ")";
+
+  // Function attributes
+  if (fn.attrs.no_inline) sig_out << " noinline";
+  if (fn.attrs.always_inline) sig_out << " alwaysinline";
+  sig_out << "\n";
+
+  return sig_out.str();
+}
+
 // ── Module-level finalization ─────────────────────────────────────────────────
 // After per-item lowering, the emitter holds accumulated intrinsic flags,
 // extern call declarations, and spec entries.  This function transfers them
@@ -168,7 +238,9 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
 
   emitter.lower_globals(global_indices);
   for (size_t idx : fn_indices) {
-    emitter.lower_single_function(hir_mod.functions[idx]);
+    const auto& fn = hir_mod.functions[idx];
+    std::string sig = build_fn_signature(fn);
+    emitter.lower_single_function(fn, sig);
   }
 
   module = emitter.release_module();

@@ -126,18 +126,6 @@ int llvm_struct_field_slot_by_name(const HirStructDef& sd, const std::string& fi
   return 0;
 }
 
-std::string llvm_global_sym(const std::string& raw) {
-  return "@" + quote_llvm_ident(raw);
-}
-
-const char* llvm_visibility(Visibility v) {
-  switch (v) {
-    case Visibility::Hidden: return "hidden ";
-    case Visibility::Protected: return "protected ";
-    default: return "";
-  }
-}
-
 }  // namespace
 
 HirEmitter::HirEmitter(const Module& m) : mod_(m){}
@@ -160,8 +148,9 @@ void HirEmitter::lower_globals(const std::vector<size_t>& global_indices) {
     for (size_t idx : global_indices) emit_global(mod_.globals[idx]);
   }
 
-void HirEmitter::lower_single_function(const Function& fn) {
-    emit_function(fn);
+void HirEmitter::lower_single_function(const Function& fn,
+                                       const std::string& signature_text) {
+    emit_function(fn, signature_text);
   }
 
 std::string HirEmitter::emit(){
@@ -4950,7 +4939,7 @@ void HirEmitter::hoist_allocas(FnCtx& ctx, const Function& fn){
     }
   }
 
-void HirEmitter::emit_function(const Function& fn){
+void HirEmitter::emit_function(const Function& fn, const std::string& pre_sig){
     FnCtx ctx;
     ctx.fn = &fn;
     for (size_t i = 0; i < fn.params.size(); ++i) {
@@ -4962,7 +4951,6 @@ void HirEmitter::emit_function(const Function& fn){
       if (g.fn_ptr_sig) ctx.global_fn_ptr_sigs[g.id.value] = *g.fn_ptr_sig;
     }
 
-    std::ostringstream sig_out;
     const std::string ret_ty = llvm_ret_ty(fn.return_type.spec);
 
     const bool void_param_list =
@@ -4971,60 +4959,80 @@ void HirEmitter::emit_function(const Function& fn){
         fn.params[0].type.spec.ptr_level == 0 &&
         fn.params[0].type.spec.array_rank == 0;
 
+    // Use pre-built signature if provided (LIR path), otherwise build it (legacy).
+    std::string sig_text;
+    if (!pre_sig.empty()) {
+      sig_text = pre_sig;
+    } else {
+      // Legacy path: build signature inline.
+      std::ostringstream sig_out;
+      if (fn.linkage.is_extern && fn.blocks.empty()) {
+        const std::string decl_kw = fn.linkage.is_weak ? "declare extern_weak " : "declare ";
+        sig_out << decl_kw << llvm_visibility(fn.linkage.visibility) << ret_ty << " "
+                << llvm_global_sym(fn.name) << "(";
+        for (size_t i = 0; i < fn.params.size(); ++i) {
+          if (void_param_list) break;
+          if (i) sig_out << ", ";
+          sig_out << llvm_ty(fn.params[i].type.spec);
+        }
+        if (fn.attrs.variadic) {
+          if (!fn.params.empty() && !void_param_list) sig_out << ", ";
+          sig_out << "...";
+        }
+        sig_out << ")\n\n";
+        sig_text = sig_out.str();
+      } else {
+        if (!fn.template_origin.empty()) {
+          sig_out << "; template-origin: " << fn.template_origin << "\n";
+          if (!fn.spec_key.empty()) {
+            sig_out << "; spec-key: " << fn.spec_key.canonical << "\n";
+          }
+        }
+        std::string fn_lk = fn.linkage.is_static ? "internal " : "";
+        if (fn.linkage.is_weak && !fn.linkage.is_static) fn_lk = "weak ";
+        sig_out << "define " << fn_lk << llvm_visibility(fn.linkage.visibility) << ret_ty << " "
+                << llvm_global_sym(fn.name) << "(";
+        for (size_t i = 0; i < fn.params.size(); ++i) {
+          if (void_param_list) break;
+          if (i) sig_out << ", ";
+          const std::string pty = llvm_ty(fn.params[i].type.spec);
+          const std::string pname = "%p." + sanitize_llvm_ident(fn.params[i].name);
+          sig_out << pty << " " << pname;
+        }
+        if (fn.attrs.variadic) {
+          if (!fn.params.empty()) sig_out << ", ";
+          sig_out << "...";
+        }
+        sig_out << ")";
+        if (fn.attrs.no_inline) sig_out << " noinline";
+        if (fn.attrs.always_inline) sig_out << " alwaysinline";
+        sig_out << "\n";
+        sig_text = sig_out.str();
+      }
+    }
+
+    // Collect spec entries regardless of signature source.
+    if (!fn.template_origin.empty() && !fn.spec_key.empty()) {
+      spec_entries_.push_back({fn.spec_key.canonical, fn.template_origin, std::string(fn.name)});
+    }
+
+    // Declaration — no body to lower.
     if (fn.linkage.is_extern && fn.blocks.empty()) {
-      const std::string decl_kw = fn.linkage.is_weak ? "declare extern_weak " : "declare ";
-      sig_out << decl_kw << llvm_visibility(fn.linkage.visibility) << ret_ty << " "
-              << llvm_global_sym(fn.name) << "(";
-      for (size_t i = 0; i < fn.params.size(); ++i) {
-        if (void_param_list) break;
-        if (i) sig_out << ", ";
-        sig_out << llvm_ty(fn.params[i].type.spec);
-      }
-      if (fn.attrs.variadic) {
-        if (!fn.params.empty() && !void_param_list) sig_out << ", ";
-        sig_out << "...";
-      }
-      sig_out << ")\n\n";
       lir::LirFunction lir_fn;
       lir_fn.name = quote_llvm_ident(fn.name);
       lir_fn.is_internal = fn.linkage.is_static;
       lir_fn.is_declaration = true;
-      lir_fn.signature_text = sig_out.str();
+      lir_fn.signature_text = sig_text;
       module_.functions.push_back(std::move(lir_fn));
       return;
     }
 
-    // Emit specialization identity metadata as comments for template instantiations.
-    if (!fn.template_origin.empty()) {
-      sig_out << "; template-origin: " << fn.template_origin << "\n";
-      if (!fn.spec_key.empty()) {
-        sig_out << "; spec-key: " << fn.spec_key.canonical << "\n";
-        spec_entries_.push_back({fn.spec_key.canonical, fn.template_origin, std::string(fn.name)});
-      }
-    }
-
-    // Signature
-    std::string fn_lk = fn.linkage.is_static ? "internal " : "";
-    if (fn.linkage.is_weak && !fn.linkage.is_static) fn_lk = "weak ";
-    sig_out << "define " << fn_lk << llvm_visibility(fn.linkage.visibility) << ret_ty << " "
-            << llvm_global_sym(fn.name) << "(";
+    // Populate param_slots for body lowering.
     for (size_t i = 0; i < fn.params.size(); ++i) {
       if (void_param_list) break;
-      if (i) sig_out << ", ";
-      const std::string pty = llvm_ty(fn.params[i].type.spec);
       const std::string pname = "%p." + sanitize_llvm_ident(fn.params[i].name);
-      sig_out << pty << " " << pname;
       ctx.param_slots[static_cast<uint32_t>(i)] = pname;
     }
-    if (fn.attrs.variadic) {
-      if (!fn.params.empty()) sig_out << ", ";
-      sig_out << "...";
-    }
-    sig_out << ")";
-    // Emit function attributes.
-    if (fn.attrs.no_inline) sig_out << " noinline";
-    if (fn.attrs.always_inline) sig_out << " alwaysinline";
-    sig_out << "\n";
 
     // Create entry block for alloca hoisting and entry statements.
     {
@@ -5099,7 +5107,7 @@ void HirEmitter::emit_function(const Function& fn){
     lir_fn.is_internal = fn.linkage.is_static;
     lir_fn.is_declaration = false;
     lir_fn.return_type = fn.return_type.spec;
-    lir_fn.signature_text = sig_out.str();
+    lir_fn.signature_text = sig_text;
     lir_fn.alloca_insts = std::move(ctx.alloca_insts);
     lir_fn.blocks = std::move(ctx.lir_blocks);
     module_.functions.push_back(std::move(lir_fn));
