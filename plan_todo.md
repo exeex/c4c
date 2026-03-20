@@ -38,9 +38,9 @@
 
 ### Completed slices
 - **Stage 3 slice 1: Typed intrinsic LIR ops** — Added `LirMemcpyOp`, `LirVaStartOp`, `LirVaEndOp`, `LirVaCopyOp`, `LirStackSaveOp`, `LirStackRestoreOp`, `LirAbsOp` to `LirInst` variant. Replaced 7 raw LLVM IR string emissions in `hir_emitter.cpp` with typed ops. `lir_printer.cpp` `render_inst` renders each op to identical LLVM IR text. All 2067/2067 tests pass.
+- **Stage 3 slice 2: Typed bitfield LIR ops** — Changed `LirBitfieldExtract` and `LirBitfieldInsert` from numeric `LirValueId` to string SSA names (matching Stage 3 convention). Added `promoted_bits` to Extract, `scratch` base name to Insert. `emit_bitfield_load()` now emits single `LirBitfieldExtract` op; `emit_bitfield_store()` emits single `LirBitfieldInsert` op (after coercion). Printer expands each op to full LLVM IR sequence using `.bf.` suffixed intermediate names. All 2067/2067 tests pass.
 
 ### Next slices
-- Stage 3 slice 2: Normalize bitfield extract/insert into typed LIR ops
 - Stage 3 slice 3: Normalize computed goto (blockaddress + indirectbr) into typed LIR ops
 
 ## After Stage 3

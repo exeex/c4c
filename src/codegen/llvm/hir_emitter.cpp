@@ -1402,55 +1402,22 @@ TypeSpec HirEmitter::bitfield_promoted_ts(const BitfieldAccess& bf){
 
 std::string HirEmitter::emit_bitfield_load(FnCtx& ctx, const std::string& unit_ptr,
                                   const BitfieldAccess& bf){
-    const std::string unit_ty = "i" + std::to_string(bf.storage_unit_bits);
-    // Load the full storage unit
-    const std::string unit = fresh_tmp(ctx);
-    emit_instr(ctx, unit + " = load " + unit_ty + ", ptr " + unit_ptr);
-    // Shift right to align bitfield to bit 0
-    std::string shifted = unit;
-    if (bf.bit_offset > 0) {
-      shifted = fresh_tmp(ctx);
-      emit_instr(ctx, shifted + " = lshr " + unit_ty + " " + unit +
-                          ", " + std::to_string(bf.bit_offset));
-    }
-    // Mask to bit_width bits
-    const unsigned long long mask = (bf.bit_width >= 64)
-        ? ~0ULL : ((1ULL << bf.bit_width) - 1);
-    const std::string masked = fresh_tmp(ctx);
-    emit_instr(ctx, masked + " = and " + unit_ty + " " + shifted +
-                        ", " + std::to_string(mask));
-    std::string result = masked;
-    // Sign-extend if needed
-    if (bf.is_signed && bf.bit_width < bf.storage_unit_bits) {
-      const int shift_amt = bf.storage_unit_bits - bf.bit_width;
-      const std::string shl = fresh_tmp(ctx);
-      emit_instr(ctx, shl + " = shl " + unit_ty + " " + masked +
-                          ", " + std::to_string(shift_amt));
-      result = fresh_tmp(ctx);
-      emit_instr(ctx, result + " = ashr " + unit_ty + " " + shl +
-                          ", " + std::to_string(shift_amt));
-    }
-    // Truncate or extend to promoted type
-    const int promoted_bits = bitfield_promoted_bits(bf);
-    const std::string promoted_ty = "i" + std::to_string(promoted_bits);
-    if (bf.storage_unit_bits != promoted_bits) {
-      const std::string promoted = fresh_tmp(ctx);
-      if (bf.storage_unit_bits > promoted_bits) {
-        emit_instr(ctx, promoted + " = trunc " + unit_ty + " " + result + " to " + promoted_ty);
-      } else {
-        emit_instr(ctx, promoted + " = " +
-                        (bf.is_signed ? "sext " : "zext ") +
-                        unit_ty + " " + result + " to " + promoted_ty);
-      }
-      return promoted;
-    }
+    const std::string result = fresh_tmp(ctx);
+    lir::LirBitfieldExtract op;
+    op.result = result;
+    op.unit_ptr = unit_ptr;
+    op.bit_width = bf.bit_width;
+    op.bit_offset = bf.bit_offset;
+    op.storage_unit_bits = bf.storage_unit_bits;
+    op.is_signed = bf.is_signed;
+    op.promoted_bits = bitfield_promoted_bits(bf);
+    emit_lir_op(ctx, op);
     return result;
   }
 
 void HirEmitter::emit_bitfield_store(FnCtx& ctx, const std::string& unit_ptr,
                             const BitfieldAccess& bf,
                             const std::string& new_val, const TypeSpec& val_ts){
-    const std::string unit_ty = "i" + std::to_string(bf.storage_unit_bits);
     // Coerce new_val to storage unit type
     TypeSpec unit_ts{};
     switch (bf.storage_unit_bits) {
@@ -1461,30 +1428,15 @@ void HirEmitter::emit_bitfield_store(FnCtx& ctx, const std::string& unit_ptr,
       default: unit_ts.base = TB_UINT; break;
     }
     std::string val_coerced = coerce(ctx, new_val, val_ts, unit_ts);
-    // Load current storage unit
-    const std::string old_unit = fresh_tmp(ctx);
-    emit_instr(ctx, old_unit + " = load " + unit_ty + ", ptr " + unit_ptr);
-    // Create mask to clear the bitfield bits
-    const unsigned long long field_mask_val = (bf.bit_width >= 64)
-        ? ~0ULL : ((1ULL << bf.bit_width) - 1);
-    const unsigned long long clear_mask = ~(field_mask_val << bf.bit_offset);
-    const std::string cleared = fresh_tmp(ctx);
-    emit_instr(ctx, cleared + " = and " + unit_ty + " " + old_unit +
-                        ", " + std::to_string(static_cast<long long>(clear_mask)));
-    // Mask and shift new value into position
-    const std::string new_masked = fresh_tmp(ctx);
-    emit_instr(ctx, new_masked + " = and " + unit_ty + " " + val_coerced +
-                        ", " + std::to_string(field_mask_val));
-    std::string new_shifted = new_masked;
-    if (bf.bit_offset > 0) {
-      new_shifted = fresh_tmp(ctx);
-      emit_instr(ctx, new_shifted + " = shl " + unit_ty + " " + new_masked +
-                          ", " + std::to_string(bf.bit_offset));
-    }
-    // Combine
-    const std::string combined = fresh_tmp(ctx);
-    emit_instr(ctx, combined + " = or " + unit_ty + " " + cleared + ", " + new_shifted);
-    emit_instr(ctx, "store " + unit_ty + " " + combined + ", ptr " + unit_ptr);
+    const std::string scratch = fresh_tmp(ctx);
+    lir::LirBitfieldInsert op;
+    op.unit_ptr = unit_ptr;
+    op.new_val = val_coerced;
+    op.scratch = scratch;
+    op.bit_width = bf.bit_width;
+    op.bit_offset = bf.bit_offset;
+    op.storage_unit_bits = bf.storage_unit_bits;
+    emit_lir_op(ctx, op);
   }
 
 std::string HirEmitter::emit_lval(FnCtx& ctx, ExprId id, TypeSpec& pointee_ts){

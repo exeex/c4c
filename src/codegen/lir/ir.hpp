@@ -188,17 +188,19 @@ struct LirInlineAsm {
 };
 
 struct LirBitfieldExtract {
-  LirValueId result{};
-  LirValueId unit_ptr{};
+  std::string result;       // final promoted SSA name
+  std::string unit_ptr;     // ptr to storage unit
   int bit_width = 0;
   int bit_offset = 0;
   int storage_unit_bits = 0;
   bool is_signed = false;
+  int promoted_bits = 0;    // target integer width after C promotion
 };
 
 struct LirBitfieldInsert {
-  LirValueId unit_ptr{};
-  LirValueId new_val{};
+  std::string unit_ptr;     // ptr to storage unit
+  std::string new_val;      // already coerced to storage unit type
+  std::string scratch;      // base name for intermediate SSA values
   int bit_width = 0;
   int bit_offset = 0;
   int storage_unit_bits = 0;

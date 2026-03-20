@@ -38,6 +38,78 @@ void render_inst(std::ostringstream& os, const LirInst& inst) {
     os << "  " << op->result << " = call " << op->int_type
        << " @llvm.abs." << op->int_type << "(" << op->int_type
        << " " << op->arg << ", i1 true)\n";
+  } else if (const auto* op = std::get_if<LirBitfieldExtract>(&inst)) {
+    const std::string unit_ty = "i" + std::to_string(op->storage_unit_bits);
+    // Load the full storage unit
+    const std::string unit = op->result + ".bf.unit";
+    os << "  " << unit << " = load " << unit_ty << ", ptr " << op->unit_ptr << "\n";
+    // Shift right to align bitfield to bit 0
+    std::string shifted = unit;
+    if (op->bit_offset > 0) {
+      shifted = op->result + ".bf.shr";
+      os << "  " << shifted << " = lshr " << unit_ty << " " << unit
+         << ", " << op->bit_offset << "\n";
+    }
+    // Mask to bit_width bits
+    const unsigned long long mask = (op->bit_width >= 64)
+        ? ~0ULL : ((1ULL << op->bit_width) - 1);
+    const std::string masked = op->result + ".bf.mask";
+    os << "  " << masked << " = and " << unit_ty << " " << shifted
+       << ", " << mask << "\n";
+    std::string result = masked;
+    // Sign-extend if needed
+    if (op->is_signed && op->bit_width < op->storage_unit_bits) {
+      const int shift_amt = op->storage_unit_bits - op->bit_width;
+      const std::string shl_tmp = op->result + ".bf.shl";
+      os << "  " << shl_tmp << " = shl " << unit_ty << " " << masked
+         << ", " << shift_amt << "\n";
+      result = op->result + ".bf.sext";
+      os << "  " << result << " = ashr " << unit_ty << " " << shl_tmp
+         << ", " << shift_amt << "\n";
+    }
+    // Truncate or extend to promoted type
+    const std::string promoted_ty = "i" + std::to_string(op->promoted_bits);
+    if (op->storage_unit_bits != op->promoted_bits) {
+      if (op->storage_unit_bits > op->promoted_bits) {
+        os << "  " << op->result << " = trunc " << unit_ty << " " << result
+           << " to " << promoted_ty << "\n";
+      } else {
+        os << "  " << op->result << " = "
+           << (op->is_signed ? "sext " : "zext ")
+           << unit_ty << " " << result << " to " << promoted_ty << "\n";
+      }
+    } else {
+      // No size change — alias the result
+      // We need a copy since LLVM IR doesn't allow aliasing; use bitcast identity
+      // Actually, just emit an 'add 0' to rename
+      os << "  " << op->result << " = add " << unit_ty << " " << result << ", 0\n";
+    }
+  } else if (const auto* op = std::get_if<LirBitfieldInsert>(&inst)) {
+    const std::string unit_ty = "i" + std::to_string(op->storage_unit_bits);
+    // Load current storage unit
+    const std::string old_unit = op->scratch + ".bf.old";
+    os << "  " << old_unit << " = load " << unit_ty << ", ptr " << op->unit_ptr << "\n";
+    // Create mask to clear the bitfield bits
+    const unsigned long long field_mask_val = (op->bit_width >= 64)
+        ? ~0ULL : ((1ULL << op->bit_width) - 1);
+    const unsigned long long clear_mask = ~(field_mask_val << op->bit_offset);
+    const std::string cleared = op->scratch + ".bf.clr";
+    os << "  " << cleared << " = and " << unit_ty << " " << old_unit
+       << ", " << static_cast<long long>(clear_mask) << "\n";
+    // Mask and shift new value into position
+    const std::string new_masked = op->scratch + ".bf.vm";
+    os << "  " << new_masked << " = and " << unit_ty << " " << op->new_val
+       << ", " << field_mask_val << "\n";
+    std::string new_shifted = new_masked;
+    if (op->bit_offset > 0) {
+      new_shifted = op->scratch + ".bf.vs";
+      os << "  " << new_shifted << " = shl " << unit_ty << " " << new_masked
+         << ", " << op->bit_offset << "\n";
+    }
+    // Combine and store
+    const std::string combined = op->scratch + ".bf.comb";
+    os << "  " << combined << " = or " << unit_ty << " " << cleared << ", " << new_shifted << "\n";
+    os << "  store " << unit_ty << " " << combined << ", ptr " << op->unit_ptr << "\n";
   }
 }
 
