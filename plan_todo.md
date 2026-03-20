@@ -26,11 +26,16 @@
 - **Namespace Phase 4 slice 2: Function name lookup across namespaces** — Added `known_fn_names_` set to parser; functions register their qualified name when declared/defined. `lookup_value_in_context()` now checks both `var_types_` and `known_fn_names_`, enabling unqualified calls to functions in anonymous namespaces and via `using namespace` directives. Two new runtime tests: `anon_namespace_fn_lookup.cpp`, `using_namespace_fn_lookup.cpp`. All 2067/2067 tests pass.
 
 ## Active Item
-None — Namespace Phase 4 slice 2 complete.
+**Milestone D Stage 0: LIR mechanical prep**
+- Create `src/codegen/lir/` directory with skeleton data structures
+- Create `lir/ir.hpp` with minimal `LirModule`, `LirFunction`, `LirBlock`, `LirInst`, `LirTerminator` types
+- Create skeleton `hir_to_lir.hpp/cpp` and `lir_printer.hpp/cpp`
+- Update `CMakeLists.txt` to include new directory and files
+- Build and tests must pass unchanged (no behavioral change)
 
 ## Next
-- Namespace: further lookup gaps (e.g., forward-declared functions in namespaces, enum constants across namespaces)
-- Or: Milestone D (HIR -> LIR split)
+- Milestone D Stage 1: Replace string sinks (alloca_lines, body_lines) with structured LIR containers
+- Milestone D Stage 2: Split printer out into standalone LirPrinter
 
 ## Test Suite
 - Baseline: 2067/2067 (100%)

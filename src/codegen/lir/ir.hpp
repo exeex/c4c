@@ -1,0 +1,325 @@
+#pragma once
+
+// ── LIR: Low-level IR between HIR and LLVM text emission ────────────────────
+//
+// This header defines the minimal LIR data model for the HIR→LIR→Printer
+// refactor (Milestone D).  The goal is to make the lowering boundary explicit
+// and structured, rather than having HirEmitter build LLVM IR strings directly.
+//
+// Design principles:
+//   1. LIR is target-neutral (no LLVM textual syntax here).
+//   2. LIR values use explicit IDs; the printer maps them to %tN / @g names.
+//   3. Every block has an explicit terminator.
+//   4. C type info (TypeSpec) is preserved for later backends.
+//   5. This first skeleton is intentionally narrow — only enough to represent
+//      what hir_emitter.cpp already lowers.
+
+#include <cstdint>
+#include <limits>
+#include <optional>
+#include <string>
+#include <variant>
+#include <vector>
+
+#include "ast.hpp"  // TypeSpec, TypeBase
+
+namespace c4c::codegen::lir {
+
+// ── Value / Block / Slot IDs ─────────────────────────────────────────────────
+
+struct LirValueId {
+  uint32_t value = 0;
+  static constexpr uint32_t kInvalid = std::numeric_limits<uint32_t>::max();
+  [[nodiscard]] constexpr bool valid() const { return value != kInvalid; }
+  [[nodiscard]] static constexpr LirValueId invalid() { return LirValueId{kInvalid}; }
+};
+
+struct LirBlockId {
+  uint32_t value = 0;
+  static constexpr uint32_t kInvalid = std::numeric_limits<uint32_t>::max();
+  [[nodiscard]] constexpr bool valid() const { return value != kInvalid; }
+  [[nodiscard]] static constexpr LirBlockId invalid() { return LirBlockId{kInvalid}; }
+};
+
+struct LirStackSlotId {
+  uint32_t value = 0;
+  static constexpr uint32_t kInvalid = std::numeric_limits<uint32_t>::max();
+  [[nodiscard]] constexpr bool valid() const { return value != kInvalid; }
+  [[nodiscard]] static constexpr LirStackSlotId invalid() { return LirStackSlotId{kInvalid}; }
+};
+
+struct LirGlobalId {
+  uint32_t value = 0;
+  static constexpr uint32_t kInvalid = std::numeric_limits<uint32_t>::max();
+  [[nodiscard]] constexpr bool valid() const { return value != kInvalid; }
+  [[nodiscard]] static constexpr LirGlobalId invalid() { return LirGlobalId{kInvalid}; }
+};
+
+// ── Instructions (non-terminator) ────────────────────────────────────────────
+//
+// Each instruction produces zero or one result value (identified by LirValueId).
+// These are intentionally minimal stubs for Stage 0; concrete fields will be
+// populated in Stage 1 when string sinks are replaced.
+
+struct LirConstInt {
+  LirValueId result{};
+  TypeSpec type{};
+  long long value = 0;
+};
+
+struct LirConstFloat {
+  LirValueId result{};
+  TypeSpec type{};
+  double value = 0.0;
+};
+
+struct LirLoad {
+  LirValueId result{};
+  TypeSpec type{};
+  LirValueId ptr{};
+};
+
+struct LirStore {
+  LirValueId ptr{};
+  LirValueId val{};
+  TypeSpec type{};
+};
+
+struct LirBinary {
+  LirValueId result{};
+  TypeSpec type{};
+  int op = 0;  // will map to BinaryOp or LLVM-level opcode
+  LirValueId lhs{};
+  LirValueId rhs{};
+};
+
+struct LirCast {
+  LirValueId result{};
+  TypeSpec from_type{};
+  TypeSpec to_type{};
+  LirValueId operand{};
+};
+
+struct LirCmp {
+  LirValueId result{};
+  int predicate = 0;
+  LirValueId lhs{};
+  LirValueId rhs{};
+};
+
+struct LirCall {
+  LirValueId result{};
+  TypeSpec return_type{};
+  std::string callee_name;
+  LirValueId callee_ptr{};  // for indirect calls
+  std::vector<LirValueId> args;
+};
+
+struct LirGep {
+  LirValueId result{};
+  TypeSpec base_type{};
+  LirValueId base_ptr{};
+  std::vector<LirValueId> indices;
+};
+
+struct LirSelect {
+  LirValueId result{};
+  TypeSpec type{};
+  LirValueId cond{};
+  LirValueId true_val{};
+  LirValueId false_val{};
+};
+
+struct LirAlloca {
+  LirValueId result{};
+  TypeSpec type{};
+  std::optional<LirValueId> count;  // for VLA
+};
+
+struct LirIntrinsic {
+  LirValueId result{};
+  std::string name;
+  std::vector<LirValueId> args;
+};
+
+struct LirInlineAsm {
+  LirValueId result{};
+  std::string asm_string;
+  std::string constraints;
+  std::vector<LirValueId> operands;
+};
+
+struct LirBitfieldExtract {
+  LirValueId result{};
+  LirValueId unit_ptr{};
+  int bit_width = 0;
+  int bit_offset = 0;
+  int storage_unit_bits = 0;
+  bool is_signed = false;
+};
+
+struct LirBitfieldInsert {
+  LirValueId unit_ptr{};
+  LirValueId new_val{};
+  int bit_width = 0;
+  int bit_offset = 0;
+  int storage_unit_bits = 0;
+};
+
+// Catch-all for instructions not yet migrated to typed LIR ops.
+// Contains the raw LLVM IR line produced by the legacy emitter.
+// This allows incremental migration: Stage 1+ will shrink usage of this type.
+struct LirRawLine {
+  std::string line;
+};
+
+using LirInst = std::variant<
+    LirConstInt,
+    LirConstFloat,
+    LirLoad,
+    LirStore,
+    LirBinary,
+    LirCast,
+    LirCmp,
+    LirCall,
+    LirGep,
+    LirSelect,
+    LirAlloca,
+    LirIntrinsic,
+    LirInlineAsm,
+    LirBitfieldExtract,
+    LirBitfieldInsert,
+    LirRawLine
+>;
+
+// ── Terminators ──────────────────────────────────────────────────────────────
+
+struct LirBr {
+  LirBlockId target{};
+};
+
+struct LirCondBr {
+  LirValueId cond{};
+  LirBlockId true_block{};
+  LirBlockId false_block{};
+};
+
+struct LirRet {
+  std::optional<LirValueId> value;
+  TypeSpec type{};
+};
+
+struct LirSwitch {
+  LirValueId selector{};
+  TypeSpec selector_type{};
+  LirBlockId default_block{};
+  std::vector<std::pair<long long, LirBlockId>> cases;
+};
+
+struct LirIndirectBr {
+  LirValueId addr{};
+  std::vector<LirBlockId> targets;
+};
+
+struct LirUnreachable {};
+
+using LirTerminator = std::variant<
+    LirBr,
+    LirCondBr,
+    LirRet,
+    LirSwitch,
+    LirIndirectBr,
+    LirUnreachable
+>;
+
+// ── Block ────────────────────────────────────────────────────────────────────
+
+struct LirBlock {
+  LirBlockId id{};
+  std::string label;  // display label (e.g. ".LBB0")
+  std::vector<LirInst> insts;
+  LirTerminator terminator{LirUnreachable{}};
+};
+
+// ── Stack object (alloca) ────────────────────────────────────────────────────
+
+struct LirStackObject {
+  LirStackSlotId id{};
+  std::string name;   // e.g. "lv.x"
+  TypeSpec type{};
+  int align = 0;
+  bool is_vla = false;
+};
+
+// ── String constant ──────────────────────────────────────────────────────────
+
+struct LirStringConst {
+  std::string pool_name;   // e.g. "@.str.0"
+  std::string raw_bytes;
+  int byte_length = 0;
+};
+
+// ── External declaration ─────────────────────────────────────────────────────
+
+struct LirExternDecl {
+  std::string name;
+  std::string return_type_str;  // LLVM return type (temporary; will be TypeSpec later)
+};
+
+// ── Function ─────────────────────────────────────────────────────────────────
+
+struct LirFunction {
+  std::string name;
+  bool is_internal = false;
+  TypeSpec return_type{};
+  std::vector<std::pair<std::string, TypeSpec>> params;  // name, type
+  std::vector<LirBlock> blocks;
+  std::vector<LirStackObject> stack_objects;
+  LirBlockId entry{};
+
+  // ID generation for values and blocks within this function.
+  uint32_t next_value_id = 0;
+  uint32_t next_block_id = 0;
+
+  [[nodiscard]] LirValueId alloc_value() { return LirValueId{next_value_id++}; }
+  [[nodiscard]] LirBlockId alloc_block() { return LirBlockId{next_block_id++}; }
+};
+
+// ── Global variable ──────────────────────────────────────────────────────────
+
+struct LirGlobal {
+  LirGlobalId id{};
+  std::string name;
+  TypeSpec type{};
+  bool is_internal = false;
+  bool is_const = false;
+  std::string init_text;  // LLVM constant init text (temporary; will be structured later)
+};
+
+// ── Module ───────────────────────────────────────────────────────────────────
+
+struct LirModule {
+  std::string target_triple;
+  std::string data_layout;
+
+  std::vector<LirGlobal> globals;
+  std::vector<LirFunction> functions;
+  std::vector<LirStringConst> string_pool;
+  std::vector<LirExternDecl> extern_decls;
+
+  // Type declarations (struct definitions) needed by the output.
+  // For now, these are stored as pre-formatted text lines (LLVM syntax).
+  // Stage 1+ will replace with structured type defs.
+  std::vector<std::string> type_decls;
+
+  // Intrinsic requirement flags (mirrors HirEmitter flags).
+  bool need_va_start = false;
+  bool need_va_end = false;
+  bool need_va_copy = false;
+  bool need_memcpy = false;
+  bool need_stacksave = false;
+  bool need_stackrestore = false;
+  bool need_abs = false;
+};
+
+}  // namespace c4c::codegen::lir

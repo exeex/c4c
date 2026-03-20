@@ -39,6 +39,8 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/codegen/llvm/llvm_codegen.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/llvm/hir_emitter.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/llvm/hir_to_llvm_const_init.cpp"
+    "${PROJECT_SOURCE_DIR}/src/codegen/lir/hir_to_lir.cpp"
+    "${PROJECT_SOURCE_DIR}/src/codegen/lir/lir_printer.cpp"
 )
 
 set(FRONTEND_CXX_INCLUDE_DIRS
@@ -49,6 +51,7 @@ set(FRONTEND_CXX_INCLUDE_DIRS
     "${PROJECT_SOURCE_DIR}/src/frontend/hir"
     "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor"
     "${PROJECT_SOURCE_DIR}/src/codegen/llvm"
+    "${PROJECT_SOURCE_DIR}/src/codegen/lir"
 )
 
 add_executable(c4cll
