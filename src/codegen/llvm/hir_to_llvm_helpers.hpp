@@ -13,6 +13,22 @@ namespace c4c::codegen::llvm_backend::detail {
 using namespace c4c;
 using namespace c4c::hir;
 
+inline bool llvm_va_list_is_pointer_object() {
+#if defined(__APPLE__) && defined(__aarch64__)
+  return true;
+#else
+  return false;
+#endif
+}
+
+inline std::string llvm_va_list_storage_ty() {
+  return llvm_va_list_is_pointer_object() ? "ptr" : "%struct.__va_list_tag_";
+}
+
+inline int llvm_va_list_storage_size() {
+  return llvm_va_list_is_pointer_object() ? 8 : 32;
+}
+
 inline bool is_float_base(TypeBase b) {
   return b == TB_FLOAT || b == TB_DOUBLE || b == TB_LONGDOUBLE;
 }
@@ -375,7 +391,7 @@ inline std::string llvm_alloca_ty(const TypeSpec& ts) {
   if (is_vector_value(ts)) return llvm_vector_ty(ts);
   if (ts.ptr_level > 0 || ts.is_fn_ptr) return "ptr";
   if (is_complex_base(ts.base)) return llvm_complex_ty(ts.base);
-  if (ts.base == TB_VA_LIST) return "%struct.__va_list_tag_";
+  if (ts.base == TB_VA_LIST) return llvm_va_list_storage_ty();
   if (ts.base == TB_STRUCT || ts.base == TB_UNION) {
     if (ts.tag && ts.tag[0]) return llvm_struct_type_str(ts.tag);
   }
@@ -393,7 +409,7 @@ inline int sizeof_base(TypeBase b) {
     case TB_LONGLONG: case TB_ULONGLONG: return 8;
     case TB_DOUBLE: return 8;
     case TB_LONGDOUBLE: return 16;
-    case TB_VA_LIST: return 32;
+    case TB_VA_LIST: return llvm_va_list_storage_size();
     default: return 4;
   }
 }
@@ -432,7 +448,7 @@ inline std::string llvm_field_ty(const HirStructField& f) {
   }
   if (f.elem_type.ptr_level > 0 || f.elem_type.is_fn_ptr) return "ptr";
   if (is_complex_base(f.elem_type.base)) return llvm_complex_ty(f.elem_type.base);
-  if (f.elem_type.base == TB_VA_LIST) return "%struct.__va_list_tag_";
+  if (f.elem_type.base == TB_VA_LIST) return llvm_va_list_storage_ty();
   if (f.elem_type.base == TB_STRUCT || f.elem_type.base == TB_UNION) {
     if (f.elem_type.tag && f.elem_type.tag[0]) {
       return llvm_struct_type_str(f.elem_type.tag);

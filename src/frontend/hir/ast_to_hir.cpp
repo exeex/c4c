@@ -835,6 +835,14 @@ class Lowerer {
           for (const auto& param : fsig->params) {
             sig.params.push_back(qtype_from(sema::typespec_from_canonical(param), ValueCategory::LValue));
           }
+          if (sig.params.empty() && (n->n_fn_ptr_params > 0 || n->fn_ptr_variadic)) {
+            sig.variadic = n->fn_ptr_variadic;
+            sig.unspecified_params = false;
+            for (int i = 0; i < n->n_fn_ptr_params; ++i) {
+              const Node* param = n->fn_ptr_params[i];
+              sig.params.push_back(qtype_from(param->type, ValueCategory::LValue));
+            }
+          }
           return sig;
         }
       }
@@ -1645,6 +1653,11 @@ class Lowerer {
     // Substitute template type parameters in the return type.
     {
       TypeSpec ret_ts = fn_node->type;
+      if ((fn_node->n_ret_fn_ptr_params > 0 || fn_node->ret_fn_ptr_variadic) &&
+          !ret_ts.is_fn_ptr) {
+        ret_ts.is_fn_ptr = true;
+        ret_ts.ptr_level = std::max(ret_ts.ptr_level, 1);
+      }
       if (tpl_override && ret_ts.base == TB_TYPEDEF && ret_ts.tag) {
         auto it = tpl_override->find(ret_ts.tag);
         if (it != tpl_override->end()) {
@@ -1663,7 +1676,9 @@ class Lowerer {
     }
     // Build fn_ptr_sig for the return type when the function returns a fn_ptr.
     // Uses canonical type to extract the return type's callable signature.
-    if (fn_node->type.is_fn_ptr) {
+    if (fn_node->type.is_fn_ptr ||
+        fn_node->n_ret_fn_ptr_params > 0 ||
+        fn_node->ret_fn_ptr_variadic) {
       auto fn_ct = sema::canonicalize_declarator_type(fn_node);
       const auto* fn_fsig = sema::get_function_sig(fn_ct);
       if (fn_fsig && fn_fsig->return_type && sema::is_callable_type(*fn_fsig->return_type)) {
@@ -1686,8 +1701,29 @@ class Lowerer {
           ret_sig.unspecified_params = ret_fsig->unspecified_params;
           for (const auto& param : ret_fsig->params)
             ret_sig.params.push_back(qtype_from(sema::typespec_from_canonical(param), ValueCategory::LValue));
+          if (ret_sig.params.empty() &&
+              (fn_node->n_ret_fn_ptr_params > 0 || fn_node->ret_fn_ptr_variadic)) {
+            ret_sig.variadic = fn_node->ret_fn_ptr_variadic;
+            ret_sig.unspecified_params = false;
+            for (int i = 0; i < fn_node->n_ret_fn_ptr_params; ++i) {
+              const Node* param = fn_node->ret_fn_ptr_params[i];
+              ret_sig.params.push_back(qtype_from(param->type, ValueCategory::LValue));
+            }
+          }
           fn.ret_fn_ptr_sig = std::move(ret_sig);
         }
+      }
+      if (!fn.ret_fn_ptr_sig &&
+          (fn_node->n_ret_fn_ptr_params > 0 || fn_node->ret_fn_ptr_variadic)) {
+        FnPtrSig ret_sig{};
+        ret_sig.return_type = qtype_from(fn.return_type.spec);
+        ret_sig.variadic = fn_node->ret_fn_ptr_variadic;
+        ret_sig.unspecified_params = false;
+        for (int i = 0; i < fn_node->n_ret_fn_ptr_params; ++i) {
+          const Node* param = fn_node->ret_fn_ptr_params[i];
+          ret_sig.params.push_back(qtype_from(param->type, ValueCategory::LValue));
+        }
+        fn.ret_fn_ptr_sig = std::move(ret_sig);
       }
     }
     fn.linkage = {fn_node->is_static, fn_node->is_extern || fn_node->body == nullptr, fn_node->is_inline,

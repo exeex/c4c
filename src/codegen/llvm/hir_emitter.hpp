@@ -106,6 +106,8 @@ class HirEmitter {
   bool need_llvm_stacksave_ = false;
   bool need_llvm_stackrestore_ = false;
   bool need_llvm_abs_ = false;
+  mutable std::unordered_map<uint32_t, FnPtrSig> inferred_ret_fn_ptr_sigs_;
+  mutable std::unordered_map<uint32_t, FnPtrSig> inferred_direct_fn_sigs_;
 
   // ── Specialization metadata for cross-TU serialization ──────────────────
   struct SpecEntry { std::string spec_key; std::string template_origin; std::string mangled_name; };
