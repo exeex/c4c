@@ -3,6 +3,7 @@
 #include "llvm_codegen.hpp"
 #include "hir_to_llvm_helpers.hpp"
 #include "../lir/ir.hpp"
+#include "../shared/fn_lowering_ctx.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -25,10 +26,9 @@ using namespace c4c;
 using namespace c4c::hir;
 using namespace c4c::codegen::llvm_backend::detail;
 
-struct BlockMeta {
-  std::optional<std::string> break_label;
-  std::optional<std::string> continue_label;
-};
+// Import shared FnCtx / BlockMeta from codegen::shared into this namespace.
+using c4c::codegen::FnCtx;
+using c4c::codegen::BlockMeta;
 
 struct BitfieldAccess {
   int bit_width = -1;
@@ -36,42 +36,6 @@ struct BitfieldAccess {
   int storage_unit_bits = 0;
   bool is_signed = false;
   bool is_bitfield() const { return bit_width >= 0; }
-};
-
-// ── Per-function state ────────────────────────────────────────────────────
-
-struct FnCtx {
-  const Function* fn = nullptr;
-  int tmp_idx = 0;
-  bool last_term = false;
-  // local_id.value → alloca slot (e.g. "%lv.x")
-  std::unordered_map<uint32_t, std::string> local_slots;
-  // local_id.value → C TypeSpec
-  std::unordered_map<uint32_t, TypeSpec> local_types;
-  // local_id.value → true if this local is a VLA allocated dynamically at runtime
-  std::unordered_map<uint32_t, bool> local_is_vla;
-  // param_index → SSA name (e.g. "%p.x")
-  std::unordered_map<uint32_t, std::string> param_slots;
-  // Structured LIR blocks (replaces body_lines).
-  std::vector<lir::LirBlock> lir_blocks;
-  size_t current_block_idx = 0;
-  lir::LirBlock& cur_block() { return lir_blocks[current_block_idx]; }
-  // Hoisted alloca instructions (rendered before entry block body).
-  std::vector<lir::LirInst> alloca_insts;
-  // legacy per-block metadata (kept for compatibility; mostly unused now)
-  std::unordered_map<uint32_t, BlockMeta> block_meta;
-  // body_block -> continue branch target label
-  std::unordered_map<uint32_t, std::string> continue_redirect;
-  // user label name → LLVM label
-  std::unordered_map<std::string, std::string> user_labels;
-  // local_id.value / param_index / global_id.value → fn-ptr signature metadata.
-  std::unordered_map<uint32_t, FnPtrSig> local_fn_ptr_sigs;
-  std::unordered_map<uint32_t, FnPtrSig> param_fn_ptr_sigs;
-  std::unordered_map<uint32_t, FnPtrSig> global_fn_ptr_sigs;
-  // Per-function stacksave pointer for VLA scope rewinds.
-  std::optional<std::string> vla_stack_save_ptr;
-  // Block currently being emitted (for backward-goto detection).
-  uint32_t current_block_id = 0;
 };
 
 // ── Struct field lookup ───────────────────────────────────────────────────
@@ -117,6 +81,13 @@ class HirEmitter {
   void lower_single_function(const hir::Function& fn,
                              const std::string& signature_text = {},
                              const std::vector<const hir::Block*>& block_order = {});
+
+  /// Lower a function definition using a pre-initialized FnCtx (LIR path).
+  /// The caller (hir_to_lir) is responsible for FnCtx setup and alloca hoisting.
+  /// This method emits statements, builds a LirFunction, and pushes it to the
+  /// working module.
+  void emit_function_body(FnCtx& ctx, const std::string& signature_text,
+                          const std::vector<const hir::Block*>& block_order);
 
   // ── Post-lowering accessors for module-level finalization ──────────────
   // These expose accumulated state so that hir_to_lir::lower() can own

@@ -2,7 +2,7 @@
 
 ## Status
 
-In progress. Phases 0–4 slice 3 complete.
+In progress. Phases 0–4 slice 4 complete.
 
 ## Completed
 
@@ -92,6 +92,16 @@ In progress. Phases 0–4 slice 3 complete.
 - Fallthrough return generation removed from `emit_function()`; now a post-pass in `hir_to_lir::lower()`
 - Both legacy and lir paths produce identical output; all compare tests pass
 
+### Phase 4: Move Function Skeleton Lowering — slice 4 (FnCtx + alloca hoisting) ✓
+
+- Moved `FnCtx` and `BlockMeta` to shared header `src/codegen/shared/fn_lowering_ctx.hpp`
+- Extracted `find_modified_params()`, `fn_has_vla_locals()`, `hoist_allocas()` as free functions in `hir_to_lir.cpp`
+- Created `init_fn_ctx()` in `hir_to_lir.cpp`: initializes FnCtx with param_slots, fn_ptr_sigs, entry block, and hoisted allocas
+- Added `HirEmitter::emit_function_body(ctx, sig, block_order)` that accepts pre-initialized FnCtx
+- `hir_to_lir::lower()` now builds FnCtx externally via `init_fn_ctx()` for function definitions
+- HirEmitter retains `emit_function()` for legacy path (still creates its own FnCtx internally)
+- Both legacy and lir paths produce identical output; all compare tests pass
+
 ### Test results
 
 - Full suite: **2075/2075 passed** (no regressions)
@@ -102,7 +112,8 @@ In progress. Phases 0–4 slice 3 complete.
 The next slices, in priority order:
 
 1. Phase 5: Move expression/statement lowering by risk slice
-2. Phase 5 slice 1: simple expressions (literals, decl refs, casts, basic arithmetic/compare)
+2. Phase 5 slice 0: extract remaining function skeleton (VLA stack save already moved)
+3. Phase 5 slice 1: simple expressions (literals, decl refs, casts, basic arithmetic/compare)
 
 
 ## Blockers

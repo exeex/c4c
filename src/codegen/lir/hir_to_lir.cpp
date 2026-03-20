@@ -4,6 +4,7 @@
 #include "../llvm/hir_to_llvm_helpers.hpp"
 
 #include <algorithm>
+#include <functional>
 #include <sstream>
 #include <unordered_map>
 #include <variant>
@@ -273,6 +274,182 @@ static void inject_fallthrough_returns(LirFunction& lir_fn,
   }
 }
 
+// ── Per-function skeleton helpers ─────────────────────────────────────────
+
+static const c4c::hir::Expr& lookup_expr(const c4c::hir::Module& mod, c4c::hir::ExprId id) {
+  for (const auto& e : mod.expr_pool)
+    if (e.id.value == id.value) return e;
+  throw std::runtime_error("hir_to_lir: expr not found id=" + std::to_string(id.value));
+}
+
+std::unordered_set<uint32_t> find_modified_params(
+    const c4c::hir::Module& mod, const c4c::hir::Function& fn) {
+  using namespace c4c::hir;
+  std::unordered_set<uint32_t> result;
+  std::function<void(ExprId)> scan = [&](ExprId id) {
+    const Expr& e = lookup_expr(mod, id);
+    std::visit([&](const auto& p) {
+      using T = std::decay_t<decltype(p)>;
+      if constexpr (std::is_same_v<T, UnaryExpr>) {
+        if (p.op == UnaryOp::PreInc || p.op == UnaryOp::PostInc ||
+            p.op == UnaryOp::PreDec || p.op == UnaryOp::PostDec ||
+            p.op == UnaryOp::AddrOf) {
+          const Expr& op_e = lookup_expr(mod, p.operand);
+          if (const auto* r = std::get_if<DeclRef>(&op_e.payload)) {
+            if (r->param_index) result.insert(*r->param_index);
+          }
+        }
+        scan(p.operand);
+      } else if constexpr (std::is_same_v<T, AssignExpr>) {
+        const Expr& lhs_e = lookup_expr(mod, p.lhs);
+        if (const auto* r = std::get_if<DeclRef>(&lhs_e.payload)) {
+          if (r->param_index) result.insert(*r->param_index);
+        }
+        scan(p.lhs); scan(p.rhs);
+      } else if constexpr (std::is_same_v<T, BinaryExpr>) {
+        scan(p.lhs); scan(p.rhs);
+      } else if constexpr (std::is_same_v<T, CallExpr>) {
+        scan(p.callee);
+        for (const auto& a : p.args) scan(a);
+      } else if constexpr (std::is_same_v<T, TernaryExpr>) {
+        scan(p.cond); scan(p.then_expr); scan(p.else_expr);
+      } else if constexpr (std::is_same_v<T, IndexExpr>) {
+        scan(p.base); scan(p.index);
+      } else if constexpr (std::is_same_v<T, MemberExpr>) {
+        scan(p.base);
+      } else if constexpr (std::is_same_v<T, CastExpr>) {
+        scan(p.expr);
+      } else if constexpr (std::is_same_v<T, SizeofExpr>) {
+        scan(p.expr);
+      }
+    }, e.payload);
+  };
+  for (const auto& blk : fn.blocks) {
+    for (const auto& stmt : blk.stmts) {
+      std::visit([&](const auto& s) {
+        using S = std::decay_t<decltype(s)>;
+        if constexpr (std::is_same_v<S, LocalDecl>) {
+          if (s.init) scan(*s.init);
+        } else if constexpr (std::is_same_v<S, ExprStmt>) {
+          if (s.expr) scan(*s.expr);
+        } else if constexpr (std::is_same_v<S, ReturnStmt>) {
+          if (s.expr) scan(*s.expr);
+        } else if constexpr (std::is_same_v<S, IfStmt>) {
+          scan(s.cond);
+        } else if constexpr (std::is_same_v<S, WhileStmt>) {
+          scan(s.cond);
+        } else if constexpr (std::is_same_v<S, ForStmt>) {
+          if (s.init) scan(*s.init);
+          if (s.cond) scan(*s.cond);
+          if (s.update) scan(*s.update);
+        } else if constexpr (std::is_same_v<S, SwitchStmt>) {
+          scan(s.cond);
+        }
+      }, stmt.payload);
+    }
+  }
+  return result;
+}
+
+bool fn_has_vla_locals(const c4c::hir::Function& fn) {
+  for (const auto& blk : fn.blocks) {
+    for (const auto& stmt : blk.stmts) {
+      if (const auto* d = std::get_if<c4c::hir::LocalDecl>(&stmt.payload)) {
+        if (d->vla_size.has_value()) return true;
+      }
+    }
+  }
+  return false;
+}
+
+void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
+                   const c4c::hir::Function& fn) {
+  using namespace c4c::codegen::llvm_backend::detail;
+
+  const std::unordered_set<uint32_t> modified_params = find_modified_params(mod, fn);
+  for (size_t i = 0; i < fn.params.size(); ++i) {
+    if (!modified_params.count(static_cast<uint32_t>(i))) continue;
+    const auto& param = fn.params[i];
+    const std::string slot = "%lv.param." + sanitize_llvm_ident(param.name);
+    const std::string pname = "%p." + sanitize_llvm_ident(param.name);
+    ctx.param_slots[static_cast<uint32_t>(i) + 0x80000000u] = slot;
+    ctx.alloca_insts.push_back(LirRawLine{"  " + slot + " = alloca " + llvm_alloca_ty(param.type.spec)});
+    ctx.alloca_insts.push_back(LirRawLine{"  store " + llvm_ty(param.type.spec) + " " + pname + ", ptr " + slot});
+  }
+
+  std::unordered_map<std::string, int> name_count;
+  for (const auto& blk : fn.blocks) {
+    for (const auto& stmt : blk.stmts) {
+      const auto* d = std::get_if<c4c::hir::LocalDecl>(&stmt.payload);
+      if (!d) continue;
+      if (ctx.local_slots.count(d->id.value)) continue;
+      const int cnt = name_count[d->name]++;
+      const std::string base = sanitize_llvm_ident(d->name);
+      const std::string slot = cnt == 0
+          ? "%lv." + base
+          : "%lv." + base + "." + std::to_string(cnt);
+      ctx.local_slots[d->id.value] = slot;
+      ctx.local_types[d->id.value] = d->type.spec;
+      ctx.local_is_vla[d->id.value] = d->vla_size.has_value();
+      if (d->vla_size) {
+        ctx.alloca_insts.push_back(LirRawLine{"  " + slot + " = alloca ptr"});
+      } else {
+        const std::string alloca_ty = llvm_alloca_ty(d->type.spec);
+        ctx.alloca_insts.push_back(LirRawLine{"  " + slot + " = alloca " + alloca_ty});
+        if (d->init &&
+            (d->type.spec.array_rank > 0 ||
+             (d->type.spec.ptr_level == 0 &&
+              (d->type.spec.base == TB_STRUCT ||
+               d->type.spec.base == TB_UNION)))) {
+          ctx.alloca_insts.push_back(LirRawLine{"  store " + alloca_ty + " zeroinitializer, ptr " + slot});
+        }
+      }
+    }
+  }
+}
+
+c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
+                                  const c4c::hir::Function& fn) {
+  using namespace c4c::codegen::llvm_backend::detail;
+
+  c4c::codegen::FnCtx ctx;
+  ctx.fn = &fn;
+
+  // Set up fn_ptr_sig metadata for parameters and globals.
+  for (size_t i = 0; i < fn.params.size(); ++i) {
+    if (fn.params[i].fn_ptr_sig) {
+      ctx.param_fn_ptr_sigs[static_cast<uint32_t>(i)] = *fn.params[i].fn_ptr_sig;
+    }
+  }
+  for (const auto& g : mod.globals) {
+    if (g.fn_ptr_sig) ctx.global_fn_ptr_sigs[g.id.value] = *g.fn_ptr_sig;
+  }
+
+  // Populate param_slots for body lowering.
+  const bool void_param_list =
+      fn.params.size() == 1 &&
+      fn.params[0].type.spec.base == TB_VOID &&
+      fn.params[0].type.spec.ptr_level == 0 &&
+      fn.params[0].type.spec.array_rank == 0;
+  for (size_t i = 0; i < fn.params.size(); ++i) {
+    if (void_param_list) break;
+    const std::string pname = "%p." + sanitize_llvm_ident(fn.params[i].name);
+    ctx.param_slots[static_cast<uint32_t>(i)] = pname;
+  }
+
+  // Create entry block.
+  LirBlock entry_blk;
+  entry_blk.id = LirBlockId{0};
+  entry_blk.label = "entry";
+  ctx.lir_blocks.push_back(std::move(entry_blk));
+  ctx.current_block_idx = 0;
+
+  // Hoist allocas.
+  hoist_allocas(ctx, mod, fn);
+
+  return ctx;
+}
+
 // ── Main lowering entry point ────────────────────────────────────────────────
 
 LirModule lower(const c4c::hir::Module& hir_mod) {
@@ -299,8 +476,17 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
   for (size_t idx : fn_indices) {
     const auto& fn = hir_mod.functions[idx];
     std::string sig = build_fn_signature(fn);
-    auto block_order = build_block_order(fn);
-    emitter.lower_single_function(fn, sig, block_order);
+
+    if (fn.linkage.is_extern && fn.blocks.empty()) {
+      // Declaration — no body to lower; delegate entirely.
+      emitter.lower_single_function(fn, sig);
+    } else {
+      // Definition — hir_to_lir owns FnCtx setup and alloca hoisting;
+      // HirEmitter owns statement / expression emission and LirFunction construction.
+      auto ctx = init_fn_ctx(hir_mod, fn);
+      auto block_order = build_block_order(fn);
+      emitter.emit_function_body(ctx, sig, block_order);
+    }
   }
 
   module = emitter.release_module();
