@@ -302,6 +302,9 @@ struct LirGlobal {
   bool is_internal = false;
   bool is_const = false;
   std::string init_text;  // LLVM constant init text (temporary; will be structured later)
+  // Pre-formatted complete LLVM IR line for this global (temporary; Stage 2+ will
+  // replace with structured emission from the fields above).
+  std::string raw_line;
 };
 
 // ── Module ───────────────────────────────────────────────────────────────────

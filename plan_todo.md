@@ -29,11 +29,12 @@
 
 - **Milestone D Stage 1 slice 1: Replace string sinks with LIR blocks** — Replaced `FnCtx::alloca_lines` and `body_lines` (flat `vector<string>`) with structured `lir::LirBlock` containers. `emit_lbl()` now creates new LIR blocks; `emit_instr()`/`emit_term()` push `LirRawLine` into the current block. Replaced `fn_bodies_` (`vector<FnBody>`) with `lir::LirModule module_` member in `HirEmitter`. Each function is stored as a `LirFunction` with `signature_text`, `alloca_insts`, and `blocks`. `LirFunction` gained `is_declaration`, `signature_text`, `alloca_insts` fields. Render lambda in `emit()` walks the structured blocks to produce identical LLVM IR output. Dead-code elimination updated to operate on `module_.functions`. All 2067/2067 tests pass.
 
+- **Milestone D Stage 1 slice 2: Replace preamble_ with structured LIR containers** — Eliminated `preamble_` ostringstream from `HirEmitter`. Struct/union type definitions now stored in `module_.type_decls` (vector of pre-formatted strings). String constants (narrow and wide) stored in `module_.string_pool` (vector of `LirStringConst`). Global variable definitions stored in `module_.globals` (vector of `LirGlobal` with `raw_line` text). Intrinsic requirement flags propagated to `module_.need_*` booleans. External function declarations populated into `module_.extern_decls`. DCE global-initializer scanning now iterates `module_.globals` raw_lines. Render in `emit()` walks structured containers in order: type_decls → string_pool → globals → intrinsics → extern_decls → functions. All 2067/2067 tests pass.
+
 ## Active Item
-**Milestone D Stage 1 slice 2**: Move preamble (struct defs, globals, string pool) into `LirModule` structured containers instead of raw `preamble_` stringstream.
+**Milestone D Stage 2**: Split printer out into standalone LirPrinter
 
 ## Next
-- Milestone D Stage 2: Split printer out into standalone LirPrinter
 - Milestone D Stage 3: Normalize special cases into LIR ops
 
 ## Test Suite

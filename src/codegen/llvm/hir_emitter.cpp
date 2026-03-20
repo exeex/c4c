@@ -218,9 +218,8 @@ std::string HirEmitter::emit(){
       }
     }
     // Also treat global initializers as roots.
-    {
-      std::string preamble_str = preamble_.str();
-      for (const auto& r : find_refs(preamble_str)) {
+    for (const auto& g : module_.globals) {
+      for (const auto& r : find_refs(g.raw_line)) {
         if (internal_fns.count(r) && !reachable.count(r)) {
           reachable.insert(r);
           worklist.push_back(r);
@@ -246,26 +245,56 @@ std::string HirEmitter::emit(){
     }
 
     std::ostringstream out;
-    out << preamble_.str();
-    if (!preamble_.str().empty()) out << "\n";
-    if (need_llvm_va_start_) out << "declare void @llvm.va_start.p0(ptr)\n";
-    if (need_llvm_va_end_) out << "declare void @llvm.va_end.p0(ptr)\n";
-    if (need_llvm_va_copy_) out << "declare void @llvm.va_copy.p0.p0(ptr, ptr)\n";
-    if (need_llvm_memcpy_) out << "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\n";
-    if (need_llvm_stacksave_) out << "declare ptr @llvm.stacksave()\n";
-    if (need_llvm_stackrestore_) out << "declare void @llvm.stackrestore(ptr)\n";
-    if (need_llvm_abs_) {
+    // Render type declarations (struct/union definitions).
+    for (const auto& td : module_.type_decls) out << td << "\n";
+    // Render string pool constants.
+    for (const auto& sc : module_.string_pool) {
+      if (sc.byte_length < 0) {
+        // Pre-formatted wide string: raw_bytes holds "type init"
+        out << sc.pool_name << " = private unnamed_addr constant " << sc.raw_bytes << "\n";
+      } else {
+        out << sc.pool_name << " = private unnamed_addr constant ["
+            << sc.byte_length << " x i8] c\"" << sc.raw_bytes << "\\00\"\n";
+      }
+    }
+    // Render global variable definitions.
+    for (const auto& g : module_.globals) out << g.raw_line << "\n";
+    if (!module_.type_decls.empty() || !module_.string_pool.empty() || !module_.globals.empty())
+      out << "\n";
+    if (need_llvm_va_start_)    module_.need_va_start = true;
+    if (need_llvm_va_end_)      module_.need_va_end = true;
+    if (need_llvm_va_copy_)     module_.need_va_copy = true;
+    if (need_llvm_memcpy_)      module_.need_memcpy = true;
+    if (need_llvm_stacksave_)   module_.need_stacksave = true;
+    if (need_llvm_stackrestore_) module_.need_stackrestore = true;
+    if (need_llvm_abs_)         module_.need_abs = true;
+    // Populate LirModule extern_decls from extern_call_decls_.
+    for (const auto& [name, ret_ty] : extern_call_decls_) {
+      if (mod_.fn_index.count(name)) continue;
+      lir::LirExternDecl ed;
+      ed.name = name;
+      ed.return_type_str = ret_ty;
+      module_.extern_decls.push_back(std::move(ed));
+    }
+    // Render intrinsic declarations.
+    if (module_.need_va_start)    out << "declare void @llvm.va_start.p0(ptr)\n";
+    if (module_.need_va_end)      out << "declare void @llvm.va_end.p0(ptr)\n";
+    if (module_.need_va_copy)     out << "declare void @llvm.va_copy.p0.p0(ptr, ptr)\n";
+    if (module_.need_memcpy)      out << "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\n";
+    if (module_.need_stacksave)   out << "declare ptr @llvm.stacksave()\n";
+    if (module_.need_stackrestore) out << "declare void @llvm.stackrestore(ptr)\n";
+    if (module_.need_abs) {
       out << "declare i32 @llvm.abs.i32(i32, i1 immarg)\n";
       out << "declare i64 @llvm.abs.i64(i64, i1 immarg)\n";
     }
-    if (need_llvm_va_start_ || need_llvm_va_end_ || need_llvm_va_copy_ ||
-        need_llvm_memcpy_ || need_llvm_stacksave_ || need_llvm_stackrestore_ ||
-        need_llvm_abs_) out << "\n";
-    for (const auto& [name, ret_ty] : extern_call_decls_) {
-      if (mod_.fn_index.count(name)) continue;
-      out << "declare " << ret_ty << " " << llvm_global_sym(name) << "(...)\n";
+    if (module_.need_va_start || module_.need_va_end || module_.need_va_copy ||
+        module_.need_memcpy || module_.need_stacksave || module_.need_stackrestore ||
+        module_.need_abs) out << "\n";
+    // Render external function declarations.
+    for (const auto& ed : module_.extern_decls) {
+      out << "declare " << ed.return_type_str << " " << llvm_global_sym(ed.name) << "(...)\n";
     }
-    if (!extern_call_decls_.empty()) out << "\n";
+    if (!module_.extern_decls.empty()) out << "\n";
     for (size_t i = 0; i < module_.functions.size(); ++i) {
       // Skip unreachable internal functions.
       if (module_.functions[i].is_internal && !reachable.count(module_.functions[i].name)) continue;
@@ -386,13 +415,16 @@ std::string HirEmitter::intern_str(const std::string& raw_bytes){
         esc += static_cast<char>(c);
       }
     }
-    preamble_ << name << " = private unnamed_addr constant ["
-              << len << " x i8] c\"" << esc << "\\00\"\n";
+    lir::LirStringConst sc;
+    sc.pool_name = name;
+    sc.raw_bytes = esc;
+    sc.byte_length = static_cast<int>(len);
+    module_.string_pool.push_back(std::move(sc));
     return name;
   }
 
 void HirEmitter::emit_preamble(){
-    preamble_ << "%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }\n";
+    module_.type_decls.push_back("%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }");
     // Emit struct/union type definitions in declaration order
     for (const auto& tag : mod_.struct_def_order) {
       const auto it = mod_.struct_defs.find(tag);
@@ -400,40 +432,39 @@ void HirEmitter::emit_preamble(){
       const HirStructDef& sd = it->second;
       const std::string sty = llvm_struct_type_str(tag);
       if (sd.fields.empty()) {
-        // Empty struct: emit as opaque type {}.
-        preamble_ << sty << " = type {}\n";
+        module_.type_decls.push_back(sty + " = type {}");
         continue;
       }
       if (sd.is_union) {
         const int sz = sd.size_bytes;
-        preamble_ << sty << " = type { ["
-                  << sz << " x i8] }\n";
+        module_.type_decls.push_back(sty + " = type { [" +
+                                     std::to_string(sz) + " x i8] }");
       } else {
-        // Materialize HIR-computed padding so LLVM layout matches frontend
-        // offsets/sizes, including over-aligned arrays and tail padding.
-        preamble_ << sty << " = type { ";
+        std::ostringstream line;
+        line << sty << " = type { ";
         bool first = true;
         int last_idx = -1;
         int cur_offset = 0;
         for (const auto& f : sd.fields) {
-          if (f.llvm_idx == last_idx) continue;  // same storage unit
+          if (f.llvm_idx == last_idx) continue;
           last_idx = f.llvm_idx;
           if (f.offset_bytes > cur_offset) {
-            if (!first) preamble_ << ", ";
+            if (!first) line << ", ";
             first = false;
-            preamble_ << "[" << (f.offset_bytes - cur_offset) << " x i8]";
+            line << "[" << (f.offset_bytes - cur_offset) << " x i8]";
             cur_offset = f.offset_bytes;
           }
-          if (!first) preamble_ << ", ";
+          if (!first) line << ", ";
           first = false;
-          preamble_ << llvm_field_ty(f);
+          line << llvm_field_ty(f);
           cur_offset = f.offset_bytes + std::max(0, f.size_bytes);
         }
         if (sd.size_bytes > cur_offset) {
-          if (!first) preamble_ << ", ";
-          preamble_ << "[" << (sd.size_bytes - cur_offset) << " x i8]";
+          if (!first) line << ", ";
+          line << "[" << (sd.size_bytes - cur_offset) << " x i8]";
         }
-        preamble_ << " }\n";
+        line << " }";
+        module_.type_decls.push_back(line.str());
       }
     }
   }
@@ -1220,6 +1251,15 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
 void HirEmitter::emit_global(const GlobalVar& gv){
     // Global object types arrive from HIR with ordinary array bounds already resolved.
     const TypeSpec& ts = gv.type.spec;
+    auto push_global = [&](const std::string& line) {
+      lir::LirGlobal lg;
+      lg.name = gv.name;
+      lg.type = ts;
+      lg.is_internal = gv.linkage.is_static;
+      lg.is_const = gv.is_const;
+      lg.raw_line = line;
+      module_.globals.push_back(std::move(lg));
+    };
     if (!gv.linkage.is_extern &&
         ts.ptr_level == 0 &&
         ts.array_rank == 0 &&
@@ -1249,8 +1289,8 @@ void HirEmitter::emit_global(const GlobalVar& gv){
             }
             literal_ty += " }";
             literal_init += " }";
-            preamble_ << llvm_global_sym(gv.name) << " = " << lk << qual
-                      << literal_ty << " " << literal_init << "\n";
+            push_global(llvm_global_sym(gv.name) + " = " + lk + qual +
+                        literal_ty + " " + literal_init);
             return;
           }
         }
@@ -1260,7 +1300,7 @@ void HirEmitter::emit_global(const GlobalVar& gv){
     if (gv.linkage.is_extern) {
       std::string ext = gv.linkage.is_weak ? "extern_weak " : "external ";
       ext += llvm_visibility(gv.linkage.visibility);
-      preamble_ << llvm_global_sym(gv.name) << " = " << ext << "global " << ty << "\n";
+      push_global(llvm_global_sym(gv.name) + " = " + ext + "global " + ty);
       return;
     }
     std::string lk = gv.linkage.is_static ? "internal " : "";
@@ -1268,7 +1308,7 @@ void HirEmitter::emit_global(const GlobalVar& gv){
     lk += llvm_visibility(gv.linkage.visibility);
     const std::string qual = (gv.is_const && ts.ptr_level == 0) ? "constant " : "global ";
     const std::string init = emit_const_init(ts, gv.init);
-    preamble_ << llvm_global_sym(gv.name) << " = " << lk << qual << ty << " " << init << "\n";
+    push_global(llvm_global_sym(gv.name) + " = " + lk + qual + ty + " " + init);
   }
 
 const Expr& HirEmitter::get_expr(ExprId id) const{
@@ -2323,8 +2363,13 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const StringLiteral& sl, c
         init += "i32 " + std::to_string(vals[i]);
       }
       init += "]";
-      preamble_ << gname << " = private unnamed_addr constant ["
-                << vals.size() << " x i32] " << init << "\n";
+      {
+        lir::LirStringConst sc;
+        sc.pool_name = gname;
+        sc.raw_bytes = "[" + std::to_string(vals.size()) + " x i32] " + init;
+        sc.byte_length = -1;  // sentinel: raw_bytes is pre-formatted type+init
+        module_.string_pool.push_back(std::move(sc));
+      }
       const std::string tmp = fresh_tmp(ctx);
       emit_instr(ctx, tmp + " = getelementptr [" + std::to_string(vals.size()) +
                           " x i32], ptr " + gname + ", i64 0, i64 0");

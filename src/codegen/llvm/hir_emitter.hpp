@@ -95,7 +95,6 @@ class HirEmitter {
 
  private:
   const Module& mod_;
-  std::ostringstream preamble_;
   lir::LirModule module_;  // Structured intermediate representation
   std::unordered_map<std::string, std::string> extern_call_decls_;  // name -> ret llvm type
   std::unordered_map<std::string, std::string> str_pool_;
