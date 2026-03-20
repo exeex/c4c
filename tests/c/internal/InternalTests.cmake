@@ -3,6 +3,8 @@ set(INTERNAL_C_TEST_CMAKE_ROOT "${INTERNAL_C_TEST_ROOT}/cmake")
 
 file(GLOB INTERNAL_NEGATIVE_TEST_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_C_TEST_ROOT}/negative_case/*.c")
+file(GLOB INTERNAL_VERIFY_TEST_SRCS CONFIGURE_DEPENDS
+     "${INTERNAL_C_TEST_ROOT}/verify_case/*.c")
 file(GLOB INTERNAL_POSITIVE_TEST_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_C_TEST_ROOT}/positive_case/*.c")
 file(GLOB INTERNAL_LINUX_STAGE2_REPRO_SRCS CONFIGURE_DEPENDS
@@ -101,6 +103,27 @@ add_test(
 )
 set_tests_properties(negative_tests_stmt_recovery_check PROPERTIES
     LABELS "internal;negative_case;error_recovery")
+
+# Verify-mode tests: expected-error annotation matching via verify_external_clang_case.py
+if(PYTHON3_EXECUTABLE)
+  foreach(src IN LISTS INTERNAL_VERIFY_TEST_SRCS)
+    get_filename_component(stem "${src}" NAME_WE)
+    set(test_name "verify_tests_${stem}")
+    add_test(
+      NAME "${test_name}"
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DPYTHON3_EXECUTABLE=${PYTHON3_EXECUTABLE}
+              -DRUNNER=${PROJECT_SOURCE_DIR}/tests/verify_external_clang_case.py
+              -DSRC=${src}
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_verify/${stem}.ll
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_verify_case.cmake"
+    )
+    set_tests_properties("${test_name}" PROPERTIES LABELS "internal;verify_case")
+  endforeach()
+else()
+  message(WARNING "python3 not found: skipping internal verify_case tests")
+endif()
 
 if(CLANG_EXECUTABLE)
   foreach(src IN LISTS INTERNAL_POSITIVE_TEST_SRCS INTERNAL_LINUX_STAGE2_REPRO_SRCS)
