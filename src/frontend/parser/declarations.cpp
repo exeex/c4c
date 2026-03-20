@@ -26,6 +26,10 @@ const char* make_anon_template_param_name(Arena& arena, bool is_nttp, size_t ind
     return arena.strdup(name.c_str());
 }
 
+bool is_internal_typedef_name(const char* name) {
+    return name && name[0] == '_' && name[1] == '_';
+}
+
 }  // namespace
 
 Node* Parser::parse_local_decl() {
@@ -87,11 +91,12 @@ Node* Parser::parse_local_decl() {
                          &td_n_fn_ptr_params, &td_fn_ptr_variadic);
         if (tdname) {
             auto it = typedef_types_.find(tdname);
-            if (user_typedefs_.count(tdname) && it != typedef_types_.end() &&
+            if (!is_internal_typedef_name(tdname) &&
+                user_typedefs_.count(tdname) && it != typedef_types_.end() &&
                 !types_compatible_p(it->second, ts_copy, typedef_types_))
                 throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdname);
             typedefs_.insert(tdname);
-            user_typedefs_.insert(tdname);
+            if (!is_internal_typedef_name(tdname)) user_typedefs_.insert(tdname);
             typedef_types_[tdname] = ts_copy;
             // Phase C: store fn_ptr param info for typedef'd function pointers.
             if (ts_copy.is_fn_ptr && (td_n_fn_ptr_params > 0 || td_fn_ptr_variadic)) {
@@ -109,11 +114,12 @@ Node* Parser::parse_local_decl() {
                              &td2_n_fn_ptr_params, &td2_fn_ptr_variadic);
             if (tdn2) {
                 auto it = typedef_types_.find(tdn2);
-                if (user_typedefs_.count(tdn2) && it != typedef_types_.end() &&
+                if (!is_internal_typedef_name(tdn2) &&
+                    user_typedefs_.count(tdn2) && it != typedef_types_.end() &&
                     !types_compatible_p(it->second, ts2, typedef_types_))
                     throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdn2);
                 typedefs_.insert(tdn2);
-                user_typedefs_.insert(tdn2);
+                if (!is_internal_typedef_name(tdn2)) user_typedefs_.insert(tdn2);
                 typedef_types_[tdn2] = ts2;
                 if (ts2.is_fn_ptr && (td2_n_fn_ptr_params > 0 || td2_fn_ptr_variadic)) {
                     typedef_fn_ptr_info_[tdn2] = {td2_fn_ptr_params, td2_n_fn_ptr_params, td2_fn_ptr_variadic};
@@ -268,6 +274,11 @@ Node* Parser::parse_top_level() {
     int ln = cur().line;
     if (at_end()) return nullptr;
 
+    bool is_inline_namespace = false;
+    if (is_cpp_mode() && check(TokenKind::KwInline) && peek(1).kind == TokenKind::KwNamespace) {
+        is_inline_namespace = true;
+        consume();
+    }
     if (is_cpp_mode() && check(TokenKind::KwNamespace)) {
         consume();
         QualifiedNameRef ns_name;
@@ -276,6 +287,7 @@ Node* Parser::parse_top_level() {
             ns_name = parse_qualified_name(false);
             has_name = true;
         }
+        skip_attributes();
         expect(TokenKind::LBrace);
 
         int context_id = current_namespace_context_id();
@@ -305,6 +317,10 @@ Node* Parser::parse_top_level() {
         blk->children = arena_.alloc_array<Node*>(blk->n_children);
         for (int i = 0; i < blk->n_children; ++i) blk->children[i] = items[i];
         return blk;
+    }
+    if (is_inline_namespace) {
+        // We only consumed 'inline' for the `inline namespace` form above.
+        throw std::runtime_error("expected namespace after inline");
     }
 
     if (is_cpp_mode() && check(TokenKind::KwUsing)) {
@@ -638,12 +654,40 @@ Node* Parser::parse_top_level() {
         else if (match(TokenKind::KwNoreturn))  {}
         else break;
     }
+    if (is_cpp_mode() && linkage_spec && check(TokenKind::LBrace)) {
+        consume();
+        std::vector<Node*> items;
+        while (!at_end() && !check(TokenKind::RBrace)) {
+            Node* item = parse_top_level();
+            if (item) items.push_back(item);
+        }
+        expect(TokenKind::RBrace);
+        match(TokenKind::Semi);
+        if (items.empty()) return make_node(NK_EMPTY, ln);
+        if (items.size() == 1) return items[0];
+        Node* blk = make_node(NK_BLOCK, ln);
+        blk->n_children = static_cast<int>(items.size());
+        blk->children = arena_.alloc_array<Node*>(blk->n_children);
+        for (int i = 0; i < blk->n_children; ++i) blk->children[i] = items[i];
+        return blk;
+    }
     // Don't skip_attributes() here — let parse_base_type() handle them so
     // type-affecting attributes like vector_size are captured.
 
     TypeSpec base_ts{};
     if (!is_type_start()) {
         if (is_typedef) {
+            if (check(TokenKind::Identifier)) {
+                const std::string spelled = cur().lexeme;
+                const std::string resolved = resolve_visible_type_name(spelled);
+                auto it = typedef_types_.find(resolved);
+                if (it == typedef_types_.end()) it = typedef_types_.find(spelled);
+                if (it != typedef_types_.end()) {
+                    base_ts = it->second;
+                    consume();
+                    goto top_level_base_ready;
+                }
+            }
             std::string nm = check(TokenKind::Identifier) ? cur().lexeme : "<non-identifier>";
             throw std::runtime_error(std::string("typedef uses unknown base type: ") + nm);
         }
@@ -681,6 +725,7 @@ Node* Parser::parse_top_level() {
         }
         parse_attributes(&base_ts);
     }
+top_level_base_ready:
     // C++: consteval and constexpr cannot both appear on the same declaration.
     if (is_consteval && is_constexpr) {
         throw std::runtime_error(
@@ -714,11 +759,12 @@ Node* Parser::parse_top_level() {
         if (tdname) {
             const char* scoped_tdname = qualify_name_arena(tdname);
             auto it = typedef_types_.find(tdname);
-            if (user_typedefs_.count(tdname) && it != typedef_types_.end() &&
+            if (!is_internal_typedef_name(tdname) &&
+                user_typedefs_.count(tdname) && it != typedef_types_.end() &&
                 !types_compatible_p(it->second, ts_copy, typedef_types_))
                 throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdname);
             typedefs_.insert(tdname);
-            user_typedefs_.insert(tdname);
+            if (!is_internal_typedef_name(tdname)) user_typedefs_.insert(tdname);
             typedef_types_[tdname] = ts_copy;
             if (scoped_tdname != tdname) {
                 typedefs_.insert(scoped_tdname);
@@ -738,11 +784,12 @@ Node* Parser::parse_top_level() {
             if (tdn2) {
                 const char* scoped_tdn2 = qualify_name_arena(tdn2);
                 auto it = typedef_types_.find(tdn2);
-                if (user_typedefs_.count(tdn2) && it != typedef_types_.end() &&
+                if (!is_internal_typedef_name(tdn2) &&
+                    user_typedefs_.count(tdn2) && it != typedef_types_.end() &&
                     !types_compatible_p(it->second, ts2, typedef_types_))
                     throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdn2);
                 typedefs_.insert(tdn2);
-                user_typedefs_.insert(tdn2);
+                if (!is_internal_typedef_name(tdn2)) user_typedefs_.insert(tdn2);
                 typedef_types_[tdn2] = ts2;
                 if (scoped_tdn2 != tdn2) {
                     typedefs_.insert(scoped_tdn2);

@@ -367,6 +367,53 @@ TypeSpec Parser::parse_base_type() {
                 done = true; break;
             }
 
+            case TokenKind::KwDecltype: {
+                consume();  // consume decltype
+                expect(TokenKind::LParen);
+                if (check(TokenKind::Identifier) && cur().lexeme == "nullptr") {
+                    // c4c does not model std::nullptr_t yet; use a generic pointer
+                    // fallback so libstdc++ headers can continue parsing.
+                    ts.base = TB_VOID;
+                    ts.ptr_level = 1;
+                    consume();
+                    expect(TokenKind::RParen);
+                } else if (is_type_start()) {
+                    bool save_c = ts.is_const, save_v = ts.is_volatile;
+                    ts = parse_type_name();
+                    ts.is_const |= save_c;
+                    ts.is_volatile |= save_v;
+                    expect(TokenKind::RParen);
+                } else if (check(TokenKind::Identifier)) {
+                    std::string id = cur().lexeme;
+                    consume();
+                    auto vit = var_types_.find(id);
+                    if (vit != var_types_.end()) {
+                        ts = vit->second;
+                    } else {
+                        ts.base = TB_INT;
+                    }
+                    int depth = 0;
+                    while (!at_end() && !(check(TokenKind::RParen) && depth == 0)) {
+                        if (check(TokenKind::LParen)) ++depth;
+                        else if (check(TokenKind::RParen)) --depth;
+                        consume();
+                    }
+                    expect(TokenKind::RParen);
+                } else {
+                    int depth = 1;
+                    while (!at_end() && depth > 0) {
+                        if (check(TokenKind::LParen)) ++depth;
+                        else if (check(TokenKind::RParen)) {
+                            if (--depth == 0) { consume(); break; }
+                        }
+                        consume();
+                    }
+                    ts.base = TB_INT;
+                }
+                base_set = true;
+                done = true; break;
+            }
+
             case TokenKind::KwStaticAssert: {
                 // _Static_assert(expr, msg); - skip
                 consume();

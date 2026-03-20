@@ -87,6 +87,7 @@ enum class TokenKind {
   KwConsteval,   // consteval
   KwNamespace,   // namespace
   KwUsing,       // using
+  KwDecltype,    // decltype
   KwStaticCast,      // static_cast
   KwReinterpretCast, // reinterpret_cast
   KwConstCast,       // const_cast

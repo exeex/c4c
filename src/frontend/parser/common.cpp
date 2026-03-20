@@ -357,6 +357,7 @@ bool is_type_kw(TokenKind k) {
         case TokenKind::KwClass:
         case TokenKind::KwUnion:
         case TokenKind::KwEnum:
+        case TokenKind::KwDecltype:
         case TokenKind::KwInt128:
         case TokenKind::KwUInt128:
         case TokenKind::KwBuiltin:   // __builtin_va_list

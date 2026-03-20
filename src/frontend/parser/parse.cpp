@@ -43,6 +43,7 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_pro
         "__Float32x4_t", "__Float64x2_t",
         "__SVFloat32_t", "__SVFloat64_t", "__SVBool_t",
         "OSStatus", "OSErr",
+        "__true_type", "__false_type",
         nullptr
     };
     for (int i = 0; seed[i]; ++i) typedefs_.insert(seed[i]);
@@ -149,6 +150,26 @@ Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_pro
         wchar_ts.base = TB_INT;
         typedef_types_["wchar_t"]  = wchar_ts;
         typedef_types_["wint_t"]   = wchar_ts;
+
+        TypeSpec true_ts{};
+        true_ts.array_size = -1;
+        true_ts.array_rank = 0;
+        true_ts.is_ptr_to_array = false;
+        true_ts.base = TB_STRUCT;
+        true_ts.tag = arena_.strdup("__true_type");
+        typedef_types_["__true_type"] = true_ts;
+        typedef_types_["std::__true_type"] = true_ts;
+        typedef_types_["std::__8::__true_type"] = true_ts;
+
+        TypeSpec false_ts{};
+        false_ts.array_size = -1;
+        false_ts.array_rank = 0;
+        false_ts.is_ptr_to_array = false;
+        false_ts.base = TB_STRUCT;
+        false_ts.tag = arena_.strdup("__false_type");
+        typedef_types_["__false_type"] = false_ts;
+        typedef_types_["std::__false_type"] = false_ts;
+        typedef_types_["std::__8::__false_type"] = false_ts;
     }
     refresh_current_namespace_bridge();
 }
