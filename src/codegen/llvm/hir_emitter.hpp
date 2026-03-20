@@ -82,12 +82,15 @@ class HirEmitter {
                              const std::string& signature_text = {},
                              const std::vector<const hir::Block*>& block_order = {});
 
-  /// Lower a function definition using a pre-initialized FnCtx (LIR path).
-  /// The caller (hir_to_lir) is responsible for FnCtx setup and alloca hoisting.
-  /// This method emits statements, builds a LirFunction, and pushes it to the
-  /// working module.
-  void emit_function_body(FnCtx& ctx, const std::string& signature_text,
+  /// Lower a function definition's block bodies using a pre-initialized FnCtx
+  /// (LIR path).  The caller (hir_to_lir) is responsible for FnCtx setup,
+  /// alloca hoisting, VLA stack save, spec entry collection, and LirFunction
+  /// construction.  This method only emits statements into ctx.lir_blocks.
+  void emit_function_body(FnCtx& ctx,
                           const std::vector<const hir::Block*>& block_order);
+
+  /// Push a pre-built LirFunction into the working module.
+  void push_lir_function(lir::LirFunction fn);
 
   // ── Post-lowering accessors for module-level finalization ──────────────
   // These expose accumulated state so that hir_to_lir::lower() can own

@@ -447,6 +447,13 @@ c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
   // Hoist allocas.
   hoist_allocas(ctx, mod, fn);
 
+  // VLA stack save — must happen after alloca hoisting but before statements.
+  if (fn_has_vla_locals(fn)) {
+    const std::string saved_sp = "%t" + std::to_string(ctx.tmp_idx++);
+    ctx.cur_block().insts.push_back(LirStackSaveOp{saved_sp});
+    ctx.vla_stack_save_ptr = saved_sp;
+  }
+
   return ctx;
 }
 
@@ -472,6 +479,9 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
   c4c::codegen::llvm_backend::HirEmitter emitter(hir_mod);
   emitter.adopt_module(std::move(module));
 
+  bool any_vla = false;
+  std::vector<LirSpecEntry> spec_entries;
+
   emitter.lower_globals(global_indices);
   for (size_t idx : fn_indices) {
     const auto& fn = hir_mod.functions[idx];
@@ -481,36 +491,41 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
       // Declaration — no body to lower; delegate entirely.
       emitter.lower_single_function(fn, sig);
     } else {
-      // Definition — hir_to_lir owns FnCtx setup and alloca hoisting;
-      // HirEmitter owns statement / expression emission and LirFunction construction.
+      // Definition — hir_to_lir owns FnCtx setup, alloca hoisting, VLA
+      // stack save, spec entry collection, and LirFunction construction.
+      // HirEmitter owns statement / expression emission only.
       auto ctx = init_fn_ctx(hir_mod, fn);
+      if (ctx.vla_stack_save_ptr) any_vla = true;
       auto block_order = build_block_order(fn);
-      emitter.emit_function_body(ctx, sig, block_order);
+
+      // Spec entries — owned by hir_to_lir.
+      if (!fn.template_origin.empty() && !fn.spec_key.empty()) {
+        spec_entries.push_back({fn.spec_key.canonical, fn.template_origin, std::string(fn.name)});
+      }
+
+      emitter.emit_function_body(ctx, block_order);
+
+      // Build LirFunction from accumulated ctx — owned by hir_to_lir.
+      LirFunction lir_fn;
+      lir_fn.name = quote_llvm_ident(fn.name);
+      lir_fn.is_internal = fn.linkage.is_static;
+      lir_fn.is_declaration = false;
+      lir_fn.return_type = fn.return_type.spec;
+      lir_fn.signature_text = sig;
+      lir_fn.alloca_insts = std::move(ctx.alloca_insts);
+      lir_fn.blocks = std::move(ctx.lir_blocks);
+
+      inject_fallthrough_returns(lir_fn, fn);
+      emitter.push_lir_function(std::move(lir_fn));
     }
   }
 
   module = emitter.release_module();
+  if (any_vla) module.need_stacksave = true;
 
-  // Post-pass: inject fallthrough returns for blocks missing terminators.
-  // LirFunctions are appended in the same order as fn_indices.
-  {
-    size_t lir_fn_idx = 0;
-    for (size_t idx : fn_indices) {
-      // Find next LirFunction that matches this HIR function.
-      // Skip until we find the matching name.
-      const auto& fn = hir_mod.functions[idx];
-      const std::string expected_name =
-          c4c::codegen::llvm_backend::detail::quote_llvm_ident(fn.name);
-      while (lir_fn_idx < module.functions.size() &&
-             module.functions[lir_fn_idx].name != expected_name)
-        ++lir_fn_idx;
-      if (lir_fn_idx >= module.functions.size()) break;
-      auto& lir_fn = module.functions[lir_fn_idx];
-      if (!lir_fn.is_declaration) {
-        inject_fallthrough_returns(lir_fn, fn);
-      }
-      ++lir_fn_idx;
-    }
+  // Add spec entries collected by hir_to_lir.
+  for (auto& e : spec_entries) {
+    module.spec_entries.push_back(std::move(e));
   }
 
   // Module-level finalization: owned by hir_to_lir.

@@ -2,7 +2,7 @@
 
 ## Status
 
-In progress. Phases 0–4 slice 4 complete.
+In progress. Phase 5 slice 0 complete.
 
 ## Completed
 
@@ -102,6 +102,17 @@ In progress. Phases 0–4 slice 4 complete.
 - HirEmitter retains `emit_function()` for legacy path (still creates its own FnCtx internally)
 - Both legacy and lir paths produce identical output; all compare tests pass
 
+### Phase 5: Move Expression/Statement Lowering — slice 0 (remaining skeleton) ✓
+
+- Moved VLA stack save from `emit_function_body()` to `init_fn_ctx()` in `hir_to_lir.cpp`
+- Moved spec entry collection from `emit_function_body()` to `lower()` loop
+- Moved LirFunction construction from `emit_function_body()` to `lower()` loop
+- Moved fallthrough return injection to per-function post-pass (was global post-pass)
+- Added `HirEmitter::push_lir_function()` for hir_to_lir to push pre-built functions
+- `emit_function_body()` now only does block iteration + statement emission
+- `lower()` tracks `any_vla` flag and sets `module.need_stacksave` directly
+- Both legacy and lir paths produce identical output; all compare tests pass
+
 ### Test results
 
 - Full suite: **2075/2075 passed** (no regressions)
@@ -111,9 +122,7 @@ In progress. Phases 0–4 slice 4 complete.
 
 The next slices, in priority order:
 
-1. Phase 5: Move expression/statement lowering by risk slice
-2. Phase 5 slice 0: extract remaining function skeleton (VLA stack save already moved)
-3. Phase 5 slice 1: simple expressions (literals, decl refs, casts, basic arithmetic/compare)
+1. Phase 5 slice 1: simple expressions (literals, decl refs, casts, basic arithmetic/compare)
 
 
 ## Blockers

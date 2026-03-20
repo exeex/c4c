@@ -5097,24 +5097,9 @@ void HirEmitter::emit_function(const Function& fn, const std::string& pre_sig,
     module_.functions.push_back(std::move(lir_fn));
   }
 
-void HirEmitter::emit_function_body(FnCtx& ctx, const std::string& sig_text,
+void HirEmitter::emit_function_body(FnCtx& ctx,
                                      const std::vector<const Block*>& block_order) {
-    const auto& fn = *ctx.fn;
-
-    // Collect spec entries.
-    if (!fn.template_origin.empty() && !fn.spec_key.empty()) {
-      spec_entries_.push_back({fn.spec_key.canonical, fn.template_origin, std::string(fn.name)});
-    }
-
-    // VLA stack save (if needed) — must happen after alloca hoisting but before stmts.
-    if (lir::fn_has_vla_locals(fn)) {
-      need_llvm_stacksave_ = true;
-      const std::string saved_sp = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirStackSaveOp{saved_sp});
-      ctx.vla_stack_save_ptr = saved_sp;
-    }
-
-    // Emit block bodies.
+    // Emit block bodies — statement / expression emission only.
     for (size_t bi = 0; bi < block_order.size(); ++bi) {
       const Block* blk = block_order[bi];
       ctx.current_block_id = blk->id.value;
@@ -5125,17 +5110,10 @@ void HirEmitter::emit_function_body(FnCtx& ctx, const std::string& sig_text,
         emit_stmt(ctx, stmt);
       }
     }
+  }
 
-    // Build LirFunction from accumulated blocks.
-    lir::LirFunction lir_fn;
-    lir_fn.name = quote_llvm_ident(fn.name);
-    lir_fn.is_internal = fn.linkage.is_static;
-    lir_fn.is_declaration = false;
-    lir_fn.return_type = fn.return_type.spec;
-    lir_fn.signature_text = sig_text;
-    lir_fn.alloca_insts = std::move(ctx.alloca_insts);
-    lir_fn.blocks = std::move(ctx.lir_blocks);
-    module_.functions.push_back(std::move(lir_fn));
+void HirEmitter::push_lir_function(lir::LirFunction fn) {
+    module_.functions.push_back(std::move(fn));
   }
 
 }  // namespace tinyc2ll::codegen::llvm_backend
