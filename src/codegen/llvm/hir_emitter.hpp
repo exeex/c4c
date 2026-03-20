@@ -2,6 +2,7 @@
 
 #include "llvm_codegen.hpp"
 #include "hir_to_llvm_helpers.hpp"
+#include "../lir/ir.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -51,8 +52,12 @@ struct FnCtx {
   std::unordered_map<uint32_t, bool> local_is_vla;
   // param_index → SSA name (e.g. "%p.x")
   std::unordered_map<uint32_t, std::string> param_slots;
-  std::vector<std::string> alloca_lines;
-  std::vector<std::string> body_lines;
+  // Structured LIR blocks (replaces body_lines).
+  std::vector<lir::LirBlock> lir_blocks;
+  size_t current_block_idx = 0;
+  lir::LirBlock& cur_block() { return lir_blocks[current_block_idx]; }
+  // Hoisted alloca instructions (rendered before entry block body).
+  std::vector<lir::LirInst> alloca_insts;
   // legacy per-block metadata (kept for compatibility; mostly unused now)
   std::unordered_map<uint32_t, BlockMeta> block_meta;
   // body_block -> continue branch target label
@@ -91,8 +96,7 @@ class HirEmitter {
  private:
   const Module& mod_;
   std::ostringstream preamble_;
-  struct FnBody { std::string name; bool is_internal; std::string body; };
-  std::vector<FnBody> fn_bodies_;
+  lir::LirModule module_;  // Structured intermediate representation
   std::unordered_map<std::string, std::string> extern_call_decls_;  // name -> ret llvm type
   std::unordered_map<std::string, std::string> str_pool_;
   int str_idx_ = 0;

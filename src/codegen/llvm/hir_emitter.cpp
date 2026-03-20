@@ -139,13 +139,39 @@ std::string HirEmitter::emit(){
       if (best_fn.count(fn.name) && best_fn[fn.name] == i) emit_function(fn);
     }
 
+    // Helper: render a LirInst to text (for LirRawLine).
+    auto render_inst = [](std::ostringstream& os, const lir::LirInst& inst) {
+      if (const auto* raw = std::get_if<lir::LirRawLine>(&inst)) {
+        os << raw->line << "\n";
+      }
+    };
+
+    // Helper: render a LirFunction to LLVM IR text.
+    auto render_fn = [&render_inst](const lir::LirFunction& f) -> std::string {
+      if (f.is_declaration) return f.signature_text;
+      std::ostringstream fout;
+      fout << f.signature_text;
+      fout << "{\n";
+      for (size_t i = 0; i < f.blocks.size(); ++i) {
+        const auto& blk = f.blocks[i];
+        fout << blk.label << ":\n";
+        // Alloca instructions are hoisted to the start of the entry block.
+        if (i == 0) {
+          for (const auto& inst : f.alloca_insts) render_inst(fout, inst);
+        }
+        for (const auto& inst : blk.insts) render_inst(fout, inst);
+      }
+      fout << "}\n\n";
+      return fout.str();
+    };
+
     // Dead-code elimination: remove unreferenced internal (static) functions.
     // Collect names of internal functions.
     std::unordered_set<std::string> internal_fns;
-    for (const auto& b : fn_bodies_) {
-      if (b.is_internal) internal_fns.insert(b.name);
+    for (const auto& f : module_.functions) {
+      if (f.is_internal) internal_fns.insert(f.name);
     }
-    // Find all @name and @"quoted name" references in each function body.
+    // Find all @name and @"quoted name" references in a text block.
     auto find_refs = [](const std::string& body) {
       std::unordered_set<std::string> refs;
       size_t pos = 0;
@@ -157,7 +183,6 @@ std::string HirEmitter::emit(){
           size_t start = pos;
           while (pos < body.size() && body[pos] != '"') ++pos;
           if (pos > start) {
-            // Store as the quoted form including quotes to match fn_bodies_ key
             refs.insert("\"" + body.substr(start, pos - start) + "\"");
           }
           if (pos < body.size()) ++pos;  // skip closing "
@@ -171,12 +196,20 @@ std::string HirEmitter::emit(){
       }
       return refs;
     };
+
+    // Pre-render function bodies for DCE reference scanning.
+    std::vector<std::string> rendered_bodies;
+    rendered_bodies.reserve(module_.functions.size());
+    for (const auto& f : module_.functions) {
+      rendered_bodies.push_back(render_fn(f));
+    }
+
     std::unordered_set<std::string> reachable;
     // Seed: all non-internal function bodies are reachable roots.
     std::vector<std::string> worklist;
-    for (const auto& b : fn_bodies_) {
-      if (!b.is_internal) {
-        for (const auto& r : find_refs(b.body)) {
+    for (size_t i = 0; i < module_.functions.size(); ++i) {
+      if (!module_.functions[i].is_internal) {
+        for (const auto& r : find_refs(rendered_bodies[i])) {
           if (internal_fns.count(r) && !reachable.count(r)) {
             reachable.insert(r);
             worklist.push_back(r);
@@ -195,14 +228,16 @@ std::string HirEmitter::emit(){
       }
     }
     // Propagate: internal functions referenced by reachable internal functions.
-    std::unordered_map<std::string, const FnBody*> fn_by_name;
-    for (const auto& b : fn_bodies_) fn_by_name[b.name] = &b;
+    std::unordered_map<std::string, size_t> fn_idx_by_name;
+    for (size_t i = 0; i < module_.functions.size(); ++i) {
+      fn_idx_by_name[module_.functions[i].name] = i;
+    }
     while (!worklist.empty()) {
       std::string cur = std::move(worklist.back());
       worklist.pop_back();
-      auto it = fn_by_name.find(cur);
-      if (it == fn_by_name.end()) continue;
-      for (const auto& r : find_refs(it->second->body)) {
+      auto it = fn_idx_by_name.find(cur);
+      if (it == fn_idx_by_name.end()) continue;
+      for (const auto& r : find_refs(rendered_bodies[it->second])) {
         if (internal_fns.count(r) && !reachable.count(r)) {
           reachable.insert(r);
           worklist.push_back(r);
@@ -231,10 +266,10 @@ std::string HirEmitter::emit(){
       out << "declare " << ret_ty << " " << llvm_global_sym(name) << "(...)\n";
     }
     if (!extern_call_decls_.empty()) out << "\n";
-    for (const auto& b : fn_bodies_) {
+    for (size_t i = 0; i < module_.functions.size(); ++i) {
       // Skip unreachable internal functions.
-      if (b.is_internal && !reachable.count(b.name)) continue;
-      out << b.body;
+      if (module_.functions[i].is_internal && !reachable.count(module_.functions[i].name)) continue;
+      out << rendered_bodies[i];
     }
 
     // Emit LLVM named metadata for specialization identity (cross-TU serialization).
@@ -290,18 +325,22 @@ const GlobalVar* HirEmitter::select_global_object(GlobalId id) const {
   }
 
 void HirEmitter::emit_instr(FnCtx& ctx, const std::string& line){
-    ctx.body_lines.push_back("  " + line);
+    ctx.cur_block().insts.push_back(lir::LirRawLine{"  " + line});
     ctx.last_term = false;
   }
 
 void HirEmitter::emit_lbl(FnCtx& ctx, const std::string& lbl){
-    ctx.body_lines.push_back(lbl + ":");
+    lir::LirBlock blk;
+    blk.id = lir::LirBlockId{static_cast<uint32_t>(ctx.lir_blocks.size())};
+    blk.label = lbl;
+    ctx.lir_blocks.push_back(std::move(blk));
+    ctx.current_block_idx = ctx.lir_blocks.size() - 1;
     ctx.last_term = false;
   }
 
 void HirEmitter::emit_term(FnCtx& ctx, const std::string& line){
     if (!ctx.last_term) {
-      ctx.body_lines.push_back("  " + line);
+      ctx.cur_block().insts.push_back(lir::LirRawLine{"  " + line});
       ctx.last_term = true;
     }
   }
@@ -1609,8 +1648,8 @@ std::string HirEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec& 
         }
         // Create a new alloca for this parameter
         const std::string slot = "%lv.param." + sanitize_llvm_ident(param.name);
-        ctx.alloca_lines.push_back("  " + slot + " = alloca " + llvm_alloca_ty(pts));
-        ctx.alloca_lines.push_back("  store " + llvm_ty(pts) + " " + pname + ", ptr " + slot);
+        ctx.alloca_insts.push_back(lir::LirRawLine{"  " + slot + " = alloca " + llvm_alloca_ty(pts)});
+        ctx.alloca_insts.push_back(lir::LirRawLine{"  store " + llvm_ty(pts) + " " + pname + ", ptr " + slot});
         ctx.param_slots[*r->param_index + 0x80000000u] = slot;
         return slot;
       }
@@ -1733,7 +1772,7 @@ std::string HirEmitter::emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeSp
           base_ts = rval_ts;
         }
         const std::string slot = fresh_tmp(ctx) + ".agg";
-        ctx.alloca_lines.push_back("  " + slot + " = alloca " + llvm_alloca_ty(base_ts));
+        ctx.alloca_insts.push_back(lir::LirRawLine{"  " + slot + " = alloca " + llvm_alloca_ty(base_ts)});
         emit_instr(ctx, "store " + llvm_ty(base_ts) + " " + rval + ", ptr " + slot);
         base_ptr = slot;
       }
@@ -4987,8 +5026,8 @@ void HirEmitter::hoist_allocas(FnCtx& ctx, const Function& fn){
       const std::string pname = "%p." + sanitize_llvm_ident(param.name);
       // Store the spill slot under key (param_index + sentinel)
       ctx.param_slots[static_cast<uint32_t>(i) + 0x80000000u] = slot;
-      ctx.alloca_lines.push_back("  " + slot + " = alloca " + llvm_alloca_ty(param.type.spec));
-      ctx.alloca_lines.push_back("  store " + llvm_ty(param.type.spec) + " " + pname + ", ptr " + slot);
+      ctx.alloca_insts.push_back(lir::LirRawLine{"  " + slot + " = alloca " + llvm_alloca_ty(param.type.spec)});
+      ctx.alloca_insts.push_back(lir::LirRawLine{"  store " + llvm_ty(param.type.spec) + " " + pname + ", ptr " + slot});
     }
 
     std::unordered_map<std::string, int> name_count;
@@ -5007,18 +5046,16 @@ void HirEmitter::hoist_allocas(FnCtx& ctx, const Function& fn){
         ctx.local_types[d->id.value] = d->type.spec;
         ctx.local_is_vla[d->id.value] = d->vla_size.has_value();
         if (d->vla_size) {
-          // VLA locals are allocated dynamically at declaration time.
-          // Keep a pointer slot in entry and store the runtime alloca address into it.
-          ctx.alloca_lines.push_back("  " + slot + " = alloca ptr");
+          ctx.alloca_insts.push_back(lir::LirRawLine{"  " + slot + " = alloca ptr"});
         } else {
           const std::string alloca_ty = llvm_alloca_ty(d->type.spec);
-          ctx.alloca_lines.push_back("  " + slot + " = alloca " + alloca_ty);
+          ctx.alloca_insts.push_back(lir::LirRawLine{"  " + slot + " = alloca " + alloca_ty});
           if (d->init &&
               (d->type.spec.array_rank > 0 ||
                (d->type.spec.ptr_level == 0 &&
                 (d->type.spec.base == TB_STRUCT ||
                  d->type.spec.base == TB_UNION)))) {
-            ctx.alloca_lines.push_back("  store " + alloca_ty + " zeroinitializer, ptr " + slot);
+            ctx.alloca_insts.push_back(lir::LirRawLine{"  store " + alloca_ty + " zeroinitializer, ptr " + slot});
           }
         }
       }
@@ -5037,7 +5074,7 @@ void HirEmitter::emit_function(const Function& fn){
       if (g.fn_ptr_sig) ctx.global_fn_ptr_sigs[g.id.value] = *g.fn_ptr_sig;
     }
 
-    std::ostringstream out;
+    std::ostringstream sig_out;
     const std::string ret_ty = llvm_ret_ty(fn.return_type.spec);
 
     const bool void_param_list =
@@ -5048,27 +5085,32 @@ void HirEmitter::emit_function(const Function& fn){
 
     if (fn.linkage.is_extern && fn.blocks.empty()) {
       const std::string decl_kw = fn.linkage.is_weak ? "declare extern_weak " : "declare ";
-      out << decl_kw << llvm_visibility(fn.linkage.visibility) << ret_ty << " "
-          << llvm_global_sym(fn.name) << "(";
+      sig_out << decl_kw << llvm_visibility(fn.linkage.visibility) << ret_ty << " "
+              << llvm_global_sym(fn.name) << "(";
       for (size_t i = 0; i < fn.params.size(); ++i) {
         if (void_param_list) break;
-        if (i) out << ", ";
-        out << llvm_ty(fn.params[i].type.spec);
+        if (i) sig_out << ", ";
+        sig_out << llvm_ty(fn.params[i].type.spec);
       }
       if (fn.attrs.variadic) {
-        if (!fn.params.empty() && !void_param_list) out << ", ";
-        out << "...";
+        if (!fn.params.empty() && !void_param_list) sig_out << ", ";
+        sig_out << "...";
       }
-      out << ")\n\n";
-      fn_bodies_.push_back({quote_llvm_ident(fn.name), fn.linkage.is_static, out.str()});
+      sig_out << ")\n\n";
+      lir::LirFunction lir_fn;
+      lir_fn.name = quote_llvm_ident(fn.name);
+      lir_fn.is_internal = fn.linkage.is_static;
+      lir_fn.is_declaration = true;
+      lir_fn.signature_text = sig_out.str();
+      module_.functions.push_back(std::move(lir_fn));
       return;
     }
 
     // Emit specialization identity metadata as comments for template instantiations.
     if (!fn.template_origin.empty()) {
-      out << "; template-origin: " << fn.template_origin << "\n";
+      sig_out << "; template-origin: " << fn.template_origin << "\n";
       if (!fn.spec_key.empty()) {
-        out << "; spec-key: " << fn.spec_key.canonical << "\n";
+        sig_out << "; spec-key: " << fn.spec_key.canonical << "\n";
         spec_entries_.push_back({fn.spec_key.canonical, fn.template_origin, std::string(fn.name)});
       }
     }
@@ -5076,26 +5118,34 @@ void HirEmitter::emit_function(const Function& fn){
     // Signature
     std::string fn_lk = fn.linkage.is_static ? "internal " : "";
     if (fn.linkage.is_weak && !fn.linkage.is_static) fn_lk = "weak ";
-    out << "define " << fn_lk << llvm_visibility(fn.linkage.visibility) << ret_ty << " "
-        << llvm_global_sym(fn.name) << "(";
+    sig_out << "define " << fn_lk << llvm_visibility(fn.linkage.visibility) << ret_ty << " "
+            << llvm_global_sym(fn.name) << "(";
     for (size_t i = 0; i < fn.params.size(); ++i) {
       if (void_param_list) break;
-      if (i) out << ", ";
+      if (i) sig_out << ", ";
       const std::string pty = llvm_ty(fn.params[i].type.spec);
       const std::string pname = "%p." + sanitize_llvm_ident(fn.params[i].name);
-      out << pty << " " << pname;
+      sig_out << pty << " " << pname;
       ctx.param_slots[static_cast<uint32_t>(i)] = pname;
     }
     if (fn.attrs.variadic) {
-      if (!fn.params.empty()) out << ", ";
-      out << "...";
+      if (!fn.params.empty()) sig_out << ", ";
+      sig_out << "...";
     }
-    out << ")";
+    sig_out << ")";
     // Emit function attributes.
-    if (fn.attrs.no_inline) out << " noinline";
-    if (fn.attrs.always_inline) out << " alwaysinline";
-    out << "\n";
-    out << "{\nentry:\n";
+    if (fn.attrs.no_inline) sig_out << " noinline";
+    if (fn.attrs.always_inline) sig_out << " alwaysinline";
+    sig_out << "\n";
+
+    // Create entry block for alloca hoisting and entry statements.
+    {
+      lir::LirBlock entry_blk;
+      entry_blk.id = lir::LirBlockId{0};
+      entry_blk.label = "entry";
+      ctx.lir_blocks.push_back(std::move(entry_blk));
+      ctx.current_block_idx = 0;
+    }
 
     // Alloca hoisting
     hoist_allocas(ctx, fn);
@@ -5105,9 +5155,6 @@ void HirEmitter::emit_function(const Function& fn){
       emit_instr(ctx, saved_sp + " = call ptr @llvm.stacksave()");
       ctx.vla_stack_save_ptr = saved_sp;
     }
-
-    // Also alloca params if they're assigned to (for address-takeable params)
-    // We don't do this here; params are SSA values directly.
 
     // Emit blocks in order (entry first, then rest)
     const Block* entry_blk = nullptr;
@@ -5119,10 +5166,6 @@ void HirEmitter::emit_function(const Function& fn){
     for (const auto& blk : fn.blocks) {
       if (blk.id.value != fn.entry.value) ordered.push_back(&blk);
     }
-
-    // Pre-scan to build block_meta from WhileStmt/ForStmt/DoWhileStmt
-    // (This happens during emit_stmt calls, which populate ctx.block_meta)
-    // But we emit stmts sequentially, so meta is built as we go.
 
     for (size_t bi = 0; bi < ordered.size(); ++bi) {
       const Block* blk = ordered[bi];
@@ -5139,8 +5182,6 @@ void HirEmitter::emit_function(const Function& fn){
       }
 
       // HIR lowering must encode CFG edges explicitly.
-      // Do not auto-fallthrough into the next emitted block, otherwise
-      // unrelated blocks can be accidentally connected and create loops.
       if (!ctx.last_term) {
         if (fn.return_type.spec.base == TB_VOID &&
             fn.return_type.spec.ptr_level == 0 &&
@@ -5152,7 +5193,6 @@ void HirEmitter::emit_function(const Function& fn){
           emit_term(ctx, "ret ptr null");
         } else if (is_float_base(fn.return_type.spec.base) &&
                    fn.return_type.spec.ptr_level == 0 && fn.return_type.spec.array_rank == 0) {
-          // Float/double: zero must be expressed as a float constant, not integer 0
           const std::string zero_val = fp_literal(fn.return_type.spec.base, 0.0);
           emit_term(ctx, "ret " + ret_ty + " " + zero_val);
         } else if (is_complex_base(fn.return_type.spec.base) ||
@@ -5165,11 +5205,16 @@ void HirEmitter::emit_function(const Function& fn){
       }
     }
 
-    // Assemble
-    for (const auto& l : ctx.alloca_lines) out << l << "\n";
-    for (const auto& l : ctx.body_lines)   out << l << "\n";
-    out << "}\n\n";
-    fn_bodies_.push_back({quote_llvm_ident(fn.name), fn.linkage.is_static, out.str()});
+    // Build LirFunction from accumulated blocks.
+    lir::LirFunction lir_fn;
+    lir_fn.name = quote_llvm_ident(fn.name);
+    lir_fn.is_internal = fn.linkage.is_static;
+    lir_fn.is_declaration = false;
+    lir_fn.return_type = fn.return_type.spec;
+    lir_fn.signature_text = sig_out.str();
+    lir_fn.alloca_insts = std::move(ctx.alloca_insts);
+    lir_fn.blocks = std::move(ctx.lir_blocks);
+    module_.functions.push_back(std::move(lir_fn));
   }
 
 }  // namespace tinyc2ll::codegen::llvm_backend

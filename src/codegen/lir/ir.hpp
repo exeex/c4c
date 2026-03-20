@@ -271,11 +271,19 @@ struct LirExternDecl {
 struct LirFunction {
   std::string name;
   bool is_internal = false;
+  bool is_declaration = false;  // true for declarations (no body)
   TypeSpec return_type{};
   std::vector<std::pair<std::string, TypeSpec>> params;  // name, type
   std::vector<LirBlock> blocks;
   std::vector<LirStackObject> stack_objects;
   LirBlockId entry{};
+
+  // Pre-formatted signature text (define/declare line + template comments).
+  // Used by the printer; will be replaced with structured fields in Stage 2+.
+  std::string signature_text;
+
+  // Hoisted alloca instructions, rendered before entry block body instructions.
+  std::vector<LirInst> alloca_insts;
 
   // ID generation for values and blocks within this function.
   uint32_t next_value_id = 0;

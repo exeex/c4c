@@ -25,17 +25,16 @@
 
 - **Namespace Phase 4 slice 2: Function name lookup across namespaces** — Added `known_fn_names_` set to parser; functions register their qualified name when declared/defined. `lookup_value_in_context()` now checks both `var_types_` and `known_fn_names_`, enabling unqualified calls to functions in anonymous namespaces and via `using namespace` directives. Two new runtime tests: `anon_namespace_fn_lookup.cpp`, `using_namespace_fn_lookup.cpp`. All 2067/2067 tests pass.
 
+- **Milestone D Stage 0: LIR mechanical prep** — Created `src/codegen/lir/` directory with skeleton data structures: `LirModule`, `LirFunction`, `LirBlock`, `LirInst` (variant with 15 instruction types + `LirRawLine`), `LirTerminator` (variant with 6 terminator types). Skeleton `hir_to_lir.hpp/cpp` and `lir_printer.hpp/cpp`. CMakeLists.txt updated. All 2067/2067 tests pass.
+
+- **Milestone D Stage 1 slice 1: Replace string sinks with LIR blocks** — Replaced `FnCtx::alloca_lines` and `body_lines` (flat `vector<string>`) with structured `lir::LirBlock` containers. `emit_lbl()` now creates new LIR blocks; `emit_instr()`/`emit_term()` push `LirRawLine` into the current block. Replaced `fn_bodies_` (`vector<FnBody>`) with `lir::LirModule module_` member in `HirEmitter`. Each function is stored as a `LirFunction` with `signature_text`, `alloca_insts`, and `blocks`. `LirFunction` gained `is_declaration`, `signature_text`, `alloca_insts` fields. Render lambda in `emit()` walks the structured blocks to produce identical LLVM IR output. Dead-code elimination updated to operate on `module_.functions`. All 2067/2067 tests pass.
+
 ## Active Item
-**Milestone D Stage 0: LIR mechanical prep**
-- Create `src/codegen/lir/` directory with skeleton data structures
-- Create `lir/ir.hpp` with minimal `LirModule`, `LirFunction`, `LirBlock`, `LirInst`, `LirTerminator` types
-- Create skeleton `hir_to_lir.hpp/cpp` and `lir_printer.hpp/cpp`
-- Update `CMakeLists.txt` to include new directory and files
-- Build and tests must pass unchanged (no behavioral change)
+**Milestone D Stage 1 slice 2**: Move preamble (struct defs, globals, string pool) into `LirModule` structured containers instead of raw `preamble_` stringstream.
 
 ## Next
-- Milestone D Stage 1: Replace string sinks (alloca_lines, body_lines) with structured LIR containers
 - Milestone D Stage 2: Split printer out into standalone LirPrinter
+- Milestone D Stage 3: Normalize special cases into LIR ops
 
 ## Test Suite
 - Baseline: 2067/2067 (100%)
