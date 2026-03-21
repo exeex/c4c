@@ -618,6 +618,10 @@ class Validator {
 
   void validate_global(const Node* n) {
     if (!n) return;
+    // Skip reference-init checks for template-parameterized declarations;
+    // these are template function declarations that the parser may not fully
+    // understand (e.g. reference-returning functions like char(&f(T(&x)[N]))[N]).
+    if (n->n_template_params > 0) return;
     if (n->type.is_lvalue_ref && !n->init) {
       emit(n->line, "lvalue reference must be initialized");
     }

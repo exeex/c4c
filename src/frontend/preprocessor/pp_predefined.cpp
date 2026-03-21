@@ -220,10 +220,10 @@ void init_predefined_macros(MacroTable& table, const std::string& requested_targ
   def(table, "__BYTE_ORDER__", "1234");
 
   // GCC compatibility macros
-  def(table, "__GNUC__", "4");
-  def(table, "__GNUC_MINOR__", "2");
-  def(table, "__GNUC_PATCHLEVEL__", "1");
-  def(table, "__VERSION__", "\"4.2.1 Compatible c4c\"");
+  def(table, "__GNUC__", "10");
+  def(table, "__GNUC_MINOR__", "0");
+  def(table, "__GNUC_PATCHLEVEL__", "0");
+  def(table, "__VERSION__", "\"10.0.0 Compatible c4c\"");
   def(table, "__STDC_HOSTED__", "1");
 
   // Target architecture macros.

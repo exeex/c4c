@@ -202,6 +202,24 @@ Node* Parser::parse_unary() {
             n->left = operand;
             return n;
         }
+        case TokenKind::KwDelete: {
+            // C++ delete / delete[] expression.
+            // Parse the operand but emit as a no-op (0) since we don't
+            // support heap allocation; the intent is to not choke on the syntax.
+            consume();  // consume 'delete'
+            if (check(TokenKind::LBracket) &&
+                pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                tokens_[pos_ + 1].kind == TokenKind::RBracket) {
+                consume();  // '['
+                consume();  // ']'
+            }
+            // Parse the operand expression (the pointer being freed).
+            (void)parse_unary();
+            // Return a no-op integer 0 (void-like).
+            Node* n = make_node(NK_INT_LIT, ln);
+            n->ival = 0;
+            return n;
+        }
         case TokenKind::KwSizeof: {
             consume();
             if (check(TokenKind::LParen)) {

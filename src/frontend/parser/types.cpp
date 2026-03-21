@@ -720,6 +720,21 @@ TypeSpec Parser::parse_base_type() {
                         ++arg_idx;
                         if (!match(TokenKind::Comma)) break;
                     }
+                    // If there are extra template args (e.g. variadic pack
+                    // expansion like Bn...), skip them to reach '>'.
+                    if (arg_idx >= tpl_def->n_template_params && !check_template_close()) {
+                        int depth = 0;
+                        while (!at_end()) {
+                            if (check(TokenKind::Less)) { ++depth; consume(); }
+                            else if (check_template_close()) {
+                                if (depth == 0) break;
+                                --depth;
+                                consume();
+                            } else {
+                                consume();
+                            }
+                        }
+                    }
                     // Fill in defaults for remaining params
                     while (arg_idx < tpl_def->n_template_params) {
                         if (tpl_def->template_param_has_default[arg_idx]) {
@@ -1308,9 +1323,11 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     parse_attributes(&ts);
 
     // Normal declarator: optional identifier name, including C++ qualified names
-    // such as `Type::method` or `Type::operator+=`.
+    // such as `Type::method` or `Type::operator+=`, or free operator functions
+    // like `operator==`.
     if (out_name && is_cpp_mode() &&
-        (check(TokenKind::Identifier) || check(TokenKind::ColonColon))) {
+        (check(TokenKind::Identifier) || check(TokenKind::ColonColon) ||
+         check(TokenKind::KwOperator))) {
         int saved_pos = pos_;
         std::string qualified_name;
         bool parsed_qualified = false;
@@ -1408,7 +1425,10 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         if (match(TokenKind::ColonColon))
             qualified_name = "::";
 
-        if (check(TokenKind::Identifier)) {
+        if (check(TokenKind::KwOperator)) {
+            // Free operator function: operator==, operator+, etc.
+            parsed_qualified = parse_operator_name();
+        } else if (check(TokenKind::Identifier)) {
             qualified_name += cur().lexeme;
             consume();
             parsed_qualified = true;
@@ -1605,6 +1625,8 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 if ((check(TokenKind::Identifier) && cur().lexeme == "typename") ||
                     check(TokenKind::KwClass)) {
                     consume(); // eat 'typename'/'class'
+                    // Skip '...' for variadic parameter packs.
+                    if (check(TokenKind::Ellipsis)) consume();
                     if (check(TokenKind::Identifier)) {
                         std::string pname = cur().lexeme;
                         consume();
@@ -1631,9 +1653,21 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                             consume();
                         }
                     }
-                } else if (is_type_kw(cur().kind)) {
-                    // NTTP: e.g. int N
-                    while (!at_end() && is_type_kw(cur().kind)) consume();
+                } else if (is_type_kw(cur().kind) ||
+                           (check(TokenKind::Identifier) &&
+                            (is_typedef_name(cur().lexeme) ||
+                             typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0))) {
+                    // NTTP: e.g. int N, size_t N, T v (typedef-based types).
+                    // Consume the type specifier tokens.
+                    if (is_type_kw(cur().kind)) {
+                        while (!at_end() && is_type_kw(cur().kind)) consume();
+                    } else {
+                        consume(); // consume typedef name
+                    }
+                    // Skip pointer stars or qualifiers.
+                    while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
+                    // Skip '...' for variadic NTTP packs.
+                    if (check(TokenKind::Ellipsis)) consume();
                     if (check(TokenKind::Identifier)) consume(); // param name
                     // Skip default: = expr
                     if (check(TokenKind::Assign)) {

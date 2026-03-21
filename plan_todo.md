@@ -39,18 +39,28 @@ Operator Overloading — item 4: return to EASTL/std_vector bring-up
     paths (qualified operator, qualified ctor, regular qualified method)
   - Test: `noexcept_method_parse.cpp` (runtime, validates noexcept on ctor/dtor/method)
   - Resolved exception.h:65,67 blocker (copy/move ctor with noexcept)
+- [x] EASTL bring-up slice 1: parser fixes for header parsing
+  - Bump __GNUC__ from 4.2 to 10.0 to avoid EASTL nullptr polyfill (member-ptr syntax)
+  - Variadic template parameter packs (`typename...`, `class...`, `bool...`, `size_t...`)
+  - Non-type template parameters with typedef types (`size_t N`, `T v`)
+  - Immediate injection of type params for NTTP resolution (`template<typename T, T v>`)
+  - Free operator function parsing (operator==, operator!= at namespace/global scope)
+  - `delete`/`delete[]` expression parsing (parsed as no-op)
+  - Skip sema validation for template-parameterized global declarations
+  - Extra template args graceful skip (variadic pack expansion in template arg lists)
+  - EASTL errors reduced from 21 to 11
+  - Test: `template_variadic_and_nttp_parse.cpp` (runtime)
 
 ## Next Slice
-- EASTL bring-up: remaining blockers:
-  1. `nullptr.h:36` — member pointer conversion operator `operator T C::*()` (niche syntax)
-  2. `allocator.h:294` — `operator delete[]` expression parsing
-  3. `type_traits.h` — variadic template parameters (`...` in template param lists)
-  - Most impactful next: variadic template parameter packs (used pervasively in type_traits)
-  - Or: fix member pointer syntax in nullptr.h (blocks EABase)
+- EASTL bring-up slice 2: remaining blockers (11 errors):
+  1. `type_traits.h:815` — `static_min`/`static_max` partial specialization (variadic NTTP)
+  2. `type_fundamental.h:33` — `is_void<void>` specialization (incomplete type)
+  3. `std_vector_simple.cpp:9` — `is_fundamental` incomplete type (cascading)
+  - Root cause: template struct specialization/inheritance resolution issues
 
 ## Blockers
-- None
+- None critical
 
 ## Suite Status
-- Before: 2085/2088 (3 pre-existing failures: alignas, template_struct_advanced, template_struct_nested)
-- After: 2085/2088 (+1 new test, no regressions)
+- Before: 2085/2088 (3 pre-existing failures)
+- After: 2086/2089 (+1 new test, no regressions)
