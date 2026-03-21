@@ -50,17 +50,29 @@ Operator Overloading — item 4: return to EASTL/std_vector bring-up
   - Extra template args graceful skip (variadic pack expansion in template arg lists)
   - EASTL errors reduced from 21 to 11
   - Test: `template_variadic_and_nttp_parse.cpp` (runtime)
+- [x] EASTL bring-up slice 2: template struct specialization parsing
+  - Explicit specialization (`template<> struct is_void<void>`) and partial specialization
+    (`template<typename T> struct remove_const<const T>`) now parsed correctly
+  - Lookahead in `parse_struct_or_union()` detects `<args>` followed by `{` or `:`
+  - Specialization struct gets mangled tag name (`__spec_N`) to avoid primary template collision
+  - `last_struct_was_specialization_` flag prevents re-registration in `template_struct_defs_`
+  - `>>` (GreaterGreater) handling in inheritance clause skipping and specialization arg consumption
+  - NTTP default value `is_expr_continuation` heuristic prevents premature `>` close when
+    followed by binary operators (`||`, `&&`, `::`, etc.)
+  - `expect_template_close()` replaces `expect(Greater)` at template param list close
+  - EASTL errors reduced from 11 to ~20 (deeper in headers — new territory)
+  - Test: `template_struct_specialization_parse.cpp` (parse-only)
 
 ## Next Slice
-- EASTL bring-up slice 2: remaining blockers (11 errors):
-  1. `type_traits.h:815` — `static_min`/`static_max` partial specialization (variadic NTTP)
-  2. `type_fundamental.h:33` — `is_void<void>` specialization (incomplete type)
-  3. `std_vector_simple.cpp:9` — `is_fundamental` incomplete type (cascading)
-  - Root cause: template struct specialization/inheritance resolution issues
+- EASTL bring-up slice 3: new blockers after specialization fix (~20 errors deeper in headers):
+  - type_transformations.h: redefinition issues with specialization-mangled tags
+  - type_compound.h: further specialization/inheritance patterns
+  - iterator.h: parsing issues in template-heavy code
+  - Need to investigate exact error set with fresh EASTL run
 
 ## Blockers
 - None critical
 
 ## Suite Status
-- Before: 2085/2088 (3 pre-existing failures)
-- After: 2086/2089 (+1 new test, no regressions)
+- Before: 2094/2094
+- After: 2095/2095 (+1 new test, no regressions)

@@ -475,6 +475,7 @@ Node* Parser::parse_top_level() {
             parsing_explicit_specialization_ = true;
             Node* spec = parse_top_level();
             parsing_explicit_specialization_ = saved_spec;
+            last_struct_was_specialization_ = false;  // reset in case spec parsed a struct
             if (spec) spec->is_explicit_specialization = true;
             return spec;
         }
@@ -556,13 +557,38 @@ Node* Parser::parse_top_level() {
                         template_param_default_types.push_back(dummy);
                         template_param_default_values.push_back(val * sign);
                     } else {
-                        // Complex default expression — skip for now
+                        // Complex default expression — skip balanced tokens.
+                        // A > at depth 0 closes the template param list UNLESS
+                        // followed by :: or a binary operator (the expression continues).
+                        auto is_expr_continuation = [&](int p) -> bool {
+                            if (p >= static_cast<int>(tokens_.size())) return false;
+                            auto k = tokens_[p].kind;
+                            return k == TokenKind::ColonColon || k == TokenKind::PipePipe ||
+                                   k == TokenKind::AmpAmp || k == TokenKind::Pipe ||
+                                   k == TokenKind::Amp || k == TokenKind::Caret ||
+                                   k == TokenKind::Plus || k == TokenKind::Minus ||
+                                   k == TokenKind::Star || k == TokenKind::Slash ||
+                                   k == TokenKind::Percent || k == TokenKind::EqualEqual ||
+                                   k == TokenKind::BangEqual || k == TokenKind::LessEqual ||
+                                   k == TokenKind::GreaterEqual || k == TokenKind::Question;
+                        };
                         int depth = 0;
                         while (!at_end()) {
-                            if (check(TokenKind::Less)) ++depth;
+                            if (check(TokenKind::Less) || check(TokenKind::LParen)) ++depth;
                             else if (check(TokenKind::Greater)) {
-                                if (depth == 0) break;
+                                if (depth == 0) {
+                                    if (is_expr_continuation(pos_ + 1)) { consume(); continue; }
+                                    break;
+                                }
                                 --depth;
+                            } else if (check(TokenKind::RParen)) {
+                                if (depth > 0) --depth;
+                            } else if (check(TokenKind::GreaterGreater)) {
+                                if (depth <= 1) {
+                                    if (is_expr_continuation(pos_ + 1)) { depth = 0; consume(); continue; }
+                                    break;
+                                }
+                                depth -= 2;
                             } else if (check(TokenKind::Comma) && depth == 0) {
                                 break;
                             }
@@ -603,13 +629,36 @@ Node* Parser::parse_top_level() {
                 template_param_nttp.push_back(true);
                 // Check for default NTTP value: = expr
                 if (match(TokenKind::Assign)) {
-                    // Skip balanced default expression.
+                    // Skip balanced default expression (same heuristic as above).
+                    auto is_expr_cont2 = [&](int p) -> bool {
+                        if (p >= static_cast<int>(tokens_.size())) return false;
+                        auto k = tokens_[p].kind;
+                        return k == TokenKind::ColonColon || k == TokenKind::PipePipe ||
+                               k == TokenKind::AmpAmp || k == TokenKind::Pipe ||
+                               k == TokenKind::Amp || k == TokenKind::Caret ||
+                               k == TokenKind::Plus || k == TokenKind::Minus ||
+                               k == TokenKind::Star || k == TokenKind::Slash ||
+                               k == TokenKind::Percent || k == TokenKind::EqualEqual ||
+                               k == TokenKind::BangEqual || k == TokenKind::LessEqual ||
+                               k == TokenKind::GreaterEqual || k == TokenKind::Question;
+                    };
                     int depth = 0;
                     while (!at_end()) {
-                        if (check(TokenKind::Less)) ++depth;
+                        if (check(TokenKind::Less) || check(TokenKind::LParen)) ++depth;
                         else if (check(TokenKind::Greater)) {
-                            if (depth == 0) break;
+                            if (depth == 0) {
+                                if (is_expr_cont2(pos_ + 1)) { consume(); continue; }
+                                break;
+                            }
                             --depth;
+                        } else if (check(TokenKind::RParen)) {
+                            if (depth > 0) --depth;
+                        } else if (check(TokenKind::GreaterGreater)) {
+                            if (depth <= 1) {
+                                if (is_expr_cont2(pos_ + 1)) { depth = 0; consume(); continue; }
+                                break;
+                            }
+                            depth -= 2;
                         } else if (check(TokenKind::Comma) && depth == 0) {
                             break;
                         }
@@ -634,7 +683,7 @@ Node* Parser::parse_top_level() {
             }
             if (!match(TokenKind::Comma)) break;
         }
-        expect(TokenKind::Greater);
+        expect_template_close();
 
         std::vector<std::string> injected_names;
         for (size_t i = 0; i < template_params.size(); ++i) {
@@ -687,7 +736,9 @@ Node* Parser::parse_top_level() {
         // `templated` is NK_EMPTY (struct-only declaration).  Find the struct
         // def and attach template params to it.  Only consider structs that were
         // added during THIS template parse (not pre-existing instantiated structs).
-        if (struct_defs_.size() > struct_defs_before && !template_params.empty()) {
+        if (last_struct_was_specialization_) {
+            last_struct_was_specialization_ = false;
+        } else if (struct_defs_.size() > struct_defs_before && !template_params.empty()) {
             Node* last_sd = struct_defs_.back();
             if (last_sd && last_sd->kind == NK_STRUCT_DEF &&
                 last_sd->n_template_params == 0) {

@@ -1537,6 +1537,60 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     }
     parse_decl_attrs();
 
+    // Template struct specialization: struct Name<Args> { ... } or
+    // struct Name<Args> : Base { ... }.  Consume the <Args> portion and
+    // mangle the tag so the specialization gets its own definition and
+    // doesn't conflict with the primary template.
+    if (tag && is_cpp_mode() && check(TokenKind::Less)) {
+        // Look ahead past balanced <...> to see if '{' or ':' follows.
+        int probe = pos_;
+        int depth = 0;
+        bool balanced = false;
+        while (probe < static_cast<int>(tokens_.size())) {
+            if (tokens_[probe].kind == TokenKind::Less) ++depth;
+            else if (tokens_[probe].kind == TokenKind::Greater) {
+                if (--depth <= 0) { ++probe; balanced = true; break; }
+            } else if (tokens_[probe].kind == TokenKind::GreaterGreater) {
+                depth -= 2;
+                if (depth <= 0) { ++probe; balanced = true; break; }
+            }
+            ++probe;
+        }
+        bool is_specialization = balanced &&
+            probe < static_cast<int>(tokens_.size()) &&
+            (tokens_[probe].kind == TokenKind::LBrace ||
+             tokens_[probe].kind == TokenKind::Colon);
+        if (is_specialization) {
+            // Consume <...> and build a unique mangled tag.
+            std::string mangled(tag);
+            mangled += "__spec_";
+            mangled += std::to_string(anon_counter_++);
+            consume(); // <
+            depth = 1;
+            while (!at_end() && depth > 0) {
+                if (check(TokenKind::Less)) { ++depth; consume(); continue; }
+                if (check(TokenKind::Greater)) {
+                    --depth;
+                    if (depth == 0) { consume(); break; }
+                    consume(); continue;
+                }
+                if (check(TokenKind::GreaterGreater)) {
+                    depth -= 2;
+                    if (depth <= 0) {
+                        // Split >> into >: consume as single > by mutating token.
+                        tokens_[pos_].kind = TokenKind::Greater;
+                        tokens_[pos_].lexeme = ">";
+                        break;
+                    }
+                    consume(); continue;
+                }
+                consume();
+            }
+            tag = arena_.strdup(mangled.c_str());
+            last_struct_was_specialization_ = true;
+        }
+    }
+
     if (is_cpp_mode() && check(TokenKind::Colon)) {
         consume();
         int angle_depth = 0;
@@ -1548,7 +1602,12 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 ++angle_depth;
             else if (check(TokenKind::Greater) && angle_depth > 0)
                 --angle_depth;
-            else if (check(TokenKind::LParen))
+            else if (check(TokenKind::GreaterGreater) && angle_depth > 0) {
+                // >> counts as two > closers.
+                angle_depth -= std::min(angle_depth, 2);
+                consume();
+                continue;
+            } else if (check(TokenKind::LParen))
                 ++paren_depth;
             else if (check(TokenKind::RParen) && paren_depth > 0)
                 --paren_depth;

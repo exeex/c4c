@@ -103,6 +103,10 @@ class Parser {
   bool parsing_top_level_context_;
   // True while parsing an explicit template specialization (template<>).
   bool parsing_explicit_specialization_ = false;
+  // True when parse_struct_or_union just parsed a specialization body
+  // (struct Name<Args> { ... }).  Prevents re-registration as a primary
+  // template struct in parse_template_decl.
+  bool last_struct_was_specialization_ = false;
   // Template struct definitions: maps struct tag → NK_STRUCT_DEF node with
   // n_template_params > 0.  Used to instantiate template structs at usage sites.
   std::unordered_map<std::string, Node*> template_struct_defs_;
