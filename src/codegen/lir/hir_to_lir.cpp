@@ -13,6 +13,41 @@ namespace c4c::codegen::lir {
 
 // ── Module-level orchestration helpers ───────────────────────────────────────
 
+int object_align_bytes(const c4c::hir::Module& mod, const TypeSpec& ts) {
+  if (ts.array_rank > 0) {
+    TypeSpec elem = ts;
+    elem.array_rank--;
+    if (elem.array_rank > 0) {
+      for (int i = 0; i < elem.array_rank; ++i) elem.array_dims[i] = elem.array_dims[i + 1];
+    }
+    elem.array_size = (elem.array_rank > 0) ? elem.array_dims[0] : -1;
+    int align = object_align_bytes(mod, elem);
+    if (ts.align_bytes > align) align = ts.align_bytes;
+    return align;
+  }
+  int align = 1;
+  if (ts.ptr_level > 0 || ts.is_fn_ptr) {
+    align = 8;
+  } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag && ts.tag[0]) {
+    const auto it = mod.struct_defs.find(ts.tag);
+    align = (it != mod.struct_defs.end()) ? std::max(1, it->second.align_bytes) : 8;
+  } else {
+    switch (ts.base) {
+      case TB_BOOL: case TB_CHAR: case TB_SCHAR: case TB_UCHAR: align = 1; break;
+      case TB_SHORT: case TB_USHORT: align = 2; break;
+      case TB_INT: case TB_UINT: case TB_FLOAT: case TB_ENUM: align = 4; break;
+      case TB_LONG: case TB_ULONG:
+      case TB_LONGLONG: case TB_ULONGLONG:
+      case TB_DOUBLE: align = 8; break;
+      case TB_LONGDOUBLE:
+      case TB_INT128: case TB_UINT128: align = 16; break;
+      default: align = 8; break;
+    }
+  }
+  if (ts.align_bytes > align) align = ts.align_bytes;
+  return align;
+}
+
 std::vector<size_t> dedup_globals(const c4c::hir::Module& mod) {
   std::unordered_map<std::string, size_t> best; // name -> index
   for (size_t i = 0; i < mod.globals.size(); ++i) {
@@ -373,7 +408,10 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
     const std::string slot = "%lv.param." + sanitize_llvm_ident(param.name);
     const std::string pname = "%p." + sanitize_llvm_ident(param.name);
     ctx.param_slots[static_cast<uint32_t>(i) + 0x80000000u] = slot;
-    ctx.alloca_insts.push_back(LirRawLine{"  " + slot + " = alloca " + llvm_alloca_ty(param.type.spec)});
+    const int param_align = object_align_bytes(mod, param.type.spec);
+    const std::string align_suffix =
+        (param_align > 1) ? ", align " + std::to_string(param_align) : "";
+    ctx.alloca_insts.push_back(LirRawLine{"  " + slot + " = alloca " + llvm_alloca_ty(param.type.spec) + align_suffix});
     ctx.alloca_insts.push_back(LirRawLine{"  store " + llvm_ty(param.type.spec) + " " + pname + ", ptr " + slot});
   }
 
@@ -395,7 +433,10 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
         ctx.alloca_insts.push_back(LirRawLine{"  " + slot + " = alloca ptr"});
       } else {
         const std::string alloca_ty = llvm_alloca_ty(d->type.spec);
-        ctx.alloca_insts.push_back(LirRawLine{"  " + slot + " = alloca " + alloca_ty});
+        const int stack_align = object_align_bytes(mod, d->type.spec);
+        const std::string align_suffix =
+            (stack_align > 1) ? ", align " + std::to_string(stack_align) : "";
+        ctx.alloca_insts.push_back(LirRawLine{"  " + slot + " = alloca " + alloca_ty + align_suffix});
         if (d->init &&
             (d->type.spec.array_rank > 0 ||
              (d->type.spec.ptr_level == 0 &&

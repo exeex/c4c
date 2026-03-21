@@ -6225,11 +6225,10 @@ class Lowerer {
           mul.rhs = elem_sz_id;
           return append_expr(n, mul, ts);
         }
-        SizeofTypeExpr s{};
-        s.type = qtype_from(sizeof_target);
-        // sizeof always returns an integer (size_t ~ unsigned long)
+        // For concrete non-VLA types, lower sizeof(type) directly to a constant.
+        const int size = type_size_bytes(*module_, sizeof_target);
         TypeSpec ts{}; ts.base = TB_ULONG;
-        return append_expr(n, s, ts);
+        return append_expr(n, IntLiteral{static_cast<long long>(size), false}, ts);
       }
       case NK_ALIGNOF_TYPE: {
         // Substitute template type parameters in alignof(T).

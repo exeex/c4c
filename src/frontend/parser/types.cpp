@@ -7,6 +7,38 @@
 
 namespace c4c {
 
+namespace {
+
+bool parse_alignas_specifier(Parser* parser, TypeSpec* ts, int line) {
+    if (!parser->check(TokenKind::KwAlignas)) return false;
+    parser->consume();
+    if (!parser->check(TokenKind::LParen)) return true;
+    parser->consume();
+    long long align_val = 0;
+    bool have_align = false;
+    if (!parser->check(TokenKind::RParen)) {
+        if (parser->is_type_start()) {
+            TypeSpec align_ts = parser->parse_type_name();
+            Node* align_node = parser->make_node(NK_ALIGNOF_TYPE, line);
+            align_node->type = align_ts;
+            have_align = eval_const_int(align_node, &align_val,
+                                        &parser->struct_tag_def_map_,
+                                        &parser->const_int_bindings_);
+        } else {
+            Node* align_expr = parser->parse_assign_expr();
+            have_align = eval_const_int(align_expr, &align_val,
+                                        &parser->struct_tag_def_map_,
+                                        &parser->const_int_bindings_);
+        }
+    }
+    parser->expect(TokenKind::RParen);
+    if (ts && have_align && align_val > ts->align_bytes)
+        ts->align_bytes = static_cast<int>(align_val);
+    return true;
+}
+
+}  // namespace
+
 // Compute vector_lanes from vector_bytes and base type.
 // Called after the final base type is resolved.
 static void finalize_vector_type(TypeSpec& ts) {
@@ -113,7 +145,8 @@ bool Parser::is_type_start() const {
     if (is_qualifier(k)) return true;
     if (is_storage_class(k)) return true;
     if (k == TokenKind::KwAttribute) return true;  // __attribute__((x)) type cast
-    if (k == TokenKind::KwAlignas || k == TokenKind::KwStaticAssert) return false;
+    if (k == TokenKind::KwAlignas) return true;
+    if (k == TokenKind::KwStaticAssert) return false;
     if (k == TokenKind::Identifier) {
         if (is_typedef_name(cur().lexeme)) return true;
         if (typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0) return true;
@@ -259,7 +292,8 @@ void Parser::parse_attributes(TypeSpec* ts) {
                         Node* align_expr = parse_assign_expr();
                         long long align_val = 0;
                         if (align_expr &&
-                            eval_const_int(align_expr, &align_val, &struct_tag_def_map_) &&
+                            eval_const_int(align_expr, &align_val, &struct_tag_def_map_,
+                                           &const_int_bindings_) &&
                             align_val > 0) {
                             align = align_val;
                         }
@@ -275,7 +309,8 @@ void Parser::parse_attributes(TypeSpec* ts) {
                     consume();
                     Node* sz_expr = parse_assign_expr();
                     long long sz_val = 0;
-                    eval_const_int(sz_expr, &sz_val, &struct_tag_def_map_);
+                    eval_const_int(sz_expr, &sz_val, &struct_tag_def_map_,
+                                   &const_int_bindings_);
                     expect(TokenKind::RParen);
                     apply_vector_size_attr(sz_val);
                 }
@@ -606,8 +641,7 @@ TypeSpec Parser::parse_base_type() {
                 break;
 
             case TokenKind::KwAlignas: {
-                consume();
-                skip_paren_group();
+                parse_alignas_specifier(this, &ts, cur().line);
                 break;
             }
 
@@ -1490,8 +1524,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     TypeSpec attr_ts{};
     auto parse_decl_attrs = [&]() {
         while (check(TokenKind::KwAlignas)) {
-            consume();
-            if (check(TokenKind::LParen)) skip_paren_group();
+            parse_alignas_specifier(this, &attr_ts, ln);
         }
         parse_attributes(&attr_ts);
     };

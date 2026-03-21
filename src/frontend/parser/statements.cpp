@@ -495,6 +495,10 @@ Node* Parser::parse_stmt() {
         return parse_local_decl();
     }
 
+    if (check(TokenKind::KwAlignas)) {
+        return parse_local_decl();
+    }
+
     // Local declaration?
     if (is_type_start()) {
         return parse_local_decl();

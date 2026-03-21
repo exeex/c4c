@@ -15,7 +15,8 @@ bool is_dependent_enum_expr(Node* n,
 long long sizeof_base(TypeBase b);
 long long align_base(TypeBase b, int ptr_level);
 bool eval_const_int(Node* n, long long* out,
-                    const std::unordered_map<std::string, Node*>* struct_map = nullptr);
+                    const std::unordered_map<std::string, Node*>* struct_map = nullptr,
+                    const std::unordered_map<std::string, long long>* named_consts = nullptr);
 
 bool is_qualifier(TokenKind k);
 bool is_storage_class(TokenKind k);

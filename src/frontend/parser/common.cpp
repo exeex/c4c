@@ -103,6 +103,13 @@ long long align_base(TypeBase b, int ptr_level) {
         case TB_BOOL: case TB_CHAR: case TB_SCHAR: case TB_UCHAR: return 1;
         case TB_SHORT: case TB_USHORT: return 2;
         case TB_INT: case TB_UINT: case TB_FLOAT: case TB_ENUM: return 4;
+        case TB_LONG: case TB_ULONG:
+        case TB_LONGLONG: case TB_ULONGLONG:
+        case TB_DOUBLE:
+            return 8;
+        case TB_LONGDOUBLE:
+        case TB_INT128: case TB_UINT128:
+            return 16;
         case TB_COMPLEX_CHAR:
         case TB_COMPLEX_SCHAR:
         case TB_COMPLEX_UCHAR:
@@ -127,7 +134,8 @@ long long align_base(TypeBase b, int ptr_level) {
 }
 
 bool eval_const_int(Node* n, long long* out,
-    const std::unordered_map<std::string, Node*>* struct_map);
+    const std::unordered_map<std::string, Node*>* struct_map,
+    const std::unordered_map<std::string, long long>* named_consts);
 
 // Forward declaration
 static long long struct_align(const char* tag,
@@ -166,6 +174,7 @@ static long long struct_align(const char* tag,
         long long a = field_align(f->type, struct_map);
         if (a > max_align) max_align = a;
     }
+    if (sd->struct_align > max_align) max_align = sd->struct_align;
     return max_align;
 }
 
@@ -252,20 +261,35 @@ static bool compute_offsetof(const char* tag, const char* field_name,
 }
 
 bool eval_const_int(Node* n, long long* out,
-    const std::unordered_map<std::string, Node*>* struct_map) {
+    const std::unordered_map<std::string, Node*>* struct_map,
+    const std::unordered_map<std::string, long long>* named_consts) {
     if (!n) return false;
     if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) {
         *out = n->ival;
         return true;
     }
+    if (n->kind == NK_VAR && n->name) {
+        if (named_consts) {
+            auto it = named_consts->find(n->name);
+            if (it != named_consts->end()) {
+                *out = it->second;
+                return true;
+            }
+        }
+        return false;
+    }
     if (n->kind == NK_CAST && n->left) {
-        return eval_const_int(n->left, out, struct_map);
+        return eval_const_int(n->left, out, struct_map, named_consts);
     }
     if (n->kind == NK_OFFSETOF) {
         if (n->type.base == TB_STRUCT || n->type.base == TB_UNION) {
             return compute_offsetof(n->type.tag, n->name, struct_map, out);
         }
         return false;
+    }
+    if (n->kind == NK_ALIGNOF_TYPE) {
+        *out = field_align(n->type, struct_map);
+        return true;
     }
     if (n->kind == NK_SIZEOF_TYPE) {
         // sizeof(type): use LP64 sizes
@@ -288,7 +312,7 @@ bool eval_const_int(Node* n, long long* out,
     }
     if (n->kind == NK_UNARY && n->op && n->left) {
         long long v;
-        if (!eval_const_int(n->left, &v, struct_map)) return false;
+        if (!eval_const_int(n->left, &v, struct_map, named_consts)) return false;
         if (strcmp(n->op, "-") == 0) { *out = -v; return true; }
         if (strcmp(n->op, "+") == 0) { *out = v; return true; }
         if (strcmp(n->op, "~") == 0) { *out = ~v; return true; }
@@ -296,8 +320,8 @@ bool eval_const_int(Node* n, long long* out,
     }
     if (n->kind == NK_BINOP && n->op) {
         long long l, r;
-        if (!eval_const_int(n->left, &l, struct_map)) return false;
-        if (!eval_const_int(n->right, &r, struct_map)) return false;
+        if (!eval_const_int(n->left, &l, struct_map, named_consts)) return false;
+        if (!eval_const_int(n->right, &r, struct_map, named_consts)) return false;
         if (strcmp(n->op, "+")  == 0) { *out = l + r; return true; }
         if (strcmp(n->op, "-")  == 0) { *out = l - r; return true; }
         if (strcmp(n->op, "*")  == 0) { *out = l * r; return true; }
@@ -319,8 +343,8 @@ bool eval_const_int(Node* n, long long* out,
     }
     if (n->kind == NK_TERNARY && n->cond && n->then_ && n->else_) {
         long long c;
-        if (!eval_const_int(n->cond, &c, struct_map)) return false;
-        return eval_const_int(c ? n->then_ : n->else_, out, struct_map);
+        if (!eval_const_int(n->cond, &c, struct_map, named_consts)) return false;
+        return eval_const_int(c ? n->then_ : n->else_, out, struct_map, named_consts);
     }
     return false;
 }

@@ -1796,6 +1796,17 @@ top_level_base_ready:
             }
         }
         if (gname) var_types_[gname] = gts;  // for typeof(var) resolution
+        if (gname && ginit &&
+            (gv->type.is_const || gv->is_constexpr) &&
+            !gv->type.is_lvalue_ref && !gv->type.is_rvalue_ref &&
+            gv->type.ptr_level == 0 && gv->type.array_rank == 0) {
+            long long cv = 0;
+            if (eval_const_int(ginit, &cv, &struct_tag_def_map_, &const_int_bindings_)) {
+                const_int_bindings_[gname] = cv;
+                if (source_name && std::strcmp(source_name, gname) != 0)
+                    const_int_bindings_[source_name] = cv;
+            }
+        }
         return gv;
     };
 

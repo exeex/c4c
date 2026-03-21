@@ -81,6 +81,8 @@ class Parser {
   // Enum constants: name → value (populated as enums are parsed).
   // Used to evaluate enum initializers that reference previously-defined constants.
   std::unordered_map<std::string, long long> enum_consts_;
+  // Global const/constexpr integer bindings visible to parser-time constant folding.
+  std::unordered_map<std::string, long long> const_int_bindings_;
   // Variable name → TypeSpec (populated as variables are declared).
   // Used to resolve typeof(variable) in type expressions.
   std::unordered_map<std::string, TypeSpec> var_types_;

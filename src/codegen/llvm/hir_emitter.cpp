@@ -126,6 +126,41 @@ int llvm_struct_field_slot_by_name(const HirStructDef& sd, const std::string& fi
   return 0;
 }
 
+int object_align_bytes(const Module& mod, const TypeSpec& ts) {
+  if (ts.array_rank > 0) {
+    TypeSpec elem = ts;
+    elem.array_rank--;
+    if (elem.array_rank > 0) {
+      for (int i = 0; i < elem.array_rank; ++i) elem.array_dims[i] = elem.array_dims[i + 1];
+    }
+    elem.array_size = (elem.array_rank > 0) ? elem.array_dims[0] : -1;
+    int align = object_align_bytes(mod, elem);
+    if (ts.align_bytes > align) align = ts.align_bytes;
+    return align;
+  }
+  int align = 1;
+  if (ts.ptr_level > 0 || ts.is_fn_ptr) {
+    align = 8;
+  } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag && ts.tag[0]) {
+    const auto it = mod.struct_defs.find(ts.tag);
+    align = (it != mod.struct_defs.end()) ? std::max(1, it->second.align_bytes) : 8;
+  } else {
+    switch (ts.base) {
+      case TB_BOOL: case TB_CHAR: case TB_SCHAR: case TB_UCHAR: align = 1; break;
+      case TB_SHORT: case TB_USHORT: align = 2; break;
+      case TB_INT: case TB_UINT: case TB_FLOAT: case TB_ENUM: align = 4; break;
+      case TB_LONG: case TB_ULONG:
+      case TB_LONGLONG: case TB_ULONGLONG:
+      case TB_DOUBLE: align = 8; break;
+      case TB_LONGDOUBLE:
+      case TB_INT128: case TB_UINT128: align = 16; break;
+      default: align = 8; break;
+    }
+  }
+  if (ts.align_bytes > align) align = ts.align_bytes;
+  return align;
+}
+
 }  // namespace
 
 HirEmitter::HirEmitter(const Module& m) : mod_(m){}
@@ -1061,6 +1096,9 @@ void HirEmitter::emit_global(const GlobalVar& gv){
       lg.raw_line = line;
       module_.globals.push_back(std::move(lg));
     };
+    const int global_align_value = object_align_bytes(mod_, ts);
+    const std::string global_align =
+        (global_align_value > 1) ? ", align " + std::to_string(global_align_value) : "";
     if (!gv.linkage.is_extern &&
         ts.ptr_level == 0 &&
         ts.array_rank == 0 &&
@@ -1091,7 +1129,7 @@ void HirEmitter::emit_global(const GlobalVar& gv){
             literal_ty += " }";
             literal_init += " }";
             push_global(llvm_global_sym(gv.name) + " = " + lk + qual +
-                        literal_ty + " " + literal_init);
+                        literal_ty + " " + literal_init + global_align);
             return;
           }
         }
@@ -1101,7 +1139,7 @@ void HirEmitter::emit_global(const GlobalVar& gv){
     if (gv.linkage.is_extern) {
       std::string ext = gv.linkage.is_weak ? "extern_weak " : "external ";
       ext += llvm_visibility(gv.linkage.visibility);
-      push_global(llvm_global_sym(gv.name) + " = " + ext + "global " + ty);
+      push_global(llvm_global_sym(gv.name) + " = " + ext + "global " + ty + global_align);
       return;
     }
     std::string lk = gv.linkage.is_static ? "internal " : "";
@@ -1109,7 +1147,7 @@ void HirEmitter::emit_global(const GlobalVar& gv){
     lk += llvm_visibility(gv.linkage.visibility);
     const std::string qual = (gv.is_const && ts.ptr_level == 0) ? "constant " : "global ";
     const std::string init = emit_const_init(ts, gv.init);
-    push_global(llvm_global_sym(gv.name) + " = " + lk + qual + ty + " " + init);
+    push_global(llvm_global_sym(gv.name) + " = " + lk + qual + ty + " " + init + global_align);
   }
 
 const Expr& HirEmitter::get_expr(ExprId id) const{
@@ -4466,7 +4504,10 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const LocalDecl& d){
       std::string elem_ty = llvm_ty(elem_ts);
       if (elem_ty == "void") elem_ty = "i8";
       const std::string dyn_ptr = fresh_tmp(ctx);
-      emit_instr(ctx, dyn_ptr + " = alloca " + elem_ty + ", i64 " + count);
+      const int stack_align = object_align_bytes(mod_, d.type.spec);
+      const std::string align_suffix =
+          (stack_align > 1) ? ", align " + std::to_string(stack_align) : "";
+      emit_instr(ctx, dyn_ptr + " = alloca " + elem_ty + ", i64 " + count + align_suffix);
       emit_instr(ctx, "store ptr " + dyn_ptr + ", ptr " + slot);
     }
 
@@ -4904,7 +4945,10 @@ void HirEmitter::hoist_allocas(FnCtx& ctx, const Function& fn){
       const std::string pname = "%p." + sanitize_llvm_ident(param.name);
       // Store the spill slot under key (param_index + sentinel)
       ctx.param_slots[static_cast<uint32_t>(i) + 0x80000000u] = slot;
-      ctx.alloca_insts.push_back(lir::LirRawLine{"  " + slot + " = alloca " + llvm_alloca_ty(param.type.spec)});
+      const int param_align = object_align_bytes(mod_, param.type.spec);
+      const std::string align_suffix =
+          (param_align > 1) ? ", align " + std::to_string(param_align) : "";
+      ctx.alloca_insts.push_back(lir::LirRawLine{"  " + slot + " = alloca " + llvm_alloca_ty(param.type.spec) + align_suffix});
       ctx.alloca_insts.push_back(lir::LirRawLine{"  store " + llvm_ty(param.type.spec) + " " + pname + ", ptr " + slot});
     }
 
@@ -4927,7 +4971,10 @@ void HirEmitter::hoist_allocas(FnCtx& ctx, const Function& fn){
           ctx.alloca_insts.push_back(lir::LirRawLine{"  " + slot + " = alloca ptr"});
         } else {
           const std::string alloca_ty = llvm_alloca_ty(d->type.spec);
-          ctx.alloca_insts.push_back(lir::LirRawLine{"  " + slot + " = alloca " + alloca_ty});
+          const int stack_align = object_align_bytes(mod_, d->type.spec);
+          const std::string align_suffix =
+              (stack_align > 1) ? ", align " + std::to_string(stack_align) : "";
+          ctx.alloca_insts.push_back(lir::LirRawLine{"  " + slot + " = alloca " + alloca_ty + align_suffix});
           if (d->init &&
               (d->type.spec.array_rank > 0 ||
                (d->type.spec.ptr_level == 0 &&
