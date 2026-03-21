@@ -3644,7 +3644,55 @@ class Lowerer {
           c.callee = append_expr(n->left, dr, n->left->type);
         }
       } else {
-        c.callee = lower_expr(ctx, n->left);
+        // Inside a method body, resolve unqualified calls that match a sibling
+        // struct method (e.g. static member functions called without qualifier).
+        bool resolved_as_method = false;
+        if (ctx && !ctx->method_struct_tag.empty() &&
+            n->left && n->left->kind == NK_VAR && n->left->name) {
+          const std::string callee_name = n->left->name;
+          // Only attempt method resolution when the name isn't already a known
+          // global function (free functions take precedence over implicit lookup).
+          if (!direct_callee_fn(callee_name)) {
+            std::string base_key = ctx->method_struct_tag + "::" + callee_name;
+            std::string const_key = base_key + "_const";
+            auto mit = struct_methods_.find(base_key);
+            if (mit == struct_methods_.end())
+              mit = struct_methods_.find(const_key);
+            if (mit != struct_methods_.end()) {
+              resolved_callee_name = mit->second;
+              DeclRef dr{};
+              dr.name = resolved_callee_name;
+              auto fit = module_->fn_index.find(dr.name);
+              TypeSpec fn_ts{};
+              fn_ts.base = TB_VOID;
+              if (fit != module_->fn_index.end() &&
+                  fit->second.value < module_->functions.size()) {
+                fn_ts = module_->functions[fit->second.value].return_type.spec;
+              }
+              fn_ts.ptr_level++;
+              c.callee = append_expr(n->left, dr, fn_ts);
+              // Pass implicit `this` as the first argument (struct methods
+              // always receive a this pointer, even for static members).
+              auto pit = ctx->params.find("this");
+              if (pit != ctx->params.end()) {
+                DeclRef this_ref{};
+                this_ref.name = "this";
+                this_ref.param_index = pit->second;
+                TypeSpec this_ts{};
+                this_ts.base = TB_STRUCT;
+                auto sit = module_->struct_defs.find(ctx->method_struct_tag);
+                this_ts.tag = sit != module_->struct_defs.end()
+                                  ? sit->second.tag.c_str()
+                                  : ctx->method_struct_tag.c_str();
+                this_ts.ptr_level = 1;
+                c.args.push_back(append_expr(n->left, this_ref, this_ts, ValueCategory::LValue));
+              }
+              resolved_as_method = true;
+            }
+          }
+        }
+        if (!resolved_as_method)
+          c.callee = lower_expr(ctx, n->left);
       }
     }
     c.builtin_id = n->builtin_id;
