@@ -23,15 +23,26 @@ Operator Overloading — item 4: return to EASTL/std_vector bring-up
     `struct_methods_`; if found, resolve the call and inject implicit `this` arg
   - Free functions still take precedence (checked first via `direct_callee_fn`)
   - Test: `unqualified_static_member_call_runtime.cpp` (runtime, B::StaticAdd called as StaticAdd)
+- [x] Default parameter value skipping in parser
+  - Root cause: `parse_param()` didn't handle `= expr` after parameter type/name;
+    EASTL allocator.h and many other headers use default parameter values
+  - Fix: after `skip_attributes()` in `parse_param()`, check for `TokenKind::Assign`;
+    if found, skip balanced tokens (parens, brackets, braces) until `,` or `)` at depth 0
+  - Test: `default_param_value_parse.cpp` (parse-only, validates free fn/method/ctor defaults)
+  - Note: values are SKIPPED, not stored — runtime default arg substitution not yet implemented
 
 ## Next Slice
-- Item 4: return to EASTL/std_vector bring-up (`tests/cpp/eastl/std_vector_simple.cpp`)
-  - Run the bring-up case and identify the next blocker
-  - Determine whether it's operator-related or a new frontend category
+- EASTL bring-up: remaining blockers after default-param fix:
+  1. `nullptr.h:36` — member pointer conversion operator `operator T C::*()` (niche syntax)
+  2. `exception.h:65,67` — system header `&`/`&&` in non-parameter context
+  3. `allocator.h:294` — `operator delete` expression parsing
+  4. `type_traits.h` — variadic template parameters (`...` in template param lists)
+  - Most impactful next: variadic template parameter packs (used pervasively in type_traits)
+  - Or: fix member pointer syntax in nullptr.h (blocks EABase)
 
 ## Blockers
 - None
 
 ## Suite Status
-- Before: 2084/2085 (1 pre-existing alignas failure)
-- After: 2085/2086 (+1 new test, no regressions)
+- Before: 2085/2086 (1 pre-existing alignas failure)
+- After: 2086/2087 (+1 new test, no regressions)

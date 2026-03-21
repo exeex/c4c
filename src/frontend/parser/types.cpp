@@ -2487,6 +2487,28 @@ Node* Parser::parse_param() {
     }
     skip_attributes();
 
+    // C++ default parameter value: skip '= expr' (balanced, stopping at , or ) at depth 0)
+    if (check(TokenKind::Assign)) {
+        consume(); // eat '='
+        int depth = 0;
+        while (!at_end()) {
+            if (check(TokenKind::LParen) || check(TokenKind::LBracket) ||
+                check(TokenKind::LBrace)) {
+                ++depth;
+                consume();
+            } else if (check(TokenKind::RParen) || check(TokenKind::RBracket) ||
+                       check(TokenKind::RBrace)) {
+                if (depth == 0) break;
+                --depth;
+                consume();
+            } else if (check(TokenKind::Comma) && depth == 0) {
+                break;
+            } else {
+                consume();
+            }
+        }
+    }
+
     Node* p = make_node(NK_DECL, ln);
     p->type = pts;
     p->name = pname ? pname : nullptr;
