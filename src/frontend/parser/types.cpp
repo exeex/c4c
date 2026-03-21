@@ -204,6 +204,19 @@ void Parser::skip_attributes() {
     }
 }
 
+void Parser::skip_exception_spec() {
+    // noexcept / noexcept(expr)
+    while (check(TokenKind::Identifier) && cur().lexeme == "noexcept") {
+        consume();
+        if (check(TokenKind::LParen)) skip_paren_group();
+    }
+    // throw() / throw(type-list)
+    if (check(TokenKind::Identifier) && cur().lexeme == "throw") {
+        consume();
+        if (check(TokenKind::LParen)) skip_paren_group();
+    }
+}
+
 void Parser::parse_attributes(TypeSpec* ts) {
     auto apply_aligned_attr = [&](long long align) {
         if (!ts || align <= 0) return;
@@ -1846,6 +1859,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 }
             }
             expect(TokenKind::RParen);
+            skip_exception_spec();
             Node* method = make_node(NK_FUNCTION, cur().line);
             method->type.base = TB_VOID;
             method->name = ctor_name;
@@ -1931,6 +1945,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             consume();  // consume struct tag name
             expect(TokenKind::LParen);
             expect(TokenKind::RParen);
+            skip_exception_spec();
             // Build mangled name: Tag__dtor
             std::string mangled = std::string("~") + dtor_name;
             Node* method = make_node(NK_FUNCTION, cur().line);
@@ -2134,6 +2149,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                     break;
                 }
             }
+            skip_exception_spec();
 
             Node* method = make_node(NK_FUNCTION, cur().line);
             method->type = fts;
@@ -2239,6 +2255,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                         break;
                     }
                 }
+                skip_exception_spec();
                 Node* method = make_node(NK_FUNCTION, cur().line);
                 method->type = cur_fts;
                 method->name = fname;

@@ -202,6 +202,8 @@ class Parser {
 
   // Skip __attribute__((...)) sequences (zero or more).
   void skip_attributes();
+  // Skip noexcept / noexcept(expr) / throw() exception specifications.
+  void skip_exception_spec();
 
   // Consume __attribute__((...)) sequences, recording supported attributes
   // into the type when provided (currently aligned/vector_size).

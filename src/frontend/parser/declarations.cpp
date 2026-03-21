@@ -843,6 +843,7 @@ Node* Parser::parse_top_level() {
                     break;
                 }
             }
+            skip_exception_spec();
 
             Node* fn = make_node(NK_FUNCTION, ln);
             fn->type = conv_ts;
@@ -933,6 +934,7 @@ Node* Parser::parse_top_level() {
                     }
                 }
                 expect(TokenKind::RParen);
+                skip_exception_spec();
 
                 std::vector<const char*> init_names;
                 std::vector<std::vector<Node*>> init_args_list;
@@ -1544,6 +1546,7 @@ top_level_base_ready:
             }
             break;
         }
+        skip_exception_spec();
 
         // K&R style parameter declarations before body:
         //   f(a, b) int a; short *b; { ... }

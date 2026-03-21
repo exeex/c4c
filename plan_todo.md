@@ -30,13 +30,21 @@ Operator Overloading — item 4: return to EASTL/std_vector bring-up
     if found, skip balanced tokens (parens, brackets, braces) until `,` or `)` at depth 0
   - Test: `default_param_value_parse.cpp` (parse-only, validates free fn/method/ctor defaults)
   - Note: values are SKIPPED, not stored — runtime default arg substitution not yet implemented
+- [x] noexcept/throw() exception specification skipping in struct body methods
+  - Root cause: after `)` in constructor, destructor, operator, and regular method
+    declarations inside struct bodies, `noexcept`/`noexcept(expr)`/`throw()` was not
+    consumed — left parser in bad state, corrupting subsequent declarations
+  - Fix: added `skip_exception_spec()` helper to Parser; called after `)` in all 4
+    struct body method paths (ctor, dtor, operator, regular method) and 3 out-of-class
+    paths (qualified operator, qualified ctor, regular qualified method)
+  - Test: `noexcept_method_parse.cpp` (runtime, validates noexcept on ctor/dtor/method)
+  - Resolved exception.h:65,67 blocker (copy/move ctor with noexcept)
 
 ## Next Slice
-- EASTL bring-up: remaining blockers after default-param fix:
+- EASTL bring-up: remaining blockers:
   1. `nullptr.h:36` — member pointer conversion operator `operator T C::*()` (niche syntax)
-  2. `exception.h:65,67` — system header `&`/`&&` in non-parameter context
-  3. `allocator.h:294` — `operator delete` expression parsing
-  4. `type_traits.h` — variadic template parameters (`...` in template param lists)
+  2. `allocator.h:294` — `operator delete[]` expression parsing
+  3. `type_traits.h` — variadic template parameters (`...` in template param lists)
   - Most impactful next: variadic template parameter packs (used pervasively in type_traits)
   - Or: fix member pointer syntax in nullptr.h (blocks EABase)
 
@@ -44,5 +52,5 @@ Operator Overloading — item 4: return to EASTL/std_vector bring-up
 - None
 
 ## Suite Status
-- Before: 2085/2086 (1 pre-existing alignas failure)
-- After: 2086/2087 (+1 new test, no regressions)
+- Before: 2085/2088 (3 pre-existing failures: alignas, template_struct_advanced, template_struct_nested)
+- After: 2085/2088 (+1 new test, no regressions)
