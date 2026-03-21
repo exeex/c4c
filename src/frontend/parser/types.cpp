@@ -1304,8 +1304,8 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
 
         auto append_scope_sep = [&]() {
             if (!qualified_name.empty() &&
-                qualified_name.size() >= 2 &&
-                qualified_name.substr(qualified_name.size() - 2) != "::") {
+                (qualified_name.size() < 2 ||
+                 qualified_name.substr(qualified_name.size() - 2) != "::")) {
                 qualified_name += "::";
             }
         };

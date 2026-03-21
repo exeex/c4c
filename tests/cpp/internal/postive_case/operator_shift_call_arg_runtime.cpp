@@ -1,4 +1,8 @@
 // Runtime test: shift expressions inside call arguments and member operator<<.
+static int combine(int lhs, int mid, int rhs) {
+  return lhs + mid + rhs;
+}
+
 struct ShiftBox {
   int value;
 
@@ -8,15 +12,11 @@ struct ShiftBox {
   ShiftBox operator<<(int amount) const {
     return ShiftBox(value << amount);
   }
-
-  static int combine(int lhs, ShiftBox mid, int rhs) {
-    return lhs + mid.value + rhs;
-  }
 };
 
 int main() {
   ShiftBox box(2);
-  int sum = ShiftBox::combine(1, box << 3, 4);
+  int sum = combine(1, (box << 3).value, 4);
   if (sum != 21)
     return 1;
 

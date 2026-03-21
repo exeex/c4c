@@ -21,6 +21,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     operator_decl_bool_parse
     operator_decl_plus_minus_parse
     operator_decl_shift_qualified_parse
+    operator_shift_static_member_call_parse
     template_anon_param_extern_cxx_parse
     template_bool_specialization_parse
     scope_resolution_expr_parse

@@ -3324,6 +3324,132 @@ class Lowerer {
       return *consteval_expr;
     }
 
+    // C++ constructor expression parsed as a call, e.g. `T(args...)`.
+    // Materialize a temporary object, invoke the selected constructor on it,
+    // and use the temporary as the expression result.
+    if (ctx && n->left && n->left->kind == NK_VAR && n->left->name) {
+      const std::string callee_name = n->left->name;
+      auto cit = struct_constructors_.find(callee_name);
+      auto sit = module_->struct_defs.find(callee_name);
+      if (cit != struct_constructors_.end() && sit != module_->struct_defs.end()) {
+        const CtorOverload* best = nullptr;
+        if (cit->second.size() == 1) {
+          if (cit->second[0].method_node->n_params == n->n_children)
+            best = &cit->second[0];
+        } else {
+          int best_score = -1;
+          for (const auto& ov : cit->second) {
+            if (ov.method_node->n_params != n->n_children) continue;
+            int score = 0;
+            bool viable = true;
+            for (int pi = 0; pi < ov.method_node->n_params && viable; ++pi) {
+              TypeSpec param_ts = ov.method_node->params[pi]->type;
+              resolve_typedef_to_struct(param_ts);
+              TypeSpec arg_ts = infer_generic_ctrl_type(ctx, n->children[pi]);
+              const bool arg_is_lvalue = is_ast_lvalue(n->children[pi]);
+              TypeSpec param_base = param_ts;
+              param_base.is_lvalue_ref = false;
+              param_base.is_rvalue_ref = false;
+              if (param_base.base == arg_ts.base &&
+                  param_base.ptr_level == arg_ts.ptr_level) {
+                score += 2;
+                if (param_ts.is_rvalue_ref && !arg_is_lvalue) {
+                  score += 4;
+                } else if (param_ts.is_rvalue_ref && arg_is_lvalue) {
+                  viable = false;
+                } else if (param_ts.is_lvalue_ref && arg_is_lvalue) {
+                  score += 3;
+                } else if (param_ts.is_lvalue_ref && !arg_is_lvalue) {
+                  score += 1;
+                }
+              } else if (param_base.ptr_level == 0 && arg_ts.ptr_level == 0 &&
+                         param_base.base != TB_STRUCT && arg_ts.base != TB_STRUCT &&
+                         param_base.base != TB_VOID && arg_ts.base != TB_VOID) {
+                score += 1;
+              } else {
+                viable = false;
+              }
+            }
+            if (viable && score > best_score) {
+              best_score = score;
+              best = &ov;
+            }
+          }
+        }
+
+        if (best) {
+          if (best->method_node->is_deleted) {
+            std::string diag = "error: call to deleted constructor '";
+            diag += callee_name;
+            diag += "'";
+            throw std::runtime_error(diag);
+          }
+
+          TypeSpec tmp_ts{};
+          tmp_ts.base = TB_STRUCT;
+          tmp_ts.tag = sit->second.tag.c_str();
+          tmp_ts.array_size = -1;
+          tmp_ts.inner_rank = -1;
+
+          const LocalId tmp_lid = next_local_id();
+          const std::string tmp_name = "__ctor_tmp_" + std::to_string(tmp_lid.value);
+          LocalDecl tmp{};
+          tmp.id = tmp_lid;
+          tmp.name = tmp_name;
+          tmp.type = qtype_from(tmp_ts, ValueCategory::LValue);
+          tmp.storage = StorageClass::Auto;
+          tmp.span = make_span(n);
+          ctx->locals[tmp.name] = tmp.id;
+          ctx->local_types[tmp.id.value] = tmp_ts;
+          append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
+
+          CallExpr ctor_call{};
+          DeclRef callee_ref{};
+          callee_ref.name = best->mangled_name;
+          TypeSpec fn_ts{};
+          fn_ts.base = TB_VOID;
+          TypeSpec callee_ts = fn_ts;
+          callee_ts.ptr_level++;
+          ctor_call.callee = append_expr(n, callee_ref, callee_ts);
+
+          DeclRef tmp_ref{};
+          tmp_ref.name = tmp_name;
+          tmp_ref.local = tmp_lid;
+          ExprId tmp_id = append_expr(n, tmp_ref, tmp_ts, ValueCategory::LValue);
+          UnaryExpr addr{};
+          addr.op = UnaryOp::AddrOf;
+          addr.operand = tmp_id;
+          TypeSpec ptr_ts = tmp_ts;
+          ptr_ts.ptr_level++;
+          ctor_call.args.push_back(append_expr(n, addr, ptr_ts));
+
+          for (int i = 0; i < n->n_children; ++i) {
+            TypeSpec param_ts = best->method_node->params[i]->type;
+            resolve_typedef_to_struct(param_ts);
+            if (param_ts.is_rvalue_ref || param_ts.is_lvalue_ref) {
+              const Node* arg = n->children[i];
+              const Node* inner = arg;
+              if (inner->kind == NK_CAST && inner->left) inner = inner->left;
+              ExprId arg_val = lower_expr(ctx, inner);
+              TypeSpec storage_ts = reference_storage_ts(param_ts);
+              UnaryExpr addr_e{};
+              addr_e.op = UnaryOp::AddrOf;
+              addr_e.operand = arg_val;
+              ctor_call.args.push_back(append_expr(arg, addr_e, storage_ts));
+            } else {
+              ctor_call.args.push_back(lower_expr(ctx, n->children[i]));
+            }
+          }
+
+          ExprId call_id = append_expr(n, ctor_call, fn_ts);
+          ExprStmt es{};
+          es.expr = call_id;
+          append_stmt(*ctx, Stmt{StmtPayload{es}, make_span(n)});
+          return tmp_id;
+        }
+      }
+    }
+
     // Try operator() dispatch: if callee is a struct variable, call operator_call.
     if (n->left && n->left->kind == NK_VAR && n->left->name) {
       TypeSpec callee_ts = infer_generic_ctrl_type(ctx, n->left);
