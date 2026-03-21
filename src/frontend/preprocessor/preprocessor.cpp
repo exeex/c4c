@@ -620,24 +620,47 @@ std::string Preprocessor::expand_text(const std::string& text,
         if (k < text.size() && text[k] == '(') {
           ++k;
           while (k < text.size() && (text[k] == ' ' || text[k] == '\t')) ++k;
-          if (k < text.size() && text[k] == '"') {
-            // Collect string literal
-            std::string str_content;
-            ++k;  // skip opening "
-            while (k < text.size() && text[k] != '"') {
-              if (text[k] == '\\' && k + 1 < text.size()) {
-                char esc = text[k + 1];
-                if (esc == '"') { str_content += '"'; k += 2; continue; }
-                if (esc == '\\') { str_content += '\\'; k += 2; continue; }
-              }
-              str_content += text[k];
-              ++k;
+          // Collect the balanced argument inside _Pragma(...)
+          size_t arg_start = k;
+          int depth = 1;
+          bool in_s = false, in_c2 = false;
+          while (k < text.size() && depth > 0) {
+            char ch = text[k];
+            if (in_s) {
+              if (ch == '\\' && k + 1 < text.size()) { ++k; ++k; continue; }
+              if (ch == '"') in_s = false;
+            } else if (in_c2) {
+              if (ch == '\\' && k + 1 < text.size()) { ++k; ++k; continue; }
+              if (ch == '\'') in_c2 = false;
+            } else {
+              if (ch == '"') in_s = true;
+              else if (ch == '\'') in_c2 = true;
+              else if (ch == '(') ++depth;
+              else if (ch == ')') { --depth; if (depth == 0) break; }
             }
-            if (k < text.size()) ++k;  // skip closing "
-            while (k < text.size() && (text[k] == ' ' || text[k] == '\t')) ++k;
-            if (k < text.size() && text[k] == ')') {
-              ++k;  // skip closing )
-              // Process the destringized content as a pragma directive.
+            ++k;
+          }
+          std::string raw_arg = text.substr(arg_start, k - arg_start);
+          if (k < text.size() && text[k] == ')') {
+            ++k;  // skip closing )
+            // Expand macros in the argument (handles _Pragma(MACRO(...)))
+            std::string expanded_arg = expand_text(raw_arg, disabled);
+            // Trim whitespace
+            size_t es = 0;
+            while (es < expanded_arg.size() && (expanded_arg[es] == ' ' || expanded_arg[es] == '\t')) ++es;
+            // Extract string literal from expanded argument
+            if (es < expanded_arg.size() && expanded_arg[es] == '"') {
+              std::string str_content;
+              ++es;  // skip opening "
+              while (es < expanded_arg.size() && expanded_arg[es] != '"') {
+                if (expanded_arg[es] == '\\' && es + 1 < expanded_arg.size()) {
+                  char esc = expanded_arg[es + 1];
+                  if (esc == '"') { str_content += '"'; es += 2; continue; }
+                  if (esc == '\\') { str_content += '\\'; es += 2; continue; }
+                }
+                str_content += expanded_arg[es];
+                ++es;
+              }
               out += process_pragma_text(str_content);
               i = k;
               continue;

@@ -62,17 +62,29 @@ Operator Overloading — item 4: return to EASTL/std_vector bring-up
   - `expect_template_close()` replaces `expect(Greater)` at template param list close
   - EASTL errors reduced from 11 to ~20 (deeper in headers — new territory)
   - Test: `template_struct_specialization_parse.cpp` (parse-only)
+- [x] EASTL bring-up slice 3: _Pragma, [[attr]], typename, template arg skipping
+  - `_Pragma(MACRO_ARG)`: preprocessor now expands macro arguments before processing
+  - `[[deprecated]]` / `[[...]]`: C++11 attribute syntax skipped in struct body parsing
+  - `typename` keyword: recognized in `is_type_start()` and `parse_base_type()` for
+    dependent type expressions (`typename Container::value_type`)
+  - Unresolved template arguments: `parse_base_type()` skips `<...>` for unresolved
+    typedef names in C++ mode (e.g. `reverse_iterator<Iterator1>` in template context)
+  - `skip_attributes()`: now also handles `[[...]]` C++11 attribute syntax
+  - EASTL errors reduced from ~20 to ~21 (new errors from deeper parsing, different set)
+  - Test: `pragma_operator_and_cpp11_attrs_parse.cpp` (runtime)
 
 ## Next Slice
-- EASTL bring-up slice 3: new blockers after specialization fix (~20 errors deeper in headers):
-  - type_transformations.h: redefinition issues with specialization-mangled tags
-  - type_compound.h: further specialization/inheritance patterns
-  - iterator.h: parsing issues in template-heavy code
-  - Need to investigate exact error set with fresh EASTL run
+- EASTL bring-up slice 4: remaining blockers (~21 errors):
+  - type_transformations.h: `sizeof(T)` in NTTP template args, struct redefinition
+  - type_compound.h: `::` in template args
+  - iterator.h: `typename`-dependent type issues in struct method params (`&&` rvalue refs)
+  - copy_help.h/fill_help.h: `enable_if<...>` in return types of free functions
+  - functional_base.h: `::` in function params
+  - Need to fix NTTP expression parsing to handle sizeof(), and handle `enable_if<>` return type patterns
 
 ## Blockers
 - None critical
 
 ## Suite Status
-- Before: 2094/2094
-- After: 2095/2095 (+1 new test, no regressions)
+- Before: 2095/2095
+- After: 2096/2096 (+1 new test, no regressions)

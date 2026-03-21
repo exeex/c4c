@@ -148,6 +148,7 @@ bool Parser::is_type_start() const {
     if (k == TokenKind::KwAlignas) return true;
     if (k == TokenKind::KwStaticAssert) return false;
     if (k == TokenKind::Identifier) {
+        if (is_cpp_mode() && cur().lexeme == "typename") return true;
         if (is_typedef_name(cur().lexeme)) return true;
         if (typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0) return true;
     }
@@ -224,6 +225,19 @@ void Parser::skip_attributes() {
         consume();  // __attribute__
         if (check(TokenKind::LParen)) skip_paren_group();
         if (check(TokenKind::LParen)) skip_paren_group();  // double-paren
+    }
+    // C++11 [[attribute]] syntax
+    while (check(TokenKind::LBracket) && pos_ + 1 < tokens_.size() &&
+           tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+        consume(); consume(); // [[
+        int depth = 1;
+        while (pos_ < tokens_.size() && depth > 0) {
+            if (check(TokenKind::LBracket)) ++depth;
+            else if (check(TokenKind::RBracket)) --depth;
+            if (depth > 0) consume();
+        }
+        if (check(TokenKind::RBracket)) consume(); // first ]
+        if (check(TokenKind::RBracket)) consume(); // second ]
     }
     while (check(TokenKind::KwExtension)) {
         consume();
@@ -565,6 +579,12 @@ TypeSpec Parser::parse_base_type() {
                 [[fallthrough]];
 
             case TokenKind::Identifier:
+                // C++ 'typename' keyword: skip it and parse the dependent type
+                if (is_cpp_mode() && cur().lexeme == "typename") {
+                    consume(); // eat 'typename'
+                    // Continue parsing — next tokens form the dependent type
+                    break;
+                }
                 if (is_cpp_mode()) {
                     QualifiedNameRef qn;
                     if (peek_qualified_name(&qn, true)) {
@@ -995,6 +1015,21 @@ TypeSpec Parser::parse_base_type() {
         }
         ts.base = TB_TYPEDEF;
         // tag already set above
+        // In C++ mode, skip unresolved template arguments (e.g. reverse_iterator<Iterator1>)
+        if (is_cpp_mode() && check(TokenKind::Less)) {
+            int depth = 1;
+            consume();  // <
+            while (!at_end() && depth > 0) {
+                if (check(TokenKind::Less)) ++depth;
+                else if (check_template_close()) {
+                    --depth;
+                    if (depth > 0) { match_template_close(); continue; }
+                    break;
+                }
+                consume();
+            }
+            if (check_template_close()) match_template_close();
+        }
     } else if (has_void) {
         ts.base = TB_VOID;
     } else if (has_bool) {
@@ -1522,11 +1557,27 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     int ln = cur().line;
     // Parse attributes before tag name — capture packed attribute.
     TypeSpec attr_ts{};
+    auto skip_cpp11_attrs = [&]() {
+        while (check(TokenKind::LBracket) && pos_ + 1 < static_cast<int>(tokens_.size()) &&
+               tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+            consume(); consume(); // [[
+            int depth = 1;
+            while (pos_ < static_cast<int>(tokens_.size()) && depth > 0) {
+                if (check(TokenKind::LBracket)) ++depth;
+                else if (check(TokenKind::RBracket)) --depth;
+                if (depth > 0) consume();
+            }
+            if (check(TokenKind::RBracket)) consume(); // first ]
+            if (check(TokenKind::RBracket)) consume(); // second ]
+        }
+    };
     auto parse_decl_attrs = [&]() {
+        skip_cpp11_attrs();
         while (check(TokenKind::KwAlignas)) {
             parse_alignas_specifier(this, &attr_ts, ln);
         }
         parse_attributes(&attr_ts);
+        skip_cpp11_attrs();
     };
     parse_decl_attrs();
 
