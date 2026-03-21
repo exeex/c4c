@@ -13,6 +13,7 @@ set(CPP_POSITIVE_FRONTEND_STEMS
 )
 
 set(CPP_POSITIVE_PARSE_STEMS
+    alignas_symbol_parse
     operator_decl_subscript_parse
     operator_decl_deref_parse
     operator_decl_arrow_parse

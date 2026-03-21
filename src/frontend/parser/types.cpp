@@ -1455,14 +1455,21 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     int ln = cur().line;
     // Parse attributes before tag name — capture packed attribute.
     TypeSpec attr_ts{};
-    parse_attributes(&attr_ts);
+    auto parse_decl_attrs = [&]() {
+        while (check(TokenKind::KwAlignas)) {
+            consume();
+            if (check(TokenKind::LParen)) skip_paren_group();
+        }
+        parse_attributes(&attr_ts);
+    };
+    parse_decl_attrs();
 
     const char* tag = nullptr;
     if (check(TokenKind::Identifier)) {
         tag = arena_.strdup(cur().lexeme);
         consume();
     }
-    parse_attributes(&attr_ts);
+    parse_decl_attrs();
 
     if (is_cpp_mode() && check(TokenKind::Colon)) {
         consume();

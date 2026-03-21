@@ -206,6 +206,8 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
   // Volatile aliases
   if (s == "volatile" || s == "__volatile__" || s == "__volatile")
     return TokenKind::KwVolatile;
+  if (s == "alignas")
+    return TokenKind::KwAlignas;
   // Const aliases
   if (s == "__const" || s == "__const__")
     return TokenKind::KwConst;
