@@ -1554,7 +1554,8 @@ class Lowerer {
       switch (pts.base) {
         case TB_INT: mangled += "int"; break;
         case TB_UINT: mangled += "uint"; break;
-        case TB_CHAR: case TB_SCHAR: mangled += "char"; break;
+        case TB_CHAR: mangled += "char"; break;
+        case TB_SCHAR: mangled += "schar"; break;
         case TB_UCHAR: mangled += "uchar"; break;
         case TB_SHORT: mangled += "short"; break;
         case TB_USHORT: mangled += "ushort"; break;
@@ -1567,12 +1568,28 @@ class Lowerer {
         case TB_LONGDOUBLE: mangled += "ldouble"; break;
         case TB_VOID: mangled += "void"; break;
         case TB_BOOL: mangled += "bool"; break;
-        case TB_STRUCT: case TB_UNION:
+        case TB_INT128: mangled += "i128"; break;
+        case TB_UINT128: mangled += "u128"; break;
+        case TB_STRUCT:
+          mangled += "struct_";
           mangled += pts.tag ? pts.tag : "anon";
+          break;
+        case TB_UNION:
+          mangled += "union_";
+          mangled += pts.tag ? pts.tag : "anon";
+          break;
+        case TB_ENUM:
+          mangled += "enum_";
+          mangled += pts.tag ? pts.tag : "anon";
+          break;
+        case TB_TYPEDEF:
+          mangled += pts.tag ? pts.tag : "typedef";
           break;
         default: mangled += "T"; break;
       }
-      for (int p = 0; p < pts.ptr_level; ++p) mangled += "p";
+      for (int p = 0; p < pts.ptr_level; ++p) mangled += "_ptr";
+      if (pts.is_lvalue_ref) mangled += "_ref";
+      if (pts.is_rvalue_ref) mangled += "_rref";
     };
     int ti = 0, ni = 0;
     for (int pi = 0; pi < tpl_def->n_template_params; ++pi) {
