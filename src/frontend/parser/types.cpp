@@ -1573,6 +1573,78 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         skip_attributes();
         if (check(TokenKind::RBrace)) break;
 
+        // C++ template member: template<class T, ...> member-decl
+        // Consume the template parameter list and inject type params as
+        // typedefs so the subsequent member parsing recognizes them as types.
+        // Scope guard cleans up injected names on scope exit (handles continue/break).
+        struct TemplateParamGuard {
+            std::set<std::string>& typedefs;
+            std::unordered_map<std::string, TypeSpec>& typedef_types;
+            std::vector<std::string> names;
+            ~TemplateParamGuard() {
+                for (auto& n : names) { typedefs.erase(n); typedef_types.erase(n); }
+            }
+        } tmpl_guard{typedefs_, typedef_types_, {}};
+        if (is_cpp_mode() && check(TokenKind::KwTemplate)) {
+            consume(); // eat 'template'
+            expect(TokenKind::Less);
+            while (!at_end() && !check(TokenKind::Greater)) {
+                if ((check(TokenKind::Identifier) && cur().lexeme == "typename") ||
+                    check(TokenKind::KwClass)) {
+                    consume(); // eat 'typename'/'class'
+                    if (check(TokenKind::Identifier)) {
+                        std::string pname = cur().lexeme;
+                        consume();
+                        // Inject as typedef so is_type_start() recognizes it
+                        typedefs_.insert(pname);
+                        TypeSpec param_ts{};
+                        param_ts.array_size = -1;
+                        param_ts.inner_rank = -1;
+                        param_ts.base = TB_TYPEDEF;
+                        param_ts.tag = arena_.strdup(pname.c_str());
+                        typedef_types_[pname] = param_ts;
+                        tmpl_guard.names.push_back(std::move(pname));
+                    }
+                    // Skip default: = type
+                    if (check(TokenKind::Assign)) {
+                        consume();
+                        int depth = 0;
+                        while (!at_end()) {
+                            if (check(TokenKind::Less)) ++depth;
+                            else if (check(TokenKind::Greater)) {
+                                if (depth == 0) break;
+                                --depth;
+                            } else if (check(TokenKind::Comma) && depth == 0) break;
+                            consume();
+                        }
+                    }
+                } else if (is_type_kw(cur().kind)) {
+                    // NTTP: e.g. int N
+                    while (!at_end() && is_type_kw(cur().kind)) consume();
+                    if (check(TokenKind::Identifier)) consume(); // param name
+                    // Skip default: = expr
+                    if (check(TokenKind::Assign)) {
+                        consume();
+                        int depth = 0;
+                        while (!at_end()) {
+                            if (check(TokenKind::Less)) ++depth;
+                            else if (check(TokenKind::Greater)) {
+                                if (depth == 0) break;
+                                --depth;
+                            } else if (check(TokenKind::Comma) && depth == 0) break;
+                            consume();
+                        }
+                    }
+                } else {
+                    // Unknown template param form — skip token
+                    consume();
+                }
+                if (!match(TokenKind::Comma)) break;
+            }
+            expect(TokenKind::Greater);
+            // Fall through to parse the member declaration that follows
+        }
+
         if (is_cpp_mode() && check(TokenKind::KwUsing)) {
             consume();
             while (!at_end() && !check(TokenKind::Semi) && !check(TokenKind::RBrace))

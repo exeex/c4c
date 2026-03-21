@@ -42,6 +42,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     using_declaration_namespace_parse
     using_namespace_directive_parse
     using_nested_namespace_parse
+    template_conversion_operator_parse
 )
 
 foreach(src IN LISTS INTERNAL_CPP_NEGATIVE_TEST_SRCS)
