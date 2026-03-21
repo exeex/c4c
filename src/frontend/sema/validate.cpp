@@ -387,6 +387,9 @@ class Validator {
   std::unordered_map<std::string, std::vector<FunctionSig>> ref_overload_sigs_;
   std::unordered_set<std::string> complete_structs_;
   std::unordered_set<std::string> complete_unions_;
+  // Struct field names for implicit member lookup in out-of-class method bodies.
+  std::unordered_map<std::string, std::unordered_set<std::string>> struct_field_names_;
+  std::string current_method_struct_tag_;
   std::vector<std::unordered_map<std::string, ScopedSym>> scopes_;
   bool suppress_uninit_read_ = false;
 
@@ -529,6 +532,12 @@ class Validator {
     } else {
       complete_structs_.insert(tag);
     }
+    // Collect field names for implicit member lookup in method bodies.
+    auto& fnames = struct_field_names_[tag];
+    for (int i = 0; i < n->n_fields; ++i) {
+      if (n->fields[i] && n->fields[i]->name && n->fields[i]->name[0])
+        fnames.insert(n->fields[i]->name);
+    }
   }
 
   void collect_toplevel_node(const Node* n) {
@@ -667,6 +676,8 @@ class Validator {
     const bool old_in_function = in_function_;
     const TypeSpec old_fn_ret = current_fn_ret_;
     const Node* old_fn_node = current_fn_node_;
+    const std::string old_method_struct = current_method_struct_tag_;
+    current_method_struct_tag_.clear();
     in_function_ = true;
     current_fn_ret_ = fn->type;
     current_fn_node_ = fn;
@@ -710,6 +721,7 @@ class Validator {
       // In this codebase, is_const with ptr_level>0 models pointee constness.
       this_ts.is_const = fn->is_const_method;
       bind_local("this", this_ts, true, fn->line);
+      current_method_struct_tag_ = *owner;
     }
 
     // Validate constructor initializer list expressions.
@@ -730,6 +742,7 @@ class Validator {
     in_function_ = old_in_function;
     current_fn_ret_ = old_fn_ret;
     current_fn_node_ = old_fn_node;
+    current_method_struct_tag_ = old_method_struct;
   }
 
   void validate_decl_init(const Node* decl) {
@@ -1029,6 +1042,18 @@ class Validator {
         if (!n->name || !n->name[0]) return out;
         auto sym = lookup_symbol(n->name);
         if (!sym.has_value()) {
+          // In an out-of-class method body, unqualified names may refer to
+          // struct fields (implicit this->field).  Accept them here; the HIR
+          // lowerer resolves them via MemberExpr.
+          if (!current_method_struct_tag_.empty()) {
+            auto fit = struct_field_names_.find(current_method_struct_tag_);
+            if (fit != struct_field_names_.end() &&
+                fit->second.count(n->name)) {
+              out.valid = true;
+              out.is_lvalue = true;
+              return out;
+            }
+          }
           emit(n->line, std::string("use of undeclared identifier '") + n->name + "'");
           return out;
         }
