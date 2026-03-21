@@ -28,6 +28,37 @@ static void finalize_pending_operator_name(std::string& name, size_t param_count
                      param_count == 0 ? "operator_predec" : "operator_postdec");
     }
 }
+
+static void append_type_mangled_suffix_local(std::string& out, const TypeSpec& ts) {
+    switch (ts.base) {
+        case TB_INT: out += "int"; break;
+        case TB_UINT: out += "uint"; break;
+        case TB_CHAR: out += "char"; break;
+        case TB_SCHAR: out += "schar"; break;
+        case TB_UCHAR: out += "uchar"; break;
+        case TB_SHORT: out += "short"; break;
+        case TB_USHORT: out += "ushort"; break;
+        case TB_LONG: out += "long"; break;
+        case TB_ULONG: out += "ulong"; break;
+        case TB_LONGLONG: out += "llong"; break;
+        case TB_ULONGLONG: out += "ullong"; break;
+        case TB_FLOAT: out += "float"; break;
+        case TB_DOUBLE: out += "double"; break;
+        case TB_LONGDOUBLE: out += "ldouble"; break;
+        case TB_VOID: out += "void"; break;
+        case TB_BOOL: out += "bool"; break;
+        case TB_INT128: out += "i128"; break;
+        case TB_UINT128: out += "u128"; break;
+        case TB_STRUCT: out += "struct_"; out += (ts.tag ? ts.tag : "anon"); break;
+        case TB_UNION: out += "union_"; out += (ts.tag ? ts.tag : "anon"); break;
+        case TB_ENUM: out += "enum_"; out += (ts.tag ? ts.tag : "anon"); break;
+        case TB_TYPEDEF: out += (ts.tag ? ts.tag : "typedef"); break;
+        default: out += "T"; break;
+    }
+    for (int p = 0; p < ts.ptr_level; ++p) out += "_ptr";
+    if (ts.is_lvalue_ref) out += "_ref";
+    if (ts.is_rvalue_ref) out += "_rref";
+}
 namespace {
 
 const char* maybe_parse_linkage_spec(Parser* parser) {
@@ -715,6 +746,280 @@ Node* Parser::parse_top_level() {
     }
     // Don't skip_attributes() here — let parse_base_type() handle them so
     // type-affecting attributes like vector_size are captured.
+
+    // C++ out-of-class constructor / conversion-operator definition/declaration:
+    //   Type::Type(params) { ... }
+    //   Type::operator bool() const { ... }
+    // There is no explicit return type, so handle these before parse_base_type().
+    if (is_cpp_mode() && !is_typedef) {
+        int op_probe = pos_;
+        if (op_probe < static_cast<int>(tokens_.size()) &&
+            tokens_[op_probe].kind == TokenKind::ColonColon) {
+            ++op_probe;
+        }
+        bool saw_qualified_name = false;
+        if (op_probe < static_cast<int>(tokens_.size()) &&
+            tokens_[op_probe].kind == TokenKind::Identifier) {
+            saw_qualified_name = true;
+            ++op_probe;
+            while (op_probe + 1 < static_cast<int>(tokens_.size()) &&
+                   tokens_[op_probe].kind == TokenKind::ColonColon &&
+                   tokens_[op_probe + 1].kind == TokenKind::Identifier) {
+                op_probe += 2;
+            }
+        }
+        bool looks_like_qualified_operator =
+            saw_qualified_name &&
+            op_probe + 1 < static_cast<int>(tokens_.size()) &&
+            tokens_[op_probe].kind == TokenKind::ColonColon &&
+            tokens_[op_probe + 1].kind == TokenKind::KwOperator;
+
+        if (looks_like_qualified_operator) {
+            match(TokenKind::ColonColon);
+            std::string qualified_owner;
+            if (check(TokenKind::Identifier)) {
+                qualified_owner += cur().lexeme;
+                consume();
+            }
+            while (check(TokenKind::ColonColon) && peek(1).kind == TokenKind::Identifier) {
+                consume();
+                if (!qualified_owner.empty()) qualified_owner += "::";
+                qualified_owner += cur().lexeme;
+                consume();
+            }
+
+            expect(TokenKind::ColonColon);
+            expect(TokenKind::KwOperator);
+
+            TypeSpec conv_ts = parse_base_type();
+            parse_attributes(&conv_ts);
+            while (check(TokenKind::Star)) {
+                consume();
+                conv_ts.ptr_level++;
+            }
+            if (check(TokenKind::AmpAmp)) {
+                consume();
+                conv_ts.is_rvalue_ref = true;
+            } else if (check(TokenKind::Amp)) {
+                consume();
+                conv_ts.is_lvalue_ref = true;
+            }
+
+            std::string qualified_op_name = qualified_owner;
+            if (!qualified_op_name.empty()) qualified_op_name += "::";
+            if (conv_ts.base == TB_BOOL && conv_ts.ptr_level == 0 &&
+                !conv_ts.is_lvalue_ref && !conv_ts.is_rvalue_ref) {
+                qualified_op_name += "operator_bool";
+            } else {
+                qualified_op_name += "operator_conv_";
+                append_type_mangled_suffix_local(qualified_op_name, conv_ts);
+            }
+
+            expect(TokenKind::LParen);
+            std::vector<Node*> params;
+            bool variadic = false;
+            if (!check(TokenKind::RParen)) {
+                while (!at_end()) {
+                    if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
+                    if (check(TokenKind::RParen)) break;
+                    if (!is_type_start()) break;
+                    Node* p = parse_param();
+                    if (p) params.push_back(p);
+                    if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
+                    if (!match(TokenKind::Comma)) break;
+                }
+            }
+            expect(TokenKind::RParen);
+
+            bool is_const_method = false;
+            while (true) {
+                if (match(TokenKind::KwConst)) {
+                    is_const_method = true;
+                } else if (match(TokenKind::KwConstexpr)) {
+                    is_constexpr = true;
+                } else if (match(TokenKind::KwConsteval)) {
+                    is_consteval = true;
+                } else {
+                    break;
+                }
+            }
+
+            Node* fn = make_node(NK_FUNCTION, ln);
+            fn->type = conv_ts;
+            fn->name = arena_.strdup(qualified_op_name.c_str());
+            fn->variadic = variadic;
+            fn->is_static = is_static;
+            fn->is_extern = is_extern;
+            fn->is_inline = is_inline;
+            fn->is_constexpr = is_constexpr;
+            fn->is_consteval = is_consteval;
+            fn->is_const_method = is_const_method;
+            fn->linkage_spec = linkage_spec;
+            fn->visibility = visibility_;
+            fn->n_params = static_cast<int>(params.size());
+            if (fn->n_params > 0) {
+                fn->params = arena_.alloc_array<Node*>(fn->n_params);
+                for (int i = 0; i < fn->n_params; ++i) fn->params[i] = params[i];
+            }
+
+            if (check(TokenKind::LBrace)) {
+                bool saved_top = parsing_top_level_context_;
+                parsing_top_level_context_ = false;
+                fn->body = parse_block();
+                parsing_top_level_context_ = saved_top;
+            } else if (is_cpp_mode() && check(TokenKind::Assign) &&
+                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                       tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
+                consume();
+                consume();
+                fn->is_deleted = true;
+                match(TokenKind::Semi);
+            } else if (is_cpp_mode() && check(TokenKind::Assign) &&
+                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                       tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+                consume();
+                consume();
+                fn->is_defaulted = true;
+                match(TokenKind::Semi);
+            } else {
+                match(TokenKind::Semi);
+            }
+            known_fn_names_.insert(qualified_op_name);
+            return fn;
+        }
+
+        QualifiedNameRef ctor_qn;
+        if (peek_qualified_name(&ctor_qn, true) &&
+            !ctor_qn.qualifier_segments.empty() &&
+            ctor_qn.qualifier_segments.back() == ctor_qn.base_name) {
+            int after_qn = pos_;
+            if (ctor_qn.is_global_qualified &&
+                after_qn < static_cast<int>(tokens_.size()) &&
+                tokens_[after_qn].kind == TokenKind::ColonColon) {
+                ++after_qn;
+            }
+            if (after_qn < static_cast<int>(tokens_.size()) &&
+                tokens_[after_qn].kind == TokenKind::Identifier) {
+                ++after_qn;
+            }
+            while (after_qn + 1 < static_cast<int>(tokens_.size()) &&
+                   tokens_[after_qn].kind == TokenKind::ColonColon &&
+                   tokens_[after_qn + 1].kind == TokenKind::Identifier) {
+                after_qn += 2;
+            }
+            if (after_qn < static_cast<int>(tokens_.size()) &&
+                tokens_[after_qn].kind == TokenKind::LParen) {
+                QualifiedNameRef parsed_ctor_qn = parse_qualified_name(true);
+                std::string qualified_ctor_name;
+                for (size_t i = 0; i < parsed_ctor_qn.qualifier_segments.size(); ++i) {
+                    if (i) qualified_ctor_name += "::";
+                    qualified_ctor_name += parsed_ctor_qn.qualifier_segments[i];
+                }
+                if (!qualified_ctor_name.empty()) qualified_ctor_name += "::";
+                qualified_ctor_name += parsed_ctor_qn.base_name;
+
+                consume();  // (
+                std::vector<Node*> params;
+                bool variadic = false;
+                if (!check(TokenKind::RParen)) {
+                    while (!at_end()) {
+                        if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
+                        if (check(TokenKind::RParen)) break;
+                        if (!is_type_start()) break;
+                        Node* p = parse_param();
+                        if (p) params.push_back(p);
+                        if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
+                        if (!match(TokenKind::Comma)) break;
+                    }
+                }
+                expect(TokenKind::RParen);
+
+                std::vector<const char*> init_names;
+                std::vector<std::vector<Node*>> init_args_list;
+                if (check(TokenKind::Colon)) {
+                    consume(); // :
+                    while (!at_end() && !check(TokenKind::LBrace)) {
+                        if (!check(TokenKind::Identifier)) break;
+                        const char* mem_name = arena_.strdup(cur().lexeme);
+                        consume();
+                        expect(TokenKind::LParen);
+                        std::vector<Node*> args;
+                        if (!check(TokenKind::RParen)) {
+                            while (true) {
+                                Node* arg = parse_assign_expr();
+                                if (arg) args.push_back(arg);
+                                if (!match(TokenKind::Comma)) break;
+                            }
+                        }
+                        expect(TokenKind::RParen);
+                        init_names.push_back(mem_name);
+                        init_args_list.push_back(std::move(args));
+                        if (!match(TokenKind::Comma)) break;
+                    }
+                }
+
+                Node* fn = make_node(NK_FUNCTION, ln);
+                fn->type.base = TB_VOID;
+                fn->name = arena_.strdup(qualified_ctor_name.c_str());
+                fn->variadic = variadic;
+                fn->is_static = is_static;
+                fn->is_extern = is_extern;
+                fn->is_inline = is_inline;
+                fn->is_constexpr = is_constexpr;
+                fn->is_consteval = is_consteval;
+                fn->is_constructor = true;
+                fn->linkage_spec = linkage_spec;
+                fn->visibility = visibility_;
+                fn->n_params = static_cast<int>(params.size());
+                if (fn->n_params > 0) {
+                    fn->params = arena_.alloc_array<Node*>(fn->n_params);
+                    for (int i = 0; i < fn->n_params; ++i) fn->params[i] = params[i];
+                }
+                if (!init_names.empty()) {
+                    fn->n_ctor_inits = static_cast<int>(init_names.size());
+                    fn->ctor_init_names = arena_.alloc_array<const char*>(fn->n_ctor_inits);
+                    fn->ctor_init_args = arena_.alloc_array<Node**>(fn->n_ctor_inits);
+                    fn->ctor_init_nargs = arena_.alloc_array<int>(fn->n_ctor_inits);
+                    for (int i = 0; i < fn->n_ctor_inits; ++i) {
+                        fn->ctor_init_names[i] = init_names[i];
+                        fn->ctor_init_nargs[i] = static_cast<int>(init_args_list[i].size());
+                        if (fn->ctor_init_nargs[i] > 0) {
+                            fn->ctor_init_args[i] = arena_.alloc_array<Node*>(fn->ctor_init_nargs[i]);
+                            for (int j = 0; j < fn->ctor_init_nargs[i]; ++j)
+                                fn->ctor_init_args[i][j] = init_args_list[i][j];
+                        } else {
+                            fn->ctor_init_args[i] = nullptr;
+                        }
+                    }
+                }
+
+                if (check(TokenKind::LBrace)) {
+                    bool saved_top = parsing_top_level_context_;
+                    parsing_top_level_context_ = false;
+                    fn->body = parse_block();
+                    parsing_top_level_context_ = saved_top;
+                } else if (is_cpp_mode() && check(TokenKind::Assign) &&
+                           pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                           tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
+                    consume();
+                    consume();
+                    fn->is_deleted = true;
+                    match(TokenKind::Semi);
+                } else if (is_cpp_mode() && check(TokenKind::Assign) &&
+                           pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                           tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+                    consume();
+                    consume();
+                    fn->is_defaulted = true;
+                    match(TokenKind::Semi);
+                } else {
+                    match(TokenKind::Semi);
+                }
+                known_fn_names_.insert(qualified_ctor_name);
+                return fn;
+            }
+        }
+    }
 
     TypeSpec base_ts{};
     if (!is_type_start()) {

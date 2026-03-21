@@ -1,31 +1,23 @@
-# Operator Overload Enablement Plan
+# Operator Overload Status And Remaining Debt
 
 ## Goal
 
-Establish the minimum user-defined operator overloading support needed as a
-prerequisite for STL-like iterator and container code.
+Record the current state of user-defined operator overloading support after the
+first STL-enablement slice landed, and call out the remaining parser/sema/HIR
+debt that is still blocking broader C++ header support.
 
-This is a language-support plan, not a completeness plan.
-We do not need full C++ operator overloading up front.
-We need the smallest coherent subset that unlocks:
+This is no longer a greenfield enablement plan.
+The member-operator subset needed by iterator/container work is mostly in.
+What remains is cleanup of parser special-cases, better semantic integration,
+and a few missing C++ forms exposed by EASTL/EABase.
 
-- element access via `operator[]`
-- iterator dereference via `operator*`
-- iterator member access via `operator->`
-- iterator increment via `operator++`
-- iterator comparison via `operator==` / `operator!=`
-- lightweight state checks via `operator bool`
-- optional simple iterator arithmetic via `operator+` / `operator-`
+## What Is Landed
 
-## Status
-
-Completed for the first STL-enablement milestone.
-
-Implemented and validated in-tree:
+Implemented and covered in-tree:
 
 - member operator declaration parsing and canonical naming
-- member operator call rewriting/lowering through the ordinary call path
-- iterator/container-critical member operators:
+- operator expression lowering through the ordinary method/function call path
+- member operators used by iterator/container code:
   - `operator[]`
   - `operator*`
   - `operator->`
@@ -34,357 +26,224 @@ Implemented and validated in-tree:
   - `operator!=`
   - `operator bool`
   - simple member `operator+` / `operator-`
-- const/non-const method selection needed by container-like APIs
-- runtime coverage through iterator/container integration tests
+- const/non-const member selection needed by iterator/container APIs
+- out-of-class operator definitions for ordinary named operators such as
+  `S::operator<<`
+- out-of-class conversion operator definitions such as
+  `S::operator float() const`
+- out-of-class constructors
+- parser regression coverage for:
+  - operator declarator spellings
+  - qualified operator names
+  - out-of-class conversion operator definitions
+  - parse stability around overloaded shift expressions in method bodies
+
+This is enough for the original iterator/container milestone.
+
+## Current Implementation Shape
 
-Not required to close this plan:
+The current implementation works, but it is not yet a clean unified model.
+There are still several targeted workarounds in the parser:
+
+- operator names are recognized by hardcoded token-to-mangled-name mapping
+- ambiguous operators use deferred names such as
+  `operator_star_pending`, `operator_amp_pending`,
+  `operator_inc_pending`, `operator_dec_pending`
+  and are finalized later from parameter count
+- out-of-class constructors are handled by a dedicated top-level special-case
+- out-of-class conversion operators are handled by a second dedicated
+  top-level special-case
+- qualified-name reconstruction for declarators still depends on handwritten
+  `::` stitching logic
 
-- non-member/free-function operators
-- ADL-complete operator lookup
-- broad parity with Clang overload ranking
+That is acceptable for the current milestone, but it is still more
+special-case-driven than a full declarator-based solution should be.
 
-## Why This Must Be A Separate Prerequisite
+## Recommended Internal Model
 
-`stl_plan.md` currently assumes iterator/container APIs such as:
+Keep the C++ surface grammar in the parser, but canonicalize cast-like
+operators into a template-specialization-shaped internal form after parsing.
 
-- `operator[]`
-- `begin()` / `end()`
-- `operator*`
-- `operator->`
-- pre/post increment
-- `==` / `!=`
+That means:
 
-Those are not just surface syntax.
-They require coordinated support across:
+- the parser should still accept ordinary C++ spellings such as:
+  - `operator bool()`
+  - `operator unsigned long long()`
+  - `operator T*()`
+  - `MyType(x)` / constructor syntax
+- AST should retain the real C++ meaning:
+  - symbolic operator
+  - conversion operator
+  - constructor
 
-- parsing operator-function declarations
-- naming and symbol identity for operator functions
-- overload resolution at call sites
-- method vs free-function dispatch rules
-- AST/HIR lowering for rewritten operator calls
-- codegen for the resulting ordinary calls
+But once we reach HIR/canonicalization, cast-like operations should be lowered
+into a unified internal model that behaves like a template specialization:
 
-If we do not isolate this work, the STL plan will stall in Phase 2 and Phase 4
-on a broad, cross-cutting missing feature.
+- conversion operator:
+  - `obj.operator T()` -> `CastTo<T>(obj)`
+- constructor/direct-init/copy-init:
+  - `MyType(x)` -> `CastFrom<MyType>(x)`
 
-## Scope Boundary
+This should be treated as a canonical internal representation, not a user-facing
+syntax rewrite.
 
-### In scope
+### Why this is a good fit
 
-- user-defined overloaded operators needed for minimal containers/iterators
-- member operator functions first
-- internal positive/negative tests that pin down semantics
-- enough overload resolution to distinguish the supported forms
+- it lets us reuse existing template/candidate machinery instead of inventing a
+  second ad hoc conversion pipeline
+- non-template and template conversion operators fit the same shape naturally
+- constructor-based conversions and conversion-operator-based conversions can be
+  modeled under one cast-resolution framework
+- HIR no longer needs to depend on parser-only mangled strings such as
+  `operator_conv_float`
 
-### Out of scope for the first milestone
+### Important boundary
 
-- every overloadable C++ operator
-- full ranking parity with Clang
-- operators unrelated to STL-like code such as `operator,`, `operator new`,
-  `operator delete`, `operator&&`, `operator||`
-- implicit conversion-heavy corner cases
-- ADL-complete free-function operator lookup
+This model should unify lowering, but not erase the semantic distinction between
+the candidate sources:
 
-## Current Baseline
+- `CastTo<T>(obj)` candidates come from the source type's conversion operators
+- `CastFrom<T>(args...)` candidates come from the target type's constructors
 
-What we appear to have today:
+It also must preserve C++ context rules:
 
-- basic struct methods
-- template struct methods
-- implicit `this` lowering in HIR
-- existing expression parsing for built-in operators
+- implicit vs explicit cast context
+- direct-init vs copy-init
+- `explicit operator bool()` and other explicit conversion restrictions
 
-What we do not appear to have yet as first-class user-facing support:
+So the recommendation is:
 
-- parsing declarations named `operator[]`, `operator*`, `operator->`, etc.
-- dedicated tests for overloaded operator declarations and calls
-- overload resolution for user-defined operators
-- explicit lowering rules from operator syntax to user-defined function calls
+- preserve C++ grammar in parser/AST
+- store structured operator metadata in AST
+- canonicalize to `CastTo<T>` / `CastFrom<T>`-style specialized internal nodes
+  in HIR/sema
+- resolve those through the existing template-like specialization machinery
+  where practical
 
-## Design Principle
+## Workarounds We Should Intentionally Carry For Now
 
-Treat operator overloading as desugaring plus constrained overload resolution.
+These are acceptable temporary choices, not immediate blockers:
 
-For the supported subset, each operator expression should lower as closely as
-possible to an ordinary function/method call once semantic resolution succeeds.
+- member-first operator resolution instead of full C++ overload ranking
+- canonical internal names like `operator_conv_float` rather than preserving a
+  richer first-class conversion-operator AST form
+- dedicated parser entry paths for constructor and conversion-operator
+  out-of-class definitions
+- parse-only regression tests for forms where parser correctness is fixed but
+  semantic/lowering support is still incomplete
 
-Examples:
+These should stay in place until real coverage forces a more unified rewrite.
 
-- `obj[i]` -> `obj.operator[](i)` for supported member form
-- `*it` -> `it.operator*()`
-- `it->field` -> `it.operator->()->field` or a constrained first-step member call
-- `++it` -> `it.operator++()`
-- `it++` -> `it.operator++(0)`
-- `a == b` -> `a.operator==(b)` or supported non-member equivalent later
+## Remaining Problems
 
-The first milestone should strongly prefer member operators because that is
-enough for container and iterator prototypes and keeps lookup simpler.
+### 1. Template conversion operators are still missing
 
-## Recommended Phases
+Current parser support handles:
 
-## Phase 0: Syntax and naming foundation
+- `operator bool()`
+- `operator unsigned long long()`
+- `operator float()`
+- other non-template conversion operators
 
-### Objective
+Still missing:
 
-Teach the parser and symbol pipeline to recognize operator-function
-declarations without yet claiming full call support.
+- templated conversion operators such as `template<class T> operator T*()`
 
-### Required work
+This is now the first operator-related blocker seen in the EASTL/EABase path:
 
-- parse operator-function declarator names:
-  - `operator[]`
-  - `operator*`
-  - `operator->`
-  - `operator++`
-  - `operator==`
-  - `operator!=`
-  - `operator bool`
-  - optionally `operator+`
-  - optionally `operator-`
-- represent operator kind canonically in AST nodes and symbol identity
-- ensure methods can carry operator names without colliding with ordinary names
-- expose readable dumps for debugging / HIR inspection
+- `ref/EABase/include/Common/EABase/nullptr.h:32`
+- current failure: `unsupported operator overload token 'T'`
 
-### Add these positive tests
+### 2. Out-of-class method bodies still rely on incomplete implicit-member lookup
 
-- `operator_decl_subscript_parse.cpp`
-- `operator_decl_deref_parse.cpp`
-- `operator_decl_arrow_parse.cpp`
-- `operator_decl_preinc_parse.cpp`
-- `operator_decl_eq_parse.cpp`
-- `operator_decl_bool_parse.cpp`
+Parsing is now much better, but semantic behavior is still incomplete.
 
-### Add these negative tests
+Known gaps:
 
-- `bad_operator_unknown_token.cpp`
-- `bad_operator_arity_decl.cpp`
-- `bad_conversion_operator_with_return_type.cpp`
+- unqualified field access inside out-of-class methods may still fail unless
+  written as `this->field`
+- unqualified static member calls inside out-of-class methods can still lower
+  incorrectly as global function calls
 
-### Success criterion
+Visible evidence already in-tree:
 
-- The frontend can parse and retain supported operator-function declarations in
-  classes/structs with stable identities.
+- `operator_conversion_out_of_class_parse.cpp` is currently suitable as a
+  parse regression, but full compilation still fails on unqualified `mPart0`
+- `operator_shift_static_member_call_parse.cpp` no longer hits the old parser
+  failure, but the static member call path still needs semantic/lowering work
 
-## Phase 1: Member-call semantic resolution
+This means parser recovery has moved ahead of member-name resolution.
 
-### Objective
+### 3. Operator parsing is still split across multiple handwritten paths
 
-Resolve supported operator expressions to member operator functions.
+We currently parse operators in at least three different shapes:
 
-### Required work
+- in-class operator members
+- out-of-class ordinary named operators through general declarator parsing
+- out-of-class conversion operators through a dedicated special-case
 
-- semantic matching from expression form to member operator candidate set
-- arity checks by operator kind
-- cv-qualification checks for const member operators
-- basic type compatibility on explicit operands
-- error reporting when the operator exists but is used with the wrong shape
+That split is the main reason fixes have recently come in as local patches
+instead of one declarator-level model.
 
-### Supported first-wave operators
+Risk:
 
-- `operator[]`
-- `operator*`
-- `operator++` prefix
-- `operator==`
-- `operator!=`
-- `operator bool`
+- future operator grammar additions can easily fix one path but miss another
+- bugs tend to appear as “parser drift” where later top-level declarations are
+  attached incorrectly after one form is misparsed
 
-### Add these positive tests
+### 4. Free-function operators are still intentionally incomplete
 
-- `operator_subscript_member_basic.cpp`
-- `operator_subscript_member_const.cpp`
-- `operator_deref_member_basic.cpp`
-- `operator_preinc_member_basic.cpp`
-- `operator_eq_member_basic.cpp`
-- `operator_neq_member_basic.cpp`
-- `operator_bool_member_basic.cpp`
+Still deferred:
 
-### Add these negative tests
+- non-member/free-function operator lookup
+- ADL-complete lookup
+- Clang-like overload ranking
 
-- `bad_operator_subscript_arity.cpp`
-- `bad_operator_deref_extra_arg.cpp`
-- `bad_operator_bool_arglist.cpp`
-- `bad_operator_const_call.cpp`
+This is not a bug for the current milestone, but it remains an explicit
+boundary of support.
 
-### Success criterion
+## What Was Just Fixed Recently
 
-- Supported operator expressions resolve to the intended member functions and
-  fail clearly when the declaration shape is invalid.
+Recent fixes worth preserving in mental model:
 
-## Phase 2: Lowering to ordinary calls
+- qualified declarator names no longer lose `::` during reconstruction
+- `alignas` is now tokenized as a keyword instead of an identifier
+- out-of-class constructors now parse through a dedicated top-level path
+- validator no longer treats qualified methods like conflicting global
+  functions
+- out-of-class non-template conversion operator definitions now parse as
+  functions instead of falling out of the AST and corrupting following
+  top-level parsing
 
-### Objective
+The most important consequence is that the old `int128.h` failure around
+`OperatorPlus(result, v01 << 32, result)` was not really a `<<` parser bug.
+It was downstream damage from earlier operator-definition parse failure.
 
-Make resolved operator expressions executable by lowering them through the
-existing method/function call path.
+## Recommended Next Steps
 
-### Required work
+Priority order:
 
-- lower resolved operator expressions to ordinary call-style AST/HIR nodes
-- preserve value category and result type
-- preserve `this` semantics for member operators
-- ensure codegen sees ordinary calls rather than bespoke operator nodes where
-  practical
+1. Support templated conversion operators.
+2. Fix implicit member lookup for out-of-class method bodies.
+3. Fix unqualified static member call lowering inside out-of-class methods.
+4. Only after that, decide whether to unify constructor/conversion/operator
+   parsing under a cleaner declarator-based implementation.
 
-### Add these positive tests
+## Definition Of Done For The Next Cleanup Slice
 
-- `operator_subscript_runtime_basic.cpp`
-- `operator_deref_runtime_basic.cpp`
-- `operator_preinc_runtime_basic.cpp`
-- `operator_eq_runtime_basic.cpp`
-- `operator_bool_runtime_basic.cpp`
+This operator subsystem will feel “stable enough” when:
 
-### Add these HIR/debug tests
-
-- `operator_subscript_hir_dump.cpp`
-- `operator_deref_hir_dump.cpp`
-
-### Success criterion
-
-- Resolved member operators survive lowering and execute correctly in runtime
-  tests.
-
-## Phase 3: Iterator-critical operators
-
-### Objective
-
-Cover the operators specifically needed for iterator usability.
-
-### Required work
-
-- postfix `operator++(int)`
-- `operator->`
-- stable comparison semantics for iterator pairs
-- optional `operator*` const overload
-
-### Add these positive tests
-
-- `operator_postinc_member_basic.cpp`
-- `operator_arrow_member_basic.cpp`
-- `operator_arrow_chain_basic.cpp`
-- `iterator_eq_neq_basic.cpp`
-- `iterator_deref_const_basic.cpp`
-
-### Add these negative tests
-
-- `bad_operator_postinc_signature.cpp`
-- `bad_operator_arrow_nonpointer_result.cpp`
-- `bad_operator_arrow_cycle.cpp`
-
-### Success criterion
-
-- A minimal custom iterator can be incremented, dereferenced, compared, and
-  used with arrow access in plain loops.
-
-## Phase 4: Container-facing operators
-
-### Objective
-
-Finish the operator subset directly needed by the STL plan.
-
-### Required work
-
-- robust `operator[]` const/non-const pair support
-- `operator bool` for lightweight handles/iterators
-- optional simple arithmetic support for iterator stepping
-
-### Add these positive tests
-
-- `container_subscript_pair.cpp`
-- `container_bool_state.cpp`
-- `iterator_plus_basic.cpp`
-- `iterator_minus_basic.cpp`
-
-### Add these negative tests
-
-- `bad_operator_plus_arity.cpp`
-- `bad_operator_minus_type.cpp`
-
-### Success criterion
-
-- The operator surface required by fixed-storage containers and simple iterators
-  is covered by passing internal tests.
-
-## Phase 5: Optional free-function operator support
-
-### Objective
-
-Decide whether the STL plan needs non-member operators before more complete
-iterator ergonomics.
-
-### Notes
-
-- This phase should be deferred unless real tests require it.
-- Member operators are enough for the first STL-like milestone.
-
-### Possible scope
-
-- non-member `operator==` / `operator!=`
-- non-member arithmetic helpers
-- constrained ADL-aware lookup
-
-### Success criterion
-
-- Only pursued if container/iterator tests demonstrate that member-only support
-  is too limiting.
-
-### Closure decision
-
-- Not required for this plan's definition of done.
-- Leave deferred unless a real iterator/container test is blocked on a
-  non-member operator.
-
-## Recommended priority
-
-The highest-payoff first batch is:
-
-- `operator[]`
-- `operator*`
-- prefix `operator++`
-- `operator==`
-- `operator!=`
-- `operator bool`
-
-Then add:
-
-- postfix `operator++`
-- `operator->`
-
-Only after that consider:
-
-- `operator+`
-- `operator-`
-- non-member operators
-
-## Integration with the STL plan
-
-This plan should be treated as a prerequisite slice for:
-
-- `stl_plan.md` Phase 2: element access and storage
-- `stl_plan.md` Phase 4: iterator surface
-- `stl_plan.md` Phase 5: small vector-like behavior
-
-Practical sequencing:
-
-1. finish Phase 0-2 here
-2. land first operator runtime tests
-3. then start `stl_plan_todo.md` Phase 2 and Phase 4 work
-
-## Definition of done
-
-This plan is successful when:
-
-- supported operator declarations parse correctly
-- supported operator expressions resolve semantically
-- lowering/codegen execute those operators through ordinary call paths
-- iterator/container-facing operator tests pass without ad hoc hacks
-
-This definition is now satisfied for the member-operator subset that the STL
-milestones depend on. Phase 5 remains an intentionally deferred extension, not
-an open blocker on plan completion.
+- non-template and template conversion operators both parse correctly
+- out-of-class method bodies can use unqualified member names the same way
+  in-class method bodies do
+- unqualified static member calls in out-of-class methods resolve as members,
+  not globals
+- EASTL/EABase no longer exposes new operator-specific parser failures before
+  we hit broader template/library gaps
 
 ## Non-goals
 
 - full C++ operator overloading parity
-- perfect overload ranking parity with Clang
-- move-only / allocator-heavy container semantics
-- broad standard library emulation
+- perfect Clang overload ranking parity
+- immediate removal of every parser special-case
+- ADL-complete non-member operator support unless a real library case demands it

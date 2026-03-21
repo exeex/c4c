@@ -545,6 +545,7 @@ class Validator {
       }
     } else if (n->kind == NK_FUNCTION) {
       if (!n->name || !n->name[0]) return;
+      if (qualified_method_owner_struct(n).has_value()) return;
       FunctionSig sig;
       sig.ret = n->type;
       sig.variadic = n->variadic;
