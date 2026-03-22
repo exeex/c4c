@@ -10,6 +10,7 @@ set(CPP_POSITIVE_FRONTEND_STEMS
     if_constexpr_template_chain
     template_type_traits_builtin
     type_traits_builtin
+    trailing_return_type_runtime
 )
 
 set(CPP_POSITIVE_PARSE_STEMS

@@ -96,16 +96,33 @@ Operator Overloading — item 4: return to EASTL/std_vector bring-up
     name resolution via `peek_qualified_name` (was only checking first 2 segments)
   - EASTL errors reduced from ~21 to 9 (mostly cascading from a few remaining blockers)
   - Test: `eastl_slice4_typename_and_specialization_parse.cpp` (parse-only)
+- [x] C++ member-pointer declarator parsing (`T C::*`)
+  - Root cause: `parse_base_type()` consumed the class name in declarations like
+    `R C::*member` as if it were another typedef/base type, so parser failed before
+    declarator handling
+  - Fix: stop base-type parsing when identifier is followed by `::*`, and teach
+    `parse_declarator()` to consume `C::*` / `ns::C::*` as a pointer-like declarator
+  - This is enough for parser bring-up of EASTL cases like
+    `invoke_impl(R C::*func, T&& obj, ...)`
+  - Test: `member_pointer_param_parse.cpp` (parse-only)
+- [x] C++ trailing return type parsing (`auto f(...) -> type`)
+  - Root cause: after parameter list / trailing cv / exception-spec parsing, function
+    and method paths never consumed `-> return_type`, leaving parser state corrupted or
+    silently producing malformed AST
+  - Fix: in top-level function parsing and struct-body method/operator parsing, detect
+    `->` after `skip_exception_spec()` and parse a replacement return type via
+    `parse_type_name()`
+  - Validated both plain trailing return types and dependent forms like
+    `decltype(f())`
+  - Test: `trailing_return_type_runtime.cpp` (runtime)
 
 ## Next Slice
 - EASTL bring-up slice 5: remaining blockers (~9 errors):
   - iterator.h:395: cascading error from complex template member functions with
     `enable_if<...>::type` return types and `EASTL_REMOVE_AT_2024_SEPT` deprecated attributes
-  - functional_base.h:44: `R C::*` member pointer syntax in function params (invoke_impl)
   - functional_base.h:197: template member functions with own template params (`template<typename A, typename B>`)
-  - functional.h: `auto` return type + `-> decltype(...)` trailing return type
-  - Need to handle: template member function params in struct body, member pointer
-    type syntax `T C::*`, trailing return type syntax `-> type`
+  - Need to handle: template member function params in struct body, especially when
+    combined with `enable_if<...>::type` return types and deprecated attribute macros
 
 ## Blockers
 - None critical

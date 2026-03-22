@@ -2723,6 +2723,10 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 }
             }
             skip_exception_spec();
+            if (is_cpp_mode() && match(TokenKind::Arrow)) {
+                fts = parse_type_name();
+                parse_attributes(&fts);
+            }
 
             Node* method = make_node(NK_FUNCTION, cur().line);
             method->type = fts;
@@ -2829,6 +2833,10 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                     }
                 }
                 skip_exception_spec();
+                if (is_cpp_mode() && match(TokenKind::Arrow)) {
+                    cur_fts = parse_type_name();
+                    parse_attributes(&cur_fts);
+                }
                 Node* method = make_node(NK_FUNCTION, cur().line);
                 method->type = cur_fts;
                 method->name = fname;

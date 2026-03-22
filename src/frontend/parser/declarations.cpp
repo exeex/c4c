@@ -1671,6 +1671,10 @@ top_level_base_ready:
             break;
         }
         skip_exception_spec();
+        if (is_cpp_mode() && match(TokenKind::Arrow)) {
+            ts = parse_type_name();
+            parse_attributes(&ts);
+        }
 
         // K&R style parameter declarations before body:
         //   f(a, b) int a; short *b; { ... }
