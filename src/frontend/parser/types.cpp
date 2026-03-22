@@ -615,6 +615,8 @@ TypeSpec Parser::parse_base_type() {
             case TokenKind::KwExtension:
             case TokenKind::KwNoreturn:
             case TokenKind::KwThreadLocal:
+            case TokenKind::KwConstexpr:
+            case TokenKind::KwConsteval:
                 consume(); break;
             case TokenKind::KwAuto:
                 if (is_cpp_mode() && !base_set) {
@@ -785,10 +787,76 @@ TypeSpec Parser::parse_base_type() {
                 [[fallthrough]];
 
             case TokenKind::Identifier:
-                // C++ 'typename' keyword: skip it and parse the dependent type
+                // C++ 'typename' keyword: consume it and the full dependent type
+                // expression (e.g., typename Container::value_type, typename T::type)
                 if (is_cpp_mode() && cur().lexeme == "typename") {
                     consume(); // eat 'typename'
-                    // Continue parsing — next tokens form the dependent type
+                    // Consume the dependent type: Ident (:: Ident)* (< ... >)?
+                    // The result is an unresolved typedef.
+                    if (check(TokenKind::Identifier) || check(TokenKind::ColonColon)) {
+                        std::string dep_name;
+                        if (check(TokenKind::ColonColon)) {
+                            dep_name = "::";
+                            consume();
+                        }
+                        if (check(TokenKind::Identifier)) {
+                            dep_name += cur().lexeme;
+                            consume();
+                        }
+                        while (check(TokenKind::ColonColon) &&
+                               pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                               tokens_[pos_ + 1].kind == TokenKind::Identifier) {
+                            consume(); // ::
+                            dep_name += "::";
+                            dep_name += cur().lexeme;
+                            consume(); // ident
+                        }
+                        // Skip optional template args <...>
+                        if (check(TokenKind::Less)) {
+                            int depth = 1;
+                            consume(); // <
+                            while (!at_end() && depth > 0) {
+                                if (check(TokenKind::Less)) ++depth;
+                                else if (check_template_close()) {
+                                    --depth;
+                                    if (depth > 0) { match_template_close(); continue; }
+                                    break;
+                                }
+                                consume();
+                            }
+                            if (check_template_close()) match_template_close();
+                        }
+                        // After template args, may have ::type suffix
+                        while (check(TokenKind::ColonColon) &&
+                               pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                               tokens_[pos_ + 1].kind == TokenKind::Identifier) {
+                            consume(); // ::
+                            dep_name += "::";
+                            dep_name += cur().lexeme;
+                            consume(); // ident
+                            // Skip another level of template args
+                            if (check(TokenKind::Less)) {
+                                int depth = 1;
+                                consume();
+                                while (!at_end() && depth > 0) {
+                                    if (check(TokenKind::Less)) ++depth;
+                                    else if (check_template_close()) {
+                                        --depth;
+                                        if (depth > 0) { match_template_close(); continue; }
+                                        break;
+                                    }
+                                    consume();
+                                }
+                                if (check_template_close()) match_template_close();
+                            }
+                        }
+                        // Resolve: try known typedef first, else use as unresolved
+                        std::string resolved = resolve_visible_type_name(dep_name);
+                        if (typedef_types_.count(resolved) == 0) resolved = dep_name;
+                        has_typedef = true;
+                        ts.tag = arena_.strdup(resolved.c_str());
+                        done = true;
+                    }
                     break;
                 }
                 if (is_cpp_mode()) {
@@ -834,6 +902,23 @@ TypeSpec Parser::parse_base_type() {
                                         arena_.strdup(qn.qualifier_segments[i].c_str());
                                 }
                             }
+                            parse_qualified_name(true);
+                            done = true;
+                            break;
+                        }
+                        // C++ fallback: unresolved qualified name (e.g. ns::Type)
+                        // treated as an unresolved type so template/header parsing
+                        // can proceed without failing on unknown namespace types.
+                        if (!already_have_base && !qn.qualifier_segments.empty()) {
+                            std::string full_name;
+                            for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
+                                if (i) full_name += "::";
+                                full_name += qn.qualifier_segments[i];
+                            }
+                            full_name += "::";
+                            full_name += qn.base_name;
+                            has_typedef = true;
+                            ts.tag = arena_.strdup(full_name.c_str());
                             parse_qualified_name(true);
                             done = true;
                             break;
@@ -1826,42 +1911,66 @@ Node* Parser::parse_struct_or_union(bool is_union) {
              tokens_[probe].kind == TokenKind::Colon);
         if (is_specialization) {
             template_origin_name = arena_.strdup(tag);
+            int saved_pos = pos_;
+            bool parse_ok = true;
             consume(); // <
-            while (!at_end() && !check_template_close()) {
-                ParsedTemplateArg arg;
-                long long sign = 1;
-                if (match(TokenKind::Minus)) sign = -1;
-                if (check(TokenKind::KwTrue)) {
-                    arg.is_value = true;
-                    arg.value = 1;
-                    consume();
-                } else if (check(TokenKind::KwFalse)) {
-                    arg.is_value = true;
-                    arg.value = 0;
-                    consume();
-                } else if (check(TokenKind::CharLit)) {
-                    Node* lit = parse_primary();
-                    arg.is_value = true;
-                    arg.value = lit ? lit->ival * sign : 0;
-                } else if (check(TokenKind::IntLit)) {
-                    arg.is_value = true;
-                    arg.value = parse_int_lexeme(cur().lexeme.c_str()) * sign;
-                    consume();
-                } else if (check(TokenKind::Identifier) && !is_type_start()) {
-                    arg.is_value = true;
-                    arg.nttp_name = arena_.strdup(cur().lexeme);
-                    arg.value = 0;
-                    consume();
-                    if (check(TokenKind::Ellipsis)) consume();
-                } else {
-                    arg.is_value = false;
-                    arg.type = parse_type_name();
-                    if (check(TokenKind::Ellipsis)) consume();
+            try {
+                while (!at_end() && !check_template_close()) {
+                    ParsedTemplateArg arg;
+                    long long sign = 1;
+                    if (match(TokenKind::Minus)) sign = -1;
+                    if (check(TokenKind::KwTrue)) {
+                        arg.is_value = true;
+                        arg.value = 1;
+                        consume();
+                    } else if (check(TokenKind::KwFalse)) {
+                        arg.is_value = true;
+                        arg.value = 0;
+                        consume();
+                    } else if (check(TokenKind::CharLit)) {
+                        Node* lit = parse_primary();
+                        arg.is_value = true;
+                        arg.value = lit ? lit->ival * sign : 0;
+                    } else if (check(TokenKind::IntLit)) {
+                        arg.is_value = true;
+                        arg.value = parse_int_lexeme(cur().lexeme.c_str()) * sign;
+                        consume();
+                    } else if (check(TokenKind::Identifier) && !is_type_start()) {
+                        arg.is_value = true;
+                        arg.nttp_name = arena_.strdup(cur().lexeme);
+                        arg.value = 0;
+                        consume();
+                        if (check(TokenKind::Ellipsis)) consume();
+                    } else {
+                        arg.is_value = false;
+                        arg.type = parse_type_name();
+                        if (check(TokenKind::Ellipsis)) consume();
+                    }
+                    specialization_args.push_back(arg);
+                    if (!match(TokenKind::Comma)) break;
                 }
-                specialization_args.push_back(arg);
-                if (!match(TokenKind::Comma)) break;
+                expect_template_close();
+            } catch (...) {
+                // Unparseable specialization args (e.g. T U::* member pointers).
+                // Skip balanced <...> and continue with empty args.
+                parse_ok = false;
+                pos_ = saved_pos;
+                specialization_args.clear();
+                if (check(TokenKind::Less)) {
+                    int depth = 1;
+                    consume(); // <
+                    while (!at_end() && depth > 0) {
+                        if (check(TokenKind::Less)) ++depth;
+                        else if (check_template_close()) {
+                            --depth;
+                            if (depth > 0) { match_template_close(); continue; }
+                            break;
+                        }
+                        consume();
+                    }
+                    if (check_template_close()) match_template_close();
+                }
             }
-            expect_template_close();
             std::string mangled(tag);
             mangled += "__spec_";
             mangled += std::to_string(anon_counter_++);
@@ -1925,13 +2034,13 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         const std::string qtag =
             canonical_name_in_context(current_namespace_context_id(), tag);
         if (defined_struct_tags_.count(qtag)) {
-            if (parsing_top_level_context_) {
+            if (parsing_top_level_context_ && !is_cpp_mode()) {
                 throw std::runtime_error(std::string("redefinition of ") +
                                          (is_union ? "union " : "struct ") + tag);
             }
-            // Block-scoped redefinition of an already-defined tag (C tag shadowing).
+            // Block-scoped redefinition of an already-defined tag (C tag shadowing),
+            // or C++ template specialization inner struct with same name.
             // Generate a unique shadow tag so both definitions coexist in struct_defs_.
-            // Variables declared inline with this definition will get the shadow tag.
             char buf[64];
             snprintf(buf, sizeof(buf), "%s.__shadow_%d", tag, anon_counter_++);
             tag = arena_.strdup(buf);
@@ -1989,6 +2098,25 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     while (!at_end() && !check(TokenKind::RBrace)) {
         skip_attributes();
         if (check(TokenKind::RBrace)) break;
+
+        // C++ access specifiers: public/private/protected followed by ':'
+        if (is_cpp_mode() && check(TokenKind::Identifier) &&
+            (cur().lexeme == "public" || cur().lexeme == "private" || cur().lexeme == "protected") &&
+            pos_ + 1 < static_cast<int>(tokens_.size()) &&
+            tokens_[pos_ + 1].kind == TokenKind::Colon) {
+            consume(); // access specifier
+            consume(); // ':'
+            continue;
+        }
+
+        // C++ friend declaration: friend Type; or friend class Type;
+        if (is_cpp_mode() && check(TokenKind::Identifier) && cur().lexeme == "friend") {
+            consume(); // 'friend'
+            while (!at_end() && !check(TokenKind::Semi) && !check(TokenKind::RBrace))
+                consume();
+            match(TokenKind::Semi);
+            continue;
+        }
 
         // C++ template member: template<class T, ...> member-decl
         // Consume the template parameter list and inject type params as
@@ -2716,6 +2844,30 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 consume();
                 Node* bfw = parse_assign_expr();
                 if (bfw) eval_const_int(bfw, &bf_width, &struct_tag_def_map_);
+            }
+
+            // C++ in-class field initializer or static data member initializer:
+            // e.g. int x = 5;  or  static constexpr bool value = expr;
+            if (is_cpp_mode() && check(TokenKind::Assign)) {
+                consume(); // eat '='
+                // Skip balanced initializer expression until ; or , at depth 0
+                int depth = 0;
+                while (!at_end()) {
+                    if (check(TokenKind::LParen) || check(TokenKind::LBrace) ||
+                        check(TokenKind::LBracket)) { ++depth; consume(); }
+                    else if (check(TokenKind::RParen) || check(TokenKind::RBrace) ||
+                             check(TokenKind::RBracket)) {
+                        if (depth == 0) break;
+                        --depth; consume();
+                    }
+                    else if (check(TokenKind::Less)) { ++depth; consume(); }
+                    else if (check_template_close()) {
+                        if (depth == 0) break;
+                        --depth; match_template_close();
+                    }
+                    else if ((check(TokenKind::Semi) || check(TokenKind::Comma)) && depth == 0) break;
+                    else consume();
+                }
             }
 
             if (fname) {

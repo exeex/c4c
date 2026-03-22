@@ -145,7 +145,7 @@ Node* Parser::parse_local_decl() {
                          &td_n_fn_ptr_params, &td_fn_ptr_variadic);
         if (tdname) {
             auto it = typedef_types_.find(tdname);
-            if (!is_internal_typedef_name(tdname) &&
+            if (!is_cpp_mode() && !is_internal_typedef_name(tdname) &&
                 user_typedefs_.count(tdname) && it != typedef_types_.end() &&
                 !types_compatible_p(it->second, ts_copy, typedef_types_))
                 throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdname);
@@ -168,7 +168,7 @@ Node* Parser::parse_local_decl() {
                              &td2_n_fn_ptr_params, &td2_fn_ptr_variadic);
             if (tdn2) {
                 auto it = typedef_types_.find(tdn2);
-                if (!is_internal_typedef_name(tdn2) &&
+                if (!is_cpp_mode() && !is_internal_typedef_name(tdn2) &&
                     user_typedefs_.count(tdn2) && it != typedef_types_.end() &&
                     !types_compatible_p(it->second, ts2, typedef_types_))
                     throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdn2);
@@ -1232,7 +1232,7 @@ top_level_base_ready:
         if (tdname) {
             const char* scoped_tdname = qualify_name_arena(tdname);
             auto it = typedef_types_.find(tdname);
-            if (!is_internal_typedef_name(tdname) &&
+            if (!is_cpp_mode() && !is_internal_typedef_name(tdname) &&
                 user_typedefs_.count(tdname) && it != typedef_types_.end() &&
                 !types_compatible_p(it->second, ts_copy, typedef_types_))
                 throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdname);
@@ -1257,7 +1257,7 @@ top_level_base_ready:
             if (tdn2) {
                 const char* scoped_tdn2 = qualify_name_arena(tdn2);
                 auto it = typedef_types_.find(tdn2);
-                if (!is_internal_typedef_name(tdn2) &&
+                if (!is_cpp_mode() && !is_internal_typedef_name(tdn2) &&
                     user_typedefs_.count(tdn2) && it != typedef_types_.end() &&
                     !types_compatible_p(it->second, ts2, typedef_types_))
                     throw std::runtime_error(std::string("conflicting typedef redefinition: ") + tdn2);

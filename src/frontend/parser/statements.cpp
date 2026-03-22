@@ -500,9 +500,47 @@ Node* Parser::parse_stmt() {
     }
 
     // Local declaration?
+    // Disambiguate: Type::Method(args) is a qualified call expression, not a
+    // declaration.  When the first identifier is a type but Type::Ident is NOT
+    // a known type, route to expression parsing for qualified calls.
     if (is_type_start()) {
+        if (is_cpp_mode() && check(TokenKind::Identifier) &&
+            pos_ + 2 < static_cast<int>(tokens_.size()) &&
+            tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
+            tokens_[pos_ + 2].kind == TokenKind::Identifier) {
+            // Peek the full qualified name to check if it resolves to a type.
+            QualifiedNameRef qn;
+            if (peek_qualified_name(&qn, false) && !qn.qualifier_segments.empty()) {
+                // Build the full qualified name
+                std::string full_name;
+                for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
+                    if (i) full_name += "::";
+                    full_name += qn.qualifier_segments[i];
+                }
+                full_name += "::";
+                full_name += qn.base_name;
+                // Check if the full qualified name is a known type
+                bool is_known_type = is_typedef_name(full_name) ||
+                    typedef_types_.count(full_name) > 0 ||
+                    typedef_types_.count(resolve_visible_type_name(full_name)) > 0;
+                // Also try namespace resolution
+                if (!is_known_type) {
+                    int ctx = resolve_namespace_context(qn);
+                    if (ctx >= 0) {
+                        std::string ns_name = canonical_name_in_context(ctx, qn.base_name);
+                        is_known_type = typedef_types_.count(ns_name) > 0;
+                    }
+                }
+                if (!is_known_type) {
+                    // Likely a qualified call: Type::Method(args)
+                    goto expr_stmt;
+                }
+            }
+        }
         return parse_local_decl();
     }
+
+expr_stmt:
 
     // Expression statement
     Node* expr = parse_expr();

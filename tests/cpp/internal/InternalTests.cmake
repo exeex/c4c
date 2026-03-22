@@ -49,6 +49,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     template_conversion_operator_parse
     template_struct_specialization_parse
     default_param_value_parse
+    eastl_slice4_typename_and_specialization_parse
 )
 
 foreach(src IN LISTS INTERNAL_CPP_NEGATIVE_TEST_SRCS)

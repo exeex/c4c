@@ -72,19 +72,44 @@ Operator Overloading — item 4: return to EASTL/std_vector bring-up
   - `skip_attributes()`: now also handles `[[...]]` C++11 attribute syntax
   - EASTL errors reduced from ~20 to ~21 (new errors from deeper parsing, different set)
   - Test: `pragma_operator_and_cpp11_attrs_parse.cpp` (runtime)
+- [x] EASTL bring-up slice 4: typename, typedef/struct redefinition, C++ struct body features
+  - `typename` dependent type: after consuming `typename` keyword, parser now consumes
+    the FULL dependent type expression (Ident::Ident<...>::Ident) including nested
+    template args and `::type` suffixes (e.g. `typename eastl::conditional<...>::type`)
+  - Template specialization inner typedef redefinition: C++ mode now silently overwrites
+    conflicting typedefs instead of throwing (template specializations legitimately
+    redefine inner typedefs with different types)
+  - Template specialization inner struct redefinition: C++ mode uses shadow tags instead
+    of throwing for top-level struct redefinition (e.g. `no_type_helper` in both primary
+    and specialization)
+  - Template specialization arg parsing: wrapped in try-catch for graceful handling of
+    unparseable args like `T U::*` (member pointer types); falls back to balanced skip
+  - Unresolved qualified names: `parse_base_type()` now treats unresolved `Ident::Ident`
+    as TB_TYPEDEF in C++ mode (for unknown namespace/dependent types)
+  - `constexpr`/`consteval` in `parse_base_type()`: consumed like `static`/`inline`
+    (was missing, causing `static constexpr bool` to fail in struct bodies)
+  - Static data member initializer: `= expr` skipping in struct body fields (handles
+    `static constexpr bool value = complex_expression;`)
+  - C++ access specifiers: `public:`, `private:`, `protected:` consumed in struct bodies
+  - C++ `friend` declarations: `friend Type;` skipped in struct bodies
+  - Statement disambiguation: `Type::Method(args)` vs declaration — uses full qualified
+    name resolution via `peek_qualified_name` (was only checking first 2 segments)
+  - EASTL errors reduced from ~21 to 9 (mostly cascading from a few remaining blockers)
+  - Test: `eastl_slice4_typename_and_specialization_parse.cpp` (parse-only)
 
 ## Next Slice
-- EASTL bring-up slice 4: remaining blockers (~21 errors):
-  - type_transformations.h: `sizeof(T)` in NTTP template args, struct redefinition
-  - type_compound.h: `::` in template args
-  - iterator.h: `typename`-dependent type issues in struct method params (`&&` rvalue refs)
-  - copy_help.h/fill_help.h: `enable_if<...>` in return types of free functions
-  - functional_base.h: `::` in function params
-  - Need to fix NTTP expression parsing to handle sizeof(), and handle `enable_if<>` return type patterns
+- EASTL bring-up slice 5: remaining blockers (~9 errors):
+  - iterator.h:395: cascading error from complex template member functions with
+    `enable_if<...>::type` return types and `EASTL_REMOVE_AT_2024_SEPT` deprecated attributes
+  - functional_base.h:44: `R C::*` member pointer syntax in function params (invoke_impl)
+  - functional_base.h:197: template member functions with own template params (`template<typename A, typename B>`)
+  - functional.h: `auto` return type + `-> decltype(...)` trailing return type
+  - Need to handle: template member function params in struct body, member pointer
+    type syntax `T C::*`, trailing return type syntax `-> type`
 
 ## Blockers
 - None critical
 
 ## Suite Status
-- Before: 2095/2095
-- After: 2096/2096 (+1 new test, no regressions)
+- Before: 2097/2097
+- After: 2098/2098 (+1 new test, no regressions)
