@@ -422,6 +422,142 @@ Node* Parser::parse_postfix(Node* base) {
 Node* Parser::parse_primary() {
     int ln = cur().line;
 
+    auto parse_operator_ref = [&]() -> Node* {
+        if (!is_cpp_mode()) return nullptr;
+        int saved_pos = pos_;
+        std::string qualified_name;
+
+        if (match(TokenKind::ColonColon))
+            qualified_name = "::";
+
+        while (check(TokenKind::Identifier) &&
+               pos_ + 1 < static_cast<int>(tokens_.size()) &&
+               tokens_[pos_ + 1].kind == TokenKind::ColonColon) {
+            if (!qualified_name.empty() &&
+                qualified_name.substr(qualified_name.size() - 2) != "::") {
+                qualified_name += "::";
+            }
+            qualified_name += cur().lexeme;
+            consume();
+            consume();
+        }
+
+        if (!match(TokenKind::KwOperator)) {
+            pos_ = saved_pos;
+            return nullptr;
+        }
+
+        std::string op_name;
+        if (match(TokenKind::KwNew)) {
+            if (check(TokenKind::LBracket) &&
+                pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                tokens_[pos_ + 1].kind == TokenKind::RBracket) {
+                consume();
+                consume();
+                op_name = "operator_new_array";
+            } else {
+                op_name = "operator_new";
+            }
+        } else if (match(TokenKind::KwDelete)) {
+            if (check(TokenKind::LBracket) &&
+                pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                tokens_[pos_ + 1].kind == TokenKind::RBracket) {
+                consume();
+                consume();
+                op_name = "operator_delete_array";
+            } else {
+                op_name = "operator_delete";
+            }
+        } else if (check(TokenKind::LBracket)) {
+            consume();
+            expect(TokenKind::RBracket);
+            op_name = "operator_subscript";
+        } else if (check(TokenKind::LParen)) {
+            consume();
+            expect(TokenKind::RParen);
+            op_name = "operator_call";
+        } else if (match(TokenKind::KwBool)) {
+            op_name = "operator_bool";
+        } else if (match(TokenKind::Star)) {
+            op_name = "operator_mul";
+        } else if (match(TokenKind::Arrow)) {
+            op_name = "operator_arrow";
+        } else if (match(TokenKind::PlusPlus)) {
+            op_name = "operator_preinc";
+        } else if (match(TokenKind::MinusMinus)) {
+            op_name = "operator_predec";
+        } else if (match(TokenKind::EqualEqual)) {
+            op_name = "operator_eq";
+        } else if (match(TokenKind::BangEqual)) {
+            op_name = "operator_neq";
+        } else if (match(TokenKind::Plus)) {
+            op_name = "operator_plus";
+        } else if (match(TokenKind::Minus)) {
+            op_name = "operator_minus";
+        } else if (match(TokenKind::Assign)) {
+            op_name = "operator_assign";
+        } else if (match(TokenKind::LessEqual)) {
+            op_name = "operator_le";
+        } else if (match(TokenKind::GreaterEqual)) {
+            op_name = "operator_ge";
+        } else if (match(TokenKind::Less)) {
+            op_name = "operator_lt";
+        } else if (match(TokenKind::Greater)) {
+            op_name = "operator_gt";
+        } else if (match(TokenKind::Bang)) {
+            op_name = "operator_not";
+        } else if (match(TokenKind::Tilde)) {
+            op_name = "operator_bitnot";
+        } else if (match(TokenKind::Slash)) {
+            op_name = "operator_div";
+        } else if (match(TokenKind::Percent)) {
+            op_name = "operator_mod";
+        } else if (match(TokenKind::Amp)) {
+            op_name = "operator_bitand";
+        } else if (match(TokenKind::Pipe)) {
+            op_name = "operator_bitor";
+        } else if (match(TokenKind::Caret)) {
+            op_name = "operator_bitxor";
+        } else if (match(TokenKind::LessLess)) {
+            op_name = "operator_shl";
+        } else if (match(TokenKind::GreaterGreater)) {
+            op_name = "operator_shr";
+        } else if (match(TokenKind::PlusAssign)) {
+            op_name = "operator_plus_assign";
+        } else if (match(TokenKind::MinusAssign)) {
+            op_name = "operator_minus_assign";
+        } else if (match(TokenKind::StarAssign)) {
+            op_name = "operator_mul_assign";
+        } else if (match(TokenKind::SlashAssign)) {
+            op_name = "operator_div_assign";
+        } else if (match(TokenKind::PercentAssign)) {
+            op_name = "operator_mod_assign";
+        } else if (match(TokenKind::AmpAssign)) {
+            op_name = "operator_and_assign";
+        } else if (match(TokenKind::PipeAssign)) {
+            op_name = "operator_or_assign";
+        } else if (match(TokenKind::CaretAssign)) {
+            op_name = "operator_xor_assign";
+        } else if (match(TokenKind::LessLessAssign)) {
+            op_name = "operator_shl_assign";
+        } else if (match(TokenKind::GreaterGreaterAssign)) {
+            op_name = "operator_shr_assign";
+        } else {
+            pos_ = saved_pos;
+            return nullptr;
+        }
+
+        if (qualified_name == "::")
+            qualified_name.clear();
+        if (!qualified_name.empty() &&
+            qualified_name.substr(qualified_name.size() - 2) != "::") {
+            qualified_name += "::";
+        }
+        qualified_name += op_name;
+        Node* ident = make_var(arena_.strdup(qualified_name.c_str()), ln);
+        return parse_postfix(ident);
+    };
+
     // Integer literal
     if (check(TokenKind::IntLit)) {
         long long v = parse_int_lexeme(cur().lexeme.c_str());
@@ -626,6 +762,10 @@ Node* Parser::parse_primary() {
         Node* inner = parse_expr();
         expect(TokenKind::RParen);
         return parse_postfix(inner);
+    }
+
+    if (Node* op_ref = parse_operator_ref()) {
+        return op_ref;
     }
 
     // Global-qualified identifier (::name or ::ns::name)

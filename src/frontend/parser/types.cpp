@@ -1815,7 +1815,25 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         auto parse_operator_name = [&]() -> bool {
             if (!match(TokenKind::KwOperator)) return false;
             std::string op_name;
-            if (check(TokenKind::LBracket)) {
+            if (check(TokenKind::KwNew)) {
+                consume();
+                if (check(TokenKind::LBracket)) {
+                    consume();
+                    expect(TokenKind::RBracket);
+                    op_name = "operator_new_array";
+                } else {
+                    op_name = "operator_new";
+                }
+            } else if (check(TokenKind::KwDelete)) {
+                consume();
+                if (check(TokenKind::LBracket)) {
+                    consume();
+                    expect(TokenKind::RBracket);
+                    op_name = "operator_delete_array";
+                } else {
+                    op_name = "operator_delete";
+                }
+            } else if (check(TokenKind::LBracket)) {
                 consume();
                 expect(TokenKind::RBracket);
                 op_name = "operator_subscript";
@@ -2808,6 +2826,24 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 } else {
                     conversion_mangled_name = "operator_conv_";
                     append_type_mangled_suffix(conversion_mangled_name, fts);
+                }
+            } else if (check(TokenKind::KwNew)) {
+                consume();
+                conversion_mangled_name = check(TokenKind::LBracket)
+                    ? "operator_new_array"
+                    : "operator_new";
+                if (check(TokenKind::LBracket)) {
+                    consume();
+                    expect(TokenKind::RBracket);
+                }
+            } else if (check(TokenKind::KwDelete)) {
+                consume();
+                conversion_mangled_name = check(TokenKind::LBracket)
+                    ? "operator_delete_array"
+                    : "operator_delete";
+                if (check(TokenKind::LBracket)) {
+                    consume();
+                    expect(TokenKind::RBracket);
                 }
             } else if (check(TokenKind::LBracket)) {
                 consume(); expect(TokenKind::RBracket);
