@@ -934,6 +934,16 @@ TypeSpec Parser::parse_base_type() {
                         has_signed || has_unsigned || has_short || long_count > 0 ||
                         has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
                         has_struct || has_union || has_enum || base_set;
+                    // C++ pointer-to-member declarators start with a class name
+                    // after the pointee type: `R C::*member`. In that shape the
+                    // class name belongs to the declarator, not the base type.
+                    if (is_cpp_mode() &&
+                        pos_ + 2 < static_cast<int>(tokens_.size()) &&
+                        tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
+                        tokens_[pos_ + 2].kind == TokenKind::Star) {
+                        done = true;
+                        break;
+                    }
                     if (!already_have_base) {
                         has_typedef = true;
                         const std::string resolved = resolve_visible_type_name(cur().lexeme);
@@ -1464,6 +1474,23 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     parse_attributes(&ts);
     while (is_qualifier(cur().kind)) consume();
     parse_attributes(&ts);
+
+    // C++ pointer-to-member declarator prefix: `C::*name` or `ns::C::*name`.
+    // Model it as an additional pointer level for parser bring-up so headers
+    // like EASTL's invoke_impl(R C::*func, ...) can parse successfully.
+    if (is_cpp_mode()) {
+        int saved_pos = pos_;
+        QualifiedNameRef member_of;
+        if (peek_qualified_name(&member_of, true)) {
+            parse_qualified_name(true);
+            if (match(TokenKind::ColonColon) && check(TokenKind::Star)) {
+                consume();  // *
+                ts.ptr_level++;
+            } else {
+                pos_ = saved_pos;
+            }
+        }
+    }
 
     // Count pointer stars (and qualifiers between them)
     while (check(TokenKind::Star)) {
