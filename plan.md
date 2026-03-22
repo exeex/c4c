@@ -43,6 +43,9 @@ EASTL / STL-like code 的 operator forms 穩定下來。
 - out-of-class conversion operator stability
 - implicit member lookup in out-of-class method bodies
 - unqualified static member call resolution/lowering in out-of-class methods
+- `operator new/delete/new[]/delete[]` declarator and explicit-call support
+- `new` / placement-`new` / `delete` / `delete[]` expressions routed through
+  operator lookup instead of stdlib assumptions
 - cast-like operators在 HIR 中的 canonical form
   - `CastTo<T>(obj)`
   - `CastFrom<T>(args...)`
@@ -55,7 +58,10 @@ EASTL / STL-like code 的 operator forms 穩定下來。
 - out-of-class operator/method bodies 不再把後續 top-level parse 帶歪
 - out-of-class method body 的 member/static-member 語意不再需要 testcase
   避開 unqualified spelling
+- `operator new/delete/new[]/delete[]` 的 global/class-scope 宣告與顯式呼叫
+  都穩定 parse
 - EASTL / EABase 不再先撞上 operator-specific parser failure
+  或 placement-`new` / delete-expression 缺口
 
 ## Follow-on Track: EASTL / std::vector Bring-up
 
@@ -96,11 +102,22 @@ EASTL / STL-like code 的 operator forms 穩定下來。
 
 接下來的預設順序：
 
-1. 先修 template conversion operator
-2. 再修 out-of-class method body 的 implicit member lookup
-3. 再修 unqualified static member call lowering
-4. 回頭重跑 `tests/cpp/eastl/std_vector_simple.cpp`
-5. 根據新的最早 blocker 決定是否繼續 operator 線，或切到其他
+1. 先把 `operator new/delete/new[]/delete[]` 這組 operator family 收尾
+   到 expression/lookup 層
+2. 補 `new T` / `new T(args)` / `::new (p) T(args)` / `delete p` /
+   `delete[] p` 的 parser + lowering
+3. 接上 class-specific 與 global `operator new/delete` lookup
+4. 先把已經掛進 `ctest -j` 的 new/delete 目標測試轉綠：
+   - `cpp_positive_sema_new_expr_basic_parse_cpp`
+   - `cpp_positive_sema_placement_new_expr_parse_cpp`
+   - `cpp_positive_sema_class_specific_new_delete_parse_cpp`
+   - `cpp_positive_sema_new_delete_side_effect_runtime_cpp`
+   - `cpp_positive_sema_class_specific_new_delete_side_effect_runtime_cpp`
+   - `cpp_positive_sema_new_array_delete_array_side_effect_runtime_cpp`
+5. 回頭重跑 `tests/cpp/eastl/std_vector_simple.cpp`
+6. 若 operator/new-delete 線已清到下一層，再回到 template conversion
+   operator 與其他 frontend 子問題
+7. 根據新的最早 blocker 決定是否繼續 operator 線，或切到其他
    frontend 子問題
 
 ## Non-Goals

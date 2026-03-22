@@ -27,6 +27,9 @@ set(CPP_POSITIVE_PARSE_STEMS
     operator_decl_plus_minus_parse
     operator_decl_shift_qualified_parse
     operator_new_delete_overload_parse
+    new_expr_basic_parse
+    placement_new_expr_parse
+    class_specific_new_delete_parse
     operator_conversion_out_of_class_parse
     operator_shift_static_member_call_parse
     template_anon_param_extern_cxx_parse
