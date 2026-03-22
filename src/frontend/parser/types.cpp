@@ -416,7 +416,18 @@ bool Parser::is_type_start() const {
                 // C++ heuristic: if the qualifier resolves to a known namespace,
                 // treat it as a type even if not yet registered (e.g. struct tags
                 // defined inside namespace blocks that aren't typedef-tracked).
-                if (is_cpp_mode()) return true;
+                // Exception: if the token after the qualified name is '(', this
+                // is likely a function call (e.g. eastl::advance(i, d2)), not a
+                // type declaration.
+                if (is_cpp_mode()) {
+                    int after_pos = pos_ + 1 + 2 * static_cast<int>(qn.qualifier_segments.size());
+                    if (after_pos < static_cast<int>(tokens_.size()) &&
+                        tokens_[after_pos].kind == TokenKind::LParen) {
+                        // Likely a function call — don't treat as type.
+                    } else {
+                        return true;
+                    }
+                }
             }
         }
     }
