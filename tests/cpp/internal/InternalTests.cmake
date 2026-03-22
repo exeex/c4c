@@ -11,6 +11,8 @@ set(CPP_POSITIVE_FRONTEND_STEMS
     template_type_traits_builtin
     type_traits_builtin
     trailing_return_type_runtime
+    operator_call_rvalue_ref_runtime
+    template_operator_call_rvalue_ref_runtime
 )
 
 set(CPP_POSITIVE_PARSE_STEMS

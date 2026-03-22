@@ -5536,6 +5536,36 @@ class Lowerer {
         if (pm.mangled == resolved_mangled) { method_ast = pm.method_node; break; }
       }
     }
+    auto lower_operator_ref_arg = [&](const Node* arg_node, const TypeSpec* param_ts) -> ExprId {
+      if (!param_ts || (!param_ts->is_lvalue_ref && !param_ts->is_rvalue_ref))
+        return lower_expr(ctx, arg_node);
+      TypeSpec storage_ts = reference_storage_ts(*param_ts);
+      if (param_ts->is_rvalue_ref) {
+        ExprId arg_val = lower_expr(ctx, arg_node);
+        TypeSpec val_ts = reference_value_ts(*param_ts);
+        LocalDecl tmp{};
+        tmp.id = next_local_id();
+        tmp.name = "__rref_arg_tmp";
+        tmp.type = qtype_from(val_ts, ValueCategory::LValue);
+        tmp.init = arg_val;
+        const LocalId tmp_lid = tmp.id;
+        ctx->locals[tmp.name] = tmp.id;
+        ctx->local_types[tmp.id.value] = val_ts;
+        append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(arg_node)});
+        DeclRef tmp_ref{};
+        tmp_ref.name = "__rref_arg_tmp";
+        tmp_ref.local = tmp_lid;
+        ExprId var_id = append_expr(arg_node, tmp_ref, val_ts, ValueCategory::LValue);
+        UnaryExpr addr_e{};
+        addr_e.op = UnaryOp::AddrOf;
+        addr_e.operand = var_id;
+        return append_expr(arg_node, addr_e, storage_ts);
+      }
+      UnaryExpr addr_e{};
+      addr_e.op = UnaryOp::AddrOf;
+      addr_e.operand = lower_expr(ctx, arg_node);
+      return append_expr(arg_node, addr_e, storage_ts);
+    };
     for (size_t i = 0; i < arg_nodes.size(); ++i) {
       const TypeSpec* param_ts =
           (callee_fn && (i + 1) < callee_fn->params.size())
@@ -5549,18 +5579,7 @@ class Lowerer {
       }
       // Handle reference parameters: pass address instead of value.
       if (param_ts && (param_ts->is_rvalue_ref || param_ts->is_lvalue_ref)) {
-        const Node* arg = arg_nodes[i];
-        const Node* inner = arg;
-        // Unwrap static_cast<T&&>(x) to get x for xvalue semantics.
-        if (inner->kind == NK_CAST && inner->left &&
-            inner->type.is_rvalue_ref)
-          inner = inner->left;
-        ExprId arg_val = lower_expr(ctx, inner);
-        TypeSpec storage_ts = reference_storage_ts(*param_ts);
-        UnaryExpr addr_e{};
-        addr_e.op = UnaryOp::AddrOf;
-        addr_e.operand = arg_val;
-        c.args.push_back(append_expr(arg, addr_e, storage_ts));
+        c.args.push_back(lower_operator_ref_arg(arg_nodes[i], param_ts));
       } else {
         c.args.push_back(lower_expr(ctx, arg_nodes[i]));
       }
