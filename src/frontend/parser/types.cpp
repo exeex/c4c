@@ -1354,6 +1354,24 @@ TypeSpec Parser::parse_base_type() {
                     }
                     ts.tag = arena_.strdup(mangled.c_str());
                 }
+                // C++ template using alias: typedef resolved but the resolved
+                // type is not a primary template struct (e.g. using A = S<T>;
+                // then A<int>).  Skip the <...> since the typedef already
+                // encodes the target type.
+                if (is_cpp_mode() && check(TokenKind::Less)) {
+                    int depth = 1;
+                    consume();  // <
+                    while (!at_end() && depth > 0) {
+                        if (check(TokenKind::Less)) ++depth;
+                        else if (check_template_close()) {
+                            --depth;
+                            if (depth > 0) { match_template_close(); continue; }
+                            break;
+                        }
+                        consume();
+                    }
+                    if (check_template_close()) match_template_close();
+                }
                 return ts;
             }
         }
@@ -2145,6 +2163,10 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         ref->name     = tag;
         ref->is_union = is_union;
         ref->n_fields = -1;  // -1 = forward reference (no body)
+        // Push forward declarations to struct_defs_ so that template struct
+        // registration in the template<> handler can detect them and register
+        // the name in template_struct_defs_.
+        if (is_cpp_mode() && parsing_top_level_context_) struct_defs_.push_back(ref);
         return ref;
     }
 

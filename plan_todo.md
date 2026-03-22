@@ -1,8 +1,7 @@
 # Plan Execution State
 
 ## Active Item
-Operator Overloading — item 4a: finish `operator new/delete/new[]/delete[]`
-family for non-stdlib C++ mode, then return to EASTL/std_vector bring-up
+EASTL bring-up slice 7b: deeper header parsing fixes
 
 ## Completed
 - [x] Template conversion operator parsing in class body (template<class T> operator T*())
@@ -52,22 +51,27 @@ family for non-stdlib C++ mode, then return to EASTL/std_vector bring-up
   - Class-specific operator lookup: `StructTag::operator_new/delete` checked before global
   - Constructor call emitted after allocation when ctor args present
   - All 6 target tests now green (3 parse, 3 runtime side-effect tests)
+- [x] EASTL bring-up slice 7b: template using alias, forward decl, multi-arg placement new
+  - Template using alias `<args>` consumption: resolved typedefs with `<...>` after them now skip the template arguments (fixes `index_sequence<I1...>` in function params)
+  - Template struct forward declarations: `template <typename T> class X;` now registered in `template_struct_defs_` (C++ mode only)
+  - Multi-arg placement new: `::new(p, flags, 0, name, 0) char[n]` now parses correctly
+  - Multi-arg placement new HIR: all placement args forwarded to operator_new call
+  - Previous EASTL blockers resolved: allocator.h, utility.h, tuple_fwd_decls.h
+  - Test: `eastl_slice7b_template_using_alias_parse.cpp` (parse)
 
 ## Next Slice
-- EASTL bring-up slice 7b: deeper header errors now led by:
-  - `EASTL/allocator.h` — now unblocked by placement-new/new expression support
-  - `EASTL/internal/function_detail.h` placement-new / destructor / qualified fn patterns
-  - `EABase/int128.h` constructor-style expressions with multiple args
-  - `EASTL/internal/tuple_fwd_decls.h` templated `get(...)` overloads
-  - `EASTL/utility.h` deeper piecewise ctor / tuple trait uses
+- EASTL bring-up slice 7c: deeper header errors now led by:
+  - `EASTL/internal/function_detail.h` (5 errors): `.` member access, `::` qualified types
+  - `EASTL/internal/function.h` (2 errors): `::` qualified types, `...` ellipsis
+  - `EASTL/algorithm.h` (14 errors): `[` lambda expressions, `,` in complex expressions
 
 ## Exposed Failing Tests
-- (none — all 6 new/delete target tests are now green)
+- (none — 2115/2115 all passing)
 
 ## Blockers
-- None for new/delete expression support (complete)
-- EASTL deeper header parsing may uncover new blockers
+- None for current slice (complete)
+- EASTL deeper headers (function_detail.h, function.h, algorithm.h) require new parser features
 
 ## Suite Status
-- Before: 2108/2114 (6 new/delete tests failing)
-- After: 2114/2114 (all passing, 0 regressions)
+- Before: 2114/2114
+- After: 2115/2115 (all passing, 0 regressions, +1 new test)

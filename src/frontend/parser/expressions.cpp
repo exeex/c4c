@@ -329,29 +329,35 @@ Node* Parser::parse_new_expr(int ln, bool global_qualified) {
     Node* n = make_node(NK_NEW_EXPR, ln);
     n->is_global_qualified = global_qualified;
 
-    // Optional placement args: new (args) T(...)
-    Node* placement = nullptr;
+    // Optional placement args: new (args...) T(...)
+    // Placement args are comma-separated expressions in parentheses.
+    // Stored in n->params / n->n_params to avoid conflicts with ctor args.
     if (check(TokenKind::LParen)) {
         // Disambiguate: could be placement args or a parenthesized type.
         // Peek: if '(' followed by a type start and then ')', it's a cast-style type.
         // For placement new, arguments are expressions.
         int saved = pos_;
         consume(); // '('
+        bool is_placement = true;
         if (is_type_start()) {
-            // Could be: new (void*) ... (placement arg that is a cast),
-            // or some other pattern. In practice, placement new args are
-            // expressions like (void*)ptr, so always parse as expression.
+            // Still parse as expression — placement args like (void*)ptr are common.
             pos_ = saved;
             consume(); // '('
-            placement = parse_assign_expr();
-            expect(TokenKind::RParen);
-        } else {
-            // Expression placement args
-            placement = parse_assign_expr();
-            expect(TokenKind::RParen);
+        }
+        // Parse comma-separated placement args.
+        std::vector<Node*> pargs;
+        while (!check(TokenKind::RParen)) {
+            pargs.push_back(parse_assign_expr());
+            if (!check(TokenKind::RParen)) expect(TokenKind::Comma);
+        }
+        expect(TokenKind::RParen);
+        n->n_params = static_cast<int>(pargs.size());
+        if (!pargs.empty()) {
+            n->params = arena_.alloc_array<Node*>(n->n_params);
+            for (int i = 0; i < n->n_params; ++i) n->params[i] = pargs[i];
+            n->left = pargs[0]; // backward compat: first placement arg
         }
     }
-    n->left = placement;
 
     // Parse the allocated type.
     TypeSpec ts = parse_base_type();

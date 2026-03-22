@@ -6672,9 +6672,11 @@ class Lowerer {
           }
           call.args.push_back(size_id);
 
-          // Non-global placement args: new (p) T → operator_new(sizeof(T), p)
+          // Non-global placement args: new (p, ...) T → operator_new(sizeof(T), p, ...)
           if (n->left) {
-            call.args.push_back(lower_expr(ctx, n->left));
+            for (int pi = 0; pi < n->n_params; ++pi) {
+              call.args.push_back(lower_expr(ctx, n->params[pi]));
+            }
           }
 
           raw_ptr = append_expr(n, call, void_ptr_ts);
