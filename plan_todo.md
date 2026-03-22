@@ -43,43 +43,31 @@ family for non-stdlib C++ mode, then return to EASTL/std_vector bring-up
   - out-of-class `S::operator new(...)` / `S::operator delete[](...)` definitions parse
   - explicit calls like `::operator new(...)` / `::operator new[](...)` lower to canonical operator symbols
   - Test: `operator_new_delete_overload_parse.cpp` (parse)
+- [x] `new`/`delete` expression support (parse + HIR + codegen)
+  - `new T` → `operator_new(sizeof(T))` cast to `T*`
+  - `new T[n]` → `operator_new_array(sizeof(T) * n)` cast to `T*`
+  - `::new (p) T(args)` → inlined placement (use pointer directly) + constructor call
+  - `delete p` → `operator_delete(p cast to void*)`
+  - `delete[] p` → `operator_delete_array(p cast to void*)`
+  - Class-specific operator lookup: `StructTag::operator_new/delete` checked before global
+  - Constructor call emitted after allocation when ctor args present
+  - All 6 target tests now green (3 parse, 3 runtime side-effect tests)
 
 ## Next Slice
 - EASTL bring-up slice 7b: deeper header errors now led by:
-  - `EASTL/allocator.h` placement/global-qualified `new` expressions
+  - `EASTL/allocator.h` — now unblocked by placement-new/new expression support
   - `EASTL/internal/function_detail.h` placement-new / destructor / qualified fn patterns
-  - `delete` / `delete[]` expressions still use placeholder lowering
-  - class-specific vs global `operator new/delete` lookup is not wired for expressions yet
   - `EABase/int128.h` constructor-style expressions with multiple args
   - `EASTL/internal/tuple_fwd_decls.h` templated `get(...)` overloads
   - `EASTL/utility.h` deeper piecewise ctor / tuple trait uses
 
 ## Exposed Failing Tests
-- Parse targets intentionally registered in `ctest -j` and currently failing:
-  - `cpp_positive_sema_new_expr_basic_parse_cpp`
-  - `cpp_positive_sema_placement_new_expr_parse_cpp`
-  - `cpp_positive_sema_class_specific_new_delete_parse_cpp`
-  - Current failure shape:
-    - plain/class-specific `new`: `unexpected token in expression: new`
-    - placement `::new`: `unexpected token in expression: ::`
-- Runtime targets intentionally registered in `ctest -j` and currently failing:
-  - `cpp_positive_sema_new_delete_side_effect_runtime_cpp`
-  - `cpp_positive_sema_class_specific_new_delete_side_effect_runtime_cpp`
-  - `cpp_positive_sema_new_array_delete_array_side_effect_runtime_cpp`
-  - Each test encodes observable side effects in user-defined `operator new/delete`
-    bodies via counters; once expression support lands, these become the first
-    correctness signal that lookup + execution really happened.
-  - Current failure shape:
-    - frontend rejects `new` expressions before runtime side effects can be checked
+- (none — all 6 new/delete target tests are now green)
 
 ## Blockers
-- `new` / placement-`new` expression support is now the first real EASTL blocker
-- `delete` / `delete[]` expression semantics are still incomplete
+- None for new/delete expression support (complete)
+- EASTL deeper header parsing may uncover new blockers
 
 ## Suite Status
-- Before: 2105/2105 (+ 3 pre-existing env failures)
-- After:
-  - `operator_new_delete_overload_parse.cpp` is green and covers declarators +
-    explicit operator-function calls
-  - 3 parse targets and 3 side-effect runtime targets are intentionally red in
-    `ctest -j` to expose the remaining `new/delete` expression gap
+- Before: 2108/2114 (6 new/delete tests failing)
+- After: 2114/2114 (all passing, 0 regressions)

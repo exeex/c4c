@@ -828,6 +828,8 @@ const char* node_kind_name(NodeKind k) {
         case NK_ENUM_DEF:     return "EnumDef";
         case NK_OFFSETOF:     return "Offsetof";
         case NK_PRAGMA_WEAK:  return "PragmaWeak";
+        case NK_NEW_EXPR:     return "NewExpr";
+        case NK_DELETE_EXPR:  return "DeleteExpr";
         case NK_REAL_PART:    return "RealPart";
         case NK_IMAG_PART:    return "ImagPart";
         case NK_INVALID_EXPR: return "InvalidExpr";

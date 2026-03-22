@@ -208,6 +208,14 @@ enum NodeKind {
 
     NK_PRAGMA_WEAK,     // #pragma weak symbol: name = symbol
 
+    // C++ new/delete expressions
+    NK_NEW_EXPR,        // new T / new T(args) / new T[n] / ::new (p) T(args)
+                        // type=allocated type, children=ctor args, left=placement arg (nullable)
+                        // right=array size expr (for new[]), ival: 0=scalar, 1=array
+                        // is_global_qualified=true for ::new
+    NK_DELETE_EXPR,     // delete p / delete[] p
+                        // left=operand, ival: 0=scalar delete, 1=array delete[]
+
     // Error recovery placeholders
     NK_INVALID_EXPR,    // placeholder for a malformed expression
     NK_INVALID_STMT,    // placeholder for a malformed statement

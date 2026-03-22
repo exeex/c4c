@@ -246,6 +246,7 @@ class Parser {
   Node* parse_unary();           // prefix unary
   Node* parse_postfix(Node* base); // postfix ops (left-recursive)
   Node* parse_primary();         // primary expression
+  Node* parse_new_expr(int ln, bool global_qualified); // C++ new expression
 
   // Operator precedence helper.
   static int bin_prec(TokenKind k);

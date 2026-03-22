@@ -6605,6 +6605,205 @@ class Lowerer {
 
         return base_id;
       }
+      case NK_NEW_EXPR: {
+        // C++ new expression → call operator_new/operator_new_array, cast to T*.
+        // n->type = allocated type, n->left = placement arg (nullable),
+        // n->right = array size expr (for new[]), n->ival: 0=scalar, 1=array,
+        // n->children = ctor args, n->is_global_qualified for ::new.
+        TypeSpec alloc_ts = n->type;
+        resolve_typedef_to_struct(alloc_ts);
+        bool is_array = n->ival != 0;
+
+        // 1. Compute allocation size: sizeof(T) [* array_count for new[]]
+        SizeofTypeExpr sot{};
+        sot.type = qtype_from(alloc_ts, ValueCategory::RValue);
+        TypeSpec ulong_ts{}; ulong_ts.base = TB_ULONG;
+        ExprId size_id = append_expr(n, sot, ulong_ts);
+
+        if (is_array && n->right) {
+          ExprId count_id = lower_expr(ctx, n->right);
+          // Cast count to ulong for multiplication.
+          CastExpr cast_count{};
+          cast_count.to_type = qtype_from(ulong_ts, ValueCategory::RValue);
+          cast_count.expr = count_id;
+          ExprId count_ulong = append_expr(n, cast_count, ulong_ts);
+          BinaryExpr mul{};
+          mul.op = BinaryOp::Mul;
+          mul.lhs = size_id;
+          mul.rhs = count_ulong;
+          size_id = append_expr(n, mul, ulong_ts);
+        }
+
+        // 2. Determine operator function name.
+        std::string op_fn;
+        bool is_class_specific = false;
+        if (!n->is_global_qualified && alloc_ts.base == TB_STRUCT && alloc_ts.tag) {
+          // Class-specific lookup: StructTag::operator_new[_array]
+          std::string class_key = std::string(alloc_ts.tag) + "::";
+          class_key += is_array ? "operator_new_array" : "operator_new";
+          if (struct_methods_.count(class_key)) {
+            op_fn = struct_methods_[class_key];
+            is_class_specific = true;
+          }
+        }
+        if (op_fn.empty()) {
+          op_fn = is_array ? "operator_new_array" : "operator_new";
+        }
+
+        // 3. Build call to operator new/new[], or inline placement new.
+        TypeSpec void_ptr_ts{}; void_ptr_ts.base = TB_VOID; void_ptr_ts.ptr_level = 1;
+        ExprId raw_ptr;
+
+        // Standard placement new (::new (p) T): just use the placement pointer
+        // directly — the canonical placement operator new returns its second arg.
+        if (n->left && n->is_global_qualified) {
+          raw_ptr = lower_expr(ctx, n->left);
+        } else {
+          CallExpr call{};
+          DeclRef callee_ref{};
+          callee_ref.name = op_fn;
+          TypeSpec fn_ptr_ts{}; fn_ptr_ts.base = TB_VOID; fn_ptr_ts.ptr_level = 1;
+          call.callee = append_expr(n, callee_ref, fn_ptr_ts);
+          // Class-specific operator new/delete are lowered as methods with an
+          // implicit 'this' parameter (pre-existing static method limitation).
+          // Pass a null pointer as the dummy 'this' argument.
+          if (is_class_specific) {
+            call.args.push_back(append_expr(n, IntLiteral{0, false}, void_ptr_ts));
+          }
+          call.args.push_back(size_id);
+
+          // Non-global placement args: new (p) T → operator_new(sizeof(T), p)
+          if (n->left) {
+            call.args.push_back(lower_expr(ctx, n->left));
+          }
+
+          raw_ptr = append_expr(n, call, void_ptr_ts);
+        }
+
+        // 4. Cast void* to T*.
+        TypeSpec result_ts = alloc_ts;
+        result_ts.ptr_level++;
+        CastExpr cast{};
+        cast.to_type = qtype_from(result_ts, ValueCategory::RValue);
+        cast.expr = raw_ptr;
+        ExprId typed_ptr = append_expr(n, cast, result_ts);
+
+        // 5. If there are constructor args and the type is a struct, call the ctor.
+        //    When a ctor call is needed, store the allocation result in a temp local
+        //    to avoid double-evaluation of the operator_new call.
+        if (n->n_children > 0 && alloc_ts.base == TB_STRUCT && alloc_ts.tag) {
+          auto cit = struct_constructors_.find(alloc_ts.tag);
+          if (cit != struct_constructors_.end() && !cit->second.empty()) {
+            // Find matching constructor overload.
+            const CtorOverload* best = nullptr;
+            if (cit->second.size() == 1) {
+              best = &cit->second[0];
+            } else {
+              for (const auto& ov : cit->second) {
+                if (ov.method_node->n_params != n->n_children) continue;
+                best = &ov;
+                break;
+              }
+            }
+            if (best && !best->method_node->is_deleted) {
+              // Store typed_ptr in a temp local.
+              LocalDecl tmp_decl{};
+              tmp_decl.id = next_local_id();
+              std::string tmp_name = "__new_tmp_" + std::to_string(tmp_decl.id.value);
+              tmp_decl.name = tmp_name;
+              tmp_decl.type = qtype_from(result_ts, ValueCategory::RValue);
+              tmp_decl.init = typed_ptr;
+              append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp_decl)}, make_span(n)});
+
+              // Reference the temp.
+              DeclRef tmp_ref{};
+              tmp_ref.name = tmp_name;
+              tmp_ref.local = LocalId{tmp_decl.id.value};
+              ExprId tmp_id = append_expr(n, tmp_ref, result_ts, ValueCategory::LValue);
+
+              // Emit constructor call.
+              CallExpr ctor_call{};
+              DeclRef ctor_ref{};
+              ctor_ref.name = best->mangled_name;
+              TypeSpec ctor_fn_ts{}; ctor_fn_ts.base = TB_VOID; ctor_fn_ts.ptr_level = 1;
+              ctor_call.callee = append_expr(n, ctor_ref, ctor_fn_ts);
+              ctor_call.args.push_back(tmp_id);
+              for (int i = 0; i < n->n_children; ++i) {
+                ctor_call.args.push_back(lower_expr(ctx, n->children[i]));
+              }
+              TypeSpec void_ts{}; void_ts.base = TB_VOID;
+              ExprId ctor_result = append_expr(n, ctor_call, void_ts);
+              ExprStmt es{};
+              es.expr = ctor_result;
+              append_stmt(*ctx, Stmt{StmtPayload{std::move(es)}, make_span(n)});
+
+              // Return temp reference as the new expression result.
+              DeclRef ret_ref{};
+              ret_ref.name = tmp_name;
+              ret_ref.local = LocalId{tmp_decl.id.value};
+              return append_expr(n, ret_ref, result_ts, ValueCategory::LValue);
+            }
+          }
+        }
+
+        return typed_ptr;
+      }
+      case NK_DELETE_EXPR: {
+        // C++ delete / delete[] → call operator_delete/operator_delete_array.
+        // n->left = operand, n->ival: 0=scalar, 1=array.
+        bool is_array = n->ival != 0;
+        ExprId operand = lower_expr(ctx, n->left);
+
+        // Infer the type of the operand to check for class-specific operator delete.
+        TypeSpec operand_ts = infer_generic_ctrl_type(ctx, n->left);
+
+        // Determine operator function name.
+        std::string op_fn;
+        bool is_class_specific = false;
+        if (operand_ts.base == TB_STRUCT && operand_ts.tag && operand_ts.ptr_level > 0) {
+          // Class-specific lookup: StructTag::operator_delete[_array]
+          std::string class_key = std::string(operand_ts.tag) + "::";
+          class_key += is_array ? "operator_delete_array" : "operator_delete";
+          if (struct_methods_.count(class_key)) {
+            op_fn = struct_methods_[class_key];
+            is_class_specific = true;
+          }
+        }
+        if (op_fn.empty()) {
+          op_fn = is_array ? "operator_delete_array" : "operator_delete";
+        }
+
+        // Cast operand to void*.
+        TypeSpec void_ptr_ts{}; void_ptr_ts.base = TB_VOID; void_ptr_ts.ptr_level = 1;
+        CastExpr cast{};
+        cast.to_type = qtype_from(void_ptr_ts, ValueCategory::RValue);
+        cast.expr = operand;
+        ExprId void_operand = append_expr(n, cast, void_ptr_ts);
+
+        // Build call to operator delete.
+        CallExpr call{};
+        DeclRef callee_ref{};
+        callee_ref.name = op_fn;
+        TypeSpec fn_ptr_ts{}; fn_ptr_ts.base = TB_VOID; fn_ptr_ts.ptr_level = 1;
+        call.callee = append_expr(n, callee_ref, fn_ptr_ts);
+        // Dummy 'this' for class-specific static method (see NK_NEW_EXPR comment).
+        if (is_class_specific) {
+          call.args.push_back(append_expr(n, IntLiteral{0, false}, void_ptr_ts));
+        }
+        call.args.push_back(void_operand);
+
+        TypeSpec void_ts{}; void_ts.base = TB_VOID;
+        ExprId del_call = append_expr(n, call, void_ts);
+
+        // Emit the delete call as a side-effect statement.
+        ExprStmt es{};
+        es.expr = del_call;
+        append_stmt(*ctx, Stmt{StmtPayload{std::move(es)}, make_span(n)});
+
+        // delete expression evaluates to void; return a zero int placeholder.
+        TypeSpec int_ts{}; int_ts.base = TB_INT;
+        return append_expr(n, IntLiteral{0, false}, int_ts);
+      }
       case NK_INVALID_EXPR:
       case NK_INVALID_STMT: {
         // Error recovery placeholder — emit a zero literal.

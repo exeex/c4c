@@ -204,21 +204,24 @@ Node* Parser::parse_unary() {
         }
         case TokenKind::KwDelete: {
             // C++ delete / delete[] expression.
-            // Parse the operand but emit as a no-op (0) since we don't
-            // support heap allocation; the intent is to not choke on the syntax.
             consume();  // consume 'delete'
+            bool is_array = false;
             if (check(TokenKind::LBracket) &&
                 pos_ + 1 < static_cast<int>(tokens_.size()) &&
                 tokens_[pos_ + 1].kind == TokenKind::RBracket) {
                 consume();  // '['
                 consume();  // ']'
+                is_array = true;
             }
-            // Parse the operand expression (the pointer being freed).
-            (void)parse_unary();
-            // Return a no-op integer 0 (void-like).
-            Node* n = make_node(NK_INT_LIT, ln);
-            n->ival = 0;
+            Node* operand = parse_unary();
+            Node* n = make_node(NK_DELETE_EXPR, ln);
+            n->left = operand;
+            n->ival = is_array ? 1 : 0;
             return n;
+        }
+        case TokenKind::KwNew: {
+            // C++ new expression: new T, new T(args), new T[n]
+            return parse_new_expr(ln, false /*not global-qualified*/);
         }
         case TokenKind::KwSizeof: {
             consume();
@@ -316,6 +319,77 @@ Node* Parser::parse_unary() {
         default:
             return parse_postfix(parse_primary());
     }
+}
+
+Node* Parser::parse_new_expr(int ln, bool global_qualified) {
+    // Called after 'new' has been consumed.
+    // Syntax: [::] new [( placement_args )] type [( ctor_args )] | type [ array_size ]
+    consume(); // consume 'new'
+
+    Node* n = make_node(NK_NEW_EXPR, ln);
+    n->is_global_qualified = global_qualified;
+
+    // Optional placement args: new (args) T(...)
+    Node* placement = nullptr;
+    if (check(TokenKind::LParen)) {
+        // Disambiguate: could be placement args or a parenthesized type.
+        // Peek: if '(' followed by a type start and then ')', it's a cast-style type.
+        // For placement new, arguments are expressions.
+        int saved = pos_;
+        consume(); // '('
+        if (is_type_start()) {
+            // Could be: new (void*) ... (placement arg that is a cast),
+            // or some other pattern. In practice, placement new args are
+            // expressions like (void*)ptr, so always parse as expression.
+            pos_ = saved;
+            consume(); // '('
+            placement = parse_assign_expr();
+            expect(TokenKind::RParen);
+        } else {
+            // Expression placement args
+            placement = parse_assign_expr();
+            expect(TokenKind::RParen);
+        }
+    }
+    n->left = placement;
+
+    // Parse the allocated type.
+    TypeSpec ts = parse_base_type();
+    // Handle pointer levels in the type: new int*, new char* etc.
+    while (check(TokenKind::Star)) {
+        consume();
+        ts.ptr_level++;
+    }
+    n->type = ts;
+
+    // Check for array form: new T[n]
+    if (check(TokenKind::LBracket)) {
+        consume(); // '['
+        Node* size_expr = parse_assign_expr();
+        expect(TokenKind::RBracket);
+        n->right = size_expr;
+        n->ival = 1; // array new
+    } else {
+        n->ival = 0; // scalar new
+    }
+
+    // Optional constructor args: new T(args...)
+    if (n->ival == 0 && check(TokenKind::LParen)) {
+        consume(); // '('
+        std::vector<Node*> args;
+        while (!check(TokenKind::RParen)) {
+            args.push_back(parse_assign_expr());
+            if (!check(TokenKind::RParen)) expect(TokenKind::Comma);
+        }
+        expect(TokenKind::RParen);
+        n->n_children = static_cast<int>(args.size());
+        if (!args.empty()) {
+            n->children = arena_.alloc_array<Node*>(n->n_children);
+            for (int i = 0; i < n->n_children; ++i) n->children[i] = args[i];
+        }
+    }
+
+    return n;
 }
 
 Node* Parser::parse_postfix(Node* base) {
@@ -766,6 +840,14 @@ Node* Parser::parse_primary() {
 
     if (Node* op_ref = parse_operator_ref()) {
         return op_ref;
+    }
+
+    // C++ ::new expression (global-qualified new)
+    if (is_cpp_mode() && check(TokenKind::ColonColon) &&
+        pos_ + 1 < static_cast<int>(tokens_.size()) &&
+        tokens_[pos_ + 1].kind == TokenKind::KwNew) {
+        consume(); // consume '::'
+        return parse_new_expr(ln, true /*global_qualified*/);
     }
 
     // Global-qualified identifier (::name or ::ns::name)
