@@ -31,11 +31,18 @@ Operator Overloading — item 4: return to EASTL/std_vector bring-up
   - Duplicate field names in C++ mode: silently allowed
   - EASTL: all original blockers resolved; 21 new errors in deeper headers
   - Test: `eastl_slice6_template_defaults_and_refqual.cpp` (runtime)
+- [x] EASTL bring-up slice 7a: piecewise ctor pack-expansion / alias-template crash guard
+  - Constructor initializer pack expansions `expr...` now parse without corrupting following methods
+  - Added parse regression for EASTL-style `pair(piecewise_construct_t, tuple..., index_sequence...)`
+  - Alias-template direct-init no longer crashes in template-struct pattern selection
+  - Test: `eastl_slice7_piecewise_ctor_parse.cpp` (parse)
 
 ## Next Slice
-- EASTL bring-up slice 7: deeper header errors (~21 in tuple_fwd_decls.h,
-  function_detail.h, function.h — pack expansion in template args, complex
-  function pointer patterns with qualified types)
+- EASTL bring-up slice 7b: deeper header errors now led by:
+  - `EABase/int128.h` constructor-style expressions with multiple args
+  - `EASTL/internal/tuple_fwd_decls.h` templated `get(...)` overloads
+  - `EASTL/utility.h` deeper piecewise ctor / tuple trait uses
+  - `EASTL/internal/function_detail.h` placement-new / destructor / qualified fn patterns
 
 ## Blockers
 - None critical

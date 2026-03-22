@@ -403,6 +403,15 @@ Node* Parser::parse_postfix(Node* base) {
                 base = n;
                 break;
             }
+            case TokenKind::Ellipsis: {
+                if (!is_cpp_mode()) return base;
+                // C++ pack expansion suffix: expr...
+                // Keep the underlying expression node and treat the expansion
+                // marker as parse-only for now so template-heavy initializers
+                // like EASTL piecewise pair constructors stay balanced.
+                consume();
+                break;
+            }
             default:
                 return base;
         }
@@ -647,7 +656,90 @@ Node* Parser::parse_primary() {
 
     // Identifier / label address
     if (check(TokenKind::Identifier)) {
+        int ident_start = pos_;
         QualifiedNameRef qn = parse_qualified_name(false);
+        auto resolve_type_name_for_qn = [&](const QualifiedNameRef& type_qn) -> std::string {
+            std::string resolved;
+            if (!type_qn.qualifier_segments.empty()) {
+                std::string scoped;
+                for (size_t i = 0; i < type_qn.qualifier_segments.size(); ++i) {
+                    if (i) scoped += "::";
+                    scoped += type_qn.qualifier_segments[i];
+                }
+                if (!scoped.empty()) scoped += "::";
+                scoped += type_qn.base_name;
+                if (typedef_types_.count(scoped) > 0) return scoped;
+                int context_id = resolve_namespace_context(type_qn);
+                if (context_id >= 0) {
+                    resolved = canonical_name_in_context(context_id, type_qn.base_name);
+                    if (typedef_types_.count(resolved) > 0) return resolved;
+                }
+                return scoped;
+            }
+            resolved = resolve_visible_type_name(type_qn.base_name);
+            return resolved.empty() ? type_qn.base_name : resolved;
+        };
+        if (is_cpp_mode() && (check(TokenKind::Less) || check(TokenKind::LParen))) {
+            const std::string candidate_type_name = resolve_type_name_for_qn(qn);
+            if (!candidate_type_name.empty() &&
+                typedef_types_.count(candidate_type_name) > 0) {
+                pos_ = ident_start;
+                std::string saved_typedef = last_resolved_typedef_;
+                TypeSpec cast_ts = parse_base_type();
+                while (check(TokenKind::Star)) {
+                    consume();
+                    cast_ts.ptr_level++;
+                }
+                if (check(TokenKind::AmpAmp)) {
+                    consume();
+                    cast_ts.is_rvalue_ref = true;
+                } else if (check(TokenKind::Amp)) {
+                    consume();
+                    cast_ts.is_lvalue_ref = true;
+                }
+                if (check(TokenKind::LParen)) {
+                    consume();
+                    std::vector<Node*> args;
+                    if (!check(TokenKind::RParen)) {
+                        while (!at_end() && !check(TokenKind::RParen)) {
+                            args.push_back(parse_assign_expr());
+                            if (!match(TokenKind::Comma)) break;
+                        }
+                    }
+                    expect(TokenKind::RParen);
+                    const bool ctor_like_type =
+                        cast_ts.base == TB_STRUCT || cast_ts.base == TB_UNION ||
+                        cast_ts.base == TB_TYPEDEF;
+                    if (ctor_like_type && args.size() != 1) {
+                        Node* callee = make_var(cast_ts.tag ? cast_ts.tag : candidate_type_name.c_str(), ln);
+                        Node* call = make_node(NK_CALL, ln);
+                        call->left = callee;
+                        call->n_children = static_cast<int>(args.size());
+                        if (!args.empty()) {
+                            call->children = arena_.alloc_array<Node*>(call->n_children);
+                            for (int i = 0; i < call->n_children; ++i) call->children[i] = args[i];
+                        }
+                        return parse_postfix(call);
+                    }
+                    Node* operand = args.empty() ? make_int_lit(0, ln) : args[0];
+                    Node* n = make_node(NK_CAST, ln);
+                    n->type = cast_ts;
+                    n->left = operand;
+                    if (cast_ts.is_fn_ptr && !last_resolved_typedef_.empty()) {
+                        auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
+                        if (tdit != typedef_fn_ptr_info_.end()) {
+                            n->fn_ptr_params = tdit->second.params;
+                            n->n_fn_ptr_params = tdit->second.n_params;
+                            n->fn_ptr_variadic = tdit->second.variadic;
+                        }
+                    }
+                    return parse_postfix(n);
+                }
+                pos_ = ident_start;
+                last_resolved_typedef_ = saved_typedef;
+                qn = parse_qualified_name(false);
+            }
+        }
         std::string qualified_name;
         if (!qn.qualifier_segments.empty()) {
             int context_id = resolve_namespace_context(qn);
@@ -725,6 +817,22 @@ Node* Parser::parse_primary() {
                 if (is_type_start()) {
                     template_args.push_back(parse_type_name());
                     template_arg_is_val.push_back(false);
+                    template_arg_vals.push_back(0);
+                    template_arg_nttp_names.push_back(nullptr);
+                } else if (is_cpp_mode() && check(TokenKind::KwSizeof) &&
+                           pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                           tokens_[pos_ + 1].kind == TokenKind::Ellipsis) {
+                    // C++ non-type template argument: sizeof...(Pack)
+                    consume(); // sizeof
+                    consume(); // ...
+                    expect(TokenKind::LParen);
+                    if (!check(TokenKind::RParen)) consume(); // pack name
+                    expect(TokenKind::RParen);
+                    TypeSpec dummy{};
+                    dummy.array_size = -1;
+                    dummy.inner_rank = -1;
+                    template_args.push_back(dummy);
+                    template_arg_is_val.push_back(true);
                     template_arg_vals.push_back(0);
                     template_arg_nttp_names.push_back(nullptr);
                 } else if (check(TokenKind::IntLit) ||
@@ -861,34 +969,53 @@ Node* Parser::parse_primary() {
         }
         if (check(TokenKind::LParen)) {
             consume();  // (
-            Node* operand = nullptr;
+            std::vector<Node*> args;
             if (!check(TokenKind::RParen)) {
-                if (is_cpp_mode() && check(TokenKind::Identifier) &&
-                    pos_ + 2 < static_cast<int>(tokens_.size()) &&
-                    tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
-                    tokens_[pos_ + 2].kind == TokenKind::Identifier) {
-                    QualifiedNameRef operand_name = parse_qualified_name(false);
-                    std::string qualified_name;
-                    int context_id = resolve_namespace_context(operand_name);
-                    if (context_id >= 0) {
-                        qualified_name = canonical_name_in_context(context_id, operand_name.base_name);
-                    } else {
-                        for (size_t i = 0; i < operand_name.qualifier_segments.size(); ++i) {
-                            if (i) qualified_name += "::";
-                            qualified_name += operand_name.qualifier_segments[i];
+                while (!at_end() && !check(TokenKind::RParen)) {
+                    Node* arg = nullptr;
+                    if (is_cpp_mode() && check(TokenKind::Identifier) &&
+                        pos_ + 2 < static_cast<int>(tokens_.size()) &&
+                        tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
+                        tokens_[pos_ + 2].kind == TokenKind::Identifier) {
+                        QualifiedNameRef operand_name = parse_qualified_name(false);
+                        std::string qualified_name;
+                        int context_id = resolve_namespace_context(operand_name);
+                        if (context_id >= 0) {
+                            qualified_name = canonical_name_in_context(context_id, operand_name.base_name);
+                        } else {
+                            for (size_t i = 0; i < operand_name.qualifier_segments.size(); ++i) {
+                                if (i) qualified_name += "::";
+                                qualified_name += operand_name.qualifier_segments[i];
+                            }
+                            if (!qualified_name.empty()) qualified_name += "::";
+                            qualified_name += operand_name.base_name;
                         }
-                        if (!qualified_name.empty()) qualified_name += "::";
-                        qualified_name += operand_name.base_name;
+                        const char* nm = arena_.strdup(qualified_name.c_str());
+                        arg = make_var(nm, ln);
+                        apply_qualified_name(arg, operand_name, nm);
+                    } else {
+                        arg = parse_assign_expr();
                     }
-                    const char* nm = arena_.strdup(qualified_name.c_str());
-                    operand = make_var(nm, ln);
-                    apply_qualified_name(operand, operand_name, nm);
-                } else {
-                    operand = parse_assign_expr();
+                    if (arg) args.push_back(arg);
+                    if (!match(TokenKind::Comma)) break;
                 }
             }
             expect(TokenKind::RParen);
-            if (!operand) operand = make_int_lit(0, ln);
+            const bool ctor_like_type =
+                cast_ts.base == TB_STRUCT || cast_ts.base == TB_UNION ||
+                cast_ts.base == TB_TYPEDEF;
+            if (ctor_like_type && args.size() != 1) {
+                Node* callee = make_var(cast_ts.tag ? cast_ts.tag : "<ctor>", ln);
+                Node* call = make_node(NK_CALL, ln);
+                call->left = callee;
+                call->n_children = static_cast<int>(args.size());
+                if (!args.empty()) {
+                    call->children = arena_.alloc_array<Node*>(call->n_children);
+                    for (int i = 0; i < call->n_children; ++i) call->children[i] = args[i];
+                }
+                return parse_postfix(call);
+            }
+            Node* operand = args.empty() ? make_int_lit(0, ln) : args[0];
             Node* n = make_node(NK_CAST, ln);
             n->type = cast_ts;
             n->left = operand;
@@ -900,7 +1027,7 @@ Node* Parser::parse_primary() {
                     n->fn_ptr_variadic = tdit->second.variadic;
                 }
             }
-            return n;
+            return parse_postfix(n);
         }
         pos_ = save_pos;
         last_resolved_typedef_ = saved_typedef;

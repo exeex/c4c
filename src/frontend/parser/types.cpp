@@ -169,13 +169,14 @@ const Node* select_template_struct_pattern(
         for (int i = 0; i < cand->n_template_params; ++i) {
             const char* pname = cand->template_param_names[i];
             if (!pname) continue;
+            const bool has_default =
+                cand->template_param_has_default &&
+                cand->template_param_has_default[i];
             if (cand->template_param_is_nttp[i]) {
-                if (!cand->template_param_has_default[i] &&
-                    value_bindings_map.count(pname) == 0)
+                if (!has_default && value_bindings_map.count(pname) == 0)
                     return;
             } else {
-                if (!cand->template_param_has_default[i] &&
-                    type_bindings_map.count(pname) == 0)
+                if (!has_default && type_bindings_map.count(pname) == 0)
                     return;
             }
         }
@@ -193,14 +194,16 @@ const Node* select_template_struct_pattern(
                 auto it = value_bindings_map.find(pname);
                 if (it != value_bindings_map.end()) {
                     out_nttp_bindings->push_back({pname, it->second});
-                } else if (cand->template_param_has_default[i]) {
+                } else if (cand->template_param_has_default &&
+                           cand->template_param_has_default[i]) {
                     out_nttp_bindings->push_back({pname, cand->template_param_default_values[i]});
                 }
             } else {
                 auto it = type_bindings_map.find(pname);
                 if (it != type_bindings_map.end()) {
                     out_type_bindings->push_back({pname, it->second});
-                } else if (cand->template_param_has_default[i]) {
+                } else if (cand->template_param_has_default &&
+                           cand->template_param_has_default[i]) {
                     out_type_bindings->push_back({pname, cand->template_param_default_types[i]});
                 }
             }
@@ -230,7 +233,8 @@ const Node* select_template_struct_pattern(
         }
     }
     while (arg_idx < primary_tpl->n_template_params) {
-        if (primary_tpl->template_param_has_default[arg_idx]) {
+        if (primary_tpl->template_param_has_default &&
+            primary_tpl->template_param_has_default[arg_idx]) {
             const char* param_name = primary_tpl->template_param_names[arg_idx];
             if (primary_tpl->template_param_is_nttp[arg_idx]) {
                 out_nttp_bindings->push_back({param_name, primary_tpl->template_param_default_values[arg_idx]});
