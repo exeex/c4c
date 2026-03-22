@@ -1651,6 +1651,11 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         }
         // Also skip keyword qualifiers (const, volatile, restrict)
         while (is_qualifier(cur().kind)) consume();
+        // C++ ref qualifier after pointer: (*const& name) or (*const&& name)
+        if (is_cpp_mode()) {
+            if (check(TokenKind::AmpAmp)) { consume(); ts.is_rvalue_ref = true; }
+            else if (check(TokenKind::Amp)) { consume(); ts.is_lvalue_ref = true; }
+        }
         // Skip array dimensions inside parens: (*[4])(int) — array of function pointers
         // e.g. typedef int (*fptr4[4])(int);  or  int f(int (*[4])(int), ...)
         while (check(TokenKind::LBracket)) {
@@ -2189,8 +2194,12 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     auto check_dup_field = [&](const char* fname) {
         if (!fname) return;
         std::string n(fname);
-        if (field_names_seen.count(n))
-            throw std::runtime_error(std::string("duplicate field name: ") + n);
+        if (field_names_seen.count(n)) {
+            if (!is_cpp_mode())
+                throw std::runtime_error(std::string("duplicate field name: ") + n);
+            // C++ mode: allow duplicates (template specializations, complex types)
+            return;
+        }
         field_names_seen.insert(n);
     };
     while (!at_end() && !check(TokenKind::RBrace)) {
@@ -2212,6 +2221,16 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             consume(); // 'friend'
             while (!at_end() && !check(TokenKind::Semi) && !check(TokenKind::RBrace))
                 consume();
+            match(TokenKind::Semi);
+            continue;
+        }
+
+        // static_assert in struct body: skip entirely
+        if (check(TokenKind::KwStaticAssert)) {
+            consume();
+            if (check(TokenKind::LParen)) {
+                skip_paren_group();
+            }
             match(TokenKind::Semi);
             continue;
         }
@@ -2244,7 +2263,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         if (is_cpp_mode() && check(TokenKind::KwTemplate)) {
             consume(); // eat 'template'
             expect(TokenKind::Less);
-            while (!at_end() && !check(TokenKind::Greater)) {
+            while (!at_end() && !check_template_close()) {
                 if ((check(TokenKind::Identifier) && cur().lexeme == "typename") ||
                     check(TokenKind::KwClass)) {
                     consume(); // eat 'typename'/'class'
@@ -2264,16 +2283,30 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                         active_template_member_type_params_.insert(pname);
                         tmpl_guard.names.push_back(std::move(pname));
                     }
-                    // Skip default: = type
+                    // Skip default: = type (with >> splitting and paren tracking)
                     if (check(TokenKind::Assign)) {
                         consume();
-                        int depth = 0;
+                        int depth = 0, paren_depth = 0;
                         while (!at_end()) {
-                            if (check(TokenKind::Less)) ++depth;
-                            else if (check(TokenKind::Greater)) {
+                            if (check(TokenKind::Less) || check(TokenKind::LParen)) {
+                                if (check(TokenKind::LParen)) ++paren_depth;
+                                else ++depth;
+                            } else if (check(TokenKind::RParen)) {
+                                if (paren_depth > 0) --paren_depth;
+                            } else if (check(TokenKind::GreaterGreater) && paren_depth == 0) {
+                                if (depth <= 0) break;
+                                if (depth == 1) {
+                                    tokens_[pos_].kind = TokenKind::Greater;
+                                    tokens_[pos_].lexeme = ">";
+                                    break;
+                                }
+                                depth -= 2;
+                                consume();
+                                continue;
+                            } else if (check(TokenKind::Greater) && paren_depth == 0) {
                                 if (depth == 0) break;
                                 --depth;
-                            } else if (check(TokenKind::Comma) && depth == 0) break;
+                            } else if (check(TokenKind::Comma) && depth == 0 && paren_depth == 0) break;
                             consume();
                         }
                     }
@@ -2293,16 +2326,30 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                     // Skip '...' for variadic NTTP packs.
                     if (check(TokenKind::Ellipsis)) consume();
                     if (check(TokenKind::Identifier)) consume(); // param name
-                    // Skip default: = expr
+                    // Skip default: = expr (with >> splitting and paren tracking)
                     if (check(TokenKind::Assign)) {
                         consume();
-                        int depth = 0;
+                        int depth = 0, paren_depth = 0;
                         while (!at_end()) {
-                            if (check(TokenKind::Less)) ++depth;
-                            else if (check(TokenKind::Greater)) {
+                            if (check(TokenKind::Less) || check(TokenKind::LParen)) {
+                                if (check(TokenKind::LParen)) ++paren_depth;
+                                else ++depth;
+                            } else if (check(TokenKind::RParen)) {
+                                if (paren_depth > 0) --paren_depth;
+                            } else if (check(TokenKind::GreaterGreater) && paren_depth == 0) {
+                                if (depth <= 0) break;
+                                if (depth == 1) {
+                                    tokens_[pos_].kind = TokenKind::Greater;
+                                    tokens_[pos_].lexeme = ">";
+                                    break;
+                                }
+                                depth -= 2;
+                                consume();
+                                continue;
+                            } else if (check(TokenKind::Greater) && paren_depth == 0) {
                                 if (depth == 0) break;
                                 --depth;
-                            } else if (check(TokenKind::Comma) && depth == 0) break;
+                            } else if (check(TokenKind::Comma) && depth == 0 && paren_depth == 0) break;
                             consume();
                         }
                     }
@@ -2312,12 +2359,50 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 }
                 if (!match(TokenKind::Comma)) break;
             }
-            expect(TokenKind::Greater);
+            expect_template_close();
             // Fall through to parse the member declaration that follows
         }
 
         if (is_cpp_mode() && check(TokenKind::KwUsing)) {
             consume();
+            // using Name = Type; — register as typedef so conversion operators
+            // and other code can reference the alias (e.g. `operator F()`)
+            if (check(TokenKind::Identifier) &&
+                pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                tokens_[pos_ + 1].kind == TokenKind::Assign) {
+                std::string alias_name = cur().lexeme;
+                consume(); // name
+                consume(); // '='
+                // Skip the type expression until ';'
+                int depth = 0;
+                while (!at_end() && !(check(TokenKind::Semi) && depth == 0) &&
+                       !check(TokenKind::RBrace)) {
+                    if (check(TokenKind::Less) || check(TokenKind::LParen)) ++depth;
+                    else if (check(TokenKind::Greater) || check(TokenKind::RParen)) {
+                        if (depth > 0) --depth;
+                    } else if (check(TokenKind::GreaterGreater)) {
+                        depth -= std::min(depth, 2);
+                        consume();
+                        continue;
+                    }
+                    consume();
+                }
+                match(TokenKind::Semi);
+                // Register as typedef
+                typedefs_.insert(alias_name);
+                TypeSpec ts{};
+                ts.array_size = -1;
+                ts.inner_rank = -1;
+                ts.base = TB_INT; // placeholder
+                typedef_types_[alias_name] = ts;
+                if (!current_struct_tag_.empty()) {
+                    std::string scoped = current_struct_tag_ + "::" + alias_name;
+                    typedefs_.insert(scoped);
+                    typedef_types_[scoped] = ts;
+                }
+                continue;
+            }
+            // Other using forms (using namespace, using-declaration): skip
             while (!at_end() && !check(TokenKind::Semi) && !check(TokenKind::RBrace))
                 consume();
             match(TokenKind::Semi);
@@ -2496,13 +2581,26 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         // C++ constructor: ClassName(params) { body }
         // Detect when the current identifier matches the struct tag and is
         // followed by '(' — this is a constructor declaration, not a type.
-        // Skip 'explicit' specifier before constructor name.
-        if (is_cpp_mode() && !current_struct_tag_.empty() &&
-            check(TokenKind::KwExplicit) &&
-            pos_ + 1 < static_cast<int>(tokens_.size()) &&
-            tokens_[pos_ + 1].kind == TokenKind::Identifier &&
-            tokens_[pos_ + 1].lexeme == current_struct_tag_) {
-            consume();  // skip 'explicit'
+        // Skip 'constexpr'/'consteval'/'explicit' specifiers before constructor name.
+        if (is_cpp_mode() && !current_struct_tag_.empty()) {
+            // Peek past constexpr/consteval/explicit to check for constructor
+            int probe = pos_;
+            while (probe < static_cast<int>(tokens_.size()) &&
+                   (tokens_[probe].kind == TokenKind::KwConstexpr ||
+                    tokens_[probe].kind == TokenKind::KwConsteval ||
+                    tokens_[probe].kind == TokenKind::KwExplicit ||
+                    (tokens_[probe].kind == TokenKind::Identifier &&
+                     tokens_[probe].lexeme == "inline"))) {
+                ++probe;
+            }
+            if (probe < static_cast<int>(tokens_.size()) &&
+                tokens_[probe].kind == TokenKind::Identifier &&
+                tokens_[probe].lexeme == current_struct_tag_ &&
+                probe + 1 < static_cast<int>(tokens_.size()) &&
+                tokens_[probe + 1].kind == TokenKind::LParen) {
+                // Skip specifiers before the constructor name
+                while (pos_ < probe) consume();
+            }
         }
         if (is_cpp_mode() && !current_struct_tag_.empty() &&
             check(TokenKind::Identifier) && cur().lexeme == current_struct_tag_ &&
@@ -2819,6 +2917,11 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                     break;
                 }
             }
+            // Skip C++ ref-qualifiers: & or &&
+            if (is_cpp_mode()) {
+                if (check(TokenKind::AmpAmp)) consume();
+                else if (check(TokenKind::Amp)) consume();
+            }
             skip_exception_spec();
             if (is_cpp_mode() && match(TokenKind::Arrow)) {
                 fts = parse_type_name();
@@ -2929,6 +3032,11 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                         break;
                     }
                 }
+                // Skip C++ ref-qualifiers: & or &&
+                if (is_cpp_mode()) {
+                    if (check(TokenKind::AmpAmp)) consume();
+                    else if (check(TokenKind::Amp)) consume();
+                }
                 skip_exception_spec();
                 if (is_cpp_mode() && match(TokenKind::Arrow)) {
                     cur_fts = parse_type_name();
@@ -2983,11 +3091,10 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             if (is_cpp_mode() && check(TokenKind::Assign)) {
                 consume(); // eat '='
                 // Skip balanced initializer expression until ; or , at depth 0.
-                // Only track ()/{}/[] for depth — NOT </>. Template-like <> in
-                // initializers (e.g. integral_constant<bool, true>) is rare vs.
-                // comparison operators (e.g. (value_type)(-1) < 0) which are
-                // common in constexpr initializers and would corrupt depth.
-                int depth = 0;
+                // In C++ mode, also track <> depth for template expressions like
+                // is_same<T, U>::value (the comma between T and U must not be
+                // treated as a field separator).
+                int depth = 0, angle_depth = 0;
                 while (!at_end()) {
                     if (check(TokenKind::LParen) || check(TokenKind::LBrace) ||
                         check(TokenKind::LBracket)) { ++depth; consume(); }
@@ -2996,7 +3103,18 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                         if (depth == 0) break;
                         --depth; consume();
                     }
-                    else if ((check(TokenKind::Semi) || check(TokenKind::Comma)) && depth == 0) break;
+                    else if (check(TokenKind::Less) && depth == 0) {
+                        ++angle_depth; consume();
+                    }
+                    else if (check(TokenKind::Greater) && angle_depth > 0 && depth == 0) {
+                        --angle_depth; consume();
+                    }
+                    else if (check(TokenKind::GreaterGreater) && angle_depth > 0 && depth == 0) {
+                        angle_depth -= std::min(angle_depth, 2);
+                        consume();
+                    }
+                    else if ((check(TokenKind::Semi) || check(TokenKind::Comma)) &&
+                             depth == 0 && angle_depth == 0) break;
                     else consume();
                 }
             }

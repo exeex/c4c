@@ -63,6 +63,46 @@ Node* Parser::parse_stmt() {
         }
     }
 
+    // C++ using type alias inside function body: using R = type;
+    // Registered as a local typedef so subsequent code can reference it.
+    if (is_cpp_mode() && check(TokenKind::KwUsing)) {
+        consume(); // eat 'using'
+        if (check(TokenKind::Identifier) &&
+            pos_ + 1 < static_cast<int>(tokens_.size()) &&
+            tokens_[pos_ + 1].kind == TokenKind::Assign) {
+            std::string alias_name = cur().lexeme;
+            consume(); // eat name
+            consume(); // eat '='
+            // Skip the type expression until ';'
+            int depth = 0;
+            while (!at_end() && !(check(TokenKind::Semi) && depth == 0)) {
+                if (check(TokenKind::Less) || check(TokenKind::LParen)) ++depth;
+                else if (check(TokenKind::Greater) || check(TokenKind::RParen)) {
+                    if (depth > 0) --depth;
+                } else if (check(TokenKind::GreaterGreater)) {
+                    depth -= std::min(depth, 2);
+                    consume();
+                    continue;
+                }
+                consume();
+            }
+            match(TokenKind::Semi);
+            // Register as typedef so subsequent code recognizes the name
+            typedefs_.insert(alias_name);
+            TypeSpec ts{};
+            ts.array_size = -1;
+            ts.inner_rank = -1;
+            ts.base = TB_INT; // placeholder — not semantically resolved
+            typedef_types_[alias_name] = ts;
+            return make_node(NK_EMPTY, ln);
+        }
+        // using namespace / using-declaration: skip until ;
+        while (!at_end() && !check(TokenKind::Semi) && !check(TokenKind::RBrace))
+            consume();
+        match(TokenKind::Semi);
+        return make_node(NK_EMPTY, ln);
+    }
+
     switch (cur().kind) {
         case TokenKind::PragmaPack: {
             handle_pragma_pack(cur().lexeme);
@@ -82,10 +122,15 @@ Node* Parser::parse_stmt() {
             expect(TokenKind::LParen);
             Node* cond = parse_assign_expr();
             long long cv = 0;
-            if (!eval_const_int(cond, &cv, &struct_tag_def_map_))
-                throw std::runtime_error("_Static_assert requires an integer constant expression");
-            if (cv == 0)
+            bool could_eval = eval_const_int(cond, &cv, &struct_tag_def_map_);
+            if (!could_eval) {
+                // In C++ template context, dependent expressions can't be evaluated
+                // at parse time — silently skip.
+                if (!is_cpp_mode())
+                    throw std::runtime_error("_Static_assert requires an integer constant expression");
+            } else if (cv == 0) {
                 throw std::runtime_error("_Static_assert condition is false");
+            }
             if (match(TokenKind::Comma)) {
                 parse_assign_expr();  // message argument
             }

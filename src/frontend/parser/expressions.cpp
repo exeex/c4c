@@ -222,6 +222,17 @@ Node* Parser::parse_unary() {
         }
         case TokenKind::KwSizeof: {
             consume();
+            // sizeof...(pack) — C++ parameter pack size; return 0 placeholder
+            if (is_cpp_mode() && check(TokenKind::Ellipsis)) {
+                consume(); // eat '...'
+                expect(TokenKind::LParen);
+                if (!check(TokenKind::RParen)) consume(); // eat pack name
+                expect(TokenKind::RParen);
+                Node* n = make_node(NK_INT_LIT, ln);
+                n->type.base = TB_ULONG;
+                n->ival = 0;
+                return n;
+            }
             if (check(TokenKind::LParen)) {
                 // Could be sizeof(type) or sizeof(expr)
                 // Disambiguate: if first token inside is a type keyword, it's a type
