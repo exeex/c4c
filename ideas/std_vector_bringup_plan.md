@@ -94,6 +94,38 @@ Make the failing case cheap to rerun and easy to reduce.
 
 3. preserve reduced temporary repro files when the failing layer is unclear
 
+### Current Manual Workflow
+
+There is now a standalone CMake workflow target for the EASTL repro case:
+
+- target: `eastl_std_vector_simple_workflow`
+- source: `tests/cpp/eastl/std_vector_simple.cpp`
+- script: `tests/cpp/eastl/run_std_vector_simple_workflow.cmake`
+
+Run it with:
+
+```bash
+cmake --build build --target eastl_std_vector_simple_workflow
+```
+
+This workflow is intentionally **not** part of the default `ctest` set.
+It exists to make the current EASTL bring-up path easy to reproduce without
+promoting a still-failing case into the regular suite.
+
+The workflow performs:
+
+1. host compile of `tests/cpp/eastl/std_vector_simple.cpp` with EASTL/EABase include paths
+2. host execution of that reference binary
+3. `c4cll` compile of the same source with matching include paths, emitting LLVM IR
+4. host `clang` compile of the emitted IR
+5. execution of the resulting c4c-produced binary
+
+Artifacts are written under:
+
+- `build/eastl_std_vector_simple/std_vector_simple.ll`
+- `build/eastl_std_vector_simple/std_vector_simple.host.bin`
+- `build/eastl_std_vector_simple/std_vector_simple.c4c.bin`
+
 ### Exit Criteria
 
 - one command reproduces current status

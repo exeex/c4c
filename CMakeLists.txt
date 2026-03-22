@@ -105,6 +105,21 @@ if(CLANG_EXECUTABLE)
     VERBATIM
   )
   add_custom_target(build_example_bin DEPENDS "${EXAMPLE_BIN}")
+
+  add_custom_target(eastl_std_vector_simple_workflow
+    COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:c4cll>
+            -DCLANG=${CLANG_EXECUTABLE}
+            -DCXX_COMPILER=${CMAKE_CXX_COMPILER}
+            -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/std_vector_simple.cpp
+            -DROOT=${PROJECT_SOURCE_DIR}
+            -DBINARY_DIR=${CMAKE_BINARY_DIR}
+            -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_std_vector_simple_workflow.cmake"
+    DEPENDS c4cll
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    COMMENT "Run standalone EASTL std_vector_simple workflow"
+    VERBATIM
+  )
 endif()
 
 include("${PROJECT_SOURCE_DIR}/tests/TestEntry.cmake")
