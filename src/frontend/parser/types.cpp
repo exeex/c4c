@@ -350,11 +350,13 @@ bool Parser::is_type_start() const {
     if (is_type_kw(k)) return true;
     if (is_qualifier(k)) return true;
     if (is_storage_class(k)) return true;
+    if (k == TokenKind::KwConstexpr || k == TokenKind::KwConsteval) return true;
     if (k == TokenKind::KwAttribute) return true;  // __attribute__((x)) type cast
     if (k == TokenKind::KwAlignas) return true;
     if (k == TokenKind::KwStaticAssert) return false;
     if (k == TokenKind::Identifier) {
         if (is_cpp_mode() && cur().lexeme == "typename") return true;
+        if (active_template_member_type_params_.count(cur().lexeme) > 0) return true;
         if (is_typedef_name(cur().lexeme)) return true;
         if (typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0) return true;
     }
@@ -926,6 +928,7 @@ TypeSpec Parser::parse_base_type() {
                     }
                 }
                 if (is_typedef_name(cur().lexeme) ||
+                    active_template_member_type_params_.count(cur().lexeme) > 0 ||
                     typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0) {
                     // If we've already seen concrete type specifiers/modifiers,
                     // this identifier is the declarator name (e.g. `int s;` even
@@ -1526,6 +1529,10 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
             consume();
         }
     }
+    // C++ template parameter pack declarator: `Args&&... args`
+    // or `Ts... value`. The ellipsis belongs to the declarator, not the
+    // function's variadic parameter list.
+    if (is_cpp_mode() && check(TokenKind::Ellipsis)) consume();
     parse_attributes(&ts);
 
     bool used_paren_ptr_declarator = false;
@@ -2152,11 +2159,24 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         struct TemplateParamGuard {
             std::set<std::string>& typedefs;
             std::unordered_map<std::string, TypeSpec>& typedef_types;
+            std::set<std::string>& active_type_params;
             std::vector<std::string> names;
             ~TemplateParamGuard() {
-                for (auto& n : names) { typedefs.erase(n); typedef_types.erase(n); }
+                for (auto& n : names) {
+                    typedefs.erase(n);
+                    typedef_types.erase(n);
+                    active_type_params.erase(n);
+                }
             }
-        } tmpl_guard{typedefs_, typedef_types_, {}};
+        } tmpl_guard{typedefs_, typedef_types_, active_template_member_type_params_, {}};
+        auto is_template_member_param_type_start = [&]() -> bool {
+            if (is_type_start()) return true;
+            if (!is_cpp_mode() || !check(TokenKind::Identifier)) return false;
+            for (const std::string& name : tmpl_guard.names) {
+                if (cur().lexeme == name) return true;
+            }
+            return false;
+        };
         if (is_cpp_mode() && check(TokenKind::KwTemplate)) {
             consume(); // eat 'template'
             expect(TokenKind::Less);
@@ -2177,6 +2197,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                         param_ts.base = TB_TYPEDEF;
                         param_ts.tag = arena_.strdup(pname.c_str());
                         typedef_types_[pname] = param_ts;
+                        active_template_member_type_params_.insert(pname);
                         tmpl_guard.names.push_back(std::move(pname));
                     }
                     // Skip default: = type
@@ -2424,7 +2445,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 while (!at_end()) {
                     if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
                     if (check(TokenKind::RParen)) break;
-                    if (!is_type_start()) break;
+                    if (!is_template_member_param_type_start()) break;
                     Node* p = parse_param();
                     if (p) params.push_back(p);
                     if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
@@ -2688,7 +2709,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 while (!at_end()) {
                     if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
                     if (check(TokenKind::RParen)) break;
-                    if (!is_type_start()) break;
+                    if (!is_template_member_param_type_start()) break;
                     Node* p = parse_param();
                     if (p) params.push_back(p);
                     if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
@@ -2807,7 +2828,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                             break;
                         }
                         if (check(TokenKind::RParen)) break;
-                        if (!is_type_start()) break;
+                        if (!is_template_member_param_type_start()) break;
                         Node* p = parse_param();
                         if (p) params.push_back(p);
                         if (check(TokenKind::Ellipsis)) {

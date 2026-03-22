@@ -13,6 +13,7 @@ set(CPP_POSITIVE_FRONTEND_STEMS
     trailing_return_type_runtime
     operator_call_rvalue_ref_runtime
     template_operator_call_rvalue_ref_runtime
+    template_constexpr_member_runtime
 )
 
 set(CPP_POSITIVE_PARSE_STEMS
@@ -53,6 +54,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     template_struct_specialization_parse
     default_param_value_parse
     member_pointer_param_parse
+    variadic_param_pack_declarator_parse
     eastl_slice4_typename_and_specialization_parse
 )
 

@@ -115,14 +115,32 @@ Operator Overloading — item 4: return to EASTL/std_vector bring-up
   - Validated both plain trailing return types and dependent forms like
     `decltype(f())`
   - Test: `trailing_return_type_runtime.cpp` (runtime)
+- [x] Struct-body template members with `constexpr` / `consteval` prefixes
+  - Root cause: inside struct bodies, `constexpr` / `consteval` were not treated as
+    valid type-start tokens; templated members like
+    `template<typename A> constexpr int f(A a)` fell out of the current parse pass,
+    and the injected template type names (`A`, `B`, etc.) were no longer visible
+  - Fix: `is_type_start()` now accepts `KwConstexpr` / `KwConsteval`; parser also
+    tracks active struct-member template type params explicitly so `is_type_start()`
+    and `parse_base_type()` can still recognize names like `A` during member parsing
+  - This resolved the `functional_base.h:197` class of failures
+  - Test: `template_constexpr_member_runtime.cpp` (runtime)
+- [x] Parameter-pack declarators and call-site pack expansions
+  - Root cause: parser treated the `...` in declarators like `Args&&... args` as the
+    variadic parameter marker instead of part of the declarator, and separately failed
+    to consume pack expansion markers in call args like `func(args...)`
+  - Fix: `parse_declarator()` now consumes declarator-local `...` in C++ mode, and
+    postfix call parsing skips `Ellipsis` after each parsed argument to support
+    `args...` pack expansion syntax
+  - This cleared the remaining `functional_base.h` variadic-pack bring-up errors
+  - Test: `variadic_param_pack_declarator_parse.cpp` (parse-only)
 
 ## Next Slice
 - EASTL bring-up slice 5: remaining blockers (~9 errors):
-  - iterator.h:395: cascading error from complex template member functions with
-    `enable_if<...>::type` return types and `EASTL_REMOVE_AT_2024_SEPT` deprecated attributes
-  - functional_base.h:197: template member functions with own template params (`template<typename A, typename B>`)
-  - Need to handle: template member function params in struct body, especially when
-    combined with `enable_if<...>::type` return types and deprecated attribute macros
+  - EABase/int128.h: duplicate field name `explicit` inside compatibility struct
+  - type_traits.h:243: parser misclassifies `value_type` after `operator`-related syntax
+  - iterator.h:395 / 898 / 996: remaining complex dependent return / qualified-type parsing
+  - copy_help.h:156: expression parsing still trips over a deeper template-heavy form
 
 ## Blockers
 - None critical

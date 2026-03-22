@@ -119,6 +119,10 @@ class Parser {
   std::unordered_map<std::string, TypeSpec> struct_typedefs_;
   // Tag of the struct currently being parsed (empty if not in struct body).
   std::string current_struct_tag_;
+  // Active type template parameters for the current templated struct member.
+  // Used so parameter parsing can still recognize names like `A` in
+  // `template<typename A> constexpr int f(A a)` inside struct bodies.
+  std::set<std::string> active_template_member_type_params_;
   // Transitional flattened path kept only as a compatibility bridge.
   std::string current_namespace_;
   std::vector<NamespaceContext> namespace_contexts_;

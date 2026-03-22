@@ -371,6 +371,8 @@ Node* Parser::parse_postfix(Node* base) {
                 std::vector<Node*> args;
                 while (!at_end() && !check(TokenKind::RParen)) {
                     args.push_back(parse_assign_expr());
+                    // C++ pack expansion in call args: func(args...)
+                    if (is_cpp_mode() && check(TokenKind::Ellipsis)) consume();
                     if (!match(TokenKind::Comma)) break;
                 }
                 expect(TokenKind::RParen);
