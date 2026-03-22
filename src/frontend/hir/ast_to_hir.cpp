@@ -3484,9 +3484,17 @@ class Lowerer {
       if (!param_ts || (!param_ts->is_lvalue_ref && !param_ts->is_rvalue_ref)) return lower_expr(ctx, arg_node);
       TypeSpec storage_ts = reference_storage_ts(*param_ts);
       if (param_ts->is_rvalue_ref) {
+        if (arg_node && arg_node->kind == NK_CAST && arg_node->type.is_rvalue_ref &&
+            arg_node->left) {
+          UnaryExpr addr{};
+          addr.op = UnaryOp::AddrOf;
+          addr.operand = lower_expr(ctx, arg_node->left);
+          return append_expr(arg_node, addr, storage_ts);
+        }
         // Rvalue ref param: materialize arg into a temporary, then pass &temp
         ExprId arg_val = lower_expr(ctx, arg_node);
         TypeSpec val_ts = reference_value_ts(*param_ts);
+        resolve_typedef_to_struct(val_ts);
         LocalDecl tmp{};
         tmp.id = next_local_id();
         tmp.name = "__rref_arg_tmp";
@@ -5541,8 +5549,16 @@ class Lowerer {
         return lower_expr(ctx, arg_node);
       TypeSpec storage_ts = reference_storage_ts(*param_ts);
       if (param_ts->is_rvalue_ref) {
+        if (arg_node && arg_node->kind == NK_CAST && arg_node->type.is_rvalue_ref &&
+            arg_node->left) {
+          UnaryExpr addr_e{};
+          addr_e.op = UnaryOp::AddrOf;
+          addr_e.operand = lower_expr(ctx, arg_node->left);
+          return append_expr(arg_node, addr_e, storage_ts);
+        }
         ExprId arg_val = lower_expr(ctx, arg_node);
         TypeSpec val_ts = reference_value_ts(*param_ts);
+        resolve_typedef_to_struct(val_ts);
         LocalDecl tmp{};
         tmp.id = next_local_id();
         tmp.name = "__rref_arg_tmp";
