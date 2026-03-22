@@ -765,8 +765,8 @@ Node* Parser::parse_primary() {
                 if (!match(TokenKind::Comma)) break;
             }
             if (ok && match_template_close()) {
-                if (check(TokenKind::LParen)) {
-                    // Allow empty <> for default template args; n_template_args==0 is fine.
+                if (check(TokenKind::LParen) || check(TokenKind::ColonColon)) {
+                    // Accept template instantiation followed by ( (call) or :: (static member).
                     ident->has_template_args = true;
                     ident->n_template_args = (int)template_args.size();
                     ident->template_arg_types = arena_.alloc_array<TypeSpec>(ident->n_template_args);
@@ -778,6 +778,15 @@ Node* Parser::parse_primary() {
                         ident->template_arg_is_value[i] = template_arg_is_val[i];
                         ident->template_arg_values[i] = template_arg_vals[i];
                         ident->template_arg_nttp_names[i] = template_arg_nttp_names[i];
+                    }
+                    // Template<A,B>::member — resolve as qualified name
+                    if (check(TokenKind::ColonColon)) {
+                        consume(); // eat ::
+                        if (check(TokenKind::Identifier)) {
+                            std::string member_name = std::string(ident->name) + "::" + cur().lexeme;
+                            consume();
+                            ident->name = arena_.strdup(member_name.c_str());
+                        }
                     }
                 } else {
                     pos_ = save_pos;

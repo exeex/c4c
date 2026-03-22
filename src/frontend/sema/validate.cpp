@@ -735,7 +735,10 @@ class Validator {
       }
     }
 
-    if (fn->body) {
+    // Skip body validation for template functions — bodies may contain
+    // template-dependent expressions (e.g. Template<T>::value) that can't
+    // be resolved without instantiation.
+    if (fn->body && fn->n_template_params == 0) {
       if (fn->body->kind == NK_BLOCK) {
         for (int i = 0; i < fn->body->n_children; ++i) visit_stmt(fn->body->children[i]);
       } else {

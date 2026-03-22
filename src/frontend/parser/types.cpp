@@ -350,7 +350,7 @@ bool Parser::is_type_start() const {
     if (is_type_kw(k)) return true;
     if (is_qualifier(k)) return true;
     if (is_storage_class(k)) return true;
-    if (k == TokenKind::KwConstexpr || k == TokenKind::KwConsteval) return true;
+    if (k == TokenKind::KwConstexpr || k == TokenKind::KwConsteval || k == TokenKind::KwExplicit) return true;
     if (k == TokenKind::KwAttribute) return true;  // __attribute__((x)) type cast
     if (k == TokenKind::KwAlignas) return true;
     if (k == TokenKind::KwStaticAssert) return false;
@@ -359,6 +359,15 @@ bool Parser::is_type_start() const {
         if (active_template_member_type_params_.count(cur().lexeme) > 0) return true;
         if (is_typedef_name(cur().lexeme)) return true;
         if (typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0) return true;
+        // C++ fallback: identifier followed by < is likely a template type if
+        // the name is registered as a template struct, or if we're inside a
+        // struct body where namespace-scoped template names may not resolve.
+        if (is_cpp_mode() &&
+            pos_ + 1 < static_cast<int>(tokens_.size()) &&
+            tokens_[pos_ + 1].kind == TokenKind::Less &&
+            (template_struct_defs_.count(cur().lexeme) > 0 ||
+             template_struct_defs_.count(resolve_visible_type_name(cur().lexeme)) > 0 ||
+             !current_struct_tag_.empty())) return true;
     }
     if (k == TokenKind::ColonColon) {
         QualifiedNameRef qn;
@@ -400,6 +409,10 @@ bool Parser::is_type_start() const {
             if (context_id >= 0) {
                 std::string ns_scoped = canonical_name_in_context(context_id, qn.base_name);
                 if (typedef_types_.count(ns_scoped) > 0) return true;
+                // C++ heuristic: if the qualifier resolves to a known namespace,
+                // treat it as a type even if not yet registered (e.g. struct tags
+                // defined inside namespace blocks that aren't typedef-tracked).
+                if (is_cpp_mode()) return true;
             }
         }
     }
@@ -619,6 +632,7 @@ TypeSpec Parser::parse_base_type() {
             case TokenKind::KwThreadLocal:
             case TokenKind::KwConstexpr:
             case TokenKind::KwConsteval:
+            case TokenKind::KwExplicit:
                 consume(); break;
             case TokenKind::KwAuto:
                 if (is_cpp_mode() && !base_set) {
@@ -736,13 +750,13 @@ TypeSpec Parser::parse_base_type() {
                     ts.ptr_level = 1;
                     consume();
                     expect(TokenKind::RParen);
-                } else if (is_type_start()) {
+                } else if (!is_cpp_mode() && is_type_start()) {
                     bool save_c = ts.is_const, save_v = ts.is_volatile;
                     ts = parse_type_name();
                     ts.is_const |= save_c;
                     ts.is_volatile |= save_v;
                     expect(TokenKind::RParen);
-                } else if (check(TokenKind::Identifier)) {
+                } else if (!is_cpp_mode() && check(TokenKind::Identifier)) {
                     std::string id = cur().lexeme;
                     consume();
                     auto vit = var_types_.find(id);
@@ -759,6 +773,10 @@ TypeSpec Parser::parse_base_type() {
                     }
                     expect(TokenKind::RParen);
                 } else {
+                    // C++ mode or unknown content: skip balanced parens.
+                    // decltype expressions can be arbitrarily complex
+                    // (qualified calls, template args, commas, etc.) so
+                    // just skip to the closing paren and assume int.
                     int depth = 1;
                     while (!at_end() && depth > 0) {
                         if (check(TokenKind::LParen)) ++depth;
@@ -953,6 +971,19 @@ TypeSpec Parser::parse_base_type() {
                         ts.tag = arena_.strdup(resolved.c_str());
                         consume();
                     }
+                    done = true;
+                } else if (is_cpp_mode() &&
+                           !(has_signed || has_unsigned || has_short || long_count > 0 ||
+                             has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
+                             has_struct || has_union || has_enum || base_set) &&
+                           pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                           tokens_[pos_ + 1].kind == TokenKind::Less) {
+                    // C++ unresolved template type: identifier followed by <
+                    // (e.g. reverse_iterator<Iterator1> inside a namespace where
+                    // the typedef registration was lost due to template parsing).
+                    has_typedef = true;
+                    ts.tag = arena_.strdup(cur().lexeme);
+                    consume();
                     done = true;
                 } else {
                     done = true;  // end of type; identifier is the declarator name
@@ -1553,11 +1584,28 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
                 }
             }
         }
-        return pk < (int)tokens_.size() &&
-               (tokens_[pk].kind == TokenKind::Star ||
-                tokens_[pk].kind == TokenKind::Caret ||
-                (is_cpp_mode() && (tokens_[pk].kind == TokenKind::Amp ||
-                                   tokens_[pk].kind == TokenKind::AmpAmp)));
+        if (pk >= (int)tokens_.size()) return false;
+        if (tokens_[pk].kind == TokenKind::Star ||
+            tokens_[pk].kind == TokenKind::Caret ||
+            (is_cpp_mode() && (tokens_[pk].kind == TokenKind::Amp ||
+                               tokens_[pk].kind == TokenKind::AmpAmp)))
+            return true;
+        // C++ pointer-to-member-function: (T::*name)(...) or (ns::T::*name)(...)
+        if (is_cpp_mode() && tokens_[pk].kind == TokenKind::Identifier) {
+            int pk2 = pk + 1;
+            // Skip over qualified name segments: Ident :: Ident :: ...
+            while (pk2 + 1 < (int)tokens_.size() &&
+                   tokens_[pk2].kind == TokenKind::ColonColon &&
+                   tokens_[pk2 + 1].kind == TokenKind::Identifier) {
+                pk2 += 2;
+            }
+            if (pk2 < (int)tokens_.size() &&
+                tokens_[pk2].kind == TokenKind::ColonColon &&
+                pk2 + 1 < (int)tokens_.size() &&
+                tokens_[pk2 + 1].kind == TokenKind::Star)
+                return true;
+        }
+        return false;
     };
     if (paren_star_peek()) {
         used_paren_ptr_declarator = true;
@@ -1565,8 +1613,21 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         std::vector<Node*> fn_ptr_params;
         bool fn_ptr_variadic = false;
         // function pointer: (*name)(...) or block pointer: (^name)(...) — record name, skip params
+        // Also handles C++ pointer-to-member-function: (T::*name)(...)
         consume();  // consume (
         skip_attributes();  // skip any __attribute__((...)) before * or ^
+        // C++ pointer-to-member-function: skip qualifier prefix (T:: or ns::T::)
+        if (is_cpp_mode() && check(TokenKind::Identifier) &&
+            pos_ + 1 < static_cast<int>(tokens_.size()) &&
+            tokens_[pos_ + 1].kind == TokenKind::ColonColon) {
+            // Skip Ident(::Ident)* :: before the *
+            while (check(TokenKind::Identifier) &&
+                   pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                   tokens_[pos_ + 1].kind == TokenKind::ColonColon) {
+                consume();  // identifier
+                consume();  // ::
+            }
+        }
         consume();  // consume * or ^ or & or &&
         if (tokens_[pos_ - 1].kind == TokenKind::AmpAmp) {
             ts.is_rvalue_ref = true;
@@ -1649,6 +1710,9 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
                 }
             }
             expect(TokenKind::RParen);
+            // C++ pointer-to-member-function may have cv-qualifiers after params:
+            // R (T::*pm)() const  or  R (T::*pm)() volatile
+            while (is_qualifier(cur().kind)) consume();
             ts.is_fn_ptr = true;  // confirmed function pointer: (*name)(params)
             if (is_nested_fn_ptr) {
                 // For nested fn_ptr: inner params already set on out_fn_ptr_params;
@@ -2432,6 +2496,14 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         // C++ constructor: ClassName(params) { body }
         // Detect when the current identifier matches the struct tag and is
         // followed by '(' — this is a constructor declaration, not a type.
+        // Skip 'explicit' specifier before constructor name.
+        if (is_cpp_mode() && !current_struct_tag_.empty() &&
+            check(TokenKind::KwExplicit) &&
+            pos_ + 1 < static_cast<int>(tokens_.size()) &&
+            tokens_[pos_ + 1].kind == TokenKind::Identifier &&
+            tokens_[pos_ + 1].lexeme == current_struct_tag_) {
+            consume();  // skip 'explicit'
+        }
         if (is_cpp_mode() && !current_struct_tag_.empty() &&
             check(TokenKind::Identifier) && cur().lexeme == current_struct_tag_ &&
             pos_ + 1 < static_cast<int>(tokens_.size()) &&
@@ -2608,7 +2680,11 @@ Node* Parser::parse_struct_or_union(bool is_union) {
 
             // Determine which operator
             std::string conversion_mangled_name;
-            if (is_conversion_operator && is_type_start()) {
+            if (is_type_start()) {
+                // Conversion operator: operator T() — the token after 'operator'
+                // is a type name. This covers both standalone 'operator T()' and
+                // prefix forms like 'explicit operator T()' / 'constexpr explicit operator T()'.
+                is_conversion_operator = true;
                 fts = parse_base_type();
                 parse_attributes(&fts);
                 if (check(TokenKind::Star)) {
@@ -2906,7 +2982,11 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             // e.g. int x = 5;  or  static constexpr bool value = expr;
             if (is_cpp_mode() && check(TokenKind::Assign)) {
                 consume(); // eat '='
-                // Skip balanced initializer expression until ; or , at depth 0
+                // Skip balanced initializer expression until ; or , at depth 0.
+                // Only track ()/{}/[] for depth — NOT </>. Template-like <> in
+                // initializers (e.g. integral_constant<bool, true>) is rare vs.
+                // comparison operators (e.g. (value_type)(-1) < 0) which are
+                // common in constexpr initializers and would corrupt depth.
                 int depth = 0;
                 while (!at_end()) {
                     if (check(TokenKind::LParen) || check(TokenKind::LBrace) ||
@@ -2915,11 +2995,6 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                              check(TokenKind::RBracket)) {
                         if (depth == 0) break;
                         --depth; consume();
-                    }
-                    else if (check(TokenKind::Less)) { ++depth; consume(); }
-                    else if (check_template_close()) {
-                        if (depth == 0) break;
-                        --depth; match_template_close();
                     }
                     else if ((check(TokenKind::Semi) || check(TokenKind::Comma)) && depth == 0) break;
                     else consume();

@@ -135,16 +135,39 @@ Operator Overloading — item 4: return to EASTL/std_vector bring-up
   - This cleared the remaining `functional_base.h` variadic-pack bring-up errors
   - Test: `variadic_param_pack_declarator_parse.cpp` (parse-only)
 
+- [x] EASTL bring-up slice 5: explicit keyword, decltype, ptr-to-member-fn, constexpr init
+  - `explicit` keyword: added `KwExplicit` token kind; recognized in `is_type_start()`
+    and `parse_base_type()` as a specifier; struct body constructor detection now skips
+    `explicit` before the constructor name
+  - `operator value_type()`: struct body conversion operator parsing broadened — after
+    consuming `operator`, check `is_type_start()` directly (not just when `is_conversion_operator`
+    flag was set by seeing `operator` first)
+  - Template expression `Template<A,B>::member`: expression parser now accepts `::` after
+    template instantiation for static member access
+  - Qualified namespace types as function params: `is_type_start()` C++ heuristic — if
+    `Identifier::Identifier` pattern resolves to a known namespace, treat as type
+  - Unresolved template type: `identifier<` fallback constrained to known template struct
+    names or inside struct body (prevents false positives on `a < b` comparisons)
+  - `decltype(expr)` in C++ mode: skip balanced parens without trying to parse as type
+    (complex expressions with qualified calls, commas, templates were failing)
+  - Pointer-to-member-function params: `(T::*name)()` pattern recognized in
+    `paren_star_peek` and declarator consumption; cv-qualifiers after params consumed
+  - Constexpr member initializer: `<`/`>` no longer tracked as depth modifiers in
+    balanced skip (fixes `(value_type)(-1) < 0` misparse as template)
+  - Template function body sema: skip validation when `n_template_params > 0`
+  - EASTL errors: original 6-9 blockers (int128.h, type_traits.h, copy_help.h,
+    iterator.h, type_compound.h, mem_fn.h) all resolved; now 21 errors in newly
+    reached deeper headers (functional.h, integer_sequence.h, meta.h, utility.h)
+  - Test: `eastl_slice5_explicit_decltype_memfn.cpp` (parse-only)
+
 ## Next Slice
-- EASTL bring-up slice 5: remaining blockers (~9 errors):
-  - EABase/int128.h: duplicate field name `explicit` inside compatibility struct
-  - type_traits.h:243: parser misclassifies `value_type` after `operator`-related syntax
-  - iterator.h:395 / 898 / 996: remaining complex dependent return / qualified-type parsing
-  - copy_help.h:156: expression parsing still trips over a deeper template-heavy form
+- EASTL bring-up slice 6: remaining deeper header errors (~21 in functional.h,
+  integer_sequence.h, meta.h, utility.h — advanced template features like parameter
+  packs, complex SFINAE, pointer-to-member-function in template args)
 
 ## Blockers
 - None critical
 
 ## Suite Status
-- Before: 2097/2097
-- After: 2098/2098 (+1 new test, no regressions)
+- Before: 2104/2104
+- After: 2105/2105 (+1 new test, no regressions)

@@ -56,6 +56,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     member_pointer_param_parse
     variadic_param_pack_declarator_parse
     eastl_slice4_typename_and_specialization_parse
+    eastl_slice5_explicit_decltype_memfn
 )
 
 foreach(src IN LISTS INTERNAL_CPP_NEGATIVE_TEST_SRCS)

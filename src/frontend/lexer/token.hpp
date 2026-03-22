@@ -96,6 +96,7 @@ enum class TokenKind {
   KwFalse,           // false
   KwOperator,        // operator (C++ operator overloading)
   KwDelete,          // delete (= delete for deleted functions)
+  KwExplicit,        // explicit (C++ explicit conversion/constructor specifier)
 
   // ---- Punctuation ----
   LParen,    // (
