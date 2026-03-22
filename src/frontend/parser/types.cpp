@@ -1,6 +1,7 @@
 #include "parser.hpp"
 #include "parser_internal.hpp"
 
+#include <cstring>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_set>
@@ -8,6 +9,13 @@
 namespace c4c {
 
 namespace {
+
+struct ParsedTemplateArg {
+    bool is_value = false;
+    TypeSpec type{};
+    long long value = 0;
+    const char* nttp_name = nullptr;
+};
 
 bool parse_alignas_specifier(Parser* parser, TypeSpec* ts, int line) {
     if (!parser->check(TokenKind::KwAlignas)) return false;
@@ -35,6 +43,204 @@ bool parse_alignas_specifier(Parser* parser, TypeSpec* ts, int line) {
     if (ts && have_align && align_val > ts->align_bytes)
         ts->align_bytes = static_cast<int>(align_val);
     return true;
+}
+
+bool is_type_template_param(const Node* tpl_def, const char* name) {
+    if (!tpl_def || !name) return false;
+    for (int i = 0; i < tpl_def->n_template_params; ++i) {
+        if (!tpl_def->template_param_is_nttp[i] &&
+            tpl_def->template_param_names[i] &&
+            std::strcmp(tpl_def->template_param_names[i], name) == 0)
+            return true;
+    }
+    return false;
+}
+
+bool is_value_template_param(const Node* tpl_def, const char* name) {
+    if (!tpl_def || !name) return false;
+    for (int i = 0; i < tpl_def->n_template_params; ++i) {
+        if (tpl_def->template_param_is_nttp[i] &&
+            tpl_def->template_param_names[i] &&
+            std::strcmp(tpl_def->template_param_names[i], name) == 0)
+            return true;
+    }
+    return false;
+}
+
+TypeSpec strip_pattern_qualifiers(TypeSpec ts, const TypeSpec& pattern) {
+    if (pattern.is_const) ts.is_const = false;
+    if (pattern.is_volatile) ts.is_volatile = false;
+    ts.ptr_level -= pattern.ptr_level;
+    if (ts.ptr_level < 0) ts.ptr_level = 0;
+    if (pattern.is_lvalue_ref) ts.is_lvalue_ref = false;
+    if (pattern.is_rvalue_ref) ts.is_rvalue_ref = false;
+    if (pattern.array_rank > 0) {
+        ts.array_rank -= pattern.array_rank;
+        if (ts.array_rank < 0) ts.array_rank = 0;
+        ts.array_size = ts.array_rank > 0 ? ts.array_dims[0] : -1;
+    }
+    return ts;
+}
+
+bool match_type_pattern(const TypeSpec& pattern_raw, const TypeSpec& actual_raw,
+                        const Node* tpl_def,
+                        std::unordered_map<std::string, TypeSpec>* type_bindings,
+                        const std::unordered_map<std::string, TypeSpec>& typedef_types) {
+    TypeSpec pattern = resolve_typedef_chain(pattern_raw, typedef_types);
+    TypeSpec actual = resolve_typedef_chain(actual_raw, typedef_types);
+    if (pattern.is_const && !actual.is_const) return false;
+    if (pattern.is_volatile && !actual.is_volatile) return false;
+    if (pattern.ptr_level > actual.ptr_level) return false;
+    if (pattern.is_lvalue_ref && !actual.is_lvalue_ref) return false;
+    if (pattern.is_rvalue_ref && !actual.is_rvalue_ref) return false;
+    if (pattern.array_rank > actual.array_rank) return false;
+
+    if (pattern.base == TB_TYPEDEF && pattern.tag &&
+        is_type_template_param(tpl_def, pattern.tag)) {
+        TypeSpec bound = strip_pattern_qualifiers(actual, pattern);
+        auto it = type_bindings->find(pattern.tag);
+        if (it == type_bindings->end()) {
+            (*type_bindings)[pattern.tag] = bound;
+            return true;
+        }
+        return types_compatible_p(it->second, bound, typedef_types);
+    }
+
+    return types_compatible_p(pattern, actual, typedef_types);
+}
+
+int specialization_match_score(const Node* spec) {
+    if (!spec) return -1;
+    if (spec->n_template_params == 0) return 100000;
+    int score = 0;
+    for (int i = 0; i < spec->n_template_args; ++i) {
+        if (spec->template_arg_is_value && spec->template_arg_is_value[i]) {
+            if (!(spec->template_arg_nttp_names && spec->template_arg_nttp_names[i])) score += 8;
+            continue;
+        }
+        const TypeSpec& ts = spec->template_arg_types[i];
+        if (ts.base != TB_TYPEDEF || !spec->template_param_names) score += 8;
+        else if (!is_type_template_param(spec, ts.tag)) score += 4;
+        if (ts.is_const || ts.is_volatile || ts.ptr_level > 0 ||
+            ts.is_lvalue_ref || ts.is_rvalue_ref || ts.array_rank > 0)
+            score += 4;
+    }
+    return score;
+}
+
+const Node* select_template_struct_pattern(
+    const std::string& tpl_name,
+    const std::vector<ParsedTemplateArg>& actual_args,
+    const Node* primary_tpl,
+    const std::unordered_map<std::string, std::vector<Node*>>& specializations,
+    const std::unordered_map<std::string, TypeSpec>& typedef_types,
+    std::vector<std::pair<std::string, TypeSpec>>* out_type_bindings,
+    std::vector<std::pair<std::string, long long>>* out_nttp_bindings) {
+    const Node* best = primary_tpl;
+    int best_score = -1;
+
+    auto try_candidate = [&](const Node* cand) {
+        if (!cand) return;
+        if (cand->n_template_args != static_cast<int>(actual_args.size())) return;
+        std::unordered_map<std::string, TypeSpec> type_bindings_map;
+        std::unordered_map<std::string, long long> value_bindings_map;
+        for (int i = 0; i < cand->n_template_args; ++i) {
+            const ParsedTemplateArg& actual = actual_args[i];
+            const bool pattern_is_value =
+                cand->template_arg_is_value && cand->template_arg_is_value[i];
+            if (pattern_is_value != actual.is_value) return;
+            if (pattern_is_value) {
+                const char* pname = cand->template_arg_nttp_names ?
+                    cand->template_arg_nttp_names[i] : nullptr;
+                if (pname && is_value_template_param(cand, pname)) {
+                    auto it = value_bindings_map.find(pname);
+                    if (it == value_bindings_map.end()) value_bindings_map[pname] = actual.value;
+                    else if (it->second != actual.value) return;
+                } else {
+                    if (cand->template_arg_values[i] != actual.value) return;
+                }
+            } else {
+                if (!match_type_pattern(cand->template_arg_types[i], actual.type, cand,
+                                        &type_bindings_map, typedef_types))
+                    return;
+            }
+        }
+
+        for (int i = 0; i < cand->n_template_params; ++i) {
+            const char* pname = cand->template_param_names[i];
+            if (!pname) continue;
+            if (cand->template_param_is_nttp[i]) {
+                if (!cand->template_param_has_default[i] &&
+                    value_bindings_map.count(pname) == 0)
+                    return;
+            } else {
+                if (!cand->template_param_has_default[i] &&
+                    type_bindings_map.count(pname) == 0)
+                    return;
+            }
+        }
+
+        int score = specialization_match_score(cand);
+        if (score <= best_score) return;
+        best = cand;
+        best_score = score;
+        out_type_bindings->clear();
+        out_nttp_bindings->clear();
+        for (int i = 0; i < cand->n_template_params; ++i) {
+            const char* pname = cand->template_param_names[i];
+            if (!pname) continue;
+            if (cand->template_param_is_nttp[i]) {
+                auto it = value_bindings_map.find(pname);
+                if (it != value_bindings_map.end()) {
+                    out_nttp_bindings->push_back({pname, it->second});
+                } else if (cand->template_param_has_default[i]) {
+                    out_nttp_bindings->push_back({pname, cand->template_param_default_values[i]});
+                }
+            } else {
+                auto it = type_bindings_map.find(pname);
+                if (it != type_bindings_map.end()) {
+                    out_type_bindings->push_back({pname, it->second});
+                } else if (cand->template_param_has_default[i]) {
+                    out_type_bindings->push_back({pname, cand->template_param_default_types[i]});
+                }
+            }
+        }
+    };
+
+    auto sit = specializations.find(tpl_name);
+    if (sit != specializations.end()) {
+        for (const Node* cand : sit->second) try_candidate(cand);
+    }
+
+    if (best != primary_tpl && best) return best;
+
+    out_type_bindings->clear();
+    out_nttp_bindings->clear();
+    if (!primary_tpl) return nullptr;
+    int arg_idx = 0;
+    for (; arg_idx < static_cast<int>(actual_args.size()) &&
+           arg_idx < primary_tpl->n_template_params; ++arg_idx) {
+        const char* param_name = primary_tpl->template_param_names[arg_idx];
+        if (primary_tpl->template_param_is_nttp[arg_idx]) {
+            if (!actual_args[arg_idx].is_value) return nullptr;
+            out_nttp_bindings->push_back({param_name, actual_args[arg_idx].value});
+        } else {
+            if (actual_args[arg_idx].is_value) return nullptr;
+            out_type_bindings->push_back({param_name, actual_args[arg_idx].type});
+        }
+    }
+    while (arg_idx < primary_tpl->n_template_params) {
+        if (primary_tpl->template_param_has_default[arg_idx]) {
+            const char* param_name = primary_tpl->template_param_names[arg_idx];
+            if (primary_tpl->template_param_is_nttp[arg_idx]) {
+                out_nttp_bindings->push_back({param_name, primary_tpl->template_param_default_values[arg_idx]});
+            } else {
+                out_type_bindings->push_back({param_name, primary_tpl->template_param_default_types[arg_idx]});
+            }
+        }
+        ++arg_idx;
+    }
+    return primary_tpl;
 }
 
 }  // namespace
@@ -733,50 +939,56 @@ TypeSpec Parser::parse_base_type() {
                 if (is_cpp_mode() && ts.base == TB_STRUCT && ts.tag &&
                     template_struct_defs_.count(ts.tag) && check(TokenKind::Less)) {
                     std::string tpl_name = ts.tag;
-                    const Node* tpl_def = template_struct_defs_[tpl_name];
+                    const Node* primary_tpl = template_struct_defs_[tpl_name];
                     consume();  // <
-                    // Parse template arguments (type or NTTP)
-                    std::vector<std::pair<std::string, TypeSpec>> type_bindings;
-                    std::vector<std::pair<std::string, long long>> nttp_bindings;
+                    // Parse template arguments before selecting the best pattern.
+                    std::vector<ParsedTemplateArg> actual_args;
                     int arg_idx = 0;
                     while (!at_end() && !check_template_close()) {
-                        if (arg_idx >= tpl_def->n_template_params) break;
-                        const char* param_name = tpl_def->template_param_names[arg_idx];
-                        if (tpl_def->template_param_is_nttp[arg_idx]) {
-                            // NTTP: parse integer-like constant expression
+                        ParsedTemplateArg arg;
+                        bool parsed_as_value = false;
+                        if (primary_tpl && arg_idx < primary_tpl->n_template_params &&
+                            primary_tpl->template_param_is_nttp[arg_idx]) {
                             long long sign = 1;
                             if (match(TokenKind::Minus)) sign = -1;
-                            long long val = 0;
                             if (check(TokenKind::KwTrue)) {
-                                val = 1;
+                                arg.is_value = true;
+                                arg.value = 1;
+                                parsed_as_value = true;
                                 consume();
                             } else if (check(TokenKind::KwFalse)) {
-                                val = 0;
+                                arg.is_value = true;
+                                arg.value = 0;
+                                parsed_as_value = true;
                                 consume();
                             } else if (check(TokenKind::CharLit)) {
                                 Node* lit = parse_primary();
-                                val = lit ? lit->ival : 0;
+                                arg.is_value = true;
+                                arg.value = lit ? lit->ival * sign : 0;
+                                parsed_as_value = true;
                             } else if (check(TokenKind::IntLit)) {
-                                val = parse_int_lexeme(cur().lexeme.c_str());
+                                arg.is_value = true;
+                                arg.value = parse_int_lexeme(cur().lexeme.c_str()) * sign;
+                                parsed_as_value = true;
                                 consume();
                             } else if (check(TokenKind::Identifier) && !is_type_start()) {
-                                // Forwarded NTTP name (e.g. Box<N> inside a template).
-                                // Keep a placeholder value so parsing can continue;
-                                // full dependent NTTP handling happens later.
+                                arg.is_value = true;
+                                arg.nttp_name = arena_.strdup(cur().lexeme);
+                                arg.value = 0;
+                                parsed_as_value = true;
                                 consume();
                             }
-                            nttp_bindings.push_back({param_name, val * sign});
-                        } else {
-                            // Type parameter
-                            TypeSpec arg_ts = parse_type_name();
-                            type_bindings.push_back({param_name, arg_ts});
                         }
+                        if (!parsed_as_value) {
+                            arg.is_value = false;
+                            arg.type = parse_type_name();
+                        }
+                        actual_args.push_back(arg);
                         ++arg_idx;
                         if (!match(TokenKind::Comma)) break;
                     }
-                    // If there are extra template args (e.g. variadic pack
-                    // expansion like Bn...), skip them to reach '>'.
-                    if (arg_idx >= tpl_def->n_template_params && !check_template_close()) {
+                    // Skip any trailing variadic args we don't model yet.
+                    if (!check_template_close()) {
                         int depth = 0;
                         while (!at_end()) {
                             if (check(TokenKind::Less)) { ++depth; consume(); }
@@ -789,41 +1001,39 @@ TypeSpec Parser::parse_base_type() {
                             }
                         }
                     }
-                    // Fill in defaults for remaining params
-                    while (arg_idx < tpl_def->n_template_params) {
-                        if (tpl_def->template_param_has_default[arg_idx]) {
-                            const char* param_name = tpl_def->template_param_names[arg_idx];
-                            if (tpl_def->template_param_is_nttp[arg_idx]) {
-                                nttp_bindings.push_back({param_name, tpl_def->template_param_default_values[arg_idx]});
-                            } else {
-                                type_bindings.push_back({param_name, tpl_def->template_param_default_types[arg_idx]});
-                            }
-                        }
-                        ++arg_idx;
-                    }
                     expect_template_close();
-                    // Build mangled name
-                    std::string mangled = tpl_name;
-                    // Helper lambda for type suffix
-                    auto append_type_suffix = [&](const TypeSpec& pts) {
-                        append_type_mangled_suffix(mangled, pts);
-                    };
-                    // Interleave type and NTTP args in template param order
-                    int ti = 0, ni = 0;
-                    for (int pi = 0; pi < tpl_def->n_template_params; ++pi) {
+                    std::vector<std::pair<std::string, TypeSpec>> type_bindings;
+                    std::vector<std::pair<std::string, long long>> nttp_bindings;
+                    const Node* tpl_def = select_template_struct_pattern(
+                        tpl_name, actual_args, primary_tpl, template_struct_specializations_,
+                        typedef_types_, &type_bindings, &nttp_bindings);
+                    if (!tpl_def) return ts;
+                    std::vector<ParsedTemplateArg> concrete_args = actual_args;
+                    while (primary_tpl && static_cast<int>(concrete_args.size()) < primary_tpl->n_template_params) {
+                        int i = static_cast<int>(concrete_args.size());
+                        if (!primary_tpl->template_param_has_default[i]) break;
+                        ParsedTemplateArg arg;
+                        arg.is_value = primary_tpl->template_param_is_nttp[i];
+                        if (arg.is_value) arg.value = primary_tpl->template_param_default_values[i];
+                        else arg.type = primary_tpl->template_param_default_types[i];
+                        concrete_args.push_back(arg);
+                    }
+
+                    // Build mangled name from the concrete family arguments.
+                    const std::string family_name =
+                        tpl_def->template_origin_name ? tpl_def->template_origin_name : tpl_name;
+                    std::string mangled = family_name;
+                    for (int pi = 0; primary_tpl && pi < primary_tpl->n_template_params; ++pi) {
                         mangled += "_";
-                        mangled += tpl_def->template_param_names[pi];
+                        mangled += primary_tpl->template_param_names[pi];
                         mangled += "_";
-                        if (tpl_def->template_param_is_nttp[pi]) {
-                            if (ni < (int)nttp_bindings.size())
-                                mangled += std::to_string(nttp_bindings[ni++].second);
-                            else
-                                mangled += "0";
+                        if (pi < static_cast<int>(concrete_args.size()) && concrete_args[pi].is_value) {
+                            mangled += std::to_string(concrete_args[pi].value);
                         } else {
-                            if (ti < (int)type_bindings.size())
-                                append_type_suffix(type_bindings[ti++].second);
+                            if (pi < static_cast<int>(concrete_args.size()) && !concrete_args[pi].is_value)
+                                append_type_mangled_suffix(mangled, concrete_args[pi].type);
                             else
-                                mangled += "T";
+                                mangled += primary_tpl->template_param_is_nttp[pi] ? "0" : "T";
                         }
                     }
                     // Check if any type arg is an unresolved template param
@@ -870,7 +1080,7 @@ TypeSpec Parser::parse_base_type() {
                                 }
                             }
                         }
-                        ts.tpl_struct_origin = arena_.strdup(tpl_name.c_str());
+                        ts.tpl_struct_origin = arena_.strdup(family_name.c_str());
                         ts.tpl_struct_arg_refs = arena_.strdup(arg_refs.c_str());
                         ts.tag = arena_.strdup(mangled.c_str());
                         return ts;
@@ -882,6 +1092,7 @@ TypeSpec Parser::parse_base_type() {
                         // Create a concrete NK_STRUCT_DEF with substituted field types
                         Node* inst = make_node(NK_STRUCT_DEF, tpl_def->line);
                         inst->name = arena_.strdup(mangled.c_str());
+                        inst->template_origin_name = arena_.strdup(family_name.c_str());
                         inst->is_union = tpl_def->is_union;
                         inst->pack_align = tpl_def->pack_align;
                         inst->struct_align = tpl_def->struct_align;
@@ -1588,10 +1799,12 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     }
     parse_decl_attrs();
 
+    const char* template_origin_name = nullptr;
+    std::vector<ParsedTemplateArg> specialization_args;
+
     // Template struct specialization: struct Name<Args> { ... } or
-    // struct Name<Args> : Base { ... }.  Consume the <Args> portion and
-    // mangle the tag so the specialization gets its own definition and
-    // doesn't conflict with the primary template.
+    // struct Name<Args> : Base { ... }.  Preserve the specialization pattern
+    // and give the concrete definition a unique internal tag.
     if (tag && is_cpp_mode() && check(TokenKind::Less)) {
         // Look ahead past balanced <...> to see if '{' or ':' follows.
         int probe = pos_;
@@ -1612,33 +1825,47 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             (tokens_[probe].kind == TokenKind::LBrace ||
              tokens_[probe].kind == TokenKind::Colon);
         if (is_specialization) {
-            // Consume <...> and build a unique mangled tag.
+            template_origin_name = arena_.strdup(tag);
+            consume(); // <
+            while (!at_end() && !check_template_close()) {
+                ParsedTemplateArg arg;
+                long long sign = 1;
+                if (match(TokenKind::Minus)) sign = -1;
+                if (check(TokenKind::KwTrue)) {
+                    arg.is_value = true;
+                    arg.value = 1;
+                    consume();
+                } else if (check(TokenKind::KwFalse)) {
+                    arg.is_value = true;
+                    arg.value = 0;
+                    consume();
+                } else if (check(TokenKind::CharLit)) {
+                    Node* lit = parse_primary();
+                    arg.is_value = true;
+                    arg.value = lit ? lit->ival * sign : 0;
+                } else if (check(TokenKind::IntLit)) {
+                    arg.is_value = true;
+                    arg.value = parse_int_lexeme(cur().lexeme.c_str()) * sign;
+                    consume();
+                } else if (check(TokenKind::Identifier) && !is_type_start()) {
+                    arg.is_value = true;
+                    arg.nttp_name = arena_.strdup(cur().lexeme);
+                    arg.value = 0;
+                    consume();
+                    if (check(TokenKind::Ellipsis)) consume();
+                } else {
+                    arg.is_value = false;
+                    arg.type = parse_type_name();
+                    if (check(TokenKind::Ellipsis)) consume();
+                }
+                specialization_args.push_back(arg);
+                if (!match(TokenKind::Comma)) break;
+            }
+            expect_template_close();
             std::string mangled(tag);
             mangled += "__spec_";
             mangled += std::to_string(anon_counter_++);
-            consume(); // <
-            depth = 1;
-            while (!at_end() && depth > 0) {
-                if (check(TokenKind::Less)) { ++depth; consume(); continue; }
-                if (check(TokenKind::Greater)) {
-                    --depth;
-                    if (depth == 0) { consume(); break; }
-                    consume(); continue;
-                }
-                if (check(TokenKind::GreaterGreater)) {
-                    depth -= 2;
-                    if (depth <= 0) {
-                        // Split >> into >: consume as single > by mutating token.
-                        tokens_[pos_].kind = TokenKind::Greater;
-                        tokens_[pos_].lexeme = ">";
-                        break;
-                    }
-                    consume(); continue;
-                }
-                consume();
-            }
             tag = arena_.strdup(mangled.c_str());
-            last_struct_was_specialization_ = true;
         }
     }
 
@@ -1716,9 +1943,23 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     Node* sd = make_node(NK_STRUCT_DEF, ln);
     sd->name         = tag;
     sd->is_union     = is_union;
+    sd->template_origin_name = template_origin_name;
     // __attribute__((packed)) => pack_align=1; otherwise use #pragma pack state
     sd->pack_align   = attr_ts.is_packed ? 1 : pack_alignment_;
     sd->struct_align = attr_ts.align_bytes;  // __attribute__((aligned(N)))
+    if (!specialization_args.empty()) {
+        sd->n_template_args = static_cast<int>(specialization_args.size());
+        sd->template_arg_types = arena_.alloc_array<TypeSpec>(sd->n_template_args);
+        sd->template_arg_is_value = arena_.alloc_array<bool>(sd->n_template_args);
+        sd->template_arg_values = arena_.alloc_array<long long>(sd->n_template_args);
+        sd->template_arg_nttp_names = arena_.alloc_array<const char*>(sd->n_template_args);
+        for (int i = 0; i < sd->n_template_args; ++i) {
+            sd->template_arg_is_value[i] = specialization_args[i].is_value;
+            sd->template_arg_types[i] = specialization_args[i].type;
+            sd->template_arg_values[i] = specialization_args[i].value;
+            sd->template_arg_nttp_names[i] = specialization_args[i].nttp_name;
+        }
+    }
 
     consume();  // consume {
 

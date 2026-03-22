@@ -284,6 +284,7 @@ struct Node {
     const char** template_arg_nttp_names; // parallel: forwarded NTTP name (null if literal)
     int          n_template_args;
     bool         has_template_args;       // true if <...> was parsed (distinguishes f() from f<>())
+    const char*  template_origin_name;    // primary template name for specialization patterns / instantiations
     // NK_DECL / NK_GLOBAL_VAR / NK_FUNCTION param decls:
     // function pointer prototype attached to this declarator, if any.
     Node** fn_ptr_params;

@@ -473,9 +473,16 @@ Node* Parser::parse_top_level() {
             consume();  // consume >
             bool saved_spec = parsing_explicit_specialization_;
             parsing_explicit_specialization_ = true;
+            size_t struct_defs_before = struct_defs_.size();
             Node* spec = parse_top_level();
             parsing_explicit_specialization_ = saved_spec;
-            last_struct_was_specialization_ = false;  // reset in case spec parsed a struct
+            if (struct_defs_.size() > struct_defs_before) {
+                Node* last_sd = struct_defs_.back();
+                if (last_sd && last_sd->kind == NK_STRUCT_DEF &&
+                    last_sd->template_origin_name && last_sd->n_template_args > 0) {
+                    template_struct_specializations_[last_sd->template_origin_name].push_back(last_sd);
+                }
+            }
             if (spec) spec->is_explicit_specialization = true;
             return spec;
         }
@@ -736,12 +743,15 @@ Node* Parser::parse_top_level() {
         // `templated` is NK_EMPTY (struct-only declaration).  Find the struct
         // def and attach template params to it.  Only consider structs that were
         // added during THIS template parse (not pre-existing instantiated structs).
-        if (last_struct_was_specialization_) {
-            last_struct_was_specialization_ = false;
-        } else if (struct_defs_.size() > struct_defs_before && !template_params.empty()) {
+        if (struct_defs_.size() > struct_defs_before) {
             Node* last_sd = struct_defs_.back();
             if (last_sd && last_sd->kind == NK_STRUCT_DEF &&
-                last_sd->n_template_params == 0) {
+                last_sd->template_origin_name && last_sd->n_template_args > 0) {
+                if (!template_params.empty() && last_sd->n_template_params == 0)
+                    attach_template_params(last_sd);
+                template_struct_specializations_[last_sd->template_origin_name].push_back(last_sd);
+            } else if (last_sd && last_sd->kind == NK_STRUCT_DEF &&
+                       !template_params.empty() && last_sd->n_template_params == 0) {
                 attach_template_params(last_sd);
                 template_struct_defs_[last_sd->name] = last_sd;
                 // In C++ mode, register the template struct name as a typedef
