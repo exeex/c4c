@@ -1,6 +1,7 @@
 #include "parser.hpp"
 #include "parser_internal.hpp"
 
+#include <climits>
 #include <cstring>
 #include <sstream>
 #include <stdexcept>
@@ -248,6 +249,242 @@ const Node* select_template_struct_pattern(
 }
 
 }  // namespace
+
+static void append_type_mangled_suffix(std::string& out, const TypeSpec& ts);
+
+// Evaluate a deferred NTTP default expression.
+// Handles the pattern: TemplateName<TypeArgs>::static_member
+// by instantiating the template with substituted args and looking up
+// the static constexpr member value.
+bool Parser::eval_deferred_nttp_default(
+    const std::string& tpl_name, int param_idx,
+    const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
+    const std::vector<std::pair<std::string, long long>>& nttp_bindings,
+    long long* out) {
+    std::string key = tpl_name + ":" + std::to_string(param_idx);
+    auto it = nttp_default_expr_tokens_.find(key);
+    if (it == nttp_default_expr_tokens_.end()) return false;
+    const std::vector<Token>& toks = it->second;
+    if (toks.empty()) return false;
+
+    // Recognize the pattern: Ident < args > :: Ident
+    // Where args can contain template param names that need substitution.
+    // Find the structure: tpl_name, template args, :: , member_name.
+    size_t ti = 0;
+    if (ti >= toks.size() || toks[ti].kind != TokenKind::Identifier) { return false; }
+    std::string ref_tpl_name = toks[ti].lexeme;
+    ++ti;
+
+    // Check for <args>
+    if (ti >= toks.size() || toks[ti].kind != TokenKind::Less) { return false; }
+    ++ti;
+
+    // Collect template args (comma-separated identifiers or values)
+    std::vector<ParsedTemplateArg> ref_args;
+    int angle_depth = 1;
+    while (ti < toks.size() && angle_depth > 0) {
+        if (toks[ti].kind == TokenKind::Greater) {
+            --angle_depth;
+            if (angle_depth == 0) { ++ti; break; }
+        } else if (toks[ti].kind == TokenKind::Less) {
+            ++angle_depth;
+        } else if (toks[ti].kind == TokenKind::Comma && angle_depth == 1) {
+            ++ti;
+            continue;
+        } else if (angle_depth == 1) {
+            // Try to resolve this token as a template param binding
+            if (toks[ti].kind == TokenKind::Identifier) {
+                bool found = false;
+                // Check type bindings
+                for (const auto& [pn, pts] : type_bindings) {
+                    if (toks[ti].lexeme == pn) {
+                        ParsedTemplateArg a;
+                        a.is_value = false;
+                        a.type = pts;
+                        ref_args.push_back(a);
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    // Check NTTP bindings
+                    for (const auto& [pn, pv] : nttp_bindings) {
+                        if (toks[ti].lexeme == pn) {
+                            ParsedTemplateArg a;
+                            a.is_value = true;
+                            a.value = pv;
+                            ref_args.push_back(a);
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                if (!found) {
+                    // Might be a concrete type name — try as typedef
+                    if (typedef_types_.count(toks[ti].lexeme)) {
+                        ParsedTemplateArg a;
+                        a.is_value = false;
+                        a.type = typedef_types_[toks[ti].lexeme];
+                        ref_args.push_back(a);
+                    } else {
+                        return false;  // unresolvable token
+                    }
+                }
+            } else if (toks[ti].kind == TokenKind::IntLit) {
+                ParsedTemplateArg a;
+                a.is_value = true;
+                a.value = parse_int_lexeme(toks[ti].lexeme.c_str());
+                ref_args.push_back(a);
+            } else if (toks[ti].kind == TokenKind::KwTrue) {
+                ParsedTemplateArg a;
+                a.is_value = true;
+                a.value = 1;
+                ref_args.push_back(a);
+            } else if (toks[ti].kind == TokenKind::KwFalse) {
+                ParsedTemplateArg a;
+                a.is_value = true;
+                a.value = 0;
+                ref_args.push_back(a);
+            }
+        }
+        ++ti;
+    }
+
+    // Expect :: member
+    if (ti >= toks.size() || toks[ti].kind != TokenKind::ColonColon) { return false; }
+    ++ti;
+    if (ti >= toks.size() || toks[ti].kind != TokenKind::Identifier) { return false; }
+    std::string member_name = toks[ti].lexeme;
+
+    // Look up the referenced template struct
+    auto tpl_it = template_struct_defs_.find(ref_tpl_name);
+    if (tpl_it == template_struct_defs_.end()) { return false; }
+    const Node* ref_primary = tpl_it->second;
+
+    // Build type/nttp bindings for the referenced template
+    std::vector<std::pair<std::string, TypeSpec>> ref_type_bindings;
+    std::vector<std::pair<std::string, long long>> ref_nttp_bindings;
+    const Node* ref_def = select_template_struct_pattern(
+        ref_tpl_name, ref_args, ref_primary, template_struct_specializations_,
+        typedef_types_, &ref_type_bindings, &ref_nttp_bindings);
+    if (!ref_def) return false;
+
+    // Build mangled name for the referenced struct
+    std::string ref_mangled = ref_tpl_name;
+    for (int pi = 0; pi < ref_primary->n_template_params; ++pi) {
+        ref_mangled += "_";
+        ref_mangled += ref_primary->template_param_names[pi];
+        ref_mangled += "_";
+        if (pi < static_cast<int>(ref_args.size()) && ref_args[pi].is_value) {
+            ref_mangled += std::to_string(ref_args[pi].value);
+        } else if (pi < static_cast<int>(ref_args.size()) && !ref_args[pi].is_value) {
+            append_type_mangled_suffix(ref_mangled, ref_args[pi].type);
+        }
+    }
+
+    // Ensure the referenced struct is instantiated.
+    // Instead of manual cloning, use token injection to trigger
+    // proper parse_base_type instantiation.
+    if (!struct_tag_def_map_.count(ref_mangled)) {
+        // Build injection tokens: TemplateName < arg1, arg2, ... >
+        std::vector<Token> inject_toks;
+        Token t; t.line = ref_primary->line; t.column = 0;
+        t.kind = TokenKind::Identifier; t.lexeme = ref_tpl_name;
+        inject_toks.push_back(t);
+        t.kind = TokenKind::Less; t.lexeme = "<";
+        inject_toks.push_back(t);
+        for (int ai = 0; ai < (int)ref_args.size(); ++ai) {
+            if (ai > 0) { t.kind = TokenKind::Comma; t.lexeme = ","; inject_toks.push_back(t); }
+            if (ref_args[ai].is_value) {
+                if (ref_args[ai].value == 0) { t.kind = TokenKind::KwFalse; t.lexeme = "false"; }
+                else if (ref_args[ai].value == 1) { t.kind = TokenKind::KwTrue; t.lexeme = "true"; }
+                else { t.kind = TokenKind::IntLit; t.lexeme = std::to_string(ref_args[ai].value); }
+                inject_toks.push_back(t);
+            } else {
+                const TypeSpec& ats = ref_args[ai].type;
+                t.kind = TokenKind::Identifier;
+                if (ats.tag) {
+                    t.lexeme = ats.tag;
+                } else {
+                    // Use type keyword based on base type
+                    switch (ats.base) {
+                        case TB_INT: t.kind = TokenKind::KwInt; t.lexeme = "int"; break;
+                        case TB_UINT: t.kind = TokenKind::KwUnsigned; t.lexeme = "unsigned"; break;
+                        case TB_CHAR: t.kind = TokenKind::KwChar; t.lexeme = "char"; break;
+                        case TB_VOID: t.kind = TokenKind::KwVoid; t.lexeme = "void"; break;
+                        case TB_FLOAT: t.kind = TokenKind::KwFloat; t.lexeme = "float"; break;
+                        case TB_DOUBLE: t.kind = TokenKind::KwDouble; t.lexeme = "double"; break;
+                        case TB_LONG: t.kind = TokenKind::KwLong; t.lexeme = "long"; break;
+                        case TB_SHORT: t.kind = TokenKind::KwShort; t.lexeme = "short"; break;
+                        case TB_BOOL: t.kind = TokenKind::KwBool; t.lexeme = "bool"; break;
+                        default: { std::string nm; append_type_mangled_suffix(nm, ats); t.lexeme = nm; } break;
+                    }
+                }
+                inject_toks.push_back(t);
+            }
+        }
+        t.kind = TokenKind::Greater; t.lexeme = ">";
+        inject_toks.push_back(t);
+        t.kind = TokenKind::Semi; t.lexeme = ";";
+        inject_toks.push_back(t);
+
+        // Save parser state and inject tokens
+        int saved_pos = pos_;
+        auto saved_toks = std::move(tokens_);
+        tokens_ = std::move(inject_toks);
+        pos_ = 0;
+        try {
+            (void)parse_base_type();
+        } catch (...) {}
+        tokens_ = std::move(saved_toks);
+        pos_ = saved_pos;
+    }
+
+    // Now look up the static member in the instantiated struct
+    auto sdef_it = struct_tag_def_map_.find(ref_mangled);
+    if (sdef_it == struct_tag_def_map_.end()) {
+        return false;
+    }
+    const Node* sdef = sdef_it->second;
+
+    // Search fields for a static constexpr member with the given name
+    for (int fi = 0; fi < sdef->n_fields; ++fi) {
+        const Node* f = sdef->fields[fi];
+        if (!f || f->kind != NK_DECL) continue;
+        if (!f->is_static) continue;
+        if (!f->name || member_name != f->name) continue;
+        // Found it — evaluate the init expression
+        if (f->init) {
+            long long val = 0;
+            if (eval_const_int(f->init, &val, &struct_tag_def_map_)) {
+                *out = val;
+                return true;
+            }
+        }
+        // Check for a literal default value on the field
+        if (f->ival >= 0) {
+            *out = f->ival;
+            return true;
+        }
+    }
+
+    // Also search children (member methods/static declarations)
+    for (int ci = 0; ci < sdef->n_children; ++ci) {
+        const Node* child = sdef->children[ci];
+        if (!child || child->kind != NK_DECL) continue;
+        if (!child->is_static) continue;
+        if (!child->name || member_name != child->name) continue;
+        if (child->init) {
+            long long val = 0;
+            if (eval_const_int(child->init, &val, &struct_tag_def_map_)) {
+                *out = val;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
 
 // Compute vector_lanes from vector_bytes and base type.
 // Called after the final base type is resolved.
@@ -1157,6 +1394,48 @@ TypeSpec Parser::parse_base_type() {
                         }
                     }
                     expect_template_close();
+                    // Fill in deferred NTTP defaults before pattern selection
+                    // so specialization matching has the complete arg list.
+                    if (primary_tpl) {
+                        // Build preliminary type bindings from explicit args
+                        std::vector<std::pair<std::string, TypeSpec>> prelim_tb;
+                        std::vector<std::pair<std::string, long long>> prelim_nb;
+                        for (int pi = 0; pi < static_cast<int>(actual_args.size()) &&
+                                         pi < primary_tpl->n_template_params; ++pi) {
+                            const char* pn = primary_tpl->template_param_names[pi];
+                            if (primary_tpl->template_param_is_nttp[pi]) {
+                                if (actual_args[pi].is_value)
+                                    prelim_nb.push_back({pn, actual_args[pi].value});
+                            } else {
+                                if (!actual_args[pi].is_value)
+                                    prelim_tb.push_back({pn, actual_args[pi].type});
+                            }
+                        }
+                        // Evaluate deferred defaults for missing args
+                        int sz = static_cast<int>(actual_args.size());
+                        while (sz < primary_tpl->n_template_params) {
+                            if (!primary_tpl->template_param_has_default ||
+                                !primary_tpl->template_param_has_default[sz]) break;
+                            ParsedTemplateArg da;
+                            da.is_value = primary_tpl->template_param_is_nttp[sz];
+                            if (da.is_value && primary_tpl->template_param_default_values[sz] == LLONG_MIN) {
+                                long long ev = 0;
+                                if (eval_deferred_nttp_default(tpl_name, sz, prelim_tb, prelim_nb, &ev)) {
+                                    da.value = ev;
+                                    actual_args.push_back(da);
+                                } else {
+                                    break;
+                                }
+                            } else if (da.is_value) {
+                                da.value = primary_tpl->template_param_default_values[sz];
+                                actual_args.push_back(da);
+                            } else {
+                                da.type = primary_tpl->template_param_default_types[sz];
+                                actual_args.push_back(da);
+                            }
+                            ++sz;
+                        }
+                    }
                     std::vector<std::pair<std::string, TypeSpec>> type_bindings;
                     std::vector<std::pair<std::string, long long>> nttp_bindings;
                     const Node* tpl_def = select_template_struct_pattern(
@@ -1169,8 +1448,22 @@ TypeSpec Parser::parse_base_type() {
                         if (!primary_tpl->template_param_has_default[i]) break;
                         ParsedTemplateArg arg;
                         arg.is_value = primary_tpl->template_param_is_nttp[i];
-                        if (arg.is_value) arg.value = primary_tpl->template_param_default_values[i];
-                        else arg.type = primary_tpl->template_param_default_types[i];
+                        if (arg.is_value) {
+                            if (primary_tpl->template_param_default_values[i] == LLONG_MIN) {
+                                // Deferred NTTP default — evaluate with current bindings
+                                long long eval_val = 0;
+                                if (eval_deferred_nttp_default(tpl_name, i,
+                                        type_bindings, nttp_bindings, &eval_val)) {
+                                    arg.value = eval_val;
+                                } else {
+                                    break;  // cannot evaluate
+                                }
+                            } else {
+                                arg.value = primary_tpl->template_param_default_values[i];
+                            }
+                        } else {
+                            arg.type = primary_tpl->template_param_default_types[i];
+                        }
                         concrete_args.push_back(arg);
                     }
 
@@ -1301,18 +1594,152 @@ TypeSpec Parser::parse_base_type() {
                                         }
                                     }
                                     if (all_resolved && template_struct_defs_.count(origin)) {
-                                        // Build mangled name and re-parse as type to trigger instantiation
+                                        // Build ParsedTemplateArg list from resolved parts
+                                        // and fill in deferred NTTP defaults, then trigger
+                                        // a proper template instantiation.
                                         const Node* base_primary = template_struct_defs_[origin];
-                                        std::string base_mangled = origin;
-                                        for (int pi = 0; pi < base_primary->n_template_params &&
-                                             pi < (int)new_arg_parts.size(); ++pi) {
+                                        std::vector<ParsedTemplateArg> base_args;
+                                        for (int pi = 0; pi < (int)new_arg_parts.size() &&
+                                             pi < base_primary->n_template_params; ++pi) {
+                                            ParsedTemplateArg ba;
+                                            if (base_primary->template_param_is_nttp[pi]) {
+                                                ba.is_value = true;
+                                                try { ba.value = std::stoll(new_arg_parts[pi]); }
+                                                catch (...) { ba.value = 0; }
+                                            } else {
+                                                ba.is_value = false;
+                                                auto tit = typedef_types_.find(new_arg_parts[pi]);
+                                                if (tit != typedef_types_.end()) {
+                                                    ba.type = tit->second;
+                                                } else {
+                                                    // Look up as mangled struct tag
+                                                    ba.type = {};
+                                                    ba.type.array_size = -1;
+                                                    ba.type.inner_rank = -1;
+                                                    ba.type.base = TB_STRUCT;
+                                                    ba.type.tag = arena_.strdup(new_arg_parts[pi].c_str());
+                                                }
+                                            }
+                                            base_args.push_back(ba);
+                                        }
+                                        // Fill in deferred NTTP defaults
+                                        {
+                                            std::vector<std::pair<std::string, TypeSpec>> base_prelim_tb;
+                                            std::vector<std::pair<std::string, long long>> base_prelim_nb;
+                                            for (int pi = 0; pi < (int)base_args.size() &&
+                                                 pi < base_primary->n_template_params; ++pi) {
+                                                const char* pn = base_primary->template_param_names[pi];
+                                                if (base_primary->template_param_is_nttp[pi]) {
+                                                    if (base_args[pi].is_value)
+                                                        base_prelim_nb.push_back({pn, base_args[pi].value});
+                                                } else {
+                                                    if (!base_args[pi].is_value)
+                                                        base_prelim_tb.push_back({pn, base_args[pi].type});
+                                                }
+                                            }
+                                            int bsz = (int)base_args.size();
+                                            while (bsz < base_primary->n_template_params) {
+                                                if (!base_primary->template_param_has_default ||
+                                                    !base_primary->template_param_has_default[bsz]) break;
+                                                ParsedTemplateArg da;
+                                                da.is_value = base_primary->template_param_is_nttp[bsz];
+                                                if (da.is_value && base_primary->template_param_default_values[bsz] == LLONG_MIN) {
+                                                    long long ev = 0;
+                                                    if (eval_deferred_nttp_default(origin, bsz,
+                                                            base_prelim_tb, base_prelim_nb, &ev)) {
+                                                        da.value = ev;
+                                                        base_args.push_back(da);
+                                                    } else break;
+                                                } else if (da.is_value) {
+                                                    da.value = base_primary->template_param_default_values[bsz];
+                                                    base_args.push_back(da);
+                                                } else {
+                                                    da.type = base_primary->template_param_default_types[bsz];
+                                                    base_args.push_back(da);
+                                                }
+                                                ++bsz;
+                                            }
+                                        }
+                                        // Select specialization and build mangled name
+                                        std::vector<std::pair<std::string, TypeSpec>> base_tb;
+                                        std::vector<std::pair<std::string, long long>> base_nb;
+                                        const Node* base_sel = select_template_struct_pattern(
+                                            origin, base_args, base_primary,
+                                            template_struct_specializations_,
+                                            typedef_types_, &base_tb, &base_nb);
+                                        if (!base_sel) base_sel = base_primary;
+                                        const std::string base_family =
+                                            base_sel->template_origin_name ? base_sel->template_origin_name : origin;
+                                        std::string base_mangled = base_family;
+                                        for (int pi = 0; pi < base_primary->n_template_params; ++pi) {
                                             base_mangled += "_";
                                             base_mangled += base_primary->template_param_names[pi];
                                             base_mangled += "_";
-                                            base_mangled += new_arg_parts[pi];
+                                            if (pi < (int)base_args.size() && base_args[pi].is_value) {
+                                                base_mangled += std::to_string(base_args[pi].value);
+                                            } else if (pi < (int)base_args.size() && !base_args[pi].is_value) {
+                                                append_type_mangled_suffix(base_mangled, base_args[pi].type);
+                                            }
                                         }
-                                        // Check if already instantiated
-                                        if (struct_tag_def_map_.count(base_mangled)) {
+                                        // Trigger instantiation if needed
+                                        if (!instantiated_template_structs_.count(base_mangled) &&
+                                            !struct_tag_def_map_.count(base_mangled)) {
+                                            // Inject tokens to trigger parse_base_type instantiation
+                                            // by building: origin < arg1, arg2, ... >
+                                            std::vector<Token> inject_toks;
+                                            Token t; t.line = tpl_def->line; t.column = 0;
+                                            t.kind = TokenKind::Identifier;
+                                            t.lexeme = origin;
+                                            inject_toks.push_back(t);
+                                            t.kind = TokenKind::Less; t.lexeme = "<";
+                                            inject_toks.push_back(t);
+                                            for (int ai = 0; ai < (int)base_args.size(); ++ai) {
+                                                if (ai > 0) {
+                                                    t.kind = TokenKind::Comma; t.lexeme = ",";
+                                                    inject_toks.push_back(t);
+                                                }
+                                                if (base_args[ai].is_value) {
+                                                    if (base_args[ai].value == 0) {
+                                                        t.kind = TokenKind::KwFalse; t.lexeme = "false";
+                                                    } else if (base_args[ai].value == 1) {
+                                                        t.kind = TokenKind::KwTrue; t.lexeme = "true";
+                                                    } else {
+                                                        t.kind = TokenKind::IntLit;
+                                                        t.lexeme = std::to_string(base_args[ai].value);
+                                                    }
+                                                    inject_toks.push_back(t);
+                                                } else {
+                                                    const TypeSpec& ats = base_args[ai].type;
+                                                    if (ats.tag) {
+                                                        t.kind = TokenKind::Identifier; t.lexeme = ats.tag;
+                                                    } else {
+                                                        // Use base type keyword
+                                                        t.kind = TokenKind::Identifier;
+                                                        std::string nm;
+                                                        append_type_mangled_suffix(nm, ats);
+                                                        t.lexeme = nm;
+                                                    }
+                                                    inject_toks.push_back(t);
+                                                }
+                                            }
+                                            t.kind = TokenKind::Greater; t.lexeme = ">";
+                                            inject_toks.push_back(t);
+                                            // Add a sentinel
+                                            t.kind = TokenKind::Semi; t.lexeme = ";";
+                                            inject_toks.push_back(t);
+
+                                            // Save and inject tokens
+                                            int saved_pos = pos_;
+                                            auto saved_toks = std::move(tokens_);
+                                            tokens_ = std::move(inject_toks);
+                                            pos_ = 0;
+                                            try {
+                                                TypeSpec resolved_base = parse_base_type();
+                                                inst->base_types[bi] = resolved_base;
+                                            } catch (...) {}
+                                            tokens_ = std::move(saved_toks);
+                                            pos_ = saved_pos;
+                                        } else if (struct_tag_def_map_.count(base_mangled)) {
                                             inst->base_types[bi] = TypeSpec{};
                                             inst->base_types[bi].array_size = -1;
                                             inst->base_types[bi].inner_rank = -1;
@@ -1360,6 +1787,9 @@ TypeSpec Parser::parse_base_type() {
                             new_f->type = orig_f->type;
                             new_f->ival = orig_f->ival;
                             new_f->is_anon_field = orig_f->is_anon_field;
+                            new_f->is_static = orig_f->is_static;
+                            new_f->is_constexpr = orig_f->is_constexpr;
+                            new_f->init = orig_f->init;
                             // Substitute template type parameters in field type
                             for (const auto& [pname, pts] : type_bindings) {
                                 if (new_f->type.base == TB_TYPEDEF && new_f->type.tag &&
@@ -1454,10 +1884,14 @@ TypeSpec Parser::parse_base_type() {
                 // encodes the target type.
                 if (is_cpp_mode() && check(TokenKind::Less)) {
                     int depth = 1;
+                    int paren_depth = 0;
                     consume();  // <
                     while (!at_end() && depth > 0) {
-                        if (check(TokenKind::Less)) ++depth;
-                        else if (check_template_close()) {
+                        if (check(TokenKind::LParen)) { ++paren_depth; consume(); continue; }
+                        if (check(TokenKind::RParen)) { if (paren_depth > 0) --paren_depth; consume(); continue; }
+                        // Only count <> as template brackets when not inside parens
+                        if (paren_depth == 0 && check(TokenKind::Less)) ++depth;
+                        else if (paren_depth == 0 && check_template_close()) {
                             --depth;
                             if (depth > 0) { match_template_close(); continue; }
                             break;

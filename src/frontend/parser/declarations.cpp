@@ -1,6 +1,7 @@
 #include "parser.hpp"
 #include "parser_internal.hpp"
 
+#include <climits>
 #include <cstring>
 #include <stdexcept>
 
@@ -492,6 +493,8 @@ Node* Parser::parse_top_level() {
         std::vector<bool> template_param_has_default;
         std::vector<TypeSpec> template_param_default_types;
         std::vector<long long> template_param_default_values;
+        // Deferred NTTP default expression tokens per parameter index.
+        std::unordered_map<int, std::vector<Token>> deferred_nttp_defaults;
         while (!at_end() && !check(TokenKind::Greater)) {
             if ((check(TokenKind::Identifier) && cur().lexeme == "typename") ||
                 check(TokenKind::KwClass)) {
@@ -565,6 +568,7 @@ Node* Parser::parse_top_level() {
                         template_param_default_values.push_back(val * sign);
                     } else {
                         // Complex default expression — skip balanced tokens.
+                        // Save the tokens for deferred evaluation during instantiation.
                         // A > at depth 0 closes the template param list UNLESS
                         // followed by :: or a binary operator (the expression continues).
                         auto is_expr_continuation = [&](int p) -> bool {
@@ -579,6 +583,7 @@ Node* Parser::parse_top_level() {
                                    k == TokenKind::BangEqual || k == TokenKind::LessEqual ||
                                    k == TokenKind::GreaterEqual || k == TokenKind::Question;
                         };
+                        int start_pos = pos_;
                         int depth = 0;
                         while (!at_end()) {
                             if (check(TokenKind::Less) || check(TokenKind::LParen)) ++depth;
@@ -609,12 +614,21 @@ Node* Parser::parse_top_level() {
                             }
                             consume();
                         }
-                        template_param_has_default.push_back(false);
+                        // Save tokens for deferred evaluation (LLONG_MIN sentinel).
+                        int param_idx = static_cast<int>(template_params.size()) - 1;
+                        std::vector<Token> saved_toks(tokens_.begin() + start_pos,
+                                                      tokens_.begin() + pos_);
+                        if (!saved_toks.empty()) {
+                            deferred_nttp_defaults[param_idx] = std::move(saved_toks);
+                            template_param_has_default.push_back(true);
+                        } else {
+                            template_param_has_default.push_back(false);
+                        }
                         TypeSpec dummy{};
                         dummy.array_size = -1;
                         dummy.inner_rank = -1;
                         template_param_default_types.push_back(dummy);
-                        template_param_default_values.push_back(0);
+                        template_param_default_values.push_back(LLONG_MIN);
                     }
                 } else {
                     template_param_has_default.push_back(false);
@@ -742,6 +756,13 @@ Node* Parser::parse_top_level() {
                 n->template_param_has_default[i] = template_param_has_default[i];
                 n->template_param_default_types[i] = template_param_default_types[i];
                 n->template_param_default_values[i] = template_param_default_values[i];
+            }
+            // Store deferred NTTP default tokens keyed by node name.
+            if (n->name && !deferred_nttp_defaults.empty()) {
+                for (auto& [idx, toks] : deferred_nttp_defaults) {
+                    std::string key = std::string(n->name) + ":" + std::to_string(idx);
+                    nttp_default_expr_tokens_[key] = std::move(toks);
+                }
             }
         };
 
@@ -1483,8 +1504,9 @@ top_level_base_ready:
     parse_declarator(ts, &decl_name, &decl_fn_ptr_params, &decl_n_fn_ptr_params,
                      &decl_fn_ptr_variadic, &decl_ret_fn_ptr_params,
                      &decl_n_ret_fn_ptr_params, &decl_ret_fn_ptr_variadic);
-    if (is_incomplete_object_type(ts) && !check(TokenKind::LParen))
+    if (is_incomplete_object_type(ts) && !check(TokenKind::LParen)) {
         throw std::runtime_error(std::string("object has incomplete type: ") + (ts.tag ? ts.tag : "<anonymous>"));
+    }
     }
 
     // Explicit template specialization: parse <type_args> after function name.

@@ -110,6 +110,10 @@ class Parser {
   std::unordered_map<std::string, std::vector<Node*>> template_struct_specializations_;
   // Already-instantiated template struct mangled names (avoid double instantiation).
   std::set<std::string> instantiated_template_structs_;
+  // Deferred NTTP default expression tokens, keyed by "template_tag:param_idx".
+  // Used for complex defaults like `arithmetic<T>::value` that can only be
+  // evaluated once template type arguments are known.
+  std::unordered_map<std::string, std::vector<Token>> nttp_default_expr_tokens_;
   // Last enum definition node produced by parse_base_type(), if any.
   // Used so declaration-only enum statements (`enum { ... };`) can be retained.
   Node* last_enum_def_;
@@ -222,6 +226,14 @@ class Parser {
 
   // Skip a balanced paren group (consuming the closing paren).
   void skip_paren_group();
+
+  // Evaluate a deferred NTTP default expression for a template parameter.
+  // Returns true if evaluation succeeded and writes the result to *out.
+  bool eval_deferred_nttp_default(
+      const std::string& tpl_name, int param_idx,
+      const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
+      const std::vector<std::pair<std::string, long long>>& nttp_bindings,
+      long long* out);
 
   // Skip a balanced brace group (consuming the closing brace).
   void skip_brace_group();
