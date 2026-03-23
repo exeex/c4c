@@ -870,6 +870,9 @@ class Lowerer {
           && item->n_template_args > 0) {
         const Node* tpl_def = ct_state_->find_template_def(item->name);
         if (tpl_def) {
+          // Owner-based registration (primary path).
+          ct_state_->register_function_specialization(tpl_def, item);
+          // Legacy string-keyed registration (fallback).
           std::string mangled = mangle_specialization(item, tpl_def);
           if (!mangled.empty())
             registry_.register_specialization(mangled, item);
@@ -1047,11 +1050,12 @@ class Lowerer {
           auto* inst_list = registry_.find_instances(item->name);
           if (inst_list && !inst_list->empty()) {
             for (const auto& inst : *inst_list) {
-              // Check for explicit specialization matching this instantiation.
-              const Node* spec_node = registry_.find_specialization(inst.mangled_name);
-              if (spec_node) {
+              // Structured specialization selection (primary path).
+              auto selected = registry_.select_function_specialization(
+                  item, inst.bindings, inst.nttp_bindings, inst.spec_key);
+              if (selected.selected_pattern != item) {
                 // Use the specialization body (no template bindings needed).
-                lower_function(spec_node, &inst.mangled_name);
+                lower_function(selected.selected_pattern, &inst.mangled_name);
               } else {
                 lower_function(item, &inst.mangled_name, &inst.bindings,
                                inst.nttp_bindings.empty() ? nullptr : &inst.nttp_bindings);
@@ -1105,9 +1109,13 @@ class Lowerer {
     // operation.
     const Node* fn_def = ct_state_->find_template_def(tpl_name);
     if (!fn_def) return false;
-    const Node* spec_node = registry_.find_specialization(mangled);
-    if (spec_node) {
-      lower_function(spec_node, &mangled);
+    // Structured specialization selection (primary path).
+    // Build a temporary spec_key for selection (not used for dedup here).
+    SpecializationKey sk;
+    auto selected = registry_.select_function_specialization(
+        fn_def, bindings, nttp_bindings, sk);
+    if (selected.selected_pattern != fn_def) {
+      lower_function(selected.selected_pattern, &mangled);
     } else {
       lowering_deferred_instantiation_ = true;
       const NttpBindings* nttp_ptr = nttp_bindings.empty() ? nullptr : &nttp_bindings;
@@ -8580,9 +8588,10 @@ class Lowerer {
                            NttpBindings nttp_bindings = {},
                            TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall) {
     auto param_order = get_template_param_order_from_instances(fn_name);
+    const Node* primary_def = ct_state_->find_template_def(fn_name);
     return registry_.record_seed(fn_name, std::move(bindings),
                                  std::move(nttp_bindings), param_order,
-                                 origin);
+                                 origin, primary_def);
   }
 
   // Resolve the mangled name for a call to a template function.

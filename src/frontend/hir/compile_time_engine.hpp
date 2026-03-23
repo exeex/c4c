@@ -35,6 +35,7 @@ struct TemplateSeedWorkItem {
   std::string mangled_name;
   SpecializationKey spec_key;
   TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall;
+  const Node* primary_def = nullptr;  // structured identity (when available)
 };
 
 /// A realized template instantiation (authoritative for lowering).
@@ -43,6 +44,7 @@ struct TemplateInstance {
   NttpBindings nttp_bindings;  // non-type template param → constant value
   std::string mangled_name;
   SpecializationKey spec_key;  // stable identity for dedup/caching
+  const Node* primary_def = nullptr;  // structured identity (when available)
 };
 
 struct TemplateStructEnv {
@@ -68,6 +70,38 @@ struct TemplateStructInstanceKey {
 
 struct TemplateStructInstanceKeyHash {
   std::size_t operator()(const TemplateStructInstanceKey& key) const noexcept {
+    std::size_t h1 = std::hash<const Node*>{}(key.primary_def);
+    std::size_t h2 = SpecializationKeyHash{}(key.spec_key);
+    return h1 ^ (h2 + 0x9e3779b9u + (h1 << 6) + (h1 >> 2));
+  }
+};
+
+// ── Structured function-template identity types ─────────────────────────────
+
+struct FunctionTemplateEnv {
+  const Node* primary_def = nullptr;
+  const std::vector<const Node*>* specialization_patterns = nullptr;
+};
+
+struct SelectedFunctionTemplatePattern {
+  const Node* primary_def = nullptr;
+  const Node* selected_pattern = nullptr;  // == primary_def if no spec matched
+  TypeBindings type_bindings;
+  NttpBindings nttp_bindings;
+  SpecializationKey spec_key;
+};
+
+struct FunctionTemplateInstanceKey {
+  const Node* primary_def = nullptr;
+  SpecializationKey spec_key;
+
+  bool operator==(const FunctionTemplateInstanceKey& other) const {
+    return primary_def == other.primary_def && spec_key == other.spec_key;
+  }
+};
+
+struct FunctionTemplateInstanceKeyHash {
+  std::size_t operator()(const FunctionTemplateInstanceKey& key) const noexcept {
     std::size_t h1 = std::hash<const Node*>{}(key.primary_def);
     std::size_t h2 = SpecializationKeyHash{}(key.spec_key);
     return h1 ^ (h2 + 0x9e3779b9u + (h1 << 6) + (h1 >> 2));
@@ -355,10 +389,88 @@ class InstantiationRegistry {
 
   // ── Mutations ────────────────────────────────────────────────────────
 
-  /// Register an explicit specialization.
+  /// Register an explicit specialization (legacy string-keyed path).
   void register_specialization(const std::string& mangled,
                                const Node* spec_node) {
     specs_[mangled] = spec_node;
+  }
+
+  /// Register an explicit specialization under its primary template def (owner-based).
+  void register_function_specialization(const Node* primary_def,
+                                        const Node* spec_node) {
+    if (!primary_def || !spec_node) return;
+    function_specializations_[primary_def].push_back(spec_node);
+  }
+
+  /// Look up registered function specializations for a primary def.
+  const std::vector<const Node*>* find_function_specializations(
+      const Node* primary_def) const {
+    if (!primary_def) return nullptr;
+    auto it = function_specializations_.find(primary_def);
+    return it != function_specializations_.end() ? &it->second : nullptr;
+  }
+
+  /// Build a FunctionTemplateEnv from a primary def.
+  FunctionTemplateEnv build_function_template_env(const Node* primary_def) const {
+    FunctionTemplateEnv env;
+    env.primary_def = primary_def;
+    env.specialization_patterns = find_function_specializations(primary_def);
+    return env;
+  }
+
+  /// Select the best function specialization pattern for given concrete bindings.
+  /// Returns the selected pattern (specialization node or primary_def if none matches).
+  SelectedFunctionTemplatePattern select_function_specialization(
+      const Node* primary_def,
+      const TypeBindings& bindings,
+      const NttpBindings& nttp_bindings,
+      const SpecializationKey& spec_key) const {
+    SelectedFunctionTemplatePattern result;
+    result.primary_def = primary_def;
+    result.selected_pattern = primary_def;  // default: use primary
+    result.type_bindings = bindings;
+    result.nttp_bindings = nttp_bindings;
+    result.spec_key = spec_key;
+    if (!primary_def || primary_def->n_template_params <= 0) return result;
+    auto* specs = find_function_specializations(primary_def);
+    if (!specs || specs->empty()) return result;
+    for (const Node* spec : *specs) {
+      if (!spec || spec->n_template_args <= 0) continue;
+      // Compare each declared arg against the concrete bindings.
+      int n = std::min(spec->n_template_args, primary_def->n_template_params);
+      bool match = true;
+      for (int i = 0; i < n && match; ++i) {
+        const char* pname = primary_def->template_param_names[i];
+        if (!pname) continue;
+        bool is_nttp = primary_def->template_param_is_nttp &&
+                       primary_def->template_param_is_nttp[i];
+        if (is_nttp) {
+          if (spec->template_arg_is_value && spec->template_arg_is_value[i]) {
+            auto it = nttp_bindings.find(pname);
+            if (it == nttp_bindings.end() || it->second != spec->template_arg_values[i])
+              match = false;
+          }
+        } else {
+          auto it = bindings.find(pname);
+          if (it == bindings.end()) { match = false; continue; }
+          const TypeSpec& spec_ts = spec->template_arg_types[i];
+          const TypeSpec& bind_ts = it->second;
+          if (spec_ts.base != bind_ts.base || spec_ts.ptr_level != bind_ts.ptr_level)
+            match = false;
+          else if (spec_ts.tag && bind_ts.tag && std::strcmp(spec_ts.tag, bind_ts.tag) != 0)
+            match = false;
+          else if (spec_ts.tag && !bind_ts.tag)
+            match = false;
+          else if (!spec_ts.tag && bind_ts.tag && bind_ts.base == TB_TYPEDEF)
+            match = false;
+        }
+      }
+      if (match) {
+        result.selected_pattern = spec;
+        return result;
+      }
+    }
+    return result;
   }
 
   /// Record a template instantiation seed.  Returns the mangled name,
@@ -368,19 +480,27 @@ class InstantiationRegistry {
       const std::string& fn_name, TypeBindings bindings,
       NttpBindings nttp_bindings,
       const std::vector<std::string>& param_order,
-      TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall) {
+      TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall,
+      const Node* primary_def = nullptr) {
     if (!bindings_are_concrete(bindings)) return "";
     std::string mangled = mangle_template_name(fn_name, bindings,
                                                 nttp_bindings);
-    std::string key = fn_name + "::" + mangled;
-    if (seed_keys_.count(key) > 0) return mangled;  // already recorded
     SpecializationKey sk = nttp_bindings.empty()
         ? make_specialization_key(fn_name, param_order, bindings)
         : make_specialization_key(fn_name, param_order, bindings,
                                   nttp_bindings);
+    // Structured dedup: use primary_def + spec_key when primary_def available.
+    if (primary_def) {
+      FunctionTemplateInstanceKey fk{primary_def, sk};
+      if (structured_seed_keys_.count(fk) > 0) return mangled;
+      structured_seed_keys_.insert(fk);
+    }
+    // Legacy string dedup (fallback).
+    std::string key = fn_name + "::" + mangled;
+    if (seed_keys_.count(key) > 0) return mangled;
     seed_work_[fn_name].push_back(
         TemplateSeedWorkItem{fn_name, bindings, nttp_bindings, mangled,
-                             sk, origin});
+                             sk, origin, primary_def});
     seed_keys_.insert(std::move(key));
     return mangled;
   }
@@ -391,11 +511,18 @@ class InstantiationRegistry {
     size_t realized = 0;
     for (const auto& [fn_name, seeds] : seed_work_) {
       for (const auto& seed : seeds) {
+        // Structured dedup check.
+        if (seed.primary_def) {
+          FunctionTemplateInstanceKey fk{seed.primary_def, seed.spec_key};
+          if (structured_instance_keys_.count(fk) > 0) continue;
+          structured_instance_keys_.insert(fk);
+        }
+        // Legacy string dedup check.
         std::string key = fn_name + "::" + seed.mangled_name;
         if (instance_keys_.count(key) > 0) continue;  // already realized
         instances_[fn_name].push_back(
             {seed.bindings, seed.nttp_bindings, seed.mangled_name,
-             seed.spec_key});
+             seed.spec_key, seed.primary_def});
         instance_keys_.insert(std::move(key));
         ++realized;
       }
@@ -494,8 +621,15 @@ class InstantiationRegistry {
   std::unordered_set<std::string> instance_keys_;
   // O(1) dedup set for seeds: "fn_name::mangled_name".
   std::unordered_set<std::string> seed_keys_;
-  // Explicit specializations: mangled_name → AST node.
+  // Explicit specializations: mangled_name → AST node (legacy).
   std::unordered_map<std::string, const Node*> specs_;
+  // Owner-based function specializations: primary_def → list of spec nodes.
+  std::unordered_map<const Node*, std::vector<const Node*>> function_specializations_;
+  // Structured dedup sets for seeds and instances (primary_def + spec_key).
+  std::unordered_set<FunctionTemplateInstanceKey, FunctionTemplateInstanceKeyHash>
+      structured_seed_keys_;
+  std::unordered_set<FunctionTemplateInstanceKey, FunctionTemplateInstanceKeyHash>
+      structured_instance_keys_;
 };
 
 // ── CompileTimeState ─────────────────────────────────────────────────────
@@ -538,6 +672,12 @@ struct CompileTimeState {
                                               const Node* node) {
     if (!primary_def || !primary_def->name) return;
     register_template_struct_specialization(primary_def->name, node);
+  }
+
+  /// Register a template function specialization under its primary definition.
+  void register_function_specialization(const Node* primary_def,
+                                        const Node* spec_node) {
+    registry.register_function_specialization(primary_def, spec_node);
   }
 
   /// Register a consteval function definition (AST node pointer).
@@ -638,9 +778,11 @@ struct CompileTimeState {
       const NttpBindings& nttp_bindings,
       const std::string& mangled_name,
       const std::vector<std::string>& template_params) {
+    const Node* primary_def = find_template_def(source_template);
     registry.record_seed(source_template, bindings, nttp_bindings,
                          template_params,
-                         TemplateSeedOrigin::EnclosingTemplateExpansion);
+                         TemplateSeedOrigin::EnclosingTemplateExpansion,
+                         primary_def);
     registry.realize_seeds();
     HirTemplateInstantiation hi;
     hi.mangled_name = mangled_name;
