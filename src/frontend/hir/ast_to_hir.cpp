@@ -316,6 +316,16 @@ bool parse_builtin_typespec_text(const std::string& text, TypeSpec* out) {
     else if (tok == "volatile") ts.is_volatile = true;
     else if (tok == "unsigned") is_unsigned = true;
     else if (tok == "signed") is_signed = true;
+    else if (tok == "uint") { ts.base = TB_UINT; saw_base = true; }
+    else if (tok == "schar") { ts.base = TB_SCHAR; saw_base = true; }
+    else if (tok == "uchar") { ts.base = TB_UCHAR; saw_base = true; }
+    else if (tok == "ushort") { ts.base = TB_USHORT; saw_base = true; }
+    else if (tok == "ulong") { ts.base = TB_ULONG; saw_base = true; }
+    else if (tok == "llong") { ts.base = TB_LONGLONG; saw_base = true; }
+    else if (tok == "ullong") { ts.base = TB_ULONGLONG; saw_base = true; }
+    else if (tok == "ldouble") { ts.base = TB_LONGDOUBLE; saw_base = true; }
+    else if (tok == "i128") { ts.base = TB_INT128; saw_base = true; }
+    else if (tok == "u128") { ts.base = TB_UINT128; saw_base = true; }
     else if (tok == "void") { ts.base = TB_VOID; saw_base = true; }
     else if (tok == "bool") { ts.base = TB_BOOL; saw_base = true; }
     else if (tok == "char") {
@@ -342,6 +352,44 @@ bool parse_builtin_typespec_text(const std::string& text, TypeSpec* out) {
   if (!saw_base) return false;
   *out = ts;
   return true;
+}
+
+std::string encode_template_type_arg_ref_hir(const TypeSpec& ts) {
+  if (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) {
+    std::string ref = "@";
+    ref += ts.tpl_struct_origin;
+    ref += ":";
+    ref += ts.tpl_struct_arg_refs ? ts.tpl_struct_arg_refs : "";
+    return ref;
+  }
+  if (ts.tag && ts.tag[0]) return ts.tag;
+
+  std::string ref;
+  switch (ts.base) {
+    case TB_INT: ref = "int"; break;
+    case TB_UINT: ref = "uint"; break;
+    case TB_CHAR: ref = "char"; break;
+    case TB_SCHAR: ref = "schar"; break;
+    case TB_UCHAR: ref = "uchar"; break;
+    case TB_SHORT: ref = "short"; break;
+    case TB_USHORT: ref = "ushort"; break;
+    case TB_LONG: ref = "long"; break;
+    case TB_ULONG: ref = "ulong"; break;
+    case TB_LONGLONG: ref = "llong"; break;
+    case TB_ULONGLONG: ref = "ullong"; break;
+    case TB_FLOAT: ref = "float"; break;
+    case TB_DOUBLE: ref = "double"; break;
+    case TB_LONGDOUBLE: ref = "ldouble"; break;
+    case TB_VOID: ref = "void"; break;
+    case TB_BOOL: ref = "bool"; break;
+    case TB_INT128: ref = "i128"; break;
+    case TB_UINT128: ref = "u128"; break;
+    default: return "?";
+  }
+  for (int p = 0; p < ts.ptr_level; ++p) ref += "_ptr";
+  if (ts.is_lvalue_ref) ref += "_ref";
+  if (ts.is_rvalue_ref) ref += "_rref";
+  return ref;
 }
 
 }  // namespace
@@ -6643,16 +6691,7 @@ class Lowerer {
                 else arg_refs += std::to_string(n->template_arg_values[i]);
               } else if (n->template_arg_types) {
                 const TypeSpec& arg_ts = n->template_arg_types[i];
-                if (arg_ts.tpl_struct_origin) {
-                  arg_refs += "@";
-                  arg_refs += arg_ts.tpl_struct_origin;
-                  arg_refs += ":";
-                  arg_refs += arg_ts.tpl_struct_arg_refs ? arg_ts.tpl_struct_arg_refs : "";
-                } else if (arg_ts.tag && arg_ts.tag[0]) {
-                  arg_refs += arg_ts.tag;
-                } else {
-                  arg_refs += "?";
-                }
+                arg_refs += encode_template_type_arg_ref_hir(arg_ts);
               }
             }
             TypeSpec tmp_ts{};
@@ -6704,16 +6743,7 @@ class Lowerer {
                   else arg_refs += std::to_string(n->template_arg_values[i]);
                 } else if (n->template_arg_types) {
                   const TypeSpec& arg_ts = n->template_arg_types[i];
-                  if (arg_ts.tpl_struct_origin) {
-                    arg_refs += "@";
-                    arg_refs += arg_ts.tpl_struct_origin;
-                    arg_refs += ":";
-                    arg_refs += arg_ts.tpl_struct_arg_refs ? arg_ts.tpl_struct_arg_refs : "";
-                  } else if (arg_ts.tag && arg_ts.tag[0]) {
-                    arg_refs += arg_ts.tag;
-                  } else {
-                    arg_refs += "?";
-                  }
+                  arg_refs += encode_template_type_arg_ref_hir(arg_ts);
                 }
               }
               TypeSpec pending_ts{};

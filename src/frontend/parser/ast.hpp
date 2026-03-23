@@ -102,6 +102,7 @@ struct TypeSpec {
     // template function body).  The HIR resolves it during instantiation.
     const char* tpl_struct_origin;     // original template struct name (e.g., "Pair")
     const char* tpl_struct_arg_refs;   // comma-sep arg refs in param order (e.g., "T" or "T,4")
+    const char* deferred_member_type_name; // pending `StructLike::type`-style member typedef
 };
 
 // ── OperatorKind ─────────────────────────────────────────────────────────────

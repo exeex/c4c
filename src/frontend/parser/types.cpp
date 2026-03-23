@@ -3,6 +3,7 @@
 
 #include <climits>
 #include <cstring>
+#include <functional>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_set>
@@ -857,6 +858,33 @@ TypeSpec Parser::parse_base_type() {
     ts.vector_lanes = 0;
     ts.vector_bytes = 0;
     ts.base = TB_INT;  // default
+
+    std::function<bool(const std::string&, const std::string&, TypeSpec*)>
+        lookup_struct_member_typedef_recursive =
+            [&](const std::string& tag, const std::string& member,
+                TypeSpec* out) -> bool {
+                if (tag.empty() || member.empty() || !out) return false;
+                auto try_lookup = [&](const std::string& scoped) -> bool {
+                    auto it = typedef_types_.find(scoped);
+                    if (it == typedef_types_.end()) return false;
+                    *out = it->second;
+                    return true;
+                };
+                if (try_lookup(tag + "::" + member)) return true;
+                auto def_it = struct_tag_def_map_.find(tag);
+                if (def_it == struct_tag_def_map_.end() || !def_it->second) return false;
+                const Node* sdef = def_it->second;
+                if (sdef->template_origin_name &&
+                    try_lookup(std::string(sdef->template_origin_name) + "::" + member))
+                    return true;
+                for (int bi = 0; bi < sdef->n_bases; ++bi) {
+                    const TypeSpec& base_ts = sdef->base_types[bi];
+                    if (!base_ts.tag || !base_ts.tag[0]) continue;
+                    if (lookup_struct_member_typedef_recursive(base_ts.tag, member, out))
+                        return true;
+                }
+                return false;
+            };
 
     bool has_signed   = false;
     bool has_unsigned = false;
@@ -2027,6 +2055,18 @@ TypeSpec Parser::parse_base_type() {
                                         }
                                     }
                                 }
+                                if (inst->base_types[bi].deferred_member_type_name &&
+                                    inst->base_types[bi].tag &&
+                                    inst->base_types[bi].tag[0]) {
+                                    TypeSpec resolved_member{};
+                                    if (lookup_struct_member_typedef_recursive(
+                                            inst->base_types[bi].tag,
+                                            inst->base_types[bi].deferred_member_type_name,
+                                            &resolved_member)) {
+                                        resolved_member.deferred_member_type_name = nullptr;
+                                        inst->base_types[bi] = resolved_member;
+                                    }
+                                }
                             }
                         }
                         // Store template bindings so HIR can resolve pending types
@@ -2217,6 +2257,10 @@ TypeSpec Parser::parse_base_type() {
                         ts = resolved;
                         ts.is_const |= save_const;
                         ts.is_volatile |= save_vol;
+                    } else if (ts.tpl_struct_origin || (ts.tag && ts.tag[0])) {
+                        consume(); // ::
+                        consume(); // member
+                        ts.deferred_member_type_name = arena_.strdup(member.c_str());
                     }
                 }
                 return ts;
@@ -3375,32 +3419,15 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 std::string alias_name = cur().lexeme;
                 consume(); // name
                 consume(); // '='
-                // Skip the type expression until ';'
-                int depth = 0;
-                while (!at_end() && !(check(TokenKind::Semi) && depth == 0) &&
-                       !check(TokenKind::RBrace)) {
-                    if (check(TokenKind::Less) || check(TokenKind::LParen)) ++depth;
-                    else if (check(TokenKind::Greater) || check(TokenKind::RParen)) {
-                        if (depth > 0) --depth;
-                    } else if (check(TokenKind::GreaterGreater)) {
-                        depth -= std::min(depth, 2);
-                        consume();
-                        continue;
-                    }
-                    consume();
-                }
+                TypeSpec alias_ts = parse_type_name();
                 match(TokenKind::Semi);
                 // Register as typedef
                 typedefs_.insert(alias_name);
-                TypeSpec ts{};
-                ts.array_size = -1;
-                ts.inner_rank = -1;
-                ts.base = TB_INT; // placeholder
-                typedef_types_[alias_name] = ts;
+                typedef_types_[alias_name] = alias_ts;
                 if (!current_struct_tag_.empty()) {
                     std::string scoped = current_struct_tag_ + "::" + alias_name;
                     typedefs_.insert(scoped);
-                    typedef_types_[scoped] = ts;
+                    typedef_types_[scoped] = alias_ts;
                 }
                 continue;
             }

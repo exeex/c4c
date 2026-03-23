@@ -4,6 +4,9 @@
 EASTL `type_traits.h` bring-up
 
 ## Completed This Session
+- Parser: struct-scope `using Name = Type;` now parses and stores the real alias `TypeSpec` instead of placeholder `int`
+- Parser/HIR: builtin template arg refs in deferred/template-member paths now preserve mangled builtin names like `uint`/`void`
+- Parser: started preserving unresolved `TemplateLike<...>::type` as deferred member-type info instead of silently dropping the `::type` suffix
 - Added `AliasTemplateInfo` struct to `parser.hpp` with param names, NTTP flags, and aliased TypeSpec
 - Registered alias template metadata in `declarations.cpp` after `template<...> using Name = ...`
 - Added alias template application in `parse_base_type()` (types.cpp):
@@ -32,14 +35,15 @@ EASTL `type_traits.h` bring-up
 - Base class pending template resolution with deferred NTTP defaults and specialization selection
 
 ## Next Work
+- Finish deferred member-type/base-chain realization for `is_signed_helper<T>::type` so concrete helper/base structs materialize before inherited `::value` / `operator()` lookup
 - Fix test 212 (`eastl_type_traits_signed_helper_base_expr_parse`): runtime failure likely needs further base chain resolution or $expr: evaluation improvements
 - Fix test 218 (`inherited_static_member_lookup_runtime`): needs inherited `::value` chain through correct base instantiation
 - `is_signed_helper` runtime: operator() call chain through inherited template methods
 - Then: push to `eastl_type_traits_simple_workflow` full green
 
 ## Exposed Failing Tests
-- `eastl_type_traits_signed_helper_base_expr_parse` (212) — runtime fails
-- `inherited_static_member_lookup_runtime` (218) — runtime fails
+- `eastl_type_traits_signed_helper_base_expr_parse` (212) — still fails; HIR now preserves `is_signed_T_uint` / `is_signed_T_void`, but emitted IR still lowers inherited `operator()` calls incorrectly
+- `inherited_static_member_lookup_runtime` (218) — still fails; inherited `::value` path still missing concrete helper/base materialization for non-`int` cases
 - `operator_shift_call_arg_runtime` (292) — runtime fails
 
 ## Suite Status
