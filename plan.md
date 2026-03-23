@@ -63,7 +63,32 @@
    - `is_signed_helper` incomplete type
    - 後續 runtime / trait-dispatch 修正優先放在 lazy instantiation / compile-time state，
      不再把 NTTP expression resolution 繼續堆在 `ast_to_hir`
+   - 這條線的預想實作細節：
+     parser 只負責保留 dependent NTTP expression 的語法外形，
+     例如把 `bool_constant<(T(-1) < T(0))>` 記成 deferred arg ref，
+     而不是在 parser 階段試圖算出 `0/1`
+   - 這條線的預想實作細節：
+     alias template 不能只降成一般 `typedef_types_`，
+     還要保留 alias template 的參數順序、NTTP/type 分類、以及被 alias 的 pending template-struct 形狀
+   - 這條線的預想實作細節：
+     `using bool_constant = integral_constant<bool, B>` 應該能在 alias application 時，
+     把 `bool_constant<expr>` 重建成 pending `integral_constant<bool, expr>`
+   - 這條線的預想實作細節：
+     真正的 expression evaluation 應放在 lazy template struct instantiation，
+     也就是 bindings 已 concrete 之後，而不是 AST parse 時
+   - 這條線的預想實作細節：
+     compile-time engine 應持有共用 helper，
+     至少能處理：
+     bool/int literal、forwarded NTTP names、簡單 cast、比較/邏輯運算、`Template<Args>::value`
+   - 這條線的預想實作細節：
+     concrete NTTP value 一旦求出，必須先走 specialization selection，
+     再做 base propagation、static member lookup、operator() dispatch
 2. 保持 `type_traits` 測試小而清楚，優先確保錯誤定位乾淨
+   - 先用最小 probe 把 lazy 路徑隔離：
+     `template_alias_deferred_nttp_expr_runtime.cpp`
+   - 再用較大的 probe 驗證整條 EASTL trait 鏈：
+     `inherited_static_member_lookup_runtime.cpp`
+     `eastl_type_traits_signed_helper_base_expr_parse.cpp`
 3. 視修正結果補更多 `type_traits.h` smoke cases：
    - signed / unsigned traits
    - `is_same`
@@ -83,3 +108,17 @@
 - 不為了追高層 header 暫時把底層錯誤掩蓋掉
 - 保留 split tests，讓 fail 直接暴露
 - 每往上一層 header，都要確認下層入口已經夠穩定
+
+## Implementation Direction
+
+- `type_traits` 這條主線的關鍵不是多補 parser 特例，而是把 dependent template work 往 lazy instantiation / compile-time state 收斂
+- parser 的責任：
+  保留足夠的 deferred template arg 資訊，尤其是 dependent NTTP expression 與 alias-template 參數映射
+- compile-time engine 的責任：
+  在 bindings concrete 後解析 deferred arg refs，產生 concrete NTTP values，並驅動 specialization selection
+- HIR lowering 的責任：
+  消費 compile-time 決定後的 concrete struct instantiations，做 base_tags / method / static member propagation
+- 這樣的分層可以避免：
+  parser 把未知 expression 偷偷降成 `0`、
+  `ast_to_hir` 直接承擔越來越多 template expression semantics、
+  以及 alias template / specialization / inherited lookup 各自維護不同版本的 instantiation 規則

@@ -3,6 +3,7 @@
 #include "ir.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <cstdio>
 #include <functional>
 #include <optional>
@@ -107,6 +108,52 @@ inline std::string mangle_template_name(const std::string& base,
     }
   }
   return result;
+}
+
+inline constexpr const char* kDeferredNttpExprRefPrefix = "$expr:";
+
+inline bool is_deferred_nttp_expr_ref(const std::string& ref) {
+  return ref.rfind(kDeferredNttpExprRefPrefix, 0) == 0;
+}
+
+inline std::string deferred_nttp_expr_text(const std::string& ref) {
+  if (!is_deferred_nttp_expr_ref(ref)) return {};
+  return ref.substr(std::strlen(kDeferredNttpExprRefPrefix));
+}
+
+inline std::vector<std::string> split_deferred_template_arg_refs(
+    const std::string& refs) {
+  std::vector<std::string> parts;
+  if (refs.empty()) return parts;
+  size_t start = 0;
+  int angle_depth = 0;
+  int paren_depth = 0;
+  int bracket_depth = 0;
+  int brace_depth = 0;
+  for (size_t i = 0; i < refs.size(); ++i) {
+    const char ch = refs[i];
+    switch (ch) {
+      case '<': ++angle_depth; break;
+      case '>': if (angle_depth > 0) --angle_depth; break;
+      case '(': ++paren_depth; break;
+      case ')': if (paren_depth > 0) --paren_depth; break;
+      case '[': ++bracket_depth; break;
+      case ']': if (bracket_depth > 0) --bracket_depth; break;
+      case '{': ++brace_depth; break;
+      case '}': if (brace_depth > 0) --brace_depth; break;
+      case ',':
+        if (angle_depth == 0 && paren_depth == 0 &&
+            bracket_depth == 0 && brace_depth == 0) {
+          parts.push_back(refs.substr(start, i - start));
+          start = i + 1;
+        }
+        break;
+      default:
+        break;
+    }
+  }
+  parts.push_back(refs.substr(start));
+  return parts;
 }
 
 // ── InstantiationRegistry ───────────────────────────────────────────────────

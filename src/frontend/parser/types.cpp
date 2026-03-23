@@ -533,6 +533,14 @@ static void append_type_mangled_suffix(std::string& out, const TypeSpec& ts) {
     if (ts.is_rvalue_ref) out += "_rref";
 }
 
+static std::string capture_template_arg_expr_text(
+    const std::vector<Token>& tokens, int start_pos, int end_pos) {
+    std::string text;
+    for (int i = start_pos; i < end_pos && i < static_cast<int>(tokens.size()); ++i)
+        text += tokens[i].lexeme;
+    return text;
+}
+
 static const char* extra_operator_mangled_name(TokenKind kind) {
     switch (kind) {
         case TokenKind::Bang: return "operator_not";
@@ -1330,6 +1338,7 @@ TypeSpec Parser::parse_base_type() {
                         bool parsed_as_value = false;
                         if (primary_tpl && arg_idx < primary_tpl->n_template_params &&
                             primary_tpl->template_param_is_nttp[arg_idx]) {
+                            const int expr_start = pos_;
                             long long sign = 1;
                             if (match(TokenKind::Minus)) sign = -1;
                             if (check(TokenKind::KwTrue)) {
@@ -1358,6 +1367,53 @@ TypeSpec Parser::parse_base_type() {
                                 arg.value = 0;
                                 parsed_as_value = true;
                                 consume();
+                            } else {
+                                int scan_pos = expr_start;
+                                int angle_depth = 0;
+                                int paren_depth = 0;
+                                int bracket_depth = 0;
+                                int brace_depth = 0;
+                                while (scan_pos < static_cast<int>(tokens_.size())) {
+                                    const TokenKind tk = tokens_[scan_pos].kind;
+                                    if (tk == TokenKind::LParen) ++paren_depth;
+                                    else if (tk == TokenKind::RParen) {
+                                        if (paren_depth > 0) --paren_depth;
+                                    } else if (tk == TokenKind::LBracket) ++bracket_depth;
+                                    else if (tk == TokenKind::RBracket) {
+                                        if (bracket_depth > 0) --bracket_depth;
+                                    } else if (tk == TokenKind::LBrace) ++brace_depth;
+                                    else if (tk == TokenKind::RBrace) {
+                                        if (brace_depth > 0) --brace_depth;
+                                    } else if (tk == TokenKind::Less &&
+                                               paren_depth == 0 && bracket_depth == 0 &&
+                                               brace_depth == 0) {
+                                        ++angle_depth;
+                                    } else if ((tk == TokenKind::Greater ||
+                                                tk == TokenKind::GreaterGreater) &&
+                                               paren_depth == 0 && bracket_depth == 0 &&
+                                               brace_depth == 0) {
+                                        if (angle_depth > 0)
+                                            angle_depth -= std::min(angle_depth, tk == TokenKind::GreaterGreater ? 2 : 1);
+                                    } else if ((tk == TokenKind::Comma ||
+                                                tk == TokenKind::Greater ||
+                                                tk == TokenKind::GreaterGreater) &&
+                                               angle_depth == 0 && paren_depth == 0 &&
+                                               bracket_depth == 0 && brace_depth == 0) {
+                                        break;
+                                    }
+                                    ++scan_pos;
+                                }
+                                const std::string expr_text =
+                                    capture_template_arg_expr_text(tokens_, expr_start, scan_pos);
+                                if (!expr_text.empty()) {
+                                    std::string tagged = "$expr:";
+                                    tagged += expr_text;
+                                    arg.is_value = true;
+                                    arg.nttp_name = arena_.strdup(tagged.c_str());
+                                    arg.value = 0;
+                                    parsed_as_value = true;
+                                    pos_ = scan_pos;
+                                }
                             }
                         }
                         if (!parsed_as_value) {
@@ -1494,11 +1550,15 @@ TypeSpec Parser::parse_base_type() {
                             break;
                         }
                     }
-                    // Also check if any NTTP arg references a template param name
-                    // (would have been stored as 0 if unresolvable — but we only
-                    // defer for unresolved type args for now).
+                    bool has_deferred_nttp_arg = false;
+                    for (const auto& arg : concrete_args) {
+                        if (arg.is_value && arg.nttp_name && arg.nttp_name[0]) {
+                            has_deferred_nttp_arg = true;
+                            break;
+                        }
+                    }
 
-                    if (has_unresolved_type_arg) {
+                    if (has_unresolved_type_arg || has_deferred_nttp_arg) {
                         // Build arg_refs: comma-separated list of arg values
                         // in template param order. Type args use the TypeSpec tag
                         // (e.g., "T"), NTTP args use the numeric value.
@@ -1506,16 +1566,24 @@ TypeSpec Parser::parse_base_type() {
                         int ati = 0, ani = 0;
                         for (int pi = 0; pi < tpl_def->n_template_params; ++pi) {
                             if (tpl_def->template_param_is_nttp[pi]) {
+                                const bool have_arg = pi < static_cast<int>(concrete_args.size());
+                                const ParsedTemplateArg* carg =
+                                    have_arg ? &concrete_args[pi] : nullptr;
                                 bool have_value = ani < (int)nttp_bindings.size();
                                 long long bound_value = have_value ? nttp_bindings[ani].second : 0;
                                 const bool missing_default =
-                                    (!have_value ||
-                                     (bound_value == LLONG_MIN &&
-                                      tpl_def->template_param_has_default &&
-                                      tpl_def->template_param_has_default[pi]));
+                                    (!have_arg &&
+                                     (!have_value ||
+                                      (bound_value == LLONG_MIN &&
+                                       tpl_def->template_param_has_default &&
+                                       tpl_def->template_param_has_default[pi])));
                                 if (missing_default) break;
                                 if (!arg_refs.empty()) arg_refs += ",";
-                                arg_refs += std::to_string(bound_value);
+                                if (carg && carg->nttp_name && carg->nttp_name[0]) {
+                                    arg_refs += carg->nttp_name;
+                                } else {
+                                    arg_refs += std::to_string(bound_value);
+                                }
                                 ++ani;
                             } else {
                                 if (ati < (int)type_bindings.size()) {
@@ -1592,9 +1660,25 @@ TypeSpec Parser::parse_base_type() {
                                                 }
                                             }
                                             if (!found) {
+                                                for (const auto& [npname2, nval2] : nttp_bindings) {
+                                                    if (part == npname2) {
+                                                        new_arg_parts.push_back(std::to_string(nval2));
+                                                        found = true;
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            if (!found) {
+                                                if (part.rfind("$expr:", 0) == 0) {
+                                                    all_resolved = false;
+                                                }
                                                 new_arg_parts.push_back(part);
-                                                // Check if this arg is still unresolved
+                                                // Check if this arg is still unresolved.
                                                 for (const auto& [pn, _] : type_bindings) {
+                                                    (void)_;
+                                                    if (part == pn) { all_resolved = false; break; }
+                                                }
+                                                for (const auto& [pn, _] : nttp_bindings) {
                                                     (void)_;
                                                     if (part == pn) { all_resolved = false; break; }
                                                 }
