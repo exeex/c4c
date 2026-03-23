@@ -311,6 +311,9 @@ struct Node {
     // NK_STRUCT_DEF fields  (each child is NK_DECL with type + name)
     Node** fields;
     int    n_fields;
+    const char** member_typedef_names; // struct-scope typedef/using alias names
+    TypeSpec* member_typedef_types;    // parallel alias target types
+    int    n_member_typedefs;
     TypeSpec* base_types; // C++ base classes for NK_STRUCT_DEF
     int    n_bases;
     int    pack_align;   // #pragma pack alignment (0 = default, >0 = packed to N bytes)

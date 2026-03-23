@@ -3234,6 +3234,8 @@ Node* Parser::parse_struct_or_union(bool is_union) {
 
     std::vector<Node*> fields;
     std::vector<Node*> methods;
+    std::vector<const char*> member_typedef_names;
+    std::vector<TypeSpec> member_typedef_types;
     std::unordered_set<std::string> field_names_seen;
     auto check_dup_field = [&](const char* fname) {
         if (!fname) return;
@@ -3424,6 +3426,8 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 // Register as typedef
                 typedefs_.insert(alias_name);
                 typedef_types_[alias_name] = alias_ts;
+                member_typedef_names.push_back(arena_.strdup(alias_name.c_str()));
+                member_typedef_types.push_back(alias_ts);
                 if (!current_struct_tag_.empty()) {
                     std::string scoped = current_struct_tag_ + "::" + alias_name;
                     typedefs_.insert(scoped);
@@ -3568,6 +3572,8 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                         td_fn_ptr_params, td_n_fn_ptr_params,
                         td_fn_ptr_variadic};
                 }
+                member_typedef_names.push_back(tdname);
+                member_typedef_types.push_back(ts_copy);
                 // Register scoped name: StructTag::TypeName
                 if (!current_struct_tag_.empty()) {
                     std::string scoped = current_struct_tag_ + "::" + tdname;
@@ -3595,6 +3601,8 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                             td2_fn_ptr_params, td2_n_fn_ptr_params,
                             td2_fn_ptr_variadic};
                     }
+                    member_typedef_names.push_back(tdn2);
+                    member_typedef_types.push_back(ts2);
                     if (!current_struct_tag_.empty()) {
                         std::string scoped = current_struct_tag_ + "::" + tdn2;
                         struct_typedefs_[scoped] = ts2;
@@ -4280,6 +4288,15 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     if (sd->n_fields > 0) {
         sd->fields = arena_.alloc_array<Node*>(sd->n_fields);
         for (int i = 0; i < sd->n_fields; ++i) sd->fields[i] = fields[i];
+    }
+    sd->n_member_typedefs = static_cast<int>(member_typedef_names.size());
+    if (sd->n_member_typedefs > 0) {
+        sd->member_typedef_names = arena_.alloc_array<const char*>(sd->n_member_typedefs);
+        sd->member_typedef_types = arena_.alloc_array<TypeSpec>(sd->n_member_typedefs);
+        for (int i = 0; i < sd->n_member_typedefs; ++i) {
+            sd->member_typedef_names[i] = member_typedef_names[i];
+            sd->member_typedef_types[i] = member_typedef_types[i];
+        }
     }
     sd->n_children = (int)methods.size();
     if (sd->n_children > 0) {
