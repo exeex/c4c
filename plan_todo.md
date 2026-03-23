@@ -1,7 +1,7 @@
 # Plan Execution State
 
 ## Active Item
-EASTL bring-up slice 7b: deeper header parsing fixes
+EASTL bring-up slice 7c: struct body recovery, ctor detection, lambda skip
 
 ## Completed
 - [x] Template conversion operator parsing in class body (template<class T> operator T*())
@@ -58,20 +58,36 @@ EASTL bring-up slice 7b: deeper header parsing fixes
   - Multi-arg placement new HIR: all placement args forwarded to operator_new call
   - Previous EASTL blockers resolved: allocator.h, utility.h, tuple_fwd_decls.h
   - Test: `eastl_slice7b_template_using_alias_parse.cpp` (parse)
+- [x] EASTL bring-up slice 7c: struct body recovery, ctor detection, lambda skip
+  - Struct body error recovery: try-catch around each member in the struct body loop
+    prevents a single unparseable member from aborting the entire struct (C++ mode only)
+  - Constructor/destructor detection for partial specializations: `is_ctor_name()` now
+    checks both mangled struct tag and original `template_origin_name`
+  - Injected-class-name for specializations: the original template name (e.g. `TupleImpl`)
+    is added to `typedefs_` and `typedef_types_` so methods/params can reference it
+  - Lambda expression skipping: `[captures](params) -> ret { body }` detected in
+    `parse_primary()` and replaced with `0` placeholder; full balanced bracket/paren/brace
+    skip handles mutable/constexpr/noexcept/trailing-return
+  - EASTL error count: 13 errors → now reaching deep into vector.h (20+ lines)
+  - Remaining EASTL blockers: `eastl::forward` with `.` member access, `...` variadic
+    in free function templates, `::` qualified types in out-of-namespace contexts
+  - Test: `eastl_slice7c_struct_body_recovery.cpp` (parse)
 
 ## Next Slice
-- EASTL bring-up slice 7c: deeper header errors now led by:
-  - `EASTL/internal/function_detail.h` (5 errors): `.` member access, `::` qualified types
-  - `EASTL/internal/function.h` (2 errors): `::` qualified types, `...` ellipsis
-  - `EASTL/algorithm.h` (14 errors): `[` lambda expressions, `,` in complex expressions
+- EASTL bring-up slice 7d: deeper header errors now led by:
+  - `function_detail.h:237` — `.` member access in expression (`eastl::forward<T>()`)
+  - `function.h:132` — `...` ellipsis in free template function params
+  - `algorithm.h:4120,4134` — `::` qualified types in free template functions
+  - `tuple.h:541,566` — `)` unexpected in expressions (likely complex template expressions)
+  - `vector.h:905+` — `,` and `.` in method bodies (complex member access chains)
 
 ## Exposed Failing Tests
-- (none — 2115/2115 all passing)
+- (none — 2116/2116 all passing)
 
 ## Blockers
 - None for current slice (complete)
-- EASTL deeper headers (function_detail.h, function.h, algorithm.h) require new parser features
+- EASTL deeper headers require more expression parser features
 
 ## Suite Status
-- Before: 2114/2114
-- After: 2115/2115 (all passing, 0 regressions, +1 new test)
+- Before: 2115/2115
+- After: 2116/2116 (all passing, 0 regressions, +1 new test)

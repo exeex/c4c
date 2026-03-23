@@ -1261,6 +1261,37 @@ Node* Parser::parse_primary() {
         last_resolved_typedef_ = saved_typedef;
     }
 
+    // C++ lambda expression: [captures](params) -> ret { body }
+    // Skip the entire lambda and return a placeholder (0) so template
+    // function bodies and in-class initializers can parse through them.
+    if (is_cpp_mode() && check(TokenKind::LBracket)) {
+        // Skip capture list [...]
+        consume(); // [
+        int depth = 1;
+        while (!at_end() && depth > 0) {
+            if (check(TokenKind::LBracket)) ++depth;
+            else if (check(TokenKind::RBracket)) --depth;
+            if (depth > 0) consume();
+        }
+        if (check(TokenKind::RBracket)) consume(); // ]
+        // Skip optional (params)
+        if (check(TokenKind::LParen)) skip_paren_group();
+        // Skip optional mutable/constexpr/consteval
+        while (check(TokenKind::Identifier) &&
+               (cur().lexeme == "mutable" || cur().lexeme == "constexpr" ||
+                cur().lexeme == "consteval")) consume();
+        // Skip optional noexcept(...)
+        skip_exception_spec();
+        // Skip optional -> return_type
+        if (check(TokenKind::Arrow)) {
+            consume();
+            parse_type_name();
+        }
+        // Skip body { ... }
+        if (check(TokenKind::LBrace)) skip_brace_group();
+        return make_int_lit(0, ln);
+    }
+
     // Hard error for unrecognized primaries (was permissive fallback to 0).
     std::string tok = at_end() ? "<eof>" : cur().lexeme;
     throw std::runtime_error("unexpected token in expression: " + tok);

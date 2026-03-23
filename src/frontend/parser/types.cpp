@@ -2242,6 +2242,28 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     // Track current struct tag for scoped typedef registration.
     std::string saved_struct_tag = current_struct_tag_;
     current_struct_tag_ = (tag && tag[0]) ? tag : "";
+    // For template specializations, the source name (e.g. "function_detail") differs
+    // from the mangled tag (e.g. "function_detail__spec_1").  Constructor and
+    // destructor detection must also match against the original template name.
+    // Also inject the original name as a typedef so that it's recognized as a
+    // type inside the struct body (e.g., copy/move ctor params: Foo(const Foo&)).
+    std::string struct_source_name;
+    if (template_origin_name && template_origin_name[0]) {
+        struct_source_name = template_origin_name;
+        if (is_cpp_mode()) {
+            typedefs_.insert(struct_source_name);
+            // Also register in typedef_types_ so parse_base_type can resolve it
+            // as a struct type (needed for ctor/method params like Foo(const Foo&)).
+            if (typedef_types_.count(struct_source_name) == 0) {
+                TypeSpec src_ts{};
+                src_ts.array_size = -1;
+                src_ts.inner_rank = -1;
+                src_ts.base = TB_STRUCT;
+                src_ts.tag = tag;  // mangled tag
+                typedef_types_[struct_source_name] = src_ts;
+            }
+        }
+    }
 
     std::vector<Node*> fields;
     std::vector<Node*> methods;
@@ -2258,6 +2280,8 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         field_names_seen.insert(n);
     };
     while (!at_end() && !check(TokenKind::RBrace)) {
+      int member_start_pos = pos_;
+      try {
         skip_attributes();
         if (check(TokenKind::RBrace)) break;
 
@@ -2636,6 +2660,12 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         // C++ constructor: ClassName(params) { body }
         // Detect when the current identifier matches the struct tag and is
         // followed by '(' — this is a constructor declaration, not a type.
+        // For partial specializations, also match the original template name.
+        auto is_ctor_name = [&](const std::string& lex) -> bool {
+            if (lex == current_struct_tag_) return true;
+            if (!struct_source_name.empty() && lex == struct_source_name) return true;
+            return false;
+        };
         // Skip 'constexpr'/'consteval'/'explicit' specifiers before constructor name.
         if (is_cpp_mode() && !current_struct_tag_.empty()) {
             // Peek past constexpr/consteval/explicit to check for constructor
@@ -2650,7 +2680,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             }
             if (probe < static_cast<int>(tokens_.size()) &&
                 tokens_[probe].kind == TokenKind::Identifier &&
-                tokens_[probe].lexeme == current_struct_tag_ &&
+                is_ctor_name(tokens_[probe].lexeme) &&
                 probe + 1 < static_cast<int>(tokens_.size()) &&
                 tokens_[probe + 1].kind == TokenKind::LParen) {
                 // Skip specifiers before the constructor name
@@ -2658,7 +2688,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             }
         }
         if (is_cpp_mode() && !current_struct_tag_.empty() &&
-            check(TokenKind::Identifier) && cur().lexeme == current_struct_tag_ &&
+            check(TokenKind::Identifier) && is_ctor_name(cur().lexeme) &&
             pos_ + 1 < static_cast<int>(tokens_.size()) &&
             tokens_[pos_ + 1].kind == TokenKind::LParen) {
             const char* ctor_name = arena_.strdup(cur().lexeme);
@@ -2758,7 +2788,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             check(TokenKind::Tilde) &&
             pos_ + 1 < static_cast<int>(tokens_.size()) &&
             tokens_[pos_ + 1].kind == TokenKind::Identifier &&
-            tokens_[pos_ + 1].lexeme == current_struct_tag_) {
+            is_ctor_name(tokens_[pos_ + 1].lexeme)) {
             consume();  // consume '~'
             const char* dtor_name = arena_.strdup(cur().lexeme);
             consume();  // consume struct tag name
@@ -3216,6 +3246,29 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             if (!match(TokenKind::Comma)) break;
         }
         match(TokenKind::Semi);
+      } catch (const std::exception&) {
+        // Error recovery: skip to next ';' or '}' within the struct body.
+        // This prevents a single unparseable member from aborting the entire
+        // struct and causing cascading errors in subsequent declarations.
+        if (is_cpp_mode()) {
+            int brace_depth = 0;
+            while (!at_end()) {
+                if (check(TokenKind::LBrace)) { ++brace_depth; consume(); }
+                else if (check(TokenKind::RBrace)) {
+                    if (brace_depth > 0) { --brace_depth; consume(); }
+                    else break;  // outer struct closing brace — stop
+                }
+                else if (check(TokenKind::Semi) && brace_depth == 0) {
+                    consume(); break;
+                }
+                else consume();
+            }
+            // Prevent infinite loops: if we made no progress, consume one token.
+            if (pos_ == member_start_pos && !at_end()) consume();
+        } else {
+            throw;  // In C mode, re-throw (no recovery)
+        }
+      }
     }
     expect(TokenKind::RBrace);
     current_struct_tag_ = saved_struct_tag;
