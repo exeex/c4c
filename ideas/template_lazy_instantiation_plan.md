@@ -167,6 +167,155 @@ The final model should work like this:
    unresolved diagnostics
 
 
+## First Migration Targets
+
+Before changing architecture further, we should define exactly what gets moved
+out of `ast_to_hir.cpp` and into `src/frontend/hir/compile_time_engine.cpp`
+first.
+
+The practical rule is:
+
+- move work that is currently *type-driven* and *use-site driven*
+- keep work that is just *syntax preservation* or *obviously concrete lowering*
+
+That gives us a narrow first target instead of trying to move all template
+logic at once.
+
+
+### Target A: Concrete Template Struct Realization
+
+This is the biggest current owner of early type work.
+
+Today `resolve_pending_tpl_struct()` in `ast_to_hir.cpp` is doing all of these
+jobs at once:
+
+- parse deferred template arg refs
+- substitute concrete type/NTTP bindings
+- evaluate deferred NTTP defaults
+- select template struct specialization
+- build the mangled concrete struct name
+- instantiate the concrete HIR struct
+- lower methods immediately
+- rewrite the original `TypeSpec` in place
+
+That is already compile-time-engine-shaped work, just living in the wrong
+file.
+
+So the first target should be:
+
+- extract the realization algorithm behind `resolve_pending_tpl_struct()`
+- re-home the worklist-driving part in `compile_time_engine.cpp`
+- leave `ast_to_hir.cpp` responsible only for creating/preserving the pending
+  `TypeSpec`
+
+Concretely this means the engine should become the owner of:
+
+- pending `TypeSpec{ tpl_struct_origin, tpl_struct_arg_refs }`
+- struct instantiation dedup
+- specialization selection for template structs
+- post-instantiation metadata registration
+
+
+### Target B: Dependent NTTP Default Evaluation For Struct Templates
+
+This is the cleanest semantic target to move early.
+
+Right now dependent NTTP defaults are effectively decided inside the template
+struct realization path, not by the fixpoint engine:
+
+- explicit deferred expressions are evaluated while resolving args
+- missing NTTP defaults are materialized inside the same helper
+
+That is exactly the behavior we want to defer.
+
+So the first semantic move should be:
+
+- keep parser preservation of `template_param_default_exprs`
+- stop treating `ast_to_hir.cpp` as the final authority for evaluating them
+- make the compile-time engine evaluate those defaults only when a concrete
+  pending type work item is being realized
+
+If we only move one "meaningful" behavior first, this is probably the best
+one, because it removes the main reason parser/HIR currently need to guess.
+
+
+### Target C: Dependent Member Typedef Resolution
+
+`Owner<T>::type`-style lookup is another clear engine candidate.
+
+Today `resolve_struct_member_typedef_hir()` in `ast_to_hir.cpp` performs:
+
+- struct-scope alias lookup
+- binding substitution
+- inherited lookup through realized bases
+- recursive nested member-type resolution
+- opportunistic triggering of template struct realization on the owner
+
+This is also use-site-driven type work, so it belongs next to the template
+type fixpoint rather than inline in lowering.
+
+The target is:
+
+- `ast_to_hir.cpp` preserves `deferred_member_type_name`
+- engine resolves it once the owner type is concrete
+- if the member alias expands to another pending template type, requeue that
+  work instead of recursively finishing everything inside lowering
+
+
+### Target D: Dependent Base Types During Struct Realization
+
+Base realization should move together with template struct realization, not as
+a separate parser-side feature.
+
+Today concrete struct instantiation also resolves bases inline:
+
+- substitute template bindings into base type
+- instantiate pending template bases
+- resolve base member typedef chains
+- append concrete base tags directly into the HIR struct def
+
+This should move as part of the same engine-owned pipeline:
+
+1. realize concrete owner struct
+2. inspect each pending base
+3. enqueue dependent base owner/member work
+4. finalize base tags only after the base type is concrete
+
+This keeps inheritance on the same path as aliases/member typedefs instead of
+giving bases bespoke logic forever.
+
+
+### What Should Not Move In The First Pass
+
+To keep the first step tractable, we should explicitly *not* move everything.
+
+The following can stay where they are for now:
+
+- parser token/text preservation for deferred defaults
+- parser construction of pending `TypeSpec` metadata
+- obviously concrete builtin/default type materialization
+- template function call seeding already handled by the existing engine
+- final method lowering callback once a concrete struct instance is known
+
+In other words, first move "decide what concrete type this should become",
+then later decide whether method lowering itself also needs to become more
+lazy.
+
+
+### Recommended Move Order
+
+If we want the smallest viable migration path, the order should be:
+
+1. add engine-side pending template type work items
+2. move template struct realization entrypoints there
+3. move dependent NTTP default evaluation there
+4. move member typedef / dependent base follow-up resolution there
+5. only then delete the eager `ast_to_hir.cpp` resolution paths
+
+This order works because it moves the central owner first and lets other
+dependent features collapse onto the same path.
+
+
 ## Required Representation Changes
 
 ### 1. Preserve Deferred NTTP Defaults As Data
