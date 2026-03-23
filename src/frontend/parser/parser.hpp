@@ -247,6 +247,11 @@ class Parser {
       const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
       const std::vector<std::pair<std::string, long long>>& nttp_bindings,
       long long* out);
+  Node* find_template_struct_primary(const std::string& name) const;
+  const std::vector<Node*>* find_template_struct_specializations(
+      const Node* primary_tpl) const;
+  void register_template_struct_primary(const std::string& name, Node* node);
+  void register_template_struct_specialization(const char* primary_name, Node* node);
 
   // Skip a balanced brace group (consuming the closing brace).
   void skip_brace_group();

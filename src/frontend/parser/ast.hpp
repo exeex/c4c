@@ -12,7 +12,9 @@
 // Pure-C backport note: this header can be #included from C after removing
 // the namespace wrapper, the class keyword, and default member initializers.
 
+#include <cctype>
 #include <cstddef>
+#include <cstring>
 
 #include "../builtin.hpp"
 
@@ -364,6 +366,82 @@ struct Node {
     int*         ctor_init_nargs;  // arena-allocated: per-init argument count
     int          n_ctor_inits;     // number of initializer list items
 };
+
+inline bool is_primary_template_struct_def(const Node* node) {
+    return node &&
+           node->kind == NK_STRUCT_DEF &&
+           node->n_template_params > 0 &&
+           (!node->template_origin_name || !node->template_origin_name[0]);
+}
+
+inline bool node_has_template_param_name(const Node* node, const char* name) {
+    if (!node || !name || !name[0] || !node->template_param_names) return false;
+    for (int i = 0; i < node->n_template_params; ++i) {
+        const char* param_name = node->template_param_names[i];
+        if (param_name && std::strcmp(param_name, name) == 0) return true;
+    }
+    return false;
+}
+
+inline bool text_mentions_template_param(const Node* node, const char* text) {
+    if (!node || !text || !text[0]) return false;
+    const char* cur = text;
+    while (*cur) {
+        if (std::isalpha(static_cast<unsigned char>(*cur)) || *cur == '_') {
+            const char* start = cur;
+            ++cur;
+            while (std::isalnum(static_cast<unsigned char>(*cur)) || *cur == '_')
+                ++cur;
+            const size_t len = static_cast<size_t>(cur - start);
+            for (int i = 0; i < node->n_template_params; ++i) {
+                const char* param_name = node->template_param_names[i];
+                if (!param_name) continue;
+                if (std::strlen(param_name) == len &&
+                    std::strncmp(start, param_name, len) == 0) {
+                    return true;
+                }
+            }
+            continue;
+        }
+        ++cur;
+    }
+    return false;
+}
+
+inline bool typespec_mentions_template_param(const TypeSpec& ts, const Node* node) {
+    return node_has_template_param_name(node, ts.tag) ||
+           text_mentions_template_param(node, ts.tpl_struct_arg_refs) ||
+           text_mentions_template_param(node, ts.deferred_member_type_name);
+}
+
+inline bool is_dependent_template_struct_specialization(const Node* node) {
+    if (!node ||
+        node->kind != NK_STRUCT_DEF ||
+        node->n_template_params <= 0 ||
+        !node->template_origin_name ||
+        !node->template_origin_name[0] ||
+        node->n_template_args <= 0) {
+        return false;
+    }
+
+    for (int i = 0; i < node->n_template_args; ++i) {
+        const bool is_value_arg =
+            node->template_arg_is_value && node->template_arg_is_value[i];
+        if (is_value_arg) {
+            if (node->template_arg_nttp_names &&
+                node_has_template_param_name(node, node->template_arg_nttp_names[i])) {
+                return true;
+            }
+            continue;
+        }
+        if (node->template_arg_types &&
+            typespec_mentions_template_param(node->template_arg_types[i], node)) {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 
 // ── Free functions ────────────────────────────────────────────────────────────

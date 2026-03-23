@@ -266,6 +266,15 @@ set_tests_properties(cpp_hir_template_origin PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_struct_registry_primary_only
+  COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_struct_specialization_parse.cpp"
+)
+set_tests_properties(cpp_hir_template_struct_registry_primary_only PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  FAIL_REGULAR_EXPRESSION "struct static_min__spec_|struct remove_const__spec_|struct disjunction__spec_|struct complex_default__spec_"
+)
+
+add_test(
   NAME cpp_hir_spec_key_identity
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/specialization_identity.cpp"
 )

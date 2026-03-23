@@ -490,6 +490,7 @@ struct CompileTimeState {
 
   /// Register a template struct primary definition (AST node pointer).
   void register_template_struct_def(const std::string& name, const Node* node) {
+    if (!is_primary_template_struct_def(node)) return;
     template_struct_defs_[name] = node;
   }
 
@@ -497,6 +498,13 @@ struct CompileTimeState {
   void register_template_struct_specialization(const std::string& primary_name,
                                               const Node* node) {
     template_struct_specializations_[primary_name].push_back(node);
+  }
+
+  /// Register a template struct specialization under a primary definition.
+  void register_template_struct_specialization(const Node* primary_def,
+                                              const Node* node) {
+    if (!primary_def || !primary_def->name) return;
+    register_template_struct_specialization(primary_def->name, node);
   }
 
   /// Register a consteval function definition (AST node pointer).
@@ -544,6 +552,13 @@ struct CompileTimeState {
       const std::string& name) const {
     auto it = template_struct_specializations_.find(name);
     return it != template_struct_specializations_.end() ? &it->second : nullptr;
+  }
+
+  /// Look up registered template struct specializations for a primary definition.
+  const std::vector<const Node*>* find_template_struct_specializations(
+      const Node* primary_def) const {
+    if (!primary_def || !primary_def->name) return nullptr;
+    return find_template_struct_specializations(primary_def->name);
   }
 
   /// Look up a consteval function definition by name (nullptr if unknown).

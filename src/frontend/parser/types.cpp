@@ -131,10 +131,9 @@ int specialization_match_score(const Node* spec) {
 }
 
 const Node* select_template_struct_pattern(
-    const std::string& tpl_name,
     const std::vector<ParsedTemplateArg>& actual_args,
     const Node* primary_tpl,
-    const std::unordered_map<std::string, std::vector<Node*>>& specializations,
+    const std::vector<Node*>* specialization_patterns,
     const std::unordered_map<std::string, TypeSpec>& typedef_types,
     std::vector<std::pair<std::string, TypeSpec>>* out_type_bindings,
     std::vector<std::pair<std::string, long long>>* out_nttp_bindings) {
@@ -212,9 +211,8 @@ const Node* select_template_struct_pattern(
         }
     };
 
-    auto sit = specializations.find(tpl_name);
-    if (sit != specializations.end()) {
-        for (const Node* cand : sit->second) try_candidate(cand);
+    if (specialization_patterns) {
+        for (const Node* cand : *specialization_patterns) try_candidate(cand);
     }
 
     if (best != primary_tpl && best) return best;
@@ -250,6 +248,28 @@ const Node* select_template_struct_pattern(
 }
 
 }  // namespace
+
+Node* Parser::find_template_struct_primary(const std::string& name) const {
+    auto it = template_struct_defs_.find(name);
+    return it != template_struct_defs_.end() ? it->second : nullptr;
+}
+
+const std::vector<Node*>* Parser::find_template_struct_specializations(
+    const Node* primary_tpl) const {
+    if (!primary_tpl || !primary_tpl->name) return nullptr;
+    auto it = template_struct_specializations_.find(primary_tpl->name);
+    return it != template_struct_specializations_.end() ? &it->second : nullptr;
+}
+
+void Parser::register_template_struct_primary(const std::string& name, Node* node) {
+    if (!is_primary_template_struct_def(node)) return;
+    template_struct_defs_[name] = node;
+}
+
+void Parser::register_template_struct_specialization(const char* primary_name, Node* node) {
+    if (!primary_name || !primary_name[0] || !node) return;
+    template_struct_specializations_[primary_name].push_back(node);
+}
 
 static void append_type_mangled_suffix(std::string& out, const TypeSpec& ts);
 
@@ -358,15 +378,15 @@ bool Parser::eval_deferred_nttp_default(
     std::string member_name = toks[ti].lexeme;
 
     // Look up the referenced template struct
-    auto tpl_it = template_struct_defs_.find(ref_tpl_name);
-    if (tpl_it == template_struct_defs_.end()) { return false; }
-    const Node* ref_primary = tpl_it->second;
+    const Node* ref_primary = find_template_struct_primary(ref_tpl_name);
+    if (!ref_primary) { return false; }
 
     // Build type/nttp bindings for the referenced template
     std::vector<std::pair<std::string, TypeSpec>> ref_type_bindings;
     std::vector<std::pair<std::string, long long>> ref_nttp_bindings;
+    const auto* ref_specializations = find_template_struct_specializations(ref_primary);
     const Node* ref_def = select_template_struct_pattern(
-        ref_tpl_name, ref_args, ref_primary, template_struct_specializations_,
+        ref_args, ref_primary, ref_specializations,
         typedef_types_, &ref_type_bindings, &ref_nttp_bindings);
     if (!ref_def) return false;
 
@@ -615,8 +635,8 @@ bool Parser::is_type_start() const {
         if (is_cpp_mode() &&
             pos_ + 1 < static_cast<int>(tokens_.size()) &&
             tokens_[pos_ + 1].kind == TokenKind::Less &&
-            (template_struct_defs_.count(cur().lexeme) > 0 ||
-             template_struct_defs_.count(resolve_visible_type_name(cur().lexeme)) > 0 ||
+            (find_template_struct_primary(cur().lexeme) ||
+             find_template_struct_primary(resolve_visible_type_name(cur().lexeme)) ||
              !current_struct_tag_.empty())) return true;
     }
     if (k == TokenKind::ColonColon) {
@@ -1302,7 +1322,7 @@ TypeSpec Parser::parse_base_type() {
         // just like 'Pair<int>' does via the typedef path. If the tag matches a known
         // template struct and '<' follows, fall through to the template instantiation
         // code below instead of returning immediately.
-        if (!(is_cpp_mode() && ts.tag && template_struct_defs_.count(ts.tag) &&
+        if (!(is_cpp_mode() && ts.tag && find_template_struct_primary(ts.tag) &&
               check(TokenKind::Less))) {
             return ts;
         }
@@ -1331,7 +1351,7 @@ TypeSpec Parser::parse_base_type() {
     // Template struct instantiation for 'struct Pair<int>' syntax (has_struct fall-through).
     // ts.base is already TB_STRUCT and ts.tag is the template name.
     if (has_struct && is_cpp_mode() && ts.tag &&
-        template_struct_defs_.count(ts.tag) && check(TokenKind::Less)) {
+        find_template_struct_primary(ts.tag) && check(TokenKind::Less)) {
         // Reuse the typedef-path template instantiation by setting has_typedef and
         // preparing ts as if the typedef had been resolved.
         has_typedef = true;
@@ -1477,9 +1497,9 @@ TypeSpec Parser::parse_base_type() {
                 }
                 // Template struct instantiation: Pair<int> or Array<int, 4> in type context.
                 if (is_cpp_mode() && ts.base == TB_STRUCT && ts.tag &&
-                    template_struct_defs_.count(ts.tag) && check(TokenKind::Less)) {
+                    find_template_struct_primary(ts.tag) && check(TokenKind::Less)) {
                     std::string tpl_name = ts.tag;
-                    const Node* primary_tpl = template_struct_defs_[tpl_name];
+                    const Node* primary_tpl = find_template_struct_primary(tpl_name);
                     consume();  // <
                     // Parse template arguments before selecting the best pattern.
                     std::vector<ParsedTemplateArg> actual_args;
@@ -1645,8 +1665,10 @@ TypeSpec Parser::parse_base_type() {
                     }
                     std::vector<std::pair<std::string, TypeSpec>> type_bindings;
                     std::vector<std::pair<std::string, long long>> nttp_bindings;
+                    const auto* specialization_patterns =
+                        find_template_struct_specializations(primary_tpl);
                     const Node* tpl_def = select_template_struct_pattern(
-                        tpl_name, actual_args, primary_tpl, template_struct_specializations_,
+                        actual_args, primary_tpl, specialization_patterns,
                         typedef_types_, &type_bindings, &nttp_bindings);
                     if (!tpl_def) return ts;
                     std::vector<ParsedTemplateArg> concrete_args = actual_args;
@@ -1900,11 +1922,11 @@ TypeSpec Parser::parse_base_type() {
                                         inst->base_types[bi].tpl_struct_arg_refs =
                                             arena_.strdup(updated_refs.c_str());
                                     }
-                                    if (all_resolved && template_struct_defs_.count(origin)) {
+                                    if (all_resolved && find_template_struct_primary(origin)) {
                                         // Build ParsedTemplateArg list from resolved parts
                                         // and fill in deferred NTTP defaults, then trigger
                                         // a proper template instantiation.
-                                        const Node* base_primary = template_struct_defs_[origin];
+                                        const Node* base_primary = find_template_struct_primary(origin);
                                         std::vector<ParsedTemplateArg> base_args;
                                         for (int pi = 0; pi < (int)new_arg_parts.size() &&
                                              pi < base_primary->n_template_params; ++pi) {
@@ -1970,9 +1992,10 @@ TypeSpec Parser::parse_base_type() {
                                         // Select specialization and build mangled name
                                         std::vector<std::pair<std::string, TypeSpec>> base_tb;
                                         std::vector<std::pair<std::string, long long>> base_nb;
+                                        const auto* base_specializations =
+                                            find_template_struct_specializations(base_primary);
                                         const Node* base_sel = select_template_struct_pattern(
-                                            origin, base_args, base_primary,
-                                            template_struct_specializations_,
+                                            base_args, base_primary, base_specializations,
                                             typedef_types_, &base_tb, &base_nb);
                                         if (!base_sel) base_sel = base_primary;
                                         const std::string base_family =

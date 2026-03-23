@@ -483,7 +483,8 @@ Node* Parser::parse_top_level() {
                 Node* last_sd = struct_defs_.back();
                 if (last_sd && last_sd->kind == NK_STRUCT_DEF &&
                     last_sd->template_origin_name && last_sd->n_template_args > 0) {
-                    template_struct_specializations_[last_sd->template_origin_name].push_back(last_sd);
+                    register_template_struct_specialization(
+                        last_sd->template_origin_name, last_sd);
                 }
             }
             if (spec) spec->is_explicit_specialization = true;
@@ -818,11 +819,12 @@ Node* Parser::parse_top_level() {
                 last_sd->template_origin_name && last_sd->n_template_args > 0) {
                 if (!template_params.empty() && last_sd->n_template_params == 0)
                     attach_template_params(last_sd);
-                template_struct_specializations_[last_sd->template_origin_name].push_back(last_sd);
+                register_template_struct_specialization(
+                    last_sd->template_origin_name, last_sd);
             } else if (last_sd && last_sd->kind == NK_STRUCT_DEF &&
                        !template_params.empty() && last_sd->n_template_params == 0) {
                 attach_template_params(last_sd);
-                template_struct_defs_[last_sd->name] = last_sd;
+                register_template_struct_primary(last_sd->name, last_sd);
                 // In C++ mode, register the template struct name as a typedef
                 // so it's recognized as a type start for Pair<int> syntax.
                 typedefs_.insert(last_sd->name);
@@ -838,7 +840,7 @@ Node* Parser::parse_top_level() {
                     canonical_name_in_context(current_namespace_context_id(), last_sd->name);
                 typedefs_.insert(qn);
                 typedef_types_[qn] = struct_ts;
-                template_struct_defs_[qn] = last_sd;
+                register_template_struct_primary(qn, last_sd);
             }
         }
         return templated;

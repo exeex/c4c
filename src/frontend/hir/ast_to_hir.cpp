@@ -162,11 +162,18 @@ int hir_specialization_match_score(const Node* spec) {
   return score;
 }
 
+const std::vector<const Node*>* find_template_struct_specialization_patterns_hir(
+    const std::unordered_map<std::string, std::vector<const Node*>>& specializations,
+    const Node* primary_tpl) {
+  if (!primary_tpl || !primary_tpl->name) return nullptr;
+  auto it = specializations.find(primary_tpl->name);
+  return it != specializations.end() ? &it->second : nullptr;
+}
+
 const Node* select_template_struct_pattern_hir(
-    const std::string& tpl_name,
     const std::vector<HirTemplateArg>& actual_args,
     const Node* primary_tpl,
-    const std::unordered_map<std::string, std::vector<const Node*>>& specializations,
+    const std::vector<const Node*>* specialization_patterns,
     std::vector<std::pair<std::string, TypeSpec>>* out_type_bindings,
     std::vector<std::pair<std::string, long long>>* out_nttp_bindings) {
   const Node* best = primary_tpl;
@@ -233,9 +240,8 @@ const Node* select_template_struct_pattern_hir(
     }
   };
 
-  auto sit = specializations.find(tpl_name);
-  if (sit != specializations.end()) {
-    for (const Node* cand : sit->second) try_candidate(cand);
+  if (specialization_patterns) {
+    for (const Node* cand : *specialization_patterns) try_candidate(cand);
   }
 
   if (best != primary_tpl && best) return best;
@@ -808,14 +814,13 @@ class Lowerer {
         lower_struct_def(item);
         if (item->name) struct_def_nodes_[item->name] = item;
         // Also collect template struct defs for deferred instantiation.
-        if (item->n_template_params > 0 && item->name) {
-          template_struct_defs_[item->name] = item;
-          ct_state_->register_template_struct_def(item->name, item);
+        if (is_primary_template_struct_def(item) && item->name) {
+          register_template_struct_primary(item->name, item);
         }
         if (item->template_origin_name && item->n_template_args > 0) {
-          template_struct_specializations_[item->template_origin_name].push_back(item);
-          ct_state_->register_template_struct_specialization(
-              item->template_origin_name, item);
+          const Node* primary_tpl =
+              find_template_struct_primary(item->template_origin_name);
+          if (primary_tpl) register_template_struct_specialization(primary_tpl, item);
         }
       }
       if (item->kind == NK_ENUM_DEF) collect_enum_def(item);
@@ -1761,9 +1766,13 @@ class Lowerer {
 
   void lower_struct_def(const Node* sd) {
     if (!sd || sd->kind != NK_STRUCT_DEF) return;
-    // Skip template struct definitions — only instantiated structs are lowered.
-    // An instantiated struct has n_template_args > 0 (concrete bindings stored).
-    if (sd->n_template_params > 0 && sd->n_template_args == 0) return;
+    // Skip primary templates and specialization patterns that still depend on
+    // template parameters. Concrete explicit specializations and realized
+    // instantiations are still lowered as ordinary structs.
+    if (is_primary_template_struct_def(sd) ||
+        is_dependent_template_struct_specialization(sd)) {
+      return;
+    }
     const char* tag = sd->name;
     if (!tag || !tag[0]) return;
 
@@ -2197,9 +2206,8 @@ class Lowerer {
                                   const NttpBindings& nttp_bindings) {
     if (!ts.tpl_struct_origin) return;
     const char* origin = ts.tpl_struct_origin;
-    auto def_it = template_struct_defs_.find(origin);
-    if (def_it == template_struct_defs_.end()) return;
-    const Node* primary_tpl = def_it->second;
+    const Node* primary_tpl = find_template_struct_primary(origin);
+    if (!primary_tpl) return;
 
     // Parse arg_refs: comma-separated list of arg values in param order.
     std::vector<std::string> arg_refs;
@@ -2403,8 +2411,10 @@ class Lowerer {
 
           std::vector<std::pair<std::string, TypeSpec>> ref_tb;
           std::vector<std::pair<std::string, long long>> ref_nb;
+          const auto* ref_specializations =
+              find_template_struct_specialization_patterns_hir(specializations, ref_primary);
           const Node* ref_def = select_template_struct_pattern_hir(
-              tpl_name, actual_args, ref_primary, specializations, &ref_tb, &ref_nb);
+              actual_args, ref_primary, ref_specializations, &ref_tb, &ref_nb);
           return eval_struct_static_member_value_hir(ref_def, struct_defs, member_name, out_val);
         }
 
@@ -2729,8 +2739,10 @@ class Lowerer {
 
     std::vector<std::pair<std::string, TypeSpec>> selected_type_bindings;
     std::vector<std::pair<std::string, long long>> selected_nttp_bindings;
+    const auto* specialization_patterns =
+        find_template_struct_specializations(primary_tpl);
     const Node* tpl_def = select_template_struct_pattern_hir(
-        origin, concrete_args, primary_tpl, template_struct_specializations_,
+        concrete_args, primary_tpl, specialization_patterns,
         &selected_type_bindings, &selected_nttp_bindings);
     if (!tpl_def) tpl_def = primary_tpl;
     NttpBindings selected_nttp_bindings_map;
@@ -6923,7 +6935,7 @@ class Lowerer {
       }
       case NK_VAR: {
         if (n->name && n->name[0]) {
-          if (n->has_template_args && template_struct_defs_.count(n->name)) {
+          if (n->has_template_args && find_template_struct_primary(n->name)) {
             std::string arg_refs;
             for (int i = 0; i < n->n_template_args; ++i) {
               if (!arg_refs.empty()) arg_refs += ",";
@@ -6975,7 +6987,7 @@ class Lowerer {
             std::string struct_tag = qname.substr(0, scope_pos);
             std::string member = qname.substr(scope_pos + 2);
             if (!find_struct_static_member_decl(struct_tag, member) &&
-                n->has_template_args && template_struct_defs_.count(struct_tag)) {
+                n->has_template_args && find_template_struct_primary(struct_tag)) {
               std::string arg_refs;
               for (int i = 0; i < n->n_template_args; ++i) {
                 if (!arg_refs.empty()) arg_refs += ",";
@@ -8697,6 +8709,31 @@ class Lowerer {
     for (int i = 0; i < n->n_children; ++i)
       if (has_plain_call(n->children[i], fn_name)) return true;
     return false;
+  }
+
+  const Node* find_template_struct_primary(const std::string& name) const {
+    auto it = template_struct_defs_.find(name);
+    return it != template_struct_defs_.end() ? it->second : nullptr;
+  }
+
+  const std::vector<const Node*>* find_template_struct_specializations(
+      const Node* primary_tpl) const {
+    if (!primary_tpl || !primary_tpl->name) return nullptr;
+    auto it = template_struct_specializations_.find(primary_tpl->name);
+    return it != template_struct_specializations_.end() ? &it->second : nullptr;
+  }
+
+  void register_template_struct_primary(const std::string& name, const Node* node) {
+    if (!is_primary_template_struct_def(node)) return;
+    template_struct_defs_[name] = node;
+    ct_state_->register_template_struct_def(name, node);
+  }
+
+  void register_template_struct_specialization(const Node* primary_tpl,
+                                               const Node* node) {
+    if (!primary_tpl || !primary_tpl->name || !node) return;
+    template_struct_specializations_[primary_tpl->name].push_back(node);
+    ct_state_->register_template_struct_specialization(primary_tpl, node);
   }
 
   Module* module_ = nullptr;
