@@ -162,21 +162,12 @@ int hir_specialization_match_score(const Node* spec) {
   return score;
 }
 
-const std::vector<const Node*>* find_template_struct_specialization_patterns_hir(
-    const std::unordered_map<std::string, std::vector<const Node*>>& specializations,
-    const Node* primary_tpl) {
-  if (!primary_tpl || !primary_tpl->name) return nullptr;
-  auto it = specializations.find(primary_tpl->name);
-  return it != specializations.end() ? &it->second : nullptr;
-}
-
-const Node* select_template_struct_pattern_hir(
+SelectedTemplateStructPattern select_template_struct_pattern_hir(
     const std::vector<HirTemplateArg>& actual_args,
-    const Node* primary_tpl,
-    const std::vector<const Node*>* specialization_patterns,
-    std::vector<std::pair<std::string, TypeSpec>>* out_type_bindings,
-    std::vector<std::pair<std::string, long long>>* out_nttp_bindings) {
-  const Node* best = primary_tpl;
+    const TemplateStructEnv& env) {
+  SelectedTemplateStructPattern selected;
+  selected.primary_def = env.primary_def;
+  selected.selected_pattern = env.primary_def;
   int best_score = -1;
 
   auto try_candidate = [&](const Node* cand) {
@@ -221,47 +212,54 @@ const Node* select_template_struct_pattern_hir(
 
     int score = hir_specialization_match_score(cand);
     if (score <= best_score) return;
-    best = cand;
+    selected.selected_pattern = cand;
     best_score = score;
-    out_type_bindings->clear();
-    out_nttp_bindings->clear();
+    selected.type_bindings.clear();
+    selected.nttp_bindings.clear();
     for (int i = 0; i < cand->n_template_params; ++i) {
       const char* pname = cand->template_param_names[i];
       if (!pname) continue;
       if (cand->template_param_is_nttp[i]) {
         auto it = value_bindings_map.find(pname);
         if (it != value_bindings_map.end())
-          out_nttp_bindings->push_back({pname, it->second});
+          selected.nttp_bindings[pname] = it->second;
       } else {
         auto it = type_bindings_map.find(pname);
         if (it != type_bindings_map.end())
-          out_type_bindings->push_back({pname, it->second});
+          selected.type_bindings[pname] = it->second;
       }
     }
   };
 
-  if (specialization_patterns) {
-    for (const Node* cand : *specialization_patterns) try_candidate(cand);
+  if (env.specialization_patterns) {
+    for (const Node* cand : *env.specialization_patterns) try_candidate(cand);
   }
 
-  if (best != primary_tpl && best) return best;
+  if (selected.selected_pattern != env.primary_def && selected.selected_pattern)
+    return selected;
 
-  out_type_bindings->clear();
-  out_nttp_bindings->clear();
-  if (!primary_tpl) return nullptr;
+  selected.type_bindings.clear();
+  selected.nttp_bindings.clear();
+  if (!env.primary_def) return selected;
   int arg_idx = 0;
   for (; arg_idx < static_cast<int>(actual_args.size()) &&
-         arg_idx < primary_tpl->n_template_params; ++arg_idx) {
-    const char* param_name = primary_tpl->template_param_names[arg_idx];
-    if (primary_tpl->template_param_is_nttp[arg_idx]) {
-      if (!actual_args[arg_idx].is_value) return nullptr;
-      out_nttp_bindings->push_back({param_name, actual_args[arg_idx].value});
+         arg_idx < env.primary_def->n_template_params; ++arg_idx) {
+    const char* param_name = env.primary_def->template_param_names[arg_idx];
+    if (env.primary_def->template_param_is_nttp[arg_idx]) {
+      if (!actual_args[arg_idx].is_value) {
+        selected.selected_pattern = nullptr;
+        return selected;
+      }
+      selected.nttp_bindings[param_name] = actual_args[arg_idx].value;
     } else {
-      if (actual_args[arg_idx].is_value) return nullptr;
-      out_type_bindings->push_back({param_name, actual_args[arg_idx].type});
+      if (actual_args[arg_idx].is_value) {
+        selected.selected_pattern = nullptr;
+        return selected;
+      }
+      selected.type_bindings[param_name] = actual_args[arg_idx].type;
     }
   }
-  return primary_tpl;
+  return selected;
 }
 
 bool eval_struct_static_member_value_hir(
@@ -2409,12 +2407,15 @@ class Lowerer {
           if (tpl_it == template_defs.end()) return false;
           const Node* ref_primary = tpl_it->second;
 
-          std::vector<std::pair<std::string, TypeSpec>> ref_tb;
-          std::vector<std::pair<std::string, long long>> ref_nb;
-          const auto* ref_specializations =
-              find_template_struct_specialization_patterns_hir(specializations, ref_primary);
-          const Node* ref_def = select_template_struct_pattern_hir(
-              actual_args, ref_primary, ref_specializations, &ref_tb, &ref_nb);
+          TemplateStructEnv ref_env;
+          ref_env.primary_def = ref_primary;
+          if (ref_primary && ref_primary->name) {
+            auto it = specializations.find(ref_primary->name);
+            if (it != specializations.end()) ref_env.specialization_patterns = &it->second;
+          }
+          SelectedTemplateStructPattern ref_selection =
+              select_template_struct_pattern_hir(actual_args, ref_env);
+          const Node* ref_def = ref_selection.selected_pattern;
           return eval_struct_static_member_value_hir(ref_def, struct_defs, member_name, out_val);
         }
 
@@ -2737,17 +2738,15 @@ class Lowerer {
       concrete_args.push_back(arg);
     }
 
-    std::vector<std::pair<std::string, TypeSpec>> selected_type_bindings;
-    std::vector<std::pair<std::string, long long>> selected_nttp_bindings;
-    const auto* specialization_patterns =
-        find_template_struct_specializations(primary_tpl);
-    const Node* tpl_def = select_template_struct_pattern_hir(
-        concrete_args, primary_tpl, specialization_patterns,
-        &selected_type_bindings, &selected_nttp_bindings);
+    TemplateStructEnv tpl_env;
+    tpl_env.primary_def = primary_tpl;
+    tpl_env.specialization_patterns = find_template_struct_specializations(primary_tpl);
+    SelectedTemplateStructPattern selected_pattern =
+        select_template_struct_pattern_hir(concrete_args, tpl_env);
+    const Node* tpl_def = selected_pattern.selected_pattern;
     if (!tpl_def) tpl_def = primary_tpl;
-    NttpBindings selected_nttp_bindings_map;
-    for (const auto& [name, value] : selected_nttp_bindings)
-      selected_nttp_bindings_map[name] = value;
+    const TypeBindings& selected_type_bindings = selected_pattern.type_bindings;
+    const NttpBindings& selected_nttp_bindings_map = selected_pattern.nttp_bindings;
 
     const std::string family_name =
         tpl_def->template_origin_name ? tpl_def->template_origin_name : std::string(origin);
@@ -2822,7 +2821,7 @@ class Lowerer {
       for (const auto& [pname, pts] : selected_type_bindings)
         method_tpl_bindings[pname] = pts;
       NttpBindings method_nttp_bindings;
-      for (const auto& [npname, nval] : selected_nttp_bindings)
+      for (const auto& [npname, nval] : selected_nttp_bindings_map)
         method_nttp_bindings[npname] = nval;
       for (int bi = 0; bi < tpl_def->n_bases; ++bi) {
         TypeSpec base_ts = tpl_def->base_types[bi];
@@ -2877,7 +2876,7 @@ class Lowerer {
         if (ft.array_size_expr) {
           Node* ase = ft.array_size_expr;
           if (ase->kind == NK_VAR && ase->name) {
-            for (const auto& [npname, nval] : selected_nttp_bindings) {
+            for (const auto& [npname, nval] : selected_nttp_bindings_map) {
               if (std::string(ase->name) == npname) {
                 if (ft.array_rank > 0) {
                   ft.array_dims[0] = nval;

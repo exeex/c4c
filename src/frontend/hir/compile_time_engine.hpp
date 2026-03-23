@@ -45,6 +45,18 @@ struct TemplateInstance {
   SpecializationKey spec_key;  // stable identity for dedup/caching
 };
 
+struct TemplateStructEnv {
+  const Node* primary_def = nullptr;
+  const std::vector<const Node*>* specialization_patterns = nullptr;
+};
+
+struct SelectedTemplateStructPattern {
+  const Node* primary_def = nullptr;
+  const Node* selected_pattern = nullptr;
+  TypeBindings type_bindings;
+  NttpBindings nttp_bindings;
+};
+
 enum class PendingTemplateTypeKind {
   DeclarationType,
   OwnerStruct,
