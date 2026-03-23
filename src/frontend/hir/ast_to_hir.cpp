@@ -749,10 +749,14 @@ class Lowerer {
         lower_struct_def(item);
         if (item->name) struct_def_nodes_[item->name] = item;
         // Also collect template struct defs for deferred instantiation.
-        if (item->n_template_params > 0 && item->name)
+        if (item->n_template_params > 0 && item->name) {
           template_struct_defs_[item->name] = item;
+          ct_state_->register_template_struct_def(item->name, item);
+        }
         if (item->template_origin_name && item->n_template_args > 0) {
           template_struct_specializations_[item->template_origin_name].push_back(item);
+          ct_state_->register_template_struct_specialization(
+              item->template_origin_name, item);
         }
       }
       if (item->kind == NK_ENUM_DEF) collect_enum_def(item);
@@ -1405,10 +1409,9 @@ class Lowerer {
           // operator() on struct variable: look up operator_call return type.
           TypeSpec callee_ts = infer_generic_ctrl_type(ctx, n->left);
           if (callee_ts.base == TB_STRUCT && callee_ts.ptr_level == 0 && callee_ts.tag) {
-            std::string key = std::string(callee_ts.tag) + "::operator_call";
-            auto rit = struct_method_ret_types_.find(key);
-            if (rit != struct_method_ret_types_.end())
-              return reference_value_ts(rit->second);
+            if (auto rit = find_struct_method_return_type(callee_ts.tag, "operator_call",
+                                                          callee_ts.is_const))
+              return reference_value_ts(*rit);
           }
         }
         break;
@@ -1453,6 +1456,54 @@ class Lowerer {
       }
     }
     return nullptr;
+  }
+
+  std::optional<std::string> find_struct_method_mangled(const std::string& tag,
+                                                        const std::string& method,
+                                                        bool is_const_obj) const {
+    const std::string base_key = tag + "::" + method;
+    const std::string const_key = base_key + "_const";
+    auto try_local = [&]() -> std::optional<std::string> {
+      auto it = is_const_obj ? struct_methods_.find(const_key) : struct_methods_.find(base_key);
+      if (it != struct_methods_.end()) return it->second;
+      it = is_const_obj ? struct_methods_.find(base_key) : struct_methods_.find(const_key);
+      if (it != struct_methods_.end()) return it->second;
+      return std::nullopt;
+    };
+    if (auto local = try_local()) return local;
+    auto dit = module_->struct_defs.find(tag);
+    if (dit != module_->struct_defs.end()) {
+      for (const auto& base_tag : dit->second.base_tags) {
+        if (auto inherited = find_struct_method_mangled(base_tag, method, is_const_obj))
+          return inherited;
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<TypeSpec> find_struct_method_return_type(const std::string& tag,
+                                                         const std::string& method,
+                                                         bool is_const_obj) const {
+    const std::string base_key = tag + "::" + method;
+    const std::string const_key = base_key + "_const";
+    auto try_local = [&]() -> std::optional<TypeSpec> {
+      auto it = is_const_obj ? struct_method_ret_types_.find(const_key)
+                             : struct_method_ret_types_.find(base_key);
+      if (it != struct_method_ret_types_.end()) return it->second;
+      it = is_const_obj ? struct_method_ret_types_.find(base_key)
+                        : struct_method_ret_types_.find(const_key);
+      if (it != struct_method_ret_types_.end()) return it->second;
+      return std::nullopt;
+    };
+    if (auto local = try_local()) return local;
+    auto dit = module_->struct_defs.find(tag);
+    if (dit != module_->struct_defs.end()) {
+      for (const auto& base_tag : dit->second.base_tags) {
+        if (auto inherited = find_struct_method_return_type(base_tag, method, is_const_obj))
+          return inherited;
+      }
+    }
+    return std::nullopt;
   }
 
   ExprId append_expr(const Node* src, ExprPayload payload, const TypeSpec& ts,
@@ -2170,6 +2221,29 @@ class Lowerer {
       def.is_union = tpl_def->is_union;
       def.pack_align = tpl_def->pack_align;
       def.struct_align = tpl_def->struct_align;
+      TypeBindings method_tpl_bindings;
+      for (const auto& [pname, pts] : selected_type_bindings)
+        method_tpl_bindings[pname] = pts;
+      NttpBindings method_nttp_bindings;
+      for (const auto& [npname, nval] : selected_nttp_bindings)
+        method_nttp_bindings[npname] = nval;
+      for (int bi = 0; bi < tpl_def->n_bases; ++bi) {
+        TypeSpec base_ts = tpl_def->base_types[bi];
+        for (const auto& [pname, pts] : selected_type_bindings) {
+          if (base_ts.base == TB_TYPEDEF && base_ts.tag &&
+              std::string(base_ts.tag) == pname) {
+            base_ts.base = pts.base;
+            base_ts.tag = pts.tag;
+            base_ts.ptr_level += pts.ptr_level;
+            base_ts.is_const |= pts.is_const;
+            base_ts.is_volatile |= pts.is_volatile;
+          }
+        }
+        if (base_ts.tpl_struct_origin) {
+          resolve_pending_tpl_struct(base_ts, method_tpl_bindings, method_nttp_bindings);
+        }
+        if (base_ts.tag && base_ts.tag[0]) def.base_tags.push_back(base_ts.tag);
+      }
 
       int num_fields = tpl_def->n_fields > 0 ? tpl_def->n_fields : 0;
       int llvm_idx = 0;
@@ -2227,12 +2301,6 @@ class Lowerer {
       module_->struct_defs[mangled] = std::move(def);
 
       // Register and immediately lower methods from the template struct.
-      TypeBindings method_tpl_bindings;
-      for (const auto& [pname, pts] : selected_type_bindings)
-        method_tpl_bindings[pname] = pts;
-      NttpBindings method_nttp_bindings;
-      for (const auto& [npname, nval] : selected_nttp_bindings)
-        method_nttp_bindings[npname] = nval;
       for (int mi = 0; mi < tpl_def->n_children; ++mi) {
         const Node* method = tpl_def->children[mi];
         if (!method || method->kind != NK_FUNCTION || !method->name) continue;
@@ -6012,24 +6080,13 @@ class Lowerer {
       return ExprId::invalid();
 
     // Select const vs non-const overload based on object constness.
-    std::string base_key = std::string(obj_ts.tag) + "::" + op_method_name;
-    std::string const_key = base_key + "_const";
-    decltype(struct_methods_)::iterator mit;
-    if (obj_ts.is_const) {
-      // Const object: must use const overload.
-      mit = struct_methods_.find(const_key);
-      if (mit == struct_methods_.end())
-        mit = struct_methods_.find(base_key); // fallback to non-const
-    } else {
-      // Non-const object: prefer non-const, fallback to const.
-      mit = struct_methods_.find(base_key);
-      if (mit == struct_methods_.end())
-        mit = struct_methods_.find(const_key);
-    }
-    if (mit == struct_methods_.end()) return ExprId::invalid();
+    std::optional<std::string> resolved = find_struct_method_mangled(
+        obj_ts.tag, op_method_name, obj_ts.is_const);
+    if (!resolved) return ExprId::invalid();
 
     // Resolve ref-overloaded operators (e.g., operator=(const T&) vs operator=(T&&)).
-    std::string resolved_mangled = mit->second;
+    std::string resolved_mangled = *resolved;
+    std::string base_key = std::string(obj_ts.tag) + "::" + op_method_name;
     auto ovit = ref_overload_set_.find(base_key);
     if (ovit != ref_overload_set_.end() && !ovit->second.empty()) {
       const auto& overloads = ovit->second;
@@ -6067,9 +6124,9 @@ class Lowerer {
     // Fallback: if fn_index doesn't have the return type yet (method not
     // lowered), use struct_method_ret_types_ which is populated at collection.
     if (fn_ts.base == TB_VOID) {
-      auto rit = struct_method_ret_types_.find(
-          std::string(obj_ts.tag) + "::" + op_method_name);
-      if (rit != struct_method_ret_types_.end()) fn_ts = rit->second;
+      if (auto rit = find_struct_method_return_type(obj_ts.tag, op_method_name,
+                                                    obj_ts.is_const))
+        fn_ts = *rit;
     }
     TypeSpec callee_ts = fn_ts;
     callee_ts.ptr_level++;
@@ -6240,6 +6297,61 @@ class Lowerer {
       }
       case NK_VAR: {
         if (n->name && n->name[0]) {
+          if (n->has_template_args && template_struct_defs_.count(n->name)) {
+            std::string arg_refs;
+            for (int i = 0; i < n->n_template_args; ++i) {
+              if (!arg_refs.empty()) arg_refs += ",";
+              if (n->template_arg_is_value && n->template_arg_is_value[i]) {
+                const char* fwd_name = n->template_arg_nttp_names ?
+                    n->template_arg_nttp_names[i] : nullptr;
+                if (fwd_name && fwd_name[0]) arg_refs += fwd_name;
+                else arg_refs += std::to_string(n->template_arg_values[i]);
+              } else if (n->template_arg_types) {
+                const TypeSpec& arg_ts = n->template_arg_types[i];
+                if (arg_ts.tpl_struct_origin) {
+                  arg_refs += "@";
+                  arg_refs += arg_ts.tpl_struct_origin;
+                  arg_refs += ":";
+                  arg_refs += arg_ts.tpl_struct_arg_refs ? arg_ts.tpl_struct_arg_refs : "";
+                } else if (arg_ts.tag && arg_ts.tag[0]) {
+                  arg_refs += arg_ts.tag;
+                } else {
+                  arg_refs += "?";
+                }
+              }
+            }
+            TypeSpec tmp_ts{};
+            tmp_ts.base = TB_STRUCT;
+            tmp_ts.array_size = -1;
+            tmp_ts.inner_rank = -1;
+            tmp_ts.tpl_struct_origin = n->name;
+            tmp_ts.tpl_struct_arg_refs = arg_refs.c_str();
+            TypeBindings tpl_empty;
+            NttpBindings nttp_empty;
+            resolve_pending_tpl_struct(
+                tmp_ts,
+                ctx ? ctx->tpl_bindings : tpl_empty,
+                ctx ? ctx->nttp_bindings : nttp_empty);
+            if (tmp_ts.tag && module_->struct_defs.count(tmp_ts.tag)) {
+              const LocalId tmp_lid = next_local_id();
+              const std::string tmp_name = "__tmp_struct_" + std::to_string(tmp_lid.value);
+              LocalDecl tmp{};
+              tmp.id = tmp_lid;
+              tmp.name = tmp_name;
+              tmp.type = qtype_from(tmp_ts, ValueCategory::LValue);
+              tmp.storage = StorageClass::Auto;
+              tmp.span = make_span(n);
+              if (ctx) {
+                ctx->locals[tmp.name] = tmp.id;
+                ctx->local_types[tmp.id.value] = tmp_ts;
+                append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
+                DeclRef tmp_ref{};
+                tmp_ref.name = tmp_name;
+                tmp_ref.local = tmp_lid;
+                return append_expr(n, tmp_ref, tmp_ts, ValueCategory::LValue);
+              }
+            }
+          }
           std::string qname = n->name;
           size_t scope_pos = qname.rfind("::");
           if (scope_pos != std::string::npos) {

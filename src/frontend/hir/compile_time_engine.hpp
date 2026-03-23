@@ -335,6 +335,17 @@ struct CompileTimeState {
     template_fn_defs_[name] = node;
   }
 
+  /// Register a template struct primary definition (AST node pointer).
+  void register_template_struct_def(const std::string& name, const Node* node) {
+    template_struct_defs_[name] = node;
+  }
+
+  /// Register a template struct specialization under its primary template name.
+  void register_template_struct_specialization(const std::string& primary_name,
+                                              const Node* node) {
+    template_struct_specializations_[primary_name].push_back(node);
+  }
+
   /// Register a consteval function definition (AST node pointer).
   void register_consteval_def(const std::string& name, const Node* node) {
     consteval_fn_defs_[name] = node;
@@ -343,6 +354,11 @@ struct CompileTimeState {
   /// Check whether a template function definition is known.
   bool has_template_def(const std::string& name) const {
     return template_fn_defs_.count(name) > 0;
+  }
+
+  /// Check whether a template struct definition is known.
+  bool has_template_struct_def(const std::string& name) const {
+    return template_struct_defs_.count(name) > 0;
   }
 
   /// Check whether a consteval function definition is known.
@@ -362,6 +378,19 @@ struct CompileTimeState {
   const Node* find_template_def(const std::string& name) const {
     auto it = template_fn_defs_.find(name);
     return it != template_fn_defs_.end() ? it->second : nullptr;
+  }
+
+  /// Look up a template struct definition by name (nullptr if unknown).
+  const Node* find_template_struct_def(const std::string& name) const {
+    auto it = template_struct_defs_.find(name);
+    return it != template_struct_defs_.end() ? it->second : nullptr;
+  }
+
+  /// Look up registered template struct specializations (nullptr if unknown).
+  const std::vector<const Node*>* find_template_struct_specializations(
+      const std::string& name) const {
+    auto it = template_struct_specializations_.find(name);
+    return it != template_struct_specializations_.end() ? &it->second : nullptr;
   }
 
   /// Look up a consteval function definition by name (nullptr if unknown).
@@ -475,6 +504,8 @@ struct CompileTimeState {
   void dump(FILE* out) const {
     std::fprintf(out, "[CompileTimeState] template_defs=%zu consteval_defs=%zu\n",
                  template_fn_defs_.size(), consteval_fn_defs_.size());
+    std::fprintf(out, "[CompileTimeState] template_struct_defs=%zu template_struct_specializations=%zu\n",
+                 template_struct_defs_.size(), template_struct_specializations_.size());
     std::fprintf(out, "[CompileTimeState] enum_consts=%zu const_int_bindings=%zu\n",
                  enum_consts_.size(), const_int_bindings_.size());
     std::fprintf(out, "[CompileTimeState] registry parity:\n");
@@ -484,6 +515,10 @@ struct CompileTimeState {
  private:
   // Template function definitions indexed by name (AST node pointers).
   std::unordered_map<std::string, const Node*> template_fn_defs_;
+  // Template struct primary definitions indexed by name (AST node pointers).
+  std::unordered_map<std::string, const Node*> template_struct_defs_;
+  // Template struct specializations indexed by primary name.
+  std::unordered_map<std::string, std::vector<const Node*>> template_struct_specializations_;
   // Consteval function definitions indexed by name (AST node pointers).
   std::unordered_map<std::string, const Node*> consteval_fn_defs_;
   // Enum constant values (name → value).

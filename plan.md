@@ -61,6 +61,8 @@
 
 1. 修掉 `eastl_type_traits_simple.cpp` 目前暴露的第一個 frontend blocker
    - `is_signed_helper` incomplete type
+   - 後續 runtime / trait-dispatch 修正優先放在 lazy instantiation / compile-time state，
+     不再把 NTTP expression resolution 繼續堆在 `ast_to_hir`
 2. 保持 `type_traits` 測試小而清楚，優先確保錯誤定位乾淨
 3. 視修正結果補更多 `type_traits.h` smoke cases：
    - signed / unsigned traits
