@@ -2181,11 +2181,11 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         while (!at_end()) {
             if (check(TokenKind::LBrace) && angle_depth == 0 && paren_depth == 0)
                 break;
-            if (check(TokenKind::Less))
+            if (check(TokenKind::Less) && paren_depth == 0)
                 ++angle_depth;
-            else if (check(TokenKind::Greater) && angle_depth > 0)
+            else if (check(TokenKind::Greater) && paren_depth == 0 && angle_depth > 0)
                 --angle_depth;
-            else if (check(TokenKind::GreaterGreater) && angle_depth > 0) {
+            else if (check(TokenKind::GreaterGreater) && paren_depth == 0 && angle_depth > 0) {
                 // >> counts as two > closers.
                 angle_depth -= std::min(angle_depth, 2);
                 consume();
