@@ -1121,7 +1121,8 @@ class Lowerer {
       bool spawned_owner_work = false;
       if (owner_ts.tpl_struct_origin) {
         spawned_owner_work = spawn_owner_work(owner_ts);
-        resolve_pending_tpl_struct(owner_ts, work_item.type_bindings,
+        resolve_pending_tpl_struct(owner_ts, work_item.owner_primary_def,
+                                   work_item.type_bindings,
                                    work_item.nttp_bindings);
         if (owner_ts.tpl_struct_origin) {
           return DeferredTemplateTypeResult::blocked(
@@ -1154,7 +1155,8 @@ class Lowerer {
     if (ts.tpl_struct_origin &&
         work_item.kind != PendingTemplateTypeKind::OwnerStruct) {
       const bool spawned_owner_work = spawn_owner_work(ts);
-      resolve_pending_tpl_struct(ts, work_item.type_bindings,
+      resolve_pending_tpl_struct(ts, work_item.owner_primary_def,
+                                 work_item.type_bindings,
                                  work_item.nttp_bindings);
       if (ts.tpl_struct_origin) {
         return DeferredTemplateTypeResult::blocked(
@@ -1167,7 +1169,8 @@ class Lowerer {
       return DeferredTemplateTypeResult::resolved();
     }
     if (ts.tpl_struct_origin) {
-      resolve_pending_tpl_struct(ts, work_item.type_bindings,
+      resolve_pending_tpl_struct(ts, work_item.owner_primary_def,
+                                 work_item.type_bindings,
                                  work_item.nttp_bindings);
       if (ts.tpl_struct_origin) {
         return DeferredTemplateTypeResult::blocked(
@@ -2208,12 +2211,14 @@ class Lowerer {
   //   4. Instantiating the concrete struct in the HIR if needed
   //   5. Updating ts.tag to the concrete struct name
   void resolve_pending_tpl_struct(TypeSpec& ts,
+                                  const Node* primary_tpl,
                                   const TypeBindings& tpl_bindings,
                                   const NttpBindings& nttp_bindings) {
-    if (!ts.tpl_struct_origin) return;
+    if (!primary_tpl && !ts.tpl_struct_origin) return;
     const char* origin = ts.tpl_struct_origin;
-    const Node* primary_tpl = find_template_struct_primary(origin);
+    if (!primary_tpl && origin) primary_tpl = find_template_struct_primary(origin);
     if (!primary_tpl) return;
+    if (!origin) origin = primary_tpl->name;
 
     // Parse arg_refs: comma-separated list of arg values in param order.
     std::vector<std::string> arg_refs;
@@ -2942,6 +2947,14 @@ class Lowerer {
         ts = resolved_member;
       }
     }
+  }
+
+  void resolve_pending_tpl_struct(TypeSpec& ts,
+                                  const TypeBindings& tpl_bindings,
+                                  const NttpBindings& nttp_bindings) {
+    const Node* primary_tpl =
+        ts.tpl_struct_origin ? find_template_struct_primary(ts.tpl_struct_origin) : nullptr;
+    resolve_pending_tpl_struct(ts, primary_tpl, tpl_bindings, nttp_bindings);
   }
 
   void lower_function(const Node* fn_node,

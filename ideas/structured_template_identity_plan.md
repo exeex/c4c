@@ -202,16 +202,30 @@ The key part is:
 
 ### Phase 1. Stop Registering Non-Primary Names As Primary Families
 
+Status: done
+
 Minimum rule:
 
 - only primary template definitions should populate the primary-family registry
 - specialization patterns should populate a separate specialization registry
 - concrete instantiations should not register themselves as template families
 
-This is the first guardrail.
+Completed:
+
+- primary template struct registration is now guarded so non-primary names do
+  not enter the primary-family registry
+- specialization patterns are tracked separately from primary template family
+  definitions
+- dependent specialization patterns are no longer lowered as if they were
+  concrete struct instances
+- pending template type work now carries `owner_primary_def`
+
+This is the first guardrail, and it is in place.
 
 
 ### Phase 2. Introduce Structured Family/Pattern Handles
+
+Status: in progress
 
 Add helper-level APIs that operate on:
 
@@ -229,8 +243,28 @@ Examples:
 - resolve member typedef against a concrete instance that points back to its
   primary family
 
+Completed:
+
+- template struct lookup now has owner-based parser/HIR helpers that start
+  from the primary template node
+- HIR template struct selection now uses:
+  - `TemplateStructEnv`
+  - `SelectedTemplateStructPattern`
+- deferred template type work now prefers `owner_primary_def` when available
+
+Remaining:
+
+- convert more `resolve_pending_tpl_struct()` callers to pass explicit
+  primary/template env handles instead of relying on `tpl_struct_origin`
+- introduce a more explicit concrete instance identity helper
+  (`primary_def + bindings`)
+- reduce remaining semantic dependence on `template_origin_name` /
+  `tpl_struct_origin` outside parser-side transport
+
 
 ### Phase 3. Canonicalize Pending Type Work On Entry To The Engine
+
+Status: started
 
 Even if parser/HIR still carry string transport fields, the engine should try
 to canonicalize them into:
@@ -240,10 +274,25 @@ to canonicalize them into:
 
 before doing real resolution work.
 
+Completed:
+
+- `PendingTemplateTypeWorkItem` now carries `owner_primary_def`
+- engine dedup for pending template type work now includes the structured
+  owner when available
+
+Remaining:
+
+- canonicalize more pending work items at creation time so engine resolution
+  does not need to re-discover the primary from string transport
+- push `TemplateStructEnv`/selected-pattern data further into deferred
+  resolution entry points
+
 This is the point where string transport stops being engine-internal identity.
 
 
 ### Phase 4. Separate Semantic Keys From Mangled Names
+
+Status: not started
 
 Current code often uses a mangled or generated name both as:
 
