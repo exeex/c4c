@@ -1,137 +1,519 @@
-# Frontend Priority Plan
+# Template Function Identity Plan
 
 ## Goal
 
-先完成 template lazy instantiation / compile-time type realization 的基礎重構，
-再用 EASTL `type_traits.h` bring-up 當第一個主要驗證入口，
-之後才往上推 `integer_sequence.h`、`tuple_fwd_decls.h`、`utility.h`、
-`tuple.h`、`memory.h`。
+Make template function specialization selection use structured identity.
 
-目前主線不是 `vector.h`，也不是更高層容器功能。
-優先順序改成先把最底層 template instantiation / type-trait 基礎打穩。
+Do not use `mangled_name` as the primary semantic key anymore.
 
-## Priority Order
+After this refactor:
 
-1. Lazy template type instantiation infrastructure
-   - follow [ideas/template_lazy_instantiation_plan.md](/workspaces/c4c/ideas/template_lazy_instantiation_plan.md)
-   - move dependent template type/default/member-type realization toward compile-time-engine fixpoint
-2. EASTL `type_traits.h` bring-up
-   - use `type_traits` as the first real validation surface for the new lazy path
-3. EASTL `internal/integer_sequence.h`
-4. EASTL `internal/tuple_fwd_decls.h`
-5. EASTL `utility.h`
-6. EASTL `tuple.h`
-7. EASTL `memory.h`
-8. 之後才回到 `vector.h` 與更高層 EASTL header
+- primary template family identity = `const Node* primary_def`
+- selected specialization pattern identity = `const Node* selected_pattern`
+- concrete instantiation identity = `primary_def + SpecializationKey`
+- `mangled_name` = derived output only
 
-## Main Track
 
-主線重構入口：
+## Read This First
 
-- `ideas/template_lazy_instantiation_plan.md`
+This document is written for an execution-oriented agent.
 
-主測試入口：
+Do not invent a new architecture.
+Do not redesign the whole template pipeline.
+Copy the shape that already exists for template structs and apply the same
+pattern to template functions.
 
-- `tests/cpp/eastl/eastl_type_traits_simple.cpp`
-- target: `eastl_type_traits_simple_workflow`
+Primary references to copy from:
 
-拆分中的 header probes：
+- [structured_template_identity_plan.md](/workspaces/c4c/ideas/structured_template_identity_plan.md)
+- [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+  Current struct-side registry/key patterns and current function registry live
+  here.
+- [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
+  Current function-template registration, specialization collection, and
+  lowering decisions live here.
 
-- `tests/cpp/eastl/eastl_integer_sequence_simple.cpp`
-- `tests/cpp/eastl/eastl_tuple_fwd_decls_simple.cpp`
-- `tests/cpp/eastl/eastl_utility_simple.cpp`
-- `tests/cpp/eastl/eastl_tuple_simple.cpp`
-- `tests/cpp/eastl/eastl_memory_simple.cpp`
 
-## Why This Order
+## Current Problem
 
-最近把 EASTL case 拆開後可以更清楚看見：
+Today function-template identity is split in half:
 
-- `vector.h` 會把很多更深層 header 一起拉進來
-- 這會讓最早 blocker 不夠清楚
-- `type_traits.h` 才是目前更合理的第一個穩定入口
+- good part:
+  `TypeBindings`, `NttpBindings`, and `SpecializationKey` already exist
+- bad part:
+  explicit specialization lookup still does
+  `mangled_name -> AST specialization node`
 
-但目前更前面的真 blocker 其實不是單一 EASTL header，
-而是 dependent template type realization 的責任分散在 parser、
-`ast_to_hir`、compile-time engine 三邊。
+That old path currently looks like this:
 
-目前新的主測試已經能直接暴露這個缺口：
+1. register explicit specialization in
+   [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
+   by calling `mangle_specialization(...)`
+2. store it in
+   [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+   as `specs_[mangled]`
+3. later, when lowering an instance, do
+   `registry_.find_specialization(inst.mangled_name)`
+4. if found, lower that body
 
-- `object has incomplete type: is_signed_helper`
+This is the exact thing that must stop being the primary path.
 
-在這個問題清掉之前，往上追 `utility.h` / `tuple.h` / `memory.h`
-的成本都偏高，因為很多錯誤只是連鎖反應。
 
-所以現在的主順序應該是：
+## Non-Goals
 
-1. 先把 lazy template type instantiation 主線做對
-2. 再把 `type_traits.h` 當成第一個大型驗證面
-3. 之後才往上推其他 EASTL header
+Do not do these things in this plan:
 
-## Immediate Success Condition
+- do not move deferred NTTP default evaluation into the engine
+- do not redesign parser template syntax handling
+- do not remove mangled names from emitted HIR or metadata
+- do not refactor template struct identity again
+- do not solve every template-function bug in one diff
 
-以下成立時，可以往下一層 header 推進：
 
-- `ideas/template_lazy_instantiation_plan.md` 的 Phase 1-5 至少完成一條可工作的窄路徑
-- `eastl_type_traits_simple_workflow` host compile / host run / c4cll frontend / backend / runtime 全綠
-- `type_traits.h` 內常用 traits 與 alias templates 至少有一組穩定 smoke coverage
-- 不再先撞上 `is_signed_helper` 這類基礎 trait 展開問題
+## Desired End State
 
-## Concrete Next Actions
+At the end of this plan:
 
-1. 先實作 lazy template type instantiation 主線
-   - 以 [ideas/template_lazy_instantiation_plan.md](/workspaces/c4c/ideas/template_lazy_instantiation_plan.md) 為主
-   - parser 只保留 dependent NTTP expression / member-type / alias-template 結構
-   - `ast_to_hir` 只搬運 pending type work，不再承擔越來越多 eager template semantics
-   - compile-time engine 擴成 type-driven fixpoint：
-     從實際需要具象化的 template type / alias / member typedef / base 出發做 lazy instantiate
-   - dependent NTTP default 求值移到 bindings concrete 之後
-   - concrete NTTP value 求出後，先做 specialization selection，再做 base/static member/operator() propagation
-2. 用 `type_traits` 當第一個驗證面，修掉 `eastl_type_traits_simple.cpp` 暴露的第一個 blocker
-   - `is_signed_helper` incomplete type
-   - inherited `::value`
-   - inherited `operator()`
-3. 保持 `type_traits` 測試小而清楚，優先確保錯誤定位乾淨
-   - 先用最小 probe 把 lazy 路徑隔離：
-     `template_alias_deferred_nttp_expr_runtime.cpp`
-   - 再用較大的 probe 驗證整條 EASTL trait 鏈：
-     `inherited_static_member_lookup_runtime.cpp`
-     `eastl_type_traits_signed_helper_base_expr_parse.cpp`
-4. 視修正結果補更多 `type_traits.h` smoke cases：
-   - signed / unsigned traits
-   - `is_same`
-   - `is_const`
-   - `is_reference`
-   - `remove_cv`
-   - `remove_reference`
-   - `add_lvalue_reference`
-   - `conditional_t`
-   - `enable_if_t`
-5. `type_traits` 穩定後，再往 `eastl_integer_sequence_simple.cpp` 推
-6. 之後依序往 `tuple_fwd_decls`、`utility`、`tuple`、`memory` 推進
+- explicit specialization registration is owner-based, not mangled-name-based
+- specialization selection starts from the primary template function node
+- the result of specialization selection is structured
+- dedup/instance identity uses `primary_def + spec_key`
+- mangled names are still produced, but only after the semantic instance is
+  known
 
-## Rule
 
-- 先完成 lazy template type instantiation 的主幹，不在 parser 上繼續累積 dependent-evaluation 特例
-- 先解最底層 header 的第一個真 blocker
-- 不為了追高層 header 暫時把底層錯誤掩蓋掉
-- 保留 split tests，讓 fail 直接暴露
-- 每往上一層 header，都要確認下層入口已經夠穩定
+## Files To Change
 
-## Implementation Direction
+You are expected to modify these files:
 
-- 主線優先不是單補 `type_traits` parser 特例，而是先完成 lazy template type instantiation 基礎設施
-- `type_traits` 是第一個主要驗證面，不是獨立於這條主線之外的特案
-- parser 的責任：
-  保留足夠的 deferred template arg / member-type / alias-template 資訊，
-  尤其是 dependent NTTP expression 與 alias-template 參數映射
-- compile-time engine 的責任：
-  在 bindings concrete 後解析 deferred arg refs，產生 concrete NTTP values，
-  並驅動 specialization selection 與 template type lazy instantiation fixpoint
-- HIR lowering 的責任：
-  消費 compile-time 決定後的 concrete struct instantiations，
-  做 base_tags / method / static member propagation
-- 這樣的分層可以避免：
-  parser 把未知 expression 偷偷降成 `0`、
-  `ast_to_hir` 直接承擔越來越多 template expression semantics、
-  以及 alias template / specialization / inherited lookup 各自維護不同版本的 instantiation 規則
+1. [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+- add structured function-template identity types
+- change `InstantiationRegistry`
+- remove string-only specialization registry from the main path
+
+2. [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
+- change explicit specialization registration
+- change specialization selection during lowering
+- change deferred template function instantiation callback to use structured
+  selection
+
+You may also need small metadata touchups in:
+
+3. [ir.hpp](/workspaces/c4c/src/frontend/hir/ir.hpp)
+- only if you need to expose structured metadata in HIR debug dumps
+
+Do not start in parser files for this task.
+
+
+## Existing Code You Must Replace
+
+These old pieces are the ones to shrink or remove from the main path.
+
+In [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp):
+
+- `specs_`
+- `find_specialization(const std::string& mangled)`
+- `register_specialization(const std::string& mangled, const Node* spec_node)`
+
+In [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp):
+
+- explicit specialization registration via `mangle_specialization(...)`
+- lowering-time lookup via `registry_.find_specialization(inst.mangled_name)`
+- deferred instantiation lookup via `registry_.find_specialization(mangled)`
+
+These may survive temporarily as fallback helpers during transition, but they
+must no longer be the primary selection path.
+
+
+## New Data Model To Add
+
+Add these concepts in
+[compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp).
+
+Use names close to these:
+
+```cpp
+struct FunctionTemplateEnv {
+  const Node* primary_def = nullptr;
+  const std::vector<const Node*>* specialization_patterns = nullptr;
+};
+
+struct SelectedFunctionTemplatePattern {
+  const Node* primary_def = nullptr;
+  const Node* selected_pattern = nullptr;
+  TypeBindings type_bindings;
+  NttpBindings nttp_bindings;
+  SpecializationKey spec_key;
+};
+
+struct FunctionTemplateInstanceKey {
+  const Node* primary_def = nullptr;
+  SpecializationKey spec_key;
+};
+```
+
+Do not over-design this.
+Copy the template-struct identity pattern as closely as possible.
+
+
+## Registry Changes Required
+
+Update `InstantiationRegistry` in
+[compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp).
+
+### 1. Add owner-based specialization storage
+
+Replace the effective meaning of:
+
+- `mangled specialization string -> specialization node`
+
+with:
+
+- `primary function template node -> list of specialization pattern nodes`
+
+Suggested storage:
+
+```cpp
+std::unordered_map<const Node*, std::vector<const Node*>> function_specializations_;
+```
+
+You may keep `specs_` temporarily only as a compatibility fallback.
+Do not use it as the preferred lookup anymore.
+
+
+### 2. Add structured instance keys
+
+Today dedup is effectively:
+
+- `fn_name + "::" + mangled_name`
+
+Change the semantic dedup key to:
+
+- `primary_def + spec_key`
+
+You can still keep `mangled_name` inside `TemplateSeedWorkItem` and
+`TemplateInstance`, because codegen and HIR names still need it.
+
+But semantic dedup must no longer depend only on the string.
+
+Suggested storage:
+
+```cpp
+std::unordered_set<FunctionTemplateInstanceKey, ...> instance_keys_;
+std::unordered_set<FunctionTemplateInstanceKey, ...> seed_keys_;
+```
+
+If using `unordered_set` for a custom key is annoying, use a stable string
+wrapper built from:
+
+- primary node address
+- `SpecializationKey`
+
+That is acceptable as a temporary implementation detail.
+The important part is that the semantic identity starts from `primary_def`,
+not from `mangled_name`.
+
+
+### 3. Add owner-based specialization selection helpers
+
+Add helper APIs like:
+
+```cpp
+FunctionTemplateEnv build_function_template_env(const Node* primary_def) const;
+
+SelectedFunctionTemplatePattern select_function_specialization_pattern(
+    const Node* primary_def,
+    const TypeBindings& bindings,
+    const NttpBindings& nttp_bindings) const;
+```
+
+These helpers should:
+
+1. start from the primary template definition
+2. inspect registered explicit specializations under that primary
+3. compare specialization args against concrete bindings
+4. return the selected pattern, or the primary if no specialization matches
+
+
+## Selection Logic To Reuse
+
+Do not invent function-specific matching rules if you can avoid it.
+
+Use the existing ingredients already in the codebase:
+
+- `SpecializationKey`
+- `TypeBindings`
+- `NttpBindings`
+- explicit specialization AST data on `Node`
+  - `template_arg_types`
+  - `template_arg_values`
+  - `template_arg_is_value`
+
+You are allowed to keep `mangle_specialization(...)` only as a debug/fallback
+helper during migration.
+
+But the new main path should compare semantic bindings, not reproduced mangled
+strings.
+
+
+## AST To HIR Changes Required
+
+Update
+[ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp).
+
+### 1. Registration pass
+
+Current code:
+
+- collects template defs with `ct_state_->register_template_def(...)`
+- collects explicit specializations by computing a mangled name
+- registers those specializations with `registry_.register_specialization(mangled, item)`
+
+Change it to:
+
+- find the primary function template definition
+- register the specialization under that primary definition
+- do not make mangled-string lookup the only source of truth
+
+
+### 2. Lowering of discovered instances
+
+Current code:
+
+```cpp
+const Node* spec_node = registry_.find_specialization(inst.mangled_name);
+if (spec_node) {
+  lower_function(spec_node, &inst.mangled_name);
+} else {
+  lower_function(item, &inst.mangled_name, ...);
+}
+```
+
+Replace it with:
+
+1. derive the selected pattern from `primary_def + bindings + nttp_bindings`
+2. if selected pattern is an explicit specialization, lower that node
+3. otherwise lower the primary template body with bindings
+
+The lowering decision must not start from `inst.mangled_name`.
+
+
+### 3. Deferred template instantiation callback
+
+Current code in `instantiate_deferred_template(...)` also does:
+
+- `registry_.find_specialization(mangled)`
+
+Change it the same way:
+
+1. find `fn_def`
+2. run structured selection from `fn_def + bindings + nttp_bindings`
+3. lower the selected pattern
+
+
+## Concrete Removal Checklist
+
+This is the minimum checklist for the agent.
+
+In [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp):
+
+- add `FunctionTemplateEnv`
+- add `SelectedFunctionTemplatePattern`
+- add `FunctionTemplateInstanceKey`
+- add owner-based specialization registry
+- add owner-based specialization lookup/select helper
+- stop treating `specs_` as the primary specialization registry
+- stop treating `fn_name + "::" + mangled` as the semantic instance key
+
+In [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp):
+
+- stop registering explicit specializations only by mangled string
+- stop selecting function specializations by `inst.mangled_name`
+- stop selecting deferred function specializations by `mangled`
+- continue producing mangled names only as derived output for lowered HIR
+
+
+## Implementation Order
+
+Do the work in this order.
+Do not jump around.
+
+### Step 1. Add structured helper types
+
+File:
+- [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+
+Add:
+- `FunctionTemplateEnv`
+- `SelectedFunctionTemplatePattern`
+- `FunctionTemplateInstanceKey`
+
+
+### Step 2. Add owner-based specialization registry
+
+File:
+- [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+
+Add:
+- register specializations by `primary_def`
+- query specialization list by `primary_def`
+
+
+### Step 3. Add structured specialization selection helper
+
+Files:
+- [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+- [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) if helper bodies fit better there
+
+Implement:
+- select specialization from `primary_def + bindings + nttp_bindings`
+
+Reference design:
+- the template-struct owner-first selection path introduced by
+  [structured_template_identity_plan.md](/workspaces/c4c/ideas/structured_template_identity_plan.md)
+
+
+### Step 4. Switch lowering over to structured selection
+
+File:
+- [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
+
+Replace both:
+- initial lowering path for discovered instances
+- deferred instantiation callback path
+
+
+### Step 5. Switch semantic dedup to structured key
+
+File:
+- [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+
+Change:
+- seed dedup
+- realized-instance dedup
+
+Keep:
+- `mangled_name` as stored output metadata
+
+
+### Step 6. Remove old path from the main control flow
+
+Files:
+- [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+- [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
+
+Allowed:
+- keep old mangled lookup only as temporary fallback
+
+Not allowed:
+- old mangled lookup still being the first or only specialization-selection path
+
+
+## How To Match Explicit Specializations
+
+Use this simple rule:
+
+1. start from the primary template function
+2. iterate its explicit specialization nodes
+3. for each specialization, compare its declared template args to the concrete
+   bindings for this instantiation
+4. if all declared args match, choose that specialization
+5. if none match, choose the primary template body
+
+Do not add partial ordering.
+Do not add SFINAE.
+Do not add a new ranking system.
+
+This plan only needs the same level of matching the codebase already supports.
+
+
+## Design Reference To Copy
+
+When unsure, copy the style of the template-struct refactor:
+
+- owner-first registration
+- structured selection result
+- structured instance key for dedup
+- mangled name retained as derived output
+
+Primary design reference:
+- [structured_template_identity_plan.md](/workspaces/c4c/ideas/structured_template_identity_plan.md)
+
+Primary implementation references:
+- [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+- [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
+
+
+## Acceptance Criteria
+
+This plan is complete when all of the following are true:
+
+1. explicit function-template specialization selection does not primarily use
+   `mangled_name`
+2. owner-based specialization registration exists
+3. lowering selects specialization bodies from `primary_def + bindings +
+   nttp_bindings`
+4. semantic dedup for template function instances is based on
+   `primary_def + spec_key`
+5. mangled names remain only derived/codegen/debug data
+
+
+## Testcases To Run
+
+At minimum, run these targeted tests after the change:
+
+Core specialization / identity:
+
+- `cpp_positive_sema_specialization_identity_cpp`
+- `cpp_hir_specialization_key`
+- `cpp_hir_template_call_info_dump`
+
+Template function defaults / deduction / NTTP:
+
+- `cpp_positive_sema_template_arg_deduction_cpp`
+- `cpp_positive_sema_template_default_args_cpp`
+- `cpp_positive_sema_template_nttp_cpp`
+- `cpp_positive_sema_template_bool_nttp_cpp`
+- `cpp_positive_sema_template_char_nttp_cpp`
+- `cpp_positive_sema_template_integral_nttp_types_cpp`
+- `cpp_positive_sema_template_nttp_forwarding_depth_cpp`
+- `cpp_positive_sema_template_recursive_nttp_cpp`
+
+Consteval + template-function interaction:
+
+- `cpp_positive_sema_consteval_template_cpp`
+- `cpp_positive_sema_consteval_nested_template_cpp`
+- `cpp_positive_sema_consteval_template_sizeof_cpp`
+- `cpp_hir_consteval_template_dump`
+- `cpp_hir_consteval_template_call_info_dump`
+- `cpp_hir_consteval_template_reduction_verified`
+
+Regression guards around nearby template behavior:
+
+- `cpp_positive_sema_template_alias_deferred_nttp_expr_runtime_cpp`
+- `cpp_positive_sema_eastl_slice6_template_defaults_and_refqual_cpp`
+
+
+## Known Out Of Scope Failure
+
+This plan does not need to fix:
+
+- `cpp_positive_sema_template_nttp_default_runtime_cpp`
+
+That case belongs to
+[template_lazy_instantiation_plan.md](/workspaces/c4c/ideas/template_lazy_instantiation_plan.md),
+because it is about who evaluates deferred NTTP defaults and when, not about
+function-template identity.
+
+
+## Short Version
+
+If you are implementing this plan, do exactly this:
+
+1. in [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp),
+   add owner-based function specialization registry and structured instance keys
+2. in [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp),
+   stop selecting explicit specializations by `inst.mangled_name`
+3. select from `primary_def + bindings + nttp_bindings` instead
+4. keep `mangled_name` only as derived output for the lowered HIR function name
+5. run the listed template-function tests and make sure they still pass

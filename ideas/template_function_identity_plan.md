@@ -2,63 +2,135 @@
 
 ## Goal
 
-Stop using mangled strings as the primary semantic identity for template
-function specialization selection.
+Make template function specialization selection use structured identity.
 
-Strings should remain useful for:
+Do not use `mangled_name` as the primary semantic key anymore.
 
-- diagnostics
-- debug dumps
-- emitted symbol names
-- metadata printing
+After this refactor:
 
-But they should not be the main mechanism for answering:
-
-- which function template family are we talking about?
-- which specialization pattern matched?
-- which concrete instantiation does this body belong to?
+- primary template family identity = `const Node* primary_def`
+- selected specialization pattern identity = `const Node* selected_pattern`
+- concrete instantiation identity = `primary_def + SpecializationKey`
+- `mangled_name` = derived output only
 
 
-## Problem
+## Read This First
 
-Today template function lowering has two different identity systems mixed
-together:
+This document is written for an execution-oriented agent.
 
-- structured instantiation bindings
-  - `TypeBindings`
-  - `NttpBindings`
-  - `SpecializationKey`
-- string-based specialization selection
-  - `mangled_name`
-  - `mangle_specialization(...)`
-  - `specs_[mangled]`
+Do not invent a new architecture.
+Do not redesign the whole template pipeline.
+Copy the shape that already exists for template structs and apply the same
+pattern to template functions.
 
-That means the pipeline is only partially structured.
+Primary references to copy from:
 
-In particular, explicit specialization lookup still depends on:
-
-1. building a mangled name for the concrete instantiation
-2. building the same mangled name for the explicit specialization AST node
-3. using string equality to decide which specialization body to lower
-
-That works, but it keeps semantic selection tied to printable/codegen names.
+- [structured_template_identity_plan.md](/workspaces/c4c/ideas/structured_template_identity_plan.md)
+- [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+  Current struct-side registry/key patterns and current function registry live
+  here.
+- [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
+  Current function-template registration, specialization collection, and
+  lowering decisions live here.
 
 
-## Desired Principle
+## Current Problem
 
-Template function resolution should follow the same identity model we now use
-for template structs:
+Today function-template identity is split in half:
 
-- family identity = primary function template definition
-- pattern identity = a specialization candidate under that primary definition
-- concrete instantiation identity = primary definition + concrete bindings
+- good part:
+  `TypeBindings`, `NttpBindings`, and `SpecializationKey` already exist
+- bad part:
+  explicit specialization lookup still does
+  `mangled_name -> AST specialization node`
 
-Strings may still describe these identities, but should not define them.
+That old path currently looks like this:
+
+1. register explicit specialization in
+   [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
+   by calling `mangle_specialization(...)`
+2. store it in
+   [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+   as `specs_[mangled]`
+3. later, when lowering an instance, do
+   `registry_.find_specialization(inst.mangled_name)`
+4. if found, lower that body
+
+This is the exact thing that must stop being the primary path.
 
 
-## Target Data Model
+## Non-Goals
 
-Conceptually:
+Do not do these things in this plan:
+
+- do not move deferred NTTP default evaluation into the engine
+- do not redesign parser template syntax handling
+- do not remove mangled names from emitted HIR or metadata
+- do not refactor template struct identity again
+- do not solve every template-function bug in one diff
+
+
+## Desired End State
+
+At the end of this plan:
+
+- explicit specialization registration is owner-based, not mangled-name-based
+- specialization selection starts from the primary template function node
+- the result of specialization selection is structured
+- dedup/instance identity uses `primary_def + spec_key`
+- mangled names are still produced, but only after the semantic instance is
+  known
+
+
+## Files To Change
+
+You are expected to modify these files:
+
+1. [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+- add structured function-template identity types
+- change `InstantiationRegistry`
+- remove string-only specialization registry from the main path
+
+2. [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
+- change explicit specialization registration
+- change specialization selection during lowering
+- change deferred template function instantiation callback to use structured
+  selection
+
+You may also need small metadata touchups in:
+
+3. [ir.hpp](/workspaces/c4c/src/frontend/hir/ir.hpp)
+- only if you need to expose structured metadata in HIR debug dumps
+
+Do not start in parser files for this task.
+
+
+## Existing Code You Must Replace
+
+These old pieces are the ones to shrink or remove from the main path.
+
+In [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp):
+
+- `specs_`
+- `find_specialization(const std::string& mangled)`
+- `register_specialization(const std::string& mangled, const Node* spec_node)`
+
+In [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp):
+
+- explicit specialization registration via `mangle_specialization(...)`
+- lowering-time lookup via `registry_.find_specialization(inst.mangled_name)`
+- deferred instantiation lookup via `registry_.find_specialization(mangled)`
+
+These may survive temporarily as fallback helpers during transition, but they
+must no longer be the primary selection path.
+
+
+## New Data Model To Add
+
+Add these concepts in
+[compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp).
+
+Use names close to these:
 
 ```cpp
 struct FunctionTemplateEnv {
@@ -80,120 +152,368 @@ struct FunctionTemplateInstanceKey {
 };
 ```
 
-The key idea:
-
-- explicit specialization matching should start from `primary_def`
-- selected specialization should be a structured result
-- `mangled_name` should be derived output, not the semantic lookup key
+Do not over-design this.
+Copy the template-struct identity pattern as closely as possible.
 
 
-## Current State
+## Registry Changes Required
 
-What is already good:
+Update `InstantiationRegistry` in
+[compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp).
 
-- template function instantiation discovery already tracks structured bindings
-- `SpecializationKey` already exists
-- `InstantiationRegistry` already records realized instances separately from
-  seed work
+### 1. Add owner-based specialization storage
 
-What is still weak:
+Replace the effective meaning of:
 
-- explicit specialization registry is keyed by mangled string
-- specialization body selection uses `inst.mangled_name`
-- there is no owner-based `primary_def -> specialization_patterns` API
-- there is no structured "selected function specialization pattern" result
+- `mangled specialization string -> specialization node`
 
+with:
 
-## Migration Strategy
+- `primary function template node -> list of specialization pattern nodes`
 
-### Phase 1. Separate Family Registration From Specialization Registration
+Suggested storage:
 
-Minimum rule:
+```cpp
+std::unordered_map<const Node*, std::vector<const Node*>> function_specializations_;
+```
 
-- primary template functions register as template families
-- explicit specializations register under their primary template
-- explicit specializations must not behave like independent template origins
-
-This mirrors the template struct guardrail.
+You may keep `specs_` temporarily only as a compatibility fallback.
+Do not use it as the preferred lookup anymore.
 
 
-### Phase 2. Introduce Owner-Based Function Template Selection
+### 2. Add structured instance keys
 
-Add helper-level APIs that operate on:
+Today dedup is effectively:
 
-- `const Node* primary_def`
-- `const Node* selected_pattern`
+- `fn_name + "::" + mangled_name`
 
-instead of:
-
-- only `mangled_name`
-
-Examples:
-
-- build a `FunctionTemplateEnv` from a primary function template
-- select specialization pattern from `primary_def + bindings`
-- return `SelectedFunctionTemplatePattern`
-
-
-### Phase 3. Move Explicit Specialization Lookup Off Mangled Strings
-
-Replace:
-
-- `specs_[mangled]`
-- `find_specialization(mangled)`
-
-with something conceptually closer to:
-
-- `specializations_[primary_def]`
-- structured pattern matching against bindings / `SpecializationKey`
-
-Mangled names may still be stored, but only as derived output.
-
-
-### Phase 4. Introduce Concrete Function Instance Keys
-
-Use a structured key for semantic identity:
+Change the semantic dedup key to:
 
 - `primary_def + spec_key`
 
-This key should be suitable for:
+You can still keep `mangled_name` inside `TemplateSeedWorkItem` and
+`TemplateInstance`, because codegen and HIR names still need it.
 
-- dedup
-- specialization selection
-- future caching
-- future JIT/materialization bookkeeping
+But semantic dedup must no longer depend only on the string.
 
+Suggested storage:
 
-### Phase 5. Keep Mangled Names As Derived Data Only
+```cpp
+std::unordered_set<FunctionTemplateInstanceKey, ...> instance_keys_;
+std::unordered_set<FunctionTemplateInstanceKey, ...> seed_keys_;
+```
 
-Desired rule:
+If using `unordered_set` for a custom key is annoying, use a stable string
+wrapper built from:
 
-- semantic identity uses structured keys
-- emitted symbol names are derived from the semantic identity
-- debug/metadata printing may show `mangled_name`, but lookup should not
-  require reparsing or reproducing that string
+- primary node address
+- `SpecializationKey`
 
-
-## Suggested First Implementation Slice
-
-The smallest useful next step is:
-
-1. add owner-based registration for explicit template function
-   specializations
-2. introduce `FunctionTemplateEnv`
-3. introduce `SelectedFunctionTemplatePattern`
-4. make lowering choose specialization bodies from structured selection
-   first
-5. leave mangled-name lookup only as temporary fallback during transition
+That is acceptable as a temporary implementation detail.
+The important part is that the semantic identity starts from `primary_def`,
+not from `mangled_name`.
 
 
-## Completion Criteria
+### 3. Add owner-based specialization selection helpers
 
-This plan is done when:
+Add helper APIs like:
 
-- explicit specialization selection no longer depends primarily on
-  `mangled_name`
-- function template family identity is the primary template AST node
-- specialization pattern selection returns structured results
-- `SpecializationKey` participates in semantic identity directly
-- mangled names remain only derived/codegen/debug data
+```cpp
+FunctionTemplateEnv build_function_template_env(const Node* primary_def) const;
+
+SelectedFunctionTemplatePattern select_function_specialization_pattern(
+    const Node* primary_def,
+    const TypeBindings& bindings,
+    const NttpBindings& nttp_bindings) const;
+```
+
+These helpers should:
+
+1. start from the primary template definition
+2. inspect registered explicit specializations under that primary
+3. compare specialization args against concrete bindings
+4. return the selected pattern, or the primary if no specialization matches
+
+
+## Selection Logic To Reuse
+
+Do not invent function-specific matching rules if you can avoid it.
+
+Use the existing ingredients already in the codebase:
+
+- `SpecializationKey`
+- `TypeBindings`
+- `NttpBindings`
+- explicit specialization AST data on `Node`
+  - `template_arg_types`
+  - `template_arg_values`
+  - `template_arg_is_value`
+
+You are allowed to keep `mangle_specialization(...)` only as a debug/fallback
+helper during migration.
+
+But the new main path should compare semantic bindings, not reproduced mangled
+strings.
+
+
+## AST To HIR Changes Required
+
+Update
+[ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp).
+
+### 1. Registration pass
+
+Current code:
+
+- collects template defs with `ct_state_->register_template_def(...)`
+- collects explicit specializations by computing a mangled name
+- registers those specializations with `registry_.register_specialization(mangled, item)`
+
+Change it to:
+
+- find the primary function template definition
+- register the specialization under that primary definition
+- do not make mangled-string lookup the only source of truth
+
+
+### 2. Lowering of discovered instances
+
+Current code:
+
+```cpp
+const Node* spec_node = registry_.find_specialization(inst.mangled_name);
+if (spec_node) {
+  lower_function(spec_node, &inst.mangled_name);
+} else {
+  lower_function(item, &inst.mangled_name, ...);
+}
+```
+
+Replace it with:
+
+1. derive the selected pattern from `primary_def + bindings + nttp_bindings`
+2. if selected pattern is an explicit specialization, lower that node
+3. otherwise lower the primary template body with bindings
+
+The lowering decision must not start from `inst.mangled_name`.
+
+
+### 3. Deferred template instantiation callback
+
+Current code in `instantiate_deferred_template(...)` also does:
+
+- `registry_.find_specialization(mangled)`
+
+Change it the same way:
+
+1. find `fn_def`
+2. run structured selection from `fn_def + bindings + nttp_bindings`
+3. lower the selected pattern
+
+
+## Concrete Removal Checklist
+
+This is the minimum checklist for the agent.
+
+In [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp):
+
+- add `FunctionTemplateEnv`
+- add `SelectedFunctionTemplatePattern`
+- add `FunctionTemplateInstanceKey`
+- add owner-based specialization registry
+- add owner-based specialization lookup/select helper
+- stop treating `specs_` as the primary specialization registry
+- stop treating `fn_name + "::" + mangled` as the semantic instance key
+
+In [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp):
+
+- stop registering explicit specializations only by mangled string
+- stop selecting function specializations by `inst.mangled_name`
+- stop selecting deferred function specializations by `mangled`
+- continue producing mangled names only as derived output for lowered HIR
+
+
+## Implementation Order
+
+Do the work in this order.
+Do not jump around.
+
+### Step 1. Add structured helper types
+
+File:
+- [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+
+Add:
+- `FunctionTemplateEnv`
+- `SelectedFunctionTemplatePattern`
+- `FunctionTemplateInstanceKey`
+
+
+### Step 2. Add owner-based specialization registry
+
+File:
+- [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+
+Add:
+- register specializations by `primary_def`
+- query specialization list by `primary_def`
+
+
+### Step 3. Add structured specialization selection helper
+
+Files:
+- [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+- [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) if helper bodies fit better there
+
+Implement:
+- select specialization from `primary_def + bindings + nttp_bindings`
+
+Reference design:
+- the template-struct owner-first selection path introduced by
+  [structured_template_identity_plan.md](/workspaces/c4c/ideas/structured_template_identity_plan.md)
+
+
+### Step 4. Switch lowering over to structured selection
+
+File:
+- [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
+
+Replace both:
+- initial lowering path for discovered instances
+- deferred instantiation callback path
+
+
+### Step 5. Switch semantic dedup to structured key
+
+File:
+- [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+
+Change:
+- seed dedup
+- realized-instance dedup
+
+Keep:
+- `mangled_name` as stored output metadata
+
+
+### Step 6. Remove old path from the main control flow
+
+Files:
+- [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+- [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
+
+Allowed:
+- keep old mangled lookup only as temporary fallback
+
+Not allowed:
+- old mangled lookup still being the first or only specialization-selection path
+
+
+## How To Match Explicit Specializations
+
+Use this simple rule:
+
+1. start from the primary template function
+2. iterate its explicit specialization nodes
+3. for each specialization, compare its declared template args to the concrete
+   bindings for this instantiation
+4. if all declared args match, choose that specialization
+5. if none match, choose the primary template body
+
+Do not add partial ordering.
+Do not add SFINAE.
+Do not add a new ranking system.
+
+This plan only needs the same level of matching the codebase already supports.
+
+
+## Design Reference To Copy
+
+When unsure, copy the style of the template-struct refactor:
+
+- owner-first registration
+- structured selection result
+- structured instance key for dedup
+- mangled name retained as derived output
+
+Primary design reference:
+- [structured_template_identity_plan.md](/workspaces/c4c/ideas/structured_template_identity_plan.md)
+
+Primary implementation references:
+- [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+- [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
+
+
+## Acceptance Criteria
+
+This plan is complete when all of the following are true:
+
+1. explicit function-template specialization selection does not primarily use
+   `mangled_name`
+2. owner-based specialization registration exists
+3. lowering selects specialization bodies from `primary_def + bindings +
+   nttp_bindings`
+4. semantic dedup for template function instances is based on
+   `primary_def + spec_key`
+5. mangled names remain only derived/codegen/debug data
+
+
+## Testcases To Run
+
+At minimum, run these targeted tests after the change:
+
+Core specialization / identity:
+
+- `cpp_positive_sema_specialization_identity_cpp`
+- `cpp_hir_specialization_key`
+- `cpp_hir_template_call_info_dump`
+
+Template function defaults / deduction / NTTP:
+
+- `cpp_positive_sema_template_arg_deduction_cpp`
+- `cpp_positive_sema_template_default_args_cpp`
+- `cpp_positive_sema_template_nttp_cpp`
+- `cpp_positive_sema_template_bool_nttp_cpp`
+- `cpp_positive_sema_template_char_nttp_cpp`
+- `cpp_positive_sema_template_integral_nttp_types_cpp`
+- `cpp_positive_sema_template_nttp_forwarding_depth_cpp`
+- `cpp_positive_sema_template_recursive_nttp_cpp`
+
+Consteval + template-function interaction:
+
+- `cpp_positive_sema_consteval_template_cpp`
+- `cpp_positive_sema_consteval_nested_template_cpp`
+- `cpp_positive_sema_consteval_template_sizeof_cpp`
+- `cpp_hir_consteval_template_dump`
+- `cpp_hir_consteval_template_call_info_dump`
+- `cpp_hir_consteval_template_reduction_verified`
+
+Regression guards around nearby template behavior:
+
+- `cpp_positive_sema_template_alias_deferred_nttp_expr_runtime_cpp`
+- `cpp_positive_sema_eastl_slice6_template_defaults_and_refqual_cpp`
+
+
+## Known Out Of Scope Failure
+
+This plan does not need to fix:
+
+- `cpp_positive_sema_template_nttp_default_runtime_cpp`
+
+That case belongs to
+[template_lazy_instantiation_plan.md](/workspaces/c4c/ideas/template_lazy_instantiation_plan.md),
+because it is about who evaluates deferred NTTP defaults and when, not about
+function-template identity.
+
+
+## Short Version
+
+If you are implementing this plan, do exactly this:
+
+1. in [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp),
+   add owner-based function specialization registry and structured instance keys
+2. in [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp),
+   stop selecting explicit specializations by `inst.mangled_name`
+3. select from `primary_def + bindings + nttp_bindings` instead
+4. keep `mangled_name` only as derived output for the lowered HIR function name
+5. run the listed template-function tests and make sure they still pass
