@@ -1878,6 +1878,19 @@ class Lowerer {
     int bf_unit_bits = 0;        // size of current storage unit in bits
     int bf_current_bit = 0;      // current bit position within the storage unit
 
+    // Build NTTP bindings for template instantiations so static constexpr
+    // members that reference NTTP parameters (e.g. `static constexpr T value = v;`)
+    // are evaluated correctly.
+    NttpBindings struct_nttp_bindings;
+    if (sd->n_template_args > 0 && sd->n_template_params > 0) {
+      for (int pi = 0; pi < sd->n_template_params && pi < sd->n_template_args; ++pi) {
+        const char* pname = sd->template_param_names[pi];
+        if (sd->template_param_is_nttp[pi]) {
+          struct_nttp_bindings[pname] = sd->template_arg_values[pi];
+        }
+      }
+    }
+
     for (int i = 0; i < num_fields; ++i) {
       const Node* f = get_field(i);
       if (!f) continue;
@@ -1885,7 +1898,9 @@ class Lowerer {
         struct_static_member_decls_[tag][f->name] = f;
       if (f->is_static && f->is_constexpr && f->name && f->name[0] && f->init) {
         struct_static_member_const_values_[tag][f->name] =
-            static_eval_int(f->init, enum_consts_);
+            struct_nttp_bindings.empty()
+                ? static_eval_int(f->init, enum_consts_)
+                : eval_const_int_with_nttp_bindings(f->init, struct_nttp_bindings);
       }
       if (f->is_static)
         continue;

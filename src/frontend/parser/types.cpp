@@ -443,6 +443,17 @@ bool Parser::eval_deferred_nttp_default(
     const std::vector<Token>& toks = it->second;
     if (toks.empty()) return false;
 
+    // Handle simple literal defaults (true, false, integer) that don't need
+    // the full Trait<T>::value pattern.
+    if (toks.size() == 1) {
+        if (toks[0].kind == TokenKind::KwTrue) { *out = 1; return true; }
+        if (toks[0].kind == TokenKind::KwFalse) { *out = 0; return true; }
+        if (toks[0].kind == TokenKind::IntLit) {
+            *out = parse_int_lexeme(toks[0].lexeme.c_str());
+            return true;
+        }
+    }
+
     // Recognize the pattern: Ident < args > :: Ident
     // Where args can contain template param names that need substitution.
     // Find the structure: tpl_name, template args, :: , member_name.
@@ -727,6 +738,35 @@ static void finalize_vector_type(TypeSpec& ts) {
         default: elem_sz = 4; break;
     }
     ts.vector_lanes = ts.vector_bytes / elem_sz;
+}
+
+// Reverse of append_type_mangled_suffix: convert mangled suffix back to TypeSpec.
+static bool parse_mangled_type_suffix(const std::string& text, TypeSpec* out) {
+    if (!out) return false;
+    TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+    if (text == "int") ts.base = TB_INT;
+    else if (text == "uint") ts.base = TB_UINT;
+    else if (text == "char") ts.base = TB_CHAR;
+    else if (text == "schar") ts.base = TB_SCHAR;
+    else if (text == "uchar") ts.base = TB_UCHAR;
+    else if (text == "short") ts.base = TB_SHORT;
+    else if (text == "ushort") ts.base = TB_USHORT;
+    else if (text == "long") ts.base = TB_LONG;
+    else if (text == "ulong") ts.base = TB_ULONG;
+    else if (text == "llong") ts.base = TB_LONGLONG;
+    else if (text == "ullong") ts.base = TB_ULONGLONG;
+    else if (text == "float") ts.base = TB_FLOAT;
+    else if (text == "double") ts.base = TB_DOUBLE;
+    else if (text == "ldouble") ts.base = TB_LONGDOUBLE;
+    else if (text == "void") ts.base = TB_VOID;
+    else if (text == "bool") ts.base = TB_BOOL;
+    else if (text == "i128") ts.base = TB_INT128;
+    else if (text == "u128") ts.base = TB_UINT128;
+    else return false;
+    *out = ts;
+    return true;
 }
 
 static void append_type_mangled_suffix(std::string& out, const TypeSpec& ts) {
@@ -2158,6 +2198,10 @@ TypeSpec Parser::parse_base_type() {
                                                 auto tit = typedef_types_.find(new_arg_parts[pi]);
                                                 if (tit != typedef_types_.end()) {
                                                     ba.type = tit->second;
+                                                } else if (parse_mangled_type_suffix(new_arg_parts[pi], &ba.type)) {
+                                                    // Recognized mangled builtin suffix (e.g. "uint" → TB_UINT)
+                                                } else if (parse_builtin_typespec_text(new_arg_parts[pi], &ba.type)) {
+                                                    // Recognized C type name (e.g. "unsigned int")
                                                 } else {
                                                     // Look up as mangled struct tag
                                                     ba.type = {};
@@ -2263,11 +2307,32 @@ TypeSpec Parser::parse_base_type() {
                                                     if (ats.tag) {
                                                         t.kind = TokenKind::Identifier; t.lexeme = ats.tag;
                                                     } else {
-                                                        // Use base type keyword
-                                                        t.kind = TokenKind::Identifier;
-                                                        std::string nm;
-                                                        append_type_mangled_suffix(nm, ats);
-                                                        t.lexeme = nm;
+                                                        // Emit proper keyword tokens for builtin types.
+                                                        auto emit_kw = [&](TokenKind k, const char* lex) {
+                                                            Token kt; kt.line = tpl_def->line; kt.column = 0;
+                                                            kt.kind = k; kt.lexeme = lex;
+                                                            inject_toks.push_back(kt);
+                                                        };
+                                                        bool emitted = true;
+                                                        switch (ats.base) {
+                                                            case TB_VOID: emit_kw(TokenKind::KwVoid, "void"); break;
+                                                            case TB_BOOL: emit_kw(TokenKind::KwBool, "bool"); break;
+                                                            case TB_CHAR: emit_kw(TokenKind::KwChar, "char"); break;
+                                                            case TB_SCHAR: emit_kw(TokenKind::KwSigned, "signed"); emit_kw(TokenKind::KwChar, "char"); break;
+                                                            case TB_UCHAR: emit_kw(TokenKind::KwUnsigned, "unsigned"); emit_kw(TokenKind::KwChar, "char"); break;
+                                                            case TB_SHORT: emit_kw(TokenKind::KwShort, "short"); break;
+                                                            case TB_USHORT: emit_kw(TokenKind::KwUnsigned, "unsigned"); emit_kw(TokenKind::KwShort, "short"); break;
+                                                            case TB_INT: emit_kw(TokenKind::KwInt, "int"); break;
+                                                            case TB_UINT: emit_kw(TokenKind::KwUnsigned, "unsigned"); emit_kw(TokenKind::KwInt, "int"); break;
+                                                            case TB_LONG: emit_kw(TokenKind::KwLong, "long"); break;
+                                                            case TB_ULONG: emit_kw(TokenKind::KwUnsigned, "unsigned"); emit_kw(TokenKind::KwLong, "long"); break;
+                                                            case TB_LONGLONG: emit_kw(TokenKind::KwLong, "long"); emit_kw(TokenKind::KwLong, "long"); break;
+                                                            case TB_ULONGLONG: emit_kw(TokenKind::KwUnsigned, "unsigned"); emit_kw(TokenKind::KwLong, "long"); emit_kw(TokenKind::KwLong, "long"); break;
+                                                            case TB_FLOAT: emit_kw(TokenKind::KwFloat, "float"); break;
+                                                            case TB_DOUBLE: emit_kw(TokenKind::KwDouble, "double"); break;
+                                                            default: t.kind = TokenKind::Identifier; t.lexeme = "int"; emitted = false; break;
+                                                        }
+                                                        if (emitted) continue;  // tokens already pushed
                                                     }
                                                     inject_toks.push_back(t);
                                                 }

@@ -563,7 +563,17 @@ Node* Parser::parse_top_level() {
                 if (match(TokenKind::Assign)) {
                     long long sign = 1;
                     if (match(TokenKind::Minus)) sign = -1;
-                    if (check(TokenKind::IntLit)) {
+                    if (check(TokenKind::KwTrue) || check(TokenKind::KwFalse)) {
+                        long long val = check(TokenKind::KwTrue) ? 1 : 0;
+                        consume();
+                        template_param_has_default.push_back(true);
+                        TypeSpec dummy{};
+                        dummy.array_size = -1;
+                        dummy.inner_rank = -1;
+                        template_param_default_types.push_back(dummy);
+                        template_param_default_values.push_back(val);
+                        template_param_default_exprs.push_back(nullptr);
+                    } else if (check(TokenKind::IntLit)) {
                         long long val = parse_int_lexeme(cur().lexeme.c_str());
                         consume();
                         template_param_has_default.push_back(true);

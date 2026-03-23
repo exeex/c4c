@@ -16,9 +16,15 @@ Structured template function identity (plan.md Steps 1–6)
 ## Post-Completion Fixes (2026-03-24)
 - Fixed cpp_hir_fixpoint_convergence test regex (new "template types resolved" stats field)
 - Fixed typedef-wrapped struct rvalue member access in codegen (operator_shift_call_arg_runtime)
+- Fixed inherited static member lookup through template base class chains:
+  - Parser: recognize `true`/`false` as NTTP defaults (avoid deferred path)
+  - Parser: `eval_deferred_nttp_default` handles simple literal tokens
+  - Parser: `parse_mangled_type_suffix` reverse mapping for builtin types
+  - Parser: base class token injection emits proper keyword tokens for multi-keyword types (e.g. `unsigned int`)
+  - HIR: `lower_struct_def` uses NTTP bindings when evaluating static constexpr members of template instantiations
 
 ## Final Baseline
-2120/2123 tests passing (3 pre-existing failures, no regressions)
+2121/2123 tests passing (2 pre-existing failures, no regressions)
 
 ## Next
 Plan fully delivered. Next plan TBD (template_lazy_instantiation_plan.md is the natural successor).
