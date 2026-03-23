@@ -2,134 +2,82 @@
 
 ## Goal
 
-把目前的主線優先順序重新排好，先解 operator overloading 相關的
-frontend 問題，讓 EASTL / `std::vector` bring-up 不再反覆被同一類
-parser/sema 缺口卡住。
+先完成 EASTL `type_traits.h` bring-up，建立一個穩定的最底層 EASTL 入口，
+再往上推 `integer_sequence.h`、`tuple_fwd_decls.h`、`utility.h`、
+`tuple.h`、`memory.h`。
 
-這份計畫現在的主線不是 codegen refactor。
-codegen 仍然重要，但暫時降為次要軌。
+目前主線不是 `vector.h`，也不是更高層容器功能。
+優先順序改成先把最底層 type-trait / template 基礎打穩。
 
-## New Priority Order
+## Priority Order
 
-1. operator overloading and cast-like operator normalization
-2. out-of-class method semantics needed by operator-heavy headers
-3. EASTL / EABase / `std::vector` bring-up
-4. deferred codegen refactor follow-up
+1. EASTL `type_traits.h` bring-up
+2. EASTL `internal/integer_sequence.h`
+3. EASTL `internal/tuple_fwd_decls.h`
+4. EASTL `utility.h`
+5. EASTL `tuple.h`
+6. EASTL `memory.h`
+7. 之後才回到 `vector.h` 與更高層 EASTL header
 
-## Why Reprioritize
+## Main Track
 
-最近的 `int128.h` / EASTL bring-up 已經證明：
+主測試入口：
 
-- 目前最先爆開的不是 backend
-- 而是 C++ operator-related frontend forms
-- 尤其是 conversion operator、qualified operator definitions、
-  out-of-class method parsing與語意銜接
+- `tests/cpp/eastl/eastl_type_traits_simple.cpp`
+- target: `eastl_type_traits_simple_workflow`
 
-如果這條不先補齊，後面無論追 `std::vector`、EASTL、甚至更多 C++
-header，都会持續在同一類語法/語意坑重複卡住。
+拆分中的 header probes：
 
-## Main Track: Operator Overloading
+- `tests/cpp/eastl/eastl_integer_sequence_simple.cpp`
+- `tests/cpp/eastl/eastl_tuple_fwd_decls_simple.cpp`
+- `tests/cpp/eastl/eastl_utility_simple.cpp`
+- `tests/cpp/eastl/eastl_tuple_simple.cpp`
+- `tests/cpp/eastl/eastl_memory_simple.cpp`
 
-主計畫文件：
+## Why This Order
 
-- `ideas/operator_overload_plan.md`
+最近把 EASTL case 拆開後可以更清楚看見：
 
-這條線的目標不是追求完整 C++ parity，而是先把目前實際會卡住
-EASTL / STL-like code 的 operator forms 穩定下來。
+- `vector.h` 會把很多更深層 header 一起拉進來
+- 這會讓最早 blocker 不夠清楚
+- `type_traits.h` 才是目前更合理的第一個穩定入口
 
-### Current focus
+目前新的主測試已經能直接暴露第一個缺口：
 
-- template conversion operator support
-- out-of-class conversion operator stability
-- implicit member lookup in out-of-class method bodies
-- unqualified static member call resolution/lowering in out-of-class methods
-- `operator new/delete/new[]/delete[]` declarator and explicit-call support
-- `new` / placement-`new` / `delete` / `delete[]` expressions routed through
-  operator lookup instead of stdlib assumptions
-- cast-like operators在 HIR 中的 canonical form
-  - `CastTo<T>(obj)`
-  - `CastFrom<T>(args...)`
+- `object has incomplete type: is_signed_helper`
 
-### Immediate success condition
+在這個問題清掉之前，往上追 `utility.h` / `tuple.h` / `memory.h`
+的成本都偏高，因為很多錯誤只是連鎖反應。
 
-以下條件成立時，operator 這條主線可以視為進入下一階段：
+## Immediate Success Condition
 
-- `operator T()` 與 template conversion operator 都能穩定 parse
-- out-of-class operator/method bodies 不再把後續 top-level parse 帶歪
-- out-of-class method body 的 member/static-member 語意不再需要 testcase
-  避開 unqualified spelling
-- `operator new/delete/new[]/delete[]` 的 global/class-scope 宣告與顯式呼叫
-  都穩定 parse
-- EASTL / EABase 不再先撞上 operator-specific parser failure
-  或 placement-`new` / delete-expression 缺口
+以下成立時，可以往下一層 header 推進：
 
-## Follow-on Track: EASTL / std::vector Bring-up
-
-主計畫文件：
-
-- `ideas/std_vector_bringup_plan.md`
-
-這條線現在不再是最前面第一順位，而是緊跟在 operator 主線之後。
-
-### Rule
-
-一旦 operator 主線把目前最前面的 blocker 清掉，就立刻回到：
-
-- `tests/cpp/eastl/std_vector_simple.cpp`
-
-目標不是抽象地說「operator 支援比較完整了」，
-而是用實際 header-heavy case 驗證：
-
-- 新 parser/sema 修正是否真的能推進系統/library headers
-- 下一個 blocker 是不是 operator 以外的新類型問題
-
-## Deferred Track: Codegen Refactor
-
-原本的 codegen 主線先降為 deferred。
-
-相關文件仍保留：
-
-- `plan_todo.md`
-- `ideas/lir_split_plan.md`
-
-這代表：
-
-- 已完成的 codegen 進度不丟
-- 但接下來的預設工作不再是持續切 LIR lowering ownership
-- 除非 operator / EASTL bring-up 暫時進入穩定等待，才回頭續推
+- `eastl_type_traits_simple_workflow` host compile / host run / c4cll frontend / backend / runtime 全綠
+- `type_traits.h` 內常用 traits 與 alias templates 至少有一組穩定 smoke coverage
+- 不再先撞上 `is_signed_helper` 這類基礎 trait 展開問題
 
 ## Concrete Next Actions
 
-接下來的預設順序：
+1. 修掉 `eastl_type_traits_simple.cpp` 目前暴露的第一個 frontend blocker
+   - `is_signed_helper` incomplete type
+2. 保持 `type_traits` 測試小而清楚，優先確保錯誤定位乾淨
+3. 視修正結果補更多 `type_traits.h` smoke cases：
+   - signed / unsigned traits
+   - `is_same`
+   - `is_const`
+   - `is_reference`
+   - `remove_cv`
+   - `remove_reference`
+   - `add_lvalue_reference`
+   - `conditional_t`
+   - `enable_if_t`
+4. `type_traits` 穩定後，再往 `eastl_integer_sequence_simple.cpp` 推
+5. 之後依序往 `tuple_fwd_decls`、`utility`、`tuple`、`memory` 推進
 
-1. 先把 `operator new/delete/new[]/delete[]` 這組 operator family 收尾
-   到 expression/lookup 層
-2. 補 `new T` / `new T(args)` / `::new (p) T(args)` / `delete p` /
-   `delete[] p` 的 parser + lowering
-3. 接上 class-specific 與 global `operator new/delete` lookup
-4. 先把已經掛進 `ctest -j` 的 new/delete 目標測試轉綠：
-   - `cpp_positive_sema_new_expr_basic_parse_cpp`
-   - `cpp_positive_sema_placement_new_expr_parse_cpp`
-   - `cpp_positive_sema_class_specific_new_delete_parse_cpp`
-   - `cpp_positive_sema_new_delete_side_effect_runtime_cpp`
-   - `cpp_positive_sema_class_specific_new_delete_side_effect_runtime_cpp`
-   - `cpp_positive_sema_new_array_delete_array_side_effect_runtime_cpp`
-5. 回頭重跑 `tests/cpp/eastl/std_vector_simple.cpp`
-6. 若 operator/new-delete 線已清到下一層，再回到 template conversion
-   operator 與其他 frontend 子問題
-7. 根據新的最早 blocker 決定是否繼續 operator 線，或切到其他
-   frontend 子問題
+## Rule
 
-## Non-Goals
-
-這次重排不代表：
-
-- 放棄 codegen refactor
-- 立即追 full C++ operator parity
-- 一次性重寫整個 declarator/parser 架構
-
-原則是：
-
-- 先清掉最常阻塞真實 C++ headers 的 frontend 關鍵路徑
-- 再讓 bring-up case 往前推
-- 最後才回到較長線的 codegen 結構整理
+- 先解最底層 header 的第一個真 blocker
+- 不為了追高層 header 暫時把底層錯誤掩蓋掉
+- 保留 split tests，讓 fail 直接暴露
+- 每往上一層 header，都要確認下層入口已經夠穩定
