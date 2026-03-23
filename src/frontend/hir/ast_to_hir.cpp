@@ -2746,9 +2746,7 @@ class Lowerer {
       concrete_args.push_back(arg);
     }
 
-    TemplateStructEnv tpl_env;
-    tpl_env.primary_def = primary_tpl;
-    tpl_env.specialization_patterns = find_template_struct_specializations(primary_tpl);
+    TemplateStructEnv tpl_env = build_template_struct_env(primary_tpl);
     SelectedTemplateStructPattern selected_pattern =
         select_template_struct_pattern_hir(concrete_args, tpl_env);
     const Node* tpl_def = selected_pattern.selected_pattern;
@@ -8728,6 +8726,13 @@ class Lowerer {
     if (!primary_tpl || !primary_tpl->name) return nullptr;
     auto it = template_struct_specializations_.find(primary_tpl->name);
     return it != template_struct_specializations_.end() ? &it->second : nullptr;
+  }
+
+  TemplateStructEnv build_template_struct_env(const Node* primary_tpl) const {
+    TemplateStructEnv env;
+    env.primary_def = primary_tpl;
+    env.specialization_patterns = find_template_struct_specializations(primary_tpl);
+    return env;
   }
 
   void register_template_struct_primary(const std::string& name, const Node* node) {
