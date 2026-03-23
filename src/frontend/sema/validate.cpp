@@ -389,6 +389,8 @@ class Validator {
   std::unordered_set<std::string> complete_unions_;
   // Struct field names for implicit member lookup in out-of-class method bodies.
   std::unordered_map<std::string, std::unordered_set<std::string>> struct_field_names_;
+  std::unordered_map<std::string, std::unordered_map<std::string, TypeSpec>> struct_static_member_types_;
+  std::unordered_map<std::string, std::vector<std::string>> struct_base_tags_;
   std::string current_method_struct_tag_;
   std::vector<std::unordered_map<std::string, ScopedSym>> scopes_;
   bool suppress_uninit_read_ = false;
@@ -535,9 +537,33 @@ class Validator {
     // Collect field names for implicit member lookup in method bodies.
     auto& fnames = struct_field_names_[tag];
     for (int i = 0; i < n->n_fields; ++i) {
-      if (n->fields[i] && n->fields[i]->name && n->fields[i]->name[0])
+      if (!n->fields[i] || !n->fields[i]->name || !n->fields[i]->name[0]) continue;
+      struct_static_member_types_[tag][n->fields[i]->name] = n->fields[i]->type;
+      if (!n->fields[i]->is_static)
         fnames.insert(n->fields[i]->name);
     }
+    auto& bases = struct_base_tags_[tag];
+    for (int i = 0; i < n->n_bases; ++i) {
+      const TypeSpec& base = n->base_types[i];
+      if (base.tag && base.tag[0]) bases.emplace_back(base.tag);
+    }
+  }
+
+  std::optional<TypeSpec> lookup_struct_static_member_type(
+      const std::string& tag, const std::string& member) const {
+    auto sit = struct_static_member_types_.find(tag);
+    if (sit != struct_static_member_types_.end()) {
+      auto mit = sit->second.find(member);
+      if (mit != sit->second.end()) return mit->second;
+    }
+    auto bit = struct_base_tags_.find(tag);
+    if (bit != struct_base_tags_.end()) {
+      for (const auto& base_tag : bit->second) {
+        auto from_base = lookup_struct_static_member_type(base_tag, member);
+        if (from_base.has_value()) return from_base;
+      }
+    }
+    return std::nullopt;
   }
 
   void collect_toplevel_node(const Node* n) {
@@ -1047,6 +1073,21 @@ class Validator {
       }
       case NK_VAR: {
         if (!n->name || !n->name[0]) return out;
+        std::string qname = n->name;
+        size_t scope_pos = qname.rfind("::");
+        if (scope_pos != std::string::npos) {
+          std::string struct_tag = qname.substr(0, scope_pos);
+          std::string member = qname.substr(scope_pos + 2);
+          if (auto mts = lookup_struct_static_member_type(struct_tag, member)) {
+            out.valid = true;
+            out.type = *mts;
+            out.is_lvalue = true;
+            out.is_const_lvalue = out.type.is_const &&
+                                  out.type.ptr_level == 0 &&
+                                  out.type.array_rank == 0;
+            return out;
+          }
+        }
         auto sym = lookup_symbol(n->name);
         if (!sym.has_value()) {
           // In an out-of-class method body, unqualified names may refer to

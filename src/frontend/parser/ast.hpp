@@ -309,6 +309,8 @@ struct Node {
     // NK_STRUCT_DEF fields  (each child is NK_DECL with type + name)
     Node** fields;
     int    n_fields;
+    TypeSpec* base_types; // C++ base classes for NK_STRUCT_DEF
+    int    n_bases;
     int    pack_align;   // #pragma pack alignment (0 = default, >0 = packed to N bytes)
     int    struct_align; // __attribute__((aligned(N))) on struct (0 = default)
 

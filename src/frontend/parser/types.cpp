@@ -1251,6 +1251,24 @@ TypeSpec Parser::parse_base_type() {
                         inst->is_union = tpl_def->is_union;
                         inst->pack_align = tpl_def->pack_align;
                         inst->struct_align = tpl_def->struct_align;
+                        inst->n_bases = tpl_def->n_bases;
+                        if (inst->n_bases > 0) {
+                            inst->base_types = arena_.alloc_array<TypeSpec>(inst->n_bases);
+                            for (int bi = 0; bi < inst->n_bases; ++bi) {
+                                inst->base_types[bi] = tpl_def->base_types[bi];
+                                for (const auto& [pname, pts] : type_bindings) {
+                                    if (inst->base_types[bi].base == TB_TYPEDEF &&
+                                        inst->base_types[bi].tag &&
+                                        std::string(inst->base_types[bi].tag) == pname) {
+                                        inst->base_types[bi].base = pts.base;
+                                        inst->base_types[bi].tag = pts.tag;
+                                        inst->base_types[bi].ptr_level += pts.ptr_level;
+                                        inst->base_types[bi].is_const |= pts.is_const;
+                                        inst->base_types[bi].is_volatile |= pts.is_volatile;
+                                    }
+                                }
+                            }
+                        }
                         // Store template bindings so HIR can resolve pending types
                         // in method bodies and signatures.
                         {
@@ -2174,27 +2192,56 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         }
     }
 
+    std::vector<TypeSpec> base_types;
     if (is_cpp_mode() && check(TokenKind::Colon)) {
         consume();
-        int angle_depth = 0;
-        int paren_depth = 0;
-        while (!at_end()) {
-            if (check(TokenKind::LBrace) && angle_depth == 0 && paren_depth == 0)
-                break;
-            if (check(TokenKind::Less) && paren_depth == 0)
-                ++angle_depth;
-            else if (check(TokenKind::Greater) && paren_depth == 0 && angle_depth > 0)
-                --angle_depth;
-            else if (check(TokenKind::GreaterGreater) && paren_depth == 0 && angle_depth > 0) {
-                // >> counts as two > closers.
-                angle_depth -= std::min(angle_depth, 2);
+        while (!at_end() && !check(TokenKind::LBrace)) {
+            if (check(TokenKind::Identifier) &&
+                (cur().lexeme == "public" || cur().lexeme == "private" || cur().lexeme == "protected" ||
+                 cur().lexeme == "virtual")) {
                 consume();
                 continue;
-            } else if (check(TokenKind::LParen))
-                ++paren_depth;
-            else if (check(TokenKind::RParen) && paren_depth > 0)
-                --paren_depth;
-            consume();
+            }
+            try {
+                TypeSpec base_ts = parse_base_type();
+                while (check(TokenKind::Star)) {
+                    consume();
+                    base_ts.ptr_level++;
+                }
+                if (check(TokenKind::AmpAmp)) {
+                    consume();
+                    base_ts.is_rvalue_ref = true;
+                } else if (check(TokenKind::Amp)) {
+                    consume();
+                    base_ts.is_lvalue_ref = true;
+                }
+                base_types.push_back(base_ts);
+            } catch (...) {
+                // Fall back to token skipping until the next base or body.
+                int angle_depth = 0;
+                int paren_depth = 0;
+                while (!at_end()) {
+                    if (check(TokenKind::LBrace) && angle_depth == 0 && paren_depth == 0)
+                        break;
+                    if (check(TokenKind::Comma) && angle_depth == 0 && paren_depth == 0)
+                        break;
+                    if (check(TokenKind::Less) && paren_depth == 0)
+                        ++angle_depth;
+                    else if (check(TokenKind::Greater) && paren_depth == 0 && angle_depth > 0)
+                        --angle_depth;
+                    else if (check(TokenKind::GreaterGreater) && paren_depth == 0 && angle_depth > 0) {
+                        angle_depth -= std::min(angle_depth, 2);
+                        consume();
+                        continue;
+                    } else if (check(TokenKind::LParen))
+                        ++paren_depth;
+                    else if (check(TokenKind::RParen) && paren_depth > 0)
+                        --paren_depth;
+                    consume();
+                }
+            }
+            if (!match(TokenKind::Comma))
+                break;
         }
     }
 
@@ -2253,6 +2300,12 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     sd->name         = tag;
     sd->is_union     = is_union;
     sd->template_origin_name = template_origin_name;
+    if (!base_types.empty()) {
+        sd->n_bases = static_cast<int>(base_types.size());
+        sd->base_types = arena_.alloc_array<TypeSpec>(sd->n_bases);
+        for (int i = 0; i < sd->n_bases; ++i)
+            sd->base_types[i] = base_types[i];
+    }
     // __attribute__((packed)) => pack_align=1; otherwise use #pragma pack state
     sd->pack_align   = attr_ts.is_packed ? 1 : pack_alignment_;
     sd->struct_align = attr_ts.align_bytes;  // __attribute__((aligned(N)))

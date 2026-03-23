@@ -1167,6 +1167,23 @@ class Lowerer {
     b.stmts.push_back(std::move(stmt));
   }
 
+  const Node* find_struct_static_member_decl(const std::string& tag,
+                                             const std::string& member) const {
+    auto sit = struct_static_member_decls_.find(tag);
+    if (sit != struct_static_member_decls_.end()) {
+      auto mit = sit->second.find(member);
+      if (mit != sit->second.end()) return mit->second;
+    }
+    auto dit = module_->struct_defs.find(tag);
+    if (dit != module_->struct_defs.end()) {
+      for (const auto& base_tag : dit->second.base_tags) {
+        if (const Node* from_base = find_struct_static_member_decl(base_tag, member))
+          return from_base;
+      }
+    }
+    return nullptr;
+  }
+
   ExprId append_expr(const Node* src, ExprPayload payload, const TypeSpec& ts,
                      ValueCategory c = ValueCategory::RValue) {
     Expr e{};
@@ -1204,6 +1221,10 @@ class Lowerer {
     def.is_union = sd->is_union;
     def.pack_align = sd->pack_align;
     def.struct_align = sd->struct_align;
+    for (int bi = 0; bi < sd->n_bases; ++bi) {
+      const TypeSpec& base = sd->base_types[bi];
+      if (base.tag && base.tag[0]) def.base_tags.push_back(base.tag);
+    }
 
     int llvm_idx = 0;
     // Bitfield packing state (for structs only; unions always use offset 0)
@@ -1214,6 +1235,10 @@ class Lowerer {
     for (int i = 0; i < num_fields; ++i) {
       const Node* f = get_field(i);
       if (!f) continue;
+      if (f->name && f->name[0])
+        struct_static_member_decls_[tag][f->name] = f;
+      if (f->is_static)
+        continue;
 
       const int bit_width = static_cast<int>(f->ival);  // -1 = not bitfield, 0+ = bitfield width
       const bool is_bitfield = (bit_width >= 0);
@@ -5688,6 +5713,20 @@ class Lowerer {
       }
       case NK_VAR: {
         if (n->name && n->name[0]) {
+          std::string qname = n->name;
+          size_t scope_pos = qname.rfind("::");
+          if (scope_pos != std::string::npos) {
+            std::string struct_tag = qname.substr(0, scope_pos);
+            std::string member = qname.substr(scope_pos + 2);
+            if (const Node* decl = find_struct_static_member_decl(struct_tag, member)) {
+              if (decl->init) {
+                long long v = static_eval_int(decl->init, enum_consts_);
+                TypeSpec ts = decl->type;
+                if (ts.base == TB_VOID) ts.base = TB_INT;
+                return append_expr(n, IntLiteral{v, false}, ts);
+              }
+            }
+          }
           auto it = enum_consts_.find(n->name);
           if (it != enum_consts_.end()) {
             TypeSpec ts{};
@@ -7377,6 +7416,8 @@ class Lowerer {
   std::unordered_map<std::string, const Node*> template_struct_defs_;
   // Already-instantiated template struct mangled names (avoid double instantiation).
   std::unordered_set<std::string> instantiated_tpl_structs_;
+  // Static data members indexed by owning struct tag and member name.
+  std::unordered_map<std::string, std::unordered_map<std::string, const Node*>> struct_static_member_decls_;
   // Struct method map: "struct_tag::method_name" → mangled function name.
   std::unordered_map<std::string, std::string> struct_methods_;
   // Struct method return types: "struct_tag::method_name" → return TypeSpec.

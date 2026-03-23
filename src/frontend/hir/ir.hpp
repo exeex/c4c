@@ -694,6 +694,7 @@ struct HirStructDef {
   int pack_align = 0;    // #pragma pack alignment (0 = default, >0 = cap field alignment to N)
   int struct_align = 0;  // __attribute__((aligned(N))) on struct (0 = default)
   std::vector<HirStructField> fields;
+  std::vector<SymbolName> base_tags;
 };
 
 // ── Template function definition metadata (populated by hir build) ───────────
