@@ -225,7 +225,7 @@ This is the first guardrail, and it is in place.
 
 ### Phase 2. Introduce Structured Family/Pattern Handles
 
-Status: in progress
+Status: done
 
 Add helper-level APIs that operate on:
 
@@ -254,8 +254,6 @@ Completed:
 
 Remaining:
 
-- convert more `resolve_pending_tpl_struct()` callers to pass explicit
-  primary/template env handles instead of relying on `tpl_struct_origin`
 - introduce a more explicit concrete instance identity helper
   (`primary_def + bindings`)
 - reduce remaining semantic dependence on `template_origin_name` /
@@ -264,7 +262,7 @@ Remaining:
 
 ### Phase 3. Canonicalize Pending Type Work On Entry To The Engine
 
-Status: started
+Status: mostly complete
 
 Even if parser/HIR still carry string transport fields, the engine should try
 to canonicalize them into:
