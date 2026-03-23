@@ -292,6 +292,19 @@ Examples of `blocked`:
 - member typedef lookup depends on a concrete base that does not exist yet
 - consteval value needed by specialization selection is not available yet
 
+Concrete pending example:
+
+- `cpp_positive_sema_template_nttp_default_runtime_cpp`
+- shape:
+  `template <typename T, bool = is_void<T>::value || is_void<T>::value>`
+- current behavior:
+  parser-side `eval_deferred_nttp_default()` still tries to decide this too
+  early and can select the wrong default specialization
+- intended behavior:
+  parser preserves the deferred expression/tokens, use-site lowering records
+  pending template type/value work, and the compile-time engine evaluates the
+  NTTP default only when the concrete bindings for `T` are available
+
 Examples of `terminal`:
 
 - owner template not found
@@ -392,6 +405,7 @@ Today these mostly live inside:
 
 - `resolve_pending_tpl_struct()`
 - `resolve_struct_member_typedef_hir()`
+- parser-side `eval_deferred_nttp_default()`
 
 Those helpers currently combine:
 

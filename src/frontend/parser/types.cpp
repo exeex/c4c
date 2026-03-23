@@ -364,6 +364,69 @@ void Parser::register_template_struct_specialization(const char* primary_name, N
 }
 
 static void append_type_mangled_suffix(std::string& out, const TypeSpec& ts);
+static std::string capture_template_arg_expr_text(
+    const std::vector<Token>& toks, int start, int end);
+static bool parse_builtin_typespec_text(const std::string& text, TypeSpec* out);
+
+static bool parse_builtin_typespec_text(const std::string& text, TypeSpec* out) {
+    if (!out) return false;
+    auto trim_local = [](std::string s0) {
+        size_t start = 0;
+        while (start < s0.size() &&
+               std::isspace(static_cast<unsigned char>(s0[start]))) {
+            ++start;
+        }
+        size_t end = s0.size();
+        while (end > start &&
+               std::isspace(static_cast<unsigned char>(s0[end - 1]))) {
+            --end;
+        }
+        return s0.substr(start, end - start);
+    };
+    std::string s = trim_local(text);
+    if (s.empty()) return false;
+
+    TypeSpec ts{};
+    ts.array_size = -1;
+    ts.inner_rank = -1;
+
+    auto strip_prefix = [&](const char* prefix, bool* flag) {
+        const std::string p(prefix);
+        if (s.rfind(p, 0) == 0) {
+            *flag = true;
+            s = trim_local(s.substr(p.size()));
+            return true;
+        }
+        return false;
+    };
+
+    bool progress = true;
+    while (progress) {
+        progress = false;
+        progress |= strip_prefix("const ", &ts.is_const);
+        progress |= strip_prefix("volatile ", &ts.is_volatile);
+    }
+
+    if (s == "void") ts.base = TB_VOID;
+    else if (s == "bool") ts.base = TB_BOOL;
+    else if (s == "char") ts.base = TB_CHAR;
+    else if (s == "signed char") ts.base = TB_SCHAR;
+    else if (s == "unsigned char") ts.base = TB_UCHAR;
+    else if (s == "short") ts.base = TB_SHORT;
+    else if (s == "unsigned short") ts.base = TB_USHORT;
+    else if (s == "int") ts.base = TB_INT;
+    else if (s == "unsigned" || s == "unsigned int") ts.base = TB_UINT;
+    else if (s == "long") ts.base = TB_LONG;
+    else if (s == "unsigned long") ts.base = TB_ULONG;
+    else if (s == "long long") ts.base = TB_LONGLONG;
+    else if (s == "unsigned long long") ts.base = TB_ULONGLONG;
+    else if (s == "float") ts.base = TB_FLOAT;
+    else if (s == "double") ts.base = TB_DOUBLE;
+    else return false;
+
+    *out = ts;
+    return true;
+}
 
 // Evaluate a deferred NTTP default expression.
 // Handles the pattern: TemplateName<TypeArgs>::static_member
@@ -458,6 +521,35 @@ bool Parser::eval_deferred_nttp_default(
                 a.is_value = true;
                 a.value = 0;
                 ref_args.push_back(a);
+            } else {
+                size_t arg_end = ti;
+                int nested_angle_depth = 0;
+                while (arg_end < toks.size()) {
+                    const TokenKind tk = toks[arg_end].kind;
+                    if (tk == TokenKind::Less) {
+                        ++nested_angle_depth;
+                    } else if (tk == TokenKind::Greater || tk == TokenKind::GreaterGreater) {
+                        if (nested_angle_depth == 0) break;
+                        nested_angle_depth -= std::min(nested_angle_depth,
+                                                       tk == TokenKind::GreaterGreater ? 2 : 1);
+                    } else if (tk == TokenKind::Comma && nested_angle_depth == 0) {
+                        break;
+                    }
+                    ++arg_end;
+                }
+                std::string arg_text =
+                    capture_template_arg_expr_text(toks, static_cast<int>(ti),
+                                                   static_cast<int>(arg_end));
+                TypeSpec builtin_ts{};
+                if (!arg_text.empty() &&
+                    parse_builtin_typespec_text(arg_text, &builtin_ts)) {
+                    ParsedTemplateArg a;
+                    a.is_value = false;
+                    a.type = builtin_ts;
+                    ref_args.push_back(a);
+                    ti = arg_end;
+                    continue;
+                }
             }
         }
         ++ti;
@@ -482,16 +574,27 @@ bool Parser::eval_deferred_nttp_default(
         typedef_types_, &ref_type_bindings, &ref_nttp_bindings);
     if (!ref_def) return false;
 
-    // Build mangled name for the referenced struct
-    std::string ref_mangled = ref_tpl_name;
-    for (int pi = 0; pi < ref_primary->n_template_params; ++pi) {
-        ref_mangled += "_";
-        ref_mangled += ref_primary->template_param_names[pi];
-        ref_mangled += "_";
-        if (pi < static_cast<int>(ref_args.size()) && ref_args[pi].is_value) {
-            ref_mangled += std::to_string(ref_args[pi].value);
-        } else if (pi < static_cast<int>(ref_args.size()) && !ref_args[pi].is_value) {
-            append_type_mangled_suffix(ref_mangled, ref_args[pi].type);
+    // Build the concrete struct tag for the referenced template.
+    std::string ref_mangled;
+    if (ref_def != ref_primary && ref_def->n_template_params == 0 &&
+        ref_def->name && ref_def->name[0]) {
+        // Explicit/full specialization already has a concrete generated tag.
+        ref_mangled = ref_def->name;
+    } else {
+        const std::string ref_family =
+            (ref_def && ref_def->template_origin_name && ref_def->template_origin_name[0])
+                ? ref_def->template_origin_name
+                : ref_tpl_name;
+        ref_mangled = ref_family;
+        for (int pi = 0; pi < ref_primary->n_template_params; ++pi) {
+            ref_mangled += "_";
+            ref_mangled += ref_primary->template_param_names[pi];
+            ref_mangled += "_";
+            if (pi < static_cast<int>(ref_args.size()) && ref_args[pi].is_value) {
+                ref_mangled += std::to_string(ref_args[pi].value);
+            } else if (pi < static_cast<int>(ref_args.size()) && !ref_args[pi].is_value) {
+                append_type_mangled_suffix(ref_mangled, ref_args[pi].type);
+            }
         }
     }
 
@@ -560,43 +663,54 @@ bool Parser::eval_deferred_nttp_default(
     }
     const Node* sdef = sdef_it->second;
 
-    // Search fields for a static constexpr member with the given name
-    for (int fi = 0; fi < sdef->n_fields; ++fi) {
-        const Node* f = sdef->fields[fi];
-        if (!f || f->kind != NK_DECL) continue;
-        if (!f->is_static) continue;
-        if (!f->name || member_name != f->name) continue;
-        // Found it — evaluate the init expression
-        if (f->init) {
-            long long val = 0;
-            if (eval_const_int(f->init, &val, &struct_tag_def_map_)) {
-                *out = val;
-                return true;
+    std::function<bool(const Node*)> lookup_static_member_recursive =
+        [&](const Node* cur) -> bool {
+            if (!cur) return false;
+            for (int fi = 0; fi < cur->n_fields; ++fi) {
+                const Node* f = cur->fields[fi];
+                if (!f || f->kind != NK_DECL) continue;
+                if (!f->is_static) continue;
+                if (!f->name || member_name != f->name) continue;
+                if (f->init) {
+                    long long val = 0;
+                    if (eval_const_int(f->init, &val, &struct_tag_def_map_)) {
+                        *out = val;
+                        return true;
+                    }
+                }
+                if (f->ival >= 0) {
+                    *out = f->ival;
+                    return true;
+                }
             }
-        }
-        // Check for a literal default value on the field
-        if (f->ival >= 0) {
-            *out = f->ival;
-            return true;
-        }
-    }
 
-    // Also search children (member methods/static declarations)
-    for (int ci = 0; ci < sdef->n_children; ++ci) {
-        const Node* child = sdef->children[ci];
-        if (!child || child->kind != NK_DECL) continue;
-        if (!child->is_static) continue;
-        if (!child->name || member_name != child->name) continue;
-        if (child->init) {
-            long long val = 0;
-            if (eval_const_int(child->init, &val, &struct_tag_def_map_)) {
-                *out = val;
-                return true;
+            for (int ci = 0; ci < cur->n_children; ++ci) {
+                const Node* child = cur->children[ci];
+                if (!child || child->kind != NK_DECL) continue;
+                if (!child->is_static) continue;
+                if (!child->name || member_name != child->name) continue;
+                if (child->init) {
+                    long long val = 0;
+                    if (eval_const_int(child->init, &val, &struct_tag_def_map_)) {
+                        *out = val;
+                        return true;
+                    }
+                }
             }
-        }
-    }
 
-    return false;
+            for (int bi = 0; bi < cur->n_bases; ++bi) {
+                const TypeSpec& base_ts = cur->base_types[bi];
+                if (!base_ts.tag || !base_ts.tag[0]) continue;
+                auto bit = struct_tag_def_map_.find(base_ts.tag);
+                if (bit != struct_tag_def_map_.end() &&
+                    lookup_static_member_recursive(bit->second)) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+    return lookup_static_member_recursive(sdef);
 }
 
 // Compute vector_lanes from vector_bytes and base type.
@@ -982,12 +1096,22 @@ TypeSpec Parser::parse_base_type() {
                     *out = it->second;
                     return true;
                 };
+                auto try_node_member_typedefs = [&](const Node* sdef) -> bool {
+                    if (!sdef || sdef->n_member_typedefs <= 0) return false;
+                    for (int i = 0; i < sdef->n_member_typedefs; ++i) {
+                        const char* name = sdef->member_typedef_names[i];
+                        if (name && member == name) {
+                            *out = sdef->member_typedef_types[i];
+                            return true;
+                        }
+                    }
+                    return false;
+                };
                 if (try_lookup(tag + "::" + member)) return true;
                 auto def_it = struct_tag_def_map_.find(tag);
                 if (def_it == struct_tag_def_map_.end() || !def_it->second) return false;
                 const Node* sdef = def_it->second;
-                if (sdef->template_origin_name &&
-                    try_lookup(std::string(sdef->template_origin_name) + "::" + member))
+                if (try_node_member_typedefs(sdef))
                     return true;
                 for (int bi = 0; bi < sdef->n_bases; ++bi) {
                     const TypeSpec& base_ts = sdef->base_types[bi];
@@ -2214,6 +2338,55 @@ TypeSpec Parser::parse_base_type() {
                                 }
                             }
                         }
+                        // Clone member typedefs with type substitution and register
+                        // them under the concrete instantiation scope so later
+                        // `Template<Args>::member` lookup does not need to fall
+                        // back to the template family name.
+                        inst->n_member_typedefs = tpl_def->n_member_typedefs;
+                        if (inst->n_member_typedefs > 0) {
+                            inst->member_typedef_names =
+                                arena_.alloc_array<const char*>(inst->n_member_typedefs);
+                            inst->member_typedef_types =
+                                arena_.alloc_array<TypeSpec>(inst->n_member_typedefs);
+                            for (int ti = 0; ti < inst->n_member_typedefs; ++ti) {
+                                inst->member_typedef_names[ti] =
+                                    tpl_def->member_typedef_names[ti];
+                                TypeSpec member_ts = tpl_def->member_typedef_types[ti];
+                                for (const auto& [pname, pts] : type_bindings) {
+                                    if (member_ts.base == TB_TYPEDEF && member_ts.tag &&
+                                        std::string(member_ts.tag) == pname) {
+                                        member_ts.base = pts.base;
+                                        member_ts.tag = pts.tag;
+                                        member_ts.ptr_level += pts.ptr_level;
+                                        member_ts.is_const |= pts.is_const;
+                                        member_ts.is_volatile |= pts.is_volatile;
+                                    }
+                                }
+                                if (member_ts.array_size_expr &&
+                                    member_ts.array_size_expr->kind == NK_VAR &&
+                                    member_ts.array_size_expr->name) {
+                                    for (const auto& [npname, nval] : nttp_bindings) {
+                                        if (std::string(member_ts.array_size_expr->name) == npname) {
+                                            if (member_ts.array_rank > 0) {
+                                                member_ts.array_dims[0] = nval;
+                                                member_ts.array_size = nval;
+                                            }
+                                            member_ts.array_size_expr = nullptr;
+                                            break;
+                                        }
+                                    }
+                                }
+                                inst->member_typedef_types[ti] = member_ts;
+                                if (inst->member_typedef_names[ti] &&
+                                    inst->member_typedef_names[ti][0]) {
+                                    std::string scoped =
+                                        mangled + "::" + inst->member_typedef_names[ti];
+                                    struct_typedefs_[scoped] = member_ts;
+                                    typedefs_.insert(scoped);
+                                    typedef_types_[scoped] = member_ts;
+                                }
+                            }
+                        }
                         // Clone fields with type and NTTP substitution
                         int num_fields = tpl_def->n_fields > 0 ? tpl_def->n_fields : 0;
                         inst->n_fields = num_fields;
@@ -2344,26 +2517,14 @@ TypeSpec Parser::parse_base_type() {
                     pos_ + 1 < static_cast<int>(tokens_.size()) &&
                     tokens_[pos_ + 1].kind == TokenKind::Identifier) {
                     std::string member = tokens_[pos_ + 1].lexeme;
-                    std::string scoped_member = std::string(ts.tag) + "::" + member;
-                    // Try direct lookup (instantiation::member)
-                    auto tdit = typedef_types_.find(scoped_member);
-                    if (tdit == typedef_types_.end()) {
-                        // Fall back to template origin name (template::member)
-                        auto def_it = struct_tag_def_map_.find(ts.tag);
-                        if (def_it != struct_tag_def_map_.end() && def_it->second &&
-                            def_it->second->template_origin_name) {
-                            std::string origin_scoped = std::string(def_it->second->template_origin_name) + "::" + member;
-                            tdit = typedef_types_.find(origin_scoped);
-                        }
-                    }
-                    if (tdit != typedef_types_.end()) {
+                    TypeSpec resolved{};
+                    if (lookup_struct_member_typedef_recursive(ts.tag, member, &resolved)) {
                         consume(); // ::
                         consume(); // member
                         // The typedef resolves to a type — for `typedef bool_constant type;` inside
                         // bool_constant<true>, `type` refers back to bool_constant<true> itself.
                         // The resolved typedef's tag might be the template name, not the instantiation.
                         // If the resolved type is the same template origin, use the instantiation tag.
-                        TypeSpec resolved = tdit->second;
                         if (resolved.base == TB_STRUCT && resolved.tag) {
                             auto inst_it = struct_tag_def_map_.find(ts.tag);
                             if (inst_it != struct_tag_def_map_.end() && inst_it->second &&

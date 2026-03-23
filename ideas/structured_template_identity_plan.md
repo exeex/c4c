@@ -316,7 +316,7 @@ Completed:
 
 ### Phase 5. Shrink String-Based Lookup Paths
 
-Status: in progress
+Status: done
 
 After the structured APIs exist, start replacing string-based lookups in:
 
@@ -339,15 +339,32 @@ Completed:
   resolution path
 - parser/HIR template struct instantiation dedup no longer depends on mangled
   strings as the semantic cache key
+- parser-side `Template<Args>::member` lookup now prefers the concrete
+  instantiation tag and only falls back to family/origin strings when the
+  parser is still carrying unresolved transport state
+- concrete template struct instantiation now clones and registers member
+  typedefs on the instantiated scope, so `Template<Args>::member` does not
+  have to treat `template_origin_name::member` as the main semantic path
+- parser-side member typedef lookup now walks concrete instantiated nodes and
+  concrete base tags before considering string-carried family transport
+- alias-template and template-struct parser dedup now use semantic instance
+  keys derived from primary template identity plus canonicalized args, instead
+  of relying on printed/mangled names
 
-Remaining:
+Phase-5 boundary:
 
-- shrink parser-side transport paths that still carry `tpl_struct_origin` /
-  `template_origin_name` as quasi-semantic fields before HIR canonicalization
-- move more member typedef / dependent-base parser-side lookup onto explicit
-  primary-owner handles where possible
-- leave raw string names only for parser transport, diagnostics, and printed
-  output
+- `tpl_struct_origin` / `template_origin_name` still exist as parser/HIR
+  transport and debug fields
+- that is acceptable for this plan as long as they no longer define the main
+  semantic cache key or owner-selection path
+- in other words: the old string-based path is no longer the primary semantic
+  route, but a smaller transport/fallback route still exists at parser/HIR
+  boundaries
+- the remaining work around deferred NTTP default evaluation, blocked retries,
+  and late owner realization belongs to
+  [template_lazy_instantiation_plan.md](/workspaces/c4c/ideas/template_lazy_instantiation_plan.md),
+  because that is now primarily an engine-control/fixpoint ownership problem,
+  not a template-identity modeling problem
 
 
 ## Interaction With Lazy Instantiation
