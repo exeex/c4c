@@ -1,6 +1,8 @@
 # Plan Todo — Template Function Identity
 
-## Active Plan Item
+## Status: COMPLETE (2026-03-24)
+
+## Plan Item
 Structured template function identity (plan.md Steps 1–6)
 
 ## Completed
@@ -11,7 +13,7 @@ Structured template function identity (plan.md Steps 1–6)
 - Step 5: Added structured dedup (FunctionTemplateInstanceKey) for seed and instance recording
 - Step 6: Old string-keyed path demoted to legacy fallback; structured selection is now the primary path
 
-## Next Slice
+## Verification (2026-03-24)
 All 6 steps complete. Plan acceptance criteria met:
 1. Explicit fn-template specialization selection no longer primarily uses mangled_name
 2. Owner-based specialization registration exists
@@ -19,5 +21,8 @@ All 6 steps complete. Plan acceptance criteria met:
 4. Semantic dedup uses primary_def + spec_key (when primary_def available)
 5. Mangled names remain only as derived output
 
-## Baseline
+## Final Baseline
 2118/2123 tests passing (5 pre-existing failures, no regressions)
+
+## Next
+Plan fully delivered. No further work items remain for this plan.
