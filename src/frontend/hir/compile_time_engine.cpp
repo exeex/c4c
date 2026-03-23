@@ -10,6 +10,50 @@ namespace c4c::hir {
 
 namespace {
 
+struct PendingTemplateTypeStep {
+  CompileTimeState* ct_state = nullptr;
+  DeferredInstantiateTypeFn instantiate_type_fn;
+  size_t resolved = 0;
+  size_t pending = 0;
+  size_t blocked = 0;
+  size_t spawned_new_work = 0;
+  std::vector<CompileTimeDiagnostic> pending_diags;
+
+  void run() {
+    if (!ct_state) return;
+    for (const auto& work_item : ct_state->pending_template_types()) {
+      if (ct_state->is_pending_template_type_resolved(work_item.dedup_key))
+        continue;
+      DeferredTemplateTypeResult result =
+          instantiate_type_fn
+              ? instantiate_type_fn(work_item)
+              : DeferredTemplateTypeResult::blocked();
+      if (result.kind == DeferredTemplateTypeResultKind::Resolved) {
+        ct_state->mark_pending_template_type_resolved(work_item.dedup_key);
+        ++resolved;
+      } else {
+        ++pending;
+        if (result.kind == DeferredTemplateTypeResultKind::Blocked) {
+          ++blocked;
+          if (result.spawned_new_work) ++spawned_new_work;
+        }
+        if (result.kind == DeferredTemplateTypeResultKind::Terminal ||
+            !result.diagnostic.empty()) {
+          std::string label = result.diagnostic;
+          if (label.empty()) {
+            label = work_item.context_name.empty()
+                ? pending_template_type_kind_name(work_item.kind)
+                : work_item.context_name;
+            label = "unresolved template type: " + label;
+          }
+          pending_diags.push_back(
+              {CompileTimeDiagnostic::UnresolvedTemplate, std::move(label)});
+        }
+      }
+    }
+  }
+};
+
 ConstEvalResult evaluate_pending_consteval(
     const CompileTimeState& ct_state,
     const PendingConstevalExpr& pce) {
@@ -265,7 +309,8 @@ struct PendingConstevalEvalStep {
 
 CompileTimeEngineStats run_compile_time_engine(
     Module& module, std::shared_ptr<CompileTimeState> ct_state,
-    DeferredInstantiateFn instantiate_fn) {
+    DeferredInstantiateFn instantiate_fn,
+    DeferredInstantiateTypeFn instantiate_type_fn) {
   CompileTimeEngineStats stats{};
 
   static constexpr int kMaxIterations = 8;
@@ -275,6 +320,13 @@ CompileTimeEngineStats run_compile_time_engine(
 
   for (int iter = 0; iter < kMaxIterations; ++iter) {
     ++stats.iterations;
+
+    // Step 0: observe pending type-driven template work discovered during lowering.
+    PendingTemplateTypeStep ptt_step{ct_state ? ct_state.get() : nullptr,
+                                     instantiate_type_fn};
+    ptt_step.run();
+    stats.template_types_resolved += ptt_step.resolved;
+    stats.template_types_pending = ptt_step.pending;
 
     // Step 1: template instantiation resolution (with optional deferred lowering).
     TemplateInstantiationStep tpl_step{module, instantiate_fn,
@@ -303,7 +355,8 @@ CompileTimeEngineStats run_compile_time_engine(
     stats.consteval_pending = ce_step.pending + pce_step.pending;
 
     // Convergence: no pending work remains in any step.
-    size_t total_pending = tpl_step.pending + pce_step.pending + ce_step.pending;
+    size_t total_pending =
+        ptt_step.pending + tpl_step.pending + pce_step.pending + ce_step.pending;
     if (total_pending == 0) {
       stats.converged = true;
       break;
@@ -311,18 +364,25 @@ CompileTimeEngineStats run_compile_time_engine(
 
     // Check whether this iteration made progress compared to the previous one.
     // Progress means at least one pending count decreased.
+    size_t cur_template_pending = ptt_step.pending + tpl_step.pending;
     size_t cur_consteval_pending = ce_step.pending + pce_step.pending;
     bool made_progress =
-        tpl_step.pending < prev_templates_pending ||
+        ptt_step.resolved > 0 ||
+        ptt_step.spawned_new_work > 0 ||
+        tpl_step.newly_instantiated > 0 ||
+        pce_step.evaluated > 0 ||
+        cur_template_pending < prev_templates_pending ||
         cur_consteval_pending < prev_consteval_pending;
 
-    prev_templates_pending = tpl_step.pending;
+    prev_templates_pending = cur_template_pending;
     prev_consteval_pending = cur_consteval_pending;
 
     if (!made_progress) {
       // No progress — we've hit an irreducible set.  Collect diagnostics
       // for all pending items so the caller can report them.
       stats.converged = false;
+      stats.diagnostics.insert(stats.diagnostics.end(),
+          ptt_step.pending_diags.begin(), ptt_step.pending_diags.end());
       stats.diagnostics.insert(stats.diagnostics.end(),
           tpl_step.pending_diags.begin(), tpl_step.pending_diags.end());
       stats.diagnostics.insert(stats.diagnostics.end(),
@@ -355,6 +415,9 @@ std::string format_compile_time_stats(const CompileTimeEngineStats& stats) {
       << ", " << stats.templates_instantiated << " template call"
       << (stats.templates_instantiated != 1 ? "s" : "")
       << " resolved"
+      << ", " << stats.template_types_resolved << " template type"
+      << (stats.template_types_resolved != 1 ? "s" : "")
+      << " resolved"
       << ", " << stats.consteval_reduced << " consteval reduction"
       << (stats.consteval_reduced != 1 ? "s" : "");
   if (stats.templates_deferred > 0 || stats.consteval_deferred > 0) {
@@ -384,6 +447,9 @@ std::string format_compile_time_stats(const CompileTimeEngineStats& stats) {
       out << stats.consteval_pending << " consteval" << (stats.consteval_pending != 1 ? "s" : "") << " pending";
     }
     out << ")";
+  }
+  if (stats.template_types_pending > 0) {
+    out << "\n  pending template types=" << stats.template_types_pending;
   }
   if (stats.converged) {
     out << " (converged)";

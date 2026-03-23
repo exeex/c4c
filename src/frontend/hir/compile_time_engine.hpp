@@ -45,6 +45,54 @@ struct TemplateInstance {
   SpecializationKey spec_key;  // stable identity for dedup/caching
 };
 
+enum class PendingTemplateTypeKind {
+  DeclarationType,
+  OwnerStruct,
+  MemberTypedef,
+  BaseType,
+  CastTarget,
+};
+
+struct PendingTemplateTypeWorkItem {
+  PendingTemplateTypeKind kind = PendingTemplateTypeKind::DeclarationType;
+  TypeSpec pending_type{};
+  TypeBindings type_bindings;
+  NttpBindings nttp_bindings;
+  SourceSpan span{};
+  std::string context_name;
+  std::string dedup_key;
+};
+
+enum class DeferredTemplateTypeResultKind {
+  Resolved,
+  Blocked,
+  Terminal,
+};
+
+struct DeferredTemplateTypeResult {
+  DeferredTemplateTypeResultKind kind =
+      DeferredTemplateTypeResultKind::Blocked;
+  bool spawned_new_work = false;
+  std::string diagnostic;
+
+  static DeferredTemplateTypeResult resolved() {
+    return {DeferredTemplateTypeResultKind::Resolved, false, {}};
+  }
+
+  static DeferredTemplateTypeResult blocked(
+      bool spawned_new_work = false,
+      std::string diagnostic = {}) {
+    return {DeferredTemplateTypeResultKind::Blocked,
+            spawned_new_work, std::move(diagnostic)};
+  }
+
+  static DeferredTemplateTypeResult terminal(
+      std::string diagnostic = {}) {
+    return {DeferredTemplateTypeResultKind::Terminal, false,
+            std::move(diagnostic)};
+  }
+};
+
 // ── Template mangling utilities ─────────────────────────────────────────────
 
 /// Produce a deterministic type suffix for name mangling.
@@ -154,6 +202,64 @@ inline std::vector<std::string> split_deferred_template_arg_refs(
   }
   parts.push_back(refs.substr(start));
   return parts;
+}
+
+inline const char* pending_template_type_kind_name(PendingTemplateTypeKind kind) {
+  switch (kind) {
+    case PendingTemplateTypeKind::DeclarationType: return "declaration";
+    case PendingTemplateTypeKind::OwnerStruct: return "owner-struct";
+    case PendingTemplateTypeKind::MemberTypedef: return "member-typedef";
+    case PendingTemplateTypeKind::BaseType: return "base-type";
+    case PendingTemplateTypeKind::CastTarget: return "cast-target";
+  }
+  return "unknown";
+}
+
+inline std::string encode_pending_type_ref(const TypeSpec& ts) {
+  std::string out;
+  out += "base=" + std::to_string(static_cast<int>(ts.base));
+  out += "|tag=";
+  out += ts.tag ? ts.tag : "";
+  out += "|ptr=" + std::to_string(ts.ptr_level);
+  out += "|arr=" + std::to_string(ts.array_rank);
+  out += "|origin=";
+  out += ts.tpl_struct_origin ? ts.tpl_struct_origin : "";
+  out += "|args=";
+  out += ts.tpl_struct_arg_refs ? ts.tpl_struct_arg_refs : "";
+  out += "|member=";
+  out += ts.deferred_member_type_name ? ts.deferred_member_type_name : "";
+  return out;
+}
+
+inline std::string make_pending_template_type_key(
+    PendingTemplateTypeKind kind, const TypeSpec& pending_type,
+    const TypeBindings& type_bindings, const NttpBindings& nttp_bindings,
+    const std::string& context_name, const SourceSpan& span) {
+  std::string key = pending_template_type_kind_name(kind);
+  key += "|ctx=" + context_name;
+  key += "|span=" + std::to_string(span.begin.line) + ":" +
+         std::to_string(span.end.line);
+  key += "|type=" + encode_pending_type_ref(pending_type);
+
+  std::vector<std::string> tb_names;
+  tb_names.reserve(type_bindings.size());
+  for (const auto& [name, _] : type_bindings) tb_names.push_back(name);
+  std::sort(tb_names.begin(), tb_names.end());
+  key += "|tb=";
+  for (const auto& name : tb_names) {
+    key += name + "=" + type_suffix_for_mangling(type_bindings.at(name)) + ";";
+  }
+
+  std::vector<std::string> nb_names;
+  nb_names.reserve(nttp_bindings.size());
+  for (const auto& [name, _] : nttp_bindings) nb_names.push_back(name);
+  std::sort(nb_names.begin(), nb_names.end());
+  key += "|nb=";
+  for (const auto& name : nb_names) {
+    key += name + "=" + std::to_string(nttp_bindings.at(name)) + ";";
+  }
+
+  return key;
 }
 
 // ── InstantiationRegistry ───────────────────────────────────────────────────
@@ -547,6 +653,45 @@ struct CompileTimeState {
     const_int_bindings_[name] = value;
   }
 
+  bool record_pending_template_type(PendingTemplateTypeKind kind,
+                                    const TypeSpec& pending_type,
+                                    const TypeBindings& type_bindings,
+                                    const NttpBindings& nttp_bindings,
+                                    const SourceSpan& span,
+                                    const std::string& context_name = {}) {
+    if (!pending_type.tpl_struct_origin && !pending_type.deferred_member_type_name)
+      return false;
+    PendingTemplateTypeWorkItem item;
+    item.kind = kind;
+    item.pending_type = pending_type;
+    item.type_bindings = type_bindings;
+    item.nttp_bindings = nttp_bindings;
+    item.span = span;
+    item.context_name = context_name;
+    item.dedup_key = make_pending_template_type_key(
+        kind, pending_type, type_bindings, nttp_bindings, context_name, span);
+    if (pending_template_type_keys_.count(item.dedup_key) > 0) return false;
+    pending_template_type_keys_.insert(item.dedup_key);
+    pending_template_types_.push_back(std::move(item));
+    return true;
+  }
+
+  const std::vector<PendingTemplateTypeWorkItem>& pending_template_types() const {
+    return pending_template_types_;
+  }
+
+  bool is_pending_template_type_resolved(const std::string& key) const {
+    return resolved_pending_template_type_keys_.count(key) > 0;
+  }
+
+  void mark_pending_template_type_resolved(const std::string& key) {
+    if (!key.empty()) resolved_pending_template_type_keys_.insert(key);
+  }
+
+  size_t pending_template_type_count() const {
+    return pending_template_types_.size();
+  }
+
   /// Dump debug visibility for seed work vs realized instances.
   void dump(FILE* out) const {
     std::fprintf(out, "[CompileTimeState] template_defs=%zu consteval_defs=%zu\n",
@@ -555,6 +700,8 @@ struct CompileTimeState {
                  template_struct_defs_.size(), template_struct_specializations_.size());
     std::fprintf(out, "[CompileTimeState] enum_consts=%zu const_int_bindings=%zu\n",
                  enum_consts_.size(), const_int_bindings_.size());
+    std::fprintf(out, "[CompileTimeState] pending_template_types=%zu\n",
+                 pending_template_types_.size());
     std::fprintf(out, "[CompileTimeState] registry parity:\n");
     registry.dump_parity(out);
   }
@@ -572,6 +719,10 @@ struct CompileTimeState {
   std::unordered_map<std::string, long long> enum_consts_;
   // Global const-integer bindings (name → value).
   std::unordered_map<std::string, long long> const_int_bindings_;
+  // Pending type-driven template work discovered during AST-to-HIR lowering.
+  std::vector<PendingTemplateTypeWorkItem> pending_template_types_;
+  std::unordered_set<std::string> pending_template_type_keys_;
+  std::unordered_set<std::string> resolved_pending_template_type_keys_;
 };
 
 /// A diagnostic for a single irreducible compile-time node.
@@ -586,6 +737,8 @@ struct CompileTimeEngineStats {
   size_t templates_instantiated = 0;  // template calls with resolved target functions
   size_t templates_pending = 0;       // template calls whose target is missing
   size_t templates_deferred = 0;      // template instantiations created by this pass
+  size_t template_types_resolved = 0; // pending type work items resolved by the pass
+  size_t template_types_pending = 0;  // pending type-driven template work items observed
   size_t consteval_reduced = 0;       // consteval calls successfully reduced to constants
   size_t consteval_pending = 0;       // consteval calls whose result is missing or invalid
   size_t consteval_deferred = 0;      // consteval reductions unlocked by deferred template instantiation
@@ -618,6 +771,9 @@ using DeferredInstantiateFn = std::function<bool(
     const NttpBindings& nttp_bindings,
     const std::string& mangled_name)>;
 
+using DeferredInstantiateTypeFn = std::function<DeferredTemplateTypeResult(
+    const PendingTemplateTypeWorkItem& work_item)>;
+
 /// Run the HIR compile-time reduction loop.
 ///
 /// This pass iterates:
@@ -635,7 +791,8 @@ using DeferredInstantiateFn = std::function<bool(
 CompileTimeEngineStats run_compile_time_engine(
     Module& module,
     std::shared_ptr<CompileTimeState> ct_state = nullptr,
-    DeferredInstantiateFn instantiate_fn = nullptr);
+    DeferredInstantiateFn instantiate_fn = nullptr,
+    DeferredInstantiateTypeFn instantiate_type_fn = nullptr);
 
 /// Format pass statistics for debug output (used by --dump-hir).
 std::string format_compile_time_stats(const CompileTimeEngineStats& stats);

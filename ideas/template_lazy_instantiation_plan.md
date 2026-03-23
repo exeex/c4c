@@ -2,704 +2,521 @@
 
 ## Goal
 
-Move template type realization away from parser-time guessing and toward a
-single lazy instantiation model that runs with complete concrete bindings.
+Move dependent template type realization into the compile-time engine and make
+it use-site driven.
 
-This plan is specifically about:
+The intended rule is simple:
 
+- parser preserves unresolved structure
+- AST to HIR records pending work
+- compile-time engine is the only stage that turns dependent work into
+  concrete types/values
+
+This plan is about:
+
+- template struct/class instantiation from type use sites
 - dependent NTTP defaults such as `bool = trait<T>::value`
-- dependent member typedefs such as `typename Helper<T>::type`
-- alias templates and template struct bases that currently require partial
-  early resolution
-- making template type realization converge through a compile-time fixpoint
+- dependent member typedefs such as `Owner<T>::type`
+- dependent base / alias / member chains
+- interactions between the above and `consteval` / template function
+  instantiation
 
-This plan is **not** about:
+This plan is not about:
 
-- replacing all parser support for templates
-- implementing full C++ template semantics
-- adding SFINAE, concepts, or full Clang-like partial ordering
-- removing all eager instantiation forever
-
-The narrower goal is:
-
-- parser preserves dependency information
-- HIR carries that information forward
-- compile-time engine realizes template types lazily from actual use sites
+- full C++ template semantics
+- SFINAE, concepts, or full partial ordering
+- removing every eager fast path
+- fully replacing string-carried template identity
 
 
-## Problem Statement
+## Relationship To Structured Template Identity
 
-Today the frontend splits responsibility for template realization across three
-stages:
+This plan assumes we can continue using the current parser/HIR transport shape
+for unresolved template types in the short term, for example:
+
+- `TypeSpec.tpl_struct_origin`
+- `TypeSpec.tpl_struct_arg_refs`
+- parser-generated specialization / instantiation names
+
+That is acceptable only as a transition mechanism.
+
+But we now know there is a deeper issue:
+
+> string names are currently carrying too much semantic meaning
+
+Today the system can accidentally use strings to represent all of these at
+once:
+
+- primary template family identity
+- specialization pattern identity
+- concrete instantiation identity
+- debug / printable names
+
+That is unsafe.
+In particular, names like `foo__spec_1` or `foo_T_int` should not become the
+semantic key for later template resolution.
+
+So the long-term direction is:
+
+- use-site lazy instantiation remains the control-flow model
+- structured template identity becomes the semantic model
+
+Those are related but distinct refactors.
+
+This plan therefore focuses on:
+
+- when work is created
+- who owns the fixpoint
+- how blocked work decomposes into finer-grained work
+
+And leaves the full "stop using strings as semantic identity" work to a
+separate plan:
+
+- [structured_template_identity_plan.md](/workspaces/c4c/ideas/structured_template_identity_plan.md)
+
+
+## Core Understanding
+
+The important shift is:
+
+> template type work should be created at the use site, not at the template
+> definition site
+
+That means we do **not** want:
+
+- "I saw `template <...> struct Foo`, so instantiate things now"
+- "parser saw a dependent default, so guess now"
+
+We **do** want:
+
+- "a declaration / cast / base / member lookup needs a concrete type now"
+- "record that requirement as compile-time work"
+- "let the engine resolve it when enough dependencies are available"
+
+
+## Why The Old Split Fails
+
+Right now dependent type realization is spread across:
 
 1. parser
-   - parses template structs, alias templates, defaults, and some dependent
-     references
-   - also eagerly tries to evaluate deferred NTTP defaults
-   - sometimes instantiates template structs during `parse_base_type()`
+2. `ast_to_hir.cpp`
+3. `compile_time_engine.cpp`
 
-2. AST to HIR
-   - resolves some pending template struct refs using concrete bindings
-   - instantiates concrete HIR structs on demand
-   - has begun preserving deferred refs such as NTTP `$expr:` and member-type
-     references
+The parser and `ast_to_hir.cpp` still do too much final work:
 
-3. compile-time engine
-   - runs a fixpoint loop
-   - resolves deferred template **calls**
-   - evaluates pending consteval expressions
-
-The problem is that type-driven template realization still happens too early
-and in too many places.
-
-That causes failures like:
-
-- parser-time NTTP default evaluation without enough information
-- alias/member-type chains that collapse to fallback types
-- specialization selection that happens before full owner realization
-- separate ad hoc logic for calls, bases, typedefs, and aliases
-
-
-## Core Conclusion
-
-Dependent template type realization should be driven by concrete use sites, not
-by parser-time approximation.
-
-In practice that means:
-
-- parser should preserve unresolved template structure and default expressions
-- HIR should preserve unresolved template type work items
-- compile-time engine should gain a worklist for template **type**
-  instantiation, not only template function calls
-
-The key design principle is:
-
-> only instantiate or evaluate when we have the concrete bindings from the
-> actual declaration / use site that needs the type
-
-
-## Why Parser-Time Evaluation Is The Wrong Place
-
-For a dependent default like:
-
-```cpp
-template <typename T, bool = arithmetic<T>::value>
-struct is_signed_helper;
-```
-
-the parser does not inherently know the right answer.
-
-It only sees a token sequence that refers to:
-
-- a template owner `arithmetic<T>`
-- a member `value`
-- possibly a specialization that depends on `T`
-
-The right result is only knowable when we instantiate something like:
-
-- `is_signed_helper<int>`
-- `is_signed_helper<unsigned int>`
-- `is_signed_helper<void>`
-
-At that point we finally know:
-
-- the concrete type binding for `T`
-- which specialization of `arithmetic<T>` should be selected
-- which concrete owner struct exists
-- what `value` or `type` means on that concrete owner
-
-So parser-time evaluation should be limited to:
-
-- non-dependent literals
-- structurally preserving unresolved expressions
-- recording deferred references in a durable form
-
-It should not be the final authority for dependent defaults.
-
-
-## Current Compile-Time Engine: What It Already Does
-
-The current engine already has one important property:
-
-- it runs a fixpoint loop until compile-time work converges
-
-Today it mainly handles:
-
-- deferred template function instantiation
-- pending consteval evaluation
-
-That is already the right *shape* of solution.
-
-What is missing is scope.
-
-The engine does **not yet** own all type-driven template realization such as:
-
-- template struct instantiation discovered from type uses
-- member typedef realization like `Owner<T>::type`
-- dependent base realization
-- dependent NTTP default evaluation used for struct specialization selection
-
-So this plan extends the existing engine instead of replacing it.
-
-
-## Target Model
-
-The final model should work like this:
-
-1. parser records unresolved template type structure
-   - owner template name
-   - template arg refs
-   - deferred NTTP default expression text/tokens
-   - deferred member typedef name such as `type`
-
-2. AST to HIR lowers these to explicit pending type references
-   - no forced early evaluation for dependent cases
-   - only obviously concrete cases may resolve immediately
-
-3. compile-time engine walks all pending template type refs
-   - resolve owner template instantiation
-   - fill dependent NTTP defaults using concrete bindings
-   - select specialization
-   - realize concrete struct / alias / member typedef
-   - repeat until no new type instantiations are needed
-
-4. downstream HIR lowering/codegen only sees concrete types or explicit
-   unresolved diagnostics
-
-
-## First Migration Targets
-
-Before changing architecture further, we should define exactly what gets moved
-out of `ast_to_hir.cpp` and into `src/frontend/hir/compile_time_engine.cpp`
-first.
-
-The practical rule is:
-
-- move work that is currently *type-driven* and *use-site driven*
-- keep work that is just *syntax preservation* or *obviously concrete lowering*
-
-That gives us a narrow first target instead of trying to move all template
-logic at once.
-
-
-### Target A: Concrete Template Struct Realization
-
-This is the biggest current owner of early type work.
-
-Today `resolve_pending_tpl_struct()` in `ast_to_hir.cpp` is doing all of these
-jobs at once:
-
-- parse deferred template arg refs
-- substitute concrete type/NTTP bindings
 - evaluate deferred NTTP defaults
-- select template struct specialization
-- build the mangled concrete struct name
-- instantiate the concrete HIR struct
-- lower methods immediately
-- rewrite the original `TypeSpec` in place
+- choose template struct specializations
+- instantiate concrete struct defs
+- chase `Owner<T>::type`
+- resolve dependent bases inline
 
-That is already compile-time-engine-shaped work, just living in the wrong
-file.
+That causes predictable problems:
 
-So the first target should be:
+- work happens before bindings are concrete
+- nested dependencies are solved by recursion and ad hoc fallbacks
+- there is no single place that knows whether a failure is terminal or merely
+  blocked on more compile-time work
 
-- extract the realization algorithm behind `resolve_pending_tpl_struct()`
-- re-home the worklist-driving part in `compile_time_engine.cpp`
-- leave `ast_to_hir.cpp` responsible only for creating/preserving the pending
-  `TypeSpec`
 
-Concretely this means the engine should become the owner of:
+## Work Kinds The Engine Must Own
 
-- pending `TypeSpec{ tpl_struct_origin, tpl_struct_arg_refs }`
-- struct instantiation dedup
-- specialization selection for template structs
-- post-instantiation metadata registration
+The compile-time engine should eventually own three kinds of work:
 
+1. `consteval` evaluation
+- value-driven work
+- already present today
 
-### Target B: Dependent NTTP Default Evaluation For Struct Templates
+2. template function instantiation
+- call-driven work
+- already present today
 
-This is the cleanest semantic target to move early.
+3. template struct/class and dependent type realization
+- type-use-driven work
+- this is the missing piece
 
-Right now dependent NTTP defaults are effectively decided inside the template
-struct realization path, not by the fixpoint engine:
+These are not isolated lanes.
+They unlock each other.
 
-- explicit deferred expressions are evaluated while resolving args
-- missing NTTP defaults are materialized inside the same helper
+Examples:
 
-That is exactly the behavior we want to defer.
+- a `consteval` evaluation may require template function instantiation
+- a `consteval` evaluation may require `Trait<T>::value`, which requires
+  template struct/class realization
+- a template function instantiation may reveal pending local/return/base types
+- a template struct/class instantiation may require deferred NTTP evaluation,
+  base realization, member typedef lookup, or more compile-time work
 
-So the first semantic move should be:
+So the engine should be treated as one fixpoint over mixed compile-time work,
+not a set of unrelated passes.
 
-- keep parser preservation of `template_param_default_exprs`
-- stop treating `ast_to_hir.cpp` as the final authority for evaluating them
-- make the compile-time engine evaluate those defaults only when a concrete
-  pending type work item is being realized
 
-If we only move one "meaningful" behavior first, this is probably the best
-one, because it removes the main reason parser/HIR currently need to guess.
+## The Target Execution Model
 
+### 1. Parser
 
-### Target C: Dependent Member Typedef Resolution
+Parser responsibilities:
 
-`Owner<T>::type`-style lookup is another clear engine candidate.
+- parse syntax
+- preserve unresolved type structure
+- preserve deferred NTTP default text/tokens
+- preserve deferred member-type references
 
-Today `resolve_struct_member_typedef_hir()` in `ast_to_hir.cpp` performs:
+Parser should not be the final authority for dependent answers.
 
-- struct-scope alias lookup
-- binding substitution
-- inherited lookup through realized bases
-- recursive nested member-type resolution
-- opportunistic triggering of template struct realization on the owner
 
-This is also use-site-driven type work, so it belongs next to the template
-type fixpoint rather than inline in lowering.
+### 2. AST To HIR
 
-The target is:
+AST to HIR responsibilities:
 
-- `ast_to_hir.cpp` preserves `deferred_member_type_name`
-- engine resolves it once the owner type is concrete
-- if the member alias expands to another pending template type, requeue that
-  work instead of recursively finishing everything inside lowering
+- lower runtime/codegen-facing HIR
+- preserve unresolved `TypeSpec` state such as:
+  - `tpl_struct_origin`
+  - `tpl_struct_arg_refs`
+  - `deferred_member_type_name`
+- enqueue pending template type work when a use site requires a type
 
+AST to HIR may still do eager work for obviously concrete cases.
+But when work is dependent, its job is to record it, not finish it.
 
-### Target D: Dependent Base Types During Struct Realization
+Important caveat:
 
-Base realization should move together with template struct realization, not as
-a separate parser-side feature.
+- these string fields are transport/state-preservation fields, not the desired
+  long-term semantic identity model
+- engine-internal resolution should move toward structured identity over time
 
-Today concrete struct instantiation also resolves bases inline:
 
-- substitute template bindings into base type
-- instantiate pending template bases
-- resolve base member typedef chains
-- append concrete base tags directly into the HIR struct def
+### 3. Compile-Time Engine
 
-This should move as part of the same engine-owned pipeline:
+Compile-time engine responsibilities:
 
-1. realize concrete owner struct
-2. inspect each pending base
-3. enqueue dependent base owner/member work
-4. finalize base tags only after the base type is concrete
+- consume pending template function work
+- consume pending consteval work
+- consume pending template type work
+- repeatedly resolve what is ready
+- enqueue finer-grained prerequisite work when an item is blocked
+- stop only at fixpoint
 
-This keeps inheritance on the same path as aliases/member typedefs instead of
-giving bases bespoke logic forever.
+This is the key behavioral rule:
 
+> a failed resolution attempt is usually not an error; it is dependency
+> discovery
 
-### What Should Not Move In The First Pass
 
-To keep the first step tractable, we should explicitly *not* move everything.
+## Template Type Work Should Be Use-Site Driven
 
-The following can stay where they are for now:
+Pending template type work should be created when we actually need a concrete
+type, for example:
 
-- parser token/text preservation for deferred defaults
-- parser construction of pending `TypeSpec` metadata
-- obviously concrete builtin/default type materialization
-- template function call seeding already handled by the existing engine
-- final method lowering callback once a concrete struct instance is known
+- function return type lowering
+- function parameter type lowering
+- method return / parameter type lowering
+- local declaration type lowering
+- cast target lowering
+- struct base realization
+- member typedef lookup
 
-In other words, first move "decide what concrete type this should become",
-then later decide whether method lowering itself also needs to become more
-lazy.
+Not when we merely see:
 
+- a template struct/class definition
+- a parser-level dependent token sequence
 
-### Recommended Move Order
+In short:
 
-If we want the smallest viable migration path, the order should be:
+- definition site preserves
+- use site enqueues
+- engine resolves
 
-1. add engine-side pending template type work items
-2. move template struct realization entrypoints there
-3. move dependent NTTP default evaluation there
-4. move member typedef / dependent base follow-up resolution there
-5. only then delete the eager `ast_to_hir.cpp` resolution paths
 
-This order works because it moves the central owner first and lets other
-dependent features collapse onto the same path.
+## Work Item Model
 
+The engine needs first-class type work items.
 
-## Required Representation Changes
-
-### 1. Preserve Deferred NTTP Defaults As Data
-
-We already have token preservation for NTTP defaults.
-
-We should keep that as the parser-side truth for dependent defaults.
-
-Required property:
-
-- parser stores expression tokens/text
-- parser does not have to compute the final value for dependent cases
-
-
-### 2. Preserve Deferred Member Type References
-
-We need a stable way to represent:
-
-- `Owner<T>::type`
-- `Alias<T>::template rebind<U>` if supported later
-
-Minimum viable first step:
-
-- keep `deferred_member_type_name`
-- pair it with the owner type ref
-- only resolve after the owner is concrete
-
-
-### 3. Carry Struct Member Typedef Metadata Into HIR
-
-Member aliases inside struct bodies must not remain parser-only state.
-
-HIR-side type realization needs visibility into:
-
-- struct-scope `typedef`
-- struct-scope `using Name = Type`
-
-Otherwise the compile-time engine cannot resolve `Owner::type` without calling
-back into parser internals.
-
-
-### 4. Represent Pending Template Type Work Explicitly
-
-The engine currently has machinery for pending consteval and unresolved
-template calls.
-
-We need a similar work item for type realization.
-
-Example conceptual shape:
+Conceptually:
 
 ```cpp
-struct PendingTemplateTypeRef {
-  TypeSpec owner;
-  std::string member_typedef;
+enum class PendingTemplateTypeKind {
+  DeclarationType,
+  OwnerStruct,
+  MemberTypedef,
+  BaseType,
+  CastTarget,
+};
+
+struct PendingTemplateTypeWorkItem {
+  PendingTemplateTypeKind kind;
+  TypeSpec pending_type;
   TypeBindings type_bindings;
   NttpBindings nttp_bindings;
   SourceSpan span;
+  std::string context_name;
 };
 ```
 
-This does not need to be the exact final type.
-The important part is that type-driven work becomes first-class engine input.
+Important properties:
+
+- it stores the unresolved `TypeSpec`
+- it stores the concrete bindings known at the use site
+- it carries context for dedup and diagnostics
+
+Current limitation:
+
+- as long as this work item ultimately depends on string-carried owner names,
+  it is still vulnerable to confusion between primary templates,
+  specialization patterns, and concrete instantiations
+- that is why structured identity is a parallel architectural requirement
 
 
-## Execution Model
+## Resolution States
 
-## Phase 0: Freeze New Parser-Time Evaluation
+Trying to resolve a work item should not return just `success` or `failure`.
 
-Objective:
-Stop expanding parser responsibility for dependent template semantics.
+We need at least three states:
 
-Rules:
+1. `resolved`
+- concrete answer is available
 
-- parser may preserve deferred refs
-- parser may evaluate non-dependent defaults
-- parser should not gain new logic that finalizes dependent `trait<T>::value`
+2. `blocked`
+- not enough information yet
+- more prerequisite work should be enqueued
 
-Exit condition:
+3. `terminal`
+- there is no valid continuation
+- only report this as a user-facing unresolved error after fixpoint exhaustion
 
-- new template-type fixes default to preserve-first, not evaluate-first
+This distinction is crucial.
 
+Examples of `blocked`:
 
-## Phase 1: Define Ownership Boundaries
+- owner struct not instantiated yet
+- dependent NTTP default not evaluated yet
+- member typedef lookup depends on a concrete base that does not exist yet
+- consteval value needed by specialization selection is not available yet
 
-Objective:
-Make the stage responsibilities explicit.
+Examples of `terminal`:
 
-Parser owns:
-
-- syntax
-- token preservation
-- unresolved type structure
-
-AST to HIR owns:
-
-- lowering unresolved structure into HIR-visible pending refs
-- immediate resolution only when bindings are already concrete
-
-Compile-time engine owns:
-
-- fixpoint realization of pending template types
-- dependent NTTP default evaluation
-- dependent member typedef resolution
-
-Exit condition:
-
-- code comments and helper APIs reflect these boundaries
+- owner template not found
+- member typedef does not exist
+- no specialization matches
+- deferred expression is not evaluable in this model
 
 
-## Phase 2: Add HIR-Visible Member Typedef Metadata
+## Dependency Discovery Rule
 
-Objective:
-Make struct member typedefs/queryable aliases visible to HIR and the engine.
+When a template type work item cannot be resolved immediately, the engine
+should usually decompose it into smaller work.
 
-Required slices:
+Examples:
 
-- record member typedef/using aliases on struct AST nodes
-- lower that metadata into HIR-side lookup structures
-- support inherited lookup through concrete base tags
+### `Owner<T>::type`
 
-Exit condition:
+1. try to resolve member typedef
+2. discover owner is not concrete
+3. enqueue owner-struct work for `Owner<T>`
+4. keep the member-typedef work pending
+5. retry next iteration
 
-- `Owner::type` can be answered by HIR-owned metadata after concrete owner
-  realization
+
+### `Foo<T, trait<T>::value>`
+
+1. try to instantiate `Foo`
+2. discover NTTP default/value is not concrete yet
+3. enqueue finer-grained work to realize that value
+4. keep the owner-struct work pending
+5. retry next iteration
 
 
-## Phase 3: Introduce Pending Template Type Worklist
+### Dependent Base Chain
 
-Objective:
-Generalize the compile-time engine from call-driven work to type-driven work.
+1. try to realize base type
+2. discover base owner/member chain is unresolved
+3. enqueue owner/member prerequisite work
+4. keep the base work pending
+5. retry next iteration
 
-Required slices:
+
+## The Fixpoint Rule
+
+Each engine iteration should:
+
+1. try ready consteval work
+2. try ready template function work
+3. try ready template type work
+4. enqueue any newly discovered prerequisites
+5. repeat while progress is still being made
+
+Progress means any of:
+
+- a pending item becomes resolved
+- a blocked item produces new finer-grained work
+- a previously pending consteval / function / type dependency becomes concrete
+
+Only when no work resolves and no new work is discovered do we stop.
+
+
+## The First Real Migration Boundary
+
+The first real migration is not "fully lazy templates".
+
+It is:
+
+- use sites enqueue template type work
+- compile-time engine drives attempts to resolve it
+- `ast_to_hir.cpp` stops being the control loop
+
+At first the engine may still call back into existing helpers in
+`ast_to_hir.cpp`.
+That is acceptable as a transition step.
+
+The key thing to move first is control ownership, not every helper body.
+
+But we should be explicit about one thing:
+
+- moving control ownership into the engine does **not** by itself solve
+  semantic identity bugs caused by stringly-typed template ownership
+
+So a minimal "engine owns the loop" implementation may still need temporary
+compatibility logic until structured identity exists.
+
+
+## What Needs To Move Out Of `ast_to_hir.cpp`
+
+Eventually the following logic should no longer be engine-external:
+
+- pending template struct realization
+- deferred NTTP default evaluation for struct/class templates
+- specialization selection for template struct/class instantiation
+- dependent member typedef lookup
+- dependent base-type follow-up resolution
+
+Today these mostly live inside:
+
+- `resolve_pending_tpl_struct()`
+- `resolve_struct_member_typedef_hir()`
+
+Those helpers currently combine:
+
+- dependency discovery
+- final realization
+- recursive follow-up work
+
+That is exactly what should become explicit engine worklist logic.
+
+
+## Recommended Refactor Order
+
+### Step 1. Preserve And Enqueue
+
+- keep parser preservation as-is
+- enqueue pending template type work at use sites
+- keep eager fallback behavior temporarily
+
+This gives visibility without risking a full semantic move.
+
+
+### Step 2. Move Engine Control Ownership
+
+- compile-time engine actively consumes pending template type work
+- engine tracks resolved vs blocked items
+- engine becomes the fixpoint driver for type work
+
+This is the first important architectural shift.
+
+
+### Step 3. Split `resolve_pending_tpl_struct()`
+
+Break the current monolith into engine-callable sub-steps:
+
+1. substitute deferred template arg refs
+2. materialize explicit/default args
+3. evaluate dependent NTTP defaults
+4. select primary/specialization pattern
+5. build concrete mangled name
+6. instantiate concrete struct/class metadata
+7. realize follow-up base/member work
+
+At this stage code motion is fine.
+Semantic change should stay minimal.
+
+
+### Step 4. Teach The Engine About `blocked`
+
+Replace simple bool success/failure with structured results:
+
+- resolved
+- blocked
+- terminal
+
+And allow blocked attempts to enqueue finer-grained work items.
+
+
+### Step 5. Remove Recursive Ad Hoc Resolution
+
+Once blocked/requeue behavior works, shrink eager recursive logic in:
+
+- `resolve_pending_tpl_struct()`
+- `resolve_struct_member_typedef_hir()`
+- expression-lowering opportunistic resolution
+
+The goal is:
+
+- engine owns the loop
+- helpers do local resolution work only
+
+
+## What The First Good Diff Looks Like
+
+A good first implementation diff should:
 
 - add pending template type work items
-- seed them from:
-  - pending struct types
-  - dependent base types
-  - dependent member typedef refs
-  - dependent alias template expansions
-- deduplicate work by specialization key / concrete owner
+- seed them from use sites
+- let the engine attempt to consume them
+- keep current eager fallback logic behind callbacks or compatibility paths
+- expose stats / diagnostics so we can see what remains pending
 
-Exit condition:
+A good second diff should:
 
-- engine can repeatedly instantiate needed template types until convergence
+- split struct realization into smaller engine-callable sub-helpers
+- start distinguishing blocked from terminal failures
 
 
-## Phase 4: Move Dependent NTTP Default Evaluation Into The Engine
+## Diagnostics Policy
 
-Objective:
-Make dependent defaults evaluate only when bindings are concrete.
+Do not emit hard unresolved diagnostics at first blocked attempt.
 
-Required slices:
+Instead:
 
-- treat parser-stored NTTP default expressions as deferred inputs
-- evaluate them only during concrete template type realization
-- perform specialization selection after defaults are materialized in the
-  engine, not before
+- if resolution is blocked, record/queue dependencies and retry later
+- if fixpoint ends with no progress, then report what remains unresolved
 
-Important rule:
+Diagnostics should say which category failed:
 
-- non-dependent literal defaults can still be materialized early for
-  convenience
-- dependent defaults must go through the lazy path
+- owner struct/class never materialized
+- member typedef missing
+- dependent NTTP default never became concrete
+- specialization selection failed
+- prerequisite consteval work never reduced
 
-Exit condition:
 
-- parser no longer decides the result of `trait<T>::value`-style defaults
+## Success Criteria
 
+We are on the right track when:
 
-## Phase 5: Route Pending Base / Alias / Member-Type Chains Through One Path
+- use-site dependent types are enqueued rather than guessed early
+- the engine, not `ast_to_hir.cpp`, drives retries
+- blocked attempts generate finer-grained work
+- primary template identity is not silently replaced by specialization /
+  instantiation print names during later resolution
+- nested cases such as "consteval inside template type" or
+  "template type inside consteval" converge through the same fixpoint
+- unresolved diagnostics happen only after fixpoint exhaustion
 
-Objective:
-Avoid separate ad hoc resolution code for:
 
-- pending base types
-- alias templates
-- member typedef refs
+## Short Version
 
-Required slices:
+The new model is:
 
-- resolve owner template instantiation
-- then resolve alias/member ref on top of the concrete owner
-- if that produces another pending type, requeue it
-
-Example chain:
-
-1. instantiate `is_signed<T>`
-2. realize base `is_signed_helper<T>::type`
-3. realize `is_signed_helper<T, arithmetic<T>::value>`
-4. realize base `bool_constant<(T(-1) < T(0))>`
-5. inherit `value` and `operator()`
-
-Exit condition:
-
-- chained dependent template types resolve by repeated engine work, not nested
-  parser tricks
-
-
-## Phase 6: Shrink Early Resolution In Parser And AST-to-HIR
-
-Objective:
-After the engine path is solid, delete or narrow eager logic.
-
-Candidate reductions:
-
-- parser-side dependent NTTP default evaluation
-- parser-side eager dependent member-type materialization
-- AST-to-HIR eager fallback code that guesses concrete owners too early
-
-Not everything must be removed.
-Some eager paths are still useful for obviously concrete cases.
-
-The rule is:
-
-- eager is fine for already-concrete work
-- dependent work should go through the shared lazy engine path
-
-
-## Phase 7: Diagnostics And Convergence Rules
-
-Objective:
-Make unresolved type-driven template work fail cleanly.
-
-Required slices:
-
-- report unresolved pending template types after fixpoint exhaustion
-- distinguish:
-  - unresolved because owner never materialized
-  - unresolved because member typedef missing
-  - unresolved because dependent default could not be evaluated
-  - unresolved because specialization selection found no match
-
-- keep the same convergence semantics as template call/consteval reduction:
-  - if a pass creates new concrete work, iterate again
-  - stop when no new work appears
-
-
-## Dataflow Sketch
-
-### Before
-
-```text
-parser
-  -> parses template type
-  -> may eagerly evaluate dependent default
-  -> may instantiate partial owner
-
-ast_to_hir
-  -> resolves some pending refs
-
-compile_time_engine
-  -> handles calls/consteval only
-```
-
-### After
-
-```text
-parser
-  -> records unresolved type/default/member refs
-
-ast_to_hir
-  -> lowers them as pending template type work
-
-compile_time_engine
-  -> instantiate owner templates lazily
-  -> evaluate dependent defaults with concrete bindings
-  -> resolve member typedefs / aliases / bases
-  -> repeat to convergence
-```
-
-
-## Benefits
-
-If we do this well, we get:
-
-- one authoritative place for dependent template type realization
-- fewer parser-only hacks
-- better correctness for trait-style code such as EASTL and libc++ patterns
-- cleaner support for inherited `::value`, `::type`, and `operator()`
-- easier debugging because work happens in one explicit fixpoint loop
-
-
-## Risks
-
-### 1. Too Much Work Moves At Once
-
-If we move all template type resolution at once, we may destabilize a lot of
-currently passing cases.
-
-Mitigation:
-
-- move one dependent category at a time
-- keep eager concrete fast paths
-- add targeted regression tests for each migrated pattern
-
-
-### 2. Worklist Explosion
-
-A naive type-instantiation loop can duplicate work or recurse forever.
-
-Mitigation:
-
-- specialization-key dedup
-- explicit pending/realized sets
-- convergence accounting
-
-
-### 3. Parser/HIR Ownership Gets Blurry Again
-
-It is easy to reintroduce ad hoc eager fixes in the parser.
-
-Mitigation:
-
-- enforce the stage boundary in helper APIs and comments
-- treat parser-time dependent evaluation as exceptional and temporary
-
-
-## Suggested First Slices
-
-The first slices should be narrow and test-driven.
-
-### Slice A
-
-Add HIR-visible struct member typedef metadata and a lookup helper for
-concrete owners.
-
-Success means:
-
-- `ConcreteOwner::type` can be resolved in HIR without parser-local maps
-
-
-### Slice B
-
-Add pending template type work items for `deferred_member_type_name`.
-
-Success means:
-
-- `Owner<T>::type` stays unresolved through parsing/lowering and gets realized
-  only after `Owner<T>` is concrete
-
-
-### Slice C
-
-Move dependent NTTP default evaluation for template structs into the engine for
-one narrow pattern:
-
-- `trait<T>::value`
-
-Success means:
-
-- `template<typename T, bool = trait<T>::value>` is resolved by engine-driven
-  type instantiation, not parser-time evaluation
-
-
-### Slice D
-
-Route inherited trait chains through the same lazy path.
-
-Primary regression targets:
-
-- `is_signed_helper<T>::type`
-- inherited static `::value`
-- inherited `operator()`
-
-
-## Completion Criteria
-
-This plan is complete when all of the following are true:
-
-- parser no longer acts as the final evaluator for dependent NTTP defaults
-- compile-time engine owns lazy realization of pending template types
-- member typedef chains such as `Owner<T>::type` resolve after owner
-  materialization
-- inherited `::value` / `operator()` trait chains resolve through the same
-  engine-driven flow
-- targeted EASTL/libc++-style trait regressions pass without parser-specific
-  hacks
-
-
-## Immediate Next Step
-
-The next coding task after agreeing on this plan should be:
-
-1. add or finish HIR-owned metadata for struct member typedef/using aliases
-2. expose pending member-type refs as engine work items
-3. migrate one dependent default pattern from parser evaluation to engine
-   evaluation
+- definition site preserves
+- use site enqueues
+- engine resolves
+- blocked work expands into finer-grained work
+- only fixpoint exhaustion turns pending work into an error
