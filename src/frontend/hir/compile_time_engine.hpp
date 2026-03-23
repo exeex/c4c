@@ -57,6 +57,23 @@ struct SelectedTemplateStructPattern {
   NttpBindings nttp_bindings;
 };
 
+struct TemplateStructInstanceKey {
+  const Node* primary_def = nullptr;
+  SpecializationKey spec_key;
+
+  bool operator==(const TemplateStructInstanceKey& other) const {
+    return primary_def == other.primary_def && spec_key == other.spec_key;
+  }
+};
+
+struct TemplateStructInstanceKeyHash {
+  std::size_t operator()(const TemplateStructInstanceKey& key) const noexcept {
+    std::size_t h1 = std::hash<const Node*>{}(key.primary_def);
+    std::size_t h2 = SpecializationKeyHash{}(key.spec_key);
+    return h1 ^ (h2 + 0x9e3779b9u + (h1 << 6) + (h1 >> 2));
+  }
+};
+
 enum class PendingTemplateTypeKind {
   DeclarationType,
   OwnerStruct,
@@ -694,15 +711,25 @@ struct CompileTimeState {
     if (!pending_type.tpl_struct_origin && !pending_type.deferred_member_type_name)
       return false;
     PendingTemplateTypeWorkItem item;
+    const Node* canonical_owner_primary_def = owner_primary_def;
+    if (!canonical_owner_primary_def && pending_type.tpl_struct_origin) {
+      canonical_owner_primary_def = find_template_struct_def(pending_type.tpl_struct_origin);
+    }
+    TypeSpec canonical_pending_type = pending_type;
+    if (canonical_owner_primary_def && canonical_owner_primary_def->name &&
+        canonical_pending_type.tpl_struct_origin) {
+      canonical_pending_type.tpl_struct_origin = canonical_owner_primary_def->name;
+    }
     item.kind = kind;
-    item.pending_type = pending_type;
-    item.owner_primary_def = owner_primary_def;
+    item.pending_type = canonical_pending_type;
+    item.owner_primary_def = canonical_owner_primary_def;
     item.type_bindings = type_bindings;
     item.nttp_bindings = nttp_bindings;
     item.span = span;
     item.context_name = context_name;
     item.dedup_key = make_pending_template_type_key(
-        kind, pending_type, owner_primary_def, type_bindings, nttp_bindings,
+        kind, canonical_pending_type, canonical_owner_primary_def,
+        type_bindings, nttp_bindings,
         context_name, span);
     if (pending_template_type_keys_.count(item.dedup_key) > 0) return false;
     pending_template_type_keys_.insert(item.dedup_key);

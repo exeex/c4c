@@ -262,7 +262,7 @@ Remaining:
 
 ### Phase 3. Canonicalize Pending Type Work On Entry To The Engine
 
-Status: mostly complete
+Status: done
 
 Even if parser/HIR still carry string transport fields, the engine should try
 to canonicalize them into:
@@ -277,20 +277,18 @@ Completed:
 - `PendingTemplateTypeWorkItem` now carries `owner_primary_def`
 - engine dedup for pending template type work now includes the structured
   owner when available
-
-Remaining:
-
-- canonicalize more pending work items at creation time so engine resolution
-  does not need to re-discover the primary from string transport
-- push `TemplateStructEnv`/selected-pattern data further into deferred
-  resolution entry points
+- pending template type work is now canonicalized at creation time so
+  `owner_primary_def` and `tpl_struct_origin` prefer the primary template
+  identity before entering the engine
+- deferred template type resolution now threads structured owner information
+  through the main engine entry points instead of rediscovering it late
 
 This is the point where string transport stops being engine-internal identity.
 
 
 ### Phase 4. Separate Semantic Keys From Mangled Names
 
-Status: not started
+Status: done
 
 Current code often uses a mangled or generated name both as:
 
@@ -305,8 +303,20 @@ Desired rule:
 - semantic cache/dedup uses structured keys
 - mangled name is derived from the semantic key
 
+Completed:
+
+- HIR template struct instantiation dedup now uses
+  `TemplateStructInstanceKey { primary_def, spec_key }`
+  instead of a mangled-name set
+- parser-side template struct instantiation dedup now also uses a semantic
+  instance key derived from the primary template plus canonicalized args
+- mangled names remain as derived output names for instantiated structs, but
+  are no longer the sole cache/dedup identity in the main instantiation paths
+
 
 ### Phase 5. Shrink String-Based Lookup Paths
+
+Status: in progress
 
 After the structured APIs exist, start replacing string-based lookups in:
 
@@ -317,6 +327,27 @@ After the structured APIs exist, start replacing string-based lookups in:
 - template type work dedup
 
 Eventually the remaining string paths should be debug-only or parser-only.
+
+Completed:
+
+- HIR now funnels most pending template struct resolution through owner-first
+  helpers instead of repeating ad hoc
+  `find_template_struct_primary(ts.tpl_struct_origin)` lookups at each call site
+- generic control-type inference, function/method return and param lowering,
+  local declarations, casts, dependent bases, nested template args, and
+  `Struct<Args>::member`-style lookup now share the same structured-entry
+  resolution path
+- parser/HIR template struct instantiation dedup no longer depends on mangled
+  strings as the semantic cache key
+
+Remaining:
+
+- shrink parser-side transport paths that still carry `tpl_struct_origin` /
+  `template_origin_name` as quasi-semantic fields before HIR canonicalization
+- move more member typedef / dependent-base parser-side lookup onto explicit
+  primary-owner handles where possible
+- leave raw string names only for parser transport, diagnostics, and printed
+  output
 
 
 ## Interaction With Lazy Instantiation

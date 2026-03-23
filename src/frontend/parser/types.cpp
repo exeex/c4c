@@ -130,6 +130,98 @@ int specialization_match_score(const Node* spec) {
     return score;
 }
 
+std::string canonical_template_struct_type_key(const TypeSpec& ts) {
+    std::string out;
+    if (ts.is_const) out += "const_";
+    if (ts.is_volatile) out += "volatile_";
+    switch (ts.base) {
+        case TB_VOID: out += "void"; break;
+        case TB_BOOL: out += "bool"; break;
+        case TB_CHAR: out += "char"; break;
+        case TB_SCHAR: out += "schar"; break;
+        case TB_UCHAR: out += "uchar"; break;
+        case TB_SHORT: out += "short"; break;
+        case TB_USHORT: out += "ushort"; break;
+        case TB_INT: out += "int"; break;
+        case TB_UINT: out += "uint"; break;
+        case TB_LONG: out += "long"; break;
+        case TB_ULONG: out += "ulong"; break;
+        case TB_LONGLONG: out += "llong"; break;
+        case TB_ULONGLONG: out += "ullong"; break;
+        case TB_FLOAT: out += "float"; break;
+        case TB_DOUBLE: out += "double"; break;
+        case TB_LONGDOUBLE: out += "ldouble"; break;
+        case TB_INT128: out += "i128"; break;
+        case TB_UINT128: out += "u128"; break;
+        case TB_STRUCT:
+            out += ts.tag ? std::string("struct.") + ts.tag : "struct.?";
+            break;
+        case TB_UNION:
+            out += ts.tag ? std::string("union.") + ts.tag : "union.?";
+            break;
+        case TB_ENUM:
+            out += ts.tag ? std::string("enum.") + ts.tag : "enum.?";
+            break;
+        case TB_TYPEDEF:
+            if (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) {
+                out += std::string("pending.") + ts.tpl_struct_origin;
+                out += "<";
+                out += ts.tpl_struct_arg_refs ? ts.tpl_struct_arg_refs : "";
+                out += ">";
+            } else {
+                out += ts.tag ? std::string("typedef.") + ts.tag : "typedef.?";
+            }
+            break;
+        default:
+            if (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) {
+                out += std::string("pending.") + ts.tpl_struct_origin;
+                out += "<";
+                out += ts.tpl_struct_arg_refs ? ts.tpl_struct_arg_refs : "";
+                out += ">";
+            } else {
+                out += "unknown";
+            }
+            break;
+    }
+    for (int i = 0; i < ts.ptr_level; ++i) out += "*";
+    if (ts.is_lvalue_ref) out += "&";
+    if (ts.is_rvalue_ref) out += "&&";
+    return out;
+}
+
+std::string make_template_struct_instance_key(
+    const Node* primary_tpl,
+    const std::vector<ParsedTemplateArg>& concrete_args) {
+    if (!primary_tpl || !primary_tpl->name) return {};
+    std::string key = primary_tpl->name;
+    key += "<";
+    bool first = true;
+    for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
+        const char* param_name = primary_tpl->template_param_names[pi];
+        if (!param_name) continue;
+        if (!first) key += ",";
+        first = false;
+        key += param_name;
+        key += "=";
+        if (pi >= static_cast<int>(concrete_args.size())) {
+            key += "?";
+            continue;
+        }
+        if (concrete_args[pi].is_value) {
+            if (concrete_args[pi].nttp_name && concrete_args[pi].nttp_name[0] &&
+                std::strncmp(concrete_args[pi].nttp_name, "$expr:", 6) == 0) {
+                key += concrete_args[pi].nttp_name;
+            } else {
+                key += std::to_string(concrete_args[pi].value);
+            }
+        } else {
+            key += canonical_template_struct_type_key(concrete_args[pi].type);
+        }
+    }
+    key += ">";
+    return key;
+}
+
 const Node* select_template_struct_pattern(
     const std::vector<ParsedTemplateArg>& actual_args,
     const Node* primary_tpl,
@@ -1695,6 +1787,8 @@ TypeSpec Parser::parse_base_type() {
                         }
                         concrete_args.push_back(arg);
                     }
+                    const std::string instance_key =
+                        make_template_struct_instance_key(primary_tpl, concrete_args);
 
                     // Build mangled name from the concrete family arguments.
                     const std::string family_name =
@@ -1789,8 +1883,8 @@ TypeSpec Parser::parse_base_type() {
                     }
 
                     // Instantiate if not already done
-                    if (!instantiated_template_structs_.count(mangled)) {
-                        instantiated_template_structs_.insert(mangled);
+                    if (!instantiated_template_struct_keys_.count(instance_key)) {
+                        instantiated_template_struct_keys_.insert(instance_key);
                         // Create a concrete NK_STRUCT_DEF with substituted field types
                         Node* inst = make_node(NK_STRUCT_DEF, tpl_def->line);
                         inst->name = arena_.strdup(mangled.c_str());
@@ -2011,8 +2105,10 @@ TypeSpec Parser::parse_base_type() {
                                                 append_type_mangled_suffix(base_mangled, base_args[pi].type);
                                             }
                                         }
+                                        const std::string base_instance_key =
+                                            make_template_struct_instance_key(base_primary, base_args);
                                         // Trigger instantiation if needed
-                                        if (!instantiated_template_structs_.count(base_mangled) &&
+                                        if (!instantiated_template_struct_keys_.count(base_instance_key) &&
                                             !struct_tag_def_map_.count(base_mangled)) {
                                             // Inject tokens to trigger parse_base_type instantiation
                                             // by building: origin < arg1, arg2, ... >

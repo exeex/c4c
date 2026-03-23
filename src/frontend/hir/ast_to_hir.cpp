@@ -776,9 +776,30 @@ class Lowerer {
     if (!ts.tpl_struct_origin && !ts.deferred_member_type_name) return;
     const Node* owner_primary_def =
         ts.tpl_struct_origin ? find_template_struct_primary(ts.tpl_struct_origin) : nullptr;
+    TypeSpec canonical_ts = ts;
+    if (owner_primary_def && owner_primary_def->name && canonical_ts.tpl_struct_origin) {
+      canonical_ts.tpl_struct_origin = owner_primary_def->name;
+    }
     ct_state_->record_pending_template_type(
-        kind, ts, owner_primary_def, tpl_bindings, nttp_bindings,
+        kind, canonical_ts, owner_primary_def, tpl_bindings, nttp_bindings,
         make_span(span_node), context_name);
+  }
+
+  const Node* canonical_template_struct_primary(const TypeSpec& ts,
+                                                const Node* primary_tpl = nullptr) const {
+    if (primary_tpl) return primary_tpl;
+    if (!ts.tpl_struct_origin) return nullptr;
+    return find_template_struct_primary(ts.tpl_struct_origin);
+  }
+
+  void resolve_pending_tpl_struct_if_needed(TypeSpec& ts,
+                                            const TypeBindings& tpl_bindings,
+                                            const NttpBindings& nttp_bindings,
+                                            const Node* primary_tpl = nullptr) {
+    if (!ts.tpl_struct_origin) return;
+    resolve_pending_tpl_struct(
+        ts, canonical_template_struct_primary(ts, primary_tpl),
+        tpl_bindings, nttp_bindings);
   }
 
   void lower_initial_program(const Node* root, Module& m) {
@@ -1102,7 +1123,7 @@ class Lowerer {
     auto spawn_owner_work = [&](const TypeSpec& owner_ts) -> bool {
       const Node* owner_primary_def = work_item.owner_primary_def;
       if (!owner_primary_def && owner_ts.tpl_struct_origin) {
-        owner_primary_def = find_template_struct_primary(owner_ts.tpl_struct_origin);
+        owner_primary_def = canonical_template_struct_primary(owner_ts);
       }
       return ct_state_->record_pending_template_type(
           PendingTemplateTypeKind::OwnerStruct,
@@ -1121,9 +1142,9 @@ class Lowerer {
       bool spawned_owner_work = false;
       if (owner_ts.tpl_struct_origin) {
         spawned_owner_work = spawn_owner_work(owner_ts);
-        resolve_pending_tpl_struct(owner_ts, work_item.owner_primary_def,
-                                   work_item.type_bindings,
-                                   work_item.nttp_bindings);
+        resolve_pending_tpl_struct_if_needed(
+            owner_ts, work_item.type_bindings, work_item.nttp_bindings,
+            work_item.owner_primary_def);
         if (owner_ts.tpl_struct_origin) {
           return DeferredTemplateTypeResult::blocked(
               spawned_owner_work,
@@ -1155,9 +1176,9 @@ class Lowerer {
     if (ts.tpl_struct_origin &&
         work_item.kind != PendingTemplateTypeKind::OwnerStruct) {
       const bool spawned_owner_work = spawn_owner_work(ts);
-      resolve_pending_tpl_struct(ts, work_item.owner_primary_def,
-                                 work_item.type_bindings,
-                                 work_item.nttp_bindings);
+      resolve_pending_tpl_struct_if_needed(
+          ts, work_item.type_bindings, work_item.nttp_bindings,
+          work_item.owner_primary_def);
       if (ts.tpl_struct_origin) {
         return DeferredTemplateTypeResult::blocked(
             spawned_owner_work,
@@ -1169,9 +1190,9 @@ class Lowerer {
       return DeferredTemplateTypeResult::resolved();
     }
     if (ts.tpl_struct_origin) {
-      resolve_pending_tpl_struct(ts, work_item.owner_primary_def,
-                                 work_item.type_bindings,
-                                 work_item.nttp_bindings);
+      resolve_pending_tpl_struct_if_needed(
+          ts, work_item.type_bindings, work_item.nttp_bindings,
+          work_item.owner_primary_def);
       if (ts.tpl_struct_origin) {
         return DeferredTemplateTypeResult::blocked(
             false,
@@ -1504,9 +1525,8 @@ class Lowerer {
           seed_pending_template_type(
               ts, ctx->tpl_bindings, ctx->nttp_bindings, n,
               PendingTemplateTypeKind::DeclarationType, "generic-ctrl-type");
-          resolve_pending_tpl_struct(
-              ts, find_template_struct_primary(ts.tpl_struct_origin),
-              ctx->tpl_bindings, ctx->nttp_bindings);
+          resolve_pending_tpl_struct_if_needed(
+              ts, ctx->tpl_bindings, ctx->nttp_bindings);
         }
         return ts;
       }
@@ -1826,9 +1846,8 @@ class Lowerer {
             base, base_tpl_bindings, base_nttp_bindings, sd,
             PendingTemplateTypeKind::BaseType,
             std::string("struct-base:") + (tag ? tag : ""));
-        resolve_pending_tpl_struct(
-            base, find_template_struct_primary(base.tpl_struct_origin),
-            base_tpl_bindings, base_nttp_bindings);
+        resolve_pending_tpl_struct_if_needed(
+            base, base_tpl_bindings, base_nttp_bindings);
       }
       if (base.deferred_member_type_name && base.tag && base.tag[0]) {
         TypeBindings empty_tb;
@@ -2143,9 +2162,8 @@ class Lowerer {
           updated_refs += part;
         }
         if (!updated_refs.empty()) ts.tpl_struct_arg_refs = ::strdup(updated_refs.c_str());
-        resolve_pending_tpl_struct(
-            ts, find_template_struct_primary(ts.tpl_struct_origin),
-            type_bindings, nttp_bindings);
+        resolve_pending_tpl_struct_if_needed(
+            ts, type_bindings, nttp_bindings);
       }
       return ts;
     };
@@ -2225,6 +2243,7 @@ class Lowerer {
     if (!primary_tpl && origin) primary_tpl = find_template_struct_primary(origin);
     if (!primary_tpl) return;
     if (!origin) origin = primary_tpl->name;
+    if (primary_tpl->name) ts.tpl_struct_origin = primary_tpl->name;
 
     // Parse arg_refs: comma-separated list of arg values in param order.
     std::vector<std::string> arg_refs;
@@ -2685,9 +2704,8 @@ class Lowerer {
           nested_ts.inner_rank = -1;
           nested_ts.tpl_struct_origin = inner_origin.c_str();
           nested_ts.tpl_struct_arg_refs = inner_args.c_str();
-          resolve_pending_tpl_struct(
-              nested_ts, find_template_struct_primary(inner_origin),
-              tpl_bindings, nttp_bindings);
+          resolve_pending_tpl_struct_if_needed(
+              nested_ts, tpl_bindings, nttp_bindings);
           arg.is_value = false;
           arg.type = nested_ts;
         } else {
@@ -2767,6 +2785,31 @@ class Lowerer {
     const TypeBindings& selected_type_bindings = selected_pattern.type_bindings;
     const NttpBindings& selected_nttp_bindings_map = selected_pattern.nttp_bindings;
 
+    std::vector<std::string> primary_param_order;
+    primary_param_order.reserve(primary_tpl->n_template_params);
+    TypeBindings instance_type_bindings;
+    NttpBindings instance_nttp_bindings;
+    for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
+      const char* param_name = primary_tpl->template_param_names[pi];
+      if (!param_name) continue;
+      primary_param_order.push_back(param_name);
+      if (pi >= static_cast<int>(concrete_args.size())) continue;
+      if (concrete_args[pi].is_value) {
+        instance_nttp_bindings[param_name] = concrete_args[pi].value;
+      } else {
+        instance_type_bindings[param_name] = concrete_args[pi].type;
+      }
+    }
+    const std::string primary_name =
+        primary_tpl->name ? primary_tpl->name : std::string(origin);
+    SpecializationKey instance_spec_key = instance_nttp_bindings.empty()
+        ? make_specialization_key(primary_name, primary_param_order,
+                                  instance_type_bindings)
+        : make_specialization_key(primary_name, primary_param_order,
+                                  instance_type_bindings,
+                                  instance_nttp_bindings);
+    TemplateStructInstanceKey instance_key{primary_tpl, instance_spec_key};
+
     const std::string family_name =
         tpl_def->template_origin_name ? tpl_def->template_origin_name : std::string(origin);
     std::string mangled(family_name);
@@ -2827,8 +2870,8 @@ class Lowerer {
 
     // Instantiate the concrete struct if not already done.
     if (!module_->struct_defs.count(mangled) &&
-        !instantiated_tpl_structs_.count(mangled)) {
-      instantiated_tpl_structs_.insert(mangled);
+        !instantiated_tpl_struct_keys_.count(instance_key)) {
+      instantiated_tpl_struct_keys_.insert(instance_key);
 
       HirStructDef def;
       def.tag = mangled;
@@ -2855,9 +2898,8 @@ class Lowerer {
           }
         }
         if (base_ts.tpl_struct_origin) {
-          resolve_pending_tpl_struct(
-              base_ts, find_template_struct_primary(base_ts.tpl_struct_origin),
-              method_tpl_bindings, method_nttp_bindings);
+          resolve_pending_tpl_struct_if_needed(
+              base_ts, method_tpl_bindings, method_nttp_bindings);
         }
         if (base_ts.deferred_member_type_name && base_ts.tag && base_ts.tag[0]) {
           TypeSpec resolved_member{};
@@ -2991,9 +3033,8 @@ class Lowerer {
             ret_ts, *tpl_override, nttp_override ? *nttp_override : nttp_empty,
             fn_node, PendingTemplateTypeKind::DeclarationType,
             std::string("function-return:") + fn.name);
-        resolve_pending_tpl_struct(
-            ret_ts, find_template_struct_primary(ret_ts.tpl_struct_origin),
-            *tpl_override, nttp_override ? *nttp_override : nttp_empty);
+        resolve_pending_tpl_struct_if_needed(
+            ret_ts, *tpl_override, nttp_override ? *nttp_override : nttp_empty);
       }
       fn.return_type = qtype_from(ret_ts);
     }
@@ -3098,9 +3139,8 @@ class Lowerer {
               param_ts, *tpl_override, nttp_override ? *nttp_override : nttp_empty,
               p, PendingTemplateTypeKind::DeclarationType,
               std::string("function-param:") + param.name);
-          resolve_pending_tpl_struct(
-              param_ts, find_template_struct_primary(param_ts.tpl_struct_origin),
-              *tpl_override, nttp_override ? *nttp_override : nttp_empty);
+          resolve_pending_tpl_struct_if_needed(
+              param_ts, *tpl_override, nttp_override ? *nttp_override : nttp_empty);
         }
         param.type = qtype_from(reference_storage_ts(param_ts), ValueCategory::LValue);
       }
@@ -3180,9 +3220,8 @@ class Lowerer {
             ret_ts, *tpl_bindings, nttp_bindings ? *nttp_bindings : nttp_empty,
             method_node, PendingTemplateTypeKind::DeclarationType,
             std::string("method-return:") + mangled_name);
-        resolve_pending_tpl_struct(
-            ret_ts, find_template_struct_primary(ret_ts.tpl_struct_origin),
-            *tpl_bindings, nttp_bindings ? *nttp_bindings : nttp_empty);
+        resolve_pending_tpl_struct_if_needed(
+            ret_ts, *tpl_bindings, nttp_bindings ? *nttp_bindings : nttp_empty);
       }
       resolve_typedef_to_struct(ret_ts);
       fn.return_type = qtype_from(ret_ts);
@@ -3237,9 +3276,8 @@ class Lowerer {
               param_ts, *tpl_bindings, nttp_bindings ? *nttp_bindings : nttp_empty,
               p, PendingTemplateTypeKind::DeclarationType,
               std::string("method-param:") + param.name);
-          resolve_pending_tpl_struct(
-              param_ts, find_template_struct_primary(param_ts.tpl_struct_origin),
-              *tpl_bindings, nttp_bindings ? *nttp_bindings : nttp_empty);
+          resolve_pending_tpl_struct_if_needed(
+              param_ts, *tpl_bindings, nttp_bindings ? *nttp_bindings : nttp_empty);
         }
         resolve_typedef_to_struct(param_ts);
         param.type = qtype_from(reference_storage_ts(param_ts), ValueCategory::LValue);
@@ -3714,9 +3752,8 @@ class Lowerer {
             PendingTemplateTypeKind::DeclarationType,
             std::string("local-decl:") + d.name);
       if (!ctx.tpl_bindings.empty() && decl_ts.tpl_struct_origin)
-        resolve_pending_tpl_struct(
-            decl_ts, find_template_struct_primary(decl_ts.tpl_struct_origin),
-            ctx.tpl_bindings, ctx.nttp_bindings);
+        resolve_pending_tpl_struct_if_needed(
+            decl_ts, ctx.tpl_bindings, ctx.nttp_bindings);
       resolve_typedef_to_struct(decl_ts);
       d.type = qtype_from(reference_storage_ts(decl_ts), ValueCategory::LValue);
     }
@@ -6984,11 +7021,11 @@ class Lowerer {
             const Node* primary_tpl = find_template_struct_primary(n->name);
             TypeBindings tpl_empty;
             NttpBindings nttp_empty;
-            resolve_pending_tpl_struct(
+            resolve_pending_tpl_struct_if_needed(
                 tmp_ts,
-                primary_tpl,
                 ctx ? ctx->tpl_bindings : tpl_empty,
-                ctx ? ctx->nttp_bindings : nttp_empty);
+                ctx ? ctx->nttp_bindings : nttp_empty,
+                primary_tpl);
             if (tmp_ts.tag && module_->struct_defs.count(tmp_ts.tag)) {
               const LocalId tmp_lid = next_local_id();
               const std::string tmp_name = "__tmp_struct_" + std::to_string(tmp_lid.value);
@@ -7038,11 +7075,11 @@ class Lowerer {
               const Node* primary_tpl = find_template_struct_primary(struct_tag);
               TypeBindings tpl_empty;
               NttpBindings nttp_empty;
-              resolve_pending_tpl_struct(
+              resolve_pending_tpl_struct_if_needed(
                   pending_ts,
-                  primary_tpl,
                   ctx ? ctx->tpl_bindings : tpl_empty,
-                  ctx ? ctx->nttp_bindings : nttp_empty);
+                  ctx ? ctx->nttp_bindings : nttp_empty,
+                  primary_tpl);
               if (pending_ts.tag && pending_ts.tag[0]) struct_tag = pending_ts.tag;
             }
             if (auto v = find_struct_static_member_const_value(struct_tag, member)) {
@@ -7352,9 +7389,8 @@ class Lowerer {
               cast_ts, ctx->tpl_bindings, ctx->nttp_bindings, n,
               PendingTemplateTypeKind::CastTarget, "cast-target");
         if (ctx && !ctx->tpl_bindings.empty() && cast_ts.tpl_struct_origin)
-          resolve_pending_tpl_struct(
-              cast_ts, find_template_struct_primary(cast_ts.tpl_struct_origin),
-              ctx->tpl_bindings, ctx->nttp_bindings);
+          resolve_pending_tpl_struct_if_needed(
+              cast_ts, ctx->tpl_bindings, ctx->nttp_bindings);
         c.to_type = qtype_from(cast_ts);
         c.expr = lower_expr(ctx, n->left);
         // Phase C: build fn_ptr_sig for casts to callable types.
@@ -8789,8 +8825,10 @@ class Lowerer {
   std::unordered_map<std::string, const Node*> template_struct_defs_;
   // Template struct specializations indexed by primary template name.
   std::unordered_map<std::string, std::vector<const Node*>> template_struct_specializations_;
-  // Already-instantiated template struct mangled names (avoid double instantiation).
-  std::unordered_set<std::string> instantiated_tpl_structs_;
+  // Already-instantiated template structs, keyed by semantic identity
+  // (primary template + concrete bindings), not by printed/mangled name.
+  std::unordered_set<TemplateStructInstanceKey, TemplateStructInstanceKeyHash>
+      instantiated_tpl_struct_keys_;
   // Static data members indexed by owning struct tag and member name.
   std::unordered_map<std::string, std::unordered_map<std::string, const Node*>> struct_static_member_decls_;
   std::unordered_map<std::string, std::unordered_map<std::string, long long>>

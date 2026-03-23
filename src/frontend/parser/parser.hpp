@@ -108,8 +108,9 @@ class Parser {
   std::unordered_map<std::string, Node*> template_struct_defs_;
   // Template struct specialization patterns keyed by primary template name.
   std::unordered_map<std::string, std::vector<Node*>> template_struct_specializations_;
-  // Already-instantiated template struct mangled names (avoid double instantiation).
-  std::set<std::string> instantiated_template_structs_;
+  // Already-instantiated template structs keyed by semantic identity
+  // (primary family + canonical args), not by mangled print name.
+  std::set<std::string> instantiated_template_struct_keys_;
   // Deferred NTTP default expression tokens, keyed by "template_tag:param_idx".
   // Used for complex defaults like `arithmetic<T>::value` that can only be
   // evaluated once template type arguments are known.
