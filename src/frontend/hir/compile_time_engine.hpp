@@ -68,6 +68,7 @@ enum class PendingTemplateTypeKind {
 struct PendingTemplateTypeWorkItem {
   PendingTemplateTypeKind kind = PendingTemplateTypeKind::DeclarationType;
   TypeSpec pending_type{};
+  const Node* owner_primary_def = nullptr;
   TypeBindings type_bindings;
   NttpBindings nttp_bindings;
   SourceSpan span{};
@@ -245,12 +246,15 @@ inline std::string encode_pending_type_ref(const TypeSpec& ts) {
 
 inline std::string make_pending_template_type_key(
     PendingTemplateTypeKind kind, const TypeSpec& pending_type,
+    const Node* owner_primary_def,
     const TypeBindings& type_bindings, const NttpBindings& nttp_bindings,
     const std::string& context_name, const SourceSpan& span) {
   std::string key = pending_template_type_kind_name(kind);
   key += "|ctx=" + context_name;
   key += "|span=" + std::to_string(span.begin.line) + ":" +
          std::to_string(span.end.line);
+  key += "|owner=";
+  if (owner_primary_def && owner_primary_def->name) key += owner_primary_def->name;
   key += "|type=" + encode_pending_type_ref(pending_type);
 
   std::vector<std::string> tb_names;
@@ -682,6 +686,7 @@ struct CompileTimeState {
 
   bool record_pending_template_type(PendingTemplateTypeKind kind,
                                     const TypeSpec& pending_type,
+                                    const Node* owner_primary_def,
                                     const TypeBindings& type_bindings,
                                     const NttpBindings& nttp_bindings,
                                     const SourceSpan& span,
@@ -691,12 +696,14 @@ struct CompileTimeState {
     PendingTemplateTypeWorkItem item;
     item.kind = kind;
     item.pending_type = pending_type;
+    item.owner_primary_def = owner_primary_def;
     item.type_bindings = type_bindings;
     item.nttp_bindings = nttp_bindings;
     item.span = span;
     item.context_name = context_name;
     item.dedup_key = make_pending_template_type_key(
-        kind, pending_type, type_bindings, nttp_bindings, context_name, span);
+        kind, pending_type, owner_primary_def, type_bindings, nttp_bindings,
+        context_name, span);
     if (pending_template_type_keys_.count(item.dedup_key) > 0) return false;
     pending_template_type_keys_.insert(item.dedup_key);
     pending_template_types_.push_back(std::move(item));

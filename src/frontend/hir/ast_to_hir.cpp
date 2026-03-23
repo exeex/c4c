@@ -774,8 +774,11 @@ class Lowerer {
                                   PendingTemplateTypeKind kind,
                                   const std::string& context_name = {}) {
     if (!ts.tpl_struct_origin && !ts.deferred_member_type_name) return;
+    const Node* owner_primary_def =
+        ts.tpl_struct_origin ? find_template_struct_primary(ts.tpl_struct_origin) : nullptr;
     ct_state_->record_pending_template_type(
-        kind, ts, tpl_bindings, nttp_bindings, make_span(span_node), context_name);
+        kind, ts, owner_primary_def, tpl_bindings, nttp_bindings,
+        make_span(span_node), context_name);
   }
 
   void lower_initial_program(const Node* root, Module& m) {
@@ -1097,9 +1100,14 @@ class Lowerer {
       const PendingTemplateTypeWorkItem& work_item) {
     TypeSpec ts = work_item.pending_type;
     auto spawn_owner_work = [&](const TypeSpec& owner_ts) -> bool {
+      const Node* owner_primary_def = work_item.owner_primary_def;
+      if (!owner_primary_def && owner_ts.tpl_struct_origin) {
+        owner_primary_def = find_template_struct_primary(owner_ts.tpl_struct_origin);
+      }
       return ct_state_->record_pending_template_type(
           PendingTemplateTypeKind::OwnerStruct,
           owner_ts,
+          owner_primary_def,
           work_item.type_bindings,
           work_item.nttp_bindings,
           work_item.span,
