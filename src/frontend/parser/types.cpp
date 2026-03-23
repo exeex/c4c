@@ -1125,7 +1125,18 @@ TypeSpec Parser::parse_base_type() {
                         }
                         if (!parsed_as_value) {
                             arg.is_value = false;
-                            arg.type = parse_type_name();
+                            arg.type = parse_base_type();
+                            // Consume pointer/ref qualifiers after base type
+                            while (check(TokenKind::Star)) { consume(); arg.type.ptr_level++; }
+                            if (is_cpp_mode() && check(TokenKind::AmpAmp)) { consume(); arg.type.is_rvalue_ref = true; }
+                            else if (is_cpp_mode() && check(TokenKind::Amp)) { consume(); arg.type.is_lvalue_ref = true; }
+                            // C++ pack expansion: skip trailing '...'
+                            if (is_cpp_mode() && check(TokenKind::Ellipsis)) consume();
+                            // C++ function type suffix: R(ArgTypes...)
+                            // e.g. function<int(double, char)> — skip the param list.
+                            if (is_cpp_mode() && check(TokenKind::LParen)) {
+                                skip_paren_group();
+                            }
                         }
                         actual_args.push_back(arg);
                         ++arg_idx;
@@ -1944,6 +1955,35 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         if (match(TokenKind::ColonColon))
             qualified_name = "::";
 
+        // Helper: skip balanced <...> template arguments in a qualified name
+        // when followed by '::'.  E.g. vector<T, Allocator>::set_capacity.
+        auto skip_template_args_if_followed_by_scope = [&]() {
+            if (!check(TokenKind::Less)) return;
+            // Probe ahead: balanced <...> then '::'?
+            int probe = pos_;
+            int depth = 0;
+            bool balanced = false;
+            while (probe < static_cast<int>(tokens_.size())) {
+                auto k = tokens_[probe].kind;
+                if (k == TokenKind::Less) ++depth;
+                else if (k == TokenKind::Greater) {
+                    if (--depth <= 0) { ++probe; balanced = true; break; }
+                } else if (k == TokenKind::GreaterGreater) {
+                    depth -= 2;
+                    if (depth <= 0) { ++probe; balanced = true; break; }
+                } else if (k == TokenKind::Semi || k == TokenKind::LBrace) {
+                    break;  // safety: don't scan past statement boundaries
+                }
+                ++probe;
+            }
+            if (!balanced) return;
+            if (probe >= static_cast<int>(tokens_.size()) ||
+                tokens_[probe].kind != TokenKind::ColonColon)
+                return;
+            // Consume the <...> tokens
+            pos_ = probe;
+        };
+
         if (check(TokenKind::KwOperator)) {
             // Free operator function: operator==, operator+, etc.
             parsed_qualified = parse_operator_name();
@@ -1951,6 +1991,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
             qualified_name += cur().lexeme;
             consume();
             parsed_qualified = true;
+            skip_template_args_if_followed_by_scope();
         }
 
         while (parsed_qualified && match(TokenKind::ColonColon)) {
@@ -1958,6 +1999,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
             if (check(TokenKind::Identifier)) {
                 qualified_name += cur().lexeme;
                 consume();
+                skip_template_args_if_followed_by_scope();
                 continue;
             }
             if (check(TokenKind::KwOperator)) {

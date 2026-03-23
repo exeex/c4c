@@ -800,6 +800,31 @@ Node* Parser::parse_primary() {
             int save_pos = pos_;
             TypeSpec cast_ts = parse_type_name();
             if (check(TokenKind::RParen)) {
+                // In C++ mode, check if this is really a cast or a parenthesized
+                // expression.  A C-style cast (type)expr requires a valid operand
+                // after ')'.  If the token after ')' is itself ')', ';', ',', or
+                // another expression terminator, this cannot be a cast — it must
+                // be a parenthesized expression like ((ns::value)).
+                if (is_cpp_mode()) {
+                    int rp_pos = pos_;  // points at ')'
+                    int after_rp = rp_pos + 1;
+                    if (after_rp < static_cast<int>(tokens_.size())) {
+                        auto ak = tokens_[after_rp].kind;
+                        if (ak == TokenKind::RParen || ak == TokenKind::Semi ||
+                            ak == TokenKind::Comma || ak == TokenKind::RBrace ||
+                            ak == TokenKind::RBracket || ak == TokenKind::Colon ||
+                            ak == TokenKind::Question ||
+                            ak == TokenKind::PipePipe || ak == TokenKind::AmpAmp ||
+                            ak == TokenKind::EqualEqual || ak == TokenKind::BangEqual ||
+                            ak == TokenKind::LessEqual || ak == TokenKind::GreaterEqual ||
+                            ak == TokenKind::Less || ak == TokenKind::Greater ||
+                            ak == TokenKind::Pipe || ak == TokenKind::Caret) {
+                            // Not a cast — restore and parse as paren expression.
+                            pos_ = save_pos;
+                            goto not_a_cast;
+                        }
+                    }
+                }
                 consume();  // consume )
                 // Check for compound literal: (type){ ... }
                 if (check(TokenKind::LBrace)) {
@@ -830,6 +855,7 @@ Node* Parser::parse_primary() {
             }
         }
 
+        not_a_cast:
         // GCC statement expression: ({ ... })
         if (check(TokenKind::LBrace)) {
             Node* block = parse_block();
@@ -1044,6 +1070,11 @@ Node* Parser::parse_primary() {
             while (!at_end() && !check_template_close()) {
                 if (is_type_start()) {
                     template_args.push_back(parse_type_name());
+                    // C++ function type suffix in template args: R(ArgTypes...)
+                    // e.g. function<int(double, char)> — skip the param list.
+                    if (is_cpp_mode() && check(TokenKind::LParen)) {
+                        skip_paren_group();
+                    }
                     template_arg_is_val.push_back(false);
                     template_arg_vals.push_back(0);
                     template_arg_nttp_names.push_back(nullptr);
@@ -1112,8 +1143,32 @@ Node* Parser::parse_primary() {
                 if (!match(TokenKind::Comma)) break;
             }
             if (ok && match_template_close()) {
-                if (check(TokenKind::LParen) || check(TokenKind::ColonColon)) {
-                    // Accept template instantiation followed by ( (call) or :: (static member).
+                // Accept template instantiation when followed by a token that
+                // would be valid after an expression (call, scope, brace-init,
+                // close-paren, semicolon, comma, binary ops, etc.).
+                // Reject only when the follow token looks like a new expression
+                // start that would make more sense with < as comparison.
+                auto is_valid_after_template = [&]() -> bool {
+                    if (check(TokenKind::LParen) || check(TokenKind::ColonColon) ||
+                        check(TokenKind::LBrace)) return true;
+                    // Expression terminators / continuations
+                    if (check(TokenKind::RParen) || check(TokenKind::Semi) ||
+                        check(TokenKind::Comma) || check(TokenKind::RBracket) ||
+                        check(TokenKind::RBrace)) return true;
+                    // Binary operators
+                    if (check(TokenKind::Pipe) || check(TokenKind::PipePipe) ||
+                        check(TokenKind::AmpAmp) || check(TokenKind::Amp) ||
+                        check(TokenKind::Question) || check(TokenKind::Colon) ||
+                        check(TokenKind::EqualEqual) || check(TokenKind::BangEqual) ||
+                        check(TokenKind::LessEqual) || check(TokenKind::GreaterEqual) ||
+                        check(TokenKind::Plus) || check(TokenKind::Minus) ||
+                        check(TokenKind::Star) || check(TokenKind::Slash) ||
+                        check(TokenKind::Percent) || check(TokenKind::Assign) ||
+                        check(TokenKind::Dot) || check(TokenKind::Arrow)) return true;
+                    return false;
+                };
+                if (is_valid_after_template()) {
+                    // Accept template instantiation.
                     ident->has_template_args = true;
                     ident->n_template_args = (int)template_args.size();
                     ident->template_arg_types = arena_.alloc_array<TypeSpec>(ident->n_template_args);
@@ -1134,6 +1189,18 @@ Node* Parser::parse_primary() {
                             consume();
                             ident->name = arena_.strdup(member_name.c_str());
                         }
+                    }
+                    // Brace-init after template: Type<Args>{} or Type<Args>{a, b}
+                    // Skip the init list and return the identifier as a placeholder.
+                    if (check(TokenKind::LBrace)) {
+                        consume(); // {
+                        int depth = 1;
+                        while (!at_end() && depth > 0) {
+                            if (check(TokenKind::LBrace)) ++depth;
+                            else if (check(TokenKind::RBrace)) --depth;
+                            if (depth > 0) consume();
+                        }
+                        if (check(TokenKind::RBrace)) consume(); // }
                     }
                 } else {
                     pos_ = save_pos;

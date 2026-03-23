@@ -1,7 +1,7 @@
 # Plan Execution State
 
 ## Active Item
-EASTL bring-up slice 7c: struct body recovery, ctor detection, lambda skip
+EASTL bring-up slice 7d: qualified declarator template args, expression template disambiguation
 
 ## Completed
 - [x] Template conversion operator parsing in class body (template<class T> operator T*())
@@ -72,22 +72,45 @@ EASTL bring-up slice 7c: struct body recovery, ctor detection, lambda skip
   - Remaining EASTL blockers: `eastl::forward` with `.` member access, `...` variadic
     in free function templates, `::` qualified types in out-of-namespace contexts
   - Test: `eastl_slice7c_struct_body_recovery.cpp` (parse)
+- [x] EASTL bring-up slice 7d: qualified declarator template args, expression template disambiguation
+  - parse_declarator: skip balanced `<...>` template args in qualified names when followed
+    by `::` — enables `vector<T, Allocator>::set_capacity` out-of-class method definitions
+  - Empty template args `<>` followed by `{` (brace-init): accepted in expression context
+    — fixes `eastl::less<>{}` pattern
+  - Function type `R(Args...)` in template args: `parse_base_type()` template arg parsing
+    now uses `parse_base_type()` directly (instead of `parse_type_name()` which would call
+    `parse_declarator` and misinterpret the function params), then skips `(...)` suffix
+  - Variable template expressions: `is_valid_after_template()` accepts expression
+    terminators (`)`, `;`, `,`, binary ops) after template close — fixes
+    `is_signed_v<IntSourceType>` in parens
+  - C-style cast vs parenthesized expression disambiguation: when `(ns::value)` is followed
+    by `)`, `;`, `,`, or other expression terminators, treat as paren expression instead
+    of cast (fixes `((eastl::is_signed_v<T>))`)
+  - EASTL error count: 21 → 21 but composition changed significantly:
+    - Fixed: algorithm.h:2434,4120,4134, function.h:132, vector.h:104
+    - Remaining: function_detail.h:237,699, tuple.h:541,566,943,
+      memory_uses_allocator.h:97, memory.h:1140,1244, vector.h:905+ (cascading)
+  - Test: `eastl_slice7d_qualified_declarator_parse.cpp` (parse)
 
 ## Next Slice
-- EASTL bring-up slice 7d: deeper header errors now led by:
-  - `function_detail.h:237` — `.` member access in expression (`eastl::forward<T>()`)
-  - `function.h:132` — `...` ellipsis in free template function params
-  - `algorithm.h:4120,4134` — `::` qualified types in free template functions
-  - `tuple.h:541,566` — `)` unexpected in expressions (likely complex template expressions)
-  - `vector.h:905+` — `,` and `.` in method bodies (complex member access chains)
+- EASTL bring-up slice 7e: remaining errors to investigate:
+  - `function_detail.h:237` — `.` member access after call result
+    (`GetFunctorPtrRef(storage) = func`) — probably inside struct body recovery scope
+  - `function_detail.h:699` — `...` in expression context (pack expansion in call args?)
+  - `tuple.h:541,566` — `TupleEqual<I-1>()(t1,t2)` — temporary-then-call pattern
+    works in isolation but fails in EASTL context (cascading from earlier error?)
+  - `tuple.h:943` — `decltype(auto)` or template arg with `<` in apply_impl
+  - `memory_uses_allocator.h:97` — `.` member access in template body
+  - `memory.h:1140,1244` — template param and `::` in template arg context
+  - `vector.h:905+` — cascading from earlier errors in headers; works in isolation
 
 ## Exposed Failing Tests
-- (none — 2116/2116 all passing)
+- (none — 2117/2117 all passing)
 
 ## Blockers
 - None for current slice (complete)
-- EASTL deeper headers require more expression parser features
+- vector.h errors appear to be cascading from earlier header errors (function_detail.h, tuple.h)
 
 ## Suite Status
-- Before: 2115/2115
-- After: 2116/2116 (all passing, 0 regressions, +1 new test)
+- Before: 2116/2116
+- After: 2117/2117 (all passing, 0 regressions, +1 new test)
