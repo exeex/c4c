@@ -13,16 +13,12 @@ Structured template function identity (plan.md Steps 1–6)
 - Step 5: Added structured dedup (FunctionTemplateInstanceKey) for seed and instance recording
 - Step 6: Old string-keyed path demoted to legacy fallback; structured selection is now the primary path
 
-## Verification (2026-03-24)
-All 6 steps complete. Plan acceptance criteria met:
-1. Explicit fn-template specialization selection no longer primarily uses mangled_name
-2. Owner-based specialization registration exists
-3. Lowering selects from primary_def + bindings + nttp_bindings
-4. Semantic dedup uses primary_def + spec_key (when primary_def available)
-5. Mangled names remain only as derived output
+## Post-Completion Fixes (2026-03-24)
+- Fixed cpp_hir_fixpoint_convergence test regex (new "template types resolved" stats field)
+- Fixed typedef-wrapped struct rvalue member access in codegen (operator_shift_call_arg_runtime)
 
 ## Final Baseline
-2118/2123 tests passing (5 pre-existing failures, no regressions)
+2120/2123 tests passing (3 pre-existing failures, no regressions)
 
 ## Next
-Plan fully delivered. No further work items remain for this plan.
+Plan fully delivered. Next plan TBD (template_lazy_instantiation_plan.md is the natural successor).

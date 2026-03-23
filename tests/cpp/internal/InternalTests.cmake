@@ -199,7 +199,7 @@ add_test(
 )
 set_tests_properties(cpp_hir_fixpoint_convergence PROPERTIES
   LABELS "internal;positive_case;cpp;hir"
-  PASS_REGULAR_EXPRESSION "1 iteration, 6 template calls resolved, 8 consteval reductions \\(converged\\)"
+  PASS_REGULAR_EXPRESSION "1 iteration, 6 template calls resolved, 0 template types resolved, 8 consteval reductions \\(converged\\)"
 )
 
 add_test(

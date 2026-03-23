@@ -1579,6 +1579,15 @@ std::string HirEmitter::emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeSp
     TypeSpec base_ts = base_e.type.spec;
     if (base_ts.base == TB_VOID && base_ts.ptr_level == 0)
       base_ts = resolve_expr_type(ctx, m.base);
+    // Resolve typedef-wrapped types so struct/union checks below see the real base.
+    // resolve_expr_type returns stored type early; force payload-based resolution.
+    if (base_ts.base == TB_TYPEDEF) {
+      TypeSpec resolved = std::visit([&](const auto& p) -> TypeSpec {
+        return resolve_payload_type(ctx, p);
+      }, base_e.payload);
+      if (resolved.base != TB_VOID || resolved.ptr_level > 0)
+        base_ts = resolved;
+    }
 
     std::string base_ptr;
     if (m.is_arrow) {
