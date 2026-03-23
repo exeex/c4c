@@ -7,6 +7,38 @@
 #include <stdexcept>
 
 namespace c4c {
+
+static void append_type_mangled_suffix_local(std::string& out, const TypeSpec& ts) {
+    switch (ts.base) {
+        case TB_INT: out += "int"; break;
+        case TB_UINT: out += "uint"; break;
+        case TB_CHAR: out += "char"; break;
+        case TB_SCHAR: out += "schar"; break;
+        case TB_UCHAR: out += "uchar"; break;
+        case TB_SHORT: out += "short"; break;
+        case TB_USHORT: out += "ushort"; break;
+        case TB_LONG: out += "long"; break;
+        case TB_ULONG: out += "ulong"; break;
+        case TB_LONGLONG: out += "llong"; break;
+        case TB_ULONGLONG: out += "ullong"; break;
+        case TB_FLOAT: out += "float"; break;
+        case TB_DOUBLE: out += "double"; break;
+        case TB_LONGDOUBLE: out += "ldouble"; break;
+        case TB_VOID: out += "void"; break;
+        case TB_BOOL: out += "bool"; break;
+        case TB_INT128: out += "i128"; break;
+        case TB_UINT128: out += "u128"; break;
+        case TB_STRUCT: out += "struct_"; out += (ts.tag ? ts.tag : "anon"); break;
+        case TB_UNION: out += "union_"; out += (ts.tag ? ts.tag : "anon"); break;
+        case TB_ENUM: out += "enum_"; out += (ts.tag ? ts.tag : "anon"); break;
+        case TB_TYPEDEF: out += (ts.tag ? ts.tag : "typedef"); break;
+        default: out += "T"; break;
+    }
+    for (int p = 0; p < ts.ptr_level; ++p) out += "_ptr";
+    if (ts.is_lvalue_ref) out += "_ref";
+    if (ts.is_rvalue_ref) out += "_rref";
+}
+
 int Parser::bin_prec(TokenKind k) {
     switch (k) {
         case TokenKind::PipePipe:       return 4;
@@ -1181,12 +1213,26 @@ Node* Parser::parse_primary() {
                         ident->template_arg_values[i] = template_arg_vals[i];
                         ident->template_arg_nttp_names[i] = template_arg_nttp_names[i];
                     }
-                    // Template<A,B>::member — resolve as qualified name
+                    // Template<A,B>::member — resolve as qualified name.
+                    // Re-parse from ident_start to trigger template struct
+                    // instantiation and get the mangled tag.
                     if (check(TokenKind::ColonColon)) {
                         consume(); // eat ::
                         if (check(TokenKind::Identifier)) {
-                            std::string member_name = std::string(ident->name) + "::" + cur().lexeme;
+                            std::string member = cur().lexeme;
                             consume();
+                            std::string struct_tag = ident->name;
+                            // Try to instantiate via parse_base_type to get mangled tag
+                            int after_member_pos = pos_;
+                            pos_ = ident_start;
+                            try {
+                                TypeSpec ts = parse_base_type();
+                                if (ts.tag && ts.tag[0]) struct_tag = ts.tag;
+                            } catch (...) {
+                                // fallback: use raw name
+                            }
+                            pos_ = after_member_pos;
+                            std::string member_name = struct_tag + "::" + member;
                             ident->name = arena_.strdup(member_name.c_str());
                         }
                     }

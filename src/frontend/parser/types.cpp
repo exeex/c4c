@@ -1267,6 +1267,60 @@ TypeSpec Parser::parse_base_type() {
                                         inst->base_types[bi].is_volatile |= pts.is_volatile;
                                     }
                                 }
+                                // Resolve pending template base types: e.g. is_const<T> → is_const<const int>
+                                if (inst->base_types[bi].tpl_struct_origin) {
+                                    std::string origin = inst->base_types[bi].tpl_struct_origin;
+                                    std::string arg_refs_str = inst->base_types[bi].tpl_struct_arg_refs
+                                        ? inst->base_types[bi].tpl_struct_arg_refs : "";
+                                    // Substitute template param names in arg_refs
+                                    bool all_resolved = true;
+                                    std::vector<std::string> new_arg_parts;
+                                    if (!arg_refs_str.empty()) {
+                                        std::istringstream ss(arg_refs_str);
+                                        std::string part;
+                                        while (std::getline(ss, part, ',')) {
+                                            bool found = false;
+                                            for (const auto& [pname2, pts2] : type_bindings) {
+                                                if (part == pname2) {
+                                                    // Substitute with concrete type mangled suffix
+                                                    std::string sub;
+                                                    append_type_mangled_suffix(sub, pts2);
+                                                    new_arg_parts.push_back(sub);
+                                                    found = true;
+                                                    break;
+                                                }
+                                            }
+                                            if (!found) {
+                                                new_arg_parts.push_back(part);
+                                                // Check if this arg is still unresolved
+                                                for (const auto& [pn, _] : type_bindings) {
+                                                    (void)_;
+                                                    if (part == pn) { all_resolved = false; break; }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (all_resolved && template_struct_defs_.count(origin)) {
+                                        // Build mangled name and re-parse as type to trigger instantiation
+                                        const Node* base_primary = template_struct_defs_[origin];
+                                        std::string base_mangled = origin;
+                                        for (int pi = 0; pi < base_primary->n_template_params &&
+                                             pi < (int)new_arg_parts.size(); ++pi) {
+                                            base_mangled += "_";
+                                            base_mangled += base_primary->template_param_names[pi];
+                                            base_mangled += "_";
+                                            base_mangled += new_arg_parts[pi];
+                                        }
+                                        // Check if already instantiated
+                                        if (struct_tag_def_map_.count(base_mangled)) {
+                                            inst->base_types[bi] = TypeSpec{};
+                                            inst->base_types[bi].array_size = -1;
+                                            inst->base_types[bi].inner_rank = -1;
+                                            inst->base_types[bi].base = TB_STRUCT;
+                                            inst->base_types[bi].tag = arena_.strdup(base_mangled.c_str());
+                                        }
+                                    }
+                                }
                             }
                         }
                         // Store template bindings so HIR can resolve pending types
@@ -1411,6 +1465,46 @@ TypeSpec Parser::parse_base_type() {
                         consume();
                     }
                     if (check_template_close()) match_template_close();
+                }
+                // Handle TemplateStruct<Args>::member suffix (e.g. bool_constant<true>::type).
+                // Resolve the member as a typedef within the instantiated struct.
+                if (is_cpp_mode() && check(TokenKind::ColonColon) &&
+                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                    tokens_[pos_ + 1].kind == TokenKind::Identifier) {
+                    std::string member = tokens_[pos_ + 1].lexeme;
+                    std::string scoped_member = std::string(ts.tag) + "::" + member;
+                    // Try direct lookup (instantiation::member)
+                    auto tdit = typedef_types_.find(scoped_member);
+                    if (tdit == typedef_types_.end()) {
+                        // Fall back to template origin name (template::member)
+                        auto def_it = struct_tag_def_map_.find(ts.tag);
+                        if (def_it != struct_tag_def_map_.end() && def_it->second &&
+                            def_it->second->template_origin_name) {
+                            std::string origin_scoped = std::string(def_it->second->template_origin_name) + "::" + member;
+                            tdit = typedef_types_.find(origin_scoped);
+                        }
+                    }
+                    if (tdit != typedef_types_.end()) {
+                        consume(); // ::
+                        consume(); // member
+                        // The typedef resolves to a type — for `typedef bool_constant type;` inside
+                        // bool_constant<true>, `type` refers back to bool_constant<true> itself.
+                        // The resolved typedef's tag might be the template name, not the instantiation.
+                        // If the resolved type is the same template origin, use the instantiation tag.
+                        TypeSpec resolved = tdit->second;
+                        if (resolved.base == TB_STRUCT && resolved.tag) {
+                            auto inst_it = struct_tag_def_map_.find(ts.tag);
+                            if (inst_it != struct_tag_def_map_.end() && inst_it->second &&
+                                inst_it->second->template_origin_name &&
+                                std::string(resolved.tag) == inst_it->second->template_origin_name) {
+                                resolved.tag = ts.tag;
+                            }
+                        }
+                        bool save_const = ts.is_const, save_vol = ts.is_volatile;
+                        ts = resolved;
+                        ts.is_const |= save_const;
+                        ts.is_volatile |= save_vol;
+                    }
                 }
                 return ts;
             }
@@ -2215,6 +2309,27 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                     consume();
                     base_ts.is_lvalue_ref = true;
                 }
+                // If there are leftover tokens before '{' or ','
+                // (e.g., dependent expressions like ::type after template args),
+                // skip them to avoid misinterpreting the struct body.
+                if (!check(TokenKind::LBrace) && !check(TokenKind::Comma) &&
+                    !check(TokenKind::RBrace) && !at_end()) {
+                    int angle_depth = 0, paren_depth = 0;
+                    while (!at_end()) {
+                        if (check(TokenKind::LBrace) && angle_depth == 0 && paren_depth == 0)
+                            break;
+                        if (check(TokenKind::Comma) && angle_depth == 0 && paren_depth == 0)
+                            break;
+                        if (check(TokenKind::Less) && paren_depth == 0) ++angle_depth;
+                        else if (check(TokenKind::Greater) && paren_depth == 0 && angle_depth > 0) --angle_depth;
+                        else if (check(TokenKind::GreaterGreater) && paren_depth == 0 && angle_depth > 0) {
+                            angle_depth -= std::min(angle_depth, 2); consume(); continue;
+                        }
+                        else if (check(TokenKind::LParen)) ++paren_depth;
+                        else if (check(TokenKind::RParen) && paren_depth > 0) --paren_depth;
+                        consume();
+                    }
+                }
                 base_types.push_back(base_ts);
             } catch (...) {
                 // Fall back to token skipping until the next base or body.
@@ -2932,6 +3047,26 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             continue;
         }
 
+        // Track C++ storage-class specifiers before parse_base_type consumes them.
+        bool field_is_static = false;
+        bool field_is_constexpr = false;
+        if (is_cpp_mode()) {
+            int save_pos = pos_;
+            while (!at_end() && !check(TokenKind::RBrace)) {
+                if (check(TokenKind::KwStatic)) { field_is_static = true; break; }
+                if (check(TokenKind::KwConstexpr)) { field_is_constexpr = true; break; }
+                // Only peek through qualifiers/storage-class keywords
+                if (check(TokenKind::KwConst) || check(TokenKind::KwVolatile) ||
+                    check(TokenKind::KwInline) || check(TokenKind::KwExtern) ||
+                    check(TokenKind::KwConsteval) || check(TokenKind::KwExplicit)) {
+                    consume();
+                    continue;
+                }
+                break;
+            }
+            pos_ = save_pos;
+        }
+
         TypeSpec fts{};
         if (!is_conversion_operator) {
             fts = parse_base_type();
@@ -3286,34 +3421,46 @@ Node* Parser::parse_struct_or_union(bool is_union) {
 
             // C++ in-class field initializer or static data member initializer:
             // e.g. int x = 5;  or  static constexpr bool value = expr;
+            Node* field_init_expr = nullptr;
             if (is_cpp_mode() && check(TokenKind::Assign)) {
                 consume(); // eat '='
-                // Skip balanced initializer expression until ; or , at depth 0.
-                // In C++ mode, also track <> depth for template expressions like
-                // is_same<T, U>::value (the comma between T and U must not be
-                // treated as a field separator).
-                int depth = 0, angle_depth = 0;
-                while (!at_end()) {
-                    if (check(TokenKind::LParen) || check(TokenKind::LBrace) ||
-                        check(TokenKind::LBracket)) { ++depth; consume(); }
-                    else if (check(TokenKind::RParen) || check(TokenKind::RBrace) ||
-                             check(TokenKind::RBracket)) {
-                        if (depth == 0) break;
-                        --depth; consume();
+                if (field_is_static) {
+                    // For static constexpr members, parse the initializer so
+                    // inherited static member lookup can evaluate the value.
+                    try {
+                        field_init_expr = parse_assign_expr();
+                    } catch (...) {
+                        field_init_expr = nullptr;
                     }
-                    else if (check(TokenKind::Less) && depth == 0) {
-                        ++angle_depth; consume();
+                }
+                if (!field_init_expr) {
+                    // Skip balanced initializer expression until ; or , at depth 0.
+                    // In C++ mode, also track <> depth for template expressions like
+                    // is_same<T, U>::value (the comma between T and U must not be
+                    // treated as a field separator).
+                    int depth = 0, angle_depth = 0;
+                    while (!at_end()) {
+                        if (check(TokenKind::LParen) || check(TokenKind::LBrace) ||
+                            check(TokenKind::LBracket)) { ++depth; consume(); }
+                        else if (check(TokenKind::RParen) || check(TokenKind::RBrace) ||
+                                 check(TokenKind::RBracket)) {
+                            if (depth == 0) break;
+                            --depth; consume();
+                        }
+                        else if (check(TokenKind::Less) && depth == 0) {
+                            ++angle_depth; consume();
+                        }
+                        else if (check(TokenKind::Greater) && angle_depth > 0 && depth == 0) {
+                            --angle_depth; consume();
+                        }
+                        else if (check(TokenKind::GreaterGreater) && angle_depth > 0 && depth == 0) {
+                            angle_depth -= std::min(angle_depth, 2);
+                            consume();
+                        }
+                        else if ((check(TokenKind::Semi) || check(TokenKind::Comma)) &&
+                                 depth == 0 && angle_depth == 0) break;
+                        else consume();
                     }
-                    else if (check(TokenKind::Greater) && angle_depth > 0 && depth == 0) {
-                        --angle_depth; consume();
-                    }
-                    else if (check(TokenKind::GreaterGreater) && angle_depth > 0 && depth == 0) {
-                        angle_depth -= std::min(angle_depth, 2);
-                        consume();
-                    }
-                    else if ((check(TokenKind::Semi) || check(TokenKind::Comma)) &&
-                             depth == 0 && angle_depth == 0) break;
-                    else consume();
                 }
             }
 
@@ -3322,6 +3469,8 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 f->type = cur_fts;
                 f->name = fname;
                 f->ival = bf_width;  // -1 = not a bitfield; N = N-bit bitfield
+                f->is_static = field_is_static;
+                f->init = field_init_expr;
                 f->fn_ptr_params = fn_ptr_params;
                 f->n_fn_ptr_params = n_fn_ptr_params;
                 f->fn_ptr_variadic = fn_ptr_variadic;
