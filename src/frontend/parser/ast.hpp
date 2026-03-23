@@ -285,6 +285,7 @@ struct Node {
     bool*        template_param_has_default; // parallel: true if param has a default
     TypeSpec*    template_param_default_types; // parallel: default type for type params
     long long*   template_param_default_values; // parallel: default value for NTTP params
+    const char** template_param_default_exprs; // parallel: deferred NTTP default expression text
     int          n_template_params;
     TypeSpec*    template_arg_types;
     bool*        template_arg_is_value;   // parallel: true if arg is a constant value

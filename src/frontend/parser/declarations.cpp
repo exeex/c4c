@@ -2,6 +2,7 @@
 #include "parser_internal.hpp"
 
 #include <climits>
+#include <sstream>
 #include <cstring>
 #include <stdexcept>
 
@@ -493,6 +494,7 @@ Node* Parser::parse_top_level() {
         std::vector<bool> template_param_has_default;
         std::vector<TypeSpec> template_param_default_types;
         std::vector<long long> template_param_default_values;
+        std::vector<const char*> template_param_default_exprs;
         // Deferred NTTP default expression tokens per parameter index.
         std::unordered_map<int, std::vector<Token>> deferred_nttp_defaults;
         while (!at_end() && !check(TokenKind::Greater)) {
@@ -530,6 +532,7 @@ Node* Parser::parse_top_level() {
                     template_param_has_default.push_back(true);
                     template_param_default_types.push_back(def_ts);
                     template_param_default_values.push_back(0);
+                    template_param_default_exprs.push_back(nullptr);
                 } else {
                     template_param_has_default.push_back(false);
                     TypeSpec dummy{};
@@ -537,6 +540,7 @@ Node* Parser::parse_top_level() {
                     dummy.inner_rank = -1;
                     template_param_default_types.push_back(dummy);
                     template_param_default_values.push_back(0);
+                    template_param_default_exprs.push_back(nullptr);
                 }
             } else if (is_type_kw(cur().kind)) {
                 // Non-type template parameter (NTTP): e.g. int N, unsigned N, bool... Bn.
@@ -566,6 +570,7 @@ Node* Parser::parse_top_level() {
                         dummy.inner_rank = -1;
                         template_param_default_types.push_back(dummy);
                         template_param_default_values.push_back(val * sign);
+                        template_param_default_exprs.push_back(nullptr);
                     } else {
                         // Complex default expression — skip balanced tokens.
                         // Save the tokens for deferred evaluation during instantiation.
@@ -621,8 +626,15 @@ Node* Parser::parse_top_level() {
                         if (!saved_toks.empty()) {
                             deferred_nttp_defaults[param_idx] = std::move(saved_toks);
                             template_param_has_default.push_back(true);
+                            std::ostringstream expr;
+                            for (size_t tok_i = 0; tok_i < deferred_nttp_defaults[param_idx].size(); ++tok_i) {
+                                if (tok_i > 0) expr << ' ';
+                                expr << deferred_nttp_defaults[param_idx][tok_i].lexeme;
+                            }
+                            template_param_default_exprs.push_back(arena_.strdup(expr.str()));
                         } else {
                             template_param_has_default.push_back(false);
+                            template_param_default_exprs.push_back(nullptr);
                         }
                         TypeSpec dummy{};
                         dummy.array_size = -1;
@@ -637,6 +649,7 @@ Node* Parser::parse_top_level() {
                     dummy.inner_rank = -1;
                     template_param_default_types.push_back(dummy);
                     template_param_default_values.push_back(0);
+                    template_param_default_exprs.push_back(nullptr);
                 }
             } else if (check(TokenKind::Identifier) &&
                        (is_typedef_name(cur().lexeme) ||
@@ -705,6 +718,7 @@ Node* Parser::parse_top_level() {
                     dummy.inner_rank = -1;
                     template_param_default_types.push_back(dummy);
                     template_param_default_values.push_back(0);
+                    template_param_default_exprs.push_back(nullptr);
                 } else {
                     template_param_has_default.push_back(false);
                     TypeSpec dummy{};
@@ -712,6 +726,7 @@ Node* Parser::parse_top_level() {
                     dummy.inner_rank = -1;
                     template_param_default_types.push_back(dummy);
                     template_param_default_values.push_back(0);
+                    template_param_default_exprs.push_back(nullptr);
                 }
             } else {
                 throw std::runtime_error("expected template parameter name");
@@ -750,12 +765,14 @@ Node* Parser::parse_top_level() {
             n->template_param_has_default = arena_.alloc_array<bool>(n->n_template_params);
             n->template_param_default_types = arena_.alloc_array<TypeSpec>(n->n_template_params);
             n->template_param_default_values = arena_.alloc_array<long long>(n->n_template_params);
+            n->template_param_default_exprs = arena_.alloc_array<const char*>(n->n_template_params);
             for (int i = 0; i < n->n_template_params; ++i) {
                 n->template_param_names[i] = template_params[i];
                 n->template_param_is_nttp[i] = template_param_nttp[i];
                 n->template_param_has_default[i] = template_param_has_default[i];
                 n->template_param_default_types[i] = template_param_default_types[i];
                 n->template_param_default_values[i] = template_param_default_values[i];
+                n->template_param_default_exprs[i] = template_param_default_exprs[i];
             }
             // Store deferred NTTP default tokens keyed by node name.
             if (n->name && !deferred_nttp_defaults.empty()) {

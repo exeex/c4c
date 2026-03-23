@@ -1505,14 +1505,21 @@ TypeSpec Parser::parse_base_type() {
                         std::string arg_refs;
                         int ati = 0, ani = 0;
                         for (int pi = 0; pi < tpl_def->n_template_params; ++pi) {
-                            if (pi > 0) arg_refs += ",";
                             if (tpl_def->template_param_is_nttp[pi]) {
-                                if (ani < (int)nttp_bindings.size())
-                                    arg_refs += std::to_string(nttp_bindings[ani++].second);
-                                else
-                                    arg_refs += "0";
+                                bool have_value = ani < (int)nttp_bindings.size();
+                                long long bound_value = have_value ? nttp_bindings[ani].second : 0;
+                                const bool missing_default =
+                                    (!have_value ||
+                                     (bound_value == LLONG_MIN &&
+                                      tpl_def->template_param_has_default &&
+                                      tpl_def->template_param_has_default[pi]));
+                                if (missing_default) break;
+                                if (!arg_refs.empty()) arg_refs += ",";
+                                arg_refs += std::to_string(bound_value);
+                                ++ani;
                             } else {
                                 if (ati < (int)type_bindings.size()) {
+                                    if (!arg_refs.empty()) arg_refs += ",";
                                     const TypeSpec& ats = type_bindings[ati++].second;
                                     if (ats.tpl_struct_origin) {
                                         // Nested pending template struct: encode as @origin:args
@@ -1524,6 +1531,7 @@ TypeSpec Parser::parse_base_type() {
                                         arg_refs += ats.tag ? ats.tag : "?";
                                     }
                                 } else {
+                                    if (!arg_refs.empty()) arg_refs += ",";
                                     arg_refs += "?";
                                 }
                             }

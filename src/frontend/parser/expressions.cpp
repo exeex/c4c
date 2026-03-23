@@ -1227,7 +1227,11 @@ Node* Parser::parse_primary() {
                             pos_ = ident_start;
                             try {
                                 TypeSpec ts = parse_base_type();
-                                if (ts.tag && ts.tag[0]) struct_tag = ts.tag;
+                                if (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) {
+                                    struct_tag = ts.tpl_struct_origin;
+                                } else if (ts.tag && ts.tag[0]) {
+                                    struct_tag = ts.tag;
+                                }
                             } catch (...) {
                                 // fallback: use raw name
                             }
