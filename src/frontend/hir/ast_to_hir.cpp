@@ -1641,7 +1641,24 @@ class Lowerer {
     def.pack_align = sd->pack_align;
     def.struct_align = sd->struct_align;
     for (int bi = 0; bi < sd->n_bases; ++bi) {
-      const TypeSpec& base = sd->base_types[bi];
+      TypeSpec base = sd->base_types[bi];
+      if (base.tpl_struct_origin) {
+        // Resolve pending template base type (e.g. deferred $expr: NTTP args).
+        // Build bindings from the struct's own template args if available.
+        TypeBindings base_tpl_bindings;
+        NttpBindings base_nttp_bindings;
+        if (sd->n_template_args > 0 && sd->n_template_params > 0) {
+          for (int pi = 0; pi < sd->n_template_params && pi < sd->n_template_args; ++pi) {
+            const char* pname = sd->template_param_names[pi];
+            if (sd->template_param_is_nttp[pi]) {
+              base_nttp_bindings[pname] = sd->template_arg_values[pi];
+            } else {
+              base_tpl_bindings[pname] = sd->template_arg_types[pi];
+            }
+          }
+        }
+        resolve_pending_tpl_struct(base, base_tpl_bindings, base_nttp_bindings);
+      }
       if (base.tag && base.tag[0]) def.base_tags.push_back(base.tag);
     }
 
@@ -2148,12 +2165,22 @@ class Lowerer {
             if (!ident.empty()) {
               skip_ws();
               if (consume("(")) {
+                TypeSpec cast_ts{};
+                cast_ts.array_size = -1;
+                cast_ts.inner_rank = -1;
+                bool found_type = false;
                 auto tit = type_lookup.find(ident);
                 if (tit != type_lookup.end()) {
+                  cast_ts = tit->second;
+                  found_type = true;
+                } else if (parse_builtin_typespec_text(ident, &cast_ts)) {
+                  found_type = true;
+                }
+                if (found_type) {
                   long long inner = 0;
                   if (!parse_or(&inner)) return false;
                   if (!consume(")")) return false;
-                  *out_val = apply_integral_cast(tit->second, inner);
+                  *out_val = apply_integral_cast(cast_ts, inner);
                   return true;
                 }
               }
@@ -2382,13 +2409,32 @@ class Lowerer {
             arg.is_value = false;
             arg.type = tit->second;
           } else {
-            // Unresolved — shouldn't happen if called with full bindings.
-            TypeSpec fallback{};
-            fallback.base = TB_INT;
-            fallback.array_size = -1;
-            fallback.inner_rank = -1;
-            arg.is_value = false;
-            arg.type = fallback;
+            // Try concrete builtin type name (e.g. "bool", "int", "unsigned int")
+            TypeSpec builtin{};
+            if (parse_builtin_typespec_text(ref, &builtin)) {
+              arg.is_value = false;
+              arg.type = builtin;
+            } else {
+              // Check if it's a known struct type
+              auto sit = struct_def_nodes_.find(ref);
+              if (sit != struct_def_nodes_.end()) {
+                TypeSpec st{};
+                st.base = TB_STRUCT;
+                st.tag = sit->first.c_str();
+                st.array_size = -1;
+                st.inner_rank = -1;
+                arg.is_value = false;
+                arg.type = st;
+              } else {
+                // Unresolved — fallback.
+                TypeSpec fallback{};
+                fallback.base = TB_INT;
+                fallback.array_size = -1;
+                fallback.inner_rank = -1;
+                arg.is_value = false;
+                arg.type = fallback;
+              }
+            }
           }
         }
         resolved_type_bindings.push_back({param_name, arg.type});

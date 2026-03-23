@@ -114,6 +114,19 @@ class Parser {
   // Used for complex defaults like `arithmetic<T>::value` that can only be
   // evaluated once template type arguments are known.
   std::unordered_map<std::string, std::vector<Token>> nttp_default_expr_tokens_;
+  // Alias template metadata: template<...> using Name = AliasedType;
+  // Stores the alias template's parameter info and the aliased TypeSpec so
+  // that applying Name<args> can rebuild the aliased template struct with
+  // substituted args instead of losing the alias template param mapping.
+  struct AliasTemplateInfo {
+    std::vector<const char*> param_names;
+    std::vector<bool> param_is_nttp;
+    TypeSpec aliased_type;  // TypeSpec from parse_type_name() (has tpl_struct_origin/arg_refs)
+  };
+  std::unordered_map<std::string, AliasTemplateInfo> alias_template_info_;
+  // Set by the using-alias handler to let the template wrapper detect that
+  // a using type alias was defined during `parse_top_level()`.
+  std::string last_using_alias_name_;
   // Last enum definition node produced by parse_base_type(), if any.
   // Used so declaration-only enum statements (`enum { ... };`) can be retained.
   Node* last_enum_def_;

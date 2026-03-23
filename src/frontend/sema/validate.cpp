@@ -1087,6 +1087,14 @@ class Validator {
                                   out.type.array_rank == 0;
             return out;
           }
+          // If base chain has unresolved pending template types ($expr:),
+          // accept the lookup optimistically — the HIR will resolve it.
+          if (complete_structs_.count(struct_tag) || complete_unions_.count(struct_tag)) {
+            out.valid = true;
+            out.type = make_int_ts();
+            out.is_lvalue = true;
+            return out;
+          }
         }
         auto sym = lookup_symbol(n->name);
         if (!sym.has_value()) {

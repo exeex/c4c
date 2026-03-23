@@ -420,6 +420,7 @@ Node* Parser::parse_top_level() {
                     user_typedefs_.insert(first_name);
                     typedef_types_[first_name] = alias_ts;
                 }
+                last_using_alias_name_ = first_name;
                 match(TokenKind::Semi);
                 return make_node(NK_EMPTY, ln);
             }
@@ -751,7 +752,23 @@ Node* Parser::parse_top_level() {
         }
 
         size_t struct_defs_before = struct_defs_.size();
+        last_using_alias_name_.clear();
         Node* templated = parse_top_level();
+        // If parse_top_level() registered a using-alias, record alias template
+        // info so that later Name<args> can rebuild the aliased template struct.
+        if (!last_using_alias_name_.empty() && !template_params.empty()) {
+            auto td_it = typedef_types_.find(last_using_alias_name_);
+            if (td_it != typedef_types_.end()) {
+                AliasTemplateInfo ati;
+                for (size_t i = 0; i < template_params.size(); ++i) {
+                    ati.param_names.push_back(template_params[i]);
+                    ati.param_is_nttp.push_back(template_param_nttp[i]);
+                }
+                ati.aliased_type = td_it->second;
+                alias_template_info_[last_using_alias_name_] = std::move(ati);
+            }
+            last_using_alias_name_.clear();
+        }
         for (const std::string& pname : injected_names) {
             typedefs_.erase(pname);
             typedef_types_.erase(pname);
