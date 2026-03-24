@@ -1371,14 +1371,11 @@ std::string HirEmitter::emit_member_gep(FnCtx& ctx, const std::string& base_ptr,
       if (step.is_union) {
         // Union: GEP to field 0 (byte array); with opaque ptrs same addr
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = getelementptr " + sty +
-                           ", ptr " + cur_ptr + ", i32 0, i32 0");
+        emit_lir_op(ctx, lir::LirGepOp{tmp, sty, cur_ptr, false, {"i32 0", "i32 0"}});
         cur_ptr = tmp;
       } else {
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = getelementptr " + sty +
-                           ", ptr " + cur_ptr + ", i32 0, i32 " +
-                           std::to_string(step.llvm_idx));
+        emit_lir_op(ctx, lir::LirGepOp{tmp, sty, cur_ptr, false, {"i32 0", "i32 " + std::to_string(step.llvm_idx)}});
         cur_ptr = tmp;
       }
     }
@@ -1528,9 +1525,8 @@ std::string HirEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec& 
         }
         pts = complex_component_ts(complex_ts.base);
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = getelementptr " + llvm_alloca_ty(complex_ts) +
-                            ", ptr " + complex_ptr + ", i32 0, i32 " +
-                            std::to_string(u->op == UnaryOp::ImagPart ? 1 : 0));
+        emit_lir_op(ctx, lir::LirGepOp{tmp, llvm_alloca_ty(complex_ts), complex_ptr, false,
+                                        {"i32 0", "i32 " + std::to_string(u->op == UnaryOp::ImagPart ? 1 : 0)}});
         return tmp;
       }
     }
@@ -1571,8 +1567,7 @@ std::string HirEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec& 
                                       ? llvm_alloca_ty(pts)
                                       : llvm_ty(pts);
       const std::string safe_elem_ty = (elem_ty == "void") ? "i8" : elem_ty;
-      emit_instr(ctx, tmp + " = getelementptr " + safe_elem_ty +
-                          ", ptr " + base + ", i64 " + ix64);
+      emit_lir_op(ctx, lir::LirGepOp{tmp, safe_elem_ty, base, false, {"i64 " + ix64}});
       return tmp;
     }
     if (const auto* m = std::get_if<MemberExpr>(&e.payload)) {
@@ -2256,8 +2251,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const StringLiteral& sl, c
         module_->string_pool.push_back(std::move(sc));
       }
       const std::string tmp = fresh_tmp(ctx);
-      emit_instr(ctx, tmp + " = getelementptr [" + std::to_string(vals.size()) +
-                          " x i32], ptr " + gname + ", i64 0, i64 0");
+      emit_lir_op(ctx, lir::LirGepOp{tmp, "[" + std::to_string(vals.size()) + " x i32]", gname, false, {"i64 0", "i64 0"}});
       return tmp;
     }
     // Strip enclosing quotes from raw, use as bytes
@@ -2269,8 +2263,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const StringLiteral& sl, c
     const std::string gname = intern_str(bytes);
     const size_t len = bytes.size() + 1;
     const std::string tmp = fresh_tmp(ctx);
-    emit_instr(ctx, tmp + " = getelementptr [" + std::to_string(len) +
-                        " x i8], ptr " + gname + ", i64 0, i64 0");
+    emit_lir_op(ctx, lir::LirGepOp{tmp, "[" + std::to_string(len) + " x i8]", gname, false, {"i64 0", "i64 0"}});
     return tmp;
   }
 
@@ -2311,8 +2304,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const Ex
       }
       if (ts.array_rank > 0 && !ts.is_ptr_to_array) {
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = getelementptr " + llvm_alloca_ty(ts) +
-                            ", ptr " + it->second + ", i64 0, i64 0");
+        emit_lir_op(ctx, lir::LirGepOp{tmp, llvm_alloca_ty(ts), it->second, false, {"i64 0", "i64 0"}});
         return tmp;
       }
       const std::string ty = llvm_ty(ts);
@@ -2330,8 +2322,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const Ex
       const auto& gv = mod_.globals[gv_idx];
       if (gv.type.spec.array_rank > 0 && !gv.type.spec.is_ptr_to_array) {
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = getelementptr " + llvm_alloca_ty(gv.type.spec) +
-                            ", ptr " + llvm_global_sym(gv.name) + ", i64 0, i64 0");
+        emit_lir_op(ctx, lir::LirGepOp{tmp, llvm_alloca_ty(gv.type.spec), llvm_global_sym(gv.name), false, {"i64 0", "i64 0"}});
         return tmp;
       }
       const std::string ty = llvm_ty(gv.type.spec);
@@ -2349,8 +2340,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const Ex
       const std::string gname = intern_str(ctx.fn->name);
       const size_t len = ctx.fn->name.size() + 1;
       const std::string tmp = fresh_tmp(ctx);
-      emit_instr(ctx, tmp + " = getelementptr [" + std::to_string(len) +
-                          " x i8], ptr " + gname + ", i64 0, i64 0");
+      emit_lir_op(ctx, lir::LirGepOp{tmp, "[" + std::to_string(len) + " x i8]", gname, false, {"i64 0", "i64 0"}});
       return tmp;
     }
 
@@ -2552,8 +2542,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const 
             gep_ety1 = llvm_alloca_ty(elem_ts);
           else
             gep_ety1 = llvm_ty(elem_ts);
-          emit_instr(ctx, result + " = getelementptr " + gep_ety1 +
-                              ", ptr " + loaded + ", i64 " + delta);
+          emit_lir_op(ctx, lir::LirGepOp{result, gep_ety1, loaded, false, {"i64 " + delta}});
         } else if (is_float_base(pts.base)) {
           const std::string delta = (u.op == UnaryOp::PreInc) ? "1.0" : "-1.0";
           emit_instr(ctx, result + " = fadd " + pty + " " + loaded + ", " + delta);
@@ -2603,8 +2592,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const 
             gep_ety2 = llvm_alloca_ty(elem_ts);
           else
             gep_ety2 = llvm_ty(elem_ts);
-          emit_instr(ctx, result + " = getelementptr " + gep_ety2 +
-                              ", ptr " + loaded + ", i64 " + delta);
+          emit_lir_op(ctx, lir::LirGepOp{result, gep_ety2, loaded, false, {"i64 " + delta}});
         } else if (is_float_base(pts.base)) {
           const std::string delta = (u.op == UnaryOp::PostInc) ? "1.0" : "-1.0";
           emit_instr(ctx, result + " = fadd " + pty + " " + loaded + ", " + delta);
@@ -2624,9 +2612,8 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const 
           if (!is_complex_base(complex_ts.base)) throw std::runtime_error("non-complex");
           const TypeSpec part_ts = complex_component_ts(complex_ts.base);
           const std::string part_ptr = fresh_tmp(ctx);
-          emit_instr(ctx, part_ptr + " = getelementptr " + llvm_alloca_ty(complex_ts) +
-                                 ", ptr " + complex_ptr + ", i32 0, i32 " +
-                                 std::to_string(u.op == UnaryOp::ImagPart ? 1 : 0));
+          emit_lir_op(ctx, lir::LirGepOp{part_ptr, llvm_alloca_ty(complex_ts), complex_ptr, false,
+                                          {"i32 0", "i32 " + std::to_string(u.op == UnaryOp::ImagPart ? 1 : 0)}});
           const std::string tmp = fresh_tmp(ctx);
           emit_lir_op(ctx, lir::LirLoadOp{tmp, llvm_ty(part_ts), part_ptr});
           return tmp;
@@ -2688,8 +2675,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const
       else
         gep_elem_ty = llvm_ty(elem_ts);
       const std::string tmp = fresh_tmp(ctx);
-      emit_instr(ctx, tmp + " = getelementptr " + gep_elem_ty +
-                          ", ptr " + lv + ", i64 " + idx);
+      emit_lir_op(ctx, lir::LirGepOp{tmp, gep_elem_ty, lv, false, {"i64 " + idx}});
       return tmp;
     }
 
@@ -2961,8 +2947,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const
         else
           gep_elem_ty = llvm_ty(elem_ts);
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = getelementptr " + gep_elem_ty +
-                            ", ptr " + base_ptr + ", i64 " + idx);
+        emit_lir_op(ctx, lir::LirGepOp{tmp, gep_elem_ty, base_ptr, false, {"i64 " + idx}});
         return tmp;
       };
 
@@ -3047,8 +3032,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const
             else
               gep_elem_ty = llvm_ty(elem_ts);
             const std::string tmp = fresh_tmp(ctx);
-            emit_instr(ctx, tmp + " = getelementptr " + gep_elem_ty +
-                                ", ptr " + base_ptr + ", i64 " + idx);
+            emit_lir_op(ctx, lir::LirGepOp{tmp, gep_elem_ty, base_ptr, false, {"i64 " + idx}});
             return tmp;
           };
           return emit_ptr_fallback(lv, lts, rv, rts, row.op == BinaryOp::Sub);
@@ -3231,8 +3215,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const AssignExpr& a, const
             (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
                 ? "i8" : llvm_ty(elem_ts);
         const std::string result = fresh_tmp(ctx);
-        emit_instr(ctx, result + " = getelementptr " + gep_ety3 +
-                            ", ptr " + loaded + ", i64 " + delta);
+        emit_lir_op(ctx, lir::LirGepOp{result, gep_ety3, loaded, false, {"i64 " + delta}});
         emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), result, lhs_ptr});
         return result;
       }
@@ -4086,8 +4069,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
 
 std::string HirEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::string& ap_ptr, int slot_bytes){
     const std::string offs_ptr = fresh_tmp(ctx);
-    emit_instr(ctx, offs_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
-                            ", i32 0, i32 3");
+    emit_lir_op(ctx, lir::LirGepOp{offs_ptr, "%struct.__va_list_tag_", ap_ptr, false, {"i32 0", "i32 3"}});
     const std::string offs = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirLoadOp{offs, std::string("i32"), offs_ptr});
 
@@ -4110,23 +4092,20 @@ std::string HirEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::str
 
     emit_lbl(ctx, reg_lbl);
     const std::string gr_top_ptr = fresh_tmp(ctx);
-    emit_instr(ctx, gr_top_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
-                             ", i32 0, i32 1");
+    emit_lir_op(ctx, lir::LirGepOp{gr_top_ptr, "%struct.__va_list_tag_", ap_ptr, false, {"i32 0", "i32 1"}});
     const std::string gr_top = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirLoadOp{gr_top, std::string("ptr"), gr_top_ptr});
     const std::string reg_addr = fresh_tmp(ctx);
-    emit_instr(ctx, reg_addr + " = getelementptr i8, ptr " + gr_top + ", i32 " + offs);
+    emit_lir_op(ctx, lir::LirGepOp{reg_addr, "i8", gr_top, false, {"i32 " + offs}});
     emit_term_br(ctx, join_lbl);
 
     emit_lbl(ctx, stack_lbl);
     const std::string stack_ptr_ptr = fresh_tmp(ctx);
-    emit_instr(ctx, stack_ptr_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
-                                ", i32 0, i32 0");
+    emit_lir_op(ctx, lir::LirGepOp{stack_ptr_ptr, "%struct.__va_list_tag_", ap_ptr, false, {"i32 0", "i32 0"}});
     const std::string stack_ptr = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirLoadOp{stack_ptr, std::string("ptr"), stack_ptr_ptr});
     const std::string stack_next = fresh_tmp(ctx);
-    emit_instr(ctx, stack_next + " = getelementptr i8, ptr " + stack_ptr + ", i64 " +
-                            std::to_string(slot_bytes));
+    emit_lir_op(ctx, lir::LirGepOp{stack_next, "i8", stack_ptr, false, {"i64 " + std::to_string(slot_bytes)}});
     emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), stack_next, stack_ptr_ptr});
     emit_term_br(ctx, join_lbl);
 
@@ -4141,8 +4120,7 @@ std::string HirEmitter::emit_aarch64_vaarg_fp_src_ptr(
       FnCtx& ctx, const std::string& ap_ptr, int reg_slot_bytes, int stack_slot_bytes,
       int stack_align_bytes){
     const std::string offs_ptr = fresh_tmp(ctx);
-    emit_instr(ctx, offs_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
-                            ", i32 0, i32 4");
+    emit_lir_op(ctx, lir::LirGepOp{offs_ptr, "%struct.__va_list_tag_", ap_ptr, false, {"i32 0", "i32 4"}});
     const std::string offs = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirLoadOp{offs, std::string("i32"), offs_ptr});
 
@@ -4165,18 +4143,16 @@ std::string HirEmitter::emit_aarch64_vaarg_fp_src_ptr(
 
     emit_lbl(ctx, reg_lbl);
     const std::string vr_top_ptr = fresh_tmp(ctx);
-    emit_instr(ctx, vr_top_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
-                             ", i32 0, i32 2");
+    emit_lir_op(ctx, lir::LirGepOp{vr_top_ptr, "%struct.__va_list_tag_", ap_ptr, false, {"i32 0", "i32 2"}});
     const std::string vr_top = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirLoadOp{vr_top, std::string("ptr"), vr_top_ptr});
     const std::string reg_addr = fresh_tmp(ctx);
-    emit_instr(ctx, reg_addr + " = getelementptr i8, ptr " + vr_top + ", i32 " + offs);
+    emit_lir_op(ctx, lir::LirGepOp{reg_addr, "i8", vr_top, false, {"i32 " + offs}});
     emit_term_br(ctx, join_lbl);
 
     emit_lbl(ctx, stack_lbl);
     const std::string stack_ptr_ptr = fresh_tmp(ctx);
-    emit_instr(ctx, stack_ptr_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
-                                ", i32 0, i32 0");
+    emit_lir_op(ctx, lir::LirGepOp{stack_ptr_ptr, "%struct.__va_list_tag_", ap_ptr, false, {"i32 0", "i32 0"}});
     const std::string stack_ptr = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirLoadOp{stack_ptr, std::string("ptr"), stack_ptr_ptr});
     std::string aligned_stack_ptr = stack_ptr;
@@ -4193,8 +4169,7 @@ std::string HirEmitter::emit_aarch64_vaarg_fp_src_ptr(
       emit_lir_op(ctx, lir::LirCastOp{aligned_stack_ptr, lir::LirCastKind::IntToPtr, "i64", masked, "ptr"});
     }
     const std::string stack_next = fresh_tmp(ctx);
-    emit_instr(ctx, stack_next + " = getelementptr i8, ptr " + aligned_stack_ptr + ", i64 " +
-                            std::to_string(stack_slot_bytes));
+    emit_lir_op(ctx, lir::LirGepOp{stack_next, "i8", aligned_stack_ptr, false, {"i64 " + std::to_string(stack_slot_bytes)}});
     emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), stack_next, stack_ptr_ptr});
     emit_term_br(ctx, join_lbl);
 
@@ -4474,8 +4449,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const MemberExpr& m, const
         return tmp;
       }
       const std::string tmp = fresh_tmp(ctx);
-      emit_instr(ctx, tmp + " = getelementptr " + arr_alloca_ty +
-                          ", ptr " + gep + ", i64 0, i64 0");
+      emit_lir_op(ctx, lir::LirGepOp{tmp, arr_alloca_ty, gep, false, {"i64 0", "i64 0"}});
       return tmp;
     }
     const std::string ty = llvm_ty(load_ts);

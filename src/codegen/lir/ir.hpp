@@ -272,6 +272,14 @@ struct LirCastOp {
   std::string to_type;    // LLVM type string of destination
 };
 
+struct LirGepOp {
+  std::string result;         // SSA name for result
+  std::string element_type;   // LLVM type string (e.g. "i8", "[5 x i8]", "%struct.foo")
+  std::string ptr;            // SSA name of pointer operand
+  bool inbounds = false;      // getelementptr inbounds
+  std::vector<std::string> indices;  // each entry is "type value" (e.g. "i32 0", "i64 5")
+};
+
 // Catch-all for instructions not yet migrated to typed LIR ops.
 // Contains the raw LLVM IR line produced by the legacy emitter.
 // This allows incremental migration: Stage 1+ will shrink usage of this type.
@@ -309,6 +317,7 @@ using LirInst = std::variant<
     LirLoadOp,
     LirStoreOp,
     LirCastOp,
+    LirGepOp,
     LirRawLine
 >;
 

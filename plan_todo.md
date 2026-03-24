@@ -32,18 +32,18 @@
 - [x] Step 3e-i: Replace extractvalue/insertvalue LirRawLine with typed LirExtractValueOp/LirInsertValueOp (31 call sites)
 - [x] Step 3e-ii: Replace load/store LirRawLine with typed LirLoadOp/LirStoreOp (46 call sites: 29 loads, 17 stores)
 - [x] Step 3e-iii: Replace cast LirRawLine with typed LirCastOp (41 call sites: zext, sext, trunc, fpext, fptrunc, fptosi, fptoui, sitofp, uitofp, ptrtoint, inttoptr, bitcast)
+- [x] Step 3e-iv: Replace GEP LirRawLine with typed LirGepOp (28 call sites: struct member, array decay, ptr arithmetic, complex real/imag, vaarg aarch64)
 
 ## Active Slice
 - (none — ready for next iteration)
 
 ## Next Intended Slice
-- Step 3e-iv: Replace GEP LirRawLine with typed ops (~27 call sites)
 - Step 3e-v: Replace call LirRawLine with typed ops
 - Or: Extract `lower_globals` into hir_to_lir (Step 2 semantic dependency)
 
 ## Raw fallback usage remaining
 - hir_to_lir.cpp: no raw terminator usage remains
-- hir_emitter.cpp: emit_instr() still uses LirRawLine for ~165 instructions (118 converted: 31 extractvalue/insertvalue + 46 load/store + 41 cast)
+- hir_emitter.cpp: emit_instr() still uses LirRawLine for ~137 instructions (146 converted: 31 extractvalue/insertvalue + 46 load/store + 41 cast + 28 GEP)
 - LirRawTerminator: only produced by no remaining call sites; type kept in variant for now
 
 ## Blockers

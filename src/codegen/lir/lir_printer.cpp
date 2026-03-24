@@ -133,6 +133,12 @@ void render_inst(std::ostringstream& os, const LirInst& inst) {
     }
     os << "  " << op->result << " = " << opname << " " << op->from_type
        << " " << op->operand << " to " << op->to_type << "\n";
+  } else if (const auto* op = std::get_if<LirGepOp>(&inst)) {
+    os << "  " << op->result << " = getelementptr ";
+    if (op->inbounds) os << "inbounds ";
+    os << op->element_type << ", ptr " << op->ptr;
+    for (const auto& idx : op->indices) os << ", " << idx;
+    os << "\n";
   } else if (const auto* op = std::get_if<LirBitfieldInsert>(&inst)) {
     const std::string unit_ty = "i" + std::to_string(op->storage_unit_bits);
     // Load current storage unit
