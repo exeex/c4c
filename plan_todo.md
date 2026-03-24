@@ -1,30 +1,25 @@
-# Plan Todo — Template Function Identity
+# Plan Todo — Lazy Template Type Instantiation
 
-## Status: COMPLETE (2026-03-24)
+## Status: In Progress (2026-03-24)
 
 ## Plan Item
-Structured template function identity (plan.md Steps 1–6)
+Lazy template type instantiation (template_lazy_instantiation_plan.md Steps 1-2)
 
 ## Completed
-- Step 1: Added FunctionTemplateEnv, SelectedFunctionTemplatePattern, FunctionTemplateInstanceKey types
-- Step 2: Added owner-based specialization registry (function_specializations_ map in InstantiationRegistry)
-- Step 3: Added select_function_specialization() structured selection helper
-- Step 4: Switched lowering (initial + deferred) to use structured selection instead of find_specialization(mangled)
-- Step 5: Added structured dedup (FunctionTemplateInstanceKey) for seed and instance recording
-- Step 6: Old string-keyed path demoted to legacy fallback; structured selection is now the primary path
+- Fix: deferred NTTP default with binary expressions (is_void<T>::value || ...)
+  - Parser's `eval_deferred_nttp_default` refactored to token-based recursive descent
+    supporting ||, &&, ==, !=, <, >, <=, >=, !, - operators over member lookups
+  - Parser defers template struct instantiation when NTTP defaults can't be evaluated
+    (`has_incomplete_nttp_default` condition)
+  - Expression parser: when template struct is deferred, use `tpl_struct_origin`
+    (original template name) instead of mangled tag for scope-qualified member access
+  - HIR `resolve_pending_tpl_struct` correctly fills in NTTP defaults with concrete bindings
+  - Fixed: `cpp_positive_sema_template_nttp_default_runtime_cpp`
 
-## Post-Completion Fixes (2026-03-24)
-- Fixed cpp_hir_fixpoint_convergence test regex (new "template types resolved" stats field)
-- Fixed typedef-wrapped struct rvalue member access in codegen (operator_shift_call_arg_runtime)
-- Fixed inherited static member lookup through template base class chains:
-  - Parser: recognize `true`/`false` as NTTP defaults (avoid deferred path)
-  - Parser: `eval_deferred_nttp_default` handles simple literal tokens
-  - Parser: `parse_mangled_type_suffix` reverse mapping for builtin types
-  - Parser: base class token injection emits proper keyword tokens for multi-keyword types (e.g. `unsigned int`)
-  - HIR: `lower_struct_def` uses NTTP bindings when evaluating static constexpr members of template instantiations
-
-## Final Baseline
-2121/2123 tests passing (2 pre-existing failures, no regressions)
+## Baseline
+2122/2123 tests passing (1 pre-existing failure: eastl_type_traits_signed_helper_base_expr_parse)
 
 ## Next
-Plan fully delivered. Next plan TBD (template_lazy_instantiation_plan.md is the natural successor).
+- Investigate EASTL type_traits signed helper test (operator() through template inheritance)
+- Continue lazy instantiation plan Step 1: broader use-site enqueue coverage
+- Or start Step 2: move engine control ownership
