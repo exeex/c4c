@@ -870,12 +870,7 @@ class Lowerer {
           && item->n_template_args > 0) {
         const Node* tpl_def = ct_state_->find_template_def(item->name);
         if (tpl_def) {
-          // Owner-based registration (primary path).
           ct_state_->register_function_specialization(tpl_def, item);
-          // Legacy string-keyed registration (fallback).
-          std::string mangled = mangle_specialization(item, tpl_def);
-          if (!mangled.empty())
-            registry_.register_specialization(mangled, item);
         }
       }
     }
@@ -8272,29 +8267,6 @@ class Lowerer {
   // TemplateSeedOrigin, TemplateSeedWorkItem, TemplateInstance, and
   // InstantiationRegistry are defined in compile_time_engine.hpp.
 
-
-  // Build a mangled name for an explicit specialization node by mapping its
-  // template_arg_types/values to the generic template's param names.
-  std::string mangle_specialization(const Node* spec, const Node* generic_def) {
-    if (!spec || !generic_def || generic_def->n_template_params <= 0) return "";
-    TypeBindings bindings;
-    NttpBindings nttp_bindings;
-    int n = std::min(spec->n_template_args, generic_def->n_template_params);
-    for (int i = 0; i < n; ++i) {
-      const char* pname = generic_def->template_param_names[i];
-      if (!pname) continue;
-      bool is_nttp = generic_def->template_param_is_nttp &&
-                     generic_def->template_param_is_nttp[i];
-      if (is_nttp) {
-        if (spec->template_arg_is_value && spec->template_arg_is_value[i])
-          nttp_bindings[pname] = spec->template_arg_values[i];
-      } else {
-        bindings[pname] = spec->template_arg_types[i];
-      }
-    }
-    return mangle_template_name(spec->name, bindings, nttp_bindings);
-  }
-
   // Build TypeBindings from a call-site template args and a function definition.
   // Resolves typedef args through `enclosing_bindings` if provided.
   // Fills missing args from fn_def's default template parameters.
@@ -8366,11 +8338,6 @@ class Lowerer {
       }
     }
     return bindings;
-  }
-
-  // Check if a template instantiation has already been discovered as a seed.
-  bool has_seed(const std::string& fn_name, const std::string& mangled) {
-    return registry_.has_seed_or_instance(fn_name, mangled);
   }
 
   // Check if a call node has any forwarded NTTP names (not yet resolved to values).
@@ -8643,11 +8610,9 @@ class Lowerer {
               for (const auto& enc_inst : *enc_list) {
                 TypeBindings inner = build_call_bindings(n->left, fn_def, &enc_inst.bindings);
                 NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def, &enc_inst.nttp_bindings);
-                std::string mangled = mangle_template_name(n->left->name, inner, call_nttp);
-                if (!has_seed(n->left->name, mangled))
-                  record_seed(
-                      n->left->name, std::move(inner), call_nttp,
-                      TemplateSeedOrigin::EnclosingTemplateExpansion);
+                record_seed(
+                    n->left->name, std::move(inner), call_nttp,
+                    TemplateSeedOrigin::EnclosingTemplateExpansion);
               }
               goto recurse;  // Already handled all enclosing instantiations.
             }
@@ -8656,11 +8621,9 @@ class Lowerer {
             NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def);
             if (has_forwarded_nttp(n->left)) goto recurse;  // Deferred: forwarded NTTPs not yet resolved.
             TypeBindings bindings = build_call_bindings(n->left, fn_def, nullptr);
-            std::string mangled = mangle_template_name(n->left->name, bindings, call_nttp);
-            if (!has_seed(n->left->name, mangled))
-              record_seed(
-                  n->left->name, std::move(bindings), call_nttp,
-                  TemplateSeedOrigin::DirectCall);
+            record_seed(
+                n->left->name, std::move(bindings), call_nttp,
+                TemplateSeedOrigin::DirectCall);
           }
         }
       }
@@ -8688,11 +8651,9 @@ class Lowerer {
                   nttp[fn_def->template_param_names[i]] = fn_def->template_param_default_values[i];
               }
             }
-            std::string mangled = mangle_template_name(n->left->name, deduced, nttp);
-            if (!has_seed(n->left->name, mangled))
-              record_seed(
-                  n->left->name, TypeBindings(deduced), nttp,
-                  TemplateSeedOrigin::DeducedCall);
+            std::string mangled = record_seed(
+                n->left->name, TypeBindings(deduced), nttp,
+                TemplateSeedOrigin::DeducedCall);
             // Store the deduction result for use during call lowering.
             deduced_template_calls_[n] = {mangled, std::move(deduced), std::move(nttp)};
           }
@@ -8729,11 +8690,9 @@ class Lowerer {
               for (const auto& enc_inst : *enc_list) {
                 TypeBindings inner = build_call_bindings(n->left, fn_def, &enc_inst.bindings);
                 NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def, &enc_inst.nttp_bindings);
-                std::string mangled = mangle_template_name(n->left->name, inner, call_nttp);
-                if (!has_seed(n->left->name, mangled))
-                  record_seed(
-                      n->left->name, std::move(inner), call_nttp,
-                      TemplateSeedOrigin::ConstevalEnclosingExpansion);
+                record_seed(
+                    n->left->name, std::move(inner), call_nttp,
+                    TemplateSeedOrigin::ConstevalEnclosingExpansion);
               }
               goto recurse_ce;
             }
@@ -8748,11 +8707,9 @@ class Lowerer {
             NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def);
             if (has_forwarded_nttp(n->left)) goto recurse_ce;  // Deferred.
             TypeBindings bindings = build_call_bindings(n->left, fn_def, nullptr);
-            std::string mangled = mangle_template_name(n->left->name, bindings, call_nttp);
-            if (!has_seed(n->left->name, mangled))
-              record_seed(
-                  n->left->name, std::move(bindings), call_nttp,
-                  TemplateSeedOrigin::ConstevalSeed);
+            record_seed(
+                n->left->name, std::move(bindings), call_nttp,
+                TemplateSeedOrigin::ConstevalSeed);
           }
         }
       }

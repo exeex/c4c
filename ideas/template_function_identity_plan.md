@@ -36,15 +36,20 @@ Primary references to copy from:
 
 ## Current Problem
 
-Today function-template identity is split in half:
+Function-template identity is partially migrated.
+
+Today the codebase has:
 
 - good part:
   `TypeBindings`, `NttpBindings`, and `SpecializationKey` already exist
-- bad part:
-  explicit specialization lookup still does
-  `mangled_name -> AST specialization node`
+- also good:
+  structured function-template identity scaffolding already exists in
+  `compile_time_engine.hpp`
+- remaining bad part:
+  legacy mangled-name specialization lookup and string-keyed dedup are still
+  present as fallback paths / compatibility storage
 
-That old path currently looks like this:
+The old path used to look like this:
 
 1. register explicit specialization in
    [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
@@ -56,7 +61,10 @@ That old path currently looks like this:
    `registry_.find_specialization(inst.mangled_name)`
 4. if found, lower that body
 
-This is the exact thing that must stop being the primary path.
+That path is no longer the intended primary path.
+
+What still remains is to finish the cutover so the legacy string-based path is
+clearly secondary and eventually removable.
 
 
 ## Non-Goals
@@ -80,6 +88,27 @@ At the end of this plan:
 - dedup/instance identity uses `primary_def + spec_key`
 - mangled names are still produced, but only after the semantic instance is
   known
+
+
+## Current Status
+
+As of 2026-03-24, the following pieces are already landed:
+
+- `FunctionTemplateEnv`
+- `SelectedFunctionTemplatePattern`
+- `FunctionTemplateInstanceKey`
+- owner-based function specialization storage
+- structured specialization selection helper
+- initial lowering path uses structured selection
+- deferred template instantiation callback uses structured selection
+
+What is still not fully finished:
+
+- legacy `specs_` / `find_specialization(...)` / `register_specialization(...)`
+  still exist as compatibility path
+- legacy string-keyed dedup still exists alongside structured dedup
+- the document still described some already-completed steps as if they were
+  not started
 
 
 ## Files To Change
@@ -108,6 +137,8 @@ Do not start in parser files for this task.
 ## Existing Code You Must Replace
 
 These old pieces are the ones to shrink or remove from the main path.
+Some of them still exist today, but they should no longer define the primary
+control flow.
 
 In [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp):
 
@@ -125,12 +156,12 @@ These may survive temporarily as fallback helpers during transition, but they
 must no longer be the primary selection path.
 
 
-## New Data Model To Add
+## Data Model
 
-Add these concepts in
+These concepts should exist in
 [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp).
 
-Use names close to these:
+They are already the right shape and should remain close to this:
 
 ```cpp
 struct FunctionTemplateEnv {
@@ -163,6 +194,9 @@ Update `InstantiationRegistry` in
 
 ### 1. Add owner-based specialization storage
 
+Status:
+- done, but legacy string-keyed storage still exists as fallback
+
 Replace the effective meaning of:
 
 - `mangled specialization string -> specialization node`
@@ -183,7 +217,11 @@ Do not use it as the preferred lookup anymore.
 
 ### 2. Add structured instance keys
 
-Today dedup is effectively:
+Status:
+- partially done; structured keys exist, but legacy string-keyed dedup is still
+  present in parallel
+
+Old dedup was effectively:
 
 - `fn_name + "::" + mangled_name`
 
@@ -215,6 +253,9 @@ not from `mangled_name`.
 
 
 ### 3. Add owner-based specialization selection helpers
+
+Status:
+- done
 
 Add helper APIs like:
 
@@ -266,14 +307,16 @@ Update
 Current code:
 
 - collects template defs with `ct_state_->register_template_def(...)`
-- collects explicit specializations by computing a mangled name
-- registers those specializations with `registry_.register_specialization(mangled, item)`
+- registers explicit specializations under the primary definition
+- still also records a legacy mangled fallback entry
 
 Change it to:
 
 - find the primary function template definition
 - register the specialization under that primary definition
 - do not make mangled-string lookup the only source of truth
+- eventually remove legacy registration from the main control flow once no
+  callers depend on it
 
 
 ### 2. Lowering of discovered instances
@@ -289,6 +332,9 @@ if (spec_node) {
 }
 ```
 
+Status:
+- done for the primary lowering path
+
 Replace it with:
 
 1. derive the selected pattern from `primary_def + bindings + nttp_bindings`
@@ -300,9 +346,8 @@ The lowering decision must not start from `inst.mangled_name`.
 
 ### 3. Deferred template instantiation callback
 
-Current code in `instantiate_deferred_template(...)` also does:
-
-- `registry_.find_specialization(mangled)`
+Status:
+- done for the deferred callback path
 
 Change it the same way:
 
@@ -313,15 +358,15 @@ Change it the same way:
 
 ## Concrete Removal Checklist
 
-This is the minimum checklist for the agent.
+This is the minimum checklist for the remaining cleanup work.
 
 In [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp):
 
-- add `FunctionTemplateEnv`
-- add `SelectedFunctionTemplatePattern`
-- add `FunctionTemplateInstanceKey`
-- add owner-based specialization registry
-- add owner-based specialization lookup/select helper
+- keep `FunctionTemplateEnv`
+- keep `SelectedFunctionTemplatePattern`
+- keep `FunctionTemplateInstanceKey`
+- keep owner-based specialization registry as the primary registry
+- keep owner-based specialization lookup/select helper as the primary selector
 - stop treating `specs_` as the primary specialization registry
 - stop treating `fn_name + "::" + mangled` as the semantic instance key
 
@@ -343,6 +388,9 @@ Do not jump around.
 File:
 - [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
 
+Status:
+- already complete
+
 Add:
 - `FunctionTemplateEnv`
 - `SelectedFunctionTemplatePattern`
@@ -354,6 +402,9 @@ Add:
 File:
 - [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
 
+Status:
+- already complete
+
 Add:
 - register specializations by `primary_def`
 - query specialization list by `primary_def`
@@ -364,6 +415,9 @@ Add:
 Files:
 - [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
 - [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) if helper bodies fit better there
+
+Status:
+- already complete
 
 Implement:
 - select specialization from `primary_def + bindings + nttp_bindings`
@@ -378,6 +432,9 @@ Reference design:
 File:
 - [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
 
+Status:
+- already complete
+
 Replace both:
 - initial lowering path for discovered instances
 - deferred instantiation callback path
@@ -387,6 +444,9 @@ Replace both:
 
 File:
 - [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+
+Status:
+- partially complete
 
 Change:
 - seed dedup
@@ -401,6 +461,9 @@ Keep:
 Files:
 - [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
 - [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
+
+Status:
+- remaining active cleanup step
 
 Allowed:
 - keep old mangled lookup only as temporary fallback
@@ -458,6 +521,18 @@ This plan is complete when all of the following are true:
 5. mangled names remain only derived/codegen/debug data
 
 
+## Immediate Next Work
+
+If continuing from the current tree, focus on these items in order:
+
+1. remove dependence on legacy mangled specialization lookup from any
+   remaining control flow
+2. tighten seed/instance dedup so structured keys are the semantic source of
+   truth and string keys are fallback/debug only
+3. rerun the targeted template-function regression set
+4. update this document again if the legacy compatibility path is deleted
+
+
 ## Testcases To Run
 
 At minimum, run these targeted tests after the change:
@@ -498,12 +573,10 @@ Regression guards around nearby template behavior:
 
 This plan does not need to fix:
 
-- `cpp_positive_sema_template_nttp_default_runtime_cpp`
+- `eastl_type_traits_signed_helper_base_expr_parse`
 
-That case belongs to
-[template_lazy_instantiation_plan.md](/workspaces/c4c/ideas/template_lazy_instantiation_plan.md),
-because it is about who evaluates deferred NTTP defaults and when, not about
-function-template identity.
+That case is adjacent template behavior and is better tracked separately from
+the function-template identity cutover.
 
 
 ## Short Version

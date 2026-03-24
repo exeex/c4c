@@ -1,9 +1,11 @@
-# Plan Todo — Lazy Template Type Instantiation
+# Plan Todo — Template Instantiation Follow-up
 
 ## Status: In Progress (2026-03-24)
 
 ## Plan Item
-Lazy template type instantiation (template_lazy_instantiation_plan.md Steps 1-2)
+Follow up on template instantiation work after the deferred NTTP default fix:
+- close the remaining template-function identity migration
+- keep lazy template type instantiation moving forward from the new baseline
 
 ## Completed
 - Fix: deferred NTTP default with binary expressions (is_void<T>::value || ...)
@@ -15,11 +17,28 @@ Lazy template type instantiation (template_lazy_instantiation_plan.md Steps 1-2)
     (original template name) instead of mangled tag for scope-qualified member access
   - HIR `resolve_pending_tpl_struct` correctly fills in NTTP defaults with concrete bindings
   - Fixed: `cpp_positive_sema_template_nttp_default_runtime_cpp`
+- Template-function identity scaffolding is already landed
+  - structured function-template identity types exist in `compile_time_engine.hpp`
+  - owner-based function specialization registration exists
+  - lowering and deferred instantiation already use structured specialization selection
+  - remaining work is cleanup, full cutover, and doc/test synchronization
 
 ## Baseline
 2122/2123 tests passing (1 pre-existing failure: eastl_type_traits_signed_helper_base_expr_parse)
 
 ## Next
-- Investigate EASTL type_traits signed helper test (operator() through template inheritance)
-- Continue lazy instantiation plan Step 1: broader use-site enqueue coverage
-- Or start Step 2: move engine control ownership
+- Sync planning docs with code reality
+  - update `ideas/template_function_identity_plan.md` so already-landed scaffolding is marked done
+  - remove the stale statement that `cpp_positive_sema_template_nttp_default_runtime_cpp`
+    is still an out-of-scope failure
+- Finish template-function identity cutover
+  - stop treating legacy mangled-string specialization lookup as part of the main path
+  - tighten semantic dedup around `primary_def + spec_key`
+  - keep `mangled_name` as derived/codegen/debug data only
+- Run the targeted template-function identity regression set from
+  `ideas/template_function_identity_plan.md`
+- Investigate EASTL type_traits signed helper test
+  (`eastl_type_traits_signed_helper_base_expr_parse`, operator() through template inheritance)
+- After identity cleanup is stable, continue lazy template instantiation
+  - Step 1: broader use-site enqueue coverage
+  - Step 2: move engine control ownership

@@ -3,6 +3,7 @@
 #include "ir.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <cstdio>
 #include <functional>
@@ -339,30 +340,11 @@ inline std::string make_pending_template_type_key(
 // Ownership split:
 //   seed_work   – discovered template application candidates (todo list)
 //   instances   – realized instantiations (authoritative for lowering)
-//   specs       – explicit specialization AST nodes keyed by mangled name
+//   function_specializations – explicit specialization AST nodes keyed by owner
 
 class InstantiationRegistry {
  public:
   // ── Queries ──────────────────────────────────────────────────────────
-
-  /// O(1) dedup check: has this (fn_name, mangled) pair been realized?
-  bool has_instance(const std::string& fn_name,
-                    const std::string& mangled) const {
-    return instance_keys_.count(fn_name + "::" + mangled) > 0;
-  }
-
-  /// O(1) dedup check: has this (fn_name, mangled) pair been recorded as a seed?
-  bool has_seed(const std::string& fn_name,
-                const std::string& mangled) const {
-    return seed_keys_.count(fn_name + "::" + mangled) > 0;
-  }
-
-  /// O(1) dedup check: has this pair been recorded as either seed or instance?
-  bool has_seed_or_instance(const std::string& fn_name,
-                            const std::string& mangled) const {
-    std::string key = fn_name + "::" + mangled;
-    return seed_keys_.count(key) > 0 || instance_keys_.count(key) > 0;
-  }
 
   /// Look up realized instances for a template function (may be empty).
   const std::vector<TemplateInstance>* find_instances(
@@ -370,13 +352,6 @@ class InstantiationRegistry {
     auto it = instances_.find(fn_name);
     if (it == instances_.end()) return nullptr;
     return &it->second;
-  }
-
-  /// Look up explicit specialization AST node by mangled name.
-  const Node* find_specialization(const std::string& mangled) const {
-    auto it = specs_.find(mangled);
-    if (it == specs_.end()) return nullptr;
-    return it->second;
   }
 
   /// All realized instances (for iteration, e.g., metadata population).
@@ -388,12 +363,6 @@ class InstantiationRegistry {
   all_seeds() const { return seed_work_; }
 
   // ── Mutations ────────────────────────────────────────────────────────
-
-  /// Register an explicit specialization (legacy string-keyed path).
-  void register_specialization(const std::string& mangled,
-                               const Node* spec_node) {
-    specs_[mangled] = spec_node;
-  }
 
   /// Register an explicit specialization under its primary template def (owner-based).
   void register_function_specialization(const Node* primary_def,
@@ -489,19 +458,26 @@ class InstantiationRegistry {
         ? make_specialization_key(fn_name, param_order, bindings)
         : make_specialization_key(fn_name, param_order, bindings,
                                   nttp_bindings);
-    // Structured dedup: use primary_def + spec_key when primary_def available.
+    // Semantic dedup uses owner identity when available.
     if (primary_def) {
       FunctionTemplateInstanceKey fk{primary_def, sk};
-      if (structured_seed_keys_.count(fk) > 0) return mangled;
+      if (structured_seed_keys_.count(fk) > 0 ||
+          structured_instance_keys_.count(fk) > 0) {
+        return mangled;
+      }
       structured_seed_keys_.insert(fk);
+    } else {
+      // Fallback only for callers that do not yet know the primary owner.
+      std::string key = fn_name + "::" + mangled;
+      if (legacy_seed_keys_.count(key) > 0 ||
+          legacy_instance_keys_.count(key) > 0) {
+        return mangled;
+      }
+      legacy_seed_keys_.insert(std::move(key));
     }
-    // Legacy string dedup (fallback).
-    std::string key = fn_name + "::" + mangled;
-    if (seed_keys_.count(key) > 0) return mangled;
     seed_work_[fn_name].push_back(
         TemplateSeedWorkItem{fn_name, bindings, nttp_bindings, mangled,
                              sk, origin, primary_def});
-    seed_keys_.insert(std::move(key));
     return mangled;
   }
 
@@ -511,19 +487,18 @@ class InstantiationRegistry {
     size_t realized = 0;
     for (const auto& [fn_name, seeds] : seed_work_) {
       for (const auto& seed : seeds) {
-        // Structured dedup check.
         if (seed.primary_def) {
           FunctionTemplateInstanceKey fk{seed.primary_def, seed.spec_key};
           if (structured_instance_keys_.count(fk) > 0) continue;
           structured_instance_keys_.insert(fk);
+        } else {
+          std::string key = fn_name + "::" + seed.mangled_name;
+          if (legacy_instance_keys_.count(key) > 0) continue;
+          legacy_instance_keys_.insert(std::move(key));
         }
-        // Legacy string dedup check.
-        std::string key = fn_name + "::" + seed.mangled_name;
-        if (instance_keys_.count(key) > 0) continue;  // already realized
         instances_[fn_name].push_back(
             {seed.bindings, seed.nttp_bindings, seed.mangled_name,
              seed.spec_key, seed.primary_def});
-        instance_keys_.insert(std::move(key));
         ++realized;
       }
     }
@@ -548,20 +523,9 @@ class InstantiationRegistry {
   /// vice versa.  Returns true when seeds and instances are in perfect
   /// parity.
   bool verify_parity() const {
-    // Every seed must be realized.
-    for (const auto& [fn_name, seeds] : seed_work_) {
-      for (const auto& s : seeds) {
-        if (instance_keys_.count(fn_name + "::" + s.mangled_name) == 0)
-          return false;
-      }
-    }
-    // Every instance must have a seed.
-    for (const auto& [fn_name, insts] : instances_) {
-      for (const auto& inst : insts) {
-        if (seed_keys_.count(fn_name + "::" + inst.mangled_name) == 0)
-          return false;
-      }
-    }
+    auto seed_keys = build_semantic_seed_keys();
+    auto instance_keys = build_semantic_instance_keys();
+    if (seed_keys != instance_keys) return false;
     return total_seed_count() == total_instance_count();
   }
 
@@ -592,7 +556,7 @@ class InstantiationRegistry {
       // List unrealized seeds.
       if (sit != seed_work_.end()) {
         for (const auto& seed : sit->second) {
-          bool realized = instance_keys_.count(fn + "::" + seed.mangled_name) > 0;
+          bool realized = has_matching_instance(fn, seed);
           if (!realized)
             std::fprintf(out, "    UNREALIZED seed: %s\n",
                          seed.mangled_name.c_str());
@@ -601,7 +565,7 @@ class InstantiationRegistry {
       // List orphan instances (instance without seed).
       if (iit != instances_.end()) {
         for (const auto& inst : iit->second) {
-          bool has_s = seed_keys_.count(fn + "::" + inst.mangled_name) > 0;
+          bool has_s = has_matching_seed(fn, inst);
           if (!has_s)
             std::fprintf(out, "    ORPHAN instance: %s\n",
                          inst.mangled_name.c_str());
@@ -611,18 +575,84 @@ class InstantiationRegistry {
   }
 
  private:
+  using SemanticKey = std::string;
+
+  static SemanticKey make_semantic_key(
+      const std::string& fn_name,
+      const std::string& mangled_name,
+      const FunctionTemplateInstanceKey* structured_key) {
+    if (structured_key && structured_key->primary_def) {
+      return std::to_string(reinterpret_cast<std::uintptr_t>(
+                 structured_key->primary_def)) +
+             "::" + structured_key->spec_key.canonical;
+    }
+    return fn_name + "::" + mangled_name;
+  }
+
+  std::unordered_set<SemanticKey> build_semantic_seed_keys() const {
+    std::unordered_set<SemanticKey> keys;
+    for (const auto& [fn_name, seeds] : seed_work_) {
+      for (const auto& seed : seeds) {
+        const FunctionTemplateInstanceKey fk{seed.primary_def, seed.spec_key};
+        keys.insert(make_semantic_key(fn_name, seed.mangled_name,
+                                      seed.primary_def ? &fk : nullptr));
+      }
+    }
+    return keys;
+  }
+
+  std::unordered_set<SemanticKey> build_semantic_instance_keys() const {
+    std::unordered_set<SemanticKey> keys;
+    for (const auto& [fn_name, insts] : instances_) {
+      for (const auto& inst : insts) {
+        const FunctionTemplateInstanceKey fk{inst.primary_def, inst.spec_key};
+        keys.insert(make_semantic_key(fn_name, inst.mangled_name,
+                                      inst.primary_def ? &fk : nullptr));
+      }
+    }
+    return keys;
+  }
+
+  bool has_matching_instance(const std::string& fn_name,
+                             const TemplateSeedWorkItem& seed) const {
+    auto it = instances_.find(fn_name);
+    if (it == instances_.end()) return false;
+    for (const auto& inst : it->second) {
+      if (seed.primary_def && inst.primary_def) {
+        if (seed.primary_def == inst.primary_def &&
+            seed.spec_key == inst.spec_key) {
+          return true;
+        }
+        continue;
+      }
+      if (seed.mangled_name == inst.mangled_name) return true;
+    }
+    return false;
+  }
+
+  bool has_matching_seed(const std::string& fn_name,
+                         const TemplateInstance& inst) const {
+    auto it = seed_work_.find(fn_name);
+    if (it == seed_work_.end()) return false;
+    for (const auto& seed : it->second) {
+      if (seed.primary_def && inst.primary_def) {
+        if (seed.primary_def == inst.primary_def &&
+            seed.spec_key == inst.spec_key) {
+          return true;
+        }
+        continue;
+      }
+      if (seed.mangled_name == inst.mangled_name) return true;
+    }
+    return false;
+  }
+
   // Seed / todo list — discovered template application candidates.
   std::unordered_map<std::string, std::vector<TemplateSeedWorkItem>>
       seed_work_;
   // Realized instances — authoritative for lowering.
   std::unordered_map<std::string, std::vector<TemplateInstance>>
       instances_;
-  // O(1) dedup set for realized instances: "fn_name::mangled_name".
-  std::unordered_set<std::string> instance_keys_;
-  // O(1) dedup set for seeds: "fn_name::mangled_name".
-  std::unordered_set<std::string> seed_keys_;
-  // Explicit specializations: mangled_name → AST node (legacy).
-  std::unordered_map<std::string, const Node*> specs_;
   // Owner-based function specializations: primary_def → list of spec nodes.
   std::unordered_map<const Node*, std::vector<const Node*>> function_specializations_;
   // Structured dedup sets for seeds and instances (primary_def + spec_key).
@@ -630,6 +660,9 @@ class InstantiationRegistry {
       structured_seed_keys_;
   std::unordered_set<FunctionTemplateInstanceKey, FunctionTemplateInstanceKeyHash>
       structured_instance_keys_;
+  // Fallback dedup only for callers that do not know the primary owner yet.
+  std::unordered_set<std::string> legacy_seed_keys_;
+  std::unordered_set<std::string> legacy_instance_keys_;
 };
 
 // ── CompileTimeState ─────────────────────────────────────────────────────
