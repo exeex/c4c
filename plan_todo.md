@@ -28,17 +28,19 @@
 - [x] Step 3a: Replace LirRawLine alloca instructions in hoist_allocas() with typed LirAlloca
 - [x] Step 3b: Replace LirRawLine store instructions in hoist_allocas() with typed LirHoistedStore (param stores + zeroinit stores)
 - [x] Step 3c: Replace LirRawTerminator in inject_fallthrough_returns() with typed LirRet
+- [x] Step 3d: Replace all LirRawTerminator usage in hir_emitter.cpp with typed LIR terminators (LirBr, LirCondBr, LirRet, LirSwitch, LirUnreachable); removed dead `emit_term()` method
 
 ## Active Slice
 - (none — ready for next iteration)
 
 ## Next Intended Slice
-- Step 3d: Replace LirRawTerminator usage in hir_emitter.cpp emit_term() with typed LIR terminators (LirBr, LirCondBr, LirRet, LirSwitch, LirUnreachable)
+- Step 3e: Replace LirRawLine usage in emit_instr() with typed LIR instructions (loads, stores, GEPs, calls, etc.)
 - Or: Extract `lower_globals` into hir_to_lir (Step 2 semantic dependency)
 
-## Raw fallback usage remaining in hir_to_lir.cpp
-- hir_to_lir.cpp: inject_fallthrough_returns no longer uses LirRawTerminator (now uses LirRet)
-- hir_emitter.cpp: emit_instr() and emit_term() generic escape hatches (bulk of usage)
+## Raw fallback usage remaining
+- hir_to_lir.cpp: no raw terminator usage remains
+- hir_emitter.cpp: emit_instr() still uses LirRawLine for all instructions (bulk of remaining work)
+- LirRawTerminator: only produced by no remaining call sites; type kept in variant for now
 
 ## Blockers
 - None

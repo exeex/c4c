@@ -231,14 +231,44 @@ void HirEmitter::emit_lbl(FnCtx& ctx, const std::string& lbl){
     ctx.last_term = false;
   }
 
-void HirEmitter::emit_term(FnCtx& ctx, const std::string& line){
-    // Only set if no terminator has been placed yet for this block.
-    // Note: emit_instr() resets last_term, so dead code after a terminator
-    // (e.g. after goto) could re-enter here.  Guard on the field itself to
-    // preserve "first terminator wins" semantics (matching old in-insts behavior
-    // where LLVM used the first terminator encountered in a basic block).
+void HirEmitter::emit_term_br(FnCtx& ctx, const std::string& target_label){
     if (std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) {
-      ctx.cur_block().terminator = lir::LirRawTerminator{"  " + line};
+      ctx.cur_block().terminator = lir::LirBr{target_label};
+      ctx.last_term = true;
+    }
+  }
+
+void HirEmitter::emit_term_condbr(FnCtx& ctx, const std::string& cond,
+                                    const std::string& true_label,
+                                    const std::string& false_label){
+    if (std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) {
+      ctx.cur_block().terminator = lir::LirCondBr{cond, true_label, false_label};
+      ctx.last_term = true;
+    }
+  }
+
+void HirEmitter::emit_term_ret(FnCtx& ctx, const std::string& type_str,
+                                 const std::optional<std::string>& value_str){
+    if (std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) {
+      ctx.cur_block().terminator = lir::LirRet{value_str, type_str};
+      ctx.last_term = true;
+    }
+  }
+
+void HirEmitter::emit_term_switch(FnCtx& ctx, const std::string& sel_name,
+                                    const std::string& sel_type,
+                                    const std::string& default_label,
+                                    std::vector<std::pair<long long, std::string>> cases){
+    if (std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) {
+      ctx.cur_block().terminator = lir::LirSwitch{sel_name, sel_type, default_label, std::move(cases)};
+      ctx.last_term = true;
+    }
+  }
+
+void HirEmitter::emit_term_unreachable(FnCtx& ctx){
+    // LirUnreachable is the default — but we need to mark last_term.
+    // Only set if no real terminator has been placed.
+    if (std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) {
       ctx.last_term = true;
     }
   }
@@ -3096,9 +3126,9 @@ std::string HirEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Expr
     const std::string end_lbl  = fresh_lbl(ctx, "logic.end.");
 
     if (b.op == BinaryOp::LAnd) {
-      emit_term(ctx, "br i1 " + lc + ", label %" + rhs_lbl + ", label %" + skip_lbl);
+      emit_term_condbr(ctx, lc, rhs_lbl, skip_lbl);
     } else {
-      emit_term(ctx, "br i1 " + lc + ", label %" + skip_lbl + ", label %" + rhs_lbl);
+      emit_term_condbr(ctx, lc, skip_lbl, rhs_lbl);
     }
 
     emit_lbl(ctx, rhs_lbl);
@@ -3117,10 +3147,10 @@ std::string HirEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Expr
       rhs_val = fresh_tmp(ctx);
       emit_instr(ctx, rhs_val + " = zext i1 " + rc + " to " + res_ty);
     }
-    emit_term(ctx, "br label %" + rhs_end_lbl);
+    emit_term_br(ctx, rhs_end_lbl);
 
     emit_lbl(ctx, rhs_end_lbl);
-    emit_term(ctx, "br label %" + end_lbl);
+    emit_term_br(ctx, end_lbl);
 
     emit_lbl(ctx, skip_lbl);
     std::string skip_val;
@@ -3131,7 +3161,7 @@ std::string HirEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Expr
     } else {
       skip_val = (b.op == BinaryOp::LAnd) ? "0" : "1";
     }
-    emit_term(ctx, "br label %" + end_lbl);
+    emit_term_br(ctx, end_lbl);
 
     emit_lbl(ctx, end_lbl);
     const std::string tmp = fresh_tmp(ctx);
@@ -3492,7 +3522,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         return result;
       }
       if (builtin_id == BuiltinId::Unreachable && call.args.empty()) {
-        emit_term(ctx, "unreachable");
+        emit_term_unreachable(ctx);
         return "";
       }
       if (builtin_id == BuiltinId::Prefetch) {
@@ -4082,7 +4112,7 @@ std::string HirEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::str
 
     const std::string is_stack0 = fresh_tmp(ctx);
     emit_instr(ctx, is_stack0 + " = icmp sge i32 " + offs + ", 0");
-    emit_term(ctx, "br i1 " + is_stack0 + ", label %" + stack_lbl + ", label %" + reg_try_lbl);
+    emit_term_condbr(ctx, is_stack0, stack_lbl, reg_try_lbl);
 
     emit_lbl(ctx, reg_try_lbl);
     const std::string next_offs = fresh_tmp(ctx);
@@ -4090,7 +4120,7 @@ std::string HirEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::str
     emit_instr(ctx, "store i32 " + next_offs + ", ptr " + offs_ptr);
     const std::string use_reg = fresh_tmp(ctx);
     emit_instr(ctx, use_reg + " = icmp sle i32 " + next_offs + ", 0");
-    emit_term(ctx, "br i1 " + use_reg + ", label %" + reg_lbl + ", label %" + stack_lbl);
+    emit_term_condbr(ctx, use_reg, reg_lbl, stack_lbl);
 
     emit_lbl(ctx, reg_lbl);
     const std::string gr_top_ptr = fresh_tmp(ctx);
@@ -4100,7 +4130,7 @@ std::string HirEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::str
     emit_instr(ctx, gr_top + " = load ptr, ptr " + gr_top_ptr);
     const std::string reg_addr = fresh_tmp(ctx);
     emit_instr(ctx, reg_addr + " = getelementptr i8, ptr " + gr_top + ", i32 " + offs);
-    emit_term(ctx, "br label %" + join_lbl);
+    emit_term_br(ctx, join_lbl);
 
     emit_lbl(ctx, stack_lbl);
     const std::string stack_ptr_ptr = fresh_tmp(ctx);
@@ -4112,7 +4142,7 @@ std::string HirEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::str
     emit_instr(ctx, stack_next + " = getelementptr i8, ptr " + stack_ptr + ", i64 " +
                             std::to_string(slot_bytes));
     emit_instr(ctx, "store ptr " + stack_next + ", ptr " + stack_ptr_ptr);
-    emit_term(ctx, "br label %" + join_lbl);
+    emit_term_br(ctx, join_lbl);
 
     emit_lbl(ctx, join_lbl);
     const std::string src_ptr = fresh_tmp(ctx);
@@ -4137,7 +4167,7 @@ std::string HirEmitter::emit_aarch64_vaarg_fp_src_ptr(
 
     const std::string is_stack0 = fresh_tmp(ctx);
     emit_instr(ctx, is_stack0 + " = icmp sge i32 " + offs + ", 0");
-    emit_term(ctx, "br i1 " + is_stack0 + ", label %" + stack_lbl + ", label %" + reg_try_lbl);
+    emit_term_condbr(ctx, is_stack0, stack_lbl, reg_try_lbl);
 
     emit_lbl(ctx, reg_try_lbl);
     const std::string next_offs = fresh_tmp(ctx);
@@ -4145,7 +4175,7 @@ std::string HirEmitter::emit_aarch64_vaarg_fp_src_ptr(
     emit_instr(ctx, "store i32 " + next_offs + ", ptr " + offs_ptr);
     const std::string use_reg = fresh_tmp(ctx);
     emit_instr(ctx, use_reg + " = icmp sle i32 " + next_offs + ", 0");
-    emit_term(ctx, "br i1 " + use_reg + ", label %" + reg_lbl + ", label %" + stack_lbl);
+    emit_term_condbr(ctx, use_reg, reg_lbl, stack_lbl);
 
     emit_lbl(ctx, reg_lbl);
     const std::string vr_top_ptr = fresh_tmp(ctx);
@@ -4155,7 +4185,7 @@ std::string HirEmitter::emit_aarch64_vaarg_fp_src_ptr(
     emit_instr(ctx, vr_top + " = load ptr, ptr " + vr_top_ptr);
     const std::string reg_addr = fresh_tmp(ctx);
     emit_instr(ctx, reg_addr + " = getelementptr i8, ptr " + vr_top + ", i32 " + offs);
-    emit_term(ctx, "br label %" + join_lbl);
+    emit_term_br(ctx, join_lbl);
 
     emit_lbl(ctx, stack_lbl);
     const std::string stack_ptr_ptr = fresh_tmp(ctx);
@@ -4180,7 +4210,7 @@ std::string HirEmitter::emit_aarch64_vaarg_fp_src_ptr(
     emit_instr(ctx, stack_next + " = getelementptr i8, ptr " + aligned_stack_ptr + ", i64 " +
                             std::to_string(stack_slot_bytes));
     emit_instr(ctx, "store ptr " + stack_next + ", ptr " + stack_ptr_ptr);
-    emit_term(ctx, "br label %" + join_lbl);
+    emit_term_br(ctx, join_lbl);
 
     emit_lbl(ctx, join_lbl);
     const std::string src_ptr = fresh_tmp(ctx);
@@ -4304,23 +4334,23 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, cons
     if (!has_concrete_type(res_spec)) res_spec.base = TB_INT;
     const std::string res_ty = llvm_ty(res_spec);
 
-    emit_term(ctx, "br i1 " + cond_i1 + ", label %" + then_lbl + ", label %" + else_lbl);
+    emit_term_condbr(ctx, cond_i1, then_lbl, else_lbl);
 
     emit_lbl(ctx, then_lbl);
     TypeSpec then_ts{};
     std::string then_v = emit_rval_id(ctx, t.then_expr, then_ts);
     then_v = coerce(ctx, then_v, then_ts, res_spec);
-    emit_term(ctx, "br label %" + then_end_lbl);
+    emit_term_br(ctx, then_end_lbl);
     emit_lbl(ctx, then_end_lbl);
-    emit_term(ctx, "br label %" + end_lbl);
+    emit_term_br(ctx, end_lbl);
 
     emit_lbl(ctx, else_lbl);
     TypeSpec else_ts{};
     std::string else_v = emit_rval_id(ctx, t.else_expr, else_ts);
     else_v = coerce(ctx, else_v, else_ts, res_spec);
-    emit_term(ctx, "br label %" + else_end_lbl);
+    emit_term_br(ctx, else_end_lbl);
     emit_lbl(ctx, else_end_lbl);
-    emit_term(ctx, "br label %" + end_lbl);
+    emit_term_br(ctx, end_lbl);
 
     emit_lbl(ctx, end_lbl);
     if (res_ty == "void") return "";
@@ -4605,16 +4635,16 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ReturnStmt& s){
       const auto& rts = ctx.fn->return_type.spec;
       if (rts.base == TB_VOID && rts.ptr_level == 0 && rts.array_rank == 0 &&
           !rts.is_lvalue_ref && !rts.is_rvalue_ref) {
-        emit_term(ctx, "ret void");
+        emit_term_ret(ctx, "void", std::nullopt);
       } else {
         // C89: bare 'return;' in non-void function → return 0/null/0.0
         const std::string ret_ty = llvm_ret_ty(rts);
         if (ret_ty == "ptr") {
-          emit_term(ctx, "ret ptr null");
+          emit_term_ret(ctx, "ptr", "null");
         } else if (is_float_base(rts.base) && rts.ptr_level == 0) {
-          emit_term(ctx, "ret " + ret_ty + " 0.0");
+          emit_term_ret(ctx, ret_ty, "0.0");
         } else {
-          emit_term(ctx, "ret " + ret_ty + " 0");
+          emit_term_ret(ctx, ret_ty, "0");
         }
       }
       return;
@@ -4627,7 +4657,7 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ReturnStmt& s){
       coerce_target.ptr_level++;
     }
     val = coerce(ctx, val, ts, coerce_target);
-    emit_term(ctx, "ret " + llvm_ret_ty(ctx.fn->return_type.spec) + " " + val);
+    emit_term_ret(ctx, llvm_ret_ty(ctx.fn->return_type.spec), val);
   }
 
 void HirEmitter::emit_stmt_impl(FnCtx& ctx, const IfStmt& s){
@@ -4637,11 +4667,9 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const IfStmt& s){
     const std::string then_lbl = block_lbl(s.then_block);
     const std::string after_lbl = block_lbl(s.after_block);
     if (s.else_block) {
-      emit_term(ctx, "br i1 " + cond_i1 + ", label %" + then_lbl +
-                         ", label %" + block_lbl(*s.else_block));
+      emit_term_condbr(ctx, cond_i1, then_lbl, block_lbl(*s.else_block));
     } else {
-      emit_term(ctx, "br i1 " + cond_i1 + ", label %" + then_lbl +
-                         ", label %" + after_lbl);
+      emit_term_condbr(ctx, cond_i1, then_lbl, after_lbl);
     }
     // Store after_block in meta for then/else blocks (so they fall through)
     ctx.block_meta[s.then_block.value].break_label = std::nullopt;  // not a loop
@@ -4666,7 +4694,7 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const WhileStmt& s){
     TypeSpec cond_ts{};
     const std::string cond_v = emit_rval_id(ctx, s.cond, cond_ts);
     const std::string cond_i1 = to_bool(ctx, cond_v, cond_ts);
-    emit_term(ctx, "br i1 " + cond_i1 + ", label %" + body_lbl + ", label %" + end_lbl);
+    emit_term_condbr(ctx, cond_i1, body_lbl, end_lbl);
   }
 
 void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ForStmt& s){
@@ -4682,22 +4710,22 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ForStmt& s){
     const std::string latch_lbl = "for.latch." + std::to_string(s.body_block.value);
     ctx.continue_redirect[s.body_block.value] = latch_lbl;
 
-    emit_term(ctx, "br label %" + cond_lbl);
+    emit_term_br(ctx, cond_lbl);
     emit_lbl(ctx, cond_lbl);
     if (s.cond) {
       TypeSpec cts{};
       std::string cv = emit_rval_id(ctx, *s.cond, cts);
       cv = to_bool(ctx, cv, cts);
-      emit_term(ctx, "br i1 " + cv + ", label %" + body_lbl + ", label %" + end_lbl);
+      emit_term_condbr(ctx, cv, body_lbl, end_lbl);
     } else {
-      emit_term(ctx, "br label %" + body_lbl);
+      emit_term_br(ctx, body_lbl);
     }
     emit_lbl(ctx, latch_lbl);
     if (s.update) {
       TypeSpec uts{};
       (void)emit_rval_id(ctx, *s.update, uts);
     }
-    emit_term(ctx, "br label %" + cond_lbl);
+    emit_term_br(ctx, cond_lbl);
   }
 
 void HirEmitter::emit_stmt_impl(FnCtx& ctx, const DoWhileStmt& s){
@@ -4707,12 +4735,12 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const DoWhileStmt& s){
         : fresh_lbl(ctx, "dowhile.end.");
     const std::string cond_lbl = "dowhile.cond." + std::to_string(s.body_block.value);
     ctx.continue_redirect[s.body_block.value] = cond_lbl;
-    emit_term(ctx, "br label %" + cond_lbl);
+    emit_term_br(ctx, cond_lbl);
     emit_lbl(ctx, cond_lbl);
     TypeSpec cond_ts{};
     const std::string cond_v = emit_rval_id(ctx, s.cond, cond_ts);
     const std::string cond_i1 = to_bool(ctx, cond_v, cond_ts);
-    emit_term(ctx, "br i1 " + cond_i1 + ", label %" + body_lbl + ", label %" + end_lbl);
+    emit_term_condbr(ctx, cond_i1, body_lbl, end_lbl);
   }
 
 void HirEmitter::emit_stmt_impl(FnCtx& ctx, const SwitchStmt& s){
@@ -4764,31 +4792,26 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const SwitchStmt& s){
         const std::string t_and = fresh_tmp(ctx);
         emit_instr(ctx, t_and + " = and i1 " + t_ge + ", " + t_le);
         const std::string next_lbl = fresh_lbl(ctx, "sw.range.next.");
-        emit_term(ctx, "br i1 " + t_and + ", label %" + block_lbl(bid) + ", label %" + next_lbl);
+        emit_term_condbr(ctx, t_and, block_lbl(bid), next_lbl);
         emit_lbl(ctx, next_lbl);
       }
     }
 
-    std::string sw = "switch " + ty + " " + val + ", label %" + default_lbl + " [\n";
+    std::vector<std::pair<long long, std::string>> sw_cases;
     if (!s.case_blocks.empty()) {
-      // Use pre-collected case→block mappings (supports Duff's device / interleaved cases).
       for (const auto& [case_val, case_bid] : s.case_blocks) {
-        sw += "    " + ty + " " + std::to_string(case_val) +
-              ", label %" + block_lbl(case_bid) + "\n";
+        sw_cases.emplace_back(case_val, block_lbl(case_bid));
       }
     } else if (body_blk) {
-      // Fallback: scan body block for inline CaseStmt markers (all map to body start).
       for (const auto& stmt : body_blk->stmts) {
         if (const auto* cs = std::get_if<CaseStmt>(&stmt.payload)) {
-          sw += "    " + ty + " " + std::to_string(cs->value) +
-                ", label %" + body_lbl + "\n";
+          sw_cases.emplace_back(cs->value, body_lbl);
         } else if (std::get_if<CaseRangeStmt>(&stmt.payload)) {
           // Handled by range chains above
         }
       }
     }
-    sw += "  ]";
-    emit_term(ctx, sw);
+    emit_term_switch(ctx, val, ty, default_lbl, std::move(sw_cases));
   }
 
 void HirEmitter::emit_stmt_impl(FnCtx& ctx, const GotoStmt& s){
@@ -4798,9 +4821,9 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const GotoStmt& s){
       emit_lir_op(ctx, lir::LirStackRestoreOp{*ctx.vla_stack_save_ptr});
     }
     if (s.target.resolved_block.valid()) {
-      emit_term(ctx, "br label %" + block_lbl(s.target.resolved_block));
+      emit_term_br(ctx, block_lbl(s.target.resolved_block));
     } else {
-      emit_term(ctx, "br label %ulbl_" + s.target.user_name);
+      emit_term_br(ctx, "ulbl_" + s.target.user_name);
     }
   }
 
@@ -4828,23 +4851,23 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const LabelStmt& s){
       // We need a new basic block for the label
       emit_lbl(ctx, "ulbl_" + s.name);
     } else {
-      emit_term(ctx, "br label %ulbl_" + s.name);
+      emit_term_br(ctx, "ulbl_" + s.name);
       emit_lbl(ctx, "ulbl_" + s.name);
     }
   }
 
 void HirEmitter::emit_stmt_impl(FnCtx& ctx, const BreakStmt& s){
-    if (s.target) emit_term(ctx, "br label %" + block_lbl(*s.target));
+    if (s.target) emit_term_br(ctx, block_lbl(*s.target));
   }
 
 void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ContinueStmt& s){
     if (!s.target) return;
     const auto it = ctx.continue_redirect.find(s.target->value);
     if (it != ctx.continue_redirect.end()) {
-      emit_term(ctx, "br label %" + it->second);
+      emit_term_br(ctx, it->second);
       return;
     }
-    emit_term(ctx, "br label %" + block_lbl(*s.target));
+    emit_term_br(ctx, block_lbl(*s.target));
   }
 
 void HirEmitter::emit_stmt_impl(FnCtx&, const CaseStmt&){}

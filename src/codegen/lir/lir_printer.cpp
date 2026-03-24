@@ -135,37 +135,30 @@ void render_inst(std::ostringstream& os, const LirInst& inst) {
 
 // Render a LirTerminator to text.
 void render_terminator(std::ostringstream& os, const LirTerminator& term) {
-  using namespace c4c::codegen::llvm_backend::detail;
   if (const auto* raw = std::get_if<LirRawTerminator>(&term)) {
     os << raw->line << "\n";
+  } else if (const auto* br = std::get_if<LirBr>(&term)) {
+    os << "  br label %" << br->target_label << "\n";
+  } else if (const auto* cbr = std::get_if<LirCondBr>(&term)) {
+    os << "  br i1 " << cbr->cond_name << ", label %" << cbr->true_label
+       << ", label %" << cbr->false_label << "\n";
   } else if (const auto* ret = std::get_if<LirRet>(&term)) {
-    const std::string ret_ty = llvm_ret_ty(ret->type);
-    if (!ret->value.has_value()) {
-      // Default return (fallthrough) — derive the zero literal from the type.
-      if (ret->type.base == TB_VOID &&
-          ret->type.ptr_level == 0 &&
-          ret->type.array_rank == 0 &&
-          !ret->type.is_lvalue_ref &&
-          !ret->type.is_rvalue_ref) {
-        os << "  ret void\n";
-      } else if (ret_ty == "ptr") {
-        os << "  ret ptr null\n";
-      } else if (is_float_base(ret->type.base) &&
-                 ret->type.ptr_level == 0 &&
-                 ret->type.array_rank == 0) {
-        os << "  ret " << ret_ty << " " << fp_literal(ret->type.base, 0.0) << "\n";
-      } else if (is_complex_base(ret->type.base) ||
-                 ((ret->type.base == TB_STRUCT || ret->type.base == TB_UNION) &&
-                  ret->type.ptr_level == 0 && ret->type.array_rank == 0)) {
-        os << "  ret " << ret_ty << " zeroinitializer\n";
-      } else {
-        os << "  ret " << ret_ty << " 0\n";
-      }
+    if (!ret->value_str.has_value()) {
+      os << "  ret void\n";
+    } else {
+      os << "  ret " << ret->type_str << " " << *ret->value_str << "\n";
     }
-    // TODO: handle ret with explicit value (LirValueId) in later phases.
+  } else if (const auto* sw = std::get_if<LirSwitch>(&term)) {
+    os << "  switch " << sw->selector_type << " " << sw->selector_name
+       << ", label %" << sw->default_label << " [\n";
+    for (const auto& [val, label] : sw->cases) {
+      os << "    " << sw->selector_type << " " << val << ", label %" << label << "\n";
+    }
+    os << "  ]\n";
+  } else if (std::get_if<LirUnreachable>(&term)) {
+    os << "  unreachable\n";
   }
-  // Other typed terminator variants (LirBr, LirCondBr, etc.) will be handled
-  // in later phases as they replace LirRawTerminator usage.
+  // LirIndirectBr is handled via LirIndirectBrOp instruction, not terminator.
 }
 
 // Render a LirFunction to LLVM IR text.

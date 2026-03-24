@@ -258,25 +258,25 @@ using LirInst = std::variant<
 // ── Terminators ──────────────────────────────────────────────────────────────
 
 struct LirBr {
-  LirBlockId target{};
+  std::string target_label;  // e.g. "block_3"
 };
 
 struct LirCondBr {
-  LirValueId cond{};
-  LirBlockId true_block{};
-  LirBlockId false_block{};
+  std::string cond_name;     // e.g. "%t5"
+  std::string true_label;
+  std::string false_label;
 };
 
 struct LirRet {
-  std::optional<LirValueId> value;
-  TypeSpec type{};
+  std::optional<std::string> value_str;  // e.g. "%t7", "null", "0"
+  std::string type_str;                  // e.g. "i32", "ptr", "void"
 };
 
 struct LirSwitch {
-  LirValueId selector{};
-  TypeSpec selector_type{};
-  LirBlockId default_block{};
-  std::vector<std::pair<long long, LirBlockId>> cases;
+  std::string selector_name;   // e.g. "%t3"
+  std::string selector_type;   // e.g. "i32"
+  std::string default_label;
+  std::vector<std::pair<long long, std::string>> cases;  // {value, label}
 };
 
 struct LirIndirectBr {

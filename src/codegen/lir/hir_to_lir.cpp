@@ -277,9 +277,30 @@ build_block_order(const c4c::hir::Function& fn) {
 
 static void inject_fallthrough_returns(LirFunction& lir_fn,
                                        const c4c::hir::Function& fn) {
+  using namespace c4c::codegen::llvm_backend::detail;
+  const auto& rts = fn.return_type.spec;
+  const std::string ret_ty = llvm_ret_ty(rts);
+
+  // Pre-compute the default zero value for non-void returns.
+  std::optional<std::string> zero_val;
+  if (rts.base == TB_VOID && rts.ptr_level == 0 && rts.array_rank == 0 &&
+      !rts.is_lvalue_ref && !rts.is_rvalue_ref) {
+    // void → no value
+  } else if (ret_ty == "ptr") {
+    zero_val = "null";
+  } else if (is_float_base(rts.base) && rts.ptr_level == 0 && rts.array_rank == 0) {
+    zero_val = fp_literal(rts.base, 0.0);
+  } else if (is_complex_base(rts.base) ||
+             ((rts.base == TB_STRUCT || rts.base == TB_UNION) &&
+              rts.ptr_level == 0 && rts.array_rank == 0)) {
+    zero_val = "zeroinitializer";
+  } else {
+    zero_val = "0";
+  }
+
   for (auto& blk : lir_fn.blocks) {
     if (!std::holds_alternative<LirUnreachable>(blk.terminator)) continue;
-    blk.terminator = LirRet{std::nullopt, fn.return_type.spec};
+    blk.terminator = LirRet{zero_val, ret_ty};
   }
 }
 
