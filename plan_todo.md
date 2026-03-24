@@ -1,7 +1,7 @@
 # Lazy Template Instantiation — Execution State
 
 ## Active Item
-**Plan complete.**
+**Plan complete.** Now fixing EASTL type traits pre-existing failure.
 
 ## Completed
 - **Step 1: Expand Use-Site Seeding** — added `seed_pending_template_type(...)` at all 5 previously unseeded `resolve_pending_tpl_struct_if_needed(...)` call sites:
@@ -39,8 +39,14 @@
   2. Separated terminal count: `resolved` and `terminal` tracked independently; `completed()` helper used for progress detection; `template_types_terminal` added to `CompileTimeEngineStats`
   - All existing tests pass (2122/2123, pre-existing failure unchanged)
 
+- **EASTL type traits fix** — fixed `is_signed<int>{}()` pattern (operator() through template inheritance):
+  1. Template struct brace-init + operator() dispatch: `lower_call_expr` now detects when callee is a template struct and tries operator() on the constructed temporary
+  2. Static constexpr member resolution in method bodies: unqualified names like `value` now resolved to their constexpr values via `find_struct_static_member_const_value` before falling through to field/DeclRef lowering
+  - All tests pass (2123/2123, pre-existing failure now fixed)
+
 ## Next Intended Slice
-Lazy template instantiation plan is complete. All 5 steps done.
+Lazy template instantiation plan is complete. EASTL type traits fix is done.
+Full suite: 2123/2123.
 
 ## Blockers
 None

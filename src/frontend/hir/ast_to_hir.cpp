@@ -4918,6 +4918,55 @@ class Lowerer {
       }
     }
 
+    // Handle template struct brace-init + operator() call: Type<Args>{}()
+    // The parser consumes {} and merges the trailing () into a single NK_CALL
+    // with n_children==0.  When the callee is a template struct, lower the
+    // struct construction first, then check the concrete type for operator().
+    if (ctx && n->left && n->left->kind == NK_VAR && n->left->name &&
+        n->left->has_template_args &&
+        find_template_struct_primary(n->left->name)) {
+      ExprId tmp_expr = lower_expr(ctx, n->left);
+      const TypeSpec& tmp_ts = module_->expr_pool[tmp_expr.value].type.spec;
+      if (tmp_ts.base == TB_STRUCT && tmp_ts.ptr_level == 0 && tmp_ts.tag) {
+        auto resolved = find_struct_method_mangled(tmp_ts.tag, "operator_call", false);
+        if (!resolved)
+          resolved = find_struct_method_mangled(tmp_ts.tag, "operator_call", true);
+        if (resolved) {
+          std::string resolved_mangled = *resolved;
+          CallExpr oc{};
+          DeclRef dr{};
+          dr.name = resolved_mangled;
+          auto fit = module_->fn_index.find(dr.name);
+          TypeSpec fn_ts{};
+          fn_ts.base = TB_VOID;
+          if (fit != module_->fn_index.end() &&
+              fit->second.value < module_->functions.size())
+            fn_ts = module_->functions[fit->second.value].return_type.spec;
+          if (fn_ts.base == TB_VOID) {
+            if (auto rit = find_struct_method_return_type(
+                    tmp_ts.tag, "operator_call", false))
+              fn_ts = *rit;
+          }
+          TypeSpec callee_ts = fn_ts;
+          callee_ts.ptr_level++;
+          oc.callee = append_expr(n, dr, callee_ts);
+          // Pass &tmp as the this pointer.
+          UnaryExpr addr{};
+          addr.op = UnaryOp::AddrOf;
+          addr.operand = tmp_expr;
+          TypeSpec ptr_ts = tmp_ts;
+          ptr_ts.ptr_level++;
+          oc.args.push_back(append_expr(n, addr, ptr_ts));
+          // Forward any call arguments.
+          for (int i = 0; i < n->n_children; ++i)
+            oc.args.push_back(lower_expr(ctx, n->children[i]));
+          return append_expr(n, oc, fn_ts);
+        }
+      }
+      // No operator() found — just return the constructed temporary.
+      return tmp_expr;
+    }
+
     CallExpr c{};
     auto maybe_lower_ref_arg = [&](const Node* arg_node, const TypeSpec* param_ts) -> ExprId {
       if (!param_ts || (!param_ts->is_lvalue_ref && !param_ts->is_rvalue_ref)) return lower_expr(ctx, arg_node);
@@ -7270,9 +7319,20 @@ class Lowerer {
           if (git != module_->global_index.end()) r.global = git->second;
         }
         // Inside a struct method body, resolve unqualified names as this->field
-        // when the name is not a local, param, or global.
+        // or static constexpr member when the name is not a local, param, or global.
         if (ctx && !ctx->method_struct_tag.empty() && !has_local_binding &&
             !r.param_index && !r.global) {
+          // Check static constexpr members first (e.g. `value` in
+          // `integral_constant<bool, v>` where `value = v`).
+          if (auto v = find_struct_static_member_const_value(
+                  ctx->method_struct_tag, r.name)) {
+            TypeSpec ts{};
+            if (const Node* decl = find_struct_static_member_decl(
+                    ctx->method_struct_tag, r.name))
+              ts = decl->type;
+            if (ts.base == TB_VOID) ts.base = TB_INT;
+            return append_expr(n, IntLiteral{*v, false}, ts);
+          }
           auto sit = module_->struct_defs.find(ctx->method_struct_tag);
           if (sit != module_->struct_defs.end()) {
             for (const auto& fld : sit->second.fields) {
