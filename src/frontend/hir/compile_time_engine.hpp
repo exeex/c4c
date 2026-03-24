@@ -467,13 +467,19 @@ class InstantiationRegistry {
       }
       structured_seed_keys_.insert(fk);
     } else {
-      // Fallback only for callers that do not yet know the primary owner.
-      std::string key = fn_name + "::" + mangled;
-      if (legacy_seed_keys_.count(key) > 0 ||
-          legacy_instance_keys_.count(key) > 0) {
+      // Legacy fallback is intentionally non-authoritative and only used
+      // when no owner identity is available.
+      const auto* seeds = [&]() -> const std::vector<TemplateSeedWorkItem>* {
+        auto it = seed_work_.find(fn_name);
+        return it == seed_work_.end() ? nullptr : &it->second;
+      }();
+      const auto* insts = [&]() -> const std::vector<TemplateInstance>* {
+        auto it = instances_.find(fn_name);
+        return it == instances_.end() ? nullptr : &it->second;
+      }();
+      if (has_legacy_mangled_entry(seeds, insts, mangled)) {
         return mangled;
       }
-      legacy_seed_keys_.insert(std::move(key));
     }
     seed_work_[fn_name].push_back(
         TemplateSeedWorkItem{fn_name, bindings, nttp_bindings, mangled,
@@ -492,9 +498,10 @@ class InstantiationRegistry {
           if (structured_instance_keys_.count(fk) > 0) continue;
           structured_instance_keys_.insert(fk);
         } else {
-          std::string key = fn_name + "::" + seed.mangled_name;
-          if (legacy_instance_keys_.count(key) > 0) continue;
-          legacy_instance_keys_.insert(std::move(key));
+          auto it = instances_.find(fn_name);
+          const auto* insts = it == instances_.end() ? nullptr : &it->second;
+          if (has_legacy_mangled_entry(nullptr, insts, seed.mangled_name))
+            continue;
         }
         instances_[fn_name].push_back(
             {seed.bindings, seed.nttp_bindings, seed.mangled_name,
@@ -589,6 +596,21 @@ class InstantiationRegistry {
     return fn_name + "::" + mangled_name;
   }
 
+  static bool has_legacy_mangled_entry(
+      const std::vector<TemplateSeedWorkItem>* seeds,
+      const std::vector<TemplateInstance>* instances,
+      const std::string& mangled_name) {
+    if (seeds) {
+      for (const auto& seed : *seeds)
+        if (seed.mangled_name == mangled_name) return true;
+    }
+    if (instances) {
+      for (const auto& inst : *instances)
+        if (inst.mangled_name == mangled_name) return true;
+    }
+    return false;
+  }
+
   std::unordered_set<SemanticKey> build_semantic_seed_keys() const {
     std::unordered_set<SemanticKey> keys;
     for (const auto& [fn_name, seeds] : seed_work_) {
@@ -660,9 +682,6 @@ class InstantiationRegistry {
       structured_seed_keys_;
   std::unordered_set<FunctionTemplateInstanceKey, FunctionTemplateInstanceKeyHash>
       structured_instance_keys_;
-  // Fallback dedup only for callers that do not know the primary owner yet.
-  std::unordered_set<std::string> legacy_seed_keys_;
-  std::unordered_set<std::string> legacy_instance_keys_;
 };
 
 // ── CompileTimeState ─────────────────────────────────────────────────────

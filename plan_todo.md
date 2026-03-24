@@ -4,7 +4,7 @@
 
 ## Plan Item
 Follow up on template instantiation work after the deferred NTTP default fix:
-- close the remaining template-function identity migration
+- keep template-function identity docs aligned with the completed cutover
 - keep lazy template type instantiation moving forward from the new baseline
 
 ## Completed
@@ -21,24 +21,17 @@ Follow up on template instantiation work after the deferred NTTP default fix:
   - structured function-template identity types exist in `compile_time_engine.hpp`
   - owner-based function specialization registration exists
   - lowering and deferred instantiation already use structured specialization selection
-  - remaining work is cleanup, full cutover, and doc/test synchronization
+  - legacy specialization lookup path has been removed from active control flow
+  - semantic dedup now keys on `primary_def + spec_key`
+  - targeted template-function identity regressions passed after the cutover
 
 ## Baseline
 2122/2123 tests passing (1 pre-existing failure: eastl_type_traits_signed_helper_base_expr_parse)
 
 ## Next
-- Sync planning docs with code reality
-  - update `ideas/template_function_identity_plan.md` so already-landed scaffolding is marked done
-  - remove the stale statement that `cpp_positive_sema_template_nttp_default_runtime_cpp`
-    is still an out-of-scope failure
-- Finish template-function identity cutover
-  - stop treating legacy mangled-string specialization lookup as part of the main path
-  - tighten semantic dedup around `primary_def + spec_key`
-  - keep `mangled_name` as derived/codegen/debug data only
-- Run the targeted template-function identity regression set from
-  `ideas/template_function_identity_plan.md`
+- Keep planning docs aligned with the cutover that is now complete
 - Investigate EASTL type_traits signed helper test
   (`eastl_type_traits_signed_helper_base_expr_parse`, operator() through template inheritance)
-- After identity cleanup is stable, continue lazy template instantiation
+- Continue lazy template instantiation from the new baseline
   - Step 1: broader use-site enqueue coverage
   - Step 2: move engine control ownership

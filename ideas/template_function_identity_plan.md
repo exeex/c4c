@@ -36,7 +36,8 @@ Primary references to copy from:
 
 ## Current Problem
 
-Function-template identity is partially migrated.
+Function-template identity has been migrated to structured owner-first
+selection.
 
 Today the codebase has:
 
@@ -46,8 +47,8 @@ Today the codebase has:
   structured function-template identity scaffolding already exists in
   `compile_time_engine.hpp`
 - remaining bad part:
-  legacy mangled-name specialization lookup and string-keyed dedup are still
-  present as fallback paths / compatibility storage
+  this document may lag behind the implementation if not updated after each
+  cleanup step
 
 The old path used to look like this:
 
@@ -61,10 +62,7 @@ The old path used to look like this:
    `registry_.find_specialization(inst.mangled_name)`
 4. if found, lower that body
 
-That path is no longer the intended primary path.
-
-What still remains is to finish the cutover so the legacy string-based path is
-clearly secondary and eventually removable.
+That path has now been removed from the active function-template control flow.
 
 
 ## Non-Goals
@@ -102,13 +100,9 @@ As of 2026-03-24, the following pieces are already landed:
 - initial lowering path uses structured selection
 - deferred template instantiation callback uses structured selection
 
-What is still not fully finished:
+Current follow-up:
 
-- legacy `specs_` / `find_specialization(...)` / `register_specialization(...)`
-  still exist as compatibility path
-- legacy string-keyed dedup still exists alongside structured dedup
-- the document still described some already-completed steps as if they were
-  not started
+- keep this document aligned with the code after each adjacent template change
 
 
 ## Files To Change
@@ -136,9 +130,7 @@ Do not start in parser files for this task.
 
 ## Existing Code You Must Replace
 
-These old pieces are the ones to shrink or remove from the main path.
-Some of them still exist today, but they should no longer define the primary
-control flow.
+These old pieces were the ones to remove from the main path.
 
 In [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp):
 
@@ -152,8 +144,7 @@ In [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp):
 - lowering-time lookup via `registry_.find_specialization(inst.mangled_name)`
 - deferred instantiation lookup via `registry_.find_specialization(mangled)`
 
-These may survive temporarily as fallback helpers during transition, but they
-must no longer be the primary selection path.
+These are now historical reference points for what was removed.
 
 
 ## Data Model
@@ -195,7 +186,7 @@ Update `InstantiationRegistry` in
 ### 1. Add owner-based specialization storage
 
 Status:
-- done, but legacy string-keyed storage still exists as fallback
+- done
 
 Replace the effective meaning of:
 
@@ -211,15 +202,13 @@ Suggested storage:
 std::unordered_map<const Node*, std::vector<const Node*>> function_specializations_;
 ```
 
-You may keep `specs_` temporarily only as a compatibility fallback.
-Do not use it as the preferred lookup anymore.
+Do not reintroduce `specs_` as a semantic lookup path.
 
 
 ### 2. Add structured instance keys
 
 Status:
-- partially done; structured keys exist, but legacy string-keyed dedup is still
-  present in parallel
+- done
 
 Old dedup was effectively:
 
@@ -290,10 +279,7 @@ Use the existing ingredients already in the codebase:
   - `template_arg_values`
   - `template_arg_is_value`
 
-You are allowed to keep `mangle_specialization(...)` only as a debug/fallback
-helper during migration.
-
-But the new main path should compare semantic bindings, not reproduced mangled
+The main path should compare semantic bindings, not reproduced mangled
 strings.
 
 
@@ -308,15 +294,12 @@ Current code:
 
 - collects template defs with `ct_state_->register_template_def(...)`
 - registers explicit specializations under the primary definition
-- still also records a legacy mangled fallback entry
 
 Change it to:
 
 - find the primary function template definition
 - register the specialization under that primary definition
 - do not make mangled-string lookup the only source of truth
-- eventually remove legacy registration from the main control flow once no
-  callers depend on it
 
 
 ### 2. Lowering of discovered instances
@@ -358,7 +341,7 @@ Change it the same way:
 
 ## Concrete Removal Checklist
 
-This is the minimum checklist for the remaining cleanup work.
+This is the minimum checklist for the completed cutover.
 
 In [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp):
 
@@ -446,7 +429,7 @@ File:
 - [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
 
 Status:
-- partially complete
+- complete
 
 Change:
 - seed dedup
@@ -463,13 +446,10 @@ Files:
 - [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
 
 Status:
-- remaining active cleanup step
-
-Allowed:
-- keep old mangled lookup only as temporary fallback
+- complete
 
 Not allowed:
-- old mangled lookup still being the first or only specialization-selection path
+- reintroduce old mangled lookup as specialization-selection control flow
 
 
 ## How To Match Explicit Specializations
@@ -523,14 +503,11 @@ This plan is complete when all of the following are true:
 
 ## Immediate Next Work
 
-If continuing from the current tree, focus on these items in order:
+If continuing from the current tree, focus on adjacent template behavior:
 
-1. remove dependence on legacy mangled specialization lookup from any
-   remaining control flow
-2. tighten seed/instance dedup so structured keys are the semantic source of
-   truth and string keys are fallback/debug only
-3. rerun the targeted template-function regression set
-4. update this document again if the legacy compatibility path is deleted
+1. keep the targeted regression set green while working on lazy instantiation
+2. investigate `eastl_type_traits_signed_helper_base_expr_parse`
+3. continue `template_lazy_instantiation_plan.md`
 
 
 ## Testcases To Run
