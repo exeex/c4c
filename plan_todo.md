@@ -1,7 +1,7 @@
 # Lazy Template Instantiation — Execution State
 
 ## Active Item
-**Step 3: Split `resolve_pending_tpl_struct(...)` Into Small Helpers**
+**Step 4: Move Decision-Making Out Of Recursive Helpers**
 
 ## Completed
 - **Step 1: Expand Use-Site Seeding** — added `seed_pending_template_type(...)` at all 5 previously unseeded `resolve_pending_tpl_struct_if_needed(...)` call sites:
@@ -19,17 +19,20 @@
   4. Engine: terminal items now marked as resolved (removed from retry loop) while still recording diagnostic — prevents spin without progress
   - All existing tests pass (2122/2123, pre-existing failure unchanged)
 
+- **Step 3: Split `resolve_pending_tpl_struct(...)` Into Small Helpers** — four extracted helpers:
+  1. `eval_deferred_nttp_expr_hir(...)` — lambda promoted to private method; evaluates deferred NTTP default expressions with recursive descent parser
+  2. `materialize_template_args(...)` — resolves explicit and default template args into `ResolvedTemplateArgs` (concrete_args + type/nttp bindings)
+  3. `build_template_mangled_name(...)` — static helper that builds the mangled/concrete struct name from primary, selected pattern, and concrete args
+  4. `instantiate_template_struct_body(...)` — creates `HirStructDef` with fields, bases, methods; registers in module
+  - `resolve_pending_tpl_struct(...)` is now a thin 7-step coordinator
+  - Added `ResolvedTemplateArgs` result struct
+  - All existing tests pass (2122/2123, pre-existing failure unchanged)
+
 ## Current Slice
-Extract small helpers from `resolve_pending_tpl_struct(...)`:
-1. substitute deferred template arg refs
-2. materialize explicit/default template args
-3. evaluate deferred NTTP defaults
-4. select primary/specialization pattern
-5. build concrete instantiation/mangled name
-6. instantiate concrete struct/class metadata
+Step 4: Move Decision-Making Out Of Recursive Helpers — identify helpers that currently "try more things" recursively after a miss and convert to enqueue prerequisite work + return `blocked`.
 
 ## Next Intended Slice
-Step 4: Move Decision-Making Out Of Recursive Helpers
+Step 5: Tighten Engine Progress Semantics Only If Needed
 
 ## Blockers
 None
