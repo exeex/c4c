@@ -115,6 +115,24 @@ void render_inst(std::ostringstream& os, const LirInst& inst) {
     os << "  " << op->result << " = load " << op->type_str << ", ptr " << op->ptr << "\n";
   } else if (const auto* op = std::get_if<LirStoreOp>(&inst)) {
     os << "  store " << op->type_str << " " << op->val << ", ptr " << op->ptr << "\n";
+  } else if (const auto* op = std::get_if<LirCastOp>(&inst)) {
+    const char* opname = nullptr;
+    switch (op->kind) {
+      case LirCastKind::Trunc:    opname = "trunc"; break;
+      case LirCastKind::ZExt:     opname = "zext"; break;
+      case LirCastKind::SExt:     opname = "sext"; break;
+      case LirCastKind::FPTrunc:  opname = "fptrunc"; break;
+      case LirCastKind::FPExt:    opname = "fpext"; break;
+      case LirCastKind::FPToSI:   opname = "fptosi"; break;
+      case LirCastKind::FPToUI:   opname = "fptoui"; break;
+      case LirCastKind::SIToFP:   opname = "sitofp"; break;
+      case LirCastKind::UIToFP:   opname = "uitofp"; break;
+      case LirCastKind::PtrToInt: opname = "ptrtoint"; break;
+      case LirCastKind::IntToPtr: opname = "inttoptr"; break;
+      case LirCastKind::Bitcast:  opname = "bitcast"; break;
+    }
+    os << "  " << op->result << " = " << opname << " " << op->from_type
+       << " " << op->operand << " to " << op->to_type << "\n";
   } else if (const auto* op = std::get_if<LirBitfieldInsert>(&inst)) {
     const std::string unit_ty = "i" + std::to_string(op->storage_unit_bits);
     // Load current storage unit

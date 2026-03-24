@@ -248,6 +248,30 @@ struct LirStoreOp {
   std::string ptr;        // SSA name of pointer operand
 };
 
+// Cast opcode for LirCastOp
+enum class LirCastKind : uint8_t {
+  Trunc,
+  ZExt,
+  SExt,
+  FPTrunc,
+  FPExt,
+  FPToSI,
+  FPToUI,
+  SIToFP,
+  UIToFP,
+  PtrToInt,
+  IntToPtr,
+  Bitcast,
+};
+
+struct LirCastOp {
+  std::string result;     // SSA name for result
+  LirCastKind kind{};     // cast opcode
+  std::string from_type;  // LLVM type string of source
+  std::string operand;    // SSA name of source operand
+  std::string to_type;    // LLVM type string of destination
+};
+
 // Catch-all for instructions not yet migrated to typed LIR ops.
 // Contains the raw LLVM IR line produced by the legacy emitter.
 // This allows incremental migration: Stage 1+ will shrink usage of this type.
@@ -284,6 +308,7 @@ using LirInst = std::variant<
     LirInsertValueOp,
     LirLoadOp,
     LirStoreOp,
+    LirCastOp,
     LirRawLine
 >;
 

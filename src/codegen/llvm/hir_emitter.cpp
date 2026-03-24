@@ -1191,7 +1191,7 @@ std::string HirEmitter::coerce(FnCtx& ctx, const std::string& val,
           is_vector_value(to_ts))) &&
         sizeof_ts(mod_, from_ts) == sizeof_ts(mod_, to_ts)) {
       const std::string tmp = fresh_tmp(ctx);
-      emit_instr(ctx, tmp + " = bitcast " + ft + " " + val + " to " + tt);
+      emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::Bitcast, ft, val, tt});
       return tmp;
     }
 
@@ -1228,7 +1228,7 @@ std::string HirEmitter::coerce(FnCtx& ctx, const std::string& val,
     // i1 → wider int
     if (ft == "i1" && tt != "ptr" && tt != "void") {
       const std::string tmp = fresh_tmp(ctx);
-      emit_instr(ctx, tmp + " = zext i1 " + val + " to " + tt);
+      emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::ZExt, "i1", val, tt});
       return tmp;
     }
 
@@ -1240,10 +1240,10 @@ std::string HirEmitter::coerce(FnCtx& ctx, const std::string& val,
       if (fb == tb) return val;
       const std::string tmp = fresh_tmp(ctx);
       if (tb > fb) {
-        const std::string ext = is_signed_int(from_ts.base) ? "sext" : "zext";
-        emit_instr(ctx, tmp + " = " + ext + " " + ft + " " + val + " to " + tt);
+        const auto kind = is_signed_int(from_ts.base) ? lir::LirCastKind::SExt : lir::LirCastKind::ZExt;
+        emit_lir_op(ctx, lir::LirCastOp{tmp, kind, ft, val, tt});
       } else {
-        emit_instr(ctx, tmp + " = trunc " + ft + " " + val + " to " + tt);
+        emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::Trunc, ft, val, tt});
       }
       return tmp;
     }
@@ -1254,8 +1254,8 @@ std::string HirEmitter::coerce(FnCtx& ctx, const std::string& val,
       const int tb = (to_ts.base == TB_FLOAT) ? 32 : (to_ts.base == TB_LONGDOUBLE ? 128 : 64);
       if (fb == tb) return val;
       const std::string tmp = fresh_tmp(ctx);
-      const std::string op = (tb > fb) ? "fpext" : "fptrunc";
-      emit_instr(ctx, tmp + " = " + op + " " + ft + " " + val + " to " + tt);
+      const auto kind = (tb > fb) ? lir::LirCastKind::FPExt : lir::LirCastKind::FPTrunc;
+      emit_lir_op(ctx, lir::LirCastOp{tmp, kind, ft, val, tt});
       return tmp;
     }
 
@@ -1263,8 +1263,8 @@ std::string HirEmitter::coerce(FnCtx& ctx, const std::string& val,
     if (is_any_int(from_ts.base) && from_ts.ptr_level == 0 &&
         is_float_base(to_ts.base) && to_ts.ptr_level == 0 && to_ts.array_rank == 0) {
       const std::string tmp = fresh_tmp(ctx);
-      const std::string op = is_signed_int(from_ts.base) ? "sitofp" : "uitofp";
-      emit_instr(ctx, tmp + " = " + op + " " + ft + " " + val + " to " + tt);
+      const auto kind = is_signed_int(from_ts.base) ? lir::LirCastKind::SIToFP : lir::LirCastKind::UIToFP;
+      emit_lir_op(ctx, lir::LirCastOp{tmp, kind, ft, val, tt});
       return tmp;
     }
 
@@ -1272,8 +1272,8 @@ std::string HirEmitter::coerce(FnCtx& ctx, const std::string& val,
     if (is_float_base(from_ts.base) && from_ts.ptr_level == 0 && from_ts.array_rank == 0 &&
         is_any_int(to_ts.base) && to_ts.ptr_level == 0) {
       const std::string tmp = fresh_tmp(ctx);
-      const std::string op = is_signed_int(to_ts.base) ? "fptosi" : "fptoui";
-      emit_instr(ctx, tmp + " = " + op + " " + ft + " " + val + " to " + tt);
+      const auto kind = is_signed_int(to_ts.base) ? lir::LirCastKind::FPToSI : lir::LirCastKind::FPToUI;
+      emit_lir_op(ctx, lir::LirCastOp{tmp, kind, ft, val, tt});
       return tmp;
     }
 
@@ -1289,12 +1289,12 @@ std::string HirEmitter::coerce(FnCtx& ctx, const std::string& val,
     // ptr ↔ int
     if (ft == "ptr" && is_any_int(to_ts.base)) {
       const std::string tmp = fresh_tmp(ctx);
-      emit_instr(ctx, tmp + " = ptrtoint ptr " + val + " to " + tt);
+      emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::PtrToInt, "ptr", val, tt});
       return tmp;
     }
     if (is_any_int(from_ts.base) && tt == "ptr") {
       const std::string tmp = fresh_tmp(ctx);
-      emit_instr(ctx, tmp + " = inttoptr " + ft + " " + val + " to ptr");
+      emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::IntToPtr, ft, val, "ptr"});
       return tmp;
     }
 
@@ -2397,8 +2397,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const 
         if (op_ty != ty && !is_vector_value(op_ts) && !is_float_base(op_ts.base)) {
           const std::string ext = fresh_tmp(ctx);
           const bool is_signed = is_signed_int(op_ts.base);
-          emit_instr(ctx, ext + " = " + (is_signed ? "sext" : "zext") +
-                              " " + op_ty + " " + val + " to " + ty);
+          emit_lir_op(ctx, lir::LirCastOp{ext, is_signed ? lir::LirCastKind::SExt : lir::LirCastKind::ZExt, op_ty, val, ty});
           return ext;
         }
         return val;
@@ -2411,8 +2410,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const 
         if (op_ty != ty && !is_vector_value(op_ts) && !is_float_base(op_ts.base)) {
           const std::string ext = fresh_tmp(ctx);
           const bool is_signed = is_signed_int(op_ts.base);
-          emit_instr(ctx, ext + " = " + (is_signed ? "sext" : "zext") +
-                              " " + op_ty + " " + val + " to " + ty);
+          emit_lir_op(ctx, lir::LirCastOp{ext, is_signed ? lir::LirCastKind::SExt : lir::LirCastKind::ZExt, op_ty, val, ty});
           promoted_val = ext;
           promoted_ty = ty;
         }
@@ -2434,7 +2432,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const 
         emit_instr(ctx, inv + " = xor i1 " + cmp + ", true");
         if (ty == "i1") return inv;
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = zext i1 " + inv + " to " + ty);
+        emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::ZExt, "i1", inv, ty});
         return tmp;
       }
 
@@ -2478,8 +2476,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const 
           if (op_ty != ty && !is_vector_value(op_ts)) {
             const std::string ext = fresh_tmp(ctx);
             const bool is_signed = is_signed_int(op_ts.base);
-            emit_instr(ctx, ext + " = " + (is_signed ? "sext" : "zext") +
-                                " " + op_ty + " " + val + " to " + ty);
+            emit_lir_op(ctx, lir::LirCastOp{ext, is_signed ? lir::LirCastKind::SExt : lir::LirCastKind::ZExt, op_ty, val, ty});
             promoted_val = ext;
             promoted_ty = ty;
           }
@@ -2755,11 +2752,11 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const
       emit_instr(ctx, both + " = and i1 " + creal + ", " + cimag);
       const std::string out = fresh_tmp(ctx);
       if (b.op == BinaryOp::Eq) {
-        emit_instr(ctx, out + " = zext i1 " + both + " to i32");
+        emit_lir_op(ctx, lir::LirCastOp{out, lir::LirCastKind::ZExt, "i1", both, "i32"});
       } else {
         const std::string inv = fresh_tmp(ctx);
         emit_instr(ctx, inv + " = xor i1 " + both + ", true");
-        emit_instr(ctx, out + " = zext i1 " + inv + " to i32");
+        emit_lir_op(ctx, lir::LirCastOp{out, lir::LirCastKind::ZExt, "i1", inv, "i32"});
       }
       return out;
     }
@@ -2982,8 +2979,8 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const
       if (b.op == BinaryOp::Sub && op_ty == "ptr" && llvm_ty(rts) == "ptr") {
         const std::string lhs_i = fresh_tmp(ctx);
         const std::string rhs_i = fresh_tmp(ctx);
-        emit_instr(ctx, lhs_i + " = ptrtoint ptr " + lv + " to i64");
-        emit_instr(ctx, rhs_i + " = ptrtoint ptr " + rv + " to i64");
+        emit_lir_op(ctx, lir::LirCastOp{lhs_i, lir::LirCastKind::PtrToInt, "ptr", lv, "i64"});
+        emit_lir_op(ctx, lir::LirCastOp{rhs_i, lir::LirCastKind::PtrToInt, "ptr", rv, "i64"});
         const std::string byte_diff = fresh_tmp(ctx);
         emit_instr(ctx, byte_diff + " = sub i64 " + lhs_i + ", " + rhs_i);
         TypeSpec elem_ts = lts;
@@ -3094,7 +3091,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const
           emit_instr(ctx, cmp_tmp + " = icmp " + pred + " " + op_ty + " " + lv + ", " + rv);
         }
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = zext i1 " + cmp_tmp + " to i32");
+        emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::ZExt, "i1", cmp_tmp, "i32"});
         return tmp;
       }
     }
@@ -3130,12 +3127,12 @@ std::string HirEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Expr
       rhs_val = rc;
     } else if (is_float_base(res_spec.base)) {
       const std::string as_i32 = fresh_tmp(ctx);
-      emit_instr(ctx, as_i32 + " = zext i1 " + rc + " to i32");
+      emit_lir_op(ctx, lir::LirCastOp{as_i32, lir::LirCastKind::ZExt, "i1", rc, "i32"});
       rhs_val = fresh_tmp(ctx);
-      emit_instr(ctx, rhs_val + " = sitofp i32 " + as_i32 + " to " + res_ty);
+      emit_lir_op(ctx, lir::LirCastOp{rhs_val, lir::LirCastKind::SIToFP, "i32", as_i32, res_ty});
     } else {
       rhs_val = fresh_tmp(ctx);
-      emit_instr(ctx, rhs_val + " = zext i1 " + rc + " to " + res_ty);
+      emit_lir_op(ctx, lir::LirCastOp{rhs_val, lir::LirCastKind::ZExt, "i1", rc, res_ty});
     }
     emit_term_br(ctx, rhs_end_lbl);
 
@@ -3487,7 +3484,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         emit_lir_op(ctx, lir::LirExtractValueOp{ovf, ovf_agg_ty, pair, 1});
         emit_lir_op(ctx, lir::LirStoreOp{res_ty, val, result_ptr});
         const std::string ret = fresh_tmp(ctx);
-        emit_instr(ctx, ret + " = zext i1 " + ovf + " to i32");
+        emit_lir_op(ctx, lir::LirCastOp{ret, lir::LirCastKind::ZExt, "i1", ovf, "i32"});
         return ret;
       }
       if (builtin_id == BuiltinId::Bswap16 || builtin_id == BuiltinId::Bswap32 ||
@@ -3554,7 +3551,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         // Promote float to double for __builtin_signbit (generic version)
         if (arg_ts.base == TB_FLOAT && builtin_id == BuiltinId::SignBit) {
           const std::string ext = fresh_tmp(ctx);
-          emit_instr(ctx, ext + " = fpext float " + arg + " to double");
+          emit_lir_op(ctx, lir::LirCastOp{ext, lir::LirCastKind::FPExt, "float", arg, "double"});
           arg = ext;
           arg_ts.base = TB_DOUBLE;
         }
@@ -3565,12 +3562,12 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         else if (arg_ts.base == TB_LONGDOUBLE) int_ty = "i128";
         else int_ty = "i64"; // double or promoted
         const std::string bc = fresh_tmp(ctx);
-        emit_instr(ctx, bc + " = bitcast " + fp_ty + " " + arg + " to " + int_ty);
+        emit_lir_op(ctx, lir::LirCastOp{bc, lir::LirCastKind::Bitcast, fp_ty, arg, int_ty});
         const std::string shifted = fresh_tmp(ctx);
         int shift_bits = (int_ty == "i32") ? 31 : (int_ty == "i128") ? 127 : 63;
         emit_instr(ctx, shifted + " = lshr " + int_ty + " " + bc + ", " + std::to_string(shift_bits));
         const std::string trunc = fresh_tmp(ctx);
-        emit_instr(ctx, trunc + " = trunc " + int_ty + " " + shifted + " to i32");
+        emit_lir_op(ctx, lir::LirCastOp{trunc, lir::LirCastKind::Trunc, int_ty, shifted, "i32"});
         return trunc;
       }
       if (const char* pred = builtin_fp_compare_predicate(builtin_id);
@@ -3581,7 +3578,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         auto promote_to_double = [&](std::string& v, TypeSpec& ts) {
           if (ts.base == TB_FLOAT && ts.ptr_level == 0 && ts.array_rank == 0) {
             const std::string p = fresh_tmp(ctx);
-            emit_instr(ctx, p + " = fpext float " + v + " to double");
+            emit_lir_op(ctx, lir::LirCastOp{p, lir::LirCastKind::FPExt, "float", v, "double"});
             v = p; ts.base = TB_DOUBLE;
           }
         };
@@ -3591,7 +3588,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         const std::string cmp = fresh_tmp(ctx);
         emit_instr(ctx, cmp + " = fcmp " + std::string(pred) + " " + fty + " " + a + ", " + b);
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = zext i1 " + cmp + " to i32");
+        emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::ZExt, "i1", cmp, "i32"});
         return tmp;
       }
       if (builtin_id == BuiltinId::IsUnordered && call.args.size() == 2) {
@@ -3601,7 +3598,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         auto promote_to_double = [&](std::string& v, TypeSpec& ts) {
           if (ts.base == TB_FLOAT && ts.ptr_level == 0 && ts.array_rank == 0) {
             const std::string p = fresh_tmp(ctx);
-            emit_instr(ctx, p + " = fpext float " + v + " to double");
+            emit_lir_op(ctx, lir::LirCastOp{p, lir::LirCastKind::FPExt, "float", v, "double"});
             v = p; ts.base = TB_DOUBLE;
           }
         };
@@ -3611,7 +3608,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         const std::string cmp = fresh_tmp(ctx);
         emit_instr(ctx, cmp + " = fcmp uno " + fty + " " + a + ", " + b);
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = zext i1 " + cmp + " to i32");
+        emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::ZExt, "i1", cmp, "i32"});
         return tmp;
       }
       if (builtin_is_isnan(builtin_id) && call.args.size() == 1) {
@@ -3619,14 +3616,14 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         std::string a = emit_rval_id(ctx, call.args[0], at);
         if (at.base == TB_FLOAT && at.ptr_level == 0 && at.array_rank == 0) {
           const std::string p = fresh_tmp(ctx);
-          emit_instr(ctx, p + " = fpext float " + a + " to double");
+          emit_lir_op(ctx, lir::LirCastOp{p, lir::LirCastKind::FPExt, "float", a, "double"});
           a = p; at.base = TB_DOUBLE;
         }
         const std::string fty = llvm_ty(at);
         const std::string cmp = fresh_tmp(ctx);
         emit_instr(ctx, cmp + " = fcmp uno " + fty + " " + a + ", " + a);
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = zext i1 " + cmp + " to i32");
+        emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::ZExt, "i1", cmp, "i32"});
         return tmp;
       }
       if (builtin_is_isinf(builtin_id) && call.args.size() == 1) {
@@ -3634,7 +3631,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         std::string a = emit_rval_id(ctx, call.args[0], at);
         if (at.base == TB_FLOAT && at.ptr_level == 0 && at.array_rank == 0) {
           const std::string p = fresh_tmp(ctx);
-          emit_instr(ctx, p + " = fpext float " + a + " to double");
+          emit_lir_op(ctx, lir::LirCastOp{p, lir::LirCastKind::FPExt, "float", a, "double"});
           a = p; at.base = TB_DOUBLE;
         }
         const std::string fty = llvm_ty(at);
@@ -3645,7 +3642,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         const std::string cmp = fresh_tmp(ctx);
         emit_instr(ctx, cmp + " = fcmp oeq " + fty + " " + abs_tmp + ", " + inf_val);
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = zext i1 " + cmp + " to i32");
+        emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::ZExt, "i1", cmp, "i32"});
         return tmp;
       }
       if (builtin_is_isfinite(builtin_id) && call.args.size() == 1) {
@@ -3653,7 +3650,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         std::string a = emit_rval_id(ctx, call.args[0], at);
         if (at.base == TB_FLOAT && at.ptr_level == 0 && at.array_rank == 0) {
           const std::string p = fresh_tmp(ctx);
-          emit_instr(ctx, p + " = fpext float " + a + " to double");
+          emit_lir_op(ctx, lir::LirCastOp{p, lir::LirCastKind::FPExt, "float", a, "double"});
           a = p; at.base = TB_DOUBLE;
         }
         const std::string fty = llvm_ty(at);
@@ -3663,7 +3660,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         const std::string cmp = fresh_tmp(ctx);
         emit_instr(ctx, cmp + " = fcmp olt " + fty + " " + abs_tmp + ", " + inf_val);
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = zext i1 " + cmp + " to i32");
+        emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::ZExt, "i1", cmp, "i32"});
         return tmp;
       }
       if ((builtin_id == BuiltinId::Copysign || builtin_id == BuiltinId::CopysignL ||
@@ -3676,7 +3673,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         if (is_float) {
           auto to_float = [&](std::string& v, TypeSpec& ts) {
             if (ts.base == TB_DOUBLE && ts.ptr_level == 0 && ts.array_rank == 0) {
-              const std::string p = fresh_tmp(ctx); emit_instr(ctx, p + " = fptrunc double " + v + " to float");
+              const std::string p = fresh_tmp(ctx); emit_lir_op(ctx, lir::LirCastOp{p, lir::LirCastKind::FPTrunc, "double", v, "float"});
               v = p; ts.base = TB_FLOAT;
             }
           };
@@ -3688,11 +3685,11 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
           auto to_fp128 = [&](std::string& v, TypeSpec& ts) {
             if (ts.base == TB_FLOAT && ts.ptr_level == 0 && ts.array_rank == 0) {
               const std::string p = fresh_tmp(ctx);
-              emit_instr(ctx, p + " = fpext float " + v + " to fp128");
+              emit_lir_op(ctx, lir::LirCastOp{p, lir::LirCastKind::FPExt, "float", v, "fp128"});
               v = p; ts.base = TB_LONGDOUBLE;
             } else if (ts.base == TB_DOUBLE && ts.ptr_level == 0 && ts.array_rank == 0) {
               const std::string p = fresh_tmp(ctx);
-              emit_instr(ctx, p + " = fpext double " + v + " to fp128");
+              emit_lir_op(ctx, lir::LirCastOp{p, lir::LirCastKind::FPExt, "double", v, "fp128"});
               v = p; ts.base = TB_LONGDOUBLE;
             }
           };
@@ -3704,7 +3701,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
           // Ensure both are double
           auto to_double = [&](std::string& v, TypeSpec& ts) {
             if (ts.base == TB_FLOAT && ts.ptr_level == 0 && ts.array_rank == 0) {
-              const std::string p = fresh_tmp(ctx); emit_instr(ctx, p + " = fpext float " + v + " to double");
+              const std::string p = fresh_tmp(ctx); emit_lir_op(ctx, lir::LirCastOp{p, lir::LirCastKind::FPExt, "float", v, "double"});
               v = p; ts.base = TB_DOUBLE;
             }
           };
@@ -3721,19 +3718,19 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         if (builtin_id == BuiltinId::Fabs) {
           if (arg_ts.base == TB_FLOAT && arg_ts.ptr_level == 0 && arg_ts.array_rank == 0) {
             const std::string promoted = fresh_tmp(ctx);
-            emit_instr(ctx, promoted + " = fpext float " + arg + " to double");
+            emit_lir_op(ctx, lir::LirCastOp{promoted, lir::LirCastKind::FPExt, "float", arg, "double"});
             arg = promoted;
             arg_ts.base = TB_DOUBLE;
           }
         } else if (builtin_id == BuiltinId::FabsL) {
           if (arg_ts.base == TB_FLOAT && arg_ts.ptr_level == 0 && arg_ts.array_rank == 0) {
             const std::string promoted = fresh_tmp(ctx);
-            emit_instr(ctx, promoted + " = fpext float " + arg + " to fp128");
+            emit_lir_op(ctx, lir::LirCastOp{promoted, lir::LirCastKind::FPExt, "float", arg, "fp128"});
             arg = promoted;
             arg_ts.base = TB_LONGDOUBLE;
           } else if (arg_ts.base == TB_DOUBLE && arg_ts.ptr_level == 0 && arg_ts.array_rank == 0) {
             const std::string promoted = fresh_tmp(ctx);
-            emit_instr(ctx, promoted + " = fpext double " + arg + " to fp128");
+            emit_lir_op(ctx, lir::LirCastOp{promoted, lir::LirCastKind::FPExt, "double", arg, "fp128"});
             arg = promoted;
             arg_ts.base = TB_LONGDOUBLE;
           }
@@ -3741,7 +3738,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
           // fabsf: ensure float
           if (arg_ts.base == TB_DOUBLE && arg_ts.ptr_level == 0 && arg_ts.array_rank == 0) {
             const std::string trunc = fresh_tmp(ctx);
-            emit_instr(ctx, trunc + " = fptrunc double " + arg + " to float");
+            emit_lir_op(ctx, lir::LirCastOp{trunc, lir::LirCastKind::FPTrunc, "double", arg, "float"});
             arg = trunc;
             arg_ts.base = TB_FLOAT;
           }
@@ -3771,7 +3768,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         // Always return i32
         if (is_ll) {
           const std::string trunc = fresh_tmp(ctx);
-          emit_instr(ctx, trunc + " = trunc i64 " + sel + " to i32");
+          emit_lir_op(ctx, lir::LirCastOp{trunc, lir::LirCastKind::Trunc, "i64", sel, "i32"});
           return trunc;
         }
         return sel;
@@ -3788,7 +3785,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
                              "(" + ity + " " + arg + ", i1 true)");
         if (is_ll) {
           const std::string trunc = fresh_tmp(ctx);
-          emit_instr(ctx, trunc + " = trunc i64 " + tmp + " to i32");
+          emit_lir_op(ctx, lir::LirCastOp{trunc, lir::LirCastKind::Trunc, "i64", tmp, "i32"});
           return trunc;
         }
         return tmp;
@@ -3805,7 +3802,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
                              "(" + ity + " " + arg + ", i1 true)");
         if (is_ll) {
           const std::string trunc = fresh_tmp(ctx);
-          emit_instr(ctx, trunc + " = trunc i64 " + tmp + " to i32");
+          emit_lir_op(ctx, lir::LirCastOp{trunc, lir::LirCastKind::Trunc, "i64", tmp, "i32"});
           return trunc;
         }
         return tmp;
@@ -3822,7 +3819,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
                              "(" + ity + " " + arg + ")");
         if (is_ll) {
           const std::string trunc = fresh_tmp(ctx);
-          emit_instr(ctx, trunc + " = trunc i64 " + tmp + " to i32");
+          emit_lir_op(ctx, lir::LirCastOp{trunc, lir::LirCastKind::Trunc, "i64", tmp, "i32"});
           return trunc;
         }
         return tmp;
@@ -3841,7 +3838,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         emit_instr(ctx, tmp + " = and " + ity + " " + pop + ", 1");
         if (is_ll) {
           const std::string trunc = fresh_tmp(ctx);
-          emit_instr(ctx, trunc + " = trunc i64 " + tmp + " to i32");
+          emit_lir_op(ctx, lir::LirCastOp{trunc, lir::LirCastKind::Trunc, "i64", tmp, "i32"});
           return trunc;
         }
         return tmp;
@@ -3866,7 +3863,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         emit_instr(ctx, sub1 + " = sub " + ity + " " + clz + ", 1");
         if (is_ll) {
           const std::string trunc = fresh_tmp(ctx);
-          emit_instr(ctx, trunc + " = trunc i64 " + sub1 + " to i32");
+          emit_lir_op(ctx, lir::LirCastOp{trunc, lir::LirCastKind::Trunc, "i64", sub1, "i32"});
           return trunc;
         }
         return sub1;
@@ -4185,7 +4182,7 @@ std::string HirEmitter::emit_aarch64_vaarg_fp_src_ptr(
     std::string aligned_stack_ptr = stack_ptr;
     if (stack_align_bytes > 1) {
       const std::string stack_i = fresh_tmp(ctx);
-      emit_instr(ctx, stack_i + " = ptrtoint ptr " + stack_ptr + " to i64");
+      emit_lir_op(ctx, lir::LirCastOp{stack_i, lir::LirCastKind::PtrToInt, "ptr", stack_ptr, "i64"});
       const std::string plus_mask = fresh_tmp(ctx);
       emit_instr(ctx, plus_mask + " = add i64 " + stack_i + ", " +
                               std::to_string(stack_align_bytes - 1));
@@ -4193,7 +4190,7 @@ std::string HirEmitter::emit_aarch64_vaarg_fp_src_ptr(
       emit_instr(ctx, masked + " = and i64 " + plus_mask + ", " +
                               std::to_string(-stack_align_bytes));
       aligned_stack_ptr = fresh_tmp(ctx);
-      emit_instr(ctx, aligned_stack_ptr + " = inttoptr i64 " + masked + " to ptr");
+      emit_lir_op(ctx, lir::LirCastOp{aligned_stack_ptr, lir::LirCastKind::IntToPtr, "i64", masked, "ptr"});
     }
     const std::string stack_next = fresh_tmp(ctx);
     emit_instr(ctx, stack_next + " = getelementptr i8, ptr " + aligned_stack_ptr + ", i64 " +
