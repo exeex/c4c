@@ -1,6 +1,6 @@
 # HIR → LIR Split — Execution State
 
-## Current Step: Step 2 (Remove One Semantic Dependency At A Time)
+## Current Step: Step 3 (Replace Raw LLVM-Text Fallback LIR Where It Hurts Most)
 
 ## Step 1 Audit: Legacy Dependencies in hir_to_lir.cpp
 
@@ -25,13 +25,20 @@
 - [x] Step 2a: Extract `emit_lbl()` and `block_lbl()` into hir_to_lir (items 3-4 from original audit)
 - [x] Step 2b: Replace adopt/release module pattern with reference-based `set_module()`
 - [x] Step 2c: Extract declaration lowering (`lower_single_function`) into hir_to_lir; removed dead method from HirEmitter
+- [x] Step 3a: Replace LirRawLine alloca instructions in hoist_allocas() with typed LirAlloca
 
 ## Active Slice
 - (none — ready for next iteration)
 
 ## Next Intended Slice
-- Extract `lower_globals` into hir_to_lir (requires moving `emit_global` + const init logic)
-- Or: begin Step 3 — replace raw LLVM-text fallback LIR ops with typed LIR ops
+- Step 3b: Replace LirRawLine store instructions in hoist_allocas() with typed LirStore (param stores + zeroinit stores)
+- Step 3c: Replace LirRawTerminator in inject_fallthrough_returns() with typed LirRet
+- Or: Extract `lower_globals` into hir_to_lir
+
+## Raw fallback usage remaining in hir_to_lir.cpp
+- hoist_allocas: 2 LirRawLine stores (param store, zeroinit store)
+- inject_fallthrough_returns: 1 LirRawTerminator (fallthrough ret)
+- hir_emitter.cpp: emit_instr() and emit_term() generic escape hatches (bulk of usage)
 
 ## Blockers
 - None

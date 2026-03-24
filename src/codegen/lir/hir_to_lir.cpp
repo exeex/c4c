@@ -409,9 +409,7 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
     const std::string pname = "%p." + sanitize_llvm_ident(param.name);
     ctx.param_slots[static_cast<uint32_t>(i) + 0x80000000u] = slot;
     const int param_align = object_align_bytes(mod, param.type.spec);
-    const std::string align_suffix =
-        (param_align > 1) ? ", align " + std::to_string(param_align) : "";
-    ctx.alloca_insts.push_back(LirRawLine{"  " + slot + " = alloca " + llvm_alloca_ty(param.type.spec) + align_suffix});
+    ctx.alloca_insts.push_back(LirAlloca{{}, param.type.spec, std::nullopt, slot, param_align});
     ctx.alloca_insts.push_back(LirRawLine{"  store " + llvm_ty(param.type.spec) + " " + pname + ", ptr " + slot});
   }
 
@@ -430,19 +428,20 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
       ctx.local_types[d->id.value] = d->type.spec;
       ctx.local_is_vla[d->id.value] = d->vla_size.has_value();
       if (d->vla_size) {
-        ctx.alloca_insts.push_back(LirRawLine{"  " + slot + " = alloca ptr"});
+        // VLA: alloca a pointer slot (the actual dynamic alloca happens later)
+        TypeSpec ptr_ts{};
+        ptr_ts.base = TB_VOID;
+        ptr_ts.ptr_level = 1;
+        ctx.alloca_insts.push_back(LirAlloca{{}, ptr_ts, std::nullopt, slot, 0});
       } else {
-        const std::string alloca_ty = llvm_alloca_ty(d->type.spec);
         const int stack_align = object_align_bytes(mod, d->type.spec);
-        const std::string align_suffix =
-            (stack_align > 1) ? ", align " + std::to_string(stack_align) : "";
-        ctx.alloca_insts.push_back(LirRawLine{"  " + slot + " = alloca " + alloca_ty + align_suffix});
+        ctx.alloca_insts.push_back(LirAlloca{{}, d->type.spec, std::nullopt, slot, stack_align});
         if (d->init &&
             (d->type.spec.array_rank > 0 ||
              (d->type.spec.ptr_level == 0 &&
               (d->type.spec.base == TB_STRUCT ||
                d->type.spec.base == TB_UNION)))) {
-          ctx.alloca_insts.push_back(LirRawLine{"  store " + alloca_ty + " zeroinitializer, ptr " + slot});
+          ctx.alloca_insts.push_back(LirRawLine{"  store " + llvm_alloca_ty(d->type.spec) + " zeroinitializer, ptr " + slot});
         }
       }
     }

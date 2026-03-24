@@ -84,6 +84,12 @@ void render_inst(std::ostringstream& os, const LirInst& inst) {
       // Actually, just emit an 'add 0' to rename
       os << "  " << op->result << " = add " << unit_ty << " " << result << ", 0\n";
     }
+  } else if (const auto* op = std::get_if<LirAlloca>(&inst)) {
+    using namespace c4c::codegen::llvm_backend::detail;
+    const std::string alloca_ty = llvm_alloca_ty(op->type);
+    os << "  " << op->name << " = alloca " << alloca_ty;
+    if (op->align > 1) os << ", align " << op->align;
+    os << "\n";
   } else if (const auto* op = std::get_if<LirIndirectBrOp>(&inst)) {
     os << "  indirectbr ptr " << op->addr << ", [";
     for (size_t i = 0; i < op->targets.size(); ++i) {

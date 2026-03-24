@@ -134,6 +134,8 @@ struct LirAlloca {
   LirValueId result{};
   TypeSpec type{};
   std::optional<LirValueId> count;  // for VLA
+  std::string name;                 // SSA slot name (e.g. "%lv.foo")
+  int align = 0;                    // alignment in bytes (0 = unspecified)
 };
 
 struct LirIntrinsic {
