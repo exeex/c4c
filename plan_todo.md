@@ -34,17 +34,19 @@
 - [x] Step 3e-iii: Replace cast LirRawLine with typed LirCastOp (41 call sites: zext, sext, trunc, fpext, fptrunc, fptosi, fptoui, sitofp, uitofp, ptrtoint, inttoptr, bitcast)
 - [x] Step 3e-iv: Replace GEP LirRawLine with typed LirGepOp (28 call sites: struct member, array decay, ptr arithmetic, complex real/imag, vaarg aarch64)
 - [x] Step 3e-v: Replace call LirRawLine with typed LirCallOp (16 call sites: 2 general function calls + 14 intrinsic calls)
+- [x] Step 3e-vi: Replace remaining direct LirRawLine alloca_insts in legacy emitter with LirAlloca/LirHoistedStore (9 sites: param spills, agg temps, local decl allocas, VLA ptr slots, zeroinit stores)
 
 ## Active Slice
 - (none — ready for next iteration)
 
 ## Next Intended Slice
-- Step 3e-vi: Replace remaining emit_instr categories (alloca, icmp/fcmp, select, binary ops, phi, etc.)
+- Step 3e-vii: Replace emit_instr LirRawLine categories (icmp/fcmp → typed LirCmpOp, binary ops → typed LirBinOp, phi → typed LirPhiOp, etc.)
 - Or: Extract `lower_globals` into hir_to_lir (Step 2 semantic dependency)
 
 ## Raw fallback usage remaining
-- hir_to_lir.cpp: no raw terminator usage remains
-- hir_emitter.cpp: emit_instr() still uses LirRawLine for ~112 instructions (162 converted: 31 extractvalue/insertvalue + 46 load/store + 41 cast + 28 GEP + 16 call)
+- hir_to_lir.cpp: no raw usage remains
+- hir_emitter.cpp: `emit_instr()` is the sole remaining LirRawLine gateway (112 call sites producing raw LLVM text instructions)
+- All direct LirRawLine construction outside emit_instr has been eliminated
 - LirRawTerminator: only produced by no remaining call sites; type kept in variant for now
 
 ## Blockers
