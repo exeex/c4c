@@ -236,6 +236,18 @@ struct LirInsertValueOp {
   int index = 0;          // field index
 };
 
+struct LirLoadOp {
+  std::string result;     // SSA name for result (e.g. "%t5")
+  std::string type_str;   // LLVM type string (e.g. "i32", "ptr")
+  std::string ptr;        // SSA name of pointer operand
+};
+
+struct LirStoreOp {
+  std::string type_str;   // LLVM type string (e.g. "i32", "ptr")
+  std::string val;        // SSA name of value (or "zeroinitializer")
+  std::string ptr;        // SSA name of pointer operand
+};
+
 // Catch-all for instructions not yet migrated to typed LIR ops.
 // Contains the raw LLVM IR line produced by the legacy emitter.
 // This allows incremental migration: Stage 1+ will shrink usage of this type.
@@ -270,6 +282,8 @@ using LirInst = std::variant<
     LirIndirectBrOp,
     LirExtractValueOp,
     LirInsertValueOp,
+    LirLoadOp,
+    LirStoreOp,
     LirRawLine
 >;
 

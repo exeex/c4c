@@ -1282,7 +1282,7 @@ std::string HirEmitter::coerce(FnCtx& ctx, const std::string& val,
         to_ts.ptr_level == 0 && !to_ts.is_lvalue_ref && !to_ts.is_rvalue_ref &&
         !to_ts.is_fn_ptr) {
       const std::string tmp = fresh_tmp(ctx);
-      emit_instr(ctx, tmp + " = load " + tt + ", ptr " + val);
+      emit_lir_op(ctx, lir::LirLoadOp{tmp, tt, val});
       return tmp;
     }
 
@@ -1466,7 +1466,7 @@ std::string HirEmitter::emit_va_list_obj_ptr(FnCtx& ctx, ExprId id, TypeSpec& ts
           const auto spill_it = ctx.param_slots.find(*r->param_index + 0x80000000u);
           if (spill_it != ctx.param_slots.end()) {
             const std::string tmp = fresh_tmp(ctx);
-            emit_instr(ctx, tmp + " = load ptr, ptr " + spill_it->second);
+            emit_lir_op(ctx, lir::LirLoadOp{tmp, std::string("ptr"), spill_it->second});
             return tmp;
           }
           const auto it = ctx.param_slots.find(*r->param_index);
@@ -1629,7 +1629,7 @@ std::string HirEmitter::emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeSp
         }
         const std::string slot = fresh_tmp(ctx) + ".agg";
         ctx.alloca_insts.push_back(lir::LirRawLine{"  " + slot + " = alloca " + llvm_alloca_ty(base_ts)});
-        emit_instr(ctx, "store " + llvm_ty(base_ts) + " " + rval + ", ptr " + slot);
+        emit_lir_op(ctx, lir::LirStoreOp{llvm_ty(base_ts), rval, slot});
         base_ptr = slot;
       }
     }
@@ -2284,7 +2284,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const Ex
         const TypeSpec& pts = ctx.fn->params[*r.param_index].type.spec;
         const std::string ty = llvm_ty(pts);
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = load " + ty + ", ptr " + spill_it->second);
+        emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, spill_it->second});
         return tmp;
       }
       // Otherwise use the SSA param value directly.
@@ -2301,7 +2301,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const Ex
       const auto vit = ctx.local_is_vla.find(r.local->value);
       if (vit != ctx.local_is_vla.end() && vit->second) {
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = load ptr, ptr " + it->second);
+        emit_lir_op(ctx, lir::LirLoadOp{tmp, std::string("ptr"), it->second});
         return tmp;
       }
       if (ts.base == TB_VA_LIST && ts.ptr_level == 0 && ts.array_rank == 0) {
@@ -2318,7 +2318,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const Ex
       const std::string ty = llvm_ty(ts);
       if (ty == "void") return "0";
       const std::string tmp = fresh_tmp(ctx);
-      emit_instr(ctx, tmp + " = load " + ty + ", ptr " + it->second);
+      emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, it->second});
       return tmp;
     }
 
@@ -2337,7 +2337,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const Ex
       const std::string ty = llvm_ty(gv.type.spec);
       if (ty == "void") return "0";
       const std::string tmp = fresh_tmp(ctx);
-      emit_instr(ctx, tmp + " = load " + ty + ", ptr " + llvm_global_sym(gv.name));
+      emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, llvm_global_sym(gv.name)});
       return tmp;
     }
 
@@ -2360,7 +2360,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const Ex
     const std::string ty = llvm_ty(ets);
     if (ty == "void") return "0";
     const std::string tmp = fresh_tmp(ctx);
-    emit_instr(ctx, tmp + " = load " + ty + ", ptr @" + r.name);
+    emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, "@" + r.name});
     return tmp;
   }
 
@@ -2512,7 +2512,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const 
         if (load_ts.is_fn_ptr && load_ts.ptr_level == 0) return val;
         const std::string load_ty = llvm_ty(load_ts);
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = load " + load_ty + ", ptr " + val);
+        emit_lir_op(ctx, lir::LirLoadOp{tmp, load_ty, val});
         return tmp;
       }
 
@@ -2541,7 +2541,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const 
         const std::string ptr = emit_lval(ctx, u.operand, pts);
         const std::string pty = llvm_ty(pts);
         const std::string loaded = fresh_tmp(ctx);
-        emit_instr(ctx, loaded + " = load " + pty + ", ptr " + ptr);
+        emit_lir_op(ctx, lir::LirLoadOp{loaded, pty, ptr});
         const std::string result = fresh_tmp(ctx);
         if (pty == "ptr") {
           const std::string delta = (u.op == UnaryOp::PreInc) ? "1" : "-1";
@@ -2564,7 +2564,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const 
           const std::string delta = (u.op == UnaryOp::PreInc) ? "1" : "-1";
           emit_instr(ctx, result + " = add " + pty + " " + loaded + ", " + delta);
         }
-        emit_instr(ctx, "store " + pty + " " + result + ", ptr " + ptr);
+        emit_lir_op(ctx, lir::LirStoreOp{pty, result, ptr});
         return result;
       }
 
@@ -2592,7 +2592,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const 
         const std::string ptr = emit_lval(ctx, u.operand, pts);
         const std::string pty = llvm_ty(pts);
         const std::string loaded = fresh_tmp(ctx);
-        emit_instr(ctx, loaded + " = load " + pty + ", ptr " + ptr);
+        emit_lir_op(ctx, lir::LirLoadOp{loaded, pty, ptr});
         const std::string result = fresh_tmp(ctx);
         if (pty == "ptr") {
           const std::string delta = (u.op == UnaryOp::PostInc) ? "1" : "-1";
@@ -2615,7 +2615,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const 
           const std::string delta = (u.op == UnaryOp::PostInc) ? "1" : "-1";
           emit_instr(ctx, result + " = add " + pty + " " + loaded + ", " + delta);
         }
-        emit_instr(ctx, "store " + pty + " " + result + ", ptr " + ptr);
+        emit_lir_op(ctx, lir::LirStoreOp{pty, result, ptr});
         return loaded;  // post: return old value
       }
 
@@ -2631,7 +2631,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const 
                                  ", ptr " + complex_ptr + ", i32 0, i32 " +
                                  std::to_string(u.op == UnaryOp::ImagPart ? 1 : 0));
           const std::string tmp = fresh_tmp(ctx);
-          emit_instr(ctx, tmp + " = load " + llvm_ty(part_ts) + ", ptr " + part_ptr);
+          emit_lir_op(ctx, lir::LirLoadOp{tmp, llvm_ty(part_ts), part_ptr});
           return tmp;
         } catch (const std::runtime_error&) {
         }
@@ -3213,7 +3213,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const AssignExpr& a, const
 
     if (a.op != AssignOp::Set) {
       const std::string loaded = fresh_tmp(ctx);
-      emit_instr(ctx, loaded + " = load " + lty + ", ptr " + lhs_ptr);
+      emit_lir_op(ctx, lir::LirLoadOp{loaded, lty, lhs_ptr});
 
       if ((a.op == AssignOp::Add || a.op == AssignOp::Sub) && lty == "ptr") {
         TypeSpec i64_ts{};
@@ -3236,7 +3236,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const AssignExpr& a, const
         const std::string result = fresh_tmp(ctx);
         emit_instr(ctx, result + " = getelementptr " + gep_ety3 +
                             ", ptr " + loaded + ", i64 " + delta);
-        emit_instr(ctx, "store ptr " + result + ", ptr " + lhs_ptr);
+        emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), result, lhs_ptr});
         return result;
       }
 
@@ -3256,7 +3256,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const AssignExpr& a, const
             (is_complex_base(lhs_ts.base) || is_complex_base(rhs_ts.base))) {
           const std::string result =
               emit_complex_binary_arith(ctx, row.bop, loaded, lhs_ts, rhs, rhs_ts, lhs_ts);
-          emit_instr(ctx, "store " + lty + " " + result + ", ptr " + lhs_ptr);
+          emit_lir_op(ctx, lir::LirStoreOp{lty, result, lhs_ptr});
           return result;
         }
         if (is_vector_value(lhs_ts)) {
@@ -3306,7 +3306,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const AssignExpr& a, const
       emit_instr(ctx, result + " = " + instr + " " + op_ty + " " + lhs_op + ", " + rhs);
       std::string store_v = result;
       if (op_ty != lty) store_v = coerce(ctx, result, op_ts, lhs_ts);
-      emit_instr(ctx, "store " + lty + " " + store_v + ", ptr " + lhs_ptr);
+      emit_lir_op(ctx, lir::LirStoreOp{lty, store_v, lhs_ptr});
       return store_v;
     }
 
@@ -3314,7 +3314,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const AssignExpr& a, const
     const bool is_agg = (lhs_ts.base == TB_STRUCT || lhs_ts.base == TB_UNION) &&
                         lhs_ts.ptr_level == 0 && lhs_ts.array_rank == 0;
     if (is_agg && (rhs == "0" || rhs.empty())) rhs = "zeroinitializer";
-    emit_instr(ctx, "store " + lty + " " + rhs + ", ptr " + lhs_ptr);
+    emit_lir_op(ctx, lir::LirStoreOp{lty, rhs, lhs_ptr});
     return rhs;
   }
 
@@ -3485,7 +3485,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         emit_lir_op(ctx, lir::LirExtractValueOp{val, ovf_agg_ty, pair, 0});
         const std::string ovf = fresh_tmp(ctx);
         emit_lir_op(ctx, lir::LirExtractValueOp{ovf, ovf_agg_ty, pair, 1});
-        emit_instr(ctx, "store " + res_ty + " " + val + ", ptr " + result_ptr);
+        emit_lir_op(ctx, lir::LirStoreOp{res_ty, val, result_ptr});
         const std::string ret = fresh_tmp(ctx);
         emit_instr(ctx, ret + " = zext i1 " + ovf + " to i32");
         return ret;
@@ -4042,7 +4042,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         } else {
           const std::string tmp_addr = fresh_tmp(ctx);
           emit_instr(ctx, tmp_addr + " = alloca " + llvm_ty(arg_ts));
-          emit_instr(ctx, "store " + llvm_ty(arg_ts) + " " + arg + ", ptr " + tmp_addr);
+          emit_lir_op(ctx, lir::LirStoreOp{llvm_ty(arg_ts), arg, tmp_addr});
           obj_ptr = tmp_addr;
         }
 
@@ -4057,7 +4057,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
           emit_instr(ctx, tmp_addr + " = alloca i64");
           emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, obj_ptr, std::to_string(payload_sz), false});
           const std::string packed = fresh_tmp(ctx);
-          emit_instr(ctx, packed + " = load i64, ptr " + tmp_addr);
+          emit_lir_op(ctx, lir::LirLoadOp{packed, std::string("i64"), tmp_addr});
           args_str += "i64 " + packed;
           continue;
         }
@@ -4066,7 +4066,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         emit_instr(ctx, tmp_addr + " = alloca [2 x i64]");
         emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, obj_ptr, std::to_string(payload_sz), false});
         const std::string packed = fresh_tmp(ctx);
-        emit_instr(ctx, packed + " = load [2 x i64], ptr " + tmp_addr);
+        emit_lir_op(ctx, lir::LirLoadOp{packed, std::string("[2 x i64]"), tmp_addr});
         args_str += "[2 x i64] " + packed;
         continue;
       }
@@ -4092,7 +4092,7 @@ std::string HirEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::str
     emit_instr(ctx, offs_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
                             ", i32 0, i32 3");
     const std::string offs = fresh_tmp(ctx);
-    emit_instr(ctx, offs + " = load i32, ptr " + offs_ptr);
+    emit_lir_op(ctx, lir::LirLoadOp{offs, std::string("i32"), offs_ptr});
 
     const std::string stack_lbl = fresh_lbl(ctx, "vaarg.stack.");
     const std::string reg_try_lbl = fresh_lbl(ctx, "vaarg.regtry.");
@@ -4106,7 +4106,7 @@ std::string HirEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::str
     emit_lbl(ctx, reg_try_lbl);
     const std::string next_offs = fresh_tmp(ctx);
     emit_instr(ctx, next_offs + " = add i32 " + offs + ", " + std::to_string(slot_bytes));
-    emit_instr(ctx, "store i32 " + next_offs + ", ptr " + offs_ptr);
+    emit_lir_op(ctx, lir::LirStoreOp{std::string("i32"), next_offs, offs_ptr});
     const std::string use_reg = fresh_tmp(ctx);
     emit_instr(ctx, use_reg + " = icmp sle i32 " + next_offs + ", 0");
     emit_term_condbr(ctx, use_reg, reg_lbl, stack_lbl);
@@ -4116,7 +4116,7 @@ std::string HirEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::str
     emit_instr(ctx, gr_top_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
                              ", i32 0, i32 1");
     const std::string gr_top = fresh_tmp(ctx);
-    emit_instr(ctx, gr_top + " = load ptr, ptr " + gr_top_ptr);
+    emit_lir_op(ctx, lir::LirLoadOp{gr_top, std::string("ptr"), gr_top_ptr});
     const std::string reg_addr = fresh_tmp(ctx);
     emit_instr(ctx, reg_addr + " = getelementptr i8, ptr " + gr_top + ", i32 " + offs);
     emit_term_br(ctx, join_lbl);
@@ -4126,11 +4126,11 @@ std::string HirEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::str
     emit_instr(ctx, stack_ptr_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
                                 ", i32 0, i32 0");
     const std::string stack_ptr = fresh_tmp(ctx);
-    emit_instr(ctx, stack_ptr + " = load ptr, ptr " + stack_ptr_ptr);
+    emit_lir_op(ctx, lir::LirLoadOp{stack_ptr, std::string("ptr"), stack_ptr_ptr});
     const std::string stack_next = fresh_tmp(ctx);
     emit_instr(ctx, stack_next + " = getelementptr i8, ptr " + stack_ptr + ", i64 " +
                             std::to_string(slot_bytes));
-    emit_instr(ctx, "store ptr " + stack_next + ", ptr " + stack_ptr_ptr);
+    emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), stack_next, stack_ptr_ptr});
     emit_term_br(ctx, join_lbl);
 
     emit_lbl(ctx, join_lbl);
@@ -4147,7 +4147,7 @@ std::string HirEmitter::emit_aarch64_vaarg_fp_src_ptr(
     emit_instr(ctx, offs_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
                             ", i32 0, i32 4");
     const std::string offs = fresh_tmp(ctx);
-    emit_instr(ctx, offs + " = load i32, ptr " + offs_ptr);
+    emit_lir_op(ctx, lir::LirLoadOp{offs, std::string("i32"), offs_ptr});
 
     const std::string stack_lbl = fresh_lbl(ctx, "vaarg.fp.stack.");
     const std::string reg_try_lbl = fresh_lbl(ctx, "vaarg.fp.regtry.");
@@ -4161,7 +4161,7 @@ std::string HirEmitter::emit_aarch64_vaarg_fp_src_ptr(
     emit_lbl(ctx, reg_try_lbl);
     const std::string next_offs = fresh_tmp(ctx);
     emit_instr(ctx, next_offs + " = add i32 " + offs + ", " + std::to_string(reg_slot_bytes));
-    emit_instr(ctx, "store i32 " + next_offs + ", ptr " + offs_ptr);
+    emit_lir_op(ctx, lir::LirStoreOp{std::string("i32"), next_offs, offs_ptr});
     const std::string use_reg = fresh_tmp(ctx);
     emit_instr(ctx, use_reg + " = icmp sle i32 " + next_offs + ", 0");
     emit_term_condbr(ctx, use_reg, reg_lbl, stack_lbl);
@@ -4171,7 +4171,7 @@ std::string HirEmitter::emit_aarch64_vaarg_fp_src_ptr(
     emit_instr(ctx, vr_top_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
                              ", i32 0, i32 2");
     const std::string vr_top = fresh_tmp(ctx);
-    emit_instr(ctx, vr_top + " = load ptr, ptr " + vr_top_ptr);
+    emit_lir_op(ctx, lir::LirLoadOp{vr_top, std::string("ptr"), vr_top_ptr});
     const std::string reg_addr = fresh_tmp(ctx);
     emit_instr(ctx, reg_addr + " = getelementptr i8, ptr " + vr_top + ", i32 " + offs);
     emit_term_br(ctx, join_lbl);
@@ -4181,7 +4181,7 @@ std::string HirEmitter::emit_aarch64_vaarg_fp_src_ptr(
     emit_instr(ctx, stack_ptr_ptr + " = getelementptr %struct.__va_list_tag_, ptr " + ap_ptr +
                                 ", i32 0, i32 0");
     const std::string stack_ptr = fresh_tmp(ctx);
-    emit_instr(ctx, stack_ptr + " = load ptr, ptr " + stack_ptr_ptr);
+    emit_lir_op(ctx, lir::LirLoadOp{stack_ptr, std::string("ptr"), stack_ptr_ptr});
     std::string aligned_stack_ptr = stack_ptr;
     if (stack_align_bytes > 1) {
       const std::string stack_i = fresh_tmp(ctx);
@@ -4198,7 +4198,7 @@ std::string HirEmitter::emit_aarch64_vaarg_fp_src_ptr(
     const std::string stack_next = fresh_tmp(ctx);
     emit_instr(ctx, stack_next + " = getelementptr i8, ptr " + aligned_stack_ptr + ", i64 " +
                             std::to_string(stack_slot_bytes));
-    emit_instr(ctx, "store ptr " + stack_next + ", ptr " + stack_ptr_ptr);
+    emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), stack_next, stack_ptr_ptr});
     emit_term_br(ctx, join_lbl);
 
     emit_lbl(ctx, join_lbl);
@@ -4250,13 +4250,13 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const 
           if (payload_sz > 16) {
             const std::string slot_ptr = emit_aarch64_vaarg_gp_src_ptr(ctx, ap_ptr, 8);
             const std::string src_ptr = fresh_tmp(ctx);
-            emit_instr(ctx, src_ptr + " = load ptr, ptr " + slot_ptr);
+            emit_lir_op(ctx, lir::LirLoadOp{src_ptr, std::string("ptr"), slot_ptr});
             const std::string tmp_addr = fresh_tmp(ctx);
             emit_instr(ctx, tmp_addr + " = alloca " + res_ty);
             need_llvm_memcpy_ = true;
             emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, src_ptr, std::to_string(payload_sz), false});
             const std::string out = fresh_tmp(ctx);
-            emit_instr(ctx, out + " = load " + res_ty + ", ptr " + tmp_addr);
+            emit_lir_op(ctx, lir::LirLoadOp{out, res_ty, tmp_addr});
             return out;
           }
 
@@ -4267,7 +4267,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const 
           need_llvm_memcpy_ = true;
           emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, src_ptr, std::to_string(payload_sz), false});
           const std::string out = fresh_tmp(ctx);
-          emit_instr(ctx, out + " = load " + res_ty + ", ptr " + tmp_addr);
+          emit_lir_op(ctx, lir::LirLoadOp{out, res_ty, tmp_addr});
           return out;
         }
       }
@@ -4288,19 +4288,19 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const 
     if (is_gp_scalar) {
       const std::string src_ptr = emit_aarch64_vaarg_gp_src_ptr(ctx, ap_ptr, 8);
       const std::string out = fresh_tmp(ctx);
-      emit_instr(ctx, out + " = load " + res_ty + ", ptr " + src_ptr);
+      emit_lir_op(ctx, lir::LirLoadOp{out, res_ty, src_ptr});
       return out;
     }
     if (is_fp_scalar) {
       const std::string src_ptr = emit_aarch64_vaarg_fp_src_ptr(ctx, ap_ptr, 16, 8, 8);
       const std::string out = fresh_tmp(ctx);
-      emit_instr(ctx, out + " = load " + res_ty + ", ptr " + src_ptr);
+      emit_lir_op(ctx, lir::LirLoadOp{out, res_ty, src_ptr});
       return out;
     }
     if (is_fp128_scalar) {
       const std::string src_ptr = emit_aarch64_vaarg_fp_src_ptr(ctx, ap_ptr, 16, 16, 16);
       const std::string out = fresh_tmp(ctx);
-      emit_instr(ctx, out + " = load " + res_ty + ", ptr " + src_ptr);
+      emit_lir_op(ctx, lir::LirLoadOp{out, res_ty, src_ptr});
       return out;
     }
 
@@ -4451,7 +4451,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const IndexExpr&, const Ex
     if (!has_concrete_type(load_ts)) load_ts = pts;
     const std::string ty = llvm_ty(load_ts);
     const std::string tmp = fresh_tmp(ctx);
-    emit_instr(ctx, tmp + " = load " + ty + ", ptr " + ptr);
+    emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, ptr});
     return tmp;
   }
 
@@ -4473,7 +4473,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const MemberExpr& m, const
       const std::string arr_alloca_ty = llvm_alloca_ty(arr_ts);
       if (arr_alloca_ty == "ptr") {
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = load ptr, ptr " + gep);
+        emit_lir_op(ctx, lir::LirLoadOp{tmp, std::string("ptr"), gep});
         return tmp;
       }
       const std::string tmp = fresh_tmp(ctx);
@@ -4484,7 +4484,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const MemberExpr& m, const
     const std::string ty = llvm_ty(load_ts);
     if (ty == "void") return "";
     const std::string tmp = fresh_tmp(ctx);
-    emit_instr(ctx, tmp + " = load " + ty + ", ptr " + gep);
+    emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, gep});
     return tmp;
   }
 
@@ -4526,7 +4526,7 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const LocalDecl& d){
       const std::string align_suffix =
           (stack_align > 1) ? ", align " + std::to_string(stack_align) : "";
       emit_instr(ctx, dyn_ptr + " = alloca " + elem_ty + ", i64 " + count + align_suffix);
-      emit_instr(ctx, "store ptr " + dyn_ptr + ", ptr " + slot);
+      emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), dyn_ptr, slot});
     }
 
     if (!d.init) return;
@@ -4542,11 +4542,11 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const LocalDecl& d){
          (d.type.spec.base == TB_STRUCT || d.type.spec.base == TB_UNION) &&
          d.type.spec.array_rank == 0);
     if (is_agg_or_array && (rhs == "0" || rhs.empty())) {
-      emit_instr(ctx, "store " + ty + " zeroinitializer, ptr " + slot);
+      emit_lir_op(ctx, lir::LirStoreOp{ty, std::string("zeroinitializer"), slot});
       return;
     }
     rhs = coerce(ctx, rhs, rhs_ts, d.type.spec);
-    emit_instr(ctx, "store " + ty + " " + rhs + ", ptr " + slot);
+    emit_lir_op(ctx, lir::LirStoreOp{ty, rhs, slot});
   }
 
 void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ExprStmt& s){
@@ -4616,7 +4616,7 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const InlineAsmStmt& s){
     TypeSpec out_pointee_ts{};
     const std::string out_ptr = emit_lval(ctx, *s.output, out_pointee_ts);
     const std::string coerced = coerce(ctx, result, ret_ts, out_pointee_ts);
-    emit_instr(ctx, "store " + llvm_ty(out_pointee_ts) + " " + coerced + ", ptr " + out_ptr);
+    emit_lir_op(ctx, lir::LirStoreOp{llvm_ty(out_pointee_ts), coerced, out_ptr});
   }
 
 void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ReturnStmt& s){
