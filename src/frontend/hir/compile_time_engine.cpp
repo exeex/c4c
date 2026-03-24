@@ -14,14 +14,25 @@ struct PendingTemplateTypeStep {
   CompileTimeState* ct_state = nullptr;
   DeferredInstantiateTypeFn instantiate_type_fn;
   size_t resolved = 0;
+  size_t terminal = 0;
   size_t pending = 0;
   size_t blocked = 0;
   size_t spawned_new_work = 0;
   std::vector<CompileTimeDiagnostic> pending_diags;
 
+  // Returns resolved + terminal (items no longer pending).
+  size_t completed() const { return resolved + terminal; }
+
   void run() {
     if (!ct_state) return;
-    for (const auto& work_item : ct_state->pending_template_types()) {
+    // Use index-based iteration: the callback may append new work items to the
+    // pending list via record_pending_template_type(), which would invalidate
+    // range-for iterators if the vector reallocates.  Newly appended items are
+    // intentionally skipped this iteration — they will be processed in the
+    // next engine pass.
+    const size_t n = ct_state->pending_template_types().size();
+    for (size_t i = 0; i < n; ++i) {
+      const auto& work_item = ct_state->pending_template_types()[i];
       if (ct_state->is_pending_template_type_resolved(work_item.dedup_key))
         continue;
       DeferredTemplateTypeResult result =
@@ -35,7 +46,7 @@ struct PendingTemplateTypeStep {
         // Terminal items are done — mark resolved so they won't be retried,
         // but record the diagnostic.
         ct_state->mark_pending_template_type_resolved(work_item.dedup_key);
-        ++resolved;
+        ++terminal;
         std::string label = result.diagnostic;
         if (label.empty()) {
           label = work_item.context_name.empty()
@@ -330,6 +341,7 @@ CompileTimeEngineStats run_compile_time_engine(
                                      instantiate_type_fn};
     ptt_step.run();
     stats.template_types_resolved += ptt_step.resolved;
+    stats.template_types_terminal += ptt_step.terminal;
     stats.template_types_pending = ptt_step.pending;
 
     // Step 1: template instantiation resolution (with optional deferred lowering).
@@ -371,7 +383,7 @@ CompileTimeEngineStats run_compile_time_engine(
     size_t cur_template_pending = ptt_step.pending + tpl_step.pending;
     size_t cur_consteval_pending = ce_step.pending + pce_step.pending;
     bool made_progress =
-        ptt_step.resolved > 0 ||
+        ptt_step.completed() > 0 ||
         ptt_step.spawned_new_work > 0 ||
         tpl_step.newly_instantiated > 0 ||
         pce_step.evaluated > 0 ||

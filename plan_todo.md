@@ -1,7 +1,7 @@
 # Lazy Template Instantiation — Execution State
 
 ## Active Item
-**Step 5: Tighten Engine Progress Semantics Only If Needed**
+**Plan complete.**
 
 ## Completed
 - **Step 1: Expand Use-Site Seeding** — added `seed_pending_template_type(...)` at all 5 previously unseeded `resolve_pending_tpl_struct_if_needed(...)` call sites:
@@ -34,11 +34,13 @@
   - Retry behavior is now visible in the engine worklist model, not hidden in helper recursion
   - All existing tests pass (2122/2123, pre-existing failure unchanged)
 
-## Current Slice
-Step 5: Tighten Engine Progress Semantics Only If Needed — only touch the engine loop if the current blocked/spawned-new-work accounting is insufficient.
+- **Step 5: Tighten Engine Progress Semantics** — two improvements:
+  1. Iterator safety: switched `PendingTemplateTypeStep::run()` from range-for to index-based iteration to prevent UB when callbacks append new work items via `record_pending_template_type()` during iteration
+  2. Separated terminal count: `resolved` and `terminal` tracked independently; `completed()` helper used for progress detection; `template_types_terminal` added to `CompileTimeEngineStats`
+  - All existing tests pass (2122/2123, pre-existing failure unchanged)
 
 ## Next Intended Slice
-Plan complete after step 5 (assess if any engine changes needed).
+Lazy template instantiation plan is complete. All 5 steps done.
 
 ## Blockers
 None

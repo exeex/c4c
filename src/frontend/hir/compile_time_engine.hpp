@@ -993,6 +993,7 @@ struct CompileTimeEngineStats {
   size_t templates_pending = 0;       // template calls whose target is missing
   size_t templates_deferred = 0;      // template instantiations created by this pass
   size_t template_types_resolved = 0; // pending type work items resolved by the pass
+  size_t template_types_terminal = 0; // pending type work items that reached terminal state
   size_t template_types_pending = 0;  // pending type-driven template work items observed
   size_t consteval_reduced = 0;       // consteval calls successfully reduced to constants
   size_t consteval_pending = 0;       // consteval calls whose result is missing or invalid
