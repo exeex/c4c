@@ -1,475 +1,417 @@
-# Template Function Identity Plan
+# Lazy Template Type Instantiation Plan
 
-## Goal
+## Purpose
 
-Make template function specialization selection use structured identity.
+This document is for an execution-oriented AI agent.
 
-Do not use `mangled_name` as the primary semantic key anymore.
+Read it as a runbook, not as architecture prose.
 
-After this refactor:
-
-- primary template family identity = `const Node* primary_def`
-- selected specialization pattern identity = `const Node* selected_pattern`
-- concrete instantiation identity = `primary_def + SpecializationKey`
-- `mangled_name` = derived output only
+Do not redesign the system.
+Do not start by editing parser files unless a step explicitly tells you to.
+Do not try to solve all template bugs in one diff.
 
 
-## Read This First
+## One-Sentence Goal
 
-This document is written for an execution-oriented agent.
+Make dependent template type resolution use-site driven and engine-driven:
 
-Do not invent a new architecture.
-Do not redesign the whole template pipeline.
-Copy the shape that already exists for template structs and apply the same
-pattern to template functions.
-
-Primary references to copy from:
-
-- [structured_template_identity_plan.md](/workspaces/c4c/ideas/structured_template_identity_plan.md)
-- [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
-  Current struct-side registry/key patterns and current function registry live
-  here.
-- [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
-  Current function-template registration, specialization collection, and
-  lowering decisions live here.
+- use sites enqueue pending type work
+- the compile-time engine owns the retry loop
+- `ast_to_hir.cpp` becomes a local helper layer, not the control loop
 
 
-## Current Problem
+## Current Reality
 
-Today function-template identity is split in half:
+As of 2026-03-24, the codebase already has the first pieces of this plan:
 
-- good part:
-  `TypeBindings`, `NttpBindings`, and `SpecializationKey` already exist
-- bad part:
-  explicit specialization lookup still does
-  `mangled_name -> AST specialization node`
+- pending template type work item types already exist in
+  [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+- `CompileTimeState::record_pending_template_type(...)` already exists
+- the engine already runs a `PendingTemplateTypeStep` in
+  [compile_time_engine.cpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.cpp)
+- `Lowerer::instantiate_deferred_template_type(...)` already exists in
+  [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
+- use-site seeding already exists in some places through
+  `seed_pending_template_type(...)`
 
-That old path currently looks like this:
+What is still wrong:
 
-1. register explicit specialization in
-   [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
-   by calling `mangle_specialization(...)`
-2. store it in
-   [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
-   as `specs_[mangled]`
-3. later, when lowering an instance, do
-   `registry_.find_specialization(inst.mangled_name)`
-4. if found, lower that body
-
-This is the exact thing that must stop being the primary path.
-
-
-## Non-Goals
-
-Do not do these things in this plan:
-
-- do not move deferred NTTP default evaluation into the engine
-- do not redesign parser template syntax handling
-- do not remove mangled names from emitted HIR or metadata
-- do not refactor template struct identity again
-- do not solve every template-function bug in one diff
+- too much real resolution logic still lives inside
+  `Lowerer::resolve_pending_tpl_struct(...)`
+- type work is seeded only in some use sites, not consistently
+- the engine owns the loop, but not enough of the decomposition
+- blocked work still depends on helper recursion instead of explicit,
+  smaller follow-up work
 
 
-## Desired End State
+## Files You Will Touch
 
-At the end of this plan:
+Primary files:
 
-- explicit specialization registration is owner-based, not mangled-name-based
-- specialization selection starts from the primary template function node
-- the result of specialization selection is structured
-- dedup/instance identity uses `primary_def + spec_key`
-- mangled names are still produced, but only after the semantic instance is
-  known
+1. [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
+- add missing use-site seeding
+- split or shrink `resolve_pending_tpl_struct(...)`
+- keep helper behavior local
 
+2. [compile_time_engine.cpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.cpp)
+- extend the pending-template-type step only if engine control behavior must
+  change
 
-## Files To Change
+3. [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+- touch only if you need a new work item field, helper, or status plumbing
 
-You are expected to modify these files:
+Do not start in:
 
-1. [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
-- add structured function-template identity types
-- change `InstantiationRegistry`
-- remove string-only specialization registry from the main path
-
-2. [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
-- change explicit specialization registration
-- change specialization selection during lowering
-- change deferred template function instantiation callback to use structured
-  selection
-
-You may also need small metadata touchups in:
-
-3. [ir.hpp](/workspaces/c4c/src/frontend/hir/ir.hpp)
-- only if you need to expose structured metadata in HIR debug dumps
-
-Do not start in parser files for this task.
+- parser files
+- unrelated HIR metadata files
 
 
-## Existing Code You Must Replace
+## Current Entry Points
 
-These old pieces are the ones to shrink or remove from the main path.
+Before editing, understand these exact entry points:
 
-In [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp):
+1. Pending type work creation:
+- `CompileTimeState::record_pending_template_type(...)` in
+  [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
 
-- `specs_`
-- `find_specialization(const std::string& mangled)`
-- `register_specialization(const std::string& mangled, const Node* spec_node)`
+2. Use-site seeding helper:
+- `Lowerer::seed_pending_template_type(...)` in
+  [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
 
-In [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp):
+3. Engine loop:
+- `PendingTemplateTypeStep` in
+  [compile_time_engine.cpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.cpp)
+- `run_compile_time_engine(...)` in
+  [compile_time_engine.cpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.cpp)
 
-- explicit specialization registration via `mangle_specialization(...)`
-- lowering-time lookup via `registry_.find_specialization(inst.mangled_name)`
-- deferred instantiation lookup via `registry_.find_specialization(mangled)`
+4. Deferred type callback:
+- `Lowerer::instantiate_deferred_template_type(...)` in
+  [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
 
-These may survive temporarily as fallback helpers during transition, but they
-must no longer be the primary selection path.
+5. Current monolith that still does too much:
+- `Lowerer::resolve_pending_tpl_struct(...)` in
+  [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
 
 
-## New Data Model To Add
+## What “Done” Means
 
-Add these concepts in
-[compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp).
+This plan is complete when all of these are true:
 
-Use names close to these:
+1. every important dependent type use site enqueues pending template type work
+2. the engine retry loop, not ad hoc recursion, is the primary retry mechanism
+3. blocked type work spawns narrower prerequisite work where possible
+4. `resolve_pending_tpl_struct(...)` no longer acts like a hidden control loop
+5. unresolved diagnostics happen only after engine fixpoint exhaustion
+
+
+## Rules For The Agent
+
+Follow these rules while implementing:
+
+1. Make one architectural move per diff.
+2. Prefer moving control ownership before moving helper bodies.
+3. When you see recursive “try again now” behavior, convert it into:
+   - enqueue prerequisite work
+   - return `blocked`
+4. Do not remove eager concrete fast paths if they are obviously correct.
+5. If a helper already has the right semantics but is in the wrong owner,
+   keep behavior and move control later.
+6. If you are unsure whether a failure is real, return `blocked`, not `terminal`.
+
+
+## Resolution Contract
+
+Every deferred template type attempt must end in one of these states:
+
+1. `resolved`
+- the pending item is concretely satisfied now
+
+2. `blocked`
+- the item is not ready yet
+- the callback may enqueue more specific prerequisite work
+- this is not a user-facing error yet
+
+3. `terminal`
+- the item cannot be satisfied in the current model
+- this should surface only after the engine reaches fixpoint
+
+Use this exact mental rule:
+
+> blocked means “dependency discovered”
+
+not
+
+> blocked means “something went wrong”
+
+
+## Current Work Item Shape
+
+This already exists and is the base model:
 
 ```cpp
-struct FunctionTemplateEnv {
-  const Node* primary_def = nullptr;
-  const std::vector<const Node*>* specialization_patterns = nullptr;
+enum class PendingTemplateTypeKind {
+  DeclarationType,
+  OwnerStruct,
+  MemberTypedef,
+  BaseType,
+  CastTarget,
 };
 
-struct SelectedFunctionTemplatePattern {
-  const Node* primary_def = nullptr;
-  const Node* selected_pattern = nullptr;
+struct PendingTemplateTypeWorkItem {
+  PendingTemplateTypeKind kind;
+  TypeSpec pending_type;
+  const Node* owner_primary_def;
   TypeBindings type_bindings;
   NttpBindings nttp_bindings;
-  SpecializationKey spec_key;
-};
-
-struct FunctionTemplateInstanceKey {
-  const Node* primary_def = nullptr;
-  SpecializationKey spec_key;
+  SourceSpan span;
+  std::string context_name;
+  std::string dedup_key;
 };
 ```
 
-Do not over-design this.
-Copy the template-struct identity pattern as closely as possible.
-
-
-## Registry Changes Required
-
-Update `InstantiationRegistry` in
-[compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp).
-
-### 1. Add owner-based specialization storage
-
-Replace the effective meaning of:
-
-- `mangled specialization string -> specialization node`
-
-with:
-
-- `primary function template node -> list of specialization pattern nodes`
-
-Suggested storage:
-
-```cpp
-std::unordered_map<const Node*, std::vector<const Node*>> function_specializations_;
-```
-
-You may keep `specs_` temporarily only as a compatibility fallback.
-Do not use it as the preferred lookup anymore.
-
-
-### 2. Add structured instance keys
-
-Today dedup is effectively:
-
-- `fn_name + "::" + mangled_name`
-
-Change the semantic dedup key to:
-
-- `primary_def + spec_key`
-
-You can still keep `mangled_name` inside `TemplateSeedWorkItem` and
-`TemplateInstance`, because codegen and HIR names still need it.
-
-But semantic dedup must no longer depend only on the string.
-
-Suggested storage:
-
-```cpp
-std::unordered_set<FunctionTemplateInstanceKey, ...> instance_keys_;
-std::unordered_set<FunctionTemplateInstanceKey, ...> seed_keys_;
-```
-
-If using `unordered_set` for a custom key is annoying, use a stable string
-wrapper built from:
-
-- primary node address
-- `SpecializationKey`
-
-That is acceptable as a temporary implementation detail.
-The important part is that the semantic identity starts from `primary_def`,
-not from `mangled_name`.
-
-
-### 3. Add owner-based specialization selection helpers
-
-Add helper APIs like:
-
-```cpp
-FunctionTemplateEnv build_function_template_env(const Node* primary_def) const;
-
-SelectedFunctionTemplatePattern select_function_specialization_pattern(
-    const Node* primary_def,
-    const TypeBindings& bindings,
-    const NttpBindings& nttp_bindings) const;
-```
-
-These helpers should:
-
-1. start from the primary template definition
-2. inspect registered explicit specializations under that primary
-3. compare specialization args against concrete bindings
-4. return the selected pattern, or the primary if no specialization matches
-
-
-## Selection Logic To Reuse
-
-Do not invent function-specific matching rules if you can avoid it.
-
-Use the existing ingredients already in the codebase:
-
-- `SpecializationKey`
-- `TypeBindings`
-- `NttpBindings`
-- explicit specialization AST data on `Node`
-  - `template_arg_types`
-  - `template_arg_values`
-  - `template_arg_is_value`
-
-You are allowed to keep `mangle_specialization(...)` only as a debug/fallback
-helper during migration.
-
-But the new main path should compare semantic bindings, not reproduced mangled
-strings.
-
-
-## AST To HIR Changes Required
-
-Update
-[ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp).
-
-### 1. Registration pass
-
-Current code:
-
-- collects template defs with `ct_state_->register_template_def(...)`
-- collects explicit specializations by computing a mangled name
-- registers those specializations with `registry_.register_specialization(mangled, item)`
-
-Change it to:
-
-- find the primary function template definition
-- register the specialization under that primary definition
-- do not make mangled-string lookup the only source of truth
-
-
-### 2. Lowering of discovered instances
-
-Current code:
-
-```cpp
-const Node* spec_node = registry_.find_specialization(inst.mangled_name);
-if (spec_node) {
-  lower_function(spec_node, &inst.mangled_name);
-} else {
-  lower_function(item, &inst.mangled_name, ...);
-}
-```
-
-Replace it with:
-
-1. derive the selected pattern from `primary_def + bindings + nttp_bindings`
-2. if selected pattern is an explicit specialization, lower that node
-3. otherwise lower the primary template body with bindings
-
-The lowering decision must not start from `inst.mangled_name`.
-
-
-### 3. Deferred template instantiation callback
-
-Current code in `instantiate_deferred_template(...)` also does:
-
-- `registry_.find_specialization(mangled)`
-
-Change it the same way:
-
-1. find `fn_def`
-2. run structured selection from `fn_def + bindings + nttp_bindings`
-3. lower the selected pattern
-
-
-## Concrete Removal Checklist
-
-This is the minimum checklist for the agent.
-
-In [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp):
-
-- add `FunctionTemplateEnv`
-- add `SelectedFunctionTemplatePattern`
-- add `FunctionTemplateInstanceKey`
-- add owner-based specialization registry
-- add owner-based specialization lookup/select helper
-- stop treating `specs_` as the primary specialization registry
-- stop treating `fn_name + "::" + mangled` as the semantic instance key
-
-In [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp):
-
-- stop registering explicit specializations only by mangled string
-- stop selecting function specializations by `inst.mangled_name`
-- stop selecting deferred function specializations by `mangled`
-- continue producing mangled names only as derived output for lowered HIR
+Do not replace this model wholesale unless a very small extension is necessary.
+
+
+## What To Do First
+
+Before editing code:
+
+1. open
+   [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
+   at `seed_pending_template_type(...)`
+2. open
+   [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
+   at `instantiate_deferred_template_type(...)`
+3. open
+   [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
+   at `resolve_pending_tpl_struct(...)`
+4. open
+   [compile_time_engine.cpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.cpp)
+   at `PendingTemplateTypeStep::run()`
+5. make a list of which use sites already call `seed_pending_template_type(...)`
+   and which still call eager resolution directly
 
 
 ## Implementation Order
 
 Do the work in this order.
-Do not jump around.
-
-### Step 1. Add structured helper types
-
-File:
-- [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
-
-Add:
-- `FunctionTemplateEnv`
-- `SelectedFunctionTemplatePattern`
-- `FunctionTemplateInstanceKey`
+Do not skip ahead.
 
 
-### Step 2. Add owner-based specialization registry
+## Step 1. Expand Use-Site Seeding
 
-File:
-- [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+Goal:
 
-Add:
-- register specializations by `primary_def`
-- query specialization list by `primary_def`
+- when lowering needs a concrete type and sees unresolved template structure,
+  it should enqueue pending work
+
+Do this:
+
+1. search for `resolve_pending_tpl_struct_if_needed(` in
+   [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
+2. for each call site, classify it as one of:
+   - declaration type
+   - cast target
+   - owner struct
+   - member typedef
+   - base type
+3. if the call site currently tries eager resolution without first seeding
+   work, add `seed_pending_template_type(...)`
+4. keep the eager attempt only as a compatibility fast path after seeding
+
+Target areas to check first:
+
+- local declaration lowering
+- parameter / return type lowering
+- struct field lowering
+- cast lowering
+- base realization
+- member typedef follow-up paths
+
+Completion check:
+
+- important dependent type use sites seed work before relying on immediate
+  success
+
+Do not do in this step:
+
+- large engine refactors
+- parser edits
+- deep helper splitting
 
 
-### Step 3. Add structured specialization selection helper
+## Step 2. Make Blocked Paths Spawn Explicit Owner Work
 
-Files:
-- [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
-- [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) if helper bodies fit better there
+Goal:
 
-Implement:
-- select specialization from `primary_def + bindings + nttp_bindings`
+- when a non-owner work item depends on a templated owner, it should enqueue
+  owner work and return `blocked`
 
-Reference design:
-- the template-struct owner-first selection path introduced by
-  [structured_template_identity_plan.md](/workspaces/c4c/ideas/structured_template_identity_plan.md)
+Primary file:
 
-
-### Step 4. Switch lowering over to structured selection
-
-File:
 - [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
 
-Replace both:
-- initial lowering path for discovered instances
-- deferred instantiation callback path
+Main function:
+
+- `instantiate_deferred_template_type(...)`
+
+Do this:
+
+1. inspect the `MemberTypedef`, `BaseType`, `DeclarationType`, and
+   `CastTarget` cases
+2. if the item depends on `ts.tpl_struct_origin`, ensure the callback:
+   - records `OwnerStruct` work
+   - returns `blocked` if owner resolution is still pending
+3. keep `terminal` only for truly invalid end states, for example:
+   - member typedef lookup failed after owner is concrete
+   - owner cannot be found at all
+
+Completion check:
+
+- blocked owner-dependent work no longer falls through into fake hard failure
 
 
-### Step 5. Switch semantic dedup to structured key
+## Step 3. Split `resolve_pending_tpl_struct(...)` Into Small Helpers
 
-File:
-- [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
+Goal:
 
-Change:
-- seed dedup
-- realized-instance dedup
+- shrink the monolith so the callback can compose explicit sub-steps
 
-Keep:
-- `mangled_name` as stored output metadata
+Primary file:
 
-
-### Step 6. Remove old path from the main control flow
-
-Files:
-- [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
 - [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
 
-Allowed:
-- keep old mangled lookup only as temporary fallback
+Current monolith:
 
-Not allowed:
-- old mangled lookup still being the first or only specialization-selection path
+- `resolve_pending_tpl_struct(...)`
 
+Extract helpers in this order:
 
-## How To Match Explicit Specializations
+1. substitute deferred template arg refs
+2. materialize explicit/default template args
+3. evaluate deferred NTTP defaults
+4. select primary/specialization pattern
+5. build concrete instantiation/mangled name
+6. instantiate concrete struct/class metadata
 
-Use this simple rule:
+Rules:
 
-1. start from the primary template function
-2. iterate its explicit specialization nodes
-3. for each specialization, compare its declared template args to the concrete
-   bindings for this instantiation
-4. if all declared args match, choose that specialization
-5. if none match, choose the primary template body
+- each helper should do one local action
+- helpers should not become mini control loops
+- helpers should return enough information for the caller to decide
+  `resolved` / `blocked` / `terminal`
 
-Do not add partial ordering.
-Do not add SFINAE.
-Do not add a new ranking system.
+Completion check:
 
-This plan only needs the same level of matching the codebase already supports.
-
-
-## Design Reference To Copy
-
-When unsure, copy the style of the template-struct refactor:
-
-- owner-first registration
-- structured selection result
-- structured instance key for dedup
-- mangled name retained as derived output
-
-Primary design reference:
-- [structured_template_identity_plan.md](/workspaces/c4c/ideas/structured_template_identity_plan.md)
-
-Primary implementation references:
-- [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
-- [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
+- `resolve_pending_tpl_struct(...)` becomes a thin coordinator or disappears
 
 
-## Acceptance Criteria
+## Step 4. Move Decision-Making Out Of Recursive Helpers
 
-This plan is complete when all of the following are true:
+Goal:
 
-1. explicit function-template specialization selection does not primarily use
-   `mangled_name`
-2. owner-based specialization registration exists
-3. lowering selects specialization bodies from `primary_def + bindings +
-   nttp_bindings`
-4. semantic dedup for template function instances is based on
-   `primary_def + spec_key`
-5. mangled names remain only derived/codegen/debug data
+- helpers may compute
+- the engine callback decides what to enqueue next
+
+Do this:
+
+1. whenever a helper currently “tries more things” recursively after a miss,
+   stop and turn that into:
+   - enqueue prerequisite work
+   - return `blocked`
+2. keep helper-local recursion only for clearly local expression parsing, not
+   for compile-time scheduling
+
+Common smell that means “stop and refactor”:
+
+- one helper both discovers missing prerequisites and immediately retries the
+  whole resolution chain
+
+Completion check:
+
+- retry behavior is visible in the engine worklist model, not hidden in helper
+  recursion
 
 
-## Testcases To Run
+## Step 5. Tighten Engine Progress Semantics Only If Needed
 
-At minimum, run these targeted tests after the change:
+Goal:
 
-Core specialization / identity:
+- only touch the engine loop if the current blocked/spawned-new-work accounting
+  is insufficient
+
+Primary file:
+
+- [compile_time_engine.cpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.cpp)
+
+Current behavior already exists:
+
+- pending items are retried every iteration
+- `resolved`, `blocked`, and `terminal` are already tracked
+- `spawned_new_work` already contributes to progress detection
+
+Only edit this file if you need one of these:
+
+- more precise pending diagnostics
+- more accurate progress accounting
+- stronger separation between blocked and terminal reporting
+
+Do not rewrite the whole engine loop just because it looks old.
+
+
+## What Not To Change In The First Diff
+
+Do not do these in the first serious patch:
+
+- replace all string transport fields with structured identity
+- redesign parser preservation of deferred NTTP expressions
+- remove all eager resolution code
+- invent partial ordering or richer template semantics
+- change unrelated template-function identity code
+
+Those are separate tracks.
+
+
+## How To Classify Outcomes While Coding
+
+Use this table:
+
+1. Owner struct not materialized yet
+- enqueue owner work
+- return `blocked`
+
+2. Owner materialized, member typedef exists
+- return `resolved`
+
+3. Owner materialized, member typedef missing
+- return `terminal`
+
+4. Deferred NTTP default still depends on unavailable concrete bindings
+- enqueue narrower prerequisite work if possible
+- otherwise return `blocked`
+
+5. Specialization/body selection can be made now
+- continue locally
+
+6. No template struct primary exists for the claimed owner
+- return `terminal`
+
+
+## Minimum Test Strategy
+
+After each meaningful diff, run at least the nearby template tests.
+
+Start with:
+
+- `cpp_positive_sema_template_nttp_default_runtime_cpp`
+- `cpp_positive_sema_template_alias_deferred_nttp_expr_runtime_cpp`
+- `cpp_positive_sema_eastl_slice6_template_defaults_and_refqual_cpp`
+
+Then run the broader targeted set if your diff changes engine control flow:
 
 - `cpp_positive_sema_specialization_identity_cpp`
 - `cpp_hir_specialization_key`
 - `cpp_hir_template_call_info_dump`
-
-Template function defaults / deduction / NTTP:
-
 - `cpp_positive_sema_template_arg_deduction_cpp`
 - `cpp_positive_sema_template_default_args_cpp`
 - `cpp_positive_sema_template_nttp_cpp`
@@ -478,9 +420,6 @@ Template function defaults / deduction / NTTP:
 - `cpp_positive_sema_template_integral_nttp_types_cpp`
 - `cpp_positive_sema_template_nttp_forwarding_depth_cpp`
 - `cpp_positive_sema_template_recursive_nttp_cpp`
-
-Consteval + template-function interaction:
-
 - `cpp_positive_sema_consteval_template_cpp`
 - `cpp_positive_sema_consteval_nested_template_cpp`
 - `cpp_positive_sema_consteval_template_sizeof_cpp`
@@ -488,32 +427,47 @@ Consteval + template-function interaction:
 - `cpp_hir_consteval_template_call_info_dump`
 - `cpp_hir_consteval_template_reduction_verified`
 
-Regression guards around nearby template behavior:
 
-- `cpp_positive_sema_template_alias_deferred_nttp_expr_runtime_cpp`
-- `cpp_positive_sema_eastl_slice6_template_defaults_and_refqual_cpp`
+## Good First Diff
+
+A good first diff for this plan does exactly this:
+
+1. adds missing `seed_pending_template_type(...)` calls at real use sites
+2. keeps eager resolution as compatibility behavior
+3. makes blocked owner-dependent paths return `blocked` instead of guessing
+4. does not redesign identity or parser internals
 
 
-## Known Out Of Scope Failure
+## Good Second Diff
 
-This plan does not need to fix:
+A good second diff does exactly this:
 
-- `cpp_positive_sema_template_nttp_default_runtime_cpp`
+1. splits `resolve_pending_tpl_struct(...)` into small helpers
+2. moves dependency discovery into explicit callback logic
+3. reduces recursive retry behavior
 
-That case belongs to
-[template_lazy_instantiation_plan.md](/workspaces/c4c/ideas/template_lazy_instantiation_plan.md),
-because it is about who evaluates deferred NTTP defaults and when, not about
-function-template identity.
+
+## Abort Conditions
+
+Stop and reassess if you find either of these:
+
+1. a change requires parser AST shape changes to make progress
+2. a change requires structured template identity for correctness rather than
+   just for cleanup
+
+If that happens:
+
+- make the smallest safe compatibility patch
+- update this plan
+- do not silently redesign the system
 
 
 ## Short Version
 
-If you are implementing this plan, do exactly this:
+If you only remember one sequence, remember this:
 
-1. in [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp),
-   add owner-based function specialization registry and structured instance keys
-2. in [ast_to_hir.cpp](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp),
-   stop selecting explicit specializations by `inst.mangled_name`
-3. select from `primary_def + bindings + nttp_bindings` instead
-4. keep `mangled_name` only as derived output for the lowered HIR function name
-5. run the listed template-function tests and make sure they still pass
+1. seed pending type work at use sites
+2. let the engine callback own `resolved` / `blocked` / `terminal`
+3. spawn owner/member prerequisite work instead of recursing blindly
+4. split `resolve_pending_tpl_struct(...)` into small local helpers
+5. keep parser and identity refactors out of scope unless truly required
