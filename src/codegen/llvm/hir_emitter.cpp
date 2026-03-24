@@ -3458,8 +3458,8 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         else op = is_signed ? "smul" : "umul";
         const std::string intrinsic = "@llvm." + op + ".with.overflow." + res_ty;
         const std::string pair = fresh_tmp(ctx);
-        emit_instr(ctx, pair + " = call { " + res_ty + ", i1 } " + intrinsic +
-                        "(" + res_ty + " " + a + ", " + res_ty + " " + b + ")");
+        emit_lir_op(ctx, lir::LirCallOp{pair, "{ " + res_ty + ", i1 }", intrinsic, "",
+                        res_ty + " " + a + ", " + res_ty + " " + b});
         const std::string ovf_agg_ty = "{ " + res_ty + ", i1 }";
         const std::string val = fresh_tmp(ctx);
         emit_lir_op(ctx, lir::LirExtractValueOp{val, ovf_agg_ty, pair, 0});
@@ -3478,7 +3478,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
           const std::string aty = llvm_ty(arg_ts);
           const std::string intrinsic = "@llvm.bswap." + aty;
           const std::string tmp = fresh_tmp(ctx);
-          emit_instr(ctx, tmp + " = call " + aty + " " + intrinsic + "(" + aty + " " + arg + ")");
+          emit_lir_op(ctx, lir::LirCallOp{tmp, aty, intrinsic, "", aty + " " + arg});
           return tmp;
         }
       }
@@ -3621,7 +3621,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         const std::string inf_val = fp_literal(at.base, std::numeric_limits<double>::infinity());
         // Check if a == +inf or a == -inf by comparing abs(a) to +inf
         const std::string abs_tmp = fresh_tmp(ctx);
-        emit_instr(ctx, abs_tmp + " = call " + fty + " @llvm.fabs." + fty + "(" + fty + " " + a + ")");
+        emit_lir_op(ctx, lir::LirCallOp{abs_tmp, fty, "@llvm.fabs." + fty, "", fty + " " + a});
         const std::string cmp = fresh_tmp(ctx);
         emit_instr(ctx, cmp + " = fcmp oeq " + fty + " " + abs_tmp + ", " + inf_val);
         const std::string tmp = fresh_tmp(ctx);
@@ -3639,7 +3639,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         const std::string fty = llvm_ty(at);
         const std::string inf_val = fp_literal(at.base, std::numeric_limits<double>::infinity());
         const std::string abs_tmp = fresh_tmp(ctx);
-        emit_instr(ctx, abs_tmp + " = call " + fty + " @llvm.fabs." + fty + "(" + fty + " " + a + ")");
+        emit_lir_op(ctx, lir::LirCallOp{abs_tmp, fty, "@llvm.fabs." + fty, "", fty + " " + a});
         const std::string cmp = fresh_tmp(ctx);
         emit_instr(ctx, cmp + " = fcmp olt " + fty + " " + abs_tmp + ", " + inf_val);
         const std::string tmp = fresh_tmp(ctx);
@@ -3662,7 +3662,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
           };
           to_float(a, at); to_float(b, bt);
           const std::string tmp = fresh_tmp(ctx);
-          emit_instr(ctx, tmp + " = call float @llvm.copysign.f32(float " + a + ", float " + b + ")");
+          emit_lir_op(ctx, lir::LirCallOp{tmp, "float", "@llvm.copysign.f32", "", "float " + a + ", float " + b});
           return tmp;
         } else if (is_long_double) {
           auto to_fp128 = [&](std::string& v, TypeSpec& ts) {
@@ -3678,7 +3678,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
           };
           to_fp128(a, at); to_fp128(b, bt);
           const std::string tmp = fresh_tmp(ctx);
-          emit_instr(ctx, tmp + " = call fp128 @llvm.copysign.f128(fp128 " + a + ", fp128 " + b + ")");
+          emit_lir_op(ctx, lir::LirCallOp{tmp, "fp128", "@llvm.copysign.f128", "", "fp128 " + a + ", fp128 " + b});
           return tmp;
         } else {
           // Ensure both are double
@@ -3690,7 +3690,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
           };
           to_double(a, at); to_double(b, bt);
           const std::string tmp = fresh_tmp(ctx);
-          emit_instr(ctx, tmp + " = call double @llvm.copysign.f64(double " + a + ", double " + b + ")");
+          emit_lir_op(ctx, lir::LirCallOp{tmp, "double", "@llvm.copysign.f64", "", "double " + a + ", double " + b});
           return tmp;
         }
       }
@@ -3729,7 +3729,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         const std::string fty = llvm_ty(arg_ts);
         const std::string intrinsic = "@llvm.fabs." + fty;
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = call " + fty + " " + intrinsic + "(" + fty + " " + arg + ")");
+        emit_lir_op(ctx, lir::LirCallOp{tmp, fty, intrinsic, "", fty + " " + arg});
         return tmp;
       }
       if (builtin_is_ffs(builtin_id) && call.args.size() == 1) {
@@ -3740,8 +3740,8 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
         arg = coerce(ctx, arg, arg_ts, target_ts);
         const std::string cttz = fresh_tmp(ctx);
-        emit_instr(ctx, cttz + " = call " + ity + " @llvm.cttz." + ity +
-                             "(" + ity + " " + arg + ", i1 false)");
+        emit_lir_op(ctx, lir::LirCallOp{cttz, ity, "@llvm.cttz." + ity, "",
+                             ity + " " + arg + ", i1 false"});
         const std::string plus1 = fresh_tmp(ctx);
         emit_instr(ctx, plus1 + " = add " + ity + " " + cttz + ", 1");
         const std::string is_zero = fresh_tmp(ctx);
@@ -3764,8 +3764,8 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
         arg = coerce(ctx, arg, arg_ts, target_ts);
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = call " + ity + " @llvm.cttz." + ity +
-                             "(" + ity + " " + arg + ", i1 true)");
+        emit_lir_op(ctx, lir::LirCallOp{tmp, ity, "@llvm.cttz." + ity, "",
+                             ity + " " + arg + ", i1 true"});
         if (is_ll) {
           const std::string trunc = fresh_tmp(ctx);
           emit_lir_op(ctx, lir::LirCastOp{trunc, lir::LirCastKind::Trunc, "i64", tmp, "i32"});
@@ -3781,8 +3781,8 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
         arg = coerce(ctx, arg, arg_ts, target_ts);
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = call " + ity + " @llvm.ctlz." + ity +
-                             "(" + ity + " " + arg + ", i1 true)");
+        emit_lir_op(ctx, lir::LirCallOp{tmp, ity, "@llvm.ctlz." + ity, "",
+                             ity + " " + arg + ", i1 true"});
         if (is_ll) {
           const std::string trunc = fresh_tmp(ctx);
           emit_lir_op(ctx, lir::LirCastOp{trunc, lir::LirCastKind::Trunc, "i64", tmp, "i32"});
@@ -3798,8 +3798,8 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
         arg = coerce(ctx, arg, arg_ts, target_ts);
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = call " + ity + " @llvm.ctpop." + ity +
-                             "(" + ity + " " + arg + ")");
+        emit_lir_op(ctx, lir::LirCallOp{tmp, ity, "@llvm.ctpop." + ity, "",
+                             ity + " " + arg});
         if (is_ll) {
           const std::string trunc = fresh_tmp(ctx);
           emit_lir_op(ctx, lir::LirCastOp{trunc, lir::LirCastKind::Trunc, "i64", tmp, "i32"});
@@ -3815,8 +3815,8 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
         arg = coerce(ctx, arg, arg_ts, target_ts);
         const std::string pop = fresh_tmp(ctx);
-        emit_instr(ctx, pop + " = call " + ity + " @llvm.ctpop." + ity +
-                            "(" + ity + " " + arg + ")");
+        emit_lir_op(ctx, lir::LirCallOp{pop, ity, "@llvm.ctpop." + ity, "",
+                            ity + " " + arg});
         const std::string tmp = fresh_tmp(ctx);
         emit_instr(ctx, tmp + " = and " + ity + " " + pop + ", 1");
         if (is_ll) {
@@ -3840,8 +3840,8 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         const std::string xored = fresh_tmp(ctx);
         emit_instr(ctx, xored + " = xor " + ity + " " + arg + ", " + shift);
         const std::string clz = fresh_tmp(ctx);
-        emit_instr(ctx, clz + " = call " + ity + " @llvm.ctlz." + ity +
-                             "(" + ity + " " + xored + ", i1 false)");
+        emit_lir_op(ctx, lir::LirCallOp{clz, ity, "@llvm.ctlz." + ity, "",
+                             ity + " " + xored + ", i1 false"});
         const std::string sub1 = fresh_tmp(ctx);
         emit_instr(ctx, sub1 + " = sub " + ity + " " + clz + ", 1");
         if (is_ll) {
@@ -4055,15 +4055,11 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
     }
 
     if (ret_ty == "void") {
-      emit_instr(ctx, "call void " +
-                          (callee_type_suffix.empty() ? "" : callee_type_suffix + " ") +
-                          callee_val + "(" + args_str + ")");
+      emit_lir_op(ctx, lir::LirCallOp{"", "void", callee_val, callee_type_suffix, args_str});
       return "";
     }
     const std::string tmp = fresh_tmp(ctx);
-    emit_instr(ctx, tmp + " = call " + ret_ty + " " +
-                        (callee_type_suffix.empty() ? "" : callee_type_suffix + " ") +
-                        callee_val + "(" + args_str + ")");
+    emit_lir_op(ctx, lir::LirCallOp{tmp, ret_ty, callee_val, callee_type_suffix, args_str});
     return tmp;
   }
 

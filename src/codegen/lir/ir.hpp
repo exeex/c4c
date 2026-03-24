@@ -280,6 +280,16 @@ struct LirGepOp {
   std::vector<std::string> indices;  // each entry is "type value" (e.g. "i32 0", "i64 5")
 };
 
+// Typed call instruction (replaces LirRawLine for call/intrinsic emissions).
+// Covers both direct calls, indirect calls, and intrinsic calls.
+struct LirCallOp {
+  std::string result;              // SSA name for result (empty for void calls)
+  std::string return_type;         // LLVM return type string (e.g. "i32", "void", "{ i32, i1 }")
+  std::string callee;              // callee value (e.g. "@foo", "%ptr", "@llvm.fabs.f64")
+  std::string callee_type_suffix;  // optional fn ptr type suffix (empty for direct calls)
+  std::string args_str;            // pre-formatted argument string (e.g. "i32 %t1, i32 %t2")
+};
+
 // Catch-all for instructions not yet migrated to typed LIR ops.
 // Contains the raw LLVM IR line produced by the legacy emitter.
 // This allows incremental migration: Stage 1+ will shrink usage of this type.
@@ -318,6 +328,7 @@ using LirInst = std::variant<
     LirStoreOp,
     LirCastOp,
     LirGepOp,
+    LirCallOp,
     LirRawLine
 >;
 
