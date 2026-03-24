@@ -171,12 +171,8 @@ lir::LirModule HirEmitter::lower_to_lir(){
     return lir::lower(mod_);
   }
 
-void HirEmitter::adopt_module(lir::LirModule module) {
-    module_ = std::move(module);
-  }
-
-lir::LirModule HirEmitter::release_module() {
-    return std::move(module_);
+void HirEmitter::set_module(lir::LirModule& module) {
+    module_ = &module;
   }
 
 void HirEmitter::lower_globals(const std::vector<size_t>& global_indices) {
@@ -298,7 +294,7 @@ std::string HirEmitter::intern_str(const std::string& raw_bytes){
     sc.pool_name = name;
     sc.raw_bytes = esc;
     sc.byte_length = static_cast<int>(len);
-    module_.string_pool.push_back(std::move(sc));
+    module_->string_pool.push_back(std::move(sc));
     return name;
   }
 
@@ -1094,7 +1090,7 @@ void HirEmitter::emit_global(const GlobalVar& gv){
       lg.is_internal = gv.linkage.is_static;
       lg.is_const = gv.is_const;
       lg.raw_line = line;
-      module_.globals.push_back(std::move(lg));
+      module_->globals.push_back(std::move(lg));
     };
     const int global_align_value = object_align_bytes(mod_, ts);
     const std::string global_align =
@@ -2240,7 +2236,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const StringLiteral& sl, c
         sc.pool_name = gname;
         sc.raw_bytes = "[" + std::to_string(vals.size()) + " x i32] " + init;
         sc.byte_length = -1;  // sentinel: raw_bytes is pre-formatted type+init
-        module_.string_pool.push_back(std::move(sc));
+        module_->string_pool.push_back(std::move(sc));
       }
       const std::string tmp = fresh_tmp(ctx);
       emit_instr(ctx, tmp + " = getelementptr [" + std::to_string(vals.size()) +
@@ -5081,7 +5077,7 @@ void HirEmitter::emit_function(const Function& fn, const std::string& pre_sig,
       lir_fn.is_internal = fn.linkage.is_static;
       lir_fn.is_declaration = true;
       lir_fn.signature_text = sig_text;
-      module_.functions.push_back(std::move(lir_fn));
+      module_->functions.push_back(std::move(lir_fn));
       return;
     }
 
@@ -5150,11 +5146,8 @@ void HirEmitter::emit_function(const Function& fn, const std::string& pre_sig,
     lir_fn.signature_text = sig_text;
     lir_fn.alloca_insts = std::move(ctx.alloca_insts);
     lir_fn.blocks = std::move(ctx.lir_blocks);
-    module_.functions.push_back(std::move(lir_fn));
+    module_->functions.push_back(std::move(lir_fn));
   }
 
-void HirEmitter::push_lir_function(lir::LirFunction fn) {
-    module_.functions.push_back(std::move(fn));
-  }
 
 }  // namespace tinyc2ll::codegen::llvm_backend

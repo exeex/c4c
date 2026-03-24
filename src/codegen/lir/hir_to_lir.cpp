@@ -532,9 +532,10 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
   auto global_indices = dedup_globals(hir_mod);
   auto fn_indices = dedup_functions(hir_mod);
 
-  // Per-item lowering: hir_to_lir owns iteration; HirEmitter owns lowering.
+  // Per-item lowering: hir_to_lir owns iteration and the module;
+  // HirEmitter owns statement/expression lowering and writes into module.
   c4c::codegen::llvm_backend::HirEmitter emitter(hir_mod);
-  emitter.adopt_module(std::move(module));
+  emitter.set_module(module);
 
   bool any_vla = false;
   std::vector<LirSpecEntry> spec_entries;
@@ -583,11 +584,10 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
       lir_fn.blocks = std::move(ctx.lir_blocks);
 
       inject_fallthrough_returns(lir_fn, fn);
-      emitter.push_lir_function(std::move(lir_fn));
+      module.functions.push_back(std::move(lir_fn));
     }
   }
 
-  module = emitter.release_module();
   if (any_vla) module.need_stacksave = true;
 
   // Add spec entries collected by hir_to_lir.

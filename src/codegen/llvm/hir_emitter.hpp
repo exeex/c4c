@@ -64,11 +64,10 @@ class HirEmitter {
   /// or any future backend.
   lir::LirModule lower_to_lir();
 
-  /// Adopt/release the working LirModule.  The caller (hir_to_lir::lower)
-  /// builds the module shell, then hands it to the emitter for per-item
-  /// lowering, and finally takes it back for finalization.
-  void adopt_module(lir::LirModule module);
-  lir::LirModule release_module();
+  /// Set the working LirModule by reference.  The caller (hir_to_lir::lower)
+  /// owns the module throughout; the emitter writes into it during per-item
+  /// lowering.
+  void set_module(lir::LirModule& module);
 
   /// Lower all globals whose indices are given.
   void lower_globals(const std::vector<size_t>& global_indices);
@@ -92,9 +91,6 @@ class HirEmitter {
   /// Map a HIR BlockId to its LLVM IR label string.
   static std::string block_lbl(BlockId id);
 
-  /// Push a pre-built LirFunction into the working module.
-  void push_lir_function(lir::LirFunction fn);
-
   // ── Post-lowering accessors for module-level finalization ──────────────
   // These expose accumulated state so that hir_to_lir::lower() can own
   // the decision of what goes into the final LirModule.
@@ -114,7 +110,7 @@ class HirEmitter {
 
  private:
   const Module& mod_;
-  lir::LirModule module_;  // Structured intermediate representation
+  lir::LirModule* module_ = nullptr;  // Non-owning ref to caller's LirModule
   std::unordered_map<std::string, std::string> extern_call_decls_;  // name -> ret llvm type
   std::unordered_map<std::string, std::string> str_pool_;
   int str_idx_ = 0;
