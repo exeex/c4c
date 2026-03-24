@@ -220,6 +220,22 @@ struct LirIndirectBrOp {
   std::vector<std::string> targets;   // label names (e.g. "%ulbl_foo")
 };
 
+struct LirExtractValueOp {
+  std::string result;     // SSA name for result
+  std::string agg_type;   // aggregate type string (e.g. "{ double, double }")
+  std::string agg;        // SSA name of aggregate value
+  int index = 0;          // field index
+};
+
+struct LirInsertValueOp {
+  std::string result;     // SSA name for result
+  std::string agg_type;   // aggregate type string
+  std::string agg;        // SSA name of aggregate value (or "undef")
+  std::string elem_type;  // element type string
+  std::string elem;       // SSA name of element to insert
+  int index = 0;          // field index
+};
+
 // Catch-all for instructions not yet migrated to typed LIR ops.
 // Contains the raw LLVM IR line produced by the legacy emitter.
 // This allows incremental migration: Stage 1+ will shrink usage of this type.
@@ -252,6 +268,8 @@ using LirInst = std::variant<
     LirAbsOp,
     LirHoistedStore,
     LirIndirectBrOp,
+    LirExtractValueOp,
+    LirInsertValueOp,
     LirRawLine
 >;
 

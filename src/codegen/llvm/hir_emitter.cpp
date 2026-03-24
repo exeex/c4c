@@ -1199,17 +1199,15 @@ std::string HirEmitter::coerce(FnCtx& ctx, const std::string& val,
       const TypeSpec from_elem_ts = complex_component_ts(from_ts.base);
       const TypeSpec to_elem_ts = complex_component_ts(to_ts.base);
       const std::string real0 = fresh_tmp(ctx);
-      emit_instr(ctx, real0 + " = extractvalue " + ft + " " + val + ", 0");
+      emit_lir_op(ctx, lir::LirExtractValueOp{real0, ft, val, 0});
       const std::string imag0 = fresh_tmp(ctx);
-      emit_instr(ctx, imag0 + " = extractvalue " + ft + " " + val + ", 1");
+      emit_lir_op(ctx, lir::LirExtractValueOp{imag0, ft, val, 1});
       const std::string real1 = coerce(ctx, real0, from_elem_ts, to_elem_ts);
       const std::string imag1 = coerce(ctx, imag0, from_elem_ts, to_elem_ts);
       const std::string with_real = fresh_tmp(ctx);
-      emit_instr(ctx, with_real + " = insertvalue " + tt + " undef, " + llvm_ty(to_elem_ts) +
-                                 " " + real1 + ", 0");
+      emit_lir_op(ctx, lir::LirInsertValueOp{with_real, tt, "undef", llvm_ty(to_elem_ts), real1, 0});
       const std::string out = fresh_tmp(ctx);
-      emit_instr(ctx, out + " = insertvalue " + tt + " " + with_real + ", " +
-                            llvm_ty(to_elem_ts) + " " + imag1 + ", 1");
+      emit_lir_op(ctx, lir::LirInsertValueOp{out, tt, with_real, llvm_ty(to_elem_ts), imag1, 1});
       return out;
     }
 
@@ -1221,11 +1219,9 @@ std::string HirEmitter::coerce(FnCtx& ctx, const std::string& val,
       const std::string zero =
           is_float_base(to_elem_ts.base) ? fp_literal(to_elem_ts.base, 0.0) : "0";
       const std::string with_real = fresh_tmp(ctx);
-      emit_instr(ctx, with_real + " = insertvalue " + tt + " undef, " + elem_ty +
-                                 " " + real + ", 0");
+      emit_lir_op(ctx, lir::LirInsertValueOp{with_real, tt, "undef", elem_ty, real, 0});
       const std::string out = fresh_tmp(ctx);
-      emit_instr(ctx, out + " = insertvalue " + tt + " " + with_real + ", " +
-                            elem_ty + " " + zero + ", 1");
+      emit_lir_op(ctx, lir::LirInsertValueOp{out, tt, with_real, elem_ty, zero, 1});
       return out;
     }
 
@@ -2144,11 +2140,9 @@ std::string HirEmitter::emit_complex_binary_arith(FnCtx& ctx,
       const std::string real_v = coerce(ctx, scalar, scalar_ts, elem_ts);
       const std::string imag_v = emit_const_int_like(0, elem_ts);
       const std::string with_real = fresh_tmp(ctx);
-      emit_instr(ctx, with_real + " = insertvalue " + llvm_ty(complex_ts) + " undef, " +
-                             llvm_ty(elem_ts) + " " + real_v + ", 0");
+      emit_lir_op(ctx, lir::LirInsertValueOp{with_real, llvm_ty(complex_ts), "undef", llvm_ty(elem_ts), real_v, 0});
       const std::string out = fresh_tmp(ctx);
-      emit_instr(ctx, out + " = insertvalue " + llvm_ty(complex_ts) + " " + with_real + ", " +
-                          llvm_ty(elem_ts) + " " + imag_v + ", 1");
+      emit_lir_op(ctx, lir::LirInsertValueOp{out, llvm_ty(complex_ts), with_real, llvm_ty(elem_ts), imag_v, 1});
       return out;
     };
 
@@ -2171,14 +2165,15 @@ std::string HirEmitter::emit_complex_binary_arith(FnCtx& ctx,
       complex_rts = complex_ts;
     }
 
+    const std::string cplx_ty = llvm_ty(complex_ts);
     const std::string lreal = fresh_tmp(ctx);
-    emit_instr(ctx, lreal + " = extractvalue " + llvm_ty(complex_ts) + " " + complex_lv + ", 0");
+    emit_lir_op(ctx, lir::LirExtractValueOp{lreal, cplx_ty, complex_lv, 0});
     const std::string limag = fresh_tmp(ctx);
-    emit_instr(ctx, limag + " = extractvalue " + llvm_ty(complex_ts) + " " + complex_lv + ", 1");
+    emit_lir_op(ctx, lir::LirExtractValueOp{limag, cplx_ty, complex_lv, 1});
     const std::string rreal = fresh_tmp(ctx);
-    emit_instr(ctx, rreal + " = extractvalue " + llvm_ty(complex_ts) + " " + complex_rv + ", 0");
+    emit_lir_op(ctx, lir::LirExtractValueOp{rreal, cplx_ty, complex_rv, 0});
     const std::string rimag = fresh_tmp(ctx);
-    emit_instr(ctx, rimag + " = extractvalue " + llvm_ty(complex_ts) + " " + complex_rv + ", 1");
+    emit_lir_op(ctx, lir::LirExtractValueOp{rimag, cplx_ty, complex_rv, 1});
 
     const std::string elem_ty = llvm_ty(elem_ts);
     const char* add_instr = is_float_base(elem_ts.base) ? "fadd" : "add";
@@ -2236,12 +2231,10 @@ std::string HirEmitter::emit_complex_binary_arith(FnCtx& ctx,
     }
 
     const std::string with_real = fresh_tmp(ctx);
-    emit_instr(ctx, with_real + " = insertvalue " + llvm_ty(complex_ts) + " undef, " +
-                               elem_ty + " " + out_real + ", 0");
+    emit_lir_op(ctx, lir::LirInsertValueOp{with_real, cplx_ty, "undef", elem_ty, out_real, 0});
     const std::string out = fresh_tmp(ctx);
-    emit_instr(ctx, out + " = insertvalue " + llvm_ty(complex_ts) + " " + with_real + ", " +
-                          elem_ty + " " + out_imag + ", 1");
-    return llvm_ty(complex_ts) == llvm_ty(res_spec) ? out : coerce(ctx, out, complex_ts, res_spec);
+    emit_lir_op(ctx, lir::LirInsertValueOp{out, cplx_ty, with_real, elem_ty, out_imag, 1});
+    return cplx_ty == llvm_ty(res_spec) ? out : coerce(ctx, out, complex_ts, res_spec);
   }
 
 std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const StringLiteral& sl, const Expr& /*e*/){
@@ -2449,21 +2442,20 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const 
         if (is_complex_base(op_ts.base)) {
           const TypeSpec elem_ts = complex_component_ts(op_ts.base);
           const std::string real_v = fresh_tmp(ctx);
-          emit_instr(ctx, real_v + " = extractvalue " + op_ty + " " + val + ", 0");
+          emit_lir_op(ctx, lir::LirExtractValueOp{real_v, op_ty, val, 0});
           const std::string imag_v0 = fresh_tmp(ctx);
-          emit_instr(ctx, imag_v0 + " = extractvalue " + op_ty + " " + val + ", 1");
+          emit_lir_op(ctx, lir::LirExtractValueOp{imag_v0, op_ty, val, 1});
           const std::string imag_v = fresh_tmp(ctx);
           if (is_float_base(elem_ts.base)) {
             emit_instr(ctx, imag_v + " = fneg " + llvm_ty(elem_ts) + " " + imag_v0);
           } else {
             emit_instr(ctx, imag_v + " = sub " + llvm_ty(elem_ts) + " 0, " + imag_v0);
           }
+          const std::string elem_ty_str = llvm_ty(elem_ts);
           const std::string with_real = fresh_tmp(ctx);
-          emit_instr(ctx, with_real + " = insertvalue " + op_ty + " undef, " +
-                                 llvm_ty(elem_ts) + " " + real_v + ", 0");
+          emit_lir_op(ctx, lir::LirInsertValueOp{with_real, op_ty, "undef", elem_ty_str, real_v, 0});
           const std::string out = fresh_tmp(ctx);
-          emit_instr(ctx, out + " = insertvalue " + op_ty + " " + with_real + ", " +
-                                llvm_ty(elem_ts) + " " + imag_v + ", 1");
+          emit_lir_op(ctx, lir::LirInsertValueOp{out, op_ty, with_real, elem_ty_str, imag_v, 1});
           return out;
         }
         const std::string tmp = fresh_tmp(ctx);
@@ -2645,8 +2637,8 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const 
         }
         if (!is_complex_base(op_ts.base)) return "0";
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = extractvalue " + llvm_ty(op_ts) + " " + val + ", " +
-                            std::to_string(u.op == UnaryOp::ImagPart ? 1 : 0));
+        emit_lir_op(ctx, lir::LirExtractValueOp{tmp, llvm_ty(op_ts), val,
+                                              u.op == UnaryOp::ImagPart ? 1 : 0});
         return tmp;
       }
     }
@@ -2720,11 +2712,9 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const
         std::string real_v = coerce(ctx, scalar, scalar_ts, elem_ts);
         const std::string imag_v = emit_const_int_like(0, elem_ts);
         const std::string with_real = fresh_tmp(ctx);
-        emit_instr(ctx, with_real + " = insertvalue " + llvm_ty(complex_ts) + " undef, " +
-                                   llvm_ty(elem_ts) + " " + real_v + ", 0");
+        emit_lir_op(ctx, lir::LirInsertValueOp{with_real, llvm_ty(complex_ts), "undef", llvm_ty(elem_ts), real_v, 0});
         const std::string out = fresh_tmp(ctx);
-        emit_instr(ctx, out + " = insertvalue " + llvm_ty(complex_ts) + " " + with_real + ", " +
-                            llvm_ty(elem_ts) + " " + imag_v + ", 1");
+        emit_lir_op(ctx, lir::LirInsertValueOp{out, llvm_ty(complex_ts), with_real, llvm_ty(elem_ts), imag_v, 1});
         (void)scalar_is_lhs;
         return out;
       };
@@ -2743,13 +2733,13 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const
         cmp_rts = complex_ts;
       }
       const std::string lreal = fresh_tmp(ctx);
-      emit_instr(ctx, lreal + " = extractvalue " + llvm_ty(cmp_lts) + " " + cmp_lv + ", 0");
+      emit_lir_op(ctx, lir::LirExtractValueOp{lreal, llvm_ty(cmp_lts), cmp_lv, 0});
       const std::string limag = fresh_tmp(ctx);
-      emit_instr(ctx, limag + " = extractvalue " + llvm_ty(cmp_lts) + " " + cmp_lv + ", 1");
+      emit_lir_op(ctx, lir::LirExtractValueOp{limag, llvm_ty(cmp_lts), cmp_lv, 1});
       const std::string rreal0 = fresh_tmp(ctx);
-      emit_instr(ctx, rreal0 + " = extractvalue " + llvm_ty(cmp_rts) + " " + cmp_rv + ", 0");
+      emit_lir_op(ctx, lir::LirExtractValueOp{rreal0, llvm_ty(cmp_rts), cmp_rv, 0});
       const std::string rimag0 = fresh_tmp(ctx);
-      emit_instr(ctx, rimag0 + " = extractvalue " + llvm_ty(cmp_rts) + " " + cmp_rv + ", 1");
+      emit_lir_op(ctx, lir::LirExtractValueOp{rimag0, llvm_ty(cmp_rts), cmp_rv, 1});
       const std::string rreal = coerce(ctx, rreal0, elem_ts, elem_ts);
       const std::string rimag = coerce(ctx, rimag0, elem_ts, elem_ts);
       const std::string creal = fresh_tmp(ctx);
@@ -3490,10 +3480,11 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         const std::string pair = fresh_tmp(ctx);
         emit_instr(ctx, pair + " = call { " + res_ty + ", i1 } " + intrinsic +
                         "(" + res_ty + " " + a + ", " + res_ty + " " + b + ")");
+        const std::string ovf_agg_ty = "{ " + res_ty + ", i1 }";
         const std::string val = fresh_tmp(ctx);
-        emit_instr(ctx, val + " = extractvalue { " + res_ty + ", i1 } " + pair + ", 0");
+        emit_lir_op(ctx, lir::LirExtractValueOp{val, ovf_agg_ty, pair, 0});
         const std::string ovf = fresh_tmp(ctx);
-        emit_instr(ctx, ovf + " = extractvalue { " + res_ty + ", i1 } " + pair + ", 1");
+        emit_lir_op(ctx, lir::LirExtractValueOp{ovf, ovf_agg_ty, pair, 1});
         emit_instr(ctx, "store " + res_ty + " " + val + ", ptr " + result_ptr);
         const std::string ret = fresh_tmp(ctx);
         emit_instr(ctx, ret + " = zext i1 " + ovf + " to i32");
@@ -3889,9 +3880,9 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         const std::string complex_ty = llvm_ty(arg_ts);
         const std::string elem_ty = llvm_ty(elem_ts);
         const std::string real_v = fresh_tmp(ctx);
-        emit_instr(ctx, real_v + " = extractvalue " + complex_ty + " " + arg + ", 0");
+        emit_lir_op(ctx, lir::LirExtractValueOp{real_v, complex_ty, arg, 0});
         const std::string imag_v0 = fresh_tmp(ctx);
-        emit_instr(ctx, imag_v0 + " = extractvalue " + complex_ty + " " + arg + ", 1");
+        emit_lir_op(ctx, lir::LirExtractValueOp{imag_v0, complex_ty, arg, 1});
         const std::string imag_v = fresh_tmp(ctx);
         if (is_float_base(elem_ts.base)) {
           emit_instr(ctx, imag_v + " = fneg " + elem_ty + " " + imag_v0);
@@ -3899,11 +3890,9 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
           emit_instr(ctx, imag_v + " = sub " + elem_ty + " 0, " + imag_v0);
         }
         const std::string with_real = fresh_tmp(ctx);
-        emit_instr(ctx, with_real + " = insertvalue " + complex_ty + " undef, " + elem_ty +
-                                 " " + real_v + ", 0");
+        emit_lir_op(ctx, lir::LirInsertValueOp{with_real, complex_ty, "undef", elem_ty, real_v, 0});
         const std::string out = fresh_tmp(ctx);
-        emit_instr(ctx, out + " = insertvalue " + complex_ty + " " + with_real + ", " +
-                            elem_ty + " " + imag_v + ", 1");
+        emit_lir_op(ctx, lir::LirInsertValueOp{out, complex_ty, with_real, elem_ty, imag_v, 1});
         return out;
       }
     }
