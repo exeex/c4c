@@ -498,6 +498,22 @@ c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
   return ctx;
 }
 
+// ── Block label helpers ──────────────────────────────────────────────────────
+// Ownership of block naming and creation belongs to hir_to_lir, not HirEmitter.
+
+std::string block_lbl(c4c::hir::BlockId id) {
+  return "block_" + std::to_string(id.value);
+}
+
+void emit_lbl(c4c::codegen::FnCtx& ctx, const std::string& lbl) {
+  LirBlock blk;
+  blk.id = LirBlockId{static_cast<uint32_t>(ctx.lir_blocks.size())};
+  blk.label = lbl;
+  ctx.lir_blocks.push_back(std::move(blk));
+  ctx.current_block_idx = ctx.lir_blocks.size() - 1;
+  ctx.last_term = false;
+}
+
 // ── Main lowering entry point ────────────────────────────────────────────────
 
 LirModule lower(const c4c::hir::Module& hir_mod) {
@@ -549,7 +565,7 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
         const auto* blk = block_order[bi];
         ctx.current_block_id = blk->id.value;
         if (bi > 0) {
-          emitter.emit_lbl(ctx, emitter.block_lbl(blk->id));
+          emit_lbl(ctx, block_lbl(blk->id));
         }
         for (const auto& stmt : blk->stmts) {
           emitter.emit_stmt(ctx, stmt);

@@ -66,7 +66,7 @@ c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
 
 }  // namespace c4c::codegen::lir
 
-namespace c4c::hir { struct Block; }
+namespace c4c::hir { struct Block; struct BlockId; }
 
 namespace c4c::codegen::lir {
 
@@ -81,5 +81,13 @@ std::string build_fn_signature(const c4c::hir::Function& fn);
 /// Ownership of block ordering belongs to hir_to_lir, not HirEmitter.
 std::vector<const c4c::hir::Block*>
 build_block_order(const c4c::hir::Function& fn);
+
+/// Map a HIR BlockId to its LLVM IR label string.
+/// Ownership of block naming belongs to hir_to_lir, not HirEmitter.
+std::string block_lbl(c4c::hir::BlockId id);
+
+/// Create a new LIR block with the given label and make it current in ctx.
+/// Ownership of block creation belongs to hir_to_lir, not HirEmitter.
+void emit_lbl(c4c::codegen::FnCtx& ctx, const std::string& lbl);
 
 }  // namespace c4c::codegen::lir
