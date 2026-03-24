@@ -208,6 +208,13 @@ struct LirBitfieldInsert {
   int storage_unit_bits = 0;
 };
 
+struct LirHoistedStore {
+  std::string ptr;       // destination slot SSA name (e.g. "%lv.param.foo")
+  std::string val;       // source SSA name (e.g. "%p.foo"); empty when zeroinit=true
+  TypeSpec type{};       // type of stored value
+  bool zeroinit = false; // if true, store zeroinitializer instead of val
+};
+
 struct LirIndirectBrOp {
   std::string addr;                   // SSA name of ptr to branch to
   std::vector<std::string> targets;   // label names (e.g. "%ulbl_foo")
@@ -243,6 +250,7 @@ using LirInst = std::variant<
     LirStackSaveOp,
     LirStackRestoreOp,
     LirAbsOp,
+    LirHoistedStore,
     LirIndirectBrOp,
     LirRawLine
 >;

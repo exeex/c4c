@@ -90,6 +90,13 @@ void render_inst(std::ostringstream& os, const LirInst& inst) {
     os << "  " << op->name << " = alloca " << alloca_ty;
     if (op->align > 1) os << ", align " << op->align;
     os << "\n";
+  } else if (const auto* op = std::get_if<LirHoistedStore>(&inst)) {
+    using namespace c4c::codegen::llvm_backend::detail;
+    if (op->zeroinit) {
+      os << "  store " << llvm_alloca_ty(op->type) << " zeroinitializer, ptr " << op->ptr << "\n";
+    } else {
+      os << "  store " << llvm_ty(op->type) << " " << op->val << ", ptr " << op->ptr << "\n";
+    }
   } else if (const auto* op = std::get_if<LirIndirectBrOp>(&inst)) {
     os << "  indirectbr ptr " << op->addr << ", [";
     for (size_t i = 0; i < op->targets.size(); ++i) {

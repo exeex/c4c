@@ -26,17 +26,16 @@
 - [x] Step 2b: Replace adopt/release module pattern with reference-based `set_module()`
 - [x] Step 2c: Extract declaration lowering (`lower_single_function`) into hir_to_lir; removed dead method from HirEmitter
 - [x] Step 3a: Replace LirRawLine alloca instructions in hoist_allocas() with typed LirAlloca
+- [x] Step 3b: Replace LirRawLine store instructions in hoist_allocas() with typed LirHoistedStore (param stores + zeroinit stores)
 
 ## Active Slice
 - (none — ready for next iteration)
 
 ## Next Intended Slice
-- Step 3b: Replace LirRawLine store instructions in hoist_allocas() with typed LirStore (param stores + zeroinit stores)
 - Step 3c: Replace LirRawTerminator in inject_fallthrough_returns() with typed LirRet
 - Or: Extract `lower_globals` into hir_to_lir
 
 ## Raw fallback usage remaining in hir_to_lir.cpp
-- hoist_allocas: 2 LirRawLine stores (param store, zeroinit store)
 - inject_fallthrough_returns: 1 LirRawTerminator (fallthrough ret)
 - hir_emitter.cpp: emit_instr() and emit_term() generic escape hatches (bulk of usage)
 

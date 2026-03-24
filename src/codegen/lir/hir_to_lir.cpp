@@ -410,7 +410,7 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
     ctx.param_slots[static_cast<uint32_t>(i) + 0x80000000u] = slot;
     const int param_align = object_align_bytes(mod, param.type.spec);
     ctx.alloca_insts.push_back(LirAlloca{{}, param.type.spec, std::nullopt, slot, param_align});
-    ctx.alloca_insts.push_back(LirRawLine{"  store " + llvm_ty(param.type.spec) + " " + pname + ", ptr " + slot});
+    ctx.alloca_insts.push_back(LirHoistedStore{slot, pname, param.type.spec, false});
   }
 
   std::unordered_map<std::string, int> name_count;
@@ -441,7 +441,7 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
              (d->type.spec.ptr_level == 0 &&
               (d->type.spec.base == TB_STRUCT ||
                d->type.spec.base == TB_UNION)))) {
-          ctx.alloca_insts.push_back(LirRawLine{"  store " + llvm_alloca_ty(d->type.spec) + " zeroinitializer, ptr " + slot});
+          ctx.alloca_insts.push_back(LirHoistedStore{slot, "", d->type.spec, true});
         }
       }
     }
