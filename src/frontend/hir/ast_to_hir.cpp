@@ -2180,6 +2180,9 @@ class Lowerer {
           updated_refs += part;
         }
         if (!updated_refs.empty()) ts.tpl_struct_arg_refs = ::strdup(updated_refs.c_str());
+        seed_pending_template_type(
+            ts, type_bindings, nttp_bindings, nullptr,
+            PendingTemplateTypeKind::MemberTypedef, "member-typedef-binding");
         resolve_pending_tpl_struct_if_needed(
             ts, type_bindings, nttp_bindings);
       }
@@ -2722,6 +2725,9 @@ class Lowerer {
           nested_ts.inner_rank = -1;
           nested_ts.tpl_struct_origin = inner_origin.c_str();
           nested_ts.tpl_struct_arg_refs = inner_args.c_str();
+          seed_pending_template_type(
+              nested_ts, tpl_bindings, nttp_bindings, nullptr,
+              PendingTemplateTypeKind::OwnerStruct, "nested-tpl-arg");
           resolve_pending_tpl_struct_if_needed(
               nested_ts, tpl_bindings, nttp_bindings);
           arg.is_value = false;
@@ -2916,6 +2922,9 @@ class Lowerer {
           }
         }
         if (base_ts.tpl_struct_origin) {
+          seed_pending_template_type(
+              base_ts, method_tpl_bindings, method_nttp_bindings, nullptr,
+              PendingTemplateTypeKind::BaseType, "instantiation-base");
           resolve_pending_tpl_struct_if_needed(
               base_ts, method_tpl_bindings, method_nttp_bindings);
         }
@@ -7039,6 +7048,11 @@ class Lowerer {
             const Node* primary_tpl = find_template_struct_primary(n->name);
             TypeBindings tpl_empty;
             NttpBindings nttp_empty;
+            seed_pending_template_type(
+                tmp_ts,
+                ctx ? ctx->tpl_bindings : tpl_empty,
+                ctx ? ctx->nttp_bindings : nttp_empty,
+                n, PendingTemplateTypeKind::OwnerStruct, "nameref-tpl-ctor");
             resolve_pending_tpl_struct_if_needed(
                 tmp_ts,
                 ctx ? ctx->tpl_bindings : tpl_empty,
@@ -7093,6 +7107,11 @@ class Lowerer {
               const Node* primary_tpl = find_template_struct_primary(struct_tag);
               TypeBindings tpl_empty;
               NttpBindings nttp_empty;
+              seed_pending_template_type(
+                  pending_ts,
+                  ctx ? ctx->tpl_bindings : tpl_empty,
+                  ctx ? ctx->nttp_bindings : nttp_empty,
+                  n, PendingTemplateTypeKind::OwnerStruct, "nameref-scope-tpl");
               resolve_pending_tpl_struct_if_needed(
                   pending_ts,
                   ctx ? ctx->tpl_bindings : tpl_empty,
