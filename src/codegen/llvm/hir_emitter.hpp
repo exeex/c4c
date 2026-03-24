@@ -73,14 +73,6 @@ class HirEmitter {
   void lower_globals(const std::vector<size_t>& global_indices);
 
   /// Lower a single HIR function into the working LirModule.
-  /// If signature_text is non-empty, it is used as the pre-built LLVM IR
-  /// signature line; otherwise the emitter builds it internally (legacy path).
-  /// If block_order is non-empty, it specifies the HIR block iteration order
-  /// (entry first, rest in order); otherwise the emitter computes it internally.
-  void lower_single_function(const hir::Function& fn,
-                             const std::string& signature_text = {},
-                             const std::vector<const hir::Block*>& block_order = {});
-
   /// Emit a single HIR statement into the FnCtx.  Exposed so that
   /// hir_to_lir::lower() can drive block iteration directly.
   void emit_stmt(FnCtx& ctx, const Stmt& stmt);

@@ -546,8 +546,13 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
     std::string sig = build_fn_signature(fn);
 
     if (fn.linkage.is_extern && fn.blocks.empty()) {
-      // Declaration — no body to lower; delegate entirely.
-      emitter.lower_single_function(fn, sig);
+      // Declaration — no body to lower; hir_to_lir owns this directly.
+      LirFunction lir_fn;
+      lir_fn.name = quote_llvm_ident(fn.name);
+      lir_fn.is_internal = false;
+      lir_fn.is_declaration = true;
+      lir_fn.signature_text = sig;
+      module.functions.push_back(std::move(lir_fn));
     } else {
       // Definition — hir_to_lir owns FnCtx setup, alloca hoisting, VLA
       // stack save, spec entry collection, and LirFunction construction.

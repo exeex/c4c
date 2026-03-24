@@ -179,12 +179,6 @@ void HirEmitter::lower_globals(const std::vector<size_t>& global_indices) {
     for (size_t idx : global_indices) emit_global(mod_.globals[idx]);
   }
 
-void HirEmitter::lower_single_function(const Function& fn,
-                                       const std::string& signature_text,
-                                       const std::vector<const Block*>& block_order) {
-    emit_function(fn, signature_text, block_order);
-  }
-
 std::string HirEmitter::emit(){
     auto lir_mod = lower_to_lir();
     return lir::print_llvm(lir_mod);
