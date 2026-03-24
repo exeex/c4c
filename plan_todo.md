@@ -1,7 +1,7 @@
 # Lazy Template Instantiation — Execution State
 
 ## Active Item
-**Step 2: Make Blocked Paths Spawn Explicit Owner Work**
+**Step 3: Split `resolve_pending_tpl_struct(...)` Into Small Helpers**
 
 ## Completed
 - **Step 1: Expand Use-Site Seeding** — added `seed_pending_template_type(...)` at all 5 previously unseeded `resolve_pending_tpl_struct_if_needed(...)` call sites:
@@ -12,11 +12,24 @@
   - L7113: scope-qualified static member NameRef in `lower_expr` (OwnerStruct)
   - All existing tests pass (2122/2123, pre-existing failure unchanged)
 
+- **Step 2: Make Blocked Paths Spawn Explicit Owner Work** — three improvements:
+  1. OwnerStruct case: detect missing primary template def → return `terminal` instead of infinite `blocked`
+  2. Non-OwnerStruct case (DeclarationType, CastTarget, BaseType): detect missing primary early → return `terminal` before spawning doomed owner work
+  3. MemberTypedef case: detect missing primary on owner → return `terminal` before spawning doomed owner work
+  4. Engine: terminal items now marked as resolved (removed from retry loop) while still recording diagnostic — prevents spin without progress
+  - All existing tests pass (2122/2123, pre-existing failure unchanged)
+
 ## Current Slice
-Inspect `instantiate_deferred_template_type(...)` cases for MemberTypedef, BaseType, DeclarationType, CastTarget — ensure blocked owner-dependent work spawns OwnerStruct prerequisite and returns `blocked` instead of falling through to `terminal`.
+Extract small helpers from `resolve_pending_tpl_struct(...)`:
+1. substitute deferred template arg refs
+2. materialize explicit/default template args
+3. evaluate deferred NTTP defaults
+4. select primary/specialization pattern
+5. build concrete instantiation/mangled name
+6. instantiate concrete struct/class metadata
 
 ## Next Intended Slice
-Step 3: Split `resolve_pending_tpl_struct(...)` into small helpers
+Step 4: Move Decision-Making Out Of Recursive Helpers
 
 ## Blockers
 None

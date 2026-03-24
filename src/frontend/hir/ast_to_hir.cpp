@@ -1144,10 +1144,21 @@ class Lowerer {
       owner_ts.deferred_member_type_name = nullptr;
       bool spawned_owner_work = false;
       if (owner_ts.tpl_struct_origin) {
+        // Early terminal: if no primary template def exists for the owner,
+        // member typedef resolution can never succeed.
+        const Node* primary_tpl = canonical_template_struct_primary(
+            owner_ts, work_item.owner_primary_def);
+        if (!primary_tpl) {
+          return DeferredTemplateTypeResult::terminal(
+              work_item.context_name.empty()
+                  ? "unresolved template type: no primary template def for member typedef owner"
+                  : "unresolved template type: " + work_item.context_name +
+                        " (no primary template def for member typedef owner)");
+        }
         spawned_owner_work = spawn_owner_work(owner_ts);
         resolve_pending_tpl_struct_if_needed(
             owner_ts, work_item.type_bindings, work_item.nttp_bindings,
-            work_item.owner_primary_def);
+            primary_tpl);
         if (owner_ts.tpl_struct_origin) {
           return DeferredTemplateTypeResult::blocked(
               spawned_owner_work,
@@ -1178,10 +1189,21 @@ class Lowerer {
     }
     if (ts.tpl_struct_origin &&
         work_item.kind != PendingTemplateTypeKind::OwnerStruct) {
+      // Early terminal: if no primary template def exists for the owner,
+      // spawning owner work would just spin forever.
+      const Node* primary_tpl = canonical_template_struct_primary(
+          ts, work_item.owner_primary_def);
+      if (!primary_tpl) {
+        return DeferredTemplateTypeResult::terminal(
+            work_item.context_name.empty()
+                ? "unresolved template type: no primary template def"
+                : "unresolved template type: " + work_item.context_name +
+                      " (no primary template def)");
+      }
       const bool spawned_owner_work = spawn_owner_work(ts);
       resolve_pending_tpl_struct_if_needed(
           ts, work_item.type_bindings, work_item.nttp_bindings,
-          work_item.owner_primary_def);
+          primary_tpl);
       if (ts.tpl_struct_origin) {
         return DeferredTemplateTypeResult::blocked(
             spawned_owner_work,
@@ -1193,9 +1215,20 @@ class Lowerer {
       return DeferredTemplateTypeResult::resolved();
     }
     if (ts.tpl_struct_origin) {
+      // Check whether the primary template definition exists at all.
+      // If not, this is a terminal failure — no amount of retrying will help.
+      const Node* primary_tpl = canonical_template_struct_primary(
+          ts, work_item.owner_primary_def);
+      if (!primary_tpl) {
+        return DeferredTemplateTypeResult::terminal(
+            work_item.context_name.empty()
+                ? "unresolved template type: no primary template def for owner"
+                : "unresolved template type: " + work_item.context_name +
+                      " (no primary template def for owner)");
+      }
       resolve_pending_tpl_struct_if_needed(
           ts, work_item.type_bindings, work_item.nttp_bindings,
-          work_item.owner_primary_def);
+          primary_tpl);
       if (ts.tpl_struct_origin) {
         return DeferredTemplateTypeResult::blocked(
             false,

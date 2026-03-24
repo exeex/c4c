@@ -31,23 +31,27 @@ struct PendingTemplateTypeStep {
       if (result.kind == DeferredTemplateTypeResultKind::Resolved) {
         ct_state->mark_pending_template_type_resolved(work_item.dedup_key);
         ++resolved;
+      } else if (result.kind == DeferredTemplateTypeResultKind::Terminal) {
+        // Terminal items are done — mark resolved so they won't be retried,
+        // but record the diagnostic.
+        ct_state->mark_pending_template_type_resolved(work_item.dedup_key);
+        ++resolved;
+        std::string label = result.diagnostic;
+        if (label.empty()) {
+          label = work_item.context_name.empty()
+              ? pending_template_type_kind_name(work_item.kind)
+              : work_item.context_name;
+          label = "unresolved template type: " + label;
+        }
+        pending_diags.push_back(
+            {CompileTimeDiagnostic::UnresolvedTemplate, std::move(label)});
       } else {
         ++pending;
-        if (result.kind == DeferredTemplateTypeResultKind::Blocked) {
-          ++blocked;
-          if (result.spawned_new_work) ++spawned_new_work;
-        }
-        if (result.kind == DeferredTemplateTypeResultKind::Terminal ||
-            !result.diagnostic.empty()) {
-          std::string label = result.diagnostic;
-          if (label.empty()) {
-            label = work_item.context_name.empty()
-                ? pending_template_type_kind_name(work_item.kind)
-                : work_item.context_name;
-            label = "unresolved template type: " + label;
-          }
+        ++blocked;
+        if (result.spawned_new_work) ++spawned_new_work;
+        if (!result.diagnostic.empty()) {
           pending_diags.push_back(
-              {CompileTimeDiagnostic::UnresolvedTemplate, std::move(label)});
+              {CompileTimeDiagnostic::UnresolvedTemplate, result.diagnostic});
         }
       }
     }
