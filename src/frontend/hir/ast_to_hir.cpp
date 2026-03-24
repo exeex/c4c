@@ -2938,11 +2938,13 @@ class Lowerer {
         }
       }
       if (base_ts.tpl_struct_origin) {
+        // Seed prerequisite work for the base type.  Do NOT resolve inline —
+        // the engine owns the retry loop.  The seeded OwnerStruct work will
+        // resolve the base; when the engine re-processes the parent struct its
+        // base will already be concrete.
         seed_pending_template_type(
             base_ts, method_tpl_bindings, method_nttp_bindings, nullptr,
             PendingTemplateTypeKind::BaseType, "instantiation-base");
-        resolve_pending_tpl_struct_if_needed(
-            base_ts, method_tpl_bindings, method_nttp_bindings);
       }
       if (base_ts.deferred_member_type_name && base_ts.tag && base_ts.tag[0]) {
         TypeSpec resolved_member{};
@@ -3051,6 +3053,15 @@ class Lowerer {
     // 2. Materialize explicit + default template args.
     ResolvedTemplateArgs resolved =
         materialize_template_args(primary_tpl, arg_refs, tpl_bindings, nttp_bindings);
+
+    // 2b. If any type arg is still an unresolved template struct, bail out
+    //     early — the prerequisite work was already seeded inside
+    //     materialize_template_args, so the engine will retry us later.
+    for (const auto& arg : resolved.concrete_args) {
+      if (!arg.is_value && arg.type.tpl_struct_origin) {
+        return;  // ts.tpl_struct_origin stays set → caller sees "still pending"
+      }
+    }
 
     // 3. Select primary/specialization pattern.
     TemplateStructEnv tpl_env = build_template_struct_env(primary_tpl);

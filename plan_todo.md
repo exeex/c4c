@@ -1,7 +1,7 @@
 # Lazy Template Instantiation — Execution State
 
 ## Active Item
-**Step 4: Move Decision-Making Out Of Recursive Helpers**
+**Step 5: Tighten Engine Progress Semantics Only If Needed**
 
 ## Completed
 - **Step 1: Expand Use-Site Seeding** — added `seed_pending_template_type(...)` at all 5 previously unseeded `resolve_pending_tpl_struct_if_needed(...)` call sites:
@@ -28,11 +28,17 @@
   - Added `ResolvedTemplateArgs` result struct
   - All existing tests pass (2122/2123, pre-existing failure unchanged)
 
+- **Step 4: Move Decision-Making Out Of Recursive Helpers** — two changes:
+  1. Coordinator: after `materialize_template_args`, check if any type arg still has `tpl_struct_origin` set (unresolved nested template); if so, bail out early leaving `ts.tpl_struct_origin` intact — the engine will retry after the prerequisite work resolves the nested type
+  2. `instantiate_template_struct_body`: removed inline `resolve_pending_tpl_struct_if_needed` for base types; base type prerequisite work is seeded only, engine owns the retry
+  - Retry behavior is now visible in the engine worklist model, not hidden in helper recursion
+  - All existing tests pass (2122/2123, pre-existing failure unchanged)
+
 ## Current Slice
-Step 4: Move Decision-Making Out Of Recursive Helpers — identify helpers that currently "try more things" recursively after a miss and convert to enqueue prerequisite work + return `blocked`.
+Step 5: Tighten Engine Progress Semantics Only If Needed — only touch the engine loop if the current blocked/spawned-new-work accounting is insufficient.
 
 ## Next Intended Slice
-Step 5: Tighten Engine Progress Semantics Only If Needed
+Plan complete after step 5 (assess if any engine changes needed).
 
 ## Blockers
 None
