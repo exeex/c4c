@@ -277,35 +277,9 @@ build_block_order(const c4c::hir::Function& fn) {
 
 static void inject_fallthrough_returns(LirFunction& lir_fn,
                                        const c4c::hir::Function& fn) {
-  using namespace c4c::codegen::llvm_backend::detail;
-  const std::string ret_ty = llvm_ret_ty(fn.return_type.spec);
-
   for (auto& blk : lir_fn.blocks) {
     if (!std::holds_alternative<LirUnreachable>(blk.terminator)) continue;
-
-    std::string term_line;
-    if (fn.return_type.spec.base == TB_VOID &&
-        fn.return_type.spec.ptr_level == 0 &&
-        fn.return_type.spec.array_rank == 0 &&
-        !fn.return_type.spec.is_lvalue_ref &&
-        !fn.return_type.spec.is_rvalue_ref) {
-      term_line = "ret void";
-    } else if (ret_ty == "ptr") {
-      term_line = "ret ptr null";
-    } else if (is_float_base(fn.return_type.spec.base) &&
-               fn.return_type.spec.ptr_level == 0 &&
-               fn.return_type.spec.array_rank == 0) {
-      term_line = "ret " + ret_ty + " " + fp_literal(fn.return_type.spec.base, 0.0);
-    } else if (is_complex_base(fn.return_type.spec.base) ||
-               ((fn.return_type.spec.base == TB_STRUCT ||
-                 fn.return_type.spec.base == TB_UNION) &&
-                fn.return_type.spec.ptr_level == 0 &&
-                fn.return_type.spec.array_rank == 0)) {
-      term_line = "ret " + ret_ty + " zeroinitializer";
-    } else {
-      term_line = "ret " + ret_ty + " 0";
-    }
-    blk.terminator = LirRawTerminator{"  " + term_line};
+    blk.terminator = LirRet{std::nullopt, fn.return_type.spec};
   }
 }
 

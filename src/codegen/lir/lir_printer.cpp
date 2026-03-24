@@ -135,10 +135,36 @@ void render_inst(std::ostringstream& os, const LirInst& inst) {
 
 // Render a LirTerminator to text.
 void render_terminator(std::ostringstream& os, const LirTerminator& term) {
+  using namespace c4c::codegen::llvm_backend::detail;
   if (const auto* raw = std::get_if<LirRawTerminator>(&term)) {
     os << raw->line << "\n";
+  } else if (const auto* ret = std::get_if<LirRet>(&term)) {
+    const std::string ret_ty = llvm_ret_ty(ret->type);
+    if (!ret->value.has_value()) {
+      // Default return (fallthrough) — derive the zero literal from the type.
+      if (ret->type.base == TB_VOID &&
+          ret->type.ptr_level == 0 &&
+          ret->type.array_rank == 0 &&
+          !ret->type.is_lvalue_ref &&
+          !ret->type.is_rvalue_ref) {
+        os << "  ret void\n";
+      } else if (ret_ty == "ptr") {
+        os << "  ret ptr null\n";
+      } else if (is_float_base(ret->type.base) &&
+                 ret->type.ptr_level == 0 &&
+                 ret->type.array_rank == 0) {
+        os << "  ret " << ret_ty << " " << fp_literal(ret->type.base, 0.0) << "\n";
+      } else if (is_complex_base(ret->type.base) ||
+                 ((ret->type.base == TB_STRUCT || ret->type.base == TB_UNION) &&
+                  ret->type.ptr_level == 0 && ret->type.array_rank == 0)) {
+        os << "  ret " << ret_ty << " zeroinitializer\n";
+      } else {
+        os << "  ret " << ret_ty << " 0\n";
+      }
+    }
+    // TODO: handle ret with explicit value (LirValueId) in later phases.
   }
-  // Typed terminator variants (LirBr, LirCondBr, etc.) will be handled
+  // Other typed terminator variants (LirBr, LirCondBr, etc.) will be handled
   // in later phases as they replace LirRawTerminator usage.
 }
 
