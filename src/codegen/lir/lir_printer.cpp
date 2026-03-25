@@ -149,6 +149,43 @@ void render_inst(std::ostringstream& os, const LirInst& inst) {
       os << op->callee_type_suffix << " ";
     }
     os << op->callee << "(" << op->args_str << ")\n";
+  } else if (const auto* op = std::get_if<LirBinOp>(&inst)) {
+    os << "  " << op->result << " = " << op->opcode << " " << op->type_str << " ";
+    if (op->rhs.empty()) {
+      // Unary op (fneg): "fneg type lhs"
+      os << op->lhs;
+    } else {
+      os << op->lhs << ", " << op->rhs;
+    }
+    os << "\n";
+  } else if (const auto* op = std::get_if<LirCmpOp>(&inst)) {
+    os << "  " << op->result << " = " << (op->is_float ? "fcmp " : "icmp ")
+       << op->predicate << " " << op->type_str << " " << op->lhs
+       << ", " << op->rhs << "\n";
+  } else if (const auto* op = std::get_if<LirPhiOp>(&inst)) {
+    os << "  " << op->result << " = phi " << op->type_str;
+    for (size_t i = 0; i < op->incoming.size(); ++i) {
+      os << (i == 0 ? " " : ", ");
+      os << "[ " << op->incoming[i].first << ", %" << op->incoming[i].second << " ]";
+    }
+    os << "\n";
+  } else if (const auto* op = std::get_if<LirSelectOp>(&inst)) {
+    os << "  " << op->result << " = select i1 " << op->cond
+       << ", " << op->type_str << " " << op->true_val
+       << ", " << op->type_str << " " << op->false_val << "\n";
+  } else if (const auto* op = std::get_if<LirInsertElementOp>(&inst)) {
+    os << "  " << op->result << " = insertelement " << op->vec_type << " " << op->vec
+       << ", " << op->elem_type << " " << op->elem << ", " << op->index << "\n";
+  } else if (const auto* op = std::get_if<LirExtractElementOp>(&inst)) {
+    os << "  " << op->result << " = extractelement " << op->vec_type << " " << op->vec
+       << ", " << op->index_type << " " << op->index << "\n";
+  } else if (const auto* op = std::get_if<LirShuffleVectorOp>(&inst)) {
+    os << "  " << op->result << " = shufflevector " << op->vec_type << " " << op->vec1
+       << ", " << op->vec_type << " " << op->vec2 << ", " << op->mask_type
+       << " " << op->mask << "\n";
+  } else if (const auto* op = std::get_if<LirVaArgOp>(&inst)) {
+    os << "  " << op->result << " = va_arg ptr " << op->ap_ptr
+       << ", " << op->type_str << "\n";
   } else if (const auto* op = std::get_if<LirBitfieldInsert>(&inst)) {
     const std::string unit_ty = "i" + std::to_string(op->storage_unit_bits);
     // Load current storage unit

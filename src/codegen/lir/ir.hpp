@@ -290,6 +290,77 @@ struct LirCallOp {
   std::string args_str;            // pre-formatted argument string (e.g. "i32 %t1, i32 %t2")
 };
 
+// Typed binary arithmetic/bitwise/unary operation.
+// Covers: add, sub, mul, sdiv, udiv, srem, urem, fadd, fsub, fmul, fdiv, frem,
+//         and, or, xor, shl, lshr, ashr, fneg.
+struct LirBinOp {
+  std::string result;     // SSA name for result
+  std::string opcode;     // LLVM opcode string (e.g. "add", "fadd", "xor", "fneg")
+  std::string type_str;   // LLVM type string (e.g. "i32", "double", "<4 x i32>")
+  std::string lhs;        // SSA name or literal for left operand
+  std::string rhs;        // SSA name or literal for right operand (empty for unary fneg)
+};
+
+// Typed comparison operation (icmp/fcmp).
+struct LirCmpOp {
+  std::string result;     // SSA name for result
+  bool is_float = false;  // true = fcmp, false = icmp
+  std::string predicate;  // predicate string (e.g. "eq", "ne", "slt", "oeq", "uno")
+  std::string type_str;   // LLVM type string of operands
+  std::string lhs;        // SSA name or literal for left operand
+  std::string rhs;        // SSA name or literal for right operand
+};
+
+// Typed PHI node.
+struct LirPhiOp {
+  std::string result;     // SSA name for result
+  std::string type_str;   // LLVM type string
+  std::vector<std::pair<std::string, std::string>> incoming;  // (value, label) pairs
+};
+
+// Typed select instruction.
+struct LirSelectOp {
+  std::string result;     // SSA name for result
+  std::string type_str;   // LLVM type string for true/false operands
+  std::string cond;       // SSA name of i1 condition
+  std::string true_val;   // SSA name or literal for true branch
+  std::string false_val;  // SSA name or literal for false branch
+};
+
+// Typed vector insert/extract/shuffle ops.
+struct LirInsertElementOp {
+  std::string result;     // SSA name for result
+  std::string vec_type;   // vector type string (e.g. "<4 x i32>")
+  std::string vec;        // SSA name of vector (or "poison")
+  std::string elem_type;  // element type string
+  std::string elem;       // SSA name of element value
+  std::string index;      // index value (e.g. "0", "%idx")
+};
+
+struct LirExtractElementOp {
+  std::string result;
+  std::string vec_type;
+  std::string vec;
+  std::string index_type;
+  std::string index;
+};
+
+struct LirShuffleVectorOp {
+  std::string result;
+  std::string vec_type;
+  std::string vec1;
+  std::string vec2;
+  std::string mask_type;
+  std::string mask;
+};
+
+// Typed va_arg instruction.
+struct LirVaArgOp {
+  std::string result;     // SSA name for result
+  std::string ap_ptr;     // SSA name of va_list pointer
+  std::string type_str;   // result type string
+};
+
 // Catch-all for instructions not yet migrated to typed LIR ops.
 // Contains the raw LLVM IR line produced by the legacy emitter.
 // This allows incremental migration: Stage 1+ will shrink usage of this type.
@@ -329,6 +400,14 @@ using LirInst = std::variant<
     LirCastOp,
     LirGepOp,
     LirCallOp,
+    LirBinOp,
+    LirCmpOp,
+    LirPhiOp,
+    LirSelectOp,
+    LirInsertElementOp,
+    LirExtractElementOp,
+    LirShuffleVectorOp,
+    LirVaArgOp,
     LirRawLine
 >;
 
