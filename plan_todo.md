@@ -1,6 +1,6 @@
 # HIR → LIR Split — Execution State
 
-## Current Step: Step 3 COMPLETE → Step 4 (Printer Purity Audit)
+## Current Step: Step 4 (Printer Purity Audit) — in progress
 
 ## Step 1 Audit: Legacy Dependencies in hir_to_lir.cpp
 
@@ -40,15 +40,21 @@
 - [x] Step 3-final: Remove dead LirRawLine and LirRawTerminator types from LIR variant and printer (zero producers remained)
 
 ## Active Slice
-- (none — ready for next iteration)
+- Step 4a: Expand bitfield compound ops into typed LIR ops — DONE
+
+## Completed (Step 4)
+- [x] Step 4a: Expand LirBitfieldExtract into typed LIR ops (LirLoadOp, LirBinOp, LirCastOp) in emit_bitfield_load; remove compound type from ir.hpp and printer
+- [x] Step 4a: Expand LirBitfieldInsert into typed LIR ops (LirLoadOp, LirBinOp, LirStoreOp) in emit_bitfield_store; remove compound type from ir.hpp and printer
 
 ## Next Intended Slice
-- Step 4: Audit lir_printer.cpp for semantic decisions that should be in hir_to_lir
+- Step 4b: Audit remaining printer for semantic decisions (DCE, LirAlloca/LirHoistedStore TypeSpec→LLVM type conversion)
 - Step 2 remaining: extract lower_globals and emit_stmt semantic ownership from HirEmitter
 
 ## Raw fallback usage remaining
 - **LirRawLine: REMOVED** — type deleted from variant, no producers existed
 - **LirRawTerminator: REMOVED** — type deleted from variant, no producers existed
+- **LirBitfieldExtract: REMOVED** — expanded to typed LIR ops in lowering
+- **LirBitfieldInsert: REMOVED** — expanded to typed LIR ops in lowering
 - All LIR instructions and terminators are now fully typed
 
 ## Blockers

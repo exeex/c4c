@@ -189,24 +189,6 @@ struct LirInlineAsm {
   std::vector<LirValueId> operands;
 };
 
-struct LirBitfieldExtract {
-  std::string result;       // final promoted SSA name
-  std::string unit_ptr;     // ptr to storage unit
-  int bit_width = 0;
-  int bit_offset = 0;
-  int storage_unit_bits = 0;
-  bool is_signed = false;
-  int promoted_bits = 0;    // target integer width after C promotion
-};
-
-struct LirBitfieldInsert {
-  std::string unit_ptr;     // ptr to storage unit
-  std::string new_val;      // already coerced to storage unit type
-  std::string scratch;      // base name for intermediate SSA values
-  int bit_width = 0;
-  int bit_offset = 0;
-  int storage_unit_bits = 0;
-};
 
 struct LirHoistedStore {
   std::string ptr;       // destination slot SSA name (e.g. "%lv.param.foo")
@@ -395,8 +377,6 @@ using LirInst = std::variant<
     LirAlloca,
     LirIntrinsic,
     LirInlineAsm,
-    LirBitfieldExtract,
-    LirBitfieldInsert,
     LirMemcpyOp,
     LirVaStartOp,
     LirVaEndOp,
