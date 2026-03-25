@@ -1,5 +1,6 @@
 #include "hir_to_lir.hpp"
 #include "ir.hpp"
+#include "const_init_emitter.hpp"
 #include "../llvm/hir_emitter.hpp"
 #include "../llvm/hir_to_llvm_helpers.hpp"
 
@@ -103,7 +104,7 @@ std::vector<size_t> dedup_functions(const c4c::hir::Module& mod) {
 
 static void lower_global(const c4c::hir::GlobalVar& gv,
                           const c4c::hir::Module& mod,
-                          c4c::codegen::llvm_backend::HirEmitter& emitter,
+                          ConstInitEmitter& const_init,
                           LirModule& module) {
   using namespace c4c::codegen::llvm_backend::detail;
 
@@ -132,7 +133,7 @@ static void lower_global(const c4c::hir::GlobalVar& gv,
       const auto& sd = it->second;
       if (!sd.is_union && !sd.fields.empty() && sd.fields.back().is_flexible_array) {
         std::vector<TypeSpec> field_types;
-        const auto field_vals = emitter.emit_const_struct_fields(ts, sd, gv.init, &field_types);
+        const auto field_vals = const_init.emit_const_struct_fields(ts, sd, gv.init, &field_types);
         const TypeSpec& last_ts = field_types.back();
         if (last_ts.array_rank > 0 && last_ts.array_size > 0) {
           std::string literal_ty = "{ ";
@@ -181,7 +182,7 @@ static void lower_global(const c4c::hir::GlobalVar& gv,
     lg.linkage_vis = make_linkage_vis(gv.linkage.is_static, gv.linkage.is_weak,
                                       false, gv.linkage.visibility);
     lg.qualifier = (gv.is_const && ts.ptr_level == 0) ? "constant " : "global ";
-    lg.init_text = emitter.emit_const_init(ts, gv.init);
+    lg.init_text = const_init.emit_const_init(ts, gv.init);
     lg.is_extern_decl = false;
   }
 
@@ -190,10 +191,10 @@ static void lower_global(const c4c::hir::GlobalVar& gv,
 
 static void lower_globals(const std::vector<size_t>& global_indices,
                            const c4c::hir::Module& mod,
-                           c4c::codegen::llvm_backend::HirEmitter& emitter,
+                           ConstInitEmitter& const_init,
                            LirModule& module) {
   for (size_t idx : global_indices)
-    lower_global(mod.globals[idx], mod, emitter, module);
+    lower_global(mod.globals[idx], mod, const_init, module);
 }
 
 // ── Type declarations ────────────────────────────────────────────────────────
@@ -782,6 +783,9 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
   auto fn_indices = dedup_functions(hir_mod);
 
   // Per-item lowering: hir_to_lir owns iteration and the module;
+  // Const-init lowering (globals) — standalone, no HirEmitter dependency.
+  ConstInitEmitter const_init(hir_mod, module);
+
   // HirEmitter owns statement/expression lowering and writes into module.
   c4c::codegen::llvm_backend::HirEmitter emitter(hir_mod);
   emitter.set_module(module);
@@ -789,7 +793,7 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
   bool any_vla = false;
   std::vector<LirSpecEntry> spec_entries;
 
-  lower_globals(global_indices, hir_mod, emitter, module);
+  lower_globals(global_indices, hir_mod, const_init, module);
   for (size_t idx : fn_indices) {
     const auto& fn = hir_mod.functions[idx];
     std::string sig = build_fn_signature(fn);

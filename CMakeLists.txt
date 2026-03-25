@@ -38,7 +38,7 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/inline_expand.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/llvm/llvm_codegen.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/llvm/hir_emitter.cpp"
-    "${PROJECT_SOURCE_DIR}/src/codegen/llvm/hir_to_llvm_const_init.cpp"
+    "${PROJECT_SOURCE_DIR}/src/codegen/lir/const_init_emitter.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/hir_to_lir.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/lir_printer.cpp"
 )

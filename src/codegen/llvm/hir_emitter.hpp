@@ -64,13 +64,6 @@ class HirEmitter {
   /// hir_to_lir::lower() can drive block iteration directly.
   void emit_stmt(FnCtx& ctx, const Stmt& stmt);
 
-  // Const initializer helpers — used by hir_to_lir for global lowering.
-  std::vector<std::string> emit_const_struct_fields(const TypeSpec& ts,
-                                                    const HirStructDef& sd,
-                                                    const GlobalInit& init,
-                                                    std::vector<TypeSpec>* out_field_types = nullptr);
-  std::string emit_const_init(const TypeSpec& ts, const GlobalInit& init);
-
  private:
   const Module& mod_;
   lir::LirModule* module_ = nullptr;  // Non-owning ref to caller's LirModule
@@ -123,16 +116,10 @@ class HirEmitter {
   static std::string escape_llvm_c_bytes(const std::string& raw_bytes);
   TypeSpec field_decl_type(const HirStructField& f) const;
 
-  // Recursively constant-evaluate an expression to an integer (returns nullopt if not possible).
-  std::optional<long long> try_const_eval_int(ExprId id);
-  std::optional<double> try_const_eval_float(ExprId id);
-  std::optional<std::pair<long long, long long>> try_const_eval_complex_int(ExprId id);
-  std::optional<std::pair<double, double>> try_const_eval_complex_fp(ExprId id);
+  // Format an integer-like value as an LLVM constant (handles ptr/float targets).
   std::string emit_const_int_like(long long value, const TypeSpec& expected_ts);
-  std::string emit_const_scalar_expr(ExprId id, const TypeSpec& expected_ts);
 
  private:
-  class ConstInitEmitter;
 
   const GlobalVar* select_global_object(const std::string& name) const;
   const GlobalVar* select_global_object(GlobalId id) const;

@@ -1,6 +1,6 @@
 # HIR → LIR Split — Execution State
 
-## Current Step: Step 6a (remove dead HirEmitter methods) — DONE
+## Current Step: Step 6f (move const-init from HirEmitter to standalone lir module) — DONE
 
 ## Step 1 Audit: Legacy Dependencies in hir_to_lir.cpp
 
@@ -56,9 +56,10 @@
 - [x] Step 6c: Remove dead HirEmitter data members — `need_llvm_stacksave_` (never written), `inferred_ret_fn_ptr_sigs_` (never used), `spec_entries_`/`SpecEntry` (never written); made `emit_lbl`/`block_lbl` private; removed dead `needs_stacksave()` getter and `spec_entries()` getter+loop from hir_to_lir.cpp (stacksave already detected via `any_vla`, spec_entries already collected directly)
 - [x] Step 6d: Move intrinsic flags and extern_call_decls from HirEmitter to LirModule — emit_stmt now writes `module_->need_*` directly; `record_extern_call_decl` delegates to `module_->record_extern_decl()`; removed 6 bool members, `extern_call_decls_` map, and 7 getter methods from HirEmitter; `finalize_module` simplified to just convert dedup map to vector
 - [x] Step 6e: Move string pool from HirEmitter to LirModule — `str_pool_` dedup map and `str_idx_` counter moved to `LirModule::str_pool_map`/`str_pool_idx`; `intern_str()` implemented on LirModule; HirEmitter::intern_str() now delegates to `module_->intern_str()`; wide string pool name generation uses `module_->str_pool_idx`; removed 2 data members from HirEmitter
+- [x] Step 6f: Move const-init lowering from HirEmitter to standalone `lir::ConstInitEmitter` — created `const_init_emitter.hpp/.cpp`; moved `emit_const_init`, `emit_const_struct_fields`, `emit_const_scalar_expr`, `try_const_eval_*` (~660 lines) out of HirEmitter; hir_to_lir.cpp now uses ConstInitEmitter directly for global lowering; deleted `hir_to_llvm_const_init.cpp`; removed const-init declarations from hir_emitter.hpp; HirEmitter public interface reduced to: `set_module()`, `emit_stmt()`
 
 ## Active Slice
-- Step 6e: Move string pool from HirEmitter to LirModule — DONE
+- Step 6f: Move const-init lowering from HirEmitter to standalone lir::ConstInitEmitter — DONE
 
 ## Next Intended Slice
 - Step 2 remaining: extract emit_stmt semantic ownership from HirEmitter (large — needs multi-iteration plan)
@@ -66,7 +67,11 @@
 ## Remaining HirEmitter → hir_to_lir.cpp dependencies
 - `emitter.set_module(module)` — module reference setup
 - `emitter.emit_stmt(ctx, stmt)` — per-statement lowering (the core semantic dependency)
-- `emitter.emit_const_init()` / `emitter.emit_const_struct_fields()` — global initializer helpers
+
+## HirEmitter public interface (current)
+- `HirEmitter(const Module& m)` — constructor
+- `set_module(LirModule& module)` — set working module reference
+- `emit_stmt(FnCtx& ctx, const Stmt& stmt)` — per-statement lowering
 
 ## Raw fallback usage remaining
 - **LirRawLine: REMOVED** — type deleted from variant, no producers existed
