@@ -404,8 +404,8 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
     const std::string pname = "%p." + sanitize_llvm_ident(param.name);
     ctx.param_slots[static_cast<uint32_t>(i) + 0x80000000u] = slot;
     const int param_align = object_align_bytes(mod, param.type.spec);
-    ctx.alloca_insts.push_back(LirAlloca{{}, param.type.spec, std::nullopt, slot, param_align});
-    ctx.alloca_insts.push_back(LirHoistedStore{slot, pname, param.type.spec, false});
+    ctx.alloca_insts.push_back(LirAllocaOp{slot, llvm_alloca_ty(param.type.spec), "", param_align});
+    ctx.alloca_insts.push_back(LirStoreOp{llvm_ty(param.type.spec), pname, slot});
   }
 
   std::unordered_map<std::string, int> name_count;
@@ -427,16 +427,16 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
         TypeSpec ptr_ts{};
         ptr_ts.base = TB_VOID;
         ptr_ts.ptr_level = 1;
-        ctx.alloca_insts.push_back(LirAlloca{{}, ptr_ts, std::nullopt, slot, 0});
+        ctx.alloca_insts.push_back(LirAllocaOp{slot, llvm_alloca_ty(ptr_ts), "", 0});
       } else {
         const int stack_align = object_align_bytes(mod, d->type.spec);
-        ctx.alloca_insts.push_back(LirAlloca{{}, d->type.spec, std::nullopt, slot, stack_align});
+        ctx.alloca_insts.push_back(LirAllocaOp{slot, llvm_alloca_ty(d->type.spec), "", stack_align});
         if (d->init &&
             (d->type.spec.array_rank > 0 ||
              (d->type.spec.ptr_level == 0 &&
               (d->type.spec.base == TB_STRUCT ||
                d->type.spec.base == TB_UNION)))) {
-          ctx.alloca_insts.push_back(LirHoistedStore{slot, "", d->type.spec, true});
+          ctx.alloca_insts.push_back(LirStoreOp{llvm_alloca_ty(d->type.spec), "zeroinitializer", slot});
         }
       }
     }

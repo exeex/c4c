@@ -130,14 +130,6 @@ struct LirSelect {
   LirValueId false_val{};
 };
 
-struct LirAlloca {
-  LirValueId result{};
-  TypeSpec type{};
-  std::optional<LirValueId> count;  // for VLA
-  std::string name;                 // SSA slot name (e.g. "%lv.foo")
-  int align = 0;                    // alignment in bytes (0 = unspecified)
-};
-
 struct LirIntrinsic {
   LirValueId result{};
   std::string name;
@@ -189,13 +181,6 @@ struct LirInlineAsm {
   std::vector<LirValueId> operands;
 };
 
-
-struct LirHoistedStore {
-  std::string ptr;       // destination slot SSA name (e.g. "%lv.param.foo")
-  std::string val;       // source SSA name (e.g. "%p.foo"); empty when zeroinit=true
-  TypeSpec type{};       // type of stored value
-  bool zeroinit = false; // if true, store zeroinitializer instead of val
-};
 
 struct LirIndirectBrOp {
   std::string addr;                   // SSA name of ptr to branch to
@@ -374,7 +359,6 @@ using LirInst = std::variant<
     LirCall,
     LirGep,
     LirSelect,
-    LirAlloca,
     LirIntrinsic,
     LirInlineAsm,
     LirMemcpyOp,
@@ -384,7 +368,6 @@ using LirInst = std::variant<
     LirStackSaveOp,
     LirStackRestoreOp,
     LirAbsOp,
-    LirHoistedStore,
     LirIndirectBrOp,
     LirExtractValueOp,
     LirInsertValueOp,

@@ -40,14 +40,15 @@
 - [x] Step 3-final: Remove dead LirRawLine and LirRawTerminator types from LIR variant and printer (zero producers remained)
 
 ## Active Slice
-- Step 4a: Expand bitfield compound ops into typed LIR ops — DONE
+- Step 4b: Move TypeSpec→LLVM type conversion from printer to lowering — DONE
 
 ## Completed (Step 4)
 - [x] Step 4a: Expand LirBitfieldExtract into typed LIR ops (LirLoadOp, LirBinOp, LirCastOp) in emit_bitfield_load; remove compound type from ir.hpp and printer
 - [x] Step 4a: Expand LirBitfieldInsert into typed LIR ops (LirLoadOp, LirBinOp, LirStoreOp) in emit_bitfield_store; remove compound type from ir.hpp and printer
+- [x] Step 4b: Replace LirAlloca (TypeSpec-based) with LirAllocaOp (string-based) and LirHoistedStore with LirStoreOp at all 11 production sites; pre-compute LLVM type strings in lowering; remove dead types from ir.hpp variant and printer
 
 ## Next Intended Slice
-- Step 4b: Audit remaining printer for semantic decisions (DCE, LirAlloca/LirHoistedStore TypeSpec→LLVM type conversion)
+- Step 4c: Audit printer DCE — move dead static function elimination from printer into lowering or module-level pass
 - Step 2 remaining: extract lower_globals and emit_stmt semantic ownership from HirEmitter
 
 ## Raw fallback usage remaining
@@ -55,7 +56,9 @@
 - **LirRawTerminator: REMOVED** — type deleted from variant, no producers existed
 - **LirBitfieldExtract: REMOVED** — expanded to typed LIR ops in lowering
 - **LirBitfieldInsert: REMOVED** — expanded to typed LIR ops in lowering
-- All LIR instructions and terminators are now fully typed
+- **LirAlloca: REMOVED** — replaced with LirAllocaOp (string-based, type computed in lowering)
+- **LirHoistedStore: REMOVED** — replaced with LirStoreOp (string-based, type computed in lowering)
+- All LIR instructions and terminators are now fully typed; printer has no TypeSpec→LLVM type conversions
 
 ## Blockers
 - None

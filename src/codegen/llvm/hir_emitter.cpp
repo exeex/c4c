@@ -1546,8 +1546,8 @@ std::string HirEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec& 
         }
         // Create a new alloca for this parameter
         const std::string slot = "%lv.param." + sanitize_llvm_ident(param.name);
-        ctx.alloca_insts.push_back(lir::LirAlloca{{}, pts, std::nullopt, slot, 0});
-        ctx.alloca_insts.push_back(lir::LirHoistedStore{slot, pname, pts, false});
+        ctx.alloca_insts.push_back(lir::LirAllocaOp{slot, llvm_alloca_ty(pts), "", 0});
+        ctx.alloca_insts.push_back(lir::LirStoreOp{llvm_ty(pts), pname, slot});
         ctx.param_slots[*r->param_index + 0x80000000u] = slot;
         return slot;
       }
@@ -1677,7 +1677,7 @@ std::string HirEmitter::emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeSp
           base_ts = rval_ts;
         }
         const std::string slot = fresh_tmp(ctx) + ".agg";
-        ctx.alloca_insts.push_back(lir::LirAlloca{{}, base_ts, std::nullopt, slot, 0});
+        ctx.alloca_insts.push_back(lir::LirAllocaOp{slot, llvm_alloca_ty(base_ts), "", 0});
         emit_lir_op(ctx, lir::LirStoreOp{llvm_ty(base_ts), rval, slot});
         base_ptr = slot;
       }
@@ -4952,8 +4952,8 @@ void HirEmitter::hoist_allocas(FnCtx& ctx, const Function& fn){
       // Store the spill slot under key (param_index + sentinel)
       ctx.param_slots[static_cast<uint32_t>(i) + 0x80000000u] = slot;
       const int param_align = object_align_bytes(mod_, param.type.spec);
-      ctx.alloca_insts.push_back(lir::LirAlloca{{}, param.type.spec, std::nullopt, slot, param_align});
-      ctx.alloca_insts.push_back(lir::LirHoistedStore{slot, pname, param.type.spec, false});
+      ctx.alloca_insts.push_back(lir::LirAllocaOp{slot, llvm_alloca_ty(param.type.spec), "", param_align});
+      ctx.alloca_insts.push_back(lir::LirStoreOp{llvm_ty(param.type.spec), pname, slot});
     }
 
     std::unordered_map<std::string, int> name_count;
@@ -4976,16 +4976,16 @@ void HirEmitter::hoist_allocas(FnCtx& ctx, const Function& fn){
           TypeSpec ptr_ts{};
           ptr_ts.base = TB_VOID;
           ptr_ts.ptr_level = 1;
-          ctx.alloca_insts.push_back(lir::LirAlloca{{}, ptr_ts, std::nullopt, slot, 0});
+          ctx.alloca_insts.push_back(lir::LirAllocaOp{slot, llvm_alloca_ty(ptr_ts), "", 0});
         } else {
           const int stack_align = object_align_bytes(mod_, d->type.spec);
-          ctx.alloca_insts.push_back(lir::LirAlloca{{}, d->type.spec, std::nullopt, slot, stack_align});
+          ctx.alloca_insts.push_back(lir::LirAllocaOp{slot, llvm_alloca_ty(d->type.spec), "", stack_align});
           if (d->init &&
               (d->type.spec.array_rank > 0 ||
                (d->type.spec.ptr_level == 0 &&
                 (d->type.spec.base == TB_STRUCT ||
                  d->type.spec.base == TB_UNION)))) {
-            ctx.alloca_insts.push_back(lir::LirHoistedStore{slot, "", d->type.spec, true});
+            ctx.alloca_insts.push_back(lir::LirStoreOp{llvm_alloca_ty(d->type.spec), "zeroinitializer", slot});
           }
         }
       }
