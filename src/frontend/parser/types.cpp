@@ -937,7 +937,12 @@ static int find_template_arg_expr_end(const std::vector<Token>& tokens, int star
         } else if (tk == TokenKind::LBrace) ++brace_depth;
         else if (tk == TokenKind::RBrace) {
             if (brace_depth > 0) --brace_depth;
+            else break;  // unbalanced } — not inside a template argument
         } else if (paren_depth == 0 && bracket_depth == 0 && brace_depth == 0) {
+            // Semicolons and unbalanced closing braces cannot appear inside
+            // a template argument expression — stop scanning so the caller
+            // treats the tentative template parse as failed.
+            if (tk == TokenKind::Semi) break;
             if (tk == TokenKind::Comma && angle_depth == 0) break;
             if (tk == TokenKind::Greater || tk == TokenKind::GreaterGreater) {
                 if (angle_depth == 0) break;

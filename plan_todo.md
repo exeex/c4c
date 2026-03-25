@@ -43,16 +43,24 @@
 - For non-obvious NTTP tokens (parenthesized expressions, sizeof, etc.), type-id is now tried first before non-type — matches Clang `ParseTemplateArgument()` convention
 - No regressions: 2123/2127 (same 4 pre-existing failures)
 
+### Step 5, Slice 1: Fix template arg expr scan crossing statement boundaries (2026-03-26)
+- **Root cause**: `find_template_arg_expr_end()` did not stop at `;` or unbalanced `}`
+- When expression parser tentatively tried `x<...>` template-id for `x < other.x;` inside a method body, the scan crossed `;` and `}` until it found `>` in `operator>` on the next line
+- **Symptom**: `operator_compare_basic.cpp` failed — `operator>(Val other)` parsed as function call args after false template match
+- **Fix**: Added `Semi` break and unbalanced `RBrace` break to `find_template_arg_expr_end()`
+- **Result**: 2124/2127 (+1), `operator_compare_basic` now passes
+
 ## Active
+
+### Step 5: Add Tentative Parsing Around Potential Template-Id Starts
+- **Done**: Slice 1 — fixed `find_template_arg_expr_end` statement boundary stops
+- Expression primary parsing already uses tentative save/restore (expressions.cpp:1094-1097)
+- May need expansion for more ambiguous cases
 
 ### Step 4: Normalize Template Argument Disambiguation Order
 - **Done**: Slice 1 — normalized try-order to type-id → expression
 - **Remaining**: template-template argument support (low priority for this project's C++ subset)
 - **Next slice**: Consider whether `parse_non_type_arg` should use the expression parser instead of raw token capture for complex NTTPs
-
-### Step 5: Add Tentative Parsing Around Potential Template-Id Starts
-- Expression primary parsing already uses tentative save/restore (expressions.cpp:1094-1097)
-- May need expansion for more ambiguous cases
 
 ### Step 6: Recovery/Diagnostics Tracking
 - Only after core parsing is stable
@@ -60,5 +68,4 @@
 ## Pre-existing Failures (not blocking)
 - `cpp_positive_sema_deferred_consteval_nttp_cpp`
 - `cpp_positive_sema_mixed_type_nttp_forwarding_cpp`
-- `cpp_positive_sema_operator_compare_basic_cpp`
 - `cpp_positive_sema_template_nttp_forwarding_depth_cpp`
