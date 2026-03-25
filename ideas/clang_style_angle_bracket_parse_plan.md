@@ -246,6 +246,36 @@ Avoid multiple partially-overlapping implementations in:
 - alias-template reconstruction
 - deferred NTTP expression handling
 
+Status on 2026-03-20 (WIP, unstashed):
+
+- `TemplateArgParseResult` struct added to `parser.hpp` (bundles type, is_value,
+  value, nttp_name per argument)
+- `parse_template_argument_list()` implemented in `types.cpp` as single canonical
+  entry point for template argument parsing — handles type args, NTTP literals,
+  `sizeof...(Pack)`, bool literals, forwarded NTTP names, and nested template-ids
+- `expressions.cpp` `parse_primary()` migrated from ~80 lines of inline template
+  arg parsing to calling `parse_template_argument_list()`
+- `ast_to_hir.cpp` relaxed `tpl_bindings.empty()` guard on
+  `seed_pending_template_type` / `resolve_pending_tpl_struct_if_needed` so that
+  non-template contexts can still resolve template struct origins
+
+Known regressions from this WIP (4 tests):
+
+1. `deferred_consteval_nttp` — `unevaluated PendingConstevalExpr reached codegen
+   for 'inner_square'`; consteval NTTP forwarding path not fully wired through
+   the new unified parser
+2. `mixed_type_nttp_forwarding` — same category, mixed type/NTTP forwarding depth
+3. `template_nttp_forwarding_depth` — same category, deep NTTP forwarding
+4. `operator_compare_basic` — `expected RPAREN but got 'other'`; the unified
+   template arg parser may be consuming tokens differently around `operator==`
+   parameter lists
+
+Root cause summary: the new `parse_template_argument_list()` path does not yet
+handle all NTTP expression forms that the old inline code handled implicitly
+(e.g. qualified `Trait<T>::value` as NTTP, complex consteval expressions).
+The `operator_compare_basic` failure is likely a different issue where the
+parser enters template-arg mode incorrectly for `operator<=>` or similar.
+
 
 ### Stage 3. Add tentative parse wrapper for `<`
 
