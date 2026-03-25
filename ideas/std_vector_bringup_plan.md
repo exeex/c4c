@@ -96,25 +96,26 @@ Make the failing case cheap to rerun and easy to reduce.
 
 ### Current Manual Workflow
 
-There is now a standalone CMake workflow target for the EASTL repro case:
+There is currently a standalone CMake workflow target for the EASTL type-traits
+repro case:
 
-- target: `eastl_std_vector_simple_workflow`
-- source: `tests/cpp/eastl/std_vector_simple.cpp`
-- script: `tests/cpp/eastl/run_std_vector_simple_workflow.cmake`
+- target: `eastl_type_traits_simple_workflow`
+- source: `tests/cpp/eastl/eastl_type_traits_simple.cpp`
+- script: `tests/cpp/eastl/run_eastl_type_traits_simple_workflow.cmake`
 
 Run it with:
 
 ```bash
-cmake --build build --target eastl_std_vector_simple_workflow
+cmake --build build --target eastl_type_traits_simple_workflow
 ```
 
 This workflow is intentionally **not** part of the default `ctest` set.
 It exists to make the current EASTL bring-up path easy to reproduce without
-promoting a still-failing case into the regular suite.
+promoting an ad hoc workflow into the regular suite.
 
 The workflow performs:
 
-1. host compile of `tests/cpp/eastl/std_vector_simple.cpp` with EASTL/EABase include paths
+1. host compile of `tests/cpp/eastl/eastl_type_traits_simple.cpp` with EASTL/EABase include paths
 2. host execution of that reference binary
 3. `c4cll` compile of the same source with matching include paths, emitting LLVM IR
 4. host `clang` compile of the emitted IR
@@ -122,9 +123,16 @@ The workflow performs:
 
 Artifacts are written under:
 
-- `build/eastl_std_vector_simple/std_vector_simple.ll`
-- `build/eastl_std_vector_simple/std_vector_simple.host.bin`
-- `build/eastl_std_vector_simple/std_vector_simple.c4c.bin`
+- `build/eastl_type_traits_simple/eastl_type_traits_simple.ll`
+- `build/eastl_type_traits_simple/eastl_type_traits_simple.host.bin`
+- `build/eastl_type_traits_simple/eastl_type_traits_simple.c4c.bin`
+
+The current EASTL parser/sema regression slices are registered in `ctest`.
+To inspect their up-to-date names from the configured build tree, use:
+
+```bash
+ctest --test-dir build -N | rg 'cpp_positive_sema_eastl'
+```
 
 ### Exit Criteria
 
