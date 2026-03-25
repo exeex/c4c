@@ -50,6 +50,15 @@
 - **Fix**: Added `Semi` break and unbalanced `RBrace` break to `find_template_arg_expr_end()`
 - **Result**: 2124/2127 (+1), `operator_compare_basic` now passes
 
+### Step 4, Slice 2: Reject phantom type-id for bare NTTP identifiers (2026-03-26)
+- **Root cause**: `parse_type_arg` inside `parse_template_argument_list()` would succeed for bare identifiers like `N` in `leaf<N>()` — `parse_type_name()` returned default `int` with `N` consumed as declarator name
+- **Symptom**: Forwarded NTTP args classified as type args → NTTP bindings empty → deferred template calls unresolved → consteval not evaluated; multi-hop NTTP forwarding produced wrong mangled names
+- **Fix**: After `parse_type_name()` in `parse_type_arg`, reject when exactly one Identifier token was consumed and that identifier is not a known type name or template type parameter
+- **Result**: 2127/2127 (all passing!) — fixes 3 pre-existing failures:
+  - `deferred_consteval_nttp` — consteval in deferred NTTP chains now evaluates
+  - `mixed_type_nttp_forwarding` — mixed type+NTTP deferred chains work
+  - `template_nttp_forwarding_depth` — multi-hop NTTP forwarding resolves correctly
+
 ## Active
 
 ### Step 5: Add Tentative Parsing Around Potential Template-Id Starts
@@ -59,6 +68,7 @@
 
 ### Step 4: Normalize Template Argument Disambiguation Order
 - **Done**: Slice 1 — normalized try-order to type-id → expression
+- **Done**: Slice 2 — phantom type-id rejection for bare NTTP identifiers
 - **Remaining**: template-template argument support (low priority for this project's C++ subset)
 - **Next slice**: Consider whether `parse_non_type_arg` should use the expression parser instead of raw token capture for complex NTTPs
 
@@ -66,6 +76,4 @@
 - Only after core parsing is stable
 
 ## Pre-existing Failures (not blocking)
-- `cpp_positive_sema_deferred_consteval_nttp_cpp`
-- `cpp_positive_sema_mixed_type_nttp_forwarding_cpp`
-- `cpp_positive_sema_template_nttp_forwarding_depth_cpp`
+- None — all 2127 tests passing

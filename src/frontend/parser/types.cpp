@@ -1032,6 +1032,18 @@ bool Parser::parse_template_argument_list(std::vector<TemplateArgParseResult>* o
                 pos_ = saved_pos;
                 return false;
             }
+            // Reject phantom type-id: if exactly one Identifier token was consumed
+            // and that identifier is not a recognized type name, then parse_type_name()
+            // fell through to the default TB_INT base with the identifier consumed as
+            // a declarator name.  This happens for forwarded NTTP names like <N>
+            // where N is not a type.  Reject so parse_non_type_arg can handle it.
+            if (is_cpp_mode() && pos_ == saved_pos + 1 &&
+                tokens_[saved_pos].kind == TokenKind::Identifier &&
+                !is_typedef_name(tokens_[saved_pos].lexeme) &&
+                active_template_member_type_params_.count(tokens_[saved_pos].lexeme) == 0) {
+                pos_ = saved_pos;
+                return false;
+            }
             out_arg->is_value = false;
             out_arg->type = ts;
             out_arg->value = 0;
