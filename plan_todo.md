@@ -1,6 +1,6 @@
 # HIR → LIR Split — Execution State
 
-## Current Step: Step 3 (Replace Raw LLVM-Text Fallback LIR Where It Hurts Most)
+## Current Step: Step 3 COMPLETE → Step 4 (Printer Purity Audit)
 
 ## Step 1 Audit: Legacy Dependencies in hir_to_lir.cpp
 
@@ -36,21 +36,20 @@
 - [x] Step 3e-v: Replace call LirRawLine with typed LirCallOp (16 call sites: 2 general function calls + 14 intrinsic calls)
 - [x] Step 3e-vi: Replace remaining direct LirRawLine alloca_insts in legacy emitter with LirAlloca/LirHoistedStore (9 sites: param spills, agg temps, local decl allocas, VLA ptr slots, zeroinit stores)
 - [x] Step 3e-vii: Replace emit_instr LirRawLine with typed ops — LirBinOp (40 sites), LirCmpOp (18 sites), LirPhiOp (4 sites), LirSelectOp (1 site), LirInsertElementOp (2 sites), LirExtractElementOp (1 site), LirShuffleVectorOp (2 sites), LirVaArgOp (2 sites)
-- [x] Step 3e-viii: Replace remaining emit_instr alloca calls with typed LirAllocaOp (9 sites: __builtin_alloca, alloca(), va_list copy, variadic aggregate, aarch64 vaarg struct, VLA dynamic alloca) and inline asm calls with typed LirInlineAsmOp (2 sites); removed dead `emit_instr()` method from HirEmitter
+- [x] Step 3e-viii: Replace remaining emit_instr alloca calls with typed LirAllocaOp and inline asm calls with typed LirInlineAsmOp; removed dead `emit_instr()` method
+- [x] Step 3-final: Remove dead LirRawLine and LirRawTerminator types from LIR variant and printer (zero producers remained)
 
 ## Active Slice
 - (none — ready for next iteration)
 
 ## Next Intended Slice
-- **emit_instr is fully eliminated** — no remaining call sites or method definition
-- Next: audit remaining LirRawLine usage (should be zero or near-zero in hir_emitter.cpp)
-- Then: Step 4 (printer purity audit) or Step 2 remaining semantic deps (lower_globals, emit_stmt)
+- Step 4: Audit lir_printer.cpp for semantic decisions that should be in hir_to_lir
+- Step 2 remaining: extract lower_globals and emit_stmt semantic ownership from HirEmitter
 
 ## Raw fallback usage remaining
-- hir_to_lir.cpp: no raw usage remains
-- hir_emitter.cpp: **`emit_instr()` fully eliminated** — method removed, zero call sites
-- LirRawLine: may still be emitted by other paths (needs audit)
-- LirRawTerminator: no remaining call sites; type kept in variant for now
+- **LirRawLine: REMOVED** — type deleted from variant, no producers existed
+- **LirRawTerminator: REMOVED** — type deleted from variant, no producers existed
+- All LIR instructions and terminators are now fully typed
 
 ## Blockers
 - None

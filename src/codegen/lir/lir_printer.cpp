@@ -29,8 +29,6 @@ void render_inst(std::ostringstream& os, const LirInst& inst) {
     if (op->side_effects) os << "sideeffect ";
     os << "\"" << op->asm_text << "\", \"" << op->constraints << "\"("
        << op->args_str << ")\n";
-  } else if (const auto* raw = std::get_if<LirRawLine>(&inst)) {
-    os << raw->line << "\n";
   } else if (const auto* op = std::get_if<LirMemcpyOp>(&inst)) {
     os << "  call void @llvm.memcpy.p0.p0.i64(ptr " << op->dst
        << ", ptr " << op->src << ", i64 " << op->size
@@ -229,9 +227,7 @@ void render_inst(std::ostringstream& os, const LirInst& inst) {
 
 // Render a LirTerminator to text.
 void render_terminator(std::ostringstream& os, const LirTerminator& term) {
-  if (const auto* raw = std::get_if<LirRawTerminator>(&term)) {
-    os << raw->line << "\n";
-  } else if (const auto* br = std::get_if<LirBr>(&term)) {
+  if (const auto* br = std::get_if<LirBr>(&term)) {
     os << "  br label %" << br->target_label << "\n";
   } else if (const auto* cbr = std::get_if<LirCondBr>(&term)) {
     os << "  br i1 " << cbr->cond_name << ", label %" << cbr->true_label

@@ -145,7 +145,7 @@ struct LirIntrinsic {
 };
 
 // ── Typed intrinsic operations (Stage 3) ────────────────────────────────────
-// These replace LirRawLine for well-known intrinsic calls.
+// Typed intrinsic call operations.
 // Operands use string SSA names (matching current emitter convention).
 
 struct LirMemcpyOp {
@@ -280,7 +280,7 @@ struct LirGepOp {
   std::vector<std::string> indices;  // each entry is "type value" (e.g. "i32 0", "i64 5")
 };
 
-// Typed call instruction (replaces LirRawLine for call/intrinsic emissions).
+// Typed call instruction.
 // Covers both direct calls, indirect calls, and intrinsic calls.
 struct LirCallOp {
   std::string result;              // SSA name for result (empty for void calls)
@@ -381,13 +381,6 @@ struct LirInlineAsmOp {
   std::string args_str;       // pre-formatted argument string
 };
 
-// Catch-all for instructions not yet migrated to typed LIR ops.
-// Contains the raw LLVM IR line produced by the legacy emitter.
-// This allows incremental migration: Stage 1+ will shrink usage of this type.
-struct LirRawLine {
-  std::string line;
-};
-
 using LirInst = std::variant<
     LirConstInt,
     LirConstFloat,
@@ -429,8 +422,7 @@ using LirInst = std::variant<
     LirShuffleVectorOp,
     LirVaArgOp,
     LirAllocaOp,
-    LirInlineAsmOp,
-    LirRawLine
+    LirInlineAsmOp
 >;
 
 // ── Terminators ──────────────────────────────────────────────────────────────
@@ -464,20 +456,13 @@ struct LirIndirectBr {
 
 struct LirUnreachable {};
 
-// Catch-all for terminators not yet migrated to typed LIR variants.
-// Contains the raw LLVM IR line produced by the legacy emitter.
-struct LirRawTerminator {
-  std::string line;
-};
-
 using LirTerminator = std::variant<
     LirBr,
     LirCondBr,
     LirRet,
     LirSwitch,
     LirIndirectBr,
-    LirUnreachable,
-    LirRawTerminator
+    LirUnreachable
 >;
 
 // ── Block ────────────────────────────────────────────────────────────────────
