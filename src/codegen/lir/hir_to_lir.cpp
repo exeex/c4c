@@ -333,7 +333,6 @@ static void finalize_module(LirModule& module,
   if (emitter.needs_va_end())       module.need_va_end = true;
   if (emitter.needs_va_copy())      module.need_va_copy = true;
   if (emitter.needs_memcpy())       module.need_memcpy = true;
-  if (emitter.needs_stacksave())    module.need_stacksave = true;
   if (emitter.needs_stackrestore()) module.need_stackrestore = true;
   if (emitter.needs_abs())          module.need_abs = true;
 
@@ -346,10 +345,6 @@ static void finalize_module(LirModule& module,
     module.extern_decls.push_back(std::move(ed));
   }
 
-  // Specialization metadata
-  for (const auto& e : emitter.spec_entries()) {
-    module.spec_entries.push_back({e.spec_key, e.template_origin, e.mangled_name});
-  }
 }
 
 // ── Block ordering ───────────────────────────────────────────────────────────

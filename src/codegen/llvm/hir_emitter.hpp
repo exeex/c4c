@@ -52,9 +52,6 @@ struct FieldStep {
 
 class HirEmitter {
  public:
-  // ── Specialization metadata for cross-TU serialization ──────────────────
-  struct SpecEntry { std::string spec_key; std::string template_origin; std::string mangled_name; };
-
   explicit HirEmitter(const Module& m);
 
   /// Set the working LirModule by reference.  The caller (hir_to_lir::lower)
@@ -67,12 +64,6 @@ class HirEmitter {
   /// hir_to_lir::lower() can drive block iteration directly.
   void emit_stmt(FnCtx& ctx, const Stmt& stmt);
 
-  /// Create a new LIR block with the given label and make it current in ctx.
-  void emit_lbl(FnCtx& ctx, const std::string& lbl);
-
-  /// Map a HIR BlockId to its LLVM IR label string.
-  static std::string block_lbl(BlockId id);
-
   // ── Post-lowering accessors for module-level finalization ──────────────
   // These expose accumulated state so that hir_to_lir::lower() can own
   // the decision of what goes into the final LirModule.
@@ -80,14 +71,12 @@ class HirEmitter {
   bool needs_va_end()       const { return need_llvm_va_end_; }
   bool needs_va_copy()      const { return need_llvm_va_copy_; }
   bool needs_memcpy()       const { return need_llvm_memcpy_; }
-  bool needs_stacksave()    const { return need_llvm_stacksave_; }
   bool needs_stackrestore() const { return need_llvm_stackrestore_; }
   bool needs_abs()          const { return need_llvm_abs_; }
 
   const std::unordered_map<std::string, std::string>& extern_call_decls() const {
     return extern_call_decls_;
   }
-  const std::vector<SpecEntry>& spec_entries() const { return spec_entries_; }
 
   // Const initializer helpers — used by hir_to_lir for global lowering.
   std::vector<std::string> emit_const_struct_fields(const TypeSpec& ts,
@@ -106,13 +95,15 @@ class HirEmitter {
   bool need_llvm_va_end_ = false;
   bool need_llvm_va_copy_ = false;
   bool need_llvm_memcpy_ = false;
-  bool need_llvm_stacksave_ = false;
   bool need_llvm_stackrestore_ = false;
   bool need_llvm_abs_ = false;
-  mutable std::unordered_map<uint32_t, FnPtrSig> inferred_ret_fn_ptr_sigs_;
   mutable std::unordered_map<uint32_t, FnPtrSig> inferred_direct_fn_sigs_;
 
-  std::vector<SpecEntry> spec_entries_;
+  /// Create a new LIR block with the given label and make it current in ctx.
+  void emit_lbl(FnCtx& ctx, const std::string& lbl);
+
+  /// Map a HIR BlockId to its LLVM IR label string.
+  static std::string block_lbl(BlockId id);
 
   // ── Instruction helpers ───────────────────────────────────────────────────
 
