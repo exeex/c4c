@@ -59,21 +59,36 @@
   - `mixed_type_nttp_forwarding` — mixed type+NTTP deferred chains work
   - `template_nttp_forwarding_depth` — multi-hop NTTP forwarding resolves correctly
 
-## Active
-
-### Step 5: Add Tentative Parsing Around Potential Template-Id Starts
+### Step 5: Add Tentative Parsing Around Potential Template-Id Starts (2026-03-26)
 - **Done**: Slice 1 — fixed `find_template_arg_expr_end` statement boundary stops
-- Expression primary parsing already uses tentative save/restore (expressions.cpp:1094-1097)
-- May need expansion for more ambiguous cases
+- Expression primary parsing already uses tentative save/restore (expressions.cpp:1094-1184)
+- `is_valid_after_template()` lambda validates follow-tokens to distinguish template-id from comparison
+- Focus corpus validation test added: nested `A<B<C>>`, deep `A<B<C<D>>>`, `Trait<T>::value` NTTP, `enable_if_t<(N > 0), int>`, `foo<bar, baz>(x)` — all passing
+- **Status**: Complete for current C++ subset
 
-### Step 4: Normalize Template Argument Disambiguation Order
-- **Done**: Slice 1 — normalized try-order to type-id → expression
-- **Done**: Slice 2 — phantom type-id rejection for bare NTTP identifiers
-- **Remaining**: template-template argument support (low priority for this project's C++ subset)
-- **Next slice**: Consider whether `parse_non_type_arg` should use the expression parser instead of raw token capture for complex NTTPs
+### Step 6: Recovery/Diagnostics Tracking (2026-03-26)
+- Core parsing is stable; recovery tracking could be added
+- **Decision**: Defer — not needed for current use cases; all 2128 tests pass
+- **Status**: Deferred (low priority)
 
-### Step 6: Recovery/Diagnostics Tracking
-- Only after core parsing is stable
+### Validation: Focus corpus test (2026-03-26)
+- Added `template_angle_bracket_validation.cpp` covering plan's suggested focus corpus
+- All patterns parse and execute correctly
 
-## Pre-existing Failures (not blocking)
-- None — all 2127 tests passing
+## Plan Completion Summary
+
+All "Done" criteria from plan.md are satisfied:
+1. ✅ Parser-owned helper is the only place that splits `>`-prefixed tokens for template closing
+2. ✅ Template argument parsing goes through one canonical parser path (`parse_template_argument_list`)
+3. ✅ `<` as template opener vs operator decided by tentative save/restore + follow-token validation
+4. ✅ Template argument disambiguation follows type-id first → non-type expression (Clang order)
+5. ✅ Focused regression cases for nested templates and dependent NTTPs stay green (2128/2128)
+
+## Deferred Items (outside plan scope)
+- Template-template argument support (not needed for this project's C++ subset)
+- `parse_non_type_arg` expression parser migration (raw token capture works correctly)
+- `auto` deduction from template struct return types (codegen bug, not parser)
+- `pointer_check<T, is_pointer<T>::value>` static method instantiation (codegen/instantiation bug, not parser)
+
+## Final Test Count
+- **2128/2128** all passing
