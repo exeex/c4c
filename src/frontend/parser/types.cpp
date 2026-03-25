@@ -1122,13 +1122,22 @@ bool Parser::parse_template_argument_list(std::vector<TemplateArgParseResult>* o
     while (!at_end() && !check_template_close()) {
         TemplateArgParseResult arg;
         bool ok = false;
+        // Normalized disambiguation order (Clang ParseTemplateArgument style):
+        //   1. try type-id
+        //   2. try non-type expression
+        // The primary_tpl hint (expect_value) is used only to prefer
+        // non-type for tokens that are unambiguously value-like, avoiding
+        // a redundant (and exception-throwing) type parse attempt.
         const bool expect_value =
             primary_tpl && arg_idx < primary_tpl->n_template_params &&
             primary_tpl->template_param_is_nttp &&
             primary_tpl->template_param_is_nttp[arg_idx];
-        if (!expect_value) ok = parse_type_arg(&arg);
+        const bool clearly_value = expect_value && (
+            check(TokenKind::IntLit) || check(TokenKind::CharLit) ||
+            check(TokenKind::KwTrue) || check(TokenKind::KwFalse) ||
+            check(TokenKind::Minus) || check(TokenKind::Identifier));
+        if (!clearly_value) ok = parse_type_arg(&arg);
         if (!ok) ok = parse_non_type_arg(&arg);
-        if (!ok && expect_value) ok = parse_type_arg(&arg);
         if (!ok) return false;
         out_args->push_back(arg);
         ++arg_idx;
