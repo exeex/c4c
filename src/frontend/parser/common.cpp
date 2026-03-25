@@ -436,7 +436,8 @@ long long parse_int_lexeme(const char* s) {
 }
 
 double parse_float_lexeme(const char* s) {
-    // strip f/F/l/L and imaginary i/j/I/J suffixes (any order)
+    // strip f/F, l/L, f16/F16, f32/F32, f64/F64, f128/F128, bf16/BF16,
+    // and imaginary i/j/I/J suffixes
     char buf[64];
     size_t len = strlen(s);
     if (len >= sizeof(buf)) len = sizeof(buf) - 1;
@@ -445,6 +446,36 @@ double parse_float_lexeme(const char* s) {
     bool is_float_suffix = false;  // 'f'/'F' suffix → single-precision
     size_t end = len;
     while (end > 0) {
+        if (end >= 4 &&
+            ((buf[end - 4] == 'f' && buf[end - 3] == '1' &&
+              buf[end - 2] == '2' && buf[end - 1] == '8') ||
+             (buf[end - 4] == 'F' && buf[end - 3] == '1' &&
+              buf[end - 2] == '2' && buf[end - 1] == '8') ||
+             (buf[end - 4] == 'b' && buf[end - 3] == 'f' &&
+              buf[end - 2] == '1' && buf[end - 1] == '6') ||
+             (buf[end - 4] == 'B' && buf[end - 3] == 'F' &&
+              buf[end - 2] == '1' && buf[end - 1] == '6'))) {
+            is_float_suffix = true;
+            end -= 4;
+            continue;
+        }
+        if (end >= 3 &&
+            ((buf[end - 3] == 'f' && buf[end - 2] == '1' &&
+              buf[end - 1] == '6') ||
+             (buf[end - 3] == 'F' && buf[end - 2] == '1' &&
+              buf[end - 1] == '6') ||
+             (buf[end - 3] == 'f' && buf[end - 2] == '3' &&
+              buf[end - 1] == '2') ||
+             (buf[end - 3] == 'F' && buf[end - 2] == '3' &&
+              buf[end - 1] == '2') ||
+             (buf[end - 3] == 'f' && buf[end - 2] == '6' &&
+              buf[end - 1] == '4') ||
+             (buf[end - 3] == 'F' && buf[end - 2] == '6' &&
+              buf[end - 1] == '4'))) {
+            is_float_suffix = true;
+            end -= 3;
+            continue;
+        }
         char c = buf[end - 1];
         if (c == 'f' || c == 'F') { is_float_suffix = true; --end; }
         else if (c == 'l' || c == 'L' ||

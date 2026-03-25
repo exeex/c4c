@@ -1,6 +1,7 @@
 #include "lexer.hpp"
 
 #include <cctype>
+#include <cstring>
 #include <stdexcept>
 
 namespace c4c {
@@ -454,14 +455,81 @@ Token Lexer::scan_number() {
   return make_token(TokenKind::IntLit, std::move(text), tok_line, tok_col);
 }
 
-// Consume float suffix (f/F or l/L) and optional imaginary suffix (i/j/I/J)
-// in any order.  GCC allows e.g. "1.0fi", "1.0iF", "1.0if", etc.
+// Consume float suffix (f/F, l/L, f16/F16, f32/F32, f64/F64, f128/F128,
+// bf16/BF16) and optional imaginary suffix (i/j/I/J) in any order.
+// We currently lower the fixed-width suffixes to the closest existing frontend
+// type category rather than distinct extended floating-point types.
 void Lexer::scan_float_suffix(std::string &text, bool &is_float) {
   bool seen_sz  = false;  // f/F or l/L
+  bool seen_ext = false;  // f16/f32/f64/f128/bf16
+  bool seen_bf16 = false;
   bool seen_imag = false; // i/j/I/J
-  for (int pass = 0; pass < 3 && !at_end(); ++pass) {
+  for (int pass = 0; pass < 4 && !at_end(); ++pass) {
     char s = peek();
-    if ((s == 'f' || s == 'F' || s == 'l' || s == 'L') && !seen_sz) {
+    const auto has_suffix = [&](const char* suffix) -> bool {
+      const size_t n = std::strlen(suffix);
+      if (index_ + n > source_.size()) return false;
+      for (size_t i = 0; i < n; ++i) {
+        if (source_[index_ + i] != suffix[i]) return false;
+      }
+      return true;
+    };
+    const auto consume_suffix = [&](const char* suffix) {
+      for (const char* p = suffix; *p; ++p) text.push_back(advance());
+      is_float = true;
+    };
+    if (!seen_ext && has_suffix("f128")) {
+      seen_ext = true;
+      consume_suffix("f128");
+    } else if (!seen_ext && has_suffix("F128")) {
+      seen_ext = true;
+      consume_suffix("F128");
+    } else if (!seen_ext && has_suffix("f16")) {
+      seen_ext = true;
+      consume_suffix("f16");
+    } else if (!seen_ext && has_suffix("F16")) {
+      seen_ext = true;
+      consume_suffix("F16");
+    } else if (!seen_ext && has_suffix("f32")) {
+      seen_ext = true;
+      consume_suffix("f32");
+    } else if (!seen_ext && has_suffix("F32")) {
+      seen_ext = true;
+      consume_suffix("F32");
+    } else if (!seen_ext && has_suffix("f64")) {
+      seen_ext = true;
+      consume_suffix("f64");
+    } else if (!seen_ext && has_suffix("F64")) {
+      seen_ext = true;
+      consume_suffix("F64");
+    }
+    const bool has_bf16_suffix =
+        index_ + 3 < source_.size() &&
+        source_[index_] == 'b' &&
+        source_[index_ + 1] == 'f' &&
+        source_[index_ + 2] == '1' &&
+        source_[index_ + 3] == '6';
+    const bool has_BF16_suffix =
+        index_ + 3 < source_.size() &&
+        source_[index_] == 'B' &&
+        source_[index_ + 1] == 'F' &&
+        source_[index_ + 2] == '1' &&
+        source_[index_ + 3] == '6';
+    if (!seen_bf16 && has_bf16_suffix) {
+      seen_bf16 = true;
+      is_float = true;
+      text.push_back(advance());
+      text.push_back(advance());
+      text.push_back(advance());
+      text.push_back(advance());
+    } else if (!seen_bf16 && has_BF16_suffix) {
+      seen_bf16 = true;
+      is_float = true;
+      text.push_back(advance());
+      text.push_back(advance());
+      text.push_back(advance());
+      text.push_back(advance());
+    } else if ((s == 'f' || s == 'F' || s == 'l' || s == 'L') && !seen_sz) {
       seen_sz = true;
       is_float = true;
       text.push_back(advance());

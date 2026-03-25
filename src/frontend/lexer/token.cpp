@@ -264,7 +264,7 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
     if (s == "consteval") return TokenKind::KwConsteval;
     if (s == "namespace") return TokenKind::KwNamespace;
     if (s == "using") return TokenKind::KwUsing;
-    if (s == "decltype") return TokenKind::KwDecltype;
+    if (s == "decltype" || s == "__decltype") return TokenKind::KwDecltype;
     if (s == "static_cast")      return TokenKind::KwStaticCast;
     if (s == "reinterpret_cast") return TokenKind::KwReinterpretCast;
     if (s == "const_cast")       return TokenKind::KwConstCast;

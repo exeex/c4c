@@ -1252,6 +1252,79 @@ TypeSpec Parser::parse_base_type() {
     bool has_typedef  = false;
     bool done         = false;
     bool base_set     = false;  // true when ts.base was set directly (KwBuiltin, KwInt128, etc.)
+    auto infer_typeof_like_operand_type = [&](TypeSpec* out, bool strip_qual) -> bool {
+        if (!out) return false;
+        if (check(TokenKind::Identifier) && cur().lexeme == "nullptr") {
+            out->base = TB_VOID;
+            out->ptr_level = 1;
+            consume();
+            return true;
+        }
+        if (is_type_start()) {
+            bool save_c = out->is_const, save_v = out->is_volatile;
+            *out = parse_type_name();
+            if (strip_qual) {
+                out->is_const = false;
+                out->is_volatile = false;
+            }
+            out->is_const |= save_c;
+            out->is_volatile |= save_v;
+            return true;
+        }
+        if (check(TokenKind::Identifier)) {
+            std::string id = cur().lexeme;
+            consume();
+            auto vit = var_types_.find(id);
+            if (vit != var_types_.end()) {
+                *out = vit->second;
+            } else {
+                out->base = TB_INT;  // enum constants and unknowns → int
+            }
+            if (strip_qual) {
+                out->is_const = false;
+                out->is_volatile = false;
+            }
+            return true;
+        }
+        if (check(TokenKind::FloatLit)) {
+            const std::string lex = cur().lexeme;
+            const bool is_f16 = lex.find("f16") != std::string::npos ||
+                                lex.find("F16") != std::string::npos;
+            const bool is_f64 = lex.find("f64") != std::string::npos ||
+                                lex.find("F64") != std::string::npos;
+            const bool is_f128 = lex.find("f128") != std::string::npos ||
+                                 lex.find("F128") != std::string::npos;
+            const bool is_bf16 = lex.find("bf16") != std::string::npos ||
+                                 lex.find("BF16") != std::string::npos;
+            const bool has_fixed_width_suffix = is_f16 || is_f64 || is_f128 || is_bf16;
+            const bool is_f32 = lex.find("f32") != std::string::npos ||
+                                lex.find("F32") != std::string::npos ||
+                                (!has_fixed_width_suffix &&
+                                 (lex.find('f') != std::string::npos ||
+                                  lex.find('F') != std::string::npos));
+            const bool is_ldbl = lex.find('l') != std::string::npos ||
+                                 lex.find('L') != std::string::npos;
+            out->base = (is_f16 || is_f32 || is_bf16) ? TB_FLOAT
+                      : (is_f128 || is_ldbl) ? TB_LONGDOUBLE
+                      : is_f64 ? TB_DOUBLE
+                               : TB_DOUBLE;
+            consume();
+            return true;
+        }
+        if (check(TokenKind::IntLit) || check(TokenKind::CharLit) ||
+            (is_cpp_mode() && (check(TokenKind::KwTrue) || check(TokenKind::KwFalse)))) {
+            out->base = check(TokenKind::IntLit) || check(TokenKind::CharLit) ? TB_INT : TB_BOOL;
+            consume();
+            return true;
+        }
+        if (check(TokenKind::StrLit)) {
+            out->base = TB_CHAR;
+            out->ptr_level = 1;
+            consume();
+            return true;
+        }
+        return false;
+    };
     while (!done && !at_end()) {
         TokenKind k = cur().kind;
         switch (k) {
@@ -1326,31 +1399,7 @@ TypeSpec Parser::parse_base_type() {
                 bool strip_qual = (cur().kind == TokenKind::KwTypeofUnqual);
                 consume();  // consume typeof / typeof_unqual
                 expect(TokenKind::LParen);  // consume (
-                if (is_type_start()) {
-                    // typeof(type): parse type directly, merging outer qualifiers
-                    bool save_c = ts.is_const, save_v = ts.is_volatile;
-                    ts = parse_type_name();
-                    if (strip_qual) {
-                        ts.is_const = false;
-                        ts.is_volatile = false;
-                    }
-                    ts.is_const   |= save_c;
-                    ts.is_volatile |= save_v;
-                    expect(TokenKind::RParen);
-                } else if (check(TokenKind::Identifier)) {
-                    // typeof(identifier): look up variable or enum constant type
-                    std::string id = cur().lexeme;
-                    consume();
-                    auto vit = var_types_.find(id);
-                    if (vit != var_types_.end()) {
-                        ts = vit->second;
-                    } else {
-                        ts.base = TB_INT;  // enum constants and unknowns → int
-                    }
-                    if (strip_qual) {
-                        ts.is_const = false;
-                        ts.is_volatile = false;
-                    }
+                if (infer_typeof_like_operand_type(&ts, strip_qual)) {
                     // Skip remaining tokens (handles expressions like `i + 1`) to closing )
                     int depth = 0;
                     while (!at_end() && !(check(TokenKind::RParen) && depth == 0)) {
@@ -1380,28 +1429,7 @@ TypeSpec Parser::parse_base_type() {
             case TokenKind::KwDecltype: {
                 consume();  // consume decltype
                 expect(TokenKind::LParen);
-                if (check(TokenKind::Identifier) && cur().lexeme == "nullptr") {
-                    // c4c does not model std::nullptr_t yet; use a generic pointer
-                    // fallback so libstdc++ headers can continue parsing.
-                    ts.base = TB_VOID;
-                    ts.ptr_level = 1;
-                    consume();
-                    expect(TokenKind::RParen);
-                } else if (!is_cpp_mode() && is_type_start()) {
-                    bool save_c = ts.is_const, save_v = ts.is_volatile;
-                    ts = parse_type_name();
-                    ts.is_const |= save_c;
-                    ts.is_volatile |= save_v;
-                    expect(TokenKind::RParen);
-                } else if (!is_cpp_mode() && check(TokenKind::Identifier)) {
-                    std::string id = cur().lexeme;
-                    consume();
-                    auto vit = var_types_.find(id);
-                    if (vit != var_types_.end()) {
-                        ts = vit->second;
-                    } else {
-                        ts.base = TB_INT;
-                    }
+                if (infer_typeof_like_operand_type(&ts, /*strip_qual=*/false)) {
                     int depth = 0;
                     while (!at_end() && !(check(TokenKind::RParen) && depth == 0)) {
                         if (check(TokenKind::LParen)) ++depth;

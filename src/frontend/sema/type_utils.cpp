@@ -282,14 +282,29 @@ TypeSpec classify_int_literal_type(Node* n) {
 TypeSpec classify_float_literal_type(Node* n) {
   if (!n) return double_ts();
   const char* sv = n->sval;
-  const bool is_f32 = sv && (strchr(sv, 'f') || strchr(sv, 'F'));
-  const bool is_ldbl = sv && (strchr(sv, 'l') || strchr(sv, 'L'));
+  const bool is_f16 = sv &&
+      (strstr(sv, "f16") != nullptr || strstr(sv, "F16") != nullptr);
+  const bool is_f64 = sv &&
+      (strstr(sv, "f64") != nullptr || strstr(sv, "F64") != nullptr);
+  const bool is_f128 = sv &&
+      (strstr(sv, "f128") != nullptr || strstr(sv, "F128") != nullptr);
+  const bool is_bf16 = sv &&
+      (strstr(sv, "bf16") != nullptr || strstr(sv, "BF16") != nullptr);
+  const bool has_fixed_width_suffix = is_f16 || is_f64 || is_f128 || is_bf16;
+  const bool is_f32 = sv &&
+      (strstr(sv, "f32") != nullptr || strstr(sv, "F32") != nullptr ||
+       (!has_fixed_width_suffix &&
+        (strchr(sv, 'f') != nullptr || strchr(sv, 'F') != nullptr)));
+  const bool is_ldbl = sv && (strchr(sv, 'l') != nullptr || strchr(sv, 'L') != nullptr);
   if (n->is_imaginary) {
-    if (is_f32) return make_ts(TB_COMPLEX_FLOAT);
-    if (is_ldbl) return make_ts(TB_COMPLEX_LONGDOUBLE);
+    if (is_f16 || is_f32 || is_bf16) return make_ts(TB_COMPLEX_FLOAT);
+    if (is_f128 || is_ldbl) return make_ts(TB_COMPLEX_LONGDOUBLE);
+    if (is_f64) return make_ts(TB_COMPLEX_DOUBLE);
     return make_ts(TB_COMPLEX_DOUBLE);
   }
-  if (is_f32) return float_ts();
+  if (is_f16 || is_f32 || is_bf16) return float_ts();
+  if (is_f64) return double_ts();
+  if (is_f128) return make_ts(TB_LONGDOUBLE);
   if (is_ldbl) return make_ts(TB_LONGDOUBLE);
   return double_ts();
 }

@@ -259,10 +259,12 @@ const Token& Parser::consume() {
 }
 
 bool Parser::at_end() const {
+    if (pos_ < 0 || pos_ >= static_cast<int>(tokens_.size())) return true;
     return tokens_[pos_].kind == TokenKind::EndOfFile;
 }
 
 bool Parser::check(TokenKind k) const {
+    if (pos_ < 0 || pos_ >= static_cast<int>(tokens_.size())) return false;
     return tokens_[pos_].kind == k;
 }
 
