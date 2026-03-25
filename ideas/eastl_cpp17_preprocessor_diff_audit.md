@@ -54,6 +54,23 @@ error: object has incomplete type: eastl::is_arithmetic
 ```
 
 This means the failure is preserved after internal PP, so the next-stage parser/sema issue is real. But PP divergence still matters because it changes which headers / codepaths are visible downstream.
+5. During follow-up debugging, the earlier `EANonCopyable` parse failure turned out not to be a unique PP corruption.
+6. The immediate parser desynchronization there was caused by a separate frontend bug:
+   C++11 `[[...]]` attributes before templated declarations were not skipped early
+   enough at top level / local-decl entry, so later declarations could be parsed
+   from a bad token position.
+7. After fixing that parser bug, both:
+   - `build/c4cll --parse-only /tmp/eastl_pp_only.cpp`
+   - `build/c4cll tests/cpp/eastl/eastl_type_traits_simple.cpp -I ref/EASTL/include -I ref/EABase/include/Common`
+   
+   now fail directly at the downstream semantic issue:
+   
+```text
+error: object has incomplete type: eastl::is_arithmetic
+```
+
+So the current live blocker has been narrowed back down to `eastl::is_arithmetic`,
+while the PP-diff concerns below remain relevant as likely contributors.
 
 
 ## Confirmed Content Diffs
@@ -148,6 +165,16 @@ EANonCopyable() = default;
 
 So this odd `= default` / `= delete` formatting is probably not a PP bug by itself. It is macro noise present in both paths.
 
+Follow-up result:
+
+- The parser failure previously seen around this region was fixed by teaching
+  top-level / local declaration parsing to skip leading C++11 `[[...]]`
+  attributes before templated declarations.
+- A regression test was added at
+  [tests/cpp/internal/postive_case/cpp11_attr_template_decl_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/cpp11_attr_template_decl_parse.cpp).
+- After that fix, `EANonCopyable` no longer appears to be the active EASTL
+  blocker.
+
 
 ### 6. `is_arithmetic_v` exists in both outputs, but at very different structural locations
 
@@ -170,27 +197,56 @@ These are hypotheses, not yet confirmed:
 2. Builtin header injection or predefined macro values may be altering early libstdc++ branches.
 3. The internal preprocessor may be expanding or suppressing certain builtin/compiler intrinsics differently from system preprocessing.
 4. The line-marker preserving output is expected, but the missing semantic content (`__decltype`, `__detected_or`) is not explained by line markers alone.
+5. The remaining `eastl::is_arithmetic` incomplete-type failure may still be downstream of PP divergence, but the previously observed `EANonCopyable` parse noise should no longer be treated as evidence of that.
 
 
 ## Suggested Next Steps
 
-1. Compare early include-chain markers between internal PP and system C++17 for:
+1. Continue from the now-restored primary failure:
+   - `error: object has incomplete type: eastl::is_arithmetic`
+2. Compare early include-chain markers between internal PP and system C++17 for:
    - `/usr/include/c++/14/cstddef`
    - `/usr/include/.../bits/c++config.h`
    - builtin headers such as `<builtin-stddef.h>`
-2. Diff predefined macro sets visible to headers:
+3. Diff predefined macro sets visible to headers:
    - `__cplusplus`
    - `__GNUG__`
    - `__GXX_ABI_VERSION`
    - any builtin-feature macros that affect libstdc++ branches
-3. Audit builtin-header injection and fallback logic in:
+4. Audit builtin-header injection and fallback logic in:
    - [src/frontend/preprocessor/preprocessor.cpp](/workspaces/c4c/src/frontend/preprocessor/preprocessor.cpp)
    - [src/frontend/preprocessor/pp_include.*](/workspaces/c4c/src/frontend/preprocessor)
    - [src/frontend/preprocessor/pp_predefined.*](/workspaces/c4c/src/frontend/preprocessor)
-4. Create a reduced PP-diff repro around the earliest missing construct:
+5. Create a reduced PP-diff repro around the earliest missing construct:
    - `typedef __decltype(0.0bf16) __bfloat16_t;`
-5. Only after PP parity is improved, continue debugging the downstream
-   `eastl::is_arithmetic` incomplete-type failure.
+6. If PP parity work stalls, debug `eastl::is_arithmetic` directly in the
+   internally preprocessed TU now that the attribute-related parser desync is out
+   of the way.
+
+
+## Follow-up Fixes Completed
+
+1. Fixed parser entrypoints so leading C++11 attributes such as
+   `[[nodiscard, __gnu__::__always_inline__]]` are skipped before parsing a
+   declaration at top level and local scope.
+2. Verified that the reduced repro:
+
+```cpp
+template<typename T>
+[[nodiscard, __gnu__::__always_inline__]]
+constexpr T f(T x) noexcept { return T(x); }
+
+struct EANonCopyable {
+  EANonCopyable() = default;
+  ~EANonCopyable() = default;
+  EANonCopyable(const EANonCopyable&) = delete;
+  void operator=(const EANonCopyable&) = delete;
+};
+```
+
+   now parses correctly.
+3. Verified that both internal-PP and system-PP EASTL repros no longer stop at
+   the `EANonCopyable` region before reaching later failures.
 
 
 ## Reproduction Commands

@@ -3707,7 +3707,6 @@ Node* Parser::parse_struct_or_union(bool is_union) {
       try {
         skip_attributes();
         if (check(TokenKind::RBrace)) break;
-
         // C++ access specifiers: public/private/protected followed by ':'
         if (is_cpp_mode() && check(TokenKind::Identifier) &&
             (cur().lexeme == "public" || cur().lexeme == "private" || cur().lexeme == "protected") &&

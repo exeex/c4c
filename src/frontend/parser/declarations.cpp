@@ -90,6 +90,35 @@ bool is_internal_typedef_name(const char* name) {
 
 Node* Parser::parse_local_decl() {
     int ln = cur().line;
+    auto skip_cpp11_attrs_only = [&]() {
+        while (check(TokenKind::LBracket) &&
+               pos_ + 1 < static_cast<int>(tokens_.size()) &&
+               tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+            consume();
+            consume();
+            int depth = 1;
+            while (!at_end() && depth > 0) {
+                if (check(TokenKind::LBracket) &&
+                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                    tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+                    consume();
+                    consume();
+                    ++depth;
+                    continue;
+                }
+                if (check(TokenKind::RBracket) &&
+                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                    tokens_[pos_ + 1].kind == TokenKind::RBracket) {
+                    consume();
+                    consume();
+                    --depth;
+                    continue;
+                }
+                consume();
+            }
+        }
+    };
+    skip_cpp11_attrs_only();
 
     bool is_static  = false;
     bool is_extern  = false;
@@ -329,6 +358,35 @@ Node* Parser::parse_top_level() {
 
     int ln = cur().line;
     if (at_end()) return nullptr;
+    auto skip_cpp11_attrs_only = [&]() {
+        while (check(TokenKind::LBracket) &&
+               pos_ + 1 < static_cast<int>(tokens_.size()) &&
+               tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+            consume();
+            consume();
+            int depth = 1;
+            while (!at_end() && depth > 0) {
+                if (check(TokenKind::LBracket) &&
+                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                    tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+                    consume();
+                    consume();
+                    ++depth;
+                    continue;
+                }
+                if (check(TokenKind::RBracket) &&
+                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                    tokens_[pos_ + 1].kind == TokenKind::RBracket) {
+                    consume();
+                    consume();
+                    --depth;
+                    continue;
+                }
+                consume();
+            }
+        }
+    };
+    skip_cpp11_attrs_only();
 
     bool is_inline_namespace = false;
     if (is_cpp_mode() && check(TokenKind::KwInline) && peek(1).kind == TokenKind::KwNamespace) {
