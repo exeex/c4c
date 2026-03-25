@@ -3591,43 +3591,11 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             template_origin_name = arena_.strdup(tag);
             int saved_pos = pos_;
             bool parse_ok = true;
-            consume(); // <
             try {
-                while (!at_end() && !check_template_close()) {
-                    ParsedTemplateArg arg;
-                    long long sign = 1;
-                    if (match(TokenKind::Minus)) sign = -1;
-                    if (check(TokenKind::KwTrue)) {
-                        arg.is_value = true;
-                        arg.value = 1;
-                        consume();
-                    } else if (check(TokenKind::KwFalse)) {
-                        arg.is_value = true;
-                        arg.value = 0;
-                        consume();
-                    } else if (check(TokenKind::CharLit)) {
-                        Node* lit = parse_primary();
-                        arg.is_value = true;
-                        arg.value = lit ? lit->ival * sign : 0;
-                    } else if (check(TokenKind::IntLit)) {
-                        arg.is_value = true;
-                        arg.value = parse_int_lexeme(cur().lexeme.c_str()) * sign;
-                        consume();
-                    } else if (check(TokenKind::Identifier) && !is_type_start()) {
-                        arg.is_value = true;
-                        arg.nttp_name = arena_.strdup(cur().lexeme);
-                        arg.value = 0;
-                        consume();
-                        if (check(TokenKind::Ellipsis)) consume();
-                    } else {
-                        arg.is_value = false;
-                        arg.type = parse_type_name();
-                        if (check(TokenKind::Ellipsis)) consume();
-                    }
-                    specialization_args.push_back(arg);
-                    if (!match(TokenKind::Comma)) break;
+                const Node* primary_tpl = find_template_struct_primary(tag);
+                if (!parse_template_argument_list(&specialization_args, primary_tpl)) {
+                    throw std::runtime_error("failed to parse specialization args");
                 }
-                expect_template_close();
             } catch (...) {
                 // Unparseable specialization args (e.g. T U::* member pointers).
                 // Skip balanced <...> and continue with empty args.
