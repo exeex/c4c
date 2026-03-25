@@ -8,7 +8,7 @@
 
 #include "../../frontend/hir/ir.hpp"
 
-namespace c4c::codegen::llvm_backend::detail {
+namespace c4c::codegen::llvm_helpers {
 
 using namespace c4c;
 using namespace c4c::hir;
@@ -674,4 +674,4 @@ inline const char* llvm_visibility(Visibility v) {
   }
 }
 
-}  // namespace c4c::codegen::llvm_backend::detail
+}  // namespace c4c::codegen::llvm_helpers

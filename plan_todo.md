@@ -59,12 +59,14 @@
 - [x] Step 6g: Move HirEmitter from `src/codegen/llvm/` to `src/codegen/lir/stmt_emitter.hpp/.cpp` — renamed class to `StmtEmitter`, namespace to `c4c::codegen::lir`; hir_to_lir.cpp now uses `StmtEmitter` directly without cross-directory include; `src/codegen/llvm/` reduced to orchestration (`llvm_codegen.hpp/cpp`) and shared helpers (`hir_to_llvm_helpers.hpp`)
 - [x] Step 6h: Move `hir_to_llvm_helpers.hpp` from `src/codegen/llvm/` to `src/codegen/shared/llvm_helpers.hpp` — all 4 consumers updated to new path; old file deleted; `src/codegen/llvm/` now contains only orchestration (llvm_codegen.hpp/cpp); fixed stale namespace closing comment typo
 
+## Completed (Step 6i)
+- [x] Step 6i: Rename namespace `llvm_backend::detail` → `llvm_helpers` — updated declaration in llvm_helpers.hpp, 7 using-declarations in hir_to_lir.cpp, 1 in stmt_emitter.hpp, 1 in const_init_emitter.cpp, 2 fully-qualified calls in lir_printer.cpp; outer `llvm_backend` namespace (llvm_codegen.hpp/cpp) kept as-is for public API
+
 ## Active Slice
-- Step 6h: Move llvm_helpers to shared/ — DONE
+- Step 6i: Rename namespace — DONE
 
 ## Next Intended Slice
 - Begin decomposing StmtEmitter into smaller focused units (expr_emitter, type_resolver, etc.)
-- Or: rename namespace `llvm_backend::detail` to something more neutral (e.g. `codegen::llvm_helpers`)
 
 ## Current file layout
 

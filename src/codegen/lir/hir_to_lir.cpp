@@ -106,7 +106,7 @@ static void lower_global(const c4c::hir::GlobalVar& gv,
                           const c4c::hir::Module& mod,
                           ConstInitEmitter& const_init,
                           LirModule& module) {
-  using namespace c4c::codegen::llvm_backend::detail;
+  using namespace c4c::codegen::llvm_helpers;
 
   const TypeSpec& ts = gv.type.spec;
   const int align = object_align_bytes(mod, ts);
@@ -200,7 +200,7 @@ static void lower_globals(const std::vector<size_t>& global_indices,
 // ── Type declarations ────────────────────────────────────────────────────────
 
 std::vector<std::string> build_type_decls(const c4c::hir::Module& mod) {
-  using namespace c4c::codegen::llvm_backend::detail;
+  using namespace c4c::codegen::llvm_helpers;
   std::vector<std::string> decls;
 
   if (!llvm_va_list_is_pointer_object(mod.target_triple)) {
@@ -256,7 +256,7 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod) {
 // logic belongs to hir_to_lir; StmtEmitter consumes the pre-built text.
 
 std::string build_fn_signature(const c4c::hir::Function& fn) {
-  using namespace c4c::codegen::llvm_backend::detail;
+  using namespace c4c::codegen::llvm_helpers;
 
   std::ostringstream sig_out;
   const std::string ret_ty = llvm_ret_ty(fn.return_type.spec);
@@ -366,7 +366,7 @@ build_block_order(const c4c::hir::Function& fn) {
 
 static void inject_fallthrough_returns(LirFunction& lir_fn,
                                        const c4c::hir::Function& fn) {
-  using namespace c4c::codegen::llvm_backend::detail;
+  using namespace c4c::codegen::llvm_helpers;
   const auto& rts = fn.return_type.spec;
   const std::string ret_ty = llvm_ret_ty(rts);
 
@@ -483,7 +483,7 @@ bool fn_has_vla_locals(const c4c::hir::Function& fn) {
 
 void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
                    const c4c::hir::Function& fn) {
-  using namespace c4c::codegen::llvm_backend::detail;
+  using namespace c4c::codegen::llvm_helpers;
 
   const std::unordered_set<uint32_t> modified_params = find_modified_params(mod, fn);
   for (size_t i = 0; i < fn.params.size(); ++i) {
@@ -534,7 +534,7 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
 
 c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
                                   const c4c::hir::Function& fn) {
-  using namespace c4c::codegen::llvm_backend::detail;
+  using namespace c4c::codegen::llvm_helpers;
 
   c4c::codegen::FnCtx ctx;
   ctx.fn = &fn;
@@ -767,7 +767,7 @@ static void eliminate_dead_internals(LirModule& mod) {
 // ── Main lowering entry point ────────────────────────────────────────────────
 
 LirModule lower(const c4c::hir::Module& hir_mod) {
-  using namespace c4c::codegen::llvm_backend::detail;
+  using namespace c4c::codegen::llvm_helpers;
 
   // Module-level orchestration: owned by hir_to_lir, not StmtEmitter.
   set_active_target_triple(hir_mod.target_triple);

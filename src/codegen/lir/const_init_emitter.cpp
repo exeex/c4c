@@ -10,7 +10,7 @@
 namespace c4c::codegen::lir {
 
 using namespace c4c::hir;
-using namespace c4c::codegen::llvm_backend::detail;
+using namespace c4c::codegen::llvm_helpers;
 
 // ── Helpers shared with hir_emitter.cpp (anonymous-namespace copies there) ────
 

@@ -10,7 +10,7 @@ namespace c4c::codegen::lir {
 namespace {
 
 std::string llvm_global_sym(const std::string& raw) {
-  return "@" + c4c::codegen::llvm_backend::detail::quote_llvm_ident(raw);
+  return "@" + c4c::codegen::llvm_helpers::quote_llvm_ident(raw);
 }
 
 // Render a single LirInst to text.
@@ -187,7 +187,7 @@ std::string render_fn(const LirFunction& f) {
 }  // namespace
 
 std::string print_llvm(const LirModule& mod) {
-  c4c::codegen::llvm_backend::detail::set_active_target_triple(mod.target_triple);
+  c4c::codegen::llvm_helpers::set_active_target_triple(mod.target_triple);
 
   std::ostringstream out;
 

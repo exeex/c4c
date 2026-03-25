@@ -22,7 +22,7 @@ namespace c4c::codegen::lir {
 
 using namespace c4c;
 using namespace c4c::hir;
-using namespace c4c::codegen::llvm_backend::detail;
+using namespace c4c::codegen::llvm_helpers;
 
 // Import shared FnCtx / BlockMeta from codegen::shared into this namespace.
 using c4c::codegen::FnCtx;
