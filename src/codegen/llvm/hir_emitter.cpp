@@ -214,13 +214,7 @@ const GlobalVar* HirEmitter::select_global_object(GlobalId id) const {
     return gv;
   }
 
-void HirEmitter::emit_instr(FnCtx& ctx, const std::string& line){
-    // Skip dead code after a terminator has been placed in this block.
-    if (!std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator))
-      return;
-    ctx.cur_block().insts.push_back(lir::LirRawLine{"  " + line});
-    ctx.last_term = false;
-  }
+
 
 void HirEmitter::emit_lbl(FnCtx& ctx, const std::string& lbl){
     lir::LirBlock blk;
@@ -3383,7 +3377,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         TypeSpec i64_ts{}; i64_ts.base = TB_ULONGLONG;
         size = coerce(ctx, size, size_ts, i64_ts);
         const std::string tmp = fresh_tmp(ctx);
-        emit_instr(ctx, tmp + " = alloca i8, i64 " + size + ", align 16");
+        emit_lir_op(ctx, lir::LirAllocaOp{tmp, "i8", size, 16});
         return tmp;
       }
       if (builtin_id == BuiltinId::ConstantP) {
@@ -3889,7 +3883,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
       TypeSpec i64_ts{}; i64_ts.base = TB_ULONGLONG;
       size = coerce(ctx, size, size_ts, i64_ts);
       const std::string tmp = fresh_tmp(ctx);
-      emit_instr(ctx, tmp + " = alloca i8, i64 " + size + ", align 16");
+      emit_lir_op(ctx, lir::LirAllocaOp{tmp, "i8", size, 16});
       return tmp;
     }
 
@@ -3991,7 +3985,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         TypeSpec ap_ts{};
         const std::string src_ptr = emit_va_list_obj_ptr(ctx, call.args[i], ap_ts);
         const std::string tmp_addr = fresh_tmp(ctx);
-        emit_instr(ctx, tmp_addr + " = alloca " + llvm_va_list_storage_ty());
+        emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, llvm_va_list_storage_ty(), {}, 0});
         need_llvm_memcpy_ = true;
         emit_lir_op(ctx, lir::LirMemcpyOp{
             tmp_addr, src_ptr, std::to_string(llvm_va_list_storage_size()), false});
@@ -4009,7 +4003,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
           obj_ptr = emit_lval(ctx, call.args[i], obj_ts);
         } else {
           const std::string tmp_addr = fresh_tmp(ctx);
-          emit_instr(ctx, tmp_addr + " = alloca " + llvm_ty(arg_ts));
+          emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, llvm_ty(arg_ts), {}, 0});
           emit_lir_op(ctx, lir::LirStoreOp{llvm_ty(arg_ts), arg, tmp_addr});
           obj_ptr = tmp_addr;
         }
@@ -4022,7 +4016,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         }
         if (payload_sz <= 8) {
           const std::string tmp_addr = fresh_tmp(ctx);
-          emit_instr(ctx, tmp_addr + " = alloca i64");
+          emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, "i64", {}, 0});
           emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, obj_ptr, std::to_string(payload_sz), false});
           const std::string packed = fresh_tmp(ctx);
           emit_lir_op(ctx, lir::LirLoadOp{packed, std::string("i64"), tmp_addr});
@@ -4031,7 +4025,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         }
 
         const std::string tmp_addr = fresh_tmp(ctx);
-        emit_instr(ctx, tmp_addr + " = alloca [2 x i64]");
+        emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, "[2 x i64]", {}, 0});
         emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, obj_ptr, std::to_string(payload_sz), false});
         const std::string packed = fresh_tmp(ctx);
         emit_lir_op(ctx, lir::LirLoadOp{packed, std::string("[2 x i64]"), tmp_addr});
@@ -4204,7 +4198,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const 
             const std::string src_ptr = fresh_tmp(ctx);
             emit_lir_op(ctx, lir::LirLoadOp{src_ptr, std::string("ptr"), slot_ptr});
             const std::string tmp_addr = fresh_tmp(ctx);
-            emit_instr(ctx, tmp_addr + " = alloca " + res_ty);
+            emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, res_ty, {}, 0});
             need_llvm_memcpy_ = true;
             emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, src_ptr, std::to_string(payload_sz), false});
             const std::string out = fresh_tmp(ctx);
@@ -4215,7 +4209,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const 
           const int slot_bytes = payload_sz > 8 ? 16 : 8;
           const std::string src_ptr = emit_aarch64_vaarg_gp_src_ptr(ctx, ap_ptr, slot_bytes);
           const std::string tmp_addr = fresh_tmp(ctx);
-          emit_instr(ctx, tmp_addr + " = alloca " + res_ty);
+          emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, res_ty, {}, 0});
           need_llvm_memcpy_ = true;
           emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, src_ptr, std::to_string(payload_sz), false});
           const std::string out = fresh_tmp(ctx);
@@ -4471,9 +4465,7 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const LocalDecl& d){
       if (elem_ty == "void") elem_ty = "i8";
       const std::string dyn_ptr = fresh_tmp(ctx);
       const int stack_align = object_align_bytes(mod_, d.type.spec);
-      const std::string align_suffix =
-          (stack_align > 1) ? ", align " + std::to_string(stack_align) : "";
-      emit_instr(ctx, dyn_ptr + " = alloca " + elem_ty + ", i64 " + count + align_suffix);
+      emit_lir_op(ctx, lir::LirAllocaOp{dyn_ptr, elem_ty, count, stack_align > 1 ? stack_align : 0});
       emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), dyn_ptr, slot});
     }
 
@@ -4546,21 +4538,18 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const InlineAsmStmt& s){
       arg_vals.push_back(emit_rval_id(ctx, input, in_ts));
       arg_tys.push_back(in_ts);
     }
-    std::string call = "call " + ret_ty + " asm ";
-    if (s.has_side_effects) call += "sideeffect ";
-    call += "\"" + asm_text + "\", \"" + constraints + "\"(";
+    std::string asm_args_str;
     for (size_t i = 0; i < arg_vals.size(); ++i) {
-      if (i) call += ", ";
-      call += llvm_ty(arg_tys[i]) + " " + arg_vals[i];
+      if (i) asm_args_str += ", ";
+      asm_args_str += llvm_ty(arg_tys[i]) + " " + arg_vals[i];
     }
-    call += ")";
     if (!s.output) {
-      emit_instr(ctx, call);
+      emit_lir_op(ctx, lir::LirInlineAsmOp{{}, ret_ty, asm_text, constraints, s.has_side_effects, asm_args_str});
       return;
     }
 
     const std::string result = fresh_tmp(ctx);
-    emit_instr(ctx, result + " = " + call);
+    emit_lir_op(ctx, lir::LirInlineAsmOp{result, ret_ty, asm_text, constraints, s.has_side_effects, asm_args_str});
     TypeSpec out_pointee_ts{};
     const std::string out_ptr = emit_lval(ctx, *s.output, out_pointee_ts);
     const std::string coerced = coerce(ctx, result, ret_ts, out_pointee_ts);

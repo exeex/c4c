@@ -17,7 +17,19 @@ std::string llvm_global_sym(const std::string& raw) {
 
 // Render a single LirInst to text.
 void render_inst(std::ostringstream& os, const LirInst& inst) {
-  if (const auto* raw = std::get_if<LirRawLine>(&inst)) {
+  if (const auto* op = std::get_if<LirAllocaOp>(&inst)) {
+    os << "  " << op->result << " = alloca " << op->type_str;
+    if (!op->count.empty()) os << ", i64 " << op->count;
+    if (op->align > 0) os << ", align " << op->align;
+    os << "\n";
+  } else if (const auto* op = std::get_if<LirInlineAsmOp>(&inst)) {
+    os << "  ";
+    if (!op->result.empty()) os << op->result << " = ";
+    os << "call " << op->ret_type << " asm ";
+    if (op->side_effects) os << "sideeffect ";
+    os << "\"" << op->asm_text << "\", \"" << op->constraints << "\"("
+       << op->args_str << ")\n";
+  } else if (const auto* raw = std::get_if<LirRawLine>(&inst)) {
     os << raw->line << "\n";
   } else if (const auto* op = std::get_if<LirMemcpyOp>(&inst)) {
     os << "  call void @llvm.memcpy.p0.p0.i64(ptr " << op->dst

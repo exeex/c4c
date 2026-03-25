@@ -361,6 +361,26 @@ struct LirVaArgOp {
   std::string type_str;   // result type string
 };
 
+// Typed inline (non-hoisted) alloca instruction.
+// Covers dynamic allocas (__builtin_alloca, alloca(), VLA) and temporary allocas
+// emitted inline in the current block (va_list copy, variadic aggregate, vaarg struct).
+struct LirAllocaOp {
+  std::string result;     // SSA name for result
+  std::string type_str;   // LLVM element type string (e.g. "i8", "i64", "%struct.foo")
+  std::string count;      // dynamic count operand (empty for simple allocas)
+  int align = 0;          // alignment in bytes (0 = unspecified)
+};
+
+// Typed inline asm call instruction.
+struct LirInlineAsmOp {
+  std::string result;         // SSA name for result (empty for void asm)
+  std::string ret_type;       // LLVM return type string (e.g. "void", "i32")
+  std::string asm_text;       // assembly template string
+  std::string constraints;    // constraint string
+  bool side_effects = false;  // sideeffect flag
+  std::string args_str;       // pre-formatted argument string
+};
+
 // Catch-all for instructions not yet migrated to typed LIR ops.
 // Contains the raw LLVM IR line produced by the legacy emitter.
 // This allows incremental migration: Stage 1+ will shrink usage of this type.
@@ -408,6 +428,8 @@ using LirInst = std::variant<
     LirExtractElementOp,
     LirShuffleVectorOp,
     LirVaArgOp,
+    LirAllocaOp,
+    LirInlineAsmOp,
     LirRawLine
 >;
 

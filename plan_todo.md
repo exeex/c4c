@@ -36,21 +36,20 @@
 - [x] Step 3e-v: Replace call LirRawLine with typed LirCallOp (16 call sites: 2 general function calls + 14 intrinsic calls)
 - [x] Step 3e-vi: Replace remaining direct LirRawLine alloca_insts in legacy emitter with LirAlloca/LirHoistedStore (9 sites: param spills, agg temps, local decl allocas, VLA ptr slots, zeroinit stores)
 - [x] Step 3e-vii: Replace emit_instr LirRawLine with typed ops — LirBinOp (40 sites), LirCmpOp (18 sites), LirPhiOp (4 sites), LirSelectOp (1 site), LirInsertElementOp (2 sites), LirExtractElementOp (1 site), LirShuffleVectorOp (2 sites), LirVaArgOp (2 sites)
+- [x] Step 3e-viii: Replace remaining emit_instr alloca calls with typed LirAllocaOp (9 sites: __builtin_alloca, alloca(), va_list copy, variadic aggregate, aarch64 vaarg struct, VLA dynamic alloca) and inline asm calls with typed LirInlineAsmOp (2 sites); removed dead `emit_instr()` method from HirEmitter
 
 ## Active Slice
 - (none — ready for next iteration)
 
 ## Next Intended Slice
-- Step 3e-viii: Replace remaining alloca emit_instr calls (9 sites) with typed LirAlloca ops
-- Step 3e-ix: Replace inline asm emit_instr calls (2 sites) with typed LirInlineAsm ops
-- Or: Extract `lower_globals` into hir_to_lir (Step 2 semantic dependency)
+- **emit_instr is fully eliminated** — no remaining call sites or method definition
+- Next: audit remaining LirRawLine usage (should be zero or near-zero in hir_emitter.cpp)
+- Then: Step 4 (printer purity audit) or Step 2 remaining semantic deps (lower_globals, emit_stmt)
 
 ## Raw fallback usage remaining
 - hir_to_lir.cpp: no raw usage remains
-- hir_emitter.cpp: `emit_instr()` reduced to ~11 remaining call sites:
-  - 9 alloca instructions (VLA dynamic alloca, __alloca builtin, va_arg temp alloca)
-  - 2 inline asm call instructions
-- All binary ops, comparisons, phis, selects, vector ops, va_arg now use typed LIR ops
+- hir_emitter.cpp: **`emit_instr()` fully eliminated** — method removed, zero call sites
+- LirRawLine: may still be emitted by other paths (needs audit)
 - LirRawTerminator: no remaining call sites; type kept in variant for now
 
 ## Blockers
