@@ -41,7 +41,7 @@ void Preprocessor::set_source_profile(SourceProfile profile) {
   source_profile_ = profile;
 
   if (profile == SourceProfile::CppSubset || profile == SourceProfile::C4) {
-    define_macro("__cplusplus=201402L");
+    define_macro("__cplusplus=201703L");
     define_macro("__GNUG__=4");
     define_macro("__GXX_ABI_VERSION=1002");
   } else {
