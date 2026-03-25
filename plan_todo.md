@@ -1,6 +1,6 @@
 # HIR → LIR Split — Execution State
 
-## Current Step: Step 6g (move StmtEmitter from llvm/ to lir/) — DONE
+## Current Step: PLAN COMPLETE (all steps 1–6i done)
 
 ## Step 1 Audit: Legacy Dependencies in hir_to_lir.cpp
 
@@ -62,11 +62,19 @@
 ## Completed (Step 6i)
 - [x] Step 6i: Rename namespace `llvm_backend::detail` → `llvm_helpers` — updated declaration in llvm_helpers.hpp, 7 using-declarations in hir_to_lir.cpp, 1 in stmt_emitter.hpp, 1 in const_init_emitter.cpp, 2 fully-qualified calls in lir_printer.cpp; outer `llvm_backend` namespace (llvm_codegen.hpp/cpp) kept as-is for public API
 
-## Active Slice
-- Step 6i: Rename namespace — DONE
+## Plan Status: COMPLETE
 
-## Next Intended Slice
-- Begin decomposing StmtEmitter into smaller focused units (expr_emitter, type_resolver, etc.)
+All "Done" criteria from plan.md verified (2026-03-26):
+1. ✅ `llvm_codegen.cpp` is thin orchestration (path switcher only)
+2. ✅ `hir_to_lir` owns lowering without `HirEmitter` dependency (StmtEmitter in lir/)
+3. ✅ `lir_printer` only prints (no semantic decisions, no DCE)
+4. ✅ LIR is fully structured (all raw fallback types removed)
+5. ✅ Compare mode green on random corpus (20/20 cases verified)
+
+Test suite: 2123/2127 passing (4 pre-existing C++ frontend failures, unrelated to LIR split)
+
+## Future Work (beyond plan.md scope)
+- Decompose StmtEmitter (~4100 lines) into smaller focused units (expr_emitter, type_resolver, etc.)
 
 ## Current file layout
 
