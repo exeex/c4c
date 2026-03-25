@@ -555,7 +555,23 @@ bool Parser::eval_deferred_nttp_default(
         std::string member_name = toks[ti].lexeme;
         ++ti;
 
-        const Node* ref_primary = find_template_struct_primary(ref_tpl_name);
+        std::string resolved_ref_tpl_name = ref_tpl_name;
+        const Node* ref_primary = find_template_struct_primary(resolved_ref_tpl_name);
+        if (!ref_primary) {
+            const std::string visible_name = resolve_visible_type_name(ref_tpl_name);
+            if (!visible_name.empty()) {
+                resolved_ref_tpl_name = visible_name;
+                ref_primary = find_template_struct_primary(resolved_ref_tpl_name);
+            }
+        }
+        if (!ref_primary) {
+            const size_t scope_pos = tpl_name.rfind("::");
+            if (scope_pos != std::string::npos) {
+                resolved_ref_tpl_name =
+                    tpl_name.substr(0, scope_pos + 2) + ref_tpl_name;
+                ref_primary = find_template_struct_primary(resolved_ref_tpl_name);
+            }
+        }
         if (!ref_primary) { ti = saved_ti; return false; }
 
         std::vector<std::pair<std::string, TypeSpec>> ref_type_bindings;
@@ -574,7 +590,7 @@ bool Parser::eval_deferred_nttp_default(
         } else {
             const std::string ref_family =
                 (ref_def && ref_def->template_origin_name && ref_def->template_origin_name[0])
-                    ? ref_def->template_origin_name : ref_tpl_name;
+                    ? ref_def->template_origin_name : resolved_ref_tpl_name;
             ref_mangled = ref_family;
             for (int pi = 0; pi < ref_primary->n_template_params; ++pi) {
                 ref_mangled += "_";
@@ -591,8 +607,25 @@ bool Parser::eval_deferred_nttp_default(
         if (!struct_tag_def_map_.count(ref_mangled)) {
             std::vector<Token> inject_toks;
             Token t; t.line = ref_primary->line; t.column = 0;
-            t.kind = TokenKind::Identifier; t.lexeme = ref_tpl_name;
-            inject_toks.push_back(t);
+            auto append_qualified_name_tokens = [&](const std::string& name) {
+                size_t start = 0;
+                while (start < name.size()) {
+                    size_t sep = name.find("::", start);
+                    Token name_tok = t;
+                    name_tok.kind = TokenKind::Identifier;
+                    name_tok.lexeme = sep == std::string::npos
+                        ? name.substr(start)
+                        : name.substr(start, sep - start);
+                    inject_toks.push_back(name_tok);
+                    if (sep == std::string::npos) break;
+                    Token cc_tok = t;
+                    cc_tok.kind = TokenKind::ColonColon;
+                    cc_tok.lexeme = "::";
+                    inject_toks.push_back(cc_tok);
+                    start = sep + 2;
+                }
+            };
+            append_qualified_name_tokens(resolved_ref_tpl_name);
             t.kind = TokenKind::Less; t.lexeme = "<";
             inject_toks.push_back(t);
             for (int ai = 0; ai < (int)ref_args.size(); ++ai) {
@@ -1912,22 +1945,20 @@ TypeSpec Parser::parse_base_type() {
                                     } else if (tk == TokenKind::LBrace) ++brace_depth;
                                     else if (tk == TokenKind::RBrace) {
                                         if (brace_depth > 0) --brace_depth;
-                                    } else if (tk == TokenKind::Less &&
-                                               paren_depth == 0 && bracket_depth == 0 &&
+                                    } else if (paren_depth == 0 && bracket_depth == 0 &&
                                                brace_depth == 0) {
-                                        ++angle_depth;
-                                    } else if ((tk == TokenKind::Greater ||
-                                                tk == TokenKind::GreaterGreater) &&
-                                               paren_depth == 0 && bracket_depth == 0 &&
-                                               brace_depth == 0) {
-                                        if (angle_depth > 0)
-                                            angle_depth -= std::min(angle_depth, tk == TokenKind::GreaterGreater ? 2 : 1);
-                                    } else if ((tk == TokenKind::Comma ||
-                                                tk == TokenKind::Greater ||
-                                                tk == TokenKind::GreaterGreater) &&
-                                               angle_depth == 0 && paren_depth == 0 &&
-                                               bracket_depth == 0 && brace_depth == 0) {
-                                        break;
+                                        if (tk == TokenKind::Comma && angle_depth == 0) {
+                                            break;
+                                        }
+                                        if (tk == TokenKind::Greater ||
+                                            tk == TokenKind::GreaterGreater) {
+                                            if (angle_depth == 0) break;
+                                            angle_depth -= std::min(
+                                                angle_depth,
+                                                tk == TokenKind::GreaterGreater ? 2 : 1);
+                                        } else if (tk == TokenKind::Less) {
+                                            ++angle_depth;
+                                        }
                                     }
                                     ++scan_pos;
                                 }
