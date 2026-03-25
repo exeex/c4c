@@ -57,20 +57,11 @@ class HirEmitter {
   struct SpecEntry { std::string spec_key; std::string template_origin; std::string mangled_name; };
 
   explicit HirEmitter(const Module& m);
-  std::string emit();
-
-  /// Lower the HIR module to a LirModule without printing.
-  /// This is the structured lowering result that can be consumed by lir::print_llvm()
-  /// or any future backend.
-  lir::LirModule lower_to_lir();
 
   /// Set the working LirModule by reference.  The caller (hir_to_lir::lower)
   /// owns the module throughout; the emitter writes into it during per-item
   /// lowering.
   void set_module(lir::LirModule& module);
-
-  /// Lower all globals whose indices are given.
-  void lower_globals(const std::vector<size_t>& global_indices);
 
   /// Lower a single HIR function into the working LirModule.
   /// Emit a single HIR statement into the FnCtx.  Exposed so that
@@ -178,7 +169,6 @@ class HirEmitter {
 
   const GlobalVar* select_global_object(const std::string& name) const;
   const GlobalVar* select_global_object(GlobalId id) const;
-  void emit_global(const GlobalVar& gv);
 
 
   // ── Expr lookup ───────────────────────────────────────────────────────────
@@ -350,8 +340,6 @@ class HirEmitter {
   std::unordered_set<uint32_t> find_modified_params(const Function& fn);
   static bool fn_has_vla_locals(const Function& fn);
   void hoist_allocas(FnCtx& ctx, const Function& fn);
-  void emit_function(const Function& fn, const std::string& pre_sig = {},
-                     const std::vector<const Block*>& block_order = {});
 };
 
 

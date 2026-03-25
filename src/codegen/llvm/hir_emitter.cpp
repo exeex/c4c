@@ -1,7 +1,5 @@
 #include "hir_emitter.hpp"
 #include "canonical_symbol.hpp"
-#include "../lir/hir_to_lir.hpp"
-#include "../lir/lir_printer.hpp"
 
 namespace c4c::codegen::llvm_backend {
 
@@ -165,23 +163,8 @@ int object_align_bytes(const Module& mod, const TypeSpec& ts) {
 
 HirEmitter::HirEmitter(const Module& m) : mod_(m){}
 
-lir::LirModule HirEmitter::lower_to_lir(){
-    // Delegate to hir_to_lir::lower() which owns module-level orchestration
-    // and finalization (intrinsic flags, extern decls, spec entries).
-    return lir::lower(mod_);
-  }
-
 void HirEmitter::set_module(lir::LirModule& module) {
     module_ = &module;
-  }
-
-void HirEmitter::lower_globals(const std::vector<size_t>& global_indices) {
-    for (size_t idx : global_indices) emit_global(mod_.globals[idx]);
-  }
-
-std::string HirEmitter::emit(){
-    auto lir_mod = lower_to_lir();
-    return lir::print_llvm(lir_mod);
   }
 
 const GlobalVar* HirEmitter::select_global_object(const std::string& name) const {
@@ -1096,91 +1079,6 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
         return (llvm_ty(expected_ts) == "ptr") ? "null" : "0";
       }
     }, e.payload);
-  }
-
-void HirEmitter::emit_global(const GlobalVar& gv){
-    // Global object types arrive from HIR with ordinary array bounds already resolved.
-    // Legacy path: still used by HirEmitter::lower_to_lir().
-    // The structured global lowering now lives in lir::lower_global() (hir_to_lir.cpp).
-    const TypeSpec& ts = gv.type.spec;
-
-    auto make_linkage_vis = [&](bool is_static, bool is_weak, bool is_extern,
-                                Visibility vis) -> std::string {
-      if (is_extern) {
-        std::string s = is_weak ? "extern_weak " : "external ";
-        s += llvm_visibility(vis);
-        return s;
-      }
-      std::string s = is_static ? "internal " : "";
-      if (is_weak && !is_static) s = "weak ";
-      s += llvm_visibility(vis);
-      return s;
-    };
-
-    const int align = object_align_bytes(mod_, ts);
-
-    // Flexible array member struct — custom literal type/init.
-    if (!gv.linkage.is_extern &&
-        ts.ptr_level == 0 && ts.array_rank == 0 &&
-        ts.tag && ts.tag[0] && ts.base == TB_STRUCT) {
-      const auto it = mod_.struct_defs.find(ts.tag);
-      if (it != mod_.struct_defs.end()) {
-        const HirStructDef& sd = it->second;
-        if (!sd.is_union && !sd.fields.empty() && sd.fields.back().is_flexible_array) {
-          std::vector<TypeSpec> field_types;
-          const auto field_vals = emit_const_struct_fields(ts, sd, gv.init, &field_types);
-          const TypeSpec& last_ts = field_types.back();
-          if (last_ts.array_rank > 0 && last_ts.array_size > 0) {
-            std::string literal_ty = "{ ";
-            std::string literal_init = "{ ";
-            for (size_t i = 0; i < sd.fields.size(); ++i) {
-              if (i) { literal_ty += ", "; literal_init += ", "; }
-              literal_ty += llvm_alloca_ty(field_types[i]);
-              literal_init += llvm_alloca_ty(field_types[i]) + " " + field_vals[i];
-            }
-            literal_ty += " }";
-            literal_init += " }";
-
-            lir::LirGlobal lg;
-            lg.name = gv.name;
-            lg.type = ts;
-            lg.is_internal = gv.linkage.is_static;
-            lg.is_const = gv.is_const;
-            lg.linkage_vis = make_linkage_vis(gv.linkage.is_static, gv.linkage.is_weak,
-                                              false, gv.linkage.visibility);
-            lg.qualifier = (gv.is_const && ts.ptr_level == 0) ? "constant " : "global ";
-            lg.llvm_type = literal_ty;
-            lg.init_text = literal_init;
-            lg.align_bytes = align;
-            lg.is_extern_decl = false;
-            module_->globals.push_back(std::move(lg));
-            return;
-          }
-        }
-      }
-    }
-
-    lir::LirGlobal lg;
-    lg.name = gv.name;
-    lg.type = ts;
-    lg.is_internal = gv.linkage.is_static;
-    lg.is_const = gv.is_const;
-    lg.llvm_type = llvm_alloca_ty(ts);
-    lg.align_bytes = align;
-
-    if (gv.linkage.is_extern) {
-      lg.linkage_vis = make_linkage_vis(false, gv.linkage.is_weak, true, gv.linkage.visibility);
-      lg.qualifier = "global ";
-      lg.is_extern_decl = true;
-    } else {
-      lg.linkage_vis = make_linkage_vis(gv.linkage.is_static, gv.linkage.is_weak,
-                                        false, gv.linkage.visibility);
-      lg.qualifier = (gv.is_const && ts.ptr_level == 0) ? "constant " : "global ";
-      lg.init_text = emit_const_init(ts, gv.init);
-      lg.is_extern_decl = false;
-    }
-
-    module_->globals.push_back(std::move(lg));
   }
 
 const Expr& HirEmitter::get_expr(ExprId id) const{
@@ -4681,7 +4579,7 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const IfStmt& s){
     if (s.else_block)
       ctx.block_meta[s.else_block->value].break_label = std::nullopt;
     // after_block label is needed as fallthrough for then/else
-    // We inject it into the meta as "after" by convention (handled in emit_function)
+    // after_block label is the fallthrough target for then/else
     (void)after_lbl;
   }
 
@@ -5009,163 +4907,6 @@ void HirEmitter::hoist_allocas(FnCtx& ctx, const Function& fn){
         }
       }
     }
-  }
-
-void HirEmitter::emit_function(const Function& fn, const std::string& pre_sig,
-                               const std::vector<const Block*>& ext_block_order){
-    FnCtx ctx;
-    ctx.fn = &fn;
-    for (size_t i = 0; i < fn.params.size(); ++i) {
-      if (fn.params[i].fn_ptr_sig) {
-        ctx.param_fn_ptr_sigs[static_cast<uint32_t>(i)] = *fn.params[i].fn_ptr_sig;
-      }
-    }
-    for (const auto& g : mod_.globals) {
-      if (g.fn_ptr_sig) ctx.global_fn_ptr_sigs[g.id.value] = *g.fn_ptr_sig;
-    }
-
-    const std::string ret_ty = llvm_ret_ty(fn.return_type.spec);
-
-    const bool void_param_list =
-        fn.params.size() == 1 &&
-        fn.params[0].type.spec.base == TB_VOID &&
-        fn.params[0].type.spec.ptr_level == 0 &&
-        fn.params[0].type.spec.array_rank == 0;
-
-    // Use pre-built signature if provided (LIR path), otherwise build it (legacy).
-    std::string sig_text;
-    if (!pre_sig.empty()) {
-      sig_text = pre_sig;
-    } else {
-      // Legacy path: build signature inline.
-      std::ostringstream sig_out;
-      if (fn.linkage.is_extern && fn.blocks.empty()) {
-        const std::string decl_kw = fn.linkage.is_weak ? "declare extern_weak " : "declare ";
-        sig_out << decl_kw << llvm_visibility(fn.linkage.visibility) << ret_ty << " "
-                << llvm_global_sym(fn.name) << "(";
-        for (size_t i = 0; i < fn.params.size(); ++i) {
-          if (void_param_list) break;
-          if (i) sig_out << ", ";
-          sig_out << llvm_ty(fn.params[i].type.spec);
-        }
-        if (fn.attrs.variadic) {
-          if (!fn.params.empty() && !void_param_list) sig_out << ", ";
-          sig_out << "...";
-        }
-        sig_out << ")\n\n";
-        sig_text = sig_out.str();
-      } else {
-        if (!fn.template_origin.empty()) {
-          sig_out << "; template-origin: " << fn.template_origin << "\n";
-          if (!fn.spec_key.empty()) {
-            sig_out << "; spec-key: " << fn.spec_key.canonical << "\n";
-          }
-        }
-        std::string fn_lk = fn.linkage.is_static ? "internal " : "";
-        if (fn.linkage.is_weak && !fn.linkage.is_static) fn_lk = "weak ";
-        sig_out << "define " << fn_lk << llvm_visibility(fn.linkage.visibility) << ret_ty << " "
-                << llvm_global_sym(fn.name) << "(";
-        for (size_t i = 0; i < fn.params.size(); ++i) {
-          if (void_param_list) break;
-          if (i) sig_out << ", ";
-          const std::string pty = llvm_ty(fn.params[i].type.spec);
-          const std::string pname = "%p." + sanitize_llvm_ident(fn.params[i].name);
-          sig_out << pty << " " << pname;
-        }
-        if (fn.attrs.variadic) {
-          if (!fn.params.empty()) sig_out << ", ";
-          sig_out << "...";
-        }
-        sig_out << ")";
-        if (fn.attrs.no_inline) sig_out << " noinline";
-        if (fn.attrs.always_inline) sig_out << " alwaysinline";
-        sig_out << "\n";
-        sig_text = sig_out.str();
-      }
-    }
-
-    // Collect spec entries regardless of signature source.
-    if (!fn.template_origin.empty() && !fn.spec_key.empty()) {
-      spec_entries_.push_back({fn.spec_key.canonical, fn.template_origin, std::string(fn.name)});
-    }
-
-    // Declaration — no body to lower.
-    if (fn.linkage.is_extern && fn.blocks.empty()) {
-      lir::LirFunction lir_fn;
-      lir_fn.name = quote_llvm_ident(fn.name);
-      lir_fn.is_internal = fn.linkage.is_static;
-      lir_fn.is_declaration = true;
-      lir_fn.signature_text = sig_text;
-      module_->functions.push_back(std::move(lir_fn));
-      return;
-    }
-
-    // Populate param_slots for body lowering.
-    for (size_t i = 0; i < fn.params.size(); ++i) {
-      if (void_param_list) break;
-      const std::string pname = "%p." + sanitize_llvm_ident(fn.params[i].name);
-      ctx.param_slots[static_cast<uint32_t>(i)] = pname;
-    }
-
-    // Create entry block for alloca hoisting and entry statements.
-    {
-      lir::LirBlock entry_blk;
-      entry_blk.id = lir::LirBlockId{0};
-      entry_blk.label = "entry";
-      ctx.lir_blocks.push_back(std::move(entry_blk));
-      ctx.current_block_idx = 0;
-    }
-
-    // Alloca hoisting
-    hoist_allocas(ctx, fn);
-    if (fn_has_vla_locals(fn)) {
-      need_llvm_stacksave_ = true;
-      const std::string saved_sp = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirStackSaveOp{saved_sp});
-      ctx.vla_stack_save_ptr = saved_sp;
-    }
-
-    // Use externally-provided block order if available, otherwise compute it.
-    std::vector<const Block*> ordered;
-    if (!ext_block_order.empty()) {
-      ordered = ext_block_order;
-    } else {
-      // Legacy path: entry first, then rest in original order.
-      const Block* entry_blk = nullptr;
-      for (const auto& blk : fn.blocks) {
-        if (blk.id.value == fn.entry.value) { entry_blk = &blk; }
-      }
-      if (entry_blk) ordered.push_back(entry_blk);
-      for (const auto& blk : fn.blocks) {
-        if (blk.id.value != fn.entry.value) ordered.push_back(&blk);
-      }
-    }
-
-    for (size_t bi = 0; bi < ordered.size(); ++bi) {
-      const Block* blk = ordered[bi];
-      ctx.current_block_id = blk->id.value;
-
-      // Emit block label (except for entry which uses "entry:")
-      if (bi > 0) {
-        emit_lbl(ctx, block_lbl(blk->id));
-      }
-
-      // Emit statements
-      for (const auto& stmt : blk->stmts) {
-        emit_stmt(ctx, stmt);
-      }
-    }
-
-    // Build LirFunction from accumulated blocks.
-    lir::LirFunction lir_fn;
-    lir_fn.name = quote_llvm_ident(fn.name);
-    lir_fn.is_internal = fn.linkage.is_static;
-    lir_fn.is_declaration = false;
-    lir_fn.return_type = fn.return_type.spec;
-    lir_fn.signature_text = sig_text;
-    lir_fn.alloca_insts = std::move(ctx.alloca_insts);
-    lir_fn.blocks = std::move(ctx.lir_blocks);
-    module_->functions.push_back(std::move(lir_fn));
   }
 
 

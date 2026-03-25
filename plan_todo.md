@@ -1,6 +1,6 @@
 # HIR → LIR Split — Execution State
 
-## Current Step: Step 2d (extract lower_globals) — DONE
+## Current Step: Step 6a (remove dead HirEmitter methods) — DONE
 
 ## Step 1 Audit: Legacy Dependencies in hir_to_lir.cpp
 
@@ -16,7 +16,7 @@
 5. `llvm_backend::detail::*` helpers used throughout: `llvm_ty()`, `llvm_ret_ty()`, `llvm_alloca_ty()`, `sanitize_llvm_ident()`, `llvm_struct_type_str()`, `llvm_field_ty()`, `llvm_global_sym()`, `llvm_visibility()`, `set_active_target_triple()`, `fp_literal()`, `is_float_base()`, `is_complex_base()`, `quote_llvm_ident()`, `llvm_default_datalayout()`, `llvm_va_list_is_pointer_object()`
 
 ### Summary:
-- Item 1 eliminated (this session): global lowering now in hir_to_lir with structured LirGlobal
+- Item 1 eliminated: global lowering now in hir_to_lir with structured LirGlobal
 - Item 2 is the sole remaining semantic dependency
 - Items 3-4 are eliminated
 - Item 5 is acceptable for now (shared helpers, not semantic ownership)
@@ -50,12 +50,23 @@
 ## Completed (Step 5)
 - [x] Step 5: llvm_codegen.cpp is already a pure path switcher (legacy/lir/compare); no lowering logic present
 
+## Completed (Step 6)
+- [x] Step 6a: Remove dead HirEmitter methods — `emit()`, `lower_to_lir()`, `lower_globals()`, `emit_global()`, `emit_function()` all removed; llvm_codegen.cpp now routes all codegen paths through lir::lower+lir::print_llvm directly; removed hir_emitter.hpp include from llvm_codegen.cpp
+
 ## Active Slice
-- Step 2d: Move global variable lowering from HirEmitter to hir_to_lir — DONE
+- Step 6a: Remove dead HirEmitter methods — DONE
 
 ## Next Intended Slice
+- Step 6b: Remove dead `HirEmitter::hoist_allocas()` and `emit_function`-related helpers if they become unreachable
 - Step 2 remaining: extract emit_stmt semantic ownership from HirEmitter (large — needs multi-iteration plan)
-- Step 6: Shrink HirEmitter once LIR path owns all behavior
+
+## Remaining HirEmitter → hir_to_lir.cpp dependencies
+- `emitter.set_module(module)` — module reference setup
+- `emitter.emit_stmt(ctx, stmt)` — per-statement lowering (the core semantic dependency)
+- `emitter.emit_const_init()` / `emitter.emit_const_struct_fields()` — global initializer helpers
+- `emitter.needs_va_start()` etc. (7 intrinsic flags) — post-lowering metadata
+- `emitter.extern_call_decls()` — accumulated extern declarations
+- `emitter.spec_entries()` — specialization metadata
 
 ## Raw fallback usage remaining
 - **LirRawLine: REMOVED** — type deleted from variant, no producers existed

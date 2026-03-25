@@ -4,8 +4,7 @@
 //
 // Transforms a HIR Module into a LIR Module.
 // Module-level orchestration (dedup, type decls, target setup) lives here.
-// Per-item lowering (globals, functions) is still delegated to HirEmitter
-// until later phases migrate it.
+// Per-statement lowering is still delegated to HirEmitter.
 
 #include "ir.hpp"
 #include "../shared/fn_lowering_ctx.hpp"
