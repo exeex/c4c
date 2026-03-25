@@ -1,8 +1,8 @@
 #pragma once
 
-#include "llvm_codegen.hpp"
-#include "hir_to_llvm_helpers.hpp"
-#include "../lir/ir.hpp"
+#include "../llvm/llvm_codegen.hpp"
+#include "../llvm/hir_to_llvm_helpers.hpp"
+#include "ir.hpp"
 #include "../shared/fn_lowering_ctx.hpp"
 
 #include <algorithm>
@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-namespace c4c::codegen::llvm_backend {
+namespace c4c::codegen::lir {
 
 using namespace c4c;
 using namespace c4c::hir;
@@ -50,9 +50,9 @@ struct FieldStep {
   bool bf_is_signed = false;
 };
 
-class HirEmitter {
+class StmtEmitter {
  public:
-  explicit HirEmitter(const Module& m);
+  explicit StmtEmitter(const Module& m);
 
   /// Set the working LirModule by reference.  The caller (hir_to_lir::lower)
   /// owns the module throughout; the emitter writes into it during per-item
@@ -292,4 +292,4 @@ class HirEmitter {
 
 
 
-}  // namespace tinyc2ll::codegen::llvm_backend
+}  // namespace c4c::codegen::lir

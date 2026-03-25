@@ -1,12 +1,12 @@
 # HIR → LIR Split — Execution State
 
-## Current Step: Step 6f (move const-init from HirEmitter to standalone lir module) — DONE
+## Current Step: Step 6g (move StmtEmitter from llvm/ to lir/) — DONE
 
 ## Step 1 Audit: Legacy Dependencies in hir_to_lir.cpp
 
 ### Semantic lowering dependencies (real problems):
 1. ~~**`emitter.lower_globals(global_indices)`**~~ — **DONE** (global lowering moved to hir_to_lir; LirGlobal structured with typed fields; raw_line removed)
-2. **`emitter.emit_stmt(ctx, stmt)`** — entire statement/expression lowering delegated to HirEmitter
+2. ~~**`emitter.emit_stmt(ctx, stmt)`**~~ — **DONE** (StmtEmitter relocated to lir/ namespace; no longer a cross-directory dependency)
 3. ~~**`emitter.lower_single_function(fn, sig)`**~~ — **DONE** (declaration lowering moved to hir_to_lir; method removed from HirEmitter)
 
 ### Module ownership / orchestration:
@@ -16,10 +16,9 @@
 5. `llvm_backend::detail::*` helpers used throughout: `llvm_ty()`, `llvm_ret_ty()`, `llvm_alloca_ty()`, `sanitize_llvm_ident()`, `llvm_struct_type_str()`, `llvm_field_ty()`, `llvm_global_sym()`, `llvm_visibility()`, `set_active_target_triple()`, `fp_literal()`, `is_float_base()`, `is_complex_base()`, `quote_llvm_ident()`, `llvm_default_datalayout()`, `llvm_va_list_is_pointer_object()`
 
 ### Summary:
-- Item 1 eliminated: global lowering now in hir_to_lir with structured LirGlobal
-- Item 2 is the sole remaining semantic dependency
-- Items 3-4 are eliminated
+- Items 1-4 eliminated: all semantic lowering now owned by lir/ namespace
 - Item 5 is acceptable for now (shared helpers, not semantic ownership)
+- StmtEmitter is now `c4c::codegen::lir::StmtEmitter` in `src/codegen/lir/stmt_emitter.hpp/.cpp`
 
 ## Completed Items
 - [x] Step 1: Audit current legacy dependencies
@@ -57,30 +56,33 @@
 - [x] Step 6d: Move intrinsic flags and extern_call_decls from HirEmitter to LirModule — emit_stmt now writes `module_->need_*` directly; `record_extern_call_decl` delegates to `module_->record_extern_decl()`; removed 6 bool members, `extern_call_decls_` map, and 7 getter methods from HirEmitter; `finalize_module` simplified to just convert dedup map to vector
 - [x] Step 6e: Move string pool from HirEmitter to LirModule — `str_pool_` dedup map and `str_idx_` counter moved to `LirModule::str_pool_map`/`str_pool_idx`; `intern_str()` implemented on LirModule; HirEmitter::intern_str() now delegates to `module_->intern_str()`; wide string pool name generation uses `module_->str_pool_idx`; removed 2 data members from HirEmitter
 - [x] Step 6f: Move const-init lowering from HirEmitter to standalone `lir::ConstInitEmitter` — created `const_init_emitter.hpp/.cpp`; moved `emit_const_init`, `emit_const_struct_fields`, `emit_const_scalar_expr`, `try_const_eval_*` (~660 lines) out of HirEmitter; hir_to_lir.cpp now uses ConstInitEmitter directly for global lowering; deleted `hir_to_llvm_const_init.cpp`; removed const-init declarations from hir_emitter.hpp; HirEmitter public interface reduced to: `set_module()`, `emit_stmt()`
+- [x] Step 6g: Move HirEmitter from `src/codegen/llvm/` to `src/codegen/lir/stmt_emitter.hpp/.cpp` — renamed class to `StmtEmitter`, namespace to `c4c::codegen::lir`; hir_to_lir.cpp now uses `StmtEmitter` directly without cross-directory include; `src/codegen/llvm/` reduced to orchestration (`llvm_codegen.hpp/cpp`) and shared helpers (`hir_to_llvm_helpers.hpp`)
 
 ## Active Slice
-- Step 6f: Move const-init lowering from HirEmitter to standalone lir::ConstInitEmitter — DONE
+- Step 6g: Move StmtEmitter to lir/ — DONE
 
 ## Next Intended Slice
-- Step 2 remaining: extract emit_stmt semantic ownership from HirEmitter (large — needs multi-iteration plan)
+- Consider moving `hir_to_llvm_helpers.hpp` to `src/codegen/shared/` (all 4 consumers are in lir/, only the namespace remains llvm_backend::detail)
+- Or: begin decomposing StmtEmitter into smaller focused units (expr_emitter, type_resolver, etc.)
 
-## Remaining HirEmitter → hir_to_lir.cpp dependencies
-- `emitter.set_module(module)` — module reference setup
-- `emitter.emit_stmt(ctx, stmt)` — per-statement lowering (the core semantic dependency)
+## Current file layout
 
-## HirEmitter public interface (current)
-- `HirEmitter(const Module& m)` — constructor
-- `set_module(LirModule& module)` — set working module reference
-- `emit_stmt(FnCtx& ctx, const Stmt& stmt)` — per-statement lowering
+### src/codegen/llvm/ (orchestration + shared helpers only)
+- `llvm_codegen.hpp/cpp` — path switcher, calls lir::lower + lir::print_llvm
+- `hir_to_llvm_helpers.hpp` — LLVM type string helpers (used by lir/ files)
+
+### src/codegen/lir/ (all lowering + printing)
+- `ir.hpp` — LIR data model
+- `hir_to_lir.hpp/cpp` — module-level lowering orchestration
+- `stmt_emitter.hpp/cpp` — statement/expression lowering (~4100 lines)
+- `const_init_emitter.hpp/cpp` — constant initializer lowering
+- `lir_printer.hpp/cpp` — LLVM IR text rendering
+
+### src/codegen/shared/
+- `fn_lowering_ctx.hpp` — FnCtx, BlockMeta shared state
 
 ## Raw fallback usage remaining
-- **LirRawLine: REMOVED** — type deleted from variant, no producers existed
-- **LirRawTerminator: REMOVED** — type deleted from variant, no producers existed
-- **LirBitfieldExtract: REMOVED** — expanded to typed LIR ops in lowering
-- **LirBitfieldInsert: REMOVED** — expanded to typed LIR ops in lowering
-- **LirAlloca: REMOVED** — replaced with LirAllocaOp (string-based, type computed in lowering)
-- **LirHoistedStore: REMOVED** — replaced with LirStoreOp (string-based, type computed in lowering)
-- **LirGlobal::raw_line: REMOVED** — replaced with structured fields (linkage_vis, qualifier, llvm_type, init_text, align_bytes)
+- **All raw fallback types: REMOVED** — LirRawLine, LirRawTerminator, LirBitfieldExtract, LirBitfieldInsert, LirAlloca (TypeSpec), LirHoistedStore, LirGlobal::raw_line all deleted
 - All LIR instructions, terminators, and globals are now fully typed; printer has no TypeSpec→LLVM type conversions
 - **Printer DCE: REMOVED** — dead internal function elimination moved to lowering (eliminate_dead_internals)
 

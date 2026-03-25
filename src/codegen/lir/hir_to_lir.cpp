@@ -1,7 +1,7 @@
 #include "hir_to_lir.hpp"
 #include "ir.hpp"
 #include "const_init_emitter.hpp"
-#include "../llvm/hir_emitter.hpp"
+#include "stmt_emitter.hpp"
 #include "../llvm/hir_to_llvm_helpers.hpp"
 
 #include <algorithm>
@@ -253,7 +253,7 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod) {
 
 // ── Function signature building ───────────────────────────────────────────────
 // Builds the LLVM IR signature text for a HIR function.  Ownership of this
-// logic belongs to hir_to_lir; HirEmitter consumes the pre-built text.
+// logic belongs to hir_to_lir; StmtEmitter consumes the pre-built text.
 
 std::string build_fn_signature(const c4c::hir::Function& fn) {
   using namespace c4c::codegen::llvm_backend::detail;
@@ -342,7 +342,7 @@ static void finalize_module(LirModule& module,
 // ── Block ordering ───────────────────────────────────────────────────────────
 // Computes the HIR block iteration order: entry block first, then remaining
 // blocks in their original order.  Ownership of this decision belongs to
-// hir_to_lir, not HirEmitter.
+// hir_to_lir, not StmtEmitter.
 
 std::vector<const c4c::hir::Block*>
 build_block_order(const c4c::hir::Function& fn) {
@@ -582,7 +582,7 @@ c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
 }
 
 // ── Block label helpers ──────────────────────────────────────────────────────
-// Ownership of block naming and creation belongs to hir_to_lir, not HirEmitter.
+// Ownership of block naming and creation belongs to hir_to_lir, not StmtEmitter.
 
 std::string block_lbl(c4c::hir::BlockId id) {
   return "block_" + std::to_string(id.value);
@@ -769,7 +769,7 @@ static void eliminate_dead_internals(LirModule& mod) {
 LirModule lower(const c4c::hir::Module& hir_mod) {
   using namespace c4c::codegen::llvm_backend::detail;
 
-  // Module-level orchestration: owned by hir_to_lir, not HirEmitter.
+  // Module-level orchestration: owned by hir_to_lir, not StmtEmitter.
   set_active_target_triple(hir_mod.target_triple);
 
   LirModule module;
@@ -783,11 +783,11 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
   auto fn_indices = dedup_functions(hir_mod);
 
   // Per-item lowering: hir_to_lir owns iteration and the module;
-  // Const-init lowering (globals) — standalone, no HirEmitter dependency.
+  // Const-init lowering (globals) — standalone, no StmtEmitter dependency.
   ConstInitEmitter const_init(hir_mod, module);
 
-  // HirEmitter owns statement/expression lowering and writes into module.
-  c4c::codegen::llvm_backend::HirEmitter emitter(hir_mod);
+  // StmtEmitter owns statement/expression lowering and writes into module.
+  StmtEmitter emitter(hir_mod);
   emitter.set_module(module);
 
   bool any_vla = false;
@@ -809,7 +809,7 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
     } else {
       // Definition — hir_to_lir owns FnCtx setup, alloca hoisting, VLA
       // stack save, spec entry collection, and LirFunction construction.
-      // HirEmitter owns statement / expression emission only.
+      // StmtEmitter owns statement / expression emission only.
       auto ctx = init_fn_ctx(hir_mod, fn);
       if (ctx.vla_stack_save_ptr) any_vla = true;
       auto block_order = build_block_order(fn);

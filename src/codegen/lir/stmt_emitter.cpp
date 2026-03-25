@@ -1,7 +1,7 @@
-#include "hir_emitter.hpp"
+#include "stmt_emitter.hpp"
 #include "canonical_symbol.hpp"
 
-namespace c4c::codegen::llvm_backend {
+namespace c4c::codegen::lir {
 
 namespace {
 
@@ -161,13 +161,13 @@ int object_align_bytes(const Module& mod, const TypeSpec& ts) {
 
 }  // namespace
 
-HirEmitter::HirEmitter(const Module& m) : mod_(m){}
+StmtEmitter::StmtEmitter(const Module& m) : mod_(m){}
 
-void HirEmitter::set_module(lir::LirModule& module) {
+void StmtEmitter::set_module(lir::LirModule& module) {
     module_ = &module;
   }
 
-const GlobalVar* HirEmitter::select_global_object(const std::string& name) const {
+const GlobalVar* StmtEmitter::select_global_object(const std::string& name) const {
     const GlobalVar* best = nullptr;
     for (const auto& g : mod_.globals) {
       if (g.name != name) continue;
@@ -190,7 +190,7 @@ const GlobalVar* HirEmitter::select_global_object(const std::string& name) const
     return best;
   }
 
-const GlobalVar* HirEmitter::select_global_object(GlobalId id) const {
+const GlobalVar* StmtEmitter::select_global_object(GlobalId id) const {
     const GlobalVar* gv = mod_.find_global(id);
     if (!gv) return nullptr;
     if (const GlobalVar* best = select_global_object(gv->name)) return best;
@@ -199,7 +199,7 @@ const GlobalVar* HirEmitter::select_global_object(GlobalId id) const {
 
 
 
-void HirEmitter::emit_lbl(FnCtx& ctx, const std::string& lbl){
+void StmtEmitter::emit_lbl(FnCtx& ctx, const std::string& lbl){
     lir::LirBlock blk;
     blk.id = lir::LirBlockId{static_cast<uint32_t>(ctx.lir_blocks.size())};
     blk.label = lbl;
@@ -208,14 +208,14 @@ void HirEmitter::emit_lbl(FnCtx& ctx, const std::string& lbl){
     ctx.last_term = false;
   }
 
-void HirEmitter::emit_term_br(FnCtx& ctx, const std::string& target_label){
+void StmtEmitter::emit_term_br(FnCtx& ctx, const std::string& target_label){
     if (std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) {
       ctx.cur_block().terminator = lir::LirBr{target_label};
       ctx.last_term = true;
     }
   }
 
-void HirEmitter::emit_term_condbr(FnCtx& ctx, const std::string& cond,
+void StmtEmitter::emit_term_condbr(FnCtx& ctx, const std::string& cond,
                                     const std::string& true_label,
                                     const std::string& false_label){
     if (std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) {
@@ -224,7 +224,7 @@ void HirEmitter::emit_term_condbr(FnCtx& ctx, const std::string& cond,
     }
   }
 
-void HirEmitter::emit_term_ret(FnCtx& ctx, const std::string& type_str,
+void StmtEmitter::emit_term_ret(FnCtx& ctx, const std::string& type_str,
                                  const std::optional<std::string>& value_str){
     if (std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) {
       ctx.cur_block().terminator = lir::LirRet{value_str, type_str};
@@ -232,7 +232,7 @@ void HirEmitter::emit_term_ret(FnCtx& ctx, const std::string& type_str,
     }
   }
 
-void HirEmitter::emit_term_switch(FnCtx& ctx, const std::string& sel_name,
+void StmtEmitter::emit_term_switch(FnCtx& ctx, const std::string& sel_name,
                                     const std::string& sel_type,
                                     const std::string& default_label,
                                     std::vector<std::pair<long long, std::string>> cases){
@@ -242,7 +242,7 @@ void HirEmitter::emit_term_switch(FnCtx& ctx, const std::string& sel_name,
     }
   }
 
-void HirEmitter::emit_term_unreachable(FnCtx& ctx){
+void StmtEmitter::emit_term_unreachable(FnCtx& ctx){
     // LirUnreachable is the default — but we need to mark last_term.
     // Only set if no real terminator has been placed.
     if (std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) {
@@ -250,35 +250,35 @@ void HirEmitter::emit_term_unreachable(FnCtx& ctx){
     }
   }
 
-std::string HirEmitter::fresh_tmp(FnCtx& ctx){
+std::string StmtEmitter::fresh_tmp(FnCtx& ctx){
     return "%t" + std::to_string(ctx.tmp_idx++);
   }
 
-void HirEmitter::record_extern_call_decl(const std::string& name, const std::string& ret_ty){
+void StmtEmitter::record_extern_call_decl(const std::string& name, const std::string& ret_ty){
     if (name.empty() || mod_.fn_index.count(name)) return;
     module_->record_extern_decl(name, ret_ty);
   }
 
-std::string HirEmitter::fresh_lbl(FnCtx& ctx, const std::string& pfx){
+std::string StmtEmitter::fresh_lbl(FnCtx& ctx, const std::string& pfx){
     return pfx + std::to_string(ctx.tmp_idx++);
   }
 
-std::string HirEmitter::block_lbl(BlockId id){
+std::string StmtEmitter::block_lbl(BlockId id){
     return "block_" + std::to_string(id.value);
   }
 
-std::string HirEmitter::intern_str(const std::string& raw_bytes){
+std::string StmtEmitter::intern_str(const std::string& raw_bytes){
     return module_->intern_str(raw_bytes);
   }
 
 // NOTE: emit_preamble() has been replaced by lir::build_type_decls() in hir_to_lir.cpp.
 // Type declaration generation is now part of module-level orchestration owned by hir_to_lir.
 
-bool HirEmitter::is_char_like(TypeBase b){
+bool StmtEmitter::is_char_like(TypeBase b){
     return b == TB_CHAR || b == TB_SCHAR || b == TB_UCHAR;
   }
 
-TypeSpec HirEmitter::drop_one_array_dim(TypeSpec ts){
+TypeSpec StmtEmitter::drop_one_array_dim(TypeSpec ts){
     if (ts.array_rank <= 0) return ts;
     for (int i = 0; i < ts.array_rank - 1; ++i) ts.array_dims[i] = ts.array_dims[i + 1];
     ts.array_dims[ts.array_rank - 1] = -1;
@@ -287,7 +287,7 @@ TypeSpec HirEmitter::drop_one_array_dim(TypeSpec ts){
     return ts;
   }
 
-std::string HirEmitter::bytes_from_string_literal(const StringLiteral& sl){
+std::string StmtEmitter::bytes_from_string_literal(const StringLiteral& sl){
     std::string bytes = sl.raw;
     if (bytes.size() >= 2 && bytes.front() == '"' && bytes.back() == '"') {
       bytes = bytes.substr(1, bytes.size() - 2);
@@ -298,7 +298,7 @@ std::string HirEmitter::bytes_from_string_literal(const StringLiteral& sl){
     return decode_c_escaped_bytes(bytes);
   }
 
-std::vector<long long> HirEmitter::decode_wide_string_values(const std::string& raw){
+std::vector<long long> StmtEmitter::decode_wide_string_values(const std::string& raw){
     std::vector<long long> out;
     // Strip L"..." wrapper
     const char* p = raw.c_str();
@@ -363,7 +363,7 @@ std::vector<long long> HirEmitter::decode_wide_string_values(const std::string& 
     return out;
   }
 
-std::string HirEmitter::escape_llvm_c_bytes(const std::string& raw_bytes){
+std::string StmtEmitter::escape_llvm_c_bytes(const std::string& raw_bytes){
     std::string esc;
     for (unsigned char c : raw_bytes) {
       if (c == '"')      { esc += "\\22"; }
@@ -382,7 +382,7 @@ std::string HirEmitter::escape_llvm_c_bytes(const std::string& raw_bytes){
     return esc;
   }
 
-TypeSpec HirEmitter::field_decl_type(const HirStructField& f) const{
+TypeSpec StmtEmitter::field_decl_type(const HirStructField& f) const{
     TypeSpec ts = f.elem_type;
     if (f.array_first_dim >= 0) {
       for (int i = 0; i < 8; ++i) ts.array_dims[i] = -1;
@@ -395,11 +395,11 @@ TypeSpec HirEmitter::field_decl_type(const HirStructField& f) const{
 
 // NOTE: try_const_eval_int/float/complex_int/complex_fp and
 // emit_const_scalar_expr have been moved to lir::ConstInitEmitter
-// (const_init_emitter.cpp).  They are no longer used from HirEmitter.
+// (const_init_emitter.cpp).  They are no longer used from StmtEmitter.
 
 // emit_const_int_like is kept because it is used from emit_rval_payload.
 
-std::string HirEmitter::emit_const_int_like(long long value, const TypeSpec& expected_ts){
+std::string StmtEmitter::emit_const_int_like(long long value, const TypeSpec& expected_ts){
     if (llvm_ty(expected_ts) == "ptr") {
       if (value == 0) return "null";
       return "inttoptr (i64 " + std::to_string(value) + " to ptr)";
@@ -410,13 +410,13 @@ std::string HirEmitter::emit_const_int_like(long long value, const TypeSpec& exp
   }
 
 
-const Expr& HirEmitter::get_expr(ExprId id) const{
+const Expr& StmtEmitter::get_expr(ExprId id) const{
     for (const auto& e : mod_.expr_pool)
       if (e.id.value == id.value) return e;
-    throw std::runtime_error("HirEmitter: expr not found id=" + std::to_string(id.value));
+    throw std::runtime_error("StmtEmitter: expr not found id=" + std::to_string(id.value));
   }
 
-std::string HirEmitter::coerce(FnCtx& ctx, const std::string& val,
+std::string StmtEmitter::coerce(FnCtx& ctx, const std::string& val,
                      const TypeSpec& from_ts, const TypeSpec& to_ts){
     const std::string ft = llvm_ty(from_ts);
     const std::string tt = llvm_ty(to_ts);
@@ -542,7 +542,7 @@ std::string HirEmitter::coerce(FnCtx& ctx, const std::string& val,
     return val;
   }
 
-std::string HirEmitter::to_bool(FnCtx& ctx, const std::string& val, const TypeSpec& ts){
+std::string StmtEmitter::to_bool(FnCtx& ctx, const std::string& val, const TypeSpec& ts){
     const std::string ty = llvm_ty(ts);
     if (ty == "i1") return val;
     const std::string tmp = fresh_tmp(ctx);
@@ -558,7 +558,7 @@ std::string HirEmitter::to_bool(FnCtx& ctx, const std::string& val, const TypeSp
     return tmp;
   }
 
-bool HirEmitter::find_field_chain(const std::string& tag, const std::string& field_name,
+bool StmtEmitter::find_field_chain(const std::string& tag, const std::string& field_name,
                         std::vector<FieldStep>& chain, TypeSpec& out_field_ts){
     const auto it = mod_.struct_defs.find(tag);
     if (it == mod_.struct_defs.end()) return false;
@@ -596,14 +596,14 @@ bool HirEmitter::find_field_chain(const std::string& tag, const std::string& fie
     return false;
   }
 
-std::string HirEmitter::emit_member_gep(FnCtx& ctx, const std::string& base_ptr,
+std::string StmtEmitter::emit_member_gep(FnCtx& ctx, const std::string& base_ptr,
                                const std::string& tag, const std::string& field_name,
                                TypeSpec& out_field_ts,
                                BitfieldAccess* out_bf){
     std::vector<FieldStep> chain;
     if (!find_field_chain(tag, field_name, chain, out_field_ts)) {
       throw std::runtime_error(
-          "HirEmitter: field '" + field_name + "' not found in struct/union '" + tag + "'");
+          "StmtEmitter: field '" + field_name + "' not found in struct/union '" + tag + "'");
     }
     std::string cur_ptr = base_ptr;
     for (const auto& step : chain) {
@@ -630,26 +630,26 @@ std::string HirEmitter::emit_member_gep(FnCtx& ctx, const std::string& base_ptr,
     return cur_ptr;
   }
 
-int HirEmitter::bitfield_promoted_bits(const BitfieldAccess& bf){
+int StmtEmitter::bitfield_promoted_bits(const BitfieldAccess& bf){
     if (bf.bit_width <= 31) return 32;  // fits in int
     if (bf.bit_width == 32) return 32;  // fits in int (signed) or uint (unsigned)
     return bf.storage_unit_bits;        // >32 bits: use storage type (i64)
   }
 
-TypeBase HirEmitter::bitfield_promoted_base(int bit_width, bool is_signed, int storage_unit_bits){
+TypeBase StmtEmitter::bitfield_promoted_base(int bit_width, bool is_signed, int storage_unit_bits){
     if (bit_width < 32) return TB_INT;
     if (bit_width == 32) return is_signed ? TB_INT : TB_UINT;
     if (storage_unit_bits > 32) return is_signed ? TB_LONGLONG : TB_ULONGLONG;
     return is_signed ? TB_INT : TB_UINT;
   }
 
-TypeSpec HirEmitter::bitfield_promoted_ts(const BitfieldAccess& bf){
+TypeSpec StmtEmitter::bitfield_promoted_ts(const BitfieldAccess& bf){
     TypeSpec ts{};
     ts.base = bitfield_promoted_base(bf.bit_width, bf.is_signed, bf.storage_unit_bits);
     return ts;
   }
 
-std::string HirEmitter::emit_bitfield_load(FnCtx& ctx, const std::string& unit_ptr,
+std::string StmtEmitter::emit_bitfield_load(FnCtx& ctx, const std::string& unit_ptr,
                                   const BitfieldAccess& bf){
     const std::string result = fresh_tmp(ctx);
     const std::string unit_ty = "i" + std::to_string(bf.storage_unit_bits);
@@ -701,7 +701,7 @@ std::string HirEmitter::emit_bitfield_load(FnCtx& ctx, const std::string& unit_p
     return result;
   }
 
-void HirEmitter::emit_bitfield_store(FnCtx& ctx, const std::string& unit_ptr,
+void StmtEmitter::emit_bitfield_store(FnCtx& ctx, const std::string& unit_ptr,
                             const BitfieldAccess& bf,
                             const std::string& new_val, const TypeSpec& val_ts){
     // Coerce new_val to storage unit type
@@ -748,12 +748,12 @@ void HirEmitter::emit_bitfield_store(FnCtx& ctx, const std::string& unit_ptr,
     emit_lir_op(ctx, lir::LirStoreOp{unit_ty, combined, unit_ptr});
   }
 
-std::string HirEmitter::emit_lval(FnCtx& ctx, ExprId id, TypeSpec& pointee_ts){
+std::string StmtEmitter::emit_lval(FnCtx& ctx, ExprId id, TypeSpec& pointee_ts){
     const Expr& e = get_expr(id);
     return emit_lval_dispatch(ctx, e, pointee_ts);
   }
 
-std::string HirEmitter::emit_va_list_obj_ptr(FnCtx& ctx, ExprId id, TypeSpec& ts){
+std::string StmtEmitter::emit_va_list_obj_ptr(FnCtx& ctx, ExprId id, TypeSpec& ts){
     const Expr& e = get_expr(id);
     ts = resolve_expr_type(ctx, id);
     if (const auto* r = std::get_if<DeclRef>(&e.payload)) {
@@ -774,7 +774,7 @@ std::string HirEmitter::emit_va_list_obj_ptr(FnCtx& ctx, ExprId id, TypeSpec& ts
     return emit_lval(ctx, id, ts);
   }
 
-std::string HirEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec& pts){
+std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec& pts){
     if (const auto* r = std::get_if<DeclRef>(&e.payload)) {
       if (r->local) {
         pts = ctx.local_types.at(r->local->value);
@@ -821,7 +821,7 @@ std::string HirEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec& 
         TypeSpec complex_ts{};
         const std::string complex_ptr = emit_lval(ctx, u->operand, complex_ts);
         if (!is_complex_base(complex_ts.base)) {
-          throw std::runtime_error("HirEmitter: real/imag lvalue on non-complex expr");
+          throw std::runtime_error("StmtEmitter: real/imag lvalue on non-complex expr");
         }
         pts = complex_component_ts(complex_ts.base);
         const std::string tmp = fresh_tmp(ctx);
@@ -880,10 +880,10 @@ std::string HirEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec& 
         return emit_lval(ctx, c->expr, pts);
       }
     }
-    throw std::runtime_error("HirEmitter: cannot take lval of expr");
+    throw std::runtime_error("StmtEmitter: cannot take lval of expr");
   }
 
-std::string HirEmitter::emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeSpec& out_pts,
+std::string StmtEmitter::emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeSpec& out_pts,
                                 BitfieldAccess* out_bf){
     // Get base pointer
     const Expr& base_e = get_expr(m.base);
@@ -932,12 +932,12 @@ std::string HirEmitter::emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeSp
     const char* tag = base_ts.tag;
     if (!tag || !tag[0]) {
       throw std::runtime_error(
-          "HirEmitter: MemberExpr base has no struct tag (field='" + m.field + "')");
+          "StmtEmitter: MemberExpr base has no struct tag (field='" + m.field + "')");
     }
     return emit_member_gep(ctx, base_ptr, tag, m.field, out_pts, out_bf);
   }
 
-TypeSpec HirEmitter::resolve_expr_type(FnCtx& ctx, ExprId id){
+TypeSpec StmtEmitter::resolve_expr_type(FnCtx& ctx, ExprId id){
     const Expr& e = get_expr(id);
     // Use stored type if not void
     const TypeSpec& ts = e.type.spec;
@@ -950,14 +950,14 @@ TypeSpec HirEmitter::resolve_expr_type(FnCtx& ctx, ExprId id){
     }, e.payload);
   }
 
-TypeSpec HirEmitter::resolve_expr_type(FnCtx& ctx, const Expr& e){
+TypeSpec StmtEmitter::resolve_expr_type(FnCtx& ctx, const Expr& e){
     if (has_concrete_type(e.type.spec)) return e.type.spec;
     return std::visit([&](const auto& p) -> TypeSpec {
       return resolve_payload_type(ctx, p);
     }, e.payload);
   }
 
-const FnPtrSig* HirEmitter::resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& callee_e){
+const FnPtrSig* StmtEmitter::resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& callee_e){
     if (const auto* u = std::get_if<UnaryExpr>(&callee_e.payload)) {
       if (u->op == UnaryOp::Deref) {
         const Expr& inner_e = get_expr(u->operand);
@@ -1091,7 +1091,7 @@ const FnPtrSig* HirEmitter::resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& ca
     return nullptr;
   }
 
-TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const DeclRef& r){
+TypeSpec StmtEmitter::resolve_payload_type(FnCtx& ctx, const DeclRef& r){
     if (r.local) {
       const auto it = ctx.local_types.find(r.local->value);
       if (it != ctx.local_types.end()) return it->second;
@@ -1104,7 +1104,7 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const DeclRef& r){
     return {};
   }
 
-TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const BinaryExpr& b){
+TypeSpec StmtEmitter::resolve_payload_type(FnCtx& ctx, const BinaryExpr& b){
     switch (b.op) {
       case BinaryOp::Lt:
       case BinaryOp::Le:
@@ -1168,7 +1168,7 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const BinaryExpr& b){
     return resolve_expr_type(ctx, b.rhs);
   }
 
-TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const UnaryExpr& u){
+TypeSpec StmtEmitter::resolve_payload_type(FnCtx& ctx, const UnaryExpr& u){
     TypeSpec ts = resolve_expr_type(ctx, u.operand);
     switch (u.op) {
       case UnaryOp::AddrOf:
@@ -1210,15 +1210,15 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const UnaryExpr& u){
     }
   }
 
-TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const AssignExpr& a){
+TypeSpec StmtEmitter::resolve_payload_type(FnCtx& ctx, const AssignExpr& a){
     return resolve_expr_type(ctx, a.lhs);
   }
 
-TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const CastExpr& c){
+TypeSpec StmtEmitter::resolve_payload_type(FnCtx& ctx, const CastExpr& c){
     return c.to_type.spec;
   }
 
-TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const CallExpr& c){
+TypeSpec StmtEmitter::resolve_payload_type(FnCtx& ctx, const CallExpr& c){
     const BuiltinId builtin_id = c.builtin_id;
     if (builtin_id != BuiltinId::Unknown) {
       if (builtin_id == BuiltinId::Expect && !c.args.empty())
@@ -1271,26 +1271,26 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const CallExpr& c){
     return implicit_int;
   }
 
-TypeSpec HirEmitter::resolve_payload_type(FnCtx&, const IntLiteral&){
+TypeSpec StmtEmitter::resolve_payload_type(FnCtx&, const IntLiteral&){
     TypeSpec ts{}; ts.base = TB_INT; return ts;
   }
 
-TypeSpec HirEmitter::resolve_payload_type(FnCtx&, const FloatLiteral&){
+TypeSpec StmtEmitter::resolve_payload_type(FnCtx&, const FloatLiteral&){
     TypeSpec ts{}; ts.base = TB_DOUBLE; return ts;
   }
 
-TypeSpec HirEmitter::resolve_payload_type(FnCtx&, const CharLiteral&){
+TypeSpec StmtEmitter::resolve_payload_type(FnCtx&, const CharLiteral&){
     TypeSpec ts{}; ts.base = TB_CHAR; return ts;
   }
 
-TypeSpec HirEmitter::resolve_payload_type(FnCtx&, const StringLiteral& sl){
+TypeSpec StmtEmitter::resolve_payload_type(FnCtx&, const StringLiteral& sl){
     TypeSpec ts{};
     ts.base = sl.is_wide ? TB_INT : TB_CHAR;
     ts.ptr_level = 1;
     return ts;
   }
 
-TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const MemberExpr& m){
+TypeSpec StmtEmitter::resolve_payload_type(FnCtx& ctx, const MemberExpr& m){
     // Look up the field type in struct_defs
     const Expr& base_e = get_expr(m.base);
     TypeSpec base_ts = base_e.type.spec;
@@ -1311,7 +1311,7 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const MemberExpr& m){
     return field_ts;
   }
 
-TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const IndexExpr& idx){
+TypeSpec StmtEmitter::resolve_payload_type(FnCtx& ctx, const IndexExpr& idx){
     TypeSpec base_ts = resolve_expr_type(ctx, idx.base);
     if (is_vector_value(base_ts)) {
       base_ts.is_vector = false;
@@ -1324,7 +1324,7 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const IndexExpr& idx){
     return base_ts;
   }
 
-TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const TernaryExpr& t){
+TypeSpec StmtEmitter::resolve_payload_type(FnCtx& ctx, const TernaryExpr& t){
     TypeSpec ts = resolve_expr_type(ctx, t.then_expr);
     if (ts.base != TB_VOID || ts.ptr_level > 0 || ts.array_rank > 0 ||
         is_vector_value(ts))
@@ -1332,37 +1332,37 @@ TypeSpec HirEmitter::resolve_payload_type(FnCtx& ctx, const TernaryExpr& t){
     return resolve_expr_type(ctx, t.else_expr);
   }
 
-TypeSpec HirEmitter::resolve_payload_type(FnCtx&, const VaArgExpr&){
+TypeSpec StmtEmitter::resolve_payload_type(FnCtx&, const VaArgExpr&){
     return {};
   }
 
-TypeSpec HirEmitter::resolve_payload_type(FnCtx&, const SizeofExpr&){
+TypeSpec StmtEmitter::resolve_payload_type(FnCtx&, const SizeofExpr&){
     TypeSpec ts{};
     ts.base = TB_ULONGLONG;
     return ts;
   }
 
-TypeSpec HirEmitter::resolve_payload_type(FnCtx&, const SizeofTypeExpr&){
+TypeSpec StmtEmitter::resolve_payload_type(FnCtx&, const SizeofTypeExpr&){
     TypeSpec ts{};
     ts.base = TB_ULONGLONG;
     return ts;
   }
 
-TypeSpec HirEmitter::resolve_payload_type(FnCtx&, const LabelAddrExpr&){
+TypeSpec StmtEmitter::resolve_payload_type(FnCtx&, const LabelAddrExpr&){
     TypeSpec ts{};
     ts.base = TB_VOID;
     ts.ptr_level = 1;
     return ts;
   }
 
-TypeSpec HirEmitter::resolve_payload_type(FnCtx&, const PendingConstevalExpr&){
+TypeSpec StmtEmitter::resolve_payload_type(FnCtx&, const PendingConstevalExpr&){
     return {};
   }
 
 template <typename T>
-  TypeSpec HirEmitter::resolve_payload_type(FnCtx&, const T&){ return {}; }
+  TypeSpec StmtEmitter::resolve_payload_type(FnCtx&, const T&){ return {}; }
 
-std::string HirEmitter::emit_rval_id(FnCtx& ctx, ExprId id, TypeSpec& out_ts){
+std::string StmtEmitter::emit_rval_id(FnCtx& ctx, ExprId id, TypeSpec& out_ts){
     const Expr& e = get_expr(id);
     out_ts = e.type.spec;
     if (const auto* b = std::get_if<BinaryExpr>(&e.payload)) {
@@ -1381,19 +1381,19 @@ std::string HirEmitter::emit_rval_id(FnCtx& ctx, ExprId id, TypeSpec& out_ts){
     return emit_rval_expr(ctx, e);
   }
 
-std::string HirEmitter::emit_rval_expr(FnCtx& ctx, const Expr& e){
+std::string StmtEmitter::emit_rval_expr(FnCtx& ctx, const Expr& e){
     return std::visit([&](const auto& p) -> std::string {
       return emit_rval_payload(ctx, p, e);
     }, e.payload);
   }
 
 template <typename T>
-  std::string HirEmitter::emit_rval_payload(FnCtx&, const T&, const Expr&){
+  std::string StmtEmitter::emit_rval_payload(FnCtx&, const T&, const Expr&){
     throw std::runtime_error(
-        std::string("HirEmitter: unimplemented expr: ") + typeid(T).name());
+        std::string("StmtEmitter: unimplemented expr: ") + typeid(T).name());
   }
 
-std::string HirEmitter::emit_rval_payload(FnCtx&, const IntLiteral& x, const Expr& e){
+std::string StmtEmitter::emit_rval_payload(FnCtx&, const IntLiteral& x, const Expr& e){
     if (is_complex_base(e.type.spec.base)) {
       const TypeSpec elem_ts = complex_component_ts(e.type.spec.base);
       return "{ " + llvm_ty(elem_ts) + " " + emit_const_int_like(0, elem_ts) + ", " +
@@ -1402,7 +1402,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx&, const IntLiteral& x, const Exp
     return std::to_string(x.value);
   }
 
-std::string HirEmitter::emit_rval_payload(FnCtx&, const FloatLiteral& x, const Expr& e){
+std::string StmtEmitter::emit_rval_payload(FnCtx&, const FloatLiteral& x, const Expr& e){
     if (is_complex_base(e.type.spec.base)) {
       const TypeSpec elem_ts = complex_component_ts(e.type.spec.base);
       const std::string imag_v = fp_literal(elem_ts.base, x.value);
@@ -1413,11 +1413,11 @@ std::string HirEmitter::emit_rval_payload(FnCtx&, const FloatLiteral& x, const E
                                            : fp_to_hex(x.value);
   }
 
-std::string HirEmitter::emit_rval_payload(FnCtx&, const CharLiteral& x, const Expr&){
+std::string StmtEmitter::emit_rval_payload(FnCtx&, const CharLiteral& x, const Expr&){
     return std::to_string(x.value);
   }
 
-std::string HirEmitter::emit_complex_binary_arith(FnCtx& ctx,
+std::string StmtEmitter::emit_complex_binary_arith(FnCtx& ctx,
                                         BinaryOp op,
                                         const std::string& lv,
                                         const TypeSpec& lts,
@@ -1530,7 +1530,7 @@ std::string HirEmitter::emit_complex_binary_arith(FnCtx& ctx,
     return cplx_ty == llvm_ty(res_spec) ? out : coerce(ctx, out, complex_ts, res_spec);
   }
 
-std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const StringLiteral& sl, const Expr& /*e*/){
+std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const StringLiteral& sl, const Expr& /*e*/){
     if (sl.is_wide) {
       // Wide string: emit as global array of i32 (wchar_t) values
       const auto vals = decode_wide_string_values(sl.raw);
@@ -1565,7 +1565,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const StringLiteral& sl, c
     return tmp;
   }
 
-std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const Expr& e){
+std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const Expr& e){
     // Param: SSA value (check before function refs — params shadow function names)
     if (r.param_index && ctx.fn && *r.param_index < ctx.fn->params.size()) {
       // If we already have a spill slot for this param (due to lval use like p++),
@@ -1587,7 +1587,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const Ex
     if (r.local) {
       const auto it = ctx.local_slots.find(r.local->value);
       if (it == ctx.local_slots.end())
-        throw std::runtime_error("HirEmitter: local slot not found: " + r.name);
+        throw std::runtime_error("StmtEmitter: local slot not found: " + r.name);
       const TypeSpec ts = ctx.local_types.at(r.local->value);
       const auto vit = ctx.local_is_vla.find(r.local->value);
       if (vit != ctx.local_is_vla.end() && vit->second) {
@@ -1652,7 +1652,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const Ex
     return tmp;
   }
 
-std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const Expr& e){
+std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const Expr& e){
     // Short-circuit ops that use emit_lval (not emit_rval_id) to avoid
     // double-evaluating the operand and duplicating side effects (e.g. cnt++).
     if (u.op == UnaryOp::AddrOf) {
@@ -1927,7 +1927,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const 
     return "0";
   }
 
-std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const Expr& e){
+std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const Expr& e){
     // Comma: eval both, return rhs
     if (b.op == BinaryOp::Comma) {
       TypeSpec lts{};
@@ -2370,10 +2370,10 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const
       }
     }
 
-    throw std::runtime_error("HirEmitter: unhandled binary op");
+    throw std::runtime_error("StmtEmitter: unhandled binary op");
   }
 
-std::string HirEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Expr& e){
+std::string StmtEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Expr& e){
     TypeSpec res_spec = resolve_expr_type(ctx, e);
     if (!has_concrete_type(res_spec)) res_spec.base = TB_INT;
     const std::string res_ty = llvm_ty(res_spec);
@@ -2430,7 +2430,7 @@ std::string HirEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Expr
     return tmp;
   }
 
-std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const AssignExpr& a, const Expr& /*e*/){
+std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const AssignExpr& a, const Expr& /*e*/){
     TypeSpec rhs_ts{};
     std::string rhs = emit_rval_id(ctx, a.rhs, rhs_ts);
 
@@ -2473,7 +2473,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const AssignExpr& a, const
       for (const auto& r : tbl) {
         if (r.op == a.op) { instr = ls ? r.is : r.iu; break; }
       }
-      if (!instr) throw std::runtime_error("HirEmitter: bitfield compound assign: unknown op");
+      if (!instr) throw std::runtime_error("StmtEmitter: bitfield compound assign: unknown op");
       const std::string result = fresh_tmp(ctx);
       emit_lir_op(ctx, lir::LirBinOp{result, std::string(instr), promoted_ty, lhs_op, rhs_op});
       emit_bitfield_store(ctx, lhs_ptr, bf, result, promoted_ts);
@@ -2565,7 +2565,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const AssignExpr& a, const
         }
         break;
       }
-      if (!instr) throw std::runtime_error("HirEmitter: compound assign: unknown op");
+      if (!instr) throw std::runtime_error("StmtEmitter: compound assign: unknown op");
 
       const std::string op_ty = llvm_ty(op_ts);
       std::string lhs_op = loaded;
@@ -2586,13 +2586,13 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const AssignExpr& a, const
     return rhs;
   }
 
-std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CastExpr& c, const Expr& /*e*/){
+std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CastExpr& c, const Expr& /*e*/){
     TypeSpec from_ts{};
     const std::string val = emit_rval_id(ctx, c.expr, from_ts);
     return coerce(ctx, val, from_ts, c.to_type.spec);
   }
 
-std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, const Expr& e){
+std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, const Expr& e){
     TypeSpec callee_ts{};
     std::string callee_val;
     const Expr& callee_e = get_expr(call.callee);
@@ -2635,7 +2635,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
     }
 
     if (builtin_id == BuiltinId::Unknown && has_builtin_prefix(fn_name)) {
-      throw std::runtime_error("HirEmitter: unsupported builtin call: " + fn_name);
+      throw std::runtime_error("StmtEmitter: unsupported builtin call: " + fn_name);
     }
 
     // Handle GCC/Clang builtins
@@ -3351,7 +3351,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
     return tmp;
   }
 
-std::string HirEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::string& ap_ptr, int slot_bytes){
+std::string StmtEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::string& ap_ptr, int slot_bytes){
     const std::string offs_ptr = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirGepOp{offs_ptr, "%struct.__va_list_tag_", ap_ptr, false, {"i32 0", "i32 3"}});
     const std::string offs = fresh_tmp(ctx);
@@ -3399,7 +3399,7 @@ std::string HirEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::str
     return src_ptr;
   }
 
-std::string HirEmitter::emit_aarch64_vaarg_fp_src_ptr(
+std::string StmtEmitter::emit_aarch64_vaarg_fp_src_ptr(
       FnCtx& ctx, const std::string& ap_ptr, int reg_slot_bytes, int stack_slot_bytes,
       int stack_align_bytes){
     const std::string offs_ptr = fresh_tmp(ctx);
@@ -3460,7 +3460,7 @@ std::string HirEmitter::emit_aarch64_vaarg_fp_src_ptr(
     return src_ptr;
   }
 
-std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const Expr& e){
+std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const Expr& e){
     TypeSpec ap_ts{};
     const std::string ap_ptr = emit_va_list_obj_ptr(ctx, v.ap, ap_ts);
     TypeSpec res_ts = e.type.spec;
@@ -3561,7 +3561,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const 
     return out;
   }
 
-std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, const Expr& e){
+std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, const Expr& e){
     TypeSpec cond_ts{};
     const std::string cond_v = emit_rval_id(ctx, t.cond, cond_ts);
     const std::string cond_i1 = to_bool(ctx, cond_v, cond_ts);
@@ -3608,7 +3608,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, cons
     return tmp;
   }
 
-std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const SizeofExpr& s, const Expr&){
+std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const SizeofExpr& s, const Expr&){
     const Expr& op = get_expr(s.expr);
     TypeSpec op_ts = resolve_expr_type(ctx, op);
     if (!has_concrete_type(op_ts)) {
@@ -3658,20 +3658,20 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const SizeofExpr& s, const
     return std::to_string(sizeof_ts(mod_, op_ts));
   }
 
-std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const SizeofTypeExpr& s, const Expr&){
+std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const SizeofTypeExpr& s, const Expr&){
     return std::to_string(sizeof_ts(mod_, s.type.spec));
   }
 
-std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const LabelAddrExpr& la, const Expr&){
+std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const LabelAddrExpr& la, const Expr&){
     return "blockaddress(@" + ctx.fn->name + ", %ulbl_" + la.label_name + ")";
   }
 
-std::string HirEmitter::emit_rval_payload(FnCtx&, const PendingConstevalExpr& p, const Expr&){
+std::string StmtEmitter::emit_rval_payload(FnCtx&, const PendingConstevalExpr& p, const Expr&){
     throw std::runtime_error(
-        "HirEmitter: unevaluated PendingConstevalExpr reached codegen for '" + p.fn_name + "'");
+        "StmtEmitter: unevaluated PendingConstevalExpr reached codegen for '" + p.fn_name + "'");
   }
 
-std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const IndexExpr&, const Expr& e){
+std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const IndexExpr&, const Expr& e){
     if (const auto* idx = std::get_if<IndexExpr>(&e.payload)) {
       const TypeSpec base_ts = resolve_expr_type(ctx, idx->base);
       if (is_vector_value(base_ts)) {
@@ -3704,7 +3704,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const IndexExpr&, const Ex
     return tmp;
   }
 
-std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const MemberExpr& m, const Expr& e){
+std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const MemberExpr& m, const Expr& e){
     TypeSpec field_ts{};
     BitfieldAccess bf;
     const std::string gep = emit_member_lval(ctx, m, field_ts, &bf);
@@ -3736,11 +3736,11 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const MemberExpr& m, const
     return tmp;
   }
 
-void HirEmitter::emit_stmt(FnCtx& ctx, const Stmt& stmt){
+void StmtEmitter::emit_stmt(FnCtx& ctx, const Stmt& stmt){
     std::visit([&](const auto& s) { emit_stmt_impl(ctx, s); }, stmt.payload);
   }
 
-void HirEmitter::emit_stmt_impl(FnCtx& ctx, const LocalDecl& d){
+void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const LocalDecl& d){
     if (d.fn_ptr_sig) {
       ctx.local_fn_ptr_sigs[d.id.value] = *d.fn_ptr_sig;
     }
@@ -3795,7 +3795,7 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const LocalDecl& d){
     emit_lir_op(ctx, lir::LirStoreOp{ty, rhs, slot});
   }
 
-void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ExprStmt& s){
+void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const ExprStmt& s){
     if (!s.expr) return;
     TypeSpec ts{};
     emit_rval_id(ctx, *s.expr, ts);
@@ -3828,7 +3828,7 @@ static std::string rewrite_asm_constraints(const std::string& raw) {
     return result;
 }
 
-void HirEmitter::emit_stmt_impl(FnCtx& ctx, const InlineAsmStmt& s){
+void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const InlineAsmStmt& s){
     const std::string asm_text = escape_llvm_c_bytes(s.asm_template);
     const std::string constraints = rewrite_asm_constraints(escape_llvm_c_bytes(s.constraints));
     TypeSpec ret_ts{};
@@ -3862,7 +3862,7 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const InlineAsmStmt& s){
     emit_lir_op(ctx, lir::LirStoreOp{llvm_ty(out_pointee_ts), coerced, out_ptr});
   }
 
-void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ReturnStmt& s){
+void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const ReturnStmt& s){
     if (!s.expr) {
       const auto& rts = ctx.fn->return_type.spec;
       if (rts.base == TB_VOID && rts.ptr_level == 0 && rts.array_rank == 0 &&
@@ -3892,7 +3892,7 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ReturnStmt& s){
     emit_term_ret(ctx, llvm_ret_ty(ctx.fn->return_type.spec), val);
   }
 
-void HirEmitter::emit_stmt_impl(FnCtx& ctx, const IfStmt& s){
+void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const IfStmt& s){
     TypeSpec cond_ts{};
     const std::string cond_v  = emit_rval_id(ctx, s.cond, cond_ts);
     const std::string cond_i1 = to_bool(ctx, cond_v, cond_ts);
@@ -3912,7 +3912,7 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const IfStmt& s){
     (void)after_lbl;
   }
 
-void HirEmitter::emit_stmt_impl(FnCtx& ctx, const WhileStmt& s){
+void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const WhileStmt& s){
     const std::string cond_lbl = s.continue_target
         ? block_lbl(*s.continue_target)
         : fresh_lbl(ctx, "while.cond.");
@@ -3929,7 +3929,7 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const WhileStmt& s){
     emit_term_condbr(ctx, cond_i1, body_lbl, end_lbl);
   }
 
-void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ForStmt& s){
+void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const ForStmt& s){
     if (s.init) {
       TypeSpec ts{};
       emit_rval_id(ctx, *s.init, ts);
@@ -3960,7 +3960,7 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ForStmt& s){
     emit_term_br(ctx, cond_lbl);
   }
 
-void HirEmitter::emit_stmt_impl(FnCtx& ctx, const DoWhileStmt& s){
+void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const DoWhileStmt& s){
     const std::string body_lbl = block_lbl(s.body_block);
     const std::string end_lbl  = s.break_target
         ? block_lbl(*s.break_target)
@@ -3975,7 +3975,7 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const DoWhileStmt& s){
     emit_term_condbr(ctx, cond_i1, body_lbl, end_lbl);
   }
 
-void HirEmitter::emit_stmt_impl(FnCtx& ctx, const SwitchStmt& s){
+void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const SwitchStmt& s){
     TypeSpec ts{};
     std::string val = emit_rval_id(ctx, s.cond, ts);
     // C requires integer promotion on the controlling expression.
@@ -4044,7 +4044,7 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const SwitchStmt& s){
     emit_term_switch(ctx, val, ty, default_lbl, std::move(sw_cases));
   }
 
-void HirEmitter::emit_stmt_impl(FnCtx& ctx, const GotoStmt& s){
+void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const GotoStmt& s){
     if (ctx.vla_stack_save_ptr && s.target.resolved_block.valid() &&
         s.target.resolved_block.value <= ctx.current_block_id) {
       module_->need_stackrestore = true;
@@ -4057,7 +4057,7 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const GotoStmt& s){
     }
   }
 
-void HirEmitter::emit_stmt_impl(FnCtx& ctx, const IndirBrStmt& s){
+void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const IndirBrStmt& s){
     // Collect all user labels in this function as possible targets.
     std::vector<std::string> targets;
     for (const auto& bb : ctx.fn->blocks) {
@@ -4076,7 +4076,7 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const IndirBrStmt& s){
     }
   }
 
-void HirEmitter::emit_stmt_impl(FnCtx& ctx, const LabelStmt& s){
+void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const LabelStmt& s){
     if (ctx.last_term) {
       // We need a new basic block for the label
       emit_lbl(ctx, "ulbl_" + s.name);
@@ -4086,11 +4086,11 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const LabelStmt& s){
     }
   }
 
-void HirEmitter::emit_stmt_impl(FnCtx& ctx, const BreakStmt& s){
+void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const BreakStmt& s){
     if (s.target) emit_term_br(ctx, block_lbl(*s.target));
   }
 
-void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ContinueStmt& s){
+void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const ContinueStmt& s){
     if (!s.target) return;
     const auto it = ctx.continue_redirect.find(s.target->value);
     if (it != ctx.continue_redirect.end()) {
@@ -4100,11 +4100,11 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const ContinueStmt& s){
     emit_term_br(ctx, block_lbl(*s.target));
   }
 
-void HirEmitter::emit_stmt_impl(FnCtx&, const CaseStmt&){}
+void StmtEmitter::emit_stmt_impl(FnCtx&, const CaseStmt&){}
 
-void HirEmitter::emit_stmt_impl(FnCtx&, const CaseRangeStmt&){}
+void StmtEmitter::emit_stmt_impl(FnCtx&, const CaseRangeStmt&){}
 
-void HirEmitter::emit_stmt_impl(FnCtx&, const DefaultStmt&){}
+void StmtEmitter::emit_stmt_impl(FnCtx&, const DefaultStmt&){}
 
 
-}  // namespace tinyc2ll::codegen::llvm_backend
+}  // namespace c4c::codegen::lir
