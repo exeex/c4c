@@ -1,5 +1,28 @@
 # HIR -> LIR Refactor Plan
 
+## Archive Status
+
+Archived on 2026-03-26.
+
+This refactor track is complete and closed.
+
+Current end state:
+
+- `src/codegen/lir/` owns lowering plus LLVM IR printing entry support.
+- `src/codegen/llvm/llvm_codegen.cpp` is now a thin orchestration layer that routes codegen through the LIR pipeline.
+- structured LIR replaced the old raw LLVM-text fallback nodes used during the transition.
+- dead internal function elimination moved out of the printer; `lir_printer` now renders the LIR it receives.
+- `StmtEmitter` and constant-initializer lowering now live under `src/codegen/lir/`.
+- `src/codegen/shared/llvm_helpers.hpp` holds the remaining LLVM spelling helpers shared by lowering and printing.
+
+Historical note:
+
+- the temporary `legacy|lir|compare` split used during migration has been retired after validation; the repository now keeps the LIR path as the only active codegen path.
+
+Archive note:
+
+- detailed migration runbooks previously tracked in `plan.md` and `plan_todo.md` have been folded back into this archived design document and removed.
+
 ## Goal
 
 Split current `src/codegen/llvm/hir_emitter.cpp` into two layers:
