@@ -97,6 +97,107 @@ std::vector<size_t> dedup_functions(const c4c::hir::Module& mod) {
   return result;
 }
 
+// ── Global variable lowering ─────────────────────────────────────────────────
+// Semantic decisions (linkage, alignment, qualifier, type, init) are computed
+// here in lowering.  The printer assembles LLVM text from the structured fields.
+
+static void lower_global(const c4c::hir::GlobalVar& gv,
+                          const c4c::hir::Module& mod,
+                          c4c::codegen::llvm_backend::HirEmitter& emitter,
+                          LirModule& module) {
+  using namespace c4c::codegen::llvm_backend::detail;
+
+  const TypeSpec& ts = gv.type.spec;
+  const int align = object_align_bytes(mod, ts);
+
+  auto make_linkage_vis = [&](bool is_static, bool is_weak, bool is_extern,
+                              Visibility vis) -> std::string {
+    if (is_extern) {
+      std::string s = is_weak ? "extern_weak " : "external ";
+      s += llvm_visibility(vis);
+      return s;
+    }
+    std::string s = is_static ? "internal " : "";
+    if (is_weak && !is_static) s = "weak ";
+    s += llvm_visibility(vis);
+    return s;
+  };
+
+  // Check for flexible array member struct — needs a custom literal type/init.
+  if (!gv.linkage.is_extern &&
+      ts.ptr_level == 0 && ts.array_rank == 0 &&
+      ts.tag && ts.tag[0] && ts.base == TB_STRUCT) {
+    const auto it = mod.struct_defs.find(ts.tag);
+    if (it != mod.struct_defs.end()) {
+      const auto& sd = it->second;
+      if (!sd.is_union && !sd.fields.empty() && sd.fields.back().is_flexible_array) {
+        std::vector<TypeSpec> field_types;
+        const auto field_vals = emitter.emit_const_struct_fields(ts, sd, gv.init, &field_types);
+        const TypeSpec& last_ts = field_types.back();
+        if (last_ts.array_rank > 0 && last_ts.array_size > 0) {
+          std::string literal_ty = "{ ";
+          std::string literal_init = "{ ";
+          for (size_t i = 0; i < sd.fields.size(); ++i) {
+            if (i) { literal_ty += ", "; literal_init += ", "; }
+            literal_ty += llvm_alloca_ty(field_types[i]);
+            literal_init += llvm_alloca_ty(field_types[i]) + " " + field_vals[i];
+          }
+          literal_ty += " }";
+          literal_init += " }";
+
+          LirGlobal lg;
+          lg.name = gv.name;
+          lg.type = ts;
+          lg.is_internal = gv.linkage.is_static;
+          lg.is_const = gv.is_const;
+          lg.linkage_vis = make_linkage_vis(gv.linkage.is_static, gv.linkage.is_weak,
+                                            false, gv.linkage.visibility);
+          lg.qualifier = (gv.is_const && ts.ptr_level == 0) ? "constant " : "global ";
+          lg.llvm_type = literal_ty;
+          lg.init_text = literal_init;
+          lg.align_bytes = align;
+          lg.is_extern_decl = false;
+          module.globals.push_back(std::move(lg));
+          return;
+        }
+      }
+    }
+  }
+
+  LirGlobal lg;
+  lg.name = gv.name;
+  lg.type = ts;
+  lg.is_internal = gv.linkage.is_static;
+  lg.is_const = gv.is_const;
+  lg.llvm_type = llvm_alloca_ty(ts);
+  lg.align_bytes = align;
+
+  if (gv.linkage.is_extern) {
+    lg.linkage_vis = make_linkage_vis(false, gv.linkage.is_weak, true, gv.linkage.visibility);
+    lg.qualifier = "global ";
+    lg.is_extern_decl = true;
+    // init_text left empty for extern declarations
+  } else {
+    lg.linkage_vis = make_linkage_vis(gv.linkage.is_static, gv.linkage.is_weak,
+                                      false, gv.linkage.visibility);
+    lg.qualifier = (gv.is_const && ts.ptr_level == 0) ? "constant " : "global ";
+    lg.init_text = emitter.emit_const_init(ts, gv.init);
+    lg.is_extern_decl = false;
+  }
+
+  module.globals.push_back(std::move(lg));
+}
+
+static void lower_globals(const std::vector<size_t>& global_indices,
+                           const c4c::hir::Module& mod,
+                           c4c::codegen::llvm_backend::HirEmitter& emitter,
+                           LirModule& module) {
+  for (size_t idx : global_indices)
+    lower_global(mod.globals[idx], mod, emitter, module);
+}
+
+// ── Type declarations ────────────────────────────────────────────────────────
+
 std::vector<std::string> build_type_decls(const c4c::hir::Module& mod) {
   using namespace c4c::codegen::llvm_backend::detail;
   std::vector<std::string> decls;
@@ -654,7 +755,7 @@ static void eliminate_dead_internals(LirModule& mod) {
   // Seed from global initializers.
   for (const auto& g : mod.globals) {
     std::unordered_set<std::string> grefs;
-    scan_refs(g.raw_line, grefs);
+    scan_refs(g.init_text, grefs);
     seed(grefs);
   }
 
@@ -702,7 +803,7 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
   bool any_vla = false;
   std::vector<LirSpecEntry> spec_entries;
 
-  emitter.lower_globals(global_indices);
+  lower_globals(global_indices, hir_mod, emitter, module);
   for (size_t idx : fn_indices) {
     const auto& fn = hir_mod.functions[idx];
     std::string sig = build_fn_signature(fn);

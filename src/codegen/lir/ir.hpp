@@ -493,14 +493,18 @@ struct LirFunction {
 
 struct LirGlobal {
   LirGlobalId id{};
-  std::string name;
+  std::string name;        // Unquoted C name (printer quotes it)
   TypeSpec type{};
   bool is_internal = false;
   bool is_const = false;
-  std::string init_text;  // LLVM constant init text (temporary; will be structured later)
-  // Pre-formatted complete LLVM IR line for this global (temporary; Stage 2+ will
-  // replace with structured emission from the fields above).
-  std::string raw_line;
+
+  // Structured fields — lowering fills these, printer assembles LLVM text.
+  std::string linkage_vis;  // e.g. "internal ", "external ", "weak ", "extern_weak ", ""
+  std::string qualifier;    // "constant " or "global "
+  std::string llvm_type;    // Pre-computed LLVM type string
+  std::string init_text;    // LLVM constant init text (empty for extern decls)
+  int align_bytes = 0;      // 0 = no align suffix
+  bool is_extern_decl = false;  // extern: no init, type only
 };
 
 // ── Specialization metadata entry ────────────────────────────────────────────

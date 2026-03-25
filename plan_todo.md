@@ -1,11 +1,11 @@
 # HIR → LIR Split — Execution State
 
-## Current Step: Step 4 (Printer Purity Audit) — in progress
+## Current Step: Step 2d (extract lower_globals) — DONE
 
 ## Step 1 Audit: Legacy Dependencies in hir_to_lir.cpp
 
 ### Semantic lowering dependencies (real problems):
-1. **`emitter.lower_globals(global_indices)`** — entire global lowering delegated to HirEmitter
+1. ~~**`emitter.lower_globals(global_indices)`**~~ — **DONE** (global lowering moved to hir_to_lir; LirGlobal structured with typed fields; raw_line removed)
 2. **`emitter.emit_stmt(ctx, stmt)`** — entire statement/expression lowering delegated to HirEmitter
 3. ~~**`emitter.lower_single_function(fn, sig)`**~~ — **DONE** (declaration lowering moved to hir_to_lir; method removed from HirEmitter)
 
@@ -16,7 +16,8 @@
 5. `llvm_backend::detail::*` helpers used throughout: `llvm_ty()`, `llvm_ret_ty()`, `llvm_alloca_ty()`, `sanitize_llvm_ident()`, `llvm_struct_type_str()`, `llvm_field_ty()`, `llvm_global_sym()`, `llvm_visibility()`, `set_active_target_triple()`, `fp_literal()`, `is_float_base()`, `is_complex_base()`, `quote_llvm_ident()`, `llvm_default_datalayout()`, `llvm_va_list_is_pointer_object()`
 
 ### Summary:
-- Items 1-2 are the remaining semantic dependencies
+- Item 1 eliminated (this session): global lowering now in hir_to_lir with structured LirGlobal
+- Item 2 is the sole remaining semantic dependency
 - Items 3-4 are eliminated
 - Item 5 is acceptable for now (shared helpers, not semantic ownership)
 
@@ -25,6 +26,7 @@
 - [x] Step 2a: Extract `emit_lbl()` and `block_lbl()` into hir_to_lir (items 3-4 from original audit)
 - [x] Step 2b: Replace adopt/release module pattern with reference-based `set_module()`
 - [x] Step 2c: Extract declaration lowering (`lower_single_function`) into hir_to_lir; removed dead method from HirEmitter
+- [x] Step 2d: Move global variable lowering from HirEmitter to hir_to_lir; structured LirGlobal (linkage_vis, qualifier, llvm_type, init_text, align_bytes, is_extern_decl); removed raw_line; emit_const_init/emit_const_struct_fields made public on HirEmitter
 - [x] Step 3a: Replace LirRawLine alloca instructions in hoist_allocas() with typed LirAlloca
 - [x] Step 3b: Replace LirRawLine store instructions in hoist_allocas() with typed LirHoistedStore (param stores + zeroinit stores)
 - [x] Step 3c: Replace LirRawTerminator in inject_fallthrough_returns() with typed LirRet
@@ -39,18 +41,21 @@
 - [x] Step 3e-viii: Replace remaining emit_instr alloca calls with typed LirAllocaOp and inline asm calls with typed LirInlineAsmOp; removed dead `emit_instr()` method
 - [x] Step 3-final: Remove dead LirRawLine and LirRawTerminator types from LIR variant and printer (zero producers remained)
 
-## Active Slice
-- Step 4c: Move dead static function elimination from printer to lowering — DONE
-
 ## Completed (Step 4)
 - [x] Step 4a: Expand LirBitfieldExtract into typed LIR ops (LirLoadOp, LirBinOp, LirCastOp) in emit_bitfield_load; remove compound type from ir.hpp and printer
 - [x] Step 4a: Expand LirBitfieldInsert into typed LIR ops (LirLoadOp, LirBinOp, LirStoreOp) in emit_bitfield_store; remove compound type from ir.hpp and printer
 - [x] Step 4b: Replace LirAlloca (TypeSpec-based) with LirAllocaOp (string-based) and LirHoistedStore with LirStoreOp at all 11 production sites; pre-compute LLVM type strings in lowering; remove dead types from ir.hpp variant and printer
 - [x] Step 4c: Move dead internal function elimination (DCE) from lir_printer.cpp into hir_to_lir.cpp as eliminate_dead_internals() module-level pass; printer now purely renders all functions it receives
 
+## Completed (Step 5)
+- [x] Step 5: llvm_codegen.cpp is already a pure path switcher (legacy/lir/compare); no lowering logic present
+
+## Active Slice
+- Step 2d: Move global variable lowering from HirEmitter to hir_to_lir — DONE
+
 ## Next Intended Slice
-- Step 5: Reduce llvm_codegen.cpp to orchestration only
-- Step 2 remaining: extract lower_globals and emit_stmt semantic ownership from HirEmitter
+- Step 2 remaining: extract emit_stmt semantic ownership from HirEmitter (large — needs multi-iteration plan)
+- Step 6: Shrink HirEmitter once LIR path owns all behavior
 
 ## Raw fallback usage remaining
 - **LirRawLine: REMOVED** — type deleted from variant, no producers existed
@@ -59,7 +64,8 @@
 - **LirBitfieldInsert: REMOVED** — expanded to typed LIR ops in lowering
 - **LirAlloca: REMOVED** — replaced with LirAllocaOp (string-based, type computed in lowering)
 - **LirHoistedStore: REMOVED** — replaced with LirStoreOp (string-based, type computed in lowering)
-- All LIR instructions and terminators are now fully typed; printer has no TypeSpec→LLVM type conversions
+- **LirGlobal::raw_line: REMOVED** — replaced with structured fields (linkage_vis, qualifier, llvm_type, init_text, align_bytes)
+- All LIR instructions, terminators, and globals are now fully typed; printer has no TypeSpec→LLVM type conversions
 - **Printer DCE: REMOVED** — dead internal function elimination moved to lowering (eliminate_dead_internals)
 
 ## Blockers

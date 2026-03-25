@@ -99,6 +99,12 @@ class HirEmitter {
   }
   const std::vector<SpecEntry>& spec_entries() const { return spec_entries_; }
 
+  // Const initializer helpers — used by hir_to_lir for global lowering.
+  std::vector<std::string> emit_const_struct_fields(const TypeSpec& ts,
+                                                    const HirStructDef& sd,
+                                                    const GlobalInit& init,
+                                                    std::vector<TypeSpec>* out_field_types = nullptr);
+  std::string emit_const_init(const TypeSpec& ts, const GlobalInit& init);
 
  private:
   const Module& mod_;
@@ -170,11 +176,6 @@ class HirEmitter {
  private:
   class ConstInitEmitter;
 
-  std::vector<std::string> emit_const_struct_fields(const TypeSpec& ts,
-                                                    const HirStructDef& sd,
-                                                    const GlobalInit& init,
-                                                    std::vector<TypeSpec>* out_field_types = nullptr);
-  std::string emit_const_init(const TypeSpec& ts, const GlobalInit& init);
   const GlobalVar* select_global_object(const std::string& name) const;
   const GlobalVar* select_global_object(GlobalId id) const;
   void emit_global(const GlobalVar& gv);

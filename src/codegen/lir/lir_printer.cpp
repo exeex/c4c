@@ -210,7 +210,13 @@ std::string print_llvm(const LirModule& mod) {
   }
 
   // Global variable definitions.
-  for (const auto& g : mod.globals) out << g.raw_line << "\n";
+  for (const auto& g : mod.globals) {
+    out << llvm_global_sym(g.name) << " = " << g.linkage_vis << g.qualifier
+        << g.llvm_type;
+    if (!g.is_extern_decl) out << " " << g.init_text;
+    if (g.align_bytes > 1) out << ", align " << g.align_bytes;
+    out << "\n";
+  }
 
   if (!mod.type_decls.empty() || !mod.string_pool.empty() || !mod.globals.empty())
     out << "\n";

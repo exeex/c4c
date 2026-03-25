@@ -1100,24 +1100,29 @@ std::string HirEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& expect
 
 void HirEmitter::emit_global(const GlobalVar& gv){
     // Global object types arrive from HIR with ordinary array bounds already resolved.
+    // Legacy path: still used by HirEmitter::lower_to_lir().
+    // The structured global lowering now lives in lir::lower_global() (hir_to_lir.cpp).
     const TypeSpec& ts = gv.type.spec;
-    auto push_global = [&](const std::string& line) {
-      lir::LirGlobal lg;
-      lg.name = gv.name;
-      lg.type = ts;
-      lg.is_internal = gv.linkage.is_static;
-      lg.is_const = gv.is_const;
-      lg.raw_line = line;
-      module_->globals.push_back(std::move(lg));
+
+    auto make_linkage_vis = [&](bool is_static, bool is_weak, bool is_extern,
+                                Visibility vis) -> std::string {
+      if (is_extern) {
+        std::string s = is_weak ? "extern_weak " : "external ";
+        s += llvm_visibility(vis);
+        return s;
+      }
+      std::string s = is_static ? "internal " : "";
+      if (is_weak && !is_static) s = "weak ";
+      s += llvm_visibility(vis);
+      return s;
     };
-    const int global_align_value = object_align_bytes(mod_, ts);
-    const std::string global_align =
-        (global_align_value > 1) ? ", align " + std::to_string(global_align_value) : "";
+
+    const int align = object_align_bytes(mod_, ts);
+
+    // Flexible array member struct — custom literal type/init.
     if (!gv.linkage.is_extern &&
-        ts.ptr_level == 0 &&
-        ts.array_rank == 0 &&
-        ts.tag && ts.tag[0] &&
-        ts.base == TB_STRUCT) {
+        ts.ptr_level == 0 && ts.array_rank == 0 &&
+        ts.tag && ts.tag[0] && ts.base == TB_STRUCT) {
       const auto it = mod_.struct_defs.find(ts.tag);
       if (it != mod_.struct_defs.end()) {
         const HirStructDef& sd = it->second;
@@ -1126,42 +1131,56 @@ void HirEmitter::emit_global(const GlobalVar& gv){
           const auto field_vals = emit_const_struct_fields(ts, sd, gv.init, &field_types);
           const TypeSpec& last_ts = field_types.back();
           if (last_ts.array_rank > 0 && last_ts.array_size > 0) {
-            std::string lk = gv.linkage.is_static ? "internal " : "";
-            if (gv.linkage.is_weak && !gv.linkage.is_static) lk = "weak ";
-            lk += llvm_visibility(gv.linkage.visibility);
-            const std::string qual = (gv.is_const && ts.ptr_level == 0) ? "constant " : "global ";
             std::string literal_ty = "{ ";
             std::string literal_init = "{ ";
             for (size_t i = 0; i < sd.fields.size(); ++i) {
-              if (i) {
-                literal_ty += ", ";
-                literal_init += ", ";
-              }
+              if (i) { literal_ty += ", "; literal_init += ", "; }
               literal_ty += llvm_alloca_ty(field_types[i]);
               literal_init += llvm_alloca_ty(field_types[i]) + " " + field_vals[i];
             }
             literal_ty += " }";
             literal_init += " }";
-            push_global(llvm_global_sym(gv.name) + " = " + lk + qual +
-                        literal_ty + " " + literal_init + global_align);
+
+            lir::LirGlobal lg;
+            lg.name = gv.name;
+            lg.type = ts;
+            lg.is_internal = gv.linkage.is_static;
+            lg.is_const = gv.is_const;
+            lg.linkage_vis = make_linkage_vis(gv.linkage.is_static, gv.linkage.is_weak,
+                                              false, gv.linkage.visibility);
+            lg.qualifier = (gv.is_const && ts.ptr_level == 0) ? "constant " : "global ";
+            lg.llvm_type = literal_ty;
+            lg.init_text = literal_init;
+            lg.align_bytes = align;
+            lg.is_extern_decl = false;
+            module_->globals.push_back(std::move(lg));
             return;
           }
         }
       }
     }
-    const std::string ty = llvm_alloca_ty(ts);
+
+    lir::LirGlobal lg;
+    lg.name = gv.name;
+    lg.type = ts;
+    lg.is_internal = gv.linkage.is_static;
+    lg.is_const = gv.is_const;
+    lg.llvm_type = llvm_alloca_ty(ts);
+    lg.align_bytes = align;
+
     if (gv.linkage.is_extern) {
-      std::string ext = gv.linkage.is_weak ? "extern_weak " : "external ";
-      ext += llvm_visibility(gv.linkage.visibility);
-      push_global(llvm_global_sym(gv.name) + " = " + ext + "global " + ty + global_align);
-      return;
+      lg.linkage_vis = make_linkage_vis(false, gv.linkage.is_weak, true, gv.linkage.visibility);
+      lg.qualifier = "global ";
+      lg.is_extern_decl = true;
+    } else {
+      lg.linkage_vis = make_linkage_vis(gv.linkage.is_static, gv.linkage.is_weak,
+                                        false, gv.linkage.visibility);
+      lg.qualifier = (gv.is_const && ts.ptr_level == 0) ? "constant " : "global ";
+      lg.init_text = emit_const_init(ts, gv.init);
+      lg.is_extern_decl = false;
     }
-    std::string lk = gv.linkage.is_static ? "internal " : "";
-    if (gv.linkage.is_weak && !gv.linkage.is_static) lk = "weak ";
-    lk += llvm_visibility(gv.linkage.visibility);
-    const std::string qual = (gv.is_const && ts.ptr_level == 0) ? "constant " : "global ";
-    const std::string init = emit_const_init(ts, gv.init);
-    push_global(llvm_global_sym(gv.name) + " = " + lk + qual + ty + " " + init + global_align);
+
+    module_->globals.push_back(std::move(lg));
   }
 
 const Expr& HirEmitter::get_expr(ExprId id) const{
