@@ -15,6 +15,7 @@
 //      what hir_emitter.cpp already lowers.
 
 #include <cstdint>
+#include <cstdio>
 #include <limits>
 #include <optional>
 #include <string>
@@ -558,6 +559,40 @@ struct LirModule {
 
   // Specialization metadata for cross-TU serialization.
   std::vector<LirSpecEntry> spec_entries;
+
+  // ── String constant pool ──────────────────────────────────────────────────
+  // Dedup map: raw bytes → pool name (e.g. "@.str0").
+  std::unordered_map<std::string, std::string> str_pool_map;
+  int str_pool_idx = 0;
+
+  /// Intern a string literal.  Returns the pool name (e.g. "@.str3").
+  /// Deduplicates by raw byte content and appends to string_pool on first use.
+  std::string intern_str(const std::string& raw_bytes) {
+    auto it = str_pool_map.find(raw_bytes);
+    if (it != str_pool_map.end()) return it->second;
+    const std::string name = "@.str" + std::to_string(str_pool_idx++);
+    str_pool_map[raw_bytes] = name;
+    const size_t len = raw_bytes.size() + 1;
+    std::string esc;
+    for (unsigned char c : raw_bytes) {
+      if (c == '"')       { esc += "\\22"; }
+      else if (c == '\\') { esc += "\\5C"; }
+      else if (c == '\n') { esc += "\\0A"; }
+      else if (c == '\r') { esc += "\\0D"; }
+      else if (c == '\t') { esc += "\\09"; }
+      else if (c < 32 || c >= 127) {
+        char buf[8]; std::snprintf(buf, sizeof(buf), "\\%02X", c); esc += buf;
+      } else {
+        esc += static_cast<char>(c);
+      }
+    }
+    LirStringConst sc;
+    sc.pool_name = name;
+    sc.raw_bytes = esc;
+    sc.byte_length = static_cast<int>(len);
+    string_pool.push_back(std::move(sc));
+    return name;
+  }
 };
 
 }  // namespace c4c::codegen::lir

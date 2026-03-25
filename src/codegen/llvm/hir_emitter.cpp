@@ -268,30 +268,7 @@ std::string HirEmitter::block_lbl(BlockId id){
   }
 
 std::string HirEmitter::intern_str(const std::string& raw_bytes){
-    auto it = str_pool_.find(raw_bytes);
-    if (it != str_pool_.end()) return it->second;
-    const std::string name = "@.str" + std::to_string(str_idx_++);
-    str_pool_[raw_bytes] = name;
-    const size_t len = raw_bytes.size() + 1;
-    std::string esc;
-    for (unsigned char c : raw_bytes) {
-      if (c == '"')      { esc += "\\22"; }
-      else if (c == '\\') { esc += "\\5C"; }
-      else if (c == '\n') { esc += "\\0A"; }
-      else if (c == '\r') { esc += "\\0D"; }
-      else if (c == '\t') { esc += "\\09"; }
-      else if (c < 32 || c >= 127) {
-        char buf[8]; std::snprintf(buf, sizeof(buf), "\\%02X", c); esc += buf;
-      } else {
-        esc += static_cast<char>(c);
-      }
-    }
-    lir::LirStringConst sc;
-    sc.pool_name = name;
-    sc.raw_bytes = esc;
-    sc.byte_length = static_cast<int>(len);
-    module_->string_pool.push_back(std::move(sc));
-    return name;
+    return module_->intern_str(raw_bytes);
   }
 
 // NOTE: emit_preamble() has been replaced by lir::build_type_decls() in hir_to_lir.cpp.
@@ -2200,7 +2177,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const StringLiteral& sl, c
     if (sl.is_wide) {
       // Wide string: emit as global array of i32 (wchar_t) values
       const auto vals = decode_wide_string_values(sl.raw);
-      const std::string gname = "@.str" + std::to_string(str_idx_++);
+      const std::string gname = "@.str" + std::to_string(module_->str_pool_idx++);
       std::string init = "[";
       for (size_t i = 0; i < vals.size(); ++i) {
         if (i) init += ", ";

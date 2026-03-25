@@ -74,8 +74,6 @@ class HirEmitter {
  private:
   const Module& mod_;
   lir::LirModule* module_ = nullptr;  // Non-owning ref to caller's LirModule
-  std::unordered_map<std::string, std::string> str_pool_;
-  int str_idx_ = 0;
   mutable std::unordered_map<uint32_t, FnPtrSig> inferred_direct_fn_sigs_;
 
   /// Create a new LIR block with the given label and make it current in ctx.

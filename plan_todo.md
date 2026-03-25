@@ -55,9 +55,10 @@
 - [x] Step 6b: Remove dead `HirEmitter::hoist_allocas()`, `find_modified_params()`, `fn_has_vla_locals()` — all three only called from removed `emit_function()`; live copies exist in hir_to_lir.cpp; also removed unused `<unordered_set>` include
 - [x] Step 6c: Remove dead HirEmitter data members — `need_llvm_stacksave_` (never written), `inferred_ret_fn_ptr_sigs_` (never used), `spec_entries_`/`SpecEntry` (never written); made `emit_lbl`/`block_lbl` private; removed dead `needs_stacksave()` getter and `spec_entries()` getter+loop from hir_to_lir.cpp (stacksave already detected via `any_vla`, spec_entries already collected directly)
 - [x] Step 6d: Move intrinsic flags and extern_call_decls from HirEmitter to LirModule — emit_stmt now writes `module_->need_*` directly; `record_extern_call_decl` delegates to `module_->record_extern_decl()`; removed 6 bool members, `extern_call_decls_` map, and 7 getter methods from HirEmitter; `finalize_module` simplified to just convert dedup map to vector
+- [x] Step 6e: Move string pool from HirEmitter to LirModule — `str_pool_` dedup map and `str_idx_` counter moved to `LirModule::str_pool_map`/`str_pool_idx`; `intern_str()` implemented on LirModule; HirEmitter::intern_str() now delegates to `module_->intern_str()`; wide string pool name generation uses `module_->str_pool_idx`; removed 2 data members from HirEmitter
 
 ## Active Slice
-- Step 6d: Move intrinsic flags and extern_call_decls from HirEmitter to LirModule — DONE
+- Step 6e: Move string pool from HirEmitter to LirModule — DONE
 
 ## Next Intended Slice
 - Step 2 remaining: extract emit_stmt semantic ownership from HirEmitter (large — needs multi-iteration plan)
