@@ -321,30 +321,21 @@ std::string build_fn_signature(const c4c::hir::Function& fn) {
 }
 
 // ── Module-level finalization ─────────────────────────────────────────────────
-// After per-item lowering, the emitter holds accumulated intrinsic flags,
-// extern call declarations, and spec entries.  This function transfers them
-// into the LirModule so the printer / future backends can consume them.
+// After per-item lowering, the emitter has written intrinsic flags and extern
+// call declarations directly into the LirModule.  This function converts the
+// dedup map into the extern_decls vector for the printer.
 
 static void finalize_module(LirModule& module,
-                            const c4c::hir::Module& hir_mod,
-                            const c4c::codegen::llvm_backend::HirEmitter& emitter) {
-  // Intrinsic requirement flags
-  if (emitter.needs_va_start())     module.need_va_start = true;
-  if (emitter.needs_va_end())       module.need_va_end = true;
-  if (emitter.needs_va_copy())      module.need_va_copy = true;
-  if (emitter.needs_memcpy())       module.need_memcpy = true;
-  if (emitter.needs_stackrestore()) module.need_stackrestore = true;
-  if (emitter.needs_abs())          module.need_abs = true;
-
-  // Extern call declarations (functions called but not defined in this TU)
-  for (const auto& [name, ret_ty] : emitter.extern_call_decls()) {
+                            const c4c::hir::Module& hir_mod) {
+  // Convert extern_decl_map (dedup map) into extern_decls vector,
+  // filtering out functions defined in this TU.
+  for (const auto& [name, ret_ty] : module.extern_decl_map) {
     if (hir_mod.fn_index.count(name)) continue;
     LirExternDecl ed;
     ed.name = name;
     ed.return_type_str = ret_ty;
     module.extern_decls.push_back(std::move(ed));
   }
-
 }
 
 // ── Block ordering ───────────────────────────────────────────────────────────
@@ -859,7 +850,7 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
   }
 
   // Module-level finalization: owned by hir_to_lir.
-  finalize_module(module, hir_mod, emitter);
+  finalize_module(module, hir_mod);
 
   // Dead internal function elimination: owned by hir_to_lir.
   eliminate_dead_internals(module);

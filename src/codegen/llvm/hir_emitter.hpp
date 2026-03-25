@@ -64,20 +64,6 @@ class HirEmitter {
   /// hir_to_lir::lower() can drive block iteration directly.
   void emit_stmt(FnCtx& ctx, const Stmt& stmt);
 
-  // ── Post-lowering accessors for module-level finalization ──────────────
-  // These expose accumulated state so that hir_to_lir::lower() can own
-  // the decision of what goes into the final LirModule.
-  bool needs_va_start()     const { return need_llvm_va_start_; }
-  bool needs_va_end()       const { return need_llvm_va_end_; }
-  bool needs_va_copy()      const { return need_llvm_va_copy_; }
-  bool needs_memcpy()       const { return need_llvm_memcpy_; }
-  bool needs_stackrestore() const { return need_llvm_stackrestore_; }
-  bool needs_abs()          const { return need_llvm_abs_; }
-
-  const std::unordered_map<std::string, std::string>& extern_call_decls() const {
-    return extern_call_decls_;
-  }
-
   // Const initializer helpers — used by hir_to_lir for global lowering.
   std::vector<std::string> emit_const_struct_fields(const TypeSpec& ts,
                                                     const HirStructDef& sd,
@@ -88,15 +74,8 @@ class HirEmitter {
  private:
   const Module& mod_;
   lir::LirModule* module_ = nullptr;  // Non-owning ref to caller's LirModule
-  std::unordered_map<std::string, std::string> extern_call_decls_;  // name -> ret llvm type
   std::unordered_map<std::string, std::string> str_pool_;
   int str_idx_ = 0;
-  bool need_llvm_va_start_ = false;
-  bool need_llvm_va_end_ = false;
-  bool need_llvm_va_copy_ = false;
-  bool need_llvm_memcpy_ = false;
-  bool need_llvm_stackrestore_ = false;
-  bool need_llvm_abs_ = false;
   mutable std::unordered_map<uint32_t, FnPtrSig> inferred_direct_fn_sigs_;
 
   /// Create a new LIR block with the given label and make it current in ctx.

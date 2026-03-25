@@ -18,6 +18,7 @@
 #include <limits>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
@@ -526,12 +527,27 @@ struct LirModule {
   std::vector<LirStringConst> string_pool;
   std::vector<LirExternDecl> extern_decls;
 
+  // Dedup map for extern call declarations (name → return type string).
+  // Lowering writes here via record_extern_decl(); finalize converts to extern_decls vector.
+  std::unordered_map<std::string, std::string> extern_decl_map;
+
+  /// Record an extern function call declaration.  Deduplicates by name and
+  /// upgrades void returns to concrete types when a non-void call is seen.
+  void record_extern_decl(const std::string& name, const std::string& ret_ty) {
+    auto it = extern_decl_map.find(name);
+    if (it == extern_decl_map.end()) {
+      extern_decl_map.emplace(name, ret_ty);
+      return;
+    }
+    if (it->second == "void" && ret_ty != "void") it->second = ret_ty;
+  }
+
   // Type declarations (struct definitions) needed by the output.
   // For now, these are stored as pre-formatted text lines (LLVM syntax).
   // Stage 1+ will replace with structured type defs.
   std::vector<std::string> type_decls;
 
-  // Intrinsic requirement flags (mirrors HirEmitter flags).
+  // Intrinsic requirement flags — set directly by lowering (emit_stmt).
   bool need_va_start = false;
   bool need_va_end = false;
   bool need_va_copy = false;

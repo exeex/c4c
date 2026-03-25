@@ -256,12 +256,7 @@ std::string HirEmitter::fresh_tmp(FnCtx& ctx){
 
 void HirEmitter::record_extern_call_decl(const std::string& name, const std::string& ret_ty){
     if (name.empty() || mod_.fn_index.count(name)) return;
-    auto it = extern_call_decls_.find(name);
-    if (it == extern_call_decls_.end()) {
-      extern_call_decls_.emplace(name, ret_ty);
-      return;
-    }
-    if (it->second == "void" && ret_ty != "void") it->second = ret_ty;
+    module_->record_extern_decl(name, ret_ty);
   }
 
 std::string HirEmitter::fresh_lbl(FnCtx& ctx, const std::string& pfx){
@@ -3321,21 +3316,21 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         TypeSpec i64_ts{};
         i64_ts.base = TB_ULONGLONG;
         size = coerce(ctx, size, size_ts, i64_ts);
-        need_llvm_memcpy_ = true;
+        module_->need_memcpy = true;
         emit_lir_op(ctx, lir::LirMemcpyOp{dst, src, size, false});
         return dst;
       }
       if (builtin_id == BuiltinId::VaStart && call.args.size() >= 1) {
         TypeSpec ap_ts{};
         const std::string ap_ptr = emit_va_list_obj_ptr(ctx, call.args[0], ap_ts);
-        need_llvm_va_start_ = true;
+        module_->need_va_start = true;
         emit_lir_op(ctx, lir::LirVaStartOp{ap_ptr});
         return "";
       }
       if (builtin_id == BuiltinId::VaEnd && call.args.size() >= 1) {
         TypeSpec ap_ts{};
         const std::string ap_ptr = emit_va_list_obj_ptr(ctx, call.args[0], ap_ts);
-        need_llvm_va_end_ = true;
+        module_->need_va_end = true;
         emit_lir_op(ctx, lir::LirVaEndOp{ap_ptr});
         return "";
       }
@@ -3344,7 +3339,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         TypeSpec src_ts{};
         const std::string dst_ptr = emit_va_list_obj_ptr(ctx, call.args[0], dst_ts);
         const std::string src_ptr = emit_va_list_obj_ptr(ctx, call.args[1], src_ts);
-        need_llvm_va_copy_ = true;
+        module_->need_va_copy = true;
         emit_lir_op(ctx, lir::LirVaCopyOp{dst_ptr, src_ptr});
         return "";
       }
@@ -3848,7 +3843,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
       arg = coerce(ctx, arg, arg_ts, target_ts);
       const std::string tmp = fresh_tmp(ctx);
       emit_lir_op(ctx, lir::LirAbsOp{tmp, arg, ity});
-      need_llvm_abs_ = true;
+      module_->need_abs = true;
       return tmp;
     }
 
@@ -3963,7 +3958,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
         const std::string src_ptr = emit_va_list_obj_ptr(ctx, call.args[i], ap_ts);
         const std::string tmp_addr = fresh_tmp(ctx);
         emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, llvm_va_list_storage_ty(), {}, 0});
-        need_llvm_memcpy_ = true;
+        module_->need_memcpy = true;
         emit_lir_op(ctx, lir::LirMemcpyOp{
             tmp_addr, src_ptr, std::to_string(llvm_va_list_storage_size()), false});
         arg = tmp_addr;
@@ -3985,7 +3980,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, cons
           obj_ptr = tmp_addr;
         }
 
-        need_llvm_memcpy_ = true;
+        module_->need_memcpy = true;
         if (i) args_str += ", ";
         if (payload_sz > 16) {
           args_str += "ptr " + obj_ptr;
@@ -4176,7 +4171,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const 
             emit_lir_op(ctx, lir::LirLoadOp{src_ptr, std::string("ptr"), slot_ptr});
             const std::string tmp_addr = fresh_tmp(ctx);
             emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, res_ty, {}, 0});
-            need_llvm_memcpy_ = true;
+            module_->need_memcpy = true;
             emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, src_ptr, std::to_string(payload_sz), false});
             const std::string out = fresh_tmp(ctx);
             emit_lir_op(ctx, lir::LirLoadOp{out, res_ty, tmp_addr});
@@ -4187,7 +4182,7 @@ std::string HirEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const 
           const std::string src_ptr = emit_aarch64_vaarg_gp_src_ptr(ctx, ap_ptr, slot_bytes);
           const std::string tmp_addr = fresh_tmp(ctx);
           emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, res_ty, {}, 0});
-          need_llvm_memcpy_ = true;
+          module_->need_memcpy = true;
           emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, src_ptr, std::to_string(payload_sz), false});
           const std::string out = fresh_tmp(ctx);
           emit_lir_op(ctx, lir::LirLoadOp{out, res_ty, tmp_addr});
@@ -4718,7 +4713,7 @@ void HirEmitter::emit_stmt_impl(FnCtx& ctx, const SwitchStmt& s){
 void HirEmitter::emit_stmt_impl(FnCtx& ctx, const GotoStmt& s){
     if (ctx.vla_stack_save_ptr && s.target.resolved_block.valid() &&
         s.target.resolved_block.value <= ctx.current_block_id) {
-      need_llvm_stackrestore_ = true;
+      module_->need_stackrestore = true;
       emit_lir_op(ctx, lir::LirStackRestoreOp{*ctx.vla_stack_save_ptr});
     }
     if (s.target.resolved_block.valid()) {

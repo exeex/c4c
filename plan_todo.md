@@ -54,9 +54,10 @@
 - [x] Step 6a: Remove dead HirEmitter methods — `emit()`, `lower_to_lir()`, `lower_globals()`, `emit_global()`, `emit_function()` all removed; llvm_codegen.cpp now routes all codegen paths through lir::lower+lir::print_llvm directly; removed hir_emitter.hpp include from llvm_codegen.cpp
 - [x] Step 6b: Remove dead `HirEmitter::hoist_allocas()`, `find_modified_params()`, `fn_has_vla_locals()` — all three only called from removed `emit_function()`; live copies exist in hir_to_lir.cpp; also removed unused `<unordered_set>` include
 - [x] Step 6c: Remove dead HirEmitter data members — `need_llvm_stacksave_` (never written), `inferred_ret_fn_ptr_sigs_` (never used), `spec_entries_`/`SpecEntry` (never written); made `emit_lbl`/`block_lbl` private; removed dead `needs_stacksave()` getter and `spec_entries()` getter+loop from hir_to_lir.cpp (stacksave already detected via `any_vla`, spec_entries already collected directly)
+- [x] Step 6d: Move intrinsic flags and extern_call_decls from HirEmitter to LirModule — emit_stmt now writes `module_->need_*` directly; `record_extern_call_decl` delegates to `module_->record_extern_decl()`; removed 6 bool members, `extern_call_decls_` map, and 7 getter methods from HirEmitter; `finalize_module` simplified to just convert dedup map to vector
 
 ## Active Slice
-- Step 6c: Remove dead HirEmitter data members — DONE
+- Step 6d: Move intrinsic flags and extern_call_decls from HirEmitter to LirModule — DONE
 
 ## Next Intended Slice
 - Step 2 remaining: extract emit_stmt semantic ownership from HirEmitter (large — needs multi-iteration plan)
@@ -65,8 +66,6 @@
 - `emitter.set_module(module)` — module reference setup
 - `emitter.emit_stmt(ctx, stmt)` — per-statement lowering (the core semantic dependency)
 - `emitter.emit_const_init()` / `emitter.emit_const_struct_fields()` — global initializer helpers
-- `emitter.needs_va_start()` etc. (5 intrinsic flags) — post-lowering metadata
-- `emitter.extern_call_decls()` — accumulated extern declarations
 
 ## Raw fallback usage remaining
 - **LirRawLine: REMOVED** — type deleted from variant, no producers existed
