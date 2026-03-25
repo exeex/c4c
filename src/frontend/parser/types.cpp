@@ -1,5 +1,6 @@
 #include "parser.hpp"
 #include "parser_internal.hpp"
+#include "lexer.hpp"
 
 #include <climits>
 #include <cstring>
@@ -12,12 +13,7 @@ namespace c4c {
 
 namespace {
 
-struct ParsedTemplateArg {
-    bool is_value = false;
-    TypeSpec type{};
-    long long value = 0;
-    const char* nttp_name = nullptr;
-};
+using ParsedTemplateArg = Parser::TemplateArgParseResult;
 
 bool parse_alignas_specifier(Parser* parser, TypeSpec* ts, int line) {
     if (!parser->check(TokenKind::KwAlignas)) return false;
@@ -367,6 +363,7 @@ static void append_type_mangled_suffix(std::string& out, const TypeSpec& ts);
 static std::string capture_template_arg_expr_text(
     const std::vector<Token>& toks, int start, int end);
 static bool parse_builtin_typespec_text(const std::string& text, TypeSpec* out);
+static int find_template_arg_expr_end(const std::vector<Token>& tokens, int start_pos);
 
 static bool parse_builtin_typespec_text(const std::string& text, TypeSpec* out) {
     if (!out) return false;
@@ -432,16 +429,13 @@ static bool parse_builtin_typespec_text(const std::string& text, TypeSpec* out) 
 // Handles the pattern: TemplateName<TypeArgs>::static_member
 // by instantiating the template with substituted args and looking up
 // the static constexpr member value.
-bool Parser::eval_deferred_nttp_default(
-    const std::string& tpl_name, int param_idx,
+bool Parser::eval_deferred_nttp_expr_tokens(
+    const std::string& tpl_name,
+    const std::vector<Token>& toks,
     const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
     const std::vector<std::pair<std::string, long long>>& nttp_bindings,
     long long* out) {
-    std::string key = tpl_name + ":" + std::to_string(param_idx);
-    auto it = nttp_default_expr_tokens_.find(key);
-    if (it == nttp_default_expr_tokens_.end()) return false;
-    const std::vector<Token>& toks = it->second;
-    if (toks.empty()) return false;
+    if (toks.empty() || !out) return false;
 
     // Token-based mini expression evaluator for deferred NTTP defaults.
     // Supports: literals, NTTP param names, Trait<T>::member lookups,
@@ -830,6 +824,18 @@ bool Parser::eval_deferred_nttp_default(
     return true;
 }
 
+bool Parser::eval_deferred_nttp_default(
+    const std::string& tpl_name, int param_idx,
+    const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
+    const std::vector<std::pair<std::string, long long>>& nttp_bindings,
+    long long* out) {
+    std::string key = tpl_name + ":" + std::to_string(param_idx);
+    auto it = nttp_default_expr_tokens_.find(key);
+    if (it == nttp_default_expr_tokens_.end()) return false;
+    return eval_deferred_nttp_expr_tokens(tpl_name, it->second,
+                                          type_bindings, nttp_bindings, out);
+}
+
 // Compute vector_lanes from vector_bytes and base type.
 // Called after the final base type is resolved.
 static void finalize_vector_type(TypeSpec& ts) {
@@ -914,6 +920,46 @@ static std::string capture_template_arg_expr_text(
     return text;
 }
 
+static int find_template_arg_expr_end(const std::vector<Token>& tokens, int start_pos) {
+    int scan_pos = start_pos;
+    int angle_depth = 0;
+    int paren_depth = 0;
+    int bracket_depth = 0;
+    int brace_depth = 0;
+    while (scan_pos < static_cast<int>(tokens.size())) {
+        const TokenKind tk = tokens[scan_pos].kind;
+        if (tk == TokenKind::LParen) ++paren_depth;
+        else if (tk == TokenKind::RParen) {
+            if (paren_depth > 0) --paren_depth;
+        } else if (tk == TokenKind::LBracket) ++bracket_depth;
+        else if (tk == TokenKind::RBracket) {
+            if (bracket_depth > 0) --bracket_depth;
+        } else if (tk == TokenKind::LBrace) ++brace_depth;
+        else if (tk == TokenKind::RBrace) {
+            if (brace_depth > 0) --brace_depth;
+        } else if (paren_depth == 0 && bracket_depth == 0 && brace_depth == 0) {
+            if (tk == TokenKind::Comma && angle_depth == 0) break;
+            if (tk == TokenKind::Greater || tk == TokenKind::GreaterGreater) {
+                if (angle_depth == 0) break;
+                angle_depth -= std::min(angle_depth,
+                                        tk == TokenKind::GreaterGreater ? 2 : 1);
+            } else if (tk == TokenKind::Less) {
+                ++angle_depth;
+            }
+        }
+        ++scan_pos;
+    }
+    return scan_pos;
+}
+
+static std::vector<Token> lex_template_expr_text(const std::string& text,
+                                                 SourceProfile source_profile) {
+    Lexer lexer(text, lex_profile_from(source_profile));
+    std::vector<Token> toks = lexer.scan_all();
+    if (!toks.empty() && toks.back().kind == TokenKind::EndOfFile) toks.pop_back();
+    return toks;
+}
+
 static const char* extra_operator_mangled_name(TokenKind kind) {
     switch (kind) {
         case TokenKind::Bang: return "operator_not";
@@ -965,6 +1011,130 @@ static void finalize_pending_operator_name(std::string& name, size_t param_count
 }
 bool Parser::is_typedef_name(const std::string& s) const {
     return typedefs_.count(s) > 0;
+}
+
+bool Parser::parse_template_argument_list(std::vector<TemplateArgParseResult>* out_args,
+                                          const Node* primary_tpl) {
+    if (!out_args || !check(TokenKind::Less)) return false;
+
+    auto parse_type_arg = [&](TemplateArgParseResult* out_arg) -> bool {
+        int saved_pos = pos_;
+        try {
+            TypeSpec ts = parse_type_name();
+            if (is_cpp_mode() && check(TokenKind::LParen)) skip_paren_group();
+            if (is_cpp_mode() && check(TokenKind::Ellipsis)) consume();
+            if (!check(TokenKind::Comma) && !check_template_close()) {
+                pos_ = saved_pos;
+                return false;
+            }
+            out_arg->is_value = false;
+            out_arg->type = ts;
+            out_arg->value = 0;
+            out_arg->nttp_name = nullptr;
+            return true;
+        } catch (...) {
+            pos_ = saved_pos;
+            return false;
+        }
+    };
+
+    auto parse_non_type_arg = [&](TemplateArgParseResult* out_arg) -> bool {
+        const int expr_start = pos_;
+        long long sign = 1;
+        if (match(TokenKind::Minus)) sign = -1;
+        if (check(TokenKind::KwTrue)) {
+            out_arg->is_value = true;
+            out_arg->value = 1 * sign;
+            out_arg->nttp_name = nullptr;
+            consume();
+            return true;
+        }
+        if (check(TokenKind::KwFalse)) {
+            out_arg->is_value = true;
+            out_arg->value = 0;
+            out_arg->nttp_name = nullptr;
+            consume();
+            return true;
+        }
+        if (check(TokenKind::CharLit)) {
+            Node* lit = parse_primary();
+            out_arg->is_value = true;
+            out_arg->value = lit ? lit->ival * sign : 0;
+            out_arg->nttp_name = nullptr;
+            return true;
+        }
+        if (check(TokenKind::IntLit)) {
+            out_arg->is_value = true;
+            out_arg->value = parse_int_lexeme(cur().lexeme.c_str()) * sign;
+            out_arg->nttp_name = nullptr;
+            consume();
+            return true;
+        }
+        if (is_cpp_mode() && check(TokenKind::KwSizeof) &&
+            pos_ + 1 < static_cast<int>(tokens_.size()) &&
+            tokens_[pos_ + 1].kind == TokenKind::Ellipsis) {
+            consume();
+            consume();
+            expect(TokenKind::LParen);
+            int pack_start = pos_;
+            int pack_end = pack_start;
+            if (!check(TokenKind::RParen)) {
+                pack_end = find_template_arg_expr_end(tokens_, pos_);
+                pos_ = pack_end;
+            }
+            expect(TokenKind::RParen);
+            std::string expr_text = "sizeof...(";
+            expr_text += capture_template_arg_expr_text(tokens_, pack_start, pack_end);
+            expr_text += ")";
+            out_arg->is_value = true;
+            out_arg->value = 0;
+            out_arg->nttp_name = arena_.strdup((std::string("$expr:") + expr_text).c_str());
+            return true;
+        }
+        if (check(TokenKind::Identifier)) {
+            int saved_pos = pos_;
+            const char* name = arena_.strdup(cur().lexeme.c_str());
+            consume();
+            if (check(TokenKind::Comma) || check_template_close()) {
+                out_arg->is_value = true;
+                out_arg->value = 0;
+                out_arg->nttp_name = name;
+                return true;
+            }
+            pos_ = saved_pos;
+        } else if (expr_start != pos_) {
+            pos_ = expr_start;
+        }
+
+        const int expr_end = find_template_arg_expr_end(tokens_, expr_start);
+        const std::string expr_text =
+            capture_template_arg_expr_text(tokens_, expr_start, expr_end);
+        if (expr_text.empty()) return false;
+        out_arg->is_value = true;
+        out_arg->value = 0;
+        out_arg->nttp_name = arena_.strdup((std::string("$expr:") + expr_text).c_str());
+        pos_ = expr_end;
+        return true;
+    };
+
+    consume();  // <
+    int arg_idx = 0;
+    while (!at_end() && !check_template_close()) {
+        TemplateArgParseResult arg;
+        bool ok = false;
+        const bool expect_value =
+            primary_tpl && arg_idx < primary_tpl->n_template_params &&
+            primary_tpl->template_param_is_nttp &&
+            primary_tpl->template_param_is_nttp[arg_idx];
+        if (!expect_value) ok = parse_type_arg(&arg);
+        if (!ok) ok = parse_non_type_arg(&arg);
+        if (!ok && expect_value) ok = parse_type_arg(&arg);
+        if (!ok) return false;
+        out_args->push_back(arg);
+        ++arg_idx;
+        if (!match(TokenKind::Comma)) break;
+    }
+    return match_template_close();
 }
 
 bool Parser::is_type_start() const {
@@ -1890,125 +2060,8 @@ TypeSpec Parser::parse_base_type() {
                     find_template_struct_primary(ts.tag) && check(TokenKind::Less)) {
                     std::string tpl_name = ts.tag;
                     const Node* primary_tpl = find_template_struct_primary(tpl_name);
-                    consume();  // <
-                    // Parse template arguments before selecting the best pattern.
                     std::vector<ParsedTemplateArg> actual_args;
-                    int arg_idx = 0;
-                    while (!at_end() && !check_template_close()) {
-                        ParsedTemplateArg arg;
-                        bool parsed_as_value = false;
-                        if (primary_tpl && arg_idx < primary_tpl->n_template_params &&
-                            primary_tpl->template_param_is_nttp[arg_idx]) {
-                            const int expr_start = pos_;
-                            long long sign = 1;
-                            if (match(TokenKind::Minus)) sign = -1;
-                            if (check(TokenKind::KwTrue)) {
-                                arg.is_value = true;
-                                arg.value = 1;
-                                parsed_as_value = true;
-                                consume();
-                            } else if (check(TokenKind::KwFalse)) {
-                                arg.is_value = true;
-                                arg.value = 0;
-                                parsed_as_value = true;
-                                consume();
-                            } else if (check(TokenKind::CharLit)) {
-                                Node* lit = parse_primary();
-                                arg.is_value = true;
-                                arg.value = lit ? lit->ival * sign : 0;
-                                parsed_as_value = true;
-                            } else if (check(TokenKind::IntLit)) {
-                                arg.is_value = true;
-                                arg.value = parse_int_lexeme(cur().lexeme.c_str()) * sign;
-                                parsed_as_value = true;
-                                consume();
-                            } else if (check(TokenKind::Identifier) && !is_type_start()) {
-                                arg.is_value = true;
-                                arg.nttp_name = arena_.strdup(cur().lexeme);
-                                arg.value = 0;
-                                parsed_as_value = true;
-                                consume();
-                            } else {
-                                int scan_pos = expr_start;
-                                int angle_depth = 0;
-                                int paren_depth = 0;
-                                int bracket_depth = 0;
-                                int brace_depth = 0;
-                                while (scan_pos < static_cast<int>(tokens_.size())) {
-                                    const TokenKind tk = tokens_[scan_pos].kind;
-                                    if (tk == TokenKind::LParen) ++paren_depth;
-                                    else if (tk == TokenKind::RParen) {
-                                        if (paren_depth > 0) --paren_depth;
-                                    } else if (tk == TokenKind::LBracket) ++bracket_depth;
-                                    else if (tk == TokenKind::RBracket) {
-                                        if (bracket_depth > 0) --bracket_depth;
-                                    } else if (tk == TokenKind::LBrace) ++brace_depth;
-                                    else if (tk == TokenKind::RBrace) {
-                                        if (brace_depth > 0) --brace_depth;
-                                    } else if (paren_depth == 0 && bracket_depth == 0 &&
-                                               brace_depth == 0) {
-                                        if (tk == TokenKind::Comma && angle_depth == 0) {
-                                            break;
-                                        }
-                                        if (tk == TokenKind::Greater ||
-                                            tk == TokenKind::GreaterGreater) {
-                                            if (angle_depth == 0) break;
-                                            angle_depth -= std::min(
-                                                angle_depth,
-                                                tk == TokenKind::GreaterGreater ? 2 : 1);
-                                        } else if (tk == TokenKind::Less) {
-                                            ++angle_depth;
-                                        }
-                                    }
-                                    ++scan_pos;
-                                }
-                                const std::string expr_text =
-                                    capture_template_arg_expr_text(tokens_, expr_start, scan_pos);
-                                if (!expr_text.empty()) {
-                                    std::string tagged = "$expr:";
-                                    tagged += expr_text;
-                                    arg.is_value = true;
-                                    arg.nttp_name = arena_.strdup(tagged.c_str());
-                                    arg.value = 0;
-                                    parsed_as_value = true;
-                                    pos_ = scan_pos;
-                                }
-                            }
-                        }
-                        if (!parsed_as_value) {
-                            arg.is_value = false;
-                            arg.type = parse_base_type();
-                            // Consume pointer/ref qualifiers after base type
-                            while (check(TokenKind::Star)) { consume(); arg.type.ptr_level++; }
-                            if (is_cpp_mode() && check(TokenKind::AmpAmp)) { consume(); arg.type.is_rvalue_ref = true; }
-                            else if (is_cpp_mode() && check(TokenKind::Amp)) { consume(); arg.type.is_lvalue_ref = true; }
-                            // C++ pack expansion: skip trailing '...'
-                            if (is_cpp_mode() && check(TokenKind::Ellipsis)) consume();
-                            // C++ function type suffix: R(ArgTypes...)
-                            // e.g. function<int(double, char)> — skip the param list.
-                            if (is_cpp_mode() && check(TokenKind::LParen)) {
-                                skip_paren_group();
-                            }
-                        }
-                        actual_args.push_back(arg);
-                        ++arg_idx;
-                        if (!match(TokenKind::Comma)) break;
-                    }
-                    // Skip any trailing variadic args we don't model yet.
-                    if (!check_template_close()) {
-                        int depth = 0;
-                        while (!at_end()) {
-                            if (check(TokenKind::Less)) { ++depth; consume(); }
-                            else if (check_template_close()) {
-                                if (depth == 0) break;
-                                --depth;
-                                consume();
-                            } else {
-                                consume();
-                            }
-                        }
-                    }
-                    expect_template_close();
+                    if (!parse_template_argument_list(&actual_args, primary_tpl)) return ts;
                     // Fill in deferred NTTP defaults before pattern selection
                     // so specialization matching has the complete arg list.
                     if (primary_tpl) {
@@ -2038,8 +2091,33 @@ TypeSpec Parser::parse_base_type() {
                                 if (eval_deferred_nttp_default(tpl_name, sz, prelim_tb, prelim_nb, &ev)) {
                                     da.value = ev;
                                     actual_args.push_back(da);
+                                } else if (primary_tpl->template_param_default_exprs &&
+                                           primary_tpl->template_param_default_exprs[sz]) {
+                                    std::vector<Token> expr_toks = lex_template_expr_text(
+                                        primary_tpl->template_param_default_exprs[sz],
+                                        source_profile_);
+                                    if (eval_deferred_nttp_expr_tokens(tpl_name, expr_toks,
+                                                                       prelim_tb, prelim_nb, &ev)) {
+                                        da.value = ev;
+                                        actual_args.push_back(da);
+                                    } else {
+                                        std::string tagged = "$expr:";
+                                        tagged += primary_tpl->template_param_default_exprs[sz];
+                                        da.nttp_name = arena_.strdup(tagged.c_str());
+                                        da.value = 0;
+                                        actual_args.push_back(da);
+                                    }
                                 } else {
-                                    break;
+                                    if (primary_tpl->template_param_default_exprs &&
+                                        primary_tpl->template_param_default_exprs[sz]) {
+                                        std::string tagged = "$expr:";
+                                        tagged += primary_tpl->template_param_default_exprs[sz];
+                                        da.nttp_name = arena_.strdup(tagged.c_str());
+                                        da.value = 0;
+                                        actual_args.push_back(da);
+                                    } else {
+                                        break;
+                                    }
                                 }
                             } else if (da.is_value) {
                                 da.value = primary_tpl->template_param_default_values[sz];
@@ -2072,8 +2150,31 @@ TypeSpec Parser::parse_base_type() {
                                 if (eval_deferred_nttp_default(tpl_name, i,
                                         type_bindings, nttp_bindings, &eval_val)) {
                                     arg.value = eval_val;
+                                } else if (primary_tpl->template_param_default_exprs &&
+                                           primary_tpl->template_param_default_exprs[i]) {
+                                    std::vector<Token> expr_toks = lex_template_expr_text(
+                                        primary_tpl->template_param_default_exprs[i],
+                                        source_profile_);
+                                    if (eval_deferred_nttp_expr_tokens(tpl_name, expr_toks,
+                                                                       type_bindings, nttp_bindings,
+                                                                       &eval_val)) {
+                                        arg.value = eval_val;
+                                    } else {
+                                        std::string tagged = "$expr:";
+                                        tagged += primary_tpl->template_param_default_exprs[i];
+                                        arg.nttp_name = arena_.strdup(tagged.c_str());
+                                        arg.value = 0;
+                                    }
                                 } else {
-                                    break;  // cannot evaluate
+                                    if (primary_tpl->template_param_default_exprs &&
+                                        primary_tpl->template_param_default_exprs[i]) {
+                                        std::string tagged = "$expr:";
+                                        tagged += primary_tpl->template_param_default_exprs[i];
+                                        arg.nttp_name = arena_.strdup(tagged.c_str());
+                                        arg.value = 0;
+                                    } else {
+                                        break;  // cannot evaluate
+                                    }
                                 }
                             } else {
                                 arg.value = primary_tpl->template_param_default_values[i];
@@ -2248,7 +2349,6 @@ TypeSpec Parser::parse_base_type() {
                                                 if (part.rfind("$expr:", 0) == 0) {
                                                     // Substitute template param names inside $expr text.
                                                     std::string expr_text = part.substr(6);
-                                                    bool expr_resolved = true;
                                                     for (const auto& [pname3, pts3] : type_bindings) {
                                                         std::string mangled_name;
                                                         append_type_mangled_suffix(mangled_name, pts3);
@@ -2289,11 +2389,22 @@ TypeSpec Parser::parse_base_type() {
                                                             }
                                                         }
                                                     }
-                                                    // Check if any unresolved param names remain.
-                                                    // For now, assume resolved if all type/nttp bindings were applied.
-                                                    new_arg_parts.push_back("$expr:" + expr_text);
-                                                    // The $expr is still deferred but args are concrete now.
-                                                    all_resolved = false;
+                                                    Lexer expr_lexer(expr_text, lex_profile_from(source_profile_));
+                                                    std::vector<Token> expr_toks = expr_lexer.scan_all();
+                                                    if (!expr_toks.empty() &&
+                                                        expr_toks.back().kind == TokenKind::EndOfFile) {
+                                                        expr_toks.pop_back();
+                                                    }
+                                                    long long expr_value = 0;
+                                                    if (!expr_toks.empty() &&
+                                                        eval_deferred_nttp_expr_tokens(origin, expr_toks,
+                                                                                       type_bindings, nttp_bindings,
+                                                                                       &expr_value)) {
+                                                        new_arg_parts.push_back(std::to_string(expr_value));
+                                                    } else {
+                                                        new_arg_parts.push_back("$expr:" + expr_text);
+                                                        all_resolved = false;
+                                                    }
                                                     continue;
                                                 }
                                                 new_arg_parts.push_back(part);
@@ -2380,6 +2491,23 @@ TypeSpec Parser::parse_base_type() {
                                                             base_prelim_tb, base_prelim_nb, &ev)) {
                                                         da.value = ev;
                                                         base_args.push_back(da);
+                                                    } else if (base_primary->template_param_default_exprs &&
+                                                               base_primary->template_param_default_exprs[bsz]) {
+                                                        std::vector<Token> expr_toks = lex_template_expr_text(
+                                                            base_primary->template_param_default_exprs[bsz],
+                                                            source_profile_);
+                                                        if (eval_deferred_nttp_expr_tokens(origin, expr_toks,
+                                                                                           base_prelim_tb, base_prelim_nb,
+                                                                                           &ev)) {
+                                                            da.value = ev;
+                                                            base_args.push_back(da);
+                                                        } else {
+                                                            std::string tagged = "$expr:";
+                                                            tagged += base_primary->template_param_default_exprs[bsz];
+                                                            da.nttp_name = arena_.strdup(tagged.c_str());
+                                                            da.value = 0;
+                                                            base_args.push_back(da);
+                                                        }
                                                     } else break;
                                                 } else if (da.is_value) {
                                                     da.value = base_primary->template_param_default_values[bsz];

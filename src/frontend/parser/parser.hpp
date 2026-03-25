@@ -42,6 +42,13 @@ class Parser {
     std::string base_name;
   };
 
+  struct TemplateArgParseResult {
+    bool is_value = false;
+    TypeSpec type{};
+    long long value = 0;
+    const char* nttp_name = nullptr;
+  };
+
   // All members public (required by project coding constraints).
   explicit Parser(std::vector<Token> tokens, Arena& arena,
                   SourceProfile source_profile = SourceProfile::C,
@@ -249,11 +256,19 @@ class Parser {
       const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
       const std::vector<std::pair<std::string, long long>>& nttp_bindings,
       long long* out);
+  bool eval_deferred_nttp_expr_tokens(
+      const std::string& tpl_name,
+      const std::vector<Token>& toks,
+      const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
+      const std::vector<std::pair<std::string, long long>>& nttp_bindings,
+      long long* out);
   Node* find_template_struct_primary(const std::string& name) const;
   const std::vector<Node*>* find_template_struct_specializations(
       const Node* primary_tpl) const;
   void register_template_struct_primary(const std::string& name, Node* node);
   void register_template_struct_specialization(const char* primary_name, Node* node);
+  bool parse_template_argument_list(std::vector<TemplateArgParseResult>* out_args,
+                                    const Node* primary_tpl = nullptr);
 
   // Skip a balanced brace group (consuming the closing brace).
   void skip_brace_group();

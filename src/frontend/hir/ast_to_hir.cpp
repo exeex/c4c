@@ -3864,12 +3864,12 @@ class Lowerer {
         }
       }
       // Resolve pending template struct types in local variable decls.
-      if (!ctx.tpl_bindings.empty() && decl_ts.tpl_struct_origin)
+      if (decl_ts.tpl_struct_origin)
         seed_pending_template_type(
             decl_ts, ctx.tpl_bindings, ctx.nttp_bindings, n,
             PendingTemplateTypeKind::DeclarationType,
             std::string("local-decl:") + d.name);
-      if (!ctx.tpl_bindings.empty() && decl_ts.tpl_struct_origin)
+      if (decl_ts.tpl_struct_origin)
         resolve_pending_tpl_struct_if_needed(
             decl_ts, ctx.tpl_bindings, ctx.nttp_bindings);
       resolve_typedef_to_struct(decl_ts);

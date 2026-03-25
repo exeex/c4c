@@ -1093,88 +1093,8 @@ Node* Parser::parse_primary() {
         apply_qualified_name(ident, qn, nm);
         if (is_cpp_mode() && check(TokenKind::Less)) {
             int save_pos = pos_;
-            consume();  // <
-            std::vector<TypeSpec> template_args;
-            std::vector<bool> template_arg_is_val;
-            std::vector<long long> template_arg_vals;
-            std::vector<const char*> template_arg_nttp_names;
-            bool ok = true;
-            while (!at_end() && !check_template_close()) {
-                if (is_type_start()) {
-                    template_args.push_back(parse_type_name());
-                    // C++ function type suffix in template args: R(ArgTypes...)
-                    // e.g. function<int(double, char)> — skip the param list.
-                    if (is_cpp_mode() && check(TokenKind::LParen)) {
-                        skip_paren_group();
-                    }
-                    template_arg_is_val.push_back(false);
-                    template_arg_vals.push_back(0);
-                    template_arg_nttp_names.push_back(nullptr);
-                } else if (is_cpp_mode() && check(TokenKind::KwSizeof) &&
-                           pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                           tokens_[pos_ + 1].kind == TokenKind::Ellipsis) {
-                    // C++ non-type template argument: sizeof...(Pack)
-                    consume(); // sizeof
-                    consume(); // ...
-                    expect(TokenKind::LParen);
-                    if (!check(TokenKind::RParen)) consume(); // pack name
-                    expect(TokenKind::RParen);
-                    TypeSpec dummy{};
-                    dummy.array_size = -1;
-                    dummy.inner_rank = -1;
-                    template_args.push_back(dummy);
-                    template_arg_is_val.push_back(true);
-                    template_arg_vals.push_back(0);
-                    template_arg_nttp_names.push_back(nullptr);
-                } else if (check(TokenKind::IntLit) ||
-                           check(TokenKind::CharLit) ||
-                           (is_cpp_mode() &&
-                            (check(TokenKind::KwTrue) || check(TokenKind::KwFalse))) ||
-                           (check(TokenKind::Minus) && pos_ + 1 < (int)tokens_.size() &&
-                            tokens_[pos_ + 1].kind == TokenKind::IntLit)) {
-                    // Non-type template argument: integer constant.
-                    long long sign = 1;
-                    if (match(TokenKind::Minus)) sign = -1;
-                    long long val = 0;
-                    if (check(TokenKind::KwTrue)) {
-                        val = 1;
-                        consume();
-                    } else if (check(TokenKind::KwFalse)) {
-                        val = 0;
-                        consume();
-                    } else if (check(TokenKind::CharLit)) {
-                        Node* lit = parse_primary();
-                        val = lit ? lit->ival : 0;
-                    } else {
-                        val = parse_int_lexeme(cur().lexeme.c_str());
-                        consume();
-                    }
-                    val *= sign;
-                    TypeSpec dummy{};
-                    dummy.array_size = -1;
-                    dummy.inner_rank = -1;
-                    template_args.push_back(dummy);
-                    template_arg_is_val.push_back(true);
-                    template_arg_vals.push_back(val);
-                    template_arg_nttp_names.push_back(nullptr);
-                } else if (check(TokenKind::Identifier) && !is_type_start()) {
-                    // Non-type template argument: forwarded NTTP name (e.g. compute<N>()).
-                    const char* fwd_name = arena_.strdup(cur().lexeme.c_str());
-                    consume();
-                    TypeSpec dummy{};
-                    dummy.array_size = -1;
-                    dummy.inner_rank = -1;
-                    template_args.push_back(dummy);
-                    template_arg_is_val.push_back(true);
-                    template_arg_vals.push_back(0);  // placeholder; resolved by HIR
-                    template_arg_nttp_names.push_back(fwd_name);
-                } else {
-                    ok = false;
-                    break;
-                }
-                if (!match(TokenKind::Comma)) break;
-            }
-            if (ok && match_template_close()) {
+            std::vector<TemplateArgParseResult> parsed_args;
+            if (parse_template_argument_list(&parsed_args)) {
                 // Accept template instantiation when followed by a token that
                 // would be valid after an expression (call, scope, brace-init,
                 // close-paren, semicolon, comma, binary ops, etc.).
@@ -1202,16 +1122,16 @@ Node* Parser::parse_primary() {
                 if (is_valid_after_template()) {
                     // Accept template instantiation.
                     ident->has_template_args = true;
-                    ident->n_template_args = (int)template_args.size();
+                    ident->n_template_args = static_cast<int>(parsed_args.size());
                     ident->template_arg_types = arena_.alloc_array<TypeSpec>(ident->n_template_args);
                     ident->template_arg_is_value = arena_.alloc_array<bool>(ident->n_template_args);
                     ident->template_arg_values = arena_.alloc_array<long long>(ident->n_template_args);
                     ident->template_arg_nttp_names = arena_.alloc_array<const char*>(ident->n_template_args);
                     for (int i = 0; i < ident->n_template_args; ++i) {
-                        ident->template_arg_types[i] = template_args[i];
-                        ident->template_arg_is_value[i] = template_arg_is_val[i];
-                        ident->template_arg_values[i] = template_arg_vals[i];
-                        ident->template_arg_nttp_names[i] = template_arg_nttp_names[i];
+                        ident->template_arg_types[i] = parsed_args[i].type;
+                        ident->template_arg_is_value[i] = parsed_args[i].is_value;
+                        ident->template_arg_values[i] = parsed_args[i].value;
+                        ident->template_arg_nttp_names[i] = parsed_args[i].nttp_name;
                     }
                     // Template<A,B>::member — resolve as qualified name.
                     // Re-parse from ident_start to trigger template struct
