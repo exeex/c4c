@@ -52,13 +52,14 @@
 
 ## Completed (Step 6)
 - [x] Step 6a: Remove dead HirEmitter methods — `emit()`, `lower_to_lir()`, `lower_globals()`, `emit_global()`, `emit_function()` all removed; llvm_codegen.cpp now routes all codegen paths through lir::lower+lir::print_llvm directly; removed hir_emitter.hpp include from llvm_codegen.cpp
+- [x] Step 6b: Remove dead `HirEmitter::hoist_allocas()`, `find_modified_params()`, `fn_has_vla_locals()` — all three only called from removed `emit_function()`; live copies exist in hir_to_lir.cpp; also removed unused `<unordered_set>` include
 
 ## Active Slice
-- Step 6a: Remove dead HirEmitter methods — DONE
+- Step 6b: Remove dead HirEmitter function-emission helpers — DONE
 
 ## Next Intended Slice
-- Step 6b: Remove dead `HirEmitter::hoist_allocas()` and `emit_function`-related helpers if they become unreachable
 - Step 2 remaining: extract emit_stmt semantic ownership from HirEmitter (large — needs multi-iteration plan)
+- Potential step 6c: audit remaining HirEmitter for further dead code after emit_stmt extraction
 
 ## Remaining HirEmitter → hir_to_lir.cpp dependencies
 - `emitter.set_module(module)` — module reference setup

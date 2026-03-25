@@ -16,7 +16,6 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -334,12 +333,6 @@ class HirEmitter {
   void emit_stmt_impl(FnCtx&, const CaseRangeStmt&);
   void emit_stmt_impl(FnCtx&, const DefaultStmt&);
 
-  // ── Function emission ─────────────────────────────────────────────────────
-
-  // Returns set of param indices that are used as lvalues (modified or address-taken).
-  std::unordered_set<uint32_t> find_modified_params(const Function& fn);
-  static bool fn_has_vla_locals(const Function& fn);
-  void hoist_allocas(FnCtx& ctx, const Function& fn);
 };
 
 
