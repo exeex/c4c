@@ -2,7 +2,7 @@
 #include "ir.hpp"
 #include "const_init_emitter.hpp"
 #include "stmt_emitter.hpp"
-#include "../llvm/hir_to_llvm_helpers.hpp"
+#include "../shared/llvm_helpers.hpp"
 
 #include <algorithm>
 #include <functional>

@@ -6,7 +6,7 @@
 #include <optional>
 #include <string>
 
-#include "llvm_codegen.hpp"
+#include "../../frontend/hir/ir.hpp"
 
 namespace c4c::codegen::llvm_backend::detail {
 
@@ -674,4 +674,4 @@ inline const char* llvm_visibility(Visibility v) {
   }
 }
 
-}  // namespace tinyc2ll::codegen::llvm_backend::detail
+}  // namespace c4c::codegen::llvm_backend::detail

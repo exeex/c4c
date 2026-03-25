@@ -1,7 +1,6 @@
 #pragma once
 
-#include "../llvm/llvm_codegen.hpp"
-#include "../llvm/hir_to_llvm_helpers.hpp"
+#include "../shared/llvm_helpers.hpp"
 #include "ir.hpp"
 #include "../shared/fn_lowering_ctx.hpp"
 

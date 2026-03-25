@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ir.hpp"
-#include "../llvm/hir_to_llvm_helpers.hpp"
+#include "../shared/llvm_helpers.hpp"
 
 #include <functional>
 #include <optional>

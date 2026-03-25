@@ -57,19 +57,19 @@
 - [x] Step 6e: Move string pool from HirEmitter to LirModule — `str_pool_` dedup map and `str_idx_` counter moved to `LirModule::str_pool_map`/`str_pool_idx`; `intern_str()` implemented on LirModule; HirEmitter::intern_str() now delegates to `module_->intern_str()`; wide string pool name generation uses `module_->str_pool_idx`; removed 2 data members from HirEmitter
 - [x] Step 6f: Move const-init lowering from HirEmitter to standalone `lir::ConstInitEmitter` — created `const_init_emitter.hpp/.cpp`; moved `emit_const_init`, `emit_const_struct_fields`, `emit_const_scalar_expr`, `try_const_eval_*` (~660 lines) out of HirEmitter; hir_to_lir.cpp now uses ConstInitEmitter directly for global lowering; deleted `hir_to_llvm_const_init.cpp`; removed const-init declarations from hir_emitter.hpp; HirEmitter public interface reduced to: `set_module()`, `emit_stmt()`
 - [x] Step 6g: Move HirEmitter from `src/codegen/llvm/` to `src/codegen/lir/stmt_emitter.hpp/.cpp` — renamed class to `StmtEmitter`, namespace to `c4c::codegen::lir`; hir_to_lir.cpp now uses `StmtEmitter` directly without cross-directory include; `src/codegen/llvm/` reduced to orchestration (`llvm_codegen.hpp/cpp`) and shared helpers (`hir_to_llvm_helpers.hpp`)
+- [x] Step 6h: Move `hir_to_llvm_helpers.hpp` from `src/codegen/llvm/` to `src/codegen/shared/llvm_helpers.hpp` — all 4 consumers updated to new path; old file deleted; `src/codegen/llvm/` now contains only orchestration (llvm_codegen.hpp/cpp); fixed stale namespace closing comment typo
 
 ## Active Slice
-- Step 6g: Move StmtEmitter to lir/ — DONE
+- Step 6h: Move llvm_helpers to shared/ — DONE
 
 ## Next Intended Slice
-- Consider moving `hir_to_llvm_helpers.hpp` to `src/codegen/shared/` (all 4 consumers are in lir/, only the namespace remains llvm_backend::detail)
-- Or: begin decomposing StmtEmitter into smaller focused units (expr_emitter, type_resolver, etc.)
+- Begin decomposing StmtEmitter into smaller focused units (expr_emitter, type_resolver, etc.)
+- Or: rename namespace `llvm_backend::detail` to something more neutral (e.g. `codegen::llvm_helpers`)
 
 ## Current file layout
 
-### src/codegen/llvm/ (orchestration + shared helpers only)
+### src/codegen/llvm/ (orchestration only)
 - `llvm_codegen.hpp/cpp` — path switcher, calls lir::lower + lir::print_llvm
-- `hir_to_llvm_helpers.hpp` — LLVM type string helpers (used by lir/ files)
 
 ### src/codegen/lir/ (all lowering + printing)
 - `ir.hpp` — LIR data model
@@ -80,6 +80,7 @@
 
 ### src/codegen/shared/
 - `fn_lowering_ctx.hpp` — FnCtx, BlockMeta shared state
+- `llvm_helpers.hpp` — LLVM type string helpers (llvm_ty, llvm_alloca_ty, sanitize_llvm_ident, etc.)
 
 ## Raw fallback usage remaining
 - **All raw fallback types: REMOVED** — LirRawLine, LirRawTerminator, LirBitfieldExtract, LirBitfieldInsert, LirAlloca (TypeSpec), LirHoistedStore, LirGlobal::raw_line all deleted

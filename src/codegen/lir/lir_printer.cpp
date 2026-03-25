@@ -1,5 +1,5 @@
 #include "lir_printer.hpp"
-#include "../llvm/hir_to_llvm_helpers.hpp"
+#include "../shared/llvm_helpers.hpp"
 
 #include <cctype>
 #include <sstream>
