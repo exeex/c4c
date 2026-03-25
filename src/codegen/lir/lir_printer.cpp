@@ -3,8 +3,6 @@
 
 #include <cctype>
 #include <sstream>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 namespace c4c::codegen::lir {
@@ -186,93 +184,11 @@ std::string render_fn(const LirFunction& f) {
   return fout.str();
 }
 
-// Find all @name and @"quoted name" references in a text block.
-std::unordered_set<std::string> find_refs(const std::string& body) {
-  std::unordered_set<std::string> refs;
-  size_t pos = 0;
-  while ((pos = body.find('@', pos)) != std::string::npos) {
-    ++pos;
-    if (pos < body.size() && body[pos] == '"') {
-      // Quoted identifier: @"ns::foo"
-      ++pos;  // skip opening "
-      size_t start = pos;
-      while (pos < body.size() && body[pos] != '"') ++pos;
-      if (pos > start) {
-        refs.insert("\"" + body.substr(start, pos - start) + "\"");
-      }
-      if (pos < body.size()) ++pos;  // skip closing "
-    } else {
-      // Bare identifier: @foo
-      size_t start = pos;
-      while (pos < body.size() && (std::isalnum(static_cast<unsigned char>(body[pos])) || body[pos] == '_' || body[pos] == '.'))
-        ++pos;
-      if (pos > start) refs.insert(body.substr(start, pos - start));
-    }
-  }
-  return refs;
-}
-
 }  // namespace
 
 std::string print_llvm(const LirModule& mod) {
   c4c::codegen::llvm_backend::detail::set_active_target_triple(mod.target_triple);
-  // Pre-render function bodies for DCE reference scanning.
-  std::vector<std::string> rendered_bodies;
-  rendered_bodies.reserve(mod.functions.size());
-  for (const auto& f : mod.functions) {
-    rendered_bodies.push_back(render_fn(f));
-  }
 
-  // Dead-code elimination: remove unreferenced internal (static) functions.
-  std::unordered_set<std::string> internal_fns;
-  for (const auto& f : mod.functions) {
-    if (f.is_internal) internal_fns.insert(f.name);
-  }
-
-  std::unordered_set<std::string> reachable;
-  std::vector<std::string> worklist;
-
-  // Seed: all non-internal function bodies are reachable roots.
-  for (size_t i = 0; i < mod.functions.size(); ++i) {
-    if (!mod.functions[i].is_internal) {
-      for (const auto& r : find_refs(rendered_bodies[i])) {
-        if (internal_fns.count(r) && !reachable.count(r)) {
-          reachable.insert(r);
-          worklist.push_back(r);
-        }
-      }
-    }
-  }
-
-  // Also treat global initializers as roots.
-  for (const auto& g : mod.globals) {
-    for (const auto& r : find_refs(g.raw_line)) {
-      if (internal_fns.count(r) && !reachable.count(r)) {
-        reachable.insert(r);
-        worklist.push_back(r);
-      }
-    }
-  }
-
-  // Propagate: internal functions referenced by reachable internal functions.
-  std::unordered_map<std::string, size_t> fn_idx_by_name;
-  for (size_t i = 0; i < mod.functions.size(); ++i) {
-    fn_idx_by_name[mod.functions[i].name] = i;
-  }
-  while (!worklist.empty()) {
-    std::string cur = std::move(worklist.back());
-    worklist.pop_back();
-    auto it = fn_idx_by_name.find(cur);
-    if (it == fn_idx_by_name.end()) continue;
-    for (const auto& r : find_refs(rendered_bodies[it->second])) {
-      if (internal_fns.count(r) && !reachable.count(r)) {
-        reachable.insert(r);
-        worklist.push_back(r);
-      }
-    }
-  }
-
-  // Render final output.
   std::ostringstream out;
 
   if (!mod.data_layout.empty()) out << "target datalayout = \"" << mod.data_layout << "\"\n";
@@ -321,10 +237,10 @@ std::string print_llvm(const LirModule& mod) {
   if (!mod.extern_decls.empty()) out << "\n";
 
   // Function bodies.
-  for (size_t i = 0; i < mod.functions.size(); ++i) {
-    // Skip unreachable internal functions.
-    if (mod.functions[i].is_internal && !reachable.count(mod.functions[i].name)) continue;
-    out << rendered_bodies[i];
+  // Dead internal functions have already been removed by the lowering pass
+  // (eliminate_dead_internals); the printer renders everything it receives.
+  for (const auto& f : mod.functions) {
+    out << render_fn(f);
   }
 
   // Specialization metadata.

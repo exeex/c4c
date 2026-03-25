@@ -7,6 +7,7 @@
 #include <functional>
 #include <sstream>
 #include <unordered_map>
+#include <unordered_set>
 #include <variant>
 
 namespace c4c::codegen::lir {
@@ -508,6 +509,173 @@ void emit_lbl(c4c::codegen::FnCtx& ctx, const std::string& lbl) {
   ctx.last_term = false;
 }
 
+// ── Dead internal function elimination ────────────────────────────────────────
+// Removes unreferenced internal (static) functions from the module.
+// This is a semantic decision (what to emit) and belongs in lowering, not the
+// printer.  The algorithm is a worklist reachability analysis: external functions
+// and global initializers seed the worklist; internal functions are kept only if
+// transitively reachable.
+
+// Scan a string for @name / @"quoted name" global references.
+static void scan_refs(const std::string& s,
+                      std::unordered_set<std::string>& refs) {
+  size_t pos = 0;
+  while ((pos = s.find('@', pos)) != std::string::npos) {
+    ++pos;
+    if (pos < s.size() && s[pos] == '"') {
+      ++pos;  // skip opening "
+      size_t start = pos;
+      while (pos < s.size() && s[pos] != '"') ++pos;
+      if (pos > start)
+        refs.insert("\"" + s.substr(start, pos - start) + "\"");
+      if (pos < s.size()) ++pos;  // skip closing "
+    } else {
+      size_t start = pos;
+      while (pos < s.size() &&
+             (std::isalnum(static_cast<unsigned char>(s[pos])) ||
+              s[pos] == '_' || s[pos] == '.'))
+        ++pos;
+      if (pos > start) refs.insert(s.substr(start, pos - start));
+    }
+  }
+}
+
+// Collect all global symbol references from a single LIR instruction.
+// Scans every string operand field for @-prefixed global references.
+static void collect_inst_refs(const LirInst& inst,
+                              std::unordered_set<std::string>& refs) {
+  auto S = [&](const std::string& s) { scan_refs(s, refs); };
+  // Visit each typed LIR op and scan its string-valued operand fields.
+  // Types with no string operands (legacy typed ops with no producers) are
+  // handled by the default case.
+  auto visitor = [&](const auto& op) {
+    using T = std::decay_t<decltype(op)>;
+    if constexpr (std::is_same_v<T, LirCallOp>) {
+      S(op.callee); S(op.args_str);
+    } else if constexpr (std::is_same_v<T, LirStoreOp>) {
+      S(op.val); S(op.ptr);
+    } else if constexpr (std::is_same_v<T, LirLoadOp>) {
+      S(op.ptr);
+    } else if constexpr (std::is_same_v<T, LirGepOp>) {
+      S(op.ptr);
+      for (const auto& idx : op.indices) S(idx);
+    } else if constexpr (std::is_same_v<T, LirCastOp>) {
+      S(op.operand);
+    } else if constexpr (std::is_same_v<T, LirBinOp>) {
+      S(op.lhs); S(op.rhs);
+    } else if constexpr (std::is_same_v<T, LirCmpOp>) {
+      S(op.lhs); S(op.rhs);
+    } else if constexpr (std::is_same_v<T, LirPhiOp>) {
+      for (const auto& [v, l] : op.incoming) S(v);
+    } else if constexpr (std::is_same_v<T, LirSelectOp>) {
+      S(op.cond); S(op.true_val); S(op.false_val);
+    } else if constexpr (std::is_same_v<T, LirExtractValueOp>) {
+      S(op.agg);
+    } else if constexpr (std::is_same_v<T, LirInsertValueOp>) {
+      S(op.agg); S(op.elem);
+    } else if constexpr (std::is_same_v<T, LirAllocaOp>) {
+      S(op.count);
+    } else if constexpr (std::is_same_v<T, LirInlineAsmOp>) {
+      S(op.args_str);
+    } else if constexpr (std::is_same_v<T, LirAbsOp>) {
+      S(op.arg);
+    } else if constexpr (std::is_same_v<T, LirInsertElementOp>) {
+      S(op.vec); S(op.elem);
+    } else if constexpr (std::is_same_v<T, LirExtractElementOp>) {
+      S(op.vec);
+    } else if constexpr (std::is_same_v<T, LirShuffleVectorOp>) {
+      S(op.vec1); S(op.vec2);
+    } else if constexpr (std::is_same_v<T, LirVaArgOp>) {
+      S(op.ap_ptr);
+    } else if constexpr (std::is_same_v<T, LirMemcpyOp>) {
+      S(op.dst); S(op.src);
+    } else if constexpr (std::is_same_v<T, LirVaStartOp>) {
+      S(op.ap_ptr);
+    } else if constexpr (std::is_same_v<T, LirVaEndOp>) {
+      S(op.ap_ptr);
+    } else if constexpr (std::is_same_v<T, LirVaCopyOp>) {
+      S(op.dst_ptr); S(op.src_ptr);
+    } else if constexpr (std::is_same_v<T, LirStackRestoreOp>) {
+      S(op.saved_ptr);
+    } else if constexpr (std::is_same_v<T, LirIndirectBrOp>) {
+      S(op.addr);
+    }
+    // LirStackSaveOp and legacy typed ops: no string operands to scan.
+  };
+  std::visit(visitor, inst);
+}
+
+// Collect all global references from a function's body.
+static std::unordered_set<std::string> collect_fn_refs(const LirFunction& fn) {
+  std::unordered_set<std::string> refs;
+  // Scan signature text (may reference other functions in attributes/metadata).
+  scan_refs(fn.signature_text, refs);
+  // Scan hoisted allocas.
+  for (const auto& inst : fn.alloca_insts) collect_inst_refs(inst, refs);
+  // Scan block instructions.
+  for (const auto& blk : fn.blocks) {
+    for (const auto& inst : blk.insts) collect_inst_refs(inst, refs);
+  }
+  return refs;
+}
+
+static void eliminate_dead_internals(LirModule& mod) {
+  std::unordered_set<std::string> internal_fns;
+  for (const auto& f : mod.functions) {
+    if (f.is_internal) internal_fns.insert(f.name);
+  }
+  if (internal_fns.empty()) return;
+
+  // Build per-function reference sets.
+  std::unordered_map<std::string, size_t> fn_idx_by_name;
+  std::vector<std::unordered_set<std::string>> fn_refs(mod.functions.size());
+  for (size_t i = 0; i < mod.functions.size(); ++i) {
+    fn_idx_by_name[mod.functions[i].name] = i;
+    fn_refs[i] = collect_fn_refs(mod.functions[i]);
+  }
+
+  std::unordered_set<std::string> reachable;
+  std::vector<std::string> worklist;
+
+  auto seed = [&](const std::unordered_set<std::string>& refs) {
+    for (const auto& r : refs) {
+      if (internal_fns.count(r) && !reachable.count(r)) {
+        reachable.insert(r);
+        worklist.push_back(r);
+      }
+    }
+  };
+
+  // Seed from non-internal function bodies.
+  for (size_t i = 0; i < mod.functions.size(); ++i) {
+    if (!mod.functions[i].is_internal) seed(fn_refs[i]);
+  }
+
+  // Seed from global initializers.
+  for (const auto& g : mod.globals) {
+    std::unordered_set<std::string> grefs;
+    scan_refs(g.raw_line, grefs);
+    seed(grefs);
+  }
+
+  // Propagate: internal functions referenced by reachable internal functions.
+  while (!worklist.empty()) {
+    std::string cur = std::move(worklist.back());
+    worklist.pop_back();
+    auto it = fn_idx_by_name.find(cur);
+    if (it == fn_idx_by_name.end()) continue;
+    seed(fn_refs[it->second]);
+  }
+
+  // Remove unreachable internal functions.
+  mod.functions.erase(
+      std::remove_if(mod.functions.begin(), mod.functions.end(),
+                     [&](const LirFunction& f) {
+                       return f.is_internal && !reachable.count(f.name);
+                     }),
+      mod.functions.end());
+}
+
 // ── Main lowering entry point ────────────────────────────────────────────────
 
 LirModule lower(const c4c::hir::Module& hir_mod) {
@@ -596,6 +764,9 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
 
   // Module-level finalization: owned by hir_to_lir.
   finalize_module(module, hir_mod, emitter);
+
+  // Dead internal function elimination: owned by hir_to_lir.
+  eliminate_dead_internals(module);
 
   return module;
 }
