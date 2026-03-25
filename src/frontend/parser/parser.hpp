@@ -173,9 +173,10 @@ class Parser {
   bool match(TokenKind k);               // consume if check(k)
   void expect(TokenKind k);              // consume or throw
   const char* diag_file_at(int token_index) const;
-  // Template angle-bracket helpers: handle >> as two > tokens.
-  bool check_template_close() const;     // is current > or >>?
-  bool match_template_close();           // consume > or split >>
+  // Template angle-bracket helpers: parser-owned handling for >-prefixed tokens.
+  bool check_template_close() const;     // is current > / >> / >= / >>=?
+  bool parse_greater_than_in_template_list(bool consume_last_token = true);
+  bool match_template_close();           // consume one template-close >
   void expect_template_close();          // match_template_close or throw
   void skip_until(TokenKind k);          // skip tokens until k (consume k)
 

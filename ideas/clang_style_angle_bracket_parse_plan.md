@@ -66,6 +66,31 @@ Today we already have one important prerequisite:
 - lexer keeps `>`, `>>`, `>>>`, `>=`, `>>=` as distinct lexed tokens rather
   than eagerly splitting them in lexing
 
+As of 2026-03-25, Stage 1 below is partially implemented in parser core:
+
+- `src/frontend/parser/parse.cpp` now owns template-close consumption through
+  `parse_greater_than_in_template_list(...)`
+- `check_template_close()` / `match_template_close()` route through that
+  parser-owned policy instead of each caller open-coding `>>` splitting
+- a few existing template-parameter / struct-member close sites were migrated
+  off manual `>> -> >` mutation
+
+What this does not solve yet:
+
+- canonical parsing of template argument contents
+- expression-vs-type disambiguation for dependent NTTPs
+- tentative parsing around potential template-id starts
+
+Known remaining failing shape:
+
+```cpp
+integral_constant<bool, arithmetic<T>::value>
+template <typename T, bool = is_arithmetic<T>::value>
+```
+
+That failure is expected to be addressed by Stage 2 and, if needed for
+ambiguous expression contexts, Stage 3.
+
 What is still missing is the parser-side policy that decides when a token
 starting with `>` should be interpreted as:
 
@@ -192,6 +217,18 @@ Candidate sites:
 - template parameter list parsing
 - template argument list parsing
 - any current `check_template_close()` / `match_template_close()` paths
+
+Status on 2026-03-25:
+
+- implemented in `src/frontend/parser/parse.cpp`
+- `check_template_close()` now recognizes `>`, `>>`, `>=`, `>>=`
+- `match_template_close()` now delegates to the parser-owned helper
+- several existing local `>> -> >` repairs were migrated to the helper
+
+Remaining gap for this stage:
+
+- not every angle-depth recovery loop has been migrated yet
+- there is still duplicated scanning logic outside the canonical close path
 
 
 ### Stage 2. Build a single template argument parser path

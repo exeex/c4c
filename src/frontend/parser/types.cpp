@@ -3828,8 +3828,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                             } else if (check(TokenKind::GreaterGreater) && paren_depth == 0) {
                                 if (depth <= 0) break;
                                 if (depth == 1) {
-                                    tokens_[pos_].kind = TokenKind::Greater;
-                                    tokens_[pos_].lexeme = ">";
+                                    parse_greater_than_in_template_list(false);
                                     break;
                                 }
                                 depth -= 2;
@@ -3871,8 +3870,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                             } else if (check(TokenKind::GreaterGreater) && paren_depth == 0) {
                                 if (depth <= 0) break;
                                 if (depth == 1) {
-                                    tokens_[pos_].kind = TokenKind::Greater;
-                                    tokens_[pos_].lexeme = ">";
+                                    parse_greater_than_in_template_list(false);
                                     break;
                                 }
                                 depth -= 2;

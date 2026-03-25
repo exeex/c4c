@@ -578,18 +578,44 @@ void Parser::expect(TokenKind k) {
 }
 
 bool Parser::check_template_close() const {
-    return check(TokenKind::Greater) || check(TokenKind::GreaterGreater);
+    return check(TokenKind::Greater) ||
+           check(TokenKind::GreaterGreater) ||
+           check(TokenKind::GreaterEqual) ||
+           check(TokenKind::GreaterGreaterAssign);
 }
 
-bool Parser::match_template_close() {
-    if (check(TokenKind::Greater)) { consume(); return true; }
+bool Parser::parse_greater_than_in_template_list(bool consume_last_token) {
+    if (check(TokenKind::Greater)) {
+        if (consume_last_token) consume();
+        return true;
+    }
+
     if (check(TokenKind::GreaterGreater)) {
-        // Split >> into >: mutate current token to > and don't advance.
+        // Consume one > and leave the second > in the token stream.
         tokens_[pos_].kind = TokenKind::Greater;
         tokens_[pos_].lexeme = ">";
         return true;
     }
+
+    if (check(TokenKind::GreaterEqual)) {
+        // Consume one > and leave = in the token stream.
+        tokens_[pos_].kind = TokenKind::Assign;
+        tokens_[pos_].lexeme = "=";
+        return true;
+    }
+
+    if (check(TokenKind::GreaterGreaterAssign)) {
+        // Consume one > and leave >= in the token stream.
+        tokens_[pos_].kind = TokenKind::GreaterEqual;
+        tokens_[pos_].lexeme = ">=";
+        return true;
+    }
+
     return false;
+}
+
+bool Parser::match_template_close() {
+    return parse_greater_than_in_template_list(true);
 }
 
 void Parser::expect_template_close() {

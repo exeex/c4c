@@ -677,10 +677,7 @@ Node* Parser::parse_top_level() {
                                 }
                                 if (depth == 1) {
                                     if (is_expr_continuation(pos_ + 1)) { depth = 0; consume(); continue; }
-                                    // Split >> → >: consume one > for the inner close,
-                                    // leave one > for the outer template param list close.
-                                    tokens_[pos_].kind = TokenKind::Greater;
-                                    tokens_[pos_].lexeme = ">";
+                                    parse_greater_than_in_template_list(false);
                                     break;
                                 }
                                 depth -= 2;
@@ -772,8 +769,7 @@ Node* Parser::parse_top_level() {
                             }
                             if (depth == 1) {
                                 if (is_expr_cont2(pos_ + 1)) { depth = 0; consume(); continue; }
-                                tokens_[pos_].kind = TokenKind::Greater;
-                                tokens_[pos_].lexeme = ">";
+                                parse_greater_than_in_template_list(false);
                                 break;
                             }
                             depth -= 2;
