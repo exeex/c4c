@@ -36,6 +36,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     template_bool_specialization_parse
     scope_resolution_expr_parse
     template_dependent_enum_parse
+    template_dependent_enum_sizeof_parse
     template_type_context_nttp_parse
     template_qualified_nttp_parse
     template_variadic_and_nttp_parse

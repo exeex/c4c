@@ -14,6 +14,15 @@ bool eval_enum_expr(Node* n, const std::unordered_map<std::string, long long>& c
         return false;
     }
     if (n->kind == NK_CAST && n->left) return eval_enum_expr(n->left, consts, out);
+    if (n->kind == NK_SIZEOF_TYPE) {
+        if (n->type.base == TB_TYPEDEF && n->type.tag && consts.count(n->type.tag) == 0) {
+            return false;  // dependent or unresolved type
+        }
+        long long sz = sizeof_base(n->type.base);
+        if (n->type.ptr_level > 0) sz = 8;
+        *out = sz;
+        return true;
+    }
     if (n->kind == NK_UNARY && n->op && n->left) {
         long long v = 0;
         if (!eval_enum_expr(n->left, consts, &v)) return false;
@@ -36,6 +45,11 @@ bool eval_enum_expr(Node* n, const std::unordered_map<std::string, long long>& c
         if (strcmp(n->op, "/") == 0 && r != 0) { *out = l / r; return true; }
         if (strcmp(n->op, "%") == 0 && r != 0) { *out = l % r; return true; }
     }
+    if (n->kind == NK_TERNARY && n->cond && n->then_ && n->else_) {
+        long long c = 0;
+        if (!eval_enum_expr(n->cond, consts, &c)) return false;
+        return eval_enum_expr(c ? n->then_ : n->else_, consts, out);
+    }
     return false;
 }
 
@@ -45,6 +59,12 @@ bool is_dependent_enum_expr(Node* n,
     if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) return false;
     if (n->kind == NK_VAR && n->name) {
         if (consts.count(n->name) > 0) return false;
+        return true;
+    }
+    if (n->kind == NK_SIZEOF_TYPE) {
+        return n->type.base == TB_TYPEDEF && n->type.tag && consts.count(n->type.tag) == 0;
+    }
+    if (n->kind == NK_SIZEOF_EXPR) {
         return true;
     }
     if (n->kind == NK_CAST && n->left) return is_dependent_enum_expr(n->left, consts);

@@ -43,6 +43,47 @@ It has already shown dependency on:
 That makes this test a useful staged bring-up target after the codegen refactor
 guardrails are in place.
 
+## Current Status
+
+As of 2026-03-26, this bring-up has moved past the earlier libstdc++ parser
+frontline blockers that were showing up in `<type_traits>` and
+`ext/numeric_traits.h`.
+
+The following header-compatibility gaps were reduced and fixed:
+
+- template-template parameters in template parameter lists
+  - example shape: `template<typename...> class Op`
+- qualified typedef non-type template parameters
+  - example shape: `template<typename T, std::size_t N>`
+- dependent template-template application in type context
+  - example shape: `using type = Op<Args...>;`
+- dependent enum initializers that use `sizeof(type)` and ternary expressions
+  - example shape: `enum { width = __value ? sizeof(T) * 8 : 0 };`
+
+Reduced regression tests added during this slice:
+
+- `tests/cpp/internal/postive_case/template_template_param_parse.cpp`
+- `tests/cpp/internal/postive_case/template_qualified_nttp_parse.cpp`
+- `tests/cpp/internal/postive_case/template_dependent_enum_sizeof_parse.cpp`
+
+These reduced tests are now registered in `ctest` and passing.
+
+Current direct repro status for `tests/cpp/std/std_vector_simple.cpp`:
+
+- preprocessing succeeds
+- the previous `ext/numeric_traits.h:57` dependent-enum failure is gone
+- the remaining failure is currently:
+  - `tests/cpp/std/std_vector_simple.cpp:9:1: error: expected RBRACE but got '' at line 10`
+
+Interpretation:
+
+- the bring-up has advanced through the first wave of system-header
+  compatibility failures
+- the next task is to reduce and localize the unmatched-brace / parse-state-loss
+  failure that now occurs later in the header stack
+- the work is still in Phase B moving into Phase C; it has not yet reached
+  `std::vector` semantics or codegen validation
+
 
 ## Scope
 
@@ -139,6 +180,21 @@ ctest --test-dir build -N | rg 'cpp_positive_sema_eastl'
 - one command reproduces current status
 - one command compares legacy vs new codegen output once codegen succeeds
 
+### Current Repro Command
+
+At the moment the cheapest direct repro command is:
+
+```bash
+./build/c4cll --parse-only tests/cpp/std/std_vector_simple.cpp
+```
+
+Useful companion commands:
+
+```bash
+./build/c4cll --pp-only tests/cpp/std/std_vector_simple.cpp > /tmp/std_vector_simple.pp
+./build/c4cll tests/cpp/std/std_vector_simple.cpp -o /tmp/std_vector_simple.ll
+```
+
 
 ## Phase B: Reduce Frontend Header Blockers
 
@@ -158,6 +214,9 @@ Examples:
 - `extern "C++" { ... }`
 - `inline namespace __cxx11 { ... }`
 - `typedef __true_type __type;`
+- `template<typename...> class Op`
+- `template<typename T, std::size_t N>`
+- `enum { width = __value ? sizeof(T) * 8 : 0 };`
 
 2. fix the narrowest responsible layer
 
@@ -172,6 +231,25 @@ Examples:
 
 - libstdc++ gets significantly farther than the current first-header failure
 - each newly fixed blocker has a tiny test that does not depend on `<vector>`
+
+### Phase B Progress
+
+Completed in this slice:
+
+- template-template parameter parsing
+- qualified typedef NTTP parsing
+- dependent enum initializer parsing for `sizeof(type)` plus ternary
+
+Reduced tests now covering this progress:
+
+- `template_template_param_parse`
+- `template_qualified_nttp_parse`
+- `template_dependent_enum_sizeof_parse`
+
+Remaining immediate blocker after these fixes:
+
+- reduce the later unmatched-brace / parse-state-loss failure currently exposed
+  by `std_vector_simple.cpp`
 
 
 ## Phase C: Reach A Successful Parse / Lowering Boundary
@@ -190,6 +268,14 @@ Get the `std_vector_simple.cpp` case past parsing and semantic setup into codege
 
 - `std_vector_simple.cpp` no longer fails in the first wave of system headers
 - the remaining failures, if any, are closer to actual `std::vector` usage
+
+### Current Assessment
+
+This phase is not complete yet, but the case is meaningfully closer:
+
+- it no longer stops on the earlier `<type_traits>` template-parameter failures
+- it no longer stops on `ext/numeric_traits.h:57`
+- it still does not reach `std::vector` semantics or lowering
 
 
 ## Phase D: Validate Under Both Codegen Paths
