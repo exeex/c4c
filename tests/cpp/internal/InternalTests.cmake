@@ -82,6 +82,12 @@ set(CPP_POSITIVE_PARSE_STEMS
     friend_inline_operator_parse
     eastl_slice7d_qualified_declarator_parse
     out_of_class_member_owner_scope_parse
+    eastl_probe_pack_expansion_template_arg_parse
+    eastl_probe_qualified_template_scope_parse
+)
+
+list(APPEND CPP_POSITIVE_FRONTEND_STEMS
+    eastl_probe_call_result_lvalue_frontend
 )
 
 foreach(src IN LISTS INTERNAL_CPP_NEGATIVE_TEST_SRCS)
