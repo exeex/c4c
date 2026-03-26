@@ -50,6 +50,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     template_alias_nttp_expr_inherited_parse
     member_template_decltype_default_parse
     member_template_decltype_overload_parse
+    member_template_nested_call_default_parse
     templated_member_nested_scope_parse
     namespace_basic_parse
     namespace_nested_parse

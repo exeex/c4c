@@ -4030,18 +4030,19 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                                     else ++depth;
                                 } else if (check(TokenKind::RParen)) {
                                     if (paren_depth > 0) --paren_depth;
-                                } else if (check(TokenKind::GreaterGreater) && paren_depth == 0) {
-                                    if (depth <= 0) break;
-                                    if (depth == 1) {
+                                } else if (check(TokenKind::GreaterGreater)) {
+                                    if (paren_depth == 0 && depth <= 0) break;
+                                    if (paren_depth == 0 && depth == 1) {
                                         parse_greater_than_in_template_list(false);
                                         break;
                                     }
-                                    depth -= 2;
+                                    if (depth >= 2) depth -= 2;
+                                    else if (depth == 1) --depth;
                                     consume();
                                     continue;
-                                } else if (check(TokenKind::Greater) && paren_depth == 0) {
-                                    if (depth == 0) break;
-                                    --depth;
+                                } else if (check(TokenKind::Greater)) {
+                                    if (paren_depth == 0 && depth == 0) break;
+                                    if (depth > 0) --depth;
                                 } else if (check(TokenKind::Comma) && depth == 0 && paren_depth == 0) break;
                                 consume();
                             }
@@ -4073,18 +4074,19 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                                 else ++depth;
                             } else if (check(TokenKind::RParen)) {
                                 if (paren_depth > 0) --paren_depth;
-                            } else if (check(TokenKind::GreaterGreater) && paren_depth == 0) {
-                                if (depth <= 0) break;
-                                if (depth == 1) {
+                            } else if (check(TokenKind::GreaterGreater)) {
+                                if (paren_depth == 0 && depth <= 0) break;
+                                if (paren_depth == 0 && depth == 1) {
                                     parse_greater_than_in_template_list(false);
                                     break;
                                 }
-                                depth -= 2;
+                                if (depth >= 2) depth -= 2;
+                                else if (depth == 1) --depth;
                                 consume();
                                 continue;
-                            } else if (check(TokenKind::Greater) && paren_depth == 0) {
-                                if (depth == 0) break;
-                                --depth;
+                            } else if (check(TokenKind::Greater)) {
+                                if (paren_depth == 0 && depth == 0) break;
+                                if (depth > 0) --depth;
                             } else if (check(TokenKind::Comma) && depth == 0 && paren_depth == 0) break;
                             consume();
                         }

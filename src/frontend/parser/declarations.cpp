@@ -823,6 +823,48 @@ Node* Parser::parse_top_level() {
                 }
                 template_params.push_back(pname);
                 template_param_nttp.push_back(true);
+                // Check for default NTTP value: = expr
+                if (match(TokenKind::Assign)) {
+                    auto is_expr_cont_q = [&](int p) -> bool {
+                        if (p >= static_cast<int>(tokens_.size())) return false;
+                        auto k = tokens_[p].kind;
+                        return k == TokenKind::ColonColon || k == TokenKind::PipePipe ||
+                               k == TokenKind::AmpAmp || k == TokenKind::Pipe ||
+                               k == TokenKind::Amp || k == TokenKind::Caret ||
+                               k == TokenKind::Plus || k == TokenKind::Minus ||
+                               k == TokenKind::Star || k == TokenKind::Slash ||
+                               k == TokenKind::Percent || k == TokenKind::EqualEqual ||
+                               k == TokenKind::BangEqual || k == TokenKind::LessEqual ||
+                               k == TokenKind::GreaterEqual || k == TokenKind::Question;
+                    };
+                    int depth = 0;
+                    while (!at_end()) {
+                        if (check(TokenKind::Less) || check(TokenKind::LParen)) ++depth;
+                        else if (check(TokenKind::Greater)) {
+                            if (depth == 0) {
+                                if (is_expr_cont_q(pos_ + 1)) { consume(); continue; }
+                                break;
+                            }
+                            --depth;
+                        } else if (check(TokenKind::RParen)) {
+                            if (depth > 0) --depth;
+                        } else if (check(TokenKind::GreaterGreater)) {
+                            if (depth == 0) {
+                                if (is_expr_cont_q(pos_ + 1)) { consume(); continue; }
+                                break;
+                            }
+                            if (depth == 1) {
+                                if (is_expr_cont_q(pos_ + 1)) { depth = 0; consume(); continue; }
+                                parse_greater_than_in_template_list(false);
+                                break;
+                            }
+                            depth -= 2;
+                        } else if (check(TokenKind::Comma) && depth == 0) {
+                            break;
+                        }
+                        consume();
+                    }
+                }
                 template_param_has_default.push_back(false);
                 TypeSpec dummy{};
                 dummy.array_size = -1;
