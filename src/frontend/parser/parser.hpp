@@ -163,10 +163,6 @@ class Parser {
   std::unordered_map<std::string, TypeSpec> struct_typedefs_;
   // Tag of the struct currently being parsed (empty if not in struct body).
   std::string current_struct_tag_;
-  // Active type template parameters for the current templated struct member.
-  // Used so parameter parsing can still recognize names like `A` in
-  // `template<typename A> constexpr int f(A a)` inside struct bodies.
-  std::set<std::string> active_template_member_type_params_;
   // Template-scope stack: tracks active template parameter visibility.
   std::vector<TemplateScopeFrame> template_scope_stack_;
   // Transitional flattened path kept only as a compatibility bridge.
@@ -294,6 +290,9 @@ class Parser {
   void push_template_scope(TemplateScopeKind kind,
                            const std::vector<TemplateScopeParam>& params);
   void pop_template_scope();
+  // Check if a name is a type parameter in any active template scope frame.
+  // Walks the stack from innermost to outermost.
+  bool is_template_scope_type_param(const std::string& name) const;
 
   // Skip a balanced brace group (consuming the closing brace).
   void skip_brace_group();

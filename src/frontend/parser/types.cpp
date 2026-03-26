@@ -1041,6 +1041,16 @@ void Parser::pop_template_scope() {
         template_scope_stack_.pop_back();
 }
 
+bool Parser::is_template_scope_type_param(const std::string& name) const {
+    // Walk from innermost scope to outermost.
+    for (int i = static_cast<int>(template_scope_stack_.size()) - 1; i >= 0; --i) {
+        for (const auto& p : template_scope_stack_[i].params) {
+            if (!p.is_nttp && p.name && name == p.name) return true;
+        }
+    }
+    return false;
+}
+
 bool Parser::parse_template_argument_list(std::vector<TemplateArgParseResult>* out_args,
                                           const Node* primary_tpl) {
     if (!out_args || !check(TokenKind::Less)) return false;
@@ -1063,7 +1073,7 @@ bool Parser::parse_template_argument_list(std::vector<TemplateArgParseResult>* o
             if (is_cpp_mode() && pos_ == saved_pos + 1 &&
                 tokens_[saved_pos].kind == TokenKind::Identifier &&
                 !is_typedef_name(tokens_[saved_pos].lexeme) &&
-                active_template_member_type_params_.count(tokens_[saved_pos].lexeme) == 0) {
+                !is_template_scope_type_param(tokens_[saved_pos].lexeme)) {
                 pos_ = saved_pos;
                 return false;
             }
@@ -1222,7 +1232,7 @@ bool Parser::is_type_start() const {
     if (k == TokenKind::KwStaticAssert) return false;
     if (k == TokenKind::Identifier) {
         if (is_cpp_mode() && cur().lexeme == "typename") return true;
-        if (active_template_member_type_params_.count(cur().lexeme) > 0) return true;
+        if (is_template_scope_type_param(cur().lexeme)) return true;
         if (is_typedef_name(cur().lexeme)) return true;
         if (typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0) return true;
         // C++ fallback: identifier followed by < is likely a template type if
@@ -1888,7 +1898,7 @@ TypeSpec Parser::parse_base_type() {
                     }
                 }
                 if (is_typedef_name(cur().lexeme) ||
-                    active_template_member_type_params_.count(cur().lexeme) > 0 ||
+                    is_template_scope_type_param(cur().lexeme) ||
                     typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0) {
                     // If we've already seen concrete type specifiers/modifiers,
                     // this identifier is the declarator name (e.g. `int s;` even
@@ -2083,7 +2093,7 @@ TypeSpec Parser::parse_base_type() {
                 // We only need to consume the argument list and keep the
                 // dependent name as a placeholder type for later stages.
                 if (is_cpp_mode() && tname &&
-                    active_template_member_type_params_.count(tname) > 0 &&
+                    is_template_scope_type_param(tname) &&
                     check(TokenKind::Less)) {
                     std::vector<TemplateArgParseResult> ignored_args;
                     if (parse_template_argument_list(&ignored_args)) {
@@ -3958,7 +3968,6 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         struct TemplateParamGuard {
             std::set<std::string>& typedefs;
             std::unordered_map<std::string, TypeSpec>& typedef_types;
-            std::set<std::string>& active_type_params;
             std::vector<TemplateScopeFrame>& scope_stack;
             std::vector<std::string> names;
             bool pushed_scope = false;
@@ -3967,10 +3976,9 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 for (auto& n : names) {
                     typedefs.erase(n);
                     typedef_types.erase(n);
-                    active_type_params.erase(n);
                 }
             }
-        } tmpl_guard{typedefs_, typedef_types_, active_template_member_type_params_,
+        } tmpl_guard{typedefs_, typedef_types_,
                      template_scope_stack_, {}};
         auto is_template_member_param_type_start = [&]() -> bool {
             if (is_type_start()) return true;
@@ -4000,7 +4008,6 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                         param_ts.base = TB_TYPEDEF;
                         param_ts.tag = arena_.strdup(pname.c_str());
                         typedef_types_[pname] = param_ts;
-                        active_template_member_type_params_.insert(pname);
                         tmpl_guard.names.push_back(std::move(pname));
                     }
                     // Skip default: = type (with >> splitting and paren tracking)
