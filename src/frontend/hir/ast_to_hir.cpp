@@ -3245,9 +3245,13 @@ class Lowerer {
         if (tpl_override && param_ts.base == TB_TYPEDEF && param_ts.tag) {
           auto it = tpl_override->find(param_ts.tag);
           if (it != tpl_override->end()) {
-            const TypeSpec& concrete = it->second;
-            param_ts.base = concrete.base;
-            param_ts.tag = concrete.tag;
+            const TypeSpec concrete = it->second;
+            const bool outer_lref = param_ts.is_lvalue_ref;
+            const bool outer_rref = param_ts.is_rvalue_ref;
+            param_ts = concrete;
+            param_ts.is_lvalue_ref = concrete.is_lvalue_ref || outer_lref;
+            param_ts.is_rvalue_ref =
+                !param_ts.is_lvalue_ref && (concrete.is_rvalue_ref || outer_rref);
           }
         }
         // Resolve pending template struct types in params.
@@ -3383,8 +3387,13 @@ class Lowerer {
         if (tpl_bindings && param_ts.base == TB_TYPEDEF && param_ts.tag) {
           auto it = tpl_bindings->find(param_ts.tag);
           if (it != tpl_bindings->end()) {
-            param_ts.base = it->second.base;
-            param_ts.tag = it->second.tag;
+            const TypeSpec concrete = it->second;
+            const bool outer_lref = param_ts.is_lvalue_ref;
+            const bool outer_rref = param_ts.is_rvalue_ref;
+            param_ts = concrete;
+            param_ts.is_lvalue_ref = concrete.is_lvalue_ref || outer_lref;
+            param_ts.is_rvalue_ref =
+                !param_ts.is_lvalue_ref && (concrete.is_rvalue_ref || outer_rref);
           }
         }
         // Resolve pending template struct types in params.
@@ -4779,6 +4788,37 @@ class Lowerer {
       return *consteval_expr;
     }
 
+    if (ctx && n->left && n->left->kind == NK_VAR && n->left->name &&
+        n->n_children == 0) {
+      auto sit = module_->struct_defs.find(n->left->name);
+      auto cit = struct_constructors_.find(n->left->name);
+      if (sit != module_->struct_defs.end() &&
+          (cit == struct_constructors_.end() || cit->second.empty())) {
+        TypeSpec tmp_ts{};
+        tmp_ts.base = TB_STRUCT;
+        tmp_ts.tag = sit->second.tag.c_str();
+        tmp_ts.array_size = -1;
+        tmp_ts.inner_rank = -1;
+
+        const LocalId tmp_lid = next_local_id();
+        const std::string tmp_name = "__brace_tmp_" + std::to_string(tmp_lid.value);
+        LocalDecl tmp{};
+        tmp.id = tmp_lid;
+        tmp.name = tmp_name;
+        tmp.type = qtype_from(tmp_ts, ValueCategory::LValue);
+        tmp.storage = StorageClass::Auto;
+        tmp.span = make_span(n);
+        ctx->locals[tmp.name] = tmp.id;
+        ctx->local_types[tmp.id.value] = tmp_ts;
+        append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
+
+        DeclRef tmp_ref{};
+        tmp_ref.name = tmp_name;
+        tmp_ref.local = tmp_lid;
+        return append_expr(n, tmp_ref, tmp_ts, ValueCategory::LValue);
+      }
+    }
+
     // C++ constructor expression parsed as a call, e.g. `T(args...)`.
     // Materialize a temporary object, invoke the selected constructor on it,
     // and use the temporary as the expression result.
@@ -4932,6 +4972,25 @@ class Lowerer {
         if (!resolved)
           resolved = find_struct_method_mangled(tmp_ts.tag, "operator_call", true);
         if (resolved) {
+          ExprId this_obj = tmp_expr;
+          if (module_->expr_pool[tmp_expr.value].type.category != ValueCategory::LValue) {
+            LocalDecl tmp{};
+            tmp.id = next_local_id();
+            std::string tmp_name = "__call_tmp_" + std::to_string(tmp.id.value);
+            tmp.name = tmp_name;
+            tmp.type = qtype_from(tmp_ts, ValueCategory::RValue);
+            const TypeSpec init_ts = module_->expr_pool[tmp_expr.value].type.spec;
+            if (init_ts.base == tmp_ts.base && init_ts.ptr_level == tmp_ts.ptr_level &&
+                init_ts.tag == tmp_ts.tag) {
+              tmp.init = tmp_expr;
+            }
+            append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
+
+            DeclRef tmp_ref{};
+            tmp_ref.name = tmp_name;
+            tmp_ref.local = LocalId{tmp.id.value};
+            this_obj = append_expr(n, tmp_ref, tmp_ts, ValueCategory::LValue);
+          }
           std::string resolved_mangled = *resolved;
           CallExpr oc{};
           DeclRef dr{};
@@ -4950,10 +5009,10 @@ class Lowerer {
           TypeSpec callee_ts = fn_ts;
           callee_ts.ptr_level++;
           oc.callee = append_expr(n, dr, callee_ts);
-          // Pass &tmp as the this pointer.
+          // Pass a stable address for the temporary object as the this pointer.
           UnaryExpr addr{};
           addr.op = UnaryOp::AddrOf;
-          addr.operand = tmp_expr;
+          addr.operand = this_obj;
           TypeSpec ptr_ts = tmp_ts;
           ptr_ts.ptr_level++;
           oc.args.push_back(append_expr(n, addr, ptr_ts));
@@ -5090,7 +5149,20 @@ class Lowerer {
                                     ? &ctx->tpl_bindings : nullptr;
       const NttpBindings* enc_nttp = (ctx && !ctx->nttp_bindings.empty())
                                           ? &ctx->nttp_bindings : nullptr;
-      resolved_callee_name = resolve_template_call_name(n->left, enc, enc_nttp);
+      const Node* tpl_fn = ct_state_->find_template_def(n->left->name);
+      TypeBindings bindings;
+      NttpBindings nttp_bindings;
+      if (auto ded_it = deduced_template_calls_.find(n);
+          ded_it != deduced_template_calls_.end()) {
+        resolved_callee_name = ded_it->second.mangled_name;
+        bindings = ded_it->second.bindings;
+        nttp_bindings = ded_it->second.nttp_bindings;
+      } else {
+        bindings = merge_explicit_and_deduced_type_bindings(n, n->left, tpl_fn, enc);
+        nttp_bindings = build_call_nttp_bindings(n->left, tpl_fn, enc_nttp);
+        resolved_callee_name =
+            mangle_template_name(n->left->name, bindings, nttp_bindings);
+      }
       DeclRef dr{};
       dr.name = resolved_callee_name;
       auto fit = module_->fn_index.find(dr.name);
@@ -5104,14 +5176,12 @@ class Lowerer {
       }
       TemplateCallInfo tci;
       tci.source_template = n->left->name;
-      const Node* tpl_fn = ct_state_->find_template_def(n->left->name);
       if (tpl_fn) {
-        TypeBindings bindings = build_call_bindings(n->left, tpl_fn, enc);
         for (const auto& pname : get_template_param_order(tpl_fn)) {
           auto bit = bindings.find(pname);
           if (bit != bindings.end()) tci.template_args.push_back(bit->second);
         }
-        tci.nttp_args = build_call_nttp_bindings(n->left, tpl_fn, enc_nttp);
+        tci.nttp_args = std::move(nttp_bindings);
       }
       c.template_info = std::move(tci);
     } else if (auto ded_it = deduced_template_calls_.find(n);
@@ -7002,6 +7072,24 @@ class Lowerer {
 
     // First arg: &obj (this pointer).
     ExprId obj_id = lower_expr(ctx, obj_node);
+    if (ctx && module_->expr_pool[obj_id.value].type.category != ValueCategory::LValue) {
+      LocalDecl tmp{};
+      tmp.id = next_local_id();
+      std::string tmp_name = "__op_call_tmp_" + std::to_string(tmp.id.value);
+      tmp.name = tmp_name;
+      tmp.type = qtype_from(obj_ts, ValueCategory::RValue);
+      const TypeSpec init_ts = module_->expr_pool[obj_id.value].type.spec;
+      if (init_ts.base == obj_ts.base && init_ts.ptr_level == obj_ts.ptr_level &&
+          init_ts.tag == obj_ts.tag) {
+        tmp.init = obj_id;
+      }
+      append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(obj_node)});
+
+      DeclRef tmp_ref{};
+      tmp_ref.name = tmp_name;
+      tmp_ref.local = LocalId{tmp.id.value};
+      obj_id = append_expr(obj_node, tmp_ref, obj_ts, ValueCategory::LValue);
+    }
     UnaryExpr addr{};
     addr.op = UnaryOp::AddrOf;
     addr.operand = obj_id;
@@ -8650,10 +8738,34 @@ class Lowerer {
 
       const TypeSpec& param_ts = param->type;
 
-      // Case 1: parameter type IS the template type param directly (e.g., T x).
+      // Case 1: forwarding reference T&& with an lvalue argument deduces T as T&.
       if (param_ts.base == TB_TYPEDEF && param_ts.tag &&
           type_param_names.count(param_ts.tag) &&
-          param_ts.ptr_level == 0 && param_ts.array_rank == 0) {
+          param_ts.ptr_level == 0 && param_ts.array_rank == 0 &&
+          param_ts.is_rvalue_ref) {
+        auto arg_type = try_infer_arg_type_for_deduction(arg, enclosing_fn);
+        if (!arg_type) continue;
+        TypeSpec deduced_ts = *arg_type;
+        if (is_ast_lvalue(arg)) {
+          deduced_ts.is_lvalue_ref = true;
+          deduced_ts.is_rvalue_ref = false;
+        }
+        auto existing = deduced.find(param_ts.tag);
+        if (existing != deduced.end()) {
+          if (existing->second.base != deduced_ts.base ||
+              existing->second.ptr_level != deduced_ts.ptr_level ||
+              existing->second.tag != deduced_ts.tag ||
+              existing->second.is_lvalue_ref != deduced_ts.is_lvalue_ref ||
+              existing->second.is_rvalue_ref != deduced_ts.is_rvalue_ref)
+            return {};
+        } else {
+          deduced[param_ts.tag] = deduced_ts;
+        }
+      }
+      // Case 2: parameter type IS the template type param directly (e.g., T x).
+      else if (param_ts.base == TB_TYPEDEF && param_ts.tag &&
+               type_param_names.count(param_ts.tag) &&
+               param_ts.ptr_level == 0 && param_ts.array_rank == 0) {
         auto arg_type = try_infer_arg_type_for_deduction(arg, enclosing_fn);
         if (!arg_type) continue;
         // Strip array/pointer qualifiers from arg to get the base type for T.
@@ -8669,7 +8781,7 @@ class Lowerer {
           deduced[param_ts.tag] = deduced_ts;
         }
       }
-      // Case 2: parameter type is T* (pointer to template param).
+      // Case 3: parameter type is T* (pointer to template param).
       else if (param_ts.base == TB_TYPEDEF && param_ts.tag &&
                type_param_names.count(param_ts.tag) &&
                param_ts.ptr_level > 0 && param_ts.array_rank == 0) {
@@ -8720,6 +8832,21 @@ class Lowerer {
     }
   }
 
+  TypeBindings merge_explicit_and_deduced_type_bindings(
+      const Node* call_node, const Node* call_var, const Node* fn_def,
+      const TypeBindings* enclosing_bindings = nullptr,
+      const Node* enclosing_fn = nullptr) {
+    TypeBindings bindings = build_call_bindings(call_var, fn_def, enclosing_bindings);
+    if (!call_node || !fn_def) return bindings;
+
+    TypeBindings deduced = try_deduce_template_type_args(call_node, fn_def, enclosing_fn);
+    for (const auto& [name, ts] : deduced) {
+      bindings.emplace(name, ts);
+    }
+    fill_deduced_defaults(bindings, fn_def);
+    return bindings;
+  }
+
   // ── End template argument deduction ────────────────────────────────────
 
   // Check if all bindings are concrete (no unresolved TB_TYPEDEF).
@@ -8764,7 +8891,8 @@ class Lowerer {
     const Node* fn_def = ct_state_->find_template_def(call_var->name);
     if (!fn_def) return call_var->name;
     if (fn_def->is_consteval) return call_var->name;  // consteval handled separately
-    TypeBindings bindings = build_call_bindings(call_var, fn_def, enclosing_bindings);
+    TypeBindings bindings =
+        merge_explicit_and_deduced_type_bindings(nullptr, call_var, fn_def, enclosing_bindings);
     NttpBindings nttp_bindings = build_call_nttp_bindings(call_var, fn_def, enclosing_nttp);
     return mangle_template_name(call_var->name, bindings, nttp_bindings);
   }
@@ -8786,7 +8914,8 @@ class Lowerer {
             if (enc_list) {
               // For each enclosing instantiation, record an inner instantiation.
               for (const auto& enc_inst : *enc_list) {
-                TypeBindings inner = build_call_bindings(n->left, fn_def, &enc_inst.bindings);
+                TypeBindings inner = merge_explicit_and_deduced_type_bindings(
+                    n, n->left, fn_def, &enc_inst.bindings, enclosing_fn);
                 NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def, &enc_inst.nttp_bindings);
                 record_seed(
                     n->left->name, std::move(inner), call_nttp,
@@ -8798,10 +8927,17 @@ class Lowerer {
           {
             NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def);
             if (has_forwarded_nttp(n->left)) goto recurse;  // Deferred: forwarded NTTPs not yet resolved.
-            TypeBindings bindings = build_call_bindings(n->left, fn_def, nullptr);
-            record_seed(
+            TypeBindings bindings =
+                merge_explicit_and_deduced_type_bindings(n, n->left, fn_def, nullptr, enclosing_fn);
+            std::string mangled = record_seed(
                 n->left->name, std::move(bindings), call_nttp,
                 TemplateSeedOrigin::DirectCall);
+            if (fn_def->n_template_params > n->left->n_template_args) {
+              TypeBindings full_bindings =
+                  merge_explicit_and_deduced_type_bindings(n, n->left, fn_def, nullptr, enclosing_fn);
+              deduced_template_calls_[n] =
+                  {mangled, std::move(full_bindings), std::move(call_nttp)};
+            }
           }
         }
       }

@@ -1183,8 +1183,11 @@ Node* Parser::parse_primary() {
                         }
                     }
                     // Brace-init after template: Type<Args>{} or Type<Args>{a, b}
-                    // Skip the init list and return the identifier as a placeholder.
+                    // Preserve empty-brace temporaries as a zero-arg call shape.
                     if (check(TokenKind::LBrace)) {
+                        const bool empty_braces =
+                            pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                            tokens_[pos_ + 1].kind == TokenKind::RBrace;
                         consume(); // {
                         int depth = 1;
                         while (!at_end() && depth > 0) {
@@ -1193,6 +1196,12 @@ Node* Parser::parse_primary() {
                             if (depth > 0) consume();
                         }
                         if (check(TokenKind::RBrace)) consume(); // }
+                        if (empty_braces) {
+                            Node* ctor = make_node(NK_CALL, ln);
+                            ctor->left = ident;
+                            ctor->n_children = 0;
+                            ident = ctor;
+                        }
                     }
                 } else {
                     pos_ = save_pos;
@@ -1200,6 +1209,16 @@ Node* Parser::parse_primary() {
             } else {
                 pos_ = save_pos;
             }
+        }
+        if (is_cpp_mode() && check(TokenKind::LBrace) &&
+            pos_ + 1 < static_cast<int>(tokens_.size()) &&
+            tokens_[pos_ + 1].kind == TokenKind::RBrace) {
+            consume();
+            consume();
+            Node* ctor = make_node(NK_CALL, ln);
+            ctor->left = ident;
+            ctor->n_children = 0;
+            ident = ctor;
         }
         return parse_postfix(ident);
     }

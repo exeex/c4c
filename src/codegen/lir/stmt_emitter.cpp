@@ -1657,7 +1657,18 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const
     // double-evaluating the operand and duplicating side effects (e.g. cnt++).
     if (u.op == UnaryOp::AddrOf) {
       TypeSpec pts{};
-      return emit_lval(ctx, u.operand, pts);
+      try {
+        return emit_lval(ctx, u.operand, pts);
+      } catch (const std::runtime_error&) {
+        TypeSpec obj_ts{};
+        const std::string rval = emit_rval_id(ctx, u.operand, obj_ts);
+        if (obj_ts.base != TB_STRUCT && obj_ts.base != TB_UNION) throw;
+        const std::string slot = fresh_tmp(ctx) + ".addrtmp";
+        ctx.alloca_insts.push_back(
+            lir::LirAllocaOp{slot, llvm_alloca_ty(obj_ts), "", 0});
+        emit_lir_op(ctx, lir::LirStoreOp{llvm_ty(obj_ts), rval, slot});
+        return slot;
+      }
     }
     if (u.op == UnaryOp::PreInc || u.op == UnaryOp::PreDec ||
         u.op == UnaryOp::PostInc || u.op == UnaryOp::PostDec) {

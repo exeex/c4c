@@ -1320,10 +1320,15 @@ class Validator {
             const int check_n = std::min(argc, required);
             for (int i = 0; i < check_n; ++i) {
               ExprInfo arg = infer_expr(n->children[i]);
-              if (sig.params[i].is_lvalue_ref && arg.valid && !arg.is_lvalue) {
+              const bool dependent_ref_param =
+                  sig.params[i].base == TB_TYPEDEF && sig.params[i].tag &&
+                  (sig.params[i].is_lvalue_ref || sig.params[i].is_rvalue_ref);
+              if (!dependent_ref_param &&
+                  sig.params[i].is_lvalue_ref && arg.valid && !arg.is_lvalue) {
                 emit(n->line, "function call argument must be an lvalue for reference parameter");
               }
-              if (sig.params[i].is_rvalue_ref && arg.valid && arg.is_lvalue) {
+              if (!dependent_ref_param &&
+                  sig.params[i].is_rvalue_ref && arg.valid && arg.is_lvalue) {
                 emit(n->line, "rvalue reference parameter cannot bind to an lvalue argument");
               }
               if (arg.valid &&
