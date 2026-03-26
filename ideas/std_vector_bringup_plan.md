@@ -65,6 +65,10 @@ Reduced regression tests added during this slice:
 - `tests/cpp/internal/postive_case/template_template_param_parse.cpp`
 - `tests/cpp/internal/postive_case/template_qualified_nttp_parse.cpp`
 - `tests/cpp/internal/postive_case/template_dependent_enum_sizeof_parse.cpp`
+- `tests/cpp/internal/postive_case/access_labels_parse.cpp`
+- `tests/cpp/internal/postive_case/access_labels_treated_public_runtime.cpp`
+- `tests/cpp/internal/postive_case/friend_access_parse.cpp`
+- `tests/cpp/internal/postive_case/friend_inline_operator_parse.cpp`
 
 These reduced tests are now registered in `ctest` and passing.
 
@@ -250,6 +254,20 @@ Remaining immediate blocker after these fixes:
 
 - reduce the later unmatched-brace / parse-state-loss failure currently exposed
   by `std_vector_simple.cpp`
+
+Additional parser coverage now in place around class-body recovery:
+
+- `public:` / `protected:` / `private:` labels are tolerated as structural
+  markers in class bodies
+- `friend` declarations and inline `friend` operator definitions no longer
+  terminate the enclosing class parse at the function-body `}`
+
+Important limitation:
+
+- this work does **not** implement real C++ access-control semantics yet
+- for now these access labels are only covered as parser/front-end structure;
+  the regular host-clang-backed runtime suite cannot validate a
+  "treat private/protected as public" approximation
 
 
 ## Phase C: Reach A Successful Parse / Lowering Boundary

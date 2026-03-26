@@ -3886,12 +3886,52 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             continue;
         }
 
-        // C++ friend declaration: friend Type; or friend class Type;
+        // C++ friend declaration: friend Type;, friend class Type;, or
+        // inline friend function definitions inside the class body.
         if (is_cpp_mode() && check(TokenKind::Identifier) && cur().lexeme == "friend") {
             consume(); // 'friend'
-            while (!at_end() && !check(TokenKind::Semi) && !check(TokenKind::RBrace))
+            int angle_depth = 0;
+            int paren_depth = 0;
+            while (!at_end()) {
+                if (check(TokenKind::Less) && paren_depth == 0) {
+                    ++angle_depth;
+                    consume();
+                    continue;
+                }
+                if (check_template_close() && paren_depth == 0 && angle_depth > 0) {
+                    --angle_depth;
+                    match_template_close();
+                    continue;
+                }
+                if (check(TokenKind::LParen)) {
+                    ++paren_depth;
+                    consume();
+                    continue;
+                }
+                if (check(TokenKind::RParen) && paren_depth > 0) {
+                    --paren_depth;
+                    consume();
+                    continue;
+                }
+                if (check(TokenKind::LBrace) && angle_depth == 0 && paren_depth == 0) {
+                    skip_brace_group();
+                    break;
+                }
+                if (check(TokenKind::Semi) && angle_depth == 0 && paren_depth == 0) {
+                    consume();
+                    break;
+                }
+                if (check(TokenKind::RBrace) && angle_depth == 0 && paren_depth == 0) {
+                    break;
+                }
                 consume();
-            match(TokenKind::Semi);
+            }
+            if (check(TokenKind::Assign)) {
+                consume();
+                if (check(TokenKind::KwDelete) || check(TokenKind::KwDefault))
+                    consume();
+                match(TokenKind::Semi);
+            }
             continue;
         }
 

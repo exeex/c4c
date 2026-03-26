@@ -68,6 +68,10 @@ set(CPP_POSITIVE_PARSE_STEMS
     eastl_slice7b_template_using_alias_parse
     float_literal_suffixes_parse
     cpp11_attr_template_decl_parse
+    access_labels_parse
+    access_labels_treated_public_runtime
+    friend_access_parse
+    friend_inline_operator_parse
 )
 
 foreach(src IN LISTS INTERNAL_CPP_NEGATIVE_TEST_SRCS)
