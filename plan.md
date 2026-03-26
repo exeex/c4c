@@ -1,538 +1,382 @@
-# Clang-Style Angle Bracket Parse Execution Plan
+# Templated Member Scope Execution Plan
 
 ## Purpose
 
 This document is for an execution-oriented AI agent.
 
 Read it as a runbook.
-Do not redesign the whole parser.
-Do not try to reach full Clang recovery parity in one diff.
-Do not scatter new local `<...>` fixes across unrelated parser code.
+Do not redesign the whole frontend in one pass.
+Do not merge semantic categories just because they share parsing mechanics.
+Do not start in HIR or codegen.
 
 
 ## One-Sentence Goal
 
-Finish the parser refactor from:
+Implement parser-side template-scope tracking so that:
 
-- ad-hoc `<...>` / `>>` handling plus local angle-depth scanning
+- members of class templates inherit enclosing template parameters
+- member function templates see both enclosing and local template parameters
+- out-of-class member definitions keep the correct owner/template association
 
-to:
-
-- parser-owned template-close handling
-- canonical template-argument parsing
-- tentative parsing for `<` ambiguity
-- explicit type-vs-expression template-argument disambiguation
-
-while keeping valid existing C++ template syntax working.
+while still reusing the same declaration/function parsing pipeline.
 
 
-## Current Reality
+## Core Rule
 
-This repo is already partway through the refactor.
+Treat these as different semantic cases:
 
-These pieces already exist:
+1. free function template
+2. member of class template
+3. member function template inside class template
 
-1. parser-owned template-close helper support in
-   [parse.cpp](/workspaces/c4c/src/frontend/parser/parse.cpp)
-2. parser declarations in
-   [parser.hpp](/workspaces/c4c/src/frontend/parser/parser.hpp)
-3. current type parsing and template-id handling in
-   [types.cpp](/workspaces/c4c/src/frontend/parser/types.cpp)
-4. current expression parsing in
-   [expressions.cpp](/workspaces/c4c/src/frontend/parser/expressions.cpp)
-5. current declaration parsing in
-   [declarations.cpp](/workspaces/c4c/src/frontend/parser/declarations.cpp)
-6. reference implementation ideas in
-   [ParseTemplate.cpp](/workspaces/c4c/ref/llvm-project/clang/lib/Parse/ParseTemplate.cpp)
+But do **not** build three independent parsing pipelines.
 
-What is still wrong:
+Instead:
 
-- template argument parsing is not yet owned by one canonical parser path
-- dependent non-type template arguments still regress in some cases
-- `<` as template opener vs operator is still resolved too locally
-- angle-depth scanning still exists as primary behavior in some paths
-- parser recovery and diagnostics still do not have a unified angle-bracket policy
+- keep one declaration/function parsing pipeline
+- drive it with a parser-owned template-scope stack
 
 
-## Files You Will Touch
+## Read First
 
-Primary files:
+Before editing, open these exact files:
 
-1. [types.cpp](/workspaces/c4c/src/frontend/parser/types.cpp)
-- canonicalize template argument parsing here
-- reduce duplicated local `<...>` logic
+1. [ideas/templated_member_scope_plan.md](/workspaces/c4c/ideas/templated_member_scope_plan.md)
+2. [src/frontend/parser/parser.hpp](/workspaces/c4c/src/frontend/parser/parser.hpp)
+3. [src/frontend/parser/types.cpp](/workspaces/c4c/src/frontend/parser/types.cpp)
+4. [src/frontend/parser/declarations.cpp](/workspaces/c4c/src/frontend/parser/declarations.cpp)
 
-2. [expressions.cpp](/workspaces/c4c/src/frontend/parser/expressions.cpp)
-- add tentative parse entry points where `<` is ambiguous
-- keep expression semantics here, not in low-level token scanning
+Do not begin in:
 
-3. [parse.cpp](/workspaces/c4c/src/frontend/parser/parse.cpp)
-- keep parser-owned `>` / `>>` splitting policy here
-- extend only when a shared parser primitive is needed
-
-4. [parser.hpp](/workspaces/c4c/src/frontend/parser/parser.hpp)
-- declare parser helpers and small result structs
-- do not turn this into a dumping ground for ad-hoc state
-
-5. [declarations.cpp](/workspaces/c4c/src/frontend/parser/declarations.cpp)
-- only touch if a declaration-side template parse call path still bypasses the
-  canonical helper
-
-Do not start in:
-
-- lexer files
-- AST/HIR lowering files
+- HIR files
 - codegen files
-- unrelated C or non-template parser features
+- lexer files
+- unrelated C parser paths
 
 
-## Current Entry Points
+## Current Acceptance Targets
 
-Before editing, read these exact points:
+Keep these tests in mind throughout the work:
 
-1. parser-owned template-close policy:
-- [parse.cpp](/workspaces/c4c/src/frontend/parser/parse.cpp)
-
-2. parser declarations:
-- [parser.hpp](/workspaces/c4c/src/frontend/parser/parser.hpp)
-
-3. current template type parsing:
-- [types.cpp](/workspaces/c4c/src/frontend/parser/types.cpp)
-
-4. current expression primary parsing:
-- [expressions.cpp](/workspaces/c4c/src/frontend/parser/expressions.cpp)
-
-5. current declaration parsing:
-- [declarations.cpp](/workspaces/c4c/src/frontend/parser/declarations.cpp)
-
-6. Clang reference for target behavior:
-- [ParseTemplate.cpp](/workspaces/c4c/ref/llvm-project/clang/lib/Parse/ParseTemplate.cpp)
+- [templated_member_nested_scope_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/templated_member_nested_scope_parse.cpp)
+- [template_member_type_direct_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/template_member_type_direct_parse.cpp)
+- [template_member_type_inherited_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/template_member_type_inherited_parse.cpp)
+- [template_alias_nttp_expr_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/template_alias_nttp_expr_parse.cpp)
+- [template_alias_nttp_expr_inherited_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/template_alias_nttp_expr_inherited_parse.cpp)
+- [member_template_decltype_default_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/member_template_decltype_default_parse.cpp)
+- [member_template_decltype_overload_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/member_template_decltype_overload_parse.cpp)
+- [eastl_slice7d_qualified_declarator_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/eastl_slice7d_qualified_declarator_parse.cpp)
 
 
-## Reference Mapping
+## Non-Goals
 
-Primary reference:
+Do not do these as part of this run:
 
-- [ParseTemplate.cpp](/workspaces/c4c/ref/llvm-project/clang/lib/Parse/ParseTemplate.cpp)
-
-Supporting definitions:
-
-- [Parser.h](/workspaces/c4c/ref/llvm-project/clang/include/clang/Parse/Parser.h)
-
-Treat these Clang entry points as structural guides, not copy-paste targets:
-
-1. `ParseGreaterThanInTemplateList(...)`
-- ownership target for parser-side `>` / `>>` / `>=` splitting
-- this maps to our shared template-close helper work in
-  [parse.cpp](/workspaces/c4c/src/frontend/parser/parse.cpp)
-
-2. `ParseTemplateArgument()`
-- ownership target for parsing exactly one template argument with explicit
-  type-vs-template-vs-expression ordering
-- this maps to our canonical single-argument template parse logic, primarily in
-  [types.cpp](/workspaces/c4c/src/frontend/parser/types.cpp)
-
-3. `ParseTemplateArgumentList(...)`
-- ownership target for parsing the whole `<...>` list through one canonical path
-- this maps to our shared template-argument-list entry point and all callers
-  that currently inline their own loops
-
-4. `checkPotentialAngleBracket(...)`
-- ownership target for detecting "this expression may actually have been meant
-  as a template-id" and for recovery-oriented handling of angle brackets
-- this maps to our later-stage tentative parsing and recovery tracking work,
-  primarily in expression parsing
-
-5. `checkPotentialAngleBracketDelimiter(...)`
-- ownership target for validating whether a later token still fits the
-  "potential template-id" interpretation
-- this maps to our late-stage angle-bracket tracker / delimiter checks, not to
-  the first canonical parsing slice
-
-Use this mapping while planning each diff:
-
-- if you are changing template-close consumption, think
-  `ParseGreaterThanInTemplateList(...)`
-- if you are changing single-argument classification, think
-  `ParseTemplateArgument()`
-- if you are changing shared `<...>` parsing, think
-  `ParseTemplateArgumentList(...)`
-- if you are changing ambiguous `<` recovery or suspicious delimiter handling,
-  think `checkPotentialAngleBracket(...)` and
-  `checkPotentialAngleBracketDelimiter(...)`
+- redesign HIR ownership model first
+- flatten class-template members into explicit function templates
+- rewrite all template parsing logic at once
+- refactor unrelated angle-bracket handling unless directly needed
 
 
-## What “Done” Means
+## Working Model
 
-This track is complete when all of these are true:
+You are building toward this parser model:
 
-1. parser-owned helper is the only place that splits `>`-prefixed tokens for
-   template closing
-2. template argument parsing goes through one canonical parser path
-3. `<` as template opener vs operator is decided by parser context and
-   tentative parsing, not mostly by token scans
-4. template argument disambiguation follows:
-   - type-id first
-   - template-template argument second
-   - non-type expression last
-5. focused regression cases for nested templates and dependent NTTPs stay green
+- parser remembers active template scopes in a stack
+- each scope frame records:
+  - names
+  - type-vs-NTTP kind
+  - source kind:
+    - enclosing_class
+    - member_template
+    - free_function_template
+- lookup in declarations/types consults the stack before ad hoc fallback tables
 
+You are building toward this HIR handoff:
 
-## Rules For The Agent
-
-Follow these rules while implementing:
-
-1. Make one parser ownership change per diff.
-2. Preserve valid parsing behavior before generalizing recovery.
-3. If a decision is about token spelling or `>` remainder splitting, keep it in
-   parser core helpers.
-4. If a decision is about whether something is a type, template, or
-   expression, keep it in the parsing layer that owns that ambiguity.
-5. Do not add more angle-depth scanning as a new primary mechanism.
-6. Only add recovery-oriented tracking after the canonical parse path is stable.
+- parser preserves ownership/source of template scope
+- later stages may normalize function handling
+- ownership differences survive as metadata, not parser confusion
 
 
-## Current Problem To Solve
+## Execution Rules
 
-The real problem is not “we need one more local fix for `>>`”.
+Follow these rules exactly:
 
-The real problem is:
-
-- template-id parsing does not have one canonical parser path
-- type-vs-expression template argument handling is inconsistent
-- parser ownership for `<` / `>` ambiguity is still incomplete
-- local token scans are still doing work that should belong to real parsing
-
-Your job is to finish the ownership split inside the parser, not to patch one
-specific EASTL example in isolation.
+1. One edit slice should target one parser ownership improvement.
+2. Always add or keep a reduced regression test before generalizing.
+3. If a step needs a new helper, add the smallest helper that supports the next test.
+4. Do not remove old ad hoc behavior until the new path demonstrably covers it.
+5. After each step, run only the smallest relevant test set first.
+6. Only after the reduced tests pass, probe `eastl_slice7d` and then `std_vector_simple`.
 
 
-## Implementation Order
-
-Do the work in this order.
-Do not skip ahead.
-
-
-## Step 1. Audit Remaining Angle-Bracket Ownership Gaps
+## Step 1. Freeze the Current Regression Surface
 
 Goal:
 
-- identify exactly where parser code still bypasses the canonical close policy
-  or uses local angle-depth scanning as primary behavior
+- know exactly which tests are the current guardrails for this work
 
 Do this:
 
-1. open
-   [parse.cpp](/workspaces/c4c/src/frontend/parser/parse.cpp)
-2. open
-   [types.cpp](/workspaces/c4c/src/frontend/parser/types.cpp)
-3. open
-   [expressions.cpp](/workspaces/c4c/src/frontend/parser/expressions.cpp)
-4. list every remaining use of:
-   - angle-depth scanning loops
-   - manual `>` / `>>` / `>=` handling
-   - inline template-argument parsing outside the canonical path
-   - local heuristics for type-vs-expression template args
-5. group each dependency into one of:
-   - close-policy ownership gap
-   - canonical template-argument parser gap
-   - tentative parsing gap
-   - recovery-only logic that is acceptable for now
-6. for each gap, map it to the intended Clang structural reference:
-   - `ParseGreaterThanInTemplateList(...)`
-   - `ParseTemplateArgument()`
-   - `ParseTemplateArgumentList(...)`
-   - `checkPotentialAngleBracket(...)`
-   - `checkPotentialAngleBracketDelimiter(...)`
+1. open [tests/cpp/internal/InternalTests.cmake](/workspaces/c4c/tests/cpp/internal/InternalTests.cmake)
+2. verify every test listed in “Current Acceptance Targets” is registered
+3. if any listed test is missing from the parse-only set, add it
+4. do not change parser code in this step
 
 Completion check:
 
-- you can point to the exact remaining ownership gaps that keep this refactor
-  incomplete
-- you can say which Clang structure each remaining gap is supposed to match
+- every listed reduced regression exists and is registered
 
 
-## Step 2. Finish Parser-Owned Template Close Handling
+## Step 2. Add an Explicit Template-Scope Stack Type
 
 Goal:
 
-- every legitimate template-list close path should use one parser-owned helper
-
-Clang structure to follow:
-
-- `ParseGreaterThanInTemplateList(...)`
+- stop representing active template visibility only through scattered sets/maps
 
 Do this:
 
-1. choose one remaining caller that still handles template close locally
-2. route it through the canonical parser helper in
-   [parse.cpp](/workspaces/c4c/src/frontend/parser/parse.cpp)
-3. keep token remainder behavior correct for:
-   - `>`
-   - `>>`
-   - `>>>`
-   - `>=`
-   - `>>=`
-4. keep behavior the same except for removing duplicated local logic
+1. edit [parser.hpp](/workspaces/c4c/src/frontend/parser/parser.hpp)
+2. add a small parser-owned template-scope frame type
+3. add a stack field to `Parser`
+4. keep the frame minimal:
+   - parameter name
+   - is_nttp
+   - scope kind
+5. do not wire in behavior yet
 
-Do not do in one diff:
+Do not do this:
 
-- all remaining callers at once
-- diagnostics overhaul
-- type-vs-expression redesign
+- do not rewrite all old lookup structures in the same diff
+- do not remove existing `active_template_member_type_params_` yet
 
 Completion check:
 
-- no touched caller splits `>`-prefixed tokens itself anymore
-- the touched behavior is converging on a single
-  `ParseGreaterThanInTemplateList(...)`-style ownership point
+- parser can compile with an explicit template-scope stack type present
 
 
-## Step 3. Build One Canonical Template Argument Parser Path
+## Step 3. Add Push/Pop Helpers For Template Scope
 
 Goal:
 
-- stop parsing template arguments through multiple partially-overlapping paths
-
-Clang structures to follow:
-
-- `ParseTemplateArgumentList(...)`
-- `ParseTemplateArgument()`
-
-Read first:
-
-- [types.cpp](/workspaces/c4c/src/frontend/parser/types.cpp)
-- [parser.hpp](/workspaces/c4c/src/frontend/parser/parser.hpp)
+- make scope ownership transitions explicit and localized
 
 Do this:
 
-1. identify the canonical entry point for template argument parsing
-2. move one real caller from inline parsing to that canonical entry point
-3. make the list parser own comma/close sequencing the way
-   `ParseTemplateArgumentList(...)` does
-4. make the single-argument parser own one-argument classification the way
-   `ParseTemplateArgument()` does
-5. make the shared result structure carry what downstream code actually needs
-6. keep nested template-id parsing going through the same path
-7. preserve valid cases before broadening unsupported NTTP expressions
-
-Prioritize these before cosmetic cleanup:
-
-- nested type template arguments
-- dependent `Trait<T>::value`-style NTTPs
-- alias-template reconstruction callers
-- expression-side template-id parsing currently duplicating logic
+1. edit [parser.hpp](/workspaces/c4c/src/frontend/parser/parser.hpp)
+2. add small helpers for:
+   - push enclosing-class template scope
+   - push member-template scope
+   - push free-function-template scope
+   - pop scope frame(s)
+3. implement them in the parser source file that best matches existing parser state helpers
+4. keep helper behavior mechanical; no new parsing logic in this step
 
 Completion check:
 
-- the touched caller no longer implements its own template-argument mini-parser
-- the touched path now has a clear split between
-  `ParseTemplateArgumentList(...)`-style list ownership and
-  `ParseTemplateArgument()`-style per-argument ownership
+- there is one obvious API for scope enter/exit
 
 
-## Step 4. Normalize Template Argument Disambiguation Order
+## Step 4. Enter Enclosing-Class Scope When Parsing Templated Struct Bodies
 
 Goal:
 
-- parse template arguments by parser rules, not scattered guesses
-
-Clang structure to follow:
-
-- `ParseTemplateArgument()`
+- members inside class templates should inherit outer template params
 
 Do this:
 
-1. make one canonical template-argument parse path follow this order:
-   - try type-id
-   - try template-template argument
-   - parse non-type expression
-2. only fall back to raw capture or token skipping for recovery
-3. ensure dependent names such as `Trait<T>::value` can survive as NTTP input
-4. keep bool / literal / `sizeof...(Pack)` handling working
-
-Do not do in one diff:
-
-- all deferred consteval forwarding repairs
-- unrelated declaration parsing cleanup
+1. edit [declarations.cpp](/workspaces/c4c/src/frontend/parser/declarations.cpp)
+2. find where templated struct/class declarations hand off into struct-body parsing
+3. push an `enclosing_class` template scope before entering the body
+4. pop it immediately after leaving the body
+5. keep the old ad hoc typedef injection paths alive for now
 
 Completion check:
 
-- the touched code path no longer decides type-vs-expr mostly by peeking a few
-  tokens and guessing
-- the touched code path now reads like a local analogue of
-  `ParseTemplateArgument()`
+- parser state now clearly distinguishes “inside templated class body” from ordinary struct body
 
 
-## Step 5. Add Tentative Parsing Around Potential Template-Id Starts
+## Step 5. Enter Member-Template Scope For Templated Members
 
 Goal:
 
-- decide `<` as template opener vs operator by tentative parsing when context is
-  ambiguous
-
-Clang structures to follow:
-
-- `checkPotentialAngleBracket(...)`
-- later, when needed, `checkPotentialAngleBracketDelimiter(...)`
+- member templates inside class templates should see both outer and inner scopes
 
 Do this:
 
-1. identify one ambiguous parse site, usually in expression parsing
-2. add a reusable tentative parse wrapper there
-3. if template-id parsing succeeds and closes legally, commit
-4. otherwise revert and continue as expression/operator parsing
-5. keep this mechanism reusable rather than EASTL-specific
-
-Good candidates:
-
-- expression primary parsing
-- qualified-id parsing
-- dependent-name parsing
-
-Do not do in one diff:
-
-- every ambiguous site at once
-- angle-bracket diagnostics tracker
-- full malformed-template recovery policy
+1. edit [types.cpp](/workspaces/c4c/src/frontend/parser/types.cpp)
+2. find the struct-body path that parses `template <...>` member declarations
+3. when the member template parameter list is parsed, push a `member_template` scope
+4. pop it immediately after the member declaration has been parsed
+5. preserve current behavior for existing injected typedef names until tests prove they are redundant
 
 Completion check:
 
-- the touched ambiguous site no longer relies primarily on angle-depth scanning
-  to decide whether `<` was a template opener
-- the touched site now has an explicit "potential template-id" path in the same
-  spirit as `checkPotentialAngleBracket(...)`
+- there is a nested-scope path where outer class-template params and inner member-template params coexist
 
 
-## Step 6. Add Recovery/Diagnostics Tracking Only After Core Parsing Is Stable
+## Step 6. Teach Type Lookup To Consult The Scope Stack
 
 Goal:
 
-- improve malformed-template recovery only after valid-template parsing is owned
-  by the canonical path
-
-Clang structures to follow:
-
-- `checkPotentialAngleBracket(...)`
-- `checkPotentialAngleBracketDelimiter(...)`
+- make `T`, `Allocator`, `U`, `N` visible because they are in active template scope, not because of scattered special cases
 
 Do this:
 
-1. add an angle-bracket tracking helper only if the core parser path is already
-   stable
-2. use it to improve:
-   - diagnostics
-   - recovery after malformed template syntax
-   - suspicious `foo<bar, baz>(x)`-style cases
-3. keep it as recovery support, not as the main parser mechanism
+1. edit [types.cpp](/workspaces/c4c/src/frontend/parser/types.cpp)
+2. update the lookup helpers used by:
+   - `is_type_start()`
+   - `parse_base_type()`
+3. make them consult active template-scope frames in this order:
+   - innermost member-template scope
+   - enclosing class-template scope
+   - older template scopes if still active
+4. keep existing typedef/member-typedef lookup after that
+
+Do not do this:
+
+- do not delete old fallback logic in the same step unless the reduced tests already prove it is dead
 
 Completion check:
 
-- recovery support improves diagnostics without becoming a replacement for real
-  parsing
-- delimiter checks and suspicious-angle tracking are clearly secondary helpers,
-  analogous to `checkPotentialAngleBracket(...)` /
-  `checkPotentialAngleBracketDelimiter(...)`, not the main parser path
+- `templated_member_nested_scope_parse` still passes with the new lookup order
 
 
-## How To Decide Whether Logic Belongs In Parser Core Or In A Specific Parse Path
+## Step 7. Unify Existing Member-Template Ad Hoc State With The Stack
 
-Use this rule:
+Goal:
 
-1. If it answers “how should `>` / `>>` / `>=` be consumed in template
-   context?”:
-- parser core helper
+- reduce duplicated “active template param” mechanisms
 
-2. If it answers “is this a type, template, or expression argument?”:
-- template argument parser
+Do this:
 
-3. If it answers “is `<` opening a template-id or acting as an operator here?”:
-- tentative parsing in the owning parse path
+1. inspect current use of:
+   - `active_template_member_type_params_`
+   - injected typedefs for template params
+2. move one piece of logic at a time onto the template-scope stack
+3. after each move, rerun only the reduced tests that cover that behavior
+4. keep compatibility bridges if a full deletion would be risky
 
-4. If it exists only to skip tokens after a failure:
-- recovery logic, and it should not become the main path
+Completion check:
 
-
-## Special Cases To Migrate Late
-
-Leave these for later slices unless they are your explicit target:
-
-- malformed template diagnostics
-- full Clang-style recovery parity
-- exotic operator interactions such as `operator<=>` ambiguity
-- every deferred consteval NTTP forwarding corner at once
-
-These are high-risk because they can hide ownership mistakes behind recovery.
+- the stack is a real source of truth, not dead metadata
 
 
-## Minimum Validation Strategy
+## Step 8. Handle Out-of-Class Member Definitions With Owner-Aware Scope
 
-After each meaningful diff:
+Goal:
 
-1. build the parser target or the main project build that covers parser changes
-2. run focused parser/regression tests covering:
-   - nested templates
-   - dependent NTTPs
-   - qualified `::type` / `::value`
-   - template-vs-expression ambiguity
-3. if a regression appears, classify it as:
-   - real parser ownership bug
-   - missing supported NTTP expression form
-   - recovery-only limitation
+- `template <typename T> void S<T>::f(...)` should bind as a templated-class member definition, not as an unrelated free function template
 
-Suggested focus corpus:
+Do this:
 
-- `A<B<C>>`
-- `A<B<C<D>>>`
-- `integral_constant<bool, Trait<T>::value>`
-- `template <typename T, bool = is_arithmetic<T>::value>`
-- `enable_if_t<(N > 0), int>`
-- `ns::X<Y>::type`
-- `ns::template X<Y>::type`
-- `foo<bar, baz>(x)`
+1. edit [declarations.cpp](/workspaces/c4c/src/frontend/parser/declarations.cpp)
+2. find qualified member definition parsing paths
+3. when the owner is a templated class, make the parser re-enter the owner’s template scope before parsing the member signature/body
+4. keep ownership metadata intact; do not relabel these as explicit function templates
+
+Completion check:
+
+- out-of-class member definitions can resolve owner-provided template params and member typedefs correctly
 
 
-## Good First Diff
+## Step 9. Lock The Composite Nested-Scope Case
 
-A good first diff does exactly this:
+Goal:
 
-1. audits one real remaining template-close ownership gap
-2. moves that caller onto the parser-owned close helper
-3. preserves behavior on valid nested template syntax
-4. leaves broader tentative parsing work alone
+- ensure the mixed outer/inner template scope case is permanently guarded
 
+Do this:
 
-## Good Second Diff
+1. run [templated_member_nested_scope_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/templated_member_nested_scope_parse.cpp)
+2. if it fails, fix scope-stack ownership before touching any broader EASTL/STL case
+3. if it passes, treat it as a hard guardrail from this point onward
 
-A good second diff does exactly this:
+Completion check:
 
-1. replaces one inline template-argument parser with the canonical shared path
-2. keeps nested template arguments working
-3. proves focused regression cases still parse correctly
-
-
-## Abort Conditions
-
-Stop and reassess if either of these happens:
-
-1. you need lexer redesign just to continue
-2. you are adding more local angle-depth scanning to fix regressions caused by
-   missing parser ownership
-
-If that happens:
-
-- make the smallest safe extraction
-- update this plan
-- do not silently expand the project scope
+- the parser can distinguish:
+  - outer `T`
+  - inner `U`
+  - owner `S<T>`
 
 
-## Short Version
+## Step 10. Revalidate The Existing Template Bring-Up Reductions
 
-If you only remember one sequence, remember this:
+Goal:
 
-1. audit remaining local angle handling
-2. finish parser-owned template close consumption
-3. move callers onto one canonical template-argument parser
-4. normalize type-vs-expression disambiguation
-5. use tentative parsing for `<` ambiguity
-6. add recovery tracking only after valid parsing is stable
+- make sure the new scope model did not regress earlier template work
+
+Do this:
+
+1. run the reduced tests listed in “Current Acceptance Targets”
+2. do not run the full suite first
+3. if a regression appears, reduce it before continuing
+
+Completion check:
+
+- all reduced parser regressions listed in this document stay green
+
+
+## Step 11. Reprobe The EASTL Qualified Declarator Failure
+
+Goal:
+
+- verify whether the scope model resolves or narrows the remaining `eastl_slice7d` failure
+
+Do this:
+
+1. run [eastl_slice7d_qualified_declarator_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/eastl_slice7d_qualified_declarator_parse.cpp)
+2. if it still fails, reduce the first remaining failing sub-pattern
+3. only then patch the next isolated declarator/parser ownership gap
+
+Completion check:
+
+- either `eastl_slice7d` passes, or you can name the exact next reduced blocker
+
+
+## Step 12. Reprobe `std_vector_simple`
+
+Goal:
+
+- measure whether this work moved the real libstdc++ frontier
+
+Do this:
+
+1. run [std_vector_simple.cpp](/workspaces/c4c/tests/cpp/std/std_vector_simple.cpp) with `--parse-only`
+2. if it still fails, rerun the prefix-localization workflow to find the first real blocker
+3. document the new frontier before starting another parser slice
+
+Completion check:
+
+- you know whether the frontier moved and what the next concrete blocker is
+
+
+## What “Done” Means For This Plan
+
+This execution plan is complete when all of the following are true:
+
+1. parser has an explicit template-scope stack
+2. templated struct/class bodies push inherited enclosing-class template scope
+3. member templates push nested template scope on top of inherited class scope
+4. type/declarator lookup consults the scope stack in the intended order
+5. out-of-class member definitions preserve owner/template association
+6. all reduced tests listed in this plan stay green
+7. `eastl_slice7d` is either fixed or reduced to one smaller remaining blocker
+8. the `std_vector_simple` frontier is re-measured after the scope work lands
+
+
+## If You Get Stuck
+
+Do this:
+
+1. stop broad refactoring
+2. write one smaller reduced regression test
+3. make one ownership change
+4. rerun only the nearest relevant tests
+
+Do not do this:
+
+- do not compensate with more unrelated heuristics
+- do not patch HIR to hide parser ownership mistakes
+- do not widen scope of the slice until the current reduced case is understood

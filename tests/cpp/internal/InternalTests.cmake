@@ -44,6 +44,13 @@ set(CPP_POSITIVE_PARSE_STEMS
     template_variadic_nested_parse
     template_variadic_qualified_parse
     template_template_param_parse
+    template_member_type_direct_parse
+    template_member_type_inherited_parse
+    template_alias_nttp_expr_parse
+    template_alias_nttp_expr_inherited_parse
+    member_template_decltype_default_parse
+    member_template_decltype_overload_parse
+    templated_member_nested_scope_parse
     namespace_basic_parse
     namespace_nested_parse
     namespace_three_level_parse

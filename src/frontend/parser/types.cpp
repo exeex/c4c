@@ -921,6 +921,19 @@ static std::string capture_template_arg_expr_text(
 }
 
 static int find_template_arg_expr_end(const std::vector<Token>& tokens, int start_pos) {
+    auto can_open_nested_template = [&](int idx) -> bool {
+        if (idx <= start_pos || idx >= static_cast<int>(tokens.size())) return false;
+        const TokenKind prev = tokens[idx - 1].kind;
+        switch (prev) {
+            case TokenKind::Identifier:
+            case TokenKind::ColonColon:
+            case TokenKind::Greater:
+            case TokenKind::GreaterGreater:
+                return true;
+            default:
+                return false;
+        }
+    };
     int scan_pos = start_pos;
     int angle_depth = 0;
     int paren_depth = 0;
@@ -948,7 +961,7 @@ static int find_template_arg_expr_end(const std::vector<Token>& tokens, int star
                 if (angle_depth == 0) break;
                 angle_depth -= std::min(angle_depth,
                                         tk == TokenKind::GreaterGreater ? 2 : 1);
-            } else if (tk == TokenKind::Less) {
+            } else if (tk == TokenKind::Less && can_open_nested_template(scan_pos)) {
                 ++angle_depth;
             }
         }
@@ -1121,6 +1134,31 @@ bool Parser::parse_template_argument_list(std::vector<TemplateArgParseResult>* o
             pos_ = saved_pos;
         } else if (expr_start != pos_) {
             pos_ = expr_start;
+        }
+
+        // Prefer a real expression parse before falling back to token capture.
+        // This lets `<` participate as an operator inside expressions such as
+        // `T(-1) < T(0)` instead of being mistaken for a nested template open.
+        {
+            const int saved_pos = pos_;
+            try {
+                Node* expr = parse_assign_expr();
+                (void)expr;
+                if (pos_ > expr_start &&
+                    (check(TokenKind::Comma) || check_template_close())) {
+                    const std::string expr_text =
+                        capture_template_arg_expr_text(tokens_, expr_start, pos_);
+                    if (!expr_text.empty()) {
+                        out_arg->is_value = true;
+                        out_arg->value = 0;
+                        out_arg->nttp_name =
+                            arena_.strdup((std::string("$expr:") + expr_text).c_str());
+                        return true;
+                    }
+                }
+            } catch (...) {
+            }
+            pos_ = saved_pos;
         }
 
         const int expr_end = find_template_arg_expr_end(tokens_, expr_start);
@@ -1965,119 +2003,68 @@ TypeSpec Parser::parse_base_type() {
                         ati_it->second.aliased_type.tpl_struct_origin) {
                         const AliasTemplateInfo& ati = ati_it->second;
                         const int save_pos_alias = pos_;
-                        consume();  // <
-                        // Parse template args for the alias template.
-                        std::unordered_map<std::string, std::string> subst;
-                        int ai = 0;
-                        bool alias_parse_ok = true;
-                        while (!at_end() && !check_template_close() &&
-                               ai < static_cast<int>(ati.param_names.size())) {
-                            if (ati.param_is_nttp[ai]) {
-                                // NTTP arg — try simple literals/names, else capture as $expr
-                                long long sign = 1;
-                                const int expr_start = pos_;
-                                if (match(TokenKind::Minus)) sign = -1;
-                                if (check(TokenKind::KwTrue)) {
-                                    subst[ati.param_names[ai]] = "1";
-                                    consume();
-                                } else if (check(TokenKind::KwFalse)) {
-                                    subst[ati.param_names[ai]] = "0";
-                                    consume();
-                                } else if (check(TokenKind::IntLit)) {
-                                    long long v = parse_int_lexeme(cur().lexeme.c_str()) * sign;
-                                    subst[ati.param_names[ai]] = std::to_string(v);
-                                    consume();
-                                } else if (check(TokenKind::Identifier) && !is_type_start()) {
-                                    // Named NTTP ref (e.g. forwarded param name)
-                                    subst[ati.param_names[ai]] = cur().lexeme;
-                                    consume();
-                                } else {
-                                    // Complex expression — capture as $expr:...
-                                    int scan = expr_start;
-                                    int ad = 0, pd = 0, bd = 0, cd = 0;
-                                    while (scan < static_cast<int>(tokens_.size())) {
-                                        const TokenKind tk = tokens_[scan].kind;
-                                        if (tk == TokenKind::LParen) ++pd;
-                                        else if (tk == TokenKind::RParen) { if (pd > 0) --pd; }
-                                        else if (tk == TokenKind::LBracket) ++bd;
-                                        else if (tk == TokenKind::RBracket) { if (bd > 0) --bd; }
-                                        else if (tk == TokenKind::LBrace) ++cd;
-                                        else if (tk == TokenKind::RBrace) { if (cd > 0) --cd; }
-                                        else if (tk == TokenKind::Less && pd == 0 && bd == 0 && cd == 0) ++ad;
-                                        else if ((tk == TokenKind::Greater || tk == TokenKind::GreaterGreater)
-                                                 && pd == 0 && bd == 0 && cd == 0) {
-                                            if (ad > 0) ad -= std::min(ad, tk == TokenKind::GreaterGreater ? 2 : 1);
-                                            else break;
-                                        } else if ((tk == TokenKind::Comma || tk == TokenKind::Greater ||
-                                                    tk == TokenKind::GreaterGreater) &&
-                                                   ad == 0 && pd == 0 && bd == 0 && cd == 0)
-                                            break;
-                                        ++scan;
-                                    }
-                                    std::string expr_text =
-                                        capture_template_arg_expr_text(tokens_, expr_start, scan);
-                                    if (!expr_text.empty()) {
-                                        subst[ati.param_names[ai]] = "$expr:" + expr_text;
-                                    } else {
-                                        subst[ati.param_names[ai]] = "0";
-                                    }
-                                    pos_ = scan;
-                                }
-                            } else {
-                                // Type arg — capture as mangled suffix
-                                TypeSpec arg_ts = parse_base_type();
-                                while (check(TokenKind::Star)) { consume(); arg_ts.ptr_level++; }
-                                if (is_cpp_mode() && check(TokenKind::AmpAmp)) { consume(); arg_ts.is_rvalue_ref = true; }
-                                else if (is_cpp_mode() && check(TokenKind::Amp)) { consume(); arg_ts.is_lvalue_ref = true; }
-                                if (is_cpp_mode() && check(TokenKind::Ellipsis)) consume();
-                                std::string mangled;
-                                if (arg_ts.tag) mangled = arg_ts.tag;
-                                else append_type_mangled_suffix(mangled, arg_ts);
-                                subst[ati.param_names[ai]] = mangled;
-                            }
-                            ++ai;
-                            if (!match(TokenKind::Comma)) break;
-                        }
-                        // If more args remain than alias params (e.g. variadic),
-                        // fall back to regular template struct instantiation.
-                        if (!check_template_close()) {
+                        std::vector<TemplateArgParseResult> alias_args;
+                        if (!parse_template_argument_list(&alias_args) ||
+                            alias_args.size() != ati.param_names.size()) {
                             pos_ = save_pos_alias;
                         } else {
-                            match_template_close();
-                            // Substitute alias params in the aliased type's arg_refs.
-                            ts = ati.aliased_type;
-                            if (ts.tpl_struct_arg_refs) {
-                                std::string old_refs = ts.tpl_struct_arg_refs;
-                                std::string new_refs;
-                                std::istringstream ss(old_refs);
-                                std::string part;
-                                bool first = true;
-                                while (std::getline(ss, part, ',')) {
-                                    if (!first) new_refs += ",";
-                                    first = false;
-                                    auto s_it = subst.find(part);
-                                    if (s_it != subst.end())
-                                        new_refs += s_it->second;
-                                    else
-                                        new_refs += part;
+                            std::unordered_map<std::string, std::string> subst;
+                            bool alias_parse_ok = true;
+                            for (size_t ai = 0; ai < alias_args.size(); ++ai) {
+                                if (ati.param_is_nttp[ai] != alias_args[ai].is_value) {
+                                    alias_parse_ok = false;
+                                    break;
                                 }
-                                ts.tpl_struct_arg_refs = arena_.strdup(new_refs.c_str());
-                                // Update tag (mangled name) to reflect substituted args.
-                                if (ts.tpl_struct_origin) {
-                                    std::string new_tag = ts.tpl_struct_origin;
-                                    // Re-parse substituted arg_refs to build mangled name.
-                                    std::istringstream ss2(new_refs);
-                                    std::string p2;
-                                    while (std::getline(ss2, p2, ',')) {
-                                        new_tag += "_";
-                                        new_tag += p2;
+                                if (alias_args[ai].is_value) {
+                                    if (alias_args[ai].nttp_name && alias_args[ai].nttp_name[0]) {
+                                        subst[ati.param_names[ai]] = alias_args[ai].nttp_name;
+                                    } else {
+                                        subst[ati.param_names[ai]] = std::to_string(alias_args[ai].value);
                                     }
-                                    ts.tag = arena_.strdup(new_tag.c_str());
+                                } else {
+                                    std::string mangled;
+                                    if (alias_args[ai].type.tag) mangled = alias_args[ai].type.tag;
+                                    else append_type_mangled_suffix(mangled, alias_args[ai].type);
+                                    subst[ati.param_names[ai]] = mangled;
                                 }
                             }
-                            ts.is_const   |= save_const;
-                            ts.is_volatile |= save_vol;
-                            return ts;
+                            if (!alias_parse_ok) {
+                                pos_ = save_pos_alias;
+                            } else {
+                            // Substitute alias params in the aliased type's arg_refs.
+                                ts = ati.aliased_type;
+                                if (ts.tpl_struct_arg_refs) {
+                                    std::string old_refs = ts.tpl_struct_arg_refs;
+                                    std::string new_refs;
+                                    std::istringstream ss(old_refs);
+                                    std::string part;
+                                    bool first = true;
+                                    while (std::getline(ss, part, ',')) {
+                                        if (!first) new_refs += ",";
+                                        first = false;
+                                        auto s_it = subst.find(part);
+                                        if (s_it != subst.end())
+                                            new_refs += s_it->second;
+                                        else
+                                            new_refs += part;
+                                    }
+                                    ts.tpl_struct_arg_refs = arena_.strdup(new_refs.c_str());
+                                    // Update tag (mangled name) to reflect substituted args.
+                                    if (ts.tpl_struct_origin) {
+                                        std::string new_tag = ts.tpl_struct_origin;
+                                        std::istringstream ss2(new_refs);
+                                        std::string p2;
+                                        while (std::getline(ss2, p2, ',')) {
+                                            new_tag += "_";
+                                            new_tag += p2;
+                                        }
+                                        ts.tag = arena_.strdup(new_tag.c_str());
+                                    }
+                                }
+                                ts.is_const   |= save_const;
+                                ts.is_volatile |= save_vol;
+                                return ts;
+                            }
                         }
                     }
                 }
@@ -3996,27 +3983,38 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                     // Skip default: = type (with >> splitting and paren tracking)
                     if (check(TokenKind::Assign)) {
                         consume();
-                        int depth = 0, paren_depth = 0;
-                        while (!at_end()) {
-                            if (check(TokenKind::Less) || check(TokenKind::LParen)) {
-                                if (check(TokenKind::LParen)) ++paren_depth;
-                                else ++depth;
-                            } else if (check(TokenKind::RParen)) {
-                                if (paren_depth > 0) --paren_depth;
-                            } else if (check(TokenKind::GreaterGreater) && paren_depth == 0) {
-                                if (depth <= 0) break;
-                                if (depth == 1) {
-                                    parse_greater_than_in_template_list(false);
-                                    break;
-                                }
-                                depth -= 2;
+                        int saved_pos = pos_;
+                        bool parsed_default_type = false;
+                        try {
+                            TypeSpec ignored_default = parse_type_name();
+                            (void)ignored_default;
+                            parsed_default_type = true;
+                        } catch (...) {
+                            pos_ = saved_pos;
+                        }
+                        if (!parsed_default_type) {
+                            int depth = 0, paren_depth = 0;
+                            while (!at_end()) {
+                                if (check(TokenKind::Less) || check(TokenKind::LParen)) {
+                                    if (check(TokenKind::LParen)) ++paren_depth;
+                                    else ++depth;
+                                } else if (check(TokenKind::RParen)) {
+                                    if (paren_depth > 0) --paren_depth;
+                                } else if (check(TokenKind::GreaterGreater) && paren_depth == 0) {
+                                    if (depth <= 0) break;
+                                    if (depth == 1) {
+                                        parse_greater_than_in_template_list(false);
+                                        break;
+                                    }
+                                    depth -= 2;
+                                    consume();
+                                    continue;
+                                } else if (check(TokenKind::Greater) && paren_depth == 0) {
+                                    if (depth == 0) break;
+                                    --depth;
+                                } else if (check(TokenKind::Comma) && depth == 0 && paren_depth == 0) break;
                                 consume();
-                                continue;
-                            } else if (check(TokenKind::Greater) && paren_depth == 0) {
-                                if (depth == 0) break;
-                                --depth;
-                            } else if (check(TokenKind::Comma) && depth == 0 && paren_depth == 0) break;
-                            consume();
+                            }
                         }
                     }
                 } else if (is_type_kw(cur().kind) ||
