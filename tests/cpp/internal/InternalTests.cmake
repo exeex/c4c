@@ -37,10 +37,12 @@ set(CPP_POSITIVE_PARSE_STEMS
     scope_resolution_expr_parse
     template_dependent_enum_parse
     template_type_context_nttp_parse
+    template_qualified_nttp_parse
     template_variadic_and_nttp_parse
     template_variadic_mixed_parse
     template_variadic_nested_parse
     template_variadic_qualified_parse
+    template_template_param_parse
     namespace_basic_parse
     namespace_nested_parse
     namespace_three_level_parse

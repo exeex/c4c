@@ -557,8 +557,92 @@ Node* Parser::parse_top_level() {
         std::vector<const char*> template_param_default_exprs;
         // Deferred NTTP default expression tokens per parameter index.
         std::unordered_map<int, std::vector<Token>> deferred_nttp_defaults;
+        auto push_type_template_param =
+            [&](const char* pname, bool has_default = false, const TypeSpec* default_ts = nullptr) {
+                if (!pname || !pname[0]) {
+                    pname = make_anon_template_param_name(arena_, false, template_params.size());
+                }
+                if (pname && pname[0]) {
+                    typedefs_.insert(pname);
+                    TypeSpec param_ts{};
+                    param_ts.array_size = -1;
+                    param_ts.array_rank = 0;
+                    param_ts.base = TB_TYPEDEF;
+                    param_ts.tag = pname;
+                    typedef_types_[pname] = param_ts;
+                }
+                template_params.push_back(pname);
+                template_param_nttp.push_back(false);
+                if (has_default && default_ts) {
+                    template_param_has_default.push_back(true);
+                    template_param_default_types.push_back(*default_ts);
+                } else {
+                    template_param_has_default.push_back(false);
+                    TypeSpec dummy{};
+                    dummy.array_size = -1;
+                    dummy.inner_rank = -1;
+                    template_param_default_types.push_back(dummy);
+                }
+                template_param_default_values.push_back(0);
+                template_param_default_exprs.push_back(nullptr);
+            };
         while (!at_end() && !check(TokenKind::Greater)) {
-            if ((check(TokenKind::Identifier) && cur().lexeme == "typename") ||
+            if (check(TokenKind::KwTemplate)) {
+                // Template-template parameter:
+                //   template<typename...> class Op
+                // For the current frontend, treat the declared name as a
+                // dependent type parameter and only consume the nested
+                // template parameter clause plus any default argument.
+                consume();  // template
+                expect(TokenKind::Less);
+                int nested_depth = 1;
+                while (!at_end() && nested_depth > 0) {
+                    if (check(TokenKind::Less)) {
+                        ++nested_depth;
+                        consume();
+                        continue;
+                    }
+                    if (check_template_close()) {
+                        match_template_close();
+                        --nested_depth;
+                        if (nested_depth == 0) break;
+                        continue;
+                    }
+                    consume();
+                }
+                if (!(check(TokenKind::Identifier) && cur().lexeme == "typename") &&
+                    !check(TokenKind::KwClass)) {
+                    throw std::runtime_error("expected template parameter name");
+                }
+                consume();  // typename/class
+                if (check(TokenKind::Ellipsis)) consume();
+                const char* pname = nullptr;
+                if (check(TokenKind::Identifier)) {
+                    pname = arena_.strdup(cur().lexeme);
+                    consume();
+                }
+                if (match(TokenKind::Assign)) {
+                    int depth = 0;
+                    while (!at_end()) {
+                        if (check(TokenKind::Less) || check(TokenKind::LParen) ||
+                            check(TokenKind::LBracket) || check(TokenKind::LBrace)) {
+                            ++depth;
+                        } else if (check_template_close()) {
+                            if (depth == 0) break;
+                            parse_greater_than_in_template_list(false);
+                            --depth;
+                            continue;
+                        } else if (check(TokenKind::RParen) || check(TokenKind::RBracket) ||
+                                   check(TokenKind::RBrace)) {
+                            if (depth > 0) --depth;
+                        } else if (check(TokenKind::Comma) && depth == 0) {
+                            break;
+                        }
+                        consume();
+                    }
+                }
+                push_type_template_param(pname);
+            } else if ((check(TokenKind::Identifier) && cur().lexeme == "typename") ||
                 check(TokenKind::KwClass)) {
                 // Type template parameter (possibly variadic: typename... Ts).
                 consume();
@@ -573,34 +657,12 @@ Node* Parser::parse_top_level() {
                     pname = make_anon_template_param_name(arena_, false, template_params.size());
                 }
                 (void)is_pack;
-                // Immediately inject as typedef so subsequent NTTPs can
-                // reference it (e.g., template<typename T, T v>).
-                if (pname && pname[0]) {
-                    typedefs_.insert(pname);
-                    TypeSpec param_ts{};
-                    param_ts.array_size = -1;
-                    param_ts.array_rank = 0;
-                    param_ts.base = TB_TYPEDEF;
-                    param_ts.tag = pname;
-                    typedef_types_[pname] = param_ts;
-                }
-                template_params.push_back(pname);
-                template_param_nttp.push_back(false);
                 // Check for default type argument: = type
                 if (match(TokenKind::Assign)) {
                     TypeSpec def_ts = parse_type_name();
-                    template_param_has_default.push_back(true);
-                    template_param_default_types.push_back(def_ts);
-                    template_param_default_values.push_back(0);
-                    template_param_default_exprs.push_back(nullptr);
+                    push_type_template_param(pname, true, &def_ts);
                 } else {
-                    template_param_has_default.push_back(false);
-                    TypeSpec dummy{};
-                    dummy.array_size = -1;
-                    dummy.inner_rank = -1;
-                    template_param_default_types.push_back(dummy);
-                    template_param_default_values.push_back(0);
-                    template_param_default_exprs.push_back(nullptr);
+                    push_type_template_param(pname);
                 }
             } else if (is_type_kw(cur().kind)) {
                 // Non-type template parameter (NTTP): e.g. int N, unsigned N, bool... Bn.
@@ -718,6 +780,56 @@ Node* Parser::parse_top_level() {
                     template_param_default_values.push_back(0);
                     template_param_default_exprs.push_back(nullptr);
                 }
+            } else if ((check(TokenKind::ColonColon) ||
+                        (check(TokenKind::Identifier) &&
+                         pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                         tokens_[pos_ + 1].kind == TokenKind::ColonColon)) &&
+                       [&]() -> bool {
+                           QualifiedNameRef qn;
+                           if (!peek_qualified_name(&qn, true)) return false;
+                           std::string qualified = qn.base_name;
+                           if (!qn.qualifier_segments.empty()) {
+                               qualified.clear();
+                               for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
+                                   if (i) qualified += "::";
+                                   qualified += qn.qualifier_segments[i];
+                               }
+                               qualified += "::";
+                               qualified += qn.base_name;
+                           }
+                           if (typedef_types_.count(qualified) > 0) return true;
+                           int context_id = resolve_namespace_context(qn);
+                           if (context_id >= 0) {
+                               std::string resolved = canonical_name_in_context(context_id, qn.base_name);
+                               if (typedef_types_.count(resolved) > 0) return true;
+                           }
+                           return false;
+                       }()) {
+                // Non-type template parameter with qualified typedef type
+                // (e.g. std::size_t N).
+                QualifiedNameRef qn;
+                peek_qualified_name(&qn, true);
+                int qn_tokens = static_cast<int>(qn.qualifier_segments.size()) * 2 + 1;
+                if (qn.is_global_qualified) qn_tokens += 1;
+                pos_ += qn_tokens;
+                while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
+                if (check(TokenKind::Ellipsis)) consume();
+                const char* pname = nullptr;
+                if (check(TokenKind::Identifier)) {
+                    pname = arena_.strdup(cur().lexeme);
+                    consume();
+                } else {
+                    pname = make_anon_template_param_name(arena_, true, template_params.size());
+                }
+                template_params.push_back(pname);
+                template_param_nttp.push_back(true);
+                template_param_has_default.push_back(false);
+                TypeSpec dummy{};
+                dummy.array_size = -1;
+                dummy.inner_rank = -1;
+                template_param_default_types.push_back(dummy);
+                template_param_default_values.push_back(0);
+                template_param_default_exprs.push_back(nullptr);
             } else if (check(TokenKind::Identifier) &&
                        (is_typedef_name(cur().lexeme) ||
                         typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0)) {

@@ -2081,6 +2081,22 @@ TypeSpec Parser::parse_base_type() {
                         }
                     }
                 }
+                // Dependent template-template parameter application:
+                // template<template<typename...> class Op> using X = Op<int>;
+                // We only need to consume the argument list and keep the
+                // dependent name as a placeholder type for later stages.
+                if (is_cpp_mode() && tname &&
+                    active_template_member_type_params_.count(tname) > 0 &&
+                    check(TokenKind::Less)) {
+                    std::vector<TemplateArgParseResult> ignored_args;
+                    if (parse_template_argument_list(&ignored_args)) {
+                        ts.base = TB_TYPEDEF;
+                        ts.tag = tname;
+                        ts.array_size = -1;
+                        ts.array_rank = 0;
+                        return ts;
+                    }
+                }
                 // Template struct instantiation: Pair<int> or Array<int, 4> in type context.
                 if (is_cpp_mode() && ts.base == TB_STRUCT && ts.tag &&
                     find_template_struct_primary(ts.tag) && check(TokenKind::Less)) {
