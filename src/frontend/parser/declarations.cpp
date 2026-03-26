@@ -928,6 +928,18 @@ Node* Parser::parse_top_level() {
             typedef_types_[pname] = param_ts;
         }
 
+        // Push template scope so struct body / member parsing can consult it.
+        {
+            std::vector<TemplateScopeParam> scope_params;
+            for (size_t i = 0; i < template_params.size(); ++i) {
+                TemplateScopeParam p;
+                p.name = template_params[i];
+                p.is_nttp = template_param_nttp[i];
+                scope_params.push_back(p);
+            }
+            push_template_scope(TemplateScopeKind::FreeFunctionTemplate, scope_params);
+        }
+
         size_t struct_defs_before = struct_defs_.size();
         last_using_alias_name_.clear();
         Node* templated = parse_top_level();
@@ -946,6 +958,8 @@ Node* Parser::parse_top_level() {
             }
             last_using_alias_name_.clear();
         }
+        pop_template_scope();
+
         for (const std::string& pname : injected_names) {
             typedefs_.erase(pname);
             typedef_types_.erase(pname);

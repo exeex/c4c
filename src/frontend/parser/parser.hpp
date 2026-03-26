@@ -49,6 +49,25 @@ class Parser {
     const char* nttp_name = nullptr;
   };
 
+  // Template-scope stack: tracks active template parameter visibility.
+  // Each frame records the parameters introduced by one template<...> clause
+  // and the semantic context (enclosing class, member template, or free function).
+  enum class TemplateScopeKind {
+    EnclosingClass,      // template<...> struct/class body
+    MemberTemplate,      // template<...> member inside a class template
+    FreeFunctionTemplate // template<...> free function
+  };
+
+  struct TemplateScopeParam {
+    const char* name = nullptr;
+    bool is_nttp = false;
+  };
+
+  struct TemplateScopeFrame {
+    TemplateScopeKind kind = TemplateScopeKind::FreeFunctionTemplate;
+    std::vector<TemplateScopeParam> params;
+  };
+
   // All members public (required by project coding constraints).
   explicit Parser(std::vector<Token> tokens, Arena& arena,
                   SourceProfile source_profile = SourceProfile::C,
@@ -148,6 +167,8 @@ class Parser {
   // Used so parameter parsing can still recognize names like `A` in
   // `template<typename A> constexpr int f(A a)` inside struct bodies.
   std::set<std::string> active_template_member_type_params_;
+  // Template-scope stack: tracks active template parameter visibility.
+  std::vector<TemplateScopeFrame> template_scope_stack_;
   // Transitional flattened path kept only as a compatibility bridge.
   std::string current_namespace_;
   std::vector<NamespaceContext> namespace_contexts_;
@@ -269,6 +290,10 @@ class Parser {
   void register_template_struct_specialization(const char* primary_name, Node* node);
   bool parse_template_argument_list(std::vector<TemplateArgParseResult>* out_args,
                                     const Node* primary_tpl = nullptr);
+  // Template-scope stack helpers.
+  void push_template_scope(TemplateScopeKind kind,
+                           const std::vector<TemplateScopeParam>& params);
+  void pop_template_scope();
 
   // Skip a balanced brace group (consuming the closing brace).
   void skip_brace_group();

@@ -1031,6 +1031,16 @@ bool Parser::is_typedef_name(const std::string& s) const {
     return typedefs_.count(s) > 0;
 }
 
+void Parser::push_template_scope(TemplateScopeKind kind,
+                                 const std::vector<TemplateScopeParam>& params) {
+    template_scope_stack_.push_back({kind, params});
+}
+
+void Parser::pop_template_scope() {
+    if (!template_scope_stack_.empty())
+        template_scope_stack_.pop_back();
+}
+
 bool Parser::parse_template_argument_list(std::vector<TemplateArgParseResult>* out_args,
                                           const Node* primary_tpl) {
     if (!out_args || !check(TokenKind::Less)) return false;
@@ -3324,6 +3334,15 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         }
         bool is_grouped = pk < (int)tokens_.size() &&
                           tokens_[pk].kind == TokenKind::Identifier;
+        // Refine: a grouped declarator has (name), (name[N]), etc.
+        // If the identifier is followed by ',' or '...' it is a function-type
+        // parameter list, not a grouped declarator.  E.g. R(Args...) or R(A, B).
+        if (is_grouped && pk + 1 < (int)tokens_.size()) {
+            auto next_k = tokens_[pk + 1].kind;
+            if (next_k == TokenKind::Comma || next_k == TokenKind::Ellipsis) {
+                is_grouped = false;
+            }
+        }
         if (is_grouped) {
             consume();  // consume '('
             // Parse the inner declarator (name + optional array dims)
@@ -3940,15 +3959,19 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             std::set<std::string>& typedefs;
             std::unordered_map<std::string, TypeSpec>& typedef_types;
             std::set<std::string>& active_type_params;
+            std::vector<TemplateScopeFrame>& scope_stack;
             std::vector<std::string> names;
+            bool pushed_scope = false;
             ~TemplateParamGuard() {
+                if (pushed_scope) scope_stack.pop_back();
                 for (auto& n : names) {
                     typedefs.erase(n);
                     typedef_types.erase(n);
                     active_type_params.erase(n);
                 }
             }
-        } tmpl_guard{typedefs_, typedef_types_, active_template_member_type_params_, {}};
+        } tmpl_guard{typedefs_, typedef_types_, active_template_member_type_params_,
+                     template_scope_stack_, {}};
         auto is_template_member_param_type_start = [&]() -> bool {
             if (is_type_start()) return true;
             if (!is_cpp_mode() || !check(TokenKind::Identifier)) return false;
@@ -4066,6 +4089,19 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 if (!match(TokenKind::Comma)) break;
             }
             expect_template_close();
+            // Push member-template scope so nested lookups can see both
+            // enclosing class params and member template params.
+            if (!tmpl_guard.names.empty()) {
+                std::vector<TemplateScopeParam> member_params;
+                for (const auto& n : tmpl_guard.names) {
+                    TemplateScopeParam p;
+                    p.name = arena_.strdup(n.c_str());
+                    p.is_nttp = false;  // guard only tracks type params
+                    member_params.push_back(p);
+                }
+                push_template_scope(TemplateScopeKind::MemberTemplate, member_params);
+                tmpl_guard.pushed_scope = true;
+            }
             // Fall through to parse the member declaration that follows
         }
 
