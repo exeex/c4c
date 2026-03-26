@@ -1314,6 +1314,23 @@ class Lowerer {
     return true;
   }
 
+  static long long count_pack_bindings_for_name(const TypeBindings& bindings,
+                                                const NttpBindings& nttp_bindings,
+                                                const std::string& base) {
+    int max_index = -1;
+    for (const auto& [key, _] : bindings) {
+      int pack_index = 0;
+      if (parse_pack_binding_name(key, base, &pack_index))
+        max_index = std::max(max_index, pack_index);
+    }
+    for (const auto& [key, _] : nttp_bindings) {
+      int pack_index = 0;
+      if (parse_pack_binding_name(key, base, &pack_index))
+        max_index = std::max(max_index, pack_index);
+    }
+    return max_index + 1;
+  }
+
   static bool is_any_ref_ts(const TypeSpec& ts) {
     return ts.is_lvalue_ref || ts.is_rvalue_ref;
   }
@@ -2531,6 +2548,16 @@ class Lowerer {
 
       bool parse_primary(long long* out_val) {
         skip_ws();
+        if (consume("sizeof")) {
+          skip_ws();
+          if (!consume("...")) return false;
+          if (!consume("(")) return false;
+          const std::string pack_name = parse_identifier();
+          if (pack_name.empty()) return false;
+          if (!consume(")")) return false;
+          *out_val = count_pack_bindings_for_name(type_lookup, nttp_lookup, pack_name);
+          return true;
+        }
         if (consume("(")) {
           if (!parse_or(out_val)) return false;
           return consume(")");
@@ -2737,6 +2764,40 @@ class Lowerer {
       const TypeBindings& tpl_bindings,
       const NttpBindings& nttp_bindings) {
     ResolvedTemplateArgs result;
+    auto merged_type_bindings = [&]() {
+      std::vector<std::pair<std::string, TypeSpec>> merged;
+      merged.reserve(tpl_bindings.size() + result.type_bindings.size());
+      for (const auto& [name, ts] : tpl_bindings) merged.push_back({name, ts});
+      for (const auto& [name, ts] : result.type_bindings) {
+        bool replaced = false;
+        for (auto& [merged_name, merged_ts] : merged) {
+          if (merged_name == name) {
+            merged_ts = ts;
+            replaced = true;
+            break;
+          }
+        }
+        if (!replaced) merged.push_back({name, ts});
+      }
+      return merged;
+    };
+    auto merged_nttp_bindings = [&]() {
+      std::vector<std::pair<std::string, long long>> merged;
+      merged.reserve(nttp_bindings.size() + result.nttp_bindings.size());
+      for (const auto& [name, val] : nttp_bindings) merged.push_back({name, val});
+      for (const auto& [name, val] : result.nttp_bindings) {
+        bool replaced = false;
+        for (auto& [merged_name, merged_val] : merged) {
+          if (merged_name == name) {
+            merged_val = val;
+            replaced = true;
+            break;
+          }
+        }
+        if (!replaced) merged.push_back({name, val});
+      }
+      return merged;
+    };
     int ai = 0;
     for (int pi = 0; pi < primary_tpl->n_template_params && ai < (int)arg_refs.size(); ++pi, ++ai) {
       const char* param_name = primary_tpl->template_param_names[pi];
@@ -2746,9 +2807,10 @@ class Lowerer {
         if (is_deferred_nttp_expr_ref(arg_refs[ai])) {
           long long eval_val = 0;
           std::string expr = deferred_nttp_expr_text(arg_refs[ai]);
+          const auto type_env = merged_type_bindings();
+          const auto nttp_env = merged_nttp_bindings();
           (void)eval_deferred_nttp_expr_hir(
-              primary_tpl, pi, result.type_bindings,
-              result.nttp_bindings, &expr, &eval_val);
+              primary_tpl, pi, type_env, nttp_env, &expr, &eval_val);
           arg.is_value = true;
           arg.value = eval_val;
         } else {
@@ -2834,17 +2896,19 @@ class Lowerer {
       const char* param_name = primary_tpl->template_param_names[pi];
       HirTemplateArg arg;
       arg.is_value = primary_tpl->template_param_is_nttp[pi];
-      if (arg.is_value) {
-        if (primary_tpl->template_param_default_values[pi] != LLONG_MIN) {
-          arg.value = primary_tpl->template_param_default_values[pi];
-        } else {
-          long long eval_val = 0;
-          if (!eval_deferred_nttp_expr_hir(primary_tpl, pi,
-                                           result.type_bindings,
-                                           result.nttp_bindings,
+        if (arg.is_value) {
+          if (primary_tpl->template_param_default_values[pi] != LLONG_MIN) {
+            arg.value = primary_tpl->template_param_default_values[pi];
+          } else {
+            long long eval_val = 0;
+            const auto type_env = merged_type_bindings();
+            const auto nttp_env = merged_nttp_bindings();
+            if (!eval_deferred_nttp_expr_hir(primary_tpl, pi,
+                                           type_env,
+                                           nttp_env,
                                            nullptr, &eval_val)) {
-            break;
-          }
+              break;
+            }
           arg.value = eval_val;
         }
         result.nttp_bindings.push_back({param_name, arg.value});
@@ -8066,10 +8130,16 @@ class Lowerer {
         return append_expr(n, s, ts);
       }
       case NK_SIZEOF_PACK: {
-        // Preserve parse/lowering continuity for dependent pack-size expressions.
-        // Actual pack cardinality materialization is deferred to later template work.
+        long long pack_size = 0;
+        std::string pack_name = n->sval ? n->sval : "";
+        if (pack_name.empty() && n->left && n->left->kind == NK_VAR && n->left->name)
+          pack_name = n->left->name;
+        if (ctx && !pack_name.empty()) {
+          pack_size = count_pack_bindings_for_name(
+              ctx->tpl_bindings, ctx->nttp_bindings, pack_name);
+        }
         IntLiteral lit{};
-        lit.value = 0;
+        lit.value = pack_size;
         TypeSpec ts{}; ts.base = TB_ULONG;
         return append_expr(n, lit, ts);
       }
