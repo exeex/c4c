@@ -157,6 +157,7 @@ enum NodeKind {
     NK_COMPOUND_ASSIGN, // left op= right
 
     // Complex expressions
+    NK_PACK_EXPANSION,  // expr... : left=pattern expression
     NK_CALL,            // func(...) : func=left, args=children[0..n_children-1]
     NK_BUILTIN_CALL,    // builtin(...) : func=left, args=children, builtin_id identifies semantic
     NK_INDEX,           // array[index] : left=array, right=index
@@ -286,6 +287,7 @@ struct Node {
     // C++ subset template metadata carried on declarations / references.
     const char** template_param_names;
     bool*        template_param_is_nttp;  // parallel: true if non-type template param
+    bool*        template_param_is_pack;  // parallel: true if template parameter is a pack
     bool*        template_param_has_default; // parallel: true if param has a default
     TypeSpec*    template_param_default_types; // parallel: default type for type params
     long long*   template_param_default_values; // parallel: default value for NTTP params
@@ -361,6 +363,7 @@ struct Node {
     bool is_ctor_init;    // NK_DECL: initialized via constructor call  Type var(args)
     bool is_deleted;      // NK_FUNCTION: = delete (deleted function)
     bool is_defaulted;    // NK_FUNCTION: = default (defaulted special member)
+    bool is_parameter_pack; // NK_DECL: function parameter pack / declarator pack
 
     // C++ constructor initializer list: ClassName(params) : mem1(expr1), mem2(a,b) { body }
     const char** ctor_init_names;  // arena-allocated array of member names

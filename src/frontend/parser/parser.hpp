@@ -246,6 +246,7 @@ class Parser {
                         Node*** out_fn_ptr_params = nullptr,
                         int* out_n_fn_ptr_params = nullptr,
                         bool* out_fn_ptr_variadic = nullptr,
+                        bool* out_is_parameter_pack = nullptr,
                         Node*** out_ret_fn_ptr_params = nullptr,
                         int* out_n_ret_fn_ptr_params = nullptr,
                         bool* out_ret_fn_ptr_variadic = nullptr);

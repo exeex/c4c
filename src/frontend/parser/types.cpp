@@ -2973,6 +2973,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
                               Node*** out_fn_ptr_params,
                               int* out_n_fn_ptr_params,
                               bool* out_fn_ptr_variadic,
+                              bool* out_is_parameter_pack,
                               Node*** out_ret_fn_ptr_params,
                               int* out_n_ret_fn_ptr_params,
                               bool* out_ret_fn_ptr_variadic) {
@@ -2980,6 +2981,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     if (out_fn_ptr_params) *out_fn_ptr_params = nullptr;
     if (out_n_fn_ptr_params) *out_n_fn_ptr_params = 0;
     if (out_fn_ptr_variadic) *out_fn_ptr_variadic = false;
+    if (out_is_parameter_pack) *out_is_parameter_pack = false;
     if (out_ret_fn_ptr_params) *out_ret_fn_ptr_params = nullptr;
     if (out_n_ret_fn_ptr_params) *out_n_ret_fn_ptr_params = 0;
     if (out_ret_fn_ptr_variadic) *out_ret_fn_ptr_variadic = false;
@@ -3124,7 +3126,10 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     // C++ template parameter pack declarator: `Args&&... args`
     // or `Ts... value`. The ellipsis belongs to the declarator, not the
     // function's variadic parameter list.
-    if (is_cpp_mode() && check(TokenKind::Ellipsis)) consume();
+    if (is_cpp_mode() && check(TokenKind::Ellipsis)) {
+        consume();
+        if (out_is_parameter_pack) *out_is_parameter_pack = true;
+    }
     parse_attributes(&ts);
 
     bool used_paren_ptr_declarator = false;
@@ -5130,7 +5135,9 @@ Node* Parser::parse_param() {
     Node** fn_ptr_params = nullptr;
     int n_fn_ptr_params = 0;
     bool fn_ptr_variadic = false;
-    parse_declarator(pts, &pname, &fn_ptr_params, &n_fn_ptr_params, &fn_ptr_variadic);
+    bool is_parameter_pack = false;
+    parse_declarator(pts, &pname, &fn_ptr_params, &n_fn_ptr_params, &fn_ptr_variadic,
+                     &is_parameter_pack);
     // C rule: a parameter of function type decays to a pointer to that function.
     // Abstract function-type params look like: int(int x) or int()
     // Consume the function-type suffix and apply the pointer decay.
@@ -5170,6 +5177,7 @@ Node* Parser::parse_param() {
     p->fn_ptr_params = fn_ptr_params;
     p->n_fn_ptr_params = n_fn_ptr_params;
     p->fn_ptr_variadic = fn_ptr_variadic;
+    p->is_parameter_pack = is_parameter_pack;
     // Phase C: propagate fn_ptr params from typedef if not set by declarator.
     if (pts.is_fn_ptr && n_fn_ptr_params == 0 && !fn_ptr_variadic) {
         auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);

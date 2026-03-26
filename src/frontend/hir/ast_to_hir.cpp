@@ -1258,6 +1258,12 @@ class Lowerer {
   };
 
   struct FunctionCtx {
+    struct PackParamElem {
+      std::string element_name;
+      TypeSpec type;
+      uint32_t param_index = 0;
+    };
+
     Function* fn = nullptr;
     std::unordered_map<std::string, LocalId> locals;
     std::unordered_map<uint32_t, TypeSpec> local_types;
@@ -1273,6 +1279,7 @@ class Lowerer {
     std::unordered_map<std::string, long long> local_const_bindings;
     TypeBindings tpl_bindings;  // template param → concrete type for enclosing template fn
     NttpBindings nttp_bindings; // non-type template param → constant value
+    std::unordered_map<std::string, std::vector<PackParamElem>> pack_params;
     std::string method_struct_tag; // non-empty when lowering a struct method body
     // Destructor tracking: records locals that need destructor calls at scope exit.
     struct DtorLocal {
@@ -1284,6 +1291,27 @@ class Lowerer {
 
   static bool is_lvalue_ref_ts(const TypeSpec& ts) {
     return ts.is_lvalue_ref;
+  }
+
+  static std::string pack_binding_name(const std::string& base, int index) {
+    return base + "#" + std::to_string(index);
+  }
+
+  static bool parse_pack_binding_name(const std::string& key,
+                                      const std::string& base,
+                                      int* out_index = nullptr) {
+    if (key.size() <= base.size() + 1) return false;
+    if (key.compare(0, base.size(), base) != 0) return false;
+    if (key[base.size()] != '#') return false;
+    int index = 0;
+    try {
+      index = std::stoi(key.substr(base.size() + 1));
+    } catch (...) {
+      return false;
+    }
+    if (index < 0) return false;
+    if (out_index) *out_index = index;
+    return true;
   }
 
   static bool is_any_ref_ts(const TypeSpec& ts) {
@@ -1929,6 +1957,10 @@ class Lowerer {
     for (int i = 0; i < num_fields; ++i) {
       const Node* f = get_field(i);
       if (!f) continue;
+      // Struct methods live in sd->children[] alongside fields for some parser
+      // paths, but they are not data members and must not participate in
+      // layout. They are collected separately after the layout pass.
+      if (f->kind == NK_FUNCTION) continue;
       if (f->name && f->name[0])
         struct_static_member_decls_[tag][f->name] = f;
       if (f->is_static && f->is_constexpr && f->name && f->name[0] && f->init) {
@@ -3237,40 +3269,67 @@ class Lowerer {
     for (int i = 0; i < fn_node->n_params; ++i) {
       const Node* p = fn_node->params[i];
       if (!p) continue;
-      Param param{};
-      param.name = p->name ? p->name : "<anon_param>";
-      // Substitute template type parameters in parameter types.
-      {
-        TypeSpec param_ts = p->type;
-        if (tpl_override && param_ts.base == TB_TYPEDEF && param_ts.tag) {
-          auto it = tpl_override->find(param_ts.tag);
-          if (it != tpl_override->end()) {
-            const TypeSpec concrete = it->second;
-            const bool outer_lref = param_ts.is_lvalue_ref;
-            const bool outer_rref = param_ts.is_rvalue_ref;
-            param_ts = concrete;
-            param_ts.is_lvalue_ref = concrete.is_lvalue_ref || outer_lref;
-            param_ts.is_rvalue_ref =
-                !param_ts.is_lvalue_ref && (concrete.is_rvalue_ref || outer_rref);
-          }
-        }
-        // Resolve pending template struct types in params.
+      const std::string param_name = p->name ? p->name : "<anon_param>";
+      auto append_param = [&](const std::string& emitted_name, TypeSpec param_ts) {
+        Param param{};
+        param.name = emitted_name;
         if (tpl_override && param_ts.tpl_struct_origin) {
           NttpBindings nttp_empty;
           seed_pending_template_type(
               param_ts, *tpl_override, nttp_override ? *nttp_override : nttp_empty,
               p, PendingTemplateTypeKind::DeclarationType,
-              std::string("function-param:") + param.name);
+              std::string("function-param:") + emitted_name);
           resolve_pending_tpl_struct_if_needed(
               param_ts, *tpl_override, nttp_override ? *nttp_override : nttp_empty);
         }
         param.type = qtype_from(reference_storage_ts(param_ts), ValueCategory::LValue);
+        param.fn_ptr_sig = fn_ptr_sig_from_decl_node(p);
+        param.span = make_span(p);
+        ctx.params[param.name] = static_cast<uint32_t>(fn.params.size());
+        if (param.fn_ptr_sig) ctx.param_fn_ptr_sigs[param.name] = *param.fn_ptr_sig;
+        fn.params.push_back(std::move(param));
+      };
+
+      if (p->is_parameter_pack && tpl_override && p->type.base == TB_TYPEDEF && p->type.tag) {
+        std::vector<std::pair<int, TypeSpec>> pack_types;
+        for (const auto& [key, ts] : *tpl_override) {
+          int pack_index = 0;
+          if (parse_pack_binding_name(key, p->type.tag, &pack_index))
+            pack_types.push_back({pack_index, ts});
+        }
+        std::sort(pack_types.begin(), pack_types.end(),
+                  [](const auto& a, const auto& b) { return a.first < b.first; });
+        for (const auto& [pack_index, concrete] : pack_types) {
+          TypeSpec param_ts = concrete;
+          const bool outer_lref = p->type.is_lvalue_ref;
+          const bool outer_rref = p->type.is_rvalue_ref;
+          param_ts.is_lvalue_ref = concrete.is_lvalue_ref || outer_lref;
+          param_ts.is_rvalue_ref =
+              !param_ts.is_lvalue_ref && (concrete.is_rvalue_ref || outer_rref);
+          const std::string emitted_name =
+              param_name + "__pack" + std::to_string(pack_index);
+          append_param(emitted_name, param_ts);
+          ctx.pack_params[param_name].push_back(
+              FunctionCtx::PackParamElem{emitted_name, param_ts,
+                                         static_cast<uint32_t>(fn.params.size() - 1)});
+        }
+        continue;
       }
-      param.fn_ptr_sig = fn_ptr_sig_from_decl_node(p);
-      param.span = make_span(p);
-      ctx.params[param.name] = static_cast<uint32_t>(fn.params.size());
-      if (param.fn_ptr_sig) ctx.param_fn_ptr_sigs[param.name] = *param.fn_ptr_sig;
-      fn.params.push_back(std::move(param));
+
+      TypeSpec param_ts = p->type;
+      if (tpl_override && param_ts.base == TB_TYPEDEF && param_ts.tag) {
+        auto it = tpl_override->find(param_ts.tag);
+        if (it != tpl_override->end()) {
+          const TypeSpec concrete = it->second;
+          const bool outer_lref = param_ts.is_lvalue_ref;
+          const bool outer_rref = param_ts.is_rvalue_ref;
+          param_ts = concrete;
+          param_ts.is_lvalue_ref = concrete.is_lvalue_ref || outer_lref;
+          param_ts.is_rvalue_ref =
+              !param_ts.is_lvalue_ref && (concrete.is_rvalue_ref || outer_rref);
+        }
+      }
+      append_param(param_name, param_ts);
     }
 
     if (!fn_node->body) {
@@ -5070,6 +5129,79 @@ class Lowerer {
       if (fit == module_->fn_index.end()) return nullptr;
       return module_->find_function(fit->second);
     };
+    auto try_expand_pack_call_arg =
+        [&](const Node* arg_node, const TypeSpec* construct_param_ts) -> bool {
+      if (!ctx || !arg_node || arg_node->kind != NK_PACK_EXPANSION || !arg_node->left)
+        return false;
+      const Node* pattern = arg_node->left;
+      if (pattern->kind != NK_CALL || pattern->n_children != 1 || !pattern->left)
+        return false;
+      if (pattern->left->kind != NK_VAR || !pattern->left->name ||
+          std::strcmp(pattern->left->name, "forward") != 0)
+        return false;
+      if (pattern->left->n_template_args != 1 || !pattern->left->template_arg_types ||
+          pattern->left->template_arg_types[0].base != TB_TYPEDEF ||
+          !pattern->left->template_arg_types[0].tag)
+        return false;
+      const Node* forwarded_arg = pattern->children[0];
+      if (!forwarded_arg || forwarded_arg->kind != NK_VAR || !forwarded_arg->name)
+        return false;
+      auto pit = ctx->pack_params.find(forwarded_arg->name);
+      if (pit == ctx->pack_params.end() || pit->second.empty()) return false;
+
+      for (const auto& elem : pit->second) {
+        const Node* tpl_fn = ct_state_->find_template_def("forward");
+        TypeBindings forward_bindings;
+        if (tpl_fn && tpl_fn->n_template_params > 0 && tpl_fn->template_param_names[0])
+          forward_bindings[tpl_fn->template_param_names[0]] = elem.type;
+        else
+          forward_bindings["T"] = elem.type;
+        const std::string callee_name =
+            mangle_template_name("forward", forward_bindings);
+
+        DeclRef callee_ref{};
+        callee_ref.name = callee_name;
+        TypeSpec callee_ts = pattern->left->type;
+        if (const Function* callee_fn = direct_callee_fn(callee_name)) {
+          callee_ts = callee_fn->return_type.spec;
+          callee_ts.ptr_level++;
+        }
+
+        CallExpr expanded_call{};
+        expanded_call.callee = append_expr(pattern->left, callee_ref, callee_ts);
+        TemplateCallInfo tci;
+        tci.source_template = "forward";
+        tci.template_args.push_back(elem.type);
+        expanded_call.template_info = std::move(tci);
+
+        DeclRef param_ref{};
+        param_ref.name = elem.element_name;
+        param_ref.param_index = elem.param_index;
+        ExprId param_expr = append_expr(forwarded_arg, param_ref, elem.type, ValueCategory::LValue);
+        UnaryExpr addr{};
+        addr.op = UnaryOp::AddrOf;
+        addr.operand = param_expr;
+        TypeSpec param_storage_ts = elem.type;
+        param_storage_ts.ptr_level += 1;
+        expanded_call.args.push_back(append_expr(forwarded_arg, addr, param_storage_ts));
+
+        TypeSpec ret_ts = elem.type;
+        ret_ts.is_lvalue_ref = false;
+        ret_ts.is_rvalue_ref = true;
+        ExprId expanded_id = append_expr(pattern, expanded_call, ret_ts);
+        if (!construct_param_ts || (!construct_param_ts->is_lvalue_ref &&
+                                    !construct_param_ts->is_rvalue_ref)) {
+          c.args.push_back(expanded_id);
+        } else {
+          TypeSpec storage_ts = reference_storage_ts(*construct_param_ts);
+          UnaryExpr outer_addr{};
+          outer_addr.op = UnaryOp::AddrOf;
+          outer_addr.operand = expanded_id;
+          c.args.push_back(append_expr(pattern, outer_addr, storage_ts));
+        }
+      }
+      return true;
+    };
     if (n->left && n->left->kind == NK_MEMBER && n->left->name) {
       const Node* base_node = n->left->left;
       const char* method_name = n->left->name;
@@ -5126,6 +5258,7 @@ class Lowerer {
                 callee_method->params[i]) {
               param_ts = &callee_method->params[i]->type;
             }
+            if (try_expand_pack_call_arg(n->children[i], param_ts)) continue;
             c.args.push_back(maybe_lower_ref_arg(n->children[i], param_ts));
           }
           TypeSpec ts = n->type;
@@ -5162,6 +5295,20 @@ class Lowerer {
         nttp_bindings = build_call_nttp_bindings(n->left, tpl_fn, enc_nttp);
         resolved_callee_name =
             mangle_template_name(n->left->name, bindings, nttp_bindings);
+        if (tpl_fn) {
+          const auto param_order = get_template_param_order(tpl_fn, &bindings, &nttp_bindings);
+          const SpecializationKey spec_key = nttp_bindings.empty()
+              ? make_specialization_key(n->left->name, param_order, bindings)
+              : make_specialization_key(n->left->name, param_order, bindings, nttp_bindings);
+          if (const auto* inst_list = registry_.find_instances(n->left->name)) {
+            for (const auto& inst : *inst_list) {
+              if (inst.spec_key == spec_key) {
+                resolved_callee_name = inst.mangled_name;
+                break;
+              }
+            }
+          }
+        }
       }
       DeclRef dr{};
       dr.name = resolved_callee_name;
@@ -5177,7 +5324,7 @@ class Lowerer {
       TemplateCallInfo tci;
       tci.source_template = n->left->name;
       if (tpl_fn) {
-        for (const auto& pname : get_template_param_order(tpl_fn)) {
+        for (const auto& pname : get_template_param_order(tpl_fn, &bindings, &nttp_bindings)) {
           auto bit = bindings.find(pname);
           if (bit != bindings.end()) tci.template_args.push_back(bit->second);
         }
@@ -5202,7 +5349,8 @@ class Lowerer {
       tci.source_template = n->left->name;
       const Node* tpl_fn = ct_state_->find_template_def(n->left->name);
       if (tpl_fn) {
-        for (const auto& pname : get_template_param_order(tpl_fn)) {
+        for (const auto& pname : get_template_param_order(
+                 tpl_fn, &ded_it->second.bindings, &ded_it->second.nttp_bindings)) {
           auto bit = ded_it->second.bindings.find(pname);
           if (bit != ded_it->second.bindings.end())
             tci.template_args.push_back(bit->second);
@@ -7251,6 +7399,8 @@ class Lowerer {
         ts.base = TB_INT;
         return append_expr(n, CharLiteral{n->ival}, ts);
       }
+      case NK_PACK_EXPANSION:
+        return lower_expr(ctx, n->left);
       case NK_VAR: {
         if (n->name && n->name[0]) {
           if (n->has_template_args && find_template_struct_primary(n->name)) {
@@ -8540,15 +8690,32 @@ class Lowerer {
                                    const TypeBindings* enclosing_bindings) {
     TypeBindings bindings;
     if (!call_var || !fn_def || fn_def->n_template_params <= 0) return bindings;
-    // Allow n_template_args == 0 when defaults are available.
-    int explicit_count = call_var->n_template_args > 0
-        ? std::min(call_var->n_template_args, fn_def->n_template_params) : 0;
-    for (int i = 0; i < explicit_count; ++i) {
+    const int total_args = call_var->n_template_args > 0 ? call_var->n_template_args : 0;
+    int arg_index = 0;
+    for (int i = 0; i < fn_def->n_template_params; ++i) {
       if (!fn_def->template_param_names[i]) continue;
-      // Skip NTTP params in type bindings — they go in nttp_bindings.
-      if (fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]) continue;
-      TypeSpec arg_ts = call_var->template_arg_types[i];
-      // Resolve typedef template args through enclosing function's bindings.
+      const bool is_nttp =
+          fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i];
+      const bool is_pack =
+          fn_def->template_param_is_pack && fn_def->template_param_is_pack[i];
+      if (is_nttp) {
+        if (is_pack) arg_index = total_args;
+        else if (arg_index < total_args) ++arg_index;
+        continue;
+      }
+      if (is_pack) {
+        for (int pack_index = 0; arg_index < total_args; ++arg_index, ++pack_index) {
+          TypeSpec arg_ts = call_var->template_arg_types[arg_index];
+          if (arg_ts.base == TB_TYPEDEF && arg_ts.tag && enclosing_bindings) {
+            auto resolved = enclosing_bindings->find(arg_ts.tag);
+            if (resolved != enclosing_bindings->end()) arg_ts = resolved->second;
+          }
+          bindings[pack_binding_name(fn_def->template_param_names[i], pack_index)] = arg_ts;
+        }
+        continue;
+      }
+      if (arg_index >= total_args) continue;
+      TypeSpec arg_ts = call_var->template_arg_types[arg_index++];
       if (arg_ts.base == TB_TYPEDEF && arg_ts.tag && enclosing_bindings) {
         auto resolved = enclosing_bindings->find(arg_ts.tag);
         if (resolved != enclosing_bindings->end()) arg_ts = resolved->second;
@@ -8557,9 +8724,11 @@ class Lowerer {
     }
     // Fill remaining type params from defaults.
     if (fn_def->template_param_has_default) {
-      for (int i = explicit_count; i < fn_def->n_template_params; ++i) {
+      for (int i = 0; i < fn_def->n_template_params; ++i) {
         if (!fn_def->template_param_names[i]) continue;
         if (fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]) continue;
+        if (fn_def->template_param_is_pack && fn_def->template_param_is_pack[i]) continue;
+        if (bindings.count(fn_def->template_param_names[i])) continue;
         if (fn_def->template_param_has_default[i]) {
           bindings[fn_def->template_param_names[i]] = fn_def->template_param_default_types[i];
         }
@@ -8572,32 +8741,62 @@ class Lowerer {
                                         const NttpBindings* enclosing_nttp = nullptr) {
     NttpBindings bindings;
     if (!call_var || !fn_def || fn_def->n_template_params <= 0) return bindings;
-    int explicit_count = call_var->n_template_args > 0
-        ? std::min(call_var->n_template_args, fn_def->n_template_params) : 0;
-    for (int i = 0; i < explicit_count; ++i) {
+    const int total_args = call_var->n_template_args > 0 ? call_var->n_template_args : 0;
+    int arg_index = 0;
+    for (int i = 0; i < fn_def->n_template_params; ++i) {
       if (!fn_def->template_param_names[i]) continue;
-      if (!fn_def->template_param_is_nttp || !fn_def->template_param_is_nttp[i]) continue;
-      if (call_var->template_arg_is_value && call_var->template_arg_is_value[i]) {
+      const bool is_nttp =
+          fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i];
+      const bool is_pack =
+          fn_def->template_param_is_pack && fn_def->template_param_is_pack[i];
+      if (!is_nttp) {
+        if (is_pack) arg_index = total_args;
+        else if (arg_index < total_args) ++arg_index;
+        continue;
+      }
+      if (is_pack) {
+        for (int pack_index = 0; arg_index < total_args; ++arg_index, ++pack_index) {
+          if (!(call_var->template_arg_is_value && call_var->template_arg_is_value[arg_index]))
+            continue;
+          const std::string key = pack_binding_name(fn_def->template_param_names[i], pack_index);
+          if (call_var->template_arg_nttp_names && call_var->template_arg_nttp_names[arg_index]) {
+            if (enclosing_nttp) {
+              auto it = enclosing_nttp->find(call_var->template_arg_nttp_names[arg_index]);
+              if (it != enclosing_nttp->end()) bindings[key] = it->second;
+            }
+            continue;
+          }
+          bindings[key] = call_var->template_arg_values[arg_index];
+        }
+        continue;
+      }
+      if (arg_index >= total_args) continue;
+      if (call_var->template_arg_is_value && call_var->template_arg_is_value[arg_index]) {
         // Check if this is a forwarded NTTP name that needs resolution.
-        if (call_var->template_arg_nttp_names && call_var->template_arg_nttp_names[i]) {
+        if (call_var->template_arg_nttp_names && call_var->template_arg_nttp_names[arg_index]) {
           if (enclosing_nttp) {
-            auto it = enclosing_nttp->find(call_var->template_arg_nttp_names[i]);
+            auto it = enclosing_nttp->find(call_var->template_arg_nttp_names[arg_index]);
             if (it != enclosing_nttp->end()) {
               bindings[fn_def->template_param_names[i]] = it->second;
+              ++arg_index;
               continue;
             }
           }
           // Unresolved forwarded NTTP — skip (will be resolved during deferred instantiation).
+          ++arg_index;
           continue;
         }
-        bindings[fn_def->template_param_names[i]] = call_var->template_arg_values[i];
+        bindings[fn_def->template_param_names[i]] = call_var->template_arg_values[arg_index];
       }
+      ++arg_index;
     }
     // Fill remaining NTTP params from defaults.
     if (fn_def->template_param_has_default) {
-      for (int i = explicit_count; i < fn_def->n_template_params; ++i) {
+      for (int i = 0; i < fn_def->n_template_params; ++i) {
         if (!fn_def->template_param_names[i]) continue;
         if (!fn_def->template_param_is_nttp || !fn_def->template_param_is_nttp[i]) continue;
+        if (fn_def->template_param_is_pack && fn_def->template_param_is_pack[i]) continue;
+        if (bindings.count(fn_def->template_param_names[i])) continue;
         if (fn_def->template_param_has_default[i]) {
           bindings[fn_def->template_param_names[i]] = fn_def->template_param_default_values[i];
         }
@@ -8852,12 +9051,39 @@ class Lowerer {
   // Check if all bindings are concrete (no unresolved TB_TYPEDEF).
 
   // Get template parameter names in declaration order.
-  static std::vector<std::string> get_template_param_order(const Node* fn_def) {
+  static std::vector<std::string> get_template_param_order(
+      const Node* fn_def,
+      const TypeBindings* bindings = nullptr,
+      const NttpBindings* nttp_bindings = nullptr) {
     std::vector<std::string> params;
     if (!fn_def) return params;
     for (int i = 0; i < fn_def->n_template_params; ++i) {
-      if (fn_def->template_param_names[i])
-        params.emplace_back(fn_def->template_param_names[i]);
+      if (!fn_def->template_param_names[i]) continue;
+      const std::string pname = fn_def->template_param_names[i];
+      const bool is_pack =
+          fn_def->template_param_is_pack && fn_def->template_param_is_pack[i];
+      if (!is_pack) {
+        params.push_back(pname);
+        continue;
+      }
+      std::vector<std::pair<int, std::string>> bound_pack_names;
+      if (bindings) {
+        for (const auto& [key, _] : *bindings) {
+          int pack_index = 0;
+          if (parse_pack_binding_name(key, pname, &pack_index))
+            bound_pack_names.push_back({pack_index, key});
+        }
+      }
+      if (nttp_bindings) {
+        for (const auto& [key, _] : *nttp_bindings) {
+          int pack_index = 0;
+          if (parse_pack_binding_name(key, pname, &pack_index))
+            bound_pack_names.push_back({pack_index, key});
+        }
+      }
+      std::sort(bound_pack_names.begin(), bound_pack_names.end(),
+                [](const auto& a, const auto& b) { return a.first < b.first; });
+      for (const auto& [_, key] : bound_pack_names) params.push_back(key);
     }
     return params;
   }
@@ -8874,8 +9100,8 @@ class Lowerer {
   std::string record_seed(const std::string& fn_name, TypeBindings bindings,
                            NttpBindings nttp_bindings = {},
                            TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall) {
-    auto param_order = get_template_param_order_from_instances(fn_name);
     const Node* primary_def = ct_state_->find_template_def(fn_name);
+    auto param_order = get_template_param_order(primary_def, &bindings, &nttp_bindings);
     return registry_.record_seed(fn_name, std::move(bindings),
                                  std::move(nttp_bindings), param_order,
                                  origin, primary_def);

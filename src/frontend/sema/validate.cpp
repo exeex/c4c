@@ -25,6 +25,7 @@ struct FunctionSig {
   TypeSpec ret{};
   std::vector<TypeSpec> params;
   bool variadic = false;
+  bool has_param_pack = false;
   // True for K&R-style f() declarations: accepts any number of arguments.
   bool unspecified_params = false;
 };
@@ -208,6 +209,7 @@ bool function_sig_compatible(const FunctionSig& a, const FunctionSig& b) {
   // has the same return type (C11 6.2.7p3).
   if (a.unspecified_params || b.unspecified_params) return true;
   if (a.variadic != b.variadic) return false;
+  if (a.has_param_pack != b.has_param_pack) return false;
   if (a.params.size() != b.params.size()) return false;
   for (size_t i = 0; i < a.params.size(); ++i) {
     if (!same_types_for_function_compat(a.params[i], b.params[i], true)) return false;
@@ -219,6 +221,7 @@ bool function_sig_compatible(const FunctionSig& a, const FunctionSig& b) {
 // but differ in lvalue-ref vs rvalue-ref qualifier on at least one parameter.
 bool is_ref_overload(const FunctionSig& a, const FunctionSig& b) {
   if (a.variadic != b.variadic) return false;
+  if (a.has_param_pack != b.has_param_pack) return false;
   if (a.params.size() != b.params.size()) return false;
   bool has_ref_diff = false;
   for (size_t i = 0; i < a.params.size(); ++i) {
@@ -593,6 +596,7 @@ class Validator {
         const TypeSpec& pt = param->type;
         if (pt.base == TB_VOID && pt.ptr_level == 0 && pt.array_rank == 0) continue;
         sig.params.push_back(pt);
+        if (param->is_parameter_pack) sig.has_param_pack = true;
       }
       auto it = funcs_.find(n->name);
       if (it != funcs_.end()) {
@@ -1283,8 +1287,9 @@ class Validator {
             int best_score = -1;
             for (const auto& sig : overloads) {
               const int required = static_cast<int>(sig.params.size());
-              if (!sig.variadic && argc != required) continue;
-              if (sig.variadic && argc < required) continue;
+              const int min_required = sig.has_param_pack ? required - 1 : required;
+              if (!sig.variadic && !sig.has_param_pack && argc != required) continue;
+              if ((sig.variadic || sig.has_param_pack) && argc < min_required) continue;
               bool viable = true;
               int score = 0;
               const int check_n = std::min(argc, required);
@@ -1313,8 +1318,10 @@ class Validator {
             const FunctionSig& sig = it->second;
             const int argc = n->n_children;
             const int required = static_cast<int>(sig.params.size());
+            const int min_required = sig.has_param_pack ? required - 1 : required;
             if (!sig.unspecified_params &&
-                ((!sig.variadic && argc != required) || (sig.variadic && argc < required))) {
+                ((!sig.variadic && !sig.has_param_pack && argc != required) ||
+                 ((sig.variadic || sig.has_param_pack) && argc < min_required))) {
               emit(n->line, "function call arity mismatch");
             }
             const int check_n = std::min(argc, required);

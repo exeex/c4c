@@ -510,9 +510,15 @@ Node* Parser::parse_postfix(Node* base) {
                 }
                 std::vector<Node*> args;
                 while (!at_end() && !check(TokenKind::RParen)) {
-                    args.push_back(parse_assign_expr());
+                    Node* arg = parse_assign_expr();
                     // C++ pack expansion in call args: func(args...)
-                    if (is_cpp_mode() && check(TokenKind::Ellipsis)) consume();
+                    if (is_cpp_mode() && check(TokenKind::Ellipsis)) {
+                        consume();
+                        Node* pack = make_node(NK_PACK_EXPANSION, ln);
+                        pack->left = arg;
+                        arg = pack;
+                    }
+                    args.push_back(arg);
                     if (!match(TokenKind::Comma)) break;
                 }
                 expect(TokenKind::RParen);
@@ -535,10 +541,10 @@ Node* Parser::parse_postfix(Node* base) {
             case TokenKind::Ellipsis: {
                 if (!is_cpp_mode()) return base;
                 // C++ pack expansion suffix: expr...
-                // Keep the underlying expression node and treat the expansion
-                // marker as parse-only for now so template-heavy initializers
-                // like EASTL piecewise pair constructors stay balanced.
                 consume();
+                Node* n = make_node(NK_PACK_EXPANSION, ln);
+                n->left = base;
+                base = n;
                 break;
             }
             default:
