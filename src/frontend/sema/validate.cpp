@@ -1443,6 +1443,9 @@ class Validator {
         }
         out.valid = true;
         return out;
+      case NK_SIZEOF_PACK:
+        out.valid = true;
+        return out;
       case NK_SIZEOF_TYPE:
         if (!is_complete_object_type(n->type)) {
           emit(n->line, "invalid application of sizeof to incomplete type");

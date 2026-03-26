@@ -7827,6 +7827,14 @@ class Lowerer {
         TypeSpec ts{}; ts.base = TB_ULONG;
         return append_expr(n, s, ts);
       }
+      case NK_SIZEOF_PACK: {
+        // Preserve parse/lowering continuity for dependent pack-size expressions.
+        // Actual pack cardinality materialization is deferred to later template work.
+        IntLiteral lit{};
+        lit.value = 0;
+        TypeSpec ts{}; ts.base = TB_ULONG;
+        return append_expr(n, lit, ts);
+      }
       case NK_SIZEOF_TYPE: {
         // Substitute template type parameters in sizeof(T).
         TypeSpec sizeof_target = n->type;

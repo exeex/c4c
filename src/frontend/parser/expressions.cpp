@@ -167,6 +167,31 @@ Node* Parser::parse_binary(int min_prec) {
     return lhs;
 }
 
+Node* Parser::parse_sizeof_pack_expr(int ln) {
+    expect(TokenKind::Ellipsis);
+    expect(TokenKind::LParen);
+
+    int pack_start = pos_;
+    Node* pack_expr = nullptr;
+    if (!check(TokenKind::RParen)) {
+        pack_expr = parse_assign_expr();
+    }
+    int pack_end = pos_;
+
+    expect(TokenKind::RParen);
+
+    std::string pack_text;
+    for (int i = pack_start; i < pack_end && i < static_cast<int>(tokens_.size()); ++i) {
+        pack_text += tokens_[i].lexeme;
+    }
+
+    Node* n = make_node(NK_SIZEOF_PACK, ln);
+    n->left = pack_expr;
+    n->sval = arena_.strdup(pack_text.c_str());
+    n->type.base = TB_ULONG;
+    return n;
+}
+
 Node* Parser::parse_unary() {
     int ln = cur().line;
     switch (cur().kind) {
@@ -257,16 +282,8 @@ Node* Parser::parse_unary() {
         }
         case TokenKind::KwSizeof: {
             consume();
-            // sizeof...(pack) — C++ parameter pack size; return 0 placeholder
             if (is_cpp_mode() && check(TokenKind::Ellipsis)) {
-                consume(); // eat '...'
-                expect(TokenKind::LParen);
-                if (!check(TokenKind::RParen)) consume(); // eat pack name
-                expect(TokenKind::RParen);
-                Node* n = make_node(NK_INT_LIT, ln);
-                n->type.base = TB_ULONG;
-                n->ival = 0;
-                return n;
+                return parse_sizeof_pack_expr(ln);
             }
             if (check(TokenKind::LParen)) {
                 // Could be sizeof(type) or sizeof(expr)
@@ -1127,11 +1144,13 @@ Node* Parser::parse_primary() {
                     ident->template_arg_is_value = arena_.alloc_array<bool>(ident->n_template_args);
                     ident->template_arg_values = arena_.alloc_array<long long>(ident->n_template_args);
                     ident->template_arg_nttp_names = arena_.alloc_array<const char*>(ident->n_template_args);
+                    ident->template_arg_exprs = arena_.alloc_array<Node*>(ident->n_template_args);
                     for (int i = 0; i < ident->n_template_args; ++i) {
                         ident->template_arg_types[i] = parsed_args[i].type;
                         ident->template_arg_is_value[i] = parsed_args[i].is_value;
                         ident->template_arg_values[i] = parsed_args[i].value;
                         ident->template_arg_nttp_names[i] = parsed_args[i].nttp_name;
+                        ident->template_arg_exprs[i] = parsed_args[i].expr;
                     }
                     // Template<A,B>::member — resolve as qualified name.
                     // Re-parse from ident_start to trigger template struct

@@ -165,6 +165,7 @@ enum NodeKind {
     NK_TERNARY,         // cond ? then_ : else_
     NK_SIZEOF_EXPR,     // sizeof(expr) : left=expr
     NK_SIZEOF_TYPE,     // sizeof(type)
+    NK_SIZEOF_PACK,     // sizeof...(pack) : left=pack expr, sval=raw pack text
     NK_ALIGNOF_TYPE,    // _Alignof(type) / __alignof__(type)
     NK_ALIGNOF_EXPR,    // __alignof__(expr) : left=expr
     NK_COMMA_EXPR,      // left, right
@@ -294,6 +295,7 @@ struct Node {
     bool*        template_arg_is_value;   // parallel: true if arg is a constant value
     long long*   template_arg_values;     // parallel: NTTP arg values (valid when is_value)
     const char** template_arg_nttp_names; // parallel: forwarded NTTP name (null if literal)
+    Node**       template_arg_exprs;      // parallel: parsed NTTP expression node when available
     int          n_template_args;
     bool         has_template_args;       // true if <...> was parsed (distinguishes f() from f<>())
     const char*  template_origin_name;    // primary template name for specialization patterns / instantiations

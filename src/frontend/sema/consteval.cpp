@@ -241,6 +241,8 @@ ConstEvalResult eval_impl(const Node* n, const ConstEvalEnv& env) {
       // sizeof(expr) — use the expression's type from the AST.
       if (n->left) return compute_sizeof_type(resolve_type(n->left->type, env.type_bindings));
       return ConstEvalResult::failure("sizeof(expr): missing expression");
+    case NK_SIZEOF_PACK:
+      return ConstEvalResult::failure("sizeof...(pack) requires template pack instantiation");
     case NK_ALIGNOF_TYPE:
       return compute_alignof_type(resolve_type(n->type, env.type_bindings));
     case NK_ALIGNOF_EXPR:
@@ -474,6 +476,8 @@ ConstEvalResult interp_expr(const Node* n, ConstMap& locals,
     case NK_SIZEOF_EXPR:
       if (n->left) return compute_sizeof_type(resolve_type(n->left->type, env.type_bindings));
       return ConstEvalResult::failure("sizeof(expr): missing expression");
+    case NK_SIZEOF_PACK:
+      return ConstEvalResult::failure("sizeof...(pack) requires template pack instantiation");
     case NK_ALIGNOF_TYPE:
       return compute_alignof_type(resolve_type(n->type, env.type_bindings));
     case NK_ALIGNOF_EXPR:

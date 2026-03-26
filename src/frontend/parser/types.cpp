@@ -1120,27 +1120,6 @@ bool Parser::parse_template_argument_list(std::vector<TemplateArgParseResult>* o
             consume();
             return true;
         }
-        if (is_cpp_mode() && check(TokenKind::KwSizeof) &&
-            pos_ + 1 < static_cast<int>(tokens_.size()) &&
-            tokens_[pos_ + 1].kind == TokenKind::Ellipsis) {
-            consume();
-            consume();
-            expect(TokenKind::LParen);
-            int pack_start = pos_;
-            int pack_end = pack_start;
-            if (!check(TokenKind::RParen)) {
-                pack_end = find_template_arg_expr_end(tokens_, pos_);
-                pos_ = pack_end;
-            }
-            expect(TokenKind::RParen);
-            std::string expr_text = "sizeof...(";
-            expr_text += capture_template_arg_expr_text(tokens_, pack_start, pack_end);
-            expr_text += ")";
-            out_arg->is_value = true;
-            out_arg->value = 0;
-            out_arg->nttp_name = arena_.strdup((std::string("$expr:") + expr_text).c_str());
-            return true;
-        }
         if (check(TokenKind::Identifier)) {
             int saved_pos = pos_;
             const char* name = arena_.strdup(cur().lexeme.c_str());
@@ -1171,6 +1150,7 @@ bool Parser::parse_template_argument_list(std::vector<TemplateArgParseResult>* o
                     if (!expr_text.empty()) {
                         out_arg->is_value = true;
                         out_arg->value = 0;
+                        out_arg->expr = expr;
                         out_arg->nttp_name =
                             arena_.strdup((std::string("$expr:") + expr_text).c_str());
                         return true;
@@ -2705,18 +2685,24 @@ TypeSpec Parser::parse_base_type() {
                             inst->template_arg_types = arena_.alloc_array<TypeSpec>(n);
                             inst->template_arg_is_value = arena_.alloc_array<bool>(n);
                             inst->template_arg_values = arena_.alloc_array<long long>(n);
+                            inst->template_arg_nttp_names = arena_.alloc_array<const char*>(n);
+                            inst->template_arg_exprs = arena_.alloc_array<Node*>(n);
                             int tti = 0, nni = 0;
                             for (int pi = 0; pi < n; ++pi) {
                                 if (tpl_def->template_param_is_nttp[pi]) {
                                     inst->template_arg_is_value[pi] = true;
                                     inst->template_arg_values[pi] =
                                         nni < (int)nttp_bindings.size() ? nttp_bindings[nni++].second : 0;
+                                    inst->template_arg_nttp_names[pi] = nullptr;
+                                    inst->template_arg_exprs[pi] = nullptr;
                                     inst->template_arg_types[pi] = {};
                                 } else {
                                     inst->template_arg_is_value[pi] = false;
                                     inst->template_arg_types[pi] =
                                         tti < (int)type_bindings.size() ? type_bindings[tti++].second : TypeSpec{};
                                     inst->template_arg_values[pi] = 0;
+                                    inst->template_arg_nttp_names[pi] = nullptr;
+                                    inst->template_arg_exprs[pi] = nullptr;
                                 }
                             }
                         }
@@ -3826,11 +3812,13 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         sd->template_arg_is_value = arena_.alloc_array<bool>(sd->n_template_args);
         sd->template_arg_values = arena_.alloc_array<long long>(sd->n_template_args);
         sd->template_arg_nttp_names = arena_.alloc_array<const char*>(sd->n_template_args);
+        sd->template_arg_exprs = arena_.alloc_array<Node*>(sd->n_template_args);
         for (int i = 0; i < sd->n_template_args; ++i) {
             sd->template_arg_is_value[i] = specialization_args[i].is_value;
             sd->template_arg_types[i] = specialization_args[i].type;
             sd->template_arg_values[i] = specialization_args[i].value;
             sd->template_arg_nttp_names[i] = specialization_args[i].nttp_name;
+            sd->template_arg_exprs[i] = specialization_args[i].expr;
         }
     }
 

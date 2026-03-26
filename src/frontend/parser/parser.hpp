@@ -47,6 +47,7 @@ class Parser {
     TypeSpec type{};
     long long value = 0;
     const char* nttp_name = nullptr;
+    Node* expr = nullptr;
   };
 
   // Template-scope stack: tracks active template parameter visibility.
@@ -318,6 +319,7 @@ class Parser {
   Node* parse_unary();           // prefix unary
   Node* parse_postfix(Node* base); // postfix ops (left-recursive)
   Node* parse_primary();         // primary expression
+  Node* parse_sizeof_pack_expr(int ln); // sizeof...(pack)
   Node* parse_new_expr(int ln, bool global_qualified); // C++ new expression
 
   // Operator precedence helper.

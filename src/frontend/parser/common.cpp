@@ -67,6 +67,9 @@ bool is_dependent_enum_expr(Node* n,
     if (n->kind == NK_SIZEOF_EXPR) {
         return true;
     }
+    if (n->kind == NK_SIZEOF_PACK) {
+        return true;
+    }
     if (n->kind == NK_CAST && n->left) return is_dependent_enum_expr(n->left, consts);
     if (n->kind == NK_UNARY && n->left) return is_dependent_enum_expr(n->left, consts);
     if (n->kind == NK_BINOP && n->left && n->right) {
@@ -329,6 +332,9 @@ bool eval_const_int(Node* n, long long* out,
         // sizeof(expr): approximate from the expression type if it's a literal
         // For non-literals, return a conservative estimate
         return false;  // complex: skip for now
+    }
+    if (n->kind == NK_SIZEOF_PACK) {
+        return false;
     }
     if (n->kind == NK_UNARY && n->op && n->left) {
         long long v;

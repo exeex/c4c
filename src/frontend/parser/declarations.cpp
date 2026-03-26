@@ -2108,11 +2108,13 @@ top_level_base_ready:
             fn->template_arg_is_value = arena_.alloc_array<bool>(n);
             fn->template_arg_values = arena_.alloc_array<long long>(n);
             fn->template_arg_nttp_names = arena_.alloc_array<const char*>(n);
+            fn->template_arg_exprs = arena_.alloc_array<Node*>(n);
             for (int i = 0; i < n; ++i) {
                 fn->template_arg_types[i] = spec_arg_types[i];
                 fn->template_arg_is_value[i] = spec_arg_is_value[i];
                 fn->template_arg_values[i] = spec_arg_values[i];
                 fn->template_arg_nttp_names[i] = nullptr;
+                fn->template_arg_exprs[i] = nullptr;
             }
         };
 
