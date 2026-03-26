@@ -66,6 +66,7 @@ class Parser {
   struct TemplateScopeFrame {
     TemplateScopeKind kind = TemplateScopeKind::FreeFunctionTemplate;
     std::vector<TemplateScopeParam> params;
+    std::string owner_struct_tag;  // set when kind == EnclosingClass
   };
 
   // All members public (required by project coding constraints).

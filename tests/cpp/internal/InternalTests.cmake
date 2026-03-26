@@ -79,6 +79,8 @@ set(CPP_POSITIVE_PARSE_STEMS
     access_labels_treated_public_runtime
     friend_access_parse
     friend_inline_operator_parse
+    eastl_slice7d_qualified_declarator_parse
+    out_of_class_member_owner_scope_parse
 )
 
 foreach(src IN LISTS INTERNAL_CPP_NEGATIVE_TEST_SRCS)

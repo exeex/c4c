@@ -1176,6 +1176,17 @@ Node* Parser::parse_top_level() {
             expect(TokenKind::ColonColon);
             expect(TokenKind::KwOperator);
 
+            // Enter owner scope for out-of-class operator definition.
+            std::string saved_tag_op = current_struct_tag_;
+            current_struct_tag_ = qualified_owner;
+            if (!template_scope_stack_.empty() &&
+                template_scope_stack_.back().kind == TemplateScopeKind::FreeFunctionTemplate &&
+                (find_template_struct_primary(qualified_owner) ||
+                 template_struct_defs_.count(qualified_owner))) {
+                template_scope_stack_.back().kind = TemplateScopeKind::EnclosingClass;
+                template_scope_stack_.back().owner_struct_tag = qualified_owner;
+            }
+
             TypeSpec conv_ts = parse_base_type();
             parse_attributes(&conv_ts);
             while (check(TokenKind::Star)) {
@@ -1271,6 +1282,7 @@ Node* Parser::parse_top_level() {
                 match(TokenKind::Semi);
             }
             known_fn_names_.insert(qualified_op_name);
+            current_struct_tag_ = saved_tag_op;
             return fn;
         }
 
@@ -1303,6 +1315,22 @@ Node* Parser::parse_top_level() {
                 }
                 if (!qualified_ctor_name.empty()) qualified_ctor_name += "::";
                 qualified_ctor_name += parsed_ctor_qn.base_name;
+
+                // Enter owner scope for out-of-class constructor definition.
+                std::string ctor_owner;
+                for (size_t i = 0; i < parsed_ctor_qn.qualifier_segments.size(); ++i) {
+                    if (i) ctor_owner += "::";
+                    ctor_owner += parsed_ctor_qn.qualifier_segments[i];
+                }
+                std::string saved_tag_ctor = current_struct_tag_;
+                current_struct_tag_ = ctor_owner;
+                if (!template_scope_stack_.empty() &&
+                    template_scope_stack_.back().kind == TemplateScopeKind::FreeFunctionTemplate &&
+                    (find_template_struct_primary(ctor_owner) ||
+                     template_struct_defs_.count(ctor_owner))) {
+                    template_scope_stack_.back().kind = TemplateScopeKind::EnclosingClass;
+                    template_scope_stack_.back().owner_struct_tag = ctor_owner;
+                }
 
                 consume();  // (
                 std::vector<Node*> params;
@@ -1403,6 +1431,7 @@ Node* Parser::parse_top_level() {
                     match(TokenKind::Semi);
                 }
                 known_fn_names_.insert(qualified_ctor_name);
+                current_struct_tag_ = saved_tag_ctor;
                 return fn;
             }
         }
@@ -1735,6 +1764,38 @@ top_level_base_ready:
     }
     }
 
+    // Owner-aware scope: if the declarator produced a qualified name like
+    // "vector::set_capacity", detect the owner struct and re-enter its scope
+    // so member typedefs are visible during parameter/body parsing.
+    // We save/restore current_struct_tag_ via a scope guard so all exit paths
+    // are covered.
+    std::string qualified_owner_tag;
+    auto enter_owner_scope = [&]() {
+        if (!is_cpp_mode() || !decl_name) return;
+        std::string dn(decl_name);
+        auto sep = dn.rfind("::");
+        if (sep == std::string::npos || sep == 0) return;
+        qualified_owner_tag = dn.substr(0, sep);
+        current_struct_tag_ = qualified_owner_tag;
+        // If the owner is a known template struct and we have an active
+        // FreeFunctionTemplate scope, relabel it as EnclosingClass.
+        if (!template_scope_stack_.empty() &&
+            template_scope_stack_.back().kind == TemplateScopeKind::FreeFunctionTemplate) {
+            if (find_template_struct_primary(qualified_owner_tag) ||
+                template_struct_defs_.count(qualified_owner_tag)) {
+                template_scope_stack_.back().kind = TemplateScopeKind::EnclosingClass;
+                template_scope_stack_.back().owner_struct_tag = qualified_owner_tag;
+            }
+        }
+    };
+    std::string saved_struct_tag_for_qualified = current_struct_tag_;
+    enter_owner_scope();
+    // Helper to restore struct tag before returning from this function.
+    auto restore_owner_scope = [&]() {
+        if (!qualified_owner_tag.empty())
+            current_struct_tag_ = saved_struct_tag_for_qualified;
+    };
+
     // Explicit template specialization: parse <type_args> after function name.
     // e.g. template<> int add<int>(int a, int b) { ... }
     //                          ^^^^^ captured here
@@ -1795,6 +1856,7 @@ top_level_base_ready:
     if (!decl_name) {
         // No name: just a type declaration; skip to ;
         match(TokenKind::Semi);
+        restore_owner_scope();
         return make_node(NK_EMPTY, ln);
     }
 
@@ -1832,6 +1894,7 @@ top_level_base_ready:
             fn->n_ret_fn_ptr_params = decl_n_fn_ptr_params;
             fn->ret_fn_ptr_variadic = decl_fn_ptr_variadic;
             known_fn_names_.insert(scoped_decl_name);
+            restore_owner_scope();
             return fn;
         }
         // Function declaration (no body): consume semicolon and return
@@ -1859,6 +1922,7 @@ top_level_base_ready:
         fn->n_ret_fn_ptr_params = decl_n_fn_ptr_params;
         fn->ret_fn_ptr_variadic = decl_fn_ptr_variadic;
         known_fn_names_.insert(scoped_decl_name);
+        restore_owner_scope();
         return fn;
     }
 
@@ -2050,6 +2114,7 @@ top_level_base_ready:
             propagate_ret_fn_ptr(fn);
             attach_spec_args(fn);
             known_fn_names_.insert(scoped_decl_name);
+            restore_owner_scope();
             return fn;
         }
 
@@ -2077,6 +2142,7 @@ top_level_base_ready:
         propagate_ret_fn_ptr(fn);
         attach_spec_args(fn);
         known_fn_names_.insert(scoped_decl_name);
+        restore_owner_scope();
         return fn;
     }
 
@@ -2170,6 +2236,7 @@ top_level_base_ready:
     }
     match(TokenKind::Semi);
 
+    restore_owner_scope();
     if (gvars.size() == 1) return gvars[0];
 
     // Multiple global vars — wrap in a block
