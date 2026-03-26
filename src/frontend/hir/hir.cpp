@@ -10,9 +10,11 @@ namespace c4c::hir {
 
 Module build_hir(const Node* program_root,
                  const sema::ResolvedTypeTable* resolved_types,
+                 SourceProfile source_profile,
                  const std::string& target_triple) {
   // Stage 1: Initial HIR — lower AST to mixed compile-time/runtime HIR.
   InitialHirBuildResult initial = build_initial_hir(program_root, resolved_types);
+  initial.module->source_profile = source_profile;
   initial.module->target_triple = target_triple;
   // Module starts at HirPipelineStage::Initial (the default).
 

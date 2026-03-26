@@ -708,6 +708,20 @@ void compute_struct_layout(hir::Module* module, HirStructDef& def) {
 
   const int pack = def.pack_align;  // 0 = default, >0 = cap alignment
 
+  if (def.fields.empty()) {
+    const bool has_cpp_empty_object_size =
+        module->source_profile == SourceProfile::CppSubset ||
+        module->source_profile == SourceProfile::C4;
+    if (!has_cpp_empty_object_size) {
+      def.align_bytes = std::max(1, def.struct_align);
+      def.size_bytes = 0;
+      return;
+    }
+    def.align_bytes = std::max(1, def.struct_align);
+    def.size_bytes = std::max(1, def.align_bytes);
+    return;
+  }
+
   for (auto& field : def.fields) {
     if (field.bit_width >= 0) {
       field.align_bytes = std::max(1, field.storage_unit_bits / 8);

@@ -26,6 +26,7 @@ enum class HirPipelineStage {
 };
 
 #include "ast.hpp"
+#include "source_profile.hpp"
 
 namespace c4c::sema {
 struct CanonicalType;
@@ -832,6 +833,7 @@ struct HirTemplateDef {
 };
 
 struct Module {
+  SourceProfile source_profile = SourceProfile::C;
   std::string target_triple;
   std::string data_layout;
   std::vector<Function> functions;

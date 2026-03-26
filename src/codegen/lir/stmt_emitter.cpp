@@ -3264,8 +3264,42 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
       out_ts = promoted;
     };
     for (size_t i = 0; i < call.args.size(); ++i) {
+      const TypeSpec* fixed_param_ts = nullptr;
+      TypeSpec fn_ptr_param_ts{};
+      if (target_fn) {
+        const bool has_void_param_list =
+            target_fn->params.size() == 1 &&
+            target_fn->params[0].type.spec.base == TB_VOID &&
+            target_fn->params[0].type.spec.ptr_level == 0 &&
+            target_fn->params[0].type.spec.array_rank == 0;
+        if (!has_void_param_list && i < target_fn->params.size()) {
+          fixed_param_ts = &target_fn->params[i].type.spec;
+        }
+      } else if (callee_fn_ptr_sig) {
+        const bool has_void_pl = sig_has_void_param_list(*callee_fn_ptr_sig);
+        if (!has_void_pl && i < sig_param_count(*callee_fn_ptr_sig)) {
+          fn_ptr_param_ts = sig_param_type(*callee_fn_ptr_sig, i);
+          fixed_param_ts = &fn_ptr_param_ts;
+        }
+      }
+
       TypeSpec arg_ts{};
-      std::string arg = emit_rval_id(ctx, call.args[i], arg_ts);
+      std::string arg;
+      if (fixed_param_ts &&
+          (fixed_param_ts->is_lvalue_ref || fixed_param_ts->is_rvalue_ref)) {
+        try {
+          TypeSpec pointee_ts{};
+          arg = emit_lval(ctx, call.args[i], pointee_ts);
+          arg_ts = pointee_ts;
+          arg_ts.ptr_level += 1;
+          arg_ts.is_lvalue_ref = fixed_param_ts->is_lvalue_ref;
+          arg_ts.is_rvalue_ref = fixed_param_ts->is_rvalue_ref;
+        } catch (const std::runtime_error&) {
+          arg = emit_rval_id(ctx, call.args[i], arg_ts);
+        }
+      } else {
+        arg = emit_rval_id(ctx, call.args[i], arg_ts);
+      }
       TypeSpec out_arg_ts = arg_ts;
       const bool is_va_list_value =
           arg_ts.base == TB_VA_LIST &&

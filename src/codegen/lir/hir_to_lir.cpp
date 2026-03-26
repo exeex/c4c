@@ -214,7 +214,12 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod) {
     const std::string sty = llvm_struct_type_str(tag);
 
     if (sd.fields.empty()) {
-      decls.push_back(sty + " = type {}");
+      if (sd.size_bytes == 0) {
+        decls.push_back(sty + " = type {}");
+      } else {
+        decls.push_back(sty + " = type { [" +
+                         std::to_string(sd.size_bytes) + " x i8] }");
+      }
       continue;
     }
     if (sd.is_union) {

@@ -13,7 +13,8 @@ static AnalyzeResult analyze_program_base(const Node* root,
   result.validation = validate_program(root);
   if (!result.validation.ok) return result;
   result.canonical = build_canonical_symbols(root, source_profile);
-  result.hir_module = hir::build_hir(root, &result.canonical.resolved_types, target_triple);
+  result.hir_module = hir::build_hir(
+      root, &result.canonical.resolved_types, source_profile, target_triple);
   return result;
 }
 
