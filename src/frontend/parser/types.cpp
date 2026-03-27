@@ -5506,6 +5506,23 @@ Node* Parser::initialize_record_definition(
     return sd;
 }
 
+Node* Parser::parse_record_definition_after_tag_setup(
+    int line,
+    bool is_union,
+    const char* tag,
+    const char* template_origin_name,
+    const TypeSpec& attr_ts,
+    const std::vector<TemplateArgParseResult>& specialization_args,
+    const std::vector<TypeSpec>& base_types) {
+    const char* source_tag = tag;
+    Node* sd = initialize_record_definition(line, is_union, tag,
+                                            template_origin_name, attr_ts,
+                                            specialization_args, base_types);
+    parse_record_definition_body(sd, is_union, source_tag, tag,
+                                 template_origin_name);
+    return sd;
+}
+
 void Parser::apply_record_trailing_type_attributes(Node* sd) {
     if (!sd || !check(TokenKind::KwAttribute))
         return;
@@ -5616,14 +5633,9 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     if (Node* ref = parse_record_tag_setup(ln, is_union, &tag))
         return ref;
 
-    const char* source_tag = tag;
-    Node* sd = initialize_record_definition(ln, is_union, tag,
-                                            template_origin_name, attr_ts,
-                                            specialization_args, base_types);
-
-    parse_record_definition_body(sd, is_union, source_tag, tag,
-                                 template_origin_name);
-    return sd;
+    return parse_record_definition_after_tag_setup(
+        ln, is_union, tag, template_origin_name, attr_ts, specialization_args,
+        base_types);
 }
 
 // ── enum parsing ─────────────────────────────────────────────────────────────

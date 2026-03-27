@@ -131,6 +131,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     record_base_clause_setup_parse
     record_tag_setup_parse
     record_definition_setup_parse
+    record_definition_dispatch_parse
     record_body_loop_parse
     record_body_member_attempt_parse
     record_body_duplicate_checker_parse

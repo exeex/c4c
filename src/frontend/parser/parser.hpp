@@ -490,6 +490,14 @@ class Parser {
       const TypeSpec& attr_ts,
       const std::vector<TemplateArgParseResult>& specialization_args,
       const std::vector<TypeSpec>& base_types);
+  Node* parse_record_definition_after_tag_setup(
+      int line,
+      bool is_union,
+      const char* tag,
+      const char* template_origin_name,
+      const TypeSpec& attr_ts,
+      const std::vector<TemplateArgParseResult>& specialization_args,
+      const std::vector<TypeSpec>& base_types);
   void begin_record_body_context(const char* tag,
                                  const char* template_origin_name,
                                  std::string* saved_struct_tag,

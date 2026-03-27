@@ -10,6 +10,56 @@
 
 ## Current Slice
 
+- Completed: extracted the remaining post-tag-setup definition path from
+  `parse_struct_or_union(...)` into
+  `parse_record_definition_after_tag_setup(...)` so the Step 6 outer
+  entrypoint now dispatches cleanly between forward references and full
+  definition parsing without changing specialization setup, body handoff, or
+  trailing-attribute behavior
+- New helper path:
+  - `parse_record_definition_after_tag_setup(...)`
+- Added parse-only coverage:
+  - `record_definition_dispatch_parse`
+- Baseline recorded:
+  - `test_fail_before.log`: 2208 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
+- Validation completed:
+  - focused record-definition regressions passed:
+    - `record_definition_dispatch_parse`
+    - `record_definition_setup_parse`
+    - `record_definition_body_handoff_parse`
+    - `record_prebody_setup_parse`
+    - `record_tag_setup_parse`
+    - `record_body_context_parse`
+    - `record_body_context_teardown_parse`
+    - `record_body_finalization_parse`
+    - `record_completion_handoff_parse`
+    - `record_body_loop_parse`
+    - `record_member_dispatch_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2208 total, 7 failed
+    - `test_fail_after.log`: 2209 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Active target: Step 6 now appears compressed down to a thin
+  `parse_struct_or_union(...)` dispatcher; avoid forcing another trivial
+  extraction unless a still-meaningful record-body coordinator seam is found
+- This iteration's exact target: completed the bounded Step 6 extraction
+  around the final post-tag-setup definition path in
+  `parse_struct_or_union(...)` and verified it against nearby record-body
+  coverage plus the full suite
+- Next intended slice: inspect whether Step 6 is complete relative to the
+  plan’s "top-level dispatcher" goal and, if so, advance the planning
+  lifecycle instead of inventing another no-signal helper extraction
+
 - Completed: extracted the remaining record body-context teardown from
   `parse_record_body_with_context(...)` into
   `finish_record_body_context(...)` so the Step 6 body-context path now reads
