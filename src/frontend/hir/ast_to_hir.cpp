@@ -654,77 +654,84 @@ int align_to(int value, int align) {
   return (value + align - 1) / align * align;
 }
 
-int struct_size_bytes(const hir::Module& module, const char* tag) {
-  if (!tag || !tag[0]) return 4;
-  const auto it = module.struct_defs.find(tag);
-  if (it == module.struct_defs.end()) return 4;
-  return it->second.size_bytes;
-}
+namespace {
 
-int struct_align_bytes(const hir::Module& module, const char* tag) {
-  if (!tag || !tag[0]) return 4;
-  const auto it = module.struct_defs.find(tag);
-  if (it == module.struct_defs.end()) return 4;
-  return std::max(1, it->second.align_bytes);
-}
+class LayoutQueries {
+ public:
+  explicit LayoutQueries(const hir::Module& module) : module_(module) {}
 
-int type_size_bytes(const hir::Module& module, const TypeSpec& ts) {
-  if (ts.array_rank > 0) {
-    if (ts.array_size == 0) return 0;
-    if (ts.array_size > 0) {
-      TypeSpec elem = ts;
-      elem.array_rank--;
-      if (elem.array_rank > 0) {
-        for (int i = 0; i < elem.array_rank; ++i) elem.array_dims[i] = elem.array_dims[i + 1];
+  int struct_size_bytes(const char* tag) const {
+    if (!tag || !tag[0]) return 4;
+    const auto it = module_.struct_defs.find(tag);
+    if (it == module_.struct_defs.end()) return 4;
+    return it->second.size_bytes;
+  }
+
+  int struct_align_bytes(const char* tag) const {
+    if (!tag || !tag[0]) return 4;
+    const auto it = module_.struct_defs.find(tag);
+    if (it == module_.struct_defs.end()) return 4;
+    return std::max(1, it->second.align_bytes);
+  }
+
+  int type_size_bytes(const TypeSpec& ts) const {
+    if (ts.array_rank > 0) {
+      if (ts.array_size == 0) return 0;
+      if (ts.array_size > 0) {
+        const TypeSpec elem = array_element_type(ts);
+        return static_cast<int>(ts.array_size) * type_size_bytes(elem);
       }
-      elem.array_size = (elem.array_rank > 0) ? elem.array_dims[0] : -1;
-      return static_cast<int>(ts.array_size) * type_size_bytes(module, elem);
+      return 8;
     }
-    return 8;
+    if (ts.is_vector && ts.vector_bytes > 0) return static_cast<int>(ts.vector_bytes);
+    if (ts.ptr_level > 0 && ts.is_ptr_to_array) return 8;
+    if (ts.ptr_level > 0 || ts.is_fn_ptr) return 8;
+    if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0) {
+      return struct_size_bytes(ts.tag);
+    }
+    return sizeof_base(ts.base);
   }
-  if (ts.is_vector && ts.vector_bytes > 0) return static_cast<int>(ts.vector_bytes);
-  if (ts.ptr_level > 0 && ts.is_ptr_to_array) return 8;
-  if (ts.ptr_level > 0 || ts.is_fn_ptr) return 8;
-  if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0) {
-    return struct_size_bytes(module, ts.tag);
-  }
-  return sizeof_base(ts.base);
-}
 
-int type_align_bytes(const hir::Module& module, const TypeSpec& ts) {
-  int natural = 1;
-  if (ts.array_rank > 0) {
+  int type_align_bytes(const TypeSpec& ts) const {
+    int natural = 1;
+    if (ts.array_rank > 0) {
+      natural = type_align_bytes(array_element_type(ts));
+    } else if (ts.is_vector && ts.vector_bytes > 0) {
+      natural = static_cast<int>(ts.vector_bytes);
+    } else if (ts.ptr_level > 0 || ts.is_fn_ptr) {
+      natural = 8;
+    } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0) {
+      natural = struct_align_bytes(ts.tag);
+    } else {
+      natural = std::max(1, static_cast<int>(align_base(ts.base, ts.ptr_level)));
+    }
+    if (ts.align_bytes > 0) natural = std::max(natural, ts.align_bytes);
+    return natural;
+  }
+
+  int field_size_bytes(const HirStructField& field) const {
+    if (field.size_bytes > 0 || field.is_flexible_array) return field.size_bytes;
+    return type_size_bytes(field.elem_type);
+  }
+
+  int field_align_bytes(const HirStructField& field) const {
+    if (field.align_bytes > 0) return field.align_bytes;
+    return type_align_bytes(field.elem_type);
+  }
+
+ private:
+  static TypeSpec array_element_type(const TypeSpec& ts) {
     TypeSpec elem = ts;
     elem.array_rank--;
     if (elem.array_rank > 0) {
       for (int i = 0; i < elem.array_rank; ++i) elem.array_dims[i] = elem.array_dims[i + 1];
     }
     elem.array_size = (elem.array_rank > 0) ? elem.array_dims[0] : -1;
-    natural = type_align_bytes(module, elem);
-  } else if (ts.is_vector && ts.vector_bytes > 0) {
-    natural = static_cast<int>(ts.vector_bytes);
-  } else if (ts.ptr_level > 0 || ts.is_fn_ptr) {
-    natural = 8;
-  } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0) {
-    natural = struct_align_bytes(module, ts.tag);
-  } else {
-    natural = std::max(1, static_cast<int>(align_base(ts.base, ts.ptr_level)));
+    return elem;
   }
-  if (ts.align_bytes > 0) natural = std::max(natural, ts.align_bytes);
-  return natural;
-}
 
-int field_size_bytes(const hir::Module& module, const HirStructField& f) {
-  if (f.size_bytes > 0 || f.is_flexible_array) return f.size_bytes;
-  return type_size_bytes(module, f.elem_type);
-}
-
-int field_align_bytes(const hir::Module& module, const HirStructField& f) {
-  if (f.align_bytes > 0) return f.align_bytes;
-  return type_align_bytes(module, f.elem_type);
-}
-
-namespace {
+  const hir::Module& module_;
+};
 
 bool has_cpp_empty_object_size(const hir::Module& module) {
   return module.source_profile == SourceProfile::CppSubset ||
@@ -751,13 +758,14 @@ TypeSpec field_layout_type(const HirStructField& field) {
 }
 
 void prepare_field_layout(const hir::Module& module, HirStructField& field, int pack) {
+  const LayoutQueries queries(module);
   if (field.bit_width >= 0) {
     field.align_bytes = std::max(1, field.storage_unit_bits / 8);
     field.size_bytes = std::max(1, field.storage_unit_bits / 8);
   } else {
     const TypeSpec field_ts = field_layout_type(field);
-    field.align_bytes = type_align_bytes(module, field_ts);
-    field.size_bytes = type_size_bytes(module, field_ts);
+    field.align_bytes = queries.type_align_bytes(field_ts);
+    field.size_bytes = queries.type_size_bytes(field_ts);
   }
   if (pack > 0 && field.align_bytes > pack) field.align_bytes = pack;
 }
@@ -768,31 +776,33 @@ void apply_struct_align(HirStructDef& def) {
 }
 
 void compute_union_layout(const hir::Module& module, HirStructDef& def, int pack) {
+  const LayoutQueries queries(module);
   def.align_bytes = 1;
   def.size_bytes = 0;
   for (auto& field : def.fields) {
     field.offset_bytes = 0;
-    int field_align = field_align_bytes(module, field);
+    int field_align = queries.field_align_bytes(field);
     if (pack > 0 && field_align > pack) field_align = pack;
     def.align_bytes = std::max(def.align_bytes, field_align);
-    def.size_bytes = std::max(def.size_bytes, field_size_bytes(module, field));
+    def.size_bytes = std::max(def.size_bytes, queries.field_size_bytes(field));
   }
   apply_struct_align(def);
   def.size_bytes = align_to(def.size_bytes, def.align_bytes);
 }
 
 void compute_record_layout(const hir::Module& module, HirStructDef& def, int pack) {
+  const LayoutQueries queries(module);
   def.align_bytes = 1;
   int offset = 0;
   int last_llvm_idx = -1;
   int last_offset = 0;
   for (auto& field : def.fields) {
     if (field.llvm_idx != last_llvm_idx) {
-      int field_align = field_align_bytes(module, field);
+      int field_align = queries.field_align_bytes(field);
       if (pack > 0 && field_align > pack) field_align = pack;
       offset = align_to(offset, field_align);
       last_offset = offset;
-      offset += field_size_bytes(module, field);
+      offset += queries.field_size_bytes(field);
       last_llvm_idx = field.llvm_idx;
       def.align_bytes = std::max(def.align_bytes, field_align);
     }
@@ -8423,6 +8433,7 @@ class Lowerer {
         return append_expr(n, lit, ts);
       }
       case NK_SIZEOF_TYPE: {
+        const LayoutQueries queries(*module_);
         // Substitute template type parameters in sizeof(T).
         TypeSpec sizeof_target = n->type;
         if (ctx && !ctx->tpl_bindings.empty() &&
@@ -8451,7 +8462,7 @@ class Lowerer {
           ts.base = TB_ULONG;
           const ExprId count_id = lower_expr(ctx, n->type.array_size_expr);
           const ExprId elem_sz_id = append_expr(
-              n, IntLiteral{static_cast<long long>(type_size_bytes(*module_, elem_ts)), false}, ts);
+              n, IntLiteral{static_cast<long long>(queries.type_size_bytes(elem_ts)), false}, ts);
           BinaryExpr mul{};
           mul.op = BinaryOp::Mul;
           mul.lhs = count_id;
@@ -8459,11 +8470,12 @@ class Lowerer {
           return append_expr(n, mul, ts);
         }
         // For concrete non-VLA types, lower sizeof(type) directly to a constant.
-        const int size = type_size_bytes(*module_, sizeof_target);
+        const int size = queries.type_size_bytes(sizeof_target);
         TypeSpec ts{}; ts.base = TB_ULONG;
         return append_expr(n, IntLiteral{static_cast<long long>(size), false}, ts);
       }
       case NK_ALIGNOF_TYPE: {
+        const LayoutQueries queries(*module_);
         // Substitute template type parameters in alignof(T).
         TypeSpec alignof_target = n->type;
         if (ctx && !ctx->tpl_bindings.empty() &&
@@ -8477,11 +8489,12 @@ class Lowerer {
               alignof_target.ptr_level += concrete.ptr_level;
           }
         }
-        const int align = type_align_bytes(*module_, alignof_target);
+        const int align = queries.type_align_bytes(alignof_target);
         TypeSpec ts{}; ts.base = TB_ULONG;
         return append_expr(n, IntLiteral{static_cast<long long>(align), false}, ts);
       }
       case NK_ALIGNOF_EXPR: {
+        const LayoutQueries queries(*module_);
         // __alignof__(expr) — alignment of the expression's type.
         TypeSpec expr_ts = infer_generic_ctrl_type(ctx, n->left);
         int align = 0;
@@ -8499,7 +8512,7 @@ class Lowerer {
           if (expr_ts.align_bytes > 0)
             align = expr_ts.align_bytes;
           else
-            align = type_align_bytes(*module_, expr_ts);
+            align = queries.type_align_bytes(expr_ts);
         }
         TypeSpec ts{}; ts.base = TB_ULONG;
         return append_expr(n, IntLiteral{static_cast<long long>(align), false}, ts);

@@ -528,6 +528,15 @@ set_tests_properties(cpp_hir_record_packed_aligned_layout PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_record_field_array_layout
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/record_field_array_layout_hir.cpp"
+)
+set_tests_properties(cpp_hir_record_field_array_layout PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "struct FieldArrayLayout size=20 align=4.*field tag: char llvm_idx=0 offset=0 size=1 align=1.*field data: int\\[3\\] llvm_idx=1 offset=4 size=12 align=4.*field tail: short llvm_idx=2 offset=16 size=2 align=2"
+)
+
+add_test(
   NAME cpp_hir_spec_key_identity
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/specialization_identity.cpp"
 )
