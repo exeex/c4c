@@ -94,6 +94,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     global_qualified_member_pointer_template_owner_parse
     declarator_array_suffix_staging_parse
     declarator_pointer_qualifier_staging_parse
+    declarator_parenthesized_fn_ptr_staging_parse
 )
 
 list(APPEND CPP_POSITIVE_FRONTEND_STEMS

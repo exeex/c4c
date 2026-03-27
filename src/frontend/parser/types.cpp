@@ -1589,6 +1589,45 @@ bool Parser::parse_qualified_declarator_name(std::string* out_name) {
     return true;
 }
 
+void Parser::parse_declarator_parameter_list(
+    std::vector<Node*>* out_params, bool* out_variadic) {
+    if (out_params) out_params->clear();
+    if (out_variadic) *out_variadic = false;
+
+    expect(TokenKind::LParen);
+    if (!check(TokenKind::RParen)) {
+        while (!at_end()) {
+            if (check(TokenKind::Ellipsis)) {
+                if (out_variadic) *out_variadic = true;
+                consume();
+                break;
+            }
+            if (check(TokenKind::RParen)) break;
+            if (!is_type_start()) {
+                consume();
+                if (match(TokenKind::Comma)) continue;
+                break;
+            }
+            Node* p = parse_param();
+            if (p && out_params) out_params->push_back(p);
+            if (!match(TokenKind::Comma)) break;
+        }
+    }
+    expect(TokenKind::RParen);
+}
+
+void Parser::store_declarator_function_pointer_params(
+    Node*** out_params, int* out_n_params, bool* out_variadic,
+    const std::vector<Node*>& params, bool variadic) {
+    if (out_n_params) *out_n_params = static_cast<int>(params.size());
+    if (out_variadic) *out_variadic = variadic;
+    if (!out_params || params.empty()) return;
+
+    *out_params = arena_.alloc_array<Node*>(static_cast<int>(params.size()));
+    for (int i = 0; i < static_cast<int>(params.size()); ++i)
+        (*out_params)[i] = params[i];
+}
+
 namespace {
 
 void clear_declarator_array_type(TypeSpec* ts) {
@@ -3583,26 +3622,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         expect(TokenKind::RParen);
         // Parse the pointed-to function's parameter list.
         if (check(TokenKind::LParen)) {
-            consume();  // (
-            if (!check(TokenKind::RParen)) {
-                while (!at_end()) {
-                    if (check(TokenKind::Ellipsis)) {
-                        fn_ptr_variadic = true;
-                        consume();
-                        break;
-                    }
-                    if (check(TokenKind::RParen)) break;
-                    if (!is_type_start()) {
-                        consume();
-                        if (match(TokenKind::Comma)) continue;
-                        break;
-                    }
-                    Node* p = parse_param();
-                    if (p) fn_ptr_params.push_back(p);
-                    if (!match(TokenKind::Comma)) break;
-                }
-            }
-            expect(TokenKind::RParen);
+            parse_declarator_parameter_list(&fn_ptr_params, &fn_ptr_variadic);
             // C++ pointer-to-member-function may have cv-qualifiers after params:
             // R (T::*pm)() const  or  R (T::*pm)() volatile
             while (is_qualifier(cur().kind)) consume();
@@ -3610,23 +3630,13 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
             if (is_nested_fn_ptr) {
                 // For nested fn_ptr: inner params already set on out_fn_ptr_params;
                 // the outer params here are the RETURN type's fn_ptr params.
-                if (out_n_ret_fn_ptr_params) *out_n_ret_fn_ptr_params = static_cast<int>(fn_ptr_params.size());
-                if (out_ret_fn_ptr_variadic) *out_ret_fn_ptr_variadic = fn_ptr_variadic;
-                if (out_ret_fn_ptr_params && !fn_ptr_params.empty()) {
-                    *out_ret_fn_ptr_params = arena_.alloc_array<Node*>(static_cast<int>(fn_ptr_params.size()));
-                    for (int i = 0; i < static_cast<int>(fn_ptr_params.size()); ++i) {
-                        (*out_ret_fn_ptr_params)[i] = fn_ptr_params[i];
-                    }
-                }
+                store_declarator_function_pointer_params(
+                    out_ret_fn_ptr_params, out_n_ret_fn_ptr_params,
+                    out_ret_fn_ptr_variadic, fn_ptr_params, fn_ptr_variadic);
             } else {
-                if (out_n_fn_ptr_params) *out_n_fn_ptr_params = static_cast<int>(fn_ptr_params.size());
-                if (out_fn_ptr_variadic) *out_fn_ptr_variadic = fn_ptr_variadic;
-                if (out_fn_ptr_params && !fn_ptr_params.empty()) {
-                    *out_fn_ptr_params = arena_.alloc_array<Node*>(static_cast<int>(fn_ptr_params.size()));
-                    for (int i = 0; i < static_cast<int>(fn_ptr_params.size()); ++i) {
-                        (*out_fn_ptr_params)[i] = fn_ptr_params[i];
-                    }
-                }
+                store_declarator_function_pointer_params(
+                    out_fn_ptr_params, out_n_fn_ptr_params,
+                    out_fn_ptr_variadic, fn_ptr_params, fn_ptr_variadic);
             }
         }
         // Array suffix after function pointer: (*p)[N] / (*p)[N][M]

@@ -310,6 +310,11 @@ class Parser {
   bool parse_dependent_typename_specifier(std::string* out_name = nullptr);
   bool parse_operator_declarator_name(std::string* out_name);
   bool parse_qualified_declarator_name(std::string* out_name);
+  void parse_declarator_parameter_list(std::vector<Node*>* out_params,
+                                       bool* out_variadic);
+  void store_declarator_function_pointer_params(
+      Node*** out_params, int* out_n_params, bool* out_variadic,
+      const std::vector<Node*>& params, bool variadic);
   long long parse_one_declarator_array_dim(TypeSpec& ts);
   void parse_declarator_array_suffixes(TypeSpec& ts,
                                        std::vector<long long>* out_dims);

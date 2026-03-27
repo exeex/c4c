@@ -10,34 +10,30 @@
 
 ## Current Slice
 
-- Completed: extracted the first Step 5 declarator staging helpers for
-  array-suffix parsing/application
+- Completed: extracted the next parenthesized function-pointer coordinator
+  stage from `parse_declarator()` without changing precedence
 - New helper path:
-  - `parse_one_declarator_array_dim(...)`
-  - `parse_declarator_array_suffixes(...)`
-  - `apply_declarator_array_dims(...)`
+  - `parse_declarator_parameter_list(...)`
+  - `store_declarator_function_pointer_params(...)`
 - Reused the helper path in:
-  - parenthesized function-pointer declarators
-  - grouped declarators
-  - normal declarators
+  - parenthesized function-pointer declarator parameter parsing
+  - nested function-pointer return-parameter storage
+  - non-nested function-pointer parameter storage
 - Added parse-only coverage:
-  - `declarator_array_suffix_staging_parse`
-- Completed: extracted the next `parse_declarator()` staging helpers around
-  pointer/member-pointer/ref qualifier consumption shared by normal and
-  parenthesized declarators
-- New helper path:
-  - `try_parse_declarator_member_pointer_prefix(...)`
-  - `apply_declarator_pointer_token(...)`
-- Reused the helper path in:
-  - normal declarator member-pointer prefix handling
-  - normal declarator `*` / `&` / `&&` indirection handling
-  - parenthesized function-pointer/member-pointer declarators
-- Added parse-only coverage:
-  - `declarator_pointer_qualifier_staging_parse`
-- Planned validation:
-  - add one parse-only case covering grouped / parenthesized declarators with
-    pointer qualifiers and ref qualifiers
-  - rerun the focused declarator parser cases before the full regression guard
+  - `declarator_parenthesized_fn_ptr_staging_parse`
+- Validation completed:
+  - focused parser regressions passed:
+    - `declarator_parenthesized_fn_ptr_staging_parse`
+    - `declarator_pointer_qualifier_staging_parse`
+    - `declarator_array_suffix_staging_parse`
+    - `qualified_member_function_pointer_template_owner_parse`
+    - `qualified_member_pointer_template_owner_parse`
+    - `variadic_param_pack_declarator_parse`
+    - `eastl_slice6_template_defaults_and_refqual_cpp`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2162 total, 7 failed
+    - `test_fail_after.log`: 2163 total, 7 failed
+    - regression guard: passed (`+1` passed, `0` new failures)
 
 ## Completed
 
@@ -227,12 +223,35 @@
   - `test_after.log`: 2162 total, 7 failed
   - failing tests unchanged
   - regression guard: passed (`+1` passed, `0` new failures)
+- Continued Step 5 by extracting parenthesized function-pointer parameter-list
+  and result-storage helpers:
+  - `parse_declarator_parameter_list(...)`
+  - `store_declarator_function_pointer_params(...)`
+- Reduced the `paren_star_peek()` branch in `parse_declarator()` to a more
+  helper-driven coordinator around nested and function-returning-function-pointer
+  parameter handling
+- Added parse-only coverage:
+  - `declarator_parenthesized_fn_ptr_staging_parse`
+- Rebuilt successfully with `cmake --build build -j8`
+- Targeted parser regressions passed:
+  - `declarator_parenthesized_fn_ptr_staging_parse`
+  - `declarator_pointer_qualifier_staging_parse`
+  - `declarator_array_suffix_staging_parse`
+  - `qualified_member_function_pointer_template_owner_parse`
+  - `qualified_member_pointer_template_owner_parse`
+  - `variadic_param_pack_declarator_parse`
+  - `eastl_slice6_template_defaults_and_refqual_cpp`
+- Full clean rebuild `test_fail_after.log` remained monotonic:
+  - `test_fail_before.log`: 2162 total, 7 failed
+  - `test_fail_after.log`: 2163 total, 7 failed
+  - failing tests unchanged
+  - regression guard: passed (`+1` passed, `0` new failures)
 
 ## Next
 
-- After pointer/ref qualifier staging, extract the next smallest
-  parenthesized-function-pointer coordinator step without changing declarator
-  precedence
+- Continue Step 5 by extracting the next smallest function-suffix coordinator
+  step from `parse_declarator()` without changing declarator precedence or
+  grouped/parenthesized parsing order
 
 ## Blockers
 
