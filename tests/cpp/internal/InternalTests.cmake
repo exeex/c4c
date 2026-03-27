@@ -339,6 +339,15 @@ set_tests_properties(cpp_hir_materialization_boundary PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_initial_program_seed_realization
+  COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/materialization_boundary.cpp"
+)
+set_tests_properties(cpp_hir_initial_program_seed_realization PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "compile-time reduction: 1 iteration, 1 template call resolved, 0 template types resolved, 4 consteval reductions \\(converged\\)"
+)
+
+add_test(
   NAME cpp_hir_template_origin
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/materialization_boundary.cpp"
 )

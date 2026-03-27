@@ -823,40 +823,31 @@ class Lowerer {
         tpl_bindings, nttp_bindings);
   }
 
-  void lower_initial_program(const Node* root, Module& m) {
-    if (!root || root->kind != NK_PROGRAM) {
-      throw std::runtime_error("build_initial_hir: root is not NK_PROGRAM");
-    }
-
-    module_ = &m;
-
-    // Recursively flatten top-level items (may be nested NK_BLOCKs from
-    // nested namespace blocks).
+  std::vector<const Node*> flatten_program_items(const Node* root) const {
     std::vector<const Node*> items;
     std::function<void(const Node*)> flatten = [&](const Node* n) {
       if (!n) return;
       if (n->kind == NK_BLOCK) {
-        for (int j = 0; j < n->n_children; ++j)
-          flatten(n->children[j]);
-      } else {
-        items.push_back(n);
+        for (int j = 0; j < n->n_children; ++j) flatten(n->children[j]);
+        return;
       }
+      items.push_back(n);
     };
-    for (int i = 0; i < root->n_children; ++i)
-      flatten(root->children[i]);
+    for (int i = 0; i < root->n_children; ++i) flatten(root->children[i]);
+    return items;
+  }
 
-    // Phase 0: collect #pragma weak symbol names
+  void collect_weak_symbol_names(const std::vector<const Node*>& items) {
     for (const Node* item : items) {
-      if (item->kind == NK_PRAGMA_WEAK && item->name)
-        weak_symbols_.insert(item->name);
+      if (item->kind == NK_PRAGMA_WEAK && item->name) weak_symbols_.insert(item->name);
     }
+  }
 
-    // Phase 1: collect type definitions used by later lowering
+  void collect_initial_type_definitions(const std::vector<const Node*>& items) {
     for (const Node* item : items) {
       if (item->kind == NK_STRUCT_DEF) {
         lower_struct_def(item);
         if (item->name) struct_def_nodes_[item->name] = item;
-        // Also collect template struct defs for deferred instantiation.
         if (is_primary_template_struct_def(item) && item->name) {
           register_template_struct_primary(item->name, item);
         }
@@ -868,74 +859,66 @@ class Lowerer {
       }
       if (item->kind == NK_ENUM_DEF) collect_enum_def(item);
     }
+  }
 
-    // Phase 1.5: collect consteval function definitions for compile-time evaluation
+  void collect_consteval_function_definitions(const std::vector<const Node*>& items) {
     for (const Node* item : items) {
       if (item->kind == NK_FUNCTION && item->is_consteval && item->name) {
         ct_state_->register_consteval_def(item->name, item);
       }
     }
+  }
 
-    // Phase 1.6: collect template instantiation info from call sites.
-    // For each template function, collect all unique sets of concrete template
-    // arg types, so template functions that contain consteval calls with
-    // template-dependent args can be lowered once per instantiation.
+  void collect_template_function_definitions(const std::vector<const Node*>& items) {
     for (const Node* item : items) {
       if (item->kind == NK_FUNCTION && item->name && item->n_template_params > 0) {
         ct_state_->register_template_def(item->name, item);
       }
     }
-    // Collect explicit template specializations (template<> T foo<Args>(...)).
+  }
+
+  void collect_function_template_specializations(const std::vector<const Node*>& items) {
     for (const Node* item : items) {
-      if (item->kind == NK_FUNCTION && item->name && item->is_explicit_specialization
-          && item->n_template_args > 0) {
+      if (item->kind == NK_FUNCTION && item->name && item->is_explicit_specialization &&
+          item->n_template_args > 0) {
         const Node* tpl_def = ct_state_->find_template_def(item->name);
-        if (tpl_def) {
-          ct_state_->register_function_specialization(tpl_def, item);
-        }
+        if (tpl_def) ct_state_->register_function_specialization(tpl_def, item);
       }
     }
-    // Collect only depth-0 instantiations: direct template calls from
-    // non-template functions (e.g., main() calling twice<int>()).
-    // Nested template calls (e.g., add<T>() inside twice<T>()) will be
-    // discovered and instantiated by the HIR compile-time reduction pass.
-    for (const Node* item : items) {
-      if (item->kind == NK_FUNCTION && item->body && item->n_template_params == 0)
-        collect_template_instantiations(item->body, item);
-    }
-    // Realize seeds collected from non-template function bodies so that
-    // instances are available for the consteval fixpoint loop below.
-    registry_.realize_seeds();
+  }
 
-    // Also collect consteval template calls from template function bodies,
-    // since consteval is still evaluated eagerly during lowering and needs
-    // all instantiation bindings to be available at lowering time.
-    // This uses the fixpoint loop because consteval templates may chain.
+  void collect_depth0_template_instantiations(const std::vector<const Node*>& items) {
+    for (const Node* item : items) {
+      if (item->kind == NK_FUNCTION && item->body && item->n_template_params == 0) {
+        collect_template_instantiations(item->body, item);
+      }
+    }
+  }
+
+  void run_consteval_template_seed_fixpoint(const std::vector<const Node*>& items) {
     for (int pass = 0; pass < 8; ++pass) {
       size_t prev_size = registry_.total_instance_count();
       for (const Node* item : items) {
-        if (item->kind == NK_FUNCTION && item->body && item->n_template_params > 0)
+        if (item->kind == NK_FUNCTION && item->body && item->n_template_params > 0) {
           collect_consteval_template_instantiations(item->body, item);
+        }
       }
-      // Realize seeds discovered in this pass so enclosing-expansion
-      // paths in the next pass can find_instances() for them.
       registry_.realize_seeds();
       if (registry_.total_instance_count() == prev_size) break;
     }
+  }
 
-    // Final realize — catch any stragglers (e.g. seeds added by paths
-    // that bypass the loops above).
+  void finalize_template_seed_realization() {
     registry_.realize_seeds();
-
-    // Verify seed/instance parity after all realization is done.
     if (!registry_.verify_parity()) {
       registry_.dump_parity(stderr);
       throw std::runtime_error(
           "InstantiationRegistry: seed/instance parity violation after "
           "realize_seeds()");
     }
+  }
 
-    // Phase 1.7b: populate HirTemplateDef metadata for all template functions.
+  void populate_hir_template_defs(Module& m) {
     ct_state_->for_each_template_def([&](const std::string& name, const Node* fn_def) {
       HirTemplateDef tdef;
       tdef.name = name;
@@ -951,66 +934,67 @@ class Lowerer {
           name, tdef.template_params);
       m.template_defs[name] = std::move(tdef);
     });
+  }
 
-    // Phase 1.9: detect ref-overloaded free functions (e.g. f(T&) vs f(T&&)).
-    // Build overload sets so Phase 2 can mangle them to unique names.
-    {
-      // Track first occurrence of each function name and its param ref pattern.
-      std::unordered_map<std::string, const Node*> first_fn_decl;
-      for (const Node* item : items) {
-        if (item->kind != NK_FUNCTION || !item->name || item->is_consteval
-            || item->n_template_params > 0 || item->is_explicit_specialization)
-          continue;
-        std::string fn_name = item->name;
-        auto prev_it = first_fn_decl.find(fn_name);
-        if (prev_it == first_fn_decl.end()) {
-          first_fn_decl[fn_name] = item;
-          continue;
-        }
-        // Check if the param lists differ only in ref-qualifiers.
-        const Node* prev = prev_it->second;
-        if (prev->n_params != item->n_params) continue;
-        bool has_ref_diff = false;
-        bool base_match = true;
-        for (int pi = 0; pi < item->n_params; ++pi) {
-          const TypeSpec& a = prev->params[pi]->type;
-          const TypeSpec& b = item->params[pi]->type;
-          if (a.is_lvalue_ref != b.is_lvalue_ref || a.is_rvalue_ref != b.is_rvalue_ref)
-            has_ref_diff = true;
-          // Compare base types (ignoring ref/const qualifiers).
-          if (a.base != b.base || a.ptr_level != b.ptr_level) { base_match = false; break; }
-          if ((a.base == TB_STRUCT || a.base == TB_UNION) && a.tag && b.tag) {
-            if (std::string(a.tag) != std::string(b.tag)) { base_match = false; break; }
-          }
-        }
-        if (!has_ref_diff || !base_match) continue;
-        // This is a ref-overload pair. Register both in the overload set.
-        auto& ovset = ref_overload_set_[fn_name];
-        if (ovset.empty()) {
-          // Register the first overload.
-          RefOverloadEntry e0;
-          e0.mangled_name = fn_name;
-          for (int pi = 0; pi < prev->n_params; ++pi) {
-            e0.param_is_rvalue_ref.push_back(prev->params[pi]->type.is_rvalue_ref);
-            e0.param_is_lvalue_ref.push_back(prev->params[pi]->type.is_lvalue_ref);
-          }
-          ovset.push_back(std::move(e0));
-          ref_overload_mangled_[prev] = fn_name;
-        }
-        // Register the new overload with a mangled name.
-        RefOverloadEntry e1;
-        e1.mangled_name = fn_name + "__rref_overload";
-        for (int pi = 0; pi < item->n_params; ++pi) {
-          e1.param_is_rvalue_ref.push_back(item->params[pi]->type.is_rvalue_ref);
-          e1.param_is_lvalue_ref.push_back(item->params[pi]->type.is_lvalue_ref);
-        }
-        ovset.push_back(std::move(e1));
-        ref_overload_mangled_[item] = fn_name + "__rref_overload";
+  void collect_ref_overloaded_free_functions(const std::vector<const Node*>& items) {
+    std::unordered_map<std::string, const Node*> first_fn_decl;
+    for (const Node* item : items) {
+      if (item->kind != NK_FUNCTION || !item->name || item->is_consteval ||
+          item->n_template_params > 0 || item->is_explicit_specialization) {
+        continue;
       }
+      std::string fn_name = item->name;
+      auto prev_it = first_fn_decl.find(fn_name);
+      if (prev_it == first_fn_decl.end()) {
+        first_fn_decl[fn_name] = item;
+        continue;
+      }
+      const Node* prev = prev_it->second;
+      if (prev->n_params != item->n_params) continue;
+      bool has_ref_diff = false;
+      bool base_match = true;
+      for (int pi = 0; pi < item->n_params; ++pi) {
+        const TypeSpec& a = prev->params[pi]->type;
+        const TypeSpec& b = item->params[pi]->type;
+        if (a.is_lvalue_ref != b.is_lvalue_ref || a.is_rvalue_ref != b.is_rvalue_ref) {
+          has_ref_diff = true;
+        }
+        if (a.base != b.base || a.ptr_level != b.ptr_level) {
+          base_match = false;
+          break;
+        }
+        if ((a.base == TB_STRUCT || a.base == TB_UNION) && a.tag && b.tag) {
+          if (std::string(a.tag) != std::string(b.tag)) {
+            base_match = false;
+            break;
+          }
+        }
+      }
+      if (!has_ref_diff || !base_match) continue;
+      auto& ovset = ref_overload_set_[fn_name];
+      if (ovset.empty()) {
+        RefOverloadEntry e0;
+        e0.mangled_name = fn_name;
+        for (int pi = 0; pi < prev->n_params; ++pi) {
+          e0.param_is_rvalue_ref.push_back(prev->params[pi]->type.is_rvalue_ref);
+          e0.param_is_lvalue_ref.push_back(prev->params[pi]->type.is_lvalue_ref);
+        }
+        ovset.push_back(std::move(e0));
+        ref_overload_mangled_[prev] = fn_name;
+      }
+      RefOverloadEntry e1;
+      e1.mangled_name = fn_name + "__rref_overload";
+      for (int pi = 0; pi < item->n_params; ++pi) {
+        e1.param_is_rvalue_ref.push_back(item->params[pi]->type.is_rvalue_ref);
+        e1.param_is_lvalue_ref.push_back(item->params[pi]->type.is_lvalue_ref);
+      }
+      ovset.push_back(std::move(e1));
+      ref_overload_mangled_[item] = fn_name + "__rref_overload";
     }
+  }
 
-    // Phase 1.95: attach out-of-class struct method definitions to the
-    // pending method entries collected from their in-class declarations.
+  void attach_out_of_class_struct_method_defs(const std::vector<const Node*>& items,
+                                              Module& m) {
     for (const Node* item : items) {
       if (item->kind != NK_FUNCTION || !item->body) continue;
       auto method_ref = try_parse_qualified_struct_method_name(item);
@@ -1025,21 +1009,18 @@ class Lowerer {
         }
       }
     }
+  }
 
-    // Phase 2: lower functions and globals
+  void lower_non_method_functions_and_globals(const std::vector<const Node*>& items,
+                                              Module& m) {
     for (const Node* item : items) {
       if (item->kind == NK_FUNCTION) {
         auto method_ref = try_parse_qualified_struct_method_name(item);
-        if (method_ref.has_value() &&
-            m.struct_defs.count(method_ref->struct_tag) &&
+        if (method_ref.has_value() && m.struct_defs.count(method_ref->struct_tag) &&
             struct_methods_.count(method_ref->key)) {
           continue;
         }
         if (item->is_consteval && item->n_template_params == 0) {
-          // Non-template consteval function: add as declaration-only to HIR
-          // for analysis/debugging.  The body is not lowered (it's evaluated
-          // by the AST-level consteval interpreter).  Marked consteval_only
-          // so the materialization pass won't emit it.
           Function ce_fn{};
           ce_fn.id = next_fn_id();
           ce_fn.name = item->name ? item->name : "<anon_consteval>";
@@ -1060,17 +1041,14 @@ class Lowerer {
           m.functions.push_back(std::move(ce_fn));
           continue;
         }
-        if (item->is_consteval) continue;  // consteval template: handled by AST interpreter
+        if (item->is_consteval) continue;
         if (item->n_template_params > 0 && item->name) {
-          // Template function: lower once per collected instantiation.
           auto* inst_list = registry_.find_instances(item->name);
           if (inst_list && !inst_list->empty()) {
             for (const auto& inst : *inst_list) {
-              // Structured specialization selection (primary path).
               auto selected = registry_.select_function_specialization(
                   item, inst.bindings, inst.nttp_bindings, inst.spec_key);
               if (selected.selected_pattern != item) {
-                // Use the specialization body (no template bindings needed).
                 lower_function(selected.selected_pattern, &inst.mangled_name);
               } else {
                 lower_function(item, &inst.mangled_name, &inst.bindings,
@@ -1082,14 +1060,7 @@ class Lowerer {
               }
             }
           } else {
-            // No explicit-arg call sites found.
-            // If the function is called from a non-template function without
-            // explicit template args (implicit deduction), it still needs
-            // generic lowering.  Only skip if we know it will be deferred
-            // (it's referenced only from other template functions with
-            // explicit template args).
-            if (!is_referenced_without_template_args(item->name, items))
-              continue;  // Will be instantiated by the HIR compile-time pass.
+            if (!is_referenced_without_template_args(item->name, items)) continue;
             lower_function(item);
           }
         } else if (!item->is_explicit_specialization) {
@@ -1104,13 +1075,39 @@ class Lowerer {
         lower_global(item);
       }
     }
+  }
 
-    // Phase 2.5: lower struct methods collected during Phase 1.
+  void lower_pending_struct_methods() {
     for (const auto& pm : pending_methods_) {
       lower_struct_method(pm.mangled, pm.struct_tag, pm.method_node,
                           pm.tpl_bindings.empty() ? nullptr : &pm.tpl_bindings,
                           pm.nttp_bindings.empty() ? nullptr : &pm.nttp_bindings);
     }
+  }
+
+  void lower_initial_program(const Node* root, Module& m) {
+    if (!root || root->kind != NK_PROGRAM) {
+      throw std::runtime_error("build_initial_hir: root is not NK_PROGRAM");
+    }
+
+    module_ = &m;
+
+    std::vector<const Node*> items = flatten_program_items(root);
+
+    collect_weak_symbol_names(items);
+    collect_initial_type_definitions(items);
+    collect_consteval_function_definitions(items);
+    collect_template_function_definitions(items);
+    collect_function_template_specializations(items);
+    collect_depth0_template_instantiations(items);
+    registry_.realize_seeds();
+    run_consteval_template_seed_fixpoint(items);
+    finalize_template_seed_realization();
+    populate_hir_template_defs(m);
+    collect_ref_overloaded_free_functions(items);
+    attach_out_of_class_struct_method_defs(items, m);
+    lower_non_method_functions_and_globals(items, m);
+    lower_pending_struct_methods();
 
     return;
   }
