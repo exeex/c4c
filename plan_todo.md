@@ -8,9 +8,9 @@ Source plan: [plan.md](/workspaces/c4c/plan.md)
 
 ## Current Slice
 
-- Extended shared qualified/template consumption into parenthesized member-function pointer owners
-- Reused existing helpers in both the probe path and the real `(` declarator consumption path
-- Added a narrow parse-only regression for template-id owners in member-function pointer declarators
+- Extracted shared qualified-name spelling / typedef-resolution helpers
+- Reused them in `is_type_start()` and the qualified-name branch of `parse_base_type()`
+- Added a narrow parse-only regression for qualified type-start probing in declaration contexts
 
 ## Completed
 
@@ -88,14 +88,33 @@ Source plan: [plan.md](/workspaces/c4c/plan.md)
   - `test_before.log`: 2155 total, 3 failed
   - `test_after.log`: 2157 total, 3 failed
   - failing tests unchanged
+- Continued Step 4 by centralizing qualified-name spelling / typedef lookup
+  for probe-style parser decisions
+- Reused the helper-driven lookup in:
+  - `is_type_start()`
+  - the qualified-name resolution path inside `parse_base_type()`
+- Added parse-only coverage:
+  - `qualified_type_start_probe_parse`
+- Rebuilt successfully with `cmake --build build -j8`
+- Targeted parse regression checks passed:
+  - `qualified_type_start_probe_parse`
+  - `qualified_dependent_typename_global_parse`
+  - `using_scoped_typedef_parse`
+  - `scope_resolution_expr_parse`
+  - `namespace_global_qualifier_parse`
+  - `eastl_slice4_typename_and_specialization_parse`
+- Full `ctest` remained monotonic after the slice:
+  - `test_before.log`: 2157 total, 3 failed
+  - `test_after.log`: 2158 total, 3 failed
+  - failing tests unchanged
 
 ## Next
 
-- Continue Step 4 by evaluating whether the remaining `peek_qualified_name(...)`
-  based probes can be partially unified with the extracted helpers without
-  broadening accepted grammar
+- Continue Step 4 by evaluating whether any remaining `peek_qualified_name(...)`
+  lookahead can reuse the extracted spelling / resolution helpers without
+  changing parser acceptance policy
 - Pick the next smallest slice around residual qualified-name probing in
-  `is_type_start()` / declarator lookahead that still duplicates consumption logic
+  declarator or expression-side lookahead that still duplicates name assembly
 - Keep new tests focused on parser-only qualified/dependent spelling coverage before any further behavior changes
 
 ## Blockers
@@ -116,4 +135,6 @@ Source plan: [plan.md](/workspaces/c4c/plan.md)
 - Added `qualified_member_pointer_template_owner_parse` to lock template-id owner parsing in declarators
 - Parenthesized member-function pointer owners now reuse the same helper path in both lookahead and real consumption
 - Added `qualified_member_function_pointer_template_owner_parse` to lock that declarator form
+- `is_type_start()` and the qualified-name branch in `parse_base_type()` now share helper-based qualified-name spelling / typedef lookup
+- Added `qualified_type_start_probe_parse` to lock declaration-context probing for qualified type names
 - Full-suite failures were treated as existing issues for this iteration per user direction

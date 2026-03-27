@@ -89,6 +89,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     qualified_dependent_typename_global_parse
     qualified_member_pointer_template_owner_parse
     qualified_member_function_pointer_template_owner_parse
+    qualified_type_start_probe_parse
 )
 
 list(APPEND CPP_POSITIVE_FRONTEND_STEMS

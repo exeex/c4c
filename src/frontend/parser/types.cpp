@@ -15,6 +15,40 @@ namespace {
 
 using ParsedTemplateArg = Parser::TemplateArgParseResult;
 
+std::string spell_qualified_name_for_lookup(const Parser::QualifiedNameRef& qn) {
+    std::string name;
+    for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
+        if (i) name += "::";
+        name += qn.qualifier_segments[i];
+    }
+    if (!name.empty()) name += "::";
+    name += qn.base_name;
+    return name;
+}
+
+std::string resolve_qualified_typedef_name(const Parser& parser,
+                                           const Parser::QualifiedNameRef& qn) {
+    std::string resolved = spell_qualified_name_for_lookup(qn);
+    if (!resolved.empty() && parser.typedef_types_.count(resolved) > 0)
+        return resolved;
+
+    if (!qn.qualifier_segments.empty() || qn.is_global_qualified) {
+        int context_id = parser.resolve_namespace_context(qn);
+        if (context_id >= 0) {
+            std::string canonical =
+                parser.canonical_name_in_context(context_id, qn.base_name);
+            if (parser.typedef_types_.count(canonical) > 0)
+                return canonical;
+        }
+        return {};
+    }
+
+    resolved = parser.resolve_visible_type_name(qn.base_name);
+    if (parser.typedef_types_.count(resolved) > 0)
+        return resolved;
+    return {};
+}
+
 bool parse_alignas_specifier(Parser* parser, TypeSpec* ts, int line) {
     if (!parser->check(TokenKind::KwAlignas)) return false;
     parser->consume();
@@ -1417,16 +1451,7 @@ bool Parser::is_type_start() const {
     if (k == TokenKind::ColonColon) {
         QualifiedNameRef qn;
         if (peek_qualified_name(&qn, true)) {
-            std::string qualified = qn.base_name;
-            if (!qn.qualifier_segments.empty()) {
-                qualified.clear();
-                for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
-                    if (i) qualified += "::";
-                    qualified += qn.qualifier_segments[i];
-                }
-                if (!qualified.empty()) qualified += "::";
-                qualified += qn.base_name;
-            }
+            std::string qualified = spell_qualified_name_for_lookup(qn);
             if (typedef_types_.count(qualified) > 0) return true;
             if (!qn.qualifier_segments.empty()) {
                 int context_id = resolve_namespace_context(qn);
@@ -1442,13 +1467,7 @@ bool Parser::is_type_start() const {
         tokens_[pos_ + 2].kind == TokenKind::Identifier) {
         QualifiedNameRef qn;
         if (peek_qualified_name(&qn, false)) {
-            std::string scoped;
-            for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
-                if (i) scoped += "::";
-                scoped += qn.qualifier_segments[i];
-            }
-            if (!scoped.empty()) scoped += "::";
-            scoped += qn.base_name;
+            std::string scoped = spell_qualified_name_for_lookup(qn);
             if (typedef_types_.count(scoped) > 0) return true;
             int context_id = resolve_namespace_context(qn);
             if (context_id >= 0) {
@@ -1946,28 +1965,7 @@ TypeSpec Parser::parse_base_type() {
                             has_signed || has_unsigned || has_short || long_count > 0 ||
                             has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
                             has_struct || has_union || has_enum || base_set;
-                        std::string resolved_name;
-                        if (!qn.qualifier_segments.empty()) {
-                            for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
-                                if (i) resolved_name += "::";
-                                resolved_name += qn.qualifier_segments[i];
-                            }
-                            if (!resolved_name.empty()) resolved_name += "::";
-                            resolved_name += qn.base_name;
-                        }
-                        if (!resolved_name.empty() && typedef_types_.count(resolved_name) == 0) {
-                            resolved_name.clear();
-                        }
-                        if (!qn.qualifier_segments.empty() || qn.is_global_qualified) {
-                            if (resolved_name.empty()) {
-                                int context_id = resolve_namespace_context(qn);
-                                if (context_id >= 0) {
-                                    resolved_name = canonical_name_in_context(context_id, qn.base_name);
-                                }
-                            }
-                        } else {
-                            resolved_name = resolve_visible_type_name(qn.base_name);
-                        }
+                        std::string resolved_name = resolve_qualified_typedef_name(*this, qn);
                         if (!already_have_base && typedef_types_.count(resolved_name) > 0) {
                             has_typedef = true;
                             ts.tag = arena_.strdup(resolved_name.c_str());
@@ -1993,13 +1991,7 @@ TypeSpec Parser::parse_base_type() {
                         // treated as an unresolved type so template/header parsing
                         // can proceed without failing on unknown namespace types.
                         if (!already_have_base && !qn.qualifier_segments.empty()) {
-                            std::string full_name;
-                            for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
-                                if (i) full_name += "::";
-                                full_name += qn.qualifier_segments[i];
-                            }
-                            full_name += "::";
-                            full_name += qn.base_name;
+                            std::string full_name = spell_qualified_name_for_lookup(qn);
                             has_typedef = true;
                             ts.tag = arena_.strdup(full_name.c_str());
                             consume_qualified_type_spelling(
