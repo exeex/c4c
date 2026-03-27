@@ -6,10 +6,30 @@
 
 ## Active Item
 
-- Step 3: Compress Function/Method Lowering Setup
+- Step 4: Isolate Embedded Parser Helpers
 
 ## Current Slice
 
+- Completed: isolated the deferred NTTP default-expression text parser used by
+  `eval_deferred_nttp_expr_hir(...)` behind the named helper
+  `DeferredNttpExprParser`, including a dedicated helper path for template
+  static-member lookup staging inside the parser surface
+- Completed: tightened the static-member evaluator used by the embedded parser
+  so it now scans either `fields[]` or `children[]`, matching the mixed record
+  storage shapes already handled elsewhere in `ast_to_hir.cpp`
+- Added focused HIR coverage for this slice:
+  - `cpp_hir_template_deferred_nttp_expr` asserts a deferred NTTP default that
+    reuses a previously bound NTTP (`M = N`) still materializes as
+    `field data: int[3] ... size=12 align=4`
+- Discovered separate follow-on initiative during this slice:
+  - deferred NTTP text expressions that require arithmetic (`N + 2`) or
+    template static-member lookup (`Count<N>::value + 2`) still collapse to
+    `..._M_0` in HIR lowering
+  - recorded separately in
+    `ideas/open/deferred_nttp_expr_parser_gaps.md`
+- Step 3 closed: the remaining differences between `lower_function(...)` and
+  `lower_struct_method(...)` are path-specific body work rather than
+  mechanically shared setup worth further extraction in this refactor
 - Completed: extracted the remaining shared callable
   registration/finalization seam from `lower_function(...)` and
   `lower_struct_method(...)` via:
@@ -216,11 +236,10 @@
 
 ## Next Intended Slice
 
-- reassess Step 3 for any remaining callable-setup extraction that is still
-  mechanically shared without absorbing function-only VLA staging or
-  method-only defaulted/ctor/dtor body work
-- if no similarly narrow seam remains, treat Step 3 as compressed enough and
-  prepare to advance to Step 4
+- extract the next embedded parser seam after the deferred NTTP expression
+  parser if this slice lands cleanly
+- keep Step 4 focused on helper isolation rather than expression-semantics
+  changes
 
 ## Blockers
 
@@ -236,8 +255,21 @@
   `instantiate_deferred_template_type(...)`, not semantic cleanup
 - the new focused HIR coverage should exercise a nested owner/member-typedef
   chain rather than only the direct `box<T>::value_type` case
-- Step 2 is now compressed enough that the next meaningful work is Step 3
-  function/method signature/setup sharing rather than more pending-owner
+- Step 2 is complete enough to leave behind
+- Step 3 is now complete enough to leave behind; the next meaningful work is
+  Step 4 embedded parser helper isolation around deferred NTTP expression
+  evaluation
+- Validation completed for this slice:
+  - targeted HIR regressions passed:
+    - `cpp_hir_template_deferred_nttp_expr`
+    - `cpp_hir_template_member_owner_resolution`
+    - `cpp_hir_template_function_recursive_body_binding`
+    - `cpp_hir_defaulted_destructor_member_teardown`
+  - full clean rebuild remained monotonic:
+    - `test_fail_before.log`: 2221 total, 7 failed
+    - `test_fail_after.log`: 2222 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures)
   helper reshuffling
 - this slice completed the shared callable return/explicit-parameter helper
   extraction without changing pack expansion or method-only prologue behavior

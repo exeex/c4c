@@ -456,6 +456,15 @@ set_tests_properties(cpp_hir_defaulted_destructor_member_teardown PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_deferred_nttp_expr
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_deferred_nttp_expr_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_deferred_nttp_expr PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "field data: int\\[3\\].*size=12 align=4"
+)
+
+add_test(
   NAME cpp_hir_spec_key_identity
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/specialization_identity.cpp"
 )

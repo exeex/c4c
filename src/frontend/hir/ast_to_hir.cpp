@@ -280,15 +280,28 @@ bool eval_struct_static_member_value_hir(
     const Node* sdef,
     const std::unordered_map<std::string, const Node*>& struct_defs,
     const std::string& member_name,
+    const NttpBindings* nttp_bindings,
     long long* out) {
   if (!sdef) return false;
   static const std::unordered_map<std::string, Node*> kEmptyStructs;
   static const std::unordered_map<std::string, long long> kEmptyConsts;
-  for (int fi = 0; fi < sdef->n_fields; ++fi) {
-    const Node* f = sdef->fields[fi];
+
+  const int num_fields = sdef->n_fields > 0 ? sdef->n_fields : sdef->n_children;
+  auto get_field = [&](int i) -> const Node* {
+    return sdef->n_fields > 0 ? sdef->fields[i] : sdef->children[i];
+  };
+
+  for (int fi = 0; fi < num_fields; ++fi) {
+    const Node* f = get_field(fi);
     if (!f || f->kind != NK_DECL || !f->is_static || !f->name) continue;
     if (member_name != f->name) continue;
     long long val = 0;
+    if (f->init && nttp_bindings &&
+        eval_const_int(const_cast<Node*>(f->init), &val, &kEmptyStructs,
+                       nttp_bindings)) {
+      *out = val;
+      return true;
+    }
     if (f->init && eval_const_int(f->init, &val, &kEmptyStructs, &kEmptyConsts)) {
       *out = val;
       return true;
@@ -303,7 +316,8 @@ bool eval_struct_static_member_value_hir(
     if (!base_ts.tag || !base_ts.tag[0]) continue;
     auto it = struct_defs.find(base_ts.tag);
     if (it == struct_defs.end()) continue;
-    if (eval_struct_static_member_value_hir(it->second, struct_defs, member_name, out))
+    if (eval_struct_static_member_value_hir(it->second, struct_defs, member_name,
+                                            nttp_bindings, out))
       return true;
   }
   return false;
@@ -2434,6 +2448,425 @@ class Lowerer {
   // ---------------------------------------------------------------------------
   // Helper 1: Evaluate a deferred NTTP default expression.
   // ---------------------------------------------------------------------------
+  struct DeferredNttpExprParser {
+    const std::string& input;
+    size_t pos = 0;
+    const std::unordered_map<std::string, const Node*>& template_defs;
+    const std::unordered_map<std::string, std::vector<const Node*>>& specializations;
+    const std::unordered_map<std::string, const Node*>& struct_defs;
+    const std::unordered_map<std::string, TypeSpec>& type_lookup;
+    const std::unordered_map<std::string, long long>& nttp_lookup;
+
+    void skip_ws() {
+      while (pos < input.size() &&
+             std::isspace(static_cast<unsigned char>(input[pos]))) {
+        ++pos;
+      }
+    }
+
+    bool consume(const char* text) {
+      skip_ws();
+      const size_t len = std::strlen(text);
+      if (input.compare(pos, len, text) == 0) {
+        pos += len;
+        return true;
+      }
+      return false;
+    }
+
+    std::string parse_identifier() {
+      skip_ws();
+      const size_t start = pos;
+      if (pos >= input.size() ||
+          !(std::isalpha(static_cast<unsigned char>(input[pos])) ||
+            input[pos] == '_')) {
+        return {};
+      }
+      ++pos;
+      while (pos < input.size() &&
+             (std::isalnum(static_cast<unsigned char>(input[pos])) ||
+              input[pos] == '_')) {
+        ++pos;
+      }
+      return input.substr(start, pos - start);
+    }
+
+    bool parse_number(long long* out_val) {
+      skip_ws();
+      const size_t start = pos;
+      if (pos < input.size() &&
+          std::isdigit(static_cast<unsigned char>(input[pos]))) {
+        ++pos;
+        while (pos < input.size() &&
+               std::isdigit(static_cast<unsigned char>(input[pos]))) {
+          ++pos;
+        }
+        *out_val =
+            std::strtoll(input.substr(start, pos - start).c_str(), nullptr, 10);
+        return true;
+      }
+      return false;
+    }
+
+    static long long apply_integral_cast(TypeSpec ts, long long v) {
+      if (ts.ptr_level != 0) return v;
+      int bits = 0;
+      switch (ts.base) {
+        case TB_BOOL: bits = 1; break;
+        case TB_CHAR:
+        case TB_UCHAR:
+        case TB_SCHAR: bits = 8; break;
+        case TB_SHORT:
+        case TB_USHORT: bits = 16; break;
+        case TB_INT:
+        case TB_UINT:
+        case TB_ENUM: bits = 32; break;
+        default: break;
+      }
+      if (bits <= 0 || bits >= 64) return v;
+      long long mask = (1LL << bits) - 1;
+      v &= mask;
+      if (!is_unsigned_base(ts.base) && ts.base != TB_BOOL &&
+          (v >> (bits - 1)))
+        v |= ~mask;
+      return v;
+    }
+
+    std::string parse_arg_text() {
+      skip_ws();
+      const size_t start = pos;
+      int angle_depth = 0;
+      int paren_depth = 0;
+      while (pos < input.size()) {
+        const char ch = input[pos];
+        if (ch == '<') ++angle_depth;
+        else if (ch == '>') {
+          if (angle_depth == 0) break;
+          --angle_depth;
+        } else if (ch == '(') {
+          ++paren_depth;
+        } else if (ch == ')') {
+          if (paren_depth > 0) --paren_depth;
+        } else if (ch == ',' && angle_depth == 0 && paren_depth == 0) {
+          break;
+        }
+        ++pos;
+      }
+      return trim_copy(input.substr(start, pos - start));
+    }
+
+    bool resolve_arg(const std::string& text, HirTemplateArg* out_arg) {
+      if (!out_arg || text.empty()) return false;
+      auto tit = type_lookup.find(text);
+      if (tit != type_lookup.end()) {
+        out_arg->is_value = false;
+        out_arg->type = tit->second;
+        return true;
+      }
+      auto nit = nttp_lookup.find(text);
+      if (nit != nttp_lookup.end()) {
+        out_arg->is_value = true;
+        out_arg->value = nit->second;
+        return true;
+      }
+      if (text == "true" || text == "false") {
+        out_arg->is_value = true;
+        out_arg->value = (text == "true") ? 1 : 0;
+        return true;
+      }
+      char* end = nullptr;
+      long long parsed = std::strtoll(text.c_str(), &end, 10);
+      if (end && *end == '\0') {
+        out_arg->is_value = true;
+        out_arg->value = parsed;
+        return true;
+      }
+      TypeSpec builtin{};
+      if (parse_builtin_typespec_text(text, &builtin)) {
+        out_arg->is_value = false;
+        out_arg->type = builtin;
+        return true;
+      }
+      return false;
+    }
+
+    bool eval_template_static_member_lookup(
+        const std::string& tpl_name,
+        const std::vector<HirTemplateArg>& actual_args,
+        const std::string& member_name,
+        long long* out_val) {
+      auto tpl_it = template_defs.find(tpl_name);
+      if (tpl_it == template_defs.end()) return false;
+      const Node* ref_primary = tpl_it->second;
+
+      TemplateStructEnv ref_env;
+      ref_env.primary_def = ref_primary;
+      if (ref_primary && ref_primary->name) {
+        auto it = specializations.find(ref_primary->name);
+        if (it != specializations.end()) ref_env.specialization_patterns = &it->second;
+      }
+
+      SelectedTemplateStructPattern ref_selection =
+          select_template_struct_pattern_hir(actual_args, ref_env);
+      if (!ref_selection.selected_pattern) return false;
+
+      std::string ref_mangled;
+      if (ref_selection.selected_pattern != ref_primary &&
+          ref_selection.selected_pattern->n_template_params == 0 &&
+          ref_selection.selected_pattern->name &&
+          ref_selection.selected_pattern->name[0]) {
+        ref_mangled = ref_selection.selected_pattern->name;
+      } else {
+        const std::string ref_family =
+            (ref_selection.selected_pattern &&
+             ref_selection.selected_pattern->template_origin_name &&
+             ref_selection.selected_pattern->template_origin_name[0])
+                ? ref_selection.selected_pattern->template_origin_name
+                : tpl_name;
+        ref_mangled = ref_family;
+        for (int pi = 0; pi < ref_primary->n_template_params; ++pi) {
+          ref_mangled += "_";
+          ref_mangled += ref_primary->template_param_names[pi];
+          ref_mangled += "_";
+          if (pi < static_cast<int>(actual_args.size()) && actual_args[pi].is_value) {
+            ref_mangled += std::to_string(actual_args[pi].value);
+          } else if (pi < static_cast<int>(actual_args.size()) &&
+                     !actual_args[pi].is_value) {
+            ref_mangled += type_suffix_for_mangling(actual_args[pi].type);
+          }
+        }
+      }
+
+      auto concrete_it = struct_defs.find(ref_mangled);
+      if (concrete_it != struct_defs.end()) {
+        return eval_struct_static_member_value_hir(
+            concrete_it->second, struct_defs, member_name, nullptr, out_val);
+      }
+
+      return eval_struct_static_member_value_hir(
+          ref_selection.selected_pattern, struct_defs, member_name,
+          &ref_selection.nttp_bindings, out_val);
+    }
+
+    bool eval_member_lookup(long long* out_val) {
+      const std::string tpl_name = parse_identifier();
+      if (tpl_name.empty() || !consume("<")) return false;
+
+      std::vector<HirTemplateArg> actual_args;
+      skip_ws();
+      if (!consume(">")) {
+        while (true) {
+          HirTemplateArg arg;
+          if (!resolve_arg(parse_arg_text(), &arg)) return false;
+          actual_args.push_back(arg);
+          skip_ws();
+          if (consume(">")) break;
+          if (!consume(",")) return false;
+        }
+      }
+
+      if (!consume("::")) return false;
+      const std::string member_name = parse_identifier();
+      if (member_name.empty()) return false;
+      return eval_template_static_member_lookup(
+          tpl_name, actual_args, member_name, out_val);
+    }
+
+    bool parse_primary(long long* out_val) {
+      skip_ws();
+      if (consume("sizeof")) {
+        skip_ws();
+        if (!consume("...")) return false;
+        if (!consume("(")) return false;
+        const std::string pack_name = parse_identifier();
+        if (pack_name.empty()) return false;
+        if (!consume(")")) return false;
+        *out_val = count_pack_bindings_for_name(type_lookup, nttp_lookup, pack_name);
+        return true;
+      }
+      if (consume("(")) {
+        if (!parse_or(out_val)) return false;
+        return consume(")");
+      }
+      {
+        size_t saved = pos;
+        std::string ident = parse_identifier();
+        if (!ident.empty()) {
+          skip_ws();
+          if (consume("(")) {
+            TypeSpec cast_ts{};
+            cast_ts.array_size = -1;
+            cast_ts.inner_rank = -1;
+            bool found_type = false;
+            auto tit = type_lookup.find(ident);
+            if (tit != type_lookup.end()) {
+              cast_ts = tit->second;
+              found_type = true;
+            } else if (parse_builtin_typespec_text(ident, &cast_ts)) {
+              found_type = true;
+            }
+            if (found_type) {
+              long long inner = 0;
+              if (!parse_or(&inner)) return false;
+              if (!consume(")")) return false;
+              *out_val = apply_integral_cast(cast_ts, inner);
+              return true;
+            }
+          }
+          pos = saved;
+        }
+      }
+      if (parse_number(out_val)) return true;
+      {
+        size_t saved = pos;
+        std::string ident = parse_identifier();
+        if (!ident.empty()) {
+          auto nit = nttp_lookup.find(ident);
+          if (nit != nttp_lookup.end()) {
+            *out_val = nit->second;
+            return true;
+          }
+          if (ident == "true") {
+            *out_val = 1;
+            return true;
+          }
+          if (ident == "false") {
+            *out_val = 0;
+            return true;
+          }
+          pos = saved;
+        }
+      }
+      return eval_member_lookup(out_val);
+    }
+
+    bool parse_unary(long long* out_val) {
+      skip_ws();
+      if (consume("!")) {
+        long long inner = 0;
+        if (!parse_unary(&inner)) return false;
+        *out_val = inner ? 0 : 1;
+        return true;
+      }
+      if (consume("-")) {
+        long long inner = 0;
+        if (!parse_unary(&inner)) return false;
+        *out_val = -inner;
+        return true;
+      }
+      if (consume("+")) return parse_unary(out_val);
+      return parse_primary(out_val);
+    }
+
+    bool parse_mul(long long* out_val) {
+      if (!parse_unary(out_val)) return false;
+      while (true) {
+        skip_ws();
+        if (consume("*")) {
+          long long rhs = 0;
+          if (!parse_unary(&rhs)) return false;
+          *out_val *= rhs;
+        } else if (consume("/")) {
+          long long rhs = 0;
+          if (!parse_unary(&rhs) || rhs == 0) return false;
+          *out_val /= rhs;
+        } else {
+          break;
+        }
+      }
+      return true;
+    }
+
+    bool parse_add(long long* out_val) {
+      if (!parse_mul(out_val)) return false;
+      while (true) {
+        skip_ws();
+        if (consume("+")) {
+          long long rhs = 0;
+          if (!parse_mul(&rhs)) return false;
+          *out_val += rhs;
+        } else if (consume("-")) {
+          long long rhs = 0;
+          if (!parse_mul(&rhs)) return false;
+          *out_val -= rhs;
+        } else {
+          break;
+        }
+      }
+      return true;
+    }
+
+    bool parse_rel(long long* out_val) {
+      if (!parse_add(out_val)) return false;
+      while (true) {
+        skip_ws();
+        if (consume("<=")) {
+          long long rhs = 0;
+          if (!parse_add(&rhs)) return false;
+          *out_val = (*out_val <= rhs) ? 1 : 0;
+        } else if (consume(">=")) {
+          long long rhs = 0;
+          if (!parse_add(&rhs)) return false;
+          *out_val = (*out_val >= rhs) ? 1 : 0;
+        } else if (consume("<")) {
+          long long rhs = 0;
+          if (!parse_add(&rhs)) return false;
+          *out_val = (*out_val < rhs) ? 1 : 0;
+        } else if (consume(">")) {
+          long long rhs = 0;
+          if (!parse_add(&rhs)) return false;
+          *out_val = (*out_val > rhs) ? 1 : 0;
+        } else {
+          break;
+        }
+      }
+      return true;
+    }
+
+    bool parse_eq(long long* out_val) {
+      if (!parse_rel(out_val)) return false;
+      while (true) {
+        skip_ws();
+        if (consume("==")) {
+          long long rhs = 0;
+          if (!parse_rel(&rhs)) return false;
+          *out_val = (*out_val == rhs) ? 1 : 0;
+        } else if (consume("!=")) {
+          long long rhs = 0;
+          if (!parse_rel(&rhs)) return false;
+          *out_val = (*out_val != rhs) ? 1 : 0;
+        } else {
+          break;
+        }
+      }
+      return true;
+    }
+
+    bool parse_and(long long* out_val) {
+      if (!parse_eq(out_val)) return false;
+      while (true) {
+        skip_ws();
+        if (!consume("&&")) break;
+        long long rhs = 0;
+        if (!parse_eq(&rhs)) return false;
+        *out_val = (*out_val && rhs) ? 1 : 0;
+      }
+      return true;
+    }
+
+    bool parse_or(long long* out_val) {
+      if (!parse_and(out_val)) return false;
+      while (true) {
+        skip_ws();
+        if (!consume("||")) break;
+        long long rhs = 0;
+        if (!parse_and(&rhs)) return false;
+        *out_val = (*out_val || rhs) ? 1 : 0;
+      }
+      return true;
+    }
+  };
+
   bool eval_deferred_nttp_expr_hir(
       const Node* owner_tpl, int param_idx,
       const std::vector<std::pair<std::string, TypeSpec>>& type_bindings_vec,
@@ -2461,385 +2894,9 @@ class Lowerer {
     std::unordered_map<std::string, long long> nttp_lookup;
     for (const auto& [name, val] : nttp_bindings_vec) nttp_lookup[name] = val;
 
-    struct ExprParser {
-      const std::string& input;
-      size_t pos = 0;
-      const std::unordered_map<std::string, const Node*>& template_defs;
-      const std::unordered_map<std::string, std::vector<const Node*>>& specializations;
-      const std::unordered_map<std::string, const Node*>& struct_defs;
-      const std::unordered_map<std::string, TypeSpec>& type_lookup;
-      const std::unordered_map<std::string, long long>& nttp_lookup;
-
-      void skip_ws() {
-        while (pos < input.size() &&
-               std::isspace(static_cast<unsigned char>(input[pos]))) {
-          ++pos;
-        }
-      }
-
-      bool consume(const char* text) {
-        skip_ws();
-        const size_t len = std::strlen(text);
-        if (input.compare(pos, len, text) == 0) {
-          pos += len;
-          return true;
-        }
-        return false;
-      }
-
-      std::string parse_identifier() {
-        skip_ws();
-        const size_t start = pos;
-        if (pos >= input.size() ||
-            !(std::isalpha(static_cast<unsigned char>(input[pos])) ||
-              input[pos] == '_')) {
-          return {};
-        }
-        ++pos;
-        while (pos < input.size() &&
-               (std::isalnum(static_cast<unsigned char>(input[pos])) ||
-                input[pos] == '_')) {
-          ++pos;
-        }
-        return input.substr(start, pos - start);
-      }
-
-      bool parse_number(long long* out_val) {
-        skip_ws();
-        const size_t start = pos;
-        if (pos < input.size() &&
-            std::isdigit(static_cast<unsigned char>(input[pos]))) {
-          ++pos;
-          while (pos < input.size() &&
-                 std::isdigit(static_cast<unsigned char>(input[pos]))) {
-            ++pos;
-          }
-          *out_val = std::strtoll(input.substr(start, pos - start).c_str(), nullptr, 10);
-          return true;
-        }
-        return false;
-      }
-
-      static long long apply_integral_cast(TypeSpec ts, long long v) {
-        if (ts.ptr_level != 0) return v;
-        int bits = 0;
-        switch (ts.base) {
-          case TB_BOOL: bits = 1; break;
-          case TB_CHAR:
-          case TB_UCHAR:
-          case TB_SCHAR: bits = 8; break;
-          case TB_SHORT:
-          case TB_USHORT: bits = 16; break;
-          case TB_INT:
-          case TB_UINT:
-          case TB_ENUM: bits = 32; break;
-          default: break;
-        }
-        if (bits <= 0 || bits >= 64) return v;
-        long long mask = (1LL << bits) - 1;
-        v &= mask;
-        if (!is_unsigned_base(ts.base) && ts.base != TB_BOOL &&
-            (v >> (bits - 1)))
-          v |= ~mask;
-        return v;
-      }
-
-      std::string parse_arg_text() {
-        skip_ws();
-        const size_t start = pos;
-        int angle_depth = 0;
-        int paren_depth = 0;
-        while (pos < input.size()) {
-          const char ch = input[pos];
-          if (ch == '<') ++angle_depth;
-          else if (ch == '>') {
-            if (angle_depth == 0) break;
-            --angle_depth;
-          } else if (ch == '(') {
-            ++paren_depth;
-          } else if (ch == ')') {
-            if (paren_depth > 0) --paren_depth;
-          } else if (ch == ',' && angle_depth == 0 && paren_depth == 0) {
-            break;
-          }
-          ++pos;
-        }
-        return trim_copy(input.substr(start, pos - start));
-      }
-
-      bool resolve_arg(const std::string& text, HirTemplateArg* out_arg) {
-        if (!out_arg) return false;
-        if (text.empty()) return false;
-        auto tit = type_lookup.find(text);
-        if (tit != type_lookup.end()) {
-          out_arg->is_value = false;
-          out_arg->type = tit->second;
-          return true;
-        }
-        auto nit = nttp_lookup.find(text);
-        if (nit != nttp_lookup.end()) {
-          out_arg->is_value = true;
-          out_arg->value = nit->second;
-          return true;
-        }
-        if (text == "true" || text == "false") {
-          out_arg->is_value = true;
-          out_arg->value = (text == "true") ? 1 : 0;
-          return true;
-        }
-        char* end = nullptr;
-        long long parsed = std::strtoll(text.c_str(), &end, 10);
-        if (end && *end == '\0') {
-          out_arg->is_value = true;
-          out_arg->value = parsed;
-          return true;
-        }
-        TypeSpec builtin{};
-        if (parse_builtin_typespec_text(text, &builtin)) {
-          out_arg->is_value = false;
-          out_arg->type = builtin;
-          return true;
-        }
-        return false;
-      }
-
-      bool eval_member_lookup(long long* out_val) {
-        const std::string tpl_name = parse_identifier();
-        if (tpl_name.empty() || !consume("<")) return false;
-
-        std::vector<HirTemplateArg> actual_args;
-        skip_ws();
-        if (!consume(">")) {
-          while (true) {
-            HirTemplateArg arg;
-            if (!resolve_arg(parse_arg_text(), &arg)) return false;
-            actual_args.push_back(arg);
-            skip_ws();
-            if (consume(">")) break;
-            if (!consume(",")) return false;
-          }
-        }
-
-        if (!consume("::")) return false;
-        const std::string member_name = parse_identifier();
-        if (member_name.empty()) return false;
-
-        auto tpl_it = template_defs.find(tpl_name);
-        if (tpl_it == template_defs.end()) return false;
-        const Node* ref_primary = tpl_it->second;
-
-        TemplateStructEnv ref_env;
-        ref_env.primary_def = ref_primary;
-        if (ref_primary && ref_primary->name) {
-          auto it = specializations.find(ref_primary->name);
-          if (it != specializations.end()) ref_env.specialization_patterns = &it->second;
-        }
-        SelectedTemplateStructPattern ref_selection =
-            select_template_struct_pattern_hir(actual_args, ref_env);
-        const Node* ref_def = ref_selection.selected_pattern;
-        return eval_struct_static_member_value_hir(ref_def, struct_defs, member_name, out_val);
-      }
-
-      bool parse_primary(long long* out_val) {
-        skip_ws();
-        if (consume("sizeof")) {
-          skip_ws();
-          if (!consume("...")) return false;
-          if (!consume("(")) return false;
-          const std::string pack_name = parse_identifier();
-          if (pack_name.empty()) return false;
-          if (!consume(")")) return false;
-          *out_val = count_pack_bindings_for_name(type_lookup, nttp_lookup, pack_name);
-          return true;
-        }
-        if (consume("(")) {
-          if (!parse_or(out_val)) return false;
-          return consume(")");
-        }
-        {
-          size_t saved = pos;
-          std::string ident = parse_identifier();
-          if (!ident.empty()) {
-            skip_ws();
-            if (consume("(")) {
-              TypeSpec cast_ts{};
-              cast_ts.array_size = -1;
-              cast_ts.inner_rank = -1;
-              bool found_type = false;
-              auto tit = type_lookup.find(ident);
-              if (tit != type_lookup.end()) {
-                cast_ts = tit->second;
-                found_type = true;
-              } else if (parse_builtin_typespec_text(ident, &cast_ts)) {
-                found_type = true;
-              }
-              if (found_type) {
-                long long inner = 0;
-                if (!parse_or(&inner)) return false;
-                if (!consume(")")) return false;
-                *out_val = apply_integral_cast(cast_ts, inner);
-                return true;
-              }
-            }
-            pos = saved;
-          }
-        }
-        if (parse_number(out_val)) return true;
-        {
-          size_t saved = pos;
-          std::string ident = parse_identifier();
-          if (!ident.empty()) {
-            auto nit = nttp_lookup.find(ident);
-            if (nit != nttp_lookup.end()) {
-              *out_val = nit->second;
-              return true;
-            }
-            if (ident == "true") {
-              *out_val = 1;
-              return true;
-            }
-            if (ident == "false") {
-              *out_val = 0;
-              return true;
-            }
-            pos = saved;
-          }
-        }
-        return eval_member_lookup(out_val);
-      }
-
-      bool parse_unary(long long* out_val) {
-        skip_ws();
-        if (consume("!")) {
-          long long inner = 0;
-          if (!parse_unary(&inner)) return false;
-          *out_val = inner ? 0 : 1;
-          return true;
-        }
-        if (consume("-")) {
-          long long inner = 0;
-          if (!parse_unary(&inner)) return false;
-          *out_val = -inner;
-          return true;
-        }
-        if (consume("+")) {
-          return parse_unary(out_val);
-        }
-        return parse_primary(out_val);
-      }
-
-      bool parse_mul(long long* out_val) {
-        if (!parse_unary(out_val)) return false;
-        while (true) {
-          skip_ws();
-          if (consume("*")) {
-            long long rhs = 0;
-            if (!parse_unary(&rhs)) return false;
-            *out_val *= rhs;
-          } else if (consume("/")) {
-            long long rhs = 0;
-            if (!parse_unary(&rhs) || rhs == 0) return false;
-            *out_val /= rhs;
-          } else {
-            break;
-          }
-        }
-        return true;
-      }
-
-      bool parse_add(long long* out_val) {
-        if (!parse_mul(out_val)) return false;
-        while (true) {
-          skip_ws();
-          if (consume("+")) {
-            long long rhs = 0;
-            if (!parse_mul(&rhs)) return false;
-            *out_val += rhs;
-          } else if (consume("-")) {
-            long long rhs = 0;
-            if (!parse_mul(&rhs)) return false;
-            *out_val -= rhs;
-          } else {
-            break;
-          }
-        }
-        return true;
-      }
-
-      bool parse_rel(long long* out_val) {
-        if (!parse_add(out_val)) return false;
-        while (true) {
-          skip_ws();
-          if (consume("<=")) {
-            long long rhs = 0;
-            if (!parse_add(&rhs)) return false;
-            *out_val = (*out_val <= rhs) ? 1 : 0;
-          } else if (consume(">=")) {
-            long long rhs = 0;
-            if (!parse_add(&rhs)) return false;
-            *out_val = (*out_val >= rhs) ? 1 : 0;
-          } else if (consume("<")) {
-            long long rhs = 0;
-            if (!parse_add(&rhs)) return false;
-            *out_val = (*out_val < rhs) ? 1 : 0;
-          } else if (consume(">")) {
-            long long rhs = 0;
-            if (!parse_add(&rhs)) return false;
-            *out_val = (*out_val > rhs) ? 1 : 0;
-          } else {
-            break;
-          }
-        }
-        return true;
-      }
-
-      bool parse_eq(long long* out_val) {
-        if (!parse_rel(out_val)) return false;
-        while (true) {
-          skip_ws();
-          if (consume("==")) {
-            long long rhs = 0;
-            if (!parse_rel(&rhs)) return false;
-            *out_val = (*out_val == rhs) ? 1 : 0;
-          } else if (consume("!=")) {
-            long long rhs = 0;
-            if (!parse_rel(&rhs)) return false;
-            *out_val = (*out_val != rhs) ? 1 : 0;
-          } else {
-            break;
-          }
-        }
-        return true;
-      }
-
-      bool parse_and(long long* out_val) {
-        if (!parse_eq(out_val)) return false;
-        while (true) {
-          skip_ws();
-          if (!consume("&&")) break;
-          long long rhs = 0;
-          if (!parse_eq(&rhs)) return false;
-          *out_val = (*out_val && rhs) ? 1 : 0;
-        }
-        return true;
-      }
-
-      bool parse_or(long long* out_val) {
-        if (!parse_and(out_val)) return false;
-        while (true) {
-          skip_ws();
-          if (!consume("||")) break;
-          long long rhs = 0;
-          if (!parse_and(&rhs)) return false;
-          *out_val = (*out_val || rhs) ? 1 : 0;
-        }
-        return true;
-      }
-    };
-
-    ExprParser parser{expr, 0, template_struct_defs_, template_struct_specializations_,
-                      struct_def_nodes_,
-                      type_lookup, nttp_lookup};
+    DeferredNttpExprParser parser{expr, 0, template_struct_defs_,
+                                  template_struct_specializations_,
+                                  struct_def_nodes_, type_lookup, nttp_lookup};
     long long value = 0;
     if (!parser.parse_or(&value)) return false;
     parser.skip_ws();
