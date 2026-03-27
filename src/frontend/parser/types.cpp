@@ -5414,6 +5414,21 @@ void Parser::finalize_record_definition(Node* sd,
     typedef_types_[sd->name] = injected_ts;
 }
 
+void Parser::complete_record_definition(
+    Node* sd,
+    bool is_union,
+    const char* source_tag,
+    const std::vector<Node*>& fields,
+    const std::vector<Node*>& methods,
+    const std::vector<const char*>& member_typedef_names,
+    const std::vector<TypeSpec>& member_typedef_types) {
+    apply_record_trailing_type_attributes(sd);
+    store_record_body_members(sd, fields, methods, member_typedef_names,
+                              member_typedef_types);
+    finalize_record_definition(sd, is_union, source_tag);
+    struct_defs_.push_back(sd);
+}
+
 Node* Parser::parse_struct_or_union(bool is_union) {
     int ln = cur().line;
     TypeSpec attr_ts{};
@@ -5442,11 +5457,8 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                                    &member_typedef_names,
                                    &member_typedef_types);
 
-    apply_record_trailing_type_attributes(sd);
-    store_record_body_members(sd, fields, methods, member_typedef_names,
-                              member_typedef_types);
-    finalize_record_definition(sd, is_union, source_tag);
-    struct_defs_.push_back(sd);
+    complete_record_definition(sd, is_union, source_tag, fields, methods,
+                               member_typedef_names, member_typedef_types);
     return sd;
 }
 

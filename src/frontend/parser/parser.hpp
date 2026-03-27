@@ -444,6 +444,14 @@ class Parser {
   void finalize_record_definition(Node* sd,
                                   bool is_union,
                                   const char* source_tag);
+  void complete_record_definition(
+      Node* sd,
+      bool is_union,
+      const char* source_tag,
+      const std::vector<Node*>& fields,
+      const std::vector<Node*>& methods,
+      const std::vector<const char*>& member_typedef_names,
+      const std::vector<TypeSpec>& member_typedef_types);
   Node* parse_struct_or_union(bool is_union);
 
   // Parse enum body { variants... } or just a tag reference.

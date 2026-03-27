@@ -10,6 +10,51 @@
 
 ## Current Slice
 
+- Completed: extracted the post-body completion handoff from
+  `parse_struct_or_union()` into a focused helper without changing trailing
+  attribute probing, nested record handling, member storage order, or injected
+  self-type registration
+- New helper path:
+  - `complete_record_definition(...)`
+- Added parse-only coverage:
+  - `record_completion_handoff_parse`
+- Validation completed:
+  - focused parser/completion regressions passed:
+    - `record_completion_handoff_parse`
+    - `record_body_context_parse`
+    - `record_body_finalization_parse`
+    - `record_definition_setup_parse`
+    - `record_specialization_setup_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2181 total, 7 failed
+    - `test_fail_after.log`: 2182 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Next intended slice: continue Step 6 by extracting the remaining local
+  accumulator setup from `parse_struct_or_union()` so the outer function gets
+  even closer to a pure setup/body/completion dispatcher, likely by wrapping
+  the body collections into one focused record-body state helper
+- Active target: Step 6 continues after the body-context lifecycle extraction;
+  this slice extracts the post-body completion handoff from
+  `parse_struct_or_union()` so the outer function reads more like a thin
+  setup/body/completion dispatcher
+- This iteration's exact target: add parse-only coverage for a template
+  specialization record body whose nested record, typedef member, and trailing
+  attribute all survive the post-body handoff, then extract the existing
+  trailing-attribute/member-storage/finalization sequence into one focused
+  helper without changing nested record handling, member ordering, or injected
+  self-type registration
+- Baseline recorded:
+  - `test_fail_before.log`: 2181 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
 - Active target: Step 6 continues after record-body loop extraction; this
   slice extracts the remaining record-body context lifecycle from
   `parse_struct_or_union()` so the outer function reads more like a thin

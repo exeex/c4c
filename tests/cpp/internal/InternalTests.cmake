@@ -113,6 +113,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     record_body_loop_parse
     record_body_context_parse
     record_body_finalization_parse
+    record_completion_handoff_parse
 )
 
 list(APPEND CPP_POSITIVE_FRONTEND_STEMS
