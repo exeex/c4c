@@ -510,6 +510,15 @@ set_tests_properties(cpp_hir_template_deferred_nttp_number_expr PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_alias_deferred_nttp_static_member
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_alias_deferred_nttp_static_member_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_alias_deferred_nttp_static_member PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "if \\(\\(!1\\)\\) -> block#[0-9]+"
+)
+
+add_test(
   NAME cpp_hir_spec_key_identity
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/specialization_identity.cpp"
 )

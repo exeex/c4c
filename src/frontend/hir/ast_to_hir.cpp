@@ -2615,6 +2615,71 @@ class Lowerer {
     }
   };
 
+  struct DeferredNttpTemplateLookup {
+    const std::unordered_map<std::string, const Node*>& template_defs;
+    const std::unordered_map<std::string, std::vector<const Node*>>&
+        specializations;
+    const std::unordered_map<std::string, const Node*>& struct_defs;
+
+    bool eval_template_static_member_lookup(
+        const std::string& tpl_name,
+        const std::vector<HirTemplateArg>& actual_args,
+        const std::string& member_name,
+        long long* out_val) const {
+      auto tpl_it = template_defs.find(tpl_name);
+      if (tpl_it == template_defs.end()) return false;
+      const Node* ref_primary = tpl_it->second;
+
+      TemplateStructEnv ref_env;
+      ref_env.primary_def = ref_primary;
+      if (ref_primary && ref_primary->name) {
+        auto it = specializations.find(ref_primary->name);
+        if (it != specializations.end()) ref_env.specialization_patterns = &it->second;
+      }
+
+      SelectedTemplateStructPattern ref_selection =
+          select_template_struct_pattern_hir(actual_args, ref_env);
+      if (!ref_selection.selected_pattern) return false;
+
+      std::string ref_mangled;
+      if (ref_selection.selected_pattern != ref_primary &&
+          ref_selection.selected_pattern->n_template_params == 0 &&
+          ref_selection.selected_pattern->name &&
+          ref_selection.selected_pattern->name[0]) {
+        ref_mangled = ref_selection.selected_pattern->name;
+      } else {
+        const std::string ref_family =
+            (ref_selection.selected_pattern &&
+             ref_selection.selected_pattern->template_origin_name &&
+             ref_selection.selected_pattern->template_origin_name[0])
+                ? ref_selection.selected_pattern->template_origin_name
+                : tpl_name;
+        ref_mangled = ref_family;
+        for (int pi = 0; pi < ref_primary->n_template_params; ++pi) {
+          ref_mangled += "_";
+          ref_mangled += ref_primary->template_param_names[pi];
+          ref_mangled += "_";
+          if (pi < static_cast<int>(actual_args.size()) && actual_args[pi].is_value) {
+            ref_mangled += std::to_string(actual_args[pi].value);
+          } else if (pi < static_cast<int>(actual_args.size()) &&
+                     !actual_args[pi].is_value) {
+            ref_mangled += type_suffix_for_mangling(actual_args[pi].type);
+          }
+        }
+      }
+
+      auto concrete_it = struct_defs.find(ref_mangled);
+      if (concrete_it != struct_defs.end()) {
+        return eval_struct_static_member_value_hir(
+            concrete_it->second, struct_defs, member_name, nullptr, out_val);
+      }
+
+      return eval_struct_static_member_value_hir(
+          ref_selection.selected_pattern, struct_defs, member_name,
+          &ref_selection.nttp_bindings, out_val);
+    }
+  };
+
   struct DeferredNttpExprParser {
     using ParseExprFn = bool (DeferredNttpExprParser::*)(long long*);
     using ApplyBinaryFn = bool (*)(long long*, long long);
@@ -2625,9 +2690,7 @@ class Lowerer {
     };
 
     DeferredNttpExprCursor cursor;
-    const std::unordered_map<std::string, const Node*>& template_defs;
-    const std::unordered_map<std::string, std::vector<const Node*>>& specializations;
-    const std::unordered_map<std::string, const Node*>& struct_defs;
+    const DeferredNttpTemplateLookup& template_lookup;
     const DeferredNttpExprEnv& env;
 
     static long long apply_integral_cast(TypeSpec ts, long long v) {
@@ -2740,64 +2803,6 @@ class Lowerer {
       return env.resolve_arg_text(text, out_arg);
     }
 
-    bool eval_template_static_member_lookup(
-        const std::string& tpl_name,
-        const std::vector<HirTemplateArg>& actual_args,
-        const std::string& member_name,
-        long long* out_val) {
-      auto tpl_it = template_defs.find(tpl_name);
-      if (tpl_it == template_defs.end()) return false;
-      const Node* ref_primary = tpl_it->second;
-
-      TemplateStructEnv ref_env;
-      ref_env.primary_def = ref_primary;
-      if (ref_primary && ref_primary->name) {
-        auto it = specializations.find(ref_primary->name);
-        if (it != specializations.end()) ref_env.specialization_patterns = &it->second;
-      }
-
-      SelectedTemplateStructPattern ref_selection =
-          select_template_struct_pattern_hir(actual_args, ref_env);
-      if (!ref_selection.selected_pattern) return false;
-
-      std::string ref_mangled;
-      if (ref_selection.selected_pattern != ref_primary &&
-          ref_selection.selected_pattern->n_template_params == 0 &&
-          ref_selection.selected_pattern->name &&
-          ref_selection.selected_pattern->name[0]) {
-        ref_mangled = ref_selection.selected_pattern->name;
-      } else {
-        const std::string ref_family =
-            (ref_selection.selected_pattern &&
-             ref_selection.selected_pattern->template_origin_name &&
-             ref_selection.selected_pattern->template_origin_name[0])
-                ? ref_selection.selected_pattern->template_origin_name
-                : tpl_name;
-        ref_mangled = ref_family;
-        for (int pi = 0; pi < ref_primary->n_template_params; ++pi) {
-          ref_mangled += "_";
-          ref_mangled += ref_primary->template_param_names[pi];
-          ref_mangled += "_";
-          if (pi < static_cast<int>(actual_args.size()) && actual_args[pi].is_value) {
-            ref_mangled += std::to_string(actual_args[pi].value);
-          } else if (pi < static_cast<int>(actual_args.size()) &&
-                     !actual_args[pi].is_value) {
-            ref_mangled += type_suffix_for_mangling(actual_args[pi].type);
-          }
-        }
-      }
-
-      auto concrete_it = struct_defs.find(ref_mangled);
-      if (concrete_it != struct_defs.end()) {
-        return eval_struct_static_member_value_hir(
-            concrete_it->second, struct_defs, member_name, nullptr, out_val);
-      }
-
-      return eval_struct_static_member_value_hir(
-          ref_selection.selected_pattern, struct_defs, member_name,
-          &ref_selection.nttp_bindings, out_val);
-    }
-
     bool eval_member_lookup(long long* out_val) {
       const std::string tpl_name = cursor.parse_identifier();
       if (tpl_name.empty() || !cursor.consume("<")) return false;
@@ -2807,7 +2812,7 @@ class Lowerer {
 
       std::string member_name;
       if (!parse_template_member_name(&member_name)) return false;
-      return eval_template_static_member_lookup(
+      return template_lookup.eval_template_static_member_lookup(
           tpl_name, actual_args, member_name, out_val);
     }
 
@@ -2983,11 +2988,10 @@ class Lowerer {
 
     DeferredNttpExprEnv env =
         DeferredNttpExprEnv::from_bindings(type_bindings_vec, nttp_bindings_vec);
-    DeferredNttpExprParser parser{{expr, 0},
-                                  template_struct_defs_,
-                                  template_struct_specializations_,
-                                  struct_def_nodes_,
-                                  env};
+    DeferredNttpTemplateLookup template_lookup{template_struct_defs_,
+                                               template_struct_specializations_,
+                                               struct_def_nodes_};
+    DeferredNttpExprParser parser{{expr, 0}, template_lookup, env};
     long long value = 0;
     if (!parser.parse_or(&value)) return false;
     if (!parser.cursor.at_end()) return false;

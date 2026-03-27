@@ -6,9 +6,56 @@
 
 ## Active Item
 
-- Step 4: Isolate Embedded Parser Helpers
+- Step 5: Isolate Layout Helpers
 
 ## Current Slice
+
+- Completed: Step 4 embedded-parser template-lookup surface extraction
+- Completed: extracted the deferred-NTTP parser's direct dependency on the HIR
+  template-definition / specialization / concrete-struct maps behind the named
+  helper `DeferredNttpTemplateLookup`, so `DeferredNttpExprParser` now depends
+  on a narrower lookup surface rather than owning three raw map references
+- Added focused HIR coverage for this slice:
+  - `cpp_hir_template_alias_deferred_nttp_static_member` asserts the currently
+    supported alias-template deferred-NTTP static-member path still folds
+    `signed_probe<int>::value` into the existing `if ((!1))` HIR branch in
+    `main()`
+- Kept scope intentionally narrow:
+  - deferred-NTTP parse order stayed unchanged
+  - template-argument parsing and member-name parsing stayed in
+    `DeferredNttpExprParser`
+  - template static-member evaluation semantics stayed unchanged; only the HIR
+    lookup surface moved behind a dedicated helper
+- Validation completed:
+  - targeted HIR regressions passed:
+    - `cpp_hir_template_alias_deferred_nttp_static_member`
+    - `cpp_hir_template_deferred_nttp_expr`
+    - `cpp_hir_template_deferred_nttp_paren_expr`
+    - `cpp_hir_template_deferred_nttp_bool_expr`
+    - `cpp_hir_template_deferred_nttp_logic_expr`
+    - `cpp_hir_template_deferred_nttp_true_expr`
+    - `cpp_hir_template_deferred_nttp_number_expr`
+    - `cpp_hir_template_function_pack_signature_binding`
+    - `cpp_hir_template_function_recursive_body_binding`
+  - full clean rebuild remained monotonic:
+    - `test_fail_before.log`: 2227 total, 7 failed
+    - `test_fail_after.log`: 2228 total, 7 failed
+    - failing identities unchanged:
+      - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+      - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+      - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+      - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+      - `cpp_positive_sema_template_arg_deduction_cpp`
+      - `cpp_positive_sema_template_mixed_params_cpp`
+      - `cpp_positive_sema_template_type_subst_cpp`
+    - regression guard: passed (`+1` passed, `0` new failures)
+- Completed assessment: Step 4 now has dedicated cursor, environment,
+  template-lookup, and parser helper surfaces; any further extraction in this
+  area would be mostly cosmetic churn rather than meaningful isolation
+- Next intended slice:
+  - Step 5 reassessment of the layout-helper cluster in `ast_to_hir.cpp`,
+    starting with identifying the smallest type/layout-only helper family that
+    can move behind named helpers without changing lowering order
 
 - Completed: Step 4 deferred-NTTP atomic-expression coordination extraction
 - Completed: split the remaining embedded deferred-NTTP primary parsing surface
