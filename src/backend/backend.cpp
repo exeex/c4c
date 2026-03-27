@@ -1,4 +1,5 @@
 #include "backend.hpp"
+#include "aarch64/emitter.hpp"
 #include "lir_adapter.hpp"
 
 #include "../codegen/lir/ir.hpp"
@@ -29,19 +30,27 @@ class LlvmTextBackendEmitter final : public BackendEmitter {
     } catch (const std::invalid_argument&) {
       return c4c::codegen::lir::print_llvm(module);
     }
-  }
+ }
 
  private:
   Target target_;
+};
+
+class Aarch64BackendEmitter final : public BackendEmitter {
+ public:
+  std::string emit(const c4c::codegen::lir::LirModule& module) const override {
+    return c4c::backend::aarch64::emit_module(module);
+  }
 };
 
 std::unique_ptr<BackendEmitter> make_backend(Target target) {
   switch (target) {
     case Target::X86_64:
     case Target::I686:
-    case Target::Aarch64:
     case Target::Riscv64:
       return std::make_unique<LlvmTextBackendEmitter>(target);
+    case Target::Aarch64:
+      return std::make_unique<Aarch64BackendEmitter>();
   }
   return nullptr;
 }

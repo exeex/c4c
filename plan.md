@@ -136,3 +136,32 @@ Completion check:
 - the first useful integer/control-flow slice is ported mechanically from ref
 - runtime validation covers more than return-only execution
 - the external toolchain path remains explicit and attributable for the supported AArch64 flow
+
+## Step 1 Port Boundary
+
+Reference files for the first AArch64 port slice:
+
+- `ref/claudes-c-compiler/src/backend/arm/mod.rs`
+- `ref/claudes-c-compiler/src/backend/arm/codegen/mod.rs`
+- `ref/claudes-c-compiler/src/backend/arm/codegen/emit.rs`
+- `ref/claudes-c-compiler/src/backend/arm/codegen/prologue.rs`
+- `ref/claudes-c-compiler/src/backend/arm/codegen/alu.rs`
+- `ref/claudes-c-compiler/src/backend/arm/codegen/comparison.rs`
+- `ref/claudes-c-compiler/src/backend/arm/codegen/calls.rs`
+- `ref/claudes-c-compiler/src/backend/arm/codegen/returns.rs`
+- `ref/claudes-c-compiler/src/backend/arm/codegen/globals.rs`
+- `ref/claudes-c-compiler/src/backend/arm/codegen/memory.rs`
+
+Planned C++ landing zone for the matching first slice:
+
+- `src/backend/aarch64/emitter.hpp`
+- `src/backend/aarch64/emitter.cpp`
+- follow-on files for the first mechanical split:
+  `src/backend/aarch64/frame.*`,
+  `src/backend/aarch64/alu.*`,
+  `src/backend/aarch64/branch.*`,
+  `src/backend/aarch64/calls.*`,
+  `src/backend/aarch64/returns.*`,
+  `src/backend/aarch64/globals.*`,
+  `src/backend/aarch64/memory.*`
+- explicit backend factory wiring remains in `src/backend/backend.cpp`

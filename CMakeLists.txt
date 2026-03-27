@@ -38,6 +38,7 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/inline_expand.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/target.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/lir_adapter.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/emitter.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/backend.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/llvm/llvm_codegen.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter.cpp"
@@ -54,6 +55,7 @@ set(FRONTEND_CXX_INCLUDE_DIRS
     "${PROJECT_SOURCE_DIR}/src/frontend/hir"
     "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor"
     "${PROJECT_SOURCE_DIR}/src/backend"
+    "${PROJECT_SOURCE_DIR}/src/backend/aarch64"
     "${PROJECT_SOURCE_DIR}/src/codegen/llvm"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir"
 )
@@ -91,7 +93,11 @@ set_target_properties(frontend_cxx_preprocessor_tests PROPERTIES
 
 add_executable(backend_lir_adapter_tests
     "${PROJECT_SOURCE_DIR}/tests/backend/backend_lir_adapter_tests.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/aarch64/emitter.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/backend.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/lir_adapter.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/target.cpp"
+    "${PROJECT_SOURCE_DIR}/src/codegen/lir/lir_printer.cpp"
 )
 target_include_directories(backend_lir_adapter_tests PRIVATE
     ${FRONTEND_CXX_INCLUDE_DIRS}
