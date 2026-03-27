@@ -371,7 +371,7 @@ add_test(
 )
 set_tests_properties(cpp_hir_template_member_owner_resolution PROPERTIES
   LABELS "internal;positive_case;cpp;hir"
-  PASS_REGULAR_EXPRESSION "field value: int"
+  PASS_REGULAR_EXPRESSION "field mirror: int"
 )
 
 add_test(

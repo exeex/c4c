@@ -8,11 +8,14 @@ struct box {
 
 template <typename T>
 struct wrap {
+  using alias = typename box<T>::value_type;
   typename box<T>::value_type value;
+  alias mirror;
 };
 
 int main() {
   wrap<int> w;
   w.value = 42;
-  return w.value - 42;
+  w.mirror = w.value;
+  return w.mirror - 42;
 }

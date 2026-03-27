@@ -896,6 +896,31 @@ class Lowerer {
     return false;
   }
 
+  void seed_template_type_dependency_if_needed(
+      const TypeSpec& ts,
+      const TypeBindings& tpl_bindings,
+      const NttpBindings& nttp_bindings,
+      PendingTemplateTypeKind kind,
+      const std::string& context_name,
+      const Node* span_node = nullptr) {
+    if (!ts.tpl_struct_origin) return;
+    seed_pending_template_type(
+        ts, tpl_bindings, nttp_bindings, span_node, kind, context_name);
+  }
+
+  bool resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
+    if (!ts || !ts->deferred_member_type_name || !ts->tag || !ts->tag[0]) {
+      return false;
+    }
+    TypeSpec resolved_member{};
+    if (!resolve_struct_member_typedef_hir(
+            ts->tag, ts->deferred_member_type_name, &resolved_member)) {
+      return false;
+    }
+    *ts = resolved_member;
+    return true;
+  }
+
   std::vector<const Node*> flatten_program_items(const Node* root) const {
     std::vector<const Node*> items;
     std::function<void(const Node*)> flatten = [&](const Node* n) {
@@ -1969,24 +1994,20 @@ class Lowerer {
             }
           }
         }
-        seed_pending_template_type(
-            base, base_tpl_bindings, base_nttp_bindings, sd,
+        seed_template_type_dependency_if_needed(
+            base, base_tpl_bindings, base_nttp_bindings,
             PendingTemplateTypeKind::BaseType,
-            std::string("struct-base:") + (tag ? tag : ""));
+            std::string("struct-base:") + (tag ? tag : ""), sd);
         resolve_pending_tpl_struct_if_needed(
             base, base_tpl_bindings, base_nttp_bindings);
       }
-      if (base.deferred_member_type_name && base.tag && base.tag[0]) {
+      if (!resolve_struct_member_typedef_if_ready(&base) &&
+          base.deferred_member_type_name && base.tag && base.tag[0]) {
         TypeBindings empty_tb;
         NttpBindings empty_nb;
         seed_pending_template_type(
             base, empty_tb, empty_nb, sd, PendingTemplateTypeKind::MemberTypedef,
             std::string("struct-base-member:") + (tag ? tag : ""));
-        TypeSpec resolved_member{};
-        if (resolve_struct_member_typedef_hir(base.tag, base.deferred_member_type_name,
-                                              &resolved_member)) {
-          base = resolved_member;
-        }
       }
       if (base.tag && base.tag[0]) def.base_tags.push_back(base.tag);
     }
@@ -3077,18 +3098,11 @@ class Lowerer {
         // the engine owns the retry loop.  The seeded OwnerStruct work will
         // resolve the base; when the engine re-processes the parent struct its
         // base will already be concrete.
-        seed_pending_template_type(
-            base_ts, method_tpl_bindings, method_nttp_bindings, nullptr,
+        seed_template_type_dependency_if_needed(
+            base_ts, method_tpl_bindings, method_nttp_bindings,
             PendingTemplateTypeKind::BaseType, "instantiation-base");
       }
-      if (base_ts.deferred_member_type_name && base_ts.tag && base_ts.tag[0]) {
-        TypeSpec resolved_member{};
-        if (resolve_struct_member_typedef_hir(base_ts.tag,
-                                              base_ts.deferred_member_type_name,
-                                              &resolved_member)) {
-          base_ts = resolved_member;
-        }
-      }
+      resolve_struct_member_typedef_if_ready(&base_ts);
       if (base_ts.tag && base_ts.tag[0]) def.base_tags.push_back(base_ts.tag);
     }
 
@@ -3245,13 +3259,7 @@ class Lowerer {
         module_->struct_defs.at(mangled).tag.c_str() : nullptr;
     ts.tpl_struct_origin = nullptr;
     ts.tpl_struct_arg_refs = nullptr;
-    if (ts.deferred_member_type_name && ts.tag && ts.tag[0]) {
-      TypeSpec resolved_member{};
-      if (resolve_struct_member_typedef_hir(ts.tag, ts.deferred_member_type_name,
-                                            &resolved_member)) {
-        ts = resolved_member;
-      }
-    }
+    resolve_struct_member_typedef_if_ready(&ts);
   }
 
   void lower_function(const Node* fn_node,

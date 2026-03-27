@@ -10,18 +10,18 @@
 
 ## Current Slice
 
-- Completed: extracted the repeated owner-primary lookup, blocked/terminal
-  diagnostic formatting, and owner-struct retry flow out of
-  `instantiate_deferred_template_type(...)` without changing pending-template
-  semantics
-- New helper paths:
-  - contextual deferred-template diagnostic formatting
-  - primary-template lookup for owner/member-typedef work items
-  - shared owner-struct resolution/retry gate
+- Completed: extracted the shared post-realization helper path for seeding
+  template-type dependency work and resolving deferred member typedefs once the
+  owner tag is concrete
+- Call sites now share helpers across:
+  - `resolve_pending_tpl_struct(...)`
+  - `instantiate_template_struct_body(...)`
+  - `lower_struct_def(...)` base follow-up
 - Added focused regression coverage:
-  - `cpp_hir_template_member_owner_resolution`
-- Baseline recorded:
-  - `test_before.log`: 2210 total, 7 failed
+  - `cpp_hir_template_member_owner_resolution` now covers direct
+    `typename box<T>::value_type` lowering and reuse through an in-struct alias
+- Baseline recorded for this iteration:
+  - `test_fail_before.log`: 2212 total, 7 failed
   - failing identities:
     - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
     - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
@@ -39,16 +39,16 @@
     - `cpp_hir_fixpoint_convergence`
     - `cpp_hir_template_origin`
   - full clean rebuild remained monotonic:
-    - `test_before.log`: 2210 total, 7 failed
-    - `test_after.log`: 2212 total, 7 failed
+    - `test_fail_before.log`: 2212 total, 7 failed
+    - `test_fail_after.log`: 2212 total, 7 failed
     - failing identities unchanged
-    - regression guard: passed (`+2` passed, `0` new failures)
+    - regression guard: passed (`+0` passed, `0` new failures)
 
 ## Next Intended Slice
 
-- after this helper extraction lands, move to the next repeated pending-template
-  path shared by `resolve_pending_tpl_struct(...)` and
-  `instantiate_template_struct_body(...)`
+- after this extraction lands, move deeper into the repeated
+  `resolve_pending_tpl_struct(...)` / `instantiate_template_struct_body(...)`
+  setup around bound template-argument materialization and struct-body staging
 
 ## Blockers
 
@@ -56,8 +56,9 @@
 
 ## Resume Notes
 
-- Step 1 coordinator extraction is already complete enough to advance; this
-  iteration completed the first Step 2 helper slice inside
-  `instantiate_deferred_template_type(...)`
-- untracked local files in the repo root are unrelated scratch binaries and
-  source files; leave them untouched
+- Step 1 coordinator extraction is already complete enough to advance
+- the previous Step 2 slice in `instantiate_deferred_template_type(...)` is
+  already committed as `2d6b0e3`
+- this iteration is deliberately limited to helper extraction around
+  post-realization pending-template/member-typedef follow-up, not semantic
+  cleanup
