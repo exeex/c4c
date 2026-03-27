@@ -10,6 +10,26 @@
 
 ## Current Slice
 
+- Completed: extracted the remaining shared callable
+  registration/finalization seam from `lower_function(...)` and
+  `lower_struct_method(...)` via:
+  - `maybe_register_bodyless_callable(...)` for the declaration-only fast path
+  - `finish_lowered_callable(...)` for empty-block finalization and final
+    function installation
+- Shared setup now covers:
+  - declaration-only callable registration in both free-function and method
+    lowering
+  - final lowered-function installation for normal functions, defaulted
+    methods, and regular methods
+- Deliberately left in place for later Step 3 reassessment:
+  - function-only VLA/array-size side-effect lowering
+  - method-only defaulted-body emission
+  - constructor initializer-list lowering
+  - destructor epilogue emission
+- Added focused HIR coverage for this slice:
+  - `cpp_hir_defaulted_destructor_member_teardown` asserts the defaulted
+    `Outer` destructor still emits the member teardown call
+    `WithDtor__dtor((&this#P0->inner))`
 - Completed: extracted the shared callable body-entry helpers
   `register_bodyless_callable(...)` and `begin_callable_body_lowering(...)`
   so both `lower_function(...)` and `lower_struct_method(...)` now share:
@@ -196,12 +216,11 @@
 
 ## Next Intended Slice
 
-- continue Step 3 only if a similarly narrow callable-lowering setup
-  extraction remains without pulling function-only VLA staging or method-only
-  body prelude/epilogue logic into shared code
-- keep pack expansion, VLA parameter side effects, and method-only body
-  prelude/epilogue work out of scope unless a later helper boundary is equally
-  mechanical
+- reassess Step 3 for any remaining callable-setup extraction that is still
+  mechanically shared without absorbing function-only VLA staging or
+  method-only defaulted/ctor/dtor body work
+- if no similarly narrow seam remains, treat Step 3 as compressed enough and
+  prepare to advance to Step 4
 
 ## Blockers
 
@@ -242,6 +261,19 @@
   - full clean rebuild remained monotonic:
     - `test_before.log`: 2219 total, 7 failed
     - `test_after.log`: 2220 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures)
+- validation completed:
+  - targeted regressions passed:
+    - `cpp_hir_defaulted_destructor_member_teardown`
+    - `cpp_hir_template_function_recursive_body_binding`
+    - `cpp_hir_template_function_pack_signature_binding`
+    - `cpp_hir_template_function_signature_binding`
+    - `cpp_hir_template_method_signature_binding`
+    - `cpp_positive_sema_default_special_members_cpp`
+  - full clean rebuild remained monotonic:
+    - `test_before.log`: 2220 total, 7 failed
+    - `test_after.log`: 2221 total, 7 failed
     - failing identities unchanged
     - regression guard: passed (`+1` passed, `0` new failures)
 - validation completed:

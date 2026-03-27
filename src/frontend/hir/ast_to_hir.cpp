@@ -3470,6 +3470,12 @@ class Lowerer {
     module_->functions.push_back(std::move(fn));
   }
 
+  bool maybe_register_bodyless_callable(Function* fn, bool has_lowerable_body) {
+    if (has_lowerable_body) return false;
+    register_bodyless_callable(std::move(*fn));
+    return true;
+  }
+
   BlockId begin_callable_body_lowering(Function& fn, FunctionCtx& ctx) {
     module_->fn_index[fn.name] = fn.id;
     if (fn.id.value == module_->functions.size()) {
@@ -3481,6 +3487,13 @@ class Lowerer {
     fn.entry = entry;
     ctx.current_block = entry;
     return entry;
+  }
+
+  void finish_lowered_callable(Function* fn, BlockId entry) {
+    if (fn->blocks.empty()) {
+      fn->blocks.push_back(Block{entry, {}, false});
+    }
+    module_->functions[fn->id.value] = std::move(*fn);
   }
 
   void lower_function(const Node* fn_node,
@@ -3585,8 +3598,7 @@ class Lowerer {
     append_callable_params(fn, ctx, fn_node, tpl_override, nttp_override,
                            "function-param:", false, true);
 
-    if (!fn_node->body) {
-      register_bodyless_callable(std::move(fn));
+    if (maybe_register_bodyless_callable(&fn, fn_node->body != nullptr)) {
       return;
     }
 
@@ -3607,12 +3619,8 @@ class Lowerer {
 
     lower_stmt_node(ctx, fn_node->body);
 
-    if (fn.blocks.empty()) {
-      fn.blocks.push_back(Block{entry, {}, false});
-    }
-
     // Replace the skeleton with the fully lowered function.
-    module_->functions[fn.id.value] = std::move(fn);
+    finish_lowered_callable(&fn, entry);
   }
 
   // Lower a struct method as a standalone function with an implicit `this` pointer.
@@ -3668,8 +3676,8 @@ class Lowerer {
     // Store the struct tag so field accesses in the body can resolve via `this`.
     ctx.method_struct_tag = struct_tag;
 
-    if (!method_node->body && !method_node->is_defaulted) {
-      register_bodyless_callable(std::move(fn));
+    if (maybe_register_bodyless_callable(
+            &fn, method_node->body != nullptr || method_node->is_defaulted)) {
       return;
     }
 
@@ -3700,10 +3708,7 @@ class Lowerer {
         ReturnStmt rs{};
         append_stmt(ctx, Stmt{StmtPayload{rs}, make_span(method_node)});
       }
-      if (fn.blocks.empty()) {
-        fn.blocks.push_back(Block{entry, {}, false});
-      }
-      module_->functions[fn.id.value] = std::move(fn);
+      finish_lowered_callable(&fn, entry);
       return;
     }
 
@@ -3964,11 +3969,7 @@ class Lowerer {
       emit_member_dtor_calls(ctx, struct_tag, this_ptr, method_node);
     }
 
-    if (fn.blocks.empty()) {
-      fn.blocks.push_back(Block{entry, {}, false});
-    }
-
-    module_->functions[fn.id.value] = std::move(fn);
+    finish_lowered_callable(&fn, entry);
   }
 
   // Hoist a compound literal to an anonymous global variable.

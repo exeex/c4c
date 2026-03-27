@@ -447,6 +447,15 @@ set_tests_properties(cpp_hir_template_function_recursive_body_binding PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_defaulted_destructor_member_teardown
+  COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/default_special_members.cpp"
+)
+set_tests_properties(cpp_hir_defaulted_destructor_member_teardown PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "WithDtor__dtor\\(\\(&this#P0->inner\\)\\)"
+)
+
+add_test(
   NAME cpp_hir_spec_key_identity
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/specialization_identity.cpp"
 )
