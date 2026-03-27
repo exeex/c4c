@@ -5182,6 +5182,63 @@ void Parser::parse_record_prebody_setup(
     }
 }
 
+Node* Parser::parse_record_tag_setup(int line,
+                                     bool is_union,
+                                     const char** tag) {
+    if (!check(TokenKind::LBrace)) {
+        const char* resolved_tag = tag ? *tag : nullptr;
+        if (!resolved_tag) {
+            char buf[32];
+            snprintf(buf, sizeof(buf), "_anon_%d", anon_counter_++);
+            resolved_tag = arena_.strdup(buf);
+        } else {
+            const std::string qtag =
+                canonical_name_in_context(current_namespace_context_id(),
+                                          resolved_tag);
+            resolved_tag = arena_.strdup(qtag.c_str());
+        }
+
+        if (tag)
+            *tag = resolved_tag;
+
+        Node* ref = make_node(NK_STRUCT_DEF, line);
+        ref->name = resolved_tag;
+        ref->is_union = is_union;
+        ref->n_fields = -1;  // -1 = forward reference (no body)
+        if (is_cpp_mode() && parsing_top_level_context_)
+            struct_defs_.push_back(ref);
+        return ref;
+    }
+
+    const char* resolved_tag = tag ? *tag : nullptr;
+    if (!resolved_tag) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "_anon_%d", anon_counter_++);
+        resolved_tag = arena_.strdup(buf);
+    } else {
+        const std::string qtag =
+            canonical_name_in_context(current_namespace_context_id(),
+                                      resolved_tag);
+        if (defined_struct_tags_.count(qtag)) {
+            if (parsing_top_level_context_ && !is_cpp_mode()) {
+                throw std::runtime_error(std::string("redefinition of ") +
+                                         (is_union ? "union " : "struct ") +
+                                         resolved_tag);
+            }
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%s.__shadow_%d", resolved_tag,
+                     anon_counter_++);
+            resolved_tag = arena_.strdup(buf);
+        }
+        defined_struct_tags_.insert(qtag);
+    }
+
+    if (tag)
+        *tag = resolved_tag;
+
+    return nullptr;
+}
+
 void Parser::apply_record_trailing_type_attributes(Node* sd) {
     if (!sd || !check(TokenKind::KwAttribute))
         return;
@@ -5268,55 +5325,8 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     parse_record_prebody_setup(ln, &attr_ts, &tag, &template_origin_name,
                                &specialization_args, &base_types);
 
-    if (!check(TokenKind::LBrace)) {
-        // Forward reference only; create a reference node
-        if (!tag) {
-            // anonymous without body — make synthetic tag
-            char buf[32];
-            snprintf(buf, sizeof(buf), "_anon_%d", anon_counter_++);
-            tag = arena_.strdup(buf);
-        } else {
-            // Qualify forward-reference tag with namespace context so that
-            // HIR struct lookups use the same qualified key.
-            const std::string qtag =
-                canonical_name_in_context(current_namespace_context_id(), tag);
-            tag = arena_.strdup(qtag.c_str());
-        }
-        Node* ref = make_node(NK_STRUCT_DEF, ln);
-        ref->name     = tag;
-        ref->is_union = is_union;
-        ref->n_fields = -1;  // -1 = forward reference (no body)
-        // Push forward declarations to struct_defs_ so that template struct
-        // registration in the template<> handler can detect them and register
-        // the name in template_struct_defs_.
-        if (is_cpp_mode() && parsing_top_level_context_) struct_defs_.push_back(ref);
+    if (Node* ref = parse_record_tag_setup(ln, is_union, &tag))
         return ref;
-    }
-
-    // Has body: { field; ... }
-    if (!tag) {
-        char buf[32];
-        snprintf(buf, sizeof(buf), "_anon_%d", anon_counter_++);
-        tag = arena_.strdup(buf);
-    } else {
-        // Use namespace-qualified tag for collision detection so that
-        // same-named structs in different namespaces don't collide.
-        const std::string qtag =
-            canonical_name_in_context(current_namespace_context_id(), tag);
-        if (defined_struct_tags_.count(qtag)) {
-            if (parsing_top_level_context_ && !is_cpp_mode()) {
-                throw std::runtime_error(std::string("redefinition of ") +
-                                         (is_union ? "union " : "struct ") + tag);
-            }
-            // Block-scoped redefinition of an already-defined tag (C tag shadowing),
-            // or C++ template specialization inner struct with same name.
-            // Generate a unique shadow tag so both definitions coexist in struct_defs_.
-            char buf[64];
-            snprintf(buf, sizeof(buf), "%s.__shadow_%d", tag, anon_counter_++);
-            tag = arena_.strdup(buf);
-        }
-        defined_struct_tags_.insert(qtag);
-    }
 
     const char* source_tag = tag;
     Node* sd = make_node(NK_STRUCT_DEF, ln);

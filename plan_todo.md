@@ -10,6 +10,47 @@
 
 ## Current Slice
 
+- Active target: Step 6 continues after the tag/setup extraction in
+  `parse_struct_or_union()`; the next slice should pull one more remaining
+  coordination concern out of the function so it keeps shrinking toward a thin
+  setup/body/finalization dispatcher
+- Completed: extracted the forward-reference versus body-definition tag/setup
+  path from `parse_struct_or_union()` into a focused helper without changing
+  anonymous tag synthesis, namespace qualification, forward-reference
+  emission, or shadow-tag redefinition handling
+- New helper path:
+  - `parse_record_tag_setup(...)`
+- Added parse-only coverage:
+  - `record_tag_setup_parse`
+- Baseline recorded:
+  - `test_fail_before.log`: 2177 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
+- Validation completed:
+  - focused parser/tag regressions passed:
+    - `record_tag_setup_parse`
+    - `record_prebody_setup_parse`
+    - `record_specialization_setup_parse`
+    - `record_body_finalization_parse`
+    - `namespace_struct_collision_runtime`
+    - `namespace_struct_type_basic`
+    - `namespace_template_struct_basic`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2177 total, 7 failed
+    - `test_fail_after.log`: 2178 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Next intended slice: continue Step 6 by extracting another remaining
+  `parse_struct_or_union()` coordinator concern, likely the record-definition
+  node initialization and specialization/base-type transfer just before the
+  body loop
 - Active target: Step 6 continues with pre-body setup compression in
   `parse_struct_or_union()`; this slice extracts one focused helper around the
   record prelude before `{` so the outer function keeps collapsing toward a

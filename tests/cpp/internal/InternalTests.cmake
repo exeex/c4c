@@ -108,6 +108,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     record_member_recovery_parse
     record_specialization_setup_parse
     record_prebody_setup_parse
+    record_tag_setup_parse
     record_body_finalization_parse
 )
 

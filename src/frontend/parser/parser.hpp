@@ -406,6 +406,9 @@ class Parser {
       const char** template_origin_name,
       std::vector<TemplateArgParseResult>* specialization_args,
       std::vector<TypeSpec>* base_types);
+  Node* parse_record_tag_setup(int line,
+                               bool is_union,
+                               const char** tag);
   void begin_record_body_context(const char* tag,
                                  const char* template_origin_name,
                                  std::string* saved_struct_tag,
