@@ -375,6 +375,9 @@ class Parser {
       Node*** out_ret_fn_ptr_params, int* out_n_ret_fn_ptr_params,
       bool* out_ret_fn_ptr_variadic);
   void parse_non_parenthesized_declarator(TypeSpec& ts, const char** out_name);
+  void parse_non_parenthesized_declarator_tail(
+      TypeSpec& ts, const char** out_name,
+      bool decay_plain_function_suffix);
   void parse_plain_function_declarator_suffix(TypeSpec& ts,
                                               bool decay_to_function_pointer);
   void store_declarator_function_pointer_params(

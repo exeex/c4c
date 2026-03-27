@@ -2087,6 +2087,13 @@ void Parser::parse_non_parenthesized_declarator(TypeSpec& ts,
     apply_declarator_array_dims(ts, decl_dims);
 }
 
+void Parser::parse_non_parenthesized_declarator_tail(
+    TypeSpec& ts, const char** out_name,
+    bool decay_plain_function_suffix) {
+    parse_non_parenthesized_declarator(ts, out_name);
+    parse_plain_function_declarator_suffix(ts, decay_plain_function_suffix);
+}
+
 void Parser::parse_non_parenthesized_declarator_suffixes(
     TypeSpec& ts, const char** out_name, std::vector<long long>* out_dims) {
     if (try_parse_grouped_declarator(ts, out_name, out_dims)) return;
@@ -3897,9 +3904,8 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         return;
     }
 
-    parse_non_parenthesized_declarator(ts, out_name);
-    parse_plain_function_declarator_suffix(
-        ts, /*decay_to_function_pointer=*/false);
+    parse_non_parenthesized_declarator_tail(
+        ts, out_name, /*decay_plain_function_suffix=*/false);
 }
 
 TypeSpec Parser::parse_type_name() {

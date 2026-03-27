@@ -6,10 +6,52 @@
 
 ## Active Item
 
-- Step 5: Compress Declarator Suffix Handling
+- Step 6: Compress Struct/Union Body Parsing
 
 ## Current Slice
 
+- Completed: extracted the remaining non-parenthesized declarator tail handoff
+  from `parse_declarator(...)` into
+  `parse_non_parenthesized_declarator_tail(...)` so the declarator coordinator
+  now stages prefix parsing, parenthesized pointer declarators, and the plain
+  non-parenthesized tail through distinct helpers without changing the separate
+  parameter-site function decay in `parse_param()`
+- New helper path:
+  - `parse_non_parenthesized_declarator_tail(...)`
+- Added parse-only coverage:
+  - `declarator_plain_function_suffix_staging_parse`
+- Baseline recorded:
+  - `test_fail_before.log`: 2199 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
+- Validation completed:
+  - focused declarator regressions passed:
+    - `declarator_member_fn_ptr_suffix_staging_parse`
+    - `declarator_non_parenthesized_suffix_staging_parse`
+    - `declarator_normal_tail_staging_parse`
+    - `declarator_parenthesized_fn_ptr_staging_parse`
+    - `declarator_plain_function_suffix_staging_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2199 total, 7 failed
+    - `test_fail_after.log`: 2200 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Active target: Step 5 completion check is now met; `parse_declarator(...)`
+  reads as a staged coordinator, so the next active item is Step 6 record-body
+  compression
+- This iteration's exact target: completed the bounded Step 5 extraction around
+  the remaining plain-function-suffix handoff in `parse_declarator(...)` and
+  verified it against nearby declarator coverage plus the full suite
+- Next intended slice: inspect `parse_struct_or_union(...)` for the smallest
+  reusable record-member prelude/helper extraction, likely around member
+  attributes/alignment or template-member setup, before editing Step 6
 - Completed: extracted the grouped-vs-plain non-parenthesized declarator
   suffix dispatch from `parse_non_parenthesized_declarator(...)` into
   `parse_non_parenthesized_declarator_suffixes(...)` so the coordinator now
