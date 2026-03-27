@@ -1292,6 +1292,46 @@ bool Parser::consume_qualified_type_spelling(bool allow_global,
     return true;
 }
 
+bool Parser::consume_template_args_followed_by_scope() {
+    if (!check(TokenKind::Less)) return false;
+
+    const int saved_pos = pos_;
+    int probe = pos_;
+    int depth = 0;
+    bool balanced = false;
+    while (probe < static_cast<int>(tokens_.size())) {
+        const TokenKind k = tokens_[probe].kind;
+        if (k == TokenKind::Less) {
+            ++depth;
+        } else if (k == TokenKind::Greater) {
+            if (--depth <= 0) {
+                ++probe;
+                balanced = true;
+                break;
+            }
+        } else if (k == TokenKind::GreaterGreater) {
+            depth -= 2;
+            if (depth <= 0) {
+                ++probe;
+                balanced = true;
+                break;
+            }
+        } else if (k == TokenKind::Semi || k == TokenKind::LBrace) {
+            break;
+        }
+        ++probe;
+    }
+
+    if (!balanced || probe >= static_cast<int>(tokens_.size()) ||
+        tokens_[probe].kind != TokenKind::ColonColon) {
+        pos_ = saved_pos;
+        return false;
+    }
+
+    pos_ = probe;
+    return true;
+}
+
 bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
     if (!is_cpp_mode() || !check(TokenKind::Identifier) || cur().lexeme != "typename")
         return false;
@@ -3171,9 +3211,11 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     // like EASTL's invoke_impl(R C::*func, ...) can parse successfully.
     if (is_cpp_mode()) {
         int saved_pos = pos_;
-        QualifiedNameRef member_of;
-        if (peek_qualified_name(&member_of, true)) {
-            parse_qualified_name(true);
+        if (consume_qualified_type_spelling(
+                /*allow_global=*/true,
+                /*consume_final_template_args=*/false,
+                nullptr, nullptr)) {
+            consume_template_args_followed_by_scope();
             if (match(TokenKind::ColonColon) && check(TokenKind::Star)) {
                 consume();  // *
                 ts.ptr_level++;
@@ -3580,35 +3622,6 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         if (match(TokenKind::ColonColon))
             qualified_name = "::";
 
-        // Helper: skip balanced <...> template arguments in a qualified name
-        // when followed by '::'.  E.g. vector<T, Allocator>::set_capacity.
-        auto skip_template_args_if_followed_by_scope = [&]() {
-            if (!check(TokenKind::Less)) return;
-            // Probe ahead: balanced <...> then '::'?
-            int probe = pos_;
-            int depth = 0;
-            bool balanced = false;
-            while (probe < static_cast<int>(tokens_.size())) {
-                auto k = tokens_[probe].kind;
-                if (k == TokenKind::Less) ++depth;
-                else if (k == TokenKind::Greater) {
-                    if (--depth <= 0) { ++probe; balanced = true; break; }
-                } else if (k == TokenKind::GreaterGreater) {
-                    depth -= 2;
-                    if (depth <= 0) { ++probe; balanced = true; break; }
-                } else if (k == TokenKind::Semi || k == TokenKind::LBrace) {
-                    break;  // safety: don't scan past statement boundaries
-                }
-                ++probe;
-            }
-            if (!balanced) return;
-            if (probe >= static_cast<int>(tokens_.size()) ||
-                tokens_[probe].kind != TokenKind::ColonColon)
-                return;
-            // Consume the <...> tokens
-            pos_ = probe;
-        };
-
         if (check(TokenKind::KwOperator)) {
             // Free operator function: operator==, operator+, etc.
             parsed_qualified = parse_operator_name();
@@ -3616,7 +3629,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
             qualified_name += cur().lexeme;
             consume();
             parsed_qualified = true;
-            skip_template_args_if_followed_by_scope();
+            consume_template_args_followed_by_scope();
         }
 
         while (parsed_qualified && match(TokenKind::ColonColon)) {
@@ -3624,7 +3637,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
             if (check(TokenKind::Identifier)) {
                 qualified_name += cur().lexeme;
                 consume();
-                skip_template_args_if_followed_by_scope();
+                consume_template_args_followed_by_scope();
                 continue;
             }
             if (check(TokenKind::KwOperator)) {

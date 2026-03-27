@@ -302,6 +302,7 @@ class Parser {
                                        bool consume_final_template_args,
                                        std::string* out_name = nullptr,
                                        QualifiedNameRef* out_qn = nullptr);
+  bool consume_template_args_followed_by_scope();
   bool parse_dependent_typename_specifier(std::string* out_name = nullptr);
   TypenameTemplateParamKind classify_typename_template_parameter() const;
   // Template-scope stack helpers.

@@ -8,9 +8,9 @@ Source plan: [plan.md](/workspaces/c4c/plan.md)
 
 ## Current Slice
 
-- Extracted `consume_qualified_type_spelling(...)` for shared qualified/dependent token consumption
-- Wired `parse_dependent_typename_specifier(...)` and the qualified-name branch in `parse_base_type()` through the shared helper
-- Added a narrow parse-only regression for global-qualified dependent `typename` plus qualified base-type consumption
+- Extracted `consume_template_args_followed_by_scope()` for shared `<...>::` consumption
+- Reused that helper in pointer-to-member declarator prefixes and qualified declarator-name parsing
+- Added a narrow parse-only regression for pointer-to-member owners spelled as template-ids
 
 ## Completed
 
@@ -53,11 +53,28 @@ Source plan: [plan.md](/workspaces/c4c/plan.md)
   - `test_before.log`: 2154 total, 3 failed
   - `test_after.log`: 2155 total, 3 failed
   - failing tests unchanged
+- Continued Step 4 with a shared `<...>::` helper:
+  - `consume_template_args_followed_by_scope()`
+- Reused the helper in:
+  - pointer-to-member declarator owner parsing
+  - qualified declarator-name parsing
+- Added parse-only coverage:
+  - `qualified_member_pointer_template_owner_parse`
+- Rebuilt successfully with `cmake --build build -j8`
+- Targeted parse regression checks passed:
+  - `qualified_member_pointer_template_owner_parse`
+  - `member_pointer_param_parse`
+  - `eastl_slice7d_qualified_declarator_parse`
+  - `out_of_class_member_owner_scope_parse`
+- Full `ctest` remained monotonic after the slice:
+  - `test_before.log`: 2155 total, 3 failed
+  - `test_after.log`: 2156 total, 3 failed
+  - failing tests unchanged
 
 ## Next
 
-- Continue Step 4 by moving additional qualified-name token walkers onto the shared helper where safe
-- Evaluate the next smallest follow-up slice around qualified template-id segments that still preserves current parsing policy
+- Continue Step 4 by evaluating whether remaining qualified-name probes can share the extracted helpers without forcing a broader declarator rewrite
+- Pick the next smallest slice around parenthesized pointer-to-member-function owners or other residual `<...>::` scans that are still duplicated
 - Keep new tests focused on parser-only qualified/dependent spelling coverage before any further behavior changes
 
 ## Blockers
@@ -74,4 +91,6 @@ Source plan: [plan.md](/workspaces/c4c/plan.md)
 - `parse_template_argument_list` now uses explicit helpers instead of inline lambdas
 - `parse_dependent_typename_specifier` and the qualified-name branch in `parse_base_type` now share `consume_qualified_type_spelling(...)`
 - Added `qualified_dependent_typename_global_parse` to lock the shared token-consumption path
+- Pointer-to-member owner parsing and qualified declarator-name parsing now share `consume_template_args_followed_by_scope()`
+- Added `qualified_member_pointer_template_owner_parse` to lock template-id owner parsing in declarators
 - Full-suite failures were treated as existing issues for this iteration per user direction
