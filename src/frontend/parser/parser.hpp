@@ -332,6 +332,10 @@ class Parser {
   bool parse_qualified_declarator_name(std::string* out_name);
   bool is_grouped_declarator_start() const;
   bool is_parenthesized_pointer_declarator_start();
+  void parse_pointer_ref_qualifiers(TypeSpec& ts, TokenKind pointer_tok,
+                                    bool preserve_array_base,
+                                    bool consume_pointer_token = true);
+  void consume_declarator_post_pointer_qualifiers();
   void parse_declarator_prefix(TypeSpec& ts, bool* out_is_parameter_pack);
   bool try_parse_grouped_declarator(TypeSpec& ts, const char** out_name,
                                     std::vector<long long>* out_dims);

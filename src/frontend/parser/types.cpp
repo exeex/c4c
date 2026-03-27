@@ -1789,6 +1789,31 @@ bool Parser::is_parenthesized_pointer_declarator_start() {
     return is_member_ptr_fn;
 }
 
+void Parser::parse_pointer_ref_qualifiers(TypeSpec& ts, TokenKind pointer_tok,
+                                          bool preserve_array_base,
+                                          bool consume_pointer_token) {
+    if (consume_pointer_token) consume();
+    apply_declarator_pointer_token(ts, pointer_tok, preserve_array_base);
+    while (is_qualifier(cur().kind)) consume();
+    parse_attributes(&ts);
+}
+
+void Parser::consume_declarator_post_pointer_qualifiers() {
+    while (check(TokenKind::Identifier)) {
+        const std::string& lex = cur().lexeme;
+        if (lex == "_Nullable" || lex == "_Nonnull" ||
+            lex == "_Null_unspecified" || lex == "__nullable" ||
+            lex == "__nonnull" || lex == "__restrict" ||
+            lex == "restrict" || lex == "const" || lex == "volatile") {
+            consume();
+        } else {
+            break;
+        }
+    }
+
+    while (is_qualifier(cur().kind)) consume();
+}
+
 void Parser::parse_declarator_prefix(TypeSpec& ts, bool* out_is_parameter_pack) {
     if (out_is_parameter_pack) *out_is_parameter_pack = false;
 
@@ -1806,38 +1831,21 @@ void Parser::parse_declarator_prefix(TypeSpec& ts, bool* out_is_parameter_pack) 
 
     // Count pointer stars (and qualifiers between them).
     while (check(TokenKind::Star)) {
-        consume();
         // If the base type already has array dimensions, this star creates a
         // pointer-to-array (e.g. HARD_REG_SET *p where HARD_REG_SET = ulong[2]).
-        apply_declarator_pointer_token(ts, TokenKind::Star,
-                                       /*preserve_array_base=*/true);
-        while (is_qualifier(cur().kind)) consume();
-        parse_attributes(&ts);
+        parse_pointer_ref_qualifiers(ts, TokenKind::Star,
+                                     /*preserve_array_base=*/true);
     }
 
     if (is_cpp_mode() && check(TokenKind::AmpAmp)) {
-        consume();
-        apply_declarator_pointer_token(ts, TokenKind::AmpAmp,
-                                       /*preserve_array_base=*/false);
-        while (is_qualifier(cur().kind)) consume();
-        parse_attributes(&ts);
+        parse_pointer_ref_qualifiers(ts, TokenKind::AmpAmp,
+                                     /*preserve_array_base=*/false);
     } else if (is_cpp_mode() && check(TokenKind::Amp)) {
-        consume();
-        apply_declarator_pointer_token(ts, TokenKind::Amp,
-                                       /*preserve_array_base=*/false);
-        while (is_qualifier(cur().kind)) consume();
-        parse_attributes(&ts);
+        parse_pointer_ref_qualifiers(ts, TokenKind::Amp,
+                                     /*preserve_array_base=*/false);
     }
 
-    while (is_qualifier(cur().kind)) consume();
-    if (check(TokenKind::Identifier)) {
-        const std::string& lex = cur().lexeme;
-        if (lex == "_Nullable" || lex == "_Nonnull" ||
-            lex == "_Null_unspecified" || lex == "__nullable" ||
-            lex == "__nonnull") {
-            consume();
-        }
-    }
+    consume_declarator_post_pointer_qualifiers();
 
     // C++ template parameter pack declarator: `Args&&... args`
     // or `Ts... value`. The ellipsis belongs to the declarator, not the
@@ -1955,33 +1963,21 @@ void Parser::parse_parenthesized_pointer_declarator_prefix(TypeSpec& ts) {
     skip_attributes();  // skip any __attribute__((...)) before * or owner prefix
 
     TokenKind pointer_tok = cur().kind;
+    bool consumed_member_pointer_prefix = false;
     if (is_cpp_mode() && consume_member_pointer_owner_prefix()) {
+        consumed_member_pointer_prefix = true;
         pointer_tok = TokenKind::Star;
-    } else {
-        consume();  // consume * or ^ or & or &&
     }
-    apply_declarator_pointer_token(ts, pointer_tok,
-                                   /*preserve_array_base=*/false);
+    parse_pointer_ref_qualifiers(ts, pointer_tok,
+                                 /*preserve_array_base=*/false,
+                                 /*consume_pointer_token=*/!consumed_member_pointer_prefix);
 
     while (check(TokenKind::Star)) {
-        consume();
-        apply_declarator_pointer_token(ts, TokenKind::Star,
-                                       /*preserve_array_base=*/false);
+        parse_pointer_ref_qualifiers(ts, TokenKind::Star,
+                                     /*preserve_array_base=*/false);
     }
 
-    while (check(TokenKind::Identifier)) {
-        const std::string& lex = cur().lexeme;
-        if (lex == "_Nullable" || lex == "_Nonnull" ||
-            lex == "_Null_unspecified" || lex == "__nullable" ||
-            lex == "__nonnull" || lex == "__restrict" ||
-            lex == "restrict" || lex == "const" || lex == "volatile") {
-            consume();
-        } else {
-            break;
-        }
-    }
-
-    while (is_qualifier(cur().kind)) consume();
+    consume_declarator_post_pointer_qualifiers();
 
     if (is_cpp_mode()) {
         if (check(TokenKind::AmpAmp)) {

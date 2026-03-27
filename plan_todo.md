@@ -6,50 +6,44 @@
 
 ## Active Item
 
-- Step 4: Consolidate Qualified And Dependent Name Consumption
+- Step 5: Compress Declarator Suffix Handling
 
 ## Current Slice
 
-- Completed: extracted the remaining global-qualified declaration-context
-  probe from `is_type_start()` into a shared qualified-type-start helper so
-  unresolved `::ns::Type` namespace types now reuse the same fallback
-  classification as `try_parse_qualified_base_type(...)` without
-  misclassifying neighboring qualified calls
-- New helper path:
-  - `can_start_qualified_type_declaration(...)`
+- Completed: extracted the repeated post-pointer qualifier cleanup from
+  `parse_declarator_prefix(...)` and
+  `parse_parenthesized_pointer_declarator_prefix(...)` into shared helpers so
+  plain and parenthesized declarators now reuse the same pointer/ref qualifier
+  staging without changing declarator precedence
+- New helper paths:
+  - `parse_pointer_ref_qualifiers(...)`
+  - `consume_declarator_post_pointer_qualifiers()`
 - Added parse-only coverage:
-  - `qualified_global_type_start_shared_probe_parse`
+  - `declarator_pointer_ref_qualifier_staging_parse`
 - Validation completed:
-  - focused qualified/dependent-name regressions passed:
-    - `qualified_global_type_start_shared_probe_parse`
-    - `qualified_cpp_base_type_dispatch_parse`
-    - `qualified_type_resolution_dispatch_parse`
-    - `qualified_type_start_probe_parse`
-    - `qualified_type_start_shared_probe_parse`
-    - `qualified_type_spelling_shared_parse`
-    - `qualified_dependent_typename_global_parse`
-    - `template_member_type_direct_parse`
-    - `template_member_type_inherited_parse`
-    - `qualified_member_pointer_template_owner_parse`
-    - `qualified_member_function_pointer_template_owner_parse`
-    - `qualified_operator_template_owner_parse`
-    - `global_qualified_member_pointer_template_owner_parse`
+  - focused declarator regressions passed:
+    - `declarator_array_suffix_staging_parse`
+    - `declarator_grouped_suffix_staging_parse`
+    - `declarator_member_fn_ptr_suffix_staging_parse`
+    - `declarator_parenthesized_fn_ptr_staging_parse`
+    - `declarator_parenthesized_pointer_inner_staging_parse`
+    - `declarator_pointer_qualifier_staging_parse`
+    - `declarator_pointer_ref_qualifier_staging_parse`
   - full clean rebuild `test_fail_after.log` remained monotonic:
-    - `test_fail_before.log`: 2196 total, 7 failed
-    - `test_fail_after.log`: 2197 total, 7 failed
+    - `test_fail_before.log`: 2197 total, 7 failed
+    - `test_fail_after.log`: 2198 total, 7 failed
     - failing identities unchanged
     - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
       tests)
-- Active target: Step 4 is likely near complete after the global-qualified
-  probe extraction; the next slice should explicitly inspect whether any
-  qualified/dependent-name duplication remains, otherwise advance to Step 5
-  declarator suffix handling
-- This iteration's exact target: completed the bounded Step 4 extraction
-  around global-qualified declaration-context probing in `is_type_start()` and
-  verified it against nearby parser coverage plus the full suite
-- Next intended slice: audit the remaining Step 4 paths for any duplicated
-  qualified/dependent-name classification not already routed through the shared
-  probe/helper set; if none remain, move the active item to Step 5
+- Active target: continue Step 5 with the next smallest declarator coordinator
+  split after the shared pointer/ref qualifier extraction
+- This iteration's exact target: completed the bounded Step 5 pointer/ref
+  qualifier helper extraction and verified it against nearby declarator tests
+  plus the full suite
+- Next intended slice: extract one focused helper around grouped/plain
+  non-parenthesized declarator suffix staging so `parse_non_parenthesized_declarator(...)`
+  reads as a clearer coordinator without changing name lookup or array
+  application order
 - Completed: extracted the remaining C++ scoped/dependent base-type dispatch
   from `parse_base_type()` into `try_parse_cpp_scoped_base_type(...)` so the
   coordinator now funnels leading `typename` dependent types and

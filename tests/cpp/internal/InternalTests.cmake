@@ -102,6 +102,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     declarator_array_suffix_staging_parse
     declarator_grouped_suffix_staging_parse
     declarator_pointer_qualifier_staging_parse
+    declarator_pointer_ref_qualifier_staging_parse
     declarator_parenthesized_fn_ptr_staging_parse
     declarator_member_fn_ptr_suffix_staging_parse
     declarator_parenthesized_member_pointer_prefix_parse
