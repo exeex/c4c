@@ -1201,6 +1201,105 @@ bool Parser::parse_template_argument_list(std::vector<TemplateArgParseResult>* o
     return match_template_close();
 }
 
+bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
+    if (!is_cpp_mode() || !check(TokenKind::Identifier) || cur().lexeme != "typename")
+        return false;
+
+    const int saved_pos = pos_;
+    consume(); // eat 'typename'
+
+    if (!check(TokenKind::Identifier) && !check(TokenKind::ColonColon)) {
+        pos_ = saved_pos;
+        return false;
+    }
+
+    auto parse_optional_template_args = [&]() {
+        if (!check(TokenKind::Less)) return;
+        int depth = 1;
+        consume(); // <
+        while (!at_end() && depth > 0) {
+            if (check(TokenKind::Less)) ++depth;
+            else if (check_template_close()) {
+                --depth;
+                if (depth > 0) {
+                    match_template_close();
+                    continue;
+                }
+                break;
+            }
+            consume();
+        }
+        if (check_template_close()) match_template_close();
+    };
+
+    std::string dep_name;
+    if (check(TokenKind::ColonColon)) {
+        dep_name = "::";
+        consume();
+    }
+    if (check(TokenKind::Identifier)) {
+        dep_name += cur().lexeme;
+        consume();
+    } else {
+        pos_ = saved_pos;
+        return false;
+    }
+
+    parse_optional_template_args();
+
+    while (check(TokenKind::ColonColon) &&
+           pos_ + 1 < static_cast<int>(tokens_.size()) &&
+           tokens_[pos_ + 1].kind == TokenKind::Identifier) {
+        consume(); // ::
+        dep_name += "::";
+        dep_name += cur().lexeme;
+        consume(); // ident
+        parse_optional_template_args();
+    }
+
+    if (out_name) {
+        std::string resolved = resolve_visible_type_name(dep_name);
+        if (typedef_types_.count(resolved) == 0) resolved = dep_name;
+        *out_name = resolved;
+    }
+    return true;
+}
+
+Parser::TypenameTemplateParamKind Parser::classify_typename_template_parameter() const {
+    if (check(TokenKind::KwClass))
+        return TypenameTemplateParamKind::TypeParameter;
+    if (!is_cpp_mode() || !check(TokenKind::Identifier) || cur().lexeme != "typename")
+        return TypenameTemplateParamKind::TypeParameter;
+
+    int probe = pos_ + 1;
+    if (probe < static_cast<int>(tokens_.size()) &&
+        tokens_[probe].kind == TokenKind::Identifier) {
+        ++probe;
+    }
+
+    if (probe >= static_cast<int>(tokens_.size()))
+        return TypenameTemplateParamKind::TypeParameter;
+
+    switch (tokens_[probe].kind) {
+        case TokenKind::Assign:
+        case TokenKind::Comma:
+        case TokenKind::Greater:
+        case TokenKind::GreaterGreater:
+        case TokenKind::Ellipsis:
+            return TypenameTemplateParamKind::TypeParameter;
+        case TokenKind::KwClass:
+            return TypenameTemplateParamKind::TypeParameter;
+        case TokenKind::Identifier:
+            if (tokens_[probe].lexeme == "typename")
+                return TypenameTemplateParamKind::TypeParameter;
+            break;
+        default:
+            break;
+    }
+
+    return TypenameTemplateParamKind::TypedNonTypeParameter;
+}
+
 bool Parser::is_type_start() const {
     TokenKind k = cur().kind;
     if (is_type_kw(k)) return true;
@@ -1742,69 +1841,8 @@ TypeSpec Parser::parse_base_type() {
                 // C++ 'typename' keyword: consume it and the full dependent type
                 // expression (e.g., typename Container::value_type, typename T::type)
                 if (is_cpp_mode() && cur().lexeme == "typename") {
-                    consume(); // eat 'typename'
-                    // Consume the dependent type: Ident (:: Ident)* (< ... >)?
-                    // The result is an unresolved typedef.
-                    if (check(TokenKind::Identifier) || check(TokenKind::ColonColon)) {
-                        std::string dep_name;
-                        if (check(TokenKind::ColonColon)) {
-                            dep_name = "::";
-                            consume();
-                        }
-                        if (check(TokenKind::Identifier)) {
-                            dep_name += cur().lexeme;
-                            consume();
-                        }
-                        while (check(TokenKind::ColonColon) &&
-                               pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                               tokens_[pos_ + 1].kind == TokenKind::Identifier) {
-                            consume(); // ::
-                            dep_name += "::";
-                            dep_name += cur().lexeme;
-                            consume(); // ident
-                        }
-                        // Skip optional template args <...>
-                        if (check(TokenKind::Less)) {
-                            int depth = 1;
-                            consume(); // <
-                            while (!at_end() && depth > 0) {
-                                if (check(TokenKind::Less)) ++depth;
-                                else if (check_template_close()) {
-                                    --depth;
-                                    if (depth > 0) { match_template_close(); continue; }
-                                    break;
-                                }
-                                consume();
-                            }
-                            if (check_template_close()) match_template_close();
-                        }
-                        // After template args, may have ::type suffix
-                        while (check(TokenKind::ColonColon) &&
-                               pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                               tokens_[pos_ + 1].kind == TokenKind::Identifier) {
-                            consume(); // ::
-                            dep_name += "::";
-                            dep_name += cur().lexeme;
-                            consume(); // ident
-                            // Skip another level of template args
-                            if (check(TokenKind::Less)) {
-                                int depth = 1;
-                                consume();
-                                while (!at_end() && depth > 0) {
-                                    if (check(TokenKind::Less)) ++depth;
-                                    else if (check_template_close()) {
-                                        --depth;
-                                        if (depth > 0) { match_template_close(); continue; }
-                                        break;
-                                    }
-                                    consume();
-                                }
-                                if (check_template_close()) match_template_close();
-                            }
-                        }
-                        // Resolve: try known typedef first, else use as unresolved
-                        std::string resolved = resolve_visible_type_name(dep_name);
-                        if (typedef_types_.count(resolved) == 0) resolved = dep_name;
+                    std::string resolved;
+                    if (parse_dependent_typename_specifier(&resolved)) {
                         has_typedef = true;
                         ts.tag = arena_.strdup(resolved.c_str());
                         done = true;

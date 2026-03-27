@@ -648,6 +648,73 @@ Node* Parser::parse_top_level() {
                 push_type_template_param(pname);
             } else if ((check(TokenKind::Identifier) && cur().lexeme == "typename") ||
                 check(TokenKind::KwClass)) {
+                if (classify_typename_template_parameter() ==
+                    TypenameTemplateParamKind::TypedNonTypeParameter) {
+                    TypeSpec param_ts = parse_type_name();
+                    (void)param_ts;
+                    while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
+                    bool is_pack = false;
+                    if (check(TokenKind::Ellipsis)) { consume(); is_pack = true; }
+                    const char* pname = nullptr;
+                    if (check(TokenKind::Identifier)) {
+                        pname = arena_.strdup(cur().lexeme);
+                        consume();
+                    } else {
+                        pname = make_anon_template_param_name(arena_, true, template_params.size());
+                    }
+                    template_params.push_back(pname);
+                    template_param_nttp.push_back(true);
+                    template_param_is_pack.push_back(is_pack);
+                    if (match(TokenKind::Assign)) {
+                        auto is_expr_cont_dep = [&](int p) -> bool {
+                            if (p >= static_cast<int>(tokens_.size())) return false;
+                            auto k = tokens_[p].kind;
+                            return k == TokenKind::ColonColon || k == TokenKind::PipePipe ||
+                                   k == TokenKind::AmpAmp || k == TokenKind::Pipe ||
+                                   k == TokenKind::Amp || k == TokenKind::Caret ||
+                                   k == TokenKind::Plus || k == TokenKind::Minus ||
+                                   k == TokenKind::Star || k == TokenKind::Slash ||
+                                   k == TokenKind::Percent || k == TokenKind::EqualEqual ||
+                                   k == TokenKind::BangEqual || k == TokenKind::LessEqual ||
+                                   k == TokenKind::GreaterEqual || k == TokenKind::Question;
+                        };
+                        int depth = 0;
+                        while (!at_end()) {
+                            if (check(TokenKind::Less) || check(TokenKind::LParen)) ++depth;
+                            else if (check(TokenKind::Greater)) {
+                                if (depth == 0) {
+                                    if (is_expr_cont_dep(pos_ + 1)) { consume(); continue; }
+                                    break;
+                                }
+                                --depth;
+                            } else if (check(TokenKind::RParen)) {
+                                if (depth > 0) --depth;
+                            } else if (check(TokenKind::GreaterGreater)) {
+                                if (depth == 0) {
+                                    if (is_expr_cont_dep(pos_ + 1)) { consume(); continue; }
+                                    break;
+                                }
+                                if (depth == 1) {
+                                    if (is_expr_cont_dep(pos_ + 1)) { depth = 0; consume(); continue; }
+                                    parse_greater_than_in_template_list(false);
+                                    break;
+                                }
+                                depth -= 2;
+                            } else if (check(TokenKind::Comma) && depth == 0) {
+                                break;
+                            }
+                            consume();
+                        }
+                    }
+                    template_param_has_default.push_back(false);
+                    TypeSpec dummy{};
+                    dummy.array_size = -1;
+                    dummy.inner_rank = -1;
+                    template_param_default_types.push_back(dummy);
+                    template_param_default_values.push_back(0);
+                    template_param_default_exprs.push_back(nullptr);
+                    continue;
+                }
                 // Type template parameter (possibly variadic: typename... Ts).
                 consume();
                 // Skip '...' for variadic parameter packs.

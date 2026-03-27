@@ -50,6 +50,11 @@ class Parser {
     Node* expr = nullptr;
   };
 
+  enum class TypenameTemplateParamKind {
+    TypeParameter,
+    TypedNonTypeParameter,
+  };
+
   // Template-scope stack: tracks active template parameter visibility.
   // Each frame records the parameters introduced by one template<...> clause
   // and the semantic context (enclosing class, member template, or free function).
@@ -289,6 +294,8 @@ class Parser {
   void register_template_struct_specialization(const char* primary_name, Node* node);
   bool parse_template_argument_list(std::vector<TemplateArgParseResult>* out_args,
                                     const Node* primary_tpl = nullptr);
+  bool parse_dependent_typename_specifier(std::string* out_name = nullptr);
+  TypenameTemplateParamKind classify_typename_template_parameter() const;
   // Template-scope stack helpers.
   void push_template_scope(TemplateScopeKind kind,
                            const std::vector<TemplateScopeParam>& params);
