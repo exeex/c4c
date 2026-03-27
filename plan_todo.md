@@ -10,6 +10,18 @@
 
 ## Current Slice
 
+- Completed: extracted shared explicit-parameter lowering coordinator
+  `append_callable_params(...)` and routed both `lower_function(...)` and
+  `lower_struct_method(...)` through it while keeping:
+  - function-only parameter-pack expansion in `lower_function(...)`
+  - method-only implicit `this` injection and body prelude work in
+    `lower_struct_method(...)`
+  - the existing distinction between function signature typing and
+    method-only typedef-to-struct parameter resolution
+- Added focused HIR coverage for this slice:
+  - `cpp_hir_template_function_pack_signature_binding` asserts a variadic
+    template function instantiation lowers its expanded parameters as
+    `args__pack0: int, args__pack1: long`
 - Completed assessment: `resolve_pending_tpl_struct_if_needed(...)` is already a
   thin wrapper over the Step 2 helpers, so there was no remaining substantial
   extraction slice there without dropping into cosmetic churn
@@ -169,11 +181,11 @@
 
 ## Next Intended Slice
 
-- continue Step 3 by extracting the next shared lowering-setup helper after
-  this slice, likely around declaration-type substitution/materialization used
-  by locals or other callable setup adjacent to signature staging
-- keep pack expansion and method-only body prelude work out of scope unless
-  this shared signature-staging extraction exposes a minimal follow-up
+- continue Step 3 with the next minimal shared lowering-setup slice, likely
+  callable skeleton/body-entry coordination rather than method-local body
+  cleanup
+- keep pack expansion and method-only body prelude work out of scope unless the
+  parameter-lowering extraction exposes a minimal follow-up
 
 ## Blockers
 
@@ -194,3 +206,29 @@
   helper reshuffling
 - this slice completed the shared callable return/explicit-parameter helper
   extraction without changing pack expansion or method-only prologue behavior
+- current follow-up is narrower than a semantic cleanup: factor the remaining
+  explicit-parameter loop/control flow into one shared helper and prove that
+  method parameter typedef resolution still stays method-only
+- this slice is now complete: explicit parameter iteration/pack expansion is
+  centralized in `append_callable_params(...)`, and the new pack-signature HIR
+  test is the direct regression guard for that coordinator
+- validation completed:
+  - targeted HIR regressions passed:
+    - `cpp_hir_template_function_pack_signature_binding`
+    - `cpp_hir_template_function_signature_binding`
+    - `cpp_hir_template_method_signature_binding`
+    - `cpp_hir_template_member_owner_decl_and_cast`
+    - `cpp_hir_template_member_owner_chain`
+    - `cpp_hir_template_member_owner_resolution`
+    - `cpp_hir_template_struct_inherited_method_binding`
+    - `cpp_hir_template_struct_field_array_extent`
+    - `cpp_hir_deferred_template_instantiation`
+    - `cpp_hir_template_struct_registry_primary_only`
+    - `cpp_hir_initial_program_seed_realization`
+    - `cpp_hir_fixpoint_convergence`
+    - `cpp_hir_template_origin`
+  - full clean rebuild remained monotonic:
+    - `test_before.log`: 2218 total, 7 failed
+    - `test_after.log`: 2219 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures)

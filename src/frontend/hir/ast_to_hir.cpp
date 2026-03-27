@@ -3416,6 +3416,55 @@ class Lowerer {
     fn.params.push_back(std::move(param));
   }
 
+  void append_callable_params(
+      Function& fn,
+      FunctionCtx& ctx,
+      const Node* callable_node,
+      const TypeBindings* tpl_bindings,
+      const NttpBindings* nttp_bindings,
+      const std::string& context_prefix,
+      bool resolve_typedef_struct,
+      bool expand_parameter_packs) {
+    for (int i = 0; i < callable_node->n_params; ++i) {
+      const Node* p = callable_node->params[i];
+      if (!p) continue;
+      const std::string param_name = p->name ? p->name : "<anon_param>";
+
+      if (expand_parameter_packs && p->is_parameter_pack && tpl_bindings &&
+          p->type.base == TB_TYPEDEF && p->type.tag) {
+        std::vector<std::pair<int, TypeSpec>> pack_types;
+        for (const auto& [key, ts] : *tpl_bindings) {
+          int pack_index = 0;
+          if (parse_pack_binding_name(key, p->type.tag, &pack_index))
+            pack_types.push_back({pack_index, ts});
+        }
+        std::sort(pack_types.begin(), pack_types.end(),
+                  [](const auto& a, const auto& b) { return a.first < b.first; });
+        for (const auto& [pack_index, concrete] : pack_types) {
+          TypeSpec param_ts = concrete;
+          const bool outer_lref = p->type.is_lvalue_ref;
+          const bool outer_rref = p->type.is_rvalue_ref;
+          param_ts.is_lvalue_ref = concrete.is_lvalue_ref || outer_lref;
+          param_ts.is_rvalue_ref =
+              !param_ts.is_lvalue_ref && (concrete.is_rvalue_ref || outer_rref);
+          const std::string emitted_name =
+              param_name + "__pack" + std::to_string(pack_index);
+          append_explicit_callable_param(
+              fn, ctx, p, emitted_name, param_ts, tpl_bindings, nttp_bindings,
+              context_prefix + emitted_name, resolve_typedef_struct);
+          ctx.pack_params[param_name].push_back(
+              FunctionCtx::PackParamElem{emitted_name, param_ts,
+                                         static_cast<uint32_t>(fn.params.size() - 1)});
+        }
+        continue;
+      }
+
+      append_explicit_callable_param(
+          fn, ctx, p, param_name, p->type, tpl_bindings, nttp_bindings,
+          context_prefix + param_name, resolve_typedef_struct);
+    }
+  }
+
   void lower_function(const Node* fn_node,
                       const std::string* name_override = nullptr,
                       const TypeBindings* tpl_override = nullptr,
@@ -3515,44 +3564,8 @@ class Lowerer {
       ctx.tpl_bindings = *tpl_override;
     if (nttp_override)
       ctx.nttp_bindings = *nttp_override;
-
-    for (int i = 0; i < fn_node->n_params; ++i) {
-      const Node* p = fn_node->params[i];
-      if (!p) continue;
-      const std::string param_name = p->name ? p->name : "<anon_param>";
-
-      if (p->is_parameter_pack && tpl_override && p->type.base == TB_TYPEDEF && p->type.tag) {
-        std::vector<std::pair<int, TypeSpec>> pack_types;
-        for (const auto& [key, ts] : *tpl_override) {
-          int pack_index = 0;
-          if (parse_pack_binding_name(key, p->type.tag, &pack_index))
-            pack_types.push_back({pack_index, ts});
-        }
-        std::sort(pack_types.begin(), pack_types.end(),
-                  [](const auto& a, const auto& b) { return a.first < b.first; });
-        for (const auto& [pack_index, concrete] : pack_types) {
-          TypeSpec param_ts = concrete;
-          const bool outer_lref = p->type.is_lvalue_ref;
-          const bool outer_rref = p->type.is_rvalue_ref;
-          param_ts.is_lvalue_ref = concrete.is_lvalue_ref || outer_lref;
-          param_ts.is_rvalue_ref =
-              !param_ts.is_lvalue_ref && (concrete.is_rvalue_ref || outer_rref);
-          const std::string emitted_name =
-              param_name + "__pack" + std::to_string(pack_index);
-          append_explicit_callable_param(
-              fn, ctx, p, emitted_name, param_ts, tpl_override, nttp_override,
-              std::string("function-param:") + emitted_name, false);
-          ctx.pack_params[param_name].push_back(
-              FunctionCtx::PackParamElem{emitted_name, param_ts,
-                                         static_cast<uint32_t>(fn.params.size() - 1)});
-        }
-        continue;
-      }
-
-      append_explicit_callable_param(
-          fn, ctx, p, param_name, p->type, tpl_override, nttp_override,
-          std::string("function-param:") + param_name, false);
-    }
+    append_callable_params(fn, ctx, fn_node, tpl_override, nttp_override,
+                           "function-param:", false, true);
 
     if (!fn_node->body) {
       module_->fn_index[fn.name] = fn.id;
@@ -3641,14 +3654,8 @@ class Lowerer {
     }
 
     // Add explicit parameters.
-    for (int i = 0; i < method_node->n_params; ++i) {
-      const Node* p = method_node->params[i];
-      if (!p) continue;
-      const std::string param_name = p->name ? p->name : "<anon_param>";
-      append_explicit_callable_param(
-          fn, ctx, p, param_name, p->type, tpl_bindings, nttp_bindings,
-          std::string("method-param:") + param_name, true);
-    }
+    append_callable_params(fn, ctx, method_node, tpl_bindings, nttp_bindings,
+                           "method-param:", true, false);
 
     // Store the struct tag so field accesses in the body can resolve via `this`.
     ctx.method_struct_tag = struct_tag;

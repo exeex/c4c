@@ -429,6 +429,15 @@ set_tests_properties(cpp_hir_template_method_signature_binding PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_function_pack_signature_binding
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_function_pack_signature_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_function_pack_signature_binding PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "fn first_plus_last_.*\\(args__pack0: int, args__pack1: long\\) -> int"
+)
+
+add_test(
   NAME cpp_hir_spec_key_identity
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/specialization_identity.cpp"
 )
