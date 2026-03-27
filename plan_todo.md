@@ -10,6 +10,50 @@
 
 ## Current Slice
 
+- Active target: Step 6 continues after record-body loop extraction; this
+  slice extracts the remaining record-body context lifecycle from
+  `parse_struct_or_union()` so the outer function reads more like a thin
+  setup/body/finalization dispatcher
+- This iteration's exact target: add parse-only coverage for a template
+  specialization record body that contains a nested record and then resumes
+  outer self-type parsing, then extract the existing body-context
+  setup/parse/restore wrapper into a focused helper without changing nested
+  record handling, constructor/destructor recognition, or self-type parsing
+- Baseline recorded:
+  - `test_fail_before.log`: 2180 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
+- Completed: extracted the record body-context setup/parse/restore lifecycle
+  from `parse_struct_or_union()` into a focused helper without changing nested
+  record handling, template-specialization self-type injection, or
+  constructor/destructor recognition after nested record bodies
+- New helper path:
+  - `parse_record_body_with_context(...)`
+- Added parse-only coverage:
+  - `record_body_context_parse`
+- Validation completed:
+  - focused parser/body-context regressions passed:
+    - `record_body_context_parse`
+    - `record_body_loop_parse`
+    - `record_specialization_setup_parse`
+    - `record_nested_aggregate_member_parse`
+    - `record_body_finalization_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2180 total, 7 failed
+    - `test_fail_after.log`: 2181 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Next intended slice: continue Step 6 by extracting one more remaining
+  `parse_struct_or_union()` coordinator concern, likely the local body-member
+  accumulator setup / post-body storage handoff, so the outer function
+  approaches a pure setup/body/finalization dispatcher
 - Active target: Step 6 continues after record-body loop extraction; the next
   slice should pull the remaining body-context setup/teardown coordination out
   of `parse_struct_or_union()` so the outer function gets closer to a pure

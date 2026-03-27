@@ -111,6 +111,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     record_tag_setup_parse
     record_definition_setup_parse
     record_body_loop_parse
+    record_body_context_parse
     record_body_finalization_parse
 )
 
