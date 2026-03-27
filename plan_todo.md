@@ -10,6 +10,9 @@
 
 ## Current Slice
 
+- Completed: extracted the shared specialization-binding and instance-key
+  preparation helper from `resolve_pending_tpl_struct(...)` so the coordinator
+  now delegates concrete instance identity staging before body instantiation
 - Completed: extracted the shared post-realization helper path for seeding
   template-type dependency work and resolving deferred member typedefs once the
   owner tag is concrete
@@ -20,6 +23,8 @@
 - Added focused regression coverage:
   - `cpp_hir_template_member_owner_resolution` now covers direct
     `typename box<T>::value_type` lowering and reuse through an in-struct alias
+  - tightened `cpp_hir_template_member_owner_resolution` to assert the concrete
+    instantiated owner type appears in HIR as `decl w: struct wrap_T_int`
 - Baseline recorded for this iteration:
   - `test_fail_before.log`: 2212 total, 7 failed
   - failing identities:
@@ -46,9 +51,9 @@
 
 ## Next Intended Slice
 
-- after this extraction lands, move deeper into the repeated
-  `resolve_pending_tpl_struct(...)` / `instantiate_template_struct_body(...)`
-  setup around bound template-argument materialization and struct-body staging
+- after this extraction lands, move deeper into
+  `instantiate_template_struct_body(...)` setup around base/field substitution
+  staging and per-method binding preparation
 
 ## Blockers
 
@@ -60,5 +65,8 @@
 - the previous Step 2 slice in `instantiate_deferred_template_type(...)` is
   already committed as `2d6b0e3`
 - this iteration is deliberately limited to helper extraction around
-  post-realization pending-template/member-typedef follow-up, not semantic
-  cleanup
+  specialization-binding / instance-key staging inside
+  `resolve_pending_tpl_struct(...)`, not semantic cleanup
+- next Step 2 candidate is the repeated base/field substitution setup inside
+  `instantiate_template_struct_body(...)`; keep any follow-up extraction
+  behavior-preserving and reuse the current targeted HIR regression set

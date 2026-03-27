@@ -96,6 +96,13 @@ struct ResolvedTemplateArgs {
   std::vector<std::pair<std::string, long long>> nttp_bindings;
 };
 
+/// Prepared identity data for one concrete template-struct instantiation.
+struct PreparedTemplateStructInstance {
+  TypeBindings type_bindings;
+  NttpBindings nttp_bindings;
+  TemplateStructInstanceKey instance_key;
+};
+
 bool hir_is_type_template_param(const Node* tpl_def, const char* name) {
   if (!tpl_def || !name) return false;
   for (int i = 0; i < tpl_def->n_template_params; ++i) {
@@ -2983,7 +2990,43 @@ class Lowerer {
   }
 
   // ---------------------------------------------------------------------------
-  // Helper 3: Build the mangled/concrete name for a template struct instance.
+  // Helper 3: Prepare identity bindings and the dedup key for a concrete
+  // template-struct instance.
+  // ---------------------------------------------------------------------------
+  PreparedTemplateStructInstance prepare_template_struct_instance(
+      const Node* primary_tpl,
+      const char* origin,
+      const std::vector<HirTemplateArg>& concrete_args) {
+    PreparedTemplateStructInstance prepared;
+    std::vector<std::string> primary_param_order;
+    primary_param_order.reserve(primary_tpl->n_template_params);
+    for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
+      const char* param_name = primary_tpl->template_param_names[pi];
+      if (!param_name) continue;
+      primary_param_order.push_back(param_name);
+      if (pi >= static_cast<int>(concrete_args.size())) continue;
+      if (concrete_args[pi].is_value) {
+        prepared.nttp_bindings[param_name] = concrete_args[pi].value;
+      } else {
+        prepared.type_bindings[param_name] = concrete_args[pi].type;
+      }
+    }
+
+    const std::string primary_name =
+        primary_tpl->name ? primary_tpl->name
+                          : std::string(origin ? origin : "");
+    SpecializationKey instance_spec_key = prepared.nttp_bindings.empty()
+        ? make_specialization_key(primary_name, primary_param_order,
+                                  prepared.type_bindings)
+        : make_specialization_key(primary_name, primary_param_order,
+                                  prepared.type_bindings,
+                                  prepared.nttp_bindings);
+    prepared.instance_key = TemplateStructInstanceKey{primary_tpl, instance_spec_key};
+    return prepared;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Helper 4: Build the mangled/concrete name for a template struct instance.
   // ---------------------------------------------------------------------------
   static std::string build_template_mangled_name(
       const Node* primary_tpl,
@@ -3051,7 +3094,7 @@ class Lowerer {
   }
 
   // ---------------------------------------------------------------------------
-  // Helper 4: Instantiate the concrete struct body (fields, bases, methods).
+  // Helper 5: Instantiate the concrete struct body (fields, bases, methods).
   // ---------------------------------------------------------------------------
   void instantiate_template_struct_body(
       const std::string& mangled,
@@ -3219,31 +3262,9 @@ class Lowerer {
     const Node* tpl_def = selected_pattern.selected_pattern;
     if (!tpl_def) tpl_def = primary_tpl;
 
-    // 4. Build instance key for dedup.
-    std::vector<std::string> primary_param_order;
-    primary_param_order.reserve(primary_tpl->n_template_params);
-    TypeBindings instance_type_bindings;
-    NttpBindings instance_nttp_bindings;
-    for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
-      const char* param_name = primary_tpl->template_param_names[pi];
-      if (!param_name) continue;
-      primary_param_order.push_back(param_name);
-      if (pi >= static_cast<int>(resolved.concrete_args.size())) continue;
-      if (resolved.concrete_args[pi].is_value) {
-        instance_nttp_bindings[param_name] = resolved.concrete_args[pi].value;
-      } else {
-        instance_type_bindings[param_name] = resolved.concrete_args[pi].type;
-      }
-    }
-    const std::string primary_name =
-        primary_tpl->name ? primary_tpl->name : std::string(origin);
-    SpecializationKey instance_spec_key = instance_nttp_bindings.empty()
-        ? make_specialization_key(primary_name, primary_param_order,
-                                  instance_type_bindings)
-        : make_specialization_key(primary_name, primary_param_order,
-                                  instance_type_bindings,
-                                  instance_nttp_bindings);
-    TemplateStructInstanceKey instance_key{primary_tpl, instance_spec_key};
+    // 4. Prepare instance bindings and key for dedup.
+    PreparedTemplateStructInstance prepared_instance =
+        prepare_template_struct_instance(primary_tpl, origin, resolved.concrete_args);
 
     // 5. Build mangled name.
     std::string mangled = build_template_mangled_name(
@@ -3252,7 +3273,7 @@ class Lowerer {
     // 6. Instantiate the struct body if not already done.
     instantiate_template_struct_body(
         mangled, primary_tpl, tpl_def, selected_pattern,
-        resolved.concrete_args, instance_key);
+        resolved.concrete_args, prepared_instance.instance_key);
 
     // 7. Update the TypeSpec to point to the concrete struct.
     ts.tag = module_->struct_defs.count(mangled) ?
