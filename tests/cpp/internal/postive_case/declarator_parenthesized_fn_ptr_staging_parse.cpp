@@ -9,6 +9,7 @@ int (*pick(int which))(int);
 int (*(*pick_outer(int which))(int))(int);
 int (*__attribute__((unused)) pick_attr(int which))(int);
 int (*pick_row(int which))[3];
+int accept_abstract(int (*)(int), int (*(*)(int))(int));
 
 typedef int (*UnaryFn)(int);
 typedef UnaryFn (*FactoryFn)(int);
@@ -19,6 +20,7 @@ int main() {
     UnaryFn direct = pick(0);
     UnaryFn attr = pick_attr(1);
     FactoryFn nested = pick_outer(1);
+    accept_abstract(direct, nested);
     int (*row)[3] = pick_row(1);
     return choose_factory(apply(2))(twice(3)) + direct(4) + attr(5) + nested(6)(7) +
            (*row)[1];

@@ -14,6 +14,37 @@
   `parse_declarator()` after the shared prefix scan, likely around the
   grouped/parenthesized-vs-normal dispatch, without changing suffix ordering
   or function-pointer detection
+- This iteration's exact target: extract the named-vs-nested inner branch from
+  `parse_parenthesized_pointer_declarator()` into a helper, preserving
+  anonymous parenthesized function-pointer parameter parsing, nested function
+  pointer recursion, and post-paren suffix ordering
+- Completed: extracted the named-vs-nested inner branch from
+  `parse_parenthesized_pointer_declarator()` without changing anonymous
+  parenthesized function-pointer parameters, nested function-pointer recursion,
+  or post-paren suffix ordering
+- New helper path:
+  - `parse_parenthesized_pointer_declarator_inner(...)`
+- Added parse-only coverage:
+  - extended `declarator_parenthesized_fn_ptr_staging_parse` with anonymous
+    parenthesized function-pointer and nested function-pointer parameters
+- Validation completed:
+  - focused parser regressions passed:
+    - `declarator_parenthesized_fn_ptr_staging_parse`
+    - `declarator_pointer_qualifier_staging_parse`
+    - `declarator_grouped_suffix_staging_parse`
+    - `declarator_member_fn_ptr_suffix_staging_parse`
+    - `declarator_normal_tail_staging_parse`
+    - `declarator_array_suffix_staging_parse`
+    - `qualified_member_function_pointer_template_owner_parse`
+    - `qualified_member_pointer_template_owner_parse`
+    - `global_qualified_member_pointer_template_owner_parse`
+    - `variadic_param_pack_declarator_parse`
+    - `eastl_slice6_template_defaults_and_refqual_cpp`
+  - full clean rebuild `test_after.log` remained monotonic:
+    - `test_before.log`: 2166 total, 7 failed
+    - `test_after.log`: 2166 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+0` passed, `0` new failures)
 - Completed: extracted the shared declarator prefix scan from
   `parse_declarator()` into a helper without changing member-pointer owner
   consumption, `*`/`&`/`&&` staging, nullability skipping, or declarator
@@ -475,6 +506,14 @@
 - Extended `declarator_parenthesized_fn_ptr_staging_parse` to lock
   attribute-prefixed parenthesized function-pointer declarations before
   refactoring the remaining parenthesized branch
+- `parse_parenthesized_pointer_declarator()` now delegates its
+  named-vs-nested inner branch to
+  `parse_parenthesized_pointer_declarator_inner(...)`
+- Extended `declarator_parenthesized_fn_ptr_staging_parse` with anonymous
+  parenthesized function-pointer and nested function-pointer parameters to lock
+  the extracted branch
+- The next intended Step 5 slice is the remaining pointer-token / qualifier /
+  name prelude in `parse_parenthesized_pointer_declarator()`
 - Current monotonic baseline:
   - `test_fail_before.log`: 2162 total, 7 failed
   - `test_fail_after.log`: 2166 total, 7 failed

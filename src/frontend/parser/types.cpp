@@ -1819,6 +1819,46 @@ void Parser::parse_parenthesized_function_pointer_suffix(
         out_fn_ptr_variadic, fn_ptr_params, fn_ptr_variadic);
 }
 
+bool Parser::parse_parenthesized_pointer_declarator_inner(
+    TypeSpec& ts, const char** out_name,
+    Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
+    bool* out_fn_ptr_variadic) {
+    while (check(TokenKind::LBracket)) {
+        consume();  // [
+        while (!at_end() && !check(TokenKind::RBracket)) consume();
+        if (check(TokenKind::RBracket)) consume();  // ]
+    }
+
+    bool got_name = false;
+    if (out_name && check(TokenKind::Identifier)) {
+        *out_name = arena_.strdup(cur().lexeme);
+        consume();
+        got_name = true;
+    }
+
+    while (check(TokenKind::LBracket)) {
+        consume();  // [
+        while (!at_end() && !check(TokenKind::RBracket)) consume();
+        if (check(TokenKind::RBracket)) consume();  // ]
+    }
+
+    if (got_name && check(TokenKind::LParen)) {
+        skip_paren_group();  // skip own params: (int a, int b)
+        return false;
+    }
+
+    if (check(TokenKind::LParen)) {
+        TypeSpec inner_ts = ts;
+        inner_ts.ptr_level = 0;
+        parse_declarator(inner_ts, out_name,
+                         out_fn_ptr_params, out_n_fn_ptr_params,
+                         out_fn_ptr_variadic);
+        return true;
+    }
+
+    return false;
+}
+
 void Parser::parse_parenthesized_pointer_declarator(
     TypeSpec& ts, const char** out_name,
     Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
@@ -1870,35 +1910,10 @@ void Parser::parse_parenthesized_pointer_declarator(
         }
     }
 
-    while (check(TokenKind::LBracket)) {
-        consume();  // [
-        while (!at_end() && !check(TokenKind::RBracket)) consume();
-        if (check(TokenKind::RBracket)) consume();  // ]
-    }
-
-    bool got_name = false;
-    if (out_name && check(TokenKind::Identifier)) {
-        *out_name = arena_.strdup(cur().lexeme);
-        consume();
-        got_name = true;
-    }
-
-    while (check(TokenKind::LBracket)) {
-        consume();  // [
-        while (!at_end() && !check(TokenKind::RBracket)) consume();
-        if (check(TokenKind::RBracket)) consume();  // ]
-    }
-
-    if (got_name && check(TokenKind::LParen)) {
-        skip_paren_group();  // skip own params: (int a, int b)
-    } else if (!got_name && check(TokenKind::LParen)) {
-        TypeSpec inner_ts = ts;
-        inner_ts.ptr_level = 0;
-        is_nested_fn_ptr = true;
-        parse_declarator(inner_ts, out_name,
-                         out_fn_ptr_params, out_n_fn_ptr_params,
-                         out_fn_ptr_variadic);
-    }
+    is_nested_fn_ptr = parse_parenthesized_pointer_declarator_inner(
+        ts, out_name,
+        out_fn_ptr_params, out_n_fn_ptr_params,
+        out_fn_ptr_variadic);
 
     expect(TokenKind::RParen);
     parse_parenthesized_function_pointer_suffix(
