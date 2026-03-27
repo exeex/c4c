@@ -10,9 +10,14 @@
 
 ## Current Slice
 
-- Extracted the remaining declarator-side qualified-name assembly into helpers
-- Reused them for out-of-class declarator names with template-id owners and trailing `operator...`
-- Added a narrow parse-only regression for a templated owner spelling in a qualified operator declarator
+- Completed: extracted the shared declarator-side owner-prefix path for
+  qualified `::*` member pointers
+- Reused `consume_member_pointer_owner_prefix()` in:
+  - plain pointer-to-member declarators
+  - parenthesized pointer-to-member-function lookahead
+  - parenthesized pointer-to-member-function consumption
+- Added parse-only coverage:
+  - `global_qualified_member_pointer_template_owner_parse`
 
 ## Completed
 
@@ -132,14 +137,36 @@
     - `cpp_positive_sema_template_arg_deduction_cpp`
     - `cpp_positive_sema_template_mixed_params_cpp`
     - `cpp_positive_sema_template_type_subst_cpp`
+- Continued Step 4 by centralizing the remaining qualified `::*` owner-prefix consumption
+- Extracted helper:
+  - `consume_member_pointer_owner_prefix()`
+- Reused the helper in:
+  - plain pointer-to-member declarators
+  - parenthesized pointer-to-member-function lookahead
+  - parenthesized pointer-to-member-function consumption
+- Added parse-only coverage:
+  - `global_qualified_member_pointer_template_owner_parse`
+- Rebuilt successfully with `cmake --build build -j8`
+- Targeted parser regressions passed:
+  - `global_qualified_member_pointer_template_owner_parse`
+  - `qualified_member_pointer_template_owner_parse`
+  - `qualified_member_function_pointer_template_owner_parse`
+  - `qualified_operator_template_owner_parse`
+  - `eastl_slice7d_qualified_declarator_parse`
+  - `member_pointer_param_parse`
+  - `out_of_class_member_owner_scope_parse`
+- Full clean rebuild `test_after.log` remained monotonic:
+  - `test_before.log`: 2159 total, 7 failed
+  - `test_after.log`: 2160 total, 7 failed
+  - regression guard: passed (`+1` passed, `0` new failures)
 
 ## Next
 
-- If this declarator-name extraction lands cleanly, re-evaluate whether any
-  remaining qualified-name lookahead outside `parse_declarator()` still
-  duplicates segment assembly enough to justify another Step 4 slice
-- Keep follow-up coverage parser-only and narrowly focused on qualified /
-  dependent name spelling reuse rather than grammar expansion
+- Re-evaluate whether Step 4 has any meaningful qualified/dependent-name
+  duplication left in `types.cpp`; if not, advance to Step 5 and extract the
+  first declarator-stage helper without changing grammar behavior
+- Keep follow-up coverage parser-only and narrowly focused on declarator-stage
+  structure rather than new grammar acceptance
 
 ## Blockers
 
@@ -170,5 +197,9 @@
 - The next intended extraction is the declarator-side qualified-name loop used for out-of-class names and operator declarators
 - `parse_declarator()` now delegates qualified/operator declarator-name parsing to dedicated helpers
 - Added `qualified_operator_template_owner_parse` to lock templated owner spellings for out-of-class operator declarators
-- `test_before.log` still reflects the incremental-build baseline (2158 total, 3 failed), while clean rebuilds now consistently show the same 7 failures on both this branch and detached `HEAD`
-- Full-suite failures were treated as existing issues for this iteration per user direction
+- The remaining `::*` owner-prefix duplication now lives behind `consume_member_pointer_owner_prefix()`
+- Added `global_qualified_member_pointer_template_owner_parse` to lock global-qualified templated owner spellings through the shared helper path
+- Current monotonic baseline:
+  - `test_before.log`: 2159 total, 7 failed
+  - `test_after.log`: 2160 total, 7 failed
+- Full-suite failures remain the same known issues; regression guard passed with no new failing tests

@@ -1366,6 +1366,28 @@ bool Parser::consume_template_args_followed_by_scope() {
     return true;
 }
 
+bool Parser::consume_member_pointer_owner_prefix() {
+    if (!is_cpp_mode()) return false;
+
+    const int saved_pos = pos_;
+    if (!consume_qualified_type_spelling(/*allow_global=*/true,
+                                         /*consume_final_template_args=*/false,
+                                         nullptr, nullptr)) {
+        return false;
+    }
+    consume_template_args_followed_by_scope();
+    if (!(check(TokenKind::ColonColon) &&
+          pos_ + 1 < static_cast<int>(tokens_.size()) &&
+          tokens_[pos_ + 1].kind == TokenKind::Star)) {
+        pos_ = saved_pos;
+        return false;
+    }
+
+    consume(); // ::
+    consume(); // *
+    return true;
+}
+
 bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
     if (!is_cpp_mode() || !check(TokenKind::Identifier) || cur().lexeme != "typename")
         return false;
@@ -3352,17 +3374,10 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     // like EASTL's invoke_impl(R C::*func, ...) can parse successfully.
     if (is_cpp_mode()) {
         int saved_pos = pos_;
-        if (consume_qualified_type_spelling(
-                /*allow_global=*/true,
-                /*consume_final_template_args=*/false,
-                nullptr, nullptr)) {
-            consume_template_args_followed_by_scope();
-            if (match(TokenKind::ColonColon) && check(TokenKind::Star)) {
-                consume();  // *
-                ts.ptr_level++;
-            } else {
-                pos_ = saved_pos;
-            }
+        if (consume_member_pointer_owner_prefix()) {
+            ts.ptr_level++;
+        } else {
+            pos_ = saved_pos;
         }
     }
 
@@ -3439,16 +3454,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
              tokens_[pk].kind == TokenKind::ColonColon)) {
             const int saved_pos = pos_;
             pos_ = pk;
-            bool is_member_ptr_fn = false;
-            if (consume_qualified_type_spelling(/*allow_global=*/true,
-                                                /*consume_final_template_args=*/false,
-                                                nullptr, nullptr)) {
-                consume_template_args_followed_by_scope();
-                is_member_ptr_fn =
-                    check(TokenKind::ColonColon) &&
-                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                    tokens_[pos_ + 1].kind == TokenKind::Star;
-            }
+            bool is_member_ptr_fn = consume_member_pointer_owner_prefix();
             pos_ = saved_pos;
             if (is_member_ptr_fn) return true;
         }
@@ -3463,22 +3469,15 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         // Also handles C++ pointer-to-member-function: (T::*name)(...)
         consume();  // consume (
         skip_attributes();  // skip any __attribute__((...)) before * or ^
-        // C++ pointer-to-member-function: skip qualifier prefix (T:: or ns::T::)
-        if (is_cpp_mode() &&
-            consume_qualified_type_spelling(/*allow_global=*/true,
-                                            /*consume_final_template_args=*/false,
-                                            nullptr, nullptr)) {
-            consume_template_args_followed_by_scope();
-            if (check(TokenKind::ColonColon) &&
-                pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                tokens_[pos_ + 1].kind == TokenKind::Star) {
-                consume();  // ::
-            }
+        TokenKind pointer_tok = cur().kind;
+        if (is_cpp_mode() && consume_member_pointer_owner_prefix()) {
+            pointer_tok = TokenKind::Star;
+        } else {
+            consume();  // consume * or ^ or & or &&
         }
-        consume();  // consume * or ^ or & or &&
-        if (tokens_[pos_ - 1].kind == TokenKind::AmpAmp) {
+        if (pointer_tok == TokenKind::AmpAmp) {
             ts.is_rvalue_ref = true;
-        } else if (tokens_[pos_ - 1].kind == TokenKind::Amp) {
+        } else if (pointer_tok == TokenKind::Amp) {
             ts.is_lvalue_ref = true;
         } else {
             ts.ptr_level++;

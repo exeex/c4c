@@ -303,6 +303,7 @@ class Parser {
                                        std::string* out_name = nullptr,
                                        QualifiedNameRef* out_qn = nullptr);
   bool consume_template_args_followed_by_scope();
+  bool consume_member_pointer_owner_prefix();
   bool parse_dependent_typename_specifier(std::string* out_name = nullptr);
   bool parse_operator_declarator_name(std::string* out_name);
   bool parse_qualified_declarator_name(std::string* out_name);
