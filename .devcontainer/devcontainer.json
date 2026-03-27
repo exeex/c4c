@@ -7,11 +7,11 @@
     "ghcr.io/devcontainers/features/node:1": {}
   },
   "mounts": [
-    "source=${localEnv:HOME}/.codex,target=/home/vscode/.codex,type=bind,consistency=cached,readonly",
+    "source=${localEnv:HOME}/.codex,target=/home/vscode/.codex,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached,readonly"
   ],
-  "postCreateCommand": "npm install -g @anthropic-ai/claude-code",
+  "postCreateCommand": "npm i -g @anthropic-ai/claude-code @openai/codex",
   "customizations": {
     "vscode": {
       "settings": {
