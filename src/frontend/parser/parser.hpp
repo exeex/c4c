@@ -395,6 +395,7 @@ class Parser {
   bool try_parse_record_access_label();
   bool try_skip_record_friend_member();
   bool try_skip_record_static_assert_member();
+  bool recover_record_member_parse_error(int member_start_pos);
   void parse_record_template_member_prelude(
       std::vector<std::string>* injected_type_params,
       bool* pushed_template_scope);

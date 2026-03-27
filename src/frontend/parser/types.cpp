@@ -3885,6 +3885,34 @@ bool Parser::try_skip_record_static_assert_member() {
     return true;
 }
 
+bool Parser::recover_record_member_parse_error(int member_start_pos) {
+    if (!is_cpp_mode())
+        return false;
+
+    int brace_depth = 0;
+    while (!at_end()) {
+        if (check(TokenKind::LBrace)) {
+            ++brace_depth;
+            consume();
+        } else if (check(TokenKind::RBrace)) {
+            if (brace_depth > 0) {
+                --brace_depth;
+                consume();
+            } else {
+                break;
+            }
+        } else if (check(TokenKind::Semi) && brace_depth == 0) {
+            consume();
+            break;
+        } else {
+            consume();
+        }
+    }
+
+    if (pos_ == member_start_pos && !at_end()) consume();
+    return true;
+}
+
 void Parser::parse_record_template_member_prelude(
     std::vector<std::string>* injected_type_params,
     bool* pushed_template_scope) {
@@ -5228,27 +5256,8 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             continue;
         }
       } catch (const std::exception&) {
-        // Error recovery: skip to next ';' or '}' within the struct body.
-        // This prevents a single unparseable member from aborting the entire
-        // struct and causing cascading errors in subsequent declarations.
-        if (is_cpp_mode()) {
-            int brace_depth = 0;
-            while (!at_end()) {
-                if (check(TokenKind::LBrace)) { ++brace_depth; consume(); }
-                else if (check(TokenKind::RBrace)) {
-                    if (brace_depth > 0) { --brace_depth; consume(); }
-                    else break;  // outer struct closing brace — stop
-                }
-                else if (check(TokenKind::Semi) && brace_depth == 0) {
-                    consume(); break;
-                }
-                else consume();
-            }
-            // Prevent infinite loops: if we made no progress, consume one token.
-            if (pos_ == member_start_pos && !at_end()) consume();
-        } else {
-            throw;  // In C mode, re-throw (no recovery)
-        }
+        if (!recover_record_member_parse_error(member_start_pos))
+            throw;
       }
     }
     expect(TokenKind::RBrace);

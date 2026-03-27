@@ -10,6 +10,42 @@
 
 ## Current Slice
 
+- Completed: extracted the record-body member-loop recovery path from
+  `parse_struct_or_union()` into a focused helper without changing C++-only
+  recovery semantics, brace-depth handling, or infinite-loop prevention
+- New helper path:
+  - `recover_record_member_parse_error(...)`
+- Added parse-only coverage:
+  - `record_member_recovery_parse`
+- Validation completed:
+  - focused parser/member regressions passed:
+    - `record_member_recovery_parse`
+    - `record_member_dispatch_parse`
+    - `record_member_method_field_parse`
+    - `record_member_special_member_parse`
+    - `record_member_prelude_parse`
+    - `record_member_enum_parse`
+    - `record_member_typedef_using_parse`
+    - `record_nested_aggregate_member_parse`
+    - `access_labels_parse`
+    - `friend_access_parse`
+    - `friend_inline_operator_parse`
+    - `template_struct_specialization_parse`
+    - `constructor_basic`
+    - `ctor_init_list_basic`
+    - `destructor_member_basic`
+    - `operator_extended_member_runtime`
+    - `eastl_slice7c_struct_body_recovery`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2174 total, 7 failed
+    - `test_fail_after.log`: 2174 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+0` passed, `0` new failures, `0` new >30s
+      tests)
+- Next intended slice: continue Step 6 by extracting another
+  `parse_struct_or_union()` coordinator concern outside the main body, likely a
+  focused helper for attribute/tag/template-specialization setup before the
+  record-body loop
 - Completed: extracted the record-body member-dispatch setup from
   `parse_struct_or_union()` into a focused helper without changing member
   ordering, template-prelude scope cleanup, or C++ recovery behavior

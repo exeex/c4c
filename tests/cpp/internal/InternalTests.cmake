@@ -105,6 +105,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     record_member_special_member_parse
     record_member_method_field_parse
     record_member_dispatch_parse
+    record_member_recovery_parse
 )
 
 list(APPEND CPP_POSITIVE_FRONTEND_STEMS
