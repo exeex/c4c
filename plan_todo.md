@@ -10,6 +10,50 @@
 
 ## Current Slice
 
+- Completed: extracted the shared qualified-type-start classification probe
+  from the remaining Step 4 overlap so `is_type_start()` and
+  `try_parse_qualified_base_type(...)` now reuse the same qualified-name
+  typedef-resolution / unresolved-qualified fallback metadata without
+  changing token consumption or the declaration-vs-expression heuristic
+- New helper path:
+  - `probe_qualified_type(...)`
+- Added parse-only coverage:
+  - `qualified_type_start_shared_probe_parse`
+- Validation completed:
+  - focused qualified/dependent-name regressions passed:
+    - `qualified_type_start_shared_probe_parse`
+    - `qualified_type_start_probe_parse`
+    - `qualified_type_resolution_dispatch_parse`
+    - `qualified_type_spelling_shared_parse`
+    - `qualified_dependent_typename_global_parse`
+    - `template_member_type_direct_parse`
+    - `template_member_type_inherited_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2194 total, 7 failed
+    - `test_fail_after.log`: 2195 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Active target: Step 4 remains active; this iteration is focused on the
+  remaining overlap between `is_type_start()` qualified-type probing and
+  `parse_base_type()` qualified dispatch
+- This iteration's exact target: extract one shared qualified-type-start
+  predicate so declaration-context probing reuses the same qualified-name
+  classification rules as `try_parse_qualified_base_type(...)` without
+  changing token consumption or accepted grammar
+- Next intended slice: Step 4 remains active after the shared probe
+  extraction; centralize one more bounded qualified/dependent-name
+  classification branch still inline in `parse_base_type()`
+- Baseline recorded:
+  - `test_fail_before.log`: 2194 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
 - Completed: extracted the remaining `peek_qualified_name(...)`
   classification path from `parse_base_type()` into
   `try_parse_qualified_base_type(...)` so the coordinator now delegates the

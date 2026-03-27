@@ -15,6 +15,14 @@ namespace {
 
 using ParsedTemplateArg = Parser::TemplateArgParseResult;
 
+struct QualifiedTypeProbe {
+    bool has_resolved_typedef = false;
+    bool has_unresolved_qualified_fallback = false;
+    int namespace_context_id = -1;
+    std::string resolved_typedef_name;
+    std::string spelled_name;
+};
+
 std::string spell_qualified_name_for_lookup(const Parser::QualifiedNameRef& qn) {
     std::string name;
     for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
@@ -47,6 +55,23 @@ std::string resolve_qualified_typedef_name(const Parser& parser,
     if (parser.typedef_types_.count(resolved) > 0)
         return resolved;
     return {};
+}
+
+QualifiedTypeProbe probe_qualified_type(const Parser& parser,
+                                        const Parser::QualifiedNameRef& qn) {
+    QualifiedTypeProbe probe;
+    probe.resolved_typedef_name = resolve_qualified_typedef_name(parser, qn);
+    if (parser.typedef_types_.count(probe.resolved_typedef_name) > 0) {
+        probe.has_resolved_typedef = true;
+        return probe;
+    }
+
+    if (qn.qualifier_segments.empty()) return probe;
+
+    probe.has_unresolved_qualified_fallback = true;
+    probe.spelled_name = spell_qualified_name_for_lookup(qn);
+    probe.namespace_context_id = parser.resolve_namespace_context(qn);
+    return probe;
 }
 
 bool parse_alignas_specifier(Parser* parser, TypeSpec* ts, int line) {
@@ -1482,9 +1507,9 @@ bool Parser::try_parse_qualified_base_type(TypeSpec* out_ts) {
     QualifiedNameRef qn;
     if (!peek_qualified_name(&qn, true)) return false;
 
-    std::string resolved_name = resolve_qualified_typedef_name(*this, qn);
-    if (typedef_types_.count(resolved_name) > 0) {
-        out_ts->tag = arena_.strdup(resolved_name.c_str());
+    const QualifiedTypeProbe probe = probe_qualified_type(*this, qn);
+    if (probe.has_resolved_typedef) {
+        out_ts->tag = arena_.strdup(probe.resolved_typedef_name.c_str());
         out_ts->is_global_qualified = qn.is_global_qualified;
         out_ts->n_qualifier_segments =
             static_cast<int>(qn.qualifier_segments.size());
@@ -1504,10 +1529,9 @@ bool Parser::try_parse_qualified_base_type(TypeSpec* out_ts) {
         return true;
     }
 
-    if (qn.qualifier_segments.empty()) return false;
+    if (!probe.has_unresolved_qualified_fallback) return false;
 
-    std::string full_name = spell_qualified_name_for_lookup(qn);
-    out_ts->tag = arena_.strdup(full_name.c_str());
+    out_ts->tag = arena_.strdup(probe.spelled_name.c_str());
     consume_qualified_type_spelling_with_typename(
         /*require_typename=*/false,
         /*allow_global=*/true,
@@ -2224,13 +2248,8 @@ bool Parser::is_type_start() const {
     if (k == TokenKind::ColonColon) {
         QualifiedNameRef qn;
         if (peek_qualified_name(&qn, true)) {
-            std::string qualified = spell_qualified_name_for_lookup(qn);
-            if (typedef_types_.count(qualified) > 0) return true;
-            if (!qn.qualifier_segments.empty()) {
-                int context_id = resolve_namespace_context(qn);
-                if (context_id >= 0) qualified = canonical_name_in_context(context_id, qn.base_name);
-            }
-            if (typedef_types_.count(qualified) > 0) return true;
+            const QualifiedTypeProbe probe = probe_qualified_type(*this, qn);
+            if (probe.has_resolved_typedef) return true;
         }
     }
     // C++ qualified type: StructName::TypedefName or ns::ns2::Type
@@ -2240,12 +2259,9 @@ bool Parser::is_type_start() const {
         tokens_[pos_ + 2].kind == TokenKind::Identifier) {
         QualifiedNameRef qn;
         if (peek_qualified_name(&qn, false)) {
-            std::string scoped = spell_qualified_name_for_lookup(qn);
-            if (typedef_types_.count(scoped) > 0) return true;
-            int context_id = resolve_namespace_context(qn);
-            if (context_id >= 0) {
-                std::string ns_scoped = canonical_name_in_context(context_id, qn.base_name);
-                if (typedef_types_.count(ns_scoped) > 0) return true;
+            const QualifiedTypeProbe probe = probe_qualified_type(*this, qn);
+            if (probe.has_resolved_typedef) return true;
+            if (probe.namespace_context_id >= 0) {
                 // C++ heuristic: if the qualifier resolves to a known namespace,
                 // treat it as a type even if not yet registered (e.g. struct tags
                 // defined inside namespace blocks that aren't typedef-tracked).
