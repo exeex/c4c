@@ -105,6 +105,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     record_member_special_member_parse
     record_member_method_field_parse
     record_member_dispatch_parse
+    record_member_template_scope_cleanup_parse
     record_member_specialization_context_parse
     record_member_recovery_parse
     record_specialization_setup_parse

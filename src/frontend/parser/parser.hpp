@@ -399,6 +399,13 @@ class Parser {
       std::vector<const char*>* member_typedef_names,
       std::vector<TypeSpec>* member_typedef_types,
       const std::function<void(const char*)>& check_dup_field);
+  bool try_parse_record_member_with_template_prelude(
+      const std::string& struct_source_name,
+      std::vector<Node*>* fields,
+      std::vector<Node*>* methods,
+      std::vector<const char*>* member_typedef_names,
+      std::vector<TypeSpec>* member_typedef_types,
+      const std::function<void(const char*)>& check_dup_field);
   bool try_parse_record_member(
       const std::string& struct_source_name,
       std::vector<Node*>* fields,

@@ -4918,20 +4918,13 @@ bool Parser::try_parse_record_member_dispatch(
                                                    check_dup_field);
 }
 
-bool Parser::try_parse_record_member(
+bool Parser::try_parse_record_member_with_template_prelude(
     const std::string& struct_source_name,
     std::vector<Node*>* fields,
     std::vector<Node*>* methods,
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
     const std::function<void(const char*)>& check_dup_field) {
-    skip_attributes();
-    if (check(TokenKind::RBrace)) return false;
-
-    if (try_parse_record_access_label()) return true;
-    if (try_skip_record_friend_member()) return true;
-    if (try_skip_record_static_assert_member()) return true;
-
     struct TemplateParamGuard {
         std::set<std::string>& typedefs;
         std::unordered_map<std::string, TypeSpec>& typedef_types;
@@ -4946,13 +4939,31 @@ bool Parser::try_parse_record_member(
             }
         }
     } tmpl_guard{typedefs_, typedef_types_, template_scope_stack_, {}};
+
     parse_record_template_member_prelude(&tmpl_guard.names,
                                          &tmpl_guard.pushed_scope);
-
     return try_parse_record_member_dispatch(struct_source_name, fields, methods,
                                             member_typedef_names,
                                             member_typedef_types,
                                             check_dup_field);
+}
+
+bool Parser::try_parse_record_member(
+    const std::string& struct_source_name,
+    std::vector<Node*>* fields,
+    std::vector<Node*>* methods,
+    std::vector<const char*>* member_typedef_names,
+    std::vector<TypeSpec>* member_typedef_types,
+    const std::function<void(const char*)>& check_dup_field) {
+    skip_attributes();
+    if (check(TokenKind::RBrace)) return false;
+
+    if (try_parse_record_access_label()) return true;
+    if (try_skip_record_friend_member()) return true;
+    if (try_skip_record_static_assert_member()) return true;
+    return try_parse_record_member_with_template_prelude(
+        struct_source_name, fields, methods, member_typedef_names,
+        member_typedef_types, check_dup_field);
 }
 
 void Parser::begin_record_body_context(const char* tag,
