@@ -2822,51 +2822,63 @@ class Lowerer {
           tpl_name, actual_args, member_name, out_val);
     }
 
-    bool parse_primary(long long* out_val) {
+    bool parse_pack_sizeof(long long* out_val) {
+      if (!cursor.consume("sizeof")) return false;
       cursor.skip_ws();
-      if (cursor.consume("sizeof")) {
-        cursor.skip_ws();
-        if (!cursor.consume("...")) return false;
-        if (!cursor.consume("(")) return false;
-        const std::string pack_name = cursor.parse_identifier();
-        if (pack_name.empty()) return false;
-        if (!cursor.consume(")")) return false;
-        *out_val = env.count_pack_bindings(pack_name);
-        return true;
-      }
+      if (!cursor.consume("...")) return false;
+      if (!cursor.consume("(")) return false;
+      const std::string pack_name = cursor.parse_identifier();
+      if (pack_name.empty()) return false;
+      if (!cursor.consume(")")) return false;
+      *out_val = env.count_pack_bindings(pack_name);
+      return true;
+    }
+
+    bool parse_parenthesized_or_cast(long long* out_val) {
       if (cursor.consume("(")) {
         if (!parse_or(out_val)) return false;
         return cursor.consume(")");
       }
-      {
-        size_t saved = cursor.pos;
-        std::string ident = cursor.parse_identifier();
-        if (!ident.empty()) {
-          cursor.skip_ws();
-          if (cursor.consume("(")) {
-            TypeSpec cast_ts{};
-            cast_ts.array_size = -1;
-            cast_ts.inner_rank = -1;
-            if (env.lookup_cast_type(ident, &cast_ts)) {
-              long long inner = 0;
-              if (!parse_or(&inner)) return false;
-              if (!cursor.consume(")")) return false;
-              *out_val = apply_integral_cast(cast_ts, inner);
-              return true;
-            }
-          }
-          cursor.pos = saved;
-        }
+
+      size_t saved = cursor.pos;
+      std::string ident = cursor.parse_identifier();
+      if (ident.empty()) return false;
+      cursor.skip_ws();
+      if (!cursor.consume("(")) {
+        cursor.pos = saved;
+        return false;
       }
+
+      TypeSpec cast_ts{};
+      cast_ts.array_size = -1;
+      cast_ts.inner_rank = -1;
+      if (!env.lookup_cast_type(ident, &cast_ts)) {
+        cursor.pos = saved;
+        return false;
+      }
+
+      long long inner = 0;
+      if (!parse_or(&inner)) return false;
+      if (!cursor.consume(")")) return false;
+      *out_val = apply_integral_cast(cast_ts, inner);
+      return true;
+    }
+
+    bool parse_bound_identifier(long long* out_val) {
+      size_t saved = cursor.pos;
+      std::string ident = cursor.parse_identifier();
+      if (ident.empty()) return false;
+      if (env.lookup_bound_value(ident, out_val)) return true;
+      cursor.pos = saved;
+      return false;
+    }
+
+    bool parse_primary(long long* out_val) {
+      cursor.skip_ws();
+      if (parse_pack_sizeof(out_val)) return true;
+      if (parse_parenthesized_or_cast(out_val)) return true;
       if (cursor.parse_number(out_val)) return true;
-      {
-        size_t saved = cursor.pos;
-        std::string ident = cursor.parse_identifier();
-        if (!ident.empty()) {
-          if (env.lookup_bound_value(ident, out_val)) return true;
-          cursor.pos = saved;
-        }
-      }
+      if (parse_bound_identifier(out_val)) return true;
       return eval_member_lookup(out_val);
     }
 

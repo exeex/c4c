@@ -10,6 +10,43 @@
 
 ## Current Slice
 
+- Completed: Step 4 deferred-NTTP primary-expression coordination extraction
+- Completed: isolated `DeferredNttpExprParser::parse_primary(...)` branch
+  routing behind named helper paths for:
+  - `sizeof...` pack-count parsing via `parse_pack_sizeof(...)`
+  - parenthesized-expression / cast staging via
+    `parse_parenthesized_or_cast(...)`
+  - bound identifier lookup before template-member fallback via
+    `parse_bound_identifier(...)`
+- Kept scope intentionally narrow:
+  - branch ordering in `parse_primary(...)` stayed unchanged
+  - no deferred-NTTP semantic expansion beyond the already supported
+    literal/identifier, paren, boolean, logical, and direct lookup paths
+- Added focused HIR coverage for this slice:
+  - `cpp_hir_template_deferred_nttp_true_expr` asserts a deferred NTTP
+    literal default (`M = true`) still materializes as
+    `field data: int[1] ... size=4 align=4`
+- Validation completed:
+  - targeted HIR regressions passed:
+    - `cpp_hir_template_deferred_nttp_expr`
+    - `cpp_hir_template_deferred_nttp_paren_expr`
+    - `cpp_hir_template_deferred_nttp_bool_expr`
+    - `cpp_hir_template_deferred_nttp_logic_expr`
+    - `cpp_hir_template_deferred_nttp_true_expr`
+    - `cpp_hir_template_function_pack_signature_binding`
+    - `cpp_hir_template_function_recursive_body_binding`
+  - full clean rebuild remained monotonic:
+    - `test_before.log`: 2225 total, 7 failed
+    - `test_after.log`: 2226 total, 7 failed
+    - failing identities unchanged:
+      - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+      - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+      - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+      - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+      - `cpp_positive_sema_template_arg_deduction_cpp`
+      - `cpp_positive_sema_template_mixed_params_cpp`
+      - `cpp_positive_sema_template_type_subst_cpp`
+    - regression guard: passed (`+1` passed, `0` new failures)
 - Completed: Step 4 deferred-NTTP binary-operator parsing coordination
   extraction
 - Completed: extracted the repeated left-associative binary-expression ladder
@@ -321,9 +358,10 @@
 
 ## Next Intended Slice
 
-- extract the next Step 4 helper seam around deferred-NTTP expression
-  primary-expression coordination (`sizeof...`, parens/casts, identifier vs
-  template-member lookup) if it can land without broadening semantics
+- extract the next Step 4 helper seam around deferred-NTTP member-lookup
+  coordination so template-argument text materialization and
+  `template-name<args>::member` evaluation staging are isolated further
+  without broadening currently supported expression semantics
 - keep Step 4 focused on helper isolation rather than expression-semantics
   changes
 

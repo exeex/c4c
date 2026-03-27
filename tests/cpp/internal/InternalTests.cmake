@@ -492,6 +492,15 @@ set_tests_properties(cpp_hir_template_deferred_nttp_logic_expr PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_deferred_nttp_true_expr
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_deferred_nttp_true_expr_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_deferred_nttp_true_expr PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "field data: int\\[1\\].*size=4 align=4"
+)
+
+add_test(
   NAME cpp_hir_spec_key_identity
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/specialization_identity.cpp"
 )
