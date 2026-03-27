@@ -4972,7 +4972,213 @@ void Parser::begin_record_body_context(const char* tag,
         src_ts.inner_rank = -1;
         src_ts.base = TB_STRUCT;
         src_ts.tag = tag;
-        typedef_types_[template_origin_name] = src_ts;
+    typedef_types_[template_origin_name] = src_ts;
+    }
+}
+
+void Parser::parse_record_prebody_setup(
+    int line,
+    TypeSpec* attr_ts,
+    const char** tag,
+    const char** template_origin_name,
+    std::vector<TemplateArgParseResult>* specialization_args,
+    std::vector<TypeSpec>* base_types) {
+    if (!attr_ts || !tag || !template_origin_name || !specialization_args ||
+        !base_types) {
+        return;
+    }
+
+    *attr_ts = {};
+    *tag = nullptr;
+    *template_origin_name = nullptr;
+    specialization_args->clear();
+    base_types->clear();
+
+    auto skip_cpp11_attrs = [&]() {
+        while (check(TokenKind::LBracket) &&
+               pos_ + 1 < static_cast<int>(tokens_.size()) &&
+               tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+            consume();
+            consume();
+            int depth = 1;
+            while (pos_ < static_cast<int>(tokens_.size()) && depth > 0) {
+                if (check(TokenKind::LBracket)) ++depth;
+                else if (check(TokenKind::RBracket)) --depth;
+                if (depth > 0) consume();
+            }
+            if (check(TokenKind::RBracket)) consume();
+            if (check(TokenKind::RBracket)) consume();
+        }
+    };
+    auto parse_decl_attrs = [&]() {
+        skip_cpp11_attrs();
+        while (check(TokenKind::KwAlignas))
+            parse_alignas_specifier(this, attr_ts, line);
+        parse_attributes(attr_ts);
+        skip_cpp11_attrs();
+    };
+    parse_decl_attrs();
+
+    if (check(TokenKind::Identifier)) {
+        *tag = arena_.strdup(cur().lexeme);
+        consume();
+    }
+    parse_decl_attrs();
+
+    if (*tag && is_cpp_mode() && check(TokenKind::Less)) {
+        int probe = pos_;
+        int depth = 0;
+        bool balanced = false;
+        while (probe < static_cast<int>(tokens_.size())) {
+            if (tokens_[probe].kind == TokenKind::Less) ++depth;
+            else if (tokens_[probe].kind == TokenKind::Greater) {
+                if (--depth <= 0) {
+                    ++probe;
+                    balanced = true;
+                    break;
+                }
+            } else if (tokens_[probe].kind == TokenKind::GreaterGreater) {
+                depth -= 2;
+                if (depth <= 0) {
+                    ++probe;
+                    balanced = true;
+                    break;
+                }
+            }
+            ++probe;
+        }
+        const bool is_specialization =
+            balanced && probe < static_cast<int>(tokens_.size()) &&
+            (tokens_[probe].kind == TokenKind::LBrace ||
+             tokens_[probe].kind == TokenKind::Colon);
+        if (is_specialization) {
+            *template_origin_name = arena_.strdup(*tag);
+            const int saved_pos = pos_;
+            bool parse_ok = true;
+            try {
+                const Node* primary_tpl = find_template_struct_primary(*tag);
+                if (!parse_template_argument_list(specialization_args,
+                                                  primary_tpl)) {
+                    throw std::runtime_error(
+                        "failed to parse specialization args");
+                }
+            } catch (...) {
+                parse_ok = false;
+                pos_ = saved_pos;
+                specialization_args->clear();
+                if (check(TokenKind::Less)) {
+                    int angle_depth = 1;
+                    consume();
+                    while (!at_end() && angle_depth > 0) {
+                        if (check(TokenKind::Less)) ++angle_depth;
+                        else if (check_template_close()) {
+                            --angle_depth;
+                            if (angle_depth > 0) {
+                                match_template_close();
+                                continue;
+                            }
+                            break;
+                        }
+                        consume();
+                    }
+                    if (check_template_close()) match_template_close();
+                }
+            }
+            (void)parse_ok;
+            std::string mangled(*tag);
+            mangled += "__spec_";
+            mangled += std::to_string(anon_counter_++);
+            *tag = arena_.strdup(mangled.c_str());
+        }
+    }
+
+    if (is_cpp_mode() && check(TokenKind::Colon)) {
+        consume();
+        while (!at_end() && !check(TokenKind::LBrace)) {
+            if (check(TokenKind::Identifier) &&
+                (cur().lexeme == "public" || cur().lexeme == "private" ||
+                 cur().lexeme == "protected" ||
+                 cur().lexeme == "virtual")) {
+                consume();
+                continue;
+            }
+            try {
+                TypeSpec base_ts = parse_base_type();
+                while (check(TokenKind::Star)) {
+                    consume();
+                    base_ts.ptr_level++;
+                }
+                if (check(TokenKind::AmpAmp)) {
+                    consume();
+                    base_ts.is_rvalue_ref = true;
+                } else if (check(TokenKind::Amp)) {
+                    consume();
+                    base_ts.is_lvalue_ref = true;
+                }
+                while (!check(TokenKind::LBrace) && !check(TokenKind::Comma) &&
+                       !check(TokenKind::RBrace) && !at_end()) {
+                    int angle_depth = 0;
+                    int paren_depth = 0;
+                    while (!at_end()) {
+                        if (check(TokenKind::LBrace) && angle_depth == 0 &&
+                            paren_depth == 0) {
+                            break;
+                        }
+                        if (check(TokenKind::Comma) && angle_depth == 0 &&
+                            paren_depth == 0) {
+                            break;
+                        }
+                        if (check(TokenKind::Less) && paren_depth == 0)
+                            ++angle_depth;
+                        else if (check(TokenKind::Greater) &&
+                                 paren_depth == 0 && angle_depth > 0)
+                            --angle_depth;
+                        else if (check(TokenKind::GreaterGreater) &&
+                                 paren_depth == 0 && angle_depth > 0) {
+                            angle_depth -= std::min(angle_depth, 2);
+                            consume();
+                            continue;
+                        } else if (check(TokenKind::LParen))
+                            ++paren_depth;
+                        else if (check(TokenKind::RParen) && paren_depth > 0)
+                            --paren_depth;
+                        consume();
+                    }
+                    break;
+                }
+                base_types->push_back(base_ts);
+            } catch (...) {
+                int angle_depth = 0;
+                int paren_depth = 0;
+                while (!at_end()) {
+                    if (check(TokenKind::LBrace) && angle_depth == 0 &&
+                        paren_depth == 0) {
+                        break;
+                    }
+                    if (check(TokenKind::Comma) && angle_depth == 0 &&
+                        paren_depth == 0) {
+                        break;
+                    }
+                    if (check(TokenKind::Less) && paren_depth == 0)
+                        ++angle_depth;
+                    else if (check(TokenKind::Greater) &&
+                             paren_depth == 0 && angle_depth > 0)
+                        --angle_depth;
+                    else if (check(TokenKind::GreaterGreater) &&
+                             paren_depth == 0 && angle_depth > 0) {
+                        angle_depth -= std::min(angle_depth, 2);
+                        consume();
+                        continue;
+                    } else if (check(TokenKind::LParen))
+                        ++paren_depth;
+                    else if (check(TokenKind::RParen) && paren_depth > 0)
+                        --paren_depth;
+                    consume();
+                }
+            }
+            if (!match(TokenKind::Comma))
+                break;
+        }
     }
 }
 
@@ -5054,174 +5260,13 @@ void Parser::finalize_record_definition(Node* sd,
 
 Node* Parser::parse_struct_or_union(bool is_union) {
     int ln = cur().line;
-    // Parse attributes before tag name — capture packed attribute.
     TypeSpec attr_ts{};
-    auto skip_cpp11_attrs = [&]() {
-        while (check(TokenKind::LBracket) && pos_ + 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ + 1].kind == TokenKind::LBracket) {
-            consume(); consume(); // [[
-            int depth = 1;
-            while (pos_ < static_cast<int>(tokens_.size()) && depth > 0) {
-                if (check(TokenKind::LBracket)) ++depth;
-                else if (check(TokenKind::RBracket)) --depth;
-                if (depth > 0) consume();
-            }
-            if (check(TokenKind::RBracket)) consume(); // first ]
-            if (check(TokenKind::RBracket)) consume(); // second ]
-        }
-    };
-    auto parse_decl_attrs = [&]() {
-        skip_cpp11_attrs();
-        while (check(TokenKind::KwAlignas)) {
-            parse_alignas_specifier(this, &attr_ts, ln);
-        }
-        parse_attributes(&attr_ts);
-        skip_cpp11_attrs();
-    };
-    parse_decl_attrs();
-
     const char* tag = nullptr;
-    if (check(TokenKind::Identifier)) {
-        tag = arena_.strdup(cur().lexeme);
-        consume();
-    }
-    parse_decl_attrs();
-
     const char* template_origin_name = nullptr;
     std::vector<ParsedTemplateArg> specialization_args;
-
-    // Template struct specialization: struct Name<Args> { ... } or
-    // struct Name<Args> : Base { ... }.  Preserve the specialization pattern
-    // and give the concrete definition a unique internal tag.
-    if (tag && is_cpp_mode() && check(TokenKind::Less)) {
-        // Look ahead past balanced <...> to see if '{' or ':' follows.
-        int probe = pos_;
-        int depth = 0;
-        bool balanced = false;
-        while (probe < static_cast<int>(tokens_.size())) {
-            if (tokens_[probe].kind == TokenKind::Less) ++depth;
-            else if (tokens_[probe].kind == TokenKind::Greater) {
-                if (--depth <= 0) { ++probe; balanced = true; break; }
-            } else if (tokens_[probe].kind == TokenKind::GreaterGreater) {
-                depth -= 2;
-                if (depth <= 0) { ++probe; balanced = true; break; }
-            }
-            ++probe;
-        }
-        bool is_specialization = balanced &&
-            probe < static_cast<int>(tokens_.size()) &&
-            (tokens_[probe].kind == TokenKind::LBrace ||
-             tokens_[probe].kind == TokenKind::Colon);
-        if (is_specialization) {
-            template_origin_name = arena_.strdup(tag);
-            int saved_pos = pos_;
-            bool parse_ok = true;
-            try {
-                const Node* primary_tpl = find_template_struct_primary(tag);
-                if (!parse_template_argument_list(&specialization_args, primary_tpl)) {
-                    throw std::runtime_error("failed to parse specialization args");
-                }
-            } catch (...) {
-                // Unparseable specialization args (e.g. T U::* member pointers).
-                // Skip balanced <...> and continue with empty args.
-                parse_ok = false;
-                pos_ = saved_pos;
-                specialization_args.clear();
-                if (check(TokenKind::Less)) {
-                    int depth = 1;
-                    consume(); // <
-                    while (!at_end() && depth > 0) {
-                        if (check(TokenKind::Less)) ++depth;
-                        else if (check_template_close()) {
-                            --depth;
-                            if (depth > 0) { match_template_close(); continue; }
-                            break;
-                        }
-                        consume();
-                    }
-                    if (check_template_close()) match_template_close();
-                }
-            }
-            std::string mangled(tag);
-            mangled += "__spec_";
-            mangled += std::to_string(anon_counter_++);
-            tag = arena_.strdup(mangled.c_str());
-        }
-    }
-
     std::vector<TypeSpec> base_types;
-    if (is_cpp_mode() && check(TokenKind::Colon)) {
-        consume();
-        while (!at_end() && !check(TokenKind::LBrace)) {
-            if (check(TokenKind::Identifier) &&
-                (cur().lexeme == "public" || cur().lexeme == "private" || cur().lexeme == "protected" ||
-                 cur().lexeme == "virtual")) {
-                consume();
-                continue;
-            }
-            try {
-                TypeSpec base_ts = parse_base_type();
-                while (check(TokenKind::Star)) {
-                    consume();
-                    base_ts.ptr_level++;
-                }
-                if (check(TokenKind::AmpAmp)) {
-                    consume();
-                    base_ts.is_rvalue_ref = true;
-                } else if (check(TokenKind::Amp)) {
-                    consume();
-                    base_ts.is_lvalue_ref = true;
-                }
-                // If there are leftover tokens before '{' or ','
-                // (e.g., dependent expressions like ::type after template args),
-                // skip them to avoid misinterpreting the struct body.
-                if (!check(TokenKind::LBrace) && !check(TokenKind::Comma) &&
-                    !check(TokenKind::RBrace) && !at_end()) {
-                    int angle_depth = 0, paren_depth = 0;
-                    while (!at_end()) {
-                        if (check(TokenKind::LBrace) && angle_depth == 0 && paren_depth == 0)
-                            break;
-                        if (check(TokenKind::Comma) && angle_depth == 0 && paren_depth == 0)
-                            break;
-                        if (check(TokenKind::Less) && paren_depth == 0) ++angle_depth;
-                        else if (check(TokenKind::Greater) && paren_depth == 0 && angle_depth > 0) --angle_depth;
-                        else if (check(TokenKind::GreaterGreater) && paren_depth == 0 && angle_depth > 0) {
-                            angle_depth -= std::min(angle_depth, 2); consume(); continue;
-                        }
-                        else if (check(TokenKind::LParen)) ++paren_depth;
-                        else if (check(TokenKind::RParen) && paren_depth > 0) --paren_depth;
-                        consume();
-                    }
-                }
-                base_types.push_back(base_ts);
-            } catch (...) {
-                // Fall back to token skipping until the next base or body.
-                int angle_depth = 0;
-                int paren_depth = 0;
-                while (!at_end()) {
-                    if (check(TokenKind::LBrace) && angle_depth == 0 && paren_depth == 0)
-                        break;
-                    if (check(TokenKind::Comma) && angle_depth == 0 && paren_depth == 0)
-                        break;
-                    if (check(TokenKind::Less) && paren_depth == 0)
-                        ++angle_depth;
-                    else if (check(TokenKind::Greater) && paren_depth == 0 && angle_depth > 0)
-                        --angle_depth;
-                    else if (check(TokenKind::GreaterGreater) && paren_depth == 0 && angle_depth > 0) {
-                        angle_depth -= std::min(angle_depth, 2);
-                        consume();
-                        continue;
-                    } else if (check(TokenKind::LParen))
-                        ++paren_depth;
-                    else if (check(TokenKind::RParen) && paren_depth > 0)
-                        --paren_depth;
-                    consume();
-                }
-            }
-            if (!match(TokenKind::Comma))
-                break;
-        }
-    }
+    parse_record_prebody_setup(ln, &attr_ts, &tag, &template_origin_name,
+                               &specialization_args, &base_types);
 
     if (!check(TokenKind::LBrace)) {
         // Forward reference only; create a reference node

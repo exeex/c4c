@@ -399,6 +399,13 @@ class Parser {
   void parse_record_template_member_prelude(
       std::vector<std::string>* injected_type_params,
       bool* pushed_template_scope);
+  void parse_record_prebody_setup(
+      int line,
+      TypeSpec* attr_ts,
+      const char** tag,
+      const char** template_origin_name,
+      std::vector<TemplateArgParseResult>* specialization_args,
+      std::vector<TypeSpec>* base_types);
   void begin_record_body_context(const char* tag,
                                  const char* template_origin_name,
                                  std::string* saved_struct_tag,

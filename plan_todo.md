@@ -10,6 +10,50 @@
 
 ## Current Slice
 
+- Active target: Step 6 continues with pre-body setup compression in
+  `parse_struct_or_union()`; this slice extracts one focused helper around the
+  record prelude before `{` so the outer function keeps collapsing toward a
+  setup/dispatch/finalization coordinator
+- This iteration's exact target: add parse-only coverage for a record prelude
+  that combines leading/trailing attributes, a template specialization tag, and
+  base-clause parsing, then extract the existing pre-body setup path into a
+  helper without changing attribute order, specialization detection, or base
+  type collection
+- Baseline recorded:
+  - `test_fail_before.log`: 2176 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
+- Completed: extracted the record pre-body setup path from
+  `parse_struct_or_union()` into a focused helper without changing attribute
+  capture order, specialization-tag handling, or base-clause parsing
+- New helper path:
+  - `parse_record_prebody_setup(...)`
+- Added parse-only coverage:
+  - `record_prebody_setup_parse`
+- Validation completed:
+  - focused parser/prelude regressions passed:
+    - `record_prebody_setup_parse`
+    - `record_specialization_setup_parse`
+    - `record_body_finalization_parse`
+    - `record_member_dispatch_parse`
+    - `record_member_recovery_parse`
+    - `template_struct_specialization_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2176 total, 7 failed
+    - `test_fail_after.log`: 2177 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Next intended slice: continue Step 6 by extracting one more
+  `parse_struct_or_union()` pre-body concern, likely the forward-declaration /
+  qualified-tag / shadow-tag decision path or the initial record-definition
+  node setup before the body loop
 - Completed: extracted the post-body finalization path from
   `parse_struct_or_union()` into focused helpers without changing trailing
   attribute probing, field/method/member-typedef storage, namespace
