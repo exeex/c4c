@@ -4891,6 +4891,33 @@ bool Parser::try_parse_record_method_or_field_member(
     return true;
 }
 
+bool Parser::try_parse_record_member_dispatch(
+    const std::string& struct_source_name,
+    std::vector<Node*>* fields,
+    std::vector<Node*>* methods,
+    std::vector<const char*>* member_typedef_names,
+    std::vector<TypeSpec>* member_typedef_types,
+    const std::function<void(const char*)>& check_dup_field) {
+    if (try_parse_record_using_member(member_typedef_names,
+                                      member_typedef_types)) {
+        return true;
+    }
+    if (try_parse_nested_record_member(fields, check_dup_field)) return true;
+    if (try_parse_record_enum_member(fields, check_dup_field)) return true;
+    if (try_parse_record_typedef_member(member_typedef_names,
+                                        member_typedef_types)) {
+        return true;
+    }
+    if (try_parse_record_constructor_member(struct_source_name, methods)) {
+        return true;
+    }
+    if (try_parse_record_destructor_member(struct_source_name, methods)) {
+        return true;
+    }
+    return try_parse_record_method_or_field_member(fields, methods,
+                                                   check_dup_field);
+}
+
 bool Parser::try_parse_record_member(
     const std::string& struct_source_name,
     std::vector<Node*>* fields,
@@ -4922,24 +4949,10 @@ bool Parser::try_parse_record_member(
     parse_record_template_member_prelude(&tmpl_guard.names,
                                          &tmpl_guard.pushed_scope);
 
-    if (try_parse_record_using_member(member_typedef_names,
-                                      member_typedef_types)) {
-        return true;
-    }
-    if (try_parse_nested_record_member(fields, check_dup_field)) return true;
-    if (try_parse_record_enum_member(fields, check_dup_field)) return true;
-    if (try_parse_record_typedef_member(member_typedef_names,
-                                        member_typedef_types)) {
-        return true;
-    }
-    if (try_parse_record_constructor_member(struct_source_name, methods)) {
-        return true;
-    }
-    if (try_parse_record_destructor_member(struct_source_name, methods)) {
-        return true;
-    }
-    return try_parse_record_method_or_field_member(fields, methods,
-                                                   check_dup_field);
+    return try_parse_record_member_dispatch(struct_source_name, fields, methods,
+                                            member_typedef_names,
+                                            member_typedef_types,
+                                            check_dup_field);
 }
 
 void Parser::begin_record_body_context(const char* tag,

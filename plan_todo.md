@@ -10,6 +10,37 @@
 
 ## Current Slice
 
+- Completed: extracted the post-prelude record-member category chain from
+  `try_parse_record_member()` into a focused
+  `try_parse_record_member_dispatch(...)` helper without changing
+  using/typedef/enum/nested-record ordering, special-member recognition, or
+  template-member prelude scoping behavior
+- New helper path:
+  - `try_parse_record_member_dispatch(...)`
+- Added parse-only coverage:
+  - `record_member_specialization_context_parse`
+- Validation completed:
+  - focused parser/member regressions passed:
+    - `record_member_specialization_context_parse`
+    - `record_member_dispatch_parse`
+    - `record_member_special_member_parse`
+    - `record_body_context_parse`
+    - `record_completion_handoff_parse`
+    - `record_body_state_bundle_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2183 total, 7 failed
+    - `test_fail_after.log`: 2184 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Next intended slice: continue Step 6 by compressing the remaining
+  template-member prelude / scope-guard setup around
+  `try_parse_record_member()` so the body loop keeps converging on a thin
+  coordinator without changing injected template-parameter visibility
+- Active target: Step 6 continues after the member-dispatch extraction; the
+  next slice should isolate one more remaining `try_parse_record_member()`
+  coordination concern, likely the local template-member prelude/guard
+  lifecycle, without changing record-body behavior
 - Completed: wrapped the record body field/method/member-typedef accumulators
   used by `parse_struct_or_union()` into a focused `RecordBodyState` helper
   bundle without changing member order, duplicate-field handling, or post-body
