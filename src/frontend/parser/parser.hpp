@@ -399,6 +399,10 @@ class Parser {
   void parse_record_template_member_prelude(
       std::vector<std::string>* injected_type_params,
       bool* pushed_template_scope);
+  void begin_record_body_context(const char* tag,
+                                 const char* template_origin_name,
+                                 std::string* saved_struct_tag,
+                                 std::string* struct_source_name);
   Node* parse_struct_or_union(bool is_union);
 
   // Parse enum body { variants... } or just a tag reference.

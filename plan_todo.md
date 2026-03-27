@@ -10,6 +10,50 @@
 
 ## Current Slice
 
+- Completed: extracted the record-body injected self-type /
+  template-specialization setup from `parse_struct_or_union()` into a focused
+  helper without changing constructor/destructor recognition, scoped typedef
+  registration, or specialization self-type parsing inside the record body
+- New helper path:
+  - `begin_record_body_context(...)`
+- Added parse-only coverage:
+  - `record_specialization_setup_parse`
+- Validation completed:
+  - focused parser/specialization regressions passed:
+    - `record_specialization_setup_parse`
+    - `record_member_dispatch_parse`
+    - `record_member_special_member_parse`
+    - `template_struct_specialization_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2174 total, 7 failed
+    - `test_fail_after.log`: 2175 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Next intended slice: continue Step 6 by extracting another
+  `parse_struct_or_union()` coordinator concern around body-finalization or
+  pre-body setup so the outer function keeps shrinking toward setup,
+  dispatcher, and teardown helpers
+- Active target: Step 6 continues with record-body setup compression in
+  `parse_struct_or_union()`; the next slice should extract the injected
+  self-type/template-specialization setup so the outer function reads more like
+  a coordinator around helperized setup, dispatch, and teardown
+- This iteration's exact target: add parse-only coverage for a template
+  specialization record body that relies on the specialization source name and
+  injected self type inside constructors, destructors, typedefs, and method
+  signatures, then extract that existing setup path into a focused helper
+  without changing constructor/destructor recognition, scoped typedef
+  registration, or self-type parsing inside the record body
+- Baseline recorded:
+  - `test_fail_before.log`: 2174 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
 - Completed: extracted the record-body member-loop recovery path from
   `parse_struct_or_union()` into a focused helper without changing C++-only
   recovery semantics, brace-depth handling, or infinite-loop prevention

@@ -4942,6 +4942,40 @@ bool Parser::try_parse_record_member(
                                                    check_dup_field);
 }
 
+void Parser::begin_record_body_context(const char* tag,
+                                       const char* template_origin_name,
+                                       std::string* saved_struct_tag,
+                                       std::string* struct_source_name) {
+    // Make the current record name available for self-type parsing within the
+    // body before member dispatch starts.
+    if (is_cpp_mode() && tag && tag[0])
+        typedefs_.insert(tag);
+
+    if (saved_struct_tag)
+        *saved_struct_tag = current_struct_tag_;
+    current_struct_tag_ = (tag && tag[0]) ? tag : "";
+
+    if (struct_source_name)
+        struct_source_name->clear();
+    if (!(template_origin_name && template_origin_name[0]))
+        return;
+
+    if (struct_source_name)
+        *struct_source_name = template_origin_name;
+    if (!is_cpp_mode())
+        return;
+
+    typedefs_.insert(template_origin_name);
+    if (typedef_types_.count(template_origin_name) == 0) {
+        TypeSpec src_ts{};
+        src_ts.array_size = -1;
+        src_ts.inner_rank = -1;
+        src_ts.base = TB_STRUCT;
+        src_ts.tag = tag;
+        typedef_types_[template_origin_name] = src_ts;
+    }
+}
+
 Node* Parser::parse_struct_or_union(bool is_union) {
     int ln = cur().line;
     // Parse attributes before tag name — capture packed attribute.
@@ -5195,40 +5229,10 @@ Node* Parser::parse_struct_or_union(bool is_union) {
 
     consume();  // consume {
 
-    // C++ injected-class-name: the struct/class name is usable as a type
-    // inside its own body (e.g., for operator return types like `Counter`).
-    // Only add to typedefs_ (name recognition), not typedef_types_ (full
-    // resolution), because the struct is still incomplete at this point.
-    // Method parameters that use the self type (e.g., Vec2 other) will have
-    // TB_TYPEDEF with tag matching the struct; HIR lowering resolves these.
-    if (is_cpp_mode() && tag && tag[0])
-      typedefs_.insert(tag);
-
-    // Track current struct tag for scoped typedef registration.
     std::string saved_struct_tag = current_struct_tag_;
-    current_struct_tag_ = (tag && tag[0]) ? tag : "";
-    // For template specializations, the source name (e.g. "function_detail") differs
-    // from the mangled tag (e.g. "function_detail__spec_1").  Constructor and
-    // destructor detection must also match against the original template name.
-    // Also inject the original name as a typedef so that it's recognized as a
-    // type inside the struct body (e.g., copy/move ctor params: Foo(const Foo&)).
     std::string struct_source_name;
-    if (template_origin_name && template_origin_name[0]) {
-        struct_source_name = template_origin_name;
-        if (is_cpp_mode()) {
-            typedefs_.insert(struct_source_name);
-            // Also register in typedef_types_ so parse_base_type can resolve it
-            // as a struct type (needed for ctor/method params like Foo(const Foo&)).
-            if (typedef_types_.count(struct_source_name) == 0) {
-                TypeSpec src_ts{};
-                src_ts.array_size = -1;
-                src_ts.inner_rank = -1;
-                src_ts.base = TB_STRUCT;
-                src_ts.tag = tag;  // mangled tag
-                typedef_types_[struct_source_name] = src_ts;
-            }
-        }
-    }
+    begin_record_body_context(tag, template_origin_name, &saved_struct_tag,
+                              &struct_source_name);
 
     std::vector<Node*> fields;
     std::vector<Node*> methods;
