@@ -3093,6 +3093,77 @@ class Lowerer {
     return mangled;
   }
 
+  void apply_template_typedef_bindings(TypeSpec& ts,
+                                       const TypeBindings& type_bindings) {
+    for (const auto& [pname, pts] : type_bindings) {
+      if (ts.base == TB_TYPEDEF && ts.tag && std::string(ts.tag) == pname) {
+        ts.base = pts.base;
+        ts.tag = pts.tag;
+        ts.ptr_level += pts.ptr_level;
+        ts.is_const |= pts.is_const;
+        ts.is_volatile |= pts.is_volatile;
+      }
+    }
+  }
+
+  void materialize_template_array_extent(TypeSpec& ts,
+                                         const NttpBindings& nttp_bindings) {
+    if (!ts.array_size_expr) return;
+    Node* ase = ts.array_size_expr;
+    if (ase->kind != NK_VAR || !ase->name) return;
+    for (const auto& [npname, nval] : nttp_bindings) {
+      if (std::string(ase->name) == npname) {
+        if (ts.array_rank > 0) {
+          ts.array_dims[0] = nval;
+          ts.array_size = nval;
+        }
+        ts.array_size_expr = nullptr;
+        return;
+      }
+    }
+  }
+
+  void append_instantiated_template_struct_bases(
+      HirStructDef& def,
+      const Node* tpl_def,
+      const TypeBindings& method_tpl_bindings,
+      const NttpBindings& method_nttp_bindings) {
+    for (int bi = 0; bi < tpl_def->n_bases; ++bi) {
+      TypeSpec base_ts = tpl_def->base_types[bi];
+      apply_template_typedef_bindings(base_ts, method_tpl_bindings);
+      if (base_ts.tpl_struct_origin) {
+        // Seed prerequisite work for the base type.  Do NOT resolve inline —
+        // the engine owns the retry loop.  The seeded OwnerStruct work will
+        // resolve the base; when the engine re-processes the parent struct its
+        // base will already be concrete.
+        seed_template_type_dependency_if_needed(
+            base_ts, method_tpl_bindings, method_nttp_bindings,
+            PendingTemplateTypeKind::BaseType, "instantiation-base");
+      }
+      resolve_struct_member_typedef_if_ready(&base_ts);
+      if (base_ts.tag && base_ts.tag[0]) def.base_tags.push_back(base_ts.tag);
+    }
+  }
+
+  void register_instantiated_template_struct_methods(
+      const std::string& mangled,
+      const Node* tpl_def,
+      const TypeBindings& method_tpl_bindings,
+      const NttpBindings& method_nttp_bindings) {
+    for (int mi = 0; mi < tpl_def->n_children; ++mi) {
+      const Node* method = tpl_def->children[mi];
+      if (!method || method->kind != NK_FUNCTION || !method->name) continue;
+      const char* csuf = method->is_const_method ? "_const" : "";
+      std::string mmangled = mangled + "__" + method->name + csuf;
+      std::string mkey = mangled + "::" + method->name + csuf;
+      if (struct_methods_.count(mkey)) continue;
+      struct_methods_[mkey] = mmangled;
+      struct_method_ret_types_[mkey] = method->type;
+      lower_struct_method(mmangled, mangled, method,
+                          &method_tpl_bindings, &method_nttp_bindings);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Helper 5: Instantiate the concrete struct body (fields, bases, methods).
   // ---------------------------------------------------------------------------
@@ -3118,36 +3189,10 @@ class Lowerer {
     def.is_union = tpl_def->is_union;
     def.pack_align = tpl_def->pack_align;
     def.struct_align = tpl_def->struct_align;
-    TypeBindings method_tpl_bindings;
-    for (const auto& [pname, pts] : selected_type_bindings)
-      method_tpl_bindings[pname] = pts;
-    NttpBindings method_nttp_bindings;
-    for (const auto& [npname, nval] : selected_nttp_bindings_map)
-      method_nttp_bindings[npname] = nval;
-    for (int bi = 0; bi < tpl_def->n_bases; ++bi) {
-      TypeSpec base_ts = tpl_def->base_types[bi];
-      for (const auto& [pname, pts] : selected_type_bindings) {
-        if (base_ts.base == TB_TYPEDEF && base_ts.tag &&
-            std::string(base_ts.tag) == pname) {
-          base_ts.base = pts.base;
-          base_ts.tag = pts.tag;
-          base_ts.ptr_level += pts.ptr_level;
-          base_ts.is_const |= pts.is_const;
-          base_ts.is_volatile |= pts.is_volatile;
-        }
-      }
-      if (base_ts.tpl_struct_origin) {
-        // Seed prerequisite work for the base type.  Do NOT resolve inline —
-        // the engine owns the retry loop.  The seeded OwnerStruct work will
-        // resolve the base; when the engine re-processes the parent struct its
-        // base will already be concrete.
-        seed_template_type_dependency_if_needed(
-            base_ts, method_tpl_bindings, method_nttp_bindings,
-            PendingTemplateTypeKind::BaseType, "instantiation-base");
-      }
-      resolve_struct_member_typedef_if_ready(&base_ts);
-      if (base_ts.tag && base_ts.tag[0]) def.base_tags.push_back(base_ts.tag);
-    }
+    TypeBindings method_tpl_bindings = selected_type_bindings;
+    NttpBindings method_nttp_bindings = selected_nttp_bindings_map;
+    append_instantiated_template_struct_bases(
+        def, tpl_def, method_tpl_bindings, method_nttp_bindings);
 
     int num_fields = tpl_def->n_fields > 0 ? tpl_def->n_fields : 0;
     int llvm_idx = 0;
@@ -3162,30 +3207,8 @@ class Lowerer {
       if (orig_f->is_static) continue;
 
       TypeSpec ft = orig_f->type;
-      for (const auto& [pname, pts] : selected_type_bindings) {
-        if (ft.base == TB_TYPEDEF && ft.tag && std::string(ft.tag) == pname) {
-          ft.base = pts.base;
-          ft.tag = pts.tag;
-          ft.ptr_level += pts.ptr_level;
-          ft.is_const |= pts.is_const;
-          ft.is_volatile |= pts.is_volatile;
-        }
-      }
-      if (ft.array_size_expr) {
-        Node* ase = ft.array_size_expr;
-        if (ase->kind == NK_VAR && ase->name) {
-          for (const auto& [npname, nval] : selected_nttp_bindings_map) {
-            if (std::string(ase->name) == npname) {
-              if (ft.array_rank > 0) {
-                ft.array_dims[0] = nval;
-                ft.array_size = nval;
-              }
-              ft.array_size_expr = nullptr;
-              break;
-            }
-          }
-        }
-      }
+      apply_template_typedef_bindings(ft, selected_type_bindings);
+      materialize_template_array_extent(ft, selected_nttp_bindings_map);
 
       HirStructField hf;
       hf.name = orig_f->name;
@@ -3205,20 +3228,8 @@ class Lowerer {
     compute_struct_layout(module_, def);
     module_->struct_def_order.push_back(mangled);
     module_->struct_defs[mangled] = std::move(def);
-
-    for (int mi = 0; mi < tpl_def->n_children; ++mi) {
-      const Node* method = tpl_def->children[mi];
-      if (!method || method->kind != NK_FUNCTION || !method->name) continue;
-      const char* csuf = method->is_const_method ? "_const" : "";
-      std::string mmangled = mangled + "__" + method->name + csuf;
-      std::string mkey = mangled + "::" + method->name + csuf;
-      if (!struct_methods_.count(mkey)) {
-        struct_methods_[mkey] = mmangled;
-        struct_method_ret_types_[mkey] = method->type;
-        lower_struct_method(mmangled, mangled, method,
-                            &method_tpl_bindings, &method_nttp_bindings);
-      }
-    }
+    register_instantiated_template_struct_methods(
+        mangled, tpl_def, method_tpl_bindings, method_nttp_bindings);
   }
 
   // ---------------------------------------------------------------------------

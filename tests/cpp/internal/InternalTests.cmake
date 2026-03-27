@@ -375,6 +375,15 @@ set_tests_properties(cpp_hir_template_member_owner_resolution PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_struct_inherited_method_binding
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_struct_inherited_method_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_struct_inherited_method_binding PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "struct Base_T_int.*fn Wrap_T_int__sum\\(this: struct Wrap_T_int\\*\\) -> int"
+)
+
+add_test(
   NAME cpp_hir_spec_key_identity
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/specialization_identity.cpp"
 )

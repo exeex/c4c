@@ -10,6 +10,11 @@
 
 ## Current Slice
 
+- Completed: extracted shared helper(s) from
+  `instantiate_template_struct_body(...)` for template-struct base type
+  substitution / dependency seeding, typedef substitution, NTTP array-extent
+  materialization, and per-method binding registration so the body instantiator
+  now reads more like a coordinator without changing realization order
 - Completed: extracted the shared specialization-binding and instance-key
   preparation helper from `resolve_pending_tpl_struct(...)` so the coordinator
   now delegates concrete instance identity staging before body instantiation
@@ -38,6 +43,7 @@
 - Validation completed:
   - targeted HIR regressions passed:
     - `cpp_hir_template_member_owner_resolution`
+    - `cpp_hir_template_struct_inherited_method_binding`
     - `cpp_hir_deferred_template_instantiation`
     - `cpp_hir_template_struct_registry_primary_only`
     - `cpp_hir_initial_program_seed_realization`
@@ -45,15 +51,20 @@
     - `cpp_hir_template_origin`
   - full clean rebuild remained monotonic:
     - `test_fail_before.log`: 2212 total, 7 failed
-    - `test_fail_after.log`: 2212 total, 7 failed
+    - `test_fail_after.log`: 2213 total, 7 failed
     - failing identities unchanged
-    - regression guard: passed (`+0` passed, `0` new failures)
+    - regression guard: passed (`+1` passed, `0` new failures)
+  - added focused HIR-only regression coverage:
+    - `tests/cpp/internal/hir_case/template_struct_inherited_method_hir.cpp`
+      checks a concrete `Base<int>` / `Wrap<int>` instantiation with inherited
+      member access inside an instantiated method body without enrolling a new
+      positive runtime case
 
 ## Next Intended Slice
 
-- after this extraction lands, move deeper into
-  `instantiate_template_struct_body(...)` setup around base/field substitution
-  staging and per-method binding preparation
+- if this extraction stays monotonic, continue Step 2 by pulling the remaining
+  field substitution / array-size materialization path behind a helper used by
+  `instantiate_template_struct_body(...)`
 
 ## Blockers
 
@@ -68,5 +79,7 @@
   specialization-binding / instance-key staging inside
   `resolve_pending_tpl_struct(...)`, not semantic cleanup
 - next Step 2 candidate is the repeated base/field substitution setup inside
-  `instantiate_template_struct_body(...)`; keep any follow-up extraction
+  `instantiate_template_struct_body(...)`; this iteration is targeting the base
+  substitution / method setup portion first, keeping field materialization as
+  the likely follow-up if needed; keep any follow-up extraction
   behavior-preserving and reuse the current targeted HIR regression set
