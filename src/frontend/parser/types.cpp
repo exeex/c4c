@@ -5553,6 +5553,18 @@ void Parser::complete_record_definition(
     struct_defs_.push_back(sd);
 }
 
+void Parser::parse_record_definition_body(Node* sd,
+                                          bool is_union,
+                                          const char* source_tag,
+                                          const char* tag,
+                                          const char* template_origin_name) {
+    consume();  // consume {
+
+    RecordBodyState body_state;
+    parse_record_body_with_context(tag, template_origin_name, &body_state);
+    complete_record_definition(sd, is_union, source_tag, body_state);
+}
+
 Node* Parser::parse_struct_or_union(bool is_union) {
     int ln = cur().line;
     TypeSpec attr_ts{};
@@ -5571,12 +5583,8 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                                             template_origin_name, attr_ts,
                                             specialization_args, base_types);
 
-    consume();  // consume {
-
-    RecordBodyState body_state;
-    parse_record_body_with_context(tag, template_origin_name, &body_state);
-
-    complete_record_definition(sd, is_union, source_tag, body_state);
+    parse_record_definition_body(sd, is_union, source_tag, tag,
+                                 template_origin_name);
     return sd;
 }
 

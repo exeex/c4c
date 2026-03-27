@@ -133,6 +133,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     record_body_context_parse
     record_body_finalization_parse
     record_completion_handoff_parse
+    record_definition_body_handoff_parse
     record_body_state_bundle_parse
 )
 

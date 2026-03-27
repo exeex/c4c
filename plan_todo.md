@@ -10,6 +10,49 @@
 
 ## Current Slice
 
+- Completed: extracted the remaining post-setup record-definition body path
+  from `parse_struct_or_union(...)` into
+  `parse_record_definition_body(...)` so Step 6 now routes brace consumption,
+  record-body parsing, and completion/finalization through one focused helper
+  without changing record context restore, trailing attribute handling, or
+  member collection
+- New helper path:
+  - `parse_record_definition_body(...)`
+- Added parse-only coverage:
+  - `record_definition_body_handoff_parse`
+- Baseline recorded:
+  - `test_fail_before.log`: 2202 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
+- Validation completed:
+  - focused record-body regressions passed:
+    - `record_definition_body_handoff_parse`
+    - `record_body_context_parse`
+    - `record_body_finalization_parse`
+    - `record_completion_handoff_parse`
+    - `record_body_state_bundle_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2202 total, 7 failed
+    - `test_fail_after.log`: 2203 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Active target: Step 6 remains active after the body-handoff extraction;
+  `parse_record_body(...)` still has top-level member-dispatch compression work
+  remaining
+- This iteration's exact target: completed the bounded Step 6 helper
+  extraction around record-definition body handoff in
+  `parse_struct_or_union(...)` and verified it against nearby record body and
+  completion coverage plus the full suite
+- Next intended slice: continue Step 6 by extracting one more top-level
+  record-member dispatch branch from `parse_record_body(...)` without changing
+  recovery or member-category ordering
 - Completed: extracted the still-inline record base-clause path from
   `parse_record_prebody_setup(...)` into helper-driven staging so Step 6 now
   routes comma-separated base-specifier parsing through

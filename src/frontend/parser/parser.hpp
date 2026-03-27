@@ -501,6 +501,11 @@ class Parser {
       bool is_union,
       const char* source_tag,
       const RecordBodyState& body_state);
+  void parse_record_definition_body(Node* sd,
+                                    bool is_union,
+                                    const char* source_tag,
+                                    const char* tag,
+                                    const char* template_origin_name);
   Node* parse_struct_or_union(bool is_union);
 
   // Parse enum body { variants... } or just a tag reference.
