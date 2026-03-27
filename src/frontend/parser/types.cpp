@@ -1157,6 +1157,32 @@ bool Parser::capture_template_arg_expr(int expr_start, TemplateArgParseResult* o
     return true;
 }
 
+bool Parser::try_parse_template_non_type_expr(int expr_start,
+                                              TemplateArgParseResult* out_arg) {
+    if (!out_arg) return false;
+
+    const int saved_pos = pos_;
+    try {
+        Node* expr = parse_assign_expr();
+        if (pos_ > expr_start && (check(TokenKind::Comma) || check_template_close())) {
+            const std::string expr_text =
+                capture_template_arg_expr_text(tokens_, expr_start, pos_);
+            if (!expr_text.empty()) {
+                out_arg->is_value = true;
+                out_arg->value = 0;
+                out_arg->expr = expr;
+                out_arg->nttp_name =
+                    arena_.strdup((std::string("$expr:") + expr_text).c_str());
+                return true;
+            }
+        }
+    } catch (...) {
+    }
+
+    pos_ = saved_pos;
+    return false;
+}
+
 bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
     if (!out_arg) return false;
     const int expr_start = pos_;
@@ -1213,27 +1239,8 @@ bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
     // Prefer a real expression parse before falling back to token capture.
     // This lets `<` participate as an operator inside expressions such as
     // `T(-1) < T(0)` instead of being mistaken for a nested template open.
-    {
-        const int saved_pos = pos_;
-        try {
-            Node* expr = parse_assign_expr();
-            if (pos_ > expr_start &&
-                (check(TokenKind::Comma) || check_template_close())) {
-                const std::string expr_text =
-                    capture_template_arg_expr_text(tokens_, expr_start, pos_);
-                if (!expr_text.empty()) {
-                    out_arg->is_value = true;
-                    out_arg->value = 0;
-                    out_arg->expr = expr;
-                    out_arg->nttp_name =
-                        arena_.strdup((std::string("$expr:") + expr_text).c_str());
-                    return true;
-                }
-            }
-        } catch (...) {
-        }
-        pos_ = saved_pos;
-    }
+    if (try_parse_template_non_type_expr(expr_start, out_arg))
+        return true;
 
     return capture_template_arg_expr(expr_start, out_arg);
 }

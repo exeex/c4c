@@ -10,6 +10,50 @@
 
 ## Current Slice
 
+- Completed: extracted the remaining expression-parse vs template-close
+  acceptance fallback from `try_parse_template_non_type_arg()` into
+  `try_parse_template_non_type_expr(...)` so the non-type path now reads as
+  literal / identifier / parsed-expression / token-capture staging without
+  changing the existing ambiguous-case acceptance order
+- New helper path:
+  - `try_parse_template_non_type_expr(...)`
+- Added parse-only coverage:
+  - `template_argument_expr_close_staging_parse`
+- Baseline recorded:
+  - `test_fail_before.log`: 2191 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
+- Validation completed:
+  - focused template-argument regressions passed:
+    - `template_argument_expr_close_staging_parse`
+    - `template_argument_loop_staging_parse`
+    - `template_alias_nttp_expr_parse`
+    - `template_typedef_nttp_variants_parse`
+    - `template_typename_typed_nttp_parse`
+  - focused known blocker unchanged:
+    - `eastl_probe_pack_expansion_template_arg_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2191 total, 7 failed
+    - `test_fail_after.log`: 2192 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Active target: Step 3 is complete relative to the plan’s helper-driven
+  template-argument disambiguation bar; Step 4 is now the next incomplete
+  compression cluster in `types.cpp`
+- This iteration's exact target: completed the bounded Step 3 extraction
+  around expression-style non-type template arguments that terminate directly
+  at the template close and verified it against nearby parser coverage plus
+  the full suite
+- Next intended slice: start Step 4 with a focused parse-only case around
+  qualified dependent type spelling, then extract one reusable helper from the
+  remaining ad hoc qualified-name/template-arg consumption path
 - Completed: extracted the per-argument disambiguation and comma-progression
   step from `parse_template_argument_list()` into
   `parse_next_template_argument(...)` so the outer loop now reads as a

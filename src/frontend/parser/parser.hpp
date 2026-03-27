@@ -304,6 +304,8 @@ class Parser {
                                     const Node* primary_tpl, int arg_idx,
                                     bool* out_has_more);
   bool try_parse_template_type_arg(TemplateArgParseResult* out_arg);
+  bool try_parse_template_non_type_expr(int expr_start,
+                                        TemplateArgParseResult* out_arg);
   bool try_parse_template_non_type_arg(TemplateArgParseResult* out_arg);
   bool capture_template_arg_expr(int expr_start, TemplateArgParseResult* out_arg);
   bool is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx) const;

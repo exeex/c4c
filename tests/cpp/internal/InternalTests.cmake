@@ -49,6 +49,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     template_alias_nttp_expr_parse
     template_alias_nttp_expr_inherited_parse
     template_argument_loop_staging_parse
+    template_argument_expr_close_staging_parse
     member_template_decltype_default_parse
     member_template_decltype_overload_parse
     member_template_nested_call_default_parse
