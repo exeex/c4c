@@ -5204,6 +5204,27 @@ bool Parser::try_parse_record_member(
         member_typedef_types, check_dup_field);
 }
 
+bool Parser::try_parse_record_body_member(
+    const std::string& struct_source_name,
+    RecordBodyState* body_state,
+    const std::function<void(const char*)>& check_dup_field) {
+    if (!body_state)
+        return false;
+
+    const int member_start_pos = pos_;
+    try {
+        return try_parse_record_member(struct_source_name, &body_state->fields,
+                                       &body_state->methods,
+                                       &body_state->member_typedef_names,
+                                       &body_state->member_typedef_types,
+                                       check_dup_field);
+    } catch (const std::exception&) {
+        if (!recover_record_member_parse_error(member_start_pos))
+            throw;
+        return false;
+    }
+}
+
 void Parser::begin_record_body_context(const char* tag,
                                        const char* template_origin_name,
                                        std::string* saved_struct_tag,
@@ -5249,18 +5270,9 @@ void Parser::parse_record_body(
         make_record_field_duplicate_checker(this, &field_names_seen);
 
     while (!at_end() && !check(TokenKind::RBrace)) {
-        int member_start_pos = pos_;
-        try {
-            if (try_parse_record_member(struct_source_name, &body_state->fields,
-                                        &body_state->methods,
-                                        &body_state->member_typedef_names,
-                                        &body_state->member_typedef_types,
-                                        check_dup_field)) {
-                continue;
-            }
-        } catch (const std::exception&) {
-            if (!recover_record_member_parse_error(member_start_pos))
-                throw;
+        if (try_parse_record_body_member(struct_source_name, body_state,
+                                         check_dup_field)) {
+            continue;
         }
     }
 }

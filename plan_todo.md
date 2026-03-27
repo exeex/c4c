@@ -10,6 +10,53 @@
 
 ## Current Slice
 
+- Completed: extracted the per-member attempt and malformed-member recovery
+  staging from `parse_record_body(...)` into
+  `try_parse_record_body_member(...)` so the Step 6 body loop now delegates
+  member-start capture, `try_parse_record_member(...)` handoff, and recovery
+  fallback through one focused helper without changing duplicate-field policy
+  or record-member dispatch order
+- New helper path:
+  - `try_parse_record_body_member(...)`
+- Added parse-only coverage:
+  - `record_body_member_attempt_parse`
+- Baseline recorded:
+  - `test_fail_before.log`: 2204 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
+- Validation completed:
+  - focused record-body regressions passed:
+    - `record_body_context_parse`
+    - `record_body_duplicate_checker_parse`
+    - `record_body_finalization_parse`
+    - `record_body_loop_parse`
+    - `record_body_member_attempt_parse`
+    - `record_body_state_bundle_parse`
+    - `record_completion_handoff_parse`
+    - `record_definition_body_handoff_parse`
+    - `record_member_recovery_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2204 total, 7 failed
+    - `test_fail_after.log`: 2205 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Active target: Step 6 remains active after the per-member attempt/recovery
+  extraction; `parse_record_body(...)` still has bounded top-level loop
+  compression work remaining
+- This iteration's exact target: completed the bounded Step 6 helper
+  extraction around per-member attempt/recovery staging in
+  `parse_record_body(...)` and verified it against nearby record-body coverage
+  plus the full suite
+- Next intended slice: inspect the remaining `parse_record_body(...)` loop for
+  one more small helper around top-level loop progression or member-category
+  handoff without broadening record-member parsing or recovery policy
 - Completed: extracted the duplicate-field tracker setup from
   `parse_record_body(...)` into `make_record_field_duplicate_checker(...)` so
   the Step 6 record-body loop now delegates duplicate-name policy through one
