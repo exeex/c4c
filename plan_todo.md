@@ -10,6 +10,54 @@
 
 ## Current Slice
 
+- Completed: Step 4 deferred-NTTP atomic-expression coordination extraction
+- Completed: split the remaining embedded deferred-NTTP primary parsing surface
+  inside `DeferredNttpExprParser` into named helpers for:
+  - template-argument list parsing via `parse_template_arg_list(...)`
+  - template static-member name parsing via `parse_template_member_name(...)`
+  - parenthesized primary parsing via `parse_parenthesized_expr(...)`
+  - cast primary parsing via `parse_cast_expr(...)`
+  - numeric literal routing via `parse_numeric_literal(...)`
+- Kept scope intentionally narrow:
+  - `parse_primary(...)` branch order stayed unchanged
+  - deferred-NTTP evaluation semantics and template static-member lookup flow
+    stayed unchanged; only the remaining primary-path coordination moved behind
+    named helpers
+- Added focused HIR coverage for this slice:
+  - `cpp_hir_template_deferred_nttp_number_expr` asserts a deferred NTTP
+    numeric literal default (`M = 4`) still materializes as
+    `field data: int[4] ... size=16 align=4`
+- Validation completed:
+  - targeted HIR regressions passed:
+    - `cpp_hir_template_deferred_nttp_expr`
+    - `cpp_hir_template_deferred_nttp_paren_expr`
+    - `cpp_hir_template_deferred_nttp_bool_expr`
+    - `cpp_hir_template_deferred_nttp_logic_expr`
+    - `cpp_hir_template_deferred_nttp_true_expr`
+    - `cpp_hir_template_deferred_nttp_number_expr`
+    - `cpp_hir_template_function_pack_signature_binding`
+    - `cpp_hir_template_function_recursive_body_binding`
+  - full clean rebuild remained monotonic:
+    - `test_fail_before.log`: 2226 total, 7 failed
+    - `test_fail_after.log`: 2227 total, 7 failed
+    - failing identities unchanged:
+      - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+      - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+      - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+      - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+      - `cpp_positive_sema_template_arg_deduction_cpp`
+      - `cpp_positive_sema_template_mixed_params_cpp`
+      - `cpp_positive_sema_template_type_subst_cpp`
+    - regression guard: passed (`+1` passed, `0` new failures)
+- Separate follow-up discovered during test design:
+  - deferred NTTP defaults that rely on `sizeof...(pack)` still collapse to an
+    unresolved `struct Buffer` shape in HIR lowering and remain out of scope
+    for this compression slice
+- Next intended slice:
+  - Step 4 reassessment of the remaining embedded-parser seams after the
+    primary-path extraction, with any further work gated on preserving tests for
+    currently supported behavior
+
 - Completed: Step 4 deferred-NTTP primary-expression coordination extraction
 - Completed: isolated `DeferredNttpExprParser::parse_primary(...)` branch
   routing behind named helper paths for:

@@ -2803,23 +2803,35 @@ class Lowerer {
       if (tpl_name.empty() || !cursor.consume("<")) return false;
 
       std::vector<HirTemplateArg> actual_args;
+      if (!parse_template_arg_list(&actual_args)) return false;
+
+      std::string member_name;
+      if (!parse_template_member_name(&member_name)) return false;
+      return eval_template_static_member_lookup(
+          tpl_name, actual_args, member_name, out_val);
+    }
+
+    bool parse_template_arg_list(std::vector<HirTemplateArg>* out_args) {
+      if (!out_args) return false;
       cursor.skip_ws();
       if (!cursor.consume(">")) {
         while (true) {
           HirTemplateArg arg;
           if (!resolve_arg(cursor.parse_arg_text(), &arg)) return false;
-          actual_args.push_back(arg);
+          out_args->push_back(arg);
           cursor.skip_ws();
           if (cursor.consume(">")) break;
           if (!cursor.consume(",")) return false;
         }
       }
+      return true;
+    }
 
+    bool parse_template_member_name(std::string* out_member_name) {
+      if (!out_member_name) return false;
       if (!cursor.consume("::")) return false;
-      const std::string member_name = cursor.parse_identifier();
-      if (member_name.empty()) return false;
-      return eval_template_static_member_lookup(
-          tpl_name, actual_args, member_name, out_val);
+      *out_member_name = cursor.parse_identifier();
+      return !out_member_name->empty();
     }
 
     bool parse_pack_sizeof(long long* out_val) {
@@ -2834,12 +2846,13 @@ class Lowerer {
       return true;
     }
 
-    bool parse_parenthesized_or_cast(long long* out_val) {
-      if (cursor.consume("(")) {
-        if (!parse_or(out_val)) return false;
-        return cursor.consume(")");
-      }
+    bool parse_parenthesized_expr(long long* out_val) {
+      if (!cursor.consume("(")) return false;
+      if (!parse_or(out_val)) return false;
+      return cursor.consume(")");
+    }
 
+    bool parse_cast_expr(long long* out_val) {
       size_t saved = cursor.pos;
       std::string ident = cursor.parse_identifier();
       if (ident.empty()) return false;
@@ -2864,6 +2877,11 @@ class Lowerer {
       return true;
     }
 
+    bool parse_parenthesized_or_cast(long long* out_val) {
+      if (parse_parenthesized_expr(out_val)) return true;
+      return parse_cast_expr(out_val);
+    }
+
     bool parse_bound_identifier(long long* out_val) {
       size_t saved = cursor.pos;
       std::string ident = cursor.parse_identifier();
@@ -2877,9 +2895,13 @@ class Lowerer {
       cursor.skip_ws();
       if (parse_pack_sizeof(out_val)) return true;
       if (parse_parenthesized_or_cast(out_val)) return true;
-      if (cursor.parse_number(out_val)) return true;
+      if (parse_numeric_literal(out_val)) return true;
       if (parse_bound_identifier(out_val)) return true;
       return eval_member_lookup(out_val);
+    }
+
+    bool parse_numeric_literal(long long* out_val) {
+      return cursor.parse_number(out_val);
     }
 
     bool parse_unary(long long* out_val) {
