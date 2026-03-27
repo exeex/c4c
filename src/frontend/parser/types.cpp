@@ -1589,6 +1589,50 @@ bool Parser::parse_qualified_declarator_name(std::string* out_name) {
     return true;
 }
 
+bool Parser::is_grouped_declarator_start() const {
+    if (!check(TokenKind::LParen)) return false;
+
+    int pk = pos_ + 1;
+    while (pk < static_cast<int>(tokens_.size()) &&
+           tokens_[pk].kind == TokenKind::KwAttribute) {
+        ++pk;
+        if (pk < static_cast<int>(tokens_.size()) &&
+            tokens_[pk].kind == TokenKind::LParen) {
+            int depth = 1;
+            ++pk;
+            while (pk < static_cast<int>(tokens_.size()) && depth > 0) {
+                if (tokens_[pk].kind == TokenKind::LParen) ++depth;
+                else if (tokens_[pk].kind == TokenKind::RParen) --depth;
+                ++pk;
+            }
+        }
+    }
+
+    bool is_grouped = pk < static_cast<int>(tokens_.size()) &&
+                      tokens_[pk].kind == TokenKind::Identifier;
+    if (is_grouped && pk + 1 < static_cast<int>(tokens_.size())) {
+        const auto next_k = tokens_[pk + 1].kind;
+        if (next_k == TokenKind::Comma || next_k == TokenKind::Ellipsis)
+            is_grouped = false;
+    }
+    return is_grouped;
+}
+
+bool Parser::try_parse_grouped_declarator(TypeSpec& ts, const char** out_name,
+                                          std::vector<long long>* out_dims) {
+    if (!is_grouped_declarator_start()) return false;
+
+    consume();  // (
+    if (out_name && check(TokenKind::Identifier)) {
+        *out_name = arena_.strdup(cur().lexeme);
+        consume();
+    }
+    parse_declarator_array_suffixes(ts, out_dims);
+    expect(TokenKind::RParen);
+    parse_declarator_array_suffixes(ts, out_dims);
+    return true;
+}
+
 void Parser::parse_declarator_parameter_list(
     std::vector<Node*>* out_params, bool* out_variadic) {
     if (out_params) out_params->clear();
@@ -3666,46 +3710,10 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     // Grouped declarator: (name) or (name[N]) or (name[N][M]) — e.g. int *(p[25])
     // Covers the case where paren_star_peek was false because the paren contains
     // an identifier (not a pointer star), but the declarator is still grouped.
-    if (check(TokenKind::LParen)) {
-        int pk = pos_ + 1;
-        // Skip attributes inside paren if any
-        while (pk < (int)tokens_.size() && tokens_[pk].kind == TokenKind::KwAttribute) {
-            pk++;
-            if (pk < (int)tokens_.size() && tokens_[pk].kind == TokenKind::LParen) {
-                int d = 1; pk++;
-                while (pk < (int)tokens_.size() && d > 0) {
-                    if (tokens_[pk].kind == TokenKind::LParen) d++;
-                    else if (tokens_[pk].kind == TokenKind::RParen) d--;
-                    pk++;
-                }
-            }
-        }
-        bool is_grouped = pk < (int)tokens_.size() &&
-                          tokens_[pk].kind == TokenKind::Identifier;
-        // Refine: a grouped declarator has (name), (name[N]), etc.
-        // If the identifier is followed by ',' or '...' it is a function-type
-        // parameter list, not a grouped declarator.  E.g. R(Args...) or R(A, B).
-        if (is_grouped && pk + 1 < (int)tokens_.size()) {
-            auto next_k = tokens_[pk + 1].kind;
-            if (next_k == TokenKind::Comma || next_k == TokenKind::Ellipsis) {
-                is_grouped = false;
-            }
-        }
-        if (is_grouped) {
-            consume();  // consume '('
-            // Parse the inner declarator (name + optional array dims)
-            if (out_name && check(TokenKind::Identifier)) {
-                *out_name = arena_.strdup(cur().lexeme);
-                consume();
-            }
-            parse_declarator_array_suffixes(ts, &decl_dims);
-            expect(TokenKind::RParen);
-            // Any trailing array dims outside the paren (e.g. int (a[2])[3])
-            parse_declarator_array_suffixes(ts, &decl_dims);
-            apply_declarator_array_dims(ts, decl_dims);
-            if (!decl_dims.empty()) ts.is_ptr_to_array = used_paren_ptr_declarator;
-            return;
-        }
+    if (try_parse_grouped_declarator(ts, out_name, &decl_dims)) {
+        apply_declarator_array_dims(ts, decl_dims);
+        if (!decl_dims.empty()) ts.is_ptr_to_array = used_paren_ptr_declarator;
+        return;
     }
 
     parse_attributes(&ts);

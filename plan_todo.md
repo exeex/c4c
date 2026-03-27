@@ -10,6 +10,34 @@
 
 ## Current Slice
 
+- Completed: extracted grouped-declarator lookahead and suffix staging helpers
+  from `parse_declarator()` without changing grouped-vs-function-parameter-list
+  disambiguation or array suffix ordering
+- New helper path:
+  - `is_grouped_declarator_start(...)`
+  - `try_parse_grouped_declarator(...)`
+- Reused the helper path in:
+  - grouped declarator lookahead
+  - grouped declarator name-plus-array suffix staging
+- Added parse-only coverage:
+  - `declarator_grouped_suffix_staging_parse`
+- Validation completed:
+  - focused parser regressions passed:
+    - `declarator_grouped_suffix_staging_parse`
+    - `declarator_array_suffix_staging_parse`
+    - `declarator_pointer_qualifier_staging_parse`
+    - `declarator_parenthesized_fn_ptr_staging_parse`
+    - `declarator_member_fn_ptr_suffix_staging_parse`
+    - `global_qualified_member_pointer_template_owner_parse`
+    - `qualified_member_function_pointer_template_owner_parse`
+    - `qualified_member_pointer_template_owner_parse`
+    - `variadic_param_pack_declarator_parse`
+    - `eastl_slice6_template_defaults_and_refqual_cpp`
+  - full clean rebuild `test_after.log` remained monotonic:
+    - `test_before.log`: 2164 total, 7 failed
+    - `test_after.log`: 2165 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures)
 - Completed: extracted the parenthesized function-pointer suffix coordinator
   step from `parse_declarator()` without changing precedence or
   grouped/parenthesized parsing order
@@ -248,12 +276,37 @@
   - `test_fail_after.log`: 2163 total, 7 failed
   - failing tests unchanged
   - regression guard: passed (`+1` passed, `0` new failures)
+- Continued Step 5 by extracting grouped declarator lookahead and suffix
+  staging helpers:
+  - `is_grouped_declarator_start(...)`
+  - `try_parse_grouped_declarator(...)`
+- Reduced the grouped-declarator branch in `parse_declarator()` to the new
+  helper path while keeping grouped-vs-parameter-list disambiguation unchanged
+- Added parse-only coverage:
+  - `declarator_grouped_suffix_staging_parse`
+- Rebuilt successfully with `cmake --build build -j8`
+- Targeted parser regressions passed:
+  - `declarator_grouped_suffix_staging_parse`
+  - `declarator_array_suffix_staging_parse`
+  - `declarator_pointer_qualifier_staging_parse`
+  - `declarator_parenthesized_fn_ptr_staging_parse`
+  - `declarator_member_fn_ptr_suffix_staging_parse`
+  - `global_qualified_member_pointer_template_owner_parse`
+  - `qualified_member_function_pointer_template_owner_parse`
+  - `qualified_member_pointer_template_owner_parse`
+  - `variadic_param_pack_declarator_parse`
+  - `eastl_slice6_template_defaults_and_refqual_cpp`
+- Full clean rebuild `test_after.log` remained monotonic:
+  - `test_before.log`: 2164 total, 7 failed
+  - `test_after.log`: 2165 total, 7 failed
+  - failing identities unchanged
+  - regression guard: passed (`+1` passed, `0` new failures)
 
 ## Next
 
 - Continue Step 5 with the next smallest declarator suffix extraction from
-  `parse_declarator()`, preferably around grouped declarator lookahead or
-  another suffix-only helper that does not change parsing order
+  `parse_declarator()`, preferably around normal declarator name/array suffix
+  staging or another suffix-only helper that does not change parsing order
 
 ## Blockers
 

@@ -93,6 +93,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     qualified_operator_template_owner_parse
     global_qualified_member_pointer_template_owner_parse
     declarator_array_suffix_staging_parse
+    declarator_grouped_suffix_staging_parse
     declarator_pointer_qualifier_staging_parse
     declarator_parenthesized_fn_ptr_staging_parse
     declarator_member_fn_ptr_suffix_staging_parse
