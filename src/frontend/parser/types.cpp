@@ -3808,6 +3808,108 @@ TypeSpec Parser::parse_type_name() {
 
 // ── struct / union parsing ───────────────────────────────────────────────────
 
+bool Parser::try_parse_record_using_member(
+    std::vector<const char*>* member_typedef_names,
+    std::vector<TypeSpec>* member_typedef_types) {
+    if (!(is_cpp_mode() && check(TokenKind::KwUsing)))
+        return false;
+
+    consume();
+    if (check(TokenKind::Identifier) &&
+        pos_ + 1 < static_cast<int>(tokens_.size()) &&
+        tokens_[pos_ + 1].kind == TokenKind::Assign) {
+        std::string alias_name = cur().lexeme;
+        consume(); // name
+        consume(); // '='
+        TypeSpec alias_ts = parse_type_name();
+        match(TokenKind::Semi);
+
+        typedefs_.insert(alias_name);
+        typedef_types_[alias_name] = alias_ts;
+        member_typedef_names->push_back(arena_.strdup(alias_name.c_str()));
+        member_typedef_types->push_back(alias_ts);
+        if (!current_struct_tag_.empty()) {
+            std::string scoped = current_struct_tag_ + "::" + alias_name;
+            typedefs_.insert(scoped);
+            typedef_types_[scoped] = alias_ts;
+        }
+        return true;
+    }
+
+    while (!at_end() && !check(TokenKind::Semi) && !check(TokenKind::RBrace))
+        consume();
+    match(TokenKind::Semi);
+    return true;
+}
+
+bool Parser::try_parse_record_typedef_member(
+    std::vector<const char*>* member_typedef_names,
+    std::vector<TypeSpec>* member_typedef_types) {
+    if (!(is_cpp_mode() && check(TokenKind::KwTypedef)))
+        return false;
+
+    consume(); // eat 'typedef'
+    TypeSpec td_base = parse_base_type();
+    parse_attributes(&td_base);
+    const char* tdname = nullptr;
+    TypeSpec ts_copy = td_base;
+    Node** td_fn_ptr_params = nullptr;
+    int td_n_fn_ptr_params = 0;
+    bool td_fn_ptr_variadic = false;
+    parse_declarator(ts_copy, &tdname, &td_fn_ptr_params,
+                     &td_n_fn_ptr_params, &td_fn_ptr_variadic);
+    if (tdname) {
+        typedefs_.insert(tdname);
+        user_typedefs_.insert(tdname);
+        typedef_types_[tdname] = ts_copy;
+        if (ts_copy.is_fn_ptr &&
+            (td_n_fn_ptr_params > 0 || td_fn_ptr_variadic)) {
+            typedef_fn_ptr_info_[tdname] = {
+                td_fn_ptr_params, td_n_fn_ptr_params,
+                td_fn_ptr_variadic};
+        }
+        member_typedef_names->push_back(tdname);
+        member_typedef_types->push_back(ts_copy);
+        if (!current_struct_tag_.empty()) {
+            std::string scoped = current_struct_tag_ + "::" + tdname;
+            struct_typedefs_[scoped] = ts_copy;
+            typedefs_.insert(scoped);
+            typedef_types_[scoped] = ts_copy;
+        }
+    }
+
+    while (match(TokenKind::Comma)) {
+        TypeSpec ts2 = td_base;
+        const char* tdn2 = nullptr;
+        Node** td2_fn_ptr_params = nullptr;
+        int td2_n_fn_ptr_params = 0;
+        bool td2_fn_ptr_variadic = false;
+        parse_declarator(ts2, &tdn2, &td2_fn_ptr_params,
+                         &td2_n_fn_ptr_params, &td2_fn_ptr_variadic);
+        if (tdn2) {
+            typedefs_.insert(tdn2);
+            user_typedefs_.insert(tdn2);
+            typedef_types_[tdn2] = ts2;
+            if (ts2.is_fn_ptr &&
+                (td2_n_fn_ptr_params > 0 || td2_fn_ptr_variadic)) {
+                typedef_fn_ptr_info_[tdn2] = {
+                    td2_fn_ptr_params, td2_n_fn_ptr_params,
+                    td2_fn_ptr_variadic};
+            }
+            member_typedef_names->push_back(tdn2);
+            member_typedef_types->push_back(ts2);
+            if (!current_struct_tag_.empty()) {
+                std::string scoped = current_struct_tag_ + "::" + tdn2;
+                struct_typedefs_[scoped] = ts2;
+                typedefs_.insert(scoped);
+                typedef_types_[scoped] = ts2;
+            }
+        }
+    }
+    match(TokenKind::Semi);
+    return true;
+}
+
 bool Parser::try_parse_nested_record_member(
     std::vector<Node*>* fields,
     const std::function<void(const char*)>& check_dup_field) {
@@ -4402,34 +4504,8 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             // Fall through to parse the member declaration that follows
         }
 
-        if (is_cpp_mode() && check(TokenKind::KwUsing)) {
-            consume();
-            // using Name = Type; — register as typedef so conversion operators
-            // and other code can reference the alias (e.g. `operator F()`)
-            if (check(TokenKind::Identifier) &&
-                pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                tokens_[pos_ + 1].kind == TokenKind::Assign) {
-                std::string alias_name = cur().lexeme;
-                consume(); // name
-                consume(); // '='
-                TypeSpec alias_ts = parse_type_name();
-                match(TokenKind::Semi);
-                // Register as typedef
-                typedefs_.insert(alias_name);
-                typedef_types_[alias_name] = alias_ts;
-                member_typedef_names.push_back(arena_.strdup(alias_name.c_str()));
-                member_typedef_types.push_back(alias_ts);
-                if (!current_struct_tag_.empty()) {
-                    std::string scoped = current_struct_tag_ + "::" + alias_name;
-                    typedefs_.insert(scoped);
-                    typedef_types_[scoped] = alias_ts;
-                }
-                continue;
-            }
-            // Other using forms (using namespace, using-declaration): skip
-            while (!at_end() && !check(TokenKind::Semi) && !check(TokenKind::RBrace))
-                consume();
-            match(TokenKind::Semi);
+        if (try_parse_record_using_member(&member_typedef_names,
+                                          &member_typedef_types)) {
             continue;
         }
 
@@ -4483,69 +4559,8 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             continue;
         }
 
-        // C++ typedef inside struct body: typedef <type> <name>;
-        // Registered in the same typedef maps as global/local typedefs.
-        if (is_cpp_mode() && check(TokenKind::KwTypedef)) {
-            consume(); // eat 'typedef'
-            TypeSpec td_base = parse_base_type();
-            parse_attributes(&td_base);
-            const char* tdname = nullptr;
-            TypeSpec ts_copy = td_base;
-            Node** td_fn_ptr_params = nullptr;
-            int td_n_fn_ptr_params = 0;
-            bool td_fn_ptr_variadic = false;
-            parse_declarator(ts_copy, &tdname, &td_fn_ptr_params,
-                             &td_n_fn_ptr_params, &td_fn_ptr_variadic);
-            if (tdname) {
-                typedefs_.insert(tdname);
-                user_typedefs_.insert(tdname);
-                typedef_types_[tdname] = ts_copy;
-                if (ts_copy.is_fn_ptr &&
-                    (td_n_fn_ptr_params > 0 || td_fn_ptr_variadic)) {
-                    typedef_fn_ptr_info_[tdname] = {
-                        td_fn_ptr_params, td_n_fn_ptr_params,
-                        td_fn_ptr_variadic};
-                }
-                member_typedef_names.push_back(tdname);
-                member_typedef_types.push_back(ts_copy);
-                // Register scoped name: StructTag::TypeName
-                if (!current_struct_tag_.empty()) {
-                    std::string scoped = current_struct_tag_ + "::" + tdname;
-                    struct_typedefs_[scoped] = ts_copy;
-                    typedefs_.insert(scoped);
-                    typedef_types_[scoped] = ts_copy;
-                }
-            }
-            // Handle multiple declarators: typedef int a, b;
-            while (match(TokenKind::Comma)) {
-                TypeSpec ts2 = td_base;
-                const char* tdn2 = nullptr;
-                Node** td2_fn_ptr_params = nullptr;
-                int td2_n_fn_ptr_params = 0;
-                bool td2_fn_ptr_variadic = false;
-                parse_declarator(ts2, &tdn2, &td2_fn_ptr_params,
-                                 &td2_n_fn_ptr_params, &td2_fn_ptr_variadic);
-                if (tdn2) {
-                    typedefs_.insert(tdn2);
-                    user_typedefs_.insert(tdn2);
-                    typedef_types_[tdn2] = ts2;
-                    if (ts2.is_fn_ptr &&
-                        (td2_n_fn_ptr_params > 0 || td2_fn_ptr_variadic)) {
-                        typedef_fn_ptr_info_[tdn2] = {
-                            td2_fn_ptr_params, td2_n_fn_ptr_params,
-                            td2_fn_ptr_variadic};
-                    }
-                    member_typedef_names.push_back(tdn2);
-                    member_typedef_types.push_back(ts2);
-                    if (!current_struct_tag_.empty()) {
-                        std::string scoped = current_struct_tag_ + "::" + tdn2;
-                        struct_typedefs_[scoped] = ts2;
-                        typedefs_.insert(scoped);
-                        typedef_types_[scoped] = ts2;
-                    }
-                }
-            }
-            match(TokenKind::Semi);
+        if (try_parse_record_typedef_member(&member_typedef_names,
+                                            &member_typedef_types)) {
             continue;
         }
 

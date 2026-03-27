@@ -361,6 +361,12 @@ class Parser {
 
   // Parse struct/union body { fields... } or just a tag reference.
   // Returns a NK_STRUCT_DEF node; appends to struct_defs_ if new.
+  bool try_parse_record_using_member(
+      std::vector<const char*>* member_typedef_names,
+      std::vector<TypeSpec>* member_typedef_types);
+  bool try_parse_record_typedef_member(
+      std::vector<const char*>* member_typedef_names,
+      std::vector<TypeSpec>* member_typedef_types);
   bool try_parse_nested_record_member(
       std::vector<Node*>* fields,
       const std::function<void(const char*)>& check_dup_field);
