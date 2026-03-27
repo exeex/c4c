@@ -37,6 +37,7 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_printer.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/inline_expand.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/target.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lir_adapter.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/backend.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/llvm/llvm_codegen.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter.cpp"
@@ -84,6 +85,18 @@ target_include_directories(frontend_cxx_preprocessor_tests PRIVATE
     "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor"
 )
 set_target_properties(frontend_cxx_preprocessor_tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_executable(backend_lir_adapter_tests
+    "${PROJECT_SOURCE_DIR}/tests/backend/backend_lir_adapter_tests.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/lir_adapter.cpp"
+)
+target_include_directories(backend_lir_adapter_tests PRIVATE
+    ${FRONTEND_CXX_INCLUDE_DIRS}
+)
+set_target_properties(backend_lir_adapter_tests PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
 )

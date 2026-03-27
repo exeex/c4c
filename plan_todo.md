@@ -6,13 +6,13 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 3: implement the first LIR adapter slice
+- Step 4: wire external assembler/linker fallback
 
 ## Next Intended Slice
 
-- define the backend-side adapter contract for the narrow return-only subset without changing existing LIR producers
-- choose the first-pass Stage 3 handling policy inside the adapter boundary and keep it out of target-specific code
-- add the first adapter-driven test case that proves a trivial return-only program reaches backend emission through `src/backend/`
+- define the external tool handoff contract for backend-emitted LLVM text / assembly artifacts
+- map the first supported target flow onto deterministic assembler/linker invocation and diagnostics
+- extend the backend tests from adapter/runtime smoke coverage to explicit toolchain-failure attribution
 
 ## Completed Items
 
@@ -24,6 +24,11 @@ Source Plan: plan.md
 - Step 2 complete: added `src/backend/target.{hpp,cpp}` and `src/backend/backend.{hpp,cpp}` so target-triple parsing and backend factory dispatch now live under a dedicated `src/backend/` boundary
 - Step 2 complete: `src/codegen/llvm/llvm_codegen.cpp` now keeps `legacy` as the direct `lir::print_llvm(...)` path while routing `--codegen lir` and `--codegen compare` through `backend::emit_module(...)` with explicit target parsing
 - Step 2 complete: added backend-entry validation in `tests/c/internal/InternalTests.cmake` for one supported target path and one unsupported-target diagnostic path; full `ctest` remained monotonic with the same 7 pre-existing failures before and after while total registered tests increased from 495 to 497
+- Step 3 complete: added `src/backend/lir_adapter.{hpp,cpp}` as the first explicit backend-side contract, adapting the narrow return-only subset `LirModule -> BackendModule -> BackendFunction -> BackendBlock -> {BackendBinaryInst, BackendReturn}` instead of routing everything directly through `lir::print_llvm(...)`
+- Step 3 complete: chose the first-pass Stage 3 handling policy to keep translation in the adapter layer only; `src/backend/backend.cpp` now renders the adapted return-only subset through the backend boundary and falls back to the legacy printer for out-of-scope LIR so the current tree keeps working while coverage grows
+- Step 3 complete: added adapter-driven coverage in `tests/backend/backend_lir_adapter_tests.cpp` plus forced-`--codegen lir` runtime smoke cases `tests/c/internal/backend_case/return_zero.c` and `tests/c/internal/backend_case/return_add.c`
+- Validation: targeted backend tests now pass for adapter unit coverage, supported/unsupported target entry, and runtime exit codes `0` and `5`
+- Validation: `test_before.log` recorded 7 pre-existing failures out of 497 tests; `test_after.log` recorded the same 7 long-standing failures plus 3 unrelated C++ runtime failures out of 500 tests, and those 3 additional failures reproduce on a separate clean `HEAD` worktree (`template_arg_deduction`, `template_mixed_params`, `template_type_subst`)
 
 ## Blockers
 

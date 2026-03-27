@@ -7,6 +7,8 @@ file(GLOB INTERNAL_VERIFY_TEST_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_C_TEST_ROOT}/verify_case/*.c")
 file(GLOB INTERNAL_POSITIVE_TEST_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_C_TEST_ROOT}/positive_case/*.c")
+file(GLOB INTERNAL_BACKEND_TEST_SRCS CONFIGURE_DEPENDS
+     "${INTERNAL_C_TEST_ROOT}/backend_case/*.c")
 file(GLOB INTERNAL_LINUX_STAGE2_REPRO_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_C_TEST_ROOT}/positive_case/linux_stage2_repro/*.c")
 file(GLOB INTERNAL_CCC_REVIEW_SRCS CONFIGURE_DEPENDS
@@ -156,6 +158,13 @@ set_tests_properties(frontend_cxx_preprocessor_tests PROPERTIES
     LABELS "internal;preprocessor")
 
 add_test(
+    NAME backend_lir_adapter_tests
+    COMMAND backend_lir_adapter_tests
+)
+set_tests_properties(backend_lir_adapter_tests PROPERTIES
+    LABELS "internal;backend")
+
+add_test(
     NAME frontend_cxx_stage1_version
     COMMAND c4cll --version
 )
@@ -217,6 +226,29 @@ if(EXISTS "${EXAMPLE_C}")
   set_tests_properties(backend_lir_unsupported_target_entry PROPERTIES
       LABELS "internal;backend"
   )
+endif()
+
+if(CLANG_EXECUTABLE)
+  foreach(src IN LISTS INTERNAL_BACKEND_TEST_SRCS)
+    get_filename_component(stem "${src}" NAME_WE)
+    set(test_name "backend_runtime_${stem}")
+    set(expect_exit_code 0)
+    if(stem STREQUAL "return_add")
+      set(expect_exit_code 5)
+    endif()
+
+    add_test(
+      NAME "${test_name}"
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DSRC=${src}
+              -DEXPECT_EXIT_CODE=${expect_exit_code}
+              -DOUT_C2LL_BIN=${CMAKE_BINARY_DIR}/internal_backend/${stem}.bin
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_positive_case.cmake"
+    )
+    set_tests_properties("${test_name}" PROPERTIES LABELS "internal;backend")
+  endforeach()
 endif()
 
 if(CLANG_EXECUTABLE)

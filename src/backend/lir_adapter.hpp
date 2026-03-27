@@ -1,0 +1,52 @@
+#pragma once
+
+#include "../codegen/lir/ir.hpp"
+
+#include <optional>
+#include <string>
+#include <variant>
+#include <vector>
+
+namespace c4c::backend {
+
+enum class BackendBinaryOpcode {
+  Add,
+};
+
+struct BackendBinaryInst {
+  BackendBinaryOpcode opcode = BackendBinaryOpcode::Add;
+  std::string result;
+  std::string type_str;
+  std::string lhs;
+  std::string rhs;
+};
+
+using BackendInst = std::variant<BackendBinaryInst>;
+
+struct BackendReturn {
+  std::optional<std::string> value;
+  std::string type_str;
+};
+
+struct BackendBlock {
+  std::string label;
+  std::vector<BackendInst> insts;
+  BackendReturn terminator;
+};
+
+struct BackendFunction {
+  std::string signature_text;
+  bool is_declaration = false;
+  std::vector<BackendBlock> blocks;
+};
+
+struct BackendModule {
+  std::string target_triple;
+  std::string data_layout;
+  std::vector<BackendFunction> functions;
+};
+
+BackendModule adapt_return_only_module(const c4c::codegen::lir::LirModule& module);
+std::string render_module(const BackendModule& module);
+
+}  // namespace c4c::backend

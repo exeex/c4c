@@ -1,9 +1,11 @@
 #include "backend.hpp"
+#include "lir_adapter.hpp"
 
 #include "../codegen/lir/ir.hpp"
 #include "../codegen/lir/lir_printer.hpp"
 
 #include <memory>
+#include <stdexcept>
 
 namespace c4c::backend {
 
@@ -21,7 +23,12 @@ class LlvmTextBackendEmitter final : public BackendEmitter {
 
   std::string emit(const c4c::codegen::lir::LirModule& module) const override {
     (void)target_;
-    return c4c::codegen::lir::print_llvm(module);
+    try {
+      auto adapted = adapt_return_only_module(module);
+      return render_module(adapted);
+    } catch (const std::invalid_argument&) {
+      return c4c::codegen::lir::print_llvm(module);
+    }
   }
 
  private:
