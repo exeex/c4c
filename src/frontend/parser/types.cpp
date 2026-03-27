@@ -5122,10 +5122,8 @@ bool Parser::try_parse_record_method_or_field_member(
     return true;
 }
 
-bool Parser::try_parse_record_member_dispatch(
-    const std::string& struct_source_name,
+bool Parser::try_parse_record_type_like_member_dispatch(
     std::vector<Node*>* fields,
-    std::vector<Node*>* methods,
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
     const std::function<void(const char*)>& check_dup_field) {
@@ -5135,8 +5133,20 @@ bool Parser::try_parse_record_member_dispatch(
     }
     if (try_parse_nested_record_member(fields, check_dup_field)) return true;
     if (try_parse_record_enum_member(fields, check_dup_field)) return true;
-    if (try_parse_record_typedef_member(member_typedef_names,
-                                        member_typedef_types)) {
+    return try_parse_record_typedef_member(member_typedef_names,
+                                           member_typedef_types);
+}
+
+bool Parser::try_parse_record_member_dispatch(
+    const std::string& struct_source_name,
+    std::vector<Node*>* fields,
+    std::vector<Node*>* methods,
+    std::vector<const char*>* member_typedef_names,
+    std::vector<TypeSpec>* member_typedef_types,
+    const std::function<void(const char*)>& check_dup_field) {
+    if (try_parse_record_type_like_member_dispatch(
+            fields, member_typedef_names, member_typedef_types,
+            check_dup_field)) {
         return true;
     }
     if (try_parse_record_constructor_member(struct_source_name, methods)) {
