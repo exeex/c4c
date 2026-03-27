@@ -304,6 +304,9 @@ class Parser {
                                        QualifiedNameRef* out_qn = nullptr);
   bool consume_template_args_followed_by_scope();
   bool consume_member_pointer_owner_prefix();
+  bool try_parse_declarator_member_pointer_prefix(TypeSpec& ts);
+  void apply_declarator_pointer_token(TypeSpec& ts, TokenKind pointer_tok,
+                                      bool preserve_array_base);
   bool parse_dependent_typename_specifier(std::string* out_name = nullptr);
   bool parse_operator_declarator_name(std::string* out_name);
   bool parse_qualified_declarator_name(std::string* out_name);

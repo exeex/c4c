@@ -22,6 +22,22 @@
   - normal declarators
 - Added parse-only coverage:
   - `declarator_array_suffix_staging_parse`
+- Completed: extracted the next `parse_declarator()` staging helpers around
+  pointer/member-pointer/ref qualifier consumption shared by normal and
+  parenthesized declarators
+- New helper path:
+  - `try_parse_declarator_member_pointer_prefix(...)`
+  - `apply_declarator_pointer_token(...)`
+- Reused the helper path in:
+  - normal declarator member-pointer prefix handling
+  - normal declarator `*` / `&` / `&&` indirection handling
+  - parenthesized function-pointer/member-pointer declarators
+- Added parse-only coverage:
+  - `declarator_pointer_qualifier_staging_parse`
+- Planned validation:
+  - add one parse-only case covering grouped / parenthesized declarators with
+    pointer qualifiers and ref qualifiers
+  - rerun the focused declarator parser cases before the full regression guard
 
 ## Completed
 
@@ -187,12 +203,36 @@
   - `test_before.log`: 2160 total, 7 failed
   - `test_after.log`: 2161 total, 7 failed
   - regression guard: passed (`+1` passed, `0` new failures)
+- Continued Step 5 by extracting shared pointer/member-pointer/ref declarator
+  staging helpers:
+  - `try_parse_declarator_member_pointer_prefix(...)`
+  - `apply_declarator_pointer_token(...)`
+- Reduced `parse_declarator()` pointer handling to the new helper path in:
+  - normal member-pointer declarator prefixes
+  - normal `*` / `&` / `&&` declarator indirection
+  - parenthesized function-pointer/member-pointer declarators
+- Added parse-only coverage:
+  - `declarator_pointer_qualifier_staging_parse`
+- Rebuilt successfully with `cmake --build build -j8`
+- Targeted parser regressions passed:
+  - `declarator_pointer_qualifier_staging_parse`
+  - `declarator_array_suffix_staging_parse`
+  - `eastl_slice6_template_defaults_and_refqual_cpp`
+  - `member_pointer_param_parse`
+  - `qualified_member_function_pointer_template_owner_parse`
+  - `qualified_member_pointer_template_owner_parse`
+  - `variadic_param_pack_declarator_parse`
+- Full clean rebuild `test_after.log` remained monotonic:
+  - `test_before.log`: 2161 total, 7 failed
+  - `test_after.log`: 2162 total, 7 failed
+  - failing tests unchanged
+  - regression guard: passed (`+1` passed, `0` new failures)
 
 ## Next
 
-- Extract the next smallest `parse_declarator()` stage around pointer/ref
-  qualifier consumption or parenthesized function-pointer handling without
-  changing declarator precedence
+- After pointer/ref qualifier staging, extract the next smallest
+  parenthesized-function-pointer coordinator step without changing declarator
+  precedence
 
 ## Blockers
 
@@ -206,6 +246,11 @@
   - `cpp_positive_sema_template_arg_deduction_cpp`
   - `cpp_positive_sema_template_mixed_params_cpp`
   - `cpp_positive_sema_template_type_subst_cpp`
+- Deferred follow-on note from test shaping:
+  - top-level reference-to-function-pointer declarators like
+    `int (*const& ref)();` still fail parse, while the same spelling parses in
+    local-declaration and parameter contexts; not required for this Step 5
+    compression slice
 
 ## Resume Notes
 
@@ -233,7 +278,15 @@
   parsing/application across all three declarator paths
 - Added `declarator_array_suffix_staging_parse` to lock grouped array and
   function-pointer-array suffix handling
+- This iteration is targeting the next Step 5 extraction around shared
+  pointer/member-pointer/ref qualifier consumption before array/function
+  suffixes
+- `parse_declarator()` now shares helper-based pointer/member-pointer/ref token
+  application across normal and parenthesized declarators
+- Added `declarator_pointer_qualifier_staging_parse` to lock grouped
+  function-pointer refs and member-function-pointer qualifiers in local-decl
+  form
 - Current monotonic baseline:
-  - `test_before.log`: 2160 total, 7 failed
-  - `test_after.log`: 2161 total, 7 failed
+  - `test_before.log`: 2161 total, 7 failed
+  - `test_after.log`: 2162 total, 7 failed
 - Full-suite failures remain the same known issues; regression guard passed with no new failing tests

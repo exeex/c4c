@@ -1388,6 +1388,35 @@ bool Parser::consume_member_pointer_owner_prefix() {
     return true;
 }
 
+bool Parser::try_parse_declarator_member_pointer_prefix(TypeSpec& ts) {
+    if (!is_cpp_mode()) return false;
+
+    const int saved_pos = pos_;
+    if (!consume_member_pointer_owner_prefix()) {
+        pos_ = saved_pos;
+        return false;
+    }
+
+    ts.ptr_level++;
+    return true;
+}
+
+void Parser::apply_declarator_pointer_token(TypeSpec& ts, TokenKind pointer_tok,
+                                            bool preserve_array_base) {
+    if (pointer_tok == TokenKind::AmpAmp) {
+        ts.is_rvalue_ref = true;
+        return;
+    }
+    if (pointer_tok == TokenKind::Amp) {
+        ts.is_lvalue_ref = true;
+        return;
+    }
+
+    if (preserve_array_base && (ts.array_rank > 0 || ts.array_size != -1))
+        ts.is_ptr_to_array = true;
+    ts.ptr_level++;
+}
+
 bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
     if (!is_cpp_mode() || !check(TokenKind::Identifier) || cur().lexeme != "typename")
         return false;
@@ -3392,23 +3421,15 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     // C++ pointer-to-member declarator prefix: `C::*name` or `ns::C::*name`.
     // Model it as an additional pointer level for parser bring-up so headers
     // like EASTL's invoke_impl(R C::*func, ...) can parse successfully.
-    if (is_cpp_mode()) {
-        int saved_pos = pos_;
-        if (consume_member_pointer_owner_prefix()) {
-            ts.ptr_level++;
-        } else {
-            pos_ = saved_pos;
-        }
-    }
+    try_parse_declarator_member_pointer_prefix(ts);
 
     // Count pointer stars (and qualifiers between them)
     while (check(TokenKind::Star)) {
         consume();
         // If the base type already has array dimensions, this star creates a
         // pointer-to-array (e.g. HARD_REG_SET *p where HARD_REG_SET = ulong[2]).
-        if (ts.array_rank > 0 || ts.array_size != -1)
-            ts.is_ptr_to_array = true;
-        ts.ptr_level++;
+        apply_declarator_pointer_token(ts, TokenKind::Star,
+                                       /*preserve_array_base=*/true);
         // Skip qualifiers that follow *
         while (is_qualifier(cur().kind)) consume();
         parse_attributes(&ts);
@@ -3416,12 +3437,14 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
 
     if (is_cpp_mode() && check(TokenKind::AmpAmp)) {
         consume();
-        ts.is_rvalue_ref = true;
+        apply_declarator_pointer_token(ts, TokenKind::AmpAmp,
+                                       /*preserve_array_base=*/false);
         while (is_qualifier(cur().kind)) consume();
         parse_attributes(&ts);
     } else if (is_cpp_mode() && check(TokenKind::Amp)) {
         consume();
-        ts.is_lvalue_ref = true;
+        apply_declarator_pointer_token(ts, TokenKind::Amp,
+                                       /*preserve_array_base=*/false);
         while (is_qualifier(cur().kind)) consume();
         parse_attributes(&ts);
     }
@@ -3495,14 +3518,13 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         } else {
             consume();  // consume * or ^ or & or &&
         }
-        if (pointer_tok == TokenKind::AmpAmp) {
-            ts.is_rvalue_ref = true;
-        } else if (pointer_tok == TokenKind::Amp) {
-            ts.is_lvalue_ref = true;
-        } else {
-            ts.ptr_level++;
-            // Skip extra stars for **fpp
-            while (check(TokenKind::Star)) { consume(); ts.ptr_level++; }
+        apply_declarator_pointer_token(ts, pointer_tok,
+                                       /*preserve_array_base=*/false);
+        // Skip extra stars for **fpp
+        while (check(TokenKind::Star)) {
+            consume();
+            apply_declarator_pointer_token(ts, TokenKind::Star,
+                                           /*preserve_array_base=*/false);
         }
         // Skip nullability / qualifier annotations inside the parens: (* _Nullable name)
         while (check(TokenKind::Identifier)) {
