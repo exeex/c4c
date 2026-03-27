@@ -58,9 +58,65 @@ static void append_type_mangled_suffix_local(std::string& out, const TypeSpec& t
         default: out += "T"; break;
     }
     for (int p = 0; p < ts.ptr_level; ++p) out += "_ptr";
-    if (ts.is_lvalue_ref) out += "_ref";
+   if (ts.is_lvalue_ref) out += "_ref";
     if (ts.is_rvalue_ref) out += "_rref";
 }
+
+static bool template_param_expr_continues_after_greater(TokenKind k) {
+    return k == TokenKind::ColonColon || k == TokenKind::PipePipe ||
+           k == TokenKind::AmpAmp || k == TokenKind::Pipe ||
+           k == TokenKind::Amp || k == TokenKind::Caret ||
+           k == TokenKind::Plus || k == TokenKind::Minus ||
+           k == TokenKind::Star || k == TokenKind::Slash ||
+           k == TokenKind::Percent || k == TokenKind::EqualEqual ||
+           k == TokenKind::BangEqual || k == TokenKind::LessEqual ||
+           k == TokenKind::GreaterEqual || k == TokenKind::Question;
+}
+
+static void skip_template_param_default_expr(Parser& parser,
+                                             bool track_brackets_and_braces,
+                                             int* out_start_pos = nullptr) {
+    if (out_start_pos) *out_start_pos = parser.pos_;
+
+    auto is_expr_continuation = [&](int p) -> bool {
+        if (p >= static_cast<int>(parser.tokens_.size())) return false;
+        return template_param_expr_continues_after_greater(parser.tokens_[p].kind);
+    };
+
+    int depth = 0;
+    while (!parser.at_end()) {
+        if (parser.check(TokenKind::Less) || parser.check(TokenKind::LParen) ||
+            (track_brackets_and_braces &&
+             (parser.check(TokenKind::LBracket) || parser.check(TokenKind::LBrace)))) {
+            ++depth;
+        } else if (parser.check(TokenKind::Greater)) {
+            if (depth == 0) {
+                if (is_expr_continuation(parser.pos_ + 1)) { parser.consume(); continue; }
+                break;
+            }
+            --depth;
+        } else if (parser.check(TokenKind::RParen) ||
+                   (track_brackets_and_braces &&
+                    (parser.check(TokenKind::RBracket) || parser.check(TokenKind::RBrace)))) {
+            if (depth > 0) --depth;
+        } else if (parser.check(TokenKind::GreaterGreater)) {
+            if (depth == 0) {
+                if (is_expr_continuation(parser.pos_ + 1)) { parser.consume(); continue; }
+                break;
+            }
+            if (depth == 1) {
+                if (is_expr_continuation(parser.pos_ + 1)) { depth = 0; parser.consume(); continue; }
+                parser.parse_greater_than_in_template_list(false);
+                break;
+            }
+            depth -= 2;
+        } else if (parser.check(TokenKind::Comma) && depth == 0) {
+            break;
+        }
+        parser.consume();
+    }
+}
+
 namespace {
 
 const char* maybe_parse_linkage_spec(Parser* parser) {
@@ -590,6 +646,15 @@ Node* Parser::parse_top_level() {
                 template_param_default_values.push_back(0);
                 template_param_default_exprs.push_back(nullptr);
             };
+        auto push_nttp_no_default = [&]() {
+            template_param_has_default.push_back(false);
+            TypeSpec dummy{};
+            dummy.array_size = -1;
+            dummy.inner_rank = -1;
+            template_param_default_types.push_back(dummy);
+            template_param_default_values.push_back(0);
+            template_param_default_exprs.push_back(nullptr);
+        };
         while (!at_end() && !check(TokenKind::Greater)) {
             if (check(TokenKind::KwTemplate)) {
                 // Template-template parameter:
@@ -626,24 +691,7 @@ Node* Parser::parse_top_level() {
                     consume();
                 }
                 if (match(TokenKind::Assign)) {
-                    int depth = 0;
-                    while (!at_end()) {
-                        if (check(TokenKind::Less) || check(TokenKind::LParen) ||
-                            check(TokenKind::LBracket) || check(TokenKind::LBrace)) {
-                            ++depth;
-                        } else if (check_template_close()) {
-                            if (depth == 0) break;
-                            parse_greater_than_in_template_list(false);
-                            --depth;
-                            continue;
-                        } else if (check(TokenKind::RParen) || check(TokenKind::RBracket) ||
-                                   check(TokenKind::RBrace)) {
-                            if (depth > 0) --depth;
-                        } else if (check(TokenKind::Comma) && depth == 0) {
-                            break;
-                        }
-                        consume();
-                    }
+                    skip_template_param_default_expr(*this, true);
                 }
                 push_type_template_param(pname);
             } else if ((check(TokenKind::Identifier) && cur().lexeme == "typename") ||
@@ -666,53 +714,9 @@ Node* Parser::parse_top_level() {
                     template_param_nttp.push_back(true);
                     template_param_is_pack.push_back(is_pack);
                     if (match(TokenKind::Assign)) {
-                        auto is_expr_cont_dep = [&](int p) -> bool {
-                            if (p >= static_cast<int>(tokens_.size())) return false;
-                            auto k = tokens_[p].kind;
-                            return k == TokenKind::ColonColon || k == TokenKind::PipePipe ||
-                                   k == TokenKind::AmpAmp || k == TokenKind::Pipe ||
-                                   k == TokenKind::Amp || k == TokenKind::Caret ||
-                                   k == TokenKind::Plus || k == TokenKind::Minus ||
-                                   k == TokenKind::Star || k == TokenKind::Slash ||
-                                   k == TokenKind::Percent || k == TokenKind::EqualEqual ||
-                                   k == TokenKind::BangEqual || k == TokenKind::LessEqual ||
-                                   k == TokenKind::GreaterEqual || k == TokenKind::Question;
-                        };
-                        int depth = 0;
-                        while (!at_end()) {
-                            if (check(TokenKind::Less) || check(TokenKind::LParen)) ++depth;
-                            else if (check(TokenKind::Greater)) {
-                                if (depth == 0) {
-                                    if (is_expr_cont_dep(pos_ + 1)) { consume(); continue; }
-                                    break;
-                                }
-                                --depth;
-                            } else if (check(TokenKind::RParen)) {
-                                if (depth > 0) --depth;
-                            } else if (check(TokenKind::GreaterGreater)) {
-                                if (depth == 0) {
-                                    if (is_expr_cont_dep(pos_ + 1)) { consume(); continue; }
-                                    break;
-                                }
-                                if (depth == 1) {
-                                    if (is_expr_cont_dep(pos_ + 1)) { depth = 0; consume(); continue; }
-                                    parse_greater_than_in_template_list(false);
-                                    break;
-                                }
-                                depth -= 2;
-                            } else if (check(TokenKind::Comma) && depth == 0) {
-                                break;
-                            }
-                            consume();
-                        }
+                        skip_template_param_default_expr(*this, false);
                     }
-                    template_param_has_default.push_back(false);
-                    TypeSpec dummy{};
-                    dummy.array_size = -1;
-                    dummy.inner_rank = -1;
-                    template_param_default_types.push_back(dummy);
-                    template_param_default_values.push_back(0);
-                    template_param_default_exprs.push_back(nullptr);
+                    push_nttp_no_default();
                     continue;
                 }
                 // Type template parameter (possibly variadic: typename... Ts).
@@ -780,46 +784,8 @@ Node* Parser::parse_top_level() {
                         // Save the tokens for deferred evaluation during instantiation.
                         // A > at depth 0 closes the template param list UNLESS
                         // followed by :: or a binary operator (the expression continues).
-                        auto is_expr_continuation = [&](int p) -> bool {
-                            if (p >= static_cast<int>(tokens_.size())) return false;
-                            auto k = tokens_[p].kind;
-                            return k == TokenKind::ColonColon || k == TokenKind::PipePipe ||
-                                   k == TokenKind::AmpAmp || k == TokenKind::Pipe ||
-                                   k == TokenKind::Amp || k == TokenKind::Caret ||
-                                   k == TokenKind::Plus || k == TokenKind::Minus ||
-                                   k == TokenKind::Star || k == TokenKind::Slash ||
-                                   k == TokenKind::Percent || k == TokenKind::EqualEqual ||
-                                   k == TokenKind::BangEqual || k == TokenKind::LessEqual ||
-                                   k == TokenKind::GreaterEqual || k == TokenKind::Question;
-                        };
                         int start_pos = pos_;
-                        int depth = 0;
-                        while (!at_end()) {
-                            if (check(TokenKind::Less) || check(TokenKind::LParen)) ++depth;
-                            else if (check(TokenKind::Greater)) {
-                                if (depth == 0) {
-                                    if (is_expr_continuation(pos_ + 1)) { consume(); continue; }
-                                    break;
-                                }
-                                --depth;
-                            } else if (check(TokenKind::RParen)) {
-                                if (depth > 0) --depth;
-                            } else if (check(TokenKind::GreaterGreater)) {
-                                if (depth == 0) {
-                                    if (is_expr_continuation(pos_ + 1)) { consume(); continue; }
-                                    break;
-                                }
-                                if (depth == 1) {
-                                    if (is_expr_continuation(pos_ + 1)) { depth = 0; consume(); continue; }
-                                    parse_greater_than_in_template_list(false);
-                                    break;
-                                }
-                                depth -= 2;
-                            } else if (check(TokenKind::Comma) && depth == 0) {
-                                break;
-                            }
-                            consume();
-                        }
+                        skip_template_param_default_expr(*this, false, &start_pos);
                         // Save tokens for deferred evaluation (LLONG_MIN sentinel).
                         int param_idx = static_cast<int>(template_params.size()) - 1;
                         std::vector<Token> saved_toks(tokens_.begin() + start_pos,
@@ -844,13 +810,7 @@ Node* Parser::parse_top_level() {
                         template_param_default_values.push_back(LLONG_MIN);
                     }
                 } else {
-                    template_param_has_default.push_back(false);
-                    TypeSpec dummy{};
-                    dummy.array_size = -1;
-                    dummy.inner_rank = -1;
-                    template_param_default_types.push_back(dummy);
-                    template_param_default_values.push_back(0);
-                    template_param_default_exprs.push_back(nullptr);
+                    push_nttp_no_default();
                 }
             } else if ((check(TokenKind::ColonColon) ||
                         (check(TokenKind::Identifier) &&
@@ -899,53 +859,9 @@ Node* Parser::parse_top_level() {
                 template_param_is_pack.push_back(is_pack);
                 // Check for default NTTP value: = expr
                 if (match(TokenKind::Assign)) {
-                    auto is_expr_cont_q = [&](int p) -> bool {
-                        if (p >= static_cast<int>(tokens_.size())) return false;
-                        auto k = tokens_[p].kind;
-                        return k == TokenKind::ColonColon || k == TokenKind::PipePipe ||
-                               k == TokenKind::AmpAmp || k == TokenKind::Pipe ||
-                               k == TokenKind::Amp || k == TokenKind::Caret ||
-                               k == TokenKind::Plus || k == TokenKind::Minus ||
-                               k == TokenKind::Star || k == TokenKind::Slash ||
-                               k == TokenKind::Percent || k == TokenKind::EqualEqual ||
-                               k == TokenKind::BangEqual || k == TokenKind::LessEqual ||
-                               k == TokenKind::GreaterEqual || k == TokenKind::Question;
-                    };
-                    int depth = 0;
-                    while (!at_end()) {
-                        if (check(TokenKind::Less) || check(TokenKind::LParen)) ++depth;
-                        else if (check(TokenKind::Greater)) {
-                            if (depth == 0) {
-                                if (is_expr_cont_q(pos_ + 1)) { consume(); continue; }
-                                break;
-                            }
-                            --depth;
-                        } else if (check(TokenKind::RParen)) {
-                            if (depth > 0) --depth;
-                        } else if (check(TokenKind::GreaterGreater)) {
-                            if (depth == 0) {
-                                if (is_expr_cont_q(pos_ + 1)) { consume(); continue; }
-                                break;
-                            }
-                            if (depth == 1) {
-                                if (is_expr_cont_q(pos_ + 1)) { depth = 0; consume(); continue; }
-                                parse_greater_than_in_template_list(false);
-                                break;
-                            }
-                            depth -= 2;
-                        } else if (check(TokenKind::Comma) && depth == 0) {
-                            break;
-                        }
-                        consume();
-                    }
+                    skip_template_param_default_expr(*this, false);
                 }
-                template_param_has_default.push_back(false);
-                TypeSpec dummy{};
-                dummy.array_size = -1;
-                dummy.inner_rank = -1;
-                template_param_default_types.push_back(dummy);
-                template_param_default_values.push_back(0);
-                template_param_default_exprs.push_back(nullptr);
+                push_nttp_no_default();
             } else if (check(TokenKind::Identifier) &&
                        (is_typedef_name(cur().lexeme) ||
                         typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0)) {
@@ -969,60 +885,10 @@ Node* Parser::parse_top_level() {
                 // Check for default NTTP value: = expr
                 if (match(TokenKind::Assign)) {
                     // Skip balanced default expression (same heuristic as above).
-                    auto is_expr_cont2 = [&](int p) -> bool {
-                        if (p >= static_cast<int>(tokens_.size())) return false;
-                        auto k = tokens_[p].kind;
-                        return k == TokenKind::ColonColon || k == TokenKind::PipePipe ||
-                               k == TokenKind::AmpAmp || k == TokenKind::Pipe ||
-                               k == TokenKind::Amp || k == TokenKind::Caret ||
-                               k == TokenKind::Plus || k == TokenKind::Minus ||
-                               k == TokenKind::Star || k == TokenKind::Slash ||
-                               k == TokenKind::Percent || k == TokenKind::EqualEqual ||
-                               k == TokenKind::BangEqual || k == TokenKind::LessEqual ||
-                               k == TokenKind::GreaterEqual || k == TokenKind::Question;
-                    };
-                    int depth = 0;
-                    while (!at_end()) {
-                        if (check(TokenKind::Less) || check(TokenKind::LParen)) ++depth;
-                        else if (check(TokenKind::Greater)) {
-                            if (depth == 0) {
-                                if (is_expr_cont2(pos_ + 1)) { consume(); continue; }
-                                break;
-                            }
-                            --depth;
-                        } else if (check(TokenKind::RParen)) {
-                            if (depth > 0) --depth;
-                        } else if (check(TokenKind::GreaterGreater)) {
-                            if (depth == 0) {
-                                if (is_expr_cont2(pos_ + 1)) { consume(); continue; }
-                                break;
-                            }
-                            if (depth == 1) {
-                                if (is_expr_cont2(pos_ + 1)) { depth = 0; consume(); continue; }
-                                parse_greater_than_in_template_list(false);
-                                break;
-                            }
-                            depth -= 2;
-                        } else if (check(TokenKind::Comma) && depth == 0) {
-                            break;
-                        }
-                        consume();
-                    }
-                    template_param_has_default.push_back(false);
-                    TypeSpec dummy{};
-                    dummy.array_size = -1;
-                    dummy.inner_rank = -1;
-                    template_param_default_types.push_back(dummy);
-                    template_param_default_values.push_back(0);
-                    template_param_default_exprs.push_back(nullptr);
+                    skip_template_param_default_expr(*this, false);
+                    push_nttp_no_default();
                 } else {
-                    template_param_has_default.push_back(false);
-                    TypeSpec dummy{};
-                    dummy.array_size = -1;
-                    dummy.inner_rank = -1;
-                    template_param_default_types.push_back(dummy);
-                    template_param_default_values.push_back(0);
-                    template_param_default_exprs.push_back(nullptr);
+                    push_nttp_no_default();
                 }
             } else {
                 throw std::runtime_error("expected template parameter name");
