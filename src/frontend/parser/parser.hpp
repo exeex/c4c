@@ -300,6 +300,9 @@ class Parser {
       const Node* primary_tpl) const;
   void register_template_struct_primary(const std::string& name, Node* node);
   void register_template_struct_specialization(const char* primary_name, Node* node);
+  bool parse_next_template_argument(std::vector<TemplateArgParseResult>* out_args,
+                                    const Node* primary_tpl, int arg_idx,
+                                    bool* out_has_more);
   bool try_parse_template_type_arg(TemplateArgParseResult* out_arg);
   bool try_parse_template_non_type_arg(TemplateArgParseResult* out_arg);
   bool capture_template_arg_expr(int expr_start, TemplateArgParseResult* out_arg);

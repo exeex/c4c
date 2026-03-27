@@ -1085,6 +1085,29 @@ bool Parser::is_template_scope_type_param(const std::string& name) const {
     return false;
 }
 
+bool Parser::parse_next_template_argument(std::vector<TemplateArgParseResult>* out_args,
+                                          const Node* primary_tpl, int arg_idx,
+                                          bool* out_has_more) {
+    if (!out_args || !out_has_more) return false;
+
+    TemplateArgParseResult arg;
+    bool ok = false;
+    // Normalized disambiguation order (Clang ParseTemplateArgument style):
+    //   1. try type-id
+    //   2. try non-type expression
+    // The primary_tpl hint (expect_value) is used only to prefer
+    // non-type for tokens that are unambiguously value-like, avoiding
+    // a redundant (and exception-throwing) type parse attempt.
+    if (!is_clearly_value_template_arg(primary_tpl, arg_idx))
+        ok = try_parse_template_type_arg(&arg);
+    if (!ok) ok = try_parse_template_non_type_arg(&arg);
+    if (!ok) return false;
+
+    out_args->push_back(arg);
+    *out_has_more = match(TokenKind::Comma);
+    return true;
+}
+
 bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
     if (!out_arg) return false;
     int saved_pos = pos_;
@@ -1233,21 +1256,11 @@ bool Parser::parse_template_argument_list(std::vector<TemplateArgParseResult>* o
     consume();  // <
     int arg_idx = 0;
     while (!at_end() && !check_template_close()) {
-        TemplateArgParseResult arg;
-        bool ok = false;
-        // Normalized disambiguation order (Clang ParseTemplateArgument style):
-        //   1. try type-id
-        //   2. try non-type expression
-        // The primary_tpl hint (expect_value) is used only to prefer
-        // non-type for tokens that are unambiguously value-like, avoiding
-        // a redundant (and exception-throwing) type parse attempt.
-        if (!is_clearly_value_template_arg(primary_tpl, arg_idx))
-            ok = try_parse_template_type_arg(&arg);
-        if (!ok) ok = try_parse_template_non_type_arg(&arg);
-        if (!ok) return false;
-        out_args->push_back(arg);
+        bool has_more = false;
+        if (!parse_next_template_argument(out_args, primary_tpl, arg_idx, &has_more))
+            return false;
         ++arg_idx;
-        if (!match(TokenKind::Comma)) break;
+        if (!has_more) break;
     }
     return match_template_close();
 }

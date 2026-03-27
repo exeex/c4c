@@ -6,10 +6,54 @@
 
 ## Active Item
 
-- Step 7: Keep Refactor Risk Contained
+- Step 3: Compress Template Argument Parsing
 
 ## Current Slice
 
+- Completed: extracted the per-argument disambiguation and comma-progression
+  step from `parse_template_argument_list()` into
+  `parse_next_template_argument(...)` so the outer loop now reads as a
+  `<...>` coordinator without changing the existing type-vs-non-type
+  acceptance order
+- New helper path:
+  - `parse_next_template_argument(...)`
+- Added parse-only coverage:
+  - `template_argument_loop_staging_parse`
+- Baseline recorded:
+  - `test_before.log`: 2190 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
+- Validation completed:
+  - focused template-argument regressions passed:
+    - `template_argument_loop_staging_parse`
+    - `template_alias_nttp_expr_parse`
+    - `template_typedef_nttp_variants_parse`
+    - `template_typename_typed_nttp_parse`
+  - focused known blocker unchanged:
+    - `eastl_probe_pack_expansion_template_arg_parse`
+  - full clean rebuild `test_after.log` remained monotonic:
+    - `test_before.log`: 2190 total, 7 failed
+    - `test_after.log`: 2191 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Active target: Step 3 remains active after the per-argument loop extraction;
+  the next slice should isolate the remaining expression-capture vs
+  template-close fallback inside `try_parse_template_non_type_arg()` without
+  changing accepted ambiguous cases
+- This iteration's exact target: completed the first bounded Step 3 helper
+  extraction around the template-argument loop skeleton and verified it against
+  nearby parser coverage plus the full suite
+- Next intended slice: add a focused parse-only case for an expression-style
+  non-type template argument near a template close, then extract the remaining
+  expression-capture fallback from `try_parse_template_non_type_arg()` into one
+  helper
 - Completed: refreshed the Step 5 baseline and then extracted the remaining
   post-`RParen` parenthesized-pointer suffix/finalization flow from
   `parse_parenthesized_pointer_declarator()` into
