@@ -10,29 +10,31 @@
 
 ## Current Slice
 
-- Completed: extracted the next parenthesized function-pointer coordinator
-  stage from `parse_declarator()` without changing precedence
+- Completed: extracted the parenthesized function-pointer suffix coordinator
+  step from `parse_declarator()` without changing precedence or
+  grouped/parenthesized parsing order
 - New helper path:
-  - `parse_declarator_parameter_list(...)`
-  - `store_declarator_function_pointer_params(...)`
+  - `parse_parenthesized_function_pointer_suffix(...)`
 - Reused the helper path in:
-  - parenthesized function-pointer declarator parameter parsing
+  - parenthesized function-pointer declarator suffix parsing
   - nested function-pointer return-parameter storage
   - non-nested function-pointer parameter storage
 - Added parse-only coverage:
-  - `declarator_parenthesized_fn_ptr_staging_parse`
+  - `declarator_member_fn_ptr_suffix_staging_parse`
 - Validation completed:
   - focused parser regressions passed:
+    - `declarator_member_fn_ptr_suffix_staging_parse`
     - `declarator_parenthesized_fn_ptr_staging_parse`
     - `declarator_pointer_qualifier_staging_parse`
-    - `declarator_array_suffix_staging_parse`
+    - `global_qualified_member_pointer_template_owner_parse`
     - `qualified_member_function_pointer_template_owner_parse`
     - `qualified_member_pointer_template_owner_parse`
     - `variadic_param_pack_declarator_parse`
     - `eastl_slice6_template_defaults_and_refqual_cpp`
-  - full clean rebuild `test_fail_after.log` remained monotonic:
-    - `test_fail_before.log`: 2162 total, 7 failed
-    - `test_fail_after.log`: 2163 total, 7 failed
+  - full clean rebuild `test_after.log` remained monotonic:
+    - `test_before.log`: 2163 total, 7 failed
+    - `test_after.log`: 2164 total, 7 failed
+    - failing identities unchanged
     - regression guard: passed (`+1` passed, `0` new failures)
 
 ## Completed
@@ -249,9 +251,9 @@
 
 ## Next
 
-- Continue Step 5 by extracting the next smallest function-suffix coordinator
-  step from `parse_declarator()` without changing declarator precedence or
-  grouped/parenthesized parsing order
+- Continue Step 5 with the next smallest declarator suffix extraction from
+  `parse_declarator()`, preferably around grouped declarator lookahead or
+  another suffix-only helper that does not change parsing order
 
 ## Blockers
 
@@ -259,6 +261,10 @@
   - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
   - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
   - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+  - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+  - `cpp_positive_sema_template_arg_deduction_cpp`
+  - `cpp_positive_sema_template_mixed_params_cpp`
+  - `cpp_positive_sema_template_type_subst_cpp`
 - Clean rebuilds also currently expose pre-existing runtime failures that are
   reproducible on detached `HEAD` without this patch:
   - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`

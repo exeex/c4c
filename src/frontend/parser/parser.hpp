@@ -312,6 +312,12 @@ class Parser {
   bool parse_qualified_declarator_name(std::string* out_name);
   void parse_declarator_parameter_list(std::vector<Node*>* out_params,
                                        bool* out_variadic);
+  void parse_parenthesized_function_pointer_suffix(
+      TypeSpec& ts, bool is_nested_fn_ptr,
+      Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
+      bool* out_fn_ptr_variadic,
+      Node*** out_ret_fn_ptr_params, int* out_n_ret_fn_ptr_params,
+      bool* out_ret_fn_ptr_variadic);
   void store_declarator_function_pointer_params(
       Node*** out_params, int* out_n_params, bool* out_variadic,
       const std::vector<Node*>& params, bool variadic);

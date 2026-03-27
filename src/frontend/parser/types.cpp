@@ -1616,6 +1616,37 @@ void Parser::parse_declarator_parameter_list(
     expect(TokenKind::RParen);
 }
 
+void Parser::parse_parenthesized_function_pointer_suffix(
+    TypeSpec& ts, bool is_nested_fn_ptr,
+    Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
+    bool* out_fn_ptr_variadic,
+    Node*** out_ret_fn_ptr_params, int* out_n_ret_fn_ptr_params,
+    bool* out_ret_fn_ptr_variadic) {
+    if (!check(TokenKind::LParen)) return;
+
+    std::vector<Node*> fn_ptr_params;
+    bool fn_ptr_variadic = false;
+    parse_declarator_parameter_list(&fn_ptr_params, &fn_ptr_variadic);
+
+    // C++ pointer-to-member-function may have cv-qualifiers after params:
+    // R (T::*pm)() const  or  R (T::*pm)() volatile
+    while (is_qualifier(cur().kind)) consume();
+    ts.is_fn_ptr = true;  // confirmed function pointer: (*name)(params)
+
+    if (is_nested_fn_ptr) {
+        // For nested fn_ptr: inner params already set on out_fn_ptr_params;
+        // the outer params here are the RETURN type's fn_ptr params.
+        store_declarator_function_pointer_params(
+            out_ret_fn_ptr_params, out_n_ret_fn_ptr_params,
+            out_ret_fn_ptr_variadic, fn_ptr_params, fn_ptr_variadic);
+        return;
+    }
+
+    store_declarator_function_pointer_params(
+        out_fn_ptr_params, out_n_fn_ptr_params,
+        out_fn_ptr_variadic, fn_ptr_params, fn_ptr_variadic);
+}
+
 void Parser::store_declarator_function_pointer_params(
     Node*** out_params, int* out_n_params, bool* out_variadic,
     const std::vector<Node*>& params, bool variadic) {
@@ -3545,8 +3576,6 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     if (paren_star_peek()) {
         used_paren_ptr_declarator = true;
         bool is_nested_fn_ptr = false;
-        std::vector<Node*> fn_ptr_params;
-        bool fn_ptr_variadic = false;
         // function pointer: (*name)(...) or block pointer: (^name)(...) — record name, skip params
         // Also handles C++ pointer-to-member-function: (T::*name)(...)
         consume();  // consume (
@@ -3620,25 +3649,11 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
                              out_fn_ptr_variadic);
         }
         expect(TokenKind::RParen);
-        // Parse the pointed-to function's parameter list.
-        if (check(TokenKind::LParen)) {
-            parse_declarator_parameter_list(&fn_ptr_params, &fn_ptr_variadic);
-            // C++ pointer-to-member-function may have cv-qualifiers after params:
-            // R (T::*pm)() const  or  R (T::*pm)() volatile
-            while (is_qualifier(cur().kind)) consume();
-            ts.is_fn_ptr = true;  // confirmed function pointer: (*name)(params)
-            if (is_nested_fn_ptr) {
-                // For nested fn_ptr: inner params already set on out_fn_ptr_params;
-                // the outer params here are the RETURN type's fn_ptr params.
-                store_declarator_function_pointer_params(
-                    out_ret_fn_ptr_params, out_n_ret_fn_ptr_params,
-                    out_ret_fn_ptr_variadic, fn_ptr_params, fn_ptr_variadic);
-            } else {
-                store_declarator_function_pointer_params(
-                    out_fn_ptr_params, out_n_fn_ptr_params,
-                    out_fn_ptr_variadic, fn_ptr_params, fn_ptr_variadic);
-            }
-        }
+        parse_parenthesized_function_pointer_suffix(
+            ts, is_nested_fn_ptr,
+            out_fn_ptr_params, out_n_fn_ptr_params, out_fn_ptr_variadic,
+            out_ret_fn_ptr_params, out_n_ret_fn_ptr_params,
+            out_ret_fn_ptr_variadic);
         // Array suffix after function pointer: (*p)[N] / (*p)[N][M]
         while (check(TokenKind::LBracket)) {
             decl_dims.push_back(parse_one_declarator_array_dim(ts));
