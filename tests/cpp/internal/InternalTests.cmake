@@ -107,6 +107,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     record_member_dispatch_parse
     record_member_recovery_parse
     record_specialization_setup_parse
+    record_body_finalization_parse
 )
 
 list(APPEND CPP_POSITIVE_FRONTEND_STEMS

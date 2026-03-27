@@ -4976,6 +4976,82 @@ void Parser::begin_record_body_context(const char* tag,
     }
 }
 
+void Parser::apply_record_trailing_type_attributes(Node* sd) {
+    if (!sd || !check(TokenKind::KwAttribute))
+        return;
+
+    int save = pos_;
+    TypeSpec trailing_attr{};
+    parse_attributes(&trailing_attr);
+    if (trailing_attr.is_packed && sd->pack_align == 0)
+        sd->pack_align = 1;
+    if (trailing_attr.align_bytes > 0 && sd->struct_align == 0)
+        sd->struct_align = trailing_attr.align_bytes;
+    // Restore position so the caller can re-parse attributes for the declaration.
+    pos_ = save;
+}
+
+void Parser::store_record_body_members(
+    Node* sd,
+    const std::vector<Node*>& fields,
+    const std::vector<Node*>& methods,
+    const std::vector<const char*>& member_typedef_names,
+    const std::vector<TypeSpec>& member_typedef_types) {
+    if (!sd)
+        return;
+
+    sd->n_fields = static_cast<int>(fields.size());
+    if (sd->n_fields > 0) {
+        sd->fields = arena_.alloc_array<Node*>(sd->n_fields);
+        for (int i = 0; i < sd->n_fields; ++i)
+            sd->fields[i] = fields[i];
+    }
+
+    sd->n_member_typedefs = static_cast<int>(member_typedef_names.size());
+    if (sd->n_member_typedefs > 0) {
+        sd->member_typedef_names =
+            arena_.alloc_array<const char*>(sd->n_member_typedefs);
+        sd->member_typedef_types =
+            arena_.alloc_array<TypeSpec>(sd->n_member_typedefs);
+        for (int i = 0; i < sd->n_member_typedefs; ++i) {
+            sd->member_typedef_names[i] = member_typedef_names[i];
+            sd->member_typedef_types[i] = member_typedef_types[i];
+        }
+    }
+
+    sd->n_children = static_cast<int>(methods.size());
+    if (sd->n_children > 0) {
+        sd->children = arena_.alloc_array<Node*>(sd->n_children);
+        for (int i = 0; i < sd->n_children; ++i)
+            sd->children[i] = methods[i];
+    }
+}
+
+void Parser::finalize_record_definition(Node* sd,
+                                        bool is_union,
+                                        const char* source_tag) {
+    if (!sd || !(source_tag && source_tag[0]))
+        return;
+
+    const std::string canonical =
+        canonical_name_in_context(current_namespace_context_id(), source_tag);
+    sd->name = arena_.strdup(canonical.c_str());
+    apply_decl_namespace(sd, current_namespace_context_id(), source_tag);
+    struct_tag_def_map_[source_tag] = sd;
+    struct_tag_def_map_[sd->name] = sd;
+
+    if (!is_cpp_mode() || !(sd->name && sd->name[0]))
+        return;
+
+    typedefs_.insert(sd->name);
+    TypeSpec injected_ts{};
+    injected_ts.array_size = -1;
+    injected_ts.array_rank = 0;
+    injected_ts.base = is_union ? TB_UNION : TB_STRUCT;
+    injected_ts.tag = sd->name;
+    typedef_types_[sd->name] = injected_ts;
+}
+
 Node* Parser::parse_struct_or_union(bool is_union) {
     int ln = cur().line;
     // Parse attributes before tag name — capture packed attribute.
@@ -5267,62 +5343,10 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     expect(TokenKind::RBrace);
     current_struct_tag_ = saved_struct_tag;
 
-    // Check for trailing __attribute__((packed)) after closing brace.
-    // Peek at trailing attributes for packed/aligned on the struct type.
-    // We must restore position — the caller re-parses for the declaration.
-    if (check(TokenKind::KwAttribute)) {
-        int save = pos_;
-        TypeSpec trailing_attr{};
-        parse_attributes(&trailing_attr);
-        if (trailing_attr.is_packed && sd->pack_align == 0) {
-            sd->pack_align = 1;
-        }
-        if (trailing_attr.align_bytes > 0 && sd->struct_align == 0) {
-            sd->struct_align = trailing_attr.align_bytes;
-        }
-        // Restore position so the caller can re-parse attributes for the declaration.
-        pos_ = save;
-    }
-
-    // Store fields in arena
-    sd->n_fields = (int)fields.size();
-    if (sd->n_fields > 0) {
-        sd->fields = arena_.alloc_array<Node*>(sd->n_fields);
-        for (int i = 0; i < sd->n_fields; ++i) sd->fields[i] = fields[i];
-    }
-    sd->n_member_typedefs = static_cast<int>(member_typedef_names.size());
-    if (sd->n_member_typedefs > 0) {
-        sd->member_typedef_names = arena_.alloc_array<const char*>(sd->n_member_typedefs);
-        sd->member_typedef_types = arena_.alloc_array<TypeSpec>(sd->n_member_typedefs);
-        for (int i = 0; i < sd->n_member_typedefs; ++i) {
-            sd->member_typedef_names[i] = member_typedef_names[i];
-            sd->member_typedef_types[i] = member_typedef_types[i];
-        }
-    }
-    sd->n_children = (int)methods.size();
-    if (sd->n_children > 0) {
-        sd->children = arena_.alloc_array<Node*>(sd->n_children);
-        for (int i = 0; i < sd->n_children; ++i) sd->children[i] = methods[i];
-    }
-
-    // Record concrete struct/union definition for parse-time offsetof evaluation.
-    if (source_tag && source_tag[0]) {
-        const std::string canonical =
-            canonical_name_in_context(current_namespace_context_id(), source_tag);
-        sd->name = arena_.strdup(canonical.c_str());
-        apply_decl_namespace(sd, current_namespace_context_id(), source_tag);
-        struct_tag_def_map_[source_tag] = sd;
-        struct_tag_def_map_[sd->name] = sd;
-    }
-    if (is_cpp_mode() && sd->name && sd->name[0]) {
-        typedefs_.insert(sd->name);
-        TypeSpec injected_ts{};
-        injected_ts.array_size = -1;
-        injected_ts.array_rank = 0;
-        injected_ts.base = is_union ? TB_UNION : TB_STRUCT;
-        injected_ts.tag = sd->name;
-        typedef_types_[sd->name] = injected_ts;
-    }
+    apply_record_trailing_type_attributes(sd);
+    store_record_body_members(sd, fields, methods, member_typedef_names,
+                              member_typedef_types);
+    finalize_record_definition(sd, is_union, source_tag);
     struct_defs_.push_back(sd);
     return sd;
 }

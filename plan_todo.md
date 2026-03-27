@@ -10,6 +10,42 @@
 
 ## Current Slice
 
+- Completed: extracted the post-body finalization path from
+  `parse_struct_or_union()` into focused helpers without changing trailing
+  attribute probing, field/method/member-typedef storage, namespace
+  qualification, or injected self-type registration
+- New helper paths:
+  - `apply_record_trailing_type_attributes(...)`
+  - `store_record_body_members(...)`
+  - `finalize_record_definition(...)`
+- Added parse-only coverage:
+  - `record_body_finalization_parse`
+- Validation completed:
+  - focused parser/member regressions passed:
+    - `record_body_finalization_parse`
+    - `record_specialization_setup_parse`
+    - `record_member_dispatch_parse`
+    - `record_member_special_member_parse`
+    - `record_member_recovery_parse`
+    - `record_member_method_field_parse`
+    - `record_member_typedef_using_parse`
+    - `record_member_enum_parse`
+    - `record_member_prelude_parse`
+    - `template_struct_specialization_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2175 total, 7 failed
+    - `test_fail_after.log`: 2176 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Next intended slice: continue Step 6 by extracting another remaining
+  `parse_struct_or_union()` setup/teardown concern, likely attribute/tag/base
+  setup before the body so the outer function keeps collapsing toward a thin
+  coordinator around pre-body setup, member dispatch, and finalization
+- Active target: Step 6 continues after record finalization extraction; the
+  next slice should pull another pre-body coordination branch out of
+  `parse_struct_or_union()` without changing parsing order or specialization
+  behavior
 - Completed: extracted the record-body injected self-type /
   template-specialization setup from `parse_struct_or_union()` into a focused
   helper without changing constructor/destructor recognition, scoped typedef

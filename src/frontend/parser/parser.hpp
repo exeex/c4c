@@ -403,6 +403,16 @@ class Parser {
                                  const char* template_origin_name,
                                  std::string* saved_struct_tag,
                                  std::string* struct_source_name);
+  void apply_record_trailing_type_attributes(Node* sd);
+  void store_record_body_members(
+      Node* sd,
+      const std::vector<Node*>& fields,
+      const std::vector<Node*>& methods,
+      const std::vector<const char*>& member_typedef_names,
+      const std::vector<TypeSpec>& member_typedef_types);
+  void finalize_record_definition(Node* sd,
+                                  bool is_union,
+                                  const char* source_tag);
   Node* parse_struct_or_union(bool is_union);
 
   // Parse enum body { variants... } or just a tag reference.
