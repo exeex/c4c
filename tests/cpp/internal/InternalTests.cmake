@@ -537,6 +537,33 @@ set_tests_properties(cpp_hir_record_field_array_layout PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_builtin_layout_query_sizeof_type
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/builtin_layout_queries_hir.cpp"
+)
+set_tests_properties(cpp_hir_builtin_layout_query_sizeof_type PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "return 32"
+)
+
+add_test(
+  NAME cpp_hir_builtin_layout_query_alignof_type
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/builtin_layout_queries_hir.cpp"
+)
+set_tests_properties(cpp_hir_builtin_layout_query_alignof_type PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "fn alignof_querybox\\(\\) -> int"
+)
+
+add_test(
+  NAME cpp_hir_builtin_layout_query_alignof_expr
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/builtin_layout_queries_hir.cpp"
+)
+set_tests_properties(cpp_hir_builtin_layout_query_alignof_expr PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "decl box: struct QueryBox"
+)
+
+add_test(
   NAME cpp_hir_spec_key_identity
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/specialization_identity.cpp"
 )

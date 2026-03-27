@@ -1,5 +1,30 @@
 # `ast_to_hir.cpp` Compression Refactor Plan
 
+Status: Complete
+Completed: 2026-03-27
+
+## Completion Summary
+
+- Completed the planned extraction families for:
+  - initial program orchestration
+  - pending template-struct resolution
+  - function/method lowering setup
+  - embedded parser isolation
+  - layout helper isolation
+- Finished the final Step 5 slice by isolating the remaining builtin
+  `sizeof`/`alignof` lowering helpers and adding focused HIR coverage for that
+  path.
+- Final regression guard for the closing slice passed:
+  - `test_fail_before.log`: 2230 total, 7 failed
+  - `test_fail_after.log`: 2233 total, 7 failed
+  - delta: `+3` passed, `0` new failures
+
+## Leftover Notes
+
+- No remaining work from this runbook was left active.
+- The standing seven unrelated suite failures remained unchanged and were not
+  expanded by this refactor series.
+
 Target file: `src/frontend/hir/ast_to_hir.cpp`  
 Current size: 9518 lines  
 Primary goal: compress the file by extracting repeated lowering/instantiation/resolution mechanics into helpers without changing lowering order or semantic behavior.

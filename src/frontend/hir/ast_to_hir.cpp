@@ -7722,6 +7722,88 @@ class Lowerer {
     return append_expr(n, c, fn_ts);
   }
 
+  TypeSpec builtin_query_result_type() const {
+    TypeSpec ts{};
+    ts.base = TB_ULONG;
+    return ts;
+  }
+
+  TypeSpec resolve_builtin_query_type(FunctionCtx* ctx, TypeSpec target) const {
+    if (!ctx || ctx->tpl_bindings.empty() ||
+        target.base != TB_TYPEDEF || !target.tag) {
+      return target;
+    }
+    auto it = ctx->tpl_bindings.find(target.tag);
+    if (it == ctx->tpl_bindings.end()) return target;
+    const TypeSpec& concrete = it->second;
+    target.base = concrete.base;
+    target.tag = concrete.tag;
+    if (concrete.ptr_level > 0) target.ptr_level += concrete.ptr_level;
+    return target;
+  }
+
+  ExprId lower_builtin_sizeof_type(FunctionCtx* ctx, const Node* n) {
+    const LayoutQueries queries(*module_);
+    const TypeSpec sizeof_target = resolve_builtin_query_type(ctx, n->type);
+    const TypeSpec result_ts = builtin_query_result_type();
+    if (ctx && sizeof_target.array_rank > 0 && n->type.array_size_expr &&
+        (sizeof_target.array_size <= 0 || sizeof_target.array_dims[0] <= 0)) {
+      TypeSpec elem_ts = sizeof_target;
+      elem_ts.array_rank--;
+      if (elem_ts.array_rank > 0) {
+        for (int i = 0; i < elem_ts.array_rank; ++i) {
+          elem_ts.array_dims[i] = elem_ts.array_dims[i + 1];
+        }
+      }
+      elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
+
+      const ExprId count_id = lower_expr(ctx, n->type.array_size_expr);
+      const ExprId elem_size_id = append_expr(
+          n, IntLiteral{static_cast<long long>(queries.type_size_bytes(elem_ts)), false},
+          result_ts);
+      BinaryExpr mul{};
+      mul.op = BinaryOp::Mul;
+      mul.lhs = count_id;
+      mul.rhs = elem_size_id;
+      return append_expr(n, mul, result_ts);
+    }
+
+    const int size = queries.type_size_bytes(sizeof_target);
+    return append_expr(n, IntLiteral{static_cast<long long>(size), false}, result_ts);
+  }
+
+  ExprId lower_builtin_alignof_type(FunctionCtx* ctx, const Node* n) {
+    const LayoutQueries queries(*module_);
+    const TypeSpec alignof_target = resolve_builtin_query_type(ctx, n->type);
+    const int align = queries.type_align_bytes(alignof_target);
+    return append_expr(
+        n, IntLiteral{static_cast<long long>(align), false}, builtin_query_result_type());
+  }
+
+  int builtin_alignof_expr_bytes(FunctionCtx* ctx, const Node* expr) {
+    const LayoutQueries queries(*module_);
+    const TypeSpec expr_ts = infer_generic_ctrl_type(ctx, expr);
+    int align = 0;
+    if (expr && expr->kind == NK_VAR && expr->name) {
+      const std::string fn_name(expr->name);
+      auto fit = module_->fn_index.find(fn_name);
+      if (fit != module_->fn_index.end() &&
+          fit->second.value < module_->functions.size()) {
+        int fn_align = module_->functions[fit->second.value].attrs.align_bytes;
+        if (fn_align > 0) align = fn_align;
+      }
+    }
+    if (align != 0) return align;
+    if (expr_ts.align_bytes > 0) return expr_ts.align_bytes;
+    return queries.type_align_bytes(expr_ts);
+  }
+
+  ExprId lower_builtin_alignof_expr(FunctionCtx* ctx, const Node* n) {
+    const int align = builtin_alignof_expr_bytes(ctx, n->left);
+    return append_expr(
+        n, IntLiteral{static_cast<long long>(align), false}, builtin_query_result_type());
+  }
+
   ExprId lower_expr(FunctionCtx* ctx, const Node* n) {
     if (!n) {
       TypeSpec ts{};
@@ -8433,89 +8515,13 @@ class Lowerer {
         return append_expr(n, lit, ts);
       }
       case NK_SIZEOF_TYPE: {
-        const LayoutQueries queries(*module_);
-        // Substitute template type parameters in sizeof(T).
-        TypeSpec sizeof_target = n->type;
-        if (ctx && !ctx->tpl_bindings.empty() &&
-            sizeof_target.base == TB_TYPEDEF && sizeof_target.tag) {
-          auto it = ctx->tpl_bindings.find(sizeof_target.tag);
-          if (it != ctx->tpl_bindings.end()) {
-            const TypeSpec& concrete = it->second;
-            sizeof_target.base = concrete.base;
-            sizeof_target.tag = concrete.tag;
-            if (concrete.ptr_level > 0)
-              sizeof_target.ptr_level += concrete.ptr_level;
-          }
-        }
-        if (ctx && sizeof_target.array_rank > 0 && n->type.array_size_expr &&
-            (sizeof_target.array_size <= 0 || sizeof_target.array_dims[0] <= 0)) {
-          TypeSpec elem_ts = sizeof_target;
-          elem_ts.array_rank--;
-          if (elem_ts.array_rank > 0) {
-            for (int i = 0; i < elem_ts.array_rank; ++i) {
-              elem_ts.array_dims[i] = elem_ts.array_dims[i + 1];
-            }
-          }
-          elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
-
-          TypeSpec ts{};
-          ts.base = TB_ULONG;
-          const ExprId count_id = lower_expr(ctx, n->type.array_size_expr);
-          const ExprId elem_sz_id = append_expr(
-              n, IntLiteral{static_cast<long long>(queries.type_size_bytes(elem_ts)), false}, ts);
-          BinaryExpr mul{};
-          mul.op = BinaryOp::Mul;
-          mul.lhs = count_id;
-          mul.rhs = elem_sz_id;
-          return append_expr(n, mul, ts);
-        }
-        // For concrete non-VLA types, lower sizeof(type) directly to a constant.
-        const int size = queries.type_size_bytes(sizeof_target);
-        TypeSpec ts{}; ts.base = TB_ULONG;
-        return append_expr(n, IntLiteral{static_cast<long long>(size), false}, ts);
+        return lower_builtin_sizeof_type(ctx, n);
       }
       case NK_ALIGNOF_TYPE: {
-        const LayoutQueries queries(*module_);
-        // Substitute template type parameters in alignof(T).
-        TypeSpec alignof_target = n->type;
-        if (ctx && !ctx->tpl_bindings.empty() &&
-            alignof_target.base == TB_TYPEDEF && alignof_target.tag) {
-          auto it = ctx->tpl_bindings.find(alignof_target.tag);
-          if (it != ctx->tpl_bindings.end()) {
-            const TypeSpec& concrete = it->second;
-            alignof_target.base = concrete.base;
-            alignof_target.tag = concrete.tag;
-            if (concrete.ptr_level > 0)
-              alignof_target.ptr_level += concrete.ptr_level;
-          }
-        }
-        const int align = queries.type_align_bytes(alignof_target);
-        TypeSpec ts{}; ts.base = TB_ULONG;
-        return append_expr(n, IntLiteral{static_cast<long long>(align), false}, ts);
+        return lower_builtin_alignof_type(ctx, n);
       }
       case NK_ALIGNOF_EXPR: {
-        const LayoutQueries queries(*module_);
-        // __alignof__(expr) — alignment of the expression's type.
-        TypeSpec expr_ts = infer_generic_ctrl_type(ctx, n->left);
-        int align = 0;
-        // For function identifiers, check the function's aligned attribute.
-        if (n->left && n->left->kind == NK_VAR && n->left->name) {
-          const std::string fn_name(n->left->name);
-          auto fit = module_->fn_index.find(fn_name);
-          if (fit != module_->fn_index.end() &&
-              fit->second.value < module_->functions.size()) {
-            int fa = module_->functions[fit->second.value].attrs.align_bytes;
-            if (fa > 0) align = fa;
-          }
-        }
-        if (align == 0) {
-          if (expr_ts.align_bytes > 0)
-            align = expr_ts.align_bytes;
-          else
-            align = queries.type_align_bytes(expr_ts);
-        }
-        TypeSpec ts{}; ts.base = TB_ULONG;
-        return append_expr(n, IntLiteral{static_cast<long long>(align), false}, ts);
+        return lower_builtin_alignof_expr(ctx, n);
       }
       case NK_COMPOUND_LIT: {
         // A compound literal (T){ ... } is an lvalue with automatic storage
