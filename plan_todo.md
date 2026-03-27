@@ -6,10 +6,33 @@
 
 ## Active Item
 
-- Step 2: Compress Pending Template Struct Resolution
+- Step 3: Compress Function/Method Lowering Setup
 
 ## Current Slice
 
+- Completed assessment: `resolve_pending_tpl_struct_if_needed(...)` is already a
+  thin wrapper over the Step 2 helpers, so there was no remaining substantial
+  extraction slice there without dropping into cosmetic churn
+- Completed: extracted shared Step 3 helper paths for callable signature setup:
+  - `substitute_signature_template_type(...)`
+  - `resolve_signature_template_type_if_needed(...)`
+  - `prepare_callable_return_type(...)`
+  - `append_explicit_callable_param(...)`
+- Shared setup now covers:
+  - free-function return-type preparation in `lower_function(...)`
+  - struct-method return-type preparation in `lower_struct_method(...)`
+  - explicit parameter emission in both paths
+- Deliberately left in place for later Step 3 slices:
+  - parameter-pack expansion ownership in `lower_function(...)`
+  - implicit `this` injection and method-only body prelude work in
+    `lower_struct_method(...)`
+- Added focused HIR coverage for this slice:
+  - `cpp_hir_template_function_signature_binding` asserts
+    `make_pair<int>` lowers as
+    `fn make_pair_i(a: int, b: int) -> struct Pair_T_int`
+  - `cpp_hir_template_method_signature_binding` asserts
+    `Transformer<int>::make_scaled_pair(int)` lowers as
+    `fn Transformer_T_int__make_scaled_pair(this: struct Transformer_T_int*, x: int) -> struct Pair_T_int`
 - Completed: extracted shared helper
   `seed_and_resolve_pending_template_type_if_needed(...)` so repeated
   template-owner / member-typedef dependent declaration paths now share one
@@ -125,16 +148,32 @@
     - `test_fail_after.log`: 2216 total, 7 failed
     - failing identities unchanged
     - regression guard: passed (`+1` passed, `0` new failures)
+  - targeted HIR regressions passed:
+    - `cpp_hir_template_function_signature_binding`
+    - `cpp_hir_template_method_signature_binding`
+    - `cpp_hir_template_member_owner_decl_and_cast`
+    - `cpp_hir_template_member_owner_chain`
+    - `cpp_hir_template_member_owner_resolution`
+    - `cpp_hir_template_struct_inherited_method_binding`
+    - `cpp_hir_template_struct_field_array_extent`
+    - `cpp_hir_deferred_template_instantiation`
+    - `cpp_hir_template_struct_registry_primary_only`
+    - `cpp_hir_initial_program_seed_realization`
+    - `cpp_hir_fixpoint_convergence`
+    - `cpp_hir_template_origin`
+  - full clean rebuild remained monotonic:
+    - `test_fail_before.log`: 2216 total, 7 failed
+    - `test_fail_after.log`: 2218 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+2` passed, `0` new failures)
 
 ## Next Intended Slice
 
-- continue Step 2 by extracting the remaining repeated pending-template
-  owner/member-typedef seed-and-resolve sequences behind one helper, then
-  reassess whether any material coordinator duplication remains in
-  `resolve_pending_tpl_struct_if_needed(...)`
-- if the remaining Step 2 duplication is no longer substantial, move forward
-  to Step 3 and start sharing the repeated function/method lowering setup
-  around declaration-type substitution and signature staging
+- continue Step 3 by extracting the next shared lowering-setup helper after
+  this slice, likely around declaration-type substitution/materialization used
+  by locals or other callable setup adjacent to signature staging
+- keep pack expansion and method-only body prelude work out of scope unless
+  this shared signature-staging extraction exposes a minimal follow-up
 
 ## Blockers
 
@@ -150,6 +189,8 @@
   `instantiate_deferred_template_type(...)`, not semantic cleanup
 - the new focused HIR coverage should exercise a nested owner/member-typedef
   chain rather than only the direct `box<T>::value_type` case
-- after this slice, reevaluate whether `resolve_pending_tpl_struct_if_needed(...)`
-  still has meaningful coordinator duplication left for Step 2, or whether the
-  remaining work cleanly moves to Step 3
+- Step 2 is now compressed enough that the next meaningful work is Step 3
+  function/method signature/setup sharing rather than more pending-owner
+  helper reshuffling
+- this slice completed the shared callable return/explicit-parameter helper
+  extraction without changing pack expansion or method-only prologue behavior

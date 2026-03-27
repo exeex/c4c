@@ -3348,6 +3348,74 @@ class Lowerer {
     resolve_struct_member_typedef_if_ready(&ts);
   }
 
+  TypeSpec substitute_signature_template_type(
+      TypeSpec ts, const TypeBindings* tpl_bindings) const {
+    if (!tpl_bindings || ts.base != TB_TYPEDEF || !ts.tag) return ts;
+    auto it = tpl_bindings->find(ts.tag);
+    if (it == tpl_bindings->end()) return ts;
+    const TypeSpec& concrete = it->second;
+    const bool outer_lref = ts.is_lvalue_ref;
+    const bool outer_rref = ts.is_rvalue_ref;
+    ts = concrete;
+    ts.is_lvalue_ref = concrete.is_lvalue_ref || outer_lref;
+    ts.is_rvalue_ref =
+        !ts.is_lvalue_ref && (concrete.is_rvalue_ref || outer_rref);
+    return ts;
+  }
+
+  void resolve_signature_template_type_if_needed(
+      TypeSpec& ts,
+      const TypeBindings* tpl_bindings,
+      const NttpBindings* nttp_bindings,
+      const Node* span_node,
+      const std::string& context_name) {
+    if (!tpl_bindings || !ts.tpl_struct_origin) return;
+    NttpBindings nttp_empty;
+    seed_and_resolve_pending_template_type_if_needed(
+        ts, *tpl_bindings, nttp_bindings ? *nttp_bindings : nttp_empty,
+        span_node, PendingTemplateTypeKind::DeclarationType, context_name);
+  }
+
+  TypeSpec prepare_callable_return_type(
+      TypeSpec ret_ts,
+      const TypeBindings* tpl_bindings,
+      const NttpBindings* nttp_bindings,
+      const Node* span_node,
+      const std::string& context_name,
+      bool resolve_typedef_struct) {
+    ret_ts = substitute_signature_template_type(ret_ts, tpl_bindings);
+    resolve_signature_template_type_if_needed(
+        ret_ts, tpl_bindings, nttp_bindings, span_node, context_name);
+    if (resolve_typedef_struct) resolve_typedef_to_struct(ret_ts);
+    return ret_ts;
+  }
+
+  void append_explicit_callable_param(
+      Function& fn,
+      FunctionCtx& ctx,
+      const Node* param_node,
+      const std::string& emitted_name,
+      TypeSpec param_ts,
+      const TypeBindings* tpl_bindings,
+      const NttpBindings* nttp_bindings,
+      const std::string& context_name,
+      bool resolve_typedef_struct) {
+    param_ts = substitute_signature_template_type(param_ts, tpl_bindings);
+    resolve_signature_template_type_if_needed(
+        param_ts, tpl_bindings, nttp_bindings, param_node, context_name);
+    if (resolve_typedef_struct) resolve_typedef_to_struct(param_ts);
+
+    Param param{};
+    param.name = emitted_name;
+    param.type =
+        qtype_from(reference_storage_ts(param_ts), ValueCategory::LValue);
+    param.fn_ptr_sig = fn_ptr_sig_from_decl_node(param_node);
+    param.span = make_span(param_node);
+    ctx.params[param.name] = static_cast<uint32_t>(fn.params.size());
+    if (param.fn_ptr_sig) ctx.param_fn_ptr_sigs[param.name] = *param.fn_ptr_sig;
+    fn.params.push_back(std::move(param));
+  }
+
   void lower_function(const Node* fn_node,
                       const std::string* name_override = nullptr,
                       const TypeBindings* tpl_override = nullptr,
@@ -3365,22 +3433,9 @@ class Lowerer {
         ret_ts.is_fn_ptr = true;
         ret_ts.ptr_level = std::max(ret_ts.ptr_level, 1);
       }
-      if (tpl_override && ret_ts.base == TB_TYPEDEF && ret_ts.tag) {
-        auto it = tpl_override->find(ret_ts.tag);
-        if (it != tpl_override->end()) {
-          const TypeSpec& concrete = it->second;
-          ret_ts.base = concrete.base;
-          ret_ts.tag = concrete.tag;
-        }
-      }
-      // Resolve pending template struct types (e.g., Pair<T> → Pair_T_int).
-      if (tpl_override && ret_ts.tpl_struct_origin) {
-        NttpBindings nttp_empty;
-        seed_and_resolve_pending_template_type_if_needed(
-            ret_ts, *tpl_override, nttp_override ? *nttp_override : nttp_empty,
-            fn_node, PendingTemplateTypeKind::DeclarationType,
-            std::string("function-return:") + fn.name);
-      }
+      ret_ts = prepare_callable_return_type(
+          ret_ts, tpl_override, nttp_override, fn_node,
+          std::string("function-return:") + fn.name, false);
       fn.return_type = qtype_from(ret_ts);
     }
     // Build fn_ptr_sig for the return type when the function returns a fn_ptr.
@@ -3465,24 +3520,6 @@ class Lowerer {
       const Node* p = fn_node->params[i];
       if (!p) continue;
       const std::string param_name = p->name ? p->name : "<anon_param>";
-      auto append_param = [&](const std::string& emitted_name, TypeSpec param_ts) {
-        Param param{};
-        param.name = emitted_name;
-        if (tpl_override && param_ts.tpl_struct_origin) {
-          NttpBindings nttp_empty;
-          seed_and_resolve_pending_template_type_if_needed(
-              param_ts, *tpl_override,
-              nttp_override ? *nttp_override : nttp_empty, p,
-              PendingTemplateTypeKind::DeclarationType,
-              std::string("function-param:") + emitted_name);
-        }
-        param.type = qtype_from(reference_storage_ts(param_ts), ValueCategory::LValue);
-        param.fn_ptr_sig = fn_ptr_sig_from_decl_node(p);
-        param.span = make_span(p);
-        ctx.params[param.name] = static_cast<uint32_t>(fn.params.size());
-        if (param.fn_ptr_sig) ctx.param_fn_ptr_sigs[param.name] = *param.fn_ptr_sig;
-        fn.params.push_back(std::move(param));
-      };
 
       if (p->is_parameter_pack && tpl_override && p->type.base == TB_TYPEDEF && p->type.tag) {
         std::vector<std::pair<int, TypeSpec>> pack_types;
@@ -3502,7 +3539,9 @@ class Lowerer {
               !param_ts.is_lvalue_ref && (concrete.is_rvalue_ref || outer_rref);
           const std::string emitted_name =
               param_name + "__pack" + std::to_string(pack_index);
-          append_param(emitted_name, param_ts);
+          append_explicit_callable_param(
+              fn, ctx, p, emitted_name, param_ts, tpl_override, nttp_override,
+              std::string("function-param:") + emitted_name, false);
           ctx.pack_params[param_name].push_back(
               FunctionCtx::PackParamElem{emitted_name, param_ts,
                                          static_cast<uint32_t>(fn.params.size() - 1)});
@@ -3510,20 +3549,9 @@ class Lowerer {
         continue;
       }
 
-      TypeSpec param_ts = p->type;
-      if (tpl_override && param_ts.base == TB_TYPEDEF && param_ts.tag) {
-        auto it = tpl_override->find(param_ts.tag);
-        if (it != tpl_override->end()) {
-          const TypeSpec concrete = it->second;
-          const bool outer_lref = param_ts.is_lvalue_ref;
-          const bool outer_rref = param_ts.is_rvalue_ref;
-          param_ts = concrete;
-          param_ts.is_lvalue_ref = concrete.is_lvalue_ref || outer_lref;
-          param_ts.is_rvalue_ref =
-              !param_ts.is_lvalue_ref && (concrete.is_rvalue_ref || outer_rref);
-        }
-      }
-      append_param(param_name, param_ts);
+      append_explicit_callable_param(
+          fn, ctx, p, param_name, p->type, tpl_override, nttp_override,
+          std::string("function-param:") + param_name, false);
     }
 
     if (!fn_node->body) {
@@ -3580,23 +3608,9 @@ class Lowerer {
     fn.ns_qual = make_ns_qual(method_node);
     // Substitute template type parameters in the return type.
     {
-      TypeSpec ret_ts = method_node->type;
-      if (tpl_bindings && ret_ts.base == TB_TYPEDEF && ret_ts.tag) {
-        auto it = tpl_bindings->find(ret_ts.tag);
-        if (it != tpl_bindings->end()) {
-          ret_ts.base = it->second.base;
-          ret_ts.tag = it->second.tag;
-        }
-      }
-      // Resolve pending template struct types (e.g., Pair<T> → Pair_T_int).
-      if (tpl_bindings && ret_ts.tpl_struct_origin) {
-        NttpBindings nttp_empty;
-        seed_and_resolve_pending_template_type_if_needed(
-            ret_ts, *tpl_bindings, nttp_bindings ? *nttp_bindings : nttp_empty,
-            method_node, PendingTemplateTypeKind::DeclarationType,
-            std::string("method-return:") + mangled_name);
-      }
-      resolve_typedef_to_struct(ret_ts);
+      TypeSpec ret_ts = prepare_callable_return_type(
+          method_node->type, tpl_bindings, nttp_bindings, method_node,
+          std::string("method-return:") + mangled_name, true);
       fn.return_type = qtype_from(ret_ts);
     }
     fn.linkage = {true, false, false, false, Visibility::Default};  // internal
@@ -3630,38 +3644,10 @@ class Lowerer {
     for (int i = 0; i < method_node->n_params; ++i) {
       const Node* p = method_node->params[i];
       if (!p) continue;
-      Param param{};
-      param.name = p->name ? p->name : "<anon_param>";
-      // Substitute template type parameters in parameter types.
-      {
-        TypeSpec param_ts = p->type;
-        if (tpl_bindings && param_ts.base == TB_TYPEDEF && param_ts.tag) {
-          auto it = tpl_bindings->find(param_ts.tag);
-          if (it != tpl_bindings->end()) {
-            const TypeSpec concrete = it->second;
-            const bool outer_lref = param_ts.is_lvalue_ref;
-            const bool outer_rref = param_ts.is_rvalue_ref;
-            param_ts = concrete;
-            param_ts.is_lvalue_ref = concrete.is_lvalue_ref || outer_lref;
-            param_ts.is_rvalue_ref =
-                !param_ts.is_lvalue_ref && (concrete.is_rvalue_ref || outer_rref);
-          }
-        }
-        // Resolve pending template struct types in params.
-        if (tpl_bindings && param_ts.tpl_struct_origin) {
-          NttpBindings nttp_empty;
-          seed_and_resolve_pending_template_type_if_needed(
-              param_ts, *tpl_bindings,
-              nttp_bindings ? *nttp_bindings : nttp_empty, p,
-              PendingTemplateTypeKind::DeclarationType,
-              std::string("method-param:") + param.name);
-        }
-        resolve_typedef_to_struct(param_ts);
-        param.type = qtype_from(reference_storage_ts(param_ts), ValueCategory::LValue);
-      }
-      param.span = make_span(p);
-      ctx.params[param.name] = static_cast<uint32_t>(fn.params.size());
-      fn.params.push_back(std::move(param));
+      const std::string param_name = p->name ? p->name : "<anon_param>";
+      append_explicit_callable_param(
+          fn, ctx, p, param_name, p->type, tpl_bindings, nttp_bindings,
+          std::string("method-param:") + param_name, true);
     }
 
     // Store the struct tag so field accesses in the body can resolve via `this`.

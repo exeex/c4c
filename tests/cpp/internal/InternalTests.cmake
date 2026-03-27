@@ -411,6 +411,24 @@ set_tests_properties(cpp_hir_template_member_owner_decl_and_cast PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_function_signature_binding
+  COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_fn_struct.cpp"
+)
+set_tests_properties(cpp_hir_template_function_signature_binding PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "fn make_pair_i\\(a: int, b: int\\) -> struct Pair_T_int"
+)
+
+add_test(
+  NAME cpp_hir_template_method_signature_binding
+  COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_struct_method_tpl_return.cpp"
+)
+set_tests_properties(cpp_hir_template_method_signature_binding PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "fn Transformer_T_int__make_scaled_pair\\(this: struct Transformer_T_int\\*, x: int\\) -> struct Pair_T_int"
+)
+
+add_test(
   NAME cpp_hir_spec_key_identity
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/specialization_identity.cpp"
 )
