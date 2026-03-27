@@ -326,6 +326,7 @@ class Parser {
   void apply_declarator_pointer_token(TypeSpec& ts, TokenKind pointer_tok,
                                       bool preserve_array_base);
   bool parse_dependent_typename_specifier(std::string* out_name = nullptr);
+  bool try_parse_cpp_scoped_base_type(bool already_have_base, TypeSpec* out_ts);
   bool try_parse_qualified_base_type(TypeSpec* out_ts);
   bool parse_operator_declarator_name(std::string* out_name);
   bool parse_qualified_declarator_name(std::string* out_name);

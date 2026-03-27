@@ -10,6 +10,61 @@
 
 ## Current Slice
 
+- Completed: extracted the remaining C++ scoped/dependent base-type dispatch
+  from `parse_base_type()` into `try_parse_cpp_scoped_base_type(...)` so the
+  coordinator now funnels leading `typename` dependent types and
+  global-/namespace-qualified typedef-style names through one helper without
+  changing qualified lookup order or token consumption
+- New helper path:
+  - `try_parse_cpp_scoped_base_type(...)`
+- Added parse-only coverage:
+  - `qualified_cpp_base_type_dispatch_parse`
+- Validation completed:
+  - focused qualified/dependent-name regressions passed:
+    - `qualified_cpp_base_type_dispatch_parse`
+    - `qualified_type_start_shared_probe_parse`
+    - `qualified_type_resolution_dispatch_parse`
+    - `qualified_type_spelling_shared_parse`
+    - `qualified_dependent_typename_global_parse`
+    - `template_member_type_direct_parse`
+    - `template_member_type_inherited_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2195 total, 7 failed
+    - `test_fail_after.log`: 2196 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Active target: Step 4 remains active after the scoped/dependent dispatcher
+  extraction; the next slice should centralize one more bounded qualified-name
+  classification/helper path still split between `is_type_start()` probing and
+  `parse_base_type()` dispatch
+- This iteration's exact target: completed the bounded Step 4 extraction around
+  the remaining inline C++ scoped/dependent base-type dispatch in
+  `parse_base_type()` and verified it against nearby parser coverage plus the
+  full suite
+- Next intended slice: inspect the remaining shared qualified-name
+  classification branch between `is_type_start()` and `parse_base_type()`, then
+  extract one focused helper without broadening accepted grammar
+- Active target: Step 4 remains active; this iteration is focused on the
+  remaining C++ scoped/dependent base-type dispatch still inline in
+  `parse_base_type()`
+- This iteration's exact target: add one focused parse-only regression around
+  `parse_base_type()` consuming both leading `typename` dependent types and
+  global-qualified typedef-style names, then extract that bounded dispatch into
+  one helper without changing token consumption or typedef lookup order
+- Next intended slice: if this dispatcher extraction stays monotonic, centralize
+  one more bounded qualified-name classification helper that is still split
+  between `is_type_start()` and `parse_base_type()`
+- Baseline recorded:
+  - `test_fail_before.log`: 2195 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
 - Completed: extracted the shared qualified-type-start classification probe
   from the remaining Step 4 overlap so `is_type_start()` and
   `try_parse_qualified_base_type(...)` now reuse the same qualified-name

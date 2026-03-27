@@ -1501,6 +1501,21 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
     return true;
 }
 
+bool Parser::try_parse_cpp_scoped_base_type(bool already_have_base,
+                                            TypeSpec* out_ts) {
+    if (!out_ts || !is_cpp_mode()) return false;
+
+    if (check(TokenKind::Identifier) && cur().lexeme == "typename") {
+        std::string resolved;
+        if (!parse_dependent_typename_specifier(&resolved)) return false;
+        out_ts->tag = arena_.strdup(resolved.c_str());
+        return true;
+    }
+
+    if (already_have_base) return false;
+    return try_parse_qualified_base_type(out_ts);
+}
+
 bool Parser::try_parse_qualified_base_type(TypeSpec* out_ts) {
     if (!out_ts || !is_cpp_mode()) return false;
 
@@ -2736,23 +2751,12 @@ TypeSpec Parser::parse_base_type() {
                 [[fallthrough]];
 
             case TokenKind::Identifier:
-                // C++ 'typename' keyword: consume it and the full dependent type
-                // expression (e.g., typename Container::value_type, typename T::type)
-                if (is_cpp_mode() && cur().lexeme == "typename") {
-                    std::string resolved;
-                    if (parse_dependent_typename_specifier(&resolved)) {
-                        has_typedef = true;
-                        ts.tag = arena_.strdup(resolved.c_str());
-                        done = true;
-                    }
-                    break;
-                }
                 if (is_cpp_mode()) {
                     const bool already_have_base =
                         has_signed || has_unsigned || has_short || long_count > 0 ||
                         has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
                         has_struct || has_union || has_enum || base_set;
-                    if (!already_have_base && try_parse_qualified_base_type(&ts)) {
+                    if (try_parse_cpp_scoped_base_type(already_have_base, &ts)) {
                         has_typedef = true;
                         done = true;
                         break;
