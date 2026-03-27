@@ -10,6 +10,51 @@
 
 ## Current Slice
 
+- Completed: extracted the record-body member-dispatch setup from
+  `parse_struct_or_union()` into a focused helper without changing member
+  ordering, template-prelude scope cleanup, or C++ recovery behavior
+- New helper path:
+  - `try_parse_record_member(...)`
+- Added parse-only coverage:
+  - `record_member_dispatch_parse`
+- Validation completed:
+  - focused parser/member regressions passed:
+    - `record_member_dispatch_parse`
+    - `record_member_method_field_parse`
+    - `record_member_special_member_parse`
+    - `record_member_prelude_parse`
+    - `record_member_enum_parse`
+    - `record_member_typedef_using_parse`
+    - `record_nested_aggregate_member_parse`
+    - `access_labels_parse`
+    - `friend_access_parse`
+    - `friend_inline_operator_parse`
+    - `template_struct_specialization_parse`
+    - `constructor_basic`
+    - `ctor_init_list_basic`
+    - `destructor_member_basic`
+    - `operator_extended_member_runtime`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2172 total, 7 failed
+    - `test_fail_after.log`: 2173 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Next intended slice: continue Step 6 by extracting the remaining
+  record-body recovery path or another shared follow-up out of
+  `parse_struct_or_union()` so the outer loop reads as a thin dispatcher plus
+  recovery
+- Active target: Step 6 continues with the record-body dispatcher setup in
+  `parse_struct_or_union()`; the next slice should extract the remaining
+  per-member branch fanout into a focused helper so the main record loop reads
+  closer to a pure dispatcher
+- This iteration's exact target: add parse-only coverage for a mixed
+  record-body sequence that exercises access labels, `friend`,
+  `static_assert`, member templates, nested records, enums, special members,
+  and regular method/field parsing in one class, then extract the existing
+  member-dispatch setup from `parse_struct_or_union()` into a helper without
+  changing member ordering, template-prelude scope cleanup, or C++ recovery
+  behavior
 - Active target: Step 6 continues after the regular method/field extraction;
   the next slice should pull another remaining record-body branch or shared
   method/body finalization path out of `parse_struct_or_union()` so the main

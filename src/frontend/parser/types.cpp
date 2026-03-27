@@ -4863,6 +4863,57 @@ bool Parser::try_parse_record_method_or_field_member(
     return true;
 }
 
+bool Parser::try_parse_record_member(
+    const std::string& struct_source_name,
+    std::vector<Node*>* fields,
+    std::vector<Node*>* methods,
+    std::vector<const char*>* member_typedef_names,
+    std::vector<TypeSpec>* member_typedef_types,
+    const std::function<void(const char*)>& check_dup_field) {
+    skip_attributes();
+    if (check(TokenKind::RBrace)) return false;
+
+    if (try_parse_record_access_label()) return true;
+    if (try_skip_record_friend_member()) return true;
+    if (try_skip_record_static_assert_member()) return true;
+
+    struct TemplateParamGuard {
+        std::set<std::string>& typedefs;
+        std::unordered_map<std::string, TypeSpec>& typedef_types;
+        std::vector<TemplateScopeFrame>& scope_stack;
+        std::vector<std::string> names;
+        bool pushed_scope = false;
+        ~TemplateParamGuard() {
+            if (pushed_scope) scope_stack.pop_back();
+            for (auto& n : names) {
+                typedefs.erase(n);
+                typedef_types.erase(n);
+            }
+        }
+    } tmpl_guard{typedefs_, typedef_types_, template_scope_stack_, {}};
+    parse_record_template_member_prelude(&tmpl_guard.names,
+                                         &tmpl_guard.pushed_scope);
+
+    if (try_parse_record_using_member(member_typedef_names,
+                                      member_typedef_types)) {
+        return true;
+    }
+    if (try_parse_nested_record_member(fields, check_dup_field)) return true;
+    if (try_parse_record_enum_member(fields, check_dup_field)) return true;
+    if (try_parse_record_typedef_member(member_typedef_names,
+                                        member_typedef_types)) {
+        return true;
+    }
+    if (try_parse_record_constructor_member(struct_source_name, methods)) {
+        return true;
+    }
+    if (try_parse_record_destructor_member(struct_source_name, methods)) {
+        return true;
+    }
+    return try_parse_record_method_or_field_member(fields, methods,
+                                                   check_dup_field);
+}
+
 Node* Parser::parse_struct_or_union(bool is_union) {
     int ln = cur().line;
     // Parse attributes before tag name — capture packed attribute.
@@ -5170,68 +5221,10 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     while (!at_end() && !check(TokenKind::RBrace)) {
       int member_start_pos = pos_;
       try {
-        skip_attributes();
-        if (check(TokenKind::RBrace)) break;
-        if (try_parse_record_access_label()) {
-            continue;
-        }
-
-        if (try_skip_record_friend_member()) {
-            continue;
-        }
-
-        if (try_skip_record_static_assert_member()) {
-            continue;
-        }
-
-        struct TemplateParamGuard {
-            std::set<std::string>& typedefs;
-            std::unordered_map<std::string, TypeSpec>& typedef_types;
-            std::vector<TemplateScopeFrame>& scope_stack;
-            std::vector<std::string> names;
-            bool pushed_scope = false;
-            ~TemplateParamGuard() {
-                if (pushed_scope) scope_stack.pop_back();
-                for (auto& n : names) {
-                    typedefs.erase(n);
-                    typedef_types.erase(n);
-                }
-            }
-        } tmpl_guard{typedefs_, typedef_types_,
-                     template_scope_stack_, {}};
-        parse_record_template_member_prelude(&tmpl_guard.names,
-                                             &tmpl_guard.pushed_scope);
-
-        if (try_parse_record_using_member(&member_typedef_names,
-                                          &member_typedef_types)) {
-            continue;
-        }
-
-        if (try_parse_nested_record_member(&fields, check_dup_field)) {
-            continue;
-        }
-
-        if (try_parse_record_enum_member(&fields, check_dup_field)) {
-            continue;
-        }
-
-        if (try_parse_record_typedef_member(&member_typedef_names,
-                                            &member_typedef_types)) {
-            continue;
-        }
-
-        if (try_parse_record_constructor_member(struct_source_name,
-                                                &methods)) {
-            continue;
-        }
-
-        if (try_parse_record_destructor_member(struct_source_name,
-                                               &methods)) {
-            continue;
-        }
-
-        if (try_parse_record_method_or_field_member(&fields, &methods,
-                                                    check_dup_field)) {
+        if (try_parse_record_member(struct_source_name, &fields, &methods,
+                                    &member_typedef_names,
+                                    &member_typedef_types,
+                                    check_dup_field)) {
             continue;
         }
       } catch (const std::exception&) {
