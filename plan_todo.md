@@ -10,6 +10,57 @@
 
 ## Current Slice
 
+- Completed: extracted the still-inline record base-clause path from
+  `parse_record_prebody_setup(...)` into helper-driven staging so Step 6 now
+  routes comma-separated base-specifier parsing through
+  `parse_record_base_clause(...)`, `try_parse_record_base_specifier(...)`, and
+  `skip_record_base_specifier_tail()` without changing specialization parsing
+  or base-specifier recovery
+- New helper paths:
+  - `skip_record_base_specifier_tail()`
+  - `try_parse_record_base_specifier(...)`
+  - `parse_record_base_clause(...)`
+- Added parse-only coverage:
+  - `record_base_clause_setup_parse`
+- Baseline recorded:
+  - `test_fail_before.log`: 2201 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
+- Validation completed:
+  - focused record-setup/body regressions passed:
+    - `record_base_clause_setup_parse`
+    - `record_body_context_parse`
+    - `record_body_finalization_parse`
+    - `record_body_loop_parse`
+    - `record_body_state_bundle_parse`
+    - `record_completion_handoff_parse`
+    - `record_decl_attrs_prelude_parse`
+    - `record_definition_setup_parse`
+    - `record_prebody_setup_parse`
+    - `record_specialization_setup_parse`
+    - `record_tag_setup_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2201 total, 7 failed
+    - `test_fail_after.log`: 2202 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Active target: Step 6 remains active after the base-clause extraction;
+  `parse_struct_or_union(...)` still has bounded record-body context/state
+  compression work remaining
+- This iteration's exact target: completed the bounded Step 6 helper
+  extraction around record base-specifier parsing in
+  `parse_record_prebody_setup(...)` and verified it against nearby record
+  setup/body coverage plus the full suite
+- Next intended slice: inspect the remaining record-body context/state path
+  for one more small helper around setup/restore or body-state handoff, with a
+  focused parse-only regression before editing
 - Completed: extracted the repeated record pre-body declaration-attribute
   prelude from `parse_record_prebody_setup(...)` into
   `parse_decl_attrs_for_record(...)` so the Step 6 setup path now reuses one

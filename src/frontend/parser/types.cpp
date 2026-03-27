@@ -4177,6 +4177,84 @@ void Parser::parse_decl_attrs_for_record(int line, TypeSpec* attr_ts) {
     skip_cpp11_attrs();
 }
 
+void Parser::skip_record_base_specifier_tail() {
+    while (!check(TokenKind::LBrace) && !check(TokenKind::Comma) &&
+           !check(TokenKind::RBrace) && !at_end()) {
+        int angle_depth = 0;
+        int paren_depth = 0;
+        while (!at_end()) {
+            if (check(TokenKind::LBrace) && angle_depth == 0 &&
+                paren_depth == 0) {
+                break;
+            }
+            if (check(TokenKind::Comma) && angle_depth == 0 &&
+                paren_depth == 0) {
+                break;
+            }
+            if (check(TokenKind::Less) && paren_depth == 0)
+                ++angle_depth;
+            else if (check(TokenKind::Greater) &&
+                     paren_depth == 0 && angle_depth > 0)
+                --angle_depth;
+            else if (check(TokenKind::GreaterGreater) &&
+                     paren_depth == 0 && angle_depth > 0) {
+                angle_depth -= std::min(angle_depth, 2);
+                consume();
+                continue;
+            } else if (check(TokenKind::LParen))
+                ++paren_depth;
+            else if (check(TokenKind::RParen) && paren_depth > 0)
+                --paren_depth;
+            consume();
+        }
+        break;
+    }
+}
+
+bool Parser::try_parse_record_base_specifier(TypeSpec* base_ts) {
+    while (check(TokenKind::Identifier) &&
+           (cur().lexeme == "public" || cur().lexeme == "private" ||
+            cur().lexeme == "protected" || cur().lexeme == "virtual")) {
+        consume();
+    }
+
+    try {
+        TypeSpec parsed_base = parse_base_type();
+        while (check(TokenKind::Star)) {
+            consume();
+            parsed_base.ptr_level++;
+        }
+        if (check(TokenKind::AmpAmp)) {
+            consume();
+            parsed_base.is_rvalue_ref = true;
+        } else if (check(TokenKind::Amp)) {
+            consume();
+            parsed_base.is_lvalue_ref = true;
+        }
+        skip_record_base_specifier_tail();
+        if (base_ts)
+            *base_ts = parsed_base;
+        return true;
+    } catch (...) {
+        skip_record_base_specifier_tail();
+        return false;
+    }
+}
+
+void Parser::parse_record_base_clause(std::vector<TypeSpec>* base_types) {
+    if (!base_types || !is_cpp_mode() || !check(TokenKind::Colon))
+        return;
+
+    consume();
+    while (!at_end() && !check(TokenKind::LBrace)) {
+        TypeSpec base_ts{};
+        if (try_parse_record_base_specifier(&base_ts))
+            base_types->push_back(base_ts);
+        if (!match(TokenKind::Comma))
+            break;
+    }
+}
+
 bool Parser::try_parse_record_using_member(
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types) {
@@ -5286,94 +5364,7 @@ void Parser::parse_record_prebody_setup(
         }
     }
 
-    if (is_cpp_mode() && check(TokenKind::Colon)) {
-        consume();
-        while (!at_end() && !check(TokenKind::LBrace)) {
-            if (check(TokenKind::Identifier) &&
-                (cur().lexeme == "public" || cur().lexeme == "private" ||
-                 cur().lexeme == "protected" ||
-                 cur().lexeme == "virtual")) {
-                consume();
-                continue;
-            }
-            try {
-                TypeSpec base_ts = parse_base_type();
-                while (check(TokenKind::Star)) {
-                    consume();
-                    base_ts.ptr_level++;
-                }
-                if (check(TokenKind::AmpAmp)) {
-                    consume();
-                    base_ts.is_rvalue_ref = true;
-                } else if (check(TokenKind::Amp)) {
-                    consume();
-                    base_ts.is_lvalue_ref = true;
-                }
-                while (!check(TokenKind::LBrace) && !check(TokenKind::Comma) &&
-                       !check(TokenKind::RBrace) && !at_end()) {
-                    int angle_depth = 0;
-                    int paren_depth = 0;
-                    while (!at_end()) {
-                        if (check(TokenKind::LBrace) && angle_depth == 0 &&
-                            paren_depth == 0) {
-                            break;
-                        }
-                        if (check(TokenKind::Comma) && angle_depth == 0 &&
-                            paren_depth == 0) {
-                            break;
-                        }
-                        if (check(TokenKind::Less) && paren_depth == 0)
-                            ++angle_depth;
-                        else if (check(TokenKind::Greater) &&
-                                 paren_depth == 0 && angle_depth > 0)
-                            --angle_depth;
-                        else if (check(TokenKind::GreaterGreater) &&
-                                 paren_depth == 0 && angle_depth > 0) {
-                            angle_depth -= std::min(angle_depth, 2);
-                            consume();
-                            continue;
-                        } else if (check(TokenKind::LParen))
-                            ++paren_depth;
-                        else if (check(TokenKind::RParen) && paren_depth > 0)
-                            --paren_depth;
-                        consume();
-                    }
-                    break;
-                }
-                base_types->push_back(base_ts);
-            } catch (...) {
-                int angle_depth = 0;
-                int paren_depth = 0;
-                while (!at_end()) {
-                    if (check(TokenKind::LBrace) && angle_depth == 0 &&
-                        paren_depth == 0) {
-                        break;
-                    }
-                    if (check(TokenKind::Comma) && angle_depth == 0 &&
-                        paren_depth == 0) {
-                        break;
-                    }
-                    if (check(TokenKind::Less) && paren_depth == 0)
-                        ++angle_depth;
-                    else if (check(TokenKind::Greater) &&
-                             paren_depth == 0 && angle_depth > 0)
-                        --angle_depth;
-                    else if (check(TokenKind::GreaterGreater) &&
-                             paren_depth == 0 && angle_depth > 0) {
-                        angle_depth -= std::min(angle_depth, 2);
-                        consume();
-                        continue;
-                    } else if (check(TokenKind::LParen))
-                        ++paren_depth;
-                    else if (check(TokenKind::RParen) && paren_depth > 0)
-                        --paren_depth;
-                    consume();
-                }
-            }
-            if (!match(TokenKind::Comma))
-                break;
-        }
-    }
+    parse_record_base_clause(base_types);
 }
 
 Node* Parser::parse_record_tag_setup(int line,

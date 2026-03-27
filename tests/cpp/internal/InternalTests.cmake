@@ -126,6 +126,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     record_specialization_setup_parse
     record_prebody_setup_parse
     record_decl_attrs_prelude_parse
+    record_base_clause_setup_parse
     record_tag_setup_parse
     record_definition_setup_parse
     record_body_loop_parse
