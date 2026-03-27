@@ -1,0 +1,341 @@
+#!/usr/bin/env python3
+"""Shared agent loop harness with selectable CLI backends."""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+LOG_DIR = REPO_ROOT / "build" / "agent_state" / "agent_logs"
+LIMIT_PATTERNS = re.compile(r"hit your limit|rate limit|usage limit|quota", re.IGNORECASE)
+LIMIT_HINT_PATTERNS = re.compile(r"hit your limit|rate limit|usage limit|quota|resets?", re.IGNORECASE)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run an agent loop against the given prompt file.",
+    )
+    parser.add_argument(
+        "prompt_file",
+        nargs="?",
+        default="AGENT_PROMPT_PLAN.md",
+        help="Prompt markdown file to feed into the agent CLI. Defaults to AGENT_PROMPT_PLAN.md.",
+    )
+    parser.add_argument(
+        "--cli",
+        choices=("claude", "codex", "auto"),
+        default=os.environ.get("AGENT_CLI", "claude"),
+        help="Agent CLI backend to use. Defaults to AGENT_CLI or 'claude'.",
+    )
+    parser.add_argument(
+        "--model",
+        default=os.environ.get("AGENT_MODEL"),
+        help="Optional model override for the selected CLI.",
+    )
+    parser.add_argument(
+        "--codex-profile",
+        default=os.environ.get("CODEX_PROFILE"),
+        help="Optional Codex profile name to pass through.",
+    )
+    parser.add_argument(
+        "--limit-resume-buffer-seconds",
+        type=int,
+        default=int(os.environ.get("LIMIT_RESUME_BUFFER_SECONDS", "600")),
+        help="Extra wait time added after a reported rate-limit reset time.",
+    )
+    return parser.parse_args()
+
+
+def ensure_log_dir() -> None:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def resolve_prompt_file(prompt_file_arg: str) -> Path:
+    prompt_path = Path(prompt_file_arg)
+    if not prompt_path.is_absolute():
+        prompt_path = REPO_ROOT / prompt_path
+    prompt_path = prompt_path.resolve()
+    if not prompt_path.is_file():
+        raise FileNotFoundError(f"Prompt file not found: {prompt_file_arg}")
+    return prompt_path
+
+
+def available_cli(name: str) -> bool:
+    return shutil.which(name) is not None
+
+
+def resolve_cli(cli_arg: str) -> str:
+    if cli_arg != "auto":
+        if not available_cli(cli_arg):
+            raise FileNotFoundError(f"Requested CLI '{cli_arg}' is not available on PATH.")
+        return cli_arg
+
+    for candidate in ("codex", "claude"):
+        if available_cli(candidate):
+            return candidate
+    raise FileNotFoundError("Neither 'codex' nor 'claude' is available on PATH.")
+
+
+def git_output(*args: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return None
+    return result.stdout.strip()
+
+
+def current_commit() -> str:
+    return git_output("rev-parse", "--short=6", "HEAD") or "no-git"
+
+
+def worktree_is_clean() -> bool | None:
+    status = git_output("status", "--short")
+    if status is None:
+        return None
+    return status == ""
+
+
+def stash_worktree_on_limit(mode: str, iteration: int, timestamp: str) -> None:
+    inside_worktree = git_output("rev-parse", "--is-inside-work-tree")
+    if inside_worktree != "true":
+        print("[harness] Not a git worktree. Skip auto-stash.")
+        return
+
+    clean = worktree_is_clean()
+    if clean is None:
+        print("[harness] Unable to inspect worktree state. Skip auto-stash.")
+        return
+    if clean:
+        print("[harness] Worktree clean. No stash needed.")
+        return
+
+    stash_message = f"auto-stash on limit: {mode} iter={iteration} at {timestamp}"
+    result = subprocess.run(
+        ["git", "stash", "push", "-u", "-m", stash_message],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        print(f"[harness] Stashed in-progress work: {stash_message}")
+    else:
+        print("[harness] Failed to stash in-progress work before sleeping.")
+
+
+def compute_wait_seconds_from_limit_line(limit_line: str) -> int:
+    time_match = re.search(r"resets?\s+(\d{1,2})(?::(\d{2}))?\s*([ap]m)?", limit_line, re.IGNORECASE)
+    tz_match = re.search(r"\(([^)]+)\)", limit_line)
+    if not time_match:
+        return 900
+
+    hour = int(time_match.group(1))
+    minute = int(time_match.group(2) or "0")
+    ampm = (time_match.group(3) or "").lower()
+    if ampm:
+        if hour == 12:
+            hour = 0
+        if ampm == "pm":
+            hour += 12
+
+    tzinfo = None
+    if tz_match:
+        try:
+            from zoneinfo import ZoneInfo
+
+            tzinfo = ZoneInfo(tz_match.group(1).strip())
+        except Exception:
+            tzinfo = None
+
+    now = dt.datetime.now(tz=tzinfo)
+    target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if target <= now:
+        target += dt.timedelta(days=1)
+    return int((target - now).total_seconds())
+
+
+def format_resume_time(wait_seconds: int) -> str:
+    return (dt.datetime.now() + dt.timedelta(seconds=wait_seconds)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def build_command(cli: str, prompt: str, args: argparse.Namespace) -> list[str]:
+    if cli == "claude":
+        command = [
+            "claude",
+            "--dangerously-skip-permissions",
+            "-p",
+            prompt,
+            "--model",
+            args.model or os.environ.get("CLAUDE_MODEL", "opus"),
+        ]
+        return command
+
+    if cli == "codex":
+        command = [
+            "codex",
+            "exec",
+            "--dangerously-bypass-approvals-and-sandbox",
+            "--skip-git-repo-check",
+            "-C",
+            str(REPO_ROOT),
+        ]
+        if args.codex_profile:
+            command.extend(["-p", args.codex_profile])
+        model = args.model or os.environ.get("CODEX_MODEL")
+        if model:
+            command.extend(["-m", model])
+        command.append(prompt)
+        return command
+
+    raise ValueError(f"Unsupported CLI: {cli}")
+
+
+def stream_process(command: list[str], logfile: Path, tmp_log_path: Path) -> int:
+    with logfile.open("w", encoding="utf-8", errors="replace") as log_fp, tmp_log_path.open(
+        "w", encoding="utf-8", errors="replace"
+    ) as tmp_fp:
+        process = subprocess.Popen(
+            command,
+            cwd=REPO_ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        assert process.stdout is not None
+        for line in process.stdout:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            log_fp.write(line)
+            log_fp.flush()
+            tmp_fp.write(line)
+            tmp_fp.flush()
+        return process.wait()
+
+
+def read_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def clear_stale_test_logs() -> None:
+    for stale_name in ("test_before.log", "test_after.log"):
+        stale_path = REPO_ROOT / stale_name
+        if stale_path.exists():
+            stale_path.unlink()
+
+
+def show_current_score() -> None:
+    score_path = REPO_ROOT / "build" / "agent_state" / "last_result.txt"
+    if score_path.is_file():
+        print(score_path.read_text(encoding="utf-8", errors="replace").rstrip())
+    else:
+        print("(no result yet)")
+    print()
+
+
+def detect_limit_line(log_path: Path) -> str | None:
+    if not log_path.is_file():
+        return None
+    for line in reversed(log_path.read_text(encoding="utf-8", errors="replace").splitlines()):
+        if LIMIT_HINT_PATTERNS.search(line):
+            return line
+    return None
+
+
+def log_contains_limit(log_path: Path) -> bool:
+    if not log_path.is_file():
+        return False
+    return LIMIT_PATTERNS.search(log_path.read_text(encoding="utf-8", errors="replace")) is not None
+
+
+def main() -> int:
+    args = parse_args()
+    try:
+        prompt_path = resolve_prompt_file(args.prompt_file)
+        cli = resolve_cli(args.cli)
+    except FileNotFoundError as exc:
+        print(f"[harness] {exc}", file=sys.stderr)
+        return 1
+
+    os.chdir(REPO_ROOT)
+    ensure_log_dir()
+
+    mode = prompt_path.stem.lower()
+    prompt = read_text(prompt_path)
+
+    print("[harness] Starting agent loop. Stop with Ctrl+C.")
+    print(f"[harness] Prompt -> {prompt_path.relative_to(REPO_ROOT)}")
+    print(f"[harness] CLI -> {cli}")
+    if args.model:
+        print(f"[harness] Model override -> {args.model}")
+    print("[harness] Logs -> build/agent_state/agent_logs/")
+
+    iteration = 0
+    while True:
+        iteration += 1
+        commit = current_commit()
+        timestamp = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        logfile = LOG_DIR / f"{mode}_{cli}_iter_{iteration}_{commit}.log"
+        fd, tmp_log_name = tempfile.mkstemp(prefix=f"{cli}-harness.", suffix=".log", dir="/tmp")
+        os.close(fd)
+        tmp_log_path = Path(tmp_log_name)
+
+        print(f"[harness] === Iteration {iteration} at {timestamp} (commit: {commit}) ===")
+        print(f"[harness] Log: {logfile.relative_to(REPO_ROOT)}")
+        clear_stale_test_logs()
+        print("[harness] Cleared stale test_before.log/test_after.log.")
+
+        command = build_command(cli, prompt, args)
+        exit_code = stream_process(command, logfile, tmp_log_path)
+
+        print(f"[harness] === Iteration {iteration} done. Current score: ===")
+        show_current_score()
+
+        limit_source = logfile if logfile.is_file() else tmp_log_path
+        if log_contains_limit(limit_source):
+            limit_line = detect_limit_line(limit_source) or ""
+            base_wait_seconds = compute_wait_seconds_from_limit_line(limit_line)
+            wait_seconds = base_wait_seconds + args.limit_resume_buffer_seconds
+            resume_at = format_resume_time(wait_seconds)
+
+            print(f"[harness] Detected token/rate limit in {limit_source}.")
+            if limit_line:
+                print(f"[harness] Limit hint: {limit_line}")
+            stash_worktree_on_limit(mode, iteration, timestamp)
+            print(
+                "[harness] Sleeping "
+                f"{wait_seconds}s (base={base_wait_seconds}s + buffer={args.limit_resume_buffer_seconds}s), "
+                f"resume at {resume_at}."
+            )
+            tmp_log_path.unlink(missing_ok=True)
+            time.sleep(wait_seconds)
+            continue
+
+        if exit_code != 0:
+            print(f"[harness] {cli} exited with code {exit_code}. Continuing loop.")
+
+        tmp_log_path.unlink(missing_ok=True)
+        time.sleep(5)
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except KeyboardInterrupt:
+        print("\n[harness] Stopped by user.")
+        raise SystemExit(130)

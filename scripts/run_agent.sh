@@ -1,8 +1,8 @@
 #!/bin/bash
-# Issue-fixing agent loop.
-# Usage: ./scripts/run_agent.sh
+# Agent loop entrypoint.
+# Usage: ./scripts/run_agent.sh [--cli {claude|codex|auto}] [prompt-file]
 
 set -euo pipefail
 
 cd "$(dirname "$0")"
-exec ./run_agent_common.sh AGENT_PROMPT_ISSUE.md
+exec python3 ./run_agent_common.py "$@"
