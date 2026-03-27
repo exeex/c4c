@@ -823,6 +823,79 @@ class Lowerer {
         tpl_bindings, nttp_bindings);
   }
 
+  std::string format_deferred_template_type_diagnostic(
+      const PendingTemplateTypeWorkItem& work_item,
+      const char* prefix,
+      const char* detail = nullptr) const {
+    std::string message = prefix;
+    if (!work_item.context_name.empty()) {
+      message += ": ";
+      message += work_item.context_name;
+      if (detail && detail[0]) {
+        message += " (";
+        message += detail;
+        message += ")";
+      }
+      return message;
+    }
+    if (detail && detail[0]) {
+      message += ": ";
+      message += detail;
+    }
+    return message;
+  }
+
+  DeferredTemplateTypeResult blocked_deferred_template_type(
+      const PendingTemplateTypeWorkItem& work_item,
+      const char* detail,
+      bool spawned_new_work = false) const {
+    return DeferredTemplateTypeResult::blocked(
+        spawned_new_work,
+        format_deferred_template_type_diagnostic(
+            work_item, "blocked template type", detail));
+  }
+
+  DeferredTemplateTypeResult terminal_deferred_template_type(
+      const PendingTemplateTypeWorkItem& work_item,
+      const char* detail) const {
+    return DeferredTemplateTypeResult::terminal(
+        format_deferred_template_type_diagnostic(
+            work_item, "unresolved template type", detail));
+  }
+
+  const Node* require_pending_template_type_primary(
+      const TypeSpec& ts,
+      const PendingTemplateTypeWorkItem& work_item,
+      const char* missing_detail,
+      DeferredTemplateTypeResult* out_result) const {
+    const Node* primary_tpl =
+        canonical_template_struct_primary(ts, work_item.owner_primary_def);
+    if (primary_tpl) return primary_tpl;
+    if (out_result) {
+      *out_result =
+          terminal_deferred_template_type(work_item, missing_detail);
+    }
+    return nullptr;
+  }
+
+  bool resolve_pending_template_owner_if_ready(
+      TypeSpec& owner_ts,
+      const PendingTemplateTypeWorkItem& work_item,
+      const Node* primary_tpl,
+      bool spawned_owner_work,
+      const char* pending_detail,
+      DeferredTemplateTypeResult* out_result) {
+    resolve_pending_tpl_struct_if_needed(
+        owner_ts, work_item.type_bindings, work_item.nttp_bindings,
+        primary_tpl);
+    if (!owner_ts.tpl_struct_origin) return true;
+    if (out_result) {
+      *out_result = blocked_deferred_template_type(
+          work_item, pending_detail, spawned_owner_work);
+    }
+    return false;
+  }
+
   std::vector<const Node*> flatten_program_items(const Node* root) const {
     std::vector<const Node*> items;
     std::function<void(const Node*)> flatten = [&](const Node* n) {
@@ -1162,98 +1235,53 @@ class Lowerer {
       owner_ts.deferred_member_type_name = nullptr;
       bool spawned_owner_work = false;
       if (owner_ts.tpl_struct_origin) {
-        // Early terminal: if no primary template def exists for the owner,
-        // member typedef resolution can never succeed.
-        const Node* primary_tpl = canonical_template_struct_primary(
-            owner_ts, work_item.owner_primary_def);
-        if (!primary_tpl) {
-          return DeferredTemplateTypeResult::terminal(
-              work_item.context_name.empty()
-                  ? "unresolved template type: no primary template def for member typedef owner"
-                  : "unresolved template type: " + work_item.context_name +
-                        " (no primary template def for member typedef owner)");
-        }
+        DeferredTemplateTypeResult result;
+        const Node* primary_tpl = require_pending_template_type_primary(
+            owner_ts, work_item,
+            "no primary template def for member typedef owner", &result);
+        if (!primary_tpl) return result;
         spawned_owner_work = spawn_owner_work(owner_ts);
-        resolve_pending_tpl_struct_if_needed(
-            owner_ts, work_item.type_bindings, work_item.nttp_bindings,
-            primary_tpl);
-        if (owner_ts.tpl_struct_origin) {
-          return DeferredTemplateTypeResult::blocked(
-              spawned_owner_work,
-              work_item.context_name.empty()
-                  ? "blocked template type: owner struct still pending"
-                  : "blocked template type: " + work_item.context_name +
-                        " (owner struct still pending)");
+        if (!resolve_pending_template_owner_if_ready(
+                owner_ts, work_item, primary_tpl, spawned_owner_work,
+                "owner struct still pending", &result)) {
+          return result;
         }
       }
       if (!owner_ts.tag || !owner_ts.tag[0]) {
-        return DeferredTemplateTypeResult::blocked(
-            spawned_owner_work,
-            work_item.context_name.empty()
-                ? "blocked template type: owner tag unavailable"
-                : "blocked template type: " + work_item.context_name +
-                      " (owner tag unavailable)");
+        return blocked_deferred_template_type(
+            work_item, "owner tag unavailable", spawned_owner_work);
       }
       TypeSpec resolved_member{};
       if (resolve_struct_member_typedef_hir(
               owner_ts.tag, ts.deferred_member_type_name, &resolved_member)) {
         return DeferredTemplateTypeResult::resolved();
       }
-      return DeferredTemplateTypeResult::terminal(
-          work_item.context_name.empty()
-              ? "unresolved template type: member typedef lookup failed"
-              : "unresolved template type: " + work_item.context_name +
-                    " (member typedef lookup failed)");
+      return terminal_deferred_template_type(
+          work_item, "member typedef lookup failed");
     }
     if (ts.tpl_struct_origin &&
         work_item.kind != PendingTemplateTypeKind::OwnerStruct) {
-      // Early terminal: if no primary template def exists for the owner,
-      // spawning owner work would just spin forever.
-      const Node* primary_tpl = canonical_template_struct_primary(
-          ts, work_item.owner_primary_def);
-      if (!primary_tpl) {
-        return DeferredTemplateTypeResult::terminal(
-            work_item.context_name.empty()
-                ? "unresolved template type: no primary template def"
-                : "unresolved template type: " + work_item.context_name +
-                      " (no primary template def)");
-      }
+      DeferredTemplateTypeResult result;
+      const Node* primary_tpl = require_pending_template_type_primary(
+          ts, work_item, "no primary template def", &result);
+      if (!primary_tpl) return result;
       const bool spawned_owner_work = spawn_owner_work(ts);
-      resolve_pending_tpl_struct_if_needed(
-          ts, work_item.type_bindings, work_item.nttp_bindings,
-          primary_tpl);
-      if (ts.tpl_struct_origin) {
-        return DeferredTemplateTypeResult::blocked(
-            spawned_owner_work,
-            work_item.context_name.empty()
-                ? "blocked template type: delegated to owner struct work"
-                : "blocked template type: " + work_item.context_name +
-                      " (delegated to owner struct work)");
+      if (!resolve_pending_template_owner_if_ready(
+              ts, work_item, primary_tpl, spawned_owner_work,
+              "delegated to owner struct work", &result)) {
+        return result;
       }
       return DeferredTemplateTypeResult::resolved();
     }
     if (ts.tpl_struct_origin) {
-      // Check whether the primary template definition exists at all.
-      // If not, this is a terminal failure — no amount of retrying will help.
-      const Node* primary_tpl = canonical_template_struct_primary(
-          ts, work_item.owner_primary_def);
-      if (!primary_tpl) {
-        return DeferredTemplateTypeResult::terminal(
-            work_item.context_name.empty()
-                ? "unresolved template type: no primary template def for owner"
-                : "unresolved template type: " + work_item.context_name +
-                      " (no primary template def for owner)");
-      }
-      resolve_pending_tpl_struct_if_needed(
-          ts, work_item.type_bindings, work_item.nttp_bindings,
-          primary_tpl);
-      if (ts.tpl_struct_origin) {
-        return DeferredTemplateTypeResult::blocked(
-            false,
-            work_item.context_name.empty()
-                ? "blocked template type: owner struct still pending"
-                : "blocked template type: " + work_item.context_name +
-                      " (owner struct still pending)");
+      DeferredTemplateTypeResult result;
+      const Node* primary_tpl = require_pending_template_type_primary(
+          ts, work_item, "no primary template def for owner", &result);
+      if (!primary_tpl) return result;
+      if (!resolve_pending_template_owner_if_ready(
+              ts, work_item, primary_tpl, false,
+              "owner struct still pending", &result)) {
+        return result;
       }
       return DeferredTemplateTypeResult::resolved();
     }

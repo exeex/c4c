@@ -366,6 +366,15 @@ set_tests_properties(cpp_hir_template_struct_registry_primary_only PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_member_owner_resolution
+  COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_member_owner_resolution.cpp"
+)
+set_tests_properties(cpp_hir_template_member_owner_resolution PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "field value: int"
+)
+
+add_test(
   NAME cpp_hir_spec_key_identity
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/specialization_identity.cpp"
 )

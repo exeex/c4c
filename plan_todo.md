@@ -6,36 +6,22 @@
 
 ## Active Item
 
-- Step 1: Compress Initial Program Orchestration
+- Step 2: Compress Pending Template Struct Resolution
 
 ## Current Slice
 
-- Completed: extracted the top-level item flattening, weak-symbol collection,
-  type-definition collection, consteval/template registration, template seed
-  fixpoint, metadata population, ref-overload discovery, out-of-class method
-  attachment, and non-method lowering passes from
-  `Lowerer::lower_initial_program(...)` into named helpers so the entrypoint now
-  reads as a phase coordinator without changing phase order or lowering
-  behavior
+- Completed: extracted the repeated owner-primary lookup, blocked/terminal
+  diagnostic formatting, and owner-struct retry flow out of
+  `instantiate_deferred_template_type(...)` without changing pending-template
+  semantics
 - New helper paths:
-  - `flatten_program_items(...)`
-  - `collect_weak_symbol_names(...)`
-  - `collect_initial_type_definitions(...)`
-  - `collect_consteval_function_definitions(...)`
-  - `collect_template_function_definitions(...)`
-  - `collect_function_template_specializations(...)`
-  - `collect_depth0_template_instantiations(...)`
-  - `run_consteval_template_seed_fixpoint(...)`
-  - `finalize_template_seed_realization(...)`
-  - `populate_hir_template_defs(...)`
-  - `collect_ref_overloaded_free_functions(...)`
-  - `attach_out_of_class_struct_method_defs(...)`
-  - `lower_non_method_functions_and_globals(...)`
-  - `lower_pending_struct_methods(...)`
-- Added focused HIR coverage:
-  - `cpp_hir_initial_program_seed_realization`
+  - contextual deferred-template diagnostic formatting
+  - primary-template lookup for owner/member-typedef work items
+  - shared owner-struct resolution/retry gate
+- Added focused regression coverage:
+  - `cpp_hir_template_member_owner_resolution`
 - Baseline recorded:
-  - `test_before.log`: 2209 total, 7 failed
+  - `test_before.log`: 2210 total, 7 failed
   - failing identities:
     - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
     - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
@@ -46,23 +32,23 @@
     - `cpp_positive_sema_template_type_subst_cpp`
 - Validation completed:
   - targeted HIR regressions passed:
-    - `cpp_hir_initial_program_seed_realization`
-    - `cpp_hir_materialization_boundary`
-    - `cpp_hir_template_origin`
-    - `cpp_hir_fixpoint_convergence`
+    - `cpp_hir_template_member_owner_resolution`
     - `cpp_hir_deferred_template_instantiation`
     - `cpp_hir_template_struct_registry_primary_only`
+    - `cpp_hir_initial_program_seed_realization`
+    - `cpp_hir_fixpoint_convergence`
+    - `cpp_hir_template_origin`
   - full clean rebuild remained monotonic:
-    - `test_before.log`: 2209 total, 7 failed
-    - `test_after.log`: 2210 total, 7 failed
+    - `test_before.log`: 2210 total, 7 failed
+    - `test_after.log`: 2212 total, 7 failed
     - failing identities unchanged
-    - regression guard: passed (`+1` passed, `0` new failures)
+    - regression guard: passed (`+2` passed, `0` new failures)
 
 ## Next Intended Slice
 
-- inspect whether Step 1 should extract the remaining Phase 2/2.5 lowering
-  comments into slightly tighter coordinator helpers or whether the current
-  `lower_initial_program(...)` shape is sufficient to advance to Step 2
+- after this helper extraction lands, move to the next repeated pending-template
+  path shared by `resolve_pending_tpl_struct(...)` and
+  `instantiate_template_struct_body(...)`
 
 ## Blockers
 
@@ -70,7 +56,8 @@
 
 ## Resume Notes
 
-- no active `plan.md`/`plan_todo.md` existed at turn start, so this runbook was
-  activated from `ideas/open/ast_to_hir_compression_plan.md`
+- Step 1 coordinator extraction is already complete enough to advance; this
+  iteration completed the first Step 2 helper slice inside
+  `instantiate_deferred_template_type(...)`
 - untracked local files in the repo root are unrelated scratch binaries and
   source files; leave them untouched
