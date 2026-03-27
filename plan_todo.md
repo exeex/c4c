@@ -10,6 +10,53 @@
 
 ## Current Slice
 
+- Active target: Step 6 continues after record-body prelude extraction so
+  `parse_struct_or_union()` can keep flattening into explicit member-category
+  dispatch helpers
+- This iteration's exact target: add parse-only coverage for the inlined
+  record-body prelude, then extract the current access-label / `friend` /
+  `static_assert` / member-template setup path into focused helper(s) without
+  changing template-parameter injection, inline-friend body skipping,
+  access-label recovery, or `static_assert` semicolon handling
+- Completed: extracted the record-body prelude from
+  `parse_struct_or_union()` into focused helpers without changing access-label
+  recovery, inline-friend skipping, `static_assert` skipping, member-template
+  type-parameter injection, or member-template scope cleanup
+- New helper paths:
+  - `try_parse_record_access_label(...)`
+  - `try_skip_record_friend_member(...)`
+  - `try_skip_record_static_assert_member(...)`
+  - `parse_record_template_member_prelude(...)`
+- Added parse-only coverage:
+  - `record_member_prelude_parse`
+- Validation completed:
+  - focused parser regressions passed:
+    - `record_member_prelude_parse`
+    - `record_member_enum_parse`
+    - `record_member_typedef_using_parse`
+    - `record_nested_aggregate_member_parse`
+    - `access_labels_parse`
+    - `friend_access_parse`
+    - `friend_inline_operator_parse`
+    - `eastl_slice7c_struct_body_recovery`
+    - `template_struct_specialization_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2169 total, 7 failed
+    - `test_fail_after.log`: 2170 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Next intended slice: continue Step 6 by extracting a method/field dispatcher
+  helper or another top-level record-member category so
+  `parse_struct_or_union()` keeps shrinking toward a clear record-body
+  dispatcher
+- Active target: Step 6 continues with record-body prelude extraction so
+  `parse_struct_or_union()` moves toward an explicit top-level dispatcher
+- This iteration's exact target: add parse-only coverage for the inlined
+  record-body prelude, then extract the current access-label / `friend` /
+  `static_assert` / member-template setup path into focused helper(s) without
+  changing template-parameter injection, inline-friend body skipping,
+  access-label recovery, or `static_assert` semicolon handling
 - Active target: Step 6 continues after record enum-member extraction; the
   next slice should keep flattening `parse_struct_or_union()` with another
   top-level member-category helper or prelude helper

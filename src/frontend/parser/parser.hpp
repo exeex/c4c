@@ -373,6 +373,12 @@ class Parser {
   bool try_parse_record_enum_member(
       std::vector<Node*>* fields,
       const std::function<void(const char*)>& check_dup_field);
+  bool try_parse_record_access_label();
+  bool try_skip_record_friend_member();
+  bool try_skip_record_static_assert_member();
+  void parse_record_template_member_prelude(
+      std::vector<std::string>* injected_type_params,
+      bool* pushed_template_scope);
   Node* parse_struct_or_union(bool is_union);
 
   // Parse enum body { variants... } or just a tag reference.

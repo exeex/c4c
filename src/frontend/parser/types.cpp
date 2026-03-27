@@ -3808,6 +3808,210 @@ TypeSpec Parser::parse_type_name() {
 
 // ── struct / union parsing ───────────────────────────────────────────────────
 
+bool Parser::try_parse_record_access_label() {
+    if (!(is_cpp_mode() && check(TokenKind::Identifier) &&
+          (cur().lexeme == "public" || cur().lexeme == "private" ||
+           cur().lexeme == "protected") &&
+          pos_ + 1 < static_cast<int>(tokens_.size()) &&
+          tokens_[pos_ + 1].kind == TokenKind::Colon)) {
+        return false;
+    }
+
+    consume();
+    consume();
+    return true;
+}
+
+bool Parser::try_skip_record_friend_member() {
+    if (!(is_cpp_mode() && check(TokenKind::Identifier) &&
+          cur().lexeme == "friend")) {
+        return false;
+    }
+
+    consume();
+    int angle_depth = 0;
+    int paren_depth = 0;
+    while (!at_end()) {
+        if (check(TokenKind::Less) && paren_depth == 0) {
+            ++angle_depth;
+            consume();
+            continue;
+        }
+        if (check_template_close() && paren_depth == 0 && angle_depth > 0) {
+            --angle_depth;
+            match_template_close();
+            continue;
+        }
+        if (check(TokenKind::LParen)) {
+            ++paren_depth;
+            consume();
+            continue;
+        }
+        if (check(TokenKind::RParen) && paren_depth > 0) {
+            --paren_depth;
+            consume();
+            continue;
+        }
+        if (check(TokenKind::LBrace) && angle_depth == 0 && paren_depth == 0) {
+            skip_brace_group();
+            break;
+        }
+        if (check(TokenKind::Semi) && angle_depth == 0 && paren_depth == 0) {
+            consume();
+            break;
+        }
+        if (check(TokenKind::RBrace) && angle_depth == 0 && paren_depth == 0) {
+            break;
+        }
+        consume();
+    }
+    if (check(TokenKind::Assign)) {
+        consume();
+        if (check(TokenKind::KwDelete) || check(TokenKind::KwDefault))
+            consume();
+        match(TokenKind::Semi);
+    }
+    return true;
+}
+
+bool Parser::try_skip_record_static_assert_member() {
+    if (!check(TokenKind::KwStaticAssert))
+        return false;
+
+    consume();
+    if (check(TokenKind::LParen))
+        skip_paren_group();
+    match(TokenKind::Semi);
+    return true;
+}
+
+void Parser::parse_record_template_member_prelude(
+    std::vector<std::string>* injected_type_params,
+    bool* pushed_template_scope) {
+    if (pushed_template_scope) *pushed_template_scope = false;
+    if (!(is_cpp_mode() && check(TokenKind::KwTemplate)))
+        return;
+
+    consume();
+    expect(TokenKind::Less);
+    while (!at_end() && !check_template_close()) {
+        if ((check(TokenKind::Identifier) && cur().lexeme == "typename") ||
+            check(TokenKind::KwClass)) {
+            consume();
+            if (check(TokenKind::Ellipsis)) consume();
+            if (check(TokenKind::Identifier)) {
+                std::string pname = cur().lexeme;
+                consume();
+                typedefs_.insert(pname);
+                TypeSpec param_ts{};
+                param_ts.array_size = -1;
+                param_ts.inner_rank = -1;
+                param_ts.base = TB_TYPEDEF;
+                param_ts.tag = arena_.strdup(pname.c_str());
+                typedef_types_[pname] = param_ts;
+                injected_type_params->push_back(std::move(pname));
+            }
+            if (check(TokenKind::Assign)) {
+                consume();
+                int saved_pos = pos_;
+                bool parsed_default_type = false;
+                try {
+                    TypeSpec ignored_default = parse_type_name();
+                    (void)ignored_default;
+                    parsed_default_type = true;
+                } catch (...) {
+                    pos_ = saved_pos;
+                }
+                if (!parsed_default_type) {
+                    int depth = 0, paren_depth = 0;
+                    while (!at_end()) {
+                        if (check(TokenKind::Less) || check(TokenKind::LParen)) {
+                            if (check(TokenKind::LParen)) ++paren_depth;
+                            else ++depth;
+                        } else if (check(TokenKind::RParen)) {
+                            if (paren_depth > 0) --paren_depth;
+                        } else if (check(TokenKind::GreaterGreater)) {
+                            if (paren_depth == 0 && depth <= 0) break;
+                            if (paren_depth == 0 && depth == 1) {
+                                parse_greater_than_in_template_list(false);
+                                break;
+                            }
+                            if (depth >= 2) depth -= 2;
+                            else if (depth == 1) --depth;
+                            consume();
+                            continue;
+                        } else if (check(TokenKind::Greater)) {
+                            if (paren_depth == 0 && depth == 0) break;
+                            if (depth > 0) --depth;
+                        } else if (check(TokenKind::Comma) && depth == 0 &&
+                                   paren_depth == 0) {
+                            break;
+                        }
+                        consume();
+                    }
+                }
+            }
+        } else if (is_type_kw(cur().kind) ||
+                   (check(TokenKind::Identifier) &&
+                    (is_typedef_name(cur().lexeme) ||
+                     typedef_types_.count(
+                         resolve_visible_type_name(cur().lexeme)) > 0))) {
+            if (is_type_kw(cur().kind)) {
+                while (!at_end() && is_type_kw(cur().kind)) consume();
+            } else {
+                consume();
+            }
+            while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
+            if (check(TokenKind::Ellipsis)) consume();
+            if (check(TokenKind::Identifier)) consume();
+            if (check(TokenKind::Assign)) {
+                consume();
+                int depth = 0, paren_depth = 0;
+                while (!at_end()) {
+                    if (check(TokenKind::Less) || check(TokenKind::LParen)) {
+                        if (check(TokenKind::LParen)) ++paren_depth;
+                        else ++depth;
+                    } else if (check(TokenKind::RParen)) {
+                        if (paren_depth > 0) --paren_depth;
+                    } else if (check(TokenKind::GreaterGreater)) {
+                        if (paren_depth == 0 && depth <= 0) break;
+                        if (paren_depth == 0 && depth == 1) {
+                            parse_greater_than_in_template_list(false);
+                            break;
+                        }
+                        if (depth >= 2) depth -= 2;
+                        else if (depth == 1) --depth;
+                        consume();
+                        continue;
+                    } else if (check(TokenKind::Greater)) {
+                        if (paren_depth == 0 && depth == 0) break;
+                        if (depth > 0) --depth;
+                    } else if (check(TokenKind::Comma) && depth == 0 &&
+                               paren_depth == 0) {
+                        break;
+                    }
+                    consume();
+                }
+            }
+        } else {
+            consume();
+        }
+        if (!match(TokenKind::Comma)) break;
+    }
+    expect_template_close();
+    if (!injected_type_params->empty()) {
+        std::vector<TemplateScopeParam> member_params;
+        for (const auto& n : *injected_type_params) {
+            TemplateScopeParam p;
+            p.name = arena_.strdup(n.c_str());
+            p.is_nttp = false;
+            member_params.push_back(p);
+        }
+        push_template_scope(TemplateScopeKind::MemberTemplate, member_params);
+        if (pushed_template_scope) *pushed_template_scope = true;
+    }
+}
+
 bool Parser::try_parse_record_using_member(
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types) {
@@ -4331,79 +4535,18 @@ Node* Parser::parse_struct_or_union(bool is_union) {
       try {
         skip_attributes();
         if (check(TokenKind::RBrace)) break;
-        // C++ access specifiers: public/private/protected followed by ':'
-        if (is_cpp_mode() && check(TokenKind::Identifier) &&
-            (cur().lexeme == "public" || cur().lexeme == "private" || cur().lexeme == "protected") &&
-            pos_ + 1 < static_cast<int>(tokens_.size()) &&
-            tokens_[pos_ + 1].kind == TokenKind::Colon) {
-            consume(); // access specifier
-            consume(); // ':'
+        if (try_parse_record_access_label()) {
             continue;
         }
 
-        // C++ friend declaration: friend Type;, friend class Type;, or
-        // inline friend function definitions inside the class body.
-        if (is_cpp_mode() && check(TokenKind::Identifier) && cur().lexeme == "friend") {
-            consume(); // 'friend'
-            int angle_depth = 0;
-            int paren_depth = 0;
-            while (!at_end()) {
-                if (check(TokenKind::Less) && paren_depth == 0) {
-                    ++angle_depth;
-                    consume();
-                    continue;
-                }
-                if (check_template_close() && paren_depth == 0 && angle_depth > 0) {
-                    --angle_depth;
-                    match_template_close();
-                    continue;
-                }
-                if (check(TokenKind::LParen)) {
-                    ++paren_depth;
-                    consume();
-                    continue;
-                }
-                if (check(TokenKind::RParen) && paren_depth > 0) {
-                    --paren_depth;
-                    consume();
-                    continue;
-                }
-                if (check(TokenKind::LBrace) && angle_depth == 0 && paren_depth == 0) {
-                    skip_brace_group();
-                    break;
-                }
-                if (check(TokenKind::Semi) && angle_depth == 0 && paren_depth == 0) {
-                    consume();
-                    break;
-                }
-                if (check(TokenKind::RBrace) && angle_depth == 0 && paren_depth == 0) {
-                    break;
-                }
-                consume();
-            }
-            if (check(TokenKind::Assign)) {
-                consume();
-                if (check(TokenKind::KwDelete) || check(TokenKind::KwDefault))
-                    consume();
-                match(TokenKind::Semi);
-            }
+        if (try_skip_record_friend_member()) {
             continue;
         }
 
-        // static_assert in struct body: skip entirely
-        if (check(TokenKind::KwStaticAssert)) {
-            consume();
-            if (check(TokenKind::LParen)) {
-                skip_paren_group();
-            }
-            match(TokenKind::Semi);
+        if (try_skip_record_static_assert_member()) {
             continue;
         }
 
-        // C++ template member: template<class T, ...> member-decl
-        // Consume the template parameter list and inject type params as
-        // typedefs so the subsequent member parsing recognizes them as types.
-        // Scope guard cleans up injected names on scope exit (handles continue/break).
         struct TemplateParamGuard {
             std::set<std::string>& typedefs;
             std::unordered_map<std::string, TypeSpec>& typedef_types;
@@ -4419,139 +4562,8 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             }
         } tmpl_guard{typedefs_, typedef_types_,
                      template_scope_stack_, {}};
-        auto is_template_member_param_type_start = [&]() -> bool {
-            if (is_type_start()) return true;
-            if (!is_cpp_mode() || !check(TokenKind::Identifier)) return false;
-            for (const std::string& name : tmpl_guard.names) {
-                if (cur().lexeme == name) return true;
-            }
-            return false;
-        };
-        if (is_cpp_mode() && check(TokenKind::KwTemplate)) {
-            consume(); // eat 'template'
-            expect(TokenKind::Less);
-            while (!at_end() && !check_template_close()) {
-                if ((check(TokenKind::Identifier) && cur().lexeme == "typename") ||
-                    check(TokenKind::KwClass)) {
-                    consume(); // eat 'typename'/'class'
-                    // Skip '...' for variadic parameter packs.
-                    if (check(TokenKind::Ellipsis)) consume();
-                    if (check(TokenKind::Identifier)) {
-                        std::string pname = cur().lexeme;
-                        consume();
-                        // Inject as typedef so is_type_start() recognizes it
-                        typedefs_.insert(pname);
-                        TypeSpec param_ts{};
-                        param_ts.array_size = -1;
-                        param_ts.inner_rank = -1;
-                        param_ts.base = TB_TYPEDEF;
-                        param_ts.tag = arena_.strdup(pname.c_str());
-                        typedef_types_[pname] = param_ts;
-                        tmpl_guard.names.push_back(std::move(pname));
-                    }
-                    // Skip default: = type (with >> splitting and paren tracking)
-                    if (check(TokenKind::Assign)) {
-                        consume();
-                        int saved_pos = pos_;
-                        bool parsed_default_type = false;
-                        try {
-                            TypeSpec ignored_default = parse_type_name();
-                            (void)ignored_default;
-                            parsed_default_type = true;
-                        } catch (...) {
-                            pos_ = saved_pos;
-                        }
-                        if (!parsed_default_type) {
-                            int depth = 0, paren_depth = 0;
-                            while (!at_end()) {
-                                if (check(TokenKind::Less) || check(TokenKind::LParen)) {
-                                    if (check(TokenKind::LParen)) ++paren_depth;
-                                    else ++depth;
-                                } else if (check(TokenKind::RParen)) {
-                                    if (paren_depth > 0) --paren_depth;
-                                } else if (check(TokenKind::GreaterGreater)) {
-                                    if (paren_depth == 0 && depth <= 0) break;
-                                    if (paren_depth == 0 && depth == 1) {
-                                        parse_greater_than_in_template_list(false);
-                                        break;
-                                    }
-                                    if (depth >= 2) depth -= 2;
-                                    else if (depth == 1) --depth;
-                                    consume();
-                                    continue;
-                                } else if (check(TokenKind::Greater)) {
-                                    if (paren_depth == 0 && depth == 0) break;
-                                    if (depth > 0) --depth;
-                                } else if (check(TokenKind::Comma) && depth == 0 && paren_depth == 0) break;
-                                consume();
-                            }
-                        }
-                    }
-                } else if (is_type_kw(cur().kind) ||
-                           (check(TokenKind::Identifier) &&
-                            (is_typedef_name(cur().lexeme) ||
-                             typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0))) {
-                    // NTTP: e.g. int N, size_t N, T v (typedef-based types).
-                    // Consume the type specifier tokens.
-                    if (is_type_kw(cur().kind)) {
-                        while (!at_end() && is_type_kw(cur().kind)) consume();
-                    } else {
-                        consume(); // consume typedef name
-                    }
-                    // Skip pointer stars or qualifiers.
-                    while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
-                    // Skip '...' for variadic NTTP packs.
-                    if (check(TokenKind::Ellipsis)) consume();
-                    if (check(TokenKind::Identifier)) consume(); // param name
-                    // Skip default: = expr (with >> splitting and paren tracking)
-                    if (check(TokenKind::Assign)) {
-                        consume();
-                        int depth = 0, paren_depth = 0;
-                        while (!at_end()) {
-                            if (check(TokenKind::Less) || check(TokenKind::LParen)) {
-                                if (check(TokenKind::LParen)) ++paren_depth;
-                                else ++depth;
-                            } else if (check(TokenKind::RParen)) {
-                                if (paren_depth > 0) --paren_depth;
-                            } else if (check(TokenKind::GreaterGreater)) {
-                                if (paren_depth == 0 && depth <= 0) break;
-                                if (paren_depth == 0 && depth == 1) {
-                                    parse_greater_than_in_template_list(false);
-                                    break;
-                                }
-                                if (depth >= 2) depth -= 2;
-                                else if (depth == 1) --depth;
-                                consume();
-                                continue;
-                            } else if (check(TokenKind::Greater)) {
-                                if (paren_depth == 0 && depth == 0) break;
-                                if (depth > 0) --depth;
-                            } else if (check(TokenKind::Comma) && depth == 0 && paren_depth == 0) break;
-                            consume();
-                        }
-                    }
-                } else {
-                    // Unknown template param form — skip token
-                    consume();
-                }
-                if (!match(TokenKind::Comma)) break;
-            }
-            expect_template_close();
-            // Push member-template scope so nested lookups can see both
-            // enclosing class params and member template params.
-            if (!tmpl_guard.names.empty()) {
-                std::vector<TemplateScopeParam> member_params;
-                for (const auto& n : tmpl_guard.names) {
-                    TemplateScopeParam p;
-                    p.name = arena_.strdup(n.c_str());
-                    p.is_nttp = false;  // guard only tracks type params
-                    member_params.push_back(p);
-                }
-                push_template_scope(TemplateScopeKind::MemberTemplate, member_params);
-                tmpl_guard.pushed_scope = true;
-            }
-            // Fall through to parse the member declaration that follows
-        }
+        parse_record_template_member_prelude(&tmpl_guard.names,
+                                             &tmpl_guard.pushed_scope);
 
         if (try_parse_record_using_member(&member_typedef_names,
                                           &member_typedef_types)) {
@@ -4614,7 +4626,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 while (!at_end()) {
                     if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
                     if (check(TokenKind::RParen)) break;
-                    if (!is_template_member_param_type_start()) break;
+                    if (!is_type_start()) break;
                     Node* p = parse_param();
                     if (p) params.push_back(p);
                     if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
@@ -4920,7 +4932,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                 while (!at_end()) {
                     if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
                     if (check(TokenKind::RParen)) break;
-                    if (!is_template_member_param_type_start()) break;
+                    if (!is_type_start()) break;
                     Node* p = parse_param();
                     if (p) params.push_back(p);
                     if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
@@ -5044,7 +5056,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
                             break;
                         }
                         if (check(TokenKind::RParen)) break;
-                        if (!is_template_member_param_type_start()) break;
+                        if (!is_type_start()) break;
                         Node* p = parse_param();
                         if (p) params.push_back(p);
                         if (check(TokenKind::Ellipsis)) {
