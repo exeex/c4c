@@ -421,6 +421,12 @@ class Parser {
                                  const char* template_origin_name,
                                  std::string* saved_struct_tag,
                                  std::string* struct_source_name);
+  void parse_record_body(
+      const std::string& struct_source_name,
+      std::vector<Node*>* fields,
+      std::vector<Node*>* methods,
+      std::vector<const char*>* member_typedef_names,
+      std::vector<TypeSpec>* member_typedef_types);
   void apply_record_trailing_type_attributes(Node* sd);
   void store_record_body_members(
       Node* sd,

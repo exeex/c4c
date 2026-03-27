@@ -10,6 +10,54 @@
 
 ## Current Slice
 
+- Active target: Step 6 continues after record-body loop extraction; the next
+  slice should pull the remaining body-context setup/teardown coordination out
+  of `parse_struct_or_union()` so the outer function gets closer to a pure
+  setup/body/finalization dispatcher
+- Completed: extracted the record-body accumulator / dispatch / recovery loop
+  from `parse_struct_or_union()` into a focused helper without changing member
+  ordering, duplicate-field handling, or C++ recovery semantics
+- New helper path:
+  - `parse_record_body(...)`
+- Added parse-only coverage:
+  - `record_body_loop_parse`
+- Baseline recorded:
+  - `test_fail_before.log`: 2179 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
+- Validation completed:
+  - focused parser/body regressions passed:
+    - `record_body_loop_parse`
+    - `record_member_dispatch_parse`
+    - `record_member_recovery_parse`
+    - `record_member_method_field_parse`
+    - `record_member_special_member_parse`
+    - `record_body_finalization_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2179 total, 7 failed
+    - `test_fail_after.log`: 2180 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Next intended slice: continue Step 6 by extracting one more remaining
+  `parse_struct_or_union()` coordinator concern, likely the body-context
+  setup/restore around `current_struct_tag_` and template-origin self-type
+  injection so the outer function keeps shrinking toward a thin dispatcher
+- Active target: Step 6 continues after record-definition setup extraction;
+  this slice extracts the remaining record-body loop wrapper from
+  `parse_struct_or_union()` so the outer function reads as a thin
+  setup/body/finalization coordinator
+- This iteration's exact target: add parse-only coverage for a single record
+  body that exercises both normal mixed member dispatch and malformed-member
+  recovery, then extract the body-loop accumulator/recovery wrapper into a
+  focused helper without changing member ordering, duplicate-field handling,
+  or C++ recovery semantics
 - Active target: Step 6 continues after record-definition setup extraction;
   the next slice should pull another remaining `parse_struct_or_union()`
   coordinator concern out of the function so it keeps collapsing toward a thin

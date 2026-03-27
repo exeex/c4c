@@ -4976,6 +4976,44 @@ void Parser::begin_record_body_context(const char* tag,
     }
 }
 
+void Parser::parse_record_body(
+    const std::string& struct_source_name,
+    std::vector<Node*>* fields,
+    std::vector<Node*>* methods,
+    std::vector<const char*>* member_typedef_names,
+    std::vector<TypeSpec>* member_typedef_types) {
+    if (!fields || !methods || !member_typedef_names || !member_typedef_types)
+        return;
+
+    std::unordered_set<std::string> field_names_seen;
+    auto check_dup_field = [&](const char* fname) {
+        if (!fname) return;
+        std::string n(fname);
+        if (field_names_seen.count(n)) {
+            if (!is_cpp_mode())
+                throw std::runtime_error(std::string("duplicate field name: ") + n);
+            // C++ mode: allow duplicates (template specializations, complex types)
+            return;
+        }
+        field_names_seen.insert(n);
+    };
+
+    while (!at_end() && !check(TokenKind::RBrace)) {
+        int member_start_pos = pos_;
+        try {
+            if (try_parse_record_member(struct_source_name, fields, methods,
+                                        member_typedef_names,
+                                        member_typedef_types,
+                                        check_dup_field)) {
+                continue;
+            }
+        } catch (const std::exception&) {
+            if (!recover_record_member_parse_error(member_start_pos))
+                throw;
+        }
+    }
+}
+
 void Parser::parse_record_prebody_setup(
     int line,
     TypeSpec* attr_ts,
@@ -5388,32 +5426,8 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     std::vector<Node*> methods;
     std::vector<const char*> member_typedef_names;
     std::vector<TypeSpec> member_typedef_types;
-    std::unordered_set<std::string> field_names_seen;
-    auto check_dup_field = [&](const char* fname) {
-        if (!fname) return;
-        std::string n(fname);
-        if (field_names_seen.count(n)) {
-            if (!is_cpp_mode())
-                throw std::runtime_error(std::string("duplicate field name: ") + n);
-            // C++ mode: allow duplicates (template specializations, complex types)
-            return;
-        }
-        field_names_seen.insert(n);
-    };
-    while (!at_end() && !check(TokenKind::RBrace)) {
-      int member_start_pos = pos_;
-      try {
-        if (try_parse_record_member(struct_source_name, &fields, &methods,
-                                    &member_typedef_names,
-                                    &member_typedef_types,
-                                    check_dup_field)) {
-            continue;
-        }
-      } catch (const std::exception&) {
-        if (!recover_record_member_parse_error(member_start_pos))
-            throw;
-      }
-    }
+    parse_record_body(struct_source_name, &fields, &methods,
+                      &member_typedef_names, &member_typedef_types);
     expect(TokenKind::RBrace);
     current_struct_tag_ = saved_struct_tag;
 
