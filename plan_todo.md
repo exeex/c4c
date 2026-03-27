@@ -10,6 +10,14 @@
 
 ## Current Slice
 
+- Completed: extracted the remaining field materialization path from
+  `instantiate_template_struct_body(...)` so static-member bookkeeping and
+  non-static field lowering now delegate to named helpers without changing
+  substitution order or array-extent realization behavior
+- Added focused regression coverage:
+  - `cpp_hir_template_struct_field_array_extent` asserts
+    `template_struct_nttp.cpp` still emits the concrete instantiated field
+    layout line `field data: int[4] ... size=16 align=4`
 - Completed: extracted shared helper(s) from
   `instantiate_template_struct_body(...)` for template-struct base type
   substitution / dependency seeding, typedef substitution, NTTP array-extent
@@ -42,6 +50,7 @@
     - `cpp_positive_sema_template_type_subst_cpp`
 - Validation completed:
   - targeted HIR regressions passed:
+    - `cpp_hir_template_struct_field_array_extent`
     - `cpp_hir_template_member_owner_resolution`
     - `cpp_hir_template_struct_inherited_method_binding`
     - `cpp_hir_deferred_template_instantiation`
@@ -51,9 +60,9 @@
     - `cpp_hir_template_origin`
   - full clean rebuild remained monotonic:
     - `test_fail_before.log`: 2212 total, 7 failed
-    - `test_fail_after.log`: 2213 total, 7 failed
+    - `test_fail_after.log`: 2214 total, 7 failed
     - failing identities unchanged
-    - regression guard: passed (`+1` passed, `0` new failures)
+    - regression guard: passed (`+2` passed, `0` new failures)
   - added focused HIR-only regression coverage:
     - `tests/cpp/internal/hir_case/template_struct_inherited_method_hir.cpp`
       checks a concrete `Base<int>` / `Wrap<int>` instantiation with inherited
@@ -62,9 +71,11 @@
 
 ## Next Intended Slice
 
-- if this extraction stays monotonic, continue Step 2 by pulling the remaining
-  field substitution / array-size materialization path behind a helper used by
-  `instantiate_template_struct_body(...)`
+- if this extraction stays monotonic, continue Step 2 by checking whether the
+  remaining `instantiate_deferred_template_type(...)` / pending-template entry
+  path can share the same coordinator helpers without changing retry behavior;
+  if that is already compact enough, move to the next repeated pending-template
+  sequence inside `resolve_pending_tpl_struct_if_needed(...)`
 
 ## Blockers
 
@@ -76,10 +87,9 @@
 - the previous Step 2 slice in `instantiate_deferred_template_type(...)` is
   already committed as `2d6b0e3`
 - this iteration is deliberately limited to helper extraction around
-  specialization-binding / instance-key staging inside
-  `resolve_pending_tpl_struct(...)`, not semantic cleanup
-- next Step 2 candidate is the repeated base/field substitution setup inside
-  `instantiate_template_struct_body(...)`; this iteration is targeting the base
-  substitution / method setup portion first, keeping field materialization as
-  the likely follow-up if needed; keep any follow-up extraction
+  the remaining field/static-member materialization path inside
+  `instantiate_template_struct_body(...)`, not semantic cleanup
+- next Step 2 candidate is the remaining pending-template entry coordination
+  around `instantiate_deferred_template_type(...)` and
+  `resolve_pending_tpl_struct_if_needed(...)`; keep any follow-up extraction
   behavior-preserving and reuse the current targeted HIR regression set

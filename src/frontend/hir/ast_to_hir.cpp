@@ -3164,6 +3164,64 @@ class Lowerer {
     }
   }
 
+  void record_instantiated_template_struct_field_metadata(
+      const std::string& mangled,
+      const Node* orig_f,
+      const NttpBindings& selected_nttp_bindings_map) {
+    if (!orig_f || !orig_f->name) return;
+    struct_static_member_decls_[mangled][orig_f->name] = orig_f;
+    if (orig_f->is_static && orig_f->is_constexpr && orig_f->init) {
+      struct_static_member_const_values_[mangled][orig_f->name] =
+          eval_const_int_with_nttp_bindings(orig_f->init, selected_nttp_bindings_map);
+    }
+  }
+
+  std::optional<HirStructField> instantiate_template_struct_field(
+      const Node* orig_f,
+      const TypeBindings& selected_type_bindings,
+      const NttpBindings& selected_nttp_bindings_map,
+      const Node* tpl_def,
+      int llvm_idx) {
+    if (!orig_f || !orig_f->name || orig_f->is_static) return std::nullopt;
+
+    TypeSpec ft = orig_f->type;
+    apply_template_typedef_bindings(ft, selected_type_bindings);
+    materialize_template_array_extent(ft, selected_nttp_bindings_map);
+
+    HirStructField hf;
+    hf.name = orig_f->name;
+    if (ft.array_rank > 0) {
+      hf.is_flexible_array = (ft.array_size < 0);
+      hf.array_first_dim = (ft.array_size >= 0) ? ft.array_size : 0;
+      ft.array_rank = 0;
+      ft.array_size = -1;
+    }
+    hf.elem_type = ft;
+    hf.is_anon_member = orig_f->is_anon_field;
+    hf.llvm_idx = tpl_def->is_union ? 0 : llvm_idx;
+    return hf;
+  }
+
+  void append_instantiated_template_struct_fields(
+      HirStructDef& def,
+      const std::string& mangled,
+      const Node* tpl_def,
+      const TypeBindings& selected_type_bindings,
+      const NttpBindings& selected_nttp_bindings_map) {
+    const int num_fields = tpl_def->n_fields > 0 ? tpl_def->n_fields : 0;
+    int llvm_idx = 0;
+    for (int fi = 0; fi < num_fields; ++fi) {
+      const Node* orig_f = tpl_def->fields[fi];
+      record_instantiated_template_struct_field_metadata(
+          mangled, orig_f, selected_nttp_bindings_map);
+      std::optional<HirStructField> hf = instantiate_template_struct_field(
+          orig_f, selected_type_bindings, selected_nttp_bindings_map, tpl_def, llvm_idx);
+      if (!hf) continue;
+      def.fields.push_back(std::move(*hf));
+      if (!tpl_def->is_union) ++llvm_idx;
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Helper 5: Instantiate the concrete struct body (fields, bases, methods).
   // ---------------------------------------------------------------------------
@@ -3193,37 +3251,8 @@ class Lowerer {
     NttpBindings method_nttp_bindings = selected_nttp_bindings_map;
     append_instantiated_template_struct_bases(
         def, tpl_def, method_tpl_bindings, method_nttp_bindings);
-
-    int num_fields = tpl_def->n_fields > 0 ? tpl_def->n_fields : 0;
-    int llvm_idx = 0;
-    for (int fi = 0; fi < num_fields; ++fi) {
-      const Node* orig_f = tpl_def->fields[fi];
-      if (!orig_f || !orig_f->name) continue;
-      struct_static_member_decls_[mangled][orig_f->name] = orig_f;
-      if (orig_f->is_static && orig_f->is_constexpr && orig_f->init) {
-        struct_static_member_const_values_[mangled][orig_f->name] =
-            eval_const_int_with_nttp_bindings(orig_f->init, selected_nttp_bindings_map);
-      }
-      if (orig_f->is_static) continue;
-
-      TypeSpec ft = orig_f->type;
-      apply_template_typedef_bindings(ft, selected_type_bindings);
-      materialize_template_array_extent(ft, selected_nttp_bindings_map);
-
-      HirStructField hf;
-      hf.name = orig_f->name;
-      if (ft.array_rank > 0) {
-        hf.is_flexible_array = (ft.array_size < 0);
-        hf.array_first_dim = (ft.array_size >= 0) ? ft.array_size : 0;
-        ft.array_rank = 0;
-        ft.array_size = -1;
-      }
-      hf.elem_type = ft;
-      hf.is_anon_member = orig_f->is_anon_field;
-      hf.llvm_idx = tpl_def->is_union ? 0 : llvm_idx;
-      def.fields.push_back(std::move(hf));
-      if (!tpl_def->is_union) ++llvm_idx;
-    }
+    append_instantiated_template_struct_fields(
+        def, mangled, tpl_def, selected_type_bindings, selected_nttp_bindings_map);
 
     compute_struct_layout(module_, def);
     module_->struct_def_order.push_back(mangled);

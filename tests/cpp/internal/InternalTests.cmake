@@ -384,6 +384,15 @@ set_tests_properties(cpp_hir_template_struct_inherited_method_binding PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_struct_field_array_extent
+  COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_struct_nttp.cpp"
+)
+set_tests_properties(cpp_hir_template_struct_field_array_extent PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "field data: int\\[4\\] llvm_idx=0 offset=0 size=16 align=4"
+)
+
+add_test(
   NAME cpp_hir_spec_key_identity
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/specialization_identity.cpp"
 )
