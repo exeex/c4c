@@ -4978,11 +4978,8 @@ void Parser::begin_record_body_context(const char* tag,
 
 void Parser::parse_record_body(
     const std::string& struct_source_name,
-    std::vector<Node*>* fields,
-    std::vector<Node*>* methods,
-    std::vector<const char*>* member_typedef_names,
-    std::vector<TypeSpec>* member_typedef_types) {
-    if (!fields || !methods || !member_typedef_names || !member_typedef_types)
+    RecordBodyState* body_state) {
+    if (!body_state)
         return;
 
     std::unordered_set<std::string> field_names_seen;
@@ -5001,9 +4998,10 @@ void Parser::parse_record_body(
     while (!at_end() && !check(TokenKind::RBrace)) {
         int member_start_pos = pos_;
         try {
-            if (try_parse_record_member(struct_source_name, fields, methods,
-                                        member_typedef_names,
-                                        member_typedef_types,
+            if (try_parse_record_member(struct_source_name, &body_state->fields,
+                                        &body_state->methods,
+                                        &body_state->member_typedef_names,
+                                        &body_state->member_typedef_types,
                                         check_dup_field)) {
                 continue;
             }
@@ -5017,16 +5015,12 @@ void Parser::parse_record_body(
 void Parser::parse_record_body_with_context(
     const char* tag,
     const char* template_origin_name,
-    std::vector<Node*>* fields,
-    std::vector<Node*>* methods,
-    std::vector<const char*>* member_typedef_names,
-    std::vector<TypeSpec>* member_typedef_types) {
+    RecordBodyState* body_state) {
     std::string saved_struct_tag = current_struct_tag_;
     std::string struct_source_name;
     begin_record_body_context(tag, template_origin_name, &saved_struct_tag,
                               &struct_source_name);
-    parse_record_body(struct_source_name, fields, methods,
-                      member_typedef_names, member_typedef_types);
+    parse_record_body(struct_source_name, body_state);
     expect(TokenKind::RBrace);
     current_struct_tag_ = saved_struct_tag;
 }
@@ -5355,37 +5349,35 @@ void Parser::apply_record_trailing_type_attributes(Node* sd) {
 
 void Parser::store_record_body_members(
     Node* sd,
-    const std::vector<Node*>& fields,
-    const std::vector<Node*>& methods,
-    const std::vector<const char*>& member_typedef_names,
-    const std::vector<TypeSpec>& member_typedef_types) {
+    const RecordBodyState& body_state) {
     if (!sd)
         return;
 
-    sd->n_fields = static_cast<int>(fields.size());
+    sd->n_fields = static_cast<int>(body_state.fields.size());
     if (sd->n_fields > 0) {
         sd->fields = arena_.alloc_array<Node*>(sd->n_fields);
         for (int i = 0; i < sd->n_fields; ++i)
-            sd->fields[i] = fields[i];
+            sd->fields[i] = body_state.fields[i];
     }
 
-    sd->n_member_typedefs = static_cast<int>(member_typedef_names.size());
+    sd->n_member_typedefs =
+        static_cast<int>(body_state.member_typedef_names.size());
     if (sd->n_member_typedefs > 0) {
         sd->member_typedef_names =
             arena_.alloc_array<const char*>(sd->n_member_typedefs);
         sd->member_typedef_types =
             arena_.alloc_array<TypeSpec>(sd->n_member_typedefs);
         for (int i = 0; i < sd->n_member_typedefs; ++i) {
-            sd->member_typedef_names[i] = member_typedef_names[i];
-            sd->member_typedef_types[i] = member_typedef_types[i];
+            sd->member_typedef_names[i] = body_state.member_typedef_names[i];
+            sd->member_typedef_types[i] = body_state.member_typedef_types[i];
         }
     }
 
-    sd->n_children = static_cast<int>(methods.size());
+    sd->n_children = static_cast<int>(body_state.methods.size());
     if (sd->n_children > 0) {
         sd->children = arena_.alloc_array<Node*>(sd->n_children);
         for (int i = 0; i < sd->n_children; ++i)
-            sd->children[i] = methods[i];
+            sd->children[i] = body_state.methods[i];
     }
 }
 
@@ -5418,13 +5410,9 @@ void Parser::complete_record_definition(
     Node* sd,
     bool is_union,
     const char* source_tag,
-    const std::vector<Node*>& fields,
-    const std::vector<Node*>& methods,
-    const std::vector<const char*>& member_typedef_names,
-    const std::vector<TypeSpec>& member_typedef_types) {
+    const RecordBodyState& body_state) {
     apply_record_trailing_type_attributes(sd);
-    store_record_body_members(sd, fields, methods, member_typedef_names,
-                              member_typedef_types);
+    store_record_body_members(sd, body_state);
     finalize_record_definition(sd, is_union, source_tag);
     struct_defs_.push_back(sd);
 }
@@ -5449,16 +5437,10 @@ Node* Parser::parse_struct_or_union(bool is_union) {
 
     consume();  // consume {
 
-    std::vector<Node*> fields;
-    std::vector<Node*> methods;
-    std::vector<const char*> member_typedef_names;
-    std::vector<TypeSpec> member_typedef_types;
-    parse_record_body_with_context(tag, template_origin_name, &fields, &methods,
-                                   &member_typedef_names,
-                                   &member_typedef_types);
+    RecordBodyState body_state;
+    parse_record_body_with_context(tag, template_origin_name, &body_state);
 
-    complete_record_definition(sd, is_union, source_tag, fields, methods,
-                               member_typedef_names, member_typedef_types);
+    complete_record_definition(sd, is_union, source_tag, body_state);
     return sd;
 }
 

@@ -76,6 +76,13 @@ class Parser {
     std::string owner_struct_tag;  // set when kind == EnclosingClass
   };
 
+  struct RecordBodyState {
+    std::vector<Node*> fields;
+    std::vector<Node*> methods;
+    std::vector<const char*> member_typedef_names;
+    std::vector<TypeSpec> member_typedef_types;
+  };
+
   // All members public (required by project coding constraints).
   explicit Parser(std::vector<Token> tokens, Arena& arena,
                   SourceProfile source_profile = SourceProfile::C,
@@ -423,24 +430,15 @@ class Parser {
                                  std::string* struct_source_name);
   void parse_record_body(
       const std::string& struct_source_name,
-      std::vector<Node*>* fields,
-      std::vector<Node*>* methods,
-      std::vector<const char*>* member_typedef_names,
-      std::vector<TypeSpec>* member_typedef_types);
+      RecordBodyState* body_state);
   void parse_record_body_with_context(
       const char* tag,
       const char* template_origin_name,
-      std::vector<Node*>* fields,
-      std::vector<Node*>* methods,
-      std::vector<const char*>* member_typedef_names,
-      std::vector<TypeSpec>* member_typedef_types);
+      RecordBodyState* body_state);
   void apply_record_trailing_type_attributes(Node* sd);
   void store_record_body_members(
       Node* sd,
-      const std::vector<Node*>& fields,
-      const std::vector<Node*>& methods,
-      const std::vector<const char*>& member_typedef_names,
-      const std::vector<TypeSpec>& member_typedef_types);
+      const RecordBodyState& body_state);
   void finalize_record_definition(Node* sd,
                                   bool is_union,
                                   const char* source_tag);
@@ -448,10 +446,7 @@ class Parser {
       Node* sd,
       bool is_union,
       const char* source_tag,
-      const std::vector<Node*>& fields,
-      const std::vector<Node*>& methods,
-      const std::vector<const char*>& member_typedef_names,
-      const std::vector<TypeSpec>& member_typedef_types);
+      const RecordBodyState& body_state);
   Node* parse_struct_or_union(bool is_union);
 
   // Parse enum body { variants... } or just a tag reference.
