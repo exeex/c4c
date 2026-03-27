@@ -4414,6 +4414,455 @@ bool Parser::try_parse_record_destructor_member(
     return true;
 }
 
+bool Parser::try_parse_record_method_or_field_member(
+    std::vector<Node*>* fields,
+    std::vector<Node*>* methods,
+    const std::function<void(const char*)>& check_dup_field) {
+    // Regular field declaration
+    // C++ conversion operators (e.g., operator bool()) have no return
+    // type prefix, so KwOperator can appear directly here.
+    bool is_conversion_operator = false;
+    if (is_cpp_mode() && check(TokenKind::KwOperator)) {
+        is_conversion_operator = true;
+    } else if (!is_type_start()) {
+        // unknown token in struct body — skip
+        consume();
+        return true;
+    }
+
+    // Track C++ storage-class specifiers before parse_base_type consumes them.
+    bool field_is_static = false;
+    bool field_is_constexpr = false;
+    if (is_cpp_mode()) {
+        int save_pos = pos_;
+        while (!at_end() && !check(TokenKind::RBrace)) {
+            if (check(TokenKind::KwStatic)) { field_is_static = true; consume(); continue; }
+            if (check(TokenKind::KwConstexpr)) { field_is_constexpr = true; consume(); continue; }
+            // Only peek through qualifiers/storage-class keywords
+            if (check(TokenKind::KwConst) || check(TokenKind::KwVolatile) ||
+                check(TokenKind::KwInline) || check(TokenKind::KwExtern) ||
+                check(TokenKind::KwConsteval) || check(TokenKind::KwExplicit)) {
+                consume();
+                continue;
+            }
+            break;
+        }
+        pos_ = save_pos;
+    }
+
+    TypeSpec fts{};
+    if (!is_conversion_operator) {
+        fts = parse_base_type();
+        parse_attributes(&fts);
+    }
+
+    // C++ operator method: <return-type> operator<symbol>(<params>) { ... }
+    // Consume pointer/reference declarator tokens between the base type
+    // and the 'operator' keyword (e.g., Inner* operator->(), int& operator*()).
+    if (is_cpp_mode() && !is_conversion_operator && check(TokenKind::Star)) {
+        while (check(TokenKind::Star)) { consume(); fts.ptr_level++; }
+    }
+    if (is_cpp_mode() && !is_conversion_operator && check(TokenKind::AmpAmp)) {
+        consume();
+        fts.is_rvalue_ref = true;
+    } else if (is_cpp_mode() && !is_conversion_operator && check(TokenKind::Amp)) {
+        consume();
+        fts.is_lvalue_ref = true;
+    }
+    if (is_cpp_mode() && (is_conversion_operator || check(TokenKind::KwOperator))) {
+        OperatorKind op_kind = OP_NONE;
+        const char* op_mangled = nullptr;
+        consume(); // eat 'operator'
+
+        // Determine which operator
+        std::string conversion_mangled_name;
+        if (is_type_start()) {
+            // Conversion operator: operator T() — the token after 'operator'
+            // is a type name. This covers both standalone 'operator T()' and
+            // prefix forms like 'explicit operator T()' / 'constexpr explicit operator T()'.
+            is_conversion_operator = true;
+            fts = parse_base_type();
+            parse_attributes(&fts);
+            if (check(TokenKind::Star)) {
+                while (check(TokenKind::Star)) {
+                    consume();
+                    fts.ptr_level++;
+                }
+            }
+            if (check(TokenKind::AmpAmp)) {
+                consume();
+                fts.is_rvalue_ref = true;
+            } else if (check(TokenKind::Amp)) {
+                consume();
+                fts.is_lvalue_ref = true;
+            }
+            if (fts.base == TB_BOOL && fts.ptr_level == 0 &&
+                !fts.is_lvalue_ref && !fts.is_rvalue_ref) {
+                op_kind = OP_BOOL;
+            } else {
+                conversion_mangled_name = "operator_conv_";
+                append_type_mangled_suffix(conversion_mangled_name, fts);
+            }
+        } else if (check(TokenKind::KwNew)) {
+            consume();
+            conversion_mangled_name = check(TokenKind::LBracket)
+                ? "operator_new_array"
+                : "operator_new";
+            if (check(TokenKind::LBracket)) {
+                consume();
+                expect(TokenKind::RBracket);
+            }
+        } else if (check(TokenKind::KwDelete)) {
+            consume();
+            conversion_mangled_name = check(TokenKind::LBracket)
+                ? "operator_delete_array"
+                : "operator_delete";
+            if (check(TokenKind::LBracket)) {
+                consume();
+                expect(TokenKind::RBracket);
+            }
+        } else if (check(TokenKind::LBracket)) {
+            consume(); expect(TokenKind::RBracket);
+            op_kind = OP_SUBSCRIPT;
+        } else if (check(TokenKind::Star)) {
+            consume();
+            op_kind = OP_DEREF;
+            conversion_mangled_name = "operator_star_pending";
+        } else if (check(TokenKind::Arrow)) {
+            consume();
+            op_kind = OP_ARROW;
+        } else if (check(TokenKind::PlusPlus)) {
+            consume();
+            op_kind = OP_PRE_INC; // may become OP_POST_INC based on params
+        } else if (check(TokenKind::EqualEqual)) {
+            consume();
+            op_kind = OP_EQ;
+        } else if (check(TokenKind::BangEqual)) {
+            consume();
+            op_kind = OP_NEQ;
+        } else if (check(TokenKind::Plus)) {
+            consume();
+            op_kind = OP_PLUS;
+        } else if (check(TokenKind::Minus)) {
+            consume();
+            op_kind = OP_MINUS;
+        } else if (check(TokenKind::Assign)) {
+            consume();
+            op_kind = OP_ASSIGN;
+        } else if (check(TokenKind::LessEqual)) {
+            consume();
+            op_kind = OP_LE;
+        } else if (check(TokenKind::GreaterEqual)) {
+            consume();
+            op_kind = OP_GE;
+        } else if (check(TokenKind::Less)) {
+            consume();
+            op_kind = OP_LT;
+        } else if (check(TokenKind::Greater)) {
+            consume();
+            op_kind = OP_GT;
+        } else if (check(TokenKind::LParen)) {
+            // operator() — function call operator
+            consume(); // eat '('
+            expect(TokenKind::RParen); // eat ')'
+            op_kind = OP_CALL;
+        } else if (check(TokenKind::Amp)) {
+            consume();
+            conversion_mangled_name = "operator_amp_pending";
+        } else if (const char* extra_mangled = extra_operator_mangled_name(cur().kind)) {
+            consume();
+            conversion_mangled_name = extra_mangled;
+        } else if (check(TokenKind::KwBool)) {
+            // operator bool — conversion operator; return type is bool
+            consume();
+            op_kind = OP_BOOL;
+            fts = TypeSpec{};
+            fts.base = TB_BOOL;
+        } else {
+            // Unknown operator token — error
+            throw std::runtime_error(
+                std::string("unsupported operator overload token '") +
+                cur().lexeme + "' at line " + std::to_string(cur().line));
+        }
+
+        op_mangled = operator_kind_mangled_name(op_kind);
+        if (!conversion_mangled_name.empty()) {
+            op_mangled = arena_.strdup(conversion_mangled_name.c_str());
+        }
+
+        // Parse parameter list
+        expect(TokenKind::LParen);
+        std::vector<Node*> params;
+        bool variadic = false;
+        if (!check(TokenKind::RParen)) {
+            while (!at_end()) {
+                if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
+                if (check(TokenKind::RParen)) break;
+                if (!is_type_start()) break;
+                Node* p = parse_param();
+                if (p) params.push_back(p);
+                if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
+                if (!match(TokenKind::Comma)) break;
+            }
+        }
+        expect(TokenKind::RParen);
+
+        // Distinguish prefix vs postfix operator++ by parameter count:
+        // prefix: operator++() — 0 params; postfix: operator++(int) — 1 param
+        if (op_kind == OP_PRE_INC && !params.empty()) {
+            op_kind = OP_POST_INC;
+            op_mangled = operator_kind_mangled_name(op_kind);
+        }
+        if (!conversion_mangled_name.empty()) {
+            finalize_pending_operator_name(conversion_mangled_name, params.size());
+            op_mangled = arena_.strdup(conversion_mangled_name.c_str());
+        }
+
+        // Parse trailing qualifiers (const, constexpr, consteval)
+        bool is_method_const = false;
+        bool is_method_constexpr = false;
+        bool is_method_consteval = false;
+        while (true) {
+            if (match(TokenKind::KwConst)) { is_method_const = true; }
+            else if (is_cpp_mode() && match(TokenKind::KwConstexpr)) {
+                is_method_constexpr = true;
+            } else if (is_cpp_mode() && match(TokenKind::KwConsteval)) {
+                is_method_consteval = true;
+            } else {
+                break;
+            }
+        }
+        // Skip C++ ref-qualifiers: & or &&
+        if (is_cpp_mode()) {
+            if (check(TokenKind::AmpAmp)) consume();
+            else if (check(TokenKind::Amp)) consume();
+        }
+        skip_exception_spec();
+        if (is_cpp_mode() && match(TokenKind::Arrow)) {
+            fts = parse_type_name();
+            parse_attributes(&fts);
+        }
+
+        Node* method = make_node(NK_FUNCTION, cur().line);
+        method->type = fts;
+        method->name = arena_.strdup(op_mangled);
+        method->operator_kind = op_kind;
+        method->variadic = variadic;
+        method->is_const_method = is_method_const;
+        method->is_constexpr = is_method_constexpr;
+        method->is_consteval = is_method_consteval;
+        method->n_params = static_cast<int>(params.size());
+        if (method->n_params > 0) {
+            method->params = arena_.alloc_array<Node*>(method->n_params);
+            for (int i = 0; i < method->n_params; ++i) method->params[i] = params[i];
+        }
+        if (check(TokenKind::LBrace)) {
+            method->body = parse_block();
+        } else if (is_cpp_mode() && check(TokenKind::Assign) &&
+                   pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                   tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
+            consume(); // '='
+            consume(); // 'delete'
+            method->is_deleted = true;
+            match(TokenKind::Semi);
+        } else if (is_cpp_mode() && check(TokenKind::Assign) &&
+                   pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                   tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+            consume(); // '='
+            consume(); // 'default'
+            method->is_defaulted = true;
+            match(TokenKind::Semi);
+        } else {
+            match(TokenKind::Semi);
+        }
+        methods->push_back(method);
+        return true;
+    }
+
+    // Handle anonymous bitfield: just ': expr;'
+    if (check(TokenKind::Colon)) {
+        consume();
+        parse_assign_expr();  // skip bitfield width
+        match(TokenKind::Semi);
+        return true;
+    }
+
+    // If semicolon follows immediately: anonymous struct field (no name)
+    if (check(TokenKind::Semi)) {
+        match(TokenKind::Semi);
+        return true;
+    }
+
+    bool first = true;
+    while (true) {
+        TypeSpec cur_fts = fts;
+        if (!first) {
+            // For multi-declarator fields, re-use base type.
+        }
+        first = false;
+        const char* fname = nullptr;
+        Node** fn_ptr_params = nullptr;
+        int n_fn_ptr_params = 0;
+        bool fn_ptr_variadic = false;
+        parse_declarator(cur_fts, &fname, &fn_ptr_params,
+                         &n_fn_ptr_params, &fn_ptr_variadic);
+        skip_attributes();
+
+        if (fname && check(TokenKind::LParen)) {
+            consume();
+            std::vector<Node*> params;
+            bool variadic = false;
+            if (!check(TokenKind::RParen)) {
+                while (!at_end()) {
+                    if (check(TokenKind::Ellipsis)) {
+                        variadic = true;
+                        consume();
+                        break;
+                    }
+                    if (check(TokenKind::RParen)) break;
+                    if (!is_type_start()) break;
+                    Node* p = parse_param();
+                    if (p) params.push_back(p);
+                    if (check(TokenKind::Ellipsis)) {
+                        variadic = true;
+                        consume();
+                        break;
+                    }
+                    if (!match(TokenKind::Comma)) break;
+                }
+            }
+            expect(TokenKind::RParen);
+            bool is_method_const = false;
+            bool is_method_constexpr = false;
+            bool is_method_consteval = false;
+            while (true) {
+                if (match(TokenKind::KwConst)) { is_method_const = true; }
+                else if (is_cpp_mode() && match(TokenKind::KwConstexpr)) {
+                    is_method_constexpr = true;
+                } else if (is_cpp_mode() && match(TokenKind::KwConsteval)) {
+                    is_method_consteval = true;
+                } else {
+                    break;
+                }
+            }
+            if (is_cpp_mode()) {
+                if (check(TokenKind::AmpAmp)) consume();
+                else if (check(TokenKind::Amp)) consume();
+            }
+            skip_exception_spec();
+            if (is_cpp_mode() && match(TokenKind::Arrow)) {
+                cur_fts = parse_type_name();
+                parse_attributes(&cur_fts);
+            }
+            Node* method = make_node(NK_FUNCTION, cur().line);
+            method->type = cur_fts;
+            method->name = fname;
+            method->variadic = variadic;
+            method->is_const_method = is_method_const;
+            method->is_constexpr = is_method_constexpr;
+            method->is_consteval = is_method_consteval;
+            method->n_params = static_cast<int>(params.size());
+            if (method->n_params > 0) {
+                method->params = arena_.alloc_array<Node*>(method->n_params);
+                for (int i = 0; i < method->n_params; ++i) method->params[i] = params[i];
+            }
+            if (check(TokenKind::LBrace)) {
+                method->body = parse_block();
+            } else if (is_cpp_mode() && check(TokenKind::Assign) &&
+                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                       tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
+                consume(); // '='
+                consume(); // 'delete'
+                method->is_deleted = true;
+                match(TokenKind::Semi);
+            } else if (is_cpp_mode() && check(TokenKind::Assign) &&
+                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                       tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+                consume(); // '='
+                consume(); // 'default'
+                method->is_defaulted = true;
+                match(TokenKind::Semi);
+            } else {
+                match(TokenKind::Semi);
+            }
+            methods->push_back(method);
+            if (!match(TokenKind::Comma)) break;
+            continue;
+        }
+
+        long long bf_width = -1;
+        if (check(TokenKind::Colon)) {
+            consume();
+            Node* bfw = parse_assign_expr();
+            if (bfw) eval_const_int(bfw, &bf_width, &struct_tag_def_map_);
+        }
+
+        Node* field_init_expr = nullptr;
+        if (is_cpp_mode() && check(TokenKind::Assign)) {
+            consume(); // eat '='
+            if (field_is_static) {
+                try {
+                    field_init_expr = parse_assign_expr();
+                } catch (...) {
+                    field_init_expr = nullptr;
+                }
+            }
+            if (!field_init_expr) {
+                int depth = 0, angle_depth = 0;
+                while (!at_end()) {
+                    if (check(TokenKind::LParen) || check(TokenKind::LBrace) ||
+                        check(TokenKind::LBracket)) { ++depth; consume(); }
+                    else if (check(TokenKind::RParen) || check(TokenKind::RBrace) ||
+                             check(TokenKind::RBracket)) {
+                        if (depth == 0) break;
+                        --depth; consume();
+                    }
+                    else if (check(TokenKind::Less) && depth == 0) {
+                        ++angle_depth; consume();
+                    }
+                    else if (check(TokenKind::Greater) && angle_depth > 0 && depth == 0) {
+                        --angle_depth; consume();
+                    }
+                    else if (check(TokenKind::GreaterGreater) && angle_depth > 0 && depth == 0) {
+                        angle_depth -= std::min(angle_depth, 2);
+                        consume();
+                    }
+                    else if ((check(TokenKind::Semi) || check(TokenKind::Comma)) &&
+                             depth == 0 && angle_depth == 0) break;
+                    else consume();
+                }
+            }
+        }
+
+        if (fname) {
+            Node* f = make_node(NK_DECL, cur().line);
+            f->type = cur_fts;
+            f->name = fname;
+            f->ival = bf_width;
+            f->is_static = field_is_static;
+            f->is_constexpr = field_is_constexpr;
+            f->init = field_init_expr;
+            f->fn_ptr_params = fn_ptr_params;
+            f->n_fn_ptr_params = n_fn_ptr_params;
+            f->fn_ptr_variadic = fn_ptr_variadic;
+            if (cur_fts.is_fn_ptr && n_fn_ptr_params == 0 && !fn_ptr_variadic) {
+                auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
+                if (tdit != typedef_fn_ptr_info_.end()) {
+                    f->fn_ptr_params = tdit->second.params;
+                    f->n_fn_ptr_params = tdit->second.n_params;
+                    f->fn_ptr_variadic = tdit->second.variadic;
+                }
+            }
+            check_dup_field(fname);
+            fields->push_back(f);
+        }
+
+        if (!match(TokenKind::Comma)) break;
+    }
+    match(TokenKind::Semi);
+    return true;
+}
+
 Node* Parser::parse_struct_or_union(bool is_union) {
     int ln = cur().line;
     // Parse attributes before tag name — capture packed attribute.
@@ -4781,462 +5230,10 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             continue;
         }
 
-        // Regular field declaration
-        // C++ conversion operators (e.g., operator bool()) have no return
-        // type prefix, so KwOperator can appear directly here.
-        bool is_conversion_operator = false;
-        if (is_cpp_mode() && check(TokenKind::KwOperator)) {
-            is_conversion_operator = true;
-        } else if (!is_type_start()) {
-            // unknown token in struct body — skip
-            consume();
+        if (try_parse_record_method_or_field_member(&fields, &methods,
+                                                    check_dup_field)) {
             continue;
         }
-
-        // Track C++ storage-class specifiers before parse_base_type consumes them.
-        bool field_is_static = false;
-        bool field_is_constexpr = false;
-        if (is_cpp_mode()) {
-            int save_pos = pos_;
-            while (!at_end() && !check(TokenKind::RBrace)) {
-                if (check(TokenKind::KwStatic)) { field_is_static = true; consume(); continue; }
-                if (check(TokenKind::KwConstexpr)) { field_is_constexpr = true; consume(); continue; }
-                // Only peek through qualifiers/storage-class keywords
-                if (check(TokenKind::KwConst) || check(TokenKind::KwVolatile) ||
-                    check(TokenKind::KwInline) || check(TokenKind::KwExtern) ||
-                    check(TokenKind::KwConsteval) || check(TokenKind::KwExplicit)) {
-                    consume();
-                    continue;
-                }
-                break;
-            }
-            pos_ = save_pos;
-        }
-
-        TypeSpec fts{};
-        if (!is_conversion_operator) {
-            fts = parse_base_type();
-            parse_attributes(&fts);
-        }
-
-        // C++ operator method: <return-type> operator<symbol>(<params>) { ... }
-        // Consume pointer/reference declarator tokens between the base type
-        // and the 'operator' keyword (e.g., Inner* operator->(), int& operator*()).
-        if (is_cpp_mode() && !is_conversion_operator && check(TokenKind::Star)) {
-            while (check(TokenKind::Star)) { consume(); fts.ptr_level++; }
-        }
-        if (is_cpp_mode() && !is_conversion_operator && check(TokenKind::AmpAmp)) {
-            consume();
-            fts.is_rvalue_ref = true;
-        } else if (is_cpp_mode() && !is_conversion_operator && check(TokenKind::Amp)) {
-            consume();
-            fts.is_lvalue_ref = true;
-        }
-        if (is_cpp_mode() && (is_conversion_operator || check(TokenKind::KwOperator))) {
-            OperatorKind op_kind = OP_NONE;
-            const char* op_mangled = nullptr;
-            consume(); // eat 'operator'
-
-            // Determine which operator
-            std::string conversion_mangled_name;
-            if (is_type_start()) {
-                // Conversion operator: operator T() — the token after 'operator'
-                // is a type name. This covers both standalone 'operator T()' and
-                // prefix forms like 'explicit operator T()' / 'constexpr explicit operator T()'.
-                is_conversion_operator = true;
-                fts = parse_base_type();
-                parse_attributes(&fts);
-                if (check(TokenKind::Star)) {
-                    while (check(TokenKind::Star)) {
-                        consume();
-                        fts.ptr_level++;
-                    }
-                }
-                if (check(TokenKind::AmpAmp)) {
-                    consume();
-                    fts.is_rvalue_ref = true;
-                } else if (check(TokenKind::Amp)) {
-                    consume();
-                    fts.is_lvalue_ref = true;
-                }
-                if (fts.base == TB_BOOL && fts.ptr_level == 0 &&
-                    !fts.is_lvalue_ref && !fts.is_rvalue_ref) {
-                    op_kind = OP_BOOL;
-                } else {
-                    conversion_mangled_name = "operator_conv_";
-                    append_type_mangled_suffix(conversion_mangled_name, fts);
-                }
-            } else if (check(TokenKind::KwNew)) {
-                consume();
-                conversion_mangled_name = check(TokenKind::LBracket)
-                    ? "operator_new_array"
-                    : "operator_new";
-                if (check(TokenKind::LBracket)) {
-                    consume();
-                    expect(TokenKind::RBracket);
-                }
-            } else if (check(TokenKind::KwDelete)) {
-                consume();
-                conversion_mangled_name = check(TokenKind::LBracket)
-                    ? "operator_delete_array"
-                    : "operator_delete";
-                if (check(TokenKind::LBracket)) {
-                    consume();
-                    expect(TokenKind::RBracket);
-                }
-            } else if (check(TokenKind::LBracket)) {
-                consume(); expect(TokenKind::RBracket);
-                op_kind = OP_SUBSCRIPT;
-            } else if (check(TokenKind::Star)) {
-                consume();
-                op_kind = OP_DEREF;
-                conversion_mangled_name = "operator_star_pending";
-            } else if (check(TokenKind::Arrow)) {
-                consume();
-                op_kind = OP_ARROW;
-            } else if (check(TokenKind::PlusPlus)) {
-                consume();
-                op_kind = OP_PRE_INC; // may become OP_POST_INC based on params
-            } else if (check(TokenKind::EqualEqual)) {
-                consume();
-                op_kind = OP_EQ;
-            } else if (check(TokenKind::BangEqual)) {
-                consume();
-                op_kind = OP_NEQ;
-            } else if (check(TokenKind::Plus)) {
-                consume();
-                op_kind = OP_PLUS;
-            } else if (check(TokenKind::Minus)) {
-                consume();
-                op_kind = OP_MINUS;
-            } else if (check(TokenKind::Assign)) {
-                consume();
-                op_kind = OP_ASSIGN;
-            } else if (check(TokenKind::LessEqual)) {
-                consume();
-                op_kind = OP_LE;
-            } else if (check(TokenKind::GreaterEqual)) {
-                consume();
-                op_kind = OP_GE;
-            } else if (check(TokenKind::Less)) {
-                consume();
-                op_kind = OP_LT;
-            } else if (check(TokenKind::Greater)) {
-                consume();
-                op_kind = OP_GT;
-            } else if (check(TokenKind::LParen)) {
-                // operator() — function call operator
-                consume(); // eat '('
-                expect(TokenKind::RParen); // eat ')'
-                op_kind = OP_CALL;
-            } else if (check(TokenKind::Amp)) {
-                consume();
-                conversion_mangled_name = "operator_amp_pending";
-            } else if (const char* extra_mangled = extra_operator_mangled_name(cur().kind)) {
-                TokenKind extra_kind = cur().kind;
-                consume();
-                conversion_mangled_name = extra_mangled;
-            } else if (check(TokenKind::KwBool)) {
-                // operator bool — conversion operator; return type is bool
-                consume();
-                op_kind = OP_BOOL;
-                fts = TypeSpec{};
-                fts.base = TB_BOOL;
-            } else {
-                // Unknown operator token — error
-                throw std::runtime_error(
-                    std::string("unsupported operator overload token '") +
-                    cur().lexeme + "' at line " + std::to_string(cur().line));
-            }
-
-            op_mangled = operator_kind_mangled_name(op_kind);
-            if (!conversion_mangled_name.empty()) {
-                op_mangled = arena_.strdup(conversion_mangled_name.c_str());
-            }
-
-            // Parse parameter list
-            expect(TokenKind::LParen);
-            std::vector<Node*> params;
-            bool variadic = false;
-            if (!check(TokenKind::RParen)) {
-                while (!at_end()) {
-                    if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
-                    if (check(TokenKind::RParen)) break;
-                    if (!is_type_start()) break;
-                    Node* p = parse_param();
-                    if (p) params.push_back(p);
-                    if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
-                    if (!match(TokenKind::Comma)) break;
-                }
-            }
-            expect(TokenKind::RParen);
-
-            // Distinguish prefix vs postfix operator++ by parameter count:
-            // prefix: operator++() — 0 params; postfix: operator++(int) — 1 param
-            if (op_kind == OP_PRE_INC && !params.empty()) {
-                op_kind = OP_POST_INC;
-                op_mangled = operator_kind_mangled_name(op_kind);
-            }
-            if (!conversion_mangled_name.empty()) {
-                finalize_pending_operator_name(conversion_mangled_name, params.size());
-                op_mangled = arena_.strdup(conversion_mangled_name.c_str());
-            }
-
-            // Parse trailing qualifiers (const, constexpr, consteval)
-            bool is_method_const = false;
-            bool is_method_constexpr = false;
-            bool is_method_consteval = false;
-            while (true) {
-                if (match(TokenKind::KwConst)) { is_method_const = true; }
-                else if (is_cpp_mode() && match(TokenKind::KwConstexpr)) {
-                    is_method_constexpr = true;
-                } else if (is_cpp_mode() && match(TokenKind::KwConsteval)) {
-                    is_method_consteval = true;
-                } else {
-                    break;
-                }
-            }
-            // Skip C++ ref-qualifiers: & or &&
-            if (is_cpp_mode()) {
-                if (check(TokenKind::AmpAmp)) consume();
-                else if (check(TokenKind::Amp)) consume();
-            }
-            skip_exception_spec();
-            if (is_cpp_mode() && match(TokenKind::Arrow)) {
-                fts = parse_type_name();
-                parse_attributes(&fts);
-            }
-
-            Node* method = make_node(NK_FUNCTION, cur().line);
-            method->type = fts;
-            method->name = arena_.strdup(op_mangled);
-            method->operator_kind = op_kind;
-            method->variadic = variadic;
-            method->is_const_method = is_method_const;
-            method->is_constexpr = is_method_constexpr;
-            method->is_consteval = is_method_consteval;
-            method->n_params = (int)params.size();
-            if (method->n_params > 0) {
-                method->params = arena_.alloc_array<Node*>(method->n_params);
-                for (int i = 0; i < method->n_params; ++i) method->params[i] = params[i];
-            }
-            if (check(TokenKind::LBrace)) {
-                method->body = parse_block();
-            } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                       tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
-                consume(); // '='
-                consume(); // 'delete'
-                method->is_deleted = true;
-                match(TokenKind::Semi);
-            } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                       tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
-                consume(); // '='
-                consume(); // 'default'
-                method->is_defaulted = true;
-                match(TokenKind::Semi);
-            } else {
-                match(TokenKind::Semi);
-            }
-            methods.push_back(method);
-            continue;
-        }
-
-        // Handle anonymous bitfield: just ': expr;'
-        if (check(TokenKind::Colon)) {
-            consume();
-            parse_assign_expr();  // skip bitfield width
-            match(TokenKind::Semi);
-            continue;
-        }
-
-        // If semicolon follows immediately: anonymous struct field (no name)
-        if (check(TokenKind::Semi)) {
-            match(TokenKind::Semi);
-            continue;
-        }
-
-        bool first = true;
-        while (true) {
-            TypeSpec cur_fts = fts;
-            // Preserve typedef ptr_level and array dims.
-            // apply_decl_dims prepends declarator dims to base typedef dims correctly.
-            if (!first) {
-                // For multi-declarator fields, re-use base type (ptr_level from typedef preserved)
-            }
-            first = false;
-            const char* fname = nullptr;
-            Node** fn_ptr_params = nullptr;
-            int n_fn_ptr_params = 0;
-            bool fn_ptr_variadic = false;
-            parse_declarator(cur_fts, &fname, &fn_ptr_params,
-                             &n_fn_ptr_params, &fn_ptr_variadic);
-            skip_attributes();
-
-            if (fname && check(TokenKind::LParen)) {
-                consume();
-                std::vector<Node*> params;
-                bool variadic = false;
-                if (!check(TokenKind::RParen)) {
-                    while (!at_end()) {
-                        if (check(TokenKind::Ellipsis)) {
-                            variadic = true;
-                            consume();
-                            break;
-                        }
-                        if (check(TokenKind::RParen)) break;
-                        if (!is_type_start()) break;
-                        Node* p = parse_param();
-                        if (p) params.push_back(p);
-                        if (check(TokenKind::Ellipsis)) {
-                            variadic = true;
-                            consume();
-                            break;
-                        }
-                        if (!match(TokenKind::Comma)) break;
-                    }
-                }
-                expect(TokenKind::RParen);
-                bool is_method_const = false;
-                bool is_method_constexpr = false;
-                bool is_method_consteval = false;
-                while (true) {
-                    if (match(TokenKind::KwConst)) { is_method_const = true; }
-                    else if (is_cpp_mode() && match(TokenKind::KwConstexpr)) {
-                        is_method_constexpr = true;
-                    } else if (is_cpp_mode() && match(TokenKind::KwConsteval)) {
-                        is_method_consteval = true;
-                    } else {
-                        break;
-                    }
-                }
-                // Skip C++ ref-qualifiers: & or &&
-                if (is_cpp_mode()) {
-                    if (check(TokenKind::AmpAmp)) consume();
-                    else if (check(TokenKind::Amp)) consume();
-                }
-                skip_exception_spec();
-                if (is_cpp_mode() && match(TokenKind::Arrow)) {
-                    cur_fts = parse_type_name();
-                    parse_attributes(&cur_fts);
-                }
-                Node* method = make_node(NK_FUNCTION, cur().line);
-                method->type = cur_fts;
-                method->name = fname;
-                method->variadic = variadic;
-                method->is_const_method = is_method_const;
-                method->is_constexpr = is_method_constexpr;
-                method->is_consteval = is_method_consteval;
-                method->n_params = (int)params.size();
-                if (method->n_params > 0) {
-                    method->params = arena_.alloc_array<Node*>(method->n_params);
-                    for (int i = 0; i < method->n_params; ++i) method->params[i] = params[i];
-                }
-                if (check(TokenKind::LBrace)) {
-                    method->body = parse_block();
-                } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                           pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                           tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
-                    consume(); // '='
-                    consume(); // 'delete'
-                    method->is_deleted = true;
-                    match(TokenKind::Semi);
-                } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                           pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                           tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
-                    consume(); // '='
-                    consume(); // 'default'
-                    method->is_defaulted = true;
-                    match(TokenKind::Semi);
-                } else {
-                    match(TokenKind::Semi);
-                }
-                methods.push_back(method);
-                if (!match(TokenKind::Comma)) break;
-                continue;
-            }
-
-            // Bitfield: : expr
-            long long bf_width = -1;
-            if (check(TokenKind::Colon)) {
-                consume();
-                Node* bfw = parse_assign_expr();
-                if (bfw) eval_const_int(bfw, &bf_width, &struct_tag_def_map_);
-            }
-
-            // C++ in-class field initializer or static data member initializer:
-            // e.g. int x = 5;  or  static constexpr bool value = expr;
-            Node* field_init_expr = nullptr;
-            if (is_cpp_mode() && check(TokenKind::Assign)) {
-                consume(); // eat '='
-                if (field_is_static) {
-                    // For static constexpr members, parse the initializer so
-                    // inherited static member lookup can evaluate the value.
-                    try {
-                        field_init_expr = parse_assign_expr();
-                    } catch (...) {
-                        field_init_expr = nullptr;
-                    }
-                }
-                if (!field_init_expr) {
-                    // Skip balanced initializer expression until ; or , at depth 0.
-                    // In C++ mode, also track <> depth for template expressions like
-                    // is_same<T, U>::value (the comma between T and U must not be
-                    // treated as a field separator).
-                    int depth = 0, angle_depth = 0;
-                    while (!at_end()) {
-                        if (check(TokenKind::LParen) || check(TokenKind::LBrace) ||
-                            check(TokenKind::LBracket)) { ++depth; consume(); }
-                        else if (check(TokenKind::RParen) || check(TokenKind::RBrace) ||
-                                 check(TokenKind::RBracket)) {
-                            if (depth == 0) break;
-                            --depth; consume();
-                        }
-                        else if (check(TokenKind::Less) && depth == 0) {
-                            ++angle_depth; consume();
-                        }
-                        else if (check(TokenKind::Greater) && angle_depth > 0 && depth == 0) {
-                            --angle_depth; consume();
-                        }
-                        else if (check(TokenKind::GreaterGreater) && angle_depth > 0 && depth == 0) {
-                            angle_depth -= std::min(angle_depth, 2);
-                            consume();
-                        }
-                        else if ((check(TokenKind::Semi) || check(TokenKind::Comma)) &&
-                                 depth == 0 && angle_depth == 0) break;
-                        else consume();
-                    }
-                }
-            }
-
-            if (fname) {
-                Node* f = make_node(NK_DECL, cur().line);
-                f->type = cur_fts;
-                f->name = fname;
-                f->ival = bf_width;  // -1 = not a bitfield; N = N-bit bitfield
-                f->is_static = field_is_static;
-                f->is_constexpr = field_is_constexpr;
-                f->init = field_init_expr;
-                f->fn_ptr_params = fn_ptr_params;
-                f->n_fn_ptr_params = n_fn_ptr_params;
-                f->fn_ptr_variadic = fn_ptr_variadic;
-                // Phase C: propagate fn_ptr params from typedef if not set by declarator.
-                if (cur_fts.is_fn_ptr && n_fn_ptr_params == 0 && !fn_ptr_variadic) {
-                    auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
-                    if (tdit != typedef_fn_ptr_info_.end()) {
-                        f->fn_ptr_params = tdit->second.params;
-                        f->n_fn_ptr_params = tdit->second.n_params;
-                        f->fn_ptr_variadic = tdit->second.variadic;
-                    }
-                }
-                check_dup_field(fname);
-                fields.push_back(f);
-            }
-
-            if (!match(TokenKind::Comma)) break;
-        }
-        match(TokenKind::Semi);
       } catch (const std::exception&) {
         // Error recovery: skip to next ';' or '}' within the struct body.
         // This prevents a single unparseable member from aborting the entire

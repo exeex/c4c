@@ -381,6 +381,10 @@ class Parser {
   bool try_parse_record_destructor_member(
       const std::string& struct_source_name,
       std::vector<Node*>* methods);
+  bool try_parse_record_method_or_field_member(
+      std::vector<Node*>* fields,
+      std::vector<Node*>* methods,
+      const std::function<void(const char*)>& check_dup_field);
   bool try_parse_record_access_label();
   bool try_skip_record_friend_member();
   bool try_skip_record_static_assert_member();

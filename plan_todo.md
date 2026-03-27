@@ -10,6 +10,48 @@
 
 ## Current Slice
 
+- Active target: Step 6 continues after the regular method/field extraction;
+  the next slice should pull another remaining record-body branch or shared
+  method/body finalization path out of `parse_struct_or_union()` so the main
+  loop keeps flattening toward a pure dispatcher
+- This iteration's exact target: add parse-only coverage for regular in-record
+  methods, conversion operators, bitfields, static constexpr field
+  initializers, and multi-declarator fields, then extract that existing branch
+  into a focused helper without changing operator/member parsing, bitfield
+  width capture, static initializer skipping, or field/method insertion order
+- Completed: extracted the inline regular method/field branch from
+  `parse_struct_or_union()` into a focused helper without changing
+  operator/member parsing, bitfield width capture, static initializer
+  skipping, or field/method insertion order
+- New helper path:
+  - `try_parse_record_method_or_field_member(...)`
+- Added parse-only coverage:
+  - `record_member_method_field_parse`
+- Validation completed:
+  - focused parser/member regressions passed:
+    - `record_member_method_field_parse`
+    - `record_member_special_member_parse`
+    - `record_member_prelude_parse`
+    - `record_member_enum_parse`
+    - `record_member_typedef_using_parse`
+    - `record_nested_aggregate_member_parse`
+    - `access_labels_parse`
+    - `friend_access_parse`
+    - `friend_inline_operator_parse`
+    - `template_struct_specialization_parse`
+    - `constructor_basic`
+    - `ctor_init_list_basic`
+    - `destructor_member_basic`
+    - `operator_extended_member_runtime`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2171 total, 7 failed
+    - `test_fail_after.log`: 2172 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Next intended slice: continue Step 6 by extracting one more shared
+  method/field follow-up or top-level member-category branch so
+  `parse_struct_or_union()` keeps collapsing toward a dispatcher
 - Active target: Step 6 continues after the record-body prelude extraction;
   the next slice is constructor/destructor member parsing so
   `parse_struct_or_union()` keeps shrinking toward an explicit top-level
