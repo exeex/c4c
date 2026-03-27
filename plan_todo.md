@@ -10,9 +10,9 @@
 
 ## Current Slice
 
-- Extracted shared qualified-name spelling / typedef-resolution helpers
-- Reused them in `is_type_start()` and the qualified-name branch of `parse_base_type()`
-- Added a narrow parse-only regression for qualified type-start probing in declaration contexts
+- Extracted the remaining declarator-side qualified-name assembly into helpers
+- Reused them for out-of-class declarator names with template-id owners and trailing `operator...`
+- Added a narrow parse-only regression for a templated owner spelling in a qualified operator declarator
 
 ## Completed
 
@@ -109,15 +109,37 @@
   - `test_before.log`: 2157 total, 3 failed
   - `test_after.log`: 2158 total, 3 failed
   - failing tests unchanged
+- Continued Step 4 by extracting declarator-side qualified-name helpers:
+  - `parse_operator_declarator_name(...)`
+  - `parse_qualified_declarator_name(...)`
+- Reduced the qualified declarator-name branch in `parse_declarator()` to the new helper path
+- Added parse-only coverage:
+  - `qualified_operator_template_owner_parse`
+- Rebuilt successfully with `cmake --build build -j8`
+- Targeted parser regressions passed:
+  - `qualified_operator_template_owner_parse`
+  - `eastl_slice7d_qualified_declarator_parse`
+  - `operator_decl_shift_qualified_parse`
+  - `qualified_member_function_pointer_template_owner_parse`
+  - `qualified_member_pointer_template_owner_parse`
+- Full clean rebuild `test_after.log` result:
+  - 2159 total, 7 failed
+  - added test passed
+- Verified the 4 extra clean-build failures are pre-existing, not introduced by this slice:
+  - reproduced on detached `HEAD` worktree with a clean build
+  - same failing identities on clean `HEAD`:
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
 
 ## Next
 
-- Continue Step 4 by evaluating whether any remaining `peek_qualified_name(...)`
-  lookahead can reuse the extracted spelling / resolution helpers without
-  changing parser acceptance policy
-- Pick the next smallest slice around residual qualified-name probing in
-  declarator or expression-side lookahead that still duplicates name assembly
-- Keep new tests focused on parser-only qualified/dependent spelling coverage before any further behavior changes
+- If this declarator-name extraction lands cleanly, re-evaluate whether any
+  remaining qualified-name lookahead outside `parse_declarator()` still
+  duplicates segment assembly enough to justify another Step 4 slice
+- Keep follow-up coverage parser-only and narrowly focused on qualified /
+  dependent name spelling reuse rather than grammar expansion
 
 ## Blockers
 
@@ -125,6 +147,12 @@
   - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
   - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
   - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+- Clean rebuilds also currently expose pre-existing runtime failures that are
+  reproducible on detached `HEAD` without this patch:
+  - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+  - `cpp_positive_sema_template_arg_deduction_cpp`
+  - `cpp_positive_sema_template_mixed_params_cpp`
+  - `cpp_positive_sema_template_type_subst_cpp`
 
 ## Resume Notes
 
@@ -139,4 +167,8 @@
 - Added `qualified_member_function_pointer_template_owner_parse` to lock that declarator form
 - `is_type_start()` and the qualified-name branch in `parse_base_type()` now share helper-based qualified-name spelling / typedef lookup
 - Added `qualified_type_start_probe_parse` to lock declaration-context probing for qualified type names
+- The next intended extraction is the declarator-side qualified-name loop used for out-of-class names and operator declarators
+- `parse_declarator()` now delegates qualified/operator declarator-name parsing to dedicated helpers
+- Added `qualified_operator_template_owner_parse` to lock templated owner spellings for out-of-class operator declarators
+- `test_before.log` still reflects the incremental-build baseline (2158 total, 3 failed), while clean rebuilds now consistently show the same 7 failures on both this branch and detached `HEAD`
 - Full-suite failures were treated as existing issues for this iteration per user direction

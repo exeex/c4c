@@ -1389,6 +1389,155 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
     return true;
 }
 
+bool Parser::parse_operator_declarator_name(std::string* out_name) {
+    if (!out_name || !match(TokenKind::KwOperator)) return false;
+
+    std::string op_name;
+    if (check(TokenKind::KwNew)) {
+        consume();
+        if (check(TokenKind::LBracket)) {
+            consume();
+            expect(TokenKind::RBracket);
+            op_name = "operator_new_array";
+        } else {
+            op_name = "operator_new";
+        }
+    } else if (check(TokenKind::KwDelete)) {
+        consume();
+        if (check(TokenKind::LBracket)) {
+            consume();
+            expect(TokenKind::RBracket);
+            op_name = "operator_delete_array";
+        } else {
+            op_name = "operator_delete";
+        }
+    } else if (check(TokenKind::LBracket)) {
+        consume();
+        expect(TokenKind::RBracket);
+        op_name = "operator_subscript";
+    } else if (check(TokenKind::LParen)) {
+        consume();
+        expect(TokenKind::RParen);
+        op_name = "operator_call";
+    } else if (check(TokenKind::KwBool)) {
+        consume();
+        op_name = "operator_bool";
+    } else if (check(TokenKind::Star)) {
+        consume();
+        op_name = "operator_star_pending";
+    } else if (check(TokenKind::Arrow)) {
+        consume();
+        op_name = "operator_arrow";
+    } else if (check(TokenKind::PlusPlus)) {
+        consume();
+        op_name = "operator_inc_pending";
+    } else if (check(TokenKind::MinusMinus)) {
+        consume();
+        op_name = "operator_dec_pending";
+    } else if (check(TokenKind::EqualEqual)) {
+        consume();
+        op_name = "operator_eq";
+    } else if (check(TokenKind::BangEqual)) {
+        consume();
+        op_name = "operator_neq";
+    } else if (check(TokenKind::Plus)) {
+        consume();
+        op_name = "operator_plus";
+    } else if (check(TokenKind::Minus)) {
+        consume();
+        op_name = "operator_minus";
+    } else if (check(TokenKind::Assign)) {
+        consume();
+        op_name = "operator_assign";
+    } else if (check(TokenKind::LessEqual)) {
+        consume();
+        op_name = "operator_le";
+    } else if (check(TokenKind::GreaterEqual)) {
+        consume();
+        op_name = "operator_ge";
+    } else if (check(TokenKind::Less)) {
+        consume();
+        op_name = "operator_lt";
+    } else if (check(TokenKind::Greater)) {
+        consume();
+        op_name = "operator_gt";
+    } else if (check(TokenKind::Amp)) {
+        consume();
+        op_name = "operator_amp_pending";
+    } else if (const char* extra_mangled = extra_operator_mangled_name(cur().kind)) {
+        op_name = extra_mangled;
+        consume();
+    } else if (is_type_start()) {
+        TypeSpec conv_ts = parse_base_type();
+        parse_attributes(&conv_ts);
+        while (check(TokenKind::Star)) {
+            consume();
+            conv_ts.ptr_level++;
+        }
+        if (check(TokenKind::AmpAmp)) {
+            consume();
+            conv_ts.is_rvalue_ref = true;
+        } else if (check(TokenKind::Amp)) {
+            consume();
+            conv_ts.is_lvalue_ref = true;
+        }
+        op_name = "operator_conv_";
+        append_type_mangled_suffix(op_name, conv_ts);
+    } else {
+        return false;
+    }
+
+    out_name->append(op_name);
+    return true;
+}
+
+bool Parser::parse_qualified_declarator_name(std::string* out_name) {
+    if (!out_name) return false;
+
+    std::string qualified_name;
+    bool parsed_qualified = false;
+
+    auto append_scope_sep = [&]() {
+        if (!qualified_name.empty() &&
+            (qualified_name.size() < 2 ||
+             qualified_name.substr(qualified_name.size() - 2) != "::")) {
+            qualified_name += "::";
+        }
+    };
+
+    if (match(TokenKind::ColonColon))
+        qualified_name = "::";
+
+    if (check(TokenKind::KwOperator)) {
+        parsed_qualified = parse_operator_declarator_name(&qualified_name);
+    } else if (check(TokenKind::Identifier)) {
+        qualified_name += cur().lexeme;
+        consume();
+        parsed_qualified = true;
+        consume_template_args_followed_by_scope();
+    }
+
+    while (parsed_qualified && match(TokenKind::ColonColon)) {
+        append_scope_sep();
+        if (check(TokenKind::Identifier)) {
+            qualified_name += cur().lexeme;
+            consume();
+            consume_template_args_followed_by_scope();
+            continue;
+        }
+        if (check(TokenKind::KwOperator)) {
+            parsed_qualified = parse_operator_declarator_name(&qualified_name);
+            break;
+        }
+        parsed_qualified = false;
+        break;
+    }
+
+    if (!parsed_qualified) return false;
+    *out_name = std::move(qualified_name);
+    return true;
+}
+
 Parser::TypenameTemplateParamKind Parser::classify_typename_template_parameter() const {
     if (check(TokenKind::KwClass))
         return TypenameTemplateParamKind::TypeParameter;
@@ -3505,146 +3654,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
          check(TokenKind::KwOperator))) {
         int saved_pos = pos_;
         std::string qualified_name;
-        bool parsed_qualified = false;
-
-        auto append_scope_sep = [&]() {
-            if (!qualified_name.empty() &&
-                (qualified_name.size() < 2 ||
-                 qualified_name.substr(qualified_name.size() - 2) != "::")) {
-                qualified_name += "::";
-            }
-        };
-
-        auto parse_operator_name = [&]() -> bool {
-            if (!match(TokenKind::KwOperator)) return false;
-            std::string op_name;
-            if (check(TokenKind::KwNew)) {
-                consume();
-                if (check(TokenKind::LBracket)) {
-                    consume();
-                    expect(TokenKind::RBracket);
-                    op_name = "operator_new_array";
-                } else {
-                    op_name = "operator_new";
-                }
-            } else if (check(TokenKind::KwDelete)) {
-                consume();
-                if (check(TokenKind::LBracket)) {
-                    consume();
-                    expect(TokenKind::RBracket);
-                    op_name = "operator_delete_array";
-                } else {
-                    op_name = "operator_delete";
-                }
-            } else if (check(TokenKind::LBracket)) {
-                consume();
-                expect(TokenKind::RBracket);
-                op_name = "operator_subscript";
-            } else if (check(TokenKind::LParen)) {
-                consume();
-                expect(TokenKind::RParen);
-                op_name = "operator_call";
-            } else if (check(TokenKind::KwBool)) {
-                consume();
-                op_name = "operator_bool";
-            } else if (check(TokenKind::Star)) {
-                consume();
-                op_name = "operator_star_pending";
-            } else if (check(TokenKind::Arrow)) {
-                consume();
-                op_name = "operator_arrow";
-            } else if (check(TokenKind::PlusPlus)) {
-                consume();
-                op_name = "operator_inc_pending";
-            } else if (check(TokenKind::MinusMinus)) {
-                consume();
-                op_name = "operator_dec_pending";
-            } else if (check(TokenKind::EqualEqual)) {
-                consume();
-                op_name = "operator_eq";
-            } else if (check(TokenKind::BangEqual)) {
-                consume();
-                op_name = "operator_neq";
-            } else if (check(TokenKind::Plus)) {
-                consume();
-                op_name = "operator_plus";
-            } else if (check(TokenKind::Minus)) {
-                consume();
-                op_name = "operator_minus";
-            } else if (check(TokenKind::Assign)) {
-                consume();
-                op_name = "operator_assign";
-            } else if (check(TokenKind::LessEqual)) {
-                consume();
-                op_name = "operator_le";
-            } else if (check(TokenKind::GreaterEqual)) {
-                consume();
-                op_name = "operator_ge";
-            } else if (check(TokenKind::Less)) {
-                consume();
-                op_name = "operator_lt";
-            } else if (check(TokenKind::Greater)) {
-                consume();
-                op_name = "operator_gt";
-            } else if (check(TokenKind::Amp)) {
-                consume();
-                op_name = "operator_amp_pending";
-            } else if (const char* extra_mangled = extra_operator_mangled_name(cur().kind)) {
-                op_name = extra_mangled;
-                consume();
-            } else if (is_type_start()) {
-                TypeSpec conv_ts = parse_base_type();
-                parse_attributes(&conv_ts);
-                while (check(TokenKind::Star)) {
-                    consume();
-                    conv_ts.ptr_level++;
-                }
-                if (check(TokenKind::AmpAmp)) {
-                    consume();
-                    conv_ts.is_rvalue_ref = true;
-                } else if (check(TokenKind::Amp)) {
-                    consume();
-                    conv_ts.is_lvalue_ref = true;
-                }
-                op_name = "operator_conv_";
-                append_type_mangled_suffix(op_name, conv_ts);
-            } else {
-                return false;
-            }
-            qualified_name += op_name;
-            return true;
-        };
-
-        if (match(TokenKind::ColonColon))
-            qualified_name = "::";
-
-        if (check(TokenKind::KwOperator)) {
-            // Free operator function: operator==, operator+, etc.
-            parsed_qualified = parse_operator_name();
-        } else if (check(TokenKind::Identifier)) {
-            qualified_name += cur().lexeme;
-            consume();
-            parsed_qualified = true;
-            consume_template_args_followed_by_scope();
-        }
-
-        while (parsed_qualified && match(TokenKind::ColonColon)) {
-            append_scope_sep();
-            if (check(TokenKind::Identifier)) {
-                qualified_name += cur().lexeme;
-                consume();
-                consume_template_args_followed_by_scope();
-                continue;
-            }
-            if (check(TokenKind::KwOperator)) {
-                parsed_qualified = parse_operator_name();
-                break;
-            }
-            parsed_qualified = false;
-            break;
-        }
-
-        if (parsed_qualified) {
+        if (parse_qualified_declarator_name(&qualified_name)) {
             *out_name = arena_.strdup(qualified_name.c_str());
         } else {
             pos_ = saved_pos;
