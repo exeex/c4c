@@ -10,6 +10,14 @@
 
 ## Current Slice
 
+- Completed: extracted the remaining deferred-template entry coordination from
+  `instantiate_deferred_template_type(...)` so direct owner-struct retries,
+  delegated owner work spawning, and member-typedef owner resolution all flow
+  through shared helpers without changing retry/blocked behavior
+- Added focused regression coverage for this slice:
+  - `cpp_hir_template_member_owner_chain` will assert a nested
+    `typename holder<T>::inner` field lowers concretely as
+    `field value: int llvm_idx=0 offset=0 size=4 align=4`
 - Completed: extracted the remaining field materialization path from
   `instantiate_template_struct_body(...)` so static-member bookkeeping and
   non-static field lowering now delegate to named helpers without changing
@@ -39,7 +47,7 @@
   - tightened `cpp_hir_template_member_owner_resolution` to assert the concrete
     instantiated owner type appears in HIR as `decl w: struct wrap_T_int`
 - Baseline recorded for this iteration:
-  - `test_fail_before.log`: 2212 total, 7 failed
+  - `test_fail_before.log`: 2214 total, 7 failed
   - failing identities:
     - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
     - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
@@ -68,14 +76,28 @@
       checks a concrete `Base<int>` / `Wrap<int>` instantiation with inherited
       member access inside an instantiated method body without enrolling a new
       positive runtime case
+  - targeted HIR regressions passed:
+    - `cpp_hir_template_member_owner_chain`
+    - `cpp_hir_template_member_owner_resolution`
+    - `cpp_hir_template_struct_inherited_method_binding`
+    - `cpp_hir_deferred_template_instantiation`
+    - `cpp_hir_template_struct_registry_primary_only`
+    - `cpp_hir_initial_program_seed_realization`
+    - `cpp_hir_fixpoint_convergence`
+    - `cpp_hir_template_origin`
+    - `cpp_hir_template_struct_field_array_extent`
+  - full clean rebuild remained monotonic:
+    - `test_fail_before.log`: 2214 total, 7 failed
+    - `test_fail_after.log`: 2215 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures)
 
 ## Next Intended Slice
 
-- if this extraction stays monotonic, continue Step 2 by checking whether the
-  remaining `instantiate_deferred_template_type(...)` / pending-template entry
-  path can share the same coordinator helpers without changing retry behavior;
-  if that is already compact enough, move to the next repeated pending-template
-  sequence inside `resolve_pending_tpl_struct_if_needed(...)`
+- continue Step 2 by checking whether `resolve_pending_tpl_struct_if_needed(...)`
+  still has meaningful coordinator duplication left after the deferred-template
+  entry helper pass; if not, advance to the next repeated owner/template
+  resolution sequence that can be extracted without semantic drift
 
 ## Blockers
 
@@ -87,9 +109,9 @@
 - the previous Step 2 slice in `instantiate_deferred_template_type(...)` is
   already committed as `2d6b0e3`
 - this iteration is deliberately limited to helper extraction around
-  the remaining field/static-member materialization path inside
-  `instantiate_template_struct_body(...)`, not semantic cleanup
-- next Step 2 candidate is the remaining pending-template entry coordination
-  around `instantiate_deferred_template_type(...)` and
-  `resolve_pending_tpl_struct_if_needed(...)`; keep any follow-up extraction
-  behavior-preserving and reuse the current targeted HIR regression set
+  deferred template-type owner handling inside
+  `instantiate_deferred_template_type(...)`, not semantic cleanup
+- the new focused HIR coverage should exercise a nested owner/member-typedef
+  chain rather than only the direct `box<T>::value_type` case
+- after this slice, reevaluate whether `resolve_pending_tpl_struct_if_needed(...)`
+  still has meaningful coordinator duplication left for Step 2

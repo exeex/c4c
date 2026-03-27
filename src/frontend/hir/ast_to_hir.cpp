@@ -903,6 +903,71 @@ class Lowerer {
     return false;
   }
 
+  bool spawn_pending_template_owner_work(
+      const PendingTemplateTypeWorkItem& work_item,
+      const TypeSpec& owner_ts) {
+    const Node* owner_primary_def = work_item.owner_primary_def;
+    if (!owner_primary_def && owner_ts.tpl_struct_origin) {
+      owner_primary_def = canonical_template_struct_primary(owner_ts);
+    }
+    return ct_state_->record_pending_template_type(
+        PendingTemplateTypeKind::OwnerStruct,
+        owner_ts,
+        owner_primary_def,
+        work_item.type_bindings,
+        work_item.nttp_bindings,
+        work_item.span,
+        work_item.context_name.empty()
+            ? "owner-struct"
+            : work_item.context_name + ":owner");
+  }
+
+  bool ensure_pending_template_owner_ready(
+      TypeSpec& owner_ts,
+      const PendingTemplateTypeWorkItem& work_item,
+      bool spawn_owner_work,
+      const char* missing_detail,
+      const char* pending_detail,
+      DeferredTemplateTypeResult* out_result) {
+    if (!owner_ts.tpl_struct_origin) return true;
+    const Node* primary_tpl = require_pending_template_type_primary(
+        owner_ts, work_item, missing_detail, out_result);
+    if (!primary_tpl) return false;
+    bool spawned_owner_work = false;
+    if (spawn_owner_work) {
+      spawned_owner_work =
+          spawn_pending_template_owner_work(work_item, owner_ts);
+    }
+    return resolve_pending_template_owner_if_ready(
+        owner_ts, work_item, primary_tpl, spawned_owner_work,
+        pending_detail, out_result);
+  }
+
+  DeferredTemplateTypeResult resolve_deferred_member_typedef_type(
+      const PendingTemplateTypeWorkItem& work_item) {
+    TypeSpec owner_ts = work_item.pending_type;
+    owner_ts.deferred_member_type_name = nullptr;
+    DeferredTemplateTypeResult result;
+    if (!ensure_pending_template_owner_ready(
+            owner_ts, work_item, true,
+            "no primary template def for member typedef owner",
+            "owner struct still pending", &result)) {
+      return result;
+    }
+    if (!owner_ts.tag || !owner_ts.tag[0]) {
+      return blocked_deferred_template_type(
+          work_item, "owner tag unavailable");
+    }
+    TypeSpec resolved_member{};
+    if (resolve_struct_member_typedef_hir(
+            owner_ts.tag, work_item.pending_type.deferred_member_type_name,
+            &resolved_member)) {
+      return DeferredTemplateTypeResult::resolved();
+    }
+    return terminal_deferred_template_type(
+        work_item, "member typedef lookup failed");
+  }
+
   void seed_template_type_dependency_if_needed(
       const TypeSpec& ts,
       const TypeBindings& tpl_bindings,
@@ -1246,60 +1311,14 @@ class Lowerer {
   DeferredTemplateTypeResult instantiate_deferred_template_type(
       const PendingTemplateTypeWorkItem& work_item) {
     TypeSpec ts = work_item.pending_type;
-    auto spawn_owner_work = [&](const TypeSpec& owner_ts) -> bool {
-      const Node* owner_primary_def = work_item.owner_primary_def;
-      if (!owner_primary_def && owner_ts.tpl_struct_origin) {
-        owner_primary_def = canonical_template_struct_primary(owner_ts);
-      }
-      return ct_state_->record_pending_template_type(
-          PendingTemplateTypeKind::OwnerStruct,
-          owner_ts,
-          owner_primary_def,
-          work_item.type_bindings,
-          work_item.nttp_bindings,
-          work_item.span,
-          work_item.context_name.empty()
-              ? "owner-struct"
-              : work_item.context_name + ":owner");
-    };
     if (ts.deferred_member_type_name) {
-      TypeSpec owner_ts = ts;
-      owner_ts.deferred_member_type_name = nullptr;
-      bool spawned_owner_work = false;
-      if (owner_ts.tpl_struct_origin) {
-        DeferredTemplateTypeResult result;
-        const Node* primary_tpl = require_pending_template_type_primary(
-            owner_ts, work_item,
-            "no primary template def for member typedef owner", &result);
-        if (!primary_tpl) return result;
-        spawned_owner_work = spawn_owner_work(owner_ts);
-        if (!resolve_pending_template_owner_if_ready(
-                owner_ts, work_item, primary_tpl, spawned_owner_work,
-                "owner struct still pending", &result)) {
-          return result;
-        }
-      }
-      if (!owner_ts.tag || !owner_ts.tag[0]) {
-        return blocked_deferred_template_type(
-            work_item, "owner tag unavailable", spawned_owner_work);
-      }
-      TypeSpec resolved_member{};
-      if (resolve_struct_member_typedef_hir(
-              owner_ts.tag, ts.deferred_member_type_name, &resolved_member)) {
-        return DeferredTemplateTypeResult::resolved();
-      }
-      return terminal_deferred_template_type(
-          work_item, "member typedef lookup failed");
+      return resolve_deferred_member_typedef_type(work_item);
     }
     if (ts.tpl_struct_origin &&
         work_item.kind != PendingTemplateTypeKind::OwnerStruct) {
       DeferredTemplateTypeResult result;
-      const Node* primary_tpl = require_pending_template_type_primary(
-          ts, work_item, "no primary template def", &result);
-      if (!primary_tpl) return result;
-      const bool spawned_owner_work = spawn_owner_work(ts);
-      if (!resolve_pending_template_owner_if_ready(
-              ts, work_item, primary_tpl, spawned_owner_work,
+      if (!ensure_pending_template_owner_ready(
+              ts, work_item, true, "no primary template def",
               "delegated to owner struct work", &result)) {
         return result;
       }
@@ -1307,11 +1326,9 @@ class Lowerer {
     }
     if (ts.tpl_struct_origin) {
       DeferredTemplateTypeResult result;
-      const Node* primary_tpl = require_pending_template_type_primary(
-          ts, work_item, "no primary template def for owner", &result);
-      if (!primary_tpl) return result;
-      if (!resolve_pending_template_owner_if_ready(
-              ts, work_item, primary_tpl, false,
+      if (!ensure_pending_template_owner_ready(
+              ts, work_item, false,
+              "no primary template def for owner",
               "owner struct still pending", &result)) {
         return result;
       }

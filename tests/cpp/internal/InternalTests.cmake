@@ -393,6 +393,15 @@ set_tests_properties(cpp_hir_template_struct_field_array_extent PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_member_owner_chain
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_member_owner_chain_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_member_owner_chain PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "field value: int llvm_idx=0 offset=0 size=4 align=4"
+)
+
+add_test(
   NAME cpp_hir_spec_key_identity
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/specialization_identity.cpp"
 )
