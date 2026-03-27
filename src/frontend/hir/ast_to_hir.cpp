@@ -2616,6 +2616,14 @@ class Lowerer {
   };
 
   struct DeferredNttpExprParser {
+    using ParseExprFn = bool (DeferredNttpExprParser::*)(long long*);
+    using ApplyBinaryFn = bool (*)(long long*, long long);
+
+    struct BinaryOpSpec {
+      const char* token;
+      ApplyBinaryFn apply;
+    };
+
     DeferredNttpExprCursor cursor;
     const std::unordered_map<std::string, const Node*>& template_defs;
     const std::unordered_map<std::string, std::vector<const Node*>>& specializations;
@@ -2644,6 +2652,88 @@ class Lowerer {
           (v >> (bits - 1)))
         v |= ~mask;
       return v;
+    }
+
+    static bool apply_mul_op(long long* lhs, long long rhs) {
+      *lhs *= rhs;
+      return true;
+    }
+
+    static bool apply_div_op(long long* lhs, long long rhs) {
+      if (rhs == 0) return false;
+      *lhs /= rhs;
+      return true;
+    }
+
+    static bool apply_add_op(long long* lhs, long long rhs) {
+      *lhs += rhs;
+      return true;
+    }
+
+    static bool apply_sub_op(long long* lhs, long long rhs) {
+      *lhs -= rhs;
+      return true;
+    }
+
+    static bool apply_le_op(long long* lhs, long long rhs) {
+      *lhs = (*lhs <= rhs) ? 1 : 0;
+      return true;
+    }
+
+    static bool apply_ge_op(long long* lhs, long long rhs) {
+      *lhs = (*lhs >= rhs) ? 1 : 0;
+      return true;
+    }
+
+    static bool apply_lt_op(long long* lhs, long long rhs) {
+      *lhs = (*lhs < rhs) ? 1 : 0;
+      return true;
+    }
+
+    static bool apply_gt_op(long long* lhs, long long rhs) {
+      *lhs = (*lhs > rhs) ? 1 : 0;
+      return true;
+    }
+
+    static bool apply_eq_op(long long* lhs, long long rhs) {
+      *lhs = (*lhs == rhs) ? 1 : 0;
+      return true;
+    }
+
+    static bool apply_ne_op(long long* lhs, long long rhs) {
+      *lhs = (*lhs != rhs) ? 1 : 0;
+      return true;
+    }
+
+    static bool apply_and_op(long long* lhs, long long rhs) {
+      *lhs = (*lhs && rhs) ? 1 : 0;
+      return true;
+    }
+
+    static bool apply_or_op(long long* lhs, long long rhs) {
+      *lhs = (*lhs || rhs) ? 1 : 0;
+      return true;
+    }
+
+    bool parse_left_associative(
+        long long* out_val, ParseExprFn operand_parser,
+        std::initializer_list<BinaryOpSpec> ops) {
+      if (!(this->*operand_parser)(out_val)) return false;
+      while (true) {
+        cursor.skip_ws();
+        const BinaryOpSpec* matched = nullptr;
+        for (const BinaryOpSpec& spec : ops) {
+          if (cursor.consume(spec.token)) {
+            matched = &spec;
+            break;
+          }
+        }
+        if (!matched) break;
+        long long rhs = 0;
+        if (!(this->*operand_parser)(&rhs)) return false;
+        if (!matched->apply(out_val, rhs)) return false;
+      }
+      return true;
     }
 
     bool resolve_arg(const std::string& text, HirTemplateArg* out_arg) {
@@ -2799,111 +2889,39 @@ class Lowerer {
     }
 
     bool parse_mul(long long* out_val) {
-      if (!parse_unary(out_val)) return false;
-      while (true) {
-        cursor.skip_ws();
-        if (cursor.consume("*")) {
-          long long rhs = 0;
-          if (!parse_unary(&rhs)) return false;
-          *out_val *= rhs;
-        } else if (cursor.consume("/")) {
-          long long rhs = 0;
-          if (!parse_unary(&rhs) || rhs == 0) return false;
-          *out_val /= rhs;
-        } else {
-          break;
-        }
-      }
-      return true;
+      return parse_left_associative(out_val, &DeferredNttpExprParser::parse_unary,
+                                    {{"*", &DeferredNttpExprParser::apply_mul_op},
+                                     {"/", &DeferredNttpExprParser::apply_div_op}});
     }
 
     bool parse_add(long long* out_val) {
-      if (!parse_mul(out_val)) return false;
-      while (true) {
-        cursor.skip_ws();
-        if (cursor.consume("+")) {
-          long long rhs = 0;
-          if (!parse_mul(&rhs)) return false;
-          *out_val += rhs;
-        } else if (cursor.consume("-")) {
-          long long rhs = 0;
-          if (!parse_mul(&rhs)) return false;
-          *out_val -= rhs;
-        } else {
-          break;
-        }
-      }
-      return true;
+      return parse_left_associative(out_val, &DeferredNttpExprParser::parse_mul,
+                                    {{"+", &DeferredNttpExprParser::apply_add_op},
+                                     {"-", &DeferredNttpExprParser::apply_sub_op}});
     }
 
     bool parse_rel(long long* out_val) {
-      if (!parse_add(out_val)) return false;
-      while (true) {
-        cursor.skip_ws();
-        if (cursor.consume("<=")) {
-          long long rhs = 0;
-          if (!parse_add(&rhs)) return false;
-          *out_val = (*out_val <= rhs) ? 1 : 0;
-        } else if (cursor.consume(">=")) {
-          long long rhs = 0;
-          if (!parse_add(&rhs)) return false;
-          *out_val = (*out_val >= rhs) ? 1 : 0;
-        } else if (cursor.consume("<")) {
-          long long rhs = 0;
-          if (!parse_add(&rhs)) return false;
-          *out_val = (*out_val < rhs) ? 1 : 0;
-        } else if (cursor.consume(">")) {
-          long long rhs = 0;
-          if (!parse_add(&rhs)) return false;
-          *out_val = (*out_val > rhs) ? 1 : 0;
-        } else {
-          break;
-        }
-      }
-      return true;
+      return parse_left_associative(out_val, &DeferredNttpExprParser::parse_add,
+                                    {{"<=", &DeferredNttpExprParser::apply_le_op},
+                                     {">=", &DeferredNttpExprParser::apply_ge_op},
+                                     {"<", &DeferredNttpExprParser::apply_lt_op},
+                                     {">", &DeferredNttpExprParser::apply_gt_op}});
     }
 
     bool parse_eq(long long* out_val) {
-      if (!parse_rel(out_val)) return false;
-      while (true) {
-        cursor.skip_ws();
-        if (cursor.consume("==")) {
-          long long rhs = 0;
-          if (!parse_rel(&rhs)) return false;
-          *out_val = (*out_val == rhs) ? 1 : 0;
-        } else if (cursor.consume("!=")) {
-          long long rhs = 0;
-          if (!parse_rel(&rhs)) return false;
-          *out_val = (*out_val != rhs) ? 1 : 0;
-        } else {
-          break;
-        }
-      }
-      return true;
+      return parse_left_associative(out_val, &DeferredNttpExprParser::parse_rel,
+                                    {{"==", &DeferredNttpExprParser::apply_eq_op},
+                                     {"!=", &DeferredNttpExprParser::apply_ne_op}});
     }
 
     bool parse_and(long long* out_val) {
-      if (!parse_eq(out_val)) return false;
-      while (true) {
-        cursor.skip_ws();
-        if (!cursor.consume("&&")) break;
-        long long rhs = 0;
-        if (!parse_eq(&rhs)) return false;
-        *out_val = (*out_val && rhs) ? 1 : 0;
-      }
-      return true;
+      return parse_left_associative(out_val, &DeferredNttpExprParser::parse_eq,
+                                    {{"&&", &DeferredNttpExprParser::apply_and_op}});
     }
 
     bool parse_or(long long* out_val) {
-      if (!parse_and(out_val)) return false;
-      while (true) {
-        cursor.skip_ws();
-        if (!cursor.consume("||")) break;
-        long long rhs = 0;
-        if (!parse_and(&rhs)) return false;
-        *out_val = (*out_val || rhs) ? 1 : 0;
-      }
-      return true;
+      return parse_left_associative(out_val, &DeferredNttpExprParser::parse_and,
+                                    {{"||", &DeferredNttpExprParser::apply_or_op}});
     }
   };
 

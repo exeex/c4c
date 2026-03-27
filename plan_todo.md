@@ -10,6 +10,41 @@
 
 ## Current Slice
 
+- Completed: Step 4 deferred-NTTP binary-operator parsing coordination
+  extraction
+- Completed: extracted the repeated left-associative binary-expression ladder
+  (`parse_mul` / `parse_add` / `parse_rel` / `parse_eq` / `parse_and` /
+  `parse_or`) behind the shared helper `parse_left_associative(...)` plus
+  small per-operator applicators inside `DeferredNttpExprParser`
+- Kept scope intentionally narrow:
+  - no deferred-NTTP semantic expansion beyond currently supported
+    expressions
+  - grammar layering and evaluation order stayed unchanged; only the
+    operator-loop coordination moved behind helpers
+- Added focused HIR coverage for this slice:
+  - `cpp_hir_template_deferred_nttp_logic_expr` asserts a deferred NTTP
+    logical/equality default (`M = N == 0 || N == 3`) still materializes as
+    `field data: int[1] ... size=4 align=4`
+- Validation completed:
+  - targeted HIR regressions passed:
+    - `cpp_hir_template_deferred_nttp_expr`
+    - `cpp_hir_template_deferred_nttp_paren_expr`
+    - `cpp_hir_template_deferred_nttp_bool_expr`
+    - `cpp_hir_template_deferred_nttp_logic_expr`
+    - `cpp_hir_template_function_pack_signature_binding`
+    - `cpp_hir_template_function_recursive_body_binding`
+  - full clean rebuild remained monotonic:
+    - `test_before.log`: 2224 total, 7 failed
+    - `test_after.log`: 2225 total, 7 failed
+    - failing identities unchanged:
+      - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+      - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+      - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+      - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+      - `cpp_positive_sema_template_arg_deduction_cpp`
+      - `cpp_positive_sema_template_mixed_params_cpp`
+      - `cpp_positive_sema_template_type_subst_cpp`
+    - regression guard: passed (`+1` passed, `0` new failures)
 - Completed: Step 4 deferred-NTTP expression evaluation environment extraction
   moved binding-environment construction and identifier / template-argument
   lookup behind the named helper `DeferredNttpExprEnv`, so
@@ -287,7 +322,8 @@
 ## Next Intended Slice
 
 - extract the next Step 4 helper seam around deferred-NTTP expression
-  primary/operator parsing coordination if this slice lands cleanly
+  primary-expression coordination (`sizeof...`, parens/casts, identifier vs
+  template-member lookup) if it can land without broadening semantics
 - keep Step 4 focused on helper isolation rather than expression-semantics
   changes
 
