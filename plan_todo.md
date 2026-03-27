@@ -10,6 +10,20 @@
 
 ## Current Slice
 
+- Completed: Step 4 embedded parser isolation extracted the deferred-NTTP
+  parser's cursor/text-decoder surface into the named helper
+  `DeferredNttpExprCursor`, so whitespace skipping, token consumption,
+  identifier/number parsing, and template-argument text slicing no longer live
+  inline beside the expression grammar/evaluator
+- Narrow preserving coverage added for this slice:
+  - `cpp_hir_template_deferred_nttp_paren_expr` asserts the isolated parser
+    cursor still handles the existing parenthesized deferred default
+    `M = (N)` and materializes `field data: int[3] ... size=12 align=4`
+- Discovered during test design:
+  - richer deferred-NTTP expressions such as direct template static-member
+    lookup (`Count<N>::value`) still collapse to `..._M_0`; that remains out of
+    scope for this compression slice and should stay with the separate
+    follow-on initiative rather than be folded into this refactor
 - Completed: isolated the deferred NTTP default-expression text parser used by
   `eval_deferred_nttp_expr_hir(...)` behind the named helper
   `DeferredNttpExprParser`, including a dedicated helper path for template
@@ -236,8 +250,8 @@
 
 ## Next Intended Slice
 
-- extract the next embedded parser seam after the deferred NTTP expression
-  parser if this slice lands cleanly
+- extract the next Step 4 helper seam around deferred-NTTP expression
+  environment resolution if this slice lands cleanly
 - keep Step 4 focused on helper isolation rather than expression-semantics
   changes
 
@@ -258,7 +272,21 @@
 - Step 2 is complete enough to leave behind
 - Step 3 is now complete enough to leave behind; the next meaningful work is
   Step 4 embedded parser helper isolation around deferred NTTP expression
-  evaluation
+- this iteration should preserve currently supported direct static-member
+  lookup assumptions were too optimistic; `Count<N>::value` still collapses in
+  current HIR lowering, so avoid expanding into that separate follow-on
+  semantics work recorded in
+  `ideas/open/deferred_nttp_expr_parser_gaps.md`
+- Validation completed:
+  - targeted HIR regressions passed:
+    - `cpp_hir_template_deferred_nttp_expr`
+    - `cpp_hir_template_deferred_nttp_paren_expr`
+    - `cpp_hir_template_struct_field_array_extent`
+  - full clean rebuild remained monotonic:
+    - `test_before.log`: 2222 total, 7 failed
+    - `test_after.log`: 2223 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures)
 - Validation completed for this slice:
   - targeted HIR regressions passed:
     - `cpp_hir_template_deferred_nttp_expr`
@@ -270,7 +298,6 @@
     - `test_fail_after.log`: 2222 total, 7 failed
     - failing identities unchanged
     - regression guard: passed (`+1` passed, `0` new failures)
-  helper reshuffling
 - this slice completed the shared callable return/explicit-parameter helper
   extraction without changing pack expansion or method-only prologue behavior
 - current follow-up is narrower than a semantic cleanup: factor the remaining

@@ -2448,14 +2448,9 @@ class Lowerer {
   // ---------------------------------------------------------------------------
   // Helper 1: Evaluate a deferred NTTP default expression.
   // ---------------------------------------------------------------------------
-  struct DeferredNttpExprParser {
+  struct DeferredNttpExprCursor {
     const std::string& input;
     size_t pos = 0;
-    const std::unordered_map<std::string, const Node*>& template_defs;
-    const std::unordered_map<std::string, std::vector<const Node*>>& specializations;
-    const std::unordered_map<std::string, const Node*>& struct_defs;
-    const std::unordered_map<std::string, TypeSpec>& type_lookup;
-    const std::unordered_map<std::string, long long>& nttp_lookup;
 
     void skip_ws() {
       while (pos < input.size() &&
@@ -2508,6 +2503,43 @@ class Lowerer {
       return false;
     }
 
+    std::string parse_arg_text() {
+      skip_ws();
+      const size_t start = pos;
+      int angle_depth = 0;
+      int paren_depth = 0;
+      while (pos < input.size()) {
+        const char ch = input[pos];
+        if (ch == '<') ++angle_depth;
+        else if (ch == '>') {
+          if (angle_depth == 0) break;
+          --angle_depth;
+        } else if (ch == '(') {
+          ++paren_depth;
+        } else if (ch == ')') {
+          if (paren_depth > 0) --paren_depth;
+        } else if (ch == ',' && angle_depth == 0 && paren_depth == 0) {
+          break;
+        }
+        ++pos;
+      }
+      return trim_copy(input.substr(start, pos - start));
+    }
+
+    bool at_end() {
+      skip_ws();
+      return pos == input.size();
+    }
+  };
+
+  struct DeferredNttpExprParser {
+    DeferredNttpExprCursor cursor;
+    const std::unordered_map<std::string, const Node*>& template_defs;
+    const std::unordered_map<std::string, std::vector<const Node*>>& specializations;
+    const std::unordered_map<std::string, const Node*>& struct_defs;
+    const std::unordered_map<std::string, TypeSpec>& type_lookup;
+    const std::unordered_map<std::string, long long>& nttp_lookup;
+
     static long long apply_integral_cast(TypeSpec ts, long long v) {
       if (ts.ptr_level != 0) return v;
       int bits = 0;
@@ -2530,29 +2562,6 @@ class Lowerer {
           (v >> (bits - 1)))
         v |= ~mask;
       return v;
-    }
-
-    std::string parse_arg_text() {
-      skip_ws();
-      const size_t start = pos;
-      int angle_depth = 0;
-      int paren_depth = 0;
-      while (pos < input.size()) {
-        const char ch = input[pos];
-        if (ch == '<') ++angle_depth;
-        else if (ch == '>') {
-          if (angle_depth == 0) break;
-          --angle_depth;
-        } else if (ch == '(') {
-          ++paren_depth;
-        } else if (ch == ')') {
-          if (paren_depth > 0) --paren_depth;
-        } else if (ch == ',' && angle_depth == 0 && paren_depth == 0) {
-          break;
-        }
-        ++pos;
-      }
-      return trim_copy(input.substr(start, pos - start));
     }
 
     bool resolve_arg(const std::string& text, HirTemplateArg* out_arg) {
@@ -2649,51 +2658,51 @@ class Lowerer {
     }
 
     bool eval_member_lookup(long long* out_val) {
-      const std::string tpl_name = parse_identifier();
-      if (tpl_name.empty() || !consume("<")) return false;
+      const std::string tpl_name = cursor.parse_identifier();
+      if (tpl_name.empty() || !cursor.consume("<")) return false;
 
       std::vector<HirTemplateArg> actual_args;
-      skip_ws();
-      if (!consume(">")) {
+      cursor.skip_ws();
+      if (!cursor.consume(">")) {
         while (true) {
           HirTemplateArg arg;
-          if (!resolve_arg(parse_arg_text(), &arg)) return false;
+          if (!resolve_arg(cursor.parse_arg_text(), &arg)) return false;
           actual_args.push_back(arg);
-          skip_ws();
-          if (consume(">")) break;
-          if (!consume(",")) return false;
+          cursor.skip_ws();
+          if (cursor.consume(">")) break;
+          if (!cursor.consume(",")) return false;
         }
       }
 
-      if (!consume("::")) return false;
-      const std::string member_name = parse_identifier();
+      if (!cursor.consume("::")) return false;
+      const std::string member_name = cursor.parse_identifier();
       if (member_name.empty()) return false;
       return eval_template_static_member_lookup(
           tpl_name, actual_args, member_name, out_val);
     }
 
     bool parse_primary(long long* out_val) {
-      skip_ws();
-      if (consume("sizeof")) {
-        skip_ws();
-        if (!consume("...")) return false;
-        if (!consume("(")) return false;
-        const std::string pack_name = parse_identifier();
+      cursor.skip_ws();
+      if (cursor.consume("sizeof")) {
+        cursor.skip_ws();
+        if (!cursor.consume("...")) return false;
+        if (!cursor.consume("(")) return false;
+        const std::string pack_name = cursor.parse_identifier();
         if (pack_name.empty()) return false;
-        if (!consume(")")) return false;
+        if (!cursor.consume(")")) return false;
         *out_val = count_pack_bindings_for_name(type_lookup, nttp_lookup, pack_name);
         return true;
       }
-      if (consume("(")) {
+      if (cursor.consume("(")) {
         if (!parse_or(out_val)) return false;
-        return consume(")");
+        return cursor.consume(")");
       }
       {
-        size_t saved = pos;
-        std::string ident = parse_identifier();
+        size_t saved = cursor.pos;
+        std::string ident = cursor.parse_identifier();
         if (!ident.empty()) {
-          skip_ws();
-          if (consume("(")) {
+          cursor.skip_ws();
+          if (cursor.consume("(")) {
             TypeSpec cast_ts{};
             cast_ts.array_size = -1;
             cast_ts.inner_rank = -1;
@@ -2708,18 +2717,18 @@ class Lowerer {
             if (found_type) {
               long long inner = 0;
               if (!parse_or(&inner)) return false;
-              if (!consume(")")) return false;
+              if (!cursor.consume(")")) return false;
               *out_val = apply_integral_cast(cast_ts, inner);
               return true;
             }
           }
-          pos = saved;
+          cursor.pos = saved;
         }
       }
-      if (parse_number(out_val)) return true;
+      if (cursor.parse_number(out_val)) return true;
       {
-        size_t saved = pos;
-        std::string ident = parse_identifier();
+        size_t saved = cursor.pos;
+        std::string ident = cursor.parse_identifier();
         if (!ident.empty()) {
           auto nit = nttp_lookup.find(ident);
           if (nit != nttp_lookup.end()) {
@@ -2734,39 +2743,39 @@ class Lowerer {
             *out_val = 0;
             return true;
           }
-          pos = saved;
+          cursor.pos = saved;
         }
       }
       return eval_member_lookup(out_val);
     }
 
     bool parse_unary(long long* out_val) {
-      skip_ws();
-      if (consume("!")) {
+      cursor.skip_ws();
+      if (cursor.consume("!")) {
         long long inner = 0;
         if (!parse_unary(&inner)) return false;
         *out_val = inner ? 0 : 1;
         return true;
       }
-      if (consume("-")) {
+      if (cursor.consume("-")) {
         long long inner = 0;
         if (!parse_unary(&inner)) return false;
         *out_val = -inner;
         return true;
       }
-      if (consume("+")) return parse_unary(out_val);
+      if (cursor.consume("+")) return parse_unary(out_val);
       return parse_primary(out_val);
     }
 
     bool parse_mul(long long* out_val) {
       if (!parse_unary(out_val)) return false;
       while (true) {
-        skip_ws();
-        if (consume("*")) {
+        cursor.skip_ws();
+        if (cursor.consume("*")) {
           long long rhs = 0;
           if (!parse_unary(&rhs)) return false;
           *out_val *= rhs;
-        } else if (consume("/")) {
+        } else if (cursor.consume("/")) {
           long long rhs = 0;
           if (!parse_unary(&rhs) || rhs == 0) return false;
           *out_val /= rhs;
@@ -2780,12 +2789,12 @@ class Lowerer {
     bool parse_add(long long* out_val) {
       if (!parse_mul(out_val)) return false;
       while (true) {
-        skip_ws();
-        if (consume("+")) {
+        cursor.skip_ws();
+        if (cursor.consume("+")) {
           long long rhs = 0;
           if (!parse_mul(&rhs)) return false;
           *out_val += rhs;
-        } else if (consume("-")) {
+        } else if (cursor.consume("-")) {
           long long rhs = 0;
           if (!parse_mul(&rhs)) return false;
           *out_val -= rhs;
@@ -2799,20 +2808,20 @@ class Lowerer {
     bool parse_rel(long long* out_val) {
       if (!parse_add(out_val)) return false;
       while (true) {
-        skip_ws();
-        if (consume("<=")) {
+        cursor.skip_ws();
+        if (cursor.consume("<=")) {
           long long rhs = 0;
           if (!parse_add(&rhs)) return false;
           *out_val = (*out_val <= rhs) ? 1 : 0;
-        } else if (consume(">=")) {
+        } else if (cursor.consume(">=")) {
           long long rhs = 0;
           if (!parse_add(&rhs)) return false;
           *out_val = (*out_val >= rhs) ? 1 : 0;
-        } else if (consume("<")) {
+        } else if (cursor.consume("<")) {
           long long rhs = 0;
           if (!parse_add(&rhs)) return false;
           *out_val = (*out_val < rhs) ? 1 : 0;
-        } else if (consume(">")) {
+        } else if (cursor.consume(">")) {
           long long rhs = 0;
           if (!parse_add(&rhs)) return false;
           *out_val = (*out_val > rhs) ? 1 : 0;
@@ -2826,12 +2835,12 @@ class Lowerer {
     bool parse_eq(long long* out_val) {
       if (!parse_rel(out_val)) return false;
       while (true) {
-        skip_ws();
-        if (consume("==")) {
+        cursor.skip_ws();
+        if (cursor.consume("==")) {
           long long rhs = 0;
           if (!parse_rel(&rhs)) return false;
           *out_val = (*out_val == rhs) ? 1 : 0;
-        } else if (consume("!=")) {
+        } else if (cursor.consume("!=")) {
           long long rhs = 0;
           if (!parse_rel(&rhs)) return false;
           *out_val = (*out_val != rhs) ? 1 : 0;
@@ -2845,8 +2854,8 @@ class Lowerer {
     bool parse_and(long long* out_val) {
       if (!parse_eq(out_val)) return false;
       while (true) {
-        skip_ws();
-        if (!consume("&&")) break;
+        cursor.skip_ws();
+        if (!cursor.consume("&&")) break;
         long long rhs = 0;
         if (!parse_eq(&rhs)) return false;
         *out_val = (*out_val && rhs) ? 1 : 0;
@@ -2857,8 +2866,8 @@ class Lowerer {
     bool parse_or(long long* out_val) {
       if (!parse_and(out_val)) return false;
       while (true) {
-        skip_ws();
-        if (!consume("||")) break;
+        cursor.skip_ws();
+        if (!cursor.consume("||")) break;
         long long rhs = 0;
         if (!parse_and(&rhs)) return false;
         *out_val = (*out_val || rhs) ? 1 : 0;
@@ -2894,13 +2903,15 @@ class Lowerer {
     std::unordered_map<std::string, long long> nttp_lookup;
     for (const auto& [name, val] : nttp_bindings_vec) nttp_lookup[name] = val;
 
-    DeferredNttpExprParser parser{expr, 0, template_struct_defs_,
+    DeferredNttpExprParser parser{{expr, 0},
+                                  template_struct_defs_,
                                   template_struct_specializations_,
-                                  struct_def_nodes_, type_lookup, nttp_lookup};
+                                  struct_def_nodes_,
+                                  type_lookup,
+                                  nttp_lookup};
     long long value = 0;
     if (!parser.parse_or(&value)) return false;
-    parser.skip_ws();
-    if (parser.pos != expr.size()) return false;
+    if (!parser.cursor.at_end()) return false;
     *out = value;
     return true;
   }
