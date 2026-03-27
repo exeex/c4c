@@ -10,6 +10,61 @@
 
 ## Current Slice
 
+- Completed: extracted the repeated record pre-body declaration-attribute
+  prelude from `parse_record_prebody_setup(...)` into
+  `parse_decl_attrs_for_record(...)` so the Step 6 setup path now reuses one
+  helper for C++11 attributes, `alignas`, and GNU attributes before and after
+  the record tag without changing specialization parsing or base-clause
+  handling
+- New helper path:
+  - `parse_decl_attrs_for_record(...)`
+- Added parse-only coverage:
+  - `record_decl_attrs_prelude_parse`
+- Baseline recorded:
+  - `test_fail_before.log`: 2200 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
+- Validation completed:
+  - focused record-setup regressions passed:
+    - `record_decl_attrs_prelude_parse`
+    - `record_prebody_setup_parse`
+    - `record_specialization_setup_parse`
+    - `record_tag_setup_parse`
+    - `record_definition_setup_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2200 total, 7 failed
+    - `test_fail_after.log`: 2201 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Active target: Step 6 remains active after the decl-attribute prelude
+  extraction; `parse_struct_or_union(...)` is still on the record-body
+  compression track
+- This iteration's exact target: completed the bounded Step 6 helper
+  extraction around repeated pre-body declaration attributes/alignment in
+  `parse_record_prebody_setup(...)` and verified it against nearby record
+  setup coverage plus the full suite
+- Next intended slice: inspect `parse_record_prebody_setup(...)` for one more
+  small helper around the specialization/base-clause path, or continue with a
+  similarly bounded record-body context extraction if that is cleaner
+- Active target: Step 6 remains active; this iteration is focused on the
+  remaining record pre-body decl-attribute prelude still embedded inline in
+  `parse_record_prebody_setup(...)`
+- This iteration's exact target: add one focused parse-only regression around
+  repeated pre-body attribute/alignment handling on a record definition, then
+  extract that bounded decl-attribute prelude into a helper such as
+  `parse_decl_attrs_for_record(...)` without changing tag capture,
+  specialization parsing, or base-clause behavior
+- Next intended slice: if the decl-attribute prelude extraction stays
+  monotonic, isolate one more small Step 6 helper from
+  `parse_record_prebody_setup(...)` or the record-body context path without
+  broadening record-member parsing policy
 - Completed: extracted the remaining non-parenthesized declarator tail handoff
   from `parse_declarator(...)` into
   `parse_non_parenthesized_declarator_tail(...)` so the declarator coordinator

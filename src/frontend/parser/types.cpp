@@ -4149,6 +4149,34 @@ void Parser::parse_record_template_member_prelude(
     }
 }
 
+void Parser::parse_decl_attrs_for_record(int line, TypeSpec* attr_ts) {
+    if (!attr_ts)
+        return;
+
+    auto skip_cpp11_attrs = [&]() {
+        while (check(TokenKind::LBracket) &&
+               pos_ + 1 < static_cast<int>(tokens_.size()) &&
+               tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+            consume();
+            consume();
+            int depth = 1;
+            while (pos_ < static_cast<int>(tokens_.size()) && depth > 0) {
+                if (check(TokenKind::LBracket)) ++depth;
+                else if (check(TokenKind::RBracket)) --depth;
+                if (depth > 0) consume();
+            }
+            if (check(TokenKind::RBracket)) consume();
+            if (check(TokenKind::RBracket)) consume();
+        }
+    };
+
+    skip_cpp11_attrs();
+    while (check(TokenKind::KwAlignas))
+        parse_alignas_specifier(this, attr_ts, line);
+    parse_attributes(attr_ts);
+    skip_cpp11_attrs();
+}
+
 bool Parser::try_parse_record_using_member(
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types) {
@@ -5183,36 +5211,13 @@ void Parser::parse_record_prebody_setup(
     specialization_args->clear();
     base_types->clear();
 
-    auto skip_cpp11_attrs = [&]() {
-        while (check(TokenKind::LBracket) &&
-               pos_ + 1 < static_cast<int>(tokens_.size()) &&
-               tokens_[pos_ + 1].kind == TokenKind::LBracket) {
-            consume();
-            consume();
-            int depth = 1;
-            while (pos_ < static_cast<int>(tokens_.size()) && depth > 0) {
-                if (check(TokenKind::LBracket)) ++depth;
-                else if (check(TokenKind::RBracket)) --depth;
-                if (depth > 0) consume();
-            }
-            if (check(TokenKind::RBracket)) consume();
-            if (check(TokenKind::RBracket)) consume();
-        }
-    };
-    auto parse_decl_attrs = [&]() {
-        skip_cpp11_attrs();
-        while (check(TokenKind::KwAlignas))
-            parse_alignas_specifier(this, attr_ts, line);
-        parse_attributes(attr_ts);
-        skip_cpp11_attrs();
-    };
-    parse_decl_attrs();
+    parse_decl_attrs_for_record(line, attr_ts);
 
     if (check(TokenKind::Identifier)) {
         *tag = arena_.strdup(cur().lexeme);
         consume();
     }
-    parse_decl_attrs();
+    parse_decl_attrs_for_record(line, attr_ts);
 
     if (*tag && is_cpp_mode() && check(TokenKind::Less)) {
         int probe = pos_;

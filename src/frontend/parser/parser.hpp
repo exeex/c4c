@@ -456,6 +456,7 @@ class Parser {
   void parse_record_template_member_prelude(
       std::vector<std::string>* injected_type_params,
       bool* pushed_template_scope);
+  void parse_decl_attrs_for_record(int line, TypeSpec* attr_ts);
   void parse_record_prebody_setup(
       int line,
       TypeSpec* attr_ts,
