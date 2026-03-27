@@ -197,6 +197,28 @@ if(EXISTS "${EXAMPLE_C}")
   )
 endif()
 
+if(EXISTS "${EXAMPLE_C}")
+  add_test(
+      NAME backend_lir_supported_target_entry
+      COMMAND c4cll --codegen lir --target x86_64-unknown-linux-gnu "${EXAMPLE_C}"
+  )
+  set_tests_properties(backend_lir_supported_target_entry PROPERTIES
+      LABELS "internal;backend"
+      PASS_REGULAR_EXPRESSION "define"
+  )
+
+  add_test(
+      NAME backend_lir_unsupported_target_entry
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${EXAMPLE_C}
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_unsupported_target_case.cmake"
+  )
+  set_tests_properties(backend_lir_unsupported_target_entry PROPERTIES
+      LABELS "internal;backend"
+  )
+endif()
+
 if(CLANG_EXECUTABLE)
   foreach(src IN LISTS INTERNAL_CCC_REVIEW_SRCS)
     get_filename_component(stem "${src}" NAME_WE)
