@@ -10,6 +10,51 @@
 
 ## Current Slice
 
+- Completed: extracted the shared qualified-type spelling entry from the
+  remaining Step 4 path into
+  `consume_qualified_type_spelling_with_typename(...)` so
+  `parse_dependent_typename_specifier()` and the direct qualified-type branch
+  in `parse_base_type()` now consume their final spelling through the same
+  token-walk helper without changing typedef resolution or qualified fallback
+  policy
+- New helper path:
+  - `consume_qualified_type_spelling_with_typename(...)`
+- Added parse-only coverage:
+  - `qualified_type_spelling_shared_parse`
+- Validation completed:
+  - focused qualified/dependent-name regressions passed:
+    - `qualified_type_spelling_shared_parse`
+    - `qualified_dependent_typename_global_parse`
+    - `qualified_type_start_probe_parse`
+    - `template_member_type_direct_parse`
+    - `template_member_type_inherited_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2192 total, 7 failed
+    - `test_fail_after.log`: 2193 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Active target: Step 4 remains active after the shared qualified-type
+  spelling extraction; the next slice should isolate more of the
+  classification/resolution logic that still sits inline in
+  `parse_base_type()`
+- This iteration's exact target: completed the bounded Step 4 extraction
+  around the shared qualified-type spelling token walk and verified it against
+  nearby parser coverage plus the full suite
+- Next intended slice: extract one focused helper for the remaining
+  `peek_qualified_name(...)` classification path inside `parse_base_type()`,
+  likely the resolved-qualified-typedef vs unresolved-qualified-type decision,
+  without changing name lookup order
+- Baseline recorded:
+  - `test_fail_before.log`: 2192 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
 - Completed: extracted the remaining expression-parse vs template-close
   acceptance fallback from `try_parse_template_non_type_arg()` into
   `try_parse_template_non_type_expr(...)` so the non-type path now reads as

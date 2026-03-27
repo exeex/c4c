@@ -1272,6 +1272,27 @@ bool Parser::parse_template_argument_list(std::vector<TemplateArgParseResult>* o
     return match_template_close();
 }
 
+bool Parser::consume_qualified_type_spelling_with_typename(
+    bool require_typename, bool allow_global,
+    bool consume_final_template_args,
+    std::string* out_name,
+    QualifiedNameRef* out_qn) {
+    const int saved_pos = pos_;
+    if (require_typename) {
+        if (!is_cpp_mode() || !check(TokenKind::Identifier) || cur().lexeme != "typename")
+            return false;
+        consume();
+    }
+
+    if (consume_qualified_type_spelling(allow_global, consume_final_template_args,
+                                        out_name, out_qn)) {
+        return true;
+    }
+
+    pos_ = saved_pos;
+    return false;
+}
+
 bool Parser::consume_qualified_type_spelling(bool allow_global,
                                              bool consume_final_template_args,
                                              std::string* out_name,
@@ -1438,17 +1459,12 @@ void Parser::apply_declarator_pointer_token(TypeSpec& ts, TokenKind pointer_tok,
 }
 
 bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
-    if (!is_cpp_mode() || !check(TokenKind::Identifier) || cur().lexeme != "typename")
-        return false;
-
-    const int saved_pos = pos_;
-    consume(); // eat 'typename'
-
     std::string dep_name;
-    if (!consume_qualified_type_spelling(/*allow_global=*/true,
-                                         /*consume_final_template_args=*/true,
-                                         &dep_name, nullptr)) {
-        pos_ = saved_pos;
+    if (!consume_qualified_type_spelling_with_typename(
+            /*require_typename=*/true,
+            /*allow_global=*/true,
+            /*consume_final_template_args=*/true,
+            &dep_name, nullptr)) {
         return false;
     }
 
@@ -2697,7 +2713,8 @@ TypeSpec Parser::parse_base_type() {
                                         arena_.strdup(qn.qualifier_segments[i].c_str());
                                 }
                             }
-                            consume_qualified_type_spelling(
+                            consume_qualified_type_spelling_with_typename(
+                                /*require_typename=*/false,
                                 /*allow_global=*/true,
                                 /*consume_final_template_args=*/false,
                                 nullptr, nullptr);
@@ -2711,7 +2728,8 @@ TypeSpec Parser::parse_base_type() {
                             std::string full_name = spell_qualified_name_for_lookup(qn);
                             has_typedef = true;
                             ts.tag = arena_.strdup(full_name.c_str());
-                            consume_qualified_type_spelling(
+                            consume_qualified_type_spelling_with_typename(
+                                /*require_typename=*/false,
                                 /*allow_global=*/true,
                                 /*consume_final_template_args=*/false,
                                 nullptr, nullptr);

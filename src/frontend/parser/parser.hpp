@@ -311,6 +311,11 @@ class Parser {
   bool is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx) const;
   bool parse_template_argument_list(std::vector<TemplateArgParseResult>* out_args,
                                     const Node* primary_tpl = nullptr);
+  bool consume_qualified_type_spelling_with_typename(
+      bool require_typename, bool allow_global,
+      bool consume_final_template_args,
+      std::string* out_name = nullptr,
+      QualifiedNameRef* out_qn = nullptr);
   bool consume_qualified_type_spelling(bool allow_global,
                                        bool consume_final_template_args,
                                        std::string* out_name = nullptr,
