@@ -531,7 +531,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
 
     // Token-based mini expression evaluator for deferred NTTP defaults.
     // Supports: literals, NTTP param names, Trait<T>::member lookups,
-    // unary !, and binary ||, &&, ==, !=, <, >, <=, >=.
+    // unary !/+/-, binary */+-, and binary ||, &&, ==, !=, <, >, <=, >=.
     size_t ti = 0;
 
     // Forward declarations for recursive descent.
@@ -539,6 +539,8 @@ bool Parser::eval_deferred_nttp_expr_tokens(
     std::function<bool(long long*)> eval_and;
     std::function<bool(long long*)> eval_eq;
     std::function<bool(long long*)> eval_rel;
+    std::function<bool(long long*)> eval_add;
+    std::function<bool(long long*)> eval_mul;
     std::function<bool(long long*)> eval_unary;
     std::function<bool(long long*)> eval_primary;
 
@@ -824,7 +826,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
         return eval_member_lookup(val);
     };
 
-    // Unary: ! and - prefixes.
+    // Unary: !, +, and - prefixes.
     eval_unary = [&](long long* val) -> bool {
         if (ti < toks.size() && toks[ti].kind == TokenKind::Bang) {
             ++ti;
@@ -840,28 +842,74 @@ bool Parser::eval_deferred_nttp_expr_tokens(
             *val = -inner;
             return true;
         }
+        if (ti < toks.size() && toks[ti].kind == TokenKind::Plus) {
+            ++ti;
+            return eval_unary(val);
+        }
         return eval_primary(val);
+    };
+
+    // Multiplicative: *, /
+    eval_mul = [&](long long* val) -> bool {
+        if (!eval_unary(val)) return false;
+        while (ti < toks.size()) {
+            if (toks[ti].kind == TokenKind::Star) {
+                ++ti;
+                long long rhs = 0;
+                if (!eval_unary(&rhs)) return false;
+                *val *= rhs;
+            } else if (toks[ti].kind == TokenKind::Slash) {
+                ++ti;
+                long long rhs = 0;
+                if (!eval_unary(&rhs) || rhs == 0) return false;
+                *val /= rhs;
+            } else {
+                break;
+            }
+        }
+        return true;
+    };
+
+    // Additive: +, -
+    eval_add = [&](long long* val) -> bool {
+        if (!eval_mul(val)) return false;
+        while (ti < toks.size()) {
+            if (toks[ti].kind == TokenKind::Plus) {
+                ++ti;
+                long long rhs = 0;
+                if (!eval_mul(&rhs)) return false;
+                *val += rhs;
+            } else if (toks[ti].kind == TokenKind::Minus) {
+                ++ti;
+                long long rhs = 0;
+                if (!eval_mul(&rhs)) return false;
+                *val -= rhs;
+            } else {
+                break;
+            }
+        }
+        return true;
     };
 
     // Relational: <, >, <=, >=
     eval_rel = [&](long long* val) -> bool {
-        if (!eval_unary(val)) return false;
+        if (!eval_add(val)) return false;
         while (ti < toks.size()) {
             if (toks[ti].kind == TokenKind::LessEqual) {
                 ++ti; long long rhs = 0;
-                if (!eval_unary(&rhs)) return false;
+                if (!eval_add(&rhs)) return false;
                 *val = (*val <= rhs) ? 1 : 0;
             } else if (toks[ti].kind == TokenKind::GreaterEqual) {
                 ++ti; long long rhs = 0;
-                if (!eval_unary(&rhs)) return false;
+                if (!eval_add(&rhs)) return false;
                 *val = (*val >= rhs) ? 1 : 0;
             } else if (toks[ti].kind == TokenKind::Less) {
                 ++ti; long long rhs = 0;
-                if (!eval_unary(&rhs)) return false;
+                if (!eval_add(&rhs)) return false;
                 *val = (*val < rhs) ? 1 : 0;
             } else if (toks[ti].kind == TokenKind::Greater) {
                 ++ti; long long rhs = 0;
-                if (!eval_unary(&rhs)) return false;
+                if (!eval_add(&rhs)) return false;
                 *val = (*val > rhs) ? 1 : 0;
             } else break;
         }
