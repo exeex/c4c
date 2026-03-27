@@ -1,20 +1,45 @@
 #include "emitter.hpp"
 
-#include "../lir_adapter.hpp"
+#include "alu.hpp"
+#include "branch.hpp"
+#include "frame.hpp"
+#include "support.hpp"
 
-#include <stdexcept>
+#include <sstream>
 
 namespace c4c::backend::aarch64 {
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
-  try {
-    return c4c::backend::render_module(
-        c4c::backend::adapt_return_only_module(module));
-  } catch (const std::invalid_argument& ex) {
-    throw std::invalid_argument(
-        std::string("aarch64 backend scaffold only supports the return-only LIR adapter slice: ") +
-        ex.what());
+  validate_module(module);
+
+  std::ostringstream out;
+  render_module_header(out, module);
+
+  for (const auto& function : module.functions) {
+    validate_function(function);
+    render_function_prologue(out, function);
+    if (function.is_declaration) {
+      continue;
+    }
+
+    for (const auto& block : function.blocks) {
+      out << block.label << ":\n";
+      for (const auto& inst : block.insts) {
+        if (render_alu_instruction(out, inst)) {
+          continue;
+        }
+        if (render_branch_instruction(out, inst)) {
+          continue;
+        }
+        fail_unsupported("non-ALU/non-branch instructions");
+      }
+      render_terminator(out, block.terminator);
+    }
+
+    render_function_epilogue(out);
   }
+
+  return out.str();
 }
 
 }  // namespace c4c::backend::aarch64

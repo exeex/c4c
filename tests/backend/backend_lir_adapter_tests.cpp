@@ -59,6 +59,39 @@ c4c::codegen::lir::LirModule make_return_add_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_conditional_return_module() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_return_zero_module();
+  auto& function = module.functions.front();
+  function.blocks.clear();
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCmpOp{"%t0", false, "slt", "i32", "2", "3"});
+  entry.insts.push_back(
+      LirCastOp{"%t1", LirCastKind::ZExt, "i1", "%t0", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t2", false, "ne", "i32", "%t1", "0"});
+  entry.terminator = LirCondBr{"%t2", "then", "else"};
+
+  LirBlock then_block;
+  then_block.id = LirBlockId{1};
+  then_block.label = "then";
+  then_block.terminator = LirRet{std::string("0"), "i32"};
+
+  LirBlock else_block;
+  else_block.id = LirBlockId{2};
+  else_block.label = "else";
+  else_block.terminator = LirRet{std::string("1"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(then_block));
+  function.blocks.push_back(std::move(else_block));
+  return module;
+}
+
 void test_adapts_direct_return() {
   const auto adapted = c4c::backend::adapt_return_only_module(make_return_zero_module());
   expect_true(adapted.functions.size() == 1, "adapter should preserve one function");
@@ -104,6 +137,24 @@ void test_aarch64_backend_scaffold_renders_supported_slice() {
                   "aarch64 scaffold should preserve the current return path");
 }
 
+void test_aarch64_backend_renders_compare_and_branch_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_conditional_return_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "%t0 = icmp slt i32 2, 3",
+                  "aarch64 backend should render integer compare instructions");
+  expect_contains(rendered, "%t1 = zext i1 %t0 to i32",
+                  "aarch64 backend should render compare normalization casts");
+  expect_contains(rendered, "%t2 = icmp ne i32 %t1, 0",
+                  "aarch64 backend should render the final branch predicate compare");
+  expect_contains(rendered, "br i1 %t2, label %then, label %else",
+                  "aarch64 backend should render conditional branches");
+  expect_contains(rendered, "then:\n  ret i32 0",
+                  "aarch64 backend should preserve the then return block");
+  expect_contains(rendered, "else:\n  ret i32 1",
+                  "aarch64 backend should preserve the else return block");
+}
+
 void test_aarch64_backend_scaffold_rejects_out_of_slice_ir() {
   using namespace c4c::codegen::lir;
 
@@ -117,10 +168,10 @@ void test_aarch64_backend_scaffold_rejects_out_of_slice_ir() {
         c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
     fail("aarch64 scaffold should reject IR outside the adapter slice");
   } catch (const std::invalid_argument& ex) {
-    expect_contains(ex.what(), "aarch64 backend scaffold only supports",
-                    "aarch64 scaffold should identify target-local support limits");
-    expect_contains(ex.what(), "non-binary instructions",
-                    "aarch64 scaffold should preserve the underlying unsupported detail");
+    expect_contains(ex.what(), "aarch64 backend emitter does not support",
+                    "aarch64 emitter should identify target-local support limits");
+    expect_contains(ex.what(), "non-ALU/non-branch instructions",
+                    "aarch64 emitter should preserve the unsupported detail");
   }
 }
 
@@ -131,6 +182,7 @@ int main() {
   test_renders_return_add();
   test_rejects_unsupported_instruction();
   test_aarch64_backend_scaffold_renders_supported_slice();
+  test_aarch64_backend_renders_compare_and_branch_slice();
   test_aarch64_backend_scaffold_rejects_out_of_slice_ir();
   return 0;
 }
