@@ -341,6 +341,8 @@ class Parser {
                                     std::vector<long long>* out_dims);
   void parse_normal_declarator_tail(TypeSpec& ts, const char** out_name,
                                     std::vector<long long>* out_dims);
+  void parse_non_parenthesized_declarator_suffixes(
+      TypeSpec& ts, const char** out_name, std::vector<long long>* out_dims);
   void parse_declarator_parameter_list(std::vector<Node*>* out_params,
                                        bool* out_variadic);
   void parse_parenthesized_function_pointer_suffix(

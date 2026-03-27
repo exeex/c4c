@@ -2083,10 +2083,14 @@ void Parser::parse_parenthesized_pointer_declarator(
 void Parser::parse_non_parenthesized_declarator(TypeSpec& ts,
                                                 const char** out_name) {
     std::vector<long long> decl_dims;
-    if (!try_parse_grouped_declarator(ts, out_name, &decl_dims)) {
-        parse_normal_declarator_tail(ts, out_name, &decl_dims);
-    }
+    parse_non_parenthesized_declarator_suffixes(ts, out_name, &decl_dims);
     apply_declarator_array_dims(ts, decl_dims);
+}
+
+void Parser::parse_non_parenthesized_declarator_suffixes(
+    TypeSpec& ts, const char** out_name, std::vector<long long>* out_dims) {
+    if (try_parse_grouped_declarator(ts, out_name, out_dims)) return;
+    parse_normal_declarator_tail(ts, out_name, out_dims);
 }
 
 void Parser::parse_plain_function_declarator_suffix(

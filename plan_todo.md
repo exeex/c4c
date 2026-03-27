@@ -10,6 +10,50 @@
 
 ## Current Slice
 
+- Completed: extracted the grouped-vs-plain non-parenthesized declarator
+  suffix dispatch from `parse_non_parenthesized_declarator(...)` into
+  `parse_non_parenthesized_declarator_suffixes(...)` so the coordinator now
+  stages grouped and normal declarator tails through one helper before array
+  dimensions are applied, without changing qualified-name capture,
+  function-suffix handling, or array application order
+- New helper path:
+  - `parse_non_parenthesized_declarator_suffixes(...)`
+- Added parse-only coverage:
+  - `declarator_non_parenthesized_suffix_staging_parse`
+- Baseline recorded:
+  - `test_fail_before.log`: 2198 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
+- Validation completed:
+  - focused declarator regressions passed:
+    - `declarator_array_suffix_staging_parse`
+    - `declarator_grouped_suffix_staging_parse`
+    - `declarator_non_parenthesized_suffix_staging_parse`
+    - `declarator_normal_tail_staging_parse`
+    - `eastl_slice7d_qualified_declarator_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2198 total, 7 failed
+    - `test_fail_after.log`: 2199 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Active target: Step 5 remains active after the non-parenthesized suffix
+  dispatch extraction; the next slice should isolate one more declarator-stage
+  helper without changing the split between plain function suffix handling and
+  later declaration parsing
+- This iteration's exact target: completed the bounded Step 5 helper
+  extraction around grouped-vs-plain non-parenthesized declarator suffix
+  staging and verified it against nearby declarator coverage plus the full
+  suite
+- Next intended slice: extract one focused helper around plain function suffix
+  handling so `parse_declarator(...)` keeps its current parameter-decay policy
+  while reading more cleanly as a staged coordinator
 - Completed: extracted the repeated post-pointer qualifier cleanup from
   `parse_declarator_prefix(...)` and
   `parse_parenthesized_pointer_declarator_prefix(...)` into shared helpers so
