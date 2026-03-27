@@ -4226,6 +4226,194 @@ bool Parser::try_parse_record_enum_member(
     return true;
 }
 
+bool Parser::is_record_special_member_name(
+    const std::string& lex, const std::string& struct_source_name) const {
+    if (lex == current_struct_tag_) return true;
+    return !struct_source_name.empty() && lex == struct_source_name;
+}
+
+bool Parser::try_parse_record_constructor_member(
+    const std::string& struct_source_name,
+    std::vector<Node*>* methods) {
+    if (!(is_cpp_mode() && !current_struct_tag_.empty()))
+        return false;
+
+    int probe = pos_;
+    while (probe < static_cast<int>(tokens_.size()) &&
+           (tokens_[probe].kind == TokenKind::KwConstexpr ||
+            tokens_[probe].kind == TokenKind::KwConsteval ||
+            tokens_[probe].kind == TokenKind::KwExplicit ||
+            (tokens_[probe].kind == TokenKind::Identifier &&
+             tokens_[probe].lexeme == "inline"))) {
+        ++probe;
+    }
+    if (probe < static_cast<int>(tokens_.size()) &&
+        tokens_[probe].kind == TokenKind::Identifier &&
+        is_record_special_member_name(tokens_[probe].lexeme,
+                                      struct_source_name) &&
+        probe + 1 < static_cast<int>(tokens_.size()) &&
+        tokens_[probe + 1].kind == TokenKind::LParen) {
+        while (pos_ < probe) consume();
+    }
+
+    if (!(check(TokenKind::Identifier) &&
+          is_record_special_member_name(cur().lexeme, struct_source_name) &&
+          pos_ + 1 < static_cast<int>(tokens_.size()) &&
+          tokens_[pos_ + 1].kind == TokenKind::LParen)) {
+        return false;
+    }
+
+    const char* ctor_name = arena_.strdup(cur().lexeme);
+    consume();  // consume the struct tag name
+    consume();  // consume '('
+    std::vector<Node*> params;
+    bool variadic = false;
+    if (!check(TokenKind::RParen)) {
+        while (!at_end()) {
+            if (check(TokenKind::Ellipsis)) {
+                variadic = true;
+                consume();
+                break;
+            }
+            if (check(TokenKind::RParen)) break;
+            if (!is_type_start()) break;
+            Node* p = parse_param();
+            if (p) params.push_back(p);
+            if (check(TokenKind::Ellipsis)) {
+                variadic = true;
+                consume();
+                break;
+            }
+            if (!match(TokenKind::Comma)) break;
+        }
+    }
+    expect(TokenKind::RParen);
+    skip_exception_spec();
+    Node* method = make_node(NK_FUNCTION, cur().line);
+    method->type.base = TB_VOID;
+    method->name = ctor_name;
+    method->variadic = variadic;
+    method->is_constructor = true;
+    method->n_params = static_cast<int>(params.size());
+    if (method->n_params > 0) {
+        method->params = arena_.alloc_array<Node*>(method->n_params);
+        for (int i = 0; i < method->n_params; ++i) method->params[i] = params[i];
+    }
+    if (check(TokenKind::Colon)) {
+        consume();  // ':'
+        std::vector<const char*> init_names;
+        std::vector<std::vector<Node*>> init_args_list;
+        while (!at_end() && !check(TokenKind::LBrace)) {
+            if (!check(TokenKind::Identifier)) break;
+            const char* mem_name = arena_.strdup(cur().lexeme);
+            consume();  // member name
+            expect(TokenKind::LParen);
+            std::vector<Node*> args;
+            if (!check(TokenKind::RParen)) {
+                while (true) {
+                    Node* arg = parse_assign_expr();
+                    if (arg) args.push_back(arg);
+                    if (!match(TokenKind::Comma)) break;
+                }
+            }
+            expect(TokenKind::RParen);
+            init_names.push_back(mem_name);
+            init_args_list.push_back(std::move(args));
+            if (!match(TokenKind::Comma)) break;
+        }
+        method->n_ctor_inits = static_cast<int>(init_names.size());
+        if (method->n_ctor_inits > 0) {
+            method->ctor_init_names =
+                arena_.alloc_array<const char*>(method->n_ctor_inits);
+            method->ctor_init_args =
+                arena_.alloc_array<Node**>(method->n_ctor_inits);
+            method->ctor_init_nargs =
+                arena_.alloc_array<int>(method->n_ctor_inits);
+            for (int i = 0; i < method->n_ctor_inits; ++i) {
+                method->ctor_init_names[i] = init_names[i];
+                method->ctor_init_nargs[i] =
+                    static_cast<int>(init_args_list[i].size());
+                if (method->ctor_init_nargs[i] > 0) {
+                    method->ctor_init_args[i] = arena_.alloc_array<Node*>(
+                        method->ctor_init_nargs[i]);
+                    for (int j = 0; j < method->ctor_init_nargs[i]; ++j)
+                        method->ctor_init_args[i][j] = init_args_list[i][j];
+                } else {
+                    method->ctor_init_args[i] = nullptr;
+                }
+            }
+        }
+    }
+    if (check(TokenKind::LBrace)) {
+        method->body = parse_block();
+    } else if (is_cpp_mode() && check(TokenKind::Assign) &&
+               pos_ + 1 < static_cast<int>(tokens_.size()) &&
+               tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
+        consume();  // '='
+        consume();  // 'delete'
+        method->is_deleted = true;
+        match(TokenKind::Semi);
+    } else if (is_cpp_mode() && check(TokenKind::Assign) &&
+               pos_ + 1 < static_cast<int>(tokens_.size()) &&
+               tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+        consume();  // '='
+        consume();  // 'default'
+        method->is_defaulted = true;
+        match(TokenKind::Semi);
+    } else {
+        match(TokenKind::Semi);
+    }
+    methods->push_back(method);
+    return true;
+}
+
+bool Parser::try_parse_record_destructor_member(
+    const std::string& struct_source_name,
+    std::vector<Node*>* methods) {
+    if (!(is_cpp_mode() && !current_struct_tag_.empty() &&
+          check(TokenKind::Tilde) &&
+          pos_ + 1 < static_cast<int>(tokens_.size()) &&
+          tokens_[pos_ + 1].kind == TokenKind::Identifier &&
+          is_record_special_member_name(tokens_[pos_ + 1].lexeme,
+                                        struct_source_name))) {
+        return false;
+    }
+
+    consume();  // consume '~'
+    const char* dtor_name = arena_.strdup(cur().lexeme);
+    consume();  // consume struct tag name
+    expect(TokenKind::LParen);
+    expect(TokenKind::RParen);
+    skip_exception_spec();
+    std::string mangled = std::string("~") + dtor_name;
+    Node* method = make_node(NK_FUNCTION, cur().line);
+    method->type.base = TB_VOID;
+    method->name = arena_.strdup(mangled.c_str());
+    method->is_destructor = true;
+    method->n_params = 0;
+    if (check(TokenKind::LBrace)) {
+        method->body = parse_block();
+    } else if (is_cpp_mode() && check(TokenKind::Assign) &&
+               pos_ + 1 < static_cast<int>(tokens_.size()) &&
+               tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
+        consume();  // '='
+        consume();  // 'delete'
+        method->is_deleted = true;
+        match(TokenKind::Semi);
+    } else if (is_cpp_mode() && check(TokenKind::Assign) &&
+               pos_ + 1 < static_cast<int>(tokens_.size()) &&
+               tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
+        consume();  // '='
+        consume();  // 'default'
+        method->is_defaulted = true;
+        match(TokenKind::Semi);
+    } else {
+        match(TokenKind::Semi);
+    }
+    methods->push_back(method);
+    return true;
+}
+
 Node* Parser::parse_struct_or_union(bool is_union) {
     int ln = cur().line;
     // Parse attributes before tag name — capture packed attribute.
@@ -4583,171 +4771,13 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             continue;
         }
 
-        // C++ constructor: ClassName(params) { body }
-        // Detect when the current identifier matches the struct tag and is
-        // followed by '(' — this is a constructor declaration, not a type.
-        // For partial specializations, also match the original template name.
-        auto is_ctor_name = [&](const std::string& lex) -> bool {
-            if (lex == current_struct_tag_) return true;
-            if (!struct_source_name.empty() && lex == struct_source_name) return true;
-            return false;
-        };
-        // Skip 'constexpr'/'consteval'/'explicit' specifiers before constructor name.
-        if (is_cpp_mode() && !current_struct_tag_.empty()) {
-            // Peek past constexpr/consteval/explicit to check for constructor
-            int probe = pos_;
-            while (probe < static_cast<int>(tokens_.size()) &&
-                   (tokens_[probe].kind == TokenKind::KwConstexpr ||
-                    tokens_[probe].kind == TokenKind::KwConsteval ||
-                    tokens_[probe].kind == TokenKind::KwExplicit ||
-                    (tokens_[probe].kind == TokenKind::Identifier &&
-                     tokens_[probe].lexeme == "inline"))) {
-                ++probe;
-            }
-            if (probe < static_cast<int>(tokens_.size()) &&
-                tokens_[probe].kind == TokenKind::Identifier &&
-                is_ctor_name(tokens_[probe].lexeme) &&
-                probe + 1 < static_cast<int>(tokens_.size()) &&
-                tokens_[probe + 1].kind == TokenKind::LParen) {
-                // Skip specifiers before the constructor name
-                while (pos_ < probe) consume();
-            }
-        }
-        if (is_cpp_mode() && !current_struct_tag_.empty() &&
-            check(TokenKind::Identifier) && is_ctor_name(cur().lexeme) &&
-            pos_ + 1 < static_cast<int>(tokens_.size()) &&
-            tokens_[pos_ + 1].kind == TokenKind::LParen) {
-            const char* ctor_name = arena_.strdup(cur().lexeme);
-            consume();  // consume the struct tag name
-            consume();  // consume '('
-            std::vector<Node*> params;
-            bool variadic = false;
-            if (!check(TokenKind::RParen)) {
-                while (!at_end()) {
-                    if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
-                    if (check(TokenKind::RParen)) break;
-                    if (!is_type_start()) break;
-                    Node* p = parse_param();
-                    if (p) params.push_back(p);
-                    if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
-                    if (!match(TokenKind::Comma)) break;
-                }
-            }
-            expect(TokenKind::RParen);
-            skip_exception_spec();
-            Node* method = make_node(NK_FUNCTION, cur().line);
-            method->type.base = TB_VOID;
-            method->name = ctor_name;
-            method->variadic = variadic;
-            method->is_constructor = true;
-            method->n_params = (int)params.size();
-            if (method->n_params > 0) {
-                method->params = arena_.alloc_array<Node*>(method->n_params);
-                for (int i = 0; i < method->n_params; ++i) method->params[i] = params[i];
-            }
-            // Constructor initializer list: : member(args...), ...
-            if (check(TokenKind::Colon)) {
-                consume(); // ':'
-                std::vector<const char*> init_names;
-                std::vector<std::vector<Node*>> init_args_list;
-                while (!at_end() && !check(TokenKind::LBrace)) {
-                    if (!check(TokenKind::Identifier)) break;
-                    const char* mem_name = arena_.strdup(cur().lexeme);
-                    consume(); // member name
-                    expect(TokenKind::LParen);
-                    std::vector<Node*> args;
-                    if (!check(TokenKind::RParen)) {
-                        while (true) {
-                            Node* arg = parse_assign_expr();
-                            if (arg) args.push_back(arg);
-                            if (!match(TokenKind::Comma)) break;
-                        }
-                    }
-                    expect(TokenKind::RParen);
-                    init_names.push_back(mem_name);
-                    init_args_list.push_back(std::move(args));
-                    if (!match(TokenKind::Comma)) break;
-                }
-                method->n_ctor_inits = (int)init_names.size();
-                if (method->n_ctor_inits > 0) {
-                    method->ctor_init_names = arena_.alloc_array<const char*>(method->n_ctor_inits);
-                    method->ctor_init_args = arena_.alloc_array<Node**>(method->n_ctor_inits);
-                    method->ctor_init_nargs = arena_.alloc_array<int>(method->n_ctor_inits);
-                    for (int i = 0; i < method->n_ctor_inits; ++i) {
-                        method->ctor_init_names[i] = init_names[i];
-                        method->ctor_init_nargs[i] = (int)init_args_list[i].size();
-                        if (method->ctor_init_nargs[i] > 0) {
-                            method->ctor_init_args[i] = arena_.alloc_array<Node*>(method->ctor_init_nargs[i]);
-                            for (int j = 0; j < method->ctor_init_nargs[i]; ++j)
-                                method->ctor_init_args[i][j] = init_args_list[i][j];
-                        } else {
-                            method->ctor_init_args[i] = nullptr;
-                        }
-                    }
-                }
-            }
-            if (check(TokenKind::LBrace)) {
-                method->body = parse_block();
-            } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                       tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
-                consume(); // '='
-                consume(); // 'delete'
-                method->is_deleted = true;
-                match(TokenKind::Semi);
-            } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                       tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
-                consume(); // '='
-                consume(); // 'default'
-                method->is_defaulted = true;
-                match(TokenKind::Semi);
-            } else {
-                match(TokenKind::Semi);
-            }
-            methods.push_back(method);
+        if (try_parse_record_constructor_member(struct_source_name,
+                                                &methods)) {
             continue;
         }
 
-        // C++ destructor: ~ClassName() { body }
-        if (is_cpp_mode() && !current_struct_tag_.empty() &&
-            check(TokenKind::Tilde) &&
-            pos_ + 1 < static_cast<int>(tokens_.size()) &&
-            tokens_[pos_ + 1].kind == TokenKind::Identifier &&
-            is_ctor_name(tokens_[pos_ + 1].lexeme)) {
-            consume();  // consume '~'
-            const char* dtor_name = arena_.strdup(cur().lexeme);
-            consume();  // consume struct tag name
-            expect(TokenKind::LParen);
-            expect(TokenKind::RParen);
-            skip_exception_spec();
-            // Build mangled name: Tag__dtor
-            std::string mangled = std::string("~") + dtor_name;
-            Node* method = make_node(NK_FUNCTION, cur().line);
-            method->type.base = TB_VOID;
-            method->name = arena_.strdup(mangled.c_str());
-            method->is_destructor = true;
-            method->n_params = 0;
-            if (check(TokenKind::LBrace)) {
-                method->body = parse_block();
-            } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                       tokens_[pos_ + 1].kind == TokenKind::KwDelete) {
-                consume(); // '='
-                consume(); // 'delete'
-                method->is_deleted = true;
-                match(TokenKind::Semi);
-            } else if (is_cpp_mode() && check(TokenKind::Assign) &&
-                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                       tokens_[pos_ + 1].kind == TokenKind::KwDefault) {
-                consume(); // '='
-                consume(); // 'default'
-                method->is_defaulted = true;
-                match(TokenKind::Semi);
-            } else {
-                match(TokenKind::Semi);
-            }
-            methods.push_back(method);
+        if (try_parse_record_destructor_member(struct_source_name,
+                                               &methods)) {
             continue;
         }
 

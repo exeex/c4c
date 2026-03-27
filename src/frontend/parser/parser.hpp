@@ -373,6 +373,14 @@ class Parser {
   bool try_parse_record_enum_member(
       std::vector<Node*>* fields,
       const std::function<void(const char*)>& check_dup_field);
+  bool is_record_special_member_name(
+      const std::string& lex, const std::string& struct_source_name) const;
+  bool try_parse_record_constructor_member(
+      const std::string& struct_source_name,
+      std::vector<Node*>* methods);
+  bool try_parse_record_destructor_member(
+      const std::string& struct_source_name,
+      std::vector<Node*>* methods);
   bool try_parse_record_access_label();
   bool try_skip_record_friend_member();
   bool try_skip_record_static_assert_member();
