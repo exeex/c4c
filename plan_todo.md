@@ -10,6 +10,51 @@
 
 ## Current Slice
 
+- Completed: extracted the constructor/destructor branch cluster from
+  `try_parse_record_member_dispatch(...)` into
+  `try_parse_record_special_member_dispatch(...)` so the Step 6
+  record-member coordinator now stages type-like members, special members, and
+  method/field fallback through clearer helper boundaries without changing
+  dispatch ordering
+- New helper path:
+  - `try_parse_record_special_member_dispatch(...)`
+- Added parse-only coverage:
+  - `record_member_special_dispatch_parse`
+- Baseline recorded:
+  - `test_fail_before.log`: 2206 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
+- Validation completed:
+  - focused record-member regressions passed:
+    - `record_body_loop_parse`
+    - `record_member_dispatch_parse`
+    - `record_member_method_field_parse`
+    - `record_member_special_dispatch_parse`
+    - `record_member_special_member_parse`
+    - `record_member_type_dispatch_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2206 total, 7 failed
+    - `test_fail_after.log`: 2207 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Active target: Step 6 remains active after the special-member dispatch
+  extraction; the remaining record-member/body coordinator still has bounded
+  staging compression work available
+- This iteration's exact target: completed the bounded Step 6 helper
+  extraction around constructor/destructor dispatch in
+  `try_parse_record_member_dispatch(...)` and verified it against nearby
+  record-member coverage plus the full suite
+- Next intended slice: inspect the remaining record-member/body coordinator for
+  one more small helper around default method/field fallback or top-level loop
+  progression without broadening record parsing policy
+
 - Completed: extracted the using/nested-record/enum/typedef branch cluster
   from `try_parse_record_member_dispatch(...)` into
   `try_parse_record_type_like_member_dispatch(...)` so the Step 6

@@ -5149,14 +5149,19 @@ bool Parser::try_parse_record_member_dispatch(
             check_dup_field)) {
         return true;
     }
+    if (try_parse_record_special_member_dispatch(struct_source_name, methods))
+        return true;
+    return try_parse_record_method_or_field_member(fields, methods,
+                                                   check_dup_field);
+}
+
+bool Parser::try_parse_record_special_member_dispatch(
+    const std::string& struct_source_name,
+    std::vector<Node*>* methods) {
     if (try_parse_record_constructor_member(struct_source_name, methods)) {
         return true;
     }
-    if (try_parse_record_destructor_member(struct_source_name, methods)) {
-        return true;
-    }
-    return try_parse_record_method_or_field_member(fields, methods,
-                                                   check_dup_field);
+    return try_parse_record_destructor_member(struct_source_name, methods);
 }
 
 bool Parser::try_parse_record_member_with_template_prelude(

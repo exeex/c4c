@@ -118,6 +118,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     record_member_mixed_prelude_parse
     record_member_entry_parse
     record_member_special_member_parse
+    record_member_special_dispatch_parse
     record_member_method_field_parse
     record_member_type_dispatch_parse
     record_member_dispatch_parse
