@@ -6,48 +6,41 @@
 
 ## Active Item
 
-- Step 5: Compress declarator suffix handling
+- Step 6: Compress struct/union body parsing
 
 ## Current Slice
 
-- Active target: Step 5 completed for the plain `(...)` function-suffix
-  coordination path; the next iteration should move into Step 6 and start
-  flattening `parse_struct_or_union()`
-- This iteration's exact target: extracted the remaining plain `(...)`
-  function-suffix coordination into a helper path shared by
-  `parse_declarator()` and parameter function-type decay, preserving ordinary
-  declarator handoff, abstract function-parameter decay, and existing
-  suffix-consumption order
-- Completed: extracted the remaining plain function-suffix coordination from
-  the declarator staging pipeline into a shared helper without changing
-  ordinary declarator suffix handoff or parameter function-type decay
+- Active target: Step 6 started; the nested struct/class/union member path is
+  now extracted from `parse_struct_or_union()` and the next iteration should
+  continue flattening the record-body loop with another top-level member
+  category helper
+- This iteration's exact target: add parse-only coverage for nested named and
+  anonymous aggregate members, then extract the existing nested
+  struct/class/union member parsing path into a helper without changing
+  declarator handling, anonymous-field synthesis, or field insertion order
+- Completed: extracted the nested aggregate member branch from
+  `parse_struct_or_union()` into a focused helper without changing nested
+  declarator parsing, anonymous-field synthesis, or field insertion order
 - New helper path:
-  - `parse_plain_function_declarator_suffix(...)`
+  - `try_parse_nested_record_member(...)`
 - Added parse-only coverage:
-  - extended `declarator_normal_tail_staging_parse` with named and abstract
-    function-type parameters to lock the post-declarator plain `(...)` handoff
+  - `record_nested_aggregate_member_parse`
 - Validation completed:
   - focused parser regressions passed:
-    - `declarator_normal_tail_staging_parse`
-    - `declarator_grouped_suffix_staging_parse`
-    - `declarator_pointer_qualifier_staging_parse`
-    - `declarator_parenthesized_fn_ptr_staging_parse`
-    - `declarator_member_fn_ptr_suffix_staging_parse`
-    - `declarator_array_suffix_staging_parse`
-    - `qualified_member_function_pointer_template_owner_parse`
-    - `qualified_member_pointer_template_owner_parse`
-    - `global_qualified_member_pointer_template_owner_parse`
-    - `variadic_param_pack_declarator_parse`
-    - `eastl_slice6_template_defaults_and_refqual_cpp`
-  - full clean rebuild `test_after.log` remained monotonic:
-    - `test_before.log`: 2166 total, 7 failed
-    - `test_after.log`: 2166 total, 7 failed
+    - `record_nested_aggregate_member_parse`
+    - `access_labels_parse`
+    - `eastl_slice7c_struct_body_recovery`
+    - `template_struct_specialization_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2166 total, 7 failed
+    - `test_fail_after.log`: 2167 total, 7 failed
     - failing identities unchanged
-    - regression guard: passed (`+0` passed, `0` new failures, `0` new >30s
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
       tests)
-- Next intended slice: start Step 6 by extracting a narrow
-  method-or-field/member-body helper from `parse_struct_or_union()` so the
-  record loop begins moving toward top-level category dispatch
+- Next intended slice: continue Step 6 by extracting another top-level
+  record-member category helper, likely enum members or typedef/using members,
+  so `parse_struct_or_union()` keeps moving toward explicit member-category
+  dispatch
 - New helper path:
   - `parse_parenthesized_pointer_declarator_inner(...)`
 - Added parse-only coverage:

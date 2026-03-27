@@ -14,6 +14,7 @@
 // Pure-C backport note: replace class with struct + free functions.
 // Replace std::set with a sorted char*[] searched by strcmp.
 
+#include <functional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -360,6 +361,9 @@ class Parser {
 
   // Parse struct/union body { fields... } or just a tag reference.
   // Returns a NK_STRUCT_DEF node; appends to struct_defs_ if new.
+  bool try_parse_nested_record_member(
+      std::vector<Node*>* fields,
+      const std::function<void(const char*)>& check_dup_field);
   Node* parse_struct_or_union(bool is_union);
 
   // Parse enum body { variants... } or just a tag reference.

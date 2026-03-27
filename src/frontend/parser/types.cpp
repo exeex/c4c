@@ -3808,6 +3808,69 @@ TypeSpec Parser::parse_type_name() {
 
 // ── struct / union parsing ───────────────────────────────────────────────────
 
+bool Parser::try_parse_nested_record_member(
+    std::vector<Node*>* fields,
+    const std::function<void(const char*)>& check_dup_field) {
+    if (!(check(TokenKind::KwStruct) || check(TokenKind::KwClass) ||
+          check(TokenKind::KwUnion)))
+        return false;
+
+    bool inner_union = (cur().kind == TokenKind::KwUnion);
+    consume();
+    Node* inner = parse_struct_or_union(inner_union);
+    if (inner) struct_defs_.push_back(inner);
+
+    TypeSpec anon_fts{};
+    anon_fts.array_size = -1;
+    anon_fts.array_rank = 0;
+    anon_fts.base = inner_union ? TB_UNION : TB_STRUCT;
+    anon_fts.tag = inner ? inner->name : nullptr;
+    parse_attributes(&anon_fts);
+
+    bool has_declarator = !check(TokenKind::Semi) && !check(TokenKind::RBrace);
+    if (has_declarator) {
+        const char* fname = nullptr;
+        parse_declarator(anon_fts, &fname);
+        if (fname) {
+            Node* f = make_node(NK_DECL, cur().line);
+            f->type = anon_fts;
+            f->name = fname;
+            check_dup_field(fname);
+            fields->push_back(f);
+        } else if (inner && inner->name) {
+            Node* f = make_node(NK_DECL, cur().line);
+            f->type = anon_fts;
+            f->name = inner->name;
+            f->is_anon_field = true;
+            fields->push_back(f);
+        }
+        while (match(TokenKind::Comma)) {
+            TypeSpec fts2{};
+            fts2.array_size = -1;
+            fts2.array_rank = 0;
+            fts2.base = inner_union ? TB_UNION : TB_STRUCT;
+            fts2.tag = inner ? inner->name : nullptr;
+            const char* fname2 = nullptr;
+            parse_declarator(fts2, &fname2);
+            if (fname2) {
+                Node* f2 = make_node(NK_DECL, cur().line);
+                f2->type = fts2;
+                f2->name = fname2;
+                check_dup_field(fname2);
+                fields->push_back(f2);
+            }
+        }
+    } else if (inner && inner->name) {
+        Node* f = make_node(NK_DECL, cur().line);
+        f->type = anon_fts;
+        f->name = inner->name;
+        f->is_anon_field = true;
+        fields->push_back(f);
+    }
+    match(TokenKind::Semi);
+    return true;
+}
+
 Node* Parser::parse_struct_or_union(bool is_union) {
     int ln = cur().line;
     // Parse attributes before tag name — capture packed attribute.
@@ -4370,64 +4433,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             continue;
         }
 
-        // Handle nested anonymous struct/union
-        if (check(TokenKind::KwStruct) || check(TokenKind::KwClass) || check(TokenKind::KwUnion)) {
-            bool inner_union = (cur().kind == TokenKind::KwUnion);
-            consume();
-            Node* inner = parse_struct_or_union(inner_union);
-            if (inner) struct_defs_.push_back(inner);
-            // Parse optional declarator (name, *name, name[], etc.)
-            // This handles: struct S s; struct S *p; struct S arr[N]; (anonymous: struct S;)
-            TypeSpec anon_fts{};
-            anon_fts.array_size = -1;
-            anon_fts.array_rank = 0;
-            anon_fts.base = inner_union ? TB_UNION : TB_STRUCT;
-            anon_fts.tag  = inner ? inner->name : nullptr;
-            parse_attributes(&anon_fts);
-            bool has_declarator = !check(TokenKind::Semi) && !check(TokenKind::RBrace);
-            if (has_declarator) {
-                const char* fname = nullptr;
-                parse_declarator(anon_fts, &fname);
-                    if (fname) {
-                        Node* f = make_node(NK_DECL, cur().line);
-                        f->type = anon_fts;
-                        f->name = fname;
-                        check_dup_field(fname);
-                        fields.push_back(f);
-                } else if (inner && inner->name) {
-                    // Declarator consumed pointer stars but no name — treat as anonymous
-                    Node* f = make_node(NK_DECL, cur().line);
-                    f->type = anon_fts;
-                    f->name = inner->name;  // use struct tag as synthetic field name
-                    f->is_anon_field = true;
-                    fields.push_back(f);
-                }
-                while (match(TokenKind::Comma)) {
-                    TypeSpec fts2{};
-                    fts2.array_size = -1;
-                    fts2.array_rank = 0;
-                    fts2.base = inner_union ? TB_UNION : TB_STRUCT;
-                    fts2.tag  = inner ? inner->name : nullptr;
-                    const char* fname2 = nullptr;
-                    parse_declarator(fts2, &fname2);
-                    if (fname2) {
-                        Node* f2 = make_node(NK_DECL, cur().line);
-                        f2->type = fts2;
-                        f2->name = fname2;
-                        check_dup_field(fname2);
-                        fields.push_back(f2);
-                    }
-                }
-            } else if (inner && inner->name) {
-                // Truly anonymous: no declarator at all, just struct/union { ... };
-                // Add synthetic field using the tag as name for recursive lookup.
-                Node* f = make_node(NK_DECL, cur().line);
-                f->type = anon_fts;
-                f->name = inner->name;
-                f->is_anon_field = true;
-                fields.push_back(f);
-            }
-            match(TokenKind::Semi);
+        if (try_parse_nested_record_member(&fields, check_dup_field)) {
             continue;
         }
 
