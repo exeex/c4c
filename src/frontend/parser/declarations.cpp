@@ -706,6 +706,47 @@ Node* Parser::parse_top_level() {
             }
             return std::pair<bool, const char*>(is_pack, pname);
         };
+        auto try_consume_typedef_nttp_type_head = [&]() -> bool {
+            if ((check(TokenKind::ColonColon) ||
+                 (check(TokenKind::Identifier) &&
+                  pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                  tokens_[pos_ + 1].kind == TokenKind::ColonColon)) &&
+                [&]() -> bool {
+                    QualifiedNameRef qn;
+                    if (!peek_qualified_name(&qn, true)) return false;
+                    std::string qualified = qn.base_name;
+                    if (!qn.qualifier_segments.empty()) {
+                        qualified.clear();
+                        for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
+                            if (i) qualified += "::";
+                            qualified += qn.qualifier_segments[i];
+                        }
+                        qualified += "::";
+                        qualified += qn.base_name;
+                    }
+                    if (typedef_types_.count(qualified) > 0) return true;
+                    int context_id = resolve_namespace_context(qn);
+                    if (context_id >= 0) {
+                        std::string resolved = canonical_name_in_context(context_id, qn.base_name);
+                        if (typedef_types_.count(resolved) > 0) return true;
+                    }
+                    return false;
+                }()) {
+                QualifiedNameRef qn;
+                peek_qualified_name(&qn, true);
+                int qn_tokens = static_cast<int>(qn.qualifier_segments.size()) * 2 + 1;
+                if (qn.is_global_qualified) qn_tokens += 1;
+                pos_ += qn_tokens;
+                return true;
+            }
+            if (check(TokenKind::Identifier) &&
+                (is_typedef_name(cur().lexeme) ||
+                 typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0)) {
+                consume();
+                return true;
+            }
+            return false;
+        };
         while (!at_end() && !check(TokenKind::Greater)) {
             if (check(TokenKind::KwTemplate)) {
                 // Template-template parameter:
@@ -797,38 +838,10 @@ Node* Parser::parse_top_level() {
                 } else {
                     push_nttp_no_default();
                 }
-            } else if ((check(TokenKind::ColonColon) ||
-                        (check(TokenKind::Identifier) &&
-                         pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                         tokens_[pos_ + 1].kind == TokenKind::ColonColon)) &&
-                       [&]() -> bool {
-                           QualifiedNameRef qn;
-                           if (!peek_qualified_name(&qn, true)) return false;
-                           std::string qualified = qn.base_name;
-                           if (!qn.qualifier_segments.empty()) {
-                               qualified.clear();
-                               for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
-                                   if (i) qualified += "::";
-                                   qualified += qn.qualifier_segments[i];
-                               }
-                               qualified += "::";
-                               qualified += qn.base_name;
-                           }
-                           if (typedef_types_.count(qualified) > 0) return true;
-                           int context_id = resolve_namespace_context(qn);
-                           if (context_id >= 0) {
-                               std::string resolved = canonical_name_in_context(context_id, qn.base_name);
-                               if (typedef_types_.count(resolved) > 0) return true;
-                           }
-                           return false;
-                       }()) {
-                // Non-type template parameter with qualified typedef type
-                // (e.g. std::size_t N).
-                QualifiedNameRef qn;
-                peek_qualified_name(&qn, true);
-                int qn_tokens = static_cast<int>(qn.qualifier_segments.size()) * 2 + 1;
-                if (qn.is_global_qualified) qn_tokens += 1;
-                pos_ += qn_tokens;
+            } else if (try_consume_typedef_nttp_type_head()) {
+                // Non-type template parameter with typedef type
+                // (e.g. size_t N, std::size_t N).
+                // Skip pointer stars or qualifiers.
                 while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
                 auto [is_pack, pname] = parse_template_param_pack_and_name();
                 push_nttp_param(pname, is_pack);
@@ -837,23 +850,6 @@ Node* Parser::parse_top_level() {
                     skip_template_param_default_expr(*this, false);
                 }
                 push_nttp_no_default();
-            } else if (check(TokenKind::Identifier) &&
-                       (is_typedef_name(cur().lexeme) ||
-                        typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0)) {
-                // Non-type template parameter with typedef type (e.g., size_t N).
-                consume();  // consume the typedef type name
-                // Skip pointer stars or qualifiers.
-                while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
-                auto [is_pack, pname] = parse_template_param_pack_and_name();
-                push_nttp_param(pname, is_pack);
-                // Check for default NTTP value: = expr
-                if (match(TokenKind::Assign)) {
-                    // Skip balanced default expression (same heuristic as above).
-                    skip_template_param_default_expr(*this, false);
-                    push_nttp_no_default();
-                } else {
-                    push_nttp_no_default();
-                }
             } else {
                 throw std::runtime_error("expected template parameter name");
             }
