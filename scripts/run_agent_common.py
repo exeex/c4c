@@ -60,6 +60,10 @@ def ensure_log_dir() -> None:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def ensure_parent_dir(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+
 def resolve_prompt_file(prompt_file_arg: str) -> Path:
     prompt_path = Path(prompt_file_arg)
     if not prompt_path.is_absolute():
@@ -206,6 +210,8 @@ def build_command(cli: str, prompt: str, args: argparse.Namespace) -> list[str]:
 
 
 def stream_process(command: list[str], logfile: Path, tmp_log_path: Path) -> int:
+    ensure_parent_dir(logfile)
+    ensure_parent_dir(tmp_log_path)
     with logfile.open("w", encoding="utf-8", errors="replace") as log_fp, tmp_log_path.open(
         "w", encoding="utf-8", errors="replace"
     ) as tmp_fp:
@@ -288,6 +294,7 @@ def main() -> int:
     iteration = 0
     while True:
         iteration += 1
+        ensure_log_dir()
         commit = current_commit()
         timestamp = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         logfile = LOG_DIR / f"{mode}_{cli}_iter_{iteration}_{commit}.log"
