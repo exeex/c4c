@@ -10,6 +10,24 @@
 
 ## Current Slice
 
+- Completed: extracted shared helper
+  `seed_and_resolve_pending_template_type_if_needed(...)` so repeated
+  template-owner / member-typedef dependent declaration paths now share one
+  seed-and-resolve sequence without changing pending-owner retry behavior
+- Call sites converted in this slice:
+  - generic-control-type inference
+  - nested template arg materialization
+  - struct base realization during lowering
+  - member typedef binding application
+  - function and method return / parameter declaration types
+  - local declarations
+  - named template-owner materialization for constructor-style and scoped
+    references
+  - cast targets
+- Added focused regression coverage:
+  - `cpp_hir_template_member_owner_decl_and_cast` asserts a templated
+    member-typedef chain lowers concretely in both a local declaration
+    (`decl local: int = input#P0`) and a cast target (`return ((int)local#L0)`)
 - Completed: extracted the remaining deferred-template entry coordination from
   `instantiate_deferred_template_type(...)` so direct owner-struct retries,
   delegated owner work spawning, and member-typedef owner resolution all flow
@@ -47,7 +65,7 @@
   - tightened `cpp_hir_template_member_owner_resolution` to assert the concrete
     instantiated owner type appears in HIR as `decl w: struct wrap_T_int`
 - Baseline recorded for this iteration:
-  - `test_fail_before.log`: 2214 total, 7 failed
+  - `test_fail_before.log`: 2215 total, 7 failed
   - failing identities:
     - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
     - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
@@ -91,13 +109,32 @@
     - `test_fail_after.log`: 2215 total, 7 failed
     - failing identities unchanged
     - regression guard: passed (`+1` passed, `0` new failures)
+  - targeted HIR regressions passed:
+    - `cpp_hir_template_member_owner_decl_and_cast`
+    - `cpp_hir_template_member_owner_chain`
+    - `cpp_hir_template_member_owner_resolution`
+    - `cpp_hir_template_struct_inherited_method_binding`
+    - `cpp_hir_template_struct_field_array_extent`
+    - `cpp_hir_deferred_template_instantiation`
+    - `cpp_hir_template_struct_registry_primary_only`
+    - `cpp_hir_initial_program_seed_realization`
+    - `cpp_hir_fixpoint_convergence`
+    - `cpp_hir_template_origin`
+  - full clean rebuild remained monotonic:
+    - `test_fail_before.log`: 2215 total, 7 failed
+    - `test_fail_after.log`: 2216 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures)
 
 ## Next Intended Slice
 
-- continue Step 2 by checking whether `resolve_pending_tpl_struct_if_needed(...)`
-  still has meaningful coordinator duplication left after the deferred-template
-  entry helper pass; if not, advance to the next repeated owner/template
-  resolution sequence that can be extracted without semantic drift
+- continue Step 2 by extracting the remaining repeated pending-template
+  owner/member-typedef seed-and-resolve sequences behind one helper, then
+  reassess whether any material coordinator duplication remains in
+  `resolve_pending_tpl_struct_if_needed(...)`
+- if the remaining Step 2 duplication is no longer substantial, move forward
+  to Step 3 and start sharing the repeated function/method lowering setup
+  around declaration-type substitution and signature staging
 
 ## Blockers
 
@@ -114,4 +151,5 @@
 - the new focused HIR coverage should exercise a nested owner/member-typedef
   chain rather than only the direct `box<T>::value_type` case
 - after this slice, reevaluate whether `resolve_pending_tpl_struct_if_needed(...)`
-  still has meaningful coordinator duplication left for Step 2
+  still has meaningful coordinator duplication left for Step 2, or whether the
+  remaining work cleanly moves to Step 3

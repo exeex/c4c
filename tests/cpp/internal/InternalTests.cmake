@@ -402,6 +402,15 @@ set_tests_properties(cpp_hir_template_member_owner_chain PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_member_owner_decl_and_cast
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_member_owner_decl_and_cast_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_member_owner_decl_and_cast PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "decl local: int = input#P0.*return \\(\\(int\\)local#L0\\)"
+)
+
+add_test(
   NAME cpp_hir_spec_key_identity
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/specialization_identity.cpp"
 )
