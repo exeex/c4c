@@ -1819,6 +1819,50 @@ void Parser::parse_parenthesized_function_pointer_suffix(
         out_fn_ptr_variadic, fn_ptr_params, fn_ptr_variadic);
 }
 
+void Parser::parse_parenthesized_pointer_declarator_prefix(TypeSpec& ts) {
+    consume();  // (
+    skip_attributes();  // skip any __attribute__((...)) before * or owner prefix
+
+    TokenKind pointer_tok = cur().kind;
+    if (is_cpp_mode() && consume_member_pointer_owner_prefix()) {
+        pointer_tok = TokenKind::Star;
+    } else {
+        consume();  // consume * or ^ or & or &&
+    }
+    apply_declarator_pointer_token(ts, pointer_tok,
+                                   /*preserve_array_base=*/false);
+
+    while (check(TokenKind::Star)) {
+        consume();
+        apply_declarator_pointer_token(ts, TokenKind::Star,
+                                       /*preserve_array_base=*/false);
+    }
+
+    while (check(TokenKind::Identifier)) {
+        const std::string& lex = cur().lexeme;
+        if (lex == "_Nullable" || lex == "_Nonnull" ||
+            lex == "_Null_unspecified" || lex == "__nullable" ||
+            lex == "__nonnull" || lex == "__restrict" ||
+            lex == "restrict" || lex == "const" || lex == "volatile") {
+            consume();
+        } else {
+            break;
+        }
+    }
+
+    while (is_qualifier(cur().kind)) consume();
+
+    if (is_cpp_mode()) {
+        if (check(TokenKind::AmpAmp)) {
+            consume();
+            ts.is_rvalue_ref = true;
+        } else if (check(TokenKind::Amp)) {
+            consume();
+            ts.is_lvalue_ref = true;
+        }
+    }
+}
+
 bool Parser::parse_parenthesized_pointer_declarator_inner(
     TypeSpec& ts, const char** out_name,
     Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
@@ -1868,47 +1912,7 @@ void Parser::parse_parenthesized_pointer_declarator(
     bool is_nested_fn_ptr = false;
     std::vector<long long> decl_dims;
 
-    consume();  // (
-    skip_attributes();  // skip any __attribute__((...)) before * or ^
-
-    TokenKind pointer_tok = cur().kind;
-    if (is_cpp_mode() && consume_member_pointer_owner_prefix()) {
-        pointer_tok = TokenKind::Star;
-    } else {
-        consume();  // consume * or ^ or & or &&
-    }
-    apply_declarator_pointer_token(ts, pointer_tok,
-                                   /*preserve_array_base=*/false);
-
-    while (check(TokenKind::Star)) {
-        consume();
-        apply_declarator_pointer_token(ts, TokenKind::Star,
-                                       /*preserve_array_base=*/false);
-    }
-
-    while (check(TokenKind::Identifier)) {
-        const std::string& lex = cur().lexeme;
-        if (lex == "_Nullable" || lex == "_Nonnull" ||
-            lex == "_Null_unspecified" || lex == "__nullable" ||
-            lex == "__nonnull" || lex == "__restrict" ||
-            lex == "restrict" || lex == "const" || lex == "volatile") {
-            consume();
-        } else {
-            break;
-        }
-    }
-
-    while (is_qualifier(cur().kind)) consume();
-
-    if (is_cpp_mode()) {
-        if (check(TokenKind::AmpAmp)) {
-            consume();
-            ts.is_rvalue_ref = true;
-        } else if (check(TokenKind::Amp)) {
-            consume();
-            ts.is_lvalue_ref = true;
-        }
-    }
+    parse_parenthesized_pointer_declarator_prefix(ts);
 
     is_nested_fn_ptr = parse_parenthesized_pointer_declarator_inner(
         ts, out_name,

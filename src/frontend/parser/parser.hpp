@@ -333,6 +333,7 @@ class Parser {
       bool* out_fn_ptr_variadic,
       Node*** out_ret_fn_ptr_params, int* out_n_ret_fn_ptr_params,
       bool* out_ret_fn_ptr_variadic);
+  void parse_parenthesized_pointer_declarator_prefix(TypeSpec& ts);
   bool parse_parenthesized_pointer_declarator_inner(
       TypeSpec& ts, const char** out_name,
       Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,

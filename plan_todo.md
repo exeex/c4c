@@ -6,9 +6,58 @@
 
 ## Active Item
 
-- Step 7: Keep refactor risk contained
+- Step 5: Compress Declarator Suffix Handling
 
 ## Current Slice
+
+- Completed: extracted the parenthesized pointer/member-pointer prefix setup
+  from `parse_parenthesized_pointer_declarator()` into
+  `parse_parenthesized_pointer_declarator_prefix()` so the outer function now
+  reads as prefix/inner/suffix coordination without changing nested
+  function-pointer or array-suffix behavior
+- New helper path:
+  - `parse_parenthesized_pointer_declarator_prefix(...)`
+- Added parse-only coverage:
+  - `declarator_parenthesized_member_pointer_prefix_parse`
+- Baseline recorded:
+  - `test_fail_before.log`: 2187 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
+- Validation completed:
+  - focused declarator regressions passed:
+    - `declarator_parenthesized_member_pointer_prefix_parse`
+    - `declarator_pointer_qualifier_staging_parse`
+    - `declarator_parenthesized_fn_ptr_staging_parse`
+    - `declarator_member_fn_ptr_suffix_staging_parse`
+    - `declarator_normal_tail_staging_parse`
+    - `declarator_grouped_suffix_staging_parse`
+    - `declarator_array_suffix_staging_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2187 total, 7 failed
+    - `test_fail_after.log`: 2188 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Active target: Step 5 remains active after the parenthesized declarator
+  prefix extraction; the next slice should isolate the remaining
+  inner-name-vs-nested-function-pointer branch inside
+  `parse_parenthesized_pointer_declarator()` so `parse_declarator()` keeps
+  converging on a staged coordinator
+- This iteration's exact target: add parse-only coverage for an
+  attribute-bearing parenthesized pointer-to-member declarator that keeps the
+  current supported qualifier order stable, then extract the
+  parenthesized pointer/member-pointer prefix setup from
+  `parse_parenthesized_pointer_declarator()` into one focused helper without
+  changing nested-function-pointer or array-suffix behavior
+- Next intended slice: continue Step 5 by isolating the remaining
+  parenthesized declarator inner-name vs nested-fn-ptr branch from
+  `parse_parenthesized_pointer_declarator()`
 
 - Completed: extracted the final record-member entry seam from
   `try_parse_record_member()` into `prepare_record_member_entry()` so the

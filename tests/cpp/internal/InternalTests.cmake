@@ -97,6 +97,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     declarator_pointer_qualifier_staging_parse
     declarator_parenthesized_fn_ptr_staging_parse
     declarator_member_fn_ptr_suffix_staging_parse
+    declarator_parenthesized_member_pointer_prefix_parse
     declarator_normal_tail_staging_parse
     record_nested_aggregate_member_parse
     record_member_typedef_using_parse
