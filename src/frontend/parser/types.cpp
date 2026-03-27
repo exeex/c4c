@@ -1759,6 +1759,98 @@ void Parser::parse_parenthesized_function_pointer_suffix(
         out_fn_ptr_variadic, fn_ptr_params, fn_ptr_variadic);
 }
 
+void Parser::parse_parenthesized_pointer_declarator(
+    TypeSpec& ts, const char** out_name,
+    Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
+    bool* out_fn_ptr_variadic,
+    Node*** out_ret_fn_ptr_params, int* out_n_ret_fn_ptr_params,
+    bool* out_ret_fn_ptr_variadic) {
+    bool is_nested_fn_ptr = false;
+    std::vector<long long> decl_dims;
+
+    consume();  // (
+    skip_attributes();  // skip any __attribute__((...)) before * or ^
+
+    TokenKind pointer_tok = cur().kind;
+    if (is_cpp_mode() && consume_member_pointer_owner_prefix()) {
+        pointer_tok = TokenKind::Star;
+    } else {
+        consume();  // consume * or ^ or & or &&
+    }
+    apply_declarator_pointer_token(ts, pointer_tok,
+                                   /*preserve_array_base=*/false);
+
+    while (check(TokenKind::Star)) {
+        consume();
+        apply_declarator_pointer_token(ts, TokenKind::Star,
+                                       /*preserve_array_base=*/false);
+    }
+
+    while (check(TokenKind::Identifier)) {
+        const std::string& lex = cur().lexeme;
+        if (lex == "_Nullable" || lex == "_Nonnull" ||
+            lex == "_Null_unspecified" || lex == "__nullable" ||
+            lex == "__nonnull" || lex == "__restrict" ||
+            lex == "restrict" || lex == "const" || lex == "volatile") {
+            consume();
+        } else {
+            break;
+        }
+    }
+
+    while (is_qualifier(cur().kind)) consume();
+
+    if (is_cpp_mode()) {
+        if (check(TokenKind::AmpAmp)) {
+            consume();
+            ts.is_rvalue_ref = true;
+        } else if (check(TokenKind::Amp)) {
+            consume();
+            ts.is_lvalue_ref = true;
+        }
+    }
+
+    while (check(TokenKind::LBracket)) {
+        consume();  // [
+        while (!at_end() && !check(TokenKind::RBracket)) consume();
+        if (check(TokenKind::RBracket)) consume();  // ]
+    }
+
+    bool got_name = false;
+    if (out_name && check(TokenKind::Identifier)) {
+        *out_name = arena_.strdup(cur().lexeme);
+        consume();
+        got_name = true;
+    }
+
+    while (check(TokenKind::LBracket)) {
+        consume();  // [
+        while (!at_end() && !check(TokenKind::RBracket)) consume();
+        if (check(TokenKind::RBracket)) consume();  // ]
+    }
+
+    if (got_name && check(TokenKind::LParen)) {
+        skip_paren_group();  // skip own params: (int a, int b)
+    } else if (!got_name && check(TokenKind::LParen)) {
+        TypeSpec inner_ts = ts;
+        inner_ts.ptr_level = 0;
+        is_nested_fn_ptr = true;
+        parse_declarator(inner_ts, out_name,
+                         out_fn_ptr_params, out_n_fn_ptr_params,
+                         out_fn_ptr_variadic);
+    }
+
+    expect(TokenKind::RParen);
+    parse_parenthesized_function_pointer_suffix(
+        ts, is_nested_fn_ptr,
+        out_fn_ptr_params, out_n_fn_ptr_params, out_fn_ptr_variadic,
+        out_ret_fn_ptr_params, out_n_ret_fn_ptr_params,
+        out_ret_fn_ptr_variadic);
+    parse_declarator_array_suffixes(ts, &decl_dims);
+    apply_declarator_array_dims(ts, decl_dims);
+    if (!decl_dims.empty()) ts.is_ptr_to_array = true;
+}
+
 void Parser::store_declarator_function_pointer_params(
     Node*** out_params, int* out_n_params, bool* out_variadic,
     const std::vector<Node*>& params, bool variadic) {
@@ -3649,96 +3741,13 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     }
     parse_attributes(&ts);
 
-    bool used_paren_ptr_declarator = false;
-
     // Check for parenthesised declarator: (*name) or (ATTR *name) — function pointer
     if (is_parenthesized_pointer_declarator_start()) {
-        used_paren_ptr_declarator = true;
-        bool is_nested_fn_ptr = false;
-        // function pointer: (*name)(...) or block pointer: (^name)(...) — record name, skip params
-        // Also handles C++ pointer-to-member-function: (T::*name)(...)
-        consume();  // consume (
-        skip_attributes();  // skip any __attribute__((...)) before * or ^
-        TokenKind pointer_tok = cur().kind;
-        if (is_cpp_mode() && consume_member_pointer_owner_prefix()) {
-            pointer_tok = TokenKind::Star;
-        } else {
-            consume();  // consume * or ^ or & or &&
-        }
-        apply_declarator_pointer_token(ts, pointer_tok,
-                                       /*preserve_array_base=*/false);
-        // Skip extra stars for **fpp
-        while (check(TokenKind::Star)) {
-            consume();
-            apply_declarator_pointer_token(ts, TokenKind::Star,
-                                           /*preserve_array_base=*/false);
-        }
-        // Skip nullability / qualifier annotations inside the parens: (* _Nullable name)
-        while (check(TokenKind::Identifier)) {
-            const std::string& lex = cur().lexeme;
-            if (lex == "_Nullable" || lex == "_Nonnull" || lex == "_Null_unspecified" ||
-                lex == "__nullable" || lex == "__nonnull" || lex == "__restrict" ||
-                lex == "restrict" || lex == "const" || lex == "volatile") {
-                consume();
-            } else {
-                break;
-            }
-        }
-        // Also skip keyword qualifiers (const, volatile, restrict)
-        while (is_qualifier(cur().kind)) consume();
-        // C++ ref qualifier after pointer: (*const& name) or (*const&& name)
-        if (is_cpp_mode()) {
-            if (check(TokenKind::AmpAmp)) { consume(); ts.is_rvalue_ref = true; }
-            else if (check(TokenKind::Amp)) { consume(); ts.is_lvalue_ref = true; }
-        }
-        // Skip array dimensions inside parens: (*[4])(int) — array of function pointers
-        // e.g. typedef int (*fptr4[4])(int);  or  int f(int (*[4])(int), ...)
-        while (check(TokenKind::LBracket)) {
-            consume();  // [
-            while (!at_end() && !check(TokenKind::RBracket)) consume();
-            if (check(TokenKind::RBracket)) consume();  // ]
-        }
-        bool got_name = false;
-        if (out_name && check(TokenKind::Identifier)) {
-            *out_name = arena_.strdup(cur().lexeme);
-            consume();
-            got_name = true;
-        }
-        // Skip array dimensions after optional name: (*fptr4[4])(int) or (*[4])(int)
-        // e.g. typedef int (*fptr4[4])(int);  or  int f(int (*[4])(int), ...)
-        while (check(TokenKind::LBracket)) {
-            consume();  // [
-            while (!at_end() && !check(TokenKind::RBracket)) consume();
-            if (check(TokenKind::RBracket)) consume();  // ]
-        }
-        // Handle: int (* f1(int a, int b))(int c, int b) — function-returning-fptr
-        // Only applies when we read a name AND the next token is '(' (function params).
-        if (got_name && check(TokenKind::LParen)) {
-            skip_paren_group();  // skip own params: (int a, int b)
-        } else if (!got_name && check(TokenKind::LParen)) {
-            // Nested declarator: (* (*p)(inner_params))(outer_params)
-            // The inner parse_declarator captures the inner fn_ptr_params
-            // (the declaration's own params). The outer params (parsed below)
-            // are the RETURN type's fn_ptr params.
-            TypeSpec inner_ts = ts;
-            inner_ts.ptr_level = 0;
-            is_nested_fn_ptr = true;
-            parse_declarator(inner_ts, out_name,
-                             out_fn_ptr_params, out_n_fn_ptr_params,
-                             out_fn_ptr_variadic);
-        }
-        expect(TokenKind::RParen);
-        parse_parenthesized_function_pointer_suffix(
-            ts, is_nested_fn_ptr,
+        parse_parenthesized_pointer_declarator(
+            ts, out_name,
             out_fn_ptr_params, out_n_fn_ptr_params, out_fn_ptr_variadic,
             out_ret_fn_ptr_params, out_n_ret_fn_ptr_params,
             out_ret_fn_ptr_variadic);
-        // Array suffix after function pointer: (*p)[N] / (*p)[N][M]
-        while (check(TokenKind::LBracket)) {
-            decl_dims.push_back(parse_one_declarator_array_dim(ts));
-        }
-        apply_declarator_array_dims(ts, decl_dims);
-        if (!decl_dims.empty()) ts.is_ptr_to_array = used_paren_ptr_declarator;
         return;
     }
 
@@ -3747,13 +3756,11 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     // an identifier (not a pointer star), but the declarator is still grouped.
     if (try_parse_grouped_declarator(ts, out_name, &decl_dims)) {
         apply_declarator_array_dims(ts, decl_dims);
-        if (!decl_dims.empty()) ts.is_ptr_to_array = used_paren_ptr_declarator;
         return;
     }
 
     parse_normal_declarator_tail(ts, out_name, &decl_dims);
     apply_declarator_array_dims(ts, decl_dims);
-    if (!decl_dims.empty()) ts.is_ptr_to_array = used_paren_ptr_declarator;
 
     // Function suffix: (params) — turns the declarator into a function
     // We only record variadic here; full param parsing is done by caller.
