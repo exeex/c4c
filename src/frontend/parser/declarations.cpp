@@ -696,6 +696,16 @@ Node* Parser::parse_top_level() {
                     template_param_default_exprs.push_back(nullptr);
                 }
             };
+        auto parse_template_param_pack_and_name = [&]() {
+            bool is_pack = false;
+            if (check(TokenKind::Ellipsis)) { consume(); is_pack = true; }
+            const char* pname = nullptr;
+            if (check(TokenKind::Identifier)) {
+                pname = arena_.strdup(cur().lexeme);
+                consume();
+            }
+            return std::pair<bool, const char*>(is_pack, pname);
+        };
         while (!at_end() && !check(TokenKind::Greater)) {
             if (check(TokenKind::KwTemplate)) {
                 // Template-template parameter:
@@ -725,16 +735,11 @@ Node* Parser::parse_top_level() {
                     throw std::runtime_error("expected template parameter name");
                 }
                 consume();  // typename/class
-                if (check(TokenKind::Ellipsis)) consume();
-                const char* pname = nullptr;
-                if (check(TokenKind::Identifier)) {
-                    pname = arena_.strdup(cur().lexeme);
-                    consume();
-                }
+                auto [is_pack, pname] = parse_template_param_pack_and_name();
                 if (match(TokenKind::Assign)) {
                     skip_template_param_default_expr(*this, true);
                 }
-                push_type_template_param(pname);
+                push_type_template_param(pname, is_pack);
             } else if ((check(TokenKind::Identifier) && cur().lexeme == "typename") ||
                 check(TokenKind::KwClass)) {
                 if (classify_typename_template_parameter() ==
@@ -742,13 +747,7 @@ Node* Parser::parse_top_level() {
                     TypeSpec param_ts = parse_type_name();
                     (void)param_ts;
                     while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
-                    bool is_pack = false;
-                    if (check(TokenKind::Ellipsis)) { consume(); is_pack = true; }
-                    const char* pname = nullptr;
-                    if (check(TokenKind::Identifier)) {
-                        pname = arena_.strdup(cur().lexeme);
-                        consume();
-                    }
+                    auto [is_pack, pname] = parse_template_param_pack_and_name();
                     push_nttp_param(pname, is_pack);
                     if (match(TokenKind::Assign)) {
                         skip_template_param_default_expr(*this, false);
@@ -758,16 +757,7 @@ Node* Parser::parse_top_level() {
                 }
                 // Type template parameter (possibly variadic: typename... Ts).
                 consume();
-                // Skip '...' for variadic parameter packs.
-                bool is_pack = false;
-                if (check(TokenKind::Ellipsis)) { consume(); is_pack = true; }
-                const char* pname = nullptr;
-                if (check(TokenKind::Identifier)) {
-                    pname = arena_.strdup(cur().lexeme);
-                    consume();
-                } else {
-                    pname = make_anon_template_param_name(arena_, false, template_params.size());
-                }
+                auto [is_pack, pname] = parse_template_param_pack_and_name();
                 // Check for default type argument: = type
                 if (match(TokenKind::Assign)) {
                     TypeSpec def_ts = parse_type_name();
@@ -779,14 +769,7 @@ Node* Parser::parse_top_level() {
                 // Non-type template parameter (NTTP): e.g. int N, unsigned N, bool... Bn.
                 // Consume the type specifier tokens, then the parameter name.
                 while (!at_end() && is_type_kw(cur().kind)) consume();
-                // Skip '...' for variadic NTTP packs (e.g., bool... Bn).
-                bool is_pack = false;
-                if (check(TokenKind::Ellipsis)) { consume(); is_pack = true; }
-                const char* pname = nullptr;
-                if (check(TokenKind::Identifier)) {
-                    pname = arena_.strdup(cur().lexeme);
-                    consume();
-                }
+                auto [is_pack, pname] = parse_template_param_pack_and_name();
                 push_nttp_param(pname, is_pack);
                 // Check for default NTTP value: = expr
                 if (match(TokenKind::Assign)) {
@@ -847,13 +830,7 @@ Node* Parser::parse_top_level() {
                 if (qn.is_global_qualified) qn_tokens += 1;
                 pos_ += qn_tokens;
                 while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
-                bool is_pack = false;
-                if (check(TokenKind::Ellipsis)) { consume(); is_pack = true; }
-                const char* pname = nullptr;
-                if (check(TokenKind::Identifier)) {
-                    pname = arena_.strdup(cur().lexeme);
-                    consume();
-                }
+                auto [is_pack, pname] = parse_template_param_pack_and_name();
                 push_nttp_param(pname, is_pack);
                 // Check for default NTTP value: = expr
                 if (match(TokenKind::Assign)) {
@@ -867,14 +844,7 @@ Node* Parser::parse_top_level() {
                 consume();  // consume the typedef type name
                 // Skip pointer stars or qualifiers.
                 while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
-                // Skip '...' for variadic NTTP packs.
-                bool is_pack = false;
-                if (check(TokenKind::Ellipsis)) { consume(); is_pack = true; }
-                const char* pname = nullptr;
-                if (check(TokenKind::Identifier)) {
-                    pname = arena_.strdup(cur().lexeme);
-                    consume();
-                }
+                auto [is_pack, pname] = parse_template_param_pack_and_name();
                 push_nttp_param(pname, is_pack);
                 // Check for default NTTP value: = expr
                 if (match(TokenKind::Assign)) {
