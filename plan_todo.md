@@ -10,6 +10,56 @@
 
 ## Current Slice
 
+- Completed: extracted the remaining inner branch from
+  `parse_parenthesized_pointer_declarator_inner()` into focused helpers so
+  the function now reads as array-skip / name-capture / nested-recursion
+  coordination without changing parenthesized pointer or member-pointer
+  suffix behavior
+- New helper paths:
+  - `skip_parenthesized_pointer_declarator_array_chunks(...)`
+  - `parse_parenthesized_pointer_declarator_name(...)`
+  - `try_parse_nested_parenthesized_pointer_declarator(...)`
+- Added parse-only coverage:
+  - `declarator_parenthesized_pointer_inner_staging_parse`
+- Baseline recorded:
+  - `test_fail_before.log`: 2188 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
+- Validation completed:
+  - focused declarator regressions passed:
+    - `declarator_parenthesized_pointer_inner_staging_parse`
+    - `declarator_parenthesized_member_pointer_prefix_parse`
+    - `declarator_pointer_qualifier_staging_parse`
+    - `declarator_parenthesized_fn_ptr_staging_parse`
+    - `declarator_member_fn_ptr_suffix_staging_parse`
+    - `declarator_normal_tail_staging_parse`
+    - `declarator_grouped_suffix_staging_parse`
+    - `declarator_array_suffix_staging_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2188 total, 7 failed
+    - `test_fail_after.log`: 2189 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Active target: Step 5 remains active after the parenthesized declarator
+  inner-branch extraction; the next slice should decide whether the remaining
+  parenthesized declarator suffix/finalization flow needs one more bounded
+  helper before Step 5 can close
+- This iteration's exact target: add parse-only coverage for a
+  parenthesized pointer/member-pointer declarator that distinguishes the
+  direct-name path from the nested-function-pointer recursion path, then
+  extract that inner branch from `parse_parenthesized_pointer_declarator()`
+  into one focused helper without changing suffix parsing or parameter
+  capture behavior
+- Next intended slice: inspect the remaining post-`RParen`
+  parenthesized-pointer suffix/finalization flow and either extract one more
+  focused helper or explicitly record Step 5 as sufficiently coordinatorized
 - Completed: extracted the parenthesized pointer/member-pointer prefix setup
   from `parse_parenthesized_pointer_declarator()` into
   `parse_parenthesized_pointer_declarator_prefix()` so the outer function now
