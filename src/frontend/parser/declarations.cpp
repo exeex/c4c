@@ -655,6 +655,47 @@ Node* Parser::parse_top_level() {
             template_param_default_values.push_back(0);
             template_param_default_exprs.push_back(nullptr);
         };
+        auto push_nttp_param = [&](const char* pname, bool is_pack = false) {
+            if (!pname || !pname[0]) {
+                pname = make_anon_template_param_name(arena_, true, template_params.size());
+            }
+            template_params.push_back(pname);
+            template_param_nttp.push_back(true);
+            template_param_is_pack.push_back(is_pack);
+            return pname;
+        };
+        auto push_nttp_default_value = [&](long long value) {
+            template_param_has_default.push_back(true);
+            TypeSpec dummy{};
+            dummy.array_size = -1;
+            dummy.inner_rank = -1;
+            template_param_default_types.push_back(dummy);
+            template_param_default_values.push_back(value);
+            template_param_default_exprs.push_back(nullptr);
+        };
+        auto push_nttp_deferred_default =
+            [&](int param_idx, int start_pos, long long fallback_value = LLONG_MIN) {
+                std::vector<Token> saved_toks(tokens_.begin() + start_pos,
+                                             tokens_.begin() + pos_);
+                TypeSpec dummy{};
+                dummy.array_size = -1;
+                dummy.inner_rank = -1;
+                template_param_default_types.push_back(dummy);
+                template_param_default_values.push_back(fallback_value);
+                if (!saved_toks.empty()) {
+                    deferred_nttp_defaults[param_idx] = std::move(saved_toks);
+                    template_param_has_default.push_back(true);
+                    std::ostringstream expr;
+                    for (size_t tok_i = 0; tok_i < deferred_nttp_defaults[param_idx].size(); ++tok_i) {
+                        if (tok_i > 0) expr << ' ';
+                        expr << deferred_nttp_defaults[param_idx][tok_i].lexeme;
+                    }
+                    template_param_default_exprs.push_back(arena_.strdup(expr.str()));
+                } else {
+                    template_param_has_default.push_back(false);
+                    template_param_default_exprs.push_back(nullptr);
+                }
+            };
         while (!at_end() && !check(TokenKind::Greater)) {
             if (check(TokenKind::KwTemplate)) {
                 // Template-template parameter:
@@ -707,12 +748,8 @@ Node* Parser::parse_top_level() {
                     if (check(TokenKind::Identifier)) {
                         pname = arena_.strdup(cur().lexeme);
                         consume();
-                    } else {
-                        pname = make_anon_template_param_name(arena_, true, template_params.size());
                     }
-                    template_params.push_back(pname);
-                    template_param_nttp.push_back(true);
-                    template_param_is_pack.push_back(is_pack);
+                    push_nttp_param(pname, is_pack);
                     if (match(TokenKind::Assign)) {
                         skip_template_param_default_expr(*this, false);
                     }
@@ -749,12 +786,8 @@ Node* Parser::parse_top_level() {
                 if (check(TokenKind::Identifier)) {
                     pname = arena_.strdup(cur().lexeme);
                     consume();
-                } else {
-                    pname = make_anon_template_param_name(arena_, true, template_params.size());
                 }
-                template_params.push_back(pname);
-                template_param_nttp.push_back(true);
-                template_param_is_pack.push_back(is_pack);
+                push_nttp_param(pname, is_pack);
                 // Check for default NTTP value: = expr
                 if (match(TokenKind::Assign)) {
                     long long sign = 1;
@@ -762,23 +795,11 @@ Node* Parser::parse_top_level() {
                     if (check(TokenKind::KwTrue) || check(TokenKind::KwFalse)) {
                         long long val = check(TokenKind::KwTrue) ? 1 : 0;
                         consume();
-                        template_param_has_default.push_back(true);
-                        TypeSpec dummy{};
-                        dummy.array_size = -1;
-                        dummy.inner_rank = -1;
-                        template_param_default_types.push_back(dummy);
-                        template_param_default_values.push_back(val);
-                        template_param_default_exprs.push_back(nullptr);
+                        push_nttp_default_value(val);
                     } else if (check(TokenKind::IntLit)) {
                         long long val = parse_int_lexeme(cur().lexeme.c_str());
                         consume();
-                        template_param_has_default.push_back(true);
-                        TypeSpec dummy{};
-                        dummy.array_size = -1;
-                        dummy.inner_rank = -1;
-                        template_param_default_types.push_back(dummy);
-                        template_param_default_values.push_back(val * sign);
-                        template_param_default_exprs.push_back(nullptr);
+                        push_nttp_default_value(val * sign);
                     } else {
                         // Complex default expression — skip balanced tokens.
                         // Save the tokens for deferred evaluation during instantiation.
@@ -788,26 +809,7 @@ Node* Parser::parse_top_level() {
                         skip_template_param_default_expr(*this, false, &start_pos);
                         // Save tokens for deferred evaluation (LLONG_MIN sentinel).
                         int param_idx = static_cast<int>(template_params.size()) - 1;
-                        std::vector<Token> saved_toks(tokens_.begin() + start_pos,
-                                                      tokens_.begin() + pos_);
-                        if (!saved_toks.empty()) {
-                            deferred_nttp_defaults[param_idx] = std::move(saved_toks);
-                            template_param_has_default.push_back(true);
-                            std::ostringstream expr;
-                            for (size_t tok_i = 0; tok_i < deferred_nttp_defaults[param_idx].size(); ++tok_i) {
-                                if (tok_i > 0) expr << ' ';
-                                expr << deferred_nttp_defaults[param_idx][tok_i].lexeme;
-                            }
-                            template_param_default_exprs.push_back(arena_.strdup(expr.str()));
-                        } else {
-                            template_param_has_default.push_back(false);
-                            template_param_default_exprs.push_back(nullptr);
-                        }
-                        TypeSpec dummy{};
-                        dummy.array_size = -1;
-                        dummy.inner_rank = -1;
-                        template_param_default_types.push_back(dummy);
-                        template_param_default_values.push_back(LLONG_MIN);
+                        push_nttp_deferred_default(param_idx, start_pos);
                     }
                 } else {
                     push_nttp_no_default();
@@ -851,12 +853,8 @@ Node* Parser::parse_top_level() {
                 if (check(TokenKind::Identifier)) {
                     pname = arena_.strdup(cur().lexeme);
                     consume();
-                } else {
-                    pname = make_anon_template_param_name(arena_, true, template_params.size());
                 }
-                template_params.push_back(pname);
-                template_param_nttp.push_back(true);
-                template_param_is_pack.push_back(is_pack);
+                push_nttp_param(pname, is_pack);
                 // Check for default NTTP value: = expr
                 if (match(TokenKind::Assign)) {
                     skip_template_param_default_expr(*this, false);
@@ -876,12 +874,8 @@ Node* Parser::parse_top_level() {
                 if (check(TokenKind::Identifier)) {
                     pname = arena_.strdup(cur().lexeme);
                     consume();
-                } else {
-                    pname = make_anon_template_param_name(arena_, true, template_params.size());
                 }
-                template_params.push_back(pname);
-                template_param_nttp.push_back(true);
-                template_param_is_pack.push_back(is_pack);
+                push_nttp_param(pname, is_pack);
                 // Check for default NTTP value: = expr
                 if (match(TokenKind::Assign)) {
                     // Skip balanced default expression (same heuristic as above).
