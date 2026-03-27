@@ -2532,39 +2532,24 @@ class Lowerer {
     }
   };
 
-  struct DeferredNttpExprParser {
-    DeferredNttpExprCursor cursor;
-    const std::unordered_map<std::string, const Node*>& template_defs;
-    const std::unordered_map<std::string, std::vector<const Node*>>& specializations;
-    const std::unordered_map<std::string, const Node*>& struct_defs;
-    const std::unordered_map<std::string, TypeSpec>& type_lookup;
-    const std::unordered_map<std::string, long long>& nttp_lookup;
+  struct DeferredNttpExprEnv {
+    std::unordered_map<std::string, TypeSpec> type_lookup;
+    std::unordered_map<std::string, long long> nttp_lookup;
 
-    static long long apply_integral_cast(TypeSpec ts, long long v) {
-      if (ts.ptr_level != 0) return v;
-      int bits = 0;
-      switch (ts.base) {
-        case TB_BOOL: bits = 1; break;
-        case TB_CHAR:
-        case TB_UCHAR:
-        case TB_SCHAR: bits = 8; break;
-        case TB_SHORT:
-        case TB_USHORT: bits = 16; break;
-        case TB_INT:
-        case TB_UINT:
-        case TB_ENUM: bits = 32; break;
-        default: break;
+    static DeferredNttpExprEnv from_bindings(
+        const std::vector<std::pair<std::string, TypeSpec>>& type_bindings_vec,
+        const std::vector<std::pair<std::string, long long>>& nttp_bindings_vec) {
+      DeferredNttpExprEnv env;
+      for (const auto& [name, ts_val] : type_bindings_vec) {
+        env.type_lookup[name] = ts_val;
       }
-      if (bits <= 0 || bits >= 64) return v;
-      long long mask = (1LL << bits) - 1;
-      v &= mask;
-      if (!is_unsigned_base(ts.base) && ts.base != TB_BOOL &&
-          (v >> (bits - 1)))
-        v |= ~mask;
-      return v;
+      for (const auto& [name, val] : nttp_bindings_vec) {
+        env.nttp_lookup[name] = val;
+      }
+      return env;
     }
 
-    bool resolve_arg(const std::string& text, HirTemplateArg* out_arg) {
+    bool resolve_arg_text(const std::string& text, HirTemplateArg* out_arg) const {
       if (!out_arg || text.empty()) return false;
       auto tit = type_lookup.find(text);
       if (tit != type_lookup.end()) {
@@ -2597,6 +2582,72 @@ class Lowerer {
         return true;
       }
       return false;
+    }
+
+    bool lookup_bound_value(const std::string& ident, long long* out_val) const {
+      auto nit = nttp_lookup.find(ident);
+      if (nit != nttp_lookup.end()) {
+        *out_val = nit->second;
+        return true;
+      }
+      if (ident == "true") {
+        *out_val = 1;
+        return true;
+      }
+      if (ident == "false") {
+        *out_val = 0;
+        return true;
+      }
+      return false;
+    }
+
+    bool lookup_cast_type(const std::string& ident, TypeSpec* out_ts) const {
+      auto tit = type_lookup.find(ident);
+      if (tit != type_lookup.end()) {
+        *out_ts = tit->second;
+        return true;
+      }
+      return parse_builtin_typespec_text(ident, out_ts);
+    }
+
+    long long count_pack_bindings(const std::string& pack_name) const {
+      return count_pack_bindings_for_name(type_lookup, nttp_lookup, pack_name);
+    }
+  };
+
+  struct DeferredNttpExprParser {
+    DeferredNttpExprCursor cursor;
+    const std::unordered_map<std::string, const Node*>& template_defs;
+    const std::unordered_map<std::string, std::vector<const Node*>>& specializations;
+    const std::unordered_map<std::string, const Node*>& struct_defs;
+    const DeferredNttpExprEnv& env;
+
+    static long long apply_integral_cast(TypeSpec ts, long long v) {
+      if (ts.ptr_level != 0) return v;
+      int bits = 0;
+      switch (ts.base) {
+        case TB_BOOL: bits = 1; break;
+        case TB_CHAR:
+        case TB_UCHAR:
+        case TB_SCHAR: bits = 8; break;
+        case TB_SHORT:
+        case TB_USHORT: bits = 16; break;
+        case TB_INT:
+        case TB_UINT:
+        case TB_ENUM: bits = 32; break;
+        default: break;
+      }
+      if (bits <= 0 || bits >= 64) return v;
+      long long mask = (1LL << bits) - 1;
+      v &= mask;
+      if (!is_unsigned_base(ts.base) && ts.base != TB_BOOL &&
+          (v >> (bits - 1)))
+        v |= ~mask;
+      return v;
+    }
+
+    bool resolve_arg(const std::string& text, HirTemplateArg* out_arg) {
+      return env.resolve_arg_text(text, out_arg);
     }
 
     bool eval_template_static_member_lookup(
@@ -2690,7 +2741,7 @@ class Lowerer {
         const std::string pack_name = cursor.parse_identifier();
         if (pack_name.empty()) return false;
         if (!cursor.consume(")")) return false;
-        *out_val = count_pack_bindings_for_name(type_lookup, nttp_lookup, pack_name);
+        *out_val = env.count_pack_bindings(pack_name);
         return true;
       }
       if (cursor.consume("(")) {
@@ -2706,15 +2757,7 @@ class Lowerer {
             TypeSpec cast_ts{};
             cast_ts.array_size = -1;
             cast_ts.inner_rank = -1;
-            bool found_type = false;
-            auto tit = type_lookup.find(ident);
-            if (tit != type_lookup.end()) {
-              cast_ts = tit->second;
-              found_type = true;
-            } else if (parse_builtin_typespec_text(ident, &cast_ts)) {
-              found_type = true;
-            }
-            if (found_type) {
+            if (env.lookup_cast_type(ident, &cast_ts)) {
               long long inner = 0;
               if (!parse_or(&inner)) return false;
               if (!cursor.consume(")")) return false;
@@ -2730,19 +2773,7 @@ class Lowerer {
         size_t saved = cursor.pos;
         std::string ident = cursor.parse_identifier();
         if (!ident.empty()) {
-          auto nit = nttp_lookup.find(ident);
-          if (nit != nttp_lookup.end()) {
-            *out_val = nit->second;
-            return true;
-          }
-          if (ident == "true") {
-            *out_val = 1;
-            return true;
-          }
-          if (ident == "false") {
-            *out_val = 0;
-            return true;
-          }
+          if (env.lookup_bound_value(ident, out_val)) return true;
           cursor.pos = saved;
         }
       }
@@ -2898,17 +2929,13 @@ class Lowerer {
     }
     if (expr.empty()) return false;
 
-    std::unordered_map<std::string, TypeSpec> type_lookup;
-    for (const auto& [name, ts_val] : type_bindings_vec) type_lookup[name] = ts_val;
-    std::unordered_map<std::string, long long> nttp_lookup;
-    for (const auto& [name, val] : nttp_bindings_vec) nttp_lookup[name] = val;
-
+    DeferredNttpExprEnv env =
+        DeferredNttpExprEnv::from_bindings(type_bindings_vec, nttp_bindings_vec);
     DeferredNttpExprParser parser{{expr, 0},
                                   template_struct_defs_,
                                   template_struct_specializations_,
                                   struct_def_nodes_,
-                                  type_lookup,
-                                  nttp_lookup};
+                                  env};
     long long value = 0;
     if (!parser.parse_or(&value)) return false;
     if (!parser.cursor.at_end()) return false;

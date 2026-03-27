@@ -10,6 +10,42 @@
 
 ## Current Slice
 
+- Completed: Step 4 deferred-NTTP expression evaluation environment extraction
+  moved binding-environment construction and identifier / template-argument
+  lookup behind the named helper `DeferredNttpExprEnv`, so
+  `eval_deferred_nttp_expr_hir(...)` now seeds a dedicated environment object
+  and `DeferredNttpExprParser` no longer owns the raw lookup maps directly
+- Added focused HIR coverage for this slice:
+  - `cpp_hir_template_deferred_nttp_bool_expr` asserts unary-bool deferred
+    NTTP binding reuse (`M = !!N`) still materializes as
+    `field data: int[1] ... size=4 align=4`
+- Validation completed:
+  - targeted HIR regressions passed:
+    - `cpp_hir_template_deferred_nttp_expr`
+    - `cpp_hir_template_deferred_nttp_paren_expr`
+    - `cpp_hir_template_deferred_nttp_bool_expr`
+    - `cpp_hir_template_function_pack_signature_binding`
+    - `cpp_hir_template_function_recursive_body_binding`
+  - full clean rebuild in the active tree completed:
+    - `test_fail_after.log`: 2224 total, 7 failed
+    - failing identities unchanged:
+      - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+      - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+      - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+      - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+      - `cpp_positive_sema_template_arg_deduction_cpp`
+      - `cpp_positive_sema_template_mixed_params_cpp`
+      - `cpp_positive_sema_template_type_subst_cpp`
+  - regression-guard script result:
+    - passed with `0` new failing tests
+- Iteration target for this completed slice was:
+  - Step 4 deferred-NTTP expression evaluation environment extraction
+  - binding-environment construction for `eval_deferred_nttp_expr_hir(...)`
+  - identifier / builtin / template-argument lookup used by
+    `DeferredNttpExprParser`
+- Pre-implementation preserving test target:
+  - add focused HIR coverage for unary-bool deferred NTTP binding reuse
+    (`M = !!N`) so Step 4 extraction remains behavior-preserving
 - Completed: Step 4 embedded parser isolation extracted the deferred-NTTP
   parser's cursor/text-decoder surface into the named helper
   `DeferredNttpExprCursor`, so whitespace skipping, token consumption,
@@ -251,7 +287,7 @@
 ## Next Intended Slice
 
 - extract the next Step 4 helper seam around deferred-NTTP expression
-  environment resolution if this slice lands cleanly
+  primary/operator parsing coordination if this slice lands cleanly
 - keep Step 4 focused on helper isolation rather than expression-semantics
   changes
 
