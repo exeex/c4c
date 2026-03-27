@@ -90,6 +90,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     template_typename_typed_nttp_parse
     qualified_dependent_typename_global_parse
     qualified_type_spelling_shared_parse
+    qualified_type_resolution_dispatch_parse
     qualified_member_pointer_template_owner_parse
     qualified_member_function_pointer_template_owner_parse
     qualified_type_start_probe_parse

@@ -6,10 +6,45 @@
 
 ## Active Item
 
-- Step 3: Compress Template Argument Parsing
+- Step 4: Consolidate Qualified And Dependent Name Consumption
 
 ## Current Slice
 
+- Completed: extracted the remaining `peek_qualified_name(...)`
+  classification path from `parse_base_type()` into
+  `try_parse_qualified_base_type(...)` so the coordinator now delegates the
+  resolved-qualified-typedef vs unresolved-qualified-type fallback decision
+  through one helper without changing lookup order or qualified spelling
+  consumption
+- New helper path:
+  - `try_parse_qualified_base_type(...)`
+- Added parse-only coverage:
+  - `qualified_type_resolution_dispatch_parse`
+- Validation completed:
+  - focused qualified/dependent-name regressions passed:
+    - `qualified_type_resolution_dispatch_parse`
+    - `qualified_type_spelling_shared_parse`
+    - `qualified_dependent_typename_global_parse`
+    - `qualified_type_start_probe_parse`
+    - `template_member_type_direct_parse`
+    - `template_member_type_inherited_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2193 total, 7 failed
+    - `test_fail_after.log`: 2194 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Active target: Step 4 remains active after the qualified-name
+  classification extraction; the next slice should centralize more of the
+  remaining qualified/dependent-name consumption logic that is still split
+  between `is_type_start()` probing and `parse_base_type()` dispatch
+- This iteration's exact target: completed the bounded Step 4 helper
+  extraction around qualified-name classification in `parse_base_type()` and
+  verified it against nearby parser coverage plus the full suite
+- Next intended slice: inspect the remaining overlap between
+  `is_type_start()` qualified-type probing and `parse_base_type()` qualified
+  dispatch, then extract one focused helper or shared predicate without
+  broadening accepted grammar
 - Completed: extracted the shared qualified-type spelling entry from the
   remaining Step 4 path into
   `consume_qualified_type_spelling_with_typename(...)` so

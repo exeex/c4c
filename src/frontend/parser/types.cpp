@@ -1476,6 +1476,46 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
     return true;
 }
 
+bool Parser::try_parse_qualified_base_type(TypeSpec* out_ts) {
+    if (!out_ts || !is_cpp_mode()) return false;
+
+    QualifiedNameRef qn;
+    if (!peek_qualified_name(&qn, true)) return false;
+
+    std::string resolved_name = resolve_qualified_typedef_name(*this, qn);
+    if (typedef_types_.count(resolved_name) > 0) {
+        out_ts->tag = arena_.strdup(resolved_name.c_str());
+        out_ts->is_global_qualified = qn.is_global_qualified;
+        out_ts->n_qualifier_segments =
+            static_cast<int>(qn.qualifier_segments.size());
+        if (out_ts->n_qualifier_segments > 0) {
+            out_ts->qualifier_segments =
+                arena_.alloc_array<const char*>(out_ts->n_qualifier_segments);
+            for (int i = 0; i < out_ts->n_qualifier_segments; ++i) {
+                out_ts->qualifier_segments[i] =
+                    arena_.strdup(qn.qualifier_segments[i].c_str());
+            }
+        }
+        consume_qualified_type_spelling_with_typename(
+            /*require_typename=*/false,
+            /*allow_global=*/true,
+            /*consume_final_template_args=*/false,
+            nullptr, nullptr);
+        return true;
+    }
+
+    if (qn.qualifier_segments.empty()) return false;
+
+    std::string full_name = spell_qualified_name_for_lookup(qn);
+    out_ts->tag = arena_.strdup(full_name.c_str());
+    consume_qualified_type_spelling_with_typename(
+        /*require_typename=*/false,
+        /*allow_global=*/true,
+        /*consume_final_template_args=*/false,
+        nullptr, nullptr);
+    return true;
+}
+
 bool Parser::parse_operator_declarator_name(std::string* out_name) {
     if (!out_name || !match(TokenKind::KwOperator)) return false;
 
@@ -2692,50 +2732,14 @@ TypeSpec Parser::parse_base_type() {
                     break;
                 }
                 if (is_cpp_mode()) {
-                    QualifiedNameRef qn;
-                    if (peek_qualified_name(&qn, true)) {
-                        const bool already_have_base =
-                            has_signed || has_unsigned || has_short || long_count > 0 ||
-                            has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
-                            has_struct || has_union || has_enum || base_set;
-                        std::string resolved_name = resolve_qualified_typedef_name(*this, qn);
-                        if (!already_have_base && typedef_types_.count(resolved_name) > 0) {
-                            has_typedef = true;
-                            ts.tag = arena_.strdup(resolved_name.c_str());
-                            ts.is_global_qualified = qn.is_global_qualified;
-                            ts.n_qualifier_segments =
-                                static_cast<int>(qn.qualifier_segments.size());
-                            if (ts.n_qualifier_segments > 0) {
-                                ts.qualifier_segments =
-                                    arena_.alloc_array<const char*>(ts.n_qualifier_segments);
-                                for (int i = 0; i < ts.n_qualifier_segments; ++i) {
-                                    ts.qualifier_segments[i] =
-                                        arena_.strdup(qn.qualifier_segments[i].c_str());
-                                }
-                            }
-                            consume_qualified_type_spelling_with_typename(
-                                /*require_typename=*/false,
-                                /*allow_global=*/true,
-                                /*consume_final_template_args=*/false,
-                                nullptr, nullptr);
-                            done = true;
-                            break;
-                        }
-                        // C++ fallback: unresolved qualified name (e.g. ns::Type)
-                        // treated as an unresolved type so template/header parsing
-                        // can proceed without failing on unknown namespace types.
-                        if (!already_have_base && !qn.qualifier_segments.empty()) {
-                            std::string full_name = spell_qualified_name_for_lookup(qn);
-                            has_typedef = true;
-                            ts.tag = arena_.strdup(full_name.c_str());
-                            consume_qualified_type_spelling_with_typename(
-                                /*require_typename=*/false,
-                                /*allow_global=*/true,
-                                /*consume_final_template_args=*/false,
-                                nullptr, nullptr);
-                            done = true;
-                            break;
-                        }
+                    const bool already_have_base =
+                        has_signed || has_unsigned || has_short || long_count > 0 ||
+                        has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
+                        has_struct || has_union || has_enum || base_set;
+                    if (!already_have_base && try_parse_qualified_base_type(&ts)) {
+                        has_typedef = true;
+                        done = true;
+                        break;
                     }
                 }
                 if (is_typedef_name(cur().lexeme) ||
