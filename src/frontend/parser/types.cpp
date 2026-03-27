@@ -5239,6 +5239,50 @@ Node* Parser::parse_record_tag_setup(int line,
     return nullptr;
 }
 
+Node* Parser::initialize_record_definition(
+    int line,
+    bool is_union,
+    const char* tag,
+    const char* template_origin_name,
+    const TypeSpec& attr_ts,
+    const std::vector<TemplateArgParseResult>& specialization_args,
+    const std::vector<TypeSpec>& base_types) {
+    Node* sd = make_node(NK_STRUCT_DEF, line);
+    sd->name = tag;
+    sd->is_union = is_union;
+    sd->template_origin_name = template_origin_name;
+
+    if (!base_types.empty()) {
+        sd->n_bases = static_cast<int>(base_types.size());
+        sd->base_types = arena_.alloc_array<TypeSpec>(sd->n_bases);
+        for (int i = 0; i < sd->n_bases; ++i)
+            sd->base_types[i] = base_types[i];
+    }
+
+    // __attribute__((packed)) => pack_align=1; otherwise use #pragma pack state
+    sd->pack_align = attr_ts.is_packed ? 1 : pack_alignment_;
+    sd->struct_align = attr_ts.align_bytes;  // __attribute__((aligned(N)))
+
+    if (!specialization_args.empty()) {
+        sd->n_template_args = static_cast<int>(specialization_args.size());
+        sd->template_arg_types = arena_.alloc_array<TypeSpec>(sd->n_template_args);
+        sd->template_arg_is_value = arena_.alloc_array<bool>(sd->n_template_args);
+        sd->template_arg_values = arena_.alloc_array<long long>(sd->n_template_args);
+        sd->template_arg_nttp_names =
+            arena_.alloc_array<const char*>(sd->n_template_args);
+        sd->template_arg_exprs = arena_.alloc_array<Node*>(sd->n_template_args);
+        for (int i = 0; i < sd->n_template_args; ++i) {
+            sd->template_arg_is_value[i] = specialization_args[i].is_value;
+            sd->template_arg_types[i] = specialization_args[i].type;
+            sd->template_arg_values[i] = specialization_args[i].value;
+            sd->template_arg_nttp_names[i] = specialization_args[i].nttp_name;
+            sd->template_arg_exprs[i] = specialization_args[i].expr;
+        }
+    }
+
+    return sd;
+}
+
 void Parser::apply_record_trailing_type_attributes(Node* sd) {
     if (!sd || !check(TokenKind::KwAttribute))
         return;
@@ -5329,34 +5373,9 @@ Node* Parser::parse_struct_or_union(bool is_union) {
         return ref;
 
     const char* source_tag = tag;
-    Node* sd = make_node(NK_STRUCT_DEF, ln);
-    sd->name         = tag;
-    sd->is_union     = is_union;
-    sd->template_origin_name = template_origin_name;
-    if (!base_types.empty()) {
-        sd->n_bases = static_cast<int>(base_types.size());
-        sd->base_types = arena_.alloc_array<TypeSpec>(sd->n_bases);
-        for (int i = 0; i < sd->n_bases; ++i)
-            sd->base_types[i] = base_types[i];
-    }
-    // __attribute__((packed)) => pack_align=1; otherwise use #pragma pack state
-    sd->pack_align   = attr_ts.is_packed ? 1 : pack_alignment_;
-    sd->struct_align = attr_ts.align_bytes;  // __attribute__((aligned(N)))
-    if (!specialization_args.empty()) {
-        sd->n_template_args = static_cast<int>(specialization_args.size());
-        sd->template_arg_types = arena_.alloc_array<TypeSpec>(sd->n_template_args);
-        sd->template_arg_is_value = arena_.alloc_array<bool>(sd->n_template_args);
-        sd->template_arg_values = arena_.alloc_array<long long>(sd->n_template_args);
-        sd->template_arg_nttp_names = arena_.alloc_array<const char*>(sd->n_template_args);
-        sd->template_arg_exprs = arena_.alloc_array<Node*>(sd->n_template_args);
-        for (int i = 0; i < sd->n_template_args; ++i) {
-            sd->template_arg_is_value[i] = specialization_args[i].is_value;
-            sd->template_arg_types[i] = specialization_args[i].type;
-            sd->template_arg_values[i] = specialization_args[i].value;
-            sd->template_arg_nttp_names[i] = specialization_args[i].nttp_name;
-            sd->template_arg_exprs[i] = specialization_args[i].expr;
-        }
-    }
+    Node* sd = initialize_record_definition(ln, is_union, tag,
+                                            template_origin_name, attr_ts,
+                                            specialization_args, base_types);
 
     consume();  // consume {
 

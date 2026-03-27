@@ -10,6 +10,44 @@
 
 ## Current Slice
 
+- Active target: Step 6 continues after record-definition setup extraction;
+  the next slice should pull another remaining `parse_struct_or_union()`
+  coordinator concern out of the function so it keeps collapsing toward a thin
+  setup/body/finalization dispatcher
+- Completed: extracted the record-definition node initialization from
+  `parse_struct_or_union()` into a focused helper without changing template
+  specialization storage, base-type transfer, or packed/aligned layout state
+- New helper path:
+  - `initialize_record_definition(...)`
+- Added parse-only coverage:
+  - `record_definition_setup_parse`
+- Baseline recorded:
+  - `test_fail_before.log`: 2178 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
+- Validation completed:
+  - focused parser/setup regressions passed:
+    - `record_definition_setup_parse`
+    - `record_prebody_setup_parse`
+    - `record_tag_setup_parse`
+    - `record_body_finalization_parse`
+    - `record_specialization_setup_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2178 total, 7 failed
+    - `test_fail_after.log`: 2179 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Next intended slice: continue Step 6 by extracting one more remaining
+  `parse_struct_or_union()` coordinator concern, likely the body-loop wrapper
+  or the surrounding field/method accumulator setup so the outer function
+  keeps shrinking toward a thin dispatcher
 - Active target: Step 6 continues after the tag/setup extraction in
   `parse_struct_or_union()`; the next slice should pull one more remaining
   coordination concern out of the function so it keeps shrinking toward a thin
