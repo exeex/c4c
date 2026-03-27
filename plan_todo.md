@@ -8,9 +8,9 @@ Source plan: [plan.md](/workspaces/c4c/plan.md)
 
 ## Current Slice
 
-- Extracted `consume_template_args_followed_by_scope()` for shared `<...>::` consumption
-- Reused that helper in pointer-to-member declarator prefixes and qualified declarator-name parsing
-- Added a narrow parse-only regression for pointer-to-member owners spelled as template-ids
+- Extended shared qualified/template consumption into parenthesized member-function pointer owners
+- Reused existing helpers in both the probe path and the real `(` declarator consumption path
+- Added a narrow parse-only regression for template-id owners in member-function pointer declarators
 
 ## Completed
 
@@ -70,11 +70,32 @@ Source plan: [plan.md](/workspaces/c4c/plan.md)
   - `test_before.log`: 2155 total, 3 failed
   - `test_after.log`: 2156 total, 3 failed
   - failing tests unchanged
+- Continued Step 4 by wiring parenthesized member-function pointer owners
+  onto the same qualified/template consumption helpers
+- Reused the helper-driven path in:
+  - `paren_star_peek()`
+  - parenthesized pointer-to-member-function owner consumption
+- Added parse-only coverage:
+  - `qualified_member_function_pointer_template_owner_parse`
+- Rebuilt successfully with `cmake --build build -j8`
+- Targeted parse regression checks passed:
+  - `qualified_member_function_pointer_template_owner_parse`
+  - `qualified_member_pointer_template_owner_parse`
+  - `member_pointer_param_parse`
+  - `eastl_slice5_explicit_decltype_memfn`
+  - `eastl_slice7d_qualified_declarator_parse`
+- Full `ctest` remained monotonic after the slice:
+  - `test_before.log`: 2155 total, 3 failed
+  - `test_after.log`: 2157 total, 3 failed
+  - failing tests unchanged
 
 ## Next
 
-- Continue Step 4 by evaluating whether remaining qualified-name probes can share the extracted helpers without forcing a broader declarator rewrite
-- Pick the next smallest slice around parenthesized pointer-to-member-function owners or other residual `<...>::` scans that are still duplicated
+- Continue Step 4 by evaluating whether the remaining `peek_qualified_name(...)`
+  based probes can be partially unified with the extracted helpers without
+  broadening accepted grammar
+- Pick the next smallest slice around residual qualified-name probing in
+  `is_type_start()` / declarator lookahead that still duplicates consumption logic
 - Keep new tests focused on parser-only qualified/dependent spelling coverage before any further behavior changes
 
 ## Blockers
@@ -93,4 +114,6 @@ Source plan: [plan.md](/workspaces/c4c/plan.md)
 - Added `qualified_dependent_typename_global_parse` to lock the shared token-consumption path
 - Pointer-to-member owner parsing and qualified declarator-name parsing now share `consume_template_args_followed_by_scope()`
 - Added `qualified_member_pointer_template_owner_parse` to lock template-id owner parsing in declarators
+- Parenthesized member-function pointer owners now reuse the same helper path in both lookahead and real consumption
+- Added `qualified_member_function_pointer_template_owner_parse` to lock that declarator form
 - Full-suite failures were treated as existing issues for this iteration per user direction

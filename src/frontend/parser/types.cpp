@@ -3293,19 +3293,23 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
                                tokens_[pk].kind == TokenKind::AmpAmp)))
             return true;
         // C++ pointer-to-member-function: (T::*name)(...) or (ns::T::*name)(...)
-        if (is_cpp_mode() && tokens_[pk].kind == TokenKind::Identifier) {
-            int pk2 = pk + 1;
-            // Skip over qualified name segments: Ident :: Ident :: ...
-            while (pk2 + 1 < (int)tokens_.size() &&
-                   tokens_[pk2].kind == TokenKind::ColonColon &&
-                   tokens_[pk2 + 1].kind == TokenKind::Identifier) {
-                pk2 += 2;
+        if (is_cpp_mode() &&
+            (tokens_[pk].kind == TokenKind::Identifier ||
+             tokens_[pk].kind == TokenKind::ColonColon)) {
+            const int saved_pos = pos_;
+            pos_ = pk;
+            bool is_member_ptr_fn = false;
+            if (consume_qualified_type_spelling(/*allow_global=*/true,
+                                                /*consume_final_template_args=*/false,
+                                                nullptr, nullptr)) {
+                consume_template_args_followed_by_scope();
+                is_member_ptr_fn =
+                    check(TokenKind::ColonColon) &&
+                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                    tokens_[pos_ + 1].kind == TokenKind::Star;
             }
-            if (pk2 < (int)tokens_.size() &&
-                tokens_[pk2].kind == TokenKind::ColonColon &&
-                pk2 + 1 < (int)tokens_.size() &&
-                tokens_[pk2 + 1].kind == TokenKind::Star)
-                return true;
+            pos_ = saved_pos;
+            if (is_member_ptr_fn) return true;
         }
         return false;
     };
@@ -3319,14 +3323,14 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         consume();  // consume (
         skip_attributes();  // skip any __attribute__((...)) before * or ^
         // C++ pointer-to-member-function: skip qualifier prefix (T:: or ns::T::)
-        if (is_cpp_mode() && check(TokenKind::Identifier) &&
-            pos_ + 1 < static_cast<int>(tokens_.size()) &&
-            tokens_[pos_ + 1].kind == TokenKind::ColonColon) {
-            // Skip Ident(::Ident)* :: before the *
-            while (check(TokenKind::Identifier) &&
-                   pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                   tokens_[pos_ + 1].kind == TokenKind::ColonColon) {
-                consume();  // identifier
+        if (is_cpp_mode() &&
+            consume_qualified_type_spelling(/*allow_global=*/true,
+                                            /*consume_final_template_args=*/false,
+                                            nullptr, nullptr)) {
+            consume_template_args_followed_by_scope();
+            if (check(TokenKind::ColonColon) &&
+                pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                tokens_[pos_ + 1].kind == TokenKind::Star) {
                 consume();  // ::
             }
         }
