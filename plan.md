@@ -1,5 +1,10 @@
 # `types.cpp` Compression Refactor Plan
 
+## Plan Metadata
+
+- Status: Active
+- Source Idea: [ideas/open/types_compression_plan.md](/workspaces/c4c/ideas/open/types_compression_plan.md)
+
 ## Purpose
 
 This document is for an execution-oriented AI agent.

@@ -25,7 +25,7 @@ pattern to template functions.
 
 Primary references to copy from:
 
-- [structured_template_identity_plan.md](/workspaces/c4c/ideas/structured_template_identity_plan.md)
+- [structured_template_identity_plan.md](/workspaces/c4c/ideas/open/structured_template_identity_plan.md)
 - [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)
   Current struct-side registry/key patterns and current function registry live
   here.
@@ -407,7 +407,7 @@ Implement:
 
 Reference design:
 - the template-struct owner-first selection path introduced by
-  [structured_template_identity_plan.md](/workspaces/c4c/ideas/structured_template_identity_plan.md)
+  [structured_template_identity_plan.md](/workspaces/c4c/ideas/open/structured_template_identity_plan.md)
 
 
 ### Step 4. Switch lowering over to structured selection
@@ -480,7 +480,7 @@ When unsure, copy the style of the template-struct refactor:
 - mangled name retained as derived output
 
 Primary design reference:
-- [structured_template_identity_plan.md](/workspaces/c4c/ideas/structured_template_identity_plan.md)
+- [structured_template_identity_plan.md](/workspaces/c4c/ideas/open/structured_template_identity_plan.md)
 
 Primary implementation references:
 - [compile_time_engine.hpp](/workspaces/c4c/src/frontend/hir/compile_time_engine.hpp)

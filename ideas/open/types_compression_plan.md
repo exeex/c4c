@@ -1,5 +1,8 @@
 # `types.cpp` Compression Refactor Plan
 
+Status: Active
+Active Plan: [plan.md](/workspaces/c4c/plan.md)
+
 Target file: `src/frontend/parser/types.cpp`  
 Current size: 5235 lines  
 Primary goal: compress the parser by extracting recurring parsing motifs and turning giant mixed-responsibility functions into coordinators.

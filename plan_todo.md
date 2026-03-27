@@ -1,6 +1,8 @@
 # Plan Todo
 
-Source plan: [plan.md](/workspaces/c4c/plan.md)
+- Status: Active
+- Source Idea: [ideas/open/types_compression_plan.md](/workspaces/c4c/ideas/open/types_compression_plan.md)
+- Source plan: [plan.md](/workspaces/c4c/plan.md)
 
 ## Active Item
 
@@ -14,7 +16,7 @@ Source plan: [plan.md](/workspaces/c4c/plan.md)
 
 ## Completed
 
-- Read `plan.md`, `README.md`, `AGENT_PROMPT_PLAN.md`, and relevant parser files
+- Read `plan.md`, `README.md`, [`prompts/AGENT_PROMPT_EXECUTE_PLAN.md`](/workspaces/c4c/prompts/AGENT_PROMPT_EXECUTE_PLAN.md), and relevant parser files
 - Confirmed `types.cpp` compression frontier still includes:
   - `parse_base_type`
   - `parse_template_argument_list`

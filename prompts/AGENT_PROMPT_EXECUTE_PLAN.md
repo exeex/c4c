@@ -4,10 +4,11 @@ Last updated: 2026-03-13
 
 ## Mission
 
-Implement features according to [`plan.md`](plan.md).
+Implement features according to [`plan.md`](../plan.md).
 Keep test case correctness intact before submitting anything to git.
 Prioritize planned feature delivery over opportunistic issue fixing.
 Maintain cross-iteration progress in `plan_todo.md` so work can resume cleanly after context resets.
+Treat [`plan.md`](../plan.md) as the single active runbook derived from one source idea.
 
 ## Project Architecture
 
@@ -22,7 +23,7 @@ Compiler pipeline:
 
 ## Non-Negotiable Working Style
 
-1. Follow [`plan.md`](plan.md) as the primary work queue. Do not default to picking random failing cases unless they block the current plan item.
+1. Follow [`plan.md`](../plan.md) as the primary work queue. Do not default to picking random failing cases unless they block the current plan item.
 2. Use a test-driven workflow: add or update test cases before implementing a new feature.
 3. Break each plan item into the smallest shippable slice that can be tested.
 4. Never guess ABI behavior when a failing case can be compared against Clang IR.
@@ -35,32 +36,35 @@ Compiler pipeline:
 
 ## State Tracking
 
-1. Read [`plan.md`](plan.md) first.
+1. Read [`plan.md`](../plan.md) first.
 2. If `plan_todo.md` does not exist, create it from `plan.md` before making code changes.
 3. If `plan_todo.md` already exists, treat it as the current execution state and continue from it.
-4. `plan_todo.md` should track at least:
+4. Confirm that [`plan.md`](../plan.md) identifies its `Source Idea` near the top before implementation.
+5. Confirm that [`plan_todo.md`](../plan_todo.md), when present, matches the same source idea.
+6. `plan_todo.md` should track at least:
    - the current active plan item
    - completed items
    - the next intended slice
    - blockers, if any
    - short notes needed to resume in the next iteration
-5. Update `plan_todo.md` whenever the active item changes, when a meaningful sub-step is completed, and before every commit.
+7. Update `plan_todo.md` whenever the active item changes, when a meaningful sub-step is completed, and before every commit.
 
 ## Work Selection
 
-1. Start from `plan_todo.md` if it exists; otherwise create it from [`plan.md`](plan.md) and start there.
+1. Start from `plan_todo.md` if it exists; otherwise create it from [`plan.md`](../plan.md) and start there.
 2. Choose the highest-priority incomplete item recorded in `plan_todo.md`.
 3. Do not switch into issue-fixing mode unless:
    - the issue blocks the current plan item
    - the issue is directly uncovered by the current implementation work
    - the user explicitly asks for issue triage or regression fixing
+4. If execution uncovers a genuinely separate initiative, write it into `ideas/open/*.md` and request a lifecycle transition instead of silently mutating the active plan.
 
 ## Required Development Flow
 
 Given a plan item or plan-blocking failure:
 
 0. Sync planning state first:
-   - read [`plan.md`](plan.md)
+   - read [`plan.md`](../plan.md)
    - create `plan_todo.md` if it does not exist
    - if `plan_todo.md` exists, read it and continue from the recorded active item
    - update `plan_todo.md` to mark the exact target for this iteration

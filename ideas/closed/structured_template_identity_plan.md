@@ -362,7 +362,7 @@ Phase-5 boundary:
   boundaries
 - the remaining work around deferred NTTP default evaluation, blocked retries,
   and late owner realization belongs to
-  [template_lazy_instantiation_plan.md](/workspaces/c4c/ideas/template_lazy_instantiation_plan.md),
+  [template_lazy_instantiation_plan.md](/workspaces/c4c/ideas/open/template_lazy_instantiation_plan.md),
   because that is now primarily an engine-control/fixpoint ownership problem,
   not a template-identity modeling problem
 
@@ -371,7 +371,7 @@ Phase-5 boundary:
 
 This plan is separate from, but strongly related to:
 
-- [template_lazy_instantiation_plan.md](/workspaces/c4c/ideas/template_lazy_instantiation_plan.md)
+- [template_lazy_instantiation_plan.md](/workspaces/c4c/ideas/open/template_lazy_instantiation_plan.md)
 
 The lazy-instantiation plan answers:
 

@@ -28,8 +28,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "prompt_file",
         nargs="?",
-        default="AGENT_PROMPT_PLAN.md",
-        help="Prompt markdown file to feed into the agent CLI. Defaults to AGENT_PROMPT_PLAN.md.",
+        default="prompts/AGENT_PROMPT_EXECUTE_PLAN.md",
+        help="Prompt markdown file to feed into the agent CLI. Defaults to prompts/AGENT_PROMPT_EXECUTE_PLAN.md.",
     )
     parser.add_argument(
         "--cli",

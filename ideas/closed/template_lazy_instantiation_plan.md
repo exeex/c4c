@@ -71,7 +71,7 @@ Start here:
 
 Related design note:
 
-- [structured_template_identity_plan.md](/workspaces/c4c/ideas/structured_template_identity_plan.md)
+- [structured_template_identity_plan.md](/workspaces/c4c/ideas/open/structured_template_identity_plan.md)
 
 
 ## Note To Future Agents
