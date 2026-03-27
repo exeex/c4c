@@ -8,9 +8,9 @@ Source plan: [plan.md](/workspaces/c4c/plan.md)
 
 ## Current Slice
 
-- Reuse and centralize qualified/dependent type spelling consumption
-- Reduce ad hoc `typename` / `::` / optional template-id token walks
-- Keep accepted grammar unchanged unless a focused test proves otherwise
+- Extracted `consume_qualified_type_spelling(...)` for shared qualified/dependent token consumption
+- Wired `parse_dependent_typename_specifier(...)` and the qualified-name branch in `parse_base_type()` through the shared helper
+- Added a narrow parse-only regression for global-qualified dependent `typename` plus qualified base-type consumption
 
 ## Completed
 
@@ -36,12 +36,29 @@ Source plan: [plan.md](/workspaces/c4c/plan.md)
   - `template_type_context_nttp_parse`
   - `template_typedef_nttp_variants_parse`
   - `template_variadic_qualified_parse`
+- Started Step 4 by extracting a reusable qualified/dependent type spelling helper:
+  - `consume_qualified_type_spelling(...)`
+- Reduced `parse_dependent_typename_specifier(...)` to a helper-driven coordinator
+- Reused the same helper in the qualified-name branch of `parse_base_type()`
+- Added parse-only coverage:
+  - `qualified_dependent_typename_global_parse`
+- Rebuilt successfully with `cmake --build build -j8`
+- Targeted parse regression checks passed:
+  - `qualified_dependent_typename_global_parse`
+  - `eastl_slice4_typename_and_specialization_parse`
+  - `out_of_class_member_owner_scope_parse`
+  - `template_qualified_nttp_parse`
+  - `template_typedef_nttp_variants_parse`
+- Full `ctest` remained monotonic after the slice:
+  - `test_before.log`: 2154 total, 3 failed
+  - `test_after.log`: 2155 total, 3 failed
+  - failing tests unchanged
 
 ## Next
 
-- Start Step 4 by extracting one reusable helper for qualified dependent type spelling
-- Make `parse_dependent_typename_specifier` and the qualified-name path in `parse_base_type` share the same token-consumption path where practical
-- Add or reuse narrow parse tests around dependent `typename` and qualified template-id consumption before moving code
+- Continue Step 4 by moving additional qualified-name token walkers onto the shared helper where safe
+- Evaluate the next smallest follow-up slice around qualified template-id segments that still preserves current parsing policy
+- Keep new tests focused on parser-only qualified/dependent spelling coverage before any further behavior changes
 
 ## Blockers
 
@@ -55,4 +72,6 @@ Source plan: [plan.md](/workspaces/c4c/plan.md)
 - `plan_todo.md` did not exist before this iteration
 - Working tree was clean when this slice started
 - `parse_template_argument_list` now uses explicit helpers instead of inline lambdas
+- `parse_dependent_typename_specifier` and the qualified-name branch in `parse_base_type` now share `consume_qualified_type_spelling(...)`
+- Added `qualified_dependent_typename_global_parse` to lock the shared token-consumption path
 - Full-suite failures were treated as existing issues for this iteration per user direction

@@ -1193,7 +1193,7 @@ bool Parser::is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx)
 }
 
 bool Parser::parse_template_argument_list(std::vector<TemplateArgParseResult>* out_args,
-                                          const Node* primary_tpl) {
+                                         const Node* primary_tpl) {
     if (!out_args || !check(TokenKind::Less)) return false;
 
     consume();  // <
@@ -1218,6 +1218,80 @@ bool Parser::parse_template_argument_list(std::vector<TemplateArgParseResult>* o
     return match_template_close();
 }
 
+bool Parser::consume_qualified_type_spelling(bool allow_global,
+                                             bool consume_final_template_args,
+                                             std::string* out_name,
+                                             QualifiedNameRef* out_qn) {
+    const int saved_pos = pos_;
+    QualifiedNameRef qn;
+
+    auto consume_optional_template_args = [&]() -> bool {
+        if (!check(TokenKind::Less)) return true;
+        int depth = 1;
+        consume(); // <
+        while (!at_end() && depth > 0) {
+            if (check(TokenKind::Less)) {
+                ++depth;
+                consume();
+                continue;
+            }
+            if (check_template_close()) {
+                --depth;
+                if (depth == 0) break;
+                match_template_close();
+                continue;
+            }
+            consume();
+        }
+        if (!check_template_close()) {
+            pos_ = saved_pos;
+            return false;
+        }
+        match_template_close();
+        return true;
+    };
+
+    if (allow_global && check(TokenKind::ColonColon)) {
+        qn.is_global_qualified = true;
+        consume();
+    }
+
+    if (!check(TokenKind::Identifier)) {
+        pos_ = saved_pos;
+        return false;
+    }
+
+    while (true) {
+        qn.base_name = cur().lexeme;
+        consume();
+
+        if (consume_final_template_args && !consume_optional_template_args())
+            return false;
+
+        if (!(check(TokenKind::ColonColon) &&
+              pos_ + 1 < static_cast<int>(tokens_.size()) &&
+              tokens_[pos_ + 1].kind == TokenKind::Identifier))
+            break;
+
+        qn.qualifier_segments.push_back(qn.base_name);
+        consume(); // ::
+    }
+
+    if (out_name) {
+        std::string spelled;
+        if (qn.is_global_qualified) spelled = "::";
+        for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
+            if (!spelled.empty() && spelled != "::") spelled += "::";
+            spelled += qn.qualifier_segments[i];
+        }
+        if (!spelled.empty() && spelled != "::") spelled += "::";
+        spelled += qn.base_name;
+        *out_name = std::move(spelled);
+    }
+    if (out_qn) *out_qn = std::move(qn);
+    return true;
+}
+
 bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
     if (!is_cpp_mode() || !check(TokenKind::Identifier) || cur().lexeme != "typename")
         return false;
@@ -1225,53 +1299,12 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
     const int saved_pos = pos_;
     consume(); // eat 'typename'
 
-    if (!check(TokenKind::Identifier) && !check(TokenKind::ColonColon)) {
-        pos_ = saved_pos;
-        return false;
-    }
-
-    auto parse_optional_template_args = [&]() {
-        if (!check(TokenKind::Less)) return;
-        int depth = 1;
-        consume(); // <
-        while (!at_end() && depth > 0) {
-            if (check(TokenKind::Less)) ++depth;
-            else if (check_template_close()) {
-                --depth;
-                if (depth > 0) {
-                    match_template_close();
-                    continue;
-                }
-                break;
-            }
-            consume();
-        }
-        if (check_template_close()) match_template_close();
-    };
-
     std::string dep_name;
-    if (check(TokenKind::ColonColon)) {
-        dep_name = "::";
-        consume();
-    }
-    if (check(TokenKind::Identifier)) {
-        dep_name += cur().lexeme;
-        consume();
-    } else {
+    if (!consume_qualified_type_spelling(/*allow_global=*/true,
+                                         /*consume_final_template_args=*/true,
+                                         &dep_name, nullptr)) {
         pos_ = saved_pos;
         return false;
-    }
-
-    parse_optional_template_args();
-
-    while (check(TokenKind::ColonColon) &&
-           pos_ + 1 < static_cast<int>(tokens_.size()) &&
-           tokens_[pos_ + 1].kind == TokenKind::Identifier) {
-        consume(); // ::
-        dep_name += "::";
-        dep_name += cur().lexeme;
-        consume(); // ident
-        parse_optional_template_args();
     }
 
     if (out_name) {
@@ -1909,7 +1942,10 @@ TypeSpec Parser::parse_base_type() {
                                         arena_.strdup(qn.qualifier_segments[i].c_str());
                                 }
                             }
-                            parse_qualified_name(true);
+                            consume_qualified_type_spelling(
+                                /*allow_global=*/true,
+                                /*consume_final_template_args=*/false,
+                                nullptr, nullptr);
                             done = true;
                             break;
                         }
@@ -1926,7 +1962,10 @@ TypeSpec Parser::parse_base_type() {
                             full_name += qn.base_name;
                             has_typedef = true;
                             ts.tag = arena_.strdup(full_name.c_str());
-                            parse_qualified_name(true);
+                            consume_qualified_type_spelling(
+                                /*allow_global=*/true,
+                                /*consume_final_template_args=*/false,
+                                nullptr, nullptr);
                             done = true;
                             break;
                         }

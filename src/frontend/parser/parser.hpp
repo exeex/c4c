@@ -298,6 +298,10 @@ class Parser {
   bool is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx) const;
   bool parse_template_argument_list(std::vector<TemplateArgParseResult>* out_args,
                                     const Node* primary_tpl = nullptr);
+  bool consume_qualified_type_spelling(bool allow_global,
+                                       bool consume_final_template_args,
+                                       std::string* out_name = nullptr,
+                                       QualifiedNameRef* out_qn = nullptr);
   bool parse_dependent_typename_specifier(std::string* out_name = nullptr);
   TypenameTemplateParamKind classify_typename_template_parameter() const;
   // Template-scope stack helpers.

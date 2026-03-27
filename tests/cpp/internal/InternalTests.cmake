@@ -86,6 +86,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     eastl_probe_qualified_template_scope_parse
     template_typedef_nttp_variants_parse
     template_typename_typed_nttp_parse
+    qualified_dependent_typename_global_parse
 )
 
 list(APPEND CPP_POSITIVE_FRONTEND_STEMS
