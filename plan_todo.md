@@ -10,29 +10,29 @@
 
 ## Current Slice
 
-- Active target: continue turning `parse_declarator()` into a staged
-  coordinator by extracting the remaining non-parenthesized grouped-vs-normal
-  tail path after the shared prefix scan, without changing suffix ordering or
-  function-pointer detection
-- This iteration's exact target: extract the grouped-vs-normal non-parenthesized
-  declarator dispatch from `parse_declarator()` into a helper, preserving
-  grouped declarator lookahead, qualified-name capture, and staged array-dim
-  application
-- Completed: extracted the grouped-vs-normal non-parenthesized declarator path
-  from `parse_declarator()` without changing grouped declarator lookahead,
-  qualified-name capture, or staged array-dim application
+- Active target: Step 5 completed for the plain `(...)` function-suffix
+  coordination path; the next iteration should move into Step 6 and start
+  flattening `parse_struct_or_union()`
+- This iteration's exact target: extracted the remaining plain `(...)`
+  function-suffix coordination into a helper path shared by
+  `parse_declarator()` and parameter function-type decay, preserving ordinary
+  declarator handoff, abstract function-parameter decay, and existing
+  suffix-consumption order
+- Completed: extracted the remaining plain function-suffix coordination from
+  the declarator staging pipeline into a shared helper without changing
+  ordinary declarator suffix handoff or parameter function-type decay
 - New helper path:
-  - `parse_non_parenthesized_declarator(...)`
+  - `parse_plain_function_declarator_suffix(...)`
 - Added parse-only coverage:
-  - extended `declarator_grouped_suffix_staging_parse` with mixed grouped and
-    normal declarators in shared declarations and parameters
+  - extended `declarator_normal_tail_staging_parse` with named and abstract
+    function-type parameters to lock the post-declarator plain `(...)` handoff
 - Validation completed:
   - focused parser regressions passed:
+    - `declarator_normal_tail_staging_parse`
     - `declarator_grouped_suffix_staging_parse`
     - `declarator_pointer_qualifier_staging_parse`
     - `declarator_parenthesized_fn_ptr_staging_parse`
     - `declarator_member_fn_ptr_suffix_staging_parse`
-    - `declarator_normal_tail_staging_parse`
     - `declarator_array_suffix_staging_parse`
     - `qualified_member_function_pointer_template_owner_parse`
     - `qualified_member_pointer_template_owner_parse`
@@ -45,9 +45,9 @@
     - failing identities unchanged
     - regression guard: passed (`+0` passed, `0` new failures, `0` new >30s
       tests)
-- Next intended slice: extract the remaining normal-tail function-suffix stage
-  from `parse_declarator()` into a helper so the top-level declarator flow is
-  prefix -> parenthesized/non-parenthesized dispatch -> suffix coordination
+- Next intended slice: start Step 6 by extracting a narrow
+  method-or-field/member-body helper from `parse_struct_or_union()` so the
+  record loop begins moving toward top-level category dispatch
 - New helper path:
   - `parse_parenthesized_pointer_declarator_inner(...)`
 - Added parse-only coverage:

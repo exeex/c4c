@@ -1935,6 +1935,20 @@ void Parser::parse_non_parenthesized_declarator(TypeSpec& ts,
     apply_declarator_array_dims(ts, decl_dims);
 }
 
+void Parser::parse_plain_function_declarator_suffix(
+    TypeSpec& ts, bool decay_to_function_pointer) {
+    if (!check(TokenKind::LParen)) return;
+
+    // Plain `name(params)` suffixes stay with the surrounding declaration
+    // parser. Parameters are the one place where the caller immediately
+    // decays function types to pointer-to-function after the declarator pass.
+    if (!decay_to_function_pointer) return;
+
+    skip_paren_group();
+    ts.is_fn_ptr = true;
+    ts.ptr_level += 1;
+}
+
 void Parser::store_declarator_function_pointer_params(
     Node*** out_params, int* out_n_params, bool* out_variadic,
     const std::vector<Node*>& params, bool variadic) {
@@ -3781,10 +3795,8 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     }
 
     parse_non_parenthesized_declarator(ts, out_name);
-
-    // Function suffix: (params) — turns the declarator into a function
-    // We only record variadic here; full param parsing is done by caller.
-    // (The function definition parser calls parse_params separately.)
+    parse_plain_function_declarator_suffix(
+        ts, /*decay_to_function_pointer=*/false);
 }
 
 TypeSpec Parser::parse_type_name() {
@@ -5358,15 +5370,8 @@ Node* Parser::parse_param() {
     bool is_parameter_pack = false;
     parse_declarator(pts, &pname, &fn_ptr_params, &n_fn_ptr_params, &fn_ptr_variadic,
                      &is_parameter_pack);
-    // C rule: a parameter of function type decays to a pointer to that function.
-    // Abstract function-type params look like: int(int x) or int()
-    // Consume the function-type suffix and apply the pointer decay.
-    if (check(TokenKind::LParen)) {
-        skip_paren_group();
-        // The parameter has function type — adjust it to pointer-to-function.
-        pts.is_fn_ptr = true;
-        pts.ptr_level += 1;
-    }
+    parse_plain_function_declarator_suffix(
+        pts, /*decay_to_function_pointer=*/true);
     skip_attributes();
 
     // C++ default parameter value: skip '= expr' (balanced, stopping at , or ) at depth 0)

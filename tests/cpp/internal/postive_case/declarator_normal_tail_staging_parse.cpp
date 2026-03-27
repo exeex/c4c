@@ -15,6 +15,8 @@ int Matrix::operator()(int index) {
 }
 
 int plain_slots[4];
+int consume_named_transform(int transform(int), int value);
+int consume_abstract_transform(int(int), int value);
 
 int main() {
     Matrix matrix = {{7, 8, 9}};
