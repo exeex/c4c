@@ -1,7 +1,6 @@
 # `types.cpp` Compression Refactor Plan
 
-Status: Active
-Active Plan: [plan.md](/workspaces/c4c/plan.md)
+Status: Complete
 
 Target file: `src/frontend/parser/types.cpp`  
 Current size: 5235 lines  
@@ -164,6 +163,36 @@ Validation:
 - Prefer helper extraction over "smart" grammar rewrites.
 - Add or expand focused parse tests before/with each structural cleanup.
 - Avoid simultaneous token-policy changes and code movement in one patch.
+
+## Completion Notes
+
+- Completed across bounded refactor slices with targeted parse-only coverage for
+  template-argument parsing, qualified/dependent type consumption, declarator
+  staging, and record-body dispatch.
+- Final completion bar reached:
+  - `parse_base_type` now acts as a helper-driven dispatcher
+  - `parse_template_argument_list` uses a clear loop skeleton with extracted
+    argument parsing helpers
+  - qualified/dependent type spelling is centralized enough to avoid repeated
+    ad hoc token walks
+  - `parse_declarator` is staged through focused prefix/suffix/helper paths
+  - `parse_struct_or_union` now dispatches through prebody/tag/definition
+    helpers instead of carrying the old nested record-body stack directly
+- Final validation on 2026-03-27:
+  - clean baseline rebuild/suite: 2209 total, 7 failed
+  - clean after rebuild/suite: 2209 total, 7 failed
+  - regression guard: passed with no new failures and non-decreasing pass count
+
+## Leftover Issues
+
+- Full `ctest` still has the same pre-existing failures outside this refactor:
+  - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+  - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+  - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+  - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+  - `cpp_positive_sema_template_arg_deduction_cpp`
+  - `cpp_positive_sema_template_mixed_params_cpp`
+  - `cpp_positive_sema_template_type_subst_cpp`
 
 ## Good First Patch
 
