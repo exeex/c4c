@@ -438,6 +438,15 @@ set_tests_properties(cpp_hir_template_function_pack_signature_binding PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_function_recursive_body_binding
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_function_recursive_body_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_function_recursive_body_binding PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "return countdown<int>\\(\\(n#P0 - 1\\)\\)"
+)
+
+add_test(
   NAME cpp_hir_spec_key_identity
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/specialization_identity.cpp"
 )

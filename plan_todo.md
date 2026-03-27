@@ -10,6 +10,21 @@
 
 ## Current Slice
 
+- Completed: extracted the shared callable body-entry helpers
+  `register_bodyless_callable(...)` and `begin_callable_body_lowering(...)`
+  so both `lower_function(...)` and `lower_struct_method(...)` now share:
+  - declaration-only callable registration into `module_->fn_index`
+  - temporary skeleton installation before body lowering when needed
+  - entry-block creation/assignment before path-specific body work
+- Deliberately left in place for later Step 3 slices:
+  - function-only VLA/array-size side-effect lowering
+  - method-only defaulted-body emission
+  - constructor initializer-list lowering
+  - destructor epilogue emission
+- Added focused HIR coverage for this slice:
+  - `cpp_hir_template_function_recursive_body_binding` asserts a templated
+    recursive function body still lowers the recursive instantiated call as
+    `return countdown<int>((n#P0 - 1))`
 - Completed: extracted shared explicit-parameter lowering coordinator
   `append_callable_params(...)` and routed both `lower_function(...)` and
   `lower_struct_method(...)` through it while keeping:
@@ -181,11 +196,12 @@
 
 ## Next Intended Slice
 
-- continue Step 3 with the next minimal shared lowering-setup slice, likely
-  callable skeleton/body-entry coordination rather than method-local body
-  cleanup
-- keep pack expansion and method-only body prelude work out of scope unless the
-  parameter-lowering extraction exposes a minimal follow-up
+- continue Step 3 only if a similarly narrow callable-lowering setup
+  extraction remains without pulling function-only VLA staging or method-only
+  body prelude/epilogue logic into shared code
+- keep pack expansion, VLA parameter side effects, and method-only body
+  prelude/epilogue work out of scope unless a later helper boundary is equally
+  mechanical
 
 ## Blockers
 
@@ -212,6 +228,22 @@
 - this slice is now complete: explicit parameter iteration/pack expansion is
   centralized in `append_callable_params(...)`, and the new pack-signature HIR
   test is the direct regression guard for that coordinator
+- current slice starts from the remaining shared callable setup around
+  pre-registration/skeleton installation/entry-block creation; any extraction
+  must preserve the existing function self-reference ordering and the method
+  defaulted/ctor/dtor split points
+- validation completed:
+  - targeted regressions passed:
+    - `cpp_hir_template_function_recursive_body_binding`
+    - `cpp_hir_template_function_pack_signature_binding`
+    - `cpp_hir_template_function_signature_binding`
+    - `cpp_hir_template_method_signature_binding`
+    - `cpp_positive_sema_default_special_members_cpp`
+  - full clean rebuild remained monotonic:
+    - `test_before.log`: 2219 total, 7 failed
+    - `test_after.log`: 2220 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures)
 - validation completed:
   - targeted HIR regressions passed:
     - `cpp_hir_template_function_pack_signature_binding`

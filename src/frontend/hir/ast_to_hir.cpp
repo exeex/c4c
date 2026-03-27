@@ -3465,6 +3465,24 @@ class Lowerer {
     }
   }
 
+  void register_bodyless_callable(Function&& fn) {
+    module_->fn_index[fn.name] = fn.id;
+    module_->functions.push_back(std::move(fn));
+  }
+
+  BlockId begin_callable_body_lowering(Function& fn, FunctionCtx& ctx) {
+    module_->fn_index[fn.name] = fn.id;
+    if (fn.id.value == module_->functions.size()) {
+      // Push a skeleton; callers replace it after body lowering completes.
+      module_->functions.push_back(Function{fn.id, fn.name, fn.ns_qual, fn.return_type});
+    }
+
+    const BlockId entry = create_block(ctx);
+    fn.entry = entry;
+    ctx.current_block = entry;
+    return entry;
+  }
+
   void lower_function(const Node* fn_node,
                       const std::string* name_override = nullptr,
                       const TypeBindings* tpl_override = nullptr,
@@ -3568,24 +3586,14 @@ class Lowerer {
                            "function-param:", false, true);
 
     if (!fn_node->body) {
-      module_->fn_index[fn.name] = fn.id;
-      module_->functions.push_back(std::move(fn));
+      register_bodyless_callable(std::move(fn));
       return;
     }
 
     // Pre-register the function so that self-references during body
     // lowering (e.g. recursive function using its own name as a value)
     // can look up the return type via fn_index.
-    const bool had_prior_decl = module_->fn_index.count(fn.name) > 0;
-    module_->fn_index[fn.name] = fn.id;
-    if (fn.id.value == module_->functions.size()) {
-      // Push a skeleton; will be replaced after body lowering.
-      module_->functions.push_back(Function{fn.id, fn.name, fn.ns_qual, fn.return_type});
-    }
-
-    const BlockId entry = create_block(ctx);
-    fn.entry = entry;
-    ctx.current_block = entry;
+    const BlockId entry = begin_callable_body_lowering(fn, ctx);
 
     for (int i = 0; i < fn_node->n_params; ++i) {
       const Node* p = fn_node->params[i];
@@ -3661,19 +3669,11 @@ class Lowerer {
     ctx.method_struct_tag = struct_tag;
 
     if (!method_node->body && !method_node->is_defaulted) {
-      module_->fn_index[fn.name] = fn.id;
-      module_->functions.push_back(std::move(fn));
+      register_bodyless_callable(std::move(fn));
       return;
     }
 
-    module_->fn_index[fn.name] = fn.id;
-    if (fn.id.value == module_->functions.size()) {
-      module_->functions.push_back(Function{fn.id, fn.name, fn.ns_qual, fn.return_type});
-    }
-
-    const BlockId entry = create_block(ctx);
-    fn.entry = entry;
-    ctx.current_block = entry;
+    const BlockId entry = begin_callable_body_lowering(fn, ctx);
 
     // Generate synthetic body for = default special member functions.
     if (method_node->is_defaulted) {
