@@ -10,9 +10,37 @@
 
 ## Current Slice
 
-- Active target: extract the remaining declarator prefix scan from
-  `parse_declarator()` into a helper without changing pointer/member-pointer
-  token handling, qualifier skipping, or parameter-pack staging order
+- Active target: extract the next declarator staging helper from
+  `parse_declarator()` after the shared prefix scan, likely around the
+  grouped/parenthesized-vs-normal dispatch, without changing suffix ordering
+  or function-pointer detection
+- Completed: extracted the shared declarator prefix scan from
+  `parse_declarator()` into a helper without changing member-pointer owner
+  consumption, `*`/`&`/`&&` staging, nullability skipping, or declarator
+  parameter-pack ordering
+- New helper path:
+  - `parse_declarator_prefix(...)`
+- Added parse-only coverage:
+  - extended `declarator_pointer_qualifier_staging_parse` with a
+    nullability-qualified parameter-pack declarator
+- Validation completed:
+  - focused parser regressions passed:
+    - `declarator_pointer_qualifier_staging_parse`
+    - `declarator_parenthesized_fn_ptr_staging_parse`
+    - `declarator_grouped_suffix_staging_parse`
+    - `declarator_member_fn_ptr_suffix_staging_parse`
+    - `declarator_normal_tail_staging_parse`
+    - `declarator_array_suffix_staging_parse`
+    - `qualified_member_function_pointer_template_owner_parse`
+    - `qualified_member_pointer_template_owner_parse`
+    - `global_qualified_member_pointer_template_owner_parse`
+    - `variadic_param_pack_declarator_parse`
+    - `eastl_slice6_template_defaults_and_refqual_cpp`
+  - full clean rebuild `test_after.log` remained monotonic:
+    - `test_before.log`: 2166 total, 7 failed
+    - `test_after.log`: 2166 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+0` passed, `0` new failures)
 - Completed: extracted the parenthesized declarator core from
   `parse_declarator()` into a helper without changing pointer-token handling,
   nested function-pointer dispatch, or post-paren array suffix staging

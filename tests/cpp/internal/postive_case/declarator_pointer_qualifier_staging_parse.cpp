@@ -16,9 +16,14 @@ int accept(int (*const& cb)(int), int (Widget::*const pm)() const) {
     return cb((widget.*pm)());
 }
 
+template<typename... Args>
+int pack_accept(Args* const _Nonnull... values) {
+    return sizeof...(values);
+}
+
 int main() {
     int (*const grouped_fp)(int) = target;
     int (*const& grouped_fp_ref)(int) = grouped_fp;
     int (Widget::*const member_method)() const = &Widget::method;
-    return accept(grouped_fp_ref, member_method);
+    return accept(grouped_fp_ref, member_method) + pack_accept<int, int>(nullptr, nullptr);
 }

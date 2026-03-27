@@ -1658,6 +1658,66 @@ bool Parser::is_parenthesized_pointer_declarator_start() {
     return is_member_ptr_fn;
 }
 
+void Parser::parse_declarator_prefix(TypeSpec& ts, bool* out_is_parameter_pack) {
+    if (out_is_parameter_pack) *out_is_parameter_pack = false;
+
+    // Skip qualifiers/attributes that can appear before pointer stars.
+    // This handles trailing qualifiers on the base type: e.g. `struct S const *p`
+    // where `const` appears after the struct tag but before `*`.
+    parse_attributes(&ts);
+    while (is_qualifier(cur().kind)) consume();
+    parse_attributes(&ts);
+
+    // C++ pointer-to-member declarator prefix: `C::*name` or `ns::C::*name`.
+    // Model it as an additional pointer level for parser bring-up so headers
+    // like EASTL's invoke_impl(R C::*func, ...) can parse successfully.
+    try_parse_declarator_member_pointer_prefix(ts);
+
+    // Count pointer stars (and qualifiers between them).
+    while (check(TokenKind::Star)) {
+        consume();
+        // If the base type already has array dimensions, this star creates a
+        // pointer-to-array (e.g. HARD_REG_SET *p where HARD_REG_SET = ulong[2]).
+        apply_declarator_pointer_token(ts, TokenKind::Star,
+                                       /*preserve_array_base=*/true);
+        while (is_qualifier(cur().kind)) consume();
+        parse_attributes(&ts);
+    }
+
+    if (is_cpp_mode() && check(TokenKind::AmpAmp)) {
+        consume();
+        apply_declarator_pointer_token(ts, TokenKind::AmpAmp,
+                                       /*preserve_array_base=*/false);
+        while (is_qualifier(cur().kind)) consume();
+        parse_attributes(&ts);
+    } else if (is_cpp_mode() && check(TokenKind::Amp)) {
+        consume();
+        apply_declarator_pointer_token(ts, TokenKind::Amp,
+                                       /*preserve_array_base=*/false);
+        while (is_qualifier(cur().kind)) consume();
+        parse_attributes(&ts);
+    }
+
+    while (is_qualifier(cur().kind)) consume();
+    if (check(TokenKind::Identifier)) {
+        const std::string& lex = cur().lexeme;
+        if (lex == "_Nullable" || lex == "_Nonnull" ||
+            lex == "_Null_unspecified" || lex == "__nullable" ||
+            lex == "__nonnull") {
+            consume();
+        }
+    }
+
+    // C++ template parameter pack declarator: `Args&&... args`
+    // or `Ts... value`. The ellipsis belongs to the declarator, not the
+    // function's variadic parameter list.
+    if (is_cpp_mode() && check(TokenKind::Ellipsis)) {
+        consume();
+        if (out_is_parameter_pack) *out_is_parameter_pack = true;
+    }
+    parse_attributes(&ts);
+}
+
 bool Parser::try_parse_grouped_declarator(TypeSpec& ts, const char** out_name,
                                           std::vector<long long>* out_dims) {
     if (!is_grouped_declarator_start()) return false;
@@ -3685,61 +3745,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     if (out_ret_fn_ptr_variadic) *out_ret_fn_ptr_variadic = false;
 
     std::vector<long long> decl_dims;
-    // Skip qualifiers/attributes that can appear before pointer stars
-    // This handles trailing qualifiers on the base type: e.g. `struct S const *p`
-    // where `const` appears after the struct tag but before `*`.
-    parse_attributes(&ts);
-    while (is_qualifier(cur().kind)) consume();
-    parse_attributes(&ts);
-
-    // C++ pointer-to-member declarator prefix: `C::*name` or `ns::C::*name`.
-    // Model it as an additional pointer level for parser bring-up so headers
-    // like EASTL's invoke_impl(R C::*func, ...) can parse successfully.
-    try_parse_declarator_member_pointer_prefix(ts);
-
-    // Count pointer stars (and qualifiers between them)
-    while (check(TokenKind::Star)) {
-        consume();
-        // If the base type already has array dimensions, this star creates a
-        // pointer-to-array (e.g. HARD_REG_SET *p where HARD_REG_SET = ulong[2]).
-        apply_declarator_pointer_token(ts, TokenKind::Star,
-                                       /*preserve_array_base=*/true);
-        // Skip qualifiers that follow *
-        while (is_qualifier(cur().kind)) consume();
-        parse_attributes(&ts);
-    }
-
-    if (is_cpp_mode() && check(TokenKind::AmpAmp)) {
-        consume();
-        apply_declarator_pointer_token(ts, TokenKind::AmpAmp,
-                                       /*preserve_array_base=*/false);
-        while (is_qualifier(cur().kind)) consume();
-        parse_attributes(&ts);
-    } else if (is_cpp_mode() && check(TokenKind::Amp)) {
-        consume();
-        apply_declarator_pointer_token(ts, TokenKind::Amp,
-                                       /*preserve_array_base=*/false);
-        while (is_qualifier(cur().kind)) consume();
-        parse_attributes(&ts);
-    }
-
-    // Skip any extra qualifiers / nullability (macOS: _Nullable, _Nonnull, etc.)
-    while (is_qualifier(cur().kind)) consume();
-    if (check(TokenKind::Identifier)) {
-        const std::string& lex = cur().lexeme;
-        if (lex == "_Nullable" || lex == "_Nonnull" || lex == "_Null_unspecified" ||
-            lex == "__nullable" || lex == "__nonnull") {
-            consume();
-        }
-    }
-    // C++ template parameter pack declarator: `Args&&... args`
-    // or `Ts... value`. The ellipsis belongs to the declarator, not the
-    // function's variadic parameter list.
-    if (is_cpp_mode() && check(TokenKind::Ellipsis)) {
-        consume();
-        if (out_is_parameter_pack) *out_is_parameter_pack = true;
-    }
-    parse_attributes(&ts);
+    parse_declarator_prefix(ts, out_is_parameter_pack);
 
     // Check for parenthesised declarator: (*name) or (ATTR *name) — function pointer
     if (is_parenthesized_pointer_declarator_start()) {
