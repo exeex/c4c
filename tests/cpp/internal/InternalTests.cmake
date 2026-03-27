@@ -93,6 +93,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     qualified_type_spelling_shared_parse
     qualified_type_resolution_dispatch_parse
     qualified_type_start_shared_probe_parse
+    qualified_global_type_start_shared_probe_parse
     qualified_member_pointer_template_owner_parse
     qualified_member_function_pointer_template_owner_parse
     qualified_type_start_probe_parse

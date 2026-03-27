@@ -74,6 +74,23 @@ QualifiedTypeProbe probe_qualified_type(const Parser& parser,
     return probe;
 }
 
+bool has_qualified_type_parse_fallback(const QualifiedTypeProbe& probe) {
+    return probe.has_resolved_typedef ||
+           probe.has_unresolved_qualified_fallback;
+}
+
+bool can_start_qualified_type_declaration(const Parser& parser,
+                                          const QualifiedTypeProbe& probe,
+                                          TokenKind trailing_kind) {
+    if (probe.has_resolved_typedef) return true;
+    if (!probe.has_unresolved_qualified_fallback ||
+        probe.namespace_context_id < 0 ||
+        !parser.is_cpp_mode()) {
+        return false;
+    }
+    return trailing_kind != TokenKind::LParen;
+}
+
 bool parse_alignas_specifier(Parser* parser, TypeSpec* ts, int line) {
     if (!parser->check(TokenKind::KwAlignas)) return false;
     parser->consume();
@@ -1523,6 +1540,7 @@ bool Parser::try_parse_qualified_base_type(TypeSpec* out_ts) {
     if (!peek_qualified_name(&qn, true)) return false;
 
     const QualifiedTypeProbe probe = probe_qualified_type(*this, qn);
+    if (!has_qualified_type_parse_fallback(probe)) return false;
     if (probe.has_resolved_typedef) {
         out_ts->tag = arena_.strdup(probe.resolved_typedef_name.c_str());
         out_ts->is_global_qualified = qn.is_global_qualified;
@@ -1543,8 +1561,6 @@ bool Parser::try_parse_qualified_base_type(TypeSpec* out_ts) {
             nullptr, nullptr);
         return true;
     }
-
-    if (!probe.has_unresolved_qualified_fallback) return false;
 
     out_ts->tag = arena_.strdup(probe.spelled_name.c_str());
     consume_qualified_type_spelling_with_typename(
@@ -2264,7 +2280,15 @@ bool Parser::is_type_start() const {
         QualifiedNameRef qn;
         if (peek_qualified_name(&qn, true)) {
             const QualifiedTypeProbe probe = probe_qualified_type(*this, qn);
-            if (probe.has_resolved_typedef) return true;
+            const int after_pos =
+                pos_ + (qn.is_global_qualified ? 1 : 0) +
+                2 * static_cast<int>(qn.qualifier_segments.size()) + 1;
+            const TokenKind trailing_kind =
+                after_pos < static_cast<int>(tokens_.size())
+                    ? tokens_[after_pos].kind
+                    : TokenKind::EndOfFile;
+            if (can_start_qualified_type_declaration(*this, probe, trailing_kind))
+                return true;
         }
     }
     // C++ qualified type: StructName::TypedefName or ns::ns2::Type
@@ -2275,24 +2299,14 @@ bool Parser::is_type_start() const {
         QualifiedNameRef qn;
         if (peek_qualified_name(&qn, false)) {
             const QualifiedTypeProbe probe = probe_qualified_type(*this, qn);
-            if (probe.has_resolved_typedef) return true;
-            if (probe.namespace_context_id >= 0) {
-                // C++ heuristic: if the qualifier resolves to a known namespace,
-                // treat it as a type even if not yet registered (e.g. struct tags
-                // defined inside namespace blocks that aren't typedef-tracked).
-                // Exception: if the token after the qualified name is '(', this
-                // is likely a function call (e.g. eastl::advance(i, d2)), not a
-                // type declaration.
-                if (is_cpp_mode()) {
-                    int after_pos = pos_ + 1 + 2 * static_cast<int>(qn.qualifier_segments.size());
-                    if (after_pos < static_cast<int>(tokens_.size()) &&
-                        tokens_[after_pos].kind == TokenKind::LParen) {
-                        // Likely a function call — don't treat as type.
-                    } else {
-                        return true;
-                    }
-                }
-            }
+            const int after_pos =
+                pos_ + 1 + 2 * static_cast<int>(qn.qualifier_segments.size());
+            const TokenKind trailing_kind =
+                after_pos < static_cast<int>(tokens_.size())
+                    ? tokens_[after_pos].kind
+                    : TokenKind::EndOfFile;
+            if (can_start_qualified_type_declaration(*this, probe, trailing_kind))
+                return true;
         }
     }
     return false;

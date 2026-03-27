@@ -10,6 +10,46 @@
 
 ## Current Slice
 
+- Completed: extracted the remaining global-qualified declaration-context
+  probe from `is_type_start()` into a shared qualified-type-start helper so
+  unresolved `::ns::Type` namespace types now reuse the same fallback
+  classification as `try_parse_qualified_base_type(...)` without
+  misclassifying neighboring qualified calls
+- New helper path:
+  - `can_start_qualified_type_declaration(...)`
+- Added parse-only coverage:
+  - `qualified_global_type_start_shared_probe_parse`
+- Validation completed:
+  - focused qualified/dependent-name regressions passed:
+    - `qualified_global_type_start_shared_probe_parse`
+    - `qualified_cpp_base_type_dispatch_parse`
+    - `qualified_type_resolution_dispatch_parse`
+    - `qualified_type_start_probe_parse`
+    - `qualified_type_start_shared_probe_parse`
+    - `qualified_type_spelling_shared_parse`
+    - `qualified_dependent_typename_global_parse`
+    - `template_member_type_direct_parse`
+    - `template_member_type_inherited_parse`
+    - `qualified_member_pointer_template_owner_parse`
+    - `qualified_member_function_pointer_template_owner_parse`
+    - `qualified_operator_template_owner_parse`
+    - `global_qualified_member_pointer_template_owner_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2196 total, 7 failed
+    - `test_fail_after.log`: 2197 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Active target: Step 4 is likely near complete after the global-qualified
+  probe extraction; the next slice should explicitly inspect whether any
+  qualified/dependent-name duplication remains, otherwise advance to Step 5
+  declarator suffix handling
+- This iteration's exact target: completed the bounded Step 4 extraction
+  around global-qualified declaration-context probing in `is_type_start()` and
+  verified it against nearby parser coverage plus the full suite
+- Next intended slice: audit the remaining Step 4 paths for any duplicated
+  qualified/dependent-name classification not already routed through the shared
+  probe/helper set; if none remain, move the active item to Step 5
 - Completed: extracted the remaining C++ scoped/dependent base-type dispatch
   from `parse_base_type()` into `try_parse_cpp_scoped_base_type(...)` so the
   coordinator now funnels leading `typename` dependent types and
