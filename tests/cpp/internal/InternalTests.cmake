@@ -84,6 +84,8 @@ set(CPP_POSITIVE_PARSE_STEMS
     out_of_class_member_owner_scope_parse
     eastl_probe_pack_expansion_template_arg_parse
     eastl_probe_qualified_template_scope_parse
+    template_typedef_nttp_variants_parse
+    template_typename_typed_nttp_parse
 )
 
 list(APPEND CPP_POSITIVE_FRONTEND_STEMS
