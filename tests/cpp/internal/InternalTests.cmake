@@ -102,6 +102,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     record_member_typedef_using_parse
     record_member_enum_parse
     record_member_prelude_parse
+    record_member_mixed_prelude_parse
     record_member_special_member_parse
     record_member_method_field_parse
     record_member_dispatch_parse

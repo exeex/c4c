@@ -4948,6 +4948,12 @@ bool Parser::try_parse_record_member_with_template_prelude(
                                             check_dup_field);
 }
 
+bool Parser::try_parse_record_member_prelude() {
+    if (try_parse_record_access_label()) return true;
+    if (try_skip_record_friend_member()) return true;
+    return try_skip_record_static_assert_member();
+}
+
 bool Parser::try_parse_record_member(
     const std::string& struct_source_name,
     std::vector<Node*>* fields,
@@ -4958,9 +4964,7 @@ bool Parser::try_parse_record_member(
     skip_attributes();
     if (check(TokenKind::RBrace)) return false;
 
-    if (try_parse_record_access_label()) return true;
-    if (try_skip_record_friend_member()) return true;
-    if (try_skip_record_static_assert_member()) return true;
+    if (try_parse_record_member_prelude()) return true;
     return try_parse_record_member_with_template_prelude(
         struct_source_name, fields, methods, member_typedef_names,
         member_typedef_types, check_dup_field);

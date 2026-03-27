@@ -10,6 +10,50 @@
 
 ## Current Slice
 
+- Completed: extracted the remaining access-label / friend / static_assert
+  pre-dispatch chain from `try_parse_record_member()` into a focused helper so
+  the function now reads as a thin prelude-or-template-dispatch coordinator
+  without changing ordinary member resumption order
+- New helper path:
+  - `try_parse_record_member_prelude(...)`
+- Added parse-only coverage:
+  - `record_member_mixed_prelude_parse`
+- Baseline recorded:
+  - `test_before.log`: 2185 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
+- Validation completed:
+  - focused parser/member regressions passed:
+    - `record_member_mixed_prelude_parse`
+    - `record_member_prelude_parse`
+    - `record_member_dispatch_parse`
+    - `record_member_template_scope_cleanup_parse`
+    - `record_body_context_parse`
+    - `record_body_state_bundle_parse`
+  - full clean rebuild `test_after.log` remained monotonic:
+    - `test_before.log`: 2185 total, 7 failed
+    - `test_after.log`: 2186 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Next intended slice: inspect the remaining record-member entry path around
+  `skip_attributes()` / end-of-body guarding and decide whether one more
+  bounded Step 6 extraction is warranted or whether record-body parsing is now
+  compressed enough to close Step 6 and advance the plan
+- Active target: Step 6 remains active until the remaining record-member entry
+  coordination is either extracted or explicitly judged complete relative to
+  the plan’s “top-level dispatcher” bar
+- This iteration's exact target: add parse-only coverage for a record body
+  that interleaves access labels, friend/static_assert preludes, and ordinary
+  members, then extract that remaining pre-dispatch prelude chain into one
+  helper without changing which declarations are skipped or how the following
+  member parses resume
 - Completed: extracted the template-member prelude setup/teardown around
   `try_parse_record_member_dispatch(...)` from `try_parse_record_member()`
   into a focused helper without changing access-label/friend/static_assert
