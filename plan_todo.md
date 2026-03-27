@@ -6,10 +6,54 @@
 
 ## Active Item
 
-- Step 5: Compress Declarator Suffix Handling
+- Step 7: Keep Refactor Risk Contained
 
 ## Current Slice
 
+- Completed: refreshed the Step 5 baseline and then extracted the remaining
+  post-`RParen` parenthesized-pointer suffix/finalization flow from
+  `parse_parenthesized_pointer_declarator()` into
+  `finalize_parenthesized_pointer_declarator(...)`, leaving the outer function
+  as prefix / inner / finalization coordination without changing function
+  suffix parsing, array suffix parsing, or `is_ptr_to_array` behavior
+- New helper path:
+  - `finalize_parenthesized_pointer_declarator(...)`
+- Added parse-only coverage:
+  - `declarator_parenthesized_member_pointer_finalization_parse`
+- Baseline recorded:
+  - `test_fail_before.log`: 2189 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
+- Validation completed:
+  - focused declarator regressions passed:
+    - `declarator_parenthesized_member_pointer_finalization_parse`
+    - `declarator_parenthesized_pointer_inner_staging_parse`
+    - `declarator_parenthesized_member_pointer_prefix_parse`
+    - `declarator_member_fn_ptr_suffix_staging_parse`
+    - `declarator_parenthesized_fn_ptr_staging_parse`
+    - `declarator_array_suffix_staging_parse`
+    - `declarator_normal_tail_staging_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2189 total, 7 failed
+    - `test_fail_after.log`: 2190 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Active target: Step 5 is complete relative to the plan’s declarator
+  coordinator bar; Step 7 now tracks regression containment while the next
+  incomplete compression cluster in `types.cpp` is selected
+- This iteration's exact target: completed the final bounded Step 5 helper
+  extraction around parenthesized-pointer finalization and verified it against
+  the nearby declarator slice plus the full suite
+- Next intended slice: choose the highest-priority remaining incomplete
+  compression cluster in `types.cpp` and start it with a new focused parse
+  test before implementation
 - Completed: extracted the remaining inner branch from
   `parse_parenthesized_pointer_declarator_inner()` into focused helpers so
   the function now reads as array-skip / name-capture / nested-recursion

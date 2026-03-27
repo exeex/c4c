@@ -1913,6 +1913,23 @@ bool Parser::parse_parenthesized_pointer_declarator_inner(
         out_fn_ptr_variadic);
 }
 
+void Parser::finalize_parenthesized_pointer_declarator(
+    TypeSpec& ts, bool is_nested_fn_ptr, std::vector<long long>* decl_dims,
+    Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
+    bool* out_fn_ptr_variadic,
+    Node*** out_ret_fn_ptr_params, int* out_n_ret_fn_ptr_params,
+    bool* out_ret_fn_ptr_variadic) {
+    expect(TokenKind::RParen);
+    parse_parenthesized_function_pointer_suffix(
+        ts, is_nested_fn_ptr,
+        out_fn_ptr_params, out_n_fn_ptr_params, out_fn_ptr_variadic,
+        out_ret_fn_ptr_params, out_n_ret_fn_ptr_params,
+        out_ret_fn_ptr_variadic);
+    parse_declarator_array_suffixes(ts, decl_dims);
+    apply_declarator_array_dims(ts, *decl_dims);
+    if (!decl_dims->empty()) ts.is_ptr_to_array = true;
+}
+
 void Parser::parse_parenthesized_pointer_declarator(
     TypeSpec& ts, const char** out_name,
     Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
@@ -1929,15 +1946,11 @@ void Parser::parse_parenthesized_pointer_declarator(
         out_fn_ptr_params, out_n_fn_ptr_params,
         out_fn_ptr_variadic);
 
-    expect(TokenKind::RParen);
-    parse_parenthesized_function_pointer_suffix(
-        ts, is_nested_fn_ptr,
+    finalize_parenthesized_pointer_declarator(
+        ts, is_nested_fn_ptr, &decl_dims,
         out_fn_ptr_params, out_n_fn_ptr_params, out_fn_ptr_variadic,
         out_ret_fn_ptr_params, out_n_ret_fn_ptr_params,
         out_ret_fn_ptr_variadic);
-    parse_declarator_array_suffixes(ts, &decl_dims);
-    apply_declarator_array_dims(ts, decl_dims);
-    if (!decl_dims.empty()) ts.is_ptr_to_array = true;
 }
 
 void Parser::parse_non_parenthesized_declarator(TypeSpec& ts,
