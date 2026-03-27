@@ -19,8 +19,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 LOG_DIR = REPO_ROOT / "build" / "agent_state" / "agent_logs"
 LIMIT_PATTERNS = re.compile(r"hit your limit|rate limit|usage limit|quota", re.IGNORECASE)
 LIMIT_HINT_PATTERNS = re.compile(r"hit your limit|rate limit|usage limit|quota|resets?", re.IGNORECASE)
-WAIT_FOR_NEW_IDEA_PATTERN = re.compile(r"WAIT_FOR_NEW_IDEA")
+WAIT_FOR_NEW_IDEA_PATTERN = re.compile(r"^WAIT_FOR_NEW_IDEA$")
 IDLE_SLEEP_SECONDS = 3 * 3600  # 3 hours
+WAIT_FOR_NEW_IDEA_TAIL_LINES = 12
 
 
 def parse_args() -> argparse.Namespace:
@@ -30,8 +31,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "prompt_file",
         nargs="?",
-        default="prompts/AGENT_PROMPT_EXECUTE_PLAN.md",
-        help="Prompt markdown file to feed into the agent CLI. Defaults to prompts/AGENT_PROMPT_EXECUTE_PLAN.md.",
+        default="AGENTS.md",
+        help="Prompt markdown file to feed into the agent CLI. Defaults to AGENTS.md.",
     )
     parser.add_argument(
         "--cli",
@@ -274,7 +275,10 @@ def log_contains_limit(log_path: Path) -> bool:
 def log_contains_wait_for_new_idea(log_path: Path) -> bool:
     if not log_path.is_file():
         return False
-    return WAIT_FOR_NEW_IDEA_PATTERN.search(log_path.read_text(encoding="utf-8", errors="replace")) is not None
+    lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    non_empty_lines = [line.strip() for line in lines if line.strip()]
+    tail = non_empty_lines[-WAIT_FOR_NEW_IDEA_TAIL_LINES:]
+    return any(WAIT_FOR_NEW_IDEA_PATTERN.fullmatch(line) for line in tail)
 
 
 def git_fetch_has_new_commits() -> bool:
