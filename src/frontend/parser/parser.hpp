@@ -501,6 +501,7 @@ class Parser {
       const char* tag,
       const char* template_origin_name,
       RecordBodyState* body_state);
+  void finish_record_body_context(const std::string& saved_struct_tag);
   void apply_record_trailing_type_attributes(Node* sd);
   void store_record_body_members(
       Node* sd,

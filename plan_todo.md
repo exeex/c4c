@@ -10,6 +10,52 @@
 
 ## Current Slice
 
+- Completed: extracted the remaining record body-context teardown from
+  `parse_record_body_with_context(...)` into
+  `finish_record_body_context(...)` so the Step 6 body-context path now reads
+  as setup/body/teardown without changing brace consumption or
+  `current_struct_tag_` restore behavior
+- New helper path:
+  - `finish_record_body_context(...)`
+- Added parse-only coverage:
+  - `record_body_context_teardown_parse`
+- Baseline recorded:
+  - `test_fail_before.log`: 2207 total, 7 failed
+  - failing identities:
+    - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+    - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+    - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+    - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+    - `cpp_positive_sema_template_arg_deduction_cpp`
+    - `cpp_positive_sema_template_mixed_params_cpp`
+    - `cpp_positive_sema_template_type_subst_cpp`
+- Validation completed:
+  - focused record-body regressions passed:
+    - `record_body_context_parse`
+    - `record_body_context_teardown_parse`
+    - `record_body_loop_parse`
+    - `record_completion_handoff_parse`
+    - `record_definition_body_handoff_parse`
+  - full clean rebuild remained monotonic:
+    - top-level `test_fail_after.top.log`: 2208 total, 7 failed
+    - raw `test_fail_after.log` includes an embedded secondary `ctest`
+      summary after the top-level result, so regression comparison used the
+      sanitized top-level block
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Active target: Step 6 remains active after the body-context teardown
+  extraction; there may still be one bounded staging helper left around record
+  body / definition coordination before moving on
+- This iteration's exact target: completed the bounded Step 6 helper
+  extraction around record body-context teardown in
+  `parse_record_body_with_context(...)` and verified it against nearby
+  record-body coverage plus the full suite
+- Next intended slice: inspect whether any remaining Step 6 coordinator
+  staging around record-body or definition handoff is still substantial enough
+  for one more small helper extraction; otherwise advance to the next plan
+  step
+
 - Completed: extracted the constructor/destructor branch cluster from
   `try_parse_record_member_dispatch(...)` into
   `try_parse_record_special_member_dispatch(...)` so the Step 6

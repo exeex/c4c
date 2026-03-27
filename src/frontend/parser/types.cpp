@@ -5301,6 +5301,10 @@ void Parser::parse_record_body_with_context(
     begin_record_body_context(tag, template_origin_name, &saved_struct_tag,
                               &struct_source_name);
     parse_record_body(struct_source_name, body_state);
+    finish_record_body_context(saved_struct_tag);
+}
+
+void Parser::finish_record_body_context(const std::string& saved_struct_tag) {
     expect(TokenKind::RBrace);
     current_struct_tag_ = saved_struct_tag;
 }
