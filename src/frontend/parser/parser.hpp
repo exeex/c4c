@@ -311,6 +311,7 @@ class Parser {
   bool parse_operator_declarator_name(std::string* out_name);
   bool parse_qualified_declarator_name(std::string* out_name);
   bool is_grouped_declarator_start() const;
+  bool is_parenthesized_pointer_declarator_start();
   bool try_parse_grouped_declarator(TypeSpec& ts, const char** out_name,
                                     std::vector<long long>* out_dims);
   void parse_normal_declarator_tail(TypeSpec& ts, const char** out_name,

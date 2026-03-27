@@ -1618,6 +1618,46 @@ bool Parser::is_grouped_declarator_start() const {
     return is_grouped;
 }
 
+bool Parser::is_parenthesized_pointer_declarator_start() {
+    if (!check(TokenKind::LParen)) return false;
+
+    int pk = pos_ + 1;
+    while (pk < static_cast<int>(tokens_.size()) &&
+           tokens_[pk].kind == TokenKind::KwAttribute) {
+        ++pk;  // skip __attribute__
+        if (pk < static_cast<int>(tokens_.size()) &&
+            tokens_[pk].kind == TokenKind::LParen) {
+            int depth = 1;
+            ++pk;
+            while (pk < static_cast<int>(tokens_.size()) && depth > 0) {
+                if (tokens_[pk].kind == TokenKind::LParen) ++depth;
+                else if (tokens_[pk].kind == TokenKind::RParen) --depth;
+                ++pk;
+            }
+        }
+    }
+    if (pk >= static_cast<int>(tokens_.size())) return false;
+
+    const TokenKind lookahead = tokens_[pk].kind;
+    if (lookahead == TokenKind::Star || lookahead == TokenKind::Caret ||
+        (is_cpp_mode() &&
+         (lookahead == TokenKind::Amp || lookahead == TokenKind::AmpAmp))) {
+        return true;
+    }
+
+    if (!is_cpp_mode() ||
+        (lookahead != TokenKind::Identifier &&
+         lookahead != TokenKind::ColonColon)) {
+        return false;
+    }
+
+    const int saved_pos = pos_;
+    pos_ = pk;
+    const bool is_member_ptr_fn = consume_member_pointer_owner_prefix();
+    pos_ = saved_pos;
+    return is_member_ptr_fn;
+}
+
 bool Parser::try_parse_grouped_declarator(TypeSpec& ts, const char** out_name,
                                           std::vector<long long>* out_dims) {
     if (!is_grouped_declarator_start()) return false;
@@ -3612,40 +3652,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     bool used_paren_ptr_declarator = false;
 
     // Check for parenthesised declarator: (*name) or (ATTR *name) — function pointer
-    // Peek past optional __attribute__((...)) to find * after (
-    auto paren_star_peek = [&]() -> bool {
-        if (!check(TokenKind::LParen)) return false;
-        int pk = pos_ + 1;
-        while (pk < (int)tokens_.size() && tokens_[pk].kind == TokenKind::KwAttribute) {
-            pk++;  // skip __attribute__
-            if (pk < (int)tokens_.size() && tokens_[pk].kind == TokenKind::LParen) {
-                int d = 1; pk++;
-                while (pk < (int)tokens_.size() && d > 0) {
-                    if (tokens_[pk].kind == TokenKind::LParen) d++;
-                    else if (tokens_[pk].kind == TokenKind::RParen) d--;
-                    pk++;
-                }
-            }
-        }
-        if (pk >= (int)tokens_.size()) return false;
-        if (tokens_[pk].kind == TokenKind::Star ||
-            tokens_[pk].kind == TokenKind::Caret ||
-            (is_cpp_mode() && (tokens_[pk].kind == TokenKind::Amp ||
-                               tokens_[pk].kind == TokenKind::AmpAmp)))
-            return true;
-        // C++ pointer-to-member-function: (T::*name)(...) or (ns::T::*name)(...)
-        if (is_cpp_mode() &&
-            (tokens_[pk].kind == TokenKind::Identifier ||
-             tokens_[pk].kind == TokenKind::ColonColon)) {
-            const int saved_pos = pos_;
-            pos_ = pk;
-            bool is_member_ptr_fn = consume_member_pointer_owner_prefix();
-            pos_ = saved_pos;
-            if (is_member_ptr_fn) return true;
-        }
-        return false;
-    };
-    if (paren_star_peek()) {
+    if (is_parenthesized_pointer_declarator_start()) {
         used_paren_ptr_declarator = true;
         bool is_nested_fn_ptr = false;
         // function pointer: (*name)(...) or block pointer: (^name)(...) — record name, skip params

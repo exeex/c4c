@@ -10,6 +10,30 @@
 
 ## Current Slice
 
+- Completed: extracted the parenthesized pointer-declarator lookahead from
+  `parse_declarator()` into a helper without changing attribute skipping,
+  pointer-to-member detection, or grouped-vs-parameter-list disambiguation
+- New helper path:
+  - `is_parenthesized_pointer_declarator_start(...)`
+- Added parse-only coverage:
+  - extended `declarator_parenthesized_fn_ptr_staging_parse` with an
+    attribute-prefixed parenthesized function-pointer declarator
+- Validation completed:
+  - focused parser regressions passed:
+    - `declarator_parenthesized_fn_ptr_staging_parse`
+    - `declarator_pointer_qualifier_staging_parse`
+    - `declarator_grouped_suffix_staging_parse`
+    - `declarator_member_fn_ptr_suffix_staging_parse`
+    - `qualified_member_function_pointer_template_owner_parse`
+    - `qualified_member_pointer_template_owner_parse`
+    - `global_qualified_member_pointer_template_owner_parse`
+    - `variadic_param_pack_declarator_parse`
+    - `eastl_slice6_template_defaults_and_refqual_cpp`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2162 total, 7 failed
+    - `test_fail_after.log`: 2166 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+4` passed, `0` new failures)
 - Completed: extracted the normal declarator tail from `parse_declarator()`
   into a helper without changing qualified/operator-name capture, attribute
   handling, or array suffix staging order
@@ -330,8 +354,8 @@
 ## Next
 
 - Continue Step 5 with the next smallest declarator suffix extraction from
-  `parse_declarator()`, preferably around a remaining function-suffix or
-  operator-name staging helper that does not change parsing order
+  `parse_declarator()`, preferably around the remaining parenthesized
+  function-pointer branch staging after lookahead is now isolated
 
 ## Blockers
 
@@ -389,7 +413,12 @@
 - Added `declarator_pointer_qualifier_staging_parse` to lock grouped
   function-pointer refs and member-function-pointer qualifiers in local-decl
   form
+- `parse_declarator()` now delegates parenthesized pointer-declarator lookahead
+  to `is_parenthesized_pointer_declarator_start(...)`
+- Extended `declarator_parenthesized_fn_ptr_staging_parse` to lock
+  attribute-prefixed parenthesized function-pointer declarations before
+  refactoring the remaining parenthesized branch
 - Current monotonic baseline:
-  - `test_before.log`: 2161 total, 7 failed
-  - `test_after.log`: 2162 total, 7 failed
+  - `test_fail_before.log`: 2162 total, 7 failed
+  - `test_fail_after.log`: 2166 total, 7 failed
 - Full-suite failures remain the same known issues; regression guard passed with no new failing tests
