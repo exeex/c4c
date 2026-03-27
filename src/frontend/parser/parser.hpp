@@ -307,6 +307,11 @@ class Parser {
   bool parse_dependent_typename_specifier(std::string* out_name = nullptr);
   bool parse_operator_declarator_name(std::string* out_name);
   bool parse_qualified_declarator_name(std::string* out_name);
+  long long parse_one_declarator_array_dim(TypeSpec& ts);
+  void parse_declarator_array_suffixes(TypeSpec& ts,
+                                       std::vector<long long>* out_dims);
+  void apply_declarator_array_dims(TypeSpec& ts,
+                                   const std::vector<long long>& decl_dims);
   TypenameTemplateParamKind classify_typename_template_parameter() const;
   // Template-scope stack helpers.
   void push_template_scope(TemplateScopeKind kind,

@@ -92,6 +92,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     qualified_type_start_probe_parse
     qualified_operator_template_owner_parse
     global_qualified_member_pointer_template_owner_parse
+    declarator_array_suffix_staging_parse
 )
 
 list(APPEND CPP_POSITIVE_FRONTEND_STEMS

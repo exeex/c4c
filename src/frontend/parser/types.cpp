@@ -1560,6 +1560,104 @@ bool Parser::parse_qualified_declarator_name(std::string* out_name) {
     return true;
 }
 
+namespace {
+
+void clear_declarator_array_type(TypeSpec* ts) {
+    ts->array_size = -1;
+    ts->array_rank = 0;
+    for (int i = 0; i < 8; ++i) ts->array_dims[i] = -1;
+    ts->is_ptr_to_array = false;
+    ts->array_size_expr = nullptr;
+}
+
+int declarator_base_array_rank(const TypeSpec& ts) {
+    if (ts.array_rank > 0) return ts.array_rank;
+    if (ts.array_size != -1) return 1;
+    return 0;
+}
+
+long long declarator_base_array_dim(const TypeSpec& ts, int index) {
+    if (ts.array_rank > 0) {
+        if (index >= 0 && index < ts.array_rank) return ts.array_dims[index];
+        return -1;
+    }
+    if (index == 0 && ts.array_size != -1) return ts.array_size;
+    return -1;
+}
+
+}  // namespace
+
+long long Parser::parse_one_declarator_array_dim(TypeSpec& ts) {
+    expect(TokenKind::LBracket);
+    long long dim = -2;  // unsized []
+    if (!check(TokenKind::RBracket)) {
+        // C99 array parameter qualifiers: [static N], [const N], [volatile N],
+        // [restrict N], [const *] (VLA pointer). Skip qualifier keywords.
+        while (is_qualifier(cur().kind) || cur().kind == TokenKind::KwStatic)
+            consume();
+        // [const *] or [static *]: unsized VLA pointer
+        if (check(TokenKind::Star)) {
+            consume();
+            expect(TokenKind::RBracket);
+            return -2;
+        }
+        if (check(TokenKind::RBracket)) {
+            expect(TokenKind::RBracket);
+            return dim;
+        }
+        Node* sz = parse_assign_expr();
+        ts.array_size_expr = sz;
+        long long cv = 0;
+        if (sz && eval_const_int(sz, &cv, &struct_tag_def_map_) && cv > 0) {
+            dim = cv;
+        } else if (sz && sz->kind == NK_INT_LIT) {
+            dim = sz->ival;
+        } else {
+            dim = 0;  // dynamic / unknown at parse time
+        }
+    }
+    expect(TokenKind::RBracket);
+    return dim;
+}
+
+void Parser::parse_declarator_array_suffixes(
+    TypeSpec& ts, std::vector<long long>* out_dims) {
+    if (!out_dims) return;
+    while (check(TokenKind::LBracket))
+        out_dims->push_back(parse_one_declarator_array_dim(ts));
+}
+
+void Parser::apply_declarator_array_dims(
+    TypeSpec& ts, const std::vector<long long>& decl_dims) {
+    if (decl_dims.empty()) return;
+    // Preserve array_size_expr set by parse_one_declarator_array_dim (for first dim).
+    Node* saved_size_expr = ts.array_size_expr;
+    // If the base TypeSpec is already a pointer-to-array (e.g. A3_28* paa[2]),
+    // record the old (typedef's) array rank as inner_rank so that llvm_ty
+    // can produce [N x ptr] rather than [N x [inner x ...]].
+    if (ts.ptr_level > 0 && ts.is_ptr_to_array) {
+        ts.inner_rank = declarator_base_array_rank(ts);
+        ts.is_ptr_to_array = false;
+    }
+    long long merged[8];
+    for (int i = 0; i < 8; ++i) merged[i] = -1;
+    int out = 0;
+    for (size_t i = 0; i < decl_dims.size() && out < 8; ++i) {
+        merged[out++] = decl_dims[i];
+    }
+    const int old_rank = declarator_base_array_rank(ts);
+    for (int i = 0; i < old_rank && out < 8; ++i) {
+        merged[out++] = declarator_base_array_dim(ts, i);
+    }
+    clear_declarator_array_type(&ts);
+    ts.array_rank = out;
+    for (int i = 0; i < out; ++i) ts.array_dims[i] = merged[i];
+    ts.array_size = out > 0 ? ts.array_dims[0] : -1;
+    // Restore array_size_expr for first dim when it couldn't be evaluated at parse time.
+    if (saved_size_expr && !decl_dims.empty() && decl_dims[0] <= 0)
+        ts.array_size_expr = saved_size_expr;
+}
+
 Parser::TypenameTemplateParamKind Parser::classify_typename_template_parameter() const {
     if (check(TokenKind::KwClass))
         return TypenameTemplateParamKind::TypeParameter;
@@ -3283,84 +3381,6 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     if (out_n_ret_fn_ptr_params) *out_n_ret_fn_ptr_params = 0;
     if (out_ret_fn_ptr_variadic) *out_ret_fn_ptr_variadic = false;
 
-    auto clear_array = [&](TypeSpec& t) {
-        t.array_size = -1;
-        t.array_rank = 0;
-        for (int i = 0; i < 8; ++i) t.array_dims[i] = -1;
-        t.is_ptr_to_array = false;
-        t.array_size_expr = nullptr;
-    };
-    auto base_array_rank = [&]() -> int {
-        if (ts.array_rank > 0) return ts.array_rank;
-        if (ts.array_size != -1) return 1;
-        return 0;
-    };
-    auto base_array_dim = [&](int i) -> long long {
-        if (ts.array_rank > 0) {
-            if (i >= 0 && i < ts.array_rank) return ts.array_dims[i];
-            return -1;
-        }
-        if (i == 0 && ts.array_size != -1) return ts.array_size;
-        return -1;
-    };
-    auto apply_decl_dims = [&](const std::vector<long long>& decl_dims) {
-        if (decl_dims.empty()) return;
-        // Preserve array_size_expr set by parse_one_array_dim (for first dim).
-        Node* saved_size_expr = ts.array_size_expr;
-        // If the base TypeSpec is already a pointer-to-array (e.g. A3_28* paa[2]),
-        // record the old (typedef's) array rank as inner_rank so that llvm_ty
-        // can produce [N x ptr] rather than [N x [inner x ...]].
-        if (ts.ptr_level > 0 && ts.is_ptr_to_array) {
-            ts.inner_rank = base_array_rank();
-            ts.is_ptr_to_array = false;
-        }
-        long long merged[8];
-        for (int i = 0; i < 8; ++i) merged[i] = -1;
-        int out = 0;
-        for (size_t i = 0; i < decl_dims.size() && out < 8; ++i) {
-            merged[out++] = decl_dims[i];
-        }
-        int old_rank = base_array_rank();
-        for (int i = 0; i < old_rank && out < 8; ++i) {
-            merged[out++] = base_array_dim(i);
-        }
-        clear_array(ts);
-        ts.array_rank = out;
-        for (int i = 0; i < out; ++i) ts.array_dims[i] = merged[i];
-        ts.array_size = out > 0 ? ts.array_dims[0] : -1;
-        // Restore array_size_expr for first dim when it couldn't be evaluated at parse time
-        if (saved_size_expr && !decl_dims.empty() && decl_dims[0] <= 0)
-            ts.array_size_expr = saved_size_expr;
-    };
-    auto parse_one_array_dim = [&]() -> long long {
-        expect(TokenKind::LBracket);
-        long long dim = -2;  // unsized []
-        if (!check(TokenKind::RBracket)) {
-            // C99 array parameter qualifiers: [static N], [const N], [volatile N],
-            // [restrict N], [const *] (VLA pointer). Skip qualifier keywords.
-            while (is_qualifier(cur().kind) || cur().kind == TokenKind::KwStatic)
-                consume();
-            // [const *] or [static *]: unsized VLA pointer
-            if (check(TokenKind::Star)) {
-                consume();
-                expect(TokenKind::RBracket);
-                return -2;
-            }
-            if (check(TokenKind::RBracket)) { expect(TokenKind::RBracket); return dim; }
-            Node* sz = parse_assign_expr();
-            ts.array_size_expr = sz;
-            long long cv = 0;
-            if (sz && eval_const_int(sz, &cv, &struct_tag_def_map_) && cv > 0) {
-                dim = cv;
-            } else if (sz && sz->kind == NK_INT_LIT) {
-                dim = sz->ival;
-            } else {
-                dim = 0;  // dynamic / unknown at parse time
-            }
-        }
-        expect(TokenKind::RBracket);
-        return dim;
-    };
     std::vector<long long> decl_dims;
     // Skip qualifiers/attributes that can appear before pointer stars
     // This handles trailing qualifiers on the base type: e.g. `struct S const *p`
@@ -3589,9 +3609,9 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         }
         // Array suffix after function pointer: (*p)[N] / (*p)[N][M]
         while (check(TokenKind::LBracket)) {
-            decl_dims.push_back(parse_one_array_dim());
+            decl_dims.push_back(parse_one_declarator_array_dim(ts));
         }
-        apply_decl_dims(decl_dims);
+        apply_declarator_array_dims(ts, decl_dims);
         if (!decl_dims.empty()) ts.is_ptr_to_array = used_paren_ptr_declarator;
         return;
     }
@@ -3631,13 +3651,11 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
                 *out_name = arena_.strdup(cur().lexeme);
                 consume();
             }
-            while (check(TokenKind::LBracket))
-                decl_dims.push_back(parse_one_array_dim());
+            parse_declarator_array_suffixes(ts, &decl_dims);
             expect(TokenKind::RParen);
             // Any trailing array dims outside the paren (e.g. int (a[2])[3])
-            while (check(TokenKind::LBracket))
-                decl_dims.push_back(parse_one_array_dim());
-            apply_decl_dims(decl_dims);
+            parse_declarator_array_suffixes(ts, &decl_dims);
+            apply_declarator_array_dims(ts, decl_dims);
             if (!decl_dims.empty()) ts.is_ptr_to_array = used_paren_ptr_declarator;
             return;
         }
@@ -3668,10 +3686,8 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     parse_attributes(&ts);
 
     // Array suffix: [size] or [] (possibly multi-dimensional)
-    while (check(TokenKind::LBracket)) {
-        decl_dims.push_back(parse_one_array_dim());
-    }
-    apply_decl_dims(decl_dims);
+    parse_declarator_array_suffixes(ts, &decl_dims);
+    apply_declarator_array_dims(ts, decl_dims);
     if (!decl_dims.empty()) ts.is_ptr_to_array = used_paren_ptr_declarator;
 
     // Function suffix: (params) — turns the declarator into a function

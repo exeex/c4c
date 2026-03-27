@@ -6,18 +6,22 @@
 
 ## Active Item
 
-- Step 4: Consolidate qualified and dependent name consumption
+- Step 5: Compress declarator suffix handling
 
 ## Current Slice
 
-- Completed: extracted the shared declarator-side owner-prefix path for
-  qualified `::*` member pointers
-- Reused `consume_member_pointer_owner_prefix()` in:
-  - plain pointer-to-member declarators
-  - parenthesized pointer-to-member-function lookahead
-  - parenthesized pointer-to-member-function consumption
+- Completed: extracted the first Step 5 declarator staging helpers for
+  array-suffix parsing/application
+- New helper path:
+  - `parse_one_declarator_array_dim(...)`
+  - `parse_declarator_array_suffixes(...)`
+  - `apply_declarator_array_dims(...)`
+- Reused the helper path in:
+  - parenthesized function-pointer declarators
+  - grouped declarators
+  - normal declarators
 - Added parse-only coverage:
-  - `global_qualified_member_pointer_template_owner_parse`
+  - `declarator_array_suffix_staging_parse`
 
 ## Completed
 
@@ -159,14 +163,36 @@
   - `test_before.log`: 2159 total, 7 failed
   - `test_after.log`: 2160 total, 7 failed
   - regression guard: passed (`+1` passed, `0` new failures)
+- Continued Step 5 by extracting declarator array-suffix staging helpers:
+  - `parse_one_declarator_array_dim(...)`
+  - `parse_declarator_array_suffixes(...)`
+  - `apply_declarator_array_dims(...)`
+- Reduced `parse_declarator()` array handling to helper-driven stages in:
+  - parenthesized function-pointer declarators
+  - grouped declarators
+  - normal declarators
+- Added parse-only coverage:
+  - `declarator_array_suffix_staging_parse`
+- Rebuilt successfully with `cmake --build build -j8`
+- Targeted parser regressions passed:
+  - `declarator_array_suffix_staging_parse`
+  - `eastl_slice7d_qualified_declarator_parse`
+  - `global_qualified_member_pointer_template_owner_parse`
+  - `member_pointer_param_parse`
+  - `qualified_member_function_pointer_template_owner_parse`
+  - `qualified_member_pointer_template_owner_parse`
+  - `qualified_operator_template_owner_parse`
+  - `variadic_param_pack_declarator_parse`
+- Full clean rebuild `test_after.log` remained monotonic:
+  - `test_before.log`: 2160 total, 7 failed
+  - `test_after.log`: 2161 total, 7 failed
+  - regression guard: passed (`+1` passed, `0` new failures)
 
 ## Next
 
-- Re-evaluate whether Step 4 has any meaningful qualified/dependent-name
-  duplication left in `types.cpp`; if not, advance to Step 5 and extract the
-  first declarator-stage helper without changing grammar behavior
-- Keep follow-up coverage parser-only and narrowly focused on declarator-stage
-  structure rather than new grammar acceptance
+- Extract the next smallest `parse_declarator()` stage around pointer/ref
+  qualifier consumption or parenthesized function-pointer handling without
+  changing declarator precedence
 
 ## Blockers
 
@@ -199,7 +225,15 @@
 - Added `qualified_operator_template_owner_parse` to lock templated owner spellings for out-of-class operator declarators
 - The remaining `::*` owner-prefix duplication now lives behind `consume_member_pointer_owner_prefix()`
 - Added `global_qualified_member_pointer_template_owner_parse` to lock global-qualified templated owner spellings through the shared helper path
+- Step 4 is sufficiently consolidated for now; the next work is Step 5 helper
+  extraction inside `parse_declarator()`
+- The immediate Step 5 slice is array-suffix staging for grouped, normal, and
+  parenthesized function-pointer declarators
+- `parse_declarator()` now uses dedicated helper methods for array-dimension
+  parsing/application across all three declarator paths
+- Added `declarator_array_suffix_staging_parse` to lock grouped array and
+  function-pointer-array suffix handling
 - Current monotonic baseline:
-  - `test_before.log`: 2159 total, 7 failed
-  - `test_after.log`: 2160 total, 7 failed
+  - `test_before.log`: 2160 total, 7 failed
+  - `test_after.log`: 2161 total, 7 failed
 - Full-suite failures remain the same known issues; regression guard passed with no new failing tests
