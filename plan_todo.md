@@ -10,6 +10,57 @@
 
 ## Current Slice
 
+- Completed: Step 5 layout-helper coordinator extraction
+- Completed: turned `compute_struct_layout(...)` into a narrow coordinator over
+  the named helper surface:
+  - `compute_empty_record_layout(...)`
+  - `field_layout_type(...)`
+  - `prepare_field_layout(...)`
+  - `compute_union_layout(...)`
+  - `compute_record_layout(...)`
+  - `apply_struct_align(...)`
+- Kept scope intentionally narrow:
+  - field sizing, field alignment, `#pragma pack`, empty-record sizing, union
+    layout, and non-union record layout semantics stayed unchanged
+  - no lowering-order or template-instantiation behavior changed outside the
+    layout helper cluster
+- Added focused HIR coverage for this slice:
+  - `cpp_hir_record_packed_aligned_layout` asserts a packed record with a
+    trailing `aligned(8)` attribute still materializes as:
+    - `struct LayoutProbe size=16 align=8`
+    - `field a ... offset=0 size=1 align=1`
+    - `field b ... offset=1 size=4 align=1`
+    - `field data ... offset=5 size=8 align=1`
+- Validation completed:
+  - targeted HIR regressions passed:
+    - `cpp_hir_record_packed_aligned_layout`
+    - `cpp_hir_template_deferred_nttp_expr`
+    - `cpp_hir_template_deferred_nttp_paren_expr`
+    - `cpp_hir_template_deferred_nttp_bool_expr`
+    - `cpp_hir_template_deferred_nttp_logic_expr`
+    - `cpp_hir_template_deferred_nttp_true_expr`
+    - `cpp_hir_template_deferred_nttp_number_expr`
+    - `cpp_hir_template_alias_deferred_nttp_static_member`
+    - `cpp_hir_template_function_pack_signature_binding`
+    - `cpp_hir_template_function_recursive_body_binding`
+  - full clean rebuild remained monotonic:
+    - `test_fail_before.log`: 2228 total, 7 failed
+    - `test_fail_after.log`: 2229 total, 7 failed
+    - failing identities unchanged:
+      - `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+      - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+      - `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+      - `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+      - `cpp_positive_sema_template_arg_deduction_cpp`
+      - `cpp_positive_sema_template_mixed_params_cpp`
+      - `cpp_positive_sema_template_type_subst_cpp`
+    - regression guard: passed (`+1` passed, `0` new failures)
+- Next intended slice:
+  - Step 5 reassessment of the remaining raw type/layout query helpers
+    (`type_size_bytes`, `type_align_bytes`, `field_size_bytes`,
+    `field_align_bytes`) to decide whether one more extraction meaningfully
+    improves isolation or whether Step 5 is effectively complete
+
 - Completed: Step 4 embedded-parser template-lookup surface extraction
 - Completed: extracted the deferred-NTTP parser's direct dependency on the HIR
   template-definition / specialization / concrete-struct maps behind the named

@@ -519,6 +519,15 @@ set_tests_properties(cpp_hir_template_alias_deferred_nttp_static_member PROPERTI
 )
 
 add_test(
+  NAME cpp_hir_record_packed_aligned_layout
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/record_packed_aligned_layout_hir.cpp"
+)
+set_tests_properties(cpp_hir_record_packed_aligned_layout PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "struct LayoutProbe size=16 align=8.*field a: char llvm_idx=0 offset=0 size=1 align=1.*field b: int llvm_idx=1 offset=1 size=4 align=1.*field data: int\\[2\\] llvm_idx=2 offset=5 size=8 align=1"
+)
+
+add_test(
   NAME cpp_hir_spec_key_identity
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/specialization_identity.cpp"
 )

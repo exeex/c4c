@@ -724,82 +724,104 @@ int field_align_bytes(const hir::Module& module, const HirStructField& f) {
   return type_align_bytes(module, f.elem_type);
 }
 
-void compute_struct_layout(hir::Module* module, HirStructDef& def) {
-  if (!module) return;
+namespace {
 
-  const int pack = def.pack_align;  // 0 = default, >0 = cap alignment
+bool has_cpp_empty_object_size(const hir::Module& module) {
+  return module.source_profile == SourceProfile::CppSubset ||
+         module.source_profile == SourceProfile::C4;
+}
 
-  if (def.fields.empty()) {
-    const bool has_cpp_empty_object_size =
-        module->source_profile == SourceProfile::CppSubset ||
-        module->source_profile == SourceProfile::C4;
-    if (!has_cpp_empty_object_size) {
-      def.align_bytes = std::max(1, def.struct_align);
-      def.size_bytes = 0;
-      return;
-    }
-    def.align_bytes = std::max(1, def.struct_align);
-    def.size_bytes = std::max(1, def.align_bytes);
-    return;
-  }
-
-  for (auto& field : def.fields) {
-    if (field.bit_width >= 0) {
-      field.align_bytes = std::max(1, field.storage_unit_bits / 8);
-      field.size_bytes = std::max(1, field.storage_unit_bits / 8);
-    } else {
-      TypeSpec field_ts = field.elem_type;
-      if (field.array_first_dim >= 0) {
-        field_ts.array_rank = std::max(field_ts.array_rank, 1);
-        field_ts.array_size = field.array_first_dim;
-        field_ts.array_dims[0] = field.array_first_dim;
-      }
-      field.align_bytes = type_align_bytes(*module, field_ts);
-      field.size_bytes = type_size_bytes(*module, field_ts);
-    }
-    // Apply #pragma pack: cap field alignment to pack value
-    if (pack > 0 && field.align_bytes > pack) {
-      field.align_bytes = pack;
-    }
-  }
-
-  if (def.is_union) {
-    def.align_bytes = 1;
+void compute_empty_record_layout(const hir::Module& module, HirStructDef& def) {
+  def.align_bytes = std::max(1, def.struct_align);
+  if (!has_cpp_empty_object_size(module)) {
     def.size_bytes = 0;
-    for (auto& field : def.fields) {
-      field.offset_bytes = 0;
-      int fa = field_align_bytes(*module, field);
-      if (pack > 0 && fa > pack) fa = pack;
-      def.align_bytes = std::max(def.align_bytes, fa);
-      def.size_bytes = std::max(def.size_bytes, field_size_bytes(*module, field));
-    }
-    // __attribute__((aligned(N))) boosts struct alignment
-    if (def.struct_align > 0)
-      def.align_bytes = std::max(def.align_bytes, def.struct_align);
-    def.size_bytes = align_to(def.size_bytes, def.align_bytes);
     return;
   }
+  def.size_bytes = std::max(1, def.align_bytes);
+}
 
+TypeSpec field_layout_type(const HirStructField& field) {
+  TypeSpec field_ts = field.elem_type;
+  if (field.array_first_dim >= 0) {
+    field_ts.array_rank = std::max(field_ts.array_rank, 1);
+    field_ts.array_size = field.array_first_dim;
+    field_ts.array_dims[0] = field.array_first_dim;
+  }
+  return field_ts;
+}
+
+void prepare_field_layout(const hir::Module& module, HirStructField& field, int pack) {
+  if (field.bit_width >= 0) {
+    field.align_bytes = std::max(1, field.storage_unit_bits / 8);
+    field.size_bytes = std::max(1, field.storage_unit_bits / 8);
+  } else {
+    const TypeSpec field_ts = field_layout_type(field);
+    field.align_bytes = type_align_bytes(module, field_ts);
+    field.size_bytes = type_size_bytes(module, field_ts);
+  }
+  if (pack > 0 && field.align_bytes > pack) field.align_bytes = pack;
+}
+
+void apply_struct_align(HirStructDef& def) {
+  if (def.struct_align > 0)
+    def.align_bytes = std::max(def.align_bytes, def.struct_align);
+}
+
+void compute_union_layout(const hir::Module& module, HirStructDef& def, int pack) {
+  def.align_bytes = 1;
+  def.size_bytes = 0;
+  for (auto& field : def.fields) {
+    field.offset_bytes = 0;
+    int field_align = field_align_bytes(module, field);
+    if (pack > 0 && field_align > pack) field_align = pack;
+    def.align_bytes = std::max(def.align_bytes, field_align);
+    def.size_bytes = std::max(def.size_bytes, field_size_bytes(module, field));
+  }
+  apply_struct_align(def);
+  def.size_bytes = align_to(def.size_bytes, def.align_bytes);
+}
+
+void compute_record_layout(const hir::Module& module, HirStructDef& def, int pack) {
   def.align_bytes = 1;
   int offset = 0;
   int last_llvm_idx = -1;
   int last_offset = 0;
   for (auto& field : def.fields) {
     if (field.llvm_idx != last_llvm_idx) {
-      int field_align = field_align_bytes(*module, field);
+      int field_align = field_align_bytes(module, field);
       if (pack > 0 && field_align > pack) field_align = pack;
       offset = align_to(offset, field_align);
       last_offset = offset;
-      offset += field_size_bytes(*module, field);
+      offset += field_size_bytes(module, field);
       last_llvm_idx = field.llvm_idx;
       def.align_bytes = std::max(def.align_bytes, field_align);
     }
     field.offset_bytes = last_offset;
   }
-  // __attribute__((aligned(N))) boosts struct alignment
-  if (def.struct_align > 0)
-    def.align_bytes = std::max(def.align_bytes, def.struct_align);
+  apply_struct_align(def);
   def.size_bytes = align_to(offset, def.align_bytes);
+}
+
+}  // namespace
+
+void compute_struct_layout(hir::Module* module, HirStructDef& def) {
+  if (!module) return;
+
+  const int pack = def.pack_align;  // 0 = default, >0 = cap alignment
+
+  if (def.fields.empty()) {
+    compute_empty_record_layout(*module, def);
+    return;
+  }
+
+  for (auto& field : def.fields) prepare_field_layout(*module, field, pack);
+
+  if (def.is_union) {
+    compute_union_layout(*module, def, pack);
+    return;
+  }
+
+  compute_record_layout(*module, def, pack);
 }
 
 class Lowerer {
