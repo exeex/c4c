@@ -4948,6 +4948,11 @@ bool Parser::try_parse_record_member_with_template_prelude(
                                             check_dup_field);
 }
 
+bool Parser::prepare_record_member_entry() {
+    skip_attributes();
+    return !check(TokenKind::RBrace);
+}
+
 bool Parser::try_parse_record_member_prelude() {
     if (try_parse_record_access_label()) return true;
     if (try_skip_record_friend_member()) return true;
@@ -4961,9 +4966,7 @@ bool Parser::try_parse_record_member(
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
     const std::function<void(const char*)>& check_dup_field) {
-    skip_attributes();
-    if (check(TokenKind::RBrace)) return false;
-
+    if (!prepare_record_member_entry()) return false;
     if (try_parse_record_member_prelude()) return true;
     return try_parse_record_member_with_template_prelude(
         struct_source_name, fields, methods, member_typedef_names,
