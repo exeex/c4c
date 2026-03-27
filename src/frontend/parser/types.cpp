@@ -1926,6 +1926,15 @@ void Parser::parse_parenthesized_pointer_declarator(
     if (!decl_dims.empty()) ts.is_ptr_to_array = true;
 }
 
+void Parser::parse_non_parenthesized_declarator(TypeSpec& ts,
+                                                const char** out_name) {
+    std::vector<long long> decl_dims;
+    if (!try_parse_grouped_declarator(ts, out_name, &decl_dims)) {
+        parse_normal_declarator_tail(ts, out_name, &decl_dims);
+    }
+    apply_declarator_array_dims(ts, decl_dims);
+}
+
 void Parser::store_declarator_function_pointer_params(
     Node*** out_params, int* out_n_params, bool* out_variadic,
     const std::vector<Node*>& params, bool variadic) {
@@ -3759,7 +3768,6 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
     if (out_n_ret_fn_ptr_params) *out_n_ret_fn_ptr_params = 0;
     if (out_ret_fn_ptr_variadic) *out_ret_fn_ptr_variadic = false;
 
-    std::vector<long long> decl_dims;
     parse_declarator_prefix(ts, out_is_parameter_pack);
 
     // Check for parenthesised declarator: (*name) or (ATTR *name) — function pointer
@@ -3772,16 +3780,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         return;
     }
 
-    // Grouped declarator: (name) or (name[N]) or (name[N][M]) — e.g. int *(p[25])
-    // Covers the case where paren_star_peek was false because the paren contains
-    // an identifier (not a pointer star), but the declarator is still grouped.
-    if (try_parse_grouped_declarator(ts, out_name, &decl_dims)) {
-        apply_declarator_array_dims(ts, decl_dims);
-        return;
-    }
-
-    parse_normal_declarator_tail(ts, out_name, &decl_dims);
-    apply_declarator_array_dims(ts, decl_dims);
+    parse_non_parenthesized_declarator(ts, out_name);
 
     // Function suffix: (params) — turns the declarator into a function
     // We only record variadic here; full param parsing is done by caller.

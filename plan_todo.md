@@ -10,18 +10,44 @@
 
 ## Current Slice
 
-- Active target: extract the next declarator staging helper from
-  `parse_declarator()` after the shared prefix scan, likely around the
-  grouped/parenthesized-vs-normal dispatch, without changing suffix ordering
-  or function-pointer detection
-- This iteration's exact target: extract the named-vs-nested inner branch from
-  `parse_parenthesized_pointer_declarator()` into a helper, preserving
-  anonymous parenthesized function-pointer parameter parsing, nested function
-  pointer recursion, and post-paren suffix ordering
-- Completed: extracted the named-vs-nested inner branch from
-  `parse_parenthesized_pointer_declarator()` without changing anonymous
-  parenthesized function-pointer parameters, nested function-pointer recursion,
-  or post-paren suffix ordering
+- Active target: continue turning `parse_declarator()` into a staged
+  coordinator by extracting the remaining non-parenthesized grouped-vs-normal
+  tail path after the shared prefix scan, without changing suffix ordering or
+  function-pointer detection
+- This iteration's exact target: extract the grouped-vs-normal non-parenthesized
+  declarator dispatch from `parse_declarator()` into a helper, preserving
+  grouped declarator lookahead, qualified-name capture, and staged array-dim
+  application
+- Completed: extracted the grouped-vs-normal non-parenthesized declarator path
+  from `parse_declarator()` without changing grouped declarator lookahead,
+  qualified-name capture, or staged array-dim application
+- New helper path:
+  - `parse_non_parenthesized_declarator(...)`
+- Added parse-only coverage:
+  - extended `declarator_grouped_suffix_staging_parse` with mixed grouped and
+    normal declarators in shared declarations and parameters
+- Validation completed:
+  - focused parser regressions passed:
+    - `declarator_grouped_suffix_staging_parse`
+    - `declarator_pointer_qualifier_staging_parse`
+    - `declarator_parenthesized_fn_ptr_staging_parse`
+    - `declarator_member_fn_ptr_suffix_staging_parse`
+    - `declarator_normal_tail_staging_parse`
+    - `declarator_array_suffix_staging_parse`
+    - `qualified_member_function_pointer_template_owner_parse`
+    - `qualified_member_pointer_template_owner_parse`
+    - `global_qualified_member_pointer_template_owner_parse`
+    - `variadic_param_pack_declarator_parse`
+    - `eastl_slice6_template_defaults_and_refqual_cpp`
+  - full clean rebuild `test_after.log` remained monotonic:
+    - `test_before.log`: 2166 total, 7 failed
+    - `test_after.log`: 2166 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+0` passed, `0` new failures, `0` new >30s
+      tests)
+- Next intended slice: extract the remaining normal-tail function-suffix stage
+  from `parse_declarator()` into a helper so the top-level declarator flow is
+  prefix -> parenthesized/non-parenthesized dispatch -> suffix coordination
 - New helper path:
   - `parse_parenthesized_pointer_declarator_inner(...)`
 - Added parse-only coverage:
