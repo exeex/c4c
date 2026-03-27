@@ -370,6 +370,9 @@ class Parser {
   bool try_parse_nested_record_member(
       std::vector<Node*>* fields,
       const std::function<void(const char*)>& check_dup_field);
+  bool try_parse_record_enum_member(
+      std::vector<Node*>* fields,
+      const std::function<void(const char*)>& check_dup_field);
   Node* parse_struct_or_union(bool is_union);
 
   // Parse enum body { variants... } or just a tag reference.

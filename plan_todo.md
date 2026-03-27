@@ -10,6 +10,39 @@
 
 ## Current Slice
 
+- Active target: Step 6 continues after record enum-member extraction; the
+  next slice should keep flattening `parse_struct_or_union()` with another
+  top-level member-category helper or prelude helper
+- This iteration's exact target: add parse-only coverage for record enum
+  members, then extract the existing inline enum-member branch into a focused
+  helper without changing enum declarator parsing, bitfield width capture,
+  field insertion order, or trailing `;` recovery
+- Completed: extracted the record enum-member branch from
+  `parse_struct_or_union()` into a focused helper without changing enum
+  declarator parsing, bitfield width capture, field insertion order, or
+  trailing `;` recovery
+- New helper path:
+  - `try_parse_record_enum_member(...)`
+- Added parse-only coverage:
+  - `record_member_enum_parse`
+- Validation completed:
+  - focused parser regressions passed:
+    - `record_member_enum_parse`
+    - `record_member_typedef_using_parse`
+    - `record_nested_aggregate_member_parse`
+    - `access_labels_parse`
+    - `eastl_slice7c_struct_body_recovery`
+    - `template_struct_specialization_parse`
+  - full clean rebuild `test_fail_after.log` remained monotonic:
+    - `test_fail_before.log`: 2168 total, 7 failed
+    - `test_fail_after.log`: 2169 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures, `0` new >30s
+      tests)
+- Next intended slice: continue Step 6 by extracting another top-level
+  record-body dispatcher branch or a shared record-member prelude so
+  `parse_struct_or_union()` keeps moving toward explicit member-category
+  dispatch
 - Active target: Step 6 continues with the next top-level record member
   category after typedef/using-member extraction, likely the enum-member path
   or another prelude/helper split that further flattens

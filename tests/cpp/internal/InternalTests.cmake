@@ -100,6 +100,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     declarator_normal_tail_staging_parse
     record_nested_aggregate_member_parse
     record_member_typedef_using_parse
+    record_member_enum_parse
 )
 
 list(APPEND CPP_POSITIVE_FRONTEND_STEMS

@@ -3973,6 +3973,55 @@ bool Parser::try_parse_nested_record_member(
     return true;
 }
 
+bool Parser::try_parse_record_enum_member(
+    std::vector<Node*>* fields,
+    const std::function<void(const char*)>& check_dup_field) {
+    if (!check(TokenKind::KwEnum))
+        return false;
+
+    consume();
+    Node* ed = parse_enum();
+    if (ed && parsing_top_level_context_) struct_defs_.push_back(ed);
+    // After the enum body, there may be one or more field declarators:
+    // e.g.  enum { X } x;   or   enum E { A, B } kind;
+    // If the next token starts a declarator (not ; or }), parse it.
+    if (!check(TokenKind::Semi) && !check(TokenKind::RBrace)) {
+        TypeSpec fts{};
+        fts.array_size = -1;
+        fts.array_rank = 0;
+        // Base type is the enum (use int as fallback since enums are ints)
+        fts.base = TB_INT;
+        if (ed && ed->name) {
+            // Prefer enum type tag if available
+            fts.base = TB_ENUM;
+            fts.tag  = ed->name;
+        }
+        while (true) {
+            TypeSpec cur_fts = fts;
+            const char* fname = nullptr;
+            parse_declarator(cur_fts, &fname);
+            skip_attributes();
+            long long bf_width = -1;
+            if (check(TokenKind::Colon)) {
+                consume();
+                Node* bfw = parse_assign_expr();
+                if (bfw) eval_const_int(bfw, &bf_width, &struct_tag_def_map_);
+            }
+            if (fname) {
+                Node* f = make_node(NK_DECL, cur().line);
+                f->type = cur_fts;
+                f->name = fname;
+                f->ival = bf_width;  // -1 = not a bitfield; N = N-bit bitfield
+                check_dup_field(fname);
+                fields->push_back(f);
+            }
+            if (!match(TokenKind::Comma)) break;
+        }
+    }
+    match(TokenKind::Semi);
+    return true;
+}
+
 Node* Parser::parse_struct_or_union(bool is_union) {
     int ln = cur().line;
     // Parse attributes before tag name — capture packed attribute.
@@ -4513,49 +4562,7 @@ Node* Parser::parse_struct_or_union(bool is_union) {
             continue;
         }
 
-        if (check(TokenKind::KwEnum)) {
-            consume();
-            Node* ed = parse_enum();
-            if (ed && parsing_top_level_context_) struct_defs_.push_back(ed);
-            // After the enum body, there may be one or more field declarators:
-            // e.g.  enum { X } x;   or   enum E { A, B } kind;
-            // If the next token starts a declarator (not ; or }), parse it.
-            if (!check(TokenKind::Semi) && !check(TokenKind::RBrace)) {
-                TypeSpec fts{};
-                fts.array_size = -1;
-                fts.array_rank = 0;
-                // Base type is the enum (use int as fallback since enums are ints)
-                fts.base = TB_INT;
-                if (ed && ed->name) {
-                    // Prefer enum type tag if available
-                    fts.base = TB_ENUM;
-                    fts.tag  = ed->name;
-                }
-                bool first_f = true;
-                while (true) {
-                    TypeSpec cur_fts = fts;
-                    const char* fname = nullptr;
-                    parse_declarator(cur_fts, &fname);
-                    skip_attributes();
-                    long long bf_width = -1;
-                    if (check(TokenKind::Colon)) {
-                        consume();
-                        Node* bfw = parse_assign_expr();
-                        if (bfw) eval_const_int(bfw, &bf_width, &struct_tag_def_map_);
-                    }
-                    if (fname) {
-                        Node* f = make_node(NK_DECL, cur().line);
-                        f->type = cur_fts;
-                        f->name = fname;
-                        f->ival = bf_width;  // -1 = not a bitfield; N = N-bit bitfield
-                        check_dup_field(fname);
-                        fields.push_back(f);
-                    }
-                    (void)first_f; first_f = false;
-                    if (!match(TokenKind::Comma)) break;
-                }
-            }
-            match(TokenKind::Semi);
+        if (try_parse_record_enum_member(&fields, check_dup_field)) {
             continue;
         }
 
