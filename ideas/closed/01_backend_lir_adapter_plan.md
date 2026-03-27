@@ -79,6 +79,20 @@ Define one stable contract for first bring-up:
 - unit test coverage exists for target factory / dispatch entry
 - tests clearly separate adapter failures from target codegen failures
 
+## Completion
+
+Completed on 2026-03-28.
+
+Delivered:
+
+- `src/backend/` now owns target parsing, backend entry dispatch, and the first return-only LIR adapter boundary without redesigning existing LIR producers
+- backend runtime validation covers supported-target entry, unsupported-target rejection, `return 0`, `return 2 + 3`, and missing external-toolchain attribution
+- the external fallback contract is explicit in the backend runtime harness via persisted `.ll` output plus deterministic `clang --target=<triple>` invocation instead of a shell pipe
+
+Leftover issues:
+
+- backend coverage is still intentionally limited to the narrow return-only adapter slice; broader instruction support belongs to follow-on backend port ideas
+
 ## Good First Patch
 
 Add `src/backend/` skeleton, target enum/factory, backend entry point, and a minimal LIR dispatch path that can lower a trivial return-only program through external tool fallback.

@@ -228,27 +228,63 @@ if(EXISTS "${EXAMPLE_C}")
   )
 endif()
 
-if(CLANG_EXECUTABLE)
-  foreach(src IN LISTS INTERNAL_BACKEND_TEST_SRCS)
-    get_filename_component(stem "${src}" NAME_WE)
-    set(test_name "backend_runtime_${stem}")
-    set(expect_exit_code 0)
-    if(stem STREQUAL "return_add")
-      set(expect_exit_code 5)
-    endif()
+set(BACKEND_RUNTIME_TARGET_TRIPLE "")
+if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
+  if(APPLE)
+    set(BACKEND_RUNTIME_TARGET_TRIPLE "aarch64-apple-darwin")
+  else()
+    set(BACKEND_RUNTIME_TARGET_TRIPLE "aarch64-unknown-linux-gnu")
+  endif()
+elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "amd64")
+  if(APPLE)
+    set(BACKEND_RUNTIME_TARGET_TRIPLE "x86_64-apple-darwin")
+  else()
+    set(BACKEND_RUNTIME_TARGET_TRIPLE "x86_64-unknown-linux-gnu")
+  endif()
+endif()
 
-    add_test(
-      NAME "${test_name}"
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DCLANG=${CLANG_EXECUTABLE}
-              -DSRC=${src}
-              -DEXPECT_EXIT_CODE=${expect_exit_code}
-              -DOUT_C2LL_BIN=${CMAKE_BINARY_DIR}/internal_backend/${stem}.bin
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_positive_case.cmake"
-    )
-    set_tests_properties("${test_name}" PROPERTIES LABELS "internal;backend")
-  endforeach()
+if(CLANG_EXECUTABLE)
+  if(BACKEND_RUNTIME_TARGET_TRIPLE)
+    foreach(src IN LISTS INTERNAL_BACKEND_TEST_SRCS)
+      get_filename_component(stem "${src}" NAME_WE)
+      set(test_name "backend_runtime_${stem}")
+      set(expect_exit_code 0)
+      if(stem STREQUAL "return_add")
+        set(expect_exit_code 5)
+      endif()
+
+      add_test(
+        NAME "${test_name}"
+        COMMAND "${CMAKE_COMMAND}"
+                -DCOMPILER=$<TARGET_FILE:c4cll>
+                -DCLANG=${CLANG_EXECUTABLE}
+                -DSRC=${src}
+                -DTARGET_TRIPLE=${BACKEND_RUNTIME_TARGET_TRIPLE}
+                -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/${stem}.ll
+                -DEXPECT_EXIT_CODE=${expect_exit_code}
+                -DOUT_C2LL_BIN=${CMAKE_BINARY_DIR}/internal_backend/${stem}.bin
+                -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_positive_case.cmake"
+      )
+      set_tests_properties("${test_name}" PROPERTIES LABELS "internal;backend")
+    endforeach()
+
+    if(EXISTS "${EXAMPLE_C}")
+      add_test(
+        NAME backend_lir_missing_toolchain_diagnostic
+        COMMAND "${CMAKE_COMMAND}"
+                -DCOMPILER=$<TARGET_FILE:c4cll>
+                -DSRC=${EXAMPLE_C}
+                -DTARGET_TRIPLE=${BACKEND_RUNTIME_TARGET_TRIPLE}
+                -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/missing_tool.ll
+                -DOUT_C2LL_BIN=${CMAKE_BINARY_DIR}/internal_backend/missing_tool.bin
+                -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_missing_toolchain_case.cmake"
+      )
+      set_tests_properties(backend_lir_missing_toolchain_diagnostic PROPERTIES
+          LABELS "internal;backend")
+    endif()
+  else()
+    message(WARNING "Skipping backend runtime tests: unsupported host processor '${CMAKE_SYSTEM_PROCESSOR}'")
+  endif()
 endif()
 
 if(CLANG_EXECUTABLE)
