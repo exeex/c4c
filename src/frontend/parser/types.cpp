@@ -91,6 +91,22 @@ bool can_start_qualified_type_declaration(const Parser& parser,
     return trailing_kind != TokenKind::LParen;
 }
 
+std::function<void(const char*)> make_record_field_duplicate_checker(
+    Parser* parser,
+    std::unordered_set<std::string>* field_names_seen) {
+    return [parser, field_names_seen](const char* fname) {
+        if (!fname || !field_names_seen)
+            return;
+        std::string n(fname);
+        if (field_names_seen->count(n)) {
+            if (!parser || parser->is_cpp_mode())
+                return;
+            throw std::runtime_error(std::string("duplicate field name: ") + n);
+        }
+        field_names_seen->insert(n);
+    };
+}
+
 bool parse_alignas_specifier(Parser* parser, TypeSpec* ts, int line) {
     if (!parser->check(TokenKind::KwAlignas)) return false;
     parser->consume();
@@ -5229,17 +5245,8 @@ void Parser::parse_record_body(
         return;
 
     std::unordered_set<std::string> field_names_seen;
-    auto check_dup_field = [&](const char* fname) {
-        if (!fname) return;
-        std::string n(fname);
-        if (field_names_seen.count(n)) {
-            if (!is_cpp_mode())
-                throw std::runtime_error(std::string("duplicate field name: ") + n);
-            // C++ mode: allow duplicates (template specializations, complex types)
-            return;
-        }
-        field_names_seen.insert(n);
-    };
+    auto check_dup_field =
+        make_record_field_duplicate_checker(this, &field_names_seen);
 
     while (!at_end() && !check(TokenKind::RBrace)) {
         int member_start_pos = pos_;
