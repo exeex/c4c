@@ -19,6 +19,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 LOG_DIR = REPO_ROOT / "build" / "agent_state" / "agent_logs"
 LIMIT_PATTERNS = re.compile(r"hit your limit|rate limit|usage limit|quota", re.IGNORECASE)
 LIMIT_HINT_PATTERNS = re.compile(r"hit your limit|rate limit|usage limit|quota|resets?", re.IGNORECASE)
+WAIT_FOR_NEW_IDEA_PATTERN = re.compile(r"WAIT_FOR_NEW_IDEA")
+IDLE_SLEEP_SECONDS = 3 * 3600  # 3 hours
 
 
 def parse_args() -> argparse.Namespace:
@@ -269,6 +271,24 @@ def log_contains_limit(log_path: Path) -> bool:
     return LIMIT_PATTERNS.search(log_path.read_text(encoding="utf-8", errors="replace")) is not None
 
 
+def log_contains_wait_for_new_idea(log_path: Path) -> bool:
+    if not log_path.is_file():
+        return False
+    return WAIT_FOR_NEW_IDEA_PATTERN.search(log_path.read_text(encoding="utf-8", errors="replace")) is not None
+
+
+def git_fetch_has_new_commits() -> bool:
+    """Run git fetch and check if the remote has new commits ahead of HEAD."""
+    fetch_result = git_output("fetch", "--quiet")
+    if fetch_result is None:
+        return False
+    # Check if upstream branch has commits we don't have
+    behind = git_output("rev-list", "--count", "HEAD..@{upstream}")
+    if behind is None:
+        return False
+    return int(behind) > 0
+
+
 def main() -> int:
     args = parse_args()
     try:
@@ -331,6 +351,23 @@ def main() -> int:
             )
             tmp_log_path.unlink(missing_ok=True)
             time.sleep(wait_seconds)
+            continue
+
+        if log_contains_wait_for_new_idea(limit_source):
+            print("[harness] Agent reported WAIT_FOR_NEW_IDEA. Checking remote for new work...")
+            if git_fetch_has_new_commits():
+                print("[harness] Remote has new commits. Pulling and restarting immediately.")
+                subprocess.run(["git", "pull", "--ff-only"], cwd=REPO_ROOT)
+                tmp_log_path.unlink(missing_ok=True)
+                time.sleep(5)
+                continue
+            resume_at = format_resume_time(IDLE_SLEEP_SECONDS)
+            print(
+                f"[harness] No new remote commits. Sleeping {IDLE_SLEEP_SECONDS}s (~3h), "
+                f"resume at {resume_at}."
+            )
+            tmp_log_path.unlink(missing_ok=True)
+            time.sleep(IDLE_SLEEP_SECONDS)
             continue
 
         if exit_code != 0:

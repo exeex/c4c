@@ -11,18 +11,22 @@ This repo uses a small planning lifecycle for agent work.
 
 ## State Detection
 
-Judge lifecycle state by file path and file existence:
+Judge lifecycle state by file path, file existence, and todo completion:
 
-1. If both [`plan.md`](/workspaces/c4c/plan.md) and [`plan_todo.md`](/workspaces/c4c/plan_todo.md) do not exist, there is no active plan. Follow `prompts/AGENT_PROMPT_ACTIVATE_PLAN.md` to active a plan.
+1. If both [`plan.md`](/workspaces/c4c/plan.md) and [`plan_todo.md`](/workspaces/c4c/plan_todo.md) exist **and all items in `plan_todo.md` are marked complete**, the plan is finished. Follow `prompts/AGENT_PROMPT_CLOSE_PLAN.md` to close it.
 
-2. If both [`plan.md`](/workspaces/c4c/plan.md) and [`plan_todo.md`](/workspaces/c4c/plan_todo.md) exist, there is one active plan. Follow `prompts/AGENT_PROMPT_EXECUTE_PLAN.md` to push the progress.
+2. If both [`plan.md`](/workspaces/c4c/plan.md) and [`plan_todo.md`](/workspaces/c4c/plan_todo.md) exist and there are incomplete items, there is one active plan. Follow `prompts/AGENT_PROMPT_EXECUTE_PLAN.md` to push the progress.
 
-3. If only [`plan.md`](/workspaces/c4c/plan.md) exist, there is new active plan. Follow `prompts/AGENT_PROMPT_EXECUTE_PLAN.md` to push the progress.
+3. If only [`plan.md`](/workspaces/c4c/plan.md) exists (no `plan_todo.md`), there is a new active plan. Follow `prompts/AGENT_PROMPT_EXECUTE_PLAN.md` to push the progress.
 
-3. If only one of [`plan.md`](/workspaces/c4c/plan.md) or [`plan_todo.md`](/workspaces/c4c/plan_todo.md) exists, the planning state is inconsistent and should be repaired before implementation work continues.
+4. If neither [`plan.md`](/workspaces/c4c/plan.md) nor [`plan_todo.md`](/workspaces/c4c/plan_todo.md) exists **and `ideas/open/` contains activatable ideas**, there is no active plan. Follow `prompts/AGENT_PROMPT_ACTIVATE_PLAN.md` to activate one.
 
-4. Agents should only scan `ideas/open/` for candidate work.
-5. `ideas/closed/` is archive storage and should be ignored unless the task is historical review.
+5. If neither [`plan.md`](/workspaces/c4c/plan.md) nor [`plan_todo.md`](/workspaces/c4c/plan_todo.md) exists **and `ideas/open/` is empty**, there is nothing to do. Print the keyword `WAIT_FOR_NEW_IDEA` and end the conversation.
+
+6. If only [`plan_todo.md`](/workspaces/c4c/plan_todo.md) exists without [`plan.md`](/workspaces/c4c/plan.md), the planning state is inconsistent and should be repaired before implementation work continues.
+
+7. Agents should only scan `ideas/open/` for candidate work.
+8. `ideas/closed/` is archive storage and should be ignored unless the task is historical review.
 
 ## Entry Points
 
