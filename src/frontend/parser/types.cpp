@@ -1633,6 +1633,34 @@ bool Parser::try_parse_grouped_declarator(TypeSpec& ts, const char** out_name,
     return true;
 }
 
+void Parser::parse_normal_declarator_tail(TypeSpec& ts, const char** out_name,
+                                          std::vector<long long>* out_dims) {
+    parse_attributes(&ts);
+
+    // Normal declarator: optional identifier name, including C++ qualified names
+    // such as `Type::method` or `Type::operator+=`, or free operator functions
+    // like `operator==`.
+    if (out_name && is_cpp_mode() &&
+        (check(TokenKind::Identifier) || check(TokenKind::ColonColon) ||
+         check(TokenKind::KwOperator))) {
+        int saved_pos = pos_;
+        std::string qualified_name;
+        if (parse_qualified_declarator_name(&qualified_name)) {
+            *out_name = arena_.strdup(qualified_name.c_str());
+        } else {
+            pos_ = saved_pos;
+        }
+    }
+
+    if (out_name && !*out_name && check(TokenKind::Identifier)) {
+        *out_name = arena_.strdup(cur().lexeme);
+        consume();
+    }
+
+    parse_attributes(&ts);
+    parse_declarator_array_suffixes(ts, out_dims);
+}
+
 void Parser::parse_declarator_parameter_list(
     std::vector<Node*>* out_params, bool* out_variadic) {
     if (out_params) out_params->clear();
@@ -3716,32 +3744,7 @@ void Parser::parse_declarator(TypeSpec& ts, const char** out_name,
         return;
     }
 
-    parse_attributes(&ts);
-
-    // Normal declarator: optional identifier name, including C++ qualified names
-    // such as `Type::method` or `Type::operator+=`, or free operator functions
-    // like `operator==`.
-    if (out_name && is_cpp_mode() &&
-        (check(TokenKind::Identifier) || check(TokenKind::ColonColon) ||
-         check(TokenKind::KwOperator))) {
-        int saved_pos = pos_;
-        std::string qualified_name;
-        if (parse_qualified_declarator_name(&qualified_name)) {
-            *out_name = arena_.strdup(qualified_name.c_str());
-        } else {
-            pos_ = saved_pos;
-        }
-    }
-
-    if (out_name && !*out_name && check(TokenKind::Identifier)) {
-        *out_name = arena_.strdup(cur().lexeme);
-        consume();
-    }
-
-    parse_attributes(&ts);
-
-    // Array suffix: [size] or [] (possibly multi-dimensional)
-    parse_declarator_array_suffixes(ts, &decl_dims);
+    parse_normal_declarator_tail(ts, out_name, &decl_dims);
     apply_declarator_array_dims(ts, decl_dims);
     if (!decl_dims.empty()) ts.is_ptr_to_array = used_paren_ptr_declarator;
 

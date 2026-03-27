@@ -10,6 +10,31 @@
 
 ## Current Slice
 
+- Completed: extracted the normal declarator tail from `parse_declarator()`
+  into a helper without changing qualified/operator-name capture, attribute
+  handling, or array suffix staging order
+- New helper path:
+  - `parse_normal_declarator_tail(...)`
+- Added parse-only coverage:
+  - `declarator_normal_tail_staging_parse`
+- Validation completed:
+  - focused parser regressions passed:
+    - `declarator_normal_tail_staging_parse`
+    - `declarator_grouped_suffix_staging_parse`
+    - `declarator_array_suffix_staging_parse`
+    - `declarator_pointer_qualifier_staging_parse`
+    - `declarator_parenthesized_fn_ptr_staging_parse`
+    - `declarator_member_fn_ptr_suffix_staging_parse`
+    - `qualified_member_pointer_template_owner_parse`
+    - `qualified_member_function_pointer_template_owner_parse`
+    - `global_qualified_member_pointer_template_owner_parse`
+    - `variadic_param_pack_declarator_parse`
+    - `eastl_slice6_template_defaults_and_refqual_cpp`
+  - full clean rebuild `test_after.log` remained monotonic:
+    - `test_before.log`: 2165 total, 7 failed
+    - `test_after.log`: 2166 total, 7 failed
+    - failing identities unchanged
+    - regression guard: passed (`+1` passed, `0` new failures)
 - Completed: extracted grouped-declarator lookahead and suffix staging helpers
   from `parse_declarator()` without changing grouped-vs-function-parameter-list
   disambiguation or array suffix ordering
@@ -305,8 +330,8 @@
 ## Next
 
 - Continue Step 5 with the next smallest declarator suffix extraction from
-  `parse_declarator()`, preferably around normal declarator name/array suffix
-  staging or another suffix-only helper that does not change parsing order
+  `parse_declarator()`, preferably around a remaining function-suffix or
+  operator-name staging helper that does not change parsing order
 
 ## Blockers
 
