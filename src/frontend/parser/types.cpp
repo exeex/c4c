@@ -1051,126 +1051,150 @@ bool Parser::is_template_scope_type_param(const std::string& name) const {
     return false;
 }
 
-bool Parser::parse_template_argument_list(std::vector<TemplateArgParseResult>* out_args,
-                                          const Node* primary_tpl) {
-    if (!out_args || !check(TokenKind::Less)) return false;
-
-    auto parse_type_arg = [&](TemplateArgParseResult* out_arg) -> bool {
-        int saved_pos = pos_;
-        try {
-            TypeSpec ts = parse_type_name();
-            if (is_cpp_mode() && check(TokenKind::LParen)) skip_paren_group();
-            if (is_cpp_mode() && check(TokenKind::Ellipsis)) consume();
-            if (!check(TokenKind::Comma) && !check_template_close()) {
-                pos_ = saved_pos;
-                return false;
-            }
-            // Reject phantom type-id: if exactly one Identifier token was consumed
-            // and that identifier is not a recognized type name, then parse_type_name()
-            // fell through to the default TB_INT base with the identifier consumed as
-            // a declarator name.  This happens for forwarded NTTP names like <N>
-            // where N is not a type.  Reject so parse_non_type_arg can handle it.
-            if (is_cpp_mode() && pos_ == saved_pos + 1 &&
-                tokens_[saved_pos].kind == TokenKind::Identifier &&
-                !is_typedef_name(tokens_[saved_pos].lexeme) &&
-                !is_template_scope_type_param(tokens_[saved_pos].lexeme)) {
-                pos_ = saved_pos;
-                return false;
-            }
-            out_arg->is_value = false;
-            out_arg->type = ts;
-            out_arg->value = 0;
-            out_arg->nttp_name = nullptr;
-            return true;
-        } catch (...) {
+bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
+    if (!out_arg) return false;
+    int saved_pos = pos_;
+    try {
+        TypeSpec ts = parse_type_name();
+        if (is_cpp_mode() && check(TokenKind::LParen)) skip_paren_group();
+        if (is_cpp_mode() && check(TokenKind::Ellipsis)) consume();
+        if (!check(TokenKind::Comma) && !check_template_close()) {
             pos_ = saved_pos;
             return false;
         }
-    };
-
-    auto parse_non_type_arg = [&](TemplateArgParseResult* out_arg) -> bool {
-        const int expr_start = pos_;
-        long long sign = 1;
-        if (match(TokenKind::Minus)) sign = -1;
-        if (check(TokenKind::KwTrue)) {
-            out_arg->is_value = true;
-            out_arg->value = 1 * sign;
-            out_arg->nttp_name = nullptr;
-            consume();
-            return true;
-        }
-        if (check(TokenKind::KwFalse)) {
-            out_arg->is_value = true;
-            out_arg->value = 0;
-            out_arg->nttp_name = nullptr;
-            consume();
-            return true;
-        }
-        if (check(TokenKind::CharLit)) {
-            Node* lit = parse_primary();
-            out_arg->is_value = true;
-            out_arg->value = lit ? lit->ival * sign : 0;
-            out_arg->nttp_name = nullptr;
-            return true;
-        }
-        if (check(TokenKind::IntLit)) {
-            out_arg->is_value = true;
-            out_arg->value = parse_int_lexeme(cur().lexeme.c_str()) * sign;
-            out_arg->nttp_name = nullptr;
-            consume();
-            return true;
-        }
-        if (check(TokenKind::Identifier)) {
-            int saved_pos = pos_;
-            const char* name = arena_.strdup(cur().lexeme.c_str());
-            consume();
-            if (check(TokenKind::Comma) || check_template_close()) {
-                out_arg->is_value = true;
-                out_arg->value = 0;
-                out_arg->nttp_name = name;
-                return true;
-            }
+        // Reject phantom type-id: if exactly one Identifier token was consumed
+        // and that identifier is not a recognized type name, then parse_type_name()
+        // fell through to the default TB_INT base with the identifier consumed as
+        // a declarator name. This happens for forwarded NTTP names like <N>
+        // where N is not a type. Reject so non-type parsing can handle it.
+        if (is_cpp_mode() && pos_ == saved_pos + 1 &&
+            tokens_[saved_pos].kind == TokenKind::Identifier &&
+            !is_typedef_name(tokens_[saved_pos].lexeme) &&
+            !is_template_scope_type_param(tokens_[saved_pos].lexeme)) {
             pos_ = saved_pos;
-        } else if (expr_start != pos_) {
-            pos_ = expr_start;
+            return false;
         }
+        out_arg->is_value = false;
+        out_arg->type = ts;
+        out_arg->value = 0;
+        out_arg->nttp_name = nullptr;
+        out_arg->expr = nullptr;
+        return true;
+    } catch (...) {
+        pos_ = saved_pos;
+        return false;
+    }
+}
 
-        // Prefer a real expression parse before falling back to token capture.
-        // This lets `<` participate as an operator inside expressions such as
-        // `T(-1) < T(0)` instead of being mistaken for a nested template open.
-        {
-            const int saved_pos = pos_;
-            try {
-                Node* expr = parse_assign_expr();
-                (void)expr;
-                if (pos_ > expr_start &&
-                    (check(TokenKind::Comma) || check_template_close())) {
-                    const std::string expr_text =
-                        capture_template_arg_expr_text(tokens_, expr_start, pos_);
-                    if (!expr_text.empty()) {
-                        out_arg->is_value = true;
-                        out_arg->value = 0;
-                        out_arg->expr = expr;
-                        out_arg->nttp_name =
-                            arena_.strdup((std::string("$expr:") + expr_text).c_str());
-                        return true;
-                    }
-                }
-            } catch (...) {
-            }
-            pos_ = saved_pos;
-        }
+bool Parser::capture_template_arg_expr(int expr_start, TemplateArgParseResult* out_arg) {
+    if (!out_arg) return false;
+    const int expr_end = find_template_arg_expr_end(tokens_, expr_start);
+    const std::string expr_text =
+        capture_template_arg_expr_text(tokens_, expr_start, expr_end);
+    if (expr_text.empty()) return false;
+    out_arg->is_value = true;
+    out_arg->value = 0;
+    out_arg->expr = nullptr;
+    out_arg->nttp_name = arena_.strdup((std::string("$expr:") + expr_text).c_str());
+    pos_ = expr_end;
+    return true;
+}
 
-        const int expr_end = find_template_arg_expr_end(tokens_, expr_start);
-        const std::string expr_text =
-            capture_template_arg_expr_text(tokens_, expr_start, expr_end);
-        if (expr_text.empty()) return false;
+bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
+    if (!out_arg) return false;
+    const int expr_start = pos_;
+    long long sign = 1;
+    if (match(TokenKind::Minus)) sign = -1;
+    if (check(TokenKind::KwTrue)) {
+        out_arg->is_value = true;
+        out_arg->value = 1 * sign;
+        out_arg->nttp_name = nullptr;
+        out_arg->expr = nullptr;
+        consume();
+        return true;
+    }
+    if (check(TokenKind::KwFalse)) {
         out_arg->is_value = true;
         out_arg->value = 0;
-        out_arg->nttp_name = arena_.strdup((std::string("$expr:") + expr_text).c_str());
-        pos_ = expr_end;
+        out_arg->nttp_name = nullptr;
+        out_arg->expr = nullptr;
+        consume();
         return true;
-    };
+    }
+    if (check(TokenKind::CharLit)) {
+        Node* lit = parse_primary();
+        out_arg->is_value = true;
+        out_arg->value = lit ? lit->ival * sign : 0;
+        out_arg->nttp_name = nullptr;
+        out_arg->expr = nullptr;
+        return true;
+    }
+    if (check(TokenKind::IntLit)) {
+        out_arg->is_value = true;
+        out_arg->value = parse_int_lexeme(cur().lexeme.c_str()) * sign;
+        out_arg->nttp_name = nullptr;
+        out_arg->expr = nullptr;
+        consume();
+        return true;
+    }
+    if (check(TokenKind::Identifier)) {
+        int saved_pos = pos_;
+        const char* name = arena_.strdup(cur().lexeme.c_str());
+        consume();
+        if (check(TokenKind::Comma) || check_template_close()) {
+            out_arg->is_value = true;
+            out_arg->value = 0;
+            out_arg->nttp_name = name;
+            out_arg->expr = nullptr;
+            return true;
+        }
+        pos_ = saved_pos;
+    } else if (expr_start != pos_) {
+        pos_ = expr_start;
+    }
+
+    // Prefer a real expression parse before falling back to token capture.
+    // This lets `<` participate as an operator inside expressions such as
+    // `T(-1) < T(0)` instead of being mistaken for a nested template open.
+    {
+        const int saved_pos = pos_;
+        try {
+            Node* expr = parse_assign_expr();
+            if (pos_ > expr_start &&
+                (check(TokenKind::Comma) || check_template_close())) {
+                const std::string expr_text =
+                    capture_template_arg_expr_text(tokens_, expr_start, pos_);
+                if (!expr_text.empty()) {
+                    out_arg->is_value = true;
+                    out_arg->value = 0;
+                    out_arg->expr = expr;
+                    out_arg->nttp_name =
+                        arena_.strdup((std::string("$expr:") + expr_text).c_str());
+                    return true;
+                }
+            }
+        } catch (...) {
+        }
+        pos_ = saved_pos;
+    }
+
+    return capture_template_arg_expr(expr_start, out_arg);
+}
+
+bool Parser::is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx) const {
+    const bool expect_value =
+        primary_tpl && arg_idx < primary_tpl->n_template_params &&
+        primary_tpl->template_param_is_nttp &&
+        primary_tpl->template_param_is_nttp[arg_idx];
+    return expect_value && (
+        check(TokenKind::IntLit) || check(TokenKind::CharLit) ||
+        check(TokenKind::KwTrue) || check(TokenKind::KwFalse) ||
+        check(TokenKind::Minus) || check(TokenKind::Identifier));
+}
+
+bool Parser::parse_template_argument_list(std::vector<TemplateArgParseResult>* out_args,
+                                          const Node* primary_tpl) {
+    if (!out_args || !check(TokenKind::Less)) return false;
 
     consume();  // <
     int arg_idx = 0;
@@ -1183,16 +1207,9 @@ bool Parser::parse_template_argument_list(std::vector<TemplateArgParseResult>* o
         // The primary_tpl hint (expect_value) is used only to prefer
         // non-type for tokens that are unambiguously value-like, avoiding
         // a redundant (and exception-throwing) type parse attempt.
-        const bool expect_value =
-            primary_tpl && arg_idx < primary_tpl->n_template_params &&
-            primary_tpl->template_param_is_nttp &&
-            primary_tpl->template_param_is_nttp[arg_idx];
-        const bool clearly_value = expect_value && (
-            check(TokenKind::IntLit) || check(TokenKind::CharLit) ||
-            check(TokenKind::KwTrue) || check(TokenKind::KwFalse) ||
-            check(TokenKind::Minus) || check(TokenKind::Identifier));
-        if (!clearly_value) ok = parse_type_arg(&arg);
-        if (!ok) ok = parse_non_type_arg(&arg);
+        if (!is_clearly_value_template_arg(primary_tpl, arg_idx))
+            ok = try_parse_template_type_arg(&arg);
+        if (!ok) ok = try_parse_template_non_type_arg(&arg);
         if (!ok) return false;
         out_args->push_back(arg);
         ++arg_idx;
