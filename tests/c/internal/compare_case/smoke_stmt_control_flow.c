@@ -42,10 +42,22 @@ fallthrough_label:
     break;
   }
 
+  switch (sum + i) {
+  case 10 ... 11:
+    sum += 7;
+    break;
+  case 12 ... 13:
+    sum += 70;
+    break;
+  default:
+    sum += 700;
+    break;
+  }
+
 tail:
   return sum + i;
 }
 
 int main(void) {
-  return run() == 13 ? 0 : 1;
+  return run() == 83 ? 0 : 1;
 }

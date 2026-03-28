@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: Extract Terminator and Block Lifecycle Helpers
-- Current slice: inspect the next repeated unterminated-block contract around conditional branches, switch range-chain fallthrough, or block-opening labels and extract one similarly narrow helper
+- Current slice: inspect the next remaining terminator/block-lifecycle repetition after `emit_fallthrough_lbl(...)`, most likely around conditional branch setup or another small open-block guard that can stay local to [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp)
 
 ## Completed
 
@@ -25,10 +25,13 @@ Source Plan: plan.md
 - Extended [`smoke_stmt_control_flow.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_stmt_control_flow.c) with an open-block label-fallthrough path to pin the first Step 2 block-lifecycle slice in compare mode
 - Extracted `set_terminator_if_open(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and routed simple branch/condbr/ret/switch terminator helpers through it so label fallthrough and simple terminator sites share the same open-block contract
 - Verified the targeted compare-mode cases after the helper extraction and passed the full-suite regression guard with stable results (`2243` -> `2243` passed, zero failures)
+- Extended [`smoke_stmt_control_flow.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_stmt_control_flow.c) with a second case-range switch that forces a false-first-range / true-second-range chain before `tail`
+- Extracted `emit_fallthrough_lbl(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and reused it for switch range-chain successor blocks plus user-label opening so both sites share the same open-block fallthrough contract
+- Verified the targeted compare-mode case, the full `compare_case` label, and the clean full-suite regression guard (`2243` -> `2243` passed, zero failures)
 
 ## Next Slice
 
-- Continue Step 2 by extracting one more helper around block lifecycle transitions, most likely label/block creation after conditional range chains or another repeated open-block check that can stay local to [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp)
+- Continue Step 2 by extracting another small block-lifecycle helper, likely one that shortens repeated conditional-branch/open-successor patterns in expression or control-flow lowering while staying local to [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp)
 
 ## Blockers
 
@@ -44,3 +47,5 @@ Source Plan: plan.md
 - Step 1 is complete: the dispatcher surface is now split into non-control-flow, control-flow, and switch-label helper families under the existing `std::visit` entrypoint
 - Current Step 2 slice is intentionally narrow: one helper around open-block branch placement, validated by the existing compare-mode control-flow case extended with a label-fallthrough path
 - The current helper lives in the anonymous namespace and does not change public emitter structure; the next Step 2 slice should keep that same local-only extraction style
+- This iteration now targets the shared fallthrough-open-block pattern used by label emission and switch range-chain successor blocks; keep the extraction local to the anonymous namespace and validate it with compare-mode coverage that traverses more than one case-range hop
+- `emit_fallthrough_lbl(...)` is now the local wrapper for "terminate current block if still open, then open the named successor block"; remaining Step 2 opportunities should build on that contract instead of reintroducing manual branch-plus-label sequences

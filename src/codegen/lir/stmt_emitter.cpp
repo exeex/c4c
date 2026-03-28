@@ -249,6 +249,11 @@ void StmtEmitter::emit_term_unreachable(FnCtx& ctx){
     }
   }
 
+void StmtEmitter::emit_fallthrough_lbl(FnCtx& ctx, const std::string& lbl){
+    emit_term_br(ctx, lbl);
+    emit_lbl(ctx, lbl);
+  }
+
 std::string StmtEmitter::fresh_tmp(FnCtx& ctx){
     return "%t" + std::to_string(ctx.tmp_idx++);
   }
@@ -4113,7 +4118,7 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const SwitchStmt& s){
         emit_lir_op(ctx, lir::LirBinOp{t_and, "and", "i1", t_ge, t_le});
         const std::string next_lbl = fresh_lbl(ctx, "sw.range.next.");
         emit_term_condbr(ctx, t_and, block_lbl(bid), next_lbl);
-        emit_lbl(ctx, next_lbl);
+        emit_fallthrough_lbl(ctx, next_lbl);
       }
     }
 
@@ -4179,13 +4184,7 @@ void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const LabelStmt& s){
   }
 
 void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const LabelStmt& s){
-    if (ctx.last_term) {
-      // We need a new basic block for the label
-      emit_lbl(ctx, "ulbl_" + s.name);
-    } else {
-      emit_term_br(ctx, "ulbl_" + s.name);
-      emit_lbl(ctx, "ulbl_" + s.name);
-    }
+    emit_fallthrough_lbl(ctx, "ulbl_" + s.name);
   }
 
 void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const BreakStmt& s){
