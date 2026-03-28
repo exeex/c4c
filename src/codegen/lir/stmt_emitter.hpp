@@ -146,14 +146,15 @@ class StmtEmitter {
   // Returns true and sets out_field_ts.
   bool find_field_chain(const std::string& tag, const std::string& field_name,
                         std::vector<FieldStep>& chain, TypeSpec& out_field_ts);
+  bool resolve_field_access(const std::string& tag, const std::string& field_name,
+                            std::vector<FieldStep>& chain, TypeSpec& out_field_ts,
+                            BitfieldAccess* out_bf = nullptr);
 
   // Emit GEP chain for struct member access.
-  // base_ptr: LLVM value (ptr to struct), tag: struct type tag, field_name: C field name.
-  // Returns LLVM value (ptr to field), sets out_field_ts.
+  // base_ptr: LLVM value (ptr to struct), chain: resolved field access path.
+  // Returns LLVM value (ptr to field).
   std::string emit_member_gep(FnCtx& ctx, const std::string& base_ptr,
-                               const std::string& tag, const std::string& field_name,
-                               TypeSpec& out_field_ts,
-                               BitfieldAccess* out_bf = nullptr);
+                              const std::vector<FieldStep>& chain);
 
 
   // ── Bitfield load/store helpers ─────────────────────────────────────────────

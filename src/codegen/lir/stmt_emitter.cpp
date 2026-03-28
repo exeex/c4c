@@ -628,7 +628,7 @@ bool StmtEmitter::find_field_chain(const std::string& tag, const std::string& fi
 
     // Direct lookup
     for (const auto& f : sd.fields) {
-      if (!f.is_anon_member && f.name == field_name) {
+      if (f.name == field_name) {
         FieldStep step{tag, llvm_struct_field_slot(sd, f.llvm_idx), sd.is_union};
         if (f.bit_width >= 0) {
           step.bit_width = f.bit_width;
@@ -658,15 +658,24 @@ bool StmtEmitter::find_field_chain(const std::string& tag, const std::string& fi
     return false;
   }
 
-std::string StmtEmitter::emit_member_gep(FnCtx& ctx, const std::string& base_ptr,
-                               const std::string& tag, const std::string& field_name,
-                               TypeSpec& out_field_ts,
-                               BitfieldAccess* out_bf){
-    std::vector<FieldStep> chain;
+bool StmtEmitter::resolve_field_access(const std::string& tag, const std::string& field_name,
+                                       std::vector<FieldStep>& chain, TypeSpec& out_field_ts,
+                                       BitfieldAccess* out_bf){
     if (!find_field_chain(tag, field_name, chain, out_field_ts)) {
-      throw std::runtime_error(
-          "StmtEmitter: field '" + field_name + "' not found in struct/union '" + tag + "'");
+      return false;
     }
+    if (out_bf && !chain.empty()) {
+      const auto& last = chain.back();
+      out_bf->bit_width = last.bit_width;
+      out_bf->bit_offset = last.bit_offset;
+      out_bf->storage_unit_bits = last.storage_unit_bits;
+      out_bf->is_signed = last.bf_is_signed;
+    }
+    return true;
+  }
+
+std::string StmtEmitter::emit_member_gep(FnCtx& ctx, const std::string& base_ptr,
+                                         const std::vector<FieldStep>& chain){
     std::string cur_ptr = base_ptr;
     for (const auto& step : chain) {
       const std::string sty = llvm_struct_type_str(step.tag);
@@ -680,14 +689,6 @@ std::string StmtEmitter::emit_member_gep(FnCtx& ctx, const std::string& base_ptr
         emit_lir_op(ctx, lir::LirGepOp{tmp, sty, cur_ptr, false, {"i32 0", "i32 " + std::to_string(step.llvm_idx)}});
         cur_ptr = tmp;
       }
-    }
-    // Propagate bitfield info from the last (innermost) step
-    if (out_bf && !chain.empty()) {
-      const auto& last = chain.back();
-      out_bf->bit_width = last.bit_width;
-      out_bf->bit_offset = last.bit_offset;
-      out_bf->storage_unit_bits = last.storage_unit_bits;
-      out_bf->is_signed = last.bf_is_signed;
     }
     return cur_ptr;
   }
@@ -955,7 +956,12 @@ std::string StmtEmitter::emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeS
       throw std::runtime_error(
           "StmtEmitter: MemberExpr base has no struct tag (field='" + m.field + "')");
     }
-    return emit_member_gep(ctx, base_ptr, tag, m.field, out_pts, out_bf);
+    std::vector<FieldStep> chain;
+    if (!resolve_field_access(tag, m.field, chain, out_pts, out_bf)) {
+      throw std::runtime_error(
+          "StmtEmitter: field '" + m.field + "' not found in struct/union '" + tag + "'");
+    }
+    return emit_member_gep(ctx, base_ptr, chain);
   }
 
 TypeSpec StmtEmitter::resolve_member_base_type(FnCtx& ctx, ExprId base_id, bool is_arrow){
@@ -1402,14 +1408,11 @@ TypeSpec StmtEmitter::resolve_payload_type(FnCtx& ctx, const MemberExpr& m){
     if (!base_ts.tag || !base_ts.tag[0]) return {};
     std::vector<FieldStep> chain;
     TypeSpec field_ts{};
-    find_field_chain(std::string(base_ts.tag), m.field, chain, field_ts);
-    // Bitfield values are promoted per C integer promotion rules
-    if (!chain.empty() && chain.back().bit_width >= 0) {
-      TypeSpec bf_ts{};
-      bf_ts.base = bitfield_promoted_base(
-          chain.back().bit_width, chain.back().bf_is_signed, chain.back().storage_unit_bits);
-      return bf_ts;
+    BitfieldAccess bf;
+    if (!resolve_field_access(std::string(base_ts.tag), m.field, chain, field_ts, &bf)) {
+      return {};
     }
+    if (bf.is_bitfield()) return bitfield_promoted_ts(bf);
     return field_ts;
   }
 

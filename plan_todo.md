@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: Extract Aggregate and Address-Lowering Helpers
-- Current slice: re-scan [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) for the next shared aggregate/address seam after landing the indexed-address helper for `IndexExpr`, pointer arithmetic, and pointer increment/decrement
+- Current slice: re-scan Step 3 for the next shared aggregate/member seam after centralizing member-field lookup and unblocking synthetic anonymous-member access
 
 ## Completed
 
@@ -66,10 +66,14 @@ Source Plan: plan.md
 - Extended [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) with pointer-to-array arithmetic and pre-increment coverage so compare mode now pins the indexed-address rule across `cursor + 1` and `++cursor`
 - Extracted `resolve_indexed_gep_pointee_type(...)`, `indexed_gep_elem_ty(...)`, and `emit_indexed_gep(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp), reusing the shared indexed-address contract across `IndexExpr` lvalue lowering, pointer arithmetic, and pointer increment/decrement while keeping vector-element indexing on its dedicated scalar-element path
 - Verified `compare_smoke_aggregate_access`, the full `compare_case` label, the previously regressed GCC torture vector/runtime cases (`ieee/pr72824-2`, `pr53645`, `pr53645-2`, `pr70903`, `20050316-3`, `20050604-1`, `20050607-1`, `scal-to-vec1`), and the clean full-suite regression guard (`2248` -> `2248` passed, zero failures; no new failing tests)
+- Extended [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) with anonymous embedded-struct member access plus anonymous bitfield read/update paths so the next Step 3 member-access extraction is pinned in compare mode
+- Extracted `resolve_field_access(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and reused it across `resolve_payload_type(MemberExpr)` plus `emit_member_lval(...)`, so field-chain lookup and bitfield metadata now live behind one helper instead of being rediscovered separately
+- Fixed `find_field_chain(...)` to accept explicit synthetic anonymous-member names such as `_anon_0` when HIR lowers initializer or materialization paths through embedded anonymous subobjects
+- Verified `compare_smoke_aggregate_access`, the full `compare_case` label, and the clean full-suite regression guard with stable results (`2248` -> `2248` passed, zero failures; non-decreasing pass-count guard accepted the refactor slice)
 
 ## Next Slice
 
-- Re-scan Step 3 in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp); the next seam is likely another aggregate/member path immediately upstream or downstream of `emit_member_gep(...)`
+- Re-scan Step 3 in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp); the next seam is likely around access-pointer-to-rvalue conversion or the repeated member-expression / bitfield setup currently repeated across unary and assignment lowering
 
 ## Blockers
 
@@ -108,3 +112,5 @@ Source Plan: plan.md
 - `emit_member_base_ptr(...)` now owns the `MemberExpr` base-pointer/materialization split between `->`, direct aggregate lvalues, and struct-rvalue temporary slots; the next Step 3 scan should look beyond member-base setup rather than reintroducing inline `MemberExpr` base handling
 - This iteration narrows Step 3 to the repeated indexed-address path: several sites still manually drop one pointee/array element type and then choose the LLVM GEP element type (`i8` for `void*`, `llvm_alloca_ty(...)` for array objects, otherwise `llvm_ty(...)`)
 - The indexed-address helper intentionally does not subsume vector-element lvalue indexing: `IndexExpr` on vector objects still needs its dedicated scalar-element GEP path, while the new helper covers non-vector pointer/array address formation
+- This iteration targets the duplicated field-chain lookup path for `MemberExpr`: anonymous embedded members and bitfield metadata are currently rediscovered in both type resolution and lvalue lowering, so the extraction should stay local and preserve existing error behavior
+- HIR can materialize embedded anonymous subobjects explicitly as synthetic member names like `_anon_0` during initialization even when source-level reads use promoted names like `left` or `high`; future Step 3 member-access refactors need to preserve both lookup routes
