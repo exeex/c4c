@@ -4211,11 +4211,23 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const ContinueStmt& s){
     emit_term_br(ctx, block_lbl(*s.target));
   }
 
-void StmtEmitter::emit_stmt_impl(FnCtx&, const CaseStmt&){}
+void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const CaseStmt& s){
+    emit_switch_label_stmt(ctx, s);
+  }
 
-void StmtEmitter::emit_stmt_impl(FnCtx&, const CaseRangeStmt&){}
+void StmtEmitter::emit_switch_label_stmt(FnCtx&, const CaseStmt&){}
 
-void StmtEmitter::emit_stmt_impl(FnCtx&, const DefaultStmt&){}
+void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const CaseRangeStmt& s){
+    emit_switch_label_stmt(ctx, s);
+  }
+
+void StmtEmitter::emit_switch_label_stmt(FnCtx&, const CaseRangeStmt&){}
+
+void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const DefaultStmt& s){
+    emit_switch_label_stmt(ctx, s);
+  }
+
+void StmtEmitter::emit_switch_label_stmt(FnCtx&, const DefaultStmt&){}
 
 
 }  // namespace c4c::codegen::lir

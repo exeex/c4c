@@ -29,10 +29,19 @@ int run(void) {
     }
   }
 
+  switch (sum) {
+  case 8 ... 9:
+    sum += 5;
+    break;
+  default:
+    sum += 1000;
+    break;
+  }
+
 tail:
   return sum + i;
 }
 
 int main(void) {
-  return run() == 8 ? 0 : 1;
+  return run() == 13 ? 0 : 1;
 }

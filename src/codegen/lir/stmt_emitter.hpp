@@ -287,6 +287,9 @@ class StmtEmitter {
   void emit_control_flow_stmt(FnCtx& ctx, const LabelStmt& s);
   void emit_control_flow_stmt(FnCtx& ctx, const BreakStmt& s);
   void emit_control_flow_stmt(FnCtx& ctx, const ContinueStmt& s);
+  void emit_switch_label_stmt(FnCtx&, const CaseStmt&);
+  void emit_switch_label_stmt(FnCtx&, const CaseRangeStmt&);
+  void emit_switch_label_stmt(FnCtx&, const DefaultStmt&);
 
   void emit_stmt_impl(FnCtx& ctx, const ReturnStmt& s);
   void emit_stmt_impl(FnCtx& ctx, const IfStmt& s);
