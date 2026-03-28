@@ -7,11 +7,11 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3: port the first integer/control-flow slice
-- Iteration slice: compare the next bounded Linux AArch64 variadic helper edge against Clang on `aarch64-unknown-linux-gnu` after the explicit four-lane float HFA cardinality guard
+- Iteration slice: compare one adjacent Linux AArch64 single-lane homogeneous-float-aggregate `va_arg` helper edge against Clang on `aarch64-unknown-linux-gnu` after locking the single-`double` by-value struct path
 
 ## Next Intended Slice
 
-- compare one adjacent Linux AArch64 variadic helper shape against Clang on `aarch64-unknown-linux-gnu` after the explicit four-lane double HFA cardinality case; keep it to one helper-class edge instead of broadening further
+- compare the single-`float` by-value struct `va_arg` helper path against Clang on `aarch64-unknown-linux-gnu` and lock it with one IR regression if the current single-lane HFA widening needs an explicit guard
 - keep the next slice focused on one target-local helper boundary or one missing runtime-backed backend capability
 - avoid broadening beyond the active AArch64 Step 3 runbook without recording a separate idea
 
@@ -149,6 +149,11 @@ Source Plan: plan.md
 - added `tests/c/internal/backend_ir_case/variadic_float4_bytes.c` plus `backend_lir_aarch64_variadic_float4_ir` in `tests/c/internal/InternalTests.cmake` to lock the explicit four-lane HFA cardinality path
 - verified `backend_lir_aarch64_variadic_long_double_ir`, `backend_lir_aarch64_variadic_dpair_ir`, `backend_lir_aarch64_variadic_float_array_ir`, `backend_lir_aarch64_variadic_nested_float_array_ir`, and `backend_lir_aarch64_variadic_float4_ir` pass for the bounded four-lane HFA slice
 - reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=533/538 -> 539/544`, zero newly failing tests, and the same five unrelated failures before and after
+- compared the adjacent single-`double` Linux AArch64 homogeneous floating-point aggregate variadic helper path against Clang on `aarch64-unknown-linux-gnu` and found the current lowering was incorrectly taking the GP-save-area helper path for a one-field by-value struct
+- widened AArch64 HFA classification in `src/codegen/lir/stmt_emitter.cpp` so single-element homogeneous `float`/`double` structs also use the FP-save-area helper path instead of falling back to the GP aggregate path
+- added `tests/c/internal/backend_ir_case/variadic_single_double_bytes.c` plus `backend_lir_aarch64_variadic_single_double_ir` in `tests/c/internal/InternalTests.cmake` to lock the one-field `double` HFA helper shape onto the expected `[1 x double]` + `vaarg.fp.*` + `llvm.memcpy` IR path
+- verified `backend_lir_aarch64_variadic_dpair_ir`, `backend_lir_aarch64_variadic_float4_ir`, `backend_lir_aarch64_variadic_double4_ir`, and `backend_lir_aarch64_variadic_single_double_ir` pass for the bounded single-lane `double` HFA slice
+- reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=539/544 -> 541/546`, zero newly failing tests, and the same five unrelated failures before and after
 
 ## Blockers
 
@@ -191,3 +196,4 @@ Source Plan: plan.md
 - compared the explicit four-lane Linux AArch64 homogeneous-double-aggregate variadic helper path against Clang on `aarch64-unknown-linux-gnu` and confirmed the existing lowering already emits the expected `[4 x double]` + `vaarg.fp.*` + `llvm.memcpy` shape without backend changes
 - added `tests/c/internal/backend_ir_case/variadic_double4_bytes.c` plus `backend_lir_aarch64_variadic_double4_ir` in `tests/c/internal/InternalTests.cmake` to lock the explicit four-lane double HFA cardinality path
 - verified `backend_lir_aarch64_variadic_dpair_ir`, `backend_lir_aarch64_variadic_float4_ir`, and `backend_lir_aarch64_variadic_double4_ir` pass for the bounded four-lane double HFA slice
+- single-element homogeneous `double` variadic probes now also match the expected Linux AArch64 VR-save-area helper pattern via `%struct.SingleDouble = type { double }`, `[1 x double]`, `vaarg.fp.*`, and `llvm.memcpy`; the next likely follow-on is the matching single-element `float` helper edge rather than broader variadic expansion

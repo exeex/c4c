@@ -196,7 +196,7 @@ std::optional<Aarch64HomogeneousFpAggregateInfo> classify_aarch64_hfa(
   TypeBase elem_base = TB_VOID;
   int elem_count = 0;
   if (!collect_aarch64_hfa_elements(mod, ts, &elem_base, &elem_count) ||
-      elem_count < 2) {
+      elem_count < 1) {
     return std::nullopt;
   }
 
