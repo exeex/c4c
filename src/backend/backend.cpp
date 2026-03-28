@@ -1,10 +1,10 @@
 #include "backend.hpp"
-#include "aarch64/emitter.hpp"
+#include "aarch64/codegen/emit.hpp"
 
+#include "../codegen/lir/lir_printer.hpp"
 #include "../codegen/lir/ir.hpp"
 
 #include <memory>
-#include <stdexcept>
 
 namespace c4c::backend {
 
@@ -23,13 +23,19 @@ class Aarch64BackendEmitter final : public BackendEmitter {
   }
 };
 
+class PassthroughBackendEmitter final : public BackendEmitter {
+ public:
+  std::string emit(const c4c::codegen::lir::LirModule& module) const override {
+    return c4c::codegen::lir::print_llvm(module);
+  }
+};
+
 std::unique_ptr<BackendEmitter> make_backend(Target target) {
   switch (target) {
     case Target::X86_64:
     case Target::I686:
     case Target::Riscv64:
-      throw std::invalid_argument(
-          "backend ref-shape translation is currently only wired for AArch64");
+      return std::make_unique<PassthroughBackendEmitter>();
     case Target::Aarch64:
       return std::make_unique<Aarch64BackendEmitter>();
   }
