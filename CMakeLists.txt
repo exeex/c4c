@@ -42,6 +42,7 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/backend/liveness.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/regalloc.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/generation.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/asm_expr.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/common.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/stack_layout/mod.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/lir_adapter.cpp"
@@ -101,6 +102,7 @@ set_target_properties(frontend_cxx_preprocessor_tests PROPERTIES
 add_executable(backend_lir_adapter_tests
     "${PROJECT_SOURCE_DIR}/tests/backend/backend_lir_adapter_tests.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/aarch64/codegen/emit.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/asm_expr.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/backend.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/common.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/generation.cpp"
