@@ -87,6 +87,11 @@ struct CallTargetInfo {
   bool builtin_special = false;
 };
 
+struct PreparedCallArg {
+  std::string text;
+  bool skip = false;
+};
+
 class StmtEmitter {
  public:
   explicit StmtEmitter(const Module& m);
@@ -251,6 +256,12 @@ class StmtEmitter {
   std::string emit_rval_from_access_ptr(FnCtx& ctx, const std::string& ptr,
                                         const TypeSpec& access_ts, const TypeSpec& load_ts,
                                         bool decay_from_array_object);
+  bool callee_needs_va_list_by_value_copy(const CallTargetInfo& call_target,
+                                          size_t arg_index) const;
+  void apply_default_arg_promotion(FnCtx& ctx, std::string& arg, TypeSpec& out_ts,
+                                   const TypeSpec& in_ts);
+  PreparedCallArg prepare_call_arg(FnCtx& ctx, const CallExpr& call,
+                                   const CallTargetInfo& call_target, size_t arg_index);
 
   // ── Rvalue emission ───────────────────────────────────────────────────────
 

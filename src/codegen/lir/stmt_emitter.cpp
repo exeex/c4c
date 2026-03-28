@@ -2712,6 +2712,177 @@ CallTargetInfo StmtEmitter::resolve_call_target_info(FnCtx& ctx, const CallExpr&
     return info;
   }
 
+bool StmtEmitter::callee_needs_va_list_by_value_copy(const CallTargetInfo& call_target,
+                                                     size_t arg_index) const {
+    const Function* target_fn = call_target.target_fn;
+    const FnPtrSig* callee_fn_ptr_sig = call_target.callee_fn_ptr_sig;
+    if (target_fn) {
+      if (arg_index < target_fn->params.size()) {
+        const TypeSpec& param_ts = target_fn->params[arg_index].type.spec;
+        return param_ts.base == TB_VA_LIST &&
+               param_ts.ptr_level == 0 &&
+               param_ts.array_rank == 0;
+      }
+      return false;
+    }
+    if (callee_fn_ptr_sig) {
+      if (arg_index < sig_param_count(*callee_fn_ptr_sig)) {
+        return sig_param_is_va_list_value(*callee_fn_ptr_sig, arg_index);
+      }
+      return false;
+    }
+    return call_target.fn_name == "vprintf"   || call_target.fn_name == "vfprintf" ||
+           call_target.fn_name == "vsprintf"  || call_target.fn_name == "vsnprintf" ||
+           call_target.fn_name == "vscanf"    || call_target.fn_name == "vfscanf" ||
+           call_target.fn_name == "vsscanf"   || call_target.fn_name == "vasprintf" ||
+           call_target.fn_name == "vdprintf";
+  }
+
+void StmtEmitter::apply_default_arg_promotion(FnCtx& ctx, std::string& arg,
+                                              TypeSpec& out_ts,
+                                              const TypeSpec& in_ts) {
+    TypeSpec promoted = in_ts;
+    if (promoted.array_rank > 0 && !promoted.is_ptr_to_array) {
+      promoted.array_rank = 0;
+      promoted.array_size = -1;
+      promoted.ptr_level += 1;
+    }
+    if (promoted.ptr_level == 0 && promoted.array_rank == 0) {
+      if (promoted.base == TB_FLOAT) {
+        promoted.base = TB_DOUBLE;
+      } else if (promoted.base == TB_BOOL || promoted.base == TB_CHAR ||
+                 promoted.base == TB_SCHAR || promoted.base == TB_UCHAR ||
+                 promoted.base == TB_SHORT || promoted.base == TB_USHORT) {
+        promoted.base = TB_INT;
+      }
+    }
+    arg = coerce(ctx, arg, in_ts, promoted);
+    out_ts = promoted;
+  }
+
+PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
+                                              const CallTargetInfo& call_target,
+                                              size_t arg_index) {
+    const Function* target_fn = call_target.target_fn;
+    const FnPtrSig* callee_fn_ptr_sig = call_target.callee_fn_ptr_sig;
+    const TypeSpec* fixed_param_ts = nullptr;
+    TypeSpec fn_ptr_param_ts{};
+    if (target_fn) {
+      const bool has_void_param_list =
+          target_fn->params.size() == 1 &&
+          target_fn->params[0].type.spec.base == TB_VOID &&
+          target_fn->params[0].type.spec.ptr_level == 0 &&
+          target_fn->params[0].type.spec.array_rank == 0;
+      if (!has_void_param_list && arg_index < target_fn->params.size()) {
+        fixed_param_ts = &target_fn->params[arg_index].type.spec;
+      }
+    } else if (callee_fn_ptr_sig) {
+      const bool has_void_pl = sig_has_void_param_list(*callee_fn_ptr_sig);
+      if (!has_void_pl && arg_index < sig_param_count(*callee_fn_ptr_sig)) {
+        fn_ptr_param_ts = sig_param_type(*callee_fn_ptr_sig, arg_index);
+        fixed_param_ts = &fn_ptr_param_ts;
+      }
+    }
+
+    TypeSpec arg_ts{};
+    std::string arg;
+    if (fixed_param_ts &&
+        (fixed_param_ts->is_lvalue_ref || fixed_param_ts->is_rvalue_ref)) {
+      try {
+        TypeSpec pointee_ts{};
+        arg = emit_lval(ctx, call.args[arg_index], pointee_ts);
+        arg_ts = pointee_ts;
+        arg_ts.ptr_level += 1;
+        arg_ts.is_lvalue_ref = fixed_param_ts->is_lvalue_ref;
+        arg_ts.is_rvalue_ref = fixed_param_ts->is_rvalue_ref;
+      } catch (const std::runtime_error&) {
+        arg = emit_rval_id(ctx, call.args[arg_index], arg_ts);
+      }
+    } else {
+      arg = emit_rval_id(ctx, call.args[arg_index], arg_ts);
+    }
+
+    TypeSpec out_arg_ts = arg_ts;
+    const bool is_va_list_value =
+        arg_ts.base == TB_VA_LIST &&
+        arg_ts.ptr_level == 0 &&
+        arg_ts.array_rank == 0;
+    const bool is_variadic_aggregate =
+        target_fn && target_fn->attrs.variadic && arg_index >= target_fn->params.size() &&
+        (arg_ts.base == TB_STRUCT || arg_ts.base == TB_UNION) &&
+        arg_ts.ptr_level == 0 && arg_ts.array_rank == 0 &&
+        arg_ts.tag && arg_ts.tag[0];
+    if (target_fn) {
+      const bool has_void_param_list =
+          target_fn->params.size() == 1 &&
+          target_fn->params[0].type.spec.base == TB_VOID &&
+          target_fn->params[0].type.spec.ptr_level == 0 &&
+          target_fn->params[0].type.spec.array_rank == 0;
+      if (!has_void_param_list && arg_index < target_fn->params.size()) {
+        out_arg_ts = target_fn->params[arg_index].type.spec;
+        arg = coerce(ctx, arg, arg_ts, out_arg_ts);
+      } else if (target_fn->attrs.variadic && !is_variadic_aggregate) {
+        apply_default_arg_promotion(ctx, arg, out_arg_ts, arg_ts);
+      }
+    } else if (callee_fn_ptr_sig) {
+      const bool has_void_pl = sig_has_void_param_list(*callee_fn_ptr_sig);
+      if (!has_void_pl && arg_index < sig_param_count(*callee_fn_ptr_sig)) {
+        out_arg_ts = sig_param_type(*callee_fn_ptr_sig, arg_index);
+        arg = coerce(ctx, arg, arg_ts, out_arg_ts);
+      } else if (sig_is_variadic(*callee_fn_ptr_sig) && !is_variadic_aggregate) {
+        apply_default_arg_promotion(ctx, arg, out_arg_ts, arg_ts);
+      }
+    }
+    if (is_va_list_value &&
+        callee_needs_va_list_by_value_copy(call_target, arg_index)) {
+      TypeSpec ap_ts{};
+      const std::string src_ptr = emit_va_list_obj_ptr(ctx, call.args[arg_index], ap_ts);
+      const std::string tmp_addr = fresh_tmp(ctx);
+      emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, llvm_va_list_storage_ty(), {}, 0});
+      module_->need_memcpy = true;
+      emit_lir_op(ctx, lir::LirMemcpyOp{
+          tmp_addr, src_ptr, std::to_string(llvm_va_list_storage_size()), false});
+      arg = tmp_addr;
+      out_arg_ts = arg_ts;
+    }
+    if (is_variadic_aggregate) {
+      const auto sit = mod_.struct_defs.find(arg_ts.tag);
+      const int payload_sz = sit == mod_.struct_defs.end() ? 0 : sit->second.size_bytes;
+      if (payload_sz == 0) return {"", true};
+
+      std::string obj_ptr;
+      if (get_expr(call.args[arg_index]).type.category == ValueCategory::LValue) {
+        TypeSpec obj_ts{};
+        obj_ptr = emit_lval(ctx, call.args[arg_index], obj_ts);
+      } else {
+        const std::string tmp_addr = fresh_tmp(ctx);
+        emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, llvm_ty(arg_ts), {}, 0});
+        emit_lir_op(ctx, lir::LirStoreOp{llvm_ty(arg_ts), arg, tmp_addr});
+        obj_ptr = tmp_addr;
+      }
+
+      module_->need_memcpy = true;
+      if (payload_sz > 16) return {"ptr " + obj_ptr, false};
+      if (payload_sz <= 8) {
+        const std::string tmp_addr = fresh_tmp(ctx);
+        emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, "i64", {}, 0});
+        emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, obj_ptr, std::to_string(payload_sz), false});
+        const std::string packed = fresh_tmp(ctx);
+        emit_lir_op(ctx, lir::LirLoadOp{packed, std::string("i64"), tmp_addr});
+        return {"i64 " + packed, false};
+      }
+
+      const std::string tmp_addr = fresh_tmp(ctx);
+      emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, "[2 x i64]", {}, 0});
+      emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, obj_ptr, std::to_string(payload_sz), false});
+      const std::string packed = fresh_tmp(ctx);
+      emit_lir_op(ctx, lir::LirLoadOp{packed, std::string("[2 x i64]"), tmp_addr});
+      return {"[2 x i64] " + packed, false};
+    }
+
+    return {llvm_ty(out_arg_ts) + " " + arg, false};
+  }
+
 std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, const Expr& e){
     const Expr& callee_e = get_expr(call.callee);
     const CallTargetInfo call_target = resolve_call_target_info(ctx, call, e);
@@ -3282,172 +3453,12 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
     const Function* target_fn = call_target.target_fn;
     const FnPtrSig* callee_fn_ptr_sig = call_target.callee_fn_ptr_sig;
 
-    auto callee_needs_va_list_by_value_copy = [&](size_t arg_index) -> bool {
-      if (target_fn) {
-        if (arg_index < target_fn->params.size()) {
-          const TypeSpec& param_ts = target_fn->params[arg_index].type.spec;
-          return param_ts.base == TB_VA_LIST &&
-                 param_ts.ptr_level == 0 &&
-                 param_ts.array_rank == 0;
-        }
-        return false;
-      }
-      // Phase 4: use canonical-aware helper for va_list detection.
-      if (callee_fn_ptr_sig) {
-        if (arg_index < sig_param_count(*callee_fn_ptr_sig)) {
-          return sig_param_is_va_list_value(*callee_fn_ptr_sig, arg_index);
-        }
-        return false;
-      }
-      return call_target.fn_name == "vprintf"   || call_target.fn_name == "vfprintf" ||
-             call_target.fn_name == "vsprintf"  || call_target.fn_name == "vsnprintf" ||
-             call_target.fn_name == "vscanf"    || call_target.fn_name == "vfscanf" ||
-             call_target.fn_name == "vsscanf"   || call_target.fn_name == "vasprintf" ||
-             call_target.fn_name == "vdprintf";
-    };
-
     std::string args_str;
-    auto apply_default_arg_promotion = [&](std::string& arg, TypeSpec& out_ts, const TypeSpec& in_ts) {
-      TypeSpec promoted = in_ts;
-      if (promoted.array_rank > 0 && !promoted.is_ptr_to_array) {
-        promoted.array_rank = 0;
-        promoted.array_size = -1;
-        promoted.ptr_level += 1;
-      }
-      if (promoted.ptr_level == 0 && promoted.array_rank == 0) {
-        if (promoted.base == TB_FLOAT) {
-          promoted.base = TB_DOUBLE;
-        } else if (promoted.base == TB_BOOL || promoted.base == TB_CHAR ||
-                   promoted.base == TB_SCHAR || promoted.base == TB_UCHAR ||
-                   promoted.base == TB_SHORT || promoted.base == TB_USHORT) {
-          promoted.base = TB_INT;
-        }
-      }
-      arg = coerce(ctx, arg, in_ts, promoted);
-      out_ts = promoted;
-    };
     for (size_t i = 0; i < call.args.size(); ++i) {
-      const TypeSpec* fixed_param_ts = nullptr;
-      TypeSpec fn_ptr_param_ts{};
-      if (target_fn) {
-        const bool has_void_param_list =
-            target_fn->params.size() == 1 &&
-            target_fn->params[0].type.spec.base == TB_VOID &&
-            target_fn->params[0].type.spec.ptr_level == 0 &&
-            target_fn->params[0].type.spec.array_rank == 0;
-        if (!has_void_param_list && i < target_fn->params.size()) {
-          fixed_param_ts = &target_fn->params[i].type.spec;
-        }
-      } else if (callee_fn_ptr_sig) {
-        const bool has_void_pl = sig_has_void_param_list(*callee_fn_ptr_sig);
-        if (!has_void_pl && i < sig_param_count(*callee_fn_ptr_sig)) {
-          fn_ptr_param_ts = sig_param_type(*callee_fn_ptr_sig, i);
-          fixed_param_ts = &fn_ptr_param_ts;
-        }
-      }
-
-      TypeSpec arg_ts{};
-      std::string arg;
-      if (fixed_param_ts &&
-          (fixed_param_ts->is_lvalue_ref || fixed_param_ts->is_rvalue_ref)) {
-        try {
-          TypeSpec pointee_ts{};
-          arg = emit_lval(ctx, call.args[i], pointee_ts);
-          arg_ts = pointee_ts;
-          arg_ts.ptr_level += 1;
-          arg_ts.is_lvalue_ref = fixed_param_ts->is_lvalue_ref;
-          arg_ts.is_rvalue_ref = fixed_param_ts->is_rvalue_ref;
-        } catch (const std::runtime_error&) {
-          arg = emit_rval_id(ctx, call.args[i], arg_ts);
-        }
-      } else {
-        arg = emit_rval_id(ctx, call.args[i], arg_ts);
-      }
-      TypeSpec out_arg_ts = arg_ts;
-      const bool is_va_list_value =
-          arg_ts.base == TB_VA_LIST &&
-          arg_ts.ptr_level == 0 &&
-          arg_ts.array_rank == 0;
-      const bool is_variadic_aggregate =
-          target_fn && target_fn->attrs.variadic && i >= target_fn->params.size() &&
-          (arg_ts.base == TB_STRUCT || arg_ts.base == TB_UNION) &&
-          arg_ts.ptr_level == 0 && arg_ts.array_rank == 0 &&
-          arg_ts.tag && arg_ts.tag[0];
-      if (target_fn) {
-        const bool has_void_param_list =
-            target_fn->params.size() == 1 &&
-            target_fn->params[0].type.spec.base == TB_VOID &&
-            target_fn->params[0].type.spec.ptr_level == 0 &&
-            target_fn->params[0].type.spec.array_rank == 0;
-        if (!has_void_param_list && i < target_fn->params.size()) {
-          out_arg_ts = target_fn->params[i].type.spec;
-          arg = coerce(ctx, arg, arg_ts, out_arg_ts);
-        } else if (target_fn->attrs.variadic && !is_variadic_aggregate) {
-          apply_default_arg_promotion(arg, out_arg_ts, arg_ts);
-        }
-      } else if (callee_fn_ptr_sig) {
-        // Phase 4: use canonical-aware helpers for param type extraction.
-        const bool has_void_pl = sig_has_void_param_list(*callee_fn_ptr_sig);
-        if (!has_void_pl && i < sig_param_count(*callee_fn_ptr_sig)) {
-          out_arg_ts = sig_param_type(*callee_fn_ptr_sig, i);
-          arg = coerce(ctx, arg, arg_ts, out_arg_ts);
-        } else if (sig_is_variadic(*callee_fn_ptr_sig) && !is_variadic_aggregate) {
-          apply_default_arg_promotion(arg, out_arg_ts, arg_ts);
-        }
-      }
-      if (is_va_list_value && callee_needs_va_list_by_value_copy(i)) {
-        TypeSpec ap_ts{};
-        const std::string src_ptr = emit_va_list_obj_ptr(ctx, call.args[i], ap_ts);
-        const std::string tmp_addr = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, llvm_va_list_storage_ty(), {}, 0});
-        module_->need_memcpy = true;
-        emit_lir_op(ctx, lir::LirMemcpyOp{
-            tmp_addr, src_ptr, std::to_string(llvm_va_list_storage_size()), false});
-        arg = tmp_addr;
-        out_arg_ts = arg_ts;
-      }
-      if (is_variadic_aggregate) {
-        const auto sit = mod_.struct_defs.find(arg_ts.tag);
-        const int payload_sz = sit == mod_.struct_defs.end() ? 0 : sit->second.size_bytes;
-        if (payload_sz == 0) continue;
-
-        std::string obj_ptr;
-        if (get_expr(call.args[i]).type.category == ValueCategory::LValue) {
-          TypeSpec obj_ts{};
-          obj_ptr = emit_lval(ctx, call.args[i], obj_ts);
-        } else {
-          const std::string tmp_addr = fresh_tmp(ctx);
-          emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, llvm_ty(arg_ts), {}, 0});
-          emit_lir_op(ctx, lir::LirStoreOp{llvm_ty(arg_ts), arg, tmp_addr});
-          obj_ptr = tmp_addr;
-        }
-
-        module_->need_memcpy = true;
-        if (i) args_str += ", ";
-        if (payload_sz > 16) {
-          args_str += "ptr " + obj_ptr;
-          continue;
-        }
-        if (payload_sz <= 8) {
-          const std::string tmp_addr = fresh_tmp(ctx);
-          emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, "i64", {}, 0});
-          emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, obj_ptr, std::to_string(payload_sz), false});
-          const std::string packed = fresh_tmp(ctx);
-          emit_lir_op(ctx, lir::LirLoadOp{packed, std::string("i64"), tmp_addr});
-          args_str += "i64 " + packed;
-          continue;
-        }
-
-        const std::string tmp_addr = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, "[2 x i64]", {}, 0});
-        emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, obj_ptr, std::to_string(payload_sz), false});
-        const std::string packed = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirLoadOp{packed, std::string("[2 x i64]"), tmp_addr});
-        args_str += "[2 x i64] " + packed;
-        continue;
-      }
-      if (i) args_str += ", ";
-      args_str += llvm_ty(out_arg_ts) + " " + arg;
+      PreparedCallArg prepared = prepare_call_arg(ctx, call, call_target, i);
+      if (prepared.skip) continue;
+      if (!args_str.empty()) args_str += ", ";
+      args_str += prepared.text;
     }
 
     if (call_target.ret_ty == "void") {
