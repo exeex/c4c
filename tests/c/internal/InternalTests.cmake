@@ -242,6 +242,19 @@ if(EXISTS "${EXAMPLE_C}")
       LABELS "internal;backend")
 
   add_test(
+      NAME backend_lir_aarch64_variadic_pair_ir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/variadic_pair_second.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_pair_second_aarch64.ll
+              "-DREQUIRED_SNIPPETS=call void @llvm.memcpy.p0.p0.i64(|phi ptr|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 3|load %struct.Pair, ptr"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+  )
+  set_tests_properties(backend_lir_aarch64_variadic_pair_ir PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
       NAME backend_lir_unsupported_target_entry
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
@@ -272,6 +285,10 @@ if(CLANG_EXECUTABLE)
   if(BACKEND_RUNTIME_TARGET_TRIPLE)
     foreach(src IN LISTS INTERNAL_BACKEND_TEST_SRCS)
       get_filename_component(stem "${src}" NAME_WE)
+      if(stem STREQUAL "variadic_pair_second" AND
+         NOT BACKEND_RUNTIME_TARGET_TRIPLE STREQUAL "aarch64-unknown-linux-gnu")
+        continue()
+      endif()
       set(test_name "backend_runtime_${stem}")
       set(expect_exit_code 0)
       if(stem STREQUAL "return_add")
@@ -300,6 +317,8 @@ if(CLANG_EXECUTABLE)
         set(expect_exit_code 42)
       elseif(stem STREQUAL "variadic_double_bytes")
         set(expect_exit_code 67)
+      elseif(stem STREQUAL "variadic_pair_second")
+        set(expect_exit_code 9)
       elseif(stem STREQUAL "param_member_array")
         set(expect_exit_code 6)
       elseif(stem STREQUAL "param_slot")

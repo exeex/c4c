@@ -802,6 +802,69 @@ c4c::codegen::lir::LirModule make_va_arg_scalar_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_va_arg_pair_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }");
+  module.type_decls.push_back("%struct.Pair = type { i32, i32 }");
+  module.need_va_start = true;
+  module.need_va_end = true;
+  module.need_memcpy = true;
+
+  LirFunction function;
+  function.name = "pair_sum";
+  function.signature_text = "define i32 @pair_sum(i32 %p.seed, ...)\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(
+      LirAllocaOp{"%lv.ap", "%struct.__va_list_tag_", "", 8});
+  function.alloca_insts.push_back(
+      LirAllocaOp{"%lv.pair.tmp", "%struct.Pair", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirVaStartOp{"%lv.ap"});
+  entry.insts.push_back(LirCmpOp{"%t0", false, "slt", "i32", "-8", "0"});
+  entry.terminator = LirCondBr{"%t0", "reg", "stack"};
+
+  LirBlock reg_block;
+  reg_block.id = LirBlockId{1};
+  reg_block.label = "reg";
+  reg_block.insts.push_back(
+      LirGepOp{"%t1", "%struct.__va_list_tag_", "%lv.ap", false, {"i32 0", "i32 1"}});
+  reg_block.insts.push_back(LirLoadOp{"%t2", "ptr", "%t1"});
+  reg_block.insts.push_back(LirGepOp{"%t3", "i8", "%t2", false, {"i32 -8"}});
+  reg_block.terminator = LirBr{"join"};
+
+  LirBlock stack_block;
+  stack_block.id = LirBlockId{2};
+  stack_block.label = "stack";
+  stack_block.insts.push_back(
+      LirGepOp{"%t4", "%struct.__va_list_tag_", "%lv.ap", false, {"i32 0", "i32 0"}});
+  stack_block.insts.push_back(LirLoadOp{"%t5", "ptr", "%t4"});
+  stack_block.terminator = LirBr{"join"};
+
+  LirBlock join_block;
+  join_block.id = LirBlockId{3};
+  join_block.label = "join";
+  join_block.insts.push_back(
+      LirPhiOp{"%t6", "ptr", {{"%t3", "reg"}, {"%t5", "stack"}}});
+  join_block.insts.push_back(LirMemcpyOp{"%lv.pair.tmp", "%t6", "8", false});
+  join_block.insts.push_back(LirVaEndOp{"%lv.ap"});
+  join_block.terminator = LirRet{std::string("%p.seed"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(reg_block));
+  function.blocks.push_back(std::move(stack_block));
+  function.blocks.push_back(std::move(join_block));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_phi_join_module() {
   using namespace c4c::codegen::lir;
 
@@ -1268,6 +1331,23 @@ void test_aarch64_backend_renders_va_arg_scalar_slice() {
                   "aarch64 backend should preserve the scalar va_arg result");
 }
 
+void test_aarch64_backend_renders_va_arg_pair_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_va_arg_pair_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)",
+                  "aarch64 backend should render llvm.memcpy declarations for aggregate va_arg");
+  expect_contains(rendered, "%t6 = phi ptr [ %t3, %reg ], [ %t5, %stack ]",
+                  "aarch64 backend should preserve the aggregate va_arg helper phi join");
+  expect_contains(rendered,
+                  "call void @llvm.memcpy.p0.p0.i64(ptr %lv.pair.tmp, ptr %t6, i64 8, i1 false)",
+                  "aarch64 backend should render aggregate va_arg copies through llvm.memcpy");
+  expect_contains(rendered, "call void @llvm.va_end.p0(ptr %lv.ap)",
+                  "aarch64 backend should preserve va_end after aggregate va_arg handling");
+  expect_contains(rendered, "ret i32 %p.seed",
+                  "aarch64 backend should preserve the enclosing function return");
+}
+
 void test_aarch64_backend_renders_phi_join_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_phi_join_module()},
@@ -1308,6 +1388,7 @@ int main() {
   test_aarch64_backend_renders_bitcast_slice();
   test_aarch64_backend_renders_va_intrinsic_slice();
   test_aarch64_backend_renders_va_arg_scalar_slice();
+  test_aarch64_backend_renders_va_arg_pair_slice();
   test_aarch64_backend_renders_phi_join_slice();
   return 0;
 }

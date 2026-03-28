@@ -7,12 +7,12 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3: port the first integer/control-flow slice
-- Iteration slice: inspect the next narrow AArch64 variadic follow-on after landing the `fp128`/`long double` helper path, most likely the next target-local variadic aggregate or another missing runtime-backed AArch64 backend capability
+- Iteration slice: inspect the next AArch64 variadic aggregate follow-on after landing the first small by-value struct `va_arg` slice, most likely a larger indirect aggregate or another Linux-only helper boundary
 
 ## Next Intended Slice
 
-- inspect the next target-local AArch64 variadic lowering gap after the `long double`/`fp128` scalar slice, most likely variadic aggregate handling or another helper boundary that still falls back to generic `va_arg`
-- keep comparing target-specific `va_arg` helper IR against Clang on `aarch64-unknown-linux-gnu` before widening beyond one additional variadic case
+- compare the next aggregate `va_arg` helper IR against Clang on `aarch64-unknown-linux-gnu` before widening beyond one additional aggregate case
+- inspect whether the next gap is a larger indirect aggregate (`payload_sz > 16`) or another missing Linux AArch64 variadic helper boundary that still needs explicit backend coverage
 - keep the next slice focused on one target-local helper boundary or one missing runtime-backed backend capability
 - avoid broadening beyond the active AArch64 Step 3 runbook without recording a separate idea
 
@@ -121,6 +121,12 @@ Source Plan: plan.md
 - added `tests/c/internal/backend_ir_case/variadic_long_double_bytes.c` plus `backend_lir_aarch64_variadic_long_double_ir` in `tests/c/internal/InternalTests.cmake` to lock the emitted `long double` helper path onto the expected `fp128` + `ptrmask` IR shape
 - verified `backend_lir_adapter_tests`, `backend_lir_aarch64_variadic_double_ir`, and `backend_lir_aarch64_variadic_long_double_ir` pass for the new `fp128` alignment slice
 - reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=532/537 -> 533/538`, zero newly failing tests, and the same five unrelated failures before and after
+- added target-local AArch64 `llvm.memcpy` declaration plus instruction rendering in `src/backend/aarch64/globals.*` and `src/backend/aarch64/memory.cpp` so small aggregate variadic copies no longer fail in the backend emitter
+- added unit coverage for AArch64 aggregate `va_arg` memcpy rendering in `tests/backend/backend_lir_adapter_tests.cpp`
+- added `tests/c/internal/backend_case/variadic_pair_second.c` plus `backend_lir_aarch64_variadic_pair_ir` in `tests/c/internal/InternalTests.cmake` to lock the first small by-value struct `va_arg` helper path onto the expected Linux AArch64 `phi` + `memcpy` IR shape
+- limited `backend_runtime_variadic_pair_second` to Linux AArch64 hosts because this aggregate helper path is intentionally validated against the Linux `__va_list` contract rather than Darwin's different runtime ABI
+- verified `backend_lir_adapter_tests` and `backend_lir_aarch64_variadic_pair_ir` pass for the new small aggregate variadic slice
+- reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=533/538 -> 534/539`, zero newly failing tests, and the same five unrelated failures before and after
 
 ## Blockers
 
@@ -154,3 +160,4 @@ Source Plan: plan.md
 - minimal AArch64 variadic probes now also get through integer scalar `va_arg` via the frontend's helper-generated register/stack split plus `phi` join; the next likely blocker is the first floating-point `va_arg` helper path rather than integer scalar variadics
 - the first floating-point scalar `va_arg` probe now also matches Clang's `aarch64-unknown-linux-gnu` helper CFG and is covered in repo tests without depending on unsupported floating-point compare lowering
 - the `long double`/`fp128` scalar `va_arg` helper path now also uses `llvm.ptrmask.p0.i64` for 16-byte stack alignment and is locked by an AArch64 Linux IR regression test without widening host-dependent runtime coverage
+- the first small by-value aggregate `va_arg` probe now also matches the expected Linux AArch64 helper pattern via `phi ptr` plus `llvm.memcpy`; on Darwin hosts this slice remains IR-only because the active runtime contract in repo tests is tied to the Linux `__va_list` layout

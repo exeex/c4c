@@ -43,6 +43,13 @@ bool render_memory_instruction(std::ostream& out,
     return true;
   }
 
+  if (const auto* memcpy = std::get_if<c4c::codegen::lir::LirMemcpyOp>(&inst)) {
+    out << "  call void @llvm.memcpy.p0.p0.i64(ptr " << memcpy->dst
+        << ", ptr " << memcpy->src << ", i64 " << memcpy->size << ", i1 "
+        << (memcpy->is_volatile ? "true" : "false") << ")\n";
+    return true;
+  }
+
   if (const auto* va_start = std::get_if<c4c::codegen::lir::LirVaStartOp>(&inst)) {
     out << "  call void @llvm.va_start.p0(ptr " << va_start->ap_ptr << ")\n";
     return true;

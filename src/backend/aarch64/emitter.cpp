@@ -18,6 +18,7 @@ const char* instruction_kind(const c4c::codegen::lir::LirInst& inst) {
   if (std::holds_alternative<c4c::codegen::lir::LirAllocaOp>(inst)) return "alloca";
   if (std::holds_alternative<c4c::codegen::lir::LirLoadOp>(inst)) return "load";
   if (std::holds_alternative<c4c::codegen::lir::LirStoreOp>(inst)) return "store";
+  if (std::holds_alternative<c4c::codegen::lir::LirMemcpyOp>(inst)) return "memcpy";
   if (std::holds_alternative<c4c::codegen::lir::LirCastOp>(inst)) return "cast";
   if (std::holds_alternative<c4c::codegen::lir::LirBinOp>(inst)) return "binop";
   if (std::holds_alternative<c4c::codegen::lir::LirCmpOp>(inst)) return "cmp";
