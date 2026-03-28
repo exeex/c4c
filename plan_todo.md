@@ -7,12 +7,12 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3: port the first integer/control-flow slice
-- Iteration slice: extend local GEP addressing into broader parameter/member stack-addressing cases
+- Iteration slice: lock in struct-by-value parameter/member array stack-addressing coverage on the AArch64 path
 
 ## Next Intended Slice
 
 - port the ref prologue/return helpers deeper into `src/backend/aarch64/`
-- extend runtime coverage from local GEP addressing into broader parameter/member backend stack-addressing cases
+- extend runtime coverage from struct-by-value member array access into additional nested/member-pointer backend stack-addressing cases
 - keep target-local casts aligned with real AArch64 addressing IR as new memory slices land
 
 ## Completed Items
@@ -45,10 +45,14 @@ Source Plan: plan.md
 - added unit coverage for AArch64 local array GEP lowering in `tests/backend/backend_lir_adapter_tests.cpp`
 - added `tests/c/internal/backend_case/local_array.c` for local array runtime coverage on supported AArch64 hosts
 - rebuilt from a clean `build/` directory, recorded `test_after.log`, and passed the monotonic regression guard against `test_before.log` with `passed=491/505 -> 493/506` and zero newly failing tests
+- added unit coverage for AArch64 struct-by-value parameter member-array GEP lowering in `tests/backend/backend_lir_adapter_tests.cpp`
+- added `tests/c/internal/backend_case/param_member_array.c` for struct-by-value member-array runtime coverage on supported AArch64 hosts
+- verified `backend_lir_adapter_tests` and `backend_runtime_param_member_array` pass for the new parameter/member stack-addressing slice
+- reran the full `ctest --test-dir build -j --output-on-failure` suite after landing the new coverage; the new backend test passed, while the suite still reports unrelated existing failures outside this AArch64 slice
 
 ## Blockers
 
-- none recorded
+- full-suite `ctest` is not clean yet due unrelated existing failures outside the active AArch64 slice (`backend_lir_missing_toolchain_diagnostic`, `compare_smoke_*`, `positive_sema_ok_fn_returns_variadic_fn_ptr_c`, and several longstanding C++ positive-case failures)
 
 ## Resume Notes
 
@@ -61,3 +65,4 @@ Source Plan: plan.md
 - simple local integer temporaries now emit through the target-local AArch64 memory helpers; broader slot flows and runtime execution still depend on supported AArch64 hosts/toolchains for end-to-end coverage
 - modified-parameter slots now execute through the target-local AArch64 path, including typed direct helper calls with arguments
 - local array stack-slot addressing now executes through target-local AArch64 `getelementptr` plus index-widening casts on supported hosts
+- struct-by-value parameter member-array addressing is now covered in both backend emitter and runtime tests on the AArch64 path
