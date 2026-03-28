@@ -262,9 +262,14 @@ void StmtEmitter::emit_term_unreachable(FnCtx& ctx){
     }
   }
 
+void StmtEmitter::emit_br_and_open_lbl(FnCtx& ctx, const std::string& branch_label,
+                                        const std::string& open_label){
+    emit_term_br(ctx, branch_label);
+    emit_lbl(ctx, open_label);
+  }
+
 void StmtEmitter::emit_fallthrough_lbl(FnCtx& ctx, const std::string& lbl){
-    emit_term_br(ctx, lbl);
-    emit_lbl(ctx, lbl);
+    emit_br_and_open_lbl(ctx, lbl, lbl);
   }
 
 std::string StmtEmitter::fresh_tmp(FnCtx& ctx){
@@ -2445,9 +2450,7 @@ std::string StmtEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Exp
       emit_lir_op(ctx, lir::LirCastOp{rhs_val, lir::LirCastKind::ZExt, "i1", rc, res_ty});
     }
     emit_fallthrough_lbl(ctx, rhs_end_lbl);
-    emit_term_br(ctx, end_lbl);
-
-    emit_lbl(ctx, skip_lbl);
+    emit_br_and_open_lbl(ctx, end_lbl, skip_lbl);
     std::string skip_val;
     if (res_ty == "i1") {
       skip_val = (b.op == BinaryOp::LAnd) ? "false" : "true";
@@ -3443,9 +3446,7 @@ std::string StmtEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::st
     emit_lir_op(ctx, lir::LirLoadOp{gr_top, std::string("ptr"), gr_top_ptr});
     const std::string reg_addr = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirGepOp{reg_addr, "i8", gr_top, false, {"i32 " + offs}});
-    emit_term_br(ctx, join_lbl);
-
-    emit_lbl(ctx, stack_lbl);
+    emit_br_and_open_lbl(ctx, join_lbl, stack_lbl);
     const std::string stack_ptr_ptr = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirGepOp{stack_ptr_ptr, "%struct.__va_list_tag_", ap_ptr, false, {"i32 0", "i32 0"}});
     const std::string stack_ptr = fresh_tmp(ctx);
@@ -3487,9 +3488,7 @@ std::string StmtEmitter::emit_aarch64_vaarg_fp_src_ptr(
     emit_lir_op(ctx, lir::LirLoadOp{vr_top, std::string("ptr"), vr_top_ptr});
     const std::string reg_addr = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirGepOp{reg_addr, "i8", vr_top, false, {"i32 " + offs}});
-    emit_term_br(ctx, join_lbl);
-
-    emit_lbl(ctx, stack_lbl);
+    emit_br_and_open_lbl(ctx, join_lbl, stack_lbl);
     const std::string stack_ptr_ptr = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirGepOp{stack_ptr_ptr, "%struct.__va_list_tag_", ap_ptr, false, {"i32 0", "i32 0"}});
     const std::string stack_ptr = fresh_tmp(ctx);
@@ -3634,9 +3633,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, con
     std::string then_v = emit_rval_id(ctx, t.then_expr, then_ts);
     then_v = coerce(ctx, then_v, then_ts, res_spec);
     emit_fallthrough_lbl(ctx, then_end_lbl);
-    emit_term_br(ctx, end_lbl);
-
-    emit_lbl(ctx, else_lbl);
+    emit_br_and_open_lbl(ctx, end_lbl, else_lbl);
     TypeSpec else_ts{};
     std::string else_v = emit_rval_id(ctx, t.else_expr, else_ts);
     else_v = coerce(ctx, else_v, else_ts, res_spec);

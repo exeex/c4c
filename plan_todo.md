@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: Extract Terminator and Block Lifecycle Helpers
-- Current slice: inspect [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) for the next remaining Step 2 open-block or terminator repetition now that the AArch64 `va_arg` join-label paths also reuse the local lifecycle helpers
+- Current slice: inspect [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) for any remaining Step 2 open-block or terminator repetition now that logical, ternary, and AArch64 `va_arg` sibling handoff paths share the same local helper
 
 ## Completed
 
@@ -37,10 +37,13 @@ Source Plan: plan.md
 - Added [`smoke_vaarg_branch_lifecycle.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_vaarg_branch_lifecycle.c) to force AArch64 `va_arg` GP and FP lowering through both register and stack join paths in compare mode
 - Reused `emit_fallthrough_lbl(...)` for the remaining AArch64 `va_arg` GP/FP stack-to-join block openings inside [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp), removing the last manual `emit_term_br(join_lbl)` + `emit_lbl(join_lbl)` pairs in those helpers
 - Verified the new `compare_smoke_vaarg_branch_lifecycle` test, the full `compare_case` label, and the full-suite regression guard (`2243/2244` with one failing baseline case -> `2245/2245` with zero failures; guard passed with no new failing tests)
+- Extended [`smoke_expr_branch_lifecycle.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_expr_branch_lifecycle.c) with nested ternary and logical branches that force the remaining sibling-successor handoff pattern through compare mode
+- Extracted `emit_br_and_open_lbl(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and reused it across logical short-circuit, ternary lowering, and the remaining AArch64 `va_arg` reg-to-stack handoff sites so those paths share one explicit sibling-block transition contract
+- Verified the targeted compare-mode cases plus the clean full-suite regression guard with stable results (`2245` -> `2245` passed, zero failures)
 
 ## Next Slice
 
-- Continue Step 2 by scanning for any remaining local successor-opening or open-block terminator repetition that still bypasses `set_terminator_if_open(...)`, `emit_condbr_and_open_lbl(...)`, or `emit_fallthrough_lbl(...)` without widening the refactor beyond [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp)
+- Continue Step 2 by scanning for any remaining local successor-opening or open-block terminator repetition that still bypasses `set_terminator_if_open(...)`, `emit_condbr_and_open_lbl(...)`, `emit_fallthrough_lbl(...)`, or `emit_br_and_open_lbl(...)` without widening the refactor beyond [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp)
 
 ## Blockers
 
@@ -63,3 +66,5 @@ Source Plan: plan.md
 - This iteration targets the sibling "branch directly to the block we open next" pattern; prefer reusing `emit_fallthrough_lbl(...)` rather than introducing another near-duplicate helper when the target label is the same
 - The next concrete Step 2 candidate is the AArch64 `va_arg` GP/FP join path, where both branches still end with manual `emit_term_br(join_lbl)` plus `emit_lbl(join_lbl)` instead of the existing fallthrough-open helper
 - The AArch64 `va_arg` join path now composes with `emit_condbr_and_open_lbl(...)` and `emit_fallthrough_lbl(...)`; the next Step 2 pass should look for other local block-opening sites that still build labels manually after placing a terminator
+- The current Step 2 slice is the repeated "finish one predecessor, branch to a join/end label, then immediately continue emitting the sibling block" shape that appears in logical, ternary, and the remaining `va_arg` reg-to-stack handoff paths
+- `emit_br_and_open_lbl(...)` now owns the sibling-handoff shape where one predecessor closes by branching to a join/end label and codegen immediately continues in a different successor block; future Step 2 slices should reuse it instead of restating `emit_term_br(...)` plus `emit_lbl(...)`

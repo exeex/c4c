@@ -94,6 +94,8 @@ class StmtEmitter {
                         const std::string& sel_type, const std::string& default_label,
                         std::vector<std::pair<long long, std::string>> cases);
   void emit_term_unreachable(FnCtx& ctx);
+  void emit_br_and_open_lbl(FnCtx& ctx, const std::string& branch_label,
+                            const std::string& open_label);
   void emit_fallthrough_lbl(FnCtx& ctx, const std::string& lbl);
   std::string fresh_tmp(FnCtx& ctx);
   void record_extern_call_decl(const std::string& name, const std::string& ret_ty);
