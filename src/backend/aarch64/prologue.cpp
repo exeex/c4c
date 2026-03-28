@@ -6,7 +6,6 @@
 namespace c4c::backend::aarch64 {
 
 void validate_module(const c4c::codegen::lir::LirModule& module) {
-  if (!module.string_pool.empty()) fail_unsupported("string constants");
   if (!module.extern_decls.empty()) fail_unsupported("extern declarations");
   if (module.need_va_start || module.need_va_end || module.need_va_copy ||
       module.need_memcpy || module.need_stacksave || module.need_stackrestore ||
@@ -34,8 +33,10 @@ void render_module_header(std::ostream& out,
   for (const auto& type_decl : module.type_decls) {
     out << type_decl << "\n";
   }
+  render_module_string_pool(out, module);
   render_module_globals(out, module);
-  if (!module.type_decls.empty() || !module.globals.empty()) {
+  if (!module.type_decls.empty() || !module.string_pool.empty() ||
+      !module.globals.empty()) {
     out << "\n";
   }
 }

@@ -451,6 +451,35 @@ c4c::codegen::lir::LirModule make_global_load_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_string_literal_char_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.string_pool.push_back(LirStringConst{"@.str0", "hi", 3});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(
+      LirGepOp{"%t0", "[3 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirGepOp{"%t1", "i8", "%t0", false, {"i64 1"}});
+  entry.insts.push_back(LirLoadOp{"%t2", "i8", "%t1"});
+  entry.insts.push_back(
+      LirCastOp{"%t3", LirCastKind::SExt, "i8", "%t2", "i32"});
+  entry.terminator = LirRet{std::string("%t3"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 void test_adapts_direct_return() {
   const auto adapted = c4c::backend::adapt_return_only_module(make_return_zero_module());
   expect_true(adapted.functions.size() == 1, "adapter should preserve one function");
@@ -714,6 +743,24 @@ void test_aarch64_backend_renders_global_definition_slice() {
                   "aarch64 backend should preserve the global load result");
 }
 
+void test_aarch64_backend_renders_string_pool_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_string_literal_char_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "@.str0 = private unnamed_addr constant [3 x i8] c\"hi\\00\"",
+                  "aarch64 backend should render module string pool constants");
+  expect_contains(rendered, "%t0 = getelementptr [3 x i8], ptr @.str0, i64 0, i64 0",
+                  "aarch64 backend should preserve string-literal decay through GEP");
+  expect_contains(rendered, "%t1 = getelementptr i8, ptr %t0, i64 1",
+                  "aarch64 backend should preserve indexed string-literal addressing");
+  expect_contains(rendered, "%t2 = load i8, ptr %t1",
+                  "aarch64 backend should preserve string-literal byte loads");
+  expect_contains(rendered, "%t3 = sext i8 %t2 to i32",
+                  "aarch64 backend should preserve byte-to-int promotion");
+  expect_contains(rendered, "ret i32 %t3",
+                  "aarch64 backend should preserve the promoted string-literal result");
+}
+
 }  // namespace
 
 int main() {
@@ -734,5 +781,6 @@ int main() {
   test_aarch64_backend_renders_nested_member_pointer_array_gep_slice();
   test_aarch64_backend_renders_nested_param_member_array_gep_slice();
   test_aarch64_backend_renders_global_definition_slice();
+  test_aarch64_backend_renders_string_pool_slice();
   return 0;
 }

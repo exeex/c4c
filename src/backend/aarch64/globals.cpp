@@ -4,6 +4,21 @@
 
 namespace c4c::backend::aarch64 {
 
+void render_module_string_pool(std::ostream& out,
+                               const c4c::codegen::lir::LirModule& module) {
+  for (const auto& string_const : module.string_pool) {
+    if (string_const.byte_length < 0) {
+      out << string_const.pool_name << " = private unnamed_addr constant "
+          << string_const.raw_bytes << "\n";
+      continue;
+    }
+
+    out << string_const.pool_name << " = private unnamed_addr constant ["
+        << string_const.byte_length << " x i8] c\"" << string_const.raw_bytes
+        << "\\00\"\n";
+  }
+}
+
 void render_module_globals(std::ostream& out,
                            const c4c::codegen::lir::LirModule& module) {
   for (const auto& global : module.globals) {
