@@ -49,6 +49,7 @@ int run(void) {
   struct WithAnon anon_assign = {.left = 0, .right = 0, .low = 1, .high = -6};
   int (*pvalues)[3] = &w.inner.values;
   int (*cursor)[3] = &pair[0].inner.values;
+  int (*cursor_compound)[3] = &pair[0].inner.values;
   int first = w.inner.head;
   int second = pw->inner.values[1];
   int third = w.inner.values[2];
@@ -69,6 +70,10 @@ int run(void) {
   int anon_final = anon.high;
   int scalar_assign = (pair[0].tail = 101);
   int scalar_after_assign = pair[0].tail;
+  int scalar_compound = (pair[0].tail += 4);
+  int scalar_after_compound = pair[0].tail;
+  int ptr_compound = (cursor_compound += 1)[0][2];
+  int ptr_after_compound = cursor_compound[0][1];
   int bit_set = (anon_assign.high = -5);
   int bit_add = (anon_assign.high += 2);
   int bit_after_assign = anon_assign.high;
@@ -79,10 +84,11 @@ int run(void) {
          ptr_to_array_add + ptr_to_array_preinc + indexed_member_scalar +
          indexed_member_decay + typedef_arrow + rvalue_field + rvalue_decay +
          pw->tail + anon_rvalue + anon_fields + anon_preinc + anon_postinc +
-         anon_final + scalar_assign + scalar_after_assign + bit_set + bit_add +
-         bit_after_assign + low_set + low_xor + low_after_assign;
+         anon_final + scalar_assign + scalar_after_assign + scalar_compound +
+         scalar_after_compound + ptr_compound + ptr_after_compound + bit_set +
+         bit_add + bit_after_assign + low_set + low_xor + low_after_assign;
 }
 
 int main(void) {
-  return run() == 768 ? 0 : 1;
+  return run() == 1078 ? 0 : 1;
 }

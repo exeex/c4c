@@ -976,6 +976,18 @@ AssignableLValue StmtEmitter::emit_assignable_lval(FnCtx& ctx, ExprId id) {
     return access;
 }
 
+std::string StmtEmitter::emit_store_assignable_value(FnCtx& ctx, const AssignableLValue& lhs,
+                                                     const std::string& value,
+                                                     const TypeSpec& value_ts,
+                                                     bool reload_after_store) {
+    if (lhs.is_bitfield()) {
+      emit_bitfield_store(ctx, lhs.ptr, lhs.bf, value, value_ts);
+      return reload_after_store ? emit_bitfield_load(ctx, lhs.ptr, lhs.bf) : value;
+    }
+    emit_lir_op(ctx, lir::LirStoreOp{llvm_ty(lhs.pointee_ts), value, lhs.ptr});
+    return value;
+}
+
 TypeSpec StmtEmitter::resolve_member_base_type(FnCtx& ctx, ExprId base_id, bool is_arrow){
     const Expr& base_e = get_expr(base_id);
     TypeSpec base_ts = base_e.type.spec;
@@ -2479,23 +2491,21 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const AssignExpr& a, cons
 
     const AssignableLValue lhs = emit_assignable_lval(ctx, a.lhs);
     const TypeSpec& lhs_ts = lhs.pointee_ts;
-    const BitfieldAccess& bf = lhs.bf;
-    const std::string& lhs_ptr = lhs.ptr;
     const std::string lty = llvm_ty(lhs_ts);
 
     // Bitfield simple assignment
-    if (bf.is_bitfield() && a.op == AssignOp::Set) {
-      emit_bitfield_store(ctx, lhs_ptr, bf, rhs, rhs_ts);
+    if (lhs.is_bitfield() && a.op == AssignOp::Set) {
       // In C, (bf = val) yields the value of bf after assignment,
       // which is truncated to the bitfield width.
-      return emit_bitfield_load(ctx, lhs_ptr, bf);
+      return emit_store_assignable_value(ctx, lhs, rhs, rhs_ts, true);
     }
     // Bitfield compound assignment
-    if (bf.is_bitfield() && a.op != AssignOp::Set) {
+    if (lhs.is_bitfield() && a.op != AssignOp::Set) {
+      const BitfieldAccess& bf = lhs.bf;
       const int pbits = bitfield_promoted_bits(bf);
       const std::string promoted_ty = "i" + std::to_string(pbits);
       TypeSpec promoted_ts = bitfield_promoted_ts(bf);
-      const std::string loaded = emit_bitfield_load(ctx, lhs_ptr, bf);
+      const std::string loaded = emit_bitfield_load(ctx, lhs.ptr, bf);
       std::string lhs_op = loaded;
       std::string rhs_op = coerce(ctx, rhs, rhs_ts, promoted_ts);
       const bool ls = is_signed_int(promoted_ts.base);
@@ -2513,13 +2523,12 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const AssignExpr& a, cons
       if (!instr) throw std::runtime_error("StmtEmitter: bitfield compound assign: unknown op");
       const std::string result = fresh_tmp(ctx);
       emit_lir_op(ctx, lir::LirBinOp{result, std::string(instr), promoted_ty, lhs_op, rhs_op});
-      emit_bitfield_store(ctx, lhs_ptr, bf, result, promoted_ts);
-      return result;
+      return emit_store_assignable_value(ctx, lhs, result, promoted_ts, false);
     }
 
     if (a.op != AssignOp::Set) {
       const std::string loaded = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirLoadOp{loaded, lty, lhs_ptr});
+      emit_lir_op(ctx, lir::LirLoadOp{loaded, lty, lhs.ptr});
 
       if ((a.op == AssignOp::Add || a.op == AssignOp::Sub) && lty == "ptr") {
         TypeSpec i64_ts{};
@@ -2541,8 +2550,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const AssignExpr& a, cons
                 ? "i8" : llvm_ty(elem_ts);
         const std::string result = fresh_tmp(ctx);
         emit_lir_op(ctx, lir::LirGepOp{result, gep_ety3, loaded, false, {"i64 " + delta}});
-        emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), result, lhs_ptr});
-        return result;
+        return emit_store_assignable_value(ctx, lhs, result, lhs_ts, false);
       }
 
       static const struct { AssignOp op; BinaryOp bop; } compound_map[] = {
@@ -2561,8 +2569,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const AssignExpr& a, cons
             (is_complex_base(lhs_ts.base) || is_complex_base(rhs_ts.base))) {
           const std::string result =
               emit_complex_binary_arith(ctx, row.bop, loaded, lhs_ts, rhs, rhs_ts, lhs_ts);
-          emit_lir_op(ctx, lir::LirStoreOp{lty, result, lhs_ptr});
-          return result;
+          return emit_store_assignable_value(ctx, lhs, result, lhs_ts, false);
         }
         if (is_vector_value(lhs_ts)) {
           op_ts = lhs_ts;
@@ -2611,16 +2618,14 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const AssignExpr& a, cons
       emit_lir_op(ctx, lir::LirBinOp{result, std::string(instr), op_ty, lhs_op, rhs});
       std::string store_v = result;
       if (op_ty != lty) store_v = coerce(ctx, result, op_ts, lhs_ts);
-      emit_lir_op(ctx, lir::LirStoreOp{lty, store_v, lhs_ptr});
-      return store_v;
+      return emit_store_assignable_value(ctx, lhs, store_v, lhs_ts, false);
     }
 
     rhs = coerce(ctx, rhs, rhs_ts, lhs_ts);
     const bool is_agg = (lhs_ts.base == TB_STRUCT || lhs_ts.base == TB_UNION) &&
                         lhs_ts.ptr_level == 0 && lhs_ts.array_rank == 0;
     if (is_agg && (rhs == "0" || rhs.empty())) rhs = "zeroinitializer";
-    emit_lir_op(ctx, lir::LirStoreOp{lty, rhs, lhs_ptr});
-    return rhs;
+    return emit_store_assignable_value(ctx, lhs, rhs, lhs_ts, false);
   }
 
 std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CastExpr& c, const Expr& /*e*/){

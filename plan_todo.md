@@ -7,10 +7,13 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 4: Extract Assignment and Store Helpers
-- Current slice: re-scan Step 4 for the next behavior-preserving assignment/store helper above the operator-specific arithmetic and pointer-adjustment branches
+- Current slice: re-scan Step 4 for the next behavior-preserving helper above the operator-specific arithmetic tables, likely wherever unary inc/dec or assignment still spell the same final store/reload contract separately
 
 ## Completed
 
+- Extended [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) with scalar member `+=` plus pointer compound-assignment coverage so compare mode now pins non-bitfield assignment-store paths next to the existing bitfield assignment cases
+- Extracted `emit_store_assignable_value(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp), so `AssignExpr` now routes simple assignment, bitfield compound assignment, pointer compound assignment, complex compound assignment, and scalar compound stores through one scalar-vs-bitfield store helper without changing the inline arithmetic or pointer-delta selection
+- Verified `compare_smoke_aggregate_access`, the full `compare_case` label, and the clean full-suite regression guard with stable results (`2248` -> `2248` passed, zero failures; non-decreasing pass-count guard accepted the Step 4 store-helper slice)
 - Extended [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) with member scalar assignment plus anonymous-bitfield set/compound-assignment coverage so compare mode now pins the shared `MemberExpr` / bitfield LHS setup used by unary inc/dec and assignment lowering
 - Extracted `emit_assignable_lval(...)` plus shared `AssignableLValue` metadata in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp), so unary pre/post inc/dec and `AssignExpr` now reuse one member-aware / bitfield-aware LHS setup helper without changing their operator-specific arithmetic or store paths
 - Verified `compare_smoke_aggregate_access`, the full `compare_case` label, and the clean full-suite regression guard with stable results (`2248` -> `2248` passed, zero failures; non-decreasing pass-count guard accepted the first Step 4 slice)
@@ -127,3 +130,4 @@ Source Plan: plan.md
 - The next Step 3 scan should look for the next repeated access-pointer or address-materialization seam above `emit_member_lval(...)` and `emit_indexed_gep(...)`, not reopen field-resolution plumbing
 - This iteration targets the post-address materialization seam: both `emit_rval_payload(const IndexExpr&)` and `emit_rval_payload(const MemberExpr&)` still compute an access pointer and then locally decide between array decay, scalar load, or empty-void results before returning
 - Step 4 is now active: `emit_assignable_lval(...)` owns the shared member-aware / bitfield-aware LHS setup for unary inc/dec and assignment lowering, so the next pass should stay above the arithmetic tables and look for the next reusable assignment/store coordinator seam
+- This iteration targeted the final `AssignExpr` store/reload decision after arithmetic was already computed; the next Step 4 scan should decide whether unary inc/dec can reuse that same contract or whether another assignment-only coordination seam remains above the operator tables
