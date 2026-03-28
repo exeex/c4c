@@ -7,12 +7,12 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3: port the first integer/control-flow slice
-- Iteration slice: lock in struct-by-value parameter/member array stack-addressing coverage on the AArch64 path
+- Iteration slice: port the ref prologue/return helpers deeper into `src/backend/aarch64/`
 
 ## Next Intended Slice
 
-- port the ref prologue/return helpers deeper into `src/backend/aarch64/`
-- extend runtime coverage from struct-by-value member array access into additional nested/member-pointer backend stack-addressing cases
+- extend runtime coverage from nested `->` member-array access into additional nested/by-value backend stack-addressing cases
+- start splitting the current frame/return path toward ref-shaped target-local helpers without changing the backend boundary
 - keep target-local casts aligned with real AArch64 addressing IR as new memory slices land
 
 ## Completed Items
@@ -66,3 +66,8 @@ Source Plan: plan.md
 - modified-parameter slots now execute through the target-local AArch64 path, including typed direct helper calls with arguments
 - local array stack-slot addressing now executes through target-local AArch64 `getelementptr` plus index-widening casts on supported hosts
 - struct-by-value parameter member-array addressing is now covered in both backend emitter and runtime tests on the AArch64 path
+- isolated AArch64 probes show nested `->` member-array addressing already lowers and executes through the current target-local memory helpers; this iteration is codifying that slice in repo tests
+- added unit coverage for nested `->` member-array GEP lowering in `tests/backend/backend_lir_adapter_tests.cpp`
+- added `tests/c/internal/backend_case/nested_member_pointer_array.c` for nested member-pointer runtime coverage on supported AArch64 hosts
+- verified `backend_lir_adapter_tests` and `backend_runtime_nested_member_pointer_array` pass for the new nested member-pointer stack-addressing slice
+- reran the full `ctest --test-dir build -j --output-on-failure` suite after landing the new coverage; the regression guard passed with `passed=494/507 -> 495/508`, zero newly failing tests, and the new backend runtime test accounted for the pass-count increase

@@ -293,6 +293,41 @@ c4c::codegen::lir::LirModule make_param_member_array_gep_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_nested_member_pointer_array_gep_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.Inner = type { [2 x i32] }");
+  module.type_decls.push_back("%struct.Outer = type { ptr }");
+
+  LirFunction function;
+  function.name = "get_second";
+  function.signature_text = "define i32 @get_second(ptr %p.o)\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(
+      LirGepOp{"%t0", "%struct.Outer", "%p.o", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirLoadOp{"%t1", "ptr", "%t0"});
+  entry.insts.push_back(
+      LirGepOp{"%t2", "%struct.Inner", "%t1", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(
+      LirGepOp{"%t3", "[2 x i32]", "%t2", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(
+      LirCastOp{"%t4", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t5", "i32", "%t3", false, {"i64 %t4"}});
+  entry.insts.push_back(LirLoadOp{"%t6", "i32", "%t5"});
+  entry.terminator = LirRet{std::string("%t6"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 void test_adapts_direct_return() {
   const auto adapted = c4c::backend::adapt_return_only_module(make_return_zero_module());
   expect_true(adapted.functions.size() == 1, "adapter should preserve one function");
@@ -474,6 +509,28 @@ void test_aarch64_backend_renders_param_member_array_gep_slice() {
                   "aarch64 backend should preserve the loaded member-array result");
 }
 
+void test_aarch64_backend_renders_nested_member_pointer_array_gep_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_nested_member_pointer_array_gep_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "%struct.Inner = type { [2 x i32] }",
+                  "aarch64 backend should preserve nested pointee type declarations");
+  expect_contains(rendered, "%struct.Outer = type { ptr }",
+                  "aarch64 backend should preserve nested pointer-holder type declarations");
+  expect_contains(rendered, "%t0 = getelementptr %struct.Outer, ptr %p.o, i32 0, i32 0",
+                  "aarch64 backend should render outer member-addressing GEP");
+  expect_contains(rendered, "%t1 = load ptr, ptr %t0",
+                  "aarch64 backend should reload nested struct pointers from outer members");
+  expect_contains(rendered, "%t2 = getelementptr %struct.Inner, ptr %t1, i32 0, i32 0",
+                  "aarch64 backend should render nested pointee member-addressing GEP");
+  expect_contains(rendered, "%t3 = getelementptr [2 x i32], ptr %t2, i64 0, i64 0",
+                  "aarch64 backend should render array decay from nested pointee members");
+  expect_contains(rendered, "%t5 = getelementptr i32, ptr %t3, i64 %t4",
+                  "aarch64 backend should render indexed nested member-pointer addressing");
+  expect_contains(rendered, "ret i32 %t6",
+                  "aarch64 backend should preserve the loaded nested member-pointer result");
+}
+
 }  // namespace
 
 int main() {
@@ -489,5 +546,6 @@ int main() {
   test_aarch64_backend_renders_typed_direct_call_slice();
   test_aarch64_backend_renders_local_array_gep_slice();
   test_aarch64_backend_renders_param_member_array_gep_slice();
+  test_aarch64_backend_renders_nested_member_pointer_array_gep_slice();
   return 0;
 }
