@@ -272,6 +272,9 @@ class StmtEmitter {
   void emit_stmt_impl(FnCtx& ctx, const LocalDecl& d);
   void emit_stmt_impl(FnCtx& ctx, const ExprStmt& s);
   void emit_stmt_impl(FnCtx& ctx, const InlineAsmStmt& s);
+  void emit_non_control_flow_stmt(FnCtx& ctx, const LocalDecl& d);
+  void emit_non_control_flow_stmt(FnCtx& ctx, const ExprStmt& s);
+  void emit_non_control_flow_stmt(FnCtx& ctx, const InlineAsmStmt& s);
 
   void emit_control_flow_stmt(FnCtx& ctx, const ReturnStmt& s);
   void emit_control_flow_stmt(FnCtx& ctx, const IfStmt& s);

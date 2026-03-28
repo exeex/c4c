@@ -3796,6 +3796,10 @@ void StmtEmitter::emit_stmt(FnCtx& ctx, const Stmt& stmt){
   }
 
 void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const LocalDecl& d){
+    emit_non_control_flow_stmt(ctx, d);
+  }
+
+void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const LocalDecl& d){
     if (d.fn_ptr_sig) {
       ctx.local_fn_ptr_sigs[d.id.value] = *d.fn_ptr_sig;
     }
@@ -3851,6 +3855,10 @@ void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const LocalDecl& d){
   }
 
 void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const ExprStmt& s){
+    emit_non_control_flow_stmt(ctx, s);
+  }
+
+void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const ExprStmt& s){
     if (!s.expr) return;
     TypeSpec ts{};
     emit_rval_id(ctx, *s.expr, ts);
@@ -3884,6 +3892,10 @@ static std::string rewrite_asm_constraints(const std::string& raw) {
 }
 
 void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const InlineAsmStmt& s){
+    emit_non_control_flow_stmt(ctx, s);
+  }
+
+void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const InlineAsmStmt& s){
     const std::string asm_text = escape_llvm_c_bytes(s.asm_template);
     const std::string constraints = rewrite_asm_constraints(escape_llvm_c_bytes(s.constraints));
     TypeSpec ret_ts{};
