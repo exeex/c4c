@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: Extract Aggregate and Address-Lowering Helpers
-- Current slice: rescan [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) for the first repeated aggregate/address-lowering branch that can be pinned with a narrow compare-mode test before extraction
+- Current slice: rescan [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) for the next duplicated aggregate/address-formation path after landing the shared access-rvalue helper and the pointer-to-array array-field fixes it exposed
 
 ## Completed
 
@@ -52,10 +52,15 @@ Source Plan: plan.md
 - Extended [`smoke_for_latch_lifecycle.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_for_latch_lifecycle.c) with a no-condition `for (;; update)` loop that exercises the remaining body-branch / latch-open handoff via `continue`, update, and `break`
 - Reused `emit_br_and_open_lbl(...)` for the remaining `ForStmt` no-condition handoff in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp), removing the last repeated Step 2 sibling-open lifecycle pattern
 - Closed Step 2 after targeted compare-mode coverage, a full rebuild, and the regression guard passed with stable results (`2247` -> `2247` passed, zero failures; no new failing tests)
+- Added [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) to cover scalar member loads, array indexing, array-field decay through `.` and `->`, and pointer-to-array style aggregate access in compare mode
+- Extracted `emit_rval_from_access_ptr(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) so `IndexExpr` and `MemberExpr` now share one local "access pointer -> decay or load" helper, while member bitfields still keep their dedicated load path
+- Fixed array-field type reconstruction in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`const_init_emitter.cpp`](/workspaces/c4c/src/codegen/lir/const_init_emitter.cpp) so declared array dimensions override inherited pointer-to-array metadata and preserve multi-dimensional fields
+- Fixed pointer-to-array access lowering in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) by distinguishing outer array dimensions from inner pointer-to-array metadata during indexed lvalue/rvalue lowering
+- Verified targeted compare-mode coverage, the previously uncovered torture regressions (`20020402-3`, `20071018-1`, `950426-1`, `pr41463`, `pr69691`, `strlen-4`), and the clean full-suite regression guard (`2247` -> `2248` passed, zero failures)
 
 ## Next Slice
 
-- Identify the first Step 3 aggregate/address-lowering duplication in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp), then add the narrowest compare-mode test that exercises that access path before extraction
+- Identify the next Step 3 address-formation duplication in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp), most likely around index/member base-pointer resolution or repeated pointer-to-array element-address selection before the final load/decay step
 
 ## Blockers
 
@@ -87,3 +92,5 @@ Source Plan: plan.md
 - The current Step 2 target is narrower than that previous scan result: `ForStmt` still spells the condition terminator and immediate latch-block opening separately, so the next helper should encode that sibling-open contract without changing loop semantics
 - `emit_condbr_and_open_sibling_lbl(...)` now owns the `for` condition-to-latch sibling-open contract; the next Step 2 pass should decide whether any other repeated lifecycle shape remains or whether Step 2 is effectively exhausted
 - The final Step 2 scan found no further repeated block-lifecycle helper opportunity beyond the `for` no-condition handoff; remaining branch/terminator sites are single-purpose control-flow emitters, so execution moves to Step 3 next
+- The first Step 3 slice is intentionally narrow and behavior-preserving: unify only the post-address access behavior that decides between array decay, bitfield load, scalar load, or empty-void result after `IndexExpr`/`MemberExpr` already computed an access pointer
+- Step 3 uncovered a real clean-build blocker in pointer-to-array aggregate access (`block[2]`, `paa`, `pa0/pa1`, and typedef-carried multi-dimensional arrays): future address-lowering extractions need to watch `outer_array_rank(...)`, `is_ptr_to_array`, and `inner_rank` carefully so array objects and pointer-to-array values are not conflated

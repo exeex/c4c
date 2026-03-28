@@ -59,10 +59,14 @@ const Expr& ConstInitEmitter::get_expr(ExprId id) const {
 TypeSpec ConstInitEmitter::field_decl_type(const HirStructField& f) const {
   TypeSpec ts = f.elem_type;
   if (f.array_first_dim >= 0) {
-    for (int i = 0; i < 8; ++i) ts.array_dims[i] = -1;
-    ts.array_rank = 1;
+    const int trailing_rank = std::max(0, std::min(ts.array_rank, 7));
+    for (int i = trailing_rank; i > 0; --i) ts.array_dims[i] = ts.array_dims[i - 1];
+    for (int i = trailing_rank + 1; i < 8; ++i) ts.array_dims[i] = -1;
+    ts.array_rank = trailing_rank + 1;
     ts.array_size = f.array_first_dim;
     ts.array_dims[0] = f.array_first_dim;
+    ts.is_ptr_to_array = false;
+    ts.inner_rank = -1;
   }
   return ts;
 }

@@ -177,6 +177,9 @@ class StmtEmitter {
   std::string emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec& pts);
   std::string emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeSpec& out_pts,
                                 BitfieldAccess* out_bf = nullptr);
+  std::string emit_rval_from_access_ptr(FnCtx& ctx, const std::string& ptr,
+                                        const TypeSpec& access_ts, const TypeSpec& load_ts,
+                                        bool decay_from_array_object);
 
   // ── Rvalue emission ───────────────────────────────────────────────────────
 

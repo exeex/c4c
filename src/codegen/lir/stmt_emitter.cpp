@@ -419,10 +419,14 @@ std::string StmtEmitter::escape_llvm_c_bytes(const std::string& raw_bytes){
 TypeSpec StmtEmitter::field_decl_type(const HirStructField& f) const{
     TypeSpec ts = f.elem_type;
     if (f.array_first_dim >= 0) {
-      for (int i = 0; i < 8; ++i) ts.array_dims[i] = -1;
-      ts.array_rank = 1;
+      const int trailing_rank = std::max(0, std::min(ts.array_rank, 7));
+      for (int i = trailing_rank; i > 0; --i) ts.array_dims[i] = ts.array_dims[i - 1];
+      for (int i = trailing_rank + 1; i < 8; ++i) ts.array_dims[i] = -1;
+      ts.array_rank = trailing_rank + 1;
       ts.array_size = f.array_first_dim;
       ts.array_dims[0] = f.array_first_dim;
+      ts.is_ptr_to_array = false;
+      ts.inner_rank = -1;
     }
     return ts;
   }
@@ -886,11 +890,12 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
         pts.is_vector = false;
         pts.vector_lanes = 0;
         pts.vector_bytes = 0;
+      } else if (outer_array_rank(pts) > 0) {
+        pts = drop_one_array_dim(pts);
       } else if (pts.ptr_level > 0 && pts.is_ptr_to_array) {
         // Pointer-to-array: subscript consumes the pointer layer first.
         pts.ptr_level--;
-      } else if (pts.array_rank > 0) {
-        pts = drop_one_array_dim(pts);
+        if (pts.ptr_level == 0) pts.is_ptr_to_array = false;
       } else if (pts.ptr_level > 0) {
         pts.ptr_level--;
       }
@@ -979,6 +984,28 @@ std::string StmtEmitter::emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeS
           "StmtEmitter: MemberExpr base has no struct tag (field='" + m.field + "')");
     }
     return emit_member_gep(ctx, base_ptr, tag, m.field, out_pts, out_bf);
+  }
+
+std::string StmtEmitter::emit_rval_from_access_ptr(FnCtx& ctx, const std::string& ptr,
+                                         const TypeSpec& access_ts, const TypeSpec& load_ts,
+                                         bool decay_from_array_object){
+    if (outer_array_rank(access_ts) > 0) {
+      if (!decay_from_array_object) return ptr;
+      const std::string arr_alloca_ty = llvm_alloca_ty(access_ts);
+      if (arr_alloca_ty == "ptr") {
+        const std::string tmp = fresh_tmp(ctx);
+        emit_lir_op(ctx, lir::LirLoadOp{tmp, std::string("ptr"), ptr});
+        return tmp;
+      }
+      const std::string tmp = fresh_tmp(ctx);
+      emit_lir_op(ctx, lir::LirGepOp{tmp, arr_alloca_ty, ptr, false, {"i64 0", "i64 0"}});
+      return tmp;
+    }
+    const std::string ty = llvm_ty(load_ts);
+    if (ty == "void") return "";
+    const std::string tmp = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, ptr});
+    return tmp;
   }
 
 TypeSpec StmtEmitter::resolve_expr_type(FnCtx& ctx, ExprId id){
@@ -3750,15 +3777,9 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const IndexExpr&, const E
     }
     TypeSpec pts{};
     const std::string ptr = emit_lval_dispatch(ctx, e, pts);
-    // Array element decay: if the element type is itself an array, return its
-    // address directly (C array-to-pointer decay) rather than loading it.
-    if (pts.array_rank > 0 && pts.ptr_level == 0) return ptr;
     TypeSpec load_ts = resolve_expr_type(ctx, e);
     if (!has_concrete_type(load_ts)) load_ts = pts;
-    const std::string ty = llvm_ty(load_ts);
-    const std::string tmp = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, ptr});
-    return tmp;
+    return emit_rval_from_access_ptr(ctx, ptr, pts, load_ts, false);
   }
 
 std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const MemberExpr& m, const Expr& e){
@@ -3773,24 +3794,8 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const MemberExpr& m, cons
     const TypeSpec& load_ts = (e.type.spec.base != TB_VOID || e.type.spec.ptr_level > 0)
                                   ? e.type.spec
                                   : field_ts;
-    // Array fields: decay to pointer-to-first-element (no load needed)
-    if (load_ts.array_rank > 0 || field_ts.array_rank > 0) {
-      const TypeSpec& arr_ts = (field_ts.array_rank > 0) ? field_ts : load_ts;
-      const std::string arr_alloca_ty = llvm_alloca_ty(arr_ts);
-      if (arr_alloca_ty == "ptr") {
-        const std::string tmp = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirLoadOp{tmp, std::string("ptr"), gep});
-        return tmp;
-      }
-      const std::string tmp = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirGepOp{tmp, arr_alloca_ty, gep, false, {"i64 0", "i64 0"}});
-      return tmp;
-    }
-    const std::string ty = llvm_ty(load_ts);
-    if (ty == "void") return "";
-    const std::string tmp = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, gep});
-    return tmp;
+    const TypeSpec& access_ts = (field_ts.array_rank > 0) ? field_ts : load_ts;
+    return emit_rval_from_access_ptr(ctx, gep, access_ts, load_ts, true);
   }
 
 void StmtEmitter::emit_stmt(FnCtx& ctx, const Stmt& stmt){
