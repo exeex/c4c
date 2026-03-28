@@ -253,6 +253,8 @@ if(CLANG_EXECUTABLE)
         set(expect_exit_code 5)
       elseif(stem STREQUAL "call_helper")
         set(expect_exit_code 7)
+      elseif(stem STREQUAL "local_temp")
+        set(expect_exit_code 5)
       endif()
 
       add_test(

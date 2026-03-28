@@ -1,0 +1,12 @@
+#pragma once
+
+#include "../../codegen/lir/ir.hpp"
+
+#include <ostream>
+
+namespace c4c::backend::aarch64 {
+
+bool render_memory_instruction(std::ostream& out,
+                               const c4c::codegen::lir::LirInst& inst);
+
+}  // namespace c4c::backend::aarch64

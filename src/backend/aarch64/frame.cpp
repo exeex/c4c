@@ -1,5 +1,6 @@
 #include "frame.hpp"
 
+#include "memory.hpp"
 #include "support.hpp"
 
 namespace c4c::backend::aarch64 {
@@ -8,7 +9,6 @@ void validate_module(const c4c::codegen::lir::LirModule& module) {
   if (!module.globals.empty()) fail_unsupported("globals");
   if (!module.string_pool.empty()) fail_unsupported("string constants");
   if (!module.extern_decls.empty()) fail_unsupported("extern declarations");
-  if (!module.type_decls.empty()) fail_unsupported("type declarations");
   if (module.need_va_start || module.need_va_end || module.need_va_copy ||
       module.need_memcpy || module.need_stacksave || module.need_stackrestore ||
       module.need_abs) {
@@ -18,7 +18,6 @@ void validate_module(const c4c::codegen::lir::LirModule& module) {
 
 void validate_function(const c4c::codegen::lir::LirFunction& function) {
   if (!function.stack_objects.empty()) fail_unsupported("stack objects");
-  if (!function.alloca_insts.empty()) fail_unsupported("entry allocas");
 }
 
 void render_module_header(std::ostream& out,
@@ -32,6 +31,13 @@ void render_module_header(std::ostream& out,
   if (!module.data_layout.empty() || !module.target_triple.empty()) {
     out << "\n";
   }
+
+  for (const auto& type_decl : module.type_decls) {
+    out << type_decl << "\n";
+  }
+  if (!module.type_decls.empty()) {
+    out << "\n";
+  }
 }
 
 void render_function_prologue(std::ostream& out,
@@ -39,6 +45,15 @@ void render_function_prologue(std::ostream& out,
   out << function.signature_text;
   if (!function.is_declaration) {
     out << "{\n";
+  }
+}
+
+void render_entry_allocas(std::ostream& out,
+                          const c4c::codegen::lir::LirFunction& function) {
+  for (const auto& inst : function.alloca_insts) {
+    if (!render_memory_instruction(out, inst)) {
+      fail_unsupported("non-memory entry allocas");
+    }
   }
 }
 
