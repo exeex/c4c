@@ -15,7 +15,13 @@ Should precede:
 
 ## Goal
 
-Implement the shared ELF object and archive reading support that the built-in linker will need before target-specific relocation and executable-layout work begins.
+Implement the shared ELF object and archive reading support that the built-in linker will need before target-specific relocation and executable-layout work begins, starting with compile-time integration of the mirrored shared linker and ELF trees.
+
+## Simplified Staging Note
+
+This idea is now mainly the shared-linker compile and interface stage.
+
+If the shared object/archive IO work and the first AArch64 linker wiring advance together, they can be treated as one larger binary-utils stream instead of two rigidly separate long-lived ideas.
 
 ## Primary Ref Surfaces
 
@@ -50,11 +56,26 @@ Implement the shared ELF object and archive reading support that the built-in li
 
 ## Scope
 
+- make `src/backend/elf/` and `src/backend/linker_common/` include-clean enough to compile together as shared linker infrastructure
 - read ELF relocatable objects needed by the supported backend flow
 - read static archives at the level needed for symbol resolution and member extraction
 - expose shared representations for sections, symbols, relocations, and archive contents
 - expose enough section-name mapping and merge metadata that a later linker can reason about output-section construction without reparsing inputs
 - add focused coverage for malformed-input rejection and representative happy-path cases
+
+## Acceptance Stages
+
+### Stage 1: Shared ELF/linker trees compile
+
+- `elf/` and `linker_common/` compile as a shared dependency layer
+
+### Stage 2: Shared object/archive interfaces are explicit
+
+- later AArch64 linker code can include stable shared types and parsers
+
+### Stage 3: Object/archive parsing starts working
+
+- representative ELF objects and archives begin parsing through the shared layer
 
 ## Suggested Execution Order
 
@@ -79,10 +100,9 @@ Implement the shared ELF object and archive reading support that the built-in li
 
 ## Validation
 
-- representative ELF objects and archives can be parsed into stable shared linker data structures
-- malformed inputs fail narrowly and diagnostically
-- later linker work can reuse parsed symbol, section, and relocation data without introducing target-specific object readers
-- the later built-in linker plan can depend on this layer instead of reparsing binary formats ad hoc
+- first validation gate: `elf/` and `linker_common/` compile and expose stable shared declarations
+- second validation gate: later linker work can reuse parsed symbol, section, and relocation data without introducing target-specific object readers
+- later validation: representative ELF objects and archives can be parsed into stable shared linker data structures
 
 ## Good First Patch
 

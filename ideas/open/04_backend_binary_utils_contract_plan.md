@@ -18,7 +18,13 @@ Should precede:
 
 ## Goal
 
-Document and test the exact assembler/linker contract currently provided by the external toolchain so the later built-in replacements have a concrete compatibility target.
+Document and stage the exact assembler/linker contract currently provided by the external toolchain so the later built-in replacements have a concrete compatibility target, starting with compile-time/shared-interface readiness rather than full binary behavior.
+
+## Simplified Staging Note
+
+This idea is now mainly a contract-and-acceptance bucket for the binary-utils track.
+
+If the assembler and linker compile-integration work ends up moving as one stream, this idea can be merged conceptually into the later binary-utils ideas instead of staying a long-lived standalone plan.
 
 ## Primary Ref Surfaces
 
@@ -52,6 +58,7 @@ Document and test the exact assembler/linker contract currently provided by the 
 
 ## Scope
 
+- identify which shared declarations, data structures, and interface boundaries need to exist before the built-in assembler/linker trees can even be compiled into the build
 - identify the current backend outputs handed to the external assembler and linker
 - record the exact assembly constructs the current backend relies on, including:
   labels,
@@ -74,6 +81,21 @@ Document and test the exact assembler/linker contract currently provided by the 
 - add focused tests or fixtures that lock the current external toolchain behavior where practical
 - make failure attribution between backend emission, assembler behavior, and linker behavior explicit
 
+## Acceptance Stages
+
+### Stage 1: Contract headers and interfaces exist
+
+- the shared ELF/archive/object/linker-facing interfaces needed by later binary-utils code are declared and include-reachable
+- assembler/linker trees can refer to a bounded contract surface instead of ad hoc local declarations
+
+### Stage 2: Toolchain boundary is documented
+
+- the repo records the current `.s -> .o -> executable` contract clearly enough for later built-in replacements
+
+### Stage 3: Golden behavior is locked
+
+- representative external-toolchain cases are captured in tests or fixtures
+
 ## Suggested Execution Order
 
 1. inventory the exact `.s -> .o -> executable` path currently used by the AArch64 backend
@@ -90,10 +112,10 @@ Document and test the exact assembler/linker contract currently provided by the 
 
 ## Validation
 
-- the repo contains a concrete description of the current assembler/linker contract
-- targeted tests or golden fixtures cover representative object and executable cases
-- later plans can point to a bounded list of required directives, relocation shapes, and ELF features instead of inheriting an open-ended gas-compatibility goal
-- follow-on binary-utils plans can cite this idea as their compatibility baseline
+- first validation gate: later assembler/linker code can include a bounded shared contract surface without inventing local duplicates
+- second validation gate: the repo contains a concrete description of the current assembler/linker contract
+- later validation: targeted tests or golden fixtures cover representative object and executable cases
+- follow-on binary-utils work can cite this idea as the compatibility baseline
 
 ## Good First Patch
 

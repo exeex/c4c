@@ -17,7 +17,13 @@ Should precede:
 
 ## Goal
 
-Implement the first built-in assembler slice for AArch64 so the compiler can emit working ELF objects without relying on an external assembler for the supported backend subset.
+Implement the first built-in assembler slice for AArch64 so the compiler can emit working ELF objects without relying on an external assembler for the supported backend subset, but only after the mirrored assembler tree is compile-integrated and connected to the backend output boundary.
+
+## Simplified Staging Note
+
+This idea should now be read as the AArch64-specific continuation of the assembler compile-integration work, not as an immediate behavior-first project.
+
+If the shared-boundary work and the AArch64-specific work move together in practice, they do not need to stay rigidly separate.
 
 ## Primary Ref Surfaces
 
@@ -53,6 +59,7 @@ Implement the first built-in assembler slice for AArch64 so the compiler can emi
 
 ## Scope
 
+- make the AArch64 assembler subtree under `src/backend/aarch64/assembler/` compile together with the shared ELF/assembler support it depends on
 - implement the minimum instruction parsing or structured-instruction consumption required by the chosen assembler boundary
 - encode the supported AArch64 instruction subset already exercised by backend tests
 - start from the current backend-emitted subset rather than the full ref assembler:
@@ -66,6 +73,20 @@ Implement the first built-in assembler slice for AArch64 so the compiler can emi
 - support the relocation forms that naturally fall out of that subset before expanding farther
 - write ELF relocatable objects for that supported subset
 - validate emitted objects against external assembler output for representative cases
+
+## Acceptance Stages
+
+### Stage 1: AArch64 assembler subtree compiles
+
+- parser, encoder, and ELF-writer pieces can be included together and built
+
+### Stage 2: Backend and assembler boundary connect
+
+- AArch64 backend output can be routed into the assembler entry point without ad hoc local hacks
+
+### Stage 3: Object emission starts working
+
+- the first supported subset begins producing comparable ELF relocatable objects
 
 ## Suggested Execution Order
 
@@ -96,11 +117,10 @@ Implement the first built-in assembler slice for AArch64 so the compiler can emi
 
 ## Validation
 
-- emitted AArch64 object files disassemble correctly
-- object metadata, sections, and relocations are comparable to externally assembled output for covered cases
-- the supported assembler subset is described in terms of concrete ref encoder/parser modules rather than a vague AArch64 support label
-- the supported AArch64 backend slice can stop depending on an external assembler
+- first validation gate: the AArch64 assembler subtree compiles and is wired to the chosen assembler entry boundary
+- second validation gate: emitted AArch64 object files disassemble correctly
+- later validation: object metadata, sections, and relocations are comparable to externally assembled output for covered cases
 
 ## Good First Patch
 
-Assemble one minimal AArch64 return/arithmetic function into an ELF relocatable object and compare its disassembly plus relocation table against the external assembler result.
+Make parser, encoder, and ELF-writer pieces compile together, then route one minimal backend-emitted AArch64 function through that path.

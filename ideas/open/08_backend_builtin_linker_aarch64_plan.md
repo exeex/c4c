@@ -12,7 +12,13 @@ Depends on:
 
 ## Goal
 
-Implement the first built-in linker slice for AArch64 so supported programs can be linked into working executables without relying on the external linker.
+Implement the first built-in linker slice for AArch64 so supported programs can be linked into working executables without relying on the external linker, but only after the mirrored shared linker layers and AArch64 linker subtree are compile-integrated.
+
+## Simplified Staging Note
+
+This idea is now the AArch64-specific continuation of the shared linker bring-up.
+
+If the shared-linker work and AArch64-specific linker wiring move together, they can be executed as one larger later-stage idea rather than forced into separate active runs.
 
 ## Primary Ref Surfaces
 
@@ -53,11 +59,26 @@ Implement the first built-in linker slice for AArch64 so supported programs can 
 
 ## Scope
 
+- make the mirrored AArch64 linker subtree under `src/backend/aarch64/linker/` compile together with `src/backend/elf/` and `src/backend/linker_common/`
 - resolve symbols across supported objects and archives
 - apply the AArch64 relocation subset needed by current backend coverage
 - lay out a working ELF executable for the supported subset
 - emit the first working static executable path for the supported subset
 - compare linked outputs against the current external linker behavior for representative cases
+
+## Acceptance Stages
+
+### Stage 1: AArch64 linker subtree compiles
+
+- `aarch64/linker/` compiles against the shared ELF/linker layers
+
+### Stage 2: Shared and target-local linker layers connect
+
+- AArch64 linker entry points can include and call the shared object/archive/symbol infrastructure
+
+### Stage 3: Static link path starts working
+
+- the first static executable path begins linking bounded AArch64 cases
 
 ## Suggested Execution Order
 
@@ -87,10 +108,9 @@ Implement the first built-in linker slice for AArch64 so supported programs can 
 
 ## Validation
 
-- linked executables run equivalently to externally linked outputs for covered cases
-- relocation-heavy tests have explicit coverage
-- the first slice is explicitly static-link-first and tied to concrete `arm/linker/*.rs` reference modules
-- the supported AArch64 backend flow can stop depending on the external linker
+- first validation gate: the AArch64 linker subtree compiles against the shared linker layers
+- second validation gate: the first slice is explicitly static-link-first and tied to concrete `arm/linker/*.rs` reference modules
+- later validation: linked executables run equivalently to externally linked outputs for covered cases
 
 ## Good First Patch
 

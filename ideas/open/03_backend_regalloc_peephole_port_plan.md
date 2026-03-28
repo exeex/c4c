@@ -18,7 +18,13 @@ Should precede:
 
 ## Goal
 
-Port the shared register-allocation, liveness, and peephole/cleanup mechanisms from `ref/claudes-c-compiler/src/backend/` into C++ after the first AArch64 backend slice is functionally useful but before the next target ports begin.
+Port the shared register-allocation, liveness, and peephole/cleanup mechanisms from `ref/claudes-c-compiler/src/backend/` into C++, starting by making the mirrored shared files compile and connect cleanly to the AArch64 bring-up path.
+
+## Simplified Staging Note
+
+This idea is now mainly a staging bucket for the shared backend layers that AArch64 will need next.
+
+It does not need to stay permanently separate if execution shows that the shared-backend compile work and the AArch64 integration work are better handled inside one active runbook.
 
 ## Why This Sits Between AArch64 And x86-64
 
@@ -69,6 +75,7 @@ Port the shared register-allocation, liveness, and peephole/cleanup mechanisms f
 
 ### Shared bring-up
 
+- make the mirrored shared files under `src/backend/`, `src/backend/stack_layout/`, and nearby dependencies include-clean enough to compile as a unit
 - port backward-dataflow liveness analysis and interval computation from `liveness.rs`
 - port the shared linear-scan allocator from `regalloc.rs`, including:
   call-spanning interval detection,
@@ -86,6 +93,23 @@ Port the shared register-allocation, liveness, and peephole/cleanup mechanisms f
 - mirror the ref boundary where `emit` and `prologue` consume register assignments and used-register sets
 - keep x86-64 and rv64 integration points ready to reuse the same shared layers
 - preserve explicit target ownership of register pools, caller/callee-saved sets, and ABI-driven clobber rules
+
+## Acceptance Stages
+
+### Stage 1: Shared tree compiles
+
+- top-level shared backend files for liveness/regalloc/stack-layout can be included together and built
+- temporary shims are acceptable if they preserve the ref-shaped file boundaries
+
+### Stage 2: AArch64 can include the shared layers
+
+- AArch64 codegen files can include and reference the shared regalloc/liveness interfaces
+- backend driver wiring no longer treats these shared layers as disconnected scaffolding
+
+### Stage 3: Behavior starts tightening
+
+- frame sizing, used-register tracking, and minimal peephole cleanup begin affecting real AArch64 codegen behavior
+- targeted tests can start validating the new shared machinery instead of only compile-time wiring
 
 ## Suggested Execution Order
 
@@ -106,12 +130,11 @@ Port the shared register-allocation, liveness, and peephole/cleanup mechanisms f
 
 ## Validation
 
-- AArch64 runtime coverage still passes with the regalloc-enabled path
-- loop-heavy and multi-block functions show ref-shaped interval and assignment behavior in targeted tests
-- prologue/epilogue save-restore behavior is driven by actual used callee-saved sets instead of hardcoded saves
-- pass-rate gains or code-shape improvements are attributable to the new shared machinery
-- x86-64 and rv64 plans can depend on this idea instead of each carrying their own first regalloc port
+- first validation gate: shared regalloc/liveness/stack-layout files compile and are reachable from the AArch64 backend build
+- second validation gate: AArch64 prologue/epilogue save-restore behavior is driven by actual used callee-saved sets instead of hardcoded saves
+- later validation: loop-heavy and multi-block functions show ref-shaped interval and assignment behavior in targeted tests
+- x86-64 and rv64 plans can depend on this shared layer instead of each carrying their own first regalloc port
 
 ## Good First Patch
 
-Port the minimum shared liveness and regalloc helper boundary needed to let AArch64 compute frame usage with ref-shaped register-assignment data before stack-size finalization.
+Make the minimum shared liveness/regalloc helper boundary compile and be includable from the AArch64 backend tree before tightening any runtime behavior.

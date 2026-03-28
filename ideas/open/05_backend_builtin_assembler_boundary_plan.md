@@ -14,7 +14,17 @@ Should precede:
 
 ## Goal
 
-Decide and implement the internal boundary that the built-in assembler will consume so later target-specific object emission work stays structured and comparable to the existing backend output path.
+Decide and implement the internal boundary that the built-in assembler will consume so later target-specific object emission work stays structured and comparable to the existing backend output path, starting with include/build integration for the mirrored assembler tree.
+
+## Simplified Staging Note
+
+This is now less a separate product decision and more a staged integration problem:
+
+- first make the mirrored assembler tree compile
+- then settle the narrow text-vs-structured input boundary
+- only then tighten actual encoding behavior
+
+If execution shows those steps are inseparable, this idea can be folded into the AArch64 assembler plan.
 
 ## Primary Ref Surfaces
 
@@ -44,6 +54,7 @@ Decide and implement the internal boundary that the built-in assembler will cons
 
 ## Scope
 
+- make the mirrored shared and AArch64 assembler files include-clean enough to compile together
 - decide whether the built-in assembler remains syntax-driven or consumes a more structured internal form
 - define the data flow from current backend output into the future assembler entry point
 - decide how much of ref's shared assembler surface should be mirrored as shared C++ code:
@@ -55,6 +66,20 @@ Decide and implement the internal boundary that the built-in assembler will cons
 - identify which existing backend text-emission assumptions must remain stable and which can be replaced
 - explicitly choose whether target codegen continues to emit GNU-style textual assembly identical or near-identical to ref, or whether a second structured IR is introduced
 - add narrow tests that lock the chosen assembler input boundary
+
+## Acceptance Stages
+
+### Stage 1: Assembler tree compiles
+
+- shared assembler helpers and AArch64 assembler files can be included together and built
+
+### Stage 2: Boundary is explicit
+
+- one clear assembler entry boundary is chosen and declared in code
+
+### Stage 3: Backend can target that boundary
+
+- AArch64 backend output can be threaded toward the chosen assembler entry point without local one-off adapters
 
 ## Decision Rules
 
@@ -83,11 +108,10 @@ Decide and implement the internal boundary that the built-in assembler will cons
 
 ## Validation
 
-- the chosen assembler input model is explicit and checked into the repo
-- the plan names which ref shared helpers should become shared C++ helpers and which remain target-local
+- first validation gate: mirrored assembler files compile and share one coherent declaration surface
+- second validation gate: the chosen assembler input model is explicit and checked into the repo
 - follow-on assembler work can target a stable interface instead of open-ended design notes
-- the first target-specific assembler plan can begin without revisiting the input-format decision
 
 ## Good First Patch
 
-Prototype the narrowest assembler entry contract for one existing backend-emitted function and lock whether the new path consumes textual assembly or a structured internal representation.
+Make the mirrored assembler tree compile, then expose one narrow assembler entry contract for one existing backend-emitted function.
