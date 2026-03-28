@@ -948,20 +948,21 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
 
 std::string StmtEmitter::emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeSpec& out_pts,
                                 BitfieldAccess* out_bf){
-    TypeSpec base_ts = resolve_member_base_type(ctx, m.base, m.is_arrow);
-    const std::string base_ptr = emit_member_base_ptr(ctx, m, base_ts);
+    MemberFieldAccess access = resolve_member_field_access(ctx, m);
+    const std::string base_ptr = emit_member_base_ptr(ctx, m, access.base_ts);
 
-    const char* tag = base_ts.tag;
-    if (!tag || !tag[0]) {
+    if (!access.has_tag()) {
       throw std::runtime_error(
           "StmtEmitter: MemberExpr base has no struct tag (field='" + m.field + "')");
     }
-    std::vector<FieldStep> chain;
-    if (!resolve_field_access(tag, m.field, chain, out_pts, out_bf)) {
+    if (!access.field_found) {
       throw std::runtime_error(
-          "StmtEmitter: field '" + m.field + "' not found in struct/union '" + tag + "'");
+          "StmtEmitter: field '" + m.field + "' not found in struct/union '" +
+          std::string(access.tag) + "'");
     }
-    return emit_member_gep(ctx, base_ptr, chain);
+    out_pts = access.field_ts;
+    if (out_bf) *out_bf = access.bf;
+    return emit_member_gep(ctx, base_ptr, access.chain);
   }
 
 TypeSpec StmtEmitter::resolve_member_base_type(FnCtx& ctx, ExprId base_id, bool is_arrow){
@@ -980,6 +981,16 @@ TypeSpec StmtEmitter::resolve_member_base_type(FnCtx& ctx, ExprId base_id, bool 
     }
     if (is_arrow && base_ts.ptr_level > 0) base_ts.ptr_level--;
     return base_ts;
+  }
+
+MemberFieldAccess StmtEmitter::resolve_member_field_access(FnCtx& ctx, const MemberExpr& m){
+    MemberFieldAccess access;
+    access.base_ts = resolve_member_base_type(ctx, m.base, m.is_arrow);
+    access.tag = access.base_ts.tag;
+    if (!access.has_tag()) return access;
+    access.field_found = resolve_field_access(access.tag, m.field, access.chain,
+                                              access.field_ts, &access.bf);
+    return access;
   }
 
 std::string StmtEmitter::emit_member_base_ptr(FnCtx& ctx, const MemberExpr& m, TypeSpec& base_ts){
@@ -1403,17 +1414,10 @@ TypeSpec StmtEmitter::resolve_payload_type(FnCtx&, const StringLiteral& sl){
   }
 
 TypeSpec StmtEmitter::resolve_payload_type(FnCtx& ctx, const MemberExpr& m){
-    // Look up the field type in struct_defs
-    TypeSpec base_ts = resolve_member_base_type(ctx, m.base, m.is_arrow);
-    if (!base_ts.tag || !base_ts.tag[0]) return {};
-    std::vector<FieldStep> chain;
-    TypeSpec field_ts{};
-    BitfieldAccess bf;
-    if (!resolve_field_access(std::string(base_ts.tag), m.field, chain, field_ts, &bf)) {
-      return {};
-    }
-    if (bf.is_bitfield()) return bitfield_promoted_ts(bf);
-    return field_ts;
+    const MemberFieldAccess access = resolve_member_field_access(ctx, m);
+    if (!access.has_tag() || !access.field_found) return {};
+    if (access.bf.is_bitfield()) return bitfield_promoted_ts(access.bf);
+    return access.field_ts;
   }
 
 TypeSpec StmtEmitter::resolve_payload_type(FnCtx& ctx, const IndexExpr& idx){

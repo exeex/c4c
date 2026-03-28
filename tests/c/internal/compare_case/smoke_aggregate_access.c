@@ -33,6 +33,11 @@ struct Wrapper make_wrapper(void) {
   return w;
 }
 
+struct WithAnon make_anon(void) {
+  struct WithAnon v = {.left = 71, .right = 73, .low = 6, .high = -4};
+  return v;
+}
+
 int run(void) {
   struct Wrapper w = {{5, {7, 11, 13}}, 17};
   struct Wrapper pair[2] = {{{19, {23, 29, 31}}, 37},
@@ -54,16 +59,17 @@ int run(void) {
   int typedef_arrow = pw_alias->inner.head;
   int rvalue_field = make_wrapper().inner.values[1];
   int rvalue_decay = sum3(make_wrapper().inner.values);
+  int anon_rvalue = make_anon().right + make_anon().low + make_anon().high;
   int anon_fields = anon.left + anon_ptr->right + anon.low + anon.high;
   int anon_preinc = ++anon.high;
   int anon_postinc = anon.high++;
   int anon_final = anon.high;
   return first + second + third + decay_dot + decay_arrow + ptr_to_array +
          ptr_to_array_add + ptr_to_array_preinc + typedef_arrow + rvalue_field +
-         rvalue_decay + pw->tail + anon_fields + anon_preinc + anon_postinc +
-         anon_final;
+         rvalue_decay + pw->tail + anon_rvalue + anon_fields + anon_preinc +
+         anon_postinc + anon_final;
 }
 
 int main(void) {
-  return run() == 344 ? 0 : 1;
+  return run() == 419 ? 0 : 1;
 }

@@ -49,6 +49,17 @@ struct FieldStep {
   bool bf_is_signed = false;
 };
 
+struct MemberFieldAccess {
+  TypeSpec base_ts{};
+  const char* tag = nullptr;
+  std::vector<FieldStep> chain;
+  TypeSpec field_ts{};
+  BitfieldAccess bf{};
+  bool field_found = false;
+
+  bool has_tag() const { return tag && tag[0]; }
+};
+
 class StmtEmitter {
  public:
   explicit StmtEmitter(const Module& m);
@@ -179,6 +190,7 @@ class StmtEmitter {
   std::string emit_va_list_obj_ptr(FnCtx& ctx, ExprId id, TypeSpec& ts);
   std::string emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec& pts);
   TypeSpec resolve_member_base_type(FnCtx& ctx, ExprId base_id, bool is_arrow);
+  MemberFieldAccess resolve_member_field_access(FnCtx& ctx, const MemberExpr& m);
   std::string emit_member_base_ptr(FnCtx& ctx, const MemberExpr& m, TypeSpec& base_ts);
   std::string emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeSpec& out_pts,
                                 BitfieldAccess* out_bf = nullptr);

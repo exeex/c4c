@@ -7,10 +7,13 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: Extract Aggregate and Address-Lowering Helpers
-- Current slice: re-scan Step 3 for the next shared aggregate/member seam after centralizing member-field lookup and unblocking synthetic anonymous-member access
+- Current slice: re-scan Step 3 for the next shared aggregate/address seam after centralizing `MemberExpr` field-resolution metadata behind `resolve_member_field_access(...)`
 
 ## Completed
 
+- Extended [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) with rvalue anonymous-member reads so compare mode now keeps promoted anonymous field and bitfield access pinned on temporary aggregates as well as lvalues
+- Extracted `resolve_member_field_access(...)` plus shared `MemberFieldAccess` metadata in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp) so `emit_member_lval(...)` and `resolve_payload_type(const MemberExpr&)` share one tag/chain/bitfield lookup path without changing their caller-facing error behavior
+- Verified `compare_smoke_aggregate_access`, the full `compare_case` label, and the clean full-suite regression guard with stable results (`2248` -> `2248` passed, zero failures; non-decreasing pass-count guard accepted the refactor slice)
 - Activated [`plan.md`](/workspaces/c4c/plan.md) from [`ideas/open/stmt_emitter_compression_plan.md`](/workspaces/c4c/ideas/open/stmt_emitter_compression_plan.md)
 - Created execution state for the first implementation slice
 - Added [`smoke_stmt_control_flow.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_stmt_control_flow.c) to cover `for`, `switch`, `continue`, `break`, `goto`, label, `do-while`, and `while` dispatch paths in compare mode
@@ -114,3 +117,5 @@ Source Plan: plan.md
 - The indexed-address helper intentionally does not subsume vector-element lvalue indexing: `IndexExpr` on vector objects still needs its dedicated scalar-element GEP path, while the new helper covers non-vector pointer/array address formation
 - This iteration targets the duplicated field-chain lookup path for `MemberExpr`: anonymous embedded members and bitfield metadata are currently rediscovered in both type resolution and lvalue lowering, so the extraction should stay local and preserve existing error behavior
 - HIR can materialize embedded anonymous subobjects explicitly as synthetic member names like `_anon_0` during initialization even when source-level reads use promoted names like `left` or `high`; future Step 3 member-access refactors need to preserve both lookup routes
+- `resolve_member_field_access(...)` now owns the shared `MemberExpr` tag/field-chain/bitfield lookup path; future Step 3 slices should build on that metadata instead of re-running `resolve_field_access(...)` at multiple call sites
+- The next Step 3 scan should look for the next repeated access-pointer or address-materialization seam above `emit_member_lval(...)` and `emit_indexed_gep(...)`, not reopen field-resolution plumbing
