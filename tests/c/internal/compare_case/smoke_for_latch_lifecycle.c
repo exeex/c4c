@@ -3,6 +3,7 @@
 int run(void) {
   int sum = 0;
   int i = 0;
+  int j = 0;
 
   for (; i < 3; i++) {
     if (i == 1) {
@@ -16,9 +17,20 @@ int run(void) {
     sum += 100;
   }
 
-  return sum + i;
+  for (;; j++) {
+    if (j == 0) {
+      sum += 20;
+      continue;
+    }
+    if (j == 2) {
+      break;
+    }
+    sum += j;
+  }
+
+  return sum + i + j;
 }
 
 int main(void) {
-  return run() == 15 ? 0 : 1;
+  return run() == 38 ? 0 : 1;
 }

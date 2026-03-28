@@ -4034,8 +4034,7 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const ForStmt& s){
       cv = to_bool(ctx, cv, cts);
       emit_condbr_and_open_sibling_lbl(ctx, cv, body_lbl, end_lbl, latch_lbl);
     } else {
-      emit_term_br(ctx, body_lbl);
-      emit_lbl(ctx, latch_lbl);
+      emit_br_and_open_lbl(ctx, body_lbl, latch_lbl);
     }
     if (s.update) {
       TypeSpec uts{};
