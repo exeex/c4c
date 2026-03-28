@@ -1128,7 +1128,8 @@ Node* Parser::parse_primary() {
                         check(TokenKind::LBrace)) return true;
                     // Expression terminators / continuations
                     if (check(TokenKind::RParen) || check(TokenKind::Semi) ||
-                        check(TokenKind::Comma) || check(TokenKind::RBracket) ||
+                        check(TokenKind::Comma) || check(TokenKind::Ellipsis) ||
+                        check(TokenKind::RBracket) ||
                         check(TokenKind::RBrace)) return true;
                     // Binary operators
                     if (check(TokenKind::Pipe) || check(TokenKind::PipePipe) ||

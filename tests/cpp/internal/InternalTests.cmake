@@ -144,6 +144,7 @@ set(CPP_POSITIVE_PARSE_STEMS
 )
 
 list(APPEND CPP_POSITIVE_FRONTEND_STEMS
+    call_expr_ref_return_lvalue_frontend
     eastl_probe_call_result_lvalue_frontend
 )
 
@@ -456,6 +457,141 @@ set_tests_properties(cpp_hir_defaulted_destructor_member_teardown PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_deferred_nttp_expr
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_deferred_nttp_expr_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_deferred_nttp_expr PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "field data: int\\[3\\].*size=12 align=4"
+)
+
+add_test(
+  NAME cpp_hir_template_deferred_nttp_arith_expr
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_deferred_nttp_arith_expr_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_deferred_nttp_arith_expr PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "field data: int\\[5\\].*size=20 align=4"
+)
+
+add_test(
+  NAME cpp_hir_template_deferred_nttp_paren_expr
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_deferred_nttp_paren_expr_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_deferred_nttp_paren_expr PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "field data: int\\[3\\].*size=12 align=4"
+)
+
+add_test(
+  NAME cpp_hir_template_deferred_nttp_bool_expr
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_deferred_nttp_bool_expr_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_deferred_nttp_bool_expr PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "field data: int\\[1\\].*size=4 align=4"
+)
+
+add_test(
+  NAME cpp_hir_template_deferred_nttp_logic_expr
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_deferred_nttp_logic_expr_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_deferred_nttp_logic_expr PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "field data: int\\[1\\].*size=4 align=4"
+)
+
+add_test(
+  NAME cpp_hir_template_deferred_nttp_true_expr
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_deferred_nttp_true_expr_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_deferred_nttp_true_expr PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "field data: int\\[1\\].*size=4 align=4"
+)
+
+add_test(
+  NAME cpp_hir_template_deferred_nttp_number_expr
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_deferred_nttp_number_expr_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_deferred_nttp_number_expr PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "field data: int\\[4\\].*size=16 align=4"
+)
+
+add_test(
+  NAME cpp_hir_template_alias_deferred_nttp_static_member
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_alias_deferred_nttp_static_member_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_alias_deferred_nttp_static_member PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "if \\(\\(!1\\)\\) -> block#[0-9]+"
+)
+
+add_test(
+  NAME cpp_hir_template_deferred_nttp_static_member_expr
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_deferred_nttp_static_member_expr_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_deferred_nttp_static_member_expr PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "field data: int\\[5\\].*size=20 align=4"
+)
+
+add_test(
+  NAME cpp_hir_template_deferred_nttp_sizeof_pack_expr
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_deferred_nttp_sizeof_pack_expr_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_deferred_nttp_sizeof_pack_expr PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "field data: int\\[3\\].*size=12 align=4"
+)
+
+add_test(
+  NAME cpp_hir_record_packed_aligned_layout
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/record_packed_aligned_layout_hir.cpp"
+)
+set_tests_properties(cpp_hir_record_packed_aligned_layout PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "struct LayoutProbe size=16 align=8.*field a: char llvm_idx=0 offset=0 size=1 align=1.*field b: int llvm_idx=1 offset=1 size=4 align=1.*field data: int\\[2\\] llvm_idx=2 offset=5 size=8 align=1"
+)
+
+add_test(
+  NAME cpp_hir_record_field_array_layout
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/record_field_array_layout_hir.cpp"
+)
+set_tests_properties(cpp_hir_record_field_array_layout PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "struct FieldArrayLayout size=20 align=4.*field tag: char llvm_idx=0 offset=0 size=1 align=1.*field data: int\\[3\\] llvm_idx=1 offset=4 size=12 align=4.*field tail: short llvm_idx=2 offset=16 size=2 align=2"
+)
+
+add_test(
+  NAME cpp_hir_builtin_layout_query_sizeof_type
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/builtin_layout_queries_hir.cpp"
+)
+set_tests_properties(cpp_hir_builtin_layout_query_sizeof_type PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "return 32"
+)
+
+add_test(
+  NAME cpp_hir_builtin_layout_query_alignof_type
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/builtin_layout_queries_hir.cpp"
+)
+set_tests_properties(cpp_hir_builtin_layout_query_alignof_type PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "fn alignof_querybox\\(\\) -> int"
+)
+
+add_test(
+  NAME cpp_hir_builtin_layout_query_alignof_expr
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/builtin_layout_queries_hir.cpp"
+)
+set_tests_properties(cpp_hir_builtin_layout_query_alignof_expr PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "decl box: struct QueryBox"
+)
+
+add_test(
   NAME cpp_hir_spec_key_identity
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/specialization_identity.cpp"
 )
@@ -498,4 +634,13 @@ add_test(
 set_tests_properties(cpp_llvm_spec_key_named_metadata_entry PROPERTIES
   LABELS "internal;positive_case;cpp;llvm"
   PASS_REGULAR_EXPRESSION "!\"add<T=int>\""
+)
+
+add_test(
+  NAME cpp_llvm_initializer_list_runtime_materialization
+  COMMAND c4cll "${INTERNAL_CPP_TEST_ROOT}/postive_case/eastl_probe_initializer_list_runtime.cpp"
+)
+set_tests_properties(cpp_llvm_initializer_list_runtime_materialization PROPERTIES
+  LABELS "internal;positive_case;cpp;llvm"
+  PASS_REGULAR_EXPRESSION "alloca \\[3 x i32\\]"
 )

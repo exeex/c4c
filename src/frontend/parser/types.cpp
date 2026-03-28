@@ -531,7 +531,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
 
     // Token-based mini expression evaluator for deferred NTTP defaults.
     // Supports: literals, NTTP param names, Trait<T>::member lookups,
-    // unary !, and binary ||, &&, ==, !=, <, >, <=, >=.
+    // unary !/+/-, binary */+-, and binary ||, &&, ==, !=, <, >, <=, >=.
     size_t ti = 0;
 
     // Forward declarations for recursive descent.
@@ -539,6 +539,8 @@ bool Parser::eval_deferred_nttp_expr_tokens(
     std::function<bool(long long*)> eval_and;
     std::function<bool(long long*)> eval_eq;
     std::function<bool(long long*)> eval_rel;
+    std::function<bool(long long*)> eval_add;
+    std::function<bool(long long*)> eval_mul;
     std::function<bool(long long*)> eval_unary;
     std::function<bool(long long*)> eval_primary;
 
@@ -824,7 +826,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
         return eval_member_lookup(val);
     };
 
-    // Unary: ! and - prefixes.
+    // Unary: !, +, and - prefixes.
     eval_unary = [&](long long* val) -> bool {
         if (ti < toks.size() && toks[ti].kind == TokenKind::Bang) {
             ++ti;
@@ -840,28 +842,74 @@ bool Parser::eval_deferred_nttp_expr_tokens(
             *val = -inner;
             return true;
         }
+        if (ti < toks.size() && toks[ti].kind == TokenKind::Plus) {
+            ++ti;
+            return eval_unary(val);
+        }
         return eval_primary(val);
+    };
+
+    // Multiplicative: *, /
+    eval_mul = [&](long long* val) -> bool {
+        if (!eval_unary(val)) return false;
+        while (ti < toks.size()) {
+            if (toks[ti].kind == TokenKind::Star) {
+                ++ti;
+                long long rhs = 0;
+                if (!eval_unary(&rhs)) return false;
+                *val *= rhs;
+            } else if (toks[ti].kind == TokenKind::Slash) {
+                ++ti;
+                long long rhs = 0;
+                if (!eval_unary(&rhs) || rhs == 0) return false;
+                *val /= rhs;
+            } else {
+                break;
+            }
+        }
+        return true;
+    };
+
+    // Additive: +, -
+    eval_add = [&](long long* val) -> bool {
+        if (!eval_mul(val)) return false;
+        while (ti < toks.size()) {
+            if (toks[ti].kind == TokenKind::Plus) {
+                ++ti;
+                long long rhs = 0;
+                if (!eval_mul(&rhs)) return false;
+                *val += rhs;
+            } else if (toks[ti].kind == TokenKind::Minus) {
+                ++ti;
+                long long rhs = 0;
+                if (!eval_mul(&rhs)) return false;
+                *val -= rhs;
+            } else {
+                break;
+            }
+        }
+        return true;
     };
 
     // Relational: <, >, <=, >=
     eval_rel = [&](long long* val) -> bool {
-        if (!eval_unary(val)) return false;
+        if (!eval_add(val)) return false;
         while (ti < toks.size()) {
             if (toks[ti].kind == TokenKind::LessEqual) {
                 ++ti; long long rhs = 0;
-                if (!eval_unary(&rhs)) return false;
+                if (!eval_add(&rhs)) return false;
                 *val = (*val <= rhs) ? 1 : 0;
             } else if (toks[ti].kind == TokenKind::GreaterEqual) {
                 ++ti; long long rhs = 0;
-                if (!eval_unary(&rhs)) return false;
+                if (!eval_add(&rhs)) return false;
                 *val = (*val >= rhs) ? 1 : 0;
             } else if (toks[ti].kind == TokenKind::Less) {
                 ++ti; long long rhs = 0;
-                if (!eval_unary(&rhs)) return false;
+                if (!eval_add(&rhs)) return false;
                 *val = (*val < rhs) ? 1 : 0;
             } else if (toks[ti].kind == TokenKind::Greater) {
                 ++ti; long long rhs = 0;
-                if (!eval_unary(&rhs)) return false;
+                if (!eval_add(&rhs)) return false;
                 *val = (*val > rhs) ? 1 : 0;
             } else break;
         }
@@ -3013,6 +3061,40 @@ TypeSpec Parser::parse_base_type() {
                     const Node* primary_tpl = find_template_struct_primary(tpl_name);
                     std::vector<ParsedTemplateArg> actual_args;
                     if (!parse_template_argument_list(&actual_args, primary_tpl)) return ts;
+                    bool has_pack_param = false;
+                    if (primary_tpl && primary_tpl->template_param_is_pack) {
+                        for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
+                            if (primary_tpl->template_param_is_pack[pi]) {
+                                has_pack_param = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (primary_tpl && has_pack_param) {
+                        std::string arg_refs;
+                        for (const auto& arg : actual_args) {
+                            if (!arg_refs.empty()) arg_refs += ",";
+                            if (arg.is_value) {
+                                if (arg.nttp_name && arg.nttp_name[0]) arg_refs += arg.nttp_name;
+                                else arg_refs += std::to_string(arg.value);
+                            } else if (arg.type.tpl_struct_origin) {
+                                arg_refs += "@";
+                                arg_refs += arg.type.tpl_struct_origin;
+                                arg_refs += ":";
+                                arg_refs += arg.type.tpl_struct_arg_refs ? arg.type.tpl_struct_arg_refs : "";
+                            } else if (arg.type.tag) {
+                                arg_refs += arg.type.tag;
+                            } else {
+                                std::string type_name;
+                                append_type_mangled_suffix(type_name, arg.type);
+                                arg_refs += type_name.empty() ? "?" : type_name;
+                            }
+                        }
+                        ts.tpl_struct_origin = arena_.strdup(tpl_name.c_str());
+                        ts.tpl_struct_arg_refs = arena_.strdup(arg_refs.c_str());
+                        ts.tag = arena_.strdup(tpl_name.c_str());
+                        return ts;
+                    }
                     // Fill in deferred NTTP defaults before pattern selection
                     // so specialization matching has the complete arg list.
                     if (primary_tpl) {

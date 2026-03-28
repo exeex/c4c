@@ -873,6 +873,16 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
     if (const auto* m = std::get_if<MemberExpr>(&e.payload)) {
       return emit_member_lval(ctx, *m, pts);
     }
+    if (const auto* call = std::get_if<CallExpr>(&e.payload)) {
+      TypeSpec storage_ts = resolve_payload_type(ctx, *call);
+      if (storage_ts.is_lvalue_ref || storage_ts.is_rvalue_ref) {
+        pts = storage_ts;
+        if (pts.ptr_level > 0) pts.ptr_level--;
+        pts.is_lvalue_ref = false;
+        pts.is_rvalue_ref = false;
+        return emit_rval_payload(ctx, *call, e);
+      }
+    }
     // Reference-type cast preserves addressability (xvalue semantics).
     // e.g. static_cast<T&&>(x) → same address as x.
     if (const auto* c = std::get_if<CastExpr>(&e.payload)) {
