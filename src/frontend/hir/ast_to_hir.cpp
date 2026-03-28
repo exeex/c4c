@@ -286,31 +286,33 @@ bool eval_struct_static_member_value_hir(
   static const std::unordered_map<std::string, Node*> kEmptyStructs;
   static const std::unordered_map<std::string, long long> kEmptyConsts;
 
-  const int num_fields = sdef->n_fields > 0 ? sdef->n_fields : sdef->n_children;
-  auto get_field = [&](int i) -> const Node* {
-    return sdef->n_fields > 0 ? sdef->fields[i] : sdef->children[i];
+  auto search_decl_array = [&](Node* const* decls, int count) -> bool {
+    if (!decls) return false;
+    for (int fi = 0; fi < count; ++fi) {
+      const Node* f = decls[fi];
+      if (!f || f->kind != NK_DECL || !f->is_static || !f->name) continue;
+      if (member_name != f->name) continue;
+      long long val = 0;
+      if (f->init && nttp_bindings &&
+          eval_const_int(const_cast<Node*>(f->init), &val, &kEmptyStructs,
+                         nttp_bindings)) {
+        *out = val;
+        return true;
+      }
+      if (f->init && eval_const_int(f->init, &val, &kEmptyStructs, &kEmptyConsts)) {
+        *out = val;
+        return true;
+      }
+      if (f->init && f->init->kind == NK_INT_LIT) {
+        *out = f->init->ival;
+        return true;
+      }
+    }
+    return false;
   };
 
-  for (int fi = 0; fi < num_fields; ++fi) {
-    const Node* f = get_field(fi);
-    if (!f || f->kind != NK_DECL || !f->is_static || !f->name) continue;
-    if (member_name != f->name) continue;
-    long long val = 0;
-    if (f->init && nttp_bindings &&
-        eval_const_int(const_cast<Node*>(f->init), &val, &kEmptyStructs,
-                       nttp_bindings)) {
-      *out = val;
-      return true;
-    }
-    if (f->init && eval_const_int(f->init, &val, &kEmptyStructs, &kEmptyConsts)) {
-      *out = val;
-      return true;
-    }
-    if (f->init && f->init->kind == NK_INT_LIT) {
-      *out = f->init->ival;
-      return true;
-    }
-  }
+  if (search_decl_array(sdef->fields, sdef->n_fields)) return true;
+  if (search_decl_array(sdef->children, sdef->n_children)) return true;
   for (int bi = 0; bi < sdef->n_bases; ++bi) {
     const TypeSpec& base_ts = sdef->base_types[bi];
     if (!base_ts.tag || !base_ts.tag[0]) continue;
@@ -319,6 +321,14 @@ bool eval_struct_static_member_value_hir(
     if (eval_struct_static_member_value_hir(it->second, struct_defs, member_name,
                                             nttp_bindings, out))
       return true;
+  }
+  if (sdef->template_origin_name && sdef->template_origin_name[0]) {
+    auto it = struct_defs.find(sdef->template_origin_name);
+    if (it != struct_defs.end() &&
+        eval_struct_static_member_value_hir(it->second, struct_defs, member_name,
+                                            nttp_bindings, out)) {
+      return true;
+    }
   }
   return false;
 }
@@ -2702,8 +2712,10 @@ class Lowerer {
 
       auto concrete_it = struct_defs.find(ref_mangled);
       if (concrete_it != struct_defs.end()) {
-        return eval_struct_static_member_value_hir(
-            concrete_it->second, struct_defs, member_name, nullptr, out_val);
+        if (eval_struct_static_member_value_hir(
+                concrete_it->second, struct_defs, member_name, nullptr, out_val)) {
+          return true;
+        }
       }
 
       return eval_struct_static_member_value_hir(
@@ -4218,7 +4230,17 @@ class Lowerer {
     g.id = next_global_id();
     g.name = gv->name ? gv->name : "<anon_global>";
     g.ns_qual = make_ns_qual(gv);
-    g.type = qtype_from(gv->type, ValueCategory::LValue);
+    {
+      TypeBindings empty_tpl_bindings;
+      NttpBindings empty_nttp_bindings;
+      TypeSpec global_ts = gv->type;
+      seed_and_resolve_pending_template_type_if_needed(
+          global_ts, empty_tpl_bindings, empty_nttp_bindings, gv,
+          PendingTemplateTypeKind::DeclarationType,
+          std::string("global-decl:") + g.name);
+      resolve_typedef_to_struct(global_ts);
+      g.type = qtype_from(global_ts, ValueCategory::LValue);
+    }
     g.fn_ptr_sig = fn_ptr_sig_from_decl_node(gv);
     g.linkage = {gv->is_static, gv->is_extern, false, weak_symbols_.count(g.name) > 0,
                   static_cast<Visibility>(gv->visibility)};
