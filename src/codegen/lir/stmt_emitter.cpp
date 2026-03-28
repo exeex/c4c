@@ -988,6 +988,42 @@ std::string StmtEmitter::emit_store_assignable_value(FnCtx& ctx, const Assignabl
     return value;
 }
 
+std::string StmtEmitter::emit_assignable_incdec_value(FnCtx& ctx, const AssignableLValue& lhs,
+                                                      bool increment,
+                                                      bool return_updated_value) {
+    if (lhs.is_bitfield()) {
+      const int pbits = bitfield_promoted_bits(lhs.bf);
+      const std::string pty = "i" + std::to_string(pbits);
+      const std::string old_val = emit_bitfield_load(ctx, lhs.ptr, lhs.bf);
+      const std::string delta = increment ? "1" : "-1";
+      const std::string new_val = fresh_tmp(ctx);
+      emit_lir_op(ctx, lir::LirBinOp{new_val, "add", pty, old_val, delta});
+      TypeSpec promoted_ts = bitfield_promoted_ts(lhs.bf);
+      const std::string stored =
+          emit_store_assignable_value(ctx, lhs, new_val, promoted_ts, return_updated_value);
+      return return_updated_value ? stored : old_val;
+    }
+
+    const std::string pty = llvm_ty(lhs.pointee_ts);
+    const std::string old_val = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirLoadOp{old_val, pty, lhs.ptr});
+
+    const std::string new_val = fresh_tmp(ctx);
+    if (pty == "ptr") {
+      const std::string delta = increment ? "1" : "-1";
+      emit_lir_op(ctx, lir::LirGepOp{new_val, indexed_gep_elem_ty(lhs.pointee_ts), old_val, false,
+                                     {"i64 " + delta}});
+    } else if (is_float_base(lhs.pointee_ts.base)) {
+      const std::string delta = increment ? "1.0" : "-1.0";
+      emit_lir_op(ctx, lir::LirBinOp{new_val, "fadd", pty, old_val, delta});
+    } else {
+      const std::string delta = increment ? "1" : "-1";
+      emit_lir_op(ctx, lir::LirBinOp{new_val, "add", pty, old_val, delta});
+    }
+    emit_store_assignable_value(ctx, lhs, new_val, lhs.pointee_ts, false);
+    return return_updated_value ? new_val : old_val;
+}
+
 TypeSpec StmtEmitter::resolve_member_base_type(FnCtx& ctx, ExprId base_id, bool is_arrow){
     const Expr& base_e = get_expr(base_id);
     TypeSpec base_ts = base_e.type.spec;
@@ -1955,68 +1991,13 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const
       case UnaryOp::PreInc:
       case UnaryOp::PreDec: {
         const AssignableLValue lhs = emit_assignable_lval(ctx, u.operand);
-        if (lhs.is_bitfield()) {
-          const int pbits = bitfield_promoted_bits(lhs.bf);
-          const std::string pty = "i" + std::to_string(pbits);
-          const std::string loaded = emit_bitfield_load(ctx, lhs.ptr, lhs.bf);
-          const std::string delta = (u.op == UnaryOp::PreInc) ? "1" : "-1";
-          const std::string result = fresh_tmp(ctx);
-          emit_lir_op(ctx, lir::LirBinOp{result, "add", pty, loaded, delta});
-          TypeSpec promoted_ts = bitfield_promoted_ts(lhs.bf);
-          emit_bitfield_store(ctx, lhs.ptr, lhs.bf, result, promoted_ts);
-          // Re-read to get value masked to bitfield width (C semantics)
-          return emit_bitfield_load(ctx, lhs.ptr, lhs.bf);
-        }
-        const std::string pty = llvm_ty(lhs.pointee_ts);
-        const std::string loaded = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirLoadOp{loaded, pty, lhs.ptr});
-        const std::string result = fresh_tmp(ctx);
-        if (pty == "ptr") {
-          const std::string delta = (u.op == UnaryOp::PreInc) ? "1" : "-1";
-          emit_lir_op(ctx, lir::LirGepOp{result, indexed_gep_elem_ty(lhs.pointee_ts), loaded, false,
-                                         {"i64 " + delta}});
-        } else if (is_float_base(lhs.pointee_ts.base)) {
-          const std::string delta = (u.op == UnaryOp::PreInc) ? "1.0" : "-1.0";
-          emit_lir_op(ctx, lir::LirBinOp{result, "fadd", pty, loaded, delta});
-        } else {
-          const std::string delta = (u.op == UnaryOp::PreInc) ? "1" : "-1";
-          emit_lir_op(ctx, lir::LirBinOp{result, "add", pty, loaded, delta});
-        }
-        emit_lir_op(ctx, lir::LirStoreOp{pty, result, lhs.ptr});
-        return result;
+        return emit_assignable_incdec_value(ctx, lhs, u.op == UnaryOp::PreInc, true);
       }
 
       case UnaryOp::PostInc:
       case UnaryOp::PostDec: {
         const AssignableLValue lhs = emit_assignable_lval(ctx, u.operand);
-        if (lhs.is_bitfield()) {
-          const int pbits = bitfield_promoted_bits(lhs.bf);
-          const std::string pty = "i" + std::to_string(pbits);
-          const std::string old_val = emit_bitfield_load(ctx, lhs.ptr, lhs.bf);
-          const std::string delta = (u.op == UnaryOp::PostInc) ? "1" : "-1";
-          const std::string new_val = fresh_tmp(ctx);
-          emit_lir_op(ctx, lir::LirBinOp{new_val, "add", pty, old_val, delta});
-          TypeSpec promoted_ts = bitfield_promoted_ts(lhs.bf);
-          emit_bitfield_store(ctx, lhs.ptr, lhs.bf, new_val, promoted_ts);
-          return old_val;  // post: return old value
-        }
-        const std::string pty = llvm_ty(lhs.pointee_ts);
-        const std::string loaded = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirLoadOp{loaded, pty, lhs.ptr});
-        const std::string result = fresh_tmp(ctx);
-        if (pty == "ptr") {
-          const std::string delta = (u.op == UnaryOp::PostInc) ? "1" : "-1";
-          emit_lir_op(ctx, lir::LirGepOp{result, indexed_gep_elem_ty(lhs.pointee_ts), loaded, false,
-                                         {"i64 " + delta}});
-        } else if (is_float_base(lhs.pointee_ts.base)) {
-          const std::string delta = (u.op == UnaryOp::PostInc) ? "1.0" : "-1.0";
-          emit_lir_op(ctx, lir::LirBinOp{result, "fadd", pty, loaded, delta});
-        } else {
-          const std::string delta = (u.op == UnaryOp::PostInc) ? "1" : "-1";
-          emit_lir_op(ctx, lir::LirBinOp{result, "add", pty, loaded, delta});
-        }
-        emit_lir_op(ctx, lir::LirStoreOp{pty, result, lhs.ptr});
-        return loaded;  // post: return old value
+        return emit_assignable_incdec_value(ctx, lhs, u.op == UnaryOp::PostInc, false);
       }
 
       case UnaryOp::RealPart:

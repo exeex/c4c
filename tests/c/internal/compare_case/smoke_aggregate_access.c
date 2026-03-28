@@ -50,6 +50,7 @@ int run(void) {
   int (*pvalues)[3] = &w.inner.values;
   int (*cursor)[3] = &pair[0].inner.values;
   int (*cursor_compound)[3] = &pair[0].inner.values;
+  int (*cursor_postdec)[3] = &pair[1].inner.values;
   int first = w.inner.head;
   int second = pw->inner.values[1];
   int third = w.inner.values[2];
@@ -72,8 +73,12 @@ int run(void) {
   int scalar_after_assign = pair[0].tail;
   int scalar_compound = (pair[0].tail += 4);
   int scalar_after_compound = pair[0].tail;
+  int scalar_postdec = pair[1].tail--;
+  int scalar_after_postdec = pair[1].tail;
   int ptr_compound = (cursor_compound += 1)[0][2];
   int ptr_after_compound = cursor_compound[0][1];
+  int ptr_postdec = (cursor_postdec--)[0][0];
+  int ptr_after_postdec = cursor_postdec[0][2];
   int bit_set = (anon_assign.high = -5);
   int bit_add = (anon_assign.high += 2);
   int bit_after_assign = anon_assign.high;
@@ -85,10 +90,12 @@ int run(void) {
          indexed_member_decay + typedef_arrow + rvalue_field + rvalue_decay +
          pw->tail + anon_rvalue + anon_fields + anon_preinc + anon_postinc +
          anon_final + scalar_assign + scalar_after_assign + scalar_compound +
-         scalar_after_compound + ptr_compound + ptr_after_compound + bit_set +
-         bit_add + bit_after_assign + low_set + low_xor + low_after_assign;
+         scalar_after_compound + scalar_postdec + scalar_after_postdec +
+         ptr_compound + ptr_after_compound + ptr_postdec + ptr_after_postdec +
+         bit_set + bit_add + bit_after_assign + low_set + low_xor +
+         low_after_assign;
 }
 
 int main(void) {
-  return run() == 1078 ? 0 : 1;
+  return run() == 1269 ? 0 : 1;
 }

@@ -207,6 +207,8 @@ class StmtEmitter {
                                           const std::string& value,
                                           const TypeSpec& value_ts,
                                           bool reload_after_store);
+  std::string emit_assignable_incdec_value(FnCtx& ctx, const AssignableLValue& lhs,
+                                           bool increment, bool return_updated_value);
   std::string indexed_gep_elem_ty(const TypeSpec& base_ts);
   std::string emit_indexed_gep(FnCtx& ctx, const std::string& base_ptr,
                                const TypeSpec& base_ts, const std::string& idx);

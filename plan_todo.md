@@ -7,10 +7,13 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 4: Extract Assignment and Store Helpers
-- Current slice: re-scan Step 4 for the next behavior-preserving helper above the operator-specific arithmetic tables, likely wherever unary inc/dec or assignment still spell the same final store/reload contract separately
+- Current slice: re-scan Step 4 for the next behavior-preserving assignment/store helper above the operator-specific arithmetic tables, now that unary inc/dec shares one update/store contract too
 
 ## Completed
 
+- Extended [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) with scalar post-decrement and pointer-to-array post-decrement coverage so compare mode now pins the remaining non-bitfield pre/post unary update return paths alongside the existing anonymous-bitfield inc coverage
+- Extracted `emit_assignable_incdec_value(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp), so unary pre/post inc/dec now share one scalar/pointer/bitfield load-update-store helper and reuse `emit_store_assignable_value(...)` for the post-store contract without changing arithmetic selection
+- Verified `compare_smoke_aggregate_access`, the full `compare_case` label, and the clean full-suite regression guard with stable results (`2248` -> `2248` passed, zero failures; `check_monotonic_regression.py --allow-non-decreasing-passed` accepted the unary inc/dec Step 4 slice)
 - Extended [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) with scalar member `+=` plus pointer compound-assignment coverage so compare mode now pins non-bitfield assignment-store paths next to the existing bitfield assignment cases
 - Extracted `emit_store_assignable_value(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp), so `AssignExpr` now routes simple assignment, bitfield compound assignment, pointer compound assignment, complex compound assignment, and scalar compound stores through one scalar-vs-bitfield store helper without changing the inline arithmetic or pointer-delta selection
 - Verified `compare_smoke_aggregate_access`, the full `compare_case` label, and the clean full-suite regression guard with stable results (`2248` -> `2248` passed, zero failures; non-decreasing pass-count guard accepted the Step 4 store-helper slice)
