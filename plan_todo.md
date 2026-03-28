@@ -7,11 +7,11 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3: port the first integer/control-flow slice
-- Iteration slice: inspect the next narrow symbol-address follow-on after landing byte-granular global pointer-difference coverage, likely a remaining cast/helper boundary such as scaled pointer subtraction or other ref-`codegen/globals.rs`-adjacent address materialization
+- Iteration slice: inspect the next narrow symbol-address or cast follow-on after landing scaled global pointer subtraction for non-byte element types
 
 ## Next Intended Slice
 
-- inspect whether non-byte pointer subtraction on the AArch64 backend now needs additional target-local support such as `sdiv` or adjacent cast handling beyond the newly landed `ptrtoint` slice
+- inspect whether the next symbol-address follow-on after scaled pointer subtraction is additional cast coverage such as `inttoptr`/`bitcast` or another ref-`codegen/globals.rs`-adjacent address materialization boundary
 - keep the next slice focused on one target-local helper boundary or one missing runtime-backed backend capability
 - avoid broadening beyond the active AArch64 Step 3 runbook without recording a separate idea
 
@@ -84,6 +84,12 @@ Source Plan: plan.md
 - updated `tests/c/internal/InternalTests.cmake` with the expected runtime exit code for the new backend case
 - verified `backend_lir_adapter_tests` and `backend_runtime_global_char_pointer_diff` pass for the new global pointer-difference slice
 - reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=496/510 -> 498/512` and zero newly failing tests
+- added target-local AArch64 `sdiv` rendering in `src/backend/aarch64/alu.cpp` for scaled non-byte pointer-difference lowering
+- added unit coverage for AArch64 global `int*` pointer-difference lowering in `tests/backend/backend_lir_adapter_tests.cpp`
+- added `tests/c/internal/backend_case/global_int_pointer_diff.c` for runtime coverage of scaled global symbol-address subtraction on supported AArch64 hosts
+- updated `tests/c/internal/InternalTests.cmake` with the expected runtime exit code for the new backend case
+- verified `backend_lir_adapter_tests` and `backend_runtime_global_int_pointer_diff` pass for the new scaled pointer-difference slice
+- reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=496/510 -> 501/513` and zero newly failing tests
 
 ## Blockers
 
@@ -112,3 +118,4 @@ Source Plan: plan.md
 - module string-pool definitions now also render through `src/backend/aarch64/globals.*`; `extern_decls` remains the next most obvious module-level global-addressing boundary
 - module extern declarations now also render through `src/backend/aarch64/globals.*`; the next obvious global-addressing follow-on is explicit external-global usage or other target-local symbol-address helpers aligned with ref `codegen/globals.rs`
 - byte-granular global pointer subtraction now executes through the target-local AArch64 path via `ptrtoint`; wider pointer-difference follow-ons may still require extra cast or division support
+- non-byte global pointer subtraction now also executes through the target-local AArch64 path via `ptrtoint` plus `sdiv`; likely next follow-ons are adjacent cast helpers such as `inttoptr`/`bitcast` or another ref-`codegen/globals.rs` symbol-address materialization boundary

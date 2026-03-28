@@ -33,8 +33,8 @@ bool render_alu_instruction(std::ostream& out,
     return false;
   }
 
-  static constexpr std::array<const char*, 6> kSupportedOps{
-      "add", "sub", "mul", "and", "or", "xor"};
+  static constexpr std::array<const char*, 7> kSupportedOps{
+      "add", "sub", "mul", "sdiv", "and", "or", "xor"};
   bool supported = false;
   for (const char* opcode : kSupportedOps) {
     if (bin->opcode == opcode) {

@@ -626,6 +626,53 @@ c4c::codegen::lir::LirModule make_global_char_pointer_diff_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_global_int_pointer_diff_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "g_words",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "[2 x i32]",
+      "zeroinitializer",
+      4,
+      false,
+  });
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(
+      LirGepOp{"%t0", "[2 x i32]", "@g_words", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirGepOp{"%t1", "i32", "%t0", false, {"i64 1"}});
+  entry.insts.push_back(
+      LirCastOp{"%t2", LirCastKind::PtrToInt, "ptr", "%t1", "i64"});
+  entry.insts.push_back(
+      LirCastOp{"%t3", LirCastKind::PtrToInt, "ptr", "%t0", "i64"});
+  entry.insts.push_back(LirBinOp{"%t4", "sub", "i64", "%t2", "%t3"});
+  entry.insts.push_back(LirBinOp{"%t5", "sdiv", "i64", "%t4", "4"});
+  entry.insts.push_back(LirCmpOp{"%t6", false, "eq", "i64", "%t5", "1"});
+  entry.insts.push_back(
+      LirCastOp{"%t7", LirCastKind::ZExt, "i1", "%t6", "i32"});
+  entry.terminator = LirRet{std::string("%t7"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 void test_adapts_direct_return() {
   const auto adapted = c4c::backend::adapt_return_only_module(make_return_zero_module());
   expect_true(adapted.functions.size() == 1, "adapter should preserve one function");
@@ -969,6 +1016,24 @@ void test_aarch64_backend_renders_global_char_pointer_diff_slice() {
                   "aarch64 backend should preserve the pointer-difference comparison result");
 }
 
+void test_aarch64_backend_renders_global_int_pointer_diff_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_global_int_pointer_diff_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "@g_words = global [2 x i32] zeroinitializer, align 4",
+                  "aarch64 backend should render global int-array definitions");
+  expect_contains(rendered, "%t0 = getelementptr [2 x i32], ptr @g_words, i64 0, i64 0",
+                  "aarch64 backend should preserve int-array decay from globals");
+  expect_contains(rendered, "%t1 = getelementptr i32, ptr %t0, i64 1",
+                  "aarch64 backend should preserve indexed int-pointer addressing from globals");
+  expect_contains(rendered, "%t4 = sub i64 %t2, %t3",
+                  "aarch64 backend should preserve byte-granular pointer subtraction before scaling");
+  expect_contains(rendered, "%t5 = sdiv i64 %t4, 4",
+                  "aarch64 backend should render the scaled pointer-difference divide");
+  expect_contains(rendered, "ret i32 %t7",
+                  "aarch64 backend should preserve the scaled pointer-difference comparison result");
+}
+
 }  // namespace
 
 int main() {
@@ -994,5 +1059,6 @@ int main() {
   test_aarch64_backend_renders_extern_global_load_slice();
   test_aarch64_backend_renders_extern_global_array_slice();
   test_aarch64_backend_renders_global_char_pointer_diff_slice();
+  test_aarch64_backend_renders_global_int_pointer_diff_slice();
   return 0;
 }
