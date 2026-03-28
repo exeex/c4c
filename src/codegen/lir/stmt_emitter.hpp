@@ -268,6 +268,8 @@ class StmtEmitter {
                       const std::string& args_str);
   std::string emit_call_with_result(FnCtx& ctx, const CallTargetInfo& call_target,
                                     const std::string& args_str);
+  std::string emit_post_builtin_call(FnCtx& ctx, const CallExpr& call,
+                                     const CallTargetInfo& call_target);
 
   // ── Rvalue emission ───────────────────────────────────────────────────────
 

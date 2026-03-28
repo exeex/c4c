@@ -2910,10 +2910,51 @@ std::string StmtEmitter::emit_call_with_result(FnCtx& ctx, const CallTargetInfo&
     return tmp;
   }
 
+std::string StmtEmitter::emit_post_builtin_call(FnCtx& ctx, const CallExpr& call,
+                                                const CallTargetInfo& call_target) {
+    const BuiltinId builtin_id = call_target.builtin_id;
+
+    // Implicit builtins: standard library functions recognized by GCC/Clang
+    // even without __builtin_ prefix. abs/labs/llabs -> llvm.abs intrinsic.
+    if (builtin_id == BuiltinId::Unknown && call.args.size() == 1 &&
+        (call_target.fn_name == "abs" || call_target.fn_name == "labs" ||
+         call_target.fn_name == "llabs")) {
+      TypeSpec arg_ts{};
+      std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
+      const bool is_ll =
+          (call_target.fn_name == "llabs" || call_target.fn_name == "labs");
+      const std::string ity = is_ll ? "i64" : "i32";
+      TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
+      arg = coerce(ctx, arg, arg_ts, target_ts);
+      const std::string tmp = fresh_tmp(ctx);
+      emit_lir_op(ctx, lir::LirAbsOp{tmp, arg, ity});
+      module_->need_abs = true;
+      return tmp;
+    }
+
+    // Implicit builtin: alloca() -> LLVM alloca instruction (like __builtin_alloca).
+    if (builtin_id == BuiltinId::Unknown && call.args.size() == 1 &&
+        call_target.fn_name == "alloca") {
+      TypeSpec size_ts{};
+      std::string size = emit_rval_id(ctx, call.args[0], size_ts);
+      TypeSpec i64_ts{}; i64_ts.base = TB_ULONGLONG;
+      size = coerce(ctx, size, size_ts, i64_ts);
+      const std::string tmp = fresh_tmp(ctx);
+      emit_lir_op(ctx, lir::LirAllocaOp{tmp, "i8", size, 16});
+      return tmp;
+    }
+
+    const std::string args_str = prepare_call_args(ctx, call, call_target);
+    if (call_target.ret_ty == "void") {
+      emit_void_call(ctx, call_target, args_str);
+      return "";
+    }
+    return emit_call_with_result(ctx, call_target, args_str);
+  }
+
 std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, const Expr& e){
     const CallTargetInfo call_target = resolve_call_target_info(ctx, call, e);
     const BuiltinId builtin_id = call_target.builtin_id;
-    const BuiltinInfo* builtin = call_target.builtin;
 
     if (builtin_id == BuiltinId::Unknown && has_builtin_prefix(call_target.fn_name)) {
       throw std::runtime_error("StmtEmitter: unsupported builtin call: " + call_target.fn_name);
@@ -3445,44 +3486,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
         return out;
       }
     }
-
-    // Implicit builtins: standard library functions recognized by GCC/Clang
-    // even without __builtin_ prefix. abs/labs/llabs → llvm.abs intrinsic.
-    if (builtin_id == BuiltinId::Unknown && call.args.size() == 1 &&
-        (call_target.fn_name == "abs" || call_target.fn_name == "labs" ||
-         call_target.fn_name == "llabs")) {
-      TypeSpec arg_ts{};
-      std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
-      const bool is_ll =
-          (call_target.fn_name == "llabs" || call_target.fn_name == "labs");
-      const std::string ity = is_ll ? "i64" : "i32";
-      TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
-      arg = coerce(ctx, arg, arg_ts, target_ts);
-      const std::string tmp = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirAbsOp{tmp, arg, ity});
-      module_->need_abs = true;
-      return tmp;
-    }
-
-    // Implicit builtin: alloca() → LLVM alloca instruction (like __builtin_alloca).
-    if (builtin_id == BuiltinId::Unknown && call.args.size() == 1 &&
-        call_target.fn_name == "alloca") {
-      TypeSpec size_ts{};
-      std::string size = emit_rval_id(ctx, call.args[0], size_ts);
-      TypeSpec i64_ts{}; i64_ts.base = TB_ULONGLONG;
-      size = coerce(ctx, size, size_ts, i64_ts);
-      const std::string tmp = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirAllocaOp{tmp, "i8", size, 16});
-      return tmp;
-    }
-
-    std::string args_str = prepare_call_args(ctx, call, call_target);
-
-    if (call_target.ret_ty == "void") {
-      emit_void_call(ctx, call_target, args_str);
-      return "";
-    }
-    return emit_call_with_result(ctx, call_target, args_str);
+    return emit_post_builtin_call(ctx, call, call_target);
   }
 
 std::string StmtEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::string& ap_ptr, int slot_bytes){

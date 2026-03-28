@@ -33,12 +33,22 @@ int call_variadic(int value, float scale) {
   return printf("value=%d scale=%.1f\n", value, scale);
 }
 
+int call_implicit_builtins(int seed) {
+  int *slot = alloca(sizeof(int));
+  *slot = abs(seed - 9);
+  return *slot;
+}
+
 int main(void) {
   const int direct = call_direct(9, 4);
   combine_fn fn = sub_pair;
   const int indirect = call_indirect(fn, 9, 4);
   const int decay = call_decay(6);
   const int void_direct = call_void_direct(decay);
+  const int implicit = call_implicit_builtins(indirect);
   call_variadic(direct + indirect + void_direct, 1.5f);
-  return (direct == 13 && indirect == 5 && decay == 21 && void_direct == 25) ? 0 : 1;
+  return (direct == 13 && indirect == 5 && decay == 21 && void_direct == 25 &&
+          implicit == 4)
+             ? 0
+             : 1;
 }
