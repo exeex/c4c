@@ -9,11 +9,19 @@ namespace c4c::backend::aarch64 {
 bool render_alu_instruction(std::ostream& out,
                             const c4c::codegen::lir::LirInst& inst) {
   if (const auto* cast = std::get_if<c4c::codegen::lir::LirCastOp>(&inst)) {
-    if (cast->kind != c4c::codegen::lir::LirCastKind::ZExt) {
-      fail_unsupported("cast kind outside the compare/branch slice");
+    const char* opcode = nullptr;
+    switch (cast->kind) {
+      case c4c::codegen::lir::LirCastKind::ZExt:
+        opcode = "zext";
+        break;
+      case c4c::codegen::lir::LirCastKind::SExt:
+        opcode = "sext";
+        break;
+      default:
+        fail_unsupported("cast kind outside the compare/branch or memory-addressing slice");
     }
-    out << "  " << cast->result << " = zext " << cast->from_type << " "
-        << cast->operand << " to " << cast->to_type << "\n";
+    out << "  " << cast->result << " = " << opcode << " " << cast->from_type
+        << " " << cast->operand << " to " << cast->to_type << "\n";
     return true;
   }
 

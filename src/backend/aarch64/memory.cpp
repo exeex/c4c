@@ -30,6 +30,19 @@ bool render_memory_instruction(std::ostream& out,
     return true;
   }
 
+  if (const auto* gep = std::get_if<c4c::codegen::lir::LirGepOp>(&inst)) {
+    out << "  " << gep->result << " = getelementptr ";
+    if (gep->inbounds) {
+      out << "inbounds ";
+    }
+    out << gep->element_type << ", ptr " << gep->ptr;
+    for (const auto& index : gep->indices) {
+      out << ", " << index;
+    }
+    out << "\n";
+    return true;
+  }
+
   return false;
 }
 

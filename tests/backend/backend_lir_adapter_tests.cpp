@@ -221,6 +221,44 @@ c4c::codegen::lir::LirModule make_typed_direct_call_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_local_array_gep_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.arr", "[2 x i32]", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(
+      LirGepOp{"%t0", "[2 x i32]", "%lv.arr", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(
+      LirCastOp{"%t1", LirCastKind::SExt, "i32", "0", "i64"});
+  entry.insts.push_back(LirGepOp{"%t2", "i32", "%t0", false, {"i64 %t1"}});
+  entry.insts.push_back(LirStoreOp{"i32", "4", "%t2"});
+  entry.insts.push_back(
+      LirGepOp{"%t3", "[2 x i32]", "%lv.arr", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(
+      LirCastOp{"%t4", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t5", "i32", "%t3", false, {"i64 %t4"}});
+  entry.insts.push_back(LirStoreOp{"i32", "3", "%t5"});
+  entry.insts.push_back(LirLoadOp{"%t6", "i32", "%t2"});
+  entry.insts.push_back(LirLoadOp{"%t7", "i32", "%t5"});
+  entry.insts.push_back(LirBinOp{"%t8", "add", "i32", "%t6", "%t7"});
+  entry.terminator = LirRet{std::string("%t8"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 void test_adapts_direct_return() {
   const auto adapted = c4c::backend::adapt_return_only_module(make_return_zero_module());
   expect_true(adapted.functions.size() == 1, "adapter should preserve one function");
@@ -362,6 +400,26 @@ void test_aarch64_backend_renders_typed_direct_call_slice() {
                   "aarch64 backend should preserve typed call results through return");
 }
 
+void test_aarch64_backend_renders_local_array_gep_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_local_array_gep_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "%lv.arr = alloca [2 x i32], align 4",
+                  "aarch64 backend should render local array allocas");
+  expect_contains(rendered, "%t0 = getelementptr [2 x i32], ptr %lv.arr, i64 0, i64 0",
+                  "aarch64 backend should render array-decay GEP");
+  expect_contains(rendered, "%t1 = sext i32 0 to i64",
+                  "aarch64 backend should render integer index widening for local arrays");
+  expect_contains(rendered, "%t2 = getelementptr i32, ptr %t0, i64 %t1",
+                  "aarch64 backend should render indexed local array GEP");
+  expect_contains(rendered, "store i32 4, ptr %t2",
+                  "aarch64 backend should store through local array element pointers");
+  expect_contains(rendered, "store i32 3, ptr %t5",
+                  "aarch64 backend should store through later local array element pointers");
+  expect_contains(rendered, "ret i32 %t8",
+                  "aarch64 backend should preserve the loaded array sum");
+}
+
 }  // namespace
 
 int main() {
@@ -375,5 +433,6 @@ int main() {
   test_aarch64_backend_renders_local_temp_memory_slice();
   test_aarch64_backend_renders_param_slot_memory_slice();
   test_aarch64_backend_renders_typed_direct_call_slice();
+  test_aarch64_backend_renders_local_array_gep_slice();
   return 0;
 }

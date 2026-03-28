@@ -7,13 +7,13 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3: port the first integer/control-flow slice
-- Iteration slice: prove modified-parameter stack-slot flows through the AArch64 target-local memory path and supported runtime harness
+- Iteration slice: extend local GEP addressing into broader parameter/member stack-addressing cases
 
 ## Next Intended Slice
 
 - port the ref prologue/return helpers deeper into `src/backend/aarch64/`
-- extend the memory slice beyond modified-parameter slots into broader local/parameter addressing cases
-- extend runtime coverage from modified-parameter slots into broader backend stack-addressing cases
+- extend runtime coverage from local GEP addressing into broader parameter/member backend stack-addressing cases
+- keep target-local casts aligned with real AArch64 addressing IR as new memory slices land
 
 ## Completed Items
 
@@ -40,6 +40,11 @@ Source Plan: plan.md
 - allowed the AArch64 call renderer to preserve typed direct-call suffixes while still rejecting indirect typed calls
 - added `tests/c/internal/backend_case/param_slot.c` for modified-parameter runtime coverage on supported AArch64 hosts
 - rebuilt from a clean `build/` directory, recorded `test_after.log`, and passed the monotonic regression guard against `test_before.log` with `passed=490/504 -> 491/505` and zero newly failing tests
+- added target-local AArch64 `getelementptr` rendering in `src/backend/aarch64/memory.cpp`
+- extended the target-local AArch64 cast slice to render `sext` needed by local indexed addressing
+- added unit coverage for AArch64 local array GEP lowering in `tests/backend/backend_lir_adapter_tests.cpp`
+- added `tests/c/internal/backend_case/local_array.c` for local array runtime coverage on supported AArch64 hosts
+- rebuilt from a clean `build/` directory, recorded `test_after.log`, and passed the monotonic regression guard against `test_before.log` with `passed=491/505 -> 493/506` and zero newly failing tests
 
 ## Blockers
 
@@ -55,3 +60,4 @@ Source Plan: plan.md
 - direct calls now render through the target-local AArch64 emitter for simple direct `@helper(...)` cases; indirect calls and typed callee suffixes remain out of slice
 - simple local integer temporaries now emit through the target-local AArch64 memory helpers; broader slot flows and runtime execution still depend on supported AArch64 hosts/toolchains for end-to-end coverage
 - modified-parameter slots now execute through the target-local AArch64 path, including typed direct helper calls with arguments
+- local array stack-slot addressing now executes through target-local AArch64 `getelementptr` plus index-widening casts on supported hosts
