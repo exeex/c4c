@@ -6,7 +6,7 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 2: Evaluate `src/backend/aarch64/codegen/f128.cpp` as the next AArch64-local codegen candidate, but stop immediately if promoting it would force non-trivial include or symbol edges beyond the current `mod.cpp` plus `emit.cpp` slice
+- [ ] Step 2: Evaluate `src/backend/aarch64/codegen/i128_ops.cpp` as the next AArch64-local codegen candidate, but stop immediately if promoting it would force non-trivial include or symbol edges beyond the current `mod.cpp` plus `emit.cpp` slice
 
 ## Planned Queue
 
@@ -22,6 +22,8 @@ Source Plan: plan.md
 
 - [x] Recorded the pre-change baseline for `src/backend/aarch64/codegen/float_ops.cpp`; `clang++ -std=c++17 -fsyntax-only src/backend/aarch64/codegen/float_ops.cpp`, `cmake -S . -B build`, `cmake --build build -j8`, `./build/backend_lir_adapter_tests`, and full `ctest --test-dir build -j8 --output-on-failure > test_fail_before.log` all held with the same 4 known unrelated failures at `549/553` passed (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
 - [x] Evaluated `src/backend/aarch64/codegen/float_ops.cpp` and promoted it into both build targets because it remains a comment-only AArch64-local structural mirror with no new include or symbol edges beyond the existing `src/backend/aarch64/codegen/mod.cpp` and `emit.cpp` slice; `clang++ -std=c++17 -fsyntax-only src/backend/aarch64/codegen/float_ops.cpp` succeeds, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, `ctest --test-dir build -j8 --output-on-failure` still reports the same 4 known unrelated failures at `549/553` passed (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`), and `check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passes with no new failing tests
+- [x] Recorded the pre-change baseline for `src/backend/aarch64/codegen/f128.cpp`; the existing clean-tree `test_fail_before.log` baseline remained the current reference at `549/553` passed with the same 4 known unrelated failures, `clang++ -std=c++17 -fsyntax-only src/backend/aarch64/codegen/f128.cpp` succeeded, and `cmake -S . -B build` still configured cleanly before promotion
+- [x] Evaluated `src/backend/aarch64/codegen/f128.cpp` and promoted it into both build targets because it remains a comment-only AArch64-local structural mirror with no new live include or symbol edges beyond the existing `src/backend/aarch64/codegen/mod.cpp` and `emit.cpp` slice, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and both `test_fail_before.log` and `test_fail_after.log` still report the same 4 known unrelated failures at `549/553` passed; this checkout still does not contain `check_monotonic_regression.py`, so monotonicity was verified directly by comparing the identical failed-test list and pass-count summary lines in `test_fail_before.log` and `test_fail_after.log`
 - [x] Recorded the pre-change baseline for `src/backend/aarch64/codegen/prologue.cpp`; `clang++ -std=c++17 -fsyntax-only src/backend/aarch64/codegen/prologue.cpp`, `cmake -S . -B build`, `cmake --build build -j8`, `./build/backend_lir_adapter_tests`, and the existing clean-tree `test_fail_before.log` baseline all held with the same 4 known unrelated failures at `549/553` passed (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
 - [x] Evaluated `src/backend/aarch64/codegen/prologue.cpp` and promoted it into both build targets because it remains a comment-only AArch64-local mirror with no new include or symbol edges beyond the existing `src/backend/aarch64/codegen/mod.cpp` and `emit.cpp` slice, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and both `test_fail_before.log` and `test_fail_after.log` still report the same 4 known unrelated failures at `549/553` passed; monotonicity was verified directly by comparing the identical failed-test list and pass-count summary lines in `test_fail_before.log` and `test_fail_after.log`
 
@@ -65,7 +67,7 @@ Source Plan: plan.md
 
 ## Next Intended Slice
 
-- evaluate `src/backend/aarch64/codegen/memory.cpp` next to determine whether it is still a bounded comment-only AArch64-local codegen unit or whether it would force the plan past the current `mod.cpp` plus `emit.cpp` slice
+- evaluate `src/backend/aarch64/codegen/i128_ops.cpp` next to determine whether it is still a bounded comment-only AArch64-local codegen unit or whether it would force the plan past the current `mod.cpp` plus `emit.cpp` slice
 - keep the AArch64 shim thin until the shared backend slice grows enough to replace LLVM-text passthroughs deliberately
 - defer encoder-heavy and linker-heavy AArch64 modules until the plain shared backend slice is build-reachable
 
