@@ -217,6 +217,18 @@ if(EXISTS "${EXAMPLE_C}")
   )
 
   add_test(
+      NAME backend_lir_aarch64_variadic_double_ir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/variadic_double_bytes.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_double_bytes_aarch64.ll
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+  )
+  set_tests_properties(backend_lir_aarch64_variadic_double_ir PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
       NAME backend_lir_unsupported_target_entry
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
@@ -273,6 +285,8 @@ if(CLANG_EXECUTABLE)
         set(expect_exit_code 105)
       elseif(stem STREQUAL "variadic_sum2")
         set(expect_exit_code 42)
+      elseif(stem STREQUAL "variadic_double_bytes")
+        set(expect_exit_code 67)
       elseif(stem STREQUAL "param_member_array")
         set(expect_exit_code 6)
       elseif(stem STREQUAL "param_slot")

@@ -7,12 +7,12 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3: port the first integer/control-flow slice
-- Iteration slice: inspect the next narrow AArch64 variadic follow-on after landing target-local scalar `va_arg` lowering for integer loads from a local `va_list`
+- Iteration slice: inspect the next narrow AArch64 variadic follow-on after landing the first floating-point scalar `va_arg` coverage, most likely the `fp128`/`long double` helper path that needs 16-byte stack alignment
 
 ## Next Intended Slice
 
-- inspect the next target-local AArch64 variadic lowering gap after integer scalar `va_arg`, most likely the first floating-point scalar `va_arg` path that reuses the frontend's `vaarg.fp.*` helper blocks
-- compare the resulting LLVM IR shape against Clang on `aarch64-unknown-linux-gnu` before widening beyond one floating-point `va_arg` case
+- inspect the next target-local AArch64 variadic lowering gap after the `double` scalar `va_arg` slice, most likely the `long double`/`fp128` helper path that reuses the same `vaarg.fp.*` control-flow with 16-byte stack alignment
+- compare the resulting LLVM IR shape against Clang on `aarch64-unknown-linux-gnu` before widening beyond one additional floating-point `va_arg` case
 - keep the next slice focused on one target-local helper boundary or one missing runtime-backed backend capability
 - avoid broadening beyond the active AArch64 Step 3 runbook without recording a separate idea
 
@@ -111,10 +111,15 @@ Source Plan: plan.md
 - verified the AArch64 scalar `va_arg` probe matches Clang's `aarch64-unknown-linux-gnu` control-flow shape through the register/stack split and `phi` join
 - verified `backend_lir_adapter_tests` and `backend_runtime_variadic_sum2` pass for the new scalar variadic slice
 - reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=527/534 -> 530/535`, zero newly failing tests, and two prior compare-smoke failures dropping from the failing set (`compare_smoke_scalar`, `compare_smoke_struct`)
+- added `tests/c/internal/backend_case/variadic_double_bytes.c` for runtime coverage of the first floating-point scalar `va_arg` slice via deterministic byte inspection instead of floating-point compare
+- added `tests/c/internal/cmake/run_backend_ir_check_case.cmake` plus `backend_lir_aarch64_variadic_double_ir` in `tests/c/internal/InternalTests.cmake` to lock the emitted `aarch64-unknown-linux-gnu` IR onto the `vaarg.fp.*` helper path
+- updated `tests/c/internal/InternalTests.cmake` with the expected runtime exit code for `backend_runtime_variadic_double_bytes`
+- verified `backend_lir_aarch64_variadic_double_ir` and `backend_runtime_variadic_double_bytes` pass for the new floating-point variadic slice
+- reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=527/534 -> 532/537`, zero newly failing tests, and the remaining fail set reduced to five unrelated cases
 
 ## Blockers
 
-- full-suite `ctest` is not clean yet due unrelated existing failures outside the active AArch64 slice (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `compare_smoke_switch`, and several longstanding C++ positive-case failures)
+- full-suite `ctest` is not clean yet due unrelated existing failures outside the active AArch64 slice (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `compare_smoke_switch`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, and `cpp_llvm_initializer_list_runtime_materialization`)
 
 ## Resume Notes
 
@@ -142,3 +147,4 @@ Source Plan: plan.md
 - non-byte global pointer subtraction now also executes through the target-local AArch64 path via `ptrtoint` plus `sdiv`
 - global address round-tripping now also executes through the target-local AArch64 path via `ptrtoint` plus `inttoptr`
 - minimal AArch64 variadic probes now also get through integer scalar `va_arg` via the frontend's helper-generated register/stack split plus `phi` join; the next likely blocker is the first floating-point `va_arg` helper path rather than integer scalar variadics
+- the first floating-point scalar `va_arg` probe now also matches Clang's `aarch64-unknown-linux-gnu` helper CFG and is covered in repo tests without depending on unsupported floating-point compare lowering
