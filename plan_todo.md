@@ -7,10 +7,13 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: Extract Call-Lowering Helpers
-- Current slice: scan the remaining Step 5 builtin-special floating-point math branches after the `__builtin_signbit*` extraction, likely around `copysign`, `fabs`, or `conj`, for one last local helper seam without reopening the generic post-builtin coordinator or the completed predicate/signbit families
+- Current slice: scan the last builtin-special floating-point math branch around `conj*` and confirm whether Step 5 has one more local helper seam or is effectively exhausted after the `copysign*`/`fabs*` extraction
 
 ## Completed
 
+- Extended [`smoke_call_lowering.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_call_lowering.c) with `call_fp_math_builtins(...)` coverage so compare mode now pins the remaining builtin-special floating-point math family across `__builtin_copysign*` and `__builtin_fabs*`
+- Extracted `promote_builtin_fp_math_arg(...)`, `emit_builtin_copysign_call(...)`, and `emit_builtin_fabs_call(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp), so `emit_rval_payload(const CallExpr&)` now routes the inline `copysign*`/`fabs*` builtin-special branch through one named helper family beside the existing floating-point predicate/signbit helpers instead of repeating per-builtin promotion and intrinsic emission inline
+- Verified `compare_smoke_call_lowering`, the full `compare_case` label, and the clean full-suite regression guard with improved results (`2248` -> `2249` passed, `1` -> `0` failed; `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed` returned `PASS`)
 - Extended [`smoke_call_lowering.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_call_lowering.c) with `call_signbit_builtins(...)` coverage so compare mode now pins the generic, `float`, and `long double` `__builtin_signbit*` builtin-special family in one narrow Step 5 smoke slice
 - Extracted `promote_builtin_signbit_arg(...)` and `emit_builtin_signbit_call(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp), so `emit_rval_payload(const CallExpr&)` now routes the remaining inline `__builtin_signbit*` builtin-special branch through one named helper family beside the existing floating-point predicate helpers instead of repeating generic-float promotion, bitcast, sign-bit shift, and `i32` truncation inline
 - Verified `compare_smoke_call_lowering`, the full `compare_case` label, and the clean full-suite regression guard with stable results (`2249` -> `2249` passed, zero failures; `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed` returned `PASS`)

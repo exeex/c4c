@@ -3070,6 +3070,80 @@ std::string StmtEmitter::emit_builtin_isfinite_call(FnCtx& ctx, ExprId arg_id) {
     return emit_builtin_fp_predicate_result(ctx, "olt", fp_ty, abs_value, inf_val);
   }
 
+void StmtEmitter::promote_builtin_fp_math_arg(FnCtx& ctx, std::string& value,
+                                              TypeSpec& value_ts, BuiltinId builtin_id) {
+    if (value_ts.ptr_level != 0 || value_ts.array_rank != 0) {
+      return;
+    }
+    const auto cast_fp_arg = [&](const char* src_ty, const char* dst_ty,
+                                 lir::LirCastKind kind, TypeBase dst_base) {
+      const std::string promoted = fresh_tmp(ctx);
+      emit_lir_op(ctx, lir::LirCastOp{promoted, kind, src_ty, value, dst_ty});
+      value = promoted;
+      value_ts.base = dst_base;
+    };
+
+    switch (builtin_id) {
+      case BuiltinId::Copysign:
+      case BuiltinId::Fabs:
+        if (value_ts.base == TB_FLOAT) {
+          cast_fp_arg("float", "double", lir::LirCastKind::FPExt, TB_DOUBLE);
+        }
+        break;
+      case BuiltinId::CopysignF:
+      case BuiltinId::FabsF:
+        if (value_ts.base == TB_DOUBLE) {
+          cast_fp_arg("double", "float", lir::LirCastKind::FPTrunc, TB_FLOAT);
+        }
+        break;
+      case BuiltinId::CopysignL:
+      case BuiltinId::FabsL:
+        if (value_ts.base == TB_FLOAT) {
+          cast_fp_arg("float", "fp128", lir::LirCastKind::FPExt, TB_LONGDOUBLE);
+        } else if (value_ts.base == TB_DOUBLE) {
+          cast_fp_arg("double", "fp128", lir::LirCastKind::FPExt, TB_LONGDOUBLE);
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+std::string StmtEmitter::emit_builtin_copysign_call(FnCtx& ctx, const CallExpr& call,
+                                                    BuiltinId builtin_id) {
+    TypeSpec lhs_ts{}, rhs_ts{};
+    std::string lhs = emit_rval_id(ctx, call.args[0], lhs_ts);
+    std::string rhs = emit_rval_id(ctx, call.args[1], rhs_ts);
+    promote_builtin_fp_math_arg(ctx, lhs, lhs_ts, builtin_id);
+    promote_builtin_fp_math_arg(ctx, rhs, rhs_ts, builtin_id);
+
+    const std::string fp_ty = llvm_ty(lhs_ts);
+    std::string intrinsic = "@llvm.copysign.f64";
+    if (builtin_id == BuiltinId::CopysignF) {
+      intrinsic = "@llvm.copysign.f32";
+    } else if (builtin_id == BuiltinId::CopysignL) {
+      intrinsic = "@llvm.copysign.f128";
+    }
+
+    const std::string tmp = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirCallOp{tmp, fp_ty, intrinsic, "",
+                                    fp_ty + " " + lhs + ", " + fp_ty + " " + rhs});
+    return tmp;
+  }
+
+std::string StmtEmitter::emit_builtin_fabs_call(FnCtx& ctx, ExprId arg_id,
+                                                BuiltinId builtin_id) {
+    TypeSpec arg_ts{};
+    std::string arg = emit_rval_id(ctx, arg_id, arg_ts);
+    promote_builtin_fp_math_arg(ctx, arg, arg_ts, builtin_id);
+
+    const std::string fp_ty = llvm_ty(arg_ts);
+    const std::string tmp = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirCallOp{tmp, fp_ty, "@llvm.fabs." + fp_ty, "",
+                                    fp_ty + " " + arg});
+    return tmp;
+  }
+
 void StmtEmitter::promote_builtin_signbit_arg(FnCtx& ctx, std::string& value,
                                               TypeSpec& value_ts, BuiltinId builtin_id) {
     if (builtin_id != BuiltinId::SignBit) return;
@@ -3351,89 +3425,11 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
       }
       if ((builtin_id == BuiltinId::Copysign || builtin_id == BuiltinId::CopysignL ||
            builtin_id == BuiltinId::CopysignF) && call.args.size() == 2) {
-        TypeSpec at{}, bt{};
-        std::string a = emit_rval_id(ctx, call.args[0], at);
-        std::string b = emit_rval_id(ctx, call.args[1], bt);
-        const bool is_float = (builtin_id == BuiltinId::CopysignF);
-        const bool is_long_double = (builtin_id == BuiltinId::CopysignL);
-        if (is_float) {
-          auto to_float = [&](std::string& v, TypeSpec& ts) {
-            if (ts.base == TB_DOUBLE && ts.ptr_level == 0 && ts.array_rank == 0) {
-              const std::string p = fresh_tmp(ctx); emit_lir_op(ctx, lir::LirCastOp{p, lir::LirCastKind::FPTrunc, "double", v, "float"});
-              v = p; ts.base = TB_FLOAT;
-            }
-          };
-          to_float(a, at); to_float(b, bt);
-          const std::string tmp = fresh_tmp(ctx);
-          emit_lir_op(ctx, lir::LirCallOp{tmp, "float", "@llvm.copysign.f32", "", "float " + a + ", float " + b});
-          return tmp;
-        } else if (is_long_double) {
-          auto to_fp128 = [&](std::string& v, TypeSpec& ts) {
-            if (ts.base == TB_FLOAT && ts.ptr_level == 0 && ts.array_rank == 0) {
-              const std::string p = fresh_tmp(ctx);
-              emit_lir_op(ctx, lir::LirCastOp{p, lir::LirCastKind::FPExt, "float", v, "fp128"});
-              v = p; ts.base = TB_LONGDOUBLE;
-            } else if (ts.base == TB_DOUBLE && ts.ptr_level == 0 && ts.array_rank == 0) {
-              const std::string p = fresh_tmp(ctx);
-              emit_lir_op(ctx, lir::LirCastOp{p, lir::LirCastKind::FPExt, "double", v, "fp128"});
-              v = p; ts.base = TB_LONGDOUBLE;
-            }
-          };
-          to_fp128(a, at); to_fp128(b, bt);
-          const std::string tmp = fresh_tmp(ctx);
-          emit_lir_op(ctx, lir::LirCallOp{tmp, "fp128", "@llvm.copysign.f128", "", "fp128 " + a + ", fp128 " + b});
-          return tmp;
-        } else {
-          // Ensure both are double
-          auto to_double = [&](std::string& v, TypeSpec& ts) {
-            if (ts.base == TB_FLOAT && ts.ptr_level == 0 && ts.array_rank == 0) {
-              const std::string p = fresh_tmp(ctx); emit_lir_op(ctx, lir::LirCastOp{p, lir::LirCastKind::FPExt, "float", v, "double"});
-              v = p; ts.base = TB_DOUBLE;
-            }
-          };
-          to_double(a, at); to_double(b, bt);
-          const std::string tmp = fresh_tmp(ctx);
-          emit_lir_op(ctx, lir::LirCallOp{tmp, "double", "@llvm.copysign.f64", "", "double " + a + ", double " + b});
-          return tmp;
-        }
+        return emit_builtin_copysign_call(ctx, call, builtin_id);
       }
       if ((builtin_id == BuiltinId::Fabs || builtin_id == BuiltinId::FabsL ||
            builtin_id == BuiltinId::FabsF) && call.args.size() == 1) {
-        TypeSpec arg_ts{};
-        std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
-        if (builtin_id == BuiltinId::Fabs) {
-          if (arg_ts.base == TB_FLOAT && arg_ts.ptr_level == 0 && arg_ts.array_rank == 0) {
-            const std::string promoted = fresh_tmp(ctx);
-            emit_lir_op(ctx, lir::LirCastOp{promoted, lir::LirCastKind::FPExt, "float", arg, "double"});
-            arg = promoted;
-            arg_ts.base = TB_DOUBLE;
-          }
-        } else if (builtin_id == BuiltinId::FabsL) {
-          if (arg_ts.base == TB_FLOAT && arg_ts.ptr_level == 0 && arg_ts.array_rank == 0) {
-            const std::string promoted = fresh_tmp(ctx);
-            emit_lir_op(ctx, lir::LirCastOp{promoted, lir::LirCastKind::FPExt, "float", arg, "fp128"});
-            arg = promoted;
-            arg_ts.base = TB_LONGDOUBLE;
-          } else if (arg_ts.base == TB_DOUBLE && arg_ts.ptr_level == 0 && arg_ts.array_rank == 0) {
-            const std::string promoted = fresh_tmp(ctx);
-            emit_lir_op(ctx, lir::LirCastOp{promoted, lir::LirCastKind::FPExt, "double", arg, "fp128"});
-            arg = promoted;
-            arg_ts.base = TB_LONGDOUBLE;
-          }
-        } else {
-          // fabsf: ensure float
-          if (arg_ts.base == TB_DOUBLE && arg_ts.ptr_level == 0 && arg_ts.array_rank == 0) {
-            const std::string trunc = fresh_tmp(ctx);
-            emit_lir_op(ctx, lir::LirCastOp{trunc, lir::LirCastKind::FPTrunc, "double", arg, "float"});
-            arg = trunc;
-            arg_ts.base = TB_FLOAT;
-          }
-        }
-        const std::string fty = llvm_ty(arg_ts);
-        const std::string intrinsic = "@llvm.fabs." + fty;
-        const std::string tmp = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCallOp{tmp, fty, intrinsic, "", fty + " " + arg});
-        return tmp;
+        return emit_builtin_fabs_call(ctx, call.args[0], builtin_id);
       }
       if (builtin_is_ffs(builtin_id) && call.args.size() == 1) {
         return emit_builtin_ffs_call(ctx, call.args[0], builtin_id);
