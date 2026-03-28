@@ -3453,9 +3453,7 @@ std::string StmtEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::st
     const std::string stack_next = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirGepOp{stack_next, "i8", stack_ptr, false, {"i64 " + std::to_string(slot_bytes)}});
     emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), stack_next, stack_ptr_ptr});
-    emit_term_br(ctx, join_lbl);
-
-    emit_lbl(ctx, join_lbl);
+    emit_fallthrough_lbl(ctx, join_lbl);
     const std::string src_ptr = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirPhiOp{src_ptr, "ptr", {{reg_addr, reg_lbl}, {stack_ptr, stack_lbl}}});
     return src_ptr;
@@ -3510,9 +3508,7 @@ std::string StmtEmitter::emit_aarch64_vaarg_fp_src_ptr(
     const std::string stack_next = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirGepOp{stack_next, "i8", aligned_stack_ptr, false, {"i64 " + std::to_string(stack_slot_bytes)}});
     emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), stack_next, stack_ptr_ptr});
-    emit_term_br(ctx, join_lbl);
-
-    emit_lbl(ctx, join_lbl);
+    emit_fallthrough_lbl(ctx, join_lbl);
     const std::string src_ptr = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirPhiOp{src_ptr, "ptr", {{reg_addr, reg_lbl}, {aligned_stack_ptr, stack_lbl}}});
     return src_ptr;
