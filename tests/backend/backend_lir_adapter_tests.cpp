@@ -153,6 +153,74 @@ c4c::codegen::lir::LirModule make_local_temp_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_param_slot_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }");
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main(i32 %p.x)\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.param.x", "i32", "", 4});
+  function.alloca_insts.push_back(LirStoreOp{"i32", "%p.x", "%lv.param.x"});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.param.x"});
+  entry.insts.push_back(LirBinOp{"%t1", "add", "i32", "%t0", "1"});
+  entry.insts.push_back(LirStoreOp{"i32", "%t1", "%lv.param.x"});
+  entry.insts.push_back(LirLoadOp{"%t2", "i32", "%lv.param.x"});
+  entry.terminator = LirRet{std::string("%t2"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_typed_direct_call_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction helper;
+  helper.name = "add_one";
+  helper.signature_text = "define i32 @add_one(i32 %p.x)\n";
+  helper.entry = LirBlockId{0};
+  helper.alloca_insts.push_back(LirAllocaOp{"%lv.param.x", "i32", "", 4});
+  helper.alloca_insts.push_back(LirStoreOp{"i32", "%p.x", "%lv.param.x"});
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.param.x"});
+  helper_entry.insts.push_back(LirBinOp{"%t1", "add", "i32", "%t0", "1"});
+  helper_entry.terminator = LirRet{std::string("%t1"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(LirCallOp{"%t0", "i32", "@add_one", "(i32)", "i32 5"});
+  main_entry.terminator = LirRet{std::string("%t0"), "i32"};
+  main_fn.blocks.push_back(std::move(main_entry));
+
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(main_fn));
+  return module;
+}
+
 void test_adapts_direct_return() {
   const auto adapted = c4c::backend::adapt_return_only_module(make_return_zero_module());
   expect_true(adapted.functions.size() == 1, "adapter should preserve one function");
@@ -264,6 +332,36 @@ void test_aarch64_backend_renders_local_temp_memory_slice() {
                   "aarch64 backend should preserve the loaded return value");
 }
 
+void test_aarch64_backend_renders_param_slot_memory_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_param_slot_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "define i32 @main(i32 %p.x)",
+                  "aarch64 backend should preserve parameterized signatures");
+  expect_contains(rendered, "%lv.param.x = alloca i32, align 4",
+                  "aarch64 backend should render modified parameter slots");
+  expect_contains(rendered, "store i32 %p.x, ptr %lv.param.x",
+                  "aarch64 backend should spill modified parameters into entry slots");
+  expect_contains(rendered, "%t0 = load i32, ptr %lv.param.x",
+                  "aarch64 backend should reload parameter slots");
+  expect_contains(rendered, "store i32 %t1, ptr %lv.param.x",
+                  "aarch64 backend should write updated parameter values back to slots");
+  expect_contains(rendered, "ret i32 %t2",
+                  "aarch64 backend should preserve the final reloaded parameter value");
+}
+
+void test_aarch64_backend_renders_typed_direct_call_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_typed_direct_call_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "define i32 @add_one(i32 %p.x)",
+                  "aarch64 backend should preserve helper signatures with parameters");
+  expect_contains(rendered, "call i32 (i32) @add_one(i32 5)",
+                  "aarch64 backend should render typed direct calls");
+  expect_contains(rendered, "ret i32 %t0",
+                  "aarch64 backend should preserve typed call results through return");
+}
+
 }  // namespace
 
 int main() {
@@ -275,5 +373,7 @@ int main() {
   test_aarch64_backend_scaffold_rejects_out_of_slice_ir();
   test_aarch64_backend_renders_direct_call_slice();
   test_aarch64_backend_renders_local_temp_memory_slice();
+  test_aarch64_backend_renders_param_slot_memory_slice();
+  test_aarch64_backend_renders_typed_direct_call_slice();
   return 0;
 }

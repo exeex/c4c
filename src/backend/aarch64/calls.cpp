@@ -13,7 +13,8 @@ bool render_call_instruction(std::ostream& out,
     return false;
   }
 
-  if (!call->callee_type_suffix.empty()) {
+  const bool is_direct_call = !call->callee.empty() && call->callee.front() == '@';
+  if (!call->callee_type_suffix.empty() && !is_direct_call) {
     fail_unsupported("indirect or typed-suffix call instructions");
   }
 
@@ -21,8 +22,11 @@ bool render_call_instruction(std::ostream& out,
   if (!call->result.empty()) {
     out << call->result << " = ";
   }
-  out << "call " << call->return_type << " " << call->callee << "("
-      << call->args_str << ")\n";
+  out << "call " << call->return_type << " ";
+  if (!call->callee_type_suffix.empty()) {
+    out << call->callee_type_suffix << " ";
+  }
+  out << call->callee << "(" << call->args_str << ")\n";
   return true;
 }
 

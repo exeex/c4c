@@ -7,13 +7,13 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3: port the first integer/control-flow slice
-- Iteration slice: extend the AArch64 memory slice from simple local temporaries into parameter/local slot flows that still rely on the generic LLVM-text path
+- Iteration slice: prove modified-parameter stack-slot flows through the AArch64 target-local memory path and supported runtime harness
 
 ## Next Intended Slice
 
 - port the ref prologue/return helpers deeper into `src/backend/aarch64/`
-- extend the memory slice from simple local integer temporaries into parameter/local slot flows
-- extend runtime coverage from helper-call backend cases into local integer temporary/backend stack usage
+- extend the memory slice beyond modified-parameter slots into broader local/parameter addressing cases
+- extend runtime coverage from modified-parameter slots into broader backend stack-addressing cases
 
 ## Completed Items
 
@@ -36,6 +36,10 @@ Source Plan: plan.md
 - added unit coverage for local temporary stack-slot emission in `tests/backend/backend_lir_adapter_tests.cpp`
 - added `tests/c/internal/backend_case/local_temp.c` for local integer temporary runtime coverage on supported AArch64 hosts
 - rebuilt from a clean `build/` directory, recorded `test_after.log`, and passed the monotonic regression guard against `test_before.log` with `passed=489/503 -> 491/504` and zero newly failing test names; one prior cpp EASTL failure dropped from the failing set
+- added unit coverage for AArch64 modified-parameter slot emission plus typed direct helper calls in `tests/backend/backend_lir_adapter_tests.cpp`
+- allowed the AArch64 call renderer to preserve typed direct-call suffixes while still rejecting indirect typed calls
+- added `tests/c/internal/backend_case/param_slot.c` for modified-parameter runtime coverage on supported AArch64 hosts
+- rebuilt from a clean `build/` directory, recorded `test_after.log`, and passed the monotonic regression guard against `test_before.log` with `passed=490/504 -> 491/505` and zero newly failing tests
 
 ## Blockers
 
@@ -50,3 +54,4 @@ Source Plan: plan.md
 - the current AArch64 branch slice still relies on the frontend's existing LLVM-text LIR conventions; direct calls and stack slots are the next boundary to port
 - direct calls now render through the target-local AArch64 emitter for simple direct `@helper(...)` cases; indirect calls and typed callee suffixes remain out of slice
 - simple local integer temporaries now emit through the target-local AArch64 memory helpers; broader slot flows and runtime execution still depend on supported AArch64 hosts/toolchains for end-to-end coverage
+- modified-parameter slots now execute through the target-local AArch64 path, including typed direct helper calls with arguments
