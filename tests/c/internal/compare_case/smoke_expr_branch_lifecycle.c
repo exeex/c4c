@@ -13,9 +13,11 @@ int run(void) {
   int d = 0 || bump(&x, 3);
   int e = (x > 4) ? bump(&x, 4) : bump(&x, 40);
   int f = (x < 0) ? bump(&x, 50) : bump(&x, 5);
-  return x + a + b + c + d + e + f;
+  int g = (x > 10) ? (1 && bump(&x, 6)) : (0 || bump(&x, 60));
+  int h = (x < 0) ? (0 && bump(&x, 70)) : (0 || bump(&x, 7));
+  return x + a + b + c + d + e + f + g + h;
 }
 
 int main(void) {
-  return run() == 40 ? 0 : 1;
+  return run() == 55 ? 0 : 1;
 }

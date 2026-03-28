@@ -2444,9 +2444,7 @@ std::string StmtEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Exp
       rhs_val = fresh_tmp(ctx);
       emit_lir_op(ctx, lir::LirCastOp{rhs_val, lir::LirCastKind::ZExt, "i1", rc, res_ty});
     }
-    emit_term_br(ctx, rhs_end_lbl);
-
-    emit_lbl(ctx, rhs_end_lbl);
+    emit_fallthrough_lbl(ctx, rhs_end_lbl);
     emit_term_br(ctx, end_lbl);
 
     emit_lbl(ctx, skip_lbl);
@@ -2458,9 +2456,7 @@ std::string StmtEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Exp
     } else {
       skip_val = (b.op == BinaryOp::LAnd) ? "0" : "1";
     }
-    emit_term_br(ctx, end_lbl);
-
-    emit_lbl(ctx, end_lbl);
+    emit_fallthrough_lbl(ctx, end_lbl);
     const std::string tmp = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirPhiOp{tmp, res_ty, {{rhs_val, rhs_end_lbl}, {skip_val, skip_lbl}}});
     return tmp;
@@ -3641,19 +3637,15 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, con
     TypeSpec then_ts{};
     std::string then_v = emit_rval_id(ctx, t.then_expr, then_ts);
     then_v = coerce(ctx, then_v, then_ts, res_spec);
-    emit_term_br(ctx, then_end_lbl);
-    emit_lbl(ctx, then_end_lbl);
+    emit_fallthrough_lbl(ctx, then_end_lbl);
     emit_term_br(ctx, end_lbl);
 
     emit_lbl(ctx, else_lbl);
     TypeSpec else_ts{};
     std::string else_v = emit_rval_id(ctx, t.else_expr, else_ts);
     else_v = coerce(ctx, else_v, else_ts, res_spec);
-    emit_term_br(ctx, else_end_lbl);
-    emit_lbl(ctx, else_end_lbl);
-    emit_term_br(ctx, end_lbl);
-
-    emit_lbl(ctx, end_lbl);
+    emit_fallthrough_lbl(ctx, else_end_lbl);
+    emit_fallthrough_lbl(ctx, end_lbl);
     if (res_ty == "void") return "";
     // If either arm produced a void/empty value (e.g. void function call in one arm),
     // substitute a zero value to avoid an invalid empty phi operand.
@@ -4030,8 +4022,7 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const ForStmt& s){
     const std::string latch_lbl = "for.latch." + std::to_string(s.body_block.value);
     ctx.continue_redirect[s.body_block.value] = latch_lbl;
 
-    emit_term_br(ctx, cond_lbl);
-    emit_lbl(ctx, cond_lbl);
+    emit_fallthrough_lbl(ctx, cond_lbl);
     if (s.cond) {
       TypeSpec cts{};
       std::string cv = emit_rval_id(ctx, *s.cond, cts);
@@ -4059,8 +4050,7 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const DoWhileStmt& s){
         : fresh_lbl(ctx, "dowhile.end.");
     const std::string cond_lbl = "dowhile.cond." + std::to_string(s.body_block.value);
     ctx.continue_redirect[s.body_block.value] = cond_lbl;
-    emit_term_br(ctx, cond_lbl);
-    emit_lbl(ctx, cond_lbl);
+    emit_fallthrough_lbl(ctx, cond_lbl);
     TypeSpec cond_ts{};
     const std::string cond_v = emit_rval_id(ctx, s.cond, cond_ts);
     const std::string cond_i1 = to_bool(ctx, cond_v, cond_ts);
