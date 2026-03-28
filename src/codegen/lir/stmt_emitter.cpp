@@ -1060,6 +1060,16 @@ std::string StmtEmitter::emit_rval_from_access_ptr(FnCtx& ctx, const std::string
     return tmp;
   }
 
+std::string StmtEmitter::emit_rval_from_access_expr(FnCtx& ctx, const Expr& e,
+                                                    const std::string& ptr,
+                                                    const TypeSpec& access_ts,
+                                                    bool decay_from_array_object){
+    TypeSpec load_ts = resolve_expr_type(ctx, e);
+    if (!has_concrete_type(load_ts)) load_ts = access_ts;
+    return emit_rval_from_access_ptr(ctx, ptr, access_ts, load_ts,
+                                     decay_from_array_object);
+  }
+
 TypeSpec StmtEmitter::resolve_expr_type(FnCtx& ctx, ExprId id){
     const Expr& e = get_expr(id);
     // Use stored type if not void
@@ -3741,9 +3751,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const IndexExpr&, const E
     }
     TypeSpec pts{};
     const std::string ptr = emit_lval_dispatch(ctx, e, pts);
-    TypeSpec load_ts = resolve_expr_type(ctx, e);
-    if (!has_concrete_type(load_ts)) load_ts = pts;
-    return emit_rval_from_access_ptr(ctx, ptr, pts, load_ts, false);
+    return emit_rval_from_access_expr(ctx, e, ptr, pts, false);
   }
 
 std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const MemberExpr& m, const Expr& e){
@@ -3754,12 +3762,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const MemberExpr& m, cons
     if (bf.is_bitfield()) {
       return emit_bitfield_load(ctx, gep, bf);
     }
-    // Use stored type if available, else use resolved field type
-    const TypeSpec& load_ts = (e.type.spec.base != TB_VOID || e.type.spec.ptr_level > 0)
-                                  ? e.type.spec
-                                  : field_ts;
-    const TypeSpec& access_ts = (field_ts.array_rank > 0) ? field_ts : load_ts;
-    return emit_rval_from_access_ptr(ctx, gep, access_ts, load_ts, true);
+    return emit_rval_from_access_expr(ctx, e, gep, field_ts, true);
   }
 
 void StmtEmitter::emit_stmt(FnCtx& ctx, const Stmt& stmt){

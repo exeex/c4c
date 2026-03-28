@@ -56,6 +56,8 @@ int run(void) {
   int ptr_to_array = pvalues[0][0] + pvalues[0][2];
   int ptr_to_array_add = (cursor + 1)[0][1];
   int ptr_to_array_preinc = (++cursor)[0][0];
+  int indexed_member_scalar = pair[1].inner.values[0];
+  int indexed_member_decay = sum3(pair[1].inner.values);
   int typedef_arrow = pw_alias->inner.head;
   int rvalue_field = make_wrapper().inner.values[1];
   int rvalue_decay = sum3(make_wrapper().inner.values);
@@ -65,11 +67,12 @@ int run(void) {
   int anon_postinc = anon.high++;
   int anon_final = anon.high;
   return first + second + third + decay_dot + decay_arrow + ptr_to_array +
-         ptr_to_array_add + ptr_to_array_preinc + typedef_arrow + rvalue_field +
-         rvalue_decay + pw->tail + anon_rvalue + anon_fields + anon_preinc +
-         anon_postinc + anon_final;
+         ptr_to_array_add + ptr_to_array_preinc + indexed_member_scalar +
+         indexed_member_decay + typedef_arrow + rvalue_field + rvalue_decay +
+         pw->tail + anon_rvalue + anon_fields + anon_preinc + anon_postinc +
+         anon_final;
 }
 
 int main(void) {
-  return run() == 419 ? 0 : 1;
+  return run() == 562 ? 0 : 1;
 }

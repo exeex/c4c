@@ -197,6 +197,10 @@ class StmtEmitter {
   std::string indexed_gep_elem_ty(const TypeSpec& base_ts);
   std::string emit_indexed_gep(FnCtx& ctx, const std::string& base_ptr,
                                const TypeSpec& base_ts, const std::string& idx);
+  std::string emit_rval_from_access_expr(FnCtx& ctx, const Expr& e,
+                                         const std::string& ptr,
+                                         const TypeSpec& access_ts,
+                                         bool decay_from_array_object);
   std::string emit_rval_from_access_ptr(FnCtx& ctx, const std::string& ptr,
                                         const TypeSpec& access_ts, const TypeSpec& load_ts,
                                         bool decay_from_array_object);
