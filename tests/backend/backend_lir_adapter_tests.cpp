@@ -673,6 +673,46 @@ c4c::codegen::lir::LirModule make_global_int_pointer_diff_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_global_int_pointer_roundtrip_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "g_value",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "i32",
+      "9",
+      4,
+      false,
+  });
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(
+      LirCastOp{"%t0", LirCastKind::PtrToInt, "ptr", "@g_value", "i64"});
+  entry.insts.push_back(
+      LirCastOp{"%t1", LirCastKind::IntToPtr, "i64", "%t0", "ptr"});
+  entry.insts.push_back(LirLoadOp{"%t2", "i32", "%t1"});
+  entry.terminator = LirRet{std::string("%t2"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 void test_adapts_direct_return() {
   const auto adapted = c4c::backend::adapt_return_only_module(make_return_zero_module());
   expect_true(adapted.functions.size() == 1, "adapter should preserve one function");
@@ -1034,6 +1074,22 @@ void test_aarch64_backend_renders_global_int_pointer_diff_slice() {
                   "aarch64 backend should preserve the scaled pointer-difference comparison result");
 }
 
+void test_aarch64_backend_renders_global_int_pointer_roundtrip_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_global_int_pointer_roundtrip_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "@g_value = global i32 9, align 4",
+                  "aarch64 backend should render the round-trip global definition");
+  expect_contains(rendered, "%t0 = ptrtoint ptr @g_value to i64",
+                  "aarch64 backend should render ptrtoint for address round-tripping");
+  expect_contains(rendered, "%t1 = inttoptr i64 %t0 to ptr",
+                  "aarch64 backend should render inttoptr for address round-tripping");
+  expect_contains(rendered, "%t2 = load i32, ptr %t1",
+                  "aarch64 backend should preserve loads through round-tripped pointers");
+  expect_contains(rendered, "ret i32 %t2",
+                  "aarch64 backend should preserve the round-tripped load result");
+}
+
 }  // namespace
 
 int main() {
@@ -1060,5 +1116,6 @@ int main() {
   test_aarch64_backend_renders_extern_global_array_slice();
   test_aarch64_backend_renders_global_char_pointer_diff_slice();
   test_aarch64_backend_renders_global_int_pointer_diff_slice();
+  test_aarch64_backend_renders_global_int_pointer_roundtrip_slice();
   return 0;
 }

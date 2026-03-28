@@ -7,11 +7,11 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3: port the first integer/control-flow slice
-- Iteration slice: inspect the next narrow symbol-address or cast follow-on after landing scaled global pointer subtraction for non-byte element types
+- Iteration slice: inspect the next narrow cast or module-support follow-on after landing target-local `inttoptr` address round-tripping for globals
 
 ## Next Intended Slice
 
-- inspect whether the next symbol-address follow-on after scaled pointer subtraction is additional cast coverage such as `inttoptr`/`bitcast` or another ref-`codegen/globals.rs`-adjacent address materialization boundary
+- inspect whether the next narrow AArch64 follow-on should be additional cast coverage such as `bitcast` or a split-out module-level intrinsic-declaration slice needed before target-local varargs lowering can execute
 - keep the next slice focused on one target-local helper boundary or one missing runtime-backed backend capability
 - avoid broadening beyond the active AArch64 Step 3 runbook without recording a separate idea
 
@@ -90,6 +90,12 @@ Source Plan: plan.md
 - updated `tests/c/internal/InternalTests.cmake` with the expected runtime exit code for the new backend case
 - verified `backend_lir_adapter_tests` and `backend_runtime_global_int_pointer_diff` pass for the new scaled pointer-difference slice
 - reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=496/510 -> 501/513` and zero newly failing tests
+- added target-local AArch64 `inttoptr` rendering in `src/backend/aarch64/alu.cpp` for global address round-tripping
+- added unit coverage for AArch64 global pointer `ptrtoint`/`inttoptr` round-tripping in `tests/backend/backend_lir_adapter_tests.cpp`
+- added `tests/c/internal/backend_case/global_int_pointer_roundtrip.c` for runtime coverage of global address round-tripping on supported AArch64 hosts
+- updated `tests/c/internal/InternalTests.cmake` with the expected runtime exit code for the new backend case
+- verified `backend_lir_adapter_tests` and `backend_runtime_global_int_pointer_roundtrip` pass for the new round-trip cast slice
+- reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=496/510 -> 501/514` and zero newly failing tests; one unrelated prior backend failure dropped from the failing set (`backend_lir_missing_toolchain_diagnostic`)
 
 ## Blockers
 
@@ -118,4 +124,6 @@ Source Plan: plan.md
 - module string-pool definitions now also render through `src/backend/aarch64/globals.*`; `extern_decls` remains the next most obvious module-level global-addressing boundary
 - module extern declarations now also render through `src/backend/aarch64/globals.*`; the next obvious global-addressing follow-on is explicit external-global usage or other target-local symbol-address helpers aligned with ref `codegen/globals.rs`
 - byte-granular global pointer subtraction now executes through the target-local AArch64 path via `ptrtoint`; wider pointer-difference follow-ons may still require extra cast or division support
-- non-byte global pointer subtraction now also executes through the target-local AArch64 path via `ptrtoint` plus `sdiv`; likely next follow-ons are adjacent cast helpers such as `inttoptr`/`bitcast` or another ref-`codegen/globals.rs` symbol-address materialization boundary
+- non-byte global pointer subtraction now also executes through the target-local AArch64 path via `ptrtoint` plus `sdiv`
+- global address round-tripping now also executes through the target-local AArch64 path via `ptrtoint` plus `inttoptr`
+- probing a minimal AArch64 `va_arg` case now gets past cast coverage and instead fails on missing intrinsic-declaration support, which is likely a separate narrow module-level follow-on if varargs become the next target
