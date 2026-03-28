@@ -7,10 +7,13 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: Extract Call-Lowering Helpers
-- Current slice: continue Step 5 by extracting the next shallow coordinator above the prepared-argument loop so `emit_rval_payload(const CallExpr&)` can hand off final call emission through direct/void-result helpers without reopening builtin-special or callee-resolution concerns
+- Current slice: continue Step 5 by extracting the final call-emission coordinator above the prepared-argument loop so `emit_rval_payload(const CallExpr&)` hands off argument-list assembly plus direct/void-result call emission through named helpers without reopening builtin-special or callee-resolution concerns
 
 ## Completed
 
+- Extended [`smoke_call_lowering.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_call_lowering.c) with `bump_total(...)` / `call_void_direct(...)` coverage so compare mode now pins the direct fixed-parameter `void`-return call path alongside the existing value-return direct, indirect, array-decay, and variadic call-lowering cases
+- Extracted `prepare_call_args(...)`, `emit_void_call(...)`, and `emit_call_with_result(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp), so `emit_rval_payload(const CallExpr&)` now hands off final argument-list assembly plus `void` vs value-result `LirCallOp` emission through one named helper layer above `prepare_call_arg(...)`
+- Verified `compare_smoke_call_lowering`, the full `compare_case` label, and the clean full-suite regression guard with stable results (`2249` -> `2249` passed, zero failures; `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed` returned `PASS`)
 - Extended [`smoke_call_lowering.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_call_lowering.c) with `sum_window(...)` / `call_decay(...)` coverage so compare mode now pins fixed-parameter array decay alongside the existing direct, indirect, and variadic call-lowering paths
 - Extracted `callee_needs_va_list_by_value_copy(...)`, `apply_default_arg_promotion(...)`, and `prepare_call_arg(...)` plus shared `PreparedCallArg` metadata in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp), so `emit_rval_payload(const CallExpr&)` now delegates per-argument coercion, `va_list` by-value copying, variadic aggregate packing, and final argument-text formatting through one named helper layer beneath `resolve_call_target_info(...)`
 - Verified `compare_smoke_call_lowering`, the full `compare_case` label, and the clean full-suite regression guard with stable results (`2249` -> `2249` passed, zero failures; `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed` returned `PASS`)
@@ -104,7 +107,7 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Extract the smallest reusable call-argument preparation helper in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp), most likely the fixed-param/ref-vs-rvalue setup and default-promotion/coercion front-end that currently sits above the va_list and variadic-aggregate special cases
+- Re-scan Step 5 in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) for any remaining shallow call-lowering coordinator above builtin-special handling; if no similarly local seam remains, record that Step 5 is effectively complete and move execution to plan closure or the next lifecycle state
 
 ## Blockers
 
@@ -154,3 +157,4 @@ Source Plan: plan.md
 - `resolve_compound_assign_op_type(...)` and `emit_nonptr_compound_assign_value(...)` now own the promoted non-pointer compound-assignment op-type/store-back flow; the next Step 4 scan should decide whether any assignment/store helper seam still remains above the operator tables or whether execution should move to Step 5
 - `resolve_call_target_info(...)` now owns the shallow `CallExpr` front-end for alias/external/direct/indirect callee resolution, return-type setup, signature lookup, and extern-declaration registration; the next Step 5 slice should stay below that layer and above the builtin-special table by pulling out reusable argument-preparation coordination
 - `prepare_call_arg(...)` now owns the per-argument coercion/packing contract under `emit_rval_payload(const CallExpr&)`; the next Step 5 slice should stay above that helper and target the final direct-vs-void-result call-emission branch rather than reopening arg preparation or builtin-special lowering
+- `prepare_call_args(...)`, `emit_void_call(...)`, and `emit_call_with_result(...)` now own the final post-builtin `CallExpr` coordinator above `prepare_call_arg(...)`; the next Step 5 pass should be a narrow scan for any similarly local helper seam, not a reopening of callee resolution, argument preparation, or builtin-special dispatch

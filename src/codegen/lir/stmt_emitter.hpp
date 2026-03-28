@@ -262,6 +262,12 @@ class StmtEmitter {
                                    const TypeSpec& in_ts);
   PreparedCallArg prepare_call_arg(FnCtx& ctx, const CallExpr& call,
                                    const CallTargetInfo& call_target, size_t arg_index);
+  std::string prepare_call_args(FnCtx& ctx, const CallExpr& call,
+                                const CallTargetInfo& call_target);
+  void emit_void_call(FnCtx& ctx, const CallTargetInfo& call_target,
+                      const std::string& args_str);
+  std::string emit_call_with_result(FnCtx& ctx, const CallTargetInfo& call_target,
+                                    const std::string& args_str);
 
   // ── Rvalue emission ───────────────────────────────────────────────────────
 

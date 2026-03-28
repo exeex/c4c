@@ -5,6 +5,7 @@ typedef int (*combine_fn)(short, short);
 
 int add_pair(short lhs, short rhs) { return lhs + rhs; }
 int sub_pair(short lhs, short rhs) { return lhs - rhs; }
+void bump_total(int *slot) { *slot += 4; }
 int sum_window(const int *values, short delta) {
   return values[0] + values[1] + delta;
 }
@@ -22,6 +23,12 @@ int call_decay(short base) {
   return sum_window(values, base);
 }
 
+int call_void_direct(int seed) {
+  int total = seed;
+  bump_total(&total);
+  return total;
+}
+
 int call_variadic(int value, float scale) {
   return printf("value=%d scale=%.1f\n", value, scale);
 }
@@ -31,6 +38,7 @@ int main(void) {
   combine_fn fn = sub_pair;
   const int indirect = call_indirect(fn, 9, 4);
   const int decay = call_decay(6);
-  call_variadic(direct + indirect + decay, 1.5f);
-  return (direct == 13 && indirect == 5 && decay == 21) ? 0 : 1;
+  const int void_direct = call_void_direct(decay);
+  call_variadic(direct + indirect + void_direct, 1.5f);
+  return (direct == 13 && indirect == 5 && decay == 21 && void_direct == 25) ? 0 : 1;
 }

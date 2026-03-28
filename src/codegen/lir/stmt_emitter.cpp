@@ -2883,8 +2883,34 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
     return {llvm_ty(out_arg_ts) + " " + arg, false};
   }
 
+std::string StmtEmitter::prepare_call_args(FnCtx& ctx, const CallExpr& call,
+                                           const CallTargetInfo& call_target) {
+    std::string args_str;
+    for (size_t i = 0; i < call.args.size(); ++i) {
+      PreparedCallArg prepared = prepare_call_arg(ctx, call, call_target, i);
+      if (prepared.skip) continue;
+      if (!args_str.empty()) args_str += ", ";
+      args_str += prepared.text;
+    }
+    return args_str;
+  }
+
+void StmtEmitter::emit_void_call(FnCtx& ctx, const CallTargetInfo& call_target,
+                                 const std::string& args_str) {
+    emit_lir_op(
+        ctx, lir::LirCallOp{"", "void", call_target.callee_val,
+                            call_target.callee_type_suffix, args_str});
+  }
+
+std::string StmtEmitter::emit_call_with_result(FnCtx& ctx, const CallTargetInfo& call_target,
+                                               const std::string& args_str) {
+    const std::string tmp = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirCallOp{tmp, call_target.ret_ty, call_target.callee_val,
+                                    call_target.callee_type_suffix, args_str});
+    return tmp;
+  }
+
 std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, const Expr& e){
-    const Expr& callee_e = get_expr(call.callee);
     const CallTargetInfo call_target = resolve_call_target_info(ctx, call, e);
     const BuiltinId builtin_id = call_target.builtin_id;
     const BuiltinInfo* builtin = call_target.builtin;
@@ -3450,27 +3476,13 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
       return tmp;
     }
 
-    const Function* target_fn = call_target.target_fn;
-    const FnPtrSig* callee_fn_ptr_sig = call_target.callee_fn_ptr_sig;
-
-    std::string args_str;
-    for (size_t i = 0; i < call.args.size(); ++i) {
-      PreparedCallArg prepared = prepare_call_arg(ctx, call, call_target, i);
-      if (prepared.skip) continue;
-      if (!args_str.empty()) args_str += ", ";
-      args_str += prepared.text;
-    }
+    std::string args_str = prepare_call_args(ctx, call, call_target);
 
     if (call_target.ret_ty == "void") {
-      emit_lir_op(
-          ctx, lir::LirCallOp{"", "void", call_target.callee_val,
-                              call_target.callee_type_suffix, args_str});
+      emit_void_call(ctx, call_target, args_str);
       return "";
     }
-    const std::string tmp = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirCallOp{tmp, call_target.ret_ty, call_target.callee_val,
-                                    call_target.callee_type_suffix, args_str});
-    return tmp;
+    return emit_call_with_result(ctx, call_target, args_str);
   }
 
 std::string StmtEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::string& ap_ptr, int slot_bytes){
