@@ -6,7 +6,7 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 1: Evaluate `src/backend/linker_common/check.cpp` as the next bounded shared linker-helper compile-integration candidate, and promote it only if it remains a stub-only namespace mirror without forcing the rest of `src/backend/linker_common/*.cpp` into the active slice
+- [ ] Step 1: Evaluate `src/backend/linker_common/dynamic.cpp` as the next bounded shared linker-helper compile-integration candidate, and promote it only if it remains a stub-only namespace mirror without forcing the rest of `src/backend/linker_common/*.cpp` into the active slice
 
 ## Planned Queue
 
@@ -96,4 +96,5 @@ Source Plan: plan.md
 - latest validation: after adding `src/backend/linker_common/args.cpp` to both build targets, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and both `test_before.log` and `test_after.log` still report the same 4 known unrelated failures at `549/553` passed (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
 - note: `scripts/check_monotonic_regression.py` is not present in this checkout, so monotonicity for this slice was verified directly from `test_before.log` and `test_after.log`
 - latest validation: after adding `src/backend/linker_common/archive.cpp` to both build targets, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, `ctest --test-dir build -j8 --output-on-failure` still reports the same 4 known unrelated failures at `549/553` passed, and `check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passes with no new failing tests
-- next candidate: evaluate `src/backend/linker_common/check.cpp` first because it is also still a one-line namespace mirror today, but stop immediately if promoting it would silently broaden the active slice beyond one bounded shared linker-helper unit
+- [x] Evaluated `src/backend/linker_common/check.cpp` and promoted it into both build targets; it remains a stub-only shared linker-helper mirror with no new include or symbol edges into the deeper `src/backend/linker_common/*.cpp` submodules, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, `ctest --test-dir build -j8 --output-on-failure` still reports the same 4 known unrelated failures at `549/553` passed, and `check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passes with no new failing tests
+- next candidate: evaluate `src/backend/linker_common/dynamic.cpp` first because it is also still a one-line namespace mirror today, but stop immediately if promoting it would silently broaden the active slice beyond one bounded shared linker-helper unit
