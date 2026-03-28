@@ -11,6 +11,9 @@ bool render_alu_instruction(std::ostream& out,
   if (const auto* cast = std::get_if<c4c::codegen::lir::LirCastOp>(&inst)) {
     const char* opcode = nullptr;
     switch (cast->kind) {
+      case c4c::codegen::lir::LirCastKind::Bitcast:
+        opcode = "bitcast";
+        break;
       case c4c::codegen::lir::LirCastKind::ZExt:
         opcode = "zext";
         break;

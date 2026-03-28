@@ -713,6 +713,30 @@ c4c::codegen::lir::LirModule make_global_int_pointer_roundtrip_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bitcast_scalar_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i64 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(
+      LirCastOp{"%t0", LirCastKind::Bitcast, "double", "0.000000e+00", "i64"});
+  entry.terminator = LirRet{std::string("%t0"), "i64"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 void test_adapts_direct_return() {
   const auto adapted = c4c::backend::adapt_return_only_module(make_return_zero_module());
   expect_true(adapted.functions.size() == 1, "adapter should preserve one function");
@@ -1090,6 +1114,16 @@ void test_aarch64_backend_renders_global_int_pointer_roundtrip_slice() {
                   "aarch64 backend should preserve the round-tripped load result");
 }
 
+void test_aarch64_backend_renders_bitcast_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bitcast_scalar_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "%t0 = bitcast double 0.000000e+00 to i64",
+                  "aarch64 backend should render bitcast within the target-local cast path");
+  expect_contains(rendered, "ret i64 %t0",
+                  "aarch64 backend should preserve the bitcast result");
+}
+
 }  // namespace
 
 int main() {
@@ -1117,5 +1151,6 @@ int main() {
   test_aarch64_backend_renders_global_char_pointer_diff_slice();
   test_aarch64_backend_renders_global_int_pointer_diff_slice();
   test_aarch64_backend_renders_global_int_pointer_roundtrip_slice();
+  test_aarch64_backend_renders_bitcast_slice();
   return 0;
 }

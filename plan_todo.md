@@ -7,11 +7,11 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3: port the first integer/control-flow slice
-- Iteration slice: inspect the next narrow cast or module-support follow-on after landing target-local `inttoptr` address round-tripping for globals
+- Iteration slice: inspect the next narrow cast or module-support follow-on after landing target-local `bitcast` rendering in the AArch64 ALU path
 
 ## Next Intended Slice
 
-- inspect whether the next narrow AArch64 follow-on should be additional cast coverage such as `bitcast` or a split-out module-level intrinsic-declaration slice needed before target-local varargs lowering can execute
+- inspect whether the next narrow AArch64 follow-on should be additional cast coverage such as `trunc`/`lshr` for a real runtime-backed `bitcast` consumer or a split-out module-level intrinsic-declaration slice needed before target-local varargs lowering can execute
 - keep the next slice focused on one target-local helper boundary or one missing runtime-backed backend capability
 - avoid broadening beyond the active AArch64 Step 3 runbook without recording a separate idea
 
@@ -78,6 +78,9 @@ Source Plan: plan.md
 - added unit coverage for AArch64 extern-global scalar loads and extern-global array decay/indexed addressing in `tests/backend/backend_lir_adapter_tests.cpp`
 - verified `backend_lir_adapter_tests` passes after landing the extern-global usage coverage slice
 - reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=496/510 -> 498/511` and zero newly failing tests; one unrelated prior C++ failure dropped from the failing set (`cpp_positive_sema_eastl_inherited_trait_value_template_arg_parse_cpp`)
+- added unit coverage for AArch64 scalar `bitcast` rendering in `tests/backend/backend_lir_adapter_tests.cpp`
+- extended the target-local AArch64 cast slice to render `bitcast` in `src/backend/aarch64/alu.cpp`
+- rebuilt and reran `backend_lir_adapter_tests`, then passed the maintenance regression guard against `test_fail_before.log` with `passed=527/534 -> 527/534`, zero newly failing tests, and the same seven unrelated full-suite failures before and after
 - added target-local AArch64 `ptrtoint` rendering in `src/backend/aarch64/alu.cpp` for byte-granular pointer-difference lowering
 - added unit coverage for AArch64 global byte-array pointer-difference lowering in `tests/backend/backend_lir_adapter_tests.cpp`
 - added `tests/c/internal/backend_case/global_char_pointer_diff.c` for runtime coverage of byte-granular global symbol-address subtraction on supported AArch64 hosts
