@@ -336,6 +336,15 @@ TypeSpec StmtEmitter::drop_one_indexed_element_type(TypeSpec ts){
     return ts;
   }
 
+TypeSpec StmtEmitter::resolve_indexed_gep_pointee_type(TypeSpec ts){
+    if (ts.ptr_level > 0 || outer_array_rank(ts) > 0) {
+      return drop_one_indexed_element_type(ts);
+    }
+    ts = {};
+    ts.base = TB_CHAR;
+    return ts;
+  }
+
 std::string StmtEmitter::bytes_from_string_literal(const StringLiteral& sl){
     std::string bytes = sl.raw;
     if (bytes.size() >= 2 && bytes.front() == '"' && bytes.back() == '"') {
@@ -905,18 +914,13 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
         pts.is_vector = false;
         pts.vector_lanes = 0;
         pts.vector_bytes = 0;
+        const std::string tmp = fresh_tmp(ctx);
+        emit_lir_op(ctx, lir::LirGepOp{tmp, llvm_ty(pts), base, false, {"i64 " + ix64}});
+        return tmp;
       } else {
-        pts = drop_one_indexed_element_type(pts);
+        pts = resolve_indexed_gep_pointee_type(pts);
+        return emit_indexed_gep(ctx, base, base_ts, ix64);
       }
-      const std::string tmp = fresh_tmp(ctx);
-      // Use alloca type (non-decayed) for array elements so GEP advances by the
-      // correct stride ([N x T] instead of ptr).
-      const std::string elem_ty = (pts.array_rank > 0)
-                                      ? llvm_alloca_ty(pts)
-                                      : llvm_ty(pts);
-      const std::string safe_elem_ty = (elem_ty == "void") ? "i8" : elem_ty;
-      emit_lir_op(ctx, lir::LirGepOp{tmp, safe_elem_ty, base, false, {"i64 " + ix64}});
-      return tmp;
     }
     if (const auto* m = std::get_if<MemberExpr>(&e.payload)) {
       return emit_member_lval(ctx, *m, pts);
@@ -996,6 +1000,25 @@ std::string StmtEmitter::emit_member_base_ptr(FnCtx& ctx, const MemberExpr& m, T
       emit_lir_op(ctx, lir::LirStoreOp{llvm_ty(base_ts), rval, slot});
       return slot;
     }
+  }
+
+std::string StmtEmitter::indexed_gep_elem_ty(const TypeSpec& base_ts){
+    const TypeSpec elem_ts = resolve_indexed_gep_pointee_type(base_ts);
+    if (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0) {
+      return "i8";
+    }
+    if (elem_ts.array_rank > 0 && elem_ts.ptr_level == 0) {
+      return llvm_alloca_ty(elem_ts);
+    }
+    return llvm_ty(elem_ts);
+  }
+
+std::string StmtEmitter::emit_indexed_gep(FnCtx& ctx, const std::string& base_ptr,
+                                          const TypeSpec& base_ts, const std::string& idx){
+    const std::string tmp = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirGepOp{tmp, indexed_gep_elem_ty(base_ts), base_ptr, false,
+                                   {"i64 " + idx}});
+    return tmp;
   }
 
 std::string StmtEmitter::emit_rval_from_access_ptr(FnCtx& ctx, const std::string& ptr,
@@ -1918,17 +1941,8 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const
         const std::string result = fresh_tmp(ctx);
         if (pty == "ptr") {
           const std::string delta = (u.op == UnaryOp::PreInc) ? "1" : "-1";
-          TypeSpec elem_ts = pts;
-          if (elem_ts.ptr_level > 0) elem_ts.ptr_level -= 1;
-          else elem_ts.base = TB_CHAR;
-          std::string gep_ety1;
-          if (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
-            gep_ety1 = "i8";
-          else if (elem_ts.array_rank > 0 && elem_ts.ptr_level == 0)
-            gep_ety1 = llvm_alloca_ty(elem_ts);
-          else
-            gep_ety1 = llvm_ty(elem_ts);
-          emit_lir_op(ctx, lir::LirGepOp{result, gep_ety1, loaded, false, {"i64 " + delta}});
+          emit_lir_op(ctx, lir::LirGepOp{result, indexed_gep_elem_ty(pts), loaded, false,
+                                         {"i64 " + delta}});
         } else if (is_float_base(pts.base)) {
           const std::string delta = (u.op == UnaryOp::PreInc) ? "1.0" : "-1.0";
           emit_lir_op(ctx, lir::LirBinOp{result, "fadd", pty, loaded, delta});
@@ -1968,17 +1982,8 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const
         const std::string result = fresh_tmp(ctx);
         if (pty == "ptr") {
           const std::string delta = (u.op == UnaryOp::PostInc) ? "1" : "-1";
-          TypeSpec elem_ts = pts;
-          if (elem_ts.ptr_level > 0) elem_ts.ptr_level -= 1;
-          else elem_ts.base = TB_CHAR;
-          std::string gep_ety2;
-          if (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
-            gep_ety2 = "i8";
-          else if (elem_ts.array_rank > 0 && elem_ts.ptr_level == 0)
-            gep_ety2 = llvm_alloca_ty(elem_ts);
-          else
-            gep_ety2 = llvm_ty(elem_ts);
-          emit_lir_op(ctx, lir::LirGepOp{result, gep_ety2, loaded, false, {"i64 " + delta}});
+          emit_lir_op(ctx, lir::LirGepOp{result, indexed_gep_elem_ty(pts), loaded, false,
+                                         {"i64 " + delta}});
         } else if (is_float_base(pts.base)) {
           const std::string delta = (u.op == UnaryOp::PostInc) ? "1.0" : "-1.0";
           emit_lir_op(ctx, lir::LirBinOp{result, "fadd", pty, loaded, delta});
@@ -2046,23 +2051,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, cons
         emit_lir_op(ctx, lir::LirBinOp{neg, "sub", "i64", "0", idx});
         idx = neg;
       }
-      TypeSpec elem_ts = lts;
-      if (elem_ts.ptr_level > 0 || outer_array_rank(elem_ts) > 0) {
-        elem_ts = drop_one_indexed_element_type(elem_ts);
-      } else {
-        elem_ts = {};
-        elem_ts.base = TB_CHAR;
-      }
-      std::string gep_elem_ty;
-      if (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
-        gep_elem_ty = "i8";
-      else if (elem_ts.array_rank > 0 && elem_ts.ptr_level == 0)
-        gep_elem_ty = llvm_alloca_ty(elem_ts);
-      else
-        gep_elem_ty = llvm_ty(elem_ts);
-      const std::string tmp = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirGepOp{tmp, gep_elem_ty, lv, false, {"i64 " + idx}});
-      return tmp;
+      return emit_indexed_gep(ctx, lv, lts, idx);
     }
 
     if ((b.op == BinaryOp::Eq || b.op == BinaryOp::Ne) &&
@@ -2304,25 +2293,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, cons
           emit_lir_op(ctx, lir::LirBinOp{neg, "sub", "i64", "0", idx});
           idx = neg;
         }
-        TypeSpec elem_ts = base_ts;
-        if (elem_ts.ptr_level > 0 || outer_array_rank(elem_ts) > 0) {
-          // T* +/- n: stride by sizeof(T), including pointer-to-array element access.
-          elem_ts = drop_one_indexed_element_type(elem_ts);
-        } else {
-          elem_ts = {};
-          elem_ts.base = TB_CHAR;
-        }
-        // GCC extension: void* arithmetic uses byte stride (same as char*).
-        std::string gep_elem_ty;
-        if (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
-          gep_elem_ty = "i8";
-        else if (elem_ts.array_rank > 0 && elem_ts.ptr_level == 0)
-          gep_elem_ty = llvm_alloca_ty(elem_ts);
-        else
-          gep_elem_ty = llvm_ty(elem_ts);
-        const std::string tmp = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirGepOp{tmp, gep_elem_ty, base_ptr, false, {"i64 " + idx}});
-        return tmp;
+        return emit_indexed_gep(ctx, base_ptr, base_ts, idx);
       };
 
       const bool rhs_is_nonptr_scalar =
@@ -2391,23 +2362,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, cons
               emit_lir_op(ctx, lir::LirBinOp{neg, "sub", "i64", "0", idx});
               idx = neg;
             }
-            TypeSpec elem_ts = base_ts;
-            if (elem_ts.ptr_level > 0 || outer_array_rank(elem_ts) > 0) {
-              elem_ts = drop_one_indexed_element_type(elem_ts);
-            } else {
-              elem_ts = {};
-              elem_ts.base = TB_CHAR;
-            }
-            std::string gep_elem_ty;
-            if (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
-              gep_elem_ty = "i8";
-            else if (elem_ts.array_rank > 0 && elem_ts.ptr_level == 0)
-              gep_elem_ty = llvm_alloca_ty(elem_ts);
-            else
-              gep_elem_ty = llvm_ty(elem_ts);
-            const std::string tmp = fresh_tmp(ctx);
-            emit_lir_op(ctx, lir::LirGepOp{tmp, gep_elem_ty, base_ptr, false, {"i64 " + idx}});
-            return tmp;
+            return emit_indexed_gep(ctx, base_ptr, base_ts, idx);
           };
           return emit_ptr_fallback(lv, lts, rv, rts, row.op == BinaryOp::Sub);
         }

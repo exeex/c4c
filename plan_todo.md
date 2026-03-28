@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: Extract Aggregate and Address-Lowering Helpers
-- Current slice: rescan [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) for the next duplicated aggregate/address-formation path after landing the shared `MemberExpr` base-type/base-pointer helpers
+- Current slice: re-scan [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) for the next shared aggregate/address seam after landing the indexed-address helper for `IndexExpr`, pointer arithmetic, and pointer increment/decrement
 
 ## Completed
 
@@ -63,10 +63,13 @@ Source Plan: plan.md
 - Extended [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) with typedef-carried `->` access and struct-rvalue `.` access so compare mode now pins both the `MemberExpr` base-pointer path and the aggregate-rvalue materialization path
 - Extracted `resolve_member_base_type(...)` and `emit_member_base_ptr(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp), reusing the shared base-resolution contract across `emit_member_lval(...)` and `resolve_payload_type(MemberExpr)` without changing downstream `emit_member_gep(...)` or access-load behavior
 - Verified `compare_smoke_aggregate_access`, the full `compare_case` label, Clang IR shape for the new aggregate-rvalue/member-base paths, and the clean full-suite regression guard (`2248` -> `2248` passed, zero failures; no new failing tests)
+- Extended [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) with pointer-to-array arithmetic and pre-increment coverage so compare mode now pins the indexed-address rule across `cursor + 1` and `++cursor`
+- Extracted `resolve_indexed_gep_pointee_type(...)`, `indexed_gep_elem_ty(...)`, and `emit_indexed_gep(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp), reusing the shared indexed-address contract across `IndexExpr` lvalue lowering, pointer arithmetic, and pointer increment/decrement while keeping vector-element indexing on its dedicated scalar-element path
+- Verified `compare_smoke_aggregate_access`, the full `compare_case` label, the previously regressed GCC torture vector/runtime cases (`ieee/pr72824-2`, `pr53645`, `pr53645-2`, `pr70903`, `20050316-3`, `20050604-1`, `20050607-1`, `scal-to-vec1`), and the clean full-suite regression guard (`2248` -> `2248` passed, zero failures; no new failing tests)
 
 ## Next Slice
 
-- Re-scan Step 3 in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) for the next shared address-formation seam, most likely around remaining aggregate/member access work immediately upstream or downstream of `emit_member_gep(...)`
+- Re-scan Step 3 in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp); the next seam is likely another aggregate/member path immediately upstream or downstream of `emit_member_gep(...)`
 
 ## Blockers
 
@@ -103,3 +106,5 @@ Source Plan: plan.md
 - `drop_one_indexed_element_type(...)` now owns the "consume one indexing step from array/pointer/pointer-to-array type metadata" rule; the next Step 3 pass should look upstream at duplicated base-pointer acquisition or member-base materialization rather than re-spelling type-drop logic again
 - `resolve_member_base_type(...)` now owns the canonical `MemberExpr` base-type lookup for both field-type resolution and lvalue lowering, including typedef-unwrapping before struct/union tag checks
 - `emit_member_base_ptr(...)` now owns the `MemberExpr` base-pointer/materialization split between `->`, direct aggregate lvalues, and struct-rvalue temporary slots; the next Step 3 scan should look beyond member-base setup rather than reintroducing inline `MemberExpr` base handling
+- This iteration narrows Step 3 to the repeated indexed-address path: several sites still manually drop one pointee/array element type and then choose the LLVM GEP element type (`i8` for `void*`, `llvm_alloca_ty(...)` for array objects, otherwise `llvm_ty(...)`)
+- The indexed-address helper intentionally does not subsume vector-element lvalue indexing: `IndexExpr` on vector objects still needs its dedicated scalar-element GEP path, while the new helper covers non-vector pointer/array address formation

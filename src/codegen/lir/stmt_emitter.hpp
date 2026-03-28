@@ -112,6 +112,7 @@ class StmtEmitter {
   static bool is_char_like(TypeBase b);
   static TypeSpec drop_one_array_dim(TypeSpec ts);
   static TypeSpec drop_one_indexed_element_type(TypeSpec ts);
+  static TypeSpec resolve_indexed_gep_pointee_type(TypeSpec ts);
   static std::string bytes_from_string_literal(const StringLiteral& sl);
 
   // Decode a wide string literal (L"...") into wchar_t (i32) values with null terminator
@@ -180,6 +181,9 @@ class StmtEmitter {
   std::string emit_member_base_ptr(FnCtx& ctx, const MemberExpr& m, TypeSpec& base_ts);
   std::string emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeSpec& out_pts,
                                 BitfieldAccess* out_bf = nullptr);
+  std::string indexed_gep_elem_ty(const TypeSpec& base_ts);
+  std::string emit_indexed_gep(FnCtx& ctx, const std::string& base_ptr,
+                               const TypeSpec& base_ts, const std::string& idx);
   std::string emit_rval_from_access_ptr(FnCtx& ctx, const std::string& ptr,
                                         const TypeSpec& access_ts, const TypeSpec& load_ts,
                                         bool decay_from_array_object);
