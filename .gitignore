@@ -16,3 +16,7 @@ __pycache__/
 
 # other
 .vscode
+
+# Orchestrator runtime state (queue + event log)
+ops/state/*.jsonl
+ops/state/*.log

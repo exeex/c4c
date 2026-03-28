@@ -1,0 +1,37 @@
+{
+  "_comment": "Event routing rules for the c4c orchestrator.",
+  "version": "1",
+
+  "routes": {
+    "NewIdeaCreated":   "planner",
+    "PlanCompleted":    "merge_validator"
+  },
+
+  "agents": {
+    "planner": {
+      "description": "Creates a plan branch and initialises plan.md + plan_todo.md.",
+      "phase": 1
+    },
+    "merge_validator": {
+      "description": "Validates plan completion and merges accepted work to main.",
+      "phase": 2
+    },
+    "boundary_guard": {
+      "description": "Checks architecture boundary violations and layer separation.",
+      "phase": 3
+    },
+    "test_runner": {
+      "description": "Runs the test suite and reports failures.",
+      "phase": 3
+    }
+  },
+
+  "triggers": {
+    "post-commit": {
+      "detect": [
+        {"pattern": "ideas/open/*.md", "status": "A", "event": "NewIdeaCreated"},
+        {"pattern": "plan_todo.md",    "status": "M", "event": "PlanCompleted"}
+      ]
+    }
+  }
+}

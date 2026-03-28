@@ -55,3 +55,68 @@ Agent prompts live in [`prompts/`](/workspaces/c4c/prompts).
 
 - [`idea-to-runbook-plan`](/workspaces/c4c/.codex/skills/idea-to-runbook-plan/SKILL.md)
 - [`plan-lifecycle`](/workspaces/c4c/.codex/skills/plan-lifecycle/SKILL.md)
+
+---
+
+## Git-Triggered Automation Framework
+
+The repo includes a local, event-driven orchestration layer in `ops/`.
+
+### Setup (run once after cloning)
+
+```bash
+bash ops/setup.sh
+```
+
+This configures `core.hooksPath = .githooks` so the `post-commit` hook fires automatically.
+
+### How it works
+
+```
+commit
+  -> .githooks/post-commit
+  -> ops/orchestrator.py enqueue-event post-commit --head HEAD
+  -> detects ideas/open/*.md added  ->  NewIdeaCreated event enqueued
+  -> ops/orchestrator.py process-queue  (spawned async)
+  -> planner handler creates plan/PLAN-NNN-<idea> branch
+  -> initialises plan.md + plan_todo.md on that branch
+```
+
+### Architecture layers
+
+| Layer        | File                       | Role                                     |
+|--------------|----------------------------|------------------------------------------|
+| Hook         | `.githooks/post-commit`    | Lightweight trigger, enqueues event      |
+| Orchestrator | `ops/orchestrator.py`      | Maps Git diff → domain events, routes    |
+| Rules        | `ops/rules.json`           | Event → agent routing table              |
+| State        | `ops/state/`               | Event queue + log (gitignored at runtime)|
+| Execution    | `ops/execution/PLAN-NNN/`  | Per-plan notes (lives on plan branch)    |
+
+### Domain events (Phase 1)
+
+| Event             | Trigger                              | Handler         |
+|-------------------|--------------------------------------|-----------------|
+| `NewIdeaCreated`  | `A ideas/open/*.md` in commit        | planner         |
+| `PlanCompleted`   | `plan_todo.md` all items checked     | merge_validator |
+
+### Branching convention
+
+- `main` — canonical shared truth only (ideas, AGENTS.md, src, tests)
+- `plan/PLAN-NNN-<slug>` — one branch per idea execution attempt
+- `task/TASK-NNN-<slug>` — optional sub-branches for parallel work
+
+### CLI reference
+
+```bash
+# Inspect what would fire on the current HEAD
+python3 ops/orchestrator.py enqueue-event post-commit --head HEAD
+
+# Drain the queue manually
+python3 ops/orchestrator.py process-queue
+
+# Inspect queued events
+python3 ops/orchestrator.py show-queue
+
+# Inspect event history
+python3 ops/orchestrator.py show-log
+```

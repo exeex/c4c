@@ -1,0 +1,14 @@
+#!/bin/bash
+# post-commit hook: lightweight trigger for the orchestrator.
+# Enqueues a post-commit event and spawns async processing.
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+ORCHESTRATOR="$REPO_ROOT/ops/orchestrator.py"
+
+if [ ! -f "$ORCHESTRATOR" ]; then
+  exit 0
+fi
+
+HEAD="$(git rev-parse HEAD)"
+python3 "$ORCHESTRATOR" enqueue-event post-commit --head "$HEAD"
