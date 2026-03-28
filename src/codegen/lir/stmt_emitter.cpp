@@ -1127,23 +1127,7 @@ std::string StmtEmitter::emit_compound_assign_value(FnCtx& ctx, const Assignable
                                       lhs_ts);
         return emit_store_assignable_value(ctx, lhs, result, lhs_ts, false);
       }
-      if (is_vector_value(lhs_ts)) {
-        op_ts = lhs_ts;
-      } else
-      // Compute the operation type via C usual arithmetic conversions.
-      if (lhs_ts.ptr_level == 0 && lhs_ts.array_rank == 0 &&
-          rhs_ts.ptr_level == 0 && rhs_ts.array_rank == 0) {
-        if (is_float_base(lhs_ts.base) || is_float_base(rhs_ts.base)) {
-          op_ts.base = (lhs_ts.base == TB_DOUBLE || rhs_ts.base == TB_DOUBLE ||
-                        lhs_ts.base == TB_LONGDOUBLE || rhs_ts.base == TB_LONGDOUBLE)
-                           ? TB_DOUBLE
-                           : TB_FLOAT;
-        } else if (is_any_int(lhs_ts.base) && is_any_int(rhs_ts.base)) {
-          const bool is_shift = (row.bop == BinaryOp::Shl || row.bop == BinaryOp::Shr);
-          op_ts.base = is_shift ? integer_promote(lhs_ts.base)
-                                : usual_arith_conv(lhs_ts.base, rhs_ts.base);
-        }
-      }
+      op_ts = resolve_compound_assign_op_type(row.bop, lhs_ts, rhs_ts);
       coerced_rhs = coerce(ctx, coerced_rhs, rhs_ts, op_ts);
       const bool lf = is_float_base(op_ts.base);
       const bool ls = is_signed_int(op_ts.base);
@@ -1162,17 +1146,52 @@ std::string StmtEmitter::emit_compound_assign_value(FnCtx& ctx, const Assignable
           break;
         }
       }
-      break;
+      if (!instr) break;
+      return emit_nonptr_compound_assign_value(ctx, lhs, loaded, row.bop, instr, rhs, rhs_ts);
     }
     if (!instr) throw std::runtime_error("StmtEmitter: compound assign: unknown op");
+    throw std::runtime_error("StmtEmitter: compound assign: unreachable non-pointer path");
+}
 
+TypeSpec StmtEmitter::resolve_compound_assign_op_type(BinaryOp op, const TypeSpec& lhs_ts,
+                                                      const TypeSpec& rhs_ts) {
+    TypeSpec op_ts = lhs_ts;
+    if (is_vector_value(lhs_ts)) return op_ts;
+    if (lhs_ts.ptr_level != 0 || lhs_ts.array_rank != 0 ||
+        rhs_ts.ptr_level != 0 || rhs_ts.array_rank != 0) {
+      return op_ts;
+    }
+    if (is_float_base(lhs_ts.base) || is_float_base(rhs_ts.base)) {
+      op_ts.base = (lhs_ts.base == TB_DOUBLE || rhs_ts.base == TB_DOUBLE ||
+                    lhs_ts.base == TB_LONGDOUBLE || rhs_ts.base == TB_LONGDOUBLE)
+                       ? TB_DOUBLE
+                       : TB_FLOAT;
+      return op_ts;
+    }
+    if (is_any_int(lhs_ts.base) && is_any_int(rhs_ts.base)) {
+      const bool is_shift = (op == BinaryOp::Shl || op == BinaryOp::Shr);
+      op_ts.base = is_shift ? integer_promote(lhs_ts.base)
+                            : usual_arith_conv(lhs_ts.base, rhs_ts.base);
+    }
+    return op_ts;
+}
+
+std::string StmtEmitter::emit_nonptr_compound_assign_value(FnCtx& ctx,
+                                                           const AssignableLValue& lhs,
+                                                           const LoadedAssignableValue& loaded,
+                                                           BinaryOp op, const char* instr,
+                                                           const std::string& rhs,
+                                                           const TypeSpec& rhs_ts) {
+    const TypeSpec& lhs_ts = lhs.pointee_ts;
+    const TypeSpec op_ts = resolve_compound_assign_op_type(op, lhs_ts, rhs_ts);
     const std::string op_ty = llvm_ty(op_ts);
     std::string lhs_op = loaded.value;
-    if (op_ty != lty) lhs_op = coerce(ctx, loaded.value, lhs_ts, op_ts);
+    if (op_ty != llvm_ty(lhs_ts)) lhs_op = coerce(ctx, loaded.value, lhs_ts, op_ts);
+    const std::string rhs_op = coerce(ctx, rhs, rhs_ts, op_ts);
     const std::string result = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirBinOp{result, std::string(instr), op_ty, lhs_op, coerced_rhs});
+    emit_lir_op(ctx, lir::LirBinOp{result, std::string(instr), op_ty, lhs_op, rhs_op});
     std::string store_v = result;
-    if (op_ty != lty) store_v = coerce(ctx, result, op_ts, lhs_ts);
+    if (op_ty != llvm_ty(lhs_ts)) store_v = coerce(ctx, result, op_ts, lhs_ts);
     return emit_store_assignable_value(ctx, lhs, store_v, lhs_ts, false);
 }
 

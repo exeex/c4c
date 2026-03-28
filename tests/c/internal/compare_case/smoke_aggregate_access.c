@@ -48,6 +48,8 @@ int run(void) {
   struct WithAnon *anon_ptr = &anon;
   struct WithAnon anon_assign = {.left = 0, .right = 0, .low = 1, .high = -6};
   float scale = 1.5f;
+  unsigned char narrow_mul_src = 9;
+  unsigned char narrow_shift_src = 28;
   int (*pvalues)[3] = &w.inner.values;
   int (*cursor)[3] = &pair[0].inner.values;
   int (*cursor_set)[3] = &pair[0].inner.values;
@@ -87,6 +89,10 @@ int run(void) {
   int float_compound = (int)(scale += 2.25f);
   int float_postdec = (int)(scale--);
   int float_after_postdec = (int)scale;
+  int narrow_mul = (narrow_mul_src *= 7);
+  int narrow_mul_after = narrow_mul_src;
+  int narrow_shift = (narrow_shift_src >>= 2);
+  int narrow_shift_after = narrow_shift_src;
   int bit_set = (anon_assign.high = -5);
   int bit_add = (anon_assign.high += 2);
   int bit_after_assign = anon_assign.high;
@@ -101,10 +107,11 @@ int run(void) {
          scalar_after_compound + scalar_postdec + scalar_after_postdec + ptr_set +
          ptr_after_set + ptr_compound + ptr_after_compound + ptr_postdec +
          ptr_after_postdec + float_preinc + float_compound + float_postdec +
-         float_after_postdec + bit_set + bit_add + bit_after_assign + low_set + low_xor +
-         low_after_assign;
+         float_after_postdec + narrow_mul + narrow_mul_after + narrow_shift +
+         narrow_shift_after + bit_set + bit_add + bit_after_assign + low_set +
+         low_xor + low_after_assign;
 }
 
 int main(void) {
-  return run() == 1382 ? 0 : 1;
+  return run() == 1522 ? 0 : 1;
 }

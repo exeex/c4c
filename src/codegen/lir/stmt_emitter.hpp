@@ -220,6 +220,13 @@ class StmtEmitter {
   std::string emit_compound_assign_value(FnCtx& ctx, const AssignableLValue& lhs,
                                          AssignOp op, const std::string& rhs,
                                          const TypeSpec& rhs_ts);
+  static TypeSpec resolve_compound_assign_op_type(BinaryOp op, const TypeSpec& lhs_ts,
+                                                  const TypeSpec& rhs_ts);
+  std::string emit_nonptr_compound_assign_value(FnCtx& ctx, const AssignableLValue& lhs,
+                                                const LoadedAssignableValue& loaded,
+                                                BinaryOp op, const char* instr,
+                                                const std::string& rhs,
+                                                const TypeSpec& rhs_ts);
   std::string indexed_gep_elem_ty(const TypeSpec& base_ts);
   std::string emit_indexed_gep(FnCtx& ctx, const std::string& base_ptr,
                                const TypeSpec& base_ts, const std::string& idx);

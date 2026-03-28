@@ -7,10 +7,13 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 4: Extract Assignment and Store Helpers
-- Current slice: re-scan the remaining non-bitfield assignment coordination above the operator tables now that unary inc/dec and compound assignment share one `emit_load_assignable_value(...)` entrypoint
+- Current slice: re-scan the remaining Step 4 assignment/store coordination after extracting the promoted non-pointer compound-assignment op-type/store-back helper layer; if no further local helper seam remains above the operator tables, close Step 4 and move to Step 5 call lowering
 
 ## Completed
 
+- Extended [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) with narrow integer `*=` and `>>=` coverage so compare mode now pins non-bitfield compound assignment when integer promotion widens the operation type past the stored lvalue type
+- Extracted `resolve_compound_assign_op_type(...)` and `emit_nonptr_compound_assign_value(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp), so `emit_compound_assign_value(...)` now routes the promoted scalar/vector op-type and store-back coercion flow through named helpers without changing the existing operator tables, pointer path, or bitfield path
+- Verified `compare_smoke_aggregate_access`, the full `compare_case` label, and the clean full-suite regression guard with stable results (`2248` -> `2248` passed, zero failures; `check_monotonic_regression.py --allow-non-decreasing-passed` accepted the promoted non-pointer Step 4 slice)
 - Extended [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) with float pre-increment, float `+=`, and float post-decrement coverage so compare mode now pins the shared assignable-load path across unary update and compound assignment on non-integer scalar lvalues
 - Extracted `emit_load_assignable_value(...)` plus shared `LoadedAssignableValue` metadata in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp), so unary inc/dec and compound assignment reuse one bitfield-vs-load coordinator before their existing arithmetic/store logic runs
 - Verified `compare_smoke_aggregate_access`, the full `compare_case` label, and the clean full-suite regression guard with stable results (`2248` -> `2248` passed, zero failures; `check_monotonic_regression.py --allow-non-decreasing-passed` accepted the shared-load Step 4 slice)
@@ -94,7 +97,7 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Extract the next local Step 4 helper above the operator-specific arithmetic paths, likely around the remaining non-bitfield compound-assignment coordination that still chooses operation/result coercion inline after `emit_load_assignable_value(...)`
+- Re-scan Step 4 for any remaining local assignment/store helper seam above the operator tables; if the store/assignment layer is now sufficiently compressed, close Step 4 and start Step 5 by isolating the shallowest call-lowering coordinator split in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp)
 
 ## Blockers
 
@@ -141,3 +144,4 @@ Source Plan: plan.md
 - Step 4 is now active: `emit_assignable_lval(...)` owns the shared member-aware / bitfield-aware LHS setup for unary inc/dec and assignment lowering, so the next pass should stay above the arithmetic tables and look for the next reusable assignment/store coordinator seam
 - This iteration targeted the final `AssignExpr` store/reload decision after arithmetic was already computed; the next Step 4 scan should decide whether unary inc/dec can reuse that same contract or whether another assignment-only coordination seam remains above the operator tables
 - `emit_load_assignable_value(...)` now owns the shared bitfield-vs-load decision for unary inc/dec and compound assignment; the next Step 4 pass should stay above that loader and look for the remaining non-bitfield result-type/coercion coordination seam without touching the operator tables
+- `resolve_compound_assign_op_type(...)` and `emit_nonptr_compound_assign_value(...)` now own the promoted non-pointer compound-assignment op-type/store-back flow; the next Step 4 scan should decide whether any assignment/store helper seam still remains above the operator tables or whether execution should move to Step 5
