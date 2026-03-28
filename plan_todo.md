@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: Extract Terminator and Block Lifecycle Helpers
-- Current slice: scan [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) for the next remaining Step 2 terminator or block-lifecycle repetition now that direct label opens and conditional successor opens share one local opener
+- Current slice: rescan [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) for any final Step 2 block-lifecycle repetition now that case-range switch chaining also routes through a local successor-opening helper
 
 ## Completed
 
@@ -43,10 +43,13 @@ Source Plan: plan.md
 - Extended [`smoke_expr_branch_lifecycle.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_expr_branch_lifecycle.c) with one more nested ternary/logical branch to keep the conditional-successor opening path pinned in compare mode during the next Step 2 extraction
 - Extracted `open_lbl(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and reused it across `emit_lbl(...)` plus `emit_condbr_and_open_lbl(...)` so direct label opens and conditional successor opens share one local block-allocation contract
 - Verified the targeted compare-mode cases and the clean full-suite regression guard with stable results (`2245` -> `2245` passed, zero failures; non-decreasing pass-count guard accepted the refactor slice)
+- Added [`smoke_switch_range_chain_lifecycle.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_switch_range_chain_lifecycle.c) to pin chained case-range successor opening in compare mode across false-first, mid-chain match, and default paths
+- Extracted `emit_condbr_and_fallthrough_lbl(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and reused it for case-range switch chaining so the remaining conditional-branch-plus-fallthrough-open pattern now shares one local helper
+- Verified `compare_smoke_stmt_control_flow` plus `compare_smoke_switch_range_chain_lifecycle`, then passed the clean full-suite regression guard (`2244/2245` before with one known failure -> `2246/2246` after with zero failures; no new failing tests)
 
 ## Next Slice
 
-- Continue Step 2 by scanning for any remaining local successor-opening or open-block terminator repetition that still bypasses `open_lbl(...)`, `set_terminator_if_open(...)`, `emit_condbr_and_open_lbl(...)`, `emit_fallthrough_lbl(...)`, or `emit_br_and_open_lbl(...)` without widening the refactor beyond [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp)
+- If Step 2 is not yet exhausted, identify the last remaining block-lifecycle repetition in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) that still bypasses `open_lbl(...)`, `set_terminator_if_open(...)`, `emit_condbr_and_open_lbl(...)`, `emit_condbr_and_fallthrough_lbl(...)`, `emit_fallthrough_lbl(...)`, or `emit_br_and_open_lbl(...)`
 
 ## Blockers
 
@@ -73,3 +76,5 @@ Source Plan: plan.md
 - `emit_br_and_open_lbl(...)` now owns the sibling-handoff shape where one predecessor closes by branching to a join/end label and codegen immediately continues in a different successor block; future Step 2 slices should reuse it instead of restating `emit_term_br(...)` plus `emit_lbl(...)`
 - The next narrow Step 2 extraction is the duplicated block-allocation/opening sequence currently spelled separately in `emit_lbl(...)` and `emit_condbr_and_open_lbl(...)`; keep it local and validate with compare-mode coverage that still crosses both surfaces
 - `open_lbl(...)` now owns the raw block-allocation/opening sequence; future Step 2 slices should build on it instead of spelling out `LirBlock` allocation and `current_block_idx` updates in additional local helpers
+- The current slice targets the remaining "emit terminator for a branch decision, then continue in the chosen successor/open block" pattern still present in loop and switch-range lowering; validate it with compare-mode coverage that traverses the false/range-chain continuation path
+- `emit_condbr_and_fallthrough_lbl(...)` now owns the "emit a conditional terminator, then continue in the false/next successor block" pattern used by case-range switch chaining; future Step 2 scans should treat any remaining manual `emit_term_condbr(...)` + immediate false/open continuation as the next extraction candidate

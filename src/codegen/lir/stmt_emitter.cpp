@@ -32,6 +32,12 @@ void emit_condbr_and_open_lbl(FnCtx& ctx, const std::string& cond,
   open_lbl(ctx, open_label);
 }
 
+void emit_condbr_and_fallthrough_lbl(FnCtx& ctx, const std::string& cond,
+                                     const std::string& true_label,
+                                     const std::string& false_label) {
+  emit_condbr_and_open_lbl(ctx, cond, true_label, false_label, false_label);
+}
+
 // ── FnPtrSig accessors ───────────────────────────────────────────────────
 // These helpers extract return type and parameter types from FnPtrSig.
 // canonical_sig is always populated during HIR lowering.
@@ -4100,8 +4106,7 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const SwitchStmt& s){
         const std::string t_and = fresh_tmp(ctx);
         emit_lir_op(ctx, lir::LirBinOp{t_and, "and", "i1", t_ge, t_le});
         const std::string next_lbl = fresh_lbl(ctx, "sw.range.next.");
-        emit_term_condbr(ctx, t_and, block_lbl(bid), next_lbl);
-        emit_fallthrough_lbl(ctx, next_lbl);
+        emit_condbr_and_fallthrough_lbl(ctx, t_and, block_lbl(bid), next_lbl);
       }
     }
 
