@@ -284,6 +284,17 @@ class StmtEmitter {
   std::string emit_builtin_popcount_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
   std::string emit_builtin_parity_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
   std::string emit_builtin_clrsb_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
+  void promote_builtin_fp_predicate_arg(FnCtx& ctx, std::string& value, TypeSpec& value_ts);
+  std::string emit_builtin_fp_predicate_result(FnCtx& ctx, const char* predicate,
+                                               const std::string& fp_ty,
+                                               const std::string& lhs,
+                                               const std::string& rhs);
+  std::string emit_builtin_fp_compare_call(FnCtx& ctx, const CallExpr& call,
+                                           BuiltinId builtin_id);
+  std::string emit_builtin_isunordered_call(FnCtx& ctx, const CallExpr& call);
+  std::string emit_builtin_isnan_call(FnCtx& ctx, ExprId arg_id);
+  std::string emit_builtin_isinf_call(FnCtx& ctx, ExprId arg_id);
+  std::string emit_builtin_isfinite_call(FnCtx& ctx, ExprId arg_id);
   std::string emit_post_builtin_call(FnCtx& ctx, const CallExpr& call,
                                      const CallTargetInfo& call_target);
 

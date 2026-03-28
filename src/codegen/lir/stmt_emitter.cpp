@@ -2997,6 +2997,79 @@ std::string StmtEmitter::emit_builtin_clrsb_call(FnCtx& ctx, ExprId arg_id,
     return narrow_builtin_int_result(ctx, arg, sub1);
   }
 
+void StmtEmitter::promote_builtin_fp_predicate_arg(FnCtx& ctx, std::string& value,
+                                                   TypeSpec& value_ts) {
+    if (value_ts.base != TB_FLOAT || value_ts.ptr_level != 0 || value_ts.array_rank != 0) {
+      return;
+    }
+    const std::string promoted = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirCastOp{promoted, lir::LirCastKind::FPExt, "float", value, "double"});
+    value = promoted;
+    value_ts.base = TB_DOUBLE;
+  }
+
+std::string StmtEmitter::emit_builtin_fp_predicate_result(FnCtx& ctx, const char* predicate,
+                                                          const std::string& fp_ty,
+                                                          const std::string& lhs,
+                                                          const std::string& rhs) {
+    const std::string cmp = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirCmpOp{cmp, true, std::string(predicate), fp_ty, lhs, rhs});
+    const std::string widened = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirCastOp{widened, lir::LirCastKind::ZExt, "i1", cmp, "i32"});
+    return widened;
+  }
+
+std::string StmtEmitter::emit_builtin_fp_compare_call(FnCtx& ctx, const CallExpr& call,
+                                                      BuiltinId builtin_id) {
+    TypeSpec lhs_ts{}, rhs_ts{};
+    std::string lhs = emit_rval_id(ctx, call.args[0], lhs_ts);
+    std::string rhs = emit_rval_id(ctx, call.args[1], rhs_ts);
+    promote_builtin_fp_predicate_arg(ctx, lhs, lhs_ts);
+    promote_builtin_fp_predicate_arg(ctx, rhs, rhs_ts);
+    return emit_builtin_fp_predicate_result(ctx, builtin_fp_compare_predicate(builtin_id),
+                                            llvm_ty(lhs_ts), lhs, rhs);
+  }
+
+std::string StmtEmitter::emit_builtin_isunordered_call(FnCtx& ctx, const CallExpr& call) {
+    TypeSpec lhs_ts{}, rhs_ts{};
+    std::string lhs = emit_rval_id(ctx, call.args[0], lhs_ts);
+    std::string rhs = emit_rval_id(ctx, call.args[1], rhs_ts);
+    promote_builtin_fp_predicate_arg(ctx, lhs, lhs_ts);
+    promote_builtin_fp_predicate_arg(ctx, rhs, rhs_ts);
+    return emit_builtin_fp_predicate_result(ctx, "uno", llvm_ty(lhs_ts), lhs, rhs);
+  }
+
+std::string StmtEmitter::emit_builtin_isnan_call(FnCtx& ctx, ExprId arg_id) {
+    TypeSpec arg_ts{};
+    std::string arg = emit_rval_id(ctx, arg_id, arg_ts);
+    promote_builtin_fp_predicate_arg(ctx, arg, arg_ts);
+    return emit_builtin_fp_predicate_result(ctx, "uno", llvm_ty(arg_ts), arg, arg);
+  }
+
+std::string StmtEmitter::emit_builtin_isinf_call(FnCtx& ctx, ExprId arg_id) {
+    TypeSpec arg_ts{};
+    std::string arg = emit_rval_id(ctx, arg_id, arg_ts);
+    promote_builtin_fp_predicate_arg(ctx, arg, arg_ts);
+    const std::string fp_ty = llvm_ty(arg_ts);
+    const std::string inf_val = fp_literal(arg_ts.base, std::numeric_limits<double>::infinity());
+    const std::string abs_value = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirCallOp{abs_value, fp_ty, "@llvm.fabs." + fp_ty, "",
+                                    fp_ty + " " + arg});
+    return emit_builtin_fp_predicate_result(ctx, "oeq", fp_ty, abs_value, inf_val);
+  }
+
+std::string StmtEmitter::emit_builtin_isfinite_call(FnCtx& ctx, ExprId arg_id) {
+    TypeSpec arg_ts{};
+    std::string arg = emit_rval_id(ctx, arg_id, arg_ts);
+    promote_builtin_fp_predicate_arg(ctx, arg, arg_ts);
+    const std::string fp_ty = llvm_ty(arg_ts);
+    const std::string inf_val = fp_literal(arg_ts.base, std::numeric_limits<double>::infinity());
+    const std::string abs_value = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirCallOp{abs_value, fp_ty, "@llvm.fabs." + fp_ty, "",
+                                    fp_ty + " " + arg});
+    return emit_builtin_fp_predicate_result(ctx, "olt", fp_ty, abs_value, inf_val);
+  }
+
 std::string StmtEmitter::emit_post_builtin_call(FnCtx& ctx, const CallExpr& call,
                                                 const CallTargetInfo& call_target) {
     const BuiltinId builtin_id = call_target.builtin_id;
@@ -3252,96 +3325,19 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
       }
       if (const char* pred = builtin_fp_compare_predicate(builtin_id);
           pred && call.args.size() == 2) {
-        TypeSpec at{}, bt{};
-        std::string a = emit_rval_id(ctx, call.args[0], at);
-        std::string b = emit_rval_id(ctx, call.args[1], bt);
-        auto promote_to_double = [&](std::string& v, TypeSpec& ts) {
-          if (ts.base == TB_FLOAT && ts.ptr_level == 0 && ts.array_rank == 0) {
-            const std::string p = fresh_tmp(ctx);
-            emit_lir_op(ctx, lir::LirCastOp{p, lir::LirCastKind::FPExt, "float", v, "double"});
-            v = p; ts.base = TB_DOUBLE;
-          }
-        };
-        promote_to_double(a, at);
-        promote_to_double(b, bt);
-        const std::string fty = llvm_ty(at);
-        const std::string cmp = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCmpOp{cmp, true, std::string(pred), fty, a, b});
-        const std::string tmp = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::ZExt, "i1", cmp, "i32"});
-        return tmp;
+        return emit_builtin_fp_compare_call(ctx, call, builtin_id);
       }
       if (builtin_id == BuiltinId::IsUnordered && call.args.size() == 2) {
-        TypeSpec at{}, bt{};
-        std::string a = emit_rval_id(ctx, call.args[0], at);
-        std::string b = emit_rval_id(ctx, call.args[1], bt);
-        auto promote_to_double = [&](std::string& v, TypeSpec& ts) {
-          if (ts.base == TB_FLOAT && ts.ptr_level == 0 && ts.array_rank == 0) {
-            const std::string p = fresh_tmp(ctx);
-            emit_lir_op(ctx, lir::LirCastOp{p, lir::LirCastKind::FPExt, "float", v, "double"});
-            v = p; ts.base = TB_DOUBLE;
-          }
-        };
-        promote_to_double(a, at);
-        promote_to_double(b, bt);
-        const std::string fty = llvm_ty(at);
-        const std::string cmp = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCmpOp{cmp, true, "uno", fty, a, b});
-        const std::string tmp = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::ZExt, "i1", cmp, "i32"});
-        return tmp;
+        return emit_builtin_isunordered_call(ctx, call);
       }
       if (builtin_is_isnan(builtin_id) && call.args.size() == 1) {
-        TypeSpec at{};
-        std::string a = emit_rval_id(ctx, call.args[0], at);
-        if (at.base == TB_FLOAT && at.ptr_level == 0 && at.array_rank == 0) {
-          const std::string p = fresh_tmp(ctx);
-          emit_lir_op(ctx, lir::LirCastOp{p, lir::LirCastKind::FPExt, "float", a, "double"});
-          a = p; at.base = TB_DOUBLE;
-        }
-        const std::string fty = llvm_ty(at);
-        const std::string cmp = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCmpOp{cmp, true, "uno", fty, a, a});
-        const std::string tmp = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::ZExt, "i1", cmp, "i32"});
-        return tmp;
+        return emit_builtin_isnan_call(ctx, call.args[0]);
       }
       if (builtin_is_isinf(builtin_id) && call.args.size() == 1) {
-        TypeSpec at{};
-        std::string a = emit_rval_id(ctx, call.args[0], at);
-        if (at.base == TB_FLOAT && at.ptr_level == 0 && at.array_rank == 0) {
-          const std::string p = fresh_tmp(ctx);
-          emit_lir_op(ctx, lir::LirCastOp{p, lir::LirCastKind::FPExt, "float", a, "double"});
-          a = p; at.base = TB_DOUBLE;
-        }
-        const std::string fty = llvm_ty(at);
-        const std::string inf_val = fp_literal(at.base, std::numeric_limits<double>::infinity());
-        // Check if a == +inf or a == -inf by comparing abs(a) to +inf
-        const std::string abs_tmp = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCallOp{abs_tmp, fty, "@llvm.fabs." + fty, "", fty + " " + a});
-        const std::string cmp = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCmpOp{cmp, true, "oeq", fty, abs_tmp, inf_val});
-        const std::string tmp = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::ZExt, "i1", cmp, "i32"});
-        return tmp;
+        return emit_builtin_isinf_call(ctx, call.args[0]);
       }
       if (builtin_is_isfinite(builtin_id) && call.args.size() == 1) {
-        TypeSpec at{};
-        std::string a = emit_rval_id(ctx, call.args[0], at);
-        if (at.base == TB_FLOAT && at.ptr_level == 0 && at.array_rank == 0) {
-          const std::string p = fresh_tmp(ctx);
-          emit_lir_op(ctx, lir::LirCastOp{p, lir::LirCastKind::FPExt, "float", a, "double"});
-          a = p; at.base = TB_DOUBLE;
-        }
-        const std::string fty = llvm_ty(at);
-        const std::string inf_val = fp_literal(at.base, std::numeric_limits<double>::infinity());
-        const std::string abs_tmp = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCallOp{abs_tmp, fty, "@llvm.fabs." + fty, "", fty + " " + a});
-        const std::string cmp = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCmpOp{cmp, true, "olt", fty, abs_tmp, inf_val});
-        const std::string tmp = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::ZExt, "i1", cmp, "i32"});
-        return tmp;
+        return emit_builtin_isfinite_call(ctx, call.args[0]);
       }
       if ((builtin_id == BuiltinId::Copysign || builtin_id == BuiltinId::CopysignL ||
            builtin_id == BuiltinId::CopysignF) && call.args.size() == 2) {

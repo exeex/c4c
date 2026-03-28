@@ -58,6 +58,27 @@ int call_bit_builtins(int seed) {
   return total;
 }
 
+int call_fp_predicate_builtins(float lhs, double rhs) {
+  float nanf_value = __builtin_nanf("");
+  float inf_value = __builtin_inff();
+  int total = 0;
+  total += __builtin_isgreater(lhs, rhs);
+  total += __builtin_isless(lhs, rhs);
+  total += __builtin_islessequal(lhs, rhs);
+  total += __builtin_isgreaterequal(lhs, rhs);
+  total += __builtin_islessgreater(lhs, rhs);
+  total += __builtin_isunordered(nanf_value, lhs);
+  total += __builtin_isnan(nanf_value);
+  total += __builtin_isnanf(nanf_value);
+  total += __builtin_isinf(inf_value);
+  total += __builtin_isinff(inf_value);
+  total += __builtin_isfinite(lhs);
+  total += __builtin_isfinitef(lhs);
+  total += __builtin_isfinite(inf_value);
+  total += __builtin_isfinitef(inf_value);
+  return total;
+}
+
 int main(void) {
   const int direct = call_direct(9, 4);
   combine_fn fn = sub_pair;
@@ -66,9 +87,10 @@ int main(void) {
   const int void_direct = call_void_direct(decay);
   const int implicit = call_implicit_builtins(indirect);
   const int bit_builtins = call_bit_builtins(indirect);
+  const int fp_predicates = call_fp_predicate_builtins(1.5f, 2.0);
   call_variadic(direct + indirect + void_direct, 1.5f);
   return (direct == 13 && indirect == 5 && decay == 21 && void_direct == 25 &&
-          implicit == 4 && bit_builtins == 137)
+          implicit == 4 && bit_builtins == 137 && fp_predicates == 9)
              ? 0
              : 1;
 }
