@@ -59,6 +59,12 @@ bool render_memory_instruction(std::ostream& out,
     return true;
   }
 
+  if (const auto* va_arg = std::get_if<c4c::codegen::lir::LirVaArgOp>(&inst)) {
+    out << "  " << va_arg->result << " = va_arg ptr " << va_arg->ap_ptr << ", "
+        << va_arg->type_str << "\n";
+    return true;
+  }
+
   return false;
 }
 

@@ -771,6 +771,80 @@ c4c::codegen::lir::LirModule make_va_intrinsic_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_va_arg_scalar_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }");
+  module.need_va_start = true;
+  module.need_va_end = true;
+
+  LirFunction function;
+  function.name = "sum2";
+  function.signature_text = "define i32 @sum2(i32 %p.first, ...)\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(
+      LirAllocaOp{"%lv.ap", "%struct.__va_list_tag_", "", 8});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirVaStartOp{"%lv.ap"});
+  entry.insts.push_back(LirVaArgOp{"%t0", "%lv.ap", "i32"});
+  entry.insts.push_back(LirBinOp{"%t1", "add", "i32", "%p.first", "%t0"});
+  entry.insts.push_back(LirVaEndOp{"%lv.ap"});
+  entry.terminator = LirRet{std::string("%t1"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_phi_join_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCmpOp{"%t0", false, "slt", "i32", "1", "2"});
+  entry.terminator = LirCondBr{"%t0", "reg", "stack"};
+
+  LirBlock reg_block;
+  reg_block.id = LirBlockId{1};
+  reg_block.label = "reg";
+  reg_block.terminator = LirBr{"join"};
+
+  LirBlock stack_block;
+  stack_block.id = LirBlockId{2};
+  stack_block.label = "stack";
+  stack_block.terminator = LirBr{"join"};
+
+  LirBlock join_block;
+  join_block.id = LirBlockId{3};
+  join_block.label = "join";
+  join_block.insts.push_back(LirPhiOp{"%t1", "ptr", {{"%reg.addr", "reg"}, {"%stack.addr", "stack"}}});
+  join_block.terminator = LirRet{std::string("0"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(reg_block));
+  function.blocks.push_back(std::move(stack_block));
+  function.blocks.push_back(std::move(join_block));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 void test_adapts_direct_return() {
   const auto adapted = c4c::backend::adapt_return_only_module(make_return_zero_module());
   expect_true(adapted.functions.size() == 1, "adapter should preserve one function");
@@ -865,7 +939,7 @@ void test_aarch64_backend_scaffold_rejects_out_of_slice_ir() {
 
   auto module = make_return_zero_module();
   auto& block = module.functions.front().blocks.front();
-  block.insts.push_back(LirPhiOp{"%t0", "i32", {{"0", "entry"}}});
+  block.insts.push_back(LirSelectOp{"%t0", "i32", "true", "1", "0"});
 
   try {
     (void)c4c::backend::emit_module(
@@ -1178,6 +1252,32 @@ void test_aarch64_backend_renders_va_intrinsic_slice() {
                   "aarch64 backend should render llvm.va_end calls for the original list");
 }
 
+void test_aarch64_backend_renders_va_arg_scalar_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_va_arg_scalar_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "call void @llvm.va_start.p0(ptr %lv.ap)",
+                  "aarch64 backend should preserve va_start before va_arg");
+  expect_contains(rendered, "%t0 = va_arg ptr %lv.ap, i32",
+                  "aarch64 backend should render scalar va_arg in the target-local memory path");
+  expect_contains(rendered, "%t1 = add i32 %p.first, %t0",
+                  "aarch64 backend should preserve arithmetic that consumes va_arg results");
+  expect_contains(rendered, "call void @llvm.va_end.p0(ptr %lv.ap)",
+                  "aarch64 backend should preserve va_end after va_arg");
+  expect_contains(rendered, "ret i32 %t1",
+                  "aarch64 backend should preserve the scalar va_arg result");
+}
+
+void test_aarch64_backend_renders_phi_join_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_phi_join_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "br i1 %t0, label %reg, label %stack",
+                  "aarch64 backend should preserve the helper control-flow split before a phi join");
+  expect_contains(rendered, "%t1 = phi ptr [ %reg.addr, %reg ], [ %stack.addr, %stack ]",
+                  "aarch64 backend should render pointer phi joins used by target-local va_arg helpers");
+}
+
 }  // namespace
 
 int main() {
@@ -1207,5 +1307,7 @@ int main() {
   test_aarch64_backend_renders_global_int_pointer_roundtrip_slice();
   test_aarch64_backend_renders_bitcast_slice();
   test_aarch64_backend_renders_va_intrinsic_slice();
+  test_aarch64_backend_renders_va_arg_scalar_slice();
+  test_aarch64_backend_renders_phi_join_slice();
   return 0;
 }

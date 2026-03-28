@@ -7,6 +7,17 @@ namespace c4c::backend::aarch64 {
 
 bool render_branch_instruction(std::ostream& out,
                                const c4c::codegen::lir::LirInst& inst) {
+  if (const auto* phi = std::get_if<c4c::codegen::lir::LirPhiOp>(&inst)) {
+    out << "  " << phi->result << " = phi " << phi->type_str;
+    bool first = true;
+    for (const auto& [value, label] : phi->incoming) {
+      out << (first ? " " : ", ") << "[ " << value << ", %" << label << " ]";
+      first = false;
+    }
+    out << "\n";
+    return true;
+  }
+
   const auto* cmp = std::get_if<c4c::codegen::lir::LirCmpOp>(&inst);
   if (!cmp) {
     return false;

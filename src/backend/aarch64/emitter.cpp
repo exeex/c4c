@@ -12,6 +12,27 @@
 
 namespace c4c::backend::aarch64 {
 
+namespace {
+
+const char* instruction_kind(const c4c::codegen::lir::LirInst& inst) {
+  if (std::holds_alternative<c4c::codegen::lir::LirAllocaOp>(inst)) return "alloca";
+  if (std::holds_alternative<c4c::codegen::lir::LirLoadOp>(inst)) return "load";
+  if (std::holds_alternative<c4c::codegen::lir::LirStoreOp>(inst)) return "store";
+  if (std::holds_alternative<c4c::codegen::lir::LirCastOp>(inst)) return "cast";
+  if (std::holds_alternative<c4c::codegen::lir::LirBinOp>(inst)) return "binop";
+  if (std::holds_alternative<c4c::codegen::lir::LirCmpOp>(inst)) return "cmp";
+  if (std::holds_alternative<c4c::codegen::lir::LirGepOp>(inst)) return "gep";
+  if (std::holds_alternative<c4c::codegen::lir::LirCallOp>(inst)) return "call";
+  if (std::holds_alternative<c4c::codegen::lir::LirVaStartOp>(inst)) return "va_start";
+  if (std::holds_alternative<c4c::codegen::lir::LirVaEndOp>(inst)) return "va_end";
+  if (std::holds_alternative<c4c::codegen::lir::LirVaCopyOp>(inst)) return "va_copy";
+  if (std::holds_alternative<c4c::codegen::lir::LirVaArgOp>(inst)) return "va_arg";
+  if (std::holds_alternative<c4c::codegen::lir::LirPhiOp>(inst)) return "phi";
+  return "unknown";
+}
+
+}  // namespace
+
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   validate_module(module);
 
@@ -43,7 +64,8 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
         if (render_memory_instruction(out, inst)) {
           continue;
         }
-        fail_unsupported("non-ALU/non-branch/non-call/non-memory instructions");
+        fail_unsupported("non-ALU/non-branch/non-call/non-memory instructions (saw " +
+                         std::string(instruction_kind(inst)) + ")");
       }
       render_terminator(out, block.terminator);
     }
