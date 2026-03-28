@@ -2,6 +2,7 @@
 
 #include "alu.hpp"
 #include "branch.hpp"
+#include "calls.hpp"
 #include "frame.hpp"
 #include "support.hpp"
 
@@ -31,7 +32,10 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
         if (render_branch_instruction(out, inst)) {
           continue;
         }
-        fail_unsupported("non-ALU/non-branch instructions");
+        if (render_call_instruction(out, inst)) {
+          continue;
+        }
+        fail_unsupported("non-ALU/non-branch/non-call instructions");
       }
       render_terminator(out, block.terminator);
     }

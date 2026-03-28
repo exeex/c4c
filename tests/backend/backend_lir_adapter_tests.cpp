@@ -92,6 +92,41 @@ c4c::codegen::lir::LirModule make_conditional_return_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_direct_call_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction helper;
+  helper.name = "helper";
+  helper.signature_text = "define i32 @helper()\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.terminator = LirRet{std::string("7"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(LirCallOp{"%t0", "i32", "@helper", "", ""});
+  main_entry.terminator = LirRet{std::string("%t0"), "i32"};
+  main_fn.blocks.push_back(std::move(main_entry));
+
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(main_fn));
+  return module;
+}
+
 void test_adapts_direct_return() {
   const auto adapted = c4c::backend::adapt_return_only_module(make_return_zero_module());
   expect_true(adapted.functions.size() == 1, "adapter should preserve one function");
@@ -170,9 +205,21 @@ void test_aarch64_backend_scaffold_rejects_out_of_slice_ir() {
   } catch (const std::invalid_argument& ex) {
     expect_contains(ex.what(), "aarch64 backend emitter does not support",
                     "aarch64 emitter should identify target-local support limits");
-    expect_contains(ex.what(), "non-ALU/non-branch instructions",
+    expect_contains(ex.what(), "non-ALU/non-branch/non-call instructions",
                     "aarch64 emitter should preserve the unsupported detail");
   }
+}
+
+void test_aarch64_backend_renders_direct_call_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_direct_call_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "define i32 @helper()",
+                  "aarch64 backend should preserve helper definitions");
+  expect_contains(rendered, "%t0 = call i32 @helper()",
+                  "aarch64 backend should render direct calls");
+  expect_contains(rendered, "ret i32 %t0",
+                  "aarch64 backend should preserve call results through return");
 }
 
 }  // namespace
@@ -184,5 +231,6 @@ int main() {
   test_aarch64_backend_scaffold_renders_supported_slice();
   test_aarch64_backend_renders_compare_and_branch_slice();
   test_aarch64_backend_scaffold_rejects_out_of_slice_ir();
+  test_aarch64_backend_renders_direct_call_slice();
   return 0;
 }

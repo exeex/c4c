@@ -251,6 +251,8 @@ if(CLANG_EXECUTABLE)
       set(expect_exit_code 0)
       if(stem STREQUAL "return_add")
         set(expect_exit_code 5)
+      elseif(stem STREQUAL "call_helper")
+        set(expect_exit_code 7)
       endif()
 
       add_test(
