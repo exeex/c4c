@@ -6,7 +6,7 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 1: Evaluate whether `src/backend/x86_common.cpp` is still a safe top-level stub-only shared backend candidate for both real-build targets after `inline_asm.cpp`
+- [ ] Step 1: Evaluate `src/backend/peephole_common.cpp` as the next stub-only shared backend candidate after `src/backend/x86_common.cpp`
 
 ## Planned Queue
 
@@ -33,10 +33,11 @@ Source Plan: plan.md
 - [x] Added `src/backend/cast.cpp` to both `c4cll` and `backend_lir_adapter_tests`; it remains a stub-only shared backend mirror with no new dependency edges, `backend_lir_adapter_tests` still passes, and full `ctest --test-dir build -j8 --output-on-failure` still reports the same 4 known unrelated failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
 - [x] Added `src/backend/f128_softfloat.cpp` to both `c4cll` and `backend_lir_adapter_tests`; it remains a stub-only shared backend mirror with no new dependency edges, `backend_lir_adapter_tests` still passes, and both `test_before.log` and `test_after.log` report the same 4 known unrelated full-suite failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
 - [x] Evaluated `src/backend/inline_asm.cpp` and promoted it into both `c4cll` and `backend_lir_adapter_tests`; it remains a stub-only shared backend mirror with no new dependency edges, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and both `test_before.log` and `test_after.log` preserve the same 4 known unrelated full-suite failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
+- [x] Evaluated `src/backend/x86_common.cpp` and promoted it into both `c4cll` and `backend_lir_adapter_tests`; it remains a stub-only shared backend mirror with no new dependency edges, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and both `test_before.log` and `test_after.log` preserve the same 4 known unrelated full-suite failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
 
 ## Next Intended Slice
 
-- evaluate `src/backend/x86_common.cpp` next, but only promote it if it stays as dependency-light as `src/backend/inline_asm.cpp`; otherwise skip to another top-level shared backend stub with no new target-local coupling
+- evaluate `src/backend/peephole_common.cpp` next, but only promote it if it stays as dependency-light as `src/backend/x86_common.cpp`; otherwise skip to another top-level shared backend stub with no new target-local coupling
 - keep the AArch64 shim thin until the shared backend slice grows enough to replace LLVM-text passthroughs deliberately
 - defer ELF and shared linker modules until the plain shared backend slice is build-reachable
 
@@ -59,3 +60,5 @@ Source Plan: plan.md
 - latest validation: after adding `src/backend/cast.cpp` to both build targets, `backend_lir_adapter_tests` passes and full `ctest --test-dir build -j8 --output-on-failure` still reports the same 4 known unrelated failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
 - current iteration target: evaluate `src/backend/x86_common.cpp` as the next top-level shared backend candidate after `src/backend/inline_asm.cpp`
 - latest validation: after adding `src/backend/inline_asm.cpp` to both build targets, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and both `test_before.log` and `test_after.log` remain monotonic at the same 4 known unrelated failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
+- current iteration target: evaluate `src/backend/peephole_common.cpp` as the next top-level shared backend candidate after `src/backend/x86_common.cpp`
+- latest validation: after adding `src/backend/x86_common.cpp` to both build targets, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and both `test_before.log` and `test_after.log` remain monotonic at the same 4 known unrelated failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)

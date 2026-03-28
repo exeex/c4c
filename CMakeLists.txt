@@ -50,6 +50,7 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/backend/f128_softfloat.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/inline_asm.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/stack_layout/mod.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86_common.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/lir_adapter.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/aarch64/codegen/emit.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/backend.cpp"
@@ -123,6 +124,7 @@ add_executable(backend_lir_adapter_tests
     "${PROJECT_SOURCE_DIR}/src/backend/stack_layout/mod.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/target.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/traits.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86_common.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/lir_printer.cpp"
 )
 target_include_directories(backend_lir_adapter_tests PRIVATE
