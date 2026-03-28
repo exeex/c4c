@@ -7,11 +7,11 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3: port the first integer/control-flow slice
-- Iteration slice: codify target-local AArch64 extern-global usage coverage after landing module-level extern declarations, keeping the work aligned with ref `codegen/globals.rs`
+- Iteration slice: inspect the next narrow symbol-address follow-on after landing byte-granular global pointer-difference coverage, likely a remaining cast/helper boundary such as scaled pointer subtraction or other ref-`codegen/globals.rs`-adjacent address materialization
 
 ## Next Intended Slice
 
-- inspect the next narrow global-addressing follow-on after extern-global usage coverage, likely target-local symbol-address helper rendering that maps more directly onto ref `codegen/globals.rs`
+- inspect whether non-byte pointer subtraction on the AArch64 backend now needs additional target-local support such as `sdiv` or adjacent cast handling beyond the newly landed `ptrtoint` slice
 - keep the next slice focused on one target-local helper boundary or one missing runtime-backed backend capability
 - avoid broadening beyond the active AArch64 Step 3 runbook without recording a separate idea
 
@@ -78,6 +78,12 @@ Source Plan: plan.md
 - added unit coverage for AArch64 extern-global scalar loads and extern-global array decay/indexed addressing in `tests/backend/backend_lir_adapter_tests.cpp`
 - verified `backend_lir_adapter_tests` passes after landing the extern-global usage coverage slice
 - reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=496/510 -> 498/511` and zero newly failing tests; one unrelated prior C++ failure dropped from the failing set (`cpp_positive_sema_eastl_inherited_trait_value_template_arg_parse_cpp`)
+- added target-local AArch64 `ptrtoint` rendering in `src/backend/aarch64/alu.cpp` for byte-granular pointer-difference lowering
+- added unit coverage for AArch64 global byte-array pointer-difference lowering in `tests/backend/backend_lir_adapter_tests.cpp`
+- added `tests/c/internal/backend_case/global_char_pointer_diff.c` for runtime coverage of byte-granular global symbol-address subtraction on supported AArch64 hosts
+- updated `tests/c/internal/InternalTests.cmake` with the expected runtime exit code for the new backend case
+- verified `backend_lir_adapter_tests` and `backend_runtime_global_char_pointer_diff` pass for the new global pointer-difference slice
+- reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=496/510 -> 498/512` and zero newly failing tests
 
 ## Blockers
 
@@ -105,3 +111,4 @@ Source Plan: plan.md
 - plain module global definitions now render through `src/backend/aarch64/globals.*`; `string_pool` and `extern_decls` remain out of slice and are the most obvious next global-addressing boundaries
 - module string-pool definitions now also render through `src/backend/aarch64/globals.*`; `extern_decls` remains the next most obvious module-level global-addressing boundary
 - module extern declarations now also render through `src/backend/aarch64/globals.*`; the next obvious global-addressing follow-on is explicit external-global usage or other target-local symbol-address helpers aligned with ref `codegen/globals.rs`
+- byte-granular global pointer subtraction now executes through the target-local AArch64 path via `ptrtoint`; wider pointer-difference follow-ons may still require extra cast or division support

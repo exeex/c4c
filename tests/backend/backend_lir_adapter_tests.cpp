@@ -580,6 +580,52 @@ c4c::codegen::lir::LirModule make_extern_global_array_load_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_global_char_pointer_diff_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "g_bytes",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "[2 x i8]",
+      "zeroinitializer",
+      1,
+      false,
+  });
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(
+      LirGepOp{"%t0", "[2 x i8]", "@g_bytes", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirGepOp{"%t1", "i8", "%t0", false, {"i64 1"}});
+  entry.insts.push_back(
+      LirCastOp{"%t2", LirCastKind::PtrToInt, "ptr", "%t1", "i64"});
+  entry.insts.push_back(
+      LirCastOp{"%t3", LirCastKind::PtrToInt, "ptr", "%t0", "i64"});
+  entry.insts.push_back(LirBinOp{"%t4", "sub", "i64", "%t2", "%t3"});
+  entry.insts.push_back(LirCmpOp{"%t5", false, "eq", "i64", "%t4", "1"});
+  entry.insts.push_back(
+      LirCastOp{"%t6", LirCastKind::ZExt, "i1", "%t5", "i32"});
+  entry.terminator = LirRet{std::string("%t6"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 void test_adapts_direct_return() {
   const auto adapted = c4c::backend::adapt_return_only_module(make_return_zero_module());
   expect_true(adapted.functions.size() == 1, "adapter should preserve one function");
@@ -903,6 +949,26 @@ void test_aarch64_backend_renders_extern_global_array_slice() {
                   "aarch64 backend should preserve the extern global array load result");
 }
 
+void test_aarch64_backend_renders_global_char_pointer_diff_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_global_char_pointer_diff_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "@g_bytes = global [2 x i8] zeroinitializer",
+                  "aarch64 backend should render global byte-array definitions");
+  expect_contains(rendered, "%t0 = getelementptr [2 x i8], ptr @g_bytes, i64 0, i64 0",
+                  "aarch64 backend should preserve byte-array decay from globals");
+  expect_contains(rendered, "%t1 = getelementptr i8, ptr %t0, i64 1",
+                  "aarch64 backend should preserve indexed byte-addressing from globals");
+  expect_contains(rendered, "%t2 = ptrtoint ptr %t1 to i64",
+                  "aarch64 backend should render ptrtoint for pointer-difference lowering");
+  expect_contains(rendered, "%t3 = ptrtoint ptr %t0 to i64",
+                  "aarch64 backend should render ptrtoint for the base global address");
+  expect_contains(rendered, "%t4 = sub i64 %t2, %t3",
+                  "aarch64 backend should preserve byte-granular pointer subtraction");
+  expect_contains(rendered, "ret i32 %t6",
+                  "aarch64 backend should preserve the pointer-difference comparison result");
+}
+
 }  // namespace
 
 int main() {
@@ -927,5 +993,6 @@ int main() {
   test_aarch64_backend_renders_extern_decl_slice();
   test_aarch64_backend_renders_extern_global_load_slice();
   test_aarch64_backend_renders_extern_global_array_slice();
+  test_aarch64_backend_renders_global_char_pointer_diff_slice();
   return 0;
 }

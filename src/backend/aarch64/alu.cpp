@@ -17,6 +17,9 @@ bool render_alu_instruction(std::ostream& out,
       case c4c::codegen::lir::LirCastKind::SExt:
         opcode = "sext";
         break;
+      case c4c::codegen::lir::LirCastKind::PtrToInt:
+        opcode = "ptrtoint";
+        break;
       default:
         fail_unsupported("cast kind outside the compare/branch or memory-addressing slice");
     }
