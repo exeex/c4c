@@ -3918,6 +3918,10 @@ void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const InlineAsmStmt& s){
   }
 
 void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const ReturnStmt& s){
+    emit_control_flow_stmt(ctx, s);
+  }
+
+void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const ReturnStmt& s){
     if (!s.expr) {
       const auto& rts = ctx.fn->return_type.spec;
       if (rts.base == TB_VOID && rts.ptr_level == 0 && rts.array_rank == 0 &&
@@ -3948,6 +3952,10 @@ void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const ReturnStmt& s){
   }
 
 void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const IfStmt& s){
+    emit_control_flow_stmt(ctx, s);
+  }
+
+void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const IfStmt& s){
     TypeSpec cond_ts{};
     const std::string cond_v  = emit_rval_id(ctx, s.cond, cond_ts);
     const std::string cond_i1 = to_bool(ctx, cond_v, cond_ts);
@@ -3968,6 +3976,10 @@ void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const IfStmt& s){
   }
 
 void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const WhileStmt& s){
+    emit_control_flow_stmt(ctx, s);
+  }
+
+void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const WhileStmt& s){
     const std::string cond_lbl = s.continue_target
         ? block_lbl(*s.continue_target)
         : fresh_lbl(ctx, "while.cond.");
@@ -3985,6 +3997,10 @@ void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const WhileStmt& s){
   }
 
 void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const ForStmt& s){
+    emit_control_flow_stmt(ctx, s);
+  }
+
+void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const ForStmt& s){
     if (s.init) {
       TypeSpec ts{};
       emit_rval_id(ctx, *s.init, ts);
@@ -4016,6 +4032,10 @@ void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const ForStmt& s){
   }
 
 void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const DoWhileStmt& s){
+    emit_control_flow_stmt(ctx, s);
+  }
+
+void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const DoWhileStmt& s){
     const std::string body_lbl = block_lbl(s.body_block);
     const std::string end_lbl  = s.break_target
         ? block_lbl(*s.break_target)
@@ -4031,6 +4051,10 @@ void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const DoWhileStmt& s){
   }
 
 void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const SwitchStmt& s){
+    emit_control_flow_stmt(ctx, s);
+  }
+
+void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const SwitchStmt& s){
     TypeSpec ts{};
     std::string val = emit_rval_id(ctx, s.cond, ts);
     // C requires integer promotion on the controlling expression.
@@ -4100,6 +4124,10 @@ void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const SwitchStmt& s){
   }
 
 void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const GotoStmt& s){
+    emit_control_flow_stmt(ctx, s);
+  }
+
+void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const GotoStmt& s){
     if (ctx.vla_stack_save_ptr && s.target.resolved_block.valid() &&
         s.target.resolved_block.value <= ctx.current_block_id) {
       module_->need_stackrestore = true;
@@ -4113,6 +4141,10 @@ void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const GotoStmt& s){
   }
 
 void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const IndirBrStmt& s){
+    emit_control_flow_stmt(ctx, s);
+  }
+
+void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const IndirBrStmt& s){
     // Collect all user labels in this function as possible targets.
     std::vector<std::string> targets;
     for (const auto& bb : ctx.fn->blocks) {
@@ -4132,6 +4164,10 @@ void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const IndirBrStmt& s){
   }
 
 void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const LabelStmt& s){
+    emit_control_flow_stmt(ctx, s);
+  }
+
+void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const LabelStmt& s){
     if (ctx.last_term) {
       // We need a new basic block for the label
       emit_lbl(ctx, "ulbl_" + s.name);
@@ -4142,10 +4178,18 @@ void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const LabelStmt& s){
   }
 
 void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const BreakStmt& s){
+    emit_control_flow_stmt(ctx, s);
+  }
+
+void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const BreakStmt& s){
     if (s.target) emit_term_br(ctx, block_lbl(*s.target));
   }
 
 void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const ContinueStmt& s){
+    emit_control_flow_stmt(ctx, s);
+  }
+
+void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const ContinueStmt& s){
     if (!s.target) return;
     const auto it = ctx.continue_redirect.find(s.target->value);
     if (it != ctx.continue_redirect.end()) {

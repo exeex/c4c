@@ -272,6 +272,19 @@ class StmtEmitter {
   void emit_stmt_impl(FnCtx& ctx, const LocalDecl& d);
   void emit_stmt_impl(FnCtx& ctx, const ExprStmt& s);
   void emit_stmt_impl(FnCtx& ctx, const InlineAsmStmt& s);
+
+  void emit_control_flow_stmt(FnCtx& ctx, const ReturnStmt& s);
+  void emit_control_flow_stmt(FnCtx& ctx, const IfStmt& s);
+  void emit_control_flow_stmt(FnCtx& ctx, const WhileStmt& s);
+  void emit_control_flow_stmt(FnCtx& ctx, const ForStmt& s);
+  void emit_control_flow_stmt(FnCtx& ctx, const DoWhileStmt& s);
+  void emit_control_flow_stmt(FnCtx& ctx, const SwitchStmt& s);
+  void emit_control_flow_stmt(FnCtx& ctx, const GotoStmt& s);
+  void emit_control_flow_stmt(FnCtx& ctx, const IndirBrStmt& s);
+  void emit_control_flow_stmt(FnCtx& ctx, const LabelStmt& s);
+  void emit_control_flow_stmt(FnCtx& ctx, const BreakStmt& s);
+  void emit_control_flow_stmt(FnCtx& ctx, const ContinueStmt& s);
+
   void emit_stmt_impl(FnCtx& ctx, const ReturnStmt& s);
   void emit_stmt_impl(FnCtx& ctx, const IfStmt& s);
   void emit_stmt_impl(FnCtx& ctx, const WhileStmt& s);
