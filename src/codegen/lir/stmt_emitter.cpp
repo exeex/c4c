@@ -943,49 +943,8 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
 
 std::string StmtEmitter::emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeSpec& out_pts,
                                 BitfieldAccess* out_bf){
-    // Get base pointer
-    const Expr& base_e = get_expr(m.base);
-    TypeSpec base_ts = base_e.type.spec;
-    if (base_ts.base == TB_VOID && base_ts.ptr_level == 0)
-      base_ts = resolve_expr_type(ctx, m.base);
-    // Resolve typedef-wrapped types so struct/union checks below see the real base.
-    // resolve_expr_type returns stored type early; force payload-based resolution.
-    if (base_ts.base == TB_TYPEDEF) {
-      TypeSpec resolved = std::visit([&](const auto& p) -> TypeSpec {
-        return resolve_payload_type(ctx, p);
-      }, base_e.payload);
-      if (resolved.base != TB_VOID || resolved.ptr_level > 0)
-        base_ts = resolved;
-    }
-
-    std::string base_ptr;
-    if (m.is_arrow) {
-      // expr->field: load the pointer from the base expression
-      TypeSpec ptr_ts{};
-      base_ptr = emit_rval_id(ctx, m.base, ptr_ts);
-      base_ts = ptr_ts;
-      // Strip one pointer level for the struct type
-      if (base_ts.ptr_level > 0) base_ts.ptr_level--;
-    } else {
-      // expr.field: prefer direct lvalue; for struct rvalues materialize a temp.
-      TypeSpec dummy{};
-      try {
-        base_ptr = emit_lval_dispatch(ctx, base_e, dummy);
-      } catch (const std::runtime_error&) {
-        if (base_ts.base != TB_STRUCT && base_ts.base != TB_UNION) {
-          throw;
-        }
-        TypeSpec rval_ts{};
-        const std::string rval = emit_rval_id(ctx, m.base, rval_ts);
-        if (rval_ts.base != TB_VOID || rval_ts.ptr_level > 0 || rval_ts.array_rank > 0) {
-          base_ts = rval_ts;
-        }
-        const std::string slot = fresh_tmp(ctx) + ".agg";
-        ctx.alloca_insts.push_back(lir::LirAllocaOp{slot, llvm_alloca_ty(base_ts), "", 0});
-        emit_lir_op(ctx, lir::LirStoreOp{llvm_ty(base_ts), rval, slot});
-        base_ptr = slot;
-      }
-    }
+    TypeSpec base_ts = resolve_member_base_type(ctx, m.base, m.is_arrow);
+    const std::string base_ptr = emit_member_base_ptr(ctx, m, base_ts);
 
     const char* tag = base_ts.tag;
     if (!tag || !tag[0]) {
@@ -993,6 +952,50 @@ std::string StmtEmitter::emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeS
           "StmtEmitter: MemberExpr base has no struct tag (field='" + m.field + "')");
     }
     return emit_member_gep(ctx, base_ptr, tag, m.field, out_pts, out_bf);
+  }
+
+TypeSpec StmtEmitter::resolve_member_base_type(FnCtx& ctx, ExprId base_id, bool is_arrow){
+    const Expr& base_e = get_expr(base_id);
+    TypeSpec base_ts = base_e.type.spec;
+    if (base_ts.base == TB_VOID && base_ts.ptr_level == 0)
+      base_ts = resolve_expr_type(ctx, base_id);
+    // Resolve typedef-wrapped types so struct/union checks below see the real base.
+    // resolve_expr_type returns stored type early; force payload-based resolution.
+    if (base_ts.base == TB_TYPEDEF) {
+      TypeSpec resolved = std::visit([&](const auto& p) -> TypeSpec {
+        return resolve_payload_type(ctx, p);
+      }, base_e.payload);
+      if (resolved.base != TB_VOID || resolved.ptr_level > 0 || resolved.array_rank > 0)
+        base_ts = resolved;
+    }
+    if (is_arrow && base_ts.ptr_level > 0) base_ts.ptr_level--;
+    return base_ts;
+  }
+
+std::string StmtEmitter::emit_member_base_ptr(FnCtx& ctx, const MemberExpr& m, TypeSpec& base_ts){
+    if (m.is_arrow) {
+      TypeSpec ptr_ts{};
+      return emit_rval_id(ctx, m.base, ptr_ts);
+    }
+
+    const Expr& base_e = get_expr(m.base);
+    TypeSpec dummy{};
+    try {
+      return emit_lval_dispatch(ctx, base_e, dummy);
+    } catch (const std::runtime_error&) {
+      if (base_ts.base != TB_STRUCT && base_ts.base != TB_UNION) {
+        throw;
+      }
+      TypeSpec rval_ts{};
+      const std::string rval = emit_rval_id(ctx, m.base, rval_ts);
+      if (rval_ts.base != TB_VOID || rval_ts.ptr_level > 0 || rval_ts.array_rank > 0) {
+        base_ts = rval_ts;
+      }
+      const std::string slot = fresh_tmp(ctx) + ".agg";
+      ctx.alloca_insts.push_back(lir::LirAllocaOp{slot, llvm_alloca_ty(base_ts), "", 0});
+      emit_lir_op(ctx, lir::LirStoreOp{llvm_ty(base_ts), rval, slot});
+      return slot;
+    }
   }
 
 std::string StmtEmitter::emit_rval_from_access_ptr(FnCtx& ctx, const std::string& ptr,
@@ -1372,11 +1375,7 @@ TypeSpec StmtEmitter::resolve_payload_type(FnCtx&, const StringLiteral& sl){
 
 TypeSpec StmtEmitter::resolve_payload_type(FnCtx& ctx, const MemberExpr& m){
     // Look up the field type in struct_defs
-    const Expr& base_e = get_expr(m.base);
-    TypeSpec base_ts = base_e.type.spec;
-    if (base_ts.base == TB_VOID && base_ts.ptr_level == 0)
-      base_ts = resolve_expr_type(ctx, m.base);
-    if (m.is_arrow && base_ts.ptr_level > 0) base_ts.ptr_level--;
+    TypeSpec base_ts = resolve_member_base_type(ctx, m.base, m.is_arrow);
     if (!base_ts.tag || !base_ts.tag[0]) return {};
     std::vector<FieldStep> chain;
     TypeSpec field_ts{};

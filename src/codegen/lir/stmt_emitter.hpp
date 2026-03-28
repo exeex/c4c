@@ -176,6 +176,8 @@ class StmtEmitter {
   std::string emit_lval(FnCtx& ctx, ExprId id, TypeSpec& pointee_ts);
   std::string emit_va_list_obj_ptr(FnCtx& ctx, ExprId id, TypeSpec& ts);
   std::string emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec& pts);
+  TypeSpec resolve_member_base_type(FnCtx& ctx, ExprId base_id, bool is_arrow);
+  std::string emit_member_base_ptr(FnCtx& ctx, const MemberExpr& m, TypeSpec& base_ts);
   std::string emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeSpec& out_pts,
                                 BitfieldAccess* out_bf = nullptr);
   std::string emit_rval_from_access_ptr(FnCtx& ctx, const std::string& ptr,

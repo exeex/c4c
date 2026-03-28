@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: Extract Aggregate and Address-Lowering Helpers
-- Current slice: rescan [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) for the next duplicated aggregate/address-formation path after landing the shared indexed-element-type helper across `IndexExpr` and pointer-arithmetic GEP formation
+- Current slice: rescan [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) for the next duplicated aggregate/address-formation path after landing the shared `MemberExpr` base-type/base-pointer helpers
 
 ## Completed
 
@@ -60,10 +60,13 @@ Source Plan: plan.md
 - Extended [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) with a direct pointer-to-array indexing path (`pvalues[0][0]`, `pvalues[0][2]`) so compare mode keeps the indexed element-address rule pinned for array-object and pointer-to-array bases
 - Extracted `drop_one_indexed_element_type(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and reused it across `IndexExpr` lvalue lowering, `IndexExpr` type resolution, and pointer-arithmetic GEP element selection so those address-formation paths now share one local indexed-element contract
 - Verified `compare_smoke_aggregate_access`, the full `compare_case` label, and the clean full-suite regression guard with stable results (`2248` -> `2248` passed, zero failures; no new failing tests)
+- Extended [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) with typedef-carried `->` access and struct-rvalue `.` access so compare mode now pins both the `MemberExpr` base-pointer path and the aggregate-rvalue materialization path
+- Extracted `resolve_member_base_type(...)` and `emit_member_base_ptr(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp), reusing the shared base-resolution contract across `emit_member_lval(...)` and `resolve_payload_type(MemberExpr)` without changing downstream `emit_member_gep(...)` or access-load behavior
+- Verified `compare_smoke_aggregate_access`, the full `compare_case` label, Clang IR shape for the new aggregate-rvalue/member-base paths, and the clean full-suite regression guard (`2248` -> `2248` passed, zero failures; no new failing tests)
 
 ## Next Slice
 
-- Identify the next Step 3 address-formation duplication in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp), most likely around repeated member-base resolution/materialization for `.` vs `->` before `emit_member_gep(...)`
+- Re-scan Step 3 in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) for the next shared address-formation seam, most likely around remaining aggregate/member access work immediately upstream or downstream of `emit_member_gep(...)`
 
 ## Blockers
 
@@ -98,3 +101,5 @@ Source Plan: plan.md
 - The first Step 3 slice is intentionally narrow and behavior-preserving: unify only the post-address access behavior that decides between array decay, bitfield load, scalar load, or empty-void result after `IndexExpr`/`MemberExpr` already computed an access pointer
 - Step 3 uncovered a real clean-build blocker in pointer-to-array aggregate access (`block[2]`, `paa`, `pa0/pa1`, and typedef-carried multi-dimensional arrays): future address-lowering extractions need to watch `outer_array_rank(...)`, `is_ptr_to_array`, and `inner_rank` carefully so array objects and pointer-to-array values are not conflated
 - `drop_one_indexed_element_type(...)` now owns the "consume one indexing step from array/pointer/pointer-to-array type metadata" rule; the next Step 3 pass should look upstream at duplicated base-pointer acquisition or member-base materialization rather than re-spelling type-drop logic again
+- `resolve_member_base_type(...)` now owns the canonical `MemberExpr` base-type lookup for both field-type resolution and lvalue lowering, including typedef-unwrapping before struct/union tag checks
+- `emit_member_base_ptr(...)` now owns the `MemberExpr` base-pointer/materialization split between `->`, direct aggregate lvalues, and struct-rvalue temporary slots; the next Step 3 scan should look beyond member-base setup rather than reintroducing inline `MemberExpr` base handling
