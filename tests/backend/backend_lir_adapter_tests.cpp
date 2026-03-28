@@ -480,6 +480,30 @@ c4c::codegen::lir::LirModule make_string_literal_char_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_extern_decl_call_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.extern_decls.push_back(LirExternDecl{"helper_ext", "i32"});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"%t0", "i32", "@helper_ext", "", "i32 5"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 void test_adapts_direct_return() {
   const auto adapted = c4c::backend::adapt_return_only_module(make_return_zero_module());
   expect_true(adapted.functions.size() == 1, "adapter should preserve one function");
@@ -761,6 +785,18 @@ void test_aarch64_backend_renders_string_pool_slice() {
                   "aarch64 backend should preserve the promoted string-literal result");
 }
 
+void test_aarch64_backend_renders_extern_decl_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_extern_decl_call_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "declare i32 @helper_ext(...)\n",
+                  "aarch64 backend should render module extern declarations");
+  expect_contains(rendered, "define i32 @main()\n{\nentry:\n  %t0 = call i32 @helper_ext(i32 5)\n",
+                  "aarch64 backend should preserve direct calls that target extern declarations");
+  expect_contains(rendered, "ret i32 %t0",
+                  "aarch64 backend should preserve the extern call result");
+}
+
 }  // namespace
 
 int main() {
@@ -782,5 +818,6 @@ int main() {
   test_aarch64_backend_renders_nested_param_member_array_gep_slice();
   test_aarch64_backend_renders_global_definition_slice();
   test_aarch64_backend_renders_string_pool_slice();
+  test_aarch64_backend_renders_extern_decl_slice();
   return 0;
 }

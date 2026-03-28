@@ -7,11 +7,11 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3: port the first integer/control-flow slice
-- Iteration slice: prepare the next bounded AArch64 Step 3 slice after landing module-level string-pool definitions, keeping the work target-local and mechanically aligned with ref
+- Iteration slice: inspect the next bounded AArch64 Step 3 follow-on after landing module-level extern declarations, keeping the work target-local and mechanically aligned with ref `codegen/globals.rs`
 
 ## Next Intended Slice
 
-- inspect the next narrow global-addressing follow-on after module string-pool definitions, likely extern declarations or explicit external-global usage that maps onto ref `codegen/globals.rs`
+- inspect the next narrow global-addressing follow-on after module extern declarations, likely explicit external-global usage or target-local global-address helper rendering that maps onto ref `codegen/globals.rs`
 - keep the next slice focused on one target-local helper boundary or one missing runtime-backed backend capability
 - avoid broadening beyond the active AArch64 Step 3 runbook without recording a separate idea
 
@@ -69,6 +69,11 @@ Source Plan: plan.md
 - added `tests/c/internal/backend_case/string_literal_char.c` for runtime coverage of string-literal byte loads on supported AArch64 hosts
 - verified `backend_lir_adapter_tests` and `backend_runtime_string_literal_char` pass for the new string-pool slice
 - reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=496/510 -> 498/511` and zero newly failing tests; one unrelated prior C++ failure dropped from the failing set
+- added target-local AArch64 module extern-declaration rendering in `src/backend/aarch64/globals.*`
+- removed the AArch64 module-level validation rejection for `extern_decls` in `src/backend/aarch64/prologue.cpp`
+- added unit coverage for AArch64 extern-declared direct calls in `tests/backend/backend_lir_adapter_tests.cpp`
+- verified `backend_lir_adapter_tests` and the existing targeted AArch64 backend runtime tests pass after landing the extern-declaration slice
+- reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=496/510 -> 498/511` and zero newly failing tests; one unrelated prior C++ failure dropped from the failing set
 
 ## Blockers
 
@@ -95,3 +100,4 @@ Source Plan: plan.md
 - module validation plus function/module prologue rendering are now isolated in `src/backend/aarch64/prologue.*`; `src/backend/aarch64/frame.*` is down to entry allocas plus function epilogue helpers
 - plain module global definitions now render through `src/backend/aarch64/globals.*`; `string_pool` and `extern_decls` remain out of slice and are the most obvious next global-addressing boundaries
 - module string-pool definitions now also render through `src/backend/aarch64/globals.*`; `extern_decls` remains the next most obvious module-level global-addressing boundary
+- module extern declarations now also render through `src/backend/aarch64/globals.*`; the next obvious global-addressing follow-on is explicit external-global usage or other target-local symbol-address helpers aligned with ref `codegen/globals.rs`

@@ -34,4 +34,12 @@ void render_module_globals(std::ostream& out,
   }
 }
 
+void render_module_extern_decls(std::ostream& out,
+                                const c4c::codegen::lir::LirModule& module) {
+  for (const auto& decl : module.extern_decls) {
+    out << "declare " << decl.return_type_str << " "
+        << c4c::codegen::llvm_helpers::llvm_global_sym(decl.name) << "(...)\n";
+  }
+}
+
 }  // namespace c4c::backend::aarch64
