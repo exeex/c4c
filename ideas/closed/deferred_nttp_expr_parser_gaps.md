@@ -2,7 +2,7 @@
 
 ## Status
 
-Open.
+Complete.
 
 ## Summary
 
@@ -84,3 +84,27 @@ Expected:
 - Align the HIR deferred-expression evaluator with the parser-side reference
   behavior for arithmetic, template static-member lookup, and `sizeof...(pack)`
   before expanding Step 4 beyond helper isolation.
+
+## Completion Notes
+
+- Added focused internal HIR regressions for the three documented missing
+  mechanisms:
+  `cpp_hir_template_deferred_nttp_arith_expr`,
+  `cpp_hir_template_deferred_nttp_static_member_expr`, and
+  `cpp_hir_template_deferred_nttp_sizeof_pack_expr`.
+- The deferred NTTP path now materializes arithmetic defaults, dependent
+  template static-member lookups, and `sizeof...(pack)` defaults into concrete
+  HIR instantiations for the repro cases tracked by this idea.
+- Step 4 revalidation kept the deferred-NTTP HIR subset green and preserved the
+  existing full-suite status with no new failures introduced by this work.
+
+## Leftover Issues
+
+- No remaining deferred NTTP gaps were found inside the documented arithmetic,
+  static-member, and pack-size scope of this idea.
+- The `sizeof...(Ts)` repro remains an internal HIR regression rather than a
+  Clang-conformance target because the specific template-parameter ordering in
+  the source example is non-standard and rejected by Clang.
+- The repository still has seven pre-existing unrelated full-suite failures in
+  the existing template/sema and initializer-list cluster; this idea did not
+  expand to address them.
