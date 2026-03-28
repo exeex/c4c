@@ -6,7 +6,7 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 2: Evaluate `src/backend/aarch64/assembler/mod.cpp` as the next top-level AArch64-local compile-integration candidate, and promote it only if it stays stub-light enough to avoid pulling the linker initiative into the active slice
+- [ ] Step 2: Evaluate `src/backend/aarch64/assembler/parser.cpp` as the next AArch64-local compile-integration candidate, and promote it only if it stays stub-light enough to avoid pulling encoder or linker work into the active slice
 
 ## Planned Queue
 
@@ -40,12 +40,13 @@ Source Plan: plan.md
 - [x] Evaluated `src/backend/elf/mod.cpp` and promoted it into both `c4cll` and `backend_lir_adapter_tests`; it remains a stub-only shared backend mirror with no new dependency edges, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and full `ctest --test-dir build -j8 --output-on-failure` still reports the same 4 known unrelated failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
 - [x] Evaluated `src/backend/aarch64/mod.cpp` and promoted it into both `c4cll` and `backend_lir_adapter_tests`; it remains a comment-only AArch64-local mirror with no new dependency edges, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and the regression guard reports `549/553` passed both before and after with the same 4 known unrelated full-suite failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
 - [x] Evaluated `src/backend/aarch64/codegen/mod.cpp` and promoted it into both `c4cll` and `backend_lir_adapter_tests`; it remains a comment-only AArch64-local mirror alongside the existing `emit.*` shim, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and both `test_before.log` and `test_after.log` preserve the same `549/553` pass count with the same 4 known unrelated full-suite failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
+- [x] Evaluated `src/backend/aarch64/assembler/mod.cpp` and promoted it into both `c4cll` and `backend_lir_adapter_tests`; it stays stub-light by using a local placeholder `AsmStatement` instead of dragging in parser or linker wiring, `clang++ -std=c++17 -fsyntax-only src/backend/aarch64/assembler/mod.cpp` succeeds, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and the regression guard reports `549/553` passed both before and after with the same 4 known unrelated full-suite failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
 
 ## Next Intended Slice
 
-- evaluate `src/backend/aarch64/assembler/mod.cpp` next as the next top-level AArch64-local compile-integration candidate now that `src/backend/aarch64/codegen/mod.cpp` landed cleanly
+- evaluate `src/backend/aarch64/assembler/parser.cpp` next as the next AArch64-local compile-integration candidate now that `src/backend/aarch64/assembler/mod.cpp` lands cleanly
 - keep the AArch64 shim thin until the shared backend slice grows enough to replace LLVM-text passthroughs deliberately
-- defer linker-heavy AArch64 modules until the plain shared backend slice is build-reachable
+- defer encoder-heavy and linker-heavy AArch64 modules until the plain shared backend slice is build-reachable
 
 ## Blockers
 
@@ -77,4 +78,5 @@ Source Plan: plan.md
 - latest validation: after adding `src/backend/elf/mod.cpp` to both build targets, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and full `ctest --test-dir build -j8 --output-on-failure` still reports the same 4 known unrelated failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
 - latest validation: after adding `src/backend/aarch64/mod.cpp` to both build targets, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, `ctest --test-dir build -j8 --output-on-failure` still reports the same 4 known unrelated failures, and `check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passes with no new failing tests
 - latest validation: after adding `src/backend/aarch64/codegen/mod.cpp` to both build targets, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and both `test_before.log` and `test_after.log` still report `549/553` passed with the same 4 known unrelated failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
-- next candidate: evaluate `src/backend/aarch64/assembler/mod.cpp` next, but only promote it if it stays stub-light and does not drag the AArch64 linker modules into the active slice
+- latest validation: after adding `src/backend/aarch64/assembler/mod.cpp` to both build targets, `clang++ -std=c++17 -fsyntax-only src/backend/aarch64/assembler/mod.cpp` succeeds, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, `ctest --test-dir build -j8 --output-on-failure` still reports the same 4 known unrelated failures, and `check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passes with no new failing tests
+- next candidate: evaluate `src/backend/aarch64/assembler/parser.cpp` next, but only promote it if it stays stub-light and does not drag the encoder or linker modules into the active slice

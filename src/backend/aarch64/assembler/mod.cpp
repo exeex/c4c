@@ -1,9 +1,12 @@
+#include <cstddef>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace c4c::backend::aarch64::assembler {
 
-struct AsmStatement;
+// Placeholder until the translated parser surface is wired into this module.
+struct AsmStatement {};
 
 std::vector<AsmStatement> expand_literal_pools(const std::vector<AsmStatement>& statements) {
   return statements;
