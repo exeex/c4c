@@ -328,6 +328,41 @@ c4c::codegen::lir::LirModule make_nested_member_pointer_array_gep_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_nested_param_member_array_gep_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.Inner = type { [2 x i32] }");
+  module.type_decls.push_back("%struct.Outer = type { %struct.Inner }");
+
+  LirFunction function;
+  function.name = "get_second";
+  function.signature_text = "define i32 @get_second(%struct.Outer %p.o)\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.param.o", "%struct.Outer", "", 4});
+  function.alloca_insts.push_back(
+      LirStoreOp{"%struct.Outer", "%p.o", "%lv.param.o"});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(
+      LirGepOp{"%t0", "%struct.Outer", "%lv.param.o", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(
+      LirGepOp{"%t1", "%struct.Inner", "%t0", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(
+      LirCastOp{"%t2", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t3", "i32", "%t1", false, {"i64 %t2"}});
+  entry.insts.push_back(LirLoadOp{"%t4", "i32", "%t3"});
+  entry.terminator = LirRet{std::string("%t4"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 void test_adapts_direct_return() {
   const auto adapted = c4c::backend::adapt_return_only_module(make_return_zero_module());
   expect_true(adapted.functions.size() == 1, "adapter should preserve one function");
@@ -531,6 +566,28 @@ void test_aarch64_backend_renders_nested_member_pointer_array_gep_slice() {
                   "aarch64 backend should preserve the loaded nested member-pointer result");
 }
 
+void test_aarch64_backend_renders_nested_param_member_array_gep_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_nested_param_member_array_gep_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "%struct.Inner = type { [2 x i32] }",
+                  "aarch64 backend should preserve nested by-value member type declarations");
+  expect_contains(rendered, "%struct.Outer = type { %struct.Inner }",
+                  "aarch64 backend should preserve nested by-value outer type declarations");
+  expect_contains(rendered, "%lv.param.o = alloca %struct.Outer, align 4",
+                  "aarch64 backend should spill nested by-value parameters into stack slots");
+  expect_contains(rendered, "store %struct.Outer %p.o, ptr %lv.param.o",
+                  "aarch64 backend should store nested by-value parameters into their slots");
+  expect_contains(rendered, "%t0 = getelementptr %struct.Outer, ptr %lv.param.o, i32 0, i32 0",
+                  "aarch64 backend should render the outer nested by-value member-addressing GEP");
+  expect_contains(rendered, "%t1 = getelementptr %struct.Inner, ptr %t0, i32 0, i32 0",
+                  "aarch64 backend should render the inner nested by-value member-addressing GEP");
+  expect_contains(rendered, "%t3 = getelementptr i32, ptr %t1, i64 %t2",
+                  "aarch64 backend should render indexed nested by-value member-array addressing");
+  expect_contains(rendered, "ret i32 %t4",
+                  "aarch64 backend should preserve the loaded nested by-value member-array result");
+}
+
 }  // namespace
 
 int main() {
@@ -547,5 +604,6 @@ int main() {
   test_aarch64_backend_renders_local_array_gep_slice();
   test_aarch64_backend_renders_param_member_array_gep_slice();
   test_aarch64_backend_renders_nested_member_pointer_array_gep_slice();
+  test_aarch64_backend_renders_nested_param_member_array_gep_slice();
   return 0;
 }
