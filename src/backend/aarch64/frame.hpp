@@ -15,6 +15,5 @@ void render_function_prologue(std::ostream& out,
 void render_entry_allocas(std::ostream& out,
                           const c4c::codegen::lir::LirFunction& function);
 void render_function_epilogue(std::ostream& out);
-void render_return(std::ostream& out, const c4c::codegen::lir::LirRet& ret);
 
 }  // namespace c4c::backend::aarch64

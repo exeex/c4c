@@ -59,6 +59,28 @@ c4c::codegen::lir::LirModule make_return_add_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_void_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "helper";
+  function.signature_text = "define void @helper()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock block;
+  block.id = LirBlockId{0};
+  block.label = "entry";
+  block.terminator = LirRet{};
+  function.blocks.push_back(std::move(block));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_conditional_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -408,6 +430,16 @@ void test_aarch64_backend_scaffold_renders_supported_slice() {
                   "aarch64 scaffold should preserve the current return path");
 }
 
+void test_aarch64_backend_renders_void_return_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_void_return_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "define void @helper()",
+                  "aarch64 backend should preserve void signatures");
+  expect_contains(rendered, "ret void",
+                  "aarch64 backend should render void returns");
+}
+
 void test_aarch64_backend_renders_compare_and_branch_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_conditional_return_module()},
@@ -595,6 +627,7 @@ int main() {
   test_renders_return_add();
   test_rejects_unsupported_instruction();
   test_aarch64_backend_scaffold_renders_supported_slice();
+  test_aarch64_backend_renders_void_return_slice();
   test_aarch64_backend_renders_compare_and_branch_slice();
   test_aarch64_backend_scaffold_rejects_out_of_slice_ir();
   test_aarch64_backend_renders_direct_call_slice();

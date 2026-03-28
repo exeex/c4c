@@ -7,12 +7,12 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3: port the first integer/control-flow slice
-- Iteration slice: split the ref prologue/return helpers deeper into `src/backend/aarch64/`
+- Iteration slice: extract the remaining target-local AArch64 prologue/frame helpers from `src/backend/aarch64/frame.*` without changing behavior
 
 ## Next Intended Slice
 
-- start splitting the current frame/return path toward ref-shaped target-local helpers without changing the backend boundary
-- keep the next helper extraction focused on target-local prologue/return structure, not new backend capability
+- split function header/prologue rendering away from the remaining validation and module-header helpers
+- keep the next helper extraction focused on target-local prologue structure, not new backend capability
 - keep target-local casts aligned with real AArch64 addressing IR as new memory slices land
 
 ## Completed Items
@@ -53,6 +53,9 @@ Source Plan: plan.md
 - added `tests/c/internal/backend_case/nested_param_member_array.c` for nested by-value member-array runtime coverage on supported AArch64 hosts
 - verified `backend_lir_adapter_tests` and `backend_runtime_nested_param_member_array` pass for the new nested by-value stack-addressing slice
 - rebuilt from a clean `build/` directory, recorded `test_fail_after.log`, and passed the monotonic regression guard against `test_fail_before.log` with `passed=495/508 -> 496/509` and zero newly failing tests
+- added unit coverage for AArch64 `ret void` rendering in `tests/backend/backend_lir_adapter_tests.cpp`
+- extracted target-local AArch64 return rendering from `src/backend/aarch64/frame.cpp` into `src/backend/aarch64/returns.*`
+- rebuilt from a clean `build/` directory, recorded `test_fail_after.log`, and passed the maintenance regression guard against `test_fail_before.log` with `passed=496/509 -> 496/509` and zero newly failing tests
 
 ## Blockers
 
@@ -76,3 +79,4 @@ Source Plan: plan.md
 - verified `backend_lir_adapter_tests` and `backend_runtime_nested_member_pointer_array` pass for the new nested member-pointer stack-addressing slice
 - reran the full `ctest --test-dir build -j --output-on-failure` suite after landing the new coverage; the regression guard passed with `passed=494/507 -> 495/508`, zero newly failing tests, and the new backend runtime test accounted for the pass-count increase
 - nested by-value aggregate member-array addressing also lowers through the current target-local AArch64 memory helpers; this iteration codifies that slice in repo tests
+- return emission is now isolated in `src/backend/aarch64/returns.*`; the remaining frame file still bundles validation, module-header, and function-prologue helpers
