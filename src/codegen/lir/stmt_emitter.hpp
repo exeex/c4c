@@ -68,6 +68,11 @@ struct AssignableLValue {
   bool is_bitfield() const { return bf.is_bitfield(); }
 };
 
+struct LoadedAssignableValue {
+  std::string value;
+  TypeSpec value_ts{};
+};
+
 class StmtEmitter {
  public:
   explicit StmtEmitter(const Module& m);
@@ -203,6 +208,7 @@ class StmtEmitter {
   std::string emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeSpec& out_pts,
                                 BitfieldAccess* out_bf = nullptr);
   AssignableLValue emit_assignable_lval(FnCtx& ctx, ExprId id);
+  LoadedAssignableValue emit_load_assignable_value(FnCtx& ctx, const AssignableLValue& lhs);
   std::string emit_store_assignable_value(FnCtx& ctx, const AssignableLValue& lhs,
                                           const std::string& value,
                                           const TypeSpec& value_ts,

@@ -976,6 +976,21 @@ AssignableLValue StmtEmitter::emit_assignable_lval(FnCtx& ctx, ExprId id) {
     return access;
 }
 
+LoadedAssignableValue StmtEmitter::emit_load_assignable_value(FnCtx& ctx,
+                                                              const AssignableLValue& lhs) {
+    LoadedAssignableValue loaded;
+    if (lhs.is_bitfield()) {
+      loaded.value_ts = bitfield_promoted_ts(lhs.bf);
+      loaded.value = emit_bitfield_load(ctx, lhs.ptr, lhs.bf);
+      return loaded;
+    }
+
+    loaded.value_ts = lhs.pointee_ts;
+    loaded.value = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirLoadOp{loaded.value, llvm_ty(lhs.pointee_ts), lhs.ptr});
+    return loaded;
+}
+
 std::string StmtEmitter::emit_store_assignable_value(FnCtx& ctx, const AssignableLValue& lhs,
                                                      const std::string& value,
                                                      const TypeSpec& value_ts,
@@ -992,36 +1007,33 @@ std::string StmtEmitter::emit_assignable_incdec_value(FnCtx& ctx, const Assignab
                                                       bool increment,
                                                       bool return_updated_value) {
     if (lhs.is_bitfield()) {
-      const int pbits = bitfield_promoted_bits(lhs.bf);
-      const std::string pty = "i" + std::to_string(pbits);
-      const std::string old_val = emit_bitfield_load(ctx, lhs.ptr, lhs.bf);
+      const LoadedAssignableValue loaded = emit_load_assignable_value(ctx, lhs);
+      const std::string pty = llvm_ty(loaded.value_ts);
       const std::string delta = increment ? "1" : "-1";
       const std::string new_val = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirBinOp{new_val, "add", pty, old_val, delta});
-      TypeSpec promoted_ts = bitfield_promoted_ts(lhs.bf);
+      emit_lir_op(ctx, lir::LirBinOp{new_val, "add", pty, loaded.value, delta});
       const std::string stored =
-          emit_store_assignable_value(ctx, lhs, new_val, promoted_ts, return_updated_value);
-      return return_updated_value ? stored : old_val;
+          emit_store_assignable_value(ctx, lhs, new_val, loaded.value_ts, return_updated_value);
+      return return_updated_value ? stored : loaded.value;
     }
 
-    const std::string pty = llvm_ty(lhs.pointee_ts);
-    const std::string old_val = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirLoadOp{old_val, pty, lhs.ptr});
+    const LoadedAssignableValue loaded = emit_load_assignable_value(ctx, lhs);
+    const std::string pty = llvm_ty(loaded.value_ts);
 
     const std::string new_val = fresh_tmp(ctx);
     if (pty == "ptr") {
       const std::string delta = increment ? "1" : "-1";
-      emit_lir_op(ctx, lir::LirGepOp{new_val, indexed_gep_elem_ty(lhs.pointee_ts), old_val, false,
+      emit_lir_op(ctx, lir::LirGepOp{new_val, indexed_gep_elem_ty(lhs.pointee_ts), loaded.value, false,
                                      {"i64 " + delta}});
-    } else if (is_float_base(lhs.pointee_ts.base)) {
+    } else if (is_float_base(loaded.value_ts.base)) {
       const std::string delta = increment ? "1.0" : "-1.0";
-      emit_lir_op(ctx, lir::LirBinOp{new_val, "fadd", pty, old_val, delta});
+      emit_lir_op(ctx, lir::LirBinOp{new_val, "fadd", pty, loaded.value, delta});
     } else {
       const std::string delta = increment ? "1" : "-1";
-      emit_lir_op(ctx, lir::LirBinOp{new_val, "add", pty, old_val, delta});
+      emit_lir_op(ctx, lir::LirBinOp{new_val, "add", pty, loaded.value, delta});
     }
     emit_store_assignable_value(ctx, lhs, new_val, lhs.pointee_ts, false);
-    return return_updated_value ? new_val : old_val;
+    return return_updated_value ? new_val : loaded.value;
 }
 
 std::string StmtEmitter::emit_set_assign_value(FnCtx& ctx, const AssignableLValue& lhs,
@@ -1048,13 +1060,11 @@ std::string StmtEmitter::emit_compound_assign_value(FnCtx& ctx, const Assignable
 
     if (lhs.is_bitfield()) {
       const BitfieldAccess& bf = lhs.bf;
-      const int pbits = bitfield_promoted_bits(bf);
-      const std::string promoted_ty = "i" + std::to_string(pbits);
-      TypeSpec promoted_ts = bitfield_promoted_ts(bf);
-      const std::string loaded = emit_bitfield_load(ctx, lhs.ptr, bf);
-      std::string lhs_op = loaded;
-      std::string rhs_op = coerce(ctx, rhs, rhs_ts, promoted_ts);
-      const bool ls = is_signed_int(promoted_ts.base);
+      const LoadedAssignableValue loaded = emit_load_assignable_value(ctx, lhs);
+      const std::string promoted_ty = llvm_ty(loaded.value_ts);
+      std::string lhs_op = loaded.value;
+      std::string rhs_op = coerce(ctx, rhs, rhs_ts, loaded.value_ts);
+      const bool ls = is_signed_int(loaded.value_ts.base);
       const char* instr = nullptr;
       static const struct { AssignOp op; const char* is; const char* iu; } tbl[] = {
         {AssignOp::Add, "add", "add"}, {AssignOp::Sub, "sub", "sub"},
@@ -1069,11 +1079,10 @@ std::string StmtEmitter::emit_compound_assign_value(FnCtx& ctx, const Assignable
       if (!instr) throw std::runtime_error("StmtEmitter: bitfield compound assign: unknown op");
       const std::string result = fresh_tmp(ctx);
       emit_lir_op(ctx, lir::LirBinOp{result, std::string(instr), promoted_ty, lhs_op, rhs_op});
-      return emit_store_assignable_value(ctx, lhs, result, promoted_ts, false);
+      return emit_store_assignable_value(ctx, lhs, result, loaded.value_ts, false);
     }
 
-    const std::string loaded = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirLoadOp{loaded, lty, lhs.ptr});
+    const LoadedAssignableValue loaded = emit_load_assignable_value(ctx, lhs);
 
     if ((op == AssignOp::Add || op == AssignOp::Sub) && lty == "ptr") {
       TypeSpec i64_ts{};
@@ -1094,7 +1103,7 @@ std::string StmtEmitter::emit_compound_assign_value(FnCtx& ctx, const Assignable
           (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
               ? "i8" : llvm_ty(elem_ts);
       const std::string result = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirGepOp{result, gep_ety3, loaded, false, {"i64 " + delta}});
+      emit_lir_op(ctx, lir::LirGepOp{result, gep_ety3, loaded.value, false, {"i64 " + delta}});
       return emit_store_assignable_value(ctx, lhs, result, lhs_ts, false);
     }
 
@@ -1114,7 +1123,8 @@ std::string StmtEmitter::emit_compound_assign_value(FnCtx& ctx, const Assignable
            row.bop == BinaryOp::Mul || row.bop == BinaryOp::Div) &&
           (is_complex_base(lhs_ts.base) || is_complex_base(rhs_ts.base))) {
         const std::string result =
-            emit_complex_binary_arith(ctx, row.bop, loaded, lhs_ts, coerced_rhs, rhs_ts, lhs_ts);
+            emit_complex_binary_arith(ctx, row.bop, loaded.value, lhs_ts, coerced_rhs, rhs_ts,
+                                      lhs_ts);
         return emit_store_assignable_value(ctx, lhs, result, lhs_ts, false);
       }
       if (is_vector_value(lhs_ts)) {
@@ -1157,8 +1167,8 @@ std::string StmtEmitter::emit_compound_assign_value(FnCtx& ctx, const Assignable
     if (!instr) throw std::runtime_error("StmtEmitter: compound assign: unknown op");
 
     const std::string op_ty = llvm_ty(op_ts);
-    std::string lhs_op = loaded;
-    if (op_ty != lty) lhs_op = coerce(ctx, loaded, lhs_ts, op_ts);
+    std::string lhs_op = loaded.value;
+    if (op_ty != lty) lhs_op = coerce(ctx, loaded.value, lhs_ts, op_ts);
     const std::string result = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirBinOp{result, std::string(instr), op_ty, lhs_op, coerced_rhs});
     std::string store_v = result;

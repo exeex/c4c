@@ -7,10 +7,13 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 4: Extract Assignment and Store Helpers
-- Current slice: re-scan Step 4 above the operator-specific arithmetic tables now that `emit_rval_payload(const AssignExpr&)` is a small coordinator over `emit_set_assign_value(...)` and `emit_compound_assign_value(...)`
+- Current slice: re-scan the remaining non-bitfield assignment coordination above the operator tables now that unary inc/dec and compound assignment share one `emit_load_assignable_value(...)` entrypoint
 
 ## Completed
 
+- Extended [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) with float pre-increment, float `+=`, and float post-decrement coverage so compare mode now pins the shared assignable-load path across unary update and compound assignment on non-integer scalar lvalues
+- Extracted `emit_load_assignable_value(...)` plus shared `LoadedAssignableValue` metadata in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp), so unary inc/dec and compound assignment reuse one bitfield-vs-load coordinator before their existing arithmetic/store logic runs
+- Verified `compare_smoke_aggregate_access`, the full `compare_case` label, and the clean full-suite regression guard with stable results (`2248` -> `2248` passed, zero failures; `check_monotonic_regression.py --allow-non-decreasing-passed` accepted the shared-load Step 4 slice)
 - Extended [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) with pointer-to-array simple-assignment coverage so compare mode now pins `AssignOp::Set` on non-bitfield pointer lvalues in both expression-result and post-store forms alongside the existing scalar, bitfield, and pointer compound-assignment cases
 - Extracted `emit_set_assign_value(...)` and `emit_compound_assign_value(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp), so `emit_rval_payload(const AssignExpr&)` now dispatches through named simple-vs-compound assignment helpers without changing the inline operator-selection tables
 - Verified `compare_smoke_aggregate_access`, the full `compare_case` label, and the clean full-suite regression guard with stable results (`2248` -> `2248` passed, zero failures; `check_monotonic_regression.py --allow-non-decreasing-passed` accepted the Step 4 `AssignExpr` helper slice)
@@ -91,7 +94,7 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Extract the next local Step 4 helper above the operator-specific arithmetic paths, likely around the shared "load current LHS value, choose result/store types, then write back" flow used by non-bitfield compound assignment sites
+- Extract the next local Step 4 helper above the operator-specific arithmetic paths, likely around the remaining non-bitfield compound-assignment coordination that still chooses operation/result coercion inline after `emit_load_assignable_value(...)`
 
 ## Blockers
 
@@ -137,3 +140,4 @@ Source Plan: plan.md
 - This iteration targets the post-address materialization seam: both `emit_rval_payload(const IndexExpr&)` and `emit_rval_payload(const MemberExpr&)` still compute an access pointer and then locally decide between array decay, scalar load, or empty-void results before returning
 - Step 4 is now active: `emit_assignable_lval(...)` owns the shared member-aware / bitfield-aware LHS setup for unary inc/dec and assignment lowering, so the next pass should stay above the arithmetic tables and look for the next reusable assignment/store coordinator seam
 - This iteration targeted the final `AssignExpr` store/reload decision after arithmetic was already computed; the next Step 4 scan should decide whether unary inc/dec can reuse that same contract or whether another assignment-only coordination seam remains above the operator tables
+- `emit_load_assignable_value(...)` now owns the shared bitfield-vs-load decision for unary inc/dec and compound assignment; the next Step 4 pass should stay above that loader and look for the remaining non-bitfield result-type/coercion coordination seam without touching the operator tables
