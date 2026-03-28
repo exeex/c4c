@@ -147,7 +147,20 @@ TypeSpec field_decl_ts(const HirStructField& f) {
 
 bool collect_aarch64_hfa_elements(const Module& mod, const TypeSpec& ts,
                                   TypeBase* elem_base, int* elem_count) {
-  if (ts.ptr_level != 0 || ts.array_rank != 0) return false;
+  if (ts.ptr_level != 0) return false;
+  if (ts.array_rank > 0) {
+    if (ts.array_size <= 0) return false;
+    TypeSpec elem = ts;
+    elem.array_rank--;
+    for (int i = 0; i < 8; ++i) {
+      elem.array_dims[i] = (i + 1 < 8) ? ts.array_dims[i + 1] : -1;
+    }
+    elem.array_size = (elem.array_rank > 0) ? elem.array_dims[0] : -1;
+    for (int i = 0; i < ts.array_size; ++i) {
+      if (!collect_aarch64_hfa_elements(mod, elem, elem_base, elem_count)) return false;
+    }
+    return true;
+  }
   if (ts.base == TB_FLOAT || ts.base == TB_DOUBLE) {
     if (*elem_count == 0) {
       *elem_base = ts.base;

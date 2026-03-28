@@ -7,11 +7,11 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3: port the first integer/control-flow slice
-- Iteration slice: inspect the next Linux AArch64 variadic helper follow-on after landing the first homogeneous floating-point aggregate `va_arg` path for a two-`double` by-value struct; keep the next step within one target-local helper boundary
+- Iteration slice: compare the next bounded Linux AArch64 variadic helper edge against Clang on `aarch64-unknown-linux-gnu`; prefer one additional HFA shape such as nested-array or four-lane cardinality before widening further
 
 ## Next Intended Slice
 
-- compare the next bounded Linux AArch64 variadic helper edge against Clang on `aarch64-unknown-linux-gnu`; prefer one additional homogeneous floating-point aggregate cardinality or another single helper-class boundary before widening further
+- compare the next bounded Linux AArch64 variadic helper edge against Clang on `aarch64-unknown-linux-gnu`; prefer one additional HFA shape such as nested-array or four-lane cardinality before widening further
 - keep the next slice focused on one target-local helper boundary or one missing runtime-backed backend capability
 - avoid broadening beyond the active AArch64 Step 3 runbook without recording a separate idea
 
@@ -135,6 +135,11 @@ Source Plan: plan.md
 - taught AArch64 variadic aggregate lowering in `src/codegen/lir/stmt_emitter.cpp` to classify small homogeneous floating-point structs and materialize them from the VR save area through a contiguous temporary buffer before the existing aggregate copy path
 - verified `backend_lir_adapter_tests`, `backend_lir_aarch64_variadic_double_ir`, `backend_lir_aarch64_variadic_long_double_ir`, `backend_lir_aarch64_variadic_pair_ir`, `backend_lir_aarch64_variadic_bigints_ir`, and `backend_lir_aarch64_variadic_dpair_ir` pass for the new homogeneous floating-point aggregate slice
 - reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=533/538 -> 536/541`, zero newly failing tests, and the same five unrelated failures before and after
+- compared the next Linux AArch64 variadic helper edge against Clang on `aarch64-unknown-linux-gnu` and found that array-backed homogeneous floating-point aggregates still need the VR-save-area helper path
+- added `tests/c/internal/backend_ir_case/variadic_float_array_bytes.c` plus `backend_lir_aarch64_variadic_float_array_ir` in `tests/c/internal/InternalTests.cmake` to lock the array-backed HFA helper path onto the expected `[2 x float]` + `vaarg.fp.*` + `llvm.memcpy` IR shape
+- extended AArch64 HFA classification in `src/codegen/lir/stmt_emitter.cpp` to recurse through fixed-size array members so homogeneous FP array fields stay on the Linux AArch64 FP-save-area path
+- verified `backend_lir_adapter_tests`, `backend_lir_aarch64_variadic_double_ir`, `backend_lir_aarch64_variadic_long_double_ir`, `backend_lir_aarch64_variadic_pair_ir`, `backend_lir_aarch64_variadic_bigints_ir`, `backend_lir_aarch64_variadic_dpair_ir`, and `backend_lir_aarch64_variadic_float_array_ir` pass for the new array-backed HFA slice
+- reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=533/538 -> 537/542`, zero newly failing tests, and the same five unrelated failures before and after
 
 ## Blockers
 
@@ -171,3 +176,4 @@ Source Plan: plan.md
 - the first small by-value aggregate `va_arg` probe now also matches the expected Linux AArch64 helper pattern via `phi ptr` plus `llvm.memcpy`; on Darwin hosts this slice remains IR-only because the active runtime contract in repo tests is tied to the Linux `__va_list` layout
 - larger-than-16-byte aggregate `va_arg` probes now also have explicit repo coverage for the Linux AArch64 indirect-helper shape via `phi ptr`, `load ptr`, and `llvm.memcpy`; runtime validation remains host-gated because the active variadic aggregate contract in repo tests is Linux-specific
 - the first homogeneous floating-point aggregate variadic probe now also matches the expected Linux AArch64 VR-save-area helper pattern via `[2 x double]`, `vaarg.fp.*`, and `llvm.memcpy`; the next likely follow-on is another bounded HFA cardinality or adjacent single helper-class edge rather than broad variadic expansion
+- array-backed homogeneous floating-point variadic probes now also match the expected Linux AArch64 VR-save-area helper pattern via `[2 x float]`, `vaarg.fp.*`, and `llvm.memcpy`; the next likely follow-on is another bounded HFA shape such as nested arrays or a wider lane count
