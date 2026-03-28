@@ -43,6 +43,22 @@ bool render_memory_instruction(std::ostream& out,
     return true;
   }
 
+  if (const auto* va_start = std::get_if<c4c::codegen::lir::LirVaStartOp>(&inst)) {
+    out << "  call void @llvm.va_start.p0(ptr " << va_start->ap_ptr << ")\n";
+    return true;
+  }
+
+  if (const auto* va_end = std::get_if<c4c::codegen::lir::LirVaEndOp>(&inst)) {
+    out << "  call void @llvm.va_end.p0(ptr " << va_end->ap_ptr << ")\n";
+    return true;
+  }
+
+  if (const auto* va_copy = std::get_if<c4c::codegen::lir::LirVaCopyOp>(&inst)) {
+    out << "  call void @llvm.va_copy.p0.p0(ptr " << va_copy->dst_ptr
+        << ", ptr " << va_copy->src_ptr << ")\n";
+    return true;
+  }
+
   return false;
 }
 

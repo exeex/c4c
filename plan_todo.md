@@ -7,11 +7,12 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3: port the first integer/control-flow slice
-- Iteration slice: inspect the next narrow cast or module-support follow-on after landing target-local `bitcast` rendering in the AArch64 ALU path
+- Iteration slice: inspect the next narrow AArch64 variadic follow-on after landing target-local intrinsic declaration and `va_start`/`va_end`/`va_copy` rendering
 
 ## Next Intended Slice
 
-- inspect whether the next narrow AArch64 follow-on should be additional cast coverage such as `trunc`/`lshr` for a real runtime-backed `bitcast` consumer or a split-out module-level intrinsic-declaration slice needed before target-local varargs lowering can execute
+- inspect the next target-local AArch64 variadic lowering gap after module-level intrinsic support, most likely the first `va_arg` rendering boundary for scalar loads from a local `va_list`
+- compare the resulting LLVM IR shape against Clang on `aarch64-unknown-linux-gnu` before widening beyond one scalar `va_arg` case
 - keep the next slice focused on one target-local helper boundary or one missing runtime-backed backend capability
 - avoid broadening beyond the active AArch64 Step 3 runbook without recording a separate idea
 
@@ -99,6 +100,10 @@ Source Plan: plan.md
 - updated `tests/c/internal/InternalTests.cmake` with the expected runtime exit code for the new backend case
 - verified `backend_lir_adapter_tests` and `backend_runtime_global_int_pointer_roundtrip` pass for the new round-trip cast slice
 - reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=496/510 -> 501/514` and zero newly failing tests; one unrelated prior backend failure dropped from the failing set (`backend_lir_missing_toolchain_diagnostic`)
+- added target-local AArch64 intrinsic declarations plus `llvm.va_start`/`llvm.va_end`/`llvm.va_copy` call rendering in `src/backend/aarch64/globals.*` and `src/backend/aarch64/memory.cpp`
+- added unit coverage for AArch64 variadic intrinsic declaration/call rendering in `tests/backend/backend_lir_adapter_tests.cpp`
+- verified `backend_lir_adapter_tests` passes for the new variadic intrinsic slice
+- rebuilt from a clean `build/` directory, recorded `test_fail_after.log`, and passed the maintenance regression guard against `test_fail_before.log` with `passed=527/534 -> 527/534`, zero newly failing tests, and the same seven unrelated full-suite failures before and after
 
 ## Blockers
 
@@ -129,4 +134,4 @@ Source Plan: plan.md
 - byte-granular global pointer subtraction now executes through the target-local AArch64 path via `ptrtoint`; wider pointer-difference follow-ons may still require extra cast or division support
 - non-byte global pointer subtraction now also executes through the target-local AArch64 path via `ptrtoint` plus `sdiv`
 - global address round-tripping now also executes through the target-local AArch64 path via `ptrtoint` plus `inttoptr`
-- probing a minimal AArch64 `va_arg` case now gets past cast coverage and instead fails on missing intrinsic-declaration support, which is likely a separate narrow module-level follow-on if varargs become the next target
+- minimal AArch64 variadic probes now get past intrinsic declaration support; the next likely blocker is the first target-local `va_arg` rendering boundary rather than module headers

@@ -15,4 +15,7 @@ void render_module_globals(std::ostream& out,
 void render_module_extern_decls(std::ostream& out,
                                 const c4c::codegen::lir::LirModule& module);
 
+void render_module_intrinsic_decls(std::ostream& out,
+                                   const c4c::codegen::lir::LirModule& module);
+
 }  // namespace c4c::backend::aarch64

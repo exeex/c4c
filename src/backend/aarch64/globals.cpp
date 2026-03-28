@@ -42,4 +42,17 @@ void render_module_extern_decls(std::ostream& out,
   }
 }
 
+void render_module_intrinsic_decls(std::ostream& out,
+                                   const c4c::codegen::lir::LirModule& module) {
+  if (module.need_va_start) {
+    out << "declare void @llvm.va_start.p0(ptr)\n";
+  }
+  if (module.need_va_end) {
+    out << "declare void @llvm.va_end.p0(ptr)\n";
+  }
+  if (module.need_va_copy) {
+    out << "declare void @llvm.va_copy.p0.p0(ptr, ptr)\n";
+  }
+}
+
 }  // namespace c4c::backend::aarch64

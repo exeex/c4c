@@ -737,6 +737,40 @@ c4c::codegen::lir::LirModule make_bitcast_scalar_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_va_intrinsic_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }");
+  module.need_va_start = true;
+  module.need_va_end = true;
+  module.need_va_copy = true;
+
+  LirFunction function;
+  function.name = "variadic_probe";
+  function.signature_text = "define void @variadic_probe(i32 %p.count, ...)\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(
+      LirAllocaOp{"%lv.ap", "%struct.__va_list_tag_", "", 8});
+  function.alloca_insts.push_back(
+      LirAllocaOp{"%lv.ap_copy", "%struct.__va_list_tag_", "", 8});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirVaStartOp{"%lv.ap"});
+  entry.insts.push_back(LirVaCopyOp{"%lv.ap_copy", "%lv.ap"});
+  entry.insts.push_back(LirVaEndOp{"%lv.ap_copy"});
+  entry.insts.push_back(LirVaEndOp{"%lv.ap"});
+  entry.terminator = LirRet{};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 void test_adapts_direct_return() {
   const auto adapted = c4c::backend::adapt_return_only_module(make_return_zero_module());
   expect_true(adapted.functions.size() == 1, "adapter should preserve one function");
@@ -1124,6 +1158,26 @@ void test_aarch64_backend_renders_bitcast_slice() {
                   "aarch64 backend should preserve the bitcast result");
 }
 
+void test_aarch64_backend_renders_va_intrinsic_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_va_intrinsic_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "declare void @llvm.va_start.p0(ptr)",
+                  "aarch64 backend should render llvm.va_start declarations");
+  expect_contains(rendered, "declare void @llvm.va_end.p0(ptr)",
+                  "aarch64 backend should render llvm.va_end declarations");
+  expect_contains(rendered, "declare void @llvm.va_copy.p0.p0(ptr, ptr)",
+                  "aarch64 backend should render llvm.va_copy declarations");
+  expect_contains(rendered, "call void @llvm.va_start.p0(ptr %lv.ap)",
+                  "aarch64 backend should render llvm.va_start calls");
+  expect_contains(rendered, "call void @llvm.va_copy.p0.p0(ptr %lv.ap_copy, ptr %lv.ap)",
+                  "aarch64 backend should render llvm.va_copy calls");
+  expect_contains(rendered, "call void @llvm.va_end.p0(ptr %lv.ap_copy)",
+                  "aarch64 backend should render llvm.va_end calls for copied lists");
+  expect_contains(rendered, "call void @llvm.va_end.p0(ptr %lv.ap)",
+                  "aarch64 backend should render llvm.va_end calls for the original list");
+}
+
 }  // namespace
 
 int main() {
@@ -1152,5 +1206,6 @@ int main() {
   test_aarch64_backend_renders_global_int_pointer_diff_slice();
   test_aarch64_backend_renders_global_int_pointer_roundtrip_slice();
   test_aarch64_backend_renders_bitcast_slice();
+  test_aarch64_backend_renders_va_intrinsic_slice();
   return 0;
 }

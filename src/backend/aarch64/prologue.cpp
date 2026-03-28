@@ -6,8 +6,7 @@
 namespace c4c::backend::aarch64 {
 
 void validate_module(const c4c::codegen::lir::LirModule& module) {
-  if (module.need_va_start || module.need_va_end || module.need_va_copy ||
-      module.need_memcpy || module.need_stacksave || module.need_stackrestore ||
+  if (module.need_memcpy || module.need_stacksave || module.need_stackrestore ||
       module.need_abs) {
     fail_unsupported("intrinsic declarations");
   }
@@ -34,9 +33,11 @@ void render_module_header(std::ostream& out,
   }
   render_module_string_pool(out, module);
   render_module_globals(out, module);
+  render_module_intrinsic_decls(out, module);
   render_module_extern_decls(out, module);
   if (!module.type_decls.empty() || !module.string_pool.empty() ||
-      !module.globals.empty() || !module.extern_decls.empty()) {
+      !module.globals.empty() || module.need_va_start || module.need_va_end ||
+      module.need_va_copy || !module.extern_decls.empty()) {
     out << "\n";
   }
 }
