@@ -6,7 +6,7 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 2: Evaluate `src/backend/aarch64/codegen/returns.cpp` as the next bounded AArch64-local compile-integration candidate, and promote it only if it remains a comment-only structural mirror without forcing the rest of `src/backend/aarch64/codegen/*.cpp` into the active slice
+- [ ] Step 2: Evaluate `src/backend/aarch64/codegen/calls.cpp` as the next AArch64-local codegen candidate, but stop immediately if promoting it would force non-trivial include or symbol edges beyond the current `mod.cpp` plus `emit.cpp` slice
 
 ## Planned Queue
 
@@ -20,6 +20,8 @@ Source Plan: plan.md
 
 ## Completed Items
 
+- [x] Recorded the pre-change baseline for `src/backend/aarch64/codegen/returns.cpp`; `clang++ -std=c++17 -fsyntax-only src/backend/aarch64/codegen/returns.cpp`, `cmake -S . -B build`, `cmake --build build -j8`, `./build/backend_lir_adapter_tests`, and full `ctest --test-dir build -j8 --output-on-failure | tee test_fail_before.log` all held with the same 4 known unrelated failures at `549/553` passed (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
+- [x] Evaluated `src/backend/aarch64/codegen/returns.cpp` and promoted it into both build targets because it remains a comment-only AArch64-local mirror with no new include or symbol edges beyond the existing `src/backend/aarch64/codegen/mod.cpp` and `emit.cpp` slice, `clang++ -std=c++17 -fsyntax-only src/backend/aarch64/codegen/returns.cpp` succeeds, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and both `test_fail_before.log` and `test_fail_after.log` still report the same 4 known unrelated failures at `549/553` passed; monotonicity was verified directly by comparing the identical failed-test list and pass-count summary lines in `test_fail_before.log` and `test_fail_after.log`
 - [x] Recorded the pre-change baseline for `src/backend/aarch64/codegen/comparison.cpp`; `clang++ -std=c++17 -fsyntax-only src/backend/aarch64/codegen/comparison.cpp`, `cmake -S . -B build`, `cmake --build build -j8`, `./build/backend_lir_adapter_tests`, and full `ctest --test-dir build -j8 --output-on-failure > test_fail_before.log` all held with the same 4 known unrelated failures at `549/553` passed (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
 - [x] Evaluated `src/backend/aarch64/codegen/comparison.cpp` and promoted it into both build targets because it remains a comment-only AArch64-local mirror with no new include or symbol edges beyond the existing `src/backend/aarch64/codegen/mod.cpp` and `emit.cpp` slice, `clang++ -std=c++17 -fsyntax-only src/backend/aarch64/codegen/comparison.cpp` succeeds, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and both `test_fail_before.log` and `test_fail_after.log` still report the same 4 known unrelated failures at `549/553` passed; monotonicity was verified directly by comparing the identical failed-test list and pass-count summary lines in `test_fail_before.log` and `test_fail_after.log`
 
@@ -53,7 +55,7 @@ Source Plan: plan.md
 
 ## Next Intended Slice
 
-- evaluate `src/backend/linker_common/mod.cpp` next as the next shared-backend compile-integration candidate because it is still a top-level namespace-only mirror that should stay outside the heavier shared-linker submodules
+- evaluate `src/backend/aarch64/codegen/calls.cpp` next to determine whether there is any remaining bounded AArch64-local codegen unit after the comment-only `alu.cpp`, `comparison.cpp`, `globals.cpp`, and `returns.cpp` promotions
 - keep the AArch64 shim thin until the shared backend slice grows enough to replace LLVM-text passthroughs deliberately
 - defer encoder-heavy and linker-heavy AArch64 modules until the plain shared backend slice is build-reachable
 
