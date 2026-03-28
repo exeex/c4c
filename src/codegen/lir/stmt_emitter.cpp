@@ -32,6 +32,13 @@ void emit_condbr_and_open_lbl(FnCtx& ctx, const std::string& cond,
   open_lbl(ctx, open_label);
 }
 
+void emit_condbr_and_open_sibling_lbl(FnCtx& ctx, const std::string& cond,
+                                      const std::string& true_label,
+                                      const std::string& false_label,
+                                      const std::string& sibling_label) {
+  emit_condbr_and_open_lbl(ctx, cond, true_label, false_label, sibling_label);
+}
+
 void emit_condbr_and_fallthrough_lbl(FnCtx& ctx, const std::string& cond,
                                      const std::string& true_label,
                                      const std::string& false_label) {
@@ -4025,11 +4032,11 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const ForStmt& s){
       TypeSpec cts{};
       std::string cv = emit_rval_id(ctx, *s.cond, cts);
       cv = to_bool(ctx, cv, cts);
-      emit_term_condbr(ctx, cv, body_lbl, end_lbl);
+      emit_condbr_and_open_sibling_lbl(ctx, cv, body_lbl, end_lbl, latch_lbl);
     } else {
       emit_term_br(ctx, body_lbl);
+      emit_lbl(ctx, latch_lbl);
     }
-    emit_lbl(ctx, latch_lbl);
     if (s.update) {
       TypeSpec uts{};
       (void)emit_rval_id(ctx, *s.update, uts);

@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: Extract Terminator and Block Lifecycle Helpers
-- Current slice: rescan [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) for any final Step 2 block-lifecycle repetition now that case-range switch chaining also routes through a local successor-opening helper
+- Current slice: rescan [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) for the next remaining Step 2 block-lifecycle repetition after the `for` condition-to-latch helper extraction
 
 ## Completed
 
@@ -46,10 +46,13 @@ Source Plan: plan.md
 - Added [`smoke_switch_range_chain_lifecycle.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_switch_range_chain_lifecycle.c) to pin chained case-range successor opening in compare mode across false-first, mid-chain match, and default paths
 - Extracted `emit_condbr_and_fallthrough_lbl(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and reused it for case-range switch chaining so the remaining conditional-branch-plus-fallthrough-open pattern now shares one local helper
 - Verified `compare_smoke_stmt_control_flow` plus `compare_smoke_switch_range_chain_lifecycle`, then passed the clean full-suite regression guard (`2244/2245` before with one known failure -> `2246/2246` after with zero failures; no new failing tests)
+- Added [`smoke_for_latch_lifecycle.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_for_latch_lifecycle.c) to pin `for` condition evaluation, `continue` routing through `for.latch.*`, and the false-exit path in compare mode
+- Extracted `emit_condbr_and_open_sibling_lbl(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and reused it for `ForStmt` condition lowering so the remaining condition-to-sibling-open loop path now shares a named local lifecycle helper
+- Verified `compare_smoke_for_latch_lifecycle`, `compare_smoke_stmt_control_flow`, the full `compare_case` label, and the clean full-suite regression guard (`2246` -> `2247` passed, zero failures)
 
 ## Next Slice
 
-- If Step 2 is not yet exhausted, identify the last remaining block-lifecycle repetition in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) that still bypasses `open_lbl(...)`, `set_terminator_if_open(...)`, `emit_condbr_and_open_lbl(...)`, `emit_condbr_and_fallthrough_lbl(...)`, `emit_fallthrough_lbl(...)`, or `emit_br_and_open_lbl(...)`
+- Identify whether any last Step 2 block-lifecycle repetition remains in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) beyond the current helper set, or close Step 2 if only irreducible single-site control-flow remains
 
 ## Blockers
 
@@ -78,3 +81,5 @@ Source Plan: plan.md
 - `open_lbl(...)` now owns the raw block-allocation/opening sequence; future Step 2 slices should build on it instead of spelling out `LirBlock` allocation and `current_block_idx` updates in additional local helpers
 - The current slice targets the remaining "emit terminator for a branch decision, then continue in the chosen successor/open block" pattern still present in loop and switch-range lowering; validate it with compare-mode coverage that traverses the false/range-chain continuation path
 - `emit_condbr_and_fallthrough_lbl(...)` now owns the "emit a conditional terminator, then continue in the false/next successor block" pattern used by case-range switch chaining; future Step 2 scans should treat any remaining manual `emit_term_condbr(...)` + immediate false/open continuation as the next extraction candidate
+- The current Step 2 target is narrower than that previous scan result: `ForStmt` still spells the condition terminator and immediate latch-block opening separately, so the next helper should encode that sibling-open contract without changing loop semantics
+- `emit_condbr_and_open_sibling_lbl(...)` now owns the `for` condition-to-latch sibling-open contract; the next Step 2 pass should decide whether any other repeated lifecycle shape remains or whether Step 2 is effectively exhausted
