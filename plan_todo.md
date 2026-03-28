@@ -6,8 +6,8 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 5: record the completed reference-returning call lvalue slice and queue
-  the next named positive template/sema failure
+- Step 5: record the completed inherited `operator()` temporary-call slice and
+  queue the next remaining template runtime failure
 
 ## In Progress
 
@@ -50,11 +50,26 @@ Source Plan: plan.md
 - Observed collateral improvement:
   `llvm_gcc_c_torture_src_pr28982b_c` no longer fails after the call-result
   lvalue fix
+- Added focused runtime coverage in
+  `inherited_operator_call_temporary_runtime.cpp`
+- Fixed template temporary-call lowering/inference so nested
+  `Call(Call(Var(template-id)))` trees treat the inner zero-arg call as
+  temporary construction and let the outer call own inherited `operator()`
+  dispatch
+- Verified targeted runtime cases pass:
+  `eastl_type_traits_signed_helper_base_expr_parse`,
+  `inherited_operator_call_temporary_runtime`, and
+  `template_temporary_call_runtime`
+- Captured a clean scratch rebuild/full-suite validation in `test_after.log`
+- Verified monotonic full-suite results:
+  `test_before.log` = 5 failing / 2238 total,
+  `test_after.log` = 4 failing / 2239 total
 
 ## Next Slice
 
-- Characterize `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
-  and isolate the dependent base-expression parse/runtime mechanism behind it
+- Characterize `cpp_positive_sema_template_arg_deduction_cpp`; current backend
+  failure is invalid pointer lowering in `deref<T>(T* ptr)` where generated IR
+  emits `load i32, ptr %p.ptr` with `%p.ptr` typed as `i32`
 
 ## Blockers
 
@@ -66,10 +81,14 @@ Source Plan: plan.md
 - First slice is the parser mechanism for `Types...` inside nested template
   argument lists such as `__and_<is_default_constructible<Types>..., ...>`
 - The pack-expansion parse failure is fixed; remaining named failures are the
-  dependent base-expression parse/runtime case, template arg deduction, mixed
-  params, and template type substitution
-- This iteration is focused only on the reference-returning call assignment
-  mechanism used by `capacity_ptr() = g_begin + n;`
+  template arg deduction, mixed params, and template type substitution runtime
+  cases
+- This iteration fixed the inherited `operator()` temporary-call mechanism used
+  by `is_signed<int>{}()` and other nested `Call(Call(Var(template-id)))`
+  shapes
+- `template_arg_deduction.cpp` is the next intended slice; the first concrete
+  invalid IR is in `deref_i`, which treats the pointer parameter as `i32`
+  instead of `ptr`
 - `eastl_probe_initializer_list_runtime_cpp` still fails in the suite but it is
   not one of the six named plan-goal cases; do not switch to it unless it
   blocks a planned slice

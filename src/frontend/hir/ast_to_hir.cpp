@@ -1674,6 +1674,38 @@ class Lowerer {
             return ts;
           }
         }
+        if (n->name && n->name[0] &&
+            n->has_template_args && find_template_struct_primary(n->name)) {
+          std::string arg_refs;
+          for (int i = 0; i < n->n_template_args; ++i) {
+            if (!arg_refs.empty()) arg_refs += ",";
+            if (n->template_arg_is_value && n->template_arg_is_value[i]) {
+              const char* fwd_name = n->template_arg_nttp_names ?
+                  n->template_arg_nttp_names[i] : nullptr;
+              if (fwd_name && fwd_name[0]) arg_refs += fwd_name;
+              else arg_refs += std::to_string(n->template_arg_values[i]);
+            } else if (n->template_arg_types) {
+              const TypeSpec& arg_ts = n->template_arg_types[i];
+              arg_refs += encode_template_type_arg_ref_hir(arg_ts);
+            }
+          }
+          TypeSpec tmp_ts{};
+          tmp_ts.base = TB_STRUCT;
+          tmp_ts.array_size = -1;
+          tmp_ts.inner_rank = -1;
+          tmp_ts.tpl_struct_origin = n->name;
+          tmp_ts.tpl_struct_arg_refs = ::strdup(arg_refs.c_str());
+          const Node* primary_tpl = find_template_struct_primary(n->name);
+          TypeBindings tpl_empty;
+          NttpBindings nttp_empty;
+          seed_and_resolve_pending_template_type_if_needed(
+              tmp_ts,
+              ctx ? ctx->tpl_bindings : tpl_empty,
+              ctx ? ctx->nttp_bindings : nttp_empty,
+              n, PendingTemplateTypeKind::OwnerStruct, "generic-ctrl-type-var",
+              primary_tpl);
+          if (tmp_ts.tag && module_->struct_defs.count(tmp_ts.tag)) return tmp_ts;
+        }
         if (ctx) {
           auto lit = ctx->locals.find(name);
           if (lit != ctx->locals.end()) {
@@ -1814,6 +1846,12 @@ class Lowerer {
       }
       case NK_CALL:
       case NK_BUILTIN_CALL: {
+        if (n->left && n->left->kind == NK_VAR && n->left->name &&
+            n->n_children == 0 && n->left->has_template_args &&
+            find_template_struct_primary(n->left->name)) {
+          TypeSpec callee_ts = infer_generic_ctrl_type(ctx, n->left);
+          if (callee_ts.base == TB_STRUCT) return callee_ts;
+        }
         if (n->left && n->left->kind == NK_VAR && n->left->name) {
           auto sit = module_->struct_defs.find(n->left->name);
           if (sit != module_->struct_defs.end()) {
@@ -5593,19 +5631,6 @@ class Lowerer {
       }
     }
 
-    // Try operator() dispatch on any struct-typed callable expression,
-    // including temporaries like `Trait{}()`.
-    if (n->left) {
-      TypeSpec callee_ts = infer_generic_ctrl_type(ctx, n->left);
-      if (callee_ts.base == TB_STRUCT && callee_ts.ptr_level == 0 && callee_ts.tag) {
-        std::vector<const Node*> arg_nodes;
-        for (int i = 0; i < n->n_children; ++i)
-          arg_nodes.push_back(n->children[i]);
-        ExprId op = try_lower_operator_call(ctx, n, n->left, "operator_call", arg_nodes);
-        if (op.valid()) return op;
-      }
-    }
-
     // Handle template struct brace-init + operator() call: Type<Args>{}()
     // The parser consumes {} and merges the trailing () into a single NK_CALL
     // with n_children==0.  When the callee is a template struct, lower the
@@ -5614,6 +5639,10 @@ class Lowerer {
         n->left->has_template_args &&
         find_template_struct_primary(n->left->name)) {
       ExprId tmp_expr = lower_expr(ctx, n->left);
+      // `Type<Args>{}` is represented as a zero-arg call on the template-id.
+      // If there is a trailing `()`, the parser builds a nested outer call,
+      // so this inner node must yield only the constructed temporary.
+      if (n->n_children == 0) return tmp_expr;
       const TypeSpec& tmp_ts = module_->expr_pool[tmp_expr.value].type.spec;
       if (tmp_ts.base == TB_STRUCT && tmp_ts.ptr_level == 0 && tmp_ts.tag) {
         auto resolved = find_struct_method_mangled(tmp_ts.tag, "operator_call", false);
@@ -5672,6 +5701,19 @@ class Lowerer {
       }
       // No operator() found — just return the constructed temporary.
       return tmp_expr;
+    }
+
+    // Try operator() dispatch on any struct-typed callable expression,
+    // including temporaries like `Trait{}()`.
+    if (n->left) {
+      TypeSpec callee_ts = infer_generic_ctrl_type(ctx, n->left);
+      if (callee_ts.base == TB_STRUCT && callee_ts.ptr_level == 0 && callee_ts.tag) {
+        std::vector<const Node*> arg_nodes;
+        for (int i = 0; i < n->n_children; ++i)
+          arg_nodes.push_back(n->children[i]);
+        ExprId op = try_lower_operator_call(ctx, n, n->left, "operator_call", arg_nodes);
+        if (op.valid()) return op;
+      }
     }
 
     CallExpr c{};
