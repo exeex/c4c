@@ -144,6 +144,7 @@ set(CPP_POSITIVE_PARSE_STEMS
 )
 
 list(APPEND CPP_POSITIVE_FRONTEND_STEMS
+    call_expr_ref_return_lvalue_frontend
     eastl_probe_call_result_lvalue_frontend
 )
 

@@ -6,14 +6,12 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: add focused regression coverage and fix pack expansion parsing inside
-  template argument lists for
-  `cpp_positive_sema_eastl_probe_pack_expansion_template_arg_parse_cpp`
+- Step 5: record the completed reference-returning call lvalue slice and queue
+  the next named positive template/sema failure
 
 ## In Progress
 
-- Prepare the next mechanism-focused slice for
-  `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+- None
 
 ## Completed
 
@@ -35,12 +33,28 @@ Source Plan: plan.md
 - Verified monotonic full-suite results:
   `test_before.log` = 7 failing / 2236 total,
   `test_after.log` = 6 failing / 2237 total
+- Classified `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
+  as a reference-returning call lvalue/codegen failure at
+  `StmtEmitter: cannot take lval of expr`
+- Added focused frontend coverage in
+  `call_expr_ref_return_lvalue_frontend.cpp`
+- Fixed `StmtEmitter` lvalue emission so call expressions returning references
+  reuse the call's storage pointer as an addressable lvalue
+- Verified targeted frontend cases pass:
+  `call_expr_ref_return_lvalue_frontend` and
+  `eastl_probe_call_result_lvalue_frontend`
+- Captured a clean scratch rebuild/full-suite validation in `test_after.log`
+- Verified monotonic full-suite results:
+  `test_before.log` = 7 failing / 2237 total,
+  `test_after.log` = 5 failing / 2238 total
+- Observed collateral improvement:
+  `llvm_gcc_c_torture_src_pr28982b_c` no longer fails after the call-result
+  lvalue fix
 
 ## Next Slice
 
-- Characterize `cpp_positive_sema_eastl_probe_call_result_lvalue_frontend_cpp`
-  and isolate the lvalue/call-result frontend mechanism behind
-  `error: StmtEmitter: cannot take lval of expr`
+- Characterize `cpp_positive_sema_eastl_type_traits_signed_helper_base_expr_parse_cpp`
+  and isolate the dependent base-expression parse/runtime mechanism behind it
 
 ## Blockers
 
@@ -52,6 +66,10 @@ Source Plan: plan.md
 - First slice is the parser mechanism for `Types...` inside nested template
   argument lists such as `__and_<is_default_constructible<Types>..., ...>`
 - The pack-expansion parse failure is fixed; remaining named failures are the
-  call-result lvalue frontend case, initializer-list runtime case, dependent
-  base-expression parse/runtime case, template arg deduction, mixed params, and
-  template type substitution
+  dependent base-expression parse/runtime case, template arg deduction, mixed
+  params, and template type substitution
+- This iteration is focused only on the reference-returning call assignment
+  mechanism used by `capacity_ptr() = g_begin + n;`
+- `eastl_probe_initializer_list_runtime_cpp` still fails in the suite but it is
+  not one of the six named plan-goal cases; do not switch to it unless it
+  blocks a planned slice
