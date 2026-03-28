@@ -3790,12 +3790,18 @@ class Lowerer {
     auto it = tpl_bindings->find(ts.tag);
     if (it == tpl_bindings->end()) return ts;
     const TypeSpec& concrete = it->second;
+    const int outer_ptr_level = ts.ptr_level;
     const bool outer_lref = ts.is_lvalue_ref;
     const bool outer_rref = ts.is_rvalue_ref;
+    const bool outer_const = ts.is_const;
+    const bool outer_volatile = ts.is_volatile;
     ts = concrete;
+    ts.ptr_level += outer_ptr_level;
     ts.is_lvalue_ref = concrete.is_lvalue_ref || outer_lref;
     ts.is_rvalue_ref =
         !ts.is_lvalue_ref && (concrete.is_rvalue_ref || outer_rref);
+    ts.is_const = concrete.is_const || outer_const;
+    ts.is_volatile = concrete.is_volatile || outer_volatile;
     return ts;
   }
 

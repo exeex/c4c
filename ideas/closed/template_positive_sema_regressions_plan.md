@@ -1,5 +1,8 @@
 # Positive Template/Sema Regression Fix Plan
 
+Status: Complete
+Completed On: 2026-03-28
+
 Target area: `src/frontend/hir/ast_to_hir.cpp` and adjacent frontend template/sema parsing/lowering code  
 Primary goal: fix the current positive C++ semantic/template regressions without broad unrelated refactors.
 
@@ -99,3 +102,20 @@ Validation target:
 - Full-suite failure count does not regress.
 - Any leftover unsupported feature discovered during this work is documented as
   a separate open idea.
+
+## Completion Notes
+
+- Completed the planned regression slices with focused coverage for pack
+  expansion parsing, reference-returning call lvalues, inherited temporary
+  `operator()` dispatch, and template pointer-parameter substitution.
+- Verified on 2026-03-28 that all six named success-criteria tests pass in the
+  rebuilt suite.
+- Verified monotonic full-suite behavior with the regression guard:
+  `2239 passed / 1 failed / 2240 total` before and after the final clean
+  rebuild validation.
+
+## Leftover Issues
+
+- `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp` still fails in
+  the full suite with `C2LL_RUNTIME_UNEXPECTED_RETURN`, but it was outside this
+  plan's scoped success criteria and remains for separate follow-up.
