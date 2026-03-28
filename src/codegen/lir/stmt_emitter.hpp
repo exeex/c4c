@@ -111,6 +111,7 @@ class StmtEmitter {
   // ── Globals ───────────────────────────────────────────────────────────────
   static bool is_char_like(TypeBase b);
   static TypeSpec drop_one_array_dim(TypeSpec ts);
+  static TypeSpec drop_one_indexed_element_type(TypeSpec ts);
   static std::string bytes_from_string_literal(const StringLiteral& sl);
 
   // Decode a wide string literal (L"...") into wchar_t (i32) values with null terminator

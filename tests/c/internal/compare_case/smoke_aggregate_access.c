@@ -17,14 +17,16 @@ int sum3(int *ptr) {
 int run(void) {
   struct Wrapper w = {{5, {7, 11, 13}}, 17};
   struct Wrapper *pw = &w;
+  int (*pvalues)[3] = &w.inner.values;
   int first = w.inner.head;
   int second = pw->inner.values[1];
   int third = w.inner.values[2];
   int decay_dot = sum3(w.inner.values);
   int decay_arrow = sum3(pw->inner.values);
-  return first + second + third + decay_dot + decay_arrow + pw->tail;
+  int ptr_to_array = pvalues[0][0] + pvalues[0][2];
+  return first + second + third + decay_dot + decay_arrow + ptr_to_array + pw->tail;
 }
 
 int main(void) {
-  return run() == 84 ? 0 : 1;
+  return run() == 104 ? 0 : 1;
 }

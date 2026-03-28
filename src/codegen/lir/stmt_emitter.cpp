@@ -321,6 +321,21 @@ TypeSpec StmtEmitter::drop_one_array_dim(TypeSpec ts){
     return ts;
   }
 
+TypeSpec StmtEmitter::drop_one_indexed_element_type(TypeSpec ts){
+    if (outer_array_rank(ts) > 0) {
+      return drop_one_array_dim(ts);
+    }
+    if (ts.ptr_level > 0 && ts.is_ptr_to_array) {
+      ts.ptr_level--;
+      if (ts.ptr_level == 0) ts.is_ptr_to_array = false;
+      return ts;
+    }
+    if (ts.ptr_level > 0) {
+      ts.ptr_level--;
+    }
+    return ts;
+  }
+
 std::string StmtEmitter::bytes_from_string_literal(const StringLiteral& sl){
     std::string bytes = sl.raw;
     if (bytes.size() >= 2 && bytes.front() == '"' && bytes.back() == '"') {
@@ -890,14 +905,8 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
         pts.is_vector = false;
         pts.vector_lanes = 0;
         pts.vector_bytes = 0;
-      } else if (outer_array_rank(pts) > 0) {
-        pts = drop_one_array_dim(pts);
-      } else if (pts.ptr_level > 0 && pts.is_ptr_to_array) {
-        // Pointer-to-array: subscript consumes the pointer layer first.
-        pts.ptr_level--;
-        if (pts.ptr_level == 0) pts.is_ptr_to_array = false;
-      } else if (pts.ptr_level > 0) {
-        pts.ptr_level--;
+      } else {
+        pts = drop_one_indexed_element_type(pts);
       }
       const std::string tmp = fresh_tmp(ctx);
       // Use alloca type (non-decayed) for array elements so GEP advances by the
@@ -1390,9 +1399,7 @@ TypeSpec StmtEmitter::resolve_payload_type(FnCtx& ctx, const IndexExpr& idx){
       base_ts.vector_bytes = 0;
       return base_ts;
     }
-    if (base_ts.array_rank > 0) return drop_one_array_dim(base_ts);
-    if (base_ts.ptr_level > 0) { base_ts.ptr_level--; return base_ts; }
-    return base_ts;
+    return drop_one_indexed_element_type(base_ts);
   }
 
 TypeSpec StmtEmitter::resolve_payload_type(FnCtx& ctx, const TernaryExpr& t){
@@ -2041,9 +2048,9 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, cons
         idx = neg;
       }
       TypeSpec elem_ts = lts;
-      if (elem_ts.ptr_level > 0) elem_ts.ptr_level -= 1;
-      else if (elem_ts.array_rank > 0 && !elem_ts.is_ptr_to_array) elem_ts = drop_one_array_dim(elem_ts);
-      else {
+      if (elem_ts.ptr_level > 0 || outer_array_rank(elem_ts) > 0) {
+        elem_ts = drop_one_indexed_element_type(elem_ts);
+      } else {
         elem_ts = {};
         elem_ts.base = TB_CHAR;
       }
@@ -2299,13 +2306,9 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, cons
           idx = neg;
         }
         TypeSpec elem_ts = base_ts;
-        if (elem_ts.ptr_level > 0) {
-          // T* +/- n: stride by sizeof(T).  For pointer-to-array keep the
-          // array object type after consuming one pointer layer.
-          elem_ts.ptr_level -= 1;
-        } else if (elem_ts.array_rank > 0 && !elem_ts.is_ptr_to_array) {
-          // Array expression in arithmetic decays to pointer-to-first-element.
-          elem_ts = drop_one_array_dim(elem_ts);
+        if (elem_ts.ptr_level > 0 || outer_array_rank(elem_ts) > 0) {
+          // T* +/- n: stride by sizeof(T), including pointer-to-array element access.
+          elem_ts = drop_one_indexed_element_type(elem_ts);
         } else {
           elem_ts = {};
           elem_ts.base = TB_CHAR;
@@ -2390,9 +2393,9 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, cons
               idx = neg;
             }
             TypeSpec elem_ts = base_ts;
-            if (elem_ts.ptr_level > 0) elem_ts.ptr_level -= 1;
-            else if (elem_ts.array_rank > 0 && !elem_ts.is_ptr_to_array) elem_ts = drop_one_array_dim(elem_ts);
-            else {
+            if (elem_ts.ptr_level > 0 || outer_array_rank(elem_ts) > 0) {
+              elem_ts = drop_one_indexed_element_type(elem_ts);
+            } else {
               elem_ts = {};
               elem_ts.base = TB_CHAR;
             }

@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: Extract Aggregate and Address-Lowering Helpers
-- Current slice: rescan [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) for the next duplicated aggregate/address-formation path after landing the shared access-rvalue helper and the pointer-to-array array-field fixes it exposed
+- Current slice: rescan [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) for the next duplicated aggregate/address-formation path after landing the shared indexed-element-type helper across `IndexExpr` and pointer-arithmetic GEP formation
 
 ## Completed
 
@@ -57,10 +57,13 @@ Source Plan: plan.md
 - Fixed array-field type reconstruction in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`const_init_emitter.cpp`](/workspaces/c4c/src/codegen/lir/const_init_emitter.cpp) so declared array dimensions override inherited pointer-to-array metadata and preserve multi-dimensional fields
 - Fixed pointer-to-array access lowering in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) by distinguishing outer array dimensions from inner pointer-to-array metadata during indexed lvalue/rvalue lowering
 - Verified targeted compare-mode coverage, the previously uncovered torture regressions (`20020402-3`, `20071018-1`, `950426-1`, `pr41463`, `pr69691`, `strlen-4`), and the clean full-suite regression guard (`2247` -> `2248` passed, zero failures)
+- Extended [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) with a direct pointer-to-array indexing path (`pvalues[0][0]`, `pvalues[0][2]`) so compare mode keeps the indexed element-address rule pinned for array-object and pointer-to-array bases
+- Extracted `drop_one_indexed_element_type(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and reused it across `IndexExpr` lvalue lowering, `IndexExpr` type resolution, and pointer-arithmetic GEP element selection so those address-formation paths now share one local indexed-element contract
+- Verified `compare_smoke_aggregate_access`, the full `compare_case` label, and the clean full-suite regression guard with stable results (`2248` -> `2248` passed, zero failures; no new failing tests)
 
 ## Next Slice
 
-- Identify the next Step 3 address-formation duplication in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp), most likely around index/member base-pointer resolution or repeated pointer-to-array element-address selection before the final load/decay step
+- Identify the next Step 3 address-formation duplication in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp), most likely around repeated member-base resolution/materialization for `.` vs `->` before `emit_member_gep(...)`
 
 ## Blockers
 
@@ -94,3 +97,4 @@ Source Plan: plan.md
 - The final Step 2 scan found no further repeated block-lifecycle helper opportunity beyond the `for` no-condition handoff; remaining branch/terminator sites are single-purpose control-flow emitters, so execution moves to Step 3 next
 - The first Step 3 slice is intentionally narrow and behavior-preserving: unify only the post-address access behavior that decides between array decay, bitfield load, scalar load, or empty-void result after `IndexExpr`/`MemberExpr` already computed an access pointer
 - Step 3 uncovered a real clean-build blocker in pointer-to-array aggregate access (`block[2]`, `paa`, `pa0/pa1`, and typedef-carried multi-dimensional arrays): future address-lowering extractions need to watch `outer_array_rank(...)`, `is_ptr_to_array`, and `inner_rank` carefully so array objects and pointer-to-array values are not conflated
+- `drop_one_indexed_element_type(...)` now owns the "consume one indexing step from array/pointer/pointer-to-array type metadata" rule; the next Step 3 pass should look upstream at duplicated base-pointer acquisition or member-base materialization rather than re-spelling type-drop logic again
