@@ -21,6 +21,8 @@ Port the AArch64 backend from `ref/claudes-c-compiler/src/backend/` into C++ wit
 - prefer mechanical translation from Rust to C++
 - keep file and mechanism boundaries close to ref
 - only diverge where our LIR adapter boundary forces it
+- prefer a stack-first, spill-heavy bring-up over early register-allocation work
+- accept obviously non-optimal code shape during bring-up if it keeps correctness and backend boundaries easy to verify
 
 ## Scope
 
@@ -32,14 +34,15 @@ Port the AArch64 backend from `ref/claudes-c-compiler/src/backend/` into C++ wit
 - conditional and unconditional branches
 - direct calls and returns
 - global addressing
+- conservative call-boundary handling that can spill and reload aggressively to preserve correctness
 
 ### Completion
 
 - float basics
 - calling convention coverage needed by current tests
 - stack layout improvements beyond the naive initial model
-- register allocation if required to reach useful pass rates
-- ref-matching peephole or cleanup passes where they materially affect correctness or testability
+- a functionally complete stack-first path that can run the intended supported subset even when values are handled conservatively through stack slots across calls
+- any AArch64-specific integration work needed to adopt the shared regalloc/cleanup follow-on tracked in `ideas/open/03_backend_regalloc_peephole_port_plan.md`
 
 ## Explicit Non-Goals
 
@@ -55,6 +58,7 @@ Port the AArch64 backend from `ref/claudes-c-compiler/src/backend/` into C++ wit
 - recursive and multi-call tests pass
 - c-testsuite simple coverage works for the supported subset
 - execution works through the agreed Linux target path
+- supported cases remain correct under the deliberately conservative spill-heavy bring-up strategy
 
 ## Risk Notes
 

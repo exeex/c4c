@@ -49,9 +49,10 @@ The backend effort is now split into the following open ideas:
 
 - `ideas/open/01_backend_lir_adapter_plan.md`
 - `ideas/open/02_backend_aarch64_port_plan.md`
-- `ideas/open/03_backend_x86_64_port_plan.md`
-- `ideas/open/04_backend_rv64_port_plan.md`
-- `ideas/open/05_backend_binary_utils_plan.md`
+- `ideas/open/03_backend_regalloc_peephole_port_plan.md`
+- `ideas/open/04_backend_x86_64_port_plan.md`
+- `ideas/open/05_backend_rv64_port_plan.md`
+- `ideas/open/06_backend_binary_utils_plan.md`
 
 ## Shared Guardrails
 
@@ -66,9 +67,10 @@ The backend effort is now split into the following open ideas:
 
 1. `01_backend_lir_adapter_plan.md`
 2. `02_backend_aarch64_port_plan.md`
-3. `03_backend_x86_64_port_plan.md`
-4. `04_backend_rv64_port_plan.md`
-5. `05_backend_binary_utils_plan.md`
+3. `03_backend_regalloc_peephole_port_plan.md`
+4. `04_backend_x86_64_port_plan.md`
+5. `05_backend_rv64_port_plan.md`
+6. `06_backend_binary_utils_plan.md`
 
 ## Success Condition
 

@@ -7,6 +7,7 @@ Umbrella source: `ideas/open/__backend_port_plan.md`
 Depends on:
 
 - `ideas/open/01_backend_lir_adapter_plan.md`
+- `ideas/open/03_backend_regalloc_peephole_port_plan.md`
 - lessons learned from `ideas/open/02_backend_aarch64_port_plan.md`
 
 ## Goal
@@ -24,7 +25,7 @@ x86-64 shares some backend scaffolding with AArch64, but its instruction forms, 
 - compare and branch lowering
 - RIP-relative global addressing
 - basic SSE float coverage
-- stack layout and register allocation work needed to reach practical testsuite coverage
+- stack layout and target-specific integration with the shared regalloc/cleanup port
 
 ## Porting Rule
 
