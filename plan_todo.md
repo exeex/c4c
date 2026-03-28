@@ -6,7 +6,7 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 1: Evaluate the next stub-only top-level shared backend candidate after `src/backend/cast.cpp`
+- [ ] Step 1: Evaluate whether `src/backend/inline_asm.cpp` is still a safe top-level stub-only shared backend candidate or should stay deferred behind stack-layout / target-local inline-asm wiring
 
 ## Planned Queue
 
@@ -31,10 +31,11 @@ Source Plan: plan.md
 - [x] Captured the pre-change baseline for the `call_abi.cpp` slice: `cmake -S . -B build`, `cmake --build build -j8`, `./build/backend_lir_adapter_tests`, and `ctest --test-dir build -j8 --output-on-failure > test_before.log` all hold with the same 4 known unrelated full-suite failures
 - [x] Added `src/backend/call_abi.cpp` to both `c4cll` and `backend_lir_adapter_tests`; it remains a stub-only shared backend mirror with no new dependency edges, `backend_lir_adapter_tests` still passes, and `test_after.log` preserves the same 4 known unrelated full-suite failures as `test_before.log`
 - [x] Added `src/backend/cast.cpp` to both `c4cll` and `backend_lir_adapter_tests`; it remains a stub-only shared backend mirror with no new dependency edges, `backend_lir_adapter_tests` still passes, and full `ctest --test-dir build -j8 --output-on-failure` still reports the same 4 known unrelated failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
+- [x] Added `src/backend/f128_softfloat.cpp` to both `c4cll` and `backend_lir_adapter_tests`; it remains a stub-only shared backend mirror with no new dependency edges, `backend_lir_adapter_tests` still passes, and both `test_before.log` and `test_after.log` report the same 4 known unrelated full-suite failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
 
 ## Next Intended Slice
 
-- evaluate the next stub-only top-level shared backend candidate after `src/backend/cast.cpp` that can be promoted without pulling in ELF or linker-common dependencies, with `src/backend/f128_softfloat.cpp` and `src/backend/inline_asm.cpp` as the first likely checks
+- evaluate `src/backend/inline_asm.cpp` next, but only promote it if it stays as dependency-light as `f128_softfloat.cpp`; otherwise skip to another top-level shared backend stub that avoids stack-layout or target-local inline-asm coupling
 - keep the AArch64 shim thin until the shared backend slice grows enough to replace LLVM-text passthroughs deliberately
 - defer ELF and shared linker modules until the plain shared backend slice is build-reachable
 
@@ -55,3 +56,5 @@ Source Plan: plan.md
 - latest validation: after adding `src/backend/call_abi.cpp` to both build targets, `backend_lir_adapter_tests` passes and both `test_before.log` and `test_after.log` report the same 4 known unrelated failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
 - current iteration target: promote `src/backend/cast.cpp` into both build targets as the next pure stub-only shared backend slice, keeping Step 1 focused on compile integration rather than target behavior
 - latest validation: after adding `src/backend/cast.cpp` to both build targets, `backend_lir_adapter_tests` passes and full `ctest --test-dir build -j8 --output-on-failure` still reports the same 4 known unrelated failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
+- current iteration target: evaluate `src/backend/inline_asm.cpp` as the next top-level shared backend candidate after `src/backend/f128_softfloat.cpp`
+- latest validation: after adding `src/backend/f128_softfloat.cpp` to both build targets, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and full `ctest --test-dir build -j8 --output-on-failure` remains monotonic at the same 4 known unrelated failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
