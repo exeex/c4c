@@ -7,11 +7,11 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3: port the first integer/control-flow slice
-- Iteration slice: lock one bounded Linux AArch64 non-HFA mixed `float` plus integer aggregate `va_arg` helper edge against Clang on `aarch64-unknown-linux-gnu` so it stays on the GP/save-area path rather than widening into the HFA classifier
+- Iteration slice: compare a mixed integer-plus-`double` by-value struct `va_arg` helper edge against Clang on `aarch64-unknown-linux-gnu` and lock that adjacent non-HFA aggregate onto the expected GP/save-area helper shape
 
 ## Next Intended Slice
 
-- compare a mixed `double` plus integer by-value struct `va_arg` path against Clang on `aarch64-unknown-linux-gnu` and lock that adjacent non-HFA aggregate onto the expected GP/save-area helper shape
+- keep the next slice on one adjacent Linux AArch64 non-HFA aggregate `va_arg` helper edge, such as a mixed integer-plus-`double` by-value struct, and lock it against Clang before considering broader variadic expansion
 - keep the next slice focused on one target-local helper boundary or one missing runtime-backed backend capability
 - avoid broadening beyond the active AArch64 Step 3 runbook without recording a separate idea
 
@@ -206,3 +206,7 @@ Source Plan: plan.md
 - added `tests/c/internal/backend_ir_case/variadic_mixed_float_int_bytes.c` plus `backend_lir_aarch64_variadic_mixed_float_int_ir` in `tests/c/internal/InternalTests.cmake` to lock the bounded mixed non-HFA aggregate helper path
 - verified `backend_lir_aarch64_variadic_dpair_ir`, `backend_lir_aarch64_variadic_single_double_ir`, `backend_lir_aarch64_variadic_single_float_ir`, and `backend_lir_aarch64_variadic_mixed_float_int_ir` pass for the adjacent mixed aggregate slice
 - reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=539/544 -> 543/548`, zero newly failing tests, and the same five unrelated failures before and after
+- compared a mixed `double` plus integer by-value struct `va_arg` probe against Clang on `aarch64-unknown-linux-gnu` and confirmed the existing lowering already emits the expected GP/save-area helper shape via `%struct.MixedDoubleInt = type { double, i32, [4 x i8] }`, `phi ptr`, `getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 3`, and `llvm.memcpy`
+- added `tests/c/internal/backend_ir_case/variadic_mixed_double_int_bytes.c` plus `backend_lir_aarch64_variadic_mixed_double_int_ir` in `tests/c/internal/InternalTests.cmake` to lock the bounded mixed non-HFA aggregate helper path
+- verified `backend_lir_aarch64_variadic_single_double_ir`, `backend_lir_aarch64_variadic_single_float_ir`, `backend_lir_aarch64_variadic_mixed_float_int_ir`, and `backend_lir_aarch64_variadic_mixed_double_int_ir` pass for the adjacent mixed aggregate slice
+- reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=543/548 -> 544/549`, zero newly failing tests, and the same five unrelated failures before and after
