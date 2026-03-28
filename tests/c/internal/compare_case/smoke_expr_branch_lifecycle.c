@@ -19,9 +19,11 @@ int run(void) {
                    : ((x < 0) ? bump(&x, 800) : bump(&x, 9));
   int j = (x < 0) ? (0 && bump(&x, 90))
                   : ((x > 30) ? (1 && bump(&x, 10)) : (0 || bump(&x, 100)));
-  return x + a + b + c + d + e + f + g + h + i + j;
+  int k = (x > 40) ? ((x < 0) ? bump(&x, 110) : (1 && bump(&x, 11)))
+                   : ((x > 0) ? (0 || bump(&x, 12)) : bump(&x, 120));
+  return x + a + b + c + d + e + f + g + h + i + j + k;
 }
 
 int main(void) {
-  return run() == 109 ? 0 : 1;
+  return run() == 121 ? 0 : 1;
 }

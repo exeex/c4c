@@ -15,17 +15,21 @@ bool set_terminator_if_open(FnCtx& ctx, TerminatorT&& terminator) {
   return true;
 }
 
+void open_lbl(FnCtx& ctx, const std::string& lbl) {
+  lir::LirBlock blk;
+  blk.id = lir::LirBlockId{static_cast<uint32_t>(ctx.lir_blocks.size())};
+  blk.label = lbl;
+  ctx.lir_blocks.push_back(std::move(blk));
+  ctx.current_block_idx = ctx.lir_blocks.size() - 1;
+  ctx.last_term = false;
+}
+
 void emit_condbr_and_open_lbl(FnCtx& ctx, const std::string& cond,
                               const std::string& true_label,
                               const std::string& false_label,
                               const std::string& open_label) {
   (void)set_terminator_if_open(ctx, lir::LirCondBr{cond, true_label, false_label});
-  lir::LirBlock blk;
-  blk.id = lir::LirBlockId{static_cast<uint32_t>(ctx.lir_blocks.size())};
-  blk.label = open_label;
-  ctx.lir_blocks.push_back(std::move(blk));
-  ctx.current_block_idx = ctx.lir_blocks.size() - 1;
-  ctx.last_term = false;
+  open_lbl(ctx, open_label);
 }
 
 // ── FnPtrSig accessors ───────────────────────────────────────────────────
@@ -223,12 +227,7 @@ const GlobalVar* StmtEmitter::select_global_object(GlobalId id) const {
 
 
 void StmtEmitter::emit_lbl(FnCtx& ctx, const std::string& lbl){
-    lir::LirBlock blk;
-    blk.id = lir::LirBlockId{static_cast<uint32_t>(ctx.lir_blocks.size())};
-    blk.label = lbl;
-    ctx.lir_blocks.push_back(std::move(blk));
-    ctx.current_block_idx = ctx.lir_blocks.size() - 1;
-    ctx.last_term = false;
+    open_lbl(ctx, lbl);
   }
 
 void StmtEmitter::emit_term_br(FnCtx& ctx, const std::string& target_label){

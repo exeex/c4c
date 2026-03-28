@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: Extract Terminator and Block Lifecycle Helpers
-- Current slice: inspect [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) for any remaining Step 2 open-block or terminator repetition now that logical, ternary, and AArch64 `va_arg` sibling handoff paths share the same local helper
+- Current slice: scan [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) for the next remaining Step 2 terminator or block-lifecycle repetition now that direct label opens and conditional successor opens share one local opener
 
 ## Completed
 
@@ -40,10 +40,13 @@ Source Plan: plan.md
 - Extended [`smoke_expr_branch_lifecycle.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_expr_branch_lifecycle.c) with nested ternary and logical branches that force the remaining sibling-successor handoff pattern through compare mode
 - Extracted `emit_br_and_open_lbl(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and reused it across logical short-circuit, ternary lowering, and the remaining AArch64 `va_arg` reg-to-stack handoff sites so those paths share one explicit sibling-block transition contract
 - Verified the targeted compare-mode cases plus the clean full-suite regression guard with stable results (`2245` -> `2245` passed, zero failures)
+- Extended [`smoke_expr_branch_lifecycle.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_expr_branch_lifecycle.c) with one more nested ternary/logical branch to keep the conditional-successor opening path pinned in compare mode during the next Step 2 extraction
+- Extracted `open_lbl(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and reused it across `emit_lbl(...)` plus `emit_condbr_and_open_lbl(...)` so direct label opens and conditional successor opens share one local block-allocation contract
+- Verified the targeted compare-mode cases and the clean full-suite regression guard with stable results (`2245` -> `2245` passed, zero failures; non-decreasing pass-count guard accepted the refactor slice)
 
 ## Next Slice
 
-- Continue Step 2 by scanning for any remaining local successor-opening or open-block terminator repetition that still bypasses `set_terminator_if_open(...)`, `emit_condbr_and_open_lbl(...)`, `emit_fallthrough_lbl(...)`, or `emit_br_and_open_lbl(...)` without widening the refactor beyond [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp)
+- Continue Step 2 by scanning for any remaining local successor-opening or open-block terminator repetition that still bypasses `open_lbl(...)`, `set_terminator_if_open(...)`, `emit_condbr_and_open_lbl(...)`, `emit_fallthrough_lbl(...)`, or `emit_br_and_open_lbl(...)` without widening the refactor beyond [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp)
 
 ## Blockers
 
@@ -68,3 +71,5 @@ Source Plan: plan.md
 - The AArch64 `va_arg` join path now composes with `emit_condbr_and_open_lbl(...)` and `emit_fallthrough_lbl(...)`; the next Step 2 pass should look for other local block-opening sites that still build labels manually after placing a terminator
 - The current Step 2 slice is the repeated "finish one predecessor, branch to a join/end label, then immediately continue emitting the sibling block" shape that appears in logical, ternary, and the remaining `va_arg` reg-to-stack handoff paths
 - `emit_br_and_open_lbl(...)` now owns the sibling-handoff shape where one predecessor closes by branching to a join/end label and codegen immediately continues in a different successor block; future Step 2 slices should reuse it instead of restating `emit_term_br(...)` plus `emit_lbl(...)`
+- The next narrow Step 2 extraction is the duplicated block-allocation/opening sequence currently spelled separately in `emit_lbl(...)` and `emit_condbr_and_open_lbl(...)`; keep it local and validate with compare-mode coverage that still crosses both surfaces
+- `open_lbl(...)` now owns the raw block-allocation/opening sequence; future Step 2 slices should build on it instead of spelling out `LirBlock` allocation and `current_block_idx` updates in additional local helpers
