@@ -6,7 +6,7 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 1: Evaluate the next compile-safe shared backend unit after the stub-only `state`/`traits`/`liveness`/`regalloc`/`generation` slice is now build-reachable
+- [ ] Step 1: Evaluate `src/backend/common.cpp` as the next stub-only shared backend unit to make build-reachable after `stack_layout/mod.cpp`
 
 ## Planned Queue
 
@@ -24,10 +24,11 @@ Source Plan: plan.md
 - [x] Restored real-build reachability for the current backend entry slice by aligning CMake with the mirrored AArch64 subtree and adding a thin `src/backend/aarch64/codegen/emit.*` shim
 - [x] Repaired the shared backend entry contract so known non-AArch64 targets still route through the backend path while AArch64 keeps explicit target-local validation
 - [x] Added the first five stub-only shared backend units (`state`, `traits`, `liveness`, `regalloc`, `generation`) to both `c4cll` and `backend_lir_adapter_tests`, keeping the full suite monotonic at the existing 4 known failures
+- [x] Added `src/backend/stack_layout/mod.cpp` to both `c4cll` and `backend_lir_adapter_tests`, keeping the full suite monotonic at the same 4 known failures
 
 ## Next Intended Slice
 
-- evaluate whether `stack_layout/mod.cpp` is the next safe shared backend file to make build-reachable, or whether another top-level shared file has a smaller include surface
+- evaluate whether `src/backend/common.cpp` or another top-level stub-only shared backend file can be promoted without pulling in ELF or linker-common dependencies
 - keep the AArch64 shim thin until the shared backend slice grows enough to replace LLVM-text passthroughs deliberately
 - defer ELF and shared linker modules until the plain shared backend slice is build-reachable
 
@@ -43,5 +44,5 @@ Source Plan: plan.md
 - do not absorb regalloc, built-in assembler, or built-in linker initiatives unless they are strictly required for the current slice
 - current slice outcome: `cmake -S . -B build` and `cmake --build build -j8` now succeed with the mirrored AArch64 entry path wired through `src/backend/aarch64/codegen/emit.*`
 - validation after this slice: targeted backend tests pass and full `ctest --test-dir build -j8 --output-on-failure` now reports 4 failing tests instead of the earlier 5, removing the backend entry regression
-- current iteration target: make the first five shared stub modules build-reachable in both `c4cll` and `backend_lir_adapter_tests` before attempting deeper shared backend files
-- latest validation: `test_before.log` and `test_after.log` both report the same 4 failing tests (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
+- current iteration target: evaluate the next top-level stub-only shared backend unit after `src/backend/stack_layout/mod.cpp`
+- latest validation: after adding `src/backend/stack_layout/mod.cpp` to both build targets, `test_before.log` and `test_after.log` both report the same 4 failing tests (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
