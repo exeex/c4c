@@ -7,11 +7,11 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3: port the first integer/control-flow slice
-- Iteration slice: compare one more adjacent Linux AArch64 non-HFA by-value aggregate `va_arg` helper edge, such as a mixed `double`-plus-`short` shape, against Clang on `aarch64-unknown-linux-gnu` before broadening variadic aggregate coverage
+- Iteration slice: compare one more adjacent Linux AArch64 non-HFA by-value aggregate `va_arg` helper edge, such as a mixed `double`-plus-`char` or `float`-plus-`short` shape, against Clang on `aarch64-unknown-linux-gnu` and lock the helper path in repo IR tests before broadening variadic aggregate coverage
 
 ## Next Intended Slice
 
-- keep the next slice on one adjacent Linux AArch64 non-HFA aggregate `va_arg` helper edge, such as a mixed `double`-plus-`short` by-value struct, and lock it against Clang before considering broader variadic expansion
+- keep the next slice on one adjacent Linux AArch64 non-HFA aggregate `va_arg` helper edge, such as a mixed `char`-plus-`double` or another one-small-integer mixed layout, and lock it against Clang before considering broader variadic expansion
 - keep the next slice focused on one target-local helper boundary or one missing runtime-backed backend capability
 - avoid broadening beyond the active AArch64 Step 3 runbook without recording a separate idea
 
@@ -219,3 +219,7 @@ Source Plan: plan.md
 - extended `src/backend/aarch64/alu.cpp` to render integer `trunc` and added unit coverage in `tests/backend/backend_lir_adapter_tests.cpp` after the new mixed aggregate probe exposed that missing backend-emitter cast path through the `short` field initializer
 - verified `backend_lir_adapter_tests`, `backend_lir_aarch64_variadic_single_double_ir`, `backend_lir_aarch64_variadic_single_float_ir`, `backend_lir_aarch64_variadic_mixed_float_int_ir`, `backend_lir_aarch64_variadic_mixed_double_int_ir`, `backend_lir_aarch64_variadic_mixed_int_double_ir`, and `backend_lir_aarch64_variadic_mixed_short_double_ir` pass for the bounded smaller-integer mixed aggregate slice
 - reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=544/549 -> 546/551`, zero newly failing tests, and the same five unrelated failures before and after
+- compared a mixed `double`-plus-`short` by-value struct `va_arg` probe against Clang on `aarch64-unknown-linux-gnu` and confirmed the existing lowering already emits the expected GP/save-area helper shape via `%struct.MixedDoubleShort = type { double, i16, [6 x i8] }`, `phi ptr`, `getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 3`, `llvm.memcpy`, and the already-supported `trunc` initializer path for the `short` field
+- added `tests/c/internal/backend_ir_case/variadic_mixed_double_short_bytes.c` plus `backend_lir_aarch64_variadic_mixed_double_short_ir` in `tests/c/internal/InternalTests.cmake` to lock the adjacent floating-first smaller-integer mixed aggregate helper path
+- verified `backend_lir_adapter_tests`, `backend_lir_aarch64_variadic_single_double_ir`, `backend_lir_aarch64_variadic_single_float_ir`, `backend_lir_aarch64_variadic_mixed_float_int_ir`, `backend_lir_aarch64_variadic_mixed_double_int_ir`, `backend_lir_aarch64_variadic_mixed_int_double_ir`, `backend_lir_aarch64_variadic_mixed_short_double_ir`, and `backend_lir_aarch64_variadic_mixed_double_short_ir` pass for the bounded floating-first smaller-integer mixed aggregate slice
+- reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=546/551 -> 547/552`, zero newly failing tests, and the same five unrelated failures before and after
