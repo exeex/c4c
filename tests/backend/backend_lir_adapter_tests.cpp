@@ -6,6 +6,17 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
+
+namespace c4c::backend::aarch64::assembler {
+
+struct AsmStatement {
+  std::string text;
+};
+
+std::vector<AsmStatement> parse_asm(const std::string& text);
+
+}  // namespace c4c::backend::aarch64::assembler
 
 namespace {
 
@@ -1487,6 +1498,15 @@ void test_aarch64_backend_renders_phi_join_slice() {
                   "aarch64 backend should render pointer phi joins used by target-local va_arg helpers");
 }
 
+void test_aarch64_assembler_parser_stub_preserves_text() {
+  const std::string asm_text = ".text\n.globl main\nmain:\n  ret\n";
+  const auto statements = c4c::backend::aarch64::assembler::parse_asm(asm_text);
+  expect_true(statements.size() == 1,
+              "aarch64 assembler parser stub should keep returning a single placeholder statement");
+  expect_true(statements.front().text == asm_text,
+              "aarch64 assembler parser stub should preserve the raw assembly text");
+}
+
 }  // namespace
 
 int main() {
@@ -1521,5 +1541,6 @@ int main() {
   test_aarch64_backend_renders_va_arg_pair_slice();
   test_aarch64_backend_renders_va_arg_bigints_slice();
   test_aarch64_backend_renders_phi_join_slice();
+  test_aarch64_assembler_parser_stub_preserves_text();
   return 0;
 }
