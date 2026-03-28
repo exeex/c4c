@@ -1,11 +1,11 @@
 #include "prologue.hpp"
 
+#include "globals.hpp"
 #include "support.hpp"
 
 namespace c4c::backend::aarch64 {
 
 void validate_module(const c4c::codegen::lir::LirModule& module) {
-  if (!module.globals.empty()) fail_unsupported("globals");
   if (!module.string_pool.empty()) fail_unsupported("string constants");
   if (!module.extern_decls.empty()) fail_unsupported("extern declarations");
   if (module.need_va_start || module.need_va_end || module.need_va_copy ||
@@ -34,7 +34,8 @@ void render_module_header(std::ostream& out,
   for (const auto& type_decl : module.type_decls) {
     out << type_decl << "\n";
   }
-  if (!module.type_decls.empty()) {
+  render_module_globals(out, module);
+  if (!module.type_decls.empty() || !module.globals.empty()) {
     out << "\n";
   }
 }

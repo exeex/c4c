@@ -7,11 +7,11 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3: port the first integer/control-flow slice
-- Iteration slice: prepare the next bounded AArch64 Step 3 slice after the prologue/helper extraction, keeping the work target-local and mechanically aligned with ref
+- Iteration slice: prepare the next bounded AArch64 Step 3 slice after landing module-level global definitions, keeping the work target-local and mechanically aligned with ref
 
 ## Next Intended Slice
 
-- inspect the ref AArch64 global-addressing helpers and map the narrowest corresponding C++ landing zone under `src/backend/aarch64/`
+- inspect the next narrow global-addressing follow-on after plain module global definitions, likely string-pool or external-global usage that maps onto ref `codegen/globals.rs`
 - keep the next slice focused on one target-local helper boundary or one missing runtime-backed backend capability
 - avoid broadening beyond the active AArch64 Step 3 runbook without recording a separate idea
 
@@ -59,10 +59,16 @@ Source Plan: plan.md
 - added unit coverage for AArch64 module header and declaration rendering in `tests/backend/backend_lir_adapter_tests.cpp`
 - extracted target-local AArch64 module validation and function/module prologue helpers from `src/backend/aarch64/frame.*` into `src/backend/aarch64/prologue.*`
 - reran `backend_lir_adapter_tests` and the full `ctest --test-dir build -j --output-on-failure` suite, then passed the maintenance regression guard against `test_fail_before.log` with `passed=496/509 -> 496/509` and zero newly failing tests
+- added target-local AArch64 module global-definition rendering in `src/backend/aarch64/globals.*`
+- added unit coverage for AArch64 global-definition plus global-load emission in `tests/backend/backend_lir_adapter_tests.cpp`
+- added `tests/c/internal/backend_case/global_load.c` for runtime coverage of simple global loads on supported AArch64 hosts
+- verified `backend_lir_adapter_tests` and `backend_runtime_global_load` pass for the new global-definition slice
+- rebuilt from a clean `build/` directory, recorded `test_fail_after.log`, and reproduced one new unrelated full-suite failure outside this AArch64 slice (`cpp_positive_sema_eastl_inherited_trait_value_template_arg_parse_cpp`) while the new targeted backend coverage stayed green
 
 ## Blockers
 
 - full-suite `ctest` is not clean yet due unrelated existing failures outside the active AArch64 slice (`backend_lir_missing_toolchain_diagnostic`, `compare_smoke_*`, `positive_sema_ok_fn_returns_variadic_fn_ptr_c`, and several longstanding C++ positive-case failures)
+- the latest clean full-suite rerun also reproduces `cpp_positive_sema_eastl_inherited_trait_value_template_arg_parse_cpp`, so `test_fail_before.log` -> `test_fail_after.log` is not monotonic for this iteration even though the new AArch64 slice tests pass
 
 ## Resume Notes
 
@@ -83,3 +89,4 @@ Source Plan: plan.md
 - reran the full `ctest --test-dir build -j --output-on-failure` suite after landing the new coverage; the regression guard passed with `passed=494/507 -> 495/508`, zero newly failing tests, and the new backend runtime test accounted for the pass-count increase
 - nested by-value aggregate member-array addressing also lowers through the current target-local AArch64 memory helpers; this iteration codifies that slice in repo tests
 - module validation plus function/module prologue rendering are now isolated in `src/backend/aarch64/prologue.*`; `src/backend/aarch64/frame.*` is down to entry allocas plus function epilogue helpers
+- plain module global definitions now render through `src/backend/aarch64/globals.*`; `string_pool` and `extern_decls` remain out of slice and are the most obvious next global-addressing boundaries
