@@ -32,7 +32,8 @@ struct PendingTemplateTypeStep {
     // next engine pass.
     const size_t n = ct_state->pending_template_types().size();
     for (size_t i = 0; i < n; ++i) {
-      const auto& work_item = ct_state->pending_template_types()[i];
+      PendingTemplateTypeWorkItem work_item =
+          ct_state->pending_template_types()[i];
       if (ct_state->is_pending_template_type_resolved(work_item.dedup_key))
         continue;
       DeferredTemplateTypeResult result =

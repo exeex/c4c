@@ -3061,6 +3061,40 @@ TypeSpec Parser::parse_base_type() {
                     const Node* primary_tpl = find_template_struct_primary(tpl_name);
                     std::vector<ParsedTemplateArg> actual_args;
                     if (!parse_template_argument_list(&actual_args, primary_tpl)) return ts;
+                    bool has_pack_param = false;
+                    if (primary_tpl && primary_tpl->template_param_is_pack) {
+                        for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
+                            if (primary_tpl->template_param_is_pack[pi]) {
+                                has_pack_param = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (primary_tpl && has_pack_param) {
+                        std::string arg_refs;
+                        for (const auto& arg : actual_args) {
+                            if (!arg_refs.empty()) arg_refs += ",";
+                            if (arg.is_value) {
+                                if (arg.nttp_name && arg.nttp_name[0]) arg_refs += arg.nttp_name;
+                                else arg_refs += std::to_string(arg.value);
+                            } else if (arg.type.tpl_struct_origin) {
+                                arg_refs += "@";
+                                arg_refs += arg.type.tpl_struct_origin;
+                                arg_refs += ":";
+                                arg_refs += arg.type.tpl_struct_arg_refs ? arg.type.tpl_struct_arg_refs : "";
+                            } else if (arg.type.tag) {
+                                arg_refs += arg.type.tag;
+                            } else {
+                                std::string type_name;
+                                append_type_mangled_suffix(type_name, arg.type);
+                                arg_refs += type_name.empty() ? "?" : type_name;
+                            }
+                        }
+                        ts.tpl_struct_origin = arena_.strdup(tpl_name.c_str());
+                        ts.tpl_struct_arg_refs = arena_.strdup(arg_refs.c_str());
+                        ts.tag = arena_.strdup(tpl_name.c_str());
+                        return ts;
+                    }
                     // Fill in deferred NTTP defaults before pattern selection
                     // so specialization matching has the complete arg list.
                     if (primary_tpl) {
