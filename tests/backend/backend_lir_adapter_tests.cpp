@@ -865,6 +865,84 @@ c4c::codegen::lir::LirModule make_va_arg_pair_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_va_arg_bigints_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }");
+  module.type_decls.push_back("%struct.BigInts = type { i32, i32, i32, i32, i32 }");
+  module.need_va_start = true;
+  module.need_va_end = true;
+  module.need_memcpy = true;
+
+  LirFunction function;
+  function.name = "bigints_sum";
+  function.signature_text = "define i32 @bigints_sum(i32 %p.seed, ...)\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(
+      LirAllocaOp{"%lv.ap", "%struct.__va_list_tag_", "", 8});
+  function.alloca_insts.push_back(
+      LirAllocaOp{"%lv.bigints.tmp", "%struct.BigInts", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirVaStartOp{"%lv.ap"});
+  entry.insts.push_back(
+      LirGepOp{"%t0", "%struct.__va_list_tag_", "%lv.ap", false, {"i32 0", "i32 3"}});
+  entry.insts.push_back(LirLoadOp{"%t1", "i32", "%t0"});
+  entry.insts.push_back(LirCmpOp{"%t2", false, "sge", "i32", "%t1", "0"});
+  entry.terminator = LirCondBr{"%t2", "stack", "regtry"};
+
+  LirBlock reg_try_block;
+  reg_try_block.id = LirBlockId{1};
+  reg_try_block.label = "regtry";
+  reg_try_block.insts.push_back(LirBinOp{"%t3", "add", "i32", "%t1", "8"});
+  reg_try_block.insts.push_back(LirStoreOp{"i32", "%t3", "%t0"});
+  reg_try_block.insts.push_back(LirCmpOp{"%t4", false, "sle", "i32", "%t3", "0"});
+  reg_try_block.terminator = LirCondBr{"%t4", "reg", "stack"};
+
+  LirBlock reg_block;
+  reg_block.id = LirBlockId{2};
+  reg_block.label = "reg";
+  reg_block.insts.push_back(
+      LirGepOp{"%t5", "%struct.__va_list_tag_", "%lv.ap", false, {"i32 0", "i32 1"}});
+  reg_block.insts.push_back(LirLoadOp{"%t6", "ptr", "%t5"});
+  reg_block.insts.push_back(LirGepOp{"%t7", "i8", "%t6", false, {"i32 %t1"}});
+  reg_block.terminator = LirBr{"join"};
+
+  LirBlock stack_block;
+  stack_block.id = LirBlockId{3};
+  stack_block.label = "stack";
+  stack_block.insts.push_back(
+      LirGepOp{"%t8", "%struct.__va_list_tag_", "%lv.ap", false, {"i32 0", "i32 0"}});
+  stack_block.insts.push_back(LirLoadOp{"%t9", "ptr", "%t8"});
+  stack_block.insts.push_back(LirGepOp{"%t10", "i8", "%t9", false, {"i64 8"}});
+  stack_block.insts.push_back(LirStoreOp{"ptr", "%t10", "%t8"});
+  stack_block.terminator = LirBr{"join"};
+
+  LirBlock join_block;
+  join_block.id = LirBlockId{4};
+  join_block.label = "join";
+  join_block.insts.push_back(
+      LirPhiOp{"%t11", "ptr", {{"%t7", "reg"}, {"%t9", "stack"}}});
+  join_block.insts.push_back(LirLoadOp{"%t12", "ptr", "%t11"});
+  join_block.insts.push_back(LirMemcpyOp{"%lv.bigints.tmp", "%t12", "20", false});
+  join_block.insts.push_back(LirVaEndOp{"%lv.ap"});
+  join_block.terminator = LirRet{std::string("%p.seed"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(reg_try_block));
+  function.blocks.push_back(std::move(reg_block));
+  function.blocks.push_back(std::move(stack_block));
+  function.blocks.push_back(std::move(join_block));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_phi_join_module() {
   using namespace c4c::codegen::lir;
 
@@ -1348,6 +1426,23 @@ void test_aarch64_backend_renders_va_arg_pair_slice() {
                   "aarch64 backend should preserve the enclosing function return");
 }
 
+void test_aarch64_backend_renders_va_arg_bigints_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_va_arg_bigints_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "%struct.BigInts = type { i32, i32, i32, i32, i32 }",
+                  "aarch64 backend should preserve larger aggregate type declarations");
+  expect_contains(rendered, "%t11 = phi ptr [ %t7, %reg ], [ %t9, %stack ]",
+                  "aarch64 backend should preserve the indirect aggregate helper phi join");
+  expect_contains(rendered, "%t12 = load ptr, ptr %t11",
+                  "aarch64 backend should reload the indirect aggregate source pointer");
+  expect_contains(rendered,
+                  "call void @llvm.memcpy.p0.p0.i64(ptr %lv.bigints.tmp, ptr %t12, i64 20, i1 false)",
+                  "aarch64 backend should render indirect aggregate va_arg copies through llvm.memcpy");
+  expect_contains(rendered, "call void @llvm.va_end.p0(ptr %lv.ap)",
+                  "aarch64 backend should preserve va_end after indirect aggregate va_arg handling");
+}
+
 void test_aarch64_backend_renders_phi_join_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_phi_join_module()},
@@ -1389,6 +1484,7 @@ int main() {
   test_aarch64_backend_renders_va_intrinsic_slice();
   test_aarch64_backend_renders_va_arg_scalar_slice();
   test_aarch64_backend_renders_va_arg_pair_slice();
+  test_aarch64_backend_renders_va_arg_bigints_slice();
   test_aarch64_backend_renders_phi_join_slice();
   return 0;
 }
