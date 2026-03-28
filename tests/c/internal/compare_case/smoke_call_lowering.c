@@ -99,6 +99,23 @@ int call_fp_math_builtins(float lhs, double rhs, long double wide) {
   return total;
 }
 
+int call_conj_builtins(void) {
+  _Complex float cf = (_Complex float){1.5f, 2.0f};
+  _Complex double cd = (_Complex double){2.0, -3.0};
+  _Complex long double cl = (_Complex long double){-1.0L, 0.25L};
+  _Complex float out_f = __builtin_conjf(cf);
+  _Complex double out_d = __builtin_conj(cd);
+  _Complex long double out_l = __builtin_conjl(cl);
+  int total = 0;
+  total += __real__ out_f == 1.5f;
+  total += __imag__ out_f == -2.0f;
+  total += __real__ out_d == 2.0;
+  total += __imag__ out_d == 3.0;
+  total += __real__ out_l == -1.0L;
+  total += __imag__ out_l == -0.25L;
+  return total;
+}
+
 int main(void) {
   const int direct = call_direct(9, 4);
   combine_fn fn = sub_pair;
@@ -110,10 +127,12 @@ int main(void) {
   const int fp_predicates = call_fp_predicate_builtins(1.5f, 2.0);
   const int signbit_builtins = call_signbit_builtins(-1.5f, -0.25L);
   const int fp_math_builtins = call_fp_math_builtins(-1.5f, 2.0, 0.25L);
+  const int conj_builtins = call_conj_builtins();
   call_variadic(direct + indirect + void_direct, 1.5f);
   return (direct == 13 && indirect == 5 && decay == 21 && void_direct == 25 &&
           implicit == 4 && bit_builtins == 137 && fp_predicates == 9 &&
-          signbit_builtins == 3 && fp_math_builtins == 14)
+          signbit_builtins == 3 && fp_math_builtins == 14 &&
+          conj_builtins == 6)
              ? 0
              : 1;
 }

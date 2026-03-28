@@ -300,6 +300,7 @@ class StmtEmitter {
   std::string emit_builtin_copysign_call(FnCtx& ctx, const CallExpr& call,
                                          BuiltinId builtin_id);
   std::string emit_builtin_fabs_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
+  std::string emit_builtin_conj_call(FnCtx& ctx, ExprId arg_id);
   void promote_builtin_signbit_arg(FnCtx& ctx, std::string& value, TypeSpec& value_ts,
                                    BuiltinId builtin_id);
   std::string emit_builtin_signbit_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);

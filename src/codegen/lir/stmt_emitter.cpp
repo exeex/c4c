@@ -3144,6 +3144,31 @@ std::string StmtEmitter::emit_builtin_fabs_call(FnCtx& ctx, ExprId arg_id,
     return tmp;
   }
 
+std::string StmtEmitter::emit_builtin_conj_call(FnCtx& ctx, ExprId arg_id) {
+    TypeSpec arg_ts{};
+    std::string arg = emit_rval_id(ctx, arg_id, arg_ts);
+    if (!is_complex_base(arg_ts.base)) return arg;
+
+    const TypeSpec elem_ts = complex_component_ts(arg_ts.base);
+    const std::string complex_ty = llvm_ty(arg_ts);
+    const std::string elem_ty = llvm_ty(elem_ts);
+    const std::string real_v = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirExtractValueOp{real_v, complex_ty, arg, 0});
+    const std::string imag_v0 = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirExtractValueOp{imag_v0, complex_ty, arg, 1});
+    const std::string imag_v = fresh_tmp(ctx);
+    if (is_float_base(elem_ts.base)) {
+      emit_lir_op(ctx, lir::LirBinOp{imag_v, "fneg", elem_ty, imag_v0, ""});
+    } else {
+      emit_lir_op(ctx, lir::LirBinOp{imag_v, "sub", elem_ty, "0", imag_v0});
+    }
+    const std::string with_real = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirInsertValueOp{with_real, complex_ty, "undef", elem_ty, real_v, 0});
+    const std::string out = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirInsertValueOp{out, complex_ty, with_real, elem_ty, imag_v, 1});
+    return out;
+  }
+
 void StmtEmitter::promote_builtin_signbit_arg(FnCtx& ctx, std::string& value,
                                               TypeSpec& value_ts, BuiltinId builtin_id) {
     if (builtin_id != BuiltinId::SignBit) return;
@@ -3451,27 +3476,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
       }
       if ((builtin_id == BuiltinId::Conj || builtin_id == BuiltinId::ConjF ||
            builtin_id == BuiltinId::ConjL) && call.args.size() == 1) {
-        TypeSpec arg_ts{};
-        std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
-        if (!is_complex_base(arg_ts.base)) return arg;
-        const TypeSpec elem_ts = complex_component_ts(arg_ts.base);
-        const std::string complex_ty = llvm_ty(arg_ts);
-        const std::string elem_ty = llvm_ty(elem_ts);
-        const std::string real_v = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirExtractValueOp{real_v, complex_ty, arg, 0});
-        const std::string imag_v0 = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirExtractValueOp{imag_v0, complex_ty, arg, 1});
-        const std::string imag_v = fresh_tmp(ctx);
-        if (is_float_base(elem_ts.base)) {
-          emit_lir_op(ctx, lir::LirBinOp{imag_v, "fneg", elem_ty, imag_v0, ""});
-        } else {
-          emit_lir_op(ctx, lir::LirBinOp{imag_v, "sub", elem_ty, "0", imag_v0});
-        }
-        const std::string with_real = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirInsertValueOp{with_real, complex_ty, "undef", elem_ty, real_v, 0});
-        const std::string out = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirInsertValueOp{out, complex_ty, with_real, elem_ty, imag_v, 1});
-        return out;
+        return emit_builtin_conj_call(ctx, call.args[0]);
       }
     }
     return emit_post_builtin_call(ctx, call, call_target);
