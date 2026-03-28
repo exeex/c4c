@@ -14,6 +14,8 @@ struct AsmStatement {
   std::string text;
 };
 
+bool is_branch_reloc_type(std::uint32_t elf_type);
+
 std::vector<AsmStatement> parse_asm(const std::string& text);
 
 }  // namespace c4c::backend::aarch64::assembler
@@ -1507,6 +1509,21 @@ void test_aarch64_assembler_parser_stub_preserves_text() {
               "aarch64 assembler parser stub should preserve the raw assembly text");
 }
 
+void test_aarch64_assembler_elf_writer_branch_reloc_helper() {
+  using c4c::backend::aarch64::assembler::is_branch_reloc_type;
+
+  expect_true(is_branch_reloc_type(279),
+              "aarch64 elf writer helper should treat R_AARCH64_CALL26 as a branch reloc");
+  expect_true(is_branch_reloc_type(280),
+              "aarch64 elf writer helper should treat R_AARCH64_JUMP26 as a branch reloc");
+  expect_true(is_branch_reloc_type(282),
+              "aarch64 elf writer helper should treat R_AARCH64_CONDBR19 as a branch reloc");
+  expect_true(is_branch_reloc_type(283),
+              "aarch64 elf writer helper should treat R_AARCH64_TSTBR14 as a branch reloc");
+  expect_true(!is_branch_reloc_type(257),
+              "aarch64 elf writer helper should keep non-branch relocations out of the branch-only set");
+}
+
 }  // namespace
 
 int main() {
@@ -1542,5 +1559,6 @@ int main() {
   test_aarch64_backend_renders_va_arg_bigints_slice();
   test_aarch64_backend_renders_phi_join_slice();
   test_aarch64_assembler_parser_stub_preserves_text();
+  test_aarch64_assembler_elf_writer_branch_reloc_helper();
   return 0;
 }
