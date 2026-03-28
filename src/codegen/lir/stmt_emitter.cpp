@@ -2910,6 +2910,93 @@ std::string StmtEmitter::emit_call_with_result(FnCtx& ctx, const CallTargetInfo&
     return tmp;
   }
 
+PreparedBuiltinIntArg StmtEmitter::prepare_builtin_int_arg(FnCtx& ctx, ExprId arg_id,
+                                                           BuiltinId builtin_id) {
+    TypeSpec arg_ts{};
+    std::string arg = emit_rval_id(ctx, arg_id, arg_ts);
+    const bool is_i64 = builtin_uses_i64_width(builtin_id);
+    TypeSpec target_ts{};
+    target_ts.base = is_i64 ? TB_LONGLONG : TB_INT;
+    arg = coerce(ctx, arg, arg_ts, target_ts);
+    return {arg, is_i64 ? "i64" : "i32", is_i64};
+  }
+
+std::string StmtEmitter::narrow_builtin_int_result(FnCtx& ctx,
+                                                   const PreparedBuiltinIntArg& arg,
+                                                   const std::string& value) {
+    if (!arg.is_i64) return value;
+    const std::string trunc = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirCastOp{trunc, lir::LirCastKind::Trunc, arg.llvm_ty, value, "i32"});
+    return trunc;
+  }
+
+std::string StmtEmitter::emit_builtin_ffs_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id) {
+    const PreparedBuiltinIntArg arg = prepare_builtin_int_arg(ctx, arg_id, builtin_id);
+    const std::string cttz = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirCallOp{cttz, arg.llvm_ty, "@llvm.cttz." + arg.llvm_ty, "",
+                                    arg.llvm_ty + " " + arg.value + ", i1 false"});
+    const std::string plus1 = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirBinOp{plus1, "add", arg.llvm_ty, cttz, "1"});
+    const std::string is_zero = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirCmpOp{is_zero, false, "eq", arg.llvm_ty, arg.value, "0"});
+    const std::string sel = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirSelectOp{sel, arg.llvm_ty, is_zero, "0", plus1});
+    return narrow_builtin_int_result(ctx, arg, sel);
+  }
+
+std::string StmtEmitter::emit_builtin_ctz_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id) {
+    const PreparedBuiltinIntArg arg = prepare_builtin_int_arg(ctx, arg_id, builtin_id);
+    const std::string tmp = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirCallOp{tmp, arg.llvm_ty, "@llvm.cttz." + arg.llvm_ty, "",
+                                    arg.llvm_ty + " " + arg.value + ", i1 true"});
+    return narrow_builtin_int_result(ctx, arg, tmp);
+  }
+
+std::string StmtEmitter::emit_builtin_clz_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id) {
+    const PreparedBuiltinIntArg arg = prepare_builtin_int_arg(ctx, arg_id, builtin_id);
+    const std::string tmp = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirCallOp{tmp, arg.llvm_ty, "@llvm.ctlz." + arg.llvm_ty, "",
+                                    arg.llvm_ty + " " + arg.value + ", i1 true"});
+    return narrow_builtin_int_result(ctx, arg, tmp);
+  }
+
+std::string StmtEmitter::emit_builtin_popcount_call(FnCtx& ctx, ExprId arg_id,
+                                                    BuiltinId builtin_id) {
+    const PreparedBuiltinIntArg arg = prepare_builtin_int_arg(ctx, arg_id, builtin_id);
+    const std::string tmp = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirCallOp{tmp, arg.llvm_ty, "@llvm.ctpop." + arg.llvm_ty, "",
+                                    arg.llvm_ty + " " + arg.value});
+    return narrow_builtin_int_result(ctx, arg, tmp);
+  }
+
+std::string StmtEmitter::emit_builtin_parity_call(FnCtx& ctx, ExprId arg_id,
+                                                  BuiltinId builtin_id) {
+    const PreparedBuiltinIntArg arg = prepare_builtin_int_arg(ctx, arg_id, builtin_id);
+    const std::string pop = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirCallOp{pop, arg.llvm_ty, "@llvm.ctpop." + arg.llvm_ty, "",
+                                    arg.llvm_ty + " " + arg.value});
+    const std::string parity = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirBinOp{parity, "and", arg.llvm_ty, pop, "1"});
+    return narrow_builtin_int_result(ctx, arg, parity);
+  }
+
+std::string StmtEmitter::emit_builtin_clrsb_call(FnCtx& ctx, ExprId arg_id,
+                                                 BuiltinId builtin_id) {
+    const PreparedBuiltinIntArg arg = prepare_builtin_int_arg(ctx, arg_id, builtin_id);
+    const int bitwidth = arg.is_i64 ? 64 : 32;
+    const std::string shift = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirBinOp{shift, "ashr", arg.llvm_ty, arg.value,
+                                   std::to_string(bitwidth - 1)});
+    const std::string xored = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirBinOp{xored, "xor", arg.llvm_ty, arg.value, shift});
+    const std::string clz = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirCallOp{clz, arg.llvm_ty, "@llvm.ctlz." + arg.llvm_ty, "",
+                                    arg.llvm_ty + " " + xored + ", i1 false"});
+    const std::string sub1 = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirBinOp{sub1, "sub", arg.llvm_ty, clz, "1"});
+    return narrow_builtin_int_result(ctx, arg, sub1);
+  }
+
 std::string StmtEmitter::emit_post_builtin_call(FnCtx& ctx, const CallExpr& call,
                                                 const CallTargetInfo& call_target) {
     const BuiltinId builtin_id = call_target.builtin_id;
@@ -3343,123 +3430,22 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
         return tmp;
       }
       if (builtin_is_ffs(builtin_id) && call.args.size() == 1) {
-        TypeSpec arg_ts{};
-        std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
-        const bool is_ll = builtin_uses_i64_width(builtin_id);
-        const std::string ity = is_ll ? "i64" : "i32";
-        TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
-        arg = coerce(ctx, arg, arg_ts, target_ts);
-        const std::string cttz = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCallOp{cttz, ity, "@llvm.cttz." + ity, "",
-                             ity + " " + arg + ", i1 false"});
-        const std::string plus1 = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirBinOp{plus1, "add", ity, cttz, "1"});
-        const std::string is_zero = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCmpOp{is_zero, false, "eq", ity, arg, "0"});
-        const std::string sel = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirSelectOp{sel, ity, is_zero, "0", plus1});
-        // Always return i32
-        if (is_ll) {
-          const std::string trunc = fresh_tmp(ctx);
-          emit_lir_op(ctx, lir::LirCastOp{trunc, lir::LirCastKind::Trunc, "i64", sel, "i32"});
-          return trunc;
-        }
-        return sel;
+        return emit_builtin_ffs_call(ctx, call.args[0], builtin_id);
       }
       if (builtin_is_ctz(builtin_id) && call.args.size() == 1) {
-        TypeSpec arg_ts{};
-        std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
-        const bool is_ll = builtin_uses_i64_width(builtin_id);
-        const std::string ity = is_ll ? "i64" : "i32";
-        TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
-        arg = coerce(ctx, arg, arg_ts, target_ts);
-        const std::string tmp = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCallOp{tmp, ity, "@llvm.cttz." + ity, "",
-                             ity + " " + arg + ", i1 true"});
-        if (is_ll) {
-          const std::string trunc = fresh_tmp(ctx);
-          emit_lir_op(ctx, lir::LirCastOp{trunc, lir::LirCastKind::Trunc, "i64", tmp, "i32"});
-          return trunc;
-        }
-        return tmp;
+        return emit_builtin_ctz_call(ctx, call.args[0], builtin_id);
       }
       if (builtin_is_clz(builtin_id) && call.args.size() == 1) {
-        TypeSpec arg_ts{};
-        std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
-        const bool is_ll = builtin_uses_i64_width(builtin_id);
-        const std::string ity = is_ll ? "i64" : "i32";
-        TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
-        arg = coerce(ctx, arg, arg_ts, target_ts);
-        const std::string tmp = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCallOp{tmp, ity, "@llvm.ctlz." + ity, "",
-                             ity + " " + arg + ", i1 true"});
-        if (is_ll) {
-          const std::string trunc = fresh_tmp(ctx);
-          emit_lir_op(ctx, lir::LirCastOp{trunc, lir::LirCastKind::Trunc, "i64", tmp, "i32"});
-          return trunc;
-        }
-        return tmp;
+        return emit_builtin_clz_call(ctx, call.args[0], builtin_id);
       }
       if (builtin_is_popcount(builtin_id) && call.args.size() == 1) {
-        TypeSpec arg_ts{};
-        std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
-        const bool is_ll = builtin_uses_i64_width(builtin_id);
-        const std::string ity = is_ll ? "i64" : "i32";
-        TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
-        arg = coerce(ctx, arg, arg_ts, target_ts);
-        const std::string tmp = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCallOp{tmp, ity, "@llvm.ctpop." + ity, "",
-                             ity + " " + arg});
-        if (is_ll) {
-          const std::string trunc = fresh_tmp(ctx);
-          emit_lir_op(ctx, lir::LirCastOp{trunc, lir::LirCastKind::Trunc, "i64", tmp, "i32"});
-          return trunc;
-        }
-        return tmp;
+        return emit_builtin_popcount_call(ctx, call.args[0], builtin_id);
       }
       if (builtin_is_parity(builtin_id) && call.args.size() == 1) {
-        TypeSpec arg_ts{};
-        std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
-        const bool is_ll = builtin_uses_i64_width(builtin_id);
-        const std::string ity = is_ll ? "i64" : "i32";
-        TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
-        arg = coerce(ctx, arg, arg_ts, target_ts);
-        const std::string pop = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCallOp{pop, ity, "@llvm.ctpop." + ity, "",
-                            ity + " " + arg});
-        const std::string tmp = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirBinOp{tmp, "and", ity, pop, "1"});
-        if (is_ll) {
-          const std::string trunc = fresh_tmp(ctx);
-          emit_lir_op(ctx, lir::LirCastOp{trunc, lir::LirCastKind::Trunc, "i64", tmp, "i32"});
-          return trunc;
-        }
-        return tmp;
+        return emit_builtin_parity_call(ctx, call.args[0], builtin_id);
       }
       if (builtin_is_clrsb(builtin_id) && call.args.size() == 1) {
-        // clrsb(x) = clz(x ^ (x >> (bitwidth-1))) - 1
-        TypeSpec arg_ts{};
-        std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
-        const bool is_ll = builtin_uses_i64_width(builtin_id);
-        const std::string ity = is_ll ? "i64" : "i32";
-        const int bitwidth = is_ll ? 64 : 32;
-        TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
-        arg = coerce(ctx, arg, arg_ts, target_ts);
-        const std::string shift = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirBinOp{shift, "ashr", ity, arg, std::to_string(bitwidth - 1)});
-        const std::string xored = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirBinOp{xored, "xor", ity, arg, shift});
-        const std::string clz = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCallOp{clz, ity, "@llvm.ctlz." + ity, "",
-                             ity + " " + xored + ", i1 false"});
-        const std::string sub1 = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirBinOp{sub1, "sub", ity, clz, "1"});
-        if (is_ll) {
-          const std::string trunc = fresh_tmp(ctx);
-          emit_lir_op(ctx, lir::LirCastOp{trunc, lir::LirCastKind::Trunc, "i64", sub1, "i32"});
-          return trunc;
-        }
-        return sub1;
+        return emit_builtin_clrsb_call(ctx, call.args[0], builtin_id);
       }
       if ((builtin_id == BuiltinId::Conj || builtin_id == BuiltinId::ConjF ||
            builtin_id == BuiltinId::ConjL) && call.args.size() == 1) {

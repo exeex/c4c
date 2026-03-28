@@ -39,6 +39,25 @@ int call_implicit_builtins(int seed) {
   return *slot;
 }
 
+int call_bit_builtins(int seed) {
+  unsigned int bits = (unsigned int)(seed | 40);
+  unsigned long long wide = ((unsigned long long)bits << 33) | 8ull;
+  int total = 0;
+  total += __builtin_ffs(seed);
+  total += __builtin_ctz(bits);
+  total += __builtin_clz(bits);
+  total += __builtin_popcount(bits);
+  total += __builtin_parity(bits);
+  total += __builtin_clrsb(seed);
+  total += __builtin_ffsll((long long)wide);
+  total += __builtin_ctzll((long long)wide);
+  total += __builtin_clzll((long long)wide);
+  total += __builtin_popcountll((long long)wide);
+  total += __builtin_parityll((long long)wide);
+  total += __builtin_clrsbll((long long)wide);
+  return total;
+}
+
 int main(void) {
   const int direct = call_direct(9, 4);
   combine_fn fn = sub_pair;
@@ -46,9 +65,10 @@ int main(void) {
   const int decay = call_decay(6);
   const int void_direct = call_void_direct(decay);
   const int implicit = call_implicit_builtins(indirect);
+  const int bit_builtins = call_bit_builtins(indirect);
   call_variadic(direct + indirect + void_direct, 1.5f);
   return (direct == 13 && indirect == 5 && decay == 21 && void_direct == 25 &&
-          implicit == 4)
+          implicit == 4 && bit_builtins == 137)
              ? 0
              : 1;
 }

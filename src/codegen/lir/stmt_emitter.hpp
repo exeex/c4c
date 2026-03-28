@@ -92,6 +92,12 @@ struct PreparedCallArg {
   bool skip = false;
 };
 
+struct PreparedBuiltinIntArg {
+  std::string value;
+  std::string llvm_ty;
+  bool is_i64 = false;
+};
+
 class StmtEmitter {
  public:
   explicit StmtEmitter(const Module& m);
@@ -268,6 +274,16 @@ class StmtEmitter {
                       const std::string& args_str);
   std::string emit_call_with_result(FnCtx& ctx, const CallTargetInfo& call_target,
                                     const std::string& args_str);
+  PreparedBuiltinIntArg prepare_builtin_int_arg(FnCtx& ctx, ExprId arg_id,
+                                                BuiltinId builtin_id);
+  std::string narrow_builtin_int_result(FnCtx& ctx, const PreparedBuiltinIntArg& arg,
+                                        const std::string& value);
+  std::string emit_builtin_ffs_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
+  std::string emit_builtin_ctz_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
+  std::string emit_builtin_clz_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
+  std::string emit_builtin_popcount_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
+  std::string emit_builtin_parity_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
+  std::string emit_builtin_clrsb_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
   std::string emit_post_builtin_call(FnCtx& ctx, const CallExpr& call,
                                      const CallTargetInfo& call_target);
 
