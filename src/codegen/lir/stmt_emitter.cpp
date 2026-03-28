@@ -2652,54 +2652,78 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CastExpr& c, const 
     return coerce(ctx, val, from_ts, c.to_type.spec);
   }
 
-std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, const Expr& e){
-    TypeSpec callee_ts{};
-    std::string callee_val;
+CallTargetInfo StmtEmitter::resolve_call_target_info(FnCtx& ctx, const CallExpr& call,
+                                                     const Expr& e) {
+    CallTargetInfo info;
+    info.builtin_id = call.builtin_id;
+    info.builtin = builtin_by_id(info.builtin_id);
+
     const Expr& callee_e = get_expr(call.callee);
     bool unresolved_external_callee = false;
     std::string unresolved_external_name;
-    const BuiltinId builtin_id = call.builtin_id;
-    const BuiltinInfo* builtin = builtin_by_id(builtin_id);
-    if (builtin && builtin->category == BuiltinCategory::AliasCall &&
-        !builtin->canonical_name.empty()) {
-      callee_val = llvm_global_sym(std::string(builtin->canonical_name));
+    if (info.builtin && info.builtin->category == BuiltinCategory::AliasCall &&
+        !info.builtin->canonical_name.empty()) {
+      info.callee_val = llvm_global_sym(std::string(info.builtin->canonical_name));
       unresolved_external_callee = true;
-      unresolved_external_name = std::string(builtin->canonical_name);
+      unresolved_external_name = std::string(info.builtin->canonical_name);
     } else if (const auto* r = std::get_if<DeclRef>(&callee_e.payload);
-        r && !r->local && !r->param_index && !r->global) {
+               r && !r->local && !r->param_index && !r->global) {
       // Treat unresolved decl refs in call position as external functions.
-      callee_val = llvm_global_sym(r->name);
-      callee_ts = resolve_payload_type(ctx, *r);
+      info.callee_val = llvm_global_sym(r->name);
+      info.callee_ts = resolve_payload_type(ctx, *r);
       unresolved_external_callee = true;
       unresolved_external_name = r->name;
     } else {
-      callee_val = emit_rval_id(ctx, call.callee, callee_ts);
-    }
-    TypeSpec ret_spec = resolve_payload_type(ctx, call);
-    if (ret_spec.base == TB_VOID && ret_spec.ptr_level == 0 && ret_spec.array_rank == 0) {
-      ret_spec = e.type.spec;
-    }
-    const std::string ret_ty = llvm_ret_ty(ret_spec);
-    const bool builtin_special =
-        builtin && builtin->lowering != BuiltinLoweringKind::AliasCall;
-    if (unresolved_external_callee && !builtin_special) {
-      record_extern_call_decl(unresolved_external_name, ret_ty);
+      info.callee_val = emit_rval_id(ctx, call.callee, info.callee_ts);
     }
 
-    // Look up function signature for argument type coercion
-    std::string fn_name;
-    if (builtin_id != BuiltinId::Unknown) {
-      fn_name = std::string(builtin_name_from_id(builtin_id));
+    info.ret_spec = resolve_payload_type(ctx, call);
+    if (info.ret_spec.base == TB_VOID && info.ret_spec.ptr_level == 0 &&
+        info.ret_spec.array_rank == 0) {
+      info.ret_spec = e.type.spec;
+    }
+    info.ret_ty = llvm_ret_ty(info.ret_spec);
+    info.builtin_special =
+        info.builtin && info.builtin->lowering != BuiltinLoweringKind::AliasCall;
+    if (unresolved_external_callee && !info.builtin_special) {
+      record_extern_call_decl(unresolved_external_name, info.ret_ty);
+    }
+
+    if (info.builtin_id != BuiltinId::Unknown) {
+      info.fn_name = std::string(builtin_name_from_id(info.builtin_id));
     } else if (const auto* r = std::get_if<DeclRef>(&callee_e.payload)) {
-      fn_name = r->name;
+      info.fn_name = r->name;
     }
 
-    if (builtin_id == BuiltinId::Unknown && has_builtin_prefix(fn_name)) {
-      throw std::runtime_error("StmtEmitter: unsupported builtin call: " + fn_name);
+    if (!info.fn_name.empty()) {
+      const auto fit = mod_.fn_index.find(info.fn_name);
+      if (fit != mod_.fn_index.end() && fit->second.value < mod_.functions.size()) {
+        info.target_fn = &mod_.functions[fit->second.value];
+      }
+    }
+    info.callee_fn_ptr_sig =
+        info.target_fn ? nullptr : resolve_callee_fn_ptr_sig(ctx, callee_e);
+    if (info.target_fn) {
+      info.callee_type_suffix = llvm_fn_type_suffix_str(*info.target_fn);
+    } else if (info.callee_fn_ptr_sig) {
+      info.callee_type_suffix = llvm_fn_type_suffix_str(*info.callee_fn_ptr_sig);
+    }
+
+    return info;
+  }
+
+std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, const Expr& e){
+    const Expr& callee_e = get_expr(call.callee);
+    const CallTargetInfo call_target = resolve_call_target_info(ctx, call, e);
+    const BuiltinId builtin_id = call_target.builtin_id;
+    const BuiltinInfo* builtin = call_target.builtin;
+
+    if (builtin_id == BuiltinId::Unknown && has_builtin_prefix(call_target.fn_name)) {
+      throw std::runtime_error("StmtEmitter: unsupported builtin call: " + call_target.fn_name);
     }
 
     // Handle GCC/Clang builtins
-    if (builtin_special) {
+    if (call_target.builtin_special) {
       if (builtin_id == BuiltinId::Memcpy && call.args.size() >= 3) {
         TypeSpec dst_ts{};
         TypeSpec src_ts{};
@@ -3228,10 +3252,12 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
     // Implicit builtins: standard library functions recognized by GCC/Clang
     // even without __builtin_ prefix. abs/labs/llabs → llvm.abs intrinsic.
     if (builtin_id == BuiltinId::Unknown && call.args.size() == 1 &&
-        (fn_name == "abs" || fn_name == "labs" || fn_name == "llabs")) {
+        (call_target.fn_name == "abs" || call_target.fn_name == "labs" ||
+         call_target.fn_name == "llabs")) {
       TypeSpec arg_ts{};
       std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
-      const bool is_ll = (fn_name == "llabs" || fn_name == "labs");
+      const bool is_ll =
+          (call_target.fn_name == "llabs" || call_target.fn_name == "labs");
       const std::string ity = is_ll ? "i64" : "i32";
       TypeSpec target_ts{}; target_ts.base = is_ll ? TB_LONGLONG : TB_INT;
       arg = coerce(ctx, arg, arg_ts, target_ts);
@@ -3243,7 +3269,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
 
     // Implicit builtin: alloca() → LLVM alloca instruction (like __builtin_alloca).
     if (builtin_id == BuiltinId::Unknown && call.args.size() == 1 &&
-        fn_name == "alloca") {
+        call_target.fn_name == "alloca") {
       TypeSpec size_ts{};
       std::string size = emit_rval_id(ctx, call.args[0], size_ts);
       TypeSpec i64_ts{}; i64_ts.base = TB_ULONGLONG;
@@ -3253,20 +3279,8 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
       return tmp;
     }
 
-    const Function* target_fn = nullptr;
-    if (!fn_name.empty()) {
-      const auto fit = mod_.fn_index.find(fn_name);
-      if (fit != mod_.fn_index.end() && fit->second.value < mod_.functions.size()) {
-        target_fn = &mod_.functions[fit->second.value];
-      }
-    }
-    const FnPtrSig* callee_fn_ptr_sig = target_fn ? nullptr : resolve_callee_fn_ptr_sig(ctx, callee_e);
-    std::string callee_type_suffix;
-    if (target_fn) {
-      callee_type_suffix = llvm_fn_type_suffix_str(*target_fn);
-    } else if (callee_fn_ptr_sig) {
-      callee_type_suffix = llvm_fn_type_suffix_str(*callee_fn_ptr_sig);
-    }
+    const Function* target_fn = call_target.target_fn;
+    const FnPtrSig* callee_fn_ptr_sig = call_target.callee_fn_ptr_sig;
 
     auto callee_needs_va_list_by_value_copy = [&](size_t arg_index) -> bool {
       if (target_fn) {
@@ -3285,11 +3299,11 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
         }
         return false;
       }
-      return fn_name == "vprintf"   || fn_name == "vfprintf" ||
-             fn_name == "vsprintf"  || fn_name == "vsnprintf" ||
-             fn_name == "vscanf"    || fn_name == "vfscanf" ||
-             fn_name == "vsscanf"   || fn_name == "vasprintf" ||
-             fn_name == "vdprintf";
+      return call_target.fn_name == "vprintf"   || call_target.fn_name == "vfprintf" ||
+             call_target.fn_name == "vsprintf"  || call_target.fn_name == "vsnprintf" ||
+             call_target.fn_name == "vscanf"    || call_target.fn_name == "vfscanf" ||
+             call_target.fn_name == "vsscanf"   || call_target.fn_name == "vasprintf" ||
+             call_target.fn_name == "vdprintf";
     };
 
     std::string args_str;
@@ -3436,12 +3450,15 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
       args_str += llvm_ty(out_arg_ts) + " " + arg;
     }
 
-    if (ret_ty == "void") {
-      emit_lir_op(ctx, lir::LirCallOp{"", "void", callee_val, callee_type_suffix, args_str});
+    if (call_target.ret_ty == "void") {
+      emit_lir_op(
+          ctx, lir::LirCallOp{"", "void", call_target.callee_val,
+                              call_target.callee_type_suffix, args_str});
       return "";
     }
     const std::string tmp = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirCallOp{tmp, ret_ty, callee_val, callee_type_suffix, args_str});
+    emit_lir_op(ctx, lir::LirCallOp{tmp, call_target.ret_ty, call_target.callee_val,
+                                    call_target.callee_type_suffix, args_str});
     return tmp;
   }
 

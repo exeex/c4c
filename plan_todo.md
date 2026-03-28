@@ -6,11 +6,15 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 4: Extract Assignment and Store Helpers
-- Current slice: re-scan the remaining Step 4 assignment/store coordination after extracting the promoted non-pointer compound-assignment op-type/store-back helper layer; if no further local helper seam remains above the operator tables, close Step 4 and move to Step 5 call lowering
+- Step 5: Extract Call-Lowering Helpers
+- Current slice: continue Step 5 by extracting the shallowest call-argument preparation helper above the existing arg-loop policy so `emit_rval_payload(const CallExpr&)` keeps shrinking without disturbing builtin-special lowering
 
 ## Completed
 
+- Added [`smoke_call_lowering.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_call_lowering.c) so compare mode now pins direct fixed-parameter calls, indirect function-pointer calls, and external variadic-call lowering in one narrow Step 5 smoke case
+- Extracted `resolve_call_target_info(...)` plus shared `CallTargetInfo` metadata in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp), so `emit_rval_payload(const CallExpr&)` now routes alias/external/direct/indirect callee resolution, return-type setup, signature discovery, and extern-declaration registration through one named front-end helper before the existing builtin and arg-emission logic runs
+- Verified `compare_smoke_call_lowering`, the full `compare_case` label, and the clean full-suite regression guard with improved results (`2248` -> `2249` passed, zero failures; `check_monotonic_regression.py --allow-non-decreasing-passed` accepted the first Step 5 slice)
+- Re-scanned the remaining Step 4 assignment/store path in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) after the promoted non-pointer compound-assignment helper extraction and found no further local helper seam above the operator tables without crossing into a different concern, so Step 4 is complete and execution moves to Step 5 call lowering
 - Extended [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) with narrow integer `*=` and `>>=` coverage so compare mode now pins non-bitfield compound assignment when integer promotion widens the operation type past the stored lvalue type
 - Extracted `resolve_compound_assign_op_type(...)` and `emit_nonptr_compound_assign_value(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp), so `emit_compound_assign_value(...)` now routes the promoted scalar/vector op-type and store-back coercion flow through named helpers without changing the existing operator tables, pointer path, or bitfield path
 - Verified `compare_smoke_aggregate_access`, the full `compare_case` label, and the clean full-suite regression guard with stable results (`2248` -> `2248` passed, zero failures; `check_monotonic_regression.py --allow-non-decreasing-passed` accepted the promoted non-pointer Step 4 slice)
@@ -97,7 +101,7 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Re-scan Step 4 for any remaining local assignment/store helper seam above the operator tables; if the store/assignment layer is now sufficiently compressed, close Step 4 and start Step 5 by isolating the shallowest call-lowering coordinator split in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp)
+- Extract the smallest reusable call-argument preparation helper in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp), most likely the fixed-param/ref-vs-rvalue setup and default-promotion/coercion front-end that currently sits above the va_list and variadic-aggregate special cases
 
 ## Blockers
 
@@ -145,3 +149,4 @@ Source Plan: plan.md
 - This iteration targeted the final `AssignExpr` store/reload decision after arithmetic was already computed; the next Step 4 scan should decide whether unary inc/dec can reuse that same contract or whether another assignment-only coordination seam remains above the operator tables
 - `emit_load_assignable_value(...)` now owns the shared bitfield-vs-load decision for unary inc/dec and compound assignment; the next Step 4 pass should stay above that loader and look for the remaining non-bitfield result-type/coercion coordination seam without touching the operator tables
 - `resolve_compound_assign_op_type(...)` and `emit_nonptr_compound_assign_value(...)` now own the promoted non-pointer compound-assignment op-type/store-back flow; the next Step 4 scan should decide whether any assignment/store helper seam still remains above the operator tables or whether execution should move to Step 5
+- `resolve_call_target_info(...)` now owns the shallow `CallExpr` front-end for alias/external/direct/indirect callee resolution, return-type setup, signature lookup, and extern-declaration registration; the next Step 5 slice should stay below that layer and above the builtin-special table by pulling out reusable argument-preparation coordination

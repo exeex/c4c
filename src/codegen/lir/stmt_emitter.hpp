@@ -73,6 +73,20 @@ struct LoadedAssignableValue {
   TypeSpec value_ts{};
 };
 
+struct CallTargetInfo {
+  BuiltinId builtin_id = BuiltinId::Unknown;
+  const BuiltinInfo* builtin = nullptr;
+  std::string fn_name;
+  TypeSpec callee_ts{};
+  std::string callee_val;
+  TypeSpec ret_spec{};
+  std::string ret_ty;
+  const Function* target_fn = nullptr;
+  const FnPtrSig* callee_fn_ptr_sig = nullptr;
+  std::string callee_type_suffix;
+  bool builtin_special = false;
+};
+
 class StmtEmitter {
  public:
   explicit StmtEmitter(const Module& m);
@@ -245,6 +259,7 @@ class StmtEmitter {
   TypeSpec resolve_expr_type(FnCtx& ctx, ExprId id);
   TypeSpec resolve_expr_type(FnCtx& ctx, const Expr& e);
   const FnPtrSig* resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& callee_e);
+  CallTargetInfo resolve_call_target_info(FnCtx& ctx, const CallExpr& call, const Expr& e);
   TypeSpec resolve_payload_type(FnCtx& ctx, const DeclRef& r);
   TypeSpec resolve_payload_type(FnCtx& ctx, const BinaryExpr& b);
   TypeSpec resolve_payload_type(FnCtx& ctx, const UnaryExpr& u);
