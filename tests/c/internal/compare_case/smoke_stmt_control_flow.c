@@ -29,6 +29,10 @@ int run(void) {
     }
   }
 
+  sum += 1;
+fallthrough_label:
+  sum -= 1;
+
   switch (sum) {
   case 8 ... 9:
     sum += 5;

@@ -5,6 +5,16 @@ namespace c4c::codegen::lir {
 
 namespace {
 
+template <typename TerminatorT>
+bool set_terminator_if_open(FnCtx& ctx, TerminatorT&& terminator) {
+  if (!std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) {
+    return false;
+  }
+  ctx.cur_block().terminator = std::forward<TerminatorT>(terminator);
+  ctx.last_term = true;
+  return true;
+}
+
 // ── FnPtrSig accessors ───────────────────────────────────────────────────
 // These helpers extract return type and parameter types from FnPtrSig.
 // canonical_sig is always populated during HIR lowering.
@@ -209,37 +219,26 @@ void StmtEmitter::emit_lbl(FnCtx& ctx, const std::string& lbl){
   }
 
 void StmtEmitter::emit_term_br(FnCtx& ctx, const std::string& target_label){
-    if (std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) {
-      ctx.cur_block().terminator = lir::LirBr{target_label};
-      ctx.last_term = true;
-    }
+    (void)set_terminator_if_open(ctx, lir::LirBr{target_label});
   }
 
 void StmtEmitter::emit_term_condbr(FnCtx& ctx, const std::string& cond,
                                     const std::string& true_label,
                                     const std::string& false_label){
-    if (std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) {
-      ctx.cur_block().terminator = lir::LirCondBr{cond, true_label, false_label};
-      ctx.last_term = true;
-    }
+    (void)set_terminator_if_open(ctx, lir::LirCondBr{cond, true_label, false_label});
   }
 
 void StmtEmitter::emit_term_ret(FnCtx& ctx, const std::string& type_str,
                                  const std::optional<std::string>& value_str){
-    if (std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) {
-      ctx.cur_block().terminator = lir::LirRet{value_str, type_str};
-      ctx.last_term = true;
-    }
+    (void)set_terminator_if_open(ctx, lir::LirRet{value_str, type_str});
   }
 
 void StmtEmitter::emit_term_switch(FnCtx& ctx, const std::string& sel_name,
                                     const std::string& sel_type,
                                     const std::string& default_label,
                                     std::vector<std::pair<long long, std::string>> cases){
-    if (std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) {
-      ctx.cur_block().terminator = lir::LirSwitch{sel_name, sel_type, default_label, std::move(cases)};
-      ctx.last_term = true;
-    }
+    (void)set_terminator_if_open(
+        ctx, lir::LirSwitch{sel_name, sel_type, default_label, std::move(cases)});
   }
 
 void StmtEmitter::emit_term_unreachable(FnCtx& ctx){

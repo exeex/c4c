@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: Extract Terminator and Block Lifecycle Helpers
-- Current slice: identify the first repeated unterminated-block guard around label and branch emission, then extract the smallest reusable helper without changing lowering behavior
+- Current slice: inspect the next repeated unterminated-block contract around conditional branches, switch range-chain fallthrough, or block-opening labels and extract one similarly narrow helper
 
 ## Completed
 
@@ -22,10 +22,13 @@ Source Plan: plan.md
 - Extended [`smoke_stmt_control_flow.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_stmt_control_flow.c) to cover `case ... ...` and the default switch-label path in compare mode
 - Routed `CaseStmt`, `CaseRangeStmt`, and `DefaultStmt` through `emit_switch_label_stmt(...)` helpers in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) so the remaining statement dispatcher endpoints now live behind named helper families
 - Closed Step 1 after targeted compare-mode coverage plus full-suite regression guard stability (`2243` -> `2243` passed, zero failures)
+- Extended [`smoke_stmt_control_flow.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_stmt_control_flow.c) with an open-block label-fallthrough path to pin the first Step 2 block-lifecycle slice in compare mode
+- Extracted `set_terminator_if_open(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and routed simple branch/condbr/ret/switch terminator helpers through it so label fallthrough and simple terminator sites share the same open-block contract
+- Verified the targeted compare-mode cases after the helper extraction and passed the full-suite regression guard with stable results (`2243` -> `2243` passed, zero failures)
 
 ## Next Slice
 
-- Start Step 2 by extracting one helper for the repeated "block still open" contract shared by label creation and simple branch/terminator emission sites
+- Continue Step 2 by extracting one more helper around block lifecycle transitions, most likely label/block creation after conditional range chains or another repeated open-block check that can stay local to [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp)
 
 ## Blockers
 
@@ -39,3 +42,5 @@ Source Plan: plan.md
 - The new non-control-flow compare case uses empty inline asm with `"g"` constraints and a memory clobber, which currently exercises declaration, expression-statement, and asm dispatch without target-specific assembly text
 - This iteration targets the last uncategorized statement overloads only; no switch semantics should change, because case/default markers remain no-op statement emitters and are consumed by switch lowering
 - Step 1 is complete: the dispatcher surface is now split into non-control-flow, control-flow, and switch-label helper families under the existing `std::visit` entrypoint
+- Current Step 2 slice is intentionally narrow: one helper around open-block branch placement, validated by the existing compare-mode control-flow case extended with a label-fallthrough path
+- The current helper lives in the anonymous namespace and does not change public emitter structure; the next Step 2 slice should keep that same local-only extraction style
