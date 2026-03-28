@@ -1,5 +1,18 @@
 # `stmt_emitter.cpp` Compression Refactor Plan
 
+Status: Complete
+Completed: 2026-03-28
+
+## Completion Summary
+
+- Completed the planned helper-family compression across statement dispatch, block lifecycle, aggregate/address lowering, assignment/store lowering, and call lowering in [`src/codegen/lir/stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp).
+- Final Step 5 runbook-vs-code scan found no remaining shallow local call-lowering seam above builtin-special handling beyond the already extracted coordinator and builtin-family helpers.
+- Full-suite regression validation remained clean at `2249/2249` passed and `0` failed during close-out.
+
+## Leftover Issues
+
+- None recorded during closure.
+
 Target file: `src/codegen/lir/stmt_emitter.cpp`  
 Current size: 4155 lines  
 Primary goal: compress statement lowering by extracting repeated emission patterns, terminator management, aggregate access helpers, and call/assignment lowering scaffolding.
