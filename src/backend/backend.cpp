@@ -1,9 +1,7 @@
 #include "backend.hpp"
 #include "aarch64/emitter.hpp"
-#include "lir_adapter.hpp"
 
 #include "../codegen/lir/ir.hpp"
-#include "../codegen/lir/lir_printer.hpp"
 
 #include <memory>
 #include <stdexcept>
@@ -18,24 +16,6 @@ class BackendEmitter {
   virtual std::string emit(const c4c::codegen::lir::LirModule& module) const = 0;
 };
 
-class LlvmTextBackendEmitter final : public BackendEmitter {
- public:
-  explicit LlvmTextBackendEmitter(Target target) : target_(target) {}
-
-  std::string emit(const c4c::codegen::lir::LirModule& module) const override {
-    (void)target_;
-    try {
-      auto adapted = adapt_return_only_module(module);
-      return render_module(adapted);
-    } catch (const std::invalid_argument&) {
-      return c4c::codegen::lir::print_llvm(module);
-    }
- }
-
- private:
-  Target target_;
-};
-
 class Aarch64BackendEmitter final : public BackendEmitter {
  public:
   std::string emit(const c4c::codegen::lir::LirModule& module) const override {
@@ -48,7 +28,8 @@ std::unique_ptr<BackendEmitter> make_backend(Target target) {
     case Target::X86_64:
     case Target::I686:
     case Target::Riscv64:
-      return std::make_unique<LlvmTextBackendEmitter>(target);
+      throw std::invalid_argument(
+          "backend ref-shape translation is currently only wired for AArch64");
     case Target::Aarch64:
       return std::make_unique<Aarch64BackendEmitter>();
   }
