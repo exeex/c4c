@@ -49,6 +49,7 @@ int run(void) {
   struct WithAnon anon_assign = {.left = 0, .right = 0, .low = 1, .high = -6};
   int (*pvalues)[3] = &w.inner.values;
   int (*cursor)[3] = &pair[0].inner.values;
+  int (*cursor_set)[3] = &pair[0].inner.values;
   int (*cursor_compound)[3] = &pair[0].inner.values;
   int (*cursor_postdec)[3] = &pair[1].inner.values;
   int first = w.inner.head;
@@ -75,6 +76,8 @@ int run(void) {
   int scalar_after_compound = pair[0].tail;
   int scalar_postdec = pair[1].tail--;
   int scalar_after_postdec = pair[1].tail;
+  int ptr_set = (cursor_set = &pair[1].inner.values)[0][1];
+  int ptr_after_set = cursor_set[0][2];
   int ptr_compound = (cursor_compound += 1)[0][2];
   int ptr_after_compound = cursor_compound[0][1];
   int ptr_postdec = (cursor_postdec--)[0][0];
@@ -90,12 +93,12 @@ int run(void) {
          indexed_member_decay + typedef_arrow + rvalue_field + rvalue_decay +
          pw->tail + anon_rvalue + anon_fields + anon_preinc + anon_postinc +
          anon_final + scalar_assign + scalar_after_assign + scalar_compound +
-         scalar_after_compound + scalar_postdec + scalar_after_postdec +
-         ptr_compound + ptr_after_compound + ptr_postdec + ptr_after_postdec +
-         bit_set + bit_add + bit_after_assign + low_set + low_xor +
+         scalar_after_compound + scalar_postdec + scalar_after_postdec + ptr_set +
+         ptr_after_set + ptr_compound + ptr_after_compound + ptr_postdec +
+         ptr_after_postdec + bit_set + bit_add + bit_after_assign + low_set + low_xor +
          low_after_assign;
 }
 
 int main(void) {
-  return run() == 1269 ? 0 : 1;
+  return run() == 1369 ? 0 : 1;
 }

@@ -7,10 +7,13 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 4: Extract Assignment and Store Helpers
-- Current slice: re-scan Step 4 for the next behavior-preserving assignment/store helper above the operator-specific arithmetic tables, now that unary inc/dec shares one update/store contract too
+- Current slice: re-scan Step 4 above the operator-specific arithmetic tables now that `emit_rval_payload(const AssignExpr&)` is a small coordinator over `emit_set_assign_value(...)` and `emit_compound_assign_value(...)`
 
 ## Completed
 
+- Extended [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) with pointer-to-array simple-assignment coverage so compare mode now pins `AssignOp::Set` on non-bitfield pointer lvalues in both expression-result and post-store forms alongside the existing scalar, bitfield, and pointer compound-assignment cases
+- Extracted `emit_set_assign_value(...)` and `emit_compound_assign_value(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp), so `emit_rval_payload(const AssignExpr&)` now dispatches through named simple-vs-compound assignment helpers without changing the inline operator-selection tables
+- Verified `compare_smoke_aggregate_access`, the full `compare_case` label, and the clean full-suite regression guard with stable results (`2248` -> `2248` passed, zero failures; `check_monotonic_regression.py --allow-non-decreasing-passed` accepted the Step 4 `AssignExpr` helper slice)
 - Extended [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) with scalar post-decrement and pointer-to-array post-decrement coverage so compare mode now pins the remaining non-bitfield pre/post unary update return paths alongside the existing anonymous-bitfield inc coverage
 - Extracted `emit_assignable_incdec_value(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp), so unary pre/post inc/dec now share one scalar/pointer/bitfield load-update-store helper and reuse `emit_store_assignable_value(...)` for the post-store contract without changing arithmetic selection
 - Verified `compare_smoke_aggregate_access`, the full `compare_case` label, and the clean full-suite regression guard with stable results (`2248` -> `2248` passed, zero failures; `check_monotonic_regression.py --allow-non-decreasing-passed` accepted the unary inc/dec Step 4 slice)

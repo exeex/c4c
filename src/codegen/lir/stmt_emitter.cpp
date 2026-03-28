@@ -1024,6 +1024,148 @@ std::string StmtEmitter::emit_assignable_incdec_value(FnCtx& ctx, const Assignab
     return return_updated_value ? new_val : old_val;
 }
 
+std::string StmtEmitter::emit_set_assign_value(FnCtx& ctx, const AssignableLValue& lhs,
+                                               const std::string& rhs,
+                                               const TypeSpec& rhs_ts) {
+    if (lhs.is_bitfield()) {
+      // In C, (bf = val) yields the value of bf after assignment,
+      // which is truncated to the bitfield width.
+      return emit_store_assignable_value(ctx, lhs, rhs, rhs_ts, true);
+    }
+
+    std::string coerced_rhs = coerce(ctx, rhs, rhs_ts, lhs.pointee_ts);
+    const bool is_agg = (lhs.pointee_ts.base == TB_STRUCT || lhs.pointee_ts.base == TB_UNION) &&
+                        lhs.pointee_ts.ptr_level == 0 && lhs.pointee_ts.array_rank == 0;
+    if (is_agg && (coerced_rhs == "0" || coerced_rhs.empty())) coerced_rhs = "zeroinitializer";
+    return emit_store_assignable_value(ctx, lhs, coerced_rhs, lhs.pointee_ts, false);
+}
+
+std::string StmtEmitter::emit_compound_assign_value(FnCtx& ctx, const AssignableLValue& lhs,
+                                                    AssignOp op, const std::string& rhs,
+                                                    const TypeSpec& rhs_ts) {
+    const TypeSpec& lhs_ts = lhs.pointee_ts;
+    const std::string lty = llvm_ty(lhs_ts);
+
+    if (lhs.is_bitfield()) {
+      const BitfieldAccess& bf = lhs.bf;
+      const int pbits = bitfield_promoted_bits(bf);
+      const std::string promoted_ty = "i" + std::to_string(pbits);
+      TypeSpec promoted_ts = bitfield_promoted_ts(bf);
+      const std::string loaded = emit_bitfield_load(ctx, lhs.ptr, bf);
+      std::string lhs_op = loaded;
+      std::string rhs_op = coerce(ctx, rhs, rhs_ts, promoted_ts);
+      const bool ls = is_signed_int(promoted_ts.base);
+      const char* instr = nullptr;
+      static const struct { AssignOp op; const char* is; const char* iu; } tbl[] = {
+        {AssignOp::Add, "add", "add"}, {AssignOp::Sub, "sub", "sub"},
+        {AssignOp::Mul, "mul", "mul"}, {AssignOp::Div, "sdiv", "udiv"},
+        {AssignOp::Mod, "srem", "urem"}, {AssignOp::Shl, "shl", "shl"},
+        {AssignOp::Shr, "ashr", "lshr"}, {AssignOp::BitAnd, "and", "and"},
+        {AssignOp::BitOr, "or", "or"}, {AssignOp::BitXor, "xor", "xor"},
+      };
+      for (const auto& r : tbl) {
+        if (r.op == op) { instr = ls ? r.is : r.iu; break; }
+      }
+      if (!instr) throw std::runtime_error("StmtEmitter: bitfield compound assign: unknown op");
+      const std::string result = fresh_tmp(ctx);
+      emit_lir_op(ctx, lir::LirBinOp{result, std::string(instr), promoted_ty, lhs_op, rhs_op});
+      return emit_store_assignable_value(ctx, lhs, result, promoted_ts, false);
+    }
+
+    const std::string loaded = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirLoadOp{loaded, lty, lhs.ptr});
+
+    if ((op == AssignOp::Add || op == AssignOp::Sub) && lty == "ptr") {
+      TypeSpec i64_ts{};
+      i64_ts.base = TB_LONGLONG;
+      std::string delta = coerce(ctx, rhs, rhs_ts, i64_ts);
+      if (op == AssignOp::Sub) {
+        const std::string neg = fresh_tmp(ctx);
+        emit_lir_op(ctx, lir::LirBinOp{neg, "sub", "i64", "0", delta});
+        delta = neg;
+      }
+      TypeSpec elem_ts = lhs_ts;
+      if (elem_ts.ptr_level > 0) {
+        elem_ts.ptr_level -= 1;
+      } else {
+        elem_ts.base = TB_CHAR;
+      }
+      const std::string gep_ety3 =
+          (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
+              ? "i8" : llvm_ty(elem_ts);
+      const std::string result = fresh_tmp(ctx);
+      emit_lir_op(ctx, lir::LirGepOp{result, gep_ety3, loaded, false, {"i64 " + delta}});
+      return emit_store_assignable_value(ctx, lhs, result, lhs_ts, false);
+    }
+
+    static const struct { AssignOp op; BinaryOp bop; } compound_map[] = {
+      { AssignOp::Add, BinaryOp::Add }, { AssignOp::Sub, BinaryOp::Sub },
+      { AssignOp::Mul, BinaryOp::Mul }, { AssignOp::Div, BinaryOp::Div },
+      { AssignOp::Mod, BinaryOp::Mod }, { AssignOp::Shl, BinaryOp::Shl },
+      { AssignOp::Shr, BinaryOp::Shr }, { AssignOp::BitAnd, BinaryOp::BitAnd },
+      { AssignOp::BitOr, BinaryOp::BitOr }, { AssignOp::BitXor, BinaryOp::BitXor },
+    };
+    const char* instr = nullptr;
+    TypeSpec op_ts = lhs_ts;
+    std::string coerced_rhs = rhs;
+    for (const auto& row : compound_map) {
+      if (row.op != op) continue;
+      if ((row.bop == BinaryOp::Add || row.bop == BinaryOp::Sub ||
+           row.bop == BinaryOp::Mul || row.bop == BinaryOp::Div) &&
+          (is_complex_base(lhs_ts.base) || is_complex_base(rhs_ts.base))) {
+        const std::string result =
+            emit_complex_binary_arith(ctx, row.bop, loaded, lhs_ts, coerced_rhs, rhs_ts, lhs_ts);
+        return emit_store_assignable_value(ctx, lhs, result, lhs_ts, false);
+      }
+      if (is_vector_value(lhs_ts)) {
+        op_ts = lhs_ts;
+      } else
+      // Compute the operation type via C usual arithmetic conversions.
+      if (lhs_ts.ptr_level == 0 && lhs_ts.array_rank == 0 &&
+          rhs_ts.ptr_level == 0 && rhs_ts.array_rank == 0) {
+        if (is_float_base(lhs_ts.base) || is_float_base(rhs_ts.base)) {
+          op_ts.base = (lhs_ts.base == TB_DOUBLE || rhs_ts.base == TB_DOUBLE ||
+                        lhs_ts.base == TB_LONGDOUBLE || rhs_ts.base == TB_LONGDOUBLE)
+                           ? TB_DOUBLE
+                           : TB_FLOAT;
+        } else if (is_any_int(lhs_ts.base) && is_any_int(rhs_ts.base)) {
+          const bool is_shift = (row.bop == BinaryOp::Shl || row.bop == BinaryOp::Shr);
+          op_ts.base = is_shift ? integer_promote(lhs_ts.base)
+                                : usual_arith_conv(lhs_ts.base, rhs_ts.base);
+        }
+      }
+      coerced_rhs = coerce(ctx, coerced_rhs, rhs_ts, op_ts);
+      const bool lf = is_float_base(op_ts.base);
+      const bool ls = is_signed_int(op_ts.base);
+      static const struct { BinaryOp op; const char* is; const char* iu; const char* f; } tbl[] = {
+        { BinaryOp::Add, "add",  "add",  "fadd" }, { BinaryOp::Sub, "sub", "sub", "fsub" },
+        { BinaryOp::Mul, "mul",  "mul",  "fmul" }, { BinaryOp::Div, "sdiv","udiv","fdiv"  },
+        { BinaryOp::Mod, "srem", "urem", nullptr }, { BinaryOp::Shl, "shl","shl", nullptr  },
+        { BinaryOp::Shr, "ashr","lshr", nullptr  }, { BinaryOp::BitAnd,"and","and",nullptr  },
+        { BinaryOp::BitOr, "or","or",   nullptr  }, { BinaryOp::BitXor,"xor","xor",nullptr },
+      };
+      for (const auto& r : tbl) {
+        if (r.op == row.bop) {
+          if (lf) instr = r.f;
+          else if (r.op == BinaryOp::Shr) instr = is_signed_int(lhs_ts.base) ? r.is : r.iu;
+          else instr = ls ? r.is : r.iu;
+          break;
+        }
+      }
+      break;
+    }
+    if (!instr) throw std::runtime_error("StmtEmitter: compound assign: unknown op");
+
+    const std::string op_ty = llvm_ty(op_ts);
+    std::string lhs_op = loaded;
+    if (op_ty != lty) lhs_op = coerce(ctx, loaded, lhs_ts, op_ts);
+    const std::string result = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirBinOp{result, std::string(instr), op_ty, lhs_op, coerced_rhs});
+    std::string store_v = result;
+    if (op_ty != lty) store_v = coerce(ctx, result, op_ts, lhs_ts);
+    return emit_store_assignable_value(ctx, lhs, store_v, lhs_ts, false);
+}
+
 TypeSpec StmtEmitter::resolve_member_base_type(FnCtx& ctx, ExprId base_id, bool is_arrow){
     const Expr& base_e = get_expr(base_id);
     TypeSpec base_ts = base_e.type.spec;
@@ -2471,142 +2613,8 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const AssignExpr& a, cons
     std::string rhs = emit_rval_id(ctx, a.rhs, rhs_ts);
 
     const AssignableLValue lhs = emit_assignable_lval(ctx, a.lhs);
-    const TypeSpec& lhs_ts = lhs.pointee_ts;
-    const std::string lty = llvm_ty(lhs_ts);
-
-    // Bitfield simple assignment
-    if (lhs.is_bitfield() && a.op == AssignOp::Set) {
-      // In C, (bf = val) yields the value of bf after assignment,
-      // which is truncated to the bitfield width.
-      return emit_store_assignable_value(ctx, lhs, rhs, rhs_ts, true);
-    }
-    // Bitfield compound assignment
-    if (lhs.is_bitfield() && a.op != AssignOp::Set) {
-      const BitfieldAccess& bf = lhs.bf;
-      const int pbits = bitfield_promoted_bits(bf);
-      const std::string promoted_ty = "i" + std::to_string(pbits);
-      TypeSpec promoted_ts = bitfield_promoted_ts(bf);
-      const std::string loaded = emit_bitfield_load(ctx, lhs.ptr, bf);
-      std::string lhs_op = loaded;
-      std::string rhs_op = coerce(ctx, rhs, rhs_ts, promoted_ts);
-      const bool ls = is_signed_int(promoted_ts.base);
-      const char* instr = nullptr;
-      static const struct { AssignOp op; const char* is; const char* iu; } tbl[] = {
-        {AssignOp::Add, "add", "add"}, {AssignOp::Sub, "sub", "sub"},
-        {AssignOp::Mul, "mul", "mul"}, {AssignOp::Div, "sdiv", "udiv"},
-        {AssignOp::Mod, "srem", "urem"}, {AssignOp::Shl, "shl", "shl"},
-        {AssignOp::Shr, "ashr", "lshr"}, {AssignOp::BitAnd, "and", "and"},
-        {AssignOp::BitOr, "or", "or"}, {AssignOp::BitXor, "xor", "xor"},
-      };
-      for (const auto& r : tbl) {
-        if (r.op == a.op) { instr = ls ? r.is : r.iu; break; }
-      }
-      if (!instr) throw std::runtime_error("StmtEmitter: bitfield compound assign: unknown op");
-      const std::string result = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirBinOp{result, std::string(instr), promoted_ty, lhs_op, rhs_op});
-      return emit_store_assignable_value(ctx, lhs, result, promoted_ts, false);
-    }
-
-    if (a.op != AssignOp::Set) {
-      const std::string loaded = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirLoadOp{loaded, lty, lhs.ptr});
-
-      if ((a.op == AssignOp::Add || a.op == AssignOp::Sub) && lty == "ptr") {
-        TypeSpec i64_ts{};
-        i64_ts.base = TB_LONGLONG;
-        std::string delta = coerce(ctx, rhs, rhs_ts, i64_ts);
-        if (a.op == AssignOp::Sub) {
-          const std::string neg = fresh_tmp(ctx);
-          emit_lir_op(ctx, lir::LirBinOp{neg, "sub", "i64", "0", delta});
-          delta = neg;
-        }
-        TypeSpec elem_ts = lhs_ts;
-        if (elem_ts.ptr_level > 0) {
-          elem_ts.ptr_level -= 1;
-        } else {
-          elem_ts.base = TB_CHAR;
-        }
-        const std::string gep_ety3 =
-            (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0)
-                ? "i8" : llvm_ty(elem_ts);
-        const std::string result = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirGepOp{result, gep_ety3, loaded, false, {"i64 " + delta}});
-        return emit_store_assignable_value(ctx, lhs, result, lhs_ts, false);
-      }
-
-      static const struct { AssignOp op; BinaryOp bop; } compound_map[] = {
-        { AssignOp::Add, BinaryOp::Add }, { AssignOp::Sub, BinaryOp::Sub },
-        { AssignOp::Mul, BinaryOp::Mul }, { AssignOp::Div, BinaryOp::Div },
-        { AssignOp::Mod, BinaryOp::Mod }, { AssignOp::Shl, BinaryOp::Shl },
-        { AssignOp::Shr, BinaryOp::Shr }, { AssignOp::BitAnd, BinaryOp::BitAnd },
-        { AssignOp::BitOr, BinaryOp::BitOr }, { AssignOp::BitXor, BinaryOp::BitXor },
-      };
-      const char* instr = nullptr;
-      TypeSpec op_ts = lhs_ts;
-      for (const auto& row : compound_map) {
-        if (row.op != a.op) continue;
-        if ((row.bop == BinaryOp::Add || row.bop == BinaryOp::Sub ||
-             row.bop == BinaryOp::Mul || row.bop == BinaryOp::Div) &&
-            (is_complex_base(lhs_ts.base) || is_complex_base(rhs_ts.base))) {
-          const std::string result =
-              emit_complex_binary_arith(ctx, row.bop, loaded, lhs_ts, rhs, rhs_ts, lhs_ts);
-          return emit_store_assignable_value(ctx, lhs, result, lhs_ts, false);
-        }
-        if (is_vector_value(lhs_ts)) {
-          op_ts = lhs_ts;
-        } else
-        // Compute the operation type via C usual arithmetic conversions.
-        if (lhs_ts.ptr_level == 0 && lhs_ts.array_rank == 0 &&
-            rhs_ts.ptr_level == 0 && rhs_ts.array_rank == 0) {
-          if (is_float_base(lhs_ts.base) || is_float_base(rhs_ts.base)) {
-            op_ts.base = (lhs_ts.base == TB_DOUBLE || rhs_ts.base == TB_DOUBLE ||
-                          lhs_ts.base == TB_LONGDOUBLE || rhs_ts.base == TB_LONGDOUBLE)
-                             ? TB_DOUBLE
-                             : TB_FLOAT;
-          } else if (is_any_int(lhs_ts.base) && is_any_int(rhs_ts.base)) {
-            const bool is_shift = (row.bop == BinaryOp::Shl || row.bop == BinaryOp::Shr);
-            op_ts.base = is_shift ? integer_promote(lhs_ts.base)
-                                  : usual_arith_conv(lhs_ts.base, rhs_ts.base);
-          }
-        }
-        rhs = coerce(ctx, rhs, rhs_ts, op_ts);
-        const bool lf = is_float_base(op_ts.base);
-        const bool ls = is_signed_int(op_ts.base);
-        // Re-use binary arith table by emitting inline
-        static const struct { BinaryOp op; const char* is; const char* iu; const char* f; } tbl[] = {
-          { BinaryOp::Add, "add",  "add",  "fadd" }, { BinaryOp::Sub, "sub", "sub", "fsub" },
-          { BinaryOp::Mul, "mul",  "mul",  "fmul" }, { BinaryOp::Div, "sdiv","udiv","fdiv"  },
-          { BinaryOp::Mod, "srem", "urem", nullptr }, { BinaryOp::Shl, "shl","shl", nullptr  },
-          { BinaryOp::Shr, "ashr","lshr", nullptr  }, { BinaryOp::BitAnd,"and","and",nullptr  },
-          { BinaryOp::BitOr, "or","or",   nullptr  }, { BinaryOp::BitXor,"xor","xor",nullptr },
-        };
-        for (const auto& r : tbl) {
-          if (r.op == row.bop) {
-            if (lf) instr = r.f;
-            else if (r.op == BinaryOp::Shr) instr = is_signed_int(lhs_ts.base) ? r.is : r.iu;
-            else instr = ls ? r.is : r.iu;
-            break;
-          }
-        }
-        break;
-      }
-      if (!instr) throw std::runtime_error("StmtEmitter: compound assign: unknown op");
-
-      const std::string op_ty = llvm_ty(op_ts);
-      std::string lhs_op = loaded;
-      if (op_ty != lty) lhs_op = coerce(ctx, loaded, lhs_ts, op_ts);
-      const std::string result = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirBinOp{result, std::string(instr), op_ty, lhs_op, rhs});
-      std::string store_v = result;
-      if (op_ty != lty) store_v = coerce(ctx, result, op_ts, lhs_ts);
-      return emit_store_assignable_value(ctx, lhs, store_v, lhs_ts, false);
-    }
-
-    rhs = coerce(ctx, rhs, rhs_ts, lhs_ts);
-    const bool is_agg = (lhs_ts.base == TB_STRUCT || lhs_ts.base == TB_UNION) &&
-                        lhs_ts.ptr_level == 0 && lhs_ts.array_rank == 0;
-    if (is_agg && (rhs == "0" || rhs.empty())) rhs = "zeroinitializer";
-    return emit_store_assignable_value(ctx, lhs, rhs, lhs_ts, false);
+    if (a.op == AssignOp::Set) return emit_set_assign_value(ctx, lhs, rhs, rhs_ts);
+    return emit_compound_assign_value(ctx, lhs, a.op, rhs, rhs_ts);
   }
 
 std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CastExpr& c, const Expr& /*e*/){
