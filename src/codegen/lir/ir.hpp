@@ -469,6 +469,7 @@ struct LirExternDecl {
 struct LirFunction {
   std::string name;
   bool is_internal = false;
+  bool can_elide_if_unreferenced = false;
   bool is_declaration = false;  // true for declarations (no body)
   TypeSpec return_type{};
   std::vector<std::pair<std::string, TypeSpec>> params;  // name, type

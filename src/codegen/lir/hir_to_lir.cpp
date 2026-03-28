@@ -713,11 +713,11 @@ static std::unordered_set<std::string> collect_fn_refs(const LirFunction& fn) {
 }
 
 static void eliminate_dead_internals(LirModule& mod) {
-  std::unordered_set<std::string> internal_fns;
+  std::unordered_set<std::string> discardable_fns;
   for (const auto& f : mod.functions) {
-    if (f.is_internal) internal_fns.insert(f.name);
+    if (f.can_elide_if_unreferenced) discardable_fns.insert(f.name);
   }
-  if (internal_fns.empty()) return;
+  if (discardable_fns.empty()) return;
 
   // Build per-function reference sets.
   std::unordered_map<std::string, size_t> fn_idx_by_name;
@@ -732,16 +732,16 @@ static void eliminate_dead_internals(LirModule& mod) {
 
   auto seed = [&](const std::unordered_set<std::string>& refs) {
     for (const auto& r : refs) {
-      if (internal_fns.count(r) && !reachable.count(r)) {
+      if (discardable_fns.count(r) && !reachable.count(r)) {
         reachable.insert(r);
         worklist.push_back(r);
       }
     }
   };
 
-  // Seed from non-internal function bodies.
+  // Seed from non-discardable function bodies.
   for (size_t i = 0; i < mod.functions.size(); ++i) {
-    if (!mod.functions[i].is_internal) seed(fn_refs[i]);
+    if (!mod.functions[i].can_elide_if_unreferenced) seed(fn_refs[i]);
   }
 
   // Seed from global initializers.
@@ -760,11 +760,12 @@ static void eliminate_dead_internals(LirModule& mod) {
     seed(fn_refs[it->second]);
   }
 
-  // Remove unreachable internal functions.
+  // Remove unreachable discardable functions.
   mod.functions.erase(
       std::remove_if(mod.functions.begin(), mod.functions.end(),
                      [&](const LirFunction& f) {
-                       return f.is_internal && !reachable.count(f.name);
+                       return f.can_elide_if_unreferenced &&
+                              !reachable.count(f.name);
                      }),
       mod.functions.end());
 }
@@ -808,6 +809,7 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
       LirFunction lir_fn;
       lir_fn.name = quote_llvm_ident(fn.name);
       lir_fn.is_internal = false;
+      lir_fn.can_elide_if_unreferenced = false;
       lir_fn.is_declaration = true;
       lir_fn.signature_text = sig;
       module.functions.push_back(std::move(lir_fn));
@@ -840,6 +842,10 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
       LirFunction lir_fn;
       lir_fn.name = quote_llvm_ident(fn.name);
       lir_fn.is_internal = fn.linkage.is_static;
+      const bool is_std_impl_helper =
+          fn.name.rfind("std::__", 0) == 0;
+      lir_fn.can_elide_if_unreferenced =
+          fn.linkage.is_static || fn.linkage.is_inline || is_std_impl_helper;
       lir_fn.is_declaration = false;
       lir_fn.return_type = fn.return_type.spec;
       lir_fn.signature_text = sig;

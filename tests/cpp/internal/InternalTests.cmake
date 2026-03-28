@@ -635,3 +635,12 @@ set_tests_properties(cpp_llvm_spec_key_named_metadata_entry PROPERTIES
   LABELS "internal;positive_case;cpp;llvm"
   PASS_REGULAR_EXPRESSION "!\"add<T=int>\""
 )
+
+add_test(
+  NAME cpp_llvm_initializer_list_runtime_materialization
+  COMMAND c4cll "${INTERNAL_CPP_TEST_ROOT}/postive_case/eastl_probe_initializer_list_runtime.cpp"
+)
+set_tests_properties(cpp_llvm_initializer_list_runtime_materialization PROPERTIES
+  LABELS "internal;positive_case;cpp;llvm"
+  PASS_REGULAR_EXPRESSION "alloca \\[3 x i32\\]"
+)
