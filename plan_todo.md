@@ -7,11 +7,11 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3: port the first integer/control-flow slice
-- Iteration slice: compare the next bounded Linux AArch64 variadic helper edge against Clang on `aarch64-unknown-linux-gnu` after the explicit four-lane HFA cardinality guard
+- Iteration slice: compare the next bounded Linux AArch64 variadic helper edge against Clang on `aarch64-unknown-linux-gnu` after the explicit four-lane float HFA cardinality guard
 
 ## Next Intended Slice
 
-- compare one adjacent Linux AArch64 variadic helper shape against Clang on `aarch64-unknown-linux-gnu` after the explicit four-lane HFA cardinality case; keep it to one helper-class edge instead of broadening further
+- compare one adjacent Linux AArch64 variadic helper shape against Clang on `aarch64-unknown-linux-gnu` after the explicit four-lane double HFA cardinality case; keep it to one helper-class edge instead of broadening further
 - keep the next slice focused on one target-local helper boundary or one missing runtime-backed backend capability
 - avoid broadening beyond the active AArch64 Step 3 runbook without recording a separate idea
 
@@ -188,3 +188,6 @@ Source Plan: plan.md
 - array-backed homogeneous floating-point variadic probes now also match the expected Linux AArch64 VR-save-area helper pattern via `[2 x float]`, `vaarg.fp.*`, and `llvm.memcpy`; the next likely follow-on is another bounded HFA shape such as nested arrays or a wider lane count
 - nested-array homogeneous floating-point variadic probes now also match the expected Linux AArch64 VR-save-area helper pattern via `%struct.NestedFloatArray = type { [2 x [2 x float]] }`, `[4 x float]`, `vaarg.fp.*`, and `llvm.memcpy`; the next likely follow-on is an explicit four-lane HFA cardinality edge rather than broader variadic expansion
 - explicit four-lane homogeneous floating-point variadic probes now also match the expected Linux AArch64 VR-save-area helper pattern via `%struct.Float4 = type { float, float, float, float }`, `[4 x float]`, `vaarg.fp.*`, and `llvm.memcpy`; the next likely follow-on is one adjacent helper-class edge rather than more HFA widening
+- compared the explicit four-lane Linux AArch64 homogeneous-double-aggregate variadic helper path against Clang on `aarch64-unknown-linux-gnu` and confirmed the existing lowering already emits the expected `[4 x double]` + `vaarg.fp.*` + `llvm.memcpy` shape without backend changes
+- added `tests/c/internal/backend_ir_case/variadic_double4_bytes.c` plus `backend_lir_aarch64_variadic_double4_ir` in `tests/c/internal/InternalTests.cmake` to lock the explicit four-lane double HFA cardinality path
+- verified `backend_lir_aarch64_variadic_dpair_ir`, `backend_lir_aarch64_variadic_float4_ir`, and `backend_lir_aarch64_variadic_double4_ir` pass for the bounded four-lane double HFA slice

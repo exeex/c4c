@@ -320,6 +320,19 @@ if(EXISTS "${EXAMPLE_C}")
       LABELS "internal;backend")
 
   add_test(
+      NAME backend_lir_aarch64_variadic_double4_ir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_ir_case/variadic_double4_bytes.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_double4_bytes_aarch64.ll
+              "-DREQUIRED_SNIPPETS=%struct.Double4 = type { double, double, double, double }|[4 x double]|vaarg.fp.join.|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 4|load double, ptr|call void @llvm.memcpy.p0.p0.i64("
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+  )
+  set_tests_properties(backend_lir_aarch64_variadic_double4_ir PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
       NAME backend_lir_unsupported_target_entry
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
