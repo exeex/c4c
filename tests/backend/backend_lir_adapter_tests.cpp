@@ -20,6 +20,15 @@ std::vector<AsmStatement> parse_asm(const std::string& text);
 
 }  // namespace c4c::backend::aarch64::assembler
 
+namespace c4c::backend::aarch64::assembler::encoder {
+
+bool is_64bit_reg(const std::string& name);
+bool is_32bit_reg(const std::string& name);
+bool is_fp_reg(const std::string& name);
+std::uint32_t sf_bit(bool is_64);
+
+}  // namespace c4c::backend::aarch64::assembler::encoder
+
 namespace {
 
 [[noreturn]] void fail(const std::string& message) {
@@ -1524,6 +1533,26 @@ void test_aarch64_assembler_elf_writer_branch_reloc_helper() {
               "aarch64 elf writer helper should keep non-branch relocations out of the branch-only set");
 }
 
+void test_aarch64_assembler_encoder_helper_smoke() {
+  namespace encoder = c4c::backend::aarch64::assembler::encoder;
+
+  expect_true(encoder::is_64bit_reg("x9"),
+              "aarch64 encoder helper should recognize x-register names as 64-bit GPRs");
+  expect_true(!encoder::is_64bit_reg("w9"),
+              "aarch64 encoder helper should reject w-register names as 64-bit GPRs");
+  expect_true(encoder::is_32bit_reg("w3"),
+              "aarch64 encoder helper should recognize w-register names as 32-bit GPRs");
+  expect_true(!encoder::is_32bit_reg("x3"),
+              "aarch64 encoder helper should reject x-register names as 32-bit GPRs");
+  expect_true(encoder::is_fp_reg("d0") && encoder::is_fp_reg("s1") &&
+                  encoder::is_fp_reg("q2") && encoder::is_fp_reg("v3"),
+              "aarch64 encoder helper should recognize the current FP/SIMD register prefixes");
+  expect_true(!encoder::is_fp_reg("x0"),
+              "aarch64 encoder helper should keep integer register names out of the FP/SIMD set");
+  expect_true(encoder::sf_bit(true) == 1u && encoder::sf_bit(false) == 0u,
+              "aarch64 encoder helper should map the sf bit directly from operand width");
+}
+
 }  // namespace
 
 int main() {
@@ -1560,5 +1589,6 @@ int main() {
   test_aarch64_backend_renders_phi_join_slice();
   test_aarch64_assembler_parser_stub_preserves_text();
   test_aarch64_assembler_elf_writer_branch_reloc_helper();
+  test_aarch64_assembler_encoder_helper_smoke();
   return 0;
 }
