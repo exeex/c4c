@@ -760,7 +760,10 @@ void compute_empty_record_layout(const hir::Module& module, HirStructDef& def) {
 TypeSpec field_layout_type(const HirStructField& field) {
   TypeSpec field_ts = field.elem_type;
   if (field.array_first_dim >= 0) {
-    field_ts.array_rank = std::max(field_ts.array_rank, 1);
+    for (int i = std::min(field_ts.array_rank, 7); i > 0; --i) {
+      field_ts.array_dims[i] = field_ts.array_dims[i - 1];
+    }
+    field_ts.array_rank = std::min(field_ts.array_rank + 1, 8);
     field_ts.array_size = field.array_first_dim;
     field_ts.array_dims[0] = field.array_first_dim;
   }
@@ -2295,8 +2298,10 @@ class Lowerer {
         // Flexible array member is represented as zero-length for the nominal
         // struct layout, while remaining explicit in HIR metadata.
         hf.array_first_dim = (ft.array_size >= 0) ? ft.array_size : 0;
-        ft.array_rank = 0;
-        ft.array_size = -1;
+        for (int i = 0; i + 1 < ft.array_rank; ++i) ft.array_dims[i] = ft.array_dims[i + 1];
+        if (ft.array_rank > 0) ft.array_dims[ft.array_rank - 1] = -1;
+        --ft.array_rank;
+        ft.array_size = (ft.array_rank > 0) ? ft.array_dims[0] : -1;
       }
       hf.elem_type = ft;
       hf.align_bytes = ft.align_bytes > 0 ? ft.align_bytes : 0;
@@ -3644,8 +3649,10 @@ class Lowerer {
     if (ft.array_rank > 0) {
       hf.is_flexible_array = (ft.array_size < 0);
       hf.array_first_dim = (ft.array_size >= 0) ? ft.array_size : 0;
-      ft.array_rank = 0;
-      ft.array_size = -1;
+      for (int i = 0; i + 1 < ft.array_rank; ++i) ft.array_dims[i] = ft.array_dims[i + 1];
+      if (ft.array_rank > 0) ft.array_dims[ft.array_rank - 1] = -1;
+      --ft.array_rank;
+      ft.array_size = (ft.array_rank > 0) ? ft.array_dims[0] : -1;
     }
     hf.elem_type = ft;
     hf.is_anon_member = orig_f->is_anon_field;
@@ -6220,8 +6227,8 @@ class Lowerer {
     TypeSpec ts = f.elem_type;
     ts.inner_rank = -1;
     if (f.array_first_dim >= 0) {
-      for (int i = 0; i < 8; ++i) ts.array_dims[i] = -1;
-      ts.array_rank = 1;
+      for (int i = std::min(ts.array_rank, 7); i > 0; --i) ts.array_dims[i] = ts.array_dims[i - 1];
+      ts.array_rank = std::min(ts.array_rank + 1, 8);
       ts.array_size = f.array_first_dim;
       ts.array_dims[0] = f.array_first_dim;
     }

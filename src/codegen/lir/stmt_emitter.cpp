@@ -137,8 +137,8 @@ struct Aarch64HomogeneousFpAggregateInfo {
 TypeSpec field_decl_ts(const HirStructField& f) {
   TypeSpec ts = f.elem_type;
   if (f.array_first_dim >= 0) {
-    for (int i = 0; i < 8; ++i) ts.array_dims[i] = -1;
-    ts.array_rank = 1;
+    for (int i = std::min(ts.array_rank, 7); i > 0; --i) ts.array_dims[i] = ts.array_dims[i - 1];
+    ts.array_rank = std::min(ts.array_rank + 1, 8);
     ts.array_size = f.array_first_dim;
     ts.array_dims[0] = f.array_first_dim;
   }
@@ -472,8 +472,8 @@ std::string StmtEmitter::escape_llvm_c_bytes(const std::string& raw_bytes){
 TypeSpec StmtEmitter::field_decl_type(const HirStructField& f) const{
     TypeSpec ts = f.elem_type;
     if (f.array_first_dim >= 0) {
-      for (int i = 0; i < 8; ++i) ts.array_dims[i] = -1;
-      ts.array_rank = 1;
+      for (int i = std::min(ts.array_rank, 7); i > 0; --i) ts.array_dims[i] = ts.array_dims[i - 1];
+      ts.array_rank = std::min(ts.array_rank + 1, 8);
       ts.array_size = f.array_first_dim;
       ts.array_dims[0] = f.array_first_dim;
     }
