@@ -6,7 +6,7 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 1: Evaluate `src/backend/mod.cpp` as the next stub-only shared backend candidate after `src/backend/peephole_common.cpp`, and promote it only if it stays dependency-light in both `c4cll` and `backend_lir_adapter_tests`
+- [ ] Step 1: Evaluate `src/backend/elf_writer_common.cpp` as the next stub-only shared backend candidate after `src/backend/mod.cpp`, and promote it only if it stays dependency-light in both `c4cll` and `backend_lir_adapter_tests`
 
 ## Planned Queue
 
@@ -35,11 +35,11 @@ Source Plan: plan.md
 - [x] Evaluated `src/backend/inline_asm.cpp` and promoted it into both `c4cll` and `backend_lir_adapter_tests`; it remains a stub-only shared backend mirror with no new dependency edges, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and both `test_before.log` and `test_after.log` preserve the same 4 known unrelated full-suite failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
 - [x] Evaluated `src/backend/x86_common.cpp` and promoted it into both `c4cll` and `backend_lir_adapter_tests`; it remains a stub-only shared backend mirror with no new dependency edges, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and both `test_before.log` and `test_after.log` preserve the same 4 known unrelated full-suite failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
 - [x] Evaluated `src/backend/peephole_common.cpp` and promoted it into both `c4cll` and `backend_lir_adapter_tests`; it remains a stub-only shared backend mirror with no new dependency edges, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and both `test_before.log` and `test_after.log` preserve the same 4 known unrelated full-suite failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
+- [x] Evaluated `src/backend/mod.cpp` and promoted it into both `c4cll` and `backend_lir_adapter_tests`; it remains a stub-only shared backend mirror with no new dependency edges, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and both `test_before.log` and `test_after.log` preserve the same 4 known unrelated full-suite failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
 
 ## Next Intended Slice
 
-- evaluate `src/backend/peephole_common.cpp` next, but only promote it if it stays as dependency-light as `src/backend/x86_common.cpp`; otherwise skip to another top-level shared backend stub with no new target-local coupling
-- evaluate `src/backend/mod.cpp` next, but only promote it if it stays as dependency-light as `src/backend/peephole_common.cpp`; otherwise skip to another top-level shared backend stub such as `src/backend/elf_writer_common.cpp` with no new target-local coupling
+- evaluate `src/backend/elf_writer_common.cpp` next if `src/backend/mod.cpp` lands cleanly as another stub-only shared backend unit; otherwise skip to the next top-level shared backend stub with no new target-local coupling
 - keep the AArch64 shim thin until the shared backend slice grows enough to replace LLVM-text passthroughs deliberately
 - defer ELF and shared linker modules until the plain shared backend slice is build-reachable
 
@@ -67,3 +67,5 @@ Source Plan: plan.md
 - current iteration scope: treat `src/backend/peephole_common.cpp` like the earlier stub-only shared backend promotions and stop immediately if it pulls in new target-local dependencies or breaks build monotonicity
 - latest validation: after adding `src/backend/peephole_common.cpp` to both build targets, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and both `test_before.log` and `test_after.log` remain monotonic at the same 4 known unrelated failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
 - next candidate: evaluate `src/backend/mod.cpp` first, then `src/backend/elf_writer_common.cpp` if `mod.cpp` stays outside the active slice or adds unexpected coupling
+- latest validation: after adding `src/backend/mod.cpp` to both build targets, `cmake --build build -j8` succeeds, `./build/backend_lir_adapter_tests` passes, and both `test_before.log` and `test_after.log` remain monotonic at the same 4 known unrelated failures (`positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, `cpp_llvm_initializer_list_runtime_materialization`)
+- next candidate: evaluate `src/backend/elf_writer_common.cpp` next, but only promote it if it stays as dependency-light as `src/backend/mod.cpp`; otherwise skip to another top-level shared backend stub with no new target-local coupling
