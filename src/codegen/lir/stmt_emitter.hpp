@@ -60,6 +60,14 @@ struct MemberFieldAccess {
   bool has_tag() const { return tag && tag[0]; }
 };
 
+struct AssignableLValue {
+  std::string ptr;
+  TypeSpec pointee_ts{};
+  BitfieldAccess bf{};
+
+  bool is_bitfield() const { return bf.is_bitfield(); }
+};
+
 class StmtEmitter {
  public:
   explicit StmtEmitter(const Module& m);
@@ -194,6 +202,7 @@ class StmtEmitter {
   std::string emit_member_base_ptr(FnCtx& ctx, const MemberExpr& m, TypeSpec& base_ts);
   std::string emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeSpec& out_pts,
                                 BitfieldAccess* out_bf = nullptr);
+  AssignableLValue emit_assignable_lval(FnCtx& ctx, ExprId id);
   std::string indexed_gep_elem_ty(const TypeSpec& base_ts);
   std::string emit_indexed_gep(FnCtx& ctx, const std::string& base_ptr,
                                const TypeSpec& base_ts, const std::string& idx);

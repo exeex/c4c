@@ -965,6 +965,17 @@ std::string StmtEmitter::emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeS
     return emit_member_gep(ctx, base_ptr, access.chain);
   }
 
+AssignableLValue StmtEmitter::emit_assignable_lval(FnCtx& ctx, ExprId id) {
+    AssignableLValue access;
+    const Expr& e = get_expr(id);
+    if (const auto* m = std::get_if<MemberExpr>(&e.payload)) {
+      access.ptr = emit_member_lval(ctx, *m, access.pointee_ts, &access.bf);
+      return access;
+    }
+    access.ptr = emit_lval(ctx, id, access.pointee_ts);
+    return access;
+}
+
 TypeSpec StmtEmitter::resolve_member_base_type(FnCtx& ctx, ExprId base_id, bool is_arrow){
     const Expr& base_e = get_expr(base_id);
     TypeSpec base_ts = base_e.type.spec;
@@ -1931,84 +1942,68 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const
 
       case UnaryOp::PreInc:
       case UnaryOp::PreDec: {
-        // Check for bitfield operand
-        const Expr& operand_e = get_expr(u.operand);
-        if (const auto* m = std::get_if<MemberExpr>(&operand_e.payload)) {
-          TypeSpec lhs_ts{};
-          BitfieldAccess bf;
-          const std::string bf_ptr = emit_member_lval(ctx, *m, lhs_ts, &bf);
-          if (bf.is_bitfield()) {
-            const int pbits = bitfield_promoted_bits(bf);
-            const std::string pty = "i" + std::to_string(pbits);
-            const std::string loaded = emit_bitfield_load(ctx, bf_ptr, bf);
-            const std::string delta = (u.op == UnaryOp::PreInc) ? "1" : "-1";
-            const std::string result = fresh_tmp(ctx);
-            emit_lir_op(ctx, lir::LirBinOp{result, "add", pty, loaded, delta});
-            TypeSpec promoted_ts = bitfield_promoted_ts(bf);
-            emit_bitfield_store(ctx, bf_ptr, bf, result, promoted_ts);
-            // Re-read to get value masked to bitfield width (C semantics)
-            return emit_bitfield_load(ctx, bf_ptr, bf);
-          }
+        const AssignableLValue lhs = emit_assignable_lval(ctx, u.operand);
+        if (lhs.is_bitfield()) {
+          const int pbits = bitfield_promoted_bits(lhs.bf);
+          const std::string pty = "i" + std::to_string(pbits);
+          const std::string loaded = emit_bitfield_load(ctx, lhs.ptr, lhs.bf);
+          const std::string delta = (u.op == UnaryOp::PreInc) ? "1" : "-1";
+          const std::string result = fresh_tmp(ctx);
+          emit_lir_op(ctx, lir::LirBinOp{result, "add", pty, loaded, delta});
+          TypeSpec promoted_ts = bitfield_promoted_ts(lhs.bf);
+          emit_bitfield_store(ctx, lhs.ptr, lhs.bf, result, promoted_ts);
+          // Re-read to get value masked to bitfield width (C semantics)
+          return emit_bitfield_load(ctx, lhs.ptr, lhs.bf);
         }
-        TypeSpec pts{};
-        const std::string ptr = emit_lval(ctx, u.operand, pts);
-        const std::string pty = llvm_ty(pts);
+        const std::string pty = llvm_ty(lhs.pointee_ts);
         const std::string loaded = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirLoadOp{loaded, pty, ptr});
+        emit_lir_op(ctx, lir::LirLoadOp{loaded, pty, lhs.ptr});
         const std::string result = fresh_tmp(ctx);
         if (pty == "ptr") {
           const std::string delta = (u.op == UnaryOp::PreInc) ? "1" : "-1";
-          emit_lir_op(ctx, lir::LirGepOp{result, indexed_gep_elem_ty(pts), loaded, false,
+          emit_lir_op(ctx, lir::LirGepOp{result, indexed_gep_elem_ty(lhs.pointee_ts), loaded, false,
                                          {"i64 " + delta}});
-        } else if (is_float_base(pts.base)) {
+        } else if (is_float_base(lhs.pointee_ts.base)) {
           const std::string delta = (u.op == UnaryOp::PreInc) ? "1.0" : "-1.0";
           emit_lir_op(ctx, lir::LirBinOp{result, "fadd", pty, loaded, delta});
         } else {
           const std::string delta = (u.op == UnaryOp::PreInc) ? "1" : "-1";
           emit_lir_op(ctx, lir::LirBinOp{result, "add", pty, loaded, delta});
         }
-        emit_lir_op(ctx, lir::LirStoreOp{pty, result, ptr});
+        emit_lir_op(ctx, lir::LirStoreOp{pty, result, lhs.ptr});
         return result;
       }
 
       case UnaryOp::PostInc:
       case UnaryOp::PostDec: {
-        // Check for bitfield operand
-        const Expr& post_operand_e = get_expr(u.operand);
-        if (const auto* m = std::get_if<MemberExpr>(&post_operand_e.payload)) {
-          TypeSpec lhs_ts{};
-          BitfieldAccess bf;
-          const std::string bf_ptr = emit_member_lval(ctx, *m, lhs_ts, &bf);
-          if (bf.is_bitfield()) {
-            const int pbits = bitfield_promoted_bits(bf);
-            const std::string pty = "i" + std::to_string(pbits);
-            const std::string old_val = emit_bitfield_load(ctx, bf_ptr, bf);
-            const std::string delta = (u.op == UnaryOp::PostInc) ? "1" : "-1";
-            const std::string new_val = fresh_tmp(ctx);
-            emit_lir_op(ctx, lir::LirBinOp{new_val, "add", pty, old_val, delta});
-            TypeSpec promoted_ts = bitfield_promoted_ts(bf);
-            emit_bitfield_store(ctx, bf_ptr, bf, new_val, promoted_ts);
-            return old_val;  // post: return old value
-          }
+        const AssignableLValue lhs = emit_assignable_lval(ctx, u.operand);
+        if (lhs.is_bitfield()) {
+          const int pbits = bitfield_promoted_bits(lhs.bf);
+          const std::string pty = "i" + std::to_string(pbits);
+          const std::string old_val = emit_bitfield_load(ctx, lhs.ptr, lhs.bf);
+          const std::string delta = (u.op == UnaryOp::PostInc) ? "1" : "-1";
+          const std::string new_val = fresh_tmp(ctx);
+          emit_lir_op(ctx, lir::LirBinOp{new_val, "add", pty, old_val, delta});
+          TypeSpec promoted_ts = bitfield_promoted_ts(lhs.bf);
+          emit_bitfield_store(ctx, lhs.ptr, lhs.bf, new_val, promoted_ts);
+          return old_val;  // post: return old value
         }
-        TypeSpec pts{};
-        const std::string ptr = emit_lval(ctx, u.operand, pts);
-        const std::string pty = llvm_ty(pts);
+        const std::string pty = llvm_ty(lhs.pointee_ts);
         const std::string loaded = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirLoadOp{loaded, pty, ptr});
+        emit_lir_op(ctx, lir::LirLoadOp{loaded, pty, lhs.ptr});
         const std::string result = fresh_tmp(ctx);
         if (pty == "ptr") {
           const std::string delta = (u.op == UnaryOp::PostInc) ? "1" : "-1";
-          emit_lir_op(ctx, lir::LirGepOp{result, indexed_gep_elem_ty(pts), loaded, false,
+          emit_lir_op(ctx, lir::LirGepOp{result, indexed_gep_elem_ty(lhs.pointee_ts), loaded, false,
                                          {"i64 " + delta}});
-        } else if (is_float_base(pts.base)) {
+        } else if (is_float_base(lhs.pointee_ts.base)) {
           const std::string delta = (u.op == UnaryOp::PostInc) ? "1.0" : "-1.0";
           emit_lir_op(ctx, lir::LirBinOp{result, "fadd", pty, loaded, delta});
         } else {
           const std::string delta = (u.op == UnaryOp::PostInc) ? "1" : "-1";
           emit_lir_op(ctx, lir::LirBinOp{result, "add", pty, loaded, delta});
         }
-        emit_lir_op(ctx, lir::LirStoreOp{pty, result, ptr});
+        emit_lir_op(ctx, lir::LirStoreOp{pty, result, lhs.ptr});
         return loaded;  // post: return old value
       }
 
@@ -2482,16 +2477,10 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const AssignExpr& a, cons
     TypeSpec rhs_ts{};
     std::string rhs = emit_rval_id(ctx, a.rhs, rhs_ts);
 
-    TypeSpec lhs_ts{};
-    BitfieldAccess bf;
-    // Check if LHS is a member expression (potential bitfield)
-    const Expr& lhs_e = get_expr(a.lhs);
-    std::string lhs_ptr;
-    if (const auto* m = std::get_if<MemberExpr>(&lhs_e.payload)) {
-      lhs_ptr = emit_member_lval(ctx, *m, lhs_ts, &bf);
-    } else {
-      lhs_ptr = emit_lval(ctx, a.lhs, lhs_ts);
-    }
+    const AssignableLValue lhs = emit_assignable_lval(ctx, a.lhs);
+    const TypeSpec& lhs_ts = lhs.pointee_ts;
+    const BitfieldAccess& bf = lhs.bf;
+    const std::string& lhs_ptr = lhs.ptr;
     const std::string lty = llvm_ty(lhs_ts);
 
     // Bitfield simple assignment

@@ -6,11 +6,14 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 3: Extract Aggregate and Address-Lowering Helpers
-- Current slice: re-scan Step 3 for the next shared aggregate/address seam above `emit_lval_dispatch(...)`; if that scan is exhausted, roll into Step 4 with the repeated member/bitfield LHS setup used by unary inc/dec and assignment lowering
+- Step 4: Extract Assignment and Store Helpers
+- Current slice: re-scan Step 4 for the next behavior-preserving assignment/store helper above the operator-specific arithmetic and pointer-adjustment branches
 
 ## Completed
 
+- Extended [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) with member scalar assignment plus anonymous-bitfield set/compound-assignment coverage so compare mode now pins the shared `MemberExpr` / bitfield LHS setup used by unary inc/dec and assignment lowering
+- Extracted `emit_assignable_lval(...)` plus shared `AssignableLValue` metadata in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp), so unary pre/post inc/dec and `AssignExpr` now reuse one member-aware / bitfield-aware LHS setup helper without changing their operator-specific arithmetic or store paths
+- Verified `compare_smoke_aggregate_access`, the full `compare_case` label, and the clean full-suite regression guard with stable results (`2248` -> `2248` passed, zero failures; non-decreasing pass-count guard accepted the first Step 4 slice)
 - Extended [`smoke_aggregate_access.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_aggregate_access.c) with rvalue anonymous-member reads so compare mode now keeps promoted anonymous field and bitfield access pinned on temporary aggregates as well as lvalues
 - Extracted `resolve_member_field_access(...)` plus shared `MemberFieldAccess` metadata in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp) so `emit_member_lval(...)` and `resolve_payload_type(const MemberExpr&)` share one tag/chain/bitfield lookup path without changing their caller-facing error behavior
 - Verified `compare_smoke_aggregate_access`, the full `compare_case` label, and the clean full-suite regression guard with stable results (`2248` -> `2248` passed, zero failures; non-decreasing pass-count guard accepted the refactor slice)
@@ -79,7 +82,7 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Re-scan Step 3 in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) for one more shared aggregate/address helper above `emit_lval_dispatch(...)`; if no behavior-preserving seam remains, start Step 4 with the repeated member-expression / bitfield LHS setup shared by unary inc/dec and assignment lowering
+- Extract the next local Step 4 helper above the operator-specific arithmetic paths, likely around the shared "load current LHS value, choose result/store types, then write back" flow used by non-bitfield compound assignment sites
 
 ## Blockers
 
@@ -123,3 +126,4 @@ Source Plan: plan.md
 - `resolve_member_field_access(...)` now owns the shared `MemberExpr` tag/field-chain/bitfield lookup path; future Step 3 slices should build on that metadata instead of re-running `resolve_field_access(...)` at multiple call sites
 - The next Step 3 scan should look for the next repeated access-pointer or address-materialization seam above `emit_member_lval(...)` and `emit_indexed_gep(...)`, not reopen field-resolution plumbing
 - This iteration targets the post-address materialization seam: both `emit_rval_payload(const IndexExpr&)` and `emit_rval_payload(const MemberExpr&)` still compute an access pointer and then locally decide between array decay, scalar load, or empty-void results before returning
+- Step 4 is now active: `emit_assignable_lval(...)` owns the shared member-aware / bitfield-aware LHS setup for unary inc/dec and assignment lowering, so the next pass should stay above the arithmetic tables and look for the next reusable assignment/store coordinator seam
