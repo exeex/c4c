@@ -15,6 +15,19 @@ bool set_terminator_if_open(FnCtx& ctx, TerminatorT&& terminator) {
   return true;
 }
 
+void emit_condbr_and_open_lbl(FnCtx& ctx, const std::string& cond,
+                              const std::string& true_label,
+                              const std::string& false_label,
+                              const std::string& open_label) {
+  (void)set_terminator_if_open(ctx, lir::LirCondBr{cond, true_label, false_label});
+  lir::LirBlock blk;
+  blk.id = lir::LirBlockId{static_cast<uint32_t>(ctx.lir_blocks.size())};
+  blk.label = open_label;
+  ctx.lir_blocks.push_back(std::move(blk));
+  ctx.current_block_idx = ctx.lir_blocks.size() - 1;
+  ctx.last_term = false;
+}
+
 // ── FnPtrSig accessors ───────────────────────────────────────────────────
 // These helpers extract return type and parameter types from FnPtrSig.
 // canonical_sig is always populated during HIR lowering.
@@ -2412,12 +2425,10 @@ std::string StmtEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Exp
     const std::string end_lbl  = fresh_lbl(ctx, "logic.end.");
 
     if (b.op == BinaryOp::LAnd) {
-      emit_term_condbr(ctx, lc, rhs_lbl, skip_lbl);
+      emit_condbr_and_open_lbl(ctx, lc, rhs_lbl, skip_lbl, rhs_lbl);
     } else {
-      emit_term_condbr(ctx, lc, skip_lbl, rhs_lbl);
+      emit_condbr_and_open_lbl(ctx, lc, skip_lbl, rhs_lbl, rhs_lbl);
     }
-
-    emit_lbl(ctx, rhs_lbl);
     TypeSpec rts{};
     const std::string rv = emit_rval_id(ctx, b.rhs, rts);
     const std::string rc = to_bool(ctx, rv, rts);
@@ -3423,17 +3434,13 @@ std::string StmtEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::st
 
     const std::string is_stack0 = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirCmpOp{is_stack0, false, "sge", "i32", offs, "0"});
-    emit_term_condbr(ctx, is_stack0, stack_lbl, reg_try_lbl);
-
-    emit_lbl(ctx, reg_try_lbl);
+    emit_condbr_and_open_lbl(ctx, is_stack0, stack_lbl, reg_try_lbl, reg_try_lbl);
     const std::string next_offs = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirBinOp{next_offs, "add", "i32", offs, std::to_string(slot_bytes)});
     emit_lir_op(ctx, lir::LirStoreOp{std::string("i32"), next_offs, offs_ptr});
     const std::string use_reg = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirCmpOp{use_reg, false, "sle", "i32", next_offs, "0"});
-    emit_term_condbr(ctx, use_reg, reg_lbl, stack_lbl);
-
-    emit_lbl(ctx, reg_lbl);
+    emit_condbr_and_open_lbl(ctx, use_reg, reg_lbl, stack_lbl, reg_lbl);
     const std::string gr_top_ptr = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirGepOp{gr_top_ptr, "%struct.__va_list_tag_", ap_ptr, false, {"i32 0", "i32 1"}});
     const std::string gr_top = fresh_tmp(ctx);
@@ -3473,17 +3480,13 @@ std::string StmtEmitter::emit_aarch64_vaarg_fp_src_ptr(
 
     const std::string is_stack0 = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirCmpOp{is_stack0, false, "sge", "i32", offs, "0"});
-    emit_term_condbr(ctx, is_stack0, stack_lbl, reg_try_lbl);
-
-    emit_lbl(ctx, reg_try_lbl);
+    emit_condbr_and_open_lbl(ctx, is_stack0, stack_lbl, reg_try_lbl, reg_try_lbl);
     const std::string next_offs = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirBinOp{next_offs, "add", "i32", offs, std::to_string(reg_slot_bytes)});
     emit_lir_op(ctx, lir::LirStoreOp{std::string("i32"), next_offs, offs_ptr});
     const std::string use_reg = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirCmpOp{use_reg, false, "sle", "i32", next_offs, "0"});
-    emit_term_condbr(ctx, use_reg, reg_lbl, stack_lbl);
-
-    emit_lbl(ctx, reg_lbl);
+    emit_condbr_and_open_lbl(ctx, use_reg, reg_lbl, stack_lbl, reg_lbl);
     const std::string vr_top_ptr = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirGepOp{vr_top_ptr, "%struct.__va_list_tag_", ap_ptr, false, {"i32 0", "i32 2"}});
     const std::string vr_top = fresh_tmp(ctx);
@@ -3634,9 +3637,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, con
     if (!has_concrete_type(res_spec)) res_spec.base = TB_INT;
     const std::string res_ty = llvm_ty(res_spec);
 
-    emit_term_condbr(ctx, cond_i1, then_lbl, else_lbl);
-
-    emit_lbl(ctx, then_lbl);
+    emit_condbr_and_open_lbl(ctx, cond_i1, then_lbl, else_lbl, then_lbl);
     TypeSpec then_ts{};
     std::string then_v = emit_rval_id(ctx, t.then_expr, then_ts);
     then_v = coerce(ctx, then_v, then_ts, res_spec);

@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: Extract Terminator and Block Lifecycle Helpers
-- Current slice: inspect the next remaining terminator/block-lifecycle repetition after `emit_fallthrough_lbl(...)`, most likely around conditional branch setup or another small open-block guard that can stay local to [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp)
+- Current slice: inspect the next remaining block-lifecycle repetition after `emit_condbr_and_open_lbl(...)`, likely around short branch-to-join scaffolding that still stays local to [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp)
 
 ## Completed
 
@@ -28,10 +28,13 @@ Source Plan: plan.md
 - Extended [`smoke_stmt_control_flow.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_stmt_control_flow.c) with a second case-range switch that forces a false-first-range / true-second-range chain before `tail`
 - Extracted `emit_fallthrough_lbl(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and reused it for switch range-chain successor blocks plus user-label opening so both sites share the same open-block fallthrough contract
 - Verified the targeted compare-mode case, the full `compare_case` label, and the clean full-suite regression guard (`2243` -> `2243` passed, zero failures)
+- Added [`smoke_expr_branch_lifecycle.c`](/workspaces/c4c/tests/c/internal/compare_case/smoke_expr_branch_lifecycle.c) to cover short-circuit logical evaluation and ternary branch opening in compare mode
+- Extracted `emit_condbr_and_open_lbl(...)` in [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and reused it across logical expression lowering, ternary lowering, and AArch64 `va_arg` branch setup so these sites share the same conditional-branch successor-opening contract
+- Verified targeted compare-mode coverage plus full-suite regression guard monotonicity (`2243` -> `2244` passed, zero failures)
 
 ## Next Slice
 
-- Continue Step 2 by extracting another small block-lifecycle helper, likely one that shortens repeated conditional-branch/open-successor patterns in expression or control-flow lowering while staying local to [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp)
+- Continue Step 2 by looking for another small local block-lifecycle helper, likely around the remaining branch-to-join/open-label scaffolding in expression lowering or `va_arg` helpers without widening the refactor beyond [`stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp)
 
 ## Blockers
 
@@ -49,3 +52,5 @@ Source Plan: plan.md
 - The current helper lives in the anonymous namespace and does not change public emitter structure; the next Step 2 slice should keep that same local-only extraction style
 - This iteration now targets the shared fallthrough-open-block pattern used by label emission and switch range-chain successor blocks; keep the extraction local to the anonymous namespace and validate it with compare-mode coverage that traverses more than one case-range hop
 - `emit_fallthrough_lbl(...)` is now the local wrapper for "terminate current block if still open, then open the named successor block"; remaining Step 2 opportunities should build on that contract instead of reintroducing manual branch-plus-label sequences
+- This iteration is focused on the sibling lifecycle pattern where a conditional branch is emitted and code generation immediately continues in the false/next successor block; keep the helper local and use compare-mode coverage that exercises short-circuit or ternary lowering
+- `emit_condbr_and_open_lbl(...)` now owns the "place a conditional terminator, then continue emission in one chosen successor block" contract; future Step 2 slices should compose with it instead of restating manual `emit_term_condbr(...)` + `emit_lbl(...)` pairs
