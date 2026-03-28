@@ -3495,14 +3495,46 @@ std::string StmtEmitter::emit_aarch64_vaarg_fp_src_ptr(
     emit_lir_op(ctx, lir::LirLoadOp{stack_ptr, std::string("ptr"), stack_ptr_ptr});
     std::string aligned_stack_ptr = stack_ptr;
     if (stack_align_bytes > 1) {
-      const std::string stack_i = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirCastOp{stack_i, lir::LirCastKind::PtrToInt, "ptr", stack_ptr, "i64"});
-      const std::string plus_mask = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirBinOp{plus_mask, "add", "i64", stack_i, std::to_string(stack_align_bytes - 1)});
-      const std::string masked = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirBinOp{masked, "and", "i64", plus_mask, std::to_string(-stack_align_bytes)});
-      aligned_stack_ptr = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirCastOp{aligned_stack_ptr, lir::LirCastKind::IntToPtr, "i64", masked, "ptr"});
+      if (stack_align_bytes > 8) {
+        const std::string stack_plus = fresh_tmp(ctx);
+        emit_lir_op(ctx, lir::LirGepOp{
+                                 stack_plus,
+                                 "i8",
+                                 stack_ptr,
+                                 false,
+                                 {"i64 " + std::to_string(stack_align_bytes - 1)}});
+        aligned_stack_ptr = fresh_tmp(ctx);
+        emit_lir_op(ctx, lir::LirCallOp{
+                                 aligned_stack_ptr,
+                                 "ptr",
+                                 "@llvm.ptrmask.p0.i64",
+                                 "",
+                                 "ptr " + stack_plus + ", i64 " +
+                                     std::to_string(-stack_align_bytes)});
+        module_->need_ptrmask = true;
+      } else {
+        const std::string stack_i = fresh_tmp(ctx);
+        emit_lir_op(
+            ctx,
+            lir::LirCastOp{stack_i, lir::LirCastKind::PtrToInt, "ptr", stack_ptr, "i64"});
+        const std::string plus_mask = fresh_tmp(ctx);
+        emit_lir_op(ctx, lir::LirBinOp{
+                                 plus_mask,
+                                 "add",
+                                 "i64",
+                                 stack_i,
+                                 std::to_string(stack_align_bytes - 1)});
+        const std::string masked = fresh_tmp(ctx);
+        emit_lir_op(ctx, lir::LirBinOp{
+                                 masked, "and", "i64", plus_mask, std::to_string(-stack_align_bytes)});
+        aligned_stack_ptr = fresh_tmp(ctx);
+        emit_lir_op(ctx,
+                    lir::LirCastOp{aligned_stack_ptr,
+                                   lir::LirCastKind::IntToPtr,
+                                   "i64",
+                                   masked,
+                                   "ptr"});
+      }
     }
     const std::string stack_next = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirGepOp{stack_next, "i8", aligned_stack_ptr, false, {"i64 " + std::to_string(stack_slot_bytes)}});

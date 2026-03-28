@@ -37,7 +37,7 @@ void render_module_header(std::ostream& out,
   render_module_extern_decls(out, module);
   if (!module.type_decls.empty() || !module.string_pool.empty() ||
       !module.globals.empty() || module.need_va_start || module.need_va_end ||
-      module.need_va_copy || !module.extern_decls.empty()) {
+      module.need_va_copy || module.need_ptrmask || !module.extern_decls.empty()) {
     out << "\n";
   }
 }

@@ -53,6 +53,9 @@ void render_module_intrinsic_decls(std::ostream& out,
   if (module.need_va_copy) {
     out << "declare void @llvm.va_copy.p0.p0(ptr, ptr)\n";
   }
+  if (module.need_ptrmask) {
+    out << "declare ptr @llvm.ptrmask.p0.i64(ptr, i64)\n";
+  }
 }
 
 }  // namespace c4c::backend::aarch64

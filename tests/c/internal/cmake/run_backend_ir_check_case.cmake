@@ -37,10 +37,13 @@ endif()
 
 file(READ "${OUT_LL}" ir_text)
 
-foreach(needle
-    "vaarg.fp.join."
-    "load double, ptr"
-    "getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 4")
+if(NOT DEFINED REQUIRED_SNIPPETS OR "${REQUIRED_SNIPPETS}" STREQUAL "")
+  set(REQUIRED_SNIPPETS
+      "vaarg.fp.join.|load double, ptr|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 4")
+endif()
+string(REPLACE "|" ";" required_snippets "${REQUIRED_SNIPPETS}")
+
+foreach(needle IN LISTS required_snippets)
   string(FIND "${ir_text}" "${needle}" needle_pos)
   if(needle_pos EQUAL -1)
     message(FATAL_ERROR
