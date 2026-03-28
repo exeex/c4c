@@ -3070,6 +3070,38 @@ std::string StmtEmitter::emit_builtin_isfinite_call(FnCtx& ctx, ExprId arg_id) {
     return emit_builtin_fp_predicate_result(ctx, "olt", fp_ty, abs_value, inf_val);
   }
 
+void StmtEmitter::promote_builtin_signbit_arg(FnCtx& ctx, std::string& value,
+                                              TypeSpec& value_ts, BuiltinId builtin_id) {
+    if (builtin_id != BuiltinId::SignBit) return;
+    promote_builtin_fp_predicate_arg(ctx, value, value_ts);
+  }
+
+std::string StmtEmitter::emit_builtin_signbit_call(FnCtx& ctx, ExprId arg_id,
+                                                   BuiltinId builtin_id) {
+    TypeSpec arg_ts{};
+    std::string arg = emit_rval_id(ctx, arg_id, arg_ts);
+    promote_builtin_signbit_arg(ctx, arg, arg_ts, builtin_id);
+
+    const std::string fp_ty = llvm_ty(arg_ts);
+    std::string int_ty = "i64";
+    int shift_bits = 63;
+    if (arg_ts.base == TB_FLOAT) {
+      int_ty = "i32";
+      shift_bits = 31;
+    } else if (arg_ts.base == TB_LONGDOUBLE) {
+      int_ty = "i128";
+      shift_bits = 127;
+    }
+
+    const std::string bc = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirCastOp{bc, lir::LirCastKind::Bitcast, fp_ty, arg, int_ty});
+    const std::string shifted = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirBinOp{shifted, "lshr", int_ty, bc, std::to_string(shift_bits)});
+    const std::string trunc = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirCastOp{trunc, lir::LirCastKind::Trunc, int_ty, shifted, "i32"});
+    return trunc;
+  }
+
 std::string StmtEmitter::emit_post_builtin_call(FnCtx& ctx, const CallExpr& call,
                                                 const CallTargetInfo& call_target) {
     const BuiltinId builtin_id = call_target.builtin_id;
@@ -3299,29 +3331,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
       if ((builtin_id == BuiltinId::SignBit ||
            builtin_id == BuiltinId::SignBitF ||
            builtin_id == BuiltinId::SignBitL) && call.args.size() == 1) {
-        TypeSpec arg_ts{};
-        std::string arg = emit_rval_id(ctx, call.args[0], arg_ts);
-        // Promote float to double for __builtin_signbit (generic version)
-        if (arg_ts.base == TB_FLOAT && builtin_id == BuiltinId::SignBit) {
-          const std::string ext = fresh_tmp(ctx);
-          emit_lir_op(ctx, lir::LirCastOp{ext, lir::LirCastKind::FPExt, "float", arg, "double"});
-          arg = ext;
-          arg_ts.base = TB_DOUBLE;
-        }
-        // Bitcast to integer of same width, then check sign bit
-        const std::string fp_ty = llvm_ty(arg_ts);
-        std::string int_ty;
-        if (arg_ts.base == TB_FLOAT) int_ty = "i32";
-        else if (arg_ts.base == TB_LONGDOUBLE) int_ty = "i128";
-        else int_ty = "i64"; // double or promoted
-        const std::string bc = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCastOp{bc, lir::LirCastKind::Bitcast, fp_ty, arg, int_ty});
-        const std::string shifted = fresh_tmp(ctx);
-        int shift_bits = (int_ty == "i32") ? 31 : (int_ty == "i128") ? 127 : 63;
-        emit_lir_op(ctx, lir::LirBinOp{shifted, "lshr", int_ty, bc, std::to_string(shift_bits)});
-        const std::string trunc = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCastOp{trunc, lir::LirCastKind::Trunc, int_ty, shifted, "i32"});
-        return trunc;
+        return emit_builtin_signbit_call(ctx, call.args[0], builtin_id);
       }
       if (const char* pred = builtin_fp_compare_predicate(builtin_id);
           pred && call.args.size() == 2) {

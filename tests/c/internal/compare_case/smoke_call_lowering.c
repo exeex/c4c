@@ -79,6 +79,15 @@ int call_fp_predicate_builtins(float lhs, double rhs) {
   return total;
 }
 
+int call_signbit_builtins(float lhs, long double rhs) {
+  int total = 0;
+  total += __builtin_signbit(lhs);
+  total += __builtin_signbitf(lhs);
+  total += __builtin_signbitl(rhs);
+  total += __builtin_signbit(3.0);
+  return total;
+}
+
 int main(void) {
   const int direct = call_direct(9, 4);
   combine_fn fn = sub_pair;
@@ -88,9 +97,11 @@ int main(void) {
   const int implicit = call_implicit_builtins(indirect);
   const int bit_builtins = call_bit_builtins(indirect);
   const int fp_predicates = call_fp_predicate_builtins(1.5f, 2.0);
+  const int signbit_builtins = call_signbit_builtins(-1.5f, -0.25L);
   call_variadic(direct + indirect + void_direct, 1.5f);
   return (direct == 13 && indirect == 5 && decay == 21 && void_direct == 25 &&
-          implicit == 4 && bit_builtins == 137 && fp_predicates == 9)
+          implicit == 4 && bit_builtins == 137 && fp_predicates == 9 &&
+          signbit_builtins == 3)
              ? 0
              : 1;
 }

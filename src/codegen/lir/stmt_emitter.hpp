@@ -295,6 +295,9 @@ class StmtEmitter {
   std::string emit_builtin_isnan_call(FnCtx& ctx, ExprId arg_id);
   std::string emit_builtin_isinf_call(FnCtx& ctx, ExprId arg_id);
   std::string emit_builtin_isfinite_call(FnCtx& ctx, ExprId arg_id);
+  void promote_builtin_signbit_arg(FnCtx& ctx, std::string& value, TypeSpec& value_ts,
+                                   BuiltinId builtin_id);
+  std::string emit_builtin_signbit_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
   std::string emit_post_builtin_call(FnCtx& ctx, const CallExpr& call,
                                      const CallTargetInfo& call_target);
 
