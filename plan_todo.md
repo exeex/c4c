@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 1: Compress the statement dispatcher
-- Current slice: continue Step 1 by extracting a non-control-flow statement helper family from [`src/codegen/lir/stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) so `LocalDecl`, `ExprStmt`, and `InlineAsmStmt` route through named dispatch helpers while preserving existing lowering behavior
+- Current slice: continue Step 1 by deciding whether the remaining dispatcher endpoints (`CaseStmt`, `CaseRangeStmt`, `DefaultStmt`) should stay as no-op overloads or move behind a final named helper so the statement dispatch surface reads consistently by category
 
 ## Completed
 
