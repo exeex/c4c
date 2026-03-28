@@ -7,13 +7,13 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3: port the first integer/control-flow slice
-- Iteration slice: extract the remaining target-local AArch64 prologue/frame helpers from `src/backend/aarch64/frame.*` without changing behavior
+- Iteration slice: prepare the next bounded AArch64 Step 3 slice after the prologue/helper extraction, keeping the work target-local and mechanically aligned with ref
 
 ## Next Intended Slice
 
-- split function header/prologue rendering away from the remaining validation and module-header helpers
-- keep the next helper extraction focused on target-local prologue structure, not new backend capability
-- keep target-local casts aligned with real AArch64 addressing IR as new memory slices land
+- inspect the ref AArch64 global-addressing helpers and map the narrowest corresponding C++ landing zone under `src/backend/aarch64/`
+- keep the next slice focused on one target-local helper boundary or one missing runtime-backed backend capability
+- avoid broadening beyond the active AArch64 Step 3 runbook without recording a separate idea
 
 ## Completed Items
 
@@ -56,6 +56,9 @@ Source Plan: plan.md
 - added unit coverage for AArch64 `ret void` rendering in `tests/backend/backend_lir_adapter_tests.cpp`
 - extracted target-local AArch64 return rendering from `src/backend/aarch64/frame.cpp` into `src/backend/aarch64/returns.*`
 - rebuilt from a clean `build/` directory, recorded `test_fail_after.log`, and passed the maintenance regression guard against `test_fail_before.log` with `passed=496/509 -> 496/509` and zero newly failing tests
+- added unit coverage for AArch64 module header and declaration rendering in `tests/backend/backend_lir_adapter_tests.cpp`
+- extracted target-local AArch64 module validation and function/module prologue helpers from `src/backend/aarch64/frame.*` into `src/backend/aarch64/prologue.*`
+- reran `backend_lir_adapter_tests` and the full `ctest --test-dir build -j --output-on-failure` suite, then passed the maintenance regression guard against `test_fail_before.log` with `passed=496/509 -> 496/509` and zero newly failing tests
 
 ## Blockers
 
@@ -79,4 +82,4 @@ Source Plan: plan.md
 - verified `backend_lir_adapter_tests` and `backend_runtime_nested_member_pointer_array` pass for the new nested member-pointer stack-addressing slice
 - reran the full `ctest --test-dir build -j --output-on-failure` suite after landing the new coverage; the regression guard passed with `passed=494/507 -> 495/508`, zero newly failing tests, and the new backend runtime test accounted for the pass-count increase
 - nested by-value aggregate member-array addressing also lowers through the current target-local AArch64 memory helpers; this iteration codifies that slice in repo tests
-- return emission is now isolated in `src/backend/aarch64/returns.*`; the remaining frame file still bundles validation, module-header, and function-prologue helpers
+- module validation plus function/module prologue rendering are now isolated in `src/backend/aarch64/prologue.*`; `src/backend/aarch64/frame.*` is down to entry allocas plus function epilogue helpers

@@ -81,6 +81,36 @@ c4c::codegen::lir::LirModule make_void_return_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_declaration_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.Pair = type { i32, i32 }");
+
+  LirFunction decl;
+  decl.name = "helper";
+  decl.signature_text = "declare i32 @helper(i32)\n";
+  decl.is_declaration = true;
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"%t0", "i32", "@helper", "", "i32 5"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  main_fn.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(decl));
+  module.functions.push_back(std::move(main_fn));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_conditional_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -440,6 +470,22 @@ void test_aarch64_backend_renders_void_return_slice() {
                   "aarch64 backend should render void returns");
 }
 
+void test_aarch64_backend_preserves_module_headers_and_declarations() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_declaration_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "target datalayout = \"e-m:e-i64:64-i128:128-n32:64-S128\"",
+                  "aarch64 backend should preserve the module datalayout");
+  expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
+                  "aarch64 backend should preserve the module target triple");
+  expect_contains(rendered, "%struct.Pair = type { i32, i32 }",
+                  "aarch64 backend should preserve module type declarations");
+  expect_contains(rendered, "declare i32 @helper(i32)\n",
+                  "aarch64 backend should preserve declarations without bodies");
+  expect_contains(rendered, "define i32 @main()\n{\nentry:\n",
+                  "aarch64 backend should still open function bodies for definitions");
+}
+
 void test_aarch64_backend_renders_compare_and_branch_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_conditional_return_module()},
@@ -628,6 +674,7 @@ int main() {
   test_rejects_unsupported_instruction();
   test_aarch64_backend_scaffold_renders_supported_slice();
   test_aarch64_backend_renders_void_return_slice();
+  test_aarch64_backend_preserves_module_headers_and_declarations();
   test_aarch64_backend_renders_compare_and_branch_slice();
   test_aarch64_backend_scaffold_rejects_out_of_slice_ir();
   test_aarch64_backend_renders_direct_call_slice();

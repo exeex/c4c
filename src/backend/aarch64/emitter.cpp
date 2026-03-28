@@ -5,6 +5,7 @@
 #include "calls.hpp"
 #include "frame.hpp"
 #include "memory.hpp"
+#include "prologue.hpp"
 #include "support.hpp"
 
 #include <sstream>
