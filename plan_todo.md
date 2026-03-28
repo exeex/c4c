@@ -7,11 +7,11 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3: port the first integer/control-flow slice
-- Iteration slice: inspect the next bounded AArch64 Step 3 follow-on after landing module-level extern declarations, keeping the work target-local and mechanically aligned with ref `codegen/globals.rs`
+- Iteration slice: codify target-local AArch64 extern-global usage coverage after landing module-level extern declarations, keeping the work aligned with ref `codegen/globals.rs`
 
 ## Next Intended Slice
 
-- inspect the next narrow global-addressing follow-on after module extern declarations, likely explicit external-global usage or target-local global-address helper rendering that maps onto ref `codegen/globals.rs`
+- inspect the next narrow global-addressing follow-on after extern-global usage coverage, likely target-local symbol-address helper rendering that maps more directly onto ref `codegen/globals.rs`
 - keep the next slice focused on one target-local helper boundary or one missing runtime-backed backend capability
 - avoid broadening beyond the active AArch64 Step 3 runbook without recording a separate idea
 
@@ -74,6 +74,10 @@ Source Plan: plan.md
 - added unit coverage for AArch64 extern-declared direct calls in `tests/backend/backend_lir_adapter_tests.cpp`
 - verified `backend_lir_adapter_tests` and the existing targeted AArch64 backend runtime tests pass after landing the extern-declaration slice
 - reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=496/510 -> 498/511` and zero newly failing tests; one unrelated prior C++ failure dropped from the failing set
+- confirmed unresolved `extern` globals lower to `external global` declarations plus scalar and array-addressing loads under `--codegen lir --target aarch64-unknown-linux-gnu`, matching Clang's declaration shape for the same probes
+- added unit coverage for AArch64 extern-global scalar loads and extern-global array decay/indexed addressing in `tests/backend/backend_lir_adapter_tests.cpp`
+- verified `backend_lir_adapter_tests` passes after landing the extern-global usage coverage slice
+- reran the full `ctest --test-dir build -j --output-on-failure` suite, then passed the regression guard against `test_fail_before.log` with `passed=496/510 -> 498/511` and zero newly failing tests; one unrelated prior C++ failure dropped from the failing set (`cpp_positive_sema_eastl_inherited_trait_value_template_arg_parse_cpp`)
 
 ## Blockers
 
