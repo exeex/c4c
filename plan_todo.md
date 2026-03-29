@@ -9,18 +9,47 @@ Source Plan: plan.md
 - Step 5: prepare the next diagnostic slice by bounding the first
   committed-failure vs no-match follow-up under speculative `try_parse_*`
   record-member rewinds
-- Current slice: preserve leading top-level qualified-type probe frames in
-  parser-debug summary stacks when a later
-  `parse_top_level_parameter_list` failure still owns the committed root cause
-- Iteration target: bound the next wrapper-only `consume_qualified_type_spelling`
-  follow-up from `std_vector_simple.cpp`, starting with the still-live
-  `/usr/include/c++/14/bits/exception.h:67`,
-  `/usr/include/c++/14/bits/stl_vector.h:336` / `:340`, and
-  `/usr/include/c++/14/bits/stl_bvector.h:78` summaries that still collapse to
+- Current slice: closed the wrapper-only top-level
+  `consume_qualified_type_spelling` follow-up so parser-debug summary stacks
+  keep the leading qualified-type probe frames before
+  `parse_top_level_parameter_list`
+- Iteration target: sample the remaining `std_vector_simple.cpp` parser-debug
+  output again and bound the next distinct speculative `try_parse_*`
+  committed-failure vs no-match ranking case now that the
+  `exception.h:67`, `stl_vector.h:336` / `:340`, and
+  `stl_bvector.h:78` wrapper-only summaries no longer collapse to
   `parse_top_level -> parse_top_level_parameter_list`
 
 ## Completed
 
+- recorded the required clean after-suite for this iteration and passed the
+  monotonic regression guard against the recorded
+  `before passed=2274/2275` baseline:
+  `after passed=2278/2279`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged
+- added parser-debug regression coverage in
+  `cpp_parser_debug_std_vector_wrapper_spelling_stack` and
+  `cpp_parser_debug_std_vector_wrapper_anchor_stack` against the motivating
+  `tests/cpp/std/std_vector_simple.cpp` wrapper-only top-level failures
+- generalized the top-level qualified-probe summary merge so
+  `best_debug_summary_stack()` now prepends leading
+  `consume_qualified_type_spelling` / `try_parse_cpp_scoped_base_type` frames
+  when the emitted summary would otherwise jump straight from
+  `parse_top_level` into `parse_top_level_parameter_list`
+- rechecked the motivating `std_vector_simple.cpp` parser-debug output after
+  landing this slice; `/usr/include/c++/14/bits/exception.h:67`,
+  `/usr/include/c++/14/bits/stl_vector.h:336` / `:340`, and
+  `/usr/include/c++/14/bits/stl_bvector.h:78` now keep their leading
+  qualified-type probe frames in the emitted summary stack
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_qualified_type_top_level_params`,
+  `cpp_parser_debug_qualified_type_template_arg_stack`,
+  `cpp_parser_debug_qualified_type_dependent_typename_stack`,
+  `cpp_parser_debug_qualified_type_typename_spelling_stack`,
+  `cpp_parser_debug_qualified_type_spelling_stack`,
+  `cpp_parser_debug_std_vector_wrapper_spelling_stack`,
+  `cpp_parser_debug_std_vector_wrapper_anchor_stack`, and
+  `cpp_parser_debug_top_level_qualified_probe_leaf`
 - recorded the required clean after-suite for this slice and passed the
   monotonic regression guard against the recorded
   `before passed=2274/2275` baseline on rerun:

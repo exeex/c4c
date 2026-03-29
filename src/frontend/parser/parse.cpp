@@ -124,16 +124,23 @@ std::vector<std::string> normalize_summary_stack(
     return normalized;
 }
 
-std::vector<std::string> prepend_leading_top_level_qualified_probe(
+bool is_top_level_qualified_probe_merge_target(
+    const std::string& function_name) {
+    return function_name == "parse_next_template_argument" ||
+           function_name == "parse_top_level_parameter_list";
+}
+
+std::vector<std::string> merge_leading_top_level_qualified_probe(
     const std::vector<Parser::ParseDebugEvent>& parse_debug_events,
     const std::vector<std::string>& summary_stack) {
     if (summary_stack.size() < 2 || summary_stack.front() != "parse_top_level" ||
-        summary_stack[1] != "parse_next_template_argument") {
+        !is_top_level_qualified_probe_merge_target(summary_stack[1])) {
         return summary_stack;
     }
 
     std::vector<std::string> leading_probe_frames;
     bool inside_top_level = false;
+    const std::string& merge_anchor = summary_stack[1];
     for (const Parser::ParseDebugEvent& event : parse_debug_events) {
         if (event.kind != "enter") continue;
         if (event.function_name == "parse_top_level") {
@@ -141,7 +148,7 @@ std::vector<std::string> prepend_leading_top_level_qualified_probe(
             continue;
         }
         if (!inside_top_level) continue;
-        if (event.function_name == "parse_next_template_argument") break;
+        if (event.function_name == merge_anchor) break;
         if (!is_qualified_type_trace_frame(event.function_name)) continue;
         if (leading_probe_frames.empty() ||
             leading_probe_frames.back() != event.function_name) {
@@ -545,8 +552,8 @@ std::vector<std::string> Parser::best_debug_summary_stack() const {
                           best_parse_failure_.stack_trace.begin() + common_prefix,
                           best_parse_failure_.stack_trace.end());
             summary_stack = normalize_summary_stack(merged);
-            return prepend_leading_top_level_qualified_probe(parse_debug_events_,
-                                                             summary_stack);
+            return merge_leading_top_level_qualified_probe(parse_debug_events_,
+                                                           summary_stack);
         }
         if (!best_parse_failure_.function_name.empty() &&
             std::find(candidate.begin(),
@@ -554,19 +561,19 @@ std::vector<std::string> Parser::best_debug_summary_stack() const {
                       best_parse_failure_.function_name) !=
                 candidate.end()) {
             summary_stack = normalize_summary_stack(candidate);
-            return prepend_leading_top_level_qualified_probe(parse_debug_events_,
-                                                             summary_stack);
+            return merge_leading_top_level_qualified_probe(parse_debug_events_,
+                                                           summary_stack);
         }
         if (best_parse_failure_.function_name == "parse_top_level" &&
             !candidate.empty()) {
             summary_stack = normalize_summary_stack(candidate);
-            return prepend_leading_top_level_qualified_probe(parse_debug_events_,
-                                                             summary_stack);
+            return merge_leading_top_level_qualified_probe(parse_debug_events_,
+                                                           summary_stack);
         }
     }
     summary_stack = normalize_summary_stack(best_parse_failure_.stack_trace);
-    return prepend_leading_top_level_qualified_probe(parse_debug_events_,
-                                                     summary_stack);
+    return merge_leading_top_level_qualified_probe(parse_debug_events_,
+                                                   summary_stack);
 }
 
 std::string Parser::format_best_parse_failure() const {
