@@ -42,6 +42,9 @@ struct BackendFunctionSignature {
 enum class BackendBinaryOpcode {
   Add,
   Sub,
+  Mul,
+  SDiv,
+  SRem,
 };
 
 struct BackendBinaryInst {

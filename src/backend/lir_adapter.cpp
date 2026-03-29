@@ -163,6 +163,12 @@ BackendInst adapt_inst(const c4c::codegen::lir::LirInst& inst) {
       opcode = BackendBinaryOpcode::Add;
     } else if (bin->opcode == "sub") {
       opcode = BackendBinaryOpcode::Sub;
+    } else if (bin->opcode == "mul") {
+      opcode = BackendBinaryOpcode::Mul;
+    } else if (bin->opcode == "sdiv") {
+      opcode = BackendBinaryOpcode::SDiv;
+    } else if (bin->opcode == "srem") {
+      opcode = BackendBinaryOpcode::SRem;
     } else {
       fail_unsupported("binary opcode '" + bin->opcode + "'");
     }
@@ -388,6 +394,130 @@ std::optional<BackendFunction> adapt_local_temp_sub_return_function(
   out_block.insts.push_back(
       BackendBinaryInst{BackendBinaryOpcode::Sub, sub->result, sub->type_str, store->val, sub->rhs});
   out_block.terminator = BackendReturn{sub->result, "i32"};
+  out.blocks.push_back(std::move(out_block));
+  return out;
+}
+
+std::optional<BackendFunction> adapt_local_temp_arithmetic_return_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const BackendFunctionSignature& signature) {
+  using namespace c4c::codegen::lir;
+
+  if (function.is_declaration || signature.linkage != "define" ||
+      signature.return_type != "i32" || signature.name != "main" ||
+      !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
+      function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* alloca = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
+  if (alloca == nullptr || alloca->type_str != "i32" || alloca->result.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  const auto* ret = std::get_if<LirRet>(&block.terminator);
+  if (block.label != "entry" || ret == nullptr || !ret->value_str.has_value() ||
+      ret->type_str != "i32" || block.insts.size() < 5) {
+    return std::nullopt;
+  }
+
+  const auto parse_const_i32 = [&](const std::string& value) -> std::optional<std::int64_t> {
+    try {
+      std::size_t pos = 0;
+      const auto parsed = std::stoll(value, &pos, 10);
+      if (pos != value.size()) {
+        return std::nullopt;
+      }
+      return parsed;
+    } catch (...) {
+      return std::nullopt;
+    }
+  };
+
+  std::optional<std::int64_t> slot_value;
+  std::unordered_map<std::string, std::int64_t> values;
+  std::string last_result;
+
+  auto get_value = [&](const std::string& value) -> std::optional<std::int64_t> {
+    if (const auto imm = parse_const_i32(value); imm.has_value()) {
+      return imm;
+    }
+    const auto it = values.find(value);
+    if (it == values.end()) {
+      return std::nullopt;
+    }
+    return it->second;
+  };
+
+  for (const auto& inst : block.insts) {
+    if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
+      if (store->type_str != "i32" || store->ptr != alloca->result) {
+        return std::nullopt;
+      }
+      slot_value = get_value(store->val);
+      if (!slot_value.has_value()) {
+        return std::nullopt;
+      }
+      last_result.clear();
+      continue;
+    }
+
+    if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
+      if (load->type_str != "i32" || load->ptr != alloca->result || !slot_value.has_value()) {
+        return std::nullopt;
+      }
+      values[load->result] = *slot_value;
+      last_result = load->result;
+      continue;
+    }
+
+    const auto* bin = std::get_if<LirBinOp>(&inst);
+    if (bin == nullptr || bin->type_str != "i32" || bin->lhs != last_result) {
+      return std::nullopt;
+    }
+
+    const auto lhs = get_value(bin->lhs);
+    const auto rhs = get_value(bin->rhs);
+    if (!lhs.has_value() || !rhs.has_value()) {
+      return std::nullopt;
+    }
+
+    std::optional<std::int64_t> result;
+    if (bin->opcode == "mul") {
+      result = *lhs * *rhs;
+    } else if (bin->opcode == "sdiv") {
+      if (*rhs == 0) {
+        return std::nullopt;
+      }
+      result = *lhs / *rhs;
+    } else if (bin->opcode == "srem") {
+      if (*rhs == 0) {
+        return std::nullopt;
+      }
+      result = *lhs % *rhs;
+    } else if (bin->opcode == "sub") {
+      result = *lhs - *rhs;
+    } else if (bin->opcode == "add") {
+      result = *lhs + *rhs;
+    } else {
+      return std::nullopt;
+    }
+
+    values[bin->result] = *result;
+    last_result = bin->result;
+  }
+
+  const auto return_value = get_value(*ret->value_str);
+  if (!return_value.has_value()) {
+    return std::nullopt;
+  }
+
+  BackendFunction out;
+  out.signature = signature;
+  BackendBlock out_block;
+  out_block.label = block.label;
+  out_block.terminator = BackendReturn{std::to_string(*return_value), "i32"};
   out.blocks.push_back(std::move(out_block));
   return out;
 }
@@ -1068,6 +1198,10 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function) {
       normalized.has_value()) {
     return *normalized;
   }
+  if (const auto normalized = adapt_local_temp_arithmetic_return_function(function, signature);
+      normalized.has_value()) {
+    return *normalized;
+  }
   if (const auto normalized = adapt_local_pointer_temp_return_function(function, signature);
       normalized.has_value()) {
     return *normalized;
@@ -1113,6 +1247,15 @@ void render_inst(std::ostringstream& out, const BackendInst& inst) {
         break;
       case BackendBinaryOpcode::Sub:
         opcode = "sub";
+        break;
+      case BackendBinaryOpcode::Mul:
+        opcode = "mul";
+        break;
+      case BackendBinaryOpcode::SDiv:
+        opcode = "sdiv";
+        break;
+      case BackendBinaryOpcode::SRem:
+        opcode = "srem";
         break;
     }
     out << "  " << bin->result << " = " << opcode << " " << bin->type_str << " "

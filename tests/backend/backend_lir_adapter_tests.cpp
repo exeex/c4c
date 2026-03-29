@@ -1648,6 +1648,43 @@ c4c::codegen::lir::LirModule make_local_temp_sub_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_local_temp_arithmetic_chain_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }");
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "1", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.x"});
+  entry.insts.push_back(LirBinOp{"%t1", "mul", "i32", "%t0", "10"});
+  entry.insts.push_back(LirStoreOp{"i32", "%t1", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t2", "i32", "%lv.x"});
+  entry.insts.push_back(LirBinOp{"%t3", "sdiv", "i32", "%t2", "2"});
+  entry.insts.push_back(LirStoreOp{"i32", "%t3", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t4", "i32", "%lv.x"});
+  entry.insts.push_back(LirBinOp{"%t5", "srem", "i32", "%t4", "3"});
+  entry.insts.push_back(LirStoreOp{"i32", "%t5", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t6", "i32", "%lv.x"});
+  entry.insts.push_back(LirBinOp{"%t7", "sub", "i32", "%t6", "2"});
+  entry.terminator = LirRet{std::string("%t7"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_two_local_temp_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -3830,6 +3867,19 @@ void test_adapter_tracks_structured_sub_entry_block_and_return_contract() {
               "adapter should preserve the subtraction return type separately from the block text");
 }
 
+void test_adapter_normalizes_local_temp_arithmetic_chain_slice() {
+  const auto adapted = c4c::backend::adapt_minimal_module(make_local_temp_arithmetic_chain_module());
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "ret i32 0",
+                  "adapter should collapse the bounded one-slot arithmetic chain into a direct return immediate");
+  expect_not_contains(rendered, "mul i32",
+                      "adapter should finish the bounded arithmetic chain instead of leaking unsupported backend ops");
+  expect_not_contains(rendered, "sdiv i32",
+                      "adapter should fully normalize the bounded arithmetic chain before backend rendering");
+  expect_not_contains(rendered, "srem i32",
+                      "adapter should fully normalize the bounded arithmetic chain before backend rendering");
+}
+
 void test_rejects_unsupported_instruction() {
   using namespace c4c::codegen::lir;
 
@@ -3941,6 +3991,18 @@ void test_x86_backend_renders_local_temp_sub_slice() {
                   "x86 backend should fold the normalized local-slot subtraction into the final immediate return");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the supported local-slot subtraction slice");
+}
+
+void test_x86_backend_renders_local_temp_arithmetic_chain_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_local_temp_arithmetic_chain_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should emit a real entry symbol for the bounded local-slot arithmetic slice");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 backend should fold the bounded mul-sdiv-srem-sub chain into the final immediate return");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the supported local-slot arithmetic slice");
 }
 
 void test_x86_backend_renders_two_local_temp_return_slice() {
@@ -7240,6 +7302,7 @@ int main() {
   test_adapter_tracks_structured_signature_contract();
   test_adapter_tracks_structured_entry_block_and_return_contract();
   test_adapter_tracks_structured_sub_entry_block_and_return_contract();
+  test_adapter_normalizes_local_temp_arithmetic_chain_slice();
   test_rejects_unsupported_instruction();
   test_aarch64_backend_scaffold_renders_supported_slice();
   test_aarch64_backend_scaffold_renders_direct_return_immediate_slice();
@@ -7247,6 +7310,7 @@ int main() {
   test_x86_backend_scaffold_renders_direct_return_immediate_slice();
   test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice();
   test_x86_backend_renders_local_temp_sub_slice();
+  test_x86_backend_renders_local_temp_arithmetic_chain_slice();
   test_x86_backend_renders_two_local_temp_return_slice();
   test_x86_backend_renders_local_pointer_temp_return_slice();
   test_x86_backend_renders_double_indirect_local_pointer_conditional_return_slice();
