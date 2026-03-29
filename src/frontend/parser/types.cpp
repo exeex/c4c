@@ -485,17 +485,129 @@ void parse_optional_cpp20_trailing_requires_clause(Parser& parser) {
     }
 }
 
+bool is_cpp20_requires_clause_decl_boundary(Parser& parser) {
+    if (parser.at_end()) return true;
+    TokenKind kind = parser.cur().kind;
+    if (kind == TokenKind::Identifier || kind == TokenKind::KwOperator ||
+        kind == TokenKind::KwConstexpr || kind == TokenKind::KwConsteval ||
+        kind == TokenKind::KwExplicit || kind == TokenKind::KwInline ||
+        kind == TokenKind::KwStatic || kind == TokenKind::KwExtern ||
+        kind == TokenKind::KwMutable || kind == TokenKind::KwVirtual ||
+        kind == TokenKind::KwFriend || kind == TokenKind::KwTypedef ||
+        kind == TokenKind::KwUsing) {
+        return true;
+    }
+    return parser.is_type_start();
+}
+
+bool skip_cpp20_constraint_atom(Parser& parser) {
+    if (parser.at_end()) return false;
+
+    if (parser.check(TokenKind::KwRequires)) {
+        parser.consume();
+        if (parser.check(TokenKind::LParen)) parser.skip_paren_group();
+        if (!parser.check(TokenKind::LBrace))
+            return false;
+        parser.skip_brace_group();
+        return true;
+    }
+
+    if (parser.check(TokenKind::LParen)) {
+        parser.skip_paren_group();
+        return true;
+    }
+
+    int angle_depth = 0;
+    int paren_depth = 0;
+    int bracket_depth = 0;
+    bool consumed = false;
+    while (!parser.at_end()) {
+        if (consumed && angle_depth == 0 && paren_depth == 0 &&
+            bracket_depth == 0) {
+            if (parser.check(TokenKind::AmpAmp) ||
+                parser.check(TokenKind::PipePipe) ||
+                parser.check(TokenKind::Semi) ||
+                parser.check(TokenKind::Assign) ||
+                parser.check(TokenKind::Comma) ||
+                parser.check(TokenKind::LBrace) ||
+                parser.check(TokenKind::Colon) ||
+                is_cpp20_requires_clause_decl_boundary(parser)) {
+                break;
+            }
+        }
+
+        if (parser.check(TokenKind::Less)) {
+            ++angle_depth;
+            parser.consume();
+            consumed = true;
+            continue;
+        }
+        if (parser.check(TokenKind::Greater)) {
+            if (angle_depth == 0) break;
+            --angle_depth;
+            parser.consume();
+            consumed = true;
+            continue;
+        }
+        if (parser.check(TokenKind::GreaterGreater)) {
+            if (angle_depth == 0) break;
+            angle_depth -= std::min(angle_depth, 2);
+            parser.consume();
+            consumed = true;
+            continue;
+        }
+        if (parser.check(TokenKind::LParen)) {
+            ++paren_depth;
+            parser.consume();
+            consumed = true;
+            continue;
+        }
+        if (parser.check(TokenKind::RParen)) {
+            if (paren_depth == 0) break;
+            --paren_depth;
+            parser.consume();
+            consumed = true;
+            continue;
+        }
+        if (parser.check(TokenKind::LBracket)) {
+            ++bracket_depth;
+            parser.consume();
+            consumed = true;
+            continue;
+        }
+        if (parser.check(TokenKind::RBracket)) {
+            if (bracket_depth == 0) break;
+            --bracket_depth;
+            parser.consume();
+            consumed = true;
+            continue;
+        }
+
+        parser.consume();
+        consumed = true;
+    }
+    return consumed;
+}
+
 void parse_optional_cpp20_requires_clause(Parser& parser) {
     if (!parser.is_cpp_mode() || !parser.check(TokenKind::KwRequires)) {
         return;
     }
 
     parser.consume();  // requires
-    const int constraint_start = parser.pos_;
-    if (!parser.parse_expr()) {
-        throw std::runtime_error("expected constraint-expression after requires");
+    bool consumed_constraint = false;
+    while (!parser.at_end()) {
+        if (!skip_cpp20_constraint_atom(parser))
+            break;
+        consumed_constraint = true;
+        if (parser.check(TokenKind::AmpAmp) ||
+            parser.check(TokenKind::PipePipe)) {
+            parser.consume();
+            continue;
+        }
+        break;
     }
-    if (parser.pos_ == constraint_start) {
+    if (!consumed_constraint) {
         throw std::runtime_error("expected constraint-expression after requires");
     }
 }
@@ -2410,6 +2522,11 @@ Parser::TypenameTemplateParamKind Parser::classify_typename_template_parameter()
 
 bool Parser::is_type_start() const {
     TokenKind k = cur().kind;
+    if (k == TokenKind::LBracket &&
+        pos_ + 1 < static_cast<int>(tokens_.size()) &&
+        tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+        return true;
+    }
     if (is_type_kw(k)) return true;
     if (is_qualifier(k)) return true;
     if (is_storage_class(k)) return true;
@@ -6062,6 +6179,36 @@ Node* Parser::parse_enum() {
 Node* Parser::parse_param() {
     ParseContextGuard trace(this, __func__);
     int ln = cur().line;
+    auto skip_cpp11_attrs_only = [&]() {
+        while (check(TokenKind::LBracket) &&
+               pos_ + 1 < static_cast<int>(tokens_.size()) &&
+               tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+            consume();
+            consume();
+            int depth = 1;
+            while (!at_end() && depth > 0) {
+                if (check(TokenKind::LBracket) &&
+                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                    tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+                    consume();
+                    consume();
+                    ++depth;
+                    continue;
+                }
+                if (check(TokenKind::RBracket) &&
+                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                    tokens_[pos_ + 1].kind == TokenKind::RBracket) {
+                    consume();
+                    consume();
+                    --depth;
+                    continue;
+                }
+                consume();
+            }
+        }
+    };
+
+    skip_cpp11_attrs_only();
     if (check(TokenKind::Ellipsis)) {
         // variadic marker — handled by caller
         consume();
@@ -6080,6 +6227,7 @@ Node* Parser::parse_param() {
     bool is_parameter_pack = false;
     parse_declarator(pts, &pname, &fn_ptr_params, &n_fn_ptr_params, &fn_ptr_variadic,
                      &is_parameter_pack);
+    skip_cpp11_attrs_only();
     parse_plain_function_declarator_suffix(
         pts, /*decay_to_function_pointer=*/true);
     skip_attributes();

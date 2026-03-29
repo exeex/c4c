@@ -79,6 +79,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     forward_declared_record_specialization_parse
     default_param_value_parse
     member_pointer_param_parse
+    param_leading_cpp11_attr_parse
     variadic_param_pack_declarator_parse
     eastl_slice4_typename_and_specialization_parse
     eastl_slice5_explicit_decltype_memfn
@@ -94,6 +95,8 @@ set(CPP_POSITIVE_PARSE_STEMS
     free_function_record_ref_param_parse
     cpp20_requires_clause_parse
     cpp20_requires_clause_struct_decl_parse
+    cpp20_requires_concept_id_member_ctor_parse
+    cpp20_requires_conjunction_member_parse
     cpp20_requires_requires_member_array_param_parse
     cpp20_requires_expression_if_constexpr_parse
     eastl_slice7d_qualified_declarator_parse

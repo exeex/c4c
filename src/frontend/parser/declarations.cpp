@@ -154,23 +154,134 @@ bool is_cpp20_requires_clause_record_decl_boundary(TokenKind kind) {
     }
 }
 
+bool is_cpp20_requires_clause_decl_boundary(Parser& parser) {
+    if (parser.at_end()) return true;
+    TokenKind kind = parser.cur().kind;
+    if (kind == TokenKind::Identifier || kind == TokenKind::KwOperator ||
+        kind == TokenKind::KwConstexpr || kind == TokenKind::KwConsteval ||
+        kind == TokenKind::KwExplicit || kind == TokenKind::KwInline ||
+        kind == TokenKind::KwStatic || kind == TokenKind::KwExtern ||
+        kind == TokenKind::KwMutable || kind == TokenKind::KwVirtual ||
+        kind == TokenKind::KwFriend || kind == TokenKind::KwTypedef ||
+        kind == TokenKind::KwUsing) {
+        return true;
+    }
+    return parser.is_type_start();
+}
+
+bool skip_cpp20_constraint_atom(Parser& parser) {
+    if (parser.at_end()) return false;
+
+    if (parser.check(TokenKind::KwRequires)) {
+        parser.consume();
+        if (parser.check(TokenKind::LParen)) parser.skip_paren_group();
+        if (!parser.check(TokenKind::LBrace))
+            return false;
+        parser.skip_brace_group();
+        return true;
+    }
+
+    if (parser.check(TokenKind::LParen)) {
+        parser.skip_paren_group();
+        return true;
+    }
+
+    int angle_depth = 0;
+    int paren_depth = 0;
+    int bracket_depth = 0;
+    bool consumed = false;
+    while (!parser.at_end()) {
+        if (consumed && angle_depth == 0 && paren_depth == 0 &&
+            bracket_depth == 0) {
+            if (parser.check(TokenKind::AmpAmp) ||
+                parser.check(TokenKind::PipePipe) ||
+                parser.check(TokenKind::Semi) ||
+                parser.check(TokenKind::Assign) ||
+                parser.check(TokenKind::Comma) ||
+                parser.check(TokenKind::LBrace) ||
+                parser.check(TokenKind::Colon) ||
+                is_cpp20_requires_clause_decl_boundary(parser)) {
+                break;
+            }
+        }
+
+        if (parser.check(TokenKind::Less)) {
+            ++angle_depth;
+            parser.consume();
+            consumed = true;
+            continue;
+        }
+        if (parser.check(TokenKind::Greater)) {
+            if (angle_depth == 0) break;
+            --angle_depth;
+            parser.consume();
+            consumed = true;
+            continue;
+        }
+        if (parser.check(TokenKind::GreaterGreater)) {
+            if (angle_depth == 0) break;
+            angle_depth -= std::min(angle_depth, 2);
+            parser.consume();
+            consumed = true;
+            continue;
+        }
+        if (parser.check(TokenKind::LParen)) {
+            ++paren_depth;
+            parser.consume();
+            consumed = true;
+            continue;
+        }
+        if (parser.check(TokenKind::RParen)) {
+            if (paren_depth == 0) break;
+            --paren_depth;
+            parser.consume();
+            consumed = true;
+            continue;
+        }
+        if (parser.check(TokenKind::LBracket)) {
+            ++bracket_depth;
+            parser.consume();
+            consumed = true;
+            continue;
+        }
+        if (parser.check(TokenKind::RBracket)) {
+            if (bracket_depth == 0) break;
+            --bracket_depth;
+            parser.consume();
+            consumed = true;
+            continue;
+        }
+
+        parser.consume();
+        consumed = true;
+    }
+    return consumed;
+}
+
 void parse_optional_cpp20_requires_clause(Parser& parser) {
     if (!parser.is_cpp_mode() || !parser.check(TokenKind::KwRequires)) {
         return;
     }
 
     parser.consume();  // requires
-    const int constraint_start = parser.pos_;
-    try {
-        if (!parser.parse_expr()) {
-            throw std::runtime_error("expected constraint-expression after requires");
+    bool consumed_constraint = false;
+    while (!parser.at_end()) {
+        if (!skip_cpp20_constraint_atom(parser))
+            break;
+        consumed_constraint = true;
+        if (parser.check(TokenKind::AmpAmp) ||
+            parser.check(TokenKind::PipePipe)) {
+            parser.consume();
+            continue;
         }
-    } catch (const std::exception&) {
-        if (parser.pos_ > constraint_start &&
-            is_cpp20_requires_clause_record_decl_boundary(parser.cur().kind)) {
+        break;
+    }
+
+    if (!consumed_constraint) {
+        if (is_cpp20_requires_clause_record_decl_boundary(parser.cur().kind)) {
             return;
         }
-        throw;
+        throw std::runtime_error("expected constraint-expression after requires");
     }
 }
 
