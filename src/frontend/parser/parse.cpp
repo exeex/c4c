@@ -72,6 +72,11 @@ bool is_qualified_type_trace_anchor(const std::string& function_name) {
            function_name == "try_parse_template_type_arg";
 }
 
+bool is_qualified_type_trace_frame(const std::string& function_name) {
+    return is_qualified_type_trace_anchor(function_name) ||
+           is_qualified_type_trace_wrapper(function_name);
+}
+
 bool is_summary_only_parse_helper(const std::string& function_name) {
     return function_name == "consume_qualified_type_spelling" ||
            function_name == "consume_qualified_type_spelling_with_typename";
@@ -117,6 +122,29 @@ std::vector<std::string> normalize_summary_stack(
         ++i;
     }
     return normalized;
+}
+
+const std::string* select_best_parse_summary_leaf(
+    const std::vector<std::string>& summary_stack,
+    const Parser::ParseFailure& failure) {
+    if (!failure.function_name.empty()) {
+        for (size_t i = summary_stack.size(); i > 0; --i) {
+            if (summary_stack[i - 1] != failure.function_name) continue;
+            const bool trailing_probe_only =
+                std::all_of(summary_stack.begin() + i, summary_stack.end(),
+                            [](const std::string& function_name) {
+                                return is_qualified_type_trace_frame(function_name);
+                            });
+            if (trailing_probe_only) return &summary_stack[i - 1];
+            break;
+        }
+    }
+
+    for (auto it = summary_stack.rbegin(); it != summary_stack.rend(); ++it) {
+        if (!is_summary_only_parse_helper(*it)) return &*it;
+    }
+    if (!summary_stack.empty()) return &summary_stack.back();
+    return nullptr;
 }
 
 }  // namespace
@@ -493,14 +521,8 @@ std::string Parser::format_best_parse_failure() const {
 
     std::ostringstream oss;
     const std::vector<std::string> summary_stack = best_debug_summary_stack();
-    const std::string* summary_leaf = nullptr;
-    for (auto it = summary_stack.rbegin(); it != summary_stack.rend(); ++it) {
-        if (!is_summary_only_parse_helper(*it)) {
-            summary_leaf = &*it;
-            break;
-        }
-    }
-    if (!summary_leaf && !summary_stack.empty()) summary_leaf = &summary_stack.back();
+    const std::string* summary_leaf =
+        select_best_parse_summary_leaf(summary_stack, best_parse_failure_);
     if (summary_leaf && !summary_leaf->empty()) {
         oss << "parse_fn=" << *summary_leaf;
     } else if (!best_parse_failure_.function_name.empty()) {

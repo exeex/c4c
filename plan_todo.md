@@ -13,10 +13,10 @@ Source Plan: plan.md
   ranking-only or tri-state case where a speculative `try_parse_*` path is
   already visible in the event stream but the committed summary still picks
   the wrong leaf or committed/soft-failure boundary
-- Iteration target: inspect the next candidate outside
-  `cpp_parser_debug_qualified_type_spelling_stack` where summary selection
-  should be fixed by ranking or tri-state bookkeeping rather than more guard
-  coverage, then reduce it to a focused parser-debug regression
+- Iteration target: fix the reduced `if (const size_t len = 1)` parser-debug
+  repro where the committed `parse_primary` failure keeps the speculative
+  qualified-type probe frames in the stack but currently reports
+  `parse_fn=try_parse_qualified_base_type`
 
 ## Completed
 
@@ -353,12 +353,40 @@ Source Plan: plan.md
   guard with no new failures or timeout-policy regressions:
   `before passed=2272/2273`, `after passed=2272/2273`; the existing
   `verify_tests_verify_top_level_recovery` failure remained unchanged
+- added reduced parser-debug regression coverage in
+  `cpp_parser_debug_if_init_qualified_probe_leaf` for an unsupported
+  `if (const size_t len = 1)` init-statement where a speculative
+  qualified-type probe was correctly preserved in the stack line but the
+  committed summary previously degraded to
+  `parse_fn=try_parse_qualified_base_type`
+- tightened parser-debug leaf selection so when a committed parser failure is
+  followed only by speculative qualified-type probe frames in the summary
+  stack, `parse_fn=...` stays anchored on the committed owning parser frame
+  while the stack line continues to show the deeper probe detail
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_expr_stmt_stack`,
+  `cpp_parser_debug_record_member_stack`,
+  `cpp_parser_debug_record_member_param_default_rank`,
+  `cpp_parser_debug_record_member_type_like_rank`,
+  `cpp_parser_debug_record_member_using_alias_leaf`,
+  `cpp_parser_debug_record_member_typedef_leaf`,
+  `cpp_parser_debug_qualified_type_top_level_params`,
+  `cpp_parser_debug_qualified_type_template_arg_stack`,
+  `cpp_parser_debug_qualified_type_dependent_typename_stack`,
+  `cpp_parser_debug_qualified_type_typename_spelling_stack`,
+  `cpp_parser_debug_qualified_type_spelling_stack`, and
+  `cpp_parser_debug_if_init_qualified_probe_leaf`
+- reran the required clean before/after full suite and passed the regression
+  guard with no new failures:
+  `before passed=2272/2273`, `after passed=2274/2275`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged
 
 ## Next Intended Slice
 
-- move to the first explicit ranking-only or tri-state case where the event
-  stream already shows the useful local `try_parse_*` path but the committed
-  summary still picks the wrong leaf or wrong committed/soft-failure boundary
+- if this slice lands cleanly, inspect the next explicit ranking-only or
+  tri-state case where the event stream already shows the useful local
+  `try_parse_*` path but the committed summary still picks the wrong leaf or
+  wrong committed/soft-failure boundary
 - first candidate after this slice: inspect another qualified-type or
   record-member parser-debug repro whose event log already contains the useful
   local helper path and determine whether the next correction belongs in
@@ -370,11 +398,16 @@ Source Plan: plan.md
 - the next slice likely needs explicit tri-state or ranking rules so
   soft-failure bookkeeping can be normalized without hiding the committed
   local cause once a concrete repro is selected
+- no blocker on the committed-leaf vs qualified-type-probe summary case; the
+  next remaining Step 5 slice should come from a different speculative
+  ranking boundary
 
 ## Resume Notes
 
 - active repro command:
   `./build/c4cll --parser-debug --parse-only tests/cpp/std/std_vector_simple.cpp`
+- landed reduced repro for this slice:
+  `./build/c4cll --parser-debug --parse-only tests/cpp/internal/negative_case/parser_debug_if_init_qualified_probe_leaf.cpp`
 - current reduced repro candidates for the next iteration:
   `./build/c4cll --parser-debug --parse-only tests/cpp/internal/negative_case/parser_debug_qualified_type_typename_spelling_stack.cpp`
   and
@@ -387,6 +420,10 @@ Source Plan: plan.md
   template-argument frames are the right stable summary shape or whether a
   ranking-only normalization should compact them without regressing the
   preserved local speculative path
+- the `if (const size_t len = 1)` regression now keeps
+  `parse_fn=parse_primary` while preserving the trailing
+  `try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type` probe
+  frames in the emitted stack line
 - keep the detailed event log untouched; this slice only preserved the saved
   speculative template-type snapshot longer so later helper/wrapper events do
   not overwrite it
