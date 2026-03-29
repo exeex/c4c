@@ -6,7 +6,7 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 3: Promote `two_arg_second_local_rewrite` as the next narrow two-local follow-on case if the same bounded two-argument direct-call seam still holds
+- [ ] Step 3: Promote `two_arg_both_local_arg` as the next bounded two-local follow-on case, then widen only to the smallest adjacent both-local rewrite cases if the same minimal two-argument direct-call seam still holds
 
 ## Todo
 
@@ -21,6 +21,7 @@ Source Plan: plan.md
 - [x] Re-run the next bounded parameter slice against `two_arg_helper` before widening to local-arg rewrites.
 - [x] Promote `two_arg_local_arg` onto the x86 backend-owned asm path with a narrow first-local/two-argument direct-call slice.
 - [x] Promote `two_arg_second_local_arg` onto the x86 backend-owned asm path with the same single-local/two-argument direct-call slice when the normalized load feeds the second call operand.
+- [x] Promote `two_arg_second_local_rewrite` onto the x86 backend-owned asm path with the same bounded single-local/two-argument direct-call slice when one local `+ 0` rewrite is preserved before the second call operand.
 
 ## Completed
 
@@ -30,10 +31,11 @@ Source Plan: plan.md
 - [x] Promoted `tests/c/internal/backend_case/two_arg_helper.c` onto the x86 backend-owned asm path with a narrow register-only two-argument direct-call helper slice.
 - [x] Promoted `tests/c/internal/backend_case/two_arg_local_arg.c` onto the x86 backend-owned asm path with a narrow first-local/two-argument direct-call helper slice.
 - [x] Promoted `tests/c/internal/backend_case/two_arg_second_local_arg.c` onto the x86 backend-owned asm path with the same single-local/two-argument direct-call helper slice when the local load is the second argument.
+- [x] Promoted `tests/c/internal/backend_case/two_arg_second_local_rewrite.c` onto the x86 backend-owned asm path with the same bounded single-local `+ 0` rewrite feeding the second helper-call argument.
 
 ## Next Intended Slice
 
-- Promote `two_arg_second_local_rewrite` next, then widen only to the smallest adjacent first-local and both-local rewrite cases if the same bounded two-argument direct-call parameter seam still holds.
+- Promote `two_arg_both_local_arg` next, then widen only to `two_arg_both_local_first_rewrite`, `two_arg_both_local_second_rewrite`, and `two_arg_both_local_double_rewrite` if the same bounded two-local/two-argument direct-call seam still holds.
 
 ## Blockers
 
@@ -53,3 +55,6 @@ Source Plan: plan.md
 - Two-arg-local-arg validation: `ctest -R '^backend_runtime_two_arg_(helper|local_arg)$|^backend_lir_adapter_tests$' --output-on-failure` passed, and the full suite improved from `19` failures out of `2339` tests in `test_fail_before.log` to `15` failures out of `2339` tests in `test_fail_after.log`, resolving `backend_runtime_call_helper`, `backend_runtime_param_slot`, `backend_runtime_two_arg_helper`, and `backend_runtime_two_arg_local_arg` with no new failing tests according to the regression guard.
 - Two-arg-second-local-arg seam: `src/backend/x86/codegen/emit.cpp` now accepts the same bounded single-local store/load pattern when the normalized loaded value feeds the second `add_pair(i32, i32)` call operand, keeping the first operand immediate on the existing minimal two-register helper path.
 - Two-arg-second-local-arg validation: `ctest -R '^backend_runtime_two_arg_(helper|local_arg|second_local_arg)$|^backend_lir_adapter_tests$' --output-on-failure` passed. The patched main workspace full suite now reports `14` failures out of `2339` tests in `test_fail_after.log`, resolving `backend_runtime_two_arg_second_local_arg`; the regression guard also reported no newly failing tests versus the clean baseline log.
+- Two-arg-second-local-rewrite seam: `src/backend/x86/codegen/emit.cpp` now accepts the same single-local `store -> load -> add 0 -> store -> load -> call` shape, preserving one bounded local rewrite before the normalized second `add_pair(i32, i32)` call operand while keeping the first operand immediate on the existing minimal two-register helper path.
+- Two-arg-second-local-rewrite validation: `./build/backend_lir_adapter_tests` passed, `ctest -R '^backend_runtime_two_arg_(helper|local_arg|second_local_arg|second_local_rewrite)$|^backend_lir_adapter_tests$' --output-on-failure` passed, `backend_runtime_two_arg_first_local_rewrite` also passed on the same bounded matcher, and the full suite now reports `12` failures out of `2339` tests in `test_fail_after.log`, down from the previously recorded `14` failures in this runbook state. No local `test_fail_before.log` artifact was present to rerun the scripted regression guard this turn.
+- Next blocker boundary: the remaining adjacent failures are the both-local family (`two_arg_both_local_arg`, `two_arg_both_local_first_rewrite`, `two_arg_both_local_second_rewrite`, `two_arg_both_local_double_rewrite`), which requires widening from one alloca slot to a bounded two-slot caller shape.
