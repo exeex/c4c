@@ -122,3 +122,19 @@ Prefer the smallest path that proves object loading, symbol resolution, relocati
 ## Good First Patch
 
 Link a tiny multi-object AArch64 program with one relocation-bearing call or global reference, then compare the resulting executable layout and runtime behavior against the external linker path.
+
+## Completion
+
+Completed on 2026-03-29.
+
+The bounded first built-in AArch64 linker slice now:
+
+- loads the caller/helper inputs through the shared object and archive parsing seam
+- resolves the `main -> helper_ext` two-object contract
+- applies the required first branch relocation subset for the fixture-driven static slice
+- emits one minimal AArch64 `ET_EXEC` image with merged `.text` and a `main` entry point
+
+## Leftover Follow-On Work
+
+- widen relocation coverage beyond the first bounded branch fixture only when the next active idea requires it
+- compare archive-backed or externally inspected executable layouts against the built-in path without widening into dynamic-linking work

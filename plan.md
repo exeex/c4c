@@ -1,130 +1,120 @@
-# Built-in AArch64 Linker Runbook
+# AArch64 Local Memory Addressing Runbook
 
 Status: Active
-Source Idea: ideas/open/08_backend_builtin_linker_aarch64_plan.md
-Activated from: ideas/open/08_backend_builtin_linker_aarch64_plan.md
+Source Idea: ideas/open/09_backend_aarch64_local_memory_addressing_plan.md
+Activated from: ideas/open/09_backend_aarch64_local_memory_addressing_plan.md
 
 ## Purpose
 
-Turn the mirrored shared linker layers plus `src/backend/aarch64/linker/` into the first bounded static-link path for AArch64, without widening into dynamic-linking or full Linux system-linking work.
+Extend the AArch64 backend from the narrow register-only bring-up seam into the first explicit backend-owned local stack-addressing path, starting with the bounded `local_array.c` case.
 
 ## Goal
 
-Link one tiny multi-object AArch64 program through the built-in linker so later linker work can build on explicit object loading, symbol resolution, relocation application, and ELF executable emission seams.
+Promote one local-array runtime case onto the AArch64 asm path by making stack-slot base-address formation and indexed local load/store lowering explicit, test-backed backend behavior.
 
 ## Core Rule
 
-Keep this runbook static-link-first and narrow. Do not widen into shared-library, PLT/GOT, TLS, or full stdlib-linking work.
+Keep this runbook limited to stack-local addressing for one bounded local-array slice. Do not widen into global-addressing, broad pointer arithmetic, linker work, or general aggregate lowering.
 
 ## Read First
 
-- [ideas/open/08_backend_builtin_linker_aarch64_plan.md](/Users/chi-shengwu/c4c/ideas/open/08_backend_builtin_linker_aarch64_plan.md)
-- [ideas/closed/07_backend_linker_object_io_plan.md](/Users/chi-shengwu/c4c/ideas/closed/07_backend_linker_object_io_plan.md)
-- [ideas/closed/06_backend_builtin_assembler_aarch64_plan.md](/Users/chi-shengwu/c4c/ideas/closed/06_backend_builtin_assembler_aarch64_plan.md)
+- [ideas/open/09_backend_aarch64_local_memory_addressing_plan.md](/Users/chi-shengwu/c4c/ideas/open/09_backend_aarch64_local_memory_addressing_plan.md)
+- [ideas/closed/02_backend_aarch64_port_plan.md](/Users/chi-shengwu/c4c/ideas/closed/02_backend_aarch64_port_plan.md)
+- [ideas/open/10_backend_aarch64_global_addressing_plan.md](/Users/chi-shengwu/c4c/ideas/open/10_backend_aarch64_global_addressing_plan.md)
 - [ideas/open/__backend_port_plan.md](/Users/chi-shengwu/c4c/ideas/open/__backend_port_plan.md)
-- `ref/claudes-c-compiler/src/backend/arm/linker/README.md`
-- `ref/claudes-c-compiler/src/backend/arm/linker/link.rs`
-- `ref/claudes-c-compiler/src/backend/arm/linker/input.rs`
-- `ref/claudes-c-compiler/src/backend/arm/linker/types.rs`
-- `ref/claudes-c-compiler/src/backend/arm/linker/reloc.rs`
-- `ref/claudes-c-compiler/src/backend/arm/linker/emit_static.rs`
-- `ref/claudes-c-compiler/src/backend/linker_common/`
+- `tests/c/internal/backend_case/local_array.c`
+- `tests/backend/backend_lir_adapter_tests.cpp`
+- the current AArch64 adapter and emitter surfaces under `src/backend/aarch64/`
 
 ## Current Targets
 
-- keep orchestration under `src/backend/aarch64/linker/` separated from shared IO in `src/backend/elf/` and `src/backend/linker_common/`
-- reuse the shared object/archive parser for bounded input loading instead of reparsing AArch64 objects locally
-- prove one tiny static executable path with a relocation-bearing multi-object case
-- make the first executable emission surfaces explicit enough that later tests can compare them with the external linker path
+- capture the real AArch64 LIR and asm shape for `local_array.c`
+- define the narrowest backend-owned representation for stack-local base address plus indexed element access
+- promote `backend_runtime_local_array` to `BACKEND_OUTPUT_KIND=asm` only when the backend seam is explicit and test-backed
 
 ## Non-Goals
 
-- dynamic linking
-- shared-library output
-- PLT/GOT, TLS, IFUNC, or `.eh_frame_hdr` follow-ons
-- broad archive-resolution generalization beyond the first bounded static-link slice
-- full Linux stdlib linking
+- global-address materialization
+- broad pointer arithmetic lowering
+- struct/member-array generalization outside the first local-array slice
+- built-in assembler or linker work
+- regalloc or peephole cleanup beyond what the bounded local-memory slice strictly requires
 
 ## Working Model
 
-- mirror the ref split between:
-  input loading,
-  shared symbol registration and object/archive bookkeeping,
-  AArch64 relocation application,
-  and static ELF emission
-- prefer one bounded executable path first: tiny multi-object input, one known relocation-bearing reference, and one narrow executable layout proof
-- keep target-specific work in `src/backend/aarch64/linker/`; only move code into shared layers when the logic is genuinely target-independent
+- treat `local_array.c` as the contract for the first local-memory slice
+- prefer explicit backend seams over ad hoc LIR collapse
+- add or tighten the narrowest synthetic adapter/emitter test before widening runtime coverage
+- split a new idea instead of silently absorbing broader local/global address lowering
 
 ## Execution Rules
 
-- add or tighten the narrowest linker test before expanding implementation
-- validate linked output by inspecting executable layout and, when practical, comparing against the external linker path for the same tiny program
-- record follow-on linker features back into open ideas instead of widening this runbook
+- inspect the exact frontend-emitted AArch64 LIR before changing lowering behavior
+- keep the first slice centered on stack-local integer arrays with straightforward indexed addressing
+- route only the bounded runtime case through backend-owned asm once synthetic coverage proves the seam
+- record any broader follow-on cases back into open ideas instead of expanding this runbook ad hoc
 
-## Step 1: Lock The First Static-Link Slice
+## Step 1: Pin The First Local-Array Contract
 
-Goal: choose the smallest relocation-bearing multi-object AArch64 case that exercises the first built-in linker path end to end.
-
-Primary targets:
-
-- `src/backend/aarch64/linker/`
-- linker-focused tests under `tests/`
-
-Actions:
-
-- inspect the current `aarch64/linker/` stubs, entry points, and tests
-- choose one tiny two-object or object-plus-archive case with an explicit call or global-reference relocation
-- record the exact expected outputs for input loading, symbol resolution, relocation application, and executable sections
-
-Completion check:
-
-- one concrete first static-link slice is named, with explicit input and output expectations recorded
-
-## Step 2: Connect Shared Input Loading To AArch64 Linker Entry Points
-
-Goal: make the AArch64 linker subtree consume the shared object/archive data surfaces through explicit entry points.
+Goal: capture the exact `local_array.c` LIR and the smallest synthetic backend shape that matches it.
 
 Primary targets:
 
-- `src/backend/aarch64/linker/input.*`
-- `src/backend/aarch64/linker/elf.*`
-- `src/backend/aarch64/linker/types.*`
-- `src/backend/linker_common/`
+- `tests/c/internal/backend_case/local_array.c`
+- `tests/backend/backend_lir_adapter_tests.cpp`
+- AArch64 LIR inspection helpers or dump paths
 
 Actions:
 
-- replace placeholder or commented shared-linker wiring only as needed for the chosen slice
-- keep shared object/archive parsing in the shared layer and expose only the data the AArch64 linker needs
-- avoid mixing relocation semantics into the input-loading step
+- inspect the current frontend-emitted AArch64 LIR for `local_array.c`
+- identify the smallest synthetic backend fixture that matches the same stack-slot and indexed-address pattern
+- record the exact expected stack-local base-address, derived-address, and load/store behavior for the first slice
 
 Completion check:
 
-- the chosen bounded input case loads through shared object/archive surfaces into the AArch64 linker entry path
+- one concrete local-array addressing slice is named with explicit LIR and asm expectations
 
-## Step 3: Apply The First AArch64 Static-Link Path
+## Step 2: Make The Backend-Owned Local Addressing Seam Explicit
 
-Goal: resolve symbols, apply the narrow relocation subset, and emit one bounded static executable.
+Goal: add the narrowest adapter and/or emitter seam needed to represent stack-local base address plus indexed local access.
 
 Primary targets:
 
-- `src/backend/aarch64/linker/link.*`
-- `src/backend/aarch64/linker/reloc.*`
-- `src/backend/aarch64/linker/emit_static.*`
-- linker-focused tests under `tests/`
+- `src/backend/aarch64/`
+- `tests/backend/backend_lir_adapter_tests.cpp`
 
 Actions:
 
-- implement only the relocation kinds required by the chosen case
-- emit the minimal executable layout needed for the first tiny linked program
-- compare the resulting layout or behavior against the external linker path when the test shape supports it
+- add or tighten targeted synthetic tests before implementation
+- introduce only the backend-owned representation needed for the bounded local-array slice
+- keep the seam explicit instead of hiding it inside one-off pattern collapse
 
 Completion check:
 
-- one bounded multi-object AArch64 case links into a test-checked static executable through the built-in linker path
+- synthetic backend coverage names and validates the first explicit local-memory addressing seam
+
+## Step 3: Promote The Runtime Case Through AArch64 Asm
+
+Goal: route `backend_runtime_local_array` through `BACKEND_OUTPUT_KIND=asm` using the explicit local-memory seam from Step 2.
+
+Primary targets:
+
+- runtime/backend tests under `tests/c/internal/`
+- AArch64 adapter/emitter code under `src/backend/aarch64/`
+
+Actions:
+
+- implement the minimum adapter/emitter changes needed for the bounded local-array runtime case
+- keep the implementation restricted to stack-local integer array addressing
+- validate runtime behavior once the synthetic coverage is passing
+
+Completion check:
+
+- `backend_runtime_local_array` passes on the AArch64 asm path without widening into broader address-lowering work
 
 ## Acceptance Checks
 
-- `src/backend/aarch64/linker/` compiles against the shared ELF/linker layers
-- the first static-link slice uses shared object/archive inputs instead of local reparsing
-- one bounded AArch64 executable path resolves symbols, applies the required relocations, and emits a stable executable surface
-- dynamic-linking and broader linker policy remain out of scope
+- the first local-array addressing seam is explicit in backend code and tests
+- `tests/backend/backend_lir_adapter_tests.cpp` covers the exact bounded local-memory slice
+- `backend_runtime_local_array` runs with `BACKEND_OUTPUT_KIND=asm`
+- broader local/global address lowering remains out of scope

@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace c4c::backend::aarch64::linker {
 namespace {
@@ -11,6 +12,13 @@ std::vector<std::string> sorted_symbols(std::vector<std::string> symbols) {
   std::sort(symbols.begin(), symbols.end());
   symbols.erase(std::unique(symbols.begin(), symbols.end()), symbols.end());
   return symbols;
+}
+
+std::optional<std::size_t> find_text_section_index(const linker_common::Elf64Object& object) {
+  for (std::size_t index = 0; index < object.sections.size(); ++index) {
+    if (object.sections[index].name == ".text") return index;
+  }
+  return std::nullopt;
 }
 
 }  // namespace
@@ -110,6 +118,96 @@ std::optional<FirstStaticLinkSlice> inspect_first_static_link_slice(
   slice.unresolved_symbols = sorted_symbols(std::move(unresolved_symbols));
 
   return slice;
+}
+
+std::optional<FirstStaticExecutable> link_first_static_executable(
+    const std::vector<std::string>& object_paths,
+    std::string* error) {
+  if (error != nullptr) error->clear();
+
+  const auto loaded_objects = load_first_static_input_objects(object_paths, error);
+  if (!loaded_objects.has_value()) return std::nullopt;
+
+  std::unordered_map<std::string, std::uint64_t> text_offsets;
+  std::unordered_map<std::string, std::uint64_t> symbol_addresses;
+  std::unordered_set<std::string> unresolved_symbols;
+  std::vector<std::uint8_t> merged_text;
+
+  for (const auto& loaded_object : *loaded_objects) {
+    const auto text_index = find_text_section_index(loaded_object.object);
+    if (!text_index.has_value()) {
+      if (error != nullptr) *error = loaded_object.path + ": missing .text section";
+      return std::nullopt;
+    }
+
+    text_offsets.emplace(loaded_object.path, merged_text.size());
+    const auto& text_bytes = loaded_object.object.section_data[*text_index];
+    merged_text.insert(merged_text.end(), text_bytes.begin(), text_bytes.end());
+
+    for (const auto& symbol : loaded_object.object.symbols) {
+      if (symbol.name.empty() || symbol.is_undefined() || symbol.sym_type() == elf::STT_SECTION) {
+        continue;
+      }
+      if (symbol.shndx != elf::SHN_UNDEF && (symbol.is_global() || symbol.is_weak())) {
+        symbol_addresses.emplace(symbol.name, symbol.value + text_offsets[loaded_object.path]);
+      }
+    }
+
+    for (const auto& symbol : loaded_object.object.symbols) {
+      if (symbol.name.empty() || !symbol.is_undefined() || symbol.is_weak()) continue;
+      unresolved_symbols.insert(symbol.name);
+    }
+  }
+
+  for (auto it = unresolved_symbols.begin(); it != unresolved_symbols.end();) {
+    if (symbol_addresses.find(*it) != symbol_addresses.end()) {
+      it = unresolved_symbols.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  if (!unresolved_symbols.empty()) {
+    if (error != nullptr) {
+      *error = "first static-link slice still has unresolved symbols: " + *unresolved_symbols.begin();
+    }
+    return std::nullopt;
+  }
+
+  constexpr std::uint64_t kBaseAddress = 0x400000;
+  constexpr std::uint64_t kTextFileOffset = 64 + 56;
+  const std::uint64_t text_virtual_address = kBaseAddress + kTextFileOffset;
+  for (auto& [name, address] : symbol_addresses) {
+    address += text_virtual_address;
+  }
+
+  if (!apply_first_static_text_relocations(*loaded_objects, symbol_addresses, text_offsets,
+                                           text_virtual_address, &merged_text, error)) {
+    return std::nullopt;
+  }
+
+  std::string entry_error;
+  const auto entry_it = symbol_addresses.find("main");
+  if (entry_it == symbol_addresses.end()) {
+    if (error != nullptr) *error = "first static-link slice requires a global main symbol";
+    return std::nullopt;
+  }
+
+  std::uint64_t emitted_text_file_offset = 0;
+  std::uint64_t emitted_text_virtual_address = 0;
+  const auto image = emit_first_static_executable_image(
+      merged_text, kBaseAddress, entry_it->second, &emitted_text_file_offset,
+      &emitted_text_virtual_address, error);
+  if (!image.has_value()) return std::nullopt;
+
+  return FirstStaticExecutable{
+      .image = *image,
+      .base_address = kBaseAddress,
+      .entry_address = entry_it->second,
+      .text_file_offset = emitted_text_file_offset,
+      .text_virtual_address = emitted_text_virtual_address,
+      .text_size = merged_text.size(),
+      .symbol_addresses = std::move(symbol_addresses),
+  };
 }
 
 }  // namespace c4c::backend::aarch64::linker

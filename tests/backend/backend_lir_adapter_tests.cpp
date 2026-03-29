@@ -119,6 +119,26 @@ std::size_t align_up(std::size_t value, std::size_t alignment) {
   return (value + mask) & ~mask;
 }
 
+std::uint16_t read_u16(const std::vector<std::uint8_t>& bytes, std::size_t offset) {
+  return static_cast<std::uint16_t>(bytes[offset]) |
+         (static_cast<std::uint16_t>(bytes[offset + 1]) << 8);
+}
+
+std::uint32_t read_u32(const std::vector<std::uint8_t>& bytes, std::size_t offset) {
+  return static_cast<std::uint32_t>(bytes[offset]) |
+         (static_cast<std::uint32_t>(bytes[offset + 1]) << 8) |
+         (static_cast<std::uint32_t>(bytes[offset + 2]) << 16) |
+         (static_cast<std::uint32_t>(bytes[offset + 3]) << 24);
+}
+
+std::uint64_t read_u64(const std::vector<std::uint8_t>& bytes, std::size_t offset) {
+  std::uint64_t value = 0;
+  for (int shift = 0; shift < 64; shift += 8) {
+    value |= static_cast<std::uint64_t>(bytes[offset + (shift / 8)]) << shift;
+  }
+  return value;
+}
+
 std::uint8_t symbol_info(std::uint8_t binding, std::uint8_t symbol_type) {
   return static_cast<std::uint8_t>((binding << 4) | symbol_type);
 }
@@ -4832,6 +4852,52 @@ void test_aarch64_linker_loads_first_static_objects_from_archive_through_shared_
   std::filesystem::remove(helper_archive_path);
 }
 
+void test_aarch64_linker_emits_first_static_call26_executable_slice() {
+  const auto caller_path = make_temp_path("c4c_aarch64_link_exec_caller", ".o");
+  const auto helper_path = make_temp_path("c4c_aarch64_link_exec_helper", ".o");
+  write_binary_file(caller_path, make_minimal_relocation_object_fixture());
+  write_binary_file(helper_path, make_minimal_helper_definition_object_fixture());
+
+  std::string error;
+  const auto executable = c4c::backend::aarch64::linker::link_first_static_executable(
+      {caller_path, helper_path}, &error);
+  expect_true(executable.has_value(),
+              "aarch64 linker should link the first static CALL26 slice into a bounded executable image: " +
+                  error);
+
+  expect_true(executable->image.size() >= executable->text_file_offset + executable->text_size,
+              "aarch64 linker should emit enough bytes to cover the merged .text image");
+  expect_true(executable->text_size == 16,
+              "aarch64 linker should merge the bounded caller/helper .text slices into one 16-byte executable surface");
+  expect_true(executable->entry_address == executable->text_virtual_address,
+              "aarch64 linker should use the merged main symbol as the executable entry point");
+  expect_true(executable->symbol_addresses.find("main") != executable->symbol_addresses.end() &&
+                  executable->symbol_addresses.find("helper_ext") != executable->symbol_addresses.end() &&
+                  executable->symbol_addresses.at("main") == executable->text_virtual_address &&
+                  executable->symbol_addresses.at("helper_ext") ==
+                      executable->text_virtual_address + 8,
+              "aarch64 linker should assign stable merged .text addresses to the bounded main/helper symbols");
+
+  const auto& image = executable->image;
+  expect_true(image[0] == 0x7f && image[1] == 'E' && image[2] == 'L' && image[3] == 'F',
+              "aarch64 linker should emit an ELF header for the first static executable slice");
+  expect_true(read_u16(image, 16) == 2 && read_u16(image, 18) == c4c::backend::elf::EM_AARCH64,
+              "aarch64 linker should mark the first emitted image as an AArch64 ET_EXEC executable");
+  expect_true(read_u64(image, 24) == executable->entry_address,
+              "aarch64 linker should write the merged main address into the executable entry field");
+  expect_true(read_u64(image, 32) == 64 && read_u16(image, 56) == 1,
+              "aarch64 linker should emit one bounded program header for the first executable slice");
+
+  expect_true(read_u32(image, executable->text_file_offset + 0) == 0xd503201f &&
+                  read_u32(image, executable->text_file_offset + 4) == 0x94000001 &&
+                  read_u32(image, executable->text_file_offset + 8) == 0x52800540 &&
+                  read_u32(image, executable->text_file_offset + 12) == 0xd65f03c0,
+              "aarch64 linker should patch the bounded CALL26 branch and preserve the merged helper instructions in executable order");
+
+  std::filesystem::remove(caller_path);
+  std::filesystem::remove(helper_path);
+}
+
 void test_aarch64_backend_assembler_handoff_helper_stages_emitted_text() {
   const auto output_path = make_temp_output_path("c4c_aarch64_handoff");
   const auto staged = c4c::backend::aarch64::assemble_module(make_return_add_module(), output_path);
@@ -5015,6 +5081,7 @@ int main() {
   test_aarch64_linker_names_first_static_call26_slice();
   test_aarch64_linker_loads_first_static_objects_through_shared_input_seam();
   test_aarch64_linker_loads_first_static_objects_from_archive_through_shared_input_seam();
+  test_aarch64_linker_emits_first_static_call26_executable_slice();
   test_aarch64_backend_assembler_handoff_helper_stages_emitted_text();
   test_aarch64_builtin_object_matches_external_return_add_surface();
   return 0;
