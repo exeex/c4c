@@ -9,24 +9,44 @@ Source Plan: plan.md
 - Step 5: prepare the next diagnostic slice by bounding the first
   committed-failure vs no-match follow-up under speculative `try_parse_*`
   record-member rewinds
-- Current slice: reduce and classify the named-parameter constructor family
-  from `tests/cpp/std/std_vector_simple.cpp`
-  `/usr/include/c++/14/bits/predefined_ops.h:150`, where the summary stays on
-  `parse_top_level_parameter_list` with a qualified-type probe prefix and
-  `got='__comp'`
-- Iteration target: keep the current outer committed
-  `parse_top_level_parameter_list` summary for this named-parameter wrapper
-  path, because the motivating failure point is the parameter name while the
-  debug stack already preserves the speculative qualified-type probe prefix
-- Next intended slice: inspect the next remaining `std_vector_simple.cpp`
-  wrapper-heavy failure whose emitted summary still stays on
-  `parse_top_level_parameter_list` without dedicated coverage, starting with
-  the `/usr/include/c++/14/bits/exception.h:67` `got='&&'` path before
-  returning to the first record-member `try_parse_*` rewind whose summary
-  still loses committed-failure context
+- Current slice: return to the first record-member speculative `try_parse_*`
+  rewind whose emitted summary still loses committed-failure context after the
+  top-level wrapper-heavy `std_vector_simple.cpp` families were classified
+- Iteration target: sample the next remaining record-member parser-debug path
+  that still over-ranks an inner speculative leaf, reduce it if practical,
+  and decide whether the summary ranking should stay deep or move outward
+- Next intended slice: start from the first surviving record-member rewind
+  visible in the current parser-debug suite and bound it with motivating
+  coverage before changing leaf-selection rules
 
 ## Completed
 
+- recorded the required clean after-suite for this iteration and passed the
+  monotonic regression guard against the recorded
+  `before passed=2283/2284` baseline:
+  `after passed=2284/2285`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged and the
+  guard script reported zero new failing tests
+- added focused motivating coverage in
+  `cpp_parser_debug_std_vector_rref_param_wrapper` for the
+  `tests/cpp/std/std_vector_simple.cpp`
+  `/usr/include/c++/14/bits/exception.h:67` wrapper-heavy move-style
+  parameter path, locking the current outer committed
+  `parse_fn=parse_top_level_parameter_list` summary with the short
+  `parse_top_level -> consume_qualified_type_spelling ->
+  parse_top_level_parameter_list` stack
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_std_vector_wrapper_spelling_stack`,
+  `cpp_parser_debug_std_vector_wrapper_anchor_stack`,
+  `cpp_parser_debug_std_vector_ref_param_leaf`,
+  `cpp_parser_debug_std_vector_rref_param_wrapper`,
+  `cpp_parser_debug_std_vector_named_param_ctor_leaf`, and
+  `cpp_parser_debug_std_vector_move_ctor_leaf`
+- recorded the Step 5 decision for this bounded `exception.h:67`
+  `got='&&'` family: keep the current outer committed
+  `parse_top_level_parameter_list` summary, because the motivating failure
+  stays in the top-level parameter-list wrapper and the emitted debug stack is
+  already concise and stable without needing a deeper speculative leaf
 - recorded the required clean after-suite for this iteration and passed the
   monotonic regression guard against the recorded
   `before passed=2282/2283` baseline:
