@@ -5884,6 +5884,54 @@ void test_x86_linker_loads_first_static_objects_from_archive_through_shared_inpu
   std::filesystem::remove(helper_archive_path);
 }
 
+void test_x86_linker_emits_first_static_plt32_executable_slice() {
+  const auto caller_path = make_temp_path("c4c_x86_link_exec_caller", ".o");
+  const auto helper_path = make_temp_path("c4c_x86_link_exec_helper", ".o");
+  write_binary_file(caller_path, make_minimal_x86_relocation_object_fixture());
+  write_binary_file(helper_path, make_minimal_x86_helper_definition_object_fixture());
+
+  std::string error;
+  const auto executable = c4c::backend::x86::linker::link_first_static_executable(
+      {caller_path, helper_path}, &error);
+  expect_true(executable.has_value(),
+              "x86 linker should link the first static PLT32 slice into a bounded executable image: " +
+                  error);
+
+  expect_true(executable->image.size() >= executable->text_file_offset + executable->text_size,
+              "x86 linker should emit enough bytes to cover the merged .text image");
+  expect_true(executable->text_size == 12,
+              "x86 linker should merge the bounded caller/helper .text slices into one 12-byte executable surface");
+  expect_true(executable->entry_address == executable->text_virtual_address,
+              "x86 linker should use the merged main symbol as the executable entry point");
+  expect_true(executable->symbol_addresses.find("main") != executable->symbol_addresses.end() &&
+                  executable->symbol_addresses.find("helper_ext") != executable->symbol_addresses.end() &&
+                  executable->symbol_addresses.at("main") == executable->text_virtual_address &&
+                  executable->symbol_addresses.at("helper_ext") ==
+                      executable->text_virtual_address + 6,
+              "x86 linker should assign stable merged .text addresses to the bounded main/helper symbols");
+
+  const auto& image = executable->image;
+  expect_true(image[0] == 0x7f && image[1] == 'E' && image[2] == 'L' && image[3] == 'F',
+              "x86 linker should emit an ELF header for the first static executable slice");
+  expect_true(read_u16(image, 16) == 2 && read_u16(image, 18) == c4c::backend::elf::EM_X86_64,
+              "x86 linker should mark the first emitted image as an x86-64 ET_EXEC executable");
+  expect_true(read_u64(image, 24) == executable->entry_address,
+              "x86 linker should write the merged main address into the executable entry field");
+  expect_true(read_u64(image, 32) == 64 && read_u16(image, 56) == 1,
+              "x86 linker should emit one bounded program header for the first executable slice");
+
+  expect_true(image[executable->text_file_offset + 0] == 0xe8 &&
+                  read_u32(image, executable->text_file_offset + 1) == 1 &&
+                  image[executable->text_file_offset + 5] == 0xc3 &&
+                  image[executable->text_file_offset + 6] == 0xb8 &&
+                  read_u32(image, executable->text_file_offset + 7) == 42 &&
+                  image[executable->text_file_offset + 11] == 0xc3,
+              "x86 linker should patch the bounded PLT32 call and preserve the merged helper instructions in executable order");
+
+  std::filesystem::remove(caller_path);
+  std::filesystem::remove(helper_path);
+}
+
 void test_aarch64_linker_emits_first_static_call26_executable_slice() {
   const auto caller_path = make_temp_path("c4c_aarch64_link_exec_caller", ".o");
   const auto helper_path = make_temp_path("c4c_aarch64_link_exec_helper", ".o");
@@ -6151,6 +6199,7 @@ int main() {
   test_x86_linker_names_first_static_plt32_slice();
   test_x86_linker_loads_first_static_objects_through_shared_input_seam();
   test_x86_linker_loads_first_static_objects_from_archive_through_shared_input_seam();
+  test_x86_linker_emits_first_static_plt32_executable_slice();
   test_aarch64_linker_emits_first_static_call26_executable_slice();
   test_aarch64_backend_assembler_handoff_helper_stages_emitted_text();
   test_x86_backend_assembler_handoff_helper_stages_emitted_text();

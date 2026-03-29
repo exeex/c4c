@@ -6,19 +6,19 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- [ ] Step 2: Compile-integrate the minimum x86 linker orchestration surface
-- Iteration slice: carry the new x86 shared-parser-backed inspection/load seam
-  into the next bounded linker-owned operation by applying the first PLT32
-  relocation and emitting one static executable image for the same `main ->
-  helper_ext` case.
+- [ ] Step 6: Validate against the external linker path
+- Iteration slice: compare the built-in x86 linker's bounded `main ->
+  helper_ext` executable image and simple runtime behavior against the external
+  linker path for the same two-object case, without widening into dynamic
+  linking or broader relocation coverage.
 
 ## Planned Items
 
-- [ ] Step 1: Inspect the first bounded x86 linker slice
-- [ ] Step 2: Compile-integrate the minimum x86 linker orchestration surface
-- [ ] Step 3: Port the bounded shared input and symbol-loading path
-- [ ] Step 4: Implement the minimum x86 relocation and resolution slice
-- [ ] Step 5: Emit one bounded static x86 executable
+- [x] Step 1: Inspect the first bounded x86 linker slice
+- [x] Step 2: Compile-integrate the minimum x86 linker orchestration surface
+- [x] Step 3: Port the bounded shared input and symbol-loading path
+- [x] Step 4: Implement the minimum x86 relocation and resolution slice
+- [x] Step 5: Emit one bounded static x86 executable
 - [ ] Step 6: Validate against the external linker path
 
 ## Completed Items
@@ -30,13 +30,16 @@ Source Plan: plan.md
   allocatable `.text` output in the initial inspection seam
 - [x] Added x86 linker inspection/load tests and a minimal compile-integrated
   x86 linker seam for shared-parser-backed object and archive loading
+- [x] Added the bounded x86 `R_X86_64_PLT32` relocation applier and first
+  static executable emitter, plus a backend adapter test covering the merged
+  `main -> helper_ext` ELF image and patched call displacement
 
 ## Next Intended Slice
 
-- Reuse the same two-object x86 fixture pair to add relocation-application
-  tests for the first `R_X86_64_PLT32` call edge.
-- Emit one bounded static x86 executable image for that slice instead of
-  widening into shared-library or dynamic-linking behavior.
+- Compare the built-in x86 executable bytes for the bounded `main ->
+  helper_ext` case against an externally linked reference image.
+- Add the narrowest runtime or metadata validation needed to confirm the first
+  built-in-linked x86 executable behaves like the external linker output.
 - Keep the x86 build integration limited to the linker units needed by the
   active slice; the mirrored broad x86 emitter surface still needs separate
   cleanup before it can be compiled wholesale under the current toolchain.
@@ -59,5 +62,10 @@ Source Plan: plan.md
   one `.text` relocation edge, and only merged allocatable `.text` output in
   the initial inspection seam.
 - Regression check for this iteration: `test_before.log` and `test_after.log`
-  both report `99% tests passed, 19 tests failed out of 2339` with no newly
-  failing tests.
+- Prior full-suite note from the preceding iteration reported `99% tests
+  passed, 19 tests failed out of 2339` with no newly failing tests.
+- Current validation: `./build/backend_lir_adapter_tests` passes with the new
+  x86 executable slice test, and the monotonic guard run
+  `check_monotonic_regression.py --before test_fail_before.log --after
+  test_fail_after.log --allow-non-decreasing-passed` reports PASS with no new
+  failing tests (`after: passed=2320 failed=19 total=2339`).
