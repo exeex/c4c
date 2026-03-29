@@ -3,425 +3,58 @@
 Status: Active
 Source Idea: ideas/open/07_parser_whitelist_boundary_audit.md
 Source Plan: plan.md
-Last Updated: 2026-03-29
 
-## Active Item
+## Current Active Item
 
-- Step 3: continue through the remaining top-level declaration-side discard
-  exits in `src/frontend/parser/declarations.cpp` after removing regular
-  bookkeeping-only `typedef` declarations from the item stream; next inspect
-  the remaining unsupported-declaration exits around
-  `top_level_decl_recovery_done` now that the no-name type-only fallback is
-  covered for attribute-only tag declarations
+- [ ] Step 3: Reduce the next remaining top-level `NK_EMPTY` discard slice in
+  the unsupported-declaration fallback paths after the forward-tag cleanup
+
+## Checklist
+
+- [x] Step 1: Build the audit inventory
+- [x] Step 2: Classify breadth and risk
+- [ ] Step 3: Reduce the first tightening slice
+- [ ] Step 4: Tighten the boundary
+- [ ] Step 5: Validate and record the next slice
 
 ## Completed
 
-- tightened the generic top-level no-type-start recovery in
-  `src/frontend/parser/declarations.cpp` so malformed discarded declarations
-  now stop at the shared declaration-boundary helper instead of swallowing a
-  later `class` definition:
-  - expanded `is_top_level_decl_recovery_boundary(...)` to recognize
-    `class`, `namespace`, `constexpr`, and `consteval`
-  - replaced the duplicated hard-coded fallback stop list with the shared
-    helper so future boundary updates stay aligned
-- added the reduced parse-only regression
-  `tests/cpp/internal/parse_only_case/top_level_class_recovery_preserves_following_decl_parse.cpp`
+- [x] Activated `ideas/open/07_parser_whitelist_boundary_audit.md` into
+  `plan.md`
+- [x] Reset `plan_todo.md` for the active runbook
+- [x] Recorded the Step 1 / Step 2 audit inventory and risk tags in
+  `src/frontend/parser/BOUNDARY_AUDIT.md`
+- [x] Landed earlier top-level discard tightenings already reflected in
+  `src/frontend/parser/BOUNDARY_AUDIT.md`; the next remaining slice is a
+  forward tag declaration cleanup
+- [x] Tightened top-level forward tag declarations in
+  `src/frontend/parser/declarations.cpp` so bookkeeping-only declarations such
+  as `struct Forward;` no longer materialize a synthetic `NK_EMPTY` node
+- [x] Added the reduced parse-only regression
+  `tests/cpp/internal/parse_only_case/top_level_forward_tag_decl_preserves_following_decl_parse.cpp`
   plus the dedicated dump assertion
-  `cpp_parse_top_level_class_recovery_preserves_following_decl_dump` in
+  `cpp_parse_top_level_forward_tag_decl_preserves_following_decl_dump` in
   `tests/cpp/internal/InternalTests.cmake`
-- updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record the generic
-  top-level no-type-start recovery as a covered boundary with reduced `class`
-  evidence
-- re-ran the required regression guard:
-  - baseline: `99% tests passed, 1 test failed out of 2414`
-  - after change: `99% tests passed, 1 test failed out of 2415`
-  - result: monotonic pass-count increase from the new targeted test, with no
-    newly failing cases
-- tightened malformed top-level `using namespace` / `using ns::name` recovery in
-  `src/frontend/parser/declarations.cpp` so a missing `;` now stops before the
-  next strong declaration starter instead of relying on a blind semicolon match
-- added the reduced parse-only regression
-  `tests/cpp/internal/parse_only_case/top_level_using_namespace_recovery_preserves_following_decl_parse.cpp`
-  plus the dedicated dump assertion
-  `cpp_parse_top_level_using_namespace_recovery_preserves_following_decl_dump`
-  in `tests/cpp/internal/InternalTests.cmake`
-- updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record top-level
-  `using namespace` / `using ns::name` as a covered `NK_EMPTY` recovery
-  boundary and to note the remaining `using Alias = ...` missing-semicolon case
-  as a still-suspicious follow-on site
-- re-ran the required regression guard:
-  - baseline: `97% tests passed, 54 tests failed out of 2413`
-  - after change: `99% tests passed, 1 test failed out of 2413`
-  - result: monotonic pass-count increase with no newly failing tests
-- tightened top-level `typedef` handling in
-  `src/frontend/parser/declarations.cpp` so bookkeeping-only aliases now drop
-  out of the program item stream instead of materializing a synthetic
-  `NK_EMPTY` node after the parser has already recorded the alias metadata:
-  - added the reduced parse-only regression
-    `tests/cpp/internal/parse_only_case/top_level_typedef_decl_preserves_following_decl_parse.cpp`
-    plus the dedicated dump assertion
-    `cpp_parse_top_level_typedef_decl_preserves_following_decl_dump` in
-    `tests/cpp/internal/InternalTests.cmake`
-  - updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record top-level
-    `typedef` declarations as a covered declaration-side discard site
-  - re-ran the required regression guard:
-    - baseline: `99% tests passed, 1 test failed out of 2423`
-    - after change: `99% tests passed, 1 test failed out of 2424`
-    - result: monotonic pass-count increase from the new targeted test, with
-      no newly failing tests
-- tightened top-level tag-only declaration and typedef-backed tag-definition
-  handling in `src/frontend/parser/declarations.cpp` so declarations already
-  represented by a recorded `StructDef` / `EnumDef` no longer append a
-  synthetic `NK_EMPTY` item to the program AST
-- added the reduced parse-only regression
-  `tests/cpp/internal/parse_only_case/top_level_tag_decl_preserves_following_decl_parse.cpp`
-  plus the dedicated dump assertion
-  `cpp_parse_top_level_tag_decl_preserves_following_decl_dump` in
-  `tests/cpp/internal/InternalTests.cmake`
-- updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record top-level tag-only
-  declarations and typedef-backed tag definitions as covered `NK_EMPTY`
-  structure-only sites
-- re-ran the required regression guard:
-  - baseline: `99% tests passed, 1 test failed out of 2417`
-  - after change: `99% tests passed, 1 test failed out of 2418`
-  - result: monotonic pass-count increase from the new targeted test, with no
-    newly failing cases
-- tightened the top-level no-name type-only fallback in
-  `src/frontend/parser/declarations.cpp` so tag-only declarations with
-  declaration-level C++11 / GNU attributes now drop out of the program item
-  stream instead of materializing a synthetic `NK_EMPTY` node:
-  - added the reduced parse-only regression
-    `tests/cpp/internal/parse_only_case/top_level_tag_attr_decl_preserves_following_decl_parse.cpp`
-    plus the dedicated dump assertion
-    `cpp_parse_top_level_tag_attr_decl_preserves_following_decl_dump` in
-    `tests/cpp/internal/InternalTests.cmake`
-  - updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record attribute-tailed
-    top-level tag-only declarations as covered structure-only sites alongside
-    the existing plain tag-declaration coverage
-  - re-ran the required regression guard:
-    - baseline: `99% tests passed, 1 test failed out of 698`
-    - after change: `99% tests passed, 1 test failed out of 2424`
-    - result: monotonic pass-count increase with no newly failing tests; the
-      lone remaining failure is still
-      `cpp_positive_sema_iterator_concepts_following_hash_base_parse_cpp`
-- switched the active runbook away from the `std::vector` bring-up and folded
-  the latest parser-hygiene findings back into
-  `ideas/open/04_std_vector_bringup_plan.md`
-- activated `ideas/open/07_parser_whitelist_boundary_audit.md` as the new
-  active plan
-- captured the most recent reduced evidence motivating the switch:
-  - `iterator_concepts.h` plus `functional_hash.h` had reduced to a
-    `requires`-clause boundary issue
-  - tightening `skip_cpp20_constraint_atom(...)` improved the reduced repro
-  - added
-    `tests/cpp/internal/postive_case/cpp20_requires_trait_disjunction_function_parse.cpp`
-    to hold that narrower case in-tree
-- completed the Step 1 parser-boundary inventory in
-  `src/frontend/parser/BOUNDARY_AUDIT.md`, covering:
-  - duplicated `requires` clause boundary helpers in `declarations.cpp` and
-    `types.cpp`
-  - generic record-member recovery
-  - broad `is_type_start()` / `can_start_parameter_type()` probes
-  - representative `NK_EMPTY` parse-and-discard sites
-- ranked the first tightening targets from that inventory:
-  - highest risk: the older `types.cpp` `requires` boundary helpers still using
-    `is_type_start()` as a declaration-boundary fallback
-  - next: trailing `requires` clause termination in `declarations.cpp`
-  - next: record-member recovery that can still advance to `}`
-- aligned the duplicated `src/frontend/parser/types.cpp`
-  `is_cpp20_requires_clause_decl_boundary(...)` helper with the narrower
-  declaration-side whitelist so it no longer treats `Identifier` after `::` or
-  before `<` as an automatic declaration boundary
-- added
-  `tests/cpp/internal/postive_case/cpp20_requires_trait_disjunction_member_parse.cpp`
-  and registered it in `tests/cpp/internal/InternalTests.cmake` to keep the
-  record-member template `requires` path covered
-- re-ran the required regression guard:
-  - baseline: `100% tests passed, 0 tests failed out of 2404`
-  - after change: `100% tests passed, 0 tests failed out of 2405`
-  - result: monotonic pass-count increase from the new targeted test, with no
-    newly failing cases
-- tightened the duplicated trailing `requires` clause helpers in
-  `src/frontend/parser/declarations.cpp` and `src/frontend/parser/types.cpp`
-  so they now reuse the existing atom-by-atom constraint walk instead of a
-  broad consume-until-stop loop
-- added the reduced parse regression
-  `tests/cpp/internal/postive_case/cpp20_trailing_requires_following_member_decl_parse.cpp`
-  plus a dedicated dump assertion in
-  `tests/cpp/internal/InternalTests.cmake` to prove a malformed constrained
-  member no longer swallows the following `inner` declaration
-- narrowed `src/frontend/parser/types.cpp`
-  `recover_record_member_parse_error(int)` so malformed special-member
-  signatures can stop at the next simple field declaration instead of silently
-  erasing it through broad recovery
-- added the parse-only regression
-  `tests/cpp/internal/parse_only_case/record_member_recovery_preserves_following_decl_parse.cpp`
-  plus the dedicated dump assertion
-  `cpp_parse_record_member_recovery_preserves_following_decl_dump` in
-  `tests/cpp/internal/InternalTests.cmake`
-- re-ran the required regression guard:
-  - baseline: `100% tests passed, 0 tests failed out of 2391`
-  - after change: `100% tests passed, 0 tests failed out of 2408`
-  - result: monotonic pass-count increase with no newly failing tests
-- tightened record-member recovery for malformed non-alias `using` members:
-  - `src/frontend/parser/types.cpp`
-    `try_parse_record_using_member(...)` now parses the non-alias branch as a
-    structured qualified-name `using` declaration instead of broadly skipping
-    tokens until `;`
-  - `src/frontend/parser/types.cpp`
-    `is_record_member_recovery_boundary(...)` now lets malformed `using`
-    members stop at the next member declaration boundary, not only malformed
-    special members
-  - added the reduced parse-only regression
-    `tests/cpp/internal/parse_only_case/record_member_using_recovery_preserves_following_decl_parse.cpp`
-    plus the dedicated dump assertion
-    `cpp_parse_record_member_using_recovery_preserves_following_decl_dump` in
-    `tests/cpp/internal/InternalTests.cmake`
-  - re-ran the required regression guard:
-    - baseline: `100% tests passed, 0 tests failed out of 2408`
-    - after change: `100% tests passed, 0 tests failed out of 2409`
-    - result: monotonic pass-count increase with no newly failing tests
-- tightened statement-side local `using` parsing in
-  `src/frontend/parser/statements.cpp` so malformed local aliases,
-  `using namespace`, and `using` declarations no longer rely on a blind
-  skip-until-`;` fallback:
-  - valid local `using Alias = type;` aliases now reuse `parse_type_name()`
-    and register the parsed alias type instead of a placeholder `int`
-  - malformed local `using` forms now recover as `NK_INVALID_STMT` at the next
-    local declaration / statement boundary instead of silently erasing the
-    following declaration
-  - added the reduced parse-only regression
-    `tests/cpp/internal/parse_only_case/local_using_alias_recovery_preserves_following_decl_parse.cpp`
-    plus the dedicated dump assertion
-    `cpp_parse_local_using_alias_recovery_preserves_following_decl_dump` in
-    `tests/cpp/internal/InternalTests.cmake`
-  - re-ran the required regression guard:
-    - baseline: `100% tests passed, 0 tests failed out of 2409`
-    - after change: `100% tests passed, 0 tests failed out of 2410`
-    - result: monotonic pass-count increase with no newly failing tests
-- tightened the malformed top-level storage-class fallback in
-  `src/frontend/parser/declarations.cpp` so unsupported forms like
-  `extern foo` no longer blindly `skip_until(';')` across the following
-  declaration:
-  - the recovery now stops at strong declaration starters on a later line,
-    which preserves the next top-level declaration while keeping the malformed
-    storage-class fragment discarded as `NK_EMPTY`
-  - added the reduced parse-only regression
-    `tests/cpp/internal/parse_only_case/top_level_storage_class_recovery_preserves_following_decl_parse.cpp`
-    plus the dedicated dump assertion
-    `cpp_parse_top_level_storage_class_recovery_preserves_following_decl_dump`
-    in `tests/cpp/internal/InternalTests.cmake`
-  - updated `src/frontend/parser/BOUNDARY_AUDIT.md` to mark this fallback as a
-    covered `NK_EMPTY` site with concrete evidence
-  - re-ran the required regression guard:
-    - baseline: `100% tests passed, 0 tests failed out of 2409`
-    - after change: `100% tests passed, 0 tests failed out of 2411`
-    - result: monotonic pass-count increase with no newly failing tests
-- tightened malformed top-level `asm(...)` recovery in
-  `src/frontend/parser/declarations.cpp` so an unterminated `asm(` payload no
-  longer swallows the following declaration through a blind paren-group skip:
-  - added the reduced parse-only regression
-    `tests/cpp/internal/parse_only_case/top_level_asm_recovery_preserves_following_decl_parse.cpp`
-    plus the dedicated dump assertion
-    `cpp_parse_top_level_asm_recovery_preserves_following_decl_dump`
-    in `tests/cpp/internal/InternalTests.cmake`
-  - updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record top-level
-    `asm(...)` as a covered `NK_EMPTY` recovery boundary
-  - re-ran the required regression guard:
-    - baseline: `100% tests passed, 0 tests failed out of 2411`
-    - after change: `100% tests passed, 0 tests failed out of 2412`
-    - result: monotonic pass-count increase with no newly failing tests
-- tightened valid top-level `asm(...)` handling in
-  `src/frontend/parser/declarations.cpp` so supported `asm("...");`
-  declarations now drop out of the program item stream instead of
-  materializing a synthetic `NK_EMPTY` node:
-  - added the reduced parse-only regression
-    `tests/cpp/internal/parse_only_case/top_level_asm_decl_preserves_following_decl_parse.cpp`
-    plus the dedicated dump assertion
-    `cpp_parse_top_level_asm_decl_preserves_following_decl_dump` in
-    `tests/cpp/internal/InternalTests.cmake`
-  - updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record valid top-level
-    `asm(...)` declarations as a covered structure-only discard site alongside
-    the existing malformed `asm(` recovery note
-  - re-ran the required regression guard:
-    - baseline: `99% tests passed, 1 test failed out of 2422`
-    - after change: `99% tests passed, 1 test failed out of 2423`
-    - result: monotonic pass-count increase from the new targeted test, with
-      no newly failing tests
-- tightened top-level C++ `concept` declaration handling in
-  `src/frontend/parser/declarations.cpp` so plain and templated concept
-  declarations now drop out of the program AST instead of materializing a
-  synthetic `NK_EMPTY` item after the parser has already registered the
-  concept name:
-  - added the reduced parse-only regression
-    `tests/cpp/internal/parse_only_case/top_level_concept_decl_preserves_following_decl_parse.cpp`
-    plus the dedicated dump assertion
-    `cpp_parse_top_level_concept_decl_preserves_following_decl_dump` in
-    `tests/cpp/internal/InternalTests.cmake`
-  - updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record top-level
-    `concept` declarations as a covered `NK_EMPTY` discard site
-  - nearby concept parsing remains bounded by the known libstdc++
-    `iterator_concepts_following_hash_base_parse` failure, so the next audit
-    slice should stay focused on separate top-level pragma discard paths
-  - re-ran the required regression guard:
-    - baseline: `99% tests passed, 1 test failed out of 2417`
-    - after change: `99% tests passed, 1 test failed out of 2419`
-    - result: monotonic pass-count increase with no newly failing tests
-- tightened top-level pragma discard handling in
-  `src/frontend/parser/declarations.cpp` so `#pragma pack(...)` and
-  `#pragma GCC visibility push/pop` now update parser state and drop out of the
-  top-level item stream instead of materializing synthetic `NK_EMPTY` nodes
-  ahead of the following declaration:
-  - added the reduced parse-only regressions
-    `tests/cpp/internal/parse_only_case/top_level_pragma_pack_preserves_following_decl_parse.cpp`
-    and
-    `tests/cpp/internal/parse_only_case/top_level_pragma_gcc_visibility_preserves_following_decl_parse.cpp`
-    plus the dedicated dump assertions
-    `cpp_parse_top_level_pragma_pack_preserves_following_decl_dump` and
-    `cpp_parse_top_level_pragma_gcc_visibility_preserves_following_decl_dump`
-    in `tests/cpp/internal/InternalTests.cmake`
-  - updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record both pragma
-    directives as covered top-level discard sites and removed pragma discard
-    sites from the ranked-next-target note
-  - re-ran the required regression guard:
-    - baseline: `99% tests passed, 1 test failed out of 2419`
-    - after change: `99% tests passed, 1 test failed out of 2421`
-    - result: monotonic pass-count increase from the two new targeted tests,
-      with no newly failing cases
-- tightened top-level C++ `using namespace`, `using ns::name`, and
-  `using Alias = type` handling in `src/frontend/parser/declarations.cpp` so
-  these bookkeeping-only declarations now drop out of the program item stream
-  instead of materializing synthetic `NK_EMPTY` nodes after updating parser
-  state:
-  - recovery for malformed missing-semicolon `using` forms still uses the
-    existing declaration-boundary helpers, but now also drops the discarded
-    declaration out of the top-level item stream
-  - added the reduced parse-only regression
-    `tests/cpp/internal/parse_only_case/top_level_using_decl_preserves_following_decl_parse.cpp`
-    plus the dedicated dump assertion
-    `cpp_parse_top_level_using_decl_preserves_following_decl_dump` in
-    `tests/cpp/internal/InternalTests.cmake`
-  - updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record top-level
-    `using` declarations as a covered bookkeeping-only discard site and to
-    point the next ranked target at top-level `asm(...)`
-  - re-ran focused `using` parse coverage:
-    - `cpp_parse_top_level_using_decl_preserves_following_decl_dump`
-    - `cpp_parse_top_level_using_namespace_recovery_preserves_following_decl_dump`
-    - `cpp_parse_top_level_using_alias_recovery_preserves_following_decl_dump`
-    - `cpp_positive_sema_using_alias_basic_parse_cpp`
-    - `cpp_positive_sema_using_declaration_namespace_parse_cpp`
-    - `cpp_positive_sema_using_namespace_directive_parse_cpp`
-  - re-ran the required regression guard:
-    - baseline: `99% tests passed, 1 test failed out of 2419`
-    - after change: `99% tests passed, 1 test failed out of 2422`
-    - result: monotonic pass-count increase from the new targeted test, with
-      no newly failing cases
+- [x] Re-ran focused top-level parse coverage and the full regression guard:
+  baseline `2424 passed / 1 failed / 2425 total`, after `2425 passed / 1 failed / 2426 total`,
+  no newly failing tests
 
-## Next Slice
+## Next Intended Slice
 
-- continue through the remaining top-level `NK_EMPTY` discard sites in
-  `src/frontend/parser/declarations.cpp`, now focusing on the still-unreviewed
-  unsupported declaration exits and declaration-side bookkeeping drops beyond
-  the now-covered empty wrappers, top-level `using` declarations,
-  structure-only tag declarations, pragma directives, and attribute-tailed
-  no-name tag declarations
-- prefer another reduced parse-only repro that shows discarded structure or a
-  silently erased following declaration before changing each remaining
-  `NK_EMPTY` branch
-- next target: return to the generic unsupported declaration recovery exit
-  around `top_level_decl_recovery_done`, especially shapes that still rely on
-  a broad consume-until-`;` discard once no valid type start was recognized
-- keep any further record-member recovery widening separate unless a new reduced
-  repro shows another non-special-member boundary bug that blocks the
-  top-level `NK_EMPTY` audit
-
-## Notes
-
-- this switch is intentional: recent debugging showed that continuing `<vector>`
-  reduction on top of broad parser rules was becoming lower-leverage than
-  tightening the parser boundaries themselves
-- the parked `std::vector` idea should be revisited after the first whitelist
-  audit fixes land and the remaining suspicious sites are ranked
-- this iteration is intentionally scoped to the older `types.cpp` duplicate
-  helpers first and then the duplicated trailing `requires` termination path
-- the new member-template regression currently parses before and after the
-  helper alignment, so its value is as a guard against future fallback
-  broadening on the `types.cpp` path rather than as a newly red-to-green test
-- the trailing `requires` follow-set regression is intentionally parse-only:
-  the important assertion is that the following member declaration remains
-  visible in the AST dump, not that this malformed source compiles cleanly
-- the Step 1 inventory now lives in `src/frontend/parser/BOUNDARY_AUDIT.md` so
-  future parser work can reuse the current shortlist instead of rebuilding it
-  from scratch
-- the new record-member recovery regression is intentionally stored under
-  `tests/cpp/internal/parse_only_case/` so it does not get auto-promoted into
-  the positive or negative compile-test globs
-- the malformed `using Base::` record-member regression is intentionally
-  parse-only: the important assertion is that the following `kept` declaration
-  remains visible after recovery, not that the malformed `using` line itself is
-  semantically accepted
-- the malformed local `using Alias = int` regression is intentionally
-  parse-only: the important assertion is that the broken local `using` becomes
-  `InvalidStmt` while the following `kept` declaration remains visible in the
-  AST dump
-- the malformed top-level `extern foo` regression is intentionally parse-only:
-  the important assertion is that the following `kept` global remains visible
-  after recovery, not that the broken storage-class fragment is diagnosed as a
-  first-class declaration node
-- the malformed top-level `asm(` regression is intentionally parse-only: the
-  important assertion is that the following `kept` global remains visible after
-  recovery, not that the unsupported top-level asm fragment is elevated into a
-  first-class declaration node
-- tightened malformed top-level `using Alias = ...` recovery in
-  `src/frontend/parser/declarations.cpp` so a missing `;` now rewinds from the
-  alias type parse and stops before a later-line swallowed declaration instead
-  of accepting it as part of the alias type
-- added the reduced parse-only regression
-  `tests/cpp/internal/parse_only_case/top_level_using_alias_recovery_preserves_following_decl_parse.cpp`
-  plus the dedicated dump assertion
-  `cpp_parse_top_level_using_alias_recovery_preserves_following_decl_dump` in
-  `tests/cpp/internal/InternalTests.cmake`
-- updated `src/frontend/parser/BOUNDARY_AUDIT.md` to mark top-level
-  `using Alias = ...` missing-semicolon recovery as a covered `NK_EMPTY`
-  boundary instead of a still-suspicious follow-on site
-- the next top-level `NK_EMPTY` slice is the generic recovery path triggered
-  when no type start is recognized; that boundary is now covered by a reduced
-  `class kept {}` regression, so the next work should focus on the remaining
-  structure-only / unsupported exits that still return `NK_EMPTY`
-- tightened empty top-level `extern "C"` linkage blocks in
-  `src/frontend/parser/declarations.cpp` so they no longer materialize a
-  synthetic `NK_EMPTY` node when the block contains no declarations
-- added the reduced parse-only regression
-  `tests/cpp/internal/parse_only_case/top_level_extern_c_empty_block_preserves_following_decl_parse.cpp`
-  plus the dedicated dump assertion
-  `cpp_parse_top_level_extern_c_empty_block_preserves_following_decl_dump` in
-  `tests/cpp/internal/InternalTests.cmake`
-- updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record empty top-level
-  `extern "C"` linkage wrappers as a covered structure-only boundary with
-  reduced evidence
-- re-ran the required regression guard:
-  - baseline: `99% tests passed, 1 test failed out of 2415`
-  - after change: `99% tests passed, 1 test failed out of 2416`
-  - result: monotonic pass-count increase from the new targeted test, with no
-    newly failing cases
-- tightened empty top-level `namespace {}` / `namespace ns {}` wrappers in
-  `src/frontend/parser/declarations.cpp` so they no longer materialize a
-  synthetic `NK_EMPTY` node when the block contains no declarations
-- added the reduced parse-only regression
-  `tests/cpp/internal/parse_only_case/top_level_empty_namespace_block_preserves_following_decl_parse.cpp`
-  plus the dedicated dump assertion
-  `cpp_parse_top_level_empty_namespace_block_preserves_following_decl_dump` in
-  `tests/cpp/internal/InternalTests.cmake`
-- updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record empty top-level
-  namespace wrappers as a covered structure-only boundary with reduced
-  evidence
-- re-ran the required regression guard:
-  - baseline: `99% tests passed, 1 test failed out of 2416`
-  - after change: `99% tests passed, 1 test failed out of 2417`
-  - result: monotonic pass-count increase from the new targeted test, with no
-    newly failing cases; the lone remaining failure is still
-    `cpp_positive_sema_iterator_concepts_following_hash_base_parse_cpp`
+Inspect the remaining top-level unsupported declaration exits around
+`top_level_decl_recovery_done`, preferring another reduced parse-only case that
+proves a following declaration stays visible without an intermediate `Empty`
+node.
 
 ## Blockers
 
-- none yet
+- None recorded at activation time.
+
+## Resume Notes
+
+- `ideas/open/04_std_vector_bringup_plan.md` is parked and points to this audit
+  as the preferred next dependency.
+- Keep this runbook narrow; adjacent builtin-trait and SFINAE work already have
+  separate open ideas.
+- `src/frontend/parser/BOUNDARY_AUDIT.md` is the durable Step 1 / Step 2
+  inventory; `plan_todo.md` should only track the current tightening slice.
