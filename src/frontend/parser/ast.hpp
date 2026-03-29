@@ -208,6 +208,7 @@ enum NodeKind {
     NK_LABEL,           // name: body
     NK_ASM,             // asm("...":...): left=template, children=clobber strings
     NK_EMPTY,           // ; (empty statement)
+    NK_STATIC_ASSERT,   // static_assert/_Static_assert: left=condition, right=message
 
     // Declarations
     NK_DECL,            // local variable / parameter declaration

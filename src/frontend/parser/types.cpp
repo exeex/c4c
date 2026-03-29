@@ -4370,14 +4370,15 @@ bool Parser::try_skip_record_friend_member() {
     return true;
 }
 
-bool Parser::try_skip_record_static_assert_member() {
+bool Parser::try_skip_record_static_assert_member(std::vector<Node*>* methods) {
     if (!check(TokenKind::KwStaticAssert))
         return false;
 
-    consume();
-    if (check(TokenKind::LParen))
-        skip_paren_group();
-    match(TokenKind::Semi);
+    if (methods) {
+        methods->push_back(parse_static_assert_declaration());
+    } else {
+        (void)parse_static_assert_declaration();
+    }
     return true;
 }
 
@@ -5576,7 +5577,7 @@ bool Parser::try_parse_record_member_with_template_prelude(
                                          &tmpl_guard.pushed_scope);
     parse_optional_cpp20_requires_clause(*this);
     if (try_skip_record_friend_member()) return true;
-    if (try_skip_record_static_assert_member()) return true;
+    if (try_skip_record_static_assert_member(methods)) return true;
     return try_parse_record_member_dispatch(struct_source_name, fields, methods,
                                             member_typedef_names,
                                             member_typedef_types,
@@ -5588,10 +5589,10 @@ bool Parser::prepare_record_member_entry() {
     return !check(TokenKind::RBrace);
 }
 
-bool Parser::try_parse_record_member_prelude() {
+bool Parser::try_parse_record_member_prelude(std::vector<Node*>* methods) {
     if (try_parse_record_access_label()) return true;
     if (try_skip_record_friend_member()) return true;
-    return try_skip_record_static_assert_member();
+    return try_skip_record_static_assert_member(methods);
 }
 
 bool Parser::try_parse_record_member(
@@ -5602,7 +5603,7 @@ bool Parser::try_parse_record_member(
     std::vector<TypeSpec>* member_typedef_types,
     const std::function<void(const char*)>& check_dup_field) {
     if (!prepare_record_member_entry()) return false;
-    if (try_parse_record_member_prelude()) return true;
+    if (try_parse_record_member_prelude(methods)) return true;
     return try_parse_record_member_with_template_prelude(
         struct_source_name, fields, methods, member_typedef_names,
         member_typedef_types, check_dup_field);

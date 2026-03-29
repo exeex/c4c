@@ -1311,6 +1311,7 @@ const char* node_kind_name(NodeKind k) {
         case NK_LABEL:        return "Label";
         case NK_ASM:          return "Asm";
         case NK_EMPTY:        return "Empty";
+        case NK_STATIC_ASSERT:return "StaticAssert";
         case NK_DECL:         return "Decl";
         case NK_FUNCTION:     return "Function";
         case NK_GLOBAL_VAR:   return "GlobalVar";

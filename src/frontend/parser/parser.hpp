@@ -526,7 +526,7 @@ class Parser {
       std::vector<TypeSpec>* member_typedef_types,
       const std::function<void(const char*)>& check_dup_field);
   bool prepare_record_member_entry();
-  bool try_parse_record_member_prelude();
+  bool try_parse_record_member_prelude(std::vector<Node*>* methods);
   bool try_parse_record_member(
       const std::string& struct_source_name,
       std::vector<Node*>* fields,
@@ -540,7 +540,7 @@ class Parser {
       const std::function<void(const char*)>& check_dup_field);
   bool try_parse_record_access_label();
   bool try_skip_record_friend_member();
-  bool try_skip_record_static_assert_member();
+  bool try_skip_record_static_assert_member(std::vector<Node*>* methods);
   bool recover_record_member_parse_error(int member_start_pos);
   void parse_record_template_member_prelude(
       std::vector<std::string>* injected_type_params,
@@ -633,6 +633,7 @@ class Parser {
   // ── statement parsing ─────────────────────────────────────────────────────
   Node* parse_stmt();
   Node* parse_block();           // { ... }
+  Node* parse_static_assert_declaration();
 
   // ── initializer parsing ──────────────────────────────────────────────────
   Node* parse_initializer();     // expr or { list }

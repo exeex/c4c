@@ -33,6 +33,20 @@ Last Updated: 2026-03-29
     `static_assert` as a declaration boundary after a top-level requires-clause
   - retired obsolete parser-debug negative cases that now conflict with newer
     positive parser support for attributed params / constrained member parsing
+- converted `static_assert` from parser-only swallowing into a real AST node
+  (`NK_STATIC_ASSERT`) shared by top-level, statement, and record-member paths
+- taught sema to evaluate non-dependent `static_assert` conditions centrally and
+  report false / non-constant conditions there instead of in scattered parser
+  branches
+- taught HIR lowering to treat `NK_STATIC_ASSERT` as a no-op statement after
+  sema validation
+- added targeted C++ coverage:
+  - positive: `tests/cpp/internal/postive_case/static_assert_runtime.cpp`
+  - negative: `tests/cpp/internal/negative_case/static_assert_record_member_false.cpp`
+- targeted ctest rerun passed for:
+  - `cpp_negative_tests_cpp20_requires_clause_preserves_following_decl`
+  - `cpp_negative_tests_static_assert_record_member_false`
+  - `cpp_positive_sema_static_assert_runtime_cpp`
 
 ## Next Slice
 
@@ -41,6 +55,9 @@ Last Updated: 2026-03-29
   member/operator parsing or an `if constexpr` / requires-body mismatch
 - only revisit `functional_hash.h` / `stl_bvector.h` if they remain after the
   new earlier blocker is fixed
+- future static_assert follow-up if needed:
+  template-dependent checks inside deferred template bodies are still not fully
+  routed through compile-time instantiation / engine-owned evaluation
 
 ## Notes
 
@@ -51,6 +68,10 @@ Last Updated: 2026-03-29
 - the concept fix improved the active `<vector>` path but did not finish the
   bring-up; remaining failures are now later and more localized
 - targeted negative-test rerun now passes for the surviving enforced case
+- current `static_assert` behavior is now centralized for non-dependent cases,
+  but dependent template-body enforcement is still a later semantic slice
+- sema still needed a follow-up for `static_assert(consteval_call(...))`; add
+  targeted positive/negative coverage once the consteval path is wired in
 
 ## Blockers
 

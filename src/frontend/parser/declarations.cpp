@@ -204,6 +204,10 @@ bool try_skip_cpp_concept_declaration(Parser& parser) {
     return true;
 }
 
+bool template_owner_can_defer_static_assert(const Node* owner) {
+    return owner && owner->n_template_params > 0;
+}
+
 bool skip_cpp20_constraint_atom(Parser& parser) {
     if (parser.at_end()) return false;
 
@@ -667,6 +671,23 @@ void Parser::parse_top_level_parameter_list(
         }
     }
     expect(TokenKind::RParen);
+}
+
+Node* Parser::parse_static_assert_declaration() {
+    const int ln = cur().line;
+    consume();  // static_assert / _Static_assert
+    expect(TokenKind::LParen);
+    Node* cond = parse_assign_expr();
+    Node* msg = nullptr;
+    if (match(TokenKind::Comma)) {
+        msg = parse_assign_expr();
+    }
+    expect(TokenKind::RParen);
+    match(TokenKind::Semi);
+    Node* sa = make_node(NK_STATIC_ASSERT, ln);
+    sa->left = cond;
+    sa->right = msg;
+    return sa;
 }
 
 Node* Parser::parse_top_level() {
@@ -1310,21 +1331,7 @@ Node* Parser::parse_top_level() {
 
     // _Static_assert
     if (check(TokenKind::KwStaticAssert)) {
-        consume();
-        expect(TokenKind::LParen);
-        Node* cond = parse_assign_expr();
-        long long cv = 0;
-        if (!eval_const_int(cond, &cv, &struct_tag_def_map_))
-            throw std::runtime_error("_Static_assert requires an integer constant expression");
-        if (cv == 0)
-            throw std::runtime_error("_Static_assert condition is false");
-        if (match(TokenKind::Comma)) {
-            // message argument (typically string literal)
-            parse_assign_expr();
-        }
-        expect(TokenKind::RParen);
-        match(TokenKind::Semi);
-        return make_node(NK_EMPTY, ln);
+        return parse_static_assert_declaration();
     }
 
     bool is_static   = false;

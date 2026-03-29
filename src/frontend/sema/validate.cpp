@@ -41,6 +41,10 @@ struct ExprInfo {
   bool is_fn_name = false;
 };
 
+bool template_owner_can_defer_static_assert(const Node* owner) {
+  return owner && owner->n_template_params > 0;
+}
+
 TypeSpec make_int_ts() {
   TypeSpec ts{};
   ts.base = TB_INT;
@@ -386,6 +390,7 @@ class Validator {
   std::vector<ConstMap> enum_const_vals_scopes_;  // block/function-scoped enum constants
   std::vector<ConstMap> local_const_vals_scopes_;  // block-scoped const/constexpr local values
   std::unordered_map<std::string, FunctionSig> funcs_;
+  std::unordered_map<std::string, const Node*> consteval_funcs_;
   // Ref-overloaded function signatures: name → multiple overloads differing in ref-qualifier.
   std::unordered_map<std::string, std::vector<FunctionSig>> ref_overload_sigs_;
   std::unordered_set<std::string> complete_structs_;
@@ -583,6 +588,7 @@ class Validator {
       }
     } else if (n->kind == NK_FUNCTION) {
       if (!n->name || !n->name[0]) return;
+      if (n->is_consteval && n->body) consteval_funcs_[n->name] = n;
       if (qualified_method_owner_struct(n).has_value()) return;
       FunctionSig sig;
       sig.ret = n->type;
@@ -639,11 +645,65 @@ class Validator {
       validate_function(n);
     } else if (n->kind == NK_GLOBAL_VAR) {
       validate_global(n);
+    } else if (n->kind == NK_STATIC_ASSERT) {
+      validate_static_assert(n, nullptr);
     } else if (n->kind == NK_STRUCT_DEF) {
       note_struct_def(n);
+      for (int i = 0; i < n->n_children; ++i) {
+        const Node* child = n->children[i];
+        if (child && child->kind == NK_STATIC_ASSERT) {
+          validate_static_assert(child, n);
+        }
+      }
     } else if (n->kind == NK_ENUM_DEF) {
       bind_enum_constants_global(n);
     }
+  }
+
+  void validate_static_assert(const Node* n, const Node* template_owner) {
+    if (!n || n->kind != NK_STATIC_ASSERT || !n->left) return;
+
+    ConstEvalEnv env;
+    env.enum_consts = &enum_const_vals_global_;
+    env.enum_scopes = &enum_const_vals_scopes_;
+    env.local_const_scopes = &local_const_vals_scopes_;
+
+    if (auto r = evaluate_constant_expr(n->left, env); r.ok()) {
+      if (r.as_int() == 0) emit(n->line, "_Static_assert condition is false");
+      return;
+    }
+
+    if (n->left->kind == NK_CALL && n->left->left &&
+        n->left->left->kind == NK_VAR && n->left->left->name) {
+      auto it = consteval_funcs_.find(n->left->left->name);
+      if (it != consteval_funcs_.end()) {
+        std::vector<hir::ConstValue> args;
+        bool args_ok = true;
+        for (int i = 0; i < n->left->n_children; ++i) {
+          auto arg = evaluate_constant_expr(n->left->children[i], env);
+          if (!arg.ok()) {
+            args_ok = false;
+            break;
+          }
+          args.push_back(*arg.value);
+        }
+        if (args_ok) {
+          auto r = hir::evaluate_consteval_call(it->second, args, env, consteval_funcs_);
+          if (r.ok()) {
+            if (r.as_int() == 0) emit(n->line, "_Static_assert condition is false");
+            return;
+          }
+        }
+      }
+    }
+
+    if (template_owner_can_defer_static_assert(template_owner) ||
+        template_owner_can_defer_static_assert(current_fn_node_) ||
+        (n->n_template_params > 0)) {
+      return;
+    }
+
+    emit(n->line, "_Static_assert requires an integer constant expression");
   }
 
   void validate_global(const Node* n) {
@@ -782,6 +842,7 @@ class Validator {
     current_method_struct_tag_ = old_method_struct;
   }
 
+
   void validate_decl_init(const Node* decl) {
     if (!decl) return;
     if (!is_complete_object_type(decl->type)) {
@@ -847,6 +908,10 @@ class Validator {
             local_const_vals_scopes_.back()[n->name] = r.as_int();
           }
         }
+        return;
+      }
+      case NK_STATIC_ASSERT: {
+        validate_static_assert(n, nullptr);
         return;
       }
       case NK_EXPR_STMT: {

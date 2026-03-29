@@ -129,25 +129,7 @@ Node* Parser::parse_stmt() {
         }
 
         case TokenKind::KwStaticAssert: {
-            consume();
-            expect(TokenKind::LParen);
-            Node* cond = parse_assign_expr();
-            long long cv = 0;
-            bool could_eval = eval_const_int(cond, &cv, &struct_tag_def_map_);
-            if (!could_eval) {
-                // In C++ template context, dependent expressions can't be evaluated
-                // at parse time — silently skip.
-                if (!is_cpp_mode())
-                    throw std::runtime_error("_Static_assert requires an integer constant expression");
-            } else if (cv == 0) {
-                throw std::runtime_error("_Static_assert condition is false");
-            }
-            if (match(TokenKind::Comma)) {
-                parse_assign_expr();  // message argument
-            }
-            expect(TokenKind::RParen);
-            match(TokenKind::Semi);
-            return make_node(NK_EMPTY, ln);
+            return parse_static_assert_declaration();
         }
 
         case TokenKind::LBrace:

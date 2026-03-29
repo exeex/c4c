@@ -7860,6 +7860,10 @@ class Lowerer {
         append_stmt(ctx, Stmt{StmtPayload{ExprStmt{}}, make_span(n)});
         return;
       }
+      case NK_STATIC_ASSERT: {
+        append_stmt(ctx, Stmt{StmtPayload{ExprStmt{}}, make_span(n)});
+        return;
+      }
       case NK_ENUM_DEF: {
         collect_enum_def(n);
         return;
