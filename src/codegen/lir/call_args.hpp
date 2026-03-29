@@ -29,6 +29,11 @@ struct LirTypedCallArgView {
   std::string_view operand;
 };
 
+struct OwnedLirTypedCallArg {
+  std::string type;
+  std::string operand;
+};
+
 struct ParsedLirTypedCallView {
   std::vector<std::string_view> param_types;
   std::vector<LirTypedCallArgView> args;
@@ -224,6 +229,42 @@ inline std::optional<std::vector<std::string_view>> parse_lir_call_param_types(
     return std::nullopt;
   }
   return param_types;
+}
+
+inline std::string format_lir_typed_call_arg(std::string_view type,
+                                             std::string_view operand) {
+  std::string formatted(trim_lir_arg_text(type));
+  const auto trimmed_operand = trim_lir_arg_text(operand);
+  if (!formatted.empty() && !trimmed_operand.empty()) {
+    formatted.push_back(' ');
+  }
+  formatted.append(trimmed_operand);
+  return formatted;
+}
+
+inline std::string format_lir_typed_call_args(
+    const std::vector<OwnedLirTypedCallArg>& args) {
+  std::string formatted;
+  for (std::size_t index = 0; index < args.size(); ++index) {
+    if (index != 0) {
+      formatted += ", ";
+    }
+    formatted += format_lir_typed_call_arg(args[index].type, args[index].operand);
+  }
+  return formatted;
+}
+
+inline std::string format_lir_call_param_types(
+    const std::vector<std::string>& param_types) {
+  std::string formatted("(");
+  for (std::size_t index = 0; index < param_types.size(); ++index) {
+    if (index != 0) {
+      formatted += ", ";
+    }
+    formatted += trim_lir_arg_text(param_types[index]);
+  }
+  formatted.push_back(')');
+  return formatted;
 }
 
 inline std::optional<ParsedLirTypedCallView> parse_lir_typed_call(

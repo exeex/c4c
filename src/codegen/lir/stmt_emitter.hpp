@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../shared/llvm_helpers.hpp"
+#include "call_args.hpp"
 #include "ir.hpp"
 #include "../shared/fn_lowering_ctx.hpp"
 
@@ -92,7 +93,7 @@ struct CallTargetInfo {
 };
 
 struct PreparedCallArg {
-  std::vector<std::string> texts;
+  std::vector<OwnedLirTypedCallArg> args;
   bool skip = false;
 };
 
@@ -288,8 +289,8 @@ class StmtEmitter {
   PreparedCallArg prepare_amd64_variadic_aggregate_arg(
       FnCtx& ctx, const TypeSpec& arg_ts, const std::string& obj_ptr,
       int payload_sz, Amd64CallArgState* amd64_state);
-  std::string prepare_call_args(FnCtx& ctx, const CallExpr& call,
-                                const CallTargetInfo& call_target);
+  std::vector<OwnedLirTypedCallArg> prepare_call_args(FnCtx& ctx, const CallExpr& call,
+                                                      const CallTargetInfo& call_target);
   void emit_void_call(FnCtx& ctx, const CallTargetInfo& call_target,
                       const std::string& args_str);
   std::string emit_call_with_result(FnCtx& ctx, const CallTargetInfo& call_target,

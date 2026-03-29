@@ -8,12 +8,11 @@ Source Plan: plan.md
 
 - Step 4: Migrate high-friction instruction families and consumers.
 - Exact target for the next iteration: continue Step 4 past
-  the landed slot-assignment call-argument rewrite helper into the remaining
-  LIR construction sites that still synthesize
-  `LirCallOp::{args_str,callee_type_suffix}` as opaque text, with the
-  highest-value next slice being `src/codegen/lir/stmt_emitter.cpp` call
-  construction paths that can start emitting shared structured call metadata
-  instead of only printer-shaped strings.
+  the landed stmt-emitter shared typed-call formatting slice into the remaining
+  backend call-adjacent consumers and construction paths that still rely on raw
+  `LirCallOp` compatibility storage, with the highest-value next slice being
+  indirect and intrinsic call-family surfaces that still branch on legacy text
+  instead of shared structured call metadata.
 
 ## Completed Items
 
@@ -118,6 +117,14 @@ Source Plan: plan.md
   canonical retained alloca name, and adding regression coverage in
   `tests/backend/backend_lir_adapter_tests.cpp` for typed call-argument
   rewriting during slot-assignment application.
+- Completed the next Step 4 stmt-emitter shared typed-call formatting slice by
+  adding owned typed-call formatting helpers to
+  `src/codegen/lir/call_args.hpp`, routing
+  `src/codegen/lir/stmt_emitter.cpp` call-argument preparation through shared
+  structured `(type, operand)` records instead of ad hoc string concatenation,
+  and adding round-trip regression coverage in
+  `tests/backend/backend_lir_adapter_tests.cpp` that proves formatted typed
+  call metadata still parses through the shared structured call decoder.
 
 ## Notes
 
@@ -201,6 +208,11 @@ Source Plan: plan.md
   while swapping canonical operand names, so compatibility-path consumers do
   not need to hand-roll `args_str` editing when they still operate on legacy
   `LirCallOp` text storage.
+- `src/codegen/lir/call_args.hpp` now also exposes owned typed-call formatting
+  helpers, and `src/codegen/lir/stmt_emitter.cpp` uses those shared `(type,
+  operand)` records before serializing `LirCallOp::args_str`, which shrinks the
+  remaining number of call construction sites that only ever see printer-shaped
+  text during emission.
 - The analysis/liveness stack still uses compatibility-text scanning for GEP
   indices and other non-call textual payloads, but `LirCallOp::args_str` no
   longer has three separate ad hoc scanners with subtly different behavior.
@@ -243,7 +255,7 @@ Source Plan: plan.md
   call-adjacent consumers that still rely on raw `LirCallOp` storage
   compatibility instead of structured call metadata, with indirect/intrinsic
   call-family surfaces still the highest-value targets now that direct-call
-  callee classification is shared.
+  callee classification and stmt-emitter typed-call formatting are shared.
 - Keep GEP index text, inline asm text, and declaration text on the
   compatibility path for now; the next slice should focus on shrinking the
   remaining call-adjacent protocol surface before attempting broader
@@ -261,6 +273,15 @@ Source Plan: plan.md
   --before test_fail_before.log --after test_fail_after.log
   --allow-non-decreasing-passed` passed with zero new failures and zero new
   suspicious slow tests.
+- `cmake --build build -j8`
+- `ctest --test-dir build -R backend_lir_adapter_tests --output-on-failure`
+  passed.
+- `ctest --test-dir build -j8 --output-on-failure > test_after.log`
+  recorded `2372/2560` passing and `188` failing tests.
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_before.log --after test_after.log`
+  reported PASS with one resolved failure
+  (`c_testsuite_x86_backend_src_00100_c`) and no newly failing tests.
 - `cmake --build build -j8 --target backend_lir_adapter_tests` passed after the
   wrapper layer grew enough string-compatibility operators to keep existing
   backend consumers compiling unchanged.

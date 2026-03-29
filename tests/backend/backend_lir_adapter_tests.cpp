@@ -212,6 +212,29 @@ void test_lir_call_arg_helpers_classify_call_callee_shape() {
               "direct-global helper should reject llvm intrinsics");
 }
 
+void test_lir_call_arg_helpers_format_typed_call_round_trip() {
+  using namespace c4c::codegen::lir;
+
+  const std::vector<OwnedLirTypedCallArg> args{
+      {"ptr byval({ i32, i32 }) align 8", "%agg"},
+      {"i32", "%t0"},
+  };
+  const std::vector<std::string> param_types{
+      "ptr byval({ i32, i32 }) align 8",
+      "i32",
+  };
+
+  const std::string formatted_args = format_lir_typed_call_args(args);
+  const std::string formatted_params = format_lir_call_param_types(param_types);
+  const auto parsed = parse_lir_typed_call(formatted_params, formatted_args);
+
+  expect_true(parsed.has_value(),
+              "shared typed-call formatting should round-trip through the structured parser");
+  expect_true(parsed->args.size() == 2 && parsed->args[0].operand == "%agg" &&
+                  parsed->args[1].operand == "%t0",
+              "shared typed-call formatting should preserve the original operands");
+}
+
 void test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings() {
   using namespace c4c::codegen::lir;
 
@@ -8080,6 +8103,7 @@ int main() {
   test_lir_call_arg_helpers_decode_single_typed_operand();
   test_lir_call_arg_helpers_decode_two_typed_operands();
   test_lir_call_arg_helpers_classify_call_callee_shape();
+  test_lir_call_arg_helpers_format_typed_call_round_trip();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
   test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();
   test_lir_printer_renders_verified_typed_ops();

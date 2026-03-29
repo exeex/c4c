@@ -3326,13 +3326,14 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
                                        std::to_string(hfa->aggregate_size), false});
           const std::string packed = fresh_tmp(ctx);
           emit_lir_op(ctx, lir::LirLoadOp{packed, coerced_ty, tmp_addr});
-          return {{coerced_ty + " alignstack(" +
-                      std::to_string(std::max(8, hfa->aggregate_align)) + ") " + packed},
+          return {{{coerced_ty + " alignstack(" +
+                        std::to_string(std::max(8, hfa->aggregate_align)) + ")",
+                    packed}},
                   false};
         }
       }
       if (payload_sz > 16) {
-        return {{std::string("ptr ") + obj_ptr}, false};
+        return {{{"ptr", obj_ptr}}, false};
       }
       if (payload_sz <= 8) {
         const std::string tmp_addr = fresh_tmp(ctx);
@@ -3341,7 +3342,7 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
         emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, obj_ptr, std::to_string(payload_sz), false});
         const std::string packed = fresh_tmp(ctx);
         emit_lir_op(ctx, lir::LirLoadOp{packed, std::string("i64"), tmp_addr});
-        return {{std::string("i64 ") + packed}, false};
+        return {{{"i64", packed}}, false};
       }
 
       const std::string tmp_addr = fresh_tmp(ctx);
@@ -3350,7 +3351,7 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
       emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, obj_ptr, std::to_string(payload_sz), false});
       const std::string packed = fresh_tmp(ctx);
       emit_lir_op(ctx, lir::LirLoadOp{packed, std::string("[2 x i64]"), tmp_addr});
-      return {{std::string("[2 x i64] ") + packed}, false};
+      return {{{"[2 x i64]", packed}}, false};
     }
 
     if (is_fixed_byval_aggregate) {
@@ -3365,12 +3366,14 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
         obj_ptr = tmp_addr;
       }
       const int align = std::max(8, object_align_bytes(mod_, out_arg_ts));
-      PreparedCallArg out{{"ptr byval(" + llvm_ty(out_arg_ts) + ") align " +
-                           std::to_string(align) + " " + obj_ptr}, false};
+      PreparedCallArg out{{{"ptr byval(" + llvm_ty(out_arg_ts) + ") align " +
+                                std::to_string(align),
+                            obj_ptr}},
+                          false};
       return out;
     }
 
-    PreparedCallArg out_arg{{llvm_ty(out_arg_ts) + " " + arg}, false};
+    PreparedCallArg out_arg{{{llvm_ty(out_arg_ts), arg}}, false};
     if (amd64_state && !out_arg.skip) {
       amd64_account_type_if_needed(mod_, out_arg_ts, amd64_state);
     }
@@ -3393,9 +3396,10 @@ PreparedCallArg StmtEmitter::prepare_amd64_variadic_aggregate_arg(
     }
     if (force_memory) {
       const int align = std::max(8, object_align_bytes(mod_, arg_ts));
-      std::string arg = "ptr ";
-      arg += "byval(" + llvm_ty(arg_ts) + ") align " + std::to_string(align) + " " + obj_ptr;
-      out.texts.push_back(std::move(arg));
+      out.args.push_back(
+          OwnedLirTypedCallArg{"ptr byval(" + llvm_ty(arg_ts) + ") align " +
+                                   std::to_string(align),
+                               obj_ptr});
       return out;
     }
 
@@ -3439,7 +3443,7 @@ PreparedCallArg StmtEmitter::prepare_amd64_variadic_aggregate_arg(
       }
       if (cls == llvm_cc::Amd64ArgClass::Integer) {
         const std::string loaded = copy_chunk("i64", "0", chunk_ptr, chunk_size);
-        out.texts.push_back(std::string("i64 ") + loaded);
+        out.args.push_back({"i64", loaded});
         continue;
       }
       if (cls == llvm_cc::Amd64ArgClass::SSE) {
@@ -3451,23 +3455,23 @@ PreparedCallArg StmtEmitter::prepare_amd64_variadic_aggregate_arg(
           const int combined_size = std::min(16, payload_sz - chunk_offset);
           const std::string loaded =
               copy_chunk("<2 x i64>", "zeroinitializer", chunk_ptr, combined_size);
-          out.texts.push_back(std::string("<2 x i64> ") + loaded);
+          out.args.push_back({"<2 x i64>", loaded});
           ++chunk;
           continue;
         }
         const std::string loaded =
             copy_chunk("double", "0.0", chunk_ptr, chunk_size);
-        out.texts.push_back(std::string("double ") + loaded);
+        out.args.push_back({"double", loaded});
         continue;
       }
       if (cls == llvm_cc::Amd64ArgClass::SSEUp) {
         const std::string loaded =
             copy_chunk("double", "0.0", chunk_ptr, chunk_size);
-        out.texts.push_back(std::string("double ") + loaded);
+        out.args.push_back({"double", loaded});
         continue;
       }
-      out.texts.clear();
-      out.texts.push_back(std::string("ptr ") + obj_ptr);
+      out.args.clear();
+      out.args.push_back({"ptr", obj_ptr});
       return out;
     }
     if (amd64_state) {
@@ -3476,9 +3480,9 @@ PreparedCallArg StmtEmitter::prepare_amd64_variadic_aggregate_arg(
     return out;
   }
 
-std::string StmtEmitter::prepare_call_args(FnCtx& ctx, const CallExpr& call,
-                                           const CallTargetInfo& call_target) {
-    std::string args_str;
+std::vector<OwnedLirTypedCallArg> StmtEmitter::prepare_call_args(
+    FnCtx& ctx, const CallExpr& call, const CallTargetInfo& call_target) {
+    std::vector<OwnedLirTypedCallArg> args;
     Amd64CallArgState amd64_state;
     amd64_state.sse_bytes = kAmd64GpAreaBytes;
     Amd64CallArgState* amd64_state_ptr = nullptr;
@@ -3489,13 +3493,12 @@ std::string StmtEmitter::prepare_call_args(FnCtx& ctx, const CallExpr& call,
       PreparedCallArg prepared =
           prepare_call_arg(ctx, call, call_target, i, amd64_state_ptr);
       if (prepared.skip) continue;
-      for (const std::string& part : prepared.texts) {
-        if (part.empty()) continue;
-        if (!args_str.empty()) args_str += ", ";
-        args_str += part;
+      for (const OwnedLirTypedCallArg& arg : prepared.args) {
+        if (arg.type.empty() || arg.operand.empty()) continue;
+        args.push_back(arg);
       }
     }
-    return args_str;
+    return args;
   }
 
 void StmtEmitter::emit_void_call(FnCtx& ctx, const CallTargetInfo& call_target,
@@ -3843,7 +3846,8 @@ std::string StmtEmitter::emit_post_builtin_call(FnCtx& ctx, const CallExpr& call
       return tmp;
     }
 
-    const std::string args_str = prepare_call_args(ctx, call, call_target);
+    const auto args = prepare_call_args(ctx, call, call_target);
+    const std::string args_str = format_lir_typed_call_args(args);
     if (call_target.ret_ty == "void") {
       emit_void_call(ctx, call_target, args_str);
       return "";
