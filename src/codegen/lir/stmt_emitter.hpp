@@ -96,6 +96,11 @@ struct PreparedCallArg {
   bool skip = false;
 };
 
+struct Amd64CallArgState {
+  int gp_bytes = 0;
+  int sse_bytes = 0;
+};
+
 struct PreparedBuiltinIntArg {
   std::string value;
   std::string llvm_ty;
@@ -278,10 +283,11 @@ class StmtEmitter {
   void apply_default_arg_promotion(FnCtx& ctx, std::string& arg, TypeSpec& out_ts,
                                    const TypeSpec& in_ts);
   PreparedCallArg prepare_call_arg(FnCtx& ctx, const CallExpr& call,
-                                   const CallTargetInfo& call_target, size_t arg_index);
+                                   const CallTargetInfo& call_target, size_t arg_index,
+                                   Amd64CallArgState* amd64_state);
   PreparedCallArg prepare_amd64_variadic_aggregate_arg(
       FnCtx& ctx, const TypeSpec& arg_ts, const std::string& obj_ptr,
-      int payload_sz);
+      int payload_sz, Amd64CallArgState* amd64_state);
   std::string prepare_call_args(FnCtx& ctx, const CallExpr& call,
                                 const CallTargetInfo& call_target);
   void emit_void_call(FnCtx& ctx, const CallTargetInfo& call_target,

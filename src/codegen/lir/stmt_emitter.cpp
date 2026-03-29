@@ -11,6 +11,33 @@ namespace {
 constexpr int kAmd64GpAreaBytes = 48;
 constexpr int kAmd64FpAreaBytes = 176;
 
+bool amd64_registers_available(const llvm_cc::Amd64VarargInfo& layout,
+                               const Amd64CallArgState& state) {
+  if (layout.gp_chunks > 0) {
+    const int remaining_gp = kAmd64GpAreaBytes - state.gp_bytes;
+    if (remaining_gp < layout.gp_chunks * 8) return false;
+  }
+  if (layout.sse_slots > 0) {
+    const int remaining_sse = kAmd64FpAreaBytes - state.sse_bytes;
+    if (remaining_sse < layout.sse_slots * 16) return false;
+  }
+  return true;
+}
+
+void amd64_track_usage(const llvm_cc::Amd64VarargInfo& layout,
+                       Amd64CallArgState& state) {
+  state.gp_bytes += layout.gp_chunks * 8;
+  state.sse_bytes += layout.sse_slots * 16;
+}
+
+void amd64_account_type_if_needed(const hir::Module& mod, const TypeSpec& ts,
+                                  Amd64CallArgState* state) {
+  if (!state) return;
+  const auto layout = llvm_cc::classify_amd64_vararg(ts, mod);
+  if (layout.size_bytes <= 0 || layout.needs_memory) return;
+  amd64_track_usage(layout, *state);
+}
+
 template <typename TerminatorT>
 bool set_terminator_if_open(FnCtx& ctx, TerminatorT&& terminator) {
   if (!std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) {
@@ -3002,7 +3029,8 @@ void StmtEmitter::apply_default_arg_promotion(FnCtx& ctx, std::string& arg,
 
 PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
                                               const CallTargetInfo& call_target,
-                                              size_t arg_index) {
+                                              size_t arg_index,
+                                              Amd64CallArgState* amd64_state) {
     const Function* target_fn = call_target.target_fn;
     const FnPtrSig* callee_fn_ptr_sig = call_target.callee_fn_ptr_sig;
     const TypeSpec* fixed_param_ts = nullptr;
@@ -3104,7 +3132,8 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
       }
 
       if (llvm_target_is_amd64_sysv(mod_.target_triple)) {
-        return prepare_amd64_variadic_aggregate_arg(ctx, arg_ts, obj_ptr, payload_sz);
+        return prepare_amd64_variadic_aggregate_arg(ctx, arg_ts, obj_ptr,
+                                                    payload_sz, amd64_state);
       }
 
       if (payload_sz > 16) {
@@ -3129,19 +3158,28 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
       return {{std::string("[2 x i64] ") + packed}, false};
     }
 
-    return {{llvm_ty(out_arg_ts) + " " + arg}, false};
+    PreparedCallArg out_arg{{llvm_ty(out_arg_ts) + " " + arg}, false};
+    if (amd64_state && !out_arg.skip) {
+      amd64_account_type_if_needed(mod_, out_arg_ts, amd64_state);
+    }
+    return out_arg;
   }
 
 PreparedCallArg StmtEmitter::prepare_amd64_variadic_aggregate_arg(
     FnCtx& ctx, const TypeSpec& arg_ts, const std::string& obj_ptr,
-    int payload_sz) {
+    int payload_sz, Amd64CallArgState* amd64_state) {
     PreparedCallArg out;
     const auto layout = llvm_cc::classify_amd64_vararg(arg_ts, mod_);
     if (layout.size_bytes <= 0) {
       out.skip = true;
       return out;
     }
-    if (layout.needs_memory || layout.size_bytes > 16) {
+    bool force_memory = layout.needs_memory || layout.size_bytes > 16;
+    if (!force_memory && amd64_state &&
+        !amd64_registers_available(layout, *amd64_state)) {
+      force_memory = true;
+    }
+    if (force_memory) {
       const int align = std::max(1, object_align_bytes(mod_, arg_ts));
       std::string arg = "ptr ";
       arg += "byval(" + llvm_ty(arg_ts) + ") align " + std::to_string(align) + " " + obj_ptr;
@@ -3220,14 +3258,24 @@ PreparedCallArg StmtEmitter::prepare_amd64_variadic_aggregate_arg(
       out.texts.push_back(std::string("ptr ") + obj_ptr);
       return out;
     }
+    if (amd64_state) {
+      amd64_track_usage(layout, *amd64_state);
+    }
     return out;
   }
 
 std::string StmtEmitter::prepare_call_args(FnCtx& ctx, const CallExpr& call,
                                            const CallTargetInfo& call_target) {
     std::string args_str;
+    Amd64CallArgState amd64_state;
+    amd64_state.sse_bytes = kAmd64GpAreaBytes;
+    Amd64CallArgState* amd64_state_ptr = nullptr;
+    if (llvm_target_is_amd64_sysv(mod_.target_triple)) {
+      amd64_state_ptr = &amd64_state;
+    }
     for (size_t i = 0; i < call.args.size(); ++i) {
-      PreparedCallArg prepared = prepare_call_arg(ctx, call, call_target, i);
+      PreparedCallArg prepared =
+          prepare_call_arg(ctx, call, call_target, i, amd64_state_ptr);
       if (prepared.skip) continue;
       for (const std::string& part : prepared.texts) {
         if (part.empty()) continue;
