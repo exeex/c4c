@@ -6,11 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 4: extend the bounded x86 conditional-return scaffold to exactly one more adjacent signed predicate, `sge`, with a failing proof test first, while keeping the unrelated `struct-ret-1` clean-build IR failure recorded as a separate blocker rather than widening this plan
+- [ ] Step 4: decide whether the bounded x86 conditional-return scaffold should stop after the signed predicate quartet (`slt|sle|sgt|sge`) or whether to return to one more narrow direct-call regalloc-sensitive shape
 
 ## Planned Queue
 
-- [ ] Step 4: after `sge`, decide whether to stop the conditional-return scaffold or return to one more bounded direct-call regalloc-sensitive shape
 - [ ] Step 4: otherwise return to the direct-call scaffold for one more bounded call shape that still exercises shared regalloc state
 
 ## Completed
@@ -24,6 +23,7 @@ Source Plan: plan.md
 - [x] Step 4: rebuilt, reran `backend_lir_adapter_tests`, and recorded monotonic full-suite validation with `ctest --test-dir build -j --output-on-failure` plus the regression guard (`29 -> 28` failing tests, `2309 -> 2310` passed, `2338` total)
 - [x] Step 4: extended the x86 conditional-return scaffold to the adjacent signed less-or-equal (`sle`) predicate with a failing proof test first, then rebuilt, reran `./backend_lir_adapter_tests`, and recorded monotonic full-suite validation plus the regression guard (`29 -> 27` failing tests, `2309 -> 2311` passed, `2338` total)
 - [x] Step 4: extended the x86 conditional-return scaffold to the adjacent signed greater-than (`sgt`) predicate with a failing proof test first, then rebuilt and reran `./build/backend_lir_adapter_tests`
+- [x] Step 4: extended the x86 conditional-return scaffold to the adjacent signed greater-or-equal (`sge`) predicate with a failing proof test first, rebuilt `backend_lir_adapter_tests` plus `c4cll`, reran the bounded adapter/runtime proofs, and recorded monotonic full-suite validation plus the regression guard (`27 -> 26` failing tests, `2311 -> 2312` passed, `2338` total)
 
 ## Notes
 
@@ -36,7 +36,9 @@ Source Plan: plan.md
 - The x86 compare-and-branch scaffold now covers the minimal signed-less-than and signed-less-or-equal conditional-return shapes (`icmp slt|sle` + `zext` + `icmp ne 0` + two direct return blocks). Other predicates remain separate follow-on work.
 - The x86 compare-and-branch scaffold now covers the minimal signed-less-than, signed-less-or-equal, and signed-greater-than shapes (`icmp slt|sle|sgt` + `zext` + `icmp ne 0` + two direct return blocks). `sge` and non-signed predicates remain separate follow-on work.
 - Clean rebuild validation after the `sgt` slice kept the aggregate full-suite count flat at `27` failing and `2311` passing out of `2338`, fixed `backend_runtime_branch_if_gt`, and surfaced an unrelated new `llvm_gcc_c_torture_src_struct_ret_1_c` failure where `clang -x ir` rejects the emitted IR for a struct-return function-pointer call. Keep that as a separate blocker or follow-on idea, not as part of this x86 conditional-return plan.
+- The x86 compare-and-branch scaffold now covers the bounded signed predicate quartet (`icmp slt|sle|sgt|sge` + `zext` + `icmp ne 0` + two direct return blocks). `eq`, `ne`, and unsigned predicates remain separate follow-on work.
+- Clean rebuild validation after the `sge` slice improved the aggregate full-suite count from `27` failing / `2311` passing to `26` failing / `2312` passing out of `2338` by fixing `backend_runtime_branch_if_ge`. The separate `llvm_gcc_c_torture_src_struct_ret_1_c` inventory idea remains open and out of scope for this plan.
 
 ## Next Intended Slice
 
-After recording the unrelated `struct-ret-1` clean-build blocker, extend x86 conditional-return lowering to exactly one more adjacent signed predicate (`sge`) with a failing proof test first, or return to the direct-call scaffold for one more narrow call shape that still exercises shared regalloc-sensitive save/restore behavior.
+Decide whether the x86 conditional-return scaffold should stop after the bounded signed predicate quartet or whether the next narrow proof should return to the direct-call scaffold for one more shared-regalloc-sensitive save/restore shape.
