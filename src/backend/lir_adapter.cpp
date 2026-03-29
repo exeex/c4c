@@ -1,5 +1,6 @@
 #include "lir_adapter.hpp"
 
+#include <charconv>
 #include <cctype>
 #include <sstream>
 #include <stdexcept>
@@ -67,6 +68,17 @@ std::vector<std::string> split_top_level(const std::string& text, char delim) {
   }
   parts.push_back(trim(text.substr(start)));
   return parts;
+}
+
+std::optional<std::int64_t> parse_i64(std::string_view text) {
+  std::int64_t value = 0;
+  const char* begin = text.data();
+  const char* end = begin + text.size();
+  const auto result = std::from_chars(begin, end, value);
+  if (result.ec != std::errc() || result.ptr != end) {
+    return std::nullopt;
+  }
+  return value;
 }
 
 [[noreturn]] void fail_unsupported(const std::string& detail) {
@@ -485,6 +497,201 @@ std::optional<BackendFunction> adapt_local_pointer_temp_return_function(
   return out;
 }
 
+std::optional<BackendFunction> adapt_double_indirect_local_pointer_conditional_return_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const BackendFunctionSignature& signature) {
+  using namespace c4c::codegen::lir;
+
+  if (function.is_declaration || signature.linkage != "define" ||
+      signature.return_type != "i32" || signature.name != "main" ||
+      !signature.params.empty() || signature.is_vararg || function.blocks.empty() ||
+      function.alloca_insts.size() != 3 || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* scalar_alloca = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
+  const auto* ptr_alloca = std::get_if<LirAllocaOp>(&function.alloca_insts[1]);
+  const auto* ptrptr_alloca = std::get_if<LirAllocaOp>(&function.alloca_insts[2]);
+  if (scalar_alloca == nullptr || ptr_alloca == nullptr || ptrptr_alloca == nullptr ||
+      scalar_alloca->type_str != "i32" || ptr_alloca->type_str != "ptr" ||
+      ptrptr_alloca->type_str != "ptr" || scalar_alloca->result.empty() ||
+      ptr_alloca->result.empty() || ptrptr_alloca->result.empty()) {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string, const LirBlock*> blocks_by_label;
+  for (const auto& block : function.blocks) {
+    blocks_by_label.emplace(block.label, &block);
+  }
+
+  std::unordered_map<std::string, std::string> scalar_values;
+  std::unordered_map<std::string, std::string> pointer_values;
+  std::unordered_map<std::string, std::string> integer_values;
+  std::unordered_map<std::string, bool> predicate_values;
+
+  auto resolve_pointer_rvalue = [&](std::string_view value) -> std::optional<std::string> {
+    const std::string key(value);
+    if (key == scalar_alloca->result || key == ptr_alloca->result ||
+        key == ptrptr_alloca->result) {
+      return key;
+    }
+    const auto it = pointer_values.find(key);
+    if (it == pointer_values.end()) {
+      return std::nullopt;
+    }
+    return it->second;
+  };
+
+  auto read_pointer_cell = [&](std::string_view ptr) -> std::optional<std::string> {
+    const auto it = pointer_values.find(std::string(ptr));
+    if (it == pointer_values.end()) {
+      return std::nullopt;
+    }
+    return it->second;
+  };
+
+  auto resolve_scalar_target = [&](const auto& self,
+                                   std::string_view ptr) -> std::optional<std::string> {
+    const std::string key(ptr);
+    if (key == scalar_alloca->result) {
+      return key;
+    }
+    const auto pointee = read_pointer_cell(ptr);
+    if (!pointee.has_value()) {
+      return std::nullopt;
+    }
+    if (*pointee == scalar_alloca->result) {
+      return *pointee;
+    }
+    return self(self, *pointee);
+  };
+
+  auto resolve_integer_value = [&](std::string_view value) -> std::optional<std::string> {
+    if (parse_i64(value).has_value()) {
+      return std::string(value);
+    }
+    const auto it = integer_values.find(std::string(value));
+    if (it == integer_values.end()) {
+      return std::nullopt;
+    }
+    return it->second;
+  };
+
+  std::string current_label = function.blocks.front().label;
+  for (std::size_t steps = 0; steps < function.blocks.size() * 2; ++steps) {
+    const auto block_it = blocks_by_label.find(current_label);
+    if (block_it == blocks_by_label.end()) {
+      return std::nullopt;
+    }
+    const auto& block = *block_it->second;
+
+    for (const auto& inst : block.insts) {
+      if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
+        if (store->type_str == "i32") {
+          const auto target = resolve_scalar_target(resolve_scalar_target, store->ptr);
+          if (!target.has_value()) {
+            return std::nullopt;
+          }
+          scalar_values[*target] = store->val;
+          continue;
+        }
+
+        if (store->type_str == "ptr") {
+          const auto stored_pointer = resolve_pointer_rvalue(store->val);
+          if (!stored_pointer.has_value()) {
+            return std::nullopt;
+          }
+          pointer_values[store->ptr] = *stored_pointer;
+          continue;
+        }
+
+        return std::nullopt;
+      }
+
+      if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
+        if (load->type_str == "ptr") {
+          const auto pointee = read_pointer_cell(load->ptr);
+          if (!pointee.has_value()) {
+            return std::nullopt;
+          }
+          pointer_values[load->result] = *pointee;
+          continue;
+        }
+
+        if (load->type_str == "i32") {
+          const auto target = resolve_scalar_target(resolve_scalar_target, load->ptr);
+          if (!target.has_value()) {
+            return std::nullopt;
+          }
+          const auto value_it = scalar_values.find(*target);
+          if (value_it == scalar_values.end()) {
+            return std::nullopt;
+          }
+          integer_values[load->result] = value_it->second;
+          continue;
+        }
+
+        return std::nullopt;
+      }
+
+      if (const auto* cmp = std::get_if<LirCmpOp>(&inst)) {
+        if (cmp->is_float || cmp->predicate != "ne" || cmp->type_str != "i32") {
+          return std::nullopt;
+        }
+        const auto lhs = resolve_integer_value(cmp->lhs);
+        const auto rhs = resolve_integer_value(cmp->rhs);
+        if (!lhs.has_value() || !rhs.has_value()) {
+          return std::nullopt;
+        }
+        const auto lhs_imm = parse_i64(*lhs);
+        const auto rhs_imm = parse_i64(*rhs);
+        if (!lhs_imm.has_value() || !rhs_imm.has_value()) {
+          return std::nullopt;
+        }
+        predicate_values[cmp->result] = *lhs_imm != *rhs_imm;
+        continue;
+      }
+
+      return std::nullopt;
+    }
+
+    if (const auto* ret = std::get_if<LirRet>(&block.terminator)) {
+      if (!ret->value_str.has_value() || ret->type_str != "i32") {
+        return std::nullopt;
+      }
+      const auto resolved = resolve_integer_value(*ret->value_str);
+      if (!resolved.has_value()) {
+        return std::nullopt;
+      }
+
+      BackendFunction out;
+      out.signature = signature;
+      BackendBlock out_block;
+      out_block.label = "entry";
+      out_block.terminator = BackendReturn{*resolved, "i32"};
+      out.blocks.push_back(std::move(out_block));
+      return out;
+    }
+
+    if (const auto* br = std::get_if<LirBr>(&block.terminator)) {
+      current_label = br->target_label;
+      continue;
+    }
+
+    const auto* condbr = std::get_if<LirCondBr>(&block.terminator);
+    if (condbr == nullptr) {
+      return std::nullopt;
+    }
+    const auto pred_it = predicate_values.find(condbr->cond_name);
+    if (pred_it == predicate_values.end()) {
+      return std::nullopt;
+    }
+    current_label = pred_it->second ? condbr->true_label : condbr->false_label;
+  }
+
+  return std::nullopt;
+}
+
 std::optional<BackendFunction> adapt_local_single_arg_call_function(
     const c4c::codegen::lir::LirFunction& function,
     const BackendFunctionSignature& signature) {
@@ -803,6 +1010,11 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function) {
     return *normalized;
   }
   if (const auto normalized = adapt_local_pointer_temp_return_function(function, signature);
+      normalized.has_value()) {
+    return *normalized;
+  }
+  if (const auto normalized =
+          adapt_double_indirect_local_pointer_conditional_return_function(function, signature);
       normalized.has_value()) {
     return *normalized;
   }

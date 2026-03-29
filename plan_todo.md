@@ -6,8 +6,8 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: Classify the next bounded fallback family after closing the
-  single-block local pointer round-trip slice at `src/00004.c`.
+- Step 2: Classify the next bounded fallback family after closing the tracked
+  double-indirection local-pointer slice centered on `src/00005.c`.
 
 ## Completed Items
 
@@ -111,16 +111,49 @@ Source Plan: plan.md
   24 passed / 196 failed / 220 total with no newly introduced failure mode,
   and the broader `ctest --test-dir build -j8 --output-on-failure` post-change
   sweep completed with 2364 passed / 196 failed / 2560 total.
+- Step 2 family reclassified for the next slice: the first shippable
+  `src/00005.c` fix is the bounded double-indirection local-pointer family with
+  tracked local scalar state across an acyclic branch chain. Representative
+  seeds: `src/00005.c` (branching indirect probe plus indirect store),
+  `src/00020.c` (direct `return **pp;`), and `src/00103.c` (the same local
+  double-indirection round-trip through `void*`/`void**` casts).
+- Root-cause note for this slice:
+  `src/backend/lir_adapter.cpp` normalized only single-block local pointer
+  round-trips, but did not track a local scalar value through one local pointer
+  slot plus one local pointer-to-pointer slot across `load ptr`, indirect
+  `load i32`, indirect `store i32`, and acyclic `br`/`condbr` control flow, so
+  these functions fell back before the existing direct-return x86 emitter path
+  could fire.
+- Nearby families explicitly excluded from this slice:
+  `src/00006.c`, `src/00007.c`, and `src/00008.c` still require loop handling,
+  `src/00009.c` depends on multiply/divide/mod lowering rather than pointer
+  state tracking, and `src/00010.c` is a control-flow-only goto slice without
+  pointer locals.
+- Step 3 completed for the selected double-indirection local-pointer family by
+  adding backend adapter and x86 emitter unit coverage for the exact
+  `src/00005.c`-shaped CFG while keeping
+  `c_testsuite_x86_backend_src_00005_c` as the external seed case.
+- Step 4 completed by teaching `src/backend/lir_adapter.cpp` to interpret the
+  bounded three-local pointer/value state across acyclic `br`/`condbr`
+  structure and collapse it into a direct backend-owned return immediate.
+- Step 5 completed for this slice:
+  `./build/backend_lir_adapter_tests` passed, targeted
+  `ctest --test-dir build --output-on-failure -R '^(c_testsuite_x86_backend_src_00004_c|c_testsuite_x86_backend_src_00005_c|c_testsuite_x86_backend_src_00020_c|c_testsuite_x86_backend_src_00103_c)$'`
+  passed, `ctest --test-dir build -L x86_backend --output-on-failure`
+  improved from 24 passed / 196 failed / 220 total to
+  27 passed / 193 failed / 220 total with no newly introduced failure mode,
+  and the broader `ctest --test-dir build -j8 --output-on-failure`
+  post-change sweep completed with 2367 passed / 193 failed / 2560 total.
 
 ## Next Slice
 
-- Start from `src/00005.c` as the next bounded family: double-indirection local
-  pointer tracking with multi-block control flow.
-- Confirm whether the first shippable slice is the indirect branch predicate
-  loads, the indirect store through `**pp`, or a smaller control-flow rewrite
-  that must precede both.
-- Preserve `src/00004.c` as the closed single-block local pointer reference
-  slice while the `src/00005.c` family is selected.
+- Start from `src/00010.c` as the next bounded family: goto-only control flow
+  that should collapse to a direct return without pointer state.
+- Keep `src/00006.c` to `src/00008.c` parked as the separate loop family and
+  `src/00009.c` parked as the arithmetic-op family rather than silently mixing
+  them into the goto slice.
+- Preserve `src/00005.c`, `src/00020.c`, and `src/00103.c` as the closed local
+  double-indirection reference family.
 
 ## Blockers
 
@@ -145,3 +178,9 @@ Source Plan: plan.md
   one-scalar/one-pointer alias path into the existing direct return-immediate
   emitter surface; `src/00005.c` remains the next excluded double-indirection
   plus control-flow family.
+- The double-indirection local-pointer slice now extends that bounded surface
+  to `tests/c/external/c-testsuite/src/00005.c`,
+  `tests/c/external/c-testsuite/src/00020.c`, and
+  `tests/c/external/c-testsuite/src/00103.c` by interpreting the acyclic local
+  pointer/value state in `src/backend/lir_adapter.cpp` and collapsing the
+  resulting path to `ret i32 0`.
