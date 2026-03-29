@@ -79,6 +79,7 @@ Node* Parser::parse_expr() {
 }
 
 Node* Parser::parse_assign_expr() {
+    ParseContextGuard trace(this, __func__);
     Node* lhs = parse_ternary();
     int ln = cur().line;
     TokenKind k = cur().kind;
@@ -110,6 +111,7 @@ Node* Parser::parse_assign_expr() {
 }
 
 Node* Parser::parse_ternary() {
+    ParseContextGuard trace(this, __func__);
     Node* cond = parse_binary(4);
     if (!check(TokenKind::Question)) return cond;
     int ln = cur().line;
@@ -194,6 +196,7 @@ Node* Parser::parse_sizeof_pack_expr(int ln) {
 }
 
 Node* Parser::parse_unary() {
+    ParseContextGuard trace(this, __func__);
     int ln = cur().line;
     switch (cur().kind) {
         case TokenKind::Bang: {
@@ -1414,6 +1417,7 @@ Node* Parser::parse_primary() {
 // ── initializer parsing ───────────────────────────────────────────────────────
 
 Node* Parser::parse_initializer() {
+    ParseContextGuard trace(this, __func__);
     if (check(TokenKind::LBrace)) {
         return parse_init_list();
     }
@@ -1421,6 +1425,7 @@ Node* Parser::parse_initializer() {
 }
 
 Node* Parser::parse_init_list() {
+    ParseContextGuard trace(this, __func__);
     int ln = cur().line;
     expect(TokenKind::LBrace);
     std::vector<Node*> items;

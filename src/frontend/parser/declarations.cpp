@@ -145,6 +145,7 @@ bool is_internal_typedef_name(const char* name) {
 }  // namespace
 
 Node* Parser::parse_local_decl() {
+    ParseContextGuard trace(this, __func__);
     int ln = cur().line;
     auto skip_cpp11_attrs_only = [&]() {
         while (check(TokenKind::LBracket) &&
@@ -406,6 +407,7 @@ Node* Parser::parse_local_decl() {
 // ── top-level parsing ─────────────────────────────────────────────────────────
 
 Node* Parser::parse_top_level() {
+    ParseContextGuard trace(this, __func__);
     struct TopLevelFlagGuard {
         bool& ref;
         bool old;

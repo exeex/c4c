@@ -8,6 +8,7 @@
 
 namespace c4c {
 Node* Parser::parse_block() {
+    ParseContextGuard trace(this, __func__);
     int ln = cur().line;
     expect(TokenKind::LBrace);
     // Save enum constant scope — inner block enums must not leak to outer scope.
@@ -21,11 +22,20 @@ Node* Parser::parse_block() {
         } catch (const std::exception& e) {
             // Statement-level recovery: emit diagnostic, skip to ; or },
             // produce NK_INVALID_STMT, and continue parsing next statement.
-            int err_idx = !at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1);
-            int err_line = (!at_end()) ? cur().line : (pos_ > 0 ? tokens_[pos_-1].line : 1);
-            int err_col  = (!at_end()) ? cur().column : 1;
+            int err_idx = best_parse_failure_.active
+                              ? best_parse_failure_.token_index
+                              : (!at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1));
+            int err_line = best_parse_failure_.active
+                               ? best_parse_failure_.line
+                               : ((!at_end()) ? cur().line : (pos_ > 0 ? tokens_[pos_ - 1].line : 1));
+            int err_col  = best_parse_failure_.active
+                               ? best_parse_failure_.column
+                               : ((!at_end()) ? cur().column : 1);
+            std::string diag = format_best_parse_failure();
             fprintf(stderr, "%s:%d:%d: error: %s\n",
-                    diag_file_at(err_idx), err_line, err_col, e.what());
+                    diag_file_at(err_idx), err_line, err_col,
+                    diag.empty() ? e.what() : diag.c_str());
+            dump_parse_debug_trace();
             had_error_ = true;
             ++parse_error_count_;
             if (parse_error_count_ >= max_parse_errors_) {
@@ -50,6 +60,7 @@ Node* Parser::parse_block() {
 }
 
 Node* Parser::parse_stmt() {
+    ParseContextGuard trace(this, __func__);
     int ln = cur().line;
 
     // Skip leading __attribute__ UNLESS a real type keyword follows, in which
@@ -160,7 +171,6 @@ Node* Parser::parse_stmt() {
             if (is_cpp_mode() && match(TokenKind::KwConstexpr)) {
                 is_constexpr_if = true;
             }
-            ParseContextGuard trace(this, __func__);
             expect(TokenKind::LParen);
             Node* cnd = parse_expr();
             expect(TokenKind::RParen);
