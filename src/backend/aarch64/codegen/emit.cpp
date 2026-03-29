@@ -1,6 +1,9 @@
 #include "emit.hpp"
 
 #include "../../lir_adapter.hpp"
+#include "../../generation.hpp"
+#include "../../stack_layout/analysis.hpp"
+#include "../../stack_layout/slot_assignment.hpp"
 #include "../../../codegen/lir/lir_printer.hpp"
 
 #include <charconv>
@@ -76,6 +79,43 @@ bool is_minimal_single_function_asm_slice(const c4c::backend::BackendModule& mod
   }
 
   return true;
+}
+
+constexpr std::array<c4c::backend::PhysReg, 9> kAarch64CalleeSavedRegs = {
+    c4c::backend::PhysReg{20}, c4c::backend::PhysReg{21}, c4c::backend::PhysReg{22},
+    c4c::backend::PhysReg{23}, c4c::backend::PhysReg{24}, c4c::backend::PhysReg{25},
+    c4c::backend::PhysReg{26}, c4c::backend::PhysReg{27}, c4c::backend::PhysReg{28},
+};
+
+constexpr std::array<c4c::backend::PhysReg, 2> kAarch64CallerSavedRegs = {
+    c4c::backend::PhysReg{13},
+    c4c::backend::PhysReg{14},
+};
+
+void prune_dead_param_allocas(c4c::codegen::lir::LirFunction& function) {
+  c4c::backend::RegAllocConfig config;
+  config.available_regs.assign(kAarch64CalleeSavedRegs.begin(), kAarch64CalleeSavedRegs.end());
+  config.caller_saved_regs.assign(kAarch64CallerSavedRegs.begin(), kAarch64CallerSavedRegs.end());
+
+  const auto regalloc =
+      c4c::backend::run_regalloc_and_merge_clobbers(function, config, {});
+  const std::vector<c4c::backend::PhysReg> callee_saved(kAarch64CalleeSavedRegs.begin(),
+                                                        kAarch64CalleeSavedRegs.end());
+  const auto analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(function, regalloc, callee_saved);
+  const auto plans =
+      c4c::backend::stack_layout::plan_param_alloca_slots(function, analysis);
+  function.alloca_insts =
+      c4c::backend::stack_layout::prune_dead_param_alloca_insts(function, plans);
+}
+
+c4c::codegen::lir::LirModule prepare_module_for_fallback(
+    const c4c::codegen::lir::LirModule& module) {
+  auto prepared = module;
+  for (auto& function : prepared.functions) {
+    prune_dead_param_allocas(function);
+  }
+  return prepared;
 }
 
 std::string asm_symbol_name(const c4c::backend::BackendModule& module,
@@ -789,21 +829,22 @@ std::string emit_minimal_extern_scalar_global_load_asm(
 }  // namespace
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
-  validate_module(module);
-  if (const auto slice = parse_minimal_conditional_return_slice(module);
+  const auto prepared = prepare_module_for_fallback(module);
+  validate_module(prepared);
+  if (const auto slice = parse_minimal_conditional_return_slice(prepared);
       slice.has_value()) {
-    return emit_minimal_conditional_return_asm(module, *slice);
+    return emit_minimal_conditional_return_asm(prepared, *slice);
   }
-  if (const auto slice = parse_minimal_scalar_global_load_slice(module);
+  if (const auto slice = parse_minimal_scalar_global_load_slice(prepared);
       slice.has_value()) {
-    return emit_minimal_scalar_global_load_asm(module, *slice);
+    return emit_minimal_scalar_global_load_asm(prepared, *slice);
   }
-  if (const auto slice = parse_minimal_extern_scalar_global_load_slice(module);
+  if (const auto slice = parse_minimal_extern_scalar_global_load_slice(prepared);
       slice.has_value()) {
-    return emit_minimal_extern_scalar_global_load_asm(module, *slice);
+    return emit_minimal_extern_scalar_global_load_asm(prepared, *slice);
   }
   try {
-    const auto adapted = c4c::backend::adapt_minimal_module(module);
+    const auto adapted = c4c::backend::adapt_minimal_module(prepared);
     if (const auto imm = parse_minimal_return_imm(adapted); imm.has_value()) {
       return emit_minimal_return_imm_asm(adapted, *imm);
     }
@@ -827,7 +868,7 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       throw;
     }
   }
-  return c4c::codegen::lir::print_llvm(module);
+  return c4c::codegen::lir::print_llvm(prepared);
 }
 
 }  // namespace c4c::backend::aarch64

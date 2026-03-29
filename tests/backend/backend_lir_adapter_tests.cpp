@@ -3330,6 +3330,60 @@ void test_backend_shared_slot_assignment_plans_param_alloca_slots() {
               "shared slot-assignment planning should retain live param allocas when the function body still reads from the parameter slot");
 }
 
+void test_backend_shared_slot_assignment_prunes_dead_param_alloca_insts() {
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = {{20}};
+  config.caller_saved_regs = {{13}};
+
+  const auto dead_module = make_dead_param_alloca_candidate_module();
+  const auto& dead_function = dead_module.functions.back();
+  const auto dead_regalloc =
+      c4c::backend::run_regalloc_and_merge_clobbers(dead_function, config, {});
+  const auto dead_analysis = c4c::backend::stack_layout::analyze_stack_layout(
+      dead_function, dead_regalloc, {{20}, {21}, {22}});
+  const auto dead_plans =
+      c4c::backend::stack_layout::plan_param_alloca_slots(dead_function, dead_analysis);
+  const auto dead_pruned =
+      c4c::backend::stack_layout::prune_dead_param_alloca_insts(dead_function, dead_plans);
+
+  expect_true(dead_pruned.empty(),
+              "shared slot-assignment pruning should drop dead param allocas and their entry stores");
+
+  const auto live_module = make_live_param_alloca_candidate_module();
+  const auto& live_function = live_module.functions.front();
+  const auto live_regalloc =
+      c4c::backend::run_regalloc_and_merge_clobbers(live_function, config, {});
+  const auto live_analysis = c4c::backend::stack_layout::analyze_stack_layout(
+      live_function, live_regalloc, {{20}, {21}, {22}});
+  const auto live_plans =
+      c4c::backend::stack_layout::plan_param_alloca_slots(live_function, live_analysis);
+  const auto live_pruned =
+      c4c::backend::stack_layout::prune_dead_param_alloca_insts(live_function, live_plans);
+
+  expect_true(live_pruned.size() == live_function.alloca_insts.size(),
+              "shared slot-assignment pruning should preserve live param allocas");
+}
+
+void test_aarch64_backend_prunes_dead_param_allocas_from_fallback_lir() {
+  const auto dead_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_dead_param_alloca_candidate_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_true(dead_rendered.find("%lv.param.x = alloca i32, align 4") == std::string::npos,
+              "aarch64 backend fallback should drop dead param allocas once shared slot planning proves the stack slot is unnecessary");
+  expect_true(dead_rendered.find("store i32 %p.x, ptr %lv.param.x") == std::string::npos,
+              "aarch64 backend fallback should also remove the dead param alloca initialization store");
+  expect_contains(dead_rendered, "call i32 @helper(i32 %p.x)",
+                  "aarch64 backend fallback should preserve the live function body after pruning dead param allocas");
+
+  const auto live_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_live_param_alloca_candidate_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(live_rendered, "%lv.param.x = alloca i32, align 4",
+                  "aarch64 backend fallback should keep live param allocas when the function body still reloads them");
+  expect_contains(live_rendered, "store i32 %p.x, ptr %lv.param.x",
+                  "aarch64 backend fallback should keep the param alloca initialization store for live slots");
+}
+
 }  // namespace
 
 int main() {
@@ -3414,5 +3468,7 @@ int main() {
   test_backend_shared_stack_layout_analysis_tracks_phi_use_blocks();
   test_backend_shared_stack_layout_analysis_detects_dead_param_allocas();
   test_backend_shared_slot_assignment_plans_param_alloca_slots();
+  test_backend_shared_slot_assignment_prunes_dead_param_alloca_insts();
+  test_aarch64_backend_prunes_dead_param_allocas_from_fallback_lir();
   return 0;
 }

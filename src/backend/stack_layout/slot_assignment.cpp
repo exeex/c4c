@@ -1,5 +1,6 @@
 #include "slot_assignment.hpp"
 
+#include <unordered_set>
 #include <variant>
 
 namespace c4c::backend::stack_layout {
@@ -44,6 +45,38 @@ std::vector<ParamAllocaSlotPlan> plan_param_alloca_slots(
   }
 
   return plans;
+}
+
+std::vector<c4c::codegen::lir::LirInst> prune_dead_param_alloca_insts(
+    const LirFunction& function,
+    const std::vector<ParamAllocaSlotPlan>& plans) {
+  std::unordered_set<std::string> dead_param_allocas;
+  dead_param_allocas.reserve(plans.size());
+  for (const auto& plan : plans) {
+    if (!plan.needs_stack_slot) {
+      dead_param_allocas.insert(plan.alloca_name);
+    }
+  }
+
+  std::vector<c4c::codegen::lir::LirInst> pruned;
+  pruned.reserve(function.alloca_insts.size());
+
+  for (std::size_t index = 0; index < function.alloca_insts.size(); ++index) {
+    const auto* alloca = std::get_if<LirAllocaOp>(&function.alloca_insts[index]);
+    if (alloca == nullptr || dead_param_allocas.find(alloca->result) == dead_param_allocas.end()) {
+      pruned.push_back(function.alloca_insts[index]);
+      continue;
+    }
+
+    if (index + 1 < function.alloca_insts.size()) {
+      const auto* store = std::get_if<LirStoreOp>(&function.alloca_insts[index + 1]);
+      if (store != nullptr && store->ptr == alloca->result && is_param_name(store->val)) {
+        ++index;
+      }
+    }
+  }
+
+  return pruned;
 }
 
 }  // namespace c4c::backend::stack_layout
