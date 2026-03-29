@@ -7,8 +7,8 @@ Last Updated: 2026-03-29
 
 ## Current Active Item
 
-- Step 3: choose the first narrow function-signature SFINAE slice now that
-  template-parameter-list coverage shows no remaining parser-only gap
+- Step 4: choose the first narrow specialization-gating slice now that
+  dedicated Step 3 free/member signature coverage showed no parser-only gap
 
 ## Todo
 
@@ -20,9 +20,16 @@ Last Updated: 2026-03-29
 - [x] Implement the first narrow template-parameter parsing slice
 - [x] Validate targeted tests plus full-suite monotonicity after the Step 2
       decision slice
-- [ ] Inventory which function-signature SFINAE forms still need parser work
+- [x] Inventory which function-signature SFINAE forms still need parser work
       rather than later semantic staging
-- [ ] Implement the first narrow function-signature normalization slice
+- [x] Add a reduced parse-only regression for free and member
+      function-signature SFINAE forms
+- [x] Validate the Step 3 decision slice with targeted tests plus a monotonic
+      full-suite comparison
+- [ ] Add a reduced specialization-gating slice that separates parser
+      acceptance from later semantic support
+- [ ] Implement the first narrow specialization-gating normalization slice if
+      the reduced probe exposes a parser gap
 
 ## Completed
 
@@ -58,11 +65,22 @@ Last Updated: 2026-03-29
       comparison (`2428/2429` -> `2429/2430`, no newly failing tests; existing
       baseline failure unchanged at
       `cpp_positive_sema_iterator_concepts_following_hash_base_parse_cpp`)
+- [x] Added
+      `tests/cpp/internal/postive_case/sfinae_function_signature_patterns_parse.cpp`
+      to isolate free-function and member-function return-type / parameter-type
+      SFINAE spellings in one dedicated parse-only regression
+- [x] Confirmed the new free/member signature probe plus adjacent SFINAE parse
+      regressions pass without any parser change in `src/frontend/parser`
+- [x] Validated the Step 3 decision slice with a monotonic full-suite
+      comparison (`2429/2430` -> `2430/2431`, no newly failing tests; existing
+      baseline failure unchanged at
+      `cpp_positive_sema_iterator_concepts_following_hash_base_parse_cpp`)
 
 ## Next Intended Slice
 
-- Re-run the reduced return-type and parameter-type SFINAE probes to determine
-  whether Step 3 still has a parser gap or only later semantic fallout.
+- Revisit specialization-gating coverage with a reduced case that isolates
+  partial-specialization or alias-specialization gating from the mixed family
+  template-parameter corpus before changing parser code.
 
 ## Blockers
 
@@ -95,6 +113,10 @@ Last Updated: 2026-03-29
   `cpp_positive_sema_eastl_probe_qualified_template_scope_parse_cpp` all pass,
   so no template-parameter parser patch is justified from the current reduced
   corpus.
+- Step 3 iteration focus:
+  dedicated free/member function-signature coverage passed immediately, so the
+  current reduced corpus still does not justify a parser edit for return-type
+  or parameter-type SFINAE spellings.
 - Do not activate `ideas/open/__backend_port_plan.md`; it is an umbrella
   roadmap, not the direct target for this runbook.
 - The parked `std::vector` bring-up idea remains adjacent follow-on work, not
