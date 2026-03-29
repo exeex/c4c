@@ -174,12 +174,101 @@ BackendReturn adapt_terminator(const c4c::codegen::lir::LirTerminator& terminato
   return BackendReturn{ret->value_str, ret->type_str};
 }
 
+std::optional<BackendFunction> adapt_single_param_add_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const BackendFunctionSignature& signature) {
+  using namespace c4c::codegen::lir;
+
+  if (function.is_declaration || signature.linkage != "define" ||
+      signature.return_type != "i32" || signature.name == "main" ||
+      signature.params.size() != 1 ||
+      signature.params.front().type_str != "i32" ||
+      signature.params.front().name.empty() || signature.is_vararg ||
+      function.blocks.size() != 1 || function.alloca_insts.size() != 2 ||
+      !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* alloca =
+      std::get_if<LirAllocaOp>(&function.alloca_insts.front());
+  const auto* store_param =
+      std::get_if<LirStoreOp>(&function.alloca_insts.back());
+  if (alloca == nullptr || store_param == nullptr || alloca->type_str != "i32" ||
+      alloca->result.empty() || store_param->type_str != "i32" ||
+      store_param->val != signature.params.front().name ||
+      store_param->ptr != alloca->result) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  const auto* ret = std::get_if<LirRet>(&block.terminator);
+  if (ret == nullptr) {
+    return std::nullopt;
+  }
+  if (block.label != "entry" || !ret->value_str.has_value() ||
+      ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto match_load_add_ret =
+      [&](const LirLoadOp& load, const LirBinOp& add, std::string_view ret_value)
+      -> std::optional<BackendFunction> {
+    if (load.type_str != "i32" || load.ptr != alloca->result ||
+        add.opcode != "add" || add.type_str != "i32" || add.lhs != load.result ||
+        ret_value != add.result) {
+      return std::nullopt;
+    }
+
+    BackendFunction out;
+    out.signature = signature;
+    BackendBlock out_block;
+    out_block.label = block.label;
+    out_block.insts.push_back(
+        BackendBinaryInst{BackendBinaryOpcode::Add, add.result, add.type_str,
+                          signature.params.front().name, add.rhs});
+    out_block.terminator = BackendReturn{add.result, "i32"};
+    out.blocks.push_back(std::move(out_block));
+    return out;
+  };
+
+  if (block.insts.size() == 2) {
+    const auto* load = std::get_if<LirLoadOp>(&block.insts[0]);
+    const auto* add = std::get_if<LirBinOp>(&block.insts[1]);
+    if (load == nullptr || add == nullptr) {
+      return std::nullopt;
+    }
+    return match_load_add_ret(*load, *add, *ret->value_str);
+  }
+
+  if (block.insts.size() == 4) {
+    const auto* load0 = std::get_if<LirLoadOp>(&block.insts[0]);
+    const auto* add = std::get_if<LirBinOp>(&block.insts[1]);
+    const auto* store = std::get_if<LirStoreOp>(&block.insts[2]);
+    const auto* load1 = std::get_if<LirLoadOp>(&block.insts[3]);
+    if (load0 == nullptr || add == nullptr || store == nullptr || load1 == nullptr ||
+        store->type_str != "i32" || store->val != add->result ||
+        store->ptr != alloca->result || load1->type_str != "i32" ||
+        load1->ptr != alloca->result || *ret->value_str != load1->result) {
+      return std::nullopt;
+    }
+    return match_load_add_ret(*load0, *add, store->val);
+  }
+
+  return std::nullopt;
+}
+
 BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function) {
+  const auto signature = parse_signature(function.signature_text);
   BackendFunction out;
-  out.signature = parse_signature(function.signature_text);
+  out.signature = signature;
   out.is_declaration = function.is_declaration;
   if (function.is_declaration) {
     return out;
+  }
+
+  if (const auto normalized = adapt_single_param_add_function(function, signature);
+      normalized.has_value()) {
+    return *normalized;
   }
 
   if (!function.stack_objects.empty()) fail_unsupported("stack objects");

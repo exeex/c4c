@@ -276,7 +276,9 @@ c4c::codegen::lir::LirModule make_typed_direct_call_module() {
   helper_entry.label = "entry";
   helper_entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.param.x"});
   helper_entry.insts.push_back(LirBinOp{"%t1", "add", "i32", "%t0", "1"});
-  helper_entry.terminator = LirRet{std::string("%t1"), "i32"};
+  helper_entry.insts.push_back(LirStoreOp{"i32", "%t1", "%lv.param.x"});
+  helper_entry.insts.push_back(LirLoadOp{"%t2", "i32", "%lv.param.x"});
+  helper_entry.terminator = LirRet{std::string("%t2"), "i32"};
   helper.blocks.push_back(std::move(helper_entry));
 
   LirFunction main_fn;
@@ -1051,6 +1053,19 @@ void test_renders_return_add() {
                   "adapter renderer should emit the adapted return");
 }
 
+void test_adapter_normalizes_typed_direct_call_helper_slice() {
+  const auto adapted = c4c::backend::adapt_minimal_module(make_typed_direct_call_module());
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "define i32 @add_one(i32 %p.x)",
+                  "adapter should preserve the single-argument helper signature");
+  expect_contains(rendered, "%t1 = add i32 %p.x, 1",
+                  "adapter should normalize the helper slot pattern into a backend-owned add");
+  expect_contains(rendered, "ret i32 %t1",
+                  "adapter should return the normalized helper add result directly");
+  expect_contains(rendered, "call i32 (i32) @add_one(i32 5)",
+                  "adapter should preserve the typed direct-call site");
+}
+
 void test_adapter_tracks_structured_signature_contract() {
   const auto adapted = c4c::backend::adapt_minimal_module(make_return_zero_module());
   const auto& signature = adapted.functions.front().signature;
@@ -1283,12 +1298,14 @@ void test_aarch64_backend_renders_typed_direct_call_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_typed_direct_call_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "define i32 @add_one(i32 %p.x)",
-                  "aarch64 backend should preserve helper signatures with parameters");
-  expect_contains(rendered, "call i32 (i32) @add_one(i32 5)",
-                  "aarch64 backend should render typed direct calls");
-  expect_contains(rendered, "ret i32 %t0",
-                  "aarch64 backend should preserve typed call results through return");
+  expect_contains(rendered, ".type add_one, %function",
+                  "aarch64 backend should lower the single-argument helper into a real function symbol");
+  expect_contains(rendered, "add_one:\n  add w0, w0, #1\n  ret\n",
+                  "aarch64 backend should lower the normalized helper add into register-based assembly");
+  expect_contains(rendered, "mov w0, #5",
+                  "aarch64 backend should materialize the direct-call argument in w0 before bl");
+  expect_contains(rendered, "bl add_one",
+                  "aarch64 backend should lower the typed direct call with bl");
 }
 
 void test_aarch64_backend_renders_local_array_gep_slice() {
@@ -1650,6 +1667,7 @@ void test_aarch64_assembler_encoder_helper_smoke() {
 int main() {
   test_adapts_direct_return();
   test_renders_return_add();
+  test_adapter_normalizes_typed_direct_call_helper_slice();
   test_adapter_tracks_structured_signature_contract();
   test_adapter_tracks_structured_entry_block_and_return_contract();
   test_rejects_unsupported_instruction();
