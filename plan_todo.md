@@ -11,11 +11,9 @@ Source Plan: plan.md
   record-member rewinds
 - Current slice: instrument the next qualified-type speculative dispatch that
   still masks the local helper stack under outer declaration/type wrappers
-- Iteration target: add a reduced parser-debug repro around
-  the next adjacent nested qualified-type probe under
-  `parse_next_template_argument` where the emitted summary keeps the committed
-  leaf but still drops a local helper frame after leaving
-  `try_parse_cpp_scoped_base_type`
+- Iteration target: inspect whether the adjacent
+  `consume_qualified_type_spelling` helper still needs explicit
+  parser-debug stack coverage for nested dependent qualified-name spelling
 
 ## Completed
 
@@ -205,15 +203,38 @@ Source Plan: plan.md
   regression guard with no new failures:
   `before passed=2266/2267`, `after passed=2268/2269`; the existing
   `verify_tests_verify_top_level_recovery` failure remained unchanged
+- added reduced parser-debug regression coverage in
+  `cpp_parser_debug_qualified_type_typename_spelling_stack` for a nested
+  dependent `typename` template argument whose summary stack previously kept
+  `parse_dependent_typename_specifier` but not the local
+  `consume_qualified_type_spelling_with_typename` helper
+- added `ParseContextGuard` coverage to
+  `consume_qualified_type_spelling_with_typename` so nested dependent
+  qualified-type spelling remains visible in parser-debug summary stacks
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_qualified_type_top_level_params`,
+  `cpp_parser_debug_qualified_type_template_arg_stack`,
+  `cpp_parser_debug_qualified_type_dependent_typename_stack`, and
+  `cpp_parser_debug_qualified_type_typename_spelling_stack`
+- reran nearby qualified-type parser coverage for
+  `cpp_positive_sema_qualified_dependent_typename_global_parse_cpp`,
+  `cpp_positive_sema_qualified_type_resolution_dispatch_parse_cpp`,
+  `cpp_positive_sema_qualified_type_spelling_shared_parse_cpp`,
+  `cpp_positive_sema_qualified_type_start_probe_parse_cpp`, and
+  `cpp_positive_sema_qualified_type_start_shared_probe_parse_cpp`
+- reran the required clean before/after full suite and passed the monotonic
+  regression guard with no new failures:
+  `before passed=2268/2269`, `after passed=2270/2271`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged
 
 ## Next Intended Slice
 
 - move to the next namespace/type speculative dispatch that still masks the
   best inner failure after the nested qualified-type template-argument case
 - first candidate after this slice: inspect whether
-  `consume_qualified_type_spelling_with_typename` or adjacent qualified-name
-  helpers need explicit stack-preservation coverage when the dependent-typename
-  leaf is correct but the fully spelled nested qualified-name path is still not
+  `consume_qualified_type_spelling` or adjacent qualified-name helpers need
+  explicit stack-preservation coverage when the dependent-typename leaf is
+  correct but the fully spelled nested qualified-name path is still not
   visible in the summary
 
 ## Blockers
