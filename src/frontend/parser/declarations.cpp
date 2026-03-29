@@ -2076,11 +2076,9 @@ top_level_base_ready:
             }
         }
         match(TokenKind::Semi);
-        // Preserve enum definitions in typedef declarations so global
-        // enumerators are visible after `typedef enum { ... } Name;`.
-        if (base_ts.base == TB_ENUM && last_enum_def_) return nullptr;
-        if (top_level_tag_decl_already_recorded(base_ts)) return nullptr;
-        return make_node(NK_EMPTY, ln);
+        // Top-level typedef declarations are bookkeeping-only once the alias
+        // tables have been updated, so drop them from the program item stream.
+        return nullptr;
     }
 
     // Peek to disambiguate: struct/union/enum declaration only (no declarator)

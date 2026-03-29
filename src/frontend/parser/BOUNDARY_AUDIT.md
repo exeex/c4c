@@ -216,7 +216,17 @@ ranking pass.
    keeps the following `kept` global visible with no intermediate `Empty`
    node after `template<typename T> concept audit_concept = true;`.
 
-11. `src/frontend/parser/declarations.cpp:1422`
+11. `src/frontend/parser/declarations.cpp:2026`
+   Top-level `typedef` declarations now drop out of the item stream after
+   updating alias metadata instead of materializing a synthetic `NK_EMPTY`
+   node for bookkeeping-only aliases such as `typedef int Value;`.
+   Tag: `acceptable breadth`
+   Evidence: the reduced parse-only regression
+   `tests/cpp/internal/parse_only_case/top_level_typedef_decl_preserves_following_decl_parse.cpp`
+   keeps the following `kept` global visible with no intermediate `Empty`
+   node after simple and function-pointer typedef declarations.
+
+12. `src/frontend/parser/declarations.cpp:1422`
    Top-level `#pragma pack(...)` directives now update parser pack state and
    drop out of the item stream instead of materializing a synthetic `NK_EMPTY`
    node before the following declaration.
@@ -226,7 +236,7 @@ ranking pass.
    keeps the following `kept` global visible with no intermediate `Empty`
    node after `#pragma pack(push, 1)`.
 
-12. `src/frontend/parser/declarations.cpp:1437`
+13. `src/frontend/parser/declarations.cpp:1437`
    Top-level `#pragma GCC visibility push/pop` directives now update parser
    visibility state and drop out of the item stream instead of materializing a
    synthetic `NK_EMPTY` node before the following declaration.

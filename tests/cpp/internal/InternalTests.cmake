@@ -450,6 +450,16 @@ set_tests_properties(cpp_parse_top_level_concept_decl_preserves_following_decl_d
 )
 
 add_test(
+  NAME cpp_parse_top_level_typedef_decl_preserves_following_decl_dump
+  COMMAND c4cll --parse-only "/workspaces/c4c/tests/cpp/internal/parse_only_case/top_level_typedef_decl_preserves_following_decl_parse.cpp"
+)
+set_tests_properties(cpp_parse_top_level_typedef_decl_preserves_following_decl_dump PROPERTIES
+  LABELS "internal;cpp;parse"
+  PASS_REGULAR_EXPRESSION "GlobalVar\\(kept\\)"
+  FAIL_REGULAR_EXPRESSION "Empty"
+)
+
+add_test(
   NAME cpp_parse_top_level_pragma_pack_preserves_following_decl_dump
   COMMAND c4cll --parse-only "/workspaces/c4c/tests/cpp/internal/parse_only_case/top_level_pragma_pack_preserves_following_decl_parse.cpp"
 )

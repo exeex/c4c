@@ -7,12 +7,12 @@ Last Updated: 2026-03-29
 
 ## Active Item
 
-- Step 3: continue through the remaining top-level structure-only /
-  unsupported `NK_EMPTY` exits in `src/frontend/parser/declarations.cpp` after
-  removing valid top-level `asm(...)` declarations from the item stream; next
-  inspect the still-uncovered declaration-side discard exits around function /
-  type-only fallback paths to decide which can also disappear from the top-level
-  program AST without losing semantic coverage
+- Step 3: continue through the remaining top-level declaration-side discard
+  exits in `src/frontend/parser/declarations.cpp` after removing regular
+  bookkeeping-only `typedef` declarations from the item stream; next inspect
+  the still-uncovered no-name type-only fallback at the end of top-level
+  declarator parsing to decide which valid structure-only cases can also drop
+  out of the program AST without weakening recovery coverage
 
 ## Completed
 
@@ -53,6 +53,22 @@ Last Updated: 2026-03-29
   - baseline: `97% tests passed, 54 tests failed out of 2413`
   - after change: `99% tests passed, 1 test failed out of 2413`
   - result: monotonic pass-count increase with no newly failing tests
+- tightened top-level `typedef` handling in
+  `src/frontend/parser/declarations.cpp` so bookkeeping-only aliases now drop
+  out of the program item stream instead of materializing a synthetic
+  `NK_EMPTY` node after the parser has already recorded the alias metadata:
+  - added the reduced parse-only regression
+    `tests/cpp/internal/parse_only_case/top_level_typedef_decl_preserves_following_decl_parse.cpp`
+    plus the dedicated dump assertion
+    `cpp_parse_top_level_typedef_decl_preserves_following_decl_dump` in
+    `tests/cpp/internal/InternalTests.cmake`
+  - updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record top-level
+    `typedef` declarations as a covered declaration-side discard site
+  - re-ran the required regression guard:
+    - baseline: `99% tests passed, 1 test failed out of 2423`
+    - after change: `99% tests passed, 1 test failed out of 2424`
+    - result: monotonic pass-count increase from the new targeted test, with
+      no newly failing tests
 - tightened top-level tag-only declaration and typedef-backed tag-definition
   handling in `src/frontend/parser/declarations.cpp` so declarations already
   represented by a recorded `StructDef` / `EnumDef` no longer append a
