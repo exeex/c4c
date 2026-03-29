@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2: Reduce the next header blocker from `tests/cpp/std/std_vector_simple.cpp`.
-- Exact target for this iteration: reduce the first surviving `expected template parameter name` blocker now exposed in `/usr/include/c++/14/bits/iterator_concepts.h`, starting at line 267 after the C++20 requires-clause parse gap was removed.
+- Exact target for this iteration: reduce the first surviving post-constrained-template-parameter blocker now exposed in `/usr/include/c++/14/bits/iterator_concepts.h`, currently the incomplete-type failure at line 819 after the constrained parameter parse gap was removed.
 
 ## Completed Items
 
@@ -49,12 +49,25 @@ Source Plan: plan.md
 - Re-ran the reduced parse test plus nearby parser coverage (`cpp20_feature_macro_branch_parse`, `free_function_record_ref_param_parse`) and confirmed they stay green.
 - Re-ran the direct `#include <bits/stl_iterator.h>` and `tests/cpp/std/std_vector_simple.cpp` repros; both advanced past the old `/usr/include/c++/14/type_traits:3442` `expected=RPAREN got='!'` frontier and now fail first in `/usr/include/c++/14/bits/iterator_concepts.h` on `expected template parameter name` around lines 267, 272, 279, and 289.
 - Re-ran the full suite into `test_after.log`; the remaining failure set still matches the previously recorded seven backend LIR variadic ABI tests, with no newly failing tests observed in this slice.
+- Reduced the first surviving `/usr/include/c++/14/bits/iterator_concepts.h:267` constrained template-parameter failure to `tests/cpp/internal/postive_case/cpp20_constrained_template_param_parse.cpp`, using a qualified concept-id spelling `template<detail::Always T>`.
+- Updated `src/frontend/parser/declarations.cpp` so `template<Constraint T>` and `template<ns::Constraint T = ...>` are accepted as type template parameters after the parser rules out builtin and typedef NTTP heads.
+- Verified the reduced constrained-parameter parse test against Clang (`clang++ -std=c++20 -fsyntax-only`) and re-ran nearby parser coverage:
+  - `cpp_positive_sema_cpp20_constrained_template_param_parse_cpp`
+  - `cpp_positive_sema_cpp20_requires_clause_parse_cpp`
+  - `cpp_positive_sema_free_function_record_ref_param_parse_cpp`
+- Re-ran the direct `#include <bits/stl_iterator.h>` and `tests/cpp/std/std_vector_simple.cpp` repros; both advanced past the `iterator_concepts.h` `expected template parameter name` frontier and now first fail on later incomplete-type / parameter-list issues, starting with:
+  - `/usr/include/c++/14/bits/iterator_concepts.h:819:38` `object has incomplete type: __detail`
+  - `/usr/include/c++/14/bits/iterator_concepts.h:992:5` `object has incomplete type: ranges::__access::_Decay_copy`
+  - `/usr/include/c++/14/bits/exception.h:65:30` `expected=RPAREN got='&'`
+- Captured a clean-suite before/after comparison for this slice:
+  - `test_before.log` had the seven known backend LIR variadic ABI failures plus the new reduced test before the parser fix.
+  - `test_after.log` returned to only the same seven known backend LIR variadic ABI failures, so the pass count improved monotonically and no previously passing test regressed.
 
 ## Next Intended Slice
 
-- Keep the focus on the first exposed `iterator_concepts` template-parameter frontier rather than the already-fixed requires-clause parse gap.
-- Reduce `/usr/include/c++/14/bits/iterator_concepts.h:267` into the smallest standalone parse test, likely around constrained or concept-era template parameter spelling.
-- Land the smallest parser fix for that reduced template-parameter syntax, then re-run:
+- Keep the focus on the first newly exposed `iterator_concepts` incomplete-type frontier rather than returning to the already-fixed constrained template-parameter syntax.
+- Reduce `/usr/include/c++/14/bits/iterator_concepts.h:819` into the smallest standalone parse test, likely around nested `__detail` lookup or dependent type formation inside the projected-iterator support path.
+- Land the smallest parser / type-resolution fix for that reduced case, then re-run:
   - `./build/c4cll --parse-only /tmp/include_stl_iterator.cpp`
   - `./build/c4cll --parse-only tests/cpp/std/std_vector_simple.cpp`
   - targeted C++ parse tests before any new full-suite pass.
@@ -62,7 +75,7 @@ Source Plan: plan.md
 ## Blockers
 
 - No blocking infrastructure issue remains.
-- Current technical blocker: after adding requires-clause parsing tolerance, the true first frontier moved into unsupported C++20/concepts template-parameter parsing in `/usr/include/c++/14/bits/iterator_concepts.h`; the next safe slice is to reduce and fix the earliest `expected template parameter name` failure there.
+- Current technical blocker: after adding constrained template-parameter parsing, the true first frontier moved into later C++20 iterator-concepts support, starting with incomplete-type formation in `/usr/include/c++/14/bits/iterator_concepts.h` around line 819.
 
 ## Resume Notes
 
@@ -70,5 +83,6 @@ Source Plan: plan.md
 - `tests/cpp/internal/postive_case/if_condition_decl_parse.cpp` is the committed reduced repro for the fixed `if` declaration-condition syntax.
 - The free-function class-name reference gap is now covered by `free_function_record_ref_param_parse.cpp` and no longer introduces namespace-struct regressions.
 - `tests/cpp/internal/postive_case/cpp20_requires_clause_parse.cpp` is the committed reduced repro for the former `/usr/include/c++/14/type_traits` requires-clause failure.
-- `std_vector_simple.cpp` no longer stops first on `/usr/include/c++/14/type_traits:3442`; the first current blockers are now `expected template parameter name` failures in `iterator_concepts`.
+- `tests/cpp/internal/postive_case/cpp20_constrained_template_param_parse.cpp` is the committed reduced repro for the former `/usr/include/c++/14/bits/iterator_concepts.h:267` constrained template-parameter failure.
+- `std_vector_simple.cpp` no longer stops first on the `iterator_concepts` constrained-parameter frontier; the first current blockers are now incomplete-type and later parameter-list issues starting at `/usr/include/c++/14/bits/iterator_concepts.h:819`.
 - The new reduced coverage is `tests/cpp/internal/postive_case/cpp20_feature_macro_branch_parse.cpp`, which should stay green while the parser catches up to the newly exposed modern-header syntax.

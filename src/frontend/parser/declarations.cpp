@@ -947,6 +947,28 @@ Node* Parser::parse_top_level() {
                     skip_template_param_default_expr(*this, false);
                 }
                 push_nttp_no_default();
+            } else if (is_cpp_mode()) {
+                const int saved_pos = pos_;
+                std::string constraint_name;
+                if (consume_qualified_type_spelling(
+                        /*allow_global=*/true,
+                        /*consume_final_template_args=*/true,
+                        &constraint_name, nullptr) &&
+                    (check(TokenKind::Ellipsis) || check(TokenKind::Identifier))) {
+                    // C++20 constrained type parameter:
+                    //   template<Constraint T>
+                    //   template<ns::Constraint T = int>
+                    auto [is_pack, pname] = parse_template_param_pack_and_name();
+                    if (match(TokenKind::Assign)) {
+                        TypeSpec def_ts = parse_type_name();
+                        push_type_template_param(pname, is_pack, true, &def_ts);
+                    } else {
+                        push_type_template_param(pname, is_pack);
+                    }
+                } else {
+                    pos_ = saved_pos;
+                    throw std::runtime_error("expected template parameter name");
+                }
             } else {
                 throw std::runtime_error("expected template parameter name");
             }
