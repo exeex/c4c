@@ -6,8 +6,9 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- [ ] Step 3: Reduce the next remaining top-level `NK_EMPTY` discard slice in
-  the unsupported-declaration fallback paths after the forward-tag cleanup
+- [ ] Step 3: Reduce the older `src/frontend/parser/types.cpp` duplicate
+  C++20 `requires` / constraint boundary helper so it no longer inherits the
+  broad `is_type_start()` stop condition
 
 ## Checklist
 
@@ -38,13 +39,23 @@ Source Plan: plan.md
 - [x] Re-ran focused top-level parse coverage and the full regression guard:
   baseline `2424 passed / 1 failed / 2425 total`, after `2425 passed / 1 failed / 2426 total`,
   no newly failing tests
+- [x] Tightened the generic unsupported top-level declaration recovery in
+  `src/frontend/parser/declarations.cpp` so malformed lines that stop at the
+  next declaration boundary no longer materialize a synthetic `NK_EMPTY` node
+- [x] Strengthened the reduced parse-only assertions
+  `cpp_parse_top_level_class_recovery_preserves_following_decl_dump` and
+  `cpp_parse_top_level_storage_class_recovery_preserves_following_decl_dump`
+  to fail on `Empty`, and re-ran the full top-level parse-only dump coverage
+- [x] Re-ran the full regression guard after the unsupported-declaration
+  tightening: baseline `2424 passed / 1 failed / 2425 total`, after
+  `2425 passed / 1 failed / 2426 total`, no newly failing tests
 
 ## Next Intended Slice
 
-Inspect the remaining top-level unsupported declaration exits around
-`top_level_decl_recovery_done`, preferring another reduced parse-only case that
-proves a following declaration stays visible without an intermediate `Empty`
-node.
+Inspect the older `types.cpp` copies of the C++20 `requires` boundary helpers,
+starting with `skip_cpp20_constraint_atom(Parser&)`, and reduce one case that
+shows the broad `is_type_start()`-driven stop rule still accepts too much input
+before a following declaration boundary.
 
 ## Blockers
 
@@ -58,3 +69,6 @@ node.
   separate open ideas.
 - `src/frontend/parser/BOUNDARY_AUDIT.md` is the durable Step 1 / Step 2
   inventory; `plan_todo.md` should only track the current tightening slice.
+- The just-finished reduced slice was the generic `top_level_decl_recovery_done`
+  fallback reached by malformed top-level lines such as bare `friend` and
+  storage-class-only starts.

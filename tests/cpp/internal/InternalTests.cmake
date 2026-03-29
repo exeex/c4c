@@ -361,6 +361,7 @@ add_test(
 set_tests_properties(cpp_parse_top_level_storage_class_recovery_preserves_following_decl_dump PROPERTIES
   LABELS "internal;cpp;parse"
   PASS_REGULAR_EXPRESSION "GlobalVar\\(kept\\)"
+  FAIL_REGULAR_EXPRESSION "Empty"
 )
 
 add_test(
@@ -427,6 +428,7 @@ add_test(
 set_tests_properties(cpp_parse_top_level_class_recovery_preserves_following_decl_dump PROPERTIES
   LABELS "internal;cpp;parse"
   PASS_REGULAR_EXPRESSION "StructDef\\(struct kept\\)"
+  FAIL_REGULAR_EXPRESSION "Empty"
 )
 
 add_test(

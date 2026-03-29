@@ -1974,7 +1974,10 @@ Node* Parser::parse_top_level() {
             }
             match(TokenKind::Semi);
 top_level_decl_recovery_done:
-            return make_node(NK_EMPTY, ln);
+            // Unsupported top-level recovery is bookkeeping-only once we stop
+            // at a declaration boundary or terminator, so do not materialize a
+            // synthetic Empty node in the item stream.
+            return nullptr;
         }
         base_ts.array_size = -1;
         base_ts.array_rank = 0;

@@ -259,13 +259,26 @@ ranking pass.
    keeps the following `kept` global visible with no intermediate `Empty`
    node after `#pragma GCC visibility push(hidden)`.
 
+15. `src/frontend/parser/declarations.cpp:1960`
+   The generic unsupported top-level declaration recovery now stops at the next
+   declaration boundary or `;` and drops out of the item stream instead of
+   materializing a synthetic `NK_EMPTY` node after malformed lines such as bare
+   `friend` or `extern foo`.
+   Tag: `acceptable breadth`
+   Evidence: the tightened reduced parse-only regressions
+   `tests/cpp/internal/parse_only_case/top_level_class_recovery_preserves_following_decl_parse.cpp`
+   and
+   `tests/cpp/internal/parse_only_case/top_level_storage_class_recovery_preserves_following_decl_parse.cpp`
+   now fail if an intermediate `Empty` node is emitted while still keeping the
+   following declaration visible.
+
 ## Ranked First Tightening Targets
 
-1. `src/frontend/parser/types.cpp:4426`
+1. `src/frontend/parser/types.cpp:512`
+   Replace the older duplicate `skip_cpp20_constraint_atom(Parser&)` boundary
+   with the narrower declaration-side rule so dependent `requires` parsing in
+   `types.cpp` cannot inherit broad `is_type_start()` false positives.
+
+2. `src/frontend/parser/types.cpp:4426`
    Narrow record-member recovery so malformed members cannot silently consume up
    to the record-closing `}` without a more explicit outcome.
-
-2. `src/frontend/parser/declarations.cpp:1444`
-   Review the remaining top-level structure-only / unsupported `NK_EMPTY` exits,
-   starting with valid top-level `asm(...)` declarations that still leave a
-   synthetic `Empty` node in the program item stream.
