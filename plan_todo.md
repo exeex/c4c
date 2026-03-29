@@ -22,6 +22,12 @@ Last Updated: 2026-03-29
 ## Next Slice
 - Reconcile HFA/SSE register homes for the failing GCC torture cases (`stdarg_*`, `va_arg_{5,6,22}`, `scal_to_vec*`) so the amd64 register save area matches clang, then re-baseline the subset before moving on to function pointer calls.
 
+## Progress Summary (2026-03-29)
+- Step 1 artifacts are checked in under `ref/amd64_varargs/`, so the amd64 baseline plus clang/c4cll comparisons exist for every failure bucket we care about right now.
+- Step 2 work already landed the new ABI-focused internal tests and wiring inside `calling_convention.*`; remaining effort is focused on SSE/HFA register saves that cause the current 10-case failure set in `ref/amd64_varargs/ctest_subset_20260329_step2.log`.
+- Steps 3–6 are untouched: once the SysV save-area work is green, the next slices are variadic function pointer calls, inline diagnostics shim fixes, asm `yield` aliasing, and the glibc macro parser gaps.
+- Step 7 (full-suite validation + regression guard) stays blocked on Steps 2–6 finishing; `test_before_20260329.log` is the comparison point for the future `test_after` log.
+
 ## Blockers
 - None yet; awaiting new baseline artifacts.
 
