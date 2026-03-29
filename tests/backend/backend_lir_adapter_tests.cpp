@@ -30,6 +30,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <sys/mman.h>
 #include <unistd.h>
 #include <vector>
 
@@ -144,6 +145,54 @@ std::uint64_t read_u64(const std::vector<std::uint8_t>& bytes, std::size_t offse
   }
   return value;
 }
+
+std::vector<std::uint8_t> read_elf_entry_bytes(const std::vector<std::uint8_t>& image,
+                                               std::size_t byte_count) {
+  constexpr std::uint32_t kPtLoad = 1;
+
+  if (image.size() < 64) fail("ELF image too small to read entry bytes");
+  const auto entry_address = read_u64(image, 24);
+  const auto program_header_offset = read_u64(image, 32);
+  const auto program_header_size = read_u16(image, 54);
+  const auto program_header_count = read_u16(image, 56);
+
+  for (std::size_t index = 0; index < program_header_count; ++index) {
+    const auto header_offset = program_header_offset + (index * program_header_size);
+    if (header_offset + program_header_size > image.size()) break;
+    if (read_u32(image, header_offset + 0) != kPtLoad) continue;
+
+    const auto file_offset = read_u64(image, header_offset + 8);
+    const auto virtual_address = read_u64(image, header_offset + 16);
+    const auto file_size = read_u64(image, header_offset + 32);
+    if (entry_address < virtual_address || entry_address >= virtual_address + file_size) continue;
+
+    const auto entry_file_offset = file_offset + (entry_address - virtual_address);
+    if (entry_file_offset + byte_count > image.size()) {
+      fail("ELF entry bytes extend past the file image");
+    }
+    return std::vector<std::uint8_t>(image.begin() + static_cast<std::ptrdiff_t>(entry_file_offset),
+                                     image.begin() + static_cast<std::ptrdiff_t>(entry_file_offset + byte_count));
+  }
+
+  fail("ELF image does not map the entry point through a PT_LOAD segment");
+}
+
+#if defined(__x86_64__)
+int execute_x86_64_entry_bytes(const std::vector<std::uint8_t>& entry_bytes) {
+  const long page_size = ::sysconf(_SC_PAGESIZE);
+  if (page_size <= 0) fail("failed to read host page size for x86 runtime validation");
+  const auto mapping_size = align_up(entry_bytes.size(), static_cast<std::size_t>(page_size));
+  void* mapping = ::mmap(nullptr, mapping_size, PROT_READ | PROT_WRITE | PROT_EXEC,
+                         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  if (mapping == MAP_FAILED) fail("failed to map executable memory for x86 runtime validation");
+
+  std::copy(entry_bytes.begin(), entry_bytes.end(), static_cast<std::uint8_t*>(mapping));
+  const auto fn = reinterpret_cast<int (*)()>(mapping);
+  const int result = fn();
+  ::munmap(mapping, mapping_size);
+  return result;
+}
+#endif
 
 std::uint8_t symbol_info(std::uint8_t binding, std::uint8_t symbol_type) {
   return static_cast<std::uint8_t>((binding << 4) | symbol_type);
@@ -5932,6 +5981,51 @@ void test_x86_linker_emits_first_static_plt32_executable_slice() {
   std::filesystem::remove(helper_path);
 }
 
+void test_x86_linker_matches_external_first_static_executable_slice() {
+#if defined(C4C_TEST_CLANG_PATH)
+  const auto caller_path = make_temp_path("c4c_x86_link_validate_caller", ".o");
+  const auto helper_path = make_temp_path("c4c_x86_link_validate_helper", ".o");
+  const auto external_executable_path = make_temp_path("c4c_x86_link_validate_external", ".out");
+  write_binary_file(caller_path, make_minimal_x86_relocation_object_fixture());
+  write_binary_file(helper_path, make_minimal_x86_helper_definition_object_fixture());
+
+  std::string error;
+  const auto builtin_executable = c4c::backend::x86::linker::link_first_static_executable(
+      {caller_path, helper_path}, &error);
+  expect_true(builtin_executable.has_value(),
+              "x86 linker should produce the bounded built-in executable before external validation: " +
+                  error);
+
+  run_command_capture(shell_quote(C4C_TEST_CLANG_PATH) +
+                      " -nostdlib -static -no-pie -Wl,-e,main -Wl,--build-id=none " +
+                      shell_quote(caller_path) + " " + shell_quote(helper_path) + " -o " +
+                      shell_quote(external_executable_path) + " 2>&1");
+
+  const auto external_image = read_file_bytes(external_executable_path);
+  expect_true(read_u16(external_image, 16) == 2 &&
+                  read_u16(external_image, 18) == c4c::backend::elf::EM_X86_64,
+              "external linker baseline should emit an x86-64 ET_EXEC image for the bounded slice");
+
+  const auto builtin_entry_bytes =
+      read_elf_entry_bytes(builtin_executable->image, builtin_executable->text_size);
+  const auto external_entry_bytes =
+      read_elf_entry_bytes(external_image, builtin_executable->text_size);
+  expect_true(builtin_entry_bytes == external_entry_bytes,
+              "x86 built-in linker entry bytes should match the external linker baseline for the bounded main -> helper_ext slice");
+
+#if defined(__x86_64__)
+  expect_true(execute_x86_64_entry_bytes(builtin_entry_bytes) == 42,
+              "x86 built-in linker entry bytes should execute the bounded main -> helper_ext slice and return 42");
+  expect_true(execute_x86_64_entry_bytes(external_entry_bytes) == 42,
+              "external linker baseline entry bytes should execute the bounded main -> helper_ext slice and return 42");
+#endif
+
+  std::filesystem::remove(caller_path);
+  std::filesystem::remove(helper_path);
+  std::filesystem::remove(external_executable_path);
+#endif
+}
+
 void test_aarch64_linker_emits_first_static_call26_executable_slice() {
   const auto caller_path = make_temp_path("c4c_aarch64_link_exec_caller", ".o");
   const auto helper_path = make_temp_path("c4c_aarch64_link_exec_helper", ".o");
@@ -6200,6 +6294,7 @@ int main() {
   test_x86_linker_loads_first_static_objects_through_shared_input_seam();
   test_x86_linker_loads_first_static_objects_from_archive_through_shared_input_seam();
   test_x86_linker_emits_first_static_plt32_executable_slice();
+  test_x86_linker_matches_external_first_static_executable_slice();
   test_aarch64_linker_emits_first_static_call26_executable_slice();
   test_aarch64_backend_assembler_handoff_helper_stages_emitted_text();
   test_x86_backend_assembler_handoff_helper_stages_emitted_text();

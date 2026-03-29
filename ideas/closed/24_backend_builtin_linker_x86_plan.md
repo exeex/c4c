@@ -1,5 +1,9 @@
 # Built-in x86 Linker Plan
 
+## Status
+
+Completed on 2026-03-29 and ready to archive.
+
 ## Relationship To Roadmap
 
 Umbrella source: `ideas/open/__backend_port_plan.md`
@@ -59,6 +63,24 @@ Implement the first built-in linker slice for x86 so supported programs can be l
 - first validation gate: the x86 linker subtree compiles against the shared linker layers
 - second validation gate: the first slice links a tiny bounded x86 program into one working ELF image
 - later validation: simple linked executables run equivalently to externally linked outputs for covered cases
+
+## Completion Notes
+
+- The bounded first x86 linker slice now loads the two-object `main ->
+  helper_ext` case through the shared input seam, applies the staged
+  `R_X86_64_PLT32` relocation, and emits a minimal static ELF executable image.
+- Validation now includes an external-linker comparison for that slice:
+  `backend_lir_adapter_tests` links the same fixtures with `clang
+  -nostdlib -static -no-pie -Wl,-e,main`, compares the executable entry bytes,
+  and executes both entry slices in memory to confirm the same `42` result.
+- Full-suite regression remained monotonic for closure:
+  `test_before.log` and `test_after.log` both reported `2320 passed / 19 failed
+  / 2339 total`, with no newly failing tests.
+
+## Leftover Issues
+
+- Dynamic-linking, shared-library, TLS, PLT/GOT expansion, and wider relocation
+  coverage remain intentionally out of scope for this closed first slice.
 
 ## Good First Patch
 

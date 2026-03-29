@@ -1,191 +1,117 @@
-# Built-in x86 Linker Runbook
+# Backend Port Roadmap Runbook
 
 Status: Active
-Source Idea: ideas/open/24_backend_builtin_linker_x86_plan.md
+Source Idea: ideas/open/__backend_port_plan.md
+Activated from: umbrella roadmap after closing the bounded x86 linker plan
 
 ## Purpose
 
-Activate the first built-in x86 linker slice so the compiler can link a bounded
-set of already-supported x86 objects into working ELF executables without
-relying on the external linker for that narrow path.
+Re-establish a narrow executable backend slice from the umbrella roadmap so
+implementation can continue from a bounded child idea instead of from the
+umbrella file directly.
 
 ## Goal
 
-Compile and wire the mirrored x86 linker subtree, support the minimum shared
-input and relocation subset exercised by the first simple x86 linker tests, and
-validate emitted executables against externally linked references.
+Identify the next highest-value backend slice still missing from
+`ideas/open/`, write it as a bounded child idea, and switch execution back to
+that narrower plan before resuming implementation work.
 
 ## Core Rule
 
-Keep this linker slice narrow and mechanical: follow the ref linker structure,
-support only the first bounded static-executable path, and do not broaden into
-dynamic-linking or wide relocation coverage.
+Do not implement backend code directly from this umbrella runbook; use it only
+to restore a concrete child-idea work queue that can then be activated on its
+own.
 
 ## Read First
 
-- [ideas/open/24_backend_builtin_linker_x86_plan.md](/workspaces/c4c/ideas/open/24_backend_builtin_linker_x86_plan.md)
 - [ideas/open/__backend_port_plan.md](/workspaces/c4c/ideas/open/__backend_port_plan.md)
-- [ref/claudes-c-compiler/src/backend/x86/linker/README.md](/workspaces/c4c/ref/claudes-c-compiler/src/backend/x86/linker/README.md)
-- [ref/claudes-c-compiler/src/backend/x86/linker/mod.rs](/workspaces/c4c/ref/claudes-c-compiler/src/backend/x86/linker/mod.rs)
-- [ref/claudes-c-compiler/src/backend/x86/linker/link.rs](/workspaces/c4c/ref/claudes-c-compiler/src/backend/x86/linker/link.rs)
-- [ref/claudes-c-compiler/src/backend/x86/linker/input.rs](/workspaces/c4c/ref/claudes-c-compiler/src/backend/x86/linker/input.rs)
-- [ref/claudes-c-compiler/src/backend/x86/linker/elf.rs](/workspaces/c4c/ref/claudes-c-compiler/src/backend/x86/linker/elf.rs)
-- [ref/claudes-c-compiler/src/backend/x86/linker/emit_exec.rs](/workspaces/c4c/ref/claudes-c-compiler/src/backend/x86/linker/emit_exec.rs)
+- [ideas/closed/24_backend_builtin_linker_x86_plan.md](/workspaces/c4c/ideas/closed/24_backend_builtin_linker_x86_plan.md)
+- [prompts/AGENT_PROMPT_SWITCH_PLAN.md](/workspaces/c4c/prompts/AGENT_PROMPT_SWITCH_PLAN.md)
+- [prompts/AGENT_PROMPT_PLAN_FROM_IDEA.md](/workspaces/c4c/prompts/AGENT_PROMPT_PLAN_FROM_IDEA.md)
 
 ## Current Targets
 
-- `src/backend/x86/linker/`
-- `src/backend/linker_common/`
-- `src/backend/elf/`
-- x86 linker-facing backend and fixture tests
-- bounded static executable emission for simple x86 objects
+- `ideas/open/__backend_port_plan.md`
+- `ideas/open/`
+- `ideas/closed/`
+- backend roadmap continuity after the first built-in x86 linker closure
 
 ## Non-Goals
 
-- dynamic linking, shared-library output, or PLT/GOT polish beyond what the
-  first static slice strictly needs
-- full relocation coverage
-- new assembler or codegen feature work
-- non-x86 linker work
+- direct backend implementation from the umbrella roadmap
+- mixing multiple backend initiatives into one child idea
+- reopening the closed x86 linker slice unless a concrete regression requires it
 
 ## Working Model
 
-1. Identify the smallest x86 linker-owned executable path already representable
-   by current fixtures and backend-owned objects.
-2. Port only the shared input/loading and x86 relocation/emission surfaces
-   needed for that path.
-3. Emit one bounded static ELF executable for the first supported case.
-4. Validate executable metadata and simple runtime behavior against the external
-   linker path before broadening coverage.
+1. Inspect the umbrella roadmap against the current open and closed idea
+   inventory.
+2. Determine the next bounded backend slice that should become a new child idea.
+3. Write that child idea under `ideas/open/` with clear scope, guardrails, and
+   validation targets.
+4. Switch the active lifecycle state from this umbrella runbook to the new
+   child idea before any implementation continues.
 
 ## Execution Rules
 
-- Treat the ref linker layout as the default shape unless the existing C++
-  shared linker layers force a small adapter.
-- Prefer the smallest multi-object or relocation-bearing slice that can be
-  tested end-to-end.
-- Keep shared parsing and symbol-registration changes mechanical and scoped to
-  x86 linker requirements.
-- If execution uncovers a separate linker initiative, write it into
-  `ideas/open/` instead of silently widening this runbook.
-- Do not absorb assembler-expansion work here unless it is strictly required to
-  finish the bounded linker slice.
+- Preserve the roadmap's mechanical-porting strategy and target isolation.
+- Prefer one mechanism family per new child idea.
+- If multiple candidate slices exist, choose the smallest one that restores a
+  sensible implementation queue.
+- Keep durable planning intent in `ideas/open/*.md`, not only in `plan_todo.md`.
 
 ## Ordered Steps
 
-### Step 1: Inspect the first bounded x86 linker slice
+### Step 1: Audit the remaining backend roadmap queue
 
-Goal: establish the exact object shapes, relocations, and executable properties
-required for the first linker-owned path.
+Goal: identify what work remains actionable now that the bounded x86 linker
+slice is closed.
 
-Primary target: current x86 linker tests, shared linker fixtures, and bounded
-backend-owned x86 objects.
-
-Concrete actions:
-
-- inventory current x86 linker tests, fixtures, and helper seams
-- identify the smallest relocation-bearing or multi-object slice that should be
-  linked first
-- map required sections, symbols, and relocation types back to ref/shared/x86
-  linker surfaces
-
-Completion check:
-
-- there is a bounded list of object inputs, relocation types, and executable
-  properties for the first linker slice
-
-### Step 2: Compile-integrate the minimum x86 linker orchestration surface
-
-Goal: make the x86 linker subtree compile and expose the first linker entry
-boundary.
-
-Primary target: `src/backend/x86/linker/`
+Primary target: `ideas/open/__backend_port_plan.md` and current idea inventory.
 
 Concrete actions:
 
-- port the smallest `mod.rs` / `link.rs` style entry surfaces needed for static
-  linking
-- keep unsupported operations explicit rather than widening feature coverage
-- add or update focused tests that compile the linker-facing contract surface
+- compare the umbrella roadmap's listed child ideas against files currently
+  present under `ideas/open/` and `ideas/closed/`
+- note which roadmap entries are already complete and which work families still
+  lack an open child idea
+- identify the narrowest viable next slice that matches the roadmap guardrails
 
 Completion check:
 
-- the x86 linker entry boundary compiles and can accept the bounded input set
+- there is one explicit candidate slice for the next child idea
 
-### Step 3: Port the bounded shared input and symbol-loading path
+### Step 2: Write the next bounded child idea
 
-Goal: load the first supported x86 object/archive inputs through the shared
-  linker layers.
+Goal: turn the selected remaining slice into a durable open idea document.
 
-Primary target: `src/backend/linker_common/` helpers touched by the x86 linker
-and x86-specific input glue.
+Primary target: `ideas/open/<new-child>.md`
 
 Concrete actions:
 
-- reuse shared object/archive parsing wherever available
-- wire only the symbol registration and input loading needed for the bounded
-  slice
-- add focused tests covering loaded sections, symbols, and archive/object
-  membership for the chosen inputs
+- write the new child idea with goal, scope, non-goals, suggested execution
+  order, and validation intent
+- keep the idea narrow enough to activate without further decomposition
+- link it back to `ideas/open/__backend_port_plan.md` as the umbrella source
 
 Completion check:
 
-- the x86 linker can load and classify the bounded input objects it needs
+- one bounded backend child idea exists under `ideas/open/`
 
-### Step 4: Implement the minimum x86 relocation and resolution slice
+### Step 3: Switch lifecycle state to the new child idea
 
-Goal: resolve symbols and apply only the relocation subset required by the
-first executable path.
+Goal: stop treating the umbrella roadmap as the active execution target.
 
-Primary target: `src/backend/x86/linker/elf.cpp`, `link.cpp`, and closely
-related types/helpers.
+Primary target: `plan.md` and `plan_todo.md`
 
 Concrete actions:
 
-- port the smallest relocation and symbol-resolution logic required by the Step
-  1 inventory
-- keep unsupported relocation kinds explicit
-- add or update tests that check patched bytes, symbol resolution, and failure
-  paths for out-of-scope relocations
+- fold any roadmap-audit notes that should persist back into
+  `ideas/open/__backend_port_plan.md`
+- activate the new child idea into a fresh runbook
+- reset `plan_todo.md` so implementation resumes from the child idea, not the
+  umbrella roadmap
 
 Completion check:
 
-- the bounded relocation-bearing or multi-object slice links correctly in memory
-
-### Step 5: Emit one bounded static x86 executable
-
-Goal: produce one working ELF executable for the first supported x86 linker
-path.
-
-Primary target: x86 executable emission code and the chosen linker entry seam.
-
-Concrete actions:
-
-- port the minimal static executable emitter surface needed by the bounded slice
-- keep layout, headers, and section/program-header emission scoped to the first
-  supported case
-- add or update an integration test covering the emitted executable image
-
-Completion check:
-
-- one bounded x86 program links into an ELF executable through the built-in
-  linker path
-
-### Step 6: Validate against the external linker path
-
-Goal: confirm executable correctness for the supported slice before widening
-coverage.
-
-Primary target: executable comparison and runtime validation.
-
-Concrete actions:
-
-- compare the built-in linked executable against an externally linked reference
-  for representative supported cases
-- check executable layout, symbol surface, and runtime behavior
-- run targeted tests, nearby linker tests, and the full regression suite
-
-Completion check:
-
-- supported cases produce comparable executable behavior and no regression in
-  the existing suite
+- the active plan points at the new child idea rather than the umbrella file
