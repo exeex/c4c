@@ -1,34 +1,36 @@
-# Backend Port Roadmap Activation Todo
+# AArch64 Global Char Pointer Difference Todo
 
 Status: Active
-Source Idea: ideas/open/__backend_port_plan.md
+Source Idea: ideas/open/12_backend_aarch64_global_char_pointer_diff_plan.md
 Source Plan: plan.md
 
 ## Active Item
 
-- Step 1: choose the next executable backend child slice to restore from the umbrella roadmap
+- Step 1: lock the exact bounded `global_char_pointer_diff` LIR and test contract before codegen changes
 
 ## Todo
 
-- [ ] inspect the roadmap priority order and current `ideas/open/` inventory
-- [ ] choose the next missing child slice that should become the active execution target
-- [ ] write one narrow child idea under `ideas/open/`
-- [ ] switch `plan.md` and `plan_todo.md` to that child idea
+- [ ] inspect the synthetic module builder and runtime case for `global_char_pointer_diff`
+- [ ] tighten the synthetic backend test so the slice rejects LLVM IR fallback
+- [ ] switch the runtime case to `BACKEND_OUTPUT_KIND=asm` for this slice
+- [ ] implement the minimal AArch64 parser/emitter path in `src/backend/aarch64/codegen/emit.cpp`
+- [ ] run targeted validation and update follow-on notes for the next pointer slice
 
 ## Completed
 
-- [x] closed `ideas/open/11_backend_aarch64_extern_global_array_addressing_plan.md` and archived it under `ideas/closed/`
-- [x] re-entered activation state with only `ideas/open/__backend_port_plan.md` remaining
+- [x] chose `global_char_pointer_diff` as the next narrow child instead of reopening completed roadmap children
+- [x] created `ideas/open/12_backend_aarch64_global_char_pointer_diff_plan.md`
+- [x] switched `plan.md` and `plan_todo.md` away from the umbrella roadmap onto the new child idea
 
 ## Next Intended Slice
 
-- derive the next highest-priority missing backend child idea from the umbrella roadmap instead of executing directly from the umbrella file
+- capture the exact byte-array pointer-difference shape shared by `make_global_char_pointer_diff_module()` and `tests/c/internal/backend_case/global_char_pointer_diff.c`
 
 ## Blockers
 
-- the umbrella roadmap references child idea files that are not currently present under `ideas/open/`
+- none yet
 
 ## Resume Notes
 
-- do not resume implementation from this umbrella runbook
-- the next lifecycle step should create one narrow child idea and immediately switch activation to it
+- keep this slice narrower than `global_int_pointer_diff` and `global_int_pointer_roundtrip`
+- preserve the current split: byte-granular subtraction now, scaled-element or round-trip work later

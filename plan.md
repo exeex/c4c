@@ -1,92 +1,125 @@
-# Backend Port Roadmap Activation Runbook
+# AArch64 Global Char Pointer Difference Runbook
 
 Status: Active
-Source Idea: ideas/open/__backend_port_plan.md
-Activated from: ideas/open/__backend_port_plan.md
+Source Idea: ideas/open/12_backend_aarch64_global_char_pointer_diff_plan.md
+Activated from: ideas/open/12_backend_aarch64_global_char_pointer_diff_plan.md
 
 ## Purpose
 
-Turn the remaining backend umbrella roadmap back into one executable child idea so implementation work can continue under the repo's one-plan lifecycle.
+Turn the next deferred AArch64 global-addressing seam into one executable backend slice.
 
 ## Goal
 
-Extract the next highest-priority unfinished backend child slice from the umbrella roadmap and convert it into a narrow active runbook.
+Lower `global_char_pointer_diff` through the backend-owned AArch64 asm path without widening into scaled pointer-difference or pointer-roundtrip work.
 
 ## Core Rule
 
-Do not implement backend code from this umbrella runbook. This slice is only for restoring a narrow executable child plan and switching execution back onto that child.
+Keep this runbook bounded to one defined global byte-array pointer-difference comparison; split again instead of generalizing pointer arithmetic.
 
 ## Read First
 
+- `ideas/open/12_backend_aarch64_global_char_pointer_diff_plan.md`
 - `ideas/open/__backend_port_plan.md`
-- `prompts/AGENT_PROMPT_PLAN_FROM_IDEA.md`
-- `prompts/AGENT_PROMPT_SWITCH_PLAN.md`
+- `tests/backend/backend_lir_adapter_tests.cpp`
+- `tests/c/internal/InternalTests.cmake`
+- `src/backend/aarch64/codegen/emit.cpp`
 
 ## Current Targets
 
-- identify which roadmap child should be re-opened next
-- write one durable child idea under `ideas/open/`
-- regenerate `plan.md` from that child idea and reset `plan_todo.md`
+- recognize one minimal `global_char_pointer_diff` LIR shape in the AArch64 emitter path
+- emit backend-owned assembly for the bounded byte-pointer-difference comparison
+- tighten synthetic and runtime coverage so this slice no longer accepts LLVM IR fallback
 
 ## Non-Goals
 
-- editing implementation sources under `src/`
-- bundling multiple backend initiatives into one plan
-- reopening completed narrow ideas without a clear missing follow-on
+- `global_int_pointer_diff`
+- `global_int_pointer_roundtrip`
+- generic `ptrtoint` or `inttoptr` support
+- broad global-address or local-memory refactors
+- built-in assembler or linker work
 
 ## Working Model
 
-- treat `ideas/open/__backend_port_plan.md` as durable roadmap context, not as the long-term execution target
-- prefer the highest-priority missing child from the roadmap ordering when multiple candidates seem plausible
-- preserve the umbrella file as the roadmap and move execution back onto a child plan as quickly as possible
+- treat the existing `string_literal_char` and `extern_global_array` emitters as the immediate pattern for narrow parser/emitter slices
+- prefer one exact parser for the current LIR shape over introducing a generic address-lowering framework
+- keep synthetic backend coverage and one runtime case aligned to the same bounded seam
 
 ## Execution Rules
 
-- keep the new child idea narrower than the umbrella roadmap
-- record the chosen child idea under `ideas/open/` before replacing this umbrella runbook
-- if the next child is unclear from repo state, record the ambiguity in the new idea instead of inventing implementation scope
+- add or tighten tests before changing `src/backend/aarch64/codegen/emit.cpp`
+- compare the candidate runtime shape against the synthetic module builder instead of guessing ABI details
+- if the byte-difference slice requires scaled element math, pointer round-tripping, or multi-function support, stop and split a new idea
 
-## Step 1: Choose The Next Child Slice
+## Step 1: Lock The Bounded Slice
 
-Goal: determine the next executable backend child idea to restore from the roadmap.
+Goal: confirm the exact `global_char_pointer_diff` contract the backend should own.
 
-Actions:
+Primary targets:
 
-- inspect the roadmap priority order and any currently open backend idea files
-- identify the highest-priority child idea that is not already represented under `ideas/open/`
-- keep the choice to one mechanism family
-
-Completion check:
-
-- one child slice is chosen and named explicitly
-- the choice is justified from the roadmap ordering and current open-idea inventory
-
-## Step 2: Write The Child Idea
-
-Goal: restore one narrow backend child idea under `ideas/open/`.
+- `tests/backend/backend_lir_adapter_tests.cpp`
+- `tests/c/internal/backend_case/global_char_pointer_diff.c`
 
 Actions:
 
-- create one `ideas/open/*.md` child idea for the chosen slice
-- capture scope, validation intent, non-goals, and relationship to the umbrella roadmap
-- keep the child idea implementation-oriented enough to become the next active runbook
+- inspect the synthetic module builder and the frontend-emitted runtime case for `global_char_pointer_diff`
+- confirm the bounded seam is one global byte-array base address, one constant-byte offset, one address subtraction, and one equality comparison
+- document any mismatch in `plan_todo.md` instead of broadening the slice implicitly
 
 Completion check:
 
-- the new child idea exists under `ideas/open/`
-- it is narrower than the umbrella and points back to the roadmap
+- one exact LIR shape is identified as the implementation target
+- the slice boundary excludes scaled `i32` pointer differences and pointer round-tripping
 
-## Step 3: Switch Activation To The Child Runbook
+## Step 2: Tighten Tests Before Codegen Changes
 
-Goal: stop using the umbrella as the active runbook and activate the new child idea.
+Goal: make the new asm contract observable before implementation.
+
+Primary targets:
+
+- `tests/backend/backend_lir_adapter_tests.cpp`
+- `tests/c/internal/InternalTests.cmake`
 
 Actions:
 
-- regenerate `plan.md` from the new child idea
-- reset `plan_todo.md` to the child plan
-- keep `Status: Active` and `Source Idea:` aligned across both files
+- update the synthetic AArch64 backend test so `global_char_pointer_diff` requires assembly-specific output instead of accepting LLVM IR fallback
+- promote the runtime case to `BACKEND_OUTPUT_KIND=asm` only when the synthetic contract is explicit
+- keep the assertions focused on the bounded byte-array subtraction seam
 
 Completion check:
 
-- `plan.md` and `plan_todo.md` both point at the new child idea
-- the umbrella roadmap remains only durable context, not the active execution target
+- the synthetic test fails against LLVM IR fallback
+- the runtime wiring is ready to exercise the asm path for this one case
+
+## Step 3: Implement The Minimal AArch64 Lowering
+
+Goal: emit assembly for the bounded byte-pointer-difference slice.
+
+Primary targets:
+
+- `src/backend/aarch64/codegen/emit.cpp`
+
+Actions:
+
+- add one narrow parser/emitter path for the `global_char_pointer_diff` module shape
+- reuse the existing minimal-slice structure for symbol naming, ELF directives, and function prelude emission
+- lower the comparison with the smallest instruction sequence that preserves the byte-granular subtraction result
+
+Completion check:
+
+- `emit_module()` returns AArch64 assembly for the bounded `global_char_pointer_diff` slice
+- the implementation stays local to the existing minimal-slice path instead of introducing generic pointer arithmetic infrastructure
+
+## Step 4: Validate And Record Follow-On Boundaries
+
+Goal: prove the slice and preserve the next split boundary.
+
+Actions:
+
+- run the targeted backend adapter test and the `global_char_pointer_diff` runtime case
+- run the relevant broader regression checks required by the execution prompt
+- update `plan_todo.md` with what completed and note that `global_int_pointer_diff` or `global_int_pointer_roundtrip` remain separate follow-ons
+
+Completion check:
+
+- the bounded synthetic and runtime validations pass on the asm path
+- the next follow-on remains explicit instead of being absorbed into this runbook

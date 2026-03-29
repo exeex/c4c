@@ -43,16 +43,13 @@ The original backend port plan mixed several distinct initiatives:
 
 That scope is too large for a single active plan under this repo's planning lifecycle.
 
-## Active Child Ideas
+## Current Open Child Ideas
 
-The backend effort is now split into the following open ideas:
+The backend effort should keep execution focused on one narrow open child at a time.
 
-- `ideas/open/02_backend_aarch64_port_plan.md`
-- `ideas/open/03_backend_regalloc_peephole_port_plan.md`
-- `ideas/open/05_backend_builtin_assembler_boundary_plan.md`
-- `ideas/open/06_backend_builtin_assembler_aarch64_plan.md`
-- `ideas/open/07_backend_linker_object_io_plan.md`
-- `ideas/open/08_backend_builtin_linker_aarch64_plan.md`
+Current open child:
+
+- `ideas/open/12_backend_aarch64_global_char_pointer_diff_plan.md`
 
 ## Shared Guardrails
 
@@ -77,3 +74,9 @@ The backend effort is now split into the following open ideas:
 ## Success Condition
 
 This umbrella idea is complete when the child ideas are complete or superseded by narrower follow-up ideas.
+
+## Current Follow-On Choice
+
+The broad roadmap ordering above is mostly historical: `01` through `08` already completed as narrower child ideas, and the recent AArch64 global-addressing follow-ons `09`, `10`, and `11` are also closed.
+
+The next unfinished backend-owned slice is the bounded AArch64 global byte-pointer-difference seam tracked in `ideas/open/12_backend_aarch64_global_char_pointer_diff_plan.md`.
