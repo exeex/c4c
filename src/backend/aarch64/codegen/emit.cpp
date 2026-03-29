@@ -92,7 +92,7 @@ constexpr std::array<c4c::backend::PhysReg, 2> kAarch64CallerSavedRegs = {
     c4c::backend::PhysReg{14},
 };
 
-void prune_dead_param_allocas(c4c::codegen::lir::LirFunction& function) {
+void prune_dead_entry_allocas(c4c::codegen::lir::LirFunction& function) {
   c4c::backend::RegAllocConfig config;
   config.available_regs.assign(kAarch64CalleeSavedRegs.begin(), kAarch64CalleeSavedRegs.end());
   config.caller_saved_regs.assign(kAarch64CallerSavedRegs.begin(), kAarch64CallerSavedRegs.end());
@@ -104,16 +104,16 @@ void prune_dead_param_allocas(c4c::codegen::lir::LirFunction& function) {
   const auto analysis =
       c4c::backend::stack_layout::analyze_stack_layout(function, regalloc, callee_saved);
   const auto plans =
-      c4c::backend::stack_layout::plan_param_alloca_slots(function, analysis);
+      c4c::backend::stack_layout::plan_entry_alloca_slots(function, analysis);
   function.alloca_insts =
-      c4c::backend::stack_layout::prune_dead_param_alloca_insts(function, plans);
+      c4c::backend::stack_layout::prune_dead_entry_alloca_insts(function, plans);
 }
 
 c4c::codegen::lir::LirModule prepare_module_for_fallback(
     const c4c::codegen::lir::LirModule& module) {
   auto prepared = module;
   for (auto& function : prepared.functions) {
-    prune_dead_param_allocas(function);
+    prune_dead_entry_allocas(function);
   }
   return prepared;
 }

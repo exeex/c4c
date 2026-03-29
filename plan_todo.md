@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - [ ] Step 4: Port the stack-layout helper boundary that consumes regalloc results.
-  Iteration target: expand beyond dead-param alloca pruning and thread the shared stack-layout analysis object into the next real frame-sizing or slot-reuse decision so more Step 4 behavior stops depending on local recomputation.
+  Iteration target: thread `StackLayoutAnalysis` into the next frame-sizing or stack-slot placement decision beyond entry-alloca pruning so Step 4 starts affecting actual slot layout, not only dead-slot elision.
 
 ## Todo Queue
 
@@ -37,10 +37,12 @@ Source Plan: plan.md
 - [x] Extended `backend_lir_adapter_tests` with shared slot-assignment coverage for dead and live param allocas, rebuilt `backend_lir_adapter_tests`, reran the binary, reran full `ctest`, and rechecked monotonic non-regression (`before=570/574`, `after=570/574`, no new failures).
 - [x] Extended shared `slot_assignment` with dead-param-alloca pruning, then wired the AArch64 backend fallback printer to consume shared regalloc plus stack-layout analysis so dead param allocas are removed from emitted fallback LIR instead of remaining test-only metadata.
 - [x] Added backend coverage for shared dead-param-alloca pruning and AArch64 fallback dead-vs-live param-slot rendering, rebuilt `backend_lir_adapter_tests`, reran the binary, reran full `ctest`, and rechecked the saved baseline (`before=570/574`, `after=570/574`, same known failures only).
+- [x] Expanded shared `slot_assignment` beyond param-only handling: dead non-param entry allocas now plan and prune through the same shared seam, including paired entry zero-init stores, and the AArch64 fallback now consumes that broader shared entry-slot decision instead of local dead-param-only pruning.
+- [x] Extended `backend_lir_adapter_tests` with shared dead-vs-live local-entry-alloca coverage, rebuilt the binary, reran `./build/backend_lir_adapter_tests`, reran full `ctest`, and revalidated the saved baseline by log comparison (`after=570/574`, same four known failures only).
 
 ## Next Intended Slice
 
-- Keep building Step 4 inside shared stack-layout code by threading `StackLayoutAnalysis` into the next real slot-assignment or frame-sizing decision after dead-param alloca pruning, ideally one that currently recomputes liveness-ish or use-block facts locally for non-param allocas or stack-slot reuse.
+- Keep building Step 4 inside shared stack-layout code by threading `StackLayoutAnalysis` into the next real slot-assignment or frame-sizing decision after entry-alloca pruning, ideally one that affects non-entry local slot placement, stack-slot reuse, or frame-size computation instead of only dead-slot removal.
 - Keep Step 5 AArch64 prologue and emit wiring deferred until the shared helper and analysis seams feed a broader stack-layout consumer than fallback-LIR pruning, with narrow tests around that handoff.
 
 ## Blockers
