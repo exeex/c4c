@@ -1,126 +1,130 @@
-# Backend Linker Object IO Runbook
+# Built-in AArch64 Linker Runbook
 
 Status: Active
-Source Idea: ideas/open/07_backend_linker_object_io_plan.md
-Activated from: ideas/open/07_backend_linker_object_io_plan.md
+Source Idea: ideas/open/08_backend_builtin_linker_aarch64_plan.md
+Activated from: ideas/open/08_backend_builtin_linker_aarch64_plan.md
 
 ## Purpose
 
-Turn the mirrored shared ELF and linker-common trees into the first reusable object/archive input layer for later linker work, without expanding into relocation application or final executable emission.
+Turn the mirrored shared linker layers plus `src/backend/aarch64/linker/` into the first bounded static-link path for AArch64, without widening into dynamic-linking or full Linux system-linking work.
 
 ## Goal
 
-Parse one bounded relocatable ELF object and one bounded archive case through shared linker infrastructure so later AArch64 linker work can consume stable object, section, symbol, and relocation data.
+Link one tiny multi-object AArch64 program through the built-in linker so later linker work can build on explicit object loading, symbol resolution, relocation application, and ELF executable emission seams.
 
 ## Core Rule
 
-Do not broaden this runbook into executable linking. Keep the active slice centered on shared object and archive IO surfaces only.
+Keep this runbook static-link-first and narrow. Do not widen into shared-library, PLT/GOT, TLS, or full stdlib-linking work.
 
 ## Read First
 
-- [ideas/open/07_backend_linker_object_io_plan.md](/Users/chi-shengwu/c4c/ideas/open/07_backend_linker_object_io_plan.md)
-- [ideas/closed/06_backend_builtin_assembler_aarch64_plan.md](/Users/chi-shengwu/c4c/ideas/closed/06_backend_builtin_assembler_aarch64_plan.md)
 - [ideas/open/08_backend_builtin_linker_aarch64_plan.md](/Users/chi-shengwu/c4c/ideas/open/08_backend_builtin_linker_aarch64_plan.md)
+- [ideas/closed/07_backend_linker_object_io_plan.md](/Users/chi-shengwu/c4c/ideas/closed/07_backend_linker_object_io_plan.md)
+- [ideas/closed/06_backend_builtin_assembler_aarch64_plan.md](/Users/chi-shengwu/c4c/ideas/closed/06_backend_builtin_assembler_aarch64_plan.md)
 - [ideas/open/__backend_port_plan.md](/Users/chi-shengwu/c4c/ideas/open/__backend_port_plan.md)
-- `ref/claudes-c-compiler/src/backend/linker_common/README.md`
-- `ref/claudes-c-compiler/src/backend/linker_common/types.rs`
-- `ref/claudes-c-compiler/src/backend/linker_common/parse_object.rs`
-- `ref/claudes-c-compiler/src/backend/linker_common/archive.rs`
-- `ref/claudes-c-compiler/src/backend/linker_common/symbols.rs`
-- `ref/claudes-c-compiler/src/backend/linker_common/merge.rs`
-- `ref/claudes-c-compiler/src/backend/linker_common/section_map.rs`
-- `ref/claudes-c-compiler/src/backend/elf/archive.rs`
-- `ref/claudes-c-compiler/src/backend/elf/io.rs`
-- `ref/claudes-c-compiler/src/backend/elf/constants.rs`
+- `ref/claudes-c-compiler/src/backend/arm/linker/README.md`
+- `ref/claudes-c-compiler/src/backend/arm/linker/link.rs`
+- `ref/claudes-c-compiler/src/backend/arm/linker/input.rs`
+- `ref/claudes-c-compiler/src/backend/arm/linker/types.rs`
+- `ref/claudes-c-compiler/src/backend/arm/linker/reloc.rs`
+- `ref/claudes-c-compiler/src/backend/arm/linker/emit_static.rs`
+- `ref/claudes-c-compiler/src/backend/linker_common/`
 
 ## Current Targets
 
-- keep ELF object and archive parsing target-independent under `src/backend/elf/` and `src/backend/linker_common/`
-- expose stable shared representations for sections, symbols, relocations, and archive members
-- prove one bounded happy-path object case and one bounded archive case before widening malformed-input coverage
+- keep orchestration under `src/backend/aarch64/linker/` separated from shared IO in `src/backend/elf/` and `src/backend/linker_common/`
+- reuse the shared object/archive parser for bounded input loading instead of reparsing AArch64 objects locally
+- prove one tiny static executable path with a relocation-bearing multi-object case
+- make the first executable emission surfaces explicit enough that later tests can compare them with the external linker path
 
 ## Non-Goals
 
-- relocation application
-- final executable writing
-- target-specific linker policy
-- broad linker orchestration beyond what object and archive parsing requires
+- dynamic linking
+- shared-library output
+- PLT/GOT, TLS, IFUNC, or `.eh_frame_hdr` follow-ons
+- broad archive-resolution generalization beyond the first bounded static-link slice
+- full Linux stdlib linking
 
 ## Working Model
 
-- mirror the ref split between low-level ELF reading and shared linker-facing object bookkeeping
-- keep parser outputs explicit enough that later `aarch64/linker/` code can consume them without reparsing raw bytes
-- prefer one bounded parsing surface at a time: first relocatable object inventory, then archive member discovery
+- mirror the ref split between:
+  input loading,
+  shared symbol registration and object/archive bookkeeping,
+  AArch64 relocation application,
+  and static ELF emission
+- prefer one bounded executable path first: tiny multi-object input, one known relocation-bearing reference, and one narrow executable layout proof
+- keep target-specific work in `src/backend/aarch64/linker/`; only move code into shared layers when the logic is genuinely target-independent
 
 ## Execution Rules
 
-- add or tighten the narrowest tests before expanding parser coverage
-- compare parsed inventories against known object and archive fixtures instead of guessing ELF details
-- record follow-on relocation or layout work back into open ideas instead of widening this runbook
+- add or tighten the narrowest linker test before expanding implementation
+- validate linked output by inspecting executable layout and, when practical, comparing against the external linker path for the same tiny program
+- record follow-on linker features back into open ideas instead of widening this runbook
 
-## Step 1: Lock The Minimal Shared Object IO Slice
+## Step 1: Lock The First Static-Link Slice
 
-Goal: identify the smallest relocatable object case that exercises shared section, symbol, and relocation parsing.
-
-Primary targets:
-
-- `src/backend/elf/`
-- `src/backend/linker_common/parse_object.*`
-- shared object-coverage tests under `tests/`
-
-Actions:
-
-- inspect current compile-integrated shared ELF and linker-common surfaces
-- choose one bounded relocatable object fixture with `.text`, symbol table, and at least one relocation inventory expectation
-- enumerate the exact shared types and parser seams that the first object slice must populate
-
-Completion check:
-
-- one concrete first object-parsing slice is named, with required section, symbol, and relocation expectations recorded
-
-## Step 2: Parse One Real Relocatable Object Through Shared Types
-
-Goal: make one bounded ELF relocatable object parse into stable shared linker data structures.
+Goal: choose the smallest relocation-bearing multi-object AArch64 case that exercises the first built-in linker path end to end.
 
 Primary targets:
 
-- `src/backend/elf/`
-- `src/backend/linker_common/types.*`
-- `src/backend/linker_common/parse_object.*`
+- `src/backend/aarch64/linker/`
+- linker-focused tests under `tests/`
 
 Actions:
 
-- replace placeholder or partial object-reading paths only as needed for the chosen slice
-- keep shared object representations explicit about sections, symbols, and relocations
-- avoid introducing target-local parsing logic into the shared layer
+- inspect the current `aarch64/linker/` stubs, entry points, and tests
+- choose one tiny two-object or object-plus-archive case with an explicit call or global-reference relocation
+- record the exact expected outputs for input loading, symbol resolution, relocation application, and executable sections
 
 Completion check:
 
-- one real relocatable object parses through shared ELF/linker-common code with test-checked section, symbol, and relocation inventories
+- one concrete first static-link slice is named, with explicit input and output expectations recorded
 
-## Step 3: Add The First Archive IO Slice
+## Step 2: Connect Shared Input Loading To AArch64 Linker Entry Points
 
-Goal: make one bounded archive case parse far enough for later symbol-driven member discovery.
+Goal: make the AArch64 linker subtree consume the shared object/archive data surfaces through explicit entry points.
 
 Primary targets:
 
-- `src/backend/elf/archive.*`
-- `src/backend/linker_common/archive.*`
-- archive-focused tests under `tests/`
+- `src/backend/aarch64/linker/input.*`
+- `src/backend/aarch64/linker/elf.*`
+- `src/backend/aarch64/linker/types.*`
+- `src/backend/linker_common/`
 
 Actions:
 
-- add or tighten one narrow archive test before implementing archive-member parsing
-- parse one single-member or small archive case into shared archive/member structures
-- validate member enumeration and symbol-driven lookup without widening into full linking
+- replace placeholder or commented shared-linker wiring only as needed for the chosen slice
+- keep shared object/archive parsing in the shared layer and expose only the data the AArch64 linker needs
+- avoid mixing relocation semantics into the input-loading step
 
 Completion check:
 
-- one bounded archive case parses through the shared layer with test-checked member inventory and lookup behavior
+- the chosen bounded input case loads through shared object/archive surfaces into the AArch64 linker entry path
+
+## Step 3: Apply The First AArch64 Static-Link Path
+
+Goal: resolve symbols, apply the narrow relocation subset, and emit one bounded static executable.
+
+Primary targets:
+
+- `src/backend/aarch64/linker/link.*`
+- `src/backend/aarch64/linker/reloc.*`
+- `src/backend/aarch64/linker/emit_static.*`
+- linker-focused tests under `tests/`
+
+Actions:
+
+- implement only the relocation kinds required by the chosen case
+- emit the minimal executable layout needed for the first tiny linked program
+- compare the resulting layout or behavior against the external linker path when the test shape supports it
+
+Completion check:
+
+- one bounded multi-object AArch64 case links into a test-checked static executable through the built-in linker path
 
 ## Acceptance Checks
 
-- `src/backend/elf/` and `src/backend/linker_common/` stay compile-integrated as shared infrastructure
-- one bounded relocatable object parses into stable shared object data
-- one bounded archive case parses into stable shared archive/member data
-- later AArch64 linker work can consume these shared surfaces without reparsing raw inputs
+- `src/backend/aarch64/linker/` compiles against the shared ELF/linker layers
+- the first static-link slice uses shared object/archive inputs instead of local reparsing
+- one bounded AArch64 executable path resolves symbols, applies the required relocations, and emits a stable executable surface
+- dynamic-linking and broader linker policy remain out of scope

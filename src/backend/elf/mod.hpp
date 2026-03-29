@@ -1,7 +1,11 @@
 #pragma once
 
+#include <cstddef>
 #include <array>
 #include <cstdint>
+#include <optional>
+#include <string>
+#include <vector>
 
 namespace c4c::backend::elf {
 
@@ -36,5 +40,17 @@ inline constexpr std::uint8_t STT_FUNC = 2;
 inline constexpr std::uint8_t STT_SECTION = 3;
 
 inline constexpr std::uint16_t SHN_UNDEF = 0;
+
+struct ArchiveMemberRef {
+  std::string name;
+  std::size_t data_offset = 0;
+  std::size_t data_size = 0;
+};
+
+[[nodiscard]] bool is_archive_file(const std::vector<std::uint8_t>& data);
+
+[[nodiscard]] std::optional<std::vector<ArchiveMemberRef>> parse_archive_members(
+    const std::vector<std::uint8_t>& data,
+    std::string* error = nullptr);
 
 }  // namespace c4c::backend::elf

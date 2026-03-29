@@ -2,6 +2,7 @@
 
 #include "../elf/mod.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -59,7 +60,31 @@ struct Elf64Object {
   std::string source_name;
 };
 
+struct ArchiveMember {
+  std::string name;
+  std::size_t data_offset = 0;
+  std::size_t data_size = 0;
+  std::optional<Elf64Object> object;
+  std::vector<std::string> defined_symbols;
+
+  [[nodiscard]] bool defines_symbol(const std::string& symbol_name) const;
+};
+
+struct ElfArchive {
+  std::vector<ArchiveMember> members;
+  std::string source_name;
+
+  [[nodiscard]] std::optional<std::size_t> find_member_index_for_symbol(
+      const std::string& symbol_name) const;
+};
+
 [[nodiscard]] std::optional<Elf64Object> parse_elf64_object(
+    const std::vector<std::uint8_t>& data,
+    const std::string& source_name,
+    std::uint16_t expected_machine,
+    std::string* error = nullptr);
+
+[[nodiscard]] std::optional<ElfArchive> parse_elf64_archive(
     const std::vector<std::uint8_t>& data,
     const std::string& source_name,
     std::uint16_t expected_machine,

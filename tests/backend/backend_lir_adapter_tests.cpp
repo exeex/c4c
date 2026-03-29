@@ -123,6 +123,11 @@ std::uint8_t symbol_info(std::uint8_t binding, std::uint8_t symbol_type) {
   return static_cast<std::uint8_t>((binding << 4) | symbol_type);
 }
 
+std::string format_ar_field(const std::string& value, std::size_t width) {
+  if (value.size() >= width) return value.substr(0, width);
+  return value + std::string(width - value.size(), ' ');
+}
+
 std::vector<std::uint8_t> make_minimal_relocation_object_fixture() {
   using namespace c4c::backend::elf;
 
@@ -299,6 +304,31 @@ std::vector<std::uint8_t> make_minimal_relocation_object_fixture() {
   append_u64(out, 0);
 
   return out;
+}
+
+std::vector<std::uint8_t> make_single_member_archive_fixture() {
+  const auto member = make_minimal_relocation_object_fixture();
+  const std::string member_name = "minimal_reloc.o/";
+
+  std::vector<std::uint8_t> archive;
+  archive.insert(archive.end(), {'!', '<', 'a', 'r', 'c', 'h', '>', '\n'});
+
+  const auto append_text = [&](const std::string& text) {
+    archive.insert(archive.end(), text.begin(), text.end());
+  };
+
+  append_text(format_ar_field(member_name, 16));
+  append_text(format_ar_field("0", 12));
+  append_text(format_ar_field("0", 6));
+  append_text(format_ar_field("0", 6));
+  append_text(format_ar_field("644", 8));
+  append_text(format_ar_field(std::to_string(member.size()), 10));
+  archive.push_back('`');
+  archive.push_back('\n');
+  archive.insert(archive.end(), member.begin(), member.end());
+  if ((archive.size() & 1u) != 0u) archive.push_back('\n');
+
+  return archive;
 }
 
 std::size_t find_section_index(const c4c::backend::linker_common::Elf64Object& object,
@@ -4497,6 +4527,40 @@ void test_shared_linker_parses_builtin_return_add_object() {
   std::filesystem::remove(object_path);
 }
 
+void test_shared_linker_parses_single_member_archive_fixture() {
+  const auto fixture = make_single_member_archive_fixture();
+  std::string error;
+  const auto parsed = c4c::backend::linker_common::parse_elf64_archive(
+      fixture, "libminimal.a", c4c::backend::elf::EM_AARCH64, &error);
+  expect_true(parsed.has_value(),
+              "shared linker archive parser should accept the bounded single-member fixture: " +
+                  error);
+
+  const auto& archive = *parsed;
+  expect_true(archive.source_name == "libminimal.a",
+              "shared linker archive parser should preserve the archive source name");
+  expect_true(archive.members.size() == 1,
+              "shared linker archive parser should preserve the bounded single-member inventory");
+  expect_true(archive.find_member_index_for_symbol("main").has_value(),
+              "shared linker archive parser should support symbol-driven member lookup for the bounded archive slice");
+
+  const auto member_index = *archive.find_member_index_for_symbol("main");
+  const auto& member = archive.members[member_index];
+  expect_true(member.name == "minimal_reloc.o",
+              "shared linker archive parser should normalize the bounded member name");
+  expect_true(member.object.has_value(),
+              "shared linker archive parser should parse the bounded ELF member into a shared object surface");
+  expect_true(member.defines_symbol("main") && !member.defines_symbol("helper_ext"),
+              "shared linker archive parser should index defined symbols without treating unresolved externs as providers");
+
+  const auto& object = *member.object;
+  const auto text_index = find_section_index(object, ".text");
+  expect_true(text_index < object.sections.size(),
+              "shared linker archive parser should preserve section names for the parsed member object");
+  expect_true(object.relocations[text_index].size() == 1,
+              "shared linker archive parser should preserve relocation inventory for the bounded archive member");
+}
+
 void test_aarch64_backend_assembler_handoff_helper_stages_emitted_text() {
   const auto output_path = make_temp_output_path("c4c_aarch64_handoff");
   const auto staged = c4c::backend::aarch64::assemble_module(make_return_add_module(), output_path);
@@ -4676,6 +4740,7 @@ int main() {
   test_backend_binary_utils_contract_headers_are_include_reachable();
   test_shared_linker_parses_minimal_relocation_object_fixture();
   test_shared_linker_parses_builtin_return_add_object();
+  test_shared_linker_parses_single_member_archive_fixture();
   test_aarch64_backend_assembler_handoff_helper_stages_emitted_text();
   test_aarch64_builtin_object_matches_external_return_add_surface();
   return 0;

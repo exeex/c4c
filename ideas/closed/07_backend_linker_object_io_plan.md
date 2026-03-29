@@ -1,5 +1,7 @@
 # Backend Linker Object IO Plan
 
+Status: Complete
+
 ## Relationship To Roadmap
 
 Umbrella source: `ideas/open/__backend_port_plan.md`
@@ -113,3 +115,18 @@ The immediate goal is to make one or two simple Linux ELF object/archive cases p
 ## Good First Patch
 
 Parse one relocatable ELF object and one single-member archive into shared linker data structures, then lock the expected section, symbol, and relocation inventory in tests.
+
+## Completion Notes
+
+- The shared linker layer now parses one bounded relocatable ELF object and one bounded regular archive case into explicit shared `Elf64Object` and `ElfArchive`-style surfaces.
+- `src/backend/elf/archive.cpp` now provides the first regular archive member enumeration surface, and `src/backend/linker_common/archive.cpp` now lifts those members into linker-facing archive/member inventory with defined-symbol lookup.
+- Backend contract coverage now proves a single-member `libminimal.a` fixture end to end, including member-name normalization, parsed member-object preservation, relocation inventory retention, and symbol-driven lookup for `main`.
+
+## Leftover Issues
+
+- Thin-archive support and multi-member demand-driven extraction remain follow-on work and should stay outside this completed first archive IO slice.
+- Full-suite regression results stayed monotonic at the same four unrelated failures:
+  - `positive_sema_ok_fn_returns_variadic_fn_ptr_c`
+  - `cpp_positive_sema_decltype_bf16_builtin_cpp`
+  - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+  - `cpp_llvm_initializer_list_runtime_materialization`
