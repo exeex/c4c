@@ -1,0 +1,47 @@
+Internal ctest changing into directory: /workspaces/c4c/build
+Test project /workspaces/c4c/build
+    Start 2162: llvm_gcc_c_torture_src_scal_to_vec1_c
+    Start 2163: llvm_gcc_c_torture_src_scal_to_vec2_c
+1/2 Test #2163: llvm_gcc_c_torture_src_scal_to_vec2_c ...***Failed    0.50 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL]
+  /workspaces/c4c/tests/c/external/gcc_torture/src/scal-to-vec2.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+2/2 Test #2162: llvm_gcc_c_torture_src_scal_to_vec1_c ...***Failed    0.50 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL]
+  /workspaces/c4c/tests/c/external/gcc_torture/src/scal-to-vec1.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+
+0% tests passed, 2 tests failed out of 2
+
+Label Time Summary:
+llvm_gcc_c_torture    =   1.00 sec*proc (2 tests)
+
+Total Test time (real) =   0.60 sec
+
+The following tests FAILED:
+	2162 - llvm_gcc_c_torture_src_scal_to_vec1_c (Failed)    llvm_gcc_c_torture
+	2163 - llvm_gcc_c_torture_src_scal_to_vec2_c (Failed)    llvm_gcc_c_torture

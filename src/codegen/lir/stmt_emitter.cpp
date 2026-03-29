@@ -183,7 +183,9 @@ int object_align_bytes(const Module& mod, const TypeSpec& ts) {
     return align;
   }
   int align = 1;
-  if (ts.ptr_level > 0 || ts.is_fn_ptr) {
+  if (ts.is_vector && ts.vector_bytes > 0) {
+    align = static_cast<int>(ts.vector_bytes);
+  } else if (ts.ptr_level > 0 || ts.is_fn_ptr) {
     align = 8;
   } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag && ts.tag[0]) {
     const auto it = mod.struct_defs.find(ts.tag);

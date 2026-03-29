@@ -1,0 +1,13 @@
+Internal ctest changing into directory: /workspaces/c4c/build
+Test project /workspaces/c4c/build
+    Start 2162: llvm_gcc_c_torture_src_scal_to_vec1_c
+    Start 2163: llvm_gcc_c_torture_src_scal_to_vec2_c
+1/2 Test #2163: llvm_gcc_c_torture_src_scal_to_vec2_c ...   Passed    0.13 sec
+2/2 Test #2162: llvm_gcc_c_torture_src_scal_to_vec1_c ...   Passed    0.14 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Label Time Summary:
+llvm_gcc_c_torture    =   0.27 sec*proc (2 tests)
+
+Total Test time (real) =   0.24 sec
