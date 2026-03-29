@@ -4427,15 +4427,11 @@ void test_x86_builtin_object_matches_external_return_add_surface() {
   const auto external_object_path = make_temp_output_path("c4c_x86_return_add_external");
 
   write_text_file(asm_path, asm_text);
-  const auto builtin = c4c::backend::x86::assembler::assemble(
-      c4c::backend::x86::assembler::AssembleRequest{
-          .asm_text = asm_text,
-          .output_path = builtin_object_path,
-      });
+  const auto builtin = c4c::backend::x86::assemble_module(module, builtin_object_path);
   expect_true(builtin.object_emitted,
-              "x86 built-in assembler should emit an object for the bounded return_add slice");
+              "x86 backend handoff helper should emit an object for the bounded return_add slice");
   expect_true(builtin.error.empty(),
-              "x86 built-in assembler should not report an error for the bounded return_add slice");
+              "x86 backend handoff helper should not report an error for the bounded return_add slice");
 
   run_command_capture(shell_quote(C4C_TEST_CLANG_PATH) +
                       " --target=x86_64-unknown-linux-gnu -c " +
@@ -5514,6 +5510,22 @@ void test_aarch64_backend_assembler_handoff_helper_stages_emitted_text() {
   std::filesystem::remove(output_path);
 }
 
+void test_x86_backend_assembler_handoff_helper_stages_emitted_text() {
+  const auto output_path = make_temp_output_path("c4c_x86_handoff");
+  const auto staged = c4c::backend::x86::assemble_module(make_return_add_module(), output_path);
+
+  expect_true(staged.staged_text ==
+                  c4c::backend::emit_module(
+                      c4c::backend::BackendModuleInput{make_return_add_module()},
+                      c4c::backend::BackendOptions{c4c::backend::Target::X86_64}),
+              "x86 backend handoff helper should route production backend text through the staged assembler seam");
+  expect_true(staged.output_path == output_path && staged.object_emitted,
+              "x86 backend handoff helper should preserve output-path metadata and report successful object emission for the minimal backend slice");
+  expect_true(std::filesystem::exists(output_path),
+              "x86 backend handoff helper should write the assembled object to the requested output path");
+  std::filesystem::remove(output_path);
+}
+
 void test_aarch64_builtin_object_matches_external_return_add_surface() {
 #if defined(C4C_TEST_CLANG_PATH) && defined(C4C_TEST_OBJDUMP_PATH)
   auto module = make_return_add_module();
@@ -5702,6 +5714,7 @@ int main() {
   test_aarch64_linker_loads_first_static_objects_from_archive_through_shared_input_seam();
   test_aarch64_linker_emits_first_static_call26_executable_slice();
   test_aarch64_backend_assembler_handoff_helper_stages_emitted_text();
+  test_x86_backend_assembler_handoff_helper_stages_emitted_text();
   test_aarch64_builtin_object_matches_external_return_add_surface();
   return 0;
 }

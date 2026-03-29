@@ -1501,4 +1501,10 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   return c4c::codegen::lir::print_llvm(module);
 }
 
+assembler::AssembleResult assemble_module(const c4c::codegen::lir::LirModule& module,
+                                          const std::string& output_path) {
+  return assembler::assemble(
+      assembler::AssembleRequest{.asm_text = emit_module(module), .output_path = output_path});
+}
+
 }  // namespace c4c::backend::x86

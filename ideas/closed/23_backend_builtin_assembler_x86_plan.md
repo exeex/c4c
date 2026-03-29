@@ -1,5 +1,8 @@
 # Built-in x86 Assembler Plan
 
+Status: Complete
+Completed: 2026-03-29
+
 ## Relationship To Roadmap
 
 Umbrella source: `ideas/open/__backend_port_plan.md`
@@ -61,6 +64,38 @@ Implement the first built-in assembler slice for x86 so the compiler can emit wo
 ## Good First Patch
 
 Make parser, encoder, and ELF-writer pieces compile together, then route one minimal x86 backend-emitted function through that path.
+
+## Completion Notes
+
+- The bounded x86 assembler slice now compiles under `src/backend/x86/assembler/`
+  and emits ELF64 relocatable objects for the single-function `mov eax, imm32;
+  ret` path.
+- Production x86 codegen now exposes
+  `src/backend/x86/codegen/emit.hpp` helper
+  `assemble_module(const LirModule&, output_path)`, which routes backend-owned
+  `return_zero` / `return_add` object emission through
+  `x86::assembler::assemble(...)`.
+- Backend tests now validate both the focused x86 handoff helper seam and the
+  external-assembler object baseline through that production helper.
+- Full-suite regression guard remained monotonic for closure:
+  `before passed=2320 failed=19`, `after passed=2320 failed=19`,
+  `new failing tests=0`.
+
+## Leftover Issues
+
+- The first slice is still intentionally limited to one global `.text` function
+  with no relocations, data sections, local labels, or multi-function output.
+- The current x86 runtime/backend cases still falling back to LLVM IR text are
+  intentionally deferred follow-on work, not blockers for this closed idea:
+  `branch_if_eq`, `branch_if_ne`, `branch_if_ult`, `branch_if_ule`,
+  `branch_if_ugt`, `branch_if_uge`, `call_helper`, `param_slot`,
+  `two_arg_helper`, `two_arg_local_arg`, `two_arg_second_local_arg`,
+  `two_arg_second_local_rewrite`, `two_arg_first_local_rewrite`,
+  `two_arg_both_local_arg`, `two_arg_both_local_first_rewrite`,
+  `two_arg_both_local_second_rewrite`, `two_arg_both_local_double_rewrite`,
+  `local_arg_call`, and `global_load`.
+- Wider relocation-bearing assembler support remains future work to coordinate
+  with `ideas/open/24_backend_builtin_linker_x86_plan.md`.
 
 ## Step 1 Inventory
 
