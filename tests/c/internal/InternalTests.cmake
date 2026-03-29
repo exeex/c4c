@@ -478,6 +478,61 @@ if(CLANG_EXECUTABLE)
   set_tests_properties(backend_toolchain_aarch64_asm_object_smoke PROPERTIES
       LABELS "internal;backend")
 
+  if(OBJDUMP_EXECUTABLE)
+    add_test(
+      NAME backend_contract_aarch64_return_add_object
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/return_add.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DBACKEND_OUTPUT_KIND=asm
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend_contract/return_add_aarch64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend_contract/return_add_aarch64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.text|.globl main|mov w0, #5|ret"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.text|main"
+              "-DFORBIDDEN_OBJDUMP_SNIPPETS=.rela.text|R_AARCH64_"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_contract_case.cmake"
+    )
+    set_tests_properties(backend_contract_aarch64_return_add_object PROPERTIES
+        LABELS "internal;backend")
+
+    add_test(
+      NAME backend_contract_aarch64_global_load_object
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/global_load.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DBACKEND_OUTPUT_KIND=asm
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend_contract/global_load_aarch64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend_contract/global_load_aarch64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.data|.globl g_counter|g_counter:|.long 11|adrp x8, g_counter|ldr w0, [x8, :lo12:g_counter]"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.data|.text|.rela.text|g_counter|main|R_AARCH64_ADR_PREL_PG_HI21|R_AARCH64_LDST32_ABS_LO12_NC"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_contract_case.cmake"
+    )
+    set_tests_properties(backend_contract_aarch64_global_load_object PROPERTIES
+        LABELS "internal;backend")
+
+    add_test(
+      NAME backend_contract_aarch64_extern_call_object
+      COMMAND "${CMAKE_COMMAND}"
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DBACKEND_OUTPUT_KIND=asm
+              -DBACKEND_OUTPUT_PATH=${INTERNAL_C_TEST_ROOT}/backend_toolchain_case/aarch64_call_extern_linux.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend_contract/aarch64_call_extern_linux.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.globl main|bl helper|mov w0, #0|ret"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.text|.rela.text|main|*UND*|helper|R_AARCH64_CALL26"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_contract_case.cmake"
+    )
+    set_tests_properties(backend_contract_aarch64_extern_call_object PROPERTIES
+        LABELS "internal;backend")
+  endif()
+
   if(BACKEND_RUNTIME_TARGET_TRIPLE)
     foreach(src IN LISTS INTERNAL_BACKEND_TEST_SRCS)
       get_filename_component(stem "${src}" NAME_WE)
