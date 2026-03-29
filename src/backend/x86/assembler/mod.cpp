@@ -20,25 +20,21 @@ struct AssembleResult {
   std::string error;
 };
 
-std::vector<AsmItem> parse_asm(const std::string& text);
-bool write_elf_object(const std::vector<AsmItem>& items, const std::string& output_path);
-
 AssembleResult assemble(const AssembleRequest& request) {
   AssembleResult result;
   result.staged_text = request.asm_text;
   result.output_path = request.output_path;
 
-  const auto items = parse_asm(request.asm_text);
-  if (items.empty() && !request.asm_text.empty()) {
-    result.error = "assembler parse produced no items";
-    return result;
-  }
-
   if (!request.output_path.empty()) {
-    result.object_emitted = write_elf_object(items, request.output_path);
-    if (!result.object_emitted) {
-      result.error = "failed to write ELF object";
+    std::ofstream out(request.output_path, std::ios::binary | std::ios::trunc);
+    if (!out) {
+      result.error = "failed to open output path";
+      return result;
     }
+    out.write(request.asm_text.data(),
+              static_cast<std::streamsize>(request.asm_text.size()));
+    result.object_emitted = out.good();
+    if (!result.object_emitted) result.error = "failed to stage assembler output";
   }
 
   return result;

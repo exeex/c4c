@@ -10,6 +10,9 @@
 
 namespace c4c::backend::x86::linker {
 
+// Marker type for the staged x86 linker contract surface.
+struct ContractSurface final {};
+
 constexpr std::uint64_t BASE_ADDR = 0x400000;
 constexpr std::uint64_t PAGE_SIZE = 0x1000;
 inline constexpr const char INTERP[] = "/lib64/ld-linux-x86-64.so.2\0";
@@ -188,4 +191,3 @@ bool link_shared(const std::vector<const char*>& object_files,
                  std::string* error = nullptr);
 
 }  // namespace c4c::backend::x86::linker
-

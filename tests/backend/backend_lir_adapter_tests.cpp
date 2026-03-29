@@ -3105,6 +3105,42 @@ void test_x86_backend_scaffold_renders_direct_return_immediate_slice() {
                   "x86 backend should terminate direct return immediates with ret");
 }
 
+void test_x86_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice() {
+  auto module = make_typed_call_crossing_direct_call_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type add_one, %function",
+                  "x86 backend should lower the typed helper into a real function symbol");
+  expect_contains(rendered, "mov qword ptr [rbp - 16], rbx",
+                  "x86 backend should save the shared call-crossing callee-saved register in the prologue");
+  expect_contains(rendered, "mov ebx, 5",
+                  "x86 backend should materialize the call-crossing source value in the shared assigned register");
+  expect_contains(rendered, "mov edi, ebx",
+                  "x86 backend should pass the shared assigned register through the SysV integer argument register");
+  expect_contains(rendered, "call add_one",
+                  "x86 backend should keep the helper call on the direct-call asm path");
+  expect_contains(rendered, "add eax, ebx",
+                  "x86 backend should reuse the shared call-crossing source register after the call");
+  expect_contains(rendered, "mov rbx, qword ptr [rbp - 16]",
+                  "x86 backend should restore the shared callee-saved register in the epilogue");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the call-crossing direct-call slice");
+}
+
+void test_x86_backend_cleans_up_redundant_self_move_on_call_crossing_slice() {
+  auto module = make_typed_call_crossing_direct_call_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_not_contains(rendered, "mov eax, eax",
+                      "x86 backend should remove the redundant backend-owned self-move after the helper call");
+  expect_contains(rendered, "add eax, ebx",
+                  "x86 backend should still consume the helper result directly from eax after cleanup");
+}
+
 void test_aarch64_backend_renders_void_return_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_void_return_module()},
@@ -5112,6 +5148,8 @@ int main() {
   test_aarch64_backend_scaffold_renders_direct_return_immediate_slice();
   test_x86_backend_scaffold_routes_through_explicit_emit_surface();
   test_x86_backend_scaffold_renders_direct_return_immediate_slice();
+  test_x86_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice();
+  test_x86_backend_cleans_up_redundant_self_move_on_call_crossing_slice();
   test_aarch64_backend_renders_void_return_slice();
   test_aarch64_backend_preserves_module_headers_and_declarations();
   test_aarch64_backend_propagates_malformed_signature_in_supported_slice();
