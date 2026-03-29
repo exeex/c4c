@@ -2,10 +2,11 @@
 
 ## Status
 
-Open.
+Completed on 2026-03-29 as a contract-discovery note.
 
-Parked on 2026-03-29 after Step 1 disproved the assumed relocation-bearing
-contract for `tests/c/internal/backend_case/call_helper.c`.
+Closed after Step 1 disproved the assumed relocation-bearing contract for
+`tests/c/internal/backend_case/call_helper.c` and the real bounded work moved
+to `ideas/closed/33_backend_x86_external_call_object_plan.md`.
 
 ## Relationship To Roadmap
 
@@ -117,3 +118,13 @@ object metadata matches the external assembler for that bounded case.
   path and produces no `.rela.text` entry.
 - Resume relocation-bearing work from
   `ideas/open/33_backend_x86_external_call_object_plan.md`.
+
+## Completion Notes
+
+- The discovery result for this idea is durable: `call_helper.c` is a local-call
+  fixture and not the relocation-bearing x86 object contract.
+- The actual bounded relocation-bearing work was split into the `helper_ext`
+  child and is now closed in
+  `ideas/closed/33_backend_x86_external_call_object_plan.md`.
+- No implementation should resume from this note unless the runtime fixture
+  itself changes shape in a future initiative.
