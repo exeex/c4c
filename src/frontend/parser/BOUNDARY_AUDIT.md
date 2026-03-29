@@ -185,6 +185,16 @@ ranking pass.
    keeps the following `kept` global visible after a malformed
    `using Alias = int` line with no semicolon.
 
+8. `src/frontend/parser/declarations.cpp:911`
+   Empty top-level `namespace {}` / `namespace ns {}` wrappers now drop out of
+   the AST entirely instead of materializing a synthetic `NK_EMPTY` node when
+   the body contributes no declarations.
+   Tag: `acceptable breadth`
+   Evidence: the reduced parse-only regression
+   `tests/cpp/internal/parse_only_case/top_level_empty_namespace_block_preserves_following_decl_parse.cpp`
+   keeps the following `kept` global visible without an intermediate `Empty`
+   node after an empty namespace block.
+
 ## Ranked First Tightening Targets
 
 1. `src/frontend/parser/types.cpp:4426`

@@ -9,7 +9,8 @@ Last Updated: 2026-03-29
 
 - Step 3: continue through the remaining top-level structure-only /
   unsupported `NK_EMPTY` exits in `src/frontend/parser/declarations.cpp` after
-  tightening the empty `extern "C"` linkage-block wrapper path
+  tightening the empty namespace-wrapper path after the empty `extern "C"`
+  linkage-block wrapper slice
 
 ## Completed
 
@@ -260,6 +261,23 @@ Last Updated: 2026-03-29
   - after change: `99% tests passed, 1 test failed out of 2416`
   - result: monotonic pass-count increase from the new targeted test, with no
     newly failing cases
+- tightened empty top-level `namespace {}` / `namespace ns {}` wrappers in
+  `src/frontend/parser/declarations.cpp` so they no longer materialize a
+  synthetic `NK_EMPTY` node when the block contains no declarations
+- added the reduced parse-only regression
+  `tests/cpp/internal/parse_only_case/top_level_empty_namespace_block_preserves_following_decl_parse.cpp`
+  plus the dedicated dump assertion
+  `cpp_parse_top_level_empty_namespace_block_preserves_following_decl_dump` in
+  `tests/cpp/internal/InternalTests.cmake`
+- updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record empty top-level
+  namespace wrappers as a covered structure-only boundary with reduced
+  evidence
+- re-ran the required regression guard:
+  - baseline: `99% tests passed, 1 test failed out of 2416`
+  - after change: `99% tests passed, 1 test failed out of 2417`
+  - result: monotonic pass-count increase from the new targeted test, with no
+    newly failing cases; the lone remaining failure is still
+    `cpp_positive_sema_iterator_concepts_following_hash_base_parse_cpp`
 
 ## Blockers
 
