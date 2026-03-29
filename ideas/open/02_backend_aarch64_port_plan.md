@@ -126,6 +126,8 @@ The main progress measure is:
 
 - keep broader local stack-slot/addressing work out of this bring-up idea once it expands beyond the exact `local_temp` single-slot rewrite seam
 - track that next local-memory phase in `ideas/open/09_backend_aarch64_local_memory_addressing_plan.md` instead of widening this idea ad hoc
+- keep broader global/string address-formation work out of this bring-up idea once it expands beyond exact scalar-symbol loads
+- track that next global-addressing phase in `ideas/open/10_backend_aarch64_global_addressing_plan.md` instead of widening this idea ad hoc
 
 ## Acceptance Target
 
