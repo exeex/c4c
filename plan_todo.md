@@ -9,9 +9,10 @@ Last Updated: 2026-03-29
 
 - Step 3: continue through the remaining top-level structure-only /
   unsupported `NK_EMPTY` exits in `src/frontend/parser/declarations.cpp` after
-  removing `using` bookkeeping declarations from the item stream; next review
-  the still-uncovered `asm(...)` and other declaration-side discard exits to
-  decide which should also disappear from the top-level program AST
+  removing valid top-level `asm(...)` declarations from the item stream; next
+  inspect the still-uncovered declaration-side discard exits around function /
+  type-only fallback paths to decide which can also disappear from the top-level
+  program AST without losing semantic coverage
 
 ## Completed
 
@@ -196,6 +197,23 @@ Last Updated: 2026-03-29
     - baseline: `100% tests passed, 0 tests failed out of 2411`
     - after change: `100% tests passed, 0 tests failed out of 2412`
     - result: monotonic pass-count increase with no newly failing tests
+- tightened valid top-level `asm(...)` handling in
+  `src/frontend/parser/declarations.cpp` so supported `asm("...");`
+  declarations now drop out of the program item stream instead of
+  materializing a synthetic `NK_EMPTY` node:
+  - added the reduced parse-only regression
+    `tests/cpp/internal/parse_only_case/top_level_asm_decl_preserves_following_decl_parse.cpp`
+    plus the dedicated dump assertion
+    `cpp_parse_top_level_asm_decl_preserves_following_decl_dump` in
+    `tests/cpp/internal/InternalTests.cmake`
+  - updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record valid top-level
+    `asm(...)` declarations as a covered structure-only discard site alongside
+    the existing malformed `asm(` recovery note
+  - re-ran the required regression guard:
+    - baseline: `99% tests passed, 1 test failed out of 2422`
+    - after change: `99% tests passed, 1 test failed out of 2423`
+    - result: monotonic pass-count increase from the new targeted test, with
+      no newly failing tests
 - tightened top-level C++ `concept` declaration handling in
   `src/frontend/parser/declarations.cpp` so plain and templated concept
   declarations now drop out of the program AST instead of materializing a

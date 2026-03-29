@@ -157,13 +157,18 @@ ranking pass.
    top-level `friend` line.
 
 5. `src/frontend/parser/declarations.cpp:1336`
-   Top-level `asm(...)` parsing now recovers before the next strong declaration
-   starter when the parenthesized payload never closes, instead of swallowing
-   the following declaration through a blind group skip.
+   Top-level `asm(...)` parsing now drops valid declarations out of the program
+   item stream and recovers before the next strong declaration starter when the
+   parenthesized payload never closes, instead of materializing a synthetic
+   `NK_EMPTY` node or swallowing the following declaration through a blind
+   group skip.
    Tag: `acceptable breadth`
-   Evidence: the reduced parse-only regression
+   Evidence: the reduced parse-only regressions
+   `tests/cpp/internal/parse_only_case/top_level_asm_decl_preserves_following_decl_parse.cpp`
+   and
    `tests/cpp/internal/parse_only_case/top_level_asm_recovery_preserves_following_decl_parse.cpp`
-   keeps the following `kept` global visible after malformed `asm(` input.
+   keep the following `kept` global visible with no intermediate `Empty` node
+   after valid `asm("nop");` input and after malformed `asm(` recovery.
 
 6. `src/frontend/parser/declarations.cpp:924`
    Top-level `using namespace`, `using ns::name`, and `using Alias = type`

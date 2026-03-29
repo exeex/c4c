@@ -1450,10 +1450,10 @@ Node* Parser::parse_top_level() {
         if (check(TokenKind::LParen)) {
             const bool closed = skip_top_level_asm_or_recover(*this);
             if (closed) match(TokenKind::Semi);
-            return make_node(NK_EMPTY, ln);
+            return nullptr;
         }
         match(TokenKind::Semi);
-        return make_node(NK_EMPTY, ln);
+        return nullptr;
     }
 
     // _Static_assert

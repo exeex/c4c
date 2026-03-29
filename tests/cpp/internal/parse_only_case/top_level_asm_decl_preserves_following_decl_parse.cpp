@@ -1,0 +1,3 @@
+asm("nop");
+
+int kept;

@@ -470,6 +470,16 @@ set_tests_properties(cpp_parse_top_level_pragma_gcc_visibility_preserves_followi
 )
 
 add_test(
+  NAME cpp_parse_top_level_asm_decl_preserves_following_decl_dump
+  COMMAND c4cll --parse-only "/workspaces/c4c/tests/cpp/internal/parse_only_case/top_level_asm_decl_preserves_following_decl_parse.cpp"
+)
+set_tests_properties(cpp_parse_top_level_asm_decl_preserves_following_decl_dump PROPERTIES
+  LABELS "internal;cpp;parse"
+  PASS_REGULAR_EXPRESSION "GlobalVar\\(kept\\)"
+  FAIL_REGULAR_EXPRESSION "Empty"
+)
+
+add_test(
   NAME cpp_lex_keyword_and_tokens
   COMMAND c4cll --lex-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/keyword_and_parse.cpp"
 )
