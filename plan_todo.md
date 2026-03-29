@@ -73,6 +73,13 @@ Source Plan: plan.md
   `src/backend/x86/codegen/emit.cpp` plus
   `src/backend/aarch64/codegen/emit.cpp` to reuse the same top-level argument
   splitter for direct-call pair parsing.
+- Completed the next Step 4 adapter normalization slice in
+  `src/backend/lir_adapter.cpp` by replacing the adapter's exact
+  `LirCallOp::{args_str,callee_type_suffix}` prefix/suffix matching with
+  structured typed call parsing built on `src/codegen/lir/call_args.hpp`, and
+  added regression coverage in `tests/backend/backend_lir_adapter_tests.cpp`
+  for local-call normalization that tolerates compatibility whitespace instead
+  of falling back to the unsupported-text path.
 
 ## Notes
 
@@ -173,12 +180,14 @@ Source Plan: plan.md
 
 - Follow the Step 4 typed-dispatch cleanup into the remaining backend
   call-adjacent consumers that still rely on wrapper string compatibility
-  instead of structured call decoding, with `src/backend/lir_adapter.cpp` the
-  next highest-value target because it still pattern-matches and rewrites
-  `args_str` via exact string equality and substring surgery.
+  instead of structured call decoding, with the remaining target-specific
+  direct-call fast paths in `src/backend/x86/codegen/emit.cpp` and
+  `src/backend/aarch64/codegen/emit.cpp` still the highest-value targets where
+  `callee_type_suffix` and fixed `i32` argument-shape assumptions remain
+  duplicated beside the shared splitter.
 - Keep GEP index text, inline asm text, and declaration text on the
   compatibility path for now; the next slice should focus on shrinking the
-  adapter's direct-call string protocol surface before attempting broader
+  target backend direct-call protocol surface before attempting broader
   `LirCallOp` storage changes.
 
 ## Validation
@@ -258,6 +267,19 @@ Source Plan: plan.md
   pointer-difference recognizers through typed opcode/predicate dispatch.
 - `ctest --test-dir build -j --output-on-failure > test_fail_after.log`
   recorded `2371/2560` passing and `189` failing tests.
+- `cmake --build build -j8 --target backend_lir_adapter_tests` passed after
+  landing the adapter-side structured call parsing cleanup.
+- `./build/backend_lir_adapter_tests` passed with added whitespace-tolerant
+  local-call normalization coverage.
+- `cmake --build build -j8` passed after routing `src/backend/lir_adapter.cpp`
+  through structured typed call parsing instead of exact string slicing.
+- `ctest --test-dir build -j --output-on-failure > test_fail_after.log`
+  recorded `2371/2560` passing and `189` failing tests after the adapter
+  cleanup slice.
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_before.log --after test_fail_after.log
+  --allow-non-decreasing-passed` passed with zero new failures, zero pass-count
+  regression, and zero new suspicious slow tests.
 - `cmake --build build -j8 --target backend_lir_adapter_tests` passed after
   landing the shared `LirCallOp` argument-decoding helper and wiring the
   stack/liveness consumers plus x86/AArch64 pair parsers through it.

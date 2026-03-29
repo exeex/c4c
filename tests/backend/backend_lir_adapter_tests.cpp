@@ -2413,6 +2413,14 @@ c4c::codegen::lir::LirModule make_typed_direct_call_local_arg_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_typed_direct_call_local_arg_with_spacing_module() {
+  auto module = make_typed_direct_call_local_arg_module();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts.back());
+  call.args_str = "  i32   %t0  ";
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_typed_direct_call_two_arg_local_arg_module() {
   using namespace c4c::codegen::lir;
 
@@ -2576,6 +2584,15 @@ c4c::codegen::lir::LirModule make_typed_direct_call_two_arg_first_local_rewrite_
 
   module.functions.push_back(std::move(helper));
   module.functions.push_back(std::move(main_fn));
+  return module;
+}
+
+c4c::codegen::lir::LirModule
+make_typed_direct_call_two_arg_first_local_rewrite_with_spacing_module() {
+  auto module = make_typed_direct_call_two_arg_first_local_rewrite_module();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts.back());
+  call.args_str = " i32   %t2 ,   i32 7 ";
   return module;
 }
 
@@ -4075,6 +4092,14 @@ void test_adapter_normalizes_typed_direct_call_local_arg_slice() {
                   "adapter should normalize the local slot direct-call argument into the backend slice");
 }
 
+void test_adapter_normalizes_typed_direct_call_local_arg_spacing_slice() {
+  const auto adapted = c4c::backend::adapt_minimal_module(
+      make_typed_direct_call_local_arg_with_spacing_module());
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "call i32 (i32) @add_one(i32 5)",
+                  "adapter should normalize local slot direct-call arguments even when compatibility spacing varies");
+}
+
 void test_adapter_normalizes_typed_two_arg_direct_call_local_arg_slice() {
   const auto adapted =
       c4c::backend::adapt_minimal_module(make_typed_direct_call_two_arg_local_arg_module());
@@ -4121,6 +4146,14 @@ void test_adapter_normalizes_typed_two_arg_direct_call_first_local_rewrite_slice
                   "adapter should still preserve the two-argument helper add");
   expect_contains(rendered, "call i32 (i32, i32) @add_pair(i32 5, i32 7)",
                   "adapter should normalize the rewritten first-local slot into the backend-owned two-argument slice");
+}
+
+void test_adapter_normalizes_typed_two_arg_direct_call_first_local_rewrite_spacing_slice() {
+  const auto adapted = c4c::backend::adapt_minimal_module(
+      make_typed_direct_call_two_arg_first_local_rewrite_with_spacing_module());
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "call i32 (i32, i32) @add_pair(i32 5, i32 7)",
+                  "adapter should normalize rewritten local call arguments even when compatibility spacing varies");
 }
 
 void test_adapter_normalizes_typed_two_arg_direct_call_both_local_arg_slice() {
@@ -7831,10 +7864,12 @@ int main() {
   test_adapter_normalizes_countdown_do_while_return_slice();
   test_adapter_preserves_typed_two_arg_direct_call_helper_slice();
   test_adapter_normalizes_typed_direct_call_local_arg_slice();
+  test_adapter_normalizes_typed_direct_call_local_arg_spacing_slice();
   test_adapter_normalizes_typed_two_arg_direct_call_local_arg_slice();
   test_adapter_normalizes_typed_two_arg_direct_call_second_local_arg_slice();
   test_adapter_normalizes_typed_two_arg_direct_call_second_local_rewrite_slice();
   test_adapter_normalizes_typed_two_arg_direct_call_first_local_rewrite_slice();
+  test_adapter_normalizes_typed_two_arg_direct_call_first_local_rewrite_spacing_slice();
   test_adapter_normalizes_typed_two_arg_direct_call_both_local_arg_slice();
   test_adapter_normalizes_typed_two_arg_direct_call_both_local_first_rewrite_slice();
   test_adapter_normalizes_typed_two_arg_direct_call_both_local_second_rewrite_slice();

@@ -1,5 +1,7 @@
 #include "lir_adapter.hpp"
 
+#include "../codegen/lir/call_args.hpp"
+
 #include <charconv>
 #include <cctype>
 #include <sstream>
@@ -15,6 +17,7 @@ using c4c::codegen::lir::LirBinaryOpcode;
 using c4c::codegen::lir::LirBinaryOpcodeRef;
 using c4c::codegen::lir::LirCmpOp;
 using c4c::codegen::lir::LirCmpPredicate;
+using c4c::codegen::lir::LirCallOp;
 
 std::string trim(std::string text) {
   size_t start = 0;
@@ -74,6 +77,102 @@ std::vector<std::string> split_top_level(const std::string& text, char delim) {
   }
   parts.push_back(trim(text.substr(start)));
   return parts;
+}
+
+struct ParsedCallArg {
+  std::string type;
+  std::string operand;
+};
+
+struct ParsedTypedCall {
+  std::vector<std::string> param_types;
+  std::vector<ParsedCallArg> args;
+};
+
+std::optional<ParsedCallArg> parse_call_arg(std::string_view arg_text) {
+  arg_text = c4c::codegen::lir::trim_lir_arg_text(arg_text);
+  if (arg_text.empty()) {
+    return std::nullopt;
+  }
+
+  const auto operand = c4c::codegen::lir::lir_call_arg_operand(arg_text);
+  if (!operand.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto operand_offset =
+      static_cast<std::size_t>(operand->data() - arg_text.data());
+  const auto type =
+      c4c::codegen::lir::trim_lir_arg_text(arg_text.substr(0, operand_offset));
+  if (type.empty()) {
+    return std::nullopt;
+  }
+
+  return ParsedCallArg{std::string(type), std::string(*operand)};
+}
+
+std::optional<std::vector<std::string>> parse_call_param_types(
+    std::string_view callee_type_suffix) {
+  callee_type_suffix = c4c::codegen::lir::trim_lir_arg_text(callee_type_suffix);
+  if (callee_type_suffix.size() < 2 || callee_type_suffix.front() != '(' ||
+      callee_type_suffix.back() != ')') {
+    return std::nullopt;
+  }
+
+  const auto inner = c4c::codegen::lir::trim_lir_arg_text(
+      callee_type_suffix.substr(1, callee_type_suffix.size() - 2));
+  std::vector<std::string> param_types;
+  if (inner.empty()) {
+    return param_types;
+  }
+
+  for (const auto& part : split_top_level(std::string(inner), ',')) {
+    if (part.empty()) {
+      return std::nullopt;
+    }
+    param_types.push_back(part);
+  }
+  return param_types;
+}
+
+std::optional<ParsedTypedCall> parse_typed_call(const LirCallOp& call) {
+  const auto param_types = parse_call_param_types(call.callee_type_suffix);
+  if (call.callee_type_suffix.empty() || !param_types.has_value()) {
+    return std::nullopt;
+  }
+
+  ParsedTypedCall parsed;
+  parsed.param_types = *param_types;
+  bool parse_failed = false;
+  c4c::codegen::lir::for_each_lir_call_arg(
+      call.args_str, [&](std::string_view arg_text) {
+        const auto parsed_arg = parse_call_arg(arg_text);
+        if (!parsed_arg.has_value()) {
+          parse_failed = true;
+          return;
+        }
+        parsed.args.push_back(*parsed_arg);
+      });
+  if (parse_failed || parsed.args.size() != parsed.param_types.size()) {
+    return std::nullopt;
+  }
+  for (std::size_t index = 0; index < parsed.args.size(); ++index) {
+    if (parsed.args[index].type != parsed.param_types[index]) {
+      return std::nullopt;
+    }
+  }
+  return parsed;
+}
+
+std::string render_call_args(const std::vector<ParsedCallArg>& args) {
+  std::ostringstream out;
+  for (std::size_t index = 0; index < args.size(); ++index) {
+    if (index != 0) {
+      out << ", ";
+    }
+    out << args[index].type << " " << args[index].operand;
+  }
+  return out.str();
 }
 
 std::optional<std::int64_t> parse_i64(std::string_view text) {
@@ -1126,8 +1225,14 @@ std::optional<BackendFunction> adapt_local_single_arg_call_function(
       store->type_str != "i32" || store->ptr != alloca->result ||
       load->type_str != "i32" ||
       load->ptr != alloca->result || call->result.empty() ||
-      *ret->value_str != call->result || call->return_type != "i32" ||
-      call->callee_type_suffix != "(i32)" || call->args_str != ("i32 " + load->result)) {
+      *ret->value_str != call->result || call->return_type != "i32") {
+    return std::nullopt;
+  }
+
+  const auto parsed_call = parse_typed_call(*call);
+  if (!parsed_call.has_value() || parsed_call->param_types.size() != 1 ||
+      parsed_call->param_types.front() != "i32" || parsed_call->args.size() != 1 ||
+      parsed_call->args.front().operand != load->result) {
     return std::nullopt;
   }
 
@@ -1139,7 +1244,8 @@ std::optional<BackendFunction> adapt_local_single_arg_call_function(
                                             call->return_type,
                                             call->callee,
                                             call->callee_type_suffix,
-                                            "i32 " + store->val});
+                                            parsed_call->args.front().type + " " +
+                                                store->val.str()});
   out_block.terminator = BackendReturn{call->result, "i32"};
   out.blocks.push_back(std::move(out_block));
   return out;
@@ -1219,26 +1325,29 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
     }
 
     if (call == nullptr || call_arg_load == nullptr || call->result.empty() ||
-        *ret->value_str != call->result || call->return_type != "i32" ||
-        call->callee_type_suffix != "(i32, i32)") {
+        *ret->value_str != call->result || call->return_type != "i32") {
       return std::nullopt;
     }
 
-    const std::string first_local_prefix = "i32 " + call_arg_load->result + ", i32 ";
-    const std::string second_local_suffix = ", i32 " + call_arg_load->result;
-    if (call->args_str.size() > first_local_prefix.size() &&
-        call->args_str.substr(0, first_local_prefix.size()) == first_local_prefix) {
-      normalized_args =
-          "i32 " + store->val + ", i32 " + call->args_str.substr(first_local_prefix.size());
-    } else if (call->args_str.size() > second_local_suffix.size() &&
-               call->args_str.substr(call->args_str.size() - second_local_suffix.size()) ==
-                   second_local_suffix) {
-      normalized_args =
-          call->args_str.substr(0, call->args_str.size() - second_local_suffix.size()) +
-          ", i32 " + store->val;
-    } else {
+    const auto parsed_call = parse_typed_call(*call);
+    if (!parsed_call.has_value() || parsed_call->param_types.size() != 2 ||
+        parsed_call->param_types[0] != "i32" || parsed_call->param_types[1] != "i32" ||
+        parsed_call->args.size() != 2) {
       return std::nullopt;
     }
+
+    auto normalized_call_args = parsed_call->args;
+    bool replaced_local = false;
+    for (auto& arg : normalized_call_args) {
+      if (arg.operand == call_arg_load->result) {
+        arg.operand = store->val.str();
+        replaced_local = true;
+      }
+    }
+    if (!replaced_local) {
+      return std::nullopt;
+    }
+    normalized_args = render_call_args(normalized_call_args);
     call_callee = call->callee;
     call_callee_type_suffix = call->callee_type_suffix;
   } else {
@@ -1366,13 +1475,23 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
 
     if (call_arg_load0 == nullptr || call_arg_load1 == nullptr || call == nullptr ||
         call->result.empty() || *ret->value_str != call->result ||
-        call->return_type != "i32" || call->callee_type_suffix != "(i32, i32)" ||
-        call->args_str !=
-            ("i32 " + call_arg_load0->result + ", i32 " + call_arg_load1->result)) {
+        call->return_type != "i32") {
       return std::nullopt;
     }
 
-    normalized_args = "i32 " + store0->val + ", i32 " + store1->val;
+    const auto parsed_call = parse_typed_call(*call);
+    if (!parsed_call.has_value() || parsed_call->param_types.size() != 2 ||
+        parsed_call->param_types[0] != "i32" || parsed_call->param_types[1] != "i32" ||
+        parsed_call->args.size() != 2 ||
+        parsed_call->args[0].operand != call_arg_load0->result ||
+        parsed_call->args[1].operand != call_arg_load1->result) {
+      return std::nullopt;
+    }
+
+    auto normalized_call_args = parsed_call->args;
+    normalized_call_args[0].operand = store0->val.str();
+    normalized_call_args[1].operand = store1->val.str();
+    normalized_args = render_call_args(normalized_call_args);
     call_callee = call->callee;
     call_callee_type_suffix = call->callee_type_suffix;
   }
