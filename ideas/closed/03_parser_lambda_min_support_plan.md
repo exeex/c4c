@@ -99,3 +99,22 @@ structure for later stages to make that choice safely.
 This idea is successful when simple lambda syntax has explicit parser support,
 the parser preserves it as a lambda expression node instead of skipping it, and
 a reduced regression test protects that surface.
+
+## Completion
+
+Completed on 2026-03-29.
+
+- Added parser-only reduced cases for `[] {}`, `[]() {}`, `[&] {}`, and `[=] {}`.
+- Introduced `NK_LAMBDA` with parser metadata for capture-default shape and
+  explicit empty parameter-list presence.
+- Implemented a narrow lambda parse path that preserves those first-wave forms
+  as explicit AST nodes.
+- Added parse-dump assertions so the reduced cases prove `NK_LAMBDA` is emitted.
+- Re-ran targeted parse coverage and passed the full-suite before/after
+  regression guard with no newly failing tests.
+
+## Leftover Follow-On Work
+
+- Non-minimal lambdas such as init-captures, typed parameter lists, lambda
+  specifiers, and trailing return types still stay on the existing placeholder
+  skip path and remain out of scope for this closed first-wave parser idea.

@@ -619,6 +619,7 @@ class Parser {
   Node* parse_unary();           // prefix unary
   Node* parse_postfix(Node* base); // postfix ops (left-recursive)
   Node* parse_primary();         // primary expression
+  Node* parse_lambda_expr(int ln); // minimal C++ lambda expression
   Node* parse_sizeof_pack_expr(int ln); // sizeof...(pack)
   Node* parse_new_expr(int ln, bool global_qualified); // C++ new expression
 

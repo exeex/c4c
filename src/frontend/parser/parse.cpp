@@ -1290,6 +1290,7 @@ const char* node_kind_name(NodeKind k) {
         case NK_COMPOUND_LIT: return "CompoundLit";
         case NK_VA_ARG:       return "VaArg";
         case NK_GENERIC:      return "Generic";
+        case NK_LAMBDA:       return "Lambda";
         case NK_INIT_LIST:    return "InitList";
         case NK_INIT_ITEM:    return "InitItem";
         case NK_BLOCK:        return "Block";
@@ -1355,6 +1356,15 @@ void ast_dump(const Node* n, int indent) {
         case NK_GOTO:      printf("(%s)", n->name ? n->name : "?"); break;
         case NK_LABEL:     printf("(%s)", n->name ? n->name : "?"); break;
         case NK_ASM:       printf("(%s)", n->is_volatile_asm ? "volatile" : "plain"); break;
+        case NK_LAMBDA: {
+            const char* capture = "[]";
+            if (n->lambda_capture_default == LCD_BY_REFERENCE) capture = "[&]";
+            else if (n->lambda_capture_default == LCD_BY_COPY) capture = "[=]";
+            printf("(%s", capture);
+            if (n->lambda_has_parameter_list) printf(",()");
+            printf(")");
+            break;
+        }
         default: break;
     }
     if (n->n_template_params > 0) {

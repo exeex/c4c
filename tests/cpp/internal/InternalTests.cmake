@@ -163,6 +163,10 @@ set(CPP_POSITIVE_PARSE_STEMS
     record_body_state_bundle_parse
     qualified_record_partial_specialization_parse
     record_final_specifier_parse
+    lambda_empty_capture_parse
+    lambda_empty_capture_parens_parse
+    lambda_ref_capture_parse
+    lambda_copy_capture_parse
 )
 
 list(APPEND CPP_POSITIVE_FRONTEND_STEMS
@@ -216,6 +220,42 @@ if(CLANG_EXECUTABLE)
 else()
   message(WARNING "clang not found: skipping internal cpp positive_case runtime tests")
 endif()
+
+add_test(
+  NAME cpp_parse_lambda_empty_capture_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/lambda_empty_capture_parse.cpp"
+)
+set_tests_properties(cpp_parse_lambda_empty_capture_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Lambda\\(\\[\\]\\)"
+)
+
+add_test(
+  NAME cpp_parse_lambda_empty_capture_parens_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/lambda_empty_capture_parens_parse.cpp"
+)
+set_tests_properties(cpp_parse_lambda_empty_capture_parens_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Lambda\\(\\[\\],\\(\\)\\)"
+)
+
+add_test(
+  NAME cpp_parse_lambda_ref_capture_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/lambda_ref_capture_parse.cpp"
+)
+set_tests_properties(cpp_parse_lambda_ref_capture_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Lambda\\(\\[&\\]\\)"
+)
+
+add_test(
+  NAME cpp_parse_lambda_copy_capture_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/lambda_copy_capture_parse.cpp"
+)
+set_tests_properties(cpp_parse_lambda_copy_capture_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Lambda\\(\\[=\\]\\)"
+)
 
 add_test(
   NAME cpp_lex_keyword_and_tokens

@@ -648,6 +648,39 @@ bool Parser::try_parse_operator_function_id(std::string& out_name) {
     return true;
 }
 
+Node* Parser::parse_lambda_expr(int ln) {
+    expect(TokenKind::LBracket);
+
+    LambdaCaptureDefault capture_default = LCD_NONE;
+    if (match(TokenKind::RBracket)) {
+        capture_default = LCD_NONE;
+    } else if (match(TokenKind::Amp)) {
+        capture_default = LCD_BY_REFERENCE;
+        expect(TokenKind::RBracket);
+    } else if (match(TokenKind::Assign)) {
+        capture_default = LCD_BY_COPY;
+        expect(TokenKind::RBracket);
+    } else {
+        throw std::runtime_error("unsupported lambda capture list");
+    }
+
+    bool has_parameter_list = false;
+    if (match(TokenKind::LParen)) {
+        has_parameter_list = true;
+        expect(TokenKind::RParen);
+    }
+
+    if (!check(TokenKind::LBrace)) {
+        throw std::runtime_error("lambda body must be a compound statement");
+    }
+
+    Node* lambda = make_node(NK_LAMBDA, ln);
+    lambda->lambda_capture_default = capture_default;
+    lambda->lambda_has_parameter_list = has_parameter_list;
+    lambda->body = parse_block();
+    return lambda;
+}
+
 
 Node* Parser::parse_primary() {
     ParseContextGuard trace(this, __func__);
@@ -770,6 +803,15 @@ Node* Parser::parse_primary() {
 
     if (Node* requires_expr = parse_cpp_requires_expression())
         return requires_expr;
+
+    if (is_cpp_mode() && check(TokenKind::LBracket)) {
+        const int saved_pos = pos_;
+        try {
+            return parse_lambda_expr(ln);
+        } catch (const std::exception&) {
+            pos_ = saved_pos;
+        }
+    }
 
     // Float literal
     if (check(TokenKind::FloatLit)) {

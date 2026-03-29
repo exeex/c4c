@@ -133,6 +133,12 @@ enum OperatorKind {
 // Return a canonical mangled suffix for an operator kind (e.g. "operator_subscript").
 const char* operator_kind_mangled_name(OperatorKind ok);
 
+enum LambdaCaptureDefault {
+    LCD_NONE = 0,
+    LCD_BY_REFERENCE,
+    LCD_BY_COPY,
+};
+
 // ── NodeKind ──────────────────────────────────────────────────────────────────
 
 enum NodeKind {
@@ -176,6 +182,7 @@ enum NodeKind {
     NK_GENERIC,         // _Generic(expr, type1: val1, ...) : left=ctrl_expr,
     NK_REAL_PART,       // __real__ expr : left=expr
     NK_IMAG_PART,       // __imag__ expr : left=expr
+    NK_LAMBDA,          // [capture] [()] { ... } : body=block
                         // children[i]=NK_CAST{type=assoc_type,left=val,ival=1 if default}
 
     // Initializer
@@ -370,6 +377,10 @@ struct Node {
     Node***      ctor_init_args;   // arena-allocated: per-init array of arg nodes
     int*         ctor_init_nargs;  // arena-allocated: per-init argument count
     int          n_ctor_inits;     // number of initializer list items
+
+    // NK_LAMBDA metadata
+    LambdaCaptureDefault lambda_capture_default;
+    bool lambda_has_parameter_list;
 };
 
 inline bool is_primary_template_struct_def(const Node* node) {
