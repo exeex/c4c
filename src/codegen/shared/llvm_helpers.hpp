@@ -1,8 +1,10 @@
 #pragma once
 
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -49,6 +51,15 @@ inline bool llvm_target_is_amd64_sysv(const std::string& triple) {
          !target_triple_contains(triple, "windows");
 }
 
+inline std::string llvm_long_double_ty(const std::string& triple) {
+  if (llvm_target_is_amd64_sysv(triple)) return "x86_fp80";
+  return "fp128";
+}
+
+inline std::string llvm_long_double_ty() {
+  return llvm_long_double_ty(active_target_triple());
+}
+
 inline bool llvm_va_list_is_pointer_object(const std::string& target_triple) {
   return llvm_target_is_apple(target_triple) && llvm_target_is_aarch64(target_triple);
 }
@@ -73,6 +84,15 @@ inline int llvm_va_list_storage_size(const std::string& target_triple) {
 
 inline int llvm_va_list_storage_size() {
   return llvm_va_list_storage_size(active_target_triple());
+}
+
+inline int llvm_va_list_alignment(const std::string& target_triple) {
+  if (llvm_target_is_amd64_sysv(target_triple)) return 16;
+  return 8;
+}
+
+inline int llvm_va_list_alignment() {
+  return llvm_va_list_alignment(active_target_triple());
 }
 
 inline std::string llvm_va_list_struct_decl(const std::string& target_triple) {
@@ -163,7 +183,7 @@ inline std::string llvm_complex_ty(TypeBase b) {
     case TB_UINT128: elem_ty = "i128"; break;
     case TB_FLOAT: elem_ty = "float"; break;
     case TB_DOUBLE: elem_ty = "double"; break;
-    case TB_LONGDOUBLE: elem_ty = "fp128"; break;
+    case TB_LONGDOUBLE: elem_ty = llvm_long_double_ty(); break;
     default: elem_ty = "i32"; break;
   }
   return "{ " + elem_ty + ", " + elem_ty + " }";
@@ -313,7 +333,7 @@ inline std::string llvm_base(TypeBase b) {
     case TB_INT128: case TB_UINT128: return "i128";
     case TB_FLOAT: return "float";
     case TB_DOUBLE: return "double";
-    case TB_LONGDOUBLE: return "fp128";
+    case TB_LONGDOUBLE: return llvm_long_double_ty();
     case TB_VA_LIST: return "ptr";
     default: return "i32";
   }
@@ -569,10 +589,50 @@ inline std::string fp_to_fp128_literal(double v) {
   return buf;
 }
 
+inline std::string fp_to_x86_fp80_literal(double v) {
+  const bool negative = std::signbit(v);
+  uint16_t exponent = 0;
+  uint64_t mantissa = 0;
+
+  if (std::isnan(v)) {
+    exponent = 0x7FFF;
+    mantissa = (UINT64_C(1) << 63) | (UINT64_C(1) << 62);
+  } else if (std::isinf(v)) {
+    exponent = 0x7FFF;
+    mantissa = UINT64_C(1) << 63;
+  } else if (v == 0.0) {
+    exponent = 0;
+    mantissa = 0;
+  } else {
+    double abs_v = std::fabs(v);
+    int e = 0;
+    double frac = std::frexp(abs_v, &e);
+    double norm = frac * 2.0;
+    e -= 1;
+    exponent = static_cast<uint16_t>(e + 16383);
+
+    double scaled = std::ldexp(norm, 63);
+    uint64_t mant = static_cast<uint64_t>(scaled + 0.5);
+    if (mant == 0) mant = UINT64_C(1) << 63;
+    mantissa = mant;
+  }
+
+  const uint16_t word = static_cast<uint16_t>((negative ? 1 : 0) << 15 | exponent);
+  char buf[32];
+  std::snprintf(buf, sizeof(buf), "0xK%04X%016llX",
+                static_cast<unsigned>(word),
+                static_cast<unsigned long long>(mantissa));
+  return buf;
+}
+
 inline std::string fp_literal(TypeBase b, double v) {
   switch (b) {
     case TB_FLOAT: return fp_to_float_literal(static_cast<float>(v));
-    case TB_LONGDOUBLE: return fp_to_fp128_literal(v);
+    case TB_LONGDOUBLE:
+      if (llvm_target_is_amd64_sysv(active_target_triple())) {
+        return fp_to_x86_fp80_literal(v);
+      }
+      return fp_to_fp128_literal(v);
     case TB_DOUBLE:
     default:
       return fp_to_hex(v);

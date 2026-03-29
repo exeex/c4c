@@ -188,6 +188,8 @@ int object_align_bytes(const Module& mod, const TypeSpec& ts) {
   } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag && ts.tag[0]) {
     const auto it = mod.struct_defs.find(ts.tag);
     align = (it != mod.struct_defs.end()) ? std::max(1, it->second.align_bytes) : 8;
+  } else if (ts.base == TB_VA_LIST && ts.ptr_level == 0 && ts.array_rank == 0) {
+    align = llvm_va_list_alignment(mod.target_triple);
   } else {
     switch (ts.base) {
       case TB_BOOL: case TB_CHAR: case TB_SCHAR: case TB_UCHAR: align = 1; break;
@@ -880,7 +882,7 @@ std::string StmtEmitter::emit_amd64_va_arg_from_overflow(
 
   const std::string tmp_addr = fresh_tmp(ctx);
   const int align = object_align_bytes(mod_, res_ts);
-  emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, res_ty, "", align});
+  ctx.alloca_insts.push_back(lir::LirAllocaOp{tmp_addr, res_ty, "", align});
   module_->need_memcpy = true;
   emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, stack_ptr,
                                     std::to_string(size_bytes), false});
@@ -937,7 +939,7 @@ std::string StmtEmitter::emit_amd64_va_arg_from_registers(
   }
 
   const std::string tmp_addr = fresh_tmp(ctx);
-  emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, res_ty, "", align});
+  ctx.alloca_insts.push_back(lir::LirAllocaOp{tmp_addr, res_ty, "", align});
 
   int gp_chunk_index = 0;
   int sse_slot_index = 0;
@@ -3074,7 +3076,9 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
       TypeSpec ap_ts{};
       const std::string src_ptr = emit_va_list_obj_ptr(ctx, call.args[arg_index], ap_ts);
       const std::string tmp_addr = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, llvm_va_list_storage_ty(), {}, 0});
+      const int va_align = llvm_va_list_alignment(mod_.target_triple);
+      ctx.alloca_insts.push_back(
+          lir::LirAllocaOp{tmp_addr, llvm_va_list_storage_ty(), {}, va_align});
       module_->need_memcpy = true;
       emit_lir_op(ctx, lir::LirMemcpyOp{
           tmp_addr, src_ptr, std::to_string(llvm_va_list_storage_size()), false});
@@ -3157,7 +3161,7 @@ PreparedCallArg StmtEmitter::prepare_amd64_variadic_aggregate_arg(
                                 const std::string& src_ptr,
                                 int copy_bytes) {
       const std::string tmp_addr = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, llvm_ty, "", 0});
+      ctx.alloca_insts.push_back(lir::LirAllocaOp{tmp_addr, llvm_ty, "", 0});
       emit_lir_op(ctx, lir::LirStoreOp{llvm_ty, zero_value, tmp_addr});
       module_->need_memcpy = true;
       emit_lir_op(ctx, lir::LirMemcpyOp{
@@ -3409,13 +3413,16 @@ void StmtEmitter::promote_builtin_fp_math_arg(FnCtx& ctx, std::string& value,
     if (value_ts.ptr_level != 0 || value_ts.array_rank != 0) {
       return;
     }
-    const auto cast_fp_arg = [&](const char* src_ty, const char* dst_ty,
+    const auto cast_fp_arg = [&](const std::string& src_ty, const std::string& dst_ty,
                                  lir::LirCastKind kind, TypeBase dst_base) {
       const std::string promoted = fresh_tmp(ctx);
       emit_lir_op(ctx, lir::LirCastOp{promoted, kind, src_ty, value, dst_ty});
       value = promoted;
       value_ts.base = dst_base;
     };
+
+    const std::string long_double_ty =
+        llvm_helpers::llvm_long_double_ty(mod_.target_triple);
 
     switch (builtin_id) {
       case BuiltinId::Copysign:
@@ -3433,9 +3440,11 @@ void StmtEmitter::promote_builtin_fp_math_arg(FnCtx& ctx, std::string& value,
       case BuiltinId::CopysignL:
       case BuiltinId::FabsL:
         if (value_ts.base == TB_FLOAT) {
-          cast_fp_arg("float", "fp128", lir::LirCastKind::FPExt, TB_LONGDOUBLE);
+          cast_fp_arg("float", long_double_ty, lir::LirCastKind::FPExt,
+                      TB_LONGDOUBLE);
         } else if (value_ts.base == TB_DOUBLE) {
-          cast_fp_arg("double", "fp128", lir::LirCastKind::FPExt, TB_LONGDOUBLE);
+          cast_fp_arg("double", long_double_ty, lir::LirCastKind::FPExt,
+                      TB_LONGDOUBLE);
         }
         break;
       default:
