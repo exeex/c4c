@@ -331,6 +331,149 @@ std::vector<std::uint8_t> make_single_member_archive_fixture() {
   return archive;
 }
 
+std::vector<std::uint8_t> make_minimal_helper_definition_object_fixture() {
+  using namespace c4c::backend::elf;
+
+  constexpr std::size_t kElfHeaderSize = 64;
+  constexpr std::size_t kSectionHeaderSize = 64;
+
+  std::vector<std::uint8_t> text_bytes = {
+      0x40, 0x05, 0x80, 0x52,
+      0xc0, 0x03, 0x5f, 0xd6,
+  };
+
+  std::string strtab;
+  strtab.push_back('\0');
+  const auto helper_name = static_cast<std::uint32_t>(strtab.size());
+  strtab += "helper_ext";
+  strtab.push_back('\0');
+
+  std::string shstrtab;
+  shstrtab.push_back('\0');
+  const auto text_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".text";
+  shstrtab.push_back('\0');
+  const auto symtab_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".symtab";
+  shstrtab.push_back('\0');
+  const auto strtab_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".strtab";
+  shstrtab.push_back('\0');
+  const auto shstrtab_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".shstrtab";
+  shstrtab.push_back('\0');
+
+  std::vector<std::uint8_t> symtab;
+  append_zeroes(symtab, 24);
+  append_u32(symtab, 0);
+  symtab.push_back(symbol_info(STB_LOCAL, STT_SECTION));
+  symtab.push_back(0);
+  append_u16(symtab, 1);
+  append_u64(symtab, 0);
+  append_u64(symtab, 0);
+  append_u32(symtab, helper_name);
+  symtab.push_back(symbol_info(STB_GLOBAL, STT_FUNC));
+  symtab.push_back(0);
+  append_u16(symtab, 1);
+  append_u64(symtab, 0);
+  append_u64(symtab, text_bytes.size());
+
+  std::size_t offset = kElfHeaderSize;
+  const auto text_offset = offset;
+  offset += text_bytes.size();
+  offset = align_up(offset, 8);
+
+  const auto symtab_offset = offset;
+  offset += symtab.size();
+
+  const auto strtab_offset = offset;
+  offset += strtab.size();
+
+  const auto shstrtab_offset = offset;
+  offset += shstrtab.size();
+  offset = align_up(offset, 8);
+
+  const auto section_header_offset = offset;
+
+  std::vector<std::uint8_t> out;
+  out.reserve(section_header_offset + 5 * kSectionHeaderSize);
+  out.insert(out.end(), ELF_MAGIC.begin(), ELF_MAGIC.end());
+  out.push_back(ELFCLASS64);
+  out.push_back(ELFDATA2LSB);
+  out.push_back(1);
+  out.push_back(0);
+  out.push_back(0);
+  append_zeroes(out, 7);
+  append_u16(out, ET_REL);
+  append_u16(out, EM_AARCH64);
+  append_u32(out, 1);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, section_header_offset);
+  append_u32(out, 0);
+  append_u16(out, kElfHeaderSize);
+  append_u16(out, 0);
+  append_u16(out, 0);
+  append_u16(out, kSectionHeaderSize);
+  append_u16(out, 5);
+  append_u16(out, 4);
+
+  out.insert(out.end(), text_bytes.begin(), text_bytes.end());
+  append_zeroes(out, align_up(out.size(), 8) - out.size());
+  out.insert(out.end(), symtab.begin(), symtab.end());
+  out.insert(out.end(), strtab.begin(), strtab.end());
+  out.insert(out.end(), shstrtab.begin(), shstrtab.end());
+  append_zeroes(out, align_up(out.size(), 8) - out.size());
+
+  append_zeroes(out, kSectionHeaderSize);
+
+  append_u32(out, text_name);
+  append_u32(out, SHT_PROGBITS);
+  append_u64(out, SHF_ALLOC | SHF_EXECINSTR);
+  append_u64(out, 0);
+  append_u64(out, text_offset);
+  append_u64(out, text_bytes.size());
+  append_u32(out, 0);
+  append_u32(out, 0);
+  append_u64(out, 4);
+  append_u64(out, 0);
+
+  append_u32(out, symtab_name);
+  append_u32(out, SHT_SYMTAB);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, symtab_offset);
+  append_u64(out, symtab.size());
+  append_u32(out, 3);
+  append_u32(out, 2);
+  append_u64(out, 8);
+  append_u64(out, 24);
+
+  append_u32(out, strtab_name);
+  append_u32(out, SHT_STRTAB);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, strtab_offset);
+  append_u64(out, strtab.size());
+  append_u32(out, 0);
+  append_u32(out, 0);
+  append_u64(out, 1);
+  append_u64(out, 0);
+
+  append_u32(out, shstrtab_name);
+  append_u32(out, SHT_STRTAB);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, shstrtab_offset);
+  append_u64(out, shstrtab.size());
+  append_u32(out, 0);
+  append_u32(out, 0);
+  append_u64(out, 1);
+  append_u64(out, 0);
+
+  return out;
+}
+
 std::size_t find_section_index(const c4c::backend::linker_common::Elf64Object& object,
                                const std::string& name) {
   for (std::size_t index = 0; index < object.sections.size(); ++index) {
@@ -343,6 +486,14 @@ void write_text_file(const std::string& path, const std::string& text) {
   std::ofstream output(path, std::ios::binary);
   if (!output) fail("failed to open file for write: " + path);
   output << text;
+  if (!output.good()) fail("failed to write file: " + path);
+}
+
+void write_binary_file(const std::string& path, const std::vector<std::uint8_t>& bytes) {
+  std::ofstream output(path, std::ios::binary);
+  if (!output) fail("failed to open file for write: " + path);
+  output.write(reinterpret_cast<const char*>(bytes.data()),
+               static_cast<std::streamsize>(bytes.size()));
   if (!output.good()) fail("failed to write file: " + path);
 }
 
@@ -4561,6 +4712,52 @@ void test_shared_linker_parses_single_member_archive_fixture() {
               "shared linker archive parser should preserve relocation inventory for the bounded archive member");
 }
 
+void test_aarch64_linker_names_first_static_call26_slice() {
+  const auto caller_path = make_temp_path("c4c_aarch64_linker_caller", ".o");
+  const auto helper_path = make_temp_path("c4c_aarch64_linker_helper", ".o");
+  write_binary_file(caller_path, make_minimal_relocation_object_fixture());
+  write_binary_file(helper_path, make_minimal_helper_definition_object_fixture());
+
+  std::string error;
+  const auto slice = c4c::backend::aarch64::linker::inspect_first_static_link_slice(
+      {caller_path, helper_path}, &error);
+  expect_true(slice.has_value(),
+              "aarch64 linker should load the first bounded static-link slice through shared object parsing: " +
+                  error);
+
+  expect_true(slice->case_name == "aarch64-static-call26-two-object",
+              "aarch64 linker should name the first bounded static-link slice explicitly");
+  expect_true(slice->objects.size() == 2,
+              "aarch64 linker should keep the first static-link slice scoped to two explicit input objects");
+  expect_true(slice->objects[0].defined_symbols.size() == 1 &&
+                  slice->objects[0].defined_symbols[0] == "main" &&
+                  slice->objects[0].undefined_symbols.size() == 1 &&
+                  slice->objects[0].undefined_symbols[0] == "helper_ext",
+              "aarch64 linker should record that the caller object defines main and imports helper_ext for the first slice");
+  expect_true(slice->objects[1].defined_symbols.size() == 1 &&
+                  slice->objects[1].defined_symbols[0] == "helper_ext" &&
+                  slice->objects[1].undefined_symbols.empty(),
+              "aarch64 linker should record that the helper object provides the only external definition needed by the first slice");
+
+  expect_true(slice->relocations.size() == 1,
+              "aarch64 linker should preserve the single relocation-bearing edge for the first static-link slice");
+  const auto& relocation = slice->relocations.front();
+  expect_true(relocation.object_path == caller_path && relocation.section_name == ".text" &&
+                  relocation.symbol_name == "helper_ext" && relocation.relocation_type == 279 &&
+                  relocation.offset == 4 && relocation.addend == 0 && relocation.resolved &&
+                  relocation.resolved_object_path == helper_path,
+              "aarch64 linker should record the first slice as one resolved .text CALL26 edge from main to helper_ext");
+
+  expect_true(slice->merged_output_sections.size() == 1 &&
+                  slice->merged_output_sections[0] == ".text",
+              "aarch64 linker should record that the first static-link slice only needs a merged .text output section");
+  expect_true(slice->unresolved_symbols.empty(),
+              "aarch64 linker should show no unresolved globals once the helper object is present");
+
+  std::filesystem::remove(caller_path);
+  std::filesystem::remove(helper_path);
+}
+
 void test_aarch64_backend_assembler_handoff_helper_stages_emitted_text() {
   const auto output_path = make_temp_output_path("c4c_aarch64_handoff");
   const auto staged = c4c::backend::aarch64::assemble_module(make_return_add_module(), output_path);
@@ -4741,6 +4938,7 @@ int main() {
   test_shared_linker_parses_minimal_relocation_object_fixture();
   test_shared_linker_parses_builtin_return_add_object();
   test_shared_linker_parses_single_member_archive_fixture();
+  test_aarch64_linker_names_first_static_call26_slice();
   test_aarch64_backend_assembler_handoff_helper_stages_emitted_text();
   test_aarch64_builtin_object_matches_external_return_add_surface();
   return 0;
