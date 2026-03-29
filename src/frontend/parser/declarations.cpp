@@ -1493,7 +1493,7 @@ Node* Parser::parse_top_level() {
         }
         expect(TokenKind::RBrace);
         match(TokenKind::Semi);
-        if (items.empty()) return make_node(NK_EMPTY, ln);
+        if (items.empty()) return nullptr;
         if (items.size() == 1) return items[0];
         Node* blk = make_node(NK_BLOCK, ln);
         blk->n_children = static_cast<int>(items.size());

@@ -8,8 +8,8 @@ Last Updated: 2026-03-29
 ## Active Item
 
 - Step 3: continue through the remaining top-level structure-only /
-  unsupported `NK_EMPTY` exits in `src/frontend/parser/declarations.cpp` now
-  that the generic no-type-start recovery boundary has been tightened
+  unsupported `NK_EMPTY` exits in `src/frontend/parser/declarations.cpp` after
+  tightening the empty `extern "C"` linkage-block wrapper path
 
 ## Completed
 
@@ -180,11 +180,10 @@ Last Updated: 2026-03-29
 
 ## Next Slice
 
-- after the `using namespace` / `using ns::name` recovery slice, continue
-  through the remaining top-level `NK_EMPTY` discard sites in
-  `src/frontend/parser/declarations.cpp`, especially the newly confirmed
-  structure-only / unsupported declaration exits still called out as
-  suspicious in `src/frontend/parser/BOUNDARY_AUDIT.md`
+- after the empty `extern "C"` linkage-block slice, continue through the
+  remaining top-level `NK_EMPTY` discard sites in
+  `src/frontend/parser/declarations.cpp`, especially the still-unreviewed
+  structure-only / unsupported declaration exits beyond linkage wrappers
 - prefer another reduced parse-only repro that shows discarded structure or a
   silently erased following declaration before changing each remaining
   `NK_EMPTY` branch
@@ -245,6 +244,22 @@ Last Updated: 2026-03-29
   when no type start is recognized; that boundary is now covered by a reduced
   `class kept {}` regression, so the next work should focus on the remaining
   structure-only / unsupported exits that still return `NK_EMPTY`
+- tightened empty top-level `extern "C"` linkage blocks in
+  `src/frontend/parser/declarations.cpp` so they no longer materialize a
+  synthetic `NK_EMPTY` node when the block contains no declarations
+- added the reduced parse-only regression
+  `tests/cpp/internal/parse_only_case/top_level_extern_c_empty_block_preserves_following_decl_parse.cpp`
+  plus the dedicated dump assertion
+  `cpp_parse_top_level_extern_c_empty_block_preserves_following_decl_dump` in
+  `tests/cpp/internal/InternalTests.cmake`
+- updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record empty top-level
+  `extern "C"` linkage wrappers as a covered structure-only boundary with
+  reduced evidence
+- re-ran the required regression guard:
+  - baseline: `99% tests passed, 1 test failed out of 2415`
+  - after change: `99% tests passed, 1 test failed out of 2416`
+  - result: monotonic pass-count increase from the new targeted test, with no
+    newly failing cases
 
 ## Blockers
 

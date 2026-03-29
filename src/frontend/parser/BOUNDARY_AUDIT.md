@@ -127,9 +127,14 @@ ranking pass.
    keeps the following `kept` declaration visible after a malformed local alias.
 
 2. `src/frontend/parser/declarations.cpp:510`
-   Top-level `extern "C"` parsing can return `NK_EMPTY` when the body does not
-   produce declarations.
+   Top-level `extern "C"` parsing now drops empty linkage-spec blocks instead of
+   materializing a synthetic `NK_EMPTY` node when the body does not produce
+   declarations.
    Tag: `acceptable breadth`
+   Evidence: the reduced parse-only regression
+   `tests/cpp/internal/parse_only_case/top_level_extern_c_empty_block_preserves_following_decl_parse.cpp`
+   keeps the following `kept` global visible without an intermediate `Empty`
+   node after `extern "C" {}`.
 
 3. `src/frontend/parser/declarations.cpp:1783`
    The malformed top-level storage-class fallback used to skip blindly to `;`
