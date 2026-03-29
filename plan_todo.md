@@ -6,9 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 2: choose the next narrow C++17 keyword slice after `typename` /
-  `final`, likely `noexcept` and/or `nullptr`, and add the matching lexer /
-  parser coverage without widening scope
+- [ ] Step 2: choose the next narrow post-`noexcept` / `nullptr` keyword slice,
+  likely record-surface words such as access labels and/or `virtual`, and add
+  the matching lexer / parser coverage without widening scope
 
 ## Todo
 
@@ -22,8 +22,11 @@ Source Plan: plan.md
 - [x] Add the narrowest validating lexer or parser test for the first slice
 - [x] Implement the first keyword-classification slice
 - [x] Re-run targeted tests, nearby coverage, and the full suite
-- [ ] Add the narrowest validating lexer or parser test for the next slice
-- [ ] Implement the next keyword-classification slice
+- [x] Add the narrowest validating lexer or parser test for the next slice
+- [x] Implement the next keyword-classification slice
+- [x] Re-run targeted tests, nearby coverage, and the full suite
+- [ ] Add the narrowest validating lexer or parser test for the following slice
+- [ ] Implement the following keyword-classification slice
 - [ ] Re-run targeted tests, nearby coverage, and the full suite
 
 ## Completed
@@ -54,13 +57,29 @@ Source Plan: plan.md
   `if_condition_decl_parse`.
 - [x] Recorded full-suite post-change status in `test_after.log`:
   `100% tests passed, 0 tests failed out of 2342`.
+- [x] Added
+  [tests/cpp/internal/postive_case/keyword_noexcept_nullptr_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/keyword_noexcept_nullptr_parse.cpp)
+  and registered it as a parse-only positive case to cover both `noexcept`
+  exception-spec parsing and `nullptr` default / expression handling under
+  reserved keyword tokens.
+- [x] Reserved `noexcept` and `nullptr` in the lexer as `KwNoexcept` and
+  `KwNullptr`, then updated the parser compatibility paths that skip exception
+  specs and treat `nullptr` as a null-pointer constant in expression and
+  typeof-like parsing.
+- [x] Revalidated the slice with targeted coverage:
+  `keyword_noexcept_nullptr_parse`, `keyword_typename_final_parse`,
+  `default_param_value_parse`, `noexcept_decl_parse`, and
+  `noexcept_method_parse`, plus a manual `--lex-only` probe confirming
+  `KW_noexcept` / `KW_nullptr` output.
+- [x] Recorded full-suite post-change status in `test_after.log`:
+  `100% tests passed, 0 tests failed out of 2343`.
 
 ## Next Intended Slice
 
-Audit the smallest remaining parser-sensitive keyword pair, likely `noexcept`
-and `nullptr`, because both still appear in lexer-gap inventory and already
-have nearby parser spelling checks that should convert cleanly to token-aware
-handling.
+Audit the smallest remaining parser-sensitive record keywords, likely access
+labels and/or `virtual`, because those still appear in the lexer-gap inventory
+and currently rely on identifier-token handling in record parsing and base
+specifier setup.
 
 ## Blockers
 
@@ -79,3 +98,5 @@ handling.
   change.
 - The first slice finished cleanly with monotonic full-suite results:
   `2341 -> 2342` total passing tests due to the new committed parse regression.
+- Second slice also finished cleanly with monotonic full-suite results:
+  `2342 -> 2343` total passing tests due to the new committed parse regression.

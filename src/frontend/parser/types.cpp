@@ -2452,7 +2452,8 @@ void Parser::skip_attributes() {
     while (check(TokenKind::KwNoreturn)) {
         consume();
     }
-    while (check(TokenKind::Identifier) && cur().lexeme == "noexcept") {
+    while (check(TokenKind::KwNoexcept) ||
+           (check(TokenKind::Identifier) && cur().lexeme == "noexcept")) {
         consume();
         if (check(TokenKind::LParen)) skip_paren_group();
     }
@@ -2460,7 +2461,8 @@ void Parser::skip_attributes() {
 
 void Parser::skip_exception_spec() {
     // noexcept / noexcept(expr)
-    while (check(TokenKind::Identifier) && cur().lexeme == "noexcept") {
+    while (check(TokenKind::KwNoexcept) ||
+           (check(TokenKind::Identifier) && cur().lexeme == "noexcept")) {
         consume();
         if (check(TokenKind::LParen)) skip_paren_group();
     }
@@ -2640,7 +2642,8 @@ TypeSpec Parser::parse_base_type() {
     bool base_set     = false;  // true when ts.base was set directly (KwBuiltin, KwInt128, etc.)
     auto infer_typeof_like_operand_type = [&](TypeSpec* out, bool strip_qual) -> bool {
         if (!out) return false;
-        if (check(TokenKind::Identifier) && cur().lexeme == "nullptr") {
+        if (check(TokenKind::KwNullptr) ||
+            (check(TokenKind::Identifier) && cur().lexeme == "nullptr")) {
             out->base = TB_VOID;
             out->ptr_level = 1;
             consume();

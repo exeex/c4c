@@ -762,6 +762,11 @@ Node* Parser::parse_primary() {
         return make_int_lit(0, ln);
     }
 
+    if (is_cpp_mode() && check(TokenKind::KwNullptr)) {
+        consume();
+        return make_int_lit(0, ln);
+    }
+
     if (Node* requires_expr = parse_cpp_requires_expression())
         return requires_expr;
 
