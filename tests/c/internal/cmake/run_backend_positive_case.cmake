@@ -50,6 +50,7 @@ execute_process(
           -DOUT_ARTIFACT=${OUT_C2LL_BIN}
           -DTOOLCHAIN_MODE=binary
           -DCASE_TIMEOUT_SEC=${CASE_TIMEOUT_SEC}
+          "-DEXTRA_TOOLCHAIN_INPUTS=${EXTRA_TOOLCHAIN_INPUTS}"
           -P "${CMAKE_CURRENT_LIST_DIR}/run_backend_toolchain_case.cmake"
   TIMEOUT "${CASE_TIMEOUT_SEC}"
   RESULT_VARIABLE toolchain_rc

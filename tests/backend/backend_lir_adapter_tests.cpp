@@ -3718,18 +3718,20 @@ void test_aarch64_backend_renders_extern_global_array_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_extern_global_array_load_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "@ext_arr = external global [2 x i32], align 4",
-                  "aarch64 backend should render extern global array declarations");
-  expect_contains(rendered, "%t0 = getelementptr [2 x i32], ptr @ext_arr, i64 0, i64 0",
-                  "aarch64 backend should preserve extern global array decay through GEP");
-  expect_contains(rendered, "%t1 = sext i32 1 to i64",
-                  "aarch64 backend should preserve extern global array index widening");
-  expect_contains(rendered, "%t2 = getelementptr i32, ptr %t0, i64 %t1",
-                  "aarch64 backend should preserve indexed addressing into extern global arrays");
-  expect_contains(rendered, "%t3 = load i32, ptr %t2",
-                  "aarch64 backend should preserve loads through extern global array element pointers");
-  expect_contains(rendered, "ret i32 %t3",
-                  "aarch64 backend should preserve the extern global array load result");
+  expect_contains(rendered, ".extern ext_arr\n",
+                  "aarch64 backend should declare extern global arrays for ELF assembly");
+  expect_contains(rendered, ".globl main\n",
+                  "aarch64 backend should still publish main as the entry symbol");
+  expect_contains(rendered, "adrp x8, ext_arr\n",
+                  "aarch64 backend should form the extern global array page address");
+  expect_contains(rendered, "add x8, x8, :lo12:ext_arr\n",
+                  "aarch64 backend should materialize the extern global array base address");
+  expect_contains(rendered, "ldr w0, [x8, #4]\n",
+                  "aarch64 backend should fold the bounded indexed load into the extern global array access");
+  expect_contains(rendered, "ret\n",
+                  "aarch64 backend should return the extern global array load result");
+  expect_not_contains(rendered, "getelementptr",
+                      "aarch64 backend should no longer fall back to LLVM IR for the extern global array slice");
 }
 
 void test_aarch64_backend_renders_global_char_pointer_diff_slice() {

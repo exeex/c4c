@@ -535,6 +535,24 @@ if(CLANG_EXECUTABLE)
         LABELS "internal;backend")
 
     add_test(
+      NAME backend_contract_aarch64_extern_global_array_object
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/extern_global_array.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DBACKEND_OUTPUT_KIND=asm
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend_contract/extern_global_array_aarch64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend_contract/extern_global_array_aarch64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.extern ext_arr|.globl main|adrp x8, ext_arr|add x8, x8, :lo12:ext_arr|ldr w0, [x8, #4]"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.text|.rela.text|main|*UND*|ext_arr|R_AARCH64_ADR_PREL_PG_HI21|R_AARCH64_ADD_ABS_LO12_NC"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_contract_case.cmake"
+    )
+    set_tests_properties(backend_contract_aarch64_extern_global_array_object PROPERTIES
+        LABELS "internal;backend")
+
+    add_test(
       NAME backend_contract_aarch64_extern_call_object
       COMMAND "${CMAKE_COMMAND}"
               -DCLANG=${CLANG_EXECUTABLE}
@@ -646,6 +664,10 @@ if(CLANG_EXECUTABLE)
       elseif(stem STREQUAL "global_load")
         set(expect_exit_code 11)
         set(backend_output_kind "asm")
+      elseif(stem STREQUAL "extern_global_array")
+        continue()
+      elseif(stem STREQUAL "extern_global_array_def")
+        continue()
       elseif(stem STREQUAL "global_char_pointer_diff")
         set(expect_exit_code 1)
       elseif(stem STREQUAL "global_int_pointer_diff")
@@ -680,6 +702,22 @@ if(CLANG_EXECUTABLE)
       )
       set_tests_properties("${test_name}" PROPERTIES LABELS "internal;backend")
     endforeach()
+
+    add_test(
+      NAME backend_runtime_extern_global_array
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/extern_global_array.c
+              -DTARGET_TRIPLE=${BACKEND_RUNTIME_TARGET_TRIPLE}
+              -DBACKEND_OUTPUT_KIND=asm
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/extern_global_array.ll
+              -DEXPECT_EXIT_CODE=7
+              -DOUT_C2LL_BIN=${CMAKE_BINARY_DIR}/internal_backend/extern_global_array.bin
+              "-DEXTRA_TOOLCHAIN_INPUTS=${INTERNAL_C_TEST_ROOT}/backend_case/extern_global_array_def.c"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_positive_case.cmake"
+    )
+    set_tests_properties(backend_runtime_extern_global_array PROPERTIES LABELS "internal;backend")
 
     if(EXISTS "${EXAMPLE_C}")
       add_test(

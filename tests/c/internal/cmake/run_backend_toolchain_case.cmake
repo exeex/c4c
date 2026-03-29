@@ -36,7 +36,21 @@ else()
     "Unsupported BACKEND_OUTPUT_KIND='${BACKEND_OUTPUT_KIND}' (expected llvm-ir or asm)")
 endif()
 
-list(APPEND toolchain_command "${BACKEND_OUTPUT_PATH}" -o "${OUT_ARTIFACT}")
+set(extra_toolchain_inputs)
+if(DEFINED EXTRA_TOOLCHAIN_INPUTS AND NOT "${EXTRA_TOOLCHAIN_INPUTS}" STREQUAL "")
+  string(REPLACE "|" ";" extra_toolchain_inputs "${EXTRA_TOOLCHAIN_INPUTS}")
+  foreach(extra_input IN LISTS extra_toolchain_inputs)
+    if(NOT EXISTS "${extra_input}")
+      message(FATAL_ERROR "Missing extra toolchain input: ${extra_input}")
+    endif()
+  endforeach()
+endif()
+
+list(APPEND toolchain_command "${BACKEND_OUTPUT_PATH}")
+if(extra_toolchain_inputs)
+  list(APPEND toolchain_command -x none ${extra_toolchain_inputs})
+endif()
+list(APPEND toolchain_command -o "${OUT_ARTIFACT}")
 
 execute_process(
   COMMAND ${toolchain_command}

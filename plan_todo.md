@@ -1,36 +1,34 @@
-# AArch64 Extern Global Array Addressing Todo
+# Backend Port Roadmap Activation Todo
 
 Status: Active
-Source Idea: ideas/open/11_backend_aarch64_extern_global_array_addressing_plan.md
+Source Idea: ideas/open/__backend_port_plan.md
 Source Plan: plan.md
 
 ## Active Item
 
-- Step 1: confirm the exact extern global array decay plus indexed element-load slice and decide whether a bounded runtime case exists
+- Step 1: choose the next executable backend child slice to restore from the umbrella roadmap
 
 ## Todo
 
-- [ ] inspect the synthetic backend fixture and runtime candidates for the smallest extern-array address-formation seam
-- [ ] capture the relevant AArch64 LIR or LLVM IR shape for the chosen case
-- [ ] decide whether one bounded runtime case can be promoted without widening scope
-- [ ] tighten targeted backend tests for the explicit extern-array base-address plus indexed-load seam
-- [ ] implement the minimal AArch64 backend lowering for the chosen seam
-- [ ] promote one runtime case through `BACKEND_OUTPUT_KIND=asm` or explicitly defer runtime promotion
-- [ ] run targeted validation and broader regression checks
+- [ ] inspect the roadmap priority order and current `ideas/open/` inventory
+- [ ] choose the next missing child slice that should become the active execution target
+- [ ] write one narrow child idea under `ideas/open/`
+- [ ] switch `plan.md` and `plan_todo.md` to that child idea
 
 ## Completed
 
-- [x] activated `ideas/open/11_backend_aarch64_extern_global_array_addressing_plan.md` into `plan.md`
+- [x] closed `ideas/open/11_backend_aarch64_extern_global_array_addressing_plan.md` and archived it under `ideas/closed/`
+- [x] re-entered activation state with only `ideas/open/__backend_port_plan.md` remaining
 
 ## Next Intended Slice
 
-- compare `make_extern_global_array_load_module()` against real frontend-emitted candidates and lock the exact bounded seam before changing tests or lowering
+- derive the next highest-priority missing backend child idea from the umbrella roadmap instead of executing directly from the umbrella file
 
 ## Blockers
 
-- none recorded
+- the umbrella roadmap references child idea files that are not currently present under `ideas/open/`
 
 ## Resume Notes
 
-- the completed string-literal slice lives in `ideas/closed/10_backend_aarch64_global_addressing_plan.md`
-- keep this runbook narrower than general pointer arithmetic and split out pointer-difference or round-trip work if it appears during execution
+- do not resume implementation from this umbrella runbook
+- the next lifecycle step should create one narrow child idea and immediately switch activation to it

@@ -31,3 +31,18 @@ Promote the next bounded AArch64 global-addressing seam after `string_literal_ch
 - general aggregate pointer arithmetic
 - mixed local/global address lowering in one patch
 - pointer-difference and round-trip work such as `global_char_pointer_diff`, `global_int_pointer_diff`, or `global_int_pointer_roundtrip`
+
+## Status
+
+Complete on 2026-03-29.
+
+## Completion Notes
+
+- promoted the bounded extern global array element-load slice onto the AArch64 asm path
+- tightened the synthetic backend contract so the slice no longer accepts LLVM IR fallback
+- added frontend-driven object coverage for `extern int ext_arr[2]; return ext_arr[1];`
+- added bounded runtime coverage by linking that case against a companion `ext_arr` definition source
+
+## Leftover Issues
+
+- adjacent pointer-difference and pointer-round-trip cases remain deferred and should stay separate from this completed slice

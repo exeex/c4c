@@ -1,133 +1,92 @@
-# AArch64 Extern Global Array Addressing Runbook
+# Backend Port Roadmap Activation Runbook
 
 Status: Active
-Source Idea: ideas/open/11_backend_aarch64_extern_global_array_addressing_plan.md
-Activated from: ideas/open/11_backend_aarch64_extern_global_array_addressing_plan.md
+Source Idea: ideas/open/__backend_port_plan.md
+Activated from: ideas/open/__backend_port_plan.md
 
 ## Purpose
 
-Turn the next AArch64 global-addressing follow-on into one explicit backend-owned extern-array slice without reopening broad pointer arithmetic or mixed local/global lowering.
+Turn the remaining backend umbrella roadmap back into one executable child idea so implementation work can continue under the repo's one-plan lifecycle.
 
 ## Goal
 
-Promote one bounded extern global array element-load case onto the AArch64 asm path with targeted backend tests and one matching runtime validation.
+Extract the next highest-priority unfinished backend child slice from the umbrella roadmap and convert it into a narrow active runbook.
 
 ## Core Rule
 
-Keep the slice narrower than general pointer arithmetic. Stop and split the work if implementation starts pulling in broad GEP generalization, pointer-difference lowering, or mixed string/global address handling in one patch.
+Do not implement backend code from this umbrella runbook. This slice is only for restoring a narrow executable child plan and switching execution back onto that child.
 
 ## Read First
 
-- `ideas/open/11_backend_aarch64_extern_global_array_addressing_plan.md`
-- `tests/backend/backend_lir_adapter_tests.cpp`
-- runtime cases under `tests/c/internal/backend_case/`
+- `ideas/open/__backend_port_plan.md`
+- `prompts/AGENT_PROMPT_PLAN_FROM_IDEA.md`
+- `prompts/AGENT_PROMPT_SWITCH_PLAN.md`
 
 ## Current Targets
 
-- synthetic backend coverage for one extern global array base-address plus indexed element-load seam
-- one bounded runtime case promoted through `BACKEND_OUTPUT_KIND=asm` if an exact frontend-emitted candidate exists
-- backend-owned asm that assembles and preserves the expected result
+- identify which roadmap child should be re-opened next
+- write one durable child idea under `ideas/open/`
+- regenerate `plan.md` from that child idea and reset `plan_todo.md`
 
 ## Non-Goals
 
-- general aggregate pointer arithmetic
-- mixed local/global address lowering in one patch
-- pointer-difference and round-trip work such as `global_char_pointer_diff`, `global_int_pointer_diff`, or `global_int_pointer_roundtrip`
-- broad relocation-model cleanup
+- editing implementation sources under `src/`
+- bundling multiple backend initiatives into one plan
+- reopening completed narrow ideas without a clear missing follow-on
 
 ## Working Model
 
-- start from the smallest real frontend-emitted candidate that matches the synthetic extern-array seam
-- make the backend seam explicit before promoting runtime coverage
-- prefer one synthetic backend contract and one runtime case over broadening the emitter surface
+- treat `ideas/open/__backend_port_plan.md` as durable roadmap context, not as the long-term execution target
+- prefer the highest-priority missing child from the roadmap ordering when multiple candidates seem plausible
+- preserve the umbrella file as the roadmap and move execution back onto a child plan as quickly as possible
 
 ## Execution Rules
 
-- add or tighten tests before implementation
-- use Clang/LLVM output as the reference when the exact lowering shape is unclear
-- if no bounded runtime case exists yet, keep the runtime promotion deferred and record that explicitly rather than widening scope
-- record any adjacent pointer/address follow-on work back into `ideas/open/` rather than absorbing it here
+- keep the new child idea narrower than the umbrella roadmap
+- record the chosen child idea under `ideas/open/` before replacing this umbrella runbook
+- if the next child is unclear from repo state, record the ambiguity in the new idea instead of inventing implementation scope
 
-## Step 1: Confirm The Exact Extern-Array Slice
+## Step 1: Choose The Next Child Slice
 
-Goal: identify the narrowest frontend-emitted case that matches the synthetic extern global array seam.
-
-Primary target: `make_extern_global_array_load_module()` and any matching runtime candidate.
+Goal: determine the next executable backend child idea to restore from the roadmap.
 
 Actions:
 
-- inspect the existing synthetic backend fixture and runtime candidates for the smallest extern-array decay plus indexed-load seam
-- capture the relevant AArch64 LIR or LLVM IR shape for the chosen case
-- confirm whether a bounded runtime case exists without dragging in broad pointer generalization
+- inspect the roadmap priority order and any currently open backend idea files
+- identify the highest-priority child idea that is not already represented under `ideas/open/`
+- keep the choice to one mechanism family
 
 Completion check:
 
-- one exact synthetic target is selected
-- the required extern-array address-formation operations are written down in concrete backend terms
-- runtime promotion is either justified by a bounded case or explicitly deferred
+- one child slice is chosen and named explicitly
+- the choice is justified from the roadmap ordering and current open-idea inventory
 
-## Step 2: Lock The Backend Test Contract
+## Step 2: Write The Child Idea
 
-Goal: define targeted tests for the extern-array seam before implementation.
-
-Primary target: `tests/backend/backend_lir_adapter_tests.cpp`
+Goal: restore one narrow backend child idea under `ideas/open/`.
 
 Actions:
 
-- tighten synthetic tests so the extern-array slice stops accepting LLVM IR fallback
-- cover the exact base-address formation and indexed element-load seam needed by the chosen case
-- avoid introducing generalized pointer-arithmetic expectations
+- create one `ideas/open/*.md` child idea for the chosen slice
+- capture scope, validation intent, non-goals, and relationship to the umbrella roadmap
+- keep the child idea implementation-oriented enough to become the next active runbook
 
 Completion check:
 
-- tests fail for the missing seam and describe the intended lowering
-- the test surface names only the bounded extern-array operations needed for this slice
+- the new child idea exists under `ideas/open/`
+- it is narrower than the umbrella and points back to the roadmap
 
-## Step 3: Implement The Narrow Backend-Owned Lowering
+## Step 3: Switch Activation To The Child Runbook
 
-Goal: make the AArch64 backend lower the selected extern-array address-formation seam and matching indexed load.
-
-Primary target: `src/backend/aarch64/codegen/emit.cpp`
+Goal: stop using the umbrella as the active runbook and activate the new child idea.
 
 Actions:
 
-- implement the minimal representation needed for extern-array base-address formation
-- wire the first indexed element-load lowering through the backend-owned path
-- keep unrelated local-memory and pointer-generalization logic out of scope
+- regenerate `plan.md` from the new child idea
+- reset `plan_todo.md` to the child plan
+- keep `Status: Active` and `Source Idea:` aligned across both files
 
 Completion check:
 
-- targeted backend tests pass
-- the lowering path is explicit rather than falling back to LLVM IR
-
-## Step 4: Promote One Runtime Case If Bounded
-
-Goal: validate the new seam end to end with one runtime case, but only if a bounded frontend-emitted case exists.
-
-Primary target: one case under `tests/c/internal/backend_case/`
-
-Actions:
-
-- route the selected runtime case through `BACKEND_OUTPUT_KIND=asm` if the case matches the narrow extern-array seam
-- otherwise record why runtime promotion remains deferred for this slice
-- verify the asm output assembles and preserves the expected result when promoted
-
-Completion check:
-
-- the chosen runtime test passes through the asm path, or the lack of a bounded runtime candidate is explicitly recorded
-- no extra runtime cases are promoted as part of this slice
-
-## Step 5: Regressions And Handoff
-
-Goal: prove the slice is monotonic and leave the next follow-on obvious.
-
-Actions:
-
-- run targeted backend tests and any promoted runtime case
-- run the broader regression checks from the active execution prompt
-- record deferred follow-on cases if broader pointer/address work remains
-
-Completion check:
-
-- regression results are monotonic
-- `plan_todo.md` reflects completed work, deferred work, and the next intended slice
+- `plan.md` and `plan_todo.md` both point at the new child idea
+- the umbrella roadmap remains only durable context, not the active execution target
