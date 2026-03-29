@@ -180,6 +180,10 @@ void classify_type(const Module& mod, const TypeSpec& ts, size_t offset,
     return;
   }
   using c4c::TypeBase;
+  if (ts.ptr_level > 0 || ts.is_fn_ptr) {
+    mark_class(classes, offset, size, Amd64ArgClass::Integer);
+    return;
+  }
   if ((ts.base == TypeBase::TB_STRUCT || ts.base == TypeBase::TB_UNION) &&
       ts.tag && ts.tag[0]) {
     if (const HirStructDef* sd = lookup_struct(mod, ts)) {
@@ -187,10 +191,6 @@ void classify_type(const Module& mod, const TypeSpec& ts, size_t offset,
     } else {
       set_memory(classes);
     }
-    return;
-  }
-  if (ts.ptr_level > 0 || ts.is_fn_ptr) {
-    mark_class(classes, offset, size, Amd64ArgClass::Integer);
     return;
   }
   switch (ts.base) {

@@ -1,9 +1,11 @@
 # x86_64 Linux ABI and Runtime Recovery Plan
 
-Status: Open  
+Status: Closed  
 Last Updated: 2026-03-29  
-Source Log: `test_before.log` (x86_64-linux, `ctest` full suite)  
-Suite Snapshot: 97% passed, 75 failed out of 2248 targets
+Source Logs:
+- `ref/amd64_varargs/test_before_20260329.log` (x86_64-linux, `ctest` full suite)  
+- `ref/amd64_varargs/test_after_20260329_step7.log` (post-recovery run, 2026-03-29)
+Suite Snapshot: Baseline 97% pass (75 failed / 2248). After recovery 99% pass (1 failed / 2253, `llvm_gcc_c_torture_src_pr28982b_c`).
 
 ## Why This Idea
 
@@ -144,3 +146,17 @@ bridging to libc helpers.
 - Regression coverage added for: variadic function pointer invocation,
   SysV-compliant `va_copy`/`va_arg`, inline diagnostics, and `asm("yield")`.
 - Updated documentation/logs (`test_after.log`) stored beside this plan.
+
+## Completion Summary (2026-03-29)
+
+- Captured `ctest` before/after pairs in `ref/amd64_varargs/` and re-ran the named AMD64 subsets while implementing each runbook slice; artifacts include clang/c4cll IR snapshots per failure bucket plus the final `test_after_20260329_step7.log`.
+- Implemented AMD64 SysV classification plus register save/restore so both fixed and variadic callees align with glibc `va_list` expectations; gcc torture buckets `va_arg_*`, `stdarg_*`, `strct_stdarg_*`, and `scal_to_vec*` all pass on x86_64-linux.
+- Variadic function pointer invocation now reuses the SysV variadic lowering, and `positive_sema_ok_fn_returns_variadic_fn_ptr_c` passes under the focused `ctest -R` guardrail.
+- Inline diagnostics trampoline preserves callee-saved registers and stack alignment; stress test `tests/c/internal/positive_case/inline_diagnostics_runtime.c` remains green under AddressSanitizer.
+- Inline asm accepts `yield` on x86_64 by aliasing to `pause`, matching clang behavior and unblocking `positive_sema_linux_stage2_repro_03_asm_volatile_c`.
+- Glibc macro parsing handles `_Float{16,32,64,128}` helper forms, restoring `c_testsuite` cases 00174 and 00204 plus the reduced repro harness.
+- Full-suite regression guard passed: `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before --after test_after` reports +79 net passing tests, 74 failures resolved, 0 new failing tests.
+
+## Leftover Issues
+
+- `llvm_gcc_c_torture_src_pr28982b_c` remains the lone x86_64 failure (also failed in the baseline log). The generated IR passes a 256 KiB struct literal to `bar` by value, which triggers an LLVM 19.1 SelectionDAG crash (`clang_exit=0 c2ll_exit=no such file or directory`). We need a follow-on idea to revisit large-by-value aggregate lowering on AMD64: either emit `llvm.memcpy` + `byval` semantics or force memory-class emission to avoid materializing the entire struct in SSA form. Until that follow-up lands this runbook is considered complete with one tracked straggler.
