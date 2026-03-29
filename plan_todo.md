@@ -10,10 +10,10 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- add the narrowest reduced repro where a declaration `requires` clause still
-  depends on skip-style parsing instead of a dedicated grammar path
-- thread the first explicit `requires` declaration entry point through the
-  parser without broadening into concept semantics
+- extend explicit declaration-side `requires` handling beyond the first
+  top-level template path
+- add the next reduced repro for a remaining declaration `requires` site that
+  still depends on skip-style acceptance or weak recovery
 - keep follow-up work scoped to parser acceptance and local recovery behavior
 
 ## Planned Steps
@@ -40,6 +40,12 @@ Source Plan: plan.md
   those tokens to recovery
 - [x] Rebuilt, ran focused `override` / `final` coverage, and passed the full
   regression guard with `2372/2372` tests passing and zero new failures
+- [x] Replaced the top-level template `requires` token-drain helper with a
+  dedicated clause parser that consumes a constraint-expression via `parse_expr`
+- [x] Added `cpp20_requires_clause_preserves_following_decl.cpp` to prove a
+  constrained template no longer swallows a following top-level declaration
+- [x] Rebuilt, ran focused `requires` coverage, and passed the full regression
+  guard with `2373/2373` tests passing and zero new failures
 
 ## Blockers
 
@@ -52,5 +58,5 @@ Source Plan: plan.md
   diagnostics
 - add reduced tests before parser edits and keep each patch tied to one syntax
   surface
-- Step 2 is complete; the next slice should replace the first declaration-side
-  `requires` skip path with a dedicated parser entry point
+- the first declaration-side `requires` clause path now uses an explicit parser
+  entry point; continue Step 3 by targeting the next remaining skip-style site
