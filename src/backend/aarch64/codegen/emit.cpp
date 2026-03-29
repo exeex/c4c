@@ -179,6 +179,12 @@ struct MinimalConditionalReturnSlice {
   std::int64_t false_return_imm = 0;
 };
 
+struct MinimalScalarGlobalLoadSlice {
+  std::string global_name;
+  std::int64_t init_imm = 0;
+  int align_bytes = 4;
+};
+
 std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -252,6 +258,51 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
                                        condbr->false_label,
                                        *true_return_imm,
                                        *false_return_imm};
+}
+
+std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || module.globals.size() != 1 ||
+      !module.type_decls.empty() || !module.string_pool.empty() ||
+      !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (global.is_internal || global.is_const || global.is_extern_decl ||
+      global.linkage_vis != "" || global.qualifier != "global " ||
+      global.llvm_type != "i32") {
+    return std::nullopt;
+  }
+  const auto init_imm = parse_i64(global.init_text);
+  if (!init_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+      function.entry.value != 0 || function.blocks.size() != 1 ||
+      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  if (entry.label != "entry" || entry.insts.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto* load = std::get_if<LirLoadOp>(&entry.insts.front());
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (load == nullptr || ret == nullptr || load->type_str != "i32" ||
+      load->ptr != "@" + global.name || !ret->value_str.has_value() ||
+      *ret->value_str != load->result || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  return MinimalScalarGlobalLoadSlice{global.name, *init_imm,
+                                      global.align_bytes > 0 ? global.align_bytes : 4};
 }
 
 std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
@@ -620,6 +671,51 @@ std::string emit_minimal_conditional_return_asm(
   return out.str();
 }
 
+std::string emit_minimal_scalar_global_load_asm(
+    const c4c::codegen::lir::LirModule& module,
+    const MinimalScalarGlobalLoadSlice& slice) {
+  if (slice.init_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.init_imm > std::numeric_limits<std::int32_t>::max()) {
+    fail_unsupported("scalar global initializers outside the minimal .long-supported range");
+  }
+
+  c4c::backend::BackendModule backend_module;
+  backend_module.target_triple = module.target_triple;
+  const bool is_darwin =
+      backend_module.target_triple.find("apple-darwin") != std::string::npos;
+  const std::string global_symbol =
+      asm_symbol_name(backend_module, slice.global_name);
+  const std::string main_symbol = asm_symbol_name(backend_module, "main");
+  const int align_pow2 = slice.align_bytes <= 1
+                             ? 0
+                             : (slice.align_bytes == 2 ? 1 : 2);
+
+  std::ostringstream out;
+  out << ".data\n"
+      << ".globl " << global_symbol << "\n";
+  if (!is_darwin) {
+    out << ".type " << global_symbol << ", %object\n";
+  }
+  out << ".p2align " << align_pow2 << "\n"
+      << global_symbol << ":\n"
+      << "  .long " << slice.init_imm << "\n";
+  if (!is_darwin) {
+    out << ".size " << global_symbol << ", 4\n";
+  }
+
+  out << ".text\n";
+  emit_function_prelude(out, backend_module, main_symbol, true);
+  if (is_darwin) {
+    out << "  adrp x8, " << global_symbol << "@PAGE\n"
+        << "  ldr w0, [x8, " << global_symbol << "@PAGEOFF]\n";
+  } else {
+    out << "  adrp x8, " << global_symbol << "\n"
+        << "  ldr w0, [x8, :lo12:" << global_symbol << "]\n";
+  }
+  out << "  ret\n";
+  return out.str();
+}
+
 }  // namespace
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
@@ -627,6 +723,10 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   if (const auto slice = parse_minimal_conditional_return_slice(module);
       slice.has_value()) {
     return emit_minimal_conditional_return_asm(module, *slice);
+  }
+  if (const auto slice = parse_minimal_scalar_global_load_slice(module);
+      slice.has_value()) {
+    return emit_minimal_scalar_global_load_asm(module, *slice);
   }
   try {
     const auto adapted = c4c::backend::adapt_minimal_module(module);

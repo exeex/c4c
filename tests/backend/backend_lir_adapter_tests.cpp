@@ -2585,12 +2585,20 @@ void test_aarch64_backend_renders_global_definition_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_global_load_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "@g_counter = global i32 11, align 4",
-                  "aarch64 backend should render module global definitions");
-  expect_contains(rendered, "define i32 @main()\n{\nentry:\n  %t0 = load i32, ptr @g_counter\n",
-                  "aarch64 backend should preserve global loads through the target-local memory path");
-  expect_contains(rendered, "ret i32 %t0",
-                  "aarch64 backend should preserve the global load result");
+  expect_contains(rendered, ".data\n",
+                  "aarch64 backend should place scalar global definitions in the data section");
+  expect_contains(rendered, ".globl g_counter\n",
+                  "aarch64 backend should publish the scalar global symbol");
+  expect_contains(rendered, "g_counter:\n  .long 11\n",
+                  "aarch64 backend should materialize the scalar global initializer");
+  expect_contains(rendered, ".globl main\n",
+                  "aarch64 backend should still publish main as the entry symbol");
+  expect_contains(rendered, "adrp x8, g_counter\n",
+                  "aarch64 backend should form the scalar global page address");
+  expect_contains(rendered, "ldr w0, [x8, :lo12:g_counter]\n",
+                  "aarch64 backend should load the scalar global directly into the return register");
+  expect_contains(rendered, "ret\n",
+                  "aarch64 backend should return the loaded scalar global value");
 }
 
 void test_aarch64_backend_renders_string_pool_slice() {
