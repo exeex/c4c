@@ -1,5 +1,9 @@
 # AArch64 Global Int Pointer Roundtrip Plan
 
+## Status
+
+Complete on 2026-03-29.
+
 ## Relationship To Roadmap
 
 Follows:
@@ -40,3 +44,13 @@ Promote the next bounded AArch64 global-addressing seam after `global_int_pointe
 - prefer a parser/emitter seam that recognizes one defined global `i32`, one `ptrtoint`, one `inttoptr`, one load, and one return
 - compare the runtime-emitted LIR against the synthetic module builder before changing the emitter so the bounded contract is explicit
 - stop and split again if the implementation starts requiring generic integer-address materialization or non-global pointer recovery
+
+## Completion Notes
+
+- tightened `tests/backend/backend_lir_adapter_tests.cpp` so the synthetic round-trip fixture now matches the runtime-emitted shape with two entry allocas, one spilled integer address, one spilled recovered pointer, and one final scalar load
+- added a bounded AArch64 matcher in `src/backend/aarch64/codegen/emit.cpp` that recognizes only this exact global `i32` pointer-roundtrip slice and lowers it through the backend-owned asm path
+- promoted `tests/c/internal/backend_case/global_int_pointer_roundtrip.c` to `BACKEND_OUTPUT_KIND=asm` in `tests/c/internal/InternalTests.cmake`, and the runtime case now passes without LLVM IR fallback
+
+## Leftover Issues
+
+- general `ptrtoint` and `inttoptr` lowering outside this exact global-address round-trip seam remains out of scope for this closed slice

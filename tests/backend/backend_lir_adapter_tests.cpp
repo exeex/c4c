@@ -2192,16 +2192,22 @@ c4c::codegen::lir::LirModule make_global_int_pointer_roundtrip_module() {
   function.name = "main";
   function.signature_text = "define i32 @main()\n";
   function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.addr", "i64", "", 8});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.p", "ptr", "", 8});
 
   LirBlock entry;
   entry.id = LirBlockId{0};
   entry.label = "entry";
   entry.insts.push_back(
       LirCastOp{"%t0", LirCastKind::PtrToInt, "ptr", "@g_value", "i64"});
+  entry.insts.push_back(LirStoreOp{"i64", "%t0", "%lv.addr"});
+  entry.insts.push_back(LirLoadOp{"%t1", "i64", "%lv.addr"});
   entry.insts.push_back(
-      LirCastOp{"%t1", LirCastKind::IntToPtr, "i64", "%t0", "ptr"});
-  entry.insts.push_back(LirLoadOp{"%t2", "i32", "%t1"});
-  entry.terminator = LirRet{std::string("%t2"), "i32"};
+      LirCastOp{"%t2", LirCastKind::IntToPtr, "i64", "%t1", "ptr"});
+  entry.insts.push_back(LirStoreOp{"ptr", "%t2", "%lv.p"});
+  entry.insts.push_back(LirLoadOp{"%t3", "ptr", "%lv.p"});
+  entry.insts.push_back(LirLoadOp{"%t4", "i32", "%t3"});
+  entry.terminator = LirRet{std::string("%t4"), "i32"};
   function.blocks.push_back(std::move(entry));
 
   module.functions.push_back(std::move(function));
@@ -3818,16 +3824,22 @@ void test_aarch64_backend_renders_global_int_pointer_roundtrip_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_global_int_pointer_roundtrip_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "@g_value = global i32 9, align 4",
-                  "aarch64 backend should render the round-trip global definition");
-  expect_contains(rendered, "%t0 = ptrtoint ptr @g_value to i64",
-                  "aarch64 backend should render ptrtoint for address round-tripping");
-  expect_contains(rendered, "%t1 = inttoptr i64 %t0 to ptr",
-                  "aarch64 backend should render inttoptr for address round-tripping");
-  expect_contains(rendered, "%t2 = load i32, ptr %t1",
-                  "aarch64 backend should preserve loads through round-tripped pointers");
-  expect_contains(rendered, "ret i32 %t2",
-                  "aarch64 backend should preserve the round-tripped load result");
+  expect_contains(rendered, ".globl g_value\n",
+                  "aarch64 backend should publish the round-trip global symbol");
+  expect_contains(rendered, "g_value:\n  .long 9\n",
+                  "aarch64 backend should materialize the round-trip global initializer");
+  expect_contains(rendered, "adrp x8, g_value\n",
+                  "aarch64 backend should materialize the global address for the bounded round-trip slice");
+  expect_contains(rendered, "ldr w0, [x8, :lo12:g_value]\n",
+                  "aarch64 backend should lower the bounded round-trip back into a direct global load");
+  expect_contains(rendered, "ret\n",
+                  "aarch64 backend should return the bounded round-trip load result");
+  expect_not_contains(rendered, "ptrtoint",
+                      "aarch64 backend should no longer fall back to LLVM IR ptrtoint for the bounded round-trip slice");
+  expect_not_contains(rendered, "inttoptr",
+                      "aarch64 backend should no longer fall back to LLVM IR inttoptr for the bounded round-trip slice");
+  expect_not_contains(rendered, "alloca",
+                      "aarch64 backend should no longer fall back to LLVM IR allocas for the bounded round-trip slice");
 }
 
 void test_aarch64_backend_renders_bitcast_slice() {

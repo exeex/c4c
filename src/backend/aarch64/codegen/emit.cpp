@@ -689,6 +689,95 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
                                       global.align_bytes > 0 ? global.align_bytes : 4};
 }
 
+std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_global_int_pointer_roundtrip_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || module.globals.size() != 1 ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (global.is_internal || global.is_const || global.is_extern_decl ||
+      global.linkage_vis != "" || global.qualifier != "global " ||
+      global.llvm_type != "i32") {
+    return std::nullopt;
+  }
+  const auto init_imm = parse_i64(global.init_text);
+  if (!init_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+      function.entry.value != 0 || function.blocks.size() != 1 ||
+      function.alloca_insts.size() != 2 || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* addr_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
+  const auto* ptr_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[1]);
+  if (addr_slot == nullptr || ptr_slot == nullptr || addr_slot->result == ptr_slot->result ||
+      addr_slot->type_str != "i64" || ptr_slot->type_str != "ptr" ||
+      addr_slot->align != 8 || ptr_slot->align != 8) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  if (entry.label != "entry" || entry.insts.size() != 7) {
+    return std::nullopt;
+  }
+
+  const auto* ptrtoint = std::get_if<LirCastOp>(&entry.insts[0]);
+  const auto* spill_addr = std::get_if<LirStoreOp>(&entry.insts[1]);
+  const auto* reload_addr = std::get_if<LirLoadOp>(&entry.insts[2]);
+  const auto* inttoptr = std::get_if<LirCastOp>(&entry.insts[3]);
+  const auto* spill_ptr = std::get_if<LirStoreOp>(&entry.insts[4]);
+  const auto* reload_ptr = std::get_if<LirLoadOp>(&entry.insts[5]);
+  const auto* load_value = std::get_if<LirLoadOp>(&entry.insts[6]);
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (ptrtoint == nullptr || spill_addr == nullptr || reload_addr == nullptr ||
+      inttoptr == nullptr || spill_ptr == nullptr || reload_ptr == nullptr ||
+      load_value == nullptr || ret == nullptr) {
+    return std::nullopt;
+  }
+
+  const std::string global_ptr = "@" + global.name;
+  if (ptrtoint->kind != LirCastKind::PtrToInt || ptrtoint->from_type != "ptr" ||
+      ptrtoint->operand != global_ptr || ptrtoint->to_type != "i64") {
+    return std::nullopt;
+  }
+  if (spill_addr->type_str != "i64" || spill_addr->val != ptrtoint->result ||
+      spill_addr->ptr != addr_slot->result) {
+    return std::nullopt;
+  }
+  if (reload_addr->type_str != "i64" || reload_addr->ptr != addr_slot->result) {
+    return std::nullopt;
+  }
+  if (inttoptr->kind != LirCastKind::IntToPtr || inttoptr->from_type != "i64" ||
+      inttoptr->operand != reload_addr->result || inttoptr->to_type != "ptr") {
+    return std::nullopt;
+  }
+  if (spill_ptr->type_str != "ptr" || spill_ptr->val != inttoptr->result ||
+      spill_ptr->ptr != ptr_slot->result) {
+    return std::nullopt;
+  }
+  if (reload_ptr->type_str != "ptr" || reload_ptr->ptr != ptr_slot->result) {
+    return std::nullopt;
+  }
+  if (load_value->type_str != "i32" || load_value->ptr != reload_ptr->result) {
+    return std::nullopt;
+  }
+  if (!ret->value_str.has_value() || *ret->value_str != load_value->result ||
+      ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  return MinimalScalarGlobalLoadSlice{global.name, *init_imm,
+                                      global.align_bytes > 0 ? global.align_bytes : 4};
+}
+
 std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_global_load_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -1851,6 +1940,10 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
     return emit_minimal_conditional_return_asm(prepared, *slice);
   }
   if (const auto slice = parse_minimal_scalar_global_load_slice(prepared);
+      slice.has_value()) {
+    return emit_minimal_scalar_global_load_asm(prepared, *slice);
+  }
+  if (const auto slice = parse_minimal_global_int_pointer_roundtrip_slice(prepared);
       slice.has_value()) {
     return emit_minimal_scalar_global_load_asm(prepared, *slice);
   }

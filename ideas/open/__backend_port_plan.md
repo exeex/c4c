@@ -49,7 +49,7 @@ The backend effort should keep execution focused on one narrow open child at a t
 
 Current open child:
 
-- `ideas/open/14_backend_aarch64_global_int_pointer_roundtrip_plan.md`
+- none currently selected
 
 ## Shared Guardrails
 
@@ -81,4 +81,6 @@ The broad roadmap ordering above is mostly historical: `01` through `08` already
 
 The completed `13_backend_aarch64_global_int_pointer_diff_plan.md` child proved bounded scaled pointer subtraction over a mutable global `int` array.
 
-The next unfinished backend-owned slice is the bounded AArch64 global int-pointer-roundtrip seam tracked in `ideas/open/14_backend_aarch64_global_int_pointer_roundtrip_plan.md`.
+The bounded AArch64 global int-pointer-roundtrip seam from `14_backend_aarch64_global_int_pointer_roundtrip_plan.md` is now closed after promoting that case through the backend-owned asm path.
+
+The next child should be derived from the remaining backend roadmap gaps instead of reactivating the umbrella directly.
