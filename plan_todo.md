@@ -6,9 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 2: evaluate the next narrow alternative-operator spelling after
-  `bitor`, likely `bitxor`, keeping coverage scoped to lexer tokenization plus
-  the smallest parser compatibility edge it exposes
+- [ ] Step 2: evaluate whether `compl` or a single assignment-form alias such
+  as `xor_eq` can land as the next narrow alternative-operator slice without
+  widening into a broader alias batch
 
 ## Todo
 
@@ -57,6 +57,12 @@ Source Plan: plan.md
   slice
 - [x] Add the narrowest validating lexer / parser coverage for the `or` slice
 - [x] Implement the `or` alternative-operator slice
+- [x] Re-run targeted tests, nearby coverage, and the full suite
+- [x] Record a fresh full-suite baseline in `test_before.log` before the
+  `bitxor` slice
+- [x] Add the narrowest validating lexer / parser coverage for the `bitxor`
+  slice
+- [x] Implement the `bitxor` alternative-operator slice
 - [x] Re-run targeted tests, nearby coverage, and the full suite
 
 ## Completed
@@ -258,16 +264,35 @@ Source Plan: plan.md
 - [x] Revalidated the slice with targeted coverage:
   `keyword_bitor_parse`, `cpp_lex_keyword_bitor_tokens`,
   `cpp_parse_keyword_bitor_operator_dump`, `keyword_bitand_parse`,
-  `keyword_or_parse`, `operator_decl_eq_parse`, and
+  `keyword_not_eq_parse`, `keyword_and_parse`, `operator_decl_eq_parse`, and
   `friend_inline_operator_parse`.
 - [x] Recorded full-suite post-change status in `test_after.log`:
   `100% tests passed, 0 tests failed out of 2364`.
+- [x] Recorded fresh full-suite baseline in `test_before.log` before the
+  `bitxor` slice: `100% tests passed, 0 tests failed out of 2364`.
+- [x] Added
+  [tests/cpp/internal/postive_case/keyword_bitxor_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/keyword_bitxor_parse.cpp),
+  registered it as a parse-only positive case, and added explicit lexer / AST
+  assertions in
+  [tests/cpp/internal/InternalTests.cmake](/workspaces/c4c/tests/cpp/internal/InternalTests.cmake)
+  to pin `CARET 'bitxor'` output plus `Function(operator_bitxor)` in the parse
+  dump.
+- [x] Reserved `bitxor` in the lexer by classifying it to the existing
+  `TokenKind::Caret`, allowing both ordinary `a bitxor b` parsing and
+  overloaded `operator bitxor` lowering through the existing bitwise-xor token
+  path.
+- [x] Revalidated the slice with targeted coverage:
+  `keyword_bitxor_parse`, `cpp_lex_keyword_bitxor_tokens`,
+  `cpp_parse_keyword_bitxor_operator_dump`, `keyword_bitor_parse`,
+  `operator_decl_eq_parse`, and `friend_inline_operator_parse`.
+- [x] Recorded full-suite post-change status in `test_after.log`:
+  `100% tests passed, 0 tests failed out of 2367`.
 
 ## Next Intended Slice
 
-After `bitor`, evaluate whether `bitxor`, `compl`, or one of the
-assignment-form aliases can land as the next single-token slice without
-widening into a broader alias batch.
+After `bitxor`, evaluate whether `compl` or one of the assignment-form aliases
+(`and_eq`, `or_eq`, or `xor_eq`) can land as the next single-token slice
+without widening into a broader alias batch.
 
 ## Blockers
 
@@ -328,4 +353,9 @@ widening into a broader alias batch.
   `100% tests passed, 0 tests failed out of 2361`.
 - The `bitor` slice finished cleanly with monotonic full-suite results:
   `2361 -> 2364` total passing tests due to the new parse case plus explicit
+  lexer / AST assertions.
+- Fresh baseline before the `bitxor` slice remains clean:
+  `100% tests passed, 0 tests failed out of 2364`.
+- The `bitxor` slice finished cleanly with monotonic full-suite results:
+  `2364 -> 2367` total passing tests due to the new parse case plus explicit
   lexer / AST assertions.
