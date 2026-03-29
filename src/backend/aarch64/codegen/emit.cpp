@@ -169,6 +169,81 @@ struct MinimalDirectCallTwoArgAddSlice {
   std::int64_t arg1_imm = 0;
 };
 
+struct MinimalConditionalReturnSlice {
+  std::int64_t lhs_imm = 0;
+  std::int64_t rhs_imm = 0;
+  std::string true_label;
+  std::string false_label;
+  std::int64_t true_return_imm = 0;
+  std::int64_t false_return_imm = 0;
+};
+
+std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1) return std::nullopt;
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+      function.entry.value != 0 || function.blocks.size() != 3 ||
+      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks[0];
+  if (entry.label != "entry" || entry.insts.size() != 3) {
+    return std::nullopt;
+  }
+
+  const auto* cmp0 = std::get_if<LirCmpOp>(&entry.insts[0]);
+  const auto* cast = std::get_if<LirCastOp>(&entry.insts[1]);
+  const auto* cmp1 = std::get_if<LirCmpOp>(&entry.insts[2]);
+  const auto* condbr = std::get_if<LirCondBr>(&entry.terminator);
+  if (cmp0 == nullptr || cast == nullptr || cmp1 == nullptr || condbr == nullptr ||
+      cmp0->is_float || cmp0->predicate != "slt" || cmp0->type_str != "i32" ||
+      cast->kind != LirCastKind::ZExt || cast->from_type != "i1" ||
+      cast->operand != cmp0->result || cast->to_type != "i32" || cmp1->is_float ||
+      cmp1->predicate != "ne" || cmp1->type_str != "i32" || cmp1->lhs != cast->result ||
+      cmp1->rhs != "0" || condbr->cond_name != cmp1->result) {
+    return std::nullopt;
+  }
+
+  const auto lhs_imm = parse_i64(cmp0->lhs);
+  const auto rhs_imm = parse_i64(cmp0->rhs);
+  if (!lhs_imm.has_value() || !rhs_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto& true_block = function.blocks[1];
+  const auto& false_block = function.blocks[2];
+  if (true_block.label != condbr->true_label || false_block.label != condbr->false_label ||
+      !true_block.insts.empty() || !false_block.insts.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* true_ret = std::get_if<LirRet>(&true_block.terminator);
+  const auto* false_ret = std::get_if<LirRet>(&false_block.terminator);
+  if (true_ret == nullptr || false_ret == nullptr || !true_ret->value_str.has_value() ||
+      !false_ret->value_str.has_value() || true_ret->type_str != "i32" ||
+      false_ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto true_return_imm = parse_i64(*true_ret->value_str);
+  const auto false_return_imm = parse_i64(*false_ret->value_str);
+  if (!true_return_imm.has_value() || !false_return_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return MinimalConditionalReturnSlice{*lhs_imm,
+                                       *rhs_imm,
+                                       condbr->true_label,
+                                       condbr->false_label,
+                                       *true_return_imm,
+                                       *false_return_imm};
+}
+
 std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
     const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 2) return std::nullopt;
@@ -481,10 +556,44 @@ std::string emit_minimal_direct_call_two_arg_add_asm(
   return out.str();
 }
 
+std::string emit_minimal_conditional_return_asm(
+    const c4c::codegen::lir::LirModule& module,
+    const MinimalConditionalReturnSlice& slice) {
+  const auto in_mov_range = [](std::int64_t imm) {
+    return imm >= 0 && imm <= std::numeric_limits<std::uint16_t>::max();
+  };
+  if (!in_mov_range(slice.lhs_imm) || !in_mov_range(slice.rhs_imm) ||
+      !in_mov_range(slice.true_return_imm) || !in_mov_range(slice.false_return_imm)) {
+    fail_unsupported("conditional-return immediates outside the minimal mov-supported range");
+  }
+
+  std::ostringstream out;
+  c4c::backend::BackendModule backend_module;
+  backend_module.target_triple = module.target_triple;
+  const std::string main_symbol = asm_symbol_name(backend_module, "main");
+
+  out << ".text\n";
+  emit_function_prelude(out, backend_module, main_symbol, true);
+  out << "  mov w8, #" << slice.lhs_imm << "\n"
+      << "  cmp w8, #" << slice.rhs_imm << "\n"
+      << "  b.ge .L" << slice.false_label << "\n"
+      << ".L" << slice.true_label << ":\n"
+      << "  mov w0, #" << slice.true_return_imm << "\n"
+      << "  ret\n"
+      << ".L" << slice.false_label << ":\n"
+      << "  mov w0, #" << slice.false_return_imm << "\n"
+      << "  ret\n";
+  return out.str();
+}
+
 }  // namespace
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   validate_module(module);
+  if (const auto slice = parse_minimal_conditional_return_slice(module);
+      slice.has_value()) {
+    return emit_minimal_conditional_return_asm(module, *slice);
+  }
   try {
     const auto adapted = c4c::backend::adapt_minimal_module(module);
     if (const auto imm = parse_minimal_return_imm(adapted); imm.has_value()) {

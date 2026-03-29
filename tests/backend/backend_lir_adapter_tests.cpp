@@ -1687,18 +1687,18 @@ void test_aarch64_backend_renders_compare_and_branch_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_conditional_return_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "%t0 = icmp slt i32 2, 3",
-                  "aarch64 backend should render integer compare instructions");
-  expect_contains(rendered, "%t1 = zext i1 %t0 to i32",
-                  "aarch64 backend should render compare normalization casts");
-  expect_contains(rendered, "%t2 = icmp ne i32 %t1, 0",
-                  "aarch64 backend should render the final branch predicate compare");
-  expect_contains(rendered, "br i1 %t2, label %then, label %else",
-                  "aarch64 backend should render conditional branches");
-  expect_contains(rendered, "then:\n  ret i32 0",
-                  "aarch64 backend should preserve the then return block");
-  expect_contains(rendered, "else:\n  ret i32 1",
-                  "aarch64 backend should preserve the else return block");
+  expect_contains(rendered, ".globl main",
+                  "aarch64 backend should lower the conditional-return slice to assembly");
+  expect_contains(rendered, "  mov w8, #2\n",
+                  "aarch64 backend should materialize the first compare immediate");
+  expect_contains(rendered, "  cmp w8, #3\n",
+                  "aarch64 backend should compare the materialized value against the second immediate");
+  expect_contains(rendered, "  b.ge .Lelse\n",
+                  "aarch64 backend should branch to the else label when the signed less-than test fails");
+  expect_contains(rendered, ".Lthen:\n  mov w0, #0\n  ret\n",
+                  "aarch64 backend should lower the then return block directly in assembly");
+  expect_contains(rendered, ".Lelse:\n  mov w0, #1\n  ret\n",
+                  "aarch64 backend should lower the else return block directly in assembly");
 }
 
 void test_aarch64_backend_scaffold_rejects_out_of_slice_ir() {
