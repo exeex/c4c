@@ -7,8 +7,8 @@ Last Updated: 2026-03-29
 
 ## Current Active Item
 
-- Step 2: decide whether any template-parameter-list SFINAE family still needs
-  a parser change now that reduced coverage exists for all six runbook targets
+- Step 3: choose the first narrow function-signature SFINAE slice now that
+  template-parameter-list coverage shows no remaining parser-only gap
 
 ## Todo
 
@@ -17,9 +17,12 @@ Last Updated: 2026-03-29
 - [x] Add or stage reduced tests so each target family has concrete testcase
       coverage
 - [x] Record the first parser failure signature for each still-failing family
-- [ ] Implement the first narrow template-parameter parsing slice
-- [ ] Validate targeted tests plus full-suite monotonicity after the first
-      implementation patch
+- [x] Implement the first narrow template-parameter parsing slice
+- [x] Validate targeted tests plus full-suite monotonicity after the Step 2
+      decision slice
+- [ ] Inventory which function-signature SFINAE forms still need parser work
+      rather than later semantic staging
+- [ ] Implement the first narrow function-signature normalization slice
 
 ## Completed
 
@@ -44,11 +47,22 @@ Last Updated: 2026-03-29
 - [x] Validated the coverage-only slice with targeted `ctest` plus a monotonic
       full-suite before/after comparison (`2427/2428` -> `2428/2429`, no newly
       failing tests)
+- [x] Added
+      `tests/cpp/internal/postive_case/member_template_sfinae_typename_prelude_parse.cpp`
+      to prove dependent `typename ...::type` still parses cleanly inside
+      member-template preludes for both defaulted type parameters and typed
+      NTTPs
+- [x] Confirmed the added member-template probe plus adjacent prelude/template
+      regressions pass without any parser change in `src/frontend/parser`
+- [x] Validated the Step 2 decision slice with a monotonic full-suite
+      comparison (`2428/2429` -> `2429/2430`, no newly failing tests; existing
+      baseline failure unchanged at
+      `cpp_positive_sema_iterator_concepts_following_hash_base_parse_cpp`)
 
 ## Next Intended Slice
 
-- Inspect whether any still-missing behavior in the template-parameter-list
-  families is semantic-only rather than syntactic before forcing a parser patch.
+- Re-run the reduced return-type and parameter-type SFINAE probes to determine
+  whether Step 3 still has a parser gap or only later semantic fallout.
 
 ## Blockers
 
@@ -57,6 +71,10 @@ Last Updated: 2026-03-29
 ## Resume Notes
 
 - Keep this plan narrow to parser coverage and staged semantic fallback.
+- Current iteration target:
+  Step 2 is closed by coverage confirmation rather than parser edits:
+  the added member-template `typename ...::type` probe passed immediately, so
+  the next iteration should pivot to Step 3 function-signature forms.
 - Step 1 inventory result:
   unnamed typed NTTP already overlapped
   `eastl_probe_qualified_template_scope_parse.cpp`;
@@ -70,6 +88,13 @@ Last Updated: 2026-03-29
   none observed in current reduced probes for any of the six target families;
   the active gap after this iteration is reduced coverage, not a reproduced
   parser break in the narrowed corpus.
+- Step 2 closure evidence:
+  `cpp_positive_sema_member_template_sfinae_typename_prelude_parse_cpp`,
+  `cpp_positive_sema_sfinae_template_parameter_patterns_parse_cpp`,
+  `cpp_positive_sema_template_typename_typed_nttp_parse_cpp`, and
+  `cpp_positive_sema_eastl_probe_qualified_template_scope_parse_cpp` all pass,
+  so no template-parameter parser patch is justified from the current reduced
+  corpus.
 - Do not activate `ideas/open/__backend_port_plan.md`; it is an umbrella
   roadmap, not the direct target for this runbook.
 - The parked `std::vector` bring-up idea remains adjacent follow-on work, not
