@@ -5546,6 +5546,15 @@ Node* Parser::parse_record_tag_setup(int line,
         ref->name = resolved_tag;
         ref->is_union = is_union;
         ref->n_fields = -1;  // -1 = forward reference (no body)
+        if (is_cpp_mode() && resolved_tag && resolved_tag[0]) {
+            typedefs_.insert(resolved_tag);
+            TypeSpec injected_ts{};
+            injected_ts.array_size = -1;
+            injected_ts.array_rank = 0;
+            injected_ts.base = is_union ? TB_UNION : TB_STRUCT;
+            injected_ts.tag = resolved_tag;
+            typedef_types_[resolved_tag] = injected_ts;
+        }
         if (is_cpp_mode() && parsing_top_level_context_)
             struct_defs_.push_back(ref);
         return ref;
@@ -5713,6 +5722,10 @@ void Parser::finalize_record_definition(Node* sd,
     injected_ts.base = is_union ? TB_UNION : TB_STRUCT;
     injected_ts.tag = sd->name;
     typedef_types_[sd->name] = injected_ts;
+    if (source_tag && source_tag[0] && std::strcmp(source_tag, sd->name) != 0) {
+        typedefs_.insert(source_tag);
+        typedef_types_[source_tag] = injected_ts;
+    }
 }
 
 void Parser::complete_record_definition(

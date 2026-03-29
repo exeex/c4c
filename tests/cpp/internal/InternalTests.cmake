@@ -85,6 +85,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     friend_access_parse
     friend_inline_operator_parse
     if_condition_decl_parse
+    free_function_record_ref_param_parse
     eastl_slice7d_qualified_declarator_parse
     out_of_class_member_owner_scope_parse
     eastl_probe_pack_expansion_template_arg_parse
@@ -350,20 +351,6 @@ add_test(
 set_tests_properties(cpp_parser_debug_qualified_type_spelling_stack PROPERTIES
   LABELS "internal;negative_case;cpp;diagnostic_format"
 )
-
-add_test(
-  NAME cpp_parser_debug_qualified_alias_ref_param_leaf
-  COMMAND "${CMAKE_COMMAND}"
-          -DCOMPILER=$<TARGET_FILE:c4cll>
-          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_qualified_alias_ref_param_leaf.cpp
-          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_top_level_parameter_list phase=committed expected=RPAREN got='&'"
-          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> try_parse_cpp_scoped_base_type -> consume_qualified_type_spelling -> parse_top_level_parameter_list -> parse_param -> try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type"
-          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
-)
-set_tests_properties(cpp_parser_debug_qualified_alias_ref_param_leaf PROPERTIES
-  LABELS "internal;negative_case;cpp;diagnostic_format"
-)
-
 
 add_test(
   NAME cpp_parser_debug_top_level_qualified_probe_leaf
