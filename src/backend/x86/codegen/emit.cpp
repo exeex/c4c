@@ -228,7 +228,9 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
   const auto* cmp1 = std::get_if<LirCmpOp>(&entry.insts[2]);
   const auto* condbr = std::get_if<LirCondBr>(&entry.terminator);
   if (cmp0 == nullptr || cast == nullptr || cmp1 == nullptr || condbr == nullptr ||
-      cmp0->is_float || (cmp0->predicate != "slt" && cmp0->predicate != "sle") ||
+      cmp0->is_float ||
+      (cmp0->predicate != "slt" && cmp0->predicate != "sle" &&
+       cmp0->predicate != "sgt") ||
       cmp0->type_str != "i32" ||
       cast->kind != LirCastKind::ZExt || cast->from_type != "i1" ||
       cast->operand != cmp0->result || cast->to_type != "i32" || cmp1->is_float ||
@@ -385,6 +387,8 @@ std::string emit_minimal_conditional_return_asm(
     fail_branch = "jge";
   } else if (slice.predicate == "sle") {
     fail_branch = "jg";
+  } else if (slice.predicate == "sgt") {
+    fail_branch = "jle";
   } else {
     throw c4c::backend::LirAdapterError(
         c4c::backend::LirAdapterErrorKind::Unsupported,

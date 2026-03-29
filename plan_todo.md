@@ -6,11 +6,11 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 4: choose the next bounded x86 follow-up after the `slt`/`sle` conditional-return scaffold, either one more adjacent signed predicate or one more direct-call regalloc-sensitive shape, without absorbing unrelated assembler/linker work
+- [ ] Step 4: extend the bounded x86 conditional-return scaffold to exactly one more adjacent signed predicate, `sge`, with a failing proof test first, while keeping the unrelated `struct-ret-1` clean-build IR failure recorded as a separate blocker rather than widening this plan
 
 ## Planned Queue
 
-- [ ] Step 4: if x86 conditional-return support stays in scope, add exactly one adjacent signed predicate proof (`sgt` or `sge`) before widening further
+- [ ] Step 4: after `sge`, decide whether to stop the conditional-return scaffold or return to one more bounded direct-call regalloc-sensitive shape
 - [ ] Step 4: otherwise return to the direct-call scaffold for one more bounded call shape that still exercises shared regalloc state
 
 ## Completed
@@ -23,6 +23,7 @@ Source Plan: plan.md
 - [x] Step 4: switched to the bounded x86 signed-less-than conditional-return proof case, added the failing scaffold test first, and lowered that slice to direct x86 assembly without widening into general branch lowering
 - [x] Step 4: rebuilt, reran `backend_lir_adapter_tests`, and recorded monotonic full-suite validation with `ctest --test-dir build -j --output-on-failure` plus the regression guard (`29 -> 28` failing tests, `2309 -> 2310` passed, `2338` total)
 - [x] Step 4: extended the x86 conditional-return scaffold to the adjacent signed less-or-equal (`sle`) predicate with a failing proof test first, then rebuilt, reran `./backend_lir_adapter_tests`, and recorded monotonic full-suite validation plus the regression guard (`29 -> 27` failing tests, `2309 -> 2311` passed, `2338` total)
+- [x] Step 4: extended the x86 conditional-return scaffold to the adjacent signed greater-than (`sgt`) predicate with a failing proof test first, then rebuilt and reran `./build/backend_lir_adapter_tests`
 
 ## Notes
 
@@ -33,7 +34,9 @@ Source Plan: plan.md
 - The current x86 assembler entrypoint still stages raw text to the requested output path instead of producing a real object file. That was kept as a bounded unblocker for this run rather than widening into assembler implementation work.
 - The new x86 compare-and-branch scaffold currently claims only the minimal signed-less-than conditional-return shape (`icmp slt` + `zext` + `icmp ne 0` + two direct return blocks). Adjacent predicates remain separate follow-on work.
 - The x86 compare-and-branch scaffold now covers the minimal signed-less-than and signed-less-or-equal conditional-return shapes (`icmp slt|sle` + `zext` + `icmp ne 0` + two direct return blocks). Other predicates remain separate follow-on work.
+- The x86 compare-and-branch scaffold now covers the minimal signed-less-than, signed-less-or-equal, and signed-greater-than shapes (`icmp slt|sle|sgt` + `zext` + `icmp ne 0` + two direct return blocks). `sge` and non-signed predicates remain separate follow-on work.
+- Clean rebuild validation after the `sgt` slice kept the aggregate full-suite count flat at `27` failing and `2311` passing out of `2338`, fixed `backend_runtime_branch_if_gt`, and surfaced an unrelated new `llvm_gcc_c_torture_src_struct_ret_1_c` failure where `clang -x ir` rejects the emitted IR for a struct-return function-pointer call. Keep that as a separate blocker or follow-on idea, not as part of this x86 conditional-return plan.
 
 ## Next Intended Slice
 
-Choose one bounded follow-up: either extend x86 conditional-return lowering to exactly one adjacent signed predicate (`sgt` or `sge`) with a failing proof test first, or return to the direct-call scaffold for one more narrow call shape that still exercises shared regalloc-sensitive save/restore behavior.
+After recording the unrelated `struct-ret-1` clean-build blocker, extend x86 conditional-return lowering to exactly one more adjacent signed predicate (`sge`) with a failing proof test first, or return to the direct-call scaffold for one more narrow call shape that still exercises shared regalloc-sensitive save/restore behavior.
