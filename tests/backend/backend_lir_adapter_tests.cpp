@@ -4,6 +4,7 @@
 #include "lir_adapter.hpp"
 #include "regalloc.hpp"
 #include "stack_layout/analysis.hpp"
+#include "stack_layout/alloca_coalescing.hpp"
 #include "stack_layout/regalloc_helpers.hpp"
 #include "stack_layout/slot_assignment.hpp"
 #include "target.hpp"
@@ -2113,6 +2114,38 @@ c4c::codegen::lir::LirModule make_read_before_store_scalar_local_alloca_candidat
   return module;
 }
 
+c4c::codegen::lir::LirModule make_escaped_local_alloca_candidate_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction decl;
+  decl.name = "sink";
+  decl.signature_text = "declare void @sink(ptr)\n";
+  decl.is_declaration = true;
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.buf", "[2 x i32]", "", 4});
+  function.alloca_insts.push_back(
+      LirStoreOp{"[2 x i32]", "zeroinitializer", "%lv.buf"});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"", "void", "@sink", "", "ptr %lv.buf"});
+  entry.terminator = LirRet{std::string("0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(decl));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 void test_adapts_direct_return() {
   const auto adapted = c4c::backend::adapt_minimal_module(make_return_zero_module());
   expect_true(adapted.functions.size() == 1, "adapter should preserve one function");
@@ -3461,6 +3494,43 @@ void test_backend_shared_stack_layout_analysis_detects_entry_alloca_overwrite_be
               "shared stack-layout analysis should keep entry zero-init stores when the slot is read before it is overwritten");
 }
 
+void test_backend_shared_alloca_coalescing_classifies_non_param_allocas() {
+  const c4c::backend::RegAllocIntegrationResult regalloc;
+
+  const auto dead_module = make_dead_local_alloca_candidate_module();
+  const auto& dead_function = dead_module.functions.front();
+  const auto dead_analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(dead_function, regalloc, {});
+  const auto dead_coalescing =
+      c4c::backend::stack_layout::compute_coalescable_allocas(dead_function,
+                                                              dead_analysis);
+  expect_true(dead_coalescing.is_dead_alloca("%lv.buf") &&
+                  !dead_coalescing.find_single_block("%lv.buf").has_value(),
+              "shared alloca-coalescing should classify unused non-param allocas as dead instead of forcing a permanent slot");
+
+  const auto single_block_module = make_live_local_alloca_candidate_module();
+  const auto& single_block_function = single_block_module.functions.front();
+  const auto single_block_analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(single_block_function, regalloc, {});
+  const auto single_block_coalescing =
+      c4c::backend::stack_layout::compute_coalescable_allocas(single_block_function,
+                                                              single_block_analysis);
+  expect_true(!single_block_coalescing.is_dead_alloca("%lv.buf") &&
+                  single_block_coalescing.find_single_block("%lv.buf") == 0,
+              "shared alloca-coalescing should recognize GEP-tracked non-param allocas whose uses stay within one block");
+
+  const auto escaped_module = make_escaped_local_alloca_candidate_module();
+  const auto& escaped_function = escaped_module.functions.back();
+  const auto escaped_analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(escaped_function, regalloc, {});
+  const auto escaped_coalescing =
+      c4c::backend::stack_layout::compute_coalescable_allocas(escaped_function,
+                                                              escaped_analysis);
+  expect_true(!escaped_coalescing.is_dead_alloca("%lv.buf") &&
+                  !escaped_coalescing.find_single_block("%lv.buf").has_value(),
+              "shared alloca-coalescing should leave call-escaped allocas out of the single-block pool");
+}
+
 void test_backend_shared_slot_assignment_plans_param_alloca_slots() {
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}};
@@ -3792,6 +3862,7 @@ int main() {
   test_backend_shared_stack_layout_analysis_tracks_phi_use_blocks();
   test_backend_shared_stack_layout_analysis_detects_dead_param_allocas();
   test_backend_shared_stack_layout_analysis_detects_entry_alloca_overwrite_before_read();
+  test_backend_shared_alloca_coalescing_classifies_non_param_allocas();
   test_backend_shared_slot_assignment_plans_param_alloca_slots();
   test_backend_shared_slot_assignment_prunes_dead_param_alloca_insts();
   test_backend_shared_slot_assignment_plans_entry_alloca_slots();

@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - [ ] Step 4: Port the stack-layout helper boundary that consumes regalloc results.
-  Iteration target: thread `StackLayoutAnalysis` into the next stack-layout decision beyond entry-store cleanup so Step 4 starts shaping broader live-slot placement or frame-size behavior, not only dead-slot or redundant-init cleanup.
+  Iteration target: thread the new shared `alloca_coalescing` classification into the first real slot-planning consumer so single-block non-param allocas can begin affecting shared stack-slot reuse instead of remaining analysis-only state.
 
 ## Todo Queue
 
@@ -41,11 +41,12 @@ Source Plan: plan.md
 - [x] Extended `backend_lir_adapter_tests` with shared dead-vs-live local-entry-alloca coverage, rebuilt the binary, reran `./build/backend_lir_adapter_tests`, reran full `ctest`, and revalidated the saved baseline by log comparison (`after=570/574`, same four known failures only).
 - [x] Extended shared `StackLayoutAnalysis` with first-access tracking for entry allocas, then used shared `slot_assignment` to drop redundant paired scalar `zeroinitializer` stores when a live entry slot is overwritten before any read while preserving aggregate slots and read-before-store cases.
 - [x] Extended `backend_lir_adapter_tests` with overwrite-before-read versus read-before-store scalar entry-slot coverage, reran `./build/backend_lir_adapter_tests`, reran `compare_smoke_struct`, reran full `ctest`, and rechecked monotonic non-regression with `check_monotonic_regression.py --allow-non-decreasing-passed` (`before=570/574`, `after=570/574`, no new failures).
+- [x] Added the first shared `src/backend/stack_layout/alloca_coalescing.{hpp,cpp}` seam so Step 4 can classify non-param allocas as dead, single-block coalescable, or escaped after GEP-tracked use scanning instead of leaving that stack-slot-reuse boundary entirely stubbed.
+- [x] Extended `backend_lir_adapter_tests` with shared alloca-coalescing coverage for dead, GEP-tracked single-block, and call-escaped local allocas; rebuilt `backend_lir_adapter_tests`, reran the binary, reran full `ctest`, and revalidated the saved baseline (`after=570/574`, same four known failures only).
 
 ## Next Intended Slice
 
-- Keep building Step 4 inside shared stack-layout code by threading `StackLayoutAnalysis` into the next real slot-assignment or frame-sizing decision after entry-alloca pruning, ideally one that affects non-entry local slot placement, stack-slot reuse, or frame-size computation instead of only dead-slot removal.
-- Keep building Step 4 inside shared stack-layout code by threading `StackLayoutAnalysis` into the next real slot-assignment or frame-sizing decision after dead-slot and redundant-init cleanup, ideally one that affects non-entry local slot placement, stack-slot reuse, or frame-size computation.
+- After shared alloca-coalescing classification lands, thread that result into the first real slot-planning consumer so single-block non-param allocas can begin steering shared stack-slot reuse instead of only exposing analysis state.
 - Keep Step 5 AArch64 prologue and emit wiring deferred until the shared helper and analysis seams feed a broader stack-layout consumer than fallback-LIR pruning, with narrow tests around that handoff.
 
 ## Blockers
