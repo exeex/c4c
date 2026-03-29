@@ -209,7 +209,8 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
       cmp1->rhs != "0" || condbr->cond_name != cmp1->result) {
     return std::nullopt;
   }
-  if (cmp0->predicate != "slt" && cmp0->predicate != "sle") {
+  if (cmp0->predicate != "slt" && cmp0->predicate != "sle" &&
+      cmp0->predicate != "sgt") {
     return std::nullopt;
   }
 
@@ -581,6 +582,8 @@ std::string emit_minimal_conditional_return_asm(
     fail_branch = "b.ge";
   } else if (slice.predicate == "sle") {
     fail_branch = "b.gt";
+  } else if (slice.predicate == "sgt") {
+    fail_branch = "b.le";
   } else {
     fail_unsupported("conditional-return predicates outside the current compare-and-branch slice");
   }
