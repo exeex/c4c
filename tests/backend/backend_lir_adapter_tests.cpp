@@ -2635,12 +2635,16 @@ void test_aarch64_backend_renders_extern_global_load_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_extern_global_load_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "@ext_counter = external global i32, align 4",
-                  "aarch64 backend should render extern global declarations");
-  expect_contains(rendered, "define i32 @main()\n{\nentry:\n  %t0 = load i32, ptr @ext_counter\n",
-                  "aarch64 backend should preserve scalar loads from extern globals");
-  expect_contains(rendered, "ret i32 %t0",
-                  "aarch64 backend should preserve the extern global load result");
+  expect_contains(rendered, ".extern ext_counter\n",
+                  "aarch64 backend should declare extern scalar globals for ELF assembly");
+  expect_contains(rendered, ".globl main\n",
+                  "aarch64 backend should still publish main as the entry symbol");
+  expect_contains(rendered, "adrp x8, ext_counter\n",
+                  "aarch64 backend should form the extern scalar global page address");
+  expect_contains(rendered, "ldr w0, [x8, :lo12:ext_counter]\n",
+                  "aarch64 backend should load the extern scalar global directly into the return register");
+  expect_contains(rendered, "ret\n",
+                  "aarch64 backend should return the loaded extern scalar global value");
 }
 
 void test_aarch64_backend_renders_extern_global_array_slice() {
