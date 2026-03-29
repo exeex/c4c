@@ -147,6 +147,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     record_definition_body_handoff_parse
     record_body_state_bundle_parse
     qualified_record_partial_specialization_parse
+    record_final_specifier_parse
 )
 
 list(APPEND CPP_POSITIVE_FRONTEND_STEMS

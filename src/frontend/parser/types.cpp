@@ -5533,6 +5533,13 @@ void Parser::parse_record_prebody_setup(
         }
     }
 
+    // C++ class-virt-specifier support: accept the contextual `final`
+    // keyword between the record name and any base-clause/body.
+    if (is_cpp_mode() && check(TokenKind::Identifier) &&
+        cur().lexeme == "final") {
+        consume();
+    }
+
     parse_record_base_clause(base_types);
 }
 
