@@ -138,3 +138,16 @@ It does not need to stay permanently separate if execution shows that the shared
 ## Good First Patch
 
 Make the minimum shared liveness/regalloc helper boundary compile and be includable from the AArch64 backend tree before tightening any runtime behavior.
+
+## Completion
+
+Completed on 2026-03-29.
+
+- Shared backend liveness, linear-scan regalloc, regalloc-helper, stack-layout analysis, alloca coalescing, slot-assignment, and entry-slot application seams now compile and are exercised through targeted backend coverage.
+- The AArch64 backend now has both fallback and non-fallback consumers of the shared result boundary, including used-callee-saved driven save/restore on the minimal call-crossing direct-call slice.
+- The bounded cleanup goal for this idea is complete: that non-fallback call-crossing slice now keeps the helper result in `w0`, removes the redundant call-result callee-saved save/restore traffic, and shrinks the frame from 32 bytes to 16 bytes.
+
+## Leftover Follow-Ons
+
+- Broader AArch64 post-codegen peephole coverage remains deferred to later backend ideas; this idea only closed the first redundant call-result traffic case needed to prove the shared cleanup seam.
+- x86-64 and rv64 reuse of the shared backend layers remains future work under their own idea files.

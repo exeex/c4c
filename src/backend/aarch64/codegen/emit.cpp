@@ -14,6 +14,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
+#include <vector>
 
 namespace c4c::backend::aarch64 {
 
@@ -829,15 +830,15 @@ std::string emit_minimal_call_crossing_direct_call_asm(
 
   const auto* source_reg =
       c4c::backend::stack_layout::find_assigned_reg(regalloc, slice.source_value);
-  const auto* call_result_reg =
-      c4c::backend::stack_layout::find_assigned_reg(regalloc, slice.call_result_value);
-  if (source_reg == nullptr || call_result_reg == nullptr ||
-      !c4c::backend::stack_layout::uses_callee_saved_reg(regalloc, *source_reg) ||
-      !c4c::backend::stack_layout::uses_callee_saved_reg(regalloc, *call_result_reg)) {
+  if (source_reg == nullptr ||
+      !c4c::backend::stack_layout::uses_callee_saved_reg(regalloc, *source_reg)) {
     fail_unsupported("shared call-crossing regalloc state for the minimal direct-call slice");
   }
 
-  const std::int64_t frame_size = aligned_call_frame_size(regalloc.used_callee_saved.size());
+  std::vector<c4c::backend::PhysReg> saved_regs;
+  saved_regs.push_back(*source_reg);
+
+  const std::int64_t frame_size = aligned_call_frame_size(saved_regs.size());
   std::ostringstream out;
   const std::string helper_symbol = asm_symbol_name(module, slice.callee_name);
   const std::string main_symbol = asm_symbol_name(module, "main");
@@ -848,20 +849,18 @@ std::string emit_minimal_call_crossing_direct_call_asm(
       << "  ret\n";
   emit_function_prelude(out, module, main_symbol, true);
   out << "  sub sp, sp, #" << frame_size << "\n";
-  for (std::size_t i = 0; i < regalloc.used_callee_saved.size(); ++i) {
-    out << "  str " << gp_reg_name(regalloc.used_callee_saved[i], false) << ", [sp, #"
+  for (std::size_t i = 0; i < saved_regs.size(); ++i) {
+    out << "  str " << gp_reg_name(saved_regs[i], false) << ", [sp, #"
         << (i * 8) << "]\n";
   }
-  out << "  str x30, [sp, #" << (regalloc.used_callee_saved.size() * 8) << "]\n"
+  out << "  str x30, [sp, #" << (saved_regs.size() * 8) << "]\n"
       << "  mov " << gp_reg_name(*source_reg, true) << ", #" << slice.source_imm << "\n"
       << "  mov w0, " << gp_reg_name(*source_reg, true) << "\n"
       << "  bl " << helper_symbol << "\n"
-      << "  mov " << gp_reg_name(*call_result_reg, true) << ", w0\n"
-      << "  add w0, " << gp_reg_name(*source_reg, true) << ", "
-      << gp_reg_name(*call_result_reg, true) << "\n"
-      << "  ldr x30, [sp, #" << (regalloc.used_callee_saved.size() * 8) << "]\n";
-  for (std::size_t i = regalloc.used_callee_saved.size(); i > 0; --i) {
-    const auto& reg = regalloc.used_callee_saved[i - 1];
+      << "  add w0, " << gp_reg_name(*source_reg, true) << ", w0\n"
+      << "  ldr x30, [sp, #" << (saved_regs.size() * 8) << "]\n";
+  for (std::size_t i = saved_regs.size(); i > 0; --i) {
+    const auto& reg = saved_regs[i - 1];
     out << "  ldr " << gp_reg_name(reg, false) << ", [sp, #" << ((i - 1) * 8) << "]\n";
   }
   out << "  add sp, sp, #" << frame_size << "\n"
