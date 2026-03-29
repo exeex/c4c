@@ -157,6 +157,15 @@ std::string llvm_fn_type_suffix_str(const FnPtrSig& sig) {
   return out.str();
 }
 
+bool sig_has_meaningful_prototype(const FnPtrSig& sig) {
+  if (sig_has_explicit_prototype(sig)) return true;
+  if (sig.canonical_sig) {
+    const auto* fsig = sema::get_function_sig(*sig.canonical_sig);
+    if (fsig) return fsig->is_variadic || !fsig->params.empty();
+  }
+  return false;
+}
+
 std::string llvm_fn_type_suffix_str(const hir::Module& mod, const Function& fn) {
   if (fn.params.empty() && !fn.attrs.variadic) return "";
   std::ostringstream out;
@@ -1830,7 +1839,7 @@ const FnPtrSig* StmtEmitter::resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& c
         if (const Function* target = find_function(dr->name)) {
           const FnPtrSig* cached_sig =
               target->ret_fn_ptr_sig ? &*target->ret_fn_ptr_sig : nullptr;
-          if (cached_sig && sig_has_explicit_prototype(*cached_sig)) return cached_sig;
+          if (cached_sig && sig_has_meaningful_prototype(*cached_sig)) return cached_sig;
           if (const Function* returned = infer_returned_function(infer_returned_function, *target)) {
             return build_fn_sig(*returned);
           }
