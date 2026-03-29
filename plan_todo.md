@@ -8,15 +8,15 @@ Source Plan: plan.md
 
 - Step 4: Migrate high-friction instruction families and consumers.
 - Exact target for the next iteration: continue Step 4 past
-  the landed shared direct-global typed-call decoding slice into the remaining
-  LIR/backend call-adjacent consumers that still compose callee
-  classification, typed parameter checks, and operand extraction as separate
-  compatibility steps instead of consuming one richer shared call view.
+  the landed adapter-side shared typed-call metadata cleanup into the residual
+  backend direct-call fast paths that still compose zero-arg or call-crossing
+  typed direct-call validation out of separate helper calls instead of
+  consuming one richer shared direct-call view end to end.
 - Exact target for the next iteration after this slice: continue Step 4 into
   the remaining backend call-adjacent consumers that still decode typed call
-  argument/result shape from raw compatibility text, especially the residual
-  LIR-side direct-call fast paths and adapter seams that have not yet been
-  collapsed onto richer shared structured call metadata.
+  argument/result shape from compatibility text, especially any residual
+  LIR-side direct-call recognizers that still stitch together callee and
+  argument shape checks instead of consuming one shared structured call view.
 
 ## Completed Items
 
@@ -144,6 +144,12 @@ Source Plan: plan.md
   param-slot and immediate two-arg LIR fast paths through one shared
   direct-global typed-call view instead of stitching together separate callee
   classification and typed-argument decoders, and adding focused helper
+  regression coverage in `tests/backend/backend_lir_adapter_tests.cpp`.
+- Completed the next Step 4 adapter shared typed-call metadata slice in
+  `src/backend/lir_adapter.cpp` by deleting the adapter's private typed-call
+  copy/format layer, reusing `ParsedLirTypedCallView` and
+  `format_lir_typed_call_args(...)` from `src/codegen/lir/call_args.hpp` for
+  local-call normalization, and adding spacing-tolerant two-argument adapter
   regression coverage in `tests/backend/backend_lir_adapter_tests.cpp`.
 
 ## Notes
@@ -485,6 +491,20 @@ Source Plan: plan.md
   --allow-non-decreasing-passed` passed with zero new failures, one resolved
   failure (`c_testsuite_x86_backend_src_00100_c`), and no suspicious slow
   tests.
+- `cmake --build build -j8 --target backend_lir_adapter_tests` passed after
+  landing the adapter-side shared typed-call metadata cleanup.
+- `ctest --test-dir build -R backend_lir_adapter_tests --output-on-failure`
+  passed with added spacing-tolerant two-argument local-call normalization
+  coverage.
+- `cmake --build build -j8` passed after deleting the adapter-local typed-call
+  copy/format shim in favor of shared `call_args.hpp` metadata and formatting.
+- `ctest --test-dir build -j --output-on-failure > test_fail_after.log`
+  recorded `2372/2560` passing and `188` failing tests.
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_before.log --after test_fail_after.log
+  --allow-non-decreasing-passed` passed with zero new failures, one resolved
+  failure (`c_testsuite_x86_backend_src_00100_c`), and no suspicious slow
+  tests after the adapter shared typed-call metadata cleanup slice.
 
 ## Open Questions To Resolve During This Runbook
 

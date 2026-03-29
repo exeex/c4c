@@ -79,48 +79,13 @@ std::vector<std::string> split_top_level(const std::string& text, char delim) {
   return parts;
 }
 
-struct ParsedCallArg {
-  std::string type;
-  std::string operand;
-};
-
-struct ParsedTypedCall {
-  std::vector<std::string> param_types;
-  std::vector<ParsedCallArg> args;
-};
-
-std::optional<ParsedTypedCall> parse_typed_call(const LirCallOp& call) {
+std::optional<c4c::codegen::lir::ParsedLirTypedCallView> parse_typed_call(
+    const LirCallOp& call) {
   if (call.callee_type_suffix.empty()) {
     return std::nullopt;
   }
-  const auto shared_parsed = c4c::codegen::lir::parse_lir_typed_call(
-      call.callee_type_suffix, call.args_str);
-  if (!shared_parsed.has_value()) {
-    return std::nullopt;
-  }
-
-  ParsedTypedCall parsed;
-  parsed.param_types.reserve(shared_parsed->param_types.size());
-  for (std::string_view type : shared_parsed->param_types) {
-    parsed.param_types.emplace_back(type);
-  }
-  parsed.args.reserve(shared_parsed->args.size());
-  for (const auto& arg : shared_parsed->args) {
-    parsed.args.push_back(
-        ParsedCallArg{std::string(arg.type), std::string(arg.operand)});
-  }
-  return parsed;
-}
-
-std::string render_call_args(const std::vector<ParsedCallArg>& args) {
-  std::ostringstream out;
-  for (std::size_t index = 0; index < args.size(); ++index) {
-    if (index != 0) {
-      out << ", ";
-    }
-    out << args[index].type << " " << args[index].operand;
-  }
-  return out.str();
+  return c4c::codegen::lir::parse_lir_typed_call(call.callee_type_suffix,
+                                                  call.args_str);
 }
 
 std::optional<std::int64_t> parse_i64(std::string_view text) {
@@ -1184,6 +1149,11 @@ std::optional<BackendFunction> adapt_local_single_arg_call_function(
     return std::nullopt;
   }
 
+  const std::vector<c4c::codegen::lir::OwnedLirTypedCallArg> normalized_call_args = {{
+      std::string(parsed_call->args.front().type),
+      store->val.str(),
+  }};
+
   BackendFunction out;
   out.signature = signature;
   BackendBlock out_block;
@@ -1192,8 +1162,8 @@ std::optional<BackendFunction> adapt_local_single_arg_call_function(
                                             call->return_type,
                                             call->callee,
                                             call->callee_type_suffix,
-                                            parsed_call->args.front().type + " " +
-                                                store->val.str()});
+                                            c4c::codegen::lir::format_lir_typed_call_args(
+                                                normalized_call_args)});
   out_block.terminator = BackendReturn{call->result, "i32"};
   out.blocks.push_back(std::move(out_block));
   return out;
@@ -1284,7 +1254,12 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
       return std::nullopt;
     }
 
-    auto normalized_call_args = parsed_call->args;
+    std::vector<c4c::codegen::lir::OwnedLirTypedCallArg> normalized_call_args;
+    normalized_call_args.reserve(parsed_call->args.size());
+    for (const auto& arg : parsed_call->args) {
+      normalized_call_args.push_back(
+          {std::string(arg.type), std::string(arg.operand)});
+    }
     bool replaced_local = false;
     for (auto& arg : normalized_call_args) {
       if (arg.operand == call_arg_load->result) {
@@ -1295,7 +1270,8 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
     if (!replaced_local) {
       return std::nullopt;
     }
-    normalized_args = render_call_args(normalized_call_args);
+    normalized_args =
+        c4c::codegen::lir::format_lir_typed_call_args(normalized_call_args);
     call_callee = call->callee;
     call_callee_type_suffix = call->callee_type_suffix;
   } else {
@@ -1436,10 +1412,16 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
       return std::nullopt;
     }
 
-    auto normalized_call_args = parsed_call->args;
+    std::vector<c4c::codegen::lir::OwnedLirTypedCallArg> normalized_call_args;
+    normalized_call_args.reserve(parsed_call->args.size());
+    for (const auto& arg : parsed_call->args) {
+      normalized_call_args.push_back(
+          {std::string(arg.type), std::string(arg.operand)});
+    }
     normalized_call_args[0].operand = store0->val.str();
     normalized_call_args[1].operand = store1->val.str();
-    normalized_args = render_call_args(normalized_call_args);
+    normalized_args =
+        c4c::codegen::lir::format_lir_typed_call_args(normalized_call_args);
     call_callee = call->callee;
     call_callee_type_suffix = call->callee_type_suffix;
   }
