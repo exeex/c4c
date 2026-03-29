@@ -1009,7 +1009,8 @@ std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_point
     return std::nullopt;
   }
 
-  if (diff->opcode != "sub" || diff->type_str != "i64" ||
+  const auto diff_opcode = diff->opcode.typed();
+  if (diff_opcode != LirBinaryOpcode::Sub || diff->type_str != "i64" ||
       diff->lhs != ptrtoint1->result || diff->rhs != ptrtoint0->result) {
     return std::nullopt;
   }
@@ -1019,7 +1020,8 @@ std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_point
     return std::nullopt;
   }
 
-  if (cmp->is_float || cmp->predicate != "eq" || cmp->type_str != "i64" ||
+  const auto cmp_predicate = cmp->predicate.typed();
+  if (cmp->is_float || cmp_predicate != LirCmpPredicate::Eq || cmp->type_str != "i64" ||
       cmp->lhs != diff->result || cmp->rhs != expected_diff->result) {
     return std::nullopt;
   }
@@ -1143,12 +1145,14 @@ std::optional<MinimalGlobalIntPointerDiffSlice> parse_minimal_global_int_pointer
     return std::nullopt;
   }
 
-  if (diff->opcode != "sub" || diff->type_str != "i64" ||
+  const auto diff_opcode = diff->opcode.typed();
+  if (diff_opcode != LirBinaryOpcode::Sub || diff->type_str != "i64" ||
       diff->lhs != ptrtoint1->result || diff->rhs != ptrtoint0->result) {
     return std::nullopt;
   }
 
-  if (scaled_diff->opcode != "sdiv" || scaled_diff->type_str != "i64" ||
+  const auto scaled_diff_opcode = scaled_diff->opcode.typed();
+  if (scaled_diff_opcode != LirBinaryOpcode::SDiv || scaled_diff->type_str != "i64" ||
       scaled_diff->lhs != diff->result || scaled_diff->rhs != "4") {
     return std::nullopt;
   }
@@ -1158,7 +1162,8 @@ std::optional<MinimalGlobalIntPointerDiffSlice> parse_minimal_global_int_pointer
     return std::nullopt;
   }
 
-  if (cmp->is_float || cmp->predicate != "eq" || cmp->type_str != "i64" ||
+  const auto cmp_predicate = cmp->predicate.typed();
+  if (cmp->is_float || cmp_predicate != LirCmpPredicate::Eq || cmp->type_str != "i64" ||
       cmp->lhs != scaled_diff->result || cmp->rhs != expected_diff->result) {
     return std::nullopt;
   }

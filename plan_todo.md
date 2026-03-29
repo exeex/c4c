@@ -8,11 +8,10 @@ Source Plan: plan.md
 
 - Step 4: Migrate high-friction instruction families and consumers.
 - Exact target for the next iteration: continue Step 4 past
-  the landed x86 and AArch64 conditional-return emitter slices into the
-  remaining backend compare consumers that still branch on raw predicate text,
-  starting with the pointer-difference equality checks in
-  `src/backend/aarch64/codegen/emit.cpp` and
-  `src/backend/x86/codegen/emit.cpp`.
+  the landed x86 and AArch64 pointer-difference equality slices into the next
+  remaining backend consumers that still depend on string-compatibility
+  wrappers, with compare/call-family parsing the next highest-value cleanup
+  target.
 
 ## Completed Items
 
@@ -48,6 +47,13 @@ Source Plan: plan.md
   conditional-return parser and fail-branch selection through
   `LirCmpPredicate::typed()` and enum-backed dispatch instead of raw predicate
   strings, with new typed AArch64 regression coverage in
+  `tests/backend/backend_lir_adapter_tests.cpp`.
+- Completed the next Step 4 pointer-difference emitter slice in
+  `src/backend/x86/codegen/emit.cpp` and
+  `src/backend/aarch64/codegen/emit.cpp` by routing the bounded global
+  char/int pointer-difference recognizers through `LirBinOp::opcode.typed()`
+  and `LirCmpOp::predicate.typed()` instead of relying on raw string
+  compatibility, with new typed pointer-difference regression coverage in
   `tests/backend/backend_lir_adapter_tests.cpp`.
 
 ## Notes
@@ -140,11 +146,9 @@ Source Plan: plan.md
 
 ## Next Intended Slice
 
-- Follow the Step 4 typed-dispatch cleanup into the remaining backend compare
-  consumers that still branch on raw predicate text, starting with the
-  pointer-difference equality checks in
-  `src/backend/aarch64/codegen/emit.cpp` and
-  `src/backend/x86/codegen/emit.cpp`.
+- Follow the Step 4 typed-dispatch cleanup into the remaining backend
+  compare/call-adjacent consumers that still rely on wrapper string
+  compatibility instead of typed opcode/predicate/callee decoding.
 - Keep call argument text, GEP index text, inline asm text, and declaration
   text on the compatibility path for now; Step 4 should focus on arithmetic and
   comparison consumers before the larger call/GEP migration work.
@@ -218,6 +222,18 @@ Source Plan: plan.md
   --before test_fail_after_step4_x86_typed.log --after
   test_fail_after_step4_aarch64_typed.log --allow-non-decreasing-passed`
   passed with zero new failures and no pass-count regression.
+- `cmake --build build -j8 --target backend_lir_adapter_tests` passed after
+  landing the typed pointer-difference emitter cleanup in both targets.
+- `./build/backend_lir_adapter_tests` passed with added typed char/int
+  pointer-difference coverage for both x86 and AArch64 backend emission.
+- `cmake --build build -j8` passed after routing the x86 and AArch64
+  pointer-difference recognizers through typed opcode/predicate dispatch.
+- `ctest --test-dir build -j --output-on-failure > test_fail_after.log`
+  recorded `2371/2560` passing and `189` failing tests.
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_before.log --after test_fail_after.log
+  --allow-non-decreasing-passed` passed with zero new failures and no
+  pass-count regression.
 
 ## Open Questions To Resolve During This Runbook
 

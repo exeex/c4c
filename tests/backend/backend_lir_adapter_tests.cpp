@@ -3193,6 +3193,43 @@ c4c::codegen::lir::LirModule make_x86_global_int_pointer_diff_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_typed_global_char_pointer_diff_module() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_global_char_pointer_diff_module();
+  auto& entry = module.functions.front().blocks.front();
+  std::get<LirBinOp>(entry.insts[8]).opcode = LirBinaryOpcode::Sub;
+  std::get<LirCmpOp>(entry.insts[10]).predicate = LirCmpPredicate::Eq;
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_typed_x86_global_char_pointer_diff_module() {
+  auto module = make_typed_global_char_pointer_diff_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_typed_global_int_pointer_diff_module() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_global_int_pointer_diff_module();
+  auto& entry = module.functions.front().blocks.front();
+  std::get<LirBinOp>(entry.insts[8]).opcode = LirBinaryOpcode::Sub;
+  std::get<LirBinOp>(entry.insts[9]).opcode = LirBinaryOpcode::SDiv;
+  std::get<LirCmpOp>(entry.insts[11]).predicate = LirCmpPredicate::Eq;
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_typed_x86_global_int_pointer_diff_module() {
+  auto module = make_typed_global_int_pointer_diff_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_global_int_pointer_roundtrip_module() {
   using namespace c4c::codegen::lir;
 
@@ -5060,6 +5097,22 @@ void test_x86_backend_renders_global_char_pointer_diff_slice() {
                       "x86 backend should no longer fall back to LLVM text for the bounded global char pointer-difference slice");
 }
 
+void test_x86_backend_renders_global_char_pointer_diff_slice_from_typed_ops() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_typed_x86_global_char_pointer_diff_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "lea rax, g_bytes[rip]\n",
+                  "x86 backend should keep the typed byte-array pointer-difference slice on the asm path");
+  expect_contains(rendered, "sub rcx, rax\n",
+                  "x86 backend should decode typed subtraction wrappers in the byte pointer-difference slice");
+  expect_contains(rendered, "cmp rcx, 1\n",
+                  "x86 backend should still compare the typed byte pointer difference against one byte");
+  expect_contains(rendered, "sete al\n",
+                  "x86 backend should lower typed equality wrappers for the byte pointer-difference slice");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should not fall back to LLVM text for the typed byte pointer-difference slice");
+}
+
 void test_x86_backend_renders_global_int_pointer_diff_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_x86_global_int_pointer_diff_module()},
@@ -5094,6 +5147,24 @@ void test_x86_backend_renders_global_int_pointer_diff_slice() {
                   "x86 backend should return the bounded scaled pointer-difference comparison result");
   expect_not_contains(rendered, "getelementptr",
                       "x86 backend should no longer fall back to LLVM text for the bounded global int pointer-difference slice");
+}
+
+void test_x86_backend_renders_global_int_pointer_diff_slice_from_typed_ops() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_typed_x86_global_int_pointer_diff_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "lea rax, g_words[rip]\n",
+                  "x86 backend should keep the typed int-array pointer-difference slice on the asm path");
+  expect_contains(rendered, "sub rcx, rax\n",
+                  "x86 backend should decode typed subtraction wrappers before scaling int pointer differences");
+  expect_contains(rendered, "sar rcx, 2\n",
+                  "x86 backend should decode typed signed-divide wrappers for the scaled int pointer-difference slice");
+  expect_contains(rendered, "cmp rcx, 1\n",
+                  "x86 backend should still compare the typed scaled pointer difference against one element");
+  expect_contains(rendered, "sete al\n",
+                  "x86 backend should lower typed equality wrappers for the scaled int pointer-difference slice");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should not fall back to LLVM text for the typed int pointer-difference slice");
 }
 
 void test_x86_backend_renders_global_int_pointer_roundtrip_slice() {
@@ -5864,6 +5935,22 @@ void test_aarch64_backend_renders_global_char_pointer_diff_slice() {
                       "aarch64 backend should no longer fall back to LLVM IR for the bounded global char pointer-difference slice");
 }
 
+void test_aarch64_backend_renders_global_char_pointer_diff_slice_from_typed_ops() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_typed_global_char_pointer_diff_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "adrp x8, g_bytes\n",
+                  "aarch64 backend should keep the typed byte pointer-difference slice on the asm path");
+  expect_contains(rendered, "sub x8, x9, x8\n",
+                  "aarch64 backend should decode typed subtraction wrappers in the byte pointer-difference slice");
+  expect_contains(rendered, "cmp x8, #1\n",
+                  "aarch64 backend should still compare the typed byte pointer difference against one byte");
+  expect_contains(rendered, "cset w0, eq\n",
+                  "aarch64 backend should lower typed equality wrappers for the byte pointer-difference slice");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM IR for the typed byte pointer-difference slice");
+}
+
 void test_aarch64_backend_renders_global_int_pointer_diff_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_global_int_pointer_diff_module()},
@@ -5894,6 +5981,24 @@ void test_aarch64_backend_renders_global_int_pointer_diff_slice() {
                   "aarch64 backend should return the bounded scaled pointer-difference comparison result");
   expect_not_contains(rendered, "getelementptr",
                       "aarch64 backend should no longer fall back to LLVM IR for the bounded global int pointer-difference slice");
+}
+
+void test_aarch64_backend_renders_global_int_pointer_diff_slice_from_typed_ops() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_typed_global_int_pointer_diff_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "adrp x8, g_words\n",
+                  "aarch64 backend should keep the typed int pointer-difference slice on the asm path");
+  expect_contains(rendered, "sub x8, x9, x8\n",
+                  "aarch64 backend should decode typed subtraction wrappers before scaling int pointer differences");
+  expect_contains(rendered, "lsr x8, x8, #2\n",
+                  "aarch64 backend should decode typed signed-divide wrappers for the scaled int pointer-difference slice");
+  expect_contains(rendered, "cmp x8, #1\n",
+                  "aarch64 backend should still compare the typed scaled pointer difference against one element");
+  expect_contains(rendered, "cset w0, eq\n",
+                  "aarch64 backend should lower typed equality wrappers for the scaled int pointer-difference slice");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM IR for the typed int pointer-difference slice");
 }
 
 void test_aarch64_backend_renders_global_int_pointer_roundtrip_slice() {
@@ -7725,7 +7830,9 @@ int main() {
   test_x86_backend_renders_extern_decl_object_slice();
   test_x86_backend_renders_string_literal_char_slice();
   test_x86_backend_renders_global_char_pointer_diff_slice();
+  test_x86_backend_renders_global_char_pointer_diff_slice_from_typed_ops();
   test_x86_backend_renders_global_int_pointer_diff_slice();
+  test_x86_backend_renders_global_int_pointer_diff_slice_from_typed_ops();
   test_x86_backend_renders_global_int_pointer_roundtrip_slice();
   test_aarch64_backend_renders_void_return_slice();
   test_aarch64_backend_preserves_module_headers_and_declarations();
@@ -7768,7 +7875,9 @@ int main() {
   test_aarch64_backend_renders_extern_global_load_slice();
   test_aarch64_backend_renders_extern_global_array_slice();
   test_aarch64_backend_renders_global_char_pointer_diff_slice();
+  test_aarch64_backend_renders_global_char_pointer_diff_slice_from_typed_ops();
   test_aarch64_backend_renders_global_int_pointer_diff_slice();
+  test_aarch64_backend_renders_global_int_pointer_diff_slice_from_typed_ops();
   test_aarch64_backend_renders_global_int_pointer_roundtrip_slice();
   test_aarch64_backend_renders_bitcast_slice();
   test_aarch64_backend_renders_trunc_slice();
