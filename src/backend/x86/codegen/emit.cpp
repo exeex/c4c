@@ -9,9 +9,9 @@
 #include <sstream>
 #include <string_view>
 
-// Translated from /workspaces/c4c/ref/claudes-c-compiler/src/backend/x86/codegen/emit.rs
-// Stage the x86 backend behind an explicit seam while the real codegen path is
-// still being brought up.
+// Mechanical translation of the ref x86 emitter entrypoint.
+// The larger target-specific lowering surface is split across the sibling
+// translation units in this directory.
 
 namespace c4c::backend::x86 {
 

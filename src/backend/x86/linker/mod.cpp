@@ -1,19 +1,14 @@
+// Mechanical C++ translation of ref/claudes-c-compiler/src/backend/x86/linker/mod.rs
+// Native x86-64 ELF linker module surface.
+
 #include "mod.hpp"
 
-// Translated from /workspaces/c4c/ref/claudes-c-compiler/src/backend/x86/linker/mod.rs
-// Structural mirror of the ref Rust source; includes are deferred for now.
-// pub(crate) mod elf;
-// pub(crate) mod types;
-// mod input;
-// mod plt_got;
-// mod link;
-// mod emit_exec;
-// mod emit_shared;
-// 
-// #[cfg(not(feature = "gcc_linker"))]
-// pub use link::link_builtin;
-// #[cfg(not(feature = "gcc_linker"))]
-// pub use link::link_shared;
-
 namespace c4c::backend::x86::linker {
+
+// The Rust module exposes the ELF helpers, the x86-specific symbol type, the
+// input loader, the PLT/GOT builder, and the two public linker entry points.
+// In C++ we keep the same module-level shape through declarations in mod.hpp
+// and define the real logic in the sibling translation units.
+
 }  // namespace c4c::backend::x86::linker
+
