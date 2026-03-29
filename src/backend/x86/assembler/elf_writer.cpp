@@ -15,12 +15,14 @@ static constexpr std::uint32_t ET_REL = 1;
 static constexpr std::uint16_t EM_X86_64 = 62;
 static constexpr std::uint32_t SHT_NULL = 0;
 static constexpr std::uint32_t SHT_PROGBITS = 1;
+static constexpr std::uint32_t SHT_RELA = 4;
 static constexpr std::uint32_t SHT_SYMTAB = 2;
 static constexpr std::uint32_t SHT_STRTAB = 3;
 static constexpr std::uint64_t SHF_ALLOC = 0x2;
 static constexpr std::uint64_t SHF_EXECINSTR = 0x4;
 static constexpr std::uint8_t STB_LOCAL = 0;
 static constexpr std::uint8_t STB_GLOBAL = 1;
+static constexpr std::uint8_t STT_NOTYPE = 0;
 static constexpr std::uint8_t STT_FUNC = 2;
 static constexpr std::uint8_t STT_SECTION = 3;
 
@@ -43,6 +45,10 @@ void append_u64(std::vector<std::uint8_t>& out, std::uint64_t value) {
   }
 }
 
+void append_i64(std::vector<std::uint8_t>& out, std::int64_t value) {
+  append_u64(out, static_cast<std::uint64_t>(value));
+}
+
 void append_zeroes(std::vector<std::uint8_t>& out, std::size_t count) {
   out.insert(out.end(), count, 0);
 }
@@ -60,6 +66,7 @@ std::uint8_t symbol_info(std::uint8_t binding, std::uint8_t symbol_type) {
 struct MinimalObjectSlice {
   std::string symbol;
   std::vector<std::uint8_t> text_bytes;
+  std::vector<encoder::EncodedRelocation> relocations;
 };
 
 std::optional<MinimalObjectSlice> parse_minimal_text_slice(
@@ -101,24 +108,38 @@ std::optional<MinimalObjectSlice> parse_minimal_text_slice(
 
   const auto encoded = encoder::encode_function(statements);
   if (!encoded.encoded || encoded.bytes.empty()) return std::nullopt;
-  return MinimalObjectSlice{global_symbol, encoded.bytes};
+  return MinimalObjectSlice{global_symbol, encoded.bytes, encoded.relocations};
 }
 
 std::vector<std::uint8_t> build_elf_object(const MinimalObjectSlice& slice) {
   constexpr std::size_t kElfHeaderSize = 64;
   constexpr std::size_t kSectionHeaderSize = 64;
+  const bool has_relocations = !slice.relocations.empty();
 
   std::string strtab;
   strtab.push_back('\0');
   const auto main_name = static_cast<std::uint32_t>(strtab.size());
   strtab += slice.symbol;
   strtab.push_back('\0');
+  std::vector<std::uint32_t> relocation_symbol_names;
+  relocation_symbol_names.reserve(slice.relocations.size());
+  for (const auto& relocation : slice.relocations) {
+    relocation_symbol_names.push_back(static_cast<std::uint32_t>(strtab.size()));
+    strtab += relocation.symbol;
+    strtab.push_back('\0');
+  }
 
   std::string shstrtab;
   shstrtab.push_back('\0');
   const auto text_name = static_cast<std::uint32_t>(shstrtab.size());
   shstrtab += ".text";
   shstrtab.push_back('\0');
+  std::uint32_t rela_text_name = 0;
+  if (has_relocations) {
+    rela_text_name = static_cast<std::uint32_t>(shstrtab.size());
+    shstrtab += ".rela.text";
+    shstrtab.push_back('\0');
+  }
   const auto symtab_name = static_cast<std::uint32_t>(shstrtab.size());
   shstrtab += ".symtab";
   shstrtab.push_back('\0');
@@ -144,10 +165,35 @@ std::vector<std::uint8_t> build_elf_object(const MinimalObjectSlice& slice) {
   append_u64(symtab, 0);
   append_u64(symtab, slice.text_bytes.size());
 
+  for (std::size_t index = 0; index < slice.relocations.size(); ++index) {
+    append_u32(symtab, relocation_symbol_names[index]);
+    symtab.push_back(symbol_info(STB_GLOBAL, STT_NOTYPE));
+    symtab.push_back(0);
+    append_u16(symtab, 0);
+    append_u64(symtab, 0);
+    append_u64(symtab, 0);
+  }
+
+  std::vector<std::uint8_t> rela_text;
+  for (std::size_t index = 0; index < slice.relocations.size(); ++index) {
+    const auto& relocation = slice.relocations[index];
+    append_u64(rela_text, relocation.offset);
+    append_u64(rela_text, ((static_cast<std::uint64_t>(3 + index) << 32) |
+                           relocation.reloc_type));
+    append_i64(rela_text, relocation.addend);
+  }
+
   std::size_t offset = kElfHeaderSize;
   const auto text_offset = offset;
   offset += slice.text_bytes.size();
   offset = align_up(offset, 8);
+
+  std::size_t rela_text_offset = 0;
+  if (has_relocations) {
+    rela_text_offset = offset;
+    offset += rela_text.size();
+    offset = align_up(offset, 8);
+  }
 
   const auto symtab_offset = offset;
   offset += symtab.size();
@@ -160,9 +206,12 @@ std::vector<std::uint8_t> build_elf_object(const MinimalObjectSlice& slice) {
   offset = align_up(offset, 8);
 
   const auto section_header_offset = offset;
+  const std::uint16_t section_count = has_relocations ? 6 : 5;
+  const std::uint16_t shstrtab_index = has_relocations ? 5 : 4;
+  const std::uint32_t symtab_link = has_relocations ? 4 : 3;
 
   std::vector<std::uint8_t> out;
-  out.reserve(section_header_offset + 5 * kSectionHeaderSize);
+  out.reserve(section_header_offset + section_count * kSectionHeaderSize);
   out.push_back(0x7f);
   out.push_back('E');
   out.push_back('L');
@@ -184,11 +233,16 @@ std::vector<std::uint8_t> build_elf_object(const MinimalObjectSlice& slice) {
   append_u16(out, 0);
   append_u16(out, 0);
   append_u16(out, kSectionHeaderSize);
-  append_u16(out, 5);
-  append_u16(out, 4);
+  append_u16(out, section_count);
+  append_u16(out, shstrtab_index);
 
   out.insert(out.end(), slice.text_bytes.begin(), slice.text_bytes.end());
   append_zeroes(out, align_up(out.size(), 8) - out.size());
+
+  if (has_relocations) {
+    out.insert(out.end(), rela_text.begin(), rela_text.end());
+    append_zeroes(out, align_up(out.size(), 8) - out.size());
+  }
 
   out.insert(out.end(), symtab.begin(), symtab.end());
   out.insert(out.end(), strtab.begin(), strtab.end());
@@ -208,13 +262,26 @@ std::vector<std::uint8_t> build_elf_object(const MinimalObjectSlice& slice) {
   append_u64(out, 1);
   append_u64(out, 0);
 
+  if (has_relocations) {
+    append_u32(out, rela_text_name);
+    append_u32(out, SHT_RELA);
+    append_u64(out, 0);
+    append_u64(out, 0);
+    append_u64(out, rela_text_offset);
+    append_u64(out, rela_text.size());
+    append_u32(out, 3);
+    append_u32(out, 1);
+    append_u64(out, 8);
+    append_u64(out, 24);
+  }
+
   append_u32(out, symtab_name);
   append_u32(out, SHT_SYMTAB);
   append_u64(out, 0);
   append_u64(out, 0);
   append_u64(out, symtab_offset);
   append_u64(out, symtab.size());
-  append_u32(out, 3);
+  append_u32(out, symtab_link);
   append_u32(out, 2);
   append_u64(out, 8);
   append_u64(out, 24);

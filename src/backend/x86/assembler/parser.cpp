@@ -150,6 +150,16 @@ AsmStatement parse_instruction(std::string_view line) {
     return statement;
   }
 
+  if (opcode == "call") {
+    if (!is_identifier(raw_operands)) {
+      throw std::runtime_error(
+          "unsupported x86 call target for the Step 2 parser slice: " +
+          raw_operands);
+    }
+    statement.operands.push_back(Operand{raw_operands});
+    return statement;
+  }
+
   if (opcode != "mov") {
     throw std::runtime_error("unsupported x86 instruction for the Step 2 parser slice: " +
                              std::string(line));
@@ -238,10 +248,11 @@ std::vector<AsmStatement> parse_asm(const std::string& text) {
   if (!seen_syntax || !seen_text || !seen_global || !seen_label) {
     throw std::runtime_error("incomplete Step 2 x86 assembly slice");
   }
-  if (statements.size() != 6 || statements[4].op != "mov" ||
+  if (statements.size() != 6 ||
+      (statements[4].op != "mov" && statements[4].op != "call") ||
       statements[5].op != "ret") {
     throw std::runtime_error(
-        "Step 2 x86 parser only supports the bounded mov eax, imm32; ret function shape");
+        "Step 2 x86 parser only supports the bounded mov eax, imm32; ret or call symbol; ret function shapes");
   }
 
   return statements;

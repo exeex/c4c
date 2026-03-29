@@ -2399,6 +2399,30 @@ c4c::codegen::lir::LirModule make_extern_decl_call_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_x86_extern_decl_object_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-n8:16:32:64-S128";
+  module.extern_decls.push_back(LirExternDecl{"helper_ext", "i32"});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"%t0", "i32", "@helper_ext", "", ""});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_extern_global_load_module() {
   using namespace c4c::codegen::lir;
 
@@ -4134,6 +4158,22 @@ void test_x86_backend_renders_extern_global_array_slice() {
                       "x86 backend should no longer fall back to LLVM text for the extern global array slice");
 }
 
+void test_x86_backend_renders_extern_decl_object_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_extern_decl_object_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".intel_syntax noprefix\n",
+                  "x86 backend should lower the bounded extern-decl call slice to assembly");
+  expect_contains(rendered, ".globl main\n",
+                  "x86 backend should still publish main as the entry symbol for the bounded extern-decl call slice");
+  expect_contains(rendered, "call helper_ext\n",
+                  "x86 backend should preserve the direct undefined helper call in the bounded object slice");
+  expect_contains(rendered, "ret\n",
+                  "x86 backend should return directly after the bounded undefined helper call");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should no longer fall back to LLVM text for the bounded extern-decl object slice");
+}
+
 void test_x86_backend_renders_string_literal_char_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_x86_string_literal_char_module()},
@@ -5201,6 +5241,29 @@ void test_x86_assembler_encoder_emits_bounded_return_add_bytes() {
               "x86 assembler encoder should emit mov eax, imm32; ret bytes matching the Step 3 contract");
 }
 
+void test_x86_assembler_encoder_emits_bounded_extern_call_bytes() {
+  namespace encoder = c4c::backend::x86::assembler::encoder;
+
+  const auto asm_text = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_extern_decl_object_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  const auto statements = c4c::backend::x86::assembler::parse_asm(asm_text);
+  const auto encoded = encoder::encode_function(statements);
+
+  expect_true(encoded.encoded,
+              "x86 assembler encoder should accept the bounded extern-call relocation slice");
+  expect_true(encoded.bytes ==
+                  std::vector<std::uint8_t>{0xE8, 0x00, 0x00, 0x00, 0x00, 0xC3},
+              "x86 assembler encoder should emit call rel32; ret bytes for the bounded extern-call slice");
+  expect_true(encoded.relocations.size() == 1,
+              "x86 assembler encoder should record one relocation for the bounded extern-call slice");
+  expect_true(encoded.relocations[0].offset == 1 &&
+                  encoded.relocations[0].symbol == "helper_ext" &&
+                  encoded.relocations[0].reloc_type == 4 &&
+                  encoded.relocations[0].addend == -4,
+              "x86 assembler encoder should preserve the staged PLT32 relocation contract for the bounded extern-call slice");
+}
+
 void test_x86_assembler_encoder_rejects_out_of_scope_instruction_forms() {
   namespace encoder = c4c::backend::x86::assembler::encoder;
 
@@ -5287,6 +5350,126 @@ void test_x86_builtin_object_matches_external_return_add_surface() {
                           shell_quote(external_object_path) + " 2>&1"));
   expect_true(builtin_disasm == external_disasm,
               "x86 built-in assembler disassembly should match the external assembler baseline for return_add\n--- built-in ---\n" +
+                  builtin_disasm + "--- external ---\n" + external_disasm);
+
+  std::filesystem::remove(asm_path);
+  std::filesystem::remove(builtin_object_path);
+  std::filesystem::remove(external_object_path);
+#endif
+}
+
+void test_shared_linker_parses_builtin_x86_extern_call_object() {
+  const auto object_path = make_temp_output_path("c4c_x86_extern_call_parse");
+  const auto staged = c4c::backend::x86::assemble_module(
+      make_x86_extern_decl_object_module(), object_path);
+  expect_true(staged.object_emitted,
+              "x86 built-in assembler should emit an object for the bounded extern-call slice");
+
+  const auto object_bytes = read_file_bytes(object_path);
+  std::string error;
+  const auto parsed = c4c::backend::linker_common::parse_elf64_object(
+      object_bytes, object_path, c4c::backend::elf::EM_X86_64, &error);
+  expect_true(parsed.has_value(),
+              "shared linker object parser should accept the built-in x86 extern-call object: " +
+                  error);
+
+  const auto& object = *parsed;
+  const auto text_index = find_section_index(object, ".text");
+  const auto rela_text_index = find_section_index(object, ".rela.text");
+  const auto symtab_index = find_section_index(object, ".symtab");
+  const auto strtab_index = find_section_index(object, ".strtab");
+  const auto shstrtab_index = find_section_index(object, ".shstrtab");
+  expect_true(text_index < object.sections.size() && rela_text_index < object.sections.size() &&
+                  symtab_index < object.sections.size() && strtab_index < object.sections.size() &&
+                  shstrtab_index < object.sections.size(),
+              "shared linker object parser should preserve the relocation-bearing x86 object section inventory");
+  expect_true(object.relocations.size() == object.sections.size(),
+              "shared linker object parser should keep relocation vectors indexed by section for built-in x86 emitted objects");
+  expect_true(object.section_data[text_index].size() == 6,
+              "shared linker object parser should preserve the built-in emitted x86 extern-call text payload");
+
+  const auto main_symbol = std::find_if(
+      object.symbols.begin(), object.symbols.end(),
+      [&](const c4c::backend::linker_common::Elf64Symbol& symbol) {
+        return symbol.name == "main";
+      });
+  const auto helper_symbol = std::find_if(
+      object.symbols.begin(), object.symbols.end(),
+      [&](const c4c::backend::linker_common::Elf64Symbol& symbol) {
+        return symbol.name == "helper_ext";
+      });
+  expect_true(main_symbol != object.symbols.end() && main_symbol->is_global() &&
+                  main_symbol->sym_type() == c4c::backend::elf::STT_FUNC &&
+                  main_symbol->shndx == text_index,
+              "shared linker object parser should preserve the built-in emitted x86 main symbol inventory");
+  expect_true(helper_symbol != object.symbols.end() && helper_symbol->is_undefined(),
+              "shared linker object parser should preserve the built-in emitted x86 undefined helper symbol");
+
+  expect_true(object.relocations[text_index].size() == 1,
+              "shared linker object parser should preserve one relocation for the bounded built-in x86 extern-call object");
+  const auto& relocation = object.relocations[text_index].front();
+  expect_true(relocation.offset == 1 && relocation.rela_type == 4 &&
+                  relocation.addend == -4 &&
+                  relocation.sym_idx < object.symbols.size() &&
+                  object.symbols[relocation.sym_idx].name == "helper_ext",
+              "shared linker object parser should preserve the staged x86 PLT32 relocation contract for the built-in extern-call object");
+
+  std::filesystem::remove(object_path);
+}
+
+void test_x86_builtin_object_matches_external_extern_call_surface() {
+#if defined(C4C_TEST_CLANG_PATH) && defined(C4C_TEST_OBJDUMP_PATH)
+  const auto module = make_x86_extern_decl_object_module();
+  const auto asm_text = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  const auto asm_path = make_temp_path("c4c_x86_extern_call_surface", ".s");
+  const auto builtin_object_path = make_temp_output_path("c4c_x86_extern_call_builtin");
+  const auto external_object_path = make_temp_output_path("c4c_x86_extern_call_external");
+
+  write_text_file(asm_path, asm_text);
+  const auto builtin = c4c::backend::x86::assemble_module(module, builtin_object_path);
+  expect_true(builtin.object_emitted,
+              "x86 backend handoff helper should emit an object for the bounded extern-call slice");
+  expect_true(builtin.error.empty(),
+              "x86 backend handoff helper should not report an error for the bounded extern-call slice");
+
+  run_command_capture(shell_quote(C4C_TEST_CLANG_PATH) +
+                      " --target=x86_64-unknown-linux-gnu -c " +
+                      shell_quote(asm_path) + " -o " +
+                      shell_quote(external_object_path) + " 2>&1");
+
+  const auto builtin_objdump = normalize_objdump_surface(
+      run_command_capture(shell_quote(C4C_TEST_OBJDUMP_PATH) + " -h -r -t " +
+                          shell_quote(builtin_object_path) + " 2>&1"));
+  const auto external_objdump = normalize_objdump_surface(
+      run_command_capture(shell_quote(C4C_TEST_OBJDUMP_PATH) + " -h -r -t " +
+                          shell_quote(external_object_path) + " 2>&1"));
+  expect_contains(builtin_objdump, ".text         00000006",
+                  "x86 built-in assembler should emit the bounded extern-call .text size");
+  expect_contains(external_objdump, ".text         00000006",
+                  "external assembler baseline should keep the bounded extern-call .text size");
+  expect_contains(builtin_objdump, "RELOCATION RECORDS FOR [.text]:",
+                  "x86 built-in assembler should emit relocation records for the bounded extern-call slice");
+  expect_contains(external_objdump, "RELOCATION RECORDS FOR [.text]:",
+                  "external assembler baseline should emit relocation records for the bounded extern-call slice");
+  expect_contains(builtin_objdump, "R_X86_64_PLT32",
+                  "x86 built-in assembler should emit the staged PLT32 relocation type");
+  expect_contains(external_objdump, "R_X86_64_PLT32",
+                  "external assembler baseline should emit the staged PLT32 relocation type");
+  expect_contains(builtin_objdump, "helper_ext",
+                  "x86 built-in assembler should preserve the bounded undefined helper symbol");
+  expect_contains(external_objdump, "helper_ext",
+                  "external assembler baseline should preserve the bounded undefined helper symbol");
+
+  const auto builtin_disasm = normalize_objdump_disassembly(
+      run_command_capture(shell_quote(C4C_TEST_OBJDUMP_PATH) + " -d " +
+                          shell_quote(builtin_object_path) + " 2>&1"));
+  const auto external_disasm = normalize_objdump_disassembly(
+      run_command_capture(shell_quote(C4C_TEST_OBJDUMP_PATH) + " -d " +
+                          shell_quote(external_object_path) + " 2>&1"));
+  expect_true(builtin_disasm == external_disasm,
+              "x86 built-in assembler disassembly should match the external assembler baseline for the bounded extern-call slice\n--- built-in ---\n" +
                   builtin_disasm + "--- external ---\n" + external_disasm);
 
   std::filesystem::remove(asm_path);
@@ -6668,6 +6851,7 @@ int main() {
   test_x86_backend_renders_compare_and_branch_ugt_slice();
   test_x86_backend_renders_compare_and_branch_uge_slice();
   test_x86_backend_renders_extern_global_array_slice();
+  test_x86_backend_renders_extern_decl_object_slice();
   test_x86_backend_renders_string_literal_char_slice();
   test_x86_backend_renders_global_char_pointer_diff_slice();
   test_x86_backend_renders_global_int_pointer_diff_slice();
@@ -6724,6 +6908,7 @@ int main() {
   test_x86_assembler_parser_accepts_bounded_return_add_slice();
   test_x86_assembler_parser_rejects_out_of_scope_forms();
   test_x86_assembler_encoder_emits_bounded_return_add_bytes();
+  test_x86_assembler_encoder_emits_bounded_extern_call_bytes();
   test_x86_assembler_encoder_rejects_out_of_scope_instruction_forms();
   test_x86_builtin_object_matches_external_return_add_surface();
   test_aarch64_assembler_parser_stub_preserves_text();
@@ -6752,6 +6937,7 @@ int main() {
   test_backend_binary_utils_contract_headers_are_include_reachable();
   test_shared_linker_parses_minimal_relocation_object_fixture();
   test_shared_linker_parses_builtin_return_add_object();
+  test_shared_linker_parses_builtin_x86_extern_call_object();
   test_shared_linker_parses_single_member_archive_fixture();
   test_aarch64_linker_names_first_static_call26_slice();
   test_aarch64_linker_loads_first_static_objects_through_shared_input_seam();
@@ -6765,5 +6951,6 @@ int main() {
   test_aarch64_backend_assembler_handoff_helper_stages_emitted_text();
   test_x86_backend_assembler_handoff_helper_stages_emitted_text();
   test_aarch64_builtin_object_matches_external_return_add_surface();
+  test_x86_builtin_object_matches_external_extern_call_surface();
   return 0;
 }

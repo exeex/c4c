@@ -41,6 +41,25 @@ EncodeResult encode_mov_imm32_to_eax(const AsmStatement& statement) {
   return result;
 }
 
+EncodeResult encode_call_rel32(const AsmStatement& statement) {
+  if (statement.operands.size() != 1 || statement.operands[0].text.empty()) {
+    return EncodeResult{
+        .error = "Step 3 x86 encoder only supports call <symbol>",
+    };
+  }
+
+  EncodeResult result;
+  result.encoded = true;
+  result.bytes = {0xE8, 0x00, 0x00, 0x00, 0x00};
+  result.relocations.push_back(EncodedRelocation{
+      .offset = 1,
+      .symbol = statement.operands[0].text,
+      .reloc_type = 4,
+      .addend = -4,
+  });
+  return result;
+}
+
 }  // namespace
 
 EncodeResult encode_instruction(const AsmStatement& statement) {
@@ -52,6 +71,10 @@ EncodeResult encode_instruction(const AsmStatement& statement) {
 
   if (statement.op == "mov") {
     return encode_mov_imm32_to_eax(statement);
+  }
+
+  if (statement.op == "call") {
+    return encode_call_rel32(statement);
   }
 
   if (statement.op == "ret") {
@@ -74,6 +97,11 @@ EncodeResult encode_function(const std::vector<AsmStatement>& statements) {
 
     auto encoded = encode_instruction(statement);
     if (!encoded.encoded) return encoded;
+    const auto byte_offset = static_cast<std::uint64_t>(result.bytes.size());
+    for (auto& relocation : encoded.relocations) {
+      relocation.offset += byte_offset;
+      result.relocations.push_back(relocation);
+    }
     result.bytes.insert(result.bytes.end(), encoded.bytes.begin(), encoded.bytes.end());
   }
   result.encoded = true;

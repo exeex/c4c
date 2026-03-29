@@ -2,7 +2,7 @@
 
 ## Status
 
-Open.
+Completed on 2026-03-29 and ready to archive.
 
 ## Relationship To Roadmap
 
@@ -54,3 +54,27 @@ that contract instead of the relocation-free local `call_helper.c` fixture.
    `R_X86_64_PLT32`, offset `1`, addend `-4`, symbol `helper_ext`.
 3. Only after that contract exists, extend the x86 built-in assembler parser,
    encoder, and ELF writer for the single external-call relocation shape.
+
+## Completion Notes
+
+- The bounded x86 backend-owned extern-call fixture now lowers directly to
+  `call helper_ext` followed by `ret`, which matches the staged linker
+  contract instead of the earlier relocation-free local-call and
+  argument-passing seams.
+- Focused validation now covers the full narrow slice:
+  x86 codegen renders the extern-call path as assembly, the built-in assembler
+  records one `.text` `R_X86_64_PLT32` relocation at offset `1` with addend
+  `-4`, and the emitted object parses cleanly through the shared linker object
+  reader.
+- External validation now compares the built-in x86 object surface against a
+  `clang --target=x86_64-unknown-linux-gnu -c` baseline for the same bounded
+  asm and confirms matching disassembly plus relocation-bearing object shape.
+- Full-suite regression remained monotonic for closure:
+  `test_fail_before.log` and `test_fail_after.log` both reported
+  `2339 passed / 0 failed / 2339 total`, with no newly failing tests.
+
+## Leftover Issues
+
+- Broader x86 relocation families, multi-relocation object shapes, GOT/PLT
+  expansion, and unrelated runtime-fixture retargeting remain intentionally out
+  of scope for this closed first extern-call object slice.

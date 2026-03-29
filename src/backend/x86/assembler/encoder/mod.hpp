@@ -8,9 +8,17 @@
 
 namespace c4c::backend::x86::assembler::encoder {
 
+struct EncodedRelocation {
+  std::uint64_t offset = 0;
+  std::string symbol;
+  std::uint32_t reloc_type = 0;
+  std::int64_t addend = 0;
+};
+
 struct EncodeResult {
   bool encoded = false;
   std::vector<std::uint8_t> bytes;
+  std::vector<EncodedRelocation> relocations;
   std::string error;
 };
 

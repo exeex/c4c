@@ -72,6 +72,10 @@ struct MinimalExternGlobalArrayLoadSlice {
   std::int64_t byte_offset = 0;
 };
 
+struct MinimalExternDeclCallSlice {
+  std::string callee_name;
+};
+
 struct MinimalGlobalCharPointerDiffSlice {
   std::string global_name;
   std::int64_t global_size = 0;
@@ -646,6 +650,45 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
   }
 
   return MinimalExternGlobalArrayLoadSlice{global.name, *element_index * 4};
+}
+
+std::optional<MinimalExternDeclCallSlice> parse_minimal_extern_decl_call_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || module.extern_decls.size() != 1 ||
+      !module.globals.empty() || !module.string_pool.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& extern_decl = module.extern_decls.front();
+  if (extern_decl.name.empty() || extern_decl.name == "main" ||
+      extern_decl.return_type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+      function.entry.value != 0 || function.blocks.size() != 1 ||
+      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (entry.label != "entry" || entry.insts.size() != 1 || ret == nullptr ||
+      !ret->value_str.has_value() || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* call = std::get_if<LirCallOp>(&entry.insts.front());
+  if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
+      *ret->value_str != call->result || call->callee != ("@" + extern_decl.name) ||
+      !call->args_str.empty() || !call->callee_type_suffix.empty()) {
+    return std::nullopt;
+  }
+
+  return MinimalExternDeclCallSlice{extern_decl.name};
 }
 
 std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_pointer_diff_slice(
@@ -1921,6 +1964,22 @@ std::string emit_minimal_extern_global_array_load_asm(
   return out.str();
 }
 
+std::string emit_minimal_extern_decl_call_asm(
+    const c4c::backend::BackendModule& module,
+    const MinimalExternDeclCallSlice& slice) {
+  const std::string helper_symbol = asm_symbol_name(module, slice.callee_name);
+  const std::string main_symbol = asm_symbol_name(module, "main");
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  out << ".globl " << main_symbol << "\n";
+  out << main_symbol << ":\n";
+  out << "  call " << helper_symbol << "\n"
+      << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_global_char_pointer_diff_asm(
     const c4c::backend::BackendModule& module,
     const MinimalGlobalCharPointerDiffSlice& slice) {
@@ -2141,6 +2200,12 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       c4c::backend::BackendModule scaffold_module;
       scaffold_module.target_triple = module.target_triple;
       return emit_minimal_local_array_asm(scaffold_module, *slice);
+    }
+    if (const auto slice = parse_minimal_extern_decl_call_slice(module);
+        slice.has_value()) {
+      c4c::backend::BackendModule scaffold_module;
+      scaffold_module.target_triple = module.target_triple;
+      return emit_minimal_extern_decl_call_asm(scaffold_module, *slice);
     }
     if (const auto slice = parse_minimal_extern_global_array_load_slice(module);
         slice.has_value()) {
