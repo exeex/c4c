@@ -2466,6 +2466,12 @@ bool Parser::can_start_parameter_type() const {
 
     if (check(TokenKind::Identifier) &&
         pos_ + 1 < static_cast<int>(tokens_.size()) &&
+        tokens_[pos_ + 1].kind == TokenKind::Identifier) {
+        return true;
+    }
+
+    if (check(TokenKind::Identifier) &&
+        pos_ + 1 < static_cast<int>(tokens_.size()) &&
         (tokens_[pos_ + 1].kind == TokenKind::Amp ||
          tokens_[pos_ + 1].kind == TokenKind::AmpAmp)) {
         return true;
@@ -3003,6 +3009,19 @@ TypeSpec Parser::parse_base_type() {
                     // C++ unresolved template type: identifier followed by <
                     // (e.g. reverse_iterator<Iterator1> inside a namespace where
                     // the typedef registration was lost due to template parsing).
+                    has_typedef = true;
+                    ts.tag = arena_.strdup(cur().lexeme);
+                    consume();
+                    done = true;
+                } else if (is_cpp_mode() &&
+                           !(has_signed || has_unsigned || has_short || long_count > 0 ||
+                             has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
+                             has_struct || has_union || has_enum || base_set) &&
+                           pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                           tokens_[pos_ + 1].kind == TokenKind::Identifier) {
+                    // C++ unresolved simple type used by value in a parameter
+                    // declarator: treat `Value other` as a type start even if
+                    // the typedef or injected-class-name registration was lost.
                     has_typedef = true;
                     ts.tag = arena_.strdup(cur().lexeme);
                     consume();

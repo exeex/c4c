@@ -49,6 +49,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     template_template_param_parse
     template_unresolved_param_type_parse
     qualified_template_unresolved_param_type_parse
+    unresolved_by_value_param_type_parse
     template_member_type_direct_parse
     template_member_type_inherited_parse
     template_alias_nttp_expr_parse
@@ -265,6 +266,15 @@ add_test(
   COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/constructor_self_ref_param_parse.cpp"
 )
 set_tests_properties(cpp_parse_constructor_self_ref_param_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Function\\(accept\\)"
+)
+
+add_test(
+  NAME cpp_parse_unresolved_by_value_param_type_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/unresolved_by_value_param_type_parse.cpp"
+)
+set_tests_properties(cpp_parse_unresolved_by_value_param_type_dump PROPERTIES
   LABELS "internal;positive_case;cpp;parse"
   PASS_REGULAR_EXPRESSION "Function\\(accept\\)"
 )
