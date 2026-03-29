@@ -9,17 +9,41 @@ Source Plan: plan.md
 - Step 5: prepare the next diagnostic slice by bounding the first
   committed-failure vs no-match follow-up under speculative `try_parse_*`
   record-member rewinds
-- Current slice: evaluate the next tri-state ranking choice for the reduced
-  alias-or-qualified reference-parameter `got='&'` family now that it is
-  covered outside `tests/cpp/std/std_vector_simple.cpp`
-- Iteration target: compare whether the reduced
-  `parser_debug_qualified_alias_ref_param_leaf.cpp` case should summarize the
-  outer committed `parse_top_level_parameter_list` failure or continue to
-  retain the inner `try_parse_qualified_base_type` leaf, then implement the
-  smallest ranking change only if the reduced evidence clearly favors it
+- Current slice: bound the next wrapper-heavy top-level qualified-type case
+  after the completed alias/reference-parameter `got='&'` ranking change
+- Iteration target: reduce and compare the remaining
+  `/usr/include/c++/14/bits/stl_bvector.h:663` `got='&&'` family, where a
+  wrapper-heavy top-level failure still summarizes
+  `try_parse_qualified_base_type`, and decide whether that path should move to
+  an outer committed wrapper or keep the current deeper leaf
 
 ## Completed
 
+- recorded the required clean after-suite for this iteration and passed the
+  monotonic regression guard against the recorded
+  `before passed=2281/2282` baseline:
+  `after passed=2281/2282`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged and the
+  guard script reported zero new failing tests
+- rebaselined the active reduced alias-reference parser-debug case and the
+  motivating `tests/cpp/std/std_vector_simple.cpp`
+  `/usr/include/c++/14/bits/exception.h:65` path, then confirmed both traces
+  retain the same qualified-type stack while the committed failure point is
+  the outer `parse_top_level_parameter_list`
+- tightened `select_best_parse_summary_leaf()` so
+  `parse_top_level_parameter_list` now wins the emitted `parse_fn=...` summary
+  when the remaining suffix is only `parse_param` plus qualified-type probe
+  frames, preserving the deeper debug stack for reduction work
+- updated focused parser-debug regression coverage in
+  `cpp_parser_debug_std_vector_ref_param_leaf` and
+  `cpp_parser_debug_qualified_alias_ref_param_leaf` to lock in the outer
+  committed parameter-list summary for the shared `got='&'` family while
+  keeping the existing stack substrings
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_qualified_type_top_level_params`,
+  `cpp_parser_debug_std_vector_ref_param_leaf`,
+  `cpp_parser_debug_qualified_alias_ref_param_leaf`, and
+  `cpp_parser_debug_top_level_qualified_probe_leaf`
 - recorded the required clean after-suite for this iteration and passed the
   monotonic regression guard against the recorded
   `before passed=2279/2280` baseline:

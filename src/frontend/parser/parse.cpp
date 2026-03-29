@@ -82,6 +82,13 @@ bool is_summary_only_parse_helper(const std::string& function_name) {
            function_name == "consume_qualified_type_spelling_with_typename";
 }
 
+bool is_param_qualified_type_probe_frame(const std::string& function_name) {
+    return function_name == "parse_param" ||
+           function_name == "try_parse_cpp_scoped_base_type" ||
+           function_name == "try_parse_qualified_base_type" ||
+           is_summary_only_parse_helper(function_name);
+}
+
 bool stack_contains_qualified_type_trace(
     const std::vector<std::string>& stack_trace) {
     return std::any_of(stack_trace.begin(), stack_trace.end(),
@@ -178,6 +185,16 @@ const std::string* select_best_parse_summary_leaf(
     if (!failure.function_name.empty()) {
         for (size_t i = summary_stack.size(); i > 0; --i) {
             if (summary_stack[i - 1] != failure.function_name) continue;
+            const bool trailing_param_probe_only =
+                failure.function_name == "parse_top_level_parameter_list" &&
+                std::all_of(summary_stack.begin() + i, summary_stack.end(),
+                            [](const std::string& function_name) {
+                                return is_param_qualified_type_probe_frame(
+                                    function_name);
+                            });
+            if (trailing_param_probe_only) {
+                return &summary_stack[i - 1];
+            }
             const bool trailing_probe_only =
                 std::all_of(summary_stack.begin() + i, summary_stack.end(),
                             [](const std::string& function_name) {
