@@ -485,6 +485,21 @@ void parse_optional_cpp20_trailing_requires_clause(Parser& parser) {
     }
 }
 
+void parse_optional_cpp20_requires_clause(Parser& parser) {
+    if (!parser.is_cpp_mode() || !parser.check(TokenKind::KwRequires)) {
+        return;
+    }
+
+    parser.consume();  // requires
+    const int constraint_start = parser.pos_;
+    if (!parser.parse_expr()) {
+        throw std::runtime_error("expected constraint-expression after requires");
+    }
+    if (parser.pos_ == constraint_start) {
+        throw std::runtime_error("expected constraint-expression after requires");
+    }
+}
+
 }  // namespace
 
 Node* Parser::find_template_struct_primary(const std::string& name) const {
@@ -5442,6 +5457,7 @@ bool Parser::try_parse_record_member_with_template_prelude(
 
     parse_record_template_member_prelude(&tmpl_guard.names,
                                          &tmpl_guard.pushed_scope);
+    parse_optional_cpp20_requires_clause(*this);
     if (try_skip_record_friend_member()) return true;
     if (try_skip_record_static_assert_member()) return true;
     return try_parse_record_member_dispatch(struct_source_name, fields, methods,
