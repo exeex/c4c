@@ -1,4 +1,5 @@
 #include "lir_printer.hpp"
+#include "verify.hpp"
 #include "../shared/llvm_helpers.hpp"
 
 #include <cctype>
@@ -16,58 +17,162 @@ std::string llvm_global_sym(const std::string& raw) {
 // Render a single LirInst to text.
 void render_inst(std::ostringstream& os, const LirInst& inst) {
   if (const auto* op = std::get_if<LirAllocaOp>(&inst)) {
-    os << "  " << op->result << " = alloca " << op->type_str;
-    if (!op->count.empty()) os << ", i64 " << op->count;
+    const auto& result =
+        require_operand_kind(op->result, "LirAllocaOp.result",
+                             {LirOperandKind::SsaValue});
+    const auto& type = require_type_ref(op->type_str, "LirAllocaOp.type_str");
+    os << "  " << result << " = alloca " << type;
+    if (!op->count.empty()) {
+      os << ", i64 "
+         << require_operand_kind(op->count, "LirAllocaOp.count",
+                                 {LirOperandKind::SsaValue,
+                                  LirOperandKind::Immediate},
+                                 true);
+    }
     if (op->align > 0) os << ", align " << op->align;
     os << "\n";
   } else if (const auto* op = std::get_if<LirInlineAsmOp>(&inst)) {
     os << "  ";
-    if (!op->result.empty()) os << op->result << " = ";
-    os << "call " << op->ret_type << " asm ";
+    if (!op->result.empty()) {
+      os << require_operand_kind(op->result, "LirInlineAsmOp.result",
+                                 {LirOperandKind::SsaValue}, true)
+         << " = ";
+    }
+    os << "call " << require_type_ref(op->ret_type, "LirInlineAsmOp.ret_type", true) << " asm ";
     if (op->side_effects) os << "sideeffect ";
     os << "\"" << op->asm_text << "\", \"" << op->constraints << "\"("
        << op->args_str << ")\n";
   } else if (const auto* op = std::get_if<LirMemcpyOp>(&inst)) {
-    os << "  call void @llvm.memcpy.p0.p0.i64(ptr " << op->dst
-       << ", ptr " << op->src << ", i64 " << op->size
+    os << "  call void @llvm.memcpy.p0.p0.i64(ptr "
+       << require_operand_kind(op->dst, "LirMemcpyOp.dst",
+                               {LirOperandKind::SsaValue, LirOperandKind::Global})
+       << ", ptr "
+       << require_operand_kind(op->src, "LirMemcpyOp.src",
+                               {LirOperandKind::SsaValue, LirOperandKind::Global})
+       << ", i64 "
+       << require_operand_kind(op->size, "LirMemcpyOp.size",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
        << ", i1 " << (op->is_volatile ? "true" : "false") << ")\n";
   } else if (const auto* op = std::get_if<LirMemsetOp>(&inst)) {
-    os << "  call void @llvm.memset.p0.i64(ptr " << op->dst
-       << ", i8 " << op->byte_val << ", i64 " << op->size
+    os << "  call void @llvm.memset.p0.i64(ptr "
+       << require_operand_kind(op->dst, "LirMemsetOp.dst",
+                               {LirOperandKind::SsaValue, LirOperandKind::Global})
+       << ", i8 "
+       << require_operand_kind(op->byte_val, "LirMemsetOp.byte_val",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
+       << ", i64 "
+       << require_operand_kind(op->size, "LirMemsetOp.size",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
        << ", i1 " << (op->is_volatile ? "true" : "false") << ")\n";
   } else if (const auto* op = std::get_if<LirVaStartOp>(&inst)) {
-    os << "  call void @llvm.va_start.p0(ptr " << op->ap_ptr << ")\n";
+    os << "  call void @llvm.va_start.p0(ptr "
+       << require_operand_kind(op->ap_ptr, "LirVaStartOp.ap_ptr",
+                               {LirOperandKind::SsaValue, LirOperandKind::Global})
+       << ")\n";
   } else if (const auto* op = std::get_if<LirVaEndOp>(&inst)) {
-    os << "  call void @llvm.va_end.p0(ptr " << op->ap_ptr << ")\n";
+    os << "  call void @llvm.va_end.p0(ptr "
+       << require_operand_kind(op->ap_ptr, "LirVaEndOp.ap_ptr",
+                               {LirOperandKind::SsaValue, LirOperandKind::Global})
+       << ")\n";
   } else if (const auto* op = std::get_if<LirVaCopyOp>(&inst)) {
-    os << "  call void @llvm.va_copy.p0.p0(ptr " << op->dst_ptr
-       << ", ptr " << op->src_ptr << ")\n";
+    os << "  call void @llvm.va_copy.p0.p0(ptr "
+       << require_operand_kind(op->dst_ptr, "LirVaCopyOp.dst_ptr",
+                               {LirOperandKind::SsaValue, LirOperandKind::Global})
+       << ", ptr "
+       << require_operand_kind(op->src_ptr, "LirVaCopyOp.src_ptr",
+                               {LirOperandKind::SsaValue, LirOperandKind::Global})
+       << ")\n";
   } else if (const auto* op = std::get_if<LirStackSaveOp>(&inst)) {
-    os << "  " << op->result << " = call ptr @llvm.stacksave()\n";
+    os << "  "
+       << require_operand_kind(op->result, "LirStackSaveOp.result",
+                               {LirOperandKind::SsaValue})
+       << " = call ptr @llvm.stacksave()\n";
   } else if (const auto* op = std::get_if<LirStackRestoreOp>(&inst)) {
-    os << "  call void @llvm.stackrestore(ptr " << op->saved_ptr << ")\n";
+    os << "  call void @llvm.stackrestore(ptr "
+       << require_operand_kind(op->saved_ptr, "LirStackRestoreOp.saved_ptr",
+                               {LirOperandKind::SsaValue, LirOperandKind::Global})
+       << ")\n";
   } else if (const auto* op = std::get_if<LirAbsOp>(&inst)) {
-    os << "  " << op->result << " = call " << op->int_type
-       << " @llvm.abs." << op->int_type << "(" << op->int_type
-       << " " << op->arg << ", i1 true)\n";
+    const auto& result =
+        require_operand_kind(op->result, "LirAbsOp.result",
+                             {LirOperandKind::SsaValue});
+    const auto& type = require_type_ref(op->int_type, "LirAbsOp.int_type");
+    os << "  " << result << " = call " << type
+       << " @llvm.abs." << type << "(" << type << " "
+       << require_operand_kind(op->arg, "LirAbsOp.arg",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Global,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
+       << ", i1 true)\n";
   } else if (const auto* op = std::get_if<LirIndirectBrOp>(&inst)) {
-    os << "  indirectbr ptr " << op->addr << ", [";
+    os << "  indirectbr ptr "
+       << require_operand_kind(op->addr, "LirIndirectBrOp.addr",
+                               {LirOperandKind::SsaValue, LirOperandKind::Global})
+       << ", [";
     for (size_t i = 0; i < op->targets.size(); ++i) {
       if (i) os << ", ";
       os << "label " << op->targets[i];
     }
     os << "]\n";
   } else if (const auto* op = std::get_if<LirExtractValueOp>(&inst)) {
-    os << "  " << op->result << " = extractvalue " << op->agg_type << " "
-       << op->agg << ", " << op->index << "\n";
+    os << "  "
+       << require_operand_kind(op->result, "LirExtractValueOp.result",
+                               {LirOperandKind::SsaValue})
+       << " = extractvalue "
+       << require_type_ref(op->agg_type, "LirExtractValueOp.agg_type") << " "
+       << require_operand_kind(op->agg, "LirExtractValueOp.agg",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Global,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
+       << ", " << op->index << "\n";
   } else if (const auto* op = std::get_if<LirInsertValueOp>(&inst)) {
-    os << "  " << op->result << " = insertvalue " << op->agg_type << " "
-       << op->agg << ", " << op->elem_type << " " << op->elem
+    os << "  "
+       << require_operand_kind(op->result, "LirInsertValueOp.result",
+                               {LirOperandKind::SsaValue})
+       << " = insertvalue "
+       << require_type_ref(op->agg_type, "LirInsertValueOp.agg_type") << " "
+       << require_operand_kind(op->agg, "LirInsertValueOp.agg",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Global,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
+       << ", " << require_type_ref(op->elem_type, "LirInsertValueOp.elem_type")
+       << " "
+       << require_operand_kind(op->elem, "LirInsertValueOp.elem",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Global,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
        << ", " << op->index << "\n";
   } else if (const auto* op = std::get_if<LirLoadOp>(&inst)) {
-    os << "  " << op->result << " = load " << op->type_str << ", ptr " << op->ptr << "\n";
+    os << "  "
+       << require_operand_kind(op->result, "LirLoadOp.result",
+                               {LirOperandKind::SsaValue})
+       << " = load " << require_type_ref(op->type_str, "LirLoadOp.type_str", true)
+       << ", ptr "
+       << require_operand_kind(op->ptr, "LirLoadOp.ptr",
+                               {LirOperandKind::SsaValue, LirOperandKind::Global})
+       << "\n";
   } else if (const auto* op = std::get_if<LirStoreOp>(&inst)) {
-    os << "  store " << op->type_str << " " << op->val << ", ptr " << op->ptr << "\n";
+    os << "  store " << require_type_ref(op->type_str, "LirStoreOp.type_str", true)
+       << " "
+       << require_operand_kind(op->val, "LirStoreOp.val",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Global,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
+       << ", ptr "
+       << require_operand_kind(op->ptr, "LirStoreOp.ptr",
+                               {LirOperandKind::SsaValue, LirOperandKind::Global})
+       << "\n";
   } else if (const auto* op = std::get_if<LirCastOp>(&inst)) {
     const char* opname = nullptr;
     switch (op->kind) {
@@ -84,61 +189,196 @@ void render_inst(std::ostringstream& os, const LirInst& inst) {
       case LirCastKind::IntToPtr: opname = "inttoptr"; break;
       case LirCastKind::Bitcast:  opname = "bitcast"; break;
     }
-    os << "  " << op->result << " = " << opname << " " << op->from_type
-       << " " << op->operand << " to " << op->to_type << "\n";
+    os << "  "
+       << require_operand_kind(op->result, "LirCastOp.result",
+                               {LirOperandKind::SsaValue})
+       << " = " << opname << " "
+       << require_type_ref(op->from_type, "LirCastOp.from_type") << " "
+       << require_operand_kind(op->operand, "LirCastOp.operand",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Global,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
+       << " to " << require_type_ref(op->to_type, "LirCastOp.to_type") << "\n";
   } else if (const auto* op = std::get_if<LirGepOp>(&inst)) {
-    os << "  " << op->result << " = getelementptr ";
+    os << "  "
+       << require_operand_kind(op->result, "LirGepOp.result",
+                               {LirOperandKind::SsaValue})
+       << " = getelementptr ";
     if (op->inbounds) os << "inbounds ";
-    os << op->element_type << ", ptr " << op->ptr;
+    os << require_type_ref(op->element_type, "LirGepOp.element_type")
+       << ", ptr "
+       << require_operand_kind(op->ptr, "LirGepOp.ptr",
+                               {LirOperandKind::SsaValue, LirOperandKind::Global});
     for (const auto& idx : op->indices) os << ", " << idx;
     os << "\n";
   } else if (const auto* op = std::get_if<LirCallOp>(&inst)) {
     os << "  ";
     if (!op->result.empty()) {
-      os << op->result << " = ";
+      os << require_operand_kind(op->result, "LirCallOp.result",
+                                 {LirOperandKind::SsaValue}, true)
+         << " = ";
     }
-    os << "call " << op->return_type << " ";
+    os << "call " << require_type_ref(op->return_type, "LirCallOp.return_type", true) << " ";
     if (!op->callee_type_suffix.empty()) {
       os << op->callee_type_suffix << " ";
     }
-    os << op->callee << "(" << op->args_str << ")\n";
+    os << require_operand_kind(op->callee, "LirCallOp.callee",
+                               {LirOperandKind::SsaValue, LirOperandKind::Global})
+       << "(" << op->args_str << ")\n";
   } else if (const auto* op = std::get_if<LirBinOp>(&inst)) {
-    os << "  " << op->result << " = " << op->opcode << " " << op->type_str << " ";
+    os << "  "
+       << require_operand_kind(op->result, "LirBinOp.result",
+                               {LirOperandKind::SsaValue})
+       << " = " << render_binary_opcode(op->opcode, "LirBinOp.opcode") << " "
+       << require_type_ref(op->type_str, "LirBinOp.type_str", true) << " ";
     if (op->rhs.empty()) {
       // Unary op (fneg): "fneg type lhs"
-      os << op->lhs;
+      os << require_operand_kind(op->lhs, "LirBinOp.lhs",
+                                 {LirOperandKind::SsaValue,
+                                  LirOperandKind::Global,
+                                  LirOperandKind::Immediate,
+                                  LirOperandKind::SpecialToken});
     } else {
-      os << op->lhs << ", " << op->rhs;
+      os << require_operand_kind(op->lhs, "LirBinOp.lhs",
+                                 {LirOperandKind::SsaValue,
+                                  LirOperandKind::Global,
+                                  LirOperandKind::Immediate,
+                                  LirOperandKind::SpecialToken})
+         << ", "
+         << require_operand_kind(op->rhs, "LirBinOp.rhs",
+                                 {LirOperandKind::SsaValue,
+                                  LirOperandKind::Global,
+                                  LirOperandKind::Immediate,
+                                  LirOperandKind::SpecialToken});
     }
     os << "\n";
   } else if (const auto* op = std::get_if<LirCmpOp>(&inst)) {
     os << "  " << op->result << " = " << (op->is_float ? "fcmp " : "icmp ")
-       << op->predicate << " " << op->type_str << " " << op->lhs
-       << ", " << op->rhs << "\n";
+       << render_cmp_predicate(op->predicate, "LirCmpOp.predicate") << " "
+       << require_type_ref(op->type_str, "LirCmpOp.type_str") << " "
+       << require_operand_kind(op->lhs, "LirCmpOp.lhs",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Global,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
+       << ", "
+       << require_operand_kind(op->rhs, "LirCmpOp.rhs",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Global,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
+       << "\n";
   } else if (const auto* op = std::get_if<LirPhiOp>(&inst)) {
-    os << "  " << op->result << " = phi " << op->type_str;
+    os << "  "
+       << require_operand_kind(op->result, "LirPhiOp.result",
+                               {LirOperandKind::SsaValue})
+       << " = phi " << require_type_ref(op->type_str, "LirPhiOp.type_str");
     for (size_t i = 0; i < op->incoming.size(); ++i) {
       os << (i == 0 ? " " : ", ");
       os << "[ " << op->incoming[i].first << ", %" << op->incoming[i].second << " ]";
     }
     os << "\n";
   } else if (const auto* op = std::get_if<LirSelectOp>(&inst)) {
-    os << "  " << op->result << " = select i1 " << op->cond
-       << ", " << op->type_str << " " << op->true_val
-       << ", " << op->type_str << " " << op->false_val << "\n";
+    const auto& type = require_type_ref(op->type_str, "LirSelectOp.type_str");
+    os << "  "
+       << require_operand_kind(op->result, "LirSelectOp.result",
+                               {LirOperandKind::SsaValue})
+       << " = select i1 "
+       << require_operand_kind(op->cond, "LirSelectOp.cond",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
+       << ", " << type << " "
+       << require_operand_kind(op->true_val, "LirSelectOp.true_val",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Global,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
+       << ", " << type << " "
+       << require_operand_kind(op->false_val, "LirSelectOp.false_val",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Global,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
+       << "\n";
   } else if (const auto* op = std::get_if<LirInsertElementOp>(&inst)) {
-    os << "  " << op->result << " = insertelement " << op->vec_type << " " << op->vec
-       << ", " << op->elem_type << " " << op->elem << ", " << op->index << "\n";
+    os << "  "
+       << require_operand_kind(op->result, "LirInsertElementOp.result",
+                               {LirOperandKind::SsaValue})
+       << " = insertelement "
+       << require_type_ref(op->vec_type, "LirInsertElementOp.vec_type") << " "
+       << require_operand_kind(op->vec, "LirInsertElementOp.vec",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Global,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
+       << ", " << require_type_ref(op->elem_type, "LirInsertElementOp.elem_type")
+       << " "
+       << require_operand_kind(op->elem, "LirInsertElementOp.elem",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Global,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
+       << ", "
+       << require_operand_kind(op->index, "LirInsertElementOp.index",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
+       << "\n";
   } else if (const auto* op = std::get_if<LirExtractElementOp>(&inst)) {
-    os << "  " << op->result << " = extractelement " << op->vec_type << " " << op->vec
-       << ", " << op->index_type << " " << op->index << "\n";
+    os << "  "
+       << require_operand_kind(op->result, "LirExtractElementOp.result",
+                               {LirOperandKind::SsaValue})
+       << " = extractelement "
+       << require_type_ref(op->vec_type, "LirExtractElementOp.vec_type") << " "
+       << require_operand_kind(op->vec, "LirExtractElementOp.vec",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Global,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
+       << ", "
+       << require_type_ref(op->index_type, "LirExtractElementOp.index_type")
+       << " "
+       << require_operand_kind(op->index, "LirExtractElementOp.index",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
+       << "\n";
   } else if (const auto* op = std::get_if<LirShuffleVectorOp>(&inst)) {
-    os << "  " << op->result << " = shufflevector " << op->vec_type << " " << op->vec1
-       << ", " << op->vec_type << " " << op->vec2 << ", " << op->mask_type
-       << " " << op->mask << "\n";
+    const auto& vec_type =
+        require_type_ref(op->vec_type, "LirShuffleVectorOp.vec_type");
+    os << "  "
+       << require_operand_kind(op->result, "LirShuffleVectorOp.result",
+                               {LirOperandKind::SsaValue})
+       << " = shufflevector " << vec_type << " "
+       << require_operand_kind(op->vec1, "LirShuffleVectorOp.vec1",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Global,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
+       << ", " << vec_type << " "
+       << require_operand_kind(op->vec2, "LirShuffleVectorOp.vec2",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Global,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
+       << ", " << require_type_ref(op->mask_type, "LirShuffleVectorOp.mask_type")
+       << " "
+       << require_operand_kind(op->mask, "LirShuffleVectorOp.mask",
+                               {LirOperandKind::SsaValue,
+                                LirOperandKind::Global,
+                                LirOperandKind::Immediate,
+                                LirOperandKind::SpecialToken})
+       << "\n";
   } else if (const auto* op = std::get_if<LirVaArgOp>(&inst)) {
-    os << "  " << op->result << " = va_arg ptr " << op->ap_ptr
-       << ", " << op->type_str << "\n";
+    os << "  "
+       << require_operand_kind(op->result, "LirVaArgOp.result",
+                               {LirOperandKind::SsaValue})
+       << " = va_arg ptr "
+       << require_operand_kind(op->ap_ptr, "LirVaArgOp.ap_ptr",
+                               {LirOperandKind::SsaValue, LirOperandKind::Global})
+       << ", " << require_type_ref(op->type_str, "LirVaArgOp.type_str") << "\n";
   }
 }
 
@@ -191,6 +431,7 @@ std::string render_fn(const LirFunction& f) {
 }  // namespace
 
 std::string print_llvm(const LirModule& mod) {
+  verify_module(mod);
   c4c::codegen::llvm_helpers::set_active_target_triple(mod.target_triple);
 
   std::ostringstream out;

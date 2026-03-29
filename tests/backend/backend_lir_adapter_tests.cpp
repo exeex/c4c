@@ -8,6 +8,8 @@
 #include "stack_layout/regalloc_helpers.hpp"
 #include "stack_layout/slot_assignment.hpp"
 #include "target.hpp"
+#include "../../src/codegen/lir/lir_printer.hpp"
+#include "../../src/codegen/lir/verify.hpp"
 #include "../../src/backend/elf/mod.hpp"
 #include "../../src/backend/linker_common/mod.hpp"
 #include "../../src/backend/aarch64/assembler/mod.hpp"
@@ -76,6 +78,21 @@ void expect_not_contains(const std::string& text,
   }
 }
 
+template <typename Fn>
+void expect_throws_lir_verify(Fn&& fn,
+                              const std::string& needle,
+                              const std::string& message) {
+  try {
+    fn();
+  } catch (const c4c::codegen::lir::LirVerifyError& ex) {
+    expect_true(ex.kind() == c4c::codegen::lir::LirVerifyErrorKind::Malformed,
+                message + "\nExpected malformed verifier error kind");
+    expect_contains(ex.what(), needle, message);
+    return;
+  }
+  fail(message + "\nExpected LIR verifier throw");
+}
+
 void test_lir_typed_wrappers_classify_basic_operands() {
   using namespace c4c::codegen::lir;
 
@@ -128,6 +145,54 @@ void test_lir_typed_wrappers_leave_unknown_opcode_text_compatible() {
   expect_true(custom_opcode == "future.add.sat", "unknown binary opcode text should be preserved");
   expect_true(!custom_predicate.typed().has_value(), "unknown cmp predicate should stay text-compatible");
   expect_true(custom_predicate == "future_pred", "unknown cmp predicate text should be preserved");
+}
+
+void test_lir_printer_renders_verified_typed_ops() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{"%t0", LirBinaryOpcode::Add, "i32", "2", "3"});
+  entry.insts.push_back(LirCmpOp{"%t1", false, LirCmpPredicate::Slt, "i32", "%t0", "9"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  const auto rendered = print_llvm(module);
+  expect_contains(rendered, "%t0 = add i32 2, 3",
+                  "printer should render typed binary opcodes through verifier-backed helpers");
+  expect_contains(rendered, "%t1 = icmp slt i32 %t0, 9",
+                  "printer should render typed cmp predicates through verifier-backed helpers");
+}
+
+void test_lir_printer_rejects_malformed_typed_binary_surface() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{"i32 %broken", "future.add.sat", "i32", "2", "3"});
+  entry.terminator = LirRet{std::string("0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  expect_throws_lir_verify(
+      [&]() { (void)print_llvm(module); },
+      "LirBinOp.result",
+      "printer should reject malformed typed binary instructions before emitting LLVM text");
 }
 
 std::string make_temp_output_path(const std::string& stem) {
@@ -7490,6 +7555,8 @@ int main() {
   test_lir_typed_wrappers_classify_basic_types();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
   test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();
+  test_lir_printer_renders_verified_typed_ops();
+  test_lir_printer_rejects_malformed_typed_binary_surface();
   test_adapts_direct_return();
   test_renders_return_add();
   test_adapter_normalizes_typed_direct_call_helper_slice();

@@ -141,6 +141,7 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/const_init_emitter.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/hir_to_lir.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/lir_printer.cpp"
+    "${PROJECT_SOURCE_DIR}/src/codegen/lir/verify.cpp"
 )
 
 set(FRONTEND_CXX_INCLUDE_DIRS
@@ -284,6 +285,7 @@ add_executable(backend_lir_adapter_tests
     "${PROJECT_SOURCE_DIR}/src/backend/x86/linker/elf.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/x86/linker/input.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/lir_printer.cpp"
+    "${PROJECT_SOURCE_DIR}/src/codegen/lir/verify.cpp"
 )
 target_include_directories(backend_lir_adapter_tests PRIVATE
     ${FRONTEND_CXX_INCLUDE_DIRS}

@@ -6,10 +6,11 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 3: Add verification and legacy-safe compatibility shims.
-- Exact target for the next iteration: build printer-side and verification-side
-  helpers around the new typed operand/type/opcode wrappers so malformed typed
-  payloads can be rejected without breaking the current legacy LLVM text path.
+- Step 4: Migrate high-friction instruction families and consumers.
+- Exact target for the next iteration: start replacing backend-side raw
+  opcode/predicate string dispatch with the new typed wrapper accessors on the
+  smallest arithmetic/cmp-heavy consumer slice that can be covered by existing
+  backend adapter tests.
 
 ## Completed Items
 
@@ -24,6 +25,11 @@ Source Plan: plan.md
   `LirOperand`, `LirTypeRef`, `LirBinaryOpcodeRef`, and `LirCmpPredicateRef`
   wrappers and wiring the high-friction legacy LIR ops onto them without
   changing emitter or backend call sites.
+- Completed the first Step 3 verifier/printer slice by adding
+  `src/codegen/lir/verify.hpp` and `src/codegen/lir/verify.cpp`, routing
+  `src/codegen/lir/lir_printer.cpp` through verifier-backed render helpers,
+  and adding targeted printer/verifier coverage to
+  `tests/backend/backend_lir_adapter_tests.cpp`.
 
 ## Notes
 
@@ -102,17 +108,28 @@ Source Plan: plan.md
 - `tests/backend/backend_lir_adapter_tests.cpp` now covers basic operand/type
   classification, known enum mapping, and unknown-text compatibility for the
   new wrappers.
+- Step 3 now localizes typed-surface validation in one place instead of letting
+  each printer branch hand-roll string assumptions: `print_llvm` verifies the
+  module up front and the printer renders core typed wrappers through explicit
+  helper calls rather than concatenating raw wrapper fields ad hoc.
+- The verifier keeps the current legacy LLVM text path alive by tolerating the
+  existing compatibility payloads that still appear in-tree, including `null`,
+  `blockaddress(...)`, immediate-zero pointer spellings, and a few historically
+  tolerated `void`-typed load/store/bin surfaces, while still rejecting
+  malformed structural fields such as non-SSA result operands or unknown typed
+  opcode/predicate wrappers.
 
 ## Next Intended Slice
 
-- Add verifier/printer helpers that consume `LirOperand`, `LirTypeRef`,
-  `LirBinaryOpcodeRef`, and `LirCmpPredicateRef` directly instead of relying on
-  ad hoc string concatenation in each call site.
-- Keep inline asm text and module-level declaration text untouched while
-  Step 3 focuses on typed-core op validation and rendering.
-- Decide whether `LirOperand` should gain explicit structured variants for
-  typed call arguments and GEP indices, or whether that belongs in the later
-  call-family migration slice.
+- Replace the first backend consumer branch set that still matches on
+  `bin->opcode` / `cmp->predicate` raw strings with `typed()`-backed dispatch,
+  starting in `src/backend/lir_adapter.cpp`.
+- Follow that slice into one target backend emitter only if the adapter change
+  exposes duplicated raw predicate/opcode decoding that can be removed without
+  broadening scope.
+- Keep call argument text, GEP index text, inline asm text, and declaration
+  text on the compatibility path for now; Step 4 should focus on arithmetic and
+  comparison consumers before the larger call/GEP migration work.
 
 ## Validation
 
@@ -131,6 +148,18 @@ Source Plan: plan.md
   backend consumers compiling unchanged.
 - `./build/backend_lir_adapter_tests` passed with added coverage for the new
   typed wrapper layer.
+- `cmake --build build -j8 --target backend_lir_adapter_tests` passed after the
+  Step 3 verifier/printer helpers landed.
+- `./build/backend_lir_adapter_tests` passed with new coverage for verified
+  typed rendering and malformed typed-LIR rejection.
+- `cmake --build build -j8` passed after wiring `src/codegen/lir/verify.cpp`
+  into both `c4cll` and `backend_lir_adapter_tests`.
+- `ctest --test-dir build -j --output-on-failure > test_fail_after_step3.log`
+  recorded `2371/2560` passing and `189` failing tests.
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_after.log --after test_fail_after_step3.log
+  --allow-non-decreasing-passed` passed with zero new failures and no pass-count
+  regression.
 
 ## Open Questions To Resolve During This Runbook
 
@@ -145,5 +174,5 @@ Source Plan: plan.md
 
 ## Blockers
 
-- None. The next task is Step 3 printer/verification shims on top of the new
-  compatibility-first typed wrapper layer.
+- None. The next task is the first Step 4 backend-consumer migration slice on
+  top of the new verifier-backed typed wrapper layer.
