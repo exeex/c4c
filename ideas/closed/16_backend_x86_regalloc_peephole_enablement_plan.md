@@ -1,5 +1,7 @@
 # x86 Regalloc And Peephole Enablement Plan
 
+Status: Complete
+
 ## Relationship To Roadmap
 
 Umbrella source: `ideas/open/__backend_port_plan.md`
@@ -53,3 +55,14 @@ Enable the already ported shared liveness/regalloc stack and x86-local peephole 
 ## Good First Patch
 
 Use one direct-call or compare-and-branch x86 asm slice to prove that shared used-callee-saved data and one narrow peephole cleanup pass now affect the emitted assembly.
+
+## Completion Notes
+
+- Completed with the direct-call proof slice in `make_typed_call_crossing_direct_call_module`, where shared regalloc now chooses the surviving callee-saved register and the x86 backend saves/restores it in the emitted prologue and epilogue.
+- Completed with one bounded x86 post-codegen cleanup by removing the redundant backend-owned self-move on that same direct-call slice.
+- Extended the bounded compare-and-branch scaffold through the signed predicate quartet (`slt`, `sle`, `sgt`, `sge`) without widening into generic branch lowering.
+
+## Leftover Follow-On Work
+
+- `eq`, `ne`, and unsigned conditional-return predicates remain out of scope for this closed slice.
+- Separate inventory remains open for the struct-return function-pointer IR failure uncovered during nearby validation.
