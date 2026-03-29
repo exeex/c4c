@@ -204,7 +204,7 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod) {
   std::vector<std::string> decls;
 
   if (!llvm_va_list_is_pointer_object(mod.target_triple)) {
-    decls.push_back("%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }");
+    decls.push_back(llvm_va_list_struct_decl(mod.target_triple));
   }
 
   for (const auto& tag : mod.struct_def_order) {

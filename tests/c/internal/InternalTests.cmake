@@ -7,6 +7,8 @@ file(GLOB INTERNAL_VERIFY_TEST_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_C_TEST_ROOT}/verify_case/*.c")
 file(GLOB INTERNAL_POSITIVE_TEST_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_C_TEST_ROOT}/positive_case/*.c")
+file(GLOB INTERNAL_ABI_TEST_SRCS CONFIGURE_DEPENDS
+     "${INTERNAL_C_TEST_ROOT}/abi/*.c")
 file(GLOB INTERNAL_LINUX_STAGE2_REPRO_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_C_TEST_ROOT}/positive_case/linux_stage2_repro/*.c")
 file(GLOB INTERNAL_CCC_REVIEW_SRCS CONFIGURE_DEPENDS
@@ -143,6 +145,24 @@ if(CLANG_EXECUTABLE)
               -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_positive_case.cmake"
     )
     set_tests_properties("${test_name}" PROPERTIES LABELS "internal;positive_case")
+  endforeach()
+  foreach(src IN LISTS INTERNAL_ABI_TEST_SRCS)
+    file(RELATIVE_PATH rel_src "${INTERNAL_C_TEST_ROOT}" "${src}")
+    string(REGEX REPLACE "[^A-Za-z0-9_]" "_" test_id "${rel_src}")
+    set(test_name "abi_${test_id}")
+
+    add_test(
+      NAME "${test_name}"
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DSRC=${src}
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_abi/${rel_src}.ll
+              -DOUT_CLANG_BIN=${CMAKE_BINARY_DIR}/internal_abi/${rel_src}.clang.bin
+              -DOUT_C2LL_BIN=${CMAKE_BINARY_DIR}/internal_abi/${rel_src}.c2ll.bin
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_positive_case.cmake"
+    )
+    set_tests_properties("${test_name}" PROPERTIES LABELS "internal;abi")
   endforeach()
 else()
   message(WARNING "clang not found: skipping internal positive_case runtime tests")

@@ -36,6 +36,7 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/compile_time_engine.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_printer.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/inline_expand.cpp"
+    "${PROJECT_SOURCE_DIR}/src/codegen/llvm/calling_convention.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/llvm/llvm_codegen.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/stmt_emitter.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/const_init_emitter.cpp"
