@@ -7,13 +7,29 @@ Last Updated: 2026-03-29
 
 ## Active Item
 
-- Step 3: continue the ranked top-level `NK_EMPTY` audit in
-  `src/frontend/parser/declarations.cpp`, focusing next on the remaining
-  unsupported / structure-only declaration exits after the top-level
-  storage-class and `asm(...)` recovery tightenings landed
+- Step 3: tighten malformed top-level `using` recovery in
+  `src/frontend/parser/declarations.cpp` so broken `using namespace` and
+  top-level `using ns::name` lines can stop before the next declaration
+  boundary instead of relying on a blind semicolon match
 
 ## Completed
 
+- tightened malformed top-level `using namespace` / `using ns::name` recovery in
+  `src/frontend/parser/declarations.cpp` so a missing `;` now stops before the
+  next strong declaration starter instead of relying on a blind semicolon match
+- added the reduced parse-only regression
+  `tests/cpp/internal/parse_only_case/top_level_using_namespace_recovery_preserves_following_decl_parse.cpp`
+  plus the dedicated dump assertion
+  `cpp_parse_top_level_using_namespace_recovery_preserves_following_decl_dump`
+  in `tests/cpp/internal/InternalTests.cmake`
+- updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record top-level
+  `using namespace` / `using ns::name` as a covered `NK_EMPTY` recovery
+  boundary and to note the remaining `using Alias = ...` missing-semicolon case
+  as a still-suspicious follow-on site
+- re-ran the required regression guard:
+  - baseline: `97% tests passed, 54 tests failed out of 2413`
+  - after change: `99% tests passed, 1 test failed out of 2413`
+  - result: monotonic pass-count increase with no newly failing tests
 - switched the active runbook away from the `std::vector` bring-up and folded
   the latest parser-hygiene findings back into
   `ideas/open/04_std_vector_bringup_plan.md`
@@ -144,14 +160,15 @@ Last Updated: 2026-03-29
 
 ## Next Slice
 
-- continue through the remaining top-level `NK_EMPTY` discard sites in
-  `src/frontend/parser/declarations.cpp`, especially the unsupported /
+- after the `using namespace` / `using ns::name` recovery slice, continue
+  through the remaining top-level `NK_EMPTY` discard sites in
+  `src/frontend/parser/declarations.cpp`, especially the newly confirmed
+  `using Alias = ...` missing-semicolon path and the other unsupported /
   structure-only declaration exits still called out as suspicious in
-  `src/frontend/parser/BOUNDARY_AUDIT.md` after the storage-class and
-  top-level `asm(...)` recovery fixes
+  `src/frontend/parser/BOUNDARY_AUDIT.md`
 - prefer another reduced parse-only repro that shows discarded structure or a
-  silently erased following declaration before changing those remaining
-  `NK_EMPTY` branches
+  silently erased following declaration before changing each remaining
+  `NK_EMPTY` branch
 - keep any further record-member recovery widening separate unless a new reduced
   repro shows another non-special-member boundary bug that blocks the
   top-level `NK_EMPTY` audit
@@ -193,6 +210,10 @@ Last Updated: 2026-03-29
   important assertion is that the following `kept` global remains visible after
   recovery, not that the unsupported top-level asm fragment is elevated into a
   first-class declaration node
+- the newly identified malformed top-level `using Alias = int` case currently
+  succeeds as a single `Empty` node and drops the following declaration when
+  the alias semicolon is missing; it remains a suspicious follow-on site after
+  the simpler `using namespace` / `using ns::name` boundary recovery slice
 
 ## Blockers
 

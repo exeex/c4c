@@ -248,6 +248,21 @@ bool is_top_level_decl_recovery_boundary(TokenKind kind) {
     }
 }
 
+bool recover_top_level_decl_terminator_or_boundary(Parser& parser, int recovery_line) {
+    while (!parser.at_end() && !parser.check(TokenKind::Semi)) {
+        if (parser.cur().line != recovery_line &&
+            is_top_level_decl_recovery_boundary(parser.cur().kind)) {
+            return false;
+        }
+        parser.consume();
+    }
+    if (parser.check(TokenKind::Semi)) {
+        parser.consume();
+        return true;
+    }
+    return false;
+}
+
 bool skip_top_level_asm_or_recover(Parser& parser) {
     if (!parser.check(TokenKind::LParen)) return false;
 
@@ -840,7 +855,7 @@ Node* Parser::parse_top_level() {
                 throw std::runtime_error("unknown namespace in using-directive");
             }
             using_namespace_contexts_[using_context_id].push_back(target_context);
-            match(TokenKind::Semi);
+            recover_top_level_decl_terminator_or_boundary(*this, ln);
             return make_node(NK_EMPTY, ln);
         }
 
@@ -870,7 +885,7 @@ Node* Parser::parse_top_level() {
                     typedef_types_[first_name] = alias_ts;
                 }
                 last_using_alias_name_ = first_name;
-                match(TokenKind::Semi);
+                recover_top_level_decl_terminator_or_boundary(*this, ln);
                 return make_node(NK_EMPTY, ln);
             }
             target = first_name;
@@ -912,7 +927,7 @@ Node* Parser::parse_top_level() {
             }
             using_value_aliases_[using_context_id][imported_name] = lookup_target;
         }
-        match(TokenKind::Semi);
+        recover_top_level_decl_terminator_or_boundary(*this, ln);
         return make_node(NK_EMPTY, ln);
     }
 

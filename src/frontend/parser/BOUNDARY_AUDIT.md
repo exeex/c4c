@@ -156,6 +156,25 @@ ranking pass.
    `tests/cpp/internal/parse_only_case/top_level_asm_recovery_preserves_following_decl_parse.cpp`
    keeps the following `kept` global visible after malformed `asm(` input.
 
+6. `src/frontend/parser/declarations.cpp:831`
+   Top-level `using namespace` and `using ns::name` parsing now uses the same
+   declaration-boundary recovery helper as the recent storage-class / `asm(...)`
+   tightenings when the terminating `;` is missing.
+   Tag: `acceptable breadth`
+   Evidence: the reduced parse-only regression
+   `tests/cpp/internal/parse_only_case/top_level_using_namespace_recovery_preserves_following_decl_parse.cpp`
+   keeps the following `kept` global visible after a malformed
+   `using namespace ns` line with no semicolon.
+
+7. `src/frontend/parser/declarations.cpp:861`
+   Top-level `using Alias = ...` still parses its aliased type through
+   `parse_type_name()`, which can consume the first token of the next
+   declaration before the missing-semicolon recovery helper runs.
+   Tag: `suspicious breadth`
+   Reason: a reduced `using Alias = int` followed by `int kept;` still collapses
+   into a lone `Empty` node because the alias type parser absorbs the next-line
+   `int` as part of the alias type.
+
 ## Ranked First Tightening Targets
 
 1. `src/frontend/parser/types.cpp:4426`
