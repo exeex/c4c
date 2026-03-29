@@ -39,6 +39,11 @@ struct ParsedLirTypedCallView {
   std::vector<LirTypedCallArgView> args;
 };
 
+struct ParsedLirDirectGlobalTypedCallView {
+  std::string_view symbol_name;
+  ParsedLirTypedCallView typed_call;
+};
+
 inline std::string_view trim_lir_arg_text(std::string_view text) {
   while (!text.empty() && (text.front() == ' ' || text.front() == '\t')) {
     text.remove_prefix(1);
@@ -332,6 +337,21 @@ parse_lir_two_typed_call_operands(std::string_view callee_type_suffix,
   }
   return std::pair<std::string_view, std::string_view>{parsed->args[0].operand,
                                                        parsed->args[1].operand};
+}
+
+inline std::optional<ParsedLirDirectGlobalTypedCallView>
+parse_lir_direct_global_typed_call(std::string_view callee,
+                                   std::string_view callee_type_suffix,
+                                   std::string_view args_str) {
+  const auto symbol_name = parse_lir_direct_global_callee(callee);
+  if (!symbol_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto typed_call = parse_lir_typed_call(callee_type_suffix, args_str);
+  if (!typed_call.has_value()) {
+    return std::nullopt;
+  }
+  return ParsedLirDirectGlobalTypedCallView{*symbol_name, *typed_call};
 }
 
 inline bool lir_call_has_no_args(std::string_view callee_type_suffix,

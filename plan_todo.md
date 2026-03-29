@@ -8,17 +8,15 @@ Source Plan: plan.md
 
 - Step 4: Migrate high-friction instruction families and consumers.
 - Exact target for the next iteration: continue Step 4 past
-  the landed stmt-emitter shared typed-call formatting slice into the remaining
-  backend call-adjacent consumers and construction paths that still rely on raw
-  `LirCallOp` compatibility storage, with the highest-value next slice being
-  indirect and intrinsic call-family surfaces that still branch on legacy text
-  instead of shared structured call metadata.
+  the landed shared direct-global typed-call decoding slice into the remaining
+  LIR/backend call-adjacent consumers that still compose callee
+  classification, typed parameter checks, and operand extraction as separate
+  compatibility steps instead of consuming one richer shared call view.
 - Exact target for the next iteration after this slice: continue Step 4 into
   the remaining backend call-adjacent consumers that still decode typed call
   argument/result shape from raw compatibility text, especially the residual
-  `callee_type_suffix` / `args_str` parsing seams in backend-specific fast
-  paths that have not yet been collapsed onto richer shared structured call
-  metadata.
+  LIR-side direct-call fast paths and adapter seams that have not yet been
+  collapsed onto richer shared structured call metadata.
 
 ## Completed Items
 
@@ -139,6 +137,14 @@ Source Plan: plan.md
   `src/backend/aarch64/codegen/emit.cpp`, and adding fallback-path regression
   coverage in `tests/backend/backend_lir_adapter_tests.cpp` proving llvm
   intrinsic and indirect callees no longer stay on the direct-call asm path.
+- Completed the next Step 4 shared direct-global typed-call decoding slice by
+  adding `parse_lir_direct_global_typed_call(...)` to
+  `src/codegen/lir/call_args.hpp`, routing the remaining x86/AArch64
+  direct-call add-imm and call-crossing backend fast paths plus the x86
+  param-slot and immediate two-arg LIR fast paths through one shared
+  direct-global typed-call view instead of stitching together separate callee
+  classification and typed-argument decoders, and adding focused helper
+  regression coverage in `tests/backend/backend_lir_adapter_tests.cpp`.
 
 ## Notes
 

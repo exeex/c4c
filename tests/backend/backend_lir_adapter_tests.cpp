@@ -212,6 +212,23 @@ void test_lir_call_arg_helpers_classify_call_callee_shape() {
               "direct-global helper should reject llvm intrinsics");
 }
 
+void test_lir_call_arg_helpers_decode_direct_global_typed_call() {
+  using namespace c4c::codegen::lir;
+
+  const auto parsed = parse_lir_direct_global_typed_call(
+      " @add_pair ", "( i32 , i32 )", " i32 %lhs , i32 %rhs ");
+  expect_true(parsed.has_value() && parsed->symbol_name == "add_pair" &&
+                  parsed->typed_call.args.size() == 2 &&
+                  parsed->typed_call.args[0].operand == "%lhs" &&
+                  parsed->typed_call.args[1].operand == "%rhs",
+              "shared direct-global typed-call helper should recover the callee name and spacing-tolerant structured operands");
+
+  expect_true(!parse_lir_direct_global_typed_call("@llvm.abs.i32", "(i32)", "i32 %x").has_value(),
+              "shared direct-global typed-call helper should reject llvm intrinsics");
+  expect_true(!parse_lir_direct_global_typed_call("%fp", "(i32)", "i32 %x").has_value(),
+              "shared direct-global typed-call helper should reject indirect callees");
+}
+
 void test_lir_call_arg_helpers_format_typed_call_round_trip() {
   using namespace c4c::codegen::lir;
 
@@ -8175,6 +8192,7 @@ int main() {
   test_lir_call_arg_helpers_decode_single_typed_operand();
   test_lir_call_arg_helpers_decode_two_typed_operands();
   test_lir_call_arg_helpers_classify_call_callee_shape();
+  test_lir_call_arg_helpers_decode_direct_global_typed_call();
   test_lir_call_arg_helpers_format_typed_call_round_trip();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
   test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();
