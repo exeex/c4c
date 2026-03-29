@@ -7,6 +7,23 @@
 
 namespace c4c {
 
+namespace {
+
+std::vector<const std::string*> collapse_adjacent_stack_frames(
+    const std::vector<std::string>& stack_trace) {
+    std::vector<const std::string*> compact;
+    compact.reserve(stack_trace.size());
+    const std::string* previous = nullptr;
+    for (const std::string& fn : stack_trace) {
+        if (previous && *previous == fn) continue;
+        compact.push_back(&fn);
+        previous = &fn;
+    }
+    return compact;
+}
+
+}  // namespace
+
 Parser::ParseContextGuard::ParseContextGuard(
     Parser* parser_in, const char* function_name)
     : parser(parser_in) {
@@ -343,9 +360,11 @@ void Parser::dump_parse_debug_trace() const {
         fprintf(stderr, "\n");
     }
     if (best_parse_failure_.active && !best_parse_failure_.stack_trace.empty()) {
+        const std::vector<const std::string*> compact_stack =
+            collapse_adjacent_stack_frames(best_parse_failure_.stack_trace);
         fprintf(stderr, "[pdebug] stack:");
-        for (const std::string& fn : best_parse_failure_.stack_trace) {
-            fprintf(stderr, " -> %s", fn.c_str());
+        for (const std::string* fn : compact_stack) {
+            fprintf(stderr, " -> %s", fn->c_str());
         }
         fprintf(stderr, "\n");
     }

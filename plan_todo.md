@@ -6,12 +6,12 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 1 / Step 2: normalize the parser trace model around parse function names
-  and extend `ParseContextGuard` coverage across significant `parse_*`
-  functions without changing parser behavior
-- Current slice: add guards to the remaining high-signal statement,
-  declaration, and expression entry points, then add a reduced
-  `--parser-debug` parser-only test that asserts the emitted stack shape
+- Step 3: improve `--parser-debug` output shape so best-failure stacks stay
+  readable on recursive/speculative parser paths without changing parser
+  behavior
+- Current slice: keep the detailed `[pdebug] kind=...` event stream intact, but
+  collapse duplicate adjacent frames in the emitted best-failure
+  `[pdebug] stack:` line and lock that shape in with a reduced parser-only test
 
 ## Completed
 
@@ -37,14 +37,23 @@ Source Plan: plan.md
 - recorded clean before/after suite logs and passed the monotonic regression
   guard:
   `before passed=2250/2251`, `after passed=2252/2253`, no new failing tests
+- collapsed duplicate adjacent frames in the emitted best-failure
+  `[pdebug] stack:` summary so recursive expression failures keep the full event
+  log but a less repetitive stack line
+- updated `cpp_parser_debug_expr_stmt_stack` to lock in the compact summary
+  stack shape
+- reran the required clean before/after full suite for this slice and passed
+  the monotonic regression guard with no new failures:
+  `before passed=2252/2253`, `after passed=2252/2253`
 
 ## Next Intended Slice
 
-- after this coverage pass, tighten `--parser-debug` formatting so the best
-  failure stack is easier to scan when speculative `try_parse_*` rewinds are
-  involved
-- likely first target: reduce duplicate/noisy stack frames from nested
-  recursive expression parsing and the `try_parse_record_*` speculative paths
+- after this formatting pass, test a speculative parse path where
+  `try_parse_record_*` rewinds currently leave the event stream informative but
+  the final stack summary still needs better root-cause emphasis
+- likely first target: a reduced record-member failure that exercises
+  `try_parse_record_member_*` rewinds and confirms the summary stack stays
+  bounded
 
 ## Blockers
 
@@ -57,13 +66,13 @@ Source Plan: plan.md
 
 - active repro command:
   `./build/c4cll --parser-debug --parse-only tests/cpp/std/std_vector_simple.cpp`
-- this iteration is targeting the non-trivial entry surface first:
-  `parse_stmt`, `parse_local_decl`, `parse_top_level`, `parse_assign_expr`,
-  `parse_ternary`, `parse_unary`, and nearby wrappers where stack depth is
-  currently lost
-- current prototype prints short default errors and debug events such as
-  `fn=parse_param`; after this slice, reduced expression-statement failures also
-  keep a stable `[pdebug] stack:` line in parser-debug mode
+- this iteration is targeting stack readability rather than additional guard
+  coverage
+- keep the detailed event log untouched; only the summary `[pdebug] stack:`
+  line should become less repetitive on nested recursion
+- current reduced regression locks in adjacent-frame compaction for nested
+  `parse_unary` recursion; the next slice should prove the same readability
+  improvement on a speculative record-member parse path
 - the repo is not currently building this target as C++20, so `std::source_location`
   was not adopted; the current non-macro path uses `__func__`
 - the parked `std::vector` bring-up work remains in
