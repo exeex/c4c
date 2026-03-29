@@ -10,6 +10,8 @@
 #include <limits>
 #include <optional>
 #include <sstream>
+#include <unordered_map>
+#include <vector>
 #include <string_view>
 
 // Mechanical translation of the ref x86 emitter entrypoint.
@@ -37,6 +39,11 @@ struct MinimalConditionalReturnSlice {
   std::int64_t false_return_imm = 0;
 };
 
+struct MinimalLocalArraySlice {
+  std::int64_t store0_imm = 0;
+  std::int64_t store1_imm = 0;
+};
+
 std::optional<std::int64_t> parse_i64(std::string_view text) {
   std::int64_t value = 0;
   const char* begin = text.data();
@@ -46,6 +53,16 @@ std::optional<std::int64_t> parse_i64(std::string_view text) {
     return std::nullopt;
   }
   return value;
+}
+
+std::optional<std::string_view> strip_typed_operand_prefix(std::string_view operand,
+                                                           std::string_view type_prefix) {
+  if (operand.size() <= type_prefix.size() + 1 ||
+      operand.substr(0, type_prefix.size()) != type_prefix ||
+      operand[type_prefix.size()] != ' ') {
+    return std::nullopt;
+  }
+  return operand.substr(type_prefix.size() + 1);
 }
 
 std::string asm_symbol_name(const c4c::backend::BackendModule& module,
@@ -275,6 +292,152 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
                                        *false_return_imm};
 }
 
+std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+      function.entry.value != 0 || function.blocks.size() != 1 ||
+      function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* alloca = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
+  if (alloca == nullptr || alloca->type_str != "[2 x i32]" || !alloca->count.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  if (entry.label != "entry" || entry.insts.empty()) {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string, std::int64_t> widened_indices;
+  std::unordered_map<std::string, std::int64_t> local_ptr_offsets;
+  std::vector<std::pair<std::int64_t, std::int64_t>> stores;
+  std::vector<std::int64_t> loads;
+  std::string add_result;
+
+  for (const auto& inst : entry.insts) {
+    if (const auto* gep = std::get_if<LirGepOp>(&inst)) {
+      if (gep->element_type == "[2 x i32]" && gep->ptr == alloca->result &&
+          gep->indices.size() == 2 && gep->indices[0] == "i64 0" &&
+          gep->indices[1] == "i64 0") {
+        local_ptr_offsets[gep->result] = 0;
+        continue;
+      }
+
+      if (gep->element_type == "i32" && gep->indices.size() == 1) {
+        const auto base = local_ptr_offsets.find(gep->ptr);
+        const auto typed_index = strip_typed_operand_prefix(gep->indices.front(), "i64");
+        if (base == local_ptr_offsets.end() || !typed_index.has_value()) {
+          return std::nullopt;
+        }
+
+        std::int64_t index = 0;
+        if (const auto imm = parse_i64(*typed_index); imm.has_value()) {
+          index = *imm;
+        } else {
+          const auto widened = widened_indices.find(std::string(*typed_index));
+          if (widened == widened_indices.end()) {
+            return std::nullopt;
+          }
+          index = widened->second;
+        }
+
+        if (index < 0 || index > 1) {
+          return std::nullopt;
+        }
+        local_ptr_offsets[gep->result] = base->second + index * 4;
+        continue;
+      }
+
+      return std::nullopt;
+    }
+
+    if (const auto* cast = std::get_if<LirCastOp>(&inst)) {
+      if (cast->kind != LirCastKind::SExt || cast->from_type != "i32" ||
+          cast->to_type != "i64") {
+        return std::nullopt;
+      }
+      const auto imm = parse_i64(cast->operand);
+      if (!imm.has_value()) {
+        return std::nullopt;
+      }
+      widened_indices[cast->result] = *imm;
+      continue;
+    }
+
+    if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
+      if (store->type_str != "i32") {
+        return std::nullopt;
+      }
+      const auto ptr = local_ptr_offsets.find(store->ptr);
+      const auto imm = parse_i64(store->val);
+      if (ptr == local_ptr_offsets.end() || !imm.has_value()) {
+        return std::nullopt;
+      }
+      stores.emplace_back(ptr->second, *imm);
+      continue;
+    }
+
+    if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
+      if (load->type_str != "i32") {
+        return std::nullopt;
+      }
+      const auto ptr = local_ptr_offsets.find(load->ptr);
+      if (ptr == local_ptr_offsets.end()) {
+        return std::nullopt;
+      }
+      loads.push_back(ptr->second);
+      continue;
+    }
+
+    if (const auto* add = std::get_if<LirBinOp>(&inst)) {
+      if (add->opcode != "add" || add->type_str != "i32" || loads.size() != 2) {
+        return std::nullopt;
+      }
+      add_result = add->result;
+      continue;
+    }
+
+    return std::nullopt;
+  }
+
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (ret == nullptr || !ret->value_str.has_value() || ret->type_str != "i32" ||
+      *ret->value_str != add_result || stores.size() != 2 || loads.size() != 2) {
+    return std::nullopt;
+  }
+
+  std::optional<std::int64_t> store0;
+  std::optional<std::int64_t> store1;
+  for (const auto& [offset, imm] : stores) {
+    if (offset == 0) {
+      store0 = imm;
+    } else if (offset == 4) {
+      store1 = imm;
+    } else {
+      return std::nullopt;
+    }
+  }
+  if (!store0.has_value() || !store1.has_value()) {
+    return std::nullopt;
+  }
+
+  if (!((loads[0] == 0 && loads[1] == 4) || (loads[0] == 4 && loads[1] == 0))) {
+    return std::nullopt;
+  }
+
+  return MinimalLocalArraySlice{*store0, *store1};
+}
+
 std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_direct_call_slice(
     const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 2) return std::nullopt;
@@ -408,6 +571,37 @@ std::string emit_minimal_conditional_return_asm(
   return out.str();
 }
 
+std::string emit_minimal_local_array_asm(const c4c::backend::BackendModule& module,
+                                         const MinimalLocalArraySlice& slice) {
+  if (slice.store0_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.store0_imm > std::numeric_limits<std::int32_t>::max() ||
+      slice.store1_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.store1_imm > std::numeric_limits<std::int32_t>::max()) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "local-array store immediates outside the minimal mov-supported range");
+  }
+
+  const std::string symbol = asm_symbol_name(module, "main");
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  out << ".globl " << symbol << "\n";
+  out << symbol << ":\n";
+  out << "  push rbp\n"
+      << "  mov rbp, rsp\n"
+      << "  sub rsp, 16\n"
+      << "  lea rcx, [rbp - 8]\n"
+      << "  mov dword ptr [rcx], " << slice.store0_imm << "\n"
+      << "  mov dword ptr [rcx + 4], " << slice.store1_imm << "\n"
+      << "  mov eax, dword ptr [rcx]\n"
+      << "  add eax, dword ptr [rcx + 4]\n"
+      << "  mov rsp, rbp\n"
+      << "  pop rbp\n"
+      << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_call_crossing_direct_call_asm(
     const c4c::backend::BackendModule& module,
     const c4c::backend::RegAllocIntegrationResult& regalloc,
@@ -516,6 +710,12 @@ std::string remove_redundant_self_moves(std::string asm_text) {
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   try {
+    if (const auto slice = parse_minimal_local_array_slice(module);
+        slice.has_value()) {
+      c4c::backend::BackendModule scaffold_module;
+      scaffold_module.target_triple = module.target_triple;
+      return emit_minimal_local_array_asm(scaffold_module, *slice);
+    }
     if (const auto slice = parse_minimal_conditional_return_slice(module);
         slice.has_value()) {
       c4c::backend::BackendModule scaffold_module;

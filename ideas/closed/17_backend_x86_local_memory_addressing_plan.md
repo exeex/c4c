@@ -60,3 +60,16 @@ Extend the x86 backend from narrow return/direct-call seams into explicit backen
 ## Good First Patch
 
 Promote one bounded local-array runtime case through the x86 asm path with the smallest explicit stack-slot plus indexed-address seam.
+
+## Completion
+
+Completed on 2026-03-29.
+
+- Added one focused x86 backend adapter/emitter validation for the bounded local `[2 x i32]` addressing slice.
+- Implemented a minimal x86 local-array emitter path that recognizes the single-function alloca/GEP/store/load/add shape and emits backend-owned stack-base addressing.
+- Promoted `tests/c/internal/backend_case/local_array.c` through `BACKEND_OUTPUT_KIND=asm`.
+
+## Leftover Issues
+
+- Remaining x86 asm runtime failures such as branch, helper-call, global-address, and broader local-slot rewrites are still open and should continue as separate follow-on slices under the backend roadmap umbrella.
+- This idea intentionally stopped at the first explicit stack-local base plus indexed `i32` access seam and did not widen into general pointer arithmetic or global-address materialization.

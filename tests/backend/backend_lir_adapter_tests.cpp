@@ -3105,6 +3105,33 @@ void test_x86_backend_scaffold_renders_direct_return_immediate_slice() {
                   "x86 backend should terminate direct return immediates with ret");
 }
 
+void test_x86_backend_renders_local_array_slice() {
+  auto module = make_local_array_gep_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should lower the bounded local-array slice to assembly");
+  expect_contains(rendered, "sub rsp, 16",
+                  "x86 backend should reserve one bounded local stack frame for the local-array slice");
+  expect_contains(rendered, "lea rcx, [rbp - 8]",
+                  "x86 backend should materialize the local stack-slot base explicitly");
+  expect_contains(rendered, "mov dword ptr [rcx], 4",
+                  "x86 backend should lower the first indexed local store through the backend-owned base address");
+  expect_contains(rendered, "mov dword ptr [rcx + 4], 3",
+                  "x86 backend should lower the second indexed local store through the backend-owned base address");
+  expect_contains(rendered, "mov eax, dword ptr [rcx]",
+                  "x86 backend should lower the first indexed local load through the same backend-owned base address");
+  expect_contains(rendered, "add eax, dword ptr [rcx + 4]",
+                  "x86 backend should fold the second indexed local load into the final add");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the bounded local-array slice");
+}
+
 void test_x86_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice() {
   auto module = make_typed_call_crossing_direct_call_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -5236,6 +5263,7 @@ int main() {
   test_aarch64_backend_scaffold_renders_direct_return_immediate_slice();
   test_x86_backend_scaffold_routes_through_explicit_emit_surface();
   test_x86_backend_scaffold_renders_direct_return_immediate_slice();
+  test_x86_backend_renders_local_array_slice();
   test_x86_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice();
   test_x86_backend_cleans_up_redundant_self_move_on_call_crossing_slice();
   test_x86_backend_renders_compare_and_branch_slice();
