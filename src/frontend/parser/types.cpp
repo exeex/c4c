@@ -611,7 +611,8 @@ bool is_record_member_recovery_boundary(Parser& parser,
 
     const TokenKind start_kind = parser.tokens_[member_start_pos].kind;
     if (start_kind != TokenKind::Tilde &&
-        start_kind != TokenKind::KwOperator) {
+        start_kind != TokenKind::KwOperator &&
+        start_kind != TokenKind::KwUsing) {
         return false;
     }
 
@@ -5015,9 +5016,10 @@ bool Parser::try_parse_record_using_member(
         return true;
     }
 
-    while (!at_end() && !check(TokenKind::Semi) && !check(TokenKind::RBrace))
+    if (check(TokenKind::KwTypename))
         consume();
-    match(TokenKind::Semi);
+    (void)parse_qualified_name(/*allow_global=*/true);
+    expect(TokenKind::Semi);
     return true;
 }
 

@@ -7,9 +7,10 @@ Last Updated: 2026-03-29
 
 ## Active Item
 
-- Step 3: decide whether the remaining record-member recovery gap should be
-  widened beyond malformed special-member signatures or whether the next
-  highest-value boundary is now one of the remaining `NK_EMPTY` discard sites
+- Step 3: shift the next tightening batch to the ranked `NK_EMPTY`
+  parse-and-discard sites, starting with the statement-side local `using`
+  branches and the remaining top-level discard paths called out in
+  `src/frontend/parser/BOUNDARY_AUDIT.md`
 
 ## Completed
 
@@ -72,19 +73,36 @@ Last Updated: 2026-03-29
   - baseline: `100% tests passed, 0 tests failed out of 2391`
   - after change: `100% tests passed, 0 tests failed out of 2408`
   - result: monotonic pass-count increase with no newly failing tests
+- tightened record-member recovery for malformed non-alias `using` members:
+  - `src/frontend/parser/types.cpp`
+    `try_parse_record_using_member(...)` now parses the non-alias branch as a
+    structured qualified-name `using` declaration instead of broadly skipping
+    tokens until `;`
+  - `src/frontend/parser/types.cpp`
+    `is_record_member_recovery_boundary(...)` now lets malformed `using`
+    members stop at the next member declaration boundary, not only malformed
+    special members
+  - added the reduced parse-only regression
+    `tests/cpp/internal/parse_only_case/record_member_using_recovery_preserves_following_decl_parse.cpp`
+    plus the dedicated dump assertion
+    `cpp_parse_record_member_using_recovery_preserves_following_decl_dump` in
+    `tests/cpp/internal/InternalTests.cmake`
+  - re-ran the required regression guard:
+    - baseline: `100% tests passed, 0 tests failed out of 2408`
+    - after change: `100% tests passed, 0 tests failed out of 2409`
+    - result: monotonic pass-count increase with no newly failing tests
 
 ## Next Slice
 
-- decide whether `recover_record_member_parse_error(int)` should grow beyond
-  the new special-member sync path or whether the next Step 3 batch should move
-  to the ranked `NK_EMPTY` parse-and-discard sites in
-  `src/frontend/parser/BOUNDARY_AUDIT.md`
-- if record-member recovery remains the priority, add the next reduced repro
-  for a non-special-member malformed declaration before widening the recovery
-  boundary again
-- if the next best risk is an `NK_EMPTY` discard path instead, switch the
-  active item explicitly in `plan_todo.md` rather than silently broadening this
-  slice
+- start the ranked `NK_EMPTY` audit slice explicitly at the statement-side
+  `parse_stmt()` local `using` branches in `src/frontend/parser/statements.cpp`
+  and compare that path against the top-level discard sites in
+  `src/frontend/parser/declarations.cpp`
+- prefer reduced parse-only repros that show discarded structure or silently
+  erased following declarations before changing those `NK_EMPTY` branches
+- keep any further record-member recovery widening separate unless a new reduced
+  repro shows another non-special-member boundary bug that blocks the
+  `NK_EMPTY` audit
 
 ## Notes
 
@@ -107,6 +125,10 @@ Last Updated: 2026-03-29
 - the new record-member recovery regression is intentionally stored under
   `tests/cpp/internal/parse_only_case/` so it does not get auto-promoted into
   the positive or negative compile-test globs
+- the malformed `using Base::` record-member regression is intentionally
+  parse-only: the important assertion is that the following `kept` declaration
+  remains visible after recovery, not that the malformed `using` line itself is
+  semantically accepted
 
 ## Blockers
 

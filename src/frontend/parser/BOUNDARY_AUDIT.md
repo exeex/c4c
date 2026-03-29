@@ -68,6 +68,10 @@ ranking pass.
    Tag: `known bug`
    Evidence: the source idea calls out record-member recovery swallowing to `}`
    as one of the motivating failures. This helper is the direct mechanism.
+   Progress: the active runbook has now tightened two reduced cases so recovery
+   can stop at the next member boundary for malformed special members and for a
+   malformed non-alias `using` member, but broader malformed member shapes are
+   still suspicious.
 
 2. `src/frontend/parser/types.cpp:5872`
    `try_parse_record_member_or_recover(...)` only treats
