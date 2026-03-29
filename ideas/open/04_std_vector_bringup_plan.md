@@ -63,6 +63,11 @@ As of 2026-03-29, this bring-up has moved past the earlier libstdc++ parser
 frontline blockers that were showing up in `<type_traits>` and
 `ext/numeric_traits.h`.
 
+This idea was deactivated again later on 2026-03-29 so a separate type-trait
+builtin audit / implementation idea can be inserted ahead of the next parser
+slice. The active runbook state was folded back here before clearing
+`plan.md` and `plan_todo.md`.
+
 The following header-compatibility gaps were reduced and fixed:
 
 - template-template parameters in template parameter lists
@@ -113,6 +118,92 @@ Interpretation:
   `noexcept` expression parsing and concept-heavy iterator helper declarations
 - the work is still in Phase B moving into Phase C; it has not yet reached
   `std::vector` semantics or codegen validation
+
+## Latest Deactivation Update
+
+This idea was explicitly deactivated on 2026-03-29 without being completed.
+
+### Latest Completed Slices From The Active Runbook
+
+- Added `tests/cpp/internal/postive_case/noexcept_expr_parse.cpp` and taught
+  the parser to accept `noexcept(expr)` in unary-expression context.
+- Added
+  `tests/cpp/internal/postive_case/cpp20_requires_clause_struct_decl_parse.cpp`
+  and tightened declaration-level C++20 `requires` parsing so a following
+  record declaration is not swallowed into the constraint expression.
+- Added
+  `tests/cpp/internal/postive_case/qualified_template_unresolved_param_type_parse.cpp`
+  and taught parameter-list probing to accept unresolved qualified
+  template-id types such as `ns::holder<T>`.
+- Added
+  `tests/cpp/internal/postive_case/constructor_self_ref_param_parse.cpp`
+  and fixed unresolved simple self-type parameter parsing for `T&` / `T&&`
+  forms.
+- Added
+  `tests/cpp/internal/postive_case/unresolved_by_value_param_type_parse.cpp`
+  and fixed unresolved by-value parameter type starts such as `Value other`.
+- Added
+  `tests/cpp/internal/postive_case/template_friend_record_member_parse.cpp`
+  and fixed member-template friend declarations inside records.
+- Added
+  `tests/cpp/internal/postive_case/forward_declared_record_specialization_parse.cpp`
+  and fixed forward-declared explicit specialization parsing such as
+  `allocator<void>;`.
+- Added
+  `tests/cpp/internal/postive_case/gcc_type_trait_type_arg_parse.cpp` and
+  taught `parse_primary()` to consume GCC / Clang style `__is_*` and
+  `__has_*` type-trait builtin argument lists in parse-only mode when the
+  arguments are type-only.
+
+### Repro Status At Deactivation Time
+
+The direct repro command is still:
+
+```bash
+./build/c4cll --parse-only tests/cpp/std/std_vector_simple.cpp
+```
+
+At deactivation time the first surviving failures were:
+
+- `/usr/include/c++/14/concepts:240:19` `expected=RPAREN got='('`
+- `/usr/include/c++/14/bits/stl_iterator.h:214:2` unexpected `constexpr`
+- `/usr/include/c++/14/bits/stl_iterator.h:224:33` unexpected comma in expression
+- later follow-on parser frontiers in `stl_uninitialized.h`,
+  `functional_hash.h`, `stl_bvector.h`, `stl_function.h`, and `vector.tcc`
+
+That means the recent GCC type-trait parser slice did advance the frontier;
+type-trait builtin parsing is no longer the first active blocker on the
+`std::vector` path.
+
+### Follow-up Idea Discovered During Deactivation
+
+A separate open idea should own builtin-trait inventory and semantics instead
+of stretching this `std::vector` parser bring-up plan.
+
+For the current `std::vector` preprocessed path:
+
+- there are 33 unique function-like `__is_*` / `__has_*` names
+- that raw count includes libstdc++ helper wrappers, not only compiler
+  builtins
+- a curated first-pass list suggests about 22 names are likely real
+  compiler-trait builtins that matter on this path:
+  `__has_trivial_destructor`, `__has_virtual_destructor`, `__is_abstract`,
+  `__is_assignable`, `__is_base_of`, `__is_class`, `__is_constructible`,
+  `__is_empty`, `__is_enum`, `__is_final`, `__is_literal_type`,
+  `__is_nothrow_assignable`, `__is_nothrow_constructible`, `__is_pod`,
+  `__is_polymorphic`, `__is_same`, `__is_standard_layout`, `__is_trivial`,
+  `__is_trivially_assignable`, `__is_trivially_constructible`,
+  `__is_trivially_copyable`, and `__is_union`
+- helper-like names such as `__is_complete_or_unbounded`,
+  `__is_implicitly_constructible`, `__is_explicitly_constructible`,
+  `__is_alloc_arg`, `__is_derived_from_view_interface_fn`,
+  `__has_single_bit`, and `__is_permutation` should not be counted as compiler
+  builtins without separate confirmation
+
+This split keeps the next activation decision clear:
+
+- reactivate this idea to continue parser-only `std::vector` bring-up, or
+- activate the dedicated builtin-audit idea first
 
 ### Adjacent Work Parked Separately
 

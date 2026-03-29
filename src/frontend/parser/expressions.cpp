@@ -789,9 +789,14 @@ Node* Parser::parse_primary() {
         }
 
         const std::string builtin_name = cur().lexeme;
-        if (!(builtin_name.rfind("__is_", 0) == 0 ||
-              builtin_name.rfind("__has_", 0) == 0)) {
+        if (!is_builtin_type_trait_name(builtin_name) ||
+            builtin_name == "__builtin_types_compatible_p") {
             return nullptr;
+        }
+
+        if (!is_parser_supported_builtin_type_trait_name(builtin_name)) {
+            throw std::runtime_error("not implemented builtin type trait: " +
+                                     builtin_name);
         }
 
         const int saved_pos = pos_;

@@ -193,4 +193,14 @@ const char *token_kind_name(TokenKind kind);
 TokenKind keyword_from_string(const std::string &s, bool gnu_extensions = true,
                               LexProfile profile = LexProfile::C);
 
+// Returns true when the spelling matches a Clang-style builtin type trait
+// entry tracked by the frontend registry, including array/expression/transform
+// traits.
+bool is_builtin_type_trait_name(const std::string &s);
+
+// Returns true when the current parser intentionally supports the builtin
+// trait spelling. Builtins that are known but not yet wired through the parser
+// should return false so callers can emit a stable "not implemented" error.
+bool is_parser_supported_builtin_type_trait_name(const std::string &s);
+
 }  // namespace c4c

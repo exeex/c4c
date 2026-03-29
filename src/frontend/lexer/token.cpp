@@ -2,6 +2,136 @@
 
 namespace c4c {
 
+namespace {
+
+bool starts_with(const std::string& s, const char* prefix) {
+  const size_t prefix_len = std::char_traits<char>::length(prefix);
+  return s.size() >= prefix_len && s.compare(0, prefix_len, prefix) == 0;
+}
+
+bool string_in_list(const std::string& s, const char* const* items,
+                    size_t count) {
+  for (size_t i = 0; i < count; ++i) {
+    if (s == items[i]) return true;
+  }
+  return false;
+}
+
+// Clang TokenKinds.def TYPE_TRAIT_{1,2,N}, ARRAY_TYPE_TRAIT, and
+// EXPRESSION_TRAIT spellings. Transform type traits are also tracked so the
+// lexer-side registry can answer one "known builtin trait" question.
+const char* const kBuiltinTypeTraitNames[] = {
+    "__builtin_types_compatible_p",
+    "__is_interface_class",
+    "__is_sealed",
+    "__is_destructible",
+    "__is_trivially_destructible",
+    "__is_nothrow_destructible",
+    "__is_nothrow_assignable",
+    "__is_constructible",
+    "__is_nothrow_constructible",
+    "__is_assignable",
+    "__has_nothrow_move_assign",
+    "__has_trivial_move_assign",
+    "__has_trivial_move_constructor",
+    "__builtin_is_implicit_lifetime",
+    "__builtin_is_virtual_base_of",
+    "__has_nothrow_assign",
+    "__has_nothrow_copy",
+    "__has_nothrow_constructor",
+    "__has_trivial_assign",
+    "__has_trivial_copy",
+    "__has_trivial_constructor",
+    "__has_trivial_destructor",
+    "__has_virtual_destructor",
+    "__is_abstract",
+    "__is_aggregate",
+    "__is_base_of",
+    "__is_class",
+    "__is_convertible_to",
+    "__is_empty",
+    "__is_enum",
+    "__is_final",
+    "__is_literal",
+    "__is_pod",
+    "__is_polymorphic",
+    "__is_standard_layout",
+    "__is_trivial",
+    "__is_trivially_assignable",
+    "__is_trivially_constructible",
+    "__is_trivially_copyable",
+    "__is_union",
+    "__has_unique_object_representations",
+    "__is_layout_compatible",
+    "__is_pointer_interconvertible_base_of",
+    "__is_trivially_equality_comparable",
+    "__is_bounded_array",
+    "__is_unbounded_array",
+    "__is_scoped_enum",
+    "__can_pass_in_regs",
+    "__reference_binds_to_temporary",
+    "__reference_constructs_from_temporary",
+    "__reference_converts_from_temporary",
+    "__builtin_lt_synthesizes_from_spaceship",
+    "__builtin_le_synthesizes_from_spaceship",
+    "__builtin_gt_synthesizes_from_spaceship",
+    "__builtin_ge_synthesizes_from_spaceship",
+    "__builtin_is_cpp_trivially_relocatable",
+    "__is_trivially_relocatable",
+    "__is_bitwise_cloneable",
+    "__builtin_structured_binding_size",
+    "__is_lvalue_expr",
+    "__is_rvalue_expr",
+    "__is_arithmetic",
+    "__is_floating_point",
+    "__is_integral",
+    "__is_complete_type",
+    "__is_void",
+    "__is_array",
+    "__is_function",
+    "__is_reference",
+    "__is_lvalue_reference",
+    "__is_rvalue_reference",
+    "__is_fundamental",
+    "__is_object",
+    "__is_scalar",
+    "__is_compound",
+    "__is_pointer",
+    "__is_member_object_pointer",
+    "__is_member_function_pointer",
+    "__is_member_pointer",
+    "__is_const",
+    "__is_volatile",
+    "__is_signed",
+    "__is_unsigned",
+    "__is_same",
+    "__is_convertible",
+    "__is_nothrow_convertible",
+    "__array_rank",
+    "__array_extent",
+    "__builtin_hlsl_is_scalarized_layout_compatible",
+    "__builtin_hlsl_is_intangible",
+    "__builtin_hlsl_is_typed_resource_element_compatible",
+    "__add_lvalue_reference",
+    "__add_pointer",
+    "__add_rvalue_reference",
+    "__decay",
+    "__make_signed",
+    "__make_unsigned",
+    "__remove_all_extents",
+    "__remove_const",
+    "__remove_cv",
+    "__remove_cvref",
+    "__remove_extent",
+    "__remove_pointer",
+    "__remove_reference_t",
+    "__remove_restrict",
+    "__remove_volatile",
+    "__underlying_type",
+};
+
+}  // namespace
+
 const char *token_kind_name(TokenKind kind) {
   switch (kind) {
     case TokenKind::IntLit:    return "INT_LIT";
@@ -311,6 +441,20 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
   }
 
   return TokenKind::Identifier;
+}
+
+bool is_builtin_type_trait_name(const std::string &s) {
+  return string_in_list(s, kBuiltinTypeTraitNames,
+                        sizeof(kBuiltinTypeTraitNames) /
+                            sizeof(kBuiltinTypeTraitNames[0]));
+}
+
+bool is_parser_supported_builtin_type_trait_name(const std::string &s) {
+  if (!is_builtin_type_trait_name(s)) return false;
+  if (s == "__builtin_types_compatible_p") return true;
+  if (s == "__is_lvalue_expr" || s == "__is_rvalue_expr") return false;
+  if (starts_with(s, "__is_") || starts_with(s, "__has_")) return true;
+  return false;
 }
 
 }  // namespace c4c
