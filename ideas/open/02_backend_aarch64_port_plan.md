@@ -122,6 +122,11 @@ The main progress measure is:
 - the emitted `.s` can be assembled into ELF `.o` files through the existing `llvm-mc` path
 - compile-time progress is monotonic even before broader runtime behavior is complete
 
+## Follow-On Split Notes
+
+- keep broader local stack-slot/addressing work out of this bring-up idea once it expands beyond the exact `local_temp` single-slot rewrite seam
+- track that next local-memory phase in `ideas/open/09_backend_aarch64_local_memory_addressing_plan.md` instead of widening this idea ad hoc
+
 ## Acceptance Target
 
 For this idea, hello-world-level bring-up is enough.
