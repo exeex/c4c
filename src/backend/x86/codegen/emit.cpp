@@ -55,6 +55,13 @@ struct MinimalGlobalCharPointerDiffSlice {
   std::int64_t byte_offset = 0;
 };
 
+struct MinimalStringLiteralCharSlice {
+  std::string pool_name;
+  std::string raw_bytes;
+  std::int64_t byte_offset = 0;
+  bool sign_extend = true;
+};
+
 std::optional<std::int64_t> parse_i64(std::string_view text) {
   std::int64_t value = 0;
   const char* begin = text.data();
@@ -82,6 +89,57 @@ std::string asm_symbol_name(const c4c::backend::BackendModule& module,
       module.target_triple.find("apple-darwin") != std::string::npos;
   if (!is_darwin) return std::string(logical_name);
   return std::string("_") + std::string(logical_name);
+}
+
+std::string asm_private_data_label(const c4c::codegen::lir::LirModule& module,
+                                   std::string_view pool_name) {
+  std::string label(pool_name);
+  if (!label.empty() && label.front() == '@') {
+    label.erase(label.begin());
+  }
+  while (!label.empty() && label.front() == '.') {
+    label.erase(label.begin());
+  }
+
+  const bool is_darwin =
+      module.target_triple.find("apple-darwin") != std::string::npos;
+  if (is_darwin) {
+    return "L." + label;
+  }
+  return ".L." + label;
+}
+
+std::string escape_asm_string(std::string_view bytes) {
+  static constexpr char kHexDigits[] = "0123456789abcdef";
+
+  std::string escaped;
+  escaped.reserve(bytes.size());
+  for (unsigned char ch : bytes) {
+    switch (ch) {
+      case '\\':
+        escaped += "\\\\";
+        break;
+      case '"':
+        escaped += "\\\"";
+        break;
+      case '\n':
+        escaped += "\\n";
+        break;
+      case '\t':
+        escaped += "\\t";
+        break;
+      default:
+        if (ch >= 0x20 && ch <= 0x7e) {
+          escaped.push_back(static_cast<char>(ch));
+        } else {
+          escaped += "\\x";
+          escaped.push_back(kHexDigits[(ch >> 4) & 0xf]);
+          escaped.push_back(kHexDigits[ch & 0xf]);
+        }
+        break;
+    }
+  }
+  return escaped;
 }
 
 const c4c::codegen::lir::LirFunction* find_lir_function(
@@ -677,6 +735,85 @@ std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_point
   return MinimalGlobalCharPointerDiffSlice{global.name, *global_size, *byte_index};
 }
 
+std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || module.string_pool.size() != 1 ||
+      !module.globals.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& string_const = module.string_pool.front();
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+      function.entry.value != 0 || function.blocks.size() != 1 ||
+      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  if (entry.label != "entry" || entry.insts.size() != 5) {
+    return std::nullopt;
+  }
+
+  const auto* base_gep = std::get_if<LirGepOp>(&entry.insts[0]);
+  const auto* index_cast = std::get_if<LirCastOp>(&entry.insts[1]);
+  const auto* byte_gep = std::get_if<LirGepOp>(&entry.insts[2]);
+  const auto* load = std::get_if<LirLoadOp>(&entry.insts[3]);
+  const auto* extend = std::get_if<LirCastOp>(&entry.insts[4]);
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (base_gep == nullptr || index_cast == nullptr || byte_gep == nullptr ||
+      load == nullptr || extend == nullptr || ret == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto string_array_type =
+      "[" + std::to_string(string_const.byte_length) + " x i8]";
+  if (base_gep->element_type != string_array_type || base_gep->ptr != string_const.pool_name ||
+      base_gep->indices.size() != 2 || base_gep->indices[0] != "i64 0" ||
+      base_gep->indices[1] != "i64 0") {
+    return std::nullopt;
+  }
+
+  if (index_cast->kind != LirCastKind::SExt || index_cast->from_type != "i32" ||
+      index_cast->to_type != "i64") {
+    return std::nullopt;
+  }
+  const auto byte_index = parse_i64(index_cast->operand);
+  if (!byte_index.has_value() || *byte_index < 0 ||
+      *byte_index >= static_cast<std::int64_t>(string_const.byte_length)) {
+    return std::nullopt;
+  }
+
+  if (byte_gep->element_type != "i8" || byte_gep->ptr != base_gep->result ||
+      byte_gep->indices.size() != 1 || byte_gep->indices[0] != ("i64 " + index_cast->result)) {
+    return std::nullopt;
+  }
+
+  if (load->type_str != "i8" || load->ptr != byte_gep->result) {
+    return std::nullopt;
+  }
+
+  if ((extend->kind != LirCastKind::SExt && extend->kind != LirCastKind::ZExt) ||
+      extend->from_type != "i8" || extend->operand != load->result ||
+      extend->to_type != "i32") {
+    return std::nullopt;
+  }
+
+  if (!ret->value_str.has_value() || *ret->value_str != extend->result ||
+      ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  return MinimalStringLiteralCharSlice{
+      string_const.pool_name,
+      string_const.raw_bytes,
+      *byte_index,
+      extend->kind == LirCastKind::SExt,
+  };
+}
+
 std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_direct_call_slice(
     const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 2) return std::nullopt;
@@ -883,6 +1020,29 @@ std::string emit_minimal_global_char_pointer_diff_asm(
   return out.str();
 }
 
+std::string emit_minimal_string_literal_char_asm(
+    const c4c::codegen::lir::LirModule& module,
+    const MinimalStringLiteralCharSlice& slice) {
+  c4c::backend::BackendModule backend_module;
+  backend_module.target_triple = module.target_triple;
+  const std::string string_label = asm_private_data_label(module, slice.pool_name);
+  const std::string main_symbol = asm_symbol_name(backend_module, "main");
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".section .rodata\n";
+  out << string_label << ":\n"
+      << "  .asciz \"" << escape_asm_string(slice.raw_bytes) << "\"\n";
+  out << ".text\n";
+  out << ".globl " << main_symbol << "\n";
+  out << main_symbol << ":\n";
+  out << "  lea rax, " << string_label << "[rip]\n"
+      << "  " << (slice.sign_extend ? "movsx" : "movzx")
+      << " eax, byte ptr [rax + " << slice.byte_offset << "]\n"
+      << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_call_crossing_direct_call_asm(
     const c4c::backend::BackendModule& module,
     const c4c::backend::RegAllocIntegrationResult& regalloc,
@@ -1008,6 +1168,10 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       c4c::backend::BackendModule scaffold_module;
       scaffold_module.target_triple = module.target_triple;
       return emit_minimal_global_char_pointer_diff_asm(scaffold_module, *slice);
+    }
+    if (const auto slice = parse_minimal_string_literal_char_slice(module);
+        slice.has_value()) {
+      return emit_minimal_string_literal_char_asm(module, *slice);
     }
     if (const auto slice = parse_minimal_conditional_return_slice(module);
         slice.has_value()) {

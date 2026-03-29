@@ -2069,6 +2069,14 @@ c4c::codegen::lir::LirModule make_x86_extern_global_array_load_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_x86_string_literal_char_module() {
+  auto module = make_string_literal_char_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_global_char_pointer_diff_module() {
   using namespace c4c::codegen::lir;
 
@@ -3288,6 +3296,32 @@ void test_x86_backend_renders_extern_global_array_slice() {
                   "x86 backend should return the extern global array load result");
   expect_not_contains(rendered, "getelementptr",
                       "x86 backend should no longer fall back to LLVM text for the extern global array slice");
+}
+
+void test_x86_backend_renders_string_literal_char_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_string_literal_char_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".intel_syntax noprefix\n",
+                  "x86 backend should lower the bounded string-literal char slice to assembly");
+  expect_contains(rendered, ".section .rodata\n",
+                  "x86 backend should place the promoted string literal into read-only data");
+  expect_contains(rendered, ".L.str0:\n",
+                  "x86 backend should emit a local string-pool label for the literal");
+  expect_contains(rendered, "  .asciz \"hi\"\n",
+                  "x86 backend should materialize the promoted string-literal bytes");
+  expect_contains(rendered, ".text\n",
+                  "x86 backend should resume emission in the text section for main");
+  expect_contains(rendered, ".globl main\n",
+                  "x86 backend should still publish main as the entry symbol");
+  expect_contains(rendered, "lea rax, .L.str0[rip]\n",
+                  "x86 backend should materialize the string-literal base with RIP-relative addressing");
+  expect_contains(rendered, "movsx eax, byte ptr [rax + 1]\n",
+                  "x86 backend should load and sign-extend the indexed string-literal byte");
+  expect_contains(rendered, "ret\n",
+                  "x86 backend should return the promoted string-literal result");
+  expect_not_contains(rendered, "getelementptr",
+                      "x86 backend should no longer fall back to LLVM text for the string-literal char slice");
 }
 
 void test_x86_backend_renders_global_char_pointer_diff_slice() {
@@ -5339,6 +5373,7 @@ int main() {
   test_x86_backend_renders_compare_and_branch_gt_slice();
   test_x86_backend_renders_compare_and_branch_ge_slice();
   test_x86_backend_renders_extern_global_array_slice();
+  test_x86_backend_renders_string_literal_char_slice();
   test_x86_backend_renders_global_char_pointer_diff_slice();
   test_aarch64_backend_renders_void_return_slice();
   test_aarch64_backend_preserves_module_headers_and_declarations();
