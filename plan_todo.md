@@ -7,14 +7,15 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: Replace `requires` skip paths with dedicated grammar entry points
+  by handling trailing function-declarator `requires` clauses explicitly
 
 ## Next Slice
 
-- extend explicit declaration-side `requires` handling beyond the first
-  top-level template path
-- add the next reduced repro for a remaining declaration `requires` site that
-  still depends on skip-style acceptance or weak recovery
-- keep follow-up work scoped to parser acceptance and local recovery behavior
+- extend explicit trailing `requires` handling to the next declaration site
+  that still routes through weak recovery or variable-style fallback
+- add a reduced repro that proves the next constrained declaration keeps its
+  body or following declaration attached
+- keep the Step 3 follow-up scoped to parser acceptance and local recovery
 
 ## Planned Steps
 
@@ -46,6 +47,13 @@ Source Plan: plan.md
   constrained template no longer swallows a following top-level declaration
 - [x] Rebuilt, ran focused `requires` coverage, and passed the full regression
   guard with `2373/2373` tests passing and zero new failures
+- [x] Added `cpp20_trailing_requires_clause_parse.cpp` to prove a constrained
+  function keeps its trailing `requires` clause and body attached
+- [x] Routed top-level trailing function `requires` clauses through an
+  explicit parser helper that stops before the real function body while still
+  accepting nested `requires { ... }` blocks
+- [x] Rebuilt, ran focused `requires` coverage, and passed the full regression
+  guard with `2374/2374` tests passing and zero new failures
 
 ## Blockers
 
@@ -60,3 +68,5 @@ Source Plan: plan.md
   surface
 - the first declaration-side `requires` clause path now uses an explicit parser
   entry point; continue Step 3 by targeting the next remaining skip-style site
+- top-level constrained function definitions now parse through their trailing
+  `requires` clause without dropping the function body into expression parsing

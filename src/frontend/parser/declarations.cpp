@@ -153,6 +153,50 @@ void parse_optional_cpp20_requires_clause(Parser& parser) {
     }
 }
 
+void parse_optional_cpp20_trailing_requires_clause(Parser& parser) {
+    if (!parser.is_cpp_mode() || !parser.check(TokenKind::KwRequires)) {
+        return;
+    }
+
+    parser.consume();  // requires
+    bool consumed_constraint = false;
+    while (!parser.at_end()) {
+        if (parser.check(TokenKind::Semi) ||
+            parser.check(TokenKind::Assign) ||
+            parser.check(TokenKind::Comma) ||
+            parser.check(TokenKind::LBrace)) {
+            break;
+        }
+
+        consumed_constraint = true;
+        if (parser.check(TokenKind::KwRequires)) {
+            parser.consume();
+            if (parser.check(TokenKind::LParen)) parser.skip_paren_group();
+            if (parser.check(TokenKind::LBrace)) parser.skip_brace_group();
+            continue;
+        }
+        if (parser.check(TokenKind::LParen)) {
+            parser.skip_paren_group();
+            continue;
+        }
+        if (parser.check(TokenKind::LBracket)) {
+            parser.consume();
+            int depth = 1;
+            while (!parser.at_end() && depth > 0) {
+                if (parser.check(TokenKind::LBracket)) ++depth;
+                else if (parser.check(TokenKind::RBracket)) --depth;
+                parser.consume();
+            }
+            continue;
+        }
+        parser.consume();
+    }
+
+    if (!consumed_constraint) {
+        throw std::runtime_error("expected constraint-expression after requires");
+    }
+}
+
 }  // namespace
 
 Node* Parser::parse_local_decl() {
@@ -1934,6 +1978,7 @@ top_level_base_ready:
     // Params were already parsed into fptr_fn_params; now look for { body }.
     if (fn_returning_fptr && decl_name) {
         parse_attributes(&ts); skip_asm(); parse_attributes(&ts); skip_attributes();
+        parse_optional_cpp20_trailing_requires_clause(*this);
         if (check(TokenKind::LBrace)) {
             bool saved_top = parsing_top_level_context_;
             parsing_top_level_context_ = false;
@@ -2042,6 +2087,7 @@ top_level_base_ready:
             ts = parse_type_name();
             parse_attributes(&ts);
         }
+        parse_optional_cpp20_trailing_requires_clause(*this);
 
         // K&R style parameter declarations before body:
         //   f(a, b) int a; short *b; { ... }
