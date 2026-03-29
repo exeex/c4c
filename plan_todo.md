@@ -6,9 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 2: evaluate `not_eq` as the next narrow alternative-operator
-  spelling slice after `not`, keeping coverage scoped to lexer tokenization
-  plus the smallest equality-operator compatibility edge it exposes
+- [ ] Step 2: evaluate the next narrow alternative-operator spelling after
+  `not_eq`, keeping coverage scoped to lexer tokenization plus the smallest
+  parser compatibility edge it exposes
 
 ## Todo
 
@@ -21,6 +21,12 @@ Source Plan: plan.md
 - [x] Record the current full-suite baseline before implementation work
 - [x] Add the narrowest validating lexer or parser test for the first slice
 - [x] Implement the first keyword-classification slice
+- [x] Re-run targeted tests, nearby coverage, and the full suite
+- [x] Record a fresh full-suite baseline in `test_before.log` before the
+  `not_eq` slice
+- [x] Add the narrowest validating lexer / parser coverage for the `not_eq`
+  slice
+- [x] Implement the `not_eq` alternative-operator slice
 - [x] Re-run targeted tests, nearby coverage, and the full suite
 - [x] Record a fresh full-suite baseline in `test_before.log` before the `and`
   slice
@@ -194,12 +200,32 @@ Source Plan: plan.md
   `friend_inline_operator_parse`.
 - [x] Recorded full-suite post-change status in `test_after.log`:
   `100% tests passed, 0 tests failed out of 2355`.
+- [x] Recorded fresh full-suite baseline in `test_before.log` before the
+  `not_eq` slice: `100% tests passed, 0 tests failed out of 2355`.
+- [x] Added
+  [tests/cpp/internal/postive_case/keyword_not_eq_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/keyword_not_eq_parse.cpp),
+  registered it as a positive case, and added explicit lexer / AST assertions
+  in
+  [tests/cpp/internal/InternalTests.cmake](/workspaces/c4c/tests/cpp/internal/InternalTests.cmake)
+  to pin `BANG_EQUAL 'not_eq'` output plus `Function(operator_neq)` in the
+  parse dump.
+- [x] Reserved `not_eq` in the lexer by classifying it to the existing
+  `TokenKind::BangEqual`, allowing both ordinary `a not_eq b` parsing and
+  overloaded `operator not_eq` lowering through the existing inequality token
+  path.
+- [x] Revalidated the slice with targeted coverage:
+  `keyword_not_eq_parse`, `cpp_lex_keyword_not_eq_tokens`,
+  `cpp_parse_keyword_not_eq_operator_dump`, `keyword_not_parse`,
+  `keyword_and_parse`, `keyword_or_parse`, `operator_decl_eq_parse`, and
+  `friend_inline_operator_parse`.
+- [x] Recorded full-suite post-change status in `test_after.log`:
+  `100% tests passed, 0 tests failed out of 2358`.
 
 ## Next Intended Slice
 
-After `not_eq`, evaluate whether another remaining
-alternative-operator spelling to land without widening into a broader alias
-batch or forcing unary-expression cleanup beyond the lexer/parser boundary.
+After `not_eq`, evaluate whether `bitand`, `bitor`, `xor`, `compl`, or one of
+the assignment-form aliases can land as the next single-token slice without
+widening into a broader alias batch.
 
 ## Blockers
 
@@ -246,3 +272,8 @@ batch or forcing unary-expression cleanup beyond the lexer/parser boundary.
   condition contexts. That behavior is adjacent but out of scope for this
   lexer/parser runbook, so the committed `and` coverage stays at the
   lexer/parse boundary.
+- A first draft of the `not_eq` regression exposed the same out-of-scope
+  backend gap for record-typed `!=` lowering (`icmp ne` on aggregate values in
+  generated LLVM IR), so the committed case keeps the overloaded
+  `operator not_eq` declaration while restricting the executable expression to
+  builtin `int` operands at the lexer/parser boundary.

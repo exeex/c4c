@@ -266,6 +266,24 @@ set_tests_properties(cpp_parse_keyword_not_operator_dump PROPERTIES
 )
 
 add_test(
+  NAME cpp_lex_keyword_not_eq_tokens
+  COMMAND c4cll --lex-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/keyword_not_eq_parse.cpp"
+)
+set_tests_properties(cpp_lex_keyword_not_eq_tokens PROPERTIES
+  LABELS "internal;positive_case;cpp;lex"
+  PASS_REGULAR_EXPRESSION "BANG_EQUAL 'not_eq'"
+)
+
+add_test(
+  NAME cpp_parse_keyword_not_eq_operator_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/keyword_not_eq_parse.cpp"
+)
+set_tests_properties(cpp_parse_keyword_not_eq_operator_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Function\\(operator_neq\\)"
+)
+
+add_test(
   NAME cpp_hir_template_def_dump
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_func.cpp"
 )
