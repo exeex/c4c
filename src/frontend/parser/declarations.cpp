@@ -164,7 +164,8 @@ void parse_optional_cpp20_trailing_requires_clause(Parser& parser) {
         if (parser.check(TokenKind::Semi) ||
             parser.check(TokenKind::Assign) ||
             parser.check(TokenKind::Comma) ||
-            parser.check(TokenKind::LBrace)) {
+            parser.check(TokenKind::LBrace) ||
+            parser.check(TokenKind::Colon)) {
             break;
         }
 
@@ -1207,42 +1208,178 @@ Node* Parser::parse_top_level() {
     //   Type::operator bool() const { ... }
     // There is no explicit return type, so handle these before parse_base_type().
     if (is_cpp_mode() && !is_typedef) {
-        int op_probe = pos_;
-        if (op_probe < static_cast<int>(tokens_.size()) &&
-            tokens_[op_probe].kind == TokenKind::ColonColon) {
-            ++op_probe;
-        }
-        bool saw_qualified_name = false;
-        if (op_probe < static_cast<int>(tokens_.size()) &&
-            tokens_[op_probe].kind == TokenKind::Identifier) {
-            saw_qualified_name = true;
-            ++op_probe;
-            while (op_probe + 1 < static_cast<int>(tokens_.size()) &&
-                   tokens_[op_probe].kind == TokenKind::ColonColon &&
-                   tokens_[op_probe + 1].kind == TokenKind::Identifier) {
-                op_probe += 2;
+        const int saved_special_member_pos = pos_;
+        auto consume_optional_template_id = [&]() -> bool {
+            if (!check(TokenKind::Less)) return true;
+            int depth = 1;
+            consume();
+            while (!at_end() && depth > 0) {
+                if (check(TokenKind::Less)) {
+                    ++depth;
+                    consume();
+                    continue;
+                }
+                if (check_template_close()) {
+                    --depth;
+                    if (!match_template_close()) return false;
+                    continue;
+                }
+                consume();
             }
-        }
-        bool looks_like_qualified_operator =
-            saw_qualified_name &&
-            op_probe + 1 < static_cast<int>(tokens_.size()) &&
-            tokens_[op_probe].kind == TokenKind::ColonColon &&
-            tokens_[op_probe + 1].kind == TokenKind::KwOperator;
+            return depth == 0;
+        };
+
+        auto probe_skip_optional_template_id = [&](int* probe_pos) -> bool {
+            if (!probe_pos) return false;
+            if (*probe_pos >= static_cast<int>(tokens_.size()) ||
+                tokens_[*probe_pos].kind != TokenKind::Less) {
+                return true;
+            }
+            int depth = 1;
+            ++(*probe_pos);
+            while (*probe_pos < static_cast<int>(tokens_.size()) && depth > 0) {
+                const TokenKind kind = tokens_[*probe_pos].kind;
+                if (kind == TokenKind::Less) {
+                    ++depth;
+                    ++(*probe_pos);
+                    continue;
+                }
+                if (kind == TokenKind::Greater) {
+                    --depth;
+                    ++(*probe_pos);
+                    continue;
+                }
+                if (kind == TokenKind::GreaterGreater) {
+                    depth -= 2;
+                    ++(*probe_pos);
+                    continue;
+                }
+                if (kind == TokenKind::GreaterEqual) {
+                    --depth;
+                    ++(*probe_pos);
+                    continue;
+                }
+                if (kind == TokenKind::GreaterGreaterAssign) {
+                    depth -= 2;
+                    ++(*probe_pos);
+                    continue;
+                }
+                ++(*probe_pos);
+            }
+            return depth <= 0;
+        };
+
+        auto probe_special_member_owner =
+            [&](std::string* out_owner, std::string* out_base_name,
+                bool* out_is_operator, bool* out_is_ctor) -> bool {
+                if (out_owner) out_owner->clear();
+                if (out_base_name) out_base_name->clear();
+                if (out_is_operator) *out_is_operator = false;
+                if (out_is_ctor) *out_is_ctor = false;
+
+                int probe = saved_special_member_pos;
+                if (probe < static_cast<int>(tokens_.size()) &&
+                    tokens_[probe].kind == TokenKind::ColonColon) {
+                    ++probe;
+                }
+                if (probe >= static_cast<int>(tokens_.size()) ||
+                    tokens_[probe].kind != TokenKind::Identifier) {
+                    return false;
+                }
+
+                std::string owner;
+                while (true) {
+                    const std::string seg = tokens_[probe].lexeme;
+                    ++probe;
+                    if (!probe_skip_optional_template_id(&probe)) {
+                        return false;
+                    }
+
+                    if (probe + 1 < static_cast<int>(tokens_.size()) &&
+                        tokens_[probe].kind == TokenKind::ColonColon &&
+                        tokens_[probe + 1].kind == TokenKind::KwOperator) {
+                        if (!owner.empty()) owner += "::";
+                        owner += seg;
+                        if (out_owner) *out_owner = owner;
+                        if (out_base_name) *out_base_name = seg;
+                        if (out_is_operator) *out_is_operator = true;
+                        return true;
+                    }
+
+                    if (probe + 1 < static_cast<int>(tokens_.size()) &&
+                        tokens_[probe].kind == TokenKind::ColonColon &&
+                        tokens_[probe + 1].kind == TokenKind::Identifier) {
+                        const std::string next_name = tokens_[probe + 1].lexeme;
+                        int terminal_probe = probe + 2;
+                        if (next_name == seg &&
+                            terminal_probe < static_cast<int>(tokens_.size()) &&
+                            tokens_[terminal_probe].kind == TokenKind::LParen) {
+                            if (!owner.empty()) owner += "::";
+                            owner += seg;
+                            if (out_owner) *out_owner = owner;
+                            if (out_base_name) *out_base_name = seg;
+                            if (out_is_ctor) *out_is_ctor = true;
+                            return true;
+                        }
+
+                        if (!owner.empty()) owner += "::";
+                        owner += seg;
+                        probe += 2;
+                        continue;
+                    }
+
+                    return false;
+                }
+            };
+
+        auto consume_special_member_owner =
+            [&](bool stop_before_operator, bool stop_before_ctor) -> bool {
+                pos_ = saved_special_member_pos;
+                if (check(TokenKind::ColonColon)) consume();
+                if (!check(TokenKind::Identifier)) return false;
+
+                while (true) {
+                    const std::string seg = cur().lexeme;
+                    consume();
+                    if (!consume_optional_template_id()) return false;
+
+                    if (stop_before_operator &&
+                        check(TokenKind::ColonColon) &&
+                        peek(1).kind == TokenKind::KwOperator) {
+                        return true;
+                    }
+
+                    if (stop_before_ctor &&
+                        check(TokenKind::ColonColon) &&
+                        peek(1).kind == TokenKind::Identifier &&
+                        peek(1).lexeme == seg &&
+                        pos_ + 2 < static_cast<int>(tokens_.size()) &&
+                        tokens_[pos_ + 2].kind == TokenKind::LParen) {
+                        return true;
+                    }
+
+                    if (check(TokenKind::ColonColon) && peek(1).kind == TokenKind::Identifier) {
+                        consume();
+                        continue;
+                    }
+
+                    return false;
+                }
+            };
+
+        std::string qualified_owner;
+        std::string owner_base_name;
+        bool looks_like_qualified_operator = false;
+        bool looks_like_qualified_ctor = false;
+        probe_special_member_owner(&qualified_owner, &owner_base_name,
+                                   &looks_like_qualified_operator,
+                                   &looks_like_qualified_ctor);
 
         if (looks_like_qualified_operator) {
-            match(TokenKind::ColonColon);
-            std::string qualified_owner;
-            if (check(TokenKind::Identifier)) {
-                qualified_owner += cur().lexeme;
-                consume();
+            if (!consume_special_member_owner(/*stop_before_operator=*/true,
+                                              /*stop_before_ctor=*/false)) {
+                pos_ = saved_special_member_pos;
             }
-            while (check(TokenKind::ColonColon) && peek(1).kind == TokenKind::Identifier) {
-                consume();
-                if (!qualified_owner.empty()) qualified_owner += "::";
-                qualified_owner += cur().lexeme;
-                consume();
-            }
-
             expect(TokenKind::ColonColon);
             expect(TokenKind::KwOperator);
 
@@ -1315,6 +1452,7 @@ Node* Parser::parse_top_level() {
                 }
             }
             skip_exception_spec();
+            parse_optional_cpp20_trailing_requires_clause(*this);
 
             Node* fn = make_node(NK_FUNCTION, ln);
             fn->type = conv_ts;
@@ -1361,50 +1499,28 @@ Node* Parser::parse_top_level() {
             return fn;
         }
 
-        QualifiedNameRef ctor_qn;
-        if (peek_qualified_name(&ctor_qn, true) &&
-            !ctor_qn.qualifier_segments.empty() &&
-            ctor_qn.qualifier_segments.back() == ctor_qn.base_name) {
-            int after_qn = pos_;
-            if (ctor_qn.is_global_qualified &&
-                after_qn < static_cast<int>(tokens_.size()) &&
-                tokens_[after_qn].kind == TokenKind::ColonColon) {
-                ++after_qn;
+        if (looks_like_qualified_ctor) {
+            if (!consume_special_member_owner(/*stop_before_operator=*/false,
+                                              /*stop_before_ctor=*/true)) {
+                pos_ = saved_special_member_pos;
             }
-            if (after_qn < static_cast<int>(tokens_.size()) &&
-                tokens_[after_qn].kind == TokenKind::Identifier) {
-                ++after_qn;
-            }
-            while (after_qn + 1 < static_cast<int>(tokens_.size()) &&
-                   tokens_[after_qn].kind == TokenKind::ColonColon &&
-                   tokens_[after_qn + 1].kind == TokenKind::Identifier) {
-                after_qn += 2;
-            }
-            if (after_qn < static_cast<int>(tokens_.size()) &&
-                tokens_[after_qn].kind == TokenKind::LParen) {
-                QualifiedNameRef parsed_ctor_qn = parse_qualified_name(true);
-                std::string qualified_ctor_name;
-                for (size_t i = 0; i < parsed_ctor_qn.qualifier_segments.size(); ++i) {
-                    if (i) qualified_ctor_name += "::";
-                    qualified_ctor_name += parsed_ctor_qn.qualifier_segments[i];
-                }
+            expect(TokenKind::ColonColon);
+            const std::string ctor_name = cur().lexeme;
+            consume();
+            if (check(TokenKind::LParen)) {
+                std::string qualified_ctor_name = qualified_owner;
                 if (!qualified_ctor_name.empty()) qualified_ctor_name += "::";
-                qualified_ctor_name += parsed_ctor_qn.base_name;
+                qualified_ctor_name += ctor_name;
 
                 // Enter owner scope for out-of-class constructor definition.
-                std::string ctor_owner;
-                for (size_t i = 0; i < parsed_ctor_qn.qualifier_segments.size(); ++i) {
-                    if (i) ctor_owner += "::";
-                    ctor_owner += parsed_ctor_qn.qualifier_segments[i];
-                }
                 std::string saved_tag_ctor = current_struct_tag_;
-                current_struct_tag_ = ctor_owner;
+                current_struct_tag_ = qualified_owner;
                 if (!template_scope_stack_.empty() &&
                     template_scope_stack_.back().kind == TemplateScopeKind::FreeFunctionTemplate &&
-                    (find_template_struct_primary(ctor_owner) ||
-                     template_struct_defs_.count(ctor_owner))) {
+                    (find_template_struct_primary(qualified_owner) ||
+                     template_struct_defs_.count(qualified_owner))) {
                     template_scope_stack_.back().kind = TemplateScopeKind::EnclosingClass;
-                    template_scope_stack_.back().owner_struct_tag = ctor_owner;
+                    template_scope_stack_.back().owner_struct_tag = qualified_owner;
                 }
 
                 consume();  // (
@@ -1428,6 +1544,7 @@ Node* Parser::parse_top_level() {
                 }
                 expect(TokenKind::RParen);
                 skip_exception_spec();
+                parse_optional_cpp20_trailing_requires_clause(*this);
 
                 std::vector<const char*> init_names;
                 std::vector<std::vector<Node*>> init_args_list;
@@ -1515,6 +1632,7 @@ Node* Parser::parse_top_level() {
                 return fn;
             }
         }
+        pos_ = saved_special_member_pos;
     }
 
     TypeSpec base_ts{};

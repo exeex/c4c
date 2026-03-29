@@ -6,24 +6,23 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 3: Replace `requires` skip paths with dedicated grammar entry points
-  by extending explicit trailing `requires` handling beyond the first
-  top-level function path
+- Step 4: Reconnect to motivating library-facing repros by rerunning the
+  parser-facing `std::vector` or libstdc++ slices that depend on normalized
+  `requires` parsing
 
 ## Next Slice
 
-- extend explicit trailing `requires` handling to the next declaration path
-  that still bypasses the helper, with out-of-class constructor and
-  conversion-operator definitions as the leading candidate
-- add a reduced repro that proves the next constrained declaration keeps its
-  body or initializer attachment through the specialized path
-- keep the Step 3 follow-up scoped to parser acceptance and local recovery
+- rerun the motivating reduced libstdc++ or `std::vector` repro that first
+  exposed the constrained declaration parsing gaps
+- record any surviving blocker as a separate follow-up idea instead of
+  broadening this runbook back into general library bring-up
+- keep the next slice scoped to confirming the parser frontier moved
 
 ## Planned Steps
 
 - [x] Step 1: Normalize lexer keyword coverage
 - [x] Step 2: Add explicit parser support for contextual `final` and `override`
-- [ ] Step 3: Replace `requires` skip paths with dedicated grammar entry points
+- [x] Step 3: Replace `requires` skip paths with dedicated grammar entry points
 - [ ] Step 4: Reconnect to motivating library-facing repros
 
 ## Completed
@@ -65,6 +64,16 @@ Source Plan: plan.md
 - [x] Rebuilt, ran focused `requires` and record-member coverage, and passed
   the full regression guard with `2375/2375` tests passing and zero new
   failures
+- [x] Added `cpp20_out_of_class_trailing_requires_runtime.cpp` to catch
+  constrained out-of-class constructor and conversion-operator definitions
+  whose trailing `requires` clauses were bypassing the specialized parser path
+- [x] Taught the out-of-class special-member recognizer to stop at
+  template-qualified owners, consume trailing `requires` clauses before
+  constructor initializer lists or bodies, and avoid speculative token-stream
+  mutation during owner probing
+- [x] Rebuilt, ran the focused constrained-member coverage plus the exposed
+  parser-debug/template regressions, and passed the full regression guard with
+  `2376/2376` tests passing and zero new failures
 
 ## Blockers
 
@@ -77,10 +86,10 @@ Source Plan: plan.md
   diagnostics
 - add reduced tests before parser edits and keep each patch tied to one syntax
   surface
-- the first declaration-side `requires` clause path now uses an explicit parser
-  entry point; continue Step 3 by targeting the next remaining skip-style site
 - top-level constrained function definitions now parse through their trailing
   `requires` clause without dropping the function body into expression parsing
 - constrained record members now keep constructor, conversion-operator, and
-  ordinary method bodies attached after instantiation; the next likely Step 3
-  follow-up is the analogous out-of-class special-member path
+  ordinary method bodies attached after instantiation
+- constrained out-of-class constructors and conversion operators now parse
+  through explicit trailing `requires` handling even when the owner is written
+  as a template-id such as `holder<T>::...`
