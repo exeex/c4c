@@ -225,6 +225,7 @@ bool is_top_level_decl_recovery_boundary(TokenKind kind) {
         case TokenKind::KwFloat:
         case TokenKind::KwDouble:
         case TokenKind::KwStruct:
+        case TokenKind::KwClass:
         case TokenKind::KwUnion:
         case TokenKind::KwEnum:
         case TokenKind::KwConst:
@@ -232,10 +233,13 @@ bool is_top_level_decl_recovery_boundary(TokenKind kind) {
         case TokenKind::KwStatic:
         case TokenKind::KwExtern:
         case TokenKind::KwInline:
+        case TokenKind::KwConstexpr:
+        case TokenKind::KwConsteval:
         case TokenKind::KwTypedef:
         case TokenKind::KwAuto:
         case TokenKind::KwTemplate:
         case TokenKind::KwConcept:
+        case TokenKind::KwNamespace:
         case TokenKind::KwUsing:
         case TokenKind::KwStaticAssert:
         case TokenKind::KwAsm:
@@ -1956,40 +1960,9 @@ Node* Parser::parse_top_level() {
         if (!maybe_implicit_int_fn) {
             const int recovery_line = !at_end() ? cur().line : ln;
             while (!at_end() && !check(TokenKind::Semi)) {
-                if (cur().line != recovery_line) {
-                    switch (cur().kind) {
-                        case TokenKind::KwVoid:
-                        case TokenKind::KwBool:
-                        case TokenKind::KwChar:
-                        case TokenKind::KwShort:
-                        case TokenKind::KwInt:
-                        case TokenKind::KwLong:
-                        case TokenKind::KwSigned:
-                        case TokenKind::KwUnsigned:
-                        case TokenKind::KwFloat:
-                        case TokenKind::KwDouble:
-                        case TokenKind::KwStruct:
-                        case TokenKind::KwUnion:
-                        case TokenKind::KwEnum:
-                        case TokenKind::KwConst:
-                        case TokenKind::KwVolatile:
-                        case TokenKind::KwStatic:
-                        case TokenKind::KwExtern:
-                        case TokenKind::KwInline:
-                        case TokenKind::KwTypedef:
-                        case TokenKind::KwAuto:
-                        case TokenKind::KwTemplate:
-                        case TokenKind::KwConcept:
-                        case TokenKind::KwUsing:
-                        case TokenKind::KwStaticAssert:
-                        case TokenKind::KwAsm:
-                        case TokenKind::PragmaPack:
-                        case TokenKind::PragmaWeak:
-                        case TokenKind::PragmaGccVisibility:
-                            goto top_level_decl_recovery_done;
-                        default:
-                            break;
-                    }
+                if (cur().line != recovery_line &&
+                    is_top_level_decl_recovery_boundary(cur().kind)) {
+                    goto top_level_decl_recovery_done;
                 }
                 consume();
             }

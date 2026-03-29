@@ -7,13 +7,33 @@ Last Updated: 2026-03-29
 
 ## Active Item
 
-- Step 3: continue through the remaining top-level `NK_EMPTY` discard sites in
-  `src/frontend/parser/declarations.cpp`, prioritizing unsupported /
-  structure-only exits that can still hide structure instead of preserving it
-  explicitly
+- Step 3: continue through the remaining top-level structure-only /
+  unsupported `NK_EMPTY` exits in `src/frontend/parser/declarations.cpp` now
+  that the generic no-type-start recovery boundary has been tightened
 
 ## Completed
 
+- tightened the generic top-level no-type-start recovery in
+  `src/frontend/parser/declarations.cpp` so malformed discarded declarations
+  now stop at the shared declaration-boundary helper instead of swallowing a
+  later `class` definition:
+  - expanded `is_top_level_decl_recovery_boundary(...)` to recognize
+    `class`, `namespace`, `constexpr`, and `consteval`
+  - replaced the duplicated hard-coded fallback stop list with the shared
+    helper so future boundary updates stay aligned
+- added the reduced parse-only regression
+  `tests/cpp/internal/parse_only_case/top_level_class_recovery_preserves_following_decl_parse.cpp`
+  plus the dedicated dump assertion
+  `cpp_parse_top_level_class_recovery_preserves_following_decl_dump` in
+  `tests/cpp/internal/InternalTests.cmake`
+- updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record the generic
+  top-level no-type-start recovery as a covered boundary with reduced `class`
+  evidence
+- re-ran the required regression guard:
+  - baseline: `99% tests passed, 1 test failed out of 2414`
+  - after change: `99% tests passed, 1 test failed out of 2415`
+  - result: monotonic pass-count increase from the new targeted test, with no
+    newly failing cases
 - tightened malformed top-level `using namespace` / `using ns::name` recovery in
   `src/frontend/parser/declarations.cpp` so a missing `;` now stops before the
   next strong declaration starter instead of relying on a blind semicolon match
@@ -163,9 +183,8 @@ Last Updated: 2026-03-29
 - after the `using namespace` / `using ns::name` recovery slice, continue
   through the remaining top-level `NK_EMPTY` discard sites in
   `src/frontend/parser/declarations.cpp`, especially the newly confirmed
-  `using Alias = ...` missing-semicolon path and the other unsupported /
-  structure-only declaration exits still called out as suspicious in
-  `src/frontend/parser/BOUNDARY_AUDIT.md`
+  structure-only / unsupported declaration exits still called out as
+  suspicious in `src/frontend/parser/BOUNDARY_AUDIT.md`
 - prefer another reduced parse-only repro that shows discarded structure or a
   silently erased following declaration before changing each remaining
   `NK_EMPTY` branch
@@ -222,6 +241,10 @@ Last Updated: 2026-03-29
 - updated `src/frontend/parser/BOUNDARY_AUDIT.md` to mark top-level
   `using Alias = ...` missing-semicolon recovery as a covered `NK_EMPTY`
   boundary instead of a still-suspicious follow-on site
+- the next top-level `NK_EMPTY` slice is the generic recovery path triggered
+  when no type start is recognized; that boundary is now covered by a reduced
+  `class kept {}` regression, so the next work should focus on the remaining
+  structure-only / unsupported exits that still return `NK_EMPTY`
 
 ## Blockers
 

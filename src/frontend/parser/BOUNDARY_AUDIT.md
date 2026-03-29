@@ -140,12 +140,16 @@ ranking pass.
    now proves `extern foo` stops before the next-line `int kept;` declaration
    instead of erasing it through broad `skip_until(';')` recovery.
 
-4. `src/frontend/parser/declarations.cpp:1265`
-   Several remaining declaration paths return `NK_EMPTY` for unsupported or
-   structure-only cases.
-   Tag: `suspicious breadth`
-   Reason: these sites need a later pass to distinguish harmless empty
-   declarations from hidden missed parses.
+4. `src/frontend/parser/declarations.cpp:1925`
+   The generic top-level no-type-start recovery now reuses the shared
+   declaration-boundary helper, so malformed discarded declarations stop before
+   later `class` / `namespace` / `constexpr` / `consteval` starters instead of
+   swallowing them.
+   Tag: `acceptable breadth`
+   Evidence: the reduced parse-only regression
+   `tests/cpp/internal/parse_only_case/top_level_class_recovery_preserves_following_decl_parse.cpp`
+   keeps the following `class kept {};` definition visible after a malformed
+   top-level `friend` line.
 
 5. `src/frontend/parser/declarations.cpp:1336`
    Top-level `asm(...)` parsing now recovers before the next strong declaration
@@ -183,5 +187,6 @@ ranking pass.
    to the record-closing `}` without a more explicit outcome.
 
 2. `src/frontend/parser/declarations.cpp:1286`
-   Review the remaining top-level `NK_EMPTY` parse-and-discard sites that still
-   hide unsupported structure instead of preserving it explicitly.
+   Review the remaining top-level structure-only / unsupported `NK_EMPTY` exits
+   now that the generic no-type-start recovery boundary has been aligned with
+   the shared helper.
