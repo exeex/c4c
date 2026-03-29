@@ -1,5 +1,33 @@
 # AArch64 Backend Port Plan
 
+Status: Complete
+Completed: 2026-03-29
+
+## Outcome
+
+This bring-up slice is complete and closed.
+
+Completed end state:
+
+- the mirrored shared backend and AArch64-local backend trees participate in the real build instead of remaining isolated scaffolding
+- the normal backend/test driver can reach the AArch64 path through the current backend entry surfaces
+- the LIR-to-backend boundary is explicit and narrow through the backend-owned adapter/emitter seam
+- the minimal supported AArch64 slice emits `.s` instead of falling back immediately to LLVM text
+- the emitted AArch64 assembly is accepted by the external assembler path and produces an ELF object
+
+Closure validation on the final tree:
+
+- `./build/backend_lir_adapter_tests`
+- `ctest --test-dir build -R 'backend_lir_adapter_tests|backend_toolchain_aarch64_asm_object_smoke|backend_runtime_return_add|backend_runtime_local_temp|backend_runtime_global_load' --output-on-failure`
+
+## Follow-On Work
+
+This closed bring-up idea intentionally stops before broader addressing and completeness work:
+
+- `ideas/open/03_backend_regalloc_peephole_port_plan.md` tracks the regalloc/cleanup follow-on
+- `ideas/open/09_backend_aarch64_local_memory_addressing_plan.md` tracks broader local-memory address formation beyond the exact `local_temp` seam
+- `ideas/open/10_backend_aarch64_global_addressing_plan.md` tracks broader global/string/pointer address formation beyond exact scalar-symbol loads
+
 ## Relationship To Roadmap
 
 Umbrella source: `ideas/open/__backend_port_plan.md`
