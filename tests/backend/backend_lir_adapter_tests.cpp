@@ -88,6 +88,227 @@ std::vector<std::uint8_t> read_file_bytes(const std::string& path) {
                                    std::istreambuf_iterator<char>());
 }
 
+void append_u16(std::vector<std::uint8_t>& out, std::uint16_t value) {
+  out.push_back(static_cast<std::uint8_t>(value & 0xff));
+  out.push_back(static_cast<std::uint8_t>((value >> 8) & 0xff));
+}
+
+void append_u32(std::vector<std::uint8_t>& out, std::uint32_t value) {
+  for (int shift = 0; shift < 32; shift += 8) {
+    out.push_back(static_cast<std::uint8_t>((value >> shift) & 0xff));
+  }
+}
+
+void append_u64(std::vector<std::uint8_t>& out, std::uint64_t value) {
+  for (int shift = 0; shift < 64; shift += 8) {
+    out.push_back(static_cast<std::uint8_t>((value >> shift) & 0xff));
+  }
+}
+
+void append_i64(std::vector<std::uint8_t>& out, std::int64_t value) {
+  append_u64(out, static_cast<std::uint64_t>(value));
+}
+
+void append_zeroes(std::vector<std::uint8_t>& out, std::size_t count) {
+  out.insert(out.end(), count, 0);
+}
+
+std::size_t align_up(std::size_t value, std::size_t alignment) {
+  if (alignment == 0) return value;
+  const auto mask = alignment - 1;
+  return (value + mask) & ~mask;
+}
+
+std::uint8_t symbol_info(std::uint8_t binding, std::uint8_t symbol_type) {
+  return static_cast<std::uint8_t>((binding << 4) | symbol_type);
+}
+
+std::vector<std::uint8_t> make_minimal_relocation_object_fixture() {
+  using namespace c4c::backend::elf;
+
+  constexpr std::uint32_t kCall26Reloc = 279;
+  constexpr std::size_t kElfHeaderSize = 64;
+  constexpr std::size_t kSectionHeaderSize = 64;
+
+  std::vector<std::uint8_t> text_bytes = {
+      0x1f, 0x20, 0x03, 0xd5,
+      0xc0, 0x03, 0x5f, 0xd6,
+  };
+
+  std::string strtab;
+  strtab.push_back('\0');
+  const auto main_name = static_cast<std::uint32_t>(strtab.size());
+  strtab += "main";
+  strtab.push_back('\0');
+  const auto helper_name = static_cast<std::uint32_t>(strtab.size());
+  strtab += "helper_ext";
+  strtab.push_back('\0');
+
+  std::string shstrtab;
+  shstrtab.push_back('\0');
+  const auto text_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".text";
+  shstrtab.push_back('\0');
+  const auto rela_text_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".rela.text";
+  shstrtab.push_back('\0');
+  const auto symtab_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".symtab";
+  shstrtab.push_back('\0');
+  const auto strtab_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".strtab";
+  shstrtab.push_back('\0');
+  const auto shstrtab_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".shstrtab";
+  shstrtab.push_back('\0');
+
+  std::vector<std::uint8_t> rela_text;
+  append_u64(rela_text, 4);
+  append_u64(rela_text, (static_cast<std::uint64_t>(3) << 32) | kCall26Reloc);
+  append_i64(rela_text, 0);
+
+  std::vector<std::uint8_t> symtab;
+  append_zeroes(symtab, 24);
+  append_u32(symtab, 0);
+  symtab.push_back(symbol_info(STB_LOCAL, STT_SECTION));
+  symtab.push_back(0);
+  append_u16(symtab, 1);
+  append_u64(symtab, 0);
+  append_u64(symtab, 0);
+  append_u32(symtab, main_name);
+  symtab.push_back(symbol_info(STB_GLOBAL, STT_FUNC));
+  symtab.push_back(0);
+  append_u16(symtab, 1);
+  append_u64(symtab, 0);
+  append_u64(symtab, text_bytes.size());
+  append_u32(symtab, helper_name);
+  symtab.push_back(symbol_info(STB_GLOBAL, STT_NOTYPE));
+  symtab.push_back(0);
+  append_u16(symtab, SHN_UNDEF);
+  append_u64(symtab, 0);
+  append_u64(symtab, 0);
+
+  std::size_t offset = kElfHeaderSize;
+  const auto text_offset = offset;
+  offset += text_bytes.size();
+  offset = align_up(offset, 8);
+
+  const auto rela_text_offset = offset;
+  offset += rela_text.size();
+  offset = align_up(offset, 8);
+
+  const auto symtab_offset = offset;
+  offset += symtab.size();
+
+  const auto strtab_offset = offset;
+  offset += strtab.size();
+
+  const auto shstrtab_offset = offset;
+  offset += shstrtab.size();
+  offset = align_up(offset, 8);
+
+  const auto section_header_offset = offset;
+
+  std::vector<std::uint8_t> out;
+  out.reserve(section_header_offset + 6 * kSectionHeaderSize);
+  out.insert(out.end(), ELF_MAGIC.begin(), ELF_MAGIC.end());
+  out.push_back(ELFCLASS64);
+  out.push_back(ELFDATA2LSB);
+  out.push_back(1);
+  out.push_back(0);
+  out.push_back(0);
+  append_zeroes(out, 7);
+  append_u16(out, ET_REL);
+  append_u16(out, EM_AARCH64);
+  append_u32(out, 1);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, section_header_offset);
+  append_u32(out, 0);
+  append_u16(out, kElfHeaderSize);
+  append_u16(out, 0);
+  append_u16(out, 0);
+  append_u16(out, kSectionHeaderSize);
+  append_u16(out, 6);
+  append_u16(out, 5);
+
+  out.insert(out.end(), text_bytes.begin(), text_bytes.end());
+  append_zeroes(out, align_up(out.size(), 8) - out.size());
+  out.insert(out.end(), rela_text.begin(), rela_text.end());
+  append_zeroes(out, align_up(out.size(), 8) - out.size());
+  out.insert(out.end(), symtab.begin(), symtab.end());
+  out.insert(out.end(), strtab.begin(), strtab.end());
+  out.insert(out.end(), shstrtab.begin(), shstrtab.end());
+  append_zeroes(out, align_up(out.size(), 8) - out.size());
+
+  append_zeroes(out, kSectionHeaderSize);
+
+  append_u32(out, text_name);
+  append_u32(out, SHT_PROGBITS);
+  append_u64(out, SHF_ALLOC | SHF_EXECINSTR);
+  append_u64(out, 0);
+  append_u64(out, text_offset);
+  append_u64(out, text_bytes.size());
+  append_u32(out, 0);
+  append_u32(out, 0);
+  append_u64(out, 4);
+  append_u64(out, 0);
+
+  append_u32(out, rela_text_name);
+  append_u32(out, SHT_RELA);
+  append_u64(out, SHF_INFO_LINK);
+  append_u64(out, 0);
+  append_u64(out, rela_text_offset);
+  append_u64(out, rela_text.size());
+  append_u32(out, 3);
+  append_u32(out, 1);
+  append_u64(out, 8);
+  append_u64(out, 24);
+
+  append_u32(out, symtab_name);
+  append_u32(out, SHT_SYMTAB);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, symtab_offset);
+  append_u64(out, symtab.size());
+  append_u32(out, 4);
+  append_u32(out, 2);
+  append_u64(out, 8);
+  append_u64(out, 24);
+
+  append_u32(out, strtab_name);
+  append_u32(out, SHT_STRTAB);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, strtab_offset);
+  append_u64(out, strtab.size());
+  append_u32(out, 0);
+  append_u32(out, 0);
+  append_u64(out, 1);
+  append_u64(out, 0);
+
+  append_u32(out, shstrtab_name);
+  append_u32(out, SHT_STRTAB);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, shstrtab_offset);
+  append_u64(out, shstrtab.size());
+  append_u32(out, 0);
+  append_u32(out, 0);
+  append_u64(out, 1);
+  append_u64(out, 0);
+
+  return out;
+}
+
+std::size_t find_section_index(const c4c::backend::linker_common::Elf64Object& object,
+                               const std::string& name) {
+  for (std::size_t index = 0; index < object.sections.size(); ++index) {
+    if (object.sections[index].name == name) return index;
+  }
+  return object.sections.size();
+}
+
 void write_text_file(const std::string& path, const std::string& text) {
   std::ofstream output(path, std::ios::binary);
   if (!output) fail("failed to open file for write: " + path);
@@ -4184,6 +4405,54 @@ void test_backend_binary_utils_contract_headers_are_include_reachable() {
   std::filesystem::remove(compat_path);
 }
 
+void test_shared_linker_parses_minimal_relocation_object_fixture() {
+  const auto fixture = make_minimal_relocation_object_fixture();
+  std::string error;
+  const auto parsed = c4c::backend::linker_common::parse_elf64_object(
+      fixture, "minimal_reloc.o", c4c::backend::elf::EM_AARCH64, &error);
+  expect_true(parsed.has_value(),
+              "shared linker object parser should accept the bounded relocation-bearing fixture: " +
+                  error);
+
+  const auto& object = *parsed;
+  expect_true(object.source_name == "minimal_reloc.o",
+              "shared linker object parser should preserve the source name");
+  expect_true(object.sections.size() == 6,
+              "shared linker object parser should preserve the full section inventory including the null section");
+  expect_true(object.symbols.size() == 4,
+              "shared linker object parser should preserve the full symbol inventory for the bounded object slice");
+  expect_true(object.relocations.size() == object.sections.size(),
+              "shared linker object parser should index relocation vectors by section");
+
+  const auto text_index = find_section_index(object, ".text");
+  const auto rela_text_index = find_section_index(object, ".rela.text");
+  const auto symtab_index = find_section_index(object, ".symtab");
+  const auto strtab_index = find_section_index(object, ".strtab");
+  const auto shstrtab_index = find_section_index(object, ".shstrtab");
+  expect_true(text_index < object.sections.size() && rela_text_index < object.sections.size() &&
+                  symtab_index < object.sections.size() && strtab_index < object.sections.size() &&
+                  shstrtab_index < object.sections.size(),
+              "shared linker object parser should name the expected bounded ELF sections");
+
+  expect_true(object.section_data[text_index].size() == 8,
+              "shared linker object parser should preserve the bounded .text payload");
+  expect_true(object.section_data[rela_text_index].size() == 24,
+              "shared linker object parser should preserve the raw RELA payload for the bounded fixture");
+  expect_true(object.symbols[2].name == "main" && object.symbols[2].is_global() &&
+                  object.symbols[2].sym_type() == c4c::backend::elf::STT_FUNC &&
+                  object.symbols[2].shndx == text_index,
+              "shared linker object parser should preserve the bounded function symbol inventory");
+  expect_true(object.symbols[3].name == "helper_ext" && object.symbols[3].is_undefined(),
+              "shared linker object parser should preserve undefined extern symbols for later linker resolution");
+
+  expect_true(object.relocations[text_index].size() == 1,
+              "shared linker object parser should associate .rela.text entries with the .text section they target");
+  const auto& relocation = object.relocations[text_index].front();
+  expect_true(relocation.offset == 4 && relocation.sym_idx == 3 &&
+                  relocation.rela_type == 279 && relocation.addend == 0,
+              "shared linker object parser should preserve the bounded relocation inventory for later linker work");
+}
+
 void test_aarch64_backend_assembler_handoff_helper_stages_emitted_text() {
   const auto output_path = make_temp_output_path("c4c_aarch64_handoff");
   const auto staged = c4c::backend::aarch64::assemble_module(make_return_add_module(), output_path);
@@ -4361,6 +4630,7 @@ int main() {
   test_aarch64_backend_prunes_dead_param_allocas_from_fallback_lir();
   test_aarch64_backend_prunes_dead_local_allocas_from_fallback_lir();
   test_backend_binary_utils_contract_headers_are_include_reachable();
+  test_shared_linker_parses_minimal_relocation_object_fixture();
   test_aarch64_backend_assembler_handoff_helper_stages_emitted_text();
   test_aarch64_builtin_object_matches_external_return_add_surface();
   return 0;
