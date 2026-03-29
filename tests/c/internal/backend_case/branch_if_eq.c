@@ -1,0 +1,4 @@
+int main() {
+  if (2 == 2) return 0;
+  return 1;
+}
