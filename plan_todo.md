@@ -6,9 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 2: choose the next narrow post-`noexcept` / `nullptr` keyword slice,
-  likely record-surface words such as access labels and/or `virtual`, and add
-  the matching lexer / parser coverage without widening scope
+- [ ] Step 2: choose the next narrow post-access-label / `virtual` keyword
+  slice, likely `friend`, and add the matching lexer / parser coverage without
+  widening scope
 
 ## Todo
 
@@ -25,9 +25,9 @@ Source Plan: plan.md
 - [x] Add the narrowest validating lexer or parser test for the next slice
 - [x] Implement the next keyword-classification slice
 - [x] Re-run targeted tests, nearby coverage, and the full suite
-- [ ] Add the narrowest validating lexer or parser test for the following slice
-- [ ] Implement the following keyword-classification slice
-- [ ] Re-run targeted tests, nearby coverage, and the full suite
+- [x] Add the narrowest validating lexer or parser test for the following slice
+- [x] Implement the following keyword-classification slice
+- [x] Re-run targeted tests, nearby coverage, and the full suite
 
 ## Completed
 
@@ -73,13 +73,29 @@ Source Plan: plan.md
   `KW_noexcept` / `KW_nullptr` output.
 - [x] Recorded full-suite post-change status in `test_after.log`:
   `100% tests passed, 0 tests failed out of 2343`.
+- [x] Recorded fresh full-suite baseline in `test_before.log` before the next
+  slice: `100% tests passed, 0 tests failed out of 2343`.
+- [x] Added
+  [tests/cpp/internal/postive_case/keyword_access_virtual_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/keyword_access_virtual_parse.cpp)
+  and registered it as a parse-only positive case covering reserved access
+  labels plus `virtual` in a record base clause.
+- [x] Reserved `public`, `private`, `protected`, and `virtual` in the lexer as
+  `KwPublic`, `KwPrivate`, `KwProtected`, and `KwVirtual`, then updated the
+  record access-label and base-clause compatibility helpers to accept the new
+  token kinds.
+- [x] Revalidated the slice with targeted coverage:
+  `keyword_access_virtual_parse`, `access_labels_parse`,
+  `access_labels_treated_public_runtime`, `record_member_prelude_parse`, and
+  `record_base_clause_setup_parse`, plus a manual `--lex-only` probe
+  confirming `KW_public`, `KW_protected`, and `KW_virtual` output.
+- [x] Recorded full-suite post-change status in `test_after.log`:
+  `100% tests passed, 0 tests failed out of 2344`.
 
 ## Next Intended Slice
 
-Audit the smallest remaining parser-sensitive record keywords, likely access
-labels and/or `virtual`, because those still appear in the lexer-gap inventory
-and currently rely on identifier-token handling in record parsing and base
-specifier setup.
+Audit the next smallest parser-sensitive record keyword, likely `friend`,
+because record-member prelude handling already centralizes that compatibility
+path and the lexer-gap inventory still leaves it as a raw identifier.
 
 ## Blockers
 
@@ -100,3 +116,5 @@ specifier setup.
   `2341 -> 2342` total passing tests due to the new committed parse regression.
 - Second slice also finished cleanly with monotonic full-suite results:
   `2342 -> 2343` total passing tests due to the new committed parse regression.
+- Third slice finished cleanly with monotonic full-suite results:
+  `2343 -> 2344` total passing tests due to the new committed parse regression.

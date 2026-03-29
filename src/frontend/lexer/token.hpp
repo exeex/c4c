@@ -95,6 +95,10 @@ enum class TokenKind {
   KwConstCast,       // const_cast
   KwClass,           // class (synonym for struct in C++ template contexts)
   KwFinal,           // final
+  KwPrivate,         // private
+  KwProtected,       // protected
+  KwPublic,          // public
+  KwVirtual,         // virtual
   KwNullptr,         // nullptr
   KwTrue,            // true
   KwFalse,           // false

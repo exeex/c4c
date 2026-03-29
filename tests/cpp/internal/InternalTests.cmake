@@ -97,6 +97,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     qualified_dependent_typename_global_parse
     keyword_typename_final_parse
     keyword_noexcept_nullptr_parse
+    keyword_access_virtual_parse
     qualified_cpp_base_type_dispatch_parse
     qualified_type_spelling_shared_parse
     qualified_type_resolution_dispatch_parse

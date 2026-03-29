@@ -142,6 +142,10 @@ const char *token_kind_name(TokenKind kind) {
     case TokenKind::KwConstCast: return "KW_const_cast";
     case TokenKind::KwClass: return "KW_class";
     case TokenKind::KwFinal: return "KW_final";
+    case TokenKind::KwPrivate: return "KW_private";
+    case TokenKind::KwProtected: return "KW_protected";
+    case TokenKind::KwPublic: return "KW_public";
+    case TokenKind::KwVirtual: return "KW_virtual";
     case TokenKind::KwNullptr: return "KW_nullptr";
     case TokenKind::KwTrue: return "KW_true";
     case TokenKind::KwFalse: return "KW_false";
@@ -169,7 +173,7 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
   if (first != '_' && first != 'a' && first != 'b' && first != 'c' &&
       first != 'd' && first != 'e' && first != 'f' && first != 'g' &&
       first != 'i' && first != 'l' && first != 'n' && first != 'o' && first != 'r' &&
-      first != 's' && first != 't' && first != 'u' && first != 'v' &&
+      first != 'p' && first != 's' && first != 't' && first != 'u' && first != 'v' &&
       first != 'w') {
     return TokenKind::Identifier;
   }
@@ -276,6 +280,10 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
     if (s == "const_cast")       return TokenKind::KwConstCast;
     if (s == "class")            return TokenKind::KwClass;
     if (s == "final")            return TokenKind::KwFinal;
+    if (s == "private")          return TokenKind::KwPrivate;
+    if (s == "protected")        return TokenKind::KwProtected;
+    if (s == "public")           return TokenKind::KwPublic;
+    if (s == "virtual")          return TokenKind::KwVirtual;
     if (s == "nullptr")          return TokenKind::KwNullptr;
     if (s == "true")             return TokenKind::KwTrue;
     if (s == "false")            return TokenKind::KwFalse;

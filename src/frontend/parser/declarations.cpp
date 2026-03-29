@@ -149,7 +149,8 @@ bool token_starts_top_level_cpp_declaration(Parser& parser) {
         parser.check(TokenKind::KwExtern) || parser.check(TokenKind::KwStatic) ||
         parser.check(TokenKind::KwUsing) || parser.check(TokenKind::KwStruct) ||
         parser.check(TokenKind::KwClass) || parser.check(TokenKind::KwEnum) ||
-        parser.check(TokenKind::KwNamespace) || parser.check(TokenKind::KwTemplate)) {
+        parser.check(TokenKind::KwNamespace) || parser.check(TokenKind::KwTemplate) ||
+        parser.check(TokenKind::KwVirtual)) {
         return true;
     }
     if (!parser.check(TokenKind::Identifier)) return false;

@@ -4046,9 +4046,12 @@ TypeSpec Parser::parse_type_name() {
 // ── struct / union parsing ───────────────────────────────────────────────────
 
 bool Parser::try_parse_record_access_label() {
-    if (!(is_cpp_mode() && check(TokenKind::Identifier) &&
-          (cur().lexeme == "public" || cur().lexeme == "private" ||
-           cur().lexeme == "protected") &&
+    if (!(is_cpp_mode() &&
+          (check(TokenKind::KwPublic) || check(TokenKind::KwPrivate) ||
+           check(TokenKind::KwProtected) ||
+           (check(TokenKind::Identifier) &&
+            (cur().lexeme == "public" || cur().lexeme == "private" ||
+             cur().lexeme == "protected"))) &&
           pos_ + 1 < static_cast<int>(tokens_.size()) &&
           tokens_[pos_ + 1].kind == TokenKind::Colon)) {
         return false;
@@ -4340,9 +4343,11 @@ void Parser::skip_record_base_specifier_tail() {
 }
 
 bool Parser::try_parse_record_base_specifier(TypeSpec* base_ts) {
-    while (check(TokenKind::Identifier) &&
-           (cur().lexeme == "public" || cur().lexeme == "private" ||
-            cur().lexeme == "protected" || cur().lexeme == "virtual")) {
+    while (check(TokenKind::KwPublic) || check(TokenKind::KwPrivate) ||
+           check(TokenKind::KwProtected) || check(TokenKind::KwVirtual) ||
+           (check(TokenKind::Identifier) &&
+            (cur().lexeme == "public" || cur().lexeme == "private" ||
+             cur().lexeme == "protected" || cur().lexeme == "virtual"))) {
         consume();
     }
 
