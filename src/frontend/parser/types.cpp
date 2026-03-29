@@ -4063,8 +4063,9 @@ bool Parser::try_parse_record_access_label() {
 }
 
 bool Parser::try_skip_record_friend_member() {
-    if (!(is_cpp_mode() && check(TokenKind::Identifier) &&
-          cur().lexeme == "friend")) {
+    if (!(is_cpp_mode() &&
+          (check(TokenKind::KwFriend) ||
+           (check(TokenKind::Identifier) && cur().lexeme == "friend")))) {
         return false;
     }
 

@@ -145,6 +145,7 @@ const char *token_kind_name(TokenKind kind) {
     case TokenKind::KwPrivate: return "KW_private";
     case TokenKind::KwProtected: return "KW_protected";
     case TokenKind::KwPublic: return "KW_public";
+    case TokenKind::KwFriend: return "KW_friend";
     case TokenKind::KwVirtual: return "KW_virtual";
     case TokenKind::KwNullptr: return "KW_nullptr";
     case TokenKind::KwTrue: return "KW_true";
@@ -283,6 +284,7 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
     if (s == "private")          return TokenKind::KwPrivate;
     if (s == "protected")        return TokenKind::KwProtected;
     if (s == "public")           return TokenKind::KwPublic;
+    if (s == "friend")           return TokenKind::KwFriend;
     if (s == "virtual")          return TokenKind::KwVirtual;
     if (s == "nullptr")          return TokenKind::KwNullptr;
     if (s == "true")             return TokenKind::KwTrue;

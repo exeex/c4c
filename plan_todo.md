@@ -6,9 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 2: choose the next narrow post-access-label / `virtual` keyword
-  slice, likely `friend`, and add the matching lexer / parser coverage without
-  widening scope
+- [ ] Step 2: choose the next narrow post-`friend` keyword slice, likely
+  `mutable` or a single alternative-operator spelling, and add matching lexer /
+  parser coverage without widening scope
 
 ## Todo
 
@@ -21,6 +21,10 @@ Source Plan: plan.md
 - [x] Record the current full-suite baseline before implementation work
 - [x] Add the narrowest validating lexer or parser test for the first slice
 - [x] Implement the first keyword-classification slice
+- [x] Re-run targeted tests, nearby coverage, and the full suite
+- [x] Record a fresh full-suite baseline before the `friend` slice
+- [x] Add the narrowest validating lexer or parser test for the `friend` slice
+- [x] Implement the `friend` keyword-classification slice
 - [x] Re-run targeted tests, nearby coverage, and the full suite
 - [x] Add the narrowest validating lexer or parser test for the next slice
 - [x] Implement the next keyword-classification slice
@@ -90,12 +94,29 @@ Source Plan: plan.md
   confirming `KW_public`, `KW_protected`, and `KW_virtual` output.
 - [x] Recorded full-suite post-change status in `test_after.log`:
   `100% tests passed, 0 tests failed out of 2344`.
+- [x] Recorded fresh full-suite baseline in `test_before.log` before the
+  `friend` slice: `100% tests passed, 0 tests failed out of 2344`.
+- [x] Added
+  [tests/cpp/internal/postive_case/keyword_friend_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/keyword_friend_parse.cpp)
+  and registered it as a parse-only positive case covering friend declarations
+  and inline friend definitions under a reserved `friend` token.
+- [x] Reserved `friend` in the lexer as `KwFriend`, then updated the
+  record-member prelude compatibility helper and the top-level C++ declaration
+  probe to accept the new token kind.
+- [x] Revalidated the slice with targeted coverage:
+  `keyword_friend_parse`, `friend_access_parse`,
+  `friend_inline_operator_parse`, `record_member_prelude_parse`, and
+  `record_member_mixed_prelude_parse`, plus a manual `--lex-only` probe
+  confirming `KW_friend` output.
+- [x] Recorded full-suite post-change status in `test_after.log`:
+  `100% tests passed, 0 tests failed out of 2345`.
 
 ## Next Intended Slice
 
-Audit the next smallest parser-sensitive record keyword, likely `friend`,
-because record-member prelude handling already centralizes that compatibility
-path and the lexer-gap inventory still leaves it as a raw identifier.
+After `friend`, audit whether `mutable` is the next narrow parser-sensitive
+slice before touching the alternative operator spellings, because record-member
+declaration parsing is likely to need fewer compatibility hooks than the
+operator aliases.
 
 ## Blockers
 
@@ -118,3 +139,5 @@ path and the lexer-gap inventory still leaves it as a raw identifier.
   `2342 -> 2343` total passing tests due to the new committed parse regression.
 - Third slice finished cleanly with monotonic full-suite results:
   `2343 -> 2344` total passing tests due to the new committed parse regression.
+- Fourth slice finished cleanly with monotonic full-suite results:
+  `2344 -> 2345` total passing tests due to the new committed parse regression.

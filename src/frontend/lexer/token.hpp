@@ -98,6 +98,7 @@ enum class TokenKind {
   KwPrivate,         // private
   KwProtected,       // protected
   KwPublic,          // public
+  KwFriend,          // friend
   KwVirtual,         // virtual
   KwNullptr,         // nullptr
   KwTrue,            // true

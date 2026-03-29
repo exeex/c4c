@@ -150,13 +150,13 @@ bool token_starts_top_level_cpp_declaration(Parser& parser) {
         parser.check(TokenKind::KwUsing) || parser.check(TokenKind::KwStruct) ||
         parser.check(TokenKind::KwClass) || parser.check(TokenKind::KwEnum) ||
         parser.check(TokenKind::KwNamespace) || parser.check(TokenKind::KwTemplate) ||
-        parser.check(TokenKind::KwVirtual)) {
+        parser.check(TokenKind::KwVirtual) || parser.check(TokenKind::KwFriend)) {
         return true;
     }
     if (!parser.check(TokenKind::Identifier)) return false;
     const std::string_view lexeme = parser.cur().lexeme;
-    return lexeme == "friend" || lexeme == "virtual" || lexeme == "constexpr" ||
-           lexeme == "consteval";
+    return lexeme == "friend" || lexeme == "virtual" ||
+           lexeme == "constexpr" || lexeme == "consteval";
 }
 
 void skip_optional_cpp20_requires_clause(Parser& parser) {
