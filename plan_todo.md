@@ -7,17 +7,18 @@ Last Updated: 2026-03-29
 
 ## Current Active Item
 
-- Step 2: reduce the current `type_traits` / `alloc_traits` dependent-template
-  alias frontier into one internal parser testcase before touching parser code
+- Step 2: reduce `/usr/include/c++/14/bits/alloc_traits.h:134` into one
+  internal parser testcase for the surviving record-base dependent
+  `::template __rebind<...>::type` frontier
 
 ## Todo
 
-- [ ] Reduce `/usr/include/c++/14/type_traits:157` and/or
-      `/usr/include/c++/14/bits/alloc_traits.h:134` into one internal
-      parse-only testcase for dependent `::template` alias/member lookup
+- [ ] Reduce `/usr/include/c++/14/bits/alloc_traits.h:134` into one internal
+      parse-only testcase for record-base dependent
+      `typename __allocator_traits_base::template __rebind<...>::type`
 - [ ] Implement the smallest parser fix required by that reduced testcase
 - [ ] Re-run the direct `std::vector` repro to confirm the next frontier after
-      the dependent-template alias slice
+      the `alloc_traits` dependent-template slice
 - [ ] Validate the next completed slice with targeted tests plus a monotonic
       full-suite comparison
 
@@ -42,21 +43,31 @@ Last Updated: 2026-03-29
 - [x] Validated the slice with targeted tests and a monotonic full-suite
       comparison (`2431/2432` passed before, `2432/2433` passed after; no new
       failing tests)
+- [x] Reduced the surviving `type_traits` dependent `::template` alias failure
+      into `tests/cpp/internal/postive_case/dependent_template_typename_member_parse.cpp`
+- [x] Fixed qualified `typename` type spelling to continue through
+      `::template member<...>` in the reduced `type_traits` alias case
+- [x] Re-ran the direct `std::vector` repro and confirmed
+      `/usr/include/c++/14/type_traits:157` disappeared, leaving
+      `/usr/include/c++/14/bits/alloc_traits.h:134` as the lead
+      dependent-template frontier
+- [x] Validated the reduced `type_traits` slice with targeted parser tests and
+      a monotonic full-suite comparison (`2431/2432` passed before,
+      `2434/2434` passed after; no new failing tests)
 
 ## Next Intended Slice
 
-- Reduce the surviving dependent-template alias/member lookup failures at
-  `/usr/include/c++/14/type_traits:157` and
-  `/usr/include/c++/14/bits/alloc_traits.h:134`; they now precede the
+- Reduce the surviving dependent-template member-template failure at
+  `/usr/include/c++/14/bits/alloc_traits.h:134`; it now precedes the
   `ranges_base.h` `[[nodiscard]]` record-member frontier in the direct
   `std::vector` repro.
 
 ## Blockers
 
-- The smallest standalone repro for the `type_traits` /
-  `alloc_traits` `::template` failures is not isolated yet; simple synthetic
-  reductions parse successfully, so the next slice needs a tighter reduction
-  from the real headers.
+- The `alloc_traits.h:134` form still is not isolated cleanly: the parser now
+  accepts the `type_traits` alias form, but the record-base
+  `typename __allocator_traits_base::template __rebind<...>::type` shape still
+  needs its own reduced testcase and parser entry-point fix.
 
 ## Resume Notes
 
@@ -69,5 +80,8 @@ Last Updated: 2026-03-29
   and GCC/Clang type-trait builtin type arguments.
 - This slice landed `if (...) [[likely]]` statement-attribute support and added
   the corresponding reduced parser testcase.
+- This slice also landed reduced coverage for dependent
+  `typename X<...>::template member<...>` alias parsing and moved the direct
+  `std::vector` frontier from `type_traits.h:157` to `alloc_traits.h:134`.
 - Do not reactivate `ideas/open/__backend_port_plan.md`; it is an umbrella
   roadmap, not the next execution target.

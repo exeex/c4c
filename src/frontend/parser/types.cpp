@@ -1764,13 +1764,22 @@ bool Parser::consume_qualified_type_spelling(bool allow_global,
         if (consume_final_template_args && !consume_optional_template_args())
             return false;
 
-        if (!(check(TokenKind::ColonColon) &&
-              pos_ + 1 < static_cast<int>(tokens_.size()) &&
-              tokens_[pos_ + 1].kind == TokenKind::Identifier))
+        if (!check(TokenKind::ColonColon))
+            break;
+
+        int lookahead = pos_ + 1;
+        if (lookahead >= static_cast<int>(tokens_.size()))
+            break;
+        if (tokens_[lookahead].kind == TokenKind::KwTemplate)
+            ++lookahead;
+        if (lookahead >= static_cast<int>(tokens_.size()) ||
+            tokens_[lookahead].kind != TokenKind::Identifier)
             break;
 
         qn.qualifier_segments.push_back(qn.base_name);
         consume(); // ::
+        if (check(TokenKind::KwTemplate))
+            consume();
     }
 
     if (out_name) {

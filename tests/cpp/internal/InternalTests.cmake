@@ -54,6 +54,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     template_friend_record_member_parse
     template_member_type_direct_parse
     template_member_type_inherited_parse
+    dependent_template_typename_member_parse
     template_alias_nttp_expr_parse
     template_alias_nttp_expr_inherited_parse
     template_argument_loop_staging_parse
