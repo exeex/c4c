@@ -6,9 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: Classify and prepare the next bounded countdown-loop family centered
-  on `src/00006.c` and `src/00008.c`, while keeping `src/00007.c` excluded as
-  the larger loop-and-branch follow-on slice.
+- Step 2: Classify and prepare the next bounded multi-loop control-flow family
+  centered on `src/00007.c`, which remains outside the completed single-loop
+  countdown slice because it combines two countdown regions with an
+  intervening `if (x) return 1;` branch.
 
 ## Completed Items
 
@@ -210,19 +211,50 @@ Source Plan: plan.md
   `ctest --test-dir build -j8 --output-on-failure` post-change sweep improved
   from 2368 passed / 192 failed / 2560 total to
   2369 passed / 191 failed / 2560 total.
+- Step 2 family reclassified for the next slice: bounded single-local
+  countdown loops that terminate by reloading the tracked scalar slot after the
+  loop exits. Representative seeds: `src/00006.c` (`while (x) x = x - 1;`) and
+  `src/00008.c` (`do x = x - 1; while (x);`).
+- Root-cause note for this slice:
+  `src/backend/lir_adapter.cpp` normalized acyclic branch chains and
+  single-block local-slot arithmetic, but rejected the first loop-backed
+  family even when it stayed within one `i32` local, one decrement-by-1 site,
+  one `icmp ne ..., 0` loop test, and one final reload/return. That kept both
+  loop forms falling back before the existing x86 direct-return immediate path
+  could run.
+- Nearby families explicitly excluded from this slice:
+  `src/00007.c` still carries two distinct countdown regions plus the
+  intervening `if (x) return 1;` conditional, so it remains the larger
+  follow-on control-flow family rather than part of the completed
+  single-loop slice.
+- Step 3 completed for the selected countdown-loop family by adding focused
+  backend adapter and x86 emitter unit coverage for both the `while` and
+  `do-while` countdown shapes while keeping
+  `c_testsuite_x86_backend_src_00006_c` and
+  `c_testsuite_x86_backend_src_00008_c` as the external seed cases.
+- Step 4 completed by teaching `src/backend/lir_adapter.cpp` to recognize the
+  bounded one-local countdown-loop shape, execute its concrete decrement path
+  to the loop exit, and collapse the result into the backend-owned direct
+  return-immediate surface.
+- Step 5 completed for this slice:
+  `./build/backend_lir_adapter_tests` passed, targeted
+  `ctest --test-dir build --output-on-failure -R '^(c_testsuite_x86_backend_src_00006_c|c_testsuite_x86_backend_src_00007_c|c_testsuite_x86_backend_src_00008_c)$'`
+  now passes `src/00006.c` and `src/00008.c` while preserving `src/00007.c`
+  as the intentionally excluded fallback, `ctest --test-dir build -L
+  x86_backend --output-on-failure` improved from
+  29 passed / 191 failed / 220 total to 31 passed / 189 failed / 220 total
+  with no newly introduced failure mode, and
+  `ctest --test-dir build -L backend --output-on-failure` improved from
+  95 passed / 191 failed / 286 total to 97 passed / 189 failed / 286 total.
 
 ## Next Slice
 
-- Start from `src/00006.c` and `src/00008.c` as the next bounded family:
-  single-local countdown loops with one scalar slot, one decrement step, and a
-  final `ret i32 0` after the loop exits.
-- Keep `src/00007.c` excluded from that first loop slice because its two loops
-  plus the intervening `if (x) return 1;` branch make it a larger
-  loop-and-branch family than the simpler while/do-while zero-return pair.
-- Preserve `src/00009.c` as the closed local-slot arithmetic reference family,
-  `src/00010.c` as the closed goto-only control-flow reference family, and
-  `src/00005.c`, `src/00020.c`, and `src/00103.c` as the closed local
-  double-indirection reference family.
+- Start from `src/00007.c` as the next bounded family: one tracked scalar
+  local carried through two separate countdown loops with a mid-function
+  conditional early return.
+- Keep the next slice focused on proving whether the existing bounded concrete
+  execution approach can be extended to two loop regions and one intervening
+  branch without widening into general loop support.
 
 ## Blockers
 
@@ -263,3 +295,9 @@ Source Plan: plan.md
   one-slot `mul -> sdiv -> srem -> sub` chain in `src/backend/lir_adapter.cpp`
   and collapsing it to the existing direct `ret i32 0` backend-owned surface
   consumed by the x86 immediate-return emitter.
+- The countdown-loop slice now extends that bounded surface to
+  `tests/c/external/c-testsuite/src/00006.c` and
+  `tests/c/external/c-testsuite/src/00008.c` by concretely executing the
+  bounded single-local decrement loop in `src/backend/lir_adapter.cpp` until it
+  reaches the exit `ret i32 0`; `src/00007.c` remains the next excluded
+  multi-loop follow-on family.

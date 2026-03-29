@@ -881,6 +881,198 @@ std::optional<BackendFunction> adapt_goto_only_constant_return_function(
   return std::nullopt;
 }
 
+std::optional<BackendFunction> adapt_single_local_countdown_loop_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const BackendFunctionSignature& signature) {
+  using namespace c4c::codegen::lir;
+
+  if (function.is_declaration || signature.linkage != "define" ||
+      signature.return_type != "i32" || signature.name != "main" ||
+      !signature.params.empty() || signature.is_vararg || function.blocks.empty() ||
+      function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* scalar_alloca = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
+  if (scalar_alloca == nullptr || scalar_alloca->type_str != "i32" ||
+      scalar_alloca->result.empty()) {
+    return std::nullopt;
+  }
+
+  std::size_t static_store_count = 0;
+  std::size_t static_cmp_count = 0;
+  std::size_t static_sub_count = 0;
+  std::size_t static_ret_count = 0;
+  std::optional<std::int64_t> initial_value;
+
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
+        if (store->type_str != "i32" || store->ptr != scalar_alloca->result) {
+          return std::nullopt;
+        }
+        ++static_store_count;
+        if (block.label == "entry") {
+          if (initial_value.has_value()) {
+            return std::nullopt;
+          }
+          initial_value = parse_i64(store->val);
+          if (!initial_value.has_value()) {
+            return std::nullopt;
+          }
+        }
+        continue;
+      }
+
+      if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
+        if (load->type_str != "i32" || load->ptr != scalar_alloca->result) {
+          return std::nullopt;
+        }
+        continue;
+      }
+
+      if (const auto* bin = std::get_if<LirBinOp>(&inst)) {
+        if (bin->opcode != "sub" || bin->type_str != "i32" || bin->rhs != "1") {
+          return std::nullopt;
+        }
+        ++static_sub_count;
+        continue;
+      }
+
+      if (const auto* cmp = std::get_if<LirCmpOp>(&inst)) {
+        if (cmp->is_float || cmp->predicate != "ne" || cmp->type_str != "i32") {
+          return std::nullopt;
+        }
+        ++static_cmp_count;
+        continue;
+      }
+
+      return std::nullopt;
+    }
+
+    if (std::holds_alternative<LirRet>(block.terminator)) {
+      ++static_ret_count;
+      continue;
+    }
+    if (std::holds_alternative<LirBr>(block.terminator) ||
+        std::holds_alternative<LirCondBr>(block.terminator)) {
+      continue;
+    }
+    return std::nullopt;
+  }
+
+  if (!initial_value.has_value() || *initial_value < 0 || static_store_count != 2 ||
+      static_cmp_count != 1 || static_sub_count != 1 || static_ret_count != 1) {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string, const LirBlock*> blocks_by_label;
+  for (const auto& block : function.blocks) {
+    blocks_by_label.emplace(block.label, &block);
+  }
+
+  std::int64_t scalar_value = *initial_value;
+  std::unordered_map<std::string, std::int64_t> integer_values;
+  std::unordered_map<std::string, bool> predicate_values;
+  std::string current_label = function.blocks.front().label;
+  const std::size_t max_steps =
+      (static_cast<std::size_t>(*initial_value) + 1) * (function.blocks.size() + 1);
+
+  auto resolve_integer_value = [&](std::string_view value) -> std::optional<std::int64_t> {
+    if (const auto imm = parse_i64(value); imm.has_value()) {
+      return *imm;
+    }
+    const auto it = integer_values.find(std::string(value));
+    if (it == integer_values.end()) {
+      return std::nullopt;
+    }
+    return it->second;
+  };
+
+  for (std::size_t step = 0; step < max_steps; ++step) {
+    integer_values.clear();
+    predicate_values.clear();
+
+    const auto block_it = blocks_by_label.find(current_label);
+    if (block_it == blocks_by_label.end()) {
+      return std::nullopt;
+    }
+    const auto& block = *block_it->second;
+
+    for (const auto& inst : block.insts) {
+      if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
+        const auto value = resolve_integer_value(store->val);
+        if (!value.has_value()) {
+          return std::nullopt;
+        }
+        scalar_value = *value;
+        continue;
+      }
+
+      if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
+        integer_values[load->result] = scalar_value;
+        continue;
+      }
+
+      if (const auto* bin = std::get_if<LirBinOp>(&inst)) {
+        const auto lhs = resolve_integer_value(bin->lhs);
+        const auto rhs = resolve_integer_value(bin->rhs);
+        if (!lhs.has_value() || !rhs.has_value()) {
+          return std::nullopt;
+        }
+        integer_values[bin->result] = *lhs - *rhs;
+        continue;
+      }
+
+      const auto* cmp = std::get_if<LirCmpOp>(&inst);
+      if (cmp == nullptr) {
+        return std::nullopt;
+      }
+      const auto lhs = resolve_integer_value(cmp->lhs);
+      const auto rhs = resolve_integer_value(cmp->rhs);
+      if (!lhs.has_value() || !rhs.has_value()) {
+        return std::nullopt;
+      }
+      predicate_values[cmp->result] = *lhs != *rhs;
+    }
+
+    if (const auto* ret = std::get_if<LirRet>(&block.terminator)) {
+      if (!ret->value_str.has_value() || ret->type_str != "i32") {
+        return std::nullopt;
+      }
+      const auto resolved = resolve_integer_value(*ret->value_str);
+      if (!resolved.has_value() || *resolved != 0) {
+        return std::nullopt;
+      }
+
+      BackendFunction out;
+      out.signature = signature;
+      BackendBlock out_block;
+      out_block.label = "entry";
+      out_block.terminator = BackendReturn{"0", "i32"};
+      out.blocks.push_back(std::move(out_block));
+      return out;
+    }
+
+    if (const auto* br = std::get_if<LirBr>(&block.terminator)) {
+      current_label = br->target_label;
+      continue;
+    }
+
+    const auto* condbr = std::get_if<LirCondBr>(&block.terminator);
+    if (condbr == nullptr) {
+      return std::nullopt;
+    }
+    const auto pred_it = predicate_values.find(condbr->cond_name);
+    if (pred_it == predicate_values.end()) {
+      return std::nullopt;
+    }
+    current_label = pred_it->second ? condbr->true_label : condbr->false_label;
+  }
+
+  return std::nullopt;
+}
+
 std::optional<BackendFunction> adapt_local_single_arg_call_function(
     const c4c::codegen::lir::LirFunction& function,
     const BackendFunctionSignature& signature) {
@@ -1212,6 +1404,10 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function) {
     return *normalized;
   }
   if (const auto normalized = adapt_goto_only_constant_return_function(function, signature);
+      normalized.has_value()) {
+    return *normalized;
+  }
+  if (const auto normalized = adapt_single_local_countdown_loop_function(function, signature);
       normalized.has_value()) {
     return *normalized;
   }
