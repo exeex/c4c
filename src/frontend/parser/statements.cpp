@@ -62,6 +62,60 @@ Node* Parser::parse_block() {
 Node* Parser::parse_stmt() {
     ParseContextGuard trace(this, __func__);
     int ln = cur().line;
+    auto is_local_using_recovery_boundary = [&]() -> bool {
+        switch (cur().kind) {
+            case TokenKind::KwUsing:
+            case TokenKind::KwReturn:
+            case TokenKind::KwIf:
+            case TokenKind::KwSwitch:
+            case TokenKind::KwWhile:
+            case TokenKind::KwDo:
+            case TokenKind::KwFor:
+            case TokenKind::KwBreak:
+            case TokenKind::KwContinue:
+            case TokenKind::KwGoto:
+            case TokenKind::KwStaticAssert:
+            case TokenKind::LBrace:
+            case TokenKind::KwVoid:
+            case TokenKind::KwBool:
+            case TokenKind::KwChar:
+            case TokenKind::KwShort:
+            case TokenKind::KwInt:
+            case TokenKind::KwLong:
+            case TokenKind::KwSigned:
+            case TokenKind::KwUnsigned:
+            case TokenKind::KwFloat:
+            case TokenKind::KwDouble:
+            case TokenKind::KwStruct:
+            case TokenKind::KwUnion:
+            case TokenKind::KwEnum:
+            case TokenKind::KwConst:
+            case TokenKind::KwVolatile:
+            case TokenKind::KwStatic:
+            case TokenKind::KwExtern:
+            case TokenKind::KwInline:
+            case TokenKind::KwAuto:
+            case TokenKind::KwRegister:
+            case TokenKind::KwRestrict:
+            case TokenKind::KwTypedef:
+            case TokenKind::KwAttribute:
+                return true;
+            default:
+                return false;
+        }
+    };
+    auto recover_malformed_local_using = [&]() -> Node* {
+        while (!at_end()) {
+            if (check(TokenKind::Semi)) {
+                consume();
+                break;
+            }
+            if (check(TokenKind::RBrace) || is_local_using_recovery_boundary())
+                break;
+            consume();
+        }
+        return make_node(NK_INVALID_STMT, ln);
+    };
 
     // Skip leading __attribute__ UNLESS a real type keyword follows, in which
     // case we must let parse_local_decl / parse_base_type capture the attribute
@@ -84,33 +138,78 @@ Node* Parser::parse_stmt() {
             std::string alias_name = cur().lexeme;
             consume(); // eat name
             consume(); // eat '='
-            // Skip the type expression until ';'
-            int depth = 0;
-            while (!at_end() && !(check(TokenKind::Semi) && depth == 0)) {
-                if (check(TokenKind::Less) || check(TokenKind::LParen)) ++depth;
-                else if (check(TokenKind::Greater) || check(TokenKind::RParen)) {
-                    if (depth > 0) --depth;
-                } else if (check(TokenKind::GreaterGreater)) {
-                    depth -= std::min(depth, 2);
-                    consume();
-                    continue;
-                }
-                consume();
+            const int alias_type_pos = pos_;
+            TypeSpec alias_ts{};
+            try {
+                alias_ts = parse_type_name();
+            } catch (const std::exception&) {
+                pos_ = alias_type_pos;
+                return recover_malformed_local_using();
             }
-            match(TokenKind::Semi);
+            if (!match(TokenKind::Semi)) {
+                pos_ = alias_type_pos;
+                int depth = 0;
+                bool consumed_type_tokens = false;
+                while (!at_end()) {
+                    if (depth == 0 && check(TokenKind::Semi)) {
+                        consume();
+                        break;
+                    }
+                    if (depth == 0 && consumed_type_tokens &&
+                        is_local_using_recovery_boundary()) {
+                        break;
+                    }
+                    if (check(TokenKind::Less) || check(TokenKind::LParen) ||
+                        check(TokenKind::LBracket)) {
+                        ++depth;
+                    } else if ((check(TokenKind::Greater) ||
+                                check(TokenKind::RParen) ||
+                                check(TokenKind::RBracket)) &&
+                               depth > 0) {
+                        --depth;
+                    } else if (check(TokenKind::GreaterGreater) && depth > 0) {
+                        depth -= std::min(depth, 2);
+                        consumed_type_tokens = true;
+                        consume();
+                        continue;
+                    }
+                    consumed_type_tokens = true;
+                    consume();
+                }
+                return make_node(NK_INVALID_STMT, ln);
+            }
             // Register as typedef so subsequent code recognizes the name
             typedefs_.insert(alias_name);
-            TypeSpec ts{};
-            ts.array_size = -1;
-            ts.inner_rank = -1;
-            ts.base = TB_INT; // placeholder — not semantically resolved
-            typedef_types_[alias_name] = ts;
+            typedef_types_[alias_name] = alias_ts;
             return make_node(NK_EMPTY, ln);
         }
-        // using namespace / using-declaration: skip until ;
-        while (!at_end() && !check(TokenKind::Semi) && !check(TokenKind::RBrace))
+
+        if (match(TokenKind::KwNamespace)) {
+            if (!check(TokenKind::Identifier))
+                return recover_malformed_local_using();
+            (void)parse_qualified_name(true);
+            if (!match(TokenKind::Semi))
+                return recover_malformed_local_using();
+            return make_node(NK_EMPTY, ln);
+        }
+
+        if (!check(TokenKind::Identifier) && !check(TokenKind::ColonColon))
+            return recover_malformed_local_using();
+
+        if (match(TokenKind::ColonColon)) {
+            if (!check(TokenKind::Identifier))
+                return recover_malformed_local_using();
             consume();
-        match(TokenKind::Semi);
+        } else {
+            consume();
+        }
+        while (match(TokenKind::ColonColon)) {
+            if (!check(TokenKind::Identifier))
+                return recover_malformed_local_using();
+            consume();
+        }
+        if (!match(TokenKind::Semi))
+            return recover_malformed_local_using();
         return make_node(NK_EMPTY, ln);
     }
 

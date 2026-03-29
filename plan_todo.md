@@ -7,10 +7,10 @@ Last Updated: 2026-03-29
 
 ## Active Item
 
-- Step 3: shift the next tightening batch to the ranked `NK_EMPTY`
-  parse-and-discard sites, starting with the statement-side local `using`
-  branches and the remaining top-level discard paths called out in
-  `src/frontend/parser/BOUNDARY_AUDIT.md`
+- Step 3: continue the ranked `NK_EMPTY` audit in
+  `src/frontend/parser/declarations.cpp`, starting from the remaining
+  top-level parse-and-discard sites around the storage-class / linkage and
+  unsupported declaration paths called out in `BOUNDARY_AUDIT.md`
 
 ## Completed
 
@@ -91,13 +91,31 @@ Last Updated: 2026-03-29
     - baseline: `100% tests passed, 0 tests failed out of 2408`
     - after change: `100% tests passed, 0 tests failed out of 2409`
     - result: monotonic pass-count increase with no newly failing tests
+- tightened statement-side local `using` parsing in
+  `src/frontend/parser/statements.cpp` so malformed local aliases,
+  `using namespace`, and `using` declarations no longer rely on a blind
+  skip-until-`;` fallback:
+  - valid local `using Alias = type;` aliases now reuse `parse_type_name()`
+    and register the parsed alias type instead of a placeholder `int`
+  - malformed local `using` forms now recover as `NK_INVALID_STMT` at the next
+    local declaration / statement boundary instead of silently erasing the
+    following declaration
+  - added the reduced parse-only regression
+    `tests/cpp/internal/parse_only_case/local_using_alias_recovery_preserves_following_decl_parse.cpp`
+    plus the dedicated dump assertion
+    `cpp_parse_local_using_alias_recovery_preserves_following_decl_dump` in
+    `tests/cpp/internal/InternalTests.cmake`
+  - re-ran the required regression guard:
+    - baseline: `100% tests passed, 0 tests failed out of 2409`
+    - after change: `100% tests passed, 0 tests failed out of 2410`
+    - result: monotonic pass-count increase with no newly failing tests
 
 ## Next Slice
 
-- start the ranked `NK_EMPTY` audit slice explicitly at the statement-side
-  `parse_stmt()` local `using` branches in `src/frontend/parser/statements.cpp`
-  and compare that path against the top-level discard sites in
-  `src/frontend/parser/declarations.cpp`
+- compare the newly tightened local `using` boundary behavior against the
+  remaining top-level `NK_EMPTY` discard sites in
+  `src/frontend/parser/declarations.cpp`, especially the unsupported /
+  structure-only declaration exits near the current audit notes
 - prefer reduced parse-only repros that show discarded structure or silently
   erased following declarations before changing those `NK_EMPTY` branches
 - keep any further record-member recovery widening separate unless a new reduced
@@ -129,6 +147,10 @@ Last Updated: 2026-03-29
   parse-only: the important assertion is that the following `kept` declaration
   remains visible after recovery, not that the malformed `using` line itself is
   semantically accepted
+- the malformed local `using Alias = int` regression is intentionally
+  parse-only: the important assertion is that the broken local `using` becomes
+  `InvalidStmt` while the following `kept` declaration remains visible in the
+  AST dump
 
 ## Blockers
 

@@ -117,11 +117,14 @@ ranking pass.
 ## `NK_EMPTY` Parse-And-Discard Sites
 
 1. `src/frontend/parser/statements.cpp:77`
-   Local `using` aliases and `using namespace` forms are skipped and returned as
-   `NK_EMPTY`.
-   Tag: `suspicious breadth`
-   Reason: this is an intentional parser gap, but it discards structure rather
-   than preserving an unsupported-node marker.
+   Local `using` aliases and `using namespace` forms used to skip directly to
+   `;` and return `NK_EMPTY`; the current tightening pass now parses them
+   structurally enough to recover malformed local `using` forms as
+   `NK_INVALID_STMT` at the next local boundary.
+   Tag: `acceptable breadth`
+   Evidence: the reduced regression
+   `tests/cpp/internal/parse_only_case/local_using_alias_recovery_preserves_following_decl_parse.cpp`
+   keeps the following `kept` declaration visible after a malformed local alias.
 
 2. `src/frontend/parser/declarations.cpp:510`
    Top-level `extern "C"` parsing can return `NK_EMPTY` when the body does not
@@ -141,7 +144,6 @@ ranking pass.
    Narrow record-member recovery so malformed members cannot silently consume up
    to the record-closing `}` without a more explicit outcome.
 
-2. `src/frontend/parser/statements.cpp:77` and
-   `src/frontend/parser/declarations.cpp:1265`
-   Review `NK_EMPTY` parse-and-discard sites that currently hide unsupported
-   structure instead of preserving it explicitly.
+2. `src/frontend/parser/declarations.cpp:1265`
+   Review the remaining top-level `NK_EMPTY` parse-and-discard sites that still
+   hide unsupported structure instead of preserving it explicitly.
