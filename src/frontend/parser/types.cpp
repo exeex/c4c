@@ -2634,6 +2634,8 @@ bool Parser::can_start_parameter_type() const {
     if (is_type_start()) return true;
     if (!is_cpp_mode()) return false;
 
+    if (looks_like_unresolved_identifier_type_head(pos_)) return true;
+
     if (check(TokenKind::Identifier) &&
         pos_ + 1 < static_cast<int>(tokens_.size()) &&
         tokens_[pos_ + 1].kind == TokenKind::Identifier) {
@@ -2668,6 +2670,32 @@ bool Parser::can_start_parameter_type() const {
         2 * static_cast<int>(qn.qualifier_segments.size()) + 1;
     return after_pos < static_cast<int>(tokens_.size()) &&
            tokens_[after_pos].kind == TokenKind::Less;
+}
+
+bool Parser::looks_like_unresolved_identifier_type_head(int pos) const {
+    if (!is_cpp_mode()) return false;
+    if (pos < 0 || pos >= static_cast<int>(tokens_.size())) return false;
+    if (tokens_[pos].kind != TokenKind::Identifier) return false;
+    if (is_concept_name(tokens_[pos].lexeme)) return false;
+
+    const int next = pos + 1;
+    if (next >= static_cast<int>(tokens_.size())) return false;
+
+    switch (tokens_[next].kind) {
+        case TokenKind::Identifier:
+        case TokenKind::Amp:
+        case TokenKind::AmpAmp:
+        case TokenKind::Star:
+        case TokenKind::Less:
+        case TokenKind::Comma:
+        case TokenKind::RParen:
+        case TokenKind::Ellipsis:
+            return true;
+        default:
+            break;
+    }
+
+    return is_qualifier(tokens_[next].kind);
 }
 
 // ── skip helpers ─────────────────────────────────────────────────────────────
@@ -3174,38 +3202,12 @@ TypeSpec Parser::parse_base_type() {
                            !(has_signed || has_unsigned || has_short || long_count > 0 ||
                              has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
                              has_struct || has_union || has_enum || base_set) &&
-                           pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                           tokens_[pos_ + 1].kind == TokenKind::Less) {
-                    // C++ unresolved template type: identifier followed by <
-                    // (e.g. reverse_iterator<Iterator1> inside a namespace where
-                    // the typedef registration was lost due to template parsing).
-                    has_typedef = true;
-                    ts.tag = arena_.strdup(cur().lexeme);
-                    consume();
-                    done = true;
-                } else if (is_cpp_mode() &&
-                           !(has_signed || has_unsigned || has_short || long_count > 0 ||
-                             has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
-                             has_struct || has_union || has_enum || base_set) &&
-                           pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                           tokens_[pos_ + 1].kind == TokenKind::Identifier) {
-                    // C++ unresolved simple type used by value in a parameter
-                    // declarator: treat `Value other` as a type start even if
-                    // the typedef or injected-class-name registration was lost.
-                    has_typedef = true;
-                    ts.tag = arena_.strdup(cur().lexeme);
-                    consume();
-                    done = true;
-                } else if (is_cpp_mode() &&
-                           !(has_signed || has_unsigned || has_short || long_count > 0 ||
-                             has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
-                             has_struct || has_union || has_enum || base_set) &&
-                           pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                           (tokens_[pos_ + 1].kind == TokenKind::Amp ||
-                            tokens_[pos_ + 1].kind == TokenKind::AmpAmp)) {
-                    // C++ unresolved simple type used in a parameter declarator:
-                    // treat `Box& value` / `Box&& value` as a type start even if
-                    // the injected-class-name or typedef registration was lost.
+                           looks_like_unresolved_identifier_type_head(pos_)) {
+                    // C++ unresolved simple type in a declarator or parameter:
+                    // treat identifier spellings such as `Box value`,
+                    // `Box& value`, `Box* value`, `Box const& value`, and
+                    // unnamed forms like `true_type)` as a type head even if
+                    // typedef or injected-class-name registration was lost.
                     has_typedef = true;
                     ts.tag = arena_.strdup(cur().lexeme);
                     consume();
@@ -5159,7 +5161,7 @@ bool Parser::try_parse_record_constructor_member(
                 break;
             }
             if (check(TokenKind::RParen)) break;
-            if (!is_type_start()) break;
+            if (!can_start_parameter_type()) break;
             Node* p = parse_param();
             if (p) params.push_back(p);
             if (check(TokenKind::Ellipsis)) {
