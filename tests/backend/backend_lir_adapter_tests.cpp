@@ -155,6 +155,35 @@ void test_lir_call_arg_helpers_collect_value_names() {
               "typed call-arg value collection should keep direct operands and nested expression operands");
 }
 
+void test_lir_call_arg_helpers_decode_single_typed_operand() {
+  using namespace c4c::codegen::lir;
+
+  const auto operand = parse_lir_single_typed_call_operand(
+      "( i32 )", " i32 %t7 ", "i32");
+  expect_true(operand.has_value() && *operand == "%t7",
+              "shared typed-call helper should recover a whitespace-tolerant single typed operand");
+
+  expect_true(!parse_lir_single_typed_call_operand("(ptr)", "i32 %t7", "i32").has_value(),
+              "shared typed-call helper should reject single-arg calls whose structured type does not match");
+}
+
+void test_lir_call_arg_helpers_decode_two_typed_operands() {
+  using namespace c4c::codegen::lir;
+
+  const auto operands = parse_lir_two_typed_call_operands(
+      "( i32 , i32 )", "i32 %lhs, i32 %rhs", "i32", "i32");
+  expect_true(operands.has_value() && operands->first == "%lhs" &&
+                  operands->second == "%rhs",
+              "shared typed-call helper should recover both operands from a spacing-tolerant two-argument call");
+
+  expect_true(!parse_lir_two_typed_call_operands("(i32, ptr)",
+                                                 "i32 %lhs, i32 %rhs",
+                                                 "i32",
+                                                 "i32")
+                   .has_value(),
+              "shared typed-call helper should reject two-arg calls whose structured parameter types drift");
+}
+
 void test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings() {
   using namespace c4c::codegen::lir;
 
@@ -7995,6 +8024,8 @@ int main() {
   test_lir_typed_wrappers_classify_basic_types();
   test_lir_call_arg_helpers_split_nested_typed_args();
   test_lir_call_arg_helpers_collect_value_names();
+  test_lir_call_arg_helpers_decode_single_typed_operand();
+  test_lir_call_arg_helpers_decode_two_typed_operands();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
   test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();
   test_lir_printer_renders_verified_typed_ops();

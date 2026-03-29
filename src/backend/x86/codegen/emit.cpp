@@ -143,26 +143,15 @@ std::optional<std::string_view> parse_direct_global_callee(
 std::optional<std::string_view> parse_single_typed_i32_call_operand(
     std::string_view callee_type_suffix,
     std::string_view args_str) {
-  const auto parsed = c4c::codegen::lir::parse_lir_typed_call(
-      callee_type_suffix, args_str);
-  if (!parsed.has_value() || parsed->args.size() != 1 ||
-      parsed->param_types.front() != "i32") {
-    return std::nullopt;
-  }
-  return parsed->args.front().operand;
+  return c4c::codegen::lir::parse_lir_single_typed_call_operand(
+      callee_type_suffix, args_str, "i32");
 }
 
 std::optional<std::pair<std::string_view, std::string_view>>
 parse_typed_i32_call_operand_pair(std::string_view callee_type_suffix,
                                   std::string_view args_str) {
-  const auto parsed = c4c::codegen::lir::parse_lir_typed_call(
-      callee_type_suffix, args_str);
-  if (!parsed.has_value() || parsed->args.size() != 2 ||
-      parsed->param_types[0] != "i32" || parsed->param_types[1] != "i32") {
-    return std::nullopt;
-  }
-  return std::pair<std::string_view, std::string_view>{parsed->args[0].operand,
-                                                       parsed->args[1].operand};
+  return c4c::codegen::lir::parse_lir_two_typed_call_operands(
+      callee_type_suffix, args_str, "i32", "i32");
 }
 
 std::string asm_symbol_name(const c4c::backend::BackendModule& module,

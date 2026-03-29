@@ -8,11 +8,11 @@ Source Plan: plan.md
 
 - Step 4: Migrate high-friction instruction families and consumers.
 - Exact target for the next iteration: continue Step 4 past
-  the landed shared typed-call decoding helpers into the remaining backend
-  call-adjacent consumers that still rely on free-form call text outside the
-  now-covered zero-arg/single-arg/two-arg/call-crossing fast paths, especially
-  any analysis or emitter slice that still open-codes typed-call shape checks
-  instead of consuming shared structured call metadata.
+  the landed shared typed-call shape helpers into the remaining call-adjacent
+  protocol surface that still depends on raw `LirCallOp::{args_str,
+  callee_type_suffix}` storage, with the highest-value next slice being any
+  backend or emitter path that still needs structured indirect/intrinsic call
+  metadata rather than just shared direct-call argument decoding.
 
 ## Completed Items
 
@@ -95,6 +95,13 @@ Source Plan: plan.md
   instead of exact empty-string / `"()"` checks, and adding whitespace-tolerant
   typed zero-arg direct-call emitter coverage in
   `tests/backend/backend_lir_adapter_tests.cpp`.
+- Completed the next Step 4 shared typed-call shape cleanup slice by expanding
+  `src/codegen/lir/call_args.hpp` with shared single-arg and two-arg typed call
+  operand helpers, routing `src/backend/x86/codegen/emit.cpp` and
+  `src/backend/aarch64/codegen/emit.cpp` through those shared helpers instead
+  of local typed-call shape decoders, and collapsing
+  `src/backend/lir_adapter.cpp` onto the same shared typed-call parser instead
+  of maintaining a separate parameter/argument decoder.
 
 ## Notes
 
@@ -164,6 +171,11 @@ Source Plan: plan.md
   for parameter lists and decoded argument `(type, operand)` pairs, so backend
   consumers can prove typed-call compatibility without reimplementing
   ad hoc suffix/argument parsing or exact-text comparisons.
+- `src/codegen/lir/call_args.hpp` now also exposes shared helper entry points
+  for the common single-arg and two-arg typed direct-call shapes used by the
+  minimal x86/AArch64 emitter fast paths, which removes the duplicated
+  `parse_lir_typed_call(...)` shape assertions that had drifted into those
+  target backends and the adapter.
 - The analysis/liveness stack still uses compatibility-text scanning for GEP
   indices and other non-call textual payloads, but `LirCallOp::args_str` no
   longer has three separate ad hoc scanners with subtly different behavior.
@@ -198,10 +210,9 @@ Source Plan: plan.md
 ## Next Intended Slice
 
 - Follow the Step 4 typed-dispatch cleanup into the remaining backend
-  call-adjacent consumers that still rely on wrapper string compatibility
-  instead of structured call decoding, with the remaining analysis and backend
-  call-family sites outside the now-covered x86/AArch64 zero/single/two-arg
-  direct-call fast paths still the highest-value targets before attempting
+  call-adjacent consumers that still rely on raw `LirCallOp` storage
+  compatibility instead of structured call metadata, with indirect/intrinsic
+  call-family surfaces still the highest-value targets before attempting
   broader `LirCallOp` storage changes.
 - Keep GEP index text, inline asm text, and declaration text on the
   compatibility path for now; the next slice should focus on shrinking the
@@ -237,6 +248,24 @@ Source Plan: plan.md
   --before test_fail_after.log --after test_fail_after_step3.log
   --allow-non-decreasing-passed` passed with zero new failures and no pass-count
   regression.
+- `cmake --build build -j8 --target backend_lir_adapter_tests` passed after the
+  shared typed-call shape helpers replaced the duplicated emitter-side and
+  adapter-side decoders.
+- `./build/backend_lir_adapter_tests` passed with added shared helper coverage
+  for whitespace-tolerant single-arg and two-arg typed call decoding.
+- `cmake --build build -j8` passed after routing
+  `src/backend/lir_adapter.cpp`,
+  `src/backend/x86/codegen/emit.cpp`, and
+  `src/backend/aarch64/codegen/emit.cpp` through the shared typed-call shape
+  helpers in `src/codegen/lir/call_args.hpp`.
+- `ctest --test-dir build -j --output-on-failure >
+  test_fail_after_step4_shared_call_decode.log` recorded `2372/2560` passing
+  and `188` failing tests.
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_after_step4_zero_arg_call_shape.log
+  --after test_fail_after_step4_shared_call_decode.log
+  --allow-non-decreasing-passed` passed with zero new failures and no
+  pass-count regression.
 - `cmake --build build -j8 --target backend_lir_adapter_tests` passed after the
   first Step 4 typed-dispatch adapter slice landed.
 - `./build/backend_lir_adapter_tests` passed with new direct typed-op coverage

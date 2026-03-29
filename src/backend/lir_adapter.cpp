@@ -89,77 +89,25 @@ struct ParsedTypedCall {
   std::vector<ParsedCallArg> args;
 };
 
-std::optional<ParsedCallArg> parse_call_arg(std::string_view arg_text) {
-  arg_text = c4c::codegen::lir::trim_lir_arg_text(arg_text);
-  if (arg_text.empty()) {
-    return std::nullopt;
-  }
-
-  const auto operand = c4c::codegen::lir::lir_call_arg_operand(arg_text);
-  if (!operand.has_value()) {
-    return std::nullopt;
-  }
-
-  const auto operand_offset =
-      static_cast<std::size_t>(operand->data() - arg_text.data());
-  const auto type =
-      c4c::codegen::lir::trim_lir_arg_text(arg_text.substr(0, operand_offset));
-  if (type.empty()) {
-    return std::nullopt;
-  }
-
-  return ParsedCallArg{std::string(type), std::string(*operand)};
-}
-
-std::optional<std::vector<std::string>> parse_call_param_types(
-    std::string_view callee_type_suffix) {
-  callee_type_suffix = c4c::codegen::lir::trim_lir_arg_text(callee_type_suffix);
-  if (callee_type_suffix.size() < 2 || callee_type_suffix.front() != '(' ||
-      callee_type_suffix.back() != ')') {
-    return std::nullopt;
-  }
-
-  const auto inner = c4c::codegen::lir::trim_lir_arg_text(
-      callee_type_suffix.substr(1, callee_type_suffix.size() - 2));
-  std::vector<std::string> param_types;
-  if (inner.empty()) {
-    return param_types;
-  }
-
-  for (const auto& part : split_top_level(std::string(inner), ',')) {
-    if (part.empty()) {
-      return std::nullopt;
-    }
-    param_types.push_back(part);
-  }
-  return param_types;
-}
-
 std::optional<ParsedTypedCall> parse_typed_call(const LirCallOp& call) {
-  const auto param_types = parse_call_param_types(call.callee_type_suffix);
-  if (call.callee_type_suffix.empty() || !param_types.has_value()) {
+  if (call.callee_type_suffix.empty()) {
+    return std::nullopt;
+  }
+  const auto shared_parsed = c4c::codegen::lir::parse_lir_typed_call(
+      call.callee_type_suffix, call.args_str);
+  if (!shared_parsed.has_value()) {
     return std::nullopt;
   }
 
   ParsedTypedCall parsed;
-  parsed.param_types = *param_types;
-  bool parse_failed = false;
-  c4c::codegen::lir::for_each_lir_call_arg(
-      call.args_str, [&](std::string_view arg_text) {
-        const auto parsed_arg = parse_call_arg(arg_text);
-        if (!parsed_arg.has_value()) {
-          parse_failed = true;
-          return;
-        }
-        parsed.args.push_back(*parsed_arg);
-      });
-  if (parse_failed || parsed.args.size() != parsed.param_types.size()) {
-    return std::nullopt;
+  parsed.param_types.reserve(shared_parsed->param_types.size());
+  for (std::string_view type : shared_parsed->param_types) {
+    parsed.param_types.emplace_back(type);
   }
-  for (std::size_t index = 0; index < parsed.args.size(); ++index) {
-    if (parsed.args[index].type != parsed.param_types[index]) {
-      return std::nullopt;
-    }
+  parsed.args.reserve(shared_parsed->args.size());
+  for (const auto& arg : shared_parsed->args) {
+    parsed.args.push_back(
+        ParsedCallArg{std::string(arg.type), std::string(arg.operand)});
   }
   return parsed;
 }

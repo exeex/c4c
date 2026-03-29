@@ -2,6 +2,7 @@
 
 #include "operands.hpp"
 
+#include <array>
 #include <algorithm>
 #include <cctype>
 #include <optional>
@@ -200,6 +201,48 @@ inline std::optional<ParsedLirTypedCallView> parse_lir_typed_call(
   }
 
   return ParsedLirTypedCallView{*param_types, *args};
+}
+
+template <std::size_t N>
+inline bool lir_typed_call_has_param_types(
+    const ParsedLirTypedCallView& parsed,
+    const std::array<std::string_view, N>& expected_types) {
+  if (parsed.param_types.size() != expected_types.size()) {
+    return false;
+  }
+  for (std::size_t index = 0; index < expected_types.size(); ++index) {
+    if (parsed.param_types[index] != expected_types[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+inline std::optional<std::string_view> parse_lir_single_typed_call_operand(
+    std::string_view callee_type_suffix,
+    std::string_view args_str,
+    std::string_view expected_type) {
+  const auto parsed = parse_lir_typed_call(callee_type_suffix, args_str);
+  if (!parsed.has_value() ||
+      !lir_typed_call_has_param_types(*parsed, std::array<std::string_view, 1>{expected_type})) {
+    return std::nullopt;
+  }
+  return parsed->args.front().operand;
+}
+
+inline std::optional<std::pair<std::string_view, std::string_view>>
+parse_lir_two_typed_call_operands(std::string_view callee_type_suffix,
+                                  std::string_view args_str,
+                                  std::string_view expected_type0,
+                                  std::string_view expected_type1) {
+  const auto parsed = parse_lir_typed_call(callee_type_suffix, args_str);
+  if (!parsed.has_value() ||
+      !lir_typed_call_has_param_types(
+          *parsed, std::array<std::string_view, 2>{expected_type0, expected_type1})) {
+    return std::nullopt;
+  }
+  return std::pair<std::string_view, std::string_view>{parsed->args[0].operand,
+                                                       parsed->args[1].operand};
 }
 
 inline bool lir_call_has_no_args(std::string_view callee_type_suffix,
