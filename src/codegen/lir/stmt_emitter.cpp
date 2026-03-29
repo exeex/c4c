@@ -119,6 +119,15 @@ std::string llvm_fn_type_suffix_str(const FnPtrSig& sig) {
   return out.str();
 }
 
+bool sig_has_meaningful_prototype(const FnPtrSig& sig) {
+  if (sig_has_explicit_prototype(sig)) return true;
+  if (sig.canonical_sig) {
+    const auto* fsig = sema::get_function_sig(*sig.canonical_sig);
+    if (fsig) return fsig->is_variadic || !fsig->params.empty();
+  }
+  return false;
+}
+
 std::string llvm_fn_type_suffix_str(const Function& fn) {
   if (fn.params.empty() && !fn.attrs.variadic) return "";
   std::ostringstream out;
@@ -1522,10 +1531,13 @@ const FnPtrSig* StmtEmitter::resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& c
       const Expr& inner_callee = get_expr(call->callee);
       if (const auto* dr = std::get_if<DeclRef>(&inner_callee.payload)) {
         if (const Function* target = find_function(dr->name)) {
-          if (target->ret_fn_ptr_sig) return &*target->ret_fn_ptr_sig;
+          if (target->ret_fn_ptr_sig && sig_has_meaningful_prototype(*target->ret_fn_ptr_sig)) {
+            return &*target->ret_fn_ptr_sig;
+          }
           if (const Function* returned = infer_returned_function(infer_returned_function, *target)) {
             return build_fn_sig(*returned);
           }
+          if (target->ret_fn_ptr_sig) return &*target->ret_fn_ptr_sig;
         }
       }
       if (const auto* nested_call = std::get_if<CallExpr>(&inner_callee.payload)) {
