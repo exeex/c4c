@@ -166,14 +166,15 @@ ranking pass.
    keeps the following `kept` global visible after a malformed
    `using namespace ns` line with no semicolon.
 
-7. `src/frontend/parser/declarations.cpp:861`
-   Top-level `using Alias = ...` still parses its aliased type through
-   `parse_type_name()`, which can consume the first token of the next
-   declaration before the missing-semicolon recovery helper runs.
-   Tag: `suspicious breadth`
-   Reason: a reduced `using Alias = int` followed by `int kept;` still collapses
-   into a lone `Empty` node because the alias type parser absorbs the next-line
-   `int` as part of the alias type.
+7. `src/frontend/parser/declarations.cpp:948`
+   Top-level `using Alias = ...` parsing now rejects the swallowed-declaration
+   shape where `parse_type_name()` consumes a later-line declaration such as
+   `int kept;` before the alias semicolon is seen.
+   Tag: `acceptable breadth`
+   Evidence: the reduced parse-only regression
+   `tests/cpp/internal/parse_only_case/top_level_using_alias_recovery_preserves_following_decl_parse.cpp`
+   keeps the following `kept` global visible after a malformed
+   `using Alias = int` line with no semicolon.
 
 ## Ranked First Tightening Targets
 
@@ -181,6 +182,6 @@ ranking pass.
    Narrow record-member recovery so malformed members cannot silently consume up
    to the record-closing `}` without a more explicit outcome.
 
-2. `src/frontend/parser/declarations.cpp:1265`
+2. `src/frontend/parser/declarations.cpp:1286`
    Review the remaining top-level `NK_EMPTY` parse-and-discard sites that still
    hide unsupported structure instead of preserving it explicitly.

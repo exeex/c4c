@@ -263,6 +263,80 @@ bool recover_top_level_decl_terminator_or_boundary(Parser& parser, int recovery_
     return false;
 }
 
+bool recover_top_level_using_alias_or_boundary(Parser& parser, int recovery_line) {
+    int depth = 0;
+    bool consumed_type_tokens = false;
+    while (!parser.at_end()) {
+        if (depth == 0 && parser.check(TokenKind::Semi)) {
+            parser.consume();
+            return true;
+        }
+        if (depth == 0 && consumed_type_tokens &&
+            parser.cur().line != recovery_line &&
+            is_top_level_decl_recovery_boundary(parser.cur().kind)) {
+            return false;
+        }
+        if (parser.check(TokenKind::Less) || parser.check(TokenKind::LParen) ||
+            parser.check(TokenKind::LBracket)) {
+            ++depth;
+        } else if ((parser.check(TokenKind::Greater) ||
+                    parser.check(TokenKind::RParen) ||
+                    parser.check(TokenKind::RBracket)) &&
+                   depth > 0) {
+            --depth;
+        } else if (parser.check(TokenKind::GreaterGreater) && depth > 0) {
+            depth -= std::min(depth, 2);
+            consumed_type_tokens = true;
+            parser.consume();
+            continue;
+        }
+        consumed_type_tokens = true;
+        parser.consume();
+    }
+    return false;
+}
+
+bool using_alias_consumed_following_declaration(Parser& parser,
+                                                int alias_type_pos,
+                                                int alias_type_end_pos,
+                                                int recovery_line) {
+    if (alias_type_end_pos <= alias_type_pos)
+        return false;
+
+    const int last_token_pos = alias_type_end_pos - 1;
+    if (last_token_pos < alias_type_pos ||
+        parser.tokens_[last_token_pos].kind != TokenKind::Identifier ||
+        parser.tokens_[last_token_pos].line == recovery_line) {
+        return false;
+    }
+
+    int depth = 0;
+    const int candidate_line = parser.tokens_[last_token_pos].line;
+    for (int i = alias_type_pos; i < last_token_pos; ++i) {
+        TokenKind kind = parser.tokens_[i].kind;
+        if (kind == TokenKind::Less || kind == TokenKind::LParen ||
+            kind == TokenKind::LBracket) {
+            ++depth;
+            continue;
+        }
+        if ((kind == TokenKind::Greater || kind == TokenKind::RParen ||
+             kind == TokenKind::RBracket) &&
+            depth > 0) {
+            --depth;
+            continue;
+        }
+        if (kind == TokenKind::GreaterGreater && depth > 0) {
+            depth -= std::min(depth, 2);
+            continue;
+        }
+        if (depth == 0 && parser.tokens_[i].line == candidate_line &&
+            is_top_level_decl_recovery_boundary(kind)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool skip_top_level_asm_or_recover(Parser& parser) {
     if (!parser.check(TokenKind::LParen)) return false;
 
@@ -874,7 +948,28 @@ Node* Parser::parse_top_level() {
             consume();
 
             if (match(TokenKind::Assign)) {
-                TypeSpec alias_ts = parse_type_name();
+                const int alias_type_pos = pos_;
+                TypeSpec alias_ts{};
+                try {
+                    alias_ts = parse_type_name();
+                } catch (const std::exception&) {
+                    pos_ = alias_type_pos;
+                    recover_top_level_using_alias_or_boundary(*this, ln);
+                    return make_node(NK_EMPTY, ln);
+                }
+                if (using_alias_consumed_following_declaration(*this,
+                                                               alias_type_pos,
+                                                               pos_,
+                                                               ln)) {
+                    pos_ = alias_type_pos;
+                    recover_top_level_using_alias_or_boundary(*this, ln);
+                    return make_node(NK_EMPTY, ln);
+                }
+                if (!match(TokenKind::Semi)) {
+                    pos_ = alias_type_pos;
+                    recover_top_level_using_alias_or_boundary(*this, ln);
+                    return make_node(NK_EMPTY, ln);
+                }
                 const std::string qualified = canonical_name_in_context(using_context_id, first_name);
                 typedefs_.insert(qualified);
                 user_typedefs_.insert(qualified);
@@ -885,7 +980,6 @@ Node* Parser::parse_top_level() {
                     typedef_types_[first_name] = alias_ts;
                 }
                 last_using_alias_name_ = first_name;
-                recover_top_level_decl_terminator_or_boundary(*this, ln);
                 return make_node(NK_EMPTY, ln);
             }
             target = first_name;

@@ -7,10 +7,10 @@ Last Updated: 2026-03-29
 
 ## Active Item
 
-- Step 3: tighten malformed top-level `using` recovery in
-  `src/frontend/parser/declarations.cpp` so broken `using namespace` and
-  top-level `using ns::name` lines can stop before the next declaration
-  boundary instead of relying on a blind semicolon match
+- Step 3: continue through the remaining top-level `NK_EMPTY` discard sites in
+  `src/frontend/parser/declarations.cpp`, prioritizing unsupported /
+  structure-only exits that can still hide structure instead of preserving it
+  explicitly
 
 ## Completed
 
@@ -210,10 +210,18 @@ Last Updated: 2026-03-29
   important assertion is that the following `kept` global remains visible after
   recovery, not that the unsupported top-level asm fragment is elevated into a
   first-class declaration node
-- the newly identified malformed top-level `using Alias = int` case currently
-  succeeds as a single `Empty` node and drops the following declaration when
-  the alias semicolon is missing; it remains a suspicious follow-on site after
-  the simpler `using namespace` / `using ns::name` boundary recovery slice
+- tightened malformed top-level `using Alias = ...` recovery in
+  `src/frontend/parser/declarations.cpp` so a missing `;` now rewinds from the
+  alias type parse and stops before a later-line swallowed declaration instead
+  of accepting it as part of the alias type
+- added the reduced parse-only regression
+  `tests/cpp/internal/parse_only_case/top_level_using_alias_recovery_preserves_following_decl_parse.cpp`
+  plus the dedicated dump assertion
+  `cpp_parse_top_level_using_alias_recovery_preserves_following_decl_dump` in
+  `tests/cpp/internal/InternalTests.cmake`
+- updated `src/frontend/parser/BOUNDARY_AUDIT.md` to mark top-level
+  `using Alias = ...` missing-semicolon recovery as a covered `NK_EMPTY`
+  boundary instead of a still-suspicious follow-on site
 
 ## Blockers
 
