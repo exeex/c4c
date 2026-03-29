@@ -360,6 +360,15 @@ set_tests_properties(cpp_parse_keyword_compl_operator_dump PROPERTIES
 )
 
 add_test(
+  NAME cpp_lex_keyword_requires_tokens
+  COMMAND c4cll --lex-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/cpp20_requires_clause_parse.cpp"
+)
+set_tests_properties(cpp_lex_keyword_requires_tokens PROPERTIES
+  LABELS "internal;positive_case;cpp;lex"
+  PASS_REGULAR_EXPRESSION "KW_requires 'requires'"
+)
+
+add_test(
   NAME cpp_hir_template_def_dump
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_func.cpp"
 )

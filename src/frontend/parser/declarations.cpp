@@ -160,8 +160,7 @@ bool token_starts_top_level_cpp_declaration(Parser& parser) {
 }
 
 void skip_optional_cpp20_requires_clause(Parser& parser) {
-    if (!parser.is_cpp_mode() || !parser.check(TokenKind::Identifier) ||
-        parser.cur().lexeme != "requires") {
+    if (!parser.is_cpp_mode() || !parser.check(TokenKind::KwRequires)) {
         return;
     }
 

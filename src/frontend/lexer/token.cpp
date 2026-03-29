@@ -142,6 +142,7 @@ const char *token_kind_name(TokenKind kind) {
     case TokenKind::KwConstCast: return "KW_const_cast";
     case TokenKind::KwClass: return "KW_class";
     case TokenKind::KwFinal: return "KW_final";
+    case TokenKind::KwOverride: return "KW_override";
     case TokenKind::KwPrivate: return "KW_private";
     case TokenKind::KwProtected: return "KW_protected";
     case TokenKind::KwPublic: return "KW_public";
@@ -155,6 +156,7 @@ const char *token_kind_name(TokenKind kind) {
     case TokenKind::KwNew: return "KW_new";
     case TokenKind::KwDelete: return "KW_delete";
     case TokenKind::KwExplicit: return "KW_explicit";
+    case TokenKind::KwRequires: return "KW_requires";
 
     case TokenKind::PragmaPack: return "PRAGMA_PACK";
 
@@ -290,6 +292,7 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
     if (s == "const_cast")       return TokenKind::KwConstCast;
     if (s == "class")            return TokenKind::KwClass;
     if (s == "final")            return TokenKind::KwFinal;
+    if (s == "override")         return TokenKind::KwOverride;
     if (s == "private")          return TokenKind::KwPrivate;
     if (s == "protected")        return TokenKind::KwProtected;
     if (s == "public")           return TokenKind::KwPublic;
@@ -304,6 +307,7 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
     if (s == "new")              return TokenKind::KwNew;
     if (s == "delete")           return TokenKind::KwDelete;
     if (s == "explicit")         return TokenKind::KwExplicit;
+    if (s == "requires")         return TokenKind::KwRequires;
   }
 
   return TokenKind::Identifier;

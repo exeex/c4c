@@ -95,6 +95,7 @@ enum class TokenKind {
   KwConstCast,       // const_cast
   KwClass,           // class (synonym for struct in C++ template contexts)
   KwFinal,           // final
+  KwOverride,        // override
   KwPrivate,         // private
   KwProtected,       // protected
   KwPublic,          // public
@@ -108,6 +109,7 @@ enum class TokenKind {
   KwNew,             // new
   KwDelete,          // delete (= delete for deleted functions)
   KwExplicit,        // explicit (C++ explicit conversion/constructor specifier)
+  KwRequires,        // requires
 
   // ---- Punctuation ----
   LParen,    // (

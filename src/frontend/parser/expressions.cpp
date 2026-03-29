@@ -654,8 +654,7 @@ Node* Parser::parse_primary() {
     int ln = cur().line;
 
     auto parse_cpp_requires_expression = [&]() -> Node* {
-        if (!(is_cpp_mode() && check(TokenKind::Identifier) &&
-              cur().lexeme == std::string_view("requires"))) {
+        if (!(is_cpp_mode() && check(TokenKind::KwRequires))) {
             return nullptr;
         }
 
