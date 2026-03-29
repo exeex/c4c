@@ -8,11 +8,12 @@ Source Plan: plan.md
 
 - Step 4: Migrate high-friction instruction families and consumers.
 - Exact target for the next iteration: continue Step 4 past
-  the landed shared direct-call callee classification helpers into the
-  remaining call-adjacent protocol surface that still depends on raw
-  `LirCallOp::{callee,args_str,callee_type_suffix}` storage, with the
-  highest-value next slice being any backend or emitter path that still needs
-  structured indirect/intrinsic call metadata instead of ad hoc text checks.
+  the landed slot-assignment call-argument rewrite helper into the remaining
+  LIR construction sites that still synthesize
+  `LirCallOp::{args_str,callee_type_suffix}` as opaque text, with the
+  highest-value next slice being `src/codegen/lir/stmt_emitter.cpp` call
+  construction paths that can start emitting shared structured call metadata
+  instead of only printer-shaped strings.
 
 ## Completed Items
 
@@ -109,6 +110,14 @@ Source Plan: plan.md
   helper instead of open-coded `@...` checks, and adding regression coverage in
   `tests/backend/backend_lir_adapter_tests.cpp` for direct/global,
   intrinsic, and indirect call-callee classification.
+- Completed the next Step 4 shared call-argument rewrite slice by adding a
+  reusable `rewrite_lir_call_args(...)` helper in
+  `src/codegen/lir/call_args.hpp`, routing
+  `src/backend/stack_layout/slot_assignment.cpp` through it so manual entry
+  slot coalescing also rewrites typed `LirCallOp::args_str` operands to the
+  canonical retained alloca name, and adding regression coverage in
+  `tests/backend/backend_lir_adapter_tests.cpp` for typed call-argument
+  rewriting during slot-assignment application.
 
 ## Notes
 
@@ -187,9 +196,19 @@ Source Plan: plan.md
   decoding, so backend consumers can distinguish direct globals, LLVM
   intrinsics, and indirect calls without open-coding `@` prefix rules in each
   backend file.
+- `src/codegen/lir/call_args.hpp` now also exposes a shared
+  `rewrite_lir_call_args(...)` helper that preserves typed call-argument shape
+  while swapping canonical operand names, so compatibility-path consumers do
+  not need to hand-roll `args_str` editing when they still operate on legacy
+  `LirCallOp` text storage.
 - The analysis/liveness stack still uses compatibility-text scanning for GEP
   indices and other non-call textual payloads, but `LirCallOp::args_str` no
   longer has three separate ad hoc scanners with subtly different behavior.
+- Full-suite regression check for this slice remained monotonic against the
+  checked-in `test_fail_before.log` baseline: `test_fail_after.log` improved
+  from 189 failing tests to 188 with no newly failing tests, and
+  `c_testsuite_x86_backend_src_00100_c` is the only failure that dropped out of
+  the set.
 - Step 2 candidate primitives implied by the audit:
   `LirOperand` should distinguish SSA values, immediates, globals, labels, and
   special constants; `LirTypeRef` should replace raw LLVM type strings on core

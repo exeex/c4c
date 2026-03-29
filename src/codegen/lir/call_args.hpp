@@ -389,4 +389,47 @@ inline void collect_lir_value_names_from_call_args(std::string_view args_str,
   });
 }
 
+template <typename Fn>
+inline std::string rewrite_lir_call_args(std::string_view args_str, Fn&& rewrite_operand) {
+  std::vector<std::string> rewritten_args;
+  bool parse_failed = false;
+  bool any_rewritten = false;
+
+  for_each_lir_call_arg(args_str, [&](std::string_view arg) {
+    const auto operand = lir_call_arg_operand(arg);
+    if (!operand.has_value()) {
+      parse_failed = true;
+      return;
+    }
+
+    auto rewritten_operand = rewrite_operand(*operand);
+    if (!rewritten_operand.has_value() || *rewritten_operand == *operand) {
+      rewritten_args.emplace_back(trim_lir_arg_text(arg));
+      return;
+    }
+
+    const auto operand_offset = static_cast<std::size_t>(operand->data() - arg.data());
+    std::string rewritten(trim_lir_arg_text(arg.substr(0, operand_offset)));
+    if (!rewritten.empty()) {
+      rewritten.push_back(' ');
+    }
+    rewritten += *rewritten_operand;
+    rewritten_args.push_back(std::move(rewritten));
+    any_rewritten = true;
+  });
+
+  if (parse_failed || !any_rewritten) {
+    return std::string(args_str);
+  }
+
+  std::string rewritten;
+  for (std::size_t index = 0; index < rewritten_args.size(); ++index) {
+    if (index != 0) {
+      rewritten += ", ";
+    }
+    rewritten += rewritten_args[index];
+  }
+  return rewritten;
+}
+
 }  // namespace c4c::codegen::lir

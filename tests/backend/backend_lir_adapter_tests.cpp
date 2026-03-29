@@ -3907,6 +3907,15 @@ c4c::codegen::lir::LirModule make_same_block_local_alloca_candidate_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_disjoint_block_call_arg_alloca_candidate_module() {
+  auto module = make_disjoint_block_local_alloca_candidate_module();
+  auto& else_block = module.functions.front().blocks[2];
+  else_block.insts.insert(
+      else_block.insts.begin() + 1,
+      c4c::codegen::lir::LirCallOp{"", "void", "@sink", "(ptr)", "  ptr   %lv.else  "});
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_read_before_store_local_alloca_candidate_module() {
   using namespace c4c::codegen::lir;
 
@@ -7336,6 +7345,22 @@ void test_backend_shared_slot_assignment_applies_coalesced_entry_slots() {
 
   expect_true(same_block_function.alloca_insts.size() == 2,
               "shared slot-assignment application should keep same-block allocas distinct when planning assigned them different slots");
+
+  const auto call_arg_module = make_disjoint_block_call_arg_alloca_candidate_module();
+  auto call_arg_function = call_arg_module.functions.front();
+  const std::vector<c4c::backend::stack_layout::EntryAllocaSlotPlan> call_arg_plans = {
+      c4c::backend::stack_layout::EntryAllocaSlotPlan{
+          "%lv.then", true, false, std::nullopt, std::size_t{0}},
+      c4c::backend::stack_layout::EntryAllocaSlotPlan{
+          "%lv.else", true, false, std::nullopt, std::size_t{0}},
+  };
+  c4c::backend::stack_layout::apply_entry_alloca_slot_plan(call_arg_function,
+                                                           call_arg_plans);
+
+  const auto* rewritten_call =
+      std::get_if<c4c::codegen::lir::LirCallOp>(&call_arg_function.blocks[2].insts[1]);
+  expect_true(rewritten_call != nullptr && rewritten_call->args_str == "ptr %lv.then",
+              "shared slot-assignment application should rewrite typed call arguments to the canonical coalesced entry alloca");
 }
 
 void test_aarch64_backend_prunes_dead_param_allocas_from_fallback_lir() {
