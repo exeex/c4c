@@ -1417,9 +1417,11 @@ Node* Parser::parse_primary() {
         // Skip optional (params)
         if (check(TokenKind::LParen)) skip_paren_group();
         // Skip optional mutable/constexpr/consteval
-        while (check(TokenKind::Identifier) &&
-               (cur().lexeme == "mutable" || cur().lexeme == "constexpr" ||
-                cur().lexeme == "consteval")) consume();
+        while (check(TokenKind::KwMutable) || check(TokenKind::KwConstexpr) ||
+               check(TokenKind::KwConsteval) ||
+               (check(TokenKind::Identifier) &&
+                (cur().lexeme == "mutable" || cur().lexeme == "constexpr" ||
+                 cur().lexeme == "consteval"))) consume();
         // Skip optional noexcept(...)
         skip_exception_spec();
         // Skip optional -> return_type

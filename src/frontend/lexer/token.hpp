@@ -100,6 +100,7 @@ enum class TokenKind {
   KwPublic,          // public
   KwFriend,          // friend
   KwVirtual,         // virtual
+  KwMutable,         // mutable
   KwNullptr,         // nullptr
   KwTrue,            // true
   KwFalse,           // false

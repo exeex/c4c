@@ -2729,6 +2729,7 @@ TypeSpec Parser::parse_base_type() {
             case TokenKind::KwExtension:
             case TokenKind::KwNoreturn:
             case TokenKind::KwThreadLocal:
+            case TokenKind::KwMutable:
             case TokenKind::KwConstexpr:
             case TokenKind::KwConsteval:
             case TokenKind::KwExplicit:
@@ -4822,7 +4823,8 @@ bool Parser::try_parse_record_method_or_field_member(
             // Only peek through qualifiers/storage-class keywords
             if (check(TokenKind::KwConst) || check(TokenKind::KwVolatile) ||
                 check(TokenKind::KwInline) || check(TokenKind::KwExtern) ||
-                check(TokenKind::KwConsteval) || check(TokenKind::KwExplicit)) {
+                check(TokenKind::KwConsteval) || check(TokenKind::KwExplicit) ||
+                check(TokenKind::KwMutable)) {
                 consume();
                 continue;
             }

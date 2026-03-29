@@ -388,7 +388,7 @@ bool is_storage_class(TokenKind k) {
            k == TokenKind::KwRegister || k == TokenKind::KwAuto   ||
            k == TokenKind::KwTypedef  || k == TokenKind::KwInline ||
            k == TokenKind::KwExtension || k == TokenKind::KwNoreturn ||
-           k == TokenKind::KwThreadLocal;
+           k == TokenKind::KwThreadLocal || k == TokenKind::KwMutable;
 }
 
 bool is_type_kw(TokenKind k) {

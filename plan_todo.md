@@ -6,9 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 2: choose the next narrow post-`friend` keyword slice, likely
-  `mutable` or a single alternative-operator spelling, and add matching lexer /
-  parser coverage without widening scope
+- [ ] Step 2: choose the first narrow alternative-operator spelling slice,
+  likely `and`, and add matching lexer / parser coverage without widening
+  scope
 
 ## Todo
 
@@ -21,6 +21,10 @@ Source Plan: plan.md
 - [x] Record the current full-suite baseline before implementation work
 - [x] Add the narrowest validating lexer or parser test for the first slice
 - [x] Implement the first keyword-classification slice
+- [x] Re-run targeted tests, nearby coverage, and the full suite
+- [x] Record a fresh full-suite baseline before the `mutable` slice
+- [x] Add the narrowest validating lexer or parser test for the `mutable` slice
+- [x] Implement the `mutable` keyword-classification slice
 - [x] Re-run targeted tests, nearby coverage, and the full suite
 - [x] Record a fresh full-suite baseline before the `friend` slice
 - [x] Add the narrowest validating lexer or parser test for the `friend` slice
@@ -110,13 +114,29 @@ Source Plan: plan.md
   confirming `KW_friend` output.
 - [x] Recorded full-suite post-change status in `test_after.log`:
   `100% tests passed, 0 tests failed out of 2345`.
+- [x] Recorded fresh full-suite baseline in `test_before.log` before the
+  `mutable` slice: `100% tests passed, 0 tests failed out of 2345`.
+- [x] Added
+  [tests/cpp/internal/postive_case/keyword_mutable_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/keyword_mutable_parse.cpp)
+  and registered it as a parse-only positive case covering reserved `mutable`
+  use in both record-member declarations and lambda-specifier parsing.
+- [x] Reserved `mutable` in the lexer as `KwMutable`, fixed the keyword
+  fast-path so `m...` words can classify correctly, then updated parser
+  storage-class and lambda-specifier compatibility paths to accept the new
+  token kind.
+- [x] Revalidated the slice with targeted coverage:
+  `keyword_mutable_parse`, `keyword_friend_parse`,
+  `record_member_prelude_parse`, `record_member_mixed_prelude_parse`, and
+  `eastl_slice7c_struct_body_recovery`, plus a manual `--lex-only` probe
+  confirming `KW_mutable` output.
+- [x] Recorded full-suite post-change status in `test_after.log`:
+  `100% tests passed, 0 tests failed out of 2346`.
 
 ## Next Intended Slice
 
-After `friend`, audit whether `mutable` is the next narrow parser-sensitive
-slice before touching the alternative operator spellings, because record-member
-declaration parsing is likely to need fewer compatibility hooks than the
-operator aliases.
+After `mutable`, audit which single alternative-operator spelling should land
+first, likely `and`, before taking a broader alias batch so the expression
+parser compatibility work stays narrow and attributable.
 
 ## Blockers
 
@@ -141,3 +161,5 @@ operator aliases.
   `2343 -> 2344` total passing tests due to the new committed parse regression.
 - Fourth slice finished cleanly with monotonic full-suite results:
   `2344 -> 2345` total passing tests due to the new committed parse regression.
+- Fifth slice finished cleanly with monotonic full-suite results:
+  `2345 -> 2346` total passing tests due to the new committed parse regression.
