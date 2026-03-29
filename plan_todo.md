@@ -9,20 +9,50 @@ Source Plan: plan.md
 - Step 5: prepare the next diagnostic slice by bounding the first
   committed-failure vs no-match follow-up under speculative `try_parse_*`
   record-member rewinds
-- Current slice: continue from the next remaining record-member rewind in
-  `tests/cpp/std/std_vector_simple.cpp` whose emitted summary or stack still
-  lacks reduced coverage after the bounded `stl_algobase.h`
-  method-body `got='const'` family
-- Iteration target: resample the surviving record-member parser-debug paths in
-  `std_vector_simple.cpp`, pick the next distinct family after the bounded
-  `parse_primary`-inside-method-body case, and decide whether it needs a new
-  reduced repro or a leaf-selection adjustment
-- Next intended slice: start from the next surviving record-member rewind in
-  the current parser-debug output after the `stl_algobase.h:1210` / `:1392`
-  family and classify whether its summary should stay deep or move outward
+- Current slice: resample the remaining parser-debug output after bounding the
+  `stl_vector.h:1939` record-member if-init family and confirm whether any
+  uncovered record-member rewinds still need reduced coverage
+- Iteration target: classify the next distinct surviving family after the
+  bounded `stl_vector.h:1939` case, or record that the remaining candidates
+  have moved outside the active record-member rewind focus
+- Next intended slice: if record-member rewinds are exhausted, identify the
+  first adjacent speculative non-record-member family that still needs a
+  reduced parser-debug coverage decision and record it without silently
+  broadening the active plan
 
 ## Completed
 
+- recorded the required clean after-suite for this iteration and passed the
+  monotonic regression guard against the recorded
+  `before passed=2287/2288` baseline:
+  `after passed=2290/2291`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged and the
+  guard script reported zero new failing tests
+- added reduced parser-debug coverage in
+  `cpp_parser_debug_record_member_if_init_name_leaf` for the next surviving
+  record-member method-body if-init family, locking the current committed
+  `parse_fn=parse_primary phase=committed expected=RPAREN got='n'` summary
+  together with the
+  `parse_top_level -> try_parse_record_member_dispatch ->
+  try_parse_record_method_or_field_member -> parse_block -> parse_stmt ->
+  parse_expr -> parse_assign_expr -> parse_ternary -> parse_unary ->
+  parse_primary` stack
+- added motivating parser-debug coverage in
+  `cpp_parser_debug_std_vector_record_member_if_init_leaf` for the
+  `tests/cpp/std/std_vector_simple.cpp`
+  `/usr/include/c++/14/bits/stl_vector.h:1939` if-init method-body family,
+  locking the same inner `parse_primary` summary with `got='__n'` and the
+  same record-member dispatch stack prefix
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_record_member_const_if_leaf`,
+  `cpp_parser_debug_record_member_if_init_name_leaf`,
+  `cpp_parser_debug_std_vector_record_member_const_if_leaf`, and
+  `cpp_parser_debug_std_vector_record_member_if_init_leaf`
+- recorded the Step 5 decision for this bounded `stl_vector.h:1939`
+  `got='__n'` family: keep the current inner committed `parse_primary`
+  summary, because the motivating failure still happens inside the method-body
+  expression path while the emitted debug stack already preserves the outer
+  record-member dispatch context
 - recorded the required clean after-suite for this iteration and passed the
   monotonic regression guard against the recorded
   `before passed=2284/2285` baseline:

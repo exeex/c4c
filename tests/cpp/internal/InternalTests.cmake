@@ -298,6 +298,19 @@ set_tests_properties(cpp_parser_debug_record_member_const_if_leaf PROPERTIES
 )
 
 add_test(
+  NAME cpp_parser_debug_record_member_if_init_name_leaf
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_record_member_if_init_name_leaf.cpp
+          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_primary phase=committed expected=RPAREN got='n'"
+          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> try_parse_record_member_dispatch -> try_parse_record_method_or_field_member -> parse_block -> parse_stmt -> parse_expr -> parse_assign_expr -> parse_ternary -> parse_unary -> parse_primary"
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_record_member_if_init_name_leaf PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
   NAME cpp_parser_debug_qualified_type_top_level_params
   COMMAND "${CMAKE_COMMAND}"
           -DCOMPILER=$<TARGET_FILE:c4cll>
@@ -489,6 +502,19 @@ add_test(
           -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
 )
 set_tests_properties(cpp_parser_debug_std_vector_record_member_const_if_leaf PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
+  NAME cpp_parser_debug_std_vector_record_member_if_init_leaf
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/std/std_vector_simple.cpp
+          "-DEXPECT_ERROR_SUBSTRING:STRING=/usr/include/c++/14/bits/stl_vector.h:1939:16: error: parse_fn=parse_primary phase=committed expected=RPAREN got='__n'"
+          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> try_parse_record_member_dispatch -> try_parse_record_method_or_field_member -> parse_block -> parse_stmt -> parse_expr -> parse_assign_expr -> parse_ternary -> parse_unary -> parse_primary"
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_std_vector_record_member_if_init_leaf PROPERTIES
   LABELS "internal;negative_case;cpp;diagnostic_format"
 )
 
