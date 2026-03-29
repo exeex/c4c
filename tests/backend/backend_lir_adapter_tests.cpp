@@ -1,5 +1,9 @@
 #include "backend.hpp"
+#include "generation.hpp"
+#include "liveness.hpp"
 #include "lir_adapter.hpp"
+#include "regalloc.hpp"
+#include "stack_layout/regalloc_helpers.hpp"
 #include "target.hpp"
 #include "../../src/backend/aarch64/assembler/parser.hpp"
 
@@ -2863,6 +2867,63 @@ void test_aarch64_assembler_encoder_helper_smoke() {
               "aarch64 encoder helper should map the sf bit directly from operand width");
 }
 
+void test_backend_shared_liveness_surface_tracks_result_names() {
+  const auto module = make_declaration_module();
+  const auto& function = module.functions.back();
+  const auto liveness = c4c::backend::compute_live_intervals(function);
+
+  expect_true(liveness.call_points.size() == 1 && liveness.call_points.front() == 0,
+              "shared liveness surface should record call program points for typed call ops");
+  const auto* interval = liveness.find_interval("%t0");
+  expect_true(interval != nullptr,
+              "shared liveness surface should expose interval lookup by SSA result name");
+  expect_true(interval->start == 0 && interval->end == 0,
+              "shared liveness surface should keep deterministic placeholder intervals for the first compile slice");
+}
+
+void test_backend_shared_regalloc_surface_assigns_first_available_reg() {
+  const auto module = make_return_add_module();
+  const auto& function = module.functions.front();
+
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = {{20}, {21}};
+  config.caller_saved_regs = {{13}};
+
+  const auto regalloc = c4c::backend::allocate_registers(function, config);
+  expect_true(regalloc.assignments.size() == 1,
+              "shared regalloc surface should assign one register for the single-result helper slice");
+  const auto it = regalloc.assignments.find("%t0");
+  expect_true(it != regalloc.assignments.end() && it->second.index == 20,
+              "shared regalloc surface should prefer the first available callee-saved register");
+  expect_true(regalloc.used_regs.size() == 1 && regalloc.used_regs.front().index == 20,
+              "shared regalloc surface should track the used register set");
+  expect_true(regalloc.liveness.has_value() &&
+                  regalloc.liveness->find_interval("%t0") != nullptr,
+              "shared regalloc surface should retain cached liveness for the handoff boundary");
+}
+
+void test_backend_shared_regalloc_helper_filters_and_merges_clobbers() {
+  const std::vector<c4c::backend::PhysReg> callee_saved = {{20}, {21}, {22}};
+  const std::vector<c4c::backend::PhysReg> asm_clobbered = {{21}};
+  const auto filtered =
+      c4c::backend::stack_layout::filter_available_regs(callee_saved, asm_clobbered);
+
+  expect_true(filtered.size() == 2 && filtered.front().index == 20 &&
+                  filtered.back().index == 22,
+              "shared stack-layout helper should remove inline-asm clobbered registers from the available set");
+
+  const auto module = make_return_add_module();
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = filtered;
+  const auto merged = c4c::backend::run_regalloc_and_merge_clobbers(
+      module.functions.front(), config, asm_clobbered);
+
+  expect_true(merged.used_callee_saved.size() == 2 &&
+                  merged.used_callee_saved.front().index == 20 &&
+                  merged.used_callee_saved.back().index == 21,
+              "shared regalloc helper should merge allocator usage with asm clobbers in sorted order");
+}
+
 }  // namespace
 
 int main() {
@@ -2935,5 +2996,8 @@ int main() {
   test_aarch64_assembler_parser_stub_preserves_text();
   test_aarch64_assembler_elf_writer_branch_reloc_helper();
   test_aarch64_assembler_encoder_helper_smoke();
+  test_backend_shared_liveness_surface_tracks_result_names();
+  test_backend_shared_regalloc_surface_assigns_first_available_reg();
+  test_backend_shared_regalloc_helper_filters_and_merges_clobbers();
   return 0;
 }
