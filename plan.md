@@ -1,170 +1,165 @@
-# SFINAE Template-Pattern Parsing and Staged Support Runbook
+# std::vector System-Header Frontline Reduction Runbook
 
 Status: Active
-Source Idea: ideas/open/06_sfinae_template_parameter_and_signature_patterns.md
+Source Idea: ideas/open/04_std_vector_bringup_plan.md
 Activated from: prompts/AGENT_PROMPT_ACTIVATE_PLAN.md
 
 ## Purpose
 
-Turn the open SFINAE parser idea into an execution runbook that drives small,
-test-first parser slices without silently expanding into full template
-semantics.
+Turn the parked `std::vector` bring-up note into an execution runbook that
+reduces the current libstdc++ parser frontier in small, regression-guarded
+slices.
 
 ## Goal
 
-Make the parser reliably accept the common libstdc++ / stdlib SFINAE surface
-forms that appear in template parameter lists and function signatures while
-keeping unsupported semantics localized and explicit.
+Move `tests/cpp/std/std_vector_simple.cpp` from the current parse-only frontier
+toward stable frontend acceptance by reducing one concrete system-header blocker
+at a time.
 
 ## Core Rule
 
-Treat the current work as parser-coverage and AST-stability work first. Do not
-claim full SFINAE semantics, overload pruning, or template partial ordering as
-part of this plan.
+Use `tests/cpp/std/std_vector_simple.cpp` only as the forcing repro. Reduce
+each blocker into the narrowest internal testcase before changing parser code.
+Do not broaden this plan into generic standard-library support promises.
 
 ## Read First
 
-- [ideas/open/06_sfinae_template_parameter_and_signature_patterns.md](/workspaces/c4c/ideas/open/06_sfinae_template_parameter_and_signature_patterns.md)
+- [ideas/open/04_std_vector_bringup_plan.md](/workspaces/c4c/ideas/open/04_std_vector_bringup_plan.md)
 - [prompts/AGENT_PROMPT_EXECUTE_PLAN.md](/workspaces/c4c/prompts/AGENT_PROMPT_EXECUTE_PLAN.md)
+- [tests/cpp/std/std_vector_simple.cpp](/workspaces/c4c/tests/cpp/std/std_vector_simple.cpp)
+- [src/frontend/parser/expressions.cpp](/workspaces/c4c/src/frontend/parser/expressions.cpp)
+- [src/frontend/parser/declarations.cpp](/workspaces/c4c/src/frontend/parser/declarations.cpp)
 - [src/frontend/parser/types.cpp](/workspaces/c4c/src/frontend/parser/types.cpp)
-- [src/frontend/parser/parser.h](/workspaces/c4c/src/frontend/parser/parser.h)
 - [tests/cpp/internal/postive_case](/workspaces/c4c/tests/cpp/internal/postive_case)
 
 ## Current Targets
 
-The first support wave is limited to these six pattern families:
+The current reduced frontier should stay limited to blockers reflected in the
+latest `std::vector` repro:
 
-1. unnamed typed NTTP defaults in `template<...>`
-2. named typed NTTP defaults in `template<...>`
-3. unnamed type parameters defaulted through `enable_if`
-4. return-type SFINAE
-5. parameter-type SFINAE
-6. partial specialization or alias-specialization gating through `enable_if`
+1. `noexcept` expression parsing in libstdc++ helper code when a new reduced
+   case still exists beyond the already-landed `noexcept_expr_parse.cpp`
+2. concept-heavy iterator helper declarations around
+   `/usr/include/c++/14/bits/iterator_concepts.h`
+3. adjacent parser-boundary bugs only when they are directly required to move
+   the `std::vector` repro forward
 
 ## Non-Goals
 
-- real substitution-failure behavior
-- overload-set pruning via SFINAE
-- broad alias-template semantic completion
-- full template partial ordering
-- container-specific debugging unrelated to these parser forms
+- full `std::vector` semantic correctness in one slice
+- unrelated standard-library cleanup outside the active reduced blocker
+- generic builtin-trait implementation work unless the current reduced case
+  proves it is the immediate root cause
+- reactivating the backend umbrella roadmap
 
 ## Working Model
 
-- Parse SFINAE-shaped declarations as ordinary syntax first.
-- Reuse shared parsing paths between top-level and record-member template
-  preludes instead of introducing ad hoc special cases.
-- Preserve enough AST structure for later semantic work.
-- If a parsed construct reaches an unsupported semantic phase, fail at that
-  construct with a focused error rather than via downstream parser corruption.
+- Reproduce the current `std::vector` parse-only failure first.
+- Reduce the lead blocker into one internal positive-case parser regression.
+- Fix only the parser mechanism required by that reduced case.
+- Re-run the direct `std::vector` repro after each slice to confirm the frontier
+  moves forward or becomes better localized.
+- If a reduction exposes a separate cross-cutting initiative, record it in
+  `ideas/open/` and switch lifecycle state instead of mutating this plan.
 
 ## Execution Rules
 
-- Follow a test-first workflow for each pattern family.
-- Add the narrowest reduced parser regression before or with the parser change.
+- Follow a test-first workflow for each reduced blocker.
+- Prefer parser-hygiene tightening over broad skip/recovery rules.
 - Keep each patch to one mechanism family.
-- When a failure is semantic rather than syntactic, record it explicitly and do
-  not widen parser recovery rules to hide it.
-- If execution uncovers a separate initiative, write it to `ideas/open/`
-  instead of silently growing this plan.
+- Preserve existing reduced regressions added during earlier bring-up slices.
+- Record the exact surviving `std::vector` repro failure after each completed
+  slice.
 
 ## Ordered Steps
 
-### Step 1: Capture and reduce the active failure shapes
+### Step 1: Reconfirm the live std::vector frontier
 
 Goal:
-- map the six target families onto concrete reduced parse tests and note which
-  ones already fail in tree
+- capture the current parse-only failure shape for
+  `tests/cpp/std/std_vector_simple.cpp`
+
+Primary target:
+- [tests/cpp/std/std_vector_simple.cpp](/workspaces/c4c/tests/cpp/std/std_vector_simple.cpp)
+
+Actions:
+- run `./build/c4cll --parse-only tests/cpp/std/std_vector_simple.cpp`
+- record the first surviving parser errors and affected headers
+- compare the lead failure against the parked idea notes from 2026-03-29
+
+Completion check:
+- `plan_todo.md` records one concrete lead blocker with exact error text or
+  header location
+
+### Step 2: Reduce the lead blocker to an internal testcase
+
+Goal:
+- isolate the current repro into the smallest parser regression that can be run
+  without the full system-header stack
 
 Primary target:
 - [tests/cpp/internal/postive_case](/workspaces/c4c/tests/cpp/internal/postive_case)
 
 Actions:
-- inspect existing parser tests for overlapping `enable_if` or dependent
-  template-parameter coverage
-- add missing reduced tests for each target family, marking any not-yet-fixed
-  cases as expected failures only if the harness requires it
-- record the exact parser failure signature for each missing family
+- reduce the current header failure to one internal positive-case testcase
+- register the testcase in
+  [tests/cpp/internal/InternalTests.cmake](/workspaces/c4c/tests/cpp/internal/InternalTests.cmake)
+- keep the testcase scoped to the active blocker only
 
 Completion check:
-- each of the six target families has a named reduced testcase or an explicit
-  recorded reason it is blocked from being added immediately
+- one new or updated reduced testcase reproduces the live blocker independently
 
-### Step 2: Normalize template-parameter-list parsing for SFINAE forms
+### Step 3: Fix the narrow parser mechanism
 
 Goal:
-- accept `enable_if`-shaped type heads and typed NTTP defaults inside
-  `template<...>` without downstream parse-state corruption
+- teach the parser to accept the reduced blocker without widening unrelated
+  recovery behavior
+
+Primary targets:
+- [src/frontend/parser/expressions.cpp](/workspaces/c4c/src/frontend/parser/expressions.cpp)
+- [src/frontend/parser/declarations.cpp](/workspaces/c4c/src/frontend/parser/declarations.cpp)
+- [src/frontend/parser/types.cpp](/workspaces/c4c/src/frontend/parser/types.cpp)
+
+Actions:
+- inspect the parser path reached by the reduced testcase
+- patch the smallest shared parsing mechanism that resolves the failure
+- avoid unrelated cleanup
+
+Completion check:
+- the reduced testcase passes and nearby parser coverage stays green
+
+### Step 4: Re-run the forcing repro and stage the next frontier
+
+Goal:
+- prove the direct `std::vector` repro moved forward and document the next
+  blocker clearly
 
 Primary target:
-- [src/frontend/parser/types.cpp](/workspaces/c4c/src/frontend/parser/types.cpp)
+- [tests/cpp/std/std_vector_simple.cpp](/workspaces/c4c/tests/cpp/std/std_vector_simple.cpp)
 
 Actions:
-- factor shared type-head and NTTP handling used by top-level and record-member
-  template preludes
-- ensure alias, qualified, and `typename ...::type` spellings are accepted in
-  template parameter context
-- validate unnamed and named typed NTTP cases with focused tests
+- re-run `./build/c4cll --parse-only tests/cpp/std/std_vector_simple.cpp`
+- record whether the lead failure moved, disappeared, or exposed a different
+  localized frontier
+- fold the new repro status into `plan_todo.md`
 
 Completion check:
-- the template-parameter target families parse cleanly in both reduced tests
-  and any nearby existing parser regressions
+- the direct repro is strictly improved or the next blocker is more localized
+  than before the slice
 
-### Step 3: Normalize SFINAE-bearing function signatures
-
-Goal:
-- parse return-type and parameter-type SFINAE forms through the normal function
-  declaration pipeline
-
-Primary targets:
-- [src/frontend/parser/types.cpp](/workspaces/c4c/src/frontend/parser/types.cpp)
-- any adjacent function/declarator helpers touched by the narrow fix
-
-Actions:
-- support trailing return and parameter-type `enable_if` spellings as ordinary
-  type syntax
-- keep declarator parsing layered so signature fixes do not become general
-  recovery widening
-- confirm top-level and record-member function declarations share the same
-  support path where applicable
-
-Completion check:
-- reduced return-type and parameter-type SFINAE tests pass without creating new
-  parser regressions in nearby declarator coverage
-
-### Step 4: Cover specialization-gating forms and stage semantic fallout
+### Step 5: Validate with regression guardrails
 
 Goal:
-- parse partial specialization and alias-specialization gating forms while
-  keeping unsupported semantics localized
-
-Primary targets:
-- [src/frontend/parser/types.cpp](/workspaces/c4c/src/frontend/parser/types.cpp)
-- semantic diagnostics reached by the newly parsed forms, if any
+- prove the slice improved or preserved suite health without new unrelated
+  failures
 
 Actions:
-- add reduced specialization-gating tests
-- implement only the minimum parser support needed to preserve structure
-- if sema or lowering lacks support, emit or preserve a focused failure at the
-  unsupported construct rather than allowing later parser corruption
-
-Completion check:
-- specialization-gating tests parse successfully, or they fail later with a
-  specific localized unsupported-feature signal
-
-### Step 5: Validate the slice with regression guardrails
-
-Goal:
-- prove the active slice improves or preserves suite health without new
-  unrelated failures
-
-Actions:
-- run the targeted reduced tests for the just-finished mechanism family
+- run the targeted reduced tests for the completed blocker
 - run nearby parser tests in the same subsystem
 - run the full configured `ctest` suite before handoff
-- compare before/after full-suite logs and keep the result monotonic
+- compare before/after logs and keep the result monotonic
 
 Completion check:
-- targeted tests pass for the completed slice
+- targeted tests pass for the finished slice
 - full-suite results are monotonic with no newly failing tests
-- `plan_todo.md` records what completed and what should be tackled next
+- `plan_todo.md` names the next intended `std::vector` frontier

@@ -1,6 +1,6 @@
 # SFINAE Template-Pattern Parsing and Staged Support
 
-Status: Open
+Status: Closed
 Last Updated: 2026-03-29
 
 ## Goal
@@ -116,6 +116,26 @@ Those should become later semantic slices after parser stability is in place.
   record-member code paths
 - unsupported semantic follow-ons fail explicitly and locally, not via
   downstream parse corruption
+
+## Completion Notes
+
+- Completed on 2026-03-29 after adding dedicated reduced coverage for the six
+  target families, including isolated parse regressions for function-signature
+  SFINAE and partial-specialization gating.
+- The isolated specialization-gating probe passed immediately, so this idea
+  closed as parser-coverage validation work rather than a parser-patch series.
+- Full-suite validation stayed monotonic across the final slice:
+  `2430/2431` passing tests before the isolated specialization-gating probe and
+  `2431/2432` after it, with no newly failing tests.
+
+## Leftover Issues
+
+- If later template-semantics work needs it, add a frontend/HIR-stage probe to
+  prove specialization-gating forms either survive beyond parsing or fail with
+  a localized unsupported-feature diagnostic.
+- The long-standing unrelated baseline failure
+  `cpp_positive_sema_iterator_concepts_following_hash_base_parse_cpp` remained
+  unchanged throughout this idea.
 
 ## Relationship To Active Work
 
