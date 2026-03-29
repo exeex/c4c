@@ -7,10 +7,10 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 4: Migrate high-friction instruction families and consumers.
-- Exact target for the next iteration: start replacing backend-side raw
-  opcode/predicate string dispatch with the new typed wrapper accessors on the
-  smallest arithmetic/cmp-heavy consumer slice that can be covered by existing
-  backend adapter tests.
+- Exact target for the next iteration: continue Step 4 past
+  `src/backend/lir_adapter.cpp` into the first target-specific consumer slice,
+  likely one backend emitter path that still branches on raw cmp predicate or
+  opcode strings and can be covered by existing backend tests.
 
 ## Completed Items
 
@@ -30,6 +30,12 @@ Source Plan: plan.md
   `src/codegen/lir/lir_printer.cpp` through verifier-backed render helpers,
   and adding targeted printer/verifier coverage to
   `tests/backend/backend_lir_adapter_tests.cpp`.
+- Completed the first Step 4 backend-consumer migration slice in
+  `src/backend/lir_adapter.cpp` by replacing the adapter's raw arithmetic and
+  integer-`ne` cmp string dispatch with `typed()`-backed helper checks, and
+  added direct typed-op regression coverage in
+  `tests/backend/backend_lir_adapter_tests.cpp` for both the structured add
+  contract and the countdown-loop normalization path.
 
 ## Notes
 
@@ -121,12 +127,9 @@ Source Plan: plan.md
 
 ## Next Intended Slice
 
-- Replace the first backend consumer branch set that still matches on
-  `bin->opcode` / `cmp->predicate` raw strings with `typed()`-backed dispatch,
-  starting in `src/backend/lir_adapter.cpp`.
-- Follow that slice into one target backend emitter only if the adapter change
-  exposes duplicated raw predicate/opcode decoding that can be removed without
-  broadening scope.
+- Follow the Step 4 typed-dispatch cleanup into one target backend emitter or
+  analysis helper that still branches on raw opcode/predicate text, reusing the
+  same helper style proven in `src/backend/lir_adapter.cpp`.
 - Keep call argument text, GEP index text, inline asm text, and declaration
   text on the compatibility path for now; Step 4 should focus on arithmetic and
   comparison consumers before the larger call/GEP migration work.
@@ -160,6 +163,18 @@ Source Plan: plan.md
   --before test_fail_after.log --after test_fail_after_step3.log
   --allow-non-decreasing-passed` passed with zero new failures and no pass-count
   regression.
+- `cmake --build build -j8 --target backend_lir_adapter_tests` passed after the
+  first Step 4 typed-dispatch adapter slice landed.
+- `./build/backend_lir_adapter_tests` passed with new direct typed-op coverage
+  for adapter binary decoding and countdown-loop normalization.
+- `cmake --build build -j8` passed after routing `src/backend/lir_adapter.cpp`
+  through typed opcode/predicate helpers.
+- `ctest --test-dir build -j --output-on-failure > test_fail_after_step4.log`
+  recorded `2371/2560` passing and `189` failing tests.
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_after_step3.log --after test_fail_after_step4.log
+  --allow-non-decreasing-passed` passed with zero new failures and no
+  pass-count regression.
 
 ## Open Questions To Resolve During This Runbook
 

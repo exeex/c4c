@@ -1128,6 +1128,17 @@ c4c::codegen::lir::LirModule make_return_sub_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_typed_return_add_module() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_return_zero_module();
+  auto& function = module.functions.front();
+  auto& block = function.blocks.front();
+  block.insts.push_back(LirBinOp{"%t0", LirBinaryOpcode::Add, "i32", "2", "3"});
+  block.terminator = LirRet{std::string("%t0"), "i32"};
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_void_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -2140,6 +2151,18 @@ c4c::codegen::lir::LirModule make_countdown_do_while_return_module() {
   function.blocks.push_back(std::move(block_3));
 
   module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_typed_countdown_while_return_module() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_countdown_while_return_module();
+  auto& function = module.functions.front();
+  auto& cond_block = function.blocks[1];
+  auto& body_block = function.blocks[2];
+  std::get<LirCmpOp>(cond_block.insts[1]).predicate = LirCmpPredicate::Ne;
+  std::get<LirBinOp>(body_block.insts[1]).opcode = LirBinaryOpcode::Sub;
   return module;
 }
 
@@ -3915,6 +3938,16 @@ void test_adapter_normalizes_countdown_while_return_slice() {
                   "adapter should collapse the bounded while-countdown loop into a direct return");
 }
 
+void test_adapter_normalizes_typed_countdown_while_return_slice() {
+  const auto adapted =
+      c4c::backend::adapt_minimal_module(make_typed_countdown_while_return_module());
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "define i32 @main()",
+                  "adapter should preserve the typed while-countdown function signature");
+  expect_contains(rendered, "ret i32 0",
+                  "adapter should collapse typed cmp/sub while-countdown loops into a direct return");
+}
+
 void test_adapter_normalizes_countdown_do_while_return_slice() {
   const auto adapted =
       c4c::backend::adapt_minimal_module(make_countdown_do_while_return_module());
@@ -4085,6 +4118,23 @@ void test_adapter_tracks_structured_entry_block_and_return_contract() {
               "adapter should preserve the return value separately from the block text");
   expect_true(block.terminator.type_str == "i32",
               "adapter should preserve the return type separately from the block text");
+}
+
+void test_adapter_tracks_structured_typed_add_entry_block_and_return_contract() {
+  const auto adapted = c4c::backend::adapt_minimal_module(make_typed_return_add_module());
+  const auto& function = adapted.functions.front();
+  expect_true(function.blocks.size() == 1,
+              "adapter should preserve the single-block typed-add slice");
+  const auto& block = function.blocks.front();
+  expect_true(block.insts.size() == 1,
+              "adapter should preserve the current single typed add instruction");
+  const auto* add = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts.front());
+  expect_true(add != nullptr,
+              "adapter should materialize typed add instructions as backend-owned ops");
+  expect_true(add->opcode == c4c::backend::BackendBinaryOpcode::Add,
+              "adapter should decode typed binary opcode wrappers without raw string dispatch");
+  expect_true(add->lhs == "2" && add->rhs == "3",
+              "adapter should preserve typed add operands");
 }
 
 void test_adapter_tracks_structured_sub_entry_block_and_return_contract() {
@@ -7567,6 +7617,7 @@ int main() {
   test_adapter_normalizes_double_indirect_local_pointer_conditional_return_slice();
   test_adapter_normalizes_goto_only_constant_return_slice();
   test_adapter_normalizes_countdown_while_return_slice();
+  test_adapter_normalizes_typed_countdown_while_return_slice();
   test_adapter_normalizes_countdown_do_while_return_slice();
   test_adapter_preserves_typed_two_arg_direct_call_helper_slice();
   test_adapter_normalizes_typed_direct_call_local_arg_slice();
@@ -7580,6 +7631,7 @@ int main() {
   test_adapter_normalizes_typed_two_arg_direct_call_both_local_double_rewrite_slice();
   test_adapter_tracks_structured_signature_contract();
   test_adapter_tracks_structured_entry_block_and_return_contract();
+  test_adapter_tracks_structured_typed_add_entry_block_and_return_contract();
   test_adapter_tracks_structured_sub_entry_block_and_return_contract();
   test_adapter_normalizes_local_temp_arithmetic_chain_slice();
   test_rejects_unsupported_instruction();

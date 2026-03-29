@@ -10,6 +10,12 @@ namespace c4c::backend {
 
 namespace {
 
+using c4c::codegen::lir::LirBinOp;
+using c4c::codegen::lir::LirBinaryOpcode;
+using c4c::codegen::lir::LirBinaryOpcodeRef;
+using c4c::codegen::lir::LirCmpOp;
+using c4c::codegen::lir::LirCmpPredicate;
+
 std::string trim(std::string text) {
   size_t start = 0;
   while (start < text.size() &&
@@ -156,24 +162,34 @@ void render_signature(std::ostringstream& out,
   out << ")\n";
 }
 
+std::optional<BackendBinaryOpcode> adapt_binary_opcode(
+    const LirBinaryOpcodeRef& opcode_ref) {
+  switch (opcode_ref.typed().value_or(static_cast<LirBinaryOpcode>(0xff))) {
+    case LirBinaryOpcode::Add: return BackendBinaryOpcode::Add;
+    case LirBinaryOpcode::Sub: return BackendBinaryOpcode::Sub;
+    case LirBinaryOpcode::Mul: return BackendBinaryOpcode::Mul;
+    case LirBinaryOpcode::SDiv: return BackendBinaryOpcode::SDiv;
+    case LirBinaryOpcode::SRem: return BackendBinaryOpcode::SRem;
+    default: return std::nullopt;
+  }
+}
+
+bool has_binary_opcode(const LirBinOp& bin, LirBinaryOpcode opcode) {
+  return bin.opcode.typed() == opcode;
+}
+
+bool has_cmp_predicate(const LirCmpOp& cmp, LirCmpPredicate predicate) {
+  return cmp.predicate.typed() == predicate;
+}
+
 BackendInst adapt_inst(const c4c::codegen::lir::LirInst& inst) {
   if (const auto* bin = std::get_if<c4c::codegen::lir::LirBinOp>(&inst)) {
-    BackendBinaryOpcode opcode;
-    if (bin->opcode == "add") {
-      opcode = BackendBinaryOpcode::Add;
-    } else if (bin->opcode == "sub") {
-      opcode = BackendBinaryOpcode::Sub;
-    } else if (bin->opcode == "mul") {
-      opcode = BackendBinaryOpcode::Mul;
-    } else if (bin->opcode == "sdiv") {
-      opcode = BackendBinaryOpcode::SDiv;
-    } else if (bin->opcode == "srem") {
-      opcode = BackendBinaryOpcode::SRem;
-    } else {
+    const auto opcode = adapt_binary_opcode(bin->opcode);
+    if (!opcode.has_value()) {
       fail_unsupported("binary opcode '" + bin->opcode + "'");
     }
     BackendBinaryInst out;
-    out.opcode = opcode;
+    out.opcode = *opcode;
     out.result = bin->result;
     out.type_str = bin->type_str;
     out.lhs = bin->lhs;
@@ -240,7 +256,8 @@ std::optional<BackendFunction> adapt_single_param_add_function(
       [&](const LirLoadOp& load, const LirBinOp& add, std::string_view ret_value)
       -> std::optional<BackendFunction> {
     if (load.type_str != "i32" || load.ptr != alloca->result ||
-        add.opcode != "add" || add.type_str != "i32" || add.lhs != load.result ||
+        !has_binary_opcode(add, LirBinaryOpcode::Add) || add.type_str != "i32" ||
+        add.lhs != load.result ||
         ret_value != add.result) {
       return std::nullopt;
     }
@@ -382,7 +399,8 @@ std::optional<BackendFunction> adapt_local_temp_sub_return_function(
   const auto* sub = std::get_if<LirBinOp>(&block.insts[2]);
   if (store == nullptr || load == nullptr || sub == nullptr || store->type_str != "i32" ||
       store->ptr != alloca->result || load->type_str != "i32" ||
-      load->ptr != alloca->result || sub->opcode != "sub" || sub->type_str != "i32" ||
+      load->ptr != alloca->result || !has_binary_opcode(*sub, LirBinaryOpcode::Sub) ||
+      sub->type_str != "i32" ||
       sub->lhs != load->result || *ret->value_str != sub->result) {
     return std::nullopt;
   }
@@ -484,21 +502,21 @@ std::optional<BackendFunction> adapt_local_temp_arithmetic_return_function(
     }
 
     std::optional<std::int64_t> result;
-    if (bin->opcode == "mul") {
+    if (has_binary_opcode(*bin, LirBinaryOpcode::Mul)) {
       result = *lhs * *rhs;
-    } else if (bin->opcode == "sdiv") {
+    } else if (has_binary_opcode(*bin, LirBinaryOpcode::SDiv)) {
       if (*rhs == 0) {
         return std::nullopt;
       }
       result = *lhs / *rhs;
-    } else if (bin->opcode == "srem") {
+    } else if (has_binary_opcode(*bin, LirBinaryOpcode::SRem)) {
       if (*rhs == 0) {
         return std::nullopt;
       }
       result = *lhs % *rhs;
-    } else if (bin->opcode == "sub") {
+    } else if (has_binary_opcode(*bin, LirBinaryOpcode::Sub)) {
       result = *lhs - *rhs;
-    } else if (bin->opcode == "add") {
+    } else if (has_binary_opcode(*bin, LirBinaryOpcode::Add)) {
       result = *lhs + *rhs;
     } else {
       return std::nullopt;
@@ -765,7 +783,8 @@ std::optional<BackendFunction> adapt_double_indirect_local_pointer_conditional_r
       }
 
       if (const auto* cmp = std::get_if<LirCmpOp>(&inst)) {
-        if (cmp->is_float || cmp->predicate != "ne" || cmp->type_str != "i32") {
+        if (cmp->is_float || !has_cmp_predicate(*cmp, LirCmpPredicate::Ne) ||
+            cmp->type_str != "i32") {
           return std::nullopt;
         }
         const auto lhs = resolve_integer_value(cmp->lhs);
@@ -932,7 +951,8 @@ std::optional<BackendFunction> adapt_single_local_countdown_loop_function(
       }
 
       if (const auto* bin = std::get_if<LirBinOp>(&inst)) {
-        if (bin->opcode != "sub" || bin->type_str != "i32" || bin->rhs != "1") {
+        if (!has_binary_opcode(*bin, LirBinaryOpcode::Sub) || bin->type_str != "i32" ||
+            bin->rhs != "1") {
           return std::nullopt;
         }
         ++static_sub_count;
@@ -940,7 +960,8 @@ std::optional<BackendFunction> adapt_single_local_countdown_loop_function(
       }
 
       if (const auto* cmp = std::get_if<LirCmpOp>(&inst)) {
-        if (cmp->is_float || cmp->predicate != "ne" || cmp->type_str != "i32") {
+        if (cmp->is_float || !has_cmp_predicate(*cmp, LirCmpPredicate::Ne) ||
+            cmp->type_str != "i32") {
           return std::nullopt;
         }
         ++static_cmp_count;
@@ -1180,8 +1201,9 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
       call = std::get_if<LirCallOp>(&block.insts[5]);
       if (load_before == nullptr || add == nullptr || store_rewrite == nullptr ||
           load_after == nullptr || call == nullptr || load_before->type_str != "i32" ||
-          load_before->ptr != alloca->result || add->opcode != "add" ||
-          add->type_str != "i32" || add->result.empty() ||
+          load_before->ptr != alloca->result ||
+          !has_binary_opcode(*add, LirBinaryOpcode::Add) || add->type_str != "i32" ||
+          add->result.empty() ||
           store_rewrite->type_str != "i32" || store_rewrite->ptr != alloca->result ||
           store_rewrite->val != add->result || load_after->type_str != "i32" ||
           load_after->ptr != alloca->result) {
@@ -1244,7 +1266,8 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
                                     const LirBinOp& add,
                                     const LirStoreOp& store,
                                     const std::string& slot) {
-      if (load.type_str != "i32" || load.ptr != slot || add.opcode != "add" ||
+      if (load.type_str != "i32" || load.ptr != slot ||
+          !has_binary_opcode(add, LirBinaryOpcode::Add) ||
           add.type_str != "i32" || add.result.empty() || store.type_str != "i32" ||
           store.ptr != slot || store.val != add.result) {
         return false;
@@ -1296,7 +1319,8 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
               const LirStoreOp& store,
               const LirLoadOp& reload,
               const std::string& slot) {
-        if (load.type_str != "i32" || load.ptr != slot || add.opcode != "add" ||
+        if (load.type_str != "i32" || load.ptr != slot ||
+            !has_binary_opcode(add, LirBinaryOpcode::Add) ||
             add.type_str != "i32" || add.result.empty() || store.type_str != "i32" ||
             store.ptr != slot || store.val != add.result || reload.type_str != "i32" ||
             reload.ptr != slot) {
