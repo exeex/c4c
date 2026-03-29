@@ -7,6 +7,8 @@
 
 namespace c4c::backend::aarch64::assembler {
 
+bool write_elf_object(const std::vector<AsmStatement>& statements, const std::string& output_path);
+
 std::vector<AsmStatement> expand_literal_pools(const std::vector<AsmStatement>& statements) {
   return statements;
 }
@@ -63,10 +65,17 @@ std::vector<std::string> resolve_numeric_data_values(const std::vector<std::stri
 }
 
 AssembleResult assemble(const AssembleRequest& request) {
+  const auto parsed = parse_asm(request.asm_text);
+  const auto expanded = expand_literal_pools(parsed);
+  const auto resolved = resolve_numeric_labels(expanded);
+  bool object_emitted = false;
+  if (!request.output_path.empty()) {
+    object_emitted = write_elf_object(resolved, request.output_path);
+  }
   return AssembleResult{
       .staged_text = request.asm_text,
       .output_path = request.output_path,
-      .object_emitted = false,
+      .object_emitted = object_emitted,
   };
 }
 

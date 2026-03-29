@@ -6,21 +6,21 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 1: Inventory The Minimal Object-Emission Slice
+- Step 3: Emit And Compare One Real Object Slice
 
 ## In Progress
 
-- Identify the smallest current backend-emitted AArch64 case that can move from staged text to real object emission without requiring broad parser or relocation work.
-- Compare the existing backend object-contract fixtures against the mirrored parser, encoder, and ELF-writer stubs to pick the first slice.
+- Run the full regression guard after the new direct return-immediate slice landed through the built-in parser, encoder, and ELF writer.
+- Decide whether the next bounded slice should tighten built-in-versus-external object comparison for `return_add` or move to the smallest relocation-bearing case.
 
 ## Next Slice
 
-- Prefer a backend-emitted case with minimal directives and no relocations if that is enough to prove real ELF object emission; otherwise choose the smallest relocation-bearing case already locked by current tests.
+- Keep the first built-in slice bounded to `.text` plus one global function symbol with `mov w0, #imm` and `ret`, then extend comparison coverage before taking on AArch64 relocations.
 
 ## Remaining Items
 
-- [ ] Step 1: Inventory The Minimal Object-Emission Slice
-- [ ] Step 2: Connect The Boundary To Real Assembler State
+- [x] Step 1: Inventory The Minimal Object-Emission Slice
+- [x] Step 2: Connect The Boundary To Real Assembler State
 - [ ] Step 3: Emit And Compare One Real Object Slice
 
 ## Completed
@@ -28,6 +28,11 @@ Source Plan: plan.md
 - [x] Closed `ideas/open/05_backend_builtin_assembler_boundary_plan.md` after finishing the compile-integration boundary work and moved it to `ideas/closed/`.
 - [x] Activated `ideas/open/06_backend_builtin_assembler_aarch64_plan.md` into the active `plan.md` runbook.
 - [x] Created `plan_todo.md` aligned to the same source idea.
+- [x] Picked `backend_contract_aarch64_return_add_object` as the minimal first slice because it needs only `.text`, `.globl`, `.type`, one function label, `mov w0, #imm`, and `ret`, with no relocations.
+- [x] Replaced the parser placeholder with line-oriented statement parsing for the minimal assembler slice.
+- [x] Wired the active assembler seam to a real minimal path: parse backend-emitted text, encode `mov wN, #imm` and `ret`, and write an ELF64 AArch64 relocatable object containing `.text`, `.symtab`, `.strtab`, and `.shstrtab`.
+- [x] Tightened backend adapter tests so the named assembler seam and compatibility overload both emit a real object for the direct return-immediate slice.
+- [x] Rebuilt from scratch and reran the full `ctest` suite; the repo remained monotonic at the same four known unrelated failures recorded in the baseline.
 
 ## Blockers
 
@@ -42,3 +47,4 @@ Source Plan: plan.md
   - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
   - `cpp_llvm_initializer_list_runtime_materialization`
 - Keep this runbook focused on the first AArch64 object-emission slice, not general assembler completeness or linker work.
+- The current built-in assembler slice is intentionally narrow: `.text` only, one global `%function` symbol, and `mov wN, #imm` plus `ret`; relocation-bearing cases still fall back to `object_emitted = false`.

@@ -1,56 +1,8 @@
-#include <cstdint>
-#include <string>
-#include <vector>
+#include "mod.hpp"
+
+#include <optional>
 
 namespace c4c::backend::aarch64::assembler::encoder {
-
-struct Operand {
-  std::string text;
-};
-
-enum class RelocType {
-  Call26,
-  Jump26,
-  AdrpPage21,
-  AddAbsLo12,
-  Ldst8AbsLo12,
-  Ldst16AbsLo12,
-  Ldst32AbsLo12,
-  Ldst64AbsLo12,
-  Ldst128AbsLo12,
-  AdrGotPage21,
-  Ld64GotLo12,
-  TlsLeAddTprelHi12,
-  TlsLeAddTprelLo12,
-  CondBr19,
-  TstBr14,
-  AdrPrelLo21,
-  Abs64,
-  Abs32,
-  Prel32,
-  Prel64,
-  Ldr19,
-};
-
-struct Relocation {
-  RelocType reloc_type = RelocType::Abs32;
-  std::string symbol;
-  std::int64_t addend = 0;
-};
-
-enum class EncodeResultKind {
-  Word,
-  WordWithReloc,
-  Words,
-  Skip,
-};
-
-struct EncodeResult {
-  EncodeResultKind kind = EncodeResultKind::Skip;
-  std::uint32_t word = 0;
-  std::vector<std::uint32_t> words;
-  Relocation reloc;
-};
 
 std::uint32_t parse_reg_num(const std::string& name) {
   (void)name;
@@ -74,12 +26,54 @@ std::uint32_t encode_cond(const std::string& cond) {
   return 0;
 }
 
+std::optional<std::uint32_t> parse_unsigned(const std::string& text) {
+  if (text.empty()) return std::nullopt;
+  std::uint32_t value = 0;
+  for (char c : text) {
+    if (c < '0' || c > '9') return std::nullopt;
+    value = value * 10u + static_cast<std::uint32_t>(c - '0');
+  }
+  return value;
+}
+
+std::optional<std::uint32_t> parse_w_register(const std::string& text) {
+  if (text.size() < 2 || text.front() != 'w') return std::nullopt;
+  const auto reg = parse_unsigned(text.substr(1));
+  if (!reg.has_value() || *reg > 31) return std::nullopt;
+  return reg;
+}
+
+std::optional<std::uint32_t> parse_mov_immediate(const std::string& text) {
+  if (text.size() < 2 || text.front() != '#') return std::nullopt;
+  const auto imm = parse_unsigned(text.substr(1));
+  if (!imm.has_value() || *imm > 65535u) return std::nullopt;
+  return imm;
+}
+
 EncodeResult encode_instruction(const std::string& mnemonic,
                                 const std::vector<Operand>& operands,
                                 const std::string& raw_operands) {
-  (void)mnemonic;
-  (void)operands;
   (void)raw_operands;
+  if (mnemonic == "ret" && operands.empty()) {
+    return EncodeResult{
+        .encoded = true,
+        .kind = EncodeResultKind::Word,
+        .word = 0xd65f03c0u,
+    };
+  }
+
+  if (mnemonic == "mov" && operands.size() == 2) {
+    const auto rd = parse_w_register(operands[0].text);
+    const auto imm = parse_mov_immediate(operands[1].text);
+    if (rd.has_value() && imm.has_value()) {
+      return EncodeResult{
+          .encoded = true,
+          .kind = EncodeResultKind::Word,
+          .word = 0x52800000u | (*imm << 5) | *rd,
+      };
+    }
+  }
+
   return {};
 }
 

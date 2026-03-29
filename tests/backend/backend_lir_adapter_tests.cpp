@@ -15,10 +15,15 @@
 #include "../../src/backend/aarch64/linker/mod.hpp"
 #include "../../src/backend/aarch64/assembler/parser.hpp"
 
+#include <cstdint>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 namespace c4c::backend::aarch64::assembler {
@@ -61,6 +66,20 @@ void expect_not_contains(const std::string& text,
   if (text.find(needle) != std::string::npos) {
     fail(message + "\nUnexpected: " + needle + "\nActual:\n" + text);
   }
+}
+
+std::string make_temp_output_path(const std::string& stem) {
+  const auto base = std::filesystem::temp_directory_path();
+  return (base / (stem + "_" + std::to_string(::getpid()) + ".o")).string();
+}
+
+std::vector<std::uint8_t> read_file_bytes(const std::string& path) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    fail("failed to open file: " + path);
+  }
+  return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(input),
+                                   std::istreambuf_iterator<char>());
 }
 
 c4c::codegen::lir::LirModule make_return_zero_module() {
@@ -3350,10 +3369,11 @@ void test_aarch64_backend_renders_phi_join_slice() {
 void test_aarch64_assembler_parser_stub_preserves_text() {
   const std::string asm_text = ".text\n.globl main\nmain:\n  ret\n";
   const auto statements = c4c::backend::aarch64::assembler::parse_asm(asm_text);
-  expect_true(statements.size() == 1,
-              "aarch64 assembler parser stub should keep returning a single placeholder statement");
-  expect_true(statements.front().text == asm_text,
-              "aarch64 assembler parser stub should preserve the raw assembly text");
+  expect_true(statements.size() == 4,
+              "aarch64 assembler parser should split the minimal text slice into line-oriented statements");
+  expect_true(statements[0].text == ".text" && statements[1].text == ".globl main" &&
+                  statements[2].text == "main:" && statements[3].text == "ret",
+              "aarch64 assembler parser should preserve the directive, label, and instruction text for the minimal slice");
 }
 
 void test_aarch64_assembler_elf_writer_branch_reloc_helper() {
@@ -4051,33 +4071,53 @@ void test_backend_binary_utils_contract_headers_are_include_reachable() {
       c4c::backend::BackendModuleInput{make_return_add_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   const auto parsed = c4c::backend::aarch64::assembler::parse_asm(emitted);
-  expect_true(parsed.size() == 1 && parsed.front().text == emitted,
-              "binary-utils contract headers should expose a text-first staged parser surface over the current backend output");
+  expect_true(parsed.size() >= 4, "binary-utils contract headers should expose line-oriented parser output for backend-emitted assembly");
+  expect_true(parsed.front().text == ".text",
+              "binary-utils contract parser should keep the opening section directive");
+  expect_true(parsed.back().text == "ret",
+              "binary-utils contract parser should preserve the backend instruction tail");
 
+  const auto object_path = make_temp_output_path("c4c_aarch64_contract");
   const auto staged = c4c::backend::aarch64::assembler::assemble(
       c4c::backend::aarch64::assembler::AssembleRequest{
           .asm_text = emitted,
-          .output_path = "ignored.o",
+          .output_path = object_path,
       });
-  expect_true(staged.staged_text == emitted && staged.output_path == "ignored.o" &&
-                  !staged.object_emitted,
-              "binary-utils contract headers should expose the current text-first assembler request/result seam without changing backend-emitted text");
+  expect_true(staged.staged_text == emitted && staged.output_path == object_path &&
+                  staged.object_emitted,
+              "binary-utils contract headers should expose the active assembler request/result seam and report successful object emission for the minimal backend slice");
+  const auto object_bytes = read_file_bytes(object_path);
+  expect_true(object_bytes.size() >= 4 && object_bytes[0] == 0x7f &&
+                  object_bytes[1] == 'E' && object_bytes[2] == 'L' &&
+                  object_bytes[3] == 'F',
+              "binary-utils contract assembler seam should emit an ELF object for the minimal backend slice");
+  expect_true(std::string(object_bytes.begin(), object_bytes.end()).find("main") != std::string::npos,
+              "binary-utils contract assembler seam should preserve the function symbol in the emitted object");
+  std::filesystem::remove(object_path);
 
-  const auto assembled = c4c::backend::aarch64::assembler::assemble(emitted, "ignored.o");
+  const auto compat_path = make_temp_output_path("c4c_aarch64_contract_compat");
+  const auto assembled = c4c::backend::aarch64::assembler::assemble(emitted, compat_path);
   expect_true(assembled == emitted,
               "binary-utils contract headers should keep the compatibility overload aligned with the staged assembler text seam");
+  expect_true(std::filesystem::exists(compat_path),
+              "binary-utils contract compatibility overload should still drive object emission through the named assembler seam");
+  std::filesystem::remove(compat_path);
 }
 
 void test_aarch64_backend_assembler_handoff_helper_stages_emitted_text() {
-  const auto staged = c4c::backend::aarch64::assemble_module(make_return_add_module(), "out/test.o");
+  const auto output_path = make_temp_output_path("c4c_aarch64_handoff");
+  const auto staged = c4c::backend::aarch64::assemble_module(make_return_add_module(), output_path);
 
   expect_true(staged.staged_text ==
                   c4c::backend::emit_module(
                       c4c::backend::BackendModuleInput{make_return_add_module()},
                       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64}),
               "aarch64 backend handoff helper should route production backend text through the staged assembler seam");
-  expect_true(staged.output_path == "out/test.o" && !staged.object_emitted,
-              "aarch64 backend handoff helper should preserve output-path metadata while object emission is still stubbed");
+  expect_true(staged.output_path == output_path && staged.object_emitted,
+              "aarch64 backend handoff helper should preserve output-path metadata and report successful object emission for the minimal backend slice");
+  expect_true(std::filesystem::exists(output_path),
+              "aarch64 backend handoff helper should write the assembled object to the requested output path");
+  std::filesystem::remove(output_path);
 }
 
 }  // namespace
