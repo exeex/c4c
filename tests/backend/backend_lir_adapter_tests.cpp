@@ -1112,13 +1112,18 @@ void test_rejects_unsupported_instruction() {
 }
 
 void test_aarch64_backend_scaffold_renders_supported_slice() {
+  auto module = make_return_add_module();
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{make_return_add_module()},
+      c4c::backend::BackendModuleInput{module},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "%t0 = add i32 2, 3",
-                  "aarch64 scaffold should render the current adapter slice");
-  expect_contains(rendered, "ret i32 %t0",
-                  "aarch64 scaffold should preserve the current return path");
+  expect_contains(rendered, ".globl main",
+                  "aarch64 scaffold should emit a global entry symbol for the minimal asm slice");
+  expect_contains(rendered, "mov w0, #5",
+                  "aarch64 scaffold should materialize the folded return-add result in w0");
+  expect_contains(rendered, "ret",
+                  "aarch64 scaffold should terminate the minimal asm slice with ret");
 }
 
 void test_aarch64_backend_renders_void_return_slice() {

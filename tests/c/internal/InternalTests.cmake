@@ -487,8 +487,10 @@ if(CLANG_EXECUTABLE)
       endif()
       set(test_name "backend_runtime_${stem}")
       set(expect_exit_code 0)
+      set(backend_output_kind "llvm-ir")
       if(stem STREQUAL "return_add")
         set(expect_exit_code 5)
+        set(backend_output_kind "asm")
       elseif(stem STREQUAL "call_helper")
         set(expect_exit_code 7)
       elseif(stem STREQUAL "local_temp")
@@ -528,6 +530,7 @@ if(CLANG_EXECUTABLE)
                 -DCLANG=${CLANG_EXECUTABLE}
                 -DSRC=${src}
                 -DTARGET_TRIPLE=${BACKEND_RUNTIME_TARGET_TRIPLE}
+                -DBACKEND_OUTPUT_KIND=${backend_output_kind}
                 -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/${stem}.ll
                 -DEXPECT_EXIT_CODE=${expect_exit_code}
                 -DOUT_C2LL_BIN=${CMAKE_BINARY_DIR}/internal_backend/${stem}.bin
