@@ -3154,6 +3154,46 @@ void test_backend_shared_regalloc_helper_filters_and_merges_clobbers() {
               "shared regalloc helper should merge allocator usage with asm clobbers in sorted order");
 }
 
+void test_backend_shared_stack_layout_regalloc_helper_exposes_handoff_view() {
+  const auto module = make_call_crossing_interval_module();
+  const auto& function = module.functions.back();
+
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = {{20}};
+  config.caller_saved_regs = {{13}};
+  const std::vector<c4c::backend::PhysReg> asm_clobbered = {{21}};
+
+  const auto merged =
+      c4c::backend::run_regalloc_and_merge_clobbers(function, config, asm_clobbered);
+
+  const auto* before_call =
+      c4c::backend::stack_layout::find_assigned_reg(merged, "%t0");
+  const auto* call_result =
+      c4c::backend::stack_layout::find_assigned_reg(merged, "%t1");
+  const auto* final_sum =
+      c4c::backend::stack_layout::find_assigned_reg(merged, "%t2");
+  const auto* cached_liveness =
+      c4c::backend::stack_layout::find_cached_liveness(merged);
+
+  expect_true(before_call != nullptr && before_call->index == 20,
+              "shared stack-layout helper should expose assigned call-spanning values through the regalloc handoff");
+  expect_true(call_result == nullptr,
+              "shared stack-layout helper should preserve spilled values as missing from the assigned-register view");
+  expect_true(final_sum != nullptr && final_sum->index == 13,
+              "shared stack-layout helper should expose caller-saved assignments through the same handoff seam");
+  expect_true(c4c::backend::stack_layout::uses_callee_saved_reg(merged, c4c::backend::PhysReg{20}),
+              "shared stack-layout helper should report allocator-used callee-saved registers");
+  expect_true(c4c::backend::stack_layout::uses_callee_saved_reg(merged, c4c::backend::PhysReg{21}),
+              "shared stack-layout helper should also report inline-asm-clobbered callee-saved registers after merge");
+  expect_true(!c4c::backend::stack_layout::uses_callee_saved_reg(merged, c4c::backend::PhysReg{22}),
+              "shared stack-layout helper should reject untouched callee-saved registers");
+  expect_true(cached_liveness != nullptr &&
+                  cached_liveness->find_interval("%t0") != nullptr &&
+                  cached_liveness->find_interval("%t1") != nullptr &&
+                  cached_liveness->find_interval("%t2") != nullptr,
+              "shared stack-layout helper should expose cached liveness for downstream stack-layout analysis");
+}
+
 }  // namespace
 
 int main() {
@@ -3234,5 +3274,6 @@ int main() {
   test_backend_shared_regalloc_reuses_register_after_interval_ends();
   test_backend_shared_regalloc_spills_overlapping_values_without_reusing_busy_reg();
   test_backend_shared_regalloc_helper_filters_and_merges_clobbers();
+  test_backend_shared_stack_layout_regalloc_helper_exposes_handoff_view();
   return 0;
 }

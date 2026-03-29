@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - [ ] Step 4: Port the stack-layout helper boundary that consumes regalloc results.
-  Iteration target: thread the new shared regalloc result shape through the first stack-layout helper seam without pulling AArch64-specific policy into shared helpers.
+  Iteration target: build the first shared stack-layout analysis object on top of the new helper seam so downstream frame-sizing code can consume regalloc assignments, used callee-saved registers, and cached liveness without reaching into backend integration code directly.
 
 ## Todo Queue
 
@@ -29,11 +29,13 @@ Source Plan: plan.md
 - [x] Added backend coverage for call-crossing and multi-block/phi-join live interval ranges, rebuilt the tree, reran `backend_lir_adapter_tests`, reran full `ctest`, and rechecked monotonic non-regression (`before=570/574`, `after=570/574`, no new failures).
 - [x] Replaced the placeholder regalloc pass with the first shared linear-scan slice: call-spanning intervals use the callee-saved pool first, non-call-spanning intervals use caller-saved registers before callee spillover, and overlapping intervals spill instead of reusing a busy register.
 - [x] Added backend allocator coverage for caller-saved versus callee-saved pool selection, non-overlapping register reuse, and bounded spill behavior; rebuilt the tree, reran `backend_lir_adapter_tests`, reran full `ctest`, and rechecked monotonic non-regression (`before=570/574`, `after=570/574`, no new failures).
+- [x] Added the first shared stack-layout regalloc handoff seam in `regalloc_helpers`, covering assigned-register lookup, used-callee-saved queries, and cached-liveness access through a single helper boundary.
+- [x] Extended `backend_lir_adapter_tests`, rebuilt the tree, reran `backend_lir_adapter_tests`, reran full `ctest`, and rechecked monotonic non-regression with `check_monotonic_regression.py` (`before=570/574`, `after=570/574`, no new failures).
 
 ## Next Intended Slice
 
-- Start the stack-layout helper slice by replacing any remaining placeholder assumptions with reads from `RegAllocResult::assignments`, `used_regs`, and cached liveness where the current shared helpers already expose a natural seam.
-- Keep AArch64 wiring deferred until the shared stack-layout seam compiles cleanly and has narrow tests around the new handoff data.
+- Introduce the first shared stack-layout analysis data object in `src/backend/stack_layout/analysis.cpp` that consumes the new helper seam instead of poking directly at backend integration state.
+- Keep AArch64 wiring deferred until the shared helper and analysis seams compile cleanly and have narrow tests around the new handoff data.
 
 ## Blockers
 
@@ -51,6 +53,10 @@ Source Plan: plan.md
 - Current shared implementation is intentionally skeletal:
   `compute_live_intervals` now performs the first real typed-LIR def/use walk with block live-through extension,
   while `allocate_registers` still only establishes the initial placeholder handoff/result shape.
+- This iteration is intentionally narrower than full stack slot placement:
+  start by making shared helper entry points read `RegAllocIntegrationResult`
+  in one place, then expand into analysis/slot assignment in a later slice.
+- The new helper seam lives in `src/backend/stack_layout/regalloc_helpers.{hpp,cpp}` and is now the intended entry point for Step 4 consumers that need assigned-register, used-callee-saved, or cached-liveness reads.
 - Known baseline full-suite failures remain unchanged:
   `positive_sema_ok_fn_returns_variadic_fn_ptr_c`,
   `cpp_positive_sema_decltype_bf16_builtin_cpp`,
