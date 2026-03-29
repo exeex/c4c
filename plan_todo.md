@@ -7,9 +7,9 @@ Last Updated: 2026-03-29
 
 ## Active Item
 
-- Step 1: inventory parser sites that are still not whitelist-led, starting
-  with `requires` skipping, generic record-member recovery, broad start probes,
-  and `NK_EMPTY` discard paths
+- Step 2: rank the inventoried parser boundaries by direct risk and choose the
+  first tightening slice, starting with the duplicated `requires` helpers in
+  `src/frontend/parser/types.cpp`
 
 ## Completed
 
@@ -25,22 +25,29 @@ Last Updated: 2026-03-29
   - added
     `tests/cpp/internal/postive_case/cpp20_requires_trait_disjunction_function_parse.cpp`
     to hold that narrower case in-tree
+- completed the Step 1 parser-boundary inventory in
+  `src/frontend/parser/BOUNDARY_AUDIT.md`, covering:
+  - duplicated `requires` clause boundary helpers in `declarations.cpp` and
+    `types.cpp`
+  - generic record-member recovery
+  - broad `is_type_start()` / `can_start_parameter_type()` probes
+  - representative `NK_EMPTY` parse-and-discard sites
+- ranked the first tightening targets from that inventory:
+  - highest risk: the older `types.cpp` `requires` boundary helpers still using
+    `is_type_start()` as a declaration-boundary fallback
+  - next: trailing `requires` clause termination in `declarations.cpp`
+  - next: record-member recovery that can still advance to `}`
 
 ## Next Slice
 
-- build a curated inventory with at least these buckets:
-  - constraint / `requires` skipping helpers
-  - generic token-skipping recovery helpers
-  - broad declaration / type-start probes
-  - `NK_EMPTY` parse-and-discard branches
-- tag each site as:
-  - acceptable breadth
-  - suspicious breadth
-  - known bug / already implicated in a reduced repro
-- prioritize the first batch by direct evidence from:
-  - `iterator_concepts.h` / `functional_hash.h`
-  - record-member recovery swallowing to `}`
-  - top-level constrained function templates being dropped or mis-associated
+- tighten or delete the duplicated `types.cpp` `requires` helpers so both
+  declaration paths share the narrower boundary logic already staged in
+  `declarations.cpp`
+- add or update reduced tests that prove the `types.cpp` path no longer treats
+  broad `is_type_start()` matches as declaration boundaries inside
+  `requires`-clauses
+- re-run the parser-boundary inventory after that change to confirm the next
+  highest-risk site is still the trailing `requires` clause loop
 
 ## Notes
 
@@ -53,6 +60,9 @@ Last Updated: 2026-03-29
   - tightened `requires`-clause boundary logic in
     `src/frontend/parser/declarations.cpp`
   - the new reduced regression test for requires-trait disjunction parsing
+- the Step 1 inventory now lives in `src/frontend/parser/BOUNDARY_AUDIT.md` so
+  future parser work can reuse the current shortlist instead of rebuilding it
+  from scratch
 
 ## Blockers
 

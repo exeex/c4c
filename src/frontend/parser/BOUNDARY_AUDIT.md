@@ -1,0 +1,141 @@
+# Parser Boundary Audit Inventory
+
+Last Updated: 2026-03-29
+Plan Source: `ideas/open/07_parser_whitelist_boundary_audit.md`
+
+This note is the Step 1 inventory for the active parser whitelist-boundary
+audit. It records parser sites that still depend on broad start probes, generic
+recovery, or parse-and-discard behavior, and tags each site for the Step 2
+ranking pass.
+
+## Constraint / `requires` Boundaries
+
+1. `src/frontend/parser/declarations.cpp:157`
+   `is_cpp20_requires_clause_decl_boundary(Parser&)` is a local declaration
+   boundary whitelist that already avoids splitting after `::` and `Identifier<`.
+   Tag: `acceptable breadth`
+
+2. `src/frontend/parser/declarations.cpp:219`
+   `skip_cpp20_constraint_atom(Parser&)` still consumes a generic token stream
+   until a small set of hard stops appears. It tracks nesting, but any token not
+   on the stop list is accepted by default.
+   Tag: `known bug`
+   Evidence: the active idea was triggered by reduced `iterator_concepts.h` and
+   `functional_hash.h` failures, and the current reduced regression
+   `tests/cpp/internal/postive_case/cpp20_requires_trait_disjunction_function_parse.cpp`
+   exists because this boundary had been too broad.
+
+3. `src/frontend/parser/declarations.cpp:308`
+   `parse_optional_cpp20_requires_clause(Parser&)` now refuses empty
+   declaration-level constraints except for the explicit record-declaration
+   boundary check at `declarations.cpp:145`.
+   Tag: `acceptable breadth`
+
+4. `src/frontend/parser/declarations.cpp:335`
+   `parse_optional_cpp20_trailing_requires_clause(Parser&)` still uses a broad
+   "keep consuming until one of `; = , { :`" loop and does not reuse the tighter
+   declaration-boundary helper above.
+   Tag: `suspicious breadth`
+
+5. `src/frontend/parser/types.cpp:497`
+   The older `types.cpp` copy of `is_cpp20_requires_clause_decl_boundary(Parser&)`
+   falls back directly to `parser.is_type_start()`.
+   Tag: `known bug`
+   Reason: this is materially broader than the newer declaration-side helper and
+   can inherit every false positive from `is_type_start()`.
+
+6. `src/frontend/parser/types.cpp:512`
+   The older `types.cpp` copy of `skip_cpp20_constraint_atom(Parser&)` shares the
+   same broad consume-until-stop shape and still depends on the broader
+   `types.cpp` boundary probe.
+   Tag: `known bug`
+
+7. `src/frontend/parser/types.cpp:601`
+   The older `types.cpp` copy of `parse_optional_cpp20_requires_clause(Parser&)`
+   still treats any consumed token run as a valid constraint expression.
+   Tag: `suspicious breadth`
+
+## Generic Recovery Loops
+
+1. `src/frontend/parser/types.cpp:4426`
+   `recover_record_member_parse_error(int)` skips until `;` or an unmatched `}`
+   while only tracking brace depth.
+   Tag: `known bug`
+   Evidence: the source idea calls out record-member recovery swallowing to `}`
+   as one of the motivating failures. This helper is the direct mechanism.
+
+2. `src/frontend/parser/types.cpp:5872`
+   `try_parse_record_member_or_recover(...)` only treats
+   `SyncedAtSemicolon` as recoverable and rethrows on `StoppedAtRBrace`. That is
+   narrower than the helper above, but it still depends on the broad skip path.
+   Tag: `suspicious breadth`
+
+3. `src/frontend/parser/statements.cpp:10`
+   `parse_block()` uses statement-level recovery that skips to `;` or `}` after
+   any exception.
+   Tag: `acceptable breadth`
+   Reason: this is a normal statement-boundary recovery rule, but it should stay
+   out of declaration parsing decisions.
+
+## Start-Condition Probes
+
+1. `src/frontend/parser/types.cpp:2560`
+   `Parser::is_type_start()` intentionally accepts many starters, including
+   qualifiers, storage-class specifiers, unresolved typedef-like identifiers,
+   `Identifier<`, and qualified names.
+   Tag: `suspicious breadth`
+   Reason: this is necessary in some contexts, but it is too broad to reuse as a
+   declaration-boundary detector inside `requires` parsing.
+
+2. `src/frontend/parser/types.cpp:2633`
+   `Parser::can_start_parameter_type()` is even broader than `is_type_start()`
+   because it also accepts unresolved identifier forms used during parameter
+   recovery.
+   Tag: `acceptable breadth`
+   Reason: broadness is expected here, but callers should treat it as a local
+   parameter probe only.
+
+3. `src/frontend/parser/statements.cpp:279`
+   `parse_stmt()` uses `is_type_start()` for `for (...)` initializer
+   disambiguation.
+   Tag: `acceptable breadth`
+
+4. `src/frontend/parser/statements.cpp:620`
+   `parse_stmt()` uses `is_type_start()` again to choose declaration vs
+   expression parsing for local statements, with a special qualified-call guard.
+   Tag: `acceptable breadth`
+
+## `NK_EMPTY` Parse-And-Discard Sites
+
+1. `src/frontend/parser/statements.cpp:77`
+   Local `using` aliases and `using namespace` forms are skipped and returned as
+   `NK_EMPTY`.
+   Tag: `suspicious breadth`
+   Reason: this is an intentional parser gap, but it discards structure rather
+   than preserving an unsupported-node marker.
+
+2. `src/frontend/parser/declarations.cpp:510`
+   Top-level `extern "C"` parsing can return `NK_EMPTY` when the body does not
+   produce declarations.
+   Tag: `acceptable breadth`
+
+3. `src/frontend/parser/declarations.cpp:1265`
+   Several declaration paths return `NK_EMPTY` for unsupported or structure-only
+   cases.
+   Tag: `suspicious breadth`
+   Reason: these sites need a later pass to distinguish harmless empty
+   declarations from hidden missed parses.
+
+## Ranked First Tightening Targets
+
+1. `src/frontend/parser/types.cpp:497` and `src/frontend/parser/types.cpp:512`
+   Remove or align the older `types.cpp` `requires` boundary helpers with the
+   tighter declaration-side logic. This is the highest-risk duplicate boundary.
+
+2. `src/frontend/parser/declarations.cpp:335`
+   Tighten trailing `requires` clause termination so it stops on an explicit
+   follow-set instead of generic token consumption.
+
+3. `src/frontend/parser/types.cpp:4426`
+   Narrow record-member recovery so malformed members cannot silently consume up
+   to the record-closing `}` without a more explicit outcome.
