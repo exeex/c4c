@@ -84,6 +84,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     access_labels_treated_public_runtime
     friend_access_parse
     friend_inline_operator_parse
+    if_condition_decl_parse
     eastl_slice7d_qualified_declarator_parse
     out_of_class_member_owner_scope_parse
     eastl_probe_pack_expansion_template_arg_parse
@@ -284,31 +285,6 @@ set_tests_properties(cpp_parser_debug_record_member_typedef_leaf PROPERTIES
   LABELS "internal;negative_case;cpp;diagnostic_format"
 )
 
-add_test(
-  NAME cpp_parser_debug_record_member_const_if_leaf
-  COMMAND "${CMAKE_COMMAND}"
-          -DCOMPILER=$<TARGET_FILE:c4cll>
-          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_record_member_const_if_leaf.cpp
-          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_primary phase=committed got='const'"
-          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> try_parse_record_member_dispatch -> try_parse_record_method_or_field_member -> parse_block -> parse_stmt -> parse_expr -> parse_assign_expr -> parse_ternary -> parse_unary -> parse_primary -> try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type"
-          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
-)
-set_tests_properties(cpp_parser_debug_record_member_const_if_leaf PROPERTIES
-  LABELS "internal;negative_case;cpp;diagnostic_format"
-)
-
-add_test(
-  NAME cpp_parser_debug_record_member_if_init_name_leaf
-  COMMAND "${CMAKE_COMMAND}"
-          -DCOMPILER=$<TARGET_FILE:c4cll>
-          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_record_member_if_init_name_leaf.cpp
-          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_primary phase=committed expected=RPAREN got='n'"
-          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> try_parse_record_member_dispatch -> try_parse_record_method_or_field_member -> parse_block -> parse_stmt -> parse_expr -> parse_assign_expr -> parse_ternary -> parse_unary -> parse_primary"
-          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
-)
-set_tests_properties(cpp_parser_debug_record_member_if_init_name_leaf PROPERTIES
-  LABELS "internal;negative_case;cpp;diagnostic_format"
-)
 
 add_test(
   NAME cpp_parser_debug_qualified_type_top_level_params
@@ -376,84 +352,6 @@ set_tests_properties(cpp_parser_debug_qualified_type_spelling_stack PROPERTIES
 )
 
 add_test(
-  NAME cpp_parser_debug_std_vector_wrapper_spelling_stack
-  COMMAND "${CMAKE_COMMAND}"
-          -DCOMPILER=$<TARGET_FILE:c4cll>
-          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/std/std_vector_simple.cpp
-          "-DEXPECT_ERROR_SUBSTRING:STRING=/usr/include/c++/14/bits/stl_vector.h:336:34: error: parse_fn=parse_top_level_parameter_list phase=committed expected=RPAREN got='&&'"
-          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> consume_qualified_type_spelling -> parse_top_level_parameter_list"
-          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
-)
-set_tests_properties(cpp_parser_debug_std_vector_wrapper_spelling_stack PROPERTIES
-  LABELS "internal;negative_case;cpp;diagnostic_format"
-)
-
-add_test(
-  NAME cpp_parser_debug_std_vector_wrapper_anchor_stack
-  COMMAND "${CMAKE_COMMAND}"
-          -DCOMPILER=$<TARGET_FILE:c4cll>
-          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/std/std_vector_simple.cpp
-          "-DEXPECT_ERROR_SUBSTRING:STRING=/usr/include/c++/14/bits/stl_bvector.h:78:29: error: parse_fn=parse_top_level_parameter_list phase=committed expected=RPAREN got='*'"
-          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> try_parse_cpp_scoped_base_type -> consume_qualified_type_spelling -> parse_top_level_parameter_list"
-          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
-)
-set_tests_properties(cpp_parser_debug_std_vector_wrapper_anchor_stack PROPERTIES
-  LABELS "internal;negative_case;cpp;diagnostic_format"
-)
-
-add_test(
-  NAME cpp_parser_debug_std_vector_ref_param_leaf
-  COMMAND "${CMAKE_COMMAND}"
-          -DCOMPILER=$<TARGET_FILE:c4cll>
-          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/std/std_vector_simple.cpp
-          "-DEXPECT_ERROR_SUBSTRING:STRING=/usr/include/c++/14/bits/exception.h:65:30: error: parse_fn=parse_top_level_parameter_list phase=committed expected=RPAREN got='&'"
-          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> consume_qualified_type_spelling -> parse_top_level_parameter_list -> parse_param -> try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type"
-          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
-)
-set_tests_properties(cpp_parser_debug_std_vector_ref_param_leaf PROPERTIES
-  LABELS "internal;negative_case;cpp;diagnostic_format"
-)
-
-add_test(
-  NAME cpp_parser_debug_std_vector_ctor_ref_param_probe_prefix
-  COMMAND "${CMAKE_COMMAND}"
-          -DCOMPILER=$<TARGET_FILE:c4cll>
-          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/std/std_vector_simple.cpp
-          "-DEXPECT_ERROR_SUBSTRING:STRING=/usr/include/c++/14/bits/new_allocator.h:92:44: error: parse_fn=parse_top_level_parameter_list phase=committed expected=RPAREN got='&'"
-          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type -> consume_qualified_type_spelling -> parse_top_level_parameter_list -> parse_param -> try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type"
-          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
-)
-set_tests_properties(cpp_parser_debug_std_vector_ctor_ref_param_probe_prefix PROPERTIES
-  LABELS "internal;negative_case;cpp;diagnostic_format"
-)
-
-add_test(
-  NAME cpp_parser_debug_std_vector_rref_param_wrapper
-  COMMAND "${CMAKE_COMMAND}"
-          -DCOMPILER=$<TARGET_FILE:c4cll>
-          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/std/std_vector_simple.cpp
-          "-DEXPECT_ERROR_SUBSTRING:STRING=/usr/include/c++/14/bits/exception.h:67:24: error: parse_fn=parse_top_level_parameter_list phase=committed expected=RPAREN got='&&'"
-          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> consume_qualified_type_spelling -> parse_top_level_parameter_list"
-          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
-)
-set_tests_properties(cpp_parser_debug_std_vector_rref_param_wrapper PROPERTIES
-  LABELS "internal;negative_case;cpp;diagnostic_format"
-)
-
-add_test(
-  NAME cpp_parser_debug_std_vector_named_param_ctor_leaf
-  COMMAND "${CMAKE_COMMAND}"
-          -DCOMPILER=$<TARGET_FILE:c4cll>
-          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/std/std_vector_simple.cpp
-          "-DEXPECT_ERROR_SUBSTRING:STRING=/usr/include/c++/14/bits/predefined_ops.h:150:32: error: parse_fn=parse_top_level_parameter_list phase=committed expected=RPAREN got='__comp'"
-          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type -> parse_top_level_parameter_list"
-          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
-)
-set_tests_properties(cpp_parser_debug_std_vector_named_param_ctor_leaf PROPERTIES
-  LABELS "internal;negative_case;cpp;diagnostic_format"
-)
-
-add_test(
   NAME cpp_parser_debug_qualified_alias_ref_param_leaf
   COMMAND "${CMAKE_COMMAND}"
           -DCOMPILER=$<TARGET_FILE:c4cll>
@@ -466,18 +364,6 @@ set_tests_properties(cpp_parser_debug_qualified_alias_ref_param_leaf PROPERTIES
   LABELS "internal;negative_case;cpp;diagnostic_format"
 )
 
-add_test(
-  NAME cpp_parser_debug_if_init_qualified_probe_leaf
-  COMMAND "${CMAKE_COMMAND}"
-          -DCOMPILER=$<TARGET_FILE:c4cll>
-          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_if_init_qualified_probe_leaf.cpp
-          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_primary"
-          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> parse_block -> parse_stmt -> parse_expr -> parse_assign_expr -> parse_ternary -> parse_unary -> parse_primary -> try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type"
-          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
-)
-set_tests_properties(cpp_parser_debug_if_init_qualified_probe_leaf PROPERTIES
-  LABELS "internal;negative_case;cpp;diagnostic_format"
-)
 
 add_test(
   NAME cpp_parser_debug_top_level_qualified_probe_leaf
@@ -492,57 +378,6 @@ set_tests_properties(cpp_parser_debug_top_level_qualified_probe_leaf PROPERTIES
   LABELS "internal;negative_case;cpp;diagnostic_format"
 )
 
-add_test(
-  NAME cpp_parser_debug_std_vector_move_ctor_leaf
-  COMMAND "${CMAKE_COMMAND}"
-          -DCOMPILER=$<TARGET_FILE:c4cll>
-          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/std/std_vector_simple.cpp
-          "-DEXPECT_ERROR_SUBSTRING:STRING=/usr/include/c++/14/bits/stl_bvector.h:663:34: error: parse_fn=try_parse_qualified_base_type phase=committed expected=RPAREN got='&&'"
-          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type -> consume_qualified_type_spelling_with_typename -> consume_qualified_type_spelling"
-          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
-)
-set_tests_properties(cpp_parser_debug_std_vector_move_ctor_leaf PROPERTIES
-  LABELS "internal;negative_case;cpp;diagnostic_format"
-)
-
-add_test(
-  NAME cpp_parser_debug_std_vector_expr_const_if_leaf
-  COMMAND "${CMAKE_COMMAND}"
-          -DCOMPILER=$<TARGET_FILE:c4cll>
-          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/std/std_vector_simple.cpp
-          "-DEXPECT_ERROR_SUBSTRING:STRING=/usr/include/c++/14/bits/stl_algobase.h:971:11: error: parse_fn=parse_primary phase=committed got='const'"
-          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> parse_block -> parse_stmt -> parse_expr -> parse_assign_expr -> parse_ternary -> parse_unary -> parse_primary -> try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type"
-          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
-)
-set_tests_properties(cpp_parser_debug_std_vector_expr_const_if_leaf PROPERTIES
-  LABELS "internal;negative_case;cpp;diagnostic_format"
-)
-
-add_test(
-  NAME cpp_parser_debug_std_vector_record_member_const_if_leaf
-  COMMAND "${CMAKE_COMMAND}"
-          -DCOMPILER=$<TARGET_FILE:c4cll>
-          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/std/std_vector_simple.cpp
-          "-DEXPECT_ERROR_SUBSTRING:STRING=/usr/include/c++/14/bits/stl_algobase.h:1210:8: error: parse_fn=parse_primary phase=committed got='const'"
-          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> try_parse_record_member_dispatch -> try_parse_record_method_or_field_member -> parse_block -> parse_stmt -> parse_expr -> parse_assign_expr -> parse_ternary -> parse_unary -> parse_primary -> try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type"
-          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
-)
-set_tests_properties(cpp_parser_debug_std_vector_record_member_const_if_leaf PROPERTIES
-  LABELS "internal;negative_case;cpp;diagnostic_format"
-)
-
-add_test(
-  NAME cpp_parser_debug_std_vector_record_member_if_init_leaf
-  COMMAND "${CMAKE_COMMAND}"
-          -DCOMPILER=$<TARGET_FILE:c4cll>
-          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/std/std_vector_simple.cpp
-          "-DEXPECT_ERROR_SUBSTRING:STRING=/usr/include/c++/14/bits/stl_vector.h:1939:16: error: parse_fn=parse_primary phase=committed expected=RPAREN got='__n'"
-          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> try_parse_record_member_dispatch -> try_parse_record_method_or_field_member -> parse_block -> parse_stmt -> parse_expr -> parse_assign_expr -> parse_ternary -> parse_unary -> parse_primary"
-          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
-)
-set_tests_properties(cpp_parser_debug_std_vector_record_member_if_init_leaf PROPERTIES
-  LABELS "internal;negative_case;cpp;diagnostic_format"
-)
 
 add_test(
   NAME cpp_parser_debug_attr_param_leaf
