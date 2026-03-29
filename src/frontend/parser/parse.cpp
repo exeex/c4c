@@ -135,7 +135,10 @@ const std::string* select_best_parse_summary_leaf(
                             [](const std::string& function_name) {
                                 return is_qualified_type_trace_frame(function_name);
                             });
-            if (trailing_probe_only) return &summary_stack[i - 1];
+            if (trailing_probe_only &&
+                failure.function_name != "parse_top_level") {
+                return &summary_stack[i - 1];
+            }
             break;
         }
     }
