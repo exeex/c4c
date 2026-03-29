@@ -106,6 +106,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     cpp20_namespaced_concept_requires_parse
     cpp20_requires_requires_member_array_param_parse
     cpp20_requires_expression_if_constexpr_parse
+    cpp20_if_likely_stmt_attr_parse
     eastl_slice7d_qualified_declarator_parse
     out_of_class_member_owner_scope_parse
     eastl_probe_pack_expansion_template_arg_parse

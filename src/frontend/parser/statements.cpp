@@ -324,6 +324,9 @@ Node* Parser::parse_stmt() {
                 cnd = parse_expr();
             }
             expect(TokenKind::RParen);
+            if (is_cpp_mode()) {
+                skip_attributes();
+            }
             Node* then_stmt = parse_stmt();
             Node* else_stmt = nullptr;
             if (match(TokenKind::KwElse)) {
