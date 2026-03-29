@@ -4,6 +4,9 @@
 
 Open.
 
+Parked on 2026-03-29 after Step 1 disproved the assumed relocation-bearing
+contract for `tests/c/internal/backend_case/call_helper.c`.
+
 ## Relationship To Roadmap
 
 Umbrella source: `ideas/open/__backend_port_plan.md`
@@ -32,9 +35,10 @@ relocation-bearing external call on the backend-owned asm path.
 - The relocation-bearing x86 call contract already staged elsewhere in the repo
   still exists, but it belongs to the separate `helper_ext` external-call
   object shape rather than the current `call_helper.c` runtime fixture.
-- Treat this plan as blocked on lifecycle correction until we either retarget
-  it to the real local-call object contract or switch to a separate external
-  call initiative.
+- This idea is now intentionally parked in favor of
+  `ideas/open/33_backend_x86_external_call_object_plan.md`, which carries the
+  real relocation-bearing external-call contract forward as a separate bounded
+  initiative.
 
 ## Why This Is Separate
 
@@ -104,3 +108,12 @@ relocation-bearing external call on the backend-owned asm path.
 Teach the built-in x86 assembler to emit the single relocation-bearing object
 shape needed by `tests/c/internal/backend_case/call_helper.c`, then prove the
 object metadata matches the external assembler for that bounded case.
+
+## Parked Handoff
+
+- Step 1 is complete only as a contract-discovery slice.
+- Do not continue implementing relocation-bearing x86 assembler work from this
+  idea against `call_helper.c`; that fixture currently exercises the local-call
+  path and produces no `.rela.text` entry.
+- Resume relocation-bearing work from
+  `ideas/open/33_backend_x86_external_call_object_plan.md`.
