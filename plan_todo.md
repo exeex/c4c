@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - [ ] Step 4: Port the stack-layout helper boundary that consumes regalloc results.
-  Iteration target: thread the new shared stack-layout analysis object into the first frame-sizing or slot-assignment consumer so Step 4 stops at helper-only plumbing and starts driving actual stack-layout decisions through the shared seam.
+  Iteration target: expand beyond param alloca planning and thread the shared stack-layout analysis object into the next real frame-sizing or slot-reuse decision so more Step 4 behavior stops depending on local recomputation.
 
 ## Todo Queue
 
@@ -33,11 +33,13 @@ Source Plan: plan.md
 - [x] Extended `backend_lir_adapter_tests`, rebuilt the tree, reran `backend_lir_adapter_tests`, reran full `ctest`, and rechecked monotonic non-regression with `check_monotonic_regression.py` (`before=570/574`, `after=570/574`, no new failures).
 - [x] Added the first shared stack-layout analysis object in `src/backend/stack_layout/analysis.{hpp,cpp}` so Step 4 consumers can query phi-aware value-use blocks, body-used values, and dead param allocas from the existing regalloc helper seam instead of poking backend integration state directly.
 - [x] Extended `backend_lir_adapter_tests` with stack-layout analysis coverage, rebuilt the tree, reran `backend_lir_adapter_tests`, reran full `ctest`, and revalidated the saved baseline (`before=570/574`, `after=570/574`, same known failures only).
+- [x] Added the first shared `src/backend/stack_layout/slot_assignment.{hpp,cpp}` consumer of `StackLayoutAnalysis`: param-alloca slot planning now turns dead-vs-live param allocas into explicit shared decisions instead of leaving those facts trapped in analysis-only tests.
+- [x] Extended `backend_lir_adapter_tests` with shared slot-assignment coverage for dead and live param allocas, rebuilt `backend_lir_adapter_tests`, reran the binary, reran full `ctest`, and rechecked monotonic non-regression (`before=570/574`, `after=570/574`, no new failures).
 
 ## Next Intended Slice
 
-- Use `stack_layout::analyze_stack_layout(...)` as the input seam for the first shared frame-sizing or slot-assignment helper instead of recomputing ad hoc body-use and dead-param facts locally.
-- Keep AArch64 wiring deferred until the shared helper and analysis seams are consumed by at least one non-test Step 4 path with narrow tests around that handoff.
+- Keep building Step 4 inside shared stack-layout code by threading `StackLayoutAnalysis` into the next real slot-assignment or frame-sizing decision after param allocas, ideally one that currently recomputes liveness-ish or use-block facts locally.
+- Keep AArch64 wiring deferred until the shared helper and analysis seams are consumed by at least one broader non-test Step 4 path beyond param alloca planning, with narrow tests around that handoff.
 
 ## Blockers
 

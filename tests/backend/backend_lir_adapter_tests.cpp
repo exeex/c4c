@@ -5,6 +5,7 @@
 #include "regalloc.hpp"
 #include "stack_layout/analysis.hpp"
 #include "stack_layout/regalloc_helpers.hpp"
+#include "stack_layout/slot_assignment.hpp"
 #include "target.hpp"
 #include "../../src/backend/aarch64/assembler/parser.hpp"
 
@@ -1939,6 +1940,32 @@ c4c::codegen::lir::LirModule make_dead_param_alloca_candidate_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_live_param_alloca_candidate_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main(i32 %p.x)\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.param.x", "i32", "", 4});
+  function.alloca_insts.push_back(LirStoreOp{"i32", "%p.x", "%lv.param.x"});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.param.x"});
+  entry.insts.push_back(LirBinOp{"%t1", "add", "i32", "%t0", "1"});
+  entry.terminator = LirRet{std::string("%t1"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 void test_adapts_direct_return() {
   const auto adapted = c4c::backend::adapt_minimal_module(make_return_zero_module());
   expect_true(adapted.functions.size() == 1, "adapter should preserve one function");
@@ -3269,6 +3296,40 @@ void test_backend_shared_stack_layout_analysis_detects_dead_param_allocas() {
               "shared stack-layout analysis should mark dead param allocas when the corresponding parameter value is kept in a callee-saved register");
 }
 
+void test_backend_shared_slot_assignment_plans_param_alloca_slots() {
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = {{20}};
+  config.caller_saved_regs = {{13}};
+
+  const auto dead_module = make_dead_param_alloca_candidate_module();
+  const auto& dead_function = dead_module.functions.back();
+  const auto dead_regalloc =
+      c4c::backend::run_regalloc_and_merge_clobbers(dead_function, config, {});
+  const auto dead_analysis = c4c::backend::stack_layout::analyze_stack_layout(
+      dead_function, dead_regalloc, {{20}, {21}, {22}});
+  const auto dead_plans =
+      c4c::backend::stack_layout::plan_param_alloca_slots(dead_function, dead_analysis);
+
+  expect_true(dead_plans.size() == 1 && dead_plans.front().alloca_name == "%lv.param.x" &&
+                  dead_plans.front().param_name == "%p.x" &&
+                  !dead_plans.front().needs_stack_slot,
+              "shared slot-assignment planning should skip dead param allocas once analysis proves the parameter is preserved in a callee-saved register");
+
+  const auto live_module = make_live_param_alloca_candidate_module();
+  const auto& live_function = live_module.functions.front();
+  const auto live_regalloc =
+      c4c::backend::run_regalloc_and_merge_clobbers(live_function, config, {});
+  const auto live_analysis = c4c::backend::stack_layout::analyze_stack_layout(
+      live_function, live_regalloc, {{20}, {21}, {22}});
+  const auto live_plans =
+      c4c::backend::stack_layout::plan_param_alloca_slots(live_function, live_analysis);
+
+  expect_true(live_plans.size() == 1 && live_plans.front().alloca_name == "%lv.param.x" &&
+                  live_plans.front().param_name == "%p.x" &&
+                  live_plans.front().needs_stack_slot,
+              "shared slot-assignment planning should retain live param allocas when the function body still reads from the parameter slot");
+}
+
 }  // namespace
 
 int main() {
@@ -3352,5 +3413,6 @@ int main() {
   test_backend_shared_stack_layout_regalloc_helper_exposes_handoff_view();
   test_backend_shared_stack_layout_analysis_tracks_phi_use_blocks();
   test_backend_shared_stack_layout_analysis_detects_dead_param_allocas();
+  test_backend_shared_slot_assignment_plans_param_alloca_slots();
   return 0;
 }
