@@ -316,7 +316,8 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
   if (function.is_declaration || signature.linkage != "define" ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg ||
-      function.blocks.size() != 1 || function.alloca_insts.size() != 1 ||
+      function.blocks.size() != 1 ||
+      (function.alloca_insts.size() != 1 && function.alloca_insts.size() != 2) ||
       !function.stack_objects.empty()) {
     return std::nullopt;
   }
@@ -329,36 +330,76 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
   const auto& block = function.blocks.front();
   const auto* ret = std::get_if<LirRet>(&block.terminator);
   if (ret == nullptr || block.label != "entry" || !ret->value_str.has_value() ||
-      ret->type_str != "i32" || block.insts.size() != 3) {
+      ret->type_str != "i32") {
     return std::nullopt;
   }
 
-  const auto* store = std::get_if<LirStoreOp>(&block.insts[0]);
-  const auto* load = std::get_if<LirLoadOp>(&block.insts[1]);
-  const auto* call = std::get_if<LirCallOp>(&block.insts[2]);
-  if (store == nullptr || load == nullptr || call == nullptr ||
-      store->type_str != "i32" || store->ptr != alloca->result ||
-      load->type_str != "i32" || load->ptr != alloca->result ||
-      call->result.empty() || *ret->value_str != call->result ||
-      call->return_type != "i32" || call->callee_type_suffix != "(i32, i32)") {
-    return std::nullopt;
-  }
-
-  const std::string first_local_prefix = "i32 " + load->result + ", i32 ";
-  const std::string second_local_suffix = ", i32 " + load->result;
   std::string normalized_args;
-  if (call->args_str.size() > first_local_prefix.size() &&
-      call->args_str.substr(0, first_local_prefix.size()) == first_local_prefix) {
-    normalized_args =
-        "i32 " + store->val + ", i32 " + call->args_str.substr(first_local_prefix.size());
-  } else if (call->args_str.size() > second_local_suffix.size() &&
-             call->args_str.substr(call->args_str.size() - second_local_suffix.size()) ==
-                 second_local_suffix) {
-    normalized_args =
-        call->args_str.substr(0, call->args_str.size() - second_local_suffix.size()) +
-        ", i32 " + store->val;
+  std::string call_callee;
+  std::string call_callee_type_suffix;
+  if (function.alloca_insts.size() == 1) {
+    if (block.insts.size() != 3) {
+      return std::nullopt;
+    }
+
+    const auto* store = std::get_if<LirStoreOp>(&block.insts[0]);
+    const auto* load = std::get_if<LirLoadOp>(&block.insts[1]);
+    const auto* call = std::get_if<LirCallOp>(&block.insts[2]);
+    if (store == nullptr || load == nullptr || call == nullptr ||
+        store->type_str != "i32" || store->ptr != alloca->result ||
+        load->type_str != "i32" || load->ptr != alloca->result ||
+        call->result.empty() || *ret->value_str != call->result ||
+        call->return_type != "i32" || call->callee_type_suffix != "(i32, i32)") {
+      return std::nullopt;
+    }
+
+    const std::string first_local_prefix = "i32 " + load->result + ", i32 ";
+    const std::string second_local_suffix = ", i32 " + load->result;
+    if (call->args_str.size() > first_local_prefix.size() &&
+        call->args_str.substr(0, first_local_prefix.size()) == first_local_prefix) {
+      normalized_args =
+          "i32 " + store->val + ", i32 " + call->args_str.substr(first_local_prefix.size());
+    } else if (call->args_str.size() > second_local_suffix.size() &&
+               call->args_str.substr(call->args_str.size() - second_local_suffix.size()) ==
+                   second_local_suffix) {
+      normalized_args =
+          call->args_str.substr(0, call->args_str.size() - second_local_suffix.size()) +
+          ", i32 " + store->val;
+    } else {
+      return std::nullopt;
+    }
+    call_callee = call->callee;
+    call_callee_type_suffix = call->callee_type_suffix;
   } else {
-    return std::nullopt;
+    if (block.insts.size() != 5) {
+      return std::nullopt;
+    }
+
+    const auto* alloca1 = std::get_if<LirAllocaOp>(&function.alloca_insts[1]);
+    if (alloca1 == nullptr || alloca1->type_str != "i32" || alloca1->result.empty()) {
+      return std::nullopt;
+    }
+
+    const auto* store0 = std::get_if<LirStoreOp>(&block.insts[0]);
+    const auto* store1 = std::get_if<LirStoreOp>(&block.insts[1]);
+    const auto* load0 = std::get_if<LirLoadOp>(&block.insts[2]);
+    const auto* load1 = std::get_if<LirLoadOp>(&block.insts[3]);
+    const auto* call = std::get_if<LirCallOp>(&block.insts[4]);
+    if (store0 == nullptr || store1 == nullptr || load0 == nullptr ||
+        load1 == nullptr || call == nullptr || store0->type_str != "i32" ||
+        store1->type_str != "i32" || store0->ptr != alloca->result ||
+        store1->ptr != alloca1->result || load0->type_str != "i32" ||
+        load1->type_str != "i32" || load0->ptr != alloca->result ||
+        load1->ptr != alloca1->result || call->result.empty() ||
+        *ret->value_str != call->result || call->return_type != "i32" ||
+        call->callee_type_suffix != "(i32, i32)" ||
+        call->args_str != ("i32 " + load0->result + ", i32 " + load1->result)) {
+      return std::nullopt;
+    }
+
+    normalized_args = "i32 " + store0->val + ", i32 " + store1->val;
+    call_callee = call->callee;
+    call_callee_type_suffix = call->callee_type_suffix;
   }
 
   BackendFunction out;
@@ -366,13 +407,13 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
   BackendBlock out_block;
   out_block.label = block.label;
   out_block.insts.push_back(BackendCallInst{
-      call->result,
-      call->return_type,
-      call->callee,
-      call->callee_type_suffix,
+      *ret->value_str,
+      "i32",
+      call_callee,
+      call_callee_type_suffix,
       normalized_args,
   });
-  out_block.terminator = BackendReturn{call->result, "i32"};
+  out_block.terminator = BackendReturn{*ret->value_str, "i32"};
   out.blocks.push_back(std::move(out_block));
   return out;
 }
@@ -398,7 +439,6 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function) {
       normalized.has_value()) {
     return *normalized;
   }
-
   if (!function.stack_objects.empty()) fail_unsupported("stack objects");
   if (!function.alloca_insts.empty()) fail_unsupported("entry allocas");
   if (function.blocks.size() != 1) fail_unsupported("multi-block functions");
