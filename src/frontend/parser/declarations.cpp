@@ -142,14 +142,35 @@ bool is_internal_typedef_name(const char* name) {
     return name && name[0] == '_' && name[1] == '_';
 }
 
+bool is_cpp20_requires_clause_record_decl_boundary(TokenKind kind) {
+    switch (kind) {
+        case TokenKind::KwStruct:
+        case TokenKind::KwClass:
+        case TokenKind::KwUnion:
+        case TokenKind::KwEnum:
+            return true;
+        default:
+            return false;
+    }
+}
+
 void parse_optional_cpp20_requires_clause(Parser& parser) {
     if (!parser.is_cpp_mode() || !parser.check(TokenKind::KwRequires)) {
         return;
     }
 
     parser.consume();  // requires
-    if (!parser.parse_expr()) {
-        throw std::runtime_error("expected constraint-expression after requires");
+    const int constraint_start = parser.pos_;
+    try {
+        if (!parser.parse_expr()) {
+            throw std::runtime_error("expected constraint-expression after requires");
+        }
+    } catch (const std::exception&) {
+        if (parser.pos_ > constraint_start &&
+            is_cpp20_requires_clause_record_decl_boundary(parser.cur().kind)) {
+            return;
+        }
+        throw;
     }
 }
 

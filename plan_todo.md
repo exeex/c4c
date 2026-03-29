@@ -6,18 +6,20 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 2: reduce the next concept-heavy `iterator_concepts.h` blocker exposed
-  after the `noexcept(expr)` parser fix
+- Step 2: reduce the next post-`iterator_concepts` blocker, starting with the
+  `stl_iterator.h:1011` parameter-list failure on
+  `std::__detail::__range_iter_t<_Container> __i`
 
 ## Next Intended Slice
 
-- inspect `/usr/include/c++/14/bits/iterator_concepts.h:75` and isolate the
-  first `unexpected token in expression: struct` family into a standalone parse
-  test
-- keep the next reduced case focused on one root cause from the surviving
-  `struct` / `typename` / `...` iterator-concepts frontier
+- inspect `/usr/include/c++/14/bits/stl_iterator.h:1011` and isolate the
+  smallest parse-only repro for a parameter type spelled as
+  `std::__detail::__range_iter_t<_Container>`
+- keep the next fix limited to top-level/member parameter-list parsing rather
+  than broad iterator or allocator semantics
 - rerun `./build/c4cll --parse-only tests/cpp/std/std_vector_simple.cpp` after
-  that next fix to confirm the frontier advances again
+  that fix to confirm the frontier advances beyond the current
+  `parse_top_level_parameter_list` failures
 
 ## Incomplete Items
 
@@ -50,6 +52,24 @@ Source Plan: plan.md
 - [x] Full-suite regression guard passed with monotonic improvement:
   `2384 -> 2385` passing tests, `0 -> 0` failing tests, and no newly failing
   cases
+- [x] Reduced the next `iterator_concepts.h` blocker to
+  `tests/cpp/internal/postive_case/cpp20_requires_clause_struct_decl_parse.cpp`
+  for `template<typename T> requires is_object_v<T> struct trait;`, and
+  confirmed it failed before implementation with the same unexpected `struct`
+  in expression shape
+- [x] Tightened declaration-level C++20 `requires` clause parsing so template
+  constraints stop before a following record declaration, and re-ran the
+  targeted parse tests:
+  `cpp20_requires_clause_parse` and
+  `cpp20_requires_clause_struct_decl_parse`
+- [x] Advanced the direct `std::vector` parse-only repro beyond the
+  `iterator_concepts.h` `struct` frontier; the next failures now start in
+  `/usr/include/c++/14/bits/stl_iterator.h:1011` (`::` in a parameter type),
+  followed by later parameter-list and incomplete-type issues in iterator and
+  allocator headers
+- [x] Full-suite regression guard passed with monotonic improvement:
+  `2385 -> 2386` passing tests, `0 -> 0` failing tests, and no newly failing
+  cases (`test_after.log`)
 
 ## Blockers
 
@@ -63,8 +83,10 @@ Source Plan: plan.md
   the current `noexcept` and `iterator_concepts.h` frontier instead of
   reworking the older blockers.
 - Reduced repro candidate for this slice:
-  `constexpr bool probe() { return noexcept(foo()); }`
+  `template<typename T> requires is_object_v<T> struct trait;`
 - The surviving direct repro errors now begin with
-  `iterator_concepts.h:75` (`struct`), then `typename`, `...`, reference-qualifier
-  parameter parsing in `bits/exception.h`, and later `constexpr` / comma forms
-  in `bits/stl_iterator.h`.
+  `stl_iterator.h:1011` (`parse_top_level_parameter_list` expected `)` got
+  `::`), then copy/move constructor parameter forms in `stl_iterator.h`,
+  allocator/predefined-ops parameter-list issues, incomplete-type reports for
+  `move_iterator` / `allocator`, and later comma-expression parsing in
+  `bits/stl_uninitialized.h`.
