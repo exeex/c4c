@@ -262,6 +262,14 @@ bool amd64_type_is_aggregate(const TypeSpec& ts) {
   return (ts.base == TypeBase::TB_STRUCT || ts.base == TypeBase::TB_UNION);
 }
 
+bool amd64_fixed_aggregate_passed_byval(const TypeSpec& ts, const Module& mod) {
+  using c4c::TypeBase;
+  if (ts.ptr_level > 0 || ts.array_rank > 0) return false;
+  if (!(ts.base == TypeBase::TB_STRUCT || ts.base == TypeBase::TB_UNION)) return false;
+  const auto layout = classify_amd64_vararg(ts, mod);
+  return layout.size_bytes > 0 && layout.needs_memory;
+}
+
 Amd64VarargInfo classify_amd64_vararg(const TypeSpec& ts, const Module& mod) {
   Amd64VarargInfo info;
   info.size_bytes = amd64_type_size_bytes(ts, mod);

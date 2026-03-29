@@ -2,6 +2,7 @@
 #include "ir.hpp"
 #include "const_init_emitter.hpp"
 #include "stmt_emitter.hpp"
+#include "../llvm/calling_convention.hpp"
 #include "../shared/llvm_helpers.hpp"
 
 #include <algorithm>
@@ -12,6 +13,8 @@
 #include <variant>
 
 namespace c4c::codegen::lir {
+
+namespace llvm_cc = c4c::codegen::llvm_backend;
 
 // ── Module-level orchestration helpers ───────────────────────────────────────
 
@@ -264,7 +267,8 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod) {
 // Builds the LLVM IR signature text for a HIR function.  Ownership of this
 // logic belongs to hir_to_lir; StmtEmitter consumes the pre-built text.
 
-std::string build_fn_signature(const c4c::hir::Function& fn) {
+std::string build_fn_signature(const c4c::hir::Module& mod,
+                               const c4c::hir::Function& fn) {
   using namespace c4c::codegen::llvm_helpers;
 
   std::ostringstream sig_out;
@@ -284,7 +288,14 @@ std::string build_fn_signature(const c4c::hir::Function& fn) {
     for (size_t i = 0; i < fn.params.size(); ++i) {
       if (void_param_list) break;
       if (i) sig_out << ", ";
-      sig_out << llvm_ty(fn.params[i].type.spec);
+      const TypeSpec& param_ts = fn.params[i].type.spec;
+      if (llvm_target_is_amd64_sysv(mod.target_triple) &&
+          llvm_cc::amd64_fixed_aggregate_passed_byval(param_ts, mod)) {
+        sig_out << "ptr byval(" << llvm_ty(param_ts) << ") align "
+                << std::max(8, object_align_bytes(mod, param_ts));
+      } else {
+        sig_out << llvm_ty(param_ts);
+      }
     }
     if (fn.attrs.variadic) {
       if (!fn.params.empty() && !void_param_list) sig_out << ", ";
@@ -312,9 +323,15 @@ std::string build_fn_signature(const c4c::hir::Function& fn) {
   for (size_t i = 0; i < fn.params.size(); ++i) {
     if (void_param_list) break;
     if (i) sig_out << ", ";
-    const std::string pty = llvm_ty(fn.params[i].type.spec);
+    const TypeSpec& param_ts = fn.params[i].type.spec;
     const std::string pname = "%p." + sanitize_llvm_ident(fn.params[i].name);
-    sig_out << pty << " " << pname;
+    if (llvm_target_is_amd64_sysv(mod.target_triple) &&
+        llvm_cc::amd64_fixed_aggregate_passed_byval(param_ts, mod)) {
+      sig_out << "ptr byval(" << llvm_ty(param_ts) << ") align "
+              << std::max(8, object_align_bytes(mod, param_ts)) << " " << pname;
+    } else {
+      sig_out << llvm_ty(param_ts) << " " << pname;
+    }
   }
   if (fn.attrs.variadic) {
     if (!fn.params.empty()) sig_out << ", ";
@@ -498,6 +515,10 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
   for (size_t i = 0; i < fn.params.size(); ++i) {
     if (!modified_params.count(static_cast<uint32_t>(i))) continue;
     const auto& param = fn.params[i];
+    if (llvm_target_is_amd64_sysv(mod.target_triple) &&
+        llvm_cc::amd64_fixed_aggregate_passed_byval(param.type.spec, mod)) {
+      continue;
+    }
     const std::string slot = "%lv.param." + sanitize_llvm_ident(param.name);
     const std::string pname = "%p." + sanitize_llvm_ident(param.name);
     ctx.param_slots[static_cast<uint32_t>(i) + 0x80000000u] = slot;
@@ -529,13 +550,6 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
       } else {
         const int stack_align = object_align_bytes(mod, d->type.spec);
         ctx.alloca_insts.push_back(LirAllocaOp{slot, llvm_alloca_ty(d->type.spec), "", stack_align});
-        if (d->init &&
-            (d->type.spec.array_rank > 0 ||
-             (d->type.spec.ptr_level == 0 &&
-              (d->type.spec.base == TB_STRUCT ||
-               d->type.spec.base == TB_UNION)))) {
-          ctx.alloca_insts.push_back(LirStoreOp{llvm_alloca_ty(d->type.spec), "zeroinitializer", slot});
-        }
       }
     }
   }
@@ -806,7 +820,7 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
   lower_globals(global_indices, hir_mod, const_init, module);
   for (size_t idx : fn_indices) {
     const auto& fn = hir_mod.functions[idx];
-    std::string sig = build_fn_signature(fn);
+    std::string sig = build_fn_signature(hir_mod, fn);
 
     if (fn.linkage.is_extern && fn.blocks.empty()) {
       // Declaration — no body to lower; hir_to_lir owns this directly.

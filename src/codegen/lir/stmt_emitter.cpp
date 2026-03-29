@@ -38,6 +38,11 @@ void amd64_account_type_if_needed(const hir::Module& mod, const TypeSpec& ts,
   amd64_track_usage(layout, *state);
 }
 
+bool amd64_fixed_aggregate_byval(const hir::Module& mod, const TypeSpec& ts) {
+  return llvm_target_is_amd64_sysv(mod.target_triple) &&
+         llvm_cc::amd64_fixed_aggregate_passed_byval(ts, mod);
+}
+
 template <typename TerminatorT>
 bool set_terminator_if_open(FnCtx& ctx, TerminatorT&& terminator) {
   if (!std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) {
@@ -152,7 +157,7 @@ std::string llvm_fn_type_suffix_str(const FnPtrSig& sig) {
   return out.str();
 }
 
-std::string llvm_fn_type_suffix_str(const Function& fn) {
+std::string llvm_fn_type_suffix_str(const hir::Module& mod, const Function& fn) {
   if (fn.params.empty() && !fn.attrs.variadic) return "";
   std::ostringstream out;
   out << "(";
@@ -164,7 +169,12 @@ std::string llvm_fn_type_suffix_str(const Function& fn) {
   for (size_t i = 0; i < fn.params.size(); ++i) {
     if (void_param_list) break;
     if (i) out << ", ";
-    out << llvm_ty(fn.params[i].type.spec);
+    const TypeSpec& param_ts = fn.params[i].type.spec;
+    if (amd64_fixed_aggregate_byval(mod, param_ts)) {
+      out << "ptr";
+    } else {
+      out << llvm_ty(param_ts);
+    }
   }
   if (fn.attrs.variadic) {
     if (!fn.params.empty() && !void_param_list) out << ", ";
@@ -1115,6 +1125,18 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
         const auto& param = ctx.fn->params[*r->param_index];
         pts = param.type.spec;
         const std::string pname = "%p." + sanitize_llvm_ident(param.name);
+        if (amd64_fixed_aggregate_byval(mod_, pts)) {
+          auto it = ctx.param_slots.find(*r->param_index + 0x80000000u);
+          if (it != ctx.param_slots.end()) {
+            return it->second;
+          }
+          const auto direct_it = ctx.param_slots.find(*r->param_index);
+          if (direct_it != ctx.param_slots.end()) {
+            return direct_it->second;
+          }
+          ctx.param_slots[*r->param_index] = pname;
+          return pname;
+        }
         // Check if we already have a spill slot
         auto it = ctx.param_slots.find(*r->param_index + 0x80000000u);
         if (it != ctx.param_slots.end()) {
@@ -1123,7 +1145,13 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
         // Create a new alloca for this parameter
         const std::string slot = "%lv.param." + sanitize_llvm_ident(param.name);
         ctx.alloca_insts.push_back(lir::LirAllocaOp{slot, llvm_alloca_ty(pts), "", 0});
-        ctx.alloca_insts.push_back(lir::LirStoreOp{llvm_ty(pts), pname, slot});
+        if (amd64_fixed_aggregate_byval(mod_, pts)) {
+          module_->need_memcpy = true;
+          emit_lir_op(ctx, lir::LirMemcpyOp{
+              slot, pname, std::to_string(llvm_cc::amd64_type_size_bytes(pts, mod_)), false});
+        } else {
+          ctx.alloca_insts.push_back(lir::LirStoreOp{llvm_ty(pts), pname, slot});
+        }
         ctx.param_slots[*r->param_index + 0x80000000u] = slot;
         return slot;
       }
@@ -1265,6 +1293,17 @@ std::string StmtEmitter::emit_store_assignable_value(FnCtx& ctx, const Assignabl
     if (lhs.is_bitfield()) {
       emit_bitfield_store(ctx, lhs.ptr, lhs.bf, value, value_ts);
       return reload_after_store ? emit_bitfield_load(ctx, lhs.ptr, lhs.bf) : value;
+    }
+    const bool zero_init_aggregate =
+        value == "zeroinitializer" &&
+        (lhs.pointee_ts.array_rank > 0 ||
+         (lhs.pointee_ts.ptr_level == 0 &&
+          (lhs.pointee_ts.base == TB_STRUCT || lhs.pointee_ts.base == TB_UNION)));
+    if (zero_init_aggregate) {
+      module_->need_memset = true;
+      emit_lir_op(ctx, lir::LirMemsetOp{
+          lhs.ptr, "0", std::to_string(sizeof_ts(mod_, lhs.pointee_ts)), false});
+      return value;
     }
     emit_lir_op(ctx, lir::LirStoreOp{llvm_ty(lhs.pointee_ts), value, lhs.ptr});
     return value;
@@ -2197,7 +2236,24 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const DeclRef& r, const E
       }
       // Otherwise use the SSA param value directly.
       const auto it = ctx.param_slots.find(*r.param_index);
-      if (it != ctx.param_slots.end()) return it->second;
+      if (it != ctx.param_slots.end()) {
+        const TypeSpec& pts = ctx.fn->params[*r.param_index].type.spec;
+        if (amd64_fixed_aggregate_byval(mod_, pts)) {
+          const std::string tmp = fresh_tmp(ctx);
+          emit_lir_op(ctx, lir::LirLoadOp{tmp, llvm_ty(pts), it->second});
+          return tmp;
+        }
+        return it->second;
+      }
+      if (amd64_fixed_aggregate_byval(mod_, ctx.fn->params[*r.param_index].type.spec)) {
+        const TypeSpec& pts = ctx.fn->params[*r.param_index].type.spec;
+        const std::string pname =
+            "%p." + sanitize_llvm_ident(ctx.fn->params[*r.param_index].name);
+        ctx.param_slots[*r.param_index] = pname;
+        const std::string tmp = fresh_tmp(ctx);
+        emit_lir_op(ctx, lir::LirLoadOp{tmp, llvm_ty(pts), pname});
+        return tmp;
+      }
     }
 
     // Local: load
@@ -2974,7 +3030,7 @@ CallTargetInfo StmtEmitter::resolve_call_target_info(FnCtx& ctx, const CallExpr&
     info.callee_fn_ptr_sig =
         info.target_fn ? nullptr : resolve_callee_fn_ptr_sig(ctx, callee_e);
     if (info.target_fn) {
-      info.callee_type_suffix = llvm_fn_type_suffix_str(*info.target_fn);
+      info.callee_type_suffix = llvm_fn_type_suffix_str(mod_, *info.target_fn);
     } else if (info.callee_fn_ptr_sig) {
       info.callee_type_suffix = llvm_fn_type_suffix_str(*info.callee_fn_ptr_sig);
     }
@@ -3057,7 +3113,14 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
 
     TypeSpec arg_ts{};
     std::string arg;
-    if (fixed_param_ts &&
+    const bool is_fixed_byval_aggregate =
+        fixed_param_ts && amd64_fixed_aggregate_byval(mod_, *fixed_param_ts);
+    if (is_fixed_byval_aggregate &&
+        get_expr(call.args[arg_index]).type.category == ValueCategory::LValue) {
+      TypeSpec obj_ts{};
+      arg = emit_lval(ctx, call.args[arg_index], obj_ts);
+      arg_ts = obj_ts;
+    } else if (fixed_param_ts &&
         (fixed_param_ts->is_lvalue_ref || fixed_param_ts->is_rvalue_ref)) {
       try {
         TypeSpec pointee_ts{};
@@ -3091,7 +3154,9 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
           target_fn->params[0].type.spec.array_rank == 0;
       if (!has_void_param_list && arg_index < target_fn->params.size()) {
         out_arg_ts = target_fn->params[arg_index].type.spec;
-        arg = coerce(ctx, arg, arg_ts, out_arg_ts);
+        if (!is_fixed_byval_aggregate) {
+          arg = coerce(ctx, arg, arg_ts, out_arg_ts);
+        }
       } else if (target_fn->attrs.variadic && !is_variadic_aggregate) {
         apply_default_arg_promotion(ctx, arg, out_arg_ts, arg_ts);
       }
@@ -3099,7 +3164,9 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
       const bool has_void_pl = sig_has_void_param_list(*callee_fn_ptr_sig);
       if (!has_void_pl && arg_index < sig_param_count(*callee_fn_ptr_sig)) {
         out_arg_ts = sig_param_type(*callee_fn_ptr_sig, arg_index);
-        arg = coerce(ctx, arg, arg_ts, out_arg_ts);
+        if (!is_fixed_byval_aggregate) {
+          arg = coerce(ctx, arg, arg_ts, out_arg_ts);
+        }
       } else if (sig_is_variadic(*callee_fn_ptr_sig) && !is_variadic_aggregate) {
         apply_default_arg_promotion(ctx, arg, out_arg_ts, arg_ts);
       }
@@ -3161,6 +3228,23 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
       return {{std::string("[2 x i64] ") + packed}, false};
     }
 
+    if (is_fixed_byval_aggregate) {
+      std::string obj_ptr;
+      if (get_expr(call.args[arg_index]).type.category == ValueCategory::LValue) {
+        TypeSpec obj_ts{};
+        obj_ptr = emit_lval(ctx, call.args[arg_index], obj_ts);
+      } else {
+        const std::string tmp_addr = fresh_tmp(ctx);
+        emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, llvm_ty(out_arg_ts), {}, 0});
+        emit_lir_op(ctx, lir::LirStoreOp{llvm_ty(out_arg_ts), arg, tmp_addr});
+        obj_ptr = tmp_addr;
+      }
+      const int align = std::max(8, object_align_bytes(mod_, out_arg_ts));
+      PreparedCallArg out{{"ptr byval(" + llvm_ty(out_arg_ts) + ") align " +
+                           std::to_string(align) + " " + obj_ptr}, false};
+      return out;
+    }
+
     PreparedCallArg out_arg{{llvm_ty(out_arg_ts) + " " + arg}, false};
     if (amd64_state && !out_arg.skip) {
       amd64_account_type_if_needed(mod_, out_arg_ts, amd64_state);
@@ -3183,7 +3267,7 @@ PreparedCallArg StmtEmitter::prepare_amd64_variadic_aggregate_arg(
       force_memory = true;
     }
     if (force_memory) {
-      const int align = std::max(1, object_align_bytes(mod_, arg_ts));
+      const int align = std::max(8, object_align_bytes(mod_, arg_ts));
       std::string arg = "ptr ";
       arg += "byval(" + llvm_ty(arg_ts) + ") align " + std::to_string(align) + " " + obj_ptr;
       out.texts.push_back(std::move(arg));
@@ -4272,7 +4356,16 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const LocalDecl& d){
          (d.type.spec.base == TB_STRUCT || d.type.spec.base == TB_UNION) &&
          d.type.spec.array_rank == 0);
     if (is_agg_or_array && (rhs == "0" || rhs.empty())) {
-      emit_lir_op(ctx, lir::LirStoreOp{ty, std::string("zeroinitializer"), slot});
+      if (d.type.spec.array_rank > 0 ||
+          (!d.type.spec.is_vector &&
+           d.type.spec.ptr_level == 0 &&
+           (d.type.spec.base == TB_STRUCT || d.type.spec.base == TB_UNION))) {
+        module_->need_memset = true;
+        emit_lir_op(ctx, lir::LirMemsetOp{
+            slot, "0", std::to_string(sizeof_ts(mod_, d.type.spec)), false});
+      } else {
+        emit_lir_op(ctx, lir::LirStoreOp{ty, std::string("zeroinitializer"), slot});
+      }
       return;
     }
     rhs = coerce(ctx, rhs, rhs_ts, d.type.spec);

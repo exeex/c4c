@@ -33,4 +33,7 @@ int amd64_type_size_bytes(const c4c::TypeSpec& ts,
 
 bool amd64_type_is_aggregate(const c4c::TypeSpec& ts);
 
+bool amd64_fixed_aggregate_passed_byval(const c4c::TypeSpec& ts,
+                                        const c4c::hir::Module& mod);
+
 }  // namespace c4c::codegen::llvm_backend

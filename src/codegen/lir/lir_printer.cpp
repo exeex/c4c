@@ -31,6 +31,10 @@ void render_inst(std::ostringstream& os, const LirInst& inst) {
     os << "  call void @llvm.memcpy.p0.p0.i64(ptr " << op->dst
        << ", ptr " << op->src << ", i64 " << op->size
        << ", i1 " << (op->is_volatile ? "true" : "false") << ")\n";
+  } else if (const auto* op = std::get_if<LirMemsetOp>(&inst)) {
+    os << "  call void @llvm.memset.p0.i64(ptr " << op->dst
+       << ", i8 " << op->byte_val << ", i64 " << op->size
+       << ", i1 " << (op->is_volatile ? "true" : "false") << ")\n";
   } else if (const auto* op = std::get_if<LirVaStartOp>(&inst)) {
     os << "  call void @llvm.va_start.p0(ptr " << op->ap_ptr << ")\n";
   } else if (const auto* op = std::get_if<LirVaEndOp>(&inst)) {
@@ -226,6 +230,7 @@ std::string print_llvm(const LirModule& mod) {
   if (mod.need_va_end)      out << "declare void @llvm.va_end.p0(ptr)\n";
   if (mod.need_va_copy)     out << "declare void @llvm.va_copy.p0.p0(ptr, ptr)\n";
   if (mod.need_memcpy)      out << "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)\n";
+  if (mod.need_memset)      out << "declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)\n";
   if (mod.need_stacksave)   out << "declare ptr @llvm.stacksave()\n";
   if (mod.need_stackrestore) out << "declare void @llvm.stackrestore(ptr)\n";
   if (mod.need_abs) {
@@ -233,7 +238,7 @@ std::string print_llvm(const LirModule& mod) {
     out << "declare i64 @llvm.abs.i64(i64, i1 immarg)\n";
   }
   if (mod.need_va_start || mod.need_va_end || mod.need_va_copy ||
-      mod.need_memcpy || mod.need_stacksave || mod.need_stackrestore ||
+      mod.need_memcpy || mod.need_memset || mod.need_stacksave || mod.need_stackrestore ||
       mod.need_abs) out << "\n";
 
   // External function declarations.

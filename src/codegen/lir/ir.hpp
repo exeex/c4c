@@ -217,6 +217,13 @@ struct LirStoreOp {
   std::string ptr;        // SSA name of pointer operand
 };
 
+struct LirMemsetOp {
+  std::string dst;        // destination pointer
+  std::string byte_val;   // i8-compatible byte value
+  std::string size;       // i64 byte count
+  bool is_volatile = false;
+};
+
 // Cast opcode for LirCastOp
 enum class LirCastKind : uint8_t {
   Trunc,
@@ -375,6 +382,7 @@ using LirInst = std::variant<
     LirInsertValueOp,
     LirLoadOp,
     LirStoreOp,
+    LirMemsetOp,
     LirCastOp,
     LirGepOp,
     LirCallOp,
@@ -554,6 +562,7 @@ struct LirModule {
   bool need_va_end = false;
   bool need_va_copy = false;
   bool need_memcpy = false;
+  bool need_memset = false;
   bool need_stacksave = false;
   bool need_stackrestore = false;
   bool need_abs = false;
