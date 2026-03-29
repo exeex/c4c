@@ -371,6 +371,41 @@ c4c::codegen::lir::LirModule make_conditional_return_ult_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_conditional_return_ule_module() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_return_zero_module();
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  auto& function = module.functions.front();
+  function.blocks.clear();
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCmpOp{"%t0", false, "ule", "i32", "2", "3"});
+  entry.insts.push_back(
+      LirCastOp{"%t1", LirCastKind::ZExt, "i1", "%t0", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t2", false, "ne", "i32", "%t1", "0"});
+  entry.terminator = LirCondBr{"%t2", "then", "else"};
+
+  LirBlock then_block;
+  then_block.id = LirBlockId{1};
+  then_block.label = "then";
+  then_block.terminator = LirRet{std::string("0"), "i32"};
+
+  LirBlock else_block;
+  else_block.id = LirBlockId{2};
+  else_block.label = "else";
+  else_block.terminator = LirRet{std::string("1"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(then_block));
+  function.blocks.push_back(std::move(else_block));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_direct_call_module() {
   using namespace c4c::codegen::lir;
 
@@ -2080,6 +2115,24 @@ void test_aarch64_backend_renders_compare_and_branch_ult_slice() {
                   "aarch64 backend should lower the unsigned less-than else block directly in assembly");
 }
 
+void test_aarch64_backend_renders_compare_and_branch_ule_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_conditional_return_ule_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".globl main",
+                  "aarch64 backend should lower the unsigned less-or-equal conditional-return slice to assembly");
+  expect_contains(rendered, "  mov w8, #2\n",
+                  "aarch64 backend should materialize the first unsigned less-or-equal compare immediate");
+  expect_contains(rendered, "  cmp w8, #3\n",
+                  "aarch64 backend should compare the materialized unsigned less-or-equal lhs against the rhs immediate");
+  expect_contains(rendered, "  b.hi .Lelse\n",
+                  "aarch64 backend should branch to the else label when the unsigned less-or-equal test fails");
+  expect_contains(rendered, ".Lthen:\n  mov w0, #0\n  ret\n",
+                  "aarch64 backend should lower the unsigned less-or-equal then block directly in assembly");
+  expect_contains(rendered, ".Lelse:\n  mov w0, #1\n  ret\n",
+                  "aarch64 backend should lower the unsigned less-or-equal else block directly in assembly");
+}
+
 void test_aarch64_backend_scaffold_rejects_out_of_slice_ir() {
   using namespace c4c::codegen::lir;
 
@@ -2720,6 +2773,7 @@ int main() {
   test_aarch64_backend_renders_compare_and_branch_eq_slice();
   test_aarch64_backend_renders_compare_and_branch_ne_slice();
   test_aarch64_backend_renders_compare_and_branch_ult_slice();
+  test_aarch64_backend_renders_compare_and_branch_ule_slice();
   test_aarch64_backend_scaffold_rejects_out_of_slice_ir();
   test_aarch64_backend_renders_direct_call_slice();
   test_aarch64_backend_renders_local_temp_memory_slice();
