@@ -493,6 +493,19 @@ set_tests_properties(cpp_parser_debug_std_vector_move_ctor_leaf PROPERTIES
 )
 
 add_test(
+  NAME cpp_parser_debug_std_vector_expr_const_if_leaf
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/std/std_vector_simple.cpp
+          "-DEXPECT_ERROR_SUBSTRING:STRING=/usr/include/c++/14/bits/stl_algobase.h:971:11: error: parse_fn=parse_primary phase=committed got='const'"
+          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> parse_block -> parse_stmt -> parse_expr -> parse_assign_expr -> parse_ternary -> parse_unary -> parse_primary -> try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type"
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_std_vector_expr_const_if_leaf PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
   NAME cpp_parser_debug_std_vector_record_member_const_if_leaf
   COMMAND "${CMAKE_COMMAND}"
           -DCOMPILER=$<TARGET_FILE:c4cll>

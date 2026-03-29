@@ -9,19 +9,58 @@ Source Plan: plan.md
 - Step 5: prepare the next diagnostic slice by bounding the first
   committed-failure vs no-match follow-up after the record-member rewind
   samples are exhausted
-- Current slice: the first uncovered repeated comma-in-expression family is
-  now locked by reduced parser-debug coverage, so the next Step 5 decision is
-  whether any follow-up should stay in this plan as summary-ranking work or be
-  deferred as a later speculative-parse initiative
-- Iteration target: compare the reduced local-initializer comma repro against
-  the remaining `stl_uninitialized.h:{247,317}` motivating sites and decide
-  whether they are the same family or require one more bounded reduced case
-- Next intended slice: if `:247` and `:317` stay identical to the new reduced
-  coverage, record that the comma-family is exhausted for this plan and bound
-  the next uncovered parser-debug family instead of broadening into heuristics
+- Current slice: the repeated local-initializer comma family at
+  `stl_uninitialized.h:{179,247,317}` is now closed out for this plan, and the
+  next bounded motivating gap is the earlier non-record-member
+  `stl_algobase.h:971` `parse_primary got='const'` expression path
+- Iteration target: add motivating parser-debug coverage for
+  `/usr/include/c++/14/bits/stl_algobase.h:971:11`, verify it matches the
+  existing reduced `cpp_parser_debug_if_init_qualified_probe_leaf` shape, and
+  record whether that family should remain summary-ranking work for this plan
+- Next intended slice: if the new motivating `:971` coverage stays aligned
+  with the reduced if-init qualified-probe repro, keep the current committed
+  `parse_primary` summary and start the first real tri-state follow-up from
+  the already-covered `try_parse_qualified_base_type`
+  `got='&&'` wrapper family instead of adding heuristics to the
+  non-record-member const-expression path
 
 ## Completed
 
+- compared the reduced local-initializer comma repro against the live
+  `tests/cpp/std/std_vector_simple.cpp`
+  `/usr/include/c++/14/bits/stl_uninitialized.h:{179,247,317}` traces and
+  confirmed all three motivating sites emit the same committed
+  `parse_fn=parse_primary phase=committed got=','` summary and duplicated
+  local-initializer expression stack, so that comma family is exhausted for
+  this plan
+- bounded the next uncovered motivating parser-debug family after the comma
+  closure at
+  `tests/cpp/std/std_vector_simple.cpp`
+  `/usr/include/c++/14/bits/stl_algobase.h:971:11`, where the current output
+  is the non-record-member expression-path summary
+  `parse_fn=parse_primary phase=committed got='const'`
+- added motivating parser-debug coverage in
+  `cpp_parser_debug_std_vector_expr_const_if_leaf` for the
+  `tests/cpp/std/std_vector_simple.cpp`
+  `/usr/include/c++/14/bits/stl_algobase.h:971:11` family, locking the current
+  committed `parse_primary` summary together with the
+  `parse_top_level -> parse_block -> parse_stmt -> parse_expr ->
+  parse_assign_expr -> parse_ternary -> parse_unary -> parse_primary ->
+  try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type` stack
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_if_init_qualified_probe_leaf`,
+  `cpp_parser_debug_local_init_comma_leaf`,
+  `cpp_parser_debug_std_vector_expr_const_if_leaf`,
+  `cpp_parser_debug_std_vector_record_member_const_if_leaf`,
+  `cpp_parser_debug_std_vector_record_member_if_init_leaf`,
+  `cpp_parser_debug_attr_param_leaf`, and
+  `cpp_parser_debug_std_vector_named_param_ctor_leaf`
+- recorded the required clean after-suite for this iteration and passed the
+  monotonic regression guard against the recorded
+  `before passed=2294/2295` baseline:
+  `after passed=2295/2296`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged and the
+  guard script reported zero new failing tests
 - added reduced parser-debug coverage in
   `cpp_parser_debug_local_init_comma_leaf` for the first uncovered repeated
   `tests/cpp/std/std_vector_simple.cpp`
