@@ -12,6 +12,9 @@ Depends on:
 
 - `ideas/closed/31_backend_x86_runtime_case_convergence_plan.md`
 - `ideas/closed/33_backend_x86_external_call_object_plan.md`
+- `ideas/open/35_backend_ready_ir_contract_plan.md`
+- `ideas/open/36_lir_to_backend_ready_ir_lowering_plan.md`
+- `ideas/open/37_backend_emitter_backend_ir_migration_plan.md`
 
 Should precede:
 
@@ -49,6 +52,17 @@ That means the immediate problem is not broad correctness regression in the
 existing frontend path. The problem is that the x86 backend still recognizes too
 few real external-C lowering shapes and falls back to LLVM text for most of this
 corpus.
+
+Work executed under the previously active convergence runbook did improve the
+backend-owned pass count from 20/220 to 31/220 by teaching
+`src/backend/lir_adapter.cpp` additional bounded normalization cases. That
+progress also made the next blocker clearer: further convergence is now coupled
+too tightly to growing the minimal adapter, which is not the right long-term
+ingestion layer for multi-block and memory-using external-C inputs.
+
+This idea should therefore remain parked behind the backend-ready IR work in
+`35`, `36`, and `37` rather than continuing to expand the adapter-driven path
+as if it were the final backend architecture.
 
 ## Primary Scope
 
@@ -114,6 +128,20 @@ For any c-testsuite case explicitly brought into scope by this plan:
   monotonic coverage improvement
 - if a patch claims general improvement, also rerun
   `ctest --test-dir build -L backend --output-on-failure`
+
+## Parked State
+
+Execution knowledge preserved from the deactivated runbook:
+
+- the adapter-driven path improved the `x86_backend` label from
+  20 passed / 200 failed / 220 total to
+  31 passed / 189 failed / 220 total
+- the next excluded seed remained `tests/c/external/c-testsuite/src/00007.c`,
+  which combines two countdown-loop regions with a mid-function conditional
+  early return
+- that next slice is no longer the preferred immediate target because it would
+  require widening `src/backend/lir_adapter.cpp` further instead of establishing
+  a backend-owned IR boundary first
 
 ## Good First Patch
 

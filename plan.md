@@ -1,149 +1,184 @@
-# X86 Backend C-Testsuite Convergence Runbook
+# LIR De-Stringify Legacy-Safe Refactor Runbook
 
 Status: Active
-Source Idea: ideas/open/34_backend_x86_c_testsuite_backend_convergence_plan.md
+Source Idea: ideas/open/38_lir_de_stringify_legacy_safe_refactor_plan.md
+Activated from: ideas/open/35_backend_ready_ir_contract_plan.md
 
 ## Purpose
 
-Turn the vendored external C testsuite into explicit x86 backend-owned assembly
-coverage by converting one bounded fallback-to-IR failure family at a time.
+Refactor LIR so opcode, type, and operand semantics are represented as typed
+compiler data rather than ad hoc string protocols, while keeping the current
+legacy LLVM text path working during migration.
 
 ## Goal
 
-Identify the smallest repeatable `c_testsuite_x86_backend_*` failure family,
-land the narrow backend support needed for that family, and prove a monotonic
-improvement in the `x86_backend` labeled surface without weakening the fallback
-guard.
+Land typed LIR operand/type infrastructure, migrate the highest-friction
+string-heavy instructions toward it, and leave both the legacy LLVM printer and
+backend consumers on a clear compatibility path.
 
 ## Core Rule
 
-For any case promoted by this runbook, `c4cll --codegen lir --target
-x86_64-unknown-linux-gnu` must emit native x86 assembly and must not succeed by
-falling back to LLVM IR.
+Do not add new string-carried opcode/type/operand semantics to LIR while this
+runbook is active. Any new LIR surface must prefer typed fields or explicit
+compatibility shims scheduled for deletion.
 
 ## Read First
 
-- [ideas/open/34_backend_x86_c_testsuite_backend_convergence_plan.md](/workspaces/c4c/ideas/open/34_backend_x86_c_testsuite_backend_convergence_plan.md)
-- [tests/c/external/c-testsuite/RunCase.cmake](/workspaces/c4c/tests/c/external/c-testsuite/RunCase.cmake)
-- [tests/TestEntry.cmake](/workspaces/c4c/tests/TestEntry.cmake)
-- [src/backend/x86/codegen/emit.cpp](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+- [ideas/open/38_lir_de_stringify_legacy_safe_refactor_plan.md](/workspaces/c4c/ideas/open/38_lir_de_stringify_legacy_safe_refactor_plan.md)
+- [src/codegen/lir/ir.hpp](/workspaces/c4c/src/codegen/lir/ir.hpp)
+- [src/codegen/lir/lir_printer.cpp](/workspaces/c4c/src/codegen/lir/lir_printer.cpp)
+- [src/codegen/lir/hir_to_lir.cpp](/workspaces/c4c/src/codegen/lir/hir_to_lir.cpp)
+- [src/codegen/lir/stmt_emitter.cpp](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp)
+- [src/backend/lir_adapter.cpp](/workspaces/c4c/src/backend/lir_adapter.cpp)
+- [ref/claudes-c-compiler/src/ir/instruction.rs](/workspaces/c4c/ref/claudes-c-compiler/src/ir/instruction.rs)
+- [ref/claudes-c-compiler/src/ir/ops.rs](/workspaces/c4c/ref/claudes-c-compiler/src/ir/ops.rs)
 
 ## Current Scope
 
-- x86 backend-owned c-testsuite cases only
-- backend fallback classification and one bounded lowering family
-- adjacent x86 emitter or adapter files only when required by the promoted
-  family
+- typed LIR operands, opcodes, predicates, and type references
+- migration strategy for string-heavy LIR nodes
+- legacy LLVM printer compatibility during transition
+- backend and analysis consumer cleanup where they currently decode LIR strings
 
 ## Non-Goals
 
-- relaxing `c_testsuite_x86_backend_*` to accept LLVM IR fallback
-- changing the legacy `c_testsuite_*` frontend path semantics
-- chasing unrelated failing cases outside the chosen backend mechanism family
-- broad assembler, linker, or optimizer work unless a targeted family proves it
-  is required
+- defining backend-ready IR in this runbook
+- implementing mem2reg, phi elimination, or backend lowering here
+- target-specific feature expansion in x86 or AArch64 emitters
+- broad testsuite convergence work
 
 ## Working Model
 
-1. Measure the current `x86_backend` baseline and preserve the pass/fail count.
-2. Bucket failing `c_testsuite_x86_backend_*` cases by shared lowering shape.
-3. Pick the smallest repeatable family with one root cause.
-4. Add or adjust the narrowest validating tests for that family.
-5. Implement the smallest backend change that removes fallback for that family.
-6. Re-run targeted and broader backend validation and record the improvement.
+1. Audit the current string-heavy LIR surfaces and categorize them by semantic
+   payload: operand, type, opcode, or textual-only payload.
+2. Define typed LIR building blocks that can represent those semantics without
+   relying on free-form strings.
+3. Introduce verification and compatibility shims so existing construction and
+   printing paths keep working while call sites migrate.
+4. Migrate the highest-value instruction families and consumer code to typed
+   access.
+5. Record any remaining compatibility fields that follow-on work must delete.
 
 ## Execution Rules
 
-- Keep the legacy `c_testsuite_*` surface green as the unchanged reference.
-- Treat Clang and the existing frontend surface as the behavioral oracle when
-  diagnosing a backend-owned failing case.
-- Do not silently absorb separate initiatives into this runbook. Record them in
-  `ideas/open/` if they are distinct from the chosen failure family.
-- Prefer one root cause and one shippable family per implementation slice.
+- Keep the legacy LLVM printer path building at every stage.
+- Prefer adding typed fields first, then migrating construction sites, then
+  deleting string fields last.
+- Distinguish genuinely textual payloads, such as inline asm source text, from
+  structural compiler semantics that should be typed.
+- If a consumer still needs string compatibility, isolate that compatibility in
+  one place instead of letting more raw string protocol spread.
+- Record every temporary compatibility field or helper in `plan_todo.md`.
 
 ## Ordered Steps
 
-### Step 1: Reconfirm the x86 backend baseline
+### Step 1: Audit string-heavy LIR semantics
 
-Goal: refresh the active pass/fail picture before choosing an implementation
-slice.
+Goal: inventory where LIR currently encodes operands, types, opcodes, and other
+core semantics as strings.
 
 Primary targets:
 
-- [tests/c/external/c-testsuite/RunCase.cmake](/workspaces/c4c/tests/c/external/c-testsuite/RunCase.cmake)
-- [tests/TestEntry.cmake](/workspaces/c4c/tests/TestEntry.cmake)
+- [src/codegen/lir/ir.hpp](/workspaces/c4c/src/codegen/lir/ir.hpp)
+- [src/codegen/lir/stmt_emitter.cpp](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp)
+- [src/codegen/lir/lir_printer.cpp](/workspaces/c4c/src/codegen/lir/lir_printer.cpp)
+- [src/backend/lir_adapter.cpp](/workspaces/c4c/src/backend/lir_adapter.cpp)
 
 Actions:
 
-- build the tree if needed
-- run the current `x86_backend` label and capture the passing count, failing
-  count, and dominant failure marker(s)
-- sample a few representative failing cases to confirm they are still blocked by
-  `[BACKEND_FALLBACK_IR]`
+- list each string-heavy LIR instruction family
+- classify each string field as one of:
+  typed operand, typed type, enum-like opcode/predicate, or truly textual data
+- identify which consumers depend on each family today
 
 Completion check:
 
-- the runbook has a current baseline count and representative failing cases for
-  the chosen family
+- `plan_todo.md` contains a categorized audit of string-heavy LIR surfaces and
+  the affected legacy/backend consumers
 
-### Step 2: Classify one bounded fallback family
+### Step 2: Define typed LIR primitives
 
-Goal: reduce the failure set into a single backend mechanism family that can be
-  fixed as one slice.
+Goal: add the typed building blocks that later instruction migrations will use.
 
 Primary targets:
 
-- [tests/c/external/c-testsuite/src](/workspaces/c4c/tests/c/external/c-testsuite/src)
-- [src/backend/x86/codegen/emit.cpp](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+- [src/codegen/lir/operands.hpp](/workspaces/c4c/src/codegen/lir/operands.hpp)
+- [src/codegen/lir/types.hpp](/workspaces/c4c/src/codegen/lir/types.hpp)
+- [src/codegen/lir/ir.hpp](/workspaces/c4c/src/codegen/lir/ir.hpp)
 
 Actions:
 
-- inspect failing sources and any backend traces needed to identify the shared
-  lowering shape
-- compare against a known passing backend-owned case and against Clang output
-  when needed
-- write down the selected family and the excluded nearby families in
-  `plan_todo.md`
+- define operand/value/global/immediate representations
+- define type references or wrappers suitable for both legacy printing and
+  backend consumption
+- define enum-backed opcodes and predicates for arithmetic/comparison families
 
 Completion check:
 
-- exactly one repeatable failure family is selected, described, and bounded
+- the new primitives compile and can express the currently problematic LIR
+  fields without free-form string parsing
 
-### Step 3: Add the narrowest durable validation
+### Step 3: Add verification and legacy-safe compatibility shims
 
-Goal: make the selected family observable before changing backend behavior.
+Goal: make the migration safe for the existing LLVM printer path.
 
 Primary targets:
 
-- [tests/c/external/c-testsuite/RunCase.cmake](/workspaces/c4c/tests/c/external/c-testsuite/RunCase.cmake)
-- [tests/TestEntry.cmake](/workspaces/c4c/tests/TestEntry.cmake)
+- [src/codegen/lir/verify.hpp](/workspaces/c4c/src/codegen/lir/verify.hpp)
+- [src/codegen/lir/verify.cpp](/workspaces/c4c/src/codegen/lir/verify.cpp)
+- [src/codegen/lir/lir_printer.cpp](/workspaces/c4c/src/codegen/lir/lir_printer.cpp)
 
 Actions:
 
-- add or adjust the targeted backend-owned test coverage needed to demonstrate
-  the chosen family
-- keep the assertion focused on native x86 assembly success and existing output
-  expectations
-- avoid widening test scope beyond the selected family
+- add verification for typed operand/type invariants
+- add printer-side rendering from typed fields
+- keep any transitional string fallbacks explicit and localized
 
 Completion check:
 
-- there is a targeted test slice that fails before the backend fix and encodes
-  the intended backend-owned behavior
+- valid typed LIR can still print to LLVM text and malformed typed LIR is
+  rejected early
 
-### Step 4: Implement the minimum backend support
+### Step 4: Migrate high-friction instruction families and consumers
 
-Goal: remove fallback-to-IR for the selected family with the smallest emitter or
-  adapter change.
+Goal: move the worst string-heavy surfaces first.
 
 Primary targets:
 
-- [src/backend/x86/codegen/emit.cpp](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+- [src/codegen/lir/stmt_emitter.cpp](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp)
+- [src/backend/lir_adapter.cpp](/workspaces/c4c/src/backend/lir_adapter.cpp)
+- backend analysis helpers that read LIR instructions
 
 Actions:
 
-- implement only the support required by the chosen lowering shape
-- touch adjacent x86 backend files only if `emit.cpp` cannot contain the fix
+- migrate arithmetic/comparison/load/store/call-adjacent instruction families
+- replace raw string compares in backend consumers with typed dispatch
+- update any touched analysis code to consume typed operands instead of text
+
+Completion check:
+
+- the worst string-protocol consumers no longer branch primarily on raw opcode
+  or type strings
+
+### Step 5: Record the handoff to 35/36/37
+
+Goal: leave the backend-ready IR work with a stable, typed LIR base.
+
+Primary targets:
+
+- [ideas/open/35_backend_ready_ir_contract_plan.md](/workspaces/c4c/ideas/open/35_backend_ready_ir_contract_plan.md)
+- [ideas/open/36_lir_to_backend_ready_ir_lowering_plan.md](/workspaces/c4c/ideas/open/36_lir_to_backend_ready_ir_lowering_plan.md)
+- [ideas/open/37_backend_emitter_backend_ir_migration_plan.md](/workspaces/c4c/ideas/open/37_backend_emitter_backend_ir_migration_plan.md)
+
+Actions:
+
+- record which typed LIR primitives are now stable
+- record which compatibility shims remain and who must delete them
+- record any remaining string-heavy corners that still block backend IR work
+
+Completion check:
+
+- `plan_todo.md` contains a clean follow-on list for the backend-ready IR plans
 - add brief comments only where the new lowering path is not obvious
 
 Completion check:
