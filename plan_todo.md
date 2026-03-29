@@ -6,7 +6,7 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 4: Promote `branch_if_ne` as the next bounded compare-and-branch follow-on case if the same minimal x86 conditional-return slice can widen from equality to inequality without introducing a new lowering shape
+- [ ] Step 4: Promote `branch_if_uge` as the next bounded unsigned compare-and-branch follow-on case only if the same minimal x86 conditional-return slice can widen without introducing a new lowering shape
 
 ## Todo
 
@@ -26,6 +26,7 @@ Source Plan: plan.md
 - [x] Widen the same bounded two-local direct-call seam to `two_arg_both_local_first_rewrite`, `two_arg_both_local_second_rewrite`, and `two_arg_both_local_double_rewrite`.
 - [x] Re-run focused backend and runtime checks for the bounded both-local family, then compare a full-suite rerun against the previous runbook baseline.
 - [x] Promote `branch_if_eq` onto the x86 backend-owned asm path with the existing minimal three-block conditional-return slice widened only to equality.
+- [x] Promote `branch_if_ne` onto the x86 backend-owned asm path with the same minimal three-block conditional-return slice widened only to inequality.
 
 ## Completed
 
@@ -38,10 +39,11 @@ Source Plan: plan.md
 - [x] Promoted `tests/c/internal/backend_case/two_arg_second_local_rewrite.c` onto the x86 backend-owned asm path with the same bounded single-local `+ 0` rewrite feeding the second helper-call argument.
 - [x] Promoted `tests/c/internal/backend_case/two_arg_both_local_arg.c`, `two_arg_both_local_first_rewrite.c`, `two_arg_both_local_second_rewrite.c`, and `two_arg_both_local_double_rewrite.c` onto the x86 backend-owned asm path with the same bounded two-local/two-argument direct-call helper slice.
 - [x] Promoted `tests/c/internal/backend_case/branch_if_eq.c` onto the x86 backend-owned asm path with the existing minimal three-block conditional-return compare slice widened to `icmp eq`.
+- [x] Promoted `tests/c/internal/backend_case/branch_if_ne.c` onto the x86 backend-owned asm path with the same minimal three-block conditional-return compare slice widened to `icmp ne`.
 
 ## Next Intended Slice
 
-- Promote `branch_if_ne` next, then widen only to the smallest adjacent unsigned compare runtime cases if the same bounded x86 compare-lowering seam still holds.
+- Promote `branch_if_uge` next, then widen only to the smallest adjacent unsigned compare runtime cases if the same bounded x86 compare-lowering seam still holds.
 
 ## Blockers
 
@@ -67,3 +69,4 @@ Source Plan: plan.md
 - Two-local validation: `ctest -R '^backend_lir_adapter_tests$|^backend_runtime_two_arg_both_local_(arg|first_rewrite|second_rewrite|double_rewrite)$' --output-on-failure` passed, and the full-suite rerun improved from `12` failures out of `2339` tests in `test_fail_before.log` to `8` failures out of `2339` tests in `test_fail_after.log`. `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log` passed with the four both-local runtime failures resolved and no new failing tests.
 - Next blocker boundary: the remaining planned Step 4 follow-ons are the compare-and-branch runtime cases first (`branch_if_eq`, `branch_if_ne`, `branch_if_uge`, `branch_if_ugt`, `branch_if_ule`, `branch_if_ult`), followed later by adjacent local-slot/local-address and then global-addressing slices.
 - `branch_if_eq` seam closed: `src/backend/x86/codegen/emit.cpp` now accepts the same bounded minimal conditional-return shape for `icmp eq` and emits `cmp` plus `jne` to the existing false block; `ctest -R '^backend_runtime_branch_if_eq$|^backend_lir_adapter_tests$' --output-on-failure` passed, the full suite improved from `8` failures out of `2339` tests in `test_fail_before.log` to `7` failures out of `2339` tests in `test_fail_after.log`, and `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log` passed with no newly failing tests.
+- `branch_if_ne` seam closed: `src/backend/x86/codegen/emit.cpp` now accepts the same bounded minimal conditional-return shape for `icmp ne` and emits `cmp` plus `je` to the existing false block; `./build/backend_lir_adapter_tests` passed, `ctest -R '^backend_runtime_branch_if_(eq|ne)$|^backend_lir_adapter_tests$' --output-on-failure` passed, the full suite improved from `7` failures out of `2339` tests in `test_fail_before.log` to `6` failures out of `2339` tests in `test_fail_after.log`, and `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log` passed with no newly failing tests.

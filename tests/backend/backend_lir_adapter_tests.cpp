@@ -3962,6 +3962,28 @@ void test_x86_backend_renders_compare_and_branch_eq_slice() {
                       "x86 backend should stop falling back to LLVM text for the equal slice");
 }
 
+void test_x86_backend_renders_compare_and_branch_ne_slice() {
+  auto module = make_conditional_return_ne_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should lower the not-equal conditional-return slice to assembly");
+  expect_contains(rendered, "  mov eax, 2\n",
+                  "x86 backend should materialize the first not-equal compare immediate");
+  expect_contains(rendered, "  cmp eax, 3\n",
+                  "x86 backend should compare the materialized not-equal lhs against the rhs immediate");
+  expect_contains(rendered, "  je .Lelse\n",
+                  "x86 backend should branch to the else label when the not-equal test fails");
+  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+                  "x86 backend should lower the not-equal then block directly in assembly");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+                  "x86 backend should lower the not-equal else block directly in assembly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the not-equal slice");
+}
+
 void test_x86_backend_renders_extern_global_array_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_x86_extern_global_array_load_module()},
@@ -6506,6 +6528,7 @@ int main() {
   test_x86_backend_renders_compare_and_branch_gt_slice();
   test_x86_backend_renders_compare_and_branch_ge_slice();
   test_x86_backend_renders_compare_and_branch_eq_slice();
+  test_x86_backend_renders_compare_and_branch_ne_slice();
   test_x86_backend_renders_extern_global_array_slice();
   test_x86_backend_renders_string_literal_char_slice();
   test_x86_backend_renders_global_char_pointer_diff_slice();
