@@ -67,6 +67,11 @@ bool is_qualified_type_trace_leaf(const std::string& function_name) {
            function_name == "try_parse_qualified_base_type";
 }
 
+bool is_qualified_type_trace_anchor(const std::string& function_name) {
+    return is_qualified_type_trace_leaf(function_name) ||
+           function_name == "try_parse_template_type_arg";
+}
+
 bool is_summary_only_parse_helper(const std::string& function_name) {
     return function_name == "consume_qualified_type_spelling" ||
            function_name == "consume_qualified_type_spelling_with_typename";
@@ -76,7 +81,7 @@ bool stack_contains_qualified_type_trace(
     const std::vector<std::string>& stack_trace) {
     return std::any_of(stack_trace.begin(), stack_trace.end(),
                        [](const std::string& function_name) {
-                           return is_qualified_type_trace_leaf(function_name);
+                           return is_qualified_type_trace_anchor(function_name);
                        });
 }
 
