@@ -2,22 +2,10 @@
 #include "mod.hpp"
 
 #include <algorithm>
-#include <fstream>
-#include <iterator>
 #include <unordered_map>
 
 namespace c4c::backend::aarch64::linker {
 namespace {
-
-std::vector<std::uint8_t> read_file_bytes(const std::string& path, std::string* error) {
-  std::ifstream input(path, std::ios::binary);
-  if (!input) {
-    if (error != nullptr) *error = "failed to open object file: " + path;
-    return {};
-  }
-  return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(input),
-                                   std::istreambuf_iterator<char>());
-}
 
 std::vector<std::string> sorted_symbols(std::vector<std::string> symbols) {
   std::sort(symbols.begin(), symbols.end());
@@ -38,34 +26,19 @@ std::optional<FirstStaticLinkSlice> inspect_first_static_link_slice(
     return std::nullopt;
   }
 
-  std::vector<linker_common::Elf64Object> parsed_objects;
-  parsed_objects.reserve(object_paths.size());
+  const auto loaded_objects = load_first_static_input_objects(object_paths, error);
+  if (!loaded_objects.has_value()) return std::nullopt;
 
   std::unordered_map<std::string, std::string> symbol_provider;
   FirstStaticLinkSlice slice;
   slice.case_name = "aarch64-static-call26-two-object";
   slice.objects.reserve(object_paths.size());
 
-  for (const auto& object_path : object_paths) {
-    std::string read_error;
-    const auto bytes = read_file_bytes(object_path, &read_error);
-    if (!read_error.empty()) {
-      if (error != nullptr) *error = read_error;
-      return std::nullopt;
-    }
-
-    std::string parse_error;
-    auto parsed = linker_common::parse_elf64_object(
-        bytes, object_path, elf::EM_AARCH64, &parse_error);
-    if (!parsed.has_value()) {
-      if (error != nullptr) *error = parse_error;
-      return std::nullopt;
-    }
-
+  for (const auto& loaded_object : *loaded_objects) {
     InputObjectSummary summary;
-    summary.path = object_path;
+    summary.path = loaded_object.path;
 
-    for (const auto& symbol : parsed->symbols) {
+    for (const auto& symbol : loaded_object.object.symbols) {
       if (symbol.name.empty() || symbol.sym_type() == elf::STT_SECTION) continue;
       if (symbol.is_undefined()) {
         if (!symbol.is_weak()) summary.undefined_symbols.push_back(symbol.name);
@@ -73,18 +46,18 @@ std::optional<FirstStaticLinkSlice> inspect_first_static_link_slice(
       }
       if (symbol.is_global() || symbol.is_weak()) {
         summary.defined_symbols.push_back(symbol.name);
-        symbol_provider.emplace(symbol.name, object_path);
+        symbol_provider.emplace(symbol.name, loaded_object.path);
       }
     }
 
     summary.defined_symbols = sorted_symbols(std::move(summary.defined_symbols));
     summary.undefined_symbols = sorted_symbols(std::move(summary.undefined_symbols));
     slice.objects.push_back(summary);
-    parsed_objects.push_back(std::move(*parsed));
   }
 
-  for (std::size_t object_index = 0; object_index < parsed_objects.size(); ++object_index) {
-    const auto& object = parsed_objects[object_index];
+  for (std::size_t object_index = 0; object_index < loaded_objects->size(); ++object_index) {
+    const auto& loaded_object = (*loaded_objects)[object_index];
+    const auto& object = loaded_object.object;
     for (std::size_t section_index = 0; section_index < object.sections.size(); ++section_index) {
       const auto& section = object.sections[section_index];
       if ((section.flags & elf::SHF_ALLOC) != 0 && !section.name.empty()) {
@@ -101,7 +74,7 @@ std::optional<FirstStaticLinkSlice> inspect_first_static_link_slice(
 
         const auto& symbol = object.symbols[relocation.sym_idx];
         InputRelocationSummary relocation_summary;
-        relocation_summary.object_path = object_paths[object_index];
+        relocation_summary.object_path = loaded_object.path;
         relocation_summary.section_name = section.name;
         relocation_summary.symbol_name = symbol.name;
         relocation_summary.relocation_type = relocation.rela_type;
@@ -116,7 +89,7 @@ std::optional<FirstStaticLinkSlice> inspect_first_static_link_slice(
           }
         } else if (!symbol.is_undefined()) {
           relocation_summary.resolved = true;
-          relocation_summary.resolved_object_path = object_paths[object_index];
+          relocation_summary.resolved_object_path = loaded_object.path;
         }
 
         slice.relocations.push_back(std::move(relocation_summary));

@@ -19,6 +19,11 @@ struct InputObjectSummary {
   std::vector<std::string> undefined_symbols;
 };
 
+struct LoadedInputObject {
+  std::string path;
+  linker_common::Elf64Object object;
+};
+
 struct InputRelocationSummary {
   std::string object_path;
   std::string section_name;
@@ -39,6 +44,10 @@ struct FirstStaticLinkSlice {
 };
 
 [[nodiscard]] std::optional<FirstStaticLinkSlice> inspect_first_static_link_slice(
+    const std::vector<std::string>& object_paths,
+    std::string* error = nullptr);
+
+[[nodiscard]] std::optional<std::vector<LoadedInputObject>> load_first_static_input_objects(
     const std::vector<std::string>& object_paths,
     std::string* error = nullptr);
 

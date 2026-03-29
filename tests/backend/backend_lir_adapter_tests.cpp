@@ -4758,6 +4758,38 @@ void test_aarch64_linker_names_first_static_call26_slice() {
   std::filesystem::remove(helper_path);
 }
 
+void test_aarch64_linker_loads_first_static_objects_through_shared_input_seam() {
+  const auto caller_path = make_temp_path("c4c_aarch64_linker_input_caller", ".o");
+  const auto helper_path = make_temp_path("c4c_aarch64_linker_input_helper", ".o");
+  write_binary_file(caller_path, make_minimal_relocation_object_fixture());
+  write_binary_file(helper_path, make_minimal_helper_definition_object_fixture());
+
+  std::string error;
+  const auto loaded = c4c::backend::aarch64::linker::load_first_static_input_objects(
+      {caller_path, helper_path}, &error);
+  expect_true(loaded.has_value(),
+              "aarch64 linker input seam should load the bounded two-object CALL26 slice through shared ELF parsing: " +
+                  error);
+  expect_true(loaded->size() == 2,
+              "aarch64 linker input seam should preserve the first static-link slice as two ordered object inputs");
+  expect_true((*loaded)[0].path == caller_path &&
+                  (*loaded)[0].object.source_name == caller_path &&
+                  (*loaded)[0].object.symbols.size() >= 3,
+              "aarch64 linker input seam should preserve caller object path and parsed symbol inventory");
+  expect_true((*loaded)[1].path == helper_path &&
+                  (*loaded)[1].object.source_name == helper_path &&
+                  (*loaded)[1].object.symbols.size() >= 2,
+              "aarch64 linker input seam should preserve helper object path and parsed symbol inventory");
+
+  const auto caller_text_index = find_section_index((*loaded)[0].object, ".text");
+  expect_true(caller_text_index < (*loaded)[0].object.sections.size() &&
+                  (*loaded)[0].object.relocations[caller_text_index].size() == 1,
+              "aarch64 linker input seam should preserve the caller .text relocation inventory for the bounded CALL26 slice");
+
+  std::filesystem::remove(caller_path);
+  std::filesystem::remove(helper_path);
+}
+
 void test_aarch64_backend_assembler_handoff_helper_stages_emitted_text() {
   const auto output_path = make_temp_output_path("c4c_aarch64_handoff");
   const auto staged = c4c::backend::aarch64::assemble_module(make_return_add_module(), output_path);
@@ -4939,6 +4971,7 @@ int main() {
   test_shared_linker_parses_builtin_return_add_object();
   test_shared_linker_parses_single_member_archive_fixture();
   test_aarch64_linker_names_first_static_call26_slice();
+  test_aarch64_linker_loads_first_static_objects_through_shared_input_seam();
   test_aarch64_backend_assembler_handoff_helper_stages_emitted_text();
   test_aarch64_builtin_object_matches_external_return_add_surface();
   return 0;
