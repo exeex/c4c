@@ -257,6 +257,57 @@ std::optional<BackendFunction> adapt_single_param_add_function(
   return std::nullopt;
 }
 
+std::optional<BackendFunction> adapt_local_single_arg_call_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const BackendFunctionSignature& signature) {
+  using namespace c4c::codegen::lir;
+
+  if (function.is_declaration || signature.linkage != "define" ||
+      signature.return_type != "i32" || signature.name != "main" ||
+      !signature.params.empty() || signature.is_vararg ||
+      function.blocks.size() != 1 || function.alloca_insts.size() != 1 ||
+      !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* alloca = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
+  if (alloca == nullptr || alloca->type_str != "i32" || alloca->result.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  const auto* ret = std::get_if<LirRet>(&block.terminator);
+  if (ret == nullptr || block.label != "entry" || !ret->value_str.has_value() ||
+      ret->type_str != "i32" || block.insts.size() != 3) {
+    return std::nullopt;
+  }
+
+  const auto* store = std::get_if<LirStoreOp>(&block.insts[0]);
+  const auto* load = std::get_if<LirLoadOp>(&block.insts[1]);
+  const auto* call = std::get_if<LirCallOp>(&block.insts[2]);
+  if (store == nullptr || load == nullptr || call == nullptr ||
+      store->type_str != "i32" || store->ptr != alloca->result ||
+      load->type_str != "i32" ||
+      load->ptr != alloca->result || call->result.empty() ||
+      *ret->value_str != call->result || call->return_type != "i32" ||
+      call->callee_type_suffix != "(i32)" || call->args_str != ("i32 " + load->result)) {
+    return std::nullopt;
+  }
+
+  BackendFunction out;
+  out.signature = signature;
+  BackendBlock out_block;
+  out_block.label = block.label;
+  out_block.insts.push_back(BackendCallInst{call->result,
+                                            call->return_type,
+                                            call->callee,
+                                            call->callee_type_suffix,
+                                            "i32 " + store->val});
+  out_block.terminator = BackendReturn{call->result, "i32"};
+  out.blocks.push_back(std::move(out_block));
+  return out;
+}
+
 BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function) {
   const auto signature = parse_signature(function.signature_text);
   BackendFunction out;
@@ -267,6 +318,10 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function) {
   }
 
   if (const auto normalized = adapt_single_param_add_function(function, signature);
+      normalized.has_value()) {
+    return *normalized;
+  }
+  if (const auto normalized = adapt_local_single_arg_call_function(function, signature);
       normalized.has_value()) {
     return *normalized;
   }
