@@ -198,13 +198,16 @@ ranking pass.
    Top-level tag-only declarations and typedef-backed tag definitions now drop
    out of the item stream when the real `StructDef` / `EnumDef` has already
    been recorded in the parser tag-definition tables, instead of appending a
-   synthetic `NK_EMPTY` node after `struct X {};`, `union Y {};`, or
-   `typedef enum Z { ... } Z;`.
+   synthetic `NK_EMPTY` node after `struct X {};`, `union Y {};`,
+   `struct X {} [[maybe_unused]];`, or `typedef enum Z { ... } Z;`.
    Tag: `acceptable breadth`
-   Evidence: the reduced parse-only regression
+   Evidence: the reduced parse-only regressions
    `tests/cpp/internal/parse_only_case/top_level_tag_decl_preserves_following_decl_parse.cpp`
-   keeps the following `kept` global visible with no intermediate `Empty`
-   node after structure-only and typedef-backed tag declarations.
+   and
+   `tests/cpp/internal/parse_only_case/top_level_tag_attr_decl_preserves_following_decl_parse.cpp`
+   keep the following `kept` global visible with no intermediate `Empty`
+   node after plain structure-only declarations, declaration-level attribute
+   tails, and typedef-backed tag declarations.
 
 10. `src/frontend/parser/declarations.cpp:1417`
    Top-level C++ `concept` declarations now drop out of the item stream after

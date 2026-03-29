@@ -10,9 +10,9 @@ Last Updated: 2026-03-29
 - Step 3: continue through the remaining top-level declaration-side discard
   exits in `src/frontend/parser/declarations.cpp` after removing regular
   bookkeeping-only `typedef` declarations from the item stream; next inspect
-  the still-uncovered no-name type-only fallback at the end of top-level
-  declarator parsing to decide which valid structure-only cases can also drop
-  out of the program AST without weakening recovery coverage
+  the remaining unsupported-declaration exits around
+  `top_level_decl_recovery_done` now that the no-name type-only fallback is
+  covered for attribute-only tag declarations
 
 ## Completed
 
@@ -86,6 +86,24 @@ Last Updated: 2026-03-29
   - after change: `99% tests passed, 1 test failed out of 2418`
   - result: monotonic pass-count increase from the new targeted test, with no
     newly failing cases
+- tightened the top-level no-name type-only fallback in
+  `src/frontend/parser/declarations.cpp` so tag-only declarations with
+  declaration-level C++11 / GNU attributes now drop out of the program item
+  stream instead of materializing a synthetic `NK_EMPTY` node:
+  - added the reduced parse-only regression
+    `tests/cpp/internal/parse_only_case/top_level_tag_attr_decl_preserves_following_decl_parse.cpp`
+    plus the dedicated dump assertion
+    `cpp_parse_top_level_tag_attr_decl_preserves_following_decl_dump` in
+    `tests/cpp/internal/InternalTests.cmake`
+  - updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record attribute-tailed
+    top-level tag-only declarations as covered structure-only sites alongside
+    the existing plain tag-declaration coverage
+  - re-ran the required regression guard:
+    - baseline: `99% tests passed, 1 test failed out of 698`
+    - after change: `99% tests passed, 1 test failed out of 2424`
+    - result: monotonic pass-count increase with no newly failing tests; the
+      lone remaining failure is still
+      `cpp_positive_sema_iterator_concepts_following_hash_base_parse_cpp`
 - switched the active runbook away from the `std::vector` bring-up and folded
   the latest parser-hygiene findings back into
   `ideas/open/04_std_vector_bringup_plan.md`
@@ -301,18 +319,18 @@ Last Updated: 2026-03-29
 
 ## Next Slice
 
-- after the empty `extern "C"` linkage-block, `concept`, and pragma slices,
-  continue through the remaining top-level `NK_EMPTY` discard sites in
-  `src/frontend/parser/declarations.cpp`, especially the still-unreviewed
+- continue through the remaining top-level `NK_EMPTY` discard sites in
+  `src/frontend/parser/declarations.cpp`, now focusing on the still-unreviewed
   unsupported declaration exits and declaration-side bookkeeping drops beyond
   the now-covered empty wrappers, top-level `using` declarations,
-  structure-only tag declarations, and pragma directives
+  structure-only tag declarations, pragma directives, and attribute-tailed
+  no-name tag declarations
 - prefer another reduced parse-only repro that shows discarded structure or a
   silently erased following declaration before changing each remaining
   `NK_EMPTY` branch
-- next target: review top-level `asm(...)` so valid assembly declarations stop
-  leaving a synthetic `Empty` node, then return to the generic unsupported
-  declaration recovery exit around `top_level_decl_recovery_done`
+- next target: return to the generic unsupported declaration recovery exit
+  around `top_level_decl_recovery_done`, especially shapes that still rely on
+  a broad consume-until-`;` discard once no valid type start was recognized
 - keep any further record-member recovery widening separate unless a new reduced
   repro shows another non-special-member boundary bug that blocks the
   top-level `NK_EMPTY` audit

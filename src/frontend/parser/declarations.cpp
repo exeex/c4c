@@ -842,10 +842,12 @@ Node* Parser::parse_top_level() {
 
     int ln = cur().line;
     if (at_end()) return nullptr;
-    auto skip_cpp11_attrs_only = [&]() {
+    auto skip_cpp11_attrs_only = [&]() -> bool {
+        bool consumed_any = false;
         while (check(TokenKind::LBracket) &&
                pos_ + 1 < static_cast<int>(tokens_.size()) &&
                tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+            consumed_any = true;
             consume();
             consume();
             int depth = 1;
@@ -869,8 +871,12 @@ Node* Parser::parse_top_level() {
                 consume();
             }
         }
+        return consumed_any;
     };
-    skip_cpp11_attrs_only();
+    if (skip_cpp11_attrs_only() && check(TokenKind::Semi)) {
+        consume();
+        return nullptr;
+    }
 
     bool is_inline_namespace = false;
     if (is_cpp_mode() && check(TokenKind::KwInline) && peek(1).kind == TokenKind::KwNamespace) {
@@ -2093,6 +2099,7 @@ top_level_base_ready:
 
     // Parse declarator (name + pointer stars + maybe function params)
     TypeSpec ts = base_ts;
+    const int decl_suffix_start = pos_;
     // Preserve typedef array dims: apply_decl_dims prepends declarator dims to base typedef dims.
     ts.array_size_expr = nullptr;
     const char* decl_name = nullptr;
@@ -2377,9 +2384,97 @@ top_level_base_ready:
     skip_attributes();
 
     if (!decl_name) {
-        // No name: just a type declaration; skip to ;
+        auto tail_is_attr_or_asm_only = [&](int begin, int end) -> bool {
+            int i = begin;
+            auto skip_parens = [&](int start) -> int {
+                if (start >= end || tokens_[start].kind != TokenKind::LParen) return -1;
+                int depth = 0;
+                int j = start;
+                while (j < end) {
+                    if (tokens_[j].kind == TokenKind::LParen) ++depth;
+                    else if (tokens_[j].kind == TokenKind::RParen && --depth == 0) return j + 1;
+                    ++j;
+                }
+                return -1;
+            };
+            auto skip_cpp11_attrs = [&](int start) -> int {
+                if (start + 1 >= end ||
+                    tokens_[start].kind != TokenKind::LBracket ||
+                    tokens_[start + 1].kind != TokenKind::LBracket) {
+                    return -1;
+                }
+                int depth = 1;
+                int j = start + 2;
+                while (j < end) {
+                    if (j + 1 < end &&
+                        tokens_[j].kind == TokenKind::LBracket &&
+                        tokens_[j + 1].kind == TokenKind::LBracket) {
+                        ++depth;
+                        j += 2;
+                        continue;
+                    }
+                    if (j + 1 < end &&
+                        tokens_[j].kind == TokenKind::RBracket &&
+                        tokens_[j + 1].kind == TokenKind::RBracket) {
+                        --depth;
+                        j += 2;
+                        if (depth == 0) return j;
+                        continue;
+                    }
+                    ++j;
+                }
+                return -1;
+            };
+
+            while (i < end) {
+                if (tokens_[i].kind == TokenKind::KwAttribute) {
+                    ++i;
+                    i = skip_parens(i);
+                    if (i < 0 || i >= end || tokens_[i].kind != TokenKind::LParen) return false;
+                    i = skip_parens(i);
+                    if (i < 0) return false;
+                    continue;
+                }
+                if (tokens_[i].kind == TokenKind::LBracket) {
+                    i = skip_cpp11_attrs(i);
+                    if (i < 0) return false;
+                    continue;
+                }
+                if (tokens_[i].kind == TokenKind::KwAsm) {
+                    ++i;
+                    while (i < end &&
+                           (tokens_[i].kind == TokenKind::KwVolatile ||
+                            tokens_[i].kind == TokenKind::KwInline ||
+                            tokens_[i].kind == TokenKind::KwGoto)) {
+                        ++i;
+                    }
+                    i = skip_parens(i);
+                    if (i < 0) return false;
+                    continue;
+                }
+                if (tokens_[i].kind == TokenKind::KwExtension ||
+                    tokens_[i].kind == TokenKind::KwNoreturn) {
+                    ++i;
+                    continue;
+                }
+                return false;
+            }
+            return true;
+        };
+
+        // Drop valid top-level structure-only declarations once their real
+        // struct/enum definition has already been recorded, even when trailing
+        // attributes or asm labels route them through the declarator fallback.
+        const bool is_structure_only_decl =
+            check(TokenKind::Semi) &&
+            (base_ts.base == TB_STRUCT || base_ts.base == TB_UNION ||
+             base_ts.base == TB_ENUM) &&
+            tail_is_attr_or_asm_only(decl_suffix_start, pos_);
         match(TokenKind::Semi);
         restore_owner_scope();
+        if (is_structure_only_decl) return nullptr;
+        // No name: just a type declaration; keep the explicit discard node for
+        // non-structure-only fallback shapes so recovery remains visible.
         return make_node(NK_EMPTY, ln);
     }
 
