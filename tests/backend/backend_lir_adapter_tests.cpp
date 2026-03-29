@@ -1806,6 +1806,79 @@ c4c::codegen::lir::LirModule make_double_indirect_local_pointer_conditional_retu
   return module;
 }
 
+c4c::codegen::lir::LirModule make_goto_only_constant_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }");
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.terminator = LirBr{"ulbl_start"};
+
+  LirBlock start;
+  start.id = LirBlockId{1};
+  start.label = "ulbl_start";
+  start.terminator = LirBr{"block_1"};
+
+  LirBlock block_1;
+  block_1.id = LirBlockId{2};
+  block_1.label = "block_1";
+  block_1.terminator = LirBr{"ulbl_next"};
+
+  LirBlock success;
+  success.id = LirBlockId{3};
+  success.label = "ulbl_success";
+  success.terminator = LirBr{"block_2"};
+
+  LirBlock block_2;
+  block_2.id = LirBlockId{4};
+  block_2.label = "block_2";
+  block_2.terminator = LirRet{std::string("0"), "i32"};
+
+  LirBlock next;
+  next.id = LirBlockId{5};
+  next.label = "ulbl_next";
+  next.terminator = LirBr{"block_3"};
+
+  LirBlock block_3;
+  block_3.id = LirBlockId{6};
+  block_3.label = "block_3";
+  block_3.terminator = LirBr{"ulbl_foo"};
+
+  LirBlock foo;
+  foo.id = LirBlockId{7};
+  foo.label = "ulbl_foo";
+  foo.terminator = LirBr{"block_4"};
+
+  LirBlock block_4;
+  block_4.id = LirBlockId{8};
+  block_4.label = "block_4";
+  block_4.terminator = LirBr{"block_2"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(start));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(success));
+  function.blocks.push_back(std::move(block_2));
+  function.blocks.push_back(std::move(next));
+  function.blocks.push_back(std::move(block_3));
+  function.blocks.push_back(std::move(foo));
+  function.blocks.push_back(std::move(block_4));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_param_slot_module() {
   using namespace c4c::codegen::lir;
 
@@ -3558,6 +3631,16 @@ void test_adapter_normalizes_double_indirect_local_pointer_conditional_return_sl
                   "adapter should collapse the selected double-indirect local-pointer conditional chain into a direct return");
 }
 
+void test_adapter_normalizes_goto_only_constant_return_slice() {
+  const auto adapted =
+      c4c::backend::adapt_minimal_module(make_goto_only_constant_return_module());
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "define i32 @main()",
+                  "adapter should preserve the goto-only function signature");
+  expect_contains(rendered, "ret i32 0",
+                  "adapter should collapse the selected goto-only branch chain into a direct return");
+}
+
 void test_adapter_preserves_typed_two_arg_direct_call_helper_slice() {
   const auto adapted =
       c4c::backend::adapt_minimal_module(make_typed_direct_call_two_arg_module());
@@ -3900,6 +3983,18 @@ void test_x86_backend_renders_double_indirect_local_pointer_conditional_return_s
                   "x86 backend should fold the normalized double-indirect local-pointer conditional slice into the final immediate return");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the supported double-indirect local-pointer conditional slice");
+}
+
+void test_x86_backend_renders_goto_only_constant_return_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_goto_only_constant_return_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should emit a real entry symbol for the bounded goto-only slice");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 backend should fold the normalized goto-only branch chain into the final immediate return");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the supported goto-only slice");
 }
 
 void test_x86_backend_renders_direct_call_slice() {
@@ -7131,6 +7226,7 @@ int main() {
   test_adapter_normalizes_two_local_temp_return_slice();
   test_adapter_normalizes_local_pointer_temp_return_slice();
   test_adapter_normalizes_double_indirect_local_pointer_conditional_return_slice();
+  test_adapter_normalizes_goto_only_constant_return_slice();
   test_adapter_preserves_typed_two_arg_direct_call_helper_slice();
   test_adapter_normalizes_typed_direct_call_local_arg_slice();
   test_adapter_normalizes_typed_two_arg_direct_call_local_arg_slice();
@@ -7154,6 +7250,7 @@ int main() {
   test_x86_backend_renders_two_local_temp_return_slice();
   test_x86_backend_renders_local_pointer_temp_return_slice();
   test_x86_backend_renders_double_indirect_local_pointer_conditional_return_slice();
+  test_x86_backend_renders_goto_only_constant_return_slice();
   test_x86_backend_renders_direct_call_slice();
   test_x86_backend_renders_param_slot_slice();
   test_x86_backend_renders_typed_direct_call_local_arg_slice();

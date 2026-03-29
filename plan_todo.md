@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: Classify the next bounded fallback family after closing the tracked
-  double-indirection local-pointer slice centered on `src/00005.c`.
+  goto-only control-flow slice centered on `src/00010.c`.
 
 ## Completed Items
 
@@ -144,15 +144,49 @@ Source Plan: plan.md
   27 passed / 193 failed / 220 total with no newly introduced failure mode,
   and the broader `ctest --test-dir build -j8 --output-on-failure`
   post-change sweep completed with 2367 passed / 193 failed / 2560 total.
+- Step 2 family reclassified for the next slice: bounded goto-only control
+  flow with no local state, no phi joins, and a single reachable constant
+  `ret i32` target. Representative seed: `src/00010.c`, whose lowered path is
+  `entry -> ulbl_start -> block_1 -> ulbl_next -> block_3 -> ulbl_foo ->
+  block_4 -> block_2 -> ret i32 0`.
+- Root-cause note for this slice:
+  `src/backend/lir_adapter.cpp` normalized bounded acyclic control flow only
+  when it also carried tracked local pointer/scalar state, but plain multi-block
+  goto chains with no allocas still fell through to the generic
+  `multi-block functions` unsupported path before the existing x86 direct
+  return-immediate emitter could run.
+- Nearby families explicitly excluded from this slice:
+  `src/00006.c` to `src/00008.c` still require loop handling, and `src/00009.c`
+  remains the separate arithmetic-op family because it depends on preserving
+  multiply/divide/remainder semantics rather than control-flow-only collapse.
+- Step 3 completed for the selected goto-only family by adding focused backend
+  adapter and x86 emitter unit coverage for the exact `src/00010.c`-shaped
+  unconditional branch chain while keeping
+  `c_testsuite_x86_backend_src_00010_c` as the external seed case.
+- Step 4 completed by teaching `src/backend/lir_adapter.cpp` to follow an
+  acyclic no-alloca chain of unconditional branches until it reaches a constant
+  `ret i32`, then collapse that path into the existing backend-owned direct
+  return-immediate surface.
+- Step 5 completed for this slice:
+  `./build/backend_lir_adapter_tests` passed,
+  `ctest --test-dir build --output-on-failure -R '^c_testsuite_x86_backend_src_00010_c$'`
+  passed, `ctest --test-dir build -L x86_backend --output-on-failure`
+  improved from 27 passed / 193 failed / 220 total to
+  28 passed / 192 failed / 220 total with no newly introduced failure mode,
+  and the broader `ctest --test-dir build -j8 --output-on-failure`
+  post-change sweep improved from 2367 passed / 193 failed / 2560 total to
+  2368 passed / 192 failed / 2560 total.
 
 ## Next Slice
 
-- Start from `src/00010.c` as the next bounded family: goto-only control flow
-  that should collapse to a direct return without pointer state.
-- Keep `src/00006.c` to `src/00008.c` parked as the separate loop family and
-  `src/00009.c` parked as the arithmetic-op family rather than silently mixing
-  them into the goto slice.
-- Preserve `src/00005.c`, `src/00020.c`, and `src/00103.c` as the closed local
+- Start from `src/00009.c` as the next bounded family: single-block scalar
+  local-slot arithmetic that should collapse to a direct return once the
+  backend-owned surface can preserve `mul`, `sdiv`, and `srem` through the
+  existing local-slot rewrite path.
+- Keep `src/00006.c` to `src/00008.c` parked as the separate loop/control-flow
+  family rather than silently mixing them into the arithmetic slice.
+- Preserve `src/00010.c` as the closed goto-only control-flow reference family
+  and `src/00005.c`, `src/00020.c`, and `src/00103.c` as the closed local
   double-indirection reference family.
 
 ## Blockers
@@ -184,3 +218,8 @@ Source Plan: plan.md
   `tests/c/external/c-testsuite/src/00103.c` by interpreting the acyclic local
   pointer/value state in `src/backend/lir_adapter.cpp` and collapsing the
   resulting path to `ret i32 0`.
+- The goto-only control-flow slice now extends that bounded surface to
+  `tests/c/external/c-testsuite/src/00010.c` by following the exact
+  unconditional branch chain in `src/backend/lir_adapter.cpp` until it reaches
+  the single reachable constant return, then handing the normalized `ret i32 0`
+  surface to the existing x86 immediate-return emitter.

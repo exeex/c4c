@@ -692,6 +692,65 @@ std::optional<BackendFunction> adapt_double_indirect_local_pointer_conditional_r
   return std::nullopt;
 }
 
+std::optional<BackendFunction> adapt_goto_only_constant_return_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const BackendFunctionSignature& signature) {
+  using namespace c4c::codegen::lir;
+
+  if (function.is_declaration || signature.linkage != "define" ||
+      signature.return_type != "i32" || signature.name != "main" ||
+      !signature.params.empty() || signature.is_vararg || function.blocks.empty() ||
+      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string, const LirBlock*> blocks_by_label;
+  for (const auto& block : function.blocks) {
+    if (!block.insts.empty()) {
+      return std::nullopt;
+    }
+    blocks_by_label.emplace(block.label, &block);
+  }
+
+  std::unordered_map<std::string, bool> visited;
+  std::string current_label = function.blocks.front().label;
+  for (std::size_t steps = 0; steps < function.blocks.size(); ++steps) {
+    if (visited.find(current_label) != visited.end()) {
+      return std::nullopt;
+    }
+    visited.emplace(current_label, true);
+
+    const auto block_it = blocks_by_label.find(current_label);
+    if (block_it == blocks_by_label.end()) {
+      return std::nullopt;
+    }
+    const auto& block = *block_it->second;
+
+    if (const auto* ret = std::get_if<LirRet>(&block.terminator)) {
+      if (!ret->value_str.has_value() || ret->type_str != "i32" ||
+          !parse_i64(*ret->value_str).has_value()) {
+        return std::nullopt;
+      }
+
+      BackendFunction out;
+      out.signature = signature;
+      BackendBlock out_block;
+      out_block.label = "entry";
+      out_block.terminator = BackendReturn{*ret->value_str, "i32"};
+      out.blocks.push_back(std::move(out_block));
+      return out;
+    }
+
+    const auto* br = std::get_if<LirBr>(&block.terminator);
+    if (br == nullptr) {
+      return std::nullopt;
+    }
+    current_label = br->target_label;
+  }
+
+  return std::nullopt;
+}
+
 std::optional<BackendFunction> adapt_local_single_arg_call_function(
     const c4c::codegen::lir::LirFunction& function,
     const BackendFunctionSignature& signature) {
@@ -1015,6 +1074,10 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function) {
   }
   if (const auto normalized =
           adapt_double_indirect_local_pointer_conditional_return_function(function, signature);
+      normalized.has_value()) {
+    return *normalized;
+  }
+  if (const auto normalized = adapt_goto_only_constant_return_function(function, signature);
       normalized.has_value()) {
     return *normalized;
   }
