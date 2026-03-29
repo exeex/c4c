@@ -2061,6 +2061,14 @@ c4c::codegen::lir::LirModule make_extern_global_array_load_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_x86_extern_global_array_load_module() {
+  auto module = make_extern_global_array_load_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_global_char_pointer_diff_module() {
   using namespace c4c::codegen::lir;
 
@@ -3254,6 +3262,24 @@ void test_x86_backend_renders_compare_and_branch_ge_slice() {
                   "x86 backend should lower the signed greater-or-equal else block directly in assembly");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the signed greater-or-equal slice");
+}
+
+void test_x86_backend_renders_extern_global_array_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_extern_global_array_load_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".intel_syntax noprefix\n",
+                  "x86 backend should lower the extern global array slice to assembly");
+  expect_contains(rendered, ".globl main\n",
+                  "x86 backend should still publish main as the entry symbol");
+  expect_contains(rendered, "lea rax, ext_arr[rip]",
+                  "x86 backend should materialize the extern global array base with RIP-relative addressing");
+  expect_contains(rendered, "mov eax, dword ptr [rax + 4]",
+                  "x86 backend should fold the bounded indexed load into the backend-owned base address");
+  expect_contains(rendered, "ret\n",
+                  "x86 backend should return the extern global array load result");
+  expect_not_contains(rendered, "getelementptr",
+                      "x86 backend should no longer fall back to LLVM text for the extern global array slice");
 }
 
 void test_aarch64_backend_renders_void_return_slice() {
@@ -5270,6 +5296,7 @@ int main() {
   test_x86_backend_renders_compare_and_branch_le_slice();
   test_x86_backend_renders_compare_and_branch_gt_slice();
   test_x86_backend_renders_compare_and_branch_ge_slice();
+  test_x86_backend_renders_extern_global_array_slice();
   test_aarch64_backend_renders_void_return_slice();
   test_aarch64_backend_preserves_module_headers_and_declarations();
   test_aarch64_backend_propagates_malformed_signature_in_supported_slice();
