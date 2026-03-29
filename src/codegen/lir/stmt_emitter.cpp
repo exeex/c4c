@@ -164,6 +164,93 @@ int llvm_struct_field_slot_by_name(const HirStructDef& sd, const std::string& fi
   return 0;
 }
 
+int object_align_bytes(const Module& mod, const TypeSpec& ts);
+
+struct Aarch64HomogeneousFpAggregateInfo {
+  std::string elem_ty;
+  int elem_count = 0;
+  int elem_size = 0;
+  int aggregate_size = 0;
+  int aggregate_align = 0;
+};
+
+TypeSpec field_decl_ts(const HirStructField& f) {
+  TypeSpec ts = f.elem_type;
+  if (f.array_first_dim >= 0) {
+    for (int i = std::min(ts.array_rank, 7); i > 0; --i) ts.array_dims[i] = ts.array_dims[i - 1];
+    ts.array_rank = std::min(ts.array_rank + 1, 8);
+    ts.array_size = f.array_first_dim;
+    ts.array_dims[0] = f.array_first_dim;
+  }
+  return ts;
+}
+
+bool collect_aarch64_hfa_elements(const Module& mod, const TypeSpec& ts,
+                                  TypeBase* elem_base, int* elem_count) {
+  if (ts.ptr_level != 0) return false;
+  if (ts.array_rank > 0) {
+    if (ts.array_size <= 0) return false;
+    TypeSpec elem = ts;
+    elem.array_rank--;
+    for (int i = 0; i < 8; ++i) {
+      elem.array_dims[i] = (i + 1 < 8) ? ts.array_dims[i + 1] : -1;
+    }
+    elem.array_size = (elem.array_rank > 0) ? elem.array_dims[0] : -1;
+    for (int i = 0; i < ts.array_size; ++i) {
+      if (!collect_aarch64_hfa_elements(mod, elem, elem_base, elem_count)) return false;
+    }
+    return true;
+  }
+  if (ts.base == TB_FLOAT || ts.base == TB_DOUBLE) {
+    if (*elem_count == 0) {
+      *elem_base = ts.base;
+    } else if (*elem_base != ts.base) {
+      return false;
+    }
+    ++*elem_count;
+    return *elem_count <= 4;
+  }
+  if (ts.base != TB_STRUCT || !ts.tag || !ts.tag[0]) return false;
+  const auto it = mod.struct_defs.find(ts.tag);
+  if (it == mod.struct_defs.end()) return false;
+  const auto& sd = it->second;
+  if (sd.is_union || sd.fields.empty()) return false;
+  for (const auto& field : sd.fields) {
+    if (field.bit_width >= 0 || field.is_flexible_array) return false;
+    if (!collect_aarch64_hfa_elements(mod, field_decl_ts(field), elem_base, elem_count)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::optional<Aarch64HomogeneousFpAggregateInfo> classify_aarch64_hfa(
+    const Module& mod, const TypeSpec& ts) {
+  if (ts.base != TB_STRUCT || ts.ptr_level != 0 || ts.array_rank != 0 ||
+      !ts.tag || !ts.tag[0]) {
+    return std::nullopt;
+  }
+  const auto it = mod.struct_defs.find(ts.tag);
+  if (it == mod.struct_defs.end()) return std::nullopt;
+
+  TypeBase elem_base = TB_VOID;
+  int elem_count = 0;
+  if (!collect_aarch64_hfa_elements(mod, ts, &elem_base, &elem_count) ||
+      elem_count < 1) {
+    return std::nullopt;
+  }
+
+  Aarch64HomogeneousFpAggregateInfo info;
+  TypeSpec elem_ts{};
+  elem_ts.base = elem_base;
+  info.elem_ty = llvm_ty(elem_ts);
+  info.elem_count = elem_count;
+  info.elem_size = (elem_base == TB_FLOAT) ? 4 : 8;
+  info.aggregate_size = std::max(1, it->second.size_bytes);
+  info.aggregate_align = std::max(1, object_align_bytes(mod, ts));
+  return info;
+}
+
 int object_align_bytes(const Module& mod, const TypeSpec& ts) {
   if (ts.array_rank > 0) {
     TypeSpec elem = ts;
@@ -3557,14 +3644,46 @@ std::string StmtEmitter::emit_aarch64_vaarg_fp_src_ptr(
     emit_lir_op(ctx, lir::LirLoadOp{stack_ptr, std::string("ptr"), stack_ptr_ptr});
     std::string aligned_stack_ptr = stack_ptr;
     if (stack_align_bytes > 1) {
-      const std::string stack_i = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirCastOp{stack_i, lir::LirCastKind::PtrToInt, "ptr", stack_ptr, "i64"});
-      const std::string plus_mask = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirBinOp{plus_mask, "add", "i64", stack_i, std::to_string(stack_align_bytes - 1)});
-      const std::string masked = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirBinOp{masked, "and", "i64", plus_mask, std::to_string(-stack_align_bytes)});
-      aligned_stack_ptr = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirCastOp{aligned_stack_ptr, lir::LirCastKind::IntToPtr, "i64", masked, "ptr"});
+      if (stack_align_bytes > 8) {
+        const std::string stack_plus = fresh_tmp(ctx);
+        emit_lir_op(ctx, lir::LirGepOp{
+                                 stack_plus,
+                                 "i8",
+                                 stack_ptr,
+                                 false,
+                                 {"i64 " + std::to_string(stack_align_bytes - 1)}});
+        aligned_stack_ptr = fresh_tmp(ctx);
+        emit_lir_op(ctx, lir::LirCallOp{
+                                 aligned_stack_ptr,
+                                 "ptr",
+                                 "@llvm.ptrmask.p0.i64",
+                                 "",
+                                 "ptr " + stack_plus + ", i64 " +
+                                     std::to_string(-stack_align_bytes)});
+        module_->need_ptrmask = true;
+      } else {
+        const std::string stack_i = fresh_tmp(ctx);
+        emit_lir_op(
+            ctx,
+            lir::LirCastOp{stack_i, lir::LirCastKind::PtrToInt, "ptr", stack_ptr, "i64"});
+        const std::string plus_mask = fresh_tmp(ctx);
+        emit_lir_op(ctx, lir::LirBinOp{
+                                 plus_mask,
+                                 "add",
+                                 "i64",
+                                 stack_i,
+                                 std::to_string(stack_align_bytes - 1)});
+        const std::string masked = fresh_tmp(ctx);
+        emit_lir_op(ctx, lir::LirBinOp{
+                                 masked, "and", "i64", plus_mask, std::to_string(-stack_align_bytes)});
+        aligned_stack_ptr = fresh_tmp(ctx);
+        emit_lir_op(ctx,
+                    lir::LirCastOp{aligned_stack_ptr,
+                                   lir::LirCastKind::IntToPtr,
+                                   "i64",
+                                   masked,
+                                   "ptr"});
+      }
     }
     const std::string stack_next = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirGepOp{stack_next, "i8", aligned_stack_ptr, false, {"i64 " + std::to_string(stack_slot_bytes)}});
@@ -3604,6 +3723,48 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const
     if (llvm_va_list_is_pointer_object(mod_.target_triple)) {
       const std::string out = fresh_tmp(ctx);
       emit_lir_op(ctx, lir::LirVaArgOp{out, ap_ptr, res_ty});
+      return out;
+    }
+    if (const auto hfa = classify_aarch64_hfa(mod_, res_ts)) {
+      const std::string src_ptr = emit_aarch64_vaarg_fp_src_ptr(
+          ctx, ap_ptr, hfa->elem_count * 16, hfa->aggregate_size, hfa->aggregate_align);
+      const std::string reg_tmp = fresh_tmp(ctx);
+      const std::string reg_tmp_ty =
+          "[" + std::to_string(hfa->elem_count) + " x " + hfa->elem_ty + "]";
+      emit_lir_op(ctx,
+                  lir::LirAllocaOp{reg_tmp, reg_tmp_ty, {}, hfa->aggregate_align});
+      for (int i = 0; i < hfa->elem_count; ++i) {
+        const std::string lane_src = (i == 0) ? src_ptr : fresh_tmp(ctx);
+        if (i != 0) {
+          emit_lir_op(ctx, lir::LirGepOp{
+                                   lane_src,
+                                   "i8",
+                                   src_ptr,
+                                   false,
+                                   {"i64 " + std::to_string(i * 16)}});
+        }
+        const std::string lane_val = fresh_tmp(ctx);
+        emit_lir_op(ctx, lir::LirLoadOp{lane_val, hfa->elem_ty, lane_src});
+        const std::string lane_dst = fresh_tmp(ctx);
+        emit_lir_op(ctx, lir::LirGepOp{
+                                 lane_dst,
+                                 reg_tmp_ty,
+                                 reg_tmp,
+                                 false,
+                                 {"i64 0", "i64 " + std::to_string(i)}});
+        emit_lir_op(ctx, lir::LirStoreOp{hfa->elem_ty, lane_val, lane_dst});
+      }
+      const std::string tmp_addr = fresh_tmp(ctx);
+      emit_lir_op(ctx,
+                  lir::LirAllocaOp{tmp_addr, res_ty, {}, hfa->aggregate_align});
+      module_->need_memcpy = true;
+      emit_lir_op(ctx, lir::LirMemcpyOp{
+                           tmp_addr,
+                           reg_tmp,
+                           std::to_string(hfa->aggregate_size),
+                           false});
+      const std::string out = fresh_tmp(ctx);
+      emit_lir_op(ctx, lir::LirLoadOp{out, res_ty, tmp_addr});
       return out;
     }
     if ((res_ts.base == TB_STRUCT || res_ts.base == TB_UNION) &&

@@ -557,6 +557,7 @@ struct LirModule {
   bool need_stacksave = false;
   bool need_stackrestore = false;
   bool need_abs = false;
+  bool need_ptrmask = false;
 
   // Specialization metadata for cross-TU serialization.
   std::vector<LirSpecEntry> spec_entries;

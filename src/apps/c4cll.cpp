@@ -406,7 +406,7 @@ int main(int argc, char **argv) {
         *sema_result.hir_module);
 
     std::string ir = c4c::codegen::llvm_backend::emit_module_native(
-        *sema_result.hir_module, codegen_path);
+        *sema_result.hir_module, target_triple, codegen_path);
 
     // Write to output file or stdout
     if (!output.empty()) {

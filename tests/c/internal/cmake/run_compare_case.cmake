@@ -14,8 +14,14 @@ if(NOT DEFINED CASE_TIMEOUT_SEC OR "${CASE_TIMEOUT_SEC}" STREQUAL "")
   set(CASE_TIMEOUT_SEC 30)
 endif()
 
+set(compare_command "${COMPILER}" --codegen compare)
+if(DEFINED TARGET_TRIPLE AND NOT "${TARGET_TRIPLE}" STREQUAL "")
+  list(APPEND compare_command --target "${TARGET_TRIPLE}")
+endif()
+list(APPEND compare_command "${SRC}")
+
 execute_process(
-  COMMAND "${COMPILER}" --codegen compare "${SRC}"
+  COMMAND ${compare_command}
   TIMEOUT "${CASE_TIMEOUT_SEC}"
   RESULT_VARIABLE rc
   OUTPUT_VARIABLE out

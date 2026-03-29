@@ -7,6 +7,8 @@ file(GLOB INTERNAL_VERIFY_TEST_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_C_TEST_ROOT}/verify_case/*.c")
 file(GLOB INTERNAL_POSITIVE_TEST_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_C_TEST_ROOT}/positive_case/*.c")
+file(GLOB INTERNAL_BACKEND_TEST_SRCS CONFIGURE_DEPENDS
+     "${INTERNAL_C_TEST_ROOT}/backend_case/*.c")
 file(GLOB INTERNAL_LINUX_STAGE2_REPRO_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_C_TEST_ROOT}/positive_case/linux_stage2_repro/*.c")
 file(GLOB INTERNAL_CCC_REVIEW_SRCS CONFIGURE_DEPENDS
@@ -156,6 +158,13 @@ set_tests_properties(frontend_cxx_preprocessor_tests PROPERTIES
     LABELS "internal;preprocessor")
 
 add_test(
+    NAME backend_lir_adapter_tests
+    COMMAND backend_lir_adapter_tests
+)
+set_tests_properties(backend_lir_adapter_tests PROPERTIES
+    LABELS "internal;backend")
+
+add_test(
     NAME frontend_cxx_stage1_version
     COMMAND c4cll --version
 )
@@ -197,6 +206,541 @@ if(EXISTS "${EXAMPLE_C}")
   )
 endif()
 
+if(EXISTS "${EXAMPLE_C}")
+  add_test(
+      NAME backend_lir_supported_target_entry
+      COMMAND c4cll --codegen lir --target x86_64-unknown-linux-gnu "${EXAMPLE_C}"
+  )
+  set_tests_properties(backend_lir_supported_target_entry PROPERTIES
+      LABELS "internal;backend"
+      PASS_REGULAR_EXPRESSION "define"
+  )
+
+  add_test(
+      NAME backend_lir_aarch64_variadic_double_ir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/variadic_double_bytes.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_double_bytes_aarch64.ll
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+  )
+  set_tests_properties(backend_lir_aarch64_variadic_double_ir PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
+      NAME backend_lir_aarch64_variadic_long_double_ir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_ir_case/variadic_long_double_bytes.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_long_double_bytes_aarch64.ll
+              "-DREQUIRED_SNIPPETS=declare ptr @llvm.ptrmask.p0.i64(ptr, i64)|vaarg.fp.join.|call ptr @llvm.ptrmask.p0.i64(|load fp128, ptr|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 4"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+  )
+  set_tests_properties(backend_lir_aarch64_variadic_long_double_ir PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
+      NAME backend_lir_aarch64_variadic_pair_ir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/variadic_pair_second.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_pair_second_aarch64.ll
+              "-DREQUIRED_SNIPPETS=call void @llvm.memcpy.p0.p0.i64(|phi ptr|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 3|load %struct.Pair, ptr"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+  )
+  set_tests_properties(backend_lir_aarch64_variadic_pair_ir PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
+      NAME backend_lir_aarch64_variadic_bigints_ir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_ir_case/variadic_bigints_last.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_bigints_last_aarch64.ll
+              "-DREQUIRED_SNIPPETS=call void @llvm.memcpy.p0.p0.i64(|load ptr, ptr|phi ptr|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 3|load %struct.BigInts, ptr"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+  )
+  set_tests_properties(backend_lir_aarch64_variadic_bigints_ir PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
+      NAME backend_lir_aarch64_variadic_dpair_ir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_ir_case/variadic_dpair_bytes.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_dpair_bytes_aarch64.ll
+              "-DREQUIRED_SNIPPETS=%struct.DPair = type { double, double }|[2 x double]|vaarg.fp.join.|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 4|load double, ptr|call void @llvm.memcpy.p0.p0.i64("
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+  )
+  set_tests_properties(backend_lir_aarch64_variadic_dpair_ir PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
+      NAME backend_lir_aarch64_variadic_float_array_ir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_ir_case/variadic_float_array_bytes.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_float_array_bytes_aarch64.ll
+              "-DREQUIRED_SNIPPETS=%struct.FloatArray2 = type { [2 x float] }|[2 x float]|vaarg.fp.join.|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 4|load float, ptr|call void @llvm.memcpy.p0.p0.i64("
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+  )
+  set_tests_properties(backend_lir_aarch64_variadic_float_array_ir PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
+      NAME backend_lir_aarch64_variadic_nested_float_array_ir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_ir_case/variadic_nested_float_array_bytes.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_nested_float_array_bytes_aarch64.ll
+              "-DREQUIRED_SNIPPETS=%struct.NestedFloatArray = type { [2 x [2 x float]] }|[4 x float]|vaarg.fp.join.|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 4|load float, ptr|call void @llvm.memcpy.p0.p0.i64("
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+  )
+  set_tests_properties(backend_lir_aarch64_variadic_nested_float_array_ir PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
+      NAME backend_lir_aarch64_variadic_float4_ir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_ir_case/variadic_float4_bytes.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_float4_bytes_aarch64.ll
+              "-DREQUIRED_SNIPPETS=%struct.Float4 = type { float, float, float, float }|[4 x float]|vaarg.fp.join.|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 4|load float, ptr|call void @llvm.memcpy.p0.p0.i64("
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+  )
+  set_tests_properties(backend_lir_aarch64_variadic_float4_ir PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
+      NAME backend_lir_aarch64_variadic_double4_ir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_ir_case/variadic_double4_bytes.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_double4_bytes_aarch64.ll
+              "-DREQUIRED_SNIPPETS=%struct.Double4 = type { double, double, double, double }|[4 x double]|vaarg.fp.join.|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 4|load double, ptr|call void @llvm.memcpy.p0.p0.i64("
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+  )
+  set_tests_properties(backend_lir_aarch64_variadic_double4_ir PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
+      NAME backend_lir_aarch64_variadic_single_double_ir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_ir_case/variadic_single_double_bytes.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_single_double_bytes_aarch64.ll
+              "-DREQUIRED_SNIPPETS=%struct.SingleDouble = type { double }|[1 x double]|vaarg.fp.join.|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 4|load double, ptr|call void @llvm.memcpy.p0.p0.i64("
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+  )
+  set_tests_properties(backend_lir_aarch64_variadic_single_double_ir PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
+      NAME backend_lir_aarch64_variadic_single_float_ir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_ir_case/variadic_single_float_bytes.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_single_float_bytes_aarch64.ll
+              "-DREQUIRED_SNIPPETS=%struct.SingleFloat = type { float }|[1 x float]|vaarg.fp.join.|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 4|load float, ptr|call void @llvm.memcpy.p0.p0.i64("
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+  )
+  set_tests_properties(backend_lir_aarch64_variadic_single_float_ir PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
+      NAME backend_lir_aarch64_variadic_mixed_char_double_ir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_ir_case/variadic_mixed_char_double_bytes.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_char_double_bytes_aarch64.ll
+              "-DREQUIRED_SNIPPETS=%struct.MixedCharDouble = type { i8, [7 x i8], double }|call void @llvm.memcpy.p0.p0.i64(|phi ptr|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 3|load %struct.MixedCharDouble, ptr|trunc i32 68 to i8"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+  )
+  set_tests_properties(backend_lir_aarch64_variadic_mixed_char_double_ir PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
+      NAME backend_lir_aarch64_variadic_mixed_float_int_ir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_ir_case/variadic_mixed_float_int_bytes.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_float_int_bytes_aarch64.ll
+              "-DREQUIRED_SNIPPETS=%struct.MixedFloatInt = type { float, i32 }|call void @llvm.memcpy.p0.p0.i64(|phi ptr|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 3|load %struct.MixedFloatInt, ptr"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+  )
+  set_tests_properties(backend_lir_aarch64_variadic_mixed_float_int_ir PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
+      NAME backend_lir_aarch64_variadic_mixed_double_int_ir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_ir_case/variadic_mixed_double_int_bytes.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_double_int_bytes_aarch64.ll
+              "-DREQUIRED_SNIPPETS=%struct.MixedDoubleInt = type { double, i32, [4 x i8] }|call void @llvm.memcpy.p0.p0.i64(|phi ptr|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 3|load %struct.MixedDoubleInt, ptr"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+  )
+  set_tests_properties(backend_lir_aarch64_variadic_mixed_double_int_ir PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
+      NAME backend_lir_aarch64_variadic_mixed_int_double_ir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_ir_case/variadic_mixed_int_double_bytes.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_int_double_bytes_aarch64.ll
+              "-DREQUIRED_SNIPPETS=%struct.MixedIntDouble = type { i32, [4 x i8], double }|call void @llvm.memcpy.p0.p0.i64(|phi ptr|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 3|load %struct.MixedIntDouble, ptr"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+  )
+  set_tests_properties(backend_lir_aarch64_variadic_mixed_int_double_ir PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
+      NAME backend_lir_aarch64_variadic_mixed_short_double_ir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_ir_case/variadic_mixed_short_double_bytes.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_short_double_bytes_aarch64.ll
+              "-DREQUIRED_SNIPPETS=%struct.MixedShortDouble = type { i16, [6 x i8], double }|call void @llvm.memcpy.p0.p0.i64(|phi ptr|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 3|load %struct.MixedShortDouble, ptr"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+  )
+  set_tests_properties(backend_lir_aarch64_variadic_mixed_short_double_ir PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
+      NAME backend_lir_aarch64_variadic_mixed_double_short_ir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_ir_case/variadic_mixed_double_short_bytes.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_double_short_bytes_aarch64.ll
+              "-DREQUIRED_SNIPPETS=%struct.MixedDoubleShort = type { double, i16, [6 x i8] }|call void @llvm.memcpy.p0.p0.i64(|phi ptr|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 3|load %struct.MixedDoubleShort, ptr|trunc i32 13124 to i16"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+  )
+  set_tests_properties(backend_lir_aarch64_variadic_mixed_double_short_ir PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
+      NAME backend_lir_unsupported_target_entry
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${EXAMPLE_C}
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_unsupported_target_case.cmake"
+  )
+  set_tests_properties(backend_lir_unsupported_target_entry PROPERTIES
+      LABELS "internal;backend"
+  )
+endif()
+
+set(BACKEND_RUNTIME_TARGET_TRIPLE "")
+if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
+  if(APPLE)
+    set(BACKEND_RUNTIME_TARGET_TRIPLE "aarch64-apple-darwin")
+  else()
+    set(BACKEND_RUNTIME_TARGET_TRIPLE "aarch64-unknown-linux-gnu")
+  endif()
+elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "amd64")
+  if(APPLE)
+    set(BACKEND_RUNTIME_TARGET_TRIPLE "x86_64-apple-darwin")
+  else()
+    set(BACKEND_RUNTIME_TARGET_TRIPLE "x86_64-unknown-linux-gnu")
+  endif()
+endif()
+
+if(CLANG_EXECUTABLE)
+  add_test(
+    NAME backend_toolchain_aarch64_asm_object_smoke
+    COMMAND "${CMAKE_COMMAND}"
+            -DCLANG=${CLANG_EXECUTABLE}
+            -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+            -DBACKEND_OUTPUT_KIND=asm
+            -DBACKEND_OUTPUT_PATH=${INTERNAL_C_TEST_ROOT}/backend_toolchain_case/aarch64_return_42_linux.s
+            -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend/aarch64_return_42_linux.o
+            -DTOOLCHAIN_MODE=object
+            -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_toolchain_case.cmake"
+  )
+  set_tests_properties(backend_toolchain_aarch64_asm_object_smoke PROPERTIES
+      LABELS "internal;backend")
+
+  if(OBJDUMP_EXECUTABLE)
+    add_test(
+      NAME backend_contract_aarch64_return_add_object
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/return_add.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DBACKEND_OUTPUT_KIND=asm
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend_contract/return_add_aarch64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend_contract/return_add_aarch64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.text|.globl main|mov w0, #5|ret"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.text|main"
+              "-DFORBIDDEN_OBJDUMP_SNIPPETS=.rela.text|R_AARCH64_"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_contract_case.cmake"
+    )
+    set_tests_properties(backend_contract_aarch64_return_add_object PROPERTIES
+        LABELS "internal;backend")
+
+    add_test(
+      NAME backend_contract_aarch64_global_load_object
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/global_load.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DBACKEND_OUTPUT_KIND=asm
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend_contract/global_load_aarch64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend_contract/global_load_aarch64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.data|.globl g_counter|g_counter:|.long 11|adrp x8, g_counter|ldr w0, [x8, :lo12:g_counter]"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.data|.text|.rela.text|g_counter|main|R_AARCH64_ADR_PREL_PG_HI21|R_AARCH64_LDST32_ABS_LO12_NC"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_contract_case.cmake"
+    )
+    set_tests_properties(backend_contract_aarch64_global_load_object PROPERTIES
+        LABELS "internal;backend")
+
+    add_test(
+      NAME backend_contract_aarch64_string_literal_char_object
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/string_literal_char.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DBACKEND_OUTPUT_KIND=asm
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend_contract/string_literal_char_aarch64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend_contract/string_literal_char_aarch64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.section .rodata|.L.str0:|.asciz \"hi\"|adrp x8, .L.str0|add x8, x8, :lo12:.L.str0|ldrb w0, [x8, #1]|sxtb w0, w0"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.rodata|.text|.rela.text|R_AARCH64_ADR_PREL_PG_HI21|R_AARCH64_ADD_ABS_LO12_NC|main"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_contract_case.cmake"
+    )
+    set_tests_properties(backend_contract_aarch64_string_literal_char_object PROPERTIES
+        LABELS "internal;backend")
+
+    add_test(
+      NAME backend_contract_aarch64_extern_global_array_object
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/extern_global_array.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DBACKEND_OUTPUT_KIND=asm
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend_contract/extern_global_array_aarch64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend_contract/extern_global_array_aarch64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.extern ext_arr|.globl main|adrp x8, ext_arr|add x8, x8, :lo12:ext_arr|ldr w0, [x8, #4]"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.text|.rela.text|main|*UND*|ext_arr|R_AARCH64_ADR_PREL_PG_HI21|R_AARCH64_ADD_ABS_LO12_NC"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_contract_case.cmake"
+    )
+    set_tests_properties(backend_contract_aarch64_extern_global_array_object PROPERTIES
+        LABELS "internal;backend")
+
+    add_test(
+      NAME backend_contract_aarch64_extern_call_object
+      COMMAND "${CMAKE_COMMAND}"
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DBACKEND_OUTPUT_KIND=asm
+              -DBACKEND_OUTPUT_PATH=${INTERNAL_C_TEST_ROOT}/backend_toolchain_case/aarch64_call_extern_linux.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend_contract/aarch64_call_extern_linux.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.globl main|bl helper|mov w0, #0|ret"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.text|.rela.text|main|*UND*|helper|R_AARCH64_CALL26"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_contract_case.cmake"
+    )
+    set_tests_properties(backend_contract_aarch64_extern_call_object PROPERTIES
+        LABELS "internal;backend")
+  endif()
+
+  if(BACKEND_RUNTIME_TARGET_TRIPLE)
+    foreach(src IN LISTS INTERNAL_BACKEND_TEST_SRCS)
+      get_filename_component(stem "${src}" NAME_WE)
+      if(stem STREQUAL "variadic_pair_second" AND
+         NOT BACKEND_RUNTIME_TARGET_TRIPLE STREQUAL "aarch64-unknown-linux-gnu")
+        continue()
+      endif()
+      set(test_name "backend_runtime_${stem}")
+      set(expect_exit_code 0)
+      set(backend_output_kind "llvm-ir")
+      if(stem STREQUAL "return_zero")
+        set(expect_exit_code 0)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "return_add")
+        set(expect_exit_code 5)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "call_helper")
+        set(expect_exit_code 7)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "param_slot")
+        set(expect_exit_code 6)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "two_arg_helper")
+        set(expect_exit_code 12)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "two_arg_local_arg")
+        set(expect_exit_code 12)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "two_arg_second_local_arg")
+        set(expect_exit_code 12)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "two_arg_second_local_rewrite")
+        set(expect_exit_code 12)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "two_arg_first_local_rewrite")
+        set(expect_exit_code 12)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "two_arg_both_local_arg")
+        set(expect_exit_code 12)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "two_arg_both_local_first_rewrite")
+        set(expect_exit_code 12)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "two_arg_both_local_second_rewrite")
+        set(expect_exit_code 12)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "two_arg_both_local_double_rewrite")
+        set(expect_exit_code 12)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "local_arg_call")
+        set(expect_exit_code 6)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "branch_if_lt")
+        set(expect_exit_code 0)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "branch_if_le")
+        set(expect_exit_code 0)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "branch_if_gt")
+        set(expect_exit_code 0)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "branch_if_ge")
+        set(expect_exit_code 0)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "branch_if_eq")
+        set(expect_exit_code 0)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "branch_if_ne")
+        set(expect_exit_code 0)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "branch_if_ult")
+        set(expect_exit_code 0)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "branch_if_ule")
+        set(expect_exit_code 0)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "branch_if_ugt")
+        set(expect_exit_code 0)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "branch_if_uge")
+        set(expect_exit_code 0)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "local_temp")
+        set(expect_exit_code 5)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "local_array")
+        set(expect_exit_code 7)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "nested_member_pointer_array")
+        set(expect_exit_code 8)
+      elseif(stem STREQUAL "nested_param_member_array")
+        set(expect_exit_code 9)
+      elseif(stem STREQUAL "global_load")
+        set(expect_exit_code 11)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "extern_global_array")
+        continue()
+      elseif(stem STREQUAL "extern_global_array_def")
+        continue()
+      elseif(stem STREQUAL "global_char_pointer_diff")
+        set(expect_exit_code 1)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "global_int_pointer_diff")
+        set(expect_exit_code 1)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "global_int_pointer_roundtrip")
+        set(expect_exit_code 9)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "string_literal_char")
+        set(expect_exit_code 105)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "variadic_sum2")
+        set(expect_exit_code 42)
+      elseif(stem STREQUAL "variadic_double_bytes")
+        set(expect_exit_code 67)
+      elseif(stem STREQUAL "variadic_pair_second")
+        set(expect_exit_code 9)
+      elseif(stem STREQUAL "param_member_array")
+        set(expect_exit_code 6)
+      endif()
+
+      add_test(
+        NAME "${test_name}"
+        COMMAND "${CMAKE_COMMAND}"
+                -DCOMPILER=$<TARGET_FILE:c4cll>
+                -DCLANG=${CLANG_EXECUTABLE}
+                -DSRC=${src}
+                -DTARGET_TRIPLE=${BACKEND_RUNTIME_TARGET_TRIPLE}
+                -DBACKEND_OUTPUT_KIND=${backend_output_kind}
+                -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/${stem}.ll
+                -DEXPECT_EXIT_CODE=${expect_exit_code}
+                -DOUT_C2LL_BIN=${CMAKE_BINARY_DIR}/internal_backend/${stem}.bin
+                -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_positive_case.cmake"
+      )
+      set_tests_properties("${test_name}" PROPERTIES LABELS "internal;backend")
+    endforeach()
+
+    add_test(
+      NAME backend_runtime_extern_global_array
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/extern_global_array.c
+              -DTARGET_TRIPLE=${BACKEND_RUNTIME_TARGET_TRIPLE}
+              -DBACKEND_OUTPUT_KIND=asm
+              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/extern_global_array.ll
+              -DEXPECT_EXIT_CODE=7
+              -DOUT_C2LL_BIN=${CMAKE_BINARY_DIR}/internal_backend/extern_global_array.bin
+              "-DEXTRA_TOOLCHAIN_INPUTS=${INTERNAL_C_TEST_ROOT}/backend_case/extern_global_array_def.c"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_positive_case.cmake"
+    )
+    set_tests_properties(backend_runtime_extern_global_array PROPERTIES LABELS "internal;backend")
+
+    if(EXISTS "${EXAMPLE_C}")
+      add_test(
+        NAME backend_lir_missing_toolchain_diagnostic
+        COMMAND "${CMAKE_COMMAND}"
+                -DCOMPILER=$<TARGET_FILE:c4cll>
+                -DSRC=${EXAMPLE_C}
+                -DTARGET_TRIPLE=${BACKEND_RUNTIME_TARGET_TRIPLE}
+                -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/missing_tool.ll
+                -DOUT_C2LL_BIN=${CMAKE_BINARY_DIR}/internal_backend/missing_tool.bin
+                -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_missing_toolchain_case.cmake"
+      )
+      set_tests_properties(backend_lir_missing_toolchain_diagnostic PROPERTIES
+          LABELS "internal;backend")
+    endif()
+  else()
+    message(WARNING "Skipping backend runtime tests: unsupported host processor '${CMAKE_SYSTEM_PROCESSOR}'")
+  endif()
+endif()
+
 if(CLANG_EXECUTABLE)
   foreach(src IN LISTS INTERNAL_CCC_REVIEW_SRCS)
     get_filename_component(stem "${src}" NAME_WE)
@@ -215,23 +759,6 @@ if(CLANG_EXECUTABLE)
     set_tests_properties("${test_name}" PROPERTIES LABELS "internal;positive_case;ccc_review")
   endforeach()
 endif()
-
-# ── Compare-mode smoke tests (legacy vs LIR codegen) ──────────────────────────
-file(GLOB INTERNAL_COMPARE_TEST_SRCS CONFIGURE_DEPENDS
-     "${INTERNAL_C_TEST_ROOT}/compare_case/*.c")
-
-foreach(src IN LISTS INTERNAL_COMPARE_TEST_SRCS)
-  get_filename_component(stem "${src}" NAME_WE)
-  set(test_name "compare_${stem}")
-  add_test(
-    NAME "${test_name}"
-    COMMAND "${CMAKE_COMMAND}"
-            -DCOMPILER=$<TARGET_FILE:c4cll>
-            -DSRC=${src}
-            -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_compare_case.cmake"
-  )
-  set_tests_properties("${test_name}" PROPERTIES LABELS "internal;compare_case")
-endforeach()
 
 if(CLANG_EXECUTABLE AND
    (CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64") AND
