@@ -101,6 +101,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     keyword_friend_parse
     keyword_mutable_parse
     keyword_and_parse
+    keyword_or_parse
     qualified_cpp_base_type_dispatch_parse
     qualified_type_spelling_shared_parse
     qualified_type_resolution_dispatch_parse
@@ -225,6 +226,24 @@ add_test(
 set_tests_properties(cpp_parse_keyword_and_operator_dump PROPERTIES
   LABELS "internal;positive_case;cpp;parse"
   PASS_REGULAR_EXPRESSION "Function\\(operator_and\\)"
+)
+
+add_test(
+  NAME cpp_lex_keyword_or_tokens
+  COMMAND c4cll --lex-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/keyword_or_parse.cpp"
+)
+set_tests_properties(cpp_lex_keyword_or_tokens PROPERTIES
+  LABELS "internal;positive_case;cpp;lex"
+  PASS_REGULAR_EXPRESSION "PIPE_PIPE 'or'"
+)
+
+add_test(
+  NAME cpp_parse_keyword_or_operator_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/keyword_or_parse.cpp"
+)
+set_tests_properties(cpp_parse_keyword_or_operator_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Function\\(operator_or\\)"
 )
 
 add_test(

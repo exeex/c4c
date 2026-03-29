@@ -6,9 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 2: choose the next narrow alternative-operator spelling slice after
-  `and`, likely `or` or `not`, and keep coverage scoped to lexer tokenization
-  plus the smallest parser compatibility edge it exposes
+- [ ] Step 2: reserve `not` as the next narrow alternative-operator spelling
+  slice after `or`, keeping coverage scoped to lexer tokenization plus the
+  smallest unary-expression or overloaded-operator compatibility edge it
+  exposes
 
 ## Todo
 
@@ -40,6 +41,11 @@ Source Plan: plan.md
 - [x] Re-run targeted tests, nearby coverage, and the full suite
 - [x] Add the narrowest validating lexer or parser test for the following slice
 - [x] Implement the following keyword-classification slice
+- [x] Re-run targeted tests, nearby coverage, and the full suite
+- [x] Record a fresh full-suite baseline in `test_before.log` before the `or`
+  slice
+- [x] Add the narrowest validating lexer / parser coverage for the `or` slice
+- [x] Implement the `or` alternative-operator slice
 - [x] Re-run targeted tests, nearby coverage, and the full suite
 
 ## Completed
@@ -153,12 +159,30 @@ Source Plan: plan.md
   `AMP_AMP 'and'` output.
 - [x] Recorded full-suite post-change status in `test_after.log`:
   `100% tests passed, 0 tests failed out of 2349`.
+- [x] Recorded fresh full-suite baseline in `test_before.log` before the `or`
+  slice: `100% tests passed, 0 tests failed out of 2349`.
+- [x] Added
+  [tests/cpp/internal/postive_case/keyword_or_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/keyword_or_parse.cpp),
+  registered it as a parse-only positive case, and added explicit lexer / AST
+  assertions in
+  [tests/cpp/internal/InternalTests.cmake](/workspaces/c4c/tests/cpp/internal/InternalTests.cmake)
+  to pin `PIPE_PIPE 'or'` output plus `Function(operator_or)` in the parse
+  dump.
+- [x] Reserved `or` in the lexer by classifying it to the existing
+  `TokenKind::PipePipe`, then updated overloaded-operator parsing helpers so
+  `operator or` lowers through the same `operator_or` path as `operator||`.
+- [x] Revalidated the slice with targeted coverage:
+  `keyword_or_parse`, `cpp_lex_keyword_or_tokens`,
+  `cpp_parse_keyword_or_operator_dump`, `keyword_and_parse`,
+  `operator_decl_eq_parse`, and `friend_inline_operator_parse`.
+- [x] Recorded full-suite post-change status in `test_after.log`:
+  `100% tests passed, 0 tests failed out of 2352`.
 
 ## Next Intended Slice
 
-After `and`, audit whether `or` or `not` is the next narrowest
+After `not`, evaluate whether `not_eq` or another remaining
 alternative-operator spelling to land without widening into a broader alias
-batch.
+batch or forcing unary-expression cleanup beyond the lexer/parser boundary.
 
 ## Blockers
 
@@ -189,6 +213,11 @@ batch.
   `100% tests passed, 0 tests failed out of 2346`.
 - The `and` slice finished cleanly with monotonic full-suite results:
   `2346 -> 2349` total passing tests due to the new parse case plus explicit
+  lexer / AST assertions.
+- Fresh baseline before the `or` slice remains clean:
+  `100% tests passed, 0 tests failed out of 2349`.
+- The `or` slice finished cleanly with monotonic full-suite results:
+  `2349 -> 2352` total passing tests due to the new parse case plus explicit
   lexer / AST assertions.
 - A direct runtime regression for overloaded `operator&&` exposed a separate
   lowering issue where record-typed operands are compared as scalars in

@@ -623,6 +623,7 @@ bool Parser::try_parse_operator_function_id(std::string& out_name) {
     else if (match(TokenKind::Less))           out_name = "operator_lt";
     else if (match(TokenKind::Greater))        out_name = "operator_gt";
     else if (match(TokenKind::AmpAmp))         out_name = "operator_and";
+    else if (match(TokenKind::PipePipe))       out_name = "operator_or";
     else if (match(TokenKind::Bang))           out_name = "operator_not";
     else if (match(TokenKind::Tilde))          out_name = "operator_bitnot";
     else if (match(TokenKind::Slash))          out_name = "operator_div";

@@ -270,6 +270,7 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
   if (profile != LexProfile::C) {
     if (s == "bool")      return TokenKind::KwBool;
     if (s == "and")       return TokenKind::AmpAmp;
+    if (s == "or")        return TokenKind::PipePipe;
     if (s == "template")  return TokenKind::KwTemplate;
     if (s == "constexpr") return TokenKind::KwConstexpr;
     if (s == "consteval") return TokenKind::KwConsteval;
