@@ -21,6 +21,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     operator_decl_subscript_parse
     operator_decl_deref_parse
     operator_decl_arrow_parse
+    operator_arrow_explicit_member_call_parse
     operator_decl_preinc_parse
     operator_decl_eq_parse
     operator_decl_bool_parse

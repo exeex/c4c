@@ -218,6 +218,7 @@ class Parser {
   bool match_template_close();           // consume one template-close >
   void expect_template_close();          // match_template_close or throw
   void skip_until(TokenKind k);          // skip tokens until k (consume k)
+  bool try_parse_operator_function_id(std::string& out_name);
 
   // ── type parsing helpers ──────────────────────────────────────────────────
   bool is_type_start() const;            // can current token start a type?
