@@ -244,6 +244,13 @@ struct MinimalLocalArraySlice {
   std::int64_t store1_imm = 0;
 };
 
+struct MinimalStringLiteralCharSlice {
+  std::string pool_name;
+  std::string raw_bytes;
+  std::int64_t byte_index = 0;
+  c4c::codegen::lir::LirCastKind extend_kind = c4c::codegen::lir::LirCastKind::ZExt;
+};
+
 const c4c::codegen::lir::LirFunction* find_lir_function(
     const c4c::codegen::lir::LirModule& module,
     std::string_view name) {
@@ -269,6 +276,140 @@ std::optional<std::string_view> strip_typed_operand_prefix(std::string_view oper
     return std::nullopt;
   }
   return operand.substr(type_prefix.size() + 1);
+}
+
+std::string escape_asm_string(std::string_view raw_bytes) {
+  std::string escaped;
+  escaped.reserve(raw_bytes.size());
+  for (const unsigned char ch : raw_bytes) {
+    switch (ch) {
+      case '\\':
+        escaped += "\\\\";
+        break;
+      case '"':
+        escaped += "\\\"";
+        break;
+      case '\n':
+        escaped += "\\n";
+        break;
+      case '\t':
+        escaped += "\\t";
+        break;
+      case '\r':
+        escaped += "\\r";
+        break;
+      case '\0':
+        escaped += "\\000";
+        break;
+      default:
+        if (ch >= 0x20 && ch <= 0x7e) {
+          escaped.push_back(static_cast<char>(ch));
+        } else {
+          constexpr char kHexDigits[] = "0123456789ABCDEF";
+          escaped += "\\x";
+          escaped.push_back(kHexDigits[(ch >> 4) & 0xf]);
+          escaped.push_back(kHexDigits[ch & 0xf]);
+        }
+        break;
+    }
+  }
+  return escaped;
+}
+
+std::string asm_private_data_label(const c4c::codegen::lir::LirModule& module,
+                                   std::string_view pool_name) {
+  std::string label(pool_name);
+  if (!label.empty() && label.front() == '@') {
+    label.erase(label.begin());
+  }
+  while (!label.empty() && label.front() == '.') {
+    label.erase(label.begin());
+  }
+
+  const bool is_darwin =
+      module.target_triple.find("apple-darwin") != std::string::npos;
+  if (is_darwin) {
+    return "L." + label;
+  }
+  return ".L." + label;
+}
+
+std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || module.string_pool.size() != 1 ||
+      !module.globals.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& string_const = module.string_pool.front();
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+      function.entry.value != 0 || function.blocks.size() != 1 ||
+      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  if (entry.label != "entry" || entry.insts.size() != 5) {
+    return std::nullopt;
+  }
+
+  const auto* base_gep = std::get_if<LirGepOp>(&entry.insts[0]);
+  const auto* index_cast = std::get_if<LirCastOp>(&entry.insts[1]);
+  const auto* byte_gep = std::get_if<LirGepOp>(&entry.insts[2]);
+  const auto* load = std::get_if<LirLoadOp>(&entry.insts[3]);
+  const auto* extend = std::get_if<LirCastOp>(&entry.insts[4]);
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (base_gep == nullptr || index_cast == nullptr || byte_gep == nullptr ||
+      load == nullptr || extend == nullptr || ret == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto string_array_type =
+      "[" + std::to_string(string_const.byte_length) + " x i8]";
+  if (base_gep->element_type != string_array_type || base_gep->ptr != string_const.pool_name ||
+      base_gep->indices.size() != 2 || base_gep->indices[0] != "i64 0" ||
+      base_gep->indices[1] != "i64 0") {
+    return std::nullopt;
+  }
+
+  if (index_cast->kind != LirCastKind::SExt || index_cast->from_type != "i32" ||
+      index_cast->to_type != "i64") {
+    return std::nullopt;
+  }
+  const auto byte_index = parse_i64(index_cast->operand);
+  if (!byte_index.has_value() || *byte_index < 0 || *byte_index > 4095) {
+    return std::nullopt;
+  }
+
+  if (byte_gep->element_type != "i8" || byte_gep->ptr != base_gep->result ||
+      byte_gep->indices.size() != 1 || byte_gep->indices[0] != ("i64 " + index_cast->result)) {
+    return std::nullopt;
+  }
+
+  if (load->type_str != "i8" || load->ptr != byte_gep->result) {
+    return std::nullopt;
+  }
+
+  if ((extend->kind != LirCastKind::SExt && extend->kind != LirCastKind::ZExt) ||
+      extend->from_type != "i8" || extend->operand != load->result ||
+      extend->to_type != "i32") {
+    return std::nullopt;
+  }
+
+  if (!ret->value_str.has_value() || *ret->value_str != extend->result ||
+      ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  return MinimalStringLiteralCharSlice{
+      string_const.pool_name,
+      string_const.raw_bytes,
+      *byte_index,
+      extend->kind,
+  };
 }
 
 std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
@@ -1142,6 +1283,41 @@ std::string emit_minimal_extern_scalar_global_load_asm(
   return out.str();
 }
 
+std::string emit_minimal_string_literal_char_asm(
+    const c4c::codegen::lir::LirModule& module,
+    const MinimalStringLiteralCharSlice& slice) {
+  c4c::backend::BackendModule backend_module;
+  backend_module.target_triple = module.target_triple;
+  const bool is_darwin =
+      backend_module.target_triple.find("apple-darwin") != std::string::npos;
+  const std::string string_label = asm_private_data_label(module, slice.pool_name);
+  const std::string main_symbol = asm_symbol_name(backend_module, "main");
+
+  std::ostringstream out;
+  if (is_darwin) {
+    out << ".section __TEXT,__cstring,cstring_literals\n";
+  } else {
+    out << ".section .rodata\n";
+  }
+  out << string_label << ":\n"
+      << "  .asciz \"" << escape_asm_string(slice.raw_bytes) << "\"\n";
+  out << ".text\n";
+  emit_function_prelude(out, backend_module, main_symbol, true);
+  if (is_darwin) {
+    out << "  adrp x8, " << string_label << "@PAGE\n"
+        << "  add x8, x8, " << string_label << "@PAGEOFF\n";
+  } else {
+    out << "  adrp x8, " << string_label << "\n"
+        << "  add x8, x8, :lo12:" << string_label << "\n";
+  }
+  out << "  ldrb w0, [x8, #" << slice.byte_index << "]\n";
+  if (slice.extend_kind == c4c::codegen::lir::LirCastKind::SExt) {
+    out << "  sxtb w0, w0\n";
+  }
+  out << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_local_array_asm(
     const c4c::codegen::lir::LirModule& module,
     const MinimalLocalArraySlice& slice) {
@@ -1193,6 +1369,10 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   if (const auto slice = parse_minimal_extern_scalar_global_load_slice(prepared);
       slice.has_value()) {
     return emit_minimal_extern_scalar_global_load_asm(prepared, *slice);
+  }
+  if (const auto slice = parse_minimal_string_literal_char_slice(prepared);
+      slice.has_value()) {
+    return emit_minimal_string_literal_char_asm(prepared, *slice);
   }
   try {
     const auto adapted = c4c::backend::adapt_minimal_module(prepared);

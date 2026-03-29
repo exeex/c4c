@@ -1945,11 +1945,12 @@ c4c::codegen::lir::LirModule make_string_literal_char_module() {
   entry.label = "entry";
   entry.insts.push_back(
       LirGepOp{"%t0", "[3 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
-  entry.insts.push_back(LirGepOp{"%t1", "i8", "%t0", false, {"i64 1"}});
-  entry.insts.push_back(LirLoadOp{"%t2", "i8", "%t1"});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t2", "i8", "%t0", false, {"i64 %t1"}});
+  entry.insts.push_back(LirLoadOp{"%t3", "i8", "%t2"});
   entry.insts.push_back(
-      LirCastOp{"%t3", LirCastKind::SExt, "i8", "%t2", "i32"});
-  entry.terminator = LirRet{std::string("%t3"), "i32"};
+      LirCastOp{"%t4", LirCastKind::SExt, "i8", "%t3", "i32"});
+  entry.terminator = LirRet{std::string("%t4"), "i32"};
   function.blocks.push_back(std::move(entry));
 
   module.functions.push_back(std::move(function));
@@ -3665,18 +3666,24 @@ void test_aarch64_backend_renders_string_pool_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_string_literal_char_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "@.str0 = private unnamed_addr constant [3 x i8] c\"hi\\00\"",
-                  "aarch64 backend should render module string pool constants");
-  expect_contains(rendered, "%t0 = getelementptr [3 x i8], ptr @.str0, i64 0, i64 0",
-                  "aarch64 backend should preserve string-literal decay through GEP");
-  expect_contains(rendered, "%t1 = getelementptr i8, ptr %t0, i64 1",
-                  "aarch64 backend should preserve indexed string-literal addressing");
-  expect_contains(rendered, "%t2 = load i8, ptr %t1",
-                  "aarch64 backend should preserve string-literal byte loads");
-  expect_contains(rendered, "%t3 = sext i8 %t2 to i32",
-                  "aarch64 backend should preserve byte-to-int promotion");
-  expect_contains(rendered, "ret i32 %t3",
-                  "aarch64 backend should preserve the promoted string-literal result");
+  expect_contains(rendered, ".section .rodata\n",
+                  "aarch64 backend should place string literals into read-only data");
+  expect_contains(rendered, ".L.str0:\n",
+                  "aarch64 backend should emit a local string-pool label for the literal");
+  expect_contains(rendered, "  .asciz \"hi\"\n",
+                  "aarch64 backend should materialize the string-literal bytes");
+  expect_contains(rendered, ".globl main\n",
+                  "aarch64 backend should still publish main as the entry symbol");
+  expect_contains(rendered, "  adrp x8, .L.str0\n",
+                  "aarch64 backend should form the string-literal page address");
+  expect_contains(rendered, "  add x8, x8, :lo12:.L.str0\n",
+                  "aarch64 backend should form the string-literal byte base address");
+  expect_contains(rendered, "  ldrb w0, [x8, #1]\n",
+                  "aarch64 backend should load the indexed string-literal byte");
+  expect_contains(rendered, "  sxtb w0, w0\n",
+                  "aarch64 backend should preserve byte-to-int sign extension");
+  expect_contains(rendered, "  ret\n",
+                  "aarch64 backend should return the promoted string-literal result");
 }
 
 void test_aarch64_backend_renders_extern_decl_slice() {

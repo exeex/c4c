@@ -1,5 +1,19 @@
 # AArch64 Global Addressing Plan
 
+Status: Complete
+
+## Completion Summary
+
+- completed the first bounded backend-owned global-addressing slice by lowering `tests/c/internal/backend_case/string_literal_char.c` through the AArch64 asm path
+- tightened synthetic backend coverage in `tests/backend/backend_lir_adapter_tests.cpp` around string-pool base-address formation, constant byte indexing, and the final byte-to-`i32` promotion
+- added an ELF object contract for the same string-literal seam and promoted the runtime case through `BACKEND_OUTPUT_KIND=asm`
+- validated monotonic regression results: `test_before.log` recorded 5 failing tests out of 577 and `test_after.log` recorded 4 failing tests out of 578
+
+## Follow-On Work
+
+- remaining adjacent address-formation work was intentionally split back out rather than broaden this finished slice
+- see `ideas/open/11_backend_aarch64_extern_global_array_addressing_plan.md` for the next explicit global-addressing runbook candidate
+
 ## Relationship To Roadmap
 
 Umbrella source: `ideas/open/__backend_port_plan.md`

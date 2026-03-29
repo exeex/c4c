@@ -517,6 +517,24 @@ if(CLANG_EXECUTABLE)
         LABELS "internal;backend")
 
     add_test(
+      NAME backend_contract_aarch64_string_literal_char_object
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/string_literal_char.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DBACKEND_OUTPUT_KIND=asm
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend_contract/string_literal_char_aarch64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend_contract/string_literal_char_aarch64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.section .rodata|.L.str0:|.asciz \"hi\"|adrp x8, .L.str0|add x8, x8, :lo12:.L.str0|ldrb w0, [x8, #1]|sxtb w0, w0"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.rodata|.text|.rela.text|R_AARCH64_ADR_PREL_PG_HI21|R_AARCH64_ADD_ABS_LO12_NC|main"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_contract_case.cmake"
+    )
+    set_tests_properties(backend_contract_aarch64_string_literal_char_object PROPERTIES
+        LABELS "internal;backend")
+
+    add_test(
       NAME backend_contract_aarch64_extern_call_object
       COMMAND "${CMAKE_COMMAND}"
               -DCLANG=${CLANG_EXECUTABLE}
@@ -636,6 +654,7 @@ if(CLANG_EXECUTABLE)
         set(expect_exit_code 9)
       elseif(stem STREQUAL "string_literal_char")
         set(expect_exit_code 105)
+        set(backend_output_kind "asm")
       elseif(stem STREQUAL "variadic_sum2")
         set(expect_exit_code 42)
       elseif(stem STREQUAL "variadic_double_bytes")
