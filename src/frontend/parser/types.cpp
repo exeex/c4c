@@ -135,6 +135,19 @@ bool parse_alignas_specifier(Parser* parser, TypeSpec* ts, int line) {
     return true;
 }
 
+void consume_optional_cpp_member_virt_specifier_seq(Parser* parser) {
+    if (!parser || !parser->is_cpp_mode())
+        return;
+
+    while (true) {
+        if (parser->match(TokenKind::KwOverride))
+            continue;
+        if (parser->match(TokenKind::KwFinal))
+            continue;
+        break;
+    }
+}
+
 bool is_type_template_param(const Node* tpl_def, const char* name) {
     if (!tpl_def || !name) return false;
     for (int i = 0; i < tpl_def->n_template_params; ++i) {
@@ -4768,6 +4781,7 @@ bool Parser::try_parse_record_destructor_member(
     expect(TokenKind::LParen);
     expect(TokenKind::RParen);
     skip_exception_spec();
+    consume_optional_cpp_member_virt_specifier_seq(this);
     std::string mangled = std::string("~") + dtor_name;
     Node* method = make_node(NK_FUNCTION, cur().line);
     method->type.base = TB_VOID;
@@ -5032,6 +5046,7 @@ bool Parser::try_parse_record_method_or_field_member(
             fts = parse_type_name();
             parse_attributes(&fts);
         }
+        consume_optional_cpp_member_virt_specifier_seq(this);
 
         Node* method = make_node(NK_FUNCTION, cur().line);
         method->type = fts;
@@ -5149,6 +5164,7 @@ bool Parser::try_parse_record_method_or_field_member(
                 cur_fts = parse_type_name();
                 parse_attributes(&cur_fts);
             }
+            consume_optional_cpp_member_virt_specifier_seq(this);
             Node* method = make_node(NK_FUNCTION, cur().line);
             method->type = cur_fts;
             method->name = fname;

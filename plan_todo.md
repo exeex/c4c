@@ -6,20 +6,20 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: Add explicit parser support for contextual `final` and `override`
+- Step 3: Replace `requires` skip paths with dedicated grammar entry points
 
 ## Next Slice
 
-- add a reduced `override` repro that currently relies on compatibility paths
-- thread `KwOverride` through the real declaration sites instead of skip-style
-  handling
-- keep `final` acceptance aligned with the existing record/class specifier path
-  while narrowing where it is consumed
+- add the narrowest reduced repro where a declaration `requires` clause still
+  depends on skip-style parsing instead of a dedicated grammar path
+- thread the first explicit `requires` declaration entry point through the
+  parser without broadening into concept semantics
+- keep follow-up work scoped to parser acceptance and local recovery behavior
 
 ## Planned Steps
 
 - [x] Step 1: Normalize lexer keyword coverage
-- [ ] Step 2: Add explicit parser support for contextual `final` and `override`
+- [x] Step 2: Add explicit parser support for contextual `final` and `override`
 - [ ] Step 3: Replace `requires` skip paths with dedicated grammar entry points
 - [ ] Step 4: Reconnect to motivating library-facing repros
 
@@ -33,6 +33,13 @@ Source Plan: plan.md
   `cpp20_requires_clause_parse.cpp` repro at the lexer boundary
 - [x] Rebuilt, ran the focused `requires` tests, and verified the full suite
   remained monotonic with the regression guard
+- [x] Added `method_override_final_runtime.cpp` to catch the in-class
+  `override` / `final` path where a method body was being dropped
+- [x] Consumed `KwOverride` / `KwFinal` in the record-member function suffix
+  parser for methods, operator methods, and destructors instead of leaving
+  those tokens to recovery
+- [x] Rebuilt, ran focused `override` / `final` coverage, and passed the full
+  regression guard with `2372/2372` tests passing and zero new failures
 
 ## Blockers
 
@@ -45,5 +52,5 @@ Source Plan: plan.md
   diagnostics
 - add reduced tests before parser edits and keep each patch tied to one syntax
   surface
-- `requires` now has lexer-backed classification; next slice should justify
-  where `KwOverride` is consumed at the declaration grammar boundary
+- Step 2 is complete; the next slice should replace the first declaration-side
+  `requires` skip path with a dedicated parser entry point
