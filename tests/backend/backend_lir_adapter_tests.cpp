@@ -3555,20 +3555,26 @@ void test_aarch64_backend_renders_local_array_gep_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_local_array_gep_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "%lv.arr = alloca [2 x i32], align 4",
-                  "aarch64 backend should render local array allocas");
-  expect_contains(rendered, "%t0 = getelementptr [2 x i32], ptr %lv.arr, i64 0, i64 0",
-                  "aarch64 backend should render array-decay GEP");
-  expect_contains(rendered, "%t1 = sext i32 0 to i64",
-                  "aarch64 backend should render integer index widening for local arrays");
-  expect_contains(rendered, "%t2 = getelementptr i32, ptr %t0, i64 %t1",
-                  "aarch64 backend should render indexed local array GEP");
-  expect_contains(rendered, "store i32 4, ptr %t2",
-                  "aarch64 backend should store through local array element pointers");
-  expect_contains(rendered, "store i32 3, ptr %t5",
-                  "aarch64 backend should store through later local array element pointers");
-  expect_contains(rendered, "ret i32 %t8",
-                  "aarch64 backend should preserve the loaded array sum");
+  expect_contains(rendered, ".globl main",
+                  "aarch64 backend should promote the bounded local-array slice onto the asm path");
+  expect_contains(rendered, "sub sp, sp, #16",
+                  "aarch64 backend should reserve one aligned stack frame for the local array slice");
+  expect_contains(rendered, "add x8, sp, #8",
+                  "aarch64 backend should materialize the local-array base address from the stack slot");
+  expect_contains(rendered, "str w9, [x8]",
+                  "aarch64 backend should store the first local-array element through the explicit base address");
+  expect_contains(rendered, "str w9, [x8, #4]",
+                  "aarch64 backend should store the second local-array element at the folded element offset");
+  expect_contains(rendered, "ldr w9, [x8]",
+                  "aarch64 backend should reload the first local-array element through the explicit base address");
+  expect_contains(rendered, "ldr w10, [x8, #4]",
+                  "aarch64 backend should reload the second local-array element at the folded element offset");
+  expect_contains(rendered, "add w0, w9, w10",
+                  "aarch64 backend should return the local-array element sum from registers");
+  expect_contains(rendered, "add sp, sp, #16",
+                  "aarch64 backend should restore the bounded local-array stack frame before returning");
+  expect_not_contains(rendered, "getelementptr",
+                      "aarch64 backend should not fall back to LLVM-text GEP rendering for the bounded local-array slice");
 }
 
 void test_aarch64_backend_renders_param_member_array_gep_slice() {

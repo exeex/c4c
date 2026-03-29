@@ -63,3 +63,21 @@ Extend the AArch64 backend from the current narrow bring-up seam into explicit b
 ## Good First Patch
 
 Promote `tests/c/internal/backend_case/local_array.c` onto the AArch64 asm path with the smallest explicit stack-slot/addressing seam that can be validated in both synthetic backend tests and the real backend runtime test.
+
+## Completion
+
+Status: Complete
+
+Completed on: 2026-03-29
+
+Completed work:
+
+- captured the concrete `local_array.c` AArch64 LIR contract used for the first bounded local-memory slice
+- added a synthetic backend assertion that requires explicit stack-slot base-address formation plus folded `#0`/`#4` local element offsets on the asm path
+- taught the AArch64 emitter to recognize the bounded single-function local-array pattern and lower it to `sp`-relative `str/ldr` plus the final scalar `add`
+- promoted `backend_runtime_local_array` to `BACKEND_OUTPUT_KIND=asm` and verified the expected exit code still holds
+
+Leftover issues:
+
+- broader local/member/global address lowering remains intentionally out of scope for this closed idea
+- unrelated full-suite failures still remain in `positive_sema_ok_fn_returns_variadic_fn_ptr_c`, `cpp_positive_sema_decltype_bf16_builtin_cpp`, `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`, and `cpp_llvm_initializer_list_runtime_materialization`
