@@ -207,6 +207,16 @@ ranking pass.
    keeps the following `kept` global visible with no intermediate `Empty`
    node after structure-only and typedef-backed tag declarations.
 
+10. `src/frontend/parser/declarations.cpp:1417`
+   Top-level C++ `concept` declarations now drop out of the item stream after
+   registering the concept name, instead of materializing a synthetic
+   `NK_EMPTY` node for either plain or templated `concept` declarations.
+   Tag: `acceptable breadth`
+   Evidence: the reduced parse-only regression
+   `tests/cpp/internal/parse_only_case/top_level_concept_decl_preserves_following_decl_parse.cpp`
+   keeps the following `kept` global visible with no intermediate `Empty`
+   node after `template<typename T> concept audit_concept = true;`.
+
 ## Ranked First Tightening Targets
 
 1. `src/frontend/parser/types.cpp:4426`
@@ -216,4 +226,4 @@ ranking pass.
 2. `src/frontend/parser/declarations.cpp:1286`
    Review the remaining top-level structure-only / unsupported `NK_EMPTY` exits
    now that the generic no-type-start recovery boundary has been aligned with
-   the shared helper.
+   the shared helper, with pragma discard sites the next top-level target.

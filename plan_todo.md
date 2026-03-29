@@ -9,10 +9,9 @@ Last Updated: 2026-03-29
 
 - Step 3: continue through the remaining top-level structure-only /
   unsupported `NK_EMPTY` exits in `src/frontend/parser/declarations.cpp` after
-  tightening the top-level tag-only declaration / typedef-backed tag-definition
-  path; next review the still-uncovered unsupported discard exits such as
-  concept / pragma skips to decide whether they are intentional `NK_EMPTY`
-  sites or need reduced repro coverage
+  tightening the top-level C++ `concept` declaration path; next review the
+  still-uncovered pragma discard exits to decide whether they are intentional
+  `NK_EMPTY` sites or should also drop out of the top-level item stream
 
 ## Completed
 
@@ -197,17 +196,39 @@ Last Updated: 2026-03-29
     - baseline: `100% tests passed, 0 tests failed out of 2411`
     - after change: `100% tests passed, 0 tests failed out of 2412`
     - result: monotonic pass-count increase with no newly failing tests
+- tightened top-level C++ `concept` declaration handling in
+  `src/frontend/parser/declarations.cpp` so plain and templated concept
+  declarations now drop out of the program AST instead of materializing a
+  synthetic `NK_EMPTY` item after the parser has already registered the
+  concept name:
+  - added the reduced parse-only regression
+    `tests/cpp/internal/parse_only_case/top_level_concept_decl_preserves_following_decl_parse.cpp`
+    plus the dedicated dump assertion
+    `cpp_parse_top_level_concept_decl_preserves_following_decl_dump` in
+    `tests/cpp/internal/InternalTests.cmake`
+  - updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record top-level
+    `concept` declarations as a covered `NK_EMPTY` discard site
+  - nearby concept parsing remains bounded by the known libstdc++
+    `iterator_concepts_following_hash_base_parse` failure, so the next audit
+    slice should stay focused on separate top-level pragma discard paths
+  - re-ran the required regression guard:
+    - baseline: `99% tests passed, 1 test failed out of 2417`
+    - after change: `99% tests passed, 1 test failed out of 2419`
+    - result: monotonic pass-count increase with no newly failing tests
 
 ## Next Slice
 
 - after the empty `extern "C"` linkage-block slice, continue through the
   remaining top-level `NK_EMPTY` discard sites in
   `src/frontend/parser/declarations.cpp`, especially the still-unreviewed
-  unsupported declaration exits beyond the now-covered empty wrappers and
-  structure-only tag declarations
+  unsupported declaration exits beyond the now-covered empty wrappers,
+  structure-only tag declarations, and `concept` declarations
 - prefer another reduced parse-only repro that shows discarded structure or a
   silently erased following declaration before changing each remaining
   `NK_EMPTY` branch
+- next target: the top-level pragma discard paths (`#pragma pack` /
+  `#pragma GCC visibility`) that still emit synthetic `Empty` items ahead of
+  the following declaration
 - keep any further record-member recovery widening separate unless a new reduced
   repro shows another non-special-member boundary bug that blocks the
   top-level `NK_EMPTY` audit

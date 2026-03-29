@@ -1415,7 +1415,7 @@ Node* Parser::parse_top_level() {
     }
 
     if (try_skip_cpp_concept_declaration(*this)) {
-        return make_node(NK_EMPTY, ln);
+        return nullptr;
     }
 
     // Handle #pragma pack tokens
