@@ -3,6 +3,7 @@
 #include <cctype>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace c4c::backend {
 
@@ -272,36 +273,56 @@ std::optional<BackendFunction> adapt_local_temp_return_function(
   if (function.is_declaration || signature.linkage != "define" ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg ||
-      function.blocks.size() != 1 ||
-      (function.alloca_insts.size() != 1 && function.alloca_insts.size() != 2) ||
+      function.blocks.size() != 1 || function.alloca_insts.empty() ||
       !function.stack_objects.empty()) {
     return std::nullopt;
   }
 
-  const auto* alloca = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
-  if (alloca == nullptr || alloca->type_str != "i32" || alloca->result.empty()) {
-    return std::nullopt;
+  std::vector<std::string> scalar_allocas;
+  scalar_allocas.reserve(function.alloca_insts.size());
+  for (const auto& inst : function.alloca_insts) {
+    const auto* alloca = std::get_if<LirAllocaOp>(&inst);
+    if (alloca == nullptr || alloca->type_str != "i32" || alloca->result.empty()) {
+      return std::nullopt;
+    }
+    scalar_allocas.push_back(alloca->result);
   }
 
   const auto& block = function.blocks.front();
-  const LirStoreOp* store = nullptr;
-  const LirLoadOp* load = nullptr;
-  if (function.alloca_insts.size() == 2 && block.insts.size() == 1) {
-    store = std::get_if<LirStoreOp>(&function.alloca_insts[1]);
-    load = std::get_if<LirLoadOp>(&block.insts[0]);
-  } else if (function.alloca_insts.size() == 1 && block.insts.size() == 2) {
-    store = std::get_if<LirStoreOp>(&block.insts[0]);
-    load = std::get_if<LirLoadOp>(&block.insts[1]);
-  } else {
+  const auto* ret = std::get_if<LirRet>(&block.terminator);
+  if (block.label != "entry" || ret == nullptr || !ret->value_str.has_value() ||
+      ret->type_str != "i32") {
     return std::nullopt;
   }
 
-  const auto* ret = std::get_if<LirRet>(&block.terminator);
-  if (block.label != "entry" || store == nullptr || load == nullptr || ret == nullptr ||
-      store->type_str != "i32" || store->ptr != alloca->result ||
-      load->type_str != "i32" || load->ptr != alloca->result ||
-      !ret->value_str.has_value() || ret->type_str != "i32" ||
-      *ret->value_str != load->result) {
+  std::unordered_map<std::string, std::string> last_store;
+  if (function.alloca_insts.size() == 2 && std::holds_alternative<LirStoreOp>(function.alloca_insts[1])) {
+    const auto* store = std::get_if<LirStoreOp>(&function.alloca_insts[1]);
+    if (store == nullptr || store->type_str != "i32") {
+      return std::nullopt;
+    }
+    last_store.emplace(store->ptr, store->val);
+  }
+
+  const LirLoadOp* final_load = nullptr;
+  if (!block.insts.empty()) {
+    final_load = std::get_if<LirLoadOp>(&block.insts.back());
+  }
+  if (final_load == nullptr || final_load->type_str != "i32" ||
+      !ret->value_str.has_value() || *ret->value_str != final_load->result) {
+    return std::nullopt;
+  }
+
+  for (std::size_t i = 0; i + 1 < block.insts.size(); ++i) {
+    const auto* store = std::get_if<LirStoreOp>(&block.insts[i]);
+    if (store == nullptr || store->type_str != "i32") {
+      return std::nullopt;
+    }
+    last_store[store->ptr] = store->val;
+  }
+
+  const auto store_it = last_store.find(final_load->ptr);
+  if (store_it == last_store.end()) {
     return std::nullopt;
   }
 
@@ -309,7 +330,52 @@ std::optional<BackendFunction> adapt_local_temp_return_function(
   out.signature = signature;
   BackendBlock out_block;
   out_block.label = block.label;
-  out_block.terminator = BackendReturn{store->val, "i32"};
+  out_block.terminator = BackendReturn{store_it->second, "i32"};
+  out.blocks.push_back(std::move(out_block));
+  return out;
+}
+
+std::optional<BackendFunction> adapt_local_temp_sub_return_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const BackendFunctionSignature& signature) {
+  using namespace c4c::codegen::lir;
+
+  if (function.is_declaration || signature.linkage != "define" ||
+      signature.return_type != "i32" || signature.name != "main" ||
+      !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
+      function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* alloca = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
+  if (alloca == nullptr || alloca->type_str != "i32" || alloca->result.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  const auto* ret = std::get_if<LirRet>(&block.terminator);
+  if (block.label != "entry" || ret == nullptr || !ret->value_str.has_value() ||
+      ret->type_str != "i32" || block.insts.size() != 3) {
+    return std::nullopt;
+  }
+
+  const auto* store = std::get_if<LirStoreOp>(&block.insts[0]);
+  const auto* load = std::get_if<LirLoadOp>(&block.insts[1]);
+  const auto* sub = std::get_if<LirBinOp>(&block.insts[2]);
+  if (store == nullptr || load == nullptr || sub == nullptr || store->type_str != "i32" ||
+      store->ptr != alloca->result || load->type_str != "i32" ||
+      load->ptr != alloca->result || sub->opcode != "sub" || sub->type_str != "i32" ||
+      sub->lhs != load->result || *ret->value_str != sub->result) {
+    return std::nullopt;
+  }
+
+  BackendFunction out;
+  out.signature = signature;
+  BackendBlock out_block;
+  out_block.label = block.label;
+  out_block.insts.push_back(
+      BackendBinaryInst{BackendBinaryOpcode::Sub, sub->result, sub->type_str, store->val, sub->rhs});
+  out_block.terminator = BackendReturn{sub->result, "i32"};
   out.blocks.push_back(std::move(out_block));
   return out;
 }
@@ -624,6 +690,10 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function) {
     return *normalized;
   }
   if (const auto normalized = adapt_local_temp_return_function(function, signature);
+      normalized.has_value()) {
+    return *normalized;
+  }
+  if (const auto normalized = adapt_local_temp_sub_return_function(function, signature);
       normalized.has_value()) {
     return *normalized;
   }

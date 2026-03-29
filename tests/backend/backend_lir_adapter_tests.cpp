@@ -1637,6 +1637,45 @@ c4c::codegen::lir::LirModule make_local_temp_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_local_temp_sub_module() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_local_temp_module();
+  auto& function = module.functions.front();
+  auto& entry = function.blocks.front();
+  entry.insts.push_back(LirBinOp{"%t1", "sub", "i32", "%t0", "4"});
+  entry.terminator = LirRet{std::string("%t1"), "i32"};
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_two_local_temp_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }");
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.y", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "0", "%lv.y"});
+  entry.insts.push_back(LirStoreOp{"i32", "0", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.x"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_param_slot_module() {
   using namespace c4c::codegen::lir;
 
@@ -3350,6 +3389,25 @@ void test_adapter_normalizes_local_temp_return_slice() {
                   "adapter should collapse the single-slot local-temp pattern into a direct return");
 }
 
+void test_adapter_normalizes_local_temp_sub_return_slice() {
+  const auto adapted = c4c::backend::adapt_minimal_module(make_local_temp_sub_module());
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "%t1 = sub i32 5, 4",
+                  "adapter should rewrite the local-slot subtraction slice into a direct subtraction");
+  expect_contains(rendered, "ret i32 %t1",
+                  "adapter should return the normalized subtraction result directly");
+}
+
+void test_adapter_normalizes_two_local_temp_return_slice() {
+  const auto adapted =
+      c4c::backend::adapt_minimal_module(make_two_local_temp_return_module());
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "define i32 @main()",
+                  "adapter should preserve the two-local function signature");
+  expect_contains(rendered, "ret i32 0",
+                  "adapter should collapse the selected two-local scalar slot pattern into a direct return");
+}
+
 void test_adapter_preserves_typed_two_arg_direct_call_helper_slice() {
   const auto adapted =
       c4c::backend::adapt_minimal_module(make_typed_direct_call_two_arg_module());
@@ -3633,6 +3691,40 @@ void test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice() {
                   "x86 backend should terminate direct return subtraction slices with ret");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the supported subtraction slice");
+}
+
+void test_x86_backend_renders_local_temp_sub_slice() {
+  auto module = make_local_temp_sub_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should emit a real entry symbol for the local-slot subtraction slice");
+  expect_contains(rendered, "mov eax, 1",
+                  "x86 backend should fold the normalized local-slot subtraction into the final immediate return");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the supported local-slot subtraction slice");
+}
+
+void test_x86_backend_renders_two_local_temp_return_slice() {
+  auto module = make_two_local_temp_return_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should emit a real entry symbol for the bounded two-local return slice");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 backend should fold the bounded two-local scalar slot slice into the final immediate return");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the supported two-local scalar slot slice");
 }
 
 void test_x86_backend_renders_direct_call_slice() {
@@ -6860,6 +6952,8 @@ int main() {
   test_renders_return_add();
   test_adapter_normalizes_typed_direct_call_helper_slice();
   test_adapter_normalizes_local_temp_return_slice();
+  test_adapter_normalizes_local_temp_sub_return_slice();
+  test_adapter_normalizes_two_local_temp_return_slice();
   test_adapter_preserves_typed_two_arg_direct_call_helper_slice();
   test_adapter_normalizes_typed_direct_call_local_arg_slice();
   test_adapter_normalizes_typed_two_arg_direct_call_local_arg_slice();
@@ -6879,6 +6973,8 @@ int main() {
   test_x86_backend_scaffold_routes_through_explicit_emit_surface();
   test_x86_backend_scaffold_renders_direct_return_immediate_slice();
   test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice();
+  test_x86_backend_renders_local_temp_sub_slice();
+  test_x86_backend_renders_two_local_temp_return_slice();
   test_x86_backend_renders_direct_call_slice();
   test_x86_backend_renders_param_slot_slice();
   test_x86_backend_renders_typed_direct_call_local_arg_slice();
