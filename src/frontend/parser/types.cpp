@@ -1405,6 +1405,7 @@ bool Parser::consume_qualified_type_spelling(bool allow_global,
                                              bool consume_final_template_args,
                                              std::string* out_name,
                                              QualifiedNameRef* out_qn) {
+    ParseContextGuard trace(this, __func__);
     const int saved_pos = pos_;
     QualifiedNameRef qn;
 

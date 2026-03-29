@@ -11,9 +11,9 @@ Source Plan: plan.md
   record-member rewinds
 - Current slice: instrument the next qualified-type speculative dispatch that
   still masks the local helper stack under outer declaration/type wrappers
-- Iteration target: inspect whether the adjacent
-  `consume_qualified_type_spelling` helper still needs explicit
-  parser-debug stack coverage for nested dependent qualified-name spelling
+- Iteration target: move past the qualified-type spelling helper slice and
+  bound the first remaining speculative ranking case that still replaces a
+  deeper committed failure with an outer wrapper-only summary
 
 ## Completed
 
@@ -226,16 +226,60 @@ Source Plan: plan.md
   regression guard with no new failures:
   `before passed=2268/2269`, `after passed=2270/2271`; the existing
   `verify_tests_verify_top_level_recovery` failure remained unchanged
+- recorded the required full-suite baseline for this iteration:
+  `before passed=2270/2271`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged
+- added reduced parser-debug regression coverage in
+  `cpp_parser_debug_qualified_type_spelling_stack` for a nested qualified
+  template argument without `typename` whose summary stack previously dropped
+  the fully spelled `consume_qualified_type_spelling` helper path and
+  collapsed back to wrapper-only frames
+- added `ParseContextGuard` coverage to
+  `consume_qualified_type_spelling` so non-`typename` qualified-name spelling
+  remains visible in parser-debug event streams and summary stacks
+- tightened parse-debug snapshot preservation so strict wrapper-prefix unwinds
+  do not replace a deeper recorded stack with a shallower outer wrapper during
+  record-member or qualified-type rewinds
+- kept helper-only qualified-type frames out of the summary `parse_fn=...`
+  leaf selection so existing record-member diagnostics continue to point at
+  the owning parser entry point while the stack line still shows the deeper
+  helper path
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_expr_stmt_stack`,
+  `cpp_parser_debug_record_member_stack`,
+  `cpp_parser_debug_record_member_param_default_rank`,
+  `cpp_parser_debug_record_member_type_like_rank`,
+  `cpp_parser_debug_record_member_using_alias_leaf`,
+  `cpp_parser_debug_record_member_typedef_leaf`,
+  `cpp_parser_debug_qualified_type_top_level_params`,
+  `cpp_parser_debug_qualified_type_template_arg_stack`,
+  `cpp_parser_debug_qualified_type_dependent_typename_stack`,
+  `cpp_parser_debug_qualified_type_typename_spelling_stack`, and
+  `cpp_parser_debug_qualified_type_spelling_stack`
+- reran nearby qualified-type and record-member parser coverage for
+  `cpp_positive_sema_qualified_dependent_typename_global_parse_cpp`,
+  `cpp_positive_sema_qualified_type_resolution_dispatch_parse_cpp`,
+  `cpp_positive_sema_qualified_type_spelling_shared_parse_cpp`,
+  `cpp_positive_sema_qualified_type_start_probe_parse_cpp`,
+  `cpp_positive_sema_qualified_type_start_shared_probe_parse_cpp`,
+  `cpp_positive_sema_record_member_dispatch_parse_cpp`,
+  `cpp_positive_sema_record_member_enum_parse_cpp`,
+  `cpp_positive_sema_record_member_type_dispatch_parse_cpp`, and
+  `cpp_positive_sema_record_member_typedef_using_parse_cpp`
+- reran the required clean before/after full suite and passed the monotonic
+  regression guard with no new failures:
+  `before passed=2270/2271`, `after passed=2272/2273`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged
 
 ## Next Intended Slice
 
-- move to the next namespace/type speculative dispatch that still masks the
-  best inner failure after the nested qualified-type template-argument case
-- first candidate after this slice: inspect whether
-  `consume_qualified_type_spelling` or adjacent qualified-name helpers need
-  explicit stack-preservation coverage when the dependent-typename leaf is
-  correct but the fully spelled nested qualified-name path is still not
-  visible in the summary
+- move from helper-stack coverage to the first true ranking-only follow-up:
+  isolate the next speculative `try_parse_*` rewind where the correct helper
+  stack is preserved but the committed root-cause ranking still degrades to an
+  outer wrapper
+- first candidate after this slice: inspect whether a namespace/type dispatch
+  outside the qualified-spelling helpers now needs explicit tri-state failure
+  bookkeeping instead of another `ParseContextGuard` pass
 
 ## Blockers
 
@@ -251,39 +295,20 @@ Source Plan: plan.md
 - active repro command:
   `./build/c4cll --parser-debug --parse-only tests/cpp/std/std_vector_simple.cpp`
 - current reduced repro candidate for this iteration:
-  `./build/c4cll --parser-debug --parse-only <tmp>.cpp` with a nested
-  qualified-type template argument that leaves `parse_next_template_argument`
-  through `try_parse_cpp_scoped_base_type`, then later fails in a top-level
-  wrapper after the helper stack has been ranked away
-- this iteration landed the dependent-typename repro as
-  `tests/cpp/internal/negative_case/parser_debug_qualified_type_dependent_typename_stack.cpp`
-  and moved the emitted summary stack from
-  `try_parse_cpp_scoped_base_type -> parse_top_level_parameter_list` to
-  `try_parse_cpp_scoped_base_type -> parse_dependent_typename_specifier ->
-  parse_top_level_parameter_list`
-- this iteration landed the file-scope qualified-type declarator repro as
-  `tests/cpp/internal/negative_case/parser_debug_qualified_type_top_level_params.cpp`
-  and moved the emitted leaf from `parse_top_level` to
-  `parse_top_level_parameter_list`
-- the current target is the next qualified-type speculative parse helper after
-  the nested qualified-type template-argument slice, starting with
-  dependent-typename or adjacent nested qualified-type probes under
-  `parse_next_template_argument`
-- the current slice kept the qualified-type parameter failure leaf at
-  `parse_top_level_parameter_list` but now preserves the preceding
-  `try_parse_cpp_scoped_base_type` and `try_parse_qualified_base_type` frames
-  in the emitted summary stack
-- the current slice also preserves the nested
-  `parse_next_template_argument -> try_parse_cpp_scoped_base_type ->
-  try_parse_qualified_base_type` path when a later top-level wrapper failure
-  becomes the committed root cause
-- this iteration completed the alias/typedef leaf-local diagnostics slice
-  without changing the broader speculative ranking heuristics yet
-- keep the detailed event log untouched; the current summary logic now reuses
-  the furthest/deepest recorded stack when `parse_top_level` is only a wrapper
-- reduced regressions now cover both nested `parse_unary` recursion and a
-  nested record-member rewind path, plus malformed record `using` and `typedef`
-  alias members
+  `./build/c4cll --parser-debug --parse-only <tmp>.cpp` with a speculative
+  namespace/type dispatch that still reports an outer committed wrapper even
+  though the emitted `[pdebug] stack:` line keeps the deeper local helper path
+- this iteration landed the non-`typename` qualified-spelling repro as
+  `tests/cpp/internal/negative_case/parser_debug_qualified_type_spelling_stack.cpp`
+  and now keeps `consume_qualified_type_spelling_with_typename ->
+  consume_qualified_type_spelling` in the emitted summary stack for the nested
+  qualified template-argument case
+- the next slice should target a ranking-only repro where the deeper helper
+  stack is already preserved but the committed summary still points at an outer
+  wrapper because speculative `try_parse_*` failure bookkeeping wins
+- keep the detailed event log untouched; the current summary logic now preserves
+  deeper wrapper-prefix stacks during unwind and uses helper frames in the
+  `[pdebug] stack:` line without letting them take over `parse_fn=...`
 - the repo is not currently building this target as C++20, so `std::source_location`
   was not adopted; the current non-macro path uses `__func__`
 - the parked `std::vector` bring-up work remains in

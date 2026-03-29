@@ -55,9 +55,21 @@ bool is_top_level_wrapper_failure(const std::string& function_name) {
            function_name == "parse_top_level_parameter_list";
 }
 
+bool is_qualified_type_trace_wrapper(const std::string& function_name) {
+    return function_name == "parse_next_template_argument" ||
+           function_name == "consume_qualified_type_spelling" ||
+           function_name == "consume_qualified_type_spelling_with_typename" ||
+           function_name == "parse_dependent_typename_specifier";
+}
+
 bool is_qualified_type_trace_leaf(const std::string& function_name) {
     return function_name == "try_parse_cpp_scoped_base_type" ||
            function_name == "try_parse_qualified_base_type";
+}
+
+bool is_summary_only_parse_helper(const std::string& function_name) {
+    return function_name == "consume_qualified_type_spelling" ||
+           function_name == "consume_qualified_type_spelling_with_typename";
 }
 
 bool stack_contains_qualified_type_trace(
@@ -66,6 +78,16 @@ bool stack_contains_qualified_type_trace(
                        [](const std::string& function_name) {
                            return is_qualified_type_trace_leaf(function_name);
                        });
+}
+
+bool current_stack_is_prefix_of_best(
+    const std::vector<Parser::ParseContextFrame>& current_stack,
+    const std::vector<std::string>& best_stack_trace) {
+    if (current_stack.size() >= best_stack_trace.size()) return false;
+    for (size_t i = 0; i < current_stack.size(); ++i) {
+        if (current_stack[i].function_name != best_stack_trace[i]) return false;
+    }
+    return true;
 }
 
 }  // namespace
@@ -334,13 +356,20 @@ void Parser::note_parse_debug_event(const char* kind, const char* detail) {
         const int token_index = parse_debug_events_.back().token_index;
         const int token_delta = token_index - best_parse_stack_token_index_;
         const std::string current_function = parse_context_stack_.back().function_name;
+        const bool preserving_wrapper_prefix_snapshot =
+            token_delta > 0 &&
+            current_stack_is_prefix_of_best(parse_context_stack_,
+                                            best_parse_stack_trace_);
         const bool preserving_qualified_type_probe_snapshot =
             token_delta > 0 &&
-            is_top_level_wrapper_failure(current_function) &&
+            (is_top_level_wrapper_failure(current_function) ||
+             is_qualified_type_trace_wrapper(current_function)) &&
             stack_contains_qualified_type_trace(best_parse_stack_trace_);
         const bool replace_snapshot =
             best_parse_stack_token_index_ < 0 ||
-            (!preserving_qualified_type_probe_snapshot && token_delta > 1) ||
+            (!(preserving_wrapper_prefix_snapshot ||
+               preserving_qualified_type_probe_snapshot) &&
+             token_delta > 1) ||
             (token_delta > 0 &&
              parse_context_stack_.size() >= best_parse_stack_trace_.size()) ||
             (token_delta == 0 &&
@@ -435,8 +464,14 @@ std::string Parser::format_best_parse_failure() const {
 
     std::ostringstream oss;
     const std::vector<std::string> summary_stack = best_debug_summary_stack();
-    const std::string* summary_leaf =
-        summary_stack.empty() ? nullptr : &summary_stack.back();
+    const std::string* summary_leaf = nullptr;
+    for (auto it = summary_stack.rbegin(); it != summary_stack.rend(); ++it) {
+        if (!is_summary_only_parse_helper(*it)) {
+            summary_leaf = &*it;
+            break;
+        }
+    }
+    if (!summary_leaf && !summary_stack.empty()) summary_leaf = &summary_stack.back();
     if (summary_leaf && !summary_leaf->empty()) {
         oss << "parse_fn=" << *summary_leaf;
     } else if (!best_parse_failure_.function_name.empty()) {
