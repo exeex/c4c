@@ -1,152 +1,191 @@
-# Built-in x86 Assembler Runbook
+# Built-in x86 Linker Runbook
 
 Status: Active
-Source Idea: ideas/open/23_backend_builtin_assembler_x86_plan.md
+Source Idea: ideas/open/24_backend_builtin_linker_x86_plan.md
 
 ## Purpose
 
-Activate the first built-in x86 assembler slice so the compiler can emit working ELF relocatable objects for the currently supported x86 backend subset without relying on an external assembler for that bounded path.
+Activate the first built-in x86 linker slice so the compiler can link a bounded
+set of already-supported x86 objects into working ELF executables without
+relying on the external linker for that narrow path.
 
 ## Goal
 
-Compile and wire the mirrored x86 assembler subtree, support the minimum instruction and relocation subset already exercised by current x86 backend tests, and validate emitted `.o` files against externally assembled references.
+Compile and wire the mirrored x86 linker subtree, support the minimum shared
+input and relocation subset exercised by the first simple x86 linker tests, and
+validate emitted executables against externally linked references.
 
 ## Core Rule
 
-Keep this slice narrow and mechanical: follow the ref assembler structure, port only what the current x86 backend output requires, and do not expand into linker work or wider instruction-set coverage.
+Keep this linker slice narrow and mechanical: follow the ref linker structure,
+support only the first bounded static-executable path, and do not broaden into
+dynamic-linking or wide relocation coverage.
 
 ## Read First
 
-- [ideas/open/23_backend_builtin_assembler_x86_plan.md](/workspaces/c4c/ideas/open/23_backend_builtin_assembler_x86_plan.md)
-- [ref/claudes-c-compiler/src/backend/x86/assembler/README.md](/workspaces/c4c/ref/claudes-c-compiler/src/backend/x86/assembler/README.md)
-- [ref/claudes-c-compiler/src/backend/x86/assembler/mod.rs](/workspaces/c4c/ref/claudes-c-compiler/src/backend/x86/assembler/mod.rs)
-- [ref/claudes-c-compiler/src/backend/x86/assembler/parser.rs](/workspaces/c4c/ref/claudes-c-compiler/src/backend/x86/assembler/parser.rs)
-- [ref/claudes-c-compiler/src/backend/x86/assembler/elf_writer.rs](/workspaces/c4c/ref/claudes-c-compiler/src/backend/x86/assembler/elf_writer.rs)
-- [ref/claudes-c-compiler/src/backend/x86/assembler/encoder/](/workspaces/c4c/ref/claudes-c-compiler/src/backend/x86/assembler/encoder/)
+- [ideas/open/24_backend_builtin_linker_x86_plan.md](/workspaces/c4c/ideas/open/24_backend_builtin_linker_x86_plan.md)
+- [ideas/open/__backend_port_plan.md](/workspaces/c4c/ideas/open/__backend_port_plan.md)
+- [ref/claudes-c-compiler/src/backend/x86/linker/README.md](/workspaces/c4c/ref/claudes-c-compiler/src/backend/x86/linker/README.md)
+- [ref/claudes-c-compiler/src/backend/x86/linker/mod.rs](/workspaces/c4c/ref/claudes-c-compiler/src/backend/x86/linker/mod.rs)
+- [ref/claudes-c-compiler/src/backend/x86/linker/link.rs](/workspaces/c4c/ref/claudes-c-compiler/src/backend/x86/linker/link.rs)
+- [ref/claudes-c-compiler/src/backend/x86/linker/input.rs](/workspaces/c4c/ref/claudes-c-compiler/src/backend/x86/linker/input.rs)
+- [ref/claudes-c-compiler/src/backend/x86/linker/elf.rs](/workspaces/c4c/ref/claudes-c-compiler/src/backend/x86/linker/elf.rs)
+- [ref/claudes-c-compiler/src/backend/x86/linker/emit_exec.rs](/workspaces/c4c/ref/claudes-c-compiler/src/backend/x86/linker/emit_exec.rs)
 
 ## Current Targets
 
-- `src/backend/x86/assembler/`
-- shared ELF support the assembler depends on
-- the assembler entry boundary chosen for the x86 backend path
-- validation fixtures that compare generated objects against external assembly output
+- `src/backend/x86/linker/`
+- `src/backend/linker_common/`
+- `src/backend/elf/`
+- x86 linker-facing backend and fixture tests
+- bounded static executable emission for simple x86 objects
 
 ## Non-Goals
 
-- x86 linker implementation
-- full x86 instruction-set coverage
-- widening backend codegen scope beyond the currently exercised subset
-- non-x86 backend work
+- dynamic linking, shared-library output, or PLT/GOT polish beyond what the
+  first static slice strictly needs
+- full relocation coverage
+- new assembler or codegen feature work
+- non-x86 linker work
 
 ## Working Model
 
-1. Identify the exact x86 assembly emitted by current backend tests.
-2. Port only the parser and encoder surfaces needed for that output.
-3. Port object-writing support around shared ELF helpers.
-4. Route one minimal backend-emitted function through the built-in assembler path.
-5. Validate object layout, relocations, and disassembly against externally assembled references.
+1. Identify the smallest x86 linker-owned executable path already representable
+   by current fixtures and backend-owned objects.
+2. Port only the shared input/loading and x86 relocation/emission surfaces
+   needed for that path.
+3. Emit one bounded static ELF executable for the first supported case.
+4. Validate executable metadata and simple runtime behavior against the external
+   linker path before broadening coverage.
 
 ## Execution Rules
 
-- Treat the ref backend layout as the default shape unless the existing C++ backend forces a small adapter.
-- Prefer the smallest testable slice and add or update validation before broadening support.
-- If execution uncovers a new backend feature requirement outside this subset, record it under `ideas/open/` instead of absorbing it here.
-- Keep linker concerns out of this runbook; unresolved linker follow-on stays with idea `24`.
+- Treat the ref linker layout as the default shape unless the existing C++
+  shared linker layers force a small adapter.
+- Prefer the smallest multi-object or relocation-bearing slice that can be
+  tested end-to-end.
+- Keep shared parsing and symbol-registration changes mechanical and scoped to
+  x86 linker requirements.
+- If execution uncovers a separate linker initiative, write it into
+  `ideas/open/` instead of silently widening this runbook.
+- Do not absorb assembler-expansion work here unless it is strictly required to
+  finish the bounded linker slice.
 
 ## Ordered Steps
 
-### Step 1: Inspect the current x86 backend output subset
+### Step 1: Inspect the first bounded x86 linker slice
 
-Goal: establish the exact assembler surface required by existing x86 backend tests.
+Goal: establish the exact object shapes, relocations, and executable properties
+required for the first linker-owned path.
 
-Primary target: current x86 backend tests and emitted assembly/object expectations.
-
-Concrete actions:
-
-- inventory the x86 backend tests that already emit or expect x86 assembly/object output
-- capture the current assembly forms, directives, symbols, and relocations those tests require
-- map the required subset back to the ref assembler parser, encoder, and writer surfaces
-
-Completion check:
-
-- there is a bounded list of required instructions, directives, symbol forms, and relocations for the first slice
-
-### Step 2: Port the minimum parser surface
-
-Goal: make the assembler accept the bounded backend-emitted x86 assembly subset.
-
-Primary target: `src/backend/x86/assembler/` parser-facing files.
+Primary target: current x86 linker tests, shared linker fixtures, and bounded
+backend-owned x86 objects.
 
 Concrete actions:
 
-- mirror only the parser entry points and data structures needed for the bounded subset
-- keep unsupported syntax explicit rather than silently widening coverage
-- add focused tests that exercise accepted and rejected forms for the first slice
+- inventory current x86 linker tests, fixtures, and helper seams
+- identify the smallest relocation-bearing or multi-object slice that should be
+  linked first
+- map required sections, symbols, and relocation types back to ref/shared/x86
+  linker surfaces
 
 Completion check:
 
-- the parser compiles and can represent all assembly constructs needed by the bounded subset
+- there is a bounded list of object inputs, relocation types, and executable
+  properties for the first linker slice
 
-### Step 3: Port the minimum encoder surface
+### Step 2: Compile-integrate the minimum x86 linker orchestration surface
 
-Goal: encode the required x86 instructions and operand forms for the current backend subset.
+Goal: make the x86 linker subtree compile and expose the first linker entry
+boundary.
 
-Primary target: `src/backend/x86/assembler/encoder/`
+Primary target: `src/backend/x86/linker/`
 
 Concrete actions:
 
-- port the smallest encoder slices matching the Step 1 inventory
-- preserve ref naming and mechanism boundaries where practical
-- add or update tests that check bytes, fixups, and failure paths for unsupported encodings
+- port the smallest `mod.rs` / `link.rs` style entry surfaces needed for static
+  linking
+- keep unsupported operations explicit rather than widening feature coverage
+- add or update focused tests that compile the linker-facing contract surface
 
 Completion check:
 
-- the encoder compiles and emits correct bytes/fixups for the bounded subset
+- the x86 linker entry boundary compiles and can accept the bounded input set
 
-### Step 4: Port ELF object writing support
+### Step 3: Port the bounded shared input and symbol-loading path
 
-Goal: emit working ELF relocatable objects for the supported assembler subset.
+Goal: load the first supported x86 object/archive inputs through the shared
+  linker layers.
 
-Primary target: assembler writer code plus shared ELF helpers it depends on.
+Primary target: `src/backend/linker_common/` helpers touched by the x86 linker
+and x86-specific input glue.
 
 Concrete actions:
 
-- port the writer path needed to produce relocatable ELF objects
-- wire symbols, sections, and relocations only for the supported slice
-- keep shared ELF support changes mechanical and scoped to assembler requirements
+- reuse shared object/archive parsing wherever available
+- wire only the symbol registration and input loading needed for the bounded
+  slice
+- add focused tests covering loaded sections, symbols, and archive/object
+  membership for the chosen inputs
 
 Completion check:
 
-- the assembler path can write `.o` files for representative supported inputs
+- the x86 linker can load and classify the bounded input objects it needs
 
-### Step 5: Wire one backend-emitted function through the built-in assembler path
+### Step 4: Implement the minimum x86 relocation and resolution slice
 
-Goal: prove end-to-end integration for the first bounded backend-owned path.
+Goal: resolve symbols and apply only the relocation subset required by the
+first executable path.
 
-Primary target: the chosen assembler entry boundary from the x86 backend.
+Primary target: `src/backend/x86/linker/elf.cpp`, `link.cpp`, and closely
+related types/helpers.
 
 Concrete actions:
 
-- route one minimal x86 backend-emitted function through the built-in assembler path
-- keep external assembler fallback behavior intact for unsupported cases if that exists today
-- add or update a focused integration test covering the routed path
+- port the smallest relocation and symbol-resolution logic required by the Step
+  1 inventory
+- keep unsupported relocation kinds explicit
+- add or update tests that check patched bytes, symbol resolution, and failure
+  paths for out-of-scope relocations
 
 Completion check:
 
-- one minimal backend-emitted function successfully produces an object through the built-in assembler path
+- the bounded relocation-bearing or multi-object slice links correctly in memory
 
-### Step 6: Validate against external assembler output
+### Step 5: Emit one bounded static x86 executable
 
-Goal: confirm object correctness for the supported slice before widening coverage.
+Goal: produce one working ELF executable for the first supported x86 linker
+path.
 
-Primary target: object comparison and disassembly validation.
+Primary target: x86 executable emission code and the chosen linker entry seam.
 
 Concrete actions:
 
-- compare generated `.o` files against externally assembled references for representative cases
-- check sections, symbols, relocations, and disassembly
-- run targeted tests, nearby backend tests, and the full regression suite
+- port the minimal static executable emitter surface needed by the bounded slice
+- keep layout, headers, and section/program-header emission scoped to the first
+  supported case
+- add or update an integration test covering the emitted executable image
 
 Completion check:
 
-- supported cases produce comparable object metadata and correct disassembly with no regression in the existing suite
+- one bounded x86 program links into an ELF executable through the built-in
+  linker path
+
+### Step 6: Validate against the external linker path
+
+Goal: confirm executable correctness for the supported slice before widening
+coverage.
+
+Primary target: executable comparison and runtime validation.
+
+Concrete actions:
+
+- compare the built-in linked executable against an externally linked reference
+  for representative supported cases
+- check executable layout, symbol surface, and runtime behavior
+- run targeted tests, nearby linker tests, and the full regression suite
+
+Completion check:
+
+- supported cases produce comparable executable behavior and no regression in
+  the existing suite

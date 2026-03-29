@@ -38,7 +38,6 @@ That means:
 - `20_backend_x86_global_char_pointer_diff_plan.md`
 - `21_backend_x86_global_int_pointer_diff_plan.md`
 - `22_backend_x86_global_int_pointer_roundtrip_plan.md`
-- `23_backend_builtin_assembler_x86_plan.md`
 - `24_backend_builtin_linker_x86_plan.md`
 
 ## Shared Guardrails

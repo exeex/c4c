@@ -7,7 +7,7 @@ Umbrella source: `ideas/open/__backend_port_plan.md`
 Depends on:
 
 - `ideas/closed/04_backend_binary_utils_contract_plan.md`
-- `ideas/open/23_backend_builtin_assembler_x86_plan.md`
+- `ideas/closed/23_backend_builtin_assembler_x86_plan.md`
 
 ## Goal
 
