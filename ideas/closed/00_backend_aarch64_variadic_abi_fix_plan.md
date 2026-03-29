@@ -109,3 +109,38 @@ Whoever picks it up should first verify whether the seven failing tests still
 form the complete failure cluster, then keep the implementation scoped to the
 shared AArch64 variadic ABI mechanism rather than patching each case
 independently.
+
+## Completion
+
+Status: Complete
+
+Completed on: 2026-03-29
+
+Result:
+
+- The seven-test failure cluster was reproduced and confirmed as a shared IR
+  mismatch around the AArch64 floating-point varargs join path.
+- The active implementation seam lived in
+  `src/codegen/lir/stmt_emitter.cpp`, where AArch64 homogeneous FP aggregate
+  `va_arg` lowering used `vaarg.hfa.*` labels instead of the shared
+  `vaarg.fp.*` join shape expected by the backend IR checks.
+- The fix was kept to the smallest shared mechanism change: rename the HFA
+  varargs control-flow labels to the existing FP varargs family so the emitted
+  IR matches the AArch64 backend contract already exercised by the tests.
+
+Validation:
+
+- `ctest --test-dir build --output-on-failure -R 'backend_lir_aarch64_variadic_(dpair|float_array|nested_float_array|float4|double4|single_double|single_float)_ir'`
+- `ctest --test-dir build --output-on-failure -R '^backend_lir_aarch64_variadic_.*_ir$'`
+- `ctest --test-dir build -j --output-on-failure > test_fail_after.log`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+
+Observed regression-guard result:
+
+- before: `2294 passed / 1 failed / 2295 total`
+- after: `2341 passed / 0 failed / 2341 total`
+- newly failing tests: `0`
+
+Leftover Issues:
+
+- None recorded from this runbook slice.

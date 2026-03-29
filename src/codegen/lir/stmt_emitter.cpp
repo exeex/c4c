@@ -3760,10 +3760,10 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const
       const std::string offs = fresh_tmp(ctx);
       emit_lir_op(ctx, lir::LirLoadOp{offs, std::string("i32"), offs_ptr});
 
-      const std::string stack_lbl = fresh_lbl(ctx, "vaarg.hfa.stack.");
-      const std::string reg_try_lbl = fresh_lbl(ctx, "vaarg.hfa.regtry.");
-      const std::string reg_lbl = fresh_lbl(ctx, "vaarg.hfa.reg.");
-      const std::string join_lbl = fresh_lbl(ctx, "vaarg.hfa.join.");
+      const std::string stack_lbl = fresh_lbl(ctx, "vaarg.fp.stack.");
+      const std::string reg_try_lbl = fresh_lbl(ctx, "vaarg.fp.regtry.");
+      const std::string reg_lbl = fresh_lbl(ctx, "vaarg.fp.reg.");
+      const std::string join_lbl = fresh_lbl(ctx, "vaarg.fp.join.");
 
       const std::string is_stack0 = fresh_tmp(ctx);
       emit_lir_op(ctx, lir::LirCmpOp{is_stack0, false, "sge", "i32", offs, "0"});
