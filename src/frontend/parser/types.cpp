@@ -1978,7 +1978,12 @@ void Parser::parse_declarator_parameter_list(
                 break;
             }
             if (check(TokenKind::RParen)) break;
-            if (!is_type_start()) {
+            const bool allow_unresolved_template_type_start =
+                is_cpp_mode() &&
+                check(TokenKind::Identifier) &&
+                pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                tokens_[pos_ + 1].kind == TokenKind::Less;
+            if (!is_type_start() && !allow_unresolved_template_type_start) {
                 consume();
                 if (match(TokenKind::Comma)) continue;
                 break;
@@ -2346,6 +2351,13 @@ bool Parser::is_type_start() const {
             (find_template_struct_primary(cur().lexeme) ||
              find_template_struct_primary(resolve_visible_type_name(cur().lexeme)) ||
              !current_struct_tag_.empty())) return true;
+        // Keep declaration probes aligned with parse_base_type(): even when
+        // template-type registration was lost, `Identifier<...>` should still
+        // be allowed to enter type parsing so the unresolved-template fallback
+        // can recover declarations such as `holder<T> value`.
+        if (is_cpp_mode() &&
+            pos_ + 1 < static_cast<int>(tokens_.size()) &&
+            tokens_[pos_ + 1].kind == TokenKind::Less) return true;
     }
     if (k == TokenKind::ColonColon) {
         QualifiedNameRef qn;
@@ -4939,7 +4951,12 @@ bool Parser::try_parse_record_method_or_field_member(
             while (!at_end()) {
                 if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
                 if (check(TokenKind::RParen)) break;
-                if (!is_type_start()) break;
+                const bool allow_unresolved_template_type_start =
+                    is_cpp_mode() &&
+                    check(TokenKind::Identifier) &&
+                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                    tokens_[pos_ + 1].kind == TokenKind::Less;
+                if (!is_type_start() && !allow_unresolved_template_type_start) break;
                 Node* p = parse_param();
                 if (p) params.push_back(p);
                 if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
@@ -5061,7 +5078,12 @@ bool Parser::try_parse_record_method_or_field_member(
                         break;
                     }
                     if (check(TokenKind::RParen)) break;
-                    if (!is_type_start()) break;
+                    const bool allow_unresolved_template_type_start =
+                        is_cpp_mode() &&
+                        check(TokenKind::Identifier) &&
+                        pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                        tokens_[pos_ + 1].kind == TokenKind::Less;
+                    if (!is_type_start() && !allow_unresolved_template_type_start) break;
                     Node* p = parse_param();
                     if (p) params.push_back(p);
                     if (check(TokenKind::Ellipsis)) {

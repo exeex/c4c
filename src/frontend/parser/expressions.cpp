@@ -683,6 +683,42 @@ Node* Parser::parse_primary() {
         return parse_postfix(ident);
     };
 
+    auto has_balanced_template_id_ahead = [&]() -> bool {
+        if (!(is_cpp_mode() && check(TokenKind::Identifier) &&
+              pos_ + 1 < static_cast<int>(tokens_.size()) &&
+              tokens_[pos_ + 1].kind == TokenKind::Less)) {
+            return true;
+        }
+
+        int depth = 0;
+        for (int probe = pos_ + 1; probe < static_cast<int>(tokens_.size()); ++probe) {
+            TokenKind k = tokens_[probe].kind;
+            if (k == TokenKind::Less) {
+                ++depth;
+                continue;
+            }
+            if (k == TokenKind::Greater) {
+                if (depth > 0 && --depth == 0) return true;
+                continue;
+            }
+            if (k == TokenKind::GreaterGreater) {
+                if (depth > 0) {
+                    depth -= 2;
+                    if (depth <= 0) return true;
+                }
+                continue;
+            }
+            if ((k == TokenKind::RParen || k == TokenKind::Comma ||
+                 k == TokenKind::Semi || k == TokenKind::Question ||
+                 k == TokenKind::Colon || k == TokenKind::LessEqual ||
+                 k == TokenKind::GreaterEqual) &&
+                depth > 0) {
+                return false;
+            }
+        }
+        return false;
+    };
+
     // Integer literal
     if (check(TokenKind::IntLit)) {
         long long v = parse_int_lexeme(cur().lexeme.c_str());
@@ -841,7 +877,7 @@ Node* Parser::parse_primary() {
         consume();  // consume (
 
         // Check for cast: (type-name)expr
-        if (is_type_start()) {
+        if (is_type_start() && has_balanced_template_id_ahead()) {
             int save_pos = pos_;
             TypeSpec cast_ts = parse_type_name();
             if (check(TokenKind::RParen)) {
@@ -1255,7 +1291,7 @@ Node* Parser::parse_primary() {
     }
 
     // C++ functional cast: T(expr)
-    if (is_cpp_mode() && is_type_start()) {
+    if (is_cpp_mode() && is_type_start() && has_balanced_template_id_ahead()) {
         int save_pos = pos_;
         std::string saved_typedef = last_resolved_typedef_;
         TypeSpec cast_ts = parse_base_type();

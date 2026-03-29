@@ -6,8 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2 / Step 3: continue reducing the next `std::vector` parser blocker now
-  that explicit `obj.operator->()` member calls are handled correctly
+- Step 2 / Step 3: reduce the next post-`__miter_base` `std::vector` blocker,
+  starting with dependent template-parameter type handling in
+  `bits/stl_iterator.h` / `bits/predefined_ops.h`
 
 ## Completed
 
@@ -19,13 +20,19 @@ Source Plan: plan.md
 - verified the reduced parse test, `bits/ptr_traits.h`, and the full suite
   after the fix; suite moved from `2248/2249` passing with one unrelated fail
   to `2250/2250` passing after the new regression coverage landed
+- added `template_unresolved_param_type_parse.cpp` and taught declaration
+  parsing to admit unresolved `Identifier<...>` parameter-type starts while
+  keeping expression parsing from treating plain relational expressions as
+  template-id casts
+- verified the new reduced parse test, nearby operator parse coverage, and the
+  full suite; suite moved from `2250/2250` to `2251/2251`
 
 ## Next Intended Slice
 
-- reduce the next `bits/stl_iterator.h` parser failure, starting from
-  `__miter_base(reverse_iterator<_Iterator> __it)` at line 672 and the related
-  constructor signatures at lines 704/805/920, into the smallest standalone
-  parser test before changing the parser again
+- reduce `bits/stl_iterator.h:1494` (`typedef _Iterator pointer;`) and the
+  first remaining `bits/predefined_ops.h:150` constructor-parameter failure
+  into the smallest standalone parser/frontend repro before changing more
+  dependent-type handling
 
 ## Blockers
 
@@ -43,3 +50,13 @@ Source Plan: plan.md
 - current `std_vector_simple.cpp` repro has advanced past `ptr_traits.h`; the
   first remaining parse errors are in `bits/stl_iterator.h`,
   `bits/predefined_ops.h`, and later headers
+- this iteration starts by reducing the first `stl_iterator.h` failure near
+  `__miter_base(reverse_iterator<_Iterator> __it)` before touching later
+  headers
+- current `std_vector_simple.cpp` repro no longer reports the old
+  `__miter_base(reverse_iterator<_Iterator> __it)` / `move_iterator<_Iterator>
+  __it` `expected RPAREN but got '<'` failures
+- the new reduced regression is
+  `tests/cpp/internal/postive_case/template_unresolved_param_type_parse.cpp`
+- next visible blockers start earlier in the header stack at
+  `bits/stl_iterator.h:1494`, then `bits/predefined_ops.h:150`
