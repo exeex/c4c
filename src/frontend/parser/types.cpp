@@ -1120,6 +1120,7 @@ static std::vector<Token> lex_template_expr_text(const std::string& text,
 
 static const char* extra_operator_mangled_name(TokenKind kind) {
     switch (kind) {
+        case TokenKind::AmpAmp: return "operator_and";
         case TokenKind::Bang: return "operator_not";
         case TokenKind::Tilde: return "operator_bitnot";
         case TokenKind::MinusMinus: return "operator_dec_pending";

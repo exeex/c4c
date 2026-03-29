@@ -100,6 +100,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     keyword_access_virtual_parse
     keyword_friend_parse
     keyword_mutable_parse
+    keyword_and_parse
     qualified_cpp_base_type_dispatch_parse
     qualified_type_spelling_shared_parse
     qualified_type_resolution_dispatch_parse
@@ -207,6 +208,24 @@ if(CLANG_EXECUTABLE)
 else()
   message(WARNING "clang not found: skipping internal cpp positive_case runtime tests")
 endif()
+
+add_test(
+  NAME cpp_lex_keyword_and_tokens
+  COMMAND c4cll --lex-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/keyword_and_parse.cpp"
+)
+set_tests_properties(cpp_lex_keyword_and_tokens PROPERTIES
+  LABELS "internal;positive_case;cpp;lex"
+  PASS_REGULAR_EXPRESSION "AMP_AMP 'and'"
+)
+
+add_test(
+  NAME cpp_parse_keyword_and_operator_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/keyword_and_parse.cpp"
+)
+set_tests_properties(cpp_parse_keyword_and_operator_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Function\\(operator_and\\)"
+)
 
 add_test(
   NAME cpp_hir_template_def_dump

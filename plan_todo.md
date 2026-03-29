@@ -6,9 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 2: choose the first narrow alternative-operator spelling slice,
-  likely `and`, and add matching lexer / parser coverage without widening
-  scope
+- [ ] Step 2: choose the next narrow alternative-operator spelling slice after
+  `and`, likely `or` or `not`, and keep coverage scoped to lexer tokenization
+  plus the smallest parser compatibility edge it exposes
 
 ## Todo
 
@@ -21,6 +21,11 @@ Source Plan: plan.md
 - [x] Record the current full-suite baseline before implementation work
 - [x] Add the narrowest validating lexer or parser test for the first slice
 - [x] Implement the first keyword-classification slice
+- [x] Re-run targeted tests, nearby coverage, and the full suite
+- [x] Record a fresh full-suite baseline in `test_before.log` before the `and`
+  slice
+- [x] Add the narrowest validating lexer / parser coverage for the `and` slice
+- [x] Implement the `and` alternative-operator slice
 - [x] Re-run targeted tests, nearby coverage, and the full suite
 - [x] Record a fresh full-suite baseline before the `mutable` slice
 - [x] Add the narrowest validating lexer or parser test for the `mutable` slice
@@ -131,12 +136,29 @@ Source Plan: plan.md
   confirming `KW_mutable` output.
 - [x] Recorded full-suite post-change status in `test_after.log`:
   `100% tests passed, 0 tests failed out of 2346`.
+- [x] Added
+  [tests/cpp/internal/postive_case/keyword_and_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/keyword_and_parse.cpp),
+  registered it as a parse-only positive case, and added explicit lexer / AST
+  assertions in
+  [tests/cpp/internal/InternalTests.cmake](/workspaces/c4c/tests/cpp/internal/InternalTests.cmake)
+  to pin `AMP_AMP 'and'` output plus `Function(operator_and)` in the parse
+  dump.
+- [x] Reserved `and` in the lexer by classifying it to the existing
+  `TokenKind::AmpAmp`, then updated overloaded-operator parsing helpers so
+  `operator and` lowers through the same `operator_and` path as `operator&&`.
+- [x] Revalidated the slice with targeted coverage:
+  `keyword_and_parse`, `cpp_lex_keyword_and_tokens`,
+  `cpp_parse_keyword_and_operator_dump`, `operator_decl_eq_parse`, and
+  `friend_inline_operator_parse`, plus a manual `--lex-only` probe confirming
+  `AMP_AMP 'and'` output.
+- [x] Recorded full-suite post-change status in `test_after.log`:
+  `100% tests passed, 0 tests failed out of 2349`.
 
 ## Next Intended Slice
 
-After `mutable`, audit which single alternative-operator spelling should land
-first, likely `and`, before taking a broader alias batch so the expression
-parser compatibility work stays narrow and attributable.
+After `and`, audit whether `or` or `not` is the next narrowest
+alternative-operator spelling to land without widening into a broader alias
+batch.
 
 ## Blockers
 
@@ -163,3 +185,13 @@ parser compatibility work stays narrow and attributable.
   `2344 -> 2345` total passing tests due to the new committed parse regression.
 - Fifth slice finished cleanly with monotonic full-suite results:
   `2345 -> 2346` total passing tests due to the new committed parse regression.
+- Fresh baseline before the `and` slice remains clean:
+  `100% tests passed, 0 tests failed out of 2346`.
+- The `and` slice finished cleanly with monotonic full-suite results:
+  `2346 -> 2349` total passing tests due to the new parse case plus explicit
+  lexer / AST assertions.
+- A direct runtime regression for overloaded `operator&&` exposed a separate
+  lowering issue where record-typed operands are compared as scalars in
+  condition contexts. That behavior is adjacent but out of scope for this
+  lexer/parser runbook, so the committed `and` coverage stays at the
+  lexer/parse boundary.
