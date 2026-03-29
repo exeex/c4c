@@ -99,6 +99,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     qualified_dependent_typename_global_parse
     keyword_typename_final_parse
     keyword_noexcept_nullptr_parse
+    noexcept_expr_parse
     keyword_access_virtual_parse
     keyword_friend_parse
     keyword_mutable_parse

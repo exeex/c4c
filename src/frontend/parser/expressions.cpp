@@ -317,6 +317,13 @@ Node* Parser::parse_unary() {
                 return n;
             }
         }
+        case TokenKind::KwNoexcept: {
+            consume();
+            expect(TokenKind::LParen);
+            Node* inner = parse_assign_expr();
+            expect(TokenKind::RParen);
+            return make_unary("noexcept", inner, ln);
+        }
         case TokenKind::KwAlignof:
         case TokenKind::KwGnuAlignof: {
             consume();
