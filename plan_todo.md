@@ -6,13 +6,14 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 3: Port the first shared linear-scan regalloc behavior slice on top of the new liveness intervals.
+- [ ] Step 4: Port the stack-layout helper boundary that consumes regalloc results.
+  Iteration target: thread the new shared regalloc result shape through the first stack-layout helper seam without pulling AArch64-specific policy into shared helpers.
 
 ## Todo Queue
 
 - [x] Step 1: Inventory the current shared backend boundary and capture the first implementation slice.
 - [x] Step 2: Port liveness and interval computation with targeted tests.
-- [ ] Step 3: Port shared linear-scan regalloc with targeted tests.
+- [x] Step 3: Port shared linear-scan regalloc with targeted tests.
 - [ ] Step 4: Port the stack-layout helper boundary that consumes regalloc results.
 - [ ] Step 5: Wire the shared result into the AArch64 prologue and emit path.
 - [ ] Step 6: Add the smallest required cleanup or peephole slice.
@@ -26,12 +27,13 @@ Source Plan: plan.md
 - [x] Rebuilt the tree, ran `backend_lir_adapter_tests`, ran full `ctest`, and verified monotonic non-regression with `check_monotonic_regression.py` (`before=570/574`, `after=570/574`, no new failures).
 - [x] Replaced the placeholder shared liveness scan with a typed-LIR def/use pass that tracks terminator uses, call points, live-through blocks, and phi incoming edges for the current backend subset.
 - [x] Added backend coverage for call-crossing and multi-block/phi-join live interval ranges, rebuilt the tree, reran `backend_lir_adapter_tests`, reran full `ctest`, and rechecked monotonic non-regression (`before=570/574`, `after=570/574`, no new failures).
+- [x] Replaced the placeholder regalloc pass with the first shared linear-scan slice: call-spanning intervals use the callee-saved pool first, non-call-spanning intervals use caller-saved registers before callee spillover, and overlapping intervals spill instead of reusing a busy register.
+- [x] Added backend allocator coverage for caller-saved versus callee-saved pool selection, non-overlapping register reuse, and bounded spill behavior; rebuilt the tree, reran `backend_lir_adapter_tests`, reran full `ctest`, and rechecked monotonic non-regression (`before=570/574`, `after=570/574`, no new failures).
 
 ## Next Intended Slice
 
-- Keep the new shared liveness intervals as the allocator input contract and replace the placeholder first-fit assignment in `src/backend/regalloc.cpp` with the first linear-scan behavior slice.
-- Add targeted allocator tests for interval overlap, caller-saved versus callee-saved pool choice around call points, and the first bounded spill behavior.
-- Leave stack-layout and AArch64 consumption work for later runbook steps after the shared allocator handoff is stable.
+- Start the stack-layout helper slice by replacing any remaining placeholder assumptions with reads from `RegAllocResult::assignments`, `used_regs`, and cached liveness where the current shared helpers already expose a natural seam.
+- Keep AArch64 wiring deferred until the shared stack-layout seam compiles cleanly and has narrow tests around the new handoff data.
 
 ## Blockers
 

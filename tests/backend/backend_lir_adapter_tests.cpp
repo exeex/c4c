@@ -209,6 +209,57 @@ c4c::codegen::lir::LirModule make_interval_phi_join_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_non_overlapping_interval_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{"%t0", "add", "i32", "1", "2"});
+  entry.insts.push_back(LirBinOp{"%t1", "add", "i32", "%t0", "3"});
+  entry.insts.push_back(LirBinOp{"%t2", "add", "i32", "4", "5"});
+  entry.insts.push_back(LirBinOp{"%t3", "add", "i32", "%t2", "6"});
+  entry.terminator = LirRet{std::string("%t3"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_overlapping_interval_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{"%t0", "add", "i32", "1", "2"});
+  entry.insts.push_back(LirBinOp{"%t1", "add", "i32", "4", "5"});
+  entry.insts.push_back(LirBinOp{"%t2", "add", "i32", "%t0", "%t1"});
+  entry.terminator = LirRet{std::string("%t2"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_conditional_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -2999,7 +3050,7 @@ void test_backend_shared_liveness_surface_tracks_phi_join_ranges() {
               "shared liveness surface should keep the join result live through the return terminator");
 }
 
-void test_backend_shared_regalloc_surface_assigns_first_available_reg() {
+void test_backend_shared_regalloc_surface_uses_caller_saved_for_non_call_interval() {
   const auto module = make_return_add_module();
   const auto& function = module.functions.front();
 
@@ -3011,13 +3062,74 @@ void test_backend_shared_regalloc_surface_assigns_first_available_reg() {
   expect_true(regalloc.assignments.size() == 1,
               "shared regalloc surface should assign one register for the single-result helper slice");
   const auto it = regalloc.assignments.find("%t0");
-  expect_true(it != regalloc.assignments.end() && it->second.index == 20,
-              "shared regalloc surface should prefer the first available callee-saved register");
-  expect_true(regalloc.used_regs.size() == 1 && regalloc.used_regs.front().index == 20,
-              "shared regalloc surface should track the used register set");
+  expect_true(it != regalloc.assignments.end() && it->second.index == 13,
+              "shared regalloc surface should prefer the caller-saved pool for intervals that do not span calls");
+  expect_true(regalloc.used_regs.empty(),
+              "shared regalloc surface should leave the callee-saved usage set empty when only caller-saved registers are needed");
   expect_true(regalloc.liveness.has_value() &&
                   regalloc.liveness->find_interval("%t0") != nullptr,
               "shared regalloc surface should retain cached liveness for the handoff boundary");
+}
+
+void test_backend_shared_regalloc_prefers_callee_saved_for_call_spanning_values() {
+  const auto module = make_call_crossing_interval_module();
+  const auto& function = module.functions.back();
+
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = {{20}};
+  config.caller_saved_regs = {{13}};
+
+  const auto regalloc = c4c::backend::allocate_registers(function, config);
+
+  const auto before_call = regalloc.assignments.find("%t0");
+  const auto call_result = regalloc.assignments.find("%t1");
+  const auto final_sum = regalloc.assignments.find("%t2");
+
+  expect_true(before_call != regalloc.assignments.end() && before_call->second.index == 20,
+              "shared regalloc should keep call-spanning intervals on the callee-saved pool first");
+  expect_true(call_result == regalloc.assignments.end(),
+              "shared regalloc should spill overlapping call-spanning intervals when the callee-saved pool is exhausted");
+  expect_true(final_sum != regalloc.assignments.end() && final_sum->second.index == 13,
+              "shared regalloc should use caller-saved registers for non-call-spanning intervals");
+  expect_true(regalloc.used_regs.size() == 1 && regalloc.used_regs.front().index == 20,
+              "shared regalloc should report only the used callee-saved register set");
+}
+
+void test_backend_shared_regalloc_reuses_register_after_interval_ends() {
+  const auto module = make_non_overlapping_interval_module();
+  const auto& function = module.functions.front();
+
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = {{20}};
+
+  const auto regalloc = c4c::backend::allocate_registers(function, config);
+
+  const auto first_value = regalloc.assignments.find("%t0");
+  const auto later_value = regalloc.assignments.find("%t2");
+
+  expect_true(first_value != regalloc.assignments.end() && first_value->second.index == 20,
+              "shared regalloc should assign the available register to the first live interval");
+  expect_true(later_value != regalloc.assignments.end() && later_value->second.index == 20,
+              "shared regalloc should reuse a freed register for a later non-overlapping interval");
+  expect_true(regalloc.used_regs.size() == 1 && regalloc.used_regs.front().index == 20,
+              "shared regalloc should keep the callee-saved usage set deduplicated when a register is reused");
+}
+
+void test_backend_shared_regalloc_spills_overlapping_values_without_reusing_busy_reg() {
+  const auto module = make_overlapping_interval_module();
+  const auto& function = module.functions.front();
+
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = {{20}};
+
+  const auto regalloc = c4c::backend::allocate_registers(function, config);
+
+  expect_true(regalloc.assignments.size() == 1,
+              "shared regalloc should spill one of two overlapping intervals when only one register is available");
+  const bool first_assigned = regalloc.assignments.find("%t0") != regalloc.assignments.end();
+  const bool second_assigned = regalloc.assignments.find("%t1") != regalloc.assignments.end();
+  expect_true(first_assigned != second_assigned,
+              "shared regalloc should not assign the same busy register to overlapping intervals");
 }
 
 void test_backend_shared_regalloc_helper_filters_and_merges_clobbers() {
@@ -3117,7 +3229,10 @@ int main() {
   test_backend_shared_liveness_surface_tracks_result_names();
   test_backend_shared_liveness_surface_tracks_call_crossing_ranges();
   test_backend_shared_liveness_surface_tracks_phi_join_ranges();
-  test_backend_shared_regalloc_surface_assigns_first_available_reg();
+  test_backend_shared_regalloc_surface_uses_caller_saved_for_non_call_interval();
+  test_backend_shared_regalloc_prefers_callee_saved_for_call_spanning_values();
+  test_backend_shared_regalloc_reuses_register_after_interval_ends();
+  test_backend_shared_regalloc_spills_overlapping_values_without_reusing_busy_reg();
   test_backend_shared_regalloc_helper_filters_and_merges_clobbers();
   return 0;
 }
