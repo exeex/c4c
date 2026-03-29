@@ -1,5 +1,7 @@
 # Built-in Assembler Boundary Plan
 
+Status: Complete
+
 ## Relationship To Roadmap
 
 Umbrella source: `ideas/open/__backend_port_plan.md`
@@ -115,3 +117,19 @@ If execution shows those steps are inseparable, this idea can be folded into the
 ## Good First Patch
 
 Make the mirrored assembler tree compile, then expose one narrow assembler entry contract for one existing backend-emitted function.
+
+## Completion Notes
+
+- The mirrored assembler tree now compiles behind explicit contract headers, with the text-first `AssembleRequest -> AssembleResult` seam staged in `src/backend/aarch64/assembler/mod.hpp`.
+- `src/backend/aarch64/codegen/emit.hpp` now exposes `assemble_module(const LirModule&, output_path)` so one production AArch64 backend path emits assembly text and forwards it through the named assembler seam without a test-local adapter.
+- The staged assembler result now preserves `output_path` alongside `staged_text`, which keeps the current stub seam observable until real object emission lands.
+- Repo-local contract notes in `src/backend/aarch64/BINARY_UTILS_CONTRACT.md` and backend adapter tests lock the text-first boundary and the production handoff helper.
+
+## Leftover Issues
+
+- Full-suite baseline remains unchanged at four unrelated failures:
+  - `positive_sema_ok_fn_returns_variadic_fn_ptr_c`
+  - `cpp_positive_sema_decltype_bf16_builtin_cpp`
+  - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+  - `cpp_llvm_initializer_list_runtime_materialization`
+- Actual AArch64 object emission, parser coverage, and shared assembler helper behavior remain follow-on work for `ideas/open/06_backend_builtin_assembler_aarch64_plan.md`.

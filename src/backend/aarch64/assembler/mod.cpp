@@ -63,8 +63,11 @@ std::vector<std::string> resolve_numeric_data_values(const std::vector<std::stri
 }
 
 AssembleResult assemble(const AssembleRequest& request) {
-  (void)request.output_path;
-  return AssembleResult{.staged_text = request.asm_text, .object_emitted = false};
+  return AssembleResult{
+      .staged_text = request.asm_text,
+      .output_path = request.output_path,
+      .object_emitted = false,
+  };
 }
 
 std::string assemble(const std::string& asm_text, const std::string& output_path) {

@@ -1,128 +1,131 @@
-# Built-in Assembler Boundary Runbook
+# Built-in AArch64 Assembler Runbook
 
 Status: Active
-Source Idea: ideas/open/05_backend_builtin_assembler_boundary_plan.md
+Source Idea: ideas/open/06_backend_builtin_assembler_aarch64_plan.md
+Activated from: ideas/open/06_backend_builtin_assembler_aarch64_plan.md
 
 ## Purpose
 
-Turn the mirrored assembler tree from a loose collection of translated files into an explicit, compile-integrated boundary that later AArch64 object emission work can target without ad hoc adapters.
+Turn the compile-integrated AArch64 assembler boundary into the first object-emitting slice for the currently supported backend subset, without expanding into linker work or broad instruction coverage.
 
 ## Goal
 
-Choose and stage one narrow assembler entry contract, biased toward the existing text-first `parse -> encode -> write ELF` shape used by the reference backend.
+Route one bounded AArch64 backend-emitted assembly slice through the in-tree parser, encoder, and ELF-writer path and start producing comparable ELF relocatable objects.
 
 ## Core Rule
 
-Do not implement full AArch64 object emission in this runbook. This plan is about compile integration and boundary definition, not full instruction coverage.
+Do not broaden this runbook into general assembler completion. Keep the first slice tied to the backend subset already emitted today and prove it with narrow object-level comparisons.
 
 ## Read First
 
-- [ideas/open/05_backend_builtin_assembler_boundary_plan.md](/Users/chi-shengwu/c4c/ideas/open/05_backend_builtin_assembler_boundary_plan.md)
+- [ideas/open/06_backend_builtin_assembler_aarch64_plan.md](/Users/chi-shengwu/c4c/ideas/open/06_backend_builtin_assembler_aarch64_plan.md)
+- [ideas/closed/05_backend_builtin_assembler_boundary_plan.md](/Users/chi-shengwu/c4c/ideas/closed/05_backend_builtin_assembler_boundary_plan.md)
 - [ideas/open/__backend_port_plan.md](/Users/chi-shengwu/c4c/ideas/open/__backend_port_plan.md)
 - [BINARY_UTILS_CONTRACT.md](/Users/chi-shengwu/c4c/src/backend/aarch64/BINARY_UTILS_CONTRACT.md)
-- `ref/claudes-c-compiler/src/backend/README.md`
-- `ref/claudes-c-compiler/src/backend/asm_preprocess.rs`
-- `ref/claudes-c-compiler/src/backend/asm_expr.rs`
-- `ref/claudes-c-compiler/src/backend/elf/`
-- `ref/claudes-c-compiler/src/backend/elf_writer_common.rs`
+- `ref/claudes-c-compiler/src/backend/arm/assembler/README.md`
 - `ref/claudes-c-compiler/src/backend/arm/assembler/mod.rs`
 - `ref/claudes-c-compiler/src/backend/arm/assembler/parser.rs`
 - `ref/claudes-c-compiler/src/backend/arm/assembler/elf_writer.rs`
+- `ref/claudes-c-compiler/src/backend/arm/assembler/encoder/mod.rs`
+- `ref/claudes-c-compiler/src/backend/arm/assembler/encoder/data_processing.rs`
+- `ref/claudes-c-compiler/src/backend/arm/assembler/encoder/compare_branch.rs`
+- `ref/claudes-c-compiler/src/backend/arm/assembler/encoder/load_store.rs`
+- `ref/claudes-c-compiler/src/backend/arm/assembler/encoder/system.rs`
+- `ref/claudes-c-compiler/src/backend/arm/assembler/encoder/bitfield.rs`
 
 ## Current Targets
 
-- make the mirrored shared and AArch64 assembler files compile behind one bounded include surface
-- decide whether the assembler boundary stays raw-text-first or introduces a structured internal form
-- declare the data flow from current backend assembly text into the future assembler entry point
-- lock the chosen boundary with narrow tests instead of implicit conventions
+- keep the ref three-stage shape visible: parse text, encode instructions plus relocations, write ELF64 relocatable objects
+- restrict the first object-emitting slice to backend-emitted AArch64 assembly that already exists in repo tests
+- make one bounded backend path flow through the in-tree assembler instead of only preserving staged text
+- compare emitted object metadata against the external assembler baseline for representative cases
 
 ## Non-Goals
 
-- full instruction encoding
-- linker work
-- broad backend redesign
-- introducing a target-generic instruction IR unless the evidence clearly requires it
+- linker implementation
+- x86-64 or rv64 assembler work
+- broad parser or encoder coverage beyond the currently emitted AArch64 backend subset
+- dynamic-linking, TLS, GOT, IFUNC, large NEON, or unrelated relocation expansion
 
 ## Working Model
 
-- preserve external-toolchain comparability as the default
-- prefer a text-first boundary unless compile-integration evidence forces a different choice
-- mirror ref shared helpers where the ref already centralizes behavior
-- keep the staged contract narrow enough that later AArch64 assembler work can extend it mechanically
+- preserve the text-first assembler boundary closed in the previous runbook
+- reuse shared ELF support where the repo already mirrors the ref layout
+- bias toward the smallest supported backend subset first:
+  return, direct call, compare and branch, stack-relative loads and stores, `adrp` plus low12 materialization, and narrow data directives
+- keep the external assembler tests as the comparison oracle while built-in object emission is incomplete
 
 ## Execution Rules
 
-- add or tighten narrow tests before expanding the contract surface
-- separate shared assembler helper seams from target-local parser or encoder seams
-- document the chosen boundary in repo-local headers or notes, not only in test expectations
-- if implementation pressure suggests a second internal IR, record the evidence explicitly before accepting that scope
+- add or tighten narrow tests before expanding parser, encoder, or ELF-writer behavior
+- prefer one backend-emitted object slice at a time instead of partial genericity
+- keep parser, encoder, and writer seams explicit so later relocation and linker plans can target them directly
+- if a required capability is adjacent but not necessary for the first object-emitting slice, record it back into the idea instead of silently widening this runbook
 
-## Step 1: Inventory The Current Assembler Entry Shape
+## Step 1: Inventory The Minimal Object-Emission Slice
 
-Goal: map the actual assembly-text subset and the current staged assembler surfaces that future work can target.
-
-Primary targets:
-
-- `src/backend/aarch64/codegen/`
-- `src/backend/aarch64/assembler/`
-- `src/backend/asm_preprocess.cpp`
-- `src/backend/asm_expr.cpp`
-- `src/backend/elf/`
-- `src/backend/elf_writer_common.cpp`
-
-Actions:
-
-- inspect which backend-emitted AArch64 assembly constructs are already locked by tests and contract notes
-- identify which shared helper seams from ref are already mirrored, stubbed, or missing
-- record the current parse and object-writer entry points the future assembler boundary could expose
-
-Completion check:
-
-- the repo has a concrete map of the current text-emission inputs and the staged assembler helper surfaces that can be built on
-
-## Step 2: Decide And Declare The Boundary
-
-Goal: choose one explicit assembler entry boundary and stage it in code.
+Goal: identify the smallest backend-emitted AArch64 assembly case that can move from staged text to emitted object bytes.
 
 Primary targets:
 
-- shared assembler-facing headers
-- AArch64 assembler module entry
-- any minimal adapter from backend-emitted text into that entry
+- `src/backend/aarch64/assembler/parser.*`
+- `src/backend/aarch64/assembler/encoder/`
+- `src/backend/aarch64/assembler/elf_writer.cpp`
+- backend contract and object-coverage tests
 
 Actions:
 
-- choose whether the active boundary remains raw GNU-style assembly text or a narrowly structured form
-- keep the default bias toward the ref text-first pipeline unless concrete duplication argues otherwise
-- add or tighten the minimal declarations that make the chosen boundary include-reachable
-- record the decision in the relevant contract note if code alone would be too implicit
+- inspect which current backend-emitted cases are already locked by object-contract tests
+- map the exact directives, instruction forms, symbol records, and relocations needed by the narrowest case
+- confirm which parser and writer stubs already exist versus which minimal pieces are still placeholders
 
 Completion check:
 
-- one assembler entry boundary is explicit in code and documentation, and later target work can name it directly
+- one concrete first object-emission slice is named, with its required directives, instructions, and relocation expectations enumerated
 
-## Step 3: Prove Compile Integration
+## Step 2: Connect The Boundary To Real Assembler State
 
-Goal: make the chosen boundary testable and build-clean without implementing full encoding behavior.
+Goal: make the chosen slice travel through parser, encoder, and ELF-writer state instead of only echoing staged text.
 
 Primary targets:
 
-- assembler smoke tests
-- include/build wiring
-- one bounded backend-to-assembler handoff slice
+- `src/backend/aarch64/assembler/mod.*`
+- `src/backend/aarch64/assembler/parser.*`
+- `src/backend/aarch64/assembler/encoder/`
+- `src/backend/aarch64/assembler/elf_writer.cpp`
 
 Actions:
 
-- add or tighten a narrow smoke test that exercises the chosen boundary
-- ensure shared helpers and AArch64 assembler files compile together through the staged include surface
-- validate that one existing backend-emitted function can be threaded to the chosen boundary without one-off local seams
+- replace the current stub-only path with the smallest real parse and encode flow needed by the chosen slice
+- keep the result contract explicit about whether object bytes were emitted and what output path was targeted
+- preserve the compatibility overload only as a shim over the named request/result seam
 
 Completion check:
 
-- the assembler tree compiles behind the chosen boundary and one bounded handoff slice is validated
+- the chosen backend-emitted assembly slice reaches real parser, encoder, and writer state through the active assembler entry point
+
+## Step 3: Emit And Compare One Real Object Slice
+
+Goal: start producing one comparable ELF relocatable object for the supported subset.
+
+Primary targets:
+
+- assembler smoke and object-comparison tests
+- backend-to-assembler handoff helper
+- external-object comparison fixtures under `tests/c/internal/`
+
+Actions:
+
+- add or tighten one object-level test that routes a real backend-emitted slice through the built-in assembler path
+- validate section inventory, symbol records, relocation inventory, and bounded disassembly shape against the external assembler baseline
+- keep the first slice small; split follow-on parser or relocation work into later iterations if the comparison surface grows
+
+Completion check:
+
+- one backend-emitted AArch64 slice produces a comparable ELF relocatable object through the built-in assembler path
 
 ## Acceptance Checks
 
-- the mirrored assembler tree compiles and shares one coherent declaration surface
-- the chosen assembler input boundary is explicit in code and repo-local documentation
-- later AArch64 assembler work can target a stable interface instead of rediscovering the boundary
+- parser, encoder, and ELF-writer pieces are compile-integrated behind one active assembler entry point
+- one bounded backend-emitted AArch64 slice flows through the in-tree assembler without ad hoc local adapters
+- the first emitted object is checked against external-assembler output on sections, symbols, relocations, or bounded disassembly

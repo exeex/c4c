@@ -14,6 +14,7 @@ struct AssembleRequest {
 
 struct AssembleResult {
   std::string staged_text;
+  std::string output_path;
   bool object_emitted = false;
 };
 

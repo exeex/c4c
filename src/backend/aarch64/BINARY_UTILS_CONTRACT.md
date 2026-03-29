@@ -28,7 +28,8 @@ Step-1 inventory of the staged assembler boundary currently shows a text-first c
 
 - backend handoff today: `src/backend/aarch64/codegen/emit.cpp` returns GNU-style AArch64 assembly text for the currently supported fallback slices
 - parser entry today: `src/backend/aarch64/assembler/parser.hpp` exposes `parse_asm(const std::string&)`, and the current implementation preserves the full input text as one placeholder `AsmStatement`
-- assembler entry today: `src/backend/aarch64/assembler/mod.hpp` exposes a named `AssembleRequest -> AssembleResult` text-first seam, plus a compatibility overload `assemble(const std::string&, const std::string&)`; the current stub returns the raw input text as `staged_text` and reports `object_emitted = false`
+- assembler entry today: `src/backend/aarch64/assembler/mod.hpp` exposes a named `AssembleRequest -> AssembleResult` text-first seam, plus a compatibility overload `assemble(const std::string&, const std::string&)`; the current stub returns the raw input text as `staged_text`, preserves the requested `output_path`, and reports `object_emitted = false`
+- production handoff helper today: `src/backend/aarch64/codegen/emit.hpp` exposes `assemble_module(const LirModule&, output_path)` so one backend-emitted assembly slice now flows through the named assembler request/result seam in production code
 - target-local writer staging today: `src/backend/aarch64/assembler/elf_writer.cpp` contains relocation helpers and placeholder writer state, but does not yet emit ELF bytes
 - shared helper staging today:
   - `src/backend/asm_preprocess.cpp` is a mirrored placeholder for ref `asm_preprocess.rs`
@@ -36,9 +37,10 @@ Step-1 inventory of the staged assembler boundary currently shows a text-first c
   - `src/backend/elf/` contains real shared ELF support modules
   - `src/backend/elf_writer_common.cpp` is a mirrored placeholder for ref `elf_writer_common.rs`
 
-This means the current compile-integrated contract is still:
+This means the current compile-integrated contract is now:
 
 - `backend text emission -> parse_asm(raw text) -> assemble(AssembleRequest{raw text, output path})`
+- `aarch64::assemble_module(module, output_path) -> emit_module(module) -> assemble(AssembleRequest{...})`
 
 Later boundary work can narrow or replace that shape, but it should treat this text-first path as the current compatibility baseline.
 

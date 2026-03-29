@@ -11,6 +11,7 @@
 #include "../../src/backend/elf/mod.hpp"
 #include "../../src/backend/linker_common/mod.hpp"
 #include "../../src/backend/aarch64/assembler/mod.hpp"
+#include "../../src/backend/aarch64/codegen/emit.hpp"
 #include "../../src/backend/aarch64/linker/mod.hpp"
 #include "../../src/backend/aarch64/assembler/parser.hpp"
 
@@ -4058,12 +4059,25 @@ void test_backend_binary_utils_contract_headers_are_include_reachable() {
           .asm_text = emitted,
           .output_path = "ignored.o",
       });
-  expect_true(staged.staged_text == emitted && !staged.object_emitted,
+  expect_true(staged.staged_text == emitted && staged.output_path == "ignored.o" &&
+                  !staged.object_emitted,
               "binary-utils contract headers should expose the current text-first assembler request/result seam without changing backend-emitted text");
 
   const auto assembled = c4c::backend::aarch64::assembler::assemble(emitted, "ignored.o");
   expect_true(assembled == emitted,
               "binary-utils contract headers should keep the compatibility overload aligned with the staged assembler text seam");
+}
+
+void test_aarch64_backend_assembler_handoff_helper_stages_emitted_text() {
+  const auto staged = c4c::backend::aarch64::assemble_module(make_return_add_module(), "out/test.o");
+
+  expect_true(staged.staged_text ==
+                  c4c::backend::emit_module(
+                      c4c::backend::BackendModuleInput{make_return_add_module()},
+                      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64}),
+              "aarch64 backend handoff helper should route production backend text through the staged assembler seam");
+  expect_true(staged.output_path == "out/test.o" && !staged.object_emitted,
+              "aarch64 backend handoff helper should preserve output-path metadata while object emission is still stubbed");
 }
 
 }  // namespace
@@ -4161,5 +4175,6 @@ int main() {
   test_aarch64_backend_prunes_dead_param_allocas_from_fallback_lir();
   test_aarch64_backend_prunes_dead_local_allocas_from_fallback_lir();
   test_backend_binary_utils_contract_headers_are_include_reachable();
+  test_aarch64_backend_assembler_handoff_helper_stages_emitted_text();
   return 0;
 }
