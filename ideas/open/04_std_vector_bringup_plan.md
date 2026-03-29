@@ -123,6 +123,39 @@ Interpretation:
 
 This idea was explicitly deactivated on 2026-03-29 without being completed.
 
+### Latest Parser-Hygiene Findings Before Switching Plans
+
+During the latest `<vector>` reduction pass on 2026-03-29, the active runbook
+found that the remaining debugging loop had become increasingly dominated by
+over-broad parser boundary rules rather than one container-specific syntax gap.
+
+The strongest reduced evidence from that pass was:
+
+- `#include <bits/iterator_concepts.h>` followed by
+  `#include <bits/functional_hash.h>` was enough to reproduce the `_Arg` /
+  `_Result` typedef fallout
+- preprocessed bisection showed that removing the tail
+  `namespace ranges::__access { ... }` block from `iterator_concepts.h`
+  cleared the downstream `functional_hash` failure
+- the toxic shape reduced further to a constrained function template with a
+  trait / concept disjunction in its `requires` clause
+- the parser-side fix that helped this reduced case was not a container-specific
+  feature addition, but tightening the declaration-boundary logic used by
+  `skip_cpp20_constraint_atom(...)`
+
+That work also produced a new reduced regression:
+
+- `tests/cpp/internal/postive_case/cpp20_requires_trait_disjunction_function_parse.cpp`
+
+Interpretation:
+
+- the current remaining `<vector>` frontier is still real
+- but the most leveraged next slice is now parser whitelist / boundary review,
+  not continued container-local debugging on top of broad skip rules
+- this `std::vector` idea should stay parked until the parser-hygiene audit has
+  tightened the riskiest broad boundaries enough to make subsequent repro
+  reduction efficient again
+
 ### Latest Completed Slices From The Active Runbook
 
 - Added `tests/cpp/internal/postive_case/noexcept_expr_parse.cpp` and taught

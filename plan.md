@@ -1,107 +1,112 @@
-# std::vector Bring-up Runbook
+# Parser Whitelist Boundary Audit Runbook
 
 Status: Active
-Source Idea: ideas/open/04_std_vector_bringup_plan.md
-Activated from: ideas/open/04_std_vector_bringup_plan.md on 2026-03-29
+Source Idea: ideas/open/07_parser_whitelist_boundary_audit.md
+Activated from: ideas/open/07_parser_whitelist_boundary_audit.md on 2026-03-29
+Supersedes: ideas/open/04_std_vector_bringup_plan.md as the active debugging line
 
 ## Purpose
 
-Push `tests/cpp/std/std_vector_simple.cpp` forward by isolating the first real
-libstdc++ header combination that causes parser state drift on the `<vector>`
-include path.
+Shift the current parser debugging strategy from case-by-case libstdc++
+reduction onto a narrower parser-hygiene audit of broad skip, recovery, and
+start-probe rules that are making downstream failures expensive to localize.
 
 ## Goal
 
-Turn the current "deep failure inside `<vector>`" frontier into one reduced,
-actionable parser bug with a stable repro and regression test.
+Identify the highest-risk parser boundaries that are not whitelist-led, tighten
+the first batch with reduced repro coverage, and use that cleanup to make later
+`std::vector` bring-up work more efficient.
 
 ## Core Rule
 
-Do not broaden this slice into general builtin-trait semantics work unless a
-trait gap is proven to be the direct blocker for the reduced `<vector>` repro.
+Do not treat "it eventually parses" as success if the path depends on broad
+token swallowing or on recovery that can hide the real failure site.
 
 ## Read First
 
+- [ideas/open/07_parser_whitelist_boundary_audit.md](/workspaces/c4c/ideas/open/07_parser_whitelist_boundary_audit.md)
 - [ideas/open/04_std_vector_bringup_plan.md](/workspaces/c4c/ideas/open/04_std_vector_bringup_plan.md)
 - [prompts/AGENT_PROMPT_EXECUTE_PLAN.md](/workspaces/c4c/prompts/AGENT_PROMPT_EXECUTE_PLAN.md)
 
 ## Current Target
 
-- `tests/cpp/std/std_vector_simple.cpp`
-- real system-header path rooted at `<vector>`
-- parser-state drift that surfaces around `functional_hash.h` / `stl_bvector.h`
+- parser boundary helpers that decide "keep consuming" vs "stop now"
+- parser recovery loops that can skip across declaration or scope boundaries
+- `NK_EMPTY` discard paths that may be hiding missed parses
 
 ## Non-Goals
 
-- do not implement broad libstdc++ semantic coverage
-- do not treat the first visible header error as root cause without reduction
-- do not fold the separate builtin-trait audit idea into this runbook
+- do not try to rewrite all parser recovery in one slice
+- do not silently continue broadening parser acceptance without reduced tests
+- do not resume container-specific `<vector>` debugging until the current audit
+  produces at least one tighter, reusable boundary fix
 
 ## Working Model
 
-The current evidence says:
+Current evidence says:
 
-- `<type_traits>` alone parses
-- `<bits/functional_hash.h>` alone parses
-- a small combination including `type_traits`, `hash_bytes`, `functional_hash`,
-  and `stl_bvector` still parses
-- the failure likely depends on a larger include-chain interaction or parser
-  state leak, not the first visible `_Arg` error site
+- broad parser rules are now a direct productivity bottleneck
+- the latest reduced `<vector>` blocker was improved by tightening a
+  `requires`-clause boundary, not by adding container-specific support
+- the next useful work is to inventory and rank similar broad rules so future
+  fixes are deliberate and repeatable
 
 ## Execution Steps
 
-### Step 1: Reconfirm the live frontier
+### Step 1: Inventory non-whitelist boundaries
 
 Goal:
-- verify the current failing `<vector>` repro and capture the first visible
-  errors without assuming they are root cause
+- enumerate the parser sites that still rely on broad token skipping, generic
+  recovery, or permissive start probes
 
 Actions:
-- run the direct parse-only repro on `tests/cpp/std/std_vector_simple.cpp`
-- capture the earliest failing headers and line numbers
-- record any drift from the last known frontier in `plan_todo.md`
+- inspect constraint / `requires` skipping helpers
+- inspect generic recovery helpers
+- inspect start-condition probes such as `is_type_start()`
+- inspect parse-and-discard branches returning `NK_EMPTY`
 
 Completion Check:
-- one current failure snapshot is recorded
+- one curated inventory exists in the active todo state
 
-### Step 2: Reduce the include chain
+### Step 2: Rank by risk and evidence
 
 Goal:
-- find the smallest header set on the `<vector>` path that still reproduces the
-  failure
+- distinguish intentionally broad helpers from risky ones already implicated in
+  real misparses
 
 Actions:
-- inspect the preprocessed / dependency include chain for `<vector>`
-- construct reduced repros by adding headers in order and by binary search
-- keep reductions rooted in the real include order when possible
+- tag each inventoried site as acceptable breadth, suspicious breadth, or known
+  bug
+- attach concrete reduced repros or live failure paths where available
+- prefer sites already linked to state drift or downstream error displacement
 
 Completion Check:
-- one reduced header combination reliably reproduces the parser failure
+- one ordered shortlist of the highest-risk tightening targets exists
 
-### Step 3: Identify the first corruption point
+### Step 3: Tighten the first batch
 
 Goal:
-- distinguish the first parser-state corruption point from downstream symptom
-  headers
+- land the first reusable parser-hygiene fixes with narrow scope
 
 Actions:
-- compare failing and non-failing neighboring header combinations
-- inspect the grammar construct introduced by the first bad combination
-- map it to the parser subsystem most likely responsible
+- convert the chosen rules to whitelist-led boundaries where practical
+- avoid context-leaking reuse of broad probes when a local follow-set is safer
+- preserve or improve diagnostics when tightening behavior
 
 Completion Check:
-- one concrete syntax shape is named as the next implementation target
+- at least one risky boundary has been tightened without regressing targeted
+  existing tests
 
-### Step 4: Lock the reduction into tests
+### Step 4: Lock fixes into regression coverage
 
 Goal:
-- preserve the newly isolated frontier as a regression target before broader
-  implementation
+- keep the audit results durable and reusable
 
 Actions:
-- add the narrowest reduced parse test that captures the bug
-- keep the test scoped to the isolated syntax / include interaction
-- update `plan_todo.md` with the next parser fix slice
+- add reduced regression tests for each tightened rule
+- record remaining high-risk sites and next tightening candidates in
+  `plan_todo.md`
+- note when the `std::vector` bring-up should be revisited
 
 Completion Check:
-- the reduced repro exists in-tree and the next code-change target is recorded
+- reduced tests and a next-target shortlist exist in-tree / in todo state
