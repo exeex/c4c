@@ -7,9 +7,10 @@ Last Updated: 2026-03-29
 
 ## Active Item
 
-- Step 2: rank the inventoried parser boundaries by direct risk and choose the
-  first tightening slice, starting with the duplicated `requires` helpers in
-  `src/frontend/parser/types.cpp`
+- Step 3: tighten the first batch by aligning the duplicated `requires`
+  boundary helpers in `src/frontend/parser/types.cpp` with the narrower
+  declaration-side whitelist, and prove the record-member template path with a
+  dedicated reduced parse test
 
 ## Completed
 
@@ -37,17 +38,30 @@ Last Updated: 2026-03-29
     `is_type_start()` as a declaration-boundary fallback
   - next: trailing `requires` clause termination in `declarations.cpp`
   - next: record-member recovery that can still advance to `}`
+- aligned the duplicated `src/frontend/parser/types.cpp`
+  `is_cpp20_requires_clause_decl_boundary(...)` helper with the narrower
+  declaration-side whitelist so it no longer treats `Identifier` after `::` or
+  before `<` as an automatic declaration boundary
+- added
+  `tests/cpp/internal/postive_case/cpp20_requires_trait_disjunction_member_parse.cpp`
+  and registered it in `tests/cpp/internal/InternalTests.cmake` to keep the
+  record-member template `requires` path covered
+- re-ran the required regression guard:
+  - baseline: `100% tests passed, 0 tests failed out of 2404`
+  - after change: `100% tests passed, 0 tests failed out of 2405`
+  - result: monotonic pass-count increase from the new targeted test, with no
+    newly failing cases
 
 ## Next Slice
 
-- tighten or delete the duplicated `types.cpp` `requires` helpers so both
-  declaration paths share the narrower boundary logic already staged in
-  `declarations.cpp`
-- add or update reduced tests that prove the `types.cpp` path no longer treats
-  broad `is_type_start()` matches as declaration boundaries inside
-  `requires`-clauses
-- re-run the parser-boundary inventory after that change to confirm the next
-  highest-risk site is still the trailing `requires` clause loop
+- after the `types.cpp` helper alignment lands, re-run the boundary shortlist
+  and confirm the next highest-risk site is still the trailing `requires`
+  clause loop in `src/frontend/parser/declarations.cpp`
+- if the reduced member-template test exposes any remaining false positives,
+  split that into a separate follow-on idea instead of expanding this slice
+- if the shortlist stays stable, move the active item to the trailing
+  `requires` clause termination loop and add a reduced test that proves it
+  stops on an explicit follow-set rather than generic token consumption
 
 ## Notes
 
@@ -60,6 +74,11 @@ Last Updated: 2026-03-29
   - tightened `requires`-clause boundary logic in
     `src/frontend/parser/declarations.cpp`
   - the new reduced regression test for requires-trait disjunction parsing
+- this iteration is intentionally scoped to the older `types.cpp` duplicate
+  helpers that are used by record-member template preludes
+- the new member-template regression currently parses before and after the
+  helper alignment, so its value is as a guard against future fallback
+  broadening on the `types.cpp` path rather than as a newly red-to-green test
 - the Step 1 inventory now lives in `src/frontend/parser/BOUNDARY_AUDIT.md` so
   future parser work can reuse the current shortlist instead of rebuilding it
   from scratch

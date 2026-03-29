@@ -97,6 +97,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     iterator_concepts_following_hash_base_parse
     cpp20_requires_clause_parse
     cpp20_requires_clause_struct_decl_parse
+    cpp20_requires_trait_disjunction_member_parse
     cpp20_requires_concept_id_member_ctor_parse
     cpp20_requires_conjunction_member_parse
     cpp20_namespaced_concept_requires_parse

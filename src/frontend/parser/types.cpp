@@ -497,16 +497,34 @@ void parse_optional_cpp20_trailing_requires_clause(Parser& parser) {
 bool is_cpp20_requires_clause_decl_boundary(Parser& parser) {
     if (parser.at_end()) return true;
     TokenKind kind = parser.cur().kind;
-    if (kind == TokenKind::Identifier || kind == TokenKind::KwOperator ||
+    if (kind == TokenKind::Identifier) {
+        if (parser.pos_ > 0 &&
+            parser.tokens_[parser.pos_ - 1].kind == TokenKind::ColonColon) {
+            return false;
+        }
+        if (parser.pos_ + 1 < static_cast<int>(parser.tokens_.size()) &&
+            parser.tokens_[parser.pos_ + 1].kind == TokenKind::Less) {
+            return false;
+        }
+        return true;
+    }
+    if (kind == TokenKind::KwOperator ||
         kind == TokenKind::KwConstexpr || kind == TokenKind::KwConsteval ||
         kind == TokenKind::KwExplicit || kind == TokenKind::KwInline ||
         kind == TokenKind::KwStatic || kind == TokenKind::KwExtern ||
         kind == TokenKind::KwMutable || kind == TokenKind::KwVirtual ||
         kind == TokenKind::KwFriend || kind == TokenKind::KwTypedef ||
-        kind == TokenKind::KwUsing) {
+        kind == TokenKind::KwUsing || kind == TokenKind::KwConcept ||
+        kind == TokenKind::KwStaticAssert || kind == TokenKind::KwStruct ||
+        kind == TokenKind::KwClass || kind == TokenKind::KwUnion ||
+        kind == TokenKind::KwEnum || kind == TokenKind::KwTypename ||
+        kind == TokenKind::KwAuto || kind == TokenKind::KwAlignas) {
         return true;
     }
-    return parser.is_type_start();
+    if (is_type_kw(kind) || is_qualifier(kind) || is_storage_class(kind)) {
+        return true;
+    }
+    return false;
 }
 
 bool skip_cpp20_constraint_atom(Parser& parser) {
