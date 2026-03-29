@@ -9,17 +9,39 @@ Source Plan: plan.md
 - Step 5: prepare the next diagnostic slice by bounding the first
   committed-failure vs no-match follow-up under speculative `try_parse_*`
   record-member rewinds
-- Current slice: move from duplicate-stack normalization to the first explicit
-  ranking-only or tri-state case where a speculative `try_parse_*` path is
-  already visible in the event stream but the committed summary still picks
-  the wrong leaf or committed/soft-failure boundary
-- Iteration target: fix the reduced `if (const size_t len = 1)` parser-debug
-  repro where the committed `parse_primary` failure keeps the speculative
-  qualified-type probe frames in the stack but currently reports
-  `parse_fn=try_parse_qualified_base_type`
+- Current slice: bound the next explicit ranking-only or tri-state follow-up
+  after the landed `cpp_parser_debug_if_init_qualified_probe_leaf` fix,
+  focusing on wrapper-heavy top-level or member-declarator failures where the
+  event stream already preserves useful speculative helper frames but the
+  emitted summary still collapses to a wrapper frame
+- Iteration target: record the next reduced repro candidate from the current
+  `./build/c4cll --parser-debug --parse-only tests/cpp/std/std_vector_simple.cpp`
+  output, anchored on the `/usr/include/c++/14/bits/stl_bvector.h:663` member
+  definition that currently reports
+  `parse_fn=parse_top_level phase=committed expected=RPAREN got='&&'`, and
+  decide whether the follow-up belongs in best-failure ranking,
+  summary-stack selection, or additional local guard coverage
 
 ## Completed
 
+- recorded the required full-suite baseline for this iteration:
+  `before passed=2274/2275`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged
+- confirmed `HEAD` already contains the reduced
+  `cpp_parser_debug_if_init_qualified_probe_leaf` coverage plus the committed
+  leaf-selection fix, and revalidated that targeted parser-debug repro on the
+  current tree before choosing a new Step 5 slice
+- re-ran the recorded next-candidate parser-debug repros in
+  `cpp_parser_debug_qualified_type_typename_spelling_stack` and
+  `cpp_parser_debug_qualified_type_spelling_stack`; both still show the
+  expected committed `parse_top_level_parameter_list` summary with the richer
+  speculative qualified-type stack preserved in debug mode, so they are not
+  the next ranking bug
+- sampled the active `std_vector_simple.cpp` parser-debug output and bounded
+  the next wrapper-heavy candidate around
+  `/usr/include/c++/14/bits/stl_bvector.h:663`, where a member-definition
+  failure still reports `parse_fn=parse_top_level` even though the debug event
+  stream preserves the surrounding qualified-type helper path
 - parked the adjacent parser-diagnostics instrumentation work as its own idea:
   `ideas/open/parser_error_diagnostics_plan.md`
 - added an initial parser debug path gated by `--parser-debug`
@@ -383,14 +405,13 @@ Source Plan: plan.md
 
 ## Next Intended Slice
 
-- if this slice lands cleanly, inspect the next explicit ranking-only or
-  tri-state case where the event stream already shows the useful local
-  `try_parse_*` path but the committed summary still picks the wrong leaf or
-  wrong committed/soft-failure boundary
-- first candidate after this slice: inspect another qualified-type or
-  record-member parser-debug repro whose event log already contains the useful
-  local helper path and determine whether the next correction belongs in
-  `should_replace_best_parse_failure()` or in snapshot-selection bookkeeping
+- reduce the `/usr/include/c++/14/bits/stl_bvector.h:663` wrapper-heavy member
+  definition failure into a standalone parser-debug negative case that still
+  preserves the current bad `parse_fn=parse_top_level` summary
+- use that repro to decide whether the next fix is a ranking rule in
+  `should_replace_best_parse_failure()`, a summary-leaf rule in
+  `select_best_parse_summary_leaf()`, or missing `ParseContextGuard` coverage
+  in the member-declarator path before adding the new regression test
 
 ## Blockers
 
@@ -399,8 +420,12 @@ Source Plan: plan.md
   soft-failure bookkeeping can be normalized without hiding the committed
   local cause once a concrete repro is selected
 - no blocker on the committed-leaf vs qualified-type-probe summary case; the
-  next remaining Step 5 slice should come from a different speculative
-  ranking boundary
+  next remaining Step 5 slice now points at a wrapper-heavy member-declarator
+  boundary instead of another already-covered qualified-type leaf-selection
+  case
+- the next slice is bounded but not yet reduced to a standalone file; the
+  current anchor is the parser-debug output from
+  `/usr/include/c++/14/bits/stl_bvector.h:663`
 
 ## Resume Notes
 
@@ -409,24 +434,20 @@ Source Plan: plan.md
 - landed reduced repro for this slice:
   `./build/c4cll --parser-debug --parse-only tests/cpp/internal/negative_case/parser_debug_if_init_qualified_probe_leaf.cpp`
 - current reduced repro candidates for the next iteration:
-  `./build/c4cll --parser-debug --parse-only tests/cpp/internal/negative_case/parser_debug_qualified_type_typename_spelling_stack.cpp`
-  and
-  `./build/c4cll --parser-debug --parse-only tests/cpp/internal/negative_case/parser_debug_qualified_type_spelling_stack.cpp`
-- this iteration changed
-  `cpp_parser_debug_qualified_type_spelling_stack` from the collapsed wrapper
-  summary to
-  `[pdebug] stack: -> parse_top_level -> parse_next_template_argument -> try_parse_template_type_arg -> parse_next_template_argument -> try_parse_template_type_arg -> parse_top_level_parameter_list`
-- the next slice should decide whether those duplicated nested
-  template-argument frames are the right stable summary shape or whether a
-  ranking-only normalization should compact them without regressing the
-  preserved local speculative path
+  `./build/c4cll --parser-debug --parse-only tests/cpp/std/std_vector_simple.cpp`
+  with the current highest-value diagnostic target at
+  `/usr/include/c++/14/bits/stl_bvector.h:663`
+- the previously recorded qualified-type candidates
+  `parser_debug_qualified_type_typename_spelling_stack.cpp` and
+  `parser_debug_qualified_type_spelling_stack.cpp` now look stable on the
+  current tree and do not appear to be the next Step 5 regression
 - the `if (const size_t len = 1)` regression now keeps
   `parse_fn=parse_primary` while preserving the trailing
   `try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type` probe
   frames in the emitted stack line
-- keep the detailed event log untouched; this slice only preserved the saved
-  speculative template-type snapshot longer so later helper/wrapper events do
-  not overwrite it
+- the next follow-up should keep the detailed event log untouched unless the
+  reduced repro proves the member-declarator path is missing local guard
+  coverage rather than only a ranking/summary rule
 - the repo is not currently building this target as C++20, so `std::source_location`
   was not adopted; the current non-macro path uses `__func__`
 - the parked `std::vector` bring-up work remains in
