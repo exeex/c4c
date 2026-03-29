@@ -2225,7 +2225,8 @@ c4c::codegen::lir::LirModule make_param_slot_runtime_module() {
   helper_entry.id = LirBlockId{0};
   helper_entry.label = "entry";
   helper_entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.param.x"});
-  helper_entry.insts.push_back(LirBinOp{"%t1", "add", "i32", "%t0", "1"});
+  helper_entry.insts.push_back(
+      LirBinOp{"%t1", LirBinaryOpcode::Add, "i32", "%t0", "1"});
   helper_entry.insts.push_back(LirStoreOp{"i32", "%t1", "%lv.param.x"});
   helper_entry.insts.push_back(LirLoadOp{"%t2", "i32", "%lv.param.x"});
   helper_entry.terminator = LirRet{std::string("%t2"), "i32"};
@@ -2239,7 +2240,13 @@ c4c::codegen::lir::LirModule make_param_slot_runtime_module() {
   LirBlock main_entry;
   main_entry.id = LirBlockId{0};
   main_entry.label = "entry";
-  main_entry.insts.push_back(LirCallOp{"%t0", "i32", "@add_one", "(i32)", "i32 5"});
+  main_entry.insts.push_back(LirCallOp{
+      "%t0",
+      "i32",
+      LirOperand(std::string("@add_one"), LirOperandKind::Global),
+      "(i32)",
+      "i32 5",
+  });
   main_entry.terminator = LirRet{std::string("%t0"), "i32"};
   main_fn.blocks.push_back(std::move(main_entry));
 
@@ -2304,7 +2311,8 @@ c4c::codegen::lir::LirModule make_typed_direct_call_two_arg_module() {
   LirBlock helper_entry;
   helper_entry.id = LirBlockId{0};
   helper_entry.label = "entry";
-  helper_entry.insts.push_back(LirBinOp{"%t0", "add", "i32", "%p.x", "%p.y"});
+  helper_entry.insts.push_back(
+      LirBinOp{"%t0", LirBinaryOpcode::Add, "i32", "%p.x", "%p.y"});
   helper_entry.terminator = LirRet{std::string("%t0"), "i32"};
   helper.blocks.push_back(std::move(helper_entry));
 
@@ -2316,8 +2324,13 @@ c4c::codegen::lir::LirModule make_typed_direct_call_two_arg_module() {
   LirBlock main_entry;
   main_entry.id = LirBlockId{0};
   main_entry.label = "entry";
-  main_entry.insts.push_back(
-      LirCallOp{"%t0", "i32", "@add_pair", "(i32, i32)", "i32 5, i32 7"});
+  main_entry.insts.push_back(LirCallOp{
+      "%t0",
+      "i32",
+      LirOperand(std::string("@add_pair"), LirOperandKind::Global),
+      "(i32, i32)",
+      "i32 5, i32 7",
+  });
   main_entry.terminator = LirRet{std::string("%t0"), "i32"};
   main_fn.blocks.push_back(std::move(main_entry));
 

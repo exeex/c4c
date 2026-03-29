@@ -122,6 +122,45 @@ std::optional<std::string_view> strip_typed_operand_prefix(std::string_view oper
   return operand.substr(type_prefix.size() + 1);
 }
 
+std::optional<std::string_view> parse_direct_global_callee(std::string_view callee) {
+  if (callee.size() <= 1 || callee.front() != '@') {
+    return std::nullopt;
+  }
+  return callee.substr(1);
+}
+
+std::optional<std::string_view> parse_direct_global_callee(
+    const c4c::codegen::lir::LirOperand& callee) {
+  using c4c::codegen::lir::LirOperandKind;
+
+  if (callee.kind() != LirOperandKind::Global) {
+    return std::nullopt;
+  }
+  return parse_direct_global_callee(std::string_view(callee.str()));
+}
+
+std::optional<std::int64_t> parse_typed_i32_arg_imm(std::string_view arg) {
+  const auto value = strip_typed_operand_prefix(arg, "i32");
+  if (!value.has_value()) {
+    return std::nullopt;
+  }
+  return parse_i64(*value);
+}
+
+std::optional<std::pair<std::string_view, std::string_view>> parse_typed_i32_arg_pair(
+    std::string_view args_str) {
+  const auto separator = args_str.find(", ");
+  if (separator == std::string_view::npos) {
+    return std::nullopt;
+  }
+  const auto lhs_arg = strip_typed_operand_prefix(args_str.substr(0, separator), "i32");
+  const auto rhs_arg = strip_typed_operand_prefix(args_str.substr(separator + 2), "i32");
+  if (!lhs_arg.has_value() || !rhs_arg.has_value()) {
+    return std::nullopt;
+  }
+  return std::pair<std::string_view, std::string_view>{*lhs_arg, *rhs_arg};
+}
+
 std::string asm_symbol_name(const c4c::backend::BackendModule& module,
                             std::string_view logical_name) {
   const bool is_darwin =
@@ -1364,20 +1403,19 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
   const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
   if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
       *main_block.terminator.value != call->result ||
-      !call->callee_type_suffix.empty() || !call->args_str.empty() ||
-      call->callee.empty() || call->callee.front() != '@') {
+      !call->callee_type_suffix.empty() || !call->args_str.empty()) {
     return std::nullopt;
   }
 
-  const std::string callee_name = call->callee.substr(1);
-  if (callee_name == "main") return std::nullopt;
+  const auto callee_name = parse_direct_global_callee(std::string_view(call->callee));
+  if (!callee_name.has_value() || *callee_name == "main") return std::nullopt;
 
-  const auto* callee_fn = find_function(module, callee_name);
+  const auto* callee_fn = find_function(module, *callee_name);
   if (callee_fn == nullptr) return std::nullopt;
   const auto callee_imm = parse_single_block_return_imm(*callee_fn);
   if (!callee_imm.has_value()) return std::nullopt;
 
-  return MinimalDirectCallSlice{callee_name, *callee_imm};
+  return MinimalDirectCallSlice{std::string(*callee_name), *callee_imm};
 }
 
 std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_slice(
@@ -1403,24 +1441,17 @@ std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_sl
   const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
   if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
       *main_block.terminator.value != call->result ||
-      call->callee_type_suffix != "(i32)" || call->callee.empty() ||
-      call->callee.front() != '@') {
+      call->callee_type_suffix != "(i32)") {
     return std::nullopt;
   }
 
-  const std::string_view args_str = call->args_str;
-  if (args_str.size() < 5 || args_str.substr(0, 4) != "i32 ") {
-    return std::nullopt;
-  }
-  const auto arg_imm = parse_i64(args_str.substr(4));
-  if (!arg_imm.has_value()) {
+  const auto arg_imm = parse_typed_i32_arg_imm(call->args_str);
+  const auto callee_name = parse_direct_global_callee(std::string_view(call->callee));
+  if (!arg_imm.has_value() || !callee_name.has_value() || *callee_name == "main") {
     return std::nullopt;
   }
 
-  const std::string callee_name = call->callee.substr(1);
-  if (callee_name == "main") return std::nullopt;
-
-  const auto* callee_fn = find_function(module, callee_name);
+  const auto* callee_fn = find_function(module, *callee_name);
   if (callee_fn == nullptr || callee_fn->is_declaration ||
       callee_fn->signature.linkage != "define" ||
       callee_fn->signature.return_type != "i32" ||
@@ -1450,7 +1481,7 @@ std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_sl
     return std::nullopt;
   }
 
-  return MinimalDirectCallAddImmSlice{callee_name, *arg_imm, *add_imm};
+  return MinimalDirectCallAddImmSlice{std::string(*callee_name), *arg_imm, *add_imm};
 }
 
 std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
@@ -1492,9 +1523,11 @@ std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
   const auto* add = std::get_if<LirBinOp>(&helper_block.insts[1]);
   const auto* store = std::get_if<LirStoreOp>(&helper_block.insts[2]);
   const auto* load1 = std::get_if<LirLoadOp>(&helper_block.insts[3]);
+  const auto add_opcode = add == nullptr ? std::nullopt : add->opcode.typed();
   if (load0 == nullptr || add == nullptr || store == nullptr || load1 == nullptr ||
       load0->type_str != "i32" || load0->ptr != "%lv.param.x" ||
-      add->opcode != "add" || add->type_str != "i32" || add->lhs != load0->result ||
+      add_opcode != LirBinaryOpcode::Add || add->type_str != "i32" ||
+      add->lhs != load0->result ||
       store->type_str != "i32" || store->val != add->result || store->ptr != "%lv.param.x" ||
       load1->type_str != "i32" || load1->ptr != "%lv.param.x" ||
       *helper_ret->value_str != load1->result) {
@@ -1514,7 +1547,8 @@ std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
   }
 
   const auto* call = std::get_if<LirCallOp>(&main_block.insts.front());
-  if (call == nullptr || call->result.empty() || call->callee != "@add_one" ||
+  const auto callee_name = call == nullptr ? std::nullopt : parse_direct_global_callee(call->callee);
+  if (call == nullptr || call->result.empty() || callee_name != std::string_view("add_one") ||
       call->callee_type_suffix != "(i32)" || *main_ret->value_str != call->result) {
     return std::nullopt;
   }
@@ -1528,7 +1562,7 @@ std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
     return std::nullopt;
   }
 
-  return MinimalParamSlotSlice{"add_one", *call_arg_imm, *helper_add_imm};
+  return MinimalParamSlotSlice{std::string(*callee_name), *call_arg_imm, *helper_add_imm};
 }
 
 std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_slice(
@@ -1537,16 +1571,12 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
 
   auto parse_call_args = [](const LirCallOp& call)
       -> std::optional<std::pair<std::string, std::string>> {
-    const auto separator = call.args_str.find(", ");
-    if (separator == std::string::npos) {
+    const auto args = parse_typed_i32_arg_pair(call.args_str);
+    if (!args.has_value()) {
       return std::nullopt;
     }
-    const auto lhs_arg = strip_typed_operand_prefix(call.args_str.substr(0, separator), "i32");
-    const auto rhs_arg = strip_typed_operand_prefix(call.args_str.substr(separator + 2), "i32");
-    if (!lhs_arg.has_value() || !rhs_arg.has_value()) {
-      return std::nullopt;
-    }
-    return std::pair<std::string, std::string>{*lhs_arg, *rhs_arg};
+    return std::pair<std::string, std::string>{std::string(args->first),
+                                               std::string(args->second)};
   };
 
   if (module.functions.size() != 2 || !module.globals.empty() ||
@@ -1574,8 +1604,9 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
   }
 
   const auto* add = std::get_if<LirBinOp>(&helper_block.insts.front());
-  if (add == nullptr || add->opcode != "add" || add->type_str != "i32" || add->lhs != "%p.x" ||
-      add->rhs != "%p.y" || *helper_ret->value_str != add->result) {
+  const auto add_opcode = add == nullptr ? std::nullopt : add->opcode.typed();
+  if (add == nullptr || add_opcode != LirBinaryOpcode::Add || add->type_str != "i32" ||
+      add->lhs != "%p.x" || add->rhs != "%p.y" || *helper_ret->value_str != add->result) {
     return std::nullopt;
   }
 
@@ -1592,7 +1623,9 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
     }
 
     const auto* call = std::get_if<LirCallOp>(&main_block.insts.front());
-    if (call == nullptr || call->result.empty() || call->callee != "@add_pair" ||
+    const auto callee_name =
+        call == nullptr ? std::nullopt : parse_direct_global_callee(call->callee);
+    if (call == nullptr || call->result.empty() || callee_name != std::string_view("add_pair") ||
         call->callee_type_suffix != "(i32, i32)" || *main_ret->value_str != call->result) {
       return std::nullopt;
     }
@@ -1607,7 +1640,11 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
       return std::nullopt;
     }
 
-    return MinimalTwoArgDirectCallSlice{"add_pair", *lhs_call_arg_imm, *rhs_call_arg_imm};
+    return MinimalTwoArgDirectCallSlice{
+        std::string(*callee_name),
+        *lhs_call_arg_imm,
+        *rhs_call_arg_imm,
+    };
   }
 
   if (main_fn->alloca_insts.size() != 1) {
@@ -1623,7 +1660,9 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
     }
 
     const auto* call = std::get_if<LirCallOp>(&main_block.insts.back());
-    if (call == nullptr || call->result.empty() || call->callee != "@add_pair" ||
+    const auto callee_name =
+        call == nullptr ? std::nullopt : parse_direct_global_callee(call->callee);
+    if (call == nullptr || call->result.empty() || callee_name != std::string_view("add_pair") ||
         call->callee_type_suffix != "(i32, i32)" || *main_ret->value_str != call->result) {
       return std::nullopt;
     }
@@ -1723,7 +1762,7 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
     }
 
     return MinimalTwoArgDirectCallSlice{
-        "add_pair",
+        std::string(*callee_name),
         lhs_slot.stored_imm,
         rhs_slot.stored_imm,
     };
@@ -1735,15 +1774,16 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
   }
 
   if (main_block.insts.size() == 3) {
-    const auto* store = std::get_if<LirStoreOp>(&main_block.insts[0]);
-    const auto* load = std::get_if<LirLoadOp>(&main_block.insts[1]);
-    const auto* call = std::get_if<LirCallOp>(&main_block.insts[2]);
-    if (store == nullptr || load == nullptr || call == nullptr || store->type_str != "i32" ||
-        load->type_str != "i32" || store->ptr != alloca->result ||
-        load->ptr != alloca->result || call->result.empty() || call->callee != "@add_pair" ||
-        call->callee_type_suffix != "(i32, i32)" || *main_ret->value_str != call->result) {
-      return std::nullopt;
-    }
+  const auto* store = std::get_if<LirStoreOp>(&main_block.insts[0]);
+  const auto* load = std::get_if<LirLoadOp>(&main_block.insts[1]);
+  const auto* call = std::get_if<LirCallOp>(&main_block.insts[2]);
+  const auto callee_name = call == nullptr ? std::nullopt : parse_direct_global_callee(call->callee);
+  if (store == nullptr || load == nullptr || call == nullptr || store->type_str != "i32" ||
+      load->type_str != "i32" || store->ptr != alloca->result ||
+      load->ptr != alloca->result || call->result.empty() || callee_name != std::string_view("add_pair") ||
+      call->callee_type_suffix != "(i32, i32)" || *main_ret->value_str != call->result) {
+    return std::nullopt;
+  }
 
     const auto call_args = parse_call_args(*call);
     if (!call_args.has_value()) {
@@ -1758,14 +1798,16 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
       if (!rhs_call_arg_imm.has_value()) {
         return std::nullopt;
       }
-      return MinimalTwoArgDirectCallSlice{"add_pair", *stored_imm, *rhs_call_arg_imm};
+      return MinimalTwoArgDirectCallSlice{std::string(*callee_name), *stored_imm,
+                                          *rhs_call_arg_imm};
     }
     if (call_args->second == load->result) {
       const auto lhs_call_arg_imm = parse_i64(call_args->first);
       if (!lhs_call_arg_imm.has_value()) {
         return std::nullopt;
       }
-      return MinimalTwoArgDirectCallSlice{"add_pair", *lhs_call_arg_imm, *stored_imm};
+      return MinimalTwoArgDirectCallSlice{std::string(*callee_name), *lhs_call_arg_imm,
+                                          *stored_imm};
     }
     return std::nullopt;
   }
@@ -1780,14 +1822,17 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
   const auto* store1 = std::get_if<LirStoreOp>(&main_block.insts[3]);
   const auto* load1 = std::get_if<LirLoadOp>(&main_block.insts[4]);
   const auto* call = std::get_if<LirCallOp>(&main_block.insts[5]);
+  const auto callee_name = call == nullptr ? std::nullopt : parse_direct_global_callee(call->callee);
+  const auto rewrite_opcode = rewrite == nullptr ? std::nullopt : rewrite->opcode.typed();
   if (store0 == nullptr || load0 == nullptr || rewrite == nullptr || store1 == nullptr ||
       load1 == nullptr || call == nullptr || store0->type_str != "i32" ||
-      load0->type_str != "i32" || rewrite->opcode != "add" || rewrite->type_str != "i32" ||
+      load0->type_str != "i32" || rewrite_opcode != LirBinaryOpcode::Add ||
+      rewrite->type_str != "i32" ||
       store1->type_str != "i32" || load1->type_str != "i32" ||
       store0->ptr != alloca->result || load0->ptr != alloca->result ||
       store1->ptr != alloca->result || load1->ptr != alloca->result ||
       rewrite->lhs != load0->result || rewrite->rhs != "0" || store1->val != rewrite->result ||
-      call->result.empty() || call->callee != "@add_pair" ||
+      call->result.empty() || callee_name != std::string_view("add_pair") ||
       call->callee_type_suffix != "(i32, i32)" || *main_ret->value_str != call->result) {
     return std::nullopt;
   }
@@ -1807,14 +1852,16 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
     if (!rhs_call_arg_imm.has_value()) {
       return std::nullopt;
     }
-    return MinimalTwoArgDirectCallSlice{"add_pair", *stored_imm, *rhs_call_arg_imm};
+    return MinimalTwoArgDirectCallSlice{std::string(*callee_name), *stored_imm,
+                                        *rhs_call_arg_imm};
   }
   if (call_args->second == load1->result) {
     const auto lhs_call_arg_imm = parse_i64(call_args->first);
     if (!lhs_call_arg_imm.has_value()) {
       return std::nullopt;
     }
-    return MinimalTwoArgDirectCallSlice{"add_pair", *lhs_call_arg_imm, *stored_imm};
+    return MinimalTwoArgDirectCallSlice{std::string(*callee_name), *lhs_call_arg_imm,
+                                        *stored_imm};
   }
   return std::nullopt;
 }

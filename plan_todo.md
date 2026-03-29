@@ -8,10 +8,10 @@ Source Plan: plan.md
 
 - Step 4: Migrate high-friction instruction families and consumers.
 - Exact target for the next iteration: continue Step 4 past
-  the landed x86 and AArch64 pointer-difference equality slices into the next
-  remaining backend consumers that still depend on string-compatibility
-  wrappers, with compare/call-family parsing the next highest-value cleanup
-  target.
+  the landed compare/call-family helper cleanup into the next remaining backend
+  and analysis consumers that still depend on string-compatibility wrappers,
+  with shared call-argument decoding and stack/liveness textual scraping the
+  next highest-value cleanup targets.
 
 ## Completed Items
 
@@ -55,6 +55,14 @@ Source Plan: plan.md
   and `LirCmpOp::predicate.typed()` instead of relying on raw string
   compatibility, with new typed pointer-difference regression coverage in
   `tests/backend/backend_lir_adapter_tests.cpp`.
+- Completed the next Step 4 call-family cleanup slice in
+  `src/backend/x86/codegen/emit.cpp` and
+  `src/backend/aarch64/codegen/emit.cpp` by centralizing minimal direct-call
+  callee/argument decoding helpers, routing the x86 LIR direct-call fast paths
+  through `LirOperand::kind()` and enum-backed add-opcode checks, and updating
+  the typed direct-call fixtures in
+  `tests/backend/backend_lir_adapter_tests.cpp` to construct the covered call
+  and add surfaces through typed wrappers instead of plain string literals.
 
 ## Notes
 
@@ -232,6 +240,20 @@ Source Plan: plan.md
   recorded `2371/2560` passing and `189` failing tests.
 - `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
   --before test_fail_before.log --after test_fail_after.log
+  --allow-non-decreasing-passed` passed with zero new failures and no
+  pass-count regression.
+- `cmake --build build -j8 --target backend_lir_adapter_tests` passed after
+  landing the call-family helper cleanup in the x86 and AArch64 emitters.
+- `./build/backend_lir_adapter_tests` passed with the typed direct-call fixtures
+  now constructed through explicit global-operand and enum-backed add wrappers.
+- `cmake --build build -j8` passed after centralizing the minimal direct-call
+  callee/argument decoding helpers and tightening the x86 LIR call fast paths
+  onto typed callee/opcode access.
+- `ctest --test-dir build -j --output-on-failure >
+  test_fail_after_step4_call_typed.log` recorded `2371/2560` passing and
+  `189` failing tests.
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_after.log --after test_fail_after_step4_call_typed.log
   --allow-non-decreasing-passed` passed with zero new failures and no
   pass-count regression.
 
