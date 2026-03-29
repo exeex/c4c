@@ -13,6 +13,8 @@ namespace c4c {
 
 namespace {
 
+bool skip_cpp20_constraint_atom(Parser& parser);
+
 using ParsedTemplateArg = Parser::TemplateArgParseResult;
 
 struct QualifiedTypeProbe {
@@ -457,36 +459,15 @@ void parse_optional_cpp20_trailing_requires_clause(Parser& parser) {
     parser.consume();  // requires
     bool consumed_constraint = false;
     while (!parser.at_end()) {
-        if (parser.check(TokenKind::Semi) ||
-            parser.check(TokenKind::Assign) ||
-            parser.check(TokenKind::Comma) ||
-            parser.check(TokenKind::LBrace) ||
-            parser.check(TokenKind::Colon)) {
+        if (!skip_cpp20_constraint_atom(parser))
             break;
-        }
-
         consumed_constraint = true;
-        if (parser.check(TokenKind::KwRequires)) {
+        if (parser.check(TokenKind::AmpAmp) ||
+            parser.check(TokenKind::PipePipe)) {
             parser.consume();
-            if (parser.check(TokenKind::LParen)) parser.skip_paren_group();
-            if (parser.check(TokenKind::LBrace)) parser.skip_brace_group();
             continue;
         }
-        if (parser.check(TokenKind::LParen)) {
-            parser.skip_paren_group();
-            continue;
-        }
-        if (parser.check(TokenKind::LBracket)) {
-            parser.consume();
-            int depth = 1;
-            while (!parser.at_end() && depth > 0) {
-                if (parser.check(TokenKind::LBracket)) ++depth;
-                else if (parser.check(TokenKind::RBracket)) --depth;
-                parser.consume();
-            }
-            continue;
-        }
-        parser.consume();
+        break;
     }
 
     if (!consumed_constraint) {

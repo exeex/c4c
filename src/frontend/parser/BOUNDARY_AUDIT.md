@@ -32,10 +32,15 @@ ranking pass.
    Tag: `acceptable breadth`
 
 4. `src/frontend/parser/declarations.cpp:335`
-   `parse_optional_cpp20_trailing_requires_clause(Parser&)` still uses a broad
-   "keep consuming until one of `; = , { :`" loop and does not reuse the tighter
-   declaration-boundary helper above.
-   Tag: `suspicious breadth`
+   `parse_optional_cpp20_trailing_requires_clause(Parser&)` now reuses the same
+   atom-by-atom constraint walk as the ordinary `requires` parser, so it stops
+   after a complete constraint-expression instead of greedily consuming the
+   next declaration.
+   Tag: `acceptable breadth`
+   Evidence: the reduced regression
+   `tests/cpp/internal/postive_case/cpp20_trailing_requires_following_member_decl_parse.cpp`
+   plus the dedicated dump assertion keep the following `inner` declaration
+   visible after a malformed constrained member prelude.
 
 5. `src/frontend/parser/types.cpp:497`
    The older `types.cpp` copy of `is_cpp20_requires_clause_decl_boundary(Parser&)`
@@ -128,14 +133,11 @@ ranking pass.
 
 ## Ranked First Tightening Targets
 
-1. `src/frontend/parser/types.cpp:497` and `src/frontend/parser/types.cpp:512`
-   Remove or align the older `types.cpp` `requires` boundary helpers with the
-   tighter declaration-side logic. This is the highest-risk duplicate boundary.
-
-2. `src/frontend/parser/declarations.cpp:335`
-   Tighten trailing `requires` clause termination so it stops on an explicit
-   follow-set instead of generic token consumption.
-
-3. `src/frontend/parser/types.cpp:4426`
+1. `src/frontend/parser/types.cpp:4426`
    Narrow record-member recovery so malformed members cannot silently consume up
    to the record-closing `}` without a more explicit outcome.
+
+2. `src/frontend/parser/statements.cpp:77` and
+   `src/frontend/parser/declarations.cpp:1265`
+   Review `NK_EMPTY` parse-and-discard sites that currently hide unsupported
+   structure instead of preserving it explicitly.

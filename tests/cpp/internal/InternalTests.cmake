@@ -97,6 +97,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     iterator_concepts_following_hash_base_parse
     cpp20_requires_clause_parse
     cpp20_requires_clause_struct_decl_parse
+    cpp20_trailing_requires_following_member_decl_parse
     cpp20_requires_trait_disjunction_member_parse
     cpp20_requires_concept_id_member_ctor_parse
     cpp20_requires_conjunction_member_parse
@@ -315,6 +316,15 @@ add_test(
 set_tests_properties(cpp_parse_gcc_type_trait_type_arg_dump PROPERTIES
   LABELS "internal;positive_case;cpp;parse"
   PASS_REGULAR_EXPRESSION "Decl\\(can_fill\\)"
+)
+
+add_test(
+  NAME cpp_parse_trailing_requires_following_member_decl_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/cpp20_trailing_requires_following_member_decl_parse.cpp"
+)
+set_tests_properties(cpp_parse_trailing_requires_following_member_decl_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Decl\\(inner\\)"
 )
 
 add_test(

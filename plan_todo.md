@@ -7,10 +7,10 @@ Last Updated: 2026-03-29
 
 ## Active Item
 
-- Step 3: tighten the first batch by aligning the duplicated `requires`
-  boundary helpers in `src/frontend/parser/types.cpp` with the narrower
-  declaration-side whitelist, and prove the record-member template path with a
-  dedicated reduced parse test
+- Step 3: tighten the next parser boundary batch by narrowing
+  `recover_record_member_parse_error(int)` in `src/frontend/parser/types.cpp`
+  so malformed members cannot silently drift to `}` and hide the real failure
+  site
 
 ## Completed
 
@@ -51,17 +51,25 @@ Last Updated: 2026-03-29
   - after change: `100% tests passed, 0 tests failed out of 2405`
   - result: monotonic pass-count increase from the new targeted test, with no
     newly failing cases
+- tightened the duplicated trailing `requires` clause helpers in
+  `src/frontend/parser/declarations.cpp` and `src/frontend/parser/types.cpp`
+  so they now reuse the existing atom-by-atom constraint walk instead of a
+  broad consume-until-stop loop
+- added the reduced parse regression
+  `tests/cpp/internal/postive_case/cpp20_trailing_requires_following_member_decl_parse.cpp`
+  plus a dedicated dump assertion in
+  `tests/cpp/internal/InternalTests.cmake` to prove a malformed constrained
+  member no longer swallows the following `inner` declaration
 
 ## Next Slice
 
-- after the `types.cpp` helper alignment lands, re-run the boundary shortlist
-  and confirm the next highest-risk site is still the trailing `requires`
-  clause loop in `src/frontend/parser/declarations.cpp`
-- if the reduced member-template test exposes any remaining false positives,
-  split that into a separate follow-on idea instead of expanding this slice
-- if the shortlist stays stable, move the active item to the trailing
-  `requires` clause termination loop and add a reduced test that proves it
-  stops on an explicit follow-set rather than generic token consumption
+- use the updated shortlist in `src/frontend/parser/BOUNDARY_AUDIT.md` and
+  confirm the next highest-risk site is still record-member recovery that can
+  advance to `}`
+- add a reduced repro that proves malformed members stop at a bounded recovery
+  point instead of erasing the later member that should surface the error
+- if narrowing that recovery uncovers a separate unsupported syntax gap, split
+  it into a new `ideas/open/*.md` note rather than silently widening this plan
 
 ## Notes
 
@@ -70,15 +78,14 @@ Last Updated: 2026-03-29
   tightening the parser boundaries themselves
 - the parked `std::vector` idea should be revisited after the first whitelist
   audit fixes land and the remaining suspicious sites are ranked
-- current uncommitted implementation work in the tree still includes:
-  - tightened `requires`-clause boundary logic in
-    `src/frontend/parser/declarations.cpp`
-  - the new reduced regression test for requires-trait disjunction parsing
 - this iteration is intentionally scoped to the older `types.cpp` duplicate
-  helpers that are used by record-member template preludes
+  helpers first and then the duplicated trailing `requires` termination path
 - the new member-template regression currently parses before and after the
   helper alignment, so its value is as a guard against future fallback
   broadening on the `types.cpp` path rather than as a newly red-to-green test
+- the trailing `requires` follow-set regression is intentionally parse-only:
+  the important assertion is that the following member declaration remains
+  visible in the AST dump, not that this malformed source compiles cleanly
 - the Step 1 inventory now lives in `src/frontend/parser/BOUNDARY_AUDIT.md` so
   future parser work can reuse the current shortlist instead of rebuilding it
   from scratch
