@@ -148,6 +148,15 @@ void consume_optional_cpp_member_virt_specifier_seq(Parser* parser) {
     }
 }
 
+void consume_optional_cpp_explicit_specifier(Parser* parser) {
+    if (!parser || !parser->is_cpp_mode() || !parser->check(TokenKind::KwExplicit))
+        return;
+
+    parser->consume();
+    if (parser->check(TokenKind::LParen))
+        parser->skip_paren_group();
+}
+
 bool is_type_template_param(const Node* tpl_def, const char* name) {
     if (!tpl_def || !name) return false;
     for (int i = 0; i < tpl_def->n_template_params; ++i) {
@@ -1662,6 +1671,34 @@ bool Parser::consume_qualified_type_spelling(bool allow_global,
     }
     if (out_qn) *out_qn = std::move(qn);
     return true;
+}
+
+bool Parser::consume_template_parameter_type_head(bool allow_typename_keyword) {
+    const int saved_pos = pos_;
+
+    if (allow_typename_keyword && check(TokenKind::KwTypename)) {
+        consume();
+        if (consume_qualified_type_spelling(/*allow_global=*/true,
+                                            /*consume_final_template_args=*/true,
+                                            nullptr, nullptr)) {
+            return true;
+        }
+        pos_ = saved_pos;
+    }
+
+    if (is_type_kw(cur().kind)) {
+        while (!at_end() && is_type_kw(cur().kind)) consume();
+        return true;
+    }
+
+    if (consume_qualified_type_spelling(/*allow_global=*/true,
+                                        /*consume_final_template_args=*/true,
+                                        nullptr, nullptr)) {
+        return true;
+    }
+
+    pos_ = saved_pos;
+    return false;
 }
 
 bool Parser::consume_template_args_followed_by_scope() {
@@ -4383,9 +4420,10 @@ bool Parser::try_skip_record_static_assert_member(std::vector<Node*>* methods) {
     return true;
 }
 
-bool Parser::recover_record_member_parse_error(int member_start_pos) {
+Parser::RecordMemberRecoveryResult
+Parser::recover_record_member_parse_error(int member_start_pos) {
     if (!is_cpp_mode())
-        return false;
+        return RecordMemberRecoveryResult::Failed;
 
     int brace_depth = 0;
     while (!at_end()) {
@@ -4397,18 +4435,19 @@ bool Parser::recover_record_member_parse_error(int member_start_pos) {
                 --brace_depth;
                 consume();
             } else {
-                break;
+                if (pos_ == member_start_pos && !at_end()) consume();
+                return RecordMemberRecoveryResult::StoppedAtRBrace;
             }
         } else if (check(TokenKind::Semi) && brace_depth == 0) {
             consume();
-            break;
+            return RecordMemberRecoveryResult::SyncedAtSemicolon;
         } else {
             consume();
         }
     }
 
     if (pos_ == member_start_pos && !at_end()) consume();
-    return true;
+    return RecordMemberRecoveryResult::Failed;
 }
 
 void Parser::parse_record_template_member_prelude(
@@ -4423,6 +4462,46 @@ void Parser::parse_record_template_member_prelude(
     while (!at_end() && !check_template_close()) {
         if (check(TokenKind::KwTypename) ||
             check(TokenKind::KwClass)) {
+            if (classify_typename_template_parameter() ==
+                TypenameTemplateParamKind::TypedNonTypeParameter) {
+                TypeSpec param_ts = parse_type_name();
+                (void)param_ts;
+                while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
+                if (check(TokenKind::Ellipsis)) consume();
+                if (check(TokenKind::Identifier)) consume();
+                if (check(TokenKind::Assign)) {
+                    consume();
+                    int depth = 0, paren_depth = 0;
+                    while (!at_end()) {
+                        if (check(TokenKind::Less) || check(TokenKind::LParen)) {
+                            if (check(TokenKind::LParen)) ++paren_depth;
+                            else ++depth;
+                        } else if (check(TokenKind::RParen)) {
+                            if (paren_depth > 0) --paren_depth;
+                        } else if (check(TokenKind::GreaterGreater)) {
+                            if (paren_depth == 0 && depth <= 0) break;
+                            if (paren_depth == 0 && depth == 1) {
+                                parse_greater_than_in_template_list(false);
+                                break;
+                            }
+                            if (depth >= 2) depth -= 2;
+                            else if (depth == 1) --depth;
+                            consume();
+                            continue;
+                        } else if (check(TokenKind::Greater)) {
+                            if (paren_depth == 0 && depth == 0) break;
+                            if (depth > 0) --depth;
+                        } else if (check(TokenKind::Comma) && depth == 0 &&
+                                   paren_depth == 0) {
+                            break;
+                        }
+                        consume();
+                    }
+                }
+                if (!match(TokenKind::Comma)) break;
+                continue;
+            }
+
             consume();
             if (check(TokenKind::Ellipsis)) consume();
             if (check(TokenKind::Identifier)) {
@@ -4477,16 +4556,7 @@ void Parser::parse_record_template_member_prelude(
                     }
                 }
             }
-        } else if (is_type_kw(cur().kind) ||
-                   (check(TokenKind::Identifier) &&
-                    (is_typedef_name(cur().lexeme) ||
-                     typedef_types_.count(
-                         resolve_visible_type_name(cur().lexeme)) > 0))) {
-            if (is_type_kw(cur().kind)) {
-                while (!at_end() && is_type_kw(cur().kind)) consume();
-            } else {
-                consume();
-            }
+        } else if (consume_template_parameter_type_head(/*allow_typename_keyword=*/true)) {
             while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
             if (check(TokenKind::Ellipsis)) consume();
             if (check(TokenKind::Identifier)) consume();
@@ -4517,6 +4587,161 @@ void Parser::parse_record_template_member_prelude(
                         break;
                     }
                     consume();
+                }
+            }
+        } else if (is_cpp_mode()) {
+            const int saved_pos = pos_;
+            bool parsed_typed_nttp = false;
+            try {
+                TypeSpec param_ts = parse_type_name();
+                (void)param_ts;
+                while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
+                if (check(TokenKind::Ellipsis)) consume();
+                if (check(TokenKind::Identifier)) consume();
+                if (check(TokenKind::Assign)) {
+                    consume();
+                    int depth = 0, paren_depth = 0;
+                    while (!at_end()) {
+                        if (check(TokenKind::Less) || check(TokenKind::LParen)) {
+                            if (check(TokenKind::LParen)) ++paren_depth;
+                            else ++depth;
+                        } else if (check(TokenKind::RParen)) {
+                            if (paren_depth > 0) --paren_depth;
+                        } else if (check(TokenKind::GreaterGreater)) {
+                            if (paren_depth == 0 && depth <= 0) break;
+                            if (paren_depth == 0 && depth == 1) {
+                                parse_greater_than_in_template_list(false);
+                                break;
+                            }
+                            if (depth >= 2) depth -= 2;
+                            else if (depth == 1) --depth;
+                            consume();
+                            continue;
+                        } else if (check(TokenKind::Greater)) {
+                            if (paren_depth == 0 && depth == 0) break;
+                            if (depth > 0) --depth;
+                        } else if (check(TokenKind::Comma) && depth == 0 &&
+                                   paren_depth == 0) {
+                            break;
+                        }
+                        consume();
+                    }
+                }
+                parsed_typed_nttp =
+                    check(TokenKind::Comma) || check_template_close();
+            } catch (...) {
+                pos_ = saved_pos;
+            }
+            if (parsed_typed_nttp) {
+                // Typed NTTP with a typedef/alias type head, e.g.
+                // `__enable_if_t<Cond, bool> = true`.
+            } else {
+                pos_ = saved_pos;
+                const int saved_type_head_pos = pos_;
+                std::string type_head_name;
+                const bool consumed_type_head = consume_qualified_type_spelling(
+                        /*allow_global=*/true,
+                        /*consume_final_template_args=*/true,
+                        &type_head_name, nullptr);
+                if (consumed_type_head &&
+                    (check(TokenKind::Assign) ||
+                     check(TokenKind::Comma) ||
+                     check_template_close())) {
+                    if (check(TokenKind::Assign)) {
+                        consume();
+                        int depth = 0, paren_depth = 0;
+                        while (!at_end()) {
+                            if (check(TokenKind::Less) || check(TokenKind::LParen)) {
+                                if (check(TokenKind::LParen)) ++paren_depth;
+                                else ++depth;
+                            } else if (check(TokenKind::RParen)) {
+                                if (paren_depth > 0) --paren_depth;
+                            } else if (check(TokenKind::GreaterGreater)) {
+                                if (paren_depth == 0 && depth <= 0) break;
+                                if (paren_depth == 0 && depth == 1) {
+                                    parse_greater_than_in_template_list(false);
+                                    break;
+                                }
+                                if (depth >= 2) depth -= 2;
+                                else if (depth == 1) --depth;
+                                consume();
+                                continue;
+                            } else if (check(TokenKind::Greater)) {
+                                if (paren_depth == 0 && depth == 0) break;
+                                if (depth > 0) --depth;
+                            } else if (check(TokenKind::Comma) && depth == 0 &&
+                                       paren_depth == 0) {
+                                break;
+                            }
+                            consume();
+                        }
+                    }
+                } else {
+                    pos_ = saved_type_head_pos;
+                    const int saved_constraint_pos = pos_;
+                    std::string constraint_name;
+                    if (consume_qualified_type_spelling(
+                            /*allow_global=*/true,
+                            /*consume_final_template_args=*/true,
+                            &constraint_name, nullptr) &&
+                        (check(TokenKind::Ellipsis) || check(TokenKind::Identifier))) {
+                        if (check(TokenKind::Ellipsis)) consume();
+                        if (check(TokenKind::Identifier)) {
+                            std::string pname = cur().lexeme;
+                            consume();
+                            typedefs_.insert(pname);
+                            TypeSpec param_ts{};
+                            param_ts.array_size = -1;
+                            param_ts.inner_rank = -1;
+                            param_ts.base = TB_TYPEDEF;
+                            param_ts.tag = arena_.strdup(pname.c_str());
+                            typedef_types_[pname] = param_ts;
+                            injected_type_params->push_back(std::move(pname));
+                        }
+                        if (check(TokenKind::Assign)) {
+                            consume();
+                            int saved_default_pos = pos_;
+                            bool parsed_default_type = false;
+                            try {
+                                TypeSpec ignored_default = parse_type_name();
+                                (void)ignored_default;
+                                parsed_default_type = true;
+                            } catch (...) {
+                                pos_ = saved_default_pos;
+                            }
+                            if (!parsed_default_type) {
+                                int depth = 0, paren_depth = 0;
+                                while (!at_end()) {
+                                    if (check(TokenKind::Less) || check(TokenKind::LParen)) {
+                                        if (check(TokenKind::LParen)) ++paren_depth;
+                                        else ++depth;
+                                    } else if (check(TokenKind::RParen)) {
+                                        if (paren_depth > 0) --paren_depth;
+                                    } else if (check(TokenKind::GreaterGreater)) {
+                                        if (paren_depth == 0 && depth <= 0) break;
+                                        if (paren_depth == 0 && depth == 1) {
+                                            parse_greater_than_in_template_list(false);
+                                            break;
+                                        }
+                                        if (depth >= 2) depth -= 2;
+                                        else if (depth == 1) --depth;
+                                        consume();
+                                        continue;
+                                    } else if (check(TokenKind::Greater)) {
+                                        if (paren_depth == 0 && depth == 0) break;
+                                        if (depth > 0) --depth;
+                                    } else if (check(TokenKind::Comma) && depth == 0 &&
+                                               paren_depth == 0) {
+                                        break;
+                                    }
+                                    consume();
+                                }
+                            }
+                        }
+                    } else {
+                        pos_ = saved_constraint_pos;
+                        consume();
+                    }
                 }
             }
         } else {
@@ -4876,13 +5101,29 @@ bool Parser::try_parse_record_constructor_member(
         return false;
 
     int probe = pos_;
-    while (probe < static_cast<int>(tokens_.size()) &&
-           (tokens_[probe].kind == TokenKind::KwConstexpr ||
+    while (probe < static_cast<int>(tokens_.size())) {
+        if (tokens_[probe].kind == TokenKind::KwConstexpr ||
             tokens_[probe].kind == TokenKind::KwConsteval ||
-            tokens_[probe].kind == TokenKind::KwExplicit ||
             (tokens_[probe].kind == TokenKind::Identifier &&
-             tokens_[probe].lexeme == "inline"))) {
-        ++probe;
+             tokens_[probe].lexeme == "inline")) {
+            ++probe;
+            continue;
+        }
+        if (tokens_[probe].kind == TokenKind::KwExplicit) {
+            ++probe;
+            if (probe < static_cast<int>(tokens_.size()) &&
+                tokens_[probe].kind == TokenKind::LParen) {
+                int depth = 1;
+                ++probe;
+                while (probe < static_cast<int>(tokens_.size()) && depth > 0) {
+                    if (tokens_[probe].kind == TokenKind::LParen) ++depth;
+                    else if (tokens_[probe].kind == TokenKind::RParen) --depth;
+                    ++probe;
+                }
+            }
+            continue;
+        }
+        break;
     }
     if (probe < static_cast<int>(tokens_.size()) &&
         tokens_[probe].kind == TokenKind::Identifier &&
@@ -4890,7 +5131,12 @@ bool Parser::try_parse_record_constructor_member(
                                       struct_source_name) &&
         probe + 1 < static_cast<int>(tokens_.size()) &&
         tokens_[probe + 1].kind == TokenKind::LParen) {
-        while (pos_ < probe) consume();
+        while (pos_ < probe) {
+            if (check(TokenKind::KwExplicit))
+                consume_optional_cpp_explicit_specifier(this);
+            else
+                consume();
+        }
     }
 
     if (!(check(TokenKind::Identifier) &&
@@ -5081,9 +5327,13 @@ bool Parser::try_parse_record_method_or_field_member(
             // Only peek through qualifiers/storage-class keywords
             if (check(TokenKind::KwConst) || check(TokenKind::KwVolatile) ||
                 check(TokenKind::KwInline) || check(TokenKind::KwExtern) ||
-                check(TokenKind::KwConsteval) || check(TokenKind::KwExplicit) ||
+                check(TokenKind::KwConsteval) ||
                 check(TokenKind::KwMutable)) {
                 consume();
+                continue;
+            }
+            if (check(TokenKind::KwExplicit)) {
+                consume_optional_cpp_explicit_specifier(this);
                 continue;
             }
             break;
@@ -5625,7 +5875,9 @@ bool Parser::try_parse_record_body_member(
                                        &body_state->member_typedef_types,
                                        check_dup_field);
     } catch (const std::exception&) {
-        if (!recover_record_member_parse_error(member_start_pos))
+        const RecordMemberRecoveryResult recovery =
+            recover_record_member_parse_error(member_start_pos);
+        if (recovery != RecordMemberRecoveryResult::SyncedAtSemicolon)
             throw;
         return false;
     }

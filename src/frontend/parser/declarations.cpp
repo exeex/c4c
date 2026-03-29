@@ -984,45 +984,7 @@ Node* Parser::parse_top_level() {
             return std::pair<bool, const char*>(is_pack, pname);
         };
         auto try_consume_typedef_nttp_type_head = [&]() -> bool {
-            if ((check(TokenKind::ColonColon) ||
-                 (check(TokenKind::Identifier) &&
-                  pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                  tokens_[pos_ + 1].kind == TokenKind::ColonColon)) &&
-                [&]() -> bool {
-                    QualifiedNameRef qn;
-                    if (!peek_qualified_name(&qn, true)) return false;
-                    std::string qualified = qn.base_name;
-                    if (!qn.qualifier_segments.empty()) {
-                        qualified.clear();
-                        for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
-                            if (i) qualified += "::";
-                            qualified += qn.qualifier_segments[i];
-                        }
-                        qualified += "::";
-                        qualified += qn.base_name;
-                    }
-                    if (typedef_types_.count(qualified) > 0) return true;
-                    int context_id = resolve_namespace_context(qn);
-                    if (context_id >= 0) {
-                        std::string resolved = canonical_name_in_context(context_id, qn.base_name);
-                        if (typedef_types_.count(resolved) > 0) return true;
-                    }
-                    return false;
-                }()) {
-                QualifiedNameRef qn;
-                peek_qualified_name(&qn, true);
-                int qn_tokens = static_cast<int>(qn.qualifier_segments.size()) * 2 + 1;
-                if (qn.is_global_qualified) qn_tokens += 1;
-                pos_ += qn_tokens;
-                return true;
-            }
-            if (check(TokenKind::Identifier) &&
-                (is_typedef_name(cur().lexeme) ||
-                 typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0)) {
-                consume();
-                return true;
-            }
-            return false;
+            return consume_template_parameter_type_head(/*allow_typename_keyword=*/true);
         };
         while (!at_end() && !check(TokenKind::Greater)) {
             if (check(TokenKind::KwTemplate)) {

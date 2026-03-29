@@ -89,6 +89,12 @@ class Parser {
     std::vector<TypeSpec> member_typedef_types;
   };
 
+  enum class RecordMemberRecoveryResult {
+    Failed,
+    SyncedAtSemicolon,
+    StoppedAtRBrace,
+  };
+
   struct ParseContextFrame {
     std::string function_name;
     int token_index = -1;
@@ -331,6 +337,7 @@ class Parser {
   std::string resolve_visible_concept_name(const std::string& name) const;
   bool is_concept_name(const std::string& name) const;
   bool peek_qualified_name(QualifiedNameRef* out, bool allow_global = true) const;
+  bool consume_template_parameter_type_head(bool allow_typename_keyword = true);
   QualifiedNameRef parse_qualified_name(bool allow_global = true);
   void apply_qualified_name(Node* node, const QualifiedNameRef& qn,
                             const char* resolved_name = nullptr);
@@ -548,7 +555,7 @@ class Parser {
   bool try_parse_record_access_label();
   bool try_skip_record_friend_member();
   bool try_skip_record_static_assert_member(std::vector<Node*>* methods);
-  bool recover_record_member_parse_error(int member_start_pos);
+  RecordMemberRecoveryResult recover_record_member_parse_error(int member_start_pos);
   void parse_record_template_member_prelude(
       std::vector<std::string>* injected_type_params,
       bool* pushed_template_scope);
