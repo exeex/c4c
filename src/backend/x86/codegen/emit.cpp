@@ -364,6 +364,7 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
       (cmp0->predicate != "slt" && cmp0->predicate != "sle" &&
        cmp0->predicate != "sgt" && cmp0->predicate != "sge" &&
        cmp0->predicate != "eq" && cmp0->predicate != "ne" &&
+       cmp0->predicate != "ult" && cmp0->predicate != "ule" &&
        cmp0->predicate != "ugt" && cmp0->predicate != "uge") ||
       cmp0->type_str != "i32" ||
       cast->kind != LirCastKind::ZExt || cast->from_type != "i1" ||
@@ -1696,6 +1697,10 @@ std::string emit_minimal_conditional_return_asm(
     fail_branch = "jne";
   } else if (slice.predicate == "ne") {
     fail_branch = "je";
+  } else if (slice.predicate == "ult") {
+    fail_branch = "jae";
+  } else if (slice.predicate == "ule") {
+    fail_branch = "ja";
   } else if (slice.predicate == "ugt") {
     fail_branch = "jbe";
   } else if (slice.predicate == "uge") {

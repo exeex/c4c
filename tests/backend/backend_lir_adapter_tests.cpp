@@ -3984,6 +3984,50 @@ void test_x86_backend_renders_compare_and_branch_ne_slice() {
                       "x86 backend should stop falling back to LLVM text for the not-equal slice");
 }
 
+void test_x86_backend_renders_compare_and_branch_ult_slice() {
+  auto module = make_conditional_return_ult_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should lower the unsigned less-than conditional-return slice to assembly");
+  expect_contains(rendered, "  mov eax, 2\n",
+                  "x86 backend should materialize the first unsigned less-than compare immediate");
+  expect_contains(rendered, "  cmp eax, 3\n",
+                  "x86 backend should compare the materialized unsigned less-than lhs against the rhs immediate");
+  expect_contains(rendered, "  jae .Lelse\n",
+                  "x86 backend should branch to the else label when the unsigned less-than test fails");
+  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+                  "x86 backend should lower the unsigned less-than then block directly in assembly");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+                  "x86 backend should lower the unsigned less-than else block directly in assembly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the unsigned less-than slice");
+}
+
+void test_x86_backend_renders_compare_and_branch_ule_slice() {
+  auto module = make_conditional_return_ule_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should lower the unsigned less-or-equal conditional-return slice to assembly");
+  expect_contains(rendered, "  mov eax, 2\n",
+                  "x86 backend should materialize the first unsigned less-or-equal compare immediate");
+  expect_contains(rendered, "  cmp eax, 3\n",
+                  "x86 backend should compare the materialized unsigned less-or-equal lhs against the rhs immediate");
+  expect_contains(rendered, "  ja .Lelse\n",
+                  "x86 backend should branch to the else label when the unsigned less-or-equal test fails");
+  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+                  "x86 backend should lower the unsigned less-or-equal then block directly in assembly");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+                  "x86 backend should lower the unsigned less-or-equal else block directly in assembly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the unsigned less-or-equal slice");
+}
+
 void test_x86_backend_renders_compare_and_branch_ugt_slice() {
   auto module = make_conditional_return_ugt_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -6573,6 +6617,8 @@ int main() {
   test_x86_backend_renders_compare_and_branch_ge_slice();
   test_x86_backend_renders_compare_and_branch_eq_slice();
   test_x86_backend_renders_compare_and_branch_ne_slice();
+  test_x86_backend_renders_compare_and_branch_ult_slice();
+  test_x86_backend_renders_compare_and_branch_ule_slice();
   test_x86_backend_renders_compare_and_branch_ugt_slice();
   test_x86_backend_renders_compare_and_branch_uge_slice();
   test_x86_backend_renders_extern_global_array_slice();
