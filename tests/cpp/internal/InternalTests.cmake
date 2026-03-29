@@ -346,6 +346,15 @@ set_tests_properties(cpp_parse_record_member_using_recovery_preserves_following_
 )
 
 add_test(
+  NAME cpp_parse_record_member_requires_clause_recovery_preserves_following_decl_dump
+  COMMAND c4cll --parse-only "/workspaces/c4c/tests/cpp/internal/parse_only_case/record_member_requires_clause_recovery_preserves_following_decl_parse.cpp"
+)
+set_tests_properties(cpp_parse_record_member_requires_clause_recovery_preserves_following_decl_dump PROPERTIES
+  LABELS "internal;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Decl\\(kept\\)"
+)
+
+add_test(
   NAME cpp_parse_local_using_alias_recovery_preserves_following_decl_dump
   COMMAND c4cll --parse-only "/workspaces/c4c/tests/cpp/internal/parse_only_case/local_using_alias_recovery_preserves_following_decl_parse.cpp"
 )

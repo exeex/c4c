@@ -1,6 +1,6 @@
 # Parser Whitelist Boundary Audit
 
-Status: Open
+Status: Complete
 Last Updated: 2026-03-29
 
 ## Goal
@@ -124,3 +124,25 @@ reviewable order.
 - the first batch of suspicious sites has reduced tests and a tightening plan
 - future parser work can reference this audit instead of rediscovering the same
   "skip rule too wide" issue ad hoc
+
+## Completion Notes
+
+- Recorded the durable Step 1 / Step 2 inventory in
+  `src/frontend/parser/BOUNDARY_AUDIT.md`.
+- Landed the first tightening batch across top-level discard and recovery paths
+  plus the older `types.cpp` record-member `requires` boundary helper.
+- Added reduced parse-only regressions for the tightened parser-boundary slices,
+  including
+  `tests/cpp/internal/parse_only_case/record_member_requires_clause_recovery_preserves_following_decl_parse.cpp`
+  for malformed member-template `requires` recovery.
+- Validated the final runbook slice with focused parser coverage and the full
+  regression guard; the suite remained monotonic with no newly failing tests.
+
+## Leftover Issues
+
+- The `types.cpp` record-member `requires` helper still has possible
+  identifier-start false positives after incomplete `&&` / `||` chains because
+  the current slice only stops before obvious non-identifier declaration
+  starters.
+- `recover_record_member_parse_error(int)` remains the next broader parser
+  boundary candidate once this audit work is revisited.

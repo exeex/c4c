@@ -636,6 +636,11 @@ bool skip_cpp20_constraint_atom(Parser& parser) {
         return true;
     }
 
+    if (is_cpp20_requires_clause_decl_boundary(parser) &&
+        !parser.check(TokenKind::Identifier)) {
+        return false;
+    }
+
     int angle_depth = 0;
     int paren_depth = 0;
     int bracket_depth = 0;
