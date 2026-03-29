@@ -2020,6 +2020,99 @@ c4c::codegen::lir::LirModule make_live_local_alloca_candidate_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_read_before_store_local_alloca_candidate_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.buf", "[2 x i32]", "", 4});
+  function.alloca_insts.push_back(
+      LirStoreOp{"[2 x i32]", "zeroinitializer", "%lv.buf"});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(
+      LirGepOp{"%t0", "[2 x i32]", "%lv.buf", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirLoadOp{"%t1", "i32", "%t0"});
+  entry.insts.push_back(LirStoreOp{"i32", "7", "%t0"});
+  entry.terminator = LirRet{std::string("%t1"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_overwrite_first_scalar_local_alloca_candidate_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+  function.alloca_insts.push_back(LirStoreOp{"i32", "zeroinitializer", "%lv.x"});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "7", "%lv.x"});
+  entry.terminator = LirBr{"exit"};
+  function.blocks.push_back(std::move(entry));
+
+  LirBlock exit;
+  exit.id = LirBlockId{1};
+  exit.label = "exit";
+  exit.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.x"});
+  exit.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(exit));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_read_before_store_scalar_local_alloca_candidate_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+  function.alloca_insts.push_back(LirStoreOp{"i32", "zeroinitializer", "%lv.x"});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.x"});
+  entry.insts.push_back(LirStoreOp{"i32", "7", "%lv.x"});
+  entry.terminator = LirBr{"exit"};
+  function.blocks.push_back(std::move(entry));
+
+  LirBlock exit;
+  exit.id = LirBlockId{1};
+  exit.label = "exit";
+  exit.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(exit));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 void test_adapts_direct_return() {
   const auto adapted = c4c::backend::adapt_minimal_module(make_return_zero_module());
   expect_true(adapted.functions.size() == 1, "adapter should preserve one function");
@@ -3350,6 +3443,24 @@ void test_backend_shared_stack_layout_analysis_detects_dead_param_allocas() {
               "shared stack-layout analysis should mark dead param allocas when the corresponding parameter value is kept in a callee-saved register");
 }
 
+void test_backend_shared_stack_layout_analysis_detects_entry_alloca_overwrite_before_read() {
+  const c4c::backend::RegAllocIntegrationResult regalloc;
+
+  const auto overwrite_first_module = make_overwrite_first_scalar_local_alloca_candidate_module();
+  const auto& overwrite_first_function = overwrite_first_module.functions.front();
+  const auto overwrite_first_analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(overwrite_first_function, regalloc, {});
+  expect_true(overwrite_first_analysis.is_entry_alloca_overwritten_before_read("%lv.x"),
+              "shared stack-layout analysis should recognize live entry allocas whose first real access overwrites the slot before any read");
+
+  const auto read_first_module = make_read_before_store_scalar_local_alloca_candidate_module();
+  const auto& read_first_function = read_first_module.functions.front();
+  const auto read_first_analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(read_first_function, regalloc, {});
+  expect_true(!read_first_analysis.is_entry_alloca_overwritten_before_read("%lv.x"),
+              "shared stack-layout analysis should keep entry zero-init stores when the slot is read before it is overwritten");
+}
+
 void test_backend_shared_slot_assignment_plans_param_alloca_slots() {
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}};
@@ -3443,7 +3554,50 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
   expect_true(live_plans.size() == 1 && live_plans.front().alloca_name == "%lv.buf" &&
                   live_plans.front().needs_stack_slot &&
                   !live_plans.front().remove_following_entry_store,
-              "shared slot-assignment planning should preserve live non-param entry allocas when the body still reads from the slot");
+              "shared slot-assignment planning should preserve paired zero-init stores for aggregate entry allocas");
+
+  const auto read_first_module = make_read_before_store_local_alloca_candidate_module();
+  const auto& read_first_function = read_first_module.functions.front();
+  const auto read_first_analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(read_first_function, regalloc, {});
+  const auto read_first_plans =
+      c4c::backend::stack_layout::plan_entry_alloca_slots(read_first_function,
+                                                          read_first_analysis);
+
+  expect_true(read_first_plans.size() == 1 &&
+                  read_first_plans.front().alloca_name == "%lv.buf" &&
+                  read_first_plans.front().needs_stack_slot &&
+                  !read_first_plans.front().remove_following_entry_store,
+              "shared slot-assignment planning should preserve paired zero-init stores when a live entry alloca is read before the first overwrite");
+
+  const auto scalar_overwrite_module = make_overwrite_first_scalar_local_alloca_candidate_module();
+  const auto& scalar_overwrite_function = scalar_overwrite_module.functions.front();
+  const auto scalar_overwrite_analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(scalar_overwrite_function, regalloc, {});
+  const auto scalar_overwrite_plans =
+      c4c::backend::stack_layout::plan_entry_alloca_slots(scalar_overwrite_function,
+                                                          scalar_overwrite_analysis);
+
+  expect_true(scalar_overwrite_plans.size() == 1 &&
+                  scalar_overwrite_plans.front().alloca_name == "%lv.x" &&
+                  scalar_overwrite_plans.front().needs_stack_slot &&
+                  scalar_overwrite_plans.front().remove_following_entry_store,
+              "shared slot-assignment planning should drop redundant paired zero-init stores for scalar entry allocas that are overwritten before any read");
+
+  const auto scalar_read_first_module =
+      make_read_before_store_scalar_local_alloca_candidate_module();
+  const auto& scalar_read_first_function = scalar_read_first_module.functions.front();
+  const auto scalar_read_first_analysis = c4c::backend::stack_layout::analyze_stack_layout(
+      scalar_read_first_function, regalloc, {});
+  const auto scalar_read_first_plans =
+      c4c::backend::stack_layout::plan_entry_alloca_slots(scalar_read_first_function,
+                                                          scalar_read_first_analysis);
+
+  expect_true(scalar_read_first_plans.size() == 1 &&
+                  scalar_read_first_plans.front().alloca_name == "%lv.x" &&
+                  scalar_read_first_plans.front().needs_stack_slot &&
+                  !scalar_read_first_plans.front().remove_following_entry_store,
+              "shared slot-assignment planning should preserve paired zero-init stores for scalar entry allocas that are read before the first overwrite");
 }
 
 void test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts() {
@@ -3471,7 +3625,37 @@ void test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts() {
       c4c::backend::stack_layout::prune_dead_entry_alloca_insts(live_function, live_plans);
 
   expect_true(live_pruned.size() == live_function.alloca_insts.size(),
-              "shared slot-assignment pruning should keep live non-param entry allocas");
+              "shared slot-assignment pruning should keep aggregate live non-param entry allocas and their paired zero-init stores");
+
+  const auto read_first_module = make_read_before_store_local_alloca_candidate_module();
+  const auto& read_first_function = read_first_module.functions.front();
+  const auto read_first_analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(read_first_function, regalloc, {});
+  const auto read_first_plans =
+      c4c::backend::stack_layout::plan_entry_alloca_slots(read_first_function,
+                                                          read_first_analysis);
+  const auto read_first_pruned = c4c::backend::stack_layout::prune_dead_entry_alloca_insts(
+      read_first_function, read_first_plans);
+
+  expect_true(read_first_pruned.size() == read_first_function.alloca_insts.size(),
+              "shared slot-assignment pruning should preserve paired zero-init stores when a live entry alloca is read before the first overwrite");
+
+  const auto scalar_overwrite_module = make_overwrite_first_scalar_local_alloca_candidate_module();
+  const auto& scalar_overwrite_function = scalar_overwrite_module.functions.front();
+  const auto scalar_overwrite_analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(scalar_overwrite_function, regalloc, {});
+  const auto scalar_overwrite_plans =
+      c4c::backend::stack_layout::plan_entry_alloca_slots(scalar_overwrite_function,
+                                                          scalar_overwrite_analysis);
+  const auto scalar_overwrite_pruned =
+      c4c::backend::stack_layout::prune_dead_entry_alloca_insts(scalar_overwrite_function,
+                                                                scalar_overwrite_plans);
+
+  expect_true(
+      scalar_overwrite_pruned.size() + 1 == scalar_overwrite_function.alloca_insts.size() &&
+          std::holds_alternative<c4c::codegen::lir::LirAllocaOp>(
+              scalar_overwrite_pruned.front()),
+      "shared slot-assignment pruning should keep scalar live entry allocas while dropping redundant paired zero-init stores");
 }
 
 void test_aarch64_backend_prunes_dead_param_allocas_from_fallback_lir() {
@@ -3511,7 +3695,17 @@ void test_aarch64_backend_prunes_dead_local_allocas_from_fallback_lir() {
   expect_contains(live_rendered, "%lv.buf = alloca [2 x i32], align 4",
                   "aarch64 backend fallback should preserve live local entry allocas");
   expect_contains(live_rendered, "store [2 x i32] zeroinitializer, ptr %lv.buf",
-                  "aarch64 backend fallback should preserve zero-init stores for live local entry allocas");
+                  "aarch64 backend fallback should preserve aggregate zero-init stores for live local entry allocas");
+
+  const auto read_first_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          make_read_before_store_local_alloca_candidate_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(read_first_rendered, "%lv.buf = alloca [2 x i32], align 4",
+                  "aarch64 backend fallback should preserve live local entry allocas in read-before-store cases");
+  expect_contains(read_first_rendered, "store [2 x i32] zeroinitializer, ptr %lv.buf",
+                  "aarch64 backend fallback should preserve zero-init stores when a live local entry alloca is read before the first overwrite");
+
 }
 
 }  // namespace
@@ -3597,6 +3791,7 @@ int main() {
   test_backend_shared_stack_layout_regalloc_helper_exposes_handoff_view();
   test_backend_shared_stack_layout_analysis_tracks_phi_use_blocks();
   test_backend_shared_stack_layout_analysis_detects_dead_param_allocas();
+  test_backend_shared_stack_layout_analysis_detects_entry_alloca_overwrite_before_read();
   test_backend_shared_slot_assignment_plans_param_alloca_slots();
   test_backend_shared_slot_assignment_prunes_dead_param_alloca_insts();
   test_backend_shared_slot_assignment_plans_entry_alloca_slots();

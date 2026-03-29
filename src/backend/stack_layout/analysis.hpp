@@ -17,11 +17,14 @@ struct StackLayoutAnalysis {
   std::unordered_map<std::string, std::vector<std::size_t>> value_use_blocks;
   std::unordered_set<std::string> used_values;
   std::unordered_set<std::string> dead_param_allocas;
+  std::unordered_set<std::string> entry_allocas_overwritten_before_read;
 
   [[nodiscard]] const std::vector<std::size_t>* find_use_blocks(
       std::string_view value_name) const;
   [[nodiscard]] bool uses_value(std::string_view value_name) const;
   [[nodiscard]] bool is_dead_param_alloca(std::string_view value_name) const;
+  [[nodiscard]] bool is_entry_alloca_overwritten_before_read(
+      std::string_view value_name) const;
 };
 
 StackLayoutAnalysis analyze_stack_layout(

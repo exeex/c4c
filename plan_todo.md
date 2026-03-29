@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - [ ] Step 4: Port the stack-layout helper boundary that consumes regalloc results.
-  Iteration target: thread `StackLayoutAnalysis` into the next frame-sizing or stack-slot placement decision beyond entry-alloca pruning so Step 4 starts affecting actual slot layout, not only dead-slot elision.
+  Iteration target: thread `StackLayoutAnalysis` into the next stack-layout decision beyond entry-store cleanup so Step 4 starts shaping broader live-slot placement or frame-size behavior, not only dead-slot or redundant-init cleanup.
 
 ## Todo Queue
 
@@ -39,10 +39,13 @@ Source Plan: plan.md
 - [x] Added backend coverage for shared dead-param-alloca pruning and AArch64 fallback dead-vs-live param-slot rendering, rebuilt `backend_lir_adapter_tests`, reran the binary, reran full `ctest`, and rechecked the saved baseline (`before=570/574`, `after=570/574`, same known failures only).
 - [x] Expanded shared `slot_assignment` beyond param-only handling: dead non-param entry allocas now plan and prune through the same shared seam, including paired entry zero-init stores, and the AArch64 fallback now consumes that broader shared entry-slot decision instead of local dead-param-only pruning.
 - [x] Extended `backend_lir_adapter_tests` with shared dead-vs-live local-entry-alloca coverage, rebuilt the binary, reran `./build/backend_lir_adapter_tests`, reran full `ctest`, and revalidated the saved baseline by log comparison (`after=570/574`, same four known failures only).
+- [x] Extended shared `StackLayoutAnalysis` with first-access tracking for entry allocas, then used shared `slot_assignment` to drop redundant paired scalar `zeroinitializer` stores when a live entry slot is overwritten before any read while preserving aggregate slots and read-before-store cases.
+- [x] Extended `backend_lir_adapter_tests` with overwrite-before-read versus read-before-store scalar entry-slot coverage, reran `./build/backend_lir_adapter_tests`, reran `compare_smoke_struct`, reran full `ctest`, and rechecked monotonic non-regression with `check_monotonic_regression.py --allow-non-decreasing-passed` (`before=570/574`, `after=570/574`, no new failures).
 
 ## Next Intended Slice
 
 - Keep building Step 4 inside shared stack-layout code by threading `StackLayoutAnalysis` into the next real slot-assignment or frame-sizing decision after entry-alloca pruning, ideally one that affects non-entry local slot placement, stack-slot reuse, or frame-size computation instead of only dead-slot removal.
+- Keep building Step 4 inside shared stack-layout code by threading `StackLayoutAnalysis` into the next real slot-assignment or frame-sizing decision after dead-slot and redundant-init cleanup, ideally one that affects non-entry local slot placement, stack-slot reuse, or frame-size computation.
 - Keep Step 5 AArch64 prologue and emit wiring deferred until the shared helper and analysis seams feed a broader stack-layout consumer than fallback-LIR pruning, with narrow tests around that handoff.
 
 ## Blockers

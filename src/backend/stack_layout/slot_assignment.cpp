@@ -19,6 +19,15 @@ bool is_param_name(std::string_view value_name) {
   return value_name.rfind("%p.", 0) == 0;
 }
 
+bool is_zero_initializer_store(const LirStoreOp* store) {
+  return store != nullptr && store->val == "zeroinitializer";
+}
+
+bool is_scalar_alloca_type(std::string_view type_str) {
+  return !type_str.empty() && type_str.front() != '[' && type_str.front() != '{' &&
+         type_str.front() != '%';
+}
+
 const LirStoreOp* following_entry_store(const LirFunction& function, std::size_t index) {
   if (index + 1 >= function.alloca_insts.size()) {
     return nullptr;
@@ -55,6 +64,10 @@ std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
     } else if (!analysis.uses_value(alloca->result)) {
       plan.needs_stack_slot = false;
       plan.remove_following_entry_store = has_paired_store;
+    } else if (is_scalar_alloca_type(alloca->type_str) &&
+               is_zero_initializer_store(store) &&
+               analysis.is_entry_alloca_overwritten_before_read(alloca->result)) {
+      plan.remove_following_entry_store = true;
     }
 
     plans.push_back(std::move(plan));
@@ -83,8 +96,19 @@ std::vector<c4c::codegen::lir::LirInst> prune_dead_entry_alloca_insts(
     }
 
     const auto plan_it = plans_by_alloca.find(alloca->result);
-    if (plan_it == plans_by_alloca.end() || plan_it->second.needs_stack_slot) {
+    if (plan_it == plans_by_alloca.end()) {
       pruned.push_back(function.alloca_insts[index]);
+      continue;
+    }
+
+    if (plan_it->second.needs_stack_slot) {
+      pruned.push_back(function.alloca_insts[index]);
+      if (plan_it->second.remove_following_entry_store) {
+        const auto* store = following_entry_store(function, index);
+        if (store != nullptr && store->ptr == alloca->result) {
+          ++index;
+        }
+      }
       continue;
     }
 

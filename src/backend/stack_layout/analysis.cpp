@@ -26,6 +26,10 @@ bool starts_with(std::string_view text, std::string_view prefix) {
   return text.size() >= prefix.size() && text.substr(0, prefix.size()) == prefix;
 }
 
+bool is_entry_alloca_name(std::string_view value_name) {
+  return starts_with(value_name, "%lv.");
+}
+
 void append_unique(std::vector<std::string>& values, std::string value) {
   if (value.empty()) {
     return;
@@ -255,6 +259,91 @@ std::unordered_map<std::string, std::string> collect_param_alloca_inputs(
   return param_alloca_inputs;
 }
 
+enum class AllocaAccessKind {
+  Store,
+  Read,
+};
+
+void record_first_access(
+    std::unordered_map<std::string, AllocaAccessKind>& first_access_kind,
+    const std::unordered_map<std::string, std::string>& pointer_roots,
+    std::string_view value_name,
+    AllocaAccessKind access_kind) {
+  const auto root_it = pointer_roots.find(std::string(value_name));
+  if (root_it == pointer_roots.end()) {
+    return;
+  }
+  first_access_kind.try_emplace(root_it->second, access_kind);
+}
+
+void collect_first_entry_alloca_accesses(
+    const LirFunction& function,
+    std::unordered_set<std::string>& entry_allocas_overwritten_before_read) {
+  std::unordered_map<std::string, std::string> pointer_roots;
+  for (const auto& inst : function.alloca_insts) {
+    if (const auto* alloca = std::get_if<c4c::codegen::lir::LirAllocaOp>(&inst)) {
+      if (is_entry_alloca_name(alloca->result)) {
+        pointer_roots.emplace(alloca->result, alloca->result);
+      }
+    }
+  }
+
+  std::unordered_map<std::string, AllocaAccessKind> first_access_kind;
+
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      std::visit(
+          [&](const auto& op) {
+            using T = std::decay_t<decltype(op)>;
+
+            if constexpr (std::is_same_v<T, c4c::codegen::lir::LirGepOp>) {
+              const auto base_it = pointer_roots.find(op.ptr);
+              if (base_it != pointer_roots.end()) {
+                pointer_roots.emplace(op.result, base_it->second);
+              }
+            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirLoadOp>) {
+              record_first_access(first_access_kind, pointer_roots, op.ptr,
+                                  AllocaAccessKind::Read);
+            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirStoreOp>) {
+              record_first_access(first_access_kind, pointer_roots, op.ptr,
+                                  AllocaAccessKind::Store);
+              record_first_access(first_access_kind, pointer_roots, op.val,
+                                  AllocaAccessKind::Read);
+            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirMemcpyOp>) {
+              record_first_access(first_access_kind, pointer_roots, op.dst,
+                                  AllocaAccessKind::Store);
+              record_first_access(first_access_kind, pointer_roots, op.src,
+                                  AllocaAccessKind::Read);
+            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirCallOp>) {
+              std::vector<std::string> values;
+              collect_value_names_from_text(op.args_str, values);
+              for (const auto& value_name : values) {
+                record_first_access(first_access_kind, pointer_roots, value_name,
+                                    AllocaAccessKind::Read);
+              }
+            } else {
+              for (const auto& value_name : used_names_for_inst(inst)) {
+                record_first_access(first_access_kind, pointer_roots, value_name,
+                                    AllocaAccessKind::Read);
+              }
+            }
+          },
+          inst);
+    }
+
+    for (const auto& value_name : used_names_for_terminator(block.terminator)) {
+      record_first_access(first_access_kind, pointer_roots, value_name,
+                          AllocaAccessKind::Read);
+    }
+  }
+
+  for (const auto& [alloca_name, access_kind] : first_access_kind) {
+    if (access_kind == AllocaAccessKind::Store) {
+      entry_allocas_overwritten_before_read.insert(alloca_name);
+    }
+  }
+}
+
 }  // namespace
 
 const std::vector<std::size_t>* StackLayoutAnalysis::find_use_blocks(
@@ -272,6 +361,12 @@ bool StackLayoutAnalysis::uses_value(std::string_view value_name) const {
 
 bool StackLayoutAnalysis::is_dead_param_alloca(std::string_view value_name) const {
   return dead_param_allocas.find(std::string(value_name)) != dead_param_allocas.end();
+}
+
+bool StackLayoutAnalysis::is_entry_alloca_overwritten_before_read(
+    std::string_view value_name) const {
+  return entry_allocas_overwritten_before_read.find(std::string(value_name)) !=
+         entry_allocas_overwritten_before_read.end();
 }
 
 StackLayoutAnalysis analyze_stack_layout(
@@ -323,6 +418,9 @@ StackLayoutAnalysis analyze_stack_layout(
       analysis.dead_param_allocas.insert(alloca_name);
     }
   }
+
+  collect_first_entry_alloca_accesses(function,
+                                      analysis.entry_allocas_overwritten_before_read);
 
   return analysis;
 }
