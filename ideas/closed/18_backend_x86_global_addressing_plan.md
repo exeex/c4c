@@ -1,5 +1,8 @@
 # x86 Global Addressing Plan
 
+Status: Complete
+Completed: 2026-03-29
+
 ## Relationship To Roadmap
 
 Umbrella source: `ideas/open/__backend_port_plan.md`
@@ -60,3 +63,18 @@ Extend the x86 backend beyond exact scalar global loads into explicit backend-ow
 ## Good First Patch
 
 Promote the smallest explicit global-addressing slice onto the x86 asm path with a backend-owned RIP-relative base-address plus indexed-load seam.
+
+## Completion Notes
+
+- Completed by promoting `tests/c/internal/backend_case/string_literal_char.c` through the x86 asm backend with explicit `.rodata` string-pool emission, RIP-relative base-address materialization, and indexed byte load/sign-extension.
+- Targeted backend validation was tightened so the chosen seam no longer accepts LLVM fallback.
+- Full regression validation was monotonic: passed `2317 -> 2318`, failed `22 -> 21`, with no newly failing tests.
+
+## Leftover Issues
+
+- The next bounded follow-on slices remain intentionally separate:
+  - `ideas/open/21_backend_x86_global_int_pointer_diff_plan.md`
+  - `ideas/open/22_backend_x86_global_int_pointer_roundtrip_plan.md`
+- Built-in assembler and linker work remain later-stage initiatives under:
+  - `ideas/open/23_backend_builtin_assembler_x86_plan.md`
+  - `ideas/open/24_backend_builtin_linker_x86_plan.md`
