@@ -87,11 +87,13 @@ enum class TokenKind {
   KwConsteval,   // consteval
   KwNamespace,   // namespace
   KwUsing,       // using
+  KwTypename,    // typename
   KwDecltype,    // decltype
   KwStaticCast,      // static_cast
   KwReinterpretCast, // reinterpret_cast
   KwConstCast,       // const_cast
   KwClass,           // class (synonym for struct in C++ template contexts)
+  KwFinal,           // final
   KwTrue,            // true
   KwFalse,           // false
   KwOperator,        // operator (C++ operator overloading)

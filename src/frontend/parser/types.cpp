@@ -1388,7 +1388,7 @@ bool Parser::consume_qualified_type_spelling_with_typename(
     ParseContextGuard trace(this, __func__);
     const int saved_pos = pos_;
     if (require_typename) {
-        if (!is_cpp_mode() || !check(TokenKind::Identifier) || cur().lexeme != "typename")
+        if (!is_cpp_mode() || !check(TokenKind::KwTypename))
             return false;
         consume();
     }
@@ -1592,7 +1592,7 @@ bool Parser::try_parse_cpp_scoped_base_type(bool already_have_base,
     ParseContextGuard trace(this, __func__);
     if (!out_ts || !is_cpp_mode()) return false;
 
-    if (check(TokenKind::Identifier) && cur().lexeme == "typename") {
+    if (check(TokenKind::KwTypename)) {
         std::string resolved;
         if (!parse_dependent_typename_specifier(&resolved)) return false;
         out_ts->tag = arena_.strdup(resolved.c_str());
@@ -2304,7 +2304,7 @@ void Parser::apply_declarator_array_dims(
 Parser::TypenameTemplateParamKind Parser::classify_typename_template_parameter() const {
     if (check(TokenKind::KwClass))
         return TypenameTemplateParamKind::TypeParameter;
-    if (!is_cpp_mode() || !check(TokenKind::Identifier) || cur().lexeme != "typename")
+    if (!is_cpp_mode() || !check(TokenKind::KwTypename))
         return TypenameTemplateParamKind::TypeParameter;
 
     int probe = pos_ + 1;
@@ -2324,6 +2324,8 @@ Parser::TypenameTemplateParamKind Parser::classify_typename_template_parameter()
         case TokenKind::Ellipsis:
             return TypenameTemplateParamKind::TypeParameter;
         case TokenKind::KwClass:
+            return TypenameTemplateParamKind::TypeParameter;
+        case TokenKind::KwTypename:
             return TypenameTemplateParamKind::TypeParameter;
         case TokenKind::Identifier:
             if (tokens_[probe].lexeme == "typename")
@@ -2345,8 +2347,8 @@ bool Parser::is_type_start() const {
     if (k == TokenKind::KwAttribute) return true;  // __attribute__((x)) type cast
     if (k == TokenKind::KwAlignas) return true;
     if (k == TokenKind::KwStaticAssert) return false;
+    if (k == TokenKind::KwTypename) return true;
     if (k == TokenKind::Identifier) {
-        if (is_cpp_mode() && cur().lexeme == "typename") return true;
         if (is_template_scope_type_param(cur().lexeme)) return true;
         if (is_typedef_name(cur().lexeme)) return true;
         if (typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0) return true;
@@ -2855,6 +2857,7 @@ TypeSpec Parser::parse_base_type() {
                 }
                 [[fallthrough]];
 
+            case TokenKind::KwTypename:
             case TokenKind::Identifier:
                 if (is_cpp_mode()) {
                     const bool already_have_base =
@@ -2866,6 +2869,10 @@ TypeSpec Parser::parse_base_type() {
                         done = true;
                         break;
                     }
+                }
+                if (k == TokenKind::KwTypename) {
+                    done = true;
+                    break;
                 }
                 if (is_typedef_name(cur().lexeme) ||
                     is_template_scope_type_param(cur().lexeme) ||
@@ -4150,7 +4157,7 @@ void Parser::parse_record_template_member_prelude(
     consume();
     expect(TokenKind::Less);
     while (!at_end() && !check_template_close()) {
-        if ((check(TokenKind::Identifier) && cur().lexeme == "typename") ||
+        if (check(TokenKind::KwTypename) ||
             check(TokenKind::KwClass)) {
             consume();
             if (check(TokenKind::Ellipsis)) consume();
@@ -5535,8 +5542,7 @@ void Parser::parse_record_prebody_setup(
 
     // C++ class-virt-specifier support: accept the contextual `final`
     // keyword between the record name and any base-clause/body.
-    if (is_cpp_mode() && check(TokenKind::Identifier) &&
-        cur().lexeme == "final") {
+    if (is_cpp_mode() && check(TokenKind::KwFinal)) {
         consume();
     }
 

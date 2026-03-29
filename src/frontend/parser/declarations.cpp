@@ -868,7 +868,7 @@ Node* Parser::parse_top_level() {
                     }
                     consume();
                 }
-                if (!(check(TokenKind::Identifier) && cur().lexeme == "typename") &&
+                if (!check(TokenKind::KwTypename) &&
                     !check(TokenKind::KwClass)) {
                     throw std::runtime_error("expected template parameter name");
                 }
@@ -878,7 +878,7 @@ Node* Parser::parse_top_level() {
                     skip_template_param_default_expr(*this, true);
                 }
                 push_type_template_param(pname, is_pack);
-            } else if ((check(TokenKind::Identifier) && cur().lexeme == "typename") ||
+            } else if (check(TokenKind::KwTypename) ||
                 check(TokenKind::KwClass)) {
                 if (classify_typename_template_parameter() ==
                     TypenameTemplateParamKind::TypedNonTypeParameter) {

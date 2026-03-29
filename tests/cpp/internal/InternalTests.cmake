@@ -95,6 +95,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     template_typedef_nttp_variants_parse
     template_typename_typed_nttp_parse
     qualified_dependent_typename_global_parse
+    keyword_typename_final_parse
     qualified_cpp_base_type_dispatch_parse
     qualified_type_spelling_shared_parse
     qualified_type_resolution_dispatch_parse

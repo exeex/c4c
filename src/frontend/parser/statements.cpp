@@ -180,8 +180,8 @@ Node* Parser::parse_stmt() {
                     k == TokenKind::KwAttribute || k == TokenKind::KwAlignas) {
                     return true;
                 }
+                if (k == TokenKind::KwTypename) return true;
                 if (k != TokenKind::Identifier) return false;
-                if (cur().lexeme == "typename") return true;
                 if (is_template_scope_type_param(cur().lexeme)) return true;
                 if (is_typedef_name(cur().lexeme)) return true;
                 return typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0;
