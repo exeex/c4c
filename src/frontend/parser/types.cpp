@@ -5447,7 +5447,20 @@ void Parser::parse_record_prebody_setup(
 
     parse_decl_attrs_for_record(line, attr_ts);
 
-    if (check(TokenKind::Identifier)) {
+    if (is_cpp_mode()) {
+        QualifiedNameRef qn;
+        if (peek_qualified_name(&qn, /*allow_global=*/true)) {
+            qn = parse_qualified_name(/*allow_global=*/true);
+            std::string spelled;
+            for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
+                if (!spelled.empty()) spelled += "::";
+                spelled += qn.qualifier_segments[i];
+            }
+            if (!spelled.empty()) spelled += "::";
+            spelled += qn.base_name;
+            *tag = arena_.strdup(spelled.c_str());
+        }
+    } else if (check(TokenKind::Identifier)) {
         *tag = arena_.strdup(cur().lexeme);
         consume();
     }
@@ -5567,8 +5580,10 @@ Node* Parser::parse_record_tag_setup(int line,
         resolved_tag = arena_.strdup(buf);
     } else {
         const std::string qtag =
-            canonical_name_in_context(current_namespace_context_id(),
-                                      resolved_tag);
+            std::strstr(resolved_tag, "::")
+                ? std::string(resolved_tag)
+                : canonical_name_in_context(current_namespace_context_id(),
+                                            resolved_tag);
         if (defined_struct_tags_.count(qtag)) {
             if (parsing_top_level_context_ && !is_cpp_mode()) {
                 throw std::runtime_error(std::string("redefinition of ") +
@@ -5706,7 +5721,10 @@ void Parser::finalize_record_definition(Node* sd,
         return;
 
     const std::string canonical =
-        canonical_name_in_context(current_namespace_context_id(), source_tag);
+        std::strstr(source_tag, "::")
+            ? std::string(source_tag)
+            : canonical_name_in_context(current_namespace_context_id(),
+                                        source_tag);
     sd->name = arena_.strdup(canonical.c_str());
     apply_decl_namespace(sd, current_namespace_context_id(), source_tag);
     struct_tag_def_map_[source_tag] = sd;

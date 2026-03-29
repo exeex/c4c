@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2: Reduce the next header blocker from `tests/cpp/std/std_vector_simple.cpp`.
-- Exact target for this iteration: reduce the first surviving post-constrained-template-parameter blocker now exposed in `/usr/include/c++/14/bits/iterator_concepts.h`, currently the incomplete-type failure at line 819 after the constrained parameter parse gap was removed.
+- Exact target for this iteration: reduce the first surviving post-qualified-record-specialization blocker now exposed in `/usr/include/c++/14/bits/iterator_concepts.h`, currently the incomplete-type failure at line 992 in the `ranges::__access` block after the out-of-namespace record specialization parse gap was removed.
 
 ## Completed Items
 
@@ -62,12 +62,31 @@ Source Plan: plan.md
 - Captured a clean-suite before/after comparison for this slice:
   - `test_before.log` had the seven known backend LIR variadic ABI failures plus the new reduced test before the parser fix.
   - `test_after.log` returned to only the same seven known backend LIR variadic ABI failures, so the pass count improved monotonically and no previously passing test regressed.
+- Reduced the `/usr/include/c++/14/bits/iterator_concepts.h:819` incomplete-type frontier to `tests/cpp/internal/postive_case/qualified_record_partial_specialization_parse.cpp`, covering an out-of-namespace class template partial specialization spelled as `struct detail::holder<T*>`.
+- Updated `src/frontend/parser/types.cpp` so record-tag parsing after `struct` / `class` consumes C++ qualified names like `detail::holder`, and record-definition canonicalization no longer prefixes an already qualified tag with the current namespace again.
+- Re-ran nearby parser coverage:
+  - `cpp_positive_sema_qualified_record_partial_specialization_parse_cpp`
+  - `cpp_positive_sema_cpp20_constrained_template_param_parse_cpp`
+  - `cpp_positive_sema_cpp20_requires_clause_parse_cpp`
+  - `cpp_positive_sema_free_function_record_ref_param_parse_cpp`
+- Re-ran the direct `#include <bits/stl_iterator.h>` and `tests/cpp/std/std_vector_simple.cpp` repros; both advanced past the old `/usr/include/c++/14/bits/iterator_concepts.h:819` `object has incomplete type: __detail` frontier and now first fail at:
+  - `/usr/include/c++/14/bits/iterator_concepts.h:992:5` `object has incomplete type: ranges::__access::_Decay_copy`
+  - `/usr/include/c++/14/bits/exception.h:65:30` `expected=RPAREN got='&'`
+  - `/usr/include/c++/14/bits/stl_iterator.h:1011:34` `expected=RPAREN got='::'`
+- Re-ran a clean full suite into `test_after.log`; the remaining failures are still only the seven known backend LIR variadic ABI tests:
+  - `backend_lir_aarch64_variadic_dpair_ir`
+  - `backend_lir_aarch64_variadic_float_array_ir`
+  - `backend_lir_aarch64_variadic_nested_float_array_ir`
+  - `backend_lir_aarch64_variadic_float4_ir`
+  - `backend_lir_aarch64_variadic_double4_ir`
+  - `backend_lir_aarch64_variadic_single_double_ir`
+  - `backend_lir_aarch64_variadic_single_float_ir`
 
 ## Next Intended Slice
 
-- Keep the focus on the first newly exposed `iterator_concepts` incomplete-type frontier rather than returning to the already-fixed constrained template-parameter syntax.
-- Reduce `/usr/include/c++/14/bits/iterator_concepts.h:819` into the smallest standalone parse test, likely around nested `__detail` lookup or dependent type formation inside the projected-iterator support path.
-- Land the smallest parser / type-resolution fix for that reduced case, then re-run:
+- Keep the focus on the first newly exposed `iterator_concepts` incomplete-type frontier rather than returning to the already-fixed qualified record-specialization syntax.
+- Reduce `/usr/include/c++/14/bits/iterator_concepts.h:992` into the smallest standalone parse test, likely around the `struct _Decay_copy final` declaration inside `namespace ranges::__access`.
+- Land the smallest parser fix for that reduced case, then re-run:
   - `./build/c4cll --parse-only /tmp/include_stl_iterator.cpp`
   - `./build/c4cll --parse-only tests/cpp/std/std_vector_simple.cpp`
   - targeted C++ parse tests before any new full-suite pass.
@@ -75,7 +94,7 @@ Source Plan: plan.md
 ## Blockers
 
 - No blocking infrastructure issue remains.
-- Current technical blocker: after adding constrained template-parameter parsing, the true first frontier moved into later C++20 iterator-concepts support, starting with incomplete-type formation in `/usr/include/c++/14/bits/iterator_concepts.h` around line 819.
+- Current technical blocker: after teaching qualified record-tag parsing for out-of-namespace specializations, the true first frontier moved deeper into later C++20 iterator-concepts support, starting with `/usr/include/c++/14/bits/iterator_concepts.h:992` in `namespace ranges::__access`, where `struct _Decay_copy final` is still being rejected as an incomplete type.
 
 ## Resume Notes
 
@@ -84,5 +103,6 @@ Source Plan: plan.md
 - The free-function class-name reference gap is now covered by `free_function_record_ref_param_parse.cpp` and no longer introduces namespace-struct regressions.
 - `tests/cpp/internal/postive_case/cpp20_requires_clause_parse.cpp` is the committed reduced repro for the former `/usr/include/c++/14/type_traits` requires-clause failure.
 - `tests/cpp/internal/postive_case/cpp20_constrained_template_param_parse.cpp` is the committed reduced repro for the former `/usr/include/c++/14/bits/iterator_concepts.h:267` constrained template-parameter failure.
-- `std_vector_simple.cpp` no longer stops first on the `iterator_concepts` constrained-parameter frontier; the first current blockers are now incomplete-type and later parameter-list issues starting at `/usr/include/c++/14/bits/iterator_concepts.h:819`.
+- `tests/cpp/internal/postive_case/qualified_record_partial_specialization_parse.cpp` is the committed reduced repro for the former `/usr/include/c++/14/bits/iterator_concepts.h:819` qualified record partial-specialization failure.
+- `std_vector_simple.cpp` no longer stops first on the `iterator_concepts` qualified-record-specialization frontier; the first current blockers are now the `ranges::__access::_Decay_copy` incomplete-type error at `/usr/include/c++/14/bits/iterator_concepts.h:992` plus later parameter-list issues.
 - The new reduced coverage is `tests/cpp/internal/postive_case/cpp20_feature_macro_branch_parse.cpp`, which should stay green while the parser catches up to the newly exposed modern-header syntax.
