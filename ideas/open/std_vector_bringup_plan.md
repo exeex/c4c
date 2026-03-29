@@ -131,6 +131,17 @@ Reason for the split:
 - it changes parser observability rather than the language support behavior
 - it should proceed as its own focused diagnostic-improvement initiative
 
+Update from the completed diagnostics plan on 2026-03-29:
+
+- the parser-debug runbook is now complete and archived separately
+- the remaining
+  `/usr/include/c++/14/bits/stl_bvector.h:663:34` `got='&&'` top-level wrapper
+  family was rechecked against its reduced repro and does not currently need
+  additional committed-failure vs no-match bookkeeping
+- that means the surviving `std::vector` work stays on language-support
+  bring-up, not further diagnostic ranking changes, until a new libstdc++
+  header family proves otherwise
+
 
 ## Scope
 

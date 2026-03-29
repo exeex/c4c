@@ -1,5 +1,7 @@
 # Parser Error Diagnostics Improvement Plan
 
+Status: Complete
+
 ## Goal
 
 Improve parser diagnostics across `src/frontend/parser/*.cpp` so syntax failures
@@ -218,6 +220,44 @@ Keep the output concise, but normalize it around a few fields:
 - `parse_fn`
 - `expected`
 - `got`
+
+## Completion Notes
+
+- Completed on 2026-03-29 after landing parser-wide `ParseContextGuard`
+  instrumentation across the main parser entry families, stabilizing the
+  parser-debug stack model, and locking the emitted summary/stack shape with
+  reduced plus motivating `std_vector_simple.cpp` coverage.
+- The active runbook closed out by exhausting the bounded motivating parser
+  families that were still ambiguous after the record-member rewind work:
+  wrapper-heavy top-level parameter failures, local-initializer comma failures,
+  expression-path `got='const'` failures, and the remaining constructor-family
+  qualified reference-parameter traces in libstdc++ headers.
+- Final Step 5 decision: the remaining
+  `/usr/include/c++/14/bits/stl_bvector.h:663:34` `got='&&'` wrapper family
+  does not currently justify extra tri-state bookkeeping. The reduced repro
+  `parser_debug_top_level_qualified_probe_leaf.cpp` and motivating
+  `std_vector_simple.cpp` trace agree on the same deeper committed
+  `try_parse_qualified_base_type` summary and qualified-type wrapper stack, so
+  the current ranking remains the intended behavior until a new motivating
+  family diverges.
+- Final validation on 2026-03-29:
+  - targeted parser-debug rerun:
+    `cpp_parser_debug_top_level_qualified_probe_leaf`,
+    `cpp_parser_debug_std_vector_move_ctor_leaf`
+  - clean full-suite baseline: 2297 total, 1 failed
+  - clean full-suite after rerun: 2297 total, 1 failed
+  - unchanged known failure:
+    `verify_tests_verify_top_level_recovery`
+
+## Leftover Issues
+
+- This plan improved observability, not parser acceptance. `tests/cpp/std/std_vector_simple.cpp`
+  still has separate language-support blockers tracked in the parked
+  `std::vector` bring-up idea.
+- Tri-state speculative parsing remains a future option for parser behavior
+  work, but it is no longer required for the currently covered diagnostics
+  families unless a new motivating trace disagrees with the existing summary
+  ranking.
 - `line`
 - `col`
 - optional `recovery`
