@@ -440,6 +440,51 @@ const Node* select_template_struct_pattern(
     return primary_tpl;
 }
 
+void parse_optional_cpp20_trailing_requires_clause(Parser& parser) {
+    if (!parser.is_cpp_mode() || !parser.check(TokenKind::KwRequires)) {
+        return;
+    }
+
+    parser.consume();  // requires
+    bool consumed_constraint = false;
+    while (!parser.at_end()) {
+        if (parser.check(TokenKind::Semi) ||
+            parser.check(TokenKind::Assign) ||
+            parser.check(TokenKind::Comma) ||
+            parser.check(TokenKind::LBrace) ||
+            parser.check(TokenKind::Colon)) {
+            break;
+        }
+
+        consumed_constraint = true;
+        if (parser.check(TokenKind::KwRequires)) {
+            parser.consume();
+            if (parser.check(TokenKind::LParen)) parser.skip_paren_group();
+            if (parser.check(TokenKind::LBrace)) parser.skip_brace_group();
+            continue;
+        }
+        if (parser.check(TokenKind::LParen)) {
+            parser.skip_paren_group();
+            continue;
+        }
+        if (parser.check(TokenKind::LBracket)) {
+            parser.consume();
+            int depth = 1;
+            while (!parser.at_end() && depth > 0) {
+                if (parser.check(TokenKind::LBracket)) ++depth;
+                else if (parser.check(TokenKind::RBracket)) --depth;
+                parser.consume();
+            }
+            continue;
+        }
+        parser.consume();
+    }
+
+    if (!consumed_constraint) {
+        throw std::runtime_error("expected constraint-expression after requires");
+    }
+}
+
 }  // namespace
 
 Node* Parser::find_template_struct_primary(const std::string& name) const {
@@ -4685,6 +4730,7 @@ bool Parser::try_parse_record_constructor_member(
     }
     expect(TokenKind::RParen);
     skip_exception_spec();
+    parse_optional_cpp20_trailing_requires_clause(*this);
     Node* method = make_node(NK_FUNCTION, cur().line);
     method->type.base = TB_VOID;
     method->name = ctor_name;
@@ -5046,6 +5092,7 @@ bool Parser::try_parse_record_method_or_field_member(
             fts = parse_type_name();
             parse_attributes(&fts);
         }
+        parse_optional_cpp20_trailing_requires_clause(*this);
         consume_optional_cpp_member_virt_specifier_seq(this);
 
         Node* method = make_node(NK_FUNCTION, cur().line);
@@ -5164,6 +5211,7 @@ bool Parser::try_parse_record_method_or_field_member(
                 cur_fts = parse_type_name();
                 parse_attributes(&cur_fts);
             }
+            parse_optional_cpp20_trailing_requires_clause(*this);
             consume_optional_cpp_member_virt_specifier_seq(this);
             Node* method = make_node(NK_FUNCTION, cur().line);
             method->type = cur_fts;

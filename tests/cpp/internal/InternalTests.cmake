@@ -14,6 +14,7 @@ set(CPP_POSITIVE_FRONTEND_STEMS
     operator_call_rvalue_ref_runtime
     template_operator_call_rvalue_ref_runtime
     template_constexpr_member_runtime
+    cpp20_record_member_trailing_requires_frontend
 )
 
 set(CPP_POSITIVE_PARSE_STEMS

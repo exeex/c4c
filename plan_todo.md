@@ -7,14 +7,16 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: Replace `requires` skip paths with dedicated grammar entry points
-  by handling trailing function-declarator `requires` clauses explicitly
+  by extending explicit trailing `requires` handling beyond the first
+  top-level function path
 
 ## Next Slice
 
-- extend explicit trailing `requires` handling to the next declaration site
-  that still routes through weak recovery or variable-style fallback
+- extend explicit trailing `requires` handling to the next declaration path
+  that still bypasses the helper, with out-of-class constructor and
+  conversion-operator definitions as the leading candidate
 - add a reduced repro that proves the next constrained declaration keeps its
-  body or following declaration attached
+  body or initializer attachment through the specialized path
 - keep the Step 3 follow-up scoped to parser acceptance and local recovery
 
 ## Planned Steps
@@ -54,6 +56,15 @@ Source Plan: plan.md
   accepting nested `requires { ... }` blocks
 - [x] Rebuilt, ran focused `requires` coverage, and passed the full regression
   guard with `2374/2374` tests passing and zero new failures
+- [x] Added `cpp20_record_member_trailing_requires_frontend.cpp` to catch
+  constrained record-member constructors, conversion operators, and ordinary
+  methods that were dropping their bodies during member parsing
+- [x] Routed record-member constructor, conversion-operator, and ordinary
+  method paths through explicit trailing `requires` handling after
+  exception-spec and trailing-return parsing
+- [x] Rebuilt, ran focused `requires` and record-member coverage, and passed
+  the full regression guard with `2375/2375` tests passing and zero new
+  failures
 
 ## Blockers
 
@@ -70,3 +81,6 @@ Source Plan: plan.md
   entry point; continue Step 3 by targeting the next remaining skip-style site
 - top-level constrained function definitions now parse through their trailing
   `requires` clause without dropping the function body into expression parsing
+- constrained record members now keep constructor, conversion-operator, and
+  ordinary method bodies attached after instantiation; the next likely Step 3
+  follow-up is the analogous out-of-class special-member path
