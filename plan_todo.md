@@ -6,7 +6,10 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- [ ] Step 3: Port the minimum encoder surface
+- [ ] Step 4: Port ELF object writing support
+- Iteration slice: wrap the Step 3 encoder byte stream in the first ELF64
+  relocatable object path for the `.text`-only, one-symbol return-immediate
+  slice.
 
 ## Planned Items
 
@@ -19,12 +22,16 @@ Source Plan: plan.md
 - [x] Activated `ideas/open/23_backend_builtin_assembler_x86_plan.md` into the active runbook
 - [x] Step 1: Inventory current x86 backend output and choose the first bounded assembler slice
 - [x] Step 2: Port the minimum parser surface
+- [x] Step 3: Port the minimum encoder surface
 
 ## Next Intended Slice
 
-- Port the first encoder entry points for `mov eax, imm32` and `ret`.
-- Keep the encoder surface aligned with the parser’s current single-function `.text`-only slice.
-- Add focused byte-level tests before widening beyond the relocation-free return-immediate path.
+- Emit an ELF64 relocatable object containing `.text`, `.symtab`, and `.strtab`
+  for the single `main` symbol and the relocation-free encoder output.
+- Compare the object surface for `return_zero` and `return_add` against an
+  external `clang -c` baseline before widening the writer.
+- Keep relocations, data sections, and multi-function output deferred until a
+  later Step 4 slice.
 
 ## Blockers
 
@@ -39,4 +46,6 @@ Source Plan: plan.md
 - The first object-emission slice is the relocation-free `return_zero` / `return_add` shape only.
 - Step 2 now exposes `src/backend/x86/assembler/parser.hpp` and compiles `parser.cpp` into both the main binary and backend test target.
 - The Step 2 parser deliberately accepts only `.intel_syntax noprefix`, `.text`, one `.globl`, one matching function label, `mov eax, imm32`, and `ret`.
-- Regression guard status for this slice: `before passed=2320 failed=19`, `after passed=2320 failed=19`, `new failing tests=0`.
+- Step 3 now exposes `src/backend/x86/assembler/encoder/mod.hpp` with a bounded encoder surface that accepts only instruction statements from the parser's single-function slice.
+- The first Step 3 encoding contract is byte-exact `mov eax, imm32` as opcode `0xB8` plus little-endian `imm32`, followed by `ret` as `0xC3`.
+- Regression guard status for this slice: `before passed=2319 failed=20`, `after passed=2320 failed=19`, `new failing tests=0`.

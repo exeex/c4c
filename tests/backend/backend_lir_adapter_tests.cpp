@@ -15,6 +15,7 @@
 #include "../../src/backend/aarch64/linker/mod.hpp"
 #include "../../src/backend/aarch64/assembler/parser.hpp"
 #include "../../src/backend/x86/assembler/mod.hpp"
+#include "../../src/backend/x86/assembler/encoder/mod.hpp"
 #include "../../src/backend/x86/assembler/parser.hpp"
 #include "../../src/backend/x86/codegen/emit.hpp"
 #include "../../src/backend/x86/linker/mod.hpp"
@@ -4366,6 +4367,52 @@ void test_x86_assembler_parser_rejects_out_of_scope_forms() {
   }
 }
 
+void test_x86_assembler_encoder_emits_bounded_return_add_bytes() {
+  namespace encoder = c4c::backend::x86::assembler::encoder;
+
+  const auto asm_text = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_return_add_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  const auto statements = c4c::backend::x86::assembler::parse_asm(asm_text);
+  const auto encoded = encoder::encode_function(statements);
+
+  expect_true(encoded.encoded,
+              "x86 assembler encoder should accept the bounded return-add Step 3 slice");
+  expect_true(encoded.bytes ==
+                  std::vector<std::uint8_t>{0xB8, 0x05, 0x00, 0x00, 0x00, 0xC3},
+              "x86 assembler encoder should emit mov eax, imm32; ret bytes matching the Step 3 contract");
+}
+
+void test_x86_assembler_encoder_rejects_out_of_scope_instruction_forms() {
+  namespace encoder = c4c::backend::x86::assembler::encoder;
+
+  c4c::backend::x86::assembler::AsmStatement unsupported;
+  unsupported.kind = c4c::backend::x86::assembler::AsmStatementKind::Instruction;
+  unsupported.text = "push rbp";
+  unsupported.op = "push";
+
+  const auto unsupported_result = encoder::encode_instruction(unsupported);
+  expect_true(!unsupported_result.encoded,
+              "x86 assembler encoder should reject instructions outside the first Step 3 slice");
+  expect_contains(unsupported_result.error, "unsupported x86 instruction",
+                  "x86 assembler encoder should explain unsupported instruction rejections");
+
+  c4c::backend::x86::assembler::AsmStatement wrong_mov;
+  wrong_mov.kind = c4c::backend::x86::assembler::AsmStatementKind::Instruction;
+  wrong_mov.text = "mov ebx, 7";
+  wrong_mov.op = "mov";
+  wrong_mov.operands = {
+      c4c::backend::x86::assembler::Operand{"ebx"},
+      c4c::backend::x86::assembler::Operand{"7"},
+  };
+
+  const auto wrong_mov_result = encoder::encode_instruction(wrong_mov);
+  expect_true(!wrong_mov_result.encoded,
+              "x86 assembler encoder should keep register coverage bounded to eax in the first slice");
+  expect_contains(wrong_mov_result.error, "mov eax, imm32",
+                  "x86 assembler encoder should spell out the current bounded mov contract");
+}
+
 void test_aarch64_assembler_elf_writer_branch_reloc_helper() {
   using c4c::backend::aarch64::assembler::is_branch_reloc_type;
 
@@ -5552,6 +5599,8 @@ int main() {
   test_aarch64_backend_renders_phi_join_slice();
   test_x86_assembler_parser_accepts_bounded_return_add_slice();
   test_x86_assembler_parser_rejects_out_of_scope_forms();
+  test_x86_assembler_encoder_emits_bounded_return_add_bytes();
+  test_x86_assembler_encoder_rejects_out_of_scope_instruction_forms();
   test_aarch64_assembler_parser_stub_preserves_text();
   test_aarch64_assembler_elf_writer_branch_reloc_helper();
   test_aarch64_assembler_encoder_helper_smoke();
