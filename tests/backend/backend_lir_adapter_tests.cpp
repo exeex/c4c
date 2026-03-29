@@ -3,6 +3,7 @@
 #include "liveness.hpp"
 #include "lir_adapter.hpp"
 #include "regalloc.hpp"
+#include "stack_layout/analysis.hpp"
 #include "stack_layout/regalloc_helpers.hpp"
 #include "target.hpp"
 #include "../../src/backend/aarch64/assembler/parser.hpp"
@@ -1906,6 +1907,38 @@ c4c::codegen::lir::LirModule make_phi_join_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_dead_param_alloca_candidate_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction decl;
+  decl.name = "helper";
+  decl.signature_text = "declare i32 @helper(i32)\n";
+  decl.is_declaration = true;
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main(i32 %p.x)\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.param.x", "i32", "", 4});
+  function.alloca_insts.push_back(LirStoreOp{"i32", "%p.x", "%lv.param.x"});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"%t0", "i32", "@helper", "", "i32 %p.x"});
+  entry.insts.push_back(LirBinOp{"%t1", "add", "i32", "%p.x", "%t0"});
+  entry.terminator = LirRet{std::string("%t1"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(decl));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 void test_adapts_direct_return() {
   const auto adapted = c4c::backend::adapt_minimal_module(make_return_zero_module());
   expect_true(adapted.functions.size() == 1, "adapter should preserve one function");
@@ -3194,6 +3227,48 @@ void test_backend_shared_stack_layout_regalloc_helper_exposes_handoff_view() {
               "shared stack-layout helper should expose cached liveness for downstream stack-layout analysis");
 }
 
+void test_backend_shared_stack_layout_analysis_tracks_phi_use_blocks() {
+  const auto module = make_interval_phi_join_module();
+  const auto& function = module.functions.front();
+  const c4c::backend::RegAllocIntegrationResult regalloc;
+  const auto analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(function, regalloc, {});
+
+  const auto* then_value_uses = analysis.find_use_blocks("%t1");
+  const auto* else_value_uses = analysis.find_use_blocks("%t2");
+  const auto* phi_value_uses = analysis.find_use_blocks("%t3");
+
+  expect_true(then_value_uses != nullptr && then_value_uses->size() == 1 &&
+                  then_value_uses->front() == 1,
+              "shared stack-layout analysis should attribute phi incoming uses to the predecessor block");
+  expect_true(else_value_uses != nullptr && else_value_uses->size() == 1 &&
+                  else_value_uses->front() == 2,
+              "shared stack-layout analysis should keep alternate phi incoming values on their own predecessor block");
+  expect_true(phi_value_uses != nullptr && phi_value_uses->size() == 1 &&
+                  phi_value_uses->front() == 3,
+              "shared stack-layout analysis should record normal instruction uses in the consuming block");
+}
+
+void test_backend_shared_stack_layout_analysis_detects_dead_param_allocas() {
+  const auto module = make_dead_param_alloca_candidate_module();
+  const auto& function = module.functions.back();
+
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = {{20}};
+  config.caller_saved_regs = {{13}};
+  const auto regalloc =
+      c4c::backend::run_regalloc_and_merge_clobbers(function, config, {});
+  const auto analysis = c4c::backend::stack_layout::analyze_stack_layout(
+      function, regalloc, {{20}, {21}, {22}});
+
+  expect_true(analysis.uses_value("%p.x"),
+              "shared stack-layout analysis should collect body-used SSA values");
+  expect_true(!analysis.uses_value("%lv.param.x"),
+              "shared stack-layout analysis should not treat the synthesized param spill as a body use");
+  expect_true(analysis.is_dead_param_alloca("%lv.param.x"),
+              "shared stack-layout analysis should mark dead param allocas when the corresponding parameter value is kept in a callee-saved register");
+}
+
 }  // namespace
 
 int main() {
@@ -3275,5 +3350,7 @@ int main() {
   test_backend_shared_regalloc_spills_overlapping_values_without_reusing_busy_reg();
   test_backend_shared_regalloc_helper_filters_and_merges_clobbers();
   test_backend_shared_stack_layout_regalloc_helper_exposes_handoff_view();
+  test_backend_shared_stack_layout_analysis_tracks_phi_use_blocks();
+  test_backend_shared_stack_layout_analysis_detects_dead_param_allocas();
   return 0;
 }

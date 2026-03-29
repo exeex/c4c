@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - [ ] Step 4: Port the stack-layout helper boundary that consumes regalloc results.
-  Iteration target: build the first shared stack-layout analysis object on top of the new helper seam so downstream frame-sizing code can consume regalloc assignments, used callee-saved registers, and cached liveness without reaching into backend integration code directly.
+  Iteration target: thread the new shared stack-layout analysis object into the first frame-sizing or slot-assignment consumer so Step 4 stops at helper-only plumbing and starts driving actual stack-layout decisions through the shared seam.
 
 ## Todo Queue
 
@@ -31,11 +31,13 @@ Source Plan: plan.md
 - [x] Added backend allocator coverage for caller-saved versus callee-saved pool selection, non-overlapping register reuse, and bounded spill behavior; rebuilt the tree, reran `backend_lir_adapter_tests`, reran full `ctest`, and rechecked monotonic non-regression (`before=570/574`, `after=570/574`, no new failures).
 - [x] Added the first shared stack-layout regalloc handoff seam in `regalloc_helpers`, covering assigned-register lookup, used-callee-saved queries, and cached-liveness access through a single helper boundary.
 - [x] Extended `backend_lir_adapter_tests`, rebuilt the tree, reran `backend_lir_adapter_tests`, reran full `ctest`, and rechecked monotonic non-regression with `check_monotonic_regression.py` (`before=570/574`, `after=570/574`, no new failures).
+- [x] Added the first shared stack-layout analysis object in `src/backend/stack_layout/analysis.{hpp,cpp}` so Step 4 consumers can query phi-aware value-use blocks, body-used values, and dead param allocas from the existing regalloc helper seam instead of poking backend integration state directly.
+- [x] Extended `backend_lir_adapter_tests` with stack-layout analysis coverage, rebuilt the tree, reran `backend_lir_adapter_tests`, reran full `ctest`, and revalidated the saved baseline (`before=570/574`, `after=570/574`, same known failures only).
 
 ## Next Intended Slice
 
-- Introduce the first shared stack-layout analysis data object in `src/backend/stack_layout/analysis.cpp` that consumes the new helper seam instead of poking directly at backend integration state.
-- Keep AArch64 wiring deferred until the shared helper and analysis seams compile cleanly and have narrow tests around the new handoff data.
+- Use `stack_layout::analyze_stack_layout(...)` as the input seam for the first shared frame-sizing or slot-assignment helper instead of recomputing ad hoc body-use and dead-param facts locally.
+- Keep AArch64 wiring deferred until the shared helper and analysis seams are consumed by at least one non-test Step 4 path with narrow tests around that handoff.
 
 ## Blockers
 
@@ -57,6 +59,7 @@ Source Plan: plan.md
   start by making shared helper entry points read `RegAllocIntegrationResult`
   in one place, then expand into analysis/slot assignment in a later slice.
 - The new helper seam lives in `src/backend/stack_layout/regalloc_helpers.{hpp,cpp}` and is now the intended entry point for Step 4 consumers that need assigned-register, used-callee-saved, or cached-liveness reads.
+- The new analysis seam lives in `src/backend/stack_layout/analysis.{hpp,cpp}` and currently covers phi-aware use-block attribution, used-value collection, and dead param alloca detection for the typed-LIR subset exercised by `backend_lir_adapter_tests`.
 - Known baseline full-suite failures remain unchanged:
   `positive_sema_ok_fn_returns_variadic_fn_ptr_c`,
   `cpp_positive_sema_decltype_bf16_builtin_cpp`,
