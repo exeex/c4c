@@ -92,6 +92,8 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/mod.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/emit.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/x86/linker/mod.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/linker/elf.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/linker/input.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/aarch64/mod.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/aarch64/assembler/mod.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/aarch64/assembler/encoder/mod.cpp"
@@ -279,6 +281,8 @@ add_executable(backend_lir_adapter_tests
     "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/mod.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/emit.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/x86/linker/mod.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/linker/elf.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/linker/input.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/lir_printer.cpp"
 )
 target_include_directories(backend_lir_adapter_tests PRIVATE

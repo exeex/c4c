@@ -505,6 +505,327 @@ std::vector<std::uint8_t> make_minimal_helper_definition_object_fixture() {
   return out;
 }
 
+std::vector<std::uint8_t> make_minimal_x86_relocation_object_fixture() {
+  using namespace c4c::backend::elf;
+
+  constexpr std::uint32_t kPlt32Reloc = 4;
+  constexpr std::size_t kElfHeaderSize = 64;
+  constexpr std::size_t kSectionHeaderSize = 64;
+
+  std::vector<std::uint8_t> text_bytes = {
+      0xe8, 0x00, 0x00, 0x00, 0x00,
+      0xc3,
+  };
+
+  std::string strtab;
+  strtab.push_back('\0');
+  const auto main_name = static_cast<std::uint32_t>(strtab.size());
+  strtab += "main";
+  strtab.push_back('\0');
+  const auto helper_name = static_cast<std::uint32_t>(strtab.size());
+  strtab += "helper_ext";
+  strtab.push_back('\0');
+
+  std::string shstrtab;
+  shstrtab.push_back('\0');
+  const auto text_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".text";
+  shstrtab.push_back('\0');
+  const auto rela_text_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".rela.text";
+  shstrtab.push_back('\0');
+  const auto symtab_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".symtab";
+  shstrtab.push_back('\0');
+  const auto strtab_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".strtab";
+  shstrtab.push_back('\0');
+  const auto shstrtab_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".shstrtab";
+  shstrtab.push_back('\0');
+
+  std::vector<std::uint8_t> rela_text;
+  append_u64(rela_text, 1);
+  append_u64(rela_text, (static_cast<std::uint64_t>(3) << 32) | kPlt32Reloc);
+  append_i64(rela_text, -4);
+
+  std::vector<std::uint8_t> symtab;
+  append_zeroes(symtab, 24);
+  append_u32(symtab, 0);
+  symtab.push_back(symbol_info(STB_LOCAL, STT_SECTION));
+  symtab.push_back(0);
+  append_u16(symtab, 1);
+  append_u64(symtab, 0);
+  append_u64(symtab, 0);
+  append_u32(symtab, main_name);
+  symtab.push_back(symbol_info(STB_GLOBAL, STT_FUNC));
+  symtab.push_back(0);
+  append_u16(symtab, 1);
+  append_u64(symtab, 0);
+  append_u64(symtab, text_bytes.size());
+  append_u32(symtab, helper_name);
+  symtab.push_back(symbol_info(STB_GLOBAL, STT_NOTYPE));
+  symtab.push_back(0);
+  append_u16(symtab, SHN_UNDEF);
+  append_u64(symtab, 0);
+  append_u64(symtab, 0);
+
+  std::size_t offset = kElfHeaderSize;
+  const auto text_offset = offset;
+  offset += text_bytes.size();
+  offset = align_up(offset, 8);
+
+  const auto rela_text_offset = offset;
+  offset += rela_text.size();
+  offset = align_up(offset, 8);
+
+  const auto symtab_offset = offset;
+  offset += symtab.size();
+
+  const auto strtab_offset = offset;
+  offset += strtab.size();
+
+  const auto shstrtab_offset = offset;
+  offset += shstrtab.size();
+  offset = align_up(offset, 8);
+
+  const auto section_header_offset = offset;
+
+  std::vector<std::uint8_t> out;
+  out.reserve(section_header_offset + 6 * kSectionHeaderSize);
+  out.insert(out.end(), ELF_MAGIC.begin(), ELF_MAGIC.end());
+  out.push_back(ELFCLASS64);
+  out.push_back(ELFDATA2LSB);
+  out.push_back(1);
+  out.push_back(0);
+  out.push_back(0);
+  append_zeroes(out, 7);
+  append_u16(out, ET_REL);
+  append_u16(out, EM_X86_64);
+  append_u32(out, 1);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, section_header_offset);
+  append_u32(out, 0);
+  append_u16(out, kElfHeaderSize);
+  append_u16(out, 0);
+  append_u16(out, 0);
+  append_u16(out, kSectionHeaderSize);
+  append_u16(out, 6);
+  append_u16(out, 5);
+
+  out.insert(out.end(), text_bytes.begin(), text_bytes.end());
+  append_zeroes(out, align_up(out.size(), 8) - out.size());
+  out.insert(out.end(), rela_text.begin(), rela_text.end());
+  append_zeroes(out, align_up(out.size(), 8) - out.size());
+  out.insert(out.end(), symtab.begin(), symtab.end());
+  out.insert(out.end(), strtab.begin(), strtab.end());
+  out.insert(out.end(), shstrtab.begin(), shstrtab.end());
+  append_zeroes(out, align_up(out.size(), 8) - out.size());
+
+  append_zeroes(out, kSectionHeaderSize);
+
+  append_u32(out, text_name);
+  append_u32(out, SHT_PROGBITS);
+  append_u64(out, SHF_ALLOC | SHF_EXECINSTR);
+  append_u64(out, 0);
+  append_u64(out, text_offset);
+  append_u64(out, text_bytes.size());
+  append_u32(out, 0);
+  append_u32(out, 0);
+  append_u64(out, 1);
+  append_u64(out, 0);
+
+  append_u32(out, rela_text_name);
+  append_u32(out, SHT_RELA);
+  append_u64(out, SHF_INFO_LINK);
+  append_u64(out, 0);
+  append_u64(out, rela_text_offset);
+  append_u64(out, rela_text.size());
+  append_u32(out, 3);
+  append_u32(out, 1);
+  append_u64(out, 8);
+  append_u64(out, 24);
+
+  append_u32(out, symtab_name);
+  append_u32(out, SHT_SYMTAB);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, symtab_offset);
+  append_u64(out, symtab.size());
+  append_u32(out, 4);
+  append_u32(out, 2);
+  append_u64(out, 8);
+  append_u64(out, 24);
+
+  append_u32(out, strtab_name);
+  append_u32(out, SHT_STRTAB);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, strtab_offset);
+  append_u64(out, strtab.size());
+  append_u32(out, 0);
+  append_u32(out, 0);
+  append_u64(out, 1);
+  append_u64(out, 0);
+
+  append_u32(out, shstrtab_name);
+  append_u32(out, SHT_STRTAB);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, shstrtab_offset);
+  append_u64(out, shstrtab.size());
+  append_u32(out, 0);
+  append_u32(out, 0);
+  append_u64(out, 1);
+  append_u64(out, 0);
+
+  return out;
+}
+
+std::vector<std::uint8_t> make_minimal_x86_helper_definition_object_fixture() {
+  using namespace c4c::backend::elf;
+
+  constexpr std::size_t kElfHeaderSize = 64;
+  constexpr std::size_t kSectionHeaderSize = 64;
+
+  std::vector<std::uint8_t> text_bytes = {
+      0xb8, 0x2a, 0x00, 0x00, 0x00,
+      0xc3,
+  };
+
+  std::string strtab;
+  strtab.push_back('\0');
+  const auto helper_name = static_cast<std::uint32_t>(strtab.size());
+  strtab += "helper_ext";
+  strtab.push_back('\0');
+
+  std::string shstrtab;
+  shstrtab.push_back('\0');
+  const auto text_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".text";
+  shstrtab.push_back('\0');
+  const auto symtab_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".symtab";
+  shstrtab.push_back('\0');
+  const auto strtab_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".strtab";
+  shstrtab.push_back('\0');
+  const auto shstrtab_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".shstrtab";
+  shstrtab.push_back('\0');
+
+  std::vector<std::uint8_t> symtab;
+  append_zeroes(symtab, 24);
+  append_u32(symtab, 0);
+  symtab.push_back(symbol_info(STB_LOCAL, STT_SECTION));
+  symtab.push_back(0);
+  append_u16(symtab, 1);
+  append_u64(symtab, 0);
+  append_u64(symtab, 0);
+  append_u32(symtab, helper_name);
+  symtab.push_back(symbol_info(STB_GLOBAL, STT_FUNC));
+  symtab.push_back(0);
+  append_u16(symtab, 1);
+  append_u64(symtab, 0);
+  append_u64(symtab, text_bytes.size());
+
+  std::size_t offset = kElfHeaderSize;
+  const auto text_offset = offset;
+  offset += text_bytes.size();
+  offset = align_up(offset, 8);
+
+  const auto symtab_offset = offset;
+  offset += symtab.size();
+
+  const auto strtab_offset = offset;
+  offset += strtab.size();
+
+  const auto shstrtab_offset = offset;
+  offset += shstrtab.size();
+  offset = align_up(offset, 8);
+
+  const auto section_header_offset = offset;
+
+  std::vector<std::uint8_t> out;
+  out.reserve(section_header_offset + 5 * kSectionHeaderSize);
+  out.insert(out.end(), ELF_MAGIC.begin(), ELF_MAGIC.end());
+  out.push_back(ELFCLASS64);
+  out.push_back(ELFDATA2LSB);
+  out.push_back(1);
+  out.push_back(0);
+  out.push_back(0);
+  append_zeroes(out, 7);
+  append_u16(out, ET_REL);
+  append_u16(out, EM_X86_64);
+  append_u32(out, 1);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, section_header_offset);
+  append_u32(out, 0);
+  append_u16(out, kElfHeaderSize);
+  append_u16(out, 0);
+  append_u16(out, 0);
+  append_u16(out, kSectionHeaderSize);
+  append_u16(out, 5);
+  append_u16(out, 4);
+
+  out.insert(out.end(), text_bytes.begin(), text_bytes.end());
+  append_zeroes(out, align_up(out.size(), 8) - out.size());
+  out.insert(out.end(), symtab.begin(), symtab.end());
+  out.insert(out.end(), strtab.begin(), strtab.end());
+  out.insert(out.end(), shstrtab.begin(), shstrtab.end());
+  append_zeroes(out, align_up(out.size(), 8) - out.size());
+
+  append_zeroes(out, kSectionHeaderSize);
+
+  append_u32(out, text_name);
+  append_u32(out, SHT_PROGBITS);
+  append_u64(out, SHF_ALLOC | SHF_EXECINSTR);
+  append_u64(out, 0);
+  append_u64(out, text_offset);
+  append_u64(out, text_bytes.size());
+  append_u32(out, 0);
+  append_u32(out, 0);
+  append_u64(out, 1);
+  append_u64(out, 0);
+
+  append_u32(out, symtab_name);
+  append_u32(out, SHT_SYMTAB);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, symtab_offset);
+  append_u64(out, symtab.size());
+  append_u32(out, 3);
+  append_u32(out, 2);
+  append_u64(out, 8);
+  append_u64(out, 24);
+
+  append_u32(out, strtab_name);
+  append_u32(out, SHT_STRTAB);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, strtab_offset);
+  append_u64(out, strtab.size());
+  append_u32(out, 0);
+  append_u32(out, 0);
+  append_u64(out, 1);
+  append_u64(out, 0);
+
+  append_u32(out, shstrtab_name);
+  append_u32(out, SHT_STRTAB);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, shstrtab_offset);
+  append_u64(out, shstrtab.size());
+  append_u32(out, 0);
+  append_u32(out, 0);
+  append_u64(out, 1);
+  append_u64(out, 0);
+
+  return out;
+}
+
 std::size_t find_section_index(const c4c::backend::linker_common::Elf64Object& object,
                                const std::string& name) {
   for (std::size_t index = 0; index < object.sections.size(); ++index) {
@@ -5448,6 +5769,121 @@ void test_aarch64_linker_loads_first_static_objects_from_archive_through_shared_
   std::filesystem::remove(helper_archive_path);
 }
 
+void test_x86_linker_names_first_static_plt32_slice() {
+  const auto caller_path = make_temp_path("c4c_x86_linker_caller", ".o");
+  const auto helper_path = make_temp_path("c4c_x86_linker_helper", ".o");
+  write_binary_file(caller_path, make_minimal_x86_relocation_object_fixture());
+  write_binary_file(helper_path, make_minimal_x86_helper_definition_object_fixture());
+
+  std::string error;
+  const auto slice = c4c::backend::x86::linker::inspect_first_static_link_slice(
+      {caller_path, helper_path}, &error);
+  expect_true(slice.has_value(),
+              "x86 linker should load the first bounded static-link slice through shared object parsing: " +
+                  error);
+
+  expect_true(slice->case_name == "x86_64-static-plt32-two-object",
+              "x86 linker should name the first bounded static-link slice explicitly");
+  expect_true(slice->objects.size() == 2,
+              "x86 linker should keep the first static-link slice scoped to two explicit input objects");
+  expect_true(slice->objects[0].defined_symbols.size() == 1 &&
+                  slice->objects[0].defined_symbols[0] == "main" &&
+                  slice->objects[0].undefined_symbols.size() == 1 &&
+                  slice->objects[0].undefined_symbols[0] == "helper_ext",
+              "x86 linker should record that the caller object defines main and imports helper_ext for the first slice");
+  expect_true(slice->objects[1].defined_symbols.size() == 1 &&
+                  slice->objects[1].defined_symbols[0] == "helper_ext" &&
+                  slice->objects[1].undefined_symbols.empty(),
+              "x86 linker should record that the helper object provides the only external definition needed by the first slice");
+
+  expect_true(slice->relocations.size() == 1,
+              "x86 linker should preserve the single relocation-bearing edge for the first static-link slice");
+  const auto& relocation = slice->relocations.front();
+  expect_true(relocation.object_path == caller_path && relocation.section_name == ".text" &&
+                  relocation.symbol_name == "helper_ext" && relocation.relocation_type == 4 &&
+                  relocation.offset == 1 && relocation.addend == -4 && relocation.resolved &&
+                  relocation.resolved_object_path == helper_path,
+              "x86 linker should record the first slice as one resolved .text PLT32 edge from main to helper_ext");
+
+  expect_true(slice->merged_output_sections.size() == 1 &&
+                  slice->merged_output_sections[0] == ".text",
+              "x86 linker should record that the first static-link slice only needs a merged .text output section");
+  expect_true(slice->unresolved_symbols.empty(),
+              "x86 linker should show no unresolved globals once the helper object is present");
+
+  std::filesystem::remove(caller_path);
+  std::filesystem::remove(helper_path);
+}
+
+void test_x86_linker_loads_first_static_objects_through_shared_input_seam() {
+  const auto caller_path = make_temp_path("c4c_x86_linker_input_caller", ".o");
+  const auto helper_path = make_temp_path("c4c_x86_linker_input_helper", ".o");
+  write_binary_file(caller_path, make_minimal_x86_relocation_object_fixture());
+  write_binary_file(helper_path, make_minimal_x86_helper_definition_object_fixture());
+
+  std::string error;
+  const auto loaded = c4c::backend::x86::linker::load_first_static_input_objects(
+      {caller_path, helper_path}, &error);
+  expect_true(loaded.has_value(),
+              "x86 linker input seam should load the bounded two-object PLT32 slice through shared ELF parsing: " +
+                  error);
+  expect_true(loaded->size() == 2,
+              "x86 linker input seam should preserve the first static-link slice as two ordered object inputs");
+  expect_true((*loaded)[0].path == caller_path &&
+                  (*loaded)[0].object.source_name == caller_path &&
+                  (*loaded)[0].object.symbols.size() >= 3,
+              "x86 linker input seam should preserve caller object path and parsed symbol inventory");
+  expect_true((*loaded)[1].path == helper_path &&
+                  (*loaded)[1].object.source_name == helper_path &&
+                  (*loaded)[1].object.symbols.size() >= 2,
+              "x86 linker input seam should preserve helper object path and parsed symbol inventory");
+
+  const auto caller_text_index = find_section_index((*loaded)[0].object, ".text");
+  expect_true(caller_text_index < (*loaded)[0].object.sections.size() &&
+                  (*loaded)[0].object.relocations[caller_text_index].size() == 1,
+              "x86 linker input seam should preserve the caller .text relocation inventory for the bounded PLT32 slice");
+
+  std::filesystem::remove(caller_path);
+  std::filesystem::remove(helper_path);
+}
+
+void test_x86_linker_loads_first_static_objects_from_archive_through_shared_input_seam() {
+  const auto caller_path = make_temp_path("c4c_x86_linker_archive_caller", ".o");
+  const auto helper_archive_path = make_temp_path("c4c_x86_linker_helper", ".a");
+  write_binary_file(caller_path, make_minimal_x86_relocation_object_fixture());
+  write_binary_file(helper_archive_path,
+                    make_single_member_archive_fixture(
+                        make_minimal_x86_helper_definition_object_fixture(), "helper_def.o/"));
+
+  std::string error;
+  const auto loaded = c4c::backend::x86::linker::load_first_static_input_objects(
+      {caller_path, helper_archive_path}, &error);
+  expect_true(loaded.has_value(),
+              "x86 linker input seam should load the bounded PLT32 slice when the helper definition comes from a shared-parsed archive: " +
+                  error);
+  expect_true(loaded->size() == 2,
+              "x86 linker input seam should resolve the bounded archive-backed slice into the same two loaded object surfaces");
+  expect_true((*loaded)[0].path == caller_path && (*loaded)[0].object.source_name == caller_path,
+              "x86 linker input seam should preserve the caller object identity when archive loading is enabled");
+  expect_true((*loaded)[1].path == helper_archive_path + "(helper_def.o)" &&
+                  (*loaded)[1].object.source_name == helper_archive_path + "(helper_def.o)",
+              "x86 linker input seam should surface the selected archive member as the helper provider");
+
+  const auto caller_text_index = find_section_index((*loaded)[0].object, ".text");
+  expect_true(caller_text_index < (*loaded)[0].object.sections.size() &&
+                  (*loaded)[0].object.relocations[caller_text_index].size() == 1 &&
+                  (*loaded)[0].object.relocations[caller_text_index][0].sym_idx <
+                      (*loaded)[0].object.symbols.size() &&
+                  (*loaded)[0].object.symbols[(*loaded)[0].object.relocations[caller_text_index][0].sym_idx]
+                          .name == "helper_ext",
+              "x86 linker input seam should keep the caller relocation pointed at helper_ext before the archive member is linked");
+  expect_true((*loaded)[1].object.symbols.size() >= 2,
+              "x86 linker input seam should parse the selected helper archive member into the shared object surface");
+
+  std::filesystem::remove(caller_path);
+  std::filesystem::remove(helper_archive_path);
+}
+
 void test_aarch64_linker_emits_first_static_call26_executable_slice() {
   const auto caller_path = make_temp_path("c4c_aarch64_link_exec_caller", ".o");
   const auto helper_path = make_temp_path("c4c_aarch64_link_exec_helper", ".o");
@@ -5712,6 +6148,9 @@ int main() {
   test_aarch64_linker_names_first_static_call26_slice();
   test_aarch64_linker_loads_first_static_objects_through_shared_input_seam();
   test_aarch64_linker_loads_first_static_objects_from_archive_through_shared_input_seam();
+  test_x86_linker_names_first_static_plt32_slice();
+  test_x86_linker_loads_first_static_objects_through_shared_input_seam();
+  test_x86_linker_loads_first_static_objects_from_archive_through_shared_input_seam();
   test_aarch64_linker_emits_first_static_call26_executable_slice();
   test_aarch64_backend_assembler_handoff_helper_stages_emitted_text();
   test_x86_backend_assembler_handoff_helper_stages_emitted_text();

@@ -19,6 +19,7 @@ inline constexpr std::uint8_t ELFDATA2LSB = 1;
 
 inline constexpr std::uint16_t ET_REL = 1;
 inline constexpr std::uint16_t EM_AARCH64 = 183;
+inline constexpr std::uint16_t EM_X86_64 = 62;
 
 inline constexpr std::uint32_t SHT_NULL = 0;
 inline constexpr std::uint32_t SHT_PROGBITS = 1;
