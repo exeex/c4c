@@ -1,5 +1,8 @@
 # x86 Global Char Pointer Diff Plan
 
+Status: Complete
+Completed On: 2026-03-29
+
 ## Relationship To Roadmap
 
 Follows:
@@ -37,3 +40,14 @@ Promote one bounded x86 global-addressing seam for subtraction over a global `ch
 
 - keep the first slice focused on one bounded global base-address plus subtraction path
 - stop and split again if the emitter starts needing generic pointer materialization helpers
+
+## Completion Notes
+
+- Added focused x86 backend adapter coverage for the bounded global `char*` pointer-difference slice.
+- The x86 asm backend now owns RIP-relative global base formation, byte-offset address formation, byte-granular subtraction, and boolean return materialization for `tests/c/internal/backend_case/global_char_pointer_diff.c`.
+- `backend_runtime_global_char_pointer_diff` now passes through `BACKEND_OUTPUT_KIND=asm`.
+- Full-suite regression status improved monotonically from 2316 passed / 23 failed to 2317 passed / 22 failed with zero newly failing tests.
+
+## Leftover Issues
+
+- `global_int_pointer_diff` and `global_int_pointer_roundtrip` remain separate x86 global-addressing follow-on slices and are intentionally not absorbed into this completed idea.

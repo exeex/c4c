@@ -2124,6 +2124,14 @@ c4c::codegen::lir::LirModule make_global_char_pointer_diff_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_x86_global_char_pointer_diff_module() {
+  auto module = make_global_char_pointer_diff_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_global_int_pointer_diff_module() {
   using namespace c4c::codegen::lir;
 
@@ -3280,6 +3288,40 @@ void test_x86_backend_renders_extern_global_array_slice() {
                   "x86 backend should return the extern global array load result");
   expect_not_contains(rendered, "getelementptr",
                       "x86 backend should no longer fall back to LLVM text for the extern global array slice");
+}
+
+void test_x86_backend_renders_global_char_pointer_diff_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_global_char_pointer_diff_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".intel_syntax noprefix\n",
+                  "x86 backend should lower the bounded global char pointer-difference slice to assembly");
+  expect_contains(rendered, ".bss\n",
+                  "x86 backend should place mutable zero-initialized byte arrays into BSS");
+  expect_contains(rendered, ".globl g_bytes\n",
+                  "x86 backend should publish the bounded byte-array symbol");
+  expect_contains(rendered, "g_bytes:\n  .zero 2\n",
+                  "x86 backend should materialize the bounded byte-array storage");
+  expect_contains(rendered, ".text\n",
+                  "x86 backend should resume emission in the text section for main");
+  expect_contains(rendered, ".globl main\n",
+                  "x86 backend should still publish main as the entry symbol");
+  expect_contains(rendered, "lea rax, g_bytes[rip]\n",
+                  "x86 backend should materialize the global byte-array base with RIP-relative addressing");
+  expect_contains(rendered, "lea rcx, [rax + 1]\n",
+                  "x86 backend should form the bounded byte-offset address from the global base");
+  expect_contains(rendered, "sub rcx, rax\n",
+                  "x86 backend should preserve the byte-granular pointer subtraction");
+  expect_contains(rendered, "cmp rcx, 1\n",
+                  "x86 backend should compare the pointer difference against one byte");
+  expect_contains(rendered, "sete al\n",
+                  "x86 backend should lower the bounded equality result into the low return register");
+  expect_contains(rendered, "movzx eax, al\n",
+                  "x86 backend should zero-extend the boolean result into the return register");
+  expect_contains(rendered, "ret\n",
+                  "x86 backend should return the bounded pointer-difference comparison result");
+  expect_not_contains(rendered, "getelementptr",
+                      "x86 backend should no longer fall back to LLVM text for the bounded global char pointer-difference slice");
 }
 
 void test_aarch64_backend_renders_void_return_slice() {
@@ -5297,6 +5339,7 @@ int main() {
   test_x86_backend_renders_compare_and_branch_gt_slice();
   test_x86_backend_renders_compare_and_branch_ge_slice();
   test_x86_backend_renders_extern_global_array_slice();
+  test_x86_backend_renders_global_char_pointer_diff_slice();
   test_aarch64_backend_renders_void_return_slice();
   test_aarch64_backend_preserves_module_headers_and_declarations();
   test_aarch64_backend_propagates_malformed_signature_in_supported_slice();
