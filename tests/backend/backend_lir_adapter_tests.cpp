@@ -132,6 +132,83 @@ c4c::codegen::lir::LirModule make_declaration_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_call_crossing_interval_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction decl;
+  decl.name = "helper";
+  decl.signature_text = "declare i32 @helper(i32)\n";
+  decl.is_declaration = true;
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{"%t0", "add", "i32", "2", "3"});
+  entry.insts.push_back(LirCallOp{"%t1", "i32", "@helper", "", "i32 %t0"});
+  entry.insts.push_back(LirBinOp{"%t2", "add", "i32", "%t0", "%t1"});
+  entry.terminator = LirRet{std::string("%t2"), "i32"};
+  main_fn.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(decl));
+  module.functions.push_back(std::move(main_fn));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_interval_phi_join_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCmpOp{"%t0", false, "slt", "i32", "1", "2"});
+  entry.terminator = LirCondBr{"%t0", "then", "else"};
+
+  LirBlock then_block;
+  then_block.id = LirBlockId{1};
+  then_block.label = "then";
+  then_block.insts.push_back(LirBinOp{"%t1", "add", "i32", "10", "1"});
+  then_block.terminator = LirBr{"join"};
+
+  LirBlock else_block;
+  else_block.id = LirBlockId{2};
+  else_block.label = "else";
+  else_block.insts.push_back(LirBinOp{"%t2", "add", "i32", "20", "2"});
+  else_block.terminator = LirBr{"join"};
+
+  LirBlock join_block;
+  join_block.id = LirBlockId{3};
+  join_block.label = "join";
+  join_block.insts.push_back(LirPhiOp{"%t3", "i32", {{"%t1", "then"}, {"%t2", "else"}}});
+  join_block.insts.push_back(LirBinOp{"%t4", "add", "i32", "%t3", "5"});
+  join_block.terminator = LirRet{std::string("%t4"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(then_block));
+  function.blocks.push_back(std::move(else_block));
+  function.blocks.push_back(std::move(join_block));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_conditional_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -2877,8 +2954,49 @@ void test_backend_shared_liveness_surface_tracks_result_names() {
   const auto* interval = liveness.find_interval("%t0");
   expect_true(interval != nullptr,
               "shared liveness surface should expose interval lookup by SSA result name");
-  expect_true(interval->start == 0 && interval->end == 0,
-              "shared liveness surface should keep deterministic placeholder intervals for the first compile slice");
+  expect_true(interval->start == 0 && interval->end == 1,
+              "shared liveness surface should extend intervals through later uses instead of keeping point-only placeholders");
+}
+
+void test_backend_shared_liveness_surface_tracks_call_crossing_ranges() {
+  const auto module = make_call_crossing_interval_module();
+  const auto& function = module.functions.back();
+  const auto liveness = c4c::backend::compute_live_intervals(function);
+
+  expect_true(liveness.call_points.size() == 1 && liveness.call_points.front() == 1,
+              "shared liveness surface should record the direct call program point");
+  const auto* before_call = liveness.find_interval("%t0");
+  const auto* call_result = liveness.find_interval("%t1");
+  const auto* final_sum = liveness.find_interval("%t2");
+  expect_true(before_call != nullptr && before_call->start == 0 && before_call->end == 2,
+              "shared liveness surface should extend values that remain live across a call through their later use");
+  expect_true(call_result != nullptr && call_result->start == 1 && call_result->end == 2,
+              "shared liveness surface should keep the call result live until its consuming instruction");
+  expect_true(final_sum != nullptr && final_sum->start == 2 && final_sum->end == 3,
+              "shared liveness surface should include terminator uses in the final interval endpoint");
+}
+
+void test_backend_shared_liveness_surface_tracks_phi_join_ranges() {
+  const auto module = make_interval_phi_join_module();
+  const auto& function = module.functions.front();
+  const auto liveness = c4c::backend::compute_live_intervals(function);
+
+  const auto* cond = liveness.find_interval("%t0");
+  const auto* then_value = liveness.find_interval("%t1");
+  const auto* else_value = liveness.find_interval("%t2");
+  const auto* phi_value = liveness.find_interval("%t3");
+  const auto* final_sum = liveness.find_interval("%t4");
+
+  expect_true(cond != nullptr && cond->start == 0 && cond->end == 1,
+              "shared liveness surface should extend branch conditions through the conditional terminator");
+  expect_true(then_value != nullptr && then_value->start == 2 && then_value->end == 3,
+              "shared liveness surface should treat phi incoming values as used on the predecessor edge");
+  expect_true(else_value != nullptr && else_value->start == 4 && else_value->end == 5,
+              "shared liveness surface should track the alternate phi incoming value on its predecessor edge");
+  expect_true(phi_value != nullptr && phi_value->start == 6 && phi_value->end == 7,
+              "shared liveness surface should start phi results in the join block and extend them to their consuming instruction");
+  expect_true(final_sum != nullptr && final_sum->start == 7 && final_sum->end == 8,
+              "shared liveness surface should keep the join result live through the return terminator");
 }
 
 void test_backend_shared_regalloc_surface_assigns_first_available_reg() {
@@ -2997,6 +3115,8 @@ int main() {
   test_aarch64_assembler_elf_writer_branch_reloc_helper();
   test_aarch64_assembler_encoder_helper_smoke();
   test_backend_shared_liveness_surface_tracks_result_names();
+  test_backend_shared_liveness_surface_tracks_call_crossing_ranges();
+  test_backend_shared_liveness_surface_tracks_phi_join_ranges();
   test_backend_shared_regalloc_surface_assigns_first_available_reg();
   test_backend_shared_regalloc_helper_filters_and_merges_clobbers();
   return 0;
