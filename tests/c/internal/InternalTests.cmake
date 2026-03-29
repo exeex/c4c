@@ -13,6 +13,8 @@ file(GLOB INTERNAL_LINUX_STAGE2_REPRO_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_C_TEST_ROOT}/positive_case/linux_stage2_repro/*.c")
 file(GLOB INTERNAL_CCC_REVIEW_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_C_TEST_ROOT}/positive_case/ccc_review/*.c")
+file(GLOB INTERNAL_PREPROCESSOR_TEST_SRCS CONFIGURE_DEPENDS
+     "${PROJECT_SOURCE_DIR}/tests/c/preprocessor/*.c")
 
 option(NEGATIVE_TESTS_ENFORCE
        "Require internal negative_case bad_*.c cases to fail compilation (non-zero exit)"
@@ -174,6 +176,19 @@ add_test(
 )
 set_tests_properties(frontend_cxx_preprocessor_tests PROPERTIES
     LABELS "internal;preprocessor")
+
+foreach(src IN LISTS INTERNAL_PREPROCESSOR_TEST_SRCS)
+  get_filename_component(stem "${src}" NAME_WE)
+  set(test_name "preprocessor_${stem}")
+  add_test(
+      NAME "${test_name}"
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${src}
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_preprocessor_case.cmake"
+  )
+  set_tests_properties("${test_name}" PROPERTIES LABELS "internal;preprocessor")
+endforeach()
 
 add_test(
     NAME frontend_cxx_stage1_version
