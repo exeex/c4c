@@ -163,10 +163,44 @@ bool is_cpp20_requires_clause_decl_boundary(Parser& parser) {
         kind == TokenKind::KwStatic || kind == TokenKind::KwExtern ||
         kind == TokenKind::KwMutable || kind == TokenKind::KwVirtual ||
         kind == TokenKind::KwFriend || kind == TokenKind::KwTypedef ||
-        kind == TokenKind::KwUsing) {
+        kind == TokenKind::KwUsing || kind == TokenKind::KwConcept) {
         return true;
     }
     return parser.is_type_start();
+}
+
+bool try_skip_cpp_concept_declaration(Parser& parser) {
+    if (!parser.is_cpp_mode() || !parser.check(TokenKind::KwConcept)) {
+        return false;
+    }
+
+    int paren_depth = 0;
+    int brace_depth = 0;
+    int bracket_depth = 0;
+    while (!parser.at_end()) {
+        if (parser.check(TokenKind::Semi) && paren_depth == 0 &&
+            brace_depth == 0 && bracket_depth == 0) {
+            parser.consume();
+            return true;
+        }
+
+        if (parser.check(TokenKind::LParen)) {
+            ++paren_depth;
+        } else if (parser.check(TokenKind::RParen)) {
+            if (paren_depth > 0) --paren_depth;
+        } else if (parser.check(TokenKind::LBrace)) {
+            ++brace_depth;
+        } else if (parser.check(TokenKind::RBrace)) {
+            if (brace_depth > 0) --brace_depth;
+        } else if (parser.check(TokenKind::LBracket)) {
+            ++bracket_depth;
+        } else if (parser.check(TokenKind::RBracket)) {
+            if (bracket_depth > 0) --bracket_depth;
+        }
+
+        parser.consume();
+    }
+    return true;
 }
 
 bool skip_cpp20_constraint_atom(Parser& parser) {
@@ -1235,6 +1269,10 @@ Node* Parser::parse_top_level() {
         return templated;
     }
 
+    if (try_skip_cpp_concept_declaration(*this)) {
+        return make_node(NK_EMPTY, ln);
+    }
+
     // Handle #pragma pack tokens
     if (check(TokenKind::PragmaPack)) {
         handle_pragma_pack(cur().lexeme);
@@ -1758,6 +1796,15 @@ Node* Parser::parse_top_level() {
         if (is_typedef) {
             if (check(TokenKind::Identifier)) {
                 const std::string spelled = cur().lexeme;
+                if (is_template_scope_type_param(spelled)) {
+                    base_ts.array_size = -1;
+                    base_ts.array_rank = 0;
+                    for (int i = 0; i < 8; ++i) base_ts.array_dims[i] = -1;
+                    base_ts.base = TB_TYPEDEF;
+                    base_ts.tag = arena_.strdup(spelled.c_str());
+                    consume();
+                    goto top_level_base_ready;
+                }
                 const std::string resolved = resolve_visible_type_name(spelled);
                 auto it = typedef_types_.find(resolved);
                 if (it == typedef_types_.end()) it = typedef_types_.find(spelled);

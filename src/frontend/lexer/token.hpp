@@ -110,6 +110,7 @@ enum class TokenKind {
   KwDelete,          // delete (= delete for deleted functions)
   KwExplicit,        // explicit (C++ explicit conversion/constructor specifier)
   KwRequires,        // requires
+  KwConcept,         // concept
 
   // ---- Punctuation ----
   LParen,    // (

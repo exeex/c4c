@@ -287,6 +287,7 @@ const char *token_kind_name(TokenKind kind) {
     case TokenKind::KwDelete: return "KW_delete";
     case TokenKind::KwExplicit: return "KW_explicit";
     case TokenKind::KwRequires: return "KW_requires";
+    case TokenKind::KwConcept: return "KW_concept";
 
     case TokenKind::PragmaPack: return "PRAGMA_PACK";
 
@@ -438,6 +439,7 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
     if (s == "delete")           return TokenKind::KwDelete;
     if (s == "explicit")         return TokenKind::KwExplicit;
     if (s == "requires")         return TokenKind::KwRequires;
+    if (s == "concept")          return TokenKind::KwConcept;
   }
 
   return TokenKind::Identifier;

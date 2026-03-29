@@ -97,6 +97,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     cpp20_requires_clause_struct_decl_parse
     cpp20_requires_concept_id_member_ctor_parse
     cpp20_requires_conjunction_member_parse
+    cpp20_namespaced_concept_requires_parse
     cpp20_requires_requires_member_array_param_parse
     cpp20_requires_expression_if_constexpr_parse
     eastl_slice7d_qualified_declarator_parse
