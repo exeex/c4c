@@ -501,7 +501,8 @@ void Parser::parse_top_level_parameter_list(
                 break;
             }
             if (check(TokenKind::RParen)) break;
-            if (!is_type_start() && check(TokenKind::Identifier)) {
+            if (!is_type_start() && !can_start_parameter_type() &&
+                check(TokenKind::Identifier)) {
                 if (out_knr_param_names)
                     out_knr_param_names->push_back(arena_.strdup(cur().lexeme));
                 consume();

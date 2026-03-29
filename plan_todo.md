@@ -6,20 +6,21 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 2: reduce the next post-`stl_iterator.h:1011` blocker, starting with
-  the `stl_iterator.h:1954` / `:1978` copy/move constructor parameter-list
-  failures on `const common_iterator& __x` and `common_iterator&& __x`
+- Step 2: reduce the next post-`stl_iterator.h:1978` blocker, starting with
+  the `bits/predefined_ops.h:150` parameter-list failure on unresolved
+  comparator parameter spelling before the later allocator and expression
+  frontiers
 
 ## Next Intended Slice
 
-- inspect `/usr/include/c++/14/bits/stl_iterator.h:1954` and `:1978` and
-  isolate the smallest parse-only repro for constructor parameters spelled as
-  `const common_iterator&` and `common_iterator&&`
-- keep the next fix limited to parameter declarator parsing for reference and
-  rvalue-reference forms rather than broad iterator semantics
+- inspect `/usr/include/c++/14/bits/predefined_ops.h:150` and isolate the
+  smallest parse-only repro for the unresolved comparator parameter that still
+  trips `parse_top_level_parameter_list` on `__comp`
+- keep the next fix limited to unresolved by-value parameter declarators rather
+  than broad algorithm or functor semantics
 - rerun `./build/c4cll --parse-only tests/cpp/std/std_vector_simple.cpp` after
   that fix to confirm the frontier advances beyond the current
-  `parse_top_level_parameter_list` failures
+  `parse_top_level_parameter_list` failure in `predefined_ops.h`
 
 ## Incomplete Items
 
@@ -90,6 +91,28 @@ Source Plan: plan.md
 - [x] Full-suite regression guard passed with monotonic improvement:
   `2386 -> 2387` passing tests, `0 -> 0` failing tests, and no newly failing
   cases (`test_after.log`)
+- [x] Reduced the next `stl_iterator.h:1954` / `:1978` blocker to
+  `tests/cpp/internal/postive_case/constructor_self_ref_param_parse.cpp` using
+  `void accept(const Box& other, Box&& moved);`, and confirmed it failed before
+  implementation with the same top-level parameter-list `&` / `&&` shape
+- [x] Taught C++ parameter probes and base-type recovery to treat unresolved
+  simple identifiers followed by `&` / `&&` as parameter type starts instead of
+  K&R-style declarator names, and re-ran the targeted tests:
+  `cpp_parse_constructor_self_ref_param_dump`,
+  `cpp_positive_sema_constructor_self_ref_param_parse_cpp`,
+  `cpp_positive_sema_qualified_template_unresolved_param_type_parse_cpp`,
+  `cpp_positive_sema_cpp20_requires_clause_struct_decl_parse_cpp`,
+  `cpp_parse_lambda_empty_capture_dump`, and
+  `cpp_parse_lambda_empty_capture_parens_dump`
+- [x] Advanced the direct `std::vector` parse-only repro beyond the
+  `stl_iterator.h:1954` / `:1978` copy/move constructor frontier; the next
+  failure now starts at `/usr/include/c++/14/bits/predefined_ops.h:150`
+  (`parse_top_level_parameter_list` expected `)` got `__comp`), followed by
+  allocator, incomplete-type, comma-expression, attribute, and later vector.tcc
+  parameter-list issues
+- [x] Full-suite regression guard passed with monotonic improvement:
+  `2388 -> 2389` passing tests, `0 -> 0` failing tests, and no newly failing
+  cases (`test_fail_before.log` vs `test_fail_after.log`)
 
 ## Blockers
 
@@ -103,11 +126,11 @@ Source Plan: plan.md
   the current `noexcept` and `iterator_concepts.h` frontier instead of
   reworking the older blockers.
 - Reduced repro candidate for the next slice:
-  a minimal constructor or free-function case exercising
-  `const common_iterator&` / `common_iterator&&` parameter declarators
+  a minimal free-function or method case exercising an unresolved by-value
+  comparator parameter that currently leaves `__comp` where `)` is expected
 - The surviving direct repro errors now begin with
-  `stl_iterator.h:1954` (`parse_top_level_parameter_list` expected `)` got
-  `&`) and `stl_iterator.h:1978` (`... got '&&'`), then
-  allocator/predefined-ops parameter-list issues, incomplete-type reports for
-  `move_iterator` / `allocator`, and later comma-expression parsing in
-  `bits/stl_uninitialized.h`.
+  `bits/predefined_ops.h:150` (`parse_top_level_parameter_list` expected `)`
+  got `__comp`), then incomplete-type reports for `move_iterator` /
+  `allocator`, later comma-expression parsing in `bits/stl_uninitialized.h`,
+  attribute parsing in `stl_uninitialized.h:1109`, and several remaining
+  vector.tcc / bitset parameter-list issues.

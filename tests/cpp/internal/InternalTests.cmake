@@ -261,6 +261,15 @@ set_tests_properties(cpp_parse_lambda_copy_capture_dump PROPERTIES
 )
 
 add_test(
+  NAME cpp_parse_constructor_self_ref_param_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/constructor_self_ref_param_parse.cpp"
+)
+set_tests_properties(cpp_parse_constructor_self_ref_param_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Function\\(accept\\)"
+)
+
+add_test(
   NAME cpp_lex_keyword_and_tokens
   COMMAND c4cll --lex-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/keyword_and_parse.cpp"
 )
