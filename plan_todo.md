@@ -6,17 +6,17 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 2: reduce the next post-`iterator_concepts` blocker, starting with the
-  `stl_iterator.h:1011` parameter-list failure on
-  `std::__detail::__range_iter_t<_Container> __i`
+- Step 2: reduce the next post-`stl_iterator.h:1011` blocker, starting with
+  the `stl_iterator.h:1954` / `:1978` copy/move constructor parameter-list
+  failures on `const common_iterator& __x` and `common_iterator&& __x`
 
 ## Next Intended Slice
 
-- inspect `/usr/include/c++/14/bits/stl_iterator.h:1011` and isolate the
-  smallest parse-only repro for a parameter type spelled as
-  `std::__detail::__range_iter_t<_Container>`
-- keep the next fix limited to top-level/member parameter-list parsing rather
-  than broad iterator or allocator semantics
+- inspect `/usr/include/c++/14/bits/stl_iterator.h:1954` and `:1978` and
+  isolate the smallest parse-only repro for constructor parameters spelled as
+  `const common_iterator&` and `common_iterator&&`
+- keep the next fix limited to parameter declarator parsing for reference and
+  rvalue-reference forms rather than broad iterator semantics
 - rerun `./build/c4cll --parse-only tests/cpp/std/std_vector_simple.cpp` after
   that fix to confirm the frontier advances beyond the current
   `parse_top_level_parameter_list` failures
@@ -70,6 +70,26 @@ Source Plan: plan.md
 - [x] Full-suite regression guard passed with monotonic improvement:
   `2385 -> 2386` passing tests, `0 -> 0` failing tests, and no newly failing
   cases (`test_after.log`)
+- [x] Reduced the next `stl_iterator.h:1011` blocker to
+  `tests/cpp/internal/postive_case/qualified_template_unresolved_param_type_parse.cpp`
+  for `void accept(T& value, ns::holder<T> other);`, and confirmed it failed
+  before implementation with the same top-level parameter-list `::` failure
+- [x] Taught parameter-list entry probes to treat unresolved qualified
+  template-id forms such as `ns::holder<T>` as valid parameter type starts,
+  and re-ran the targeted parse tests:
+  `qualified_template_unresolved_param_type_parse`,
+  `template_unresolved_param_type_parse`,
+  `qualified_cpp_base_type_dispatch_parse`,
+  `qualified_type_start_shared_probe_parse`, and
+  `qualified_global_type_start_shared_probe_parse`
+- [x] Advanced the direct `std::vector` parse-only repro beyond the
+  `stl_iterator.h:1011` `std::__detail::__range_iter_t<_Container>` frontier;
+  the next failures now start at `/usr/include/c++/14/bits/stl_iterator.h:1954`
+  and `:1978` on copy/move constructor parameter forms, followed by later
+  allocator, incomplete-type, comma-expression, and attribute-related issues
+- [x] Full-suite regression guard passed with monotonic improvement:
+  `2386 -> 2387` passing tests, `0 -> 0` failing tests, and no newly failing
+  cases (`test_after.log`)
 
 ## Blockers
 
@@ -82,11 +102,12 @@ Source Plan: plan.md
 - The source idea says earlier parser hazards were already retired; start from
   the current `noexcept` and `iterator_concepts.h` frontier instead of
   reworking the older blockers.
-- Reduced repro candidate for this slice:
-  `template<typename T> requires is_object_v<T> struct trait;`
+- Reduced repro candidate for the next slice:
+  a minimal constructor or free-function case exercising
+  `const common_iterator&` / `common_iterator&&` parameter declarators
 - The surviving direct repro errors now begin with
-  `stl_iterator.h:1011` (`parse_top_level_parameter_list` expected `)` got
-  `::`), then copy/move constructor parameter forms in `stl_iterator.h`,
+  `stl_iterator.h:1954` (`parse_top_level_parameter_list` expected `)` got
+  `&`) and `stl_iterator.h:1978` (`... got '&&'`), then
   allocator/predefined-ops parameter-list issues, incomplete-type reports for
   `move_iterator` / `allocator`, and later comma-expression parsing in
   `bits/stl_uninitialized.h`.

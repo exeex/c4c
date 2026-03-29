@@ -298,6 +298,7 @@ class Parser {
 
   // ── parser mode / identifier classification ──────────────────────────────
   bool is_type_start() const;            // can current token start a type?
+  bool can_start_parameter_type() const;
   bool is_typedef_name(const std::string& s) const;
   bool is_cpp_mode() const {
     return source_profile_ == SourceProfile::CppSubset ||

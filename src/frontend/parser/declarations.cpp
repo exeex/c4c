@@ -508,12 +508,7 @@ void Parser::parse_top_level_parameter_list(
                 if (match(TokenKind::Comma)) continue;
                 break;
             }
-            const bool allow_unresolved_template_type_start =
-                is_cpp_mode() &&
-                check(TokenKind::Identifier) &&
-                pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                tokens_[pos_ + 1].kind == TokenKind::Less;
-            if (!is_type_start() && !allow_unresolved_template_type_start) break;
+            if (!can_start_parameter_type()) break;
             Node* p = parse_param();
             if (p && out_params) out_params->push_back(p);
             if (check(TokenKind::Ellipsis)) {
@@ -1446,12 +1441,7 @@ Node* Parser::parse_top_level() {
                 while (!at_end()) {
                     if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
                     if (check(TokenKind::RParen)) break;
-                    const bool allow_unresolved_template_type_start =
-                        is_cpp_mode() &&
-                        check(TokenKind::Identifier) &&
-                        pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                        tokens_[pos_ + 1].kind == TokenKind::Less;
-                    if (!is_type_start() && !allow_unresolved_template_type_start) break;
+                    if (!can_start_parameter_type()) break;
                     Node* p = parse_param();
                     if (p) params.push_back(p);
                     if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
@@ -1551,12 +1541,7 @@ Node* Parser::parse_top_level() {
                     while (!at_end()) {
                         if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
                         if (check(TokenKind::RParen)) break;
-                        const bool allow_unresolved_template_type_start =
-                            is_cpp_mode() &&
-                            check(TokenKind::Identifier) &&
-                            pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                            tokens_[pos_ + 1].kind == TokenKind::Less;
-                        if (!is_type_start() && !allow_unresolved_template_type_start) break;
+                        if (!can_start_parameter_type()) break;
                         Node* p = parse_param();
                         if (p) params.push_back(p);
                         if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
@@ -1879,12 +1864,7 @@ top_level_base_ready:
                             fptr_fn_variadic = true; consume(); break;
                         }
                         if (check(TokenKind::RParen)) break;
-                        const bool allow_unresolved_template_type_start =
-                            is_cpp_mode() &&
-                            check(TokenKind::Identifier) &&
-                            pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                            tokens_[pos_ + 1].kind == TokenKind::Less;
-                        if (!is_type_start() && !allow_unresolved_template_type_start) {
+                        if (!can_start_parameter_type()) {
                             consume();
                             if (match(TokenKind::Comma)) continue;
                             break;
@@ -1908,12 +1888,7 @@ top_level_base_ready:
                             inner_ret_variadic = true; consume(); break;
                         }
                         if (check(TokenKind::RParen)) break;
-                        const bool allow_unresolved_template_type_start =
-                            is_cpp_mode() &&
-                            check(TokenKind::Identifier) &&
-                            pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                            tokens_[pos_ + 1].kind == TokenKind::Less;
-                        if (!is_type_start() && !allow_unresolved_template_type_start) {
+                        if (!can_start_parameter_type()) {
                             consume();
                             if (match(TokenKind::Comma)) continue;
                             break;
@@ -1947,12 +1922,7 @@ top_level_base_ready:
                         fptr_fn_variadic = true; consume(); break;
                     }
                     if (check(TokenKind::RParen)) break;
-                    const bool allow_unresolved_template_type_start =
-                        is_cpp_mode() &&
-                        check(TokenKind::Identifier) &&
-                        pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                        tokens_[pos_ + 1].kind == TokenKind::Less;
-                    if (!is_type_start() && !allow_unresolved_template_type_start) {
+                    if (!can_start_parameter_type()) {
                         consume();
                         if (match(TokenKind::Comma)) continue;
                         break;
@@ -1977,12 +1947,7 @@ top_level_base_ready:
                         break;
                     }
                     if (check(TokenKind::RParen)) break;
-                    const bool allow_unresolved_template_type_start =
-                        is_cpp_mode() &&
-                        check(TokenKind::Identifier) &&
-                        pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                        tokens_[pos_ + 1].kind == TokenKind::Less;
-                    if (!is_type_start() && !allow_unresolved_template_type_start) {
+                    if (!can_start_parameter_type()) {
                         consume();
                         if (match(TokenKind::Comma)) continue;
                         break;

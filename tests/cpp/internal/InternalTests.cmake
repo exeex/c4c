@@ -48,6 +48,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     template_variadic_qualified_parse
     template_template_param_parse
     template_unresolved_param_type_parse
+    qualified_template_unresolved_param_type_parse
     template_member_type_direct_parse
     template_member_type_inherited_parse
     template_alias_nttp_expr_parse
