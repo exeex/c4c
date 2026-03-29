@@ -212,6 +212,67 @@ bool try_skip_cpp_concept_declaration(Parser& parser) {
     return true;
 }
 
+bool is_top_level_decl_recovery_boundary(TokenKind kind) {
+    switch (kind) {
+        case TokenKind::KwVoid:
+        case TokenKind::KwBool:
+        case TokenKind::KwChar:
+        case TokenKind::KwShort:
+        case TokenKind::KwInt:
+        case TokenKind::KwLong:
+        case TokenKind::KwSigned:
+        case TokenKind::KwUnsigned:
+        case TokenKind::KwFloat:
+        case TokenKind::KwDouble:
+        case TokenKind::KwStruct:
+        case TokenKind::KwUnion:
+        case TokenKind::KwEnum:
+        case TokenKind::KwConst:
+        case TokenKind::KwVolatile:
+        case TokenKind::KwStatic:
+        case TokenKind::KwExtern:
+        case TokenKind::KwInline:
+        case TokenKind::KwTypedef:
+        case TokenKind::KwAuto:
+        case TokenKind::KwTemplate:
+        case TokenKind::KwConcept:
+        case TokenKind::KwUsing:
+        case TokenKind::KwStaticAssert:
+        case TokenKind::KwAsm:
+        case TokenKind::PragmaPack:
+        case TokenKind::PragmaWeak:
+        case TokenKind::PragmaGccVisibility:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool skip_top_level_asm_or_recover(Parser& parser) {
+    if (!parser.check(TokenKind::LParen)) return false;
+
+    parser.consume();  // (
+    int depth = 1;
+    while (!parser.at_end() && depth > 0) {
+        if (depth == 1 &&
+            is_top_level_decl_recovery_boundary(parser.cur().kind)) {
+            return false;
+        }
+        if (parser.check(TokenKind::LParen)) {
+            ++depth;
+            parser.consume();
+            continue;
+        }
+        if (parser.check(TokenKind::RParen)) {
+            --depth;
+            parser.consume();
+            continue;
+        }
+        parser.consume();
+    }
+    return depth == 0;
+}
+
 bool template_owner_can_defer_static_assert(const Node* owner) {
     return owner && owner->n_template_params > 0;
 }
@@ -1273,7 +1334,11 @@ Node* Parser::parse_top_level() {
     // Handle top-level asm
     if (check(TokenKind::KwAsm)) {
         consume();
-        if (check(TokenKind::LParen)) skip_paren_group();
+        if (check(TokenKind::LParen)) {
+            const bool closed = skip_top_level_asm_or_recover(*this);
+            if (closed) match(TokenKind::Semi);
+            return make_node(NK_EMPTY, ln);
+        }
         match(TokenKind::Semi);
         return make_node(NK_EMPTY, ln);
     }

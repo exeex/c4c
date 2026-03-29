@@ -9,8 +9,8 @@ Last Updated: 2026-03-29
 
 - Step 3: continue the ranked top-level `NK_EMPTY` audit in
   `src/frontend/parser/declarations.cpp`, focusing next on the remaining
-  unsupported / structure-only declaration exits after the storage-class
-  recovery tightening landed
+  unsupported / structure-only declaration exits after the top-level
+  storage-class and `asm(...)` recovery tightenings landed
 
 ## Completed
 
@@ -127,13 +127,28 @@ Last Updated: 2026-03-29
     - baseline: `100% tests passed, 0 tests failed out of 2409`
     - after change: `100% tests passed, 0 tests failed out of 2411`
     - result: monotonic pass-count increase with no newly failing tests
+- tightened malformed top-level `asm(...)` recovery in
+  `src/frontend/parser/declarations.cpp` so an unterminated `asm(` payload no
+  longer swallows the following declaration through a blind paren-group skip:
+  - added the reduced parse-only regression
+    `tests/cpp/internal/parse_only_case/top_level_asm_recovery_preserves_following_decl_parse.cpp`
+    plus the dedicated dump assertion
+    `cpp_parse_top_level_asm_recovery_preserves_following_decl_dump`
+    in `tests/cpp/internal/InternalTests.cmake`
+  - updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record top-level
+    `asm(...)` as a covered `NK_EMPTY` recovery boundary
+  - re-ran the required regression guard:
+    - baseline: `100% tests passed, 0 tests failed out of 2411`
+    - after change: `100% tests passed, 0 tests failed out of 2412`
+    - result: monotonic pass-count increase with no newly failing tests
 
 ## Next Slice
 
 - continue through the remaining top-level `NK_EMPTY` discard sites in
   `src/frontend/parser/declarations.cpp`, especially the unsupported /
   structure-only declaration exits still called out as suspicious in
-  `src/frontend/parser/BOUNDARY_AUDIT.md`
+  `src/frontend/parser/BOUNDARY_AUDIT.md` after the storage-class and
+  top-level `asm(...)` recovery fixes
 - prefer another reduced parse-only repro that shows discarded structure or a
   silently erased following declaration before changing those remaining
   `NK_EMPTY` branches
@@ -173,6 +188,10 @@ Last Updated: 2026-03-29
 - the malformed top-level `extern foo` regression is intentionally parse-only:
   the important assertion is that the following `kept` global remains visible
   after recovery, not that the broken storage-class fragment is diagnosed as a
+  first-class declaration node
+- the malformed top-level `asm(` regression is intentionally parse-only: the
+  important assertion is that the following `kept` global remains visible after
+  recovery, not that the unsupported top-level asm fragment is elevated into a
   first-class declaration node
 
 ## Blockers

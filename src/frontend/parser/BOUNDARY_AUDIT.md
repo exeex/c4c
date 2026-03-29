@@ -141,11 +141,20 @@ ranking pass.
    instead of erasing it through broad `skip_until(';')` recovery.
 
 4. `src/frontend/parser/declarations.cpp:1265`
-   Several remaining declaration paths return `NK_EMPTY` for unsupported or structure-only
-   cases.
+   Several remaining declaration paths return `NK_EMPTY` for unsupported or
+   structure-only cases.
    Tag: `suspicious breadth`
    Reason: these sites need a later pass to distinguish harmless empty
    declarations from hidden missed parses.
+
+5. `src/frontend/parser/declarations.cpp:1336`
+   Top-level `asm(...)` parsing now recovers before the next strong declaration
+   starter when the parenthesized payload never closes, instead of swallowing
+   the following declaration through a blind group skip.
+   Tag: `acceptable breadth`
+   Evidence: the reduced parse-only regression
+   `tests/cpp/internal/parse_only_case/top_level_asm_recovery_preserves_following_decl_parse.cpp`
+   keeps the following `kept` global visible after malformed `asm(` input.
 
 ## Ranked First Tightening Targets
 
