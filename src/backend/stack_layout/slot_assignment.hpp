@@ -14,6 +14,7 @@ struct EntryAllocaSlotPlan {
   bool needs_stack_slot = true;
   bool remove_following_entry_store = false;
   std::optional<std::size_t> coalesced_block;
+  std::optional<std::size_t> assigned_slot;
 };
 
 struct ParamAllocaSlotPlan {

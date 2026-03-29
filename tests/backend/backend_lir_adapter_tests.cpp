@@ -2021,6 +2021,75 @@ c4c::codegen::lir::LirModule make_live_local_alloca_candidate_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_disjoint_block_local_alloca_candidate_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main(i1 %p.cond)\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.then", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.else", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.terminator = LirCondBr{"%p.cond", "then", "else"};
+  function.blocks.push_back(std::move(entry));
+
+  LirBlock then_block;
+  then_block.id = LirBlockId{1};
+  then_block.label = "then";
+  then_block.insts.push_back(LirStoreOp{"i32", "7", "%lv.then"});
+  then_block.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.then"});
+  then_block.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(then_block));
+
+  LirBlock else_block;
+  else_block.id = LirBlockId{2};
+  else_block.label = "else";
+  else_block.insts.push_back(LirStoreOp{"i32", "9", "%lv.else"});
+  else_block.insts.push_back(LirLoadOp{"%t1", "i32", "%lv.else"});
+  else_block.terminator = LirRet{std::string("%t1"), "i32"};
+  function.blocks.push_back(std::move(else_block));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_same_block_local_alloca_candidate_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.y", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "5", "%lv.x"});
+  entry.insts.push_back(LirStoreOp{"i32", "6", "%lv.y"});
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t1", "i32", "%lv.y"});
+  entry.insts.push_back(LirBinOp{"%t2", "add", "i32", "%t0", "%t1"});
+  entry.terminator = LirRet{std::string("%t2"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_read_before_store_local_alloca_candidate_module() {
   using namespace c4c::codegen::lir;
 
@@ -3624,8 +3693,42 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
   expect_true(live_plans.size() == 1 && live_plans.front().alloca_name == "%lv.buf" &&
                   live_plans.front().needs_stack_slot &&
                   !live_plans.front().remove_following_entry_store &&
-                  live_plans.front().coalesced_block == 0,
+                  live_plans.front().coalesced_block == 0 &&
+                  live_plans.front().assigned_slot == 0,
               "shared slot-assignment planning should preserve paired zero-init stores for aggregate entry allocas while exposing the shared single-block reuse classification");
+
+  const auto disjoint_module = make_disjoint_block_local_alloca_candidate_module();
+  const auto& disjoint_function = disjoint_module.functions.front();
+  const auto disjoint_analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(disjoint_function, regalloc, {});
+  const auto disjoint_plans =
+      c4c::backend::stack_layout::plan_entry_alloca_slots(disjoint_function,
+                                                          disjoint_analysis);
+
+  expect_true(disjoint_plans.size() == 2 &&
+                  disjoint_plans[0].alloca_name == "%lv.then" &&
+                  disjoint_plans[0].coalesced_block == 1 &&
+                  disjoint_plans[1].alloca_name == "%lv.else" &&
+                  disjoint_plans[1].coalesced_block == 2 &&
+                  disjoint_plans[0].assigned_slot.has_value() &&
+                  disjoint_plans[0].assigned_slot == disjoint_plans[1].assigned_slot,
+              "shared slot-assignment planning should turn disjoint single-block allocas into a concrete shared slot decision");
+
+  const auto same_block_module = make_same_block_local_alloca_candidate_module();
+  const auto& same_block_function = same_block_module.functions.front();
+  const auto same_block_analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(same_block_function, regalloc, {});
+  const auto same_block_plans =
+      c4c::backend::stack_layout::plan_entry_alloca_slots(same_block_function,
+                                                          same_block_analysis);
+
+  expect_true(same_block_plans.size() == 2 &&
+                  same_block_plans[0].coalesced_block == 0 &&
+                  same_block_plans[1].coalesced_block == 0 &&
+                  same_block_plans[0].assigned_slot.has_value() &&
+                  same_block_plans[1].assigned_slot.has_value() &&
+                  same_block_plans[0].assigned_slot != same_block_plans[1].assigned_slot,
+              "shared slot-assignment planning should keep same-block local allocas in distinct slots even when both are individually coalescable");
 
   const auto read_first_module = make_read_before_store_local_alloca_candidate_module();
   const auto& read_first_function = read_first_module.functions.front();
