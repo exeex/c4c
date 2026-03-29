@@ -9,9 +9,9 @@ Source Plan: plan.md
 - Step 5: prepare the next diagnostic slice by bounding the first
   committed-failure vs no-match follow-up under speculative `try_parse_*`
   record-member rewinds
-- Current slice: record the completed wrapper-vs-inner committed-failure
-  ranking work, then leave the next speculative `try_parse_*` family explicit
-  for the next iteration
+- Current slice: keep `try_parse_record_type_like_member_dispatch` visible in
+  parser-debug summaries when a malformed type-like member target would
+  otherwise collapse to the outer record-member wrapper
 
 ## Completed
 
@@ -72,14 +72,34 @@ Source Plan: plan.md
   regression guard with no new failing tests:
   `before passed=2254/2255`, `after passed=2256/2257`; the existing
   `verify_tests_verify_top_level_recovery` failure remained unchanged
+- added `ParseContextGuard` coverage to
+  `try_parse_record_type_like_member_dispatch` so parser-debug summaries keep
+  the type-like record-member dispatch frame instead of collapsing back to the
+  outer `try_parse_record_member_dispatch` wrapper
+- added reduced parser-debug regression coverage in
+  `cpp_parser_debug_record_member_type_like_rank` for a malformed record-body
+  alias target that now keeps the type-like dispatch leaf in the error summary
+  and stack line
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_record_member_stack`,
+  `cpp_parser_debug_record_member_param_default_rank`, and
+  `cpp_parser_debug_record_member_type_like_rank`
+- reran nearby record-member parser coverage for
+  `cpp_positive_sema_record_member_dispatch_parse_cpp`,
+  `cpp_positive_sema_record_member_enum_parse_cpp`,
+  `cpp_positive_sema_record_member_type_dispatch_parse_cpp`, and
+  `cpp_positive_sema_record_member_typedef_using_parse_cpp`
+- reran the required clean before/after full suite and passed the monotonic
+  regression guard with no new failures:
+  `before passed=2256/2257`, `after passed=2258/2259`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged
 
 ## Next Intended Slice
 
-- widen the same committed-vs-wrapper failure-selection review to the next
-  speculative `try_parse_*` family that still masks the best inner failure
-- likely next target: a type-like record-member rewind inside
-  `try_parse_record_type_like_member_dispatch`, or the next namespace/type
-  speculative dispatch that still falls back to a wrapper-only error line
+- decide whether the next speculative slice should stay on type-like members by
+  surfacing a deeper committed token-level cause inside alias/typedef parsing,
+  or move to the next namespace/type speculative dispatch that still masks the
+  best inner failure
 
 ## Blockers
 
@@ -94,15 +114,14 @@ Source Plan: plan.md
 
 - active repro command:
   `./build/c4cll --parser-debug --parse-only tests/cpp/std/std_vector_simple.cpp`
-- active iteration target: force a same-token ranking conflict inside
-  `try_parse_record_member_dispatch` and keep the inner committed leaf cause in
-  the summary/error line
-- this iteration delivered the reduced parameter-default regression and the
-  adjacent-token wrapper-prefix ranking fix; the next slice should stay on
-  speculative failure selection instead of adding broader instrumentation
-- this iteration landed the speculative record-member summary-stack fallback;
-  the next one should stay focused on failure selection rather than adding more
-  guard coverage
+- this iteration delivered the type-like record-member dispatch stack/leaf
+  preservation, not a deeper token-level committed-cause fix inside alias or
+  typedef parsing
+- next iteration should decide whether to make malformed type-like alias targets
+  record a deeper committed failure, or leave this family parked and move to the
+  next speculative dispatch that still collapses to a wrapper-only root cause
+- this iteration stayed on targeted instrumentation/coverage rather than
+  changing broader speculative ranking rules
 - keep the detailed event log untouched; the current summary logic now reuses
   the furthest/deepest recorded stack when `parse_top_level` is only a wrapper
 - reduced regressions now cover both nested `parse_unary` recursion and a

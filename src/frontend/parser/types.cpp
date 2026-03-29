@@ -5235,6 +5235,7 @@ bool Parser::try_parse_record_type_like_member_dispatch(
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
     const std::function<void(const char*)>& check_dup_field) {
+    ParseContextGuard trace(this, __func__);
     if (try_parse_record_using_member(member_typedef_names,
                                       member_typedef_types)) {
         return true;

@@ -246,6 +246,19 @@ set_tests_properties(cpp_parser_debug_record_member_param_default_rank PROPERTIE
 )
 
 add_test(
+  NAME cpp_parser_debug_record_member_type_like_rank
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_record_member_type_like_rank.cpp
+          -DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=try_parse_record_type_like_member_dispatch
+          -DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> try_parse_record_member_dispatch -> try_parse_record_type_like_member_dispatch
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_record_member_type_like_rank PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
   NAME cpp_hir_consteval_template_dump
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/consteval_template.cpp"
 )
