@@ -10,17 +10,17 @@ Last Updated: 2026-03-29
 - [x] 2. SysV Varargs classification & homes
 - [x] 3. Variadic function pointer calls
 - [x] 4. Inline diagnostics shim stability
-- [ ] 5. Inline asm `yield` alias
+- [x] 5. Inline asm `yield` alias
 - [x] 6. Glibc macro parsing support
 - [ ] 7. Validation & regression guard
 
 ## Active Slice
-- Target: Step 5 Inline asm `yield` alias
-- Narrow scope: wire up the x86_64-specific alias so `asm volatile("yield")` maps to the `pause` mnemonic in both semantic validation and the backend, then refresh `positive_sema_linux_stage2_repro_03_asm_volatile_c` to prove clang stops rejecting the mnemonic.
-- Owner notes: reuse the targeted `ctest -R "(positive_sema_inline_diagnostics|positive_sema_linux_stage2_repro_03_asm_volatile_c)"` subset so we can guard both the shim work that just landed and the inline asm alias in one loop.
+- Target: Step 7 Validation & regression guard
+- Narrow scope: pave the `test_after` snapshot by re-running the full suite on the latest AMD64 fixes, diff against `ref/amd64_varargs/test_before_20260329.log`, and stash both the log + summary deltas so we can decide whether to close or split remaining failures.
+- Owner notes: kick off the `ctest -j` sweep immediately after refreshing the varargs subset so there’s no drift between the focused guardrail and the closing log pair.
 
 ## Next Slice
-- Close out Step 5 and then shift into Step 7 (full regression guard + `test_after.log`) once `positive_sema_linux_stage2_repro_03_asm_volatile_c` stops tripping clang.
+- If any stragglers remain after the full-suite pass, triage them into either follow-on Step 7 notes or a fresh idea file so this plan can be closed cleanly.
 
 ## Progress Summary (2026-03-29)
 - Step 1 artifacts are checked in under `ref/amd64_varargs/`, so the amd64 baseline plus clang/c4cll comparisons exist for every failure bucket we care about right now.
@@ -28,10 +28,11 @@ Last Updated: 2026-03-29
 - Step 3 is wrapped: variadic function pointer calls now reuse the AMD64 classifier, `tests/c/internal/positive_case/ok_fn_returns_variadic_fn_ptr.c` exercises mixed GP/SSE payloads, and the focused subset log `ref/amd64_varargs/ctest_subset_20260329_step3_after_ptr_fix.log` documents the passing run that unblocked the remaining inline work.
 - Step 4 is buttoned up: added `tests/c/internal/positive_case/inline_diagnostics_runtime.c` to hammer the recursive + variadic `always_inline` fallback path in tight loops, reconfigured CTest so it runs as `positive_sema_inline_diagnostics_runtime_c`, and verified both inline diagnostics cases are green via `ctest --test-dir build -R inline_diagnostics -j4 --output-on-failure`.
 - Step 6 is complete: the parser now treats `_Float{16,32,64,128}` and their `x` suffixed variants as builtin FP types, `c_testsuite_00174` passes again, and the reduced macro repro (`tests/c/preprocessor/glibc_mathcalls.c`) is wired into ctest via `preprocessor_glibc_mathcalls`.
-- Step 7 (full-suite validation + regression guard) stays blocked on Steps 3–5 finishing; `test_before_20260329.log` is the comparison point for the future `test_after` log once the plan wraps.
+- Step 5 is closed: inline asm lowering now rewrites `yield` → `pause` on AMD64, `positive_sema_linux_stage2_repro_03_asm_volatile_c` compiles/run under both clang + c4cll, and the focused log `ref/amd64_varargs/ctest_subset_20260329_step5_yield_alias.log` proves the alias alongside the inline diagnostics stressors.
+- Step 7 (full-suite validation + regression guard) now unblocks — `test_before_20260329.log` remains the baseline until we record the corresponding `test_after` snapshot on the refreshed compiler.
 
 ## Blockers
-- None — shim stabilization (Step 4) is ready to pick up now that the pointer-call regressions and glibc fallout are closed.
+- None — Step 7 can proceed immediately after capturing the new `test_after` log; if fresh failures surface they should turn into a follow-on idea rather than mutating this runbook.
 
 ## Baseline Findings (2026-03-29)
 - Full `ctest -j` baseline logged in `ref/amd64_varargs/test_before_20260329.log` (97% pass, 75 failures / 2248 tests); most recent targeted subset log is `ref/amd64_varargs/ctest_subset_20260329_step2.log` (37 passes / 47 tests after wiring AMD64 ABI tests, 10 fails covering `scal_to_vec*`, `stdarg_{1-3}`, `va_arg_{5,6,22}`, `c_testsuite_{00174,00204}`).

@@ -4316,12 +4316,49 @@ static std::string rewrite_asm_constraints(const std::string& raw) {
     return result;
 }
 
+static bool is_asm_word_char(char ch) {
+    return std::isalnum(static_cast<unsigned char>(ch)) || ch == '_' || ch == '.';
+}
+
+static bool matches_word_ci(const std::string& text, size_t pos, const char* needle) {
+    if (!needle) return false;
+    const size_t len = std::strlen(needle);
+    if (pos + len > text.size()) return false;
+    for (size_t i = 0; i < len; ++i) {
+        if (std::tolower(static_cast<unsigned char>(text[pos + i])) != needle[i]) return false;
+    }
+    return true;
+}
+
+static std::string rewrite_inline_asm_mnemonics(const std::string& raw,
+                                                const std::string& target_triple) {
+    if (raw.empty() || !llvm_target_is_x86_64(target_triple)) return raw;
+    std::string rewritten;
+    rewritten.reserve(raw.size());
+    for (size_t i = 0; i < raw.size();) {
+        if (matches_word_ci(raw, i, "yield")) {
+            const bool start_ok = (i == 0) || !is_asm_word_char(raw[i - 1]);
+            const size_t end = i + 5;
+            const bool end_ok = (end >= raw.size()) || !is_asm_word_char(raw[end]);
+            if (start_ok && end_ok) {
+                rewritten += "pause";
+                i = end;
+                continue;
+            }
+        }
+        rewritten.push_back(raw[i]);
+        ++i;
+    }
+    return rewritten;
+}
+
 void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const InlineAsmStmt& s){
     emit_non_control_flow_stmt(ctx, s);
   }
 
 void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const InlineAsmStmt& s){
-    const std::string asm_text = escape_llvm_c_bytes(s.asm_template);
+    const std::string aliased_template = rewrite_inline_asm_mnemonics(s.asm_template, mod_.target_triple);
+    const std::string asm_text = escape_llvm_c_bytes(aliased_template);
     const std::string constraints = rewrite_asm_constraints(escape_llvm_c_bytes(s.constraints));
     TypeSpec ret_ts{};
     std::string ret_ty = "void";
