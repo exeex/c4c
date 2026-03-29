@@ -23,6 +23,8 @@
 #include <variant>
 #include <vector>
 
+#include "operands.hpp"
+#include "types.hpp"
 #include "ast.hpp"  // TypeSpec, TypeBase
 
 namespace c4c::codegen::lir {
@@ -143,37 +145,37 @@ struct LirIntrinsic {
 // Operands use string SSA names (matching current emitter convention).
 
 struct LirMemcpyOp {
-  std::string dst;        // ptr operand
-  std::string src;        // ptr operand
-  std::string size;       // i64 operand
+  LirOperand dst;         // ptr operand
+  LirOperand src;         // ptr operand
+  LirOperand size;        // i64 operand
   bool is_volatile = false;
 };
 
 struct LirVaStartOp {
-  std::string ap_ptr;     // ptr operand
+  LirOperand ap_ptr;      // ptr operand
 };
 
 struct LirVaEndOp {
-  std::string ap_ptr;     // ptr operand
+  LirOperand ap_ptr;      // ptr operand
 };
 
 struct LirVaCopyOp {
-  std::string dst_ptr;    // ptr operand
-  std::string src_ptr;    // ptr operand
+  LirOperand dst_ptr;     // ptr operand
+  LirOperand src_ptr;     // ptr operand
 };
 
 struct LirStackSaveOp {
-  std::string result;     // SSA name for saved stack pointer
+  LirOperand result;      // SSA name for saved stack pointer
 };
 
 struct LirStackRestoreOp {
-  std::string saved_ptr;  // SSA name of saved stack pointer
+  LirOperand saved_ptr;   // SSA name of saved stack pointer
 };
 
 struct LirAbsOp {
-  std::string result;     // SSA name for result
-  std::string arg;        // SSA name for input
-  std::string int_type;   // e.g. "i32" or "i64"
+  LirOperand result;      // SSA name for result
+  LirOperand arg;         // SSA name for input
+  LirTypeRef int_type;    // e.g. "i32" or "i64"
 };
 
 struct LirInlineAsm {
@@ -185,42 +187,42 @@ struct LirInlineAsm {
 
 
 struct LirIndirectBrOp {
-  std::string addr;                   // SSA name of ptr to branch to
+  LirOperand addr;                    // SSA name of ptr to branch to
   std::vector<std::string> targets;   // label names (e.g. "%ulbl_foo")
 };
 
 struct LirExtractValueOp {
-  std::string result;     // SSA name for result
-  std::string agg_type;   // aggregate type string (e.g. "{ double, double }")
-  std::string agg;        // SSA name of aggregate value
+  LirOperand result;      // SSA name for result
+  LirTypeRef agg_type;    // aggregate type string (e.g. "{ double, double }")
+  LirOperand agg;         // SSA name of aggregate value
   int index = 0;          // field index
 };
 
 struct LirInsertValueOp {
-  std::string result;     // SSA name for result
-  std::string agg_type;   // aggregate type string
-  std::string agg;        // SSA name of aggregate value (or "undef")
-  std::string elem_type;  // element type string
-  std::string elem;       // SSA name of element to insert
+  LirOperand result;      // SSA name for result
+  LirTypeRef agg_type;    // aggregate type string
+  LirOperand agg;         // SSA name of aggregate value (or "undef")
+  LirTypeRef elem_type;   // element type string
+  LirOperand elem;        // SSA name of element to insert
   int index = 0;          // field index
 };
 
 struct LirLoadOp {
-  std::string result;     // SSA name for result (e.g. "%t5")
-  std::string type_str;   // LLVM type string (e.g. "i32", "ptr")
-  std::string ptr;        // SSA name of pointer operand
+  LirOperand result;      // SSA name for result (e.g. "%t5")
+  LirTypeRef type_str;    // LLVM type string (e.g. "i32", "ptr")
+  LirOperand ptr;         // SSA name of pointer operand
 };
 
 struct LirStoreOp {
-  std::string type_str;   // LLVM type string (e.g. "i32", "ptr")
-  std::string val;        // SSA name of value (or "zeroinitializer")
-  std::string ptr;        // SSA name of pointer operand
+  LirTypeRef type_str;    // LLVM type string (e.g. "i32", "ptr")
+  LirOperand val;         // SSA name of value (or "zeroinitializer")
+  LirOperand ptr;         // SSA name of pointer operand
 };
 
 struct LirMemsetOp {
-  std::string dst;        // destination pointer
-  std::string byte_val;   // i8-compatible byte value
-  std::string size;       // i64 byte count
+  LirOperand dst;         // destination pointer
+  LirOperand byte_val;    // i8-compatible byte value
+  LirOperand size;        // i64 byte count
   bool is_volatile = false;
 };
 
@@ -241,17 +243,17 @@ enum class LirCastKind : uint8_t {
 };
 
 struct LirCastOp {
-  std::string result;     // SSA name for result
+  LirOperand result;      // SSA name for result
   LirCastKind kind{};     // cast opcode
-  std::string from_type;  // LLVM type string of source
-  std::string operand;    // SSA name of source operand
-  std::string to_type;    // LLVM type string of destination
+  LirTypeRef from_type;   // LLVM type string of source
+  LirOperand operand;     // SSA name of source operand
+  LirTypeRef to_type;     // LLVM type string of destination
 };
 
 struct LirGepOp {
-  std::string result;         // SSA name for result
-  std::string element_type;   // LLVM type string (e.g. "i8", "[5 x i8]", "%struct.foo")
-  std::string ptr;            // SSA name of pointer operand
+  LirOperand result;          // SSA name for result
+  LirTypeRef element_type;    // LLVM type string (e.g. "i8", "[5 x i8]", "%struct.foo")
+  LirOperand ptr;             // SSA name of pointer operand
   bool inbounds = false;      // getelementptr inbounds
   std::vector<std::string> indices;  // each entry is "type value" (e.g. "i32 0", "i64 5")
 };
@@ -259,9 +261,9 @@ struct LirGepOp {
 // Typed call instruction.
 // Covers both direct calls, indirect calls, and intrinsic calls.
 struct LirCallOp {
-  std::string result;              // SSA name for result (empty for void calls)
-  std::string return_type;         // LLVM return type string (e.g. "i32", "void", "{ i32, i1 }")
-  std::string callee;              // callee value (e.g. "@foo", "%ptr", "@llvm.fabs.f64")
+  LirOperand result;               // SSA name for result (empty for void calls)
+  LirTypeRef return_type;          // LLVM return type string (e.g. "i32", "void", "{ i32, i1 }")
+  LirOperand callee;               // callee value (e.g. "@foo", "%ptr", "@llvm.fabs.f64")
   std::string callee_type_suffix;  // optional fn ptr type suffix (empty for direct calls)
   std::string args_str;            // pre-formatted argument string (e.g. "i32 %t1, i32 %t2")
 };
@@ -270,87 +272,87 @@ struct LirCallOp {
 // Covers: add, sub, mul, sdiv, udiv, srem, urem, fadd, fsub, fmul, fdiv, frem,
 //         and, or, xor, shl, lshr, ashr, fneg.
 struct LirBinOp {
-  std::string result;     // SSA name for result
-  std::string opcode;     // LLVM opcode string (e.g. "add", "fadd", "xor", "fneg")
-  std::string type_str;   // LLVM type string (e.g. "i32", "double", "<4 x i32>")
-  std::string lhs;        // SSA name or literal for left operand
-  std::string rhs;        // SSA name or literal for right operand (empty for unary fneg)
+  LirOperand result;          // SSA name for result
+  LirBinaryOpcodeRef opcode;  // LLVM opcode string (e.g. "add", "fadd", "xor", "fneg")
+  LirTypeRef type_str;        // LLVM type string (e.g. "i32", "double", "<4 x i32>")
+  LirOperand lhs;             // SSA name or literal for left operand
+  LirOperand rhs;             // SSA name or literal for right operand (empty for unary fneg)
 };
 
 // Typed comparison operation (icmp/fcmp).
 struct LirCmpOp {
-  std::string result;     // SSA name for result
-  bool is_float = false;  // true = fcmp, false = icmp
-  std::string predicate;  // predicate string (e.g. "eq", "ne", "slt", "oeq", "uno")
-  std::string type_str;   // LLVM type string of operands
-  std::string lhs;        // SSA name or literal for left operand
-  std::string rhs;        // SSA name or literal for right operand
+  LirOperand result;              // SSA name for result
+  bool is_float = false;          // true = fcmp, false = icmp
+  LirCmpPredicateRef predicate;   // predicate string (e.g. "eq", "ne", "slt", "oeq", "uno")
+  LirTypeRef type_str;            // LLVM type string of operands
+  LirOperand lhs;                 // SSA name or literal for left operand
+  LirOperand rhs;                 // SSA name or literal for right operand
 };
 
 // Typed PHI node.
 struct LirPhiOp {
-  std::string result;     // SSA name for result
-  std::string type_str;   // LLVM type string
+  LirOperand result;      // SSA name for result
+  LirTypeRef type_str;    // LLVM type string
   std::vector<std::pair<std::string, std::string>> incoming;  // (value, label) pairs
 };
 
 // Typed select instruction.
 struct LirSelectOp {
-  std::string result;     // SSA name for result
-  std::string type_str;   // LLVM type string for true/false operands
-  std::string cond;       // SSA name of i1 condition
-  std::string true_val;   // SSA name or literal for true branch
-  std::string false_val;  // SSA name or literal for false branch
+  LirOperand result;      // SSA name for result
+  LirTypeRef type_str;    // LLVM type string for true/false operands
+  LirOperand cond;        // SSA name of i1 condition
+  LirOperand true_val;    // SSA name or literal for true branch
+  LirOperand false_val;   // SSA name or literal for false branch
 };
 
 // Typed vector insert/extract/shuffle ops.
 struct LirInsertElementOp {
-  std::string result;     // SSA name for result
-  std::string vec_type;   // vector type string (e.g. "<4 x i32>")
-  std::string vec;        // SSA name of vector (or "poison")
-  std::string elem_type;  // element type string
-  std::string elem;       // SSA name of element value
-  std::string index;      // index value (e.g. "0", "%idx")
+  LirOperand result;      // SSA name for result
+  LirTypeRef vec_type;    // vector type string (e.g. "<4 x i32>")
+  LirOperand vec;         // SSA name of vector (or "poison")
+  LirTypeRef elem_type;   // element type string
+  LirOperand elem;        // SSA name of element value
+  LirOperand index;       // index value (e.g. "0", "%idx")
 };
 
 struct LirExtractElementOp {
-  std::string result;
-  std::string vec_type;
-  std::string vec;
-  std::string index_type;
-  std::string index;
+  LirOperand result;
+  LirTypeRef vec_type;
+  LirOperand vec;
+  LirTypeRef index_type;
+  LirOperand index;
 };
 
 struct LirShuffleVectorOp {
-  std::string result;
-  std::string vec_type;
-  std::string vec1;
-  std::string vec2;
-  std::string mask_type;
-  std::string mask;
+  LirOperand result;
+  LirTypeRef vec_type;
+  LirOperand vec1;
+  LirOperand vec2;
+  LirTypeRef mask_type;
+  LirOperand mask;
 };
 
 // Typed va_arg instruction.
 struct LirVaArgOp {
-  std::string result;     // SSA name for result
-  std::string ap_ptr;     // SSA name of va_list pointer
-  std::string type_str;   // result type string
+  LirOperand result;      // SSA name for result
+  LirOperand ap_ptr;      // SSA name of va_list pointer
+  LirTypeRef type_str;    // result type string
 };
 
 // Typed inline (non-hoisted) alloca instruction.
 // Covers dynamic allocas (__builtin_alloca, alloca(), VLA) and temporary allocas
 // emitted inline in the current block (va_list copy, variadic aggregate, vaarg struct).
 struct LirAllocaOp {
-  std::string result;     // SSA name for result
-  std::string type_str;   // LLVM element type string (e.g. "i8", "i64", "%struct.foo")
-  std::string count;      // dynamic count operand (empty for simple allocas)
+  LirOperand result;      // SSA name for result
+  LirTypeRef type_str;    // LLVM element type string (e.g. "i8", "i64", "%struct.foo")
+  LirOperand count;       // dynamic count operand (empty for simple allocas)
   int align = 0;          // alignment in bytes (0 = unspecified)
 };
 
 // Typed inline asm call instruction.
 struct LirInlineAsmOp {
-  std::string result;         // SSA name for result (empty for void asm)
-  std::string ret_type;       // LLVM return type string (e.g. "void", "i32")
+  LirOperand result;          // SSA name for result (empty for void asm)
+  LirTypeRef ret_type;        // LLVM return type string (e.g. "void", "i32")
   std::string asm_text;       // assembly template string
   std::string constraints;    // constraint string
   bool side_effects = false;  // sideeffect flag

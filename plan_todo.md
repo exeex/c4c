@@ -6,10 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: Define the first typed LIR primitives slice.
-- Exact target for this iteration: turn the Step 1 audit into concrete type
-  candidates for operands, type references, and enum-backed binary/cmp
-  semantics before changing emitters or printers.
+- Step 3: Add verification and legacy-safe compatibility shims.
+- Exact target for the next iteration: build printer-side and verification-side
+  helpers around the new typed operand/type/opcode wrappers so malformed typed
+  payloads can be rejected without breaking the current legacy LLVM text path.
 
 ## Completed Items
 
@@ -20,6 +20,10 @@ Source Plan: plan.md
   top of the current string-heavy LIR contract.
 - Completed Step 1 audit of the current string-heavy LIR surface and recorded
   the main typed-operand, typed-type, enum-like, and textual-only buckets.
+- Completed the first Step 2 primitive pass by adding compatibility-first
+  `LirOperand`, `LirTypeRef`, `LirBinaryOpcodeRef`, and `LirCmpPredicateRef`
+  wrappers and wiring the high-friction legacy LIR ops onto them without
+  changing emitter or backend call sites.
 
 ## Notes
 
@@ -87,15 +91,28 @@ Source Plan: plan.md
   ops; `enum class LirBinaryOpcode` and `enum class LirCmpPredicate` should
   replace string dispatch first; and `LirCallOp` likely needs typed callee plus
   structured argument records before backend call-family cleanup can proceed.
+- Step 2 implementation landed as compatibility shims instead of a hard cutover:
+  `src/codegen/lir/operands.hpp` classifies basic operand kinds while
+  preserving string mutability and printing for existing consumers, and
+  `src/codegen/lir/types.hpp` classifies LLVM-ish types plus enum-backed binary
+  and cmp semantics while still round-tripping unknown text for legacy sites.
+- `src/codegen/lir/ir.hpp` now uses those wrappers for the string-heavy legacy
+  op families audited in Step 1, which means later migrations can consume typed
+  metadata without first rewriting every emitter/backend call site.
+- `tests/backend/backend_lir_adapter_tests.cpp` now covers basic operand/type
+  classification, known enum mapping, and unknown-text compatibility for the
+  new wrappers.
 
 ## Next Intended Slice
 
-- Sketch `operands.hpp` and `types.hpp` around the audited buckets without
-  migrating construction sites yet.
-- Start with the narrowest high-value enums and wrappers:
-  binary opcode, cmp predicate, typed operand, typed type reference.
-- Leave inline asm text and module-level declaration text untouched in the
-  first primitive pass.
+- Add verifier/printer helpers that consume `LirOperand`, `LirTypeRef`,
+  `LirBinaryOpcodeRef`, and `LirCmpPredicateRef` directly instead of relying on
+  ad hoc string concatenation in each call site.
+- Keep inline asm text and module-level declaration text untouched while
+  Step 3 focuses on typed-core op validation and rendering.
+- Decide whether `LirOperand` should gain explicit structured variants for
+  typed call arguments and GEP indices, or whether that belongs in the later
+  call-family migration slice.
 
 ## Validation
 
@@ -109,6 +126,11 @@ Source Plan: plan.md
   --before test_fail_before.log --after test_fail_after.log
   --allow-non-decreasing-passed` passed with zero new failures and zero new
   suspicious slow tests.
+- `cmake --build build -j8 --target backend_lir_adapter_tests` passed after the
+  wrapper layer grew enough string-compatibility operators to keep existing
+  backend consumers compiling unchanged.
+- `./build/backend_lir_adapter_tests` passed with added coverage for the new
+  typed wrapper layer.
 
 ## Open Questions To Resolve During This Runbook
 
@@ -123,5 +145,5 @@ Source Plan: plan.md
 
 ## Blockers
 
-- None yet. The immediate task is the migration audit and typed primitive
-  design, not backend-ready IR or emitter work.
+- None. The next task is Step 3 printer/verification shims on top of the new
+  compatibility-first typed wrapper layer.

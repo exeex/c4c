@@ -76,6 +76,60 @@ void expect_not_contains(const std::string& text,
   }
 }
 
+void test_lir_typed_wrappers_classify_basic_operands() {
+  using namespace c4c::codegen::lir;
+
+  const LirOperand ssa("%t4");
+  const LirOperand global("@helper");
+  const LirOperand immediate("42");
+  const LirOperand special("zeroinitializer");
+  const LirOperand raw("i32 %t1");
+
+  expect_true(ssa.kind() == LirOperandKind::SsaValue, "ssa operand classification should be typed");
+  expect_true(global.kind() == LirOperandKind::Global, "global operand classification should be typed");
+  expect_true(immediate.kind() == LirOperandKind::Immediate, "immediate operand classification should be typed");
+  expect_true(special.kind() == LirOperandKind::SpecialToken, "special operand classification should be typed");
+  expect_true(raw.kind() == LirOperandKind::RawText, "formatted argument text should remain raw");
+}
+
+void test_lir_typed_wrappers_classify_basic_types() {
+  using namespace c4c::codegen::lir;
+
+  const LirTypeRef i32("i32");
+  const LirTypeRef ptr("ptr");
+  const LirTypeRef vec("<4 x i32>");
+  const LirTypeRef fn("ptr (i32, ptr)");
+
+  expect_true(i32.kind() == LirTypeKind::Integer, "integer llvm types should classify as integer");
+  expect_true(ptr.kind() == LirTypeKind::Pointer, "ptr llvm types should classify as pointer");
+  expect_true(vec.kind() == LirTypeKind::Vector, "vector llvm types should classify as vector");
+  expect_true(fn.kind() == LirTypeKind::Function, "function-like llvm types should classify as function");
+}
+
+void test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings() {
+  using namespace c4c::codegen::lir;
+
+  const LirBinOp add{"%t0", "add", "i32", "%lhs", "%rhs"};
+  const LirCmpOp cmp{"%t1", true, "une", "double", "%lhs", "%rhs"};
+
+  expect_true(add.opcode.typed().has_value(), "known binary opcode should map to typed enum");
+  expect_true(add.opcode == "add", "binary opcode wrapper should preserve legacy string formatting");
+  expect_true(cmp.predicate.typed().has_value(), "known cmp predicate should map to typed enum");
+  expect_true(cmp.predicate == "une", "cmp predicate wrapper should preserve legacy string formatting");
+}
+
+void test_lir_typed_wrappers_leave_unknown_opcode_text_compatible() {
+  using namespace c4c::codegen::lir;
+
+  const LirBinaryOpcodeRef custom_opcode("future.add.sat");
+  const LirCmpPredicateRef custom_predicate("future_pred");
+
+  expect_true(!custom_opcode.typed().has_value(), "unknown binary opcode should stay text-compatible");
+  expect_true(custom_opcode == "future.add.sat", "unknown binary opcode text should be preserved");
+  expect_true(!custom_predicate.typed().has_value(), "unknown cmp predicate should stay text-compatible");
+  expect_true(custom_predicate == "future_pred", "unknown cmp predicate text should be preserved");
+}
+
 std::string make_temp_output_path(const std::string& stem) {
   const auto base = std::filesystem::temp_directory_path();
   return (base / (stem + "_" + std::to_string(::getpid()) + ".o")).string();
@@ -7432,6 +7486,10 @@ void test_aarch64_builtin_object_matches_external_return_add_surface() {
 }  // namespace
 
 int main() {
+  test_lir_typed_wrappers_classify_basic_operands();
+  test_lir_typed_wrappers_classify_basic_types();
+  test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
+  test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();
   test_adapts_direct_return();
   test_renders_return_add();
   test_adapter_normalizes_typed_direct_call_helper_slice();
