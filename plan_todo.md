@@ -12,9 +12,8 @@ Source Plan: plan.md
 - Current slice: instrument the next qualified-type speculative dispatch that
   still masks the local leaf under outer declaration/type wrappers
 - Iteration target: add a reduced parser-debug repro around
-  `try_parse_cpp_scoped_base_type` / `try_parse_qualified_base_type`, then
-  guard the chosen helper so malformed namespace-qualified type parsing keeps
-  the local type-parse frame instead of collapsing to a wrapper-only summary
+  dependent-typename or other nested qualified-type probes that still drop the
+  local type path after leaving `try_parse_cpp_scoped_base_type`
 
 ## Completed
 
@@ -155,15 +154,36 @@ Source Plan: plan.md
   monotonic regression guard with no new failures:
   `before passed=2264/2265`, `after passed=2264/2265`; the existing
   `verify_tests_verify_top_level_recovery` failure remained unchanged
+- added reduced parser-debug regression coverage in
+  `cpp_parser_debug_qualified_type_template_arg_stack` for a malformed
+  namespace-qualified template type declarator whose later top-level parameter
+  failure previously collapsed the summary stack back to wrapper-only frames
+- tightened top-level wrapper snapshot preservation so qualified-type probe
+  frames captured under `parse_next_template_argument` survive later
+  `parse_top_level_parameter_list` / `parse_top_level` unwinds and reappear in
+  the emitted parser-debug summary stack
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_expr_stmt_stack`,
+  `cpp_parser_debug_record_member_stack`,
+  `cpp_parser_debug_record_member_param_default_rank`,
+  `cpp_parser_debug_record_member_type_like_rank`,
+  `cpp_parser_debug_record_member_using_alias_leaf`,
+  `cpp_parser_debug_record_member_typedef_leaf`,
+  `cpp_parser_debug_qualified_type_top_level_params`, and
+  `cpp_parser_debug_qualified_type_template_arg_stack`
+- reran the required clean before/after full suite and passed the monotonic
+  regression guard with no new failures:
+  `before passed=2264/2265`, `after passed=2266/2267`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged
 
 ## Next Intended Slice
 
 - move to the next namespace/type speculative dispatch that still masks the
-  best inner failure after the top-level qualified-type parameter wrapper case
-- first candidate after this slice: inspect qualified-type template-argument
-  or dependent-typename probes where summary stacks still drop the local type
-  path once control leaves the qualified-type helper before a later wrapper
-  failure
+  best inner failure after the nested qualified-type template-argument case
+- first candidate after this slice: inspect dependent-typename qualified-type
+  probes or other nested type-argument paths where the summary leaf stays
+  correct but the stack still drops the local type helper after a later
+  wrapper failure
 
 ## Blockers
 
@@ -180,18 +200,24 @@ Source Plan: plan.md
   `./build/c4cll --parser-debug --parse-only tests/cpp/std/std_vector_simple.cpp`
 - current reduced repro candidate for this iteration:
   `./build/c4cll --parser-debug --parse-only <tmp>.cpp` with
-  `namespace ns { struct S {}; }` and `ns::S value(`
+  `namespace ns { template <class T> struct Box {}; struct S {}; }` and
+  `ns::Box<typename ns::S> value(` or similar dependent-typename spelling
 - this iteration landed the file-scope qualified-type declarator repro as
   `tests/cpp/internal/negative_case/parser_debug_qualified_type_top_level_params.cpp`
   and moved the emitted leaf from `parse_top_level` to
   `parse_top_level_parameter_list`
 - the current target is the next qualified-type speculative parse helper after
-  that top-level declarator slice, starting with
-  `try_parse_cpp_scoped_base_type` / `try_parse_qualified_base_type`
+  the nested qualified-type template-argument slice, starting with
+  dependent-typename or adjacent nested qualified-type probes under
+  `parse_next_template_argument`
 - the current slice kept the qualified-type parameter failure leaf at
   `parse_top_level_parameter_list` but now preserves the preceding
   `try_parse_cpp_scoped_base_type` and `try_parse_qualified_base_type` frames
   in the emitted summary stack
+- the current slice also preserves the nested
+  `parse_next_template_argument -> try_parse_cpp_scoped_base_type ->
+  try_parse_qualified_base_type` path when a later top-level wrapper failure
+  becomes the committed root cause
 - this iteration completed the alias/typedef leaf-local diagnostics slice
   without changing the broader speculative ranking heuristics yet
 - keep the detailed event log untouched; the current summary logic now reuses

@@ -60,6 +60,14 @@ bool is_qualified_type_trace_leaf(const std::string& function_name) {
            function_name == "try_parse_qualified_base_type";
 }
 
+bool stack_contains_qualified_type_trace(
+    const std::vector<std::string>& stack_trace) {
+    return std::any_of(stack_trace.begin(), stack_trace.end(),
+                       [](const std::string& function_name) {
+                           return is_qualified_type_trace_leaf(function_name);
+                       });
+}
+
 }  // namespace
 
 Parser::ParseContextGuard::ParseContextGuard(
@@ -328,10 +336,8 @@ void Parser::note_parse_debug_event(const char* kind, const char* detail) {
         const std::string current_function = parse_context_stack_.back().function_name;
         const bool preserving_qualified_type_probe_snapshot =
             token_delta > 0 &&
-            current_function == "parse_top_level_parameter_list" &&
-            !best_parse_stack_trace_.empty() &&
-            (best_parse_stack_trace_.back() == "try_parse_cpp_scoped_base_type" ||
-             best_parse_stack_trace_.back() == "try_parse_qualified_base_type");
+            is_top_level_wrapper_failure(current_function) &&
+            stack_contains_qualified_type_trace(best_parse_stack_trace_);
         const bool replace_snapshot =
             best_parse_stack_token_index_ < 0 ||
             (!preserving_qualified_type_probe_snapshot && token_delta > 1) ||
