@@ -9,16 +9,46 @@ Source Plan: plan.md
 - Step 5: prepare the next diagnostic slice by bounding the first
   committed-failure vs no-match follow-up under speculative `try_parse_*`
   record-member rewinds
-- Current slice: bound the next wrapper-heavy top-level qualified-type case
-  after the completed alias/reference-parameter `got='&'` ranking change
-- Iteration target: reduce and compare the remaining
-  `/usr/include/c++/14/bits/stl_bvector.h:663` `got='&&'` family, where a
-  wrapper-heavy top-level failure still summarizes
-  `try_parse_qualified_base_type`, and decide whether that path should move to
-  an outer committed wrapper or keep the current deeper leaf
+- Current slice: record the outcome of the bounded top-level qualified-type
+  `got='&&'` wrapper family and park ranking changes for this path
+- Iteration target: keep the current deeper
+  `parse_fn=try_parse_qualified_base_type` summary for the reduced and
+  motivating `/usr/include/c++/14/bits/stl_bvector.h:663` move-constructor
+  failures, then choose the next distinct speculative `try_parse_*`
+  family that still needs a committed-vs-no-match decision
+- Next intended slice: inspect the next wrapper-heavy `std_vector_simple.cpp`
+  failure family that still rewinds through speculative helpers after the
+  completed `got='&'` and `got='&&'` top-level qualified-type coverage,
+  or move back to the first record-member `try_parse_*` rewind whose summary
+  still loses committed-failure context
 
 ## Completed
 
+- recorded the required clean after-suite for this iteration and passed the
+  monotonic regression guard against the recorded
+  `before passed=2281/2282` baseline:
+  `after passed=2282/2283`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged and the
+  guard script reported zero new failing tests
+- tightened `cpp_parser_debug_top_level_qualified_probe_leaf` to assert the
+  full committed summary and wrapper stack for the reduced top-level
+  qualified-type `got='&&'` case:
+  `parse_fn=try_parse_qualified_base_type phase=committed expected=RPAREN got='&&'`
+- added focused motivating coverage in
+  `cpp_parser_debug_std_vector_move_ctor_leaf` for the
+  `/usr/include/c++/14/bits/stl_bvector.h:663` move-constructor failure in
+  `tests/cpp/std/std_vector_simple.cpp`, locking the same deeper
+  `try_parse_qualified_base_type` summary leaf and wrapper stack shape
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_top_level_qualified_probe_leaf`,
+  `cpp_parser_debug_std_vector_move_ctor_leaf`,
+  `cpp_parser_debug_std_vector_ref_param_leaf`, and
+  `cpp_parser_debug_qualified_alias_ref_param_leaf`
+- recorded the Step 5 decision for this bounded `got='&&'` family: keep the
+  current deeper `try_parse_qualified_base_type` summary leaf for now,
+  because the remaining trace suffix is only top-level qualified-type wrapper
+  work and both the reduced repro and motivating `std_vector_simple.cpp`
+  path agree on that shape
 - recorded the required clean after-suite for this iteration and passed the
   monotonic regression guard against the recorded
   `before passed=2281/2282` baseline:
