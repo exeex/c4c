@@ -9,9 +9,9 @@ Source Plan: plan.md
 - Step 5: prepare the next diagnostic slice by bounding the first
   committed-failure vs no-match follow-up under speculative `try_parse_*`
   record-member rewinds
-- Current slice: keep `try_parse_record_type_like_member_dispatch` visible in
-  parser-debug summaries when a malformed type-like member target would
-  otherwise collapse to the outer record-member wrapper
+- Current slice: inspect the next namespace/type speculative dispatch that
+  still unwinds to `parse_top_level` or another wrapper without preserving the
+  deeper local parser leaf, and add one reduced parser-debug repro for it
 
 ## Completed
 
@@ -93,13 +93,40 @@ Source Plan: plan.md
   regression guard with no new failures:
   `before passed=2256/2257`, `after passed=2258/2259`; the existing
   `verify_tests_verify_top_level_recovery` failure remained unchanged
+- added `ParseContextGuard` coverage to `try_parse_record_using_member` and
+  `try_parse_record_typedef_member`, and tightened both parsers to require
+  their terminating semicolon with `expect(TokenKind::Semi)` so malformed
+  alias/typedef members report the deeper local parser leaf
+- updated `cpp_parser_debug_record_member_type_like_rank` to assert the new
+  leaf-local summary shape while preserving the type-like dispatch frame in the
+  stack line
+- added reduced parser-debug regressions in
+  `cpp_parser_debug_record_member_using_alias_leaf` and
+  `cpp_parser_debug_record_member_typedef_leaf` for malformed record type-like
+  members that previously collapsed to the outer wrapper-only root cause
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_record_member_stack`,
+  `cpp_parser_debug_record_member_param_default_rank`,
+  `cpp_parser_debug_record_member_type_like_rank`,
+  `cpp_parser_debug_record_member_using_alias_leaf`, and
+  `cpp_parser_debug_record_member_typedef_leaf`
+- reran nearby record-member parser coverage for
+  `cpp_positive_sema_record_member_dispatch_parse_cpp`,
+  `cpp_positive_sema_record_member_enum_parse_cpp`,
+  `cpp_positive_sema_record_member_type_dispatch_parse_cpp`, and
+  `cpp_positive_sema_record_member_typedef_using_parse_cpp`
+- reran the required clean before/after full suite and passed the monotonic
+  regression guard with no new failures:
+  `before passed=2258/2259`, `after passed=2262/2263`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged
 
 ## Next Intended Slice
 
-- decide whether the next speculative slice should stay on type-like members by
-  surfacing a deeper committed token-level cause inside alias/typedef parsing,
-  or move to the next namespace/type speculative dispatch that still masks the
-  best inner failure
+- if alias/typedef member ranking is fixed cleanly, move to the next
+  namespace/type speculative dispatch that still masks the best inner failure
+- first candidate: inspect namespace/type speculative paths that still unwind to
+  `parse_top_level` or another wrapper without preserving the deeper local
+  parser leaf, and add one reduced parser-debug repro before changing ranking
 
 ## Blockers
 
@@ -114,18 +141,13 @@ Source Plan: plan.md
 
 - active repro command:
   `./build/c4cll --parser-debug --parse-only tests/cpp/std/std_vector_simple.cpp`
-- this iteration delivered the type-like record-member dispatch stack/leaf
-  preservation, not a deeper token-level committed-cause fix inside alias or
-  typedef parsing
-- next iteration should decide whether to make malformed type-like alias targets
-  record a deeper committed failure, or leave this family parked and move to the
-  next speculative dispatch that still collapses to a wrapper-only root cause
-- this iteration stayed on targeted instrumentation/coverage rather than
-  changing broader speculative ranking rules
+- this iteration completed the alias/typedef leaf-local diagnostics slice
+  without changing the broader speculative ranking heuristics yet
 - keep the detailed event log untouched; the current summary logic now reuses
   the furthest/deepest recorded stack when `parse_top_level` is only a wrapper
 - reduced regressions now cover both nested `parse_unary` recursion and a
-  nested record-member rewind path
+  nested record-member rewind path, plus malformed record `using` and `typedef`
+  alias members
 - the repo is not currently building this target as C++20, so `std::source_location`
   was not adopted; the current non-macro path uses `__func__`
 - the parked `std::vector` bring-up work remains in

@@ -4370,6 +4370,7 @@ void Parser::parse_record_base_clause(std::vector<TypeSpec>* base_types) {
 bool Parser::try_parse_record_using_member(
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types) {
+    ParseContextGuard trace(this, __func__);
     if (!(is_cpp_mode() && check(TokenKind::KwUsing)))
         return false;
 
@@ -4381,7 +4382,7 @@ bool Parser::try_parse_record_using_member(
         consume(); // name
         consume(); // '='
         TypeSpec alias_ts = parse_type_name();
-        match(TokenKind::Semi);
+        expect(TokenKind::Semi);
 
         typedefs_.insert(alias_name);
         typedef_types_[alias_name] = alias_ts;
@@ -4404,6 +4405,7 @@ bool Parser::try_parse_record_using_member(
 bool Parser::try_parse_record_typedef_member(
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types) {
+    ParseContextGuard trace(this, __func__);
     if (!(is_cpp_mode() && check(TokenKind::KwTypedef)))
         return false;
 
@@ -4465,7 +4467,7 @@ bool Parser::try_parse_record_typedef_member(
             }
         }
     }
-    match(TokenKind::Semi);
+    expect(TokenKind::Semi);
     return true;
 }
 
