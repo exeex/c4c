@@ -78,6 +78,14 @@ bool is_minimal_single_function_asm_slice(const c4c::backend::BackendModule& mod
   return true;
 }
 
+std::string asm_symbol_name(const c4c::backend::BackendModule& module,
+                            std::string_view logical_name) {
+  const bool is_darwin =
+      module.target_triple.find("apple-darwin") != std::string::npos;
+  if (!is_darwin) return std::string(logical_name);
+  return std::string("_") + std::string(logical_name);
+}
+
 std::optional<std::int64_t> parse_minimal_return_imm(
     const c4c::backend::BackendModule& module) {
   if (!is_minimal_single_function_asm_slice(module)) {
@@ -118,6 +126,93 @@ std::optional<std::int64_t> parse_minimal_return_add_imm(
   return *lhs + *rhs;
 }
 
+const c4c::backend::BackendFunction* find_function(
+    const c4c::backend::BackendModule& module,
+    std::string_view name) {
+  for (const auto& function : module.functions) {
+    if (function.signature.name == name) return &function;
+  }
+  return nullptr;
+}
+
+std::optional<std::int64_t> parse_single_block_return_imm(
+    const c4c::backend::BackendFunction& function) {
+  if (function.is_declaration || function.signature.linkage != "define" ||
+      function.signature.return_type != "i32" || !function.signature.params.empty() ||
+      function.signature.is_vararg || function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  if (block.label != "entry" || !block.terminator.value.has_value() ||
+      block.terminator.type_str != "i32" || !block.insts.empty()) {
+    return std::nullopt;
+  }
+
+  return parse_i64(*block.terminator.value);
+}
+
+struct MinimalDirectCallSlice {
+  std::string callee_name;
+  std::int64_t callee_imm = 0;
+};
+
+std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
+    const c4c::backend::BackendModule& module) {
+  if (module.functions.size() != 2) return std::nullopt;
+
+  const auto* main_fn = find_function(module, "main");
+  if (main_fn == nullptr || main_fn->is_declaration ||
+      main_fn->signature.linkage != "define" ||
+      main_fn->signature.return_type != "i32" ||
+      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
+      main_fn->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& main_block = main_fn->blocks.front();
+  if (main_block.label != "entry" || main_block.insts.size() != 1 ||
+      !main_block.terminator.value.has_value() ||
+      main_block.terminator.type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
+  if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
+      *main_block.terminator.value != call->result ||
+      !call->callee_type_suffix.empty() || !call->args_str.empty() ||
+      call->callee.empty() || call->callee.front() != '@') {
+    return std::nullopt;
+  }
+
+  const std::string callee_name = call->callee.substr(1);
+  if (callee_name == "main") return std::nullopt;
+
+  const auto* callee_fn = find_function(module, callee_name);
+  if (callee_fn == nullptr) return std::nullopt;
+  const auto callee_imm = parse_single_block_return_imm(*callee_fn);
+  if (!callee_imm.has_value()) return std::nullopt;
+
+  return MinimalDirectCallSlice{callee_name, *callee_imm};
+}
+
+void emit_function_prelude(std::ostringstream& out,
+                           const c4c::backend::BackendModule& module,
+                           std::string_view symbol,
+                           bool is_global) {
+  const bool is_darwin =
+      module.target_triple.find("apple-darwin") != std::string::npos;
+  if (is_global) {
+    out << ".globl " << symbol << "\n";
+  }
+  if (is_darwin) {
+    out << ".p2align 2\n";
+  } else {
+    out << ".type " << symbol << ", %function\n";
+  }
+  out << symbol << ":\n";
+}
+
 std::string emit_minimal_return_imm_asm(const c4c::backend::BackendModule& module,
                                         std::int64_t imm) {
   if (imm < 0 || imm > std::numeric_limits<std::uint16_t>::max()) {
@@ -125,19 +220,37 @@ std::string emit_minimal_return_imm_asm(const c4c::backend::BackendModule& modul
   }
 
   std::ostringstream out;
-  const bool is_darwin =
-      module.target_triple.find("apple-darwin") != std::string::npos;
-  const std::string symbol = is_darwin ? "_main" : "main";
+  const std::string symbol = asm_symbol_name(module, "main");
 
-  out << ".text\n"
-      << ".globl " << symbol << "\n";
-  if (is_darwin) {
-    out << ".p2align 2\n";
-  } else {
-    out << ".type " << symbol << ", %function\n";
-  }
-  out << symbol << ":\n"
+  out << ".text\n";
+  emit_function_prelude(out, module, symbol, true);
+  out
       << "  mov w0, #" << imm << "\n"
+      << "  ret\n";
+  return out.str();
+}
+
+std::string emit_minimal_direct_call_asm(const c4c::backend::BackendModule& module,
+                                         const MinimalDirectCallSlice& slice) {
+  if (slice.callee_imm < 0 ||
+      slice.callee_imm > std::numeric_limits<std::uint16_t>::max()) {
+    fail_unsupported("helper return immediates outside the minimal mov-supported range");
+  }
+
+  std::ostringstream out;
+  const std::string helper_symbol = asm_symbol_name(module, slice.callee_name);
+  const std::string main_symbol = asm_symbol_name(module, "main");
+
+  out << ".text\n";
+  emit_function_prelude(out, module, helper_symbol, false);
+  out << "  mov w0, #" << slice.callee_imm << "\n"
+      << "  ret\n";
+  emit_function_prelude(out, module, main_symbol, true);
+  out << "  sub sp, sp, #16\n"
+      << "  str x30, [sp, #8]\n"
+      << "  bl " << helper_symbol << "\n"
+      << "  ldr x30, [sp, #8]\n"
+      << "  add sp, sp, #16\n"
       << "  ret\n";
   return out.str();
 }
@@ -153,6 +266,9 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
     }
     if (const auto imm = parse_minimal_return_add_imm(adapted); imm.has_value()) {
       return emit_minimal_return_imm_asm(adapted, *imm);
+    }
+    if (const auto slice = parse_minimal_direct_call_slice(adapted); slice.has_value()) {
+      return emit_minimal_direct_call_asm(adapted, *slice);
     }
     return c4c::backend::render_module(adapted);
   } catch (const c4c::backend::LirAdapterError& ex) {

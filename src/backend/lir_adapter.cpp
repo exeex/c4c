@@ -143,17 +143,29 @@ void render_signature(std::ostringstream& out,
   out << ")\n";
 }
 
-BackendBinaryInst adapt_inst(const c4c::codegen::lir::LirInst& inst) {
-  const auto* bin = std::get_if<c4c::codegen::lir::LirBinOp>(&inst);
-  if (!bin) fail_unsupported("non-binary instructions");
-  if (bin->opcode != "add") fail_unsupported("binary opcode '" + bin->opcode + "'");
-  BackendBinaryInst out;
-  out.opcode = BackendBinaryOpcode::Add;
-  out.result = bin->result;
-  out.type_str = bin->type_str;
-  out.lhs = bin->lhs;
-  out.rhs = bin->rhs;
-  return out;
+BackendInst adapt_inst(const c4c::codegen::lir::LirInst& inst) {
+  if (const auto* bin = std::get_if<c4c::codegen::lir::LirBinOp>(&inst)) {
+    if (bin->opcode != "add") fail_unsupported("binary opcode '" + bin->opcode + "'");
+    BackendBinaryInst out;
+    out.opcode = BackendBinaryOpcode::Add;
+    out.result = bin->result;
+    out.type_str = bin->type_str;
+    out.lhs = bin->lhs;
+    out.rhs = bin->rhs;
+    return out;
+  }
+
+  if (const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst)) {
+    BackendCallInst out;
+    out.result = call->result;
+    out.return_type = call->return_type;
+    out.callee = call->callee;
+    out.callee_type_suffix = call->callee_type_suffix;
+    out.args_str = call->args_str;
+    return out;
+  }
+
+  fail_unsupported("non-binary/non-call instructions");
 }
 
 BackendReturn adapt_terminator(const c4c::codegen::lir::LirTerminator& terminator) {
@@ -195,7 +207,17 @@ void render_inst(std::ostringstream& out, const BackendInst& inst) {
     }
     out << "  " << bin->result << " = " << opcode << " " << bin->type_str << " "
         << bin->lhs << ", " << bin->rhs << "\n";
+    return;
   }
+
+  const auto* call = std::get_if<BackendCallInst>(&inst);
+  if (call == nullptr) return;
+
+  out << "  ";
+  if (!call->result.empty()) out << call->result << " = ";
+  out << "call " << call->return_type << " ";
+  if (!call->callee_type_suffix.empty()) out << call->callee_type_suffix << " ";
+  out << call->callee << "(" << call->args_str << ")\n";
 }
 
 void render_function(std::ostringstream& out, const BackendFunction& function) {
@@ -224,7 +246,6 @@ BackendModule adapt_minimal_module(const c4c::codegen::lir::LirModule& module) {
   if (!module.globals.empty()) fail_unsupported("globals");
   if (!module.string_pool.empty()) fail_unsupported("string constants");
   if (!module.extern_decls.empty()) fail_unsupported("extern declarations");
-  if (!module.type_decls.empty()) fail_unsupported("type declarations");
   if (module.need_va_start || module.need_va_end || module.need_va_copy ||
       module.need_memcpy || module.need_stacksave || module.need_stackrestore ||
       module.need_abs) {
@@ -234,6 +255,7 @@ BackendModule adapt_minimal_module(const c4c::codegen::lir::LirModule& module) {
   BackendModule out;
   out.target_triple = module.target_triple;
   out.data_layout = module.data_layout;
+  out.type_decls = module.type_decls;
   for (const auto& function : module.functions) {
     out.functions.push_back(adapt_function(function));
   }
@@ -245,6 +267,10 @@ std::string render_module(const BackendModule& module) {
   if (!module.data_layout.empty()) out << "target datalayout = \"" << module.data_layout << "\"\n";
   if (!module.target_triple.empty()) out << "target triple = \"" << module.target_triple << "\"\n";
   if (!module.data_layout.empty() || !module.target_triple.empty()) out << "\n";
+  for (const auto& type_decl : module.type_decls) {
+    out << type_decl << "\n";
+  }
+  if (!module.type_decls.empty()) out << "\n";
 
   for (const auto& function : module.functions) {
     render_function(out, function);

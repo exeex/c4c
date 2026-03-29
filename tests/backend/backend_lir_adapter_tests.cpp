@@ -172,6 +172,7 @@ c4c::codegen::lir::LirModule make_direct_call_module() {
   LirModule module;
   module.target_triple = "aarch64-unknown-linux-gnu";
   module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }");
 
   LirFunction helper;
   helper.name = "helper";
@@ -1104,7 +1105,7 @@ void test_rejects_unsupported_instruction() {
     (void)c4c::backend::adapt_minimal_module(module);
     fail("adapter should reject unsupported instructions");
   } catch (const c4c::backend::LirAdapterError& ex) {
-    expect_contains(ex.what(), "non-binary instructions",
+    expect_contains(ex.what(), "non-binary/non-call instructions",
                     "adapter should explain unsupported instructions");
     expect_true(ex.kind() == c4c::backend::LirAdapterErrorKind::Unsupported,
                 "adapter should classify unsupported instructions distinctly from malformed input");
@@ -1226,12 +1227,22 @@ void test_aarch64_backend_renders_direct_call_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_direct_call_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "define i32 @helper()",
-                  "aarch64 backend should preserve helper definitions");
-  expect_contains(rendered, "%t0 = call i32 @helper()",
-                  "aarch64 backend should render direct calls");
-  expect_contains(rendered, "ret i32 %t0",
-                  "aarch64 backend should preserve call results through return");
+  expect_contains(rendered, ".type helper, %function",
+                  "aarch64 backend should lower the helper definition into a real function symbol");
+  expect_contains(rendered, "helper:\n  mov w0, #7\n  ret\n",
+                  "aarch64 backend should emit the minimal helper body as assembly");
+  expect_contains(rendered, ".globl main",
+                  "aarch64 backend should still publish main as the entry symbol");
+  expect_contains(rendered, "sub sp, sp, #16",
+                  "aarch64 backend should preserve the link register before a helper call");
+  expect_contains(rendered, "str x30, [sp, #8]",
+                  "aarch64 backend should spill x30 in the minimal helper-call frame");
+  expect_contains(rendered, "bl helper",
+                  "aarch64 backend should lower the supported direct call slice with bl");
+  expect_contains(rendered, "ldr x30, [sp, #8]",
+                  "aarch64 backend should restore x30 after the helper call");
+  expect_contains(rendered, "add sp, sp, #16",
+                  "aarch64 backend should tear down the minimal helper-call frame");
 }
 
 void test_aarch64_backend_renders_local_temp_memory_slice() {

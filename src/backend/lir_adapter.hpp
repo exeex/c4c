@@ -51,7 +51,15 @@ struct BackendBinaryInst {
   std::string rhs;
 };
 
-using BackendInst = std::variant<BackendBinaryInst>;
+struct BackendCallInst {
+  std::string result;
+  std::string return_type;
+  std::string callee;
+  std::string callee_type_suffix;
+  std::string args_str;
+};
+
+using BackendInst = std::variant<BackendBinaryInst, BackendCallInst>;
 
 struct BackendReturn {
   std::optional<std::string> value;
@@ -73,6 +81,7 @@ struct BackendFunction {
 struct BackendModule {
   std::string target_triple;
   std::string data_layout;
+  std::vector<std::string> type_decls;
   std::vector<BackendFunction> functions;
 };
 
