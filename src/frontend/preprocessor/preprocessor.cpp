@@ -41,11 +41,15 @@ void Preprocessor::set_source_profile(SourceProfile profile) {
   source_profile_ = profile;
 
   if (profile == SourceProfile::CppSubset || profile == SourceProfile::C4) {
-    define_macro("__cplusplus=201703L");
+    define_macro("__cplusplus=202002L");
+    define_macro("__cpp_constexpr=201811L");
+    define_macro("__cpp_concepts=201907L");
     define_macro("__GNUG__=4");
     define_macro("__GXX_ABI_VERSION=1002");
   } else {
     macros_.erase("__cplusplus");
+    macros_.erase("__cpp_constexpr");
+    macros_.erase("__cpp_concepts");
     macros_.erase("__GNUG__");
     macros_.erase("__GXX_ABI_VERSION");
   }
