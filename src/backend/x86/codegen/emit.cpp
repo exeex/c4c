@@ -40,6 +40,12 @@ struct MinimalParamSlotSlice {
   std::int64_t helper_add_imm = 0;
 };
 
+struct MinimalTwoArgDirectCallSlice {
+  std::string callee_name;
+  std::int64_t lhs_call_arg_imm = 0;
+  std::int64_t rhs_call_arg_imm = 0;
+};
+
 struct MinimalConditionalReturnSlice {
   std::string predicate;
   std::int64_t lhs_imm = 0;
@@ -1274,6 +1280,72 @@ std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
   return MinimalParamSlotSlice{"add_one", *call_arg_imm, *helper_add_imm};
 }
 
+std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 2 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* helper = find_lir_function(module, "add_pair");
+  const auto* main_fn = find_lir_function(module, "main");
+  if (helper == nullptr || main_fn == nullptr || helper->is_declaration ||
+      main_fn->is_declaration ||
+      helper->signature_text != "define i32 @add_pair(i32 %p.x, i32 %p.y)\n" ||
+      main_fn->signature_text != "define i32 @main()\n" || helper->entry.value != 0 ||
+      main_fn->entry.value != 0 || helper->blocks.size() != 1 || main_fn->blocks.size() != 1 ||
+      !helper->alloca_insts.empty() || !main_fn->alloca_insts.empty() ||
+      !helper->stack_objects.empty() || !main_fn->stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& helper_block = helper->blocks.front();
+  const auto* helper_ret = std::get_if<LirRet>(&helper_block.terminator);
+  if (helper_block.label != "entry" || helper_block.insts.size() != 1 || helper_ret == nullptr ||
+      !helper_ret->value_str.has_value() || helper_ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* add = std::get_if<LirBinOp>(&helper_block.insts.front());
+  if (add == nullptr || add->opcode != "add" || add->type_str != "i32" || add->lhs != "%p.x" ||
+      add->rhs != "%p.y" || *helper_ret->value_str != add->result) {
+    return std::nullopt;
+  }
+
+  const auto& main_block = main_fn->blocks.front();
+  const auto* main_ret = std::get_if<LirRet>(&main_block.terminator);
+  if (main_block.label != "entry" || main_block.insts.size() != 1 || main_ret == nullptr ||
+      !main_ret->value_str.has_value() || main_ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* call = std::get_if<LirCallOp>(&main_block.insts.front());
+  if (call == nullptr || call->result.empty() || call->callee != "@add_pair" ||
+      call->callee_type_suffix != "(i32, i32)" || *main_ret->value_str != call->result) {
+    return std::nullopt;
+  }
+
+  const auto separator = call->args_str.find(", ");
+  if (separator == std::string::npos) {
+    return std::nullopt;
+  }
+  const auto lhs_arg = strip_typed_operand_prefix(call->args_str.substr(0, separator), "i32");
+  const auto rhs_arg =
+      strip_typed_operand_prefix(call->args_str.substr(separator + 2), "i32");
+  if (!lhs_arg.has_value() || !rhs_arg.has_value()) {
+    return std::nullopt;
+  }
+  const auto lhs_call_arg_imm = parse_i64(*lhs_arg);
+  const auto rhs_call_arg_imm = parse_i64(*rhs_arg);
+  if (!lhs_call_arg_imm.has_value() || !rhs_call_arg_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return MinimalTwoArgDirectCallSlice{"add_pair", *lhs_call_arg_imm, *rhs_call_arg_imm};
+}
+
 void emit_function_prelude(std::ostringstream& out,
                            const c4c::backend::BackendModule& module,
                            std::string_view symbol,
@@ -1343,6 +1415,36 @@ std::string emit_minimal_param_slot_asm(const c4c::backend::BackendModule& modul
       << "  ret\n";
   emit_function_prelude(out, module, main_symbol, true);
   out << "  mov edi, " << slice.call_arg_imm << "\n"
+      << "  call " << helper_symbol << "\n"
+      << "  ret\n";
+  return out.str();
+}
+
+std::string emit_minimal_two_arg_direct_call_asm(
+    const c4c::backend::BackendModule& module,
+    const MinimalTwoArgDirectCallSlice& slice) {
+  if (slice.lhs_call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.lhs_call_arg_imm > std::numeric_limits<std::int32_t>::max() ||
+      slice.rhs_call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.rhs_call_arg_imm > std::numeric_limits<std::int32_t>::max()) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "two-argument direct-call immediates outside the minimal x86 slice range");
+  }
+
+  const std::string helper_symbol = asm_symbol_name(module, slice.callee_name);
+  const std::string main_symbol = asm_symbol_name(module, "main");
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  emit_function_prelude(out, module, helper_symbol, false);
+  out << "  mov eax, edi\n"
+      << "  add eax, esi\n"
+      << "  ret\n";
+  emit_function_prelude(out, module, main_symbol, true);
+  out << "  mov edi, " << slice.lhs_call_arg_imm << "\n"
+      << "  mov esi, " << slice.rhs_call_arg_imm << "\n"
       << "  call " << helper_symbol << "\n"
       << "  ret\n";
   return out.str();
@@ -1639,6 +1741,12 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       c4c::backend::BackendModule scaffold_module;
       scaffold_module.target_triple = module.target_triple;
       return emit_minimal_param_slot_asm(scaffold_module, *slice);
+    }
+    if (const auto slice = parse_minimal_two_arg_direct_call_slice(module);
+        slice.has_value()) {
+      c4c::backend::BackendModule scaffold_module;
+      scaffold_module.target_triple = module.target_triple;
+      return emit_minimal_two_arg_direct_call_asm(scaffold_module, *slice);
     }
     if (const auto slice = parse_minimal_local_array_slice(module);
         slice.has_value()) {
