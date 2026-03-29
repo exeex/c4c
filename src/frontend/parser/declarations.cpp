@@ -2016,6 +2016,12 @@ top_level_base_ready:
         Node* def = it->second;
         return !def || def->n_fields < 0;
     };
+    auto top_level_tag_decl_already_recorded = [&](const TypeSpec& ts) -> bool {
+        if (ts.base != TB_STRUCT && ts.base != TB_UNION && ts.base != TB_ENUM) return false;
+        if (!ts.tag) return false;
+        auto it = struct_tag_def_map_.find(ts.tag);
+        return it != struct_tag_def_map_.end() && it->second;
+    };
 
     if (is_typedef) {
         // Local typedef
@@ -2072,7 +2078,8 @@ top_level_base_ready:
         match(TokenKind::Semi);
         // Preserve enum definitions in typedef declarations so global
         // enumerators are visible after `typedef enum { ... } Name;`.
-        if (base_ts.base == TB_ENUM && last_enum_def_) return last_enum_def_;
+        if (base_ts.base == TB_ENUM && last_enum_def_) return nullptr;
+        if (top_level_tag_decl_already_recorded(base_ts)) return nullptr;
         return make_node(NK_EMPTY, ln);
     }
 
@@ -2081,9 +2088,8 @@ top_level_base_ready:
         (base_ts.base == TB_STRUCT || base_ts.base == TB_UNION ||
          base_ts.base == TB_ENUM)) {
         consume();  // consume ;
-        if (base_ts.base == TB_ENUM && last_enum_def_) {
-            return last_enum_def_;
-        }
+        if (base_ts.base == TB_ENUM && last_enum_def_) return nullptr;
+        if (top_level_tag_decl_already_recorded(base_ts)) return nullptr;
         return make_node(NK_EMPTY, ln);
     }
 

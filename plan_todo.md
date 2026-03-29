@@ -9,8 +9,10 @@ Last Updated: 2026-03-29
 
 - Step 3: continue through the remaining top-level structure-only /
   unsupported `NK_EMPTY` exits in `src/frontend/parser/declarations.cpp` after
-  tightening the empty namespace-wrapper path after the empty `extern "C"`
-  linkage-block wrapper slice
+  tightening the top-level tag-only declaration / typedef-backed tag-definition
+  path; next review the still-uncovered unsupported discard exits such as
+  concept / pragma skips to decide whether they are intentional `NK_EMPTY`
+  sites or need reduced repro coverage
 
 ## Completed
 
@@ -51,6 +53,23 @@ Last Updated: 2026-03-29
   - baseline: `97% tests passed, 54 tests failed out of 2413`
   - after change: `99% tests passed, 1 test failed out of 2413`
   - result: monotonic pass-count increase with no newly failing tests
+- tightened top-level tag-only declaration and typedef-backed tag-definition
+  handling in `src/frontend/parser/declarations.cpp` so declarations already
+  represented by a recorded `StructDef` / `EnumDef` no longer append a
+  synthetic `NK_EMPTY` item to the program AST
+- added the reduced parse-only regression
+  `tests/cpp/internal/parse_only_case/top_level_tag_decl_preserves_following_decl_parse.cpp`
+  plus the dedicated dump assertion
+  `cpp_parse_top_level_tag_decl_preserves_following_decl_dump` in
+  `tests/cpp/internal/InternalTests.cmake`
+- updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record top-level tag-only
+  declarations and typedef-backed tag definitions as covered `NK_EMPTY`
+  structure-only sites
+- re-ran the required regression guard:
+  - baseline: `99% tests passed, 1 test failed out of 2417`
+  - after change: `99% tests passed, 1 test failed out of 2418`
+  - result: monotonic pass-count increase from the new targeted test, with no
+    newly failing cases
 - switched the active runbook away from the `std::vector` bring-up and folded
   the latest parser-hygiene findings back into
   `ideas/open/04_std_vector_bringup_plan.md`
@@ -184,7 +203,8 @@ Last Updated: 2026-03-29
 - after the empty `extern "C"` linkage-block slice, continue through the
   remaining top-level `NK_EMPTY` discard sites in
   `src/frontend/parser/declarations.cpp`, especially the still-unreviewed
-  structure-only / unsupported declaration exits beyond linkage wrappers
+  unsupported declaration exits beyond the now-covered empty wrappers and
+  structure-only tag declarations
 - prefer another reduced parse-only repro that shows discarded structure or a
   silently erased following declaration before changing each remaining
   `NK_EMPTY` branch

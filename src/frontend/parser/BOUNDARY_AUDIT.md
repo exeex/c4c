@@ -195,6 +195,18 @@ ranking pass.
    keeps the following `kept` global visible without an intermediate `Empty`
    node after an empty namespace block.
 
+9. `src/frontend/parser/declarations.cpp:2086`
+   Top-level tag-only declarations and typedef-backed tag definitions now drop
+   out of the item stream when the real `StructDef` / `EnumDef` has already
+   been recorded in the parser tag-definition tables, instead of appending a
+   synthetic `NK_EMPTY` node after `struct X {};`, `union Y {};`, or
+   `typedef enum Z { ... } Z;`.
+   Tag: `acceptable breadth`
+   Evidence: the reduced parse-only regression
+   `tests/cpp/internal/parse_only_case/top_level_tag_decl_preserves_following_decl_parse.cpp`
+   keeps the following `kept` global visible with no intermediate `Empty`
+   node after structure-only and typedef-backed tag declarations.
+
 ## Ranked First Tightening Targets
 
 1. `src/frontend/parser/types.cpp:4426`

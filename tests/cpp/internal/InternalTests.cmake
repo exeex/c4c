@@ -420,6 +420,16 @@ set_tests_properties(cpp_parse_top_level_class_recovery_preserves_following_decl
 )
 
 add_test(
+  NAME cpp_parse_top_level_tag_decl_preserves_following_decl_dump
+  COMMAND c4cll --parse-only "/workspaces/c4c/tests/cpp/internal/parse_only_case/top_level_tag_decl_preserves_following_decl_parse.cpp"
+)
+set_tests_properties(cpp_parse_top_level_tag_decl_preserves_following_decl_dump PROPERTIES
+  LABELS "internal;cpp;parse"
+  PASS_REGULAR_EXPRESSION "GlobalVar\\(kept\\)"
+  FAIL_REGULAR_EXPRESSION "Empty;Program\\(6 items\\)"
+)
+
+add_test(
   NAME cpp_lex_keyword_and_tokens
   COMMAND c4cll --lex-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/keyword_and_parse.cpp"
 )
