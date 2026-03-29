@@ -404,7 +404,7 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
     call_callee = call->callee;
     call_callee_type_suffix = call->callee_type_suffix;
   } else {
-    if (block.insts.size() != 5 && block.insts.size() != 8) {
+    if (block.insts.size() != 5 && block.insts.size() != 8 && block.insts.size() != 11) {
       return std::nullopt;
     }
 
@@ -424,6 +424,20 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
     const c4c::codegen::lir::LirLoadOp* call_arg_load0 = nullptr;
     const c4c::codegen::lir::LirLoadOp* call_arg_load1 = nullptr;
     const c4c::codegen::lir::LirCallOp* call = nullptr;
+    const auto is_zero_rewrite = [](const LirLoadOp& load,
+                                    const LirBinOp& add,
+                                    const LirStoreOp& store,
+                                    const std::string& slot) {
+      if (load.type_str != "i32" || load.ptr != slot || add.opcode != "add" ||
+          add.type_str != "i32" || add.result.empty() || store.type_str != "i32" ||
+          store.ptr != slot || store.val != add.result) {
+        return false;
+      }
+      const bool add_zero_on_rhs = add.lhs == load.result && add.rhs == "0";
+      const bool add_zero_on_lhs = add.lhs == "0" && add.rhs == load.result;
+      return add_zero_on_rhs || add_zero_on_lhs;
+    };
+
     if (block.insts.size() == 5) {
       call_arg_load0 = std::get_if<LirLoadOp>(&block.insts[2]);
       call_arg_load1 = std::get_if<LirLoadOp>(&block.insts[3]);
@@ -433,26 +447,46 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
           call_arg_load0->ptr != alloca->result || call_arg_load1->ptr != alloca1->result) {
         return std::nullopt;
       }
+    } else if (block.insts.size() == 11) {
+      const auto* load0_before = std::get_if<LirLoadOp>(&block.insts[2]);
+      const auto* add0 = std::get_if<LirBinOp>(&block.insts[3]);
+      const auto* store0_rewrite = std::get_if<LirStoreOp>(&block.insts[4]);
+      const auto* load1_before = std::get_if<LirLoadOp>(&block.insts[5]);
+      const auto* add1 = std::get_if<LirBinOp>(&block.insts[6]);
+      const auto* store1_rewrite = std::get_if<LirStoreOp>(&block.insts[7]);
+      const auto* load0_after = std::get_if<LirLoadOp>(&block.insts[8]);
+      const auto* load1_after = std::get_if<LirLoadOp>(&block.insts[9]);
+      call = std::get_if<LirCallOp>(&block.insts[10]);
+      if (load0_before == nullptr || add0 == nullptr || store0_rewrite == nullptr ||
+          load1_before == nullptr || add1 == nullptr || store1_rewrite == nullptr ||
+          load0_after == nullptr || load1_after == nullptr || call == nullptr ||
+          !is_zero_rewrite(*load0_before, *add0, *store0_rewrite, alloca->result) ||
+          !is_zero_rewrite(*load1_before, *add1, *store1_rewrite, alloca1->result) ||
+          load0_after->type_str != "i32" || load0_after->ptr != alloca->result ||
+          load1_after->type_str != "i32" || load1_after->ptr != alloca1->result) {
+        return std::nullopt;
+      }
+      call_arg_load0 = load0_after;
+      call_arg_load1 = load1_after;
     } else {
       call = std::get_if<LirCallOp>(&block.insts[7]);
       if (call == nullptr) {
         return std::nullopt;
       }
 
-      const auto is_zero_rewrite = [](const LirLoadOp& load,
-                                      const LirBinOp& add,
-                                      const LirStoreOp& store,
-                                      const LirLoadOp& reload,
-                                      const std::string& slot) {
+      const auto is_zero_rewrite_with_reload =
+          [&](const LirLoadOp& load,
+              const LirBinOp& add,
+              const LirStoreOp& store,
+              const LirLoadOp& reload,
+              const std::string& slot) {
         if (load.type_str != "i32" || load.ptr != slot || add.opcode != "add" ||
             add.type_str != "i32" || add.result.empty() || store.type_str != "i32" ||
             store.ptr != slot || store.val != add.result || reload.type_str != "i32" ||
             reload.ptr != slot) {
           return false;
         }
-        const bool add_zero_on_rhs = add.lhs == load.result && add.rhs == "0";
-        const bool add_zero_on_lhs = add.lhs == "0" && add.rhs == load.result;
-        return add_zero_on_rhs || add_zero_on_lhs;
+        return is_zero_rewrite(load, add, store, slot);
       };
 
       const auto* load0_before = std::get_if<LirLoadOp>(&block.insts[2]);
@@ -462,8 +496,8 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
       const auto* load1_after = std::get_if<LirLoadOp>(&block.insts[6]);
       if (load0_before != nullptr && add0 != nullptr && store0_rewrite != nullptr &&
           load0_after != nullptr && load1_after != nullptr &&
-          is_zero_rewrite(*load0_before, *add0, *store0_rewrite, *load0_after,
-                          alloca->result) &&
+          is_zero_rewrite_with_reload(*load0_before, *add0, *store0_rewrite, *load0_after,
+                                      alloca->result) &&
           load1_after->type_str == "i32" && load1_after->ptr == alloca1->result) {
         call_arg_load0 = load0_after;
         call_arg_load1 = load1_after;
@@ -475,8 +509,8 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
         const auto* load1_after_second = std::get_if<LirLoadOp>(&block.insts[6]);
         if (load1_before == nullptr || add1 == nullptr || store1_rewrite == nullptr ||
             load0_after_second == nullptr || load1_after_second == nullptr ||
-            !is_zero_rewrite(*load1_before, *add1, *store1_rewrite,
-                             *load1_after_second, alloca1->result) ||
+            !is_zero_rewrite_with_reload(*load1_before, *add1, *store1_rewrite,
+                                         *load1_after_second, alloca1->result) ||
             load0_after_second->type_str != "i32" ||
             load0_after_second->ptr != alloca->result) {
           return std::nullopt;
