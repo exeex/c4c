@@ -165,25 +165,19 @@ ranking pass.
    `tests/cpp/internal/parse_only_case/top_level_asm_recovery_preserves_following_decl_parse.cpp`
    keeps the following `kept` global visible after malformed `asm(` input.
 
-6. `src/frontend/parser/declarations.cpp:831`
-   Top-level `using namespace` and `using ns::name` parsing now uses the same
-   declaration-boundary recovery helper as the recent storage-class / `asm(...)`
-   tightenings when the terminating `;` is missing.
+6. `src/frontend/parser/declarations.cpp:924`
+   Top-level `using namespace`, `using ns::name`, and `using Alias = type`
+   handling now performs its namespace / alias bookkeeping and then drops out of
+   the item stream instead of materializing synthetic `NK_EMPTY` nodes, while
+   still using the shared declaration-boundary helpers when recovery is needed.
    Tag: `acceptable breadth`
    Evidence: the reduced parse-only regression
-   `tests/cpp/internal/parse_only_case/top_level_using_namespace_recovery_preserves_following_decl_parse.cpp`
-   keeps the following `kept` global visible after a malformed
-   `using namespace ns` line with no semicolon.
-
-7. `src/frontend/parser/declarations.cpp:948`
-   Top-level `using Alias = ...` parsing now rejects the swallowed-declaration
-   shape where `parse_type_name()` consumes a later-line declaration such as
-   `int kept;` before the alias semicolon is seen.
-   Tag: `acceptable breadth`
-   Evidence: the reduced parse-only regression
-   `tests/cpp/internal/parse_only_case/top_level_using_alias_recovery_preserves_following_decl_parse.cpp`
-   keeps the following `kept` global visible after a malformed
-   `using Alias = int` line with no semicolon.
+   `tests/cpp/internal/parse_only_case/top_level_using_decl_preserves_following_decl_parse.cpp`
+   keeps the following `kept` global visible with no intermediate `Empty` node
+   after valid `using` declarations, while the existing recovery regressions
+   `top_level_using_namespace_recovery_preserves_following_decl_parse.cpp` and
+   `top_level_using_alias_recovery_preserves_following_decl_parse.cpp` still
+   prove malformed missing-semicolon cases preserve the following declaration.
 
 8. `src/frontend/parser/declarations.cpp:911`
    Empty top-level `namespace {}` / `namespace ns {}` wrappers now drop out of
@@ -243,7 +237,7 @@ ranking pass.
    Narrow record-member recovery so malformed members cannot silently consume up
    to the record-closing `}` without a more explicit outcome.
 
-2. `src/frontend/parser/declarations.cpp:1286`
-   Review the remaining top-level structure-only / unsupported `NK_EMPTY` exits
-   now that the generic no-type-start recovery boundary has been aligned with
-   the shared helper.
+2. `src/frontend/parser/declarations.cpp:1444`
+   Review the remaining top-level structure-only / unsupported `NK_EMPTY` exits,
+   starting with valid top-level `asm(...)` declarations that still leave a
+   synthetic `Empty` node in the program item stream.

@@ -9,10 +9,9 @@ Last Updated: 2026-03-29
 
 - Step 3: continue through the remaining top-level structure-only /
   unsupported `NK_EMPTY` exits in `src/frontend/parser/declarations.cpp` after
-  covering the pragma discard paths; next review the still-uncovered
-  declaration-side discard / recovery exits to decide which are intentional
-  bookkeeping drops and which should also disappear from the top-level item
-  stream
+  removing `using` bookkeeping declarations from the item stream; next review
+  the still-uncovered `asm(...)` and other declaration-side discard exits to
+  decide which should also disappear from the top-level program AST
 
 ## Completed
 
@@ -237,6 +236,34 @@ Last Updated: 2026-03-29
     - after change: `99% tests passed, 1 test failed out of 2421`
     - result: monotonic pass-count increase from the two new targeted tests,
       with no newly failing cases
+- tightened top-level C++ `using namespace`, `using ns::name`, and
+  `using Alias = type` handling in `src/frontend/parser/declarations.cpp` so
+  these bookkeeping-only declarations now drop out of the program item stream
+  instead of materializing synthetic `NK_EMPTY` nodes after updating parser
+  state:
+  - recovery for malformed missing-semicolon `using` forms still uses the
+    existing declaration-boundary helpers, but now also drops the discarded
+    declaration out of the top-level item stream
+  - added the reduced parse-only regression
+    `tests/cpp/internal/parse_only_case/top_level_using_decl_preserves_following_decl_parse.cpp`
+    plus the dedicated dump assertion
+    `cpp_parse_top_level_using_decl_preserves_following_decl_dump` in
+    `tests/cpp/internal/InternalTests.cmake`
+  - updated `src/frontend/parser/BOUNDARY_AUDIT.md` to record top-level
+    `using` declarations as a covered bookkeeping-only discard site and to
+    point the next ranked target at top-level `asm(...)`
+  - re-ran focused `using` parse coverage:
+    - `cpp_parse_top_level_using_decl_preserves_following_decl_dump`
+    - `cpp_parse_top_level_using_namespace_recovery_preserves_following_decl_dump`
+    - `cpp_parse_top_level_using_alias_recovery_preserves_following_decl_dump`
+    - `cpp_positive_sema_using_alias_basic_parse_cpp`
+    - `cpp_positive_sema_using_declaration_namespace_parse_cpp`
+    - `cpp_positive_sema_using_namespace_directive_parse_cpp`
+  - re-ran the required regression guard:
+    - baseline: `99% tests passed, 1 test failed out of 2419`
+    - after change: `99% tests passed, 1 test failed out of 2422`
+    - result: monotonic pass-count increase from the new targeted test, with
+      no newly failing cases
 
 ## Next Slice
 
@@ -244,15 +271,14 @@ Last Updated: 2026-03-29
   continue through the remaining top-level `NK_EMPTY` discard sites in
   `src/frontend/parser/declarations.cpp`, especially the still-unreviewed
   unsupported declaration exits and declaration-side bookkeeping drops beyond
-  the now-covered empty wrappers, structure-only tag declarations, and pragma
-  directives
+  the now-covered empty wrappers, top-level `using` declarations,
+  structure-only tag declarations, and pragma directives
 - prefer another reduced parse-only repro that shows discarded structure or a
   silently erased following declaration before changing each remaining
   `NK_EMPTY` branch
-- next target: review the remaining top-level unsupported declaration recovery
-  exit around `top_level_decl_recovery_done` and the still-intentional
-  declaration-side `NK_EMPTY` returns under `using` / typedef flows to decide
-  which ones should drop out of the item stream
+- next target: review top-level `asm(...)` so valid assembly declarations stop
+  leaving a synthetic `Empty` node, then return to the generic unsupported
+  declaration recovery exit around `top_level_decl_recovery_done`
 - keep any further record-member recovery widening separate unless a new reduced
   repro shows another non-special-member boundary bug that blocks the
   top-level `NK_EMPTY` audit

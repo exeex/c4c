@@ -934,7 +934,7 @@ Node* Parser::parse_top_level() {
             }
             using_namespace_contexts_[using_context_id].push_back(target_context);
             recover_top_level_decl_terminator_or_boundary(*this, ln);
-            return make_node(NK_EMPTY, ln);
+            return nullptr;
         }
 
         if (!check(TokenKind::Identifier) && !check(TokenKind::ColonColon))
@@ -959,7 +959,7 @@ Node* Parser::parse_top_level() {
                 } catch (const std::exception&) {
                     pos_ = alias_type_pos;
                     recover_top_level_using_alias_or_boundary(*this, ln);
-                    return make_node(NK_EMPTY, ln);
+                    return nullptr;
                 }
                 if (using_alias_consumed_following_declaration(*this,
                                                                alias_type_pos,
@@ -967,12 +967,12 @@ Node* Parser::parse_top_level() {
                                                                ln)) {
                     pos_ = alias_type_pos;
                     recover_top_level_using_alias_or_boundary(*this, ln);
-                    return make_node(NK_EMPTY, ln);
+                    return nullptr;
                 }
                 if (!match(TokenKind::Semi)) {
                     pos_ = alias_type_pos;
                     recover_top_level_using_alias_or_boundary(*this, ln);
-                    return make_node(NK_EMPTY, ln);
+                    return nullptr;
                 }
                 const std::string qualified = canonical_name_in_context(using_context_id, first_name);
                 typedefs_.insert(qualified);
@@ -984,7 +984,7 @@ Node* Parser::parse_top_level() {
                     typedef_types_[first_name] = alias_ts;
                 }
                 last_using_alias_name_ = first_name;
-                return make_node(NK_EMPTY, ln);
+                return nullptr;
             }
             target = first_name;
         }
@@ -1026,7 +1026,7 @@ Node* Parser::parse_top_level() {
             using_value_aliases_[using_context_id][imported_name] = lookup_target;
         }
         recover_top_level_decl_terminator_or_boundary(*this, ln);
-        return make_node(NK_EMPTY, ln);
+        return nullptr;
     }
 
     if (is_cpp_mode() && check(TokenKind::KwTemplate)) {
