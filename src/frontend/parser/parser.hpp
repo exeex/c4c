@@ -92,6 +92,7 @@ class Parser {
   enum class RecordMemberRecoveryResult {
     Failed,
     SyncedAtSemicolon,
+    StoppedAtNextMember,
     StoppedAtRBrace,
   };
 

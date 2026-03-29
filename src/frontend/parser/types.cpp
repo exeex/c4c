@@ -508,6 +508,116 @@ bool is_cpp20_requires_clause_decl_boundary(Parser& parser) {
     return false;
 }
 
+bool looks_like_record_member_decl_boundary(Parser& parser) {
+    if (parser.at_end()) {
+        return false;
+    }
+    const TokenKind start_kind = parser.cur().kind;
+    if (!(is_type_kw(start_kind) || is_qualifier(start_kind) ||
+          is_storage_class(start_kind))) {
+        return false;
+    }
+
+    int angle_depth = 0;
+    int paren_depth = 0;
+    int bracket_depth = 0;
+    int brace_depth = 0;
+    bool saw_identifier = false;
+    for (int i = parser.pos_; i < static_cast<int>(parser.tokens_.size()); ++i) {
+        const TokenKind kind = parser.tokens_[i].kind;
+        if (kind == TokenKind::Identifier) {
+            saw_identifier = true;
+        }
+
+        if (kind == TokenKind::Less) {
+            ++angle_depth;
+            continue;
+        }
+        if (kind == TokenKind::Greater && angle_depth > 0) {
+            --angle_depth;
+            continue;
+        }
+        if (kind == TokenKind::GreaterGreater && angle_depth > 0) {
+            angle_depth -= std::min(angle_depth, 2);
+            continue;
+        }
+        if (kind == TokenKind::LParen) {
+            if (angle_depth == 0 && bracket_depth == 0 && paren_depth == 0 &&
+                saw_identifier) {
+                return true;
+            }
+            ++paren_depth;
+            continue;
+        }
+        if (kind == TokenKind::RParen) {
+            if (paren_depth == 0) return false;
+            --paren_depth;
+            continue;
+        }
+        if (kind == TokenKind::LBracket) {
+            ++bracket_depth;
+            continue;
+        }
+        if (kind == TokenKind::RBracket) {
+            if (bracket_depth == 0) return false;
+            --bracket_depth;
+            continue;
+        }
+        if (kind == TokenKind::LBrace) {
+            ++brace_depth;
+            continue;
+        }
+        if (kind == TokenKind::RBrace) {
+            if (brace_depth > 0) {
+                --brace_depth;
+                continue;
+            }
+            return false;
+        }
+
+        if (angle_depth != 0 || paren_depth != 0 || bracket_depth != 0 ||
+            brace_depth != 0) {
+            continue;
+        }
+
+        if (saw_identifier && kind == TokenKind::Semi) {
+            for (int j = i + 1; j < static_cast<int>(parser.tokens_.size()); ++j) {
+                const TokenKind next_kind = parser.tokens_[j].kind;
+                if (next_kind == TokenKind::RBrace) {
+                    return true;
+                }
+                if (next_kind != TokenKind::Semi) {
+                    break;
+                }
+            }
+        }
+        if (kind == TokenKind::AmpAmp || kind == TokenKind::PipePipe ||
+            kind == TokenKind::Comma) {
+            return false;
+        }
+    }
+
+    return false;
+}
+
+bool is_record_member_recovery_boundary(Parser& parser,
+                                        int member_start_pos) {
+    if (!parser.is_cpp_mode() || parser.at_end() ||
+        member_start_pos < 0 ||
+        member_start_pos >= static_cast<int>(parser.tokens_.size()) ||
+        parser.pos_ <= member_start_pos) {
+        return false;
+    }
+
+    const TokenKind start_kind = parser.tokens_[member_start_pos].kind;
+    if (start_kind != TokenKind::Tilde &&
+        start_kind != TokenKind::KwOperator) {
+        return false;
+    }
+
+    return looks_like_record_member_decl_boundary(parser);
+}
+
 bool skip_cpp20_constraint_atom(Parser& parser) {
     if (parser.at_end()) return false;
 
@@ -4428,6 +4538,10 @@ Parser::recover_record_member_parse_error(int member_start_pos) {
 
     int brace_depth = 0;
     while (!at_end()) {
+        if (brace_depth == 0 &&
+            is_record_member_recovery_boundary(*this, member_start_pos)) {
+            return RecordMemberRecoveryResult::StoppedAtNextMember;
+        }
         if (check(TokenKind::LBrace)) {
             ++brace_depth;
             consume();
@@ -5878,7 +5992,8 @@ bool Parser::try_parse_record_body_member(
     } catch (const std::exception&) {
         const RecordMemberRecoveryResult recovery =
             recover_record_member_parse_error(member_start_pos);
-        if (recovery != RecordMemberRecoveryResult::SyncedAtSemicolon)
+        if (recovery != RecordMemberRecoveryResult::SyncedAtSemicolon &&
+            recovery != RecordMemberRecoveryResult::StoppedAtNextMember)
             throw;
         return false;
     }

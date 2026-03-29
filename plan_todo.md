@@ -7,10 +7,9 @@ Last Updated: 2026-03-29
 
 ## Active Item
 
-- Step 3: tighten the next parser boundary batch by narrowing
-  `recover_record_member_parse_error(int)` in `src/frontend/parser/types.cpp`
-  so malformed members cannot silently drift to `}` and hide the real failure
-  site
+- Step 3: decide whether the remaining record-member recovery gap should be
+  widened beyond malformed special-member signatures or whether the next
+  highest-value boundary is now one of the remaining `NK_EMPTY` discard sites
 
 ## Completed
 
@@ -60,16 +59,32 @@ Last Updated: 2026-03-29
   plus a dedicated dump assertion in
   `tests/cpp/internal/InternalTests.cmake` to prove a malformed constrained
   member no longer swallows the following `inner` declaration
+- narrowed `src/frontend/parser/types.cpp`
+  `recover_record_member_parse_error(int)` so malformed special-member
+  signatures can stop at the next simple field declaration instead of silently
+  erasing it through broad recovery
+- added the parse-only regression
+  `tests/cpp/internal/parse_only_case/record_member_recovery_preserves_following_decl_parse.cpp`
+  plus the dedicated dump assertion
+  `cpp_parse_record_member_recovery_preserves_following_decl_dump` in
+  `tests/cpp/internal/InternalTests.cmake`
+- re-ran the required regression guard:
+  - baseline: `100% tests passed, 0 tests failed out of 2391`
+  - after change: `100% tests passed, 0 tests failed out of 2408`
+  - result: monotonic pass-count increase with no newly failing tests
 
 ## Next Slice
 
-- use the updated shortlist in `src/frontend/parser/BOUNDARY_AUDIT.md` and
-  confirm the next highest-risk site is still record-member recovery that can
-  advance to `}`
-- add a reduced repro that proves malformed members stop at a bounded recovery
-  point instead of erasing the later member that should surface the error
-- if narrowing that recovery uncovers a separate unsupported syntax gap, split
-  it into a new `ideas/open/*.md` note rather than silently widening this plan
+- decide whether `recover_record_member_parse_error(int)` should grow beyond
+  the new special-member sync path or whether the next Step 3 batch should move
+  to the ranked `NK_EMPTY` parse-and-discard sites in
+  `src/frontend/parser/BOUNDARY_AUDIT.md`
+- if record-member recovery remains the priority, add the next reduced repro
+  for a non-special-member malformed declaration before widening the recovery
+  boundary again
+- if the next best risk is an `NK_EMPTY` discard path instead, switch the
+  active item explicitly in `plan_todo.md` rather than silently broadening this
+  slice
 
 ## Notes
 
@@ -89,6 +104,9 @@ Last Updated: 2026-03-29
 - the Step 1 inventory now lives in `src/frontend/parser/BOUNDARY_AUDIT.md` so
   future parser work can reuse the current shortlist instead of rebuilding it
   from scratch
+- the new record-member recovery regression is intentionally stored under
+  `tests/cpp/internal/parse_only_case/` so it does not get auto-promoted into
+  the positive or negative compile-test globs
 
 ## Blockers
 
