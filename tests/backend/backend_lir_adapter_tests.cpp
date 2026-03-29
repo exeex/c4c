@@ -2087,16 +2087,25 @@ c4c::codegen::lir::LirModule make_global_char_pointer_diff_module() {
   entry.label = "entry";
   entry.insts.push_back(
       LirGepOp{"%t0", "[2 x i8]", "@g_bytes", false, {"i64 0", "i64 0"}});
-  entry.insts.push_back(LirGepOp{"%t1", "i8", "%t0", false, {"i64 1"}});
   entry.insts.push_back(
-      LirCastOp{"%t2", LirCastKind::PtrToInt, "ptr", "%t1", "i64"});
+      LirCastOp{"%t1", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t2", "i8", "%t0", false, {"i64 %t1"}});
   entry.insts.push_back(
-      LirCastOp{"%t3", LirCastKind::PtrToInt, "ptr", "%t0", "i64"});
-  entry.insts.push_back(LirBinOp{"%t4", "sub", "i64", "%t2", "%t3"});
-  entry.insts.push_back(LirCmpOp{"%t5", false, "eq", "i64", "%t4", "1"});
+      LirGepOp{"%t3", "[2 x i8]", "@g_bytes", false, {"i64 0", "i64 0"}});
   entry.insts.push_back(
-      LirCastOp{"%t6", LirCastKind::ZExt, "i1", "%t5", "i32"});
-  entry.terminator = LirRet{std::string("%t6"), "i32"};
+      LirCastOp{"%t4", LirCastKind::SExt, "i32", "0", "i64"});
+  entry.insts.push_back(LirGepOp{"%t5", "i8", "%t3", false, {"i64 %t4"}});
+  entry.insts.push_back(
+      LirCastOp{"%t6", LirCastKind::PtrToInt, "ptr", "%t2", "i64"});
+  entry.insts.push_back(
+      LirCastOp{"%t7", LirCastKind::PtrToInt, "ptr", "%t5", "i64"});
+  entry.insts.push_back(LirBinOp{"%t8", "sub", "i64", "%t6", "%t7"});
+  entry.insts.push_back(
+      LirCastOp{"%t9", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirCmpOp{"%t10", false, "eq", "i64", "%t8", "%t9"});
+  entry.insts.push_back(
+      LirCastOp{"%t11", LirCastKind::ZExt, "i1", "%t10", "i32"});
+  entry.terminator = LirRet{std::string("%t11"), "i32"};
   function.blocks.push_back(std::move(entry));
 
   module.functions.push_back(std::move(function));
@@ -3738,20 +3747,30 @@ void test_aarch64_backend_renders_global_char_pointer_diff_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_global_char_pointer_diff_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "@g_bytes = global [2 x i8] zeroinitializer",
-                  "aarch64 backend should render global byte-array definitions");
-  expect_contains(rendered, "%t0 = getelementptr [2 x i8], ptr @g_bytes, i64 0, i64 0",
-                  "aarch64 backend should preserve byte-array decay from globals");
-  expect_contains(rendered, "%t1 = getelementptr i8, ptr %t0, i64 1",
-                  "aarch64 backend should preserve indexed byte-addressing from globals");
-  expect_contains(rendered, "%t2 = ptrtoint ptr %t1 to i64",
-                  "aarch64 backend should render ptrtoint for pointer-difference lowering");
-  expect_contains(rendered, "%t3 = ptrtoint ptr %t0 to i64",
-                  "aarch64 backend should render ptrtoint for the base global address");
-  expect_contains(rendered, "%t4 = sub i64 %t2, %t3",
-                  "aarch64 backend should preserve byte-granular pointer subtraction");
-  expect_contains(rendered, "ret i32 %t6",
-                  "aarch64 backend should preserve the pointer-difference comparison result");
+  expect_contains(rendered, ".bss\n",
+                  "aarch64 backend should place mutable zero-initialized byte arrays into BSS");
+  expect_contains(rendered, ".globl g_bytes\n",
+                  "aarch64 backend should publish the bounded byte-array symbol");
+  expect_contains(rendered, "g_bytes:\n  .zero 2\n",
+                  "aarch64 backend should materialize the bounded byte-array storage");
+  expect_contains(rendered, ".globl main\n",
+                  "aarch64 backend should still publish main as the entry symbol");
+  expect_contains(rendered, "adrp x8, g_bytes\n",
+                  "aarch64 backend should materialize the global byte-array page address");
+  expect_contains(rendered, "add x8, x8, :lo12:g_bytes\n",
+                  "aarch64 backend should materialize the global byte-array base address");
+  expect_contains(rendered, "add x9, x8, #1\n",
+                  "aarch64 backend should form the byte-offset address for the bounded slice");
+  expect_contains(rendered, "sub x8, x9, x8\n",
+                  "aarch64 backend should preserve the byte-granular pointer subtraction");
+  expect_contains(rendered, "cmp x8, #1\n",
+                  "aarch64 backend should compare the pointer difference against one byte");
+  expect_contains(rendered, "cset w0, eq\n",
+                  "aarch64 backend should lower the bounded equality result into the return register");
+  expect_contains(rendered, "ret\n",
+                  "aarch64 backend should return the bounded pointer-difference comparison result");
+  expect_not_contains(rendered, "getelementptr",
+                      "aarch64 backend should no longer fall back to LLVM IR for the bounded global char pointer-difference slice");
 }
 
 void test_aarch64_backend_renders_global_int_pointer_diff_slice() {

@@ -49,7 +49,7 @@ The backend effort should keep execution focused on one narrow open child at a t
 
 Current open child:
 
-- `ideas/open/12_backend_aarch64_global_char_pointer_diff_plan.md`
+- `ideas/open/13_backend_aarch64_global_int_pointer_diff_plan.md`
 
 ## Shared Guardrails
 
@@ -79,4 +79,6 @@ This umbrella idea is complete when the child ideas are complete or superseded b
 
 The broad roadmap ordering above is mostly historical: `01` through `08` already completed as narrower child ideas, and the recent AArch64 global-addressing follow-ons `09`, `10`, and `11` are also closed.
 
-The next unfinished backend-owned slice is the bounded AArch64 global byte-pointer-difference seam tracked in `ideas/open/12_backend_aarch64_global_char_pointer_diff_plan.md`.
+The completed `12_backend_aarch64_global_char_pointer_diff_plan.md` child proved bounded byte-granular pointer subtraction over a mutable global byte array.
+
+The next unfinished backend-owned slice is the bounded AArch64 global int-pointer-difference seam tracked in `ideas/open/13_backend_aarch64_global_int_pointer_diff_plan.md`.
