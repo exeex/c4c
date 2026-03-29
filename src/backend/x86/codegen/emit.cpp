@@ -28,6 +28,7 @@ struct MinimalCallCrossingDirectCallSlice {
 };
 
 struct MinimalConditionalReturnSlice {
+  std::string predicate;
   std::int64_t lhs_imm = 0;
   std::int64_t rhs_imm = 0;
   std::string true_label;
@@ -227,7 +228,8 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
   const auto* cmp1 = std::get_if<LirCmpOp>(&entry.insts[2]);
   const auto* condbr = std::get_if<LirCondBr>(&entry.terminator);
   if (cmp0 == nullptr || cast == nullptr || cmp1 == nullptr || condbr == nullptr ||
-      cmp0->is_float || cmp0->predicate != "slt" || cmp0->type_str != "i32" ||
+      cmp0->is_float || (cmp0->predicate != "slt" && cmp0->predicate != "sle") ||
+      cmp0->type_str != "i32" ||
       cast->kind != LirCastKind::ZExt || cast->from_type != "i1" ||
       cast->operand != cmp0->result || cast->to_type != "i32" || cmp1->is_float ||
       cmp1->predicate != "ne" || cmp1->type_str != "i32" || cmp1->lhs != cast->result ||
@@ -262,7 +264,8 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
     return std::nullopt;
   }
 
-  return MinimalConditionalReturnSlice{*lhs_imm,
+  return MinimalConditionalReturnSlice{cmp0->predicate,
+                                       *lhs_imm,
                                        *rhs_imm,
                                        condbr->true_label,
                                        condbr->false_label,
@@ -377,9 +380,19 @@ std::string emit_minimal_conditional_return_asm(
   out << ".text\n";
   out << ".globl " << symbol << "\n";
   out << symbol << ":\n";
+  const char* fail_branch = nullptr;
+  if (slice.predicate == "slt") {
+    fail_branch = "jge";
+  } else if (slice.predicate == "sle") {
+    fail_branch = "jg";
+  } else {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "conditional-return predicates outside the current compare-and-branch x86 slice");
+  }
   out << "  mov eax, " << slice.lhs_imm << "\n";
   out << "  cmp eax, " << slice.rhs_imm << "\n";
-  out << "  jge .L" << slice.false_label << "\n";
+  out << "  " << fail_branch << " .L" << slice.false_label << "\n";
   out << ".L" << slice.true_label << ":\n";
   out << "  mov eax, " << slice.true_return_imm << "\n";
   out << "  ret\n";

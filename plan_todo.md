@@ -6,11 +6,11 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 4: choose whether the next bounded x86 follow-up should extend the conditional-return scaffold to one adjacent predicate family or return to one more direct-call call shape without absorbing unrelated assembler/linker work
+- [ ] Step 4: choose the next bounded x86 follow-up after the `slt`/`sle` conditional-return scaffold, either one more adjacent signed predicate or one more direct-call regalloc-sensitive shape, without absorbing unrelated assembler/linker work
 
 ## Planned Queue
 
-- [ ] Step 4: if x86 conditional-return support stays in scope, add exactly one adjacent predicate proof before widening further
+- [ ] Step 4: if x86 conditional-return support stays in scope, add exactly one adjacent signed predicate proof (`sgt` or `sge`) before widening further
 - [ ] Step 4: otherwise return to the direct-call scaffold for one more bounded call shape that still exercises shared regalloc state
 
 ## Completed
@@ -22,6 +22,7 @@ Source Plan: plan.md
 - [x] Step 4: rebuilt, ran `./backend_lir_adapter_tests`, and recorded monotonic full-suite validation with `ctest --test-dir build -j --output-on-failure` (`29` failing tests before and after, `2338` total)
 - [x] Step 4: switched to the bounded x86 signed-less-than conditional-return proof case, added the failing scaffold test first, and lowered that slice to direct x86 assembly without widening into general branch lowering
 - [x] Step 4: rebuilt, reran `backend_lir_adapter_tests`, and recorded monotonic full-suite validation with `ctest --test-dir build -j --output-on-failure` plus the regression guard (`29 -> 28` failing tests, `2309 -> 2310` passed, `2338` total)
+- [x] Step 4: extended the x86 conditional-return scaffold to the adjacent signed less-or-equal (`sle`) predicate with a failing proof test first, then rebuilt, reran `./backend_lir_adapter_tests`, and recorded monotonic full-suite validation plus the regression guard (`29 -> 27` failing tests, `2309 -> 2311` passed, `2338` total)
 
 ## Notes
 
@@ -31,7 +32,8 @@ Source Plan: plan.md
 - Execution uncovered two pre-existing build blockers outside the active emit slice but on the same x86 backend path: `src/backend/x86/assembler/mod.hpp` was missing an `AsmItem` forward declaration, and `src/backend/x86/linker/mod.hpp` was missing the staged `ContractSurface` marker used by backend contract tests.
 - The current x86 assembler entrypoint still stages raw text to the requested output path instead of producing a real object file. That was kept as a bounded unblocker for this run rather than widening into assembler implementation work.
 - The new x86 compare-and-branch scaffold currently claims only the minimal signed-less-than conditional-return shape (`icmp slt` + `zext` + `icmp ne 0` + two direct return blocks). Adjacent predicates remain separate follow-on work.
+- The x86 compare-and-branch scaffold now covers the minimal signed-less-than and signed-less-or-equal conditional-return shapes (`icmp slt|sle` + `zext` + `icmp ne 0` + two direct return blocks). Other predicates remain separate follow-on work.
 
 ## Next Intended Slice
 
-Choose one bounded follow-up: either extend x86 conditional-return lowering to one adjacent predicate family with a failing proof test first, or return to the direct-call scaffold for one more narrow call shape that still exercises shared regalloc-sensitive save/restore behavior.
+Choose one bounded follow-up: either extend x86 conditional-return lowering to exactly one adjacent signed predicate (`sgt` or `sge`) with a failing proof test first, or return to the direct-call scaffold for one more narrow call shape that still exercises shared regalloc-sensitive save/restore behavior.

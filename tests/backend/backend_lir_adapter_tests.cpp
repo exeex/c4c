@@ -3163,6 +3163,28 @@ void test_x86_backend_renders_compare_and_branch_slice() {
                       "x86 backend should stop falling back to LLVM text for the conditional-return slice");
 }
 
+void test_x86_backend_renders_compare_and_branch_le_slice() {
+  auto module = make_conditional_return_le_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should lower the signed less-or-equal conditional-return slice to assembly");
+  expect_contains(rendered, "  mov eax, 2\n",
+                  "x86 backend should materialize the first signed less-or-equal compare immediate");
+  expect_contains(rendered, "  cmp eax, 3\n",
+                  "x86 backend should compare the materialized less-or-equal lhs against the rhs immediate");
+  expect_contains(rendered, "  jg .Lelse\n",
+                  "x86 backend should branch to the else label when the signed less-or-equal test fails");
+  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+                  "x86 backend should lower the signed less-or-equal then block directly in assembly");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+                  "x86 backend should lower the signed less-or-equal else block directly in assembly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the signed less-or-equal slice");
+}
+
 void test_aarch64_backend_renders_void_return_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_void_return_module()},
@@ -5173,6 +5195,7 @@ int main() {
   test_x86_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice();
   test_x86_backend_cleans_up_redundant_self_move_on_call_crossing_slice();
   test_x86_backend_renders_compare_and_branch_slice();
+  test_x86_backend_renders_compare_and_branch_le_slice();
   test_aarch64_backend_renders_void_return_slice();
   test_aarch64_backend_preserves_module_headers_and_declarations();
   test_aarch64_backend_propagates_malformed_signature_in_supported_slice();
