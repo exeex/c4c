@@ -1422,7 +1422,7 @@ Node* Parser::parse_top_level() {
     if (check(TokenKind::PragmaPack)) {
         handle_pragma_pack(cur().lexeme);
         consume();
-        return make_node(NK_EMPTY, ln);
+        return nullptr;
     }
 
     // Handle #pragma weak tokens
@@ -1437,7 +1437,7 @@ Node* Parser::parse_top_level() {
     if (check(TokenKind::PragmaGccVisibility)) {
         handle_pragma_gcc_visibility(cur().lexeme);
         consume();
-        return make_node(NK_EMPTY, ln);
+        return nullptr;
     }
 
     // Don't skip_attributes() here — type-affecting attributes like

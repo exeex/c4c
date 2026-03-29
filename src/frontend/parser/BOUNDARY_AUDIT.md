@@ -217,6 +217,26 @@ ranking pass.
    keeps the following `kept` global visible with no intermediate `Empty`
    node after `template<typename T> concept audit_concept = true;`.
 
+11. `src/frontend/parser/declarations.cpp:1422`
+   Top-level `#pragma pack(...)` directives now update parser pack state and
+   drop out of the item stream instead of materializing a synthetic `NK_EMPTY`
+   node before the following declaration.
+   Tag: `acceptable breadth`
+   Evidence: the reduced parse-only regression
+   `tests/cpp/internal/parse_only_case/top_level_pragma_pack_preserves_following_decl_parse.cpp`
+   keeps the following `kept` global visible with no intermediate `Empty`
+   node after `#pragma pack(push, 1)`.
+
+12. `src/frontend/parser/declarations.cpp:1437`
+   Top-level `#pragma GCC visibility push/pop` directives now update parser
+   visibility state and drop out of the item stream instead of materializing a
+   synthetic `NK_EMPTY` node before the following declaration.
+   Tag: `acceptable breadth`
+   Evidence: the reduced parse-only regression
+   `tests/cpp/internal/parse_only_case/top_level_pragma_gcc_visibility_preserves_following_decl_parse.cpp`
+   keeps the following `kept` global visible with no intermediate `Empty`
+   node after `#pragma GCC visibility push(hidden)`.
+
 ## Ranked First Tightening Targets
 
 1. `src/frontend/parser/types.cpp:4426`
@@ -226,4 +246,4 @@ ranking pass.
 2. `src/frontend/parser/declarations.cpp:1286`
    Review the remaining top-level structure-only / unsupported `NK_EMPTY` exits
    now that the generic no-type-start recovery boundary has been aligned with
-   the shared helper, with pragma discard sites the next top-level target.
+   the shared helper.
