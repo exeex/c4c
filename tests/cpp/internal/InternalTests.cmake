@@ -86,6 +86,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     friend_inline_operator_parse
     if_condition_decl_parse
     free_function_record_ref_param_parse
+    cpp20_requires_clause_parse
     eastl_slice7d_qualified_declarator_parse
     out_of_class_member_owner_scope_parse
     eastl_probe_pack_expansion_template_arg_parse

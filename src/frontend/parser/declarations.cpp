@@ -142,6 +142,57 @@ bool is_internal_typedef_name(const char* name) {
     return name && name[0] == '_' && name[1] == '_';
 }
 
+bool token_starts_top_level_cpp_declaration(Parser& parser) {
+    if (parser.is_type_start()) return true;
+    if (parser.check(TokenKind::KwInline) || parser.check(TokenKind::KwConstexpr) ||
+        parser.check(TokenKind::KwConsteval) || parser.check(TokenKind::KwTypedef) ||
+        parser.check(TokenKind::KwExtern) || parser.check(TokenKind::KwStatic) ||
+        parser.check(TokenKind::KwUsing) || parser.check(TokenKind::KwStruct) ||
+        parser.check(TokenKind::KwClass) || parser.check(TokenKind::KwEnum) ||
+        parser.check(TokenKind::KwNamespace) || parser.check(TokenKind::KwTemplate)) {
+        return true;
+    }
+    if (!parser.check(TokenKind::Identifier)) return false;
+    const std::string_view lexeme = parser.cur().lexeme;
+    return lexeme == "friend" || lexeme == "virtual" || lexeme == "constexpr" ||
+           lexeme == "consteval";
+}
+
+void skip_optional_cpp20_requires_clause(Parser& parser) {
+    if (!parser.is_cpp_mode() || !parser.check(TokenKind::Identifier) ||
+        parser.cur().lexeme != "requires") {
+        return;
+    }
+
+    parser.consume();  // requires
+    int nesting = 0;
+    while (!parser.at_end()) {
+        if (nesting == 0 && token_starts_top_level_cpp_declaration(parser)) break;
+
+        if (parser.check(TokenKind::LParen) || parser.check(TokenKind::LBrace) ||
+            parser.check(TokenKind::LBracket) || parser.check(TokenKind::Less)) {
+            ++nesting;
+            parser.consume();
+            continue;
+        }
+        if (parser.check(TokenKind::RParen) || parser.check(TokenKind::RBrace) ||
+            parser.check(TokenKind::RBracket)) {
+            if (nesting > 0) --nesting;
+            parser.consume();
+            continue;
+        }
+        if (parser.check_template_close()) {
+            if (nesting > 0) {
+                parser.match_template_close();
+                --nesting;
+                continue;
+            }
+            break;
+        }
+        parser.consume();
+    }
+}
+
 }  // namespace
 
 Node* Parser::parse_local_decl() {
@@ -902,6 +953,7 @@ Node* Parser::parse_top_level() {
             if (!match(TokenKind::Comma)) break;
         }
         expect_template_close();
+        skip_optional_cpp20_requires_clause(*this);
 
         std::vector<std::string> injected_names;
         for (size_t i = 0; i < template_params.size(); ++i) {
