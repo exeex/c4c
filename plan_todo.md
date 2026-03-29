@@ -28,6 +28,11 @@ Last Updated: 2026-03-29
   frontier moved forward: the first errors now start at
   `/usr/include/c++/14/bits/stl_iterator.h:2063` and `:2240` on unexpected
   `else`
+- triaged the follow-on negative-test fallout from the concept slice:
+  - restored `cpp20_requires_clause_preserves_following_decl` by treating
+    `static_assert` as a declaration boundary after a top-level requires-clause
+  - retired obsolete parser-debug negative cases that now conflict with newer
+    positive parser support for attributed params / constrained member parsing
 
 ## Next Slice
 
@@ -45,6 +50,7 @@ Last Updated: 2026-03-29
 - avoid semantic trait implementation unless reduction proves it is required
 - the concept fix improved the active `<vector>` path but did not finish the
   bring-up; remaining failures are now later and more localized
+- targeted negative-test rerun now passes for the surviving enforced case
 
 ## Blockers
 

@@ -163,7 +163,8 @@ bool is_cpp20_requires_clause_decl_boundary(Parser& parser) {
         kind == TokenKind::KwStatic || kind == TokenKind::KwExtern ||
         kind == TokenKind::KwMutable || kind == TokenKind::KwVirtual ||
         kind == TokenKind::KwFriend || kind == TokenKind::KwTypedef ||
-        kind == TokenKind::KwUsing || kind == TokenKind::KwConcept) {
+        kind == TokenKind::KwUsing || kind == TokenKind::KwConcept ||
+        kind == TokenKind::KwStaticAssert) {
         return true;
     }
     return parser.is_type_start();
