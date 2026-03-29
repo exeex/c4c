@@ -14,6 +14,10 @@ if(NOT DEFINED CASE_TIMEOUT_SEC OR "${CASE_TIMEOUT_SEC}" STREQUAL "")
   set(CASE_TIMEOUT_SEC 30)
 endif()
 
+if(NOT DEFINED BACKEND_OUTPUT_KIND OR "${BACKEND_OUTPUT_KIND}" STREQUAL "")
+  set(BACKEND_OUTPUT_KIND "llvm-ir")
+endif()
+
 get_filename_component(out_ll_dir "${OUT_LL}" DIRECTORY)
 get_filename_component(out_c2ll_dir "${OUT_C2LL_BIN}" DIRECTORY)
 file(MAKE_DIRECTORY "${out_ll_dir}")
@@ -38,7 +42,15 @@ if(NOT EXISTS "${OUT_LL}")
 endif()
 
 execute_process(
-  COMMAND "${CLANG}" "--target=${TARGET_TRIPLE}" -x ir "${OUT_LL}" -o "${OUT_C2LL_BIN}"
+  COMMAND "${CMAKE_COMMAND}"
+          -DCLANG=${CLANG}
+          -DTARGET_TRIPLE=${TARGET_TRIPLE}
+          -DBACKEND_OUTPUT_KIND=${BACKEND_OUTPUT_KIND}
+          -DBACKEND_OUTPUT_PATH=${OUT_LL}
+          -DOUT_ARTIFACT=${OUT_C2LL_BIN}
+          -DTOOLCHAIN_MODE=binary
+          -DCASE_TIMEOUT_SEC=${CASE_TIMEOUT_SEC}
+          -P "${CMAKE_CURRENT_LIST_DIR}/run_backend_toolchain_case.cmake"
   TIMEOUT "${CASE_TIMEOUT_SEC}"
   RESULT_VARIABLE toolchain_rc
   OUTPUT_VARIABLE toolchain_out

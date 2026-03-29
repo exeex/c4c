@@ -464,6 +464,20 @@ elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQU
 endif()
 
 if(CLANG_EXECUTABLE)
+  add_test(
+    NAME backend_toolchain_aarch64_asm_object_smoke
+    COMMAND "${CMAKE_COMMAND}"
+            -DCLANG=${CLANG_EXECUTABLE}
+            -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+            -DBACKEND_OUTPUT_KIND=asm
+            -DBACKEND_OUTPUT_PATH=${INTERNAL_C_TEST_ROOT}/backend_toolchain_case/aarch64_return_42_linux.s
+            -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend/aarch64_return_42_linux.o
+            -DTOOLCHAIN_MODE=object
+            -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_toolchain_case.cmake"
+  )
+  set_tests_properties(backend_toolchain_aarch64_asm_object_smoke PROPERTIES
+      LABELS "internal;backend")
+
   if(BACKEND_RUNTIME_TARGET_TRIPLE)
     foreach(src IN LISTS INTERNAL_BACKEND_TEST_SRCS)
       get_filename_component(stem "${src}" NAME_WE)
