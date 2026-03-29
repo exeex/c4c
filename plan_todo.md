@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - [ ] Step 2: evaluate the next narrow alternative-operator spelling after
-  `not_eq`, keeping coverage scoped to lexer tokenization plus the smallest
+  `bitand`, keeping coverage scoped to lexer tokenization plus the smallest
   parser compatibility edge it exposes
 
 ## Todo
@@ -21,6 +21,12 @@ Source Plan: plan.md
 - [x] Record the current full-suite baseline before implementation work
 - [x] Add the narrowest validating lexer or parser test for the first slice
 - [x] Implement the first keyword-classification slice
+- [x] Re-run targeted tests, nearby coverage, and the full suite
+- [x] Record a fresh full-suite baseline in `test_before.log` before the
+  `bitand` slice
+- [x] Add the narrowest validating lexer / parser coverage for the `bitand`
+  slice
+- [x] Implement the `bitand` alternative-operator slice
 - [x] Re-run targeted tests, nearby coverage, and the full suite
 - [x] Record a fresh full-suite baseline in `test_before.log` before the
   `not_eq` slice
@@ -220,11 +226,28 @@ Source Plan: plan.md
   `friend_inline_operator_parse`.
 - [x] Recorded full-suite post-change status in `test_after.log`:
   `100% tests passed, 0 tests failed out of 2358`.
+- [x] Added
+  [tests/cpp/internal/postive_case/keyword_bitand_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/keyword_bitand_parse.cpp),
+  registered it as a parse-only positive case, and added explicit lexer / AST
+  assertions in
+  [tests/cpp/internal/InternalTests.cmake](/workspaces/c4c/tests/cpp/internal/InternalTests.cmake)
+  to pin `AMP 'bitand'` output plus `Function(operator_bitand)` in the parse
+  dump.
+- [x] Reserved `bitand` in the lexer by classifying it to the existing
+  `TokenKind::Amp`, allowing both ordinary `a bitand b` parsing and overloaded
+  `operator bitand` lowering through the existing bitwise-and token path.
+- [x] Revalidated the slice with targeted coverage:
+  `keyword_bitand_parse`, `cpp_lex_keyword_bitand_tokens`,
+  `cpp_parse_keyword_bitand_operator_dump`, `keyword_not_eq_parse`,
+  `keyword_and_parse`, `operator_decl_eq_parse`, and
+  `friend_inline_operator_parse`.
+- [x] Recorded full-suite post-change status in `test_after.log`:
+  `100% tests passed, 0 tests failed out of 2361`.
 
 ## Next Intended Slice
 
-After `not_eq`, evaluate whether `bitand`, `bitor`, `xor`, `compl`, or one of
-the assignment-form aliases can land as the next single-token slice without
+After `bitand`, evaluate whether `bitor`, `xor`, `compl`, or one of the
+assignment-form aliases can land as the next single-token slice without
 widening into a broader alias batch.
 
 ## Blockers
@@ -277,3 +300,8 @@ widening into a broader alias batch.
   generated LLVM IR), so the committed case keeps the overloaded
   `operator not_eq` declaration while restricting the executable expression to
   builtin `int` operands at the lexer/parser boundary.
+- Fresh baseline before the `bitand` slice remains clean:
+  `100% tests passed, 0 tests failed out of 2358`.
+- The `bitand` slice finished cleanly with monotonic full-suite results:
+  `2358 -> 2361` total passing tests due to the new parse case plus explicit
+  lexer / AST assertions.
