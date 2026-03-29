@@ -9,23 +9,24 @@ Last Updated: 2026-03-29
 - [x] 1. Baseline & Instrumentation (ctest subset + artifact capture)
 - [x] 2. SysV Varargs classification & homes
 - [x] 3. Variadic function pointer calls
-- [ ] 4. Inline diagnostics shim stability
+- [x] 4. Inline diagnostics shim stability
 - [ ] 5. Inline asm `yield` alias
 - [x] 6. Glibc macro parsing support
 - [ ] 7. Validation & regression guard
 
 ## Active Slice
-- Target: Step 4 Inline diagnostics shim stability
-- Narrow scope: dig back into the inline diagnostics trampoline for AMD64/Linux — re-run the focused inline diagnostics cases, audit the shim’s callee-save/stack-alignment handling, and nail down a minimal repro we can iterate on without breaking the newly-stable vararg path.
-- Owner notes: carry forward the Step 3 targeted logs plus the vararg regressions as guardrails while working on the shim.
+- Target: Step 5 Inline asm `yield` alias
+- Narrow scope: wire up the x86_64-specific alias so `asm volatile("yield")` maps to the `pause` mnemonic in both semantic validation and the backend, then refresh `positive_sema_linux_stage2_repro_03_asm_volatile_c` to prove clang stops rejecting the mnemonic.
+- Owner notes: reuse the targeted `ctest -R "(positive_sema_inline_diagnostics|positive_sema_linux_stage2_repro_03_asm_volatile_c)"` subset so we can guard both the shim work that just landed and the inline asm alias in one loop.
 
 ## Next Slice
-- Once the shim survives the focused stress test, switch to Step 5 by adding the inline asm `yield` alias coverage and then start lining up the full-suite rerun for Step 7.
+- Close out Step 5 and then shift into Step 7 (full regression guard + `test_after.log`) once `positive_sema_linux_stage2_repro_03_asm_volatile_c` stops tripping clang.
 
 ## Progress Summary (2026-03-29)
 - Step 1 artifacts are checked in under `ref/amd64_varargs/`, so the amd64 baseline plus clang/c4cll comparisons exist for every failure bucket we care about right now.
 - Step 2 is now closed: AMD64 SysV vararg classification honors register availability for both GP and SSE slots, `c_testsuite_00204` matches clang exactly, and the refreshed targeted run (`ref/amd64_varargs/ctest_subset_20260329_step2_after_vararg_fix.log`) shows only the glibc parser failure in 00174. All GCC torture buckets in scope plus `positive_sema_*` stay green.
 - Step 3 is wrapped: variadic function pointer calls now reuse the AMD64 classifier, `tests/c/internal/positive_case/ok_fn_returns_variadic_fn_ptr.c` exercises mixed GP/SSE payloads, and the focused subset log `ref/amd64_varargs/ctest_subset_20260329_step3_after_ptr_fix.log` documents the passing run that unblocked the remaining inline work.
+- Step 4 is buttoned up: added `tests/c/internal/positive_case/inline_diagnostics_runtime.c` to hammer the recursive + variadic `always_inline` fallback path in tight loops, reconfigured CTest so it runs as `positive_sema_inline_diagnostics_runtime_c`, and verified both inline diagnostics cases are green via `ctest --test-dir build -R inline_diagnostics -j4 --output-on-failure`.
 - Step 6 is complete: the parser now treats `_Float{16,32,64,128}` and their `x` suffixed variants as builtin FP types, `c_testsuite_00174` passes again, and the reduced macro repro (`tests/c/preprocessor/glibc_mathcalls.c`) is wired into ctest via `preprocessor_glibc_mathcalls`.
 - Step 7 (full-suite validation + regression guard) stays blocked on Steps 3–5 finishing; `test_before_20260329.log` is the comparison point for the future `test_after` log once the plan wraps.
 
