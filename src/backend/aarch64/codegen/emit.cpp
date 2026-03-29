@@ -172,6 +172,7 @@ struct MinimalDirectCallTwoArgAddSlice {
 struct MinimalConditionalReturnSlice {
   std::int64_t lhs_imm = 0;
   std::int64_t rhs_imm = 0;
+  std::string predicate;
   std::string true_label;
   std::string false_label;
   std::int64_t true_return_imm = 0;
@@ -201,11 +202,14 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
   const auto* cmp1 = std::get_if<LirCmpOp>(&entry.insts[2]);
   const auto* condbr = std::get_if<LirCondBr>(&entry.terminator);
   if (cmp0 == nullptr || cast == nullptr || cmp1 == nullptr || condbr == nullptr ||
-      cmp0->is_float || cmp0->predicate != "slt" || cmp0->type_str != "i32" ||
+      cmp0->is_float || cmp0->type_str != "i32" ||
       cast->kind != LirCastKind::ZExt || cast->from_type != "i1" ||
       cast->operand != cmp0->result || cast->to_type != "i32" || cmp1->is_float ||
       cmp1->predicate != "ne" || cmp1->type_str != "i32" || cmp1->lhs != cast->result ||
       cmp1->rhs != "0" || condbr->cond_name != cmp1->result) {
+    return std::nullopt;
+  }
+  if (cmp0->predicate != "slt" && cmp0->predicate != "sle") {
     return std::nullopt;
   }
 
@@ -238,6 +242,7 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
 
   return MinimalConditionalReturnSlice{*lhs_imm,
                                        *rhs_imm,
+                                       cmp0->predicate,
                                        condbr->true_label,
                                        condbr->false_label,
                                        *true_return_imm,
@@ -571,12 +576,20 @@ std::string emit_minimal_conditional_return_asm(
   c4c::backend::BackendModule backend_module;
   backend_module.target_triple = module.target_triple;
   const std::string main_symbol = asm_symbol_name(backend_module, "main");
+  const char* fail_branch = nullptr;
+  if (slice.predicate == "slt") {
+    fail_branch = "b.ge";
+  } else if (slice.predicate == "sle") {
+    fail_branch = "b.gt";
+  } else {
+    fail_unsupported("conditional-return predicates outside the current compare-and-branch slice");
+  }
 
   out << ".text\n";
   emit_function_prelude(out, backend_module, main_symbol, true);
   out << "  mov w8, #" << slice.lhs_imm << "\n"
       << "  cmp w8, #" << slice.rhs_imm << "\n"
-      << "  b.ge .L" << slice.false_label << "\n"
+      << "  " << fail_branch << " .L" << slice.false_label << "\n"
       << ".L" << slice.true_label << ":\n"
       << "  mov w0, #" << slice.true_return_imm << "\n"
       << "  ret\n"
