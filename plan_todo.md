@@ -8,11 +8,11 @@ Source Plan: plan.md
 
 - Step 4: Migrate high-friction instruction families and consumers.
 - Exact target for the next iteration: continue Step 4 past
-  the landed shared typed-call shape helpers into the remaining call-adjacent
-  protocol surface that still depends on raw `LirCallOp::{args_str,
-  callee_type_suffix}` storage, with the highest-value next slice being any
-  backend or emitter path that still needs structured indirect/intrinsic call
-  metadata rather than just shared direct-call argument decoding.
+  the landed shared direct-call callee classification helpers into the
+  remaining call-adjacent protocol surface that still depends on raw
+  `LirCallOp::{callee,args_str,callee_type_suffix}` storage, with the
+  highest-value next slice being any backend or emitter path that still needs
+  structured indirect/intrinsic call metadata instead of ad hoc text checks.
 
 ## Completed Items
 
@@ -102,6 +102,13 @@ Source Plan: plan.md
   of local typed-call shape decoders, and collapsing
   `src/backend/lir_adapter.cpp` onto the same shared typed-call parser instead
   of maintaining a separate parameter/argument decoder.
+- Completed the next Step 4 call-callee classification cleanup slice by adding
+  shared call-callee parsing helpers to `src/codegen/lir/call_args.hpp`,
+  classifying direct globals vs LLVM intrinsics vs indirect calls in one place,
+  routing the remaining x86/AArch64 direct-call recognizers through the shared
+  helper instead of open-coded `@...` checks, and adding regression coverage in
+  `tests/backend/backend_lir_adapter_tests.cpp` for direct/global,
+  intrinsic, and indirect call-callee classification.
 
 ## Notes
 
@@ -176,6 +183,10 @@ Source Plan: plan.md
   minimal x86/AArch64 emitter fast paths, which removes the duplicated
   `parse_lir_typed_call(...)` shape assertions that had drifted into those
   target backends and the adapter.
+- `src/codegen/lir/call_args.hpp` now also centralizes call-callee shape
+  decoding, so backend consumers can distinguish direct globals, LLVM
+  intrinsics, and indirect calls without open-coding `@` prefix rules in each
+  backend file.
 - The analysis/liveness stack still uses compatibility-text scanning for GEP
   indices and other non-call textual payloads, but `LirCallOp::args_str` no
   longer has three separate ad hoc scanners with subtly different behavior.
@@ -212,8 +223,8 @@ Source Plan: plan.md
 - Follow the Step 4 typed-dispatch cleanup into the remaining backend
   call-adjacent consumers that still rely on raw `LirCallOp` storage
   compatibility instead of structured call metadata, with indirect/intrinsic
-  call-family surfaces still the highest-value targets before attempting
-  broader `LirCallOp` storage changes.
+  call-family surfaces still the highest-value targets now that direct-call
+  callee classification is shared.
 - Keep GEP index text, inline asm text, and declaration text on the
   compatibility path for now; the next slice should focus on shrinking the
   remaining call-adjacent protocol surface before attempting broader
@@ -258,6 +269,18 @@ Source Plan: plan.md
   `src/backend/x86/codegen/emit.cpp`, and
   `src/backend/aarch64/codegen/emit.cpp` through the shared typed-call shape
   helpers in `src/codegen/lir/call_args.hpp`.
+- `cmake --build build -j8 --target backend_lir_adapter_tests` passed after
+  adding shared call-callee classification helpers and routing the remaining
+  direct-call recognizers through them.
+- `./build/backend_lir_adapter_tests` passed with added helper coverage for
+  direct-global, LLVM-intrinsic, and indirect call-callee classification.
+- `ctest --test-dir build -j --output-on-failure > test_fail_after.log`
+  recorded `2372/2560` passing and `188` failing tests.
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_before.log --after test_fail_after.log
+  --allow-non-decreasing-passed` passed with zero new failures, zero new
+  suspicious slow tests, and one resolved failure
+  (`c_testsuite_x86_backend_src_00100_c`).
 - `ctest --test-dir build -j --output-on-failure >
   test_fail_after_step4_shared_call_decode.log` recorded `2372/2560` passing
   and `188` failing tests.

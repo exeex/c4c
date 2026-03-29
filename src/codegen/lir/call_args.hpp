@@ -13,6 +13,17 @@
 
 namespace c4c::codegen::lir {
 
+enum class LirCallCalleeKind : unsigned char {
+  DirectGlobal,
+  DirectIntrinsic,
+  Indirect,
+};
+
+struct ParsedLirCallCalleeView {
+  LirCallCalleeKind kind = LirCallCalleeKind::Indirect;
+  std::string_view symbol_name;
+};
+
 struct LirTypedCallArgView {
   std::string_view type;
   std::string_view operand;
@@ -40,6 +51,37 @@ inline bool is_lir_value_name_char(char ch) {
 
 inline bool is_lir_value_name(std::string_view token) {
   return !token.empty() && token.front() == '%';
+}
+
+inline std::optional<ParsedLirCallCalleeView> parse_lir_call_callee(
+    std::string_view callee) {
+  callee = trim_lir_arg_text(callee);
+  if (callee.empty()) {
+    return std::nullopt;
+  }
+  if (callee.front() == '@') {
+    const auto symbol_name = callee.substr(1);
+    if (symbol_name.empty()) {
+      return std::nullopt;
+    }
+    const auto kind = symbol_name.rfind("llvm.", 0) == 0
+                          ? LirCallCalleeKind::DirectIntrinsic
+                          : LirCallCalleeKind::DirectGlobal;
+    return ParsedLirCallCalleeView{kind, symbol_name};
+  }
+  if (callee.front() == '%') {
+    return ParsedLirCallCalleeView{LirCallCalleeKind::Indirect, {}};
+  }
+  return std::nullopt;
+}
+
+inline std::optional<std::string_view> parse_lir_direct_global_callee(
+    std::string_view callee) {
+  const auto parsed = parse_lir_call_callee(callee);
+  if (!parsed.has_value() || parsed->kind != LirCallCalleeKind::DirectGlobal) {
+    return std::nullopt;
+  }
+  return parsed->symbol_name;
 }
 
 inline void append_unique_lir_value_name(std::vector<std::string>& values,

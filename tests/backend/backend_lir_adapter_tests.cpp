@@ -184,6 +184,34 @@ void test_lir_call_arg_helpers_decode_two_typed_operands() {
               "shared typed-call helper should reject two-arg calls whose structured parameter types drift");
 }
 
+void test_lir_call_arg_helpers_classify_call_callee_shape() {
+  using namespace c4c::codegen::lir;
+
+  const auto direct = parse_lir_call_callee(" @helper ");
+  expect_true(direct.has_value() &&
+                  direct->kind == LirCallCalleeKind::DirectGlobal &&
+                  direct->symbol_name == "helper",
+              "shared call-callee helper should classify direct global calls");
+
+  const auto intrinsic = parse_lir_call_callee("@llvm.abs.i32");
+  expect_true(intrinsic.has_value() &&
+                  intrinsic->kind == LirCallCalleeKind::DirectIntrinsic &&
+                  intrinsic->symbol_name == "llvm.abs.i32",
+              "shared call-callee helper should classify llvm intrinsics separately");
+
+  const auto indirect = parse_lir_call_callee("%fn.ptr");
+  expect_true(indirect.has_value() &&
+                  indirect->kind == LirCallCalleeKind::Indirect &&
+                  indirect->symbol_name.empty(),
+              "shared call-callee helper should classify indirect calls");
+
+  expect_true(parse_lir_direct_global_callee("@helper").has_value() &&
+                  *parse_lir_direct_global_callee("@helper") == "helper",
+              "direct-global helper should recover the symbol name");
+  expect_true(!parse_lir_direct_global_callee("@llvm.abs.i32").has_value(),
+              "direct-global helper should reject llvm intrinsics");
+}
+
 void test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings() {
   using namespace c4c::codegen::lir;
 
@@ -8026,6 +8054,7 @@ int main() {
   test_lir_call_arg_helpers_collect_value_names();
   test_lir_call_arg_helpers_decode_single_typed_operand();
   test_lir_call_arg_helpers_decode_two_typed_operands();
+  test_lir_call_arg_helpers_classify_call_callee_shape();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
   test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();
   test_lir_printer_renders_verified_typed_ops();

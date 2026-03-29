@@ -298,13 +298,6 @@ std::optional<std::string_view> strip_typed_operand_prefix(std::string_view oper
   return operand.substr(type_prefix.size() + 1);
 }
 
-std::optional<std::string_view> parse_direct_global_callee(std::string_view callee) {
-  if (callee.size() <= 1 || callee.front() != '@') {
-    return std::nullopt;
-  }
-  return callee.substr(1);
-}
-
 std::optional<std::string_view> parse_single_typed_i32_call_operand(
     std::string_view callee_type_suffix,
     std::string_view args_str) {
@@ -1240,7 +1233,8 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
     return std::nullopt;
   }
 
-  const auto callee_name = parse_direct_global_callee(call->callee);
+  const auto callee_name =
+      c4c::codegen::lir::parse_lir_direct_global_callee(call->callee);
   if (!callee_name.has_value() || *callee_name == "main") return std::nullopt;
 
   const auto* callee_fn = find_function(module, *callee_name);
@@ -1281,7 +1275,8 @@ std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_sl
     return std::nullopt;
   }
 
-  const auto callee_name = parse_direct_global_callee(call->callee);
+  const auto callee_name =
+      c4c::codegen::lir::parse_lir_direct_global_callee(call->callee);
   const auto arg_imm = parse_i64(*call_arg);
   if (!callee_name.has_value() || *callee_name == "main" || !arg_imm.has_value()) {
     return std::nullopt;
@@ -1350,7 +1345,8 @@ parse_minimal_direct_call_two_arg_add_slice(const c4c::backend::BackendModule& m
     return std::nullopt;
   }
 
-  const auto callee_name = parse_direct_global_callee(call->callee);
+  const auto callee_name =
+      c4c::codegen::lir::parse_lir_direct_global_callee(call->callee);
   if (!callee_name.has_value() || *callee_name == "main") {
     return std::nullopt;
   }
