@@ -1,124 +1,98 @@
-# x86 External Call Object Emission Plan
+# Backend X86 External Call Object Plan
 
 ## Status
 
-Completed on 2026-03-29.
-
-Staged on 2026-03-29 from the relocation-contract discovery notes captured in
-`ideas/open/32_backend_builtin_assembler_x86_call_relocation_plan.md`.
-
-## Relationship To Roadmap
-
-Umbrella source: `ideas/open/__backend_port_plan.md`
-
-Depends on:
-
-- `ideas/closed/23_backend_builtin_assembler_x86_plan.md`
-- `ideas/closed/24_backend_builtin_linker_x86_plan.md`
-- `ideas/closed/31_backend_x86_runtime_case_convergence_plan.md`
-
-Supersedes the relocation-bearing continuation that was incorrectly framed
-against `tests/c/internal/backend_case/call_helper.c` in
-`ideas/open/32_backend_builtin_assembler_x86_call_relocation_plan.md`.
+Complete on 2026-03-29. This bounded x86 backend child was executed and
+validated, then is ready to move to `ideas/closed/`.
 
 ## Goal
 
-Implement the bounded built-in x86 assembler/object slice that emits one
-relocation-bearing external call object for the existing `helper_ext` contract,
-so the backend-owned assembler can hand the already-staged x86 linker the same
-`R_X86_64_PLT32` object shape produced by the external assembler.
+Keep `tests/c/internal/backend_case/call_helper.c` on the backend-owned x86
+assembly/object path so the resulting object preserves an unresolved external
+call relocation instead of falling back to LLVM text for that runtime case.
 
-## Why This Is Separate
+## Why This Slice Exists
 
-- `call_helper.c` currently lowers to a local in-object `call helper` shape and
-  does not produce a `.rela.text` relocation.
-- The real relocation-bearing contract already exists in the repo through the
-  `helper_ext` external-call object fixture used by bounded x86 assembler and
-  linker tests.
-- The first built-in x86 linker slice already consumes this relocation shape,
-  so the remaining gap is making the built-in assembler emit that caller object
-  directly on the same bounded contract.
+The umbrella roadmap already closed the first backend-owned x86 assembler slice
+for simpler runtime cases, but `call_helper.c` still marks the next missing
+backend-owned mechanism boundary:
 
-## Contract Snapshot
+- the x86 runtime harness requests `BACKEND_OUTPUT_KIND=asm` for
+  `call_helper.c`
+- focused validation showed simpler cases such as `return_zero.c`,
+  `return_add.c`, and `local_array.c` already stay on the backend-owned x86 asm
+  path
+- the missing behavior is the bounded direct external-call object contract, not
+  broader x86 linker or assembler expansion
 
-- The bounded caller text is `call helper_ext` followed by `ret`.
-- The emitted `.text` payload is `e8 00 00 00 00 c3`.
-- The object preserves one relocation at offset `1` with type
-  `R_X86_64_PLT32` (`4`), symbol `helper_ext`, and addend `-4`.
-- The caller object defines `main` in `.text` and leaves `helper_ext`
-  undefined.
+## Primary Scope
 
-## Scope
+- `tests/c/internal/backend_case/call_helper.c`
+- `tests/c/internal/InternalTests.cmake`
+- `tests/c/internal/cmake/run_backend_contract_case.cmake`
+- `src/backend/x86/codegen/emit.cpp`
+- `src/backend/x86/codegen/calls.cpp`
+- x86 backend-owned assembler/object emission surfaces only as required for this
+  direct-call slice
 
-- parse and encode the narrow x86 external-call asm subset needed for one
-  `call rel32` relocation-bearing object
-- emit the ELF64 relocatable object metadata needed for `.text`, `.rela.text`,
-  `.symtab`, `.strtab`, and `.shstrtab` on that bounded path
-- route the staged `helper_ext` object module through the built-in x86 assembler
-  handoff
-- validate the built-in emitted object against external assembler output and the
-  already-closed linker slice
+## Expected Behavior
 
-## Primary Targets
+For an x86-64 Linux backend-owned asm/object build of `call_helper.c`:
 
-- `src/backend/x86/assembler/`
-- `src/backend/x86/codegen/emit.hpp`
-- `src/backend/x86/codegen/`
-- `tests/backend/backend_lir_adapter_tests.cpp`
+- backend output should stay in native x86 assembly rather than LLVM IR
+- the emitted assembly should contain a direct `call helper`
+- the assembled object should preserve an unresolved external symbol for
+  `helper`
+- the relocation-bearing call site should be visible in `objdump -r`, most
+  likely as `R_X86_64_PLT32`
 
-## Validation Target
+## Non-Goals
 
-- keep or tighten the encoder-level test for one relocation-bearing
-  `call helper_ext` object
-- keep or tighten the shared ELF parser coverage for the built-in emitted x86
-  extern-call object
-- keep or tighten the external `objdump` parity check for the bounded emitted
-  object surface
-- prove the bounded x86 linker slice still links and executes the emitted
-  caller/helper pair
-- keep full-suite regression monotonic after the slice lands
+- no broad x86 linker bring-up
+- no general external symbol model beyond this direct helper-call case
+- no unrelated backend runtime conversions
+- no activation of the umbrella roadmap for direct implementation
 
-## Explicit Non-Goals
+## Guardrails
 
-- widening beyond the first external `call rel32` relocation shape
-- PLT/GOT expansion, dynamic linking, shared-library support, or generic x86
-  relocation completeness
-- broader runtime convergence work for unrelated x86 backend cases
-- new linker mechanism work beyond the already-closed first x86 linker slice
+- keep the slice bounded to the single-function external direct-call contract
+- prefer the smallest target-local change that preserves existing backend-owned
+  x86 asm cases
+- compare against Clang object behavior instead of guessing relocation details
+- if execution discovers broader external-call/linker gaps, record them as a
+  separate idea instead of silently expanding this plan
 
-## Suggested Execution Order
+## Validation Intent
 
-1. confirm the staged `helper_ext` object contract and name the exact tests that
-   lock it in
-2. tighten the smallest object-surface test that proves the built-in assembler
-   emits the expected relocation-bearing caller object
-3. implement only the parser, encoder, and ELF writer pieces needed for one
-   external `call rel32` relocation
-4. route the bounded helper-ext object path through the built-in assembler
-   handoff
-5. validate parser parity, external assembler parity, linker compatibility, and
-   full regression health
+- add or enable a focused x86 backend contract test for `call_helper.c` object
+  output
+- keep the runtime case `backend_runtime_call_helper` on `BACKEND_OUTPUT_KIND=asm`
+- verify emitted assembly and relocation snippets against Clang/objdump output
+- run the targeted backend tests plus the full `ctest` suite before closure
 
-## Good First Patch
+## Handoff Notes
 
-Make the built-in x86 assembler emit the single `helper_ext`
-relocation-bearing object contract already exercised by the bounded adapter
-tests, then prove its object surface matches the external assembler baseline.
+- this child replaces the temporary umbrella staging runbook as the active
+  execution target
+- `ideas/open/32_backend_builtin_assembler_x86_call_relocation_plan.md` remains
+  deferred as a separate parked discovery note if later relocation-specific
+  follow-up is still needed
 
 ## Completion Notes
 
-- The built-in x86 assembler path now parses and encodes the bounded
-  `call helper_ext` plus `ret` slice and emits the staged `.text` bytes
-  `e8 00 00 00 00 c3`.
-- The emitted caller object preserves the `.rela.text` PLT32 relocation
-  contract at offset `1` with type `4`, symbol `helper_ext`, and addend `-4`.
-- The bounded helper-ext object path routes through the built-in assembler
-  handoff and remains consumable by the first x86 linker slice.
-- Validation on 2026-03-29:
-  `build/backend_lir_adapter_tests` passed and
-  `ctest --test-dir build -j8 --output-on-failure` passed with
-  `2339/2339` tests green.
-
-## Leftover Issues
-
-- None recorded for this bounded slice.
+- `tests/c/internal/backend_case/call_helper.c` now models the bounded
+  external-call object slice directly via `extern int helper(void);`, while
+  [`tests/c/internal/backend_case/call_helper_def.c`](/workspaces/c4c/tests/c/internal/backend_case/call_helper_def.c)
+  supplies the linked runtime definition.
+- `tests/c/internal/InternalTests.cmake` now adds
+  `backend_contract_x86_64_extern_call_object`, keeps
+  `backend_runtime_call_helper` on backend-owned asm, links the helper
+  definition explicitly, and excludes the support file from the auto-generated
+  backend runtime loop.
+- `src/backend/x86/codegen/emit.cpp` now recognizes both bounded zero-arg
+  external direct-call encodings used by the repo and emits backend-owned x86
+  assembly with `call helper` instead of falling back to LLVM text.
+- Validation completed with targeted x86 checks, a clean backend-label run
+  (`ctest --test-dir build -L backend --output-on-failure`: 66/66 pass), and a
+  clean full-suite run (`test_before.log`: 2339/2339 pass,
+  `test_after.log`: 2340/2340 pass).

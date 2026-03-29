@@ -615,11 +615,32 @@ if(CLANG_EXECUTABLE)
     )
     set_tests_properties(backend_contract_aarch64_extern_call_object PROPERTIES
         LABELS "internal;backend")
+
+    add_test(
+      NAME backend_contract_x86_64_extern_call_object
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/call_helper.c
+              -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+              -DBACKEND_OUTPUT_KIND=asm
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend_contract/call_helper_x86_64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend_contract/call_helper_x86_64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.globl main|call helper"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-x86-64|.text|.rela.text|main|*UND*|helper|R_X86_64_PLT32"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_contract_case.cmake"
+    )
+    set_tests_properties(backend_contract_x86_64_extern_call_object PROPERTIES
+        LABELS "internal;backend")
   endif()
 
   if(BACKEND_RUNTIME_TARGET_TRIPLE)
     foreach(src IN LISTS INTERNAL_BACKEND_TEST_SRCS)
       get_filename_component(stem "${src}" NAME_WE)
+      if(stem STREQUAL "call_helper_def")
+        continue()
+      endif()
       if(stem STREQUAL "variadic_pair_second" AND
          NOT BACKEND_RUNTIME_TARGET_TRIPLE STREQUAL "aarch64-unknown-linux-gnu")
         continue()
@@ -636,6 +657,7 @@ if(CLANG_EXECUTABLE)
       elseif(stem STREQUAL "call_helper")
         set(expect_exit_code 7)
         set(backend_output_kind "asm")
+        set(extra_toolchain_inputs "${INTERNAL_C_TEST_ROOT}/backend_case/call_helper_def.c")
       elseif(stem STREQUAL "param_slot")
         set(expect_exit_code 6)
         set(backend_output_kind "asm")
@@ -749,9 +771,11 @@ if(CLANG_EXECUTABLE)
                 -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/${stem}.ll
                 -DEXPECT_EXIT_CODE=${expect_exit_code}
                 -DOUT_C2LL_BIN=${CMAKE_BINARY_DIR}/internal_backend/${stem}.bin
+                "-DEXTRA_TOOLCHAIN_INPUTS=${extra_toolchain_inputs}"
                 -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_positive_case.cmake"
       )
       set_tests_properties("${test_name}" PROPERTIES LABELS "internal;backend")
+      unset(extra_toolchain_inputs)
     endforeach()
 
     add_test(

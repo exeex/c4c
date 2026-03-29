@@ -668,9 +668,7 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_extern_decl_call_slice(
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
-      function.entry.value != 0 || function.blocks.size() != 1 ||
-      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+  if (function.name != "main" || function.is_declaration || function.blocks.size() != 1) {
     return std::nullopt;
   }
 
@@ -684,11 +682,59 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_extern_decl_call_slice(
   const auto* call = std::get_if<LirCallOp>(&entry.insts.front());
   if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
       *ret->value_str != call->result || call->callee != ("@" + extern_decl.name) ||
-      !call->args_str.empty() || !call->callee_type_suffix.empty()) {
+      !call->args_str.empty() ||
+      (!call->callee_type_suffix.empty() && call->callee_type_suffix != "()")) {
     return std::nullopt;
   }
 
   return MinimalExternDeclCallSlice{extern_decl.name};
+}
+
+std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_slice(
+    const c4c::backend::BackendModule& module) {
+  if (module.functions.size() != 2) {
+    return std::nullopt;
+  }
+
+  const auto* main_fn = find_function(module, "main");
+  if (main_fn == nullptr || main_fn->is_declaration ||
+      main_fn->signature.linkage != "define" ||
+      main_fn->signature.return_type != "i32" ||
+      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
+      main_fn->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& main_block = main_fn->blocks.front();
+  if (main_block.label != "entry" || main_block.insts.size() != 1 ||
+      !main_block.terminator.value.has_value() ||
+      main_block.terminator.type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* call =
+      std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
+  if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
+      *main_block.terminator.value != call->result || !call->args_str.empty() ||
+      (!call->callee_type_suffix.empty() && call->callee_type_suffix != "()") ||
+      call->callee.empty() || call->callee.front() != '@') {
+    return std::nullopt;
+  }
+
+  const std::string callee_name = call->callee.substr(1);
+  if (callee_name == "main") {
+    return std::nullopt;
+  }
+
+  const auto* callee_fn = find_function(module, callee_name);
+  if (callee_fn == nullptr || !callee_fn->is_declaration ||
+      callee_fn->signature.linkage != "declare" ||
+      callee_fn->signature.return_type != "i32" ||
+      !callee_fn->signature.params.empty() || callee_fn->signature.is_vararg) {
+    return std::nullopt;
+  }
+
+  return MinimalExternDeclCallSlice{callee_name};
 }
 
 std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_pointer_diff_slice(
@@ -2248,6 +2294,10 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       return emit_minimal_conditional_return_asm(scaffold_module, *slice);
     }
     const auto adapted = c4c::backend::adapt_minimal_module(module);
+    if (const auto slice = parse_minimal_declared_direct_call_slice(adapted);
+        slice.has_value()) {
+      return emit_minimal_extern_decl_call_asm(adapted, *slice);
+    }
     if (const auto slice = parse_minimal_direct_call_slice(adapted);
         slice.has_value()) {
       return emit_minimal_direct_call_asm(adapted, *slice);
