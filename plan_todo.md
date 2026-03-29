@@ -9,19 +9,39 @@ Source Plan: plan.md
 - Step 5: prepare the next diagnostic slice by bounding the first
   committed-failure vs no-match follow-up under speculative `try_parse_*`
   record-member rewinds
-- Current slice: closed the wrapper-only top-level
-  `consume_qualified_type_spelling` follow-up so parser-debug summary stacks
-  keep the leading qualified-type probe frames before
-  `parse_top_level_parameter_list`
-- Iteration target: sample the remaining `std_vector_simple.cpp` parser-debug
-  output again and bound the next distinct speculative `try_parse_*`
-  committed-failure vs no-match ranking case now that the
-  `exception.h:67`, `stl_vector.h:336` / `:340`, and
-  `stl_bvector.h:78` wrapper-only summaries no longer collapse to
-  `parse_top_level -> parse_top_level_parameter_list`
+- Current slice: bounded the `std_vector_simple.cpp`
+  reference-qualified top-level parameter candidate at
+  `/usr/include/c++/14/bits/exception.h:65` with focused parser-debug
+  coverage, without changing parser ranking yet
+- Iteration target: reduce the `exception.h:65` / `new_allocator.h:92`
+  `got='&'` family out of `tests/cpp/std/std_vector_simple.cpp` into a
+  standalone parser-debug repro, then use that reduced case to evaluate the
+  next committed-failure vs no-match tri-state change
 
 ## Completed
 
+- recorded the required clean after-suite for this iteration and passed the
+  monotonic regression guard against the recorded
+  `before passed=2278/2279` baseline:
+  `after passed=2279/2280`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged
+- sampled the remaining `tests/cpp/std/std_vector_simple.cpp`
+  parser-debug output again and bounded the next distinct speculative
+  `try_parse_*` candidate around `/usr/include/c++/14/bits/exception.h:65`,
+  where a reference-qualified top-level parameter path reports
+  `parse_fn=try_parse_qualified_base_type` with `got='&'`
+- added focused parser-debug coverage in
+  `cpp_parser_debug_std_vector_ref_param_leaf` so the motivating
+  `std_vector_simple.cpp` trace now locks the `exception.h:65`
+  summary/stack shape:
+  `parse_top_level -> consume_qualified_type_spelling ->
+  parse_top_level_parameter_list -> parse_param ->
+  try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type`
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_std_vector_wrapper_spelling_stack`,
+  `cpp_parser_debug_std_vector_wrapper_anchor_stack`,
+  `cpp_parser_debug_std_vector_ref_param_leaf`, and
+  `cpp_parser_debug_top_level_qualified_probe_leaf`
 - recorded the required clean after-suite for this iteration and passed the
   monotonic regression guard against the recorded
   `before passed=2274/2275` baseline:
