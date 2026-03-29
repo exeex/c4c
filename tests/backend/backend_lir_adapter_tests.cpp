@@ -306,9 +306,9 @@ std::vector<std::uint8_t> make_minimal_relocation_object_fixture() {
   return out;
 }
 
-std::vector<std::uint8_t> make_single_member_archive_fixture() {
-  const auto member = make_minimal_relocation_object_fixture();
-  const std::string member_name = "minimal_reloc.o/";
+std::vector<std::uint8_t> make_single_member_archive_fixture(
+    const std::vector<std::uint8_t>& member,
+    const std::string& member_name_with_trailing_slash) {
 
   std::vector<std::uint8_t> archive;
   archive.insert(archive.end(), {'!', '<', 'a', 'r', 'c', 'h', '>', '\n'});
@@ -317,7 +317,7 @@ std::vector<std::uint8_t> make_single_member_archive_fixture() {
     archive.insert(archive.end(), text.begin(), text.end());
   };
 
-  append_text(format_ar_field(member_name, 16));
+  append_text(format_ar_field(member_name_with_trailing_slash, 16));
   append_text(format_ar_field("0", 12));
   append_text(format_ar_field("0", 6));
   append_text(format_ar_field("0", 6));
@@ -329,6 +329,11 @@ std::vector<std::uint8_t> make_single_member_archive_fixture() {
   if ((archive.size() & 1u) != 0u) archive.push_back('\n');
 
   return archive;
+}
+
+std::vector<std::uint8_t> make_single_member_archive_fixture() {
+  return make_single_member_archive_fixture(make_minimal_relocation_object_fixture(),
+                                            "minimal_reloc.o/");
 }
 
 std::vector<std::uint8_t> make_minimal_helper_definition_object_fixture() {
@@ -4790,6 +4795,43 @@ void test_aarch64_linker_loads_first_static_objects_through_shared_input_seam() 
   std::filesystem::remove(helper_path);
 }
 
+void test_aarch64_linker_loads_first_static_objects_from_archive_through_shared_input_seam() {
+  const auto caller_path = make_temp_path("c4c_aarch64_linker_archive_caller", ".o");
+  const auto helper_archive_path = make_temp_path("c4c_aarch64_linker_helper", ".a");
+  write_binary_file(caller_path, make_minimal_relocation_object_fixture());
+  write_binary_file(helper_archive_path,
+                    make_single_member_archive_fixture(
+                        make_minimal_helper_definition_object_fixture(), "helper_def.o/"));
+
+  std::string error;
+  const auto loaded = c4c::backend::aarch64::linker::load_first_static_input_objects(
+      {caller_path, helper_archive_path}, &error);
+  expect_true(loaded.has_value(),
+              "aarch64 linker input seam should load the bounded CALL26 slice when the helper definition comes from a shared-parsed archive: " +
+                  error);
+  expect_true(loaded->size() == 2,
+              "aarch64 linker input seam should resolve the bounded archive-backed slice into the same two loaded object surfaces");
+  expect_true((*loaded)[0].path == caller_path && (*loaded)[0].object.source_name == caller_path,
+              "aarch64 linker input seam should preserve the caller object identity when archive loading is enabled");
+  expect_true((*loaded)[1].path == helper_archive_path + "(helper_def.o)" &&
+                  (*loaded)[1].object.source_name == helper_archive_path + "(helper_def.o)",
+              "aarch64 linker input seam should surface the selected archive member as the helper provider");
+
+  const auto caller_text_index = find_section_index((*loaded)[0].object, ".text");
+  expect_true(caller_text_index < (*loaded)[0].object.sections.size() &&
+                  (*loaded)[0].object.relocations[caller_text_index].size() == 1 &&
+                  (*loaded)[0].object.relocations[caller_text_index][0].sym_idx <
+                      (*loaded)[0].object.symbols.size() &&
+                  (*loaded)[0].object.symbols[(*loaded)[0].object.relocations[caller_text_index][0].sym_idx]
+                          .name == "helper_ext",
+              "aarch64 linker input seam should keep the caller relocation pointed at helper_ext before the archive member is linked");
+  expect_true((*loaded)[1].object.symbols.size() >= 2,
+              "aarch64 linker input seam should parse the selected helper archive member into the shared object surface");
+
+  std::filesystem::remove(caller_path);
+  std::filesystem::remove(helper_archive_path);
+}
+
 void test_aarch64_backend_assembler_handoff_helper_stages_emitted_text() {
   const auto output_path = make_temp_output_path("c4c_aarch64_handoff");
   const auto staged = c4c::backend::aarch64::assemble_module(make_return_add_module(), output_path);
@@ -4972,6 +5014,7 @@ int main() {
   test_shared_linker_parses_single_member_archive_fixture();
   test_aarch64_linker_names_first_static_call26_slice();
   test_aarch64_linker_loads_first_static_objects_through_shared_input_seam();
+  test_aarch64_linker_loads_first_static_objects_from_archive_through_shared_input_seam();
   test_aarch64_backend_assembler_handoff_helper_stages_emitted_text();
   test_aarch64_builtin_object_matches_external_return_add_surface();
   return 0;
