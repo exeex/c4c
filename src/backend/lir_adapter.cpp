@@ -145,9 +145,16 @@ void render_signature(std::ostringstream& out,
 
 BackendInst adapt_inst(const c4c::codegen::lir::LirInst& inst) {
   if (const auto* bin = std::get_if<c4c::codegen::lir::LirBinOp>(&inst)) {
-    if (bin->opcode != "add") fail_unsupported("binary opcode '" + bin->opcode + "'");
+    BackendBinaryOpcode opcode;
+    if (bin->opcode == "add") {
+      opcode = BackendBinaryOpcode::Add;
+    } else if (bin->opcode == "sub") {
+      opcode = BackendBinaryOpcode::Sub;
+    } else {
+      fail_unsupported("binary opcode '" + bin->opcode + "'");
+    }
     BackendBinaryInst out;
-    out.opcode = BackendBinaryOpcode::Add;
+    out.opcode = opcode;
     out.result = bin->result;
     out.type_str = bin->type_str;
     out.lhs = bin->lhs;
@@ -649,6 +656,9 @@ void render_inst(std::ostringstream& out, const BackendInst& inst) {
     switch (bin->opcode) {
       case BackendBinaryOpcode::Add:
         opcode = "add";
+        break;
+      case BackendBinaryOpcode::Sub:
+        opcode = "sub";
         break;
     }
     out << "  " << bin->result << " = " << opcode << " " << bin->type_str << " "

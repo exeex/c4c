@@ -347,6 +347,32 @@ std::optional<std::int64_t> parse_minimal_return_add_imm(
   return *lhs + *rhs;
 }
 
+std::optional<std::int64_t> parse_minimal_return_sub_imm(
+    const c4c::backend::BackendModule& module) {
+  if (!is_minimal_single_function_asm_slice(module)) {
+    return std::nullopt;
+  }
+
+  const auto& block = module.functions.front().blocks.front();
+  if (block.insts.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto* sub = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts.front());
+  if (sub == nullptr || sub->opcode != c4c::backend::BackendBinaryOpcode::Sub ||
+      sub->type_str != "i32" || *block.terminator.value != sub->result) {
+    return std::nullopt;
+  }
+
+  const auto lhs = parse_i64(sub->lhs);
+  const auto rhs = parse_i64(sub->rhs);
+  if (!lhs.has_value() || !rhs.has_value()) {
+    return std::nullopt;
+  }
+
+  return *lhs - *rhs;
+}
+
 std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -2321,6 +2347,9 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       return emit_minimal_return_asm(adapted, *imm);
     }
     if (const auto imm = parse_minimal_return_add_imm(adapted); imm.has_value()) {
+      return emit_minimal_return_asm(adapted, *imm);
+    }
+    if (const auto imm = parse_minimal_return_sub_imm(adapted); imm.has_value()) {
       return emit_minimal_return_asm(adapted, *imm);
     }
   } catch (const c4c::backend::LirAdapterError&) {

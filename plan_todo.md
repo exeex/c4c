@@ -6,8 +6,8 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 3: Add the narrowest durable validation for the selected single-block
-  integer-subtraction fallback family.
+- Step 2: Classify the next bounded fallback family after closing the
+  single-block integer-subtraction slice.
 
 ## Completed Items
 
@@ -34,15 +34,29 @@ Source Plan: plan.md
   `src/00006.c` to `src/00010.c` introduce loops or multi-block control flow,
   `src/00063.c` depends on scalar global-object emission,
   `src/00100.c` depends on direct-call lowering.
+- Step 3 completed for the selected subtraction family by adding focused backend
+  unit coverage for the `sub i32 imm, imm -> ret` slice and by keeping
+  `c_testsuite_x86_backend_src_00002_c` as the external seed case.
+- Step 4 completed by extending the backend adapter to preserve `sub` in the
+  backend-owned binary-op surface and by teaching
+  `src/backend/x86/codegen/emit.cpp` to fold the single-block subtraction slice
+  into native x86 assembly.
+- Step 5 completed for this slice:
+  `./build/backend_lir_adapter_tests` passed,
+  `ctest --test-dir build --output-on-failure -R '^c_testsuite_x86_backend_src_00002_c$'`
+  passed, and `ctest --test-dir build -L x86_backend --output-on-failure`
+  improved from 20 passed / 200 failed / 220 total to
+  21 passed / 199 failed / 220 total with no newly introduced failure mode.
 
 ## Next Slice
 
-- Add a targeted backend-owned test slice that asserts native x86 assembly for
-  the selected subtraction family before changing emitter behavior.
-- Start with `src/00002.c` as the narrow failing case and only widen if the
-  test harness cannot isolate that shape cleanly.
-- After the test is in place, add the smallest `sub i32 imm, imm -> ret`
-  support in `src/backend/x86/codegen/emit.cpp`.
+- Reclassify the remaining smallest repeatable fallback family from the updated
+  `x86_backend` set, starting with the previously excluded
+  local-slot/store-owned cases around `src/00003.c` and `src/00011.c`.
+- Confirm whether that next family can stay as one root cause or needs to be
+  split from pointer load/store cases such as `src/00004.c` and `src/00005.c`.
+- Preserve `src/00002.c` as the closed reference slice for native subtraction
+  lowering while the next family is selected.
 
 ## Blockers
 
@@ -54,3 +68,7 @@ Source Plan: plan.md
   iteration for local reference; do not treat it as durable repo state.
 - Preserve the legacy `c_testsuite_*` surface as the unchanged baseline while
   promoting backend-owned cases one family at a time.
+- The subtraction slice now emits:
+  `.intel_syntax noprefix`, `.text`, `.globl main`, `mov eax, 0`, `ret`
+  for `tests/c/external/c-testsuite/src/00002.c` on
+  `x86_64-unknown-linux-gnu`.

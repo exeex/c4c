@@ -998,6 +998,17 @@ c4c::codegen::lir::LirModule make_return_add_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_return_sub_module() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_return_zero_module();
+  auto& function = module.functions.front();
+  auto& block = function.blocks.front();
+  block.insts.push_back(LirBinOp{"%t0", "sub", "i32", "3", "3"});
+  block.terminator = LirRet{std::string("%t0"), "i32"};
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_void_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -3501,6 +3512,33 @@ void test_adapter_tracks_structured_entry_block_and_return_contract() {
               "adapter should preserve the return type separately from the block text");
 }
 
+void test_adapter_tracks_structured_sub_entry_block_and_return_contract() {
+  const auto adapted = c4c::backend::adapt_minimal_module(make_return_sub_module());
+  const auto& function = adapted.functions.front();
+  expect_true(function.blocks.size() == 1,
+              "adapter should preserve the single-block subtraction slice");
+  const auto& block = function.blocks.front();
+  expect_true(block.label == "entry",
+              "adapter should preserve the entry block label for subtraction slices");
+  expect_true(block.insts.size() == 1,
+              "adapter should preserve the current single subtraction instruction");
+  const auto* sub = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts.front());
+  expect_true(sub != nullptr,
+              "adapter should materialize the return-sub instruction as a backend-owned op");
+  expect_true(sub->opcode == c4c::backend::BackendBinaryOpcode::Sub,
+              "adapter should preserve the subtraction opcode in backend-owned form");
+  expect_true(sub->result == "%t0",
+              "adapter should preserve the subtraction result name");
+  expect_true(sub->type_str == "i32",
+              "adapter should preserve the subtraction type");
+  expect_true(sub->lhs == "3" && sub->rhs == "3",
+              "adapter should preserve the subtraction operands");
+  expect_true(block.terminator.value.has_value() && *block.terminator.value == "%t0",
+              "adapter should preserve the subtraction return value separately from the block text");
+  expect_true(block.terminator.type_str == "i32",
+              "adapter should preserve the subtraction return type separately from the block text");
+}
+
 void test_rejects_unsupported_instruction() {
   using namespace c4c::codegen::lir;
 
@@ -3581,6 +3619,20 @@ void test_x86_backend_scaffold_renders_direct_return_immediate_slice() {
                   "x86 backend should materialize direct return immediates in eax");
   expect_contains(rendered, "ret",
                   "x86 backend should terminate direct return immediates with ret");
+}
+
+void test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_return_sub_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should emit a global entry symbol for direct return subtraction slices");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 backend should fold the supported subtraction slice into an immediate return");
+  expect_contains(rendered, "ret",
+                  "x86 backend should terminate direct return subtraction slices with ret");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the supported subtraction slice");
 }
 
 void test_x86_backend_renders_direct_call_slice() {
@@ -6820,11 +6872,13 @@ int main() {
   test_adapter_normalizes_typed_two_arg_direct_call_both_local_double_rewrite_slice();
   test_adapter_tracks_structured_signature_contract();
   test_adapter_tracks_structured_entry_block_and_return_contract();
+  test_adapter_tracks_structured_sub_entry_block_and_return_contract();
   test_rejects_unsupported_instruction();
   test_aarch64_backend_scaffold_renders_supported_slice();
   test_aarch64_backend_scaffold_renders_direct_return_immediate_slice();
   test_x86_backend_scaffold_routes_through_explicit_emit_surface();
   test_x86_backend_scaffold_renders_direct_return_immediate_slice();
+  test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice();
   test_x86_backend_renders_direct_call_slice();
   test_x86_backend_renders_param_slot_slice();
   test_x86_backend_renders_typed_direct_call_local_arg_slice();
