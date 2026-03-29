@@ -2,6 +2,8 @@
 
 #include "analysis.hpp"
 
+#include <cstddef>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -11,6 +13,7 @@ struct EntryAllocaSlotPlan {
   std::string alloca_name;
   bool needs_stack_slot = true;
   bool remove_following_entry_store = false;
+  std::optional<std::size_t> coalesced_block;
 };
 
 struct ParamAllocaSlotPlan {

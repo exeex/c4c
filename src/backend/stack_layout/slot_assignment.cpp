@@ -1,5 +1,7 @@
 #include "slot_assignment.hpp"
 
+#include "alloca_coalescing.hpp"
+
 #include <unordered_map>
 #include <variant>
 
@@ -41,6 +43,7 @@ std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
     const LirFunction& function,
     const StackLayoutAnalysis& analysis) {
   std::vector<EntryAllocaSlotPlan> plans;
+  const auto coalescable_allocas = compute_coalescable_allocas(function, analysis);
 
   for (std::size_t index = 0; index < function.alloca_insts.size(); ++index) {
     const auto* alloca = std::get_if<LirAllocaOp>(&function.alloca_insts[index]);
@@ -68,6 +71,10 @@ std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
                is_zero_initializer_store(store) &&
                analysis.is_entry_alloca_overwritten_before_read(alloca->result)) {
       plan.remove_following_entry_store = true;
+    }
+
+    if (plan.needs_stack_slot && !is_param_alloca_name(alloca->result)) {
+      plan.coalesced_block = coalescable_allocas.find_single_block(alloca->result);
     }
 
     plans.push_back(std::move(plan));
@@ -161,7 +168,10 @@ std::vector<c4c::codegen::lir::LirInst> prune_dead_param_alloca_insts(
   entry_plans.reserve(plans.size());
   for (const auto& plan : plans) {
     entry_plans.push_back(
-        EntryAllocaSlotPlan{plan.alloca_name, plan.needs_stack_slot, !plan.needs_stack_slot});
+        EntryAllocaSlotPlan{plan.alloca_name,
+                            plan.needs_stack_slot,
+                            !plan.needs_stack_slot,
+                            std::nullopt});
   }
   return prune_dead_entry_alloca_insts(function, entry_plans);
 }

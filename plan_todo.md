@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - [ ] Step 4: Port the stack-layout helper boundary that consumes regalloc results.
-  Iteration target: thread the new shared `alloca_coalescing` classification into the first real slot-planning consumer so single-block non-param allocas can begin affecting shared stack-slot reuse instead of remaining analysis-only state.
+  Iteration target: turn the new shared `coalesced_block` slot-planning hint into an actual shared slot-placement or reuse decision at the next real stack-layout consumer instead of stopping at planner metadata.
 
 ## Todo Queue
 
@@ -43,10 +43,12 @@ Source Plan: plan.md
 - [x] Extended `backend_lir_adapter_tests` with overwrite-before-read versus read-before-store scalar entry-slot coverage, reran `./build/backend_lir_adapter_tests`, reran `compare_smoke_struct`, reran full `ctest`, and rechecked monotonic non-regression with `check_monotonic_regression.py --allow-non-decreasing-passed` (`before=570/574`, `after=570/574`, no new failures).
 - [x] Added the first shared `src/backend/stack_layout/alloca_coalescing.{hpp,cpp}` seam so Step 4 can classify non-param allocas as dead, single-block coalescable, or escaped after GEP-tracked use scanning instead of leaving that stack-slot-reuse boundary entirely stubbed.
 - [x] Extended `backend_lir_adapter_tests` with shared alloca-coalescing coverage for dead, GEP-tracked single-block, and call-escaped local allocas; rebuilt `backend_lir_adapter_tests`, reran the binary, reran full `ctest`, and revalidated the saved baseline (`after=570/574`, same four known failures only).
+- [x] Threaded shared `alloca_coalescing` into `src/backend/stack_layout/slot_assignment.{hpp,cpp}` so live non-param entry-alloca plans now carry a `coalesced_block` hint when their uses stay within one block instead of leaving that reuse classification trapped in analysis-only helpers.
+- [x] Extended `backend_lir_adapter_tests` with slot-assignment coverage for single-block reuse hints and escaped-local exclusions, rebuilt `backend_lir_adapter_tests`, reran the binary, reran full `ctest`, and rechecked monotonic non-regression with `check_monotonic_regression.py --allow-non-decreasing-passed` (`before=570/574`, `after=570/574`, no new failures).
 
 ## Next Intended Slice
 
-- After shared alloca-coalescing classification lands, thread that result into the first real slot-planning consumer so single-block non-param allocas can begin steering shared stack-slot reuse instead of only exposing analysis state.
+- After shared slot-assignment starts surfacing `coalesced_block`, make the next Step 4 consumer turn that metadata into an actual slot-placement or reuse decision rather than planner-only state.
 - Keep Step 5 AArch64 prologue and emit wiring deferred until the shared helper and analysis seams feed a broader stack-layout consumer than fallback-LIR pruning, with narrow tests around that handoff.
 
 ## Blockers

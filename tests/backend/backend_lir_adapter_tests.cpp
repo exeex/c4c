@@ -3623,8 +3623,9 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
 
   expect_true(live_plans.size() == 1 && live_plans.front().alloca_name == "%lv.buf" &&
                   live_plans.front().needs_stack_slot &&
-                  !live_plans.front().remove_following_entry_store,
-              "shared slot-assignment planning should preserve paired zero-init stores for aggregate entry allocas");
+                  !live_plans.front().remove_following_entry_store &&
+                  live_plans.front().coalesced_block == 0,
+              "shared slot-assignment planning should preserve paired zero-init stores for aggregate entry allocas while exposing the shared single-block reuse classification");
 
   const auto read_first_module = make_read_before_store_local_alloca_candidate_module();
   const auto& read_first_function = read_first_module.functions.front();
@@ -3668,6 +3669,20 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
                   scalar_read_first_plans.front().needs_stack_slot &&
                   !scalar_read_first_plans.front().remove_following_entry_store,
               "shared slot-assignment planning should preserve paired zero-init stores for scalar entry allocas that are read before the first overwrite");
+
+  const auto escaped_module = make_escaped_local_alloca_candidate_module();
+  const auto& escaped_function = escaped_module.functions.back();
+  const auto escaped_analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(escaped_function, regalloc, {});
+  const auto escaped_plans =
+      c4c::backend::stack_layout::plan_entry_alloca_slots(escaped_function,
+                                                          escaped_analysis);
+
+  expect_true(escaped_plans.size() == 1 &&
+                  escaped_plans.front().alloca_name == "%lv.buf" &&
+                  escaped_plans.front().needs_stack_slot &&
+                  !escaped_plans.front().coalesced_block.has_value(),
+              "shared slot-assignment planning should leave call-escaped local allocas out of the single-block reuse pool");
 }
 
 void test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts() {
