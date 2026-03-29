@@ -7,21 +7,50 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: prepare the next diagnostic slice by bounding the first
-  committed-failure vs no-match follow-up under speculative `try_parse_*`
-  record-member rewinds
-- Current slice: resample the remaining parser-debug output after bounding the
-  `stl_vector.h:1939` record-member if-init family and confirm whether any
-  uncovered record-member rewinds still need reduced coverage
-- Iteration target: classify the next distinct surviving family after the
-  bounded `stl_vector.h:1939` case, or record that the remaining candidates
-  have moved outside the active record-member rewind focus
-- Next intended slice: if record-member rewinds are exhausted, identify the
-  first adjacent speculative non-record-member family that still needs a
-  reduced parser-debug coverage decision and record it without silently
-  broadening the active plan
+  committed-failure vs no-match follow-up after the record-member rewind
+  samples are exhausted
+- Current slice: resample the remaining adjacent non-record-member
+  `std_vector_simple.cpp` parser-debug output after locking the attributed
+  top-level parameter `got='['` family and choose the next reduced coverage
+  target without silently broadening the plan
+- Iteration target: decide whether the next uncovered family should be the
+  repeated comma-in-expression path in `stl_uninitialized.h` or another
+  top-level parameter-list wrapper case, then bound it in one reduced repro
+- Next intended slice: if the comma-in-expression family remains the first
+  distinct uncovered path, add one reduced parser-debug case that locks its
+  current `parse_primary` summary and method-local stack shape before touching
+  any summary-ranking heuristics
 
 ## Completed
 
+- recorded the required clean after-suite for this iteration and passed the
+  monotonic regression guard against the recorded
+  `before passed=2290/2291` baseline:
+  `after passed=2292/2293`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged and the
+  guard script reported zero new failing tests
+- confirmed the remaining candidates after the bounded
+  `stl_vector.h:1939` record-member if-init family now move outside the active
+  record-member rewind focus, then selected the first adjacent uncovered
+  non-record-member family at
+  `tests/cpp/std/std_vector_simple.cpp`
+  `/usr/include/c++/14/bits/stl_uninitialized.h:1109`
+  with
+  `parse_fn=parse_top_level_parameter_list phase=committed expected=RPAREN got='['`
+- added reduced parser-debug coverage in
+  `cpp_parser_debug_attr_param_leaf` for the attributed top-level parameter
+  family, locking the current outer committed
+  `parse_top_level_parameter_list` summary together with the
+  `parse_top_level -> parse_top_level_parameter_list -> parse_param ->
+  try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type ->
+  consume_qualified_type_spelling_with_typename ->
+  consume_qualified_type_spelling` stack suffix
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_attr_param_leaf`,
+  `cpp_parser_debug_std_vector_ref_param_leaf`,
+  `cpp_parser_debug_top_level_qualified_probe_leaf`,
+  `cpp_parser_debug_std_vector_record_member_const_if_leaf`, and
+  `cpp_parser_debug_std_vector_record_member_if_init_leaf`
 - recorded the required clean after-suite for this iteration and passed the
   monotonic regression guard against the recorded
   `before passed=2287/2288` baseline:

@@ -519,6 +519,19 @@ set_tests_properties(cpp_parser_debug_std_vector_record_member_if_init_leaf PROP
 )
 
 add_test(
+  NAME cpp_parser_debug_attr_param_leaf
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_attr_param_leaf.cpp
+          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_top_level_parameter_list phase=committed expected=RPAREN got='['"
+          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> parse_top_level_parameter_list -> parse_param -> try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type -> consume_qualified_type_spelling_with_typename -> consume_qualified_type_spelling"
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_attr_param_leaf PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
   NAME cpp_hir_consteval_template_dump
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/consteval_template.cpp"
 )
