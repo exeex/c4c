@@ -1,5 +1,6 @@
 #include "parser.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <sstream>
@@ -20,6 +21,33 @@ std::vector<const std::string*> collapse_adjacent_stack_frames(
         previous = &fn;
     }
     return compact;
+}
+
+bool should_replace_best_parse_failure(const Parser::ParseFailure& current,
+                                       const Parser::ParseFailure& candidate) {
+    if (!current.active) return true;
+    if (candidate.token_index != current.token_index) {
+        const bool wrapper_unwind_prefix =
+            candidate.token_index > current.token_index &&
+            candidate.token_index <= current.token_index + 1 &&
+            candidate.committed == current.committed &&
+            candidate.stack_trace.size() < current.stack_trace.size() &&
+            !candidate.stack_trace.empty() &&
+            std::equal(candidate.stack_trace.begin(), candidate.stack_trace.end(),
+                       current.stack_trace.begin());
+        if (wrapper_unwind_prefix) return false;
+        return candidate.token_index > current.token_index;
+    }
+    if (candidate.committed != current.committed) {
+        return candidate.committed && !current.committed;
+    }
+    if (candidate.stack_trace.size() != current.stack_trace.size()) {
+        return candidate.stack_trace.size() > current.stack_trace.size();
+    }
+    if (candidate.column != current.column) {
+        return candidate.column > current.column;
+    }
+    return false;
 }
 
 }  // namespace
@@ -324,12 +352,9 @@ void Parser::note_parse_failure(const char* expected,
         failure.stack_trace.push_back(frame.function_name);
     }
 
-    const bool replace =
-        !best_parse_failure_.active ||
-        failure.token_index > best_parse_failure_.token_index ||
-        (failure.token_index == best_parse_failure_.token_index &&
-         failure.committed && !best_parse_failure_.committed);
-    if (replace) best_parse_failure_ = std::move(failure);
+    if (should_replace_best_parse_failure(best_parse_failure_, failure)) {
+        best_parse_failure_ = std::move(failure);
+    }
 
     note_parse_debug_event(committed ? "fail" : "soft_fail", detail);
 }

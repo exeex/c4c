@@ -9,9 +9,9 @@ Source Plan: plan.md
 - Step 5: prepare the next diagnostic slice by bounding the first
   committed-failure vs no-match follow-up under speculative `try_parse_*`
   record-member rewinds
-- Current slice: document the completed record-member summary-stack work and
-  leave the next tri-state failure-selection target explicit for the next
-  iteration
+- Current slice: record the completed wrapper-vs-inner committed-failure
+  ranking work, then leave the next speculative `try_parse_*` family explicit
+  for the next iteration
 
 ## Completed
 
@@ -57,16 +57,29 @@ Source Plan: plan.md
 - reran focused record-member/parser-debug coverage plus the required clean
   before/after full suite and passed the monotonic regression guard:
   `before passed=2252/2253`, `after passed=2254/2255`, no new failing tests
+- added reduced parser-debug regression coverage in
+  `cpp_parser_debug_record_member_param_default_rank` for a malformed record
+  member parameter default that previously degraded from the inner
+  `expected=RPAREN` failure to an outer `expected=RBRACE` wrapper error
+- updated best parse-failure ranking so an adjacent-token committed wrapper
+  unwind does not replace a deeper committed inner failure when the wrapper
+  stack is only a strict prefix of the earlier failure
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_expr_stmt_stack`,
+  `cpp_parser_debug_record_member_stack`, and
+  `cpp_parser_debug_record_member_param_default_rank`
+- reran the required clean before/after full suite and passed the monotonic
+  regression guard with no new failing tests:
+  `before passed=2254/2255`, `after passed=2256/2257`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged
 
 ## Next Intended Slice
 
-- move from summary-stack shape into failure selection: identify the first
-  speculative `try_parse_*` family where a committed wrapper failure still
-  overrides a more useful soft-failure root cause
-- likely first target: `try_parse_record_member_dispatch` vs
-  `try_parse_record_type_like_member_dispatch`, with a reduced case that proves
-  the final summary/error line prefers the best committed inner cause instead
-  of the outer rewind boundary
+- widen the same committed-vs-wrapper failure-selection review to the next
+  speculative `try_parse_*` family that still masks the best inner failure
+- likely next target: a type-like record-member rewind inside
+  `try_parse_record_type_like_member_dispatch`, or the next namespace/type
+  speculative dispatch that still falls back to a wrapper-only error line
 
 ## Blockers
 
@@ -81,6 +94,12 @@ Source Plan: plan.md
 
 - active repro command:
   `./build/c4cll --parser-debug --parse-only tests/cpp/std/std_vector_simple.cpp`
+- active iteration target: force a same-token ranking conflict inside
+  `try_parse_record_member_dispatch` and keep the inner committed leaf cause in
+  the summary/error line
+- this iteration delivered the reduced parameter-default regression and the
+  adjacent-token wrapper-prefix ranking fix; the next slice should stay on
+  speculative failure selection instead of adding broader instrumentation
 - this iteration landed the speculative record-member summary-stack fallback;
   the next one should stay focused on failure selection rather than adding more
   guard coverage
