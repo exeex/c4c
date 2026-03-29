@@ -344,9 +344,20 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
     return std::nullopt;
   }
 
-  const std::string expected_prefix = "i32 " + load->result + ", i32 ";
-  if (call->args_str.size() <= expected_prefix.size() ||
-      call->args_str.substr(0, expected_prefix.size()) != expected_prefix) {
+  const std::string first_local_prefix = "i32 " + load->result + ", i32 ";
+  const std::string second_local_suffix = ", i32 " + load->result;
+  std::string normalized_args;
+  if (call->args_str.size() > first_local_prefix.size() &&
+      call->args_str.substr(0, first_local_prefix.size()) == first_local_prefix) {
+    normalized_args =
+        "i32 " + store->val + ", i32 " + call->args_str.substr(first_local_prefix.size());
+  } else if (call->args_str.size() > second_local_suffix.size() &&
+             call->args_str.substr(call->args_str.size() - second_local_suffix.size()) ==
+                 second_local_suffix) {
+    normalized_args =
+        call->args_str.substr(0, call->args_str.size() - second_local_suffix.size()) +
+        ", i32 " + store->val;
+  } else {
     return std::nullopt;
   }
 
@@ -359,7 +370,7 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
       call->return_type,
       call->callee,
       call->callee_type_suffix,
-      "i32 " + store->val + ", i32 " + call->args_str.substr(expected_prefix.size()),
+      normalized_args,
   });
   out_block.terminator = BackendReturn{call->result, "i32"};
   out.blocks.push_back(std::move(out_block));

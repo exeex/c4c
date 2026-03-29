@@ -412,6 +412,46 @@ c4c::codegen::lir::LirModule make_typed_direct_call_two_arg_local_arg_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_typed_direct_call_two_arg_second_local_arg_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction helper;
+  helper.name = "add_pair";
+  helper.signature_text = "define i32 @add_pair(i32 %p.x, i32 %p.y)\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.insts.push_back(LirBinOp{"%t0", "add", "i32", "%p.x", "%p.y"});
+  helper_entry.terminator = LirRet{std::string("%t0"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+  main_fn.alloca_insts.push_back(LirAllocaOp{"%lv.y", "i32", "", 4});
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(LirStoreOp{"i32", "7", "%lv.y"});
+  main_entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.y"});
+  main_entry.insts.push_back(
+      LirCallOp{"%t1", "i32", "@add_pair", "(i32, i32)", "i32 5, i32 %t0"});
+  main_entry.terminator = LirRet{std::string("%t1"), "i32"};
+  main_fn.blocks.push_back(std::move(main_entry));
+
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(main_fn));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_local_array_gep_module() {
   using namespace c4c::codegen::lir;
 
@@ -1216,6 +1256,18 @@ void test_adapter_normalizes_typed_two_arg_direct_call_local_arg_slice() {
                   "adapter should normalize the local slot first argument into the backend-owned two-argument slice");
 }
 
+void test_adapter_normalizes_typed_two_arg_direct_call_second_local_arg_slice() {
+  const auto adapted = c4c::backend::adapt_minimal_module(
+      make_typed_direct_call_two_arg_second_local_arg_module());
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "define i32 @add_pair(i32 %p.x, i32 %p.y)",
+                  "adapter should preserve the two-argument second-local helper signature");
+  expect_contains(rendered, "%t0 = add i32 %p.x, %p.y",
+                  "adapter should still preserve the two-argument helper add");
+  expect_contains(rendered, "call i32 (i32, i32) @add_pair(i32 5, i32 7)",
+                  "adapter should normalize the local slot second argument into the backend-owned two-argument slice");
+}
+
 void test_adapter_tracks_structured_signature_contract() {
   const auto adapted = c4c::backend::adapt_minimal_module(make_return_zero_module());
   const auto& signature = adapted.functions.front().signature;
@@ -1502,6 +1554,23 @@ void test_aarch64_backend_renders_typed_two_arg_direct_call_local_arg_slice() {
                   "aarch64 backend should preserve the immediate second argument in w1 before bl");
   expect_contains(rendered, "bl add_pair",
                   "aarch64 backend should lower the two-argument local-argument direct call with bl");
+}
+
+void test_aarch64_backend_renders_typed_two_arg_direct_call_second_local_arg_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          make_typed_direct_call_two_arg_second_local_arg_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "aarch64 backend should lower the two-argument second-local helper into a real function symbol");
+  expect_contains(rendered, "add_pair:\n  add w0, w0, w1\n  ret\n",
+                  "aarch64 backend should keep the second-local helper on the register-only add path");
+  expect_contains(rendered, "mov w0, #5",
+                  "aarch64 backend should preserve the immediate first argument in w0 before bl");
+  expect_contains(rendered, "mov w1, #7",
+                  "aarch64 backend should materialize the normalized local second argument in w1 before bl");
+  expect_contains(rendered, "bl add_pair",
+                  "aarch64 backend should lower the two-argument second-local direct call with bl");
 }
 
 void test_aarch64_backend_renders_local_array_gep_slice() {
@@ -1867,6 +1936,7 @@ int main() {
   test_adapter_preserves_typed_two_arg_direct_call_helper_slice();
   test_adapter_normalizes_typed_direct_call_local_arg_slice();
   test_adapter_normalizes_typed_two_arg_direct_call_local_arg_slice();
+  test_adapter_normalizes_typed_two_arg_direct_call_second_local_arg_slice();
   test_adapter_tracks_structured_signature_contract();
   test_adapter_tracks_structured_entry_block_and_return_contract();
   test_rejects_unsupported_instruction();
@@ -1884,6 +1954,7 @@ int main() {
   test_aarch64_backend_renders_typed_two_arg_direct_call_slice();
   test_aarch64_backend_renders_typed_direct_call_local_arg_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_local_arg_slice();
+  test_aarch64_backend_renders_typed_two_arg_direct_call_second_local_arg_slice();
   test_aarch64_backend_renders_local_array_gep_slice();
   test_aarch64_backend_renders_param_member_array_gep_slice();
   test_aarch64_backend_renders_nested_member_pointer_array_gep_slice();
