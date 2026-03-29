@@ -1360,7 +1360,122 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
   }
 
   if (main_fn->alloca_insts.size() != 1) {
-    return std::nullopt;
+    if (main_fn->alloca_insts.size() != 2) {
+      return std::nullopt;
+    }
+
+    const auto* alloca0 = std::get_if<LirAllocaOp>(&main_fn->alloca_insts[0]);
+    const auto* alloca1 = std::get_if<LirAllocaOp>(&main_fn->alloca_insts[1]);
+    if (alloca0 == nullptr || alloca1 == nullptr || alloca0->type_str != "i32" ||
+        alloca1->type_str != "i32" || !alloca0->count.empty() || !alloca1->count.empty()) {
+      return std::nullopt;
+    }
+
+    const auto* call = std::get_if<LirCallOp>(&main_block.insts.back());
+    if (call == nullptr || call->result.empty() || call->callee != "@add_pair" ||
+        call->callee_type_suffix != "(i32, i32)" || *main_ret->value_str != call->result) {
+      return std::nullopt;
+    }
+
+    const auto call_args = parse_call_args(*call);
+    if (!call_args.has_value()) {
+      return std::nullopt;
+    }
+
+    struct SlotState {
+      std::string alloca_name;
+      std::int64_t stored_imm = 0;
+      bool initialized = false;
+      std::string last_load_result;
+      std::string rewritten_result;
+      bool rewrite_committed = false;
+    };
+
+    auto parse_store_imm = [](const LirInst& inst, std::string_view expected_ptr)
+        -> std::optional<std::int64_t> {
+      const auto* store = std::get_if<LirStoreOp>(&inst);
+      if (store == nullptr || store->type_str != "i32" || store->ptr != expected_ptr) {
+        return std::nullopt;
+      }
+      return parse_i64(store->val);
+    };
+
+    SlotState lhs_slot{alloca0->result};
+    SlotState rhs_slot{alloca1->result};
+    const auto lhs_store_imm = parse_store_imm(main_block.insts[0], lhs_slot.alloca_name);
+    const auto rhs_store_imm = parse_store_imm(main_block.insts[1], rhs_slot.alloca_name);
+    if (!lhs_store_imm.has_value() || !rhs_store_imm.has_value()) {
+      return std::nullopt;
+    }
+    lhs_slot.stored_imm = *lhs_store_imm;
+    lhs_slot.initialized = true;
+    rhs_slot.stored_imm = *rhs_store_imm;
+    rhs_slot.initialized = true;
+
+    auto match_slot = [&](std::string_view ptr) -> SlotState* {
+      if (ptr == lhs_slot.alloca_name) return &lhs_slot;
+      if (ptr == rhs_slot.alloca_name) return &rhs_slot;
+      return nullptr;
+    };
+
+    for (std::size_t inst_index = 2; inst_index + 1 < main_block.insts.size(); ++inst_index) {
+      const auto& inst = main_block.insts[inst_index];
+
+      if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
+        if (load->type_str != "i32") {
+          return std::nullopt;
+        }
+        auto* slot = match_slot(load->ptr);
+        if (slot == nullptr || !slot->initialized) {
+          return std::nullopt;
+        }
+        slot->last_load_result = load->result;
+        continue;
+      }
+
+      if (const auto* rewrite = std::get_if<LirBinOp>(&inst)) {
+        if (rewrite->opcode != "add" || rewrite->type_str != "i32" || rewrite->rhs != "0") {
+          return std::nullopt;
+        }
+        SlotState* matched_slot = nullptr;
+        for (auto* slot : {&lhs_slot, &rhs_slot}) {
+          if (slot->last_load_result == rewrite->lhs) {
+            matched_slot = slot;
+            break;
+          }
+        }
+        if (matched_slot == nullptr) {
+          return std::nullopt;
+        }
+        matched_slot->rewritten_result = rewrite->result;
+        continue;
+      }
+
+      if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
+        if (store->type_str != "i32") {
+          return std::nullopt;
+        }
+        auto* slot = match_slot(store->ptr);
+        if (slot == nullptr || store->val != slot->rewritten_result) {
+          return std::nullopt;
+        }
+        slot->rewrite_committed = true;
+        continue;
+      }
+
+      return std::nullopt;
+    }
+
+    if (call_args->first != lhs_slot.last_load_result ||
+        call_args->second != rhs_slot.last_load_result) {
+      return std::nullopt;
+    }
+
+    return MinimalTwoArgDirectCallSlice{
+        "add_pair",
+        lhs_slot.stored_imm,
+        rhs_slot.stored_imm,
+    };
   }
 
   const auto* alloca = std::get_if<LirAllocaOp>(&main_fn->alloca_insts.front());
