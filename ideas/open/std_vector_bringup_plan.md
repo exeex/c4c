@@ -40,12 +40,23 @@ It has already shown dependency on:
 - implementation identifiers such as `__true_type`
 - libstdc++ internal typedef / trait scaffolding
 
-That makes this test a useful staged bring-up target after the codegen refactor
-guardrails are in place.
+After the recent frontend refactors, the direct repro no longer dies in the
+older unmatched-brace / parse-state-loss shape that previously ended as
+`expected RBRACE`.
+
+The current frontier is earlier and more structured:
+
+- typedef / alias setup inside libstdc++ iterator and allocator scaffolding
+- function-style declarator parsing with template and reference-heavy signatures
+- expression parsing inside libstdc++ helper layers such as `predefined_ops`
+  and `stl_algobase`
+
+That is a meaningful improvement: the parser is now getting through many earlier
+header hazards and exposing narrower, more actionable blockers.
 
 ## Current Status
 
-As of 2026-03-26, this bring-up has moved past the earlier libstdc++ parser
+As of 2026-03-29, this bring-up has moved past the earlier libstdc++ parser
 frontline blockers that were showing up in `<type_traits>` and
 `ext/numeric_traits.h`.
 
@@ -76,15 +87,23 @@ Current direct repro status for `tests/cpp/std/std_vector_simple.cpp`:
 
 - preprocessing succeeds
 - the previous `ext/numeric_traits.h:57` dependent-enum failure is gone
-- the remaining failure is currently:
-  - `tests/cpp/std/std_vector_simple.cpp:9:1: error: expected RBRACE but got '' at line 10`
+- the previous late `expected RBRACE` failure is no longer the lead blocker
+- the current parse-only repro now fails earlier in libstdc++ with errors such as:
+  - `/usr/include/c++/14/bits/stl_iterator.h:1494:15: error: typedef uses unknown base type: _Iterator`
+  - `/usr/include/c++/14/bits/predefined_ops.h:150:32: error: expected RPAREN but got '__comp'`
+  - `/usr/include/c++/14/bits/stl_algobase.h:971:11: error: unexpected token in expression: const`
+  - `/usr/include/c++/14/bits/new_allocator.h:70:15: error: typedef uses unknown base type: _Tp`
+  - `/usr/include/c++/14/bits/stl_uninitialized.h:179:61: error: unexpected token in expression: ,`
 
 Interpretation:
 
 - the bring-up has advanced through the first wave of system-header
   compatibility failures
-- the next task is to reduce and localize the unmatched-brace / parse-state-loss
-  failure that now occurs later in the header stack
+- the recent refactor appears to have closed many of the earlier
+  parse-state-loss holes
+- the next task is to reduce and localize the new libstdc++ frontier around
+  typedef-base resolution, declarator parsing, and expression parsing in the
+  iterator / allocator / algorithm helper stack
 - the work is still in Phase B moving into Phase C; it has not yet reached
   `std::vector` semantics or codegen validation
 
@@ -252,8 +271,13 @@ Reduced tests now covering this progress:
 
 Remaining immediate blocker after these fixes:
 
-- reduce the later unmatched-brace / parse-state-loss failure currently exposed
-  by `std_vector_simple.cpp`
+- reduce the new libstdc++ failures currently exposed by `std_vector_simple.cpp`
+- prioritize the first structured blockers in:
+  - `bits/stl_iterator.h`
+  - `bits/predefined_ops.h`
+  - `bits/stl_algobase.h`
+  - `bits/new_allocator.h`
+  - `bits/stl_uninitialized.h`
 
 Additional parser coverage now in place around class-body recovery:
 
@@ -293,6 +317,9 @@ This phase is not complete yet, but the case is meaningfully closer:
 
 - it no longer stops on the earlier `<type_traits>` template-parameter failures
 - it no longer stops on `ext/numeric_traits.h:57`
+- it no longer leads with the older unmatched-brace / `expected RBRACE` failure
+- it now fails deeper in libstdc++ with narrower parser/sema issues around
+  iterator, allocator, and helper-expression scaffolding
 - it still does not reach `std::vector` semantics or lowering
 
 
