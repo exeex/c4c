@@ -7,8 +7,8 @@ Source Plan: plan.md
 ## Active Item
 
 - [ ] Step 2: evaluate the next narrow alternative-operator spelling after
-  `bitand`, keeping coverage scoped to lexer tokenization plus the smallest
-  parser compatibility edge it exposes
+  `bitor`, likely `bitxor`, keeping coverage scoped to lexer tokenization plus
+  the smallest parser compatibility edge it exposes
 
 ## Todo
 
@@ -243,10 +243,29 @@ Source Plan: plan.md
   `friend_inline_operator_parse`.
 - [x] Recorded full-suite post-change status in `test_after.log`:
   `100% tests passed, 0 tests failed out of 2361`.
+- [x] Recorded fresh full-suite baseline in `test_before.log` before the
+  `bitor` slice: `100% tests passed, 0 tests failed out of 2361`.
+- [x] Added
+  [tests/cpp/internal/postive_case/keyword_bitor_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/keyword_bitor_parse.cpp),
+  registered it as a parse-only positive case, and added explicit lexer / AST
+  assertions in
+  [tests/cpp/internal/InternalTests.cmake](/workspaces/c4c/tests/cpp/internal/InternalTests.cmake)
+  to pin `PIPE 'bitor'` output plus `Function(operator_bitor)` in the parse
+  dump.
+- [x] Reserved `bitor` in the lexer by classifying it to the existing
+  `TokenKind::Pipe`, allowing both ordinary `a bitor b` parsing and overloaded
+  `operator bitor` lowering through the existing bitwise-or token path.
+- [x] Revalidated the slice with targeted coverage:
+  `keyword_bitor_parse`, `cpp_lex_keyword_bitor_tokens`,
+  `cpp_parse_keyword_bitor_operator_dump`, `keyword_bitand_parse`,
+  `keyword_or_parse`, `operator_decl_eq_parse`, and
+  `friend_inline_operator_parse`.
+- [x] Recorded full-suite post-change status in `test_after.log`:
+  `100% tests passed, 0 tests failed out of 2364`.
 
 ## Next Intended Slice
 
-After `bitand`, evaluate whether `bitor`, `xor`, `compl`, or one of the
+After `bitor`, evaluate whether `bitxor`, `compl`, or one of the
 assignment-form aliases can land as the next single-token slice without
 widening into a broader alias batch.
 
@@ -304,4 +323,9 @@ widening into a broader alias batch.
   `100% tests passed, 0 tests failed out of 2358`.
 - The `bitand` slice finished cleanly with monotonic full-suite results:
   `2358 -> 2361` total passing tests due to the new parse case plus explicit
+  lexer / AST assertions.
+- Fresh baseline before the `bitor` slice remains clean:
+  `100% tests passed, 0 tests failed out of 2361`.
+- The `bitor` slice finished cleanly with monotonic full-suite results:
+  `2361 -> 2364` total passing tests due to the new parse case plus explicit
   lexer / AST assertions.

@@ -271,6 +271,7 @@ TokenKind keyword_from_string(const std::string &s, bool gnu_extensions,
     if (s == "bool")      return TokenKind::KwBool;
     if (s == "and")       return TokenKind::AmpAmp;
     if (s == "bitand")    return TokenKind::Amp;
+    if (s == "bitor")     return TokenKind::Pipe;
     if (s == "not")       return TokenKind::Bang;
     if (s == "not_eq")    return TokenKind::BangEqual;
     if (s == "or")        return TokenKind::PipePipe;
