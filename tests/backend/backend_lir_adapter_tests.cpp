@@ -1676,6 +1676,45 @@ c4c::codegen::lir::LirModule make_two_local_temp_return_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_local_pointer_temp_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }");
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.p", "ptr", "", 8});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "4", "%lv.x"});
+  entry.insts.push_back(LirStoreOp{"ptr", "%lv.x", "%lv.p"});
+  entry.insts.push_back(LirLoadOp{"%t0", "ptr", "%lv.p"});
+  entry.insts.push_back(LirStoreOp{"i32", "0", "%t0"});
+  entry.insts.push_back(LirLoadOp{"%t1", "ptr", "%lv.p"});
+  entry.insts.push_back(LirLoadOp{"%t2", "i32", "%t1"});
+  entry.terminator = LirRet{std::string("%t2"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_x86_local_pointer_temp_return_module() {
+  auto module = make_local_pointer_temp_return_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_param_slot_module() {
   using namespace c4c::codegen::lir;
 
@@ -3408,6 +3447,16 @@ void test_adapter_normalizes_two_local_temp_return_slice() {
                   "adapter should collapse the selected two-local scalar slot pattern into a direct return");
 }
 
+void test_adapter_normalizes_local_pointer_temp_return_slice() {
+  const auto adapted =
+      c4c::backend::adapt_minimal_module(make_local_pointer_temp_return_module());
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "define i32 @main()",
+                  "adapter should preserve the local-pointer round-trip function signature");
+  expect_contains(rendered, "ret i32 0",
+                  "adapter should collapse the bounded local pointer round-trip into a direct return");
+}
+
 void test_adapter_preserves_typed_two_arg_direct_call_helper_slice() {
   const auto adapted =
       c4c::backend::adapt_minimal_module(make_typed_direct_call_two_arg_module());
@@ -3725,6 +3774,18 @@ void test_x86_backend_renders_two_local_temp_return_slice() {
                   "x86 backend should fold the bounded two-local scalar slot slice into the final immediate return");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the supported two-local scalar slot slice");
+}
+
+void test_x86_backend_renders_local_pointer_temp_return_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_local_pointer_temp_return_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should emit a real entry symbol for the bounded local pointer round-trip slice");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 backend should fold the normalized local pointer round-trip into the final immediate return");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the supported local pointer round-trip slice");
 }
 
 void test_x86_backend_renders_direct_call_slice() {
@@ -6954,6 +7015,7 @@ int main() {
   test_adapter_normalizes_local_temp_return_slice();
   test_adapter_normalizes_local_temp_sub_return_slice();
   test_adapter_normalizes_two_local_temp_return_slice();
+  test_adapter_normalizes_local_pointer_temp_return_slice();
   test_adapter_preserves_typed_two_arg_direct_call_helper_slice();
   test_adapter_normalizes_typed_direct_call_local_arg_slice();
   test_adapter_normalizes_typed_two_arg_direct_call_local_arg_slice();
@@ -6975,6 +7037,7 @@ int main() {
   test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice();
   test_x86_backend_renders_local_temp_sub_slice();
   test_x86_backend_renders_two_local_temp_return_slice();
+  test_x86_backend_renders_local_pointer_temp_return_slice();
   test_x86_backend_renders_direct_call_slice();
   test_x86_backend_renders_param_slot_slice();
   test_x86_backend_renders_typed_direct_call_local_arg_slice();

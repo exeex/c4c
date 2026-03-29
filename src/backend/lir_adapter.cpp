@@ -380,6 +380,111 @@ std::optional<BackendFunction> adapt_local_temp_sub_return_function(
   return out;
 }
 
+std::optional<BackendFunction> adapt_local_pointer_temp_return_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const BackendFunctionSignature& signature) {
+  using namespace c4c::codegen::lir;
+
+  if (function.is_declaration || signature.linkage != "define" ||
+      signature.return_type != "i32" || signature.name != "main" ||
+      !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
+      function.alloca_insts.size() != 2 || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* scalar_alloca = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
+  const auto* ptr_alloca = std::get_if<LirAllocaOp>(&function.alloca_insts[1]);
+  if (scalar_alloca == nullptr || ptr_alloca == nullptr ||
+      scalar_alloca->type_str != "i32" || scalar_alloca->result.empty() ||
+      ptr_alloca->type_str != "ptr" || ptr_alloca->result.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  const auto* ret = std::get_if<LirRet>(&block.terminator);
+  if (block.label != "entry" || ret == nullptr || !ret->value_str.has_value() ||
+      ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string, std::string> scalar_values;
+  std::unordered_map<std::string, std::string> pointer_targets;
+  std::unordered_map<std::string, std::string> loaded_values;
+
+  auto resolve_scalar_ptr = [&](std::string_view ptr) -> std::optional<std::string> {
+    if (ptr == scalar_alloca->result) {
+      return scalar_alloca->result;
+    }
+    const auto it = pointer_targets.find(std::string(ptr));
+    if (it == pointer_targets.end()) {
+      return std::nullopt;
+    }
+    return it->second;
+  };
+
+  for (const auto& inst : block.insts) {
+    if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
+      if (store->type_str == "i32") {
+        const auto target = resolve_scalar_ptr(store->ptr);
+        if (!target.has_value()) {
+          return std::nullopt;
+        }
+        scalar_values[*target] = store->val;
+        continue;
+      }
+
+      if (store->type_str == "ptr" && store->ptr == ptr_alloca->result &&
+          store->val == scalar_alloca->result) {
+        pointer_targets[ptr_alloca->result] = scalar_alloca->result;
+        continue;
+      }
+
+      return std::nullopt;
+    }
+
+    if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
+      if (load->type_str == "ptr") {
+        const auto it = pointer_targets.find(load->ptr);
+        if (it == pointer_targets.end()) {
+          return std::nullopt;
+        }
+        pointer_targets[load->result] = it->second;
+        continue;
+      }
+
+      if (load->type_str == "i32") {
+        const auto target = resolve_scalar_ptr(load->ptr);
+        if (!target.has_value()) {
+          return std::nullopt;
+        }
+        const auto value_it = scalar_values.find(*target);
+        if (value_it == scalar_values.end()) {
+          return std::nullopt;
+        }
+        loaded_values[load->result] = value_it->second;
+        continue;
+      }
+
+      return std::nullopt;
+    }
+
+    return std::nullopt;
+  }
+
+  const auto value_it = loaded_values.find(*ret->value_str);
+  if (value_it == loaded_values.end()) {
+    return std::nullopt;
+  }
+
+  BackendFunction out;
+  out.signature = signature;
+  BackendBlock out_block;
+  out_block.label = block.label;
+  out_block.terminator = BackendReturn{value_it->second, "i32"};
+  out.blocks.push_back(std::move(out_block));
+  return out;
+}
+
 std::optional<BackendFunction> adapt_local_single_arg_call_function(
     const c4c::codegen::lir::LirFunction& function,
     const BackendFunctionSignature& signature) {
@@ -694,6 +799,10 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function) {
     return *normalized;
   }
   if (const auto normalized = adapt_local_temp_sub_return_function(function, signature);
+      normalized.has_value()) {
+    return *normalized;
+  }
+  if (const auto normalized = adapt_local_pointer_temp_return_function(function, signature);
       normalized.has_value()) {
     return *normalized;
   }
