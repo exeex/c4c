@@ -1292,6 +1292,15 @@ c4c::codegen::lir::LirModule make_typed_call_crossing_direct_call_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_typed_call_crossing_direct_call_with_spacing_module() {
+  auto module = make_typed_call_crossing_direct_call_module();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts[1]);
+  call.callee_type_suffix = "( i32 )";
+  call.args_str = "  i32   %t0  ";
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_interval_phi_join_module() {
   using namespace c4c::codegen::lir;
 
@@ -2421,6 +2430,14 @@ c4c::codegen::lir::LirModule make_typed_direct_call_local_arg_with_spacing_modul
   return module;
 }
 
+c4c::codegen::lir::LirModule make_typed_direct_call_local_arg_with_suffix_spacing_module() {
+  auto module = make_typed_direct_call_local_arg_with_spacing_module();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts.back());
+  call.callee_type_suffix = "( i32 )";
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_typed_direct_call_two_arg_local_arg_module() {
   using namespace c4c::codegen::lir;
 
@@ -2593,6 +2610,15 @@ make_typed_direct_call_two_arg_first_local_rewrite_with_spacing_module() {
   auto& call = std::get<c4c::codegen::lir::LirCallOp>(
       module.functions.back().blocks.front().insts.back());
   call.args_str = " i32   %t2 ,   i32 7 ";
+  return module;
+}
+
+c4c::codegen::lir::LirModule
+make_typed_direct_call_two_arg_first_local_rewrite_with_suffix_spacing_module() {
+  auto module = make_typed_direct_call_two_arg_first_local_rewrite_with_spacing_module();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts.back());
+  call.callee_type_suffix = "( i32 , i32 )";
   return module;
 }
 
@@ -4573,6 +4599,23 @@ void test_x86_backend_renders_typed_direct_call_local_arg_slice() {
                       "x86 backend should stop falling back to LLVM text for the single-local direct-call slice");
 }
 
+void test_x86_backend_renders_typed_direct_call_local_arg_spacing_slice() {
+  auto module = make_typed_direct_call_local_arg_with_suffix_spacing_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend should keep spacing-tolerant typed single-argument direct calls on the asm path");
+  expect_contains(rendered, "call add_one",
+                  "x86 backend should still lower spacing-tolerant typed single-argument calls directly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should not fall back to LLVM text for spacing-tolerant typed single-argument calls");
+}
+
 void test_x86_backend_renders_typed_two_arg_direct_call_slice() {
   auto module = make_typed_direct_call_two_arg_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -4757,6 +4800,25 @@ void test_x86_backend_renders_typed_two_arg_direct_call_both_local_double_rewrit
                       "x86 backend should stop falling back to LLVM text for the double-rewritten both-local slice");
 }
 
+void test_x86_backend_renders_typed_two_arg_direct_call_first_local_rewrite_spacing_slice() {
+  auto module = make_typed_direct_call_two_arg_first_local_rewrite_with_suffix_spacing_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend should keep spacing-tolerant typed first-local rewrites on the asm path");
+  expect_contains(rendered, "mov esi, 7",
+                  "x86 backend should still recover the second typed argument through structured call parsing");
+  expect_contains(rendered, "call add_pair",
+                  "x86 backend should still lower spacing-tolerant typed two-argument calls directly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should not fall back to LLVM text for spacing-tolerant typed two-argument calls");
+}
+
 void test_x86_backend_renders_local_array_slice() {
   auto module = make_local_array_gep_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -4841,6 +4903,20 @@ void test_x86_backend_cleans_up_redundant_self_move_on_call_crossing_slice() {
                       "x86 backend should remove the redundant backend-owned self-move after the helper call");
   expect_contains(rendered, "add eax, ebx",
                   "x86 backend should still consume the helper result directly from eax after cleanup");
+}
+
+void test_x86_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path() {
+  auto module = make_typed_call_crossing_direct_call_with_spacing_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "mov edi, ebx",
+                  "x86 backend should still decode spacing-tolerant typed call-crossing arguments structurally");
+  expect_contains(rendered, "call add_one",
+                  "x86 backend should keep the spacing-tolerant call-crossing helper call on the asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should not fall back to LLVM text for spacing-tolerant typed call-crossing slices");
 }
 
 void test_x86_backend_renders_compare_and_branch_slice() {
@@ -5636,6 +5712,19 @@ void test_aarch64_backend_cleans_up_redundant_call_result_traffic_on_call_crossi
                   "aarch64 backend should consume the helper result directly from the ABI return register");
 }
 
+void test_aarch64_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          make_typed_call_crossing_direct_call_with_spacing_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "mov w0, w20",
+                  "aarch64 backend should still decode spacing-tolerant typed call-crossing arguments structurally");
+  expect_contains(rendered, "bl add_one",
+                  "aarch64 backend should keep spacing-tolerant typed call-crossing slices on the asm path");
+  expect_contains(rendered, "add w0, w20, w0",
+                  "aarch64 backend should still combine the decoded helper result with the preserved source register");
+}
+
 void test_aarch64_backend_renders_typed_two_arg_direct_call_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_typed_direct_call_two_arg_module()},
@@ -5664,6 +5753,17 @@ void test_aarch64_backend_renders_typed_direct_call_local_arg_slice() {
                   "aarch64 backend should materialize the local direct-call argument in w0 before bl");
   expect_contains(rendered, "bl add_one",
                   "aarch64 backend should lower the local-argument direct call with bl");
+}
+
+void test_aarch64_backend_renders_typed_direct_call_local_arg_spacing_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          make_typed_direct_call_local_arg_with_suffix_spacing_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "mov w0, #5",
+                  "aarch64 backend should keep spacing-tolerant typed single-argument calls on the asm path");
+  expect_contains(rendered, "bl add_one",
+                  "aarch64 backend should still lower spacing-tolerant typed single-argument direct calls with bl");
 }
 
 void test_aarch64_backend_renders_typed_two_arg_direct_call_local_arg_slice() {
@@ -5731,6 +5831,19 @@ void test_aarch64_backend_renders_typed_two_arg_direct_call_first_local_rewrite_
                   "aarch64 backend should preserve the immediate second argument in w1 before bl for the rewritten first-local slice");
   expect_contains(rendered, "bl add_pair",
                   "aarch64 backend should lower the rewritten first-local direct call with bl");
+}
+
+void test_aarch64_backend_renders_typed_two_arg_direct_call_first_local_rewrite_spacing_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          make_typed_direct_call_two_arg_first_local_rewrite_with_suffix_spacing_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "mov w0, #5",
+                  "aarch64 backend should keep spacing-tolerant typed first-local rewrites on the asm path");
+  expect_contains(rendered, "mov w1, #7",
+                  "aarch64 backend should still recover the second typed argument through structured call parsing");
+  expect_contains(rendered, "bl add_pair",
+                  "aarch64 backend should still lower spacing-tolerant typed two-argument direct calls with bl");
 }
 
 void test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_arg_slice() {
@@ -7896,10 +8009,12 @@ int main() {
   test_x86_backend_renders_direct_call_slice();
   test_x86_backend_renders_param_slot_slice();
   test_x86_backend_renders_typed_direct_call_local_arg_slice();
+  test_x86_backend_renders_typed_direct_call_local_arg_spacing_slice();
   test_x86_backend_renders_typed_two_arg_direct_call_slice();
   test_x86_backend_renders_typed_two_arg_direct_call_local_arg_slice();
   test_x86_backend_renders_typed_two_arg_direct_call_second_local_arg_slice();
   test_x86_backend_renders_typed_two_arg_direct_call_second_local_rewrite_slice();
+  test_x86_backend_renders_typed_two_arg_direct_call_first_local_rewrite_spacing_slice();
   test_x86_backend_renders_typed_two_arg_direct_call_both_local_arg_slice();
   test_x86_backend_renders_typed_two_arg_direct_call_both_local_first_rewrite_slice();
   test_x86_backend_renders_typed_two_arg_direct_call_both_local_second_rewrite_slice();
@@ -7908,6 +8023,7 @@ int main() {
   test_x86_backend_renders_global_load_slice();
   test_x86_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice();
   test_x86_backend_cleans_up_redundant_self_move_on_call_crossing_slice();
+  test_x86_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path();
   test_x86_backend_renders_compare_and_branch_slice();
   test_x86_backend_renders_compare_and_branch_slice_from_typed_predicates();
   test_x86_backend_renders_compare_and_branch_le_slice();
@@ -7948,12 +8064,15 @@ int main() {
   test_aarch64_backend_renders_typed_direct_call_slice();
   test_aarch64_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice();
   test_aarch64_backend_cleans_up_redundant_call_result_traffic_on_call_crossing_slice();
+  test_aarch64_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path();
   test_aarch64_backend_renders_typed_two_arg_direct_call_slice();
   test_aarch64_backend_renders_typed_direct_call_local_arg_slice();
+  test_aarch64_backend_renders_typed_direct_call_local_arg_spacing_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_local_arg_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_second_local_arg_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_second_local_rewrite_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_first_local_rewrite_slice();
+  test_aarch64_backend_renders_typed_two_arg_direct_call_first_local_rewrite_spacing_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_arg_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_first_rewrite_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_second_rewrite_slice();

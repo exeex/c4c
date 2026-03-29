@@ -7,9 +7,20 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace c4c::codegen::lir {
+
+struct LirTypedCallArgView {
+  std::string_view type;
+  std::string_view operand;
+};
+
+struct ParsedLirTypedCallView {
+  std::vector<std::string_view> param_types;
+  std::vector<LirTypedCallArgView> args;
+};
 
 inline std::string_view trim_lir_arg_text(std::string_view text) {
   while (!text.empty() && (text.front() == ' ' || text.front() == '\t')) {
@@ -60,7 +71,9 @@ inline void collect_lir_value_names_from_text(std::string_view text,
 }
 
 template <typename Fn>
-inline void for_each_lir_call_arg(std::string_view args_str, Fn&& fn) {
+inline void for_each_lir_top_level_segment(std::string_view text,
+                                           char delim,
+                                           Fn&& fn) {
   std::size_t start = 0;
   int paren_depth = 0;
   int bracket_depth = 0;
@@ -68,14 +81,14 @@ inline void for_each_lir_call_arg(std::string_view args_str, Fn&& fn) {
   int angle_depth = 0;
 
   auto emit_arg = [&](std::size_t end) {
-    const auto arg = trim_lir_arg_text(args_str.substr(start, end - start));
-    if (!arg.empty()) {
-      fn(arg);
+    const auto segment = trim_lir_arg_text(text.substr(start, end - start));
+    if (!segment.empty()) {
+      fn(segment);
     }
   };
 
-  for (std::size_t index = 0; index < args_str.size(); ++index) {
-    switch (args_str[index]) {
+  for (std::size_t index = 0; index < text.size(); ++index) {
+    switch (text[index]) {
       case '(':
         ++paren_depth;
         break;
@@ -100,19 +113,93 @@ inline void for_each_lir_call_arg(std::string_view args_str, Fn&& fn) {
       case '>':
         if (angle_depth > 0) --angle_depth;
         break;
-      case ',':
-        if (paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 &&
-            angle_depth == 0) {
-          emit_arg(index);
-          start = index + 1;
-        }
-        break;
       default:
         break;
     }
+    if (text[index] == delim && paren_depth == 0 && bracket_depth == 0 &&
+        brace_depth == 0 && angle_depth == 0) {
+      emit_arg(index);
+      start = index + 1;
+    }
   }
 
-  emit_arg(args_str.size());
+  emit_arg(text.size());
+}
+
+template <typename Fn>
+inline void for_each_lir_call_arg(std::string_view args_str, Fn&& fn) {
+  for_each_lir_top_level_segment(args_str, ',', std::forward<Fn>(fn));
+}
+
+inline std::optional<LirTypedCallArgView> parse_lir_typed_call_arg(std::string_view arg);
+
+inline std::optional<std::vector<LirTypedCallArgView>> parse_lir_typed_call_args(
+    std::string_view args_str) {
+  std::vector<LirTypedCallArgView> args;
+  bool parse_failed = false;
+  for_each_lir_call_arg(args_str, [&](std::string_view arg) {
+    const auto parsed = parse_lir_typed_call_arg(arg);
+    if (!parsed.has_value()) {
+      parse_failed = true;
+      return;
+    }
+    args.push_back(*parsed);
+  });
+  if (parse_failed) {
+    return std::nullopt;
+  }
+  return args;
+}
+
+inline std::optional<std::vector<std::string_view>> parse_lir_call_param_types(
+    std::string_view callee_type_suffix) {
+  callee_type_suffix = trim_lir_arg_text(callee_type_suffix);
+  if (callee_type_suffix.empty()) {
+    return std::vector<std::string_view>{};
+  }
+  if (callee_type_suffix.size() < 2 || callee_type_suffix.front() != '(' ||
+      callee_type_suffix.back() != ')') {
+    return std::nullopt;
+  }
+
+  const auto inner = trim_lir_arg_text(
+      callee_type_suffix.substr(1, callee_type_suffix.size() - 2));
+  std::vector<std::string_view> param_types;
+  if (inner.empty()) {
+    return param_types;
+  }
+
+  bool parse_failed = false;
+  for_each_lir_top_level_segment(inner, ',', [&](std::string_view part) {
+    if (part.empty()) {
+      parse_failed = true;
+      return;
+    }
+    param_types.push_back(part);
+  });
+  if (parse_failed) {
+    return std::nullopt;
+  }
+  return param_types;
+}
+
+inline std::optional<ParsedLirTypedCallView> parse_lir_typed_call(
+    std::string_view callee_type_suffix,
+    std::string_view args_str) {
+  const auto param_types = parse_lir_call_param_types(callee_type_suffix);
+  const auto args = parse_lir_typed_call_args(args_str);
+  if (!param_types.has_value() || !args.has_value() ||
+      param_types->size() != args->size()) {
+    return std::nullopt;
+  }
+
+  for (std::size_t index = 0; index < args->size(); ++index) {
+    if ((*param_types)[index] != (*args)[index].type) {
+      return std::nullopt;
+    }
+  }
+
+  return ParsedLirTypedCallView{*param_types, *args};
 }
 
 inline std::optional<std::string_view> lir_call_arg_operand(std::string_view arg) {
@@ -173,6 +260,26 @@ inline std::optional<std::string_view> lir_call_arg_operand(std::string_view arg
     return std::nullopt;
   }
   return operand;
+}
+
+inline std::optional<LirTypedCallArgView> parse_lir_typed_call_arg(std::string_view arg) {
+  arg = trim_lir_arg_text(arg);
+  if (arg.empty()) {
+    return std::nullopt;
+  }
+
+  const auto operand = lir_call_arg_operand(arg);
+  if (!operand.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto operand_offset = static_cast<std::size_t>(operand->data() - arg.data());
+  const auto type = trim_lir_arg_text(arg.substr(0, operand_offset));
+  if (type.empty()) {
+    return std::nullopt;
+  }
+
+  return LirTypedCallArgView{type, *operand};
 }
 
 inline void collect_lir_value_names_from_call_args(std::string_view args_str,

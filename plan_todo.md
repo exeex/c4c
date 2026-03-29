@@ -8,11 +8,11 @@ Source Plan: plan.md
 
 - Step 4: Migrate high-friction instruction families and consumers.
 - Exact target for the next iteration: continue Step 4 past
-  the landed shared call-argument decoding helper into the remaining backend
-  adapter and target-specific consumers that still branch on exact
-  `LirCallOp::{args_str,callee_type_suffix}` protocol strings, especially the
-  adapter normalization paths that still rewrite typed call text by substring
-  splicing instead of structured argument handling.
+  the landed shared typed-call decoding helpers into the remaining backend
+  target-specific direct-call consumers that still rely on string compatibility
+  outside the newly-covered single-arg/two-arg/call-crossing fast paths,
+  especially any backend emit or analysis slices that still compare literal
+  typed-call text instead of consuming structured call shape metadata.
 
 ## Completed Items
 
@@ -80,6 +80,14 @@ Source Plan: plan.md
   added regression coverage in `tests/backend/backend_lir_adapter_tests.cpp`
   for local-call normalization that tolerates compatibility whitespace instead
   of falling back to the unsupported-text path.
+- Completed the next Step 4 target-backend direct-call cleanup slice by adding
+  structured typed-call decoding helpers to
+  `src/codegen/lir/call_args.hpp`, routing the remaining x86 and AArch64
+  single-arg, two-arg, param-slot, and call-crossing direct-call fast paths
+  through structured operand/type parsing instead of exact
+  `callee_type_suffix` and `args_str` string matches, and adding emitter
+  regression coverage in `tests/backend/backend_lir_adapter_tests.cpp` for
+  spacing-tolerant typed call suffixes and arguments.
 
 ## Notes
 
@@ -145,6 +153,10 @@ Source Plan: plan.md
   in `src/codegen/lir/call_args.hpp`, including top-level comma splitting that
   tolerates nested aggregate/function syntax and a shared fallback path for
   nested expression operands such as `getelementptr`.
+- `src/codegen/lir/call_args.hpp` now also exposes structured typed-call views
+  for parameter lists and decoded argument `(type, operand)` pairs, so backend
+  consumers can prove typed-call compatibility without reimplementing
+  ad hoc suffix/argument parsing or exact-text comparisons.
 - The analysis/liveness stack still uses compatibility-text scanning for GEP
   indices and other non-call textual payloads, but `LirCallOp::args_str` no
   longer has three separate ad hoc scanners with subtly different behavior.
@@ -180,14 +192,13 @@ Source Plan: plan.md
 
 - Follow the Step 4 typed-dispatch cleanup into the remaining backend
   call-adjacent consumers that still rely on wrapper string compatibility
-  instead of structured call decoding, with the remaining target-specific
-  direct-call fast paths in `src/backend/x86/codegen/emit.cpp` and
-  `src/backend/aarch64/codegen/emit.cpp` still the highest-value targets where
-  `callee_type_suffix` and fixed `i32` argument-shape assumptions remain
-  duplicated beside the shared splitter.
+  instead of structured call decoding, with the remaining analysis and backend
+  call-family sites outside the now-covered x86/AArch64 direct-call fast paths
+  still the highest-value targets before attempting broader `LirCallOp`
+  storage changes.
 - Keep GEP index text, inline asm text, and declaration text on the
   compatibility path for now; the next slice should focus on shrinking the
-  target backend direct-call protocol surface before attempting broader
+  remaining call-adjacent protocol surface before attempting broader
   `LirCallOp` storage changes.
 
 ## Validation
@@ -258,6 +269,22 @@ Source Plan: plan.md
 - `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
   --before test_fail_after_step4_x86_typed.log --after
   test_fail_after_step4_aarch64_typed.log --allow-non-decreasing-passed`
+- `cmake --build build -j8 --target backend_lir_adapter_tests` passed after
+  routing the remaining x86/AArch64 direct-call fast paths through structured
+  typed-call decoding helpers.
+- `./build/backend_lir_adapter_tests` passed with added spacing-tolerant
+  coverage for typed direct-call suffix/argument decoding in both target
+  backends.
+- `cmake --build build -j8` passed after extending
+  `src/codegen/lir/call_args.hpp` with structured typed-call views and wiring
+  the target backends onto them.
+- `ctest --test-dir build -j --output-on-failure >
+  test_fail_after_step4_call_spacing.log` recorded `2371/2560` passing and
+  `189` failing tests.
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_after.log --after test_fail_after_step4_call_spacing.log
+  --allow-non-decreasing-passed` passed with zero new failures and no
+  pass-count regression.
   passed with zero new failures and no pass-count regression.
 - `cmake --build build -j8 --target backend_lir_adapter_tests` passed after
   landing the typed pointer-difference emitter cleanup in both targets.

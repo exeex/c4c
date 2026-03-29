@@ -305,25 +305,29 @@ std::optional<std::string_view> parse_direct_global_callee(std::string_view call
   return callee.substr(1);
 }
 
-std::optional<std::int64_t> parse_typed_i32_arg_imm(std::string_view arg) {
-  const auto value = strip_typed_operand_prefix(arg, "i32");
-  if (!value.has_value()) {
+std::optional<std::string_view> parse_single_typed_i32_call_operand(
+    std::string_view callee_type_suffix,
+    std::string_view args_str) {
+  const auto parsed = c4c::codegen::lir::parse_lir_typed_call(
+      callee_type_suffix, args_str);
+  if (!parsed.has_value() || parsed->args.size() != 1 ||
+      parsed->param_types.front() != "i32") {
     return std::nullopt;
   }
-  return parse_i64(*value);
+  return parsed->args.front().operand;
 }
 
-std::optional<std::pair<std::int64_t, std::int64_t>> parse_typed_i32_arg_pair_imms(
+std::optional<std::pair<std::int64_t, std::int64_t>> parse_typed_i32_call_pair_imms(
+    std::string_view callee_type_suffix,
     std::string_view args_str) {
-  std::vector<std::string_view> args;
-  c4c::codegen::lir::for_each_lir_call_arg(args_str, [&](std::string_view arg) {
-    args.push_back(arg);
-  });
-  if (args.size() != 2) {
+  const auto parsed = c4c::codegen::lir::parse_lir_typed_call(
+      callee_type_suffix, args_str);
+  if (!parsed.has_value() || parsed->args.size() != 2 ||
+      parsed->param_types[0] != "i32" || parsed->param_types[1] != "i32") {
     return std::nullopt;
   }
-  const auto arg0 = parse_typed_i32_arg_imm(args[0]);
-  const auto arg1 = parse_typed_i32_arg_imm(args[1]);
+  const auto arg0 = parse_i64(parsed->args[0].operand);
+  const auto arg1 = parse_i64(parsed->args[1].operand);
   if (!arg0.has_value() || !arg1.has_value()) {
     return std::nullopt;
   }
@@ -1273,14 +1277,17 @@ std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_sl
   }
 
   const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
+  const auto call_arg =
+      call == nullptr
+          ? std::nullopt
+          : parse_single_typed_i32_call_operand(call->callee_type_suffix, call->args_str);
   if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
-      *main_block.terminator.value != call->result ||
-      call->callee_type_suffix != "(i32)") {
+      *main_block.terminator.value != call->result || !call_arg.has_value()) {
     return std::nullopt;
   }
 
   const auto callee_name = parse_direct_global_callee(call->callee);
-  const auto arg_imm = parse_typed_i32_arg_imm(call->args_str);
+  const auto arg_imm = parse_i64(*call_arg);
   if (!callee_name.has_value() || *callee_name == "main" || !arg_imm.has_value()) {
     return std::nullopt;
   }
@@ -1339,18 +1346,17 @@ parse_minimal_direct_call_two_arg_add_slice(const c4c::backend::BackendModule& m
   }
 
   const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
+  const auto arg_pair =
+      call == nullptr
+          ? std::nullopt
+          : parse_typed_i32_call_pair_imms(call->callee_type_suffix, call->args_str);
   if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
-      *main_block.terminator.value != call->result ||
-      call->callee_type_suffix != "(i32, i32)") {
+      *main_block.terminator.value != call->result || !arg_pair.has_value()) {
     return std::nullopt;
   }
 
   const auto callee_name = parse_direct_global_callee(call->callee);
   if (!callee_name.has_value() || *callee_name == "main") {
-    return std::nullopt;
-  }
-  const auto arg_pair = parse_typed_i32_arg_pair_imms(call->args_str);
-  if (!arg_pair.has_value()) {
     return std::nullopt;
   }
 
@@ -1444,11 +1450,15 @@ parse_minimal_call_crossing_direct_call_slice(
   const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts[1]);
   const auto* final_add =
       std::get_if<c4c::backend::BackendBinaryInst>(&main_block.insts[2]);
+  const auto call_arg =
+      call == nullptr
+          ? std::nullopt
+          : parse_single_typed_i32_call_operand(call->callee_type_suffix, call->args_str);
   if (source_add == nullptr || call == nullptr || final_add == nullptr ||
       source_add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
       source_add->type_str != "i32" || call->return_type != "i32" ||
-      call->callee != "@add_one" || call->callee_type_suffix != "(i32)" ||
-      call->args_str != ("i32 " + source_add->result) ||
+      call->callee != "@add_one" || !call_arg.has_value() ||
+      *call_arg != source_add->result ||
       final_add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
       final_add->type_str != "i32" || final_add->lhs != source_add->result ||
       final_add->rhs != call->result ||
