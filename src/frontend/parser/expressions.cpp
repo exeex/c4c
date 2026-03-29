@@ -781,6 +781,48 @@ Node* Parser::parse_primary() {
         return false;
     };
 
+    auto parse_gcc_type_trait_builtin = [&]() -> Node* {
+        if (!check(TokenKind::Identifier) ||
+            pos_ + 1 >= static_cast<int>(tokens_.size()) ||
+            tokens_[pos_ + 1].kind != TokenKind::LParen) {
+            return nullptr;
+        }
+
+        const std::string builtin_name = cur().lexeme;
+        if (!(builtin_name.rfind("__is_", 0) == 0 ||
+              builtin_name.rfind("__has_", 0) == 0)) {
+            return nullptr;
+        }
+
+        const int saved_pos = pos_;
+        consume();  // builtin identifier
+        consume();  // (
+
+        int parsed_args = 0;
+        try {
+            while (!check(TokenKind::RParen)) {
+                parse_type_name();
+                ++parsed_args;
+                if (check(TokenKind::Ellipsis)) consume();
+                if (!match(TokenKind::Comma)) break;
+            }
+            expect(TokenKind::RParen);
+        } catch (...) {
+            pos_ = saved_pos;
+            return nullptr;
+        }
+
+        if (parsed_args == 0) {
+            pos_ = saved_pos;
+            return nullptr;
+        }
+
+        // These GCC/Clang type-trait builtins are parse-only placeholders for
+        // now. The important behavior for this slice is to consume their
+        // type-name argument lists instead of misparsing them as expressions.
+        return make_int_lit(1, ln);
+    };
+
     // Integer literal
     if (check(TokenKind::IntLit)) {
         long long v = parse_int_lexeme(cur().lexeme.c_str());
@@ -1032,6 +1074,10 @@ Node* Parser::parse_primary() {
 
     if (Node* op_ref = parse_operator_ref()) {
         return op_ref;
+    }
+
+    if (Node* type_trait = parse_gcc_type_trait_builtin()) {
+        return type_trait;
     }
 
     // C++ ::new expression (global-qualified new)

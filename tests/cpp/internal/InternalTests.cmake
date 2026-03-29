@@ -116,6 +116,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     keyword_or_parse
     keyword_not_parse
     qualified_cpp_base_type_dispatch_parse
+    gcc_type_trait_type_arg_parse
     qualified_type_spelling_shared_parse
     qualified_type_resolution_dispatch_parse
     qualified_type_start_shared_probe_parse
@@ -297,6 +298,15 @@ add_test(
 set_tests_properties(cpp_parse_forward_declared_record_specialization_dump PROPERTIES
   LABELS "internal;positive_case;cpp;parse"
   PASS_REGULAR_EXPRESSION "StructDef\\(struct Box__spec_[0-9]+\\) specialize<1>"
+)
+
+add_test(
+  NAME cpp_parse_gcc_type_trait_type_arg_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/gcc_type_trait_type_arg_parse.cpp"
+)
+set_tests_properties(cpp_parse_gcc_type_trait_type_arg_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Decl\\(can_fill\\)"
 )
 
 add_test(
@@ -629,19 +639,6 @@ add_test(
           -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
 )
 set_tests_properties(cpp_parser_debug_attr_param_leaf PROPERTIES
-  LABELS "internal;negative_case;cpp;diagnostic_format"
-)
-
-add_test(
-  NAME cpp_parser_debug_local_init_comma_leaf
-  COMMAND "${CMAKE_COMMAND}"
-          -DCOMPILER=$<TARGET_FILE:c4cll>
-          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_local_init_comma_leaf.cpp
-          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_primary phase=committed got=','"
-          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> parse_block -> parse_stmt -> parse_local_decl -> parse_initializer -> parse_assign_expr -> parse_ternary -> parse_unary -> parse_primary -> parse_assign_expr -> parse_ternary -> parse_unary -> parse_primary"
-          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
-)
-set_tests_properties(cpp_parser_debug_local_init_comma_leaf PROPERTIES
   LABELS "internal;negative_case;cpp;diagnostic_format"
 )
 

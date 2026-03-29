@@ -6,20 +6,21 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 4: revalidate the post-memoryfwd frontier, starting with the surviving
-  comma-expression parser failures in `/usr/include/c++/14/bits/stl_uninitialized.h`
-  ahead of the later attribute, typedef-base, and vector.tcc parameter-list
-  frontiers
+- Step 4: revalidate the post-type-trait frontier, starting with the new
+  `/usr/include/c++/14/concepts:240` parameter-list `(` failure and the
+  adjacent `/usr/include/c++/14/bits/stl_iterator.h:214` `constexpr` /
+  `:224` comma-expression failures ahead of the later attribute, typedef-base,
+  and vector.tcc parameter-list frontiers
 
 ## Next Intended Slice
 
-- inspect `/usr/include/c++/14/bits/stl_uninitialized.h:179` to reduce the
-  first surviving comma-expression failure into a standalone parser regression
-- keep the next fix limited to the first real expression/parser root cause
-  ahead of the later `[` attribute, typedef-base, and vector.tcc frontiers
+- inspect `/usr/include/c++/14/concepts:240` and the first surviving
+  `stl_iterator.h` failures to isolate the next smallest parser-only blocker
+- keep the next fix limited to the first real syntax/root-cause frontier
+  exposed after the GCC type-trait builtin slice
 - rerun `./build/c4cll --parse-only tests/cpp/std/std_vector_simple.cpp` after
   that fix to confirm the frontier advances beyond the current
-  `stl_uninitialized.h` comma-expression failure
+  `concepts` / `stl_iterator` failure family
 
 ## Incomplete Items
 
@@ -182,6 +183,30 @@ Source Plan: plan.md
 - [x] Full-suite regression guard passed for the forward-declared
   specialization slice: `2391 -> 2395` passing tests, `0 -> 0` failing tests,
   and no newly failing cases (`test_fail_before.log` vs `test_fail_after.log`)
+- [x] Reduced the repeated `bits/stl_uninitialized.h` local-initializer comma
+  failures to
+  `tests/cpp/internal/postive_case/gcc_type_trait_type_arg_parse.cpp`, and
+  confirmed the same root cause with `__is_assignable(ValueType&, const T&)`
+  before implementation
+- [x] Taught `parse_primary()` to treat GCC-style `__is_*` / `__has_*`
+  type-trait builtins as parser-only type-name consumers instead of ordinary
+  expression calls when their parenthesized argument lists are type-only
+- [x] Replaced the old diagnostic-only negative regression for this failure
+  shape with a positive parse regression, and re-ran the targeted tests:
+  `cpp_positive_sema_gcc_type_trait_type_arg_parse_cpp`,
+  `cpp_parse_gcc_type_trait_type_arg_dump`,
+  `cpp_positive_sema_template_type_traits_builtin_cpp`, and
+  `cpp_positive_sema_type_traits_builtin_cpp`
+- [x] Advanced the direct `std::vector` parse-only repro beyond the
+  `bits/stl_uninitialized.h:179`, `:247`, and `:317` local-initializer failure
+  family; the next failures now start at `/usr/include/c++/14/concepts:240`
+  (`parse_top_level_parameter_list` got `(`) plus
+  `/usr/include/c++/14/bits/stl_iterator.h:214` (`constexpr`) and `:224`
+  (comma in expression), followed by the later attribute, typedef-base,
+  `stl_bvector.h`, and `vector.tcc` frontiers
+- [x] Full-suite regression guard passed for the GCC type-trait slice:
+  `2395 -> 2395` passing tests, `0 -> 0` failing tests, and no newly failing
+  cases (`test_before.log` vs `test_after.log`)
 
 ## Blockers
 
