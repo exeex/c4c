@@ -84,6 +84,11 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/backend/stack_layout/slot_assignment.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/x86_common.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/lir_adapter.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/mod.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/assembler/mod.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/mod.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/emit.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/linker/mod.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/aarch64/mod.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/aarch64/assembler/mod.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/aarch64/assembler/encoder/mod.cpp"
@@ -263,6 +268,11 @@ add_executable(backend_lir_adapter_tests
     "${PROJECT_SOURCE_DIR}/src/backend/target.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/traits.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/x86_common.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/mod.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/assembler/mod.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/mod.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/codegen/emit.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/x86/linker/mod.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/lir_printer.cpp"
 )
 target_include_directories(backend_lir_adapter_tests PRIVATE

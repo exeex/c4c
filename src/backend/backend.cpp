@@ -1,5 +1,6 @@
 #include "backend.hpp"
 #include "aarch64/codegen/emit.hpp"
+#include "x86/codegen/emit.hpp"
 
 #include "../codegen/lir/lir_printer.hpp"
 #include "../codegen/lir/ir.hpp"
@@ -23,6 +24,13 @@ class Aarch64BackendEmitter final : public BackendEmitter {
   }
 };
 
+class X86BackendEmitter final : public BackendEmitter {
+ public:
+  std::string emit(const c4c::codegen::lir::LirModule& module) const override {
+    return c4c::backend::x86::emit_module(module);
+  }
+};
+
 class PassthroughBackendEmitter final : public BackendEmitter {
  public:
   std::string emit(const c4c::codegen::lir::LirModule& module) const override {
@@ -34,6 +42,7 @@ std::unique_ptr<BackendEmitter> make_backend(Target target) {
   switch (target) {
     case Target::X86_64:
     case Target::I686:
+      return std::make_unique<X86BackendEmitter>();
     case Target::Riscv64:
       return std::make_unique<PassthroughBackendEmitter>();
     case Target::Aarch64:

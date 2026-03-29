@@ -1,3 +1,5 @@
+#include "mod.hpp"
+
 // Translated from /workspaces/c4c/ref/claudes-c-compiler/src/backend/x86/linker/mod.rs
 // Structural mirror of the ref Rust source; includes are deferred for now.
 // pub(crate) mod elf;

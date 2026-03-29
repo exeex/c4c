@@ -14,6 +14,9 @@
 #include "../../src/backend/aarch64/codegen/emit.hpp"
 #include "../../src/backend/aarch64/linker/mod.hpp"
 #include "../../src/backend/aarch64/assembler/parser.hpp"
+#include "../../src/backend/x86/assembler/mod.hpp"
+#include "../../src/backend/x86/codegen/emit.hpp"
+#include "../../src/backend/x86/linker/mod.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -3069,6 +3072,23 @@ void test_aarch64_backend_scaffold_renders_direct_return_immediate_slice() {
                   "aarch64 scaffold should terminate direct return immediates with ret");
 }
 
+void test_x86_backend_scaffold_routes_through_explicit_emit_surface() {
+  const auto module = make_return_add_module();
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(backend_rendered == direct_rendered,
+              "x86 backend selection should route through the explicit x86 emit seam");
+  expect_contains(backend_rendered, "target triple = \"x86_64-unknown-linux-gnu\"",
+                  "x86 backend seam should preserve the module triple");
+  expect_contains(backend_rendered, "define i32 @main()",
+                  "x86 backend seam should preserve the active function signature");
+  expect_contains(backend_rendered, "%t0 = add i32 2, 3",
+                  "x86 backend seam should keep the minimal return-add slice visible while real x86 codegen is staged");
+}
+
 void test_aarch64_backend_renders_void_return_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_void_return_module()},
@@ -4643,6 +4663,8 @@ void test_backend_binary_utils_contract_headers_are_include_reachable() {
   [[maybe_unused]] c4c::backend::linker_common::ContractSurface linker_common_surface;
   [[maybe_unused]] c4c::backend::aarch64::assembler::ContractSurface assembler_surface;
   [[maybe_unused]] c4c::backend::aarch64::linker::ContractSurface linker_surface;
+  [[maybe_unused]] c4c::backend::x86::assembler::ContractSurface x86_assembler_surface;
+  [[maybe_unused]] c4c::backend::x86::linker::ContractSurface x86_linker_surface;
 
   const auto emitted = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_return_add_module()},
@@ -5072,6 +5094,7 @@ int main() {
   test_rejects_unsupported_instruction();
   test_aarch64_backend_scaffold_renders_supported_slice();
   test_aarch64_backend_scaffold_renders_direct_return_immediate_slice();
+  test_x86_backend_scaffold_routes_through_explicit_emit_surface();
   test_aarch64_backend_renders_void_return_slice();
   test_aarch64_backend_preserves_module_headers_and_declarations();
   test_aarch64_backend_propagates_malformed_signature_in_supported_slice();
