@@ -1655,6 +1655,48 @@ c4c::codegen::lir::LirModule make_param_slot_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_param_slot_runtime_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }");
+
+  LirFunction helper;
+  helper.name = "add_one";
+  helper.signature_text = "define i32 @add_one(i32 %p.x)\n";
+  helper.entry = LirBlockId{0};
+  helper.alloca_insts.push_back(LirAllocaOp{"%lv.param.x", "i32", "", 4});
+  helper.alloca_insts.push_back(LirStoreOp{"i32", "%p.x", "%lv.param.x"});
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.param.x"});
+  helper_entry.insts.push_back(LirBinOp{"%t1", "add", "i32", "%t0", "1"});
+  helper_entry.insts.push_back(LirStoreOp{"i32", "%t1", "%lv.param.x"});
+  helper_entry.insts.push_back(LirLoadOp{"%t2", "i32", "%lv.param.x"});
+  helper_entry.terminator = LirRet{std::string("%t2"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(LirCallOp{"%t0", "i32", "@add_one", "(i32)", "i32 5"});
+  main_entry.terminator = LirRet{std::string("%t0"), "i32"};
+  main_fn.blocks.push_back(std::move(main_entry));
+
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(main_fn));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_typed_direct_call_module() {
   using namespace c4c::codegen::lir;
 
@@ -3538,6 +3580,29 @@ void test_x86_backend_renders_direct_call_slice() {
                   "x86 backend should return directly after the helper call");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the direct helper-call slice");
+}
+
+void test_x86_backend_renders_param_slot_slice() {
+  auto module = make_param_slot_runtime_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type main, %function",
+                  "x86 backend should lower the parameter-slot main entry into assembly");
+  expect_contains(rendered, ".type add_one, %function",
+                  "x86 backend should lower the single-argument helper into assembly");
+  expect_contains(rendered, "add_one:\n  mov eax, edi\n  add eax, 1\n  ret\n",
+                  "x86 backend should lower the modified parameter slot helper through the integer argument register");
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend should materialize the direct helper argument in the SysV integer argument register");
+  expect_contains(rendered, "call add_one",
+                  "x86 backend should keep the single-argument helper call on the asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the parameter-slot slice");
 }
 
 void test_x86_backend_renders_local_array_slice() {
@@ -6218,6 +6283,7 @@ int main() {
   test_x86_backend_scaffold_routes_through_explicit_emit_surface();
   test_x86_backend_scaffold_renders_direct_return_immediate_slice();
   test_x86_backend_renders_direct_call_slice();
+  test_x86_backend_renders_param_slot_slice();
   test_x86_backend_renders_local_array_slice();
   test_x86_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice();
   test_x86_backend_cleans_up_redundant_self_move_on_call_crossing_slice();

@@ -34,6 +34,12 @@ struct MinimalDirectCallSlice {
   std::int64_t callee_imm = 0;
 };
 
+struct MinimalParamSlotSlice {
+  std::string callee_name;
+  std::int64_t call_arg_imm = 0;
+  std::int64_t helper_add_imm = 0;
+};
+
 struct MinimalConditionalReturnSlice {
   std::string predicate;
   std::int64_t lhs_imm = 0;
@@ -1190,6 +1196,84 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
   return MinimalDirectCallSlice{callee_name, *callee_imm};
 }
 
+std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 2 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* helper = find_lir_function(module, "add_one");
+  const auto* main_fn = find_lir_function(module, "main");
+  if (helper == nullptr || main_fn == nullptr || helper->is_declaration ||
+      main_fn->is_declaration || helper->signature_text != "define i32 @add_one(i32 %p.x)\n" ||
+      main_fn->signature_text != "define i32 @main()\n" || helper->entry.value != 0 ||
+      main_fn->entry.value != 0 || helper->blocks.size() != 1 || main_fn->blocks.size() != 1 ||
+      helper->alloca_insts.size() != 2 || !main_fn->alloca_insts.empty() ||
+      !helper->stack_objects.empty() || !main_fn->stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* alloca = std::get_if<LirAllocaOp>(&helper->alloca_insts[0]);
+  const auto* arg_store = std::get_if<LirStoreOp>(&helper->alloca_insts[1]);
+  if (alloca == nullptr || arg_store == nullptr || alloca->result != "%lv.param.x" ||
+      alloca->type_str != "i32" || !alloca->count.empty() || arg_store->type_str != "i32" ||
+      arg_store->val != "%p.x" || arg_store->ptr != "%lv.param.x") {
+    return std::nullopt;
+  }
+
+  const auto& helper_block = helper->blocks.front();
+  const auto* helper_ret = std::get_if<LirRet>(&helper_block.terminator);
+  if (helper_block.label != "entry" || helper_block.insts.size() != 4 || helper_ret == nullptr ||
+      !helper_ret->value_str.has_value() || helper_ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* load0 = std::get_if<LirLoadOp>(&helper_block.insts[0]);
+  const auto* add = std::get_if<LirBinOp>(&helper_block.insts[1]);
+  const auto* store = std::get_if<LirStoreOp>(&helper_block.insts[2]);
+  const auto* load1 = std::get_if<LirLoadOp>(&helper_block.insts[3]);
+  if (load0 == nullptr || add == nullptr || store == nullptr || load1 == nullptr ||
+      load0->type_str != "i32" || load0->ptr != "%lv.param.x" ||
+      add->opcode != "add" || add->type_str != "i32" || add->lhs != load0->result ||
+      store->type_str != "i32" || store->val != add->result || store->ptr != "%lv.param.x" ||
+      load1->type_str != "i32" || load1->ptr != "%lv.param.x" ||
+      *helper_ret->value_str != load1->result) {
+    return std::nullopt;
+  }
+
+  const auto helper_add_imm = parse_i64(add->rhs);
+  if (!helper_add_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto& main_block = main_fn->blocks.front();
+  const auto* main_ret = std::get_if<LirRet>(&main_block.terminator);
+  if (main_block.label != "entry" || main_block.insts.size() != 1 || main_ret == nullptr ||
+      !main_ret->value_str.has_value() || main_ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* call = std::get_if<LirCallOp>(&main_block.insts.front());
+  if (call == nullptr || call->result.empty() || call->callee != "@add_one" ||
+      call->callee_type_suffix != "(i32)" || *main_ret->value_str != call->result) {
+    return std::nullopt;
+  }
+
+  const auto typed_arg = strip_typed_operand_prefix(call->args_str, "i32");
+  if (!typed_arg.has_value()) {
+    return std::nullopt;
+  }
+  const auto call_arg_imm = parse_i64(*typed_arg);
+  if (!call_arg_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return MinimalParamSlotSlice{"add_one", *call_arg_imm, *helper_add_imm};
+}
+
 void emit_function_prelude(std::ostringstream& out,
                            const c4c::backend::BackendModule& module,
                            std::string_view symbol,
@@ -1232,6 +1316,34 @@ std::string emit_minimal_direct_call_asm(const c4c::backend::BackendModule& modu
       << "  ret\n";
   emit_function_prelude(out, module, main_symbol, true);
   out << "  call " << helper_symbol << "\n"
+      << "  ret\n";
+  return out.str();
+}
+
+std::string emit_minimal_param_slot_asm(const c4c::backend::BackendModule& module,
+                                        const MinimalParamSlotSlice& slice) {
+  if (slice.call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.call_arg_imm > std::numeric_limits<std::int32_t>::max() ||
+      slice.helper_add_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.helper_add_imm > std::numeric_limits<std::int32_t>::max()) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "parameter-slot immediates outside the minimal x86 slice range");
+  }
+
+  const std::string helper_symbol = asm_symbol_name(module, slice.callee_name);
+  const std::string main_symbol = asm_symbol_name(module, "main");
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  emit_function_prelude(out, module, helper_symbol, false);
+  out << "  mov eax, edi\n"
+      << "  add eax, " << slice.helper_add_imm << "\n"
+      << "  ret\n";
+  emit_function_prelude(out, module, main_symbol, true);
+  out << "  mov edi, " << slice.call_arg_imm << "\n"
+      << "  call " << helper_symbol << "\n"
       << "  ret\n";
   return out.str();
 }
@@ -1522,6 +1634,12 @@ std::string remove_redundant_self_moves(std::string asm_text) {
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   try {
+    if (const auto slice = parse_minimal_param_slot_slice(module);
+        slice.has_value()) {
+      c4c::backend::BackendModule scaffold_module;
+      scaffold_module.target_triple = module.target_triple;
+      return emit_minimal_param_slot_asm(scaffold_module, *slice);
+    }
     if (const auto slice = parse_minimal_local_array_slice(module);
         slice.has_value()) {
       c4c::backend::BackendModule scaffold_module;
