@@ -20,6 +20,9 @@ This idea is now the AArch64-specific continuation of the shared linker bring-up
 
 If the shared-linker work and AArch64-specific linker wiring move together, they can be executed as one larger later-stage idea rather than forced into separate active runs.
 
+The first success bar is a simple end-to-end linker bring-up for bounded test cases, not full parity with external Linux system linking.
+Prefer the smallest path that proves object loading, symbol resolution, relocation application, and ELF emission work together.
+
 ## Primary Ref Surfaces
 
 - `ref/claudes-c-compiler/src/backend/arm/linker/README.md`
@@ -60,11 +63,12 @@ If the shared-linker work and AArch64-specific linker wiring move together, they
 ## Scope
 
 - make the mirrored AArch64 linker subtree under `src/backend/aarch64/linker/` compile together with `src/backend/elf/` and `src/backend/linker_common/`
-- resolve symbols across supported objects and archives
-- apply the AArch64 relocation subset needed by current backend coverage
+- resolve symbols across a bounded set of supported objects and archives
+- apply the AArch64 relocation subset needed by the first simple backend/linker tests
 - lay out a working ELF executable for the supported subset
-- emit the first working static executable path for the supported subset
-- compare linked outputs against the current external linker behavior for representative cases
+- emit the first working static executable path for simple bring-up cases
+- compare linked outputs against the current external linker behavior for bounded representative cases
+- allow Linux ELF validation to run inside Docker when the host environment is macOS
 
 ## Acceptance Stages
 
@@ -90,8 +94,8 @@ If the shared-linker work and AArch64-specific linker wiring move together, they
    PC-relative address materialization,
    and low12 add/load/store relocations
 4. port a minimal static executable emitter modeled on `emit_static.rs`
-5. validate runtime behavior and executable layout against the external linker path
-6. defer dynamic linking, shared libraries, PLT/GOT, TLS, IFUNC, and `.eh_frame_hdr` polish until the static slice is stable
+5. validate executable layout and simple runtime behavior against the external linker path, using Docker-hosted Linux ELF checks when helpful
+6. defer dynamic linking, shared libraries, PLT/GOT, TLS, IFUNC, `.eh_frame_hdr` polish, and full Linux stdlib linking until the static slice is stable
 
 ## Early Output Contract
 
@@ -99,18 +103,21 @@ If the shared-linker work and AArch64-specific linker wiring move together, they
 - merged `.text`, `.rodata`, `.data`, and `.bss` output sections for the supported subset
 - symbol resolution across multiple objects and bounded archive use
 - correct relocation application for the initial AArch64 backend-generated object set
+- first-stage tests may use self-contained or otherwise simple cases rather than requiring external Linux stdlib linkage
 
 ## Explicit Non-Goals
 
 - x86-64 or rv64 linker support
 - shared-library or dynamic-linker features
 - archive handling beyond what static linking of the supported subset requires
+- full external Linux stdlib linking as a first-stage bring-up requirement
 
 ## Validation
 
 - first validation gate: the AArch64 linker subtree compiles against the shared linker layers
 - second validation gate: the first slice is explicitly static-link-first and tied to concrete `arm/linker/*.rs` reference modules
-- later validation: linked executables run equivalently to externally linked outputs for covered cases
+- later validation: simple linked executables run equivalently to externally linked outputs for covered cases
+- Docker-hosted Linux ELF inspection or execution is an acceptable validation path when developing on macOS
 
 ## Good First Patch
 

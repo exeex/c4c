@@ -23,6 +23,9 @@ This idea is now mainly the shared-linker compile and interface stage.
 
 If the shared object/archive IO work and the first AArch64 linker wiring advance together, they can be treated as one larger binary-utils stream instead of two rigidly separate long-lived ideas.
 
+For now, optimize this stage for unblocking and end-to-end bring-up rather than broad ELF coverage.
+The immediate goal is to make one or two simple Linux ELF object/archive cases parse cleanly so later linker work has a dependable path to build on.
+
 ## Primary Ref Surfaces
 
 - `ref/claudes-c-compiler/src/backend/linker_common/README.md`
@@ -57,11 +60,11 @@ If the shared object/archive IO work and the first AArch64 linker wiring advance
 ## Scope
 
 - make `src/backend/elf/` and `src/backend/linker_common/` include-clean enough to compile together as shared linker infrastructure
-- read ELF relocatable objects needed by the supported backend flow
-- read static archives at the level needed for symbol resolution and member extraction
+- read the bounded ELF relocatable objects needed by the first supported backend flow
+- read static archives at the level needed for a simple symbol-resolution and member-extraction smoke path
 - expose shared representations for sections, symbols, relocations, and archive contents
 - expose enough section-name mapping and merge metadata that a later linker can reason about output-section construction without reparsing inputs
-- add focused coverage for malformed-input rejection and representative happy-path cases
+- add focused coverage for a small number of happy-path cases first; malformed-input coverage can stay narrow until the bring-up path is working
 
 ## Acceptance Stages
 
@@ -75,7 +78,7 @@ If the shared object/archive IO work and the first AArch64 linker wiring advance
 
 ### Stage 3: Object/archive parsing starts working
 
-- representative ELF objects and archives begin parsing through the shared layer
+- simple ELF objects and archives begin parsing through the shared layer end to end
 
 ## Suggested Execution Order
 
@@ -87,22 +90,25 @@ If the shared object/archive IO work and the first AArch64 linker wiring advance
 
 ## Early Coverage Targets
 
-- one plain relocatable object with `.text`, `.rodata`, `.data`, `.bss`, symbol table, and relocations
-- one multi-section object that exercises section-name normalization such as `.text.foo` to `.text`
-- one single-member archive and one small archive that requires iterative member discovery by unresolved symbols
-- malformed ELF and malformed archive cases that should fail narrowly
+- one plain relocatable object with a small section, symbol-table, and relocation inventory
+- one single-member archive or similarly small archive case that proves the shared archive path is wired through
+- optional next step: one multi-section object that exercises section-name normalization such as `.text.foo` to `.text`
+- malformed ELF and malformed archive cases should stay narrow until the basic bring-up path is stable
 
 ## Explicit Non-Goals
 
 - relocation application
 - final executable writing
+- broad malformed-input hardening before the first happy-path slice is reliable
 - target-specific ABI policy beyond what object parsing requires
+- external Linux stdlib linking
 
 ## Validation
 
 - first validation gate: `elf/` and `linker_common/` compile and expose stable shared declarations
 - second validation gate: later linker work can reuse parsed symbol, section, and relocation data without introducing target-specific object readers
-- later validation: representative ELF objects and archives can be parsed into stable shared linker data structures
+- later validation: simple Linux ELF objects and archives can be parsed into stable shared linker data structures
+- host-side development may run on macOS, but Linux ELF validation is allowed to run inside Docker
 
 ## Good First Patch
 
