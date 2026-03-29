@@ -3140,7 +3140,10 @@ PreparedCallArg StmtEmitter::prepare_amd64_variadic_aggregate_arg(
       return out;
     }
     if (layout.needs_memory || layout.size_bytes > 16) {
-      out.texts.push_back(std::string("ptr ") + obj_ptr);
+      const int align = std::max(1, object_align_bytes(mod_, arg_ts));
+      std::string arg = "ptr ";
+      arg += "byval(" + llvm_ty(arg_ts) + ") align " + std::to_string(align) + " " + obj_ptr;
+      out.texts.push_back(std::move(arg));
       return out;
     }
 
