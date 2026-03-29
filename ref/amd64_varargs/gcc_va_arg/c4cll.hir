@@ -1,0 +1,35 @@
+=== HIR Module ===
+functions=2 globals=0 blocks=8 stmts=14 exprs=42
+
+--- functions ---
+
+fn f(p0: ulong, p1: ulong, p2: ulong, p3: ulong, p4: ulong, p5: ulong, p6: ulong, p7: ulong, p8: ulong) -> int variadic  [entry: block#0]
+  block#0 [term]:
+    decl select: ?
+    __builtin_va_start(select#L0, p8#P8)
+    if ((va_arg(select#L0) != 10)) -> block#1
+  block#1 [term]:
+    abort()
+    goto  -> block#2
+  block#2 [term]:
+    if ((va_arg(select#L0) != 11)) -> block#3
+  block#3 [term]:
+    abort()
+    goto  -> block#4
+  block#4 [term]:
+    if ((va_arg(select#L0) != 0)) -> block#5
+  block#5 [term]:
+    abort()
+    goto  -> block#6
+  block#6:
+    __builtin_va_end(select#L0)
+
+fn main() -> int  [entry: block#7]
+  block#7:
+    f(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0)
+    exit(0)
+
+--- compile-time reduction ---
+  compile-time reduction: 1 iteration, 0 template calls resolved, 0 template types resolved, 0 consteval reductions (converged)
+--- materialization ---
+  materialization: 2 functions materialized

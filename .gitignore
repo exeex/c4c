@@ -7,6 +7,10 @@
 /out
 *.log
 
+# Reference artifacts we want to keep
+!ref/amd64_varargs/
+!ref/amd64_varargs/**
+
 # Python cache
 __pycache__/
 *.pyc

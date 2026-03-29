@@ -1,0 +1,1118 @@
+=== HIR Module ===
+functions=202 globals=32 blocks=156 stmts=383 exprs=1589
+
+--- structs ---
+  struct _anon_0 size=8 align=4
+    field __val: int[2] llvm_idx=0 offset=0 size=8 align=4
+  union _anon_2 size=4 align=4
+    field __wch: int llvm_idx=0 offset=0 size=4 align=4
+    field __wchb: char[4] llvm_idx=0 offset=0 size=4 align=1
+  struct _anon_1 size=8 align=4
+    field __count: int llvm_idx=0 offset=0 size=4 align=4
+    field __value: union _anon_2 llvm_idx=1 offset=4 size=4 align=4
+  struct _G_fpos_t size=16 align=8
+    field __pos: long llvm_idx=0 offset=0 size=8 align=8
+    field __state: struct _anon_1 llvm_idx=1 offset=8 size=8 align=4
+  struct _G_fpos64_t size=16 align=8
+    field __pos: long llvm_idx=0 offset=0 size=8 align=8
+    field __state: struct _anon_1 llvm_idx=1 offset=8 size=8 align=4
+  struct _IO_marker size=0 align=1
+  struct _IO_FILE size=224 align=8
+    field _flags: int llvm_idx=0 offset=0 size=4 align=4
+    field _IO_read_ptr: char* llvm_idx=1 offset=8 size=8 align=8
+    field _IO_read_end: char* llvm_idx=2 offset=16 size=8 align=8
+    field _IO_read_base: char* llvm_idx=3 offset=24 size=8 align=8
+    field _IO_write_base: char* llvm_idx=4 offset=32 size=8 align=8
+    field _IO_write_ptr: char* llvm_idx=5 offset=40 size=8 align=8
+    field _IO_write_end: char* llvm_idx=6 offset=48 size=8 align=8
+    field _IO_buf_base: char* llvm_idx=7 offset=56 size=8 align=8
+    field _IO_buf_end: char* llvm_idx=8 offset=64 size=8 align=8
+    field _IO_save_base: char* llvm_idx=9 offset=72 size=8 align=8
+    field _IO_backup_base: char* llvm_idx=10 offset=80 size=8 align=8
+    field _IO_save_end: char* llvm_idx=11 offset=88 size=8 align=8
+    field _markers: struct _IO_marker* llvm_idx=12 offset=96 size=8 align=8
+    field _chain: struct _IO_FILE* llvm_idx=13 offset=104 size=8 align=8
+    field _fileno: int llvm_idx=14 offset=112 size=4 align=4
+    field _flags2: uint llvm_idx=15 offset=116 size=4 align=4 bitfield(width=24, bit_offset=0, storage_bits=32, signed)
+    field _short_backupbuf: char[1] llvm_idx=16 offset=120 size=1 align=1
+    field _old_offset: long llvm_idx=17 offset=128 size=8 align=8
+    field _cur_column: ushort llvm_idx=18 offset=136 size=2 align=2
+    field _vtable_offset: ? llvm_idx=19 offset=138 size=1 align=1
+    field _shortbuf: char[1] llvm_idx=20 offset=139 size=1 align=1
+    field _lock: void* llvm_idx=21 offset=144 size=8 align=8
+    field _offset: long llvm_idx=22 offset=152 size=8 align=8
+    field _codecvt: struct _IO_codecvt* llvm_idx=23 offset=160 size=8 align=8
+    field _wide_data: struct _IO_wide_data* llvm_idx=24 offset=168 size=8 align=8
+    field _freeres_list: struct _IO_FILE* llvm_idx=25 offset=176 size=8 align=8
+    field _freeres_buf: void* llvm_idx=26 offset=184 size=8 align=8
+    field _prevchain: struct _IO_FILE** llvm_idx=27 offset=192 size=8 align=8
+    field _mode: int llvm_idx=28 offset=200 size=4 align=4
+    field _unused2: char[20] llvm_idx=29 offset=204 size=20 align=1
+  struct _IO_codecvt size=0 align=1
+  struct _IO_wide_data size=0 align=1
+  struct _IO_cookie_io_functions_t size=32 align=8
+    field read: long* llvm_idx=0 offset=0 size=8 align=8
+    field write: long* llvm_idx=1 offset=8 size=8 align=8
+    field seek: int* llvm_idx=2 offset=16 size=8 align=8
+    field close: int* llvm_idx=3 offset=24 size=8 align=8
+  struct s1 size=1 align=1
+    field x: char[1] llvm_idx=0 offset=0 size=1 align=1
+  struct s2 size=2 align=1
+    field x: char[2] llvm_idx=0 offset=0 size=2 align=1
+  struct s3 size=3 align=1
+    field x: char[3] llvm_idx=0 offset=0 size=3 align=1
+  struct s4 size=4 align=1
+    field x: char[4] llvm_idx=0 offset=0 size=4 align=1
+  struct s5 size=5 align=1
+    field x: char[5] llvm_idx=0 offset=0 size=5 align=1
+  struct s6 size=6 align=1
+    field x: char[6] llvm_idx=0 offset=0 size=6 align=1
+  struct s7 size=7 align=1
+    field x: char[7] llvm_idx=0 offset=0 size=7 align=1
+  struct s8 size=8 align=1
+    field x: char[8] llvm_idx=0 offset=0 size=8 align=1
+  struct s9 size=9 align=1
+    field x: char[9] llvm_idx=0 offset=0 size=9 align=1
+  struct s10 size=10 align=1
+    field x: char[10] llvm_idx=0 offset=0 size=10 align=1
+  struct s11 size=11 align=1
+    field x: char[11] llvm_idx=0 offset=0 size=11 align=1
+  struct s12 size=12 align=1
+    field x: char[12] llvm_idx=0 offset=0 size=12 align=1
+  struct s13 size=13 align=1
+    field x: char[13] llvm_idx=0 offset=0 size=13 align=1
+  struct s14 size=14 align=1
+    field x: char[14] llvm_idx=0 offset=0 size=14 align=1
+  struct s15 size=15 align=1
+    field x: char[15] llvm_idx=0 offset=0 size=15 align=1
+  struct s16 size=16 align=1
+    field x: char[16] llvm_idx=0 offset=0 size=16 align=1
+  struct s17 size=17 align=1
+    field x: char[17] llvm_idx=0 offset=0 size=17 align=1
+  struct hfa11 size=4 align=4
+    field a: float llvm_idx=0 offset=0 size=4 align=4
+  struct hfa12 size=8 align=4
+    field a: float llvm_idx=0 offset=0 size=4 align=4
+    field b: float llvm_idx=1 offset=4 size=4 align=4
+  struct hfa13 size=12 align=4
+    field a: float llvm_idx=0 offset=0 size=4 align=4
+    field b: float llvm_idx=1 offset=4 size=4 align=4
+    field c: float llvm_idx=2 offset=8 size=4 align=4
+  struct hfa14 size=16 align=4
+    field a: float llvm_idx=0 offset=0 size=4 align=4
+    field b: float llvm_idx=1 offset=4 size=4 align=4
+    field c: float llvm_idx=2 offset=8 size=4 align=4
+    field d: float llvm_idx=3 offset=12 size=4 align=4
+  struct hfa21 size=8 align=8
+    field a: double llvm_idx=0 offset=0 size=8 align=8
+  struct hfa22 size=16 align=8
+    field a: double llvm_idx=0 offset=0 size=8 align=8
+    field b: double llvm_idx=1 offset=8 size=8 align=8
+  struct hfa23 size=24 align=8
+    field a: double llvm_idx=0 offset=0 size=8 align=8
+    field b: double llvm_idx=1 offset=8 size=8 align=8
+    field c: double llvm_idx=2 offset=16 size=8 align=8
+  struct hfa24 size=32 align=8
+    field a: double llvm_idx=0 offset=0 size=8 align=8
+    field b: double llvm_idx=1 offset=8 size=8 align=8
+    field c: double llvm_idx=2 offset=16 size=8 align=8
+    field d: double llvm_idx=3 offset=24 size=8 align=8
+  struct hfa31 size=16 align=16
+    field a: ldouble llvm_idx=0 offset=0 size=16 align=16
+  struct hfa32 size=32 align=16
+    field a: ldouble llvm_idx=0 offset=0 size=16 align=16
+    field b: ldouble llvm_idx=1 offset=16 size=16 align=16
+  struct hfa33 size=48 align=16
+    field a: ldouble llvm_idx=0 offset=0 size=16 align=16
+    field b: ldouble llvm_idx=1 offset=16 size=16 align=16
+    field c: ldouble llvm_idx=2 offset=32 size=16 align=16
+  struct hfa34 size=64 align=16
+    field a: ldouble llvm_idx=0 offset=0 size=16 align=16
+    field b: ldouble llvm_idx=1 offset=16 size=16 align=16
+    field c: ldouble llvm_idx=2 offset=32 size=16 align=16
+    field d: ldouble llvm_idx=3 offset=48 size=16 align=16
+
+--- globals ---
+  global stdin: struct _IO_FILE* extern
+  global stdout: struct _IO_FILE* extern
+  global stderr: struct _IO_FILE* extern
+  global s1: struct s1 = {.x = <bound=1> "\"0\""}
+  global s2: struct s2 = {.x = <bound=2> "\"12\""}
+  global s3: struct s3 = {.x = <bound=3> "\"345\""}
+  global s4: struct s4 = {.x = <bound=4> "\"6789\""}
+  global s5: struct s5 = {.x = <bound=5> "\"abcde\""}
+  global s6: struct s6 = {.x = <bound=6> "\"fghijk\""}
+  global s7: struct s7 = {.x = <bound=7> "\"lmnopqr\""}
+  global s8: struct s8 = {.x = <bound=8> "\"stuvwxyz\""}
+  global s9: struct s9 = {.x = <bound=9> "\"ABCDEFGHI\""}
+  global s10: struct s10 = {.x = <bound=10> "\"JKLMNOPQRS\""}
+  global s11: struct s11 = {.x = <bound=11> "\"TUVWXYZ0123\""}
+  global s12: struct s12 = {.x = <bound=12> "\"456789abcdef\""}
+  global s13: struct s13 = {.x = <bound=13> "\"ghijklmnopqrs\""}
+  global s14: struct s14 = {.x = <bound=14> "\"tuvwxyzABCDEFG\""}
+  global s15: struct s15 = {.x = <bound=15> "\"HIJKLMNOPQRSTUV\""}
+  global s16: struct s16 = {.x = <bound=16> "\"WXYZ0123456789ab\""}
+  global s17: struct s17 = {.x = <bound=17> "\"cdefghijklmnopqrs\""}
+  global hfa11: struct hfa11 = {.a = 11.1}
+  global hfa12: struct hfa12 = {.a = 12.1, .b = 12.2}
+  global hfa13: struct hfa13 = {.a = 13.1, .b = 13.2, .c = 13.3}
+  global hfa14: struct hfa14 = {.a = 14.1, .b = 14.2, .c = 14.3, .d = 14.4}
+  global hfa21: struct hfa21 = {.a = 21.1}
+  global hfa22: struct hfa22 = {.a = 22.1, .b = 22.2}
+  global hfa23: struct hfa23 = {.a = 23.1, .b = 23.2, .c = 23.3}
+  global hfa24: struct hfa24 = {.a = 24.1, .b = 24.2, .c = 24.3, .d = 24.4}
+  global hfa31: struct hfa31 = {.a = 31.1}
+  global hfa32: struct hfa32 = {.a = 32.1, .b = 32.2}
+  global hfa33: struct hfa33 = {.a = 33.1, .b = 33.2, .c = 33.3}
+  global hfa34: struct hfa34 = {.a = 34.1, .b = 34.2, .c = 34.3, .d = 34.4}
+
+--- functions ---
+
+fn remove(__filename: const char*) -> int extern  [entry: block#0]
+
+fn rename(__old: const char*, __new: const char*) -> int extern  [entry: block#0]
+
+fn renameat(__oldfd: int, __old: const char*, __newfd: int, __new: const char*) -> int extern  [entry: block#0]
+
+fn fclose(__stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn tmpfile(<anon_param>: void) -> struct _IO_FILE* extern  [entry: block#0]
+
+fn tmpnam(<anon_param>: char[20]) -> char* extern  [entry: block#0]
+
+fn tmpnam_r(__s: char[20]) -> char* extern  [entry: block#0]
+
+fn tempnam(__dir: const char*, __pfx: const char*) -> char* extern  [entry: block#0]
+
+fn fflush(__stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn fflush_unlocked(__stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn fopen(__filename: const char*, __modes: const char*) -> struct _IO_FILE* extern  [entry: block#0]
+
+fn freopen(__filename: const char*, __modes: const char*, __stream: struct _IO_FILE*) -> struct _IO_FILE* extern  [entry: block#0]
+
+fn fdopen(__fd: int, __modes: const char*) -> struct _IO_FILE* extern  [entry: block#0]
+
+fn fopencookie(__magic_cookie: void*, __modes: const char*, __io_funcs: struct _IO_cookie_io_functions_t) -> struct _IO_FILE* extern  [entry: block#0]
+
+fn fmemopen(__s: void*, __len: ulong, __modes: const char*) -> struct _IO_FILE* extern  [entry: block#0]
+
+fn open_memstream(__bufloc: char**, __sizeloc: ulong*) -> struct _IO_FILE* extern  [entry: block#0]
+
+fn setbuf(__stream: struct _IO_FILE*, __buf: char*) -> void extern  [entry: block#0]
+
+fn setvbuf(__stream: struct _IO_FILE*, __buf: char*, __modes: int, __n: ulong) -> int extern  [entry: block#0]
+
+fn setbuffer(__stream: struct _IO_FILE*, __buf: char*, __size: ulong) -> void extern  [entry: block#0]
+
+fn setlinebuf(__stream: struct _IO_FILE*) -> void extern  [entry: block#0]
+
+fn fprintf(__stream: struct _IO_FILE*, __format: const char*) -> int variadic extern  [entry: block#0]
+
+fn printf(__format: const char*) -> int variadic extern  [entry: block#0]
+
+fn sprintf(__s: char*, __format: const char*) -> int variadic extern  [entry: block#0]
+
+fn vfprintf(__s: struct _IO_FILE*, __format: const char*, __arg: ?) -> int extern  [entry: block#0]
+
+fn vprintf(__format: const char*, __arg: ?) -> int extern  [entry: block#0]
+
+fn vsprintf(__s: char*, __format: const char*, __arg: ?) -> int extern  [entry: block#0]
+
+fn snprintf(__s: char*, __maxlen: ulong, __format: const char*) -> int variadic extern  [entry: block#0]
+
+fn vsnprintf(__s: char*, __maxlen: ulong, __format: const char*, __arg: ?) -> int extern  [entry: block#0]
+
+fn vasprintf(__ptr: char**, __f: const char*, __arg: ?) -> int extern  [entry: block#0]
+
+fn __asprintf(__ptr: char**, __fmt: const char*) -> int variadic extern  [entry: block#0]
+
+fn asprintf(__ptr: char**, __fmt: const char*) -> int variadic extern  [entry: block#0]
+
+fn vdprintf(__fd: int, __fmt: const char*, __arg: ?) -> int extern  [entry: block#0]
+
+fn dprintf(__fd: int, __fmt: const char*) -> int variadic extern  [entry: block#0]
+
+fn fscanf(__stream: struct _IO_FILE*, __format: const char*) -> int variadic extern  [entry: block#0]
+
+fn scanf(__format: const char*) -> int variadic extern  [entry: block#0]
+
+fn sscanf(__s: const char*, __format: const char*) -> int variadic extern  [entry: block#0]
+
+fn fscanf(__stream: struct _IO_FILE*, __format: const char*) -> int variadic extern  [entry: block#0]
+
+fn scanf(__format: const char*) -> int variadic extern  [entry: block#0]
+
+fn sscanf(__s: const char*, __format: const char*) -> int variadic extern  [entry: block#0]
+
+fn vfscanf(__s: struct _IO_FILE*, __format: const char*, __arg: ?) -> int extern  [entry: block#0]
+
+fn vscanf(__format: const char*, __arg: ?) -> int extern  [entry: block#0]
+
+fn vsscanf(__s: const char*, __format: const char*, __arg: ?) -> int extern  [entry: block#0]
+
+fn vfscanf(__s: struct _IO_FILE*, __format: const char*, __arg: ?) -> int extern  [entry: block#0]
+
+fn vscanf(__format: const char*, __arg: ?) -> int extern  [entry: block#0]
+
+fn vsscanf(__s: const char*, __format: const char*, __arg: ?) -> int extern  [entry: block#0]
+
+fn fgetc(__stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn getc(__stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn getchar(<anon_param>: void) -> int extern  [entry: block#0]
+
+fn getc_unlocked(__stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn getchar_unlocked(<anon_param>: void) -> int extern  [entry: block#0]
+
+fn fgetc_unlocked(__stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn fputc(__c: int, __stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn putc(__c: int, __stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn putchar(__c: int) -> int extern  [entry: block#0]
+
+fn fputc_unlocked(__c: int, __stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn putc_unlocked(__c: int, __stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn putchar_unlocked(__c: int) -> int extern  [entry: block#0]
+
+fn getw(__stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn putw(__w: int, __stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn fgets(__s: char*, __n: int, __stream: struct _IO_FILE*) -> char* extern  [entry: block#0]
+
+fn __getdelim(__lineptr: char**, __n: ulong*, __delimiter: int, __stream: struct _IO_FILE*) -> long extern  [entry: block#0]
+
+fn getdelim(__lineptr: char**, __n: ulong*, __delimiter: int, __stream: struct _IO_FILE*) -> long extern  [entry: block#0]
+
+fn getline(__lineptr: char**, __n: ulong*, __stream: struct _IO_FILE*) -> long extern  [entry: block#0]
+
+fn fputs(__s: const char*, __stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn puts(__s: const char*) -> int extern  [entry: block#0]
+
+fn ungetc(__c: int, __stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn fread(__ptr: void*, __size: ulong, __n: ulong, __stream: struct _IO_FILE*) -> ulong extern  [entry: block#0]
+
+fn fwrite(__ptr: const void*, __size: ulong, __n: ulong, __s: struct _IO_FILE*) -> ulong extern  [entry: block#0]
+
+fn fread_unlocked(__ptr: void*, __size: ulong, __n: ulong, __stream: struct _IO_FILE*) -> ulong extern  [entry: block#0]
+
+fn fwrite_unlocked(__ptr: const void*, __size: ulong, __n: ulong, __stream: struct _IO_FILE*) -> ulong extern  [entry: block#0]
+
+fn fseek(__stream: struct _IO_FILE*, __off: long, __whence: int) -> int extern  [entry: block#0]
+
+fn ftell(__stream: struct _IO_FILE*) -> long extern  [entry: block#0]
+
+fn rewind(__stream: struct _IO_FILE*) -> void extern  [entry: block#0]
+
+fn fseeko(__stream: struct _IO_FILE*, __off: long, __whence: int) -> int extern  [entry: block#0]
+
+fn ftello(__stream: struct _IO_FILE*) -> long extern  [entry: block#0]
+
+fn fgetpos(__stream: struct _IO_FILE*, __pos: struct _G_fpos_t*) -> int extern  [entry: block#0]
+
+fn fsetpos(__stream: struct _IO_FILE*, __pos: const struct _G_fpos_t*) -> int extern  [entry: block#0]
+
+fn clearerr(__stream: struct _IO_FILE*) -> void extern  [entry: block#0]
+
+fn feof(__stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn ferror(__stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn clearerr_unlocked(__stream: struct _IO_FILE*) -> void extern  [entry: block#0]
+
+fn feof_unlocked(__stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn ferror_unlocked(__stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn perror(__s: const char*) -> void extern  [entry: block#0]
+
+fn fileno(__stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn fileno_unlocked(__stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn pclose(__stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn popen(__command: const char*, __modes: const char*) -> struct _IO_FILE* extern  [entry: block#0]
+
+fn ctermid(__s: char*) -> char* extern  [entry: block#0]
+
+fn flockfile(__stream: struct _IO_FILE*) -> void extern  [entry: block#0]
+
+fn ftrylockfile(__stream: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn funlockfile(__stream: struct _IO_FILE*) -> void extern  [entry: block#0]
+
+fn __uflow(<anon_param>: struct _IO_FILE*) -> int extern  [entry: block#0]
+
+fn __overflow(<anon_param>: struct _IO_FILE*, <anon_param>: int) -> int extern  [entry: block#0]
+
+fn fa_s1(a: struct s1) -> void  [entry: block#0]
+  block#0:
+    printf("\"%.1s\n\"", a#P0.x)
+
+fn fa_s2(a: struct s2) -> void  [entry: block#1]
+  block#1:
+    printf("\"%.2s\n\"", a#P0.x)
+
+fn fa_s3(a: struct s3) -> void  [entry: block#2]
+  block#2:
+    printf("\"%.3s\n\"", a#P0.x)
+
+fn fa_s4(a: struct s4) -> void  [entry: block#3]
+  block#3:
+    printf("\"%.4s\n\"", a#P0.x)
+
+fn fa_s5(a: struct s5) -> void  [entry: block#4]
+  block#4:
+    printf("\"%.5s\n\"", a#P0.x)
+
+fn fa_s6(a: struct s6) -> void  [entry: block#5]
+  block#5:
+    printf("\"%.6s\n\"", a#P0.x)
+
+fn fa_s7(a: struct s7) -> void  [entry: block#6]
+  block#6:
+    printf("\"%.7s\n\"", a#P0.x)
+
+fn fa_s8(a: struct s8) -> void  [entry: block#7]
+  block#7:
+    printf("\"%.8s\n\"", a#P0.x)
+
+fn fa_s9(a: struct s9) -> void  [entry: block#8]
+  block#8:
+    printf("\"%.9s\n\"", a#P0.x)
+
+fn fa_s10(a: struct s10) -> void  [entry: block#9]
+  block#9:
+    printf("\"%.10s\n\"", a#P0.x)
+
+fn fa_s11(a: struct s11) -> void  [entry: block#10]
+  block#10:
+    printf("\"%.11s\n\"", a#P0.x)
+
+fn fa_s12(a: struct s12) -> void  [entry: block#11]
+  block#11:
+    printf("\"%.12s\n\"", a#P0.x)
+
+fn fa_s13(a: struct s13) -> void  [entry: block#12]
+  block#12:
+    printf("\"%.13s\n\"", a#P0.x)
+
+fn fa_s14(a: struct s14) -> void  [entry: block#13]
+  block#13:
+    printf("\"%.14s\n\"", a#P0.x)
+
+fn fa_s15(a: struct s15) -> void  [entry: block#14]
+  block#14:
+    printf("\"%.15s\n\"", a#P0.x)
+
+fn fa_s16(a: struct s16) -> void  [entry: block#15]
+  block#15:
+    printf("\"%.16s\n\"", a#P0.x)
+
+fn fa_s17(a: struct s17) -> void  [entry: block#16]
+  block#16:
+    printf("\"%.17s\n\"", a#P0.x)
+
+fn fa_hfa11(a: struct hfa11) -> void  [entry: block#17]
+  block#17:
+    printf("\"%.1f\n\"", a#P0.a)
+
+fn fa_hfa12(a: struct hfa12) -> void  [entry: block#18]
+  block#18:
+    printf("\"%.1f %.1f\n\"", a#P0.a, a#P0.a)
+
+fn fa_hfa13(a: struct hfa13) -> void  [entry: block#19]
+  block#19:
+    printf("\"%.1f %.1f %.1f\n\"", a#P0.a, a#P0.b, a#P0.c)
+
+fn fa_hfa14(a: struct hfa14) -> void  [entry: block#20]
+  block#20:
+    printf("\"%.1f %.1f %.1f %.1f\n\"", a#P0.a, a#P0.b, a#P0.c, a#P0.d)
+
+fn fa_hfa21(a: struct hfa21) -> void  [entry: block#21]
+  block#21:
+    printf("\"%.1f\n\"", a#P0.a)
+
+fn fa_hfa22(a: struct hfa22) -> void  [entry: block#22]
+  block#22:
+    printf("\"%.1f %.1f\n\"", a#P0.a, a#P0.a)
+
+fn fa_hfa23(a: struct hfa23) -> void  [entry: block#23]
+  block#23:
+    printf("\"%.1f %.1f %.1f\n\"", a#P0.a, a#P0.b, a#P0.c)
+
+fn fa_hfa24(a: struct hfa24) -> void  [entry: block#24]
+  block#24:
+    printf("\"%.1f %.1f %.1f %.1f\n\"", a#P0.a, a#P0.b, a#P0.c, a#P0.d)
+
+fn fa_hfa31(a: struct hfa31) -> void  [entry: block#25]
+  block#25:
+    printf("\"%.1Lf\n\"", a#P0.a)
+
+fn fa_hfa32(a: struct hfa32) -> void  [entry: block#26]
+  block#26:
+    printf("\"%.1Lf %.1Lf\n\"", a#P0.a, a#P0.a)
+
+fn fa_hfa33(a: struct hfa33) -> void  [entry: block#27]
+  block#27:
+    printf("\"%.1Lf %.1Lf %.1Lf\n\"", a#P0.a, a#P0.b, a#P0.c)
+
+fn fa_hfa34(a: struct hfa34) -> void  [entry: block#28]
+  block#28:
+    printf("\"%.1Lf %.1Lf %.1Lf %.1Lf\n\"", a#P0.a, a#P0.b, a#P0.c, a#P0.d)
+
+fn fa1(a: struct s8, b: struct s9, c: struct s10, d: struct s11, e: struct s12, f: struct s13) -> void  [entry: block#29]
+  block#29:
+    printf("\"%.3s %.3s %.3s %.3s %.3s %.3s\n\"", a#P0.x, b#P1.x, c#P2.x, d#P3.x, e#P4.x, f#P5.x)
+
+fn fa2(a: struct s9, b: struct s10, c: struct s11, d: struct s12, e: struct s13, f: struct s14) -> void  [entry: block#30]
+  block#30:
+    printf("\"%.3s %.3s %.3s %.3s %.3s %.3s\n\"", a#P0.x, b#P1.x, c#P2.x, d#P3.x, e#P4.x, f#P5.x)
+
+fn fa3(a: struct hfa14, b: struct hfa23, c: struct hfa32) -> void  [entry: block#31]
+  block#31:
+    printf("\"%.1f %.1f %.1f %.1f %.1Lf %.1Lf\n\"", a#P0.a, a#P0.d, b#P1.a, b#P1.c, c#P2.a, c#P2.b)
+
+fn fa4(a: struct s1, b: struct hfa14, c: struct s2, d: struct hfa24, e: struct s3, f: struct hfa34) -> void  [entry: block#32]
+  block#32:
+    printf("\"%.1s %.1f %.1f %.2s %.1f %.1f %.3s %.1Lf %.1Lf\n\"", a#P0.x, b#P1.a, b#P1.d, c#P2.x, d#P3.a, d#P3.d, e#P4.x, f#P5.a, f#P5.d)
+
+fn arg(<anon_param>: void) -> void  [entry: block#33]
+  block#33:
+    printf("\"Arguments:\n\"")
+    fa_s1(s1#G3)
+    fa_s2(s2#G4)
+    fa_s3(s3#G5)
+    fa_s4(s4#G6)
+    fa_s5(s5#G7)
+    fa_s6(s6#G8)
+    fa_s7(s7#G9)
+    fa_s8(s8#G10)
+    fa_s9(s9#G11)
+    fa_s10(s10#G12)
+    fa_s11(s11#G13)
+    fa_s12(s12#G14)
+    fa_s13(s13#G15)
+    fa_s14(s14#G16)
+    fa_s15(s15#G17)
+    fa_s16(s16#G18)
+    fa_s17(s17#G19)
+    fa_hfa11(hfa11#G20)
+    fa_hfa12(hfa12#G21)
+    fa_hfa13(hfa13#G22)
+    fa_hfa14(hfa14#G23)
+    fa_hfa21(hfa21#G24)
+    fa_hfa22(hfa22#G25)
+    fa_hfa23(hfa23#G26)
+    fa_hfa24(hfa24#G27)
+    fa_hfa31(hfa31#G28)
+    fa_hfa32(hfa32#G29)
+    fa_hfa33(hfa33#G30)
+    fa_hfa34(hfa34#G31)
+    fa1(s8#G10, s9#G11, s10#G12, s11#G13, s12#G14, s13#G15)
+    fa2(s9#G11, s10#G12, s11#G13, s12#G14, s13#G15, s14#G16)
+    fa3(hfa14#G23, hfa23#G26, hfa32#G29)
+    fa4(s1#G3, hfa14#G23, s2#G4, hfa24#G27, s3#G5, hfa34#G31)
+
+fn fr_s1(<anon_param>: void) -> struct s1  [entry: block#34]
+  block#34 [term]:
+    return s1#G3
+
+fn fr_s2(<anon_param>: void) -> struct s2  [entry: block#35]
+  block#35 [term]:
+    return s2#G4
+
+fn fr_s3(<anon_param>: void) -> struct s3  [entry: block#36]
+  block#36 [term]:
+    return s3#G5
+
+fn fr_s4(<anon_param>: void) -> struct s4  [entry: block#37]
+  block#37 [term]:
+    return s4#G6
+
+fn fr_s5(<anon_param>: void) -> struct s5  [entry: block#38]
+  block#38 [term]:
+    return s5#G7
+
+fn fr_s6(<anon_param>: void) -> struct s6  [entry: block#39]
+  block#39 [term]:
+    return s6#G8
+
+fn fr_s7(<anon_param>: void) -> struct s7  [entry: block#40]
+  block#40 [term]:
+    return s7#G9
+
+fn fr_s8(<anon_param>: void) -> struct s8  [entry: block#41]
+  block#41 [term]:
+    return s8#G10
+
+fn fr_s9(<anon_param>: void) -> struct s9  [entry: block#42]
+  block#42 [term]:
+    return s9#G11
+
+fn fr_s10(<anon_param>: void) -> struct s10  [entry: block#43]
+  block#43 [term]:
+    return s10#G12
+
+fn fr_s11(<anon_param>: void) -> struct s11  [entry: block#44]
+  block#44 [term]:
+    return s11#G13
+
+fn fr_s12(<anon_param>: void) -> struct s12  [entry: block#45]
+  block#45 [term]:
+    return s12#G14
+
+fn fr_s13(<anon_param>: void) -> struct s13  [entry: block#46]
+  block#46 [term]:
+    return s13#G15
+
+fn fr_s14(<anon_param>: void) -> struct s14  [entry: block#47]
+  block#47 [term]:
+    return s14#G16
+
+fn fr_s15(<anon_param>: void) -> struct s15  [entry: block#48]
+  block#48 [term]:
+    return s15#G17
+
+fn fr_s16(<anon_param>: void) -> struct s16  [entry: block#49]
+  block#49 [term]:
+    return s16#G18
+
+fn fr_s17(<anon_param>: void) -> struct s17  [entry: block#50]
+  block#50 [term]:
+    return s17#G19
+
+fn fr_hfa11(<anon_param>: void) -> struct hfa11  [entry: block#51]
+  block#51 [term]:
+    return hfa11#G20
+
+fn fr_hfa12(<anon_param>: void) -> struct hfa12  [entry: block#52]
+  block#52 [term]:
+    return hfa12#G21
+
+fn fr_hfa13(<anon_param>: void) -> struct hfa13  [entry: block#53]
+  block#53 [term]:
+    return hfa13#G22
+
+fn fr_hfa14(<anon_param>: void) -> struct hfa14  [entry: block#54]
+  block#54 [term]:
+    return hfa14#G23
+
+fn fr_hfa21(<anon_param>: void) -> struct hfa21  [entry: block#55]
+  block#55 [term]:
+    return hfa21#G24
+
+fn fr_hfa22(<anon_param>: void) -> struct hfa22  [entry: block#56]
+  block#56 [term]:
+    return hfa22#G25
+
+fn fr_hfa23(<anon_param>: void) -> struct hfa23  [entry: block#57]
+  block#57 [term]:
+    return hfa23#G26
+
+fn fr_hfa24(<anon_param>: void) -> struct hfa24  [entry: block#58]
+  block#58 [term]:
+    return hfa24#G27
+
+fn fr_hfa31(<anon_param>: void) -> struct hfa31  [entry: block#59]
+  block#59 [term]:
+    return hfa31#G28
+
+fn fr_hfa32(<anon_param>: void) -> struct hfa32  [entry: block#60]
+  block#60 [term]:
+    return hfa32#G29
+
+fn fr_hfa33(<anon_param>: void) -> struct hfa33  [entry: block#61]
+  block#61 [term]:
+    return hfa33#G30
+
+fn fr_hfa34(<anon_param>: void) -> struct hfa34  [entry: block#62]
+  block#62 [term]:
+    return hfa34#G31
+
+fn ret(<anon_param>: void) -> void  [entry: block#63]
+  block#63:
+    decl t1: struct s1 = fr_s1()
+    decl t2: struct s2 = fr_s2()
+    decl t3: struct s3 = fr_s3()
+    decl t4: struct s4 = fr_s4()
+    decl t5: struct s5 = fr_s5()
+    decl t6: struct s6 = fr_s6()
+    decl t7: struct s7 = fr_s7()
+    decl t8: struct s8 = fr_s8()
+    decl t9: struct s9 = fr_s9()
+    decl t10: struct s10 = fr_s10()
+    decl t11: struct s11 = fr_s11()
+    decl t12: struct s12 = fr_s12()
+    decl t13: struct s13 = fr_s13()
+    decl t14: struct s14 = fr_s14()
+    decl t15: struct s15 = fr_s15()
+    decl t16: struct s16 = fr_s16()
+    decl t17: struct s17 = fr_s17()
+    printf("\"Return values:\n\"")
+    printf("\"%.1s\n\"", t1#L0.x)
+    printf("\"%.2s\n\"", t2#L1.x)
+    printf("\"%.3s\n\"", t3#L2.x)
+    printf("\"%.4s\n\"", t4#L3.x)
+    printf("\"%.5s\n\"", t5#L4.x)
+    printf("\"%.6s\n\"", t6#L5.x)
+    printf("\"%.7s\n\"", t7#L6.x)
+    printf("\"%.8s\n\"", t8#L7.x)
+    printf("\"%.9s\n\"", t9#L8.x)
+    printf("\"%.10s\n\"", t10#L9.x)
+    printf("\"%.11s\n\"", t11#L10.x)
+    printf("\"%.12s\n\"", t12#L11.x)
+    printf("\"%.13s\n\"", t13#L12.x)
+    printf("\"%.14s\n\"", t14#L13.x)
+    printf("\"%.15s\n\"", t15#L14.x)
+    printf("\"%.16s\n\"", t16#L15.x)
+    printf("\"%.17s\n\"", t17#L16.x)
+    printf("\"%.1f\n\"", fr_hfa11().a)
+    printf("\"%.1f %.1f\n\"", fr_hfa12().a, fr_hfa12().b)
+    printf("\"%.1f %.1f\n\"", fr_hfa13().a, fr_hfa13().c)
+    printf("\"%.1f %.1f\n\"", fr_hfa14().a, fr_hfa14().d)
+    printf("\"%.1f\n\"", fr_hfa21().a)
+    printf("\"%.1f %.1f\n\"", fr_hfa22().a, fr_hfa22().b)
+    printf("\"%.1f %.1f\n\"", fr_hfa23().a, fr_hfa23().c)
+    printf("\"%.1f %.1f\n\"", fr_hfa24().a, fr_hfa24().d)
+    printf("\"%.1Lf\n\"", fr_hfa31().a)
+    printf("\"%.1Lf %.1Lf\n\"", fr_hfa32().a, fr_hfa32().b)
+    printf("\"%.1Lf %.1Lf\n\"", fr_hfa33().a, fr_hfa33().c)
+    printf("\"%.1Lf %.1Lf\n\"", fr_hfa34().a, fr_hfa34().d)
+
+fn match(s: const char**, f: const char*) -> int  [entry: block#64]
+  block#64 [term]:
+    decl p: const char* = (*s#P0)
+    for ((p#L17 = (*s#P0)); ((*f#P1) && ((*f#P1) == (*p#L17))); ((f#P1post++) , (p#L17post++))) body=block#65
+  block#65 [term]:
+    (empty)
+    continue
+  block#66 [term]:
+    if ((!(*f#P1))) -> block#67
+  block#67 [term]:
+    ((*s#P0) = (p#L17 - 1))
+    return 1
+  block#68 [term]:
+    return 0
+
+fn myprintf(format: const char*) -> void variadic  [entry: block#69]
+  block#69 [term]:
+    decl s: const char*
+    decl ap: ?
+    __builtin_va_start(ap#L19, format#P0)
+    for ((s#L18 = format#P0); (*s#L18); (s#L18post++)) body=block#70
+  block#70 [term]:
+    if (match((&s#L18), "\"%7s\"")) -> block#72 else block#73
+  block#71:
+    putchar('
+')
+  block#72 [term]:
+    decl t7: struct s7 = va_arg(ap#L19)
+    printf("\"%.7s\"", t7#L20.x)
+    goto  -> block#74
+  block#73 [term]:
+    if (match((&s#L18), "\"%9s\"")) -> block#75 else block#76
+  block#74 [term]:
+    continue
+  block#75 [term]:
+    decl t9: struct s9 = va_arg(ap#L19)
+    printf("\"%.9s\"", t9#L21.x)
+    goto  -> block#77
+  block#76 [term]:
+    if (match((&s#L18), "\"%hfa11\"")) -> block#78 else block#79
+  block#77 [term]:
+    goto  -> block#74
+  block#78 [term]:
+    decl x: struct hfa11 = va_arg(ap#L19)
+    printf("\"%.1f,%.1f\"", x#L22.a, x#L22.a)
+    goto  -> block#80
+  block#79 [term]:
+    if (match((&s#L18), "\"%hfa12\"")) -> block#81 else block#82
+  block#80 [term]:
+    goto  -> block#77
+  block#81 [term]:
+    decl x: struct hfa12 = va_arg(ap#L19)
+    printf("\"%.1f,%.1f\"", x#L23.a, x#L23.b)
+    goto  -> block#83
+  block#82 [term]:
+    if (match((&s#L18), "\"%hfa13\"")) -> block#84 else block#85
+  block#83 [term]:
+    goto  -> block#80
+  block#84 [term]:
+    decl x: struct hfa13 = va_arg(ap#L19)
+    printf("\"%.1f,%.1f\"", x#L24.a, x#L24.c)
+    goto  -> block#86
+  block#85 [term]:
+    if (match((&s#L18), "\"%hfa14\"")) -> block#87 else block#88
+  block#86 [term]:
+    goto  -> block#83
+  block#87 [term]:
+    decl x: struct hfa14 = va_arg(ap#L19)
+    printf("\"%.1f,%.1f\"", x#L25.a, x#L25.d)
+    goto  -> block#89
+  block#88 [term]:
+    if (match((&s#L18), "\"%hfa21\"")) -> block#90 else block#91
+  block#89 [term]:
+    goto  -> block#86
+  block#90 [term]:
+    decl x: struct hfa21 = va_arg(ap#L19)
+    printf("\"%.1f,%.1f\"", x#L26.a, x#L26.a)
+    goto  -> block#92
+  block#91 [term]:
+    if (match((&s#L18), "\"%hfa22\"")) -> block#93 else block#94
+  block#92 [term]:
+    goto  -> block#89
+  block#93 [term]:
+    decl x: struct hfa22 = va_arg(ap#L19)
+    printf("\"%.1f,%.1f\"", x#L27.a, x#L27.b)
+    goto  -> block#95
+  block#94 [term]:
+    if (match((&s#L18), "\"%hfa23\"")) -> block#96 else block#97
+  block#95 [term]:
+    goto  -> block#92
+  block#96 [term]:
+    decl x: struct hfa23 = va_arg(ap#L19)
+    printf("\"%.1f,%.1f\"", x#L28.a, x#L28.c)
+    goto  -> block#98
+  block#97 [term]:
+    if (match((&s#L18), "\"%hfa24\"")) -> block#99 else block#100
+  block#98 [term]:
+    goto  -> block#95
+  block#99 [term]:
+    decl x: struct hfa24 = va_arg(ap#L19)
+    printf("\"%.1f,%.1f\"", x#L29.a, x#L29.d)
+    goto  -> block#101
+  block#100 [term]:
+    if (match((&s#L18), "\"%hfa31\"")) -> block#102 else block#103
+  block#101 [term]:
+    goto  -> block#98
+  block#102 [term]:
+    decl x: struct hfa31 = va_arg(ap#L19)
+    printf("\"%.1Lf,%.1Lf\"", x#L30.a, x#L30.a)
+    goto  -> block#104
+  block#103 [term]:
+    if (match((&s#L18), "\"%hfa32\"")) -> block#105 else block#106
+  block#104 [term]:
+    goto  -> block#101
+  block#105 [term]:
+    decl x: struct hfa32 = va_arg(ap#L19)
+    printf("\"%.1Lf,%.1Lf\"", x#L31.a, x#L31.b)
+    goto  -> block#107
+  block#106 [term]:
+    if (match((&s#L18), "\"%hfa33\"")) -> block#108 else block#109
+  block#107 [term]:
+    goto  -> block#104
+  block#108 [term]:
+    decl x: struct hfa33 = va_arg(ap#L19)
+    printf("\"%.1Lf,%.1Lf\"", x#L32.a, x#L32.c)
+    goto  -> block#110
+  block#109 [term]:
+    if (match((&s#L18), "\"%hfa34\"")) -> block#111 else block#112
+  block#110 [term]:
+    goto  -> block#107
+  block#111 [term]:
+    decl x: struct hfa34 = va_arg(ap#L19)
+    printf("\"%.1Lf,%.1Lf\"", x#L33.a, x#L33.d)
+    goto  -> block#113
+  block#112 [term]:
+    putchar((*s#L18))
+    goto  -> block#113
+  block#113 [term]:
+    goto  -> block#110
+
+fn stdarg(<anon_param>: void) -> void  [entry: block#114]
+  block#114:
+    printf("\"stdarg:\n\"")
+    myprintf("\"%9s %9s %9s %9s %9s %9s\"", s9#G11, s9#G11, s9#G11, s9#G11, s9#G11, s9#G11)
+    myprintf("\"%7s %9s %9s %9s %9s %9s\"", s7#G9, s9#G11, s9#G11, s9#G11, s9#G11, s9#G11)
+    myprintf("\"HFA long double:\"")
+    myprintf("\"%hfa34 %hfa34 %hfa34 %hfa34\"", hfa34#G31, hfa34#G31, hfa34#G31, hfa34#G31)
+    myprintf("\"%hfa33 %hfa34 %hfa34 %hfa34\"", hfa33#G30, hfa34#G31, hfa34#G31, hfa34#G31)
+    myprintf("\"%hfa32 %hfa34 %hfa34 %hfa34\"", hfa32#G29, hfa34#G31, hfa34#G31, hfa34#G31)
+    myprintf("\"%hfa31 %hfa34 %hfa34 %hfa34\"", hfa31#G28, hfa34#G31, hfa34#G31, hfa34#G31)
+    myprintf("\"%hfa32 %hfa33 %hfa33 %hfa33 %hfa33\"", hfa32#G29, hfa33#G30, hfa33#G30, hfa33#G30, hfa33#G30)
+    myprintf("\"%hfa31 %hfa33 %hfa33 %hfa33 %hfa33\"", hfa31#G28, hfa33#G30, hfa33#G30, hfa33#G30, hfa33#G30)
+    myprintf("\"%hfa33 %hfa33 %hfa33 %hfa33\"", hfa33#G30, hfa33#G30, hfa33#G30, hfa33#G30)
+    myprintf("\"%hfa34 %hfa32 %hfa32 %hfa32 %hfa32\"", hfa34#G31, hfa32#G29, hfa32#G29, hfa32#G29, hfa32#G29)
+    myprintf("\"%hfa33 %hfa32 %hfa32 %hfa32 %hfa32\"", hfa33#G30, hfa32#G29, hfa32#G29, hfa32#G29, hfa32#G29)
+    myprintf("\"%hfa34 %hfa32 %hfa31 %hfa31 %hfa31 %hfa31\"", hfa34#G31, hfa32#G29, hfa31#G28, hfa31#G28, hfa31#G28, hfa31#G28)
+    myprintf("\"HFA double:\"")
+    myprintf("\"%hfa24 %hfa24 %hfa24 %hfa24\"", hfa24#G27, hfa24#G27, hfa24#G27, hfa24#G27)
+    myprintf("\"%hfa23 %hfa24 %hfa24 %hfa24\"", hfa23#G26, hfa24#G27, hfa24#G27, hfa24#G27)
+    myprintf("\"%hfa22 %hfa24 %hfa24 %hfa24\"", hfa22#G25, hfa24#G27, hfa24#G27, hfa24#G27)
+    myprintf("\"%hfa21 %hfa24 %hfa24 %hfa24\"", hfa21#G24, hfa24#G27, hfa24#G27, hfa24#G27)
+    myprintf("\"%hfa22 %hfa23 %hfa23 %hfa23 %hfa23\"", hfa22#G25, hfa23#G26, hfa23#G26, hfa23#G26, hfa23#G26)
+    myprintf("\"%hfa21 %hfa23 %hfa23 %hfa23 %hfa23\"", hfa21#G24, hfa23#G26, hfa23#G26, hfa23#G26, hfa23#G26)
+    myprintf("\"%hfa23 %hfa23 %hfa23 %hfa23\"", hfa23#G26, hfa23#G26, hfa23#G26, hfa23#G26)
+    myprintf("\"%hfa24 %hfa22 %hfa22 %hfa22 %hfa22\"", hfa24#G27, hfa22#G25, hfa22#G25, hfa22#G25, hfa22#G25)
+    myprintf("\"%hfa23 %hfa22 %hfa22 %hfa22 %hfa22\"", hfa23#G26, hfa22#G25, hfa22#G25, hfa22#G25, hfa22#G25)
+    myprintf("\"%hfa24 %hfa22 %hfa21 %hfa21 %hfa21 %hfa21\"", hfa24#G27, hfa22#G25, hfa21#G24, hfa21#G24, hfa21#G24, hfa21#G24)
+    myprintf("\"HFA float:\"")
+    myprintf("\"%hfa14 %hfa14 %hfa14 %hfa14\"", hfa14#G23, hfa14#G23, hfa14#G23, hfa14#G23)
+    myprintf("\"%hfa13 %hfa14 %hfa14 %hfa14\"", hfa13#G22, hfa14#G23, hfa14#G23, hfa14#G23)
+    myprintf("\"%hfa12 %hfa14 %hfa14 %hfa14\"", hfa12#G21, hfa14#G23, hfa14#G23, hfa14#G23)
+    myprintf("\"%hfa11 %hfa14 %hfa14 %hfa14\"", hfa11#G20, hfa14#G23, hfa14#G23, hfa14#G23)
+    myprintf("\"%hfa12 %hfa13 %hfa13 %hfa13 %hfa13\"", hfa12#G21, hfa13#G22, hfa13#G22, hfa13#G22, hfa13#G22)
+    myprintf("\"%hfa11 %hfa13 %hfa13 %hfa13 %hfa13\"", hfa11#G20, hfa13#G22, hfa13#G22, hfa13#G22, hfa13#G22)
+    myprintf("\"%hfa13 %hfa13 %hfa13 %hfa13\"", hfa13#G22, hfa13#G22, hfa13#G22, hfa13#G22)
+    myprintf("\"%hfa14 %hfa12 %hfa12 %hfa12 %hfa12\"", hfa14#G23, hfa12#G21, hfa12#G21, hfa12#G21, hfa12#G21)
+    myprintf("\"%hfa13 %hfa12 %hfa12 %hfa12 %hfa12\"", hfa13#G22, hfa12#G21, hfa12#G21, hfa12#G21, hfa12#G21)
+    myprintf("\"%hfa14 %hfa12 %hfa11 %hfa11 %hfa11 %hfa11\"", hfa14#G23, hfa12#G21, hfa11#G20, hfa11#G20, hfa11#G20, hfa11#G20)
+
+fn pll(x: ullong) -> void  [entry: block#115]
+  block#115:
+    printf("\"%llx\n\"", x#P0)
+
+fn movi(<anon_param>: void) -> void  [entry: block#116]
+  block#116:
+    printf("\"MOVI:\n\"")
+    pll(0)
+    pll(43981)
+    pll(2882338816)
+    pll(188896956645376)
+    pll(-6067193122998190080)
+    pll(4294945741)
+    pll(2882404351)
+    pll(-21555)
+    pll(-1412562945)
+    pll(-92573725097985)
+    pll(-6066911648021479425)
+    pll(2863311530)
+    pll(6148914691236517205)
+    pll(2004318071)
+    pll(3689348814741910323)
+    pll(4177066232)
+    pll(2170205185142300190)
+    pll(1065369472)
+    pll(143835907860922879)
+    pll(8388544)
+    pll(288221580125796352)
+    pll(2251799813684736)
+    pll(2882343476)
+    pll(188896956650036)
+    pll(-6067193122998185420)
+    pll(188897262043136)
+    pll(-6067193122692792320)
+    pll(-6067173108450590720)
+    pll(-1412623820)
+    pll(-92573725158860)
+    pll(-6066911648021540300)
+    pll(-92577714601985)
+    pll(-6066911652010983425)
+    pll(-6067173104155623425)
+    pll(-18686810953847)
+    pll(-6066930334832394241)
+    pll(-6066930334832433271)
+
+fn addip0(x: uint) -> uint static  [entry: block#117]
+  block#117 [term]:
+    return (x#P0 + 0)
+
+fn sublp0(x: ulong) -> ulong static  [entry: block#118]
+  block#118 [term]:
+    return (x#P0 - 0)
+
+fn addip123(x: uint) -> uint static  [entry: block#119]
+  block#119 [term]:
+    return (x#P0 + 123)
+
+fn addlm123(x: ulong) -> ulong static  [entry: block#120]
+  block#120 [term]:
+    return (x#P0 + (-123))
+
+fn sublp4095(x: ulong) -> ulong static  [entry: block#121]
+  block#121 [term]:
+    return (x#P0 - 4095)
+
+fn subim503808(x: uint) -> uint static  [entry: block#122]
+  block#122 [term]:
+    return (x#P0 - (-503808))
+
+fn addp12345(x: ulong) -> ulong static  [entry: block#123]
+  block#123 [term]:
+    return (x#P0 + 12345)
+
+fn subp12345(x: uint) -> uint static  [entry: block#124]
+  block#124 [term]:
+    return (x#P0 - 12345)
+
+fn mvni(x: uint) -> uint static  [entry: block#125]
+  block#125 [term]:
+    return (4294967295 - x#P0)
+
+fn negl(x: ulong) -> ulong static  [entry: block#126]
+  block#126 [term]:
+    return (0 - x#P0)
+
+fn rsbi123(x: uint) -> uint static  [entry: block#127]
+  block#127 [term]:
+    return (123 - x#P0)
+
+fn rsbl123(x: ulong) -> ulong static  [entry: block#128]
+  block#128 [term]:
+    return (123 - x#P0)
+
+fn andi0(x: uint) -> uint static  [entry: block#129]
+  block#129 [term]:
+    return (x#P0 & 0)
+
+fn andlm1(x: ulong) -> ulong static  [entry: block#130]
+  block#130 [term]:
+    return (x#P0 & (-1))
+
+fn orrl0(x: ulong) -> ulong static  [entry: block#131]
+  block#131 [term]:
+    return (x#P0 | 0)
+
+fn orrim1(x: uint) -> uint static  [entry: block#132]
+  block#132 [term]:
+    return (x#P0 | (-1))
+
+fn eori0(x: uint) -> uint static  [entry: block#133]
+  block#133 [term]:
+    return (x#P0 ^ 0)
+
+fn eorlm1(x: ulong) -> ulong static  [entry: block#134]
+  block#134 [term]:
+    return (x#P0 ^ (-1))
+
+fn and0xf0(x: uint) -> uint static  [entry: block#135]
+  block#135 [term]:
+    return (x#P0 & 240)
+
+fn orr0xf0(x: ulong) -> ulong static  [entry: block#136]
+  block#136 [term]:
+    return (x#P0 | 240)
+
+fn eor0xf0(x: ulong) -> ulong static  [entry: block#137]
+  block#137 [term]:
+    return (x#P0 ^ 240)
+
+fn lsli0(x: uint) -> uint static  [entry: block#138]
+  block#138 [term]:
+    return (x#P0 << 0)
+
+fn lsri0(x: uint) -> uint static  [entry: block#139]
+  block#139 [term]:
+    return (x#P0 >> 0)
+
+fn asrl0(x: long) -> long static  [entry: block#140]
+  block#140 [term]:
+    return (x#P0 >> 0)
+
+fn lsli1(x: uint) -> uint static  [entry: block#141]
+  block#141 [term]:
+    return (x#P0 << 1)
+
+fn lsli31(x: uint) -> uint static  [entry: block#142]
+  block#142 [term]:
+    return (x#P0 << 31)
+
+fn lsll1(x: ulong) -> ulong static  [entry: block#143]
+  block#143 [term]:
+    return (x#P0 << 1)
+
+fn lsll63(x: ulong) -> ulong static  [entry: block#144]
+  block#144 [term]:
+    return (x#P0 << 63)
+
+fn lsri1(x: uint) -> uint static  [entry: block#145]
+  block#145 [term]:
+    return (x#P0 >> 1)
+
+fn lsri31(x: uint) -> uint static  [entry: block#146]
+  block#146 [term]:
+    return (x#P0 >> 31)
+
+fn lsrl1(x: ulong) -> ulong static  [entry: block#147]
+  block#147 [term]:
+    return (x#P0 >> 1)
+
+fn lsrl63(x: ulong) -> ulong static  [entry: block#148]
+  block#148 [term]:
+    return (x#P0 >> 63)
+
+fn asri1(x: int) -> int static  [entry: block#149]
+  block#149 [term]:
+    return (x#P0 >> 1)
+
+fn asri31(x: int) -> int static  [entry: block#150]
+  block#150 [term]:
+    return (x#P0 >> 31)
+
+fn asrl1(x: long) -> long static  [entry: block#151]
+  block#151 [term]:
+    return (x#P0 >> 1)
+
+fn asrl63(x: long) -> long static  [entry: block#152]
+  block#152 [term]:
+    return (x#P0 >> 63)
+
+fn opi(<anon_param>: void) -> void  [entry: block#153]
+  block#153:
+    decl x: int = 1000
+    pll(addip0(x#L34))
+    pll(sublp0(x#L34))
+    pll(addip123(x#L34))
+    pll(addlm123(x#L34))
+    pll(sublp4095(x#L34))
+    pll(subim503808(x#L34))
+    pll(addp12345(x#L34))
+    pll(subp12345(x#L34))
+    pll(mvni(x#L34))
+    pll(negl(x#L34))
+    pll(rsbi123(x#L34))
+    pll(rsbl123(x#L34))
+    pll(andi0(x#L34))
+    pll(andlm1(x#L34))
+    pll(orrl0(x#L34))
+    pll(orrim1(x#L34))
+    pll(eori0(x#L34))
+    pll(eorlm1(x#L34))
+    pll(and0xf0(x#L34))
+    pll(orr0xf0(x#L34))
+    pll(eor0xf0(x#L34))
+    pll(lsli0(x#L34))
+    pll(lsri0(x#L34))
+    pll(asrl0(x#L34))
+    pll(lsli1(x#L34))
+    pll(lsli31(x#L34))
+    pll(lsll1(x#L34))
+    pll(lsll63(x#L34))
+    pll(lsri1(x#L34))
+    pll(lsri31(x#L34))
+    pll(lsrl1(x#L34))
+    pll(lsrl63(x#L34))
+    pll(asri1(x#L34))
+    pll(asri31(x#L34))
+    pll(asrl1(x#L34))
+    pll(asrl63(x#L34))
+
+fn pcs(<anon_param>: void) -> void  [entry: block#154]
+  block#154:
+    arg()
+    ret()
+    stdarg()
+    movi()
+    opi()
+
+fn main() -> int  [entry: block#155]
+  block#155 [term]:
+    pcs()
+    return 0
+
+--- compile-time reduction ---
+  compile-time reduction: 1 iteration, 0 template calls resolved, 0 template types resolved, 0 consteval reductions (converged)
+--- materialization ---
+  materialization: 202 functions materialized

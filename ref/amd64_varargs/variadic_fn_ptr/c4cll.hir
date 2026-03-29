@@ -1,0 +1,26 @@
+=== HIR Module ===
+functions=3 globals=0 blocks=3 stmts=8 exprs=25
+
+--- functions ---
+
+fn sum2(first: int) -> int variadic  [entry: block#0]
+  block#0 [term]:
+    decl ap: ?
+    decl second: int
+    __builtin_va_start(ap#L0, first#P0)
+    (second#L1 = va_arg(ap#L0))
+    __builtin_va_end(ap#L0)
+    return (first#P0 + second#L1)
+
+fn pickv(<anon_param>: void) -> int*  [entry: block#1]
+  block#1 [term]:
+    return sum2
+
+fn main(<anon_param>: void) -> int  [entry: block#2]
+  block#2 [term]:
+    return ((pickv()(10, 32) == 42) ? 0 : 1)
+
+--- compile-time reduction ---
+  compile-time reduction: 1 iteration, 0 template calls resolved, 0 template types resolved, 0 consteval reductions (converged)
+--- materialization ---
+  materialization: 3 functions materialized

@@ -1,0 +1,75 @@
+=== HIR Module ===
+functions=7 globals=0 blocks=23 stmts=29 exprs=89
+
+--- functions ---
+
+fn noinline_add(x: int, y: int) -> int  [entry: block#0]
+  block#0 [term]:
+    return (x#P0 + y#P1)
+
+fn default_mul(x: int, y: int) -> int  [entry: block#1]
+  block#1 [term]:
+    return (x#P0 * y#P1)
+
+fn recursive_fib(n: int) -> int static  [entry: block#2]
+  block#2 [term]:
+    if ((n#P0 <= 1)) -> block#3
+  block#3 [term]:
+    return n#P0
+  block#4 [term]:
+    return (recursive_fib((n#P0 - 1)) + recursive_fib((n#P0 - 2)))
+
+fn variadic_sum(count: int) -> int variadic static  [entry: block#5]
+  block#5 [term]:
+    decl ap: ?
+    __builtin_va_start(ap#L0, count#P0)
+    decl sum: int = 0
+    decl i: int = 0
+    for (; (i#L2 < count#P0); (i#L2post++)) body=block#6
+  block#6 [term]:
+    (sum#L1 += va_arg(ap#L0))
+    continue
+  block#7 [term]:
+    __builtin_va_end(ap#L0)
+    return sum#L1
+
+fn noinline_wins(x: int) -> int  [entry: block#8]
+  block#8 [term]:
+    return (x#P0 + 100)
+
+fn simple_inc(x: int) -> int static  [entry: block#9]
+  block#9 [term]:
+    return (x#P0 + 1)
+
+fn main(<anon_param>: void) -> int  [entry: block#10]
+  block#10 [term]:
+    if ((noinline_add(3, 4) != 7)) -> block#11
+  block#11 [term]:
+    return 1
+  block#12 [term]:
+    if ((default_mul(3, 5) != 15)) -> block#13
+  block#13 [term]:
+    return 2
+  block#14 [term]:
+    if ((recursive_fib(10) != 55)) -> block#15
+  block#15 [term]:
+    return 3
+  block#16 [term]:
+    if ((variadic_sum(3, 10, 20, 30) != 60)) -> block#17
+  block#17 [term]:
+    return 4
+  block#18 [term]:
+    if ((noinline_wins(5) != 105)) -> block#19
+  block#19 [term]:
+    return 5
+  block#20 [term]:
+    if ((simple_inc(41) != 42)) -> block#21
+  block#21 [term]:
+    return 6
+  block#22 [term]:
+    return 0
+
+--- compile-time reduction ---
+  compile-time reduction: 1 iteration, 0 template calls resolved, 0 template types resolved, 0 consteval reductions (converged)
+--- materialization ---
+  materialization: 7 functions materialized

@@ -1,0 +1,696 @@
+=== HIR Module ===
+functions=1 globals=1 blocks=239 stmts=443 exprs=1408
+
+--- globals ---
+  global one: int = 1
+
+--- functions ---
+
+fn main(argc: int, argv: char*[]) -> int  [entry: block#0]
+  block#0 [term]:
+    decl v0: short<8> = 0
+    (v0#L0[0] = one#G0)
+    (v0#L0[1] = 1)
+    (v0#L0[2] = 2)
+    (v0#L0[3] = 3)
+    (v0#L0[4] = 4)
+    (v0#L0[5] = 5)
+    (v0#L0[6] = 6)
+    (v0#L0[7] = 7)
+    decl v1: short<8>
+    decl f0: float<4> = 0
+    (f0#L2[0] = 1)
+    (f0#L2[1] = 2)
+    (f0#L2[2] = 3)
+    (f0#L2[3] = 4)
+    decl f1: float<4>
+    decl f2: float<4>
+    decl d0: double<2> = 0
+    (d0#L5[0] = 1)
+    (d0#L5[1] = 2)
+    decl d1: double<2>
+    decl d2: double<2>
+    (v1#L1 = (2 + v0#L0))
+    goto  -> block#1
+  block#1 [term]:
+    decl __i: int
+    for ((__i#L8 = 0); (__i#L8 < 8); (__i#L8post++)) body=block#4
+  block#2 [term]:
+    do block#1 while (0)
+  block#3 [term]:
+    (v1#L1 = (2 - v0#L0))
+    goto  -> block#8
+  block#4 [term]:
+    if (((*(((short*)(&v1#L1)) + __i#L8)) != (2 + (*(((short*)(&v0#L0)) + __i#L8))))) -> block#6
+  block#5 [term]:
+    goto  -> block#2
+  block#6 [term]:
+    __builtin_abort()
+    goto  -> block#7
+  block#7 [term]:
+    continue
+  block#8 [term]:
+    decl __i: int
+    for ((__i#L9 = 0); (__i#L9 < 8); (__i#L9post++)) body=block#11
+  block#9 [term]:
+    do block#8 while (0)
+  block#10 [term]:
+    (v1#L1 = (2 * v0#L0))
+    goto  -> block#15
+  block#11 [term]:
+    if (((*(((short*)(&v1#L1)) + __i#L9)) != (2 - (*(((short*)(&v0#L0)) + __i#L9))))) -> block#13
+  block#12 [term]:
+    goto  -> block#9
+  block#13 [term]:
+    __builtin_abort()
+    goto  -> block#14
+  block#14 [term]:
+    continue
+  block#15 [term]:
+    decl __i: int
+    for ((__i#L10 = 0); (__i#L10 < 8); (__i#L10post++)) body=block#18
+  block#16 [term]:
+    do block#15 while (0)
+  block#17 [term]:
+    (v1#L1 = (2 / v0#L0))
+    goto  -> block#22
+  block#18 [term]:
+    if (((*(((short*)(&v1#L1)) + __i#L10)) != (2 * (*(((short*)(&v0#L0)) + __i#L10))))) -> block#20
+  block#19 [term]:
+    goto  -> block#16
+  block#20 [term]:
+    __builtin_abort()
+    goto  -> block#21
+  block#21 [term]:
+    continue
+  block#22 [term]:
+    decl __i: int
+    for ((__i#L11 = 0); (__i#L11 < 8); (__i#L11post++)) body=block#25
+  block#23 [term]:
+    do block#22 while (0)
+  block#24 [term]:
+    (v1#L1 = (2 % v0#L0))
+    goto  -> block#29
+  block#25 [term]:
+    if (((*(((short*)(&v1#L1)) + __i#L11)) != (2 / (*(((short*)(&v0#L0)) + __i#L11))))) -> block#27
+  block#26 [term]:
+    goto  -> block#23
+  block#27 [term]:
+    __builtin_abort()
+    goto  -> block#28
+  block#28 [term]:
+    continue
+  block#29 [term]:
+    decl __i: int
+    for ((__i#L12 = 0); (__i#L12 < 8); (__i#L12post++)) body=block#32
+  block#30 [term]:
+    do block#29 while (0)
+  block#31 [term]:
+    (v1#L1 = (2 ^ v0#L0))
+    goto  -> block#36
+  block#32 [term]:
+    if (((*(((short*)(&v1#L1)) + __i#L12)) != (2 % (*(((short*)(&v0#L0)) + __i#L12))))) -> block#34
+  block#33 [term]:
+    goto  -> block#30
+  block#34 [term]:
+    __builtin_abort()
+    goto  -> block#35
+  block#35 [term]:
+    continue
+  block#36 [term]:
+    decl __i: int
+    for ((__i#L13 = 0); (__i#L13 < 8); (__i#L13post++)) body=block#39
+  block#37 [term]:
+    do block#36 while (0)
+  block#38 [term]:
+    (v1#L1 = (2 & v0#L0))
+    goto  -> block#43
+  block#39 [term]:
+    if (((*(((short*)(&v1#L1)) + __i#L13)) != (2 ^ (*(((short*)(&v0#L0)) + __i#L13))))) -> block#41
+  block#40 [term]:
+    goto  -> block#37
+  block#41 [term]:
+    __builtin_abort()
+    goto  -> block#42
+  block#42 [term]:
+    continue
+  block#43 [term]:
+    decl __i: int
+    for ((__i#L14 = 0); (__i#L14 < 8); (__i#L14post++)) body=block#46
+  block#44 [term]:
+    do block#43 while (0)
+  block#45 [term]:
+    (v1#L1 = (2 | v0#L0))
+    goto  -> block#50
+  block#46 [term]:
+    if (((*(((short*)(&v1#L1)) + __i#L14)) != (2 & (*(((short*)(&v0#L0)) + __i#L14))))) -> block#48
+  block#47 [term]:
+    goto  -> block#44
+  block#48 [term]:
+    __builtin_abort()
+    goto  -> block#49
+  block#49 [term]:
+    continue
+  block#50 [term]:
+    decl __i: int
+    for ((__i#L15 = 0); (__i#L15 < 8); (__i#L15post++)) body=block#53
+  block#51 [term]:
+    do block#50 while (0)
+  block#52 [term]:
+    (v1#L1 = (2 << v0#L0))
+    goto  -> block#57
+  block#53 [term]:
+    if (((*(((short*)(&v1#L1)) + __i#L15)) != (2 | (*(((short*)(&v0#L0)) + __i#L15))))) -> block#55
+  block#54 [term]:
+    goto  -> block#51
+  block#55 [term]:
+    __builtin_abort()
+    goto  -> block#56
+  block#56 [term]:
+    continue
+  block#57 [term]:
+    decl __i: int
+    for ((__i#L16 = 0); (__i#L16 < 8); (__i#L16post++)) body=block#60
+  block#58 [term]:
+    do block#57 while (0)
+  block#59 [term]:
+    (v1#L1 = (2 >> v0#L0))
+    goto  -> block#64
+  block#60 [term]:
+    if (((*(((short*)(&v1#L1)) + __i#L16)) != (2 << (*(((short*)(&v0#L0)) + __i#L16))))) -> block#62
+  block#61 [term]:
+    goto  -> block#58
+  block#62 [term]:
+    __builtin_abort()
+    goto  -> block#63
+  block#63 [term]:
+    continue
+  block#64 [term]:
+    decl __i: int
+    for ((__i#L17 = 0); (__i#L17 < 8); (__i#L17post++)) body=block#67
+  block#65 [term]:
+    do block#64 while (0)
+  block#66 [term]:
+    (v1#L1 = (v0#L0 + 2))
+    goto  -> block#71
+  block#67 [term]:
+    if (((*(((short*)(&v1#L1)) + __i#L17)) != (2 >> (*(((short*)(&v0#L0)) + __i#L17))))) -> block#69
+  block#68 [term]:
+    goto  -> block#65
+  block#69 [term]:
+    __builtin_abort()
+    goto  -> block#70
+  block#70 [term]:
+    continue
+  block#71 [term]:
+    decl __i: int
+    for ((__i#L18 = 0); (__i#L18 < 8); (__i#L18post++)) body=block#74
+  block#72 [term]:
+    do block#71 while (0)
+  block#73 [term]:
+    (v1#L1 = (v0#L0 - 2))
+    goto  -> block#78
+  block#74 [term]:
+    if (((*(((short*)(&v1#L1)) + __i#L18)) != ((*(((short*)(&v0#L0)) + __i#L18)) + 2))) -> block#76
+  block#75 [term]:
+    goto  -> block#72
+  block#76 [term]:
+    __builtin_abort()
+    goto  -> block#77
+  block#77 [term]:
+    continue
+  block#78 [term]:
+    decl __i: int
+    for ((__i#L19 = 0); (__i#L19 < 8); (__i#L19post++)) body=block#81
+  block#79 [term]:
+    do block#78 while (0)
+  block#80 [term]:
+    (v1#L1 = (v0#L0 * 2))
+    goto  -> block#85
+  block#81 [term]:
+    if (((*(((short*)(&v1#L1)) + __i#L19)) != ((*(((short*)(&v0#L0)) + __i#L19)) - 2))) -> block#83
+  block#82 [term]:
+    goto  -> block#79
+  block#83 [term]:
+    __builtin_abort()
+    goto  -> block#84
+  block#84 [term]:
+    continue
+  block#85 [term]:
+    decl __i: int
+    for ((__i#L20 = 0); (__i#L20 < 8); (__i#L20post++)) body=block#88
+  block#86 [term]:
+    do block#85 while (0)
+  block#87 [term]:
+    (v1#L1 = (v0#L0 / 2))
+    goto  -> block#92
+  block#88 [term]:
+    if (((*(((short*)(&v1#L1)) + __i#L20)) != ((*(((short*)(&v0#L0)) + __i#L20)) * 2))) -> block#90
+  block#89 [term]:
+    goto  -> block#86
+  block#90 [term]:
+    __builtin_abort()
+    goto  -> block#91
+  block#91 [term]:
+    continue
+  block#92 [term]:
+    decl __i: int
+    for ((__i#L21 = 0); (__i#L21 < 8); (__i#L21post++)) body=block#95
+  block#93 [term]:
+    do block#92 while (0)
+  block#94 [term]:
+    (v1#L1 = (v0#L0 % 2))
+    goto  -> block#99
+  block#95 [term]:
+    if (((*(((short*)(&v1#L1)) + __i#L21)) != ((*(((short*)(&v0#L0)) + __i#L21)) / 2))) -> block#97
+  block#96 [term]:
+    goto  -> block#93
+  block#97 [term]:
+    __builtin_abort()
+    goto  -> block#98
+  block#98 [term]:
+    continue
+  block#99 [term]:
+    decl __i: int
+    for ((__i#L22 = 0); (__i#L22 < 8); (__i#L22post++)) body=block#102
+  block#100 [term]:
+    do block#99 while (0)
+  block#101 [term]:
+    (v1#L1 = (v0#L0 ^ 2))
+    goto  -> block#106
+  block#102 [term]:
+    if (((*(((short*)(&v1#L1)) + __i#L22)) != ((*(((short*)(&v0#L0)) + __i#L22)) % 2))) -> block#104
+  block#103 [term]:
+    goto  -> block#100
+  block#104 [term]:
+    __builtin_abort()
+    goto  -> block#105
+  block#105 [term]:
+    continue
+  block#106 [term]:
+    decl __i: int
+    for ((__i#L23 = 0); (__i#L23 < 8); (__i#L23post++)) body=block#109
+  block#107 [term]:
+    do block#106 while (0)
+  block#108 [term]:
+    (v1#L1 = (v0#L0 & 2))
+    goto  -> block#113
+  block#109 [term]:
+    if (((*(((short*)(&v1#L1)) + __i#L23)) != ((*(((short*)(&v0#L0)) + __i#L23)) ^ 2))) -> block#111
+  block#110 [term]:
+    goto  -> block#107
+  block#111 [term]:
+    __builtin_abort()
+    goto  -> block#112
+  block#112 [term]:
+    continue
+  block#113 [term]:
+    decl __i: int
+    for ((__i#L24 = 0); (__i#L24 < 8); (__i#L24post++)) body=block#116
+  block#114 [term]:
+    do block#113 while (0)
+  block#115 [term]:
+    (v1#L1 = (v0#L0 | 2))
+    goto  -> block#120
+  block#116 [term]:
+    if (((*(((short*)(&v1#L1)) + __i#L24)) != ((*(((short*)(&v0#L0)) + __i#L24)) & 2))) -> block#118
+  block#117 [term]:
+    goto  -> block#114
+  block#118 [term]:
+    __builtin_abort()
+    goto  -> block#119
+  block#119 [term]:
+    continue
+  block#120 [term]:
+    decl __i: int
+    for ((__i#L25 = 0); (__i#L25 < 8); (__i#L25post++)) body=block#123
+  block#121 [term]:
+    do block#120 while (0)
+  block#122 [term]:
+    (f1#L3 = (2 + f0#L2))
+    decl <clit>: float<4> = 0
+    (<clit>#L26[0] = 2)
+    (<clit>#L26[1] = 2)
+    (<clit>#L26[2] = 2)
+    (<clit>#L26[3] = 2)
+    (f2#L4 = (<clit>#L26 + f0#L2))
+    goto  -> block#127
+  block#123 [term]:
+    if (((*(((short*)(&v1#L1)) + __i#L25)) != ((*(((short*)(&v0#L0)) + __i#L25)) | 2))) -> block#125
+  block#124 [term]:
+    goto  -> block#121
+  block#125 [term]:
+    __builtin_abort()
+    goto  -> block#126
+  block#126 [term]:
+    continue
+  block#127 [term]:
+    decl __i: int
+    for ((__i#L27 = 0); (__i#L27 < 4); (__i#L27post++)) body=block#130
+  block#128 [term]:
+    do block#127 while (0)
+  block#129 [term]:
+    (f1#L3 = (2 - f0#L2))
+    decl <clit>: float<4> = 0
+    (<clit>#L28[0] = 2)
+    (<clit>#L28[1] = 2)
+    (<clit>#L28[2] = 2)
+    (<clit>#L28[3] = 2)
+    (f2#L4 = (<clit>#L28 - f0#L2))
+    goto  -> block#134
+  block#130 [term]:
+    if (((*(((float*)(&f1#L3)) + __i#L27)) != (*(((float*)(&f2#L4)) + __i#L27)))) -> block#132
+  block#131 [term]:
+    goto  -> block#128
+  block#132 [term]:
+    __builtin_abort()
+    goto  -> block#133
+  block#133 [term]:
+    continue
+  block#134 [term]:
+    decl __i: int
+    for ((__i#L29 = 0); (__i#L29 < 4); (__i#L29post++)) body=block#137
+  block#135 [term]:
+    do block#134 while (0)
+  block#136 [term]:
+    (f1#L3 = (2 * f0#L2))
+    decl <clit>: float<4> = 0
+    (<clit>#L30[0] = 2)
+    (<clit>#L30[1] = 2)
+    (<clit>#L30[2] = 2)
+    (<clit>#L30[3] = 2)
+    (f2#L4 = (<clit>#L30 * f0#L2))
+    goto  -> block#141
+  block#137 [term]:
+    if (((*(((float*)(&f1#L3)) + __i#L29)) != (*(((float*)(&f2#L4)) + __i#L29)))) -> block#139
+  block#138 [term]:
+    goto  -> block#135
+  block#139 [term]:
+    __builtin_abort()
+    goto  -> block#140
+  block#140 [term]:
+    continue
+  block#141 [term]:
+    decl __i: int
+    for ((__i#L31 = 0); (__i#L31 < 4); (__i#L31post++)) body=block#144
+  block#142 [term]:
+    do block#141 while (0)
+  block#143 [term]:
+    (f1#L3 = (2 / f0#L2))
+    decl <clit>: float<4> = 0
+    (<clit>#L32[0] = 2)
+    (<clit>#L32[1] = 2)
+    (<clit>#L32[2] = 2)
+    (<clit>#L32[3] = 2)
+    (f2#L4 = (<clit>#L32 / f0#L2))
+    goto  -> block#148
+  block#144 [term]:
+    if (((*(((float*)(&f1#L3)) + __i#L31)) != (*(((float*)(&f2#L4)) + __i#L31)))) -> block#146
+  block#145 [term]:
+    goto  -> block#142
+  block#146 [term]:
+    __builtin_abort()
+    goto  -> block#147
+  block#147 [term]:
+    continue
+  block#148 [term]:
+    decl __i: int
+    for ((__i#L33 = 0); (__i#L33 < 4); (__i#L33post++)) body=block#151
+  block#149 [term]:
+    do block#148 while (0)
+  block#150 [term]:
+    (f1#L3 = (f0#L2 + 2))
+    decl <clit>: float<4> = 0
+    (<clit>#L34[0] = 2)
+    (<clit>#L34[1] = 2)
+    (<clit>#L34[2] = 2)
+    (<clit>#L34[3] = 2)
+    (f2#L4 = (f0#L2 + <clit>#L34))
+    goto  -> block#155
+  block#151 [term]:
+    if (((*(((float*)(&f1#L3)) + __i#L33)) != (*(((float*)(&f2#L4)) + __i#L33)))) -> block#153
+  block#152 [term]:
+    goto  -> block#149
+  block#153 [term]:
+    __builtin_abort()
+    goto  -> block#154
+  block#154 [term]:
+    continue
+  block#155 [term]:
+    decl __i: int
+    for ((__i#L35 = 0); (__i#L35 < 4); (__i#L35post++)) body=block#158
+  block#156 [term]:
+    do block#155 while (0)
+  block#157 [term]:
+    (f1#L3 = (f0#L2 - 2))
+    decl <clit>: float<4> = 0
+    (<clit>#L36[0] = 2)
+    (<clit>#L36[1] = 2)
+    (<clit>#L36[2] = 2)
+    (<clit>#L36[3] = 2)
+    (f2#L4 = (f0#L2 - <clit>#L36))
+    goto  -> block#162
+  block#158 [term]:
+    if (((*(((float*)(&f1#L3)) + __i#L35)) != (*(((float*)(&f2#L4)) + __i#L35)))) -> block#160
+  block#159 [term]:
+    goto  -> block#156
+  block#160 [term]:
+    __builtin_abort()
+    goto  -> block#161
+  block#161 [term]:
+    continue
+  block#162 [term]:
+    decl __i: int
+    for ((__i#L37 = 0); (__i#L37 < 4); (__i#L37post++)) body=block#165
+  block#163 [term]:
+    do block#162 while (0)
+  block#164 [term]:
+    (f1#L3 = (f0#L2 * 2))
+    decl <clit>: float<4> = 0
+    (<clit>#L38[0] = 2)
+    (<clit>#L38[1] = 2)
+    (<clit>#L38[2] = 2)
+    (<clit>#L38[3] = 2)
+    (f2#L4 = (f0#L2 * <clit>#L38))
+    goto  -> block#169
+  block#165 [term]:
+    if (((*(((float*)(&f1#L3)) + __i#L37)) != (*(((float*)(&f2#L4)) + __i#L37)))) -> block#167
+  block#166 [term]:
+    goto  -> block#163
+  block#167 [term]:
+    __builtin_abort()
+    goto  -> block#168
+  block#168 [term]:
+    continue
+  block#169 [term]:
+    decl __i: int
+    for ((__i#L39 = 0); (__i#L39 < 4); (__i#L39post++)) body=block#172
+  block#170 [term]:
+    do block#169 while (0)
+  block#171 [term]:
+    (f1#L3 = (f0#L2 / 2))
+    decl <clit>: float<4> = 0
+    (<clit>#L40[0] = 2)
+    (<clit>#L40[1] = 2)
+    (<clit>#L40[2] = 2)
+    (<clit>#L40[3] = 2)
+    (f2#L4 = (f0#L2 / <clit>#L40))
+    goto  -> block#176
+  block#172 [term]:
+    if (((*(((float*)(&f1#L3)) + __i#L39)) != (*(((float*)(&f2#L4)) + __i#L39)))) -> block#174
+  block#173 [term]:
+    goto  -> block#170
+  block#174 [term]:
+    __builtin_abort()
+    goto  -> block#175
+  block#175 [term]:
+    continue
+  block#176 [term]:
+    decl __i: int
+    for ((__i#L41 = 0); (__i#L41 < 4); (__i#L41post++)) body=block#179
+  block#177 [term]:
+    do block#176 while (0)
+  block#178 [term]:
+    (d1#L6 = (2 + d0#L5))
+    decl <clit>: double<2> = 0
+    (<clit>#L42[0] = 2)
+    (<clit>#L42[1] = 2)
+    (d2#L7 = (<clit>#L42 + d0#L5))
+    goto  -> block#183
+  block#179 [term]:
+    if (((*(((float*)(&f1#L3)) + __i#L41)) != (*(((float*)(&f2#L4)) + __i#L41)))) -> block#181
+  block#180 [term]:
+    goto  -> block#177
+  block#181 [term]:
+    __builtin_abort()
+    goto  -> block#182
+  block#182 [term]:
+    continue
+  block#183 [term]:
+    decl __i: int
+    for ((__i#L43 = 0); (__i#L43 < 2); (__i#L43post++)) body=block#186
+  block#184 [term]:
+    do block#183 while (0)
+  block#185 [term]:
+    (d1#L6 = (2 - d0#L5))
+    decl <clit>: double<2> = 0
+    (<clit>#L44[0] = 2)
+    (<clit>#L44[1] = 2)
+    (d2#L7 = (<clit>#L44 - d0#L5))
+    goto  -> block#190
+  block#186 [term]:
+    if (((*(((double*)(&d1#L6)) + __i#L43)) != (*(((double*)(&d2#L7)) + __i#L43)))) -> block#188
+  block#187 [term]:
+    goto  -> block#184
+  block#188 [term]:
+    __builtin_abort()
+    goto  -> block#189
+  block#189 [term]:
+    continue
+  block#190 [term]:
+    decl __i: int
+    for ((__i#L45 = 0); (__i#L45 < 2); (__i#L45post++)) body=block#193
+  block#191 [term]:
+    do block#190 while (0)
+  block#192 [term]:
+    (d1#L6 = (2 * d0#L5))
+    decl <clit>: double<2> = 0
+    (<clit>#L46[0] = 2)
+    (<clit>#L46[1] = 2)
+    (d2#L7 = (<clit>#L46 * d0#L5))
+    goto  -> block#197
+  block#193 [term]:
+    if (((*(((double*)(&d1#L6)) + __i#L45)) != (*(((double*)(&d2#L7)) + __i#L45)))) -> block#195
+  block#194 [term]:
+    goto  -> block#191
+  block#195 [term]:
+    __builtin_abort()
+    goto  -> block#196
+  block#196 [term]:
+    continue
+  block#197 [term]:
+    decl __i: int
+    for ((__i#L47 = 0); (__i#L47 < 2); (__i#L47post++)) body=block#200
+  block#198 [term]:
+    do block#197 while (0)
+  block#199 [term]:
+    (d1#L6 = (2 / d0#L5))
+    decl <clit>: double<2> = 0
+    (<clit>#L48[0] = 2)
+    (<clit>#L48[1] = 2)
+    (d2#L7 = (<clit>#L48 / d0#L5))
+    goto  -> block#204
+  block#200 [term]:
+    if (((*(((double*)(&d1#L6)) + __i#L47)) != (*(((double*)(&d2#L7)) + __i#L47)))) -> block#202
+  block#201 [term]:
+    goto  -> block#198
+  block#202 [term]:
+    __builtin_abort()
+    goto  -> block#203
+  block#203 [term]:
+    continue
+  block#204 [term]:
+    decl __i: int
+    for ((__i#L49 = 0); (__i#L49 < 2); (__i#L49post++)) body=block#207
+  block#205 [term]:
+    do block#204 while (0)
+  block#206 [term]:
+    (d1#L6 = (d0#L5 + 2))
+    decl <clit>: double<2> = 0
+    (<clit>#L50[0] = 2)
+    (<clit>#L50[1] = 2)
+    (d2#L7 = (d0#L5 + <clit>#L50))
+    goto  -> block#211
+  block#207 [term]:
+    if (((*(((double*)(&d1#L6)) + __i#L49)) != (*(((double*)(&d2#L7)) + __i#L49)))) -> block#209
+  block#208 [term]:
+    goto  -> block#205
+  block#209 [term]:
+    __builtin_abort()
+    goto  -> block#210
+  block#210 [term]:
+    continue
+  block#211 [term]:
+    decl __i: int
+    for ((__i#L51 = 0); (__i#L51 < 2); (__i#L51post++)) body=block#214
+  block#212 [term]:
+    do block#211 while (0)
+  block#213 [term]:
+    (d1#L6 = (d0#L5 - 2))
+    decl <clit>: double<2> = 0
+    (<clit>#L52[0] = 2)
+    (<clit>#L52[1] = 2)
+    (d2#L7 = (d0#L5 - <clit>#L52))
+    goto  -> block#218
+  block#214 [term]:
+    if (((*(((double*)(&d1#L6)) + __i#L51)) != (*(((double*)(&d2#L7)) + __i#L51)))) -> block#216
+  block#215 [term]:
+    goto  -> block#212
+  block#216 [term]:
+    __builtin_abort()
+    goto  -> block#217
+  block#217 [term]:
+    continue
+  block#218 [term]:
+    decl __i: int
+    for ((__i#L53 = 0); (__i#L53 < 2); (__i#L53post++)) body=block#221
+  block#219 [term]:
+    do block#218 while (0)
+  block#220 [term]:
+    (d1#L6 = (d0#L5 * 2))
+    decl <clit>: double<2> = 0
+    (<clit>#L54[0] = 2)
+    (<clit>#L54[1] = 2)
+    (d2#L7 = (d0#L5 * <clit>#L54))
+    goto  -> block#225
+  block#221 [term]:
+    if (((*(((double*)(&d1#L6)) + __i#L53)) != (*(((double*)(&d2#L7)) + __i#L53)))) -> block#223
+  block#222 [term]:
+    goto  -> block#219
+  block#223 [term]:
+    __builtin_abort()
+    goto  -> block#224
+  block#224 [term]:
+    continue
+  block#225 [term]:
+    decl __i: int
+    for ((__i#L55 = 0); (__i#L55 < 2); (__i#L55post++)) body=block#228
+  block#226 [term]:
+    do block#225 while (0)
+  block#227 [term]:
+    (d1#L6 = (d0#L5 / 2))
+    decl <clit>: double<2> = 0
+    (<clit>#L56[0] = 2)
+    (<clit>#L56[1] = 2)
+    (d2#L7 = (d0#L5 / <clit>#L56))
+    goto  -> block#232
+  block#228 [term]:
+    if (((*(((double*)(&d1#L6)) + __i#L55)) != (*(((double*)(&d2#L7)) + __i#L55)))) -> block#230
+  block#229 [term]:
+    goto  -> block#226
+  block#230 [term]:
+    __builtin_abort()
+    goto  -> block#231
+  block#231 [term]:
+    continue
+  block#232 [term]:
+    decl __i: int
+    for ((__i#L57 = 0); (__i#L57 < 2); (__i#L57post++)) body=block#235
+  block#233 [term]:
+    do block#232 while (0)
+  block#234 [term]:
+    return 0
+  block#235 [term]:
+    if (((*(((double*)(&d1#L6)) + __i#L57)) != (*(((double*)(&d2#L7)) + __i#L57)))) -> block#237
+  block#236 [term]:
+    goto  -> block#233
+  block#237 [term]:
+    __builtin_abort()
+    goto  -> block#238
+  block#238 [term]:
+    continue
+
+--- compile-time reduction ---
+  compile-time reduction: 1 iteration, 0 template calls resolved, 0 template types resolved, 0 consteval reductions (converged)
+--- materialization ---
+  materialization: 1 function materialized

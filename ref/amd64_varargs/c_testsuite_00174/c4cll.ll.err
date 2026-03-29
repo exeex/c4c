@@ -1,0 +1,7 @@
+/usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h:20:40: error: expected RPAREN but got '__value' at line 20
+/usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h:24:37: error: expected RPAREN but got '__value' at line 24
+/usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h:29:35: error: expected RPAREN but got '__value' at line 29
+/usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h:33:36: error: expected RPAREN but got '__value' at line 33
+/usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h:37:35: error: expected RPAREN but got '__value' at line 37
+/usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h:41:37: error: expected RPAREN but got '__x' at line 41
+/usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h:44:41: error: expected RPAREN but got '__value' at line 44

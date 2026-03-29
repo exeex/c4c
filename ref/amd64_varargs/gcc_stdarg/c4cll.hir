@@ -1,0 +1,177 @@
+=== HIR Module ===
+functions=13 globals=6 blocks=39 stmts=95 exprs=263
+
+--- globals ---
+  global foo_arg: int
+  global bar_arg: int
+  global x: long
+  global d: double
+  global gap: ?
+  global pap: ?*
+
+--- functions ---
+
+fn abort(<anon_param>: void) -> void extern  [entry: block#0]
+
+fn foo(v: int, ap: ?) -> void  [entry: block#0]
+  block#0 [term]:
+    switch (v#P0) body=block#1
+  block#1 [term]:
+    goto  -> block#3
+  block#2:
+  block#3 [term]:
+    case 5:
+    (foo_arg#G0 = va_arg(ap#P1))
+    break
+  block#4 [term]:
+    default:
+    abort()
+    goto  -> block#2
+
+fn bar(v: int) -> void  [entry: block#5]
+  block#5 [term]:
+    if ((v#P0 == 16390)) -> block#6 else block#7
+  block#6 [term]:
+    if (((va_arg(gap#G4) != 17) || (va_arg(gap#G4) != 129))) -> block#9
+  block#7 [term]:
+    if ((v#P0 == 16392)) -> block#11
+  block#8:
+    (bar_arg#G1 = v#P0)
+  block#9 [term]:
+    abort()
+    goto  -> block#10
+  block#10 [term]:
+    goto  -> block#8
+  block#11 [term]:
+    if ((((va_arg((*pap#G5)) != 14) || (va_arg((*pap#G5)) != 131)) || (va_arg((*pap#G5)) != 17))) -> block#13
+  block#12 [term]:
+    goto  -> block#8
+  block#13 [term]:
+    abort()
+    goto  -> block#14
+  block#14 [term]:
+    goto  -> block#12
+
+fn f0(i: int) -> void variadic  [entry: block#15]
+  block#15:
+
+fn f1(i: int) -> void variadic  [entry: block#16]
+  block#16:
+    decl ap: ?
+    __builtin_va_start(ap#L0, i#P0)
+    __builtin_va_end(ap#L0)
+
+fn f2(i: int) -> void variadic  [entry: block#17]
+  block#17:
+    decl ap: ?
+    __builtin_va_start(ap#L1, i#P0)
+    bar(d#G3)
+    (x#G2 = va_arg(ap#L1))
+    bar(x#G2)
+    __builtin_va_end(ap#L1)
+
+fn f3(i: int) -> void variadic  [entry: block#18]
+  block#18:
+    decl ap: ?
+    __builtin_va_start(ap#L2, i#P0)
+    (d#G3 = va_arg(ap#L2))
+    __builtin_va_end(ap#L2)
+
+fn f4(i: int) -> void variadic  [entry: block#19]
+  block#19:
+    decl ap: ?
+    __builtin_va_start(ap#L3, i#P0)
+    (x#G2 = va_arg(ap#L3))
+    foo(i#P0, ap#L3)
+    __builtin_va_end(ap#L3)
+
+fn f5(i: int) -> void variadic  [entry: block#20]
+  block#20:
+    decl ap: ?
+    __builtin_va_start(ap#L4, i#P0)
+    __builtin_va_copy(gap#G4, ap#L4)
+    bar(i#P0)
+    __builtin_va_end(ap#L4)
+    __builtin_va_end(gap#G4)
+
+fn f6(i: int) -> void variadic  [entry: block#21]
+  block#21:
+    decl ap: ?
+    __builtin_va_start(ap#L5, i#P0)
+    bar(d#G3)
+    va_arg(ap#L5)
+    va_arg(ap#L5)
+    (x#G2 = va_arg(ap#L5))
+    bar(x#G2)
+    __builtin_va_end(ap#L5)
+
+fn f7(i: int) -> void variadic  [entry: block#22]
+  block#22:
+    decl ap: ?
+    __builtin_va_start(ap#L6, i#P0)
+    (pap#G5 = (&ap#L6))
+    bar(i#P0)
+    __builtin_va_end(ap#L6)
+
+fn f8(i: int) -> void variadic  [entry: block#23]
+  block#23:
+    decl ap: ?
+    __builtin_va_start(ap#L7, i#P0)
+    (pap#G5 = (&ap#L7))
+    bar(i#P0)
+    (d#G3 = va_arg(ap#L7))
+    __builtin_va_end(ap#L7)
+
+fn main(<anon_param>: void) -> int  [entry: block#24]
+  block#24 [term]:
+    f0(1)
+    f1(2)
+    (d#G3 = 31)
+    f2(3, 28)
+    if (((bar_arg#G1 != 28) || (x#G2 != 28))) -> block#25
+  block#25 [term]:
+    abort()
+    goto  -> block#26
+  block#26 [term]:
+    f3(4, 131)
+    if ((d#G3 != 131)) -> block#27
+  block#27 [term]:
+    abort()
+    goto  -> block#28
+  block#28 [term]:
+    f4(5, 16, 128)
+    if (((x#G2 != 16) || (foo_arg#G0 != 128))) -> block#29
+  block#29 [term]:
+    abort()
+    goto  -> block#30
+  block#30 [term]:
+    f5(16390, 17, 129)
+    if ((bar_arg#G1 != 16390)) -> block#31
+  block#31 [term]:
+    abort()
+    goto  -> block#32
+  block#32 [term]:
+    f6(7, 12, 14, (-31))
+    if ((bar_arg#G1 != (-31))) -> block#33
+  block#33 [term]:
+    abort()
+    goto  -> block#34
+  block#34 [term]:
+    f7(16392, 14, 131, 17, 26)
+    if ((bar_arg#G1 != 16392)) -> block#35
+  block#35 [term]:
+    abort()
+    goto  -> block#36
+  block#36 [term]:
+    f8(16392, 14, 131, 17, 27)
+    if (((bar_arg#G1 != 16392) || (d#G3 != 27))) -> block#37
+  block#37 [term]:
+    abort()
+    goto  -> block#38
+  block#38 [term]:
+    return 0
+
+--- compile-time reduction ---
+  compile-time reduction: 1 iteration, 0 template calls resolved, 0 template types resolved, 0 consteval reductions (converged)
+--- materialization ---
+  materialization: 13 functions materialized

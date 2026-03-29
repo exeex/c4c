@@ -1,0 +1,82 @@
+=== HIR Module ===
+functions=2 globals=0 blocks=16 stmts=45 exprs=174
+
+--- structs ---
+  struct tiny size=5 align=1
+    field c: char llvm_idx=0 offset=0 size=1 align=1
+    field d: char llvm_idx=1 offset=1 size=1 align=1
+    field e: char llvm_idx=2 offset=2 size=1 align=1
+    field f: char llvm_idx=3 offset=3 size=1 align=1
+    field g: char llvm_idx=4 offset=4 size=1 align=1
+
+--- functions ---
+
+fn f(n: int) -> int variadic  [entry: block#0]
+  block#0 [term]:
+    decl x: struct tiny
+    decl i: int
+    decl ap: ?
+    __builtin_va_start(ap#L2, n#P0)
+    for ((i#L1 = 0); (i#L1 < n#P0); (i#L1post++)) body=block#1
+  block#1 [term]:
+    (x#L0 = va_arg(ap#L2))
+    if ((x#L0.c != (i#L1 + 10))) -> block#3
+  block#2 [term]:
+    decl x: long = va_arg(ap#L2)
+    if ((x#L3 != 123)) -> block#13
+  block#3 [term]:
+    abort()
+    goto  -> block#4
+  block#4 [term]:
+    if ((x#L0.d != (i#L1 + 20))) -> block#5
+  block#5 [term]:
+    abort()
+    goto  -> block#6
+  block#6 [term]:
+    if ((x#L0.e != (i#L1 + 30))) -> block#7
+  block#7 [term]:
+    abort()
+    goto  -> block#8
+  block#8 [term]:
+    if ((x#L0.f != (i#L1 + 40))) -> block#9
+  block#9 [term]:
+    abort()
+    goto  -> block#10
+  block#10 [term]:
+    if ((x#L0.g != (i#L1 + 50))) -> block#11
+  block#11 [term]:
+    abort()
+    goto  -> block#12
+  block#12 [term]:
+    continue
+  block#13 [term]:
+    abort()
+    goto  -> block#14
+  block#14:
+    __builtin_va_end(ap#L2)
+
+fn main() -> int  [entry: block#15]
+  block#15:
+    decl x: struct tiny[3]
+    (x#L4[0].c = 10)
+    (x#L4[1].c = 11)
+    (x#L4[2].c = 12)
+    (x#L4[0].d = 20)
+    (x#L4[1].d = 21)
+    (x#L4[2].d = 22)
+    (x#L4[0].e = 30)
+    (x#L4[1].e = 31)
+    (x#L4[2].e = 32)
+    (x#L4[0].f = 40)
+    (x#L4[1].f = 41)
+    (x#L4[2].f = 42)
+    (x#L4[0].g = 50)
+    (x#L4[1].g = 51)
+    (x#L4[2].g = 52)
+    f(3, x#L4[0], x#L4[1], x#L4[2], ((long)123))
+    exit(0)
+
+--- compile-time reduction ---
+  compile-time reduction: 1 iteration, 0 template calls resolved, 0 template types resolved, 0 consteval reductions (converged)
+--- materialization ---
+  materialization: 2 functions materialized

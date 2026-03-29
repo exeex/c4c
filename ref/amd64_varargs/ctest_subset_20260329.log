@@ -1,0 +1,683 @@
+Internal ctest changing into directory: /workspaces/c4c/build
+Test project /workspaces/c4c/build
+      Start   96: positive_sema_inline_diagnostics_c
+      Start  107: positive_sema_ok_fn_returns_variadic_fn_ptr_c
+      Start  696: c_testsuite_src_00174_c
+      Start  742: c_testsuite_src_00204_c
+      Start 2159: llvm_gcc_c_torture_src_scal_to_vec1_c
+      Start 2160: llvm_gcc_c_torture_src_scal_to_vec2_c
+      Start 2170: llvm_gcc_c_torture_src_stdarg_1_c
+      Start 2171: llvm_gcc_c_torture_src_stdarg_2_c
+      Start 2172: llvm_gcc_c_torture_src_stdarg_3_c
+      Start 2173: llvm_gcc_c_torture_src_stdarg_4_c
+      Start 2182: llvm_gcc_c_torture_src_strct_stdarg_1_c
+      Start 2205: llvm_gcc_c_torture_src_va_arg_10_c
+      Start 2206: llvm_gcc_c_torture_src_va_arg_11_c
+      Start 2207: llvm_gcc_c_torture_src_va_arg_12_c
+      Start 2208: llvm_gcc_c_torture_src_va_arg_13_c
+      Start 2209: llvm_gcc_c_torture_src_va_arg_14_c
+      Start 2210: llvm_gcc_c_torture_src_va_arg_15_c
+      Start 2211: llvm_gcc_c_torture_src_va_arg_16_c
+      Start 2212: llvm_gcc_c_torture_src_va_arg_17_c
+      Start 2213: llvm_gcc_c_torture_src_va_arg_18_c
+ 1/44 Test  #696: c_testsuite_src_00174_c .........................***Failed    0.16 sec
+CMake Error at /workspaces/c4c/tests/c/external/c-testsuite/RunCase.cmake:37 (message):
+  [FRONTEND_FAIL] /workspaces/c4c/tests/c/external/c-testsuite/src/00174.c
+
+  /usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h:20:40:
+  error: expected RPAREN but got '__value' at line 20
+
+  /usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h:24:37:
+  error: expected RPAREN but got '__value' at line 24
+
+  /usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h:29:35:
+  error: expected RPAREN but got '__value' at line 29
+
+  /usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h:33:36:
+  error: expected RPAREN but got '__value' at line 33
+
+  /usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h:37:35:
+  error: expected RPAREN but got '__value' at line 37
+
+  /usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h:41:37:
+  error: expected RPAREN but got '__x' at line 41
+
+  /usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h:44:41:
+  error: expected RPAREN but got '__value' at line 44
+
+
+
+
+      Start 2214: llvm_gcc_c_torture_src_va_arg_19_c
+ 2/44 Test  #742: c_testsuite_src_00204_c .........................***Failed    0.26 sec
+CMake Error at /workspaces/c4c/tests/c/external/c-testsuite/RunCase.cmake:54 (message):
+  [RUNTIME_NONZERO] /workspaces/c4c/tests/c/external/c-testsuite/src/00204.c
+  exit=Segmentation fault
+
+  stdout+stderr:
+
+  Arguments:
+
+  0
+
+  12
+
+  345
+
+  6789
+
+  abcde
+
+  fghijk
+
+  lmnopqr
+
+  stuvwxyz
+
+  ABCDEFGHI
+
+  JKLMNOPQRS
+
+  TUVWXYZ0123
+
+  456789abcdef
+
+  ghijklmnopqrs
+
+  tuvwxyzABCDEFG
+
+  HIJKLMNOPQRSTUV
+
+  WXYZ0123456789ab
+
+  cdefghijklmnopqrs
+
+  11.1
+
+  12.1 12.1
+
+  13.1 13.2 13.3
+
+  14.1 14.2 14.3 14.4
+
+  21.1
+
+  22.1 22.1
+
+  23.1 23.2 23.3
+
+  24.1 24.2 24.3 24.4
+
+  -0.0
+
+
+  -485455198597985456018078078570517451542144197623590391023764412559570522559456665486708690171069095619707931536540736918375676818377626462122909051095497059174216753023113987312459727010292765495516877468668923740135032732949273277431692839504034313026893487208295727747315480012136638676249195430716315647798270615024882212541766818961242516106628471299110790329393616425571889920238930220834258582521450570173434086665344769334462884694453626036509114493515850093403691256093519732656580902417746117266055522631303810643237829940781682923880158697190002573398036063614168467019634883213824046970471719990946544692745015645531206138521483805267466731248929301649485396841243397585723211386184318468247792914983459328439383581049674009361541557167190939182422139674144218571410781979530825818075572104759059771205370741500885941157114759314152965575772971985950285089821831921186661223395825078158269164320422871061013355230672784302947202910671403997577330169080353826346581140220936192.0
+  -0.0
+
+
+  -485455198597985456018078078570517451542144197623590391023764412559570522559456665486708690171069095619707931536540736918375676818377626462122909051095497059174216753023113987312459727010292765495516877468668923740135032732949273277431692839504034313026893487208295727747315480012136638676249195430716315647798270615024882212541766818961242516106628471299110790329393616425571889920238930220834258582521450570173434086665344769334462884694453626036509114493515850093403691256093519732656580902417746117266055522631303810643237829940781682923880158697190002573398036063614168467019634883213824046970471719990946544692745015645531206138521483805267466731248929301649485396841243397585723211386184318468247792914983459328439383581049674009361541557167190939182422139674144218571410781979530825818075572104759059771205370741500885941157114759314152965575772971985950285089821831921186661223395825078158269164320422871061013355230672784302947202910671403997577330169080353826346581140220936192.0
+  -0.0 nan
+
+
+  -485455198597985456018078078570517451542144197623590391023764412559570522559456665486708690171069095619707931536540736918375676818377626462122909051095497059174216753023113987312459727010292765495516877468668923740135032732949273277431692839504034313026893487208295727747315480012136638676249195430716315647798270615024882212541766818961242516106628471299110790329393616425571889920238930220834258582521450570173434086665344769334462884694453626036509114493515850093403691256093519732656580902417746117266055522631303810643237829940781682923880158697190002573398036063614168467019634883213824046970471719990946544692745015645531206138521483805267466731248929301649485396841243397585723211386184318468247792914983459328439383581049674009361541557167190939182422139674144218571410781979530825818075572104759059771205370741500885941157114759314152965575772971985950285089821831921186661223395825078158269164320422871061013355230672784302947202910671403997577330169080353826346581140220936192.0
+  -0.0 nan nan
+
+  stu ABC JKL TUV 456 ghi
+
+  ABC JKL TUV 456 ghi tuv
+
+  14.1 14.4 23.1 23.3
+  -485455198597985456018078078570517451542144197623590391023764412559570522559456665486708690171069095619707931536540736918375676818377626462122909051095497059174216753023113987312459727010292765495516877468668923740135032732949273277431692839504034313026893487208295727747315480012136638676249195430716315647798270615024882212541766818961242516106628471299110790329393616425571889920238930220834258582521450570173434086665344769334462884694453626036509114493515850093403691256093519732656580902417746117266055522631303810643237829940781682923880158697190002573398036063614168467019634883213824046970471719990946544692745015645531206138521483805267466731248929301649485396841243397585723211386184318468247792914983459328439383581049674009361541
+
+
+
+      Start 2215: llvm_gcc_c_torture_src_va_arg_1_c
+ 3/44 Test  #107: positive_sema_ok_fn_returns_variadic_fn_ptr_c ...***Failed    0.29 sec
+CMake Error at /workspaces/c4c/tests/c/internal/cmake/run_positive_case.cmake:155 (message):
+  [C2LL_RUNTIME_UNEXPECTED_RETURN]
+  /workspaces/c4c/tests/c/internal/positive_case/ok_fn_returns_variadic_fn_ptr.c
+  exit=Segmentation fault
+
+
+
+
+      Start 2216: llvm_gcc_c_torture_src_va_arg_20_c
+ 4/44 Test   #96: positive_sema_inline_diagnostics_c ..............***Failed    0.30 sec
+CMake Error at /workspaces/c4c/tests/c/internal/cmake/run_positive_case.cmake:155 (message):
+  [C2LL_RUNTIME_UNEXPECTED_RETURN]
+  /workspaces/c4c/tests/c/internal/positive_case/inline_diagnostics.c
+  exit=Segmentation fault
+
+
+
+
+      Start 2218: llvm_gcc_c_torture_src_va_arg_22_c
+ 5/44 Test #2182: llvm_gcc_c_torture_src_strct_stdarg_1_c .........***Failed    0.29 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL]
+  /workspaces/c4c/tests/c/external/gcc_torture/src/strct-stdarg-1.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+ 6/44 Test #2208: llvm_gcc_c_torture_src_va_arg_13_c ..............***Failed    0.28 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-13.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+      Start 2219: llvm_gcc_c_torture_src_va_arg_23_c
+      Start 2220: llvm_gcc_c_torture_src_va_arg_24_c
+ 7/44 Test #2172: llvm_gcc_c_torture_src_stdarg_3_c ...............***Failed    0.31 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/stdarg-3.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+ 8/44 Test #2171: llvm_gcc_c_torture_src_stdarg_2_c ...............***Failed    0.31 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/stdarg-2.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+      Start 2221: llvm_gcc_c_torture_src_va_arg_26_c
+      Start 2222: llvm_gcc_c_torture_src_va_arg_2_c
+ 9/44 Test #2160: llvm_gcc_c_torture_src_scal_to_vec2_c ...........***Failed    0.33 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL]
+  /workspaces/c4c/tests/c/external/gcc_torture/src/scal-to-vec2.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+      Start 2223: llvm_gcc_c_torture_src_va_arg_4_c
+10/44 Test #2207: llvm_gcc_c_torture_src_va_arg_12_c ..............***Failed    0.32 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-12.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+      Start 2224: llvm_gcc_c_torture_src_va_arg_5_c
+11/44 Test #2170: llvm_gcc_c_torture_src_stdarg_1_c ...............***Failed    0.38 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/stdarg-1.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+      Start 2225: llvm_gcc_c_torture_src_va_arg_6_c
+12/44 Test #2212: llvm_gcc_c_torture_src_va_arg_17_c ..............***Failed    0.36 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-17.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+      Start 2226: llvm_gcc_c_torture_src_va_arg_7_c
+13/44 Test #2205: llvm_gcc_c_torture_src_va_arg_10_c ..............***Failed    0.40 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-10.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+      Start 2227: llvm_gcc_c_torture_src_va_arg_8_c
+14/44 Test #2206: llvm_gcc_c_torture_src_va_arg_11_c ..............***Failed    0.41 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-11.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+      Start 2228: llvm_gcc_c_torture_src_va_arg_9_c
+15/44 Test #2211: llvm_gcc_c_torture_src_va_arg_16_c ..............***Failed    0.41 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-16.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+      Start 2217: llvm_gcc_c_torture_src_va_arg_21_c
+16/44 Test #2209: llvm_gcc_c_torture_src_va_arg_14_c ..............***Failed    0.44 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-14.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+      Start 2229: llvm_gcc_c_torture_src_va_arg_trap_1_c
+17/44 Test #2173: llvm_gcc_c_torture_src_stdarg_4_c ...............***Failed    0.47 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/stdarg-4.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+      Start  789: llvm_gcc_c_torture_src_20020411_1_c
+18/44 Test #2213: llvm_gcc_c_torture_src_va_arg_18_c ..............***Failed    0.45 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-18.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+      Start 1031: llvm_gcc_c_torture_src_20020404_1_c
+19/44 Test #2210: llvm_gcc_c_torture_src_va_arg_15_c ..............***Failed    0.49 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-15.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+      Start 1029: llvm_gcc_c_torture_src_20020402_2_c
+20/44 Test #2159: llvm_gcc_c_torture_src_scal_to_vec1_c ...........***Failed    0.55 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL]
+  /workspaces/c4c/tests/c/external/gcc_torture/src/scal-to-vec1.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+      Start 1030: llvm_gcc_c_torture_src_20020402_3_c
+21/44 Test #2214: llvm_gcc_c_torture_src_va_arg_19_c ..............***Failed    0.40 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-19.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+      Start 1034: llvm_gcc_c_torture_src_20020423_1_c
+22/44 Test #2215: llvm_gcc_c_torture_src_va_arg_1_c ...............***Failed    0.30 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-1.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+      Start 1033: llvm_gcc_c_torture_src_20020413_1_c
+23/44 Test #2216: llvm_gcc_c_torture_src_va_arg_20_c ..............***Failed    0.30 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-20.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+      Start 1032: llvm_gcc_c_torture_src_20020406_1_c
+24/44 Test #2219: llvm_gcc_c_torture_src_va_arg_23_c ..............***Failed    0.29 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-23.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+      Start 1028: llvm_gcc_c_torture_src_20020402_1_c
+25/44 Test #2221: llvm_gcc_c_torture_src_va_arg_26_c ..............***Failed    0.29 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-26.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+26/44 Test #2218: llvm_gcc_c_torture_src_va_arg_22_c ..............***Failed    0.33 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-22.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+27/44 Test #2223: llvm_gcc_c_torture_src_va_arg_4_c ...............***Failed    0.32 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-4.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+28/44 Test #2220: llvm_gcc_c_torture_src_va_arg_24_c ..............***Failed    0.35 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-24.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+29/44 Test #2222: llvm_gcc_c_torture_src_va_arg_2_c ...............***Failed    0.35 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-2.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+30/44 Test #2224: llvm_gcc_c_torture_src_va_arg_5_c ...............***Failed    0.35 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-5.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+31/44 Test #2217: llvm_gcc_c_torture_src_va_arg_21_c ..............   Passed    0.26 sec
+32/44 Test #2229: llvm_gcc_c_torture_src_va_arg_trap_1_c ..........   Passed    0.24 sec
+33/44 Test  #789: llvm_gcc_c_torture_src_20020411_1_c .............   Passed    0.23 sec
+34/44 Test #2225: llvm_gcc_c_torture_src_va_arg_6_c ...............***Failed    0.32 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-6.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+35/44 Test #2226: llvm_gcc_c_torture_src_va_arg_7_c ...............***Failed    0.33 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-7.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+36/44 Test #2227: llvm_gcc_c_torture_src_va_arg_8_c ...............***Failed    0.32 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-8.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+37/44 Test #1031: llvm_gcc_c_torture_src_20020404_1_c .............   Passed    0.24 sec
+38/44 Test #2228: llvm_gcc_c_torture_src_va_arg_9_c ...............***Failed    0.32 sec
+CMake Error at /workspaces/c4c/tests/c/external/gcc_torture/RunCase.cmake:140 (message):
+  [RUNTIME_FAIL] /workspaces/c4c/tests/c/external/gcc_torture/src/va-arg-9.c
+
+  clang_exit=0 c2ll_exit=Segmentation fault
+
+  clang_out:
+
+
+
+  c2ll_out:
+
+
+
+
+39/44 Test #1029: llvm_gcc_c_torture_src_20020402_2_c .............   Passed    0.23 sec
+40/44 Test #1030: llvm_gcc_c_torture_src_20020402_3_c .............   Passed    0.21 sec
+41/44 Test #1034: llvm_gcc_c_torture_src_20020423_1_c .............   Passed    0.20 sec
+42/44 Test #1033: llvm_gcc_c_torture_src_20020413_1_c .............   Passed    0.20 sec
+43/44 Test #1032: llvm_gcc_c_torture_src_20020406_1_c .............   Passed    0.19 sec
+44/44 Test #1028: llvm_gcc_c_torture_src_20020402_1_c .............   Passed    0.18 sec
+
+23% tests passed, 34 tests failed out of 44
+
+Label Time Summary:
+c_testsuite           =   0.43 sec*proc (2 tests)
+internal              =   0.59 sec*proc (2 tests)
+llvm_gcc_c_torture    =  12.92 sec*proc (40 tests)
+positive_case         =   0.59 sec*proc (2 tests)
+
+Total Test time (real) =   0.91 sec
+
+The following tests FAILED:
+	 96 - positive_sema_inline_diagnostics_c (Failed)       internal positive_case
+	107 - positive_sema_ok_fn_returns_variadic_fn_ptr_c (Failed) internal positive_case
+	696 - c_testsuite_src_00174_c (Failed)                  c_testsuite
+	742 - c_testsuite_src_00204_c (Failed)                  c_testsuite
+	2159 - llvm_gcc_c_torture_src_scal_to_vec1_c (Failed)    llvm_gcc_c_torture
+	2160 - llvm_gcc_c_torture_src_scal_to_vec2_c (Failed)    llvm_gcc_c_torture
+	2170 - llvm_gcc_c_torture_src_stdarg_1_c (Failed)        llvm_gcc_c_torture
+	2171 - llvm_gcc_c_torture_src_stdarg_2_c (Failed)        llvm_gcc_c_torture
+	2172 - llvm_gcc_c_torture_src_stdarg_3_c (Failed)        llvm_gcc_c_torture
+	2173 - llvm_gcc_c_torture_src_stdarg_4_c (Failed)        llvm_gcc_c_torture
+	2182 - llvm_gcc_c_torture_src_strct_stdarg_1_c (Failed)  llvm_gcc_c_torture
+	2205 - llvm_gcc_c_torture_src_va_arg_10_c (Failed)       llvm_gcc_c_torture
+	2206 - llvm_gcc_c_torture_src_va_arg_11_c (Failed)       llvm_gcc_c_torture
+	2207 - llvm_gcc_c_torture_src_va_arg_12_c (Failed)       llvm_gcc_c_torture
+	2208 - llvm_gcc_c_torture_src_va_arg_13_c (Failed)       llvm_gcc_c_torture
+	2209 - llvm_gcc_c_torture_src_va_arg_14_c (Failed)       llvm_gcc_c_torture
+	2210 - llvm_gcc_c_torture_src_va_arg_15_c (Failed)       llvm_gcc_c_torture
+	2211 - llvm_gcc_c_torture_src_va_arg_16_c (Failed)       llvm_gcc_c_torture
+	2212 - llvm_gcc_c_torture_src_va_arg_17_c (Failed)       llvm_gcc_c_torture
+	2213 - llvm_gcc_c_torture_src_va_arg_18_c (Failed)       llvm_gcc_c_torture
+	2214 - llvm_gcc_c_torture_src_va_arg_19_c (Failed)       llvm_gcc_c_torture
+	2215 - llvm_gcc_c_torture_src_va_arg_1_c (Failed)        llvm_gcc_c_torture
+	2216 - llvm_gcc_c_torture_src_va_arg_20_c (Failed)       llvm_gcc_c_torture
+	2218 - llvm_gcc_c_torture_src_va_arg_22_c (Failed)       llvm_gcc_c_torture
+	2219 - llvm_gcc_c_torture_src_va_arg_23_c (Failed)       llvm_gcc_c_torture
+	2220 - llvm_gcc_c_torture_src_va_arg_24_c (Failed)       llvm_gcc_c_torture
+	2221 - llvm_gcc_c_torture_src_va_arg_26_c (Failed)       llvm_gcc_c_torture
+	2222 - llvm_gcc_c_torture_src_va_arg_2_c (Failed)        llvm_gcc_c_torture
+	2223 - llvm_gcc_c_torture_src_va_arg_4_c (Failed)        llvm_gcc_c_torture
+	2224 - llvm_gcc_c_torture_src_va_arg_5_c (Failed)        llvm_gcc_c_torture
+	2225 - llvm_gcc_c_torture_src_va_arg_6_c (Failed)        llvm_gcc_c_torture
+	2226 - llvm_gcc_c_torture_src_va_arg_7_c (Failed)        llvm_gcc_c_torture
+	2227 - llvm_gcc_c_torture_src_va_arg_8_c (Failed)        llvm_gcc_c_torture
+	2228 - llvm_gcc_c_torture_src_va_arg_9_c (Failed)        llvm_gcc_c_torture
