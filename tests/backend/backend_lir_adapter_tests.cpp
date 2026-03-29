@@ -3517,6 +3517,29 @@ void test_x86_backend_scaffold_renders_direct_return_immediate_slice() {
                   "x86 backend should terminate direct return immediates with ret");
 }
 
+void test_x86_backend_renders_direct_call_slice() {
+  auto module = make_direct_call_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type helper, %function",
+                  "x86 backend should lower the helper definition into a real function symbol");
+  expect_contains(rendered, "helper:\n  mov eax, 7\n  ret\n",
+                  "x86 backend should emit the minimal helper body as assembly");
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should still publish main as the entry symbol");
+  expect_contains(rendered, "call helper",
+                  "x86 backend should keep the zero-arg helper call on the direct-call asm path");
+  expect_contains(rendered, "ret\n",
+                  "x86 backend should return directly after the helper call");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the direct helper-call slice");
+}
+
 void test_x86_backend_renders_local_array_slice() {
   auto module = make_local_array_gep_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -6194,6 +6217,7 @@ int main() {
   test_aarch64_backend_scaffold_renders_direct_return_immediate_slice();
   test_x86_backend_scaffold_routes_through_explicit_emit_surface();
   test_x86_backend_scaffold_renders_direct_return_immediate_slice();
+  test_x86_backend_renders_direct_call_slice();
   test_x86_backend_renders_local_array_slice();
   test_x86_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice();
   test_x86_backend_cleans_up_redundant_self_move_on_call_crossing_slice();
