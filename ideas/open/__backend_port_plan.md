@@ -49,7 +49,6 @@ The backend effort is now split into the following open ideas:
 
 - `ideas/open/02_backend_aarch64_port_plan.md`
 - `ideas/open/03_backend_regalloc_peephole_port_plan.md`
-- `ideas/open/04_backend_binary_utils_contract_plan.md`
 - `ideas/open/05_backend_builtin_assembler_boundary_plan.md`
 - `ideas/open/06_backend_builtin_assembler_aarch64_plan.md`
 - `ideas/open/07_backend_linker_object_io_plan.md`

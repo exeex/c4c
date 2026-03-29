@@ -105,15 +105,16 @@ Locked by CTest:
 
 ## Current Shared Surfaces To Preserve
 
-These are the current C++ include-reachable surfaces later binary-utils work will need to stay aligned with:
+These are the current staged C++ headers later binary-utils work should include against instead of inventing local seams:
 
 - `src/backend/backend.hpp`
 - `src/backend/target.hpp`
-- `src/backend/common.cpp`
-- `src/backend/elf/`
-- `src/backend/linker_common/`
-- `src/backend/aarch64/assembler/`
-- `src/backend/aarch64/linker/`
+- `src/backend/elf/mod.hpp`
+- `src/backend/linker_common/mod.hpp`
+- `src/backend/aarch64/assembler/mod.hpp`
+- `src/backend/aarch64/linker/mod.hpp`
+
+These headers are intentionally narrow. They stage the include boundary for later compile-integration work without implying that full built-in assembler or linker behavior is implemented in this plan.
 
 ## Immediate Follow-On Note
 

@@ -8,6 +8,10 @@
 #include "stack_layout/regalloc_helpers.hpp"
 #include "stack_layout/slot_assignment.hpp"
 #include "target.hpp"
+#include "../../src/backend/elf/mod.hpp"
+#include "../../src/backend/linker_common/mod.hpp"
+#include "../../src/backend/aarch64/assembler/mod.hpp"
+#include "../../src/backend/aarch64/linker/mod.hpp"
 #include "../../src/backend/aarch64/assembler/parser.hpp"
 
 #include <cstdlib>
@@ -4036,6 +4040,17 @@ void test_aarch64_backend_prunes_dead_local_allocas_from_fallback_lir() {
                   "aarch64 backend fallback should also keep the second same-block local alloca when no shared slot is assigned");
 }
 
+void test_backend_binary_utils_contract_headers_are_include_reachable() {
+  [[maybe_unused]] c4c::backend::elf::ContractSurface elf_surface;
+  [[maybe_unused]] c4c::backend::linker_common::ContractSurface linker_common_surface;
+  [[maybe_unused]] c4c::backend::aarch64::assembler::ContractSurface assembler_surface;
+  [[maybe_unused]] c4c::backend::aarch64::linker::ContractSurface linker_surface;
+
+  const auto parsed = c4c::backend::aarch64::assembler::parse_asm("ret");
+  expect_true(parsed.size() == 1 && parsed.front().text == "ret",
+              "binary-utils contract headers should expose the staged parser and contract marker surfaces together");
+}
+
 }  // namespace
 
 int main() {
@@ -4130,5 +4145,6 @@ int main() {
   test_backend_shared_slot_assignment_applies_coalesced_entry_slots();
   test_aarch64_backend_prunes_dead_param_allocas_from_fallback_lir();
   test_aarch64_backend_prunes_dead_local_allocas_from_fallback_lir();
+  test_backend_binary_utils_contract_headers_are_include_reachable();
   return 0;
 }

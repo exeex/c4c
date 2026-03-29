@@ -120,3 +120,19 @@ If the assembler and linker compile-integration work ends up moving as one strea
 ## Good First Patch
 
 Capture one minimal end-to-end object and executable flow, including emitted assembly, produced object sections, and linked symbol expectations, so later built-in tools can compare against it directly.
+
+## Completion
+
+Status: Completed on 2026-03-29
+
+Completed outcomes:
+
+- documented the active AArch64 external-toolchain boundary in `src/backend/aarch64/BINARY_UTILS_CONTRACT.md`
+- locked representative object-contract fixtures for the current backend-emitted single-object path, relocation-bearing global materialization, and external call relocation behavior
+- added repeatable CTests that preserve those object-contract baselines
+- staged explicit shared contract headers at `src/backend/elf/mod.hpp`, `src/backend/linker_common/mod.hpp`, `src/backend/aarch64/assembler/mod.hpp`, and `src/backend/aarch64/linker/mod.hpp`
+- added a backend smoke test that proves those staged headers are include-reachable together
+
+Leftover follow-on notes:
+
+- later built-in assembler and linker plans should extend these staged headers with real shared declarations as compile integration begins, instead of recreating local seams inside target-specific implementation files
