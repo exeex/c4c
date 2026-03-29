@@ -11,12 +11,11 @@ Source Plan: plan.md
 ## In Progress
 
 - Audit the existing `src/backend/aarch64/assembler/` headers and stubbed modules against the ref text-first assembler flow.
-- Identify which shared seams from `asm_preprocess.rs`, `asm_expr.rs`, `elf/`, and `elf_writer_common.rs` already have staged C++ counterparts.
-- Confirm the exact backend-emitted assembly subset that the current AArch64 tests already lock.
+- Confirm which Step 1 observations are now locked in tests and which still need a tighter code-facing inventory note or helper extraction before Step 2.
 
 ## Next Slice
 
-- Read the current AArch64 codegen and assembler entry points side by side, then decide whether the first concrete boundary patch should be a text-first assembler entry header or a tighter shared-helper extraction.
+- Decide whether Step 2 should keep growing the text-first assembler entry header or instead extract explicit shared helper declarations for preprocess and expression seams first.
 
 ## Remaining Items
 
@@ -28,13 +27,22 @@ Source Plan: plan.md
 
 - [x] Activated `ideas/open/05_backend_builtin_assembler_boundary_plan.md` into the active `plan.md` runbook.
 - [x] Created `plan_todo.md` aligned to the same source idea and queued the first execution slice.
+- [x] Locked the current text-first assembler entry reality in repo tests and `src/backend/aarch64/BINARY_UTILS_CONTRACT.md`.
+- [x] Exposed the existing stub `assembler::assemble` entry in `src/backend/aarch64/assembler/mod.hpp` so the staged boundary matches the current compile-linked implementation.
+- [x] Verified the slice with `backend_lir_adapter_tests`; a full `ctest --test-dir build -j8 --output-on-failure` run still ends with four unrelated suite failures outside this plan slice.
 
 ## Blockers
 
-- None recorded yet.
+- Full-suite failures observed outside this slice:
+  - `positive_sema_ok_fn_returns_variadic_fn_ptr_c`
+  - `cpp_positive_sema_decltype_bf16_builtin_cpp`
+  - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+  - `cpp_llvm_initializer_list_runtime_materialization`
 
 ## Resume Notes
 
 - Keep this runbook focused on assembler boundary selection and compile integration, not full object emission.
 - Use the staged contract from `src/backend/aarch64/BINARY_UTILS_CONTRACT.md` as the compatibility baseline.
 - Split out any linker-facing or broad target-generic IR work instead of mutating this plan.
+- Current inventory evidence points to a text-first path today: `codegen/emit.cpp` produces GNU-style assembly text, `assembler::parse_asm` preserves raw text as a single placeholder statement, and the mirrored shared helper files are compile-linked stubs.
+- The current repo-visible assembler boundary is now explicitly include-reachable as `parse_asm(raw text)` plus `assemble(raw text, output path)`; Step 2 still needs to decide whether that header grows or whether shared helper seams become the next named contract surface.

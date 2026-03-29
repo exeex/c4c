@@ -4046,9 +4046,16 @@ void test_backend_binary_utils_contract_headers_are_include_reachable() {
   [[maybe_unused]] c4c::backend::aarch64::assembler::ContractSurface assembler_surface;
   [[maybe_unused]] c4c::backend::aarch64::linker::ContractSurface linker_surface;
 
-  const auto parsed = c4c::backend::aarch64::assembler::parse_asm("ret");
-  expect_true(parsed.size() == 1 && parsed.front().text == "ret",
-              "binary-utils contract headers should expose the staged parser and contract marker surfaces together");
+  const auto emitted = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_return_add_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  const auto parsed = c4c::backend::aarch64::assembler::parse_asm(emitted);
+  expect_true(parsed.size() == 1 && parsed.front().text == emitted,
+              "binary-utils contract headers should expose a text-first staged parser surface over the current backend output");
+
+  const auto assembled = c4c::backend::aarch64::assembler::assemble(emitted, "ignored.o");
+  expect_true(assembled == emitted,
+              "binary-utils contract headers should expose the current stub assembler entry without changing backend-emitted text");
 }
 
 }  // namespace

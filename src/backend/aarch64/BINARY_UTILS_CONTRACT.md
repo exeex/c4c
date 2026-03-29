@@ -22,6 +22,26 @@ The in-tree AArch64 assembler and linker subtrees are compiled into the build, b
 - `src/backend/aarch64/assembler/`
 - `src/backend/aarch64/linker/`
 
+## Current Assembler Inventory
+
+Step-1 inventory of the staged assembler boundary currently shows a text-first compile surface, not a structured internal assembler IR:
+
+- backend handoff today: `src/backend/aarch64/codegen/emit.cpp` returns GNU-style AArch64 assembly text for the currently supported fallback slices
+- parser entry today: `src/backend/aarch64/assembler/parser.hpp` exposes `parse_asm(const std::string&)`, and the current implementation preserves the full input text as one placeholder `AsmStatement`
+- assembler entry today: `src/backend/aarch64/assembler/mod.hpp` exposes `assemble(const std::string&, const std::string&)`, and the current stub returns the raw input text while ignoring object output
+- target-local writer staging today: `src/backend/aarch64/assembler/elf_writer.cpp` contains relocation helpers and placeholder writer state, but does not yet emit ELF bytes
+- shared helper staging today:
+  - `src/backend/asm_preprocess.cpp` is a mirrored placeholder for ref `asm_preprocess.rs`
+  - `src/backend/asm_expr.cpp` is a mirrored placeholder for ref `asm_expr.rs`
+  - `src/backend/elf/` contains real shared ELF support modules
+  - `src/backend/elf_writer_common.cpp` is a mirrored placeholder for ref `elf_writer_common.rs`
+
+This means the current compile-integrated contract is still:
+
+- `backend text emission -> parse_asm(raw text) -> assemble(raw text, output path)`
+
+Later boundary work can narrow or replace that shape, but it should treat this text-first path as the current compatibility baseline.
+
 ## Repo-Local Baseline Cases
 
 ### 1. Minimal backend-emitted single-object case
