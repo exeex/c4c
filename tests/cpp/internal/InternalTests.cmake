@@ -21,6 +21,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     operator_decl_subscript_parse
     operator_decl_deref_parse
     operator_decl_arrow_parse
+    operator_arrow_explicit_member_call_parse
     operator_decl_preinc_parse
     operator_decl_eq_parse
     operator_decl_bool_parse
@@ -44,6 +45,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     template_variadic_nested_parse
     template_variadic_qualified_parse
     template_template_param_parse
+    template_unresolved_param_type_parse
     template_member_type_direct_parse
     template_member_type_inherited_parse
     template_alias_nttp_expr_parse
@@ -82,6 +84,8 @@ set(CPP_POSITIVE_PARSE_STEMS
     access_labels_treated_public_runtime
     friend_access_parse
     friend_inline_operator_parse
+    if_condition_decl_parse
+    free_function_record_ref_param_parse
     eastl_slice7d_qualified_declarator_parse
     out_of_class_member_owner_scope_parse
     eastl_probe_pack_expansion_template_arg_parse
@@ -202,6 +206,190 @@ add_test(
 set_tests_properties(cpp_hir_template_def_dump PROPERTIES
   LABELS "internal;positive_case;cpp;hir"
   PASS_REGULAR_EXPRESSION "template add<typename T>.*instantiation"
+)
+
+add_test(
+  NAME cpp_parser_debug_expr_stmt_stack
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_expr_stmt_stack.cpp
+          -DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_primary
+          -DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> parse_block -> parse_stmt -> parse_expr -> parse_assign_expr -> parse_ternary -> parse_unary -> parse_primary
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_expr_stmt_stack PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
+  NAME cpp_parser_debug_record_member_stack
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_record_member_stack.cpp
+          -DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=try_parse_record_method_or_field_member
+          -DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> try_parse_record_member_dispatch -> try_parse_record_method_or_field_member
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_record_member_stack PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
+  NAME cpp_parser_debug_record_member_param_default_rank
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_record_member_param_default_rank.cpp
+          -DEXPECT_ERROR_SUBSTRING:STRING=expected=RPAREN
+          -DEXPECT_STACK_SUBSTRING:STRING=parse_param
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_record_member_param_default_rank PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
+  NAME cpp_parser_debug_record_member_type_like_rank
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_record_member_type_like_rank.cpp
+          -DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=try_parse_record_using_member
+          -DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> try_parse_record_member_dispatch -> try_parse_record_type_like_member_dispatch -> try_parse_record_using_member
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_record_member_type_like_rank PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
+  NAME cpp_parser_debug_record_member_using_alias_leaf
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_record_member_using_alias_leaf.cpp
+          -DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=try_parse_record_using_member
+          -DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> try_parse_record_member_dispatch -> try_parse_record_type_like_member_dispatch -> try_parse_record_using_member
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_record_member_using_alias_leaf PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
+  NAME cpp_parser_debug_record_member_typedef_leaf
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_record_member_typedef_leaf.cpp
+          -DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=try_parse_record_typedef_member
+          -DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> try_parse_record_member_dispatch -> try_parse_record_type_like_member_dispatch -> try_parse_record_typedef_member
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_record_member_typedef_leaf PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+
+add_test(
+  NAME cpp_parser_debug_qualified_type_top_level_params
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_qualified_type_top_level_params.cpp
+          -DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_top_level_parameter_list
+          -DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type -> parse_top_level_parameter_list
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_qualified_type_top_level_params PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
+  NAME cpp_parser_debug_qualified_type_template_arg_stack
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_qualified_type_template_arg_stack.cpp
+          -DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_top_level_parameter_list
+          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type -> consume_qualified_type_spelling_with_typename -> consume_qualified_type_spelling -> parse_next_template_argument -> try_parse_template_type_arg -> try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type -> consume_qualified_type_spelling_with_typename -> consume_qualified_type_spelling -> parse_top_level_parameter_list"
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_qualified_type_template_arg_stack PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
+  NAME cpp_parser_debug_qualified_type_dependent_typename_stack
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_qualified_type_dependent_typename_stack.cpp
+          -DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_top_level_parameter_list
+          -DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> parse_next_template_argument -> try_parse_template_type_arg -> try_parse_cpp_scoped_base_type -> parse_dependent_typename_specifier -> parse_top_level_parameter_list
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_qualified_type_dependent_typename_stack PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
+  NAME cpp_parser_debug_qualified_type_typename_spelling_stack
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_qualified_type_typename_spelling_stack.cpp
+          -DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_top_level_parameter_list
+          -DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> parse_next_template_argument -> try_parse_template_type_arg -> try_parse_cpp_scoped_base_type -> parse_dependent_typename_specifier -> consume_qualified_type_spelling_with_typename -> parse_top_level_parameter_list
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_qualified_type_typename_spelling_stack PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
+  NAME cpp_parser_debug_qualified_type_spelling_stack
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_qualified_type_spelling_stack.cpp
+          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_top_level_parameter_list"
+          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type -> consume_qualified_type_spelling_with_typename -> consume_qualified_type_spelling -> parse_next_template_argument -> try_parse_template_type_arg -> parse_top_level_parameter_list"
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_qualified_type_spelling_stack PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
+  NAME cpp_parser_debug_top_level_qualified_probe_leaf
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_top_level_qualified_probe_leaf.cpp
+          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=try_parse_qualified_base_type phase=committed expected=RPAREN got='&&'"
+          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type -> consume_qualified_type_spelling_with_typename -> consume_qualified_type_spelling"
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_top_level_qualified_probe_leaf PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+
+add_test(
+  NAME cpp_parser_debug_attr_param_leaf
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_attr_param_leaf.cpp
+          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_top_level_parameter_list phase=committed expected=RPAREN got='['"
+          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> parse_top_level_parameter_list -> parse_param -> try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type -> consume_qualified_type_spelling_with_typename -> consume_qualified_type_spelling"
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_attr_param_leaf PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
+  NAME cpp_parser_debug_local_init_comma_leaf
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_local_init_comma_leaf.cpp
+          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_primary phase=committed got=','"
+          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> parse_block -> parse_stmt -> parse_local_decl -> parse_initializer -> parse_assign_expr -> parse_ternary -> parse_unary -> parse_primary -> parse_assign_expr -> parse_ternary -> parse_unary -> parse_primary"
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_local_init_comma_leaf PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
 )
 
 add_test(

@@ -1,0 +1,9 @@
+// Translated from /Users/chi-shengwu/c4c/ref/claudes-c-compiler/src/backend/arm/mod.rs
+// Structural mirror of the ref Rust source; includes are deferred for now.
+// pub(crate) mod codegen;
+// #[cfg_attr(feature = "gcc_assembler", allow(dead_code))] // Built-in assembler unused when gcc handles assembly
+// pub(crate) mod assembler;
+// #[cfg_attr(feature = "gcc_linker", allow(dead_code))] // Built-in linker unused when gcc handles linking
+// pub(crate) mod linker;
+// 
+// pub(crate) use codegen::emit::ArmCodegen;

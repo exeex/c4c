@@ -1,16 +1,44 @@
 #include "llvm_codegen.hpp"
+#include "backend.hpp"
+#include "target.hpp"
 #include "hir_to_lir.hpp"
 #include "lir_printer.hpp"
 
 #include <iostream>
+#include <stdexcept>
 
 namespace c4c::codegen::llvm_backend {
 
-std::string emit_module_native(const Module& mod, CodegenPath path) {
-  // All codegen paths converge on the LIR pipeline.
+namespace {
+
+std::string emit_legacy(const lir::LirModule& lir_mod) {
+  return lir::print_llvm(lir_mod);
+}
+
+std::string emit_via_backend(const lir::LirModule& lir_mod,
+                             std::string_view target_triple) {
+  backend::BackendOptions options{backend::target_from_triple(target_triple)};
+  backend::BackendModuleInput input{lir_mod};
+  return backend::emit_module(input, options);
+}
+
+}  // namespace
+
+std::string emit_module_native(const Module& mod,
+                               std::string_view target_triple,
+                               CodegenPath path) {
   auto lir_mod = lir::lower(mod);
-  auto result = lir::print_llvm(lir_mod);
+  if (path == CodegenPath::Legacy) {
+    return emit_legacy(lir_mod);
+  }
+
+  auto result = emit_via_backend(lir_mod, target_triple);
   if (path == CodegenPath::Compare) {
+    const auto legacy = emit_legacy(lir_mod);
+    if (legacy != result) {
+      std::cerr << "codegen compare: outputs differ\n";
+      throw std::runtime_error("backend entry output mismatch");
+    }
     std::cerr << "codegen compare: outputs match\n";
   }
   return result;

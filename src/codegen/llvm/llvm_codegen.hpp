@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 
 #include "ir.hpp"
 
@@ -16,6 +17,7 @@ enum class CodegenPath {
 };
 
 std::string emit_module_native(const Module& mod,
+                               std::string_view target_triple,
                                CodegenPath path = CodegenPath::Legacy);
 
 }  // namespace c4c::codegen::llvm_backend

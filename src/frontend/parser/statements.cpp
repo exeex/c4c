@@ -8,6 +8,7 @@
 
 namespace c4c {
 Node* Parser::parse_block() {
+    ParseContextGuard trace(this, __func__);
     int ln = cur().line;
     expect(TokenKind::LBrace);
     // Save enum constant scope — inner block enums must not leak to outer scope.
@@ -21,11 +22,20 @@ Node* Parser::parse_block() {
         } catch (const std::exception& e) {
             // Statement-level recovery: emit diagnostic, skip to ; or },
             // produce NK_INVALID_STMT, and continue parsing next statement.
-            int err_idx = !at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1);
-            int err_line = (!at_end()) ? cur().line : (pos_ > 0 ? tokens_[pos_-1].line : 1);
-            int err_col  = (!at_end()) ? cur().column : 1;
+            int err_idx = best_parse_failure_.active
+                              ? best_parse_failure_.token_index
+                              : (!at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1));
+            int err_line = best_parse_failure_.active
+                               ? best_parse_failure_.line
+                               : ((!at_end()) ? cur().line : (pos_ > 0 ? tokens_[pos_ - 1].line : 1));
+            int err_col  = best_parse_failure_.active
+                               ? best_parse_failure_.column
+                               : ((!at_end()) ? cur().column : 1);
+            std::string diag = format_best_parse_failure();
             fprintf(stderr, "%s:%d:%d: error: %s\n",
-                    diag_file_at(err_idx), err_line, err_col, e.what());
+                    diag_file_at(err_idx), err_line, err_col,
+                    diag.empty() ? e.what() : diag.c_str());
+            dump_parse_debug_trace();
             had_error_ = true;
             ++parse_error_count_;
             if (parse_error_count_ >= max_parse_errors_) {
@@ -50,6 +60,7 @@ Node* Parser::parse_block() {
 }
 
 Node* Parser::parse_stmt() {
+    ParseContextGuard trace(this, __func__);
     int ln = cur().line;
 
     // Skip leading __attribute__ UNLESS a real type keyword follows, in which
@@ -161,7 +172,76 @@ Node* Parser::parse_stmt() {
                 is_constexpr_if = true;
             }
             expect(TokenKind::LParen);
-            Node* cnd = parse_expr();
+            auto can_start_if_condition_decl = [&]() -> bool {
+                if (!is_cpp_mode()) return false;
+                TokenKind k = cur().kind;
+                if (is_type_kw(k) || is_qualifier(k) || is_storage_class(k)) return true;
+                if (k == TokenKind::KwConstexpr || k == TokenKind::KwConsteval ||
+                    k == TokenKind::KwAttribute || k == TokenKind::KwAlignas) {
+                    return true;
+                }
+                if (k != TokenKind::Identifier) return false;
+                if (cur().lexeme == "typename") return true;
+                if (is_template_scope_type_param(cur().lexeme)) return true;
+                if (is_typedef_name(cur().lexeme)) return true;
+                return typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0;
+            };
+
+            auto parse_if_condition_decl = [&]() -> Node* {
+                if (!can_start_if_condition_decl()) return nullptr;
+
+                const int saved_pos = pos_;
+                const auto saved_var_types = var_types_;
+                try {
+                    TypeSpec base_ts = parse_base_type();
+                    parse_attributes(&base_ts);
+
+                    TypeSpec ts = base_ts;
+                    ts.array_size_expr = nullptr;
+                    const char* vname = nullptr;
+                    parse_declarator(ts, &vname);
+                    skip_attributes();
+                    skip_asm();
+                    skip_attributes();
+
+                    if (!vname) {
+                        pos_ = saved_pos;
+                        var_types_ = saved_var_types;
+                        return nullptr;
+                    }
+
+                    Node* init_node = nullptr;
+                    if (match(TokenKind::Assign) ||
+                        (is_cpp_mode() && check(TokenKind::LBrace))) {
+                        init_node = parse_initializer();
+                    }
+
+                    if (!check(TokenKind::RParen)) {
+                        pos_ = saved_pos;
+                        var_types_ = saved_var_types;
+                        return nullptr;
+                    }
+
+                    Node* decl = make_node(NK_DECL, ln);
+                    decl->type = ts;
+                    decl->name = vname;
+                    decl->init = init_node;
+                    var_types_[vname] = ts;
+                    return decl;
+                } catch (const std::exception&) {
+                    pos_ = saved_pos;
+                    var_types_ = saved_var_types;
+                    return nullptr;
+                }
+            };
+
+            Node* cond_decl = parse_if_condition_decl();
+            Node* cnd = nullptr;
+            if (cond_decl) {
+                cnd = make_var(cond_decl->name, cond_decl->line);
+            } else {
+                cnd = parse_expr();
+            }
             expect(TokenKind::RParen);
             Node* then_stmt = parse_stmt();
             Node* else_stmt = nullptr;
@@ -173,7 +253,14 @@ Node* Parser::parse_stmt() {
             n->then_ = then_stmt;
             n->else_ = else_stmt;
             n->is_constexpr = is_constexpr_if;
-            return n;
+            if (!cond_decl) return n;
+
+            Node* scoped = make_node(NK_BLOCK, ln);
+            scoped->n_children = 2;
+            scoped->children = arena_.alloc_array<Node*>(2);
+            scoped->children[0] = cond_decl;
+            scoped->children[1] = n;
+            return scoped;
         }
 
         case TokenKind::KwWhile: {

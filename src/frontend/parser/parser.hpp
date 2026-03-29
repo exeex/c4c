@@ -29,6 +29,9 @@ namespace c4c {
 
 class Parser {
  public:
+  // ── lightweight parser-side model types ──────────────────────────────────
+  // Namespace tree node used by C++ qualified-name lookup and using-directive
+  // visibility tracking.
   struct NamespaceContext {
     int id = 0;
     int parent_id = -1;
@@ -37,12 +40,15 @@ class Parser {
     const char* canonical_name = nullptr;
   };
 
+  // Spelled qualified name as seen in the token stream.
   struct QualifiedNameRef {
     bool is_global_qualified = false;
     std::vector<std::string> qualifier_segments;
     std::string base_name;
   };
 
+  // Result container for one parsed template argument after type-vs-value
+  // disambiguation has been resolved.
   struct TemplateArgParseResult {
     bool is_value = false;
     TypeSpec type{};
@@ -83,6 +89,39 @@ class Parser {
     std::vector<TypeSpec> member_typedef_types;
   };
 
+  struct ParseContextFrame {
+    std::string function_name;
+    int token_index = -1;
+  };
+
+  struct ParseFailure {
+    bool active = false;
+    bool committed = true;
+    int token_index = -1;
+    int line = 1;
+    int column = 1;
+    std::string function_name;
+    std::string expected;
+    std::string got;
+    std::string detail;
+    std::vector<std::string> stack_trace;
+  };
+
+  struct ParseDebugEvent {
+    std::string kind;
+    std::string function_name;
+    std::string detail;
+    int token_index = -1;
+    int line = 1;
+    int column = 1;
+  };
+
+  struct ParseContextGuard {
+    Parser* parser = nullptr;
+    ParseContextGuard(Parser* parser, const char* function_name);
+    ~ParseContextGuard();
+  };
+
   // All members public (required by project coding constraints).
   explicit Parser(std::vector<Token> tokens, Arena& arena,
                   SourceProfile source_profile = SourceProfile::C,
@@ -91,11 +130,15 @@ class Parser {
   // Parse the entire token stream and return a NK_PROGRAM node.
   Node* parse();
 
-  // ── public state ──────────────────────────────────────────────────────────
+  // ── core parser state ─────────────────────────────────────────────────────
+  // Token stream + cursor are the parser's single source of truth.
   std::vector<Token> tokens_;
-  int                pos_;
-  Arena&             arena_;
-  SourceProfile      source_profile_;
+  int pos_;
+  Arena& arena_;
+  SourceProfile source_profile_;
+  std::string source_file_;  // source path used by diagnostics
+
+  // ── name / type knowledge accumulated during parsing ─────────────────────
   std::set<std::string> typedefs_;  // known typedef names
   // Typedef names declared in the current translation unit (not pre-seeded).
   std::set<std::string> user_typedefs_;
@@ -114,11 +157,7 @@ class Parser {
   std::unordered_map<std::string, FnPtrTypedefInfo> typedef_fn_ptr_info_;
   // Last resolved typedef name from parse_base_type() (for fn_ptr propagation).
   std::string last_resolved_typedef_;
-  std::vector<Node*>    struct_defs_;  // collected struct/enum defs (prepended)
-  int                anon_counter_;  // counter for anonymous tag names
-  // Struct/union tags that already have a full definition (with body).
-  // Used to detect block-scoped redefinitions and generate unique tags.
-  std::set<std::string> defined_struct_tags_;
+
   // Enum constants: name → value (populated as enums are parsed).
   // Used to evaluate enum initializers that reference previously-defined constants.
   std::unordered_map<std::string, long long> enum_consts_;
@@ -130,20 +169,25 @@ class Parser {
   // Qualified function names (populated as functions are declared/defined).
   // Used by lookup_value_in_context for namespace-aware function lookup.
   std::set<std::string> known_fn_names_;
+  // Struct member typedef scoped names: "StructTag::TypeName" → TypeSpec.
+  // Populated when parsing typedef inside struct bodies.
+  std::unordered_map<std::string, TypeSpec> struct_typedefs_;
+
+  // ── record / enum definition caches ──────────────────────────────────────
+  // Collected struct/enum defs are prepended to the final program node.
+  std::vector<Node*> struct_defs_;
+  int anon_counter_;  // counter for anonymous tag names
+  // Struct/union tags that already have a full definition (with body).
+  // Used to detect block-scoped redefinitions and generate unique tags.
+  std::set<std::string> defined_struct_tags_;
   // Struct/union tag → NK_STRUCT_DEF node (populated when parsing struct bodies).
   // Used by eval_const_int to compute __builtin_offsetof at parse time.
   std::unordered_map<std::string, Node*> struct_tag_def_map_;
-  // Source file name for diagnostic messages.
-  std::string source_file_;
-  // True if parse() encountered any recoverable parse error.
-  bool had_error_;
-  int parse_error_count_ = 0;
-  int max_parse_errors_ = 20;
-  int max_no_progress_steps_ = 8;
-  // True while parsing a file-scope declaration in parse_top_level().
-  bool parsing_top_level_context_;
-  // True while parsing an explicit template specialization (template<>).
-  bool parsing_explicit_specialization_ = false;
+  // Last enum definition node produced by parse_base_type(), if any.
+  // Used so declaration-only enum statements (`enum { ... };`) can be retained.
+  Node* last_enum_def_;
+
+  // ── template metadata and active template scopes ─────────────────────────
   // Template struct definitions: maps struct tag → NK_STRUCT_DEF node with
   // n_template_params > 0.  Used to instantiate template structs at usage sites.
   std::unordered_map<std::string, Node*> template_struct_defs_;
@@ -166,20 +210,21 @@ class Parser {
     TypeSpec aliased_type;  // TypeSpec from parse_type_name() (has tpl_struct_origin/arg_refs)
   };
   std::unordered_map<std::string, AliasTemplateInfo> alias_template_info_;
+  // Template-scope stack: tracks active template parameter visibility.
+  std::vector<TemplateScopeFrame> template_scope_stack_;
   // Set by the using-alias handler to let the template wrapper detect that
   // a using type alias was defined during `parse_top_level()`.
   std::string last_using_alias_name_;
-  // Last enum definition node produced by parse_base_type(), if any.
-  // Used so declaration-only enum statements (`enum { ... };`) can be retained.
-  Node* last_enum_def_;
 
-  // Struct member typedef scoped names: "StructTag::TypeName" → TypeSpec.
-  // Populated when parsing typedef inside struct bodies.
-  std::unordered_map<std::string, TypeSpec> struct_typedefs_;
+  // ── active parse context ──────────────────────────────────────────────────
   // Tag of the struct currently being parsed (empty if not in struct body).
   std::string current_struct_tag_;
-  // Template-scope stack: tracks active template parameter visibility.
-  std::vector<TemplateScopeFrame> template_scope_stack_;
+  // True while parsing a file-scope declaration in parse_top_level().
+  bool parsing_top_level_context_;
+  // True while parsing an explicit template specialization (template<>).
+  bool parsing_explicit_specialization_ = false;
+
+  // ── namespace / using-directive visibility state ─────────────────────────
   // Transitional flattened path kept only as a compatibility bridge.
   std::string current_namespace_;
   std::vector<NamespaceContext> namespace_contexts_;
@@ -190,6 +235,21 @@ class Parser {
   std::unordered_map<int, std::unordered_map<std::string, std::string>> using_value_aliases_;
   std::unordered_map<int, std::vector<int>> using_namespace_contexts_;
 
+  // ── diagnostic and recovery state ────────────────────────────────────────
+  // True if parse() encountered any recoverable parse error.
+  bool had_error_;
+  int parse_error_count_ = 0;
+  int max_parse_errors_ = 20;
+  int max_no_progress_steps_ = 8;
+  bool parser_debug_enabled_ = false;
+  int max_parse_debug_events_ = 256;
+  std::vector<ParseContextFrame> parse_context_stack_;
+  std::vector<ParseDebugEvent> parse_debug_events_;
+  ParseFailure best_parse_failure_;
+  int best_parse_stack_token_index_ = -1;
+  std::vector<std::string> best_parse_stack_trace_;
+
+  // ── pragma state ─────────────────────────────────────────────────────────
   // #pragma pack state: current packing alignment (0 = default/no packing).
   int pack_alignment_ = 0;
   std::vector<int> pack_stack_;  // for #pragma pack(push/pop)
@@ -202,7 +262,23 @@ class Parser {
   void handle_pragma_pack(const std::string& args);
   void handle_pragma_gcc_visibility(const std::string& args);
 
-  // ── token cursor helpers ──────────────────────────────────────────────────
+  // ── parser diagnostics / debug tracing ───────────────────────────────────
+  void set_parser_debug(bool enabled);
+  bool parser_debug_enabled() const;
+  void clear_parse_debug_state();
+  void push_parse_context(const char* function_name);
+  void pop_parse_context();
+  void note_parse_debug_event(const char* kind, const char* detail = nullptr);
+  void note_parse_failure(const char* expected,
+                          const char* detail = nullptr,
+                          bool committed = true);
+  void note_parse_failure_message(const char* detail,
+                                  bool committed = true);
+  std::vector<std::string> best_debug_summary_stack() const;
+  std::string format_best_parse_failure() const;
+  void dump_parse_debug_trace() const;
+
+  // ── token cursor / shared token utilities ────────────────────────────────
   const Token& cur() const;              // current token
   const Token& peek(int offset = 0) const; // peek at pos_+offset (0=current)
   const Token& consume();                // consume and return current token
@@ -218,14 +294,17 @@ class Parser {
   bool match_template_close();           // consume one template-close >
   void expect_template_close();          // match_template_close or throw
   void skip_until(TokenKind k);          // skip tokens until k (consume k)
+  bool try_parse_operator_function_id(std::string& out_name);
 
-  // ── type parsing helpers ──────────────────────────────────────────────────
+  // ── parser mode / identifier classification ──────────────────────────────
   bool is_type_start() const;            // can current token start a type?
   bool is_typedef_name(const std::string& s) const;
   bool is_cpp_mode() const {
     return source_profile_ == SourceProfile::CppSubset ||
            source_profile_ == SourceProfile::C4;
   }
+
+  // ── namespace resolution / qualified-name plumbing ───────────────────────
   void refresh_current_namespace_bridge();
   int current_namespace_context_id() const;
   int ensure_named_namespace_context(int parent_id, const std::string& name);
@@ -249,39 +328,15 @@ class Parser {
                             const char* resolved_name = nullptr);
   void apply_decl_namespace(Node* node, int context_id, const char* unqualified_name);
 
-  // Parse a complete type specifier (base type + qualifiers).
-  // ptr_level and array_size are NOT parsed here (those are in the declarator).
-  TypeSpec parse_base_type();
-
-  // Parse declarator suffix: pointer levels, array, etc.
-  // Modifies ts in place.  Returns the declared name (into out_name).
-  void parse_declarator(TypeSpec& ts, const char** out_name,
-                        Node*** out_fn_ptr_params = nullptr,
-                        int* out_n_fn_ptr_params = nullptr,
-                        bool* out_fn_ptr_variadic = nullptr,
-                        bool* out_is_parameter_pack = nullptr,
-                        Node*** out_ret_fn_ptr_params = nullptr,
-                        int* out_n_ret_fn_ptr_params = nullptr,
-                        bool* out_ret_fn_ptr_variadic = nullptr);
-
-  // Parse a full type-name (type + declarator with no name): e.g. for sizeof.
-  TypeSpec parse_type_name();
-
-  // Skip __attribute__((...)) sequences (zero or more).
+  // ── generic skipping / attribute helpers ─────────────────────────────────
   void skip_attributes();
-  // Skip noexcept / noexcept(expr) / throw() exception specifications.
   void skip_exception_spec();
-
-  // Consume __attribute__((...)) sequences, recording supported attributes
-  // into the type when provided (currently aligned/vector_size).
   void parse_attributes(TypeSpec* ts);
-
-  // Skip __asm__("...") or asm("...") sequences.
   void skip_asm();
-
-  // Skip a balanced paren group (consuming the closing paren).
   void skip_paren_group();
+  void skip_brace_group();
 
+  // ── template argument parsing / template instantiation helpers ───────────
   // Evaluate a deferred NTTP default expression for a template parameter.
   // Returns true if evaluation succeeded and writes the result to *out.
   bool eval_deferred_nttp_default(
@@ -311,6 +366,15 @@ class Parser {
   bool is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx) const;
   bool parse_template_argument_list(std::vector<TemplateArgParseResult>* out_args,
                                     const Node* primary_tpl = nullptr);
+  TypenameTemplateParamKind classify_typename_template_parameter() const;
+  void push_template_scope(TemplateScopeKind kind,
+                           const std::vector<TemplateScopeParam>& params);
+  void pop_template_scope();
+  // Check if a name is a type parameter in any active template scope frame.
+  // Walks the stack from innermost to outermost.
+  bool is_template_scope_type_param(const std::string& name) const;
+
+  // ── type spelling / type-specifier parsing ────────────────────────────────
   bool consume_qualified_type_spelling_with_typename(
       bool require_typename, bool allow_global,
       bool consume_final_template_args,
@@ -328,6 +392,24 @@ class Parser {
   bool parse_dependent_typename_specifier(std::string* out_name = nullptr);
   bool try_parse_cpp_scoped_base_type(bool already_have_base, TypeSpec* out_ts);
   bool try_parse_qualified_base_type(TypeSpec* out_ts);
+
+  // Parse a complete type specifier (base type + qualifiers).
+  // ptr_level and array_size are NOT parsed here (those are in the declarator).
+  TypeSpec parse_base_type();
+  // Parse a full type-name (type + declarator with no name): e.g. for sizeof.
+  TypeSpec parse_type_name();
+
+  // ── declarator parsing ────────────────────────────────────────────────────
+  // Modifies ts in place. Returns the declared name via out_name.
+  // Function-pointer metadata is optionally surfaced through the out_* params.
+  void parse_declarator(TypeSpec& ts, const char** out_name,
+                        Node*** out_fn_ptr_params = nullptr,
+                        int* out_n_fn_ptr_params = nullptr,
+                        bool* out_fn_ptr_variadic = nullptr,
+                        bool* out_is_parameter_pack = nullptr,
+                        Node*** out_ret_fn_ptr_params = nullptr,
+                        int* out_n_ret_fn_ptr_params = nullptr,
+                        bool* out_ret_fn_ptr_variadic = nullptr);
   bool parse_operator_declarator_name(std::string* out_name);
   bool parse_qualified_declarator_name(std::string* out_name);
   bool is_grouped_declarator_start() const;
@@ -345,6 +427,10 @@ class Parser {
       TypeSpec& ts, const char** out_name, std::vector<long long>* out_dims);
   void parse_declarator_parameter_list(std::vector<Node*>* out_params,
                                        bool* out_variadic);
+  void parse_top_level_parameter_list(
+      std::vector<Node*>* out_params,
+      std::vector<const char*>* out_knr_param_names,
+      bool* out_variadic);
   void parse_parenthesized_function_pointer_suffix(
       TypeSpec& ts, bool is_nested_fn_ptr,
       Node*** out_fn_ptr_params, int* out_n_fn_ptr_params,
@@ -388,20 +474,10 @@ class Parser {
                                        std::vector<long long>* out_dims);
   void apply_declarator_array_dims(TypeSpec& ts,
                                    const std::vector<long long>& decl_dims);
-  TypenameTemplateParamKind classify_typename_template_parameter() const;
-  // Template-scope stack helpers.
-  void push_template_scope(TemplateScopeKind kind,
-                           const std::vector<TemplateScopeParam>& params);
-  void pop_template_scope();
-  // Check if a name is a type parameter in any active template scope frame.
-  // Walks the stack from innermost to outermost.
-  bool is_template_scope_type_param(const std::string& name) const;
 
-  // Skip a balanced brace group (consuming the closing brace).
-  void skip_brace_group();
-
-  // Parse struct/union body { fields... } or just a tag reference.
-  // Returns a NK_STRUCT_DEF node; appends to struct_defs_ if new.
+  // ── record parsing (struct / union) ──────────────────────────────────────
+  // This family handles both outer record definitions and in-record member
+  // dispatch, including recovery in class/struct bodies.
   bool try_parse_record_using_member(
       std::vector<const char*>* member_typedef_names,
       std::vector<TypeSpec>* member_typedef_types);
@@ -529,15 +605,13 @@ class Parser {
                                     const char* template_origin_name);
   Node* parse_struct_or_union(bool is_union);
 
-  // Parse enum body { variants... } or just a tag reference.
-  // Returns a NK_ENUM_DEF node; appends to struct_defs_ if new.
+  // ── enum parsing ──────────────────────────────────────────────────────────
   Node* parse_enum();
 
-  // ── parameter / field parsing ──────────────────────────────────────────────
-  // Parse a single parameter declaration.  Returns NK_DECL node.
+  // ── parameter parsing ─────────────────────────────────────────────────────
   Node* parse_param();
 
-  // ── expression parsing (Pratt) ─────────────────────────────────────────────
+  // ── expression parsing (Pratt) ────────────────────────────────────────────
   Node* parse_expr();            // comma-level
   Node* parse_assign_expr();     // assignment / ternary
   Node* parse_ternary();         // ternary ?:
@@ -551,24 +625,22 @@ class Parser {
   // Operator precedence helper.
   static int bin_prec(TokenKind k);
 
-  // ── statement parsing ──────────────────────────────────────────────────────
+  // ── statement parsing ─────────────────────────────────────────────────────
   Node* parse_stmt();
   Node* parse_block();           // { ... }
 
-  // ── initializer parsing ───────────────────────────────────────────────────
+  // ── initializer parsing ──────────────────────────────────────────────────
   Node* parse_initializer();     // expr or { list }
   Node* parse_init_list();       // { item, item, ... }
 
-  // ── declaration parsing ───────────────────────────────────────────────────
-  // Parse a local declaration (inside function body).  May return a NK_BLOCK
-  // if there are multiple declarators.
+  // ── declaration and translation-unit entry points ────────────────────────
+  // Parse a local declaration (inside function body). May return a NK_BLOCK
+  // when the declaration expands into multiple declarators.
   Node* parse_local_decl();
-
-  // ── top-level parsing ─────────────────────────────────────────────────────
   // Parse one top-level item. Returns nullptr on EOF.
   Node* parse_top_level();
 
-  // ── node constructors ──────────────────────────────────────────────────────
+  // ── AST node builders ─────────────────────────────────────────────────────
   Node* make_node(NodeKind k, int line);
   Node* make_int_lit(long long v, int line);
   Node* make_float_lit(double v, const char* raw, int line);

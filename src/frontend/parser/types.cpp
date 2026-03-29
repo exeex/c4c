@@ -1209,6 +1209,7 @@ bool Parser::is_template_scope_type_param(const std::string& name) const {
 bool Parser::parse_next_template_argument(std::vector<TemplateArgParseResult>* out_args,
                                           const Node* primary_tpl, int arg_idx,
                                           bool* out_has_more) {
+    ParseContextGuard trace(this, __func__);
     if (!out_args || !out_has_more) return false;
 
     TemplateArgParseResult arg;
@@ -1230,6 +1231,7 @@ bool Parser::parse_next_template_argument(std::vector<TemplateArgParseResult>* o
 }
 
 bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
+    ParseContextGuard trace(this, __func__);
     if (!out_arg) return false;
     int saved_pos = pos_;
     try {
@@ -1398,6 +1400,7 @@ bool Parser::consume_qualified_type_spelling_with_typename(
     bool consume_final_template_args,
     std::string* out_name,
     QualifiedNameRef* out_qn) {
+    ParseContextGuard trace(this, __func__);
     const int saved_pos = pos_;
     if (require_typename) {
         if (!is_cpp_mode() || !check(TokenKind::Identifier) || cur().lexeme != "typename")
@@ -1418,6 +1421,7 @@ bool Parser::consume_qualified_type_spelling(bool allow_global,
                                              bool consume_final_template_args,
                                              std::string* out_name,
                                              QualifiedNameRef* out_qn) {
+    ParseContextGuard trace(this, __func__);
     const int saved_pos = pos_;
     QualifiedNameRef qn;
 
@@ -1580,6 +1584,7 @@ void Parser::apply_declarator_pointer_token(TypeSpec& ts, TokenKind pointer_tok,
 }
 
 bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
+    ParseContextGuard trace(this, __func__);
     std::string dep_name;
     if (!consume_qualified_type_spelling_with_typename(
             /*require_typename=*/true,
@@ -1599,6 +1604,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
 
 bool Parser::try_parse_cpp_scoped_base_type(bool already_have_base,
                                             TypeSpec* out_ts) {
+    ParseContextGuard trace(this, __func__);
     if (!out_ts || !is_cpp_mode()) return false;
 
     if (check(TokenKind::Identifier) && cur().lexeme == "typename") {
@@ -1613,6 +1619,7 @@ bool Parser::try_parse_cpp_scoped_base_type(bool already_have_base,
 }
 
 bool Parser::try_parse_qualified_base_type(TypeSpec* out_ts) {
+    ParseContextGuard trace(this, __func__);
     if (!out_ts || !is_cpp_mode()) return false;
 
     QualifiedNameRef qn;
@@ -1981,6 +1988,7 @@ void Parser::parse_normal_declarator_tail(TypeSpec& ts, const char** out_name,
 
 void Parser::parse_declarator_parameter_list(
     std::vector<Node*>* out_params, bool* out_variadic) {
+    ParseContextGuard trace(this, __func__);
     if (out_params) out_params->clear();
     if (out_variadic) *out_variadic = false;
 
@@ -1993,7 +2001,12 @@ void Parser::parse_declarator_parameter_list(
                 break;
             }
             if (check(TokenKind::RParen)) break;
-            if (!is_type_start()) {
+            const bool allow_unresolved_template_type_start =
+                is_cpp_mode() &&
+                check(TokenKind::Identifier) &&
+                pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                tokens_[pos_ + 1].kind == TokenKind::Less;
+            if (!is_type_start() && !allow_unresolved_template_type_start) {
                 consume();
                 if (match(TokenKind::Comma)) continue;
                 break;
@@ -2362,6 +2375,13 @@ bool Parser::is_type_start() const {
             (find_template_struct_primary(cur().lexeme) ||
              find_template_struct_primary(resolve_visible_type_name(cur().lexeme)) ||
              !current_struct_tag_.empty())) return true;
+        // Keep declaration probes aligned with parse_base_type(): even when
+        // template-type registration was lost, `Identifier<...>` should still
+        // be allowed to enter type parsing so the unresolved-template fallback
+        // can recover declarations such as `holder<T> value`.
+        if (is_cpp_mode() &&
+            pos_ + 1 < static_cast<int>(tokens_.size()) &&
+            tokens_[pos_ + 1].kind == TokenKind::Less) return true;
     }
     if (k == TokenKind::ColonColon) {
         QualifiedNameRef qn;
@@ -4382,6 +4402,7 @@ void Parser::parse_record_base_clause(std::vector<TypeSpec>* base_types) {
 bool Parser::try_parse_record_using_member(
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types) {
+    ParseContextGuard trace(this, __func__);
     if (!(is_cpp_mode() && check(TokenKind::KwUsing)))
         return false;
 
@@ -4393,7 +4414,7 @@ bool Parser::try_parse_record_using_member(
         consume(); // name
         consume(); // '='
         TypeSpec alias_ts = parse_type_name();
-        match(TokenKind::Semi);
+        expect(TokenKind::Semi);
 
         typedefs_.insert(alias_name);
         typedef_types_[alias_name] = alias_ts;
@@ -4416,6 +4437,7 @@ bool Parser::try_parse_record_using_member(
 bool Parser::try_parse_record_typedef_member(
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types) {
+    ParseContextGuard trace(this, __func__);
     if (!(is_cpp_mode() && check(TokenKind::KwTypedef)))
         return false;
 
@@ -4477,7 +4499,7 @@ bool Parser::try_parse_record_typedef_member(
             }
         }
     }
-    match(TokenKind::Semi);
+    expect(TokenKind::Semi);
     return true;
 }
 
@@ -4602,6 +4624,7 @@ bool Parser::is_record_special_member_name(
 bool Parser::try_parse_record_constructor_member(
     const std::string& struct_source_name,
     std::vector<Node*>* methods) {
+    ParseContextGuard trace(this, __func__);
     if (!(is_cpp_mode() && !current_struct_tag_.empty()))
         return false;
 
@@ -4785,6 +4808,7 @@ bool Parser::try_parse_record_method_or_field_member(
     std::vector<Node*>* fields,
     std::vector<Node*>* methods,
     const std::function<void(const char*)>& check_dup_field) {
+    ParseContextGuard trace(this, __func__);
     // Regular field declaration
     // C++ conversion operators (e.g., operator bool()) have no return
     // type prefix, so KwOperator can appear directly here.
@@ -4965,7 +4989,12 @@ bool Parser::try_parse_record_method_or_field_member(
             while (!at_end()) {
                 if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
                 if (check(TokenKind::RParen)) break;
-                if (!is_type_start()) break;
+                const bool allow_unresolved_template_type_start =
+                    is_cpp_mode() &&
+                    check(TokenKind::Identifier) &&
+                    pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                    tokens_[pos_ + 1].kind == TokenKind::Less;
+                if (!is_type_start() && !allow_unresolved_template_type_start) break;
                 Node* p = parse_param();
                 if (p) params.push_back(p);
                 if (check(TokenKind::Ellipsis)) { variadic = true; consume(); break; }
@@ -5087,7 +5116,12 @@ bool Parser::try_parse_record_method_or_field_member(
                         break;
                     }
                     if (check(TokenKind::RParen)) break;
-                    if (!is_type_start()) break;
+                    const bool allow_unresolved_template_type_start =
+                        is_cpp_mode() &&
+                        check(TokenKind::Identifier) &&
+                        pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                        tokens_[pos_ + 1].kind == TokenKind::Less;
+                    if (!is_type_start() && !allow_unresolved_template_type_start) break;
                     Node* p = parse_param();
                     if (p) params.push_back(p);
                     if (check(TokenKind::Ellipsis)) {
@@ -5235,6 +5269,7 @@ bool Parser::try_parse_record_type_like_member_dispatch(
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
     const std::function<void(const char*)>& check_dup_field) {
+    ParseContextGuard trace(this, __func__);
     if (try_parse_record_using_member(member_typedef_names,
                                       member_typedef_types)) {
         return true;
@@ -5252,6 +5287,7 @@ bool Parser::try_parse_record_member_dispatch(
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
     const std::function<void(const char*)>& check_dup_field) {
+    ParseContextGuard trace(this, __func__);
     if (try_parse_record_type_like_member_dispatch(
             fields, member_typedef_names, member_typedef_types,
             check_dup_field)) {
@@ -5536,6 +5572,15 @@ Node* Parser::parse_record_tag_setup(int line,
         ref->name = resolved_tag;
         ref->is_union = is_union;
         ref->n_fields = -1;  // -1 = forward reference (no body)
+        if (is_cpp_mode() && resolved_tag && resolved_tag[0]) {
+            typedefs_.insert(resolved_tag);
+            TypeSpec injected_ts{};
+            injected_ts.array_size = -1;
+            injected_ts.array_rank = 0;
+            injected_ts.base = is_union ? TB_UNION : TB_STRUCT;
+            injected_ts.tag = resolved_tag;
+            typedef_types_[resolved_tag] = injected_ts;
+        }
         if (is_cpp_mode() && parsing_top_level_context_)
             struct_defs_.push_back(ref);
         return ref;
@@ -5703,6 +5748,10 @@ void Parser::finalize_record_definition(Node* sd,
     injected_ts.base = is_union ? TB_UNION : TB_STRUCT;
     injected_ts.tag = sd->name;
     typedef_types_[sd->name] = injected_ts;
+    if (source_tag && source_tag[0] && std::strcmp(source_tag, sd->name) != 0) {
+        typedefs_.insert(source_tag);
+        typedef_types_[source_tag] = injected_ts;
+    }
 }
 
 void Parser::complete_record_definition(
@@ -5843,6 +5892,7 @@ Node* Parser::parse_enum() {
 // ── parameter parsing ─────────────────────────────────────────────────────────
 
 Node* Parser::parse_param() {
+    ParseContextGuard trace(this, __func__);
     int ln = cur().line;
     if (check(TokenKind::Ellipsis)) {
         // variadic marker — handled by caller

@@ -237,9 +237,10 @@ std::string print_llvm(const LirModule& mod) {
     out << "declare i32 @llvm.abs.i32(i32, i1 immarg)\n";
     out << "declare i64 @llvm.abs.i64(i64, i1 immarg)\n";
   }
+  if (mod.need_ptrmask)     out << "declare ptr @llvm.ptrmask.p0.i64(ptr, i64)\n";
   if (mod.need_va_start || mod.need_va_end || mod.need_va_copy ||
       mod.need_memcpy || mod.need_memset || mod.need_stacksave || mod.need_stackrestore ||
-      mod.need_abs) out << "\n";
+      mod.need_abs || mod.need_ptrmask) out << "\n";
 
   // External function declarations.
   for (const auto& ed : mod.extern_decls) {

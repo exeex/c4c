@@ -1,11 +1,232 @@
 #include "parser.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <sstream>
 #include <stdexcept>
 
 namespace c4c {
+
+namespace {
+
+std::vector<const std::string*> collapse_adjacent_stack_frames(
+    const std::vector<std::string>& stack_trace) {
+    std::vector<const std::string*> compact;
+    compact.reserve(stack_trace.size());
+    const std::string* previous = nullptr;
+    for (const std::string& fn : stack_trace) {
+        if (previous && *previous == fn) continue;
+        compact.push_back(&fn);
+        previous = &fn;
+    }
+    return compact;
+}
+
+bool should_replace_best_parse_failure(const Parser::ParseFailure& current,
+                                       const Parser::ParseFailure& candidate) {
+    if (!current.active) return true;
+    if (candidate.token_index != current.token_index) {
+        const bool wrapper_unwind_prefix =
+            candidate.token_index > current.token_index &&
+            candidate.token_index <= current.token_index + 1 &&
+            candidate.committed == current.committed &&
+            candidate.stack_trace.size() < current.stack_trace.size() &&
+            !candidate.stack_trace.empty() &&
+            std::equal(candidate.stack_trace.begin(), candidate.stack_trace.end(),
+                       current.stack_trace.begin());
+        if (wrapper_unwind_prefix) return false;
+        return candidate.token_index > current.token_index;
+    }
+    if (candidate.committed != current.committed) {
+        return candidate.committed && !current.committed;
+    }
+    if (candidate.stack_trace.size() != current.stack_trace.size()) {
+        return candidate.stack_trace.size() > current.stack_trace.size();
+    }
+    if (candidate.column != current.column) {
+        return candidate.column > current.column;
+    }
+    return false;
+}
+
+bool is_top_level_wrapper_failure(const std::string& function_name) {
+    return function_name == "parse_top_level" ||
+           function_name == "parse_top_level_parameter_list";
+}
+
+bool is_qualified_type_trace_wrapper(const std::string& function_name) {
+    return function_name == "parse_next_template_argument" ||
+           function_name == "consume_qualified_type_spelling" ||
+           function_name == "consume_qualified_type_spelling_with_typename" ||
+           function_name == "parse_dependent_typename_specifier";
+}
+
+bool is_qualified_type_trace_leaf(const std::string& function_name) {
+    return function_name == "try_parse_cpp_scoped_base_type" ||
+           function_name == "try_parse_qualified_base_type";
+}
+
+bool is_qualified_type_trace_anchor(const std::string& function_name) {
+    return is_qualified_type_trace_leaf(function_name) ||
+           function_name == "try_parse_template_type_arg";
+}
+
+bool is_qualified_type_trace_frame(const std::string& function_name) {
+    return is_qualified_type_trace_anchor(function_name) ||
+           is_qualified_type_trace_wrapper(function_name);
+}
+
+bool is_summary_only_parse_helper(const std::string& function_name) {
+    return function_name == "consume_qualified_type_spelling" ||
+           function_name == "consume_qualified_type_spelling_with_typename";
+}
+
+bool is_param_qualified_type_probe_frame(const std::string& function_name) {
+    return function_name == "parse_param" ||
+           function_name == "try_parse_cpp_scoped_base_type" ||
+           function_name == "try_parse_qualified_base_type" ||
+           is_summary_only_parse_helper(function_name);
+}
+
+bool stack_contains_qualified_type_trace(
+    const std::vector<std::string>& stack_trace) {
+    return std::any_of(stack_trace.begin(), stack_trace.end(),
+                       [](const std::string& function_name) {
+                           return is_qualified_type_trace_anchor(function_name);
+                       });
+}
+
+bool current_stack_is_prefix_of_best(
+    const std::vector<Parser::ParseContextFrame>& current_stack,
+    const std::vector<std::string>& best_stack_trace) {
+    if (current_stack.size() >= best_stack_trace.size()) return false;
+    for (size_t i = 0; i < current_stack.size(); ++i) {
+        if (current_stack[i].function_name != best_stack_trace[i]) return false;
+    }
+    return true;
+}
+
+std::vector<std::string> normalize_summary_stack(
+    const std::vector<std::string>& stack_trace) {
+    std::vector<std::string> normalized;
+    normalized.reserve(stack_trace.size());
+    for (size_t i = 0; i < stack_trace.size();) {
+        if (i + 1 < stack_trace.size() &&
+            stack_trace[i] == "parse_next_template_argument" &&
+            stack_trace[i + 1] == "try_parse_template_type_arg") {
+            normalized.push_back(stack_trace[i]);
+            normalized.push_back(stack_trace[i + 1]);
+            i += 2;
+            while (i + 1 < stack_trace.size() &&
+                   stack_trace[i] == "parse_next_template_argument" &&
+                   stack_trace[i + 1] == "try_parse_template_type_arg") {
+                i += 2;
+            }
+            continue;
+        }
+        normalized.push_back(stack_trace[i]);
+        ++i;
+    }
+    return normalized;
+}
+
+bool is_top_level_qualified_probe_merge_target(
+    const std::string& function_name) {
+    return function_name == "parse_next_template_argument" ||
+           function_name == "parse_top_level_parameter_list";
+}
+
+std::vector<std::string> merge_leading_top_level_qualified_probe(
+    const std::vector<Parser::ParseDebugEvent>& parse_debug_events,
+    const std::vector<std::string>& summary_stack) {
+    if (summary_stack.size() < 2 || summary_stack.front() != "parse_top_level" ||
+        !is_top_level_qualified_probe_merge_target(summary_stack[1])) {
+        return summary_stack;
+    }
+
+    std::vector<std::string> leading_probe_frames;
+    bool inside_top_level = false;
+    const std::string& merge_anchor = summary_stack[1];
+    for (const Parser::ParseDebugEvent& event : parse_debug_events) {
+        if (event.kind != "enter") continue;
+        if (event.function_name == "parse_top_level") {
+            inside_top_level = true;
+            continue;
+        }
+        if (!inside_top_level) continue;
+        if (event.function_name == merge_anchor) break;
+        if (!is_qualified_type_trace_frame(event.function_name)) continue;
+        if (leading_probe_frames.empty() ||
+            leading_probe_frames.back() != event.function_name) {
+            leading_probe_frames.push_back(event.function_name);
+        }
+    }
+
+    if (leading_probe_frames.empty()) return summary_stack;
+    if (summary_stack.size() > leading_probe_frames.size() &&
+        std::equal(leading_probe_frames.begin(), leading_probe_frames.end(),
+                   summary_stack.begin() + 1)) {
+        return summary_stack;
+    }
+
+    std::vector<std::string> merged;
+    merged.reserve(summary_stack.size() + leading_probe_frames.size());
+    merged.push_back(summary_stack.front());
+    merged.insert(merged.end(), leading_probe_frames.begin(),
+                  leading_probe_frames.end());
+    merged.insert(merged.end(), summary_stack.begin() + 1, summary_stack.end());
+    return merged;
+}
+
+const std::string* select_best_parse_summary_leaf(
+    const std::vector<std::string>& summary_stack,
+    const Parser::ParseFailure& failure) {
+    if (!failure.function_name.empty()) {
+        for (size_t i = summary_stack.size(); i > 0; --i) {
+            if (summary_stack[i - 1] != failure.function_name) continue;
+            const bool trailing_param_probe_only =
+                failure.function_name == "parse_top_level_parameter_list" &&
+                std::all_of(summary_stack.begin() + i, summary_stack.end(),
+                            [](const std::string& function_name) {
+                                return is_param_qualified_type_probe_frame(
+                                    function_name);
+                            });
+            if (trailing_param_probe_only) {
+                return &summary_stack[i - 1];
+            }
+            const bool trailing_probe_only =
+                std::all_of(summary_stack.begin() + i, summary_stack.end(),
+                            [](const std::string& function_name) {
+                                return is_qualified_type_trace_frame(function_name);
+                            });
+            if (trailing_probe_only &&
+                failure.function_name != "parse_top_level") {
+                return &summary_stack[i - 1];
+            }
+            break;
+        }
+    }
+
+    for (auto it = summary_stack.rbegin(); it != summary_stack.rend(); ++it) {
+        if (!is_summary_only_parse_helper(*it)) return &*it;
+    }
+    if (!summary_stack.empty()) return &summary_stack.back();
+    return nullptr;
+}
+
+}  // namespace
+
+Parser::ParseContextGuard::ParseContextGuard(
+    Parser* parser_in, const char* function_name)
+    : parser(parser_in) {
+    if (parser) parser->push_parse_context(function_name);
+}
+
+Parser::ParseContextGuard::~ParseContextGuard() {
+    if (parser) parser->pop_parse_context();
+}
+
 Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_profile,
                const std::string& source_file)
     : tokens_(std::move(tokens)), pos_(0), arena_(arena), source_profile_(source_profile),
@@ -208,6 +429,226 @@ void Parser::handle_pragma_pack(const std::string& args) {
     } else {
         // Simple numeric value
         pack_alignment_ = std::stoi(args);
+    }
+}
+
+void Parser::set_parser_debug(bool enabled) {
+    parser_debug_enabled_ = enabled;
+}
+
+bool Parser::parser_debug_enabled() const {
+    return parser_debug_enabled_;
+}
+
+void Parser::clear_parse_debug_state() {
+    parse_context_stack_.clear();
+    parse_debug_events_.clear();
+    best_parse_failure_ = ParseFailure{};
+    best_parse_stack_token_index_ = -1;
+    best_parse_stack_trace_.clear();
+}
+
+void Parser::push_parse_context(const char* function_name) {
+    ParseContextFrame frame;
+    frame.function_name = function_name ? function_name : "";
+    frame.token_index = pos_;
+    parse_context_stack_.push_back(std::move(frame));
+    note_parse_debug_event("enter");
+}
+
+void Parser::pop_parse_context() {
+    note_parse_debug_event("leave");
+    if (!parse_context_stack_.empty()) parse_context_stack_.pop_back();
+}
+
+void Parser::note_parse_debug_event(const char* kind, const char* detail) {
+    if (!parser_debug_enabled_) return;
+
+    ParseDebugEvent event;
+    event.kind = kind ? kind : "";
+    event.detail = detail ? detail : "";
+    event.token_index = !at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1);
+    event.line = !at_end() ? cur().line : (pos_ > 0 ? tokens_[pos_ - 1].line : 1);
+    event.column = !at_end() ? cur().column : 1;
+    if (!parse_context_stack_.empty()) {
+        event.function_name = parse_context_stack_.back().function_name;
+    }
+    parse_debug_events_.push_back(std::move(event));
+    if (static_cast<int>(parse_debug_events_.size()) > max_parse_debug_events_) {
+        parse_debug_events_.erase(parse_debug_events_.begin());
+    }
+    if (!parse_context_stack_.empty()) {
+        const int token_index = parse_debug_events_.back().token_index;
+        const int token_delta = token_index - best_parse_stack_token_index_;
+        const std::string current_function = parse_context_stack_.back().function_name;
+        const bool preserving_wrapper_prefix_snapshot =
+            token_delta > 0 &&
+            current_stack_is_prefix_of_best(parse_context_stack_,
+                                            best_parse_stack_trace_);
+        const bool preserving_qualified_type_probe_snapshot =
+            token_delta > 0 &&
+            (is_top_level_wrapper_failure(current_function) ||
+             is_qualified_type_trace_wrapper(current_function)) &&
+            stack_contains_qualified_type_trace(best_parse_stack_trace_);
+        const bool replace_snapshot =
+            best_parse_stack_token_index_ < 0 ||
+            (!(preserving_wrapper_prefix_snapshot ||
+               preserving_qualified_type_probe_snapshot) &&
+             token_delta > 1) ||
+            (token_delta > 0 &&
+             parse_context_stack_.size() >= best_parse_stack_trace_.size()) ||
+            (token_delta == 0 &&
+             parse_context_stack_.size() > best_parse_stack_trace_.size());
+        if (replace_snapshot) {
+            best_parse_stack_token_index_ = token_index;
+            best_parse_stack_trace_.clear();
+            best_parse_stack_trace_.reserve(parse_context_stack_.size());
+            for (const ParseContextFrame& frame : parse_context_stack_) {
+                best_parse_stack_trace_.push_back(frame.function_name);
+            }
+        }
+    }
+}
+
+void Parser::note_parse_failure(const char* expected,
+                                const char* detail,
+                                bool committed) {
+    ParseFailure failure;
+    failure.active = true;
+    failure.committed = committed;
+    failure.token_index = !at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1);
+    failure.line = !at_end() ? cur().line : (pos_ > 0 ? tokens_[pos_ - 1].line : 1);
+    failure.column = !at_end() ? cur().column : 1;
+    failure.expected = expected ? expected : "";
+    failure.got = at_end() ? "<eof>" : cur().lexeme;
+    failure.detail = detail ? detail : "";
+    if (!parse_context_stack_.empty()) {
+        failure.function_name = parse_context_stack_.back().function_name;
+    }
+    for (const ParseContextFrame& frame : parse_context_stack_) {
+        failure.stack_trace.push_back(frame.function_name);
+    }
+
+    if (should_replace_best_parse_failure(best_parse_failure_, failure)) {
+        best_parse_failure_ = std::move(failure);
+    }
+
+    note_parse_debug_event(committed ? "fail" : "soft_fail", detail);
+}
+
+void Parser::note_parse_failure_message(const char* detail, bool committed) {
+    note_parse_failure(nullptr, detail, committed);
+}
+
+std::vector<std::string> Parser::best_debug_summary_stack() const {
+    const bool top_level_wrapper_failure =
+        is_top_level_wrapper_failure(best_parse_failure_.function_name);
+    std::vector<std::string> summary_stack;
+    if (best_parse_stack_trace_.size() > best_parse_failure_.stack_trace.size() &&
+        (best_parse_stack_token_index_ >= best_parse_failure_.token_index ||
+         top_level_wrapper_failure)) {
+        std::vector<std::string> candidate = best_parse_stack_trace_;
+        if (best_parse_failure_.function_name == "parse_top_level" &&
+            !candidate.empty() &&
+            is_qualified_type_trace_leaf(candidate.back())) {
+            candidate.pop_back();
+        }
+        size_t common_prefix = 0;
+        while (common_prefix < candidate.size() &&
+               common_prefix < best_parse_failure_.stack_trace.size() &&
+               candidate[common_prefix] ==
+                   best_parse_failure_.stack_trace[common_prefix]) {
+            ++common_prefix;
+        }
+        if (top_level_wrapper_failure && common_prefix > 0 &&
+            common_prefix < candidate.size() &&
+            best_parse_failure_.function_name ==
+                "parse_top_level_parameter_list") {
+            std::vector<std::string> merged = candidate;
+            merged.insert(merged.end(),
+                          best_parse_failure_.stack_trace.begin() + common_prefix,
+                          best_parse_failure_.stack_trace.end());
+            summary_stack = normalize_summary_stack(merged);
+            return merge_leading_top_level_qualified_probe(parse_debug_events_,
+                                                           summary_stack);
+        }
+        if (!best_parse_failure_.function_name.empty() &&
+            std::find(candidate.begin(),
+                      candidate.end(),
+                      best_parse_failure_.function_name) !=
+                candidate.end()) {
+            summary_stack = normalize_summary_stack(candidate);
+            return merge_leading_top_level_qualified_probe(parse_debug_events_,
+                                                           summary_stack);
+        }
+        if (best_parse_failure_.function_name == "parse_top_level" &&
+            !candidate.empty()) {
+            summary_stack = normalize_summary_stack(candidate);
+            return merge_leading_top_level_qualified_probe(parse_debug_events_,
+                                                           summary_stack);
+        }
+    }
+    summary_stack = normalize_summary_stack(best_parse_failure_.stack_trace);
+    return merge_leading_top_level_qualified_probe(parse_debug_events_,
+                                                   summary_stack);
+}
+
+std::string Parser::format_best_parse_failure() const {
+    if (!best_parse_failure_.active) return {};
+
+    std::ostringstream oss;
+    const std::vector<std::string> summary_stack = best_debug_summary_stack();
+    const std::string* summary_leaf =
+        select_best_parse_summary_leaf(summary_stack, best_parse_failure_);
+    if (summary_leaf && !summary_leaf->empty()) {
+        oss << "parse_fn=" << *summary_leaf;
+    } else if (!best_parse_failure_.function_name.empty()) {
+        oss << "parse_fn=" << best_parse_failure_.function_name;
+    }
+    if (best_parse_failure_.committed) {
+        if (oss.tellp() > 0) oss << " ";
+        oss << "phase=committed";
+    }
+    if (!best_parse_failure_.expected.empty()) {
+        if (oss.tellp() > 0) oss << " ";
+        oss << "expected=" << best_parse_failure_.expected;
+        oss << " got='" << best_parse_failure_.got << "'";
+    } else {
+        if (oss.tellp() > 0) oss << " ";
+        oss << "got='" << best_parse_failure_.got << "'";
+    }
+    if (!best_parse_failure_.detail.empty()) {
+        if (oss.tellp() > 0) oss << " ";
+        oss << "detail=\"" << best_parse_failure_.detail << "\"";
+    }
+    return oss.str();
+}
+
+void Parser::dump_parse_debug_trace() const {
+    if (!parser_debug_enabled_ || parse_debug_events_.empty()) return;
+    fprintf(stderr, "%s:%d:%d: note: parser debug trace follows\n",
+            best_parse_failure_.active ? diag_file_at(best_parse_failure_.token_index)
+                                       : source_file_.c_str(),
+            best_parse_failure_.active ? best_parse_failure_.line : 1,
+            best_parse_failure_.active ? best_parse_failure_.column : 1);
+    for (const ParseDebugEvent& event : parse_debug_events_) {
+        fprintf(stderr, "[pdebug] kind=%s",
+                event.kind.c_str());
+        if (!event.function_name.empty())
+            fprintf(stderr, " fn=%s", event.function_name.c_str());
+        fprintf(stderr, " line=%d col=%d", event.line, event.column);
+        if (!event.detail.empty()) fprintf(stderr, " detail=\"%s\"", event.detail.c_str());
+        fprintf(stderr, "\n");
+    }
+    const std::vector<std::string> summary_stack = best_debug_summary_stack();
+    if (best_parse_failure_.active && !summary_stack.empty()) {
+        const std::vector<const std::string*> compact_stack =
+            collapse_adjacent_stack_frames(summary_stack);
+        fprintf(stderr, "[pdebug] stack:");
+        for (const std::string* fn : compact_stack) {
+            fprintf(stderr, " -> %s", fn->c_str());
+        }
+        fprintf(stderr, "\n");
     }
 }
 
@@ -569,6 +1010,7 @@ void Parser::apply_decl_namespace(Node* node, int context_id, const char* unqual
 
 void Parser::expect(TokenKind k) {
     if (!check(k)) {
+        note_parse_failure(token_kind_name(k));
         std::ostringstream msg;
         msg << "expected " << token_kind_name(k) << " but got '"
             << cur().lexeme << "' at line " << cur().line;
@@ -641,15 +1083,25 @@ Node* Parser::parse() {
     while (!at_end()) {
         Node* item = nullptr;
         int loop_start_pos = pos_;
+        clear_parse_debug_state();
         try {
             item = parse_top_level();
         } catch (const std::exception& e) {
             // Parse error: emit stable diagnostic and try to recover.
-            int err_idx = !at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1);
-            int err_line = (!at_end()) ? cur().line : (pos_ > 0 ? tokens_[pos_-1].line : 1);
-            int err_col  = (!at_end()) ? cur().column : 1;
+            int err_idx = best_parse_failure_.active
+                              ? best_parse_failure_.token_index
+                              : (!at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1));
+            int err_line = best_parse_failure_.active
+                               ? best_parse_failure_.line
+                               : ((!at_end()) ? cur().line : (pos_ > 0 ? tokens_[pos_-1].line : 1));
+            int err_col  = best_parse_failure_.active
+                               ? best_parse_failure_.column
+                               : ((!at_end()) ? cur().column : 1);
+            std::string diag = format_best_parse_failure();
             fprintf(stderr, "%s:%d:%d: error: %s\n",
-                    diag_file_at(err_idx), err_line, err_col, e.what());
+                    diag_file_at(err_idx), err_line, err_col,
+                    diag.empty() ? e.what() : diag.c_str());
+            dump_parse_debug_trace();
             had_error_ = true;
             ++parse_error_count_;
             if (parse_error_count_ >= max_parse_errors_) {
@@ -668,9 +1120,17 @@ Node* Parser::parse() {
         if (pos_ == loop_start_pos && !at_end()) {
             had_error_ = true;
             ++no_progress_steps;
+            note_parse_failure_message("unexpected token with no parse progress");
+            std::string diag = format_best_parse_failure();
             fprintf(stderr, "%s:%d:%d: error: unexpected token '%s'\n",
                     diag_file_at(pos_), cur().line, cur().column,
                     cur().lexeme.c_str());
+            if (!diag.empty()) {
+                fprintf(stderr, "%s:%d:%d: note: %s\n",
+                        diag_file_at(pos_), cur().line, cur().column,
+                        diag.c_str());
+            }
+            dump_parse_debug_trace();
             consume();
             ++parse_error_count_;
             if (no_progress_steps >= max_no_progress_steps_) {

@@ -64,6 +64,7 @@ int Parser::bin_prec(TokenKind k) {
 }
 
 Node* Parser::parse_expr() {
+    ParseContextGuard trace(this, __func__);
     Node* lhs = parse_assign_expr();
     while (check(TokenKind::Comma)) {
         int ln = cur().line;
@@ -78,6 +79,7 @@ Node* Parser::parse_expr() {
 }
 
 Node* Parser::parse_assign_expr() {
+    ParseContextGuard trace(this, __func__);
     Node* lhs = parse_ternary();
     int ln = cur().line;
     TokenKind k = cur().kind;
@@ -109,6 +111,7 @@ Node* Parser::parse_assign_expr() {
 }
 
 Node* Parser::parse_ternary() {
+    ParseContextGuard trace(this, __func__);
     Node* cond = parse_binary(4);
     if (!check(TokenKind::Question)) return cond;
     int ln = cur().line;
@@ -193,6 +196,7 @@ Node* Parser::parse_sizeof_pack_expr(int ln) {
 }
 
 Node* Parser::parse_unary() {
+    ParseContextGuard trace(this, __func__);
     int ln = cur().line;
     switch (cur().kind) {
         case TokenKind::Bang: {
@@ -469,24 +473,32 @@ Node* Parser::parse_postfix(Node* base) {
             }
             case TokenKind::Dot: {
                 consume();
-                if (!check(TokenKind::Identifier)) break;
-                const char* fname = arena_.strdup(cur().lexeme);
-                consume();
+                std::string member_name;
+                if (check(TokenKind::Identifier)) {
+                    member_name = cur().lexeme;
+                    consume();
+                } else if (!try_parse_operator_function_id(member_name)) {
+                    break;
+                }
                 Node* n = make_node(NK_MEMBER, ln);
                 n->left     = base;
-                n->name     = fname;
+                n->name     = arena_.strdup(member_name.c_str());
                 n->is_arrow = false;
                 base = n;
                 break;
             }
             case TokenKind::Arrow: {
                 consume();
-                if (!check(TokenKind::Identifier)) break;
-                const char* fname = arena_.strdup(cur().lexeme);
-                consume();
+                std::string member_name;
+                if (check(TokenKind::Identifier)) {
+                    member_name = cur().lexeme;
+                    consume();
+                } else if (!try_parse_operator_function_id(member_name)) {
+                    break;
+                }
                 Node* n = make_node(NK_MEMBER, ln);
                 n->left     = base;
-                n->name     = fname;
+                n->name     = arena_.strdup(member_name.c_str());
                 n->is_arrow = true;
                 base = n;
                 break;
@@ -553,8 +565,90 @@ Node* Parser::parse_postfix(Node* base) {
     }
 }
 
+bool Parser::try_parse_operator_function_id(std::string& out_name) {
+    if (!is_cpp_mode() || !match(TokenKind::KwOperator)) return false;
+
+    if (match(TokenKind::KwNew)) {
+        if (check(TokenKind::LBracket) &&
+            pos_ + 1 < static_cast<int>(tokens_.size()) &&
+            tokens_[pos_ + 1].kind == TokenKind::RBracket) {
+            consume();
+            consume();
+            out_name = "operator_new_array";
+        } else {
+            out_name = "operator_new";
+        }
+        return true;
+    }
+
+    if (match(TokenKind::KwDelete)) {
+        if (check(TokenKind::LBracket) &&
+            pos_ + 1 < static_cast<int>(tokens_.size()) &&
+            tokens_[pos_ + 1].kind == TokenKind::RBracket) {
+            consume();
+            consume();
+            out_name = "operator_delete_array";
+        } else {
+            out_name = "operator_delete";
+        }
+        return true;
+    }
+
+    if (check(TokenKind::LBracket)) {
+        consume();
+        expect(TokenKind::RBracket);
+        out_name = "operator_subscript";
+        return true;
+    }
+
+    if (check(TokenKind::LParen)) {
+        consume();
+        expect(TokenKind::RParen);
+        out_name = "operator_call";
+        return true;
+    }
+
+    if (match(TokenKind::KwBool))              out_name = "operator_bool";
+    else if (match(TokenKind::Star))           out_name = "operator_mul";
+    else if (match(TokenKind::Arrow))          out_name = "operator_arrow";
+    else if (match(TokenKind::PlusPlus))       out_name = "operator_preinc";
+    else if (match(TokenKind::MinusMinus))     out_name = "operator_predec";
+    else if (match(TokenKind::EqualEqual))     out_name = "operator_eq";
+    else if (match(TokenKind::BangEqual))      out_name = "operator_neq";
+    else if (match(TokenKind::Plus))           out_name = "operator_plus";
+    else if (match(TokenKind::Minus))          out_name = "operator_minus";
+    else if (match(TokenKind::Assign))         out_name = "operator_assign";
+    else if (match(TokenKind::LessEqual))      out_name = "operator_le";
+    else if (match(TokenKind::GreaterEqual))   out_name = "operator_ge";
+    else if (match(TokenKind::Less))           out_name = "operator_lt";
+    else if (match(TokenKind::Greater))        out_name = "operator_gt";
+    else if (match(TokenKind::Bang))           out_name = "operator_not";
+    else if (match(TokenKind::Tilde))          out_name = "operator_bitnot";
+    else if (match(TokenKind::Slash))          out_name = "operator_div";
+    else if (match(TokenKind::Percent))        out_name = "operator_mod";
+    else if (match(TokenKind::Amp))            out_name = "operator_bitand";
+    else if (match(TokenKind::Pipe))           out_name = "operator_bitor";
+    else if (match(TokenKind::Caret))          out_name = "operator_bitxor";
+    else if (match(TokenKind::LessLess))       out_name = "operator_shl";
+    else if (match(TokenKind::GreaterGreater)) out_name = "operator_shr";
+    else if (match(TokenKind::PlusAssign))     out_name = "operator_plus_assign";
+    else if (match(TokenKind::MinusAssign))    out_name = "operator_minus_assign";
+    else if (match(TokenKind::StarAssign))     out_name = "operator_mul_assign";
+    else if (match(TokenKind::SlashAssign))    out_name = "operator_div_assign";
+    else if (match(TokenKind::PercentAssign))  out_name = "operator_mod_assign";
+    else if (match(TokenKind::AmpAssign))      out_name = "operator_and_assign";
+    else if (match(TokenKind::PipeAssign))     out_name = "operator_or_assign";
+    else if (match(TokenKind::CaretAssign))    out_name = "operator_xor_assign";
+    else if (match(TokenKind::LessLessAssign)) out_name = "operator_shl_assign";
+    else if (match(TokenKind::GreaterGreaterAssign)) out_name = "operator_shr_assign";
+    else return false;
+
+    return true;
+}
+
 
 Node* Parser::parse_primary() {
+    ParseContextGuard trace(this, __func__);
     int ln = cur().line;
 
     auto parse_operator_ref = [&]() -> Node* {
@@ -577,107 +671,8 @@ Node* Parser::parse_primary() {
             consume();
         }
 
-        if (!match(TokenKind::KwOperator)) {
-            pos_ = saved_pos;
-            return nullptr;
-        }
-
         std::string op_name;
-        if (match(TokenKind::KwNew)) {
-            if (check(TokenKind::LBracket) &&
-                pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                tokens_[pos_ + 1].kind == TokenKind::RBracket) {
-                consume();
-                consume();
-                op_name = "operator_new_array";
-            } else {
-                op_name = "operator_new";
-            }
-        } else if (match(TokenKind::KwDelete)) {
-            if (check(TokenKind::LBracket) &&
-                pos_ + 1 < static_cast<int>(tokens_.size()) &&
-                tokens_[pos_ + 1].kind == TokenKind::RBracket) {
-                consume();
-                consume();
-                op_name = "operator_delete_array";
-            } else {
-                op_name = "operator_delete";
-            }
-        } else if (check(TokenKind::LBracket)) {
-            consume();
-            expect(TokenKind::RBracket);
-            op_name = "operator_subscript";
-        } else if (check(TokenKind::LParen)) {
-            consume();
-            expect(TokenKind::RParen);
-            op_name = "operator_call";
-        } else if (match(TokenKind::KwBool)) {
-            op_name = "operator_bool";
-        } else if (match(TokenKind::Star)) {
-            op_name = "operator_mul";
-        } else if (match(TokenKind::Arrow)) {
-            op_name = "operator_arrow";
-        } else if (match(TokenKind::PlusPlus)) {
-            op_name = "operator_preinc";
-        } else if (match(TokenKind::MinusMinus)) {
-            op_name = "operator_predec";
-        } else if (match(TokenKind::EqualEqual)) {
-            op_name = "operator_eq";
-        } else if (match(TokenKind::BangEqual)) {
-            op_name = "operator_neq";
-        } else if (match(TokenKind::Plus)) {
-            op_name = "operator_plus";
-        } else if (match(TokenKind::Minus)) {
-            op_name = "operator_minus";
-        } else if (match(TokenKind::Assign)) {
-            op_name = "operator_assign";
-        } else if (match(TokenKind::LessEqual)) {
-            op_name = "operator_le";
-        } else if (match(TokenKind::GreaterEqual)) {
-            op_name = "operator_ge";
-        } else if (match(TokenKind::Less)) {
-            op_name = "operator_lt";
-        } else if (match(TokenKind::Greater)) {
-            op_name = "operator_gt";
-        } else if (match(TokenKind::Bang)) {
-            op_name = "operator_not";
-        } else if (match(TokenKind::Tilde)) {
-            op_name = "operator_bitnot";
-        } else if (match(TokenKind::Slash)) {
-            op_name = "operator_div";
-        } else if (match(TokenKind::Percent)) {
-            op_name = "operator_mod";
-        } else if (match(TokenKind::Amp)) {
-            op_name = "operator_bitand";
-        } else if (match(TokenKind::Pipe)) {
-            op_name = "operator_bitor";
-        } else if (match(TokenKind::Caret)) {
-            op_name = "operator_bitxor";
-        } else if (match(TokenKind::LessLess)) {
-            op_name = "operator_shl";
-        } else if (match(TokenKind::GreaterGreater)) {
-            op_name = "operator_shr";
-        } else if (match(TokenKind::PlusAssign)) {
-            op_name = "operator_plus_assign";
-        } else if (match(TokenKind::MinusAssign)) {
-            op_name = "operator_minus_assign";
-        } else if (match(TokenKind::StarAssign)) {
-            op_name = "operator_mul_assign";
-        } else if (match(TokenKind::SlashAssign)) {
-            op_name = "operator_div_assign";
-        } else if (match(TokenKind::PercentAssign)) {
-            op_name = "operator_mod_assign";
-        } else if (match(TokenKind::AmpAssign)) {
-            op_name = "operator_and_assign";
-        } else if (match(TokenKind::PipeAssign)) {
-            op_name = "operator_or_assign";
-        } else if (match(TokenKind::CaretAssign)) {
-            op_name = "operator_xor_assign";
-        } else if (match(TokenKind::LessLessAssign)) {
-            op_name = "operator_shl_assign";
-        } else if (match(TokenKind::GreaterGreaterAssign)) {
-            op_name = "operator_shr_assign";
-        } else {
+        if (!try_parse_operator_function_id(op_name)) {
             pos_ = saved_pos;
             return nullptr;
         }
@@ -691,6 +686,42 @@ Node* Parser::parse_primary() {
         qualified_name += op_name;
         Node* ident = make_var(arena_.strdup(qualified_name.c_str()), ln);
         return parse_postfix(ident);
+    };
+
+    auto has_balanced_template_id_ahead = [&]() -> bool {
+        if (!(is_cpp_mode() && check(TokenKind::Identifier) &&
+              pos_ + 1 < static_cast<int>(tokens_.size()) &&
+              tokens_[pos_ + 1].kind == TokenKind::Less)) {
+            return true;
+        }
+
+        int depth = 0;
+        for (int probe = pos_ + 1; probe < static_cast<int>(tokens_.size()); ++probe) {
+            TokenKind k = tokens_[probe].kind;
+            if (k == TokenKind::Less) {
+                ++depth;
+                continue;
+            }
+            if (k == TokenKind::Greater) {
+                if (depth > 0 && --depth == 0) return true;
+                continue;
+            }
+            if (k == TokenKind::GreaterGreater) {
+                if (depth > 0) {
+                    depth -= 2;
+                    if (depth <= 0) return true;
+                }
+                continue;
+            }
+            if ((k == TokenKind::RParen || k == TokenKind::Comma ||
+                 k == TokenKind::Semi || k == TokenKind::Question ||
+                 k == TokenKind::Colon || k == TokenKind::LessEqual ||
+                 k == TokenKind::GreaterEqual) &&
+                depth > 0) {
+                return false;
+            }
+        }
+        return false;
     };
 
     // Integer literal
@@ -851,7 +882,7 @@ Node* Parser::parse_primary() {
         consume();  // consume (
 
         // Check for cast: (type-name)expr
-        if (is_type_start()) {
+        if (is_type_start() && has_balanced_template_id_ahead()) {
             int save_pos = pos_;
             TypeSpec cast_ts = parse_type_name();
             if (check(TokenKind::RParen)) {
@@ -1265,7 +1296,7 @@ Node* Parser::parse_primary() {
     }
 
     // C++ functional cast: T(expr)
-    if (is_cpp_mode() && is_type_start()) {
+    if (is_cpp_mode() && is_type_start() && has_balanced_template_id_ahead()) {
         int save_pos = pos_;
         std::string saved_typedef = last_resolved_typedef_;
         TypeSpec cast_ts = parse_base_type();
@@ -1379,12 +1410,14 @@ Node* Parser::parse_primary() {
 
     // Hard error for unrecognized primaries (was permissive fallback to 0).
     std::string tok = at_end() ? "<eof>" : cur().lexeme;
+    note_parse_failure_message(("unexpected token in expression: " + tok).c_str());
     throw std::runtime_error("unexpected token in expression: " + tok);
 }
 
 // ── initializer parsing ───────────────────────────────────────────────────────
 
 Node* Parser::parse_initializer() {
+    ParseContextGuard trace(this, __func__);
     if (check(TokenKind::LBrace)) {
         return parse_init_list();
     }
@@ -1392,6 +1425,7 @@ Node* Parser::parse_initializer() {
 }
 
 Node* Parser::parse_init_list() {
+    ParseContextGuard trace(this, __func__);
     int ln = cur().line;
     expect(TokenKind::LBrace);
     std::vector<Node*> items;
