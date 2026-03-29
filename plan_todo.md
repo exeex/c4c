@@ -6,7 +6,7 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 4: Promote `branch_if_ugt` as the next bounded unsigned compare-and-branch follow-on case only if the same minimal x86 conditional-return slice can widen without introducing a new lowering shape
+- [ ] Step 4: Promote `branch_if_ule` as the next bounded unsigned compare-and-branch follow-on case only if the same minimal x86 conditional-return slice can widen without introducing a new lowering shape
 
 ## Todo
 
@@ -28,6 +28,7 @@ Source Plan: plan.md
 - [x] Promote `branch_if_eq` onto the x86 backend-owned asm path with the existing minimal three-block conditional-return slice widened only to equality.
 - [x] Promote `branch_if_ne` onto the x86 backend-owned asm path with the same minimal three-block conditional-return slice widened only to inequality.
 - [x] Promote `branch_if_uge` onto the x86 backend-owned asm path with the same minimal three-block conditional-return slice widened only to unsigned greater-or-equal.
+- [x] Promote `branch_if_ugt` onto the x86 backend-owned asm path with the same minimal three-block conditional-return slice widened only to unsigned greater-than.
 
 ## Completed
 
@@ -42,10 +43,11 @@ Source Plan: plan.md
 - [x] Promoted `tests/c/internal/backend_case/branch_if_eq.c` onto the x86 backend-owned asm path with the existing minimal three-block conditional-return compare slice widened to `icmp eq`.
 - [x] Promoted `tests/c/internal/backend_case/branch_if_ne.c` onto the x86 backend-owned asm path with the same minimal three-block conditional-return compare slice widened to `icmp ne`.
 - [x] Promoted `tests/c/internal/backend_case/branch_if_uge.c` onto the x86 backend-owned asm path with the same minimal three-block conditional-return compare slice widened to `icmp uge`.
+- [x] Promoted `tests/c/internal/backend_case/branch_if_ugt.c` onto the x86 backend-owned asm path with the same minimal three-block conditional-return compare slice widened to `icmp ugt`.
 
 ## Next Intended Slice
 
-- Promote `branch_if_ugt` next, then widen only to the smallest adjacent unsigned compare runtime cases if the same bounded x86 compare-lowering seam still holds.
+- Promote `branch_if_ule` next, then widen only to `branch_if_ult` if the same bounded x86 compare-lowering seam still holds.
 
 ## Blockers
 
@@ -73,3 +75,4 @@ Source Plan: plan.md
 - `branch_if_eq` seam closed: `src/backend/x86/codegen/emit.cpp` now accepts the same bounded minimal conditional-return shape for `icmp eq` and emits `cmp` plus `jne` to the existing false block; `ctest -R '^backend_runtime_branch_if_eq$|^backend_lir_adapter_tests$' --output-on-failure` passed, the full suite improved from `8` failures out of `2339` tests in `test_fail_before.log` to `7` failures out of `2339` tests in `test_fail_after.log`, and `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log` passed with no newly failing tests.
 - `branch_if_ne` seam closed: `src/backend/x86/codegen/emit.cpp` now accepts the same bounded minimal conditional-return shape for `icmp ne` and emits `cmp` plus `je` to the existing false block; `./build/backend_lir_adapter_tests` passed, `ctest -R '^backend_runtime_branch_if_(eq|ne)$|^backend_lir_adapter_tests$' --output-on-failure` passed, the full suite improved from `7` failures out of `2339` tests in `test_fail_before.log` to `6` failures out of `2339` tests in `test_fail_after.log`, and `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log` passed with no newly failing tests.
 - `branch_if_uge` seam closed: `src/backend/x86/codegen/emit.cpp` now accepts the same bounded minimal conditional-return shape for `icmp uge` and emits `cmp` plus `jb` to the existing false block; `ctest -R '^backend_runtime_branch_if_uge$|^backend_lir_adapter_tests$' --output-on-failure` passed, the full suite improved from `6` failures out of `2339` tests in `test_fail_before.log` to `5` failures out of `2339` tests in `test_fail_after.log`, and `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log` passed with no newly failing tests.
+- `branch_if_ugt` seam closed: `src/backend/x86/codegen/emit.cpp` now accepts the same bounded minimal conditional-return shape for `icmp ugt` and emits `cmp` plus `jbe` to the existing false block; `./build/backend_lir_adapter_tests` passed, `ctest -R '^backend_runtime_branch_if_(uge|ugt)$|^backend_lir_adapter_tests$' --output-on-failure` passed, the full suite improved from `6` failures out of `2339` tests in `test_fail_before.log` to `4` failures out of `2339` tests in `test_fail_after.log`, and `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log` passed with no newly failing tests.
