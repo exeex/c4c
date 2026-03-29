@@ -404,7 +404,7 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
     call_callee = call->callee;
     call_callee_type_suffix = call->callee_type_suffix;
   } else {
-    if (block.insts.size() != 5) {
+    if (block.insts.size() != 5 && block.insts.size() != 8) {
       return std::nullopt;
     }
 
@@ -415,18 +415,56 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
 
     const auto* store0 = std::get_if<LirStoreOp>(&block.insts[0]);
     const auto* store1 = std::get_if<LirStoreOp>(&block.insts[1]);
-    const auto* load0 = std::get_if<LirLoadOp>(&block.insts[2]);
-    const auto* load1 = std::get_if<LirLoadOp>(&block.insts[3]);
-    const auto* call = std::get_if<LirCallOp>(&block.insts[4]);
-    if (store0 == nullptr || store1 == nullptr || load0 == nullptr ||
-        load1 == nullptr || call == nullptr || store0->type_str != "i32" ||
+    if (store0 == nullptr || store1 == nullptr || store0->type_str != "i32" ||
         store1->type_str != "i32" || store0->ptr != alloca->result ||
-        store1->ptr != alloca1->result || load0->type_str != "i32" ||
-        load1->type_str != "i32" || load0->ptr != alloca->result ||
-        load1->ptr != alloca1->result || call->result.empty() ||
-        *ret->value_str != call->result || call->return_type != "i32" ||
-        call->callee_type_suffix != "(i32, i32)" ||
-        call->args_str != ("i32 " + load0->result + ", i32 " + load1->result)) {
+        store1->ptr != alloca1->result) {
+      return std::nullopt;
+    }
+
+    const c4c::codegen::lir::LirLoadOp* call_arg_load0 = nullptr;
+    const c4c::codegen::lir::LirLoadOp* call_arg_load1 = nullptr;
+    const c4c::codegen::lir::LirCallOp* call = nullptr;
+    if (block.insts.size() == 5) {
+      call_arg_load0 = std::get_if<LirLoadOp>(&block.insts[2]);
+      call_arg_load1 = std::get_if<LirLoadOp>(&block.insts[3]);
+      call = std::get_if<LirCallOp>(&block.insts[4]);
+      if (call_arg_load0 == nullptr || call_arg_load1 == nullptr || call == nullptr ||
+          call_arg_load0->type_str != "i32" || call_arg_load1->type_str != "i32" ||
+          call_arg_load0->ptr != alloca->result || call_arg_load1->ptr != alloca1->result) {
+        return std::nullopt;
+      }
+    } else {
+      const auto* load0_before = std::get_if<LirLoadOp>(&block.insts[2]);
+      const auto* add0 = std::get_if<LirBinOp>(&block.insts[3]);
+      const auto* store0_rewrite = std::get_if<LirStoreOp>(&block.insts[4]);
+      const auto* load0_after = std::get_if<LirLoadOp>(&block.insts[5]);
+      call_arg_load1 = std::get_if<LirLoadOp>(&block.insts[6]);
+      call = std::get_if<LirCallOp>(&block.insts[7]);
+      if (load0_before == nullptr || add0 == nullptr || store0_rewrite == nullptr ||
+          load0_after == nullptr || call_arg_load1 == nullptr || call == nullptr ||
+          load0_before->type_str != "i32" || load0_before->ptr != alloca->result ||
+          add0->opcode != "add" || add0->type_str != "i32" || add0->result.empty() ||
+          store0_rewrite->type_str != "i32" || store0_rewrite->ptr != alloca->result ||
+          store0_rewrite->val != add0->result || load0_after->type_str != "i32" ||
+          load0_after->ptr != alloca->result || call_arg_load1->type_str != "i32" ||
+          call_arg_load1->ptr != alloca1->result) {
+        return std::nullopt;
+      }
+
+      const bool add_zero_on_rhs = add0->lhs == load0_before->result && add0->rhs == "0";
+      const bool add_zero_on_lhs = add0->lhs == "0" && add0->rhs == load0_before->result;
+      if (!add_zero_on_rhs && !add_zero_on_lhs) {
+        return std::nullopt;
+      }
+
+      call_arg_load0 = load0_after;
+    }
+
+    if (call_arg_load0 == nullptr || call_arg_load1 == nullptr || call == nullptr ||
+        call->result.empty() || *ret->value_str != call->result ||
+        call->return_type != "i32" || call->callee_type_suffix != "(i32, i32)" ||
+        call->args_str !=
+            ("i32 " + call_arg_load0->result + ", i32 " + call_arg_load1->result)) {
       return std::nullopt;
     }
 
