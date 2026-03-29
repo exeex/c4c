@@ -49,9 +49,14 @@ All listed child ideas above are closed as of 2026-03-29.
 
 ## Next Child Idea To Activate
 
-- No narrower child idea is currently staged in `ideas/open/`.
+- `ideas/open/33_backend_x86_external_call_object_plan.md`
+  is now staged as the next bounded x86 backend child.
+- `ideas/open/32_backend_builtin_assembler_x86_call_relocation_plan.md`
+  remains open only as a parked discovery note documenting why
+  `call_helper.c` is not the relocation-bearing contract.
 - `31_backend_x86_runtime_case_convergence_plan.md` is now closed after the bounded x86 runtime-case convergence slice reached full-suite green on 2026-03-29.
-- Do not activate this umbrella directly for implementation; write or stage the next bounded backend child idea first.
+- Do not activate this umbrella directly for implementation; activate the
+  bounded child idea instead.
 
 ## 2026-03-29 Audit Note
 
@@ -109,6 +114,19 @@ Important handoff knowledge from the parked umbrella runbook:
   runtime-case convergence child is complete
 - RV64 archive-backed linking remains a separate closed slice and should not
   keep the umbrella artificially active
+
+## 2026-03-29 Child Activation Note
+
+The missing staged child has now been materialized as
+`ideas/open/33_backend_x86_external_call_object_plan.md`.
+
+Lifecycle intent from this point:
+
+- treat `33_backend_x86_external_call_object_plan.md` as the active execution
+  target
+- keep this umbrella file as durable sequencing context only
+- continue to defer broader x86 assembler/linker follow-ons until the bounded
+  external-call object slice is complete
 
 ## 2026-03-29 Staging Note
 
