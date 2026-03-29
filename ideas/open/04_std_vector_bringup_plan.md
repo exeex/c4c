@@ -1,5 +1,8 @@
 # std::vector Bring-up Plan
 
+Status: Parked
+Last Updated: 2026-03-29
+
 ## Goal
 
 Push `tests/cpp/std/std_vector_simple.cpp` from current failure state to a stable,
@@ -258,6 +261,56 @@ Use the parser-debug path when the default parse error is too flat to expose the
 real failing parser entry point, especially for messages such as:
 
 - `expected RPAREN but got ...`
+
+## Parking Update
+
+This idea was deactivated on 2026-03-29 without being completed.
+
+### Latest Completed Slices
+
+- Added `tests/cpp/internal/postive_case/if_condition_decl_parse.cpp` and implemented C++ `if` declaration-condition parsing in `src/frontend/parser/statements.cpp`.
+- Added `tests/cpp/internal/postive_case/free_function_record_ref_param_parse.cpp` and fixed C++ record-tag injection / namespace-local class-name lookup so free-function `E&` / `E&&` parameters parse.
+- Added `tests/cpp/internal/postive_case/cpp20_feature_macro_branch_parse.cpp` and updated predefined C++ macros in `src/frontend/preprocessor/preprocessor.cpp` to advertise `__cplusplus=202002L`, `__cpp_constexpr=201811L`, and `__cpp_concepts=201907L`.
+- Added `tests/cpp/internal/postive_case/cpp20_requires_clause_parse.cpp` and updated `src/frontend/parser/declarations.cpp` to skip an optional requires-clause between `template<...>` and the following declaration.
+- Added `tests/cpp/internal/postive_case/cpp20_constrained_template_param_parse.cpp` for the reduced constrained-template-parameter frontier in `bits/iterator_concepts.h`.
+- Added `tests/cpp/internal/postive_case/qualified_record_partial_specialization_parse.cpp` for the reduced qualified record partial-specialization frontier in `bits/iterator_concepts.h`.
+- Added `tests/cpp/internal/postive_case/record_final_specifier_parse.cpp` for the reduced record-`final` frontier in `bits/iterator_concepts.h`.
+- Added `tests/cpp/internal/postive_case/cpp20_requires_expression_if_constexpr_parse.cpp` for the reduced `if constexpr (requires { ... })` frontier from `bits/stl_iterator.h:2292`.
+
+### Current Blocker
+
+`tests/cpp/std/std_vector_simple.cpp` no longer fails at the old `stl_iterator.h:2292` requires-expression site. The current remaining frontier is a parameter-list / incomplete-type cluster that starts with:
+
+- `/usr/include/c++/14/bits/exception.h:65:30` `expected=RPAREN got='&'`
+- `/usr/include/c++/14/bits/exception.h:67:24` `expected=RPAREN got='&&'`
+- `/usr/include/c++/14/bits/stl_iterator.h:1011`
+- `/usr/include/c++/14/bits/stl_iterator.h:1572`
+- `/usr/include/c++/14/bits/stl_iterator.h:1954`
+- `/usr/include/c++/14/bits/stl_iterator.h:1978`
+
+The remaining diagnostics appear to depend on surrounding parser state or recovery, so the next useful step is to reduce that contextual failure into a committed standalone repro before attempting another parser fix.
+
+### Regression Status At Parking Time
+
+- A clean full-suite `ctest` run no longer failed on `verify_tests_verify_top_level_recovery`.
+- The known remaining suite failures at parking time were seven backend LIR variadic ABI tests:
+  - `backend_lir_aarch64_variadic_dpair_ir`
+  - `backend_lir_aarch64_variadic_float_array_ir`
+  - `backend_lir_aarch64_variadic_nested_float_array_ir`
+  - `backend_lir_aarch64_variadic_float4_ir`
+  - `backend_lir_aarch64_variadic_double4_ir`
+  - `backend_lir_aarch64_variadic_single_double_ir`
+  - `backend_lir_aarch64_variadic_single_float_ir`
+
+### Resume Point
+
+If this idea is re-activated, resume from:
+
+```bash
+./build/c4cll --parse-only tests/cpp/std/std_vector_simple.cpp
+```
+
+Then reduce the first still-contextual `exception.h` / `stl_iterator.h` parameter-list failure into the smallest committed repro, land the narrowest parser fix, and re-run targeted C++ parser coverage before the next full-suite regression pass.
 - `unexpected token in expression: ...`
 
 In those cases, inspect the `--parser-debug` output first to see which parse
