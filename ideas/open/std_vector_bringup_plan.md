@@ -107,6 +107,30 @@ Interpretation:
 - the work is still in Phase B moving into Phase C; it has not yet reached
   `std::vector` semantics or codegen validation
 
+### Adjacent Work Parked Separately
+
+During reduction of the current libstdc++ parser failures, it became clear that
+the error surface from messages such as:
+
+- `expected RPAREN but got '&'`
+- `expected RPAREN but got '&&'`
+- `unexpected token in expression: const`
+
+was too flat to cleanly expose the real parser entry point that failed.
+
+An instrumentation experiment was started on the branch to add parser-side
+failure tracking, a `--parser-debug` flag, and `ParseContextGuard`-based parse
+function tracing. That work has been split into the separate open idea:
+
+- `ideas/open/parser_error_diagnostics_plan.md`
+
+Reason for the split:
+
+- it is adjacent and useful, but not strictly required to keep the
+  `std::vector` bring-up scoped to the current header blocker
+- it changes parser observability rather than the language support behavior
+- it should proceed as its own focused diagnostic-improvement initiative
+
 
 ## Scope
 
@@ -215,8 +239,18 @@ Useful companion commands:
 
 ```bash
 ./build/c4cll --pp-only tests/cpp/std/std_vector_simple.cpp > /tmp/std_vector_simple.pp
+./build/c4cll --parser-debug --parse-only tests/cpp/std/std_vector_simple.cpp
 ./build/c4cll tests/cpp/std/std_vector_simple.cpp -o /tmp/std_vector_simple.ll
 ```
+
+Use the parser-debug path when the default parse error is too flat to expose the
+real failing parser entry point, especially for messages such as:
+
+- `expected RPAREN but got ...`
+- `unexpected token in expression: ...`
+
+In those cases, inspect the `--parser-debug` output first to see which parse
+function stack led to the failure before reducing or changing parser behavior.
 
 
 ## Phase B: Reduce Frontend Header Blockers

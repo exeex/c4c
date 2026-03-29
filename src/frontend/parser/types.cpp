@@ -1194,6 +1194,7 @@ bool Parser::is_template_scope_type_param(const std::string& name) const {
 bool Parser::parse_next_template_argument(std::vector<TemplateArgParseResult>* out_args,
                                           const Node* primary_tpl, int arg_idx,
                                           bool* out_has_more) {
+    ParseContextGuard trace(this, __func__);
     if (!out_args || !out_has_more) return false;
 
     TemplateArgParseResult arg;
@@ -1966,6 +1967,7 @@ void Parser::parse_normal_declarator_tail(TypeSpec& ts, const char** out_name,
 
 void Parser::parse_declarator_parameter_list(
     std::vector<Node*>* out_params, bool* out_variadic) {
+    ParseContextGuard trace(this, __func__);
     if (out_params) out_params->clear();
     if (out_variadic) *out_variadic = false;
 
@@ -4588,6 +4590,7 @@ bool Parser::is_record_special_member_name(
 bool Parser::try_parse_record_constructor_member(
     const std::string& struct_source_name,
     std::vector<Node*>* methods) {
+    ParseContextGuard trace(this, __func__);
     if (!(is_cpp_mode() && !current_struct_tag_.empty()))
         return false;
 
@@ -4771,6 +4774,7 @@ bool Parser::try_parse_record_method_or_field_member(
     std::vector<Node*>* fields,
     std::vector<Node*>* methods,
     const std::function<void(const char*)>& check_dup_field) {
+    ParseContextGuard trace(this, __func__);
     // Regular field declaration
     // C++ conversion operators (e.g., operator bool()) have no return
     // type prefix, so KwOperator can appear directly here.
@@ -5248,6 +5252,7 @@ bool Parser::try_parse_record_member_dispatch(
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
     const std::function<void(const char*)>& check_dup_field) {
+    ParseContextGuard trace(this, __func__);
     if (try_parse_record_type_like_member_dispatch(
             fields, member_typedef_names, member_typedef_types,
             check_dup_field)) {
@@ -5839,6 +5844,7 @@ Node* Parser::parse_enum() {
 // ── parameter parsing ─────────────────────────────────────────────────────────
 
 Node* Parser::parse_param() {
+    ParseContextGuard trace(this, __func__);
     int ln = cur().line;
     if (check(TokenKind::Ellipsis)) {
         // variadic marker — handled by caller

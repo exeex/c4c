@@ -64,6 +64,7 @@ int Parser::bin_prec(TokenKind k) {
 }
 
 Node* Parser::parse_expr() {
+    ParseContextGuard trace(this, __func__);
     Node* lhs = parse_assign_expr();
     while (check(TokenKind::Comma)) {
         int ln = cur().line;
@@ -644,6 +645,7 @@ bool Parser::try_parse_operator_function_id(std::string& out_name) {
 
 
 Node* Parser::parse_primary() {
+    ParseContextGuard trace(this, __func__);
     int ln = cur().line;
 
     auto parse_operator_ref = [&]() -> Node* {
@@ -1405,6 +1407,7 @@ Node* Parser::parse_primary() {
 
     // Hard error for unrecognized primaries (was permissive fallback to 0).
     std::string tok = at_end() ? "<eof>" : cur().lexeme;
+    note_parse_failure_message(("unexpected token in expression: " + tok).c_str());
     throw std::runtime_error("unexpected token in expression: " + tok);
 }
 

@@ -1,138 +1,148 @@
-# std::vector Bring-up Runbook
+# Parser Error Diagnostics Runbook
 
 Status: Active
-Source Idea: ideas/open/std_vector_bringup_plan.md
+Source Idea: ideas/open/parser_error_diagnostics_plan.md
+Supersedes: ideas/open/std_vector_bringup_plan.md
 
 ## Purpose
 
-Push `tests/cpp/std/std_vector_simple.cpp` from its current parser/header
-compatibility failure state to a stable, regression-guarded passing state.
+Make parser failures easier to localize by instrumenting parser entry points,
+capturing parse-function stack state, and exposing a dedicated
+`--parser-debug` trace path.
 
 ## Goal
 
-Make `tests/cpp/std/std_vector_simple.cpp` compile successfully with reduced
-repros and regression coverage for each blocker found along the way.
+Land a consistent `ParseContextGuard`-based tracing model across parser entry
+points so default diagnostics stay short while debug mode can expose the parse
+function stack behind ambiguous failures.
 
 ## Core Rule
 
-Implement only the smallest parser / preprocessor / sema / codegen change needed
-for the current blocker, and add a reduced test before broadening scope.
+Treat this as an observability refactor, not a parser behavior change.
 
 ## Read First
 
-- use `tests/cpp/std/std_vector_simple.cpp` as the primary end-to-end target
-- treat Clang / LLVM behavior as the reference when behavior is ambiguous
-- preserve the narrow scope of this bring-up; do not turn it into generic STL
-  support work
-- compare-mode validation only matters once the case reaches codegen
+- preserve current parse semantics while instrumenting
+- prefer parser function names over hand-maintained context labels
+- keep default diagnostics compact; full stack output belongs behind
+  `--parser-debug`
+- do not silently absorb `std::vector` bring-up language fixes into this plan
 
 ## Current Target
 
-The active blocker is the later parse-state-loss failure now reported while
-processing the `std::vector` header stack:
+The active target is parser instrumentation coverage and output shape, starting
+from the existing prototype in:
 
-- current direct repro: `./build/c4cll --parse-only tests/cpp/std/std_vector_simple.cpp`
-- current failure shape: `error: expected RBRACE but got '' at line 10`
+- [`parse.cpp`](/workspaces/c4c/src/frontend/parser/parse.cpp)
+- [`parser.hpp`](/workspaces/c4c/src/frontend/parser/parser.hpp)
+- [`c4cll.cpp`](/workspaces/c4c/src/apps/c4cll.cpp)
+
+The first validation surface remains:
+
+- `./build/c4cll --parser-debug --parse-only tests/cpp/std/std_vector_simple.cpp`
 
 ## Non-Goals
 
-- broad libstdc++ compatibility claims beyond this case
-- unrelated frontend cleanups
-- random allowlists for implementation identifiers
-- codegen-path triage before the case reaches lowering
+- fixing the underlying `std::vector` parser blockers in this plan
+- introducing GCC/Clang-scale human-facing diagnostics
+- rewriting every speculative parse helper before instrumentation is in place
+- expanding scope beyond parser diagnostics and traceability
 
 ## Working Model
 
-1. lock in a cheap repro path for `std_vector_simple.cpp`
-2. reduce the next blocker into the smallest standalone parser/frontend test
-3. fix the narrowest responsible layer
-4. rerun the reduced test, nearby subsystem tests, and the full suite
-5. update `plan_todo.md` with the next blocker before ending the slice
+1. normalize the parser trace model around parse function names
+2. add `ParseContextGuard` to significant `parse_*` entry points
+3. keep the best failure snapshot and parse stack through unwinding
+4. make `--parser-debug` print the stack while default errors stay short
+5. add reduced tests for output shape before deeper speculative parse changes
 
 ## Execution Rules
 
-- update `plan_todo.md` before implementation and when the active slice changes
-- add or update the reduced validating test before the implementation change
-- if the failure is unclear, capture preprocessed output and inspect the reduced
-  region before changing code
-- if the case reaches codegen, validate with `--codegen=legacy|lir|compare`
-- if new work is adjacent but not required for this blocker, record it back in
-  the source idea instead of silently expanding the active plan
+- preserve parser behavior unless a change is required to support diagnostics
+- instrument in small slices and verify the compiler still builds after each
+  coverage pass
+- when adding guards, prefer real parser entry points over tiny helper noise
+- if a trace path is too noisy, improve filtering rather than deleting stack data
+- record any remaining `std::vector` blocker notes back in its source idea, not
+  this active plan
 
 ## Ordered Steps
 
-### Step 1: Reproduce The Active Failure
+### Step 1: Normalize The Trace Model
 
 Goal:
-- confirm the current parser/header failure from `std_vector_simple.cpp`
+- settle the parser trace shape around function-stack capture
 
 Actions:
-- build the tree and record a full-suite baseline in `test_before.log`
-- run the documented direct repro command
-- capture enough preprocessed or parser output to localize the failure region
+- keep `ParseContextGuard`, `ParseFailure`, and debug-event storage coherent in
+  [`parser.hpp`](/workspaces/c4c/src/frontend/parser/parser.hpp)
+- ensure the active model records parse function names and stack snapshots
+- remove leftover parallel context-label mechanisms if they are no longer needed
 
 Completion Check:
-- the active failure is reproduced locally and localized enough to reduce
+- the parser has one clear internal model for stack-aware diagnostics
 
-### Step 2: Add A Reduced Repro Test
+### Step 2: Instrument Parser Entry Points
 
 Goal:
-- turn the next blocker into the narrowest standalone test
+- cover the meaningful parser entry surface with guards
 
 Primary Target:
-- parser/frontend handling for the construct that causes the unmatched-brace or
-  parse-state-loss failure
+- `parse_*` functions across `expressions.cpp`, `types.cpp`,
+  `statements.cpp`, `declarations.cpp`, and `parse.cpp`
 
 Actions:
-- create a focused test under `tests/cpp/internal/` that fails before the fix
-- register the test in the relevant CMake list if needed
-- prefer a parser-only or sema-only reduced case over a `<vector>`-dependent test
+- add `ParseContextGuard` at the top of significant `parse_*` functions
+- avoid over-instrumenting trivial token helpers that do not help traceability
+- keep instrumentation consistent across parser modules
 
 Completion Check:
-- one reduced test reproduces the blocker without depending on the full header
-  stack
+- the important parser families contribute to the internal parse stack
 
-### Step 3: Implement The Narrow Fix
+### Step 3: Improve Debug Output Shape
 
 Goal:
-- make the reduced test and the end-to-end `std_vector_simple.cpp` case move
-  forward
+- make `--parser-debug` useful for reduction work
 
 Primary Target:
-- the narrowest responsible frontend layer
+- failure formatting and debug trace emission in
+  [`parse.cpp`](/workspaces/c4c/src/frontend/parser/parse.cpp)
 
 Actions:
-- inspect the exact parser / sema path handling the reduced construct
-- implement the smallest behavior change that matches the reduced case
-- avoid unrelated refactors while in the failing subsystem
+- keep default diagnostics to one short root-cause line
+- print the leaf parse function in normal mode when available
+- print the full parse-function stack only in debug mode
+- ensure the stack order is stable and easy to read
 
 Completion Check:
-- the reduced test passes and `std_vector_simple.cpp` gets farther or reaches the
-  next meaningful boundary
+- parser debug output clearly shows how control reached the failing parse
+  function
 
-### Step 4: Regressions And Next Slice
+### Step 4: Lock In Regression Coverage
 
 Goal:
-- prove the slice did not regress the suite and record the next blocker
+- protect the diagnostic shape from accidental regression
 
 Actions:
-- rerun the reduced test, nearby parser/frontend tests, and the full suite
-- write `test_after.log`
-- compare the before/after suite results for monotonicity
-- update `plan_todo.md` with completed work, next target, and blockers
+- add one or two reduced parser-only tests for diagnostic output
+- validate at least one ambiguous parse family and one expression/declaration
+  style failure
+- rerun the focused tests plus a compiler build
 
 Completion Check:
-- suite is monotonic and the next execution slice is recorded
+- the instrumentation path is covered by reduced tests and the compiler builds
 
-### Step 5: Later Bring-up Phases
+### Step 5: Prepare The Next Diagnostic Slice
 
 Goal:
-- finish the remaining planned phases once parsing succeeds
+- leave the codebase ready for committed-failure vs no-match work
 
 Actions:
-- continue deeper reductions until the case reaches semantics/codegen
-- validate under `--codegen=legacy|lir|compare` once lowering is possible
-- promote the case into maintained regression coverage after it passes
+- identify the first `try_parse_*` family that most needs tri-state failure
+  tracking
+- record that next target in `plan_todo.md`
+- preserve any useful observations about `std::vector` parser blockers back in
+  the parked bring-up idea
 
 Completion Check:
-- `tests/cpp/std/std_vector_simple.cpp` compiles and remains regression-guarded
+- the next speculative-parse diagnostic slice is recorded and bounded

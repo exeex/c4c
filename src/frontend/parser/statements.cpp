@@ -160,6 +160,7 @@ Node* Parser::parse_stmt() {
             if (is_cpp_mode() && match(TokenKind::KwConstexpr)) {
                 is_constexpr_if = true;
             }
+            ParseContextGuard trace(this, __func__);
             expect(TokenKind::LParen);
             Node* cnd = parse_expr();
             expect(TokenKind::RParen);

@@ -6,6 +6,17 @@
 #include <stdexcept>
 
 namespace c4c {
+
+Parser::ParseContextGuard::ParseContextGuard(
+    Parser* parser_in, const char* function_name)
+    : parser(parser_in) {
+    if (parser) parser->push_parse_context(function_name);
+}
+
+Parser::ParseContextGuard::~ParseContextGuard() {
+    if (parser) parser->pop_parse_context();
+}
+
 Parser::Parser(std::vector<Token> tokens, Arena& arena, SourceProfile source_profile,
                const std::string& source_file)
     : tokens_(std::move(tokens)), pos_(0), arena_(arena), source_profile_(source_profile),
@@ -208,6 +219,135 @@ void Parser::handle_pragma_pack(const std::string& args) {
     } else {
         // Simple numeric value
         pack_alignment_ = std::stoi(args);
+    }
+}
+
+void Parser::set_parser_debug(bool enabled) {
+    parser_debug_enabled_ = enabled;
+}
+
+bool Parser::parser_debug_enabled() const {
+    return parser_debug_enabled_;
+}
+
+void Parser::clear_parse_debug_state() {
+    parse_context_stack_.clear();
+    parse_debug_events_.clear();
+    best_parse_failure_ = ParseFailure{};
+}
+
+void Parser::push_parse_context(const char* function_name) {
+    ParseContextFrame frame;
+    frame.function_name = function_name ? function_name : "";
+    frame.token_index = pos_;
+    parse_context_stack_.push_back(std::move(frame));
+    note_parse_debug_event("enter");
+}
+
+void Parser::pop_parse_context() {
+    note_parse_debug_event("leave");
+    if (!parse_context_stack_.empty()) parse_context_stack_.pop_back();
+}
+
+void Parser::note_parse_debug_event(const char* kind, const char* detail) {
+    if (!parser_debug_enabled_) return;
+
+    ParseDebugEvent event;
+    event.kind = kind ? kind : "";
+    event.detail = detail ? detail : "";
+    event.token_index = !at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1);
+    event.line = !at_end() ? cur().line : (pos_ > 0 ? tokens_[pos_ - 1].line : 1);
+    event.column = !at_end() ? cur().column : 1;
+    if (!parse_context_stack_.empty()) {
+        event.function_name = parse_context_stack_.back().function_name;
+    }
+    parse_debug_events_.push_back(std::move(event));
+    if (static_cast<int>(parse_debug_events_.size()) > max_parse_debug_events_) {
+        parse_debug_events_.erase(parse_debug_events_.begin());
+    }
+}
+
+void Parser::note_parse_failure(const char* expected,
+                                const char* detail,
+                                bool committed) {
+    ParseFailure failure;
+    failure.active = true;
+    failure.committed = committed;
+    failure.token_index = !at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1);
+    failure.line = !at_end() ? cur().line : (pos_ > 0 ? tokens_[pos_ - 1].line : 1);
+    failure.column = !at_end() ? cur().column : 1;
+    failure.expected = expected ? expected : "";
+    failure.got = at_end() ? "<eof>" : cur().lexeme;
+    failure.detail = detail ? detail : "";
+    if (!parse_context_stack_.empty()) {
+        failure.function_name = parse_context_stack_.back().function_name;
+    }
+    for (const ParseContextFrame& frame : parse_context_stack_) {
+        failure.stack_trace.push_back(frame.function_name);
+    }
+
+    const bool replace =
+        !best_parse_failure_.active ||
+        failure.token_index > best_parse_failure_.token_index ||
+        (failure.token_index == best_parse_failure_.token_index &&
+         failure.committed && !best_parse_failure_.committed);
+    if (replace) best_parse_failure_ = std::move(failure);
+
+    note_parse_debug_event(committed ? "fail" : "soft_fail", detail);
+}
+
+void Parser::note_parse_failure_message(const char* detail, bool committed) {
+    note_parse_failure(nullptr, detail, committed);
+}
+
+std::string Parser::format_best_parse_failure() const {
+    if (!best_parse_failure_.active) return {};
+
+    std::ostringstream oss;
+    if (!best_parse_failure_.function_name.empty()) {
+        oss << "parse_fn=" << best_parse_failure_.function_name;
+    }
+    if (best_parse_failure_.committed) {
+        if (oss.tellp() > 0) oss << " ";
+        oss << "phase=committed";
+    }
+    if (!best_parse_failure_.expected.empty()) {
+        if (oss.tellp() > 0) oss << " ";
+        oss << "expected=" << best_parse_failure_.expected;
+        oss << " got='" << best_parse_failure_.got << "'";
+    } else {
+        if (oss.tellp() > 0) oss << " ";
+        oss << "got='" << best_parse_failure_.got << "'";
+    }
+    if (!best_parse_failure_.detail.empty()) {
+        if (oss.tellp() > 0) oss << " ";
+        oss << "detail=\"" << best_parse_failure_.detail << "\"";
+    }
+    return oss.str();
+}
+
+void Parser::dump_parse_debug_trace() const {
+    if (!parser_debug_enabled_ || parse_debug_events_.empty()) return;
+    fprintf(stderr, "%s:%d:%d: note: parser debug trace follows\n",
+            best_parse_failure_.active ? diag_file_at(best_parse_failure_.token_index)
+                                       : source_file_.c_str(),
+            best_parse_failure_.active ? best_parse_failure_.line : 1,
+            best_parse_failure_.active ? best_parse_failure_.column : 1);
+    for (const ParseDebugEvent& event : parse_debug_events_) {
+        fprintf(stderr, "[pdebug] kind=%s",
+                event.kind.c_str());
+        if (!event.function_name.empty())
+            fprintf(stderr, " fn=%s", event.function_name.c_str());
+        fprintf(stderr, " line=%d col=%d", event.line, event.column);
+        if (!event.detail.empty()) fprintf(stderr, " detail=\"%s\"", event.detail.c_str());
+        fprintf(stderr, "\n");
+    }
+    if (best_parse_failure_.active && !best_parse_failure_.stack_trace.empty()) {
+        fprintf(stderr, "[pdebug] stack:");
+        for (const std::string& fn : best_parse_failure_.stack_trace) {
+            fprintf(stderr, " -> %s", fn.c_str());
+        }
+        fprintf(stderr, "\n");
     }
 }
 
@@ -569,6 +709,7 @@ void Parser::apply_decl_namespace(Node* node, int context_id, const char* unqual
 
 void Parser::expect(TokenKind k) {
     if (!check(k)) {
+        note_parse_failure(token_kind_name(k));
         std::ostringstream msg;
         msg << "expected " << token_kind_name(k) << " but got '"
             << cur().lexeme << "' at line " << cur().line;
@@ -641,15 +782,25 @@ Node* Parser::parse() {
     while (!at_end()) {
         Node* item = nullptr;
         int loop_start_pos = pos_;
+        clear_parse_debug_state();
         try {
             item = parse_top_level();
         } catch (const std::exception& e) {
             // Parse error: emit stable diagnostic and try to recover.
-            int err_idx = !at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1);
-            int err_line = (!at_end()) ? cur().line : (pos_ > 0 ? tokens_[pos_-1].line : 1);
-            int err_col  = (!at_end()) ? cur().column : 1;
+            int err_idx = best_parse_failure_.active
+                              ? best_parse_failure_.token_index
+                              : (!at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1));
+            int err_line = best_parse_failure_.active
+                               ? best_parse_failure_.line
+                               : ((!at_end()) ? cur().line : (pos_ > 0 ? tokens_[pos_-1].line : 1));
+            int err_col  = best_parse_failure_.active
+                               ? best_parse_failure_.column
+                               : ((!at_end()) ? cur().column : 1);
+            std::string diag = format_best_parse_failure();
             fprintf(stderr, "%s:%d:%d: error: %s\n",
-                    diag_file_at(err_idx), err_line, err_col, e.what());
+                    diag_file_at(err_idx), err_line, err_col,
+                    diag.empty() ? e.what() : diag.c_str());
+            dump_parse_debug_trace();
             had_error_ = true;
             ++parse_error_count_;
             if (parse_error_count_ >= max_parse_errors_) {
@@ -668,9 +819,17 @@ Node* Parser::parse() {
         if (pos_ == loop_start_pos && !at_end()) {
             had_error_ = true;
             ++no_progress_steps;
+            note_parse_failure_message("unexpected token with no parse progress");
+            std::string diag = format_best_parse_failure();
             fprintf(stderr, "%s:%d:%d: error: unexpected token '%s'\n",
                     diag_file_at(pos_), cur().line, cur().column,
                     cur().lexeme.c_str());
+            if (!diag.empty()) {
+                fprintf(stderr, "%s:%d:%d: note: %s\n",
+                        diag_file_at(pos_), cur().line, cur().column,
+                        diag.c_str());
+            }
+            dump_parse_debug_trace();
             consume();
             ++parse_error_count_;
             if (no_progress_steps >= max_no_progress_steps_) {
