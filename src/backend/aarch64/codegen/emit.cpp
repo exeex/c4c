@@ -58,7 +58,7 @@ std::optional<std::int64_t> parse_i64(std::string_view text) {
   return value;
 }
 
-bool is_minimal_return_add_asm_slice(const c4c::backend::BackendModule& module) {
+bool is_minimal_single_function_asm_slice(const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 1) return false;
 
   const auto& function = module.functions.front();
@@ -70,28 +70,58 @@ bool is_minimal_return_add_asm_slice(const c4c::backend::BackendModule& module) 
   }
 
   const auto& block = function.blocks.front();
-  if (block.label != "entry" || block.insts.size() != 1 ||
-      !block.terminator.value.has_value() || block.terminator.type_str != "i32") {
+  if (block.label != "entry" || !block.terminator.value.has_value() ||
+      block.terminator.type_str != "i32") {
     return false;
+  }
+
+  return true;
+}
+
+std::optional<std::int64_t> parse_minimal_return_imm(
+    const c4c::backend::BackendModule& module) {
+  if (!is_minimal_single_function_asm_slice(module)) {
+    return std::nullopt;
+  }
+
+  const auto& block = module.functions.front().blocks.front();
+  if (!block.insts.empty()) {
+    return std::nullopt;
+  }
+
+  return parse_i64(*block.terminator.value);
+}
+
+std::optional<std::int64_t> parse_minimal_return_add_imm(
+    const c4c::backend::BackendModule& module) {
+  if (!is_minimal_single_function_asm_slice(module)) {
+    return std::nullopt;
+  }
+
+  const auto& block = module.functions.front().blocks.front();
+  if (block.insts.size() != 1 ||
+      !block.terminator.value.has_value() || block.terminator.type_str != "i32") {
+    return std::nullopt;
   }
 
   const auto* add = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts.front());
   if (add == nullptr || add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
       add->type_str != "i32" || *block.terminator.value != add->result) {
-    return false;
+    return std::nullopt;
   }
 
-  return parse_i64(add->lhs).has_value() && parse_i64(add->rhs).has_value();
+  const auto lhs = parse_i64(add->lhs);
+  const auto rhs = parse_i64(add->rhs);
+  if (!lhs.has_value() || !rhs.has_value()) {
+    return std::nullopt;
+  }
+  return *lhs + *rhs;
 }
 
-std::string emit_minimal_return_add_asm(const c4c::backend::BackendModule& module) {
-  const auto& add = std::get<c4c::backend::BackendBinaryInst>(
-      module.functions.front().blocks.front().insts.front());
-  const auto lhs = *parse_i64(add.lhs);
-  const auto rhs = *parse_i64(add.rhs);
-  const auto sum = lhs + rhs;
-  if (sum < 0 || sum > std::numeric_limits<std::uint16_t>::max()) {
-    fail_unsupported("return-add immediates outside the minimal mov-supported range");
+std::string emit_minimal_return_imm_asm(const c4c::backend::BackendModule& module,
+                                        std::int64_t imm) {
+  if (imm < 0 || imm > std::numeric_limits<std::uint16_t>::max()) {
+    fail_unsupported("return immediates outside the minimal mov-supported range");
   }
 
   std::ostringstream out;
@@ -107,7 +137,7 @@ std::string emit_minimal_return_add_asm(const c4c::backend::BackendModule& modul
     out << ".type " << symbol << ", %function\n";
   }
   out << symbol << ":\n"
-      << "  mov w0, #" << sum << "\n"
+      << "  mov w0, #" << imm << "\n"
       << "  ret\n";
   return out.str();
 }
@@ -118,8 +148,11 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   validate_module(module);
   try {
     const auto adapted = c4c::backend::adapt_minimal_module(module);
-    if (is_minimal_return_add_asm_slice(adapted)) {
-      return emit_minimal_return_add_asm(adapted);
+    if (const auto imm = parse_minimal_return_imm(adapted); imm.has_value()) {
+      return emit_minimal_return_imm_asm(adapted, *imm);
+    }
+    if (const auto imm = parse_minimal_return_add_imm(adapted); imm.has_value()) {
+      return emit_minimal_return_imm_asm(adapted, *imm);
     }
     return c4c::backend::render_module(adapted);
   } catch (const c4c::backend::LirAdapterError& ex) {

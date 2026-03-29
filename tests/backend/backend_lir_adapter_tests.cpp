@@ -1126,6 +1126,21 @@ void test_aarch64_backend_scaffold_renders_supported_slice() {
                   "aarch64 scaffold should terminate the minimal asm slice with ret");
 }
 
+void test_aarch64_backend_scaffold_renders_direct_return_immediate_slice() {
+  auto module = make_return_zero_module();
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".globl main",
+                  "aarch64 scaffold should emit a global entry symbol for direct return immediates");
+  expect_contains(rendered, "mov w0, #0",
+                  "aarch64 scaffold should materialize direct return immediates in w0");
+  expect_contains(rendered, "ret",
+                  "aarch64 scaffold should terminate direct return immediates with ret");
+}
+
 void test_aarch64_backend_renders_void_return_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_void_return_module()},
@@ -1628,6 +1643,7 @@ int main() {
   test_adapter_tracks_structured_entry_block_and_return_contract();
   test_rejects_unsupported_instruction();
   test_aarch64_backend_scaffold_renders_supported_slice();
+  test_aarch64_backend_scaffold_renders_direct_return_immediate_slice();
   test_aarch64_backend_renders_void_return_slice();
   test_aarch64_backend_preserves_module_headers_and_declarations();
   test_aarch64_backend_propagates_malformed_signature_in_supported_slice();

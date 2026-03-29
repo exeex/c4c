@@ -6,7 +6,7 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 5: Broaden the first backend-owned AArch64 `.s` emitter beyond the immediate-folded `return_add` slice without regressing the current `.s` runtime/toolchain seam or the wider LLVM-text fallback coverage
+- [ ] Step 5: Broaden the first backend-owned AArch64 `.s` emitter from direct `ret i32 <imm>` and immediate-folded `return_add` into the next adapter-owned single-function slice, preferably a declaration-free helper/caller path such as `call_helper`, without widening into stack slots or multi-block control flow yet
 
 ## Planned Queue
 
@@ -20,6 +20,7 @@ Source Plan: plan.md
 
 ## Completed Items
 
+- [x] Extended the first Step 5 backend-owned AArch64 `.s` emitter from immediate-folded `return_add` to direct `ret i32 <imm>` by teaching `src/backend/aarch64/codegen/emit.cpp` to recognize the one-block direct-return adapter shape, reusing the same minimal `mov w0, #imm` / `ret` emission path, adding focused coverage in `backend_lir_adapter_tests`, and promoting `backend_runtime_return_zero` through `BACKEND_OUTPUT_KIND=asm`; `cmake -S . -B build`, `cmake --build build -j8`, `ctest --test-dir build -R 'backend_lir_adapter_tests|backend_runtime_return_zero|backend_runtime_return_add|backend_toolchain_aarch64_asm_object_smoke' --output-on-failure`, full `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` all pass; full-suite status remains monotonic at `551/555` passed with the same 4 known unrelated failures
 - [x] Landed the first Step 5 backend-owned `.s` emission slice by teaching `src/backend/aarch64/codegen/emit.cpp` to recognize the exact structured minimal `i32 @main()` `return_add` adapter shape, emit target-aware AArch64 assembly for that slice (`main`/ELF on Linux, `_main`/Mach-O on Darwin), keep the existing LLVM-text fallback for broader AArch64 coverage, update `backend_lir_adapter_tests` to assert `.s` output for the supported slice, and route `backend_runtime_return_add` through `BACKEND_OUTPUT_KIND=asm` while leaving other backend runtime cases on LLVM IR; `cmake -S . -B build`, `cmake --build build -j8`, `./build/backend_lir_adapter_tests`, `ctest --test-dir build -R 'backend_runtime_return_add|compare_aarch64_smoke_scalar|backend_toolchain_aarch64_asm_object_smoke' --output-on-failure`, full `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` all pass; full-suite status is now `551/555` passed with the same 4 known unrelated failures
 - [x] Completed the queued Step 4 boundary-tightening slice by renaming the minimal adapter contract around `BackendFunctionSignature` into a broader backend-owned entry/block/return operation slice for `return_add`, adding focused structured-contract coverage for the adapted entry block/add instruction/return terminator, and teaching the AArch64 emitter to fall back only for explicitly unsupported adapter slices instead of silently hiding malformed supported-slice signatures behind direct `print_llvm` fallback; `cmake -S . -B build`, `cmake --build build -j8`, `ctest --test-dir build -R 'backend_lir_adapter_tests|backend_runtime_return_add|compare_aarch64_smoke_scalar|backend_toolchain_aarch64_asm_object_smoke' --output-on-failure`, full `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` all pass; full-suite status is now `551/555` passed with the same 4 known unrelated failures
 - [x] Landed a first Step 4 LIR-attachment checkpoint by turning the return-only adapter signature from raw `signature_text` into a structured `BackendFunctionSignature` contract, routing the AArch64 minimal return-only slice through that backend-owned contract before broader fallback, and adding focused contract coverage in `backend_lir_adapter_tests`; `cmake --build build -j8`, `./build/backend_lir_adapter_tests`, `ctest --test-dir build -R 'backend_lir_adapter_tests|backend_runtime_return_add|compare_aarch64_smoke_scalar|backend_toolchain_aarch64_asm_object_smoke' --output-on-failure`, full `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` all pass; full-suite status is now `551/555` passed with the same 4 known unrelated failures
@@ -96,6 +97,8 @@ Source Plan: plan.md
 
 ## Next Intended Slice
 
+- extend the Step 5 backend-owned `.s` path to the next declaration-free single-function adapter slice, preferring a minimal direct-call shape such as `call_helper` before stack-slot or branch-heavy work
+- keep the emitter on one-function / one-block shapes for now; if the next slice requires allocas, multi-block control flow, or declaration lowering, record that boundary explicitly instead of widening the adapter ad hoc
 - inspect the remaining `src/backend/aarch64/` inventory for any unpromoted compile-only mirrors outside `codegen/` before declaring the current Step 2 source-list promotion wave complete
 - evaluate `src/backend/aarch64/linker/types.cpp` next; if it introduces real shared-linker type edges beyond the current inert linker slice, stop Step 2 promotion there instead of widening the linker surface ad hoc
 - if the AArch64-local source-list inventory is exhausted, start the Step 3 backend-driver reachability inventory under `src/backend/backend.cpp`, `src/backend/mod.cpp`, and `src/codegen/`
@@ -109,6 +112,8 @@ Source Plan: plan.md
 
 ## Resume Notes
 
+- latest Step 5 validation on 2026-03-29: direct-return immediates now emit backend-owned AArch64 `.s`, `backend_runtime_return_zero` and `backend_runtime_return_add` both pass through `BACKEND_OUTPUT_KIND=asm`, and `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` reports `551/555` passed with no new failing tests
+- next Step 5 target: inspect `call_helper` as the narrowest declaration-free extension candidate; stop if it forces stack-slot, relocation, or multi-function lowering beyond the current thin emitter seam
 - the active plan was activated from the highest-priority open backend idea
 - keep this run focused on compile integration and backend/LIR wiring before broader behavior work
 - do not absorb regalloc, built-in assembler, or built-in linker initiatives unless they are strictly required for the current slice
