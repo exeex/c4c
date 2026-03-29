@@ -212,7 +212,7 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
   if (cmp0->predicate != "slt" && cmp0->predicate != "sle" &&
       cmp0->predicate != "sgt" && cmp0->predicate != "sge" &&
       cmp0->predicate != "ult" && cmp0->predicate != "ule" &&
-      cmp0->predicate != "ugt" &&
+      cmp0->predicate != "ugt" && cmp0->predicate != "uge" &&
       cmp0->predicate != "eq" &&
       cmp0->predicate != "ne") {
     return std::nullopt;
@@ -596,6 +596,8 @@ std::string emit_minimal_conditional_return_asm(
     fail_branch = "b.hi";
   } else if (slice.predicate == "ugt") {
     fail_branch = "b.ls";
+  } else if (slice.predicate == "uge") {
+    fail_branch = "b.lo";
   } else if (slice.predicate == "eq") {
     fail_branch = "b.ne";
   } else if (slice.predicate == "ne") {
