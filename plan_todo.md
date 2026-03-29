@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2: Reduce the next header blocker from `tests/cpp/std/std_vector_simple.cpp`.
-- Exact target for this iteration: reduce the first surviving post-record-`final` blocker now exposed from `tests/cpp/std/std_vector_simple.cpp`, currently the parameter-list failure in `/usr/include/c++/14/bits/exception.h` at `exception(const exception&) = default;` after the `ranges::__access::_Decay_copy final` record-definition gap was removed.
+- Exact target for this iteration: reduce the first cleanly reproducible blocker still emitted from `tests/cpp/std/std_vector_simple.cpp` after the `stl_iterator.h` C++20 requires-expression fix, focusing next on the surviving parameter-list / incomplete-type cluster starting with `/usr/include/c++/14/bits/exception.h:65`, `/usr/include/c++/14/bits/stl_iterator.h:1011`, `/usr/include/c++/14/bits/stl_iterator.h:1572`, `/usr/include/c++/14/bits/stl_iterator.h:1954`, and `/usr/include/c++/14/bits/stl_iterator.h:1978`.
 
 ## Completed Items
 
@@ -103,12 +103,35 @@ Source Plan: plan.md
   - `backend_lir_aarch64_variadic_single_double_ir`
   - `backend_lir_aarch64_variadic_single_float_ir`
 - The repo-level regression-guard script still fails if compared against the old one-failure baseline `test_fail_before.log`, because that baseline predates the already-known seven backend LIR variadic ABI failures; comparing the current after-log against that stale file reports those existing backend failures as "new" even though this parser slice did not change them.
+- Reduced `/usr/include/c++/14/bits/stl_iterator.h:2292` `if constexpr (requires { requires derived_from<...>; })` to `tests/cpp/internal/postive_case/cpp20_requires_expression_if_constexpr_parse.cpp`.
+- Updated `src/frontend/parser/expressions.cpp` so expression parsing treats a C++ `requires (...) { ... }` or `requires { ... }` form as an unevaluated boolean placeholder, matching the parser-only strategy already used for requires-clauses.
+- Re-ran targeted parser coverage:
+  - `cpp_positive_sema_cpp20_requires_expression_if_constexpr_parse_cpp`
+  - `cpp_positive_sema_cpp20_requires_clause_parse_cpp`
+  - `cpp_positive_sema_record_final_specifier_parse_cpp`
+  - `cpp_positive_sema_free_function_record_ref_param_parse_cpp`
+- Re-ran the direct `#include <bits/stl_iterator.h>` and `tests/cpp/std/std_vector_simple.cpp` repros; both no longer report the former `/usr/include/c++/14/bits/stl_iterator.h:2292` `parse_stmt ... expected=RPAREN got='{'` failure, while the remaining first-emitted cluster is still:
+  - `/usr/include/c++/14/bits/exception.h:65:30` `expected=RPAREN got='&'`
+  - `/usr/include/c++/14/bits/exception.h:67:24` `expected=RPAREN got='&&'`
+  - `/usr/include/c++/14/bits/stl_iterator.h:1011:34` `expected=RPAREN got='::'`
+  - `/usr/include/c++/14/bits/stl_iterator.h:1572:22` `object has incomplete type: move_iterator`
+  - `/usr/include/c++/14/bits/stl_iterator.h:1954:42` `expected=RPAREN got='&'`
+  - `/usr/include/c++/14/bits/stl_iterator.h:1978:36` `expected=RPAREN got='&&'`
+- Re-ran the full suite into `test_fail_after.log`; the remaining failures are still only the seven known backend LIR variadic ABI tests:
+  - `backend_lir_aarch64_variadic_dpair_ir`
+  - `backend_lir_aarch64_variadic_float_array_ir`
+  - `backend_lir_aarch64_variadic_nested_float_array_ir`
+  - `backend_lir_aarch64_variadic_float4_ir`
+  - `backend_lir_aarch64_variadic_double4_ir`
+  - `backend_lir_aarch64_variadic_single_double_ir`
+  - `backend_lir_aarch64_variadic_single_float_ir`
+- The repo-level regression-guard script still fails against `test_fail_before.log`, because that baseline predates the already-known seven backend LIR variadic ABI failures; the script therefore reports those existing backend failures as "new" even though the current after-log matches the same failure family recorded in recent iterations.
 
 ## Next Intended Slice
 
-- Keep the focus on the first newly exposed defaulted-special-member parameter-list frontier rather than returning to the already-fixed record-`final` syntax.
-- Reduce `/usr/include/c++/14/bits/exception.h:65` into the smallest standalone parse test around defaulted copy/move constructor and assignment declarations such as `exception(const exception&) = default;` and `exception(exception&&) = default;`.
-- Land the smallest parser fix for that reduced case, then re-run:
+- Keep the focus on the surviving parameter-list / incomplete-type frontier rather than revisiting the now-fixed C++20 requires-expression syntax.
+- Find the first clean reduced repro for the still-emitted `exception.h` / `stl_iterator.h` cluster, since direct standalone extracts for `exception(const exception&) = default;` and `inserter(_Container&, std::__detail::__range_iter_t<_Container>)` parse in isolation and the remaining diagnostics appear to depend on surrounding parser state or recovery.
+- Once that contextual repro is reduced, land the smallest parser fix and then re-run:
   - `./build/c4cll --parse-only /tmp/include_stl_iterator.cpp`
   - `./build/c4cll --parse-only tests/cpp/std/std_vector_simple.cpp`
   - targeted C++ parse tests before any new full-suite pass.
@@ -116,7 +139,7 @@ Source Plan: plan.md
 ## Blockers
 
 - No blocking infrastructure issue remains.
-- Current technical blocker: after teaching record `final` parsing, the true first frontier moved to defaulted special-member parameter lists in `/usr/include/c++/14/bits/exception.h` and nearby libstdc++ declarations that still reject reference-qualified parameters during top-level parameter parsing.
+- Current technical blocker: the old `stl_iterator.h:2292` requires-expression failure is fixed, but the remaining first-emitted diagnostics in `exception.h` / `stl_iterator.h` still do not reduce cleanly in isolation, suggesting a parser-state or recovery issue that must be captured with a contextual minimized repro before the next syntax fix lands.
 
 ## Resume Notes
 
@@ -127,5 +150,6 @@ Source Plan: plan.md
 - `tests/cpp/internal/postive_case/cpp20_constrained_template_param_parse.cpp` is the committed reduced repro for the former `/usr/include/c++/14/bits/iterator_concepts.h:267` constrained template-parameter failure.
 - `tests/cpp/internal/postive_case/qualified_record_partial_specialization_parse.cpp` is the committed reduced repro for the former `/usr/include/c++/14/bits/iterator_concepts.h:819` qualified record partial-specialization failure.
 - `tests/cpp/internal/postive_case/record_final_specifier_parse.cpp` is the committed reduced repro for the former `/usr/include/c++/14/bits/iterator_concepts.h:992` record-`final` failure.
-- `std_vector_simple.cpp` no longer stops first on the `ranges::__access::_Decay_copy final` frontier; the first current blockers are now the defaulted-special-member parameter-list failures in `/usr/include/c++/14/bits/exception.h`, followed by later `stl_iterator.h` parameter-list and incomplete-type issues.
+- `tests/cpp/internal/postive_case/cpp20_requires_expression_if_constexpr_parse.cpp` is the committed reduced repro for the former `/usr/include/c++/14/bits/stl_iterator.h:2292` requires-expression failure.
+- `std_vector_simple.cpp` no longer reports the old `/usr/include/c++/14/bits/stl_iterator.h:2292` `if constexpr (requires { ... })` parse failure; the current remaining frontier is the parameter-list / incomplete-type cluster in `exception.h` and `stl_iterator.h`.
 - The new reduced coverage is `tests/cpp/internal/postive_case/cpp20_feature_macro_branch_parse.cpp`, which should stay green while the parser catches up to the newly exposed modern-header syntax.

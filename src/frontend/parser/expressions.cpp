@@ -651,6 +651,22 @@ Node* Parser::parse_primary() {
     ParseContextGuard trace(this, __func__);
     int ln = cur().line;
 
+    auto parse_cpp_requires_expression = [&]() -> Node* {
+        if (!(is_cpp_mode() && check(TokenKind::Identifier) &&
+              cur().lexeme == std::string_view("requires"))) {
+            return nullptr;
+        }
+
+        consume();  // requires
+        if (check(TokenKind::LParen))
+            skip_paren_group();
+        if (!check(TokenKind::LBrace))
+            return nullptr;
+
+        skip_brace_group();
+        return make_int_lit(1, ln);
+    };
+
     auto parse_operator_ref = [&]() -> Node* {
         if (!is_cpp_mode()) return nullptr;
         int saved_pos = pos_;
@@ -745,6 +761,9 @@ Node* Parser::parse_primary() {
         consume();
         return make_int_lit(0, ln);
     }
+
+    if (Node* requires_expr = parse_cpp_requires_expression())
+        return requires_expr;
 
     // Float literal
     if (check(TokenKind::FloatLit)) {
