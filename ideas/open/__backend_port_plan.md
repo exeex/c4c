@@ -90,6 +90,31 @@ Execution should continue through the staged child
 `ideas/open/30_backend_rv64_archive_linking_plan.md` for RV64 rather than
 activating this umbrella roadmap directly.
 
+## 2026-03-29 Deactivation Note
+
+The umbrella roadmap was briefly reactivated as a planning-only runbook after
+closing the bounded RV64 archive-linking slice.
+
+That active runbook is now intentionally parked again instead of being used as
+the implementation queue.
+
+Important handoff knowledge from the parked umbrella runbook:
+
+- do not implement directly from this umbrella file
+- the next x86 child is now clearer and narrower than the umbrella:
+  `ideas/open/31_backend_x86_runtime_case_convergence_plan.md`
+- the first explicit x86 convergence target is
+  `tests/c/internal/backend_case/call_helper.c`, because focused validation now
+  shows:
+  - `return_zero.c`
+  - `return_add.c`
+  - `local_array.c`
+  already stay on the backend-owned x86 asm path
+- broader x86 assembler or linker follow-ons should remain deferred until this
+  runtime-case convergence child is complete
+- RV64 archive-backed linking remains a separate closed slice and should not
+  keep the umbrella artificially active
+
 ## 2026-03-29 Staging Note
 
 The planning-only umbrella runbook initially restated the already-closed RV64
