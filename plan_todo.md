@@ -13,6 +13,12 @@ Source Plan: plan.md
   `LirCallOp` compatibility storage, with the highest-value next slice being
   indirect and intrinsic call-family surfaces that still branch on legacy text
   instead of shared structured call metadata.
+- Exact target for the next iteration after this slice: continue Step 4 into
+  the remaining backend call-adjacent consumers that still decode typed call
+  argument/result shape from raw compatibility text, especially the residual
+  `callee_type_suffix` / `args_str` parsing seams in backend-specific fast
+  paths that have not yet been collapsed onto richer shared structured call
+  metadata.
 
 ## Completed Items
 
@@ -125,6 +131,14 @@ Source Plan: plan.md
   and adding round-trip regression coverage in
   `tests/backend/backend_lir_adapter_tests.cpp` that proves formatted typed
   call metadata still parses through the shared structured call decoder.
+- Completed the next Step 4 backend direct-callee classification slice by
+  adding `lir_call_has_direct_global_callee(...)` to
+  `src/codegen/lir/call_args.hpp`, routing the remaining x86/AArch64
+  direct-call fast-path callee checks away from raw `@name` string equality in
+  `src/backend/x86/codegen/emit.cpp` and
+  `src/backend/aarch64/codegen/emit.cpp`, and adding fallback-path regression
+  coverage in `tests/backend/backend_lir_adapter_tests.cpp` proving llvm
+  intrinsic and indirect callees no longer stay on the direct-call asm path.
 
 ## Notes
 
@@ -221,6 +235,12 @@ Source Plan: plan.md
   from 189 failing tests to 188 with no newly failing tests, and
   `c_testsuite_x86_backend_src_00100_c` is the only failure that dropped out of
   the set.
+- The latest full-suite regression check for the direct-callee classification
+  slice also remained monotonic against the checked-in
+  `test_fail_before.log` baseline: `test_fail_after.log` improved from 189
+  failing tests to 188 with no newly failing tests, and
+  `c_testsuite_x86_backend_src_00100_c` is still the only failure that dropped
+  out of the set.
 - Step 2 candidate primitives implied by the audit:
   `LirOperand` should distinguish SSA values, immediates, globals, labels, and
   special constants; `LirTypeRef` should replace raw LLVM type strings on core
@@ -256,6 +276,10 @@ Source Plan: plan.md
   compatibility instead of structured call metadata, with indirect/intrinsic
   call-family surfaces still the highest-value targets now that direct-call
   callee classification and stmt-emitter typed-call formatting are shared.
+- The next Step 4 slice should target the backend-specific fast paths that
+  still parse `callee_type_suffix` and `args_str` directly even after callee
+  classification has been shared, so typed argument/result shape checks can be
+  collapsed further onto common structured call views.
 - Keep GEP index text, inline asm text, and declaration text on the
   compatibility path for now; the next slice should focus on shrinking the
   remaining call-adjacent protocol surface before attempting broader

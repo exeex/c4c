@@ -723,8 +723,12 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_extern_decl_call_slice(
   }
 
   const auto* call = std::get_if<LirCallOp>(&entry.insts.front());
+  const bool is_direct_extern_call =
+      call != nullptr &&
+      c4c::codegen::lir::lir_call_has_direct_global_callee(
+          std::string_view(call->callee), extern_decl.name);
   if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
-      *ret->value_str != call->result || call->callee != ("@" + extern_decl.name) ||
+      *ret->value_str != call->result || !is_direct_extern_call ||
       !c4c::codegen::lir::lir_call_has_no_args(call->callee_type_suffix,
                                                call->args_str)) {
     return std::nullopt;
@@ -1337,6 +1341,10 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
   const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts[1]);
   const auto* final_add =
       std::get_if<c4c::backend::BackendBinaryInst>(&main_block.insts[2]);
+  const bool is_direct_add_one_call =
+      call != nullptr &&
+      c4c::codegen::lir::lir_call_has_direct_global_callee(
+          std::string_view(call->callee), "add_one");
   const auto call_arg =
       call == nullptr
           ? std::nullopt
@@ -1344,7 +1352,7 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
   if (source_add == nullptr || call == nullptr || final_add == nullptr ||
       source_add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
       source_add->type_str != "i32" || call->return_type != "i32" ||
-      call->callee != "@add_one" || !call_arg.has_value() ||
+      !is_direct_add_one_call || !call_arg.has_value() ||
       *call_arg != source_add->result ||
       final_add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
       final_add->type_str != "i32" || final_add->lhs != source_add->result ||

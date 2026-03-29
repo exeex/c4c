@@ -89,6 +89,12 @@ inline std::optional<std::string_view> parse_lir_direct_global_callee(
   return parsed->symbol_name;
 }
 
+inline bool lir_call_has_direct_global_callee(std::string_view callee,
+                                              std::string_view expected_symbol_name) {
+  const auto parsed = parse_lir_direct_global_callee(callee);
+  return parsed.has_value() && *parsed == expected_symbol_name;
+}
+
 inline void append_unique_lir_value_name(std::vector<std::string>& values,
                                          std::string value) {
   if (value.empty()) {

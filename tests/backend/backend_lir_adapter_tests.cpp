@@ -4664,6 +4664,46 @@ void test_x86_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace()
                       "x86 backend should not fall back to LLVM text for whitespace-tolerant zero-arg typed direct calls");
 }
 
+void test_x86_backend_rejects_intrinsic_callee_from_direct_call_fast_path() {
+  auto module = make_typed_direct_call_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts.front());
+  call.callee = c4c::codegen::lir::LirOperand(std::string("@llvm.abs.i32"),
+                                              c4c::codegen::lir::LirOperandKind::Global);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "target triple = \"x86_64-unknown-linux-gnu\"",
+                  "x86 backend should fall back instead of treating llvm intrinsics as direct helper calls");
+  expect_contains(rendered, "@llvm.abs.i32",
+                  "x86 backend fallback should preserve the intrinsic callee text");
+}
+
+void test_x86_backend_rejects_indirect_callee_from_direct_call_fast_path() {
+  auto module = make_typed_direct_call_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts.front());
+  call.callee = c4c::codegen::lir::LirOperand(std::string("%fp"),
+                                              c4c::codegen::lir::LirOperandKind::SsaValue);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "target triple = \"x86_64-unknown-linux-gnu\"",
+                  "x86 backend should fall back instead of treating indirect callees as direct helper calls");
+  expect_contains(rendered, "call i32 (i32) %fp(i32 5)",
+                  "x86 backend fallback should preserve the indirect callee shape");
+}
+
 void test_x86_backend_renders_param_slot_slice() {
   auto module = make_param_slot_runtime_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -5757,6 +5797,38 @@ void test_aarch64_backend_renders_zero_arg_typed_direct_call_slice_with_whitespa
                   "aarch64 backend should keep zero-arg typed direct calls on the direct-call asm path even when compatibility whitespace remains");
   expect_not_contains(rendered, "define i32 @main()",
                       "aarch64 backend should not fall back to LLVM text for whitespace-tolerant zero-arg typed direct calls");
+}
+
+void test_aarch64_backend_rejects_intrinsic_callee_from_direct_call_fast_path() {
+  auto module = make_typed_direct_call_module();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts.front());
+  call.callee = c4c::codegen::lir::LirOperand(std::string("@llvm.abs.i32"),
+                                              c4c::codegen::lir::LirOperandKind::Global);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
+                  "aarch64 backend should fall back instead of treating llvm intrinsics as direct helper calls");
+  expect_contains(rendered, "@llvm.abs.i32",
+                  "aarch64 backend fallback should preserve the intrinsic callee text");
+}
+
+void test_aarch64_backend_rejects_indirect_callee_from_direct_call_fast_path() {
+  auto module = make_typed_direct_call_module();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts.front());
+  call.callee = c4c::codegen::lir::LirOperand(std::string("%fp"),
+                                              c4c::codegen::lir::LirOperandKind::SsaValue);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
+                  "aarch64 backend should fall back instead of treating indirect callees as direct helper calls");
+  expect_contains(rendered, "call i32 (i32) %fp(i32 5)",
+                  "aarch64 backend fallback should preserve the indirect callee shape");
 }
 
 void test_aarch64_backend_renders_local_temp_memory_slice() {
@@ -8153,6 +8225,8 @@ int main() {
   test_x86_backend_renders_countdown_do_while_return_slice();
   test_x86_backend_renders_direct_call_slice();
   test_x86_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace();
+  test_x86_backend_rejects_intrinsic_callee_from_direct_call_fast_path();
+  test_x86_backend_rejects_indirect_callee_from_direct_call_fast_path();
   test_x86_backend_renders_param_slot_slice();
   test_x86_backend_renders_typed_direct_call_local_arg_slice();
   test_x86_backend_renders_typed_direct_call_local_arg_spacing_slice();
@@ -8206,6 +8280,8 @@ int main() {
   test_aarch64_backend_scaffold_rejects_out_of_slice_ir();
   test_aarch64_backend_renders_direct_call_slice();
   test_aarch64_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace();
+  test_aarch64_backend_rejects_intrinsic_callee_from_direct_call_fast_path();
+  test_aarch64_backend_rejects_indirect_callee_from_direct_call_fast_path();
   test_aarch64_backend_renders_local_temp_memory_slice();
   test_aarch64_backend_renders_param_slot_memory_slice();
   test_aarch64_backend_renders_typed_direct_call_slice();

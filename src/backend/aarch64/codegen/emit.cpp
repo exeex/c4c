@@ -1441,6 +1441,9 @@ parse_minimal_call_crossing_direct_call_slice(
   const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts[1]);
   const auto* final_add =
       std::get_if<c4c::backend::BackendBinaryInst>(&main_block.insts[2]);
+  const bool is_direct_add_one_call =
+      call != nullptr &&
+      c4c::codegen::lir::lir_call_has_direct_global_callee(call->callee, "add_one");
   const auto call_arg =
       call == nullptr
           ? std::nullopt
@@ -1448,7 +1451,7 @@ parse_minimal_call_crossing_direct_call_slice(
   if (source_add == nullptr || call == nullptr || final_add == nullptr ||
       source_add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
       source_add->type_str != "i32" || call->return_type != "i32" ||
-      call->callee != "@add_one" || !call_arg.has_value() ||
+      !is_direct_add_one_call || !call_arg.has_value() ||
       *call_arg != source_add->result ||
       final_add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
       final_add->type_str != "i32" || final_add->lhs != source_add->result ||
