@@ -4053,9 +4053,17 @@ void test_backend_binary_utils_contract_headers_are_include_reachable() {
   expect_true(parsed.size() == 1 && parsed.front().text == emitted,
               "binary-utils contract headers should expose a text-first staged parser surface over the current backend output");
 
+  const auto staged = c4c::backend::aarch64::assembler::assemble(
+      c4c::backend::aarch64::assembler::AssembleRequest{
+          .asm_text = emitted,
+          .output_path = "ignored.o",
+      });
+  expect_true(staged.staged_text == emitted && !staged.object_emitted,
+              "binary-utils contract headers should expose the current text-first assembler request/result seam without changing backend-emitted text");
+
   const auto assembled = c4c::backend::aarch64::assembler::assemble(emitted, "ignored.o");
   expect_true(assembled == emitted,
-              "binary-utils contract headers should expose the current stub assembler entry without changing backend-emitted text");
+              "binary-utils contract headers should keep the compatibility overload aligned with the staged assembler text seam");
 }
 
 }  // namespace

@@ -1,4 +1,4 @@
-#include "types.hpp"
+#include "mod.hpp"
 
 #include <cstddef>
 #include <string>
@@ -62,9 +62,13 @@ std::vector<std::string> resolve_numeric_data_values(const std::vector<std::stri
   return values;
 }
 
+AssembleResult assemble(const AssembleRequest& request) {
+  (void)request.output_path;
+  return AssembleResult{.staged_text = request.asm_text, .object_emitted = false};
+}
+
 std::string assemble(const std::string& asm_text, const std::string& output_path) {
-  (void)output_path;
-  return asm_text;
+  return assemble(AssembleRequest{.asm_text = asm_text, .output_path = output_path}).staged_text;
 }
 
 }  // namespace c4c::backend::aarch64::assembler
