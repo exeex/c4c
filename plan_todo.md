@@ -9,17 +9,15 @@ Source Plan: plan.md
 - Step 5: prepare the next diagnostic slice by bounding the first
   committed-failure vs no-match follow-up under speculative `try_parse_*`
   record-member rewinds
-- Current slice: scan the remaining `std_vector_simple.cpp` parser-debug
-  output for the next wrapper-heavy failure that still needs an explicit
-  ranking-only or tri-state follow-up now that the top-level qualified-probe
-  leaf case is reduced and fixed
-- Iteration target: use the new reduced
-  `parser_debug_top_level_qualified_probe_leaf.cpp` coverage as the bounded
-  reference point for top-level wrapper summaries, then identify the next
-  standalone repro that still requires work in
-  `should_replace_best_parse_failure()`, `best_debug_summary_stack()`, or
-  local `ParseContextGuard` coverage rather than the now-landed
-  `select_best_parse_summary_leaf()` adjustment
+- Current slice: preserve leading top-level qualified-type probe frames in
+  parser-debug summary stacks when a later
+  `parse_top_level_parameter_list` failure still owns the committed root cause
+- Iteration target: bound the next wrapper-only `consume_qualified_type_spelling`
+  follow-up from `std_vector_simple.cpp`, starting with the still-live
+  `/usr/include/c++/14/bits/exception.h:67`,
+  `/usr/include/c++/14/bits/stl_vector.h:336` / `:340`, and
+  `/usr/include/c++/14/bits/stl_bvector.h:78` summaries that still collapse to
+  `parse_top_level -> parse_top_level_parameter_list`
 
 ## Completed
 
@@ -28,6 +26,44 @@ Source Plan: plan.md
   `before passed=2274/2275` baseline on rerun:
   `after passed=2276/2277`; the existing
   `verify_tests_verify_top_level_recovery` failure remained unchanged
+- recorded the required clean full-suite baseline for this slice:
+  `before passed=2276/2277`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged
+- tightened `cpp_parser_debug_qualified_type_template_arg_stack` so the test
+  now asserts the full stack substring instead of a weak tokenized `[pdebug]`
+  fragment, then updated it to require the leading top-level qualified probe
+  frames before the nested template-argument path
+- updated `best_debug_summary_stack()` to prepend the leading top-level
+  qualified-type probe segment from the parser debug event stream when the
+  emitted summary would otherwise jump straight from `parse_top_level` into
+  `parse_next_template_argument`
+- updated nearby reduced coverage in
+  `cpp_parser_debug_qualified_type_spelling_stack` to lock in the same
+  prefixed top-level qualified probe summary shape
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_expr_stmt_stack`,
+  `cpp_parser_debug_record_member_stack`,
+  `cpp_parser_debug_record_member_param_default_rank`,
+  `cpp_parser_debug_record_member_type_like_rank`,
+  `cpp_parser_debug_record_member_using_alias_leaf`,
+  `cpp_parser_debug_record_member_typedef_leaf`,
+  `cpp_parser_debug_qualified_type_top_level_params`,
+  `cpp_parser_debug_qualified_type_template_arg_stack`,
+  `cpp_parser_debug_qualified_type_dependent_typename_stack`,
+  `cpp_parser_debug_qualified_type_typename_spelling_stack`,
+  `cpp_parser_debug_qualified_type_spelling_stack`,
+  `cpp_parser_debug_if_init_qualified_probe_leaf`, and
+  `cpp_parser_debug_top_level_qualified_probe_leaf`
+- reran the required clean before/after full suite and passed the monotonic
+  regression guard with no new failures:
+  `before passed=2276/2277`, `after passed=2276/2277`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged
+- rechecked the motivating `std_vector_simple.cpp` parser-debug output after
+  landing this slice; the qualified-template-argument summary stacks now keep
+  their leading top-level probe frames, while the separate
+  `consume_qualified_type_spelling`-only wrapper cases at
+  `exception.h:67`, `stl_vector.h:336` / `:340`, and `stl_bvector.h:78`
+  remain as the next bounded follow-up
 - noted that the first clean full-suite run transiently timed out
   `llvm_gcc_c_torture_src_pr28982b_c` under parallel load, then revalidated it
   in isolation (`Passed 7.14 sec`) before rerunning the full suite to confirm
