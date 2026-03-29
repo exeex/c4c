@@ -202,6 +202,16 @@ inline std::optional<ParsedLirTypedCallView> parse_lir_typed_call(
   return ParsedLirTypedCallView{*param_types, *args};
 }
 
+inline bool lir_call_has_no_args(std::string_view callee_type_suffix,
+                                 std::string_view args_str) {
+  const auto param_types = parse_lir_call_param_types(callee_type_suffix);
+  if (!param_types.has_value() || !param_types->empty()) {
+    return false;
+  }
+
+  return trim_lir_arg_text(args_str).empty();
+}
+
 inline std::optional<std::string_view> lir_call_arg_operand(std::string_view arg) {
   arg = trim_lir_arg_text(arg);
   if (arg.empty()) {

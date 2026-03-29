@@ -4555,6 +4555,26 @@ void test_x86_backend_renders_direct_call_slice() {
                       "x86 backend should stop falling back to LLVM text for the direct helper-call slice");
 }
 
+void test_x86_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace() {
+  auto module = make_direct_call_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts.front());
+  call.callee_type_suffix = "( )";
+  call.args_str = "  ";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "call helper",
+                  "x86 backend should keep zero-arg typed direct calls on the direct-call asm path even when compatibility whitespace remains");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should not fall back to LLVM text for whitespace-tolerant zero-arg typed direct calls");
+}
+
 void test_x86_backend_renders_param_slot_slice() {
   auto module = make_param_slot_runtime_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -5632,6 +5652,22 @@ void test_aarch64_backend_renders_direct_call_slice() {
                   "aarch64 backend should restore x30 after the helper call");
   expect_contains(rendered, "add sp, sp, #16",
                   "aarch64 backend should tear down the minimal helper-call frame");
+}
+
+void test_aarch64_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace() {
+  auto module = make_direct_call_module();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts.front());
+  call.callee_type_suffix = "( )";
+  call.args_str = "  ";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "bl helper",
+                  "aarch64 backend should keep zero-arg typed direct calls on the direct-call asm path even when compatibility whitespace remains");
+  expect_not_contains(rendered, "define i32 @main()",
+                      "aarch64 backend should not fall back to LLVM text for whitespace-tolerant zero-arg typed direct calls");
 }
 
 void test_aarch64_backend_renders_local_temp_memory_slice() {
@@ -8007,6 +8043,7 @@ int main() {
   test_x86_backend_renders_countdown_while_return_slice();
   test_x86_backend_renders_countdown_do_while_return_slice();
   test_x86_backend_renders_direct_call_slice();
+  test_x86_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace();
   test_x86_backend_renders_param_slot_slice();
   test_x86_backend_renders_typed_direct_call_local_arg_slice();
   test_x86_backend_renders_typed_direct_call_local_arg_spacing_slice();
@@ -8059,6 +8096,7 @@ int main() {
   test_aarch64_backend_renders_compare_and_branch_uge_slice();
   test_aarch64_backend_scaffold_rejects_out_of_slice_ir();
   test_aarch64_backend_renders_direct_call_slice();
+  test_aarch64_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace();
   test_aarch64_backend_renders_local_temp_memory_slice();
   test_aarch64_backend_renders_param_slot_memory_slice();
   test_aarch64_backend_renders_typed_direct_call_slice();

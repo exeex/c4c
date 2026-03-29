@@ -9,10 +9,10 @@ Source Plan: plan.md
 - Step 4: Migrate high-friction instruction families and consumers.
 - Exact target for the next iteration: continue Step 4 past
   the landed shared typed-call decoding helpers into the remaining backend
-  target-specific direct-call consumers that still rely on string compatibility
-  outside the newly-covered single-arg/two-arg/call-crossing fast paths,
-  especially any backend emit or analysis slices that still compare literal
-  typed-call text instead of consuming structured call shape metadata.
+  call-adjacent consumers that still rely on free-form call text outside the
+  now-covered zero-arg/single-arg/two-arg/call-crossing fast paths, especially
+  any analysis or emitter slice that still open-codes typed-call shape checks
+  instead of consuming shared structured call metadata.
 
 ## Completed Items
 
@@ -88,6 +88,13 @@ Source Plan: plan.md
   `callee_type_suffix` and `args_str` string matches, and adding emitter
   regression coverage in `tests/backend/backend_lir_adapter_tests.cpp` for
   spacing-tolerant typed call suffixes and arguments.
+- Completed the next Step 4 zero-arg direct-call cleanup slice by adding a
+  shared `lir_call_has_no_args(...)` helper in
+  `src/codegen/lir/call_args.hpp`, routing the remaining x86 and AArch64
+  zero-argument direct-call recognizers through structured call-shape parsing
+  instead of exact empty-string / `"()"` checks, and adding whitespace-tolerant
+  typed zero-arg direct-call emitter coverage in
+  `tests/backend/backend_lir_adapter_tests.cpp`.
 
 ## Notes
 
@@ -193,9 +200,9 @@ Source Plan: plan.md
 - Follow the Step 4 typed-dispatch cleanup into the remaining backend
   call-adjacent consumers that still rely on wrapper string compatibility
   instead of structured call decoding, with the remaining analysis and backend
-  call-family sites outside the now-covered x86/AArch64 direct-call fast paths
-  still the highest-value targets before attempting broader `LirCallOp`
-  storage changes.
+  call-family sites outside the now-covered x86/AArch64 zero/single/two-arg
+  direct-call fast paths still the highest-value targets before attempting
+  broader `LirCallOp` storage changes.
 - Keep GEP index text, inline asm text, and declaration text on the
   compatibility path for now; the next slice should focus on shrinking the
   remaining call-adjacent protocol surface before attempting broader
@@ -340,6 +347,22 @@ Source Plan: plan.md
   --before test_fail_after.log --after test_fail_after_step4_call_typed.log
   --allow-non-decreasing-passed` passed with zero new failures and no
   pass-count regression.
+- `cmake --build build -j8 --target backend_lir_adapter_tests` passed after
+  landing the shared zero-arg typed-call helper and routing the remaining x86
+  and AArch64 zero-arg direct-call recognizers through it.
+- `./build/backend_lir_adapter_tests` passed with added whitespace-tolerant
+  zero-arg typed direct-call coverage for both x86 and AArch64 backend
+  emission.
+- `cmake --build build -j8` passed after wiring the shared zero-arg call-shape
+  helper into both backend emitters and the main compiler target.
+- `ctest --test-dir build -j --output-on-failure >
+  test_fail_after_step4_zero_arg_call_shape.log` recorded `2372/2560` passing
+  and `188` failing tests.
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_after.log --after test_fail_after_step4_zero_arg_call_shape.log
+  --allow-non-decreasing-passed` passed with zero new failures, one resolved
+  failure (`c_testsuite_x86_backend_src_00100_c`), and no suspicious slow
+  tests.
 
 ## Open Questions To Resolve During This Runbook
 

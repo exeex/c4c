@@ -1241,7 +1241,8 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
   const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
   if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
       *main_block.terminator.value != call->result ||
-      !call->callee_type_suffix.empty() || !call->args_str.empty()) {
+      !c4c::codegen::lir::lir_call_has_no_args(call->callee_type_suffix,
+                                               call->args_str)) {
     return std::nullopt;
   }
 

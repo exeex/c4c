@@ -753,8 +753,8 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_extern_decl_call_slice(
   const auto* call = std::get_if<LirCallOp>(&entry.insts.front());
   if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
       *ret->value_str != call->result || call->callee != ("@" + extern_decl.name) ||
-      !call->args_str.empty() ||
-      (!call->callee_type_suffix.empty() && call->callee_type_suffix != "()")) {
+      !c4c::codegen::lir::lir_call_has_no_args(call->callee_type_suffix,
+                                               call->args_str)) {
     return std::nullopt;
   }
 
@@ -786,8 +786,9 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_sli
   const auto* call =
       std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
   if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
-      *main_block.terminator.value != call->result || !call->args_str.empty() ||
-      (!call->callee_type_suffix.empty() && call->callee_type_suffix != "()") ||
+      *main_block.terminator.value != call->result ||
+      !c4c::codegen::lir::lir_call_has_no_args(call->callee_type_suffix,
+                                               call->args_str) ||
       call->callee.empty() || call->callee.front() != '@') {
     return std::nullopt;
   }
@@ -1411,7 +1412,8 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
   const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
   if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
       *main_block.terminator.value != call->result ||
-      !call->callee_type_suffix.empty() || !call->args_str.empty()) {
+      !c4c::codegen::lir::lir_call_has_no_args(call->callee_type_suffix,
+                                               call->args_str)) {
     return std::nullopt;
   }
 
