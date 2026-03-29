@@ -265,6 +265,16 @@ add_executable(backend_lir_adapter_tests
 target_include_directories(backend_lir_adapter_tests PRIVATE
     ${FRONTEND_CXX_INCLUDE_DIRS}
 )
+if(CLANG_EXECUTABLE)
+  target_compile_definitions(backend_lir_adapter_tests PRIVATE
+      C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
+  )
+endif()
+if(OBJDUMP_EXECUTABLE)
+  target_compile_definitions(backend_lir_adapter_tests PRIVATE
+      C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
+  )
+endif()
 set_target_properties(backend_lir_adapter_tests PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON

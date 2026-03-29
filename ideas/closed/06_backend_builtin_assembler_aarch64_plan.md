@@ -1,5 +1,7 @@
 # Built-in AArch64 Assembler Plan
 
+Status: Complete
+
 ## Relationship To Roadmap
 
 Umbrella source: `ideas/open/__backend_port_plan.md`
@@ -124,3 +126,18 @@ If the shared-boundary work and the AArch64-specific work move together in pract
 ## Good First Patch
 
 Make parser, encoder, and ELF-writer pieces compile together, then route one minimal backend-emitted AArch64 function through that path.
+
+## Completion Notes
+
+- The AArch64 built-in assembler now emits one real ELF relocatable object slice for backend-emitted `return_add`, keeping the flow text-first through parse, encode, and ELF-write stages.
+- Backend contract coverage now checks the bounded object-emission slice end to end: `.text` size, global `main` symbol presence, relocation-free metadata, and matching disassembly against the external assembler baseline for the same emitted assembly.
+- The active backend adapter and production `assemble_module(..., output_path)` handoff both continue to report object emission through the named assembler request/result seam.
+
+## Leftover Issues
+
+- Relocation-bearing slices remain follow-on work for later ideas and should not be folded back into this completed first-slice runbook.
+- Full-suite regression results remain monotonic at the same four unrelated failures:
+  - `positive_sema_ok_fn_returns_variadic_fn_ptr_c`
+  - `cpp_positive_sema_decltype_bf16_builtin_cpp`
+  - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+  - `cpp_llvm_initializer_list_runtime_materialization`

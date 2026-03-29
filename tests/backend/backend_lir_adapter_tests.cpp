@@ -21,6 +21,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unistd.h>
@@ -73,6 +74,11 @@ std::string make_temp_output_path(const std::string& stem) {
   return (base / (stem + "_" + std::to_string(::getpid()) + ".o")).string();
 }
 
+std::string make_temp_path(const std::string& stem, const std::string& extension) {
+  const auto base = std::filesystem::temp_directory_path();
+  return (base / (stem + "_" + std::to_string(::getpid()) + extension)).string();
+}
+
 std::vector<std::uint8_t> read_file_bytes(const std::string& path) {
   std::ifstream input(path, std::ios::binary);
   if (!input) {
@@ -80,6 +86,80 @@ std::vector<std::uint8_t> read_file_bytes(const std::string& path) {
   }
   return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(input),
                                    std::istreambuf_iterator<char>());
+}
+
+void write_text_file(const std::string& path, const std::string& text) {
+  std::ofstream output(path, std::ios::binary);
+  if (!output) fail("failed to open file for write: " + path);
+  output << text;
+  if (!output.good()) fail("failed to write file: " + path);
+}
+
+std::string shell_quote(const std::string& text) {
+  std::string quoted = "'";
+  for (const char ch : text) {
+    if (ch == '\'') {
+      quoted += "'\\''";
+    } else {
+      quoted.push_back(ch);
+    }
+  }
+  quoted.push_back('\'');
+  return quoted;
+}
+
+std::string run_command_capture(const std::string& command) {
+  FILE* pipe = popen(command.c_str(), "r");
+  if (!pipe) fail("failed to run command: " + command);
+
+  std::string output;
+  char buffer[4096];
+  while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+    output += buffer;
+  }
+
+  const int status = pclose(pipe);
+  if (status != 0) {
+    fail("command failed (" + std::to_string(status) + "): " + command + "\n" + output);
+  }
+  return output;
+}
+
+std::string normalize_objdump_surface(const std::string& text) {
+  std::stringstream input(text);
+  std::string line;
+  std::string normalized;
+  while (std::getline(input, line)) {
+    const auto file_format_pos = line.find("file format ");
+    if (file_format_pos != std::string::npos) {
+      line = line.substr(file_format_pos);
+    }
+    normalized += line;
+    normalized.push_back('\n');
+  }
+  return normalized;
+}
+
+std::string normalize_objdump_disassembly(const std::string& text) {
+  std::stringstream input(text);
+  std::string line;
+  std::string normalized;
+  while (std::getline(input, line)) {
+    const auto file_format_pos = line.find("file format ");
+    if (file_format_pos != std::string::npos) continue;
+
+    const auto colon_pos = line.find(':');
+    if (colon_pos != std::string::npos && colon_pos < 18) {
+      const auto asm_pos = line.find_first_not_of(" \t", colon_pos + 1);
+      if (asm_pos != std::string::npos) {
+        line = line.substr(asm_pos);
+      }
+    }
+
+    normalized += line;
+    normalized.push_back('\n');
+  }
+  return normalized;
 }
 
 c4c::codegen::lir::LirModule make_return_zero_module() {
@@ -4120,6 +4200,72 @@ void test_aarch64_backend_assembler_handoff_helper_stages_emitted_text() {
   std::filesystem::remove(output_path);
 }
 
+void test_aarch64_builtin_object_matches_external_return_add_surface() {
+#if defined(C4C_TEST_CLANG_PATH) && defined(C4C_TEST_OBJDUMP_PATH)
+  auto module = make_return_add_module();
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  const auto asm_text = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  const auto asm_path = make_temp_path("c4c_aarch64_return_add_surface", ".s");
+  const auto builtin_object_path = make_temp_output_path("c4c_aarch64_return_add_builtin");
+  const auto external_object_path = make_temp_output_path("c4c_aarch64_return_add_external");
+
+  write_text_file(asm_path, asm_text);
+  const auto builtin = c4c::backend::aarch64::assembler::assemble(
+      c4c::backend::aarch64::assembler::AssembleRequest{
+          .asm_text = asm_text,
+          .output_path = builtin_object_path,
+      });
+  expect_true(builtin.object_emitted,
+              "built-in assembler should emit an object for the bounded return_add slice");
+
+  run_command_capture(shell_quote(C4C_TEST_CLANG_PATH) +
+                      " --target=aarch64-unknown-linux-gnu -c " +
+                      shell_quote(asm_path) + " -o " +
+                      shell_quote(external_object_path) + " 2>&1");
+
+  const auto builtin_objdump = normalize_objdump_surface(
+      run_command_capture(shell_quote(C4C_TEST_OBJDUMP_PATH) + " -h -r -t " +
+                          shell_quote(builtin_object_path) + " 2>&1"));
+  const auto external_objdump = normalize_objdump_surface(
+      run_command_capture(shell_quote(C4C_TEST_OBJDUMP_PATH) + " -h -r -t " +
+                          shell_quote(external_object_path) + " 2>&1"));
+  expect_contains(builtin_objdump, ".text         00000008",
+                  "built-in assembler should emit the same bounded .text size as the external baseline");
+  expect_contains(external_objdump, ".text         00000008",
+                  "external assembler baseline should keep the bounded .text size for return_add");
+  expect_not_contains(builtin_objdump, "RELOCATION RECORDS",
+                      "built-in assembler should not introduce relocations for the bounded return_add slice");
+  expect_not_contains(external_objdump, "RELOCATION RECORDS",
+                      "external assembler baseline should not need relocations for the bounded return_add slice");
+  expect_contains(builtin_objdump, "g     F .text",
+                  "built-in assembler should expose a global function symbol in .text");
+  expect_contains(builtin_objdump, "main",
+                  "built-in assembler should preserve the main symbol name");
+  expect_contains(external_objdump, "g     F .text",
+                  "external assembler baseline should expose a global function symbol in .text");
+  expect_contains(external_objdump, "main",
+                  "external assembler baseline should preserve the main symbol name");
+
+  const auto builtin_disasm = normalize_objdump_disassembly(
+      run_command_capture(shell_quote(C4C_TEST_OBJDUMP_PATH) + " -d " +
+                          shell_quote(builtin_object_path) + " 2>&1"));
+  const auto external_disasm = normalize_objdump_disassembly(
+      run_command_capture(shell_quote(C4C_TEST_OBJDUMP_PATH) + " -d " +
+                          shell_quote(external_object_path) + " 2>&1"));
+  expect_true(builtin_disasm == external_disasm,
+              "built-in assembler disassembly should match the external assembler baseline for return_add\n--- built-in ---\n" +
+                  builtin_disasm + "--- external ---\n" + external_disasm);
+
+  std::filesystem::remove(asm_path);
+  std::filesystem::remove(builtin_object_path);
+  std::filesystem::remove(external_object_path);
+#endif
+}
+
 }  // namespace
 
 int main() {
@@ -4216,5 +4362,6 @@ int main() {
   test_aarch64_backend_prunes_dead_local_allocas_from_fallback_lir();
   test_backend_binary_utils_contract_headers_are_include_reachable();
   test_aarch64_backend_assembler_handoff_helper_stages_emitted_text();
+  test_aarch64_builtin_object_matches_external_return_add_surface();
   return 0;
 }

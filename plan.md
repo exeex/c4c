@@ -1,131 +1,126 @@
-# Built-in AArch64 Assembler Runbook
+# Backend Linker Object IO Runbook
 
 Status: Active
-Source Idea: ideas/open/06_backend_builtin_assembler_aarch64_plan.md
-Activated from: ideas/open/06_backend_builtin_assembler_aarch64_plan.md
+Source Idea: ideas/open/07_backend_linker_object_io_plan.md
+Activated from: ideas/open/07_backend_linker_object_io_plan.md
 
 ## Purpose
 
-Turn the compile-integrated AArch64 assembler boundary into the first object-emitting slice for the currently supported backend subset, without expanding into linker work or broad instruction coverage.
+Turn the mirrored shared ELF and linker-common trees into the first reusable object/archive input layer for later linker work, without expanding into relocation application or final executable emission.
 
 ## Goal
 
-Route one bounded AArch64 backend-emitted assembly slice through the in-tree parser, encoder, and ELF-writer path and start producing comparable ELF relocatable objects.
+Parse one bounded relocatable ELF object and one bounded archive case through shared linker infrastructure so later AArch64 linker work can consume stable object, section, symbol, and relocation data.
 
 ## Core Rule
 
-Do not broaden this runbook into general assembler completion. Keep the first slice tied to the backend subset already emitted today and prove it with narrow object-level comparisons.
+Do not broaden this runbook into executable linking. Keep the active slice centered on shared object and archive IO surfaces only.
 
 ## Read First
 
-- [ideas/open/06_backend_builtin_assembler_aarch64_plan.md](/Users/chi-shengwu/c4c/ideas/open/06_backend_builtin_assembler_aarch64_plan.md)
-- [ideas/closed/05_backend_builtin_assembler_boundary_plan.md](/Users/chi-shengwu/c4c/ideas/closed/05_backend_builtin_assembler_boundary_plan.md)
+- [ideas/open/07_backend_linker_object_io_plan.md](/Users/chi-shengwu/c4c/ideas/open/07_backend_linker_object_io_plan.md)
+- [ideas/closed/06_backend_builtin_assembler_aarch64_plan.md](/Users/chi-shengwu/c4c/ideas/closed/06_backend_builtin_assembler_aarch64_plan.md)
+- [ideas/open/08_backend_builtin_linker_aarch64_plan.md](/Users/chi-shengwu/c4c/ideas/open/08_backend_builtin_linker_aarch64_plan.md)
 - [ideas/open/__backend_port_plan.md](/Users/chi-shengwu/c4c/ideas/open/__backend_port_plan.md)
-- [BINARY_UTILS_CONTRACT.md](/Users/chi-shengwu/c4c/src/backend/aarch64/BINARY_UTILS_CONTRACT.md)
-- `ref/claudes-c-compiler/src/backend/arm/assembler/README.md`
-- `ref/claudes-c-compiler/src/backend/arm/assembler/mod.rs`
-- `ref/claudes-c-compiler/src/backend/arm/assembler/parser.rs`
-- `ref/claudes-c-compiler/src/backend/arm/assembler/elf_writer.rs`
-- `ref/claudes-c-compiler/src/backend/arm/assembler/encoder/mod.rs`
-- `ref/claudes-c-compiler/src/backend/arm/assembler/encoder/data_processing.rs`
-- `ref/claudes-c-compiler/src/backend/arm/assembler/encoder/compare_branch.rs`
-- `ref/claudes-c-compiler/src/backend/arm/assembler/encoder/load_store.rs`
-- `ref/claudes-c-compiler/src/backend/arm/assembler/encoder/system.rs`
-- `ref/claudes-c-compiler/src/backend/arm/assembler/encoder/bitfield.rs`
+- `ref/claudes-c-compiler/src/backend/linker_common/README.md`
+- `ref/claudes-c-compiler/src/backend/linker_common/types.rs`
+- `ref/claudes-c-compiler/src/backend/linker_common/parse_object.rs`
+- `ref/claudes-c-compiler/src/backend/linker_common/archive.rs`
+- `ref/claudes-c-compiler/src/backend/linker_common/symbols.rs`
+- `ref/claudes-c-compiler/src/backend/linker_common/merge.rs`
+- `ref/claudes-c-compiler/src/backend/linker_common/section_map.rs`
+- `ref/claudes-c-compiler/src/backend/elf/archive.rs`
+- `ref/claudes-c-compiler/src/backend/elf/io.rs`
+- `ref/claudes-c-compiler/src/backend/elf/constants.rs`
 
 ## Current Targets
 
-- keep the ref three-stage shape visible: parse text, encode instructions plus relocations, write ELF64 relocatable objects
-- restrict the first object-emitting slice to backend-emitted AArch64 assembly that already exists in repo tests
-- make one bounded backend path flow through the in-tree assembler instead of only preserving staged text
-- compare emitted object metadata against the external assembler baseline for representative cases
+- keep ELF object and archive parsing target-independent under `src/backend/elf/` and `src/backend/linker_common/`
+- expose stable shared representations for sections, symbols, relocations, and archive members
+- prove one bounded happy-path object case and one bounded archive case before widening malformed-input coverage
 
 ## Non-Goals
 
-- linker implementation
-- x86-64 or rv64 assembler work
-- broad parser or encoder coverage beyond the currently emitted AArch64 backend subset
-- dynamic-linking, TLS, GOT, IFUNC, large NEON, or unrelated relocation expansion
+- relocation application
+- final executable writing
+- target-specific linker policy
+- broad linker orchestration beyond what object and archive parsing requires
 
 ## Working Model
 
-- preserve the text-first assembler boundary closed in the previous runbook
-- reuse shared ELF support where the repo already mirrors the ref layout
-- bias toward the smallest supported backend subset first:
-  return, direct call, compare and branch, stack-relative loads and stores, `adrp` plus low12 materialization, and narrow data directives
-- keep the external assembler tests as the comparison oracle while built-in object emission is incomplete
+- mirror the ref split between low-level ELF reading and shared linker-facing object bookkeeping
+- keep parser outputs explicit enough that later `aarch64/linker/` code can consume them without reparsing raw bytes
+- prefer one bounded parsing surface at a time: first relocatable object inventory, then archive member discovery
 
 ## Execution Rules
 
-- add or tighten narrow tests before expanding parser, encoder, or ELF-writer behavior
-- prefer one backend-emitted object slice at a time instead of partial genericity
-- keep parser, encoder, and writer seams explicit so later relocation and linker plans can target them directly
-- if a required capability is adjacent but not necessary for the first object-emitting slice, record it back into the idea instead of silently widening this runbook
+- add or tighten the narrowest tests before expanding parser coverage
+- compare parsed inventories against known object and archive fixtures instead of guessing ELF details
+- record follow-on relocation or layout work back into open ideas instead of widening this runbook
 
-## Step 1: Inventory The Minimal Object-Emission Slice
+## Step 1: Lock The Minimal Shared Object IO Slice
 
-Goal: identify the smallest backend-emitted AArch64 assembly case that can move from staged text to emitted object bytes.
-
-Primary targets:
-
-- `src/backend/aarch64/assembler/parser.*`
-- `src/backend/aarch64/assembler/encoder/`
-- `src/backend/aarch64/assembler/elf_writer.cpp`
-- backend contract and object-coverage tests
-
-Actions:
-
-- inspect which current backend-emitted cases are already locked by object-contract tests
-- map the exact directives, instruction forms, symbol records, and relocations needed by the narrowest case
-- confirm which parser and writer stubs already exist versus which minimal pieces are still placeholders
-
-Completion check:
-
-- one concrete first object-emission slice is named, with its required directives, instructions, and relocation expectations enumerated
-
-## Step 2: Connect The Boundary To Real Assembler State
-
-Goal: make the chosen slice travel through parser, encoder, and ELF-writer state instead of only echoing staged text.
+Goal: identify the smallest relocatable object case that exercises shared section, symbol, and relocation parsing.
 
 Primary targets:
 
-- `src/backend/aarch64/assembler/mod.*`
-- `src/backend/aarch64/assembler/parser.*`
-- `src/backend/aarch64/assembler/encoder/`
-- `src/backend/aarch64/assembler/elf_writer.cpp`
+- `src/backend/elf/`
+- `src/backend/linker_common/parse_object.*`
+- shared object-coverage tests under `tests/`
 
 Actions:
 
-- replace the current stub-only path with the smallest real parse and encode flow needed by the chosen slice
-- keep the result contract explicit about whether object bytes were emitted and what output path was targeted
-- preserve the compatibility overload only as a shim over the named request/result seam
+- inspect current compile-integrated shared ELF and linker-common surfaces
+- choose one bounded relocatable object fixture with `.text`, symbol table, and at least one relocation inventory expectation
+- enumerate the exact shared types and parser seams that the first object slice must populate
 
 Completion check:
 
-- the chosen backend-emitted assembly slice reaches real parser, encoder, and writer state through the active assembler entry point
+- one concrete first object-parsing slice is named, with required section, symbol, and relocation expectations recorded
 
-## Step 3: Emit And Compare One Real Object Slice
+## Step 2: Parse One Real Relocatable Object Through Shared Types
 
-Goal: start producing one comparable ELF relocatable object for the supported subset.
+Goal: make one bounded ELF relocatable object parse into stable shared linker data structures.
 
 Primary targets:
 
-- assembler smoke and object-comparison tests
-- backend-to-assembler handoff helper
-- external-object comparison fixtures under `tests/c/internal/`
+- `src/backend/elf/`
+- `src/backend/linker_common/types.*`
+- `src/backend/linker_common/parse_object.*`
 
 Actions:
 
-- add or tighten one object-level test that routes a real backend-emitted slice through the built-in assembler path
-- validate section inventory, symbol records, relocation inventory, and bounded disassembly shape against the external assembler baseline
-- keep the first slice small; split follow-on parser or relocation work into later iterations if the comparison surface grows
+- replace placeholder or partial object-reading paths only as needed for the chosen slice
+- keep shared object representations explicit about sections, symbols, and relocations
+- avoid introducing target-local parsing logic into the shared layer
 
 Completion check:
 
-- one backend-emitted AArch64 slice produces a comparable ELF relocatable object through the built-in assembler path
+- one real relocatable object parses through shared ELF/linker-common code with test-checked section, symbol, and relocation inventories
+
+## Step 3: Add The First Archive IO Slice
+
+Goal: make one bounded archive case parse far enough for later symbol-driven member discovery.
+
+Primary targets:
+
+- `src/backend/elf/archive.*`
+- `src/backend/linker_common/archive.*`
+- archive-focused tests under `tests/`
+
+Actions:
+
+- add or tighten one narrow archive test before implementing archive-member parsing
+- parse one single-member or small archive case into shared archive/member structures
+- validate member enumeration and symbol-driven lookup without widening into full linking
+
+Completion check:
+
+- one bounded archive case parses through the shared layer with test-checked member inventory and lookup behavior
 
 ## Acceptance Checks
 
-- parser, encoder, and ELF-writer pieces are compile-integrated behind one active assembler entry point
-- one bounded backend-emitted AArch64 slice flows through the in-tree assembler without ad hoc local adapters
-- the first emitted object is checked against external-assembler output on sections, symbols, relocations, or bounded disassembly
+- `src/backend/elf/` and `src/backend/linker_common/` stay compile-integrated as shared infrastructure
+- one bounded relocatable object parses into stable shared object data
+- one bounded archive case parses into stable shared archive/member data
+- later AArch64 linker work can consume these shared surfaces without reparsing raw inputs
