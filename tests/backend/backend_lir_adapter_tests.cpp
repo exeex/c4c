@@ -4453,6 +4453,50 @@ void test_shared_linker_parses_minimal_relocation_object_fixture() {
               "shared linker object parser should preserve the bounded relocation inventory for later linker work");
 }
 
+void test_shared_linker_parses_builtin_return_add_object() {
+  const auto object_path = make_temp_output_path("c4c_aarch64_return_add_parse");
+  const auto staged = c4c::backend::aarch64::assemble_module(make_return_add_module(), object_path);
+  expect_true(staged.object_emitted,
+              "built-in assembler should emit an object for the current bounded return-add slice");
+
+  const auto object_bytes = read_file_bytes(object_path);
+  std::string error;
+  const auto parsed = c4c::backend::linker_common::parse_elf64_object(
+      object_bytes, object_path, c4c::backend::elf::EM_AARCH64, &error);
+  expect_true(parsed.has_value(),
+              "shared linker object parser should accept the current built-in return-add object: " +
+                  error);
+
+  const auto& object = *parsed;
+  const auto text_index = find_section_index(object, ".text");
+  const auto symtab_index = find_section_index(object, ".symtab");
+  const auto strtab_index = find_section_index(object, ".strtab");
+  const auto shstrtab_index = find_section_index(object, ".shstrtab");
+  expect_true(text_index < object.sections.size() && symtab_index < object.sections.size() &&
+                  strtab_index < object.sections.size() &&
+                  shstrtab_index < object.sections.size(),
+              "shared linker object parser should preserve the current built-in return-add section inventory");
+  expect_true(object.relocations.size() == object.sections.size(),
+              "shared linker object parser should keep relocation vectors indexed by section for built-in emitted objects");
+  expect_true(object.section_data[text_index].size() == 8,
+              "shared linker object parser should preserve the built-in emitted return-add text payload");
+
+  const auto main_symbol = std::find_if(
+      object.symbols.begin(), object.symbols.end(),
+      [&](const c4c::backend::linker_common::Elf64Symbol& symbol) {
+        return symbol.name == "main";
+      });
+  expect_true(main_symbol != object.symbols.end() && main_symbol->is_global() &&
+                  main_symbol->sym_type() == c4c::backend::elf::STT_FUNC &&
+                  main_symbol->shndx == text_index,
+              "shared linker object parser should preserve the built-in emitted function symbol inventory");
+
+  expect_true(object.relocations[text_index].empty(),
+              "shared linker object parser should preserve the current built-in return-add object as relocation-free");
+
+  std::filesystem::remove(object_path);
+}
+
 void test_aarch64_backend_assembler_handoff_helper_stages_emitted_text() {
   const auto output_path = make_temp_output_path("c4c_aarch64_handoff");
   const auto staged = c4c::backend::aarch64::assemble_module(make_return_add_module(), output_path);
@@ -4631,6 +4675,7 @@ int main() {
   test_aarch64_backend_prunes_dead_local_allocas_from_fallback_lir();
   test_backend_binary_utils_contract_headers_are_include_reachable();
   test_shared_linker_parses_minimal_relocation_object_fixture();
+  test_shared_linker_parses_builtin_return_add_object();
   test_aarch64_backend_assembler_handoff_helper_stages_emitted_text();
   test_aarch64_builtin_object_matches_external_return_add_surface();
   return 0;
