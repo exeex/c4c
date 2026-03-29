@@ -76,6 +76,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     using_nested_namespace_parse
     template_conversion_operator_parse
     template_struct_specialization_parse
+    forward_declared_record_specialization_parse
     default_param_value_parse
     member_pointer_param_parse
     variadic_param_pack_declarator_parse
@@ -287,6 +288,15 @@ add_test(
 set_tests_properties(cpp_parse_template_friend_record_member_dump PROPERTIES
   LABELS "internal;positive_case;cpp;parse"
   PASS_REGULAR_EXPRESSION "Function\\(operator_postinc\\)"
+)
+
+add_test(
+  NAME cpp_parse_forward_declared_record_specialization_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/forward_declared_record_specialization_parse.cpp"
+)
+set_tests_properties(cpp_parse_forward_declared_record_specialization_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "StructDef\\(struct Box__spec_[0-9]+\\) specialize<1>"
 )
 
 add_test(

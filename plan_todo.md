@@ -6,20 +6,20 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 4: revalidate the post-template-friend frontier, starting with the
-  surviving `allocator<void>` incomplete-type failure ahead of the later
-  comma-expression, attribute, and vector.tcc parser frontiers
+- Step 4: revalidate the post-memoryfwd frontier, starting with the surviving
+  comma-expression parser failures in `/usr/include/c++/14/bits/stl_uninitialized.h`
+  ahead of the later attribute, typedef-base, and vector.tcc parameter-list
+  frontiers
 
 ## Next Intended Slice
 
-- inspect `/usr/include/c++/14/bits/memoryfwd.h:68` to determine why the
-  explicit-specialization forward declaration `class allocator<void>;` is still
-  being treated as an incomplete object declaration
-- keep the next fix limited to the first real root cause exposed ahead of the
-  later comma-expression, attribute, and vector.tcc parser frontiers
+- inspect `/usr/include/c++/14/bits/stl_uninitialized.h:179` to reduce the
+  first surviving comma-expression failure into a standalone parser regression
+- keep the next fix limited to the first real expression/parser root cause
+  ahead of the later `[` attribute, typedef-base, and vector.tcc frontiers
 - rerun `./build/c4cll --parse-only tests/cpp/std/std_vector_simple.cpp` after
-  that fix to confirm the frontier advances beyond the current allocator
-  failure before the later parser errors
+  that fix to confirm the frontier advances beyond the current
+  `stl_uninitialized.h` comma-expression failure
 
 ## Incomplete Items
 
@@ -158,6 +158,30 @@ Source Plan: plan.md
 - [x] Full-suite regression guard passed for the template-friend slice:
   `2391 -> 2393` passing tests, `0 -> 0` failing tests, and no newly failing
   cases (`test_fail_before.log` vs `test_fail_after.log`)
+- [x] Reduced the `bits/memoryfwd.h:68` frontier to
+  `tests/cpp/internal/postive_case/forward_declared_record_specialization_parse.cpp`
+  and added `cpp_parse_forward_declared_record_specialization_dump` to guard
+  the explicit-specialization forward-declaration AST shape
+- [x] Taught record-specialization prebody/tag setup to treat forward
+  declarations ending in `;` as explicit specializations and to preserve
+  specialization metadata on forward record refs instead of treating them as
+  plain object declarations
+- [x] Advanced the direct `std::vector` parse-only repro beyond
+  `/usr/include/c++/14/bits/memoryfwd.h:68` `allocator<void>`; the next
+  failures now start at `/usr/include/c++/14/bits/stl_uninitialized.h:179`,
+  `:247`, and `:317` on comma-expression parsing, followed by
+  `stl_uninitialized.h:1109` (`[`), typedef-base failures in
+  `functional_hash.h` and `stl_function.h`, and later `stl_bvector.h` /
+  `vector.tcc` parameter-list frontiers
+- [x] Targeted parser/frontend checks passed for the forward-declared
+  specialization slice:
+  `cpp_positive_sema_forward_declared_record_specialization_parse_cpp`,
+  `cpp_parse_forward_declared_record_specialization_dump`,
+  `cpp_positive_sema_record_specialization_setup_parse_cpp`, and
+  `cpp_positive_sema_template_struct_specialization_parse_cpp`
+- [x] Full-suite regression guard passed for the forward-declared
+  specialization slice: `2391 -> 2395` passing tests, `0 -> 0` failing tests,
+  and no newly failing cases (`test_fail_before.log` vs `test_fail_after.log`)
 
 ## Blockers
 
@@ -170,9 +194,8 @@ Source Plan: plan.md
 - The source idea says earlier parser hazards were already retired; start from
   the current `noexcept` and `iterator_concepts.h` frontier instead of
   reworking the older blockers.
-- The surviving direct repro errors now begin with
-  the explicit-specialization `allocator<void>` incomplete-type report in
-  `bits/memoryfwd.h:68`, then comma-expression parsing in
-  `bits/stl_uninitialized.h`, attribute parsing in
-  `stl_uninitialized.h:1109`, and several remaining vector.tcc / bitset
-  parameter-list issues.
+- The surviving direct repro errors now begin with comma-expression parsing in
+  `bits/stl_uninitialized.h:179`, `:247`, and `:317`, then attribute parsing
+  in `stl_uninitialized.h:1109`, typedef-base failures in
+  `functional_hash.h` / `stl_function.h`, and several remaining
+  `stl_bvector.h` / `vector.tcc` parameter-list issues.

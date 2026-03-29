@@ -558,7 +558,10 @@ class Parser {
       std::vector<TypeSpec>* base_types);
   Node* parse_record_tag_setup(int line,
                                bool is_union,
-                               const char** tag);
+                               const char** tag,
+                               const char* template_origin_name,
+                               const TypeSpec& attr_ts,
+                               const std::vector<TemplateArgParseResult>& specialization_args);
   Node* initialize_record_definition(
       int line,
       bool is_union,

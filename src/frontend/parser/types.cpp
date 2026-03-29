@@ -5629,7 +5629,8 @@ void Parser::parse_record_prebody_setup(
         const bool is_specialization =
             balanced && probe < static_cast<int>(tokens_.size()) &&
             (tokens_[probe].kind == TokenKind::LBrace ||
-             tokens_[probe].kind == TokenKind::Colon);
+             tokens_[probe].kind == TokenKind::Colon ||
+             tokens_[probe].kind == TokenKind::Semi);
         if (is_specialization) {
             *template_origin_name = arena_.strdup(*tag);
             const int saved_pos = pos_;
@@ -5682,7 +5683,10 @@ void Parser::parse_record_prebody_setup(
 
 Node* Parser::parse_record_tag_setup(int line,
                                      bool is_union,
-                                     const char** tag) {
+                                     const char** tag,
+                                     const char* template_origin_name,
+                                     const TypeSpec& attr_ts,
+                                     const std::vector<TemplateArgParseResult>& specialization_args) {
     if (!check(TokenKind::LBrace)) {
         const char* resolved_tag = tag ? *tag : nullptr;
         if (!resolved_tag) {
@@ -5699,10 +5703,20 @@ Node* Parser::parse_record_tag_setup(int line,
         if (tag)
             *tag = resolved_tag;
 
-        Node* ref = make_node(NK_STRUCT_DEF, line);
-        ref->name = resolved_tag;
-        ref->is_union = is_union;
-        ref->n_fields = -1;  // -1 = forward reference (no body)
+        Node* ref = nullptr;
+        if (template_origin_name && template_origin_name[0] &&
+            !specialization_args.empty()) {
+            std::vector<TypeSpec> empty_base_types;
+            ref = initialize_record_definition(
+                line, is_union, resolved_tag, template_origin_name, attr_ts,
+                specialization_args, empty_base_types);
+            ref->n_fields = -1;  // forward-declared explicit specialization
+        } else {
+            ref = make_node(NK_STRUCT_DEF, line);
+            ref->name = resolved_tag;
+            ref->is_union = is_union;
+            ref->n_fields = -1;  // -1 = forward reference (no body)
+        }
         if (is_cpp_mode() && resolved_tag && resolved_tag[0]) {
             typedefs_.insert(resolved_tag);
             TypeSpec injected_ts{};
@@ -5923,7 +5937,9 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     parse_record_prebody_setup(ln, &attr_ts, &tag, &template_origin_name,
                                &specialization_args, &base_types);
 
-    if (Node* ref = parse_record_tag_setup(ln, is_union, &tag))
+    if (Node* ref = parse_record_tag_setup(ln, is_union, &tag,
+                                           template_origin_name, attr_ts,
+                                           specialization_args))
         return ref;
 
     return parse_record_definition_after_tag_setup(
