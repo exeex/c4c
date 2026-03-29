@@ -80,6 +80,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     default_param_value_parse
     member_pointer_param_parse
     param_leading_cpp11_attr_parse
+    pseudo_destructor_if_else_parse
     variadic_param_pack_declarator_parse
     eastl_slice4_typename_and_specialization_parse
     eastl_slice5_explicit_decltype_memfn

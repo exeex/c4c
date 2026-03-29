@@ -7,8 +7,8 @@ Last Updated: 2026-03-29
 
 ## Active Item
 
-- Step 3: identify the first surviving parser corruption point after the
-  namespaced-concept recovery fix
+- Step 3: reduce and fix the first surviving `stl_iterator.h` parser corruption
+  point after the namespaced-concept recovery fix
 
 ## Completed
 
@@ -72,6 +72,15 @@ Last Updated: 2026-03-29
   but dependent template-body enforcement is still a later semantic slice
 - sema still needed a follow-up for `static_assert(consteval_call(...))`; add
   targeted positive/negative coverage once the consteval path is wired in
+- reduced the new `stl_iterator.h:2063/:2240` `else` frontier to a standalone
+  pseudo-destructor shape: `if (...) obj.~Type(); else ...`
+- fixed the pseudo-destructor postfix parse so unbraced `if (...) obj.~Type();
+  else ...` no longer mis-associates the `else`
+- added and passed
+  `tests/cpp/internal/postive_case/pseudo_destructor_if_else_parse.cpp`
+- re-ran `tests/cpp/std/std_vector_simple.cpp` and confirmed the
+  `stl_iterator.h` `else` frontier is gone; the first remaining error is back at
+  `/usr/include/c++/14/bits/functional_hash.h:54`
 
 ## Blockers
 

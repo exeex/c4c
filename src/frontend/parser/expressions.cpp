@@ -481,7 +481,15 @@ Node* Parser::parse_postfix(Node* base) {
             case TokenKind::Dot: {
                 consume();
                 std::string member_name;
-                if (check(TokenKind::Identifier)) {
+                if (is_cpp_mode() && match(TokenKind::Tilde)) {
+                    member_name = "~";
+                    if (check(TokenKind::Identifier)) {
+                        member_name += cur().lexeme;
+                        consume();
+                    } else {
+                        throw std::runtime_error("expected destructor type name after '~'");
+                    }
+                } else if (check(TokenKind::Identifier)) {
                     member_name = cur().lexeme;
                     consume();
                 } else if (!try_parse_operator_function_id(member_name)) {
@@ -497,7 +505,15 @@ Node* Parser::parse_postfix(Node* base) {
             case TokenKind::Arrow: {
                 consume();
                 std::string member_name;
-                if (check(TokenKind::Identifier)) {
+                if (is_cpp_mode() && match(TokenKind::Tilde)) {
+                    member_name = "~";
+                    if (check(TokenKind::Identifier)) {
+                        member_name += cur().lexeme;
+                        consume();
+                    } else {
+                        throw std::runtime_error("expected destructor type name after '~'");
+                    }
+                } else if (check(TokenKind::Identifier)) {
                     member_name = cur().lexeme;
                     consume();
                 } else if (!try_parse_operator_function_id(member_name)) {
