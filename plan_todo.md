@@ -9,13 +9,12 @@ Source Plan: plan.md
 - Step 5: prepare the next diagnostic slice by bounding the first
   committed-failure vs no-match follow-up under speculative `try_parse_*`
   record-member rewinds
-- Current slice: inspect the next namespace/type speculative dispatch that
-  still unwinds to `parse_top_level` or another wrapper without preserving the
-  deeper local parser leaf
-- Iteration target: top-level declaration parsing for a qualified type like
-  `ns::S value(` currently reports only `parse_top_level`; add a reduced
-  parser-debug repro and route that parameter-list parsing through the guarded
-  declarator helper so the deeper local frame is preserved
+- Current slice: instrument the next qualified-type speculative dispatch that
+  still masks the local leaf under outer declaration/type wrappers
+- Iteration target: add a reduced parser-debug repro around
+  `try_parse_cpp_scoped_base_type` / `try_parse_qualified_base_type`, then
+  guard the chosen helper so malformed namespace-qualified type parsing keeps
+  the local type-parse frame instead of collapsing to a wrapper-only summary
 
 ## Completed
 
@@ -133,6 +132,13 @@ Source Plan: plan.md
 - extracted the top-level function/declaration parameter parser into
   `parse_top_level_parameter_list()` so parser-debug summaries retain the
   deeper local leaf for this file-scope declaration path
+- added `ParseContextGuard` coverage to `try_parse_cpp_scoped_base_type` and
+  `try_parse_qualified_base_type`, then tightened parser-debug summary-stack
+  selection so the top-level parameter-list wrapper preserves the preceding
+  qualified-type probe frames without regressing existing record-member
+  summaries
+- updated `cpp_parser_debug_qualified_type_top_level_params` to assert the
+  merged stack shape
 - reran focused parser-debug coverage for
   `cpp_parser_debug_expr_stmt_stack`,
   `cpp_parser_debug_record_member_stack`,
@@ -145,15 +151,19 @@ Source Plan: plan.md
   regression guard with no new failures:
   `before passed=2262/2263`, `after passed=2264/2265`; the existing
   `verify_tests_verify_top_level_recovery` failure remained unchanged
+- recorded the required clean after-suite for this iteration and passed the
+  monotonic regression guard with no new failures:
+  `before passed=2264/2265`, `after passed=2264/2265`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged
 
 ## Next Intended Slice
 
 - move to the next namespace/type speculative dispatch that still masks the
-  best inner failure
-- first candidate after this slice: inspect qualified type/template-argument
-  probes that still collapse into outer declaration wrappers without preserving
-  the local type-parse leaf, especially around `try_parse_cpp_scoped_base_type`
-  and `try_parse_qualified_base_type`
+  best inner failure after the top-level qualified-type parameter wrapper case
+- first candidate after this slice: inspect qualified-type template-argument
+  or dependent-typename probes where summary stacks still drop the local type
+  path once control leaves the qualified-type helper before a later wrapper
+  failure
 
 ## Blockers
 
@@ -175,6 +185,13 @@ Source Plan: plan.md
   `tests/cpp/internal/negative_case/parser_debug_qualified_type_top_level_params.cpp`
   and moved the emitted leaf from `parse_top_level` to
   `parse_top_level_parameter_list`
+- the current target is the next qualified-type speculative parse helper after
+  that top-level declarator slice, starting with
+  `try_parse_cpp_scoped_base_type` / `try_parse_qualified_base_type`
+- the current slice kept the qualified-type parameter failure leaf at
+  `parse_top_level_parameter_list` but now preserves the preceding
+  `try_parse_cpp_scoped_base_type` and `try_parse_qualified_base_type` frames
+  in the emitted summary stack
 - this iteration completed the alias/typedef leaf-local diagnostics slice
   without changing the broader speculative ranking heuristics yet
 - keep the detailed event log untouched; the current summary logic now reuses

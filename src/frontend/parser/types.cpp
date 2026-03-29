@@ -1585,6 +1585,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
 
 bool Parser::try_parse_cpp_scoped_base_type(bool already_have_base,
                                             TypeSpec* out_ts) {
+    ParseContextGuard trace(this, __func__);
     if (!out_ts || !is_cpp_mode()) return false;
 
     if (check(TokenKind::Identifier) && cur().lexeme == "typename") {
@@ -1599,6 +1600,7 @@ bool Parser::try_parse_cpp_scoped_base_type(bool already_have_base,
 }
 
 bool Parser::try_parse_qualified_base_type(TypeSpec* out_ts) {
+    ParseContextGuard trace(this, __func__);
     if (!out_ts || !is_cpp_mode()) return false;
 
     QualifiedNameRef qn;

@@ -274,7 +274,7 @@ class Parser {
                           bool committed = true);
   void note_parse_failure_message(const char* detail,
                                   bool committed = true);
-  const std::vector<std::string>& best_debug_summary_stack() const;
+  std::vector<std::string> best_debug_summary_stack() const;
   std::string format_best_parse_failure() const;
   void dump_parse_debug_trace() const;
 
