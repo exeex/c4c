@@ -1566,6 +1566,7 @@ void Parser::apply_declarator_pointer_token(TypeSpec& ts, TokenKind pointer_tok,
 }
 
 bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
+    ParseContextGuard trace(this, __func__);
     std::string dep_name;
     if (!consume_qualified_type_spelling_with_typename(
             /*require_typename=*/true,
