@@ -53,7 +53,7 @@ struct MinimalTwoArgDirectCallSlice {
 };
 
 struct MinimalConditionalReturnSlice {
-  std::string predicate;
+  c4c::codegen::lir::LirCmpPredicate predicate = c4c::codegen::lir::LirCmpPredicate::Eq;
   std::int64_t lhs_imm = 0;
   std::int64_t rhs_imm = 0;
   std::string true_label;
@@ -395,18 +395,20 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
   const auto* cast = std::get_if<LirCastOp>(&entry.insts[1]);
   const auto* cmp1 = std::get_if<LirCmpOp>(&entry.insts[2]);
   const auto* condbr = std::get_if<LirCondBr>(&entry.terminator);
+  const auto cmp0_predicate = cmp0 == nullptr ? std::nullopt : cmp0->predicate.typed();
+  const auto cmp1_predicate = cmp1 == nullptr ? std::nullopt : cmp1->predicate.typed();
   if (cmp0 == nullptr || cast == nullptr || cmp1 == nullptr || condbr == nullptr ||
-      cmp0->is_float ||
-      (cmp0->predicate != "slt" && cmp0->predicate != "sle" &&
-       cmp0->predicate != "sgt" && cmp0->predicate != "sge" &&
-       cmp0->predicate != "eq" && cmp0->predicate != "ne" &&
-       cmp0->predicate != "ult" && cmp0->predicate != "ule" &&
-       cmp0->predicate != "ugt" && cmp0->predicate != "uge") ||
+      cmp0->is_float || !cmp0_predicate.has_value() ||
+      (*cmp0_predicate != LirCmpPredicate::Slt && *cmp0_predicate != LirCmpPredicate::Sle &&
+       *cmp0_predicate != LirCmpPredicate::Sgt && *cmp0_predicate != LirCmpPredicate::Sge &&
+       *cmp0_predicate != LirCmpPredicate::Eq && *cmp0_predicate != LirCmpPredicate::Ne &&
+       *cmp0_predicate != LirCmpPredicate::Ult && *cmp0_predicate != LirCmpPredicate::Ule &&
+       *cmp0_predicate != LirCmpPredicate::Ugt && *cmp0_predicate != LirCmpPredicate::Uge) ||
       cmp0->type_str != "i32" ||
       cast->kind != LirCastKind::ZExt || cast->from_type != "i1" ||
       cast->operand != cmp0->result || cast->to_type != "i32" || cmp1->is_float ||
-      cmp1->predicate != "ne" || cmp1->type_str != "i32" || cmp1->lhs != cast->result ||
-      cmp1->rhs != "0" || condbr->cond_name != cmp1->result) {
+      cmp1_predicate != LirCmpPredicate::Ne || cmp1->type_str != "i32" ||
+      cmp1->lhs != cast->result || cmp1->rhs != "0" || condbr->cond_name != cmp1->result) {
     return std::nullopt;
   }
 
@@ -437,7 +439,7 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
     return std::nullopt;
   }
 
-  return MinimalConditionalReturnSlice{cmp0->predicate,
+  return MinimalConditionalReturnSlice{*cmp0_predicate,
                                        *lhs_imm,
                                        *rhs_imm,
                                        condbr->true_label,
@@ -1951,30 +1953,21 @@ std::string emit_minimal_conditional_return_asm(
   out << ".globl " << symbol << "\n";
   out << symbol << ":\n";
   const char* fail_branch = nullptr;
-  if (slice.predicate == "slt") {
-    fail_branch = "jge";
-  } else if (slice.predicate == "sle") {
-    fail_branch = "jg";
-  } else if (slice.predicate == "sgt") {
-    fail_branch = "jle";
-  } else if (slice.predicate == "sge") {
-    fail_branch = "jl";
-  } else if (slice.predicate == "eq") {
-    fail_branch = "jne";
-  } else if (slice.predicate == "ne") {
-    fail_branch = "je";
-  } else if (slice.predicate == "ult") {
-    fail_branch = "jae";
-  } else if (slice.predicate == "ule") {
-    fail_branch = "ja";
-  } else if (slice.predicate == "ugt") {
-    fail_branch = "jbe";
-  } else if (slice.predicate == "uge") {
-    fail_branch = "jb";
-  } else {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "conditional-return predicates outside the current compare-and-branch x86 slice");
+  switch (slice.predicate) {
+    case c4c::codegen::lir::LirCmpPredicate::Slt: fail_branch = "jge"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Sle: fail_branch = "jg"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Sgt: fail_branch = "jle"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Sge: fail_branch = "jl"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Eq: fail_branch = "jne"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Ne: fail_branch = "je"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Ult: fail_branch = "jae"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Ule: fail_branch = "ja"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Ugt: fail_branch = "jbe"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Uge: fail_branch = "jb"; break;
+    default:
+      throw c4c::backend::LirAdapterError(
+          c4c::backend::LirAdapterErrorKind::Unsupported,
+          "conditional-return predicates outside the current compare-and-branch x86 slice");
   }
   out << "  mov eax, " << slice.lhs_imm << "\n";
   out << "  cmp eax, " << slice.rhs_imm << "\n";

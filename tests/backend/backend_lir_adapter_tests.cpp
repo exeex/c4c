@@ -2166,6 +2166,17 @@ c4c::codegen::lir::LirModule make_typed_countdown_while_return_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_typed_conditional_return_module() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_conditional_return_module();
+  auto& function = module.functions.front();
+  auto& entry = function.blocks.front();
+  std::get<LirCmpOp>(entry.insts[0]).predicate = LirCmpPredicate::Slt;
+  std::get<LirCmpOp>(entry.insts[2]).predicate = LirCmpPredicate::Ne;
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_param_slot_module() {
   using namespace c4c::codegen::lir;
 
@@ -4737,6 +4748,24 @@ void test_x86_backend_renders_compare_and_branch_slice() {
                   "x86 backend should lower the else return block directly in assembly");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the conditional-return slice");
+}
+
+void test_x86_backend_renders_compare_and_branch_slice_from_typed_predicates() {
+  auto module = make_typed_conditional_return_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should lower the typed conditional-return slice to assembly");
+  expect_contains(rendered, "  mov eax, 2\n",
+                  "x86 backend should still materialize the typed compare lhs immediate");
+  expect_contains(rendered, "  cmp eax, 3\n",
+                  "x86 backend should still compare the typed predicate slice against the rhs immediate");
+  expect_contains(rendered, "  jge .Lelse\n",
+                  "x86 backend should map typed signed less-than predicates onto the same fail branch");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should keep typed compare-and-branch lowering on the asm path");
 }
 
 void test_x86_backend_renders_compare_and_branch_le_slice() {
@@ -7664,6 +7693,7 @@ int main() {
   test_x86_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice();
   test_x86_backend_cleans_up_redundant_self_move_on_call_crossing_slice();
   test_x86_backend_renders_compare_and_branch_slice();
+  test_x86_backend_renders_compare_and_branch_slice_from_typed_predicates();
   test_x86_backend_renders_compare_and_branch_le_slice();
   test_x86_backend_renders_compare_and_branch_gt_slice();
   test_x86_backend_renders_compare_and_branch_ge_slice();
