@@ -102,6 +102,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     keyword_mutable_parse
     keyword_and_parse
     keyword_or_parse
+    keyword_not_parse
     qualified_cpp_base_type_dispatch_parse
     qualified_type_spelling_shared_parse
     qualified_type_resolution_dispatch_parse
@@ -244,6 +245,24 @@ add_test(
 set_tests_properties(cpp_parse_keyword_or_operator_dump PROPERTIES
   LABELS "internal;positive_case;cpp;parse"
   PASS_REGULAR_EXPRESSION "Function\\(operator_or\\)"
+)
+
+add_test(
+  NAME cpp_lex_keyword_not_tokens
+  COMMAND c4cll --lex-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/keyword_not_parse.cpp"
+)
+set_tests_properties(cpp_lex_keyword_not_tokens PROPERTIES
+  LABELS "internal;positive_case;cpp;lex"
+  PASS_REGULAR_EXPRESSION "BANG 'not'"
+)
+
+add_test(
+  NAME cpp_parse_keyword_not_operator_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/keyword_not_parse.cpp"
+)
+set_tests_properties(cpp_parse_keyword_not_operator_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Function\\(operator_not\\)"
 )
 
 add_test(

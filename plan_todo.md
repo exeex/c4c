@@ -6,10 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 2: reserve `not` as the next narrow alternative-operator spelling
-  slice after `or`, keeping coverage scoped to lexer tokenization plus the
-  smallest unary-expression or overloaded-operator compatibility edge it
-  exposes
+- [ ] Step 2: evaluate `not_eq` as the next narrow alternative-operator
+  spelling slice after `not`, keeping coverage scoped to lexer tokenization
+  plus the smallest equality-operator compatibility edge it exposes
 
 ## Todo
 
@@ -177,10 +176,28 @@ Source Plan: plan.md
   `operator_decl_eq_parse`, and `friend_inline_operator_parse`.
 - [x] Recorded full-suite post-change status in `test_after.log`:
   `100% tests passed, 0 tests failed out of 2352`.
+- [x] Recorded fresh full-suite baseline in `test_before.log` before the
+  `not` slice: `100% tests passed, 0 tests failed out of 2352`.
+- [x] Added
+  [tests/cpp/internal/postive_case/keyword_not_parse.cpp](/workspaces/c4c/tests/cpp/internal/postive_case/keyword_not_parse.cpp),
+  registered it as a parse-only positive case, and added explicit lexer / AST
+  assertions in
+  [tests/cpp/internal/InternalTests.cmake](/workspaces/c4c/tests/cpp/internal/InternalTests.cmake)
+  to pin `BANG 'not'` output plus `Function(operator_not)` in the parse dump.
+- [x] Reserved `not` in the lexer by classifying it to the existing
+  `TokenKind::Bang`, allowing both unary `not expr` parsing and overloaded
+  `operator not` lowering through the existing logical-not token path.
+- [x] Revalidated the slice with targeted coverage:
+  `keyword_not_parse`, `cpp_lex_keyword_not_tokens`,
+  `cpp_parse_keyword_not_operator_dump`, `keyword_and_parse`,
+  `keyword_or_parse`, `operator_decl_eq_parse`, and
+  `friend_inline_operator_parse`.
+- [x] Recorded full-suite post-change status in `test_after.log`:
+  `100% tests passed, 0 tests failed out of 2355`.
 
 ## Next Intended Slice
 
-After `not`, evaluate whether `not_eq` or another remaining
+After `not_eq`, evaluate whether another remaining
 alternative-operator spelling to land without widening into a broader alias
 batch or forcing unary-expression cleanup beyond the lexer/parser boundary.
 
@@ -218,6 +235,11 @@ batch or forcing unary-expression cleanup beyond the lexer/parser boundary.
   `100% tests passed, 0 tests failed out of 2349`.
 - The `or` slice finished cleanly with monotonic full-suite results:
   `2349 -> 2352` total passing tests due to the new parse case plus explicit
+  lexer / AST assertions.
+- Fresh baseline before the `not` slice remains clean:
+  `100% tests passed, 0 tests failed out of 2352`.
+- The `not` slice finished cleanly with monotonic full-suite results:
+  `2352 -> 2355` total passing tests due to the new parse case plus explicit
   lexer / AST assertions.
 - A direct runtime regression for overloaded `operator&&` exposed a separate
   lowering issue where record-typed operands are compared as scalars in
