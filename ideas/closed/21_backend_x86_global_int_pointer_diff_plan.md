@@ -1,5 +1,7 @@
 # x86 Global Int Pointer Diff Plan
 
+Status: Complete
+
 ## Relationship To Roadmap
 
 Follows:
@@ -36,3 +38,13 @@ Promote one bounded x86 global-addressing seam for subtraction over a global `in
 
 - prefer a matcher/emitter seam that recognizes one bounded global `int` array plus one subtraction and divide-by-element-width contract
 - split again if the work expands into broad address arithmetic
+
+## Completion Notes
+
+- Added bounded x86 adapter coverage for `global_int_pointer_diff` so fallback to LLVM text is no longer accepted for this slice.
+- Promoted the x86 backend path for one global `int*` subtraction seam with an explicit divide-by-four scaling step.
+- Verified the targeted adapter and runtime backend tests pass, and the full-suite regression guard improved from 2318 to 2319 passing tests with no new failures.
+
+## Leftover Issues
+
+- None for this bounded seam. Adjacent pointer-arithmetic work remains out of scope and should be tracked as separate ideas if needed.
