@@ -1050,6 +1050,21 @@ void test_renders_return_add() {
                   "adapter renderer should emit the adapted return");
 }
 
+void test_adapter_tracks_structured_signature_contract() {
+  const auto adapted = c4c::backend::adapt_return_only_module(make_return_zero_module());
+  const auto& signature = adapted.functions.front().signature;
+  expect_true(signature.linkage == "define",
+              "adapter should preserve whether a function is defined or declared");
+  expect_true(signature.return_type == "i32",
+              "adapter should preserve the function return type separately from the name");
+  expect_true(signature.name == "main",
+              "adapter should preserve the function name separately from the signature text");
+  expect_true(signature.params.empty(),
+              "adapter should preserve the empty parameter list for the minimal return-only slice");
+  expect_true(!signature.is_vararg,
+              "adapter should keep the minimal return-only slice non-variadic");
+}
+
 void test_rejects_unsupported_instruction() {
   using namespace c4c::codegen::lir;
 
@@ -1558,6 +1573,7 @@ void test_aarch64_assembler_encoder_helper_smoke() {
 int main() {
   test_adapts_direct_return();
   test_renders_return_add();
+  test_adapter_tracks_structured_signature_contract();
   test_rejects_unsupported_instruction();
   test_aarch64_backend_scaffold_renders_supported_slice();
   test_aarch64_backend_renders_void_return_slice();

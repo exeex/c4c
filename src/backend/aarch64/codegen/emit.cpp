@@ -1,5 +1,6 @@
 #include "emit.hpp"
 
+#include "../../lir_adapter.hpp"
 #include "../../../codegen/lir/lir_printer.hpp"
 
 #include <stdexcept>
@@ -44,6 +45,11 @@ void validate_module(const c4c::codegen::lir::LirModule& module) {
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   validate_module(module);
+  try {
+    return c4c::backend::render_module(
+        c4c::backend::adapt_return_only_module(module));
+  } catch (const std::invalid_argument&) {
+  }
   return c4c::codegen::lir::print_llvm(module);
 }
 

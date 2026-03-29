@@ -9,6 +9,19 @@
 
 namespace c4c::backend {
 
+struct BackendParam {
+  std::string type_str;
+  std::string name;
+};
+
+struct BackendFunctionSignature {
+  std::string linkage;
+  std::string return_type;
+  std::string name;
+  std::vector<BackendParam> params;
+  bool is_vararg = false;
+};
+
 enum class BackendBinaryOpcode {
   Add,
 };
@@ -35,7 +48,7 @@ struct BackendBlock {
 };
 
 struct BackendFunction {
-  std::string signature_text;
+  BackendFunctionSignature signature;
   bool is_declaration = false;
   std::vector<BackendBlock> blocks;
 };

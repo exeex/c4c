@@ -1,5 +1,6 @@
 #include "lir_adapter.hpp"
 
+#include <cctype>
 #include <sstream>
 #include <stdexcept>
 
@@ -7,8 +8,137 @@ namespace c4c::backend {
 
 namespace {
 
+std::string trim(std::string text) {
+  size_t start = 0;
+  while (start < text.size() &&
+         std::isspace(static_cast<unsigned char>(text[start]))) {
+    ++start;
+  }
+  size_t end = text.size();
+  while (end > start &&
+         std::isspace(static_cast<unsigned char>(text[end - 1]))) {
+    --end;
+  }
+  return text.substr(start, end - start);
+}
+
+std::vector<std::string> split_top_level(const std::string& text, char delim) {
+  std::vector<std::string> parts;
+  size_t start = 0;
+  int paren_depth = 0;
+  int square_depth = 0;
+  int brace_depth = 0;
+  int angle_depth = 0;
+  for (size_t i = 0; i < text.size(); ++i) {
+    switch (text[i]) {
+      case '(':
+        ++paren_depth;
+        break;
+      case ')':
+        --paren_depth;
+        break;
+      case '[':
+        ++square_depth;
+        break;
+      case ']':
+        --square_depth;
+        break;
+      case '{':
+        ++brace_depth;
+        break;
+      case '}':
+        --brace_depth;
+        break;
+      case '<':
+        ++angle_depth;
+        break;
+      case '>':
+        --angle_depth;
+        break;
+      default:
+        break;
+    }
+    if (text[i] == delim && paren_depth == 0 && square_depth == 0 &&
+        brace_depth == 0 && angle_depth == 0) {
+      parts.push_back(trim(text.substr(start, i - start)));
+      start = i + 1;
+    }
+  }
+  parts.push_back(trim(text.substr(start)));
+  return parts;
+}
+
 [[noreturn]] void fail_unsupported(const std::string& detail) {
   throw std::invalid_argument("return-only LIR adapter does not support " + detail);
+}
+
+[[noreturn]] void fail_bad_signature(const std::string& signature_text) {
+  throw std::invalid_argument("return-only LIR adapter could not parse signature '" +
+                              signature_text + "'");
+}
+
+BackendFunctionSignature parse_signature(const std::string& signature_text) {
+  const std::string line = trim(signature_text);
+  const size_t first_space = line.find(' ');
+  const size_t at_pos = line.find('@');
+  const size_t open_paren = line.find('(', at_pos == std::string::npos ? 0 : at_pos);
+  const size_t close_paren = line.rfind(')');
+  if (first_space == std::string::npos || at_pos == std::string::npos ||
+      open_paren == std::string::npos || close_paren == std::string::npos ||
+      first_space >= at_pos || open_paren >= close_paren) {
+    fail_bad_signature(signature_text);
+  }
+
+  BackendFunctionSignature signature;
+  signature.linkage = trim(line.substr(0, first_space));
+  signature.return_type = trim(line.substr(first_space + 1, at_pos - first_space - 1));
+  signature.name = line.substr(at_pos + 1, open_paren - at_pos - 1);
+  if (signature.linkage.empty() || signature.return_type.empty() ||
+      signature.name.empty()) {
+    fail_bad_signature(signature_text);
+  }
+
+  const std::string params_text =
+      trim(line.substr(open_paren + 1, close_paren - open_paren - 1));
+  if (!params_text.empty()) {
+    for (const std::string& part : split_top_level(params_text, ',')) {
+      if (part.empty()) continue;
+      if (part == "...") {
+        signature.is_vararg = true;
+        continue;
+      }
+      BackendParam param;
+      const size_t last_space = part.rfind(' ');
+      if (last_space == std::string::npos) {
+        param.type_str = part;
+      } else {
+        param.type_str = trim(part.substr(0, last_space));
+        param.name = trim(part.substr(last_space + 1));
+      }
+      if (param.type_str.empty()) fail_bad_signature(signature_text);
+      signature.params.push_back(std::move(param));
+    }
+  }
+
+  return signature;
+}
+
+void render_signature(std::ostringstream& out,
+                      const BackendFunctionSignature& signature) {
+  out << signature.linkage << " " << signature.return_type << " @"
+      << signature.name << "(";
+  bool first = true;
+  for (const auto& param : signature.params) {
+    if (!first) out << ", ";
+    first = false;
+    out << param.type_str;
+    if (!param.name.empty()) out << " " << param.name;
+  }
+  if (signature.is_vararg) {
+    if (!first) out << ", ";
+    out << "...";
+  }
+  out << ")\n";
 }
 
 BackendBinaryInst adapt_inst(const c4c::codegen::lir::LirInst& inst) {
@@ -32,7 +162,7 @@ BackendReturn adapt_terminator(const c4c::codegen::lir::LirTerminator& terminato
 
 BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function) {
   BackendFunction out;
-  out.signature_text = function.signature_text;
+  out.signature = parse_signature(function.signature_text);
   out.is_declaration = function.is_declaration;
   if (function.is_declaration) {
     return out;
@@ -67,7 +197,7 @@ void render_inst(std::ostringstream& out, const BackendInst& inst) {
 }
 
 void render_function(std::ostringstream& out, const BackendFunction& function) {
-  out << function.signature_text;
+  render_signature(out, function.signature);
   if (function.is_declaration) return;
 
   out << "{\n";
