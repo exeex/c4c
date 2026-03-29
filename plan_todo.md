@@ -6,7 +6,7 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 3: Promote `two_arg_second_local_arg` as the next narrow parameter-passing follow-on case
+- [ ] Step 3: Promote `two_arg_second_local_rewrite` as the next narrow two-local follow-on case if the same bounded two-argument direct-call seam still holds
 
 ## Todo
 
@@ -20,6 +20,7 @@ Source Plan: plan.md
 - [x] Promote `param_slot` onto the x86 backend-owned asm path with a narrow single-argument modified-parameter helper slice.
 - [x] Re-run the next bounded parameter slice against `two_arg_helper` before widening to local-arg rewrites.
 - [x] Promote `two_arg_local_arg` onto the x86 backend-owned asm path with a narrow first-local/two-argument direct-call slice.
+- [x] Promote `two_arg_second_local_arg` onto the x86 backend-owned asm path with the same single-local/two-argument direct-call slice when the normalized load feeds the second call operand.
 
 ## Completed
 
@@ -28,10 +29,11 @@ Source Plan: plan.md
 - [x] Promoted `tests/c/internal/backend_case/param_slot.c` onto the x86 backend-owned asm path with a narrow single-argument modified-parameter helper slice.
 - [x] Promoted `tests/c/internal/backend_case/two_arg_helper.c` onto the x86 backend-owned asm path with a narrow register-only two-argument direct-call helper slice.
 - [x] Promoted `tests/c/internal/backend_case/two_arg_local_arg.c` onto the x86 backend-owned asm path with a narrow first-local/two-argument direct-call helper slice.
+- [x] Promoted `tests/c/internal/backend_case/two_arg_second_local_arg.c` onto the x86 backend-owned asm path with the same single-local/two-argument direct-call helper slice when the local load is the second argument.
 
 ## Next Intended Slice
 
-- Promote `two_arg_second_local_arg` next, then widen only to the smallest adjacent two-local rewrite cases if the same bounded two-argument direct-call parameter seam still holds.
+- Promote `two_arg_second_local_rewrite` next, then widen only to the smallest adjacent first-local and both-local rewrite cases if the same bounded two-argument direct-call parameter seam still holds.
 
 ## Blockers
 
@@ -49,3 +51,5 @@ Source Plan: plan.md
 - Two-arg-helper validation: `ctest -R '^backend_runtime_two_arg_helper$|^backend_lir_adapter_tests$' --output-on-failure` passed, and the full suite improved from `17` failures out of `2339` tests in `test_before.log` to `16` failures out of `2339` tests in `test_after.log`, with `backend_runtime_two_arg_helper` resolved and no new failing tests according to the regression guard.
 - Two-arg-local-arg seam: `src/backend/x86/codegen/emit.cpp` now accepts the bounded `main` shape that stores one immediate into a single local slot, reloads it, and passes that value as the first `add_pair(i32, i32)` argument while keeping the second argument immediate on the existing minimal two-register helper path.
 - Two-arg-local-arg validation: `ctest -R '^backend_runtime_two_arg_(helper|local_arg)$|^backend_lir_adapter_tests$' --output-on-failure` passed, and the full suite improved from `19` failures out of `2339` tests in `test_fail_before.log` to `15` failures out of `2339` tests in `test_fail_after.log`, resolving `backend_runtime_call_helper`, `backend_runtime_param_slot`, `backend_runtime_two_arg_helper`, and `backend_runtime_two_arg_local_arg` with no new failing tests according to the regression guard.
+- Two-arg-second-local-arg seam: `src/backend/x86/codegen/emit.cpp` now accepts the same bounded single-local store/load pattern when the normalized loaded value feeds the second `add_pair(i32, i32)` call operand, keeping the first operand immediate on the existing minimal two-register helper path.
+- Two-arg-second-local-arg validation: `ctest -R '^backend_runtime_two_arg_(helper|local_arg|second_local_arg)$|^backend_lir_adapter_tests$' --output-on-failure` passed. The patched main workspace full suite now reports `14` failures out of `2339` tests in `test_fail_after.log`, resolving `backend_runtime_two_arg_second_local_arg`; the regression guard also reported no newly failing tests versus the clean baseline log.

@@ -1374,12 +1374,22 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
   const auto lhs_arg = strip_typed_operand_prefix(call->args_str.substr(0, separator), "i32");
   const auto rhs_arg =
       strip_typed_operand_prefix(call->args_str.substr(separator + 2), "i32");
-  if (!lhs_arg.has_value() || !rhs_arg.has_value() || *lhs_arg != load->result) {
+  if (!lhs_arg.has_value() || !rhs_arg.has_value()) {
     return std::nullopt;
   }
 
-  const auto lhs_call_arg_imm = parse_i64(store->val);
-  const auto rhs_call_arg_imm = parse_i64(*rhs_arg);
+  std::optional<std::int64_t> lhs_call_arg_imm;
+  std::optional<std::int64_t> rhs_call_arg_imm;
+  if (*lhs_arg == load->result) {
+    lhs_call_arg_imm = parse_i64(store->val);
+    rhs_call_arg_imm = parse_i64(*rhs_arg);
+  } else if (*rhs_arg == load->result) {
+    lhs_call_arg_imm = parse_i64(*lhs_arg);
+    rhs_call_arg_imm = parse_i64(store->val);
+  } else {
+    return std::nullopt;
+  }
+
   if (!lhs_call_arg_imm.has_value() || !rhs_call_arg_imm.has_value()) {
     return std::nullopt;
   }
