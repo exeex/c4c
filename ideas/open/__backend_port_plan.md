@@ -49,14 +49,9 @@ All listed child ideas above are closed as of 2026-03-29.
 
 ## Next Child Idea To Activate
 
-- `31_backend_x86_runtime_case_convergence_plan.md`
-- This is the currently staged backend child for the remaining bounded x86 gap:
-  promoting more real runtime `.c` cases from LLVM-text fallback to backend-owned asm.
-- The first explicit target is `tests/c/internal/backend_case/call_helper.c`,
-  followed by bounded parameter-passing and nearby compare/local/global slices.
-- `30_backend_rv64_archive_linking_plan.md`
-- This remains a separate staged RV64 child for the bounded archive-handling
-  gap in the first helper-call static-link path.
+- No narrower child idea is currently staged in `ideas/open/`.
+- `31_backend_x86_runtime_case_convergence_plan.md` is now closed after the bounded x86 runtime-case convergence slice reached full-suite green on 2026-03-29.
+- Do not activate this umbrella directly for implementation; write or stage the next bounded backend child idea first.
 
 ## 2026-03-29 Audit Note
 

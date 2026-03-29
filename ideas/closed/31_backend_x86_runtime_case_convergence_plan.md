@@ -1,5 +1,8 @@
 # x86 Runtime Case Convergence Plan
 
+Status: Closed
+Completed: 2026-03-29
+
 ## Relationship To Roadmap
 
 Umbrella source: `ideas/open/__backend_port_plan.md`
@@ -19,18 +22,36 @@ Should precede:
 
 Drive more real x86 backend runtime cases from partial asm coverage to stable backend-owned asm execution, one bounded testcase family at a time, without widening into assembler/linker parity work.
 
-## Current Verified State
+## Final Verified State
 
-As of 2026-03-29, the x86 backend already passes a bounded set of real `.c` cases through the backend-owned asm path:
+As of 2026-03-29, the x86 backend passes the bounded runtime convergence set for this idea through the backend-owned asm path:
 
 - `tests/c/internal/backend_case/return_zero.c`
 - `tests/c/internal/backend_case/return_add.c`
 - `tests/c/internal/backend_case/local_array.c`
+- `tests/c/internal/backend_case/call_helper.c`
+- `tests/c/internal/backend_case/param_slot.c`
+- `tests/c/internal/backend_case/two_arg_helper.c`
+- `tests/c/internal/backend_case/two_arg_local_arg.c`
+- `tests/c/internal/backend_case/two_arg_second_local_arg.c`
+- `tests/c/internal/backend_case/two_arg_second_local_rewrite.c`
+- `tests/c/internal/backend_case/two_arg_both_local_arg.c`
+- `tests/c/internal/backend_case/two_arg_both_local_first_rewrite.c`
+- `tests/c/internal/backend_case/two_arg_both_local_second_rewrite.c`
+- `tests/c/internal/backend_case/two_arg_both_local_double_rewrite.c`
+- `tests/c/internal/backend_case/branch_if_eq.c`
+- `tests/c/internal/backend_case/branch_if_ne.c`
+- `tests/c/internal/backend_case/branch_if_uge.c`
+- `tests/c/internal/backend_case/branch_if_ugt.c`
+- `tests/c/internal/backend_case/branch_if_ule.c`
+- `tests/c/internal/backend_case/branch_if_ult.c`
+- `tests/c/internal/backend_case/local_arg_call.c`
+- `tests/c/internal/backend_case/global_load.c`
 
-Focused validation also shows that some adjacent x86 seams are still incomplete:
+Full-suite validation for the closing patch:
 
-- `tests/c/internal/backend_case/call_helper.c` still falls back to LLVM IR instead of staying on the backend-owned asm path
-- the failure mode is structural and easy to detect: the runtime harness requests `BACKEND_OUTPUT_KIND=asm`, but the compiler still emits LLVM text for that case
+- `ctest --test-dir build -j --output-on-failure > test_fail_after.log` reported `2339/2339` passing
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log` passed with no newly failing tests and all six previously failing runtime cases resolved
 
 ## Why This Is Separate
 
@@ -83,3 +104,8 @@ Focused validation also shows that some adjacent x86 seams are still incomplete:
 ## Good First Patch
 
 Make `tests/c/internal/backend_case/call_helper.c` stay on the x86 backend-owned asm path end to end, then prove it with both backend adapter assertions and the runtime harness.
+
+## Closure Notes
+
+- Closed after the bounded helper-call, parameter-passing, compare-and-branch, local-slot, and narrow scalar global-load runtime seams all moved onto backend-owned x86 asm without widening into broader assembler/linker work.
+- No leftover blockers were recorded for this runbook at closure time.

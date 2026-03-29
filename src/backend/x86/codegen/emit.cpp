@@ -34,6 +34,12 @@ struct MinimalDirectCallSlice {
   std::int64_t callee_imm = 0;
 };
 
+struct MinimalDirectCallAddImmSlice {
+  std::string callee_name;
+  std::int64_t arg_imm = 0;
+  std::int64_t add_imm = 0;
+};
+
 struct MinimalParamSlotSlice {
   std::string callee_name;
   std::int64_t call_arg_imm = 0;
@@ -1011,6 +1017,49 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_global_int_pointer_rou
   return MinimalScalarGlobalLoadSlice{global.name, *init_imm};
 }
 
+std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || module.globals.size() != 1 ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (global.is_internal || global.is_const || global.is_extern_decl ||
+      global.linkage_vis != "" || global.qualifier != "global " ||
+      global.llvm_type != "i32") {
+    return std::nullopt;
+  }
+  const auto init_imm = parse_i64(global.init_text);
+  if (!init_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+      function.entry.value != 0 || function.blocks.size() != 1 ||
+      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (entry.label != "entry" || entry.insts.size() != 1 || ret == nullptr ||
+      !ret->value_str.has_value() || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* load = std::get_if<LirLoadOp>(&entry.insts.front());
+  if (load == nullptr || load->type_str != "i32" ||
+      load->ptr != ("@" + global.name) || *ret->value_str != load->result) {
+    return std::nullopt;
+  }
+
+  return MinimalScalarGlobalLoadSlice{global.name, *init_imm};
+}
+
 std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -1203,6 +1252,79 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
   if (!callee_imm.has_value()) return std::nullopt;
 
   return MinimalDirectCallSlice{callee_name, *callee_imm};
+}
+
+std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_slice(
+    const c4c::backend::BackendModule& module) {
+  if (module.functions.size() != 2) return std::nullopt;
+
+  const auto* main_fn = find_function(module, "main");
+  if (main_fn == nullptr || main_fn->is_declaration ||
+      main_fn->signature.linkage != "define" ||
+      main_fn->signature.return_type != "i32" ||
+      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
+      main_fn->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& main_block = main_fn->blocks.front();
+  if (main_block.label != "entry" || main_block.insts.size() != 1 ||
+      !main_block.terminator.value.has_value() ||
+      main_block.terminator.type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
+  if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
+      *main_block.terminator.value != call->result ||
+      call->callee_type_suffix != "(i32)" || call->callee.empty() ||
+      call->callee.front() != '@') {
+    return std::nullopt;
+  }
+
+  const std::string_view args_str = call->args_str;
+  if (args_str.size() < 5 || args_str.substr(0, 4) != "i32 ") {
+    return std::nullopt;
+  }
+  const auto arg_imm = parse_i64(args_str.substr(4));
+  if (!arg_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  const std::string callee_name = call->callee.substr(1);
+  if (callee_name == "main") return std::nullopt;
+
+  const auto* callee_fn = find_function(module, callee_name);
+  if (callee_fn == nullptr || callee_fn->is_declaration ||
+      callee_fn->signature.linkage != "define" ||
+      callee_fn->signature.return_type != "i32" ||
+      callee_fn->signature.params.size() != 1 ||
+      callee_fn->signature.params.front().type_str != "i32" ||
+      callee_fn->signature.params.front().name.empty() ||
+      callee_fn->signature.is_vararg || callee_fn->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& callee_block = callee_fn->blocks.front();
+  if (callee_block.label != "entry" || callee_block.insts.size() != 1 ||
+      !callee_block.terminator.value.has_value() ||
+      callee_block.terminator.type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* add = std::get_if<c4c::backend::BackendBinaryInst>(&callee_block.insts.front());
+  if (add == nullptr || add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
+      add->type_str != "i32" || *callee_block.terminator.value != add->result ||
+      add->lhs != callee_fn->signature.params.front().name) {
+    return std::nullopt;
+  }
+
+  const auto add_imm = parse_i64(add->rhs);
+  if (!add_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return MinimalDirectCallAddImmSlice{callee_name, *arg_imm, *add_imm};
 }
 
 std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
@@ -1617,6 +1739,35 @@ std::string emit_minimal_direct_call_asm(const c4c::backend::BackendModule& modu
   return out.str();
 }
 
+std::string emit_minimal_direct_call_add_imm_asm(
+    const c4c::backend::BackendModule& module,
+    const MinimalDirectCallAddImmSlice& slice) {
+  if (slice.arg_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.arg_imm > std::numeric_limits<std::int32_t>::max() ||
+      slice.add_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.add_imm > std::numeric_limits<std::int32_t>::max()) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "single-argument direct-call immediates outside the minimal x86 slice range");
+  }
+
+  const std::string helper_symbol = asm_symbol_name(module, slice.callee_name);
+  const std::string main_symbol = asm_symbol_name(module, "main");
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  emit_function_prelude(out, module, helper_symbol, false);
+  out << "  mov eax, edi\n"
+      << "  add eax, " << slice.add_imm << "\n"
+      << "  ret\n";
+  emit_function_prelude(out, module, main_symbol, true);
+  out << "  mov edi, " << slice.arg_imm << "\n"
+      << "  call " << helper_symbol << "\n"
+      << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_param_slot_asm(const c4c::backend::BackendModule& module,
                                         const MinimalParamSlotSlice& slice) {
   if (slice.call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
@@ -2015,6 +2166,12 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       scaffold_module.target_triple = module.target_triple;
       return emit_minimal_scalar_global_load_asm(scaffold_module, *slice);
     }
+    if (const auto slice = parse_minimal_scalar_global_load_slice(module);
+        slice.has_value()) {
+      c4c::backend::BackendModule scaffold_module;
+      scaffold_module.target_triple = module.target_triple;
+      return emit_minimal_scalar_global_load_asm(scaffold_module, *slice);
+    }
     if (const auto slice = parse_minimal_string_literal_char_slice(module);
         slice.has_value()) {
       return emit_minimal_string_literal_char_asm(module, *slice);
@@ -2029,6 +2186,10 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
     if (const auto slice = parse_minimal_direct_call_slice(adapted);
         slice.has_value()) {
       return emit_minimal_direct_call_asm(adapted, *slice);
+    }
+    if (const auto slice = parse_minimal_direct_call_add_imm_slice(adapted);
+        slice.has_value()) {
+      return emit_minimal_direct_call_add_imm_asm(adapted, *slice);
     }
     if (const auto slice = parse_minimal_call_crossing_direct_call_slice(adapted);
         slice.has_value()) {
