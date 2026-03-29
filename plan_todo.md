@@ -58,6 +58,16 @@ Last Updated: 2026-03-29
 - future static_assert follow-up if needed:
   template-dependent checks inside deferred template bodies are still not fully
   routed through compile-time instantiation / engine-owned evaluation
+- current suspicion:
+  `iterator_concepts.h` is still leaving parser state corrupted after the
+  header finishes; this no longer looks like only a missing concept-name lookup
+  and more like a top-level / record-body recovery leak that causes the next
+  struct or template declaration to be swallowed or partially reinterpreted
+- next step:
+  instrument and reduce the exact `iterator_concepts.h` tail declaration that
+  causes the following top-level `struct hash_base` to disappear, then fix the
+  record-body or top-level handoff so post-header declarations stay inside the
+  correct scope
 
 ## Notes
 
@@ -81,6 +91,19 @@ Last Updated: 2026-03-29
 - re-ran `tests/cpp/std/std_vector_simple.cpp` and confirmed the
   `stl_iterator.h` `else` frontier is gone; the first remaining error is back at
   `/usr/include/c++/14/bits/functional_hash.h:54`
+- reduced the new `functional_hash.h:54` front to
+  `#include <bits/iterator_concepts.h>` followed by a templated `hash_base`
+  with two member typedefs; the second typedef was leaking to top level
+- replaced `concept` declaration skip-to-`;` recovery with a structured
+  `concept name = constraint-expression ;` parse that reuses the existing
+  expression / requires-expression parser
+- started splitting concept names out from typedef/type lookup by adding a
+  dedicated parser-side concept symbol registry (`concept_names_`) with
+  namespace-aware lookup helpers
+- current evidence suggests the remaining `iterator_concepts.h` interaction is
+  not only a concept-name lookup issue: after that header, a following
+  top-level struct/template can disappear or have only its later members leak to
+  top level, pointing to a record-body or top-level recovery state leak
 
 ## Blockers
 

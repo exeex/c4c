@@ -765,6 +765,21 @@ std::string Parser::resolve_visible_type_name(const std::string& name) const {
     return name;
 }
 
+std::string Parser::resolve_visible_concept_name(const std::string& name) const {
+    std::string resolved;
+    for (int i = static_cast<int>(namespace_stack_.size()) - 1; i >= 0; --i) {
+        const int context_id = namespace_stack_[i];
+        if (lookup_concept_in_context(context_id, name, &resolved)) return resolved;
+    }
+    return name;
+}
+
+bool Parser::is_concept_name(const std::string& name) const {
+    if (name.empty()) return false;
+    if (concept_names_.count(name) > 0) return true;
+    return concept_names_.count(resolve_visible_concept_name(name)) > 0;
+}
+
 void Parser::refresh_current_namespace_bridge() {
     current_namespace_.clear();
     for (size_t i = 1; i < namespace_stack_.size(); ++i) {
@@ -926,6 +941,34 @@ bool Parser::lookup_type_in_context(int context_id, const std::string& name,
     if (using_it != using_namespace_contexts_.end()) {
         for (int imported_id : using_it->second) {
             if (lookup_type_in_context(imported_id, name, resolved)) return true;
+        }
+    }
+    return false;
+}
+
+bool Parser::lookup_concept_in_context(int context_id, const std::string& name,
+                                       std::string* resolved) const {
+    const std::string candidate = canonical_name_in_context(context_id, name);
+    if (concept_names_.count(candidate)) {
+        *resolved = candidate;
+        return true;
+    }
+    if (context_id == 0 && concept_names_.count(name)) {
+        *resolved = name;
+        return true;
+    }
+
+    auto anon_it = anonymous_namespace_children_.find(context_id);
+    if (anon_it != anonymous_namespace_children_.end()) {
+        for (int anon_id : anon_it->second) {
+            if (lookup_concept_in_context(anon_id, name, resolved)) return true;
+        }
+    }
+
+    auto using_it = using_namespace_contexts_.find(context_id);
+    if (using_it != using_namespace_contexts_.end()) {
+        for (int imported_id : using_it->second) {
+            if (lookup_concept_in_context(imported_id, name, resolved)) return true;
         }
     }
     return false;

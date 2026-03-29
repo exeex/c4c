@@ -94,6 +94,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     friend_inline_operator_parse
     if_condition_decl_parse
     free_function_record_ref_param_parse
+    iterator_concepts_following_hash_base_parse
     cpp20_requires_clause_parse
     cpp20_requires_clause_struct_decl_parse
     cpp20_requires_concept_id_member_ctor_parse

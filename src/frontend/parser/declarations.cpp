@@ -175,32 +175,23 @@ bool try_skip_cpp_concept_declaration(Parser& parser) {
         return false;
     }
 
-    int paren_depth = 0;
-    int brace_depth = 0;
-    int bracket_depth = 0;
-    while (!parser.at_end()) {
-        if (parser.check(TokenKind::Semi) && paren_depth == 0 &&
-            brace_depth == 0 && bracket_depth == 0) {
-            parser.consume();
-            return true;
-        }
-
-        if (parser.check(TokenKind::LParen)) {
-            ++paren_depth;
-        } else if (parser.check(TokenKind::RParen)) {
-            if (paren_depth > 0) --paren_depth;
-        } else if (parser.check(TokenKind::LBrace)) {
-            ++brace_depth;
-        } else if (parser.check(TokenKind::RBrace)) {
-            if (brace_depth > 0) --brace_depth;
-        } else if (parser.check(TokenKind::LBracket)) {
-            ++bracket_depth;
-        } else if (parser.check(TokenKind::RBracket)) {
-            if (bracket_depth > 0) --bracket_depth;
-        }
-
-        parser.consume();
+    parser.consume();  // concept
+    if (!parser.check(TokenKind::Identifier)) {
+        throw std::runtime_error("expected concept name");
     }
+    const std::string concept_name = parser.cur().lexeme;
+    parser.consume();  // concept identifier
+    parser.expect(TokenKind::Assign);
+
+    // Reuse the existing expression / requires-expression parser for the
+    // constraint-expression on the right-hand side of `concept Name = ...;`.
+    (void)parser.parse_expr();
+    parser.expect(TokenKind::Semi);
+    parser.concept_names_.insert(concept_name);
+    const std::string qualified =
+        parser.canonical_name_in_context(parser.current_namespace_context_id(),
+                                         concept_name);
+    parser.concept_names_.insert(qualified);
     return true;
 }
 

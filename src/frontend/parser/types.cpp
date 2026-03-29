@@ -2536,6 +2536,7 @@ bool Parser::is_type_start() const {
     if (k == TokenKind::KwStaticAssert) return false;
     if (k == TokenKind::KwTypename) return true;
     if (k == TokenKind::Identifier) {
+        if (is_concept_name(cur().lexeme)) return false;
         if (is_template_scope_type_param(cur().lexeme)) return true;
         if (is_typedef_name(cur().lexeme)) return true;
         if (typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0) return true;

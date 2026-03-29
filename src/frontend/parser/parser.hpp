@@ -145,6 +145,9 @@ class Parser {
   // Maps typedef name → resolved TypeSpec (populated when registering typedefs)
   // so subsequent uses of the typedef name resolve to the actual struct/base type.
   std::unordered_map<std::string, TypeSpec> typedef_types_;
+  // Declared concept names visible to the parser. Kept separate from typedef
+  // tracking so concept-ids do not get mistaken for type names.
+  std::set<std::string> concept_names_;
   // Phase C: fn_ptr parameter info for typedef'd function pointer types.
   // Stores (fn_ptr_params, n_fn_ptr_params, fn_ptr_variadic) for typedefs
   // whose TypeSpec has is_fn_ptr=true, so the info can be propagated to
@@ -319,10 +322,14 @@ class Parser {
                                std::string* resolved) const;
   bool lookup_type_in_context(int context_id, const std::string& name,
                               std::string* resolved) const;
+  bool lookup_concept_in_context(int context_id, const std::string& name,
+                                 std::string* resolved) const;
   std::string qualify_name(const std::string& name) const;
   const char* qualify_name_arena(const char* name);
   std::string resolve_visible_value_name(const std::string& name) const;
   std::string resolve_visible_type_name(const std::string& name) const;
+  std::string resolve_visible_concept_name(const std::string& name) const;
+  bool is_concept_name(const std::string& name) const;
   bool peek_qualified_name(QualifiedNameRef* out, bool allow_global = true) const;
   QualifiedNameRef parse_qualified_name(bool allow_global = true);
   void apply_qualified_name(Node* node, const QualifiedNameRef& qn,
