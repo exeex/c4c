@@ -1,126 +1,127 @@
-# Struct Return Function-Pointer IR Validation Runbook
+# x86 Local Memory Addressing Runbook
 
 Status: Active
-Source Idea: ideas/open/25_frontend_struct_return_function_pointer_ir_plan.md
-Activated from: ideas/open/25_frontend_struct_return_function_pointer_ir_plan.md
+Source Idea: ideas/open/17_backend_x86_local_memory_addressing_plan.md
+Activated from: ideas/open/17_backend_x86_local_memory_addressing_plan.md
 
 ## Purpose
 
-Fix the narrow LLVM IR mismatch for indirect struct-return function-pointer calls without widening into general struct ABI or unrelated x86 backend work.
+Promote the first bounded x86 local-memory slice through the asm backend by making local stack-slot addressing explicit and test-backed instead of falling back or relying on ad hoc lowering.
 
 ## Goal
 
-Make the emitted LLVM IR for the `struct-ret-1.c` indirect call match the callable type and byval argument ABI shape that Clang accepts on the host triple.
+Make one small local-array runtime case pass through the x86 asm path with a backend-owned stack-base plus indexed-address lowering seam.
 
 ## Core Rule
 
-Keep this run focused on one reproducer: the struct-return indirect-call type mismatch in `llvm_gcc_c_torture_src_struct_ret_1_c`. Do not broaden into general function-pointer cleanup, unrelated struct ABI work, or backend assembler/linker changes.
+Keep this run focused on one explicit local-memory addressing seam. Do not widen into general pointer arithmetic, global-address formation, or unrelated assembler/linker work.
 
 ## Read First
 
-- [ideas/open/25_frontend_struct_return_function_pointer_ir_plan.md](/workspaces/c4c/ideas/open/25_frontend_struct_return_function_pointer_ir_plan.md)
+- [ideas/open/17_backend_x86_local_memory_addressing_plan.md](/workspaces/c4c/ideas/open/17_backend_x86_local_memory_addressing_plan.md)
 - [prompts/AGENT_PROMPT_EXECUTE_PLAN.md](/workspaces/c4c/prompts/AGENT_PROMPT_EXECUTE_PLAN.md)
-- `tests/c/external/gcc_torture/src/struct-ret-1.c`
+- `tests/c/internal/backend_case/local_array.c`
+- `tests/backend/backend_lir_adapter_tests.cpp`
 
 ## Current Targets
 
-- reproduce the invalid indirect-call LLVM IR on the current host triple
-- identify the lowering seam that diverges between direct and indirect struct-return calls
-- tighten the narrowest test coverage around the callable type and byval argument ABI shape
-- fix only the mismatched IR construction needed for the reproducer
+- capture the current LIR and asm-path failure for `tests/c/internal/backend_case/local_array.c`
+- identify the narrowest backend-owned representation for stack-local base-address plus indexed local access
+- add or tighten targeted backend adapter coverage before implementation
+- promote one runtime local-array case through `BACKEND_OUTPUT_KIND=asm`
 
 ## Non-Goals
 
-- unrelated x86 compare-and-branch or regalloc work
-- general struct ABI cleanup outside the reproducer
-- broad function-pointer lowering redesign
+- global-address materialization
+- general pointer arithmetic lowering
+- aggregate or member-addressing expansion beyond what the first local-array slice needs
 - built-in assembler or linker work
 
 ## Working Model
 
-- the failing case already proves direct struct-return calls can carry the expected byval pointer shape
-- the bug is likely in indirect-call lowering, where the callee type or argument types drift from the direct-call form
-- Clang IR for the same source is the behavioral reference for both the indirect callable type and the call-site argument annotations
+- the remaining failing x86 runtime cases already show local-memory addressing is a distinct seam from the closed struct-return function-pointer fix
+- `local_array.c` is the narrowest current runtime target because it requires explicit stack-local address formation without immediately demanding mixed global/local behavior
+- the backend contract should stay explicit: recognize or carry one stack-base plus indexed element access shape instead of collapsing the work into generic fallback logic
 
 ## Execution Rules
 
 - update `plan_todo.md` before changing the active slice
-- add or tighten the narrowest reproducer test before implementation
-- capture both `build/c4cll` output and Clang `-S -emit-llvm -O0` output before changing lowering
-- prefer a localized fix at the call-lowering seam over changing unrelated type construction or ABI helpers
-- if execution reveals a broader struct ABI initiative, record it as a separate idea instead of widening this plan
+- capture current LIR or emitted asm for the exact runtime case before changing backend code
+- add the narrowest backend adapter or contract test before implementation
+- keep the first implementation local to x86 stack-slot plus indexed-address lowering
+- if execution uncovers a broader pointer or aggregate initiative, record it as a separate idea instead of widening this plan
 
 ## Ordered Steps
 
-### Step 1: Capture The Exact Reproducer
+### Step 1: Capture The Local-Array Failure
 
-Goal: pin down the current invalid IR and the exact mismatch against Clang.
+Goal: pin down the current x86 asm-path behavior for the smallest local-memory case.
 
 Primary target:
 
-- `tests/c/external/gcc_torture/src/struct-ret-1.c`
+- `tests/c/internal/backend_case/local_array.c`
 
 Actions:
 
-- rebuild the tree and reproduce the failing case with `build/c4cll`
-- capture the emitted LLVM IR for the failing indirect call
-- capture the matching Clang LLVM IR on the host triple
-- record the exact callable-type and argument-shape mismatch in `plan_todo.md`
+- rebuild and run the current targeted backend runtime case
+- capture the emitted LIR or asm-path failure details for `local_array.c`
+- identify the exact local-addressing operations the backend does not yet own
+- record the observed failure mode in `plan_todo.md`
 
 Completion check:
 
-- the failing indirect call is reproduced outside the full suite
-- the direct-versus-indirect type mismatch is written down concretely
+- the failing local-array case is reproduced outside the full suite
+- the missing stack-base/indexed-address seam is written down concretely
 
-### Step 2: Tighten The Narrowest Validation
+### Step 2: Tighten Backend Validation
 
-Goal: add focused coverage that fails specifically for this mismatch before the fix lands.
+Goal: add focused coverage that rejects fallback or missing lowering for this exact local-memory seam.
 
 Primary target:
 
-- the smallest backend/frontend validation surface that can assert the indirect-call LLVM IR shape
+- `tests/backend/backend_lir_adapter_tests.cpp`
 
 Actions:
 
-- identify the narrowest existing test harness for emitted LLVM IR around indirect calls or ABI-sensitive calls
-- add or tighten one reproducer test that rejects the current invalid indirect-call form
-- keep the test targeted at callable type and byval argument shape rather than broad output snapshots
+- identify the narrowest adapter, contract, or backend test surface for local stack-slot addressing
+- add or tighten one targeted test around stack-base materialization plus indexed local access
+- keep the test local to the chosen runtime slice instead of snapshotting unrelated backend output
 
 Completion check:
 
 - one focused test fails before the implementation change
-- the test describes the expected indirect struct-return call shape clearly
+- the test makes the expected local-memory seam explicit
 
-### Step 3: Fix Indirect Struct-Return Call Lowering
+### Step 3: Implement The Local-Memory Seam
 
-Goal: make the indirect call use the same callable type and ABI-relevant argument shape as the accepted direct-call path.
+Goal: lower the bounded local-array case through the x86 asm backend with explicit backend-owned addressing.
 
 Primary target:
 
-- the function-pointer call lowering seam that builds the callee type and indirect call operands
+- the x86 backend seam responsible for local stack-slot addressing and indexed local access
 
 Actions:
 
-- trace the direct and indirect struct-return call paths to the first point where their type construction diverges
-- implement the smallest fix that preserves the existing direct-call behavior
-- avoid unrelated ABI or type-system refactors
+- trace the local-array runtime case to the first backend-owned gap
+- implement the smallest stack-base plus indexed-address lowering needed for the target case
+- avoid unrelated backend or ABI refactors
 
 Completion check:
 
-- the reproducer emits LLVM IR that Clang accepts
-- the focused test passes without broad unrelated diffs
+- `local_array.c` passes through `BACKEND_OUTPUT_KIND=asm`
+- the focused backend test passes without broad unrelated diffs
 
 ### Step 4: Validate And Record Follow-On Work
 
-Goal: prove the fix is monotonic and leave clean execution state.
+Goal: confirm the slice is monotonic and leave clean execution state.
 
 Actions:
 
-- rerun the focused reproducer and nearby call-lowering tests
+- rerun the targeted backend tests and the promoted runtime case
 - rerun the full configured regression suite
-- update `plan_todo.md` with completed steps, any remaining blockers, and whether this idea is ready to close
+- update `plan_todo.md` with completed steps, remaining blockers, and whether the idea is ready to close
 
 Completion check:
 
 - targeted and full-suite validation are recorded
-- any broader struct ABI follow-on work is explicitly separated
+- any broader local-memory or pointer-lowering follow-on work is explicitly separated

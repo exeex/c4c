@@ -1,29 +1,28 @@
-# Struct Return Function-Pointer IR Validation Todo
+# x86 Local Memory Addressing Todo
 
 Status: Active
-Source Idea: ideas/open/25_frontend_struct_return_function_pointer_ir_plan.md
+Source Idea: ideas/open/17_backend_x86_local_memory_addressing_plan.md
 Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 1: rebuild the reproducer for `tests/c/external/gcc_torture/src/struct-ret-1.c`, capture `build/c4cll` versus Clang LLVM IR, and record the exact indirect-call callable-type/byval mismatch
+- [ ] Step 1: reproduce the x86 asm-path failure for `tests/c/internal/backend_case/local_array.c`, capture the missing stack-base/indexed-address seam, and record the narrowest backend test surface to use next
 
 ## Planned Queue
 
-- [ ] Step 2: add the narrowest failing validation around the indirect struct-return function-pointer call shape
-- [ ] Step 3: fix the indirect-call lowering seam without widening into general struct ABI cleanup
-- [ ] Step 4: rerun targeted validation plus full-suite regression checks and decide whether the idea is ready to close
+- [ ] Step 2: add one focused backend validation around local stack-slot addressing before implementation
+- [ ] Step 3: implement the smallest x86 stack-base plus indexed-address lowering needed for `local_array.c`
+- [ ] Step 4: rerun targeted validation plus full-suite regression checks and decide whether this idea is ready to close
 
 ## Completed
 
-- [x] Activated `ideas/open/25_frontend_struct_return_function_pointer_ir_plan.md` into the active runbook
+- [x] Activated `ideas/open/17_backend_x86_local_memory_addressing_plan.md` into the active runbook
 
 ## Notes
 
-- This idea was surfaced during clean rebuild validation while closing the x86 regalloc/peephole plan and remains intentionally separate from that backend slice.
-- The known bad shape is an indirect call whose callable type no longer matches the byval pointer-style argument ABI used by the accepted direct call.
-- Keep the fix local to the indirect struct-return call path unless the reproducer proves the bug lives in a shared ABI helper.
+- This plan follows the closed struct-return function-pointer IR slice and intentionally returns to the outstanding x86 backend runtime failures already present in the regression logs.
+- `local_array.c` is the first bounded target because it exercises stack-local address formation without widening into global-address materialization.
 
 ## Next Intended Slice
 
-Capture the exact emitted indirect-call LLVM IR and the corresponding Clang IR, then turn the mismatch into one focused failing test before implementation.
+Capture the exact current failure mode for `local_array.c`, then convert that seam into one focused failing backend test before touching x86 lowering.

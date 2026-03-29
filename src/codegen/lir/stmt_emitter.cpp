@@ -139,7 +139,7 @@ bool sig_has_explicit_prototype(const FnPtrSig& sig) {
   return sig_is_variadic(sig) || sig_has_void_param_list(sig) || sig_param_count(sig) > 0;
 }
 
-std::string llvm_fn_type_suffix_str(const FnPtrSig& sig) {
+std::string llvm_fn_type_suffix_str(const hir::Module& mod, const FnPtrSig& sig) {
   if (!sig_has_explicit_prototype(sig)) return "";
   std::ostringstream out;
   out << "(";
@@ -147,7 +147,12 @@ std::string llvm_fn_type_suffix_str(const FnPtrSig& sig) {
   for (size_t i = 0; i < sig_param_count(sig); ++i) {
     if (void_param_list) break;
     if (i) out << ", ";
-    out << llvm_ty(sig_param_type(sig, i));
+    const TypeSpec param_ts = sig_param_type(sig, i);
+    if (amd64_fixed_aggregate_byval(mod, param_ts)) {
+      out << "ptr";
+    } else {
+      out << llvm_ty(param_ts);
+    }
   }
   if (sig_is_variadic(sig)) {
     if (sig_param_count(sig) > 0 && !void_param_list) out << ", ";
@@ -3133,7 +3138,7 @@ CallTargetInfo StmtEmitter::resolve_call_target_info(FnCtx& ctx, const CallExpr&
     if (info.target_fn) {
       info.callee_type_suffix = llvm_fn_type_suffix_str(mod_, *info.target_fn);
     } else if (info.callee_fn_ptr_sig) {
-      info.callee_type_suffix = llvm_fn_type_suffix_str(*info.callee_fn_ptr_sig);
+      info.callee_type_suffix = llvm_fn_type_suffix_str(mod_, *info.callee_fn_ptr_sig);
     }
 
     return info;
