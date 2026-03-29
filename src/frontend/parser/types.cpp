@@ -5442,6 +5442,8 @@ bool Parser::try_parse_record_member_with_template_prelude(
 
     parse_record_template_member_prelude(&tmpl_guard.names,
                                          &tmpl_guard.pushed_scope);
+    if (try_skip_record_friend_member()) return true;
+    if (try_skip_record_static_assert_member()) return true;
     return try_parse_record_member_dispatch(struct_source_name, fields, methods,
                                             member_typedef_names,
                                             member_typedef_types,

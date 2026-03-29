@@ -6,21 +6,20 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 4: revalidate the post-`predefined_ops.h` frontier, starting with the
-  incomplete-type `move_iterator` / `allocator` failures ahead of the later
-  comma-expression and attribute parser frontiers
+- Step 4: revalidate the post-template-friend frontier, starting with the
+  surviving `allocator<void>` incomplete-type failure ahead of the later
+  comma-expression, attribute, and vector.tcc parser frontiers
 
 ## Next Intended Slice
 
-- inspect `/usr/include/c++/14/bits/stl_iterator.h:1572` and
-  `/usr/include/c++/14/bits/memoryfwd.h:68` to determine whether the next
-  blocking `move_iterator` / `allocator` diagnostics are parser fallout or a
-  separate frontend completeness issue
-- keep the next fix limited to the first real root cause exposed after removing
-  the unresolved by-value parameter blocker
+- inspect `/usr/include/c++/14/bits/memoryfwd.h:68` to determine why the
+  explicit-specialization forward declaration `class allocator<void>;` is still
+  being treated as an incomplete object declaration
+- keep the next fix limited to the first real root cause exposed ahead of the
+  later comma-expression, attribute, and vector.tcc parser frontiers
 - rerun `./build/c4cll --parse-only tests/cpp/std/std_vector_simple.cpp` after
-  that fix to confirm the frontier advances beyond the current incomplete-type
-  failures before the later comma-expression and attribute parser errors
+  that fix to confirm the frontier advances beyond the current allocator
+  failure before the later parser errors
 
 ## Incomplete Items
 
@@ -135,6 +134,30 @@ Source Plan: plan.md
   tests: checker reported `before: passed=661 failed=0 total=661`,
   `after: passed=2391 failed=0 total=2391`, `new failing tests: 0`, and
   `result: PASS`
+- [x] Reduced the next `move_iterator` blocker to
+  `tests/cpp/internal/postive_case/template_friend_record_member_parse.cpp`
+  using a templated record with `template<typename U> friend class Box;`
+  followed by an inline self-typed local declaration, and confirmed it failed
+  before implementation with the same incomplete-type shape
+- [x] Taught templated record-member parsing to re-run friend/static-assert
+  preludes after consuming a member template prelude, so
+  `template<...> friend ...;` no longer falls through into normal member
+  parsing
+- [x] Advanced the direct `std::vector` parse-only repro beyond the
+  `bits/stl_iterator.h:1572` and `:1593` `move_iterator __tmp = *this`
+  failures; the next surviving failure now starts at
+  `/usr/include/c++/14/bits/memoryfwd.h:68` on `allocator<void>`, followed by
+  the later comma-expression, attribute, and vector.tcc parser issues
+- [x] Targeted parser/frontend checks passed for the new slice:
+  `cpp_positive_sema_template_friend_record_member_parse_cpp`,
+  `cpp_parse_template_friend_record_member_dump`,
+  `cpp_positive_sema_constructor_self_ref_param_parse_cpp`,
+  `cpp_parse_constructor_self_ref_param_dump`,
+  `cpp_positive_sema_unresolved_by_value_param_type_parse_cpp`, and
+  `cpp_parse_unresolved_by_value_param_type_dump`
+- [x] Full-suite regression guard passed for the template-friend slice:
+  `2391 -> 2393` passing tests, `0 -> 0` failing tests, and no newly failing
+  cases (`test_fail_before.log` vs `test_fail_after.log`)
 
 ## Blockers
 
@@ -148,8 +171,8 @@ Source Plan: plan.md
   the current `noexcept` and `iterator_concepts.h` frontier instead of
   reworking the older blockers.
 - The surviving direct repro errors now begin with
-  incomplete-type reports for `move_iterator` and `allocator` in
-  `bits/stl_iterator.h:1572`, `:1593`, and `bits/memoryfwd.h:68`, then
-  comma-expression parsing in `bits/stl_uninitialized.h`, attribute parsing in
+  the explicit-specialization `allocator<void>` incomplete-type report in
+  `bits/memoryfwd.h:68`, then comma-expression parsing in
+  `bits/stl_uninitialized.h`, attribute parsing in
   `stl_uninitialized.h:1109`, and several remaining vector.tcc / bitset
   parameter-list issues.
