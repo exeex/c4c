@@ -1697,10 +1697,13 @@ const FnPtrSig* StmtEmitter::resolve_callee_fn_ptr_sig(FnCtx& ctx, const Expr& c
       const Expr& inner_callee = get_expr(call->callee);
       if (const auto* dr = std::get_if<DeclRef>(&inner_callee.payload)) {
         if (const Function* target = find_function(dr->name)) {
-          if (target->ret_fn_ptr_sig) return &*target->ret_fn_ptr_sig;
+          const FnPtrSig* cached_sig =
+              target->ret_fn_ptr_sig ? &*target->ret_fn_ptr_sig : nullptr;
+          if (cached_sig && sig_has_explicit_prototype(*cached_sig)) return cached_sig;
           if (const Function* returned = infer_returned_function(infer_returned_function, *target)) {
             return build_fn_sig(*returned);
           }
+          if (cached_sig) return cached_sig;
         }
       }
       if (const auto* nested_call = std::get_if<CallExpr>(&inner_callee.payload)) {

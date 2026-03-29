@@ -1,0 +1,73 @@
+Internal ctest changing into directory: /workspaces/c4c/build
+Test project /workspaces/c4c/build
+      Start 2229: llvm_gcc_c_torture_src_va_arg_6_c
+      Start 2226: llvm_gcc_c_torture_src_va_arg_2_c
+      Start 2177: llvm_gcc_c_torture_src_stdarg_4_c
+      Start 2216: llvm_gcc_c_torture_src_va_arg_17_c
+      Start 2209: llvm_gcc_c_torture_src_va_arg_10_c
+      Start 2212: llvm_gcc_c_torture_src_va_arg_13_c
+      Start  107: positive_sema_ok_fn_returns_variadic_fn_ptr_c
+      Start 2220: llvm_gcc_c_torture_src_va_arg_20_c
+      Start 2227: llvm_gcc_c_torture_src_va_arg_4_c
+      Start 2211: llvm_gcc_c_torture_src_va_arg_12_c
+      Start 2223: llvm_gcc_c_torture_src_va_arg_23_c
+      Start 2225: llvm_gcc_c_torture_src_va_arg_26_c
+      Start 2218: llvm_gcc_c_torture_src_va_arg_19_c
+      Start 2233: llvm_gcc_c_torture_src_va_arg_trap_1_c
+      Start 2224: llvm_gcc_c_torture_src_va_arg_24_c
+      Start 2215: llvm_gcc_c_torture_src_va_arg_16_c
+      Start 2232: llvm_gcc_c_torture_src_va_arg_9_c
+      Start 2210: llvm_gcc_c_torture_src_va_arg_11_c
+      Start 2231: llvm_gcc_c_torture_src_va_arg_8_c
+      Start 2230: llvm_gcc_c_torture_src_va_arg_7_c
+ 1/31 Test #2218: llvm_gcc_c_torture_src_va_arg_19_c ..............   Passed    0.29 sec
+ 2/31 Test #2231: llvm_gcc_c_torture_src_va_arg_8_c ...............   Passed    0.28 sec
+      Start 2217: llvm_gcc_c_torture_src_va_arg_18_c
+      Start 2214: llvm_gcc_c_torture_src_va_arg_15_c
+ 3/31 Test  #107: positive_sema_ok_fn_returns_variadic_fn_ptr_c ...   Passed    0.31 sec
+      Start 2219: llvm_gcc_c_torture_src_va_arg_1_c
+ 4/31 Test #2211: llvm_gcc_c_torture_src_va_arg_12_c ..............   Passed    0.31 sec
+ 5/31 Test #2215: llvm_gcc_c_torture_src_va_arg_16_c ..............   Passed    0.30 sec
+      Start 2221: llvm_gcc_c_torture_src_va_arg_21_c
+      Start 2222: llvm_gcc_c_torture_src_va_arg_22_c
+ 6/31 Test #2229: llvm_gcc_c_torture_src_va_arg_6_c ...............   Passed    0.33 sec
+ 7/31 Test #2212: llvm_gcc_c_torture_src_va_arg_13_c ..............   Passed    0.32 sec
+ 8/31 Test #2223: llvm_gcc_c_torture_src_va_arg_23_c ..............   Passed    0.31 sec
+      Start 2186: llvm_gcc_c_torture_src_strct_stdarg_1_c
+      Start 2176: llvm_gcc_c_torture_src_stdarg_3_c
+      Start 2174: llvm_gcc_c_torture_src_stdarg_1_c
+ 9/31 Test #2220: llvm_gcc_c_torture_src_va_arg_20_c ..............   Passed    0.32 sec
+10/31 Test #2210: llvm_gcc_c_torture_src_va_arg_11_c ..............   Passed    0.31 sec
+11/31 Test #2230: llvm_gcc_c_torture_src_va_arg_7_c ...............   Passed    0.30 sec
+      Start 2213: llvm_gcc_c_torture_src_va_arg_14_c
+      Start 2175: llvm_gcc_c_torture_src_stdarg_2_c
+      Start 2228: llvm_gcc_c_torture_src_va_arg_5_c
+12/31 Test #2226: llvm_gcc_c_torture_src_va_arg_2_c ...............   Passed    0.34 sec
+13/31 Test #2177: llvm_gcc_c_torture_src_stdarg_4_c ...............   Passed    0.34 sec
+14/31 Test #2216: llvm_gcc_c_torture_src_va_arg_17_c ..............   Passed    0.34 sec
+15/31 Test #2209: llvm_gcc_c_torture_src_va_arg_10_c ..............   Passed    0.34 sec
+16/31 Test #2225: llvm_gcc_c_torture_src_va_arg_26_c ..............   Passed    0.33 sec
+17/31 Test #2232: llvm_gcc_c_torture_src_va_arg_9_c ...............   Passed    0.32 sec
+18/31 Test #2227: llvm_gcc_c_torture_src_va_arg_4_c ...............   Passed    0.35 sec
+19/31 Test #2224: llvm_gcc_c_torture_src_va_arg_24_c ..............   Passed    0.35 sec
+20/31 Test #2233: llvm_gcc_c_torture_src_va_arg_trap_1_c ..........   Passed    0.35 sec
+21/31 Test #2219: llvm_gcc_c_torture_src_va_arg_1_c ...............   Passed    0.19 sec
+22/31 Test #2214: llvm_gcc_c_torture_src_va_arg_15_c ..............   Passed    0.19 sec
+23/31 Test #2217: llvm_gcc_c_torture_src_va_arg_18_c ..............   Passed    0.20 sec
+24/31 Test #2213: llvm_gcc_c_torture_src_va_arg_14_c ..............   Passed    0.18 sec
+25/31 Test #2221: llvm_gcc_c_torture_src_va_arg_21_c ..............   Passed    0.20 sec
+26/31 Test #2186: llvm_gcc_c_torture_src_strct_stdarg_1_c .........   Passed    0.19 sec
+27/31 Test #2175: llvm_gcc_c_torture_src_stdarg_2_c ...............   Passed    0.18 sec
+28/31 Test #2174: llvm_gcc_c_torture_src_stdarg_1_c ...............   Passed    0.19 sec
+29/31 Test #2176: llvm_gcc_c_torture_src_stdarg_3_c ...............   Passed    0.20 sec
+30/31 Test #2222: llvm_gcc_c_torture_src_va_arg_22_c ..............   Passed    0.20 sec
+31/31 Test #2228: llvm_gcc_c_torture_src_va_arg_5_c ...............   Passed    0.19 sec
+
+100% tests passed, 0 tests failed out of 31
+
+Label Time Summary:
+internal              =   0.31 sec*proc (1 test)
+llvm_gcc_c_torture    =   8.24 sec*proc (30 tests)
+positive_case         =   0.31 sec*proc (1 test)
+
+Total Test time (real) =   0.63 sec
