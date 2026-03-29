@@ -6,12 +6,12 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 3: improve `--parser-debug` output shape so best-failure stacks stay
-  readable on recursive/speculative parser paths without changing parser
-  behavior
-- Current slice: keep the detailed `[pdebug] kind=...` event stream intact, but
-  collapse duplicate adjacent frames in the emitted best-failure
-  `[pdebug] stack:` line and lock that shape in with a reduced parser-only test
+- Step 5: prepare the next diagnostic slice by bounding the first
+  committed-failure vs no-match follow-up under speculative `try_parse_*`
+  record-member rewinds
+- Current slice: document the completed record-member summary-stack work and
+  leave the next tri-state failure-selection target explicit for the next
+  iteration
 
 ## Completed
 
@@ -45,34 +45,49 @@ Source Plan: plan.md
 - reran the required clean before/after full suite for this slice and passed
   the monotonic regression guard with no new failures:
   `before passed=2252/2253`, `after passed=2252/2253`
+- added reduced parser-debug regression coverage in
+  `cpp_parser_debug_record_member_stack` for a malformed nested record member
+  that rewinds through `try_parse_record_member_dispatch`
+- taught parser debug summaries to retain the furthest/deepest recorded parse
+  stack when a speculative record-member rewind would otherwise collapse the
+  final error back to `parse_top_level`
+- kept adjacent duplicate-frame compaction on the summary stack while letting
+  record-member failures surface `try_parse_record_method_or_field_member` as
+  the leaf parse function in debug summaries
+- reran focused record-member/parser-debug coverage plus the required clean
+  before/after full suite and passed the monotonic regression guard:
+  `before passed=2252/2253`, `after passed=2254/2255`, no new failing tests
 
 ## Next Intended Slice
 
-- after this formatting pass, test a speculative parse path where
-  `try_parse_record_*` rewinds currently leave the event stream informative but
-  the final stack summary still needs better root-cause emphasis
-- likely first target: a reduced record-member failure that exercises
-  `try_parse_record_member_*` rewinds and confirms the summary stack stays
-  bounded
+- move from summary-stack shape into failure selection: identify the first
+  speculative `try_parse_*` family where a committed wrapper failure still
+  overrides a more useful soft-failure root cause
+- likely first target: `try_parse_record_member_dispatch` vs
+  `try_parse_record_type_like_member_dispatch`, with a reduced case that proves
+  the final summary/error line prefers the best committed inner cause instead
+  of the outer rewind boundary
 
 ## Blockers
 
-- speculative `try_parse_*` rewinds still collapse some root causes before the
-  debug stack can fully explain them
-- the debug trace is now broader, but stack readability still degrades on deep
-  recursive/speculative paths because every nested frame is printed verbatim
+- speculative `try_parse_*` rewinds still collapse some root causes into the
+  outer committed failure ranking even though the summary stack is now more
+  informative
+- the event stream remains useful, but the next slice likely needs explicit
+  tri-state or ranking rules so soft-failure bookkeeping does not mask the
+  committed leaf cause
 
 ## Resume Notes
 
 - active repro command:
   `./build/c4cll --parser-debug --parse-only tests/cpp/std/std_vector_simple.cpp`
-- this iteration is targeting stack readability rather than additional guard
-  coverage
-- keep the detailed event log untouched; only the summary `[pdebug] stack:`
-  line should become less repetitive on nested recursion
-- current reduced regression locks in adjacent-frame compaction for nested
-  `parse_unary` recursion; the next slice should prove the same readability
-  improvement on a speculative record-member parse path
+- this iteration landed the speculative record-member summary-stack fallback;
+  the next one should stay focused on failure selection rather than adding more
+  guard coverage
+- keep the detailed event log untouched; the current summary logic now reuses
+  the furthest/deepest recorded stack when `parse_top_level` is only a wrapper
+- reduced regressions now cover both nested `parse_unary` recursion and a
+  nested record-member rewind path
 - the repo is not currently building this target as C++20, so `std::source_location`
   was not adopted; the current non-macro path uses `__func__`
 - the parked `std::vector` bring-up work remains in

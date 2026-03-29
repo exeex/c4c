@@ -246,6 +246,8 @@ class Parser {
   std::vector<ParseContextFrame> parse_context_stack_;
   std::vector<ParseDebugEvent> parse_debug_events_;
   ParseFailure best_parse_failure_;
+  int best_parse_stack_token_index_ = -1;
+  std::vector<std::string> best_parse_stack_trace_;
 
   // ── pragma state ─────────────────────────────────────────────────────────
   // #pragma pack state: current packing alignment (0 = default/no packing).
@@ -272,6 +274,7 @@ class Parser {
                           bool committed = true);
   void note_parse_failure_message(const char* detail,
                                   bool committed = true);
+  const std::vector<std::string>& best_debug_summary_stack() const;
   std::string format_best_parse_failure() const;
   void dump_parse_debug_trace() const;
 

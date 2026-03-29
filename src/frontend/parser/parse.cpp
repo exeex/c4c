@@ -251,6 +251,8 @@ void Parser::clear_parse_debug_state() {
     parse_context_stack_.clear();
     parse_debug_events_.clear();
     best_parse_failure_ = ParseFailure{};
+    best_parse_stack_token_index_ = -1;
+    best_parse_stack_trace_.clear();
 }
 
 void Parser::push_parse_context(const char* function_name) {
@@ -281,6 +283,25 @@ void Parser::note_parse_debug_event(const char* kind, const char* detail) {
     parse_debug_events_.push_back(std::move(event));
     if (static_cast<int>(parse_debug_events_.size()) > max_parse_debug_events_) {
         parse_debug_events_.erase(parse_debug_events_.begin());
+    }
+    if (!parse_context_stack_.empty()) {
+        const int token_index = parse_debug_events_.back().token_index;
+        const int token_delta = token_index - best_parse_stack_token_index_;
+        const bool replace_snapshot =
+            best_parse_stack_token_index_ < 0 ||
+            token_delta > 1 ||
+            (token_delta > 0 &&
+             parse_context_stack_.size() >= best_parse_stack_trace_.size()) ||
+            (token_delta == 0 &&
+             parse_context_stack_.size() > best_parse_stack_trace_.size());
+        if (replace_snapshot) {
+            best_parse_stack_token_index_ = token_index;
+            best_parse_stack_trace_.clear();
+            best_parse_stack_trace_.reserve(parse_context_stack_.size());
+            for (const ParseContextFrame& frame : parse_context_stack_) {
+                best_parse_stack_trace_.push_back(frame.function_name);
+            }
+        }
     }
 }
 
@@ -317,11 +338,27 @@ void Parser::note_parse_failure_message(const char* detail, bool committed) {
     note_parse_failure(nullptr, detail, committed);
 }
 
+const std::vector<std::string>& Parser::best_debug_summary_stack() const {
+    const bool top_level_wrapper_failure =
+        best_parse_failure_.function_name == "parse_top_level";
+    if (best_parse_stack_trace_.size() > best_parse_failure_.stack_trace.size() &&
+        (best_parse_stack_token_index_ >= best_parse_failure_.token_index ||
+         top_level_wrapper_failure)) {
+        return best_parse_stack_trace_;
+    }
+    return best_parse_failure_.stack_trace;
+}
+
 std::string Parser::format_best_parse_failure() const {
     if (!best_parse_failure_.active) return {};
 
     std::ostringstream oss;
-    if (!best_parse_failure_.function_name.empty()) {
+    const std::vector<std::string>& summary_stack = best_debug_summary_stack();
+    const std::string* summary_leaf =
+        summary_stack.empty() ? nullptr : &summary_stack.back();
+    if (summary_leaf && !summary_leaf->empty()) {
+        oss << "parse_fn=" << *summary_leaf;
+    } else if (!best_parse_failure_.function_name.empty()) {
         oss << "parse_fn=" << best_parse_failure_.function_name;
     }
     if (best_parse_failure_.committed) {
@@ -359,9 +396,10 @@ void Parser::dump_parse_debug_trace() const {
         if (!event.detail.empty()) fprintf(stderr, " detail=\"%s\"", event.detail.c_str());
         fprintf(stderr, "\n");
     }
-    if (best_parse_failure_.active && !best_parse_failure_.stack_trace.empty()) {
+    const std::vector<std::string>& summary_stack = best_debug_summary_stack();
+    if (best_parse_failure_.active && !summary_stack.empty()) {
         const std::vector<const std::string*> compact_stack =
-            collapse_adjacent_stack_frames(best_parse_failure_.stack_trace);
+            collapse_adjacent_stack_frames(summary_stack);
         fprintf(stderr, "[pdebug] stack:");
         for (const std::string* fn : compact_stack) {
             fprintf(stderr, " -> %s", fn->c_str());
