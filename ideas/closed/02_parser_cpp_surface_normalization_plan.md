@@ -1,5 +1,8 @@
 # C++ Parser Surface Normalization Plan
 
+Status: Complete
+Last Updated: 2026-03-29
+
 ## Goal
 
 Normalize the C++ parser so it can consume modern syntax such as contextual
@@ -131,3 +134,26 @@ For each syntax family:
 This idea is successful when the parser has explicit, reusable grammar paths for
 the targeted syntax families, the old ad hoc fallback logic has been reduced or
 retired where safe, and reduced regression tests protect those surfaces.
+
+## Completion Notes
+
+Completed on 2026-03-29.
+
+This runbook finished the planned parser-normalization slices for:
+
+- lexer keyword coverage needed by the active C++20 surface
+- contextual `final` / `override` parsing
+- dedicated declaration and trailing `requires` parsing paths across top-level,
+  record-member, and out-of-class special-member definitions
+
+Step 4 rechecked the motivating `tests/cpp/std/std_vector_simple.cpp` repro with
+the current tree. That repro no longer fails in the earlier `requires`-driven
+frontier that motivated this initiative.
+
+Remaining follow-up work stays outside this closed plan:
+
+- the parked `ideas/open/04_std_vector_bringup_plan.md` now owns the newer
+  libstdc++ frontier in `/usr/include/c++/14/type_traits` and
+  `/usr/include/c++/14/bits/iterator_concepts.h`
+- lambda parsing remains separate under
+  `ideas/open/03_parser_lambda_min_support_plan.md`

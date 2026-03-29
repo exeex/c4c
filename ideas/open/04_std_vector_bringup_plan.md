@@ -91,12 +91,15 @@ Current direct repro status for `tests/cpp/std/std_vector_simple.cpp`:
 - preprocessing succeeds
 - the previous `ext/numeric_traits.h:57` dependent-enum failure is gone
 - the previous late `expected RBRACE` failure is no longer the lead blocker
-- the current parse-only repro now fails earlier in libstdc++ with errors such as:
-  - `/usr/include/c++/14/bits/stl_iterator.h:1494:15: error: typedef uses unknown base type: _Iterator`
-  - `/usr/include/c++/14/bits/predefined_ops.h:150:32: error: expected RPAREN but got '__comp'`
-  - `/usr/include/c++/14/bits/stl_algobase.h:971:11: error: unexpected token in expression: const`
-  - `/usr/include/c++/14/bits/new_allocator.h:70:15: error: typedef uses unknown base type: _Tp`
-  - `/usr/include/c++/14/bits/stl_uninitialized.h:179:61: error: unexpected token in expression: ,`
+- the parser-surface normalization runbook was rechecked against this repro on
+  2026-03-29, and the old constrained-declaration / trailing-`requires`
+  frontier is no longer the lead blocker
+- the current parse-only repro now fails deeper in libstdc++ with errors such as:
+  - `/usr/include/c++/14/type_traits:3088:14: error: unexpected token in expression: noexcept`
+  - `/usr/include/c++/14/type_traits:3095:14: error: unexpected token in expression: noexcept`
+  - `/usr/include/c++/14/bits/iterator_concepts.h:75:5: error: unexpected token in expression: struct`
+  - `/usr/include/c++/14/bits/iterator_concepts.h:282:21: error: unexpected token in expression: typename`
+  - `/usr/include/c++/14/bits/iterator_concepts.h:774:43: error: unexpected token in expression: ...`
 
 Interpretation:
 
@@ -104,9 +107,10 @@ Interpretation:
   compatibility failures
 - the recent refactor appears to have closed many of the earlier
   parse-state-loss holes
+- the dedicated `requires` parser work moved this repro beyond the earlier
+  constrained declaration failures that originally motivated that separate plan
 - the next task is to reduce and localize the new libstdc++ frontier around
-  typedef-base resolution, declarator parsing, and expression parsing in the
-  iterator / allocator / algorithm helper stack
+  `noexcept` expression parsing and concept-heavy iterator helper declarations
 - the work is still in Phase B moving into Phase C; it has not yet reached
   `std::vector` semantics or codegen validation
 
