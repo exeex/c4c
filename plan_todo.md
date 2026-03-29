@@ -9,14 +9,14 @@ Source Plan: plan.md
 - Step 5: prepare the next diagnostic slice by bounding the first
   committed-failure vs no-match follow-up under speculative `try_parse_*`
   record-member rewinds
-- Current slice: preserve the nested non-`typename` qualified-template
-  argument snapshot in `cpp_parser_debug_qualified_type_spelling_stack` so the
-  emitted parser-debug summary keeps the local `try_parse_template_type_arg`
-  branch instead of collapsing back to wrapper-only frames
-- Iteration target: update the reduced parser-debug regression for the nested
-  non-`typename` qualified-type repro, then tighten summary-stack preservation
-  so later wrapper/helper events do not replace that speculative
-  template-argument snapshot without changing parser semantics
+- Current slice: move from duplicate-stack normalization to the first explicit
+  ranking-only or tri-state case where a speculative `try_parse_*` path is
+  already visible in the event stream but the committed summary still picks
+  the wrong leaf or committed/soft-failure boundary
+- Iteration target: inspect the next candidate outside
+  `cpp_parser_debug_qualified_type_spelling_stack` where summary selection
+  should be fixed by ranking or tri-state bookkeeping rather than more guard
+  coverage, then reduce it to a focused parser-debug regression
 
 ## Completed
 
@@ -329,27 +329,47 @@ Source Plan: plan.md
   regression guard with no new failures:
   `before passed=2272/2273`, `after passed=2272/2273`; the existing
   `verify_tests_verify_top_level_recovery` failure remained unchanged
+- tightened `cpp_parser_debug_qualified_type_spelling_stack` to require a
+  normalized summary stack with one compact
+  `parse_next_template_argument` / `try_parse_template_type_arg` pair instead
+  of the duplicated nested wrapper sequence
+- normalized parser-debug summary emission so consecutive repeated
+  `parse_next_template_argument` / `try_parse_template_type_arg` pairs are
+  compacted in the committed summary stack without changing the full debug
+  event stream
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_qualified_type_top_level_params`,
+  `cpp_parser_debug_qualified_type_template_arg_stack`,
+  `cpp_parser_debug_qualified_type_dependent_typename_stack`,
+  `cpp_parser_debug_qualified_type_typename_spelling_stack`, and
+  `cpp_parser_debug_qualified_type_spelling_stack`
+- reran nearby qualified-type parser coverage for
+  `cpp_positive_sema_qualified_dependent_typename_global_parse_cpp`,
+  `cpp_positive_sema_qualified_type_resolution_dispatch_parse_cpp`,
+  `cpp_positive_sema_qualified_type_spelling_shared_parse_cpp`,
+  `cpp_positive_sema_qualified_type_start_probe_parse_cpp`, and
+  `cpp_positive_sema_qualified_type_start_shared_probe_parse_cpp`
+- reran the required clean before/after full suite and passed the regression
+  guard with no new failures or timeout-policy regressions:
+  `before passed=2272/2273`, `after passed=2272/2273`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged
 
 ## Next Intended Slice
 
-- move past the template-argument snapshot-preservation follow-up to the first
-  explicit ranking-only or tri-state case where the event stream already shows
-  the useful local `try_parse_*` path but the committed summary still picks the
-  wrong leaf or wrong committed/soft-failure boundary
-- first candidate after this slice: inspect whether the duplicated nested
-  `parse_next_template_argument` / `try_parse_template_type_arg` frames in
-  `cpp_parser_debug_qualified_type_spelling_stack` should remain as-is or be
-  normalized by explicit summary ranking rather than more guard coverage
+- move to the first explicit ranking-only or tri-state case where the event
+  stream already shows the useful local `try_parse_*` path but the committed
+  summary still picks the wrong leaf or wrong committed/soft-failure boundary
+- first candidate after this slice: inspect another qualified-type or
+  record-member parser-debug repro whose event log already contains the useful
+  local helper path and determine whether the next correction belongs in
+  `should_replace_best_parse_failure()` or in snapshot-selection bookkeeping
 
 ## Blockers
 
-- speculative template-argument rewinds no longer collapse this nested
-  non-`typename` repro to wrapper-only frames, but the preserved summary stack
-  now exposes duplicate nested template-argument dispatch frames whose final
-  normalization policy is still unsettled
+- no blocker on the normalized nested template-argument summary path
 - the next slice likely needs explicit tri-state or ranking rules so
-  soft-failure bookkeeping inside nested template arguments can be normalized
-  without hiding the committed local cause
+  soft-failure bookkeeping can be normalized without hiding the committed
+  local cause once a concrete repro is selected
 
 ## Resume Notes
 

@@ -95,6 +95,30 @@ bool current_stack_is_prefix_of_best(
     return true;
 }
 
+std::vector<std::string> normalize_summary_stack(
+    const std::vector<std::string>& stack_trace) {
+    std::vector<std::string> normalized;
+    normalized.reserve(stack_trace.size());
+    for (size_t i = 0; i < stack_trace.size();) {
+        if (i + 1 < stack_trace.size() &&
+            stack_trace[i] == "parse_next_template_argument" &&
+            stack_trace[i + 1] == "try_parse_template_type_arg") {
+            normalized.push_back(stack_trace[i]);
+            normalized.push_back(stack_trace[i + 1]);
+            i += 2;
+            while (i + 1 < stack_trace.size() &&
+                   stack_trace[i] == "parse_next_template_argument" &&
+                   stack_trace[i + 1] == "try_parse_template_type_arg") {
+                i += 2;
+            }
+            continue;
+        }
+        normalized.push_back(stack_trace[i]);
+        ++i;
+    }
+    return normalized;
+}
+
 }  // namespace
 
 Parser::ParseContextGuard::ParseContextGuard(
@@ -447,21 +471,21 @@ std::vector<std::string> Parser::best_debug_summary_stack() const {
             merged.insert(merged.end(),
                           best_parse_failure_.stack_trace.begin() + common_prefix,
                           best_parse_failure_.stack_trace.end());
-            return merged;
+            return normalize_summary_stack(merged);
         }
         if (!best_parse_failure_.function_name.empty() &&
             std::find(candidate.begin(),
                       candidate.end(),
                       best_parse_failure_.function_name) !=
                 candidate.end()) {
-            return candidate;
+            return normalize_summary_stack(candidate);
         }
         if (best_parse_failure_.function_name == "parse_top_level" &&
             !candidate.empty()) {
-            return candidate;
+            return normalize_summary_stack(candidate);
         }
     }
-    return best_parse_failure_.stack_trace;
+    return normalize_summary_stack(best_parse_failure_.stack_trace);
 }
 
 std::string Parser::format_best_parse_failure() const {
