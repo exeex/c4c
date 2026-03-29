@@ -131,8 +131,17 @@ ranking pass.
    produce declarations.
    Tag: `acceptable breadth`
 
-3. `src/frontend/parser/declarations.cpp:1265`
-   Several declaration paths return `NK_EMPTY` for unsupported or structure-only
+3. `src/frontend/parser/declarations.cpp:1783`
+   The malformed top-level storage-class fallback used to skip blindly to `;`
+   when no type followed `static` / `extern` / related specifiers.
+   Tag: `acceptable breadth`
+   Evidence: the reduced parse-only regression
+   `tests/cpp/internal/parse_only_case/top_level_storage_class_recovery_preserves_following_decl_parse.cpp`
+   now proves `extern foo` stops before the next-line `int kept;` declaration
+   instead of erasing it through broad `skip_until(';')` recovery.
+
+4. `src/frontend/parser/declarations.cpp:1265`
+   Several remaining declaration paths return `NK_EMPTY` for unsupported or structure-only
    cases.
    Tag: `suspicious breadth`
    Reason: these sites need a later pass to distinguish harmless empty

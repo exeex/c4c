@@ -7,10 +7,10 @@ Last Updated: 2026-03-29
 
 ## Active Item
 
-- Step 3: continue the ranked `NK_EMPTY` audit in
-  `src/frontend/parser/declarations.cpp`, starting from the remaining
-  top-level parse-and-discard sites around the storage-class / linkage and
-  unsupported declaration paths called out in `BOUNDARY_AUDIT.md`
+- Step 3: continue the ranked top-level `NK_EMPTY` audit in
+  `src/frontend/parser/declarations.cpp`, focusing next on the remaining
+  unsupported / structure-only declaration exits after the storage-class
+  recovery tightening landed
 
 ## Completed
 
@@ -109,18 +109,37 @@ Last Updated: 2026-03-29
     - baseline: `100% tests passed, 0 tests failed out of 2409`
     - after change: `100% tests passed, 0 tests failed out of 2410`
     - result: monotonic pass-count increase with no newly failing tests
+- tightened the malformed top-level storage-class fallback in
+  `src/frontend/parser/declarations.cpp` so unsupported forms like
+  `extern foo` no longer blindly `skip_until(';')` across the following
+  declaration:
+  - the recovery now stops at strong declaration starters on a later line,
+    which preserves the next top-level declaration while keeping the malformed
+    storage-class fragment discarded as `NK_EMPTY`
+  - added the reduced parse-only regression
+    `tests/cpp/internal/parse_only_case/top_level_storage_class_recovery_preserves_following_decl_parse.cpp`
+    plus the dedicated dump assertion
+    `cpp_parse_top_level_storage_class_recovery_preserves_following_decl_dump`
+    in `tests/cpp/internal/InternalTests.cmake`
+  - updated `src/frontend/parser/BOUNDARY_AUDIT.md` to mark this fallback as a
+    covered `NK_EMPTY` site with concrete evidence
+  - re-ran the required regression guard:
+    - baseline: `100% tests passed, 0 tests failed out of 2409`
+    - after change: `100% tests passed, 0 tests failed out of 2411`
+    - result: monotonic pass-count increase with no newly failing tests
 
 ## Next Slice
 
-- compare the newly tightened local `using` boundary behavior against the
-  remaining top-level `NK_EMPTY` discard sites in
+- continue through the remaining top-level `NK_EMPTY` discard sites in
   `src/frontend/parser/declarations.cpp`, especially the unsupported /
-  structure-only declaration exits near the current audit notes
-- prefer reduced parse-only repros that show discarded structure or silently
-  erased following declarations before changing those `NK_EMPTY` branches
+  structure-only declaration exits still called out as suspicious in
+  `src/frontend/parser/BOUNDARY_AUDIT.md`
+- prefer another reduced parse-only repro that shows discarded structure or a
+  silently erased following declaration before changing those remaining
+  `NK_EMPTY` branches
 - keep any further record-member recovery widening separate unless a new reduced
   repro shows another non-special-member boundary bug that blocks the
-  `NK_EMPTY` audit
+  top-level `NK_EMPTY` audit
 
 ## Notes
 
@@ -151,6 +170,10 @@ Last Updated: 2026-03-29
   parse-only: the important assertion is that the broken local `using` becomes
   `InvalidStmt` while the following `kept` declaration remains visible in the
   AST dump
+- the malformed top-level `extern foo` regression is intentionally parse-only:
+  the important assertion is that the following `kept` global remains visible
+  after recovery, not that the broken storage-class fragment is diagnosed as a
+  first-class declaration node
 
 ## Blockers
 
