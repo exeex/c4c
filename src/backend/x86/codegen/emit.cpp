@@ -123,13 +123,6 @@ std::optional<std::string_view> strip_typed_operand_prefix(std::string_view oper
   return operand.substr(type_prefix.size() + 1);
 }
 
-std::optional<std::string_view> parse_single_typed_i32_call_operand(
-    std::string_view callee_type_suffix,
-    std::string_view args_str) {
-  return c4c::codegen::lir::parse_lir_single_typed_call_operand(
-      callee_type_suffix, args_str, "i32");
-}
-
 std::optional<std::pair<std::string_view, std::string_view>>
 parse_typed_i32_call_operand_pair(std::string_view callee_type_suffix,
                                   std::string_view args_str) {
@@ -1341,19 +1334,17 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
   const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts[1]);
   const auto* final_add =
       std::get_if<c4c::backend::BackendBinaryInst>(&main_block.insts[2]);
-  const bool is_direct_add_one_call =
-      call != nullptr &&
-      c4c::codegen::lir::lir_call_has_direct_global_callee(
-          std::string_view(call->callee), "add_one");
-  const auto call_arg =
-      call == nullptr
-          ? std::nullopt
-          : parse_single_typed_i32_call_operand(call->callee_type_suffix, call->args_str);
+  const auto direct_call =
+      call == nullptr ? std::nullopt
+                      : c4c::codegen::lir::parse_lir_direct_global_typed_call(
+                            call->callee, call->callee_type_suffix, call->args_str);
   if (source_add == nullptr || call == nullptr || final_add == nullptr ||
       source_add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
       source_add->type_str != "i32" || call->return_type != "i32" ||
-      !is_direct_add_one_call || !call_arg.has_value() ||
-      *call_arg != source_add->result ||
+      !direct_call.has_value() || direct_call->symbol_name != "add_one" ||
+      !c4c::codegen::lir::lir_typed_call_has_param_types(
+          direct_call->typed_call, std::array<std::string_view, 1>{"i32"}) ||
+      direct_call->typed_call.args.front().operand != source_add->result ||
       final_add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
       final_add->type_str != "i32" || final_add->lhs != source_add->result ||
       final_add->rhs != call->result ||
@@ -1394,23 +1385,25 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
   }
 
   const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
+  const auto direct_call =
+      call == nullptr ? std::nullopt
+                      : c4c::codegen::lir::parse_lir_direct_global_typed_call(
+                            call->callee, call->callee_type_suffix, call->args_str);
   if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
-      *main_block.terminator.value != call->result ||
-      !c4c::codegen::lir::lir_call_has_no_args(call->callee_type_suffix,
-                                               call->args_str)) {
+      *main_block.terminator.value != call->result || !direct_call.has_value() ||
+      !direct_call->typed_call.param_types.empty() ||
+      !direct_call->typed_call.args.empty()) {
     return std::nullopt;
   }
 
-  const auto callee_name =
-      c4c::codegen::lir::parse_lir_direct_global_callee(std::string_view(call->callee));
-  if (!callee_name.has_value() || *callee_name == "main") return std::nullopt;
+  if (direct_call->symbol_name == "main") return std::nullopt;
 
-  const auto* callee_fn = find_function(module, *callee_name);
+  const auto* callee_fn = find_function(module, direct_call->symbol_name);
   if (callee_fn == nullptr) return std::nullopt;
   const auto callee_imm = parse_single_block_return_imm(*callee_fn);
   if (!callee_imm.has_value()) return std::nullopt;
 
-  return MinimalDirectCallSlice{std::string(*callee_name), *callee_imm};
+  return MinimalDirectCallSlice{std::string(direct_call->symbol_name), *callee_imm};
 }
 
 std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_slice(

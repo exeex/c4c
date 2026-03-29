@@ -298,13 +298,6 @@ std::optional<std::string_view> strip_typed_operand_prefix(std::string_view oper
   return operand.substr(type_prefix.size() + 1);
 }
 
-std::optional<std::string_view> parse_single_typed_i32_call_operand(
-    std::string_view callee_type_suffix,
-    std::string_view args_str) {
-  return c4c::codegen::lir::parse_lir_single_typed_call_operand(
-      callee_type_suffix, args_str, "i32");
-}
-
 std::optional<std::pair<std::int64_t, std::int64_t>> parse_typed_i32_call_pair_imms(
     std::string_view callee_type_suffix,
     std::string_view args_str) {
@@ -1226,23 +1219,25 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
   }
 
   const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
+  const auto direct_call =
+      call == nullptr ? std::nullopt
+                      : c4c::codegen::lir::parse_lir_direct_global_typed_call(
+                            call->callee, call->callee_type_suffix, call->args_str);
   if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
-      *main_block.terminator.value != call->result ||
-      !c4c::codegen::lir::lir_call_has_no_args(call->callee_type_suffix,
-                                               call->args_str)) {
+      *main_block.terminator.value != call->result || !direct_call.has_value() ||
+      !direct_call->typed_call.param_types.empty() ||
+      !direct_call->typed_call.args.empty()) {
     return std::nullopt;
   }
 
-  const auto callee_name =
-      c4c::codegen::lir::parse_lir_direct_global_callee(call->callee);
-  if (!callee_name.has_value() || *callee_name == "main") return std::nullopt;
+  if (direct_call->symbol_name == "main") return std::nullopt;
 
-  const auto* callee_fn = find_function(module, *callee_name);
+  const auto* callee_fn = find_function(module, direct_call->symbol_name);
   if (callee_fn == nullptr) return std::nullopt;
   const auto callee_imm = parse_single_block_return_imm(*callee_fn);
   if (!callee_imm.has_value()) return std::nullopt;
 
-  return MinimalDirectCallSlice{std::string(*callee_name), *callee_imm};
+  return MinimalDirectCallSlice{std::string(direct_call->symbol_name), *callee_imm};
 }
 
 std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_slice(

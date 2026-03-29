@@ -229,6 +229,23 @@ void test_lir_call_arg_helpers_decode_direct_global_typed_call() {
               "shared direct-global typed-call helper should reject indirect callees");
 }
 
+void test_lir_call_arg_helpers_decode_zero_arg_and_call_crossing_direct_calls() {
+  using namespace c4c::codegen::lir;
+
+  const auto zero_arg = parse_lir_direct_global_typed_call(" @helper ", " ( ) ", "  ");
+  expect_true(zero_arg.has_value() && zero_arg->symbol_name == "helper" &&
+                  zero_arg->typed_call.param_types.empty() &&
+                  zero_arg->typed_call.args.empty(),
+              "shared direct-global typed-call helper should preserve zero-argument direct-call shape");
+
+  const auto call_crossing =
+      parse_lir_direct_global_typed_call(" @add_one ", " ( i32 ) ", " i32 %saved ");
+  expect_true(call_crossing.has_value() && call_crossing->symbol_name == "add_one" &&
+                  call_crossing->typed_call.args.size() == 1 &&
+                  call_crossing->typed_call.args.front().operand == "%saved",
+              "shared direct-global typed-call helper should preserve single-operand call-crossing direct-call shape");
+}
+
 void test_lir_call_arg_helpers_format_typed_call_round_trip() {
   using namespace c4c::codegen::lir;
 
@@ -8210,6 +8227,7 @@ int main() {
   test_lir_call_arg_helpers_decode_two_typed_operands();
   test_lir_call_arg_helpers_classify_call_callee_shape();
   test_lir_call_arg_helpers_decode_direct_global_typed_call();
+  test_lir_call_arg_helpers_decode_zero_arg_and_call_crossing_direct_calls();
   test_lir_call_arg_helpers_format_typed_call_round_trip();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
   test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();
