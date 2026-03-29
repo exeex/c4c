@@ -5187,6 +5187,24 @@ void test_aarch64_backend_renders_compare_and_branch_slice() {
                   "aarch64 backend should lower the else return block directly in assembly");
 }
 
+void test_aarch64_backend_renders_compare_and_branch_slice_from_typed_predicates() {
+  auto module = make_typed_conditional_return_module();
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".globl main",
+                  "aarch64 backend should lower the typed conditional-return slice to assembly");
+  expect_contains(rendered, "  mov w8, #2\n",
+                  "aarch64 backend should still materialize the typed compare lhs immediate");
+  expect_contains(rendered, "  cmp w8, #3\n",
+                  "aarch64 backend should still compare the typed predicate slice against the rhs immediate");
+  expect_contains(rendered, "  b.ge .Lelse\n",
+                  "aarch64 backend should map typed signed less-than predicates onto the same fail branch");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should keep typed compare-and-branch lowering on the asm path");
+}
+
 void test_aarch64_backend_renders_compare_and_branch_le_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_conditional_return_le_module()},
@@ -7713,6 +7731,7 @@ int main() {
   test_aarch64_backend_preserves_module_headers_and_declarations();
   test_aarch64_backend_propagates_malformed_signature_in_supported_slice();
   test_aarch64_backend_renders_compare_and_branch_slice();
+  test_aarch64_backend_renders_compare_and_branch_slice_from_typed_predicates();
   test_aarch64_backend_renders_compare_and_branch_le_slice();
   test_aarch64_backend_renders_compare_and_branch_gt_slice();
   test_aarch64_backend_renders_compare_and_branch_ge_slice();

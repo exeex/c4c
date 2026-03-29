@@ -8,9 +8,11 @@ Source Plan: plan.md
 
 - Step 4: Migrate high-friction instruction families and consumers.
 - Exact target for the next iteration: continue Step 4 past
-  the first landed x86 emitter slice into the analogous AArch64
-  compare-and-branch helper, replacing its raw cmp predicate dispatch with
-  typed predicate checks and extending existing backend regression coverage.
+  the landed x86 and AArch64 conditional-return emitter slices into the
+  remaining backend compare consumers that still branch on raw predicate text,
+  starting with the pointer-difference equality checks in
+  `src/backend/aarch64/codegen/emit.cpp` and
+  `src/backend/x86/codegen/emit.cpp`.
 
 ## Completed Items
 
@@ -41,6 +43,12 @@ Source Plan: plan.md
   parser and fail-branch selection through `LirCmpPredicate::typed()` and
   enum-backed dispatch instead of raw predicate strings, with new typed x86
   regression coverage in `tests/backend/backend_lir_adapter_tests.cpp`.
+- Completed the analogous Step 4 target-specific backend-consumer slice in
+  `src/backend/aarch64/codegen/emit.cpp` by routing the minimal
+  conditional-return parser and fail-branch selection through
+  `LirCmpPredicate::typed()` and enum-backed dispatch instead of raw predicate
+  strings, with new typed AArch64 regression coverage in
+  `tests/backend/backend_lir_adapter_tests.cpp`.
 
 ## Notes
 
@@ -132,9 +140,11 @@ Source Plan: plan.md
 
 ## Next Intended Slice
 
-- Follow the Step 4 typed-dispatch cleanup into
-  `src/backend/aarch64/codegen/emit.cpp`, starting with the minimal
-  conditional-return slice that still branches on raw cmp predicate text.
+- Follow the Step 4 typed-dispatch cleanup into the remaining backend compare
+  consumers that still branch on raw predicate text, starting with the
+  pointer-difference equality checks in
+  `src/backend/aarch64/codegen/emit.cpp` and
+  `src/backend/x86/codegen/emit.cpp`.
 - Keep call argument text, GEP index text, inline asm text, and declaration
   text on the compatibility path for now; Step 4 should focus on arithmetic and
   comparison consumers before the larger call/GEP migration work.
@@ -194,6 +204,20 @@ Source Plan: plan.md
   --before test_fail_after_step4.log --after test_fail_after_step4_x86_typed.log
   --allow-non-decreasing-passed` passed with zero new failures and no
   pass-count regression.
+- `cmake --build build -j8 --target backend_lir_adapter_tests` passed after the
+  AArch64 conditional-return typed-predicate emitter slice landed.
+- `./build/backend_lir_adapter_tests` passed with new AArch64 typed
+  cmp-predicate coverage for compare-and-branch lowering.
+- `cmake --build build -j8` passed after routing
+  `src/backend/aarch64/codegen/emit.cpp` through typed conditional-return
+  predicates.
+- `ctest --test-dir build -j --output-on-failure >
+  test_fail_after_step4_aarch64_typed.log` recorded `2371/2560` passing and
+  `189` failing tests.
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_after_step4_x86_typed.log --after
+  test_fail_after_step4_aarch64_typed.log --allow-non-decreasing-passed`
+  passed with zero new failures and no pass-count regression.
 
 ## Open Questions To Resolve During This Runbook
 
@@ -208,5 +232,5 @@ Source Plan: plan.md
 
 ## Blockers
 
-- None. The next task is the first Step 4 backend-consumer migration slice on
+- None. The next task is the next Step 4 backend-consumer migration slice on
   top of the new verifier-backed typed wrapper layer.
