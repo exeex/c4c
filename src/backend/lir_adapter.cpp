@@ -257,6 +257,56 @@ std::optional<BackendFunction> adapt_single_param_add_function(
   return std::nullopt;
 }
 
+std::optional<BackendFunction> adapt_local_temp_return_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const BackendFunctionSignature& signature) {
+  using namespace c4c::codegen::lir;
+
+  if (function.is_declaration || signature.linkage != "define" ||
+      signature.return_type != "i32" || signature.name != "main" ||
+      !signature.params.empty() || signature.is_vararg ||
+      function.blocks.size() != 1 ||
+      (function.alloca_insts.size() != 1 && function.alloca_insts.size() != 2) ||
+      !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* alloca = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
+  if (alloca == nullptr || alloca->type_str != "i32" || alloca->result.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  const LirStoreOp* store = nullptr;
+  const LirLoadOp* load = nullptr;
+  if (function.alloca_insts.size() == 2 && block.insts.size() == 1) {
+    store = std::get_if<LirStoreOp>(&function.alloca_insts[1]);
+    load = std::get_if<LirLoadOp>(&block.insts[0]);
+  } else if (function.alloca_insts.size() == 1 && block.insts.size() == 2) {
+    store = std::get_if<LirStoreOp>(&block.insts[0]);
+    load = std::get_if<LirLoadOp>(&block.insts[1]);
+  } else {
+    return std::nullopt;
+  }
+
+  const auto* ret = std::get_if<LirRet>(&block.terminator);
+  if (block.label != "entry" || store == nullptr || load == nullptr || ret == nullptr ||
+      store->type_str != "i32" || store->ptr != alloca->result ||
+      load->type_str != "i32" || load->ptr != alloca->result ||
+      !ret->value_str.has_value() || ret->type_str != "i32" ||
+      *ret->value_str != load->result) {
+    return std::nullopt;
+  }
+
+  BackendFunction out;
+  out.signature = signature;
+  BackendBlock out_block;
+  out_block.label = block.label;
+  out_block.terminator = BackendReturn{store->val, "i32"};
+  out.blocks.push_back(std::move(out_block));
+  return out;
+}
+
 std::optional<BackendFunction> adapt_local_single_arg_call_function(
     const c4c::codegen::lir::LirFunction& function,
     const BackendFunctionSignature& signature) {
@@ -563,6 +613,10 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function) {
   }
 
   if (const auto normalized = adapt_single_param_add_function(function, signature);
+      normalized.has_value()) {
+    return *normalized;
+  }
+  if (const auto normalized = adapt_local_temp_return_function(function, signature);
       normalized.has_value()) {
     return *normalized;
   }

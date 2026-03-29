@@ -525,11 +525,11 @@ c4c::codegen::lir::LirModule make_local_temp_module() {
   function.signature_text = "define i32 @main()\n";
   function.entry = LirBlockId{0};
   function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
-  function.alloca_insts.push_back(LirStoreOp{"i32", "5", "%lv.x"});
 
   LirBlock entry;
   entry.id = LirBlockId{0};
   entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "5", "%lv.x"});
   entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.x"});
   entry.terminator = LirRet{std::string("%t0"), "i32"};
   function.blocks.push_back(std::move(entry));
@@ -1805,6 +1805,15 @@ void test_adapter_normalizes_typed_direct_call_helper_slice() {
                   "adapter should preserve the typed direct-call site");
 }
 
+void test_adapter_normalizes_local_temp_return_slice() {
+  const auto adapted = c4c::backend::adapt_minimal_module(make_local_temp_module());
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "define i32 @main()",
+                  "adapter should preserve the local-temp function signature");
+  expect_contains(rendered, "ret i32 5",
+                  "adapter should collapse the single-slot local-temp pattern into a direct return");
+}
+
 void test_adapter_preserves_typed_two_arg_direct_call_helper_slice() {
   const auto adapted =
       c4c::backend::adapt_minimal_module(make_typed_direct_call_two_arg_module());
@@ -2285,16 +2294,10 @@ void test_aarch64_backend_renders_local_temp_memory_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_local_temp_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }",
-                  "aarch64 backend should preserve required type declarations");
-  expect_contains(rendered, "%lv.x = alloca i32, align 4",
-                  "aarch64 backend should render entry allocas");
-  expect_contains(rendered, "store i32 5, ptr %lv.x",
-                  "aarch64 backend should render entry stores");
-  expect_contains(rendered, "%t0 = load i32, ptr %lv.x",
-                  "aarch64 backend should render local temporary loads");
-  expect_contains(rendered, "ret i32 %t0",
-                  "aarch64 backend should preserve the loaded return value");
+  expect_contains(rendered, ".globl main",
+                  "aarch64 backend should lower the single-slot local-temp slice to assembly");
+  expect_contains(rendered, "main:\n  mov w0, #5\n  ret\n",
+                  "aarch64 backend should collapse the local-temp literal slot pattern into a direct return");
 }
 
 void test_aarch64_backend_renders_param_slot_memory_slice() {
@@ -2854,6 +2857,7 @@ int main() {
   test_adapts_direct_return();
   test_renders_return_add();
   test_adapter_normalizes_typed_direct_call_helper_slice();
+  test_adapter_normalizes_local_temp_return_slice();
   test_adapter_preserves_typed_two_arg_direct_call_helper_slice();
   test_adapter_normalizes_typed_direct_call_local_arg_slice();
   test_adapter_normalizes_typed_two_arg_direct_call_local_arg_slice();
