@@ -6,15 +6,15 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 4: Port the stack-layout helper boundary that consumes regalloc results.
-  Iteration target: thread the new shared concrete `assigned_slot` decision into the first frame- or stack-object consumer so Step 4 stops at an executable shared placement seam instead of planner-only state.
+- [ ] Step 5: Wire the shared result into the AArch64 prologue and emit path.
+  Iteration target: thread one shared used-callee-saved or assigned-register handoff into a non-fallback AArch64 emit/prologue seam so Step 5 starts from real backend state instead of fallback-only LIR preparation.
 
 ## Todo Queue
 
 - [x] Step 1: Inventory the current shared backend boundary and capture the first implementation slice.
 - [x] Step 2: Port liveness and interval computation with targeted tests.
 - [x] Step 3: Port shared linear-scan regalloc with targeted tests.
-- [ ] Step 4: Port the stack-layout helper boundary that consumes regalloc results.
+- [x] Step 4: Port the stack-layout helper boundary that consumes regalloc results.
 - [ ] Step 5: Wire the shared result into the AArch64 prologue and emit path.
 - [ ] Step 6: Add the smallest required cleanup or peephole slice.
 - [ ] Step 7: Run regression validation, record follow-ons, and prepare the next slice.
@@ -47,11 +47,13 @@ Source Plan: plan.md
 - [x] Extended `backend_lir_adapter_tests` with slot-assignment coverage for single-block reuse hints and escaped-local exclusions, rebuilt `backend_lir_adapter_tests`, reran the binary, reran full `ctest`, and rechecked monotonic non-regression with `check_monotonic_regression.py --allow-non-decreasing-passed` (`before=570/574`, `after=570/574`, no new failures).
 - [x] Extended shared `slot_assignment` so live entry allocas now receive a concrete `assigned_slot` decision: single-block allocas with compatible type/alignment can reuse one shared slot across disjoint blocks, while same-block allocas stay separate instead of stopping at `coalesced_block` metadata.
 - [x] Extended `backend_lir_adapter_tests` with disjoint-block shared-slot reuse and same-block non-reuse coverage, rebuilt `backend_lir_adapter_tests`, reran the binary, reran full `ctest`, and rechecked monotonic non-regression with `check_monotonic_regression.py --allow-non-decreasing-passed` (`before=570/574`, `after=570/574`, no new failures).
+- [x] Added shared `apply_entry_alloca_slot_plan` wiring so Step 4 now applies `assigned_slot` to a real stack-layout consumer: disjoint entry allocas collapse onto one retained entry slot, users are rewritten to the canonical slot, and the AArch64 fallback emitter consumes that prepared function instead of leaving shared slot reuse as planner-only metadata.
+- [x] Extended `backend_lir_adapter_tests` with direct slot-plan application coverage plus AArch64 fallback checks for shared-slot canonicalization versus same-block non-reuse, rebuilt `backend_lir_adapter_tests`, reran the binary, reran full `ctest`, and rechecked monotonic non-regression with `check_monotonic_regression.py --allow-non-decreasing-passed` (`before=570/574`, `after=570/574`, no new failures).
 
 ## Next Intended Slice
 
-- After shared slot-assignment starts surfacing concrete `assigned_slot` reuse decisions, thread that result into the first frame- or stack-object consumer so Step 4 affects more than shared planner state.
-- Keep Step 5 AArch64 prologue and emit wiring deferred until the shared helper and analysis seams feed a broader stack-layout consumer than fallback-LIR pruning, with narrow tests around that handoff.
+- Start Step 5 by threading the shared used-callee-saved set or assigned-register lookup into one narrow non-fallback AArch64 emit/prologue seam with a test that proves the emitted assembly path, not just fallback LIR, depends on shared backend state.
+- Keep broader frame-layout and stack-object materialization deferred until that first non-fallback AArch64 handoff is stable.
 
 ## Blockers
 
@@ -59,21 +61,11 @@ Source Plan: plan.md
 
 ## Resume Notes
 
-- Inventory from this execution turn:
-  `src/backend/liveness.cpp`, `src/backend/regalloc.cpp`, `src/backend/generation.cpp`,
-  `src/backend/state.cpp`, and the `src/backend/stack_layout/*` regalloc-related files are still stub mirrors.
-- Current compile/test reachability comes primarily through `backend_lir_adapter_tests`; the stack-layout helper `.cpp` files are not yet part of the build graph.
-- AArch64 already documents the intended seam in commented ref notes under
-  `src/backend/aarch64/codegen/prologue.cpp`, but no live shared regalloc interface is wired yet.
-- First bounded patch target: establish compile-clean shared headers/types plus helper functions, add the stack-layout helper sources to CMake, and validate the surface with backend unit tests before any target-local behavior work.
-- Current shared implementation is intentionally skeletal:
-  `compute_live_intervals` now performs the first real typed-LIR def/use walk with block live-through extension,
-  while `allocate_registers` still only establishes the initial placeholder handoff/result shape.
-- This iteration is intentionally narrower than full stack slot placement:
-  start by making shared helper entry points read `RegAllocIntegrationResult`
-  in one place, then expand into analysis/slot assignment in a later slice.
+- Shared backend execution now reaches real Step 4 consumers through `src/backend/stack_layout/{analysis,alloca_coalescing,slot_assignment}.cpp` plus the AArch64 fallback preparation path in `src/backend/aarch64/codegen/emit.cpp`.
+- Current compile/test reachability still comes primarily through `backend_lir_adapter_tests`, and the first executed shared-slot consumer is fallback-LIR preparation rather than the non-fallback AArch64 prologue/assembly path.
+- AArch64 still documents the intended next seam in commented ref notes under `src/backend/aarch64/codegen/prologue.cpp`; the remaining gap is a live non-fallback shared regalloc/used-register handoff.
 - The new helper seam lives in `src/backend/stack_layout/regalloc_helpers.{hpp,cpp}` and is now the intended entry point for Step 4 consumers that need assigned-register, used-callee-saved, or cached-liveness reads.
-- The new analysis seam lives in `src/backend/stack_layout/analysis.{hpp,cpp}` and currently covers phi-aware use-block attribution, used-value collection, and dead param alloca detection for the typed-LIR subset exercised by `backend_lir_adapter_tests`.
+- The shared analysis plus slot-assignment seams now cover phi-aware use-block attribution, used-value collection, dead param allocas, entry-alloca overwrite tracking, single-block coalescing, concrete `assigned_slot` decisions, and canonical shared-slot application for the typed-LIR subset exercised by `backend_lir_adapter_tests`.
 - Known baseline full-suite failures remain unchanged:
   `positive_sema_ok_fn_returns_variadic_fn_ptr_c`,
   `cpp_positive_sema_decltype_bf16_builtin_cpp`,

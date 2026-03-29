@@ -105,8 +105,7 @@ void prune_dead_entry_allocas(c4c::codegen::lir::LirFunction& function) {
       c4c::backend::stack_layout::analyze_stack_layout(function, regalloc, callee_saved);
   const auto plans =
       c4c::backend::stack_layout::plan_entry_alloca_slots(function, analysis);
-  function.alloca_insts =
-      c4c::backend::stack_layout::prune_dead_entry_alloca_insts(function, plans);
+  c4c::backend::stack_layout::apply_entry_alloca_slot_plan(function, plans);
 }
 
 c4c::codegen::lir::LirModule prepare_module_for_fallback(

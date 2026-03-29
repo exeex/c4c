@@ -2,6 +2,7 @@
 
 #include "alloca_coalescing.hpp"
 
+#include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>
@@ -13,6 +14,7 @@ namespace {
 using c4c::codegen::lir::LirAllocaOp;
 using c4c::codegen::lir::LirFunction;
 using c4c::codegen::lir::LirStoreOp;
+using c4c::codegen::lir::LirTerminator;
 
 bool is_param_alloca_name(std::string_view value_name) {
   return value_name.rfind("%lv.param.", 0) == 0;
@@ -44,6 +46,101 @@ struct AssignedEntrySlot {
   int align = 0;
   std::unordered_set<std::size_t> occupied_blocks;
 };
+
+template <typename Map>
+void rewrite_value_name(std::string& value_name, const Map& canonical_names) {
+  const auto it = canonical_names.find(value_name);
+  if (it != canonical_names.end()) {
+    value_name = it->second;
+  }
+}
+
+template <typename Map>
+void rewrite_inst_alloca_refs(c4c::codegen::lir::LirInst& inst, const Map& canonical_names) {
+  std::visit(
+      [&](auto& op) {
+        using Op = std::decay_t<decltype(op)>;
+        if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirMemcpyOp>) {
+          rewrite_value_name(op.dst, canonical_names);
+          rewrite_value_name(op.src, canonical_names);
+        } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirVaStartOp>) {
+          rewrite_value_name(op.ap_ptr, canonical_names);
+        } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirVaEndOp>) {
+          rewrite_value_name(op.ap_ptr, canonical_names);
+        } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirVaCopyOp>) {
+          rewrite_value_name(op.dst_ptr, canonical_names);
+          rewrite_value_name(op.src_ptr, canonical_names);
+        } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirStackRestoreOp>) {
+          rewrite_value_name(op.saved_ptr, canonical_names);
+        } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirAbsOp>) {
+          rewrite_value_name(op.arg, canonical_names);
+        } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirIndirectBrOp>) {
+          rewrite_value_name(op.addr, canonical_names);
+        } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirExtractValueOp>) {
+          rewrite_value_name(op.agg, canonical_names);
+        } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirInsertValueOp>) {
+          rewrite_value_name(op.agg, canonical_names);
+          rewrite_value_name(op.elem, canonical_names);
+        } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirLoadOp>) {
+          rewrite_value_name(op.ptr, canonical_names);
+        } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirStoreOp>) {
+          rewrite_value_name(op.val, canonical_names);
+          rewrite_value_name(op.ptr, canonical_names);
+        } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirCastOp>) {
+          rewrite_value_name(op.operand, canonical_names);
+        } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirGepOp>) {
+          rewrite_value_name(op.ptr, canonical_names);
+        } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirBinOp>) {
+          rewrite_value_name(op.lhs, canonical_names);
+          rewrite_value_name(op.rhs, canonical_names);
+        } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirCmpOp>) {
+          rewrite_value_name(op.lhs, canonical_names);
+          rewrite_value_name(op.rhs, canonical_names);
+        } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirPhiOp>) {
+          for (auto& [value, _] : op.incoming) {
+            rewrite_value_name(value, canonical_names);
+          }
+        } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirSelectOp>) {
+          rewrite_value_name(op.cond, canonical_names);
+          rewrite_value_name(op.true_val, canonical_names);
+          rewrite_value_name(op.false_val, canonical_names);
+        } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirInsertElementOp>) {
+          rewrite_value_name(op.vec, canonical_names);
+          rewrite_value_name(op.elem, canonical_names);
+          rewrite_value_name(op.index, canonical_names);
+        } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirExtractElementOp>) {
+          rewrite_value_name(op.vec, canonical_names);
+          rewrite_value_name(op.index, canonical_names);
+        } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirShuffleVectorOp>) {
+          rewrite_value_name(op.vec1, canonical_names);
+          rewrite_value_name(op.vec2, canonical_names);
+          rewrite_value_name(op.mask, canonical_names);
+        } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirVaArgOp>) {
+          rewrite_value_name(op.ap_ptr, canonical_names);
+        } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirCallOp>) {
+          rewrite_value_name(op.callee, canonical_names);
+        }
+      },
+      inst);
+}
+
+template <typename Map>
+void rewrite_terminator_alloca_refs(LirTerminator& terminator, const Map& canonical_names) {
+  std::visit(
+      [&](auto& term) {
+        using Term = std::decay_t<decltype(term)>;
+        if constexpr (std::is_same_v<Term, c4c::codegen::lir::LirCondBr>) {
+          rewrite_value_name(term.cond_name, canonical_names);
+        } else if constexpr (std::is_same_v<Term, c4c::codegen::lir::LirRet>) {
+          if (term.value_str.has_value()) {
+            rewrite_value_name(*term.value_str, canonical_names);
+          }
+        } else if constexpr (std::is_same_v<Term, c4c::codegen::lir::LirSwitch>) {
+          rewrite_value_name(term.selector_name, canonical_names);
+        }
+      },
+      terminator);
+}
 
 }  // namespace
 
@@ -113,6 +210,61 @@ std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
   }
 
   return plans;
+}
+
+void apply_entry_alloca_slot_plan(
+    LirFunction& function,
+    const std::vector<EntryAllocaSlotPlan>& plans) {
+  std::unordered_map<std::size_t, std::string> canonical_by_slot;
+  std::unordered_map<std::string, std::string> canonical_by_alloca;
+
+  for (const auto& plan : plans) {
+    if (!plan.needs_stack_slot || !plan.assigned_slot.has_value()) {
+      continue;
+    }
+    auto [it, inserted] =
+        canonical_by_slot.emplace(*plan.assigned_slot, plan.alloca_name);
+    canonical_by_alloca.emplace(plan.alloca_name, it->second);
+    (void)inserted;
+  }
+
+  function.alloca_insts = prune_dead_entry_alloca_insts(function, plans);
+  if (canonical_by_alloca.empty()) {
+    return;
+  }
+
+  std::vector<c4c::codegen::lir::LirInst> rewritten_alloca_insts;
+  rewritten_alloca_insts.reserve(function.alloca_insts.size());
+  std::unordered_set<std::string> kept_allocas;
+
+  for (auto inst : function.alloca_insts) {
+    rewrite_inst_alloca_refs(inst, canonical_by_alloca);
+
+    const auto* alloca = std::get_if<LirAllocaOp>(&inst);
+    if (alloca == nullptr) {
+      rewritten_alloca_insts.push_back(std::move(inst));
+      continue;
+    }
+
+    const auto canonical_it = canonical_by_alloca.find(alloca->result);
+    if (canonical_it == canonical_by_alloca.end()) {
+      rewritten_alloca_insts.push_back(std::move(inst));
+      continue;
+    }
+    if (!kept_allocas.insert(canonical_it->second).second) {
+      continue;
+    }
+    rewritten_alloca_insts.push_back(std::move(inst));
+  }
+
+  function.alloca_insts = std::move(rewritten_alloca_insts);
+
+  for (auto& block : function.blocks) {
+    for (auto& inst : block.insts) {
+      rewrite_inst_alloca_refs(inst, canonical_by_alloca);
+    }
+    rewrite_terminator_alloca_refs(block.terminator, canonical_by_alloca);
+  }
 }
 
 std::vector<c4c::codegen::lir::LirInst> prune_dead_entry_alloca_insts(

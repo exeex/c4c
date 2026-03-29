@@ -3846,6 +3846,45 @@ void test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts() {
       "shared slot-assignment pruning should keep scalar live entry allocas while dropping redundant paired zero-init stores");
 }
 
+void test_backend_shared_slot_assignment_applies_coalesced_entry_slots() {
+  const c4c::backend::RegAllocIntegrationResult regalloc;
+
+  const auto disjoint_module = make_disjoint_block_local_alloca_candidate_module();
+  auto disjoint_function = disjoint_module.functions.front();
+  const auto disjoint_analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(disjoint_function, regalloc, {});
+  const auto disjoint_plans =
+      c4c::backend::stack_layout::plan_entry_alloca_slots(disjoint_function,
+                                                          disjoint_analysis);
+  c4c::backend::stack_layout::apply_entry_alloca_slot_plan(disjoint_function, disjoint_plans);
+
+  expect_true(disjoint_function.alloca_insts.size() == 1,
+              "shared slot-assignment application should collapse disjoint single-block allocas onto one retained entry slot");
+  const auto* disjoint_alloca =
+      std::get_if<c4c::codegen::lir::LirAllocaOp>(&disjoint_function.alloca_insts.front());
+  expect_true(disjoint_alloca != nullptr && disjoint_alloca->result == "%lv.then",
+              "shared slot-assignment application should retain the first assigned-slot owner as the canonical entry alloca");
+  const auto* else_store =
+      std::get_if<c4c::codegen::lir::LirStoreOp>(&disjoint_function.blocks[2].insts[0]);
+  const auto* else_load =
+      std::get_if<c4c::codegen::lir::LirLoadOp>(&disjoint_function.blocks[2].insts[1]);
+  expect_true(else_store != nullptr && else_store->ptr == "%lv.then" &&
+                  else_load != nullptr && else_load->ptr == "%lv.then",
+              "shared slot-assignment application should rewrite disjoint-block users to the canonical shared slot");
+
+  const auto same_block_module = make_same_block_local_alloca_candidate_module();
+  auto same_block_function = same_block_module.functions.front();
+  const auto same_block_analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(same_block_function, regalloc, {});
+  const auto same_block_plans =
+      c4c::backend::stack_layout::plan_entry_alloca_slots(same_block_function,
+                                                          same_block_analysis);
+  c4c::backend::stack_layout::apply_entry_alloca_slot_plan(same_block_function, same_block_plans);
+
+  expect_true(same_block_function.alloca_insts.size() == 2,
+              "shared slot-assignment application should keep same-block allocas distinct when planning assigned them different slots");
+}
+
 void test_aarch64_backend_prunes_dead_param_allocas_from_fallback_lir() {
   const auto dead_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_dead_param_alloca_candidate_module()},
@@ -3894,6 +3933,25 @@ void test_aarch64_backend_prunes_dead_local_allocas_from_fallback_lir() {
   expect_contains(read_first_rendered, "store [2 x i32] zeroinitializer, ptr %lv.buf",
                   "aarch64 backend fallback should preserve zero-init stores when a live local entry alloca is read before the first overwrite");
 
+  const auto disjoint_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          make_disjoint_block_local_alloca_candidate_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(disjoint_rendered, "%lv.then = alloca i32, align 4",
+                  "aarch64 backend fallback should keep the canonical shared entry slot for disjoint-block allocas");
+  expect_true(disjoint_rendered.find("%lv.else = alloca i32, align 4") == std::string::npos,
+              "aarch64 backend fallback should drop duplicate entry allocas once shared slot planning coalesces them");
+  expect_contains(disjoint_rendered, "store i32 9, ptr %lv.then",
+                  "aarch64 backend fallback should rewrite disjoint-block users onto the retained shared slot");
+
+  const auto same_block_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          make_same_block_local_alloca_candidate_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(same_block_rendered, "%lv.x = alloca i32, align 4",
+                  "aarch64 backend fallback should keep the first same-block local alloca when slot planning keeps it distinct");
+  expect_contains(same_block_rendered, "%lv.y = alloca i32, align 4",
+                  "aarch64 backend fallback should also keep the second same-block local alloca when no shared slot is assigned");
 }
 
 }  // namespace
@@ -3985,6 +4043,7 @@ int main() {
   test_backend_shared_slot_assignment_prunes_dead_param_alloca_insts();
   test_backend_shared_slot_assignment_plans_entry_alloca_slots();
   test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts();
+  test_backend_shared_slot_assignment_applies_coalesced_entry_slots();
   test_aarch64_backend_prunes_dead_param_allocas_from_fallback_lir();
   test_aarch64_backend_prunes_dead_local_allocas_from_fallback_lir();
   return 0;
