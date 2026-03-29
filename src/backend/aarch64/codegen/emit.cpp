@@ -46,9 +46,11 @@ void validate_module(const c4c::codegen::lir::LirModule& module) {
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   validate_module(module);
   try {
-    return c4c::backend::render_module(
-        c4c::backend::adapt_return_only_module(module));
-  } catch (const std::invalid_argument&) {
+    return c4c::backend::render_module(c4c::backend::adapt_minimal_module(module));
+  } catch (const c4c::backend::LirAdapterError& ex) {
+    if (ex.kind() != c4c::backend::LirAdapterErrorKind::Unsupported) {
+      throw;
+    }
   }
   return c4c::codegen::lir::print_llvm(module);
 }

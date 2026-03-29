@@ -3,11 +3,28 @@
 #include "../codegen/lir/ir.hpp"
 
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <variant>
 #include <vector>
 
 namespace c4c::backend {
+
+enum class LirAdapterErrorKind {
+  Unsupported,
+  Malformed,
+};
+
+class LirAdapterError : public std::invalid_argument {
+ public:
+  LirAdapterError(LirAdapterErrorKind kind, const std::string& message)
+      : std::invalid_argument(message), kind_(kind) {}
+
+  LirAdapterErrorKind kind() const noexcept { return kind_; }
+
+ private:
+  LirAdapterErrorKind kind_;
+};
 
 struct BackendParam {
   std::string type_str;
@@ -59,7 +76,7 @@ struct BackendModule {
   std::vector<BackendFunction> functions;
 };
 
-BackendModule adapt_return_only_module(const c4c::codegen::lir::LirModule& module);
+BackendModule adapt_minimal_module(const c4c::codegen::lir::LirModule& module);
 std::string render_module(const BackendModule& module);
 
 }  // namespace c4c::backend

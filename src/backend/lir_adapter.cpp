@@ -69,12 +69,14 @@ std::vector<std::string> split_top_level(const std::string& text, char delim) {
 }
 
 [[noreturn]] void fail_unsupported(const std::string& detail) {
-  throw std::invalid_argument("return-only LIR adapter does not support " + detail);
+  throw LirAdapterError(LirAdapterErrorKind::Unsupported,
+                        "minimal backend LIR adapter does not support " + detail);
 }
 
 [[noreturn]] void fail_bad_signature(const std::string& signature_text) {
-  throw std::invalid_argument("return-only LIR adapter could not parse signature '" +
-                              signature_text + "'");
+  throw LirAdapterError(LirAdapterErrorKind::Malformed,
+                        "minimal backend LIR adapter could not parse signature '" +
+                            signature_text + "'");
 }
 
 BackendFunctionSignature parse_signature(const std::string& signature_text) {
@@ -218,7 +220,7 @@ void render_function(std::ostringstream& out, const BackendFunction& function) {
 
 }  // namespace
 
-BackendModule adapt_return_only_module(const c4c::codegen::lir::LirModule& module) {
+BackendModule adapt_minimal_module(const c4c::codegen::lir::LirModule& module) {
   if (!module.globals.empty()) fail_unsupported("globals");
   if (!module.string_pool.empty()) fail_unsupported("string constants");
   if (!module.extern_decls.empty()) fail_unsupported("extern declarations");

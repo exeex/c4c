@@ -1033,7 +1033,7 @@ c4c::codegen::lir::LirModule make_phi_join_module() {
 }
 
 void test_adapts_direct_return() {
-  const auto adapted = c4c::backend::adapt_return_only_module(make_return_zero_module());
+  const auto adapted = c4c::backend::adapt_minimal_module(make_return_zero_module());
   expect_true(adapted.functions.size() == 1, "adapter should preserve one function");
   expect_true(adapted.functions.front().blocks.size() == 1,
               "adapter should preserve one block");
@@ -1042,7 +1042,7 @@ void test_adapts_direct_return() {
 }
 
 void test_renders_return_add() {
-  const auto adapted = c4c::backend::adapt_return_only_module(make_return_add_module());
+  const auto adapted = c4c::backend::adapt_minimal_module(make_return_add_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "%t0 = add i32 2, 3",
                   "adapter renderer should emit the add instruction");
@@ -1051,7 +1051,7 @@ void test_renders_return_add() {
 }
 
 void test_adapter_tracks_structured_signature_contract() {
-  const auto adapted = c4c::backend::adapt_return_only_module(make_return_zero_module());
+  const auto adapted = c4c::backend::adapt_minimal_module(make_return_zero_module());
   const auto& signature = adapted.functions.front().signature;
   expect_true(signature.linkage == "define",
               "adapter should preserve whether a function is defined or declared");
@@ -1065,6 +1065,33 @@ void test_adapter_tracks_structured_signature_contract() {
               "adapter should keep the minimal return-only slice non-variadic");
 }
 
+void test_adapter_tracks_structured_entry_block_and_return_contract() {
+  const auto adapted = c4c::backend::adapt_minimal_module(make_return_add_module());
+  const auto& function = adapted.functions.front();
+  expect_true(function.blocks.size() == 1,
+              "adapter should preserve the single-block bring-up slice");
+  const auto& block = function.blocks.front();
+  expect_true(block.label == "entry",
+              "adapter should preserve the entry block label separately from rendering");
+  expect_true(block.insts.size() == 1,
+              "adapter should preserve the current single add instruction");
+  const auto* add = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts.front());
+  expect_true(add != nullptr,
+              "adapter should materialize the return-add instruction as a backend-owned op");
+  expect_true(add->opcode == c4c::backend::BackendBinaryOpcode::Add,
+              "adapter should preserve the add opcode in backend-owned form");
+  expect_true(add->result == "%t0",
+              "adapter should preserve the add result name");
+  expect_true(add->type_str == "i32",
+              "adapter should preserve the add type");
+  expect_true(add->lhs == "2" && add->rhs == "3",
+              "adapter should preserve the add operands");
+  expect_true(block.terminator.value.has_value() && *block.terminator.value == "%t0",
+              "adapter should preserve the return value separately from the block text");
+  expect_true(block.terminator.type_str == "i32",
+              "adapter should preserve the return type separately from the block text");
+}
+
 void test_rejects_unsupported_instruction() {
   using namespace c4c::codegen::lir;
 
@@ -1074,11 +1101,13 @@ void test_rejects_unsupported_instruction() {
   block.terminator = LirRet{std::string("%t0"), "i32"};
 
   try {
-    (void)c4c::backend::adapt_return_only_module(module);
+    (void)c4c::backend::adapt_minimal_module(module);
     fail("adapter should reject unsupported instructions");
-  } catch (const std::invalid_argument& ex) {
+  } catch (const c4c::backend::LirAdapterError& ex) {
     expect_contains(ex.what(), "non-binary instructions",
                     "adapter should explain unsupported instructions");
+    expect_true(ex.kind() == c4c::backend::LirAdapterErrorKind::Unsupported,
+                "adapter should classify unsupported instructions distinctly from malformed input");
   }
 }
 
@@ -1116,6 +1145,23 @@ void test_aarch64_backend_preserves_module_headers_and_declarations() {
                   "aarch64 backend should preserve declarations without bodies");
   expect_contains(rendered, "define i32 @main()\n{\nentry:\n",
                   "aarch64 backend should still open function bodies for definitions");
+}
+
+void test_aarch64_backend_propagates_malformed_signature_in_supported_slice() {
+  auto module = make_return_add_module();
+  module.functions.front().signature_text = "define @main()\n";
+
+  try {
+    (void)c4c::backend::emit_module(
+        c4c::backend::BackendModuleInput{module},
+        c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+    fail("aarch64 backend should not hide malformed supported-slice signatures behind fallback");
+  } catch (const c4c::backend::LirAdapterError& ex) {
+    expect_true(ex.kind() == c4c::backend::LirAdapterErrorKind::Malformed,
+                "aarch64 backend should preserve malformed-signature classification");
+    expect_contains(ex.what(), "could not parse signature",
+                    "aarch64 backend should surface the malformed signature detail");
+  }
 }
 
 void test_aarch64_backend_renders_compare_and_branch_slice() {
@@ -1574,10 +1620,12 @@ int main() {
   test_adapts_direct_return();
   test_renders_return_add();
   test_adapter_tracks_structured_signature_contract();
+  test_adapter_tracks_structured_entry_block_and_return_contract();
   test_rejects_unsupported_instruction();
   test_aarch64_backend_scaffold_renders_supported_slice();
   test_aarch64_backend_renders_void_return_slice();
   test_aarch64_backend_preserves_module_headers_and_declarations();
+  test_aarch64_backend_propagates_malformed_signature_in_supported_slice();
   test_aarch64_backend_renders_compare_and_branch_slice();
   test_aarch64_backend_scaffold_rejects_out_of_slice_ir();
   test_aarch64_backend_renders_direct_call_slice();
