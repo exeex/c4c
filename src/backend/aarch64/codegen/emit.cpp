@@ -5,6 +5,7 @@
 #include "../../stack_layout/analysis.hpp"
 #include "../../stack_layout/regalloc_helpers.hpp"
 #include "../../stack_layout/slot_assignment.hpp"
+#include "../../../codegen/lir/call_args.hpp"
 #include "../../../codegen/lir/lir_printer.hpp"
 
 #include <array>
@@ -314,12 +315,15 @@ std::optional<std::int64_t> parse_typed_i32_arg_imm(std::string_view arg) {
 
 std::optional<std::pair<std::int64_t, std::int64_t>> parse_typed_i32_arg_pair_imms(
     std::string_view args_str) {
-  const auto comma = args_str.find(", ");
-  if (comma == std::string_view::npos) {
+  std::vector<std::string_view> args;
+  c4c::codegen::lir::for_each_lir_call_arg(args_str, [&](std::string_view arg) {
+    args.push_back(arg);
+  });
+  if (args.size() != 2) {
     return std::nullopt;
   }
-  const auto arg0 = parse_typed_i32_arg_imm(args_str.substr(0, comma));
-  const auto arg1 = parse_typed_i32_arg_imm(args_str.substr(comma + 2));
+  const auto arg0 = parse_typed_i32_arg_imm(args[0]);
+  const auto arg1 = parse_typed_i32_arg_imm(args[1]);
   if (!arg0.has_value() || !arg1.has_value()) {
     return std::nullopt;
   }

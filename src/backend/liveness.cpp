@@ -1,7 +1,7 @@
 #include "liveness.hpp"
+#include "../codegen/lir/call_args.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <limits>
 #include <set>
 #include <unordered_map>
@@ -65,41 +65,12 @@ bool is_call_inst(const c4c::codegen::lir::LirInst& inst) {
          std::holds_alternative<c4c::codegen::lir::LirCallOp>(inst);
 }
 
-bool is_value_name_char(char ch) {
-  return std::isalnum(static_cast<unsigned char>(ch)) || ch == '_' || ch == '.' ||
-         ch == '-';
-}
-
 bool is_value_name(std::string_view token) {
-  return !token.empty() && token.front() == '%';
+  return c4c::codegen::lir::is_lir_value_name(token);
 }
 
 void append_unique(std::vector<std::string>& values, std::string value) {
-  if (value.empty()) {
-    return;
-  }
-  if (std::find(values.begin(), values.end(), value) == values.end()) {
-    values.push_back(std::move(value));
-  }
-}
-
-void collect_value_names_from_text(std::string_view text,
-                                   std::vector<std::string>& values) {
-  std::size_t pos = 0;
-  while (pos < text.size()) {
-    pos = text.find('%', pos);
-    if (pos == std::string_view::npos) {
-      return;
-    }
-    std::size_t end = pos + 1;
-    while (end < text.size() && is_value_name_char(text[end])) {
-      ++end;
-    }
-    if (end > pos + 1) {
-      append_unique(values, std::string(text.substr(pos, end - pos)));
-    }
-    pos = end;
-  }
+  c4c::codegen::lir::append_unique_lir_value_name(values, std::move(value));
 }
 
 std::vector<std::string> used_names_for_inst(const LirInst& inst) {
@@ -113,7 +84,7 @@ std::vector<std::string> used_names_for_inst(const LirInst& inst) {
             append_unique(values, std::string(text));
             return;
           }
-          collect_value_names_from_text(text, values);
+          c4c::codegen::lir::collect_lir_value_names_from_text(text, values);
         };
         auto add_id = [&values](c4c::codegen::lir::LirValueId id) {
           if (id.valid()) {
@@ -191,7 +162,7 @@ std::vector<std::string> used_names_for_inst(const LirInst& inst) {
           }
         } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirCallOp>) {
           add_text(op.callee);
-          add_text(op.args_str);
+          c4c::codegen::lir::collect_lir_value_names_from_call_args(op.args_str, values);
         } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirBinOp>) {
           add_text(op.lhs);
           add_text(op.rhs);
@@ -236,7 +207,7 @@ std::vector<std::string> used_names_for_terminator(const LirTerminator& terminat
             append_unique(values, std::string(text));
             return;
           }
-          collect_value_names_from_text(text, values);
+          c4c::codegen::lir::collect_lir_value_names_from_text(text, values);
         };
         auto add_id = [&values](c4c::codegen::lir::LirValueId id) {
           if (id.valid()) {

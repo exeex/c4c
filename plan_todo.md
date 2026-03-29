@@ -8,10 +8,11 @@ Source Plan: plan.md
 
 - Step 4: Migrate high-friction instruction families and consumers.
 - Exact target for the next iteration: continue Step 4 past
-  the landed compare/call-family helper cleanup into the next remaining backend
-  and analysis consumers that still depend on string-compatibility wrappers,
-  with shared call-argument decoding and stack/liveness textual scraping the
-  next highest-value cleanup targets.
+  the landed shared call-argument decoding helper into the remaining backend
+  adapter and target-specific consumers that still branch on exact
+  `LirCallOp::{args_str,callee_type_suffix}` protocol strings, especially the
+  adapter normalization paths that still rewrite typed call text by substring
+  splicing instead of structured argument handling.
 
 ## Completed Items
 
@@ -63,6 +64,15 @@ Source Plan: plan.md
   the typed direct-call fixtures in
   `tests/backend/backend_lir_adapter_tests.cpp` to construct the covered call
   and add surfaces through typed wrappers instead of plain string literals.
+- Completed the next Step 4 shared call-argument decoding slice by adding
+  `src/codegen/lir/call_args.hpp`, routing
+  `src/backend/stack_layout/analysis.cpp`,
+  `src/backend/stack_layout/alloca_coalescing.cpp`, and
+  `src/backend/liveness.cpp` through shared typed call-argument value
+  extraction instead of open-coded `%` scraping, and updating
+  `src/backend/x86/codegen/emit.cpp` plus
+  `src/backend/aarch64/codegen/emit.cpp` to reuse the same top-level argument
+  splitter for direct-call pair parsing.
 
 ## Notes
 
@@ -124,6 +134,13 @@ Source Plan: plan.md
   `src/backend/stack_layout/alloca_coalescing.cpp`, and
   `src/backend/liveness.cpp` mine values out of `args_str`, GEP index text, and
   other string operands instead of consuming typed operand lists.
+- Step 4 now centralizes the current compatibility-path call-argument parsing
+  in `src/codegen/lir/call_args.hpp`, including top-level comma splitting that
+  tolerates nested aggregate/function syntax and a shared fallback path for
+  nested expression operands such as `getelementptr`.
+- The analysis/liveness stack still uses compatibility-text scanning for GEP
+  indices and other non-call textual payloads, but `LirCallOp::args_str` no
+  longer has three separate ad hoc scanners with subtly different behavior.
 - Step 2 candidate primitives implied by the audit:
   `LirOperand` should distinguish SSA values, immediates, globals, labels, and
   special constants; `LirTypeRef` should replace raw LLVM type strings on core
@@ -155,11 +172,14 @@ Source Plan: plan.md
 ## Next Intended Slice
 
 - Follow the Step 4 typed-dispatch cleanup into the remaining backend
-  compare/call-adjacent consumers that still rely on wrapper string
-  compatibility instead of typed opcode/predicate/callee decoding.
-- Keep call argument text, GEP index text, inline asm text, and declaration
-  text on the compatibility path for now; Step 4 should focus on arithmetic and
-  comparison consumers before the larger call/GEP migration work.
+  call-adjacent consumers that still rely on wrapper string compatibility
+  instead of structured call decoding, with `src/backend/lir_adapter.cpp` the
+  next highest-value target because it still pattern-matches and rewrites
+  `args_str` via exact string equality and substring surgery.
+- Keep GEP index text, inline asm text, and declaration text on the
+  compatibility path for now; the next slice should focus on shrinking the
+  adapter's direct-call string protocol surface before attempting broader
+  `LirCallOp` storage changes.
 
 ## Validation
 
@@ -238,6 +258,21 @@ Source Plan: plan.md
   pointer-difference recognizers through typed opcode/predicate dispatch.
 - `ctest --test-dir build -j --output-on-failure > test_fail_after.log`
   recorded `2371/2560` passing and `189` failing tests.
+- `cmake --build build -j8 --target backend_lir_adapter_tests` passed after
+  landing the shared `LirCallOp` argument-decoding helper and wiring the
+  stack/liveness consumers plus x86/AArch64 pair parsers through it.
+- `./build/backend_lir_adapter_tests` passed with new coverage for nested
+  typed call-argument splitting/value collection and shared stack-layout
+  call-argument use tracking.
+- `cmake --build build -j8` passed after wiring the shared call-argument
+  helper into `c4cll`.
+- `ctest --test-dir build -j --output-on-failure > test_fail_after.log`
+  recorded `2371/2560` passing and `189` failing tests after the shared
+  call-argument cleanup slice.
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_before.log --after test_fail_after.log
+  --allow-non-decreasing-passed` passed with zero new failures and no
+  pass-count regression after the shared call-argument cleanup slice.
 - `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
   --before test_fail_before.log --after test_fail_after.log
   --allow-non-decreasing-passed` passed with zero new failures and no

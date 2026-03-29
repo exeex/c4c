@@ -8,6 +8,7 @@
 #include "stack_layout/regalloc_helpers.hpp"
 #include "stack_layout/slot_assignment.hpp"
 #include "target.hpp"
+#include "../../src/codegen/lir/call_args.hpp"
 #include "../../src/codegen/lir/lir_printer.hpp"
 #include "../../src/codegen/lir/verify.hpp"
 #include "../../src/backend/elf/mod.hpp"
@@ -121,6 +122,37 @@ void test_lir_typed_wrappers_classify_basic_types() {
   expect_true(ptr.kind() == LirTypeKind::Pointer, "ptr llvm types should classify as pointer");
   expect_true(vec.kind() == LirTypeKind::Vector, "vector llvm types should classify as vector");
   expect_true(fn.kind() == LirTypeKind::Function, "function-like llvm types should classify as function");
+}
+
+void test_lir_call_arg_helpers_split_nested_typed_args() {
+  using namespace c4c::codegen::lir;
+
+  std::vector<std::string_view> args;
+  for_each_lir_call_arg("ptr byval({ i32, i32 }) align 8 %agg, i32 %t0",
+                        [&](std::string_view arg) { args.push_back(arg); });
+
+  expect_true(args.size() == 2,
+              "typed call-arg splitting should ignore commas nested inside aggregate type syntax");
+  expect_true(lir_call_arg_operand(args[0]).has_value() &&
+                  *lir_call_arg_operand(args[0]) == "%agg",
+              "typed call-arg decoding should recover the operand suffix from byval-style args");
+  expect_true(lir_call_arg_operand(args[1]).has_value() &&
+                  *lir_call_arg_operand(args[1]) == "%t0",
+              "typed call-arg decoding should preserve simple typed operands");
+}
+
+void test_lir_call_arg_helpers_collect_value_names() {
+  using namespace c4c::codegen::lir;
+
+  std::vector<std::string> values;
+  collect_lir_value_names_from_call_args(
+      "ptr byval({ i32, i32 }) align 8 %agg, ptr getelementptr inbounds "
+      "([2 x i32], ptr %lv.buf, i64 0, i64 1), i32 %t0",
+      values);
+
+  expect_true(values.size() == 3 && values[0] == "%agg" && values[1] == "%lv.buf" &&
+                  values[2] == "%t0",
+              "typed call-arg value collection should keep direct operands and nested expression operands");
 }
 
 void test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings() {
@@ -6716,6 +6748,17 @@ void test_backend_shared_stack_layout_analysis_detects_dead_param_allocas() {
               "shared stack-layout analysis should mark dead param allocas when the corresponding parameter value is kept in a callee-saved register");
 }
 
+void test_backend_shared_stack_layout_analysis_tracks_call_arg_values() {
+  const auto module = make_escaped_local_alloca_candidate_module();
+  const auto& function = module.functions.back();
+  const c4c::backend::RegAllocIntegrationResult regalloc;
+  const auto analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(function, regalloc, {});
+
+  expect_true(analysis.uses_value("%lv.buf"),
+              "shared stack-layout analysis should treat typed call-argument operands as real uses");
+}
+
 void test_backend_shared_stack_layout_analysis_detects_entry_alloca_overwrite_before_read() {
   const c4c::backend::RegAllocIntegrationResult regalloc;
 
@@ -7768,6 +7811,8 @@ void test_aarch64_builtin_object_matches_external_return_add_surface() {
 int main() {
   test_lir_typed_wrappers_classify_basic_operands();
   test_lir_typed_wrappers_classify_basic_types();
+  test_lir_call_arg_helpers_split_nested_typed_args();
+  test_lir_call_arg_helpers_collect_value_names();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
   test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();
   test_lir_printer_renders_verified_typed_ops();
@@ -7919,6 +7964,7 @@ int main() {
   test_backend_shared_stack_layout_regalloc_helper_exposes_handoff_view();
   test_backend_shared_stack_layout_analysis_tracks_phi_use_blocks();
   test_backend_shared_stack_layout_analysis_detects_dead_param_allocas();
+  test_backend_shared_stack_layout_analysis_tracks_call_arg_values();
   test_backend_shared_stack_layout_analysis_detects_entry_alloca_overwrite_before_read();
   test_backend_shared_alloca_coalescing_classifies_non_param_allocas();
   test_backend_shared_slot_assignment_plans_param_alloca_slots();

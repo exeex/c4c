@@ -3,6 +3,7 @@
 #include "../../generation.hpp"
 #include "../../lir_adapter.hpp"
 #include "../../stack_layout/regalloc_helpers.hpp"
+#include "../../../codegen/lir/call_args.hpp"
 #include "../../../codegen/lir/lir_printer.hpp"
 
 #include <charconv>
@@ -149,12 +150,15 @@ std::optional<std::int64_t> parse_typed_i32_arg_imm(std::string_view arg) {
 
 std::optional<std::pair<std::string_view, std::string_view>> parse_typed_i32_arg_pair(
     std::string_view args_str) {
-  const auto separator = args_str.find(", ");
-  if (separator == std::string_view::npos) {
+  std::vector<std::string_view> args;
+  c4c::codegen::lir::for_each_lir_call_arg(args_str, [&](std::string_view arg) {
+    args.push_back(arg);
+  });
+  if (args.size() != 2) {
     return std::nullopt;
   }
-  const auto lhs_arg = strip_typed_operand_prefix(args_str.substr(0, separator), "i32");
-  const auto rhs_arg = strip_typed_operand_prefix(args_str.substr(separator + 2), "i32");
+  const auto lhs_arg = strip_typed_operand_prefix(args[0], "i32");
+  const auto rhs_arg = strip_typed_operand_prefix(args[1], "i32");
   if (!lhs_arg.has_value() || !rhs_arg.has_value()) {
     return std::nullopt;
   }

@@ -1,7 +1,7 @@
 #include "alloca_coalescing.hpp"
+#include "../../codegen/lir/call_args.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <string_view>
 #include <utility>
 
@@ -22,13 +22,8 @@ using c4c::codegen::lir::LirStoreOp;
 using c4c::codegen::lir::LirSwitch;
 using c4c::codegen::lir::LirTerminator;
 
-bool is_value_name_char(char ch) {
-  return std::isalnum(static_cast<unsigned char>(ch)) || ch == '_' || ch == '.' ||
-         ch == '-';
-}
-
 bool is_value_name(std::string_view token) {
-  return !token.empty() && token.front() == '%';
+  return c4c::codegen::lir::is_lir_value_name(token);
 }
 
 bool is_param_alloca_name(std::string_view value_name) {
@@ -36,31 +31,7 @@ bool is_param_alloca_name(std::string_view value_name) {
 }
 
 void append_unique(std::vector<std::string>& values, std::string value) {
-  if (value.empty()) {
-    return;
-  }
-  if (std::find(values.begin(), values.end(), value) == values.end()) {
-    values.push_back(std::move(value));
-  }
-}
-
-void collect_value_names_from_text(std::string_view text,
-                                   std::vector<std::string>& values) {
-  std::size_t pos = 0;
-  while (pos < text.size()) {
-    pos = text.find('%', pos);
-    if (pos == std::string_view::npos) {
-      return;
-    }
-    std::size_t end = pos + 1;
-    while (end < text.size() && is_value_name_char(text[end])) {
-      ++end;
-    }
-    if (end > pos + 1) {
-      append_unique(values, std::string(text.substr(pos, end - pos)));
-    }
-    pos = end;
-  }
+  c4c::codegen::lir::append_unique_lir_value_name(values, std::move(value));
 }
 
 struct AllocaEscapeAnalysis {
@@ -117,7 +88,15 @@ struct AllocaEscapeAnalysis {
 
   void mark_escaped_values_in_text(std::string_view text, std::size_t block_index) {
     std::vector<std::string> values;
-    collect_value_names_from_text(text, values);
+    c4c::codegen::lir::collect_lir_value_names_from_text(text, values);
+    for (const auto& value_name : values) {
+      mark_escaped(value_name, block_index);
+    }
+  }
+
+  void mark_escaped_call_args(std::string_view args_str, std::size_t block_index) {
+    std::vector<std::string> values;
+    c4c::codegen::lir::collect_lir_value_names_from_call_args(args_str, values);
     for (const auto& value_name : values) {
       mark_escaped(value_name, block_index);
     }
@@ -145,7 +124,7 @@ struct AllocaEscapeAnalysis {
             if (is_value_name(op.callee)) {
               mark_escaped(op.callee, block_index);
             }
-            mark_escaped_values_in_text(op.args_str, block_index);
+            mark_escaped_call_args(op.args_str, block_index);
           } else if constexpr (std::is_same_v<T, LirStoreOp>) {
             mark_escaped(op.val, block_index);
             record_use(op.ptr, block_index);
