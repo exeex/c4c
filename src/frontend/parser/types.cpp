@@ -1216,6 +1216,7 @@ bool Parser::parse_next_template_argument(std::vector<TemplateArgParseResult>* o
 }
 
 bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
+    ParseContextGuard trace(this, __func__);
     if (!out_arg) return false;
     int saved_pos = pos_;
     try {

@@ -303,7 +303,7 @@ add_test(
           -DCOMPILER=$<TARGET_FILE:c4cll>
           -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_qualified_type_template_arg_stack.cpp
           -DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_top_level_parameter_list
-          -DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> parse_next_template_argument -> try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type -> parse_top_level_parameter_list
+          -DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> parse_next_template_argument -> try_parse_template_type_arg -> try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type -> parse_top_level_parameter_list
           -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
 )
 set_tests_properties(cpp_parser_debug_qualified_type_template_arg_stack PROPERTIES
@@ -316,7 +316,7 @@ add_test(
           -DCOMPILER=$<TARGET_FILE:c4cll>
           -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_qualified_type_dependent_typename_stack.cpp
           -DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_top_level_parameter_list
-          -DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> parse_next_template_argument -> try_parse_cpp_scoped_base_type -> parse_dependent_typename_specifier -> parse_top_level_parameter_list
+          -DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> parse_next_template_argument -> try_parse_template_type_arg -> try_parse_cpp_scoped_base_type -> parse_dependent_typename_specifier -> parse_top_level_parameter_list
           -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
 )
 set_tests_properties(cpp_parser_debug_qualified_type_dependent_typename_stack PROPERTIES
@@ -329,7 +329,7 @@ add_test(
           -DCOMPILER=$<TARGET_FILE:c4cll>
           -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_qualified_type_typename_spelling_stack.cpp
           -DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_top_level_parameter_list
-          -DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> parse_next_template_argument -> try_parse_cpp_scoped_base_type -> parse_dependent_typename_specifier -> consume_qualified_type_spelling_with_typename -> parse_top_level_parameter_list
+          -DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> parse_next_template_argument -> try_parse_template_type_arg -> try_parse_cpp_scoped_base_type -> parse_dependent_typename_specifier -> consume_qualified_type_spelling_with_typename -> parse_top_level_parameter_list
           -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
 )
 set_tests_properties(cpp_parser_debug_qualified_type_typename_spelling_stack PROPERTIES
@@ -342,7 +342,7 @@ add_test(
           -DCOMPILER=$<TARGET_FILE:c4cll>
           -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_qualified_type_spelling_stack.cpp
           "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_top_level_parameter_list"
-          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> parse_next_template_argument -> try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type -> consume_qualified_type_spelling_with_typename -> consume_qualified_type_spelling -> parse_top_level_parameter_list"
+          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> parse_top_level_parameter_list"
           -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
 )
 set_tests_properties(cpp_parser_debug_qualified_type_spelling_stack PROPERTIES

@@ -9,11 +9,12 @@ Source Plan: plan.md
 - Step 5: prepare the next diagnostic slice by bounding the first
   committed-failure vs no-match follow-up under speculative `try_parse_*`
   record-member rewinds
-- Current slice: instrument the next qualified-type speculative dispatch that
-  still masks the local helper stack under outer declaration/type wrappers
-- Iteration target: move past the qualified-type spelling helper slice and
-  bound the first remaining speculative ranking case that still replaces a
-  deeper committed failure with an outer wrapper-only summary
+- Current slice: surface the speculative template-type branch inside
+  `parse_next_template_argument` for the existing dependent-typename qualified
+  type repro so parser-debug summaries retain the local `try_parse_*` dispatch
+- Iteration target: add guard coverage to the template-type speculative path
+  and update the dependent-typename qualified-template-argument regression to
+  assert the deeper stack shape without changing parser semantics
 
 ## Completed
 
@@ -270,45 +271,73 @@ Source Plan: plan.md
   regression guard with no new failures:
   `before passed=2270/2271`, `after passed=2272/2273`; the existing
   `verify_tests_verify_top_level_recovery` failure remained unchanged
+- added `ParseContextGuard` coverage to `try_parse_template_type_arg` so
+  parser-debug summaries can retain the speculative template-type dispatch
+  frame when qualified template arguments later unwind into top-level wrapper
+  failures
+- updated the reduced parser-debug regressions in
+  `cpp_parser_debug_qualified_type_template_arg_stack`,
+  `cpp_parser_debug_qualified_type_dependent_typename_stack`, and
+  `cpp_parser_debug_qualified_type_typename_spelling_stack` to lock in the new
+  `try_parse_template_type_arg` frame while leaving
+  `cpp_parser_debug_qualified_type_spelling_stack` on its existing collapsed
+  wrapper-only summary shape
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_qualified_type_top_level_params`,
+  `cpp_parser_debug_qualified_type_template_arg_stack`,
+  `cpp_parser_debug_qualified_type_dependent_typename_stack`,
+  `cpp_parser_debug_qualified_type_typename_spelling_stack`, and
+  `cpp_parser_debug_qualified_type_spelling_stack`
+- reran nearby qualified-type parser coverage for
+  `cpp_positive_sema_qualified_dependent_typename_global_parse_cpp`,
+  `cpp_positive_sema_qualified_type_resolution_dispatch_parse_cpp`,
+  `cpp_positive_sema_qualified_type_spelling_shared_parse_cpp`,
+  `cpp_positive_sema_qualified_type_start_probe_parse_cpp`, and
+  `cpp_positive_sema_qualified_type_start_shared_probe_parse_cpp`
+- reran the required clean before/after full suite and passed the monotonic
+  regression guard with no new failures:
+  `before passed=2272/2273`, `after passed=2272/2273`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged
 
 ## Next Intended Slice
 
-- move from helper-stack coverage to the first true ranking-only follow-up:
-  isolate the next speculative `try_parse_*` rewind where the correct helper
-  stack is preserved but the committed root-cause ranking still degrades to an
-  outer wrapper
-- first candidate after this slice: inspect whether a namespace/type dispatch
-  outside the qualified-spelling helpers now needs explicit tri-state failure
-  bookkeeping instead of another `ParseContextGuard` pass
+- move from the template-type helper frame to the first true ranking-only
+  follow-up: isolate a speculative template-argument or namespace/type dispatch
+  where the local `try_parse_*` frame is now visible in the event stream but
+  the emitted summary still degrades to an outer wrapper-only stack
+- first candidate after this slice: inspect the nested non-`typename`
+  qualified-template repro in
+  `cpp_parser_debug_qualified_type_spelling_stack` to determine whether it now
+  needs explicit tri-state failure bookkeeping instead of another guard pass
 
 ## Blockers
 
-- speculative `try_parse_*` rewinds still collapse some root causes into the
-  outer committed failure ranking even though the summary stack is now more
-  informative
-- the event stream remains useful, but the next slice likely needs explicit
-  tri-state or ranking rules so soft-failure bookkeeping does not mask the
+- speculative template-argument rewinds still collapse some nested qualified
+  type failures into the outer committed wrapper summary even though more of
+  the local `try_parse_*` event stack is now visible
+- the next slice likely needs explicit tri-state or ranking rules so
+  soft-failure bookkeeping inside nested template arguments does not mask the
   committed leaf cause
 
 ## Resume Notes
 
 - active repro command:
   `./build/c4cll --parser-debug --parse-only tests/cpp/std/std_vector_simple.cpp`
-- current reduced repro candidate for this iteration:
-  `./build/c4cll --parser-debug --parse-only <tmp>.cpp` with a speculative
-  namespace/type dispatch that still reports an outer committed wrapper even
-  though the emitted `[pdebug] stack:` line keeps the deeper local helper path
-- this iteration landed the non-`typename` qualified-spelling repro as
-  `tests/cpp/internal/negative_case/parser_debug_qualified_type_spelling_stack.cpp`
-  and now keeps `consume_qualified_type_spelling_with_typename ->
-  consume_qualified_type_spelling` in the emitted summary stack for the nested
-  qualified template-argument case
-- the next slice should target a ranking-only repro where the deeper helper
-  stack is already preserved but the committed summary still points at an outer
-  wrapper because speculative `try_parse_*` failure bookkeeping wins
-- keep the detailed event log untouched; the current summary logic now preserves
-  deeper wrapper-prefix stacks during unwind and uses helper frames in the
-  `[pdebug] stack:` line without letting them take over `parse_fn=...`
+- current reduced repro candidates for the next iteration:
+  `./build/c4cll --parser-debug --parse-only tests/cpp/internal/negative_case/parser_debug_qualified_type_typename_spelling_stack.cpp`
+  and
+  `./build/c4cll --parser-debug --parse-only tests/cpp/internal/negative_case/parser_debug_qualified_type_spelling_stack.cpp`
+- this iteration surfaced `try_parse_template_type_arg` in the emitted summary
+  stack for the template-argument qualified-type regressions that already keep
+  a preserved helper path, but the nested non-`typename` spelling repro still
+  collapses to `[pdebug] stack: -> parse_top_level -> parse_top_level_parameter_list`
+- the next slice should target a ranking-only repro where the local
+  template-argument `try_parse_*` frame is present in the event stream but the
+  committed summary still points at an outer wrapper because speculative
+  failure bookkeeping wins
+- keep the detailed event log untouched; this slice only added
+  `try_parse_template_type_arg` coverage and updated expectations for the cases
+  where the summary stack already preserves the template-argument path
 - the repo is not currently building this target as C++20, so `std::source_location`
   was not adopted; the current non-macro path uses `__func__`
 - the parked `std::vector` bring-up work remains in
