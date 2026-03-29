@@ -9,20 +9,48 @@ Source Plan: plan.md
 - Step 5: prepare the next diagnostic slice by bounding the first
   committed-failure vs no-match follow-up after the record-member rewind
   samples are exhausted
-- Current slice: resample the remaining adjacent non-record-member
-  `std_vector_simple.cpp` parser-debug output after locking the attributed
-  top-level parameter `got='['` family and choose the next reduced coverage
-  target without silently broadening the plan
-- Iteration target: decide whether the next uncovered family should be the
-  repeated comma-in-expression path in `stl_uninitialized.h` or another
-  top-level parameter-list wrapper case, then bound it in one reduced repro
-- Next intended slice: if the comma-in-expression family remains the first
-  distinct uncovered path, add one reduced parser-debug case that locks its
-  current `parse_primary` summary and method-local stack shape before touching
-  any summary-ranking heuristics
+- Current slice: the first uncovered repeated comma-in-expression family is
+  now locked by reduced parser-debug coverage, so the next Step 5 decision is
+  whether any follow-up should stay in this plan as summary-ranking work or be
+  deferred as a later speculative-parse initiative
+- Iteration target: compare the reduced local-initializer comma repro against
+  the remaining `stl_uninitialized.h:{247,317}` motivating sites and decide
+  whether they are the same family or require one more bounded reduced case
+- Next intended slice: if `:247` and `:317` stay identical to the new reduced
+  coverage, record that the comma-family is exhausted for this plan and bound
+  the next uncovered parser-debug family instead of broadening into heuristics
 
 ## Completed
 
+- added reduced parser-debug coverage in
+  `cpp_parser_debug_local_init_comma_leaf` for the first uncovered repeated
+  `tests/cpp/std/std_vector_simple.cpp`
+  `/usr/include/c++/14/bits/stl_uninitialized.h:{179,247,317}`
+  local-initializer comma family, locking the current committed
+  `parse_fn=parse_primary phase=committed got=','` summary together with the
+  duplicated
+  `parse_top_level -> parse_block -> parse_stmt -> parse_local_decl ->
+  parse_initializer -> parse_assign_expr -> parse_ternary -> parse_unary ->
+  parse_primary -> parse_assign_expr -> parse_ternary -> parse_unary ->
+  parse_primary` stack
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_local_init_comma_leaf`,
+  `cpp_parser_debug_attr_param_leaf`,
+  `cpp_parser_debug_std_vector_named_param_ctor_leaf`,
+  `cpp_parser_debug_record_member_if_init_name_leaf`,
+  `cpp_parser_debug_std_vector_record_member_const_if_leaf`, and
+  `cpp_parser_debug_std_vector_record_member_if_init_leaf`
+- recorded the required clean after-suite for this iteration and passed the
+  monotonic regression guard against the recorded
+  `before passed=2292/2293` baseline:
+  `after passed=2294/2295`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged and the
+  guard script reported zero new failing tests
+- recorded the Step 5 decision for this bounded
+  `stl_uninitialized.h:{179,247,317}` comma family: keep the current inner
+  committed `parse_primary` summary for now, because the motivating failures
+  remain local-initializer expression paths and the new reduced repro already
+  preserves the duplicated expression stack needed for future ranking work
 - recorded the required clean after-suite for this iteration and passed the
   monotonic regression guard against the recorded
   `before passed=2290/2291` baseline:

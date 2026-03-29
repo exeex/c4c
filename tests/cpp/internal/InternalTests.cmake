@@ -532,6 +532,19 @@ set_tests_properties(cpp_parser_debug_attr_param_leaf PROPERTIES
 )
 
 add_test(
+  NAME cpp_parser_debug_local_init_comma_leaf
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_local_init_comma_leaf.cpp
+          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_primary phase=committed got=','"
+          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> parse_block -> parse_stmt -> parse_local_decl -> parse_initializer -> parse_assign_expr -> parse_ternary -> parse_unary -> parse_primary -> parse_assign_expr -> parse_ternary -> parse_unary -> parse_primary"
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_local_init_comma_leaf PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
   NAME cpp_hir_consteval_template_dump
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/consteval_template.cpp"
 )
