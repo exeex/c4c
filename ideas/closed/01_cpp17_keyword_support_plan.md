@@ -1,5 +1,28 @@
 # C++17 Keyword Support Plan
 
+Status: Complete
+
+## Completion Summary
+
+Completed on 2026-03-29.
+
+This idea delivered the planned C++17 keyword-baseline work across the lexer
+and the minimum parser-compatibility surfaces needed to keep covered parses
+stable. The completed slices reserved `typename`, `noexcept`, `nullptr`,
+`friend`, `virtual`, `final`, `mutable`, `public` / `protected` / `private`,
+and the alternative operator spellings `and`, `or`, `not`, `not_eq`,
+`bitand`, `bitor`, `bitxor`, and `compl`, with reduced regression coverage
+added under `tests/cpp/internal/`.
+
+## Leftover Issues
+
+- Assignment-form aliases such as `and_eq`, `or_eq`, and `xor_eq` were left
+  out of scope to keep this runbook narrow. If they are still needed, they
+  should land as a separate follow-on idea instead of reopening this one.
+- Some record-typed overloaded-operator runtime gaps surfaced while building
+  parser-boundary regressions for `and` and `not_eq`; those backend lowering
+  issues remain separate from this completed lexer/parser baseline.
+
 ## Goal
 
 Raise the frontend's keyword support baseline to a solid C++17 level before

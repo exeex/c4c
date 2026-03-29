@@ -104,6 +104,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     keyword_bitand_parse
     keyword_bitor_parse
     keyword_bitxor_parse
+    keyword_compl_parse
     keyword_or_parse
     keyword_not_parse
     qualified_cpp_base_type_dispatch_parse
@@ -338,6 +339,24 @@ add_test(
 set_tests_properties(cpp_parse_keyword_bitxor_operator_dump PROPERTIES
   LABELS "internal;positive_case;cpp;parse"
   PASS_REGULAR_EXPRESSION "Function\\(operator_bitxor\\)"
+)
+
+add_test(
+  NAME cpp_lex_keyword_compl_tokens
+  COMMAND c4cll --lex-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/keyword_compl_parse.cpp"
+)
+set_tests_properties(cpp_lex_keyword_compl_tokens PROPERTIES
+  LABELS "internal;positive_case;cpp;lex"
+  PASS_REGULAR_EXPRESSION "TILDE 'compl'"
+)
+
+add_test(
+  NAME cpp_parse_keyword_compl_operator_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/keyword_compl_parse.cpp"
+)
+set_tests_properties(cpp_parse_keyword_compl_operator_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Function\\(operator_bitnot\\)"
 )
 
 add_test(
