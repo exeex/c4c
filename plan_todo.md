@@ -9,23 +9,58 @@ Source Plan: plan.md
 - Step 5: prepare the next diagnostic slice by bounding the first
   committed-failure vs no-match follow-up after the record-member rewind
   samples are exhausted
-- Current slice: the repeated local-initializer comma family at
-  `stl_uninitialized.h:{179,247,317}` is now closed out for this plan, and the
-  next bounded motivating gap is the earlier non-record-member
-  `stl_algobase.h:971` `parse_primary got='const'` expression path
-- Iteration target: add motivating parser-debug coverage for
-  `/usr/include/c++/14/bits/stl_algobase.h:971:11`, verify it matches the
-  existing reduced `cpp_parser_debug_if_init_qualified_probe_leaf` shape, and
-  record whether that family should remain summary-ranking work for this plan
-- Next intended slice: if the new motivating `:971` coverage stays aligned
-  with the reduced if-init qualified-probe repro, keep the current committed
-  `parse_primary` summary and start the first real tri-state follow-up from
-  the already-covered `try_parse_qualified_base_type`
-  `got='&&'` wrapper family instead of adding heuristics to the
-  non-record-member const-expression path
+- Current slice: the motivating `new_allocator.h:92:44` qualified
+  reference-parameter family is now covered directly from
+  `tests/cpp/std/std_vector_simple.cpp`, and the remaining Step 5 work is to
+  return to the deeper `try_parse_qualified_base_type`
+  `got='&&'` wrapper family if a real committed-failure vs no-match follow-up
+  is still needed
+- Iteration target: leave the newly covered `new_allocator.h:92` family
+  closed with its current outer `parse_top_level_parameter_list` summary, and
+  pick the next bounded reduced repro only if it materially changes
+  committed-failure ranking rather than duplicating existing motivating
+  coverage
+- Next intended slice: revisit the already-covered deeper
+  `try_parse_qualified_base_type` `got='&&'` wrapper path and decide whether
+  it needs explicit tri-state bookkeeping, or whether the current summary
+  ranking should remain unchanged with only additional reduced extraction work
+  if a new motivating header family diverges
 
 ## Completed
 
+- added motivating parser-debug coverage in
+  `cpp_parser_debug_std_vector_ctor_ref_param_probe_prefix` for the
+  `tests/cpp/std/std_vector_simple.cpp`
+  `/usr/include/c++/14/bits/new_allocator.h:92:44` constructor-family
+  reference-parameter path, locking the current outer committed
+  `parse_top_level_parameter_list` summary together with the longer
+  `parse_top_level -> try_parse_cpp_scoped_base_type ->
+  try_parse_qualified_base_type -> consume_qualified_type_spelling ->
+  parse_top_level_parameter_list -> parse_param ->
+  try_parse_cpp_scoped_base_type -> try_parse_qualified_base_type` stack
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_std_vector_ctor_ref_param_probe_prefix`,
+  `cpp_parser_debug_std_vector_ref_param_leaf`,
+  `cpp_parser_debug_std_vector_rref_param_wrapper`,
+  `cpp_parser_debug_qualified_alias_ref_param_leaf`,
+  `cpp_parser_debug_top_level_qualified_probe_leaf`,
+  `cpp_parser_debug_std_vector_move_ctor_leaf`, and
+  `cpp_parser_debug_std_vector_expr_const_if_leaf`
+- attempted to reduce the `new_allocator.h:92` constructor-family path to a
+  standalone negative-case source, but the simpler constructor/reference
+  sketches currently parse successfully, so that family remains motivating
+  coverage only unless a tighter reduced repro is found
+- recorded the Step 5 decision for this bounded `new_allocator.h:92`
+  `got='&'` family: keep the current outer committed
+  `parse_top_level_parameter_list` summary, because the emitted debug stack
+  already preserves the extra leading qualified-type probe prefix without
+  needing a new ranking heuristic
+- recorded the required clean after-suite for this iteration and passed the
+  monotonic regression guard against the recorded
+  `before passed=2294/2295` baseline:
+  `after passed=2296/2297`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged and the
+  guard script reported zero new failing tests
 - compared the reduced local-initializer comma repro against the live
   `tests/cpp/std/std_vector_simple.cpp`
   `/usr/include/c++/14/bits/stl_uninitialized.h:{179,247,317}` traces and
@@ -825,6 +860,10 @@ Source Plan: plan.md
   slice pushes toward the eventual committed-failure vs no-match cleanup
 
 ## Blockers
+
+- no blocker on the motivating `new_allocator.h:92` qualified
+  reference-parameter family, but a standalone reduced repro for that
+  constructor-family path is still not isolated
 
 - no blocker on the normalized nested template-argument summary path
 - the next slice likely needs explicit tri-state or ranking rules so
