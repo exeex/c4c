@@ -819,6 +819,21 @@ Node* Parser::parse_primary() {
         consume();  // builtin identifier
         consume();  // (
 
+        if (builtin_name == "__is_same") {
+            try {
+                TypeSpec lhs = parse_type_name();
+                expect(TokenKind::Comma);
+                TypeSpec rhs = parse_type_name();
+                expect(TokenKind::RParen);
+                const int result =
+                    types_compatible_p(lhs, rhs, typedef_types_) ? 1 : 0;
+                return make_int_lit(result, ln);
+            } catch (...) {
+                pos_ = saved_pos;
+                return nullptr;
+            }
+        }
+
         int parsed_args = 0;
         try {
             while (!check(TokenKind::RParen)) {
