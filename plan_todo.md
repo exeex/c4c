@@ -9,18 +9,63 @@ Source Plan: plan.md
 - Step 5: prepare the next diagnostic slice by bounding the first
   committed-failure vs no-match follow-up under speculative `try_parse_*`
   record-member rewinds
-- Current slice: return to the first record-member speculative `try_parse_*`
-  rewind whose emitted summary still loses committed-failure context after the
-  top-level wrapper-heavy `std_vector_simple.cpp` families were classified
-- Iteration target: sample the next remaining record-member parser-debug path
-  that still over-ranks an inner speculative leaf, reduce it if practical,
-  and decide whether the summary ranking should stay deep or move outward
-- Next intended slice: start from the first surviving record-member rewind
-  visible in the current parser-debug suite and bound it with motivating
-  coverage before changing leaf-selection rules
+- Current slice: continue from the next remaining record-member rewind in
+  `tests/cpp/std/std_vector_simple.cpp` whose emitted summary or stack still
+  lacks reduced coverage after the bounded `stl_algobase.h`
+  method-body `got='const'` family
+- Iteration target: resample the surviving record-member parser-debug paths in
+  `std_vector_simple.cpp`, pick the next distinct family after the bounded
+  `parse_primary`-inside-method-body case, and decide whether it needs a new
+  reduced repro or a leaf-selection adjustment
+- Next intended slice: start from the next surviving record-member rewind in
+  the current parser-debug output after the `stl_algobase.h:1210` / `:1392`
+  family and classify whether its summary should stay deep or move outward
 
 ## Completed
 
+- recorded the required clean after-suite for this iteration and passed the
+  monotonic regression guard against the recorded
+  `before passed=2284/2285` baseline:
+  `after passed=2287/2288`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged and the
+  guard script reported zero new failing tests
+- added reduced parser-debug coverage in
+  `cpp_parser_debug_record_member_const_if_leaf` for the first surviving
+  record-member method-body `got='const'` family, preserving the current
+  committed `parse_fn=parse_primary` summary together with the
+  `parse_top_level -> try_parse_record_member_dispatch ->
+  try_parse_record_method_or_field_member -> parse_block -> parse_stmt ->
+  parse_expr -> parse_assign_expr -> parse_ternary -> parse_unary ->
+  parse_primary -> try_parse_cpp_scoped_base_type ->
+  try_parse_qualified_base_type` stack prefix
+- added motivating parser-debug coverage in
+  `cpp_parser_debug_std_vector_record_member_const_if_leaf` for the
+  `tests/cpp/std/std_vector_simple.cpp`
+  `/usr/include/c++/14/bits/stl_algobase.h:1210` method-body failure, locking
+  the same inner `parse_primary` summary and record-member dispatch stack
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_expr_stmt_stack`,
+  `cpp_parser_debug_record_member_stack`,
+  `cpp_parser_debug_record_member_param_default_rank`,
+  `cpp_parser_debug_record_member_type_like_rank`,
+  `cpp_parser_debug_record_member_using_alias_leaf`,
+  `cpp_parser_debug_record_member_typedef_leaf`,
+  `cpp_parser_debug_record_member_const_if_leaf`,
+  `cpp_parser_debug_std_vector_wrapper_spelling_stack`,
+  `cpp_parser_debug_std_vector_wrapper_anchor_stack`,
+  `cpp_parser_debug_std_vector_ref_param_leaf`,
+  `cpp_parser_debug_std_vector_rref_param_wrapper`,
+  `cpp_parser_debug_std_vector_named_param_ctor_leaf`,
+  `cpp_parser_debug_qualified_alias_ref_param_leaf`,
+  `cpp_parser_debug_if_init_qualified_probe_leaf`,
+  `cpp_parser_debug_top_level_qualified_probe_leaf`,
+  `cpp_parser_debug_std_vector_move_ctor_leaf`, and
+  `cpp_parser_debug_std_vector_record_member_const_if_leaf`
+- recorded the Step 5 decision for this bounded
+  `stl_algobase.h:1210` / `:1392` record-member `got='const'` family: keep
+  the current inner committed `parse_primary` summary, because the motivating
+  failure is inside the method-body expression while the emitted debug stack
+  already preserves the outer record-member dispatch context
 - recorded the required clean after-suite for this iteration and passed the
   monotonic regression guard against the recorded
   `before passed=2283/2284` baseline:
