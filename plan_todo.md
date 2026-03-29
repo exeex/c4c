@@ -9,17 +9,43 @@ Source Plan: plan.md
 - Step 5: prepare the next diagnostic slice by bounding the first
   committed-failure vs no-match follow-up under speculative `try_parse_*`
   record-member rewinds
-- Current slice: bounded the `std_vector_simple.cpp`
-  reference-qualified top-level parameter candidate at
-  `/usr/include/c++/14/bits/exception.h:65` with focused parser-debug
-  coverage, without changing parser ranking yet
-- Iteration target: reduce the `exception.h:65` / `new_allocator.h:92`
-  `got='&'` family out of `tests/cpp/std/std_vector_simple.cpp` into a
-  standalone parser-debug repro, then use that reduced case to evaluate the
-  next committed-failure vs no-match tri-state change
+- Current slice: evaluate the next tri-state ranking choice for the reduced
+  alias-or-qualified reference-parameter `got='&'` family now that it is
+  covered outside `tests/cpp/std/std_vector_simple.cpp`
+- Iteration target: compare whether the reduced
+  `parser_debug_qualified_alias_ref_param_leaf.cpp` case should summarize the
+  outer committed `parse_top_level_parameter_list` failure or continue to
+  retain the inner `try_parse_qualified_base_type` leaf, then implement the
+  smallest ranking change only if the reduced evidence clearly favors it
 
 ## Completed
 
+- recorded the required clean after-suite for this iteration and passed the
+  monotonic regression guard against the recorded
+  `before passed=2279/2280` baseline:
+  `after passed=2281/2282`; the existing
+  `verify_tests_verify_top_level_recovery` failure remained unchanged
+- reduced the `std_vector_simple.cpp` `got='&'` reference-parameter family
+  into standalone parser-debug coverage with
+  `cpp_parser_debug_qualified_alias_ref_param_leaf`, using a
+  namespace-scoped template alias referenced unqualified in
+  `parser_debug_qualified_alias_ref_param_leaf.cpp` to preserve the same
+  committed `parse_fn=try_parse_qualified_base_type` summary and
+  `parse_top_level -> try_parse_cpp_scoped_base_type ->
+  consume_qualified_type_spelling -> parse_top_level_parameter_list ->
+  parse_param -> try_parse_cpp_scoped_base_type ->
+  try_parse_qualified_base_type` stack family without depending on
+  `tests/cpp/std/std_vector_simple.cpp`
+- reran focused parser-debug coverage for
+  `cpp_parser_debug_qualified_type_top_level_params`,
+  `cpp_parser_debug_std_vector_ref_param_leaf`,
+  `cpp_parser_debug_qualified_alias_ref_param_leaf`, and
+  `cpp_parser_debug_top_level_qualified_probe_leaf`
+- recorded the next Step 5 tri-state question: decide whether this
+  alias-or-qualified reference-parameter family should eventually rank the
+  outer committed `parse_top_level_parameter_list` failure ahead of the
+  retained inner `try_parse_qualified_base_type` leaf, or keep the current
+  deeper-leaf summary while preserving the wrapper context in debug mode
 - recorded the required clean after-suite for this iteration and passed the
   monotonic regression guard against the recorded
   `before passed=2278/2279` baseline:
