@@ -1,6 +1,6 @@
 #include "mod.hpp"
 
-#include <fstream>
+#include <exception>
 #include <string>
 #include <vector>
 
@@ -8,33 +8,24 @@
 
 namespace c4c::backend::x86::assembler {
 
-struct AssembleRequest {
-  std::string asm_text;
-  std::string output_path;
-};
-
-struct AssembleResult {
-  std::string staged_text;
-  std::string output_path;
-  bool object_emitted = false;
-  std::string error;
-};
+bool write_elf_object(const std::vector<AsmStatement>& statements,
+                      const std::string& output_path);
 
 AssembleResult assemble(const AssembleRequest& request) {
   AssembleResult result;
   result.staged_text = request.asm_text;
   result.output_path = request.output_path;
 
-  if (!request.output_path.empty()) {
-    std::ofstream out(request.output_path, std::ios::binary | std::ios::trunc);
-    if (!out) {
-      result.error = "failed to open output path";
-      return result;
+  try {
+    const auto statements = parse_asm(request.asm_text);
+    if (!request.output_path.empty()) {
+      result.object_emitted = write_elf_object(statements, request.output_path);
+      if (!result.object_emitted) {
+        result.error = "failed to emit x86 ELF relocatable object";
+      }
     }
-    out.write(request.asm_text.data(),
-              static_cast<std::streamsize>(request.asm_text.size()));
-    result.object_emitted = out.good();
-    if (!result.object_emitted) result.error = "failed to stage assembler output";
+  } catch (const std::exception& ex) {
+    result.error = ex.what();
   }
 
   return result;

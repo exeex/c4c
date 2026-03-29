@@ -4413,6 +4413,74 @@ void test_x86_assembler_encoder_rejects_out_of_scope_instruction_forms() {
                   "x86 assembler encoder should spell out the current bounded mov contract");
 }
 
+void test_x86_builtin_object_matches_external_return_add_surface() {
+#if defined(C4C_TEST_CLANG_PATH) && defined(C4C_TEST_OBJDUMP_PATH)
+  auto module = make_return_add_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-n8:16:32:64-S128";
+
+  const auto asm_text = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  const auto asm_path = make_temp_path("c4c_x86_return_add_surface", ".s");
+  const auto builtin_object_path = make_temp_output_path("c4c_x86_return_add_builtin");
+  const auto external_object_path = make_temp_output_path("c4c_x86_return_add_external");
+
+  write_text_file(asm_path, asm_text);
+  const auto builtin = c4c::backend::x86::assembler::assemble(
+      c4c::backend::x86::assembler::AssembleRequest{
+          .asm_text = asm_text,
+          .output_path = builtin_object_path,
+      });
+  expect_true(builtin.object_emitted,
+              "x86 built-in assembler should emit an object for the bounded return_add slice");
+  expect_true(builtin.error.empty(),
+              "x86 built-in assembler should not report an error for the bounded return_add slice");
+
+  run_command_capture(shell_quote(C4C_TEST_CLANG_PATH) +
+                      " --target=x86_64-unknown-linux-gnu -c " +
+                      shell_quote(asm_path) + " -o " +
+                      shell_quote(external_object_path) + " 2>&1");
+
+  const auto builtin_objdump = normalize_objdump_surface(
+      run_command_capture(shell_quote(C4C_TEST_OBJDUMP_PATH) + " -h -r -t " +
+                          shell_quote(builtin_object_path) + " 2>&1"));
+  const auto external_objdump = normalize_objdump_surface(
+      run_command_capture(shell_quote(C4C_TEST_OBJDUMP_PATH) + " -h -r -t " +
+                          shell_quote(external_object_path) + " 2>&1"));
+  expect_contains(builtin_objdump, ".text         00000006",
+                  "x86 built-in assembler should emit the same bounded .text size as the external baseline");
+  expect_contains(external_objdump, ".text         00000006",
+                  "external assembler baseline should keep the bounded .text size for x86 return_add");
+  expect_not_contains(builtin_objdump, "RELOCATION RECORDS",
+                      "x86 built-in assembler should not introduce relocations for the bounded return_add slice");
+  expect_not_contains(external_objdump, "RELOCATION RECORDS",
+                      "external assembler baseline should not need relocations for the bounded x86 return_add slice");
+  expect_contains(builtin_objdump, "g     F .text",
+                  "x86 built-in assembler should expose a global function symbol in .text");
+  expect_contains(builtin_objdump, "main",
+                  "x86 built-in assembler should preserve the main symbol name");
+  expect_contains(external_objdump, "g       .text",
+                  "external assembler baseline should expose a global function symbol in .text");
+  expect_contains(external_objdump, "main",
+                  "external assembler baseline should preserve the main symbol name");
+
+  const auto builtin_disasm = normalize_objdump_disassembly(
+      run_command_capture(shell_quote(C4C_TEST_OBJDUMP_PATH) + " -d " +
+                          shell_quote(builtin_object_path) + " 2>&1"));
+  const auto external_disasm = normalize_objdump_disassembly(
+      run_command_capture(shell_quote(C4C_TEST_OBJDUMP_PATH) + " -d " +
+                          shell_quote(external_object_path) + " 2>&1"));
+  expect_true(builtin_disasm == external_disasm,
+              "x86 built-in assembler disassembly should match the external assembler baseline for return_add\n--- built-in ---\n" +
+                  builtin_disasm + "--- external ---\n" + external_disasm);
+
+  std::filesystem::remove(asm_path);
+  std::filesystem::remove(builtin_object_path);
+  std::filesystem::remove(external_object_path);
+#endif
+}
+
 void test_aarch64_assembler_elf_writer_branch_reloc_helper() {
   using c4c::backend::aarch64::assembler::is_branch_reloc_type;
 
@@ -5601,6 +5669,7 @@ int main() {
   test_x86_assembler_parser_rejects_out_of_scope_forms();
   test_x86_assembler_encoder_emits_bounded_return_add_bytes();
   test_x86_assembler_encoder_rejects_out_of_scope_instruction_forms();
+  test_x86_builtin_object_matches_external_return_add_surface();
   test_aarch64_assembler_parser_stub_preserves_text();
   test_aarch64_assembler_elf_writer_branch_reloc_helper();
   test_aarch64_assembler_encoder_helper_smoke();
