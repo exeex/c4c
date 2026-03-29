@@ -3081,12 +3081,28 @@ void test_x86_backend_scaffold_routes_through_explicit_emit_surface() {
 
   expect_true(backend_rendered == direct_rendered,
               "x86 backend selection should route through the explicit x86 emit seam");
-  expect_contains(backend_rendered, "target triple = \"x86_64-unknown-linux-gnu\"",
-                  "x86 backend seam should preserve the module triple");
-  expect_contains(backend_rendered, "define i32 @main()",
-                  "x86 backend seam should preserve the active function signature");
-  expect_contains(backend_rendered, "%t0 = add i32 2, 3",
-                  "x86 backend seam should keep the minimal return-add slice visible while real x86 codegen is staged");
+  expect_contains(backend_rendered, ".text",
+                  "x86 backend seam should emit assembly text for the active slice");
+  expect_contains(backend_rendered, ".globl main",
+                  "x86 backend seam should expose the global entry symbol");
+  expect_contains(backend_rendered, "mov eax, 5",
+                  "x86 backend seam should materialize the folded return-add result in eax");
+  expect_contains(backend_rendered, "ret",
+                  "x86 backend seam should terminate the minimal asm slice with ret");
+  expect_not_contains(backend_rendered, "target triple =",
+                      "x86 backend seam should stop falling back to LLVM text for the supported slice");
+}
+
+void test_x86_backend_scaffold_renders_direct_return_immediate_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_return_zero_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should emit a global entry symbol for direct return immediates");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 backend should materialize direct return immediates in eax");
+  expect_contains(rendered, "ret",
+                  "x86 backend should terminate direct return immediates with ret");
 }
 
 void test_aarch64_backend_renders_void_return_slice() {
@@ -5095,6 +5111,7 @@ int main() {
   test_aarch64_backend_scaffold_renders_supported_slice();
   test_aarch64_backend_scaffold_renders_direct_return_immediate_slice();
   test_x86_backend_scaffold_routes_through_explicit_emit_surface();
+  test_x86_backend_scaffold_renders_direct_return_immediate_slice();
   test_aarch64_backend_renders_void_return_slice();
   test_aarch64_backend_preserves_module_headers_and_declarations();
   test_aarch64_backend_propagates_malformed_signature_in_supported_slice();

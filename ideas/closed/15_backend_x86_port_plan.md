@@ -1,5 +1,7 @@
 # x86 Backend Port Plan
 
+Status: Completed 2026-03-29
+
 ## Relationship To Roadmap
 
 Umbrella source: `ideas/open/__backend_port_plan.md`
@@ -141,3 +143,14 @@ The main progress measure is:
 ## Good First Patch
 
 Take the already translated `src/backend/x86/` mirror, make one thin codegen slice compile, connect it to the existing backend driver through an explicit x86 adapter seam, and emit assembly for a trivial integer-return function.
+
+## Completion Notes
+
+- Completed the first backend-owned x86 assembly slice through `src/backend/x86/codegen/emit.cpp`.
+- `Target::X86_64` and `Target::I686` now route the minimal supported `main` return-immediate path through Intel-syntax x86 assembly instead of LLVM-text passthrough.
+- Focused validation passed for `backend_lir_adapter_tests`, `backend_runtime_return_add`, and `backend_runtime_return_zero`.
+
+## Leftover Issues
+
+- Broader x86 runtime shapes still fall back to LLVM text, including branches, direct helper calls, local-slot patterns, parameter materialization, globals, and other non-immediate return flows.
+- The next thin slice should target parameter/local/direct-call support before widening into branches, globals, assembler integration, or linker work.
