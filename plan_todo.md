@@ -6,8 +6,8 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 5: Wire the shared result into the AArch64 prologue and emit path.
-  Iteration target: thread one shared used-callee-saved or assigned-register handoff into a non-fallback AArch64 emit/prologue seam so Step 5 starts from real backend state instead of fallback-only LIR preparation.
+- [ ] Step 6: Add the smallest required cleanup or peephole slice.
+  Iteration target: identify one narrow late-cleanup case exposed by the new shared-regalloc-backed non-fallback AArch64 path, add a focused test for it, and keep the slice smaller than a broad post-codegen optimizer pass.
 
 ## Todo Queue
 
@@ -15,7 +15,7 @@ Source Plan: plan.md
 - [x] Step 2: Port liveness and interval computation with targeted tests.
 - [x] Step 3: Port shared linear-scan regalloc with targeted tests.
 - [x] Step 4: Port the stack-layout helper boundary that consumes regalloc results.
-- [ ] Step 5: Wire the shared result into the AArch64 prologue and emit path.
+- [x] Step 5: Wire the shared result into the AArch64 prologue and emit path.
 - [ ] Step 6: Add the smallest required cleanup or peephole slice.
 - [ ] Step 7: Run regression validation, record follow-ons, and prepare the next slice.
 
@@ -49,11 +49,13 @@ Source Plan: plan.md
 - [x] Extended `backend_lir_adapter_tests` with disjoint-block shared-slot reuse and same-block non-reuse coverage, rebuilt `backend_lir_adapter_tests`, reran the binary, reran full `ctest`, and rechecked monotonic non-regression with `check_monotonic_regression.py --allow-non-decreasing-passed` (`before=570/574`, `after=570/574`, no new failures).
 - [x] Added shared `apply_entry_alloca_slot_plan` wiring so Step 4 now applies `assigned_slot` to a real stack-layout consumer: disjoint entry allocas collapse onto one retained entry slot, users are rewritten to the canonical slot, and the AArch64 fallback emitter consumes that prepared function instead of leaving shared slot reuse as planner-only metadata.
 - [x] Extended `backend_lir_adapter_tests` with direct slot-plan application coverage plus AArch64 fallback checks for shared-slot canonicalization versus same-block non-reuse, rebuilt `backend_lir_adapter_tests`, reran the binary, reran full `ctest`, and rechecked monotonic non-regression with `check_monotonic_regression.py --allow-non-decreasing-passed` (`before=570/574`, `after=570/574`, no new failures).
+- [x] Added a non-fallback AArch64 Step 5 consumer in `src/backend/aarch64/codegen/emit.cpp`: the call-crossing direct-call asm slice now runs shared regalloc for `main`, saves/restores the reported used callee-saved set, and reuses shared assigned registers across the helper call instead of relying on fallback-only preparation.
+- [x] Extended `backend_lir_adapter_tests` with `make_typed_call_crossing_direct_call_module()` coverage for the shared call-crossing asm seam, rebuilt `backend_lir_adapter_tests`, reran the binary, reran full `ctest`, and rechecked monotonic non-regression with `check_monotonic_regression.py --allow-non-decreasing-passed` (`before=570/574`, `after=570/574`, no new failures).
 
 ## Next Intended Slice
 
-- Start Step 5 by threading the shared used-callee-saved set or assigned-register lookup into one narrow non-fallback AArch64 emit/prologue seam with a test that proves the emitted assembly path, not just fallback LIR, depends on shared backend state.
-- Keep broader frame-layout and stack-object materialization deferred until that first non-fallback AArch64 handoff is stable.
+- Start Step 6 by identifying one narrow cleanup case that appears on the new call-crossing non-fallback AArch64 asm path, and prove it with a backend test before changing cleanup logic.
+- Keep broader frame-layout and stack-object materialization deferred while Step 6 stays bounded to one late-cleanup seam.
 
 ## Blockers
 
@@ -62,8 +64,8 @@ Source Plan: plan.md
 ## Resume Notes
 
 - Shared backend execution now reaches real Step 4 consumers through `src/backend/stack_layout/{analysis,alloca_coalescing,slot_assignment}.cpp` plus the AArch64 fallback preparation path in `src/backend/aarch64/codegen/emit.cpp`.
-- Current compile/test reachability still comes primarily through `backend_lir_adapter_tests`, and the first executed shared-slot consumer is fallback-LIR preparation rather than the non-fallback AArch64 prologue/assembly path.
-- AArch64 still documents the intended next seam in commented ref notes under `src/backend/aarch64/codegen/prologue.cpp`; the remaining gap is a live non-fallback shared regalloc/used-register handoff.
+- Current compile/test reachability still comes primarily through `backend_lir_adapter_tests`, but there is now one executed non-fallback AArch64 shared-regalloc consumer in the minimal call-crossing asm emitter path.
+- AArch64 still documents broader prologue intent in commented ref notes under `src/backend/aarch64/codegen/prologue.cpp`; Step 5 is now satisfied by the first live non-fallback shared regalloc/used-register handoff rather than only fallback preparation.
 - The new helper seam lives in `src/backend/stack_layout/regalloc_helpers.{hpp,cpp}` and is now the intended entry point for Step 4 consumers that need assigned-register, used-callee-saved, or cached-liveness reads.
 - The shared analysis plus slot-assignment seams now cover phi-aware use-block attribution, used-value collection, dead param allocas, entry-alloca overwrite tracking, single-block coalescing, concrete `assigned_slot` decisions, and canonical shared-slot application for the typed-LIR subset exercised by `backend_lir_adapter_tests`.
 - Known baseline full-suite failures remain unchanged:

@@ -3,6 +3,7 @@
 #include "../../lir_adapter.hpp"
 #include "../../generation.hpp"
 #include "../../stack_layout/analysis.hpp"
+#include "../../stack_layout/regalloc_helpers.hpp"
 #include "../../stack_layout/slot_assignment.hpp"
 #include "../../../codegen/lir/lir_printer.hpp"
 
@@ -208,6 +209,14 @@ struct MinimalDirectCallTwoArgAddSlice {
   std::int64_t arg1_imm = 0;
 };
 
+struct MinimalCallCrossingDirectCallSlice {
+  std::string callee_name;
+  std::int64_t source_imm = 0;
+  std::int64_t helper_add_imm = 0;
+  std::string source_value;
+  std::string call_result_value;
+};
+
 struct MinimalConditionalReturnSlice {
   std::int64_t lhs_imm = 0;
   std::int64_t rhs_imm = 0;
@@ -227,6 +236,32 @@ struct MinimalScalarGlobalLoadSlice {
 struct MinimalExternScalarGlobalLoadSlice {
   std::string global_name;
 };
+
+const c4c::codegen::lir::LirFunction* find_lir_function(
+    const c4c::codegen::lir::LirModule& module,
+    std::string_view name) {
+  for (const auto& function : module.functions) {
+    if (function.name == name) return &function;
+  }
+  return nullptr;
+}
+
+c4c::backend::RegAllocIntegrationResult run_shared_aarch64_regalloc(
+    const c4c::codegen::lir::LirFunction& function) {
+  c4c::backend::RegAllocConfig config;
+  config.available_regs.assign(kAarch64CalleeSavedRegs.begin(), kAarch64CalleeSavedRegs.end());
+  config.caller_saved_regs.assign(kAarch64CallerSavedRegs.begin(), kAarch64CallerSavedRegs.end());
+  return c4c::backend::run_regalloc_and_merge_clobbers(function, config, {});
+}
+
+std::string gp_reg_name(c4c::backend::PhysReg reg, bool is_32bit) {
+  return std::string(is_32bit ? "w" : "x") + std::to_string(reg.index);
+}
+
+std::int64_t aligned_call_frame_size(std::size_t saved_regs) {
+  const std::size_t raw_size = (saved_regs + 1) * sizeof(std::uint64_t);
+  return static_cast<std::int64_t>((raw_size + 15) & ~std::size_t{15});
+}
 
 std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_slice(
     const c4c::codegen::lir::LirModule& module) {
@@ -577,6 +612,88 @@ parse_minimal_direct_call_two_arg_add_slice(const c4c::backend::BackendModule& m
   return MinimalDirectCallTwoArgAddSlice{callee_name, *arg0_imm, *arg1_imm};
 }
 
+std::optional<MinimalCallCrossingDirectCallSlice>
+parse_minimal_call_crossing_direct_call_slice(
+    const c4c::backend::BackendModule& module) {
+  if (module.functions.size() != 2) return std::nullopt;
+
+  const auto* helper = find_function(module, "add_one");
+  const auto* main_fn = find_function(module, "main");
+  if (helper == nullptr || main_fn == nullptr || helper->is_declaration ||
+      main_fn->is_declaration || helper->blocks.size() != 1 ||
+      main_fn->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  if (helper->signature.linkage != "define" || helper->signature.return_type != "i32" ||
+      helper->signature.params.size() != 1 || helper->signature.params.front().type_str != "i32" ||
+      helper->signature.is_vararg || main_fn->signature.linkage != "define" ||
+      main_fn->signature.return_type != "i32" || !main_fn->signature.params.empty() ||
+      main_fn->signature.is_vararg) {
+    return std::nullopt;
+  }
+
+  const auto& helper_block = helper->blocks.front();
+  if (helper_block.label != "entry" || helper_block.insts.size() != 1 ||
+      !helper_block.terminator.value.has_value() ||
+      helper_block.terminator.type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* helper_add =
+      std::get_if<c4c::backend::BackendBinaryInst>(&helper_block.insts.front());
+  if (helper_add == nullptr ||
+      helper_add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
+      helper_add->type_str != "i32" ||
+      *helper_block.terminator.value != helper_add->result ||
+      helper_add->lhs != helper->signature.params.front().name) {
+    return std::nullopt;
+  }
+
+  const auto helper_add_imm = parse_i64(helper_add->rhs);
+  if (!helper_add_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto& main_block = main_fn->blocks.front();
+  if (main_block.label != "entry" || main_block.insts.size() != 3 ||
+      !main_block.terminator.value.has_value() ||
+      main_block.terminator.type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* source_add =
+      std::get_if<c4c::backend::BackendBinaryInst>(&main_block.insts[0]);
+  const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts[1]);
+  const auto* final_add =
+      std::get_if<c4c::backend::BackendBinaryInst>(&main_block.insts[2]);
+  if (source_add == nullptr || call == nullptr || final_add == nullptr ||
+      source_add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
+      source_add->type_str != "i32" || call->return_type != "i32" ||
+      call->callee != "@add_one" || call->callee_type_suffix != "(i32)" ||
+      call->args_str != ("i32 " + source_add->result) ||
+      final_add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
+      final_add->type_str != "i32" || final_add->lhs != source_add->result ||
+      final_add->rhs != call->result ||
+      *main_block.terminator.value != final_add->result) {
+    return std::nullopt;
+  }
+
+  const auto lhs_imm = parse_i64(source_add->lhs);
+  const auto rhs_imm = parse_i64(source_add->rhs);
+  if (!lhs_imm.has_value() || !rhs_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return MinimalCallCrossingDirectCallSlice{
+      "add_one",
+      *lhs_imm + *rhs_imm,
+      *helper_add_imm,
+      source_add->result,
+      call->result,
+  };
+}
+
 void emit_function_prelude(std::ostringstream& out,
                            const c4c::backend::BackendModule& module,
                            std::string_view symbol,
@@ -694,6 +811,60 @@ std::string emit_minimal_direct_call_two_arg_add_asm(
       << "  bl " << helper_symbol << "\n"
       << "  ldr x30, [sp, #8]\n"
       << "  add sp, sp, #16\n"
+      << "  ret\n";
+  return out.str();
+}
+
+std::string emit_minimal_call_crossing_direct_call_asm(
+    const c4c::backend::BackendModule& module,
+    const c4c::backend::RegAllocIntegrationResult& regalloc,
+    const MinimalCallCrossingDirectCallSlice& slice) {
+  if (slice.source_imm < 0 ||
+      slice.source_imm > std::numeric_limits<std::uint16_t>::max()) {
+    fail_unsupported("call-crossing source immediates outside the minimal mov-supported range");
+  }
+  if (slice.helper_add_imm < 0 || slice.helper_add_imm > 4095) {
+    fail_unsupported("call-crossing helper add immediates outside the minimal add-supported range");
+  }
+
+  const auto* source_reg =
+      c4c::backend::stack_layout::find_assigned_reg(regalloc, slice.source_value);
+  const auto* call_result_reg =
+      c4c::backend::stack_layout::find_assigned_reg(regalloc, slice.call_result_value);
+  if (source_reg == nullptr || call_result_reg == nullptr ||
+      !c4c::backend::stack_layout::uses_callee_saved_reg(regalloc, *source_reg) ||
+      !c4c::backend::stack_layout::uses_callee_saved_reg(regalloc, *call_result_reg)) {
+    fail_unsupported("shared call-crossing regalloc state for the minimal direct-call slice");
+  }
+
+  const std::int64_t frame_size = aligned_call_frame_size(regalloc.used_callee_saved.size());
+  std::ostringstream out;
+  const std::string helper_symbol = asm_symbol_name(module, slice.callee_name);
+  const std::string main_symbol = asm_symbol_name(module, "main");
+
+  out << ".text\n";
+  emit_function_prelude(out, module, helper_symbol, false);
+  out << "  add w0, w0, #" << slice.helper_add_imm << "\n"
+      << "  ret\n";
+  emit_function_prelude(out, module, main_symbol, true);
+  out << "  sub sp, sp, #" << frame_size << "\n";
+  for (std::size_t i = 0; i < regalloc.used_callee_saved.size(); ++i) {
+    out << "  str " << gp_reg_name(regalloc.used_callee_saved[i], false) << ", [sp, #"
+        << (i * 8) << "]\n";
+  }
+  out << "  str x30, [sp, #" << (regalloc.used_callee_saved.size() * 8) << "]\n"
+      << "  mov " << gp_reg_name(*source_reg, true) << ", #" << slice.source_imm << "\n"
+      << "  mov w0, " << gp_reg_name(*source_reg, true) << "\n"
+      << "  bl " << helper_symbol << "\n"
+      << "  mov " << gp_reg_name(*call_result_reg, true) << ", w0\n"
+      << "  add w0, " << gp_reg_name(*source_reg, true) << ", "
+      << gp_reg_name(*call_result_reg, true) << "\n"
+      << "  ldr x30, [sp, #" << (regalloc.used_callee_saved.size() * 8) << "]\n";
+  for (std::size_t i = regalloc.used_callee_saved.size(); i > 0; --i) {
+    const auto& reg = regalloc.used_callee_saved[i - 1];
+    out << "  ldr " << gp_reg_name(reg, false) << ", [sp, #" << ((i - 1) * 8) << "]\n";
+  }
+  out << "  add sp, sp, #" << frame_size << "\n"
       << "  ret\n";
   return out.str();
 }
@@ -844,6 +1015,15 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   }
   try {
     const auto adapted = c4c::backend::adapt_minimal_module(prepared);
+    if (const auto slice = parse_minimal_call_crossing_direct_call_slice(adapted);
+        slice.has_value()) {
+      const auto* main_fn = find_lir_function(prepared, "main");
+      if (main_fn == nullptr) {
+        fail_unsupported("main function for shared call-crossing direct-call slice");
+      }
+      return emit_minimal_call_crossing_direct_call_asm(
+          adapted, run_shared_aarch64_regalloc(*main_fn), *slice);
+    }
     if (const auto imm = parse_minimal_return_imm(adapted); imm.has_value()) {
       return emit_minimal_return_imm_asm(adapted, *imm);
     }

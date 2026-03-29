@@ -166,6 +166,44 @@ c4c::codegen::lir::LirModule make_call_crossing_interval_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_typed_call_crossing_direct_call_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction helper;
+  helper.name = "add_one";
+  helper.signature_text = "define i32 @add_one(i32 %p.x)\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.insts.push_back(LirBinOp{"%t0", "add", "i32", "%p.x", "1"});
+  helper_entry.terminator = LirRet{std::string("%t0"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{"%t0", "add", "i32", "2", "3"});
+  entry.insts.push_back(LirCallOp{"%t1", "i32", "@add_one", "(i32)", "i32 %t0"});
+  entry.insts.push_back(LirBinOp{"%t2", "add", "i32", "%t0", "%t1"});
+  entry.terminator = LirRet{std::string("%t2"), "i32"};
+  main_fn.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(main_fn));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_interval_phi_join_module() {
   using namespace c4c::codegen::lir;
 
@@ -2773,6 +2811,34 @@ void test_aarch64_backend_renders_typed_direct_call_slice() {
                   "aarch64 backend should lower the typed direct call with bl");
 }
 
+void test_aarch64_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_typed_call_crossing_direct_call_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "sub sp, sp, #32",
+                  "aarch64 backend should allocate a real frame for shared callee-saved call-crossing values");
+  expect_contains(rendered, "str x20, [sp, #0]",
+                  "aarch64 backend should save the first shared call-crossing callee-saved register");
+  expect_contains(rendered, "str x21, [sp, #8]",
+                  "aarch64 backend should save the second shared callee-saved register reported by regalloc");
+  expect_contains(rendered, "str x30, [sp, #16]",
+                  "aarch64 backend should still preserve lr in the shared call frame");
+  expect_contains(rendered, "mov w20, #5",
+                  "aarch64 backend should materialize the call-crossing source value in the shared assigned register");
+  expect_contains(rendered, "mov w0, w20",
+                  "aarch64 backend should pass the shared assigned register through the ABI argument register");
+  expect_contains(rendered, "bl add_one",
+                  "aarch64 backend should keep the helper call on the direct-call asm path");
+  expect_contains(rendered, "mov w21, w0",
+                  "aarch64 backend should hand the helper result off into its shared assigned register");
+  expect_contains(rendered, "add w0, w20, w21",
+                  "aarch64 backend should reuse the shared assigned registers after the call");
+  expect_contains(rendered, "ldr x21, [sp, #8]",
+                  "aarch64 backend should restore the shared callee-saved result register");
+  expect_contains(rendered, "ldr x20, [sp, #0]",
+                  "aarch64 backend should restore the shared call-crossing source register");
+}
+
 void test_aarch64_backend_renders_typed_two_arg_direct_call_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_typed_direct_call_two_arg_module()},
@@ -3994,6 +4060,7 @@ int main() {
   test_aarch64_backend_renders_local_temp_memory_slice();
   test_aarch64_backend_renders_param_slot_memory_slice();
   test_aarch64_backend_renders_typed_direct_call_slice();
+  test_aarch64_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_slice();
   test_aarch64_backend_renders_typed_direct_call_local_arg_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_local_arg_slice();
