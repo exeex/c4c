@@ -1,11 +1,10 @@
+#include "types.hpp"
+
 #include <cstdint>
 #include <string>
 #include <vector>
 
 namespace c4c::backend::aarch64::assembler {
-
-struct AsmStatement;
-struct Operand;
 
 static constexpr std::uint8_t AARCH64_NOP[4] = {0x1f, 0x20, 0x03, 0xd5};
 

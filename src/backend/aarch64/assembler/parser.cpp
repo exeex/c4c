@@ -1,9 +1,9 @@
+#include "parser.hpp"
+
 #include <cstdint>
 #include <optional>
-#include <string>
 #include <utility>
 #include <variant>
-#include <vector>
 
 namespace c4c::backend::aarch64::assembler {
 
@@ -45,15 +45,7 @@ struct DataValue {
   std::string expr;
 };
 
-struct Operand {
-  std::string text;
-};
-
 struct AsmDirective {
-  std::string text;
-};
-
-struct AsmStatement {
   std::string text;
 };
 

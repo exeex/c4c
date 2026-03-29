@@ -163,6 +163,12 @@ struct MinimalDirectCallAddImmSlice {
   std::int64_t add_imm = 0;
 };
 
+struct MinimalDirectCallTwoArgAddSlice {
+  std::string callee_name;
+  std::int64_t arg0_imm = 0;
+  std::int64_t arg1_imm = 0;
+};
+
 std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
     const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 2) return std::nullopt;
@@ -275,6 +281,85 @@ std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_sl
   return MinimalDirectCallAddImmSlice{callee_name, *arg_imm, *add_imm};
 }
 
+std::optional<MinimalDirectCallTwoArgAddSlice>
+parse_minimal_direct_call_two_arg_add_slice(const c4c::backend::BackendModule& module) {
+  if (module.functions.size() != 2) return std::nullopt;
+
+  const auto* main_fn = find_function(module, "main");
+  if (main_fn == nullptr || main_fn->is_declaration ||
+      main_fn->signature.linkage != "define" ||
+      main_fn->signature.return_type != "i32" ||
+      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
+      main_fn->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& main_block = main_fn->blocks.front();
+  if (main_block.label != "entry" || main_block.insts.size() != 1 ||
+      !main_block.terminator.value.has_value() ||
+      main_block.terminator.type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
+  if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
+      *main_block.terminator.value != call->result ||
+      call->callee_type_suffix != "(i32, i32)" || call->callee.empty() ||
+      call->callee.front() != '@') {
+    return std::nullopt;
+  }
+
+  const std::string callee_name = call->callee.substr(1);
+  if (callee_name == "main") return std::nullopt;
+
+  const std::string_view args_str = call->args_str;
+  const size_t comma = args_str.find(", ");
+  if (comma == std::string_view::npos) {
+    return std::nullopt;
+  }
+  const std::string_view arg0 = args_str.substr(0, comma);
+  const std::string_view arg1 = args_str.substr(comma + 2);
+  if (arg0.size() < 5 || arg1.size() < 5 || arg0.substr(0, 4) != "i32 " ||
+      arg1.substr(0, 4) != "i32 ") {
+    return std::nullopt;
+  }
+  const auto arg0_imm = parse_i64(arg0.substr(4));
+  const auto arg1_imm = parse_i64(arg1.substr(4));
+  if (!arg0_imm.has_value() || !arg1_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* callee_fn = find_function(module, callee_name);
+  if (callee_fn == nullptr || callee_fn->is_declaration ||
+      callee_fn->signature.linkage != "define" ||
+      callee_fn->signature.return_type != "i32" ||
+      callee_fn->signature.params.size() != 2 ||
+      callee_fn->signature.params[0].type_str != "i32" ||
+      callee_fn->signature.params[1].type_str != "i32" ||
+      callee_fn->signature.params[0].name.empty() ||
+      callee_fn->signature.params[1].name.empty() ||
+      callee_fn->signature.is_vararg || callee_fn->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& callee_block = callee_fn->blocks.front();
+  if (callee_block.label != "entry" || callee_block.insts.size() != 1 ||
+      !callee_block.terminator.value.has_value() ||
+      callee_block.terminator.type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* add = std::get_if<c4c::backend::BackendBinaryInst>(&callee_block.insts.front());
+  if (add == nullptr || add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
+      add->type_str != "i32" || *callee_block.terminator.value != add->result ||
+      add->lhs != callee_fn->signature.params[0].name ||
+      add->rhs != callee_fn->signature.params[1].name) {
+    return std::nullopt;
+  }
+
+  return MinimalDirectCallTwoArgAddSlice{callee_name, *arg0_imm, *arg1_imm};
+}
+
 void emit_function_prelude(std::ostringstream& out,
                            const c4c::backend::BackendModule& module,
                            std::string_view symbol,
@@ -364,6 +449,38 @@ std::string emit_minimal_direct_call_add_imm_asm(
   return out.str();
 }
 
+std::string emit_minimal_direct_call_two_arg_add_asm(
+    const c4c::backend::BackendModule& module,
+    const MinimalDirectCallTwoArgAddSlice& slice) {
+  if (slice.arg0_imm < 0 ||
+      slice.arg0_imm > std::numeric_limits<std::uint16_t>::max()) {
+    fail_unsupported("first direct-call argument immediates outside the minimal mov-supported range");
+  }
+  if (slice.arg1_imm < 0 ||
+      slice.arg1_imm > std::numeric_limits<std::uint16_t>::max()) {
+    fail_unsupported("second direct-call argument immediates outside the minimal mov-supported range");
+  }
+
+  std::ostringstream out;
+  const std::string helper_symbol = asm_symbol_name(module, slice.callee_name);
+  const std::string main_symbol = asm_symbol_name(module, "main");
+
+  out << ".text\n";
+  emit_function_prelude(out, module, helper_symbol, false);
+  out << "  add w0, w0, w1\n"
+      << "  ret\n";
+  emit_function_prelude(out, module, main_symbol, true);
+  out << "  sub sp, sp, #16\n"
+      << "  str x30, [sp, #8]\n"
+      << "  mov w0, #" << slice.arg0_imm << "\n"
+      << "  mov w1, #" << slice.arg1_imm << "\n"
+      << "  bl " << helper_symbol << "\n"
+      << "  ldr x30, [sp, #8]\n"
+      << "  add sp, sp, #16\n"
+      << "  ret\n";
+  return out.str();
+}
+
 }  // namespace
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
@@ -382,6 +499,10 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
     if (const auto slice = parse_minimal_direct_call_add_imm_slice(adapted);
         slice.has_value()) {
       return emit_minimal_direct_call_add_imm_asm(adapted, *slice);
+    }
+    if (const auto slice = parse_minimal_direct_call_two_arg_add_slice(adapted);
+        slice.has_value()) {
+      return emit_minimal_direct_call_two_arg_add_asm(adapted, *slice);
     }
     return c4c::backend::render_module(adapted);
   } catch (const c4c::backend::LirAdapterError& ex) {
