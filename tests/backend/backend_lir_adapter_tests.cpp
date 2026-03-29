@@ -15,6 +15,7 @@
 #include "../../src/backend/aarch64/linker/mod.hpp"
 #include "../../src/backend/aarch64/assembler/parser.hpp"
 #include "../../src/backend/x86/assembler/mod.hpp"
+#include "../../src/backend/x86/assembler/parser.hpp"
 #include "../../src/backend/x86/codegen/emit.hpp"
 #include "../../src/backend/x86/linker/mod.hpp"
 
@@ -4324,6 +4325,47 @@ void test_aarch64_assembler_parser_stub_preserves_text() {
               "aarch64 assembler parser should preserve the directive, label, and instruction text for the minimal slice");
 }
 
+void test_x86_assembler_parser_accepts_bounded_return_add_slice() {
+  const auto asm_text = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_return_add_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  const auto statements = c4c::backend::x86::assembler::parse_asm(asm_text);
+
+  expect_true(statements.size() == 6,
+              "x86 assembler parser should keep the bounded return-add slice as six structured statements");
+  expect_true(statements[0].text == ".intel_syntax noprefix" &&
+                  statements[1].text == ".text" &&
+                  statements[2].text == ".globl main" &&
+                  statements[3].text == "main:" &&
+                  statements[4].text == "mov eax, 5" &&
+                  statements[5].text == "ret",
+              "x86 assembler parser should preserve the Step 2 directive, label, and instruction surface for the bounded return-add slice");
+  expect_true(statements[4].operands.size() == 2 &&
+                  statements[4].operands[0].text == "eax" &&
+                  statements[4].operands[1].text == "5",
+              "x86 assembler parser should split the bounded mov eax, imm32 instruction into destination and immediate operands");
+}
+
+void test_x86_assembler_parser_rejects_out_of_scope_forms() {
+  try {
+    (void)c4c::backend::x86::assembler::parse_asm(
+        ".intel_syntax noprefix\n.text\n.globl main\nmain:\n  mov eax, dword ptr [rax]\n  ret\n");
+    fail("x86 assembler parser should reject out-of-scope memory operand forms");
+  } catch (const std::runtime_error& ex) {
+    expect_contains(ex.what(), "unsupported x86 immediate",
+                    "x86 assembler parser should explain why Step 2 rejects memory-form mov sources");
+  }
+
+  try {
+    (void)c4c::backend::x86::assembler::parse_asm(
+        ".intel_syntax noprefix\n.text\n.globl main\nmain:\n.Lblock_1:\n  mov eax, 5\n  ret\n");
+    fail("x86 assembler parser should reject local labels outside the first bounded slice");
+  } catch (const std::runtime_error& ex) {
+    expect_contains(ex.what(), "unsupported x86 label",
+                    "x86 assembler parser should keep local labels explicitly unsupported in the Step 2 slice");
+  }
+}
+
 void test_aarch64_assembler_elf_writer_branch_reloc_helper() {
   using c4c::backend::aarch64::assembler::is_branch_reloc_type;
 
@@ -5508,6 +5550,8 @@ int main() {
   test_aarch64_backend_renders_va_arg_pair_slice();
   test_aarch64_backend_renders_va_arg_bigints_slice();
   test_aarch64_backend_renders_phi_join_slice();
+  test_x86_assembler_parser_accepts_bounded_return_add_slice();
+  test_x86_assembler_parser_rejects_out_of_scope_forms();
   test_aarch64_assembler_parser_stub_preserves_text();
   test_aarch64_assembler_elf_writer_branch_reloc_helper();
   test_aarch64_assembler_encoder_helper_smoke();
