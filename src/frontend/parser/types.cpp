@@ -17,6 +17,21 @@ bool skip_cpp20_constraint_atom(Parser& parser);
 
 using ParsedTemplateArg = Parser::TemplateArgParseResult;
 
+bool match_floatn_keyword_base(const std::string& name, TypeBase* out_base) {
+    TypeBase base = TB_INT;
+    if (name == "_Float16" || name == "_Float32") {
+        base = TB_FLOAT;
+    } else if (name == "_Float64" || name == "_Float32x") {
+        base = TB_DOUBLE;
+    } else if (name == "_Float128" || name == "_Float64x" || name == "_Float128x") {
+        base = TB_LONGDOUBLE;
+    } else {
+        return false;
+    }
+    if (out_base) *out_base = base;
+    return true;
+}
+
 struct QualifiedTypeProbe {
     bool has_resolved_typedef = false;
     bool has_unresolved_qualified_fallback = false;
@@ -2716,6 +2731,7 @@ bool Parser::is_type_start() const {
     if (k == TokenKind::KwTypename) return true;
     if (k == TokenKind::Identifier) {
         if (is_concept_name(cur().lexeme)) return false;
+        if (match_floatn_keyword_base(cur().lexeme, nullptr)) return true;
         if (is_template_scope_type_param(cur().lexeme)) return true;
         if (is_typedef_name(cur().lexeme)) return true;
         if (typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0) return true;
@@ -3298,6 +3314,16 @@ TypeSpec Parser::parse_base_type() {
 
             case TokenKind::KwTypename:
             case TokenKind::Identifier:
+                {
+                    TypeBase floatn_base;
+                    if (match_floatn_keyword_base(cur().lexeme, &floatn_base)) {
+                        ts.base = floatn_base;
+                        base_set = true;
+                        consume();
+                        done = true;
+                        break;
+                    }
+                }
                 if (is_cpp_mode()) {
                     const bool already_have_base =
                         has_signed || has_unsigned || has_short || long_count > 0 ||

@@ -1,5 +1,6 @@
 #include "llvm_codegen.hpp"
 #include "backend.hpp"
+#include "lir_adapter.hpp"
 #include "target.hpp"
 #include "hir_to_lir.hpp"
 #include "lir_printer.hpp"
@@ -19,6 +20,13 @@ std::string emit_via_backend(const lir::LirModule& lir_mod,
                              std::string_view target_triple) {
   backend::BackendOptions options{backend::target_from_triple(target_triple)};
   backend::BackendModuleInput input{lir_mod};
+  try {
+    input = backend::BackendModuleInput{backend::lower_to_backend_ir(lir_mod), &lir_mod};
+  } catch (const backend::LirAdapterError& ex) {
+    if (ex.kind() != backend::LirAdapterErrorKind::Unsupported) {
+      throw;
+    }
+  }
   return backend::emit_module(input, options);
 }
 

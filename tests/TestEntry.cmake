@@ -89,6 +89,22 @@ if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
                 -P "${C_TESTSUITE_RUN_CASE}"
       )
       set_tests_properties("${test_name}" PROPERTIES LABELS "c_testsuite")
+
+      set(backend_test_name "c_testsuite_x86_backend_${test_id}")
+      add_test(
+        NAME "${backend_test_name}"
+        COMMAND "${CMAKE_COMMAND}"
+                -DCODEGEN_MODE=backend-x86_64
+                -DCOMPILER=$<TARGET_FILE:c4cll>
+                -DCLANG=${CLANG_EXECUTABLE}
+                -DSRC=${src}
+                -DROOT=${C_TESTSUITE_ROOT}
+                -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+                -DOUT_LL=${CMAKE_BINARY_DIR}/c_testsuite_x86_backend/${entry}.s
+                -DOUT_BIN=${CMAKE_BINARY_DIR}/c_testsuite_x86_backend/${entry}.bin
+                -P "${C_TESTSUITE_RUN_CASE}"
+      )
+      set_tests_properties("${backend_test_name}" PROPERTIES LABELS "c_testsuite;x86_backend")
     endforeach()
   endif()
 endif()

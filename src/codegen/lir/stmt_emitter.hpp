@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../shared/llvm_helpers.hpp"
+#include "call_args.hpp"
 #include "ir.hpp"
 #include "../shared/fn_lowering_ctx.hpp"
 
@@ -17,6 +18,10 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+namespace c4c::codegen::llvm_backend {
+struct Amd64VarargInfo;
+}
 
 namespace c4c::codegen::lir {
 
@@ -88,8 +93,13 @@ struct CallTargetInfo {
 };
 
 struct PreparedCallArg {
-  std::string text;
+  std::vector<OwnedLirTypedCallArg> args;
   bool skip = false;
+};
+
+struct Amd64CallArgState {
+  int gp_bytes = 0;
+  int sse_bytes = 0;
 };
 
 struct PreparedBuiltinIntArg {
@@ -226,6 +236,13 @@ class StmtEmitter {
   // ── Lvalue emission ───────────────────────────────────────────────────────
   std::string emit_lval(FnCtx& ctx, ExprId id, TypeSpec& pointee_ts);
   std::string emit_va_list_obj_ptr(FnCtx& ctx, ExprId id, TypeSpec& ts);
+  struct Amd64VaListPtrs {
+    std::string gp_offset_ptr;
+    std::string fp_offset_ptr;
+    std::string overflow_ptr_ptr;
+    std::string reg_save_area_ptr;
+  };
+  Amd64VaListPtrs load_amd64_va_list_ptrs(FnCtx& ctx, const std::string& ap_ptr);
   std::string emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec& pts);
   TypeSpec resolve_member_base_type(FnCtx& ctx, ExprId base_id, bool is_arrow);
   MemberFieldAccess resolve_member_field_access(FnCtx& ctx, const MemberExpr& m);
@@ -267,13 +284,17 @@ class StmtEmitter {
   void apply_default_arg_promotion(FnCtx& ctx, std::string& arg, TypeSpec& out_ts,
                                    const TypeSpec& in_ts);
   PreparedCallArg prepare_call_arg(FnCtx& ctx, const CallExpr& call,
-                                   const CallTargetInfo& call_target, size_t arg_index);
-  std::string prepare_call_args(FnCtx& ctx, const CallExpr& call,
-                                const CallTargetInfo& call_target);
+                                   const CallTargetInfo& call_target, size_t arg_index,
+                                   Amd64CallArgState* amd64_state);
+  PreparedCallArg prepare_amd64_variadic_aggregate_arg(
+      FnCtx& ctx, const TypeSpec& arg_ts, const std::string& obj_ptr,
+      int payload_sz, Amd64CallArgState* amd64_state);
+  std::vector<OwnedLirTypedCallArg> prepare_call_args(FnCtx& ctx, const CallExpr& call,
+                                                      const CallTargetInfo& call_target);
   void emit_void_call(FnCtx& ctx, const CallTargetInfo& call_target,
-                      const std::string& args_str);
+                      const std::vector<OwnedLirTypedCallArg>& args);
   std::string emit_call_with_result(FnCtx& ctx, const CallTargetInfo& call_target,
-                                    const std::string& args_str);
+                                    const std::vector<OwnedLirTypedCallArg>& args);
   PreparedBuiltinIntArg prepare_builtin_int_arg(FnCtx& ctx, ExprId arg_id,
                                                 BuiltinId builtin_id);
   std::string narrow_builtin_int_result(FnCtx& ctx, const PreparedBuiltinIntArg& arg,
@@ -306,6 +327,17 @@ class StmtEmitter {
   std::string emit_builtin_signbit_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
   std::string emit_post_builtin_call(FnCtx& ctx, const CallExpr& call,
                                      const CallTargetInfo& call_target);
+  std::string emit_amd64_va_arg(FnCtx& ctx, const TypeSpec& res_ts,
+                                const std::string& res_ty, const std::string& ap_ptr);
+  std::string emit_amd64_va_arg_from_registers(
+      FnCtx& ctx, const TypeSpec& res_ts, const std::string& res_ty,
+      const c4c::codegen::llvm_backend::Amd64VarargInfo& layout,
+      const Amd64VaListPtrs& access, const std::string& gp_offset,
+      const std::string& fp_offset);
+  std::string emit_amd64_va_arg_from_overflow(FnCtx& ctx, const TypeSpec& res_ts,
+                                              const std::string& res_ty,
+                                              const Amd64VaListPtrs& access,
+                                              int size_bytes);
 
   // ── Rvalue emission ───────────────────────────────────────────────────────
 

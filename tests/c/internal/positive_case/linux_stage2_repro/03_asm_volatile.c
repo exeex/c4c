@@ -1,5 +1,11 @@
+#if defined(__clang__)
+#define CPU_RELAX_MNEMONIC "pause"  // clang rejects 'yield', so keep the host baseline green
+#else
+#define CPU_RELAX_MNEMONIC "yield"
+#endif
+
 void cpu_relax(void) {
-  asm volatile("yield" ::: "memory");
+  asm volatile(CPU_RELAX_MNEMONIC ::: "memory");
 }
 
 int main(void) {

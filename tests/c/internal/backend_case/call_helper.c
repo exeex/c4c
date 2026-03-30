@@ -1,3 +1,3 @@
-int helper() { return 7; }
+extern int helper(void);
 
-int main() { return helper(); }
+int main(void) { return helper(); }
