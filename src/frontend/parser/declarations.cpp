@@ -333,6 +333,11 @@ bool using_alias_consumed_following_declaration(Parser& parser,
             depth -= std::min(depth, 2);
             continue;
         }
+        if (depth == 0 &&
+            i > alias_type_pos &&
+            parser.tokens_[i - 1].kind == TokenKind::ColonColon) {
+            continue;
+        }
         if (depth == 0 && parser.tokens_[i].line == candidate_line &&
             is_top_level_decl_recovery_boundary(kind)) {
             return true;

@@ -7,19 +7,20 @@ Last Updated: 2026-03-29
 
 ## Current Active Item
 
-- Step 2: reduce `/usr/include/c++/14/bits/alloc_traits.h:134` into one
-  internal parser testcase for the surviving record-base dependent
-  `::template __rebind<...>::type` frontier
+- Step 4: stage the next `std::vector` frontier after clearing the
+  `/usr/include/c++/14/bits/alloc_traits.h:134`
+  `typename __allocator_traits_base::template __rebind<_Alloc, _Up>::type`
+  alias blocker
 
 ## Todo
 
-- [ ] Reduce `/usr/include/c++/14/bits/alloc_traits.h:134` into one internal
-      parse-only testcase for record-base dependent
-      `typename __allocator_traits_base::template __rebind<...>::type`
-- [ ] Implement the smallest parser fix required by that reduced testcase
-- [ ] Re-run the direct `std::vector` repro to confirm the next frontier after
+- [x] Add one internal parse-only testcase for
+      `typename __allocator_traits_base::template __rebind<_Alloc, _Up>::type`
+      reduced from `/usr/include/c++/14/bits/alloc_traits.h:134`
+- [x] Implement the smallest parser fix required by that reduced testcase
+- [x] Re-run the direct `std::vector` repro to confirm the next frontier after
       the `alloc_traits` dependent-template slice
-- [ ] Validate the next completed slice with targeted tests plus a monotonic
+- [x] Validate the next completed slice with targeted tests plus a monotonic
       full-suite comparison
 
 ## Completed
@@ -54,24 +55,39 @@ Last Updated: 2026-03-29
 - [x] Validated the reduced `type_traits` slice with targeted parser tests and
       a monotonic full-suite comparison (`2431/2432` passed before,
       `2434/2434` passed after; no new failing tests)
+- [x] Reduced the surviving `alloc_traits` dependent member-template alias
+      frontier into
+      `tests/cpp/internal/postive_case/record_base_template_member_alias_parse.cpp`
+- [x] Fixed top-level `using` alias recovery so scoped `::template` segments do
+      not get misclassified as a new declaration boundary
+- [x] Re-ran the direct `std::vector` repro and confirmed
+      `/usr/include/c++/14/bits/alloc_traits.h:134` disappeared, exposing a
+      later frontier in `/usr/include/c++/14/bits/max_size_type.h`
+- [x] Validated the reduced `alloc_traits` slice with nearby parser tests and a
+      monotonic full-suite comparison (`2434/2435` passed before,
+      `2435/2435` passed after; no new failing tests)
 
 ## Next Intended Slice
 
-- Reduce the surviving dependent-template member-template failure at
-  `/usr/include/c++/14/bits/alloc_traits.h:134`; it now precedes the
-  `ranges_base.h` `[[nodiscard]]` record-member frontier in the direct
-  `std::vector` repro.
+- Reduce the next `std::vector` frontier in
+  `/usr/include/c++/14/bits/max_size_type.h`, most likely starting from the
+  `try_parse_record_constructor_member expected=RPAREN got='-'` failure at
+  line 564 because it likely drives the surrounding incomplete-type cascade.
 
 ## Blockers
 
-- The `alloc_traits.h:134` form still is not isolated cleanly: the parser now
-  accepts the `type_traits` alias form, but the record-base
-  `typename __allocator_traits_base::template __rebind<...>::type` shape still
-  needs its own reduced testcase and parser entry-point fix.
+- The direct repro now clears `alloc_traits.h:134`, but the next
+  `max_size_type.h` frontier is not reduced yet; the first surviving parse-side
+  anchor is the record-constructor-member `got='-'` failure at line 564, with
+  incomplete-type diagnostics appearing earlier in the same header.
 
 ## Resume Notes
 
 - Keep this plan narrow to one live `std::vector` parser blocker at a time.
+- This iteration confirmed the reduced `alloc_traits` alias case was not a
+  qualified-type parse failure; it was a false positive in
+  `using_alias_consumed_following_declaration(...)`, which treated scoped
+  `::template` as a new top-level declaration boundary.
 - Earlier completed slices already landed reduced coverage for template-template
   parameters, qualified NTTPs, dependent enum `sizeof(...)` initializers,
   access-label handling, friend declarations, `noexcept(expr)`, constrained
@@ -83,5 +99,8 @@ Last Updated: 2026-03-29
 - This slice also landed reduced coverage for dependent
   `typename X<...>::template member<...>` alias parsing and moved the direct
   `std::vector` frontier from `type_traits.h:157` to `alloc_traits.h:134`.
+- This slice landed reduced coverage for record-qualified
+  `typename X::template member<...>::type` aliases and moved the direct
+  `std::vector` frontier past `alloc_traits.h:134` into `max_size_type.h`.
 - Do not reactivate `ideas/open/__backend_port_plan.md`; it is an umbrella
   roadmap, not the next execution target.
